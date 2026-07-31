@@ -1,0 +1,276 @@
+-- Postbox foundation :: the select control.
+--
+-- A label, a toggle button, and a drop-down list of items, built entirely from
+-- plain frames the addon owns. Blizzard's menu and dropdown APIs are avoided
+-- deliberately (see COMBAT_TAINT.md), which is also what lets the list panel be
+-- kept fully opaque.
+--
+-- Publishes: ns.Core.UI.Dropdown.Create / .CloseAll
+
+local _, ns = ...
+
+ns.Core = ns.Core or {}
+local Core = ns.Core
+Core.UI = Core.UI or {}
+Core.UI.Dropdown = Core.UI.Dropdown or {}
+
+local Dropdown = Core.UI.Dropdown
+
+local WHITE = "Interface\\Buttons\\WHITE8X8"
+
+local DEFAULT_HEIGHT = 30
+local DEFAULT_ROW_HEIGHT = 20
+local DEFAULT_TOGGLE_WIDTH = 200
+local DEFAULT_TOGGLE_HEIGHT = 22
+local LIST_PADDING = 4
+local LIST_GAP = 2
+-- Clear of every sibling widget's border overlay in the owning window.
+local LIST_LEVEL_OFFSET = 40
+
+-- Every list this module has built. Weak-keyed so a discarded dropdown does not
+-- pin its frames for the rest of the session.
+local lists = setmetatable({}, { __mode = "k" })
+
+-- Full-screen click catcher. Without it a list only closes when its own toggle
+-- is clicked again or another list opens; clicking anywhere else leaves it
+-- hanging over the UI.
+local catcher
+
+local function AnyListShown()
+  for list in pairs(lists) do
+    if list:IsShown() then return true end
+  end
+  return false
+end
+
+local function UpdateCatcher()
+  if catcher and not AnyListShown() then catcher:Hide() end
+end
+
+local function ShowCatcher(level)
+  if not catcher then
+    catcher = CreateFrame("Frame", nil, UIParent)
+    catcher:SetAllPoints(UIParent)
+    catcher:SetFrameStrata("FULLSCREEN_DIALOG")
+    catcher:EnableMouse(true)
+    catcher:Hide()
+    catcher:SetScript("OnMouseDown", function() Dropdown.CloseAll() end)
+  end
+
+  catcher:SetFrameLevel(level)
+  catcher:Show()
+end
+
+-- Closes every list this module created, except the one passed in. Called with
+-- no argument by Core/SendTab.lua and Core/RecipientManager.lua before they
+-- open their own popups, so two lists can never overlap.
+function Dropdown.CloseAll(except)
+  for list in pairs(lists) do
+    if list ~= except and list:IsShown() then list:Hide() end
+  end
+  UpdateCatcher()
+end
+
+function Dropdown.Create(parent, opts)
+  opts = type(opts) == "table" and opts or {}
+
+  local Theme = Core.UI.Theme
+  local items = type(opts.items) == "table" and opts.items or {}
+  local rowHeight = tonumber(opts.rowHeight) or DEFAULT_ROW_HEIGHT
+  local toggleWidth = tonumber(opts.toggleWidth) or DEFAULT_TOGGLE_WIDTH
+
+  local container = CreateFrame("Frame", nil, parent)
+  container:SetHeight(tonumber(opts.height) or DEFAULT_HEIGHT)
+
+  -- Ids are mixed-type — Core/OptionsPanel.lua uses the string "auto" alongside
+  -- integers — so identity comparison must never assume a type.
+  if opts.defaultId ~= nil then
+    container._selectedId = opts.defaultId
+  elseif items[1] then
+    container._selectedId = items[1].id
+  end
+
+  if opts.label then
+    local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("LEFT", container, "LEFT", 0, 0)
+    label:SetText(opts.label)
+    if Theme and Theme.BindFont then Theme.BindFont(label, "small") end
+    container._label = label
+  end
+
+  -- Through the theme's button factory, so the select control is built from the
+  -- same template as every other push button in the addon. It used to be the
+  -- one UIPanelButtonTemplate here, which on a stock UI put a classic
+  -- gold-bracket button beside the modern ones in the options panel and 2px
+  -- from a flat plate tile in the recipient manager's sort group.
+  local toggle
+  if Theme and type(Theme.CreateButton) == "function" then
+    toggle = Theme.CreateButton(opts.toggleName, container)
+  else
+    toggle = CreateFrame("Button", opts.toggleName, container, "UIPanelButtonTemplate")
+  end
+  toggle:SetSize(toggleWidth, tonumber(opts.toggleHeight) or DEFAULT_TOGGLE_HEIGHT)
+
+  -- alignRight pins the toggle to the container's right edge instead of
+  -- trailing the label. Without it a column of dropdowns is ragged, each toggle
+  -- starting wherever its own label happens to end.
+  if opts.alignRight then
+    toggle:SetPoint("RIGHT", container, "RIGHT", 0, 0)
+  elseif container._label then
+    toggle:SetPoint("LEFT", container._label, "RIGHT", 6, 0)
+  else
+    toggle:SetPoint("LEFT", container, "LEFT", 0, 0)
+  end
+
+  -- Tagged so a host-UI skin treats it like the addon's other push buttons.
+  toggle.__postboxButton = true
+  container._toggle = toggle
+
+  local function NameFor(id)
+    for i = 1, #items do
+      if items[i].id == id then return items[i].name end
+    end
+    -- Unknown default: show the first item rather than an empty toggle. The
+    -- selection itself is left as given.
+    return (items[1] and items[1].name) or ""
+  end
+
+  toggle:SetText(NameFor(container._selectedId))
+
+  local list  -- built on first open
+
+  local function BuildList()
+    if list then return list end
+
+    local colors = (Theme and Theme.MenuColors) or nil
+    local hover = colors and colors.hover or { 0.90, 0.78, 0.30, 0.18 }
+
+    list = CreateFrame("Frame", nil, toggle, "BackdropTemplate")
+    list:SetPoint("TOPRIGHT", toggle, "BOTTOMRIGHT", 0, -LIST_GAP)
+    list:SetWidth(tonumber(opts.listWidth) or toggleWidth)
+    list:SetHeight((LIST_PADDING * 2) + (#items * rowHeight))
+    list:SetFrameStrata("FULLSCREEN_DIALOG")
+
+    -- The list is a popup, and the addon has one popup surface: the same card
+    -- the contact picker and the type-ahead list wear. Going through the
+    -- addon's surface entry point rather than hand-rolling a backdrop is what
+    -- gets it the shared fill, border and stone grain on a stock UI *and* the
+    -- `__postboxPanel` tag both host-UI skins walk for -- without which this is
+    -- the one Postbox-coloured panel left inside an otherwise host-styled
+    -- window. Resolved at first open, not at load: this file is foundation and
+    -- loads before the addon theme.
+    local surface = ns.Theme and ns.Theme.ApplyCard
+    if type(surface) == "function" then
+      surface(list)
+    else
+      -- No addon theme (foundation used on its own): a solid white 8x8 tinted
+      -- by the menu palette, with a 1px edge.
+      local fill = colors and colors.fill or { 0.05, 0.05, 0.06, 1 }
+      local border = colors and colors.border or { 0.46, 0.36, 0.24, 0.55 }
+      list:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+      list:SetBackdropColor(fill[1], fill[2], fill[3], fill[4])
+      list:SetBackdropBorderColor(border[1], border[2], border[3], border[4])
+      list.__postboxPanel = "card"
+    end
+    list:Hide()
+
+    for i = 1, #items do
+      local item = items[i]
+
+      local row = CreateFrame("Button", nil, list)
+      row:SetHeight(rowHeight)
+      row:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -LIST_PADDING - ((i - 1) * rowHeight))
+      row:SetPoint("RIGHT", list, "RIGHT", -LIST_PADDING, 0)
+
+      local bg = row:CreateTexture(nil, "BACKGROUND")
+      bg:SetAllPoints()
+      bg:SetColorTexture(0, 0, 0, 0)
+
+      local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+      text:SetPoint("LEFT", row, "LEFT", LIST_PADDING, 0)
+      text:SetText(item.name)
+      if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
+
+      row:SetScript("OnEnter", function()
+        bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4])
+      end)
+      row:SetScript("OnLeave", function()
+        bg:SetColorTexture(0, 0, 0, 0)
+      end)
+      row:SetScript("OnClick", function()
+        container._selectedId = item.id
+        toggle:SetText(item.name)
+        list:Hide()
+        if container._onChange then container._onChange(item.id, item.name) end
+      end)
+    end
+
+    list:SetScript("OnHide", UpdateCatcher)
+    lists[list] = true
+    return list
+  end
+
+  local function CloseList()
+    if list and list:IsShown() then list:Hide() end
+    -- Unconditional: hiding the owning window fires OnHide on its children too,
+    -- and the order of those is not guaranteed.
+    UpdateCatcher()
+  end
+
+  local function OpenList()
+    local built = not list
+    BuildList()
+    Dropdown.CloseAll(list)
+
+    -- The list is built lazily on first open, so it misses the skin pass the
+    -- owning window had. Hand it over now -- from the container, because both
+    -- skins walk a frame's CHILDREN, and the list is a child of the toggle.
+    if built and ns.Skin and ns.Skin.Refresh then
+      pcall(ns.Skin.Refresh, container)
+    end
+
+    local owner = container:GetParent()
+    local base = (owner and owner:GetFrameLevel()) or 0
+    local level = base + LIST_LEVEL_OFFSET
+
+    list:SetFrameLevel(level)
+    ShowCatcher(level - 1)
+    list:Show()
+    list:Raise()
+  end
+
+  toggle:SetScript("OnClick", function()
+    if list and list:IsShown() then
+      CloseList()
+    else
+      OpenList()
+    end
+  end)
+
+  -- An options panel closed with Escape would otherwise leave an orphaned list
+  -- panel visible at fullscreen-dialog strata. Hiding a parent fires OnHide on
+  -- its children, so this covers the whole owning window going away too.
+  container:HookScript("OnHide", CloseList)
+
+  function container:GetSelectedId()
+    return container._selectedId
+  end
+
+  -- Sets the selection and the visible label together.
+  function container:SetSelectedId(id)
+    container._selectedId = id
+    toggle:SetText(NameFor(id))
+  end
+
+  -- Sets the toggle's visible label only, without changing the selection: an
+  -- external source of truth re-syncing itself into the widget.
+  function container:SetText(text)
+    toggle:SetText(text or "")
+  end
+
+  function container:SetChangeCallback(fn)
+    container._onChange = fn
+  end
+
+  return container
+end

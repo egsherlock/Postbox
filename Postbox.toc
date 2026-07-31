@@ -1,0 +1,44 @@
+## Interface: 120100, 120007
+## Title: Postbox
+## Notes: Clears a full mailbox in one pass, and remembers everyone you write to.
+## IconTexture: Interface\AddOns\Postbox\Media\icon.png
+## Author: ellsherlock
+## Version: @project-version@
+## X-License: GPL v3
+## X-Website: https://github.com/egsherlock/Postbox
+## X-Category: Mail
+## SavedVariables: PostboxDB
+## OptionalDeps: EllesmereUI, EllesmereUIBlizzardSkin, ElvUI, ElvUI_WindTools
+
+# Foundation layer. Core/Helpers.lua captures Lib\Util.lua's functions by
+# reference and Core/Theme.lua binds Lib\UI\Theme.lua at load time, so the whole
+# of Lib\ must load before Core\.
+Lib\Store.lua
+Lib\Events.lua
+Lib\Util.lua
+Lib\InventoryLock.lua
+Lib\UI\Theme.lua
+Lib\UI\Window.lua
+Lib\UI\Dropdown.lua
+
+# Postbox
+Core\Locales.lua
+Postbox.lua
+Core\Helpers.lua
+Core\Recipients.lua
+# Reads ns.Recipients (R.Key / R.NormalizeRealm) and ns.Helpers, so it follows
+# both; Core\SendTab.lua is its only consumer and loads later still.
+Core\MailRules.lua
+Core\Theme.lua
+Core\MailService.lua
+Core\ContactService.lua
+Core\CollectTab.lua
+Core\SendTab.lua
+Core\MailboxUI.lua
+Core\OptionsPanel.lua
+Core\RecipientManager.lua
+
+# Optional host-UI skins. Each file is inert unless its host UI is installed.
+# EllesmereUI loads last and wins when both are present (see Skin_EllesmereUI.lua).
+Core\Skin_ElvUI.lua
+Core\Skin_EllesmereUI.lua

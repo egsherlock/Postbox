@@ -1,0 +1,39 @@
+name: Release
+
+# Cut a release by pushing a version tag:
+#   git tag -a v1.2.0 -m "1.2.0" && git push origin v1.2.0
+#
+# The packager builds a zip whose ROOT folder is "Postbox" (see .pkgmeta),
+# substitutes @project-version@ in the TOC with the tag, and attaches the zip
+# to the GitHub release. Addon managers such as WowUp read that release asset —
+# a tag or commit on its own is not enough, there must be an attached zip.
+on:
+  push:
+    tags:
+      - "v*"
+  # Lets you cut a release from the Actions tab without pushing a tag.
+  workflow_dispatch:
+
+permissions:
+  contents: write        # required to create the release and upload the zip
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # packager needs full history for the changelog
+
+      - name: Package and release
+        uses: BigWigsMods/packager@master
+        env:
+          # Built-in token — no personal access token needed here. A PAT is only
+          # needed on the *client* side (WowUp) for API rate limits.
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+          # CurseForge / Wago / WoWInterface uploads happen automatically if you
+          # ever add these secrets. Left unset, the packager simply skips them.
+          # CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          # WAGO_API_KEY: ${{ secrets.WAGO_API_KEY }}
+          # WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}

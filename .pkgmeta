@@ -1,0 +1,25 @@
+# BigWigsMods/packager configuration.
+#
+# package-as sets the folder name INSIDE the release zip. It must match the
+# addon folder name WoW expects (and the .toc filename), not the repo name —
+# a zip that unpacks to "Postbox-main/" would not load.
+package-as: Postbox
+
+# Dev-only files: useful in the repo, dead weight in the shipped addon.
+# postbox.png is the 1254px logo master and docs/ its web-sized derivatives;
+# the addon itself ships only Media/icon.png.
+ignore:
+  - .claude
+  - .github
+  - CLAUDE.md
+  - DEVNOTES.md
+  - COMBAT_TAINT.md
+  - ELLESMEREUI_SKINNING.md
+  - DEFAULT_UI_AUDIT.md
+  - postbox.png
+  - docs
+
+# Keep the changelog out of the zip but still attach it to the release page.
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
