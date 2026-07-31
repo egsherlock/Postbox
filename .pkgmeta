@@ -17,6 +17,7 @@ ignore:
   - ELLESMEREUI_SKINNING.md
   - DEFAULT_UI_AUDIT.md
   - postbox.png
+  - postboxbanner.png
   - docs
 
 # Keep the changelog out of the zip but still attach it to the release page.
