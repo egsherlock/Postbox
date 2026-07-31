@@ -282,10 +282,6 @@ local C = {
   -- Unread / read dot on a mail row.
   unread = { 0.20, 0.80, 0.20, 1.00 },
   read   = { 0.40, 0.40, 0.40, 0.60 },
-
-  -- Hover fill on a destructive control. `negative` at low alpha, so the two
-  -- can never drift apart.
-  destructiveHover = { 1.0000, 0.2667, 0.2667, 0.35 },
 }
 
 Theme.Colors = C
