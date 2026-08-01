@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.1
+
+- Author corrected to egsherlock, matching GitHub and CurseForge.
+
 ## 1.9.0
 
 - The icon picker's open list now shows every icon beside its name - the

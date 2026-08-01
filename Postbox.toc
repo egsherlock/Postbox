@@ -2,7 +2,7 @@
 ## Title: Postbox
 ## Notes: Clears a full mailbox in one pass, and remembers everyone you write to.
 ## IconTexture: Interface\AddOns\Postbox\Media\icon-pillar.png
-## Author: ellsherlock
+## Author: egsherlock
 ## Version: @project-version@
 ## X-License: GPL v3
 ## X-Website: https://github.com/egsherlock/Postbox
