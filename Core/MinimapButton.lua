@@ -359,17 +359,64 @@ end
 
 -------------------------------------------------------------
 -- 6. State
+--
+-- Off means OFF. While the setting is disabled this module's session
+-- footprint is nothing at all: no frames, no event registrations, no touch
+-- on the default indicator. The runtime below is brought up on enable and
+-- torn back down on disable, so the only trace an enable-then-disable can
+-- leave is the two hooks WoW provides no way to remove -- both of which are
+-- guarded to dead code while inactive.
 -------------------------------------------------------------
 
-local function Refresh()
+local Refresh -- forward: the event handlers below re-enter it
+
+local function OnMailEvent()
+  Refresh()
+end
+
+-- Re-derives everything on zone-in: both host UIs rebuild and resize the
+-- minimap at login and on profile switches, which moves the rim.
+local function OnEnterWorld()
+  Refresh()
+end
+
+local runtimeActive = false
+
+local function SetRuntimeActive(on)
+  on = on == true
+  if runtimeActive == on then return end
+  runtimeActive = on
+
+  if on then
+    ns.Events.Register("UPDATE_PENDING_MAIL", OnMailEvent)
+    ns.Events.Register("PLAYER_ENTERING_WORLD", OnEnterWorld)
+    local minimap = _G.Minimap
+    if minimap and not MB._sizeHooked then
+      MB._sizeHooked = true
+      hooksecurefunc(minimap, "SetSize", function()
+        if runtimeActive and MB._button and MB._button:IsShown() then
+          Reposition(MB._button)
+        end
+      end)
+    end
+    return
+  end
+
+  ns.Events.Unregister("UPDATE_PENDING_MAIL", OnMailEvent)
+  ns.Events.Unregister("PLAYER_ENTERING_WORLD", OnEnterWorld)
+end
+
+Refresh = function()
   local prefs = Settings()
 
   if prefs.enabled ~= true or NotificationsRuledOut() then
+    SetRuntimeActive(false)
     SetDefaultSuppressed(false)
     if MB._button then MB._button:Hide() end
     return
   end
 
+  SetRuntimeActive(true)
   SetDefaultSuppressed(true)
   local button = Build()
   if not button then return end
@@ -461,23 +508,8 @@ function MB.Initialize()
   -- rules out mail notifications gets no replacement for them either.
   if NotificationsRuledOut() then return end
 
-  ns.Events.Register("UPDATE_PENDING_MAIL", function()
-    if Settings().enabled == true then Refresh() end
-  end)
-
-  -- Re-derives everything on zone-in: both host UIs rebuild and resize the
-  -- minimap at login and on profile switches, which moves the rim.
-  ns.Events.Register("PLAYER_ENTERING_WORLD", function()
-    Refresh()
-  end)
-
-  local minimap = _G.Minimap
-  if minimap and not MB._sizeHooked then
-    MB._sizeHooked = true
-    hooksecurefunc(minimap, "SetSize", function()
-      if MB._button and MB._button:IsShown() then Reposition(MB._button) end
-    end)
-  end
-
+  -- Refresh brings the runtime up only if the setting is on; with it off,
+  -- this call is the module's LAST act of the session unless the user
+  -- enables it from the options panel or /postbox minimap.
   Refresh()
 end
