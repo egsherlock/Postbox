@@ -917,6 +917,46 @@ end
 local TAB_ORDER = { "collect", "send" }
 local TAB_LABEL_KEY = { collect = "TAB_COLLECT", send = "TAB_SEND" }
 
+-- The collect tab's caption carries "(still to collect / total)" while the
+-- mailbox is open, so the Send tab shows at a glance that mail is waiting.
+-- Same numbers as the segment captions -- CT.InboxCounts, the one walk --
+-- and the same option gates both.
+local function UpdateCollectTabText()
+  local frame = UI._frame
+  local tab = frame and frame.TabButtons and frame.TabButtons.collect
+  if not tab then return end
+
+  local text = L("TAB_COLLECT")
+  local collect = ns.CollectTab
+  if UI._state.mailboxOpen
+    and UI.GetOption("showTabCounts")
+    and collect and type(collect.InboxCounts) == "function" then
+    local toCollect, _, total = collect.InboxCounts()
+    if (tonumber(total) or 0) > 0 then
+      text = LF("TAB_COLLECT_COUNTS", text, tonumber(toCollect) or 0, total)
+    end
+  end
+  tab:SetText(text)
+end
+
+-- MAIL_INBOX_UPDATE arrives in bursts, and with the collect panel hidden (the
+-- one case this caption is FOR) nothing else has walked the inbox -- so a
+-- synchronous update per event would pay one walk per event. Coalesced to the
+-- next frame instead, same pattern as the collect list's own refresh.
+local tabCountQueued = false
+local function QueueCollectTabText()
+  if tabCountQueued then return end
+  tabCountQueued = true
+  local ok = pcall(C_Timer.After, 0, function()
+    tabCountQueued = false
+    UpdateCollectTabText()
+  end)
+  if not ok then
+    tabCountQueued = false
+    UpdateCollectTabText()
+  end
+end
+
 function UI.SelectTab(tabId)
   if not TAB_LABEL_KEY[tabId] then return end
 
@@ -964,6 +1004,7 @@ function UI.RefreshCollectTabCounts()
   if panel and collect and collect.UpdateTabCounts then
     collect.UpdateTabCounts(panel)
   end
+  UpdateCollectTabText()
 end
 
 -- Frozen: Core/OptionsPanel.lua calls this when the compact-row option changes.
@@ -1334,6 +1375,8 @@ local function OnMailShow()
   UI.Show(true)
   RefreshCollectPanel()
   UI.UpdateStatusSummary()
+  -- After the refresh, which records the inbox counts this reads.
+  UpdateCollectTabText()
   -- Dock last, now that both our window and the invisible MailFrame are shown
   -- and positioned.
   UI.ApplyWindowLayout()
@@ -1368,6 +1411,10 @@ local function OnMailClosed()
   -- exists. The next read walks rather than trusting them.
   local collect = ns.CollectTab
   if collect and collect.InvalidateCounts then collect.InvalidateCounts() end
+
+  -- mailboxOpen is already false, so this strips the count suffix -- the
+  -- numbers describe an inbox the player has walked away from.
+  UpdateCollectTabText()
 
   local send = ns.SendTab
   if send then
@@ -1506,6 +1553,10 @@ function UI.Initialize()
     -- Safe unconditionally: this only recomputes the idle summary, which is the
     -- lowest-priority layer and can never displace a run's status.
     UI.UpdateStatusSummary()
+    -- The tab caption's numbers moved with the inbox. Queued, not synchronous:
+    -- with the collect panel hidden this is the only reader, and a walk per
+    -- burst event would be paid for one visible change.
+    QueueCollectTabText()
   end)
 
   bus.Register("MAIL_SUCCESS", function()

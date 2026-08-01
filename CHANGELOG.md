@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.13.0
+
+- The main tab is called **Mail** now, and while the mailbox is open it
+  carries the inbox at a glance - "Mail (3/12)", still-to-collect over
+  total - so from the Send tab you can see there is something worth
+  collecting. It follows the same "counts" option as the segment captions
+  and reads the same single inbox walk, so the numbers can never disagree.
+
 ## 1.12.0
 
 - **Stock Blizzard UI gets its backgrounds back.** The options panel's
