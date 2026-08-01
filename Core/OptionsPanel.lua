@@ -40,6 +40,23 @@ end
 -------------------------------------------------------------
 -- Row builders
 -------------------------------------------------------------
+
+-- A section heading with a hairline accent rule running out to the panel
+-- edge, which is what visually groups the rows under it.
+local function AddHeading(frame, y, text)
+  local heading = ns.Theme.CreateText(frame, "heading")
+  heading:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
+  heading:SetWordWrap(false)
+  heading:SetText(text)
+
+  local rule = frame:CreateTexture(nil, "ARTWORK")
+  rule:SetHeight(1)
+  rule:SetPoint("LEFT", heading, "RIGHT", 8, 0)
+  rule:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
+  ns.Theme.FillColor(rule, "accentRule")
+
+  return y - 22
+end
 local function AddCheckbox(frame, y, title, desc, get, set)
   local cb = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
   cb:SetSize(CHECK_H, CHECK_H)
@@ -176,6 +193,8 @@ local function Build()
 
   local y = -34
 
+  y = AddHeading(frame, y, L["OPT_GENERAL_HEADING"])
+
   y = AddCheckbox(frame, y, L["GRID_TOGGLE_TITLE"], L["GRID_TOGGLE_DESC"],
         function() return ns.MailboxUI.GetOption("gridDock") end,
         function(on)
@@ -227,11 +246,7 @@ local function Build()
   -- Minimap mail icon (Core/MinimapButton.lua). Resolved at click time like
   -- every other binding, so the section stays honest if the module is absent.
   y = y - 6
-  local mmHeading = ns.Theme.CreateText(frame, "heading")
-  mmHeading:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
-  mmHeading:SetWordWrap(false)
-  mmHeading:SetText(L["OPT_MINIMAP_HEADING"])
-  y = y - 22
+  y = AddHeading(frame, y, L["OPT_MINIMAP_HEADING"])
 
   local mmHostStyled = ns.MinimapButton and ns.MinimapButton.IsHostStyled
     and ns.MinimapButton.IsHostStyled()
@@ -242,9 +257,9 @@ local function Build()
 
   local iconItems = {
     { id = "postbox",  name = L["OPT_MINIMAP_ICON_POSTBOX"] },
+    { id = "plate",    name = L["OPT_MINIMAP_ICON_PLATE"] },
+    { id = "badge",    name = L["OPT_MINIMAP_ICON_BADGE"] },
     { id = "blizzard", name = L["OPT_MINIMAP_ICON_BLIZZARD"] },
-    { id = "clean",    name = L["OPT_MINIMAP_ICON_CLEAN"] },
-    { id = "mailbox",  name = L["OPT_MINIMAP_ICON_MAILBOX"] },
   }
   y = AddDropdown(frame, y, L["OPT_MINIMAP_ICON_TITLE"], iconItems,
         function() return ns.MinimapButton and ns.MinimapButton.GetIcon() end,
@@ -306,11 +321,7 @@ local function Build()
   local Skin = GetSkin()
   if Skin then
     y = y - 6
-    local heading = ns.Theme.CreateText(frame, "heading")
-    heading:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
-    heading:SetWordWrap(false)
-    heading:SetText(L["OPT_APPEARANCE_HEADING"])
-    y = y - 22
+    y = AddHeading(frame, y, L["OPT_APPEARANCE_HEADING"])
 
     -- Border style and size both default to whatever EllesmereUI itself is
     -- configured for, so a shadow (or none) on the rest of the UI carries here.
@@ -356,6 +367,31 @@ local function Build()
             else Skin.SetBgOpacity((tonumber(id) or 100) / 100) end
           end)
   end
+
+  -- Which look is painting the addon right now: the host-UI skin's name, or
+  -- Postbox's own theme. Refreshed on every open rather than baked in --
+  -- skins claim ns.Skin at PLAYER_LOGIN and the EllesmereUI handshake can
+  -- resolve seconds later, after this panel was first built.
+  y = y - 6
+  local statusDot = frame:CreateTexture(nil, "ARTWORK")
+  statusDot:SetSize(6, 6)
+  statusDot:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + 1, y - 5)
+  local statusText = ns.Theme.CreateText(frame, "bodySmall")
+  statusText:SetPoint("LEFT", statusDot, "RIGHT", 6, 0)
+  statusText:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
+  statusText:SetJustifyH("LEFT")
+  statusText:SetWordWrap(false)
+  local function RefreshStyleStatus()
+    local by = ns.SkinAppliedBy
+    local name = (by == "ellesmereui" and "EllesmereUI")
+      or (by == "elvui" and "ElvUI")
+      or "Postbox"
+    statusText:SetText(L("OPT_STYLE_STATUS", name))
+    ns.Theme.FillColor(statusDot, "accent")
+  end
+  RefreshStyleStatus()
+  frame.__refreshers[#frame.__refreshers + 1] = RefreshStyleStatus
+  MarkBottom(frame, y, 16)
 
   -- Sized to the last control's own bottom edge plus one pad, so hiding the
   -- appearance section (no host-UI skin) shortens the window rather than

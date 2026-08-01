@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.0
+
+- Three new minimap icon styles drawn for small sizes — **Envelope** (bold
+  classic), **Plate** (filled rounded tile with an envelope knockout) and
+  **Badge** (envelope with a notification dot) — all accent-tintable. The
+  muddy "Minimal" and "Mailbox" styles are gone; anyone who had them selected
+  moves to Envelope automatically.
+- The options panel got a tidy-up: sections ruled off under General, Minimap
+  and Appearance headings, and a status line at the bottom showing which
+  style is painting Postbox right now (EllesmereUI, ElvUI, or Postbox's own).
+
 ## 1.3.0
 
 - With EllesmereUI's minimap active, Postbox no longer draws a second mail
