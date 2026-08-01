@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0
+
+- With EllesmereUI's minimap active, Postbox no longer draws a second mail
+  icon — it restyles EllesmereUI's own mail icon in place with your chosen
+  icon style, accent tint and glow, while EllesmereUI keeps controlling its
+  visibility, position and size. One icon, styled yours, positioned theirs.
+  Everything is restored exactly when the option is switched off, and if a
+  future EllesmereUI changes internally the styling simply stands down.
+  Without EllesmereUI's minimap, Postbox's own icon works as before.
+
 ## 1.2.0
 
 - The minimap mail icon now sits **inside** the map edge with a position

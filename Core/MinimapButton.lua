@@ -164,7 +164,169 @@ local function SetDefaultSuppressed(on)
 end
 
 -------------------------------------------------------------
--- 3. Position on the rim
+-- 3. EllesmereUI skin mode
+--
+-- When EllesmereUI's minimap module is running, ITS mail icon is the mail
+-- icon: it cannot be switched off in its options, it is resurfaced by many
+-- of its layout passes, and suppressing the Blizzard frame only starves its
+-- updates. Fighting any of that is a losing game. So in that situation
+-- Postbox does not draw a button and does not touch the Blizzard frame at
+-- all -- it restyles EllesmereUI's button in place (icon art, accent tint,
+-- glow) and leaves visibility, position and size to EllesmereUI, which is
+-- what its own options already control.
+--
+-- The button is found by its `_indicatorKey == "_mail"` field. Everything
+-- changed is snapshotted first and restored exactly on disable, and if a
+-- future EllesmereUI stops exposing this shape the skin quietly never
+-- applies and Postbox falls back to its own button.
+-------------------------------------------------------------
+
+local EUI_SKIN_MAX_TRIES = 8
+
+local euiSkin = { button = nil, saved = nil, applied = false,
+                  tries = 0, timerArmed = false }
+
+local function EuiMinimapProfile()
+  local host = _G.EllesmereUI
+  if not (host and host.Lite and type(host.Lite.GetAddon) == "function") then
+    return nil
+  end
+  local ok, mm = pcall(function()
+    local sub = host.Lite.GetAddon("EllesmereUIMinimap", true)
+    return sub and sub.db and sub.db.profile and sub.db.profile.minimap
+  end)
+  if ok and type(mm) == "table" then return mm end
+  return nil
+end
+
+-- Skin mode is a candidate whenever the module is loaded and its profile
+-- does not say disabled. An unreadable profile counts as enabled: the module
+-- ships enabled by default, and guessing "disabled" would flash Postbox's
+-- own button at login before the profile arrives.
+local function EuiSkinCandidate()
+  if not (C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function") then
+    return false
+  end
+  if not C_AddOns.IsAddOnLoaded("EllesmereUIMinimap") then return false end
+  local mm = EuiMinimapProfile()
+  return not mm or mm.enabled ~= false
+end
+
+local function FindEuiMailButton()
+  local minimap = _G.Minimap
+  local cached = euiSkin.button
+  if cached and cached:GetParent() == minimap then return cached end
+
+  if not minimap then return nil end
+  local kids = { minimap:GetChildren() }
+  for i = 1, #kids do
+    local child = kids[i]
+    if child and child ~= MB._button and child._indicatorKey == "_mail" then
+      euiSkin.button = child
+      return child
+    end
+  end
+end
+
+local function ApplyEuiSkin()
+  local btn = FindEuiMailButton()
+  local icon = btn and btn._icon
+  if not icon then return false end
+
+  if not euiSkin.saved then
+    local w, h = icon:GetSize()
+    euiSkin.saved = { up = btn._upAtlas, over = btn._overAtlas, w = w, h = h }
+  end
+
+  local prefs = Settings()
+  local spec = ICONS[prefs.icon] or ICONS.postbox
+  local r, g, b = 1, 1, 1
+  if prefs.accent ~= false then r, g, b = ns.Theme.GetAccent() end
+
+  if prefs.icon == "blizzard" then
+    -- "Blizzard" here means EllesmereUI's stock look, which is the same art.
+    btn._upAtlas, btn._overAtlas = euiSkin.saved.up, euiSkin.saved.over
+    if euiSkin.saved.up then icon:SetAtlas(euiSkin.saved.up) end
+    icon:SetSize(euiSkin.saved.w, euiSkin.saved.h)
+    icon:SetVertexColor(1, 1, 1)
+  else
+    -- Their OnEnter/OnLeave/OnMouseDown swap the icon atlas from these two
+    -- fields; nil means those scripts stand down, which is exactly what a
+    -- replaced texture needs. Restored verbatim on disable.
+    btn._upAtlas, btn._overAtlas = nil, nil
+    if spec.atlas then
+      icon:SetAtlas(spec.atlas)
+    else
+      icon:SetTexture(spec.texture)
+    end
+    local side = math.max(10, math.min(btn:GetWidth(), btn:GetHeight()) - 6)
+    icon:SetSize(side, side * (spec.aspect or 1))
+    if spec.tintable then
+      icon:SetVertexColor(r, g, b)
+    else
+      icon:SetVertexColor(1, 1, 1)
+    end
+  end
+
+  local glow = btn.__pbMailGlow
+  if prefs.glow == true then
+    if not glow then
+      glow = btn:CreateTexture(nil, "BACKGROUND")
+      glow:SetPoint("CENTER", icon, "CENTER")
+      glow:SetTexture(MEDIA .. "minimap-glow.tga")
+      glow:SetBlendMode("ADD")
+      btn.__pbMailGlow = glow
+      local pulse = glow:CreateAnimationGroup()
+      pulse:SetLooping("BOUNCE")
+      local fade = pulse:CreateAnimation("Alpha")
+      fade:SetFromAlpha(1)
+      fade:SetToAlpha(0.55)
+      fade:SetDuration(1.6)
+      fade:SetSmoothing("IN_OUT")
+      btn.__pbMailPulse = pulse
+    end
+    glow:SetSize(btn:GetWidth() * 1.6, btn:GetHeight() * 1.6)
+    glow:SetVertexColor(r, g, b)
+    glow:Show()
+    if not btn.__pbMailPulse:IsPlaying() then btn.__pbMailPulse:Play() end
+  elseif glow then
+    btn.__pbMailPulse:Stop()
+    glow:Hide()
+  end
+
+  euiSkin.applied = true
+  return true
+end
+
+local function RestoreEuiSkin()
+  if not euiSkin.applied then return end
+  euiSkin.applied = false
+
+  local btn = euiSkin.button
+  local saved = euiSkin.saved
+  if not (btn and saved) then return end
+
+  btn._upAtlas, btn._overAtlas = saved.up, saved.over
+  local icon = btn._icon
+  if icon then
+    if saved.up then icon:SetAtlas(saved.up) end
+    icon:SetSize(saved.w, saved.h)
+    icon:SetVertexColor(1, 1, 1)
+  end
+  if btn.__pbMailGlow then
+    btn.__pbMailPulse:Stop()
+    btn.__pbMailGlow:Hide()
+  end
+end
+
+-- The options panel asks this to decide which controls make sense: in skin
+-- mode, position and size belong to EllesmereUI.
+function MB.IsHostStyled()
+  return EuiSkinCandidate()
+end
+
+-------------------------------------------------------------
+-- 4. Position on the rim
 -------------------------------------------------------------
 
 -- Round unless somebody says square. GetMinimapShape is the LibDBIcon-era
@@ -242,7 +404,7 @@ local function AngleFromCursor()
 end
 
 -------------------------------------------------------------
--- 4. Look
+-- 5. Look
 -------------------------------------------------------------
 
 local function ApplyLook(button)
@@ -288,7 +450,7 @@ local function ApplyLook(button)
 end
 
 -------------------------------------------------------------
--- 5. The button
+-- 6. The button
 -------------------------------------------------------------
 
 local function ShowTooltip(button)
@@ -390,7 +552,7 @@ local function Build()
 end
 
 -------------------------------------------------------------
--- 6. State
+-- 7. State
 --
 -- Off means OFF. While the setting is disabled this module's session
 -- footprint is nothing at all: no frames, no event registrations, no touch
@@ -444,11 +606,40 @@ Refresh = function()
   if prefs.enabled ~= true or NotificationsRuledOut() then
     SetRuntimeActive(false)
     SetDefaultSuppressed(false)
+    RestoreEuiSkin()
     if MB._button then MB._button:Hide() end
     return
   end
 
   SetRuntimeActive(true)
+
+  -- EllesmereUI's minimap module running: restyle its icon, own nothing.
+  -- The Blizzard frame stays untouched in this mode -- EllesmereUI's icon
+  -- updates from that frame's Show/Hide, so starving it would starve them.
+  if EuiSkinCandidate() then
+    SetDefaultSuppressed(false)
+    if MB._button then MB._button:Hide() end
+    if ApplyEuiSkin() then
+      euiSkin.tries = 0
+      return
+    end
+    -- Their button is built a beat after login (and can lag a settings
+    -- change); wait for it a few times before concluding their internals
+    -- have changed shape and falling back to Postbox's own button.
+    if euiSkin.tries < EUI_SKIN_MAX_TRIES then
+      euiSkin.tries = euiSkin.tries + 1
+      if not euiSkin.timerArmed then
+        euiSkin.timerArmed = true
+        C_Timer.After(2, function()
+          euiSkin.timerArmed = false
+          Refresh()
+        end)
+      end
+      return
+    end
+  end
+
+  RestoreEuiSkin()
   SetDefaultSuppressed(true)
   local button = Build()
   if not button then return end
@@ -467,12 +658,16 @@ MB.Refresh = Refresh
 -- Called by Skin_EllesmereUI.RefreshAccents so an accent retune repaints a
 -- visible icon immediately rather than on the next mail event.
 function MB.RefreshLook()
+  if euiSkin.applied then
+    ApplyEuiSkin()
+    return
+  end
   local button = MB._button
   if button and button:IsShown() then ApplyLook(button) end
 end
 
 -------------------------------------------------------------
--- 7. Options surface (consumed by Core/OptionsPanel.lua)
+-- 8. Options surface (consumed by Core/OptionsPanel.lua)
 -------------------------------------------------------------
 
 function MB.GetEnabled() return Settings().enabled == true end
@@ -547,7 +742,7 @@ function MB.ResetPosition()
 end
 
 -------------------------------------------------------------
--- 8. Init
+-- 9. Init
 -------------------------------------------------------------
 
 function MB.Initialize()

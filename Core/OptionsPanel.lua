@@ -233,7 +233,10 @@ local function Build()
   mmHeading:SetText(L["OPT_MINIMAP_HEADING"])
   y = y - 22
 
-  y = AddCheckbox(frame, y, L["OPT_MINIMAP_TITLE"], L["OPT_MINIMAP_DESC"],
+  local mmHostStyled = ns.MinimapButton and ns.MinimapButton.IsHostStyled
+    and ns.MinimapButton.IsHostStyled()
+  y = AddCheckbox(frame, y, L["OPT_MINIMAP_TITLE"],
+        mmHostStyled and L["OPT_MINIMAP_DESC_EUI"] or L["OPT_MINIMAP_DESC"],
         function() return ns.MinimapButton and ns.MinimapButton.GetEnabled() end,
         function(on) if ns.MinimapButton then ns.MinimapButton.SetEnabled(on) end end)
 
@@ -247,26 +250,32 @@ local function Build()
         function() return ns.MinimapButton and ns.MinimapButton.GetIcon() end,
         function(id) if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end end)
 
-  local mmSizeItems = {}
-  for _, px in ipairs({ 16, 20, 24, 28 }) do
-    mmSizeItems[#mmSizeItems + 1] = {
-      id = px, name = string.format(L["OPT_MINIMAP_SIZE_STEP"], px),
-    }
-  end
-  y = AddDropdown(frame, y, L["OPT_MINIMAP_SIZE_TITLE"], mmSizeItems,
-        function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
-        function(id) if ns.MinimapButton then ns.MinimapButton.SetIconSize(id) end end)
+  -- With EllesmereUI's minimap module running, Postbox restyles EllesmereUI's
+  -- own mail icon in place rather than drawing a second one; position and
+  -- size are then EllesmereUI's to control, so those rows would be dead
+  -- weight and are left out (see Core/MinimapButton.lua section 3).
+  if not mmHostStyled then
+    local mmSizeItems = {}
+    for _, px in ipairs({ 16, 20, 24, 28 }) do
+      mmSizeItems[#mmSizeItems + 1] = {
+        id = px, name = string.format(L["OPT_MINIMAP_SIZE_STEP"], px),
+      }
+    end
+    y = AddDropdown(frame, y, L["OPT_MINIMAP_SIZE_TITLE"], mmSizeItems,
+          function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
+          function(id) if ns.MinimapButton then ns.MinimapButton.SetIconSize(id) end end)
 
-  local mmPositionItems = {
-    { id = "TOPRIGHT",    name = L["OPT_MINIMAP_POS_TR"] },
-    { id = "TOPLEFT",     name = L["OPT_MINIMAP_POS_TL"] },
-    { id = "BOTTOMRIGHT", name = L["OPT_MINIMAP_POS_BR"] },
-    { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
-    { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
-  }
-  y = AddDropdown(frame, y, L["OPT_MINIMAP_POS_TITLE"], mmPositionItems,
-        function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
-        function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end)
+    local mmPositionItems = {
+      { id = "TOPRIGHT",    name = L["OPT_MINIMAP_POS_TR"] },
+      { id = "TOPLEFT",     name = L["OPT_MINIMAP_POS_TL"] },
+      { id = "BOTTOMRIGHT", name = L["OPT_MINIMAP_POS_BR"] },
+      { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
+      { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
+    }
+    y = AddDropdown(frame, y, L["OPT_MINIMAP_POS_TITLE"], mmPositionItems,
+          function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
+          function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end)
+  end
 
   y = AddCheckbox(frame, y, L["OPT_MINIMAP_ACCENT_TITLE"], L["OPT_MINIMAP_ACCENT_DESC"],
         function() return ns.MinimapButton and ns.MinimapButton.GetAccentTint() end,
@@ -276,25 +285,19 @@ local function Build()
         function() return ns.MinimapButton and ns.MinimapButton.GetGlow() end,
         function(on) if ns.MinimapButton then ns.MinimapButton.SetGlow(on) end end)
 
-  y = y - 4
-  y = AddButton(frame, y,
-        function() return L["OPT_MINIMAP_RESET_POS"] end,
-        L["OPT_MINIMAP_RESET_POS_DESC"],
-        function() if ns.MinimapButton then ns.MinimapButton.ResetPosition() end end)
-
-  -- EllesmereUI's own minimap draws a mail icon of its own that no supported
-  -- setting hides (verified against its source; its hideMail key is dead
-  -- code). Postbox will not reach into another addon's internals to remove
-  -- it, so when that module is loaded the honest thing is to say both may be
-  -- visible and let the user decide.
-  if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function"
-     and C_AddOns.IsAddOnLoaded("EllesmereUIMinimap") then
+  if not mmHostStyled then
+    y = y - 4
+    y = AddButton(frame, y,
+          function() return L["OPT_MINIMAP_RESET_POS"] end,
+          L["OPT_MINIMAP_RESET_POS_DESC"],
+          function() if ns.MinimapButton then ns.MinimapButton.ResetPosition() end end)
+  else
     local note = ns.Theme.CreateText(frame, "bodySmall")
     note:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
     note:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
     note:SetJustifyH("LEFT")
     note:SetWordWrap(true)
-    note:SetText(L["OPT_MINIMAP_EUI_NOTE"])
+    note:SetText(L["OPT_MINIMAP_EUI_STYLED"])
     MarkBottom(frame, y, 30)
     y = y - 36
   end
