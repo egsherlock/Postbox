@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.14.1
+
+- **The run outcome reports the whole run now.** Every finish leads with
+  "Collected: N" - alone in green when everything came out, "Collected: 12
+  - Stuck: 1" when something would not, "Collected: 12 - Incomplete: 3
+  left" when the run stopped early. The count is this session's report and
+  deliberately does not survive closing the mailbox; a reopen shows only
+  what is still actionable.
+- /postbox debug now includes the minimap module's live state (mode,
+  suppression, finder retries, fallback latch, mail flag) - so if the icon
+  ever misbehaves again, one paste tells the whole story.
+
 ## 1.14.0
 
 - **Stuck mail speaks with one voice now.** The run-ending line, the

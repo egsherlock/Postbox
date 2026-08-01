@@ -779,6 +779,19 @@ end
 
 MB.Refresh = Refresh
 
+-- One line for /postbox debug. This exists because a transient "no icon"
+-- report is undiagnosable after the fact: the fields below are everything
+-- visibility depends on, captured at the moment the report is built.
+function MB.Diagnose()
+  return string.format(
+    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s",
+    tostring(runtimeActive), tostring(suppressing),
+    tostring(EuiSkinCandidate()), tostring(euiSkin.applied),
+    euiSkin.tries, tostring(euiSkin.fallback),
+    (MB._button and MB._button:IsShown()) and "shown" or "hidden/none",
+    tostring(MailWaiting()))
+end
+
 -- Called by Skin_EllesmereUI.RefreshAccents so an accent retune repaints a
 -- visible icon immediately rather than on the next mail event.
 function MB.RefreshLook()

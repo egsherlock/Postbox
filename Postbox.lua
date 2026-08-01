@@ -310,6 +310,12 @@ local function BuildDiagnosticReport()
       (Icon.GetAccentTint and Icon.GetAccentTint()) and "on" or "off",
       (Icon.GetGlow and Icon.GetGlow()) and "on" or "off",
       (Icon.GetShadow and Icon.GetShadow()) and "on" or "off"))
+    if type(Icon.Diagnose) == "function" then
+      local ok, state = pcall(Icon.Diagnose)
+      if ok and type(state) == "string" then
+        add("Minimap state: " .. state)
+      end
+    end
   end
 
   local Collect = ns.CollectTab

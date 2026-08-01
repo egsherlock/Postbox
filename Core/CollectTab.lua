@@ -2050,22 +2050,30 @@ local function FinishRun(left, stopReason)
     CT.ClearLastRunRecord()
   end
 
+  -- Every outcome leads with what came out: "Collected: 12" alone when the
+  -- run was clean, with the problem appended after an em dash when it was
+  -- not. The count is this session's report and deliberately does NOT
+  -- persist -- a reopen shows only what is still actionable (the summary
+  -- layer's Stuck line); what was collected is already in the bags.
+  local collectedText = format(L()["STATUS_COLLECTED"], tonumber(collected) or 0)
+  local JOIN = " \226\128\148 " -- em dash, spaced
+
   if left > 0 then
-    StatusOutcome(format(L()["STATUS_INCOMPLETE"], left), "negative")
+    StatusOutcome(collectedText .. JOIN .. format(L()["STATUS_INCOMPLETE"], left), "negative")
     if stopReason == "bags" then
       ns.Print(format(L()["MSG_COLLECT_STOPPED_BAGS"], left))
     else
       ns.Print(format(L()["MSG_COLLECT_INCOMPLETE"], left))
     end
   elseif refused > 0 then
-    StatusOutcome(format(L()["STATUS_PARTIAL"], refused), "warning")
+    StatusOutcome(collectedText .. JOIN .. format(L()["STATUS_PARTIAL"], refused), "warning")
     if reason and reason ~= "" then
       ns.Print(L()("MSG_COLLECT_PARTIAL_REASON", collected, refused, reason))
     else
       ns.Print(L()("MSG_COLLECT_PARTIAL", collected, refused))
     end
   else
-    StatusOutcome(L()["STATUS_DONE"], "positive")
+    StatusOutcome(collectedText, "positive")
   end
 
   -- After the outcome, never instead of it: a stopped run's "3 left" is the line
