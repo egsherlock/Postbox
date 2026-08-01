@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.15.1
+
+- Fixed the options panel erroring on open (1.15.0): the caption row and
+  the recipients portrait anchored to each other - one axis each, but the
+  client refuses any cycle between two regions. The row now takes its right
+  edge from the card, same arithmetic, one-way dependency.
+
 ## 1.15.0
 
 - The General card reads as two clean columns again: the Mail-tab-caption

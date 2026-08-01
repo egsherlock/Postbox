@@ -331,8 +331,12 @@ local function Build()
     listWidth    = tcWidth,
     defaultId    = ns.MailboxUI.GetTabCaptionMode and ns.MailboxUI.GetTabCaptionMode(),
   })
+  -- Right edge from the CARD, not from rmButton: rmButton's bottom anchors
+  -- to this row below, and any anchor back at it -- even on the other axis
+  -- -- is a cycle the client refuses. The offset is the portrait column's
+  -- width plus the gap, same arithmetic as tcWidth above.
   tcDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
-  tcDD:SetPoint("RIGHT", rmButton, "LEFT", -10, 0)
+  tcDD:SetPoint("RIGHT", card, "RIGHT", -(PAD + 108 + 10), 0)
   local tcToggle = tcDD._toggle
   if tcToggle then
     -- Fill the column whatever the fixed width said.
