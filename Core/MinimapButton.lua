@@ -39,7 +39,7 @@ local DEFAULTS = {
   position = "TOPRIGHT",
   angle    = 45,     -- degrees, 0 = east, CCW; used when position is CUSTOM,
                      -- and kept in step with the preset otherwise
-  accent   = true,
+  accent   = false,
   glow     = false,
 }
 

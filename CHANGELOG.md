@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.1
+
+- The glow is now a halo — a soft ring around the icon instead of a disc
+  behind it, so a tinted glyph no longer melts into a same-coloured blob and
+  the icon stays crisp.
+- Accent colour now defaults to off for the minimap icon; the glow still
+  follows the accent either way.
+
 ## 1.4.0
 
 - Three new minimap icon styles drawn for small sizes — **Envelope** (bold
