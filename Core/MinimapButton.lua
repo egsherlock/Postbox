@@ -68,10 +68,25 @@ local ICONS = {
   -- .dev/tools/slice-minimap-icons.js. Full-colour art: the accent option
   -- leaves these alone and tints only the glow. Retired ids (plate, stack,
   -- clean, mailbox) fall back to the default wherever ICONS is read.
-  letter   = { texture = MEDIA .. "minimap-letter.tga" },
-  sealed   = { texture = MEDIA .. "minimap-sealed.tga" },
-  parcel   = { texture = MEDIA .. "minimap-parcel.tga" },
-  seal     = { texture = MEDIA .. "minimap-seal.tga" },
+  letter    = { texture = MEDIA .. "minimap-letter.tga" },
+  sealed    = { texture = MEDIA .. "minimap-sealed.tga" },
+  parcel    = { texture = MEDIA .. "minimap-parcel.tga" },
+  seal      = { texture = MEDIA .. "minimap-seal.tga" },
+  open      = { texture = MEDIA .. "minimap-open.tga" },
+  scroll    = { texture = MEDIA .. "minimap-scroll.tga" },
+  redbox    = { texture = MEDIA .. "minimap-redbox.tga" },
+  mailbag   = { texture = MEDIA .. "minimap-mailbag.tga" },
+  whitebox  = { texture = MEDIA .. "minimap-whitebox.tga" },
+  quill     = { texture = MEDIA .. "minimap-quill.tga" },
+  stamped   = { texture = MEDIA .. "minimap-stamped.tga" },
+  weathered = { texture = MEDIA .. "minimap-weathered.tga" },
+  ironbox   = { texture = MEDIA .. "minimap-ironbox.tga" },
+  bundle    = { texture = MEDIA .. "minimap-bundle.tga" },
+  satchel   = { texture = MEDIA .. "minimap-satchel.tga" },
+  pillar    = { texture = MEDIA .. "minimap-pillar.tga" },
+  stone     = { texture = MEDIA .. "minimap-stone.tga" },
+  wood      = { texture = MEDIA .. "minimap-wood.tga" },
+  gold      = { texture = MEDIA .. "minimap-gold.tga" },
 }
 
 local GLOW_SCALE = 2.2

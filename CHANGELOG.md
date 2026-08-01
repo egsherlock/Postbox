@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.0
+
+- Fifteen more hand-painted minimap icon styles: open letter, scroll,
+  mailboxes in red, white and iron, mail bag, satchel, quill and ink,
+  stamped and weathered envelopes, letter bundle, pillar postbox, and
+  stone, wooden and golden crests. Letter stack and Plate are retired
+  (selections fall back to the painted Letter, the new default).
+- The minimap section's master checkbox now sits above its settings card,
+  and an unchecked box desaturates and locks the card — the controls
+  visibly belong to the checkbox.
+
 ## 1.5.0
 
 - Five hand-painted minimap icon styles in the stock-Blizzard spirit:
