@@ -287,7 +287,25 @@ local function Build()
   rmButton:SetText(L["RM_OPT_BUTTON"])
   -- On an art holder, not the button: a host skin's button repaint fades
   -- the tagged button's own texture regions, which kept this icon invisible.
-  local rmMark = ArtHolder(rmButton):CreateTexture(nil, "ARTWORK")
+  local rmHolder = ArtHolder(rmButton)
+  -- A quiet radial glow behind the bundle: the accent at low alpha, static
+  -- -- no pulse; this is presence, not an alert. Under the icon in the same
+  -- ARTWORK layer, both on the holder so a host skin's repaint cannot fade
+  -- either. Re-tinted on every panel open, so an accent retune follows.
+  local rmGlow = rmHolder:CreateTexture(nil, "ARTWORK", nil, -1)
+  rmGlow:SetSize(94, 94)
+  rmGlow:SetPoint("CENTER", rmButton, "CENTER", 0, -4)
+  rmGlow:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-glow.tga")
+  rmGlow:SetBlendMode("ADD")
+  rmGlow:SetAlpha(0.30)
+  local function TintRmGlow()
+    local r, g, b = ns.Theme.GetAccent()
+    rmGlow:SetVertexColor(r, g, b)
+  end
+  TintRmGlow()
+  frame.__refreshers[#frame.__refreshers + 1] = TintRmGlow
+
+  local rmMark = rmHolder:CreateTexture(nil, "ARTWORK")
   -- 50, was 46: the caption row below bought the portrait an extra row of
   -- height, and the icon is the thing worth spending it on.
   rmMark:SetSize(50, 50)

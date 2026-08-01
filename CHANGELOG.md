@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.16.1
+
+- The Manage Recipients bundle sits on a quiet accent glow now - static, no
+  pulse - so the card's loudest button finally looks the part. Follows the
+  live accent, including a host UI's own colour.
+
 ## 1.16.0
 
 - **Tab in the recipient field is two presses again, reliably.** The first
