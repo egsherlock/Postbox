@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.3
+
+- The bundle icon actually shows on the Manage Recipients button and the
+  Send tab's doorway: both icons now ride art-holder child frames, out of
+  reach of the host skin's button repaint that was fading them.
+- The bug-report window uses the standard close button, same as the
+  options panel's.
+
 ## 1.11.2
 
 - The Send tab's recipient-manager doorway is a proper plated button with

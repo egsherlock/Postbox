@@ -3535,7 +3535,14 @@ local function BuildRecipientField(panel)
   manage:SetSize(20, 20)
   manage:SetPoint("RIGHT", panel.ToWrap, "RIGHT", -3, 0)
   manage:SetFrameLevel(panel.ToWrap:GetFrameLevel() + 5)
-  local art = manage:CreateTexture(nil, "ARTWORK")
+  -- The icon rides a child frame, not the button itself: a host skin's
+  -- button repaint fades every texture region the tagged button owns, which
+  -- is exactly how this icon vanished the moment the bare button became a
+  -- themed one.
+  local artHolder = CreateFrame("Frame", nil, manage)
+  artHolder:SetAllPoints(manage)
+  artHolder:SetFrameLevel(manage:GetFrameLevel() + 1)
+  local art = artHolder:CreateTexture(nil, "ARTWORK")
   art:SetPoint("TOPLEFT", manage, "TOPLEFT", 3, -3)
   art:SetPoint("BOTTOMRIGHT", manage, "BOTTOMRIGHT", -3, 3)
   art:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")

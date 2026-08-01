@@ -278,7 +278,9 @@ local function Build()
     rmLabel:SetPoint("TOP", rmButton, "TOP", 0, -12)
   end
   rmButton:SetText(L["RM_OPT_BUTTON"])
-  local rmMark = rmButton:CreateTexture(nil, "ARTWORK")
+  -- On an art holder, not the button: a host skin's button repaint fades
+  -- the tagged button's own texture regions, which kept this icon invisible.
+  local rmMark = ArtHolder(rmButton):CreateTexture(nil, "ARTWORK")
   rmMark:SetSize(46, 46)
   rmMark:SetPoint("CENTER", rmButton, "CENTER", 0, -4)
   rmMark:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
@@ -827,17 +829,12 @@ local function Build()
       title:SetPoint("TOPLEFT", bugPopup, "TOPLEFT", 10, -8)
       title:SetText(L["OPT_BUG_TIP_TITLE"])
 
-      local close = CreateFrame("Button", nil, bugPopup)
-      close:SetSize(16, 16)
-      close:SetPoint("TOPRIGHT", bugPopup, "TOPRIGHT", -5, -5)
-      local closeGlyph = ns.Theme.CreateText(close, "label")
-      closeGlyph:SetPoint("CENTER", close, "CENTER", 0, 0)
-      closeGlyph:SetText("×")
+      -- The standard close button, same species as the options panel's own,
+      -- so both host skins restyle it the way they restyle every close box.
+      local close = CreateFrame("Button", nil, bugPopup, "UIPanelCloseButton")
+      close:SetSize(24, 24)
+      close:SetPoint("TOPRIGHT", bugPopup, "TOPRIGHT", -2, -2)
       close:SetScript("OnClick", function() bugPopup:Hide() end)
-      close:SetScript("OnEnter", function() closeGlyph:SetTextColor(1, 1, 1) end)
-      close:SetScript("OnLeave", function()
-        ns.Theme.ApplyTextRole(closeGlyph, "label")
-      end)
 
       bugPopup._url = AddCopyRow(bugPopup, -24, "OPT_BUG_URL_LABEL")
       bugPopup._diag = AddCopyRow(bugPopup, -60, "OPT_BUG_DIAG_LABEL", 100)
