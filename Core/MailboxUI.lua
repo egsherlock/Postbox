@@ -158,6 +158,32 @@ function UI.SetOption(key, value)
   if profile then profile[key] = value == true end
 end
 
+-- The Mail tab's caption mode -- how the inbox shows through the tab while
+-- the mailbox is open. A string, so it gets its own accessors rather than a
+-- widened SetOption: the boolean coercion above is a guarantee, not an
+-- accident. `showTabCounts` stays the segments' own switch; this one owns
+-- the tab.
+--   counts  "Mail (2/5)" -- still to collect over total (the default)
+--   total   "Mail (5)"   -- just how much is sitting there
+--   dot     "Mail •"     -- an accent dot while anything is uncollected
+--   none    "Mail"
+local TAB_CAPTION_MODES = { counts = true, total = true, dot = true, none = true }
+
+function UI.GetTabCaptionMode()
+  local store = ns.Store
+  local stored = store and store.Get and store.Get("profile.tabCaption")
+  if TAB_CAPTION_MODES[stored] then return stored end
+  return "counts"
+end
+
+function UI.SetTabCaptionMode(mode)
+  if not TAB_CAPTION_MODES[mode] then return end
+  local store = ns.Store
+  local profile = store and store.EnsurePath and store.EnsurePath("profile")
+  if profile then profile.tabCaption = mode end
+  UI.RefreshCollectTabCounts()
+end
+
 -------------------------------------------------------------
 -- 2. The native mail frame
 --
@@ -932,20 +958,34 @@ local function UpdateCollectTabText()
   if not tab then return end
 
   local text = L("TAB_COLLECT")
+  local mode = UI.GetTabCaptionMode()
   local collect = ns.CollectTab
   if UI._state.mailboxOpen
-    and UI.GetOption("showTabCounts")
+    and mode ~= "none"
     and collect and type(collect.InboxCounts) == "function" then
     local toCollect, _, total = collect.InboxCounts()
     toCollect, total = tonumber(toCollect) or 0, tonumber(total) or 0
-    if total > 0 then
-      local suffix = "(" .. toCollect .. "/" .. total .. ")"
-      local theme = ns.Theme
+
+    local theme = ns.Theme
+    local suffix
+    if mode == "dot" then
+      -- The lightest possible "you've got mail": an accent dot, gone the
+      -- moment nothing is left to collect. The live accent, not the palette
+      -- token -- under a host skin the user's own colour is the accent.
+      if toCollect > 0 and theme and theme.GetAccent then
+        local r, g, b = theme.GetAccent()
+        suffix = ("|cff%02x%02x%02x\226\128\162|r"):format(
+          math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5),
+          math.floor(b * 255 + 0.5))
+      end
+    elseif total > 0 then
+      suffix = mode == "total" and ("(" .. total .. ")")
+        or ("(" .. toCollect .. "/" .. total .. ")")
       if toCollect == 0 and theme and theme.Colorize then
         suffix = theme.Colorize("textDisabled", suffix)
       end
-      text = text .. " " .. suffix
     end
+    if suffix then text = text .. " " .. suffix end
   end
 
   -- Never a bare SetText: the skins hide or recolour this label, and SetText
@@ -1216,9 +1256,33 @@ local function BuildFrame()
     statusHover:SetMouseMotionEnabled(true)
     statusHover:SetScript("OnEnter", function(self)
       local label = frame.Status
-      if not (label and label.IsTruncated and label:IsTruncated()) then return end
+      local text = label and label:GetText() or ""
+      if text == "" then return end
+
+      -- Two things worth a tooltip: a truncated line (the full text), and a
+      -- stuck count (WHICH mails, in the same words the row tooltips use).
+      -- The details come from the registry's validated read, so this list and
+      -- the row triangles can never disagree.
+      local mail = ns.MailService
+      local details = mail and type(mail.StuckDetails) == "function"
+        and mail.StuckDetails() or nil
+      local truncated = label.IsTruncated and label:IsTruncated()
+      if not details and not truncated then return end
+
       GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
-      GameTooltip:SetText(label:GetText() or "", 1, 1, 1, 1, true)
+      GameTooltip:SetText(text, 1, 1, 1, 1, true)
+      if details then
+        for i = 1, #details do
+          local d = details[i]
+          local line = d.subject
+          if line == "" then line = d.sender
+          elseif d.sender ~= "" then line = d.sender .. " - " .. d.subject end
+          GameTooltip:AddLine(line, 1, 1, 1, true)
+          if d.reason then
+            GameTooltip:AddLine(LF("STUCK_LINE", d.reason), 0.75, 0.75, 0.75, true)
+          end
+        end
+      end
       GameTooltip:Show()
     end)
     statusHover:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1420,6 +1484,12 @@ local function OnMailShow()
   -- re-armed; BuildFrame only selects a tab on the very first open.
   UI.SelectTab(UI._state.activeTab)
   UI.Show(true)
+  -- Before the list refresh: the revived registry is what paints the row
+  -- triangles on the very first build after a relog.
+  local collectTab = ns.CollectTab
+  if collectTab and type(collectTab.SeedStuckFromRecord) == "function" then
+    collectTab.SeedStuckFromRecord()
+  end
   RefreshCollectPanel()
   UI.UpdateStatusSummary()
   -- After the refresh, which records the inbox counts this reads.

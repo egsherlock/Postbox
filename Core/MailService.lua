@@ -768,6 +768,68 @@ function Mail.StuckCount()
   return n
 end
 
+-- The stuck mails as the status tooltip tells them: one row per distinct
+-- fingerprint currently matching a live mail -- sender, subject, and the
+-- game's words where it left any. nil rather than an empty table when there
+-- is nothing to say, so callers can gate on the return alone.
+function Mail.StuckDetails()
+  if stuckEntries == 0 then return nil end
+
+  local numItems = tonumber((GetInboxNumItems())) or 0
+  for key in pairs(stuckSeen) do stuckSeen[key] = nil end
+
+  local out
+  for index = 1, numItems do
+    local entry, fingerprint = StuckAt(index)
+    if entry ~= nil and not stuckSeen[fingerprint] then
+      stuckSeen[fingerprint] = true
+      local _, _, sender, subject = GetInboxHeaderInfo(index)
+      out = out or {}
+      out[#out + 1] = {
+        sender  = tostring(sender or ""),
+        subject = tostring(subject or ""),
+        reason  = type(entry) == "string" and entry or nil,
+      }
+    end
+  end
+  return out
+end
+
+-- The registry flattened for run memory's saved layer (fingerprint -> reason,
+-- `true` where nothing was quotable), capped so a pathological session cannot
+-- bloat SavedVariables. nil when there is nothing worth saving.
+local STUCK_SNAPSHOT_CAP = 25
+
+function Mail.StuckSnapshot()
+  if stuckEntries == 0 then return nil end
+  local out, n = {}, 0
+  for fingerprint, entry in pairs(stuck) do
+    n = n + 1
+    if n > STUCK_SNAPSHOT_CAP then break end
+    out[fingerprint] = entry
+  end
+  if next(out) == nil then return nil end
+  return out
+end
+
+-- The inverse, at the next session's first mailbox visit: revive a saved
+-- snapshot into the live registry so the row triangles and the Stuck count
+-- come back after a relog, not just the summary sentence. Additive, and it
+-- loses to live entries -- a fingerprint this session has already judged
+-- keeps this session's verdict. Safe to revive optimistically: every read
+-- re-validates against the live inbox (StuckAt), so an entry whose mail was
+-- collected, returned or expired since simply never shows.
+function Mail.SeedStuck(entries)
+  if type(entries) ~= "table" then return end
+  for fingerprint, entry in pairs(entries) do
+    if type(fingerprint) == "string" and stuck[fingerprint] == nil
+      and (entry == true or type(entry) == "string") then
+      stuckEntries = stuckEntries + 1
+      stuck[fingerprint] = entry
+    end
+  end
+end
+
 -------------------------------------------------------------
 -- Command layer :: per-mail take runner
 --

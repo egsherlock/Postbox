@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.14.0
+
+- **Stuck mail speaks with one voice now.** The run-ending line, the
+  same-session summary and the after-relog summary all say "Stuck: N" - one
+  situation, one vocabulary - and hovering the status line lists exactly
+  which mails and what the game said, in the same words the row tooltips use.
+- **The warning triangles survive a relog.** The saved last-run record now
+  carries the stuck mails' fingerprints, and the next session revives them
+  into the live registry at the first mailbox open - so after a relog the
+  troublesome mail wears its triangle again, not just a sentence in the
+  corner. Entries whose mail was collected, returned or expired in the
+  meantime never show; the record stays a handful of strings.
+- **The Mail tab's caption is now a choice.** A new dropdown in General:
+  still-to-collect over total (the default), just the total, a quiet accent
+  dot while anything waits, or nothing at all. The segments keep their own
+  counts checkbox.
+- The icon picker sits one pixel higher, flush with the preview stage.
+
 ## 1.13.1
 
 - The Mail tab's caption no longer doubles over itself under a host skin.

@@ -75,7 +75,9 @@ ns.Core.Logger.Bind(ns, "Postbox", "d3a44a")
 local PROFILE = "profile"
 
 local SCHEMA = {
-  PROFILE,                    -- account-wide settings; boolean values only
+  PROFILE,                    -- account-wide settings; boolean values only,
+                              -- plus tabCaption (a mode string; see
+                              -- MailboxUI.GetTabCaptionMode)
   PROFILE .. ".recipientHistory",
   PROFILE .. ".minimap",      -- minimap mail icon; a table, so its module owns
                               -- it directly (see the note above on booleans)

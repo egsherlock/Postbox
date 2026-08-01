@@ -257,6 +257,53 @@ local function Build()
         function() return ns.MailboxUI.GetOption("previewOnClick") end,
         function(on) ns.MailboxUI.SetOption("previewOnClick", on) end)
 
+  -- The Mail tab's caption while the mailbox is open. A dropdown, not a
+  -- checkbox: there are four honest answers (both counts, the total, a
+  -- quiet dot, nothing), and this row sits BELOW the recipients portrait's
+  -- four-row span so the two never collide.
+  local tcItems = {
+    { id = "counts", name = L["OPT_TAB_CAPTION_COUNTS"] },
+    { id = "total",  name = L["OPT_TAB_CAPTION_TOTAL"] },
+    { id = "dot",    name = L["OPT_TAB_CAPTION_DOT"] },
+    { id = "none",   name = L["OPT_TAB_CAPTION_NONE"] },
+  }
+  local tcDD = ns.Core.UI.Dropdown.Create(card, {
+    label        = L["OPT_TAB_CAPTION_TITLE"],
+    items        = tcItems,
+    toggleWidth  = 150,
+    toggleHeight = 22,
+    alignRight   = true,
+    height       = DROPDOWN_H,
+    defaultId    = ns.MailboxUI.GetTabCaptionMode and ns.MailboxUI.GetTabCaptionMode(),
+  })
+  tcDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
+  tcDD:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
+  tcDD:SetChangeCallback(function(id)
+    if ns.MailboxUI.SetTabCaptionMode then ns.MailboxUI.SetTabCaptionMode(id) end
+  end)
+  if tcDD._toggle then
+    tcDD._toggle:HookScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(L["OPT_TAB_CAPTION_TITLE"])
+      GameTooltip:AddLine(L["OPT_TAB_CAPTION_DESC"], 1, 1, 1, true)
+      GameTooltip:Show()
+    end)
+    tcDD._toggle:HookScript("OnLeave", function() GameTooltip:Hide() end)
+  end
+  frame.__refreshers[#frame.__refreshers + 1] = function()
+    if not ns.MailboxUI.GetTabCaptionMode then return end
+    local mode = ns.MailboxUI.GetTabCaptionMode()
+    for _, item in ipairs(tcItems) do
+      if item.id == mode then
+        tcDD._selectedId = mode
+        tcDD:SetText(item.name)
+        break
+      end
+    end
+  end
+  MarkBottom(card, cy, DROPDOWN_H)
+  cy = cy - ROW_H
+
   -- Recipient manager: a portrait button filling the space to the right of
   -- the checkbox column, tall as all four rows. It makes the feature loud
   -- and shaves a whole row off the card. /postbox recipients is the other
@@ -541,7 +588,10 @@ local function Build()
     height       = DROPDOWN_H,
     defaultId    = ns.MinimapButton and ns.MinimapButton.GetIcon(),
   })
-  iconDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 80, cy - 54)
+  -- cy - 53, not - 54: mathematically -54 puts the toggle's bottom flush with
+  -- the stage's, but the rendered button reads 1px low against it (border and
+  -- baseline both draw inside the frame rect). Tuned by eye in game.
+  iconDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 80, cy - 53)
   iconDD:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
   iconDD:SetChangeCallback(function(id)
     if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end

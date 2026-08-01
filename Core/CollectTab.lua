@@ -2001,6 +2001,7 @@ end
 local function SaveLastRunRecord(collected, refused, left, reason, stopReason)
   local byName, name = LastRunStore(true)
   if not byName then return end
+  local M = Mail()
   byName[name] = {
     at         = (type(time) == "function" and time()) or 0,
     collected  = collected,
@@ -2010,7 +2011,28 @@ local function SaveLastRunRecord(collected, refused, left, reason, stopReason)
     -- the way every refusal message does.
     reason     = reason,
     stopReason = stopReason,
+    -- The stuck registry's fingerprints ride along (capped in the service),
+    -- so the next session can revive the per-mail markers, not just the
+    -- sentence. See SeedStuckFromRecord below.
+    stuck      = M and M.StuckSnapshot and M.StuckSnapshot() or nil,
   }
+end
+
+-- Run-memory bridge, called by the shell on mail open: the saved record's
+-- fingerprints revive the live registry once per session, so the row
+-- triangles and the Stuck count come back after a relog. After the seed the
+-- live registry is the truth -- its entries re-validate against the live
+-- inbox on every read, so anything resolved since simply never shows.
+local recordSeeded = false
+
+function CT.SeedStuckFromRecord()
+  if recordSeeded then return end
+  recordSeeded = true
+  local record = CT.GetLastRunRecord()
+  local M = Mail()
+  if record and type(record.stuck) == "table" and M and M.SeedStuck then
+    M.SeedStuck(record.stuck)
+  end
 end
 
 local function FinishRun(left, stopReason)
