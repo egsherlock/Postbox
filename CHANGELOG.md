@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1
+
+- The nine icon styles from the third sheet re-cut from a cleaner source
+  with true transparency - same styles, better edges.
+
 ## 1.6.0
 
 - Fifteen more hand-painted minimap icon styles: open letter, scroll,
