@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.11.0
+
+- The minimap block is a 2x2 toggle grid now - Glow and Shadow on top,
+  Accent and new **Pulse** (the glow's slow breathe, on by default)
+  beneath - beside the preview stage, which sits on a neutral terrain-tone
+  ground so the shadow is actually visible. All four preview live.
+- Manage recipients is a tall portrait button filling the space beside the
+  General checkboxes - more obvious, and one row shorter.
+- The bug-report window has a proper little x to close it.
+
 ## 1.10.1
 
 - The minimap section is a compact block now: a larger preview stage with

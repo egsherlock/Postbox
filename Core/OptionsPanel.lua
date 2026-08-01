@@ -257,24 +257,42 @@ local function Build()
         function() return ns.MailboxUI.GetOption("previewOnClick") end,
         function(on) ns.MailboxUI.SetOption("previewOnClick", on) end)
 
-  -- Recipient manager. Opens a standalone window, so it works away from a
-  -- mailbox as well; /postbox recipients is the other way in.
-  cy = cy - 4
-  cy = AddButton(card, cy,
-        function()
-          local RM = ns.RecipientManager
-          local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
-          return string.format(L["RM_OPT_BUTTON"], count)
-        end,
-        L["RM_OPT_BUTTON_DESC"],
-        function()
-          local RM = ns.RecipientManager
-          if RM and type(RM.Toggle) == "function" then
-            RM.Toggle()
-          else
-            ns.Print(L["RM_NOT_AVAILABLE"])
-          end
-        end)
+  -- Recipient manager: a portrait button filling the space to the right of
+  -- the checkbox column, tall as all four rows. It makes the feature loud
+  -- and shaves a whole row off the card. /postbox recipients is the other
+  -- way in.
+  local rmButton = ns.Theme.CreateButton(nil, card)
+  rmButton:SetSize(108, (ROW_H * 4) - 8)
+  rmButton:SetPoint("TOPRIGHT", card, "TOPRIGHT", -PAD, -12)
+  local function RmButtonText()
+    local RM = ns.RecipientManager
+    local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
+    return string.format(L["RM_OPT_BUTTON"], count)
+  end
+  local rmLabel = rmButton:GetFontString()
+  if rmLabel then
+    rmLabel:SetWordWrap(true)
+    rmLabel:SetWidth(92)
+  end
+  rmButton:SetText(RmButtonText())
+  rmButton:SetScript("OnClick", function()
+    local RM = ns.RecipientManager
+    if RM and type(RM.Toggle) == "function" then
+      RM.Toggle()
+    else
+      ns.Print(L["RM_NOT_AVAILABLE"])
+    end
+  end)
+  rmButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(RmButtonText())
+    GameTooltip:AddLine(L["RM_OPT_BUTTON_DESC"], 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  rmButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  frame.__refreshers[#frame.__refreshers + 1] = function()
+    rmButton:SetText(RmButtonText())
+  end
 
   y = EndSection(frame, card, y)
 
@@ -379,12 +397,16 @@ local function Build()
   local PREVIEW_ICON_SIZE = 34
   local stage = CreateFrame("Frame", nil, card)
   stage:SetSize(64, 64)
-  stage:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
+  stage:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy - 6)
   stage:SetClipsChildren(true)
   local stageArt = ArtHolder(stage)
+  -- A neutral mid-tone ground, not black: the shadow option is jet black
+  -- and was invisible against a dark plate. This is roughly a minimap's
+  -- average terrain value, so both glow and shadow read the way they will
+  -- in the world.
   local stageBg = stageArt:CreateTexture(nil, "BACKGROUND", nil, -7)
   stageBg:SetAllPoints()
-  stageBg:SetColorTexture(0, 0, 0, 0.35)
+  stageBg:SetColorTexture(0.40, 0.41, 0.38, 1)
   local prevShadow = stageArt:CreateTexture(nil, "BACKGROUND", nil, -1)
   prevShadow:SetPoint("CENTER", stage, "CENTER", 0, -1)
   prevShadow:SetTexture(GLOW_TGA)
@@ -435,24 +457,25 @@ local function Build()
     prevGlow:SetVertexColor(r, g, b)
     if Icon.GetGlow and Icon.GetGlow() then
       prevGlow:Show()
-      if not prevPulse:IsPlaying() then prevPulse:Play() end
+      if not Icon.GetPulse or Icon.GetPulse() then
+        if not prevPulse:IsPlaying() then prevPulse:Play() end
+      else
+        prevPulse:Stop()
+      end
     else
       prevPulse:Stop()
       prevGlow:Hide()
     end
     prevShadow:SetShown(Icon.GetShadow and Icon.GetShadow() or false)
   end
-  -- The chunk beside the stage: three compact toggles on one line, the icon
-  -- switcher under them aligned to the stage's bottom edge. One rectangle,
-  -- three rows of panel saved.
-  local function MiniCheck(anchorTo, labelKey, descKey, get, set)
+  -- The chunk beside the stage: a 2x2 grid of compact toggles -- the two
+  -- effects on top, their two modifiers beneath (Accent colours the glow,
+  -- Pulse breathes it) -- with the icon switcher under the grid. One
+  -- rectangle, clear reading order, no wasted rows.
+  local function MiniCheck(gridX, gridY, labelKey, descKey, get, set)
     local cb = CreateFrame("CheckButton", nil, card, "UICheckButtonTemplate")
     cb:SetSize(20, 20)
-    if type(anchorTo) == "table" then
-      cb:SetPoint("LEFT", anchorTo, "RIGHT", 12, 0)
-    else
-      cb:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 72, cy - 2)
-    end
+    cb:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 72 + gridX * 104, cy - 4 - gridY * 24)
     cb.__postboxCheck = true
     local label = ns.Theme.CreateText(card, "label")
     label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
@@ -477,18 +500,20 @@ local function Build()
     end)
     cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
     frame.__refreshers[#frame.__refreshers + 1] = function() cb:SetChecked(get()) end
-    return label
   end
 
-  local afterAccent = MiniCheck(nil, "OPT_MINIMAP_ACCENT_TITLE", "OPT_MINIMAP_ACCENT_DESC",
-        function() return ns.MinimapButton and ns.MinimapButton.GetAccentTint() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetAccentTint(on) end end)
-  local afterGlow = MiniCheck(afterAccent, "OPT_MINIMAP_GLOW_TITLE", "OPT_MINIMAP_GLOW_DESC",
+  MiniCheck(0, 0, "OPT_MINIMAP_GLOW_TITLE", "OPT_MINIMAP_GLOW_DESC",
         function() return ns.MinimapButton and ns.MinimapButton.GetGlow() end,
         function(on) if ns.MinimapButton then ns.MinimapButton.SetGlow(on) end end)
-  MiniCheck(afterGlow, "OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC",
+  MiniCheck(1, 0, "OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC",
         function() return ns.MinimapButton and ns.MinimapButton.GetShadow() end,
         function(on) if ns.MinimapButton then ns.MinimapButton.SetShadow(on) end end)
+  MiniCheck(0, 1, "OPT_MINIMAP_ACCENT_TITLE", "OPT_MINIMAP_ACCENT_DESC",
+        function() return ns.MinimapButton and ns.MinimapButton.GetAccentTint() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetAccentTint(on) end end)
+  MiniCheck(1, 1, "OPT_MINIMAP_PULSE_TITLE", "OPT_MINIMAP_PULSE_DESC",
+        function() return ns.MinimapButton and ns.MinimapButton.GetPulse() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetPulse(on) end end)
 
   local iconDD = ns.Core.UI.Dropdown.Create(card, {
     items        = iconItems,
@@ -498,7 +523,7 @@ local function Build()
     height       = DROPDOWN_H,
     defaultId    = ns.MinimapButton and ns.MinimapButton.GetIcon(),
   })
-  iconDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 72, cy - 40)
+  iconDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 72, cy - 54)
   iconDD:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
   iconDD:SetChangeCallback(function(id)
     if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end
@@ -516,8 +541,8 @@ local function Build()
     PaintIconPreview()
   end
   PaintIconPreview()
-  MarkBottom(card, cy, 64)
-  cy = cy - 72
+  MarkBottom(card, cy, 78)
+  cy = cy - 86
 
   -- With EllesmereUI's minimap module running, Postbox restyles EllesmereUI's
   -- own mail icon in place rather than drawing a second one; position and
@@ -763,6 +788,18 @@ local function Build()
       local title = ns.Theme.CreateText(bugPopup, "heading")
       title:SetPoint("TOPLEFT", bugPopup, "TOPLEFT", 10, -8)
       title:SetText(L["OPT_BUG_TIP_TITLE"])
+
+      local close = CreateFrame("Button", nil, bugPopup)
+      close:SetSize(16, 16)
+      close:SetPoint("TOPRIGHT", bugPopup, "TOPRIGHT", -5, -5)
+      local closeGlyph = ns.Theme.CreateText(close, "label")
+      closeGlyph:SetPoint("CENTER", close, "CENTER", 0, 0)
+      closeGlyph:SetText("×")
+      close:SetScript("OnClick", function() bugPopup:Hide() end)
+      close:SetScript("OnEnter", function() closeGlyph:SetTextColor(1, 1, 1) end)
+      close:SetScript("OnLeave", function()
+        ns.Theme.ApplyTextRole(closeGlyph, "label")
+      end)
 
       bugPopup._url = AddCopyRow(bugPopup, -24, "OPT_BUG_URL_LABEL")
       bugPopup._diag = AddCopyRow(bugPopup, -60, "OPT_BUG_DIAG_LABEL", 100)

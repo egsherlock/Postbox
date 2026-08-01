@@ -42,6 +42,7 @@ local DEFAULTS = {
   accent   = false,
   glow     = false,
   shadow   = false,
+  pulse    = true,   -- the glow's slow breathe; shadows never pulse
 }
 
 -- The four corner presets, as rim angles. CUSTOM means "wherever the user
@@ -336,7 +337,11 @@ local function ApplyEuiSkin()
     glow:SetSize(btn:GetWidth() * 1.6, btn:GetHeight() * 1.6)
     glow:SetVertexColor(r, g, b)
     glow:Show()
-    if not btn.__pbMailPulse:IsPlaying() then btn.__pbMailPulse:Play() end
+    if prefs.pulse ~= false then
+      if not btn.__pbMailPulse:IsPlaying() then btn.__pbMailPulse:Play() end
+    else
+      btn.__pbMailPulse:Stop()
+    end
   elseif glow then
     btn.__pbMailPulse:Stop()
     glow:Hide()
@@ -489,7 +494,11 @@ local function ApplyLook(button)
   glow:SetVertexColor(r, g, b)
   if prefs.glow == true then
     glow:Show()
-    if not button.pulse:IsPlaying() then button.pulse:Play() end
+    if prefs.pulse ~= false then
+      if not button.pulse:IsPlaying() then button.pulse:Play() end
+    else
+      button.pulse:Stop()
+    end
   else
     button.pulse:Stop()
     glow:Hide()
@@ -791,6 +800,13 @@ function MB.GetShadow() return Settings().shadow == true end
 
 function MB.SetShadow(on)
   Settings().shadow = on == true
+  Refresh()
+end
+
+function MB.GetPulse() return Settings().pulse ~= false end
+
+function MB.SetPulse(on)
+  Settings().pulse = on == true
   Refresh()
 end
 
