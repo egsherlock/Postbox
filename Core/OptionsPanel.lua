@@ -376,9 +376,9 @@ local function Build()
   -- (with its pulse) and shadow render here exactly as they will on the
   -- minimap, so the card previews the feature instead of naming it.
   local GLOW_TGA = "Interface\\AddOns\\Postbox\\Media\\minimap-glow.tga"
-  local PREVIEW_ICON_SIZE = 30
+  local PREVIEW_ICON_SIZE = 34
   local stage = CreateFrame("Frame", nil, card)
-  stage:SetSize(52, 52)
+  stage:SetSize(64, 64)
   stage:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
   stage:SetClipsChildren(true)
   local stageArt = ArtHolder(stage)
@@ -442,15 +442,63 @@ local function Build()
     end
     prevShadow:SetShown(Icon.GetShadow and Icon.GetShadow() or false)
   end
+  -- The chunk beside the stage: three compact toggles on one line, the icon
+  -- switcher under them aligned to the stage's bottom edge. One rectangle,
+  -- three rows of panel saved.
+  local function MiniCheck(anchorTo, labelKey, descKey, get, set)
+    local cb = CreateFrame("CheckButton", nil, card, "UICheckButtonTemplate")
+    cb:SetSize(20, 20)
+    if type(anchorTo) == "table" then
+      cb:SetPoint("LEFT", anchorTo, "RIGHT", 12, 0)
+    else
+      cb:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 72, cy - 2)
+    end
+    cb.__postboxCheck = true
+    local label = ns.Theme.CreateText(card, "label")
+    label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
+    label:SetWordWrap(false)
+    label:SetText(L[labelKey])
+    cb.__label = label
+    cb:SetChecked(get())
+    cb:SetScript("OnClick", function(self)
+      local on = self:GetChecked() and true or false
+      set(on)
+      PaintIconPreview()
+      if type(SOUNDKIT) == "table" then
+        PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
+                     or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+      end
+    end)
+    cb:SetScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(L[labelKey])
+      GameTooltip:AddLine(L[descKey], 1, 1, 1, true)
+      GameTooltip:Show()
+    end)
+    cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    frame.__refreshers[#frame.__refreshers + 1] = function() cb:SetChecked(get()) end
+    return label
+  end
+
+  local afterAccent = MiniCheck(nil, "OPT_MINIMAP_ACCENT_TITLE", "OPT_MINIMAP_ACCENT_DESC",
+        function() return ns.MinimapButton and ns.MinimapButton.GetAccentTint() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetAccentTint(on) end end)
+  local afterGlow = MiniCheck(afterAccent, "OPT_MINIMAP_GLOW_TITLE", "OPT_MINIMAP_GLOW_DESC",
+        function() return ns.MinimapButton and ns.MinimapButton.GetGlow() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetGlow(on) end end)
+  MiniCheck(afterGlow, "OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC",
+        function() return ns.MinimapButton and ns.MinimapButton.GetShadow() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetShadow(on) end end)
+
   local iconDD = ns.Core.UI.Dropdown.Create(card, {
     items        = iconItems,
-    toggleWidth  = 232,
+    toggleWidth  = 220,
     toggleHeight = 22,
     alignRight   = true,
     height       = DROPDOWN_H,
     defaultId    = ns.MinimapButton and ns.MinimapButton.GetIcon(),
   })
-  iconDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 60, cy - 14)
+  iconDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 72, cy - 40)
   iconDD:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
   iconDD:SetChangeCallback(function(id)
     if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end
@@ -468,8 +516,8 @@ local function Build()
     PaintIconPreview()
   end
   PaintIconPreview()
-  MarkBottom(card, cy, 52)
-  cy = cy - 60
+  MarkBottom(card, cy, 64)
+  cy = cy - 72
 
   -- With EllesmereUI's minimap module running, Postbox restyles EllesmereUI's
   -- own mail icon in place rather than drawing a second one; position and
@@ -497,27 +545,6 @@ local function Build()
           function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
           function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end)
   end
-
-  cy = AddCheckbox(card, cy, L["OPT_MINIMAP_ACCENT_TITLE"], L["OPT_MINIMAP_ACCENT_DESC"],
-        function() return ns.MinimapButton and ns.MinimapButton.GetAccentTint() end,
-        function(on)
-          if ns.MinimapButton then ns.MinimapButton.SetAccentTint(on) end
-          PaintIconPreview()
-        end)
-
-  cy = AddCheckbox(card, cy, L["OPT_MINIMAP_GLOW_TITLE"], L["OPT_MINIMAP_GLOW_DESC"],
-        function() return ns.MinimapButton and ns.MinimapButton.GetGlow() end,
-        function(on)
-          if ns.MinimapButton then ns.MinimapButton.SetGlow(on) end
-          PaintIconPreview()
-        end)
-
-  cy = AddCheckbox(card, cy, L["OPT_MINIMAP_SHADOW_TITLE"], L["OPT_MINIMAP_SHADOW_DESC"],
-        function() return ns.MinimapButton and ns.MinimapButton.GetShadow() end,
-        function(on)
-          if ns.MinimapButton then ns.MinimapButton.SetShadow(on) end
-          PaintIconPreview()
-        end)
 
   if not mmHostStyled then
     cy = cy - 4

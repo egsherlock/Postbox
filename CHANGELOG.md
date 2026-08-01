@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.1
+
+- The minimap section is a compact block now: a larger preview stage with
+  Accent / Glow / Shadow as one row of small toggles beside it and the icon
+  switcher underneath, aligned to the stage - three rows shorter overall.
+- "Accent colour" is just "Accent", and its tooltip tells the truth: it
+  colours the glow and any tintable icon style, not "the envelope".
+
 ## 1.10.0
 
 - **Run memory.** The warning triangles and the Stuck count now survive
