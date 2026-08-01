@@ -133,9 +133,6 @@ L["POPUP_OK"]                  = "OK"
 -- Window title, its two tabs, and the collection run's status line.
 L["FRAME_TITLE"]               = "Postbox"
 L["TAB_COLLECT"]               = "Mail"
--- The count suffix the collect tab wears while mail waits, visible from the
--- Send tab: base label, mails still to collect, total in the inbox.
-L["TAB_COLLECT_COUNTS"]        = "%s (%d/%d)"
 L["TAB_SEND"]                  = "Send"
 L["STATUS_READY"]              = "Ready"
 L["STATUS_REMAINING"]          = "Remaining: %d"
@@ -554,7 +551,6 @@ if GetLocale() == "frFR" then
 
   -- Fenetre, onglets, ligne d'etat
   L["TAB_COLLECT"]               = "Courrier"
-  L["TAB_COLLECT_COUNTS"]        = "%s (%d/%d)"
   L["TAB_SEND"]                  = "Envoyer"
   L["STATUS_READY"]              = "Pret"
   L["STATUS_REMAINING"]          = "Restant: %d"
@@ -857,7 +853,6 @@ if GetLocale() == "deDE" then
   L["POPUP_OK"]                  = "Schliessen"
 
   L["TAB_COLLECT"]               = "Post"
-  L["TAB_COLLECT_COUNTS"]        = "%s (%d/%d)"
   L["TAB_SEND"]                  = "Senden"
   L["STATUS_READY"]              = "Bereit"
   L["STATUS_REMAINING"]          = "Verbleibend: %d"
@@ -1080,7 +1075,6 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["POPUP_OK"]                  = "Cerrar"
 
   L["TAB_COLLECT"]               = "Correo"
-  L["TAB_COLLECT_COUNTS"]        = "%s (%d/%d)"
   L["TAB_SEND"]                  = "Enviar"
   L["STATUS_READY"]              = "Listo"
   L["STATUS_REMAINING"]          = "Restante: %d"
@@ -1304,7 +1298,6 @@ L["POPUP_OK"]                  = "Закрыть"
 -- Окно, вкладки, строка состояния
 L["FRAME_TITLE"]               = "Postbox"
 L["TAB_COLLECT"]               = "Почта"
-L["TAB_COLLECT_COUNTS"]        = "%s (%d/%d)"
 L["TAB_SEND"]                  = "Отправка"
 L["STATUS_READY"]              = "Готов"
 L["STATUS_REMAINING"]          = "Осталось: %d"

@@ -920,7 +920,12 @@ local TAB_LABEL_KEY = { collect = "TAB_COLLECT", send = "TAB_SEND" }
 -- The collect tab's caption carries "(still to collect / total)" while the
 -- mailbox is open, so the Send tab shows at a glance that mail is waiting.
 -- Same numbers as the segment captions -- CT.InboxCounts, the one walk --
--- and the same option gates both.
+-- and the same option gates both. The suffix is composed in code, parens and
+-- all, exactly as the segment captions compose theirs.
+--
+-- With nothing left to collect the whole suffix drops to the disabled grey:
+-- a full-strength "(0/4)" glanced at from the Send tab reads as "you've got
+-- mail" when the truthful reading is "four read mails are sitting there".
 local function UpdateCollectTabText()
   local frame = UI._frame
   local tab = frame and frame.TabButtons and frame.TabButtons.collect
@@ -932,11 +937,25 @@ local function UpdateCollectTabText()
     and UI.GetOption("showTabCounts")
     and collect and type(collect.InboxCounts) == "function" then
     local toCollect, _, total = collect.InboxCounts()
-    if (tonumber(total) or 0) > 0 then
-      text = LF("TAB_COLLECT_COUNTS", text, tonumber(toCollect) or 0, total)
+    toCollect, total = tonumber(toCollect) or 0, tonumber(total) or 0
+    if total > 0 then
+      local suffix = "(" .. toCollect .. "/" .. total .. ")"
+      local theme = ns.Theme
+      if toCollect == 0 and theme and theme.Colorize then
+        suffix = theme.Colorize("textDisabled", suffix)
+      end
+      text = text .. " " .. suffix
     end
   end
-  tab:SetText(text)
+
+  -- Never a bare SetText: the skins hide or recolour this label, and SetText
+  -- alone undoes that (see Theme.SetTabText).
+  local theme = ns.Theme
+  if theme and theme.SetTabText then
+    theme.SetTabText(tab, text)
+  else
+    tab:SetText(text)
+  end
 end
 
 -- MAIL_INBOX_UPDATE arrives in bursts, and with the collect panel hidden (the
@@ -1174,7 +1193,35 @@ local function BuildFrame()
     else
       frame.Status:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -30, -10)
     end
+    -- Bounded on the left as well: an unconstrained string cannot clip, but
+    -- it CAN run leftward under the centred window title -- which the
+    -- last-visit summary, the longest line this label ever carries, did.
+    -- Bounded, it end-truncates with an ellipsis instead.
+    if frame.TitleText then
+      frame.Status:SetPoint("LEFT", frame.TitleText, "RIGHT", 10, 0)
+    else
+      frame.Status:SetPoint("LEFT", frame, "CENTER", 30, 0)
+    end
     frame.Status:SetText("")
+
+    -- The truncated tail is the most informative part (the game's own refusal
+    -- text), so a hover region over the label offers the full line. Inert
+    -- whenever the text fits.
+    local statusHover = CreateFrame("Frame", nil, frame)
+    statusHover:SetAllPoints(frame.Status)
+    -- Motion only: clicks pass through, so the title bar drags and the close
+    -- button clicks exactly as before.
+    statusHover:EnableMouse(true)
+    statusHover:SetMouseClickEnabled(false)
+    statusHover:SetMouseMotionEnabled(true)
+    statusHover:SetScript("OnEnter", function(self)
+      local label = frame.Status
+      if not (label and label.IsTruncated and label:IsTruncated()) then return end
+      GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
+      GameTooltip:SetText(label:GetText() or "", 1, 1, 1, 1, true)
+      GameTooltip:Show()
+    end)
+    statusHover:SetScript("OnLeave", function() GameTooltip:Hide() end)
   end
 
   frame.OptionsButton = BuildOptionsButton(frame, theme)

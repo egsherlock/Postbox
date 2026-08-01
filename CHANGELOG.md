@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.13.1
+
+- The Mail tab's caption no longer doubles over itself under a host skin.
+  Dynamic tab text now goes through the theme, which re-runs the skin's own
+  repaint: EllesmereUI's engine mirrors the label and hides the original
+  once, and a bare SetText was resurrecting the original beneath the mirror
+  so both rendered at once.
+- The status line is bounded between the window title and the close button
+  now, so the long "Last visit" summary truncates with an ellipsis instead
+  of running under the title - and hovering it shows the full line whenever
+  it is truncated.
+- The tab's count suffix drops to the quiet grey when nothing is left to
+  collect: a full-strength (0/4) glanced from the Send tab read as "you've
+  got mail" when the truth is "four read mails are sitting there".
+
 ## 1.13.0
 
 - The main tab is called **Mail** now, and while the mailbox is open it

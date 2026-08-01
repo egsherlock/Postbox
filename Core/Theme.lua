@@ -1497,6 +1497,22 @@ end
 Theme.StyleTab = Theme.StylePlate
 Theme.SetTabSelected = Theme.SetPlateSelected
 
+-- Dynamic tab captions (the Mail tab's inbox counts) go through here, never
+-- through a bare Button:SetText. SetText re-applies the button's font-object
+-- colour to its fontstring, which undoes what every skin backend did to that
+-- label: EllesmereUI's engine and the compat shim hide it (alpha-0) behind a
+-- mirror of their own -- SetText resurrects it UNDER the mirror and both
+-- render -- and ElvUI recolours it in place -- SetText snaps it back to the
+-- role colour. Re-running the selection pass hands the label straight back
+-- to whoever owns it: the skin override re-skins (and the EllesmereUI
+-- override re-hides), the house path repaints.
+function Theme.SetTabText(tab, text)
+  if not tab then return end
+  if tab:GetText() == text then return end
+  tab:SetText(text)
+  Theme.SetPlateSelected(tab, tab.isSelected)
+end
+
 function Theme.ApplyTabBarBg(tabBar)
   if SharedTheme and SharedTheme.ApplyTabBarBackground then
     SharedTheme.ApplyTabBarBackground(tabBar)

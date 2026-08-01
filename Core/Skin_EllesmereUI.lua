@@ -986,6 +986,15 @@ local function InstallTabs(frame)
           t:Enable()
           t.isSelected = selected and true or false
           S.Tab(t)
+          -- The primitive hid the original label behind its mirror ONCE, at
+          -- skin time. A later Button:SetText (the Mail tab's live counts)
+          -- re-applies the button's font colour and resurrects it under the
+          -- mirror; the primitive's refresh re-syncs the mirror's text but
+          -- never re-hides the original -- so that is re-asserted here, on
+          -- every repaint. Theme.SetTabText routes every caption change
+          -- through this override for exactly that reason.
+          local bliz = t.Text or (t.GetFontString and t:GetFontString())
+          if bliz and bliz.SetTextColor then bliz:SetTextColor(0, 0, 0, 0) end
         end
       elseif tab.__activeBg then
         -- Hand the tab back to Postbox's own painting intact, undoing the
