@@ -2258,6 +2258,11 @@ local suggestFlat, suggestSeen = {}, {}
 -- Reused, like suggestFlat above and for the same reason: this rebuilds on a
 -- debounce timer while somebody is typing, and one panel is on screen.
 local completionList = {}
+-- The source name behind each completion, index-aligned with completionList:
+-- what the popup's Tab marker uses to say WHICH row the box is holding.
+local completionNames = {}
+-- Forward: defined after CompletionShowing, called from the offer paths above it.
+local PaintTabMarker
 
 -- True when `text` is `base` with exactly ONE more character on the end.
 --
@@ -2286,7 +2291,10 @@ end
 -- order, each already spliced onto the player's own characters. Returns the
 -- shared table; empty means nothing here can be completed to.
 local function CollectCompletions(typed)
-  for i = #completionList, 1, -1 do completionList[i] = nil end
+  for i = #completionList, 1, -1 do
+    completionList[i] = nil
+    completionNames[i] = nil
+  end
   if typed == "" then return completionList end
 
   local CS = Contacts()
@@ -2307,6 +2315,7 @@ local function CollectCompletions(typed)
     -- already in the box, and "completing" it would select an empty range.
     if #name > cut and fold(name):sub(1, cut) == folded then
       completionList[#completionList + 1] = typed .. name:sub(cut + 1)
+      completionNames[#completionList] = name
     end
   end
 
@@ -2328,6 +2337,7 @@ end
 local function ClearCompletionOffer(panel)
   panel._acList, panel._acIndex = nil, nil
   panel._acCycling, panel._acArmed = nil, nil
+  PaintTabMarker(panel)
 end
 
 -- Put `full` in the box with everything past the typed prefix selected.
@@ -2349,6 +2359,7 @@ local function ShowCompletion(panel, full)
   panel._acGuard = false
 
   panel._acFull, panel._acPrev = full, full
+  PaintTabMarker(panel)
 end
 
 -- Is the completion this code last wrote still what is on screen?
@@ -2357,28 +2368,98 @@ local function CompletionShowing(panel)
   return full ~= nil and panel.ToBox:GetText() == full
 end
 
+-- The popup row the completion currently on screen came from, or nil.
+local function CurrentCompletionName(panel)
+  if not CompletionShowing(panel) then return nil end
+  local index = panel._acIndex
+  return index and completionNames[index] or nil
+end
+
+-- Paints "this is the row Tab is holding" onto the popup: a live-accent bar
+-- and a faint wash on the source row of the completion in the box, so the
+-- player can see what Tab took and what the next Tab would step to.
+-- Repainted from every path that changes what Tab holds AND from the popup
+-- fill, so the marker can never describe a row that is gone. The art lives
+-- on the row buttons, which are not tagged panels, so a host skin's repaint
+-- does not fade it.
+PaintTabMarker = function(panel)
+  local sf = panel.SuggestFrame
+  if not sf or not sf.buttons then return end
+  local current = CurrentCompletionName(panel)
+  for i = 1, #sf.buttons do
+    local btn = sf.buttons[i]
+    local on = current ~= nil and btn.value == current and btn:IsShown()
+    if on and not btn.TabMarkBar then
+      local wash = btn:CreateTexture(nil, "BACKGROUND")
+      wash:SetAllPoints()
+      btn.TabMarkWash = wash
+      local bar = btn:CreateTexture(nil, "ARTWORK")
+      bar:SetWidth(2)
+      bar:SetPoint("TOPLEFT", btn, "TOPLEFT", -SUGGEST_PAD + 2, 0)
+      bar:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", -SUGGEST_PAD + 2, 0)
+      btn.TabMarkBar = bar
+    end
+    if btn.TabMarkBar then
+      if on then
+        -- The live accent, resolved at paint time: under a host skin the
+        -- user's own colour is the accent.
+        local r, g, b = Theme.GetAccent()
+        btn.TabMarkWash:SetColorTexture(r, g, b, 0.10)
+        btn.TabMarkBar:SetColorTexture(r, g, b, 0.9)
+      end
+      btn.TabMarkWash:SetShown(on)
+      btn.TabMarkBar:SetShown(on)
+    end
+  end
+end
+
 -- Rebuilds the offer from the list the popup is showing, and applies the top of
 -- it when the last edit was an insertion at the end. Called at the tail of every
 -- suggestion pass, so the popup and the completion are always the same answer.
 local function UpdateInlineCompletion(panel)
   local typed = panel._acTyped or ""
   local armed = panel._acArmed
-  panel._acArmed, panel._acIndex, panel._acCycling = nil, nil, nil
+  panel._acArmed = nil
 
   local list = CollectCompletions(typed)
   if #list == 0 then
-    panel._acList = nil
+    panel._acList, panel._acIndex, panel._acCycling = nil, nil, nil
+    PaintTabMarker(panel)
     return
   end
   panel._acList = list
 
+  -- A pass rebuilt the offer UNDER a completion that is still on screen -- a
+  -- roster tick refreshing the open popup (ContactsChanged), or the debounce
+  -- landing between two Tab presses. The Tab conversation in progress
+  -- survives: re-find the shown string's place in the new list and keep the
+  -- accepted/cycling state. Wiping it here is what made the second Tab press
+  -- a visible no-op -- accept, silent re-accept, THEN cycle.
+  if CompletionShowing(panel) then
+    panel._acIndex = nil
+    for i = 1, #list do
+      if list[i] == panel._acFull then panel._acIndex = i break end
+    end
+    if not panel._acIndex then panel._acCycling = nil end
+    PaintTabMarker(panel)
+    return
+  end
+
+  panel._acIndex, panel._acCycling = nil, nil
+
   -- The player deleted, pasted, or edited the middle. The offer stands -- Tab
   -- will take it -- but nothing appears in the box uninvited.
-  if not armed then return end
+  if not armed then
+    PaintTabMarker(panel)
+    return
+  end
   -- A keystroke landed between the pass being scheduled and it running. The
   -- debounce token normally catches that; this catches the paths that do not go
   -- through the debounce at all.
-  if panel.ToBox:GetText() ~= typed then return end
+  if panel.ToBox:GetText() ~= typed then
+    PaintTabMarker(panel)
+    return
+  end
 
   panel._acIndex = 1
   ShowCompletion(panel, list[1])

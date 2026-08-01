@@ -268,11 +268,14 @@ function Dropdown.Create(parent, opts)
       rowParent = content
     end
 
+    list._rows = {}
     for i = 1, #items do
       local item = items[i]
 
       local row = CreateFrame("Button", nil, rowParent)
       row:SetHeight(rowHeight)
+      row._itemId = item.id
+      list._rows[#list._rows + 1] = row
       if scrolling then
         row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", 0, -((i - 1) * rowHeight))
         row:SetPoint("RIGHT", rowParent, "RIGHT", 0, 0)
@@ -306,6 +309,17 @@ function Dropdown.Create(parent, opts)
       text:SetPoint("LEFT", row, "LEFT", textOffset, 0)
       text:SetText(item.name)
       if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
+
+      -- The current selection's marker: a 2px accent bar on the row's left
+      -- edge, painted on open. Feedback that a choice is in effect even when
+      -- the toggle's caption does not repeat it (an owner may keep a fixed
+      -- title there instead).
+      local mark = row:CreateTexture(nil, "ARTWORK")
+      mark:SetWidth(2)
+      mark:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -1)
+      mark:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 1)
+      mark:Hide()
+      row._selMark = mark
 
       row:SetScript("OnEnter", function()
         bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4])
@@ -353,6 +367,28 @@ function Dropdown.Create(parent, opts)
     ShowCatcher(level - 1)
     list:Show()
     list:Raise()
+
+    -- Paint the selection markers for THIS open: selection may have changed
+    -- since the last one, and the accent is resolved live (a host UI's own
+    -- colour wins when the addon theme is present).
+    if list._rows then
+      local r, g, b = 0.90, 0.78, 0.30
+      local themed = ns.Theme
+      if themed and type(themed.GetAccent) == "function" then
+        r, g, b = themed.GetAccent()
+      end
+      for i = 1, #list._rows do
+        local row = list._rows[i]
+        if row._selMark then
+          if row._itemId == container._selectedId then
+            row._selMark:SetColorTexture(r, g, b, 0.9)
+            row._selMark:Show()
+          else
+            row._selMark:Hide()
+          end
+        end
+      end
+    end
 
     -- A scrolling list opens with the current selection in view rather than
     -- at the top of a long ride down. Width is re-asserted here because the

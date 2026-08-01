@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.16.0
+
+- **Tab in the recipient field is two presses again, reliably.** The first
+  Tab accepts the completion, the next steps down the list - and a roster
+  tick refreshing the open popup (a Battle.net friend's presence changing)
+  no longer resets that conversation halfway, which is what sometimes made
+  the second press a silent no-op.
+- **The popup now shows what Tab is holding**: the row behind the completion
+  in the box wears an accent bar and a faint wash, and it moves as you
+  cycle.
+- **The Mail tab caption defaults to Nothing** and its button now tells the
+  truth at a glance: it reads "Mail tab caption" while off, and the chosen
+  mode's name once one is on. The list is reordered (Dot indicator, Total
+  only, Collect / total, Nothing) and every dropdown in the addon now marks
+  its current selection with an accent bar.
+- The Manage Recipients portrait lines up exactly with the caption button
+  beneath it, its bundle icon grew to 50px, and its title is a point larger.
+
 ## 1.15.1
 
 - Fixed the options panel erroring on open (1.15.0): the caption row and

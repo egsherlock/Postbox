@@ -163,17 +163,19 @@ end
 -- widened SetOption: the boolean coercion above is a guarantee, not an
 -- accident. `showTabCounts` stays the segments' own switch; this one owns
 -- the tab.
---   counts  "Mail (2/5)" -- still to collect over total (the default)
+--   counts  "Mail (2/5)" -- still to collect over total
 --   total   "Mail (5)"   -- just how much is sitting there
 --   dot     "Mail •"     -- an accent dot while anything is uncollected
---   none    "Mail"
+--   none    "Mail"       -- the default
 local TAB_CAPTION_MODES = { counts = true, total = true, dot = true, none = true }
 
 function UI.GetTabCaptionMode()
   local store = ns.Store
   local stored = store and store.Get and store.Get("profile.tabCaption")
   if TAB_CAPTION_MODES[stored] then return stored end
-  return "counts"
+  -- Default OFF: a caption on the primary tab is visible UI, so wearing one
+  -- is the user's call -- same reasoning as the minimap icon's default.
+  return "none"
 end
 
 function UI.SetTabCaptionMode(mode)

@@ -276,12 +276,21 @@ local function Build()
     rmLabel:SetWidth(92)
     rmLabel:ClearAllPoints()
     rmLabel:SetPoint("TOP", rmButton, "TOP", 0, -12)
+    -- One point up from the button role's size: this is the loudest control
+    -- on the card and its title was set no larger than a checkbox caption.
+    -- A host skin's re-font can override this; that is its right.
+    local fontPath, fontSize, fontFlags = rmLabel:GetFont()
+    if fontPath and fontSize then
+      rmLabel:SetFont(fontPath, fontSize + 1, fontFlags)
+    end
   end
   rmButton:SetText(L["RM_OPT_BUTTON"])
   -- On an art holder, not the button: a host skin's button repaint fades
   -- the tagged button's own texture regions, which kept this icon invisible.
   local rmMark = ArtHolder(rmButton):CreateTexture(nil, "ARTWORK")
-  rmMark:SetSize(46, 46)
+  -- 50, was 46: the caption row below bought the portrait an extra row of
+  -- height, and the icon is the thing worth spending it on.
+  rmMark:SetSize(50, 50)
   rmMark:SetPoint("CENTER", rmButton, "CENTER", 0, -4)
   rmMark:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
   local rmCount = ns.Theme.CreateText(rmButton, "bodySmall")
@@ -316,11 +325,24 @@ local function Build()
   -- list and the tooltip carry the current choice. The recipients portrait
   -- keeps its own column and stretches to end level with this row.
   local tcItems = {
-    { id = "counts", name = L["OPT_TAB_CAPTION_COUNTS"] },
-    { id = "total",  name = L["OPT_TAB_CAPTION_TOTAL"] },
     { id = "dot",    name = L["OPT_TAB_CAPTION_DOT"] },
+    { id = "total",  name = L["OPT_TAB_CAPTION_TOTAL"] },
+    { id = "counts", name = L["OPT_TAB_CAPTION_COUNTS"] },
     { id = "none",   name = L["OPT_TAB_CAPTION_NONE"] },
   }
+  -- The toggle wears the row's NAME while the setting is off ("Nothing" is
+  -- the default and a bare "Nothing" floating in the card reads as broken),
+  -- and the chosen mode's name once one is actually on -- so a glance tells
+  -- you whether the tab carries anything without opening the list.
+  local function TcToggleText()
+    local mode = ns.MailboxUI.GetTabCaptionMode and ns.MailboxUI.GetTabCaptionMode() or "none"
+    if mode ~= "none" then
+      for _, item in ipairs(tcItems) do
+        if item.id == mode then return item.name end
+      end
+    end
+    return L["OPT_TAB_CAPTION_TITLE"]
+  end
   -- Card width minus its own padding, the portrait column and the gap.
   local tcWidth = (W - 20) - PAD * 2 - 108 - 10
   local tcDD = ns.Core.UI.Dropdown.Create(card, {
@@ -344,12 +366,12 @@ local function Build()
     tcToggle:SetPoint("LEFT", tcDD, "LEFT", 0, 0)
     tcToggle:SetPoint("RIGHT", tcDD, "RIGHT", 0, 0)
   end
-  tcDD:SetText(L["OPT_TAB_CAPTION_TITLE"])
+  tcDD:SetText(TcToggleText())
   tcDD:SetChangeCallback(function(id)
     if ns.MailboxUI.SetTabCaptionMode then ns.MailboxUI.SetTabCaptionMode(id) end
-    -- The widget wrote the selection's name onto the toggle; put the row
-    -- name back (runs after its write, see the row OnClick order).
-    tcDD:SetText(L["OPT_TAB_CAPTION_TITLE"])
+    -- After the widget's own write (see the row OnClick order): the mode's
+    -- name for a live mode, the row name for "Nothing".
+    tcDD:SetText(TcToggleText())
   end)
   if tcToggle then
     tcToggle:HookScript("OnEnter", function(self)
@@ -371,12 +393,17 @@ local function Build()
     if ns.MailboxUI.GetTabCaptionMode then
       tcDD._selectedId = ns.MailboxUI.GetTabCaptionMode()
     end
-    tcDD:SetText(L["OPT_TAB_CAPTION_TITLE"])
+    tcDD:SetText(TcToggleText())
   end
   -- The portrait ends level with this row: top from the card, bottom from
-  -- the dropdown -- the height from SetSize above is overridden by the pair
-  -- of vertical anchors.
-  rmButton:SetPoint("BOTTOM", tcDD, "BOTTOM", 0, 0)
+  -- the TOGGLE (which sits centred inside its slightly taller container --
+  -- anchoring to the container left the portrait a pixel long). The height
+  -- from SetSize above is overridden by the pair of vertical anchors.
+  if tcToggle then
+    rmButton:SetPoint("BOTTOM", tcToggle, "BOTTOM", 0, 0)
+  else
+    rmButton:SetPoint("BOTTOM", tcDD, "BOTTOM", 0, 0)
+  end
   MarkBottom(card, cy, DROPDOWN_H)
   cy = cy - ROW_H
 

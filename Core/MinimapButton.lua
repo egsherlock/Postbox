@@ -805,10 +805,10 @@ function MB.Diagnose()
   return string.format(
     "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s",
     tostring(runtimeActive), tostring(suppressing),
-    tostring(EuiSkinCandidate()), tostring(euiSkin.applied),
+    tostring((EuiSkinCandidate())), tostring(euiSkin.applied),
     euiSkin.tries, tostring(euiSkin.fallback),
     (MB._button and MB._button:IsShown()) and "shown" or "hidden/none",
-    tostring(MailWaiting()))
+    tostring((MailWaiting())))
 end
 
 -- Called by Skin_EllesmereUI.RefreshAccents so an accent retune repaints a
