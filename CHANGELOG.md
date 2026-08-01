@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.10.0
+
+- **Run memory.** The warning triangles and the Stuck count now survive
+  closing and reopening the mailbox for the rest of the session, and the
+  last run that ended badly is remembered across sessions: the next mailbox
+  visit opens with "Last visit: N mails could not be taken — the game
+  said: ..." in the status line. A clean run, or an inbox that resolved
+  itself, erases the note. One tiny saved record per character; no
+  background work.
+- The icon picker grew a proper showcase: the current icon at readable size
+  on a dark stage, wearing the live accent, glow (pulse included) and the
+  new shadow, updating as you toggle.
+- The bug-report window is fully opaque now, and its single setup line grew
+  into a copyable diagnostic report (version, client, UI-pack handshake,
+  minimap settings, last bad run). /postbox debug opens it from anywhere.
+
 ## 1.9.1
 
 - Author corrected to egsherlock, matching GitHub and CurseForge.

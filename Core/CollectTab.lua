@@ -1955,6 +1955,64 @@ local function ReportRunMoney(earned, spent)
   end
 end
 
+-------------------------------------------------------------
+-- Run memory (.dev/SPEC-RunMemory.md): one small saved record per character
+-- of the last run that ended badly, so the NEXT mailbox visit -- or the next
+-- session -- opens with "last visit: N mails could not be taken" instead of
+-- silence. A clean finish erases it; an inbox that emptied on its own erases
+-- it at read time (Core/MailboxUI.lua, UpdateStatusSummary). Keyed by raw
+-- GetRealmName()/UnitName like every other per-character table, stored at
+-- the saved-variables root because profile values are boolean-only.
+-------------------------------------------------------------
+
+local function LastRunStore(create)
+  local realm = GetRealmName()
+  local name = UnitName("player")
+  if type(realm) ~= "string" or realm == "" then return nil end
+  if type(name) ~= "string" or name == "" then return nil end
+
+  if create then
+    local root = ns.Store.EnsurePath("lastRun")
+    local byName = root[realm]
+    if type(byName) ~= "table" then
+      byName = {}
+      root[realm] = byName
+    end
+    return byName, name
+  end
+
+  local root = ns.Store.Get("lastRun")
+  local byName = type(root) == "table" and root[realm] or nil
+  return type(byName) == "table" and byName or nil, name
+end
+
+function CT.GetLastRunRecord()
+  local byName, name = LastRunStore(false)
+  local record = byName and name and byName[name]
+  if type(record) == "table" then return record end
+  return nil
+end
+
+function CT.ClearLastRunRecord()
+  local byName, name = LastRunStore(false)
+  if byName and name then byName[name] = nil end
+end
+
+local function SaveLastRunRecord(collected, refused, left, reason, stopReason)
+  local byName, name = LastRunStore(true)
+  if not byName then return end
+  byName[name] = {
+    at         = (type(time) == "function" and time()) or 0,
+    collected  = collected,
+    refused    = refused,
+    left       = left,
+    -- The game's own words, kept verbatim so the summary can attribute them
+    -- the way every refusal message does.
+    reason     = reason,
+    stopReason = stopReason,
+  }
+end
+
 local function FinishRun(left, stopReason)
   local refused = Run.refused
   local collected = Run.collected
@@ -1962,6 +2020,13 @@ local function FinishRun(left, stopReason)
   local earned, spent = Run.earned, Run.spent
   local panel = Run.panel
   ResetRun()
+
+  -- A bad ending is written down for next visit; a clean one erases the note.
+  if (tonumber(left) or 0) > 0 or (tonumber(refused) or 0) > 0 then
+    SaveLastRunRecord(collected, refused, left, reason, stopReason)
+  else
+    CT.ClearLastRunRecord()
+  end
 
   if left > 0 then
     StatusOutcome(format(L()["STATUS_INCOMPLETE"], left), "negative")

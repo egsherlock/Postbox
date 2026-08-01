@@ -371,14 +371,48 @@ local function Build()
       item.icon = ns.MinimapButton.GetIconSpec(item.id)
     end
   end
-  local iconPreview = ArtHolder(card):CreateTexture(nil, "ARTWORK")
-  iconPreview:SetSize(22, 22)
-  iconPreview:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
+  -- The showcase stage: the current icon at a size you can actually judge,
+  -- on a quiet dark plate, WEARING the live settings -- accent tint, glow
+  -- (with its pulse) and shadow render here exactly as they will on the
+  -- minimap, so the card previews the feature instead of naming it.
+  local GLOW_TGA = "Interface\\AddOns\\Postbox\\Media\\minimap-glow.tga"
+  local PREVIEW_ICON_SIZE = 30
+  local stage = CreateFrame("Frame", nil, card)
+  stage:SetSize(52, 52)
+  stage:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
+  stage:SetClipsChildren(true)
+  local stageArt = ArtHolder(stage)
+  local stageBg = stageArt:CreateTexture(nil, "BACKGROUND", nil, -7)
+  stageBg:SetAllPoints()
+  stageBg:SetColorTexture(0, 0, 0, 0.35)
+  local prevShadow = stageArt:CreateTexture(nil, "BACKGROUND", nil, -1)
+  prevShadow:SetPoint("CENTER", stage, "CENTER", 0, -1)
+  prevShadow:SetTexture(GLOW_TGA)
+  prevShadow:SetVertexColor(0, 0, 0)
+  prevShadow:SetAlpha(0.9)
+  prevShadow:SetSize(PREVIEW_ICON_SIZE * 1.8, PREVIEW_ICON_SIZE * 1.8)
+  local prevGlow = stageArt:CreateTexture(nil, "BACKGROUND", nil, 0)
+  prevGlow:SetPoint("CENTER", stage, "CENTER", 0, 0)
+  prevGlow:SetTexture(GLOW_TGA)
+  prevGlow:SetBlendMode("ADD")
+  prevGlow:SetSize(PREVIEW_ICON_SIZE * 2.2, PREVIEW_ICON_SIZE * 2.2)
+  local prevPulse = prevGlow:CreateAnimationGroup()
+  prevPulse:SetLooping("BOUNCE")
+  local prevFade = prevPulse:CreateAnimation("Alpha")
+  prevFade:SetFromAlpha(1)
+  prevFade:SetToAlpha(0.55)
+  prevFade:SetDuration(1.6)
+  prevFade:SetSmoothing("IN_OUT")
+  local iconPreview = stageArt:CreateTexture(nil, "ARTWORK")
+  iconPreview:SetPoint("CENTER", stage, "CENTER", 0, 0)
+
   local function PaintIconPreview()
     local Icon = ns.MinimapButton
     local spec = Icon and Icon.GetIconSpec and Icon.GetIconSpec()
     if not spec then
       iconPreview:Hide()
+      prevGlow:Hide()
+      prevShadow:Hide()
       return
     end
     iconPreview:Show()
@@ -387,22 +421,36 @@ local function Build()
     else
       iconPreview:SetTexture(spec.texture)
     end
-    iconPreview:SetHeight(22 * (spec.aspect or 1))
-    if spec.tintable and Icon.GetAccentTint and Icon.GetAccentTint() then
-      iconPreview:SetVertexColor(ns.Theme.GetAccent())
+    iconPreview:SetSize(PREVIEW_ICON_SIZE, PREVIEW_ICON_SIZE * (spec.aspect or 1))
+
+    local r, g, b = 1, 1, 1
+    local accentOn = Icon.GetAccentTint and Icon.GetAccentTint()
+    if accentOn then r, g, b = ns.Theme.GetAccent() end
+    if spec.tintable and accentOn then
+      iconPreview:SetVertexColor(r, g, b)
     else
       iconPreview:SetVertexColor(1, 1, 1)
     end
+
+    prevGlow:SetVertexColor(r, g, b)
+    if Icon.GetGlow and Icon.GetGlow() then
+      prevGlow:Show()
+      if not prevPulse:IsPlaying() then prevPulse:Play() end
+    else
+      prevPulse:Stop()
+      prevGlow:Hide()
+    end
+    prevShadow:SetShown(Icon.GetShadow and Icon.GetShadow() or false)
   end
   local iconDD = ns.Core.UI.Dropdown.Create(card, {
     items        = iconItems,
-    toggleWidth  = 262,
+    toggleWidth  = 232,
     toggleHeight = 22,
     alignRight   = true,
     height       = DROPDOWN_H,
     defaultId    = ns.MinimapButton and ns.MinimapButton.GetIcon(),
   })
-  iconDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 30, cy)
+  iconDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 60, cy - 14)
   iconDD:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
   iconDD:SetChangeCallback(function(id)
     if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end
@@ -420,8 +468,8 @@ local function Build()
     PaintIconPreview()
   end
   PaintIconPreview()
-  MarkBottom(card, cy, DROPDOWN_H)
-  cy = cy - (ROW_H + 4)
+  MarkBottom(card, cy, 52)
+  cy = cy - 60
 
   -- With EllesmereUI's minimap module running, Postbox restyles EllesmereUI's
   -- own mail icon in place rather than drawing a second one; position and
@@ -459,11 +507,17 @@ local function Build()
 
   cy = AddCheckbox(card, cy, L["OPT_MINIMAP_GLOW_TITLE"], L["OPT_MINIMAP_GLOW_DESC"],
         function() return ns.MinimapButton and ns.MinimapButton.GetGlow() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetGlow(on) end end)
+        function(on)
+          if ns.MinimapButton then ns.MinimapButton.SetGlow(on) end
+          PaintIconPreview()
+        end)
 
   cy = AddCheckbox(card, cy, L["OPT_MINIMAP_SHADOW_TITLE"], L["OPT_MINIMAP_SHADOW_DESC"],
         function() return ns.MinimapButton and ns.MinimapButton.GetShadow() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetShadow(on) end end)
+        function(on)
+          if ns.MinimapButton then ns.MinimapButton.SetShadow(on) end
+          PaintIconPreview()
+        end)
 
   if not mmHostStyled then
     cy = cy - 4
@@ -616,14 +670,17 @@ local function Build()
   -- copyable is the whole feature.
   local BUG_URL = "https://github.com/egsherlock/Postbox/issues"
   local bugPopup
-  local function AddCopyRow(pop, rowY, labelKey)
+  local function AddCopyRow(pop, rowY, labelKey, boxHeight)
     local caption = ns.Theme.CreateText(pop, "label")
     caption:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY)
     caption:SetText(L[labelKey])
     local box = CreateFrame("EditBox", nil, pop)
-    box:SetSize(304, 14)
+    box:SetSize(304, boxHeight or 14)
     box:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY - 14)
     box:SetAutoFocus(false)
+    if boxHeight then
+      box:SetMultiLine(true)
+    end
     box:SetFontObject(ns.Theme.FontObject("bodySmall") or GameFontHighlightSmall)
     box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
     box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
@@ -647,7 +704,7 @@ local function Build()
       -- puts it above everything, and the opaque flag keeps it readable at
       -- any host opacity.
       bugPopup = CreateFrame("Frame", nil, UIParent)
-      bugPopup:SetSize(324, 108)
+      bugPopup:SetSize(324, 196)
       bugPopup:SetFrameStrata("TOOLTIP")
       bugPopup:SetToplevel(true)
       bugPopup:SetClampedToScreen(true)
@@ -659,12 +716,29 @@ local function Build()
       bugPopup.__pbEuiAlwaysOpaque = true
       ns.Theme.ApplyCard(bugPopup)
 
+      -- A guaranteed-opaque ground. This window exists to read exact text
+      -- out of, so it opts out of every transparency system: the popup
+      -- floor stops at 95%, and a host skin paints its card art at the
+      -- user's opacity above that. The ground sits on a holder one frame
+      -- level BELOW the popup -- the same trick the floor itself uses --
+      -- so everything the popup and the skin draw composites over solid.
+      local groundHolder = CreateFrame("Frame", nil, bugPopup)
+      groundHolder:SetAllPoints(bugPopup)
+      groundHolder:SetFrameLevel(math.max(0, bugPopup:GetFrameLevel() - 1))
+      local groundEdge = groundHolder:CreateTexture(nil, "BACKGROUND", nil, -8)
+      groundEdge:SetPoint("TOPLEFT", groundHolder, "TOPLEFT", -1, 1)
+      groundEdge:SetPoint("BOTTOMRIGHT", groundHolder, "BOTTOMRIGHT", 1, -1)
+      groundEdge:SetColorTexture(1, 1, 1, 0.15)
+      local ground = groundHolder:CreateTexture(nil, "BACKGROUND", nil, -7)
+      ground:SetAllPoints(groundHolder)
+      ground:SetColorTexture(0.05, 0.05, 0.06, 1)
+
       local title = ns.Theme.CreateText(bugPopup, "heading")
       title:SetPoint("TOPLEFT", bugPopup, "TOPLEFT", 10, -8)
       title:SetText(L["OPT_BUG_TIP_TITLE"])
 
       bugPopup._url = AddCopyRow(bugPopup, -24, "OPT_BUG_URL_LABEL")
-      bugPopup._diag = AddCopyRow(bugPopup, -60, "OPT_BUG_DIAG_LABEL")
+      bugPopup._diag = AddCopyRow(bugPopup, -60, "OPT_BUG_DIAG_LABEL", 100)
 
       local hint = ns.Theme.CreateText(bugPopup, "bodySmall")
       hint:SetPoint("BOTTOMLEFT", bugPopup, "BOTTOMLEFT", 10, 7)
@@ -682,11 +756,10 @@ local function Build()
       bugPopup:Hide()
       return
     end
-    local gameVersion, gameBuild = GetBuildInfo()
     bugPopup._url:SetValue(BUG_URL)
-    bugPopup._diag:SetValue(string.format("Postbox %s | %s | WoW %s (%s)",
-      tostring(ns.VERSION), StyleName() or "own style",
-      tostring(gameVersion), tostring(gameBuild)))
+    bugPopup._diag:SetValue(
+      (type(ns.BuildDiagnosticReport) == "function" and ns.BuildDiagnosticReport())
+      or "")
     bugPopup:ClearAllPoints()
     bugPopup:SetPoint("BOTTOM", statusBand, "TOP", 0, 8)
     bugPopup:Show()
@@ -694,6 +767,8 @@ local function Build()
     -- Ctrl+C is the only keystroke needed.
     bugPopup._url:SetFocus()
   end
+  -- /postbox debug reaches this without the panel being open.
+  Panel._toggleBugReport = ToggleBugReport
 
   statusBand:SetScript("OnClick", ToggleBugReport)
   statusBand:SetScript("OnEnter", function(self)
@@ -728,6 +803,14 @@ end
 -------------------------------------------------------------
 -- Public API
 -------------------------------------------------------------
+
+-- /postbox debug lands here: builds the panel if this is the first touch,
+-- then opens the same bug-report window the status band does.
+function Panel.ToggleBugReport()
+  Build()
+  if Panel._toggleBugReport then Panel._toggleBugReport() end
+end
+
 function Panel.Toggle(anchor)
   local frame = Build()
   if frame:IsShown() then

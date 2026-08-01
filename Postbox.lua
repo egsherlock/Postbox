@@ -83,6 +83,8 @@ local SCHEMA = {
   "altClasses",               -- realm -> name -> class token
   "recipients",               -- recipient key -> curation state
   "altMeta",                  -- realm -> name -> { level, faction, lastSeen }
+  "lastRun",                  -- realm -> name -> last bad collect run
+                              -- (see Core/CollectTab.lua, run memory)
 }
 
 local function EnsureDB()
@@ -263,7 +265,71 @@ end
 local function ReportHelp()
   ns.Print("Commands:  /postbox skin  — report skin status")
   ns.Print("           /postbox minimap  — toggle the minimap mail icon")
+  ns.Print("           /postbox debug  — open the bug-report window")
   ns.Print(ns.L["RM_SLASH_HELP"])
+end
+
+-------------------------------------------------------------
+-- The diagnostic snapshot behind the bug-report window (and nothing else:
+-- assembled on demand, no background collection). Deliberately English --
+-- it exists to be pasted into a GitHub issue and read by the maintainer.
+-------------------------------------------------------------
+local function BuildDiagnosticReport()
+  local lines = {}
+  local function add(text) lines[#lines + 1] = text end
+
+  add(string.format("Postbox %s (%s)", tostring(ns.VERSION), tostring((GetLocale()))))
+
+  local gameVersion, gameBuild = GetBuildInfo()
+  local scale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 0
+  add(string.format("WoW %s (%s) | UI scale %.2f",
+    tostring(gameVersion), tostring(gameBuild), scale))
+
+  local Skin = ns.SkinEllesmere
+  if Skin and type(Skin.Diagnose) == "function" then
+    local ok, report = pcall(Skin.Diagnose)
+    if ok and type(report) == "table" then
+      add(string.format("EllesmereUI %s | backend %s | active %s%s",
+        tostring(report.euiVersion), tostring(report.backend),
+        report.active and "yes" or "no",
+        report.silenceText and (" | " .. tostring(report.silenceText)) or ""))
+    end
+  end
+  add(string.format("Style: %s | ElvUI loaded: %s",
+    tostring(ns.SkinAppliedBy or "own"),
+    (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("ElvUI")) and "yes" or "no"))
+
+  local Icon = ns.MinimapButton
+  if Icon and type(Icon.GetEnabled) == "function" then
+    add(string.format("Minimap icon: %s | host-styled %s | %s | accent %s glow %s shadow %s",
+      Icon.GetEnabled() and "on" or "off",
+      (Icon.IsHostStyled and Icon.IsHostStyled()) and "yes" or "no",
+      tostring(Icon.GetIcon and Icon.GetIcon() or "?"),
+      (Icon.GetAccentTint and Icon.GetAccentTint()) and "on" or "off",
+      (Icon.GetGlow and Icon.GetGlow()) and "on" or "off",
+      (Icon.GetShadow and Icon.GetShadow()) and "on" or "off"))
+  end
+
+  local Collect = ns.CollectTab
+  local record = Collect and type(Collect.GetLastRunRecord) == "function"
+    and Collect.GetLastRunRecord()
+  if record then
+    add(string.format("Last bad run: collected %s, refused %s, left %s%s%s",
+      tostring(record.collected or 0), tostring(record.refused or 0),
+      tostring(record.left or 0),
+      record.stopReason and (" (" .. tostring(record.stopReason) .. ")") or "",
+      record.reason and (" | game said: " .. tostring(record.reason)) or ""))
+  end
+
+  return table.concat(lines, "\n")
+end
+ns.BuildDiagnosticReport = BuildDiagnosticReport
+
+local function OpenBugReport()
+  local Panel = ns.OptionsPanel
+  if Panel and type(Panel.ToggleBugReport) == "function" then
+    Panel.ToggleBugReport()
+  end
 end
 
 local function ToggleMinimapIcon()
@@ -292,6 +358,7 @@ local COMMANDS = {
   recipients  = OpenRecipientManager,
   rm          = OpenRecipientManager,
   minimap     = ToggleMinimapIcon,
+  debug       = OpenBugReport,
 }
 
 SLASH_POSTBOX1 = "/postbox"

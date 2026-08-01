@@ -370,6 +370,36 @@ function UI.UpdateStatusSummary()
     status.summary = text
   end
 
+  -- The previous visit's unfinished business, shown until something changes
+  -- it: a clean run erases the record at the source, and an inbox that has
+  -- emptied on its own (expiry, a return) erases it here. The live stuck
+  -- line outranks it -- when the registry still holds this session's facts,
+  -- those are fresher than the note from last time.
+  if not status.summary then
+    local collect = ns.CollectTab
+    local record = collect and type(collect.GetLastRunRecord) == "function"
+      and collect.GetLastRunRecord()
+    if record then
+      local numItems = (type(GetInboxNumItems) == "function" and GetInboxNumItems()) or 0
+      if numItems == 0 then
+        if type(collect.ClearLastRunRecord) == "function" then
+          collect.ClearLastRunRecord()
+        end
+      else
+        local total = (tonumber(record.refused) or 0) + (tonumber(record.left) or 0)
+        if total > 0 then
+          local text = ns.Plural("STATUS_LASTVISIT", total)
+          if type(record.reason) == "string" and record.reason ~= "" then
+            text = LF("STATUS_LASTVISIT_SAID", text, record.reason)
+          end
+          local theme = ns.Theme
+          if theme and theme.Colorize then text = theme.Colorize("warning", text) end
+          status.summary = text
+        end
+      end
+    end
+  end
+
   RenderStatus()
 end
 
@@ -1312,16 +1342,17 @@ local function OnMailClosed()
   -- to its grid slot next time.
   UI._state.freeMoved = false
 
-  -- The stuck registry is scoped to one mailbox visit, and this is the boundary.
-  -- A refusal is a fact established by a command issued while the player stood
-  -- here; away from the mailbox we cannot know whether the cause still holds --
-  -- they may have emptied half a bag on the way to the bank -- and a stale
-  -- "your bags are full" is worse than no marker at all. The next visit
-  -- re-establishes the truth by trying again.
-  local mail = ns.MailService
-  if mail and type(mail.ClearStuck) == "function" then mail.ClearStuck() end
+  -- The stuck registry deliberately SURVIVES this boundary (see
+  -- .dev/SPEC-RunMemory.md). It was once cleared here, on the argument that a
+  -- stale "your bags are full" is worse than no marker; in practice the
+  -- opposite bit harder -- reopen the mailbox and every warning was gone, so
+  -- the one mail that would not come out looked exactly like the ones that
+  -- would. The marker is a reminder that an attempt failed, phrased in the
+  -- game's own words; a retry re-establishes the truth in one click, and a
+  -- collected mail already drops its entry via ForgetStuck. Entries die with
+  -- the session -- nothing is saved.
 
-  -- Same boundary, same reason: mail arrives while the player is away from the
+  -- Mail arrives while the player is away from the
   -- mailbox, so the counts from this visit describe an inbox that no longer
   -- exists. The next read walks rather than trusting them.
   local collect = ns.CollectTab
