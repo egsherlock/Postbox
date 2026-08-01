@@ -20,6 +20,7 @@ ignore:
   - postboxbanner.png
   - postboxaddon.png
   - postboxminiaddon.png
+  - minimapicons.png
   - docs
 
 # Keep the changelog out of the zip but still attach it to the release page.

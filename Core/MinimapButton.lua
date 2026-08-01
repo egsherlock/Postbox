@@ -65,6 +65,14 @@ local ICONS = {
   plate    = { texture = MEDIA .. "minimap-plate.tga", tintable = true },
   badge    = { texture = MEDIA .. "minimap-badge.tga", tintable = true },
   blizzard = { atlas = "ui-hud-minimap-mail-up", aspect = 15 / 19.5 },
+  -- The painted set, sliced from Elliott's sheet by
+  -- .dev/tools/slice-minimap-icons.js. Full-colour art: the accent option
+  -- leaves these alone and tints only the glow.
+  letter   = { texture = MEDIA .. "minimap-letter.tga" },
+  sealed   = { texture = MEDIA .. "minimap-sealed.tga" },
+  parcel   = { texture = MEDIA .. "minimap-parcel.tga" },
+  seal     = { texture = MEDIA .. "minimap-seal.tga" },
+  stack    = { texture = MEDIA .. "minimap-stack.tga" },
 }
 
 local GLOW_SCALE = 2.2

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.5.0
+
+- Five hand-painted minimap icon styles in the stock-Blizzard spirit:
+  **Letter**, **Sealed letter**, **Parcel**, **Wax seal** and **Letter
+  stack** — bold, warm, readable at minimap size. The flat generated glyphs
+  and the stock Blizzard envelope remain available.
+- The glow is back to the soft disc from 1.4.0 — the halo ring read as an
+  explosion in game. The painted icons' bold borders sit crisply on top of
+  it.
+- The options panel now groups each section — General, Minimap, Appearance —
+  on its own card surface, the same panel surface the main window uses, so
+  host-UI skins paint it natively.
+
 ## 1.4.1
 
 - The glow is now a halo — a soft ring around the icon instead of a disc

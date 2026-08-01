@@ -41,21 +41,33 @@ end
 -- Row builders
 -------------------------------------------------------------
 
--- A section heading with a hairline accent rule running out to the panel
--- edge, which is what visually groups the rows under it.
-local function AddHeading(frame, y, text)
+-- A titled section: a heading, then a quiet list-surface card the section's
+-- rows sit inside -- the same surface the main window's panels use, so both
+-- host-UI skins already know how to paint it. Rows are laid into the card
+-- with their own inner cursor; EndSection sizes the card to its content and
+-- returns the panel cursor moved past it.
+local function BeginSection(frame, y, title)
   local heading = ns.Theme.CreateText(frame, "heading")
   heading:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
   heading:SetWordWrap(false)
-  heading:SetText(text)
+  heading:SetText(title)
+  y = y - 20
 
-  local rule = frame:CreateTexture(nil, "ARTWORK")
-  rule:SetHeight(1)
-  rule:SetPoint("LEFT", heading, "RIGHT", 8, 0)
-  rule:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
-  ns.Theme.FillColor(rule, "accentRule")
+  local card = CreateFrame("Frame", nil, frame)
+  card:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, y)
+  card:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
+  ns.Theme.ApplyList(card)
+  -- Shared by reference: rows built into the card register their refreshers
+  -- on the panel, which is what replays them on open.
+  card.__refreshers = frame.__refreshers
+  return card, y
+end
 
-  return y - 22
+local function EndSection(frame, card, y)
+  local height = math.abs(card.__pbContentBottom or -12) + 12
+  card:SetHeight(height)
+  MarkBottom(frame, y, height)
+  return y - height - 16
 end
 local function AddCheckbox(frame, y, title, desc, get, set)
   local cb = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
@@ -192,10 +204,12 @@ local function Build()
   ns.Core.UI.Helpers.RegisterEscClose(frame)
 
   local y = -34
+  local card, cy
 
-  y = AddHeading(frame, y, L["OPT_GENERAL_HEADING"])
+  card, y = BeginSection(frame, y, L["OPT_GENERAL_HEADING"])
+  cy = -12
 
-  y = AddCheckbox(frame, y, L["GRID_TOGGLE_TITLE"], L["GRID_TOGGLE_DESC"],
+  cy = AddCheckbox(card, cy, L["GRID_TOGGLE_TITLE"], L["GRID_TOGGLE_DESC"],
         function() return ns.MailboxUI.GetOption("gridDock") end,
         function(on)
           ns.MailboxUI.SetOption("gridDock", on)
@@ -203,14 +217,14 @@ local function Build()
           if ns.MailboxUI.ApplyWindowLayout then ns.MailboxUI.ApplyWindowLayout() end
         end)
 
-  y = AddCheckbox(frame, y, L["OPT_TAB_COUNTS_TITLE"], L["OPT_TAB_COUNTS_DESC"],
+  cy = AddCheckbox(card, cy, L["OPT_TAB_COUNTS_TITLE"], L["OPT_TAB_COUNTS_DESC"],
         function() return ns.MailboxUI.GetOption("showTabCounts") end,
         function(on)
           ns.MailboxUI.SetOption("showTabCounts", on)
           if ns.MailboxUI.RefreshCollectTabCounts then ns.MailboxUI.RefreshCollectTabCounts() end
         end)
 
-  y = AddCheckbox(frame, y, L["OPT_COMPACT_ROWS_TITLE"], L["OPT_COMPACT_ROWS_DESC"],
+  cy = AddCheckbox(card, cy, L["OPT_COMPACT_ROWS_TITLE"], L["OPT_COMPACT_ROWS_DESC"],
         function() return ns.MailboxUI.GetOption("compactRows") end,
         function(on)
           ns.MailboxUI.SetOption("compactRows", on)
@@ -220,14 +234,14 @@ local function Build()
   -- Nothing to refresh: the mapping is read at the moment a row is clicked, and
   -- the row tooltip's hint line is composed on hover from the same reading. A
   -- list rebuild would repaint rows that are already correct.
-  y = AddCheckbox(frame, y, L["OPT_PREVIEW_CLICK_TITLE"], L["OPT_PREVIEW_CLICK_DESC"],
+  cy = AddCheckbox(card, cy, L["OPT_PREVIEW_CLICK_TITLE"], L["OPT_PREVIEW_CLICK_DESC"],
         function() return ns.MailboxUI.GetOption("previewOnClick") end,
         function(on) ns.MailboxUI.SetOption("previewOnClick", on) end)
 
   -- Recipient manager. Opens a standalone window, so it works away from a
   -- mailbox as well; /postbox recipients is the other way in.
-  y = y - 4
-  y = AddButton(frame, y,
+  cy = cy - 4
+  cy = AddButton(card, cy,
         function()
           local RM = ns.RecipientManager
           local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
@@ -243,25 +257,32 @@ local function Build()
           end
         end)
 
+  y = EndSection(frame, card, y)
+
   -- Minimap mail icon (Core/MinimapButton.lua). Resolved at click time like
   -- every other binding, so the section stays honest if the module is absent.
-  y = y - 6
-  y = AddHeading(frame, y, L["OPT_MINIMAP_HEADING"])
+  card, y = BeginSection(frame, y, L["OPT_MINIMAP_HEADING"])
+  cy = -12
 
   local mmHostStyled = ns.MinimapButton and ns.MinimapButton.IsHostStyled
     and ns.MinimapButton.IsHostStyled()
-  y = AddCheckbox(frame, y, L["OPT_MINIMAP_TITLE"],
+  cy = AddCheckbox(card, cy, L["OPT_MINIMAP_TITLE"],
         mmHostStyled and L["OPT_MINIMAP_DESC_EUI"] or L["OPT_MINIMAP_DESC"],
         function() return ns.MinimapButton and ns.MinimapButton.GetEnabled() end,
         function(on) if ns.MinimapButton then ns.MinimapButton.SetEnabled(on) end end)
 
   local iconItems = {
+    { id = "letter",   name = L["OPT_MINIMAP_ICON_LETTER"] },
+    { id = "sealed",   name = L["OPT_MINIMAP_ICON_SEALED"] },
+    { id = "parcel",   name = L["OPT_MINIMAP_ICON_PARCEL"] },
+    { id = "seal",     name = L["OPT_MINIMAP_ICON_SEAL"] },
+    { id = "stack",    name = L["OPT_MINIMAP_ICON_STACK"] },
+    { id = "blizzard", name = L["OPT_MINIMAP_ICON_BLIZZARD"] },
     { id = "postbox",  name = L["OPT_MINIMAP_ICON_POSTBOX"] },
     { id = "plate",    name = L["OPT_MINIMAP_ICON_PLATE"] },
     { id = "badge",    name = L["OPT_MINIMAP_ICON_BADGE"] },
-    { id = "blizzard", name = L["OPT_MINIMAP_ICON_BLIZZARD"] },
   }
-  y = AddDropdown(frame, y, L["OPT_MINIMAP_ICON_TITLE"], iconItems,
+  cy = AddDropdown(card, cy, L["OPT_MINIMAP_ICON_TITLE"], iconItems,
         function() return ns.MinimapButton and ns.MinimapButton.GetIcon() end,
         function(id) if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end end)
 
@@ -276,7 +297,7 @@ local function Build()
         id = px, name = string.format(L["OPT_MINIMAP_SIZE_STEP"], px),
       }
     end
-    y = AddDropdown(frame, y, L["OPT_MINIMAP_SIZE_TITLE"], mmSizeItems,
+    cy = AddDropdown(card, cy, L["OPT_MINIMAP_SIZE_TITLE"], mmSizeItems,
           function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
           function(id) if ns.MinimapButton then ns.MinimapButton.SetIconSize(id) end end)
 
@@ -287,41 +308,43 @@ local function Build()
       { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
       { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
     }
-    y = AddDropdown(frame, y, L["OPT_MINIMAP_POS_TITLE"], mmPositionItems,
+    cy = AddDropdown(card, cy, L["OPT_MINIMAP_POS_TITLE"], mmPositionItems,
           function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
           function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end)
   end
 
-  y = AddCheckbox(frame, y, L["OPT_MINIMAP_ACCENT_TITLE"], L["OPT_MINIMAP_ACCENT_DESC"],
+  cy = AddCheckbox(card, cy, L["OPT_MINIMAP_ACCENT_TITLE"], L["OPT_MINIMAP_ACCENT_DESC"],
         function() return ns.MinimapButton and ns.MinimapButton.GetAccentTint() end,
         function(on) if ns.MinimapButton then ns.MinimapButton.SetAccentTint(on) end end)
 
-  y = AddCheckbox(frame, y, L["OPT_MINIMAP_GLOW_TITLE"], L["OPT_MINIMAP_GLOW_DESC"],
+  cy = AddCheckbox(card, cy, L["OPT_MINIMAP_GLOW_TITLE"], L["OPT_MINIMAP_GLOW_DESC"],
         function() return ns.MinimapButton and ns.MinimapButton.GetGlow() end,
         function(on) if ns.MinimapButton then ns.MinimapButton.SetGlow(on) end end)
 
   if not mmHostStyled then
-    y = y - 4
-    y = AddButton(frame, y,
+    cy = cy - 4
+    cy = AddButton(card, cy,
           function() return L["OPT_MINIMAP_RESET_POS"] end,
           L["OPT_MINIMAP_RESET_POS_DESC"],
           function() if ns.MinimapButton then ns.MinimapButton.ResetPosition() end end)
   else
-    local note = ns.Theme.CreateText(frame, "bodySmall")
-    note:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
-    note:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
+    local note = ns.Theme.CreateText(card, "bodySmall")
+    note:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
+    note:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
     note:SetJustifyH("LEFT")
     note:SetWordWrap(true)
     note:SetText(L["OPT_MINIMAP_EUI_STYLED"])
-    MarkBottom(frame, y, 30)
-    y = y - 36
+    MarkBottom(card, cy, 30)
+    cy = cy - 36
   end
+
+  y = EndSection(frame, card, y)
 
   -- Host-UI appearance section (only when a skin exposes these controls).
   local Skin = GetSkin()
   if Skin then
-    y = y - 6
-    y = AddHeading(frame, y, L["OPT_APPEARANCE_HEADING"])
+    card, y = BeginSection(frame, y, L["OPT_APPEARANCE_HEADING"])
+    cy = -12
 
     -- Border style and size both default to whatever EllesmereUI itself is
     -- configured for, so a shadow (or none) on the rest of the UI carries here.
@@ -329,7 +352,7 @@ local function Build()
     for _, choice in ipairs(Skin.GetBorderChoices()) do
       borderItems[#borderItems + 1] = { id = choice.key, name = choice.name }
     end
-    y = AddDropdown(frame, y, L["OPT_BORDER_TITLE"], borderItems,
+    cy = AddDropdown(card, cy, L["OPT_BORDER_TITLE"], borderItems,
           function()
             if Skin.IsBorderDefault and Skin.IsBorderDefault() then return "auto" end
             return Skin.GetBorderStyle()
@@ -342,7 +365,7 @@ local function Build()
     for step = 1, 4 do
       sizeItems[#sizeItems + 1] = { id = step, name = string.format(L["OPT_BORDER_SIZE_STEP"], step) }
     end
-    y = AddDropdown(frame, y, L["OPT_BORDER_SIZE_TITLE"], sizeItems,
+    cy = AddDropdown(card, cy, L["OPT_BORDER_SIZE_TITLE"], sizeItems,
           function()
             if Skin.IsBorderSizeDefault and Skin.IsBorderSizeDefault() then return "auto" end
             return Skin.GetBorderSize()
@@ -357,7 +380,7 @@ local function Build()
         id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct),
       }
     end
-    y = AddDropdown(frame, y, L["OPT_BG_OPACITY_TITLE"], opacityItems,
+    cy = AddDropdown(card, cy, L["OPT_BG_OPACITY_TITLE"], opacityItems,
           function()
             if Skin.IsBgOpacityDefault and Skin.IsBgOpacityDefault() then return "auto" end
             return math.floor(Skin.GetBgOpacity() * 100 + 0.5)
@@ -366,6 +389,8 @@ local function Build()
             if id == "auto" then Skin.ResetBgOpacity()
             else Skin.SetBgOpacity((tonumber(id) or 100) / 100) end
           end)
+
+    y = EndSection(frame, card, y)
   end
 
   -- Which look is painting the addon right now: the host-UI skin's name, or
