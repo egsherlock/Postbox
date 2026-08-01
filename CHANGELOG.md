@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.14.2
+
+- **Fixed: no mail icon for mail that arrived after a fresh login** (with
+  the minimap icon on under EllesmereUI). Their mail button is built with
+  no anchor points and only gets them from a layout pass that skips hidden
+  buttons - so after logging in with no unread mail, the button Postbox
+  showed had nowhere to render until the next reload happened to anchor it.
+  Postbox now fires their layout once, invisibly, the first time it shows
+  an unanchored button. Cost: one layout poke per session, versus the
+  per-mail-event relayouts the flicker fix removed.
+
 ## 1.14.1
 
 - **The run outcome reports the whole run now.** Every finish leads with

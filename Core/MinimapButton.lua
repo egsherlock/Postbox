@@ -406,7 +406,26 @@ end
 -- makes. Their periodic layout passes read HasNewMail() directly and agree.
 local function SyncEuiButtonShown()
   local btn = euiSkin.button
-  if btn and euiSkin.applied then btn:SetShown(MailWaiting()) end
+  if not (btn and euiSkin.applied) then return end
+
+  local waiting = MailWaiting()
+  btn:SetShown(waiting)
+
+  -- EllesmereUI anchors this button only inside its own layout pass, and
+  -- only while the button is SHOWN -- their builder gives it no points at
+  -- all. So after a login with no unread mail (their sync hid it before
+  -- any layout ran) the button has no rect, and showing it here renders it
+  -- nowhere. Their layout runs from their hooks on the Blizzard frame: one
+  -- Show()/Hide() poke fires it -- sync, then anchor -- and their module
+  -- alpha-zeroes that frame, so nothing is seen. Gated on the missing
+  -- points, this fires at most once per session; anchors persist once set.
+  if waiting and btn:GetNumPoints() == 0 then
+    local mail = DefaultIndicator()
+    if mail then
+      pcall(mail.Show, mail)
+      pcall(mail.Hide, mail)
+    end
+  end
 end
 
 -- The options panel asks this to decide which controls make sense: in skin
