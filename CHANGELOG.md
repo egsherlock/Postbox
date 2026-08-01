@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.2
+
+- The pillar postbox is now the addon-list icon; flip the TOC's IconTexture
+  back to Media\icon.png to restore the mailbox.
+
 ## 1.6.1
 
 - The nine icon styles from the third sheet re-cut from a cleaner source
