@@ -1086,6 +1086,12 @@ function Skin.ApplyWindow(frame)
 end
 
 function Skin.RefreshAccents()
+  -- The minimap mail icon lives outside every window, so it re-tints here
+  -- regardless of whether the mailbox has ever been opened.
+  if ns.MinimapButton and type(ns.MinimapButton.RefreshLook) == "function" then
+    pcall(ns.MinimapButton.RefreshLook)
+  end
+
   local frame = ns.MailboxUI and ns.MailboxUI._frame
   if not frame then return end
   local r, g, b = Skin.GetAccent()

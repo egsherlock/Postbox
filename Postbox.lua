@@ -77,6 +77,8 @@ local PROFILE = "profile"
 local SCHEMA = {
   PROFILE,                    -- account-wide settings; boolean values only
   PROFILE .. ".recipientHistory",
+  PROFILE .. ".minimap",      -- minimap mail icon; a table, so its module owns
+                              -- it directly (see the note above on booleans)
   "alts",                     -- realm -> array of character names
   "altClasses",               -- realm -> name -> class token
   "recipients",               -- recipient key -> curation state
@@ -260,7 +262,15 @@ end
 
 local function ReportHelp()
   ns.Print("Commands:  /postbox skin  — report skin status")
+  ns.Print("           /postbox minimap  — toggle the minimap mail icon")
   ns.Print(ns.L["RM_SLASH_HELP"])
+end
+
+local function ToggleMinimapIcon()
+  local Icon = ns.MinimapButton
+  if Icon and type(Icon.Toggle) == "function" then
+    Icon.Toggle()
+  end
 end
 
 local function OpenRecipientManager()
@@ -281,6 +291,7 @@ local COMMANDS = {
   skin        = ReportSkin,
   recipients  = OpenRecipientManager,
   rm          = OpenRecipientManager,
+  minimap     = ToggleMinimapIcon,
 }
 
 SLASH_POSTBOX1 = "/postbox"
@@ -312,6 +323,11 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   local UI = ns.MailboxUI
   if UI and type(UI.Initialize) == "function" then
     UI.Initialize()
+  end
+
+  local MinimapIcon = ns.MinimapButton
+  if MinimapIcon and type(MinimapIcon.Initialize) == "function" then
+    MinimapIcon.Initialize()
   end
 end)
 

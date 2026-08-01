@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Minimap mail icon** (off by default; options panel or `/postbox minimap`) —
+  replaces the default new-mail indicator with Postbox's own icon on the minimap
+  edge. Four icon styles, four sizes, optional accent-colour tint (follows your
+  EllesmereUI accent when that skin is active) and an optional soft glow with a
+  slow pulse while mail waits. Shift-drag the icon anywhere on the rim — round
+  and square minimaps both handled. Plays fair with the host UI: the default
+  indicator is suppressed cleanly and restored intact on disable, the crafting
+  order indicator is untouched, and the button is invisible to EllesmereUI's and
+  ElvUI's minimap button collectors.
+
 ## 1.0.0
 
 Initial public release.

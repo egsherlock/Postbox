@@ -224,6 +224,70 @@ local function Build()
           end
         end)
 
+  -- Minimap mail icon (Core/MinimapButton.lua). Resolved at click time like
+  -- every other binding, so the section stays honest if the module is absent.
+  y = y - 6
+  local mmHeading = ns.Theme.CreateText(frame, "heading")
+  mmHeading:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
+  mmHeading:SetWordWrap(false)
+  mmHeading:SetText(L["OPT_MINIMAP_HEADING"])
+  y = y - 22
+
+  y = AddCheckbox(frame, y, L["OPT_MINIMAP_TITLE"], L["OPT_MINIMAP_DESC"],
+        function() return ns.MinimapButton and ns.MinimapButton.GetEnabled() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetEnabled(on) end end)
+
+  local iconItems = {
+    { id = "postbox",  name = L["OPT_MINIMAP_ICON_POSTBOX"] },
+    { id = "blizzard", name = L["OPT_MINIMAP_ICON_BLIZZARD"] },
+    { id = "clean",    name = L["OPT_MINIMAP_ICON_CLEAN"] },
+    { id = "mailbox",  name = L["OPT_MINIMAP_ICON_MAILBOX"] },
+  }
+  y = AddDropdown(frame, y, L["OPT_MINIMAP_ICON_TITLE"], iconItems,
+        function() return ns.MinimapButton and ns.MinimapButton.GetIcon() end,
+        function(id) if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end end)
+
+  local mmSizeItems = {}
+  for _, px in ipairs({ 16, 20, 24, 28 }) do
+    mmSizeItems[#mmSizeItems + 1] = {
+      id = px, name = string.format(L["OPT_MINIMAP_SIZE_STEP"], px),
+    }
+  end
+  y = AddDropdown(frame, y, L["OPT_MINIMAP_SIZE_TITLE"], mmSizeItems,
+        function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
+        function(id) if ns.MinimapButton then ns.MinimapButton.SetIconSize(id) end end)
+
+  y = AddCheckbox(frame, y, L["OPT_MINIMAP_ACCENT_TITLE"], L["OPT_MINIMAP_ACCENT_DESC"],
+        function() return ns.MinimapButton and ns.MinimapButton.GetAccentTint() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetAccentTint(on) end end)
+
+  y = AddCheckbox(frame, y, L["OPT_MINIMAP_GLOW_TITLE"], L["OPT_MINIMAP_GLOW_DESC"],
+        function() return ns.MinimapButton and ns.MinimapButton.GetGlow() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetGlow(on) end end)
+
+  y = y - 4
+  y = AddButton(frame, y,
+        function() return L["OPT_MINIMAP_RESET_POS"] end,
+        L["OPT_MINIMAP_RESET_POS_DESC"],
+        function() if ns.MinimapButton then ns.MinimapButton.ResetPosition() end end)
+
+  -- EllesmereUI's own minimap draws a mail icon of its own that no supported
+  -- setting hides (verified against its source; its hideMail key is dead
+  -- code). Postbox will not reach into another addon's internals to remove
+  -- it, so when that module is loaded the honest thing is to say both may be
+  -- visible and let the user decide.
+  if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function"
+     and C_AddOns.IsAddOnLoaded("EllesmereUIMinimap") then
+    local note = ns.Theme.CreateText(frame, "bodySmall")
+    note:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
+    note:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
+    note:SetJustifyH("LEFT")
+    note:SetWordWrap(true)
+    note:SetText(L["OPT_MINIMAP_EUI_NOTE"])
+    MarkBottom(frame, y, 30)
+    y = y - 36
+  end
+
   -- Host-UI appearance section (only when a skin exposes these controls).
   local Skin = GetSkin()
   if Skin then
