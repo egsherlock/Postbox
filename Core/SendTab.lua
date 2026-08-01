@@ -3524,6 +3524,34 @@ end
 local function BuildRecipientField(panel)
   local label = CreateFieldLabel(panel, panel, "TOPLEFT", M.inset, -M.inset, L["LABEL_RECIPIENT"])
   panel.ToWrap, panel.ToBox = CreateFieldRow(panel, label, false)
+
+  -- A doorway to the recipient manager at the field's right edge: the window
+  -- where this field's suggestions are curated, one click from where
+  -- recipients are typed instead of a trip through the options panel.
+  local manage = CreateFrame("Button", nil, panel.ToWrap)
+  manage:SetSize(18, 18)
+  manage:SetPoint("RIGHT", panel.ToWrap, "RIGHT", -4, 0)
+  manage:SetFrameLevel(panel.ToWrap:GetFrameLevel() + 5)
+  local art = manage:CreateTexture(nil, "ARTWORK")
+  art:SetAllPoints(manage)
+  art:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
+  art:SetAlpha(0.8)
+  manage:SetScript("OnEnter", function(self)
+    art:SetAlpha(1)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L["RM_OPT_BUTTON"])
+    GameTooltip:AddLine(L["RM_OPT_BUTTON_DESC"], 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  manage:SetScript("OnLeave", function()
+    art:SetAlpha(0.8)
+    GameTooltip:Hide()
+  end)
+  manage:SetScript("OnClick", function()
+    local RM = ns.RecipientManager
+    if RM and type(RM.Toggle) == "function" then RM.Toggle() end
+  end)
+  panel.ManageRecipients = manage
 end
 
 local function BuildContactBar(panel)

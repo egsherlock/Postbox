@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.11.1
+
+- Manage Recipients is a composed portrait button now: title, a ghosted
+  letter-bundle watermark, and the live count beneath - and the same
+  doorway sits at the right edge of the Send tab's recipient field, so the
+  manager is one click from where recipients are typed.
+- The preview stage matches the toggle-and-switcher column's full height,
+  and the EllesmereUI paragraph shrinks to one quiet line with the full
+  explanation in its tooltip.
+
 ## 1.11.0
 
 - The minimap block is a 2x2 toggle grid now - Glow and Shadow on top,

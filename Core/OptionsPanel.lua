@@ -264,17 +264,33 @@ local function Build()
   local rmButton = ns.Theme.CreateButton(nil, card)
   rmButton:SetSize(108, (ROW_H * 4) - 8)
   rmButton:SetPoint("TOPRIGHT", card, "TOPRIGHT", -PAD, -12)
-  local function RmButtonText()
-    local RM = ns.RecipientManager
-    local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
-    return string.format(L["RM_OPT_BUTTON"], count)
-  end
+
+  -- Portrait composition: title up top, a ghosted letter-bundle watermark in
+  -- the middle carrying the "this is the address book" idea, the live count
+  -- underneath. The watermark sits in the button's own ARTWORK layer, above
+  -- the plate fill and below the OVERLAY captions.
   local rmLabel = rmButton:GetFontString()
   if rmLabel then
     rmLabel:SetWordWrap(true)
     rmLabel:SetWidth(92)
+    rmLabel:ClearAllPoints()
+    rmLabel:SetPoint("TOP", rmButton, "TOP", 0, -12)
   end
-  rmButton:SetText(RmButtonText())
+  rmButton:SetText(L["RM_OPT_BUTTON"])
+  local rmMark = rmButton:CreateTexture(nil, "ARTWORK")
+  rmMark:SetSize(42, 42)
+  rmMark:SetPoint("CENTER", rmButton, "CENTER", 0, -6)
+  rmMark:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
+  rmMark:SetAlpha(0.30)
+  local rmCount = ns.Theme.CreateText(rmButton, "bodySmall")
+  rmCount:SetPoint("BOTTOM", rmButton, "BOTTOM", 0, 9)
+  rmCount:SetAlpha(0.8)
+  local function RefreshRmCount()
+    local RM = ns.RecipientManager
+    local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
+    rmCount:SetText(string.format("(%d)", count))
+  end
+  RefreshRmCount()
   rmButton:SetScript("OnClick", function()
     local RM = ns.RecipientManager
     if RM and type(RM.Toggle) == "function" then
@@ -285,14 +301,12 @@ local function Build()
   end)
   rmButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(RmButtonText())
+    GameTooltip:SetText(L["RM_OPT_BUTTON"])
     GameTooltip:AddLine(L["RM_OPT_BUTTON_DESC"], 1, 1, 1, true)
     GameTooltip:Show()
   end)
   rmButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  frame.__refreshers[#frame.__refreshers + 1] = function()
-    rmButton:SetText(RmButtonText())
-  end
+  frame.__refreshers[#frame.__refreshers + 1] = RefreshRmCount
 
   y = EndSection(frame, card, y)
 
@@ -394,10 +408,12 @@ local function Build()
   -- (with its pulse) and shadow render here exactly as they will on the
   -- minimap, so the card previews the feature instead of naming it.
   local GLOW_TGA = "Interface\\AddOns\\Postbox\\Media\\minimap-glow.tga"
-  local PREVIEW_ICON_SIZE = 34
+  local PREVIEW_ICON_SIZE = 38
+  -- Sized and placed so its top edge lines up with the toggle grid's top and
+  -- its bottom with the icon switcher's bottom: one rectangle, two columns.
   local stage = CreateFrame("Frame", nil, card)
-  stage:SetSize(64, 64)
-  stage:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy - 6)
+  stage:SetSize(72, 72)
+  stage:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy - 4)
   stage:SetClipsChildren(true)
   local stageArt = ArtHolder(stage)
   -- A neutral mid-tone ground, not black: the shadow option is jet black
@@ -475,7 +491,7 @@ local function Build()
   local function MiniCheck(gridX, gridY, labelKey, descKey, get, set)
     local cb = CreateFrame("CheckButton", nil, card, "UICheckButtonTemplate")
     cb:SetSize(20, 20)
-    cb:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 72 + gridX * 104, cy - 4 - gridY * 24)
+    cb:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 80 + gridX * 106, cy - 4 - gridY * 24)
     cb.__postboxCheck = true
     local label = ns.Theme.CreateText(card, "label")
     label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
@@ -517,13 +533,13 @@ local function Build()
 
   local iconDD = ns.Core.UI.Dropdown.Create(card, {
     items        = iconItems,
-    toggleWidth  = 220,
+    toggleWidth  = 212,
     toggleHeight = 22,
     alignRight   = true,
     height       = DROPDOWN_H,
     defaultId    = ns.MinimapButton and ns.MinimapButton.GetIcon(),
   })
-  iconDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 72, cy - 54)
+  iconDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 80, cy - 54)
   iconDD:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
   iconDD:SetChangeCallback(function(id)
     if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end
@@ -541,8 +557,8 @@ local function Build()
     PaintIconPreview()
   end
   PaintIconPreview()
-  MarkBottom(card, cy, 78)
-  cy = cy - 86
+  MarkBottom(card, cy, 80)
+  cy = cy - 88
 
   -- With EllesmereUI's minimap module running, Postbox restyles EllesmereUI's
   -- own mail icon in place rather than drawing a second one; position and
@@ -578,14 +594,27 @@ local function Build()
           L["OPT_MINIMAP_RESET_POS_DESC"],
           function() if ns.MinimapButton then ns.MinimapButton.ResetPosition() end end)
   else
-    local note = ns.Theme.CreateText(card, "bodySmall")
-    note:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
-    note:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
-    note:SetJustifyH("LEFT")
-    note:SetWordWrap(true)
-    note:SetText(L["OPT_MINIMAP_EUI_STYLED"])
-    MarkBottom(card, cy, 30)
-    cy = cy - 36
+    -- One quiet line, not a paragraph: the full explanation lives in its
+    -- hover tooltip.
+    local hint = CreateFrame("Frame", nil, card)
+    hint:SetHeight(14)
+    hint:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
+    hint:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
+    hint:EnableMouse(true)
+    local hintText = ns.Theme.CreateText(hint, "bodySmall")
+    hintText:SetPoint("LEFT", hint, "LEFT", 1, 0)
+    hintText:SetWordWrap(false)
+    hintText:SetText(L["OPT_MINIMAP_EUI_SHORT"])
+    hintText:SetAlpha(0.7)
+    hint:SetScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(L["OPT_MINIMAP_EUI_SHORT"])
+      GameTooltip:AddLine(L["OPT_MINIMAP_EUI_STYLED"], 1, 1, 1, true)
+      GameTooltip:Show()
+    end)
+    hint:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    MarkBottom(card, cy, 14)
+    cy = cy - 20
   end
 
   y = EndSection(frame, card, y)
