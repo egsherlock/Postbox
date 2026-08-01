@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.0
+
+- The minimap mail icon now sits **inside** the map edge with a position
+  dropdown — top right by default, any corner, or Custom via shift-drag.
+- Suppressing the default indicator no longer generates Show/Hide traffic,
+  which was making EllesmereUI relayout its minimap elements twice per mail
+  event (the mouseover-hidden button bar flicker). Side benefit: EllesmereUI's
+  own mail icon — which its settings cannot turn off and which mirrors those
+  same events — no longer pops up alongside Postbox's for mail arriving
+  mid-session. Mail already waiting when EllesmereUI runs a layout pass (at
+  login or on its settings changes) can still surface its icon until
+  collected; that one is only fixable in EllesmereUI itself.
+
 ## 1.1.0
 
 - **Minimap mail icon** (off by default; options panel or `/postbox minimap`) —

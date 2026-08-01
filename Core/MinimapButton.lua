@@ -8,11 +8,12 @@ local _, ns = ...
 --
 --   * Shows while HasNewMail() is true, hides when it is not -- the same
 --     contract as MinimapCluster.IndicatorFrame.MailFrame, which this
---     suppresses (Hide + a Show hook) while the feature is on. Suppression
---     never reparents and never unregisters Blizzard's events: ElvUI
---     snapshots the frame's parent once and restores it forever after, and
---     keeping Blizzard's state machine intact is what makes live disable a
---     one-call restore.
+--     suppresses while the feature is on by unregistering that frame's one
+--     event (UPDATE_PENDING_MAIL), so it never Shows and nothing that hooks
+--     its Show/Hide -- EllesmereUI relayouts on both -- is ever poked.
+--     Suppression never reparents: ElvUI snapshots the frame's parent once
+--     and restores it forever after. Disable re-registers the event and runs
+--     Blizzard's own handler, restoring the default indicator intact.
 --
 --   * The button is UNNAMED on purpose. EllesmereUI's minimap module sweeps
 --     named Buttons (and LibDBIcon10_* frames) parented to the Minimap into
@@ -32,13 +33,23 @@ local MB = ns.MinimapButton
 local L = ns.L
 
 local DEFAULTS = {
-  enabled = false,   -- turning it on changes visible UI; that is the user's call
-  icon    = "postbox",
-  size    = 20,
-  angle   = 212,     -- degrees, 0 = east, CCW; lower-left is the least
-                     -- contested spot on all three host UIs
-  accent  = true,
-  glow    = false,
+  enabled  = false,  -- turning it on changes visible UI; that is the user's call
+  icon     = "postbox",
+  size     = 20,
+  position = "TOPRIGHT",
+  angle    = 45,     -- degrees, 0 = east, CCW; used when position is CUSTOM,
+                     -- and kept in step with the preset otherwise
+  accent   = true,
+  glow     = false,
+}
+
+-- The four corner presets, as rim angles. CUSTOM means "wherever the user
+-- shift-dragged it", carried by `angle` alone.
+local POSITION_ANGLES = {
+  TOPRIGHT    = 45,
+  TOPLEFT     = 135,
+  BOTTOMLEFT  = 225,
+  BOTTOMRIGHT = 315,
 }
 
 local MEDIA = "Interface\\AddOns\\Postbox\\Media\\"
@@ -115,10 +126,17 @@ local function DefaultIndicator()
 end
 
 -- A plain Hide() does not stick: UPDATE_PENDING_MAIL re-Shows the frame on
--- login, on new mail, and on every pending-mail re-sync. The hook is
--- installed once and consults the live setting, so it goes dormant -- not
--- removed, hooks cannot be -- when the feature is off.
-local suppressHookInstalled = false
+-- login, on new mail, and on every pending-mail re-sync. So suppression
+-- takes the event away from the frame instead, which stops it EVER Showing.
+--
+-- Why not a Show hook that re-hides? That was the first implementation, and
+-- it flickered EllesmereUI: EUI hooks both Show and Hide on this frame and
+-- answers each with a full relayout of every minimap indicator and button
+-- row, so hide-after-show cost two relayouts per mail event and visibly
+-- blinked its mouseover-hidden elements. With the event unregistered the
+-- frame stays silent and EUI is never poked at all -- which also keeps EUI's
+-- own mail icon (driven by those same hooks) from popping up alongside ours
+-- mid-session.
 local suppressing = false
 
 local function SetDefaultSuppressed(on)
@@ -129,20 +147,18 @@ local function SetDefaultSuppressed(on)
   suppressing = on
 
   if on then
-    if not suppressHookInstalled then
-      suppressHookInstalled = true
-      hooksecurefunc(mail, "Show", function(frame)
-        if suppressing then frame:Hide() end
-      end)
-    end
+    mail:UnregisterEvent("UPDATE_PENDING_MAIL")
+    -- Hide() on an already-hidden frame fires nothing, so this pokes EUI's
+    -- relayout hook at most once, at the moment the user flips the option.
     mail:Hide()
     return
   end
 
-  -- Restore by running Blizzard's own handler once, not by calling Show():
-  -- the envelope texture inside the frame is only made visible after a
-  -- notification flipbook completes, so a bare Show() would restore an
-  -- empty frame. The handler re-derives everything from HasNewMail().
+  -- Hand the event back, then run Blizzard's own handler once to resync --
+  -- not Show(): the envelope texture inside the frame is only made visible
+  -- after a notification flipbook completes, so a bare Show() would restore
+  -- an empty frame. The handler re-derives everything from HasNewMail().
+  mail:RegisterEvent("UPDATE_PENDING_MAIL")
   local handler = mail:GetScript("OnEvent")
   if handler then pcall(handler, mail, "UPDATE_PENDING_MAIL") end
 end
@@ -177,21 +193,35 @@ local function MinimapIsRound()
   return true
 end
 
--- The button centre is the stored angle's ray from the minimap centre,
--- clipped to the rim: the circle's radius, or for a square minimap the ray's
--- exit through the square (radius / the larger direction component).
+-- The angle the button actually sits at: the corner preset's, or the
+-- shift-dragged one when the position is CUSTOM.
+local function CurrentAngle()
+  local prefs = Settings()
+  local preset = POSITION_ANGLES[prefs.position]
+  if preset then return preset end
+  return tonumber(prefs.angle) or DEFAULTS.angle
+end
+
+-- The button centre is the angle's ray from the minimap centre out to the
+-- rim -- the circle's radius, or for a square minimap the ray's exit through
+-- the square (radius / the larger direction component) -- then pulled back
+-- inside by half the button plus a hair. This is an INDICATOR that lives
+-- inside the map, not an addon launcher riding the edge.
 local function Reposition(button)
   local minimap = _G.Minimap
   if not (button and minimap) then return end
 
   local radius = (minimap:GetWidth() or 140) / 2
-  local radians = math.rad(tonumber(Settings().angle) or DEFAULTS.angle)
+  local radians = math.rad(CurrentAngle())
   local cos, sin = math.cos(radians), math.sin(radians)
 
   local reach = radius
   if not MinimapIsRound() then
     reach = radius / math.max(math.abs(cos), math.abs(sin))
   end
+
+  local size = tonumber(Settings().size) or DEFAULTS.size
+  reach = math.max(0, reach - (size / 2 + 2))
 
   button:ClearAllPoints()
   button:SetPoint("CENTER", minimap, "CENTER", cos * reach, sin * reach)
@@ -284,7 +314,9 @@ end
 local function OnDragUpdate(button)
   local angle = AngleFromCursor()
   if angle then
-    Settings().angle = angle
+    local prefs = Settings()
+    prefs.position = "CUSTOM"
+    prefs.angle = angle
     Reposition(button)
   end
 end
@@ -491,8 +523,26 @@ function MB.SetGlow(on)
   Refresh()
 end
 
+function MB.GetPosition()
+  local position = Settings().position
+  if POSITION_ANGLES[position] or position == "CUSTOM" then return position end
+  return DEFAULTS.position
+end
+
+function MB.SetPosition(position)
+  if not (POSITION_ANGLES[position] or position == "CUSTOM") then return end
+  local prefs = Settings()
+  prefs.position = position
+  -- Keep the angle in step so a later switch to CUSTOM starts from where the
+  -- icon already is instead of teleporting it.
+  if POSITION_ANGLES[position] then prefs.angle = POSITION_ANGLES[position] end
+  Refresh()
+end
+
 function MB.ResetPosition()
-  Settings().angle = DEFAULTS.angle
+  local prefs = Settings()
+  prefs.position = DEFAULTS.position
+  prefs.angle = DEFAULTS.angle
   Refresh()
 end
 

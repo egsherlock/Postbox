@@ -257,6 +257,17 @@ local function Build()
         function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
         function(id) if ns.MinimapButton then ns.MinimapButton.SetIconSize(id) end end)
 
+  local mmPositionItems = {
+    { id = "TOPRIGHT",    name = L["OPT_MINIMAP_POS_TR"] },
+    { id = "TOPLEFT",     name = L["OPT_MINIMAP_POS_TL"] },
+    { id = "BOTTOMRIGHT", name = L["OPT_MINIMAP_POS_BR"] },
+    { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
+    { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
+  }
+  y = AddDropdown(frame, y, L["OPT_MINIMAP_POS_TITLE"], mmPositionItems,
+        function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
+        function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end)
+
   y = AddCheckbox(frame, y, L["OPT_MINIMAP_ACCENT_TITLE"], L["OPT_MINIMAP_ACCENT_DESC"],
         function() return ns.MinimapButton and ns.MinimapButton.GetAccentTint() end,
         function(on) if ns.MinimapButton then ns.MinimapButton.SetAccentTint(on) end end)
