@@ -34,7 +34,7 @@ local L = ns.L
 
 local DEFAULTS = {
   enabled  = false,  -- turning it on changes visible UI; that is the user's call
-  icon     = "postbox",
+  icon     = "letter",
   size     = 20,
   position = "TOPRIGHT",
   angle    = 45,     -- degrees, 0 = east, CCW; used when position is CUSTOM,
@@ -62,17 +62,16 @@ local MEDIA = "Interface\\AddOns\\Postbox\\Media\\"
 -- to the envelope wherever ICONS is read.
 local ICONS = {
   postbox  = { texture = MEDIA .. "minimap-envelope.tga", tintable = true },
-  plate    = { texture = MEDIA .. "minimap-plate.tga", tintable = true },
   badge    = { texture = MEDIA .. "minimap-badge.tga", tintable = true },
   blizzard = { atlas = "ui-hud-minimap-mail-up", aspect = 15 / 19.5 },
   -- The painted set, sliced from Elliott's sheet by
   -- .dev/tools/slice-minimap-icons.js. Full-colour art: the accent option
-  -- leaves these alone and tints only the glow.
+  -- leaves these alone and tints only the glow. Retired ids (plate, stack,
+  -- clean, mailbox) fall back to the default wherever ICONS is read.
   letter   = { texture = MEDIA .. "minimap-letter.tga" },
   sealed   = { texture = MEDIA .. "minimap-sealed.tga" },
   parcel   = { texture = MEDIA .. "minimap-parcel.tga" },
   seal     = { texture = MEDIA .. "minimap-seal.tga" },
-  stack    = { texture = MEDIA .. "minimap-stack.tga" },
 }
 
 local GLOW_SCALE = 2.2

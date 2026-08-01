@@ -45,14 +45,17 @@ end
 -- rows sit inside -- the same surface the main window's panels use, so both
 -- host-UI skins already know how to paint it. Rows are laid into the card
 -- with their own inner cursor; EndSection sizes the card to its content and
--- returns the panel cursor moved past it.
-local function BeginSection(frame, y, title)
+-- returns the panel cursor moved past it. The two halves are separate
+-- because the minimap section puts its master checkbox BETWEEN them.
+local function AddSectionHeading(frame, y, title)
   local heading = ns.Theme.CreateText(frame, "heading")
   heading:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
   heading:SetWordWrap(false)
   heading:SetText(title)
-  y = y - 20
+  return y - 20
+end
 
+local function StartCard(frame, y)
   local card = CreateFrame("Frame", nil, frame)
   card:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, y)
   card:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
@@ -60,7 +63,12 @@ local function BeginSection(frame, y, title)
   -- Shared by reference: rows built into the card register their refreshers
   -- on the panel, which is what replays them on open.
   card.__refreshers = frame.__refreshers
-  return card, y
+  return card
+end
+
+local function BeginSection(frame, y, title)
+  y = AddSectionHeading(frame, y, title)
+  return StartCard(frame, y), y
 end
 
 local function EndSection(frame, card, y)
@@ -261,25 +269,34 @@ local function Build()
 
   -- Minimap mail icon (Core/MinimapButton.lua). Resolved at click time like
   -- every other binding, so the section stays honest if the module is absent.
-  card, y = BeginSection(frame, y, L["OPT_MINIMAP_HEADING"])
-  cy = -12
+  --
+  -- The master checkbox sits ABOVE the card, and the card carries the
+  -- feature's settings: unchecked, the card desaturates and stops taking
+  -- clicks, which is what tells the user those rows belong to the checkbox.
+  y = AddSectionHeading(frame, y, L["OPT_MINIMAP_HEADING"])
 
   local mmHostStyled = ns.MinimapButton and ns.MinimapButton.IsHostStyled
     and ns.MinimapButton.IsHostStyled()
-  cy = AddCheckbox(card, cy, L["OPT_MINIMAP_TITLE"],
+  local UpdateMinimapCardState -- defined once the card exists below
+
+  y = AddCheckbox(frame, y, L["OPT_MINIMAP_TITLE"],
         mmHostStyled and L["OPT_MINIMAP_DESC_EUI"] or L["OPT_MINIMAP_DESC"],
         function() return ns.MinimapButton and ns.MinimapButton.GetEnabled() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetEnabled(on) end end)
+        function(on)
+          if ns.MinimapButton then ns.MinimapButton.SetEnabled(on) end
+          if UpdateMinimapCardState then UpdateMinimapCardState() end
+        end)
+
+  card = StartCard(frame, y)
+  cy = -12
 
   local iconItems = {
     { id = "letter",   name = L["OPT_MINIMAP_ICON_LETTER"] },
     { id = "sealed",   name = L["OPT_MINIMAP_ICON_SEALED"] },
     { id = "parcel",   name = L["OPT_MINIMAP_ICON_PARCEL"] },
     { id = "seal",     name = L["OPT_MINIMAP_ICON_SEAL"] },
-    { id = "stack",    name = L["OPT_MINIMAP_ICON_STACK"] },
     { id = "blizzard", name = L["OPT_MINIMAP_ICON_BLIZZARD"] },
     { id = "postbox",  name = L["OPT_MINIMAP_ICON_POSTBOX"] },
-    { id = "plate",    name = L["OPT_MINIMAP_ICON_PLATE"] },
     { id = "badge",    name = L["OPT_MINIMAP_ICON_BADGE"] },
   }
   cy = AddDropdown(card, cy, L["OPT_MINIMAP_ICON_TITLE"], iconItems,
@@ -339,6 +356,26 @@ local function Build()
   end
 
   y = EndSection(frame, card, y)
+
+  -- The desaturate-and-lock for the card above. Alpha carries the look; the
+  -- overlay eats the mouse so nothing inside can be clicked or hovered while
+  -- the feature is off. Level +40 clears every row control in the card.
+  do
+    local mmCard = card
+    local blocker = CreateFrame("Frame", nil, mmCard)
+    blocker:SetAllPoints(mmCard)
+    blocker:SetFrameLevel(mmCard:GetFrameLevel() + 40)
+    blocker:EnableMouse(true)
+    blocker:Hide()
+    UpdateMinimapCardState = function()
+      local on = ns.MinimapButton and ns.MinimapButton.GetEnabled
+        and ns.MinimapButton.GetEnabled()
+      mmCard:SetAlpha(on and 1 or 0.4)
+      blocker:SetShown(not on)
+    end
+    UpdateMinimapCardState()
+    frame.__refreshers[#frame.__refreshers + 1] = UpdateMinimapCardState
+  end
 
   -- Host-UI appearance section (only when a skin exposes these controls).
   local Skin = GetSkin()
