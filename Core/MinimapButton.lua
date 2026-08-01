@@ -41,6 +41,7 @@ local DEFAULTS = {
                      -- and kept in step with the preset otherwise
   accent   = false,
   glow     = false,
+  shadow   = false,
 }
 
 -- The four corner presets, as rim angles. CUSTOM means "wherever the user
@@ -299,6 +300,22 @@ local function ApplyEuiSkin()
     end
   end
 
+  local shadow = btn.__pbMailShadow
+  if prefs.shadow == true then
+    if not shadow then
+      shadow = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
+      shadow:SetPoint("CENTER", icon, "CENTER", 0, -1)
+      shadow:SetTexture(MEDIA .. "minimap-glow.tga")
+      shadow:SetVertexColor(0, 0, 0)
+      shadow:SetAlpha(0.9)
+      btn.__pbMailShadow = shadow
+    end
+    shadow:SetSize(btn:GetWidth() * 1.3, btn:GetHeight() * 1.3)
+    shadow:Show()
+  elseif shadow then
+    shadow:Hide()
+  end
+
   local glow = btn.__pbMailGlow
   if prefs.glow == true then
     if not glow then
@@ -348,6 +365,7 @@ local function RestoreEuiSkin()
     btn.__pbMailPulse:Stop()
     btn.__pbMailGlow:Hide()
   end
+  if btn.__pbMailShadow then btn.__pbMailShadow:Hide() end
 end
 
 -- The options panel asks this to decide which controls make sense: in skin
@@ -477,6 +495,12 @@ local function ApplyLook(button)
     glow:Hide()
   end
 
+  -- The shadow is the glow art in black at normal blend, a touch smaller
+  -- and nudged down -- grounding rather than radiance. No pulse.
+  local shadow = button.shadow
+  shadow:SetSize(size * 1.8, size * 1.8)
+  shadow:SetShown(prefs.shadow == true)
+
   Reposition(button)
 end
 
@@ -525,7 +549,15 @@ local function Build()
   button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   button:RegisterForDrag("LeftButton")
 
-  local glow = button:CreateTexture(nil, "BACKGROUND")
+  local shadow = button:CreateTexture(nil, "BACKGROUND", nil, -1)
+  shadow:SetPoint("CENTER", button, "CENTER", 0, -1)
+  shadow:SetTexture(MEDIA .. "minimap-glow.tga")
+  shadow:SetVertexColor(0, 0, 0)
+  shadow:SetAlpha(0.9)
+  shadow:Hide()
+  button.shadow = shadow
+
+  local glow = button:CreateTexture(nil, "BACKGROUND", nil, 0)
   glow:SetPoint("CENTER")
   glow:SetTexture(MEDIA .. "minimap-glow.tga")
   glow:SetBlendMode("ADD")
@@ -752,6 +784,13 @@ function MB.GetGlow() return Settings().glow == true end
 
 function MB.SetGlow(on)
   Settings().glow = on == true
+  Refresh()
+end
+
+function MB.GetShadow() return Settings().shadow == true end
+
+function MB.SetShadow(on)
+  Settings().shadow = on == true
   Refresh()
 end
 

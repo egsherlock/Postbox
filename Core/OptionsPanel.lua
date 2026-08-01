@@ -37,6 +37,17 @@ local function GetSkin()
   return nil
 end
 
+-- A host skin's repaint of a tagged panel fades every texture region the
+-- panel itself owns (that is how it substitutes its own art). Any art of
+-- OURS that must survive on such a panel therefore lives on a small child
+-- frame, whose regions the sweep never touches.
+local function ArtHolder(parent)
+  local holder = CreateFrame("Frame", nil, parent)
+  holder:SetAllPoints(parent)
+  holder:SetFrameLevel(parent:GetFrameLevel() + 1)
+  return holder
+end
+
 -------------------------------------------------------------
 -- Row builders
 -------------------------------------------------------------
@@ -353,7 +364,14 @@ local function Build()
   -- This section exists to pick this icon, so the row IS the picker: a live
   -- swatch of the current choice beside a dropdown that fills the rest of
   -- the row -- not a small toggle stranded across the card from a label.
-  local iconPreview = card:CreateTexture(nil, "ARTWORK")
+  -- Every item also carries its art, so the open list shows the icons
+  -- themselves -- the only way to browse them without pending mail.
+  if ns.MinimapButton and ns.MinimapButton.GetIconSpec then
+    for _, item in ipairs(iconItems) do
+      item.icon = ns.MinimapButton.GetIconSpec(item.id)
+    end
+  end
+  local iconPreview = ArtHolder(card):CreateTexture(nil, "ARTWORK")
   iconPreview:SetSize(22, 22)
   iconPreview:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
   local function PaintIconPreview()
@@ -442,6 +460,10 @@ local function Build()
   cy = AddCheckbox(card, cy, L["OPT_MINIMAP_GLOW_TITLE"], L["OPT_MINIMAP_GLOW_DESC"],
         function() return ns.MinimapButton and ns.MinimapButton.GetGlow() end,
         function(on) if ns.MinimapButton then ns.MinimapButton.SetGlow(on) end end)
+
+  cy = AddCheckbox(card, cy, L["OPT_MINIMAP_SHADOW_TITLE"], L["OPT_MINIMAP_SHADOW_DESC"],
+        function() return ns.MinimapButton and ns.MinimapButton.GetShadow() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetShadow(on) end end)
 
   if not mmHostStyled then
     cy = cy - 4
@@ -550,7 +572,11 @@ local function Build()
   statusBand:SetHeight(24)
   ns.Theme.ApplyBand(statusBand)
 
-  local wash = statusBand:CreateTexture(nil, "ARTWORK")
+  -- Wash and dot live on an art holder: the band is a tagged panel, and a
+  -- host skin's repaint fades the band's own texture regions (which is why
+  -- both were invisible under EllesmereUI at first).
+  local bandArt = ArtHolder(statusBand)
+  local wash = bandArt:CreateTexture(nil, "ARTWORK")
   wash:SetPoint("TOPLEFT", statusBand, "TOPLEFT", 1, -1)
   wash:SetPoint("BOTTOMRIGHT", statusBand, "BOTTOMRIGHT", -1, 1)
   wash:SetColorTexture(GREEN[1], GREEN[2], GREEN[3], 0.07)
@@ -559,15 +585,17 @@ local function Build()
   statusText:SetPoint("CENTER", statusBand, "CENTER", 0, 0)
   statusText:SetJustifyH("CENTER")
   statusText:SetWordWrap(false)
-  local statusDot = statusBand:CreateTexture(nil, "OVERLAY")
+  local statusDot = bandArt:CreateTexture(nil, "OVERLAY")
   statusDot:SetSize(7, 7)
   statusDot:SetPoint("RIGHT", statusText, "LEFT", -7, 0)
   statusDot:SetColorTexture(GREEN[1], GREEN[2], GREEN[3], 1)
 
+  -- The packager stamps the release TAG into the TOC, which already carries
+  -- its own "v" -- do not add another.
   local versionText = ns.Theme.CreateText(statusBand, "bodySmall")
   versionText:SetPoint("RIGHT", statusBand, "RIGHT", -8, 0)
   versionText:SetJustifyH("RIGHT")
-  versionText:SetText("v" .. tostring(ns.VERSION or "?"))
+  versionText:SetText(tostring(ns.VERSION or ""))
   versionText:SetAlpha(0.55)
 
   local function StyleName()
@@ -593,7 +621,7 @@ local function Build()
     caption:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY)
     caption:SetText(L[labelKey])
     local box = CreateFrame("EditBox", nil, pop)
-    box:SetSize(280, 14)
+    box:SetSize(304, 14)
     box:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY - 14)
     box:SetAutoFocus(false)
     box:SetFontObject(ns.Theme.FontObject("bodySmall") or GameFontHighlightSmall)
@@ -613,16 +641,40 @@ local function Build()
   end
   local function ToggleBugReport()
     if not bugPopup then
-      bugPopup = CreateFrame("Frame", nil, statusBand)
-      bugPopup:SetSize(300, 84)
-      bugPopup:SetPoint("BOTTOM", statusBand, "TOP", 0, 6)
-      bugPopup:SetFrameStrata("FULLSCREEN_DIALOG")
+      -- Its own little window, not a child of the panel: parented into the
+      -- panel at the same strata it interleaved with the panel's controls
+      -- and could be neither raised nor moved. UIParent + TOOLTIP strata
+      -- puts it above everything, and the opaque flag keeps it readable at
+      -- any host opacity.
+      bugPopup = CreateFrame("Frame", nil, UIParent)
+      bugPopup:SetSize(324, 108)
+      bugPopup:SetFrameStrata("TOOLTIP")
       bugPopup:SetToplevel(true)
+      bugPopup:SetClampedToScreen(true)
       bugPopup:EnableMouse(true)
+      bugPopup:SetMovable(true)
+      bugPopup:RegisterForDrag("LeftButton")
+      bugPopup:SetScript("OnDragStart", bugPopup.StartMoving)
+      bugPopup:SetScript("OnDragStop", bugPopup.StopMovingOrSizing)
+      bugPopup.__pbEuiAlwaysOpaque = true
       ns.Theme.ApplyCard(bugPopup)
-      bugPopup._url = AddCopyRow(bugPopup, -8, "OPT_BUG_URL_LABEL")
-      bugPopup._diag = AddCopyRow(bugPopup, -44, "OPT_BUG_DIAG_LABEL")
+
+      local title = ns.Theme.CreateText(bugPopup, "heading")
+      title:SetPoint("TOPLEFT", bugPopup, "TOPLEFT", 10, -8)
+      title:SetText(L["OPT_BUG_TIP_TITLE"])
+
+      bugPopup._url = AddCopyRow(bugPopup, -24, "OPT_BUG_URL_LABEL")
+      bugPopup._diag = AddCopyRow(bugPopup, -60, "OPT_BUG_DIAG_LABEL")
+
+      local hint = ns.Theme.CreateText(bugPopup, "bodySmall")
+      hint:SetPoint("BOTTOMLEFT", bugPopup, "BOTTOMLEFT", 10, 7)
+      hint:SetText(L["OPT_BUG_HINT"])
+      hint:SetAlpha(0.6)
+
       ns.Core.UI.Helpers.RegisterEscClose(bugPopup)
+      -- Not a child of the panel any more, so closing the panel must take
+      -- the popup with it explicitly.
+      frame:HookScript("OnHide", function() bugPopup:Hide() end)
       bugPopup:Hide()
       if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, bugPopup) end
     end
@@ -635,7 +687,12 @@ local function Build()
     bugPopup._diag:SetValue(string.format("Postbox %s | %s | WoW %s (%s)",
       tostring(ns.VERSION), StyleName() or "own style",
       tostring(gameVersion), tostring(gameBuild)))
+    bugPopup:ClearAllPoints()
+    bugPopup:SetPoint("BOTTOM", statusBand, "TOP", 0, 8)
     bugPopup:Show()
+    -- Effortless copying: the address arrives focused and selected, so
+    -- Ctrl+C is the only keystroke needed.
+    bugPopup._url:SetFocus()
   end
 
   statusBand:SetScript("OnClick", ToggleBugReport)

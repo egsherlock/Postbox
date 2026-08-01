@@ -279,8 +279,25 @@ function Dropdown.Create(parent, opts)
       bg:SetAllPoints()
       bg:SetColorTexture(0, 0, 0, 0)
 
+      -- An item may carry its own art: { texture= or atlas=, aspect= }.
+      -- Drawn at row height beside the caption, so a list of visual choices
+      -- shows the choices.
+      local textOffset = LIST_PADDING
+      if type(item.icon) == "table" then
+        local art = row:CreateTexture(nil, "ARTWORK")
+        local size = rowHeight - 4
+        art:SetSize(size, size * (item.icon.aspect or 1))
+        art:SetPoint("LEFT", row, "LEFT", LIST_PADDING, 0)
+        if item.icon.atlas then
+          art:SetAtlas(item.icon.atlas)
+        else
+          art:SetTexture(item.icon.texture)
+        end
+        textOffset = LIST_PADDING + size + 6
+      end
+
       local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-      text:SetPoint("LEFT", row, "LEFT", LIST_PADDING, 0)
+      text:SetPoint("LEFT", row, "LEFT", textOffset, 0)
       text:SetText(item.name)
       if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
 

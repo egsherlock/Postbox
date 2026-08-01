@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.9.0
+
+- The icon picker's open list now shows every icon beside its name - the
+  way to browse the collection without pending mail - and the preview
+  swatch beside the dropdown survives host-UI skinning (it was being
+  faded by EllesmereUI's repaint, as were the status band's green light
+  and wash).
+- New **Shadow** option: a soft dark shadow behind the icon, alongside
+  Glow, in both own-icon and EllesmereUI-styled modes.
+- The bug-report popup is a proper little window now - above the panel,
+  movable, opaque, with the address focused and pre-selected so Ctrl+C is
+  the only keystroke needed. It previously rendered interleaved with the
+  panel's own controls.
+- Version footer no longer reads vv1.8.0 - the release tag already
+  carries the v.
+
 ## 1.8.0
 
 - The addon-list icon is now the clean London Postbox.
