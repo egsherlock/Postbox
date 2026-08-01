@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.15.0
+
+- The General card reads as two clean columns again: the Mail-tab-caption
+  control is a single full-width button under the checkboxes wearing its
+  own name ("Mail tab caption" - the current choice lives in its list and
+  tooltip), and the Manage Recipients portrait stretches to end level with
+  it.
+- The bug-report window's close button is the same small X as the options
+  panel's (it was the stock art at full size), and the diagnostic report
+  scrolls inside its box instead of spilling out of the window.
+
 ## 1.14.2
 
 - **Fixed: no mail icon for mail that arrived after a fresh login** (with

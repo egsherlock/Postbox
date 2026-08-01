@@ -257,53 +257,6 @@ local function Build()
         function() return ns.MailboxUI.GetOption("previewOnClick") end,
         function(on) ns.MailboxUI.SetOption("previewOnClick", on) end)
 
-  -- The Mail tab's caption while the mailbox is open. A dropdown, not a
-  -- checkbox: there are four honest answers (both counts, the total, a
-  -- quiet dot, nothing), and this row sits BELOW the recipients portrait's
-  -- four-row span so the two never collide.
-  local tcItems = {
-    { id = "counts", name = L["OPT_TAB_CAPTION_COUNTS"] },
-    { id = "total",  name = L["OPT_TAB_CAPTION_TOTAL"] },
-    { id = "dot",    name = L["OPT_TAB_CAPTION_DOT"] },
-    { id = "none",   name = L["OPT_TAB_CAPTION_NONE"] },
-  }
-  local tcDD = ns.Core.UI.Dropdown.Create(card, {
-    label        = L["OPT_TAB_CAPTION_TITLE"],
-    items        = tcItems,
-    toggleWidth  = 150,
-    toggleHeight = 22,
-    alignRight   = true,
-    height       = DROPDOWN_H,
-    defaultId    = ns.MailboxUI.GetTabCaptionMode and ns.MailboxUI.GetTabCaptionMode(),
-  })
-  tcDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
-  tcDD:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
-  tcDD:SetChangeCallback(function(id)
-    if ns.MailboxUI.SetTabCaptionMode then ns.MailboxUI.SetTabCaptionMode(id) end
-  end)
-  if tcDD._toggle then
-    tcDD._toggle:HookScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(L["OPT_TAB_CAPTION_TITLE"])
-      GameTooltip:AddLine(L["OPT_TAB_CAPTION_DESC"], 1, 1, 1, true)
-      GameTooltip:Show()
-    end)
-    tcDD._toggle:HookScript("OnLeave", function() GameTooltip:Hide() end)
-  end
-  frame.__refreshers[#frame.__refreshers + 1] = function()
-    if not ns.MailboxUI.GetTabCaptionMode then return end
-    local mode = ns.MailboxUI.GetTabCaptionMode()
-    for _, item in ipairs(tcItems) do
-      if item.id == mode then
-        tcDD._selectedId = mode
-        tcDD:SetText(item.name)
-        break
-      end
-    end
-  end
-  MarkBottom(card, cy, DROPDOWN_H)
-  cy = cy - ROW_H
-
   -- Recipient manager: a portrait button filling the space to the right of
   -- the checkbox column, tall as all four rows. It makes the feature loud
   -- and shaves a whole row off the card. /postbox recipients is the other
@@ -356,6 +309,72 @@ local function Build()
   end)
   rmButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
   frame.__refreshers[#frame.__refreshers + 1] = RefreshRmCount
+
+  -- The Mail tab's caption mode, one full-column control under the
+  -- checkboxes. The closed toggle wears the row's NAME, not the selection --
+  -- a bare "Nothing" floating in the card reads as broken -- and the open
+  -- list and the tooltip carry the current choice. The recipients portrait
+  -- keeps its own column and stretches to end level with this row.
+  local tcItems = {
+    { id = "counts", name = L["OPT_TAB_CAPTION_COUNTS"] },
+    { id = "total",  name = L["OPT_TAB_CAPTION_TOTAL"] },
+    { id = "dot",    name = L["OPT_TAB_CAPTION_DOT"] },
+    { id = "none",   name = L["OPT_TAB_CAPTION_NONE"] },
+  }
+  -- Card width minus its own padding, the portrait column and the gap.
+  local tcWidth = (W - 20) - PAD * 2 - 108 - 10
+  local tcDD = ns.Core.UI.Dropdown.Create(card, {
+    items        = tcItems,
+    toggleWidth  = tcWidth,
+    toggleHeight = 22,
+    height       = DROPDOWN_H,
+    listWidth    = tcWidth,
+    defaultId    = ns.MailboxUI.GetTabCaptionMode and ns.MailboxUI.GetTabCaptionMode(),
+  })
+  tcDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
+  tcDD:SetPoint("RIGHT", rmButton, "LEFT", -10, 0)
+  local tcToggle = tcDD._toggle
+  if tcToggle then
+    -- Fill the column whatever the fixed width said.
+    tcToggle:ClearAllPoints()
+    tcToggle:SetPoint("LEFT", tcDD, "LEFT", 0, 0)
+    tcToggle:SetPoint("RIGHT", tcDD, "RIGHT", 0, 0)
+  end
+  tcDD:SetText(L["OPT_TAB_CAPTION_TITLE"])
+  tcDD:SetChangeCallback(function(id)
+    if ns.MailboxUI.SetTabCaptionMode then ns.MailboxUI.SetTabCaptionMode(id) end
+    -- The widget wrote the selection's name onto the toggle; put the row
+    -- name back (runs after its write, see the row OnClick order).
+    tcDD:SetText(L["OPT_TAB_CAPTION_TITLE"])
+  end)
+  if tcToggle then
+    tcToggle:HookScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(L["OPT_TAB_CAPTION_TITLE"])
+      GameTooltip:AddLine(L["OPT_TAB_CAPTION_DESC"], 1, 1, 1, true)
+      local mode = ns.MailboxUI.GetTabCaptionMode and ns.MailboxUI.GetTabCaptionMode()
+      for _, item in ipairs(tcItems) do
+        if item.id == mode then
+          GameTooltip:AddLine(item.name, 0.96, 0.80, 0.18)
+          break
+        end
+      end
+      GameTooltip:Show()
+    end)
+    tcToggle:HookScript("OnLeave", function() GameTooltip:Hide() end)
+  end
+  frame.__refreshers[#frame.__refreshers + 1] = function()
+    if ns.MailboxUI.GetTabCaptionMode then
+      tcDD._selectedId = ns.MailboxUI.GetTabCaptionMode()
+    end
+    tcDD:SetText(L["OPT_TAB_CAPTION_TITLE"])
+  end
+  -- The portrait ends level with this row: top from the card, bottom from
+  -- the dropdown -- the height from SetSize above is overridden by the pair
+  -- of vertical anchors.
+  rmButton:SetPoint("BOTTOM", tcDD, "BOTTOM", 0, 0)
+  MarkBottom(card, cy, DROPDOWN_H)
+  cy = cy - ROW_H
 
   y = EndSection(frame, card, y)
 
@@ -816,12 +835,52 @@ local function Build()
     local caption = ns.Theme.CreateText(pop, "label")
     caption:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY)
     caption:SetText(L[labelKey])
-    local box = CreateFrame("EditBox", nil, pop)
-    box:SetSize(304, boxHeight or 14)
-    box:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY - 14)
-    box:SetAutoFocus(false)
+
+    local box
     if boxHeight then
+      -- The diagnostic report outgrows any fixed height as the addon learns
+      -- to say more, so the multi-line box lives inside a scroll frame: the
+      -- viewport clips, the wheel scrolls, and focusing keeps the cursor in
+      -- view. A multi-line EditBox sizes its own height to its content.
+      local viewport = CreateFrame("ScrollFrame", nil, pop)
+      viewport:SetSize(304, boxHeight)
+      viewport:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY - 14)
+
+      box = CreateFrame("EditBox", nil, viewport)
+      box:SetWidth(304)
+      box:SetHeight(boxHeight)
+      box:SetAutoFocus(false)
       box:SetMultiLine(true)
+      viewport:SetScrollChild(box)
+
+      local function Range()
+        return math.max(0, box:GetHeight() - boxHeight)
+      end
+      local function Wheel(_, delta)
+        viewport:SetVerticalScroll(
+          math.max(0, math.min(Range(), viewport:GetVerticalScroll() - delta * 24)))
+      end
+      viewport:EnableMouseWheel(true)
+      viewport:SetScript("OnMouseWheel", Wheel)
+      box:EnableMouseWheel(true)
+      box:SetScript("OnMouseWheel", Wheel)
+      -- Arrowing through the text keeps the cursor line inside the viewport.
+      box:SetScript("OnCursorChanged", function(_, _, cursorY, _, cursorH)
+        local offset = viewport:GetVerticalScroll()
+        local top = -(tonumber(cursorY) or 0)
+        local bottom = top + (tonumber(cursorH) or 0)
+        if top < offset then
+          viewport:SetVerticalScroll(math.max(0, top))
+        elseif bottom > offset + boxHeight then
+          viewport:SetVerticalScroll(math.min(Range(), bottom - boxHeight))
+        end
+      end)
+      box.__viewport = viewport
+    else
+      box = CreateFrame("EditBox", nil, pop)
+      box:SetSize(304, 14)
+      box:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY - 14)
+      box:SetAutoFocus(false)
     end
     box:SetFontObject(ns.Theme.FontObject("bodySmall") or GameFontHighlightSmall)
     box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
@@ -840,6 +899,7 @@ local function Build()
     function box:SetValue(value)
       self._value = value or ""
       self:SetText(self._value)
+      if self.__viewport then self.__viewport:SetVerticalScroll(0) end
     end
     return box
   end
@@ -893,6 +953,11 @@ local function Build()
       close:SetSize(24, 24)
       close:SetPoint("TOPRIGHT", bugPopup, "TOPRIGHT", -2, -2)
       close:SetScript("OnClick", function() bugPopup:Hide() end)
+      -- Under the field name the skins look for: both restyle a window's
+      -- `CloseButton` into their own small X, which is what keeps this one
+      -- the same species as the options panel's instead of the stock art
+      -- at full size.
+      bugPopup.CloseButton = close
 
       bugPopup._url = AddCopyRow(bugPopup, -24, "OPT_BUG_URL_LABEL")
       bugPopup._diag = AddCopyRow(bugPopup, -60, "OPT_BUG_DIAG_LABEL", 100)
