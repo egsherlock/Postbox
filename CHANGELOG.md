@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.7.0
+
+- Eight "clean" restyles of the painted set, each sitting directly beneath
+  its original in the icon picker; the pillar postbox is now properly named
+  **London Postbox**, and the two flat glyphs are **Envelope minimal** and
+  **Badge minimal**. The red, white and iron mailboxes are retired.
+- The icon picker now scrolls: long lists cap at twelve rows with a minimal
+  hairline scrollbar, open centred on the current selection, and the list is
+  no longer see-through (a popup-detection gap left it skipping the opacity
+  floor every other popup gets).
+- The minimap master checkbox now sits on the section heading line, right-
+  aligned above the card it enables, and the style footer is a proper status
+  band: "Options synced with EllesmereUI" (or ElvUI, or Postbox's own
+  style).
+
 ## 1.6.2
 
 - The pillar postbox is now the addon-list icon; flip the TOC's IconTexture

@@ -24,6 +24,10 @@ local DEFAULT_TOGGLE_WIDTH = 200
 local DEFAULT_TOGGLE_HEIGHT = 22
 local LIST_PADDING = 4
 local LIST_GAP = 2
+-- Twelve rows of the default height plus padding. A list taller than this
+-- scrolls instead of growing (opts.maxListHeight overrides).
+local DEFAULT_MAX_LIST_HEIGHT = 248
+local SCROLLBAR_INSET = 3
 -- Clear of every sibling widget's border overlay in the owning window.
 local LIST_LEVEL_OFFSET = 40
 
@@ -145,10 +149,15 @@ function Dropdown.Create(parent, opts)
     local colors = (Theme and Theme.MenuColors) or nil
     local hover = colors and colors.hover or { 0.90, 0.78, 0.30, 0.18 }
 
+    local contentHeight = #items * rowHeight
+    local maxHeight = tonumber(opts.maxListHeight) or DEFAULT_MAX_LIST_HEIGHT
+    local scrolling = (LIST_PADDING * 2) + contentHeight > maxHeight
+    local viewport = maxHeight - (LIST_PADDING * 2)
+
     list = CreateFrame("Frame", nil, toggle, "BackdropTemplate")
     list:SetPoint("TOPRIGHT", toggle, "BOTTOMRIGHT", 0, -LIST_GAP)
     list:SetWidth(tonumber(opts.listWidth) or toggleWidth)
-    list:SetHeight((LIST_PADDING * 2) + (#items * rowHeight))
+    list:SetHeight(scrolling and maxHeight or ((LIST_PADDING * 2) + contentHeight))
     list:SetFrameStrata("FULLSCREEN_DIALOG")
 
     -- The list is a popup, and the addon has one popup surface: the same card
@@ -159,6 +168,12 @@ function Dropdown.Create(parent, opts)
     -- the one Postbox-coloured panel left inside an otherwise host-styled
     -- window. Resolved at first open, not at load: this file is foundation and
     -- loads before the addon theme.
+    --
+    -- __pbPopupAlways: the strata heuristic behind the popup opacity floor
+    -- cannot see that this is a popup when the OWNING window already sits at
+    -- FULLSCREEN_DIALOG (the options panel), which left this one list as
+    -- see-through as the window. Declare it instead of hoping.
+    list.__pbPopupAlways = true
     local surface = ns.Theme and ns.Theme.ApplyCard
     if type(surface) == "function" then
       surface(list)
@@ -174,13 +189,91 @@ function Dropdown.Create(parent, opts)
     end
     list:Hide()
 
+    -- Long lists scroll inside a fixed height rather than running off the
+    -- screen: rows go on a scroll child, and a hairline track with a light
+    -- draggable thumb carries the position. Deliberately minimal -- no
+    -- buttons, no Blizzard scroll templates.
+    local rowParent = list
+    if scrolling then
+      local scroll = CreateFrame("ScrollFrame", nil, list)
+      scroll:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -LIST_PADDING)
+      scroll:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT",
+        -(LIST_PADDING + SCROLLBAR_INSET + 4), LIST_PADDING)
+
+      local content = CreateFrame("Frame", nil, scroll)
+      content:SetSize(1, contentHeight)
+      scroll:SetScrollChild(content)
+      scroll:SetScript("OnSizeChanged", function(_, width)
+        content:SetWidth(width or 1)
+      end)
+
+      local track = list:CreateTexture(nil, "ARTWORK")
+      track:SetWidth(3)
+      track:SetPoint("TOPRIGHT", list, "TOPRIGHT", -SCROLLBAR_INSET, -LIST_PADDING)
+      track:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", -SCROLLBAR_INSET, LIST_PADDING)
+      track:SetColorTexture(1, 1, 1, 0.08)
+
+      local span = contentHeight - viewport
+      local thumbHeight = math.max(20, viewport * viewport / contentHeight)
+      local thumb = CreateFrame("Frame", nil, list)
+      thumb:SetSize(3, thumbHeight)
+      thumb:EnableMouse(true)
+      local thumbArt = thumb:CreateTexture(nil, "OVERLAY")
+      thumbArt:SetAllPoints()
+      thumbArt:SetColorTexture(1, 1, 1, 0.35)
+
+      local function SetOffset(offset)
+        offset = math.max(0, math.min(span, offset))
+        scroll:SetVerticalScroll(offset)
+        local travel = viewport - thumbHeight
+        thumb:ClearAllPoints()
+        thumb:SetPoint("TOPRIGHT", list, "TOPRIGHT", -SCROLLBAR_INSET,
+          -LIST_PADDING - (span > 0 and (offset / span) * travel or 0))
+      end
+      SetOffset(0)
+      list._setOffset = SetOffset
+      list._viewport = viewport
+      list._scroll = scroll
+      list._content = content
+
+      local function OnWheel(_, delta)
+        SetOffset(scroll:GetVerticalScroll() - delta * rowHeight * 3)
+      end
+      list:EnableMouseWheel(true)
+      list:SetScript("OnMouseWheel", OnWheel)
+      scroll:EnableMouseWheel(true)
+      scroll:SetScript("OnMouseWheel", OnWheel)
+
+      thumb:SetScript("OnMouseDown", function(self)
+        local scale = self:GetEffectiveScale()
+        local _, startY = GetCursorPosition()
+        local startOffset = scroll:GetVerticalScroll()
+        local travel = viewport - thumbHeight
+        self:SetScript("OnUpdate", function()
+          if travel <= 0 then return end
+          local _, cursorY = GetCursorPosition()
+          SetOffset(startOffset + ((startY - cursorY) / scale) * (span / travel))
+        end)
+      end)
+      thumb:SetScript("OnMouseUp", function(self)
+        self:SetScript("OnUpdate", nil)
+      end)
+
+      rowParent = content
+    end
+
     for i = 1, #items do
       local item = items[i]
 
-      local row = CreateFrame("Button", nil, list)
+      local row = CreateFrame("Button", nil, rowParent)
       row:SetHeight(rowHeight)
-      row:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -LIST_PADDING - ((i - 1) * rowHeight))
-      row:SetPoint("RIGHT", list, "RIGHT", -LIST_PADDING, 0)
+      if scrolling then
+        row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", 0, -((i - 1) * rowHeight))
+        row:SetPoint("RIGHT", rowParent, "RIGHT", 0, 0)
+      else
+        row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", LIST_PADDING, -LIST_PADDING - ((i - 1) * rowHeight))
+        row:SetPoint("RIGHT", rowParent, "RIGHT", -LIST_PADDING, 0)
+      end
 
       local bg = row:CreateTexture(nil, "BACKGROUND")
       bg:SetAllPoints()
@@ -237,6 +330,24 @@ function Dropdown.Create(parent, opts)
     ShowCatcher(level - 1)
     list:Show()
     list:Raise()
+
+    -- A scrolling list opens with the current selection in view rather than
+    -- at the top of a long ride down. Width is re-asserted here because the
+    -- scroll child's is derived, and the first OnSizeChanged can land before
+    -- the list has real geometry.
+    if list._setOffset then
+      if list._content and list._scroll then
+        list._content:SetWidth(list._scroll:GetWidth())
+      end
+      local index
+      for i = 1, #items do
+        if items[i].id == container._selectedId then index = i break end
+      end
+      if index then
+        local rowHeightUsed = rowHeight
+        list._setOffset(((index - 1) * rowHeightUsed) - (list._viewport - rowHeightUsed) / 2)
+      end
+    end
   end
 
   toggle:SetScript("OnClick", function()

@@ -270,49 +270,85 @@ local function Build()
   -- Minimap mail icon (Core/MinimapButton.lua). Resolved at click time like
   -- every other binding, so the section stays honest if the module is absent.
   --
-  -- The master checkbox sits ABOVE the card, and the card carries the
-  -- feature's settings: unchecked, the card desaturates and stops taking
-  -- clicks, which is what tells the user those rows belong to the checkbox.
+  -- The master checkbox shares the heading line, right-aligned, and the card
+  -- carries the feature's settings: unchecked, the card desaturates and
+  -- stops taking clicks, which is what tells the user those rows belong to
+  -- the checkbox.
+  local mmHeadingY = y
   y = AddSectionHeading(frame, y, L["OPT_MINIMAP_HEADING"])
+  y = y - 4 -- the checkbox is taller than the heading text
 
   local mmHostStyled = ns.MinimapButton and ns.MinimapButton.IsHostStyled
     and ns.MinimapButton.IsHostStyled()
+  local mmDesc = mmHostStyled and L["OPT_MINIMAP_DESC_EUI"] or L["OPT_MINIMAP_DESC"]
   local UpdateMinimapCardState -- defined once the card exists below
 
-  y = AddCheckbox(frame, y, L["OPT_MINIMAP_TITLE"],
-        mmHostStyled and L["OPT_MINIMAP_DESC_EUI"] or L["OPT_MINIMAP_DESC"],
-        function() return ns.MinimapButton and ns.MinimapButton.GetEnabled() end,
-        function(on)
-          if ns.MinimapButton then ns.MinimapButton.SetEnabled(on) end
-          if UpdateMinimapCardState then UpdateMinimapCardState() end
-        end)
+  local mmToggle = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
+  mmToggle:SetSize(CHECK_H, CHECK_H)
+  mmToggle:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD + 4, mmHeadingY + 5)
+  mmToggle.__postboxCheck = true
+  local mmToggleLabel = ns.Theme.CreateText(frame, "label")
+  mmToggleLabel:SetPoint("RIGHT", mmToggle, "LEFT", -4, 0)
+  mmToggleLabel:SetWordWrap(false)
+  mmToggleLabel:SetText(L["OPT_MINIMAP_TITLE"])
+  mmToggle.__label = mmToggleLabel
+  mmToggle:SetChecked(ns.MinimapButton and ns.MinimapButton.GetEnabled())
+  mmToggle:SetScript("OnClick", function(self)
+    local on = self:GetChecked() and true or false
+    if ns.MinimapButton then ns.MinimapButton.SetEnabled(on) end
+    if UpdateMinimapCardState then UpdateMinimapCardState() end
+    if type(SOUNDKIT) == "table" then
+      PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
+                   or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+    end
+  end)
+  mmToggle:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L["OPT_MINIMAP_TITLE"])
+    GameTooltip:AddLine(mmDesc, 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  mmToggle:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  frame.__refreshers[#frame.__refreshers + 1] = function()
+    mmToggle:SetChecked(ns.MinimapButton and ns.MinimapButton.GetEnabled())
+  end
 
   card = StartCard(frame, y)
   cy = -12
 
+  -- Each "clean" restyle sits directly beneath its original, named as the
+  -- original plus the localized clean suffix.
+  local function CleanName(baseKey)
+    return string.format(L["OPT_MINIMAP_ICON_CLEAN_SUFFIX"], L[baseKey])
+  end
   local iconItems = {
-    { id = "letter",    name = L["OPT_MINIMAP_ICON_LETTER"] },
-    { id = "sealed",    name = L["OPT_MINIMAP_ICON_SEALED"] },
-    { id = "stamped",   name = L["OPT_MINIMAP_ICON_STAMPED"] },
-    { id = "weathered", name = L["OPT_MINIMAP_ICON_WEATHERED"] },
-    { id = "open",      name = L["OPT_MINIMAP_ICON_OPEN"] },
-    { id = "scroll",    name = L["OPT_MINIMAP_ICON_SCROLL"] },
-    { id = "seal",      name = L["OPT_MINIMAP_ICON_SEAL"] },
-    { id = "bundle",    name = L["OPT_MINIMAP_ICON_BUNDLE"] },
-    { id = "parcel",    name = L["OPT_MINIMAP_ICON_PARCEL"] },
-    { id = "mailbag",   name = L["OPT_MINIMAP_ICON_MAILBAG"] },
-    { id = "satchel",   name = L["OPT_MINIMAP_ICON_SATCHEL"] },
-    { id = "quill",     name = L["OPT_MINIMAP_ICON_QUILL"] },
-    { id = "redbox",    name = L["OPT_MINIMAP_ICON_REDBOX"] },
-    { id = "whitebox",  name = L["OPT_MINIMAP_ICON_WHITEBOX"] },
-    { id = "ironbox",   name = L["OPT_MINIMAP_ICON_IRONBOX"] },
-    { id = "pillar",    name = L["OPT_MINIMAP_ICON_PILLAR"] },
-    { id = "stone",     name = L["OPT_MINIMAP_ICON_STONE"] },
-    { id = "wood",      name = L["OPT_MINIMAP_ICON_WOOD"] },
-    { id = "gold",      name = L["OPT_MINIMAP_ICON_GOLD"] },
-    { id = "blizzard",  name = L["OPT_MINIMAP_ICON_BLIZZARD"] },
-    { id = "postbox",   name = L["OPT_MINIMAP_ICON_POSTBOX"] },
-    { id = "badge",     name = L["OPT_MINIMAP_ICON_BADGE"] },
+    { id = "letter",       name = L["OPT_MINIMAP_ICON_LETTER"] },
+    { id = "letterclean",  name = CleanName("OPT_MINIMAP_ICON_LETTER") },
+    { id = "sealed",       name = L["OPT_MINIMAP_ICON_SEALED"] },
+    { id = "stamped",      name = L["OPT_MINIMAP_ICON_STAMPED"] },
+    { id = "stampedclean", name = CleanName("OPT_MINIMAP_ICON_STAMPED") },
+    { id = "weathered",    name = L["OPT_MINIMAP_ICON_WEATHERED"] },
+    { id = "open",         name = L["OPT_MINIMAP_ICON_OPEN"] },
+    { id = "scroll",       name = L["OPT_MINIMAP_ICON_SCROLL"] },
+    { id = "seal",         name = L["OPT_MINIMAP_ICON_SEAL"] },
+    { id = "bundle",       name = L["OPT_MINIMAP_ICON_BUNDLE"] },
+    { id = "bundleclean",  name = CleanName("OPT_MINIMAP_ICON_BUNDLE") },
+    { id = "parcel",       name = L["OPT_MINIMAP_ICON_PARCEL"] },
+    { id = "parcelclean",  name = CleanName("OPT_MINIMAP_ICON_PARCEL") },
+    { id = "mailbag",      name = L["OPT_MINIMAP_ICON_MAILBAG"] },
+    { id = "satchel",      name = L["OPT_MINIMAP_ICON_SATCHEL"] },
+    { id = "quill",        name = L["OPT_MINIMAP_ICON_QUILL"] },
+    { id = "pillar",       name = L["OPT_MINIMAP_ICON_PILLAR"] },
+    { id = "pillarclean",  name = CleanName("OPT_MINIMAP_ICON_PILLAR") },
+    { id = "stone",        name = L["OPT_MINIMAP_ICON_STONE"] },
+    { id = "stoneclean",   name = CleanName("OPT_MINIMAP_ICON_STONE") },
+    { id = "wood",         name = L["OPT_MINIMAP_ICON_WOOD"] },
+    { id = "woodclean",    name = CleanName("OPT_MINIMAP_ICON_WOOD") },
+    { id = "gold",         name = L["OPT_MINIMAP_ICON_GOLD"] },
+    { id = "goldclean",    name = CleanName("OPT_MINIMAP_ICON_GOLD") },
+    { id = "blizzard",     name = L["OPT_MINIMAP_ICON_BLIZZARD"] },
+    { id = "postbox",      name = L["OPT_MINIMAP_ICON_POSTBOX"] },
+    { id = "badge",        name = L["OPT_MINIMAP_ICON_BADGE"] },
   }
   cy = AddDropdown(card, cy, L["OPT_MINIMAP_ICON_TITLE"], iconItems,
         function() return ns.MinimapButton and ns.MinimapButton.GetIcon() end,
@@ -445,30 +481,41 @@ local function Build()
     y = EndSection(frame, card, y)
   end
 
-  -- Which look is painting the addon right now: the host-UI skin's name, or
-  -- Postbox's own theme. Refreshed on every open rather than baked in --
-  -- skins claim ns.Skin at PLAYER_LOGIN and the EllesmereUI handshake can
-  -- resolve seconds later, after this panel was first built.
-  y = y - 6
-  local statusDot = frame:CreateTexture(nil, "ARTWORK")
-  statusDot:SetSize(6, 6)
-  statusDot:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + 1, y - 5)
-  local statusText = ns.Theme.CreateText(frame, "bodySmall")
-  statusText:SetPoint("LEFT", statusDot, "RIGHT", 6, 0)
-  statusText:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
+  -- Which look is painting the addon right now: a quiet band with a status
+  -- dot, phrased as reassurance -- "options synced with EllesmereUI" -- so
+  -- the user knows the panel above is pulling from their UI pack, not
+  -- guessing. Refreshed on every open rather than baked in: skins claim
+  -- ns.Skin at PLAYER_LOGIN and the EllesmereUI handshake can resolve
+  -- seconds later, after this panel was first built.
+  y = y - 2
+  local statusBand = CreateFrame("Frame", nil, frame)
+  statusBand:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, y)
+  statusBand:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
+  statusBand:SetHeight(24)
+  ns.Theme.ApplyBand(statusBand)
+  local statusDot = statusBand:CreateTexture(nil, "OVERLAY")
+  statusDot:SetSize(7, 7)
+  statusDot:SetPoint("LEFT", statusBand, "LEFT", 10, 0)
+  local statusText = ns.Theme.CreateText(statusBand, "bodySmall")
+  statusText:SetPoint("LEFT", statusDot, "RIGHT", 7, 0)
+  statusText:SetPoint("RIGHT", statusBand, "RIGHT", -10, 0)
   statusText:SetJustifyH("LEFT")
   statusText:SetWordWrap(false)
   local function RefreshStyleStatus()
     local by = ns.SkinAppliedBy
     local name = (by == "ellesmereui" and "EllesmereUI")
       or (by == "elvui" and "ElvUI")
-      or "Postbox"
-    statusText:SetText(L("OPT_STYLE_STATUS", name))
+      or nil
+    if name then
+      statusText:SetText(L("OPT_STYLE_SYNCED", name))
+    else
+      statusText:SetText(L["OPT_STYLE_OWN"])
+    end
     ns.Theme.FillColor(statusDot, "accent")
   end
   RefreshStyleStatus()
   frame.__refreshers[#frame.__refreshers + 1] = RefreshStyleStatus
-  MarkBottom(frame, y, 16)
+  MarkBottom(frame, y, 24)
 
   -- Sized to the last control's own bottom edge plus one pad, so hiding the
   -- appearance section (no host-UI skin) shortens the window rather than

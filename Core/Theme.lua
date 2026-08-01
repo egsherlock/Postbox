@@ -1178,9 +1178,14 @@ end
 
 -- Every other card and popup: the detail view, the type-ahead popup, the
 -- contact picker, the shared dropdown's list.
+--
+-- `__pbPopupAlways` is a caller's declaration that the card IS a popup no
+-- matter what the strata comparison says. The dropdown list needs it: inside
+-- the options panel -- itself at FULLSCREEN_DIALOG -- the list cannot outrank
+-- its parent, so Floats() misses the one popup that opens over rows of text.
 function Theme.ApplyCard(frame)
   PaintSurface(frame, "card", "card")
-  if frame and Floats(frame) then PinPopupOpacity(frame) end
+  if frame and (frame.__pbPopupAlways or Floats(frame)) then PinPopupOpacity(frame) end
 end
 
 -- The totals banner, and nothing else. A divider, not a panel; the skins treat
