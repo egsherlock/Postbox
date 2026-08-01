@@ -3570,7 +3570,13 @@ local function BuildRecipientField(panel)
   end)
   manage:SetScript("OnClick", function()
     local RM = ns.RecipientManager
-    if RM and type(RM.Toggle) == "function" then RM.Toggle() end
+    if RM and type(RM.Toggle) == "function" then
+      RM.Toggle()
+    else
+      -- Same answer the /postbox recipients path gives: a doorway that does
+      -- nothing at all reads as broken.
+      ns.Print(L["RM_NOT_AVAILABLE"])
+    end
   end)
   panel.ManageRecipients = manage
 end

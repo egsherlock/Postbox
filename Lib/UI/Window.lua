@@ -357,6 +357,19 @@ function Helpers.ApplyThemedBackdrop(frame, theme, variant, withSurface, backdro
 
   variant = variant or "card"
 
+  -- A frame built without "BackdropTemplate" has no SetBackdrop on retail.
+  -- Retrofit the mixin rather than skipping: a silent skip here leaves the
+  -- frame tagged for the host skins but bare on a stock UI, which is
+  -- invisible on the developer's own (skinned) setup -- exactly how the
+  -- options panel's cards shipped without backgrounds.
+  if type(frame.SetBackdrop) ~= "function"
+    and type(Mixin) == "function" and type(BackdropTemplateMixin) == "table" then
+    Mixin(frame, BackdropTemplateMixin)
+    if type(frame.OnBackdropSizeChanged) == "function" then
+      frame:HookScript("OnSizeChanged", frame.OnBackdropSizeChanged)
+    end
+  end
+
   if type(frame.SetBackdrop) == "function" and not backdropApplied[frame] then
     backdropApplied[frame] = true
     frame:SetBackdrop(backdrop or TOOLTIP_BACKDROP)

@@ -34,6 +34,7 @@ UI._state = UI._state or {
   ready          = false,     -- Initialize has run
   visible        = false,     -- our window is up
   mailboxOpen    = false,     -- a mail session is live
+  inboxSeen      = false,     -- a real MAIL_INBOX_UPDATE has landed this visit
   activeTab      = "collect",
   freeMoved      = false,     -- the user dragged the window this session (grid mode)
   attachRows     = 1,         -- rows of attachment slots the compose screen shows
@@ -382,7 +383,12 @@ function UI.UpdateStatusSummary()
     if record then
       local numItems = (type(GetInboxNumItems) == "function" and GetInboxNumItems()) or 0
       if numItems == 0 then
-        if type(collect.ClearLastRunRecord) == "function" then
+        -- "Empty" is only believable after a real MAIL_INBOX_UPDATE this
+        -- visit: the client's inbox cache reads 0 between MAIL_SHOW and the
+        -- first update (documented at MailService's registry and CollectTab's
+        -- run start), and erasing on that cold read would delete the record
+        -- at the very moment it exists to be shown.
+        if UI._state.inboxSeen and type(collect.ClearLastRunRecord) == "function" then
           collect.ClearLastRunRecord()
         end
       else
@@ -1314,6 +1320,10 @@ local function OnMailShow()
   end
 
   UI._state.mailboxOpen = true
+  -- The inbox always reads empty between MAIL_SHOW and the first
+  -- MAIL_INBOX_UPDATE; anything that would treat "empty" as a fact about the
+  -- mailbox must wait until this flips (see UpdateStatusSummary's erasure).
+  UI._state.inboxSeen = false
   BuildFrame()
 
   UI.ClearStatus()
@@ -1338,6 +1348,7 @@ local function OnMailClosed()
   -- whether Escape orphaned an open mailbox, and a normal close must not
   -- schedule a redundant one.
   UI._state.mailboxOpen = false
+  UI._state.inboxSeen = false
   -- The per-session drag override ends with the session, so the window returns
   -- to its grid slot next time.
   UI._state.freeMoved = false
@@ -1481,6 +1492,11 @@ function UI.Initialize()
     -- numbers.
     local collect = ns.CollectTab
     if collect and collect.InvalidateCounts then collect.InvalidateCounts() end
+
+    -- Only a live visit's updates count as having seen the inbox: a stray
+    -- MAIL_INBOX_UPDATE away from the mailbox reads a cleared cache and must
+    -- not license the last-run record's erasure.
+    if UI._state.mailboxOpen then UI._state.inboxSeen = true end
 
     -- A run refreshes the list itself as it goes; refreshing again from here
     -- would be a second pass per mail over the same data.

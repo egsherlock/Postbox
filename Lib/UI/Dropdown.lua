@@ -207,10 +207,16 @@ function Dropdown.Create(parent, opts)
         content:SetWidth(width or 1)
       end)
 
-      local track = list:CreateTexture(nil, "ARTWORK")
-      track:SetWidth(3)
-      track:SetPoint("TOPRIGHT", list, "TOPRIGHT", -SCROLLBAR_INSET, -LIST_PADDING)
-      track:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", -SCROLLBAR_INSET, LIST_PADDING)
+      -- The track rides a child frame, not the list itself: the list is a
+      -- tagged panel, and a host skin's repaint fades every texture region
+      -- the panel owns directly (the thumb survives for exactly this reason
+      -- -- its art lives on the thumb frame).
+      local trackHolder = CreateFrame("Frame", nil, list)
+      trackHolder:SetWidth(3)
+      trackHolder:SetPoint("TOPRIGHT", list, "TOPRIGHT", -SCROLLBAR_INSET, -LIST_PADDING)
+      trackHolder:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", -SCROLLBAR_INSET, LIST_PADDING)
+      local track = trackHolder:CreateTexture(nil, "ARTWORK")
+      track:SetAllPoints()
       track:SetColorTexture(1, 1, 1, 0.08)
 
       local span = contentHeight - viewport

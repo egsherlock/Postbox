@@ -200,13 +200,18 @@ end
 -- 3. EllesmereUI skin mode
 --
 -- When EllesmereUI's minimap module is running, ITS mail icon is the mail
--- icon: it cannot be switched off in its options, it is resurfaced by many
--- of its layout passes, and suppressing the Blizzard frame only starves its
--- updates. Fighting any of that is a losing game. So in that situation
--- Postbox does not draw a button and does not touch the Blizzard frame at
--- all -- it restyles EllesmereUI's button in place (icon art, accent tint,
--- glow) and leaves visibility, position and size to EllesmereUI, which is
--- what its own options already control.
+-- icon: it cannot be switched off in its options and it is resurfaced by
+-- many of its layout passes. Fighting that is a losing game. So in that
+-- situation Postbox does not draw a button -- it restyles EllesmereUI's
+-- button in place (icon art, accent tint, glow) and leaves position and
+-- size to EllesmereUI, which is what its own options already control.
+--
+-- The Blizzard frame IS still silenced in this mode (see Refresh): its
+-- Show/Hide traffic is what EllesmereUI's relayout hooks answer, and each
+-- answer flashes their mouseover-hidden button row for a beat. Starving the
+-- event starves their event-driven visibility sync too, so Postbox performs
+-- that sync itself -- SetShown(HasNewMail()), the same call their own code
+-- makes -- while their layout passes keep agreeing from HasNewMail() direct.
 --
 -- The button is found by its `_indicatorKey == "_mail"` field. Everything
 -- changed is snapshotted first and restored exactly on disable, and if a
@@ -216,8 +221,12 @@ end
 
 local EUI_SKIN_MAX_TRIES = 8
 
+-- `fallback` latches when the finder exhausts its tries while the module is
+-- still a candidate: without the latch, every Refresh would re-enter the
+-- candidate block and flip the default indicator's suppression off and on
+-- around each mail event. Cleared on disable and on PLAYER_ENTERING_WORLD.
 local euiSkin = { button = nil, saved = nil, applied = false,
-                  tries = 0, timerArmed = false }
+                  tries = 0, timerArmed = false, fallback = false }
 
 local function EuiMinimapProfile()
   local host = _G.EllesmereUI
@@ -245,6 +254,8 @@ local function EuiSkinCandidate()
   return not mm or mm.enabled ~= false
 end
 
+local RestoreEuiSkin -- forward: the finder restores an orphaned button on rebuild
+
 local function FindEuiMailButton()
   local minimap = _G.Minimap
   local cached = euiSkin.button
@@ -255,6 +266,14 @@ local function FindEuiMailButton()
   for i = 1, #kids do
     local child = kids[i]
     if child and child ~= MB._button and child._indicatorKey == "_mail" then
+      if euiSkin.button and euiSkin.button ~= child then
+        -- EllesmereUI rebuilt its button mid-session. Restore the orphan
+        -- verbatim -- it would otherwise keep our texture and its stood-down
+        -- hover fields forever -- and drop the snapshot, which described the
+        -- old frame, not this one.
+        RestoreEuiSkin()
+        euiSkin.saved = nil
+      end
       euiSkin.button = child
       return child
     end
@@ -268,18 +287,24 @@ local function ApplyEuiSkin()
 
   if not euiSkin.saved then
     local w, h = icon:GetSize()
-    euiSkin.saved = { up = btn._upAtlas, over = btn._overAtlas, w = w, h = h }
+    -- The atlas fields alone cannot restore a button whose _upAtlas was nil,
+    -- so the icon's actual art is snapshotted alongside them.
+    euiSkin.saved = { up = btn._upAtlas, over = btn._overAtlas, w = w, h = h,
+                      atlas = icon:GetAtlas(), texture = icon:GetTexture() }
   end
 
   local prefs = Settings()
-  local spec = ICONS[prefs.icon] or ICONS.postbox
+  local spec = ICONS[prefs.icon] or ICONS[DEFAULTS.icon]
   local r, g, b = 1, 1, 1
   if prefs.accent ~= false then r, g, b = ns.Theme.GetAccent() end
 
   if prefs.icon == "blizzard" then
     -- "Blizzard" here means EllesmereUI's stock look, which is the same art.
-    btn._upAtlas, btn._overAtlas = euiSkin.saved.up, euiSkin.saved.over
-    if euiSkin.saved.up then icon:SetAtlas(euiSkin.saved.up) end
+    local saved = euiSkin.saved
+    btn._upAtlas, btn._overAtlas = saved.up, saved.over
+    if saved.up then icon:SetAtlas(saved.up)
+    elseif saved.atlas then icon:SetAtlas(saved.atlas)
+    elseif saved.texture then icon:SetTexture(saved.texture) end
     icon:SetSize(euiSkin.saved.w, euiSkin.saved.h)
     icon:SetVertexColor(1, 1, 1)
   else
@@ -351,7 +376,7 @@ local function ApplyEuiSkin()
   return true
 end
 
-local function RestoreEuiSkin()
+RestoreEuiSkin = function()
   if not euiSkin.applied then return end
   euiSkin.applied = false
 
@@ -362,7 +387,9 @@ local function RestoreEuiSkin()
   btn._upAtlas, btn._overAtlas = saved.up, saved.over
   local icon = btn._icon
   if icon then
-    if saved.up then icon:SetAtlas(saved.up) end
+    if saved.up then icon:SetAtlas(saved.up)
+    elseif saved.atlas then icon:SetAtlas(saved.atlas)
+    elseif saved.texture then icon:SetTexture(saved.texture) end
     icon:SetSize(saved.w, saved.h)
     icon:SetVertexColor(1, 1, 1)
   end
@@ -373,10 +400,19 @@ local function RestoreEuiSkin()
   if btn.__pbMailShadow then btn.__pbMailShadow:Hide() end
 end
 
+-- Skin mode starves the Blizzard frame's UPDATE_PENDING_MAIL (see Refresh),
+-- which also starves the event-driven half of EllesmereUI's own visibility
+-- sync -- so that half is performed here, with the exact call their sync
+-- makes. Their periodic layout passes read HasNewMail() directly and agree.
+local function SyncEuiButtonShown()
+  local btn = euiSkin.button
+  if btn and euiSkin.applied then btn:SetShown(MailWaiting()) end
+end
+
 -- The options panel asks this to decide which controls make sense: in skin
 -- mode, position and size belong to EllesmereUI.
 function MB.IsHostStyled()
-  return EuiSkinCandidate()
+  return EuiSkinCandidate() and not euiSkin.fallback
 end
 
 -------------------------------------------------------------
@@ -466,7 +502,7 @@ local function ApplyLook(button)
   local size = tonumber(prefs.size) or DEFAULTS.size
   button:SetSize(size, size)
 
-  local spec = ICONS[prefs.icon] or ICONS.postbox
+  local spec = ICONS[prefs.icon] or ICONS[DEFAULTS.icon]
   local icon = button.icon
   icon:SetSize(size, size * (spec.aspect or 1))
   if spec.atlas then
@@ -641,8 +677,12 @@ local function OnMailEvent()
 end
 
 -- Re-derives everything on zone-in: both host UIs rebuild and resize the
--- minimap at login and on profile switches, which moves the rim.
+-- minimap at login and on profile switches, which moves the rim. A loading
+-- screen is also when a host rebuilds its buttons, so an exhausted finder
+-- gets its tries back rather than staying in fallback forever.
 local function OnEnterWorld()
+  euiSkin.fallback = false
+  euiSkin.tries = 0
   Refresh()
 end
 
@@ -679,25 +719,37 @@ Refresh = function()
     SetRuntimeActive(false)
     SetDefaultSuppressed(false)
     RestoreEuiSkin()
+    euiSkin.tries = 0
+    euiSkin.fallback = false
     if MB._button then MB._button:Hide() end
     return
   end
 
   SetRuntimeActive(true)
 
-  -- EllesmereUI's minimap module running: restyle its icon, own nothing.
-  -- The Blizzard frame stays untouched in this mode -- EllesmereUI's icon
-  -- updates from that frame's Show/Hide, so starving it would starve them.
-  if EuiSkinCandidate() then
-    SetDefaultSuppressed(false)
+  -- One invariant while enabled: the default indicator is silenced, in BOTH
+  -- modes. Skin mode once left the Blizzard frame alive so EllesmereUI's
+  -- Show/Hide hooks on it could drive their icon -- but those hooks answer
+  -- every mail event with a full relayout that resets their mouseover-hidden
+  -- button row to full alpha and re-hides it on a deferred timer, a visible
+  -- flash per AH purchase. Constant suppression generates zero Show/Hide
+  -- traffic; the visibility sync those hooks performed is done below.
+  SetDefaultSuppressed(true)
+
+  -- EllesmereUI's minimap module running: restyle its icon in place, leave
+  -- position and size to them.
+  if EuiSkinCandidate() and not euiSkin.fallback then
     if MB._button then MB._button:Hide() end
     if ApplyEuiSkin() then
       euiSkin.tries = 0
+      SyncEuiButtonShown()
       return
     end
     -- Their button is built a beat after login (and can lag a settings
     -- change); wait for it a few times before concluding their internals
-    -- have changed shape and falling back to Postbox's own button.
+    -- have changed shape and falling back to Postbox's own button. The
+    -- latch matters: without it every later Refresh would re-enter this
+    -- block and churn state around each mail event.
     if euiSkin.tries < EUI_SKIN_MAX_TRIES then
       euiSkin.tries = euiSkin.tries + 1
       if not euiSkin.timerArmed then
@@ -709,10 +761,10 @@ Refresh = function()
       end
       return
     end
+    euiSkin.fallback = true
   end
 
   RestoreEuiSkin()
-  SetDefaultSuppressed(true)
   local button = Build()
   if not button then return end
   ApplyLook(button)

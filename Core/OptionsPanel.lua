@@ -67,7 +67,7 @@ local function AddSectionHeading(frame, y, title)
 end
 
 local function StartCard(frame, y)
-  local card = CreateFrame("Frame", nil, frame)
+  local card = CreateFrame("Frame", nil, frame, "BackdropTemplate")
   card:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, y)
   card:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
   ns.Theme.ApplyList(card)
@@ -712,7 +712,7 @@ local function Build()
   -- handshake can resolve seconds later, after this panel was first built.
   y = y - 2
   local GREEN = { 0.38, 0.80, 0.44 }
-  local statusBand = CreateFrame("Button", nil, frame)
+  local statusBand = CreateFrame("Button", nil, frame, "BackdropTemplate")
   statusBand:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, y)
   statusBand:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
   statusBand:SetHeight(24)
@@ -776,10 +776,15 @@ local function Build()
     box:SetFontObject(ns.Theme.FontObject("bodySmall") or GameFontHighlightSmall)
     box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
     box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-    -- Read-only in effect: typing snaps the text back and re-selects, so
-    -- ctrl-C always copies the intact value.
-    box:SetScript("OnChar", function(self)
+    -- Read-only in effect: any user edit snaps the text back and re-selects,
+    -- so Ctrl+C always copies the intact value. OnTextChanged rather than
+    -- OnChar: Backspace, Delete and Enter change the text without ever
+    -- firing OnChar. The flag stops the restore re-entering itself.
+    box:SetScript("OnTextChanged", function(self, userInput)
+      if not userInput or self._restoring then return end
+      self._restoring = true
       self:SetText(self._value or "")
+      self._restoring = false
       self:HighlightText()
     end)
     function box:SetValue(value)
@@ -795,7 +800,10 @@ local function Build()
       -- and could be neither raised nor moved. UIParent + TOOLTIP strata
       -- puts it above everything, and the opaque flag keeps it readable at
       -- any host opacity.
-      bugPopup = CreateFrame("Frame", nil, UIParent)
+      -- Named: Escape-to-close works through UISpecialFrames, which is a
+      -- list of frame NAMES -- RegisterEscClose is a silent no-op on an
+      -- unnamed frame.
+      bugPopup = CreateFrame("Frame", "PostboxBugReportFrame", UIParent, "BackdropTemplate")
       bugPopup:SetSize(324, 196)
       bugPopup:SetFrameStrata("TOOLTIP")
       bugPopup:SetToplevel(true)
@@ -860,7 +868,13 @@ local function Build()
       (type(ns.BuildDiagnosticReport) == "function" and ns.BuildDiagnosticReport())
       or "")
     bugPopup:ClearAllPoints()
-    bugPopup:SetPoint("BOTTOM", statusBand, "TOP", 0, 8)
+    if statusBand:GetTop() then
+      bugPopup:SetPoint("BOTTOM", statusBand, "TOP", 0, 8)
+    else
+      -- /postbox debug before the panel has ever been positioned: the band
+      -- has no resolvable rect, and a frame anchored to one never lays out.
+      bugPopup:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+    end
     bugPopup:Show()
     -- Effortless copying: the address arrives focused and selected, so
     -- Ctrl+C is the only keystroke needed.

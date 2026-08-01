@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.12.0
+
+- **Stock Blizzard UI gets its backgrounds back.** The options panel's
+  section cards, the status band and the bug-report window were built
+  without backdrop support, so the addon's own fill, border and grain
+  silently skipped them - and the host skins painted them anyway, which hid
+  the hole on a skinned setup. The paint pipeline now retrofits backdrop
+  support to any frame it is asked to surface, so this cannot happen again.
+- **"Last visit: N mails could not be taken" actually survives a relog.**
+  The saved record was erased the moment the mailbox opened, because the
+  inbox always reads empty before the first inbox update and that cold read
+  was treated as truth. Erasure now waits for a real update.
+- **No more minimap-bar flash when mail arrives** (with the minimap icon
+  enabled under EllesmereUI). The default indicator is now silenced in skin
+  mode too, so EllesmereUI's relayout hooks - whose layout pass flashes its
+  mouseover-hidden button row for a beat - are never poked by mail events;
+  Postbox drives their icon's visibility itself with the same call their own
+  sync makes. The underlying flash is an EllesmereUI bug that also fires
+  without Postbox; a report for their tracker is drafted.
+- The finder for EllesmereUI's mail button no longer churns the default
+  indicator around every mail event once its retries run out; if
+  EllesmereUI rebuilds its button mid-session the old one is restored
+  faithfully instead of keeping Postbox's art forever; and a retired icon
+  style now falls back to Letter everywhere, so the minimap and the options
+  panel agree.
+- The bug-report window closes on Escape, opens centred when /postbox debug
+  is the first thing that ever summons it, and its copy boxes can no longer
+  be mangled with Backspace or Delete.
+- The icon picker's scrollbar track survives host-UI skinning (it was a
+  floating thumb with no rail).
+- Manage Recipients and its tooltip are translated for deDE, esES and ruRU;
+  the Send tab's doorway says so in chat if the recipient manager is
+  unavailable; and the fourth icon source sheet no longer ships in the
+  release zip.
+
 ## 1.11.4
 
 - The Send tab's recipient-manager control is a true inline segment now:

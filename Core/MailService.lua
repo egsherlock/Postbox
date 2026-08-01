@@ -657,8 +657,11 @@ end
 --   busy     nothing was sent at all -- another sequence owned the channel.
 --   closed   nothing was sent at all -- the player walked away.
 --
--- LIFETIME. One mailbox visit, and the reasoning is that a refusal is a fact
--- established by a command WE issued in THIS visit. Four rules, together:
+-- LIFETIME. The session -- entries live until logout, not until the mailbox
+-- closes (see .dev/SPEC-RunMemory.md: the close-time wipe was reversed, since
+-- reopening to find every warning gone made the one mail that would not come
+-- out look exactly like the ones that would). A refusal is a fact established
+-- by a command WE issued; the rules below keep it honest between visits:
 --   * recorded when a take is refused, with the game's own words where the
 --     error watch could attribute them to this mail and `true` where it could
 --     not (two refusals with different words collapse to `true` as well: quoting
@@ -674,10 +677,10 @@ end
 --     inbox is truncated above ~50 mails and reads empty between MAIL_SHOW and
 --     the first MAIL_INBOX_UPDATE: an entry that matches nothing right now may
 --     match again a moment later, and deleting it there would lose a live fact;
---   * wiped when the mailbox closes (ns.MailboxUI's session teardown calls
---     Mail.ClearStuck). Away from the mailbox we cannot know whether the cause
---     still holds -- the player may have emptied half a bag on the way to the
---     bank -- and a stale "your bags are full" is worse than no marker at all.
+--   * NOT wiped at mailbox close. The filter above already silences any entry
+--     the next visit cannot re-match, the marker is phrased as history in the
+--     game's own words rather than a claim about the present, and one retry
+--     re-establishes the truth. Nothing is saved; logout is the boundary.
 -------------------------------------------------------------
 
 -- fingerprint -> the game's error text, or `true` for "refused, no attributable
@@ -703,9 +706,9 @@ local function NoteStuck(fingerprint, reason)
   if text and prior ~= text then stuck[fingerprint] = true end
 end
 
--- One mail forgets its refusal. Mail.ClearStuck below empties the registry
--- outright; the two are deliberately named apart because a mistake either way
--- round is invisible until a player is looking at the wrong marker.
+-- One mail forgets its refusal -- the only clear path the registry has; the
+-- whole-registry wipe that once lived alongside it went with the close-time
+-- lifetime (see LIFETIME above).
 local function ForgetStuck(fingerprint)
   if not fingerprint or stuck[fingerprint] == nil then return end
   stuck[fingerprint] = nil
@@ -763,14 +766,6 @@ function Mail.StuckCount()
     end
   end
   return n
-end
-
--- The session boundary. Called from the mailbox close path.
-function Mail.ClearStuck()
-  if stuckEntries == 0 then return end
-  for key in pairs(stuck) do stuck[key] = nil end
-  for key in pairs(stuckSeen) do stuckSeen[key] = nil end
-  stuckEntries = 0
 end
 
 -------------------------------------------------------------

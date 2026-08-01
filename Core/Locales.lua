@@ -997,6 +997,9 @@ if GetLocale() == "deDE" then
   L["RM_TIP_NOTE"]               = "Ein paar eigene Worte zu diesem Charakter. Die Notiz steht in beiden Fenstern neben dem Namen."
   L["RM_TIP_ROW_FAV"]            = "Rechtsklick auf die Zeile, um einen Favoriten hinzuzufuegen oder zu entfernen."
   L["RM_EMPTY_FILTER_HINT"]      = "Waehle oben eine andere Kategorie, oder Alle, um jeden Empfaenger zu sehen."
+  L["RM_NOT_AVAILABLE"]          = "Die Empfaengerverwaltung ist in diesem Build noch nicht verfuegbar."
+  L["RM_OPT_BUTTON"]             = "Empfaenger verwalten"
+  L["RM_OPT_BUTTON_DESC"]        = "Waehle, welche Charaktere Postbox beim Adressieren einer Post anbietet. Blende die aus, denen du nie schreibst, und mach die zu Favoriten, denen du schreibst."
 
   -- Optionen
   L["OPT_TAB_COUNTS_TITLE"]      = "Anzahl auf den Segmenten"
@@ -1214,6 +1217,9 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["RM_TIP_NOTE"]               = "Unas palabras tuyas sobre este personaje. La nota aparece junto al nombre en ambas ventanas."
   L["RM_TIP_ROW_FAV"]            = "Clic derecho en la fila para anadir o quitar un favorito."
   L["RM_EMPTY_FILTER_HINT"]      = "Elige otra categoria arriba, o Todos para ver todos los destinatarios."
+  L["RM_NOT_AVAILABLE"]          = "El gestor de destinatarios aun no esta disponible en esta version."
+  L["RM_OPT_BUTTON"]             = "Gestionar destinatarios"
+  L["RM_OPT_BUTTON_DESC"]        = "Elige que personajes ofrece Postbox al dirigir un correo. Oculta a los que nunca escribes y marca como favoritos a los que si."
 
   -- Opciones
   L["OPT_TAB_COUNTS_TITLE"]      = "Mostrar los recuentos"
@@ -1446,6 +1452,9 @@ L["RM_BTN_NOTE"]               = "Заметка"
 L["RM_TIP_NOTE"]               = "Несколько ваших слов об этом персонаже. Заметка отображается рядом с именем в обоих окнах."
 L["RM_TIP_ROW_FAV"]            = "Правый клик по строке, чтобы добавить или убрать избранное."
 L["RM_EMPTY_FILTER_HINT"]      = "Выберите другую категорию выше или «Все», чтобы увидеть всех получателей."
+L["RM_NOT_AVAILABLE"]          = "Окно получателей ещё недоступно в этой сборке."
+L["RM_OPT_BUTTON"]             = "Управление получателями"
+L["RM_OPT_BUTTON_DESC"]        = "Выберите, каких персонажей Postbox предлагает при отправке письма. Скройте тех, кому вы никогда не пишете, и добавьте в избранное тех, кому пишете."
 
 -- Настройки
 L["OPT_TAB_COUNTS_TITLE"]      = "Показывать счётчики"
