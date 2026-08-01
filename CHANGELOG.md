@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.8.0
+
+- The addon-list icon is now the clean London Postbox.
+- The minimap icon picker row is now the picker itself: a live preview
+  swatch of the current choice beside a full-width dropdown, instead of a
+  label stranded across the card from a small button.
+- The status band grew up: centred text with a green status light and a
+  subtle green wash (your UI pack's settings are wired in), the addon
+  version in the corner, and clicking the band opens a tiny bug-report
+  popup with the report address and a copyable one-line setup summary.
+
 ## 1.7.0
 
 - Eight "clean" restyles of the painted set, each sitting directly beneath

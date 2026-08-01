@@ -350,9 +350,60 @@ local function Build()
     { id = "postbox",      name = L["OPT_MINIMAP_ICON_POSTBOX"] },
     { id = "badge",        name = L["OPT_MINIMAP_ICON_BADGE"] },
   }
-  cy = AddDropdown(card, cy, L["OPT_MINIMAP_ICON_TITLE"], iconItems,
-        function() return ns.MinimapButton and ns.MinimapButton.GetIcon() end,
-        function(id) if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end end)
+  -- This section exists to pick this icon, so the row IS the picker: a live
+  -- swatch of the current choice beside a dropdown that fills the rest of
+  -- the row -- not a small toggle stranded across the card from a label.
+  local iconPreview = card:CreateTexture(nil, "ARTWORK")
+  iconPreview:SetSize(22, 22)
+  iconPreview:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
+  local function PaintIconPreview()
+    local Icon = ns.MinimapButton
+    local spec = Icon and Icon.GetIconSpec and Icon.GetIconSpec()
+    if not spec then
+      iconPreview:Hide()
+      return
+    end
+    iconPreview:Show()
+    if spec.atlas then
+      iconPreview:SetAtlas(spec.atlas)
+    else
+      iconPreview:SetTexture(spec.texture)
+    end
+    iconPreview:SetHeight(22 * (spec.aspect or 1))
+    if spec.tintable and Icon.GetAccentTint and Icon.GetAccentTint() then
+      iconPreview:SetVertexColor(ns.Theme.GetAccent())
+    else
+      iconPreview:SetVertexColor(1, 1, 1)
+    end
+  end
+  local iconDD = ns.Core.UI.Dropdown.Create(card, {
+    items        = iconItems,
+    toggleWidth  = 262,
+    toggleHeight = 22,
+    alignRight   = true,
+    height       = DROPDOWN_H,
+    defaultId    = ns.MinimapButton and ns.MinimapButton.GetIcon(),
+  })
+  iconDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 30, cy)
+  iconDD:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
+  iconDD:SetChangeCallback(function(id)
+    if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end
+    PaintIconPreview()
+  end)
+  frame.__refreshers[#frame.__refreshers + 1] = function()
+    local current = ns.MinimapButton and ns.MinimapButton.GetIcon()
+    for _, item in ipairs(iconItems) do
+      if item.id == current then
+        iconDD._selectedId = current
+        iconDD:SetText(item.name)
+        break
+      end
+    end
+    PaintIconPreview()
+  end
+  PaintIconPreview()
+  MarkBottom(card, cy, DROPDOWN_H)
+  cy = cy - (ROW_H + 4)
 
   -- With EllesmereUI's minimap module running, Postbox restyles EllesmereUI's
   -- own mail icon in place rather than drawing a second one; position and
@@ -383,7 +434,10 @@ local function Build()
 
   cy = AddCheckbox(card, cy, L["OPT_MINIMAP_ACCENT_TITLE"], L["OPT_MINIMAP_ACCENT_DESC"],
         function() return ns.MinimapButton and ns.MinimapButton.GetAccentTint() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetAccentTint(on) end end)
+        function(on)
+          if ns.MinimapButton then ns.MinimapButton.SetAccentTint(on) end
+          PaintIconPreview()
+        end)
 
   cy = AddCheckbox(card, cy, L["OPT_MINIMAP_GLOW_TITLE"], L["OPT_MINIMAP_GLOW_DESC"],
         function() return ns.MinimapButton and ns.MinimapButton.GetGlow() end,
@@ -481,40 +535,121 @@ local function Build()
     y = EndSection(frame, card, y)
   end
 
-  -- Which look is painting the addon right now: a quiet band with a status
-  -- dot, phrased as reassurance -- "options synced with EllesmereUI" -- so
-  -- the user knows the panel above is pulling from their UI pack, not
-  -- guessing. Refreshed on every open rather than baked in: skins claim
-  -- ns.Skin at PLAYER_LOGIN and the EllesmereUI handshake can resolve
-  -- seconds later, after this panel was first built.
+  -- Which look is painting the addon right now: a quiet band phrased as
+  -- reassurance -- "options synced with EllesmereUI" -- with a green status
+  -- light and wash for "successfully wired in", the addon version tucked in
+  -- the corner, and one more job: clicking it opens the bug-report popup
+  -- (the least intrusive home for that). Refreshed on every open rather
+  -- than baked in: skins claim ns.Skin at PLAYER_LOGIN and the EllesmereUI
+  -- handshake can resolve seconds later, after this panel was first built.
   y = y - 2
-  local statusBand = CreateFrame("Frame", nil, frame)
+  local GREEN = { 0.38, 0.80, 0.44 }
+  local statusBand = CreateFrame("Button", nil, frame)
   statusBand:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, y)
   statusBand:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
   statusBand:SetHeight(24)
   ns.Theme.ApplyBand(statusBand)
+
+  local wash = statusBand:CreateTexture(nil, "ARTWORK")
+  wash:SetPoint("TOPLEFT", statusBand, "TOPLEFT", 1, -1)
+  wash:SetPoint("BOTTOMRIGHT", statusBand, "BOTTOMRIGHT", -1, 1)
+  wash:SetColorTexture(GREEN[1], GREEN[2], GREEN[3], 0.07)
+
+  local statusText = ns.Theme.CreateText(statusBand, "bodySmall")
+  statusText:SetPoint("CENTER", statusBand, "CENTER", 0, 0)
+  statusText:SetJustifyH("CENTER")
+  statusText:SetWordWrap(false)
   local statusDot = statusBand:CreateTexture(nil, "OVERLAY")
   statusDot:SetSize(7, 7)
-  statusDot:SetPoint("LEFT", statusBand, "LEFT", 10, 0)
-  local statusText = ns.Theme.CreateText(statusBand, "bodySmall")
-  statusText:SetPoint("LEFT", statusDot, "RIGHT", 7, 0)
-  statusText:SetPoint("RIGHT", statusBand, "RIGHT", -10, 0)
-  statusText:SetJustifyH("LEFT")
-  statusText:SetWordWrap(false)
-  local function RefreshStyleStatus()
+  statusDot:SetPoint("RIGHT", statusText, "LEFT", -7, 0)
+  statusDot:SetColorTexture(GREEN[1], GREEN[2], GREEN[3], 1)
+
+  local versionText = ns.Theme.CreateText(statusBand, "bodySmall")
+  versionText:SetPoint("RIGHT", statusBand, "RIGHT", -8, 0)
+  versionText:SetJustifyH("RIGHT")
+  versionText:SetText("v" .. tostring(ns.VERSION or "?"))
+  versionText:SetAlpha(0.55)
+
+  local function StyleName()
     local by = ns.SkinAppliedBy
-    local name = (by == "ellesmereui" and "EllesmereUI")
+    return (by == "ellesmereui" and "EllesmereUI")
       or (by == "elvui" and "ElvUI")
       or nil
-    if name then
-      statusText:SetText(L("OPT_STYLE_SYNCED", name))
-    else
-      statusText:SetText(L["OPT_STYLE_OWN"])
-    end
-    ns.Theme.FillColor(statusDot, "accent")
+  end
+  local function RefreshStyleStatus()
+    local name = StyleName()
+    statusText:SetText(name and L("OPT_STYLE_SYNCED", name) or L["OPT_STYLE_OWN"])
   end
   RefreshStyleStatus()
   frame.__refreshers[#frame.__refreshers + 1] = RefreshStyleStatus
+
+  -- The bug-report popup: the report address and a one-line setup summary,
+  -- each in a copyable box. No browser can be opened from in-game, so
+  -- copyable is the whole feature.
+  local BUG_URL = "https://github.com/egsherlock/Postbox/issues"
+  local bugPopup
+  local function AddCopyRow(pop, rowY, labelKey)
+    local caption = ns.Theme.CreateText(pop, "label")
+    caption:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY)
+    caption:SetText(L[labelKey])
+    local box = CreateFrame("EditBox", nil, pop)
+    box:SetSize(280, 14)
+    box:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY - 14)
+    box:SetAutoFocus(false)
+    box:SetFontObject(ns.Theme.FontObject("bodySmall") or GameFontHighlightSmall)
+    box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    -- Read-only in effect: typing snaps the text back and re-selects, so
+    -- ctrl-C always copies the intact value.
+    box:SetScript("OnChar", function(self)
+      self:SetText(self._value or "")
+      self:HighlightText()
+    end)
+    function box:SetValue(value)
+      self._value = value or ""
+      self:SetText(self._value)
+    end
+    return box
+  end
+  local function ToggleBugReport()
+    if not bugPopup then
+      bugPopup = CreateFrame("Frame", nil, statusBand)
+      bugPopup:SetSize(300, 84)
+      bugPopup:SetPoint("BOTTOM", statusBand, "TOP", 0, 6)
+      bugPopup:SetFrameStrata("FULLSCREEN_DIALOG")
+      bugPopup:SetToplevel(true)
+      bugPopup:EnableMouse(true)
+      ns.Theme.ApplyCard(bugPopup)
+      bugPopup._url = AddCopyRow(bugPopup, -8, "OPT_BUG_URL_LABEL")
+      bugPopup._diag = AddCopyRow(bugPopup, -44, "OPT_BUG_DIAG_LABEL")
+      ns.Core.UI.Helpers.RegisterEscClose(bugPopup)
+      bugPopup:Hide()
+      if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, bugPopup) end
+    end
+    if bugPopup:IsShown() then
+      bugPopup:Hide()
+      return
+    end
+    local gameVersion, gameBuild = GetBuildInfo()
+    bugPopup._url:SetValue(BUG_URL)
+    bugPopup._diag:SetValue(string.format("Postbox %s | %s | WoW %s (%s)",
+      tostring(ns.VERSION), StyleName() or "own style",
+      tostring(gameVersion), tostring(gameBuild)))
+    bugPopup:Show()
+  end
+
+  statusBand:SetScript("OnClick", ToggleBugReport)
+  statusBand:SetScript("OnEnter", function(self)
+    wash:SetColorTexture(GREEN[1], GREEN[2], GREEN[3], 0.13)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L["OPT_BUG_TIP_TITLE"])
+    GameTooltip:AddLine(L["OPT_BUG_TIP_DESC"], 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  statusBand:SetScript("OnLeave", function()
+    wash:SetColorTexture(GREEN[1], GREEN[2], GREEN[3], 0.07)
+    GameTooltip:Hide()
+  end)
   MarkBottom(frame, y, 24)
 
   -- Sized to the last control's own bottom edge plus one pad, so hiding the

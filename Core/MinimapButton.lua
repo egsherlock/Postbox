@@ -718,6 +718,12 @@ function MB.GetIcon()
   return ICONS[id] and id or DEFAULTS.icon
 end
 
+-- The options panel's preview swatch reads the art through this rather than
+-- knowing the ICONS table's shape.
+function MB.GetIconSpec(id)
+  return ICONS[id or MB.GetIcon()] or ICONS[DEFAULTS.icon]
+end
+
 function MB.SetIcon(id)
   if not ICONS[id] then return end
   Settings().icon = id
