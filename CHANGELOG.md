@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
 
 - **Minimap mail icon** (off by default; options panel or `/postbox minimap`) —
   replaces the default new-mail indicator with Postbox's own icon on the minimap
