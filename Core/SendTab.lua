@@ -3528,31 +3528,44 @@ local function BuildRecipientField(panel)
   -- A doorway to the recipient manager at the field's right edge: the window
   -- where this field's suggestions are curated, one click from where
   -- recipients are typed instead of a trip through the options panel.
-  -- A real button, not a floating glyph: the theme's plate with the bundle
-  -- icon inset, so it reads as a control and both host skins dress it like
-  -- every other push button.
-  local manage = Theme.CreateButton(nil, panel.ToWrap)
-  manage:SetSize(20, 20)
-  manage:SetPoint("RIGHT", panel.ToWrap, "RIGHT", -3, 0)
+  -- An inline segment at the field's right end, not a floating button: the
+  -- field's own top, bottom and right edges enclose it, and a hairline on
+  -- its left is the only chrome it brings. Untagged on purpose, like the
+  -- window cog -- the host skins' button repaint fades a tagged button's
+  -- own textures, and this one is nothing but textures.
+  local manage = CreateFrame("Button", nil, panel.ToWrap)
+  manage:SetPoint("TOPRIGHT", panel.ToWrap, "TOPRIGHT", -1, -1)
+  manage:SetPoint("BOTTOMRIGHT", panel.ToWrap, "BOTTOMRIGHT", -1, 1)
+  manage:SetWidth(24)
   manage:SetFrameLevel(panel.ToWrap:GetFrameLevel() + 5)
-  -- The icon rides a child frame, not the button itself: a host skin's
-  -- button repaint fades every texture region the tagged button owns, which
-  -- is exactly how this icon vanished the moment the bare button became a
-  -- themed one.
-  local artHolder = CreateFrame("Frame", nil, manage)
-  artHolder:SetAllPoints(manage)
-  artHolder:SetFrameLevel(manage:GetFrameLevel() + 1)
-  local art = artHolder:CreateTexture(nil, "ARTWORK")
-  art:SetPoint("TOPLEFT", manage, "TOPLEFT", 3, -3)
-  art:SetPoint("BOTTOMRIGHT", manage, "BOTTOMRIGHT", -3, 3)
+
+  local divider = manage:CreateTexture(nil, "BORDER")
+  divider:SetWidth(1)
+  divider:SetPoint("TOPLEFT", manage, "TOPLEFT", 0, 0)
+  divider:SetPoint("BOTTOMLEFT", manage, "BOTTOMLEFT", 0, 0)
+  divider:SetColorTexture(1, 1, 1, 0.12)
+
+  local hoverWash = manage:CreateTexture(nil, "BACKGROUND")
+  hoverWash:SetPoint("TOPLEFT", manage, "TOPLEFT", 1, 0)
+  hoverWash:SetPoint("BOTTOMRIGHT", manage, "BOTTOMRIGHT", 0, 0)
+  hoverWash:SetColorTexture(1, 1, 1, 0)
+
+  local art = manage:CreateTexture(nil, "ARTWORK")
+  art:SetSize(16, 16)
+  art:SetPoint("CENTER", manage, "CENTER", 0, 0)
   art:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
+
+  -- Typed text stops short of the segment instead of running under it.
+  panel.ToBox:SetTextInsets(0, 26, 0, 0)
   manage:SetScript("OnEnter", function(self)
+    hoverWash:SetColorTexture(1, 1, 1, 0.07)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetText(L["RM_OPT_BUTTON"])
     GameTooltip:AddLine(L["RM_OPT_BUTTON_DESC"], 1, 1, 1, true)
     GameTooltip:Show()
   end)
   manage:SetScript("OnLeave", function()
+    hoverWash:SetColorTexture(1, 1, 1, 0)
     GameTooltip:Hide()
   end)
   manage:SetScript("OnClick", function()

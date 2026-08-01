@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.4
+
+- The Send tab's recipient-manager control is a true inline segment now:
+  flush with the field's right end, enclosed by the field's own edges, a
+  hairline divider on its left, and typed text stops short of it.
+
 ## 1.11.3
 
 - The bundle icon actually shows on the Manage Recipients button and the
