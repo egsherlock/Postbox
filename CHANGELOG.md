@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.2
+
+- The Send tab's recipient-manager doorway is a proper plated button with
+  the bundle icon inset, and the big Manage Recipients button shows the
+  same icon full-strength between its title and count.
+- The EllesmereUI mode line is centred, and a disabled minimap card stops
+  its preview pulse instead of breathing at 40% opacity.
+
 ## 1.11.1
 
 - Manage Recipients is a composed portrait button now: title, a ghosted

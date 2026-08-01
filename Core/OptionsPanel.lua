@@ -265,10 +265,11 @@ local function Build()
   rmButton:SetSize(108, (ROW_H * 4) - 8)
   rmButton:SetPoint("TOPRIGHT", card, "TOPRIGHT", -PAD, -12)
 
-  -- Portrait composition: title up top, a ghosted letter-bundle watermark in
-  -- the middle carrying the "this is the address book" idea, the live count
-  -- underneath. The watermark sits in the button's own ARTWORK layer, above
-  -- the plate fill and below the OVERLAY captions.
+  -- Portrait composition: title up top, the letter-bundle icon full-strength
+  -- in the middle -- the same glyph as the Send tab's doorway, carrying the
+  -- "this is the address book" idea -- and the live count underneath. The
+  -- icon sits in the button's own ARTWORK layer, above the plate fill and
+  -- below the OVERLAY captions.
   local rmLabel = rmButton:GetFontString()
   if rmLabel then
     rmLabel:SetWordWrap(true)
@@ -278,10 +279,9 @@ local function Build()
   end
   rmButton:SetText(L["RM_OPT_BUTTON"])
   local rmMark = rmButton:CreateTexture(nil, "ARTWORK")
-  rmMark:SetSize(42, 42)
-  rmMark:SetPoint("CENTER", rmButton, "CENTER", 0, -6)
+  rmMark:SetSize(46, 46)
+  rmMark:SetPoint("CENTER", rmButton, "CENTER", 0, -4)
   rmMark:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
-  rmMark:SetAlpha(0.30)
   local rmCount = ns.Theme.CreateText(rmButton, "bodySmall")
   rmCount:SetPoint("BOTTOM", rmButton, "BOTTOM", 0, 9)
   rmCount:SetAlpha(0.8)
@@ -602,7 +602,8 @@ local function Build()
     hint:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
     hint:EnableMouse(true)
     local hintText = ns.Theme.CreateText(hint, "bodySmall")
-    hintText:SetPoint("LEFT", hint, "LEFT", 1, 0)
+    hintText:SetPoint("CENTER", hint, "CENTER", 0, 0)
+    hintText:SetJustifyH("CENTER")
     hintText:SetWordWrap(false)
     hintText:SetText(L["OPT_MINIMAP_EUI_SHORT"])
     hintText:SetAlpha(0.7)
@@ -634,6 +635,14 @@ local function Build()
         and ns.MinimapButton.GetEnabled()
       mmCard:SetAlpha(on and 1 or 0.4)
       blocker:SetShown(not on)
+      -- A disabled card must not keep moving: the preview's pulse animation
+      -- plays on regardless of frame alpha, so it is stopped here and
+      -- re-derived from the settings when the feature comes back on.
+      if on then
+        PaintIconPreview()
+      else
+        prevPulse:Stop()
+      end
     end
     UpdateMinimapCardState()
     frame.__refreshers[#frame.__refreshers + 1] = UpdateMinimapCardState
