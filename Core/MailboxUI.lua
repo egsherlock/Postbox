@@ -387,23 +387,8 @@ function UI.UpdateStatusSummary()
   AdoptForeignText()
 
   status.summary = nil
-  local collect = ns.CollectTab
   local mail = ns.MailService
   local stuck = (mail and type(mail.StuckCount) == "function" and mail.StuckCount()) or 0
-
-  -- An interrupted run's note, in the run's own word: the player walked
-  -- away mid-sweep, and "Cut short" fired exactly while the window was
-  -- hiding -- an outcome nobody could ever see. The reopen says it instead,
-  -- with the LIVE count (the same walk the segment captions read), so it
-  -- can never be stale. Session-lived and self-clearing: a finished run or
-  -- an emptied remainder takes it off.
-  local remaining = collect and type(collect.InterruptedRemaining) == "function"
-    and collect.InterruptedRemaining() or nil
-
-  local parts
-  if remaining then
-    parts = LF("STATUS_REMAINING", remaining)
-  end
   if stuck > 0 then
     -- An inline escape rather than a tone: RenderStatus paints the whole label
     -- one colour from the layer that won, and this layer has no tone of its own
@@ -411,9 +396,8 @@ function UI.UpdateStatusSummary()
     local text = LF("STATUS_STUCK", stuck)
     local theme = ns.Theme
     if theme and theme.Colorize then text = theme.Colorize("warning", text) end
-    parts = parts and (parts .. " \226\128\148 " .. text) or text
+    status.summary = text
   end
-  status.summary = parts
 
   -- The saved record renders NOTHING of its own. Its stuck fingerprints were
   -- seeded into the live registry at mail open, so anything that still

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.17.1
+
+- The walk-away note from 1.17.0 is gone again: reopening after leaving a
+  run mid-sweep shows no special greeting. The leftovers are ordinary
+  uncollected mail the segment counts already describe, so the note said
+  nothing new - "Remaining" belongs to the live run counter alone.
+
 ## 1.17.0
 
 - **Walking away from a run now leaves a note you can actually see.** The
