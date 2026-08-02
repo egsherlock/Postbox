@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.16.4
+
+- A run that collected nothing leads with the problem alone - "Stuck: 1",
+  not "Collected: 0 - Stuck: 1". The green half only speaks when there is
+  something green to say; a clean run over an empty category still reports
+  its truthful zero.
+
 ## 1.16.3
 
 - The "Last visit: N mails could not be taken" sentence is gone - fully

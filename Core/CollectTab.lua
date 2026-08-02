@@ -2065,28 +2065,38 @@ local function FinishRun(left, stopReason)
     if theme and theme.Colorize then return theme.Colorize(token, text) end
     return text
   end
-  local collectedText = Tinted("positive",
-    format(L()["STATUS_COLLECTED"], tonumber(collected) or 0))
+  local got = tonumber(collected) or 0
   local JOIN = " \226\128\148 " -- em dash, spaced
+  -- The green half leads only when there is anything green to say:
+  -- "Collected: 0 — Stuck: 1" buries the one fact that matters under a
+  -- zero. A clean run still reports its zero ("Collected: 0" on an empty
+  -- category is a truthful nothing-to-do).
+  local function WithCollected(problemText)
+    if got > 0 then
+      return Tinted("positive", format(L()["STATUS_COLLECTED"], got))
+        .. JOIN .. problemText
+    end
+    return problemText
+  end
 
   if left > 0 then
-    StatusOutcome(collectedText .. JOIN
-      .. Tinted("negative", format(L()["STATUS_INCOMPLETE"], left)))
+    StatusOutcome(WithCollected(
+      Tinted("negative", format(L()["STATUS_INCOMPLETE"], left))))
     if stopReason == "bags" then
       ns.Print(format(L()["MSG_COLLECT_STOPPED_BAGS"], left))
     else
       ns.Print(format(L()["MSG_COLLECT_INCOMPLETE"], left))
     end
   elseif refused > 0 then
-    StatusOutcome(collectedText .. JOIN
-      .. Tinted("warning", format(L()["STATUS_PARTIAL"], refused)))
+    StatusOutcome(WithCollected(
+      Tinted("warning", format(L()["STATUS_PARTIAL"], refused))))
     if reason and reason ~= "" then
       ns.Print(L()("MSG_COLLECT_PARTIAL_REASON", collected, refused, reason))
     else
       ns.Print(L()("MSG_COLLECT_PARTIAL", collected, refused))
     end
   else
-    StatusOutcome(collectedText)
+    StatusOutcome(Tinted("positive", format(L()["STATUS_COLLECTED"], got)))
   end
 
   -- After the outcome, never instead of it: a stopped run's "3 left" is the line
