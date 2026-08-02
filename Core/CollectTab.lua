@@ -2063,7 +2063,29 @@ function CT.SyncStuckRecord()
   end
 end
 
+-- Set when the mailbox closes under a run, read by the shell's status
+-- summary at the next reopen: "Remaining: N" in the run's own word, with the
+-- live count. Session-lived -- after a relog the leftovers are ordinary
+-- inbox mail the segment captions already count.
+local runInterrupted = false
+
+-- -> the live to-collect count while an interrupted run's note stands, or
+-- nil. Self-clearing: an emptied remainder retires the note (a finished run
+-- clears the flag at the source).
+function CT.InterruptedRemaining()
+  if not runInterrupted then return nil end
+  local toCollect = CT.InboxCounts()
+  if (tonumber(toCollect) or 0) <= 0 then
+    runInterrupted = false
+    return nil
+  end
+  return toCollect
+end
+
 local function FinishRun(left, stopReason)
+  -- A run that reached its own ending supersedes any walk-away note; its
+  -- outcome line says everything the note would have.
+  runInterrupted = false
   local refused = Run.refused
   local collected = Run.collected
   local reason = Run.reason
@@ -2142,6 +2164,7 @@ local function StopRun()
   local panel = Run.panel
   local earned, spent = Run.earned, Run.spent
   ResetRun()
+  runInterrupted = true
   StatusMailboxClosed()
   ReportRunMoney(earned, spent)
   RequestRefresh(panel)

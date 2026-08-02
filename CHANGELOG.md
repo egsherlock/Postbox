@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.17.0
+
+- **Walking away from a run now leaves a note you can actually see.** The
+  old "Cut short: the mailbox closed" fired at the exact moment the window
+  was hiding - dead UI. Reopening the mailbox now greets you with
+  "Remaining: N" (the run's own word, the live count) alongside any stuck
+  line: "Remaining: 4 - Stuck: 1". It clears itself when a run finishes or
+  the remainder is collected by hand, and deliberately does not survive a
+  relog - by then the leftovers are ordinary inbox mail the segment counts
+  already describe.
+
 ## 1.16.5
 
 - **Relog survival no longer depends on HOW a mail got stuck.** The saved
