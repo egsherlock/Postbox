@@ -147,9 +147,6 @@ L["STATUS_INCOMPLETE"]         = "Incomplete: %d left"
 -- one situation (mail that would not come out), and three different phrasings
 -- for it read as three different situations. The tooltip carries the detail.
 L["STATUS_PARTIAL"]            = "Stuck: %d"
-L["STATUS_LASTVISIT_ONE"]      = "Last visit: %d mail could not be taken"
-L["STATUS_LASTVISIT_OTHER"]    = "Last visit: %d mails could not be taken"
-L["STATUS_LASTVISIT_SAID"]     = "%s — the game said: %s"
 -- The whole of the idle status line, and only when it is true: the server has
 -- refused a mail's attachments this visit and trying again will not empty it. A
 -- healthy idle mailbox shows nothing here, because the collect screen's segments
@@ -572,9 +569,6 @@ if GetLocale() == "frFR" then
   L["STATUS_STOPPED"]            = "Interrompu : la boite s'est fermee"
   L["STATUS_INCOMPLETE"]         = "Incomplet: %d restant(s)"
   L["STATUS_PARTIAL"]            = "Bloques: %d"
-  L["STATUS_LASTVISIT_ONE"]      = "Derniere visite : %d courrier n'a pas pu etre pris"
-  L["STATUS_LASTVISIT_OTHER"]    = "Derniere visite : %d courriers n'ont pas pu etre pris"
-  L["STATUS_LASTVISIT_SAID"]     = "%s — le jeu indique : %s"
   L["STATUS_STUCK"]              = "Bloques: %d"
 
   -- Noms de categorie : bouton groupe ET etiquette sur une ligne de courrier.
@@ -881,9 +875,6 @@ if GetLocale() == "deDE" then
   L["STATUS_STOPPED"]            = "Abgebrochen: der Briefkasten ging zu"
   L["STATUS_INCOMPLETE"]         = "Unvollstaendig: %d uebrig"
   L["STATUS_PARTIAL"]            = "Steckt fest: %d"
-  L["STATUS_LASTVISIT_ONE"]      = "Letzter Besuch: %d Brief konnte nicht genommen werden"
-  L["STATUS_LASTVISIT_OTHER"]    = "Letzter Besuch: %d Briefe konnten nicht genommen werden"
-  L["STATUS_LASTVISIT_SAID"]     = "%s — das Spiel sagt: %s"
   L["STATUS_STUCK"]              = "Steckt fest: %d"
 
   -- Kategorienamen: Sammelknopf UND Etikett auf einer einzelnen Postzeile.
@@ -1110,9 +1101,6 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["STATUS_STOPPED"]            = "Cortado: el buzon se cerro"
   L["STATUS_INCOMPLETE"]         = "Incompleto: quedan %d"
   L["STATUS_PARTIAL"]            = "Atascados: %d"
-  L["STATUS_LASTVISIT_ONE"]      = "Ultima visita: %d correo no se pudo recoger"
-  L["STATUS_LASTVISIT_OTHER"]    = "Ultima visita: %d correos no se pudieron recoger"
-  L["STATUS_LASTVISIT_SAID"]     = "%s — el juego dice: %s"
   L["STATUS_STUCK"]              = "Atascados: %d"
 
   -- Nombres de categoria: boton en bloque Y etiqueta en la fila de un correo.
@@ -1340,11 +1328,6 @@ L["STATUS_COLLECTED"]          = "Забрано: %d"
 L["STATUS_STOPPED"]            = "Прервано: ящик закрылся"
 L["STATUS_INCOMPLETE"]         = "Не завершено: осталось %d"
 L["STATUS_PARTIAL"]            = "Застряло: %d"
-L["STATUS_LASTVISIT_ONE"]      = "Прошлый визит: %d письмо не удалось забрать"
-L["STATUS_LASTVISIT_FEW"]      = "Прошлый визит: %d письма не удалось забрать"
-L["STATUS_LASTVISIT_MANY"]     = "Прошлый визит: %d писем не удалось забрать"
-L["STATUS_LASTVISIT_OTHER"]    = "Прошлый визит: %d писем не удалось забрать"
-L["STATUS_LASTVISIT_SAID"]     = "%s — игра сообщает: %s"
 L["STATUS_STUCK"]              = "Застряло: %d"
 
 -- Названия категорий: и кнопка массового сбора, и метка на строке письма.

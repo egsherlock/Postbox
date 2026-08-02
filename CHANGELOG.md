@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.16.3
+
+- The "Last visit: N mails could not be taken" sentence is gone - fully
+  superseded by the revived markers. After a relog the stuck mails wear
+  their triangles and the ordinary "Stuck: N" line, same as a same-session
+  reopen; the old sentence only ever fired when the saved fingerprints
+  matched nothing, which almost always meant the problem had resolved
+  itself - stale numbers at the moment they stopped being true.
+
 ## 1.16.2
 
 - The run outcome wears one colour per fact now: Collected in green, Stuck

@@ -399,37 +399,30 @@ function UI.UpdateStatusSummary()
     status.summary = text
   end
 
-  -- The previous visit's unfinished business, shown until something changes
-  -- it: a clean run erases the record at the source, and an inbox that has
-  -- emptied on its own (expiry, a return) erases it here. The live stuck
-  -- line outranks it -- when the registry still holds this session's facts,
-  -- those are fresher than the note from last time.
+  -- The saved record renders NOTHING of its own. Its stuck fingerprints were
+  -- seeded into the live registry at mail open, so anything that still
+  -- matters is already the "Stuck: N" line above, with its triangles and its
+  -- tooltip -- one presentation for one situation, whether the run was this
+  -- session or last. A separate "Last visit: N could not be taken" sentence
+  -- fired precisely when the seeded fingerprints matched nothing, which
+  -- almost always means the problem resolved itself -- stale numbers shown
+  -- at the one moment they stopped being true. The record's remaining jobs
+  -- are the revival payload and the /postbox debug report; housekeeping
+  -- below erases it once the inbox is VERIFIABLY empty.
   if not status.summary then
     local collect = ns.CollectTab
     local record = collect and type(collect.GetLastRunRecord) == "function"
       and collect.GetLastRunRecord()
     if record then
       local numItems = (type(GetInboxNumItems) == "function" and GetInboxNumItems()) or 0
-      if numItems == 0 then
-        -- "Empty" is only believable after a real MAIL_INBOX_UPDATE this
-        -- visit: the client's inbox cache reads 0 between MAIL_SHOW and the
-        -- first update (documented at MailService's registry and CollectTab's
-        -- run start), and erasing on that cold read would delete the record
-        -- at the very moment it exists to be shown.
-        if UI._state.inboxSeen and type(collect.ClearLastRunRecord) == "function" then
-          collect.ClearLastRunRecord()
-        end
-      else
-        local total = (tonumber(record.refused) or 0) + (tonumber(record.left) or 0)
-        if total > 0 then
-          local text = ns.Plural("STATUS_LASTVISIT", total)
-          if type(record.reason) == "string" and record.reason ~= "" then
-            text = LF("STATUS_LASTVISIT_SAID", text, record.reason)
-          end
-          local theme = ns.Theme
-          if theme and theme.Colorize then text = theme.Colorize("warning", text) end
-          status.summary = text
-        end
+      -- "Empty" is only believable after a real MAIL_INBOX_UPDATE this
+      -- visit: the client's inbox cache reads 0 between MAIL_SHOW and the
+      -- first update (documented at MailService's registry and CollectTab's
+      -- run start), and erasing on that cold read would delete the record
+      -- before its fingerprints had a chance to revive anything.
+      if numItems == 0 and UI._state.inboxSeen
+        and type(collect.ClearLastRunRecord) == "function" then
+        collect.ClearLastRunRecord()
       end
     end
   end
