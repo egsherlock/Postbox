@@ -2035,6 +2035,34 @@ function CT.SeedStuckFromRecord()
   end
 end
 
+-- The closing half of the bridge, called by the shell when the mailbox
+-- shuts: the record's fingerprints re-sync to whatever the registry holds
+-- NOW. This is what makes relog survival independent of HOW a refusal
+-- happened -- a run that finished wrote its record, but a run the player
+-- walked out of writes nothing, a clean sweep of one category erases the
+-- record while another category's mail is still stuck, and a single-click
+-- take never touches the record at all. One sync at the boundary covers
+-- every path, and prunes fingerprints whose mail was freed since (they
+-- would be filtered at read anyway; there is just no reason to save them).
+function CT.SyncStuckRecord()
+  local M = Mail()
+  local snap = M and type(M.StuckSnapshot) == "function" and M.StuckSnapshot() or nil
+  local record = CT.GetLastRunRecord()
+  if snap then
+    if record then
+      -- The stored table itself: writing through updates SavedVariables.
+      record.stuck = snap
+    else
+      -- No run wrote a record this visit (walk-away, or a single take's
+      -- refusal). The counts claim nothing -- the fingerprints are the
+      -- payload, and /postbox debug is the counts' only reader.
+      SaveLastRunRecord(0, 0, 0, nil, nil)
+    end
+  elseif record then
+    record.stuck = nil
+  end
+end
+
 local function FinishRun(left, stopReason)
   local refused = Run.refused
   local collected = Run.collected

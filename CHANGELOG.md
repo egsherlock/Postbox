@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.16.5
+
+- **Relog survival no longer depends on HOW a mail got stuck.** The saved
+  markers re-sync to the live registry every time the mailbox closes - so
+  a refusal seen in a run you walked out of, a refusal from a single-click
+  take, and a stuck mail from an earlier category all come back with their
+  triangles after a relog, exactly like ones a finished run recorded. The
+  sync also prunes markers whose mail was freed in the meantime.
+
 ## 1.16.4
 
 - A run that collected nothing leads with the problem alone - "Stuck: 1",

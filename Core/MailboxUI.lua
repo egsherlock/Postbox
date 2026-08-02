@@ -1524,6 +1524,13 @@ local function OnMailClosed()
   local collect = ns.CollectTab
   if collect and collect.InvalidateCounts then collect.InvalidateCounts() end
 
+  -- The session boundary for run memory's saved half: whatever the registry
+  -- holds now is what a relog must be able to revive, however the refusals
+  -- got there -- a finished run, an abandoned one, or a single take.
+  if collect and type(collect.SyncStuckRecord) == "function" then
+    collect.SyncStuckRecord()
+  end
+
   -- mailboxOpen is already false, so this strips the count suffix -- the
   -- numbers describe an inbox the player has walked away from.
   UpdateCollectTabText()
