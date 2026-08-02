@@ -926,11 +926,23 @@ local function RunPlan(index, fingerprint, plan, done)
           step()
           return
         end
+        -- The mailbox closed with this command in flight -- the player
+        -- walked away mid-take. The unchanged mail proves NOTHING: the
+        -- server refuses everything from out of range, and the client's
+        -- inbox cache keeps answering with the old headers for a beat, so
+        -- without this test the walk-away paints a phantom refusal onto a
+        -- perfectly collectable mail (and, via the fingerprint, onto every
+        -- identical sibling). End the plan; record nothing.
+        if not MailboxOpen() then
+          done(false, refused, reason)
+          return
+        end
         refused = refused + 1
         noteReason(text)
         -- The one place a hard per-item refusal is established. Everything the
         -- registry holds comes through here or through CollectMail's closing
-        -- verification; no timeout, busy or closed path can reach it.
+        -- verification; no timeout, busy or closed path can reach it -- and
+        -- a close DURING flight is caught just above.
         NoteStuck(fingerprint, text)
         step()
       end)
@@ -1034,6 +1046,12 @@ function Mail.CollectMail(index, onDone, opts)
       -- Verify rather than assume, independently of the per-operation
       -- measurements. Only meaningful while the index still names this mail:
       -- once it is emptied the server deletes it and a different mail slides in.
+      -- And only meaningful while the mailbox is still OPEN: after a
+      -- mid-collection walk-away the cached headers read "still full" for
+      -- every mail, including ones a retry would take instantly.
+      if not MailboxOpen() then
+        return finish("closed", refusedCount, reason)
+      end
       if Fingerprint(index) == fingerprint and Mail.HasContent(index) then
         -- Every handshake completed and the mail is still not empty. Nothing
         -- attributable to one take, but the mail is stuck all the same.

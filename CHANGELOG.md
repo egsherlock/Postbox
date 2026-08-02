@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.17.2
+
+- **Walking away mid-take no longer paints a phantom "stuck" marker.** The
+  server refuses everything from out of range, and the client's cached
+  headers keep reading "still full" for a beat after you leave - so the
+  in-flight mail (and, via the shared fingerprint, every identical auction
+  sibling) could be recorded as refused when a retry would take it
+  instantly. Both refusal-recording paths now confirm the mailbox is still
+  open before believing an unchanged mail. An already-recorded phantom
+  clears itself the moment the mail is successfully collected.
+
 ## 1.17.1
 
 - The walk-away note from 1.17.0 is gone again: reopening after leaving a
