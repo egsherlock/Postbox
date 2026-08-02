@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.16.2
+
+- The run outcome wears one colour per fact now: Collected in green, Stuck
+  in amber (or Incomplete in red), the divider neutral - instead of the
+  whole line taking the problem's colour and painting the good news amber.
+
 ## 1.16.1
 
 - The Manage Recipients bundle sits on a quiet accent glow now - static, no

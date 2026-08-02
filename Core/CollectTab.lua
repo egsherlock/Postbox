@@ -2055,25 +2055,38 @@ local function FinishRun(left, stopReason)
   -- not. The count is this session's report and deliberately does NOT
   -- persist -- a reopen shows only what is still actionable (the summary
   -- layer's Stuck line); what was collected is already in the bags.
-  local collectedText = format(L()["STATUS_COLLECTED"], tonumber(collected) or 0)
+  --
+  -- Coloured PER SEGMENT with inline escapes, not one layer tone for the
+  -- whole line: a green fact and an amber problem sharing one sentence must
+  -- not both wear the problem's colour. The em dash carries no colour of
+  -- its own, so it renders in the label's default -- a neutral divider.
+  local theme = ns.Theme
+  local function Tinted(token, text)
+    if theme and theme.Colorize then return theme.Colorize(token, text) end
+    return text
+  end
+  local collectedText = Tinted("positive",
+    format(L()["STATUS_COLLECTED"], tonumber(collected) or 0))
   local JOIN = " \226\128\148 " -- em dash, spaced
 
   if left > 0 then
-    StatusOutcome(collectedText .. JOIN .. format(L()["STATUS_INCOMPLETE"], left), "negative")
+    StatusOutcome(collectedText .. JOIN
+      .. Tinted("negative", format(L()["STATUS_INCOMPLETE"], left)))
     if stopReason == "bags" then
       ns.Print(format(L()["MSG_COLLECT_STOPPED_BAGS"], left))
     else
       ns.Print(format(L()["MSG_COLLECT_INCOMPLETE"], left))
     end
   elseif refused > 0 then
-    StatusOutcome(collectedText .. JOIN .. format(L()["STATUS_PARTIAL"], refused), "warning")
+    StatusOutcome(collectedText .. JOIN
+      .. Tinted("warning", format(L()["STATUS_PARTIAL"], refused)))
     if reason and reason ~= "" then
       ns.Print(L()("MSG_COLLECT_PARTIAL_REASON", collected, refused, reason))
     else
       ns.Print(L()("MSG_COLLECT_PARTIAL", collected, refused))
     end
   else
-    StatusOutcome(collectedText, "positive")
+    StatusOutcome(collectedText)
   end
 
   -- After the outcome, never instead of it: a stopped run's "3 left" is the line
