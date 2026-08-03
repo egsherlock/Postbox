@@ -296,8 +296,11 @@ local function Build()
     -- colour set below it is invisible (and a texture pack can turn the
     -- grain itself near-black, which is exactly the hole this fixes).
     if rmButton.pbSurfaceTexture then rmButton.pbSurfaceTexture:SetAlpha(0) end
+    -- The card behind is pure black; the button is the SAME tone one step
+    -- lighter -- a neutral near-black, not a colour of its own. (A warm
+    -- brown tried here read as a different material entirely.)
     if rmButton.SetBackdropColor then
-      rmButton:SetBackdropColor(0.18, 0.15, 0.12, 0.95)
+      rmButton:SetBackdropColor(0.10, 0.10, 0.11, 0.95)
     end
     rmButton:SetHighlightTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
     local flatHover = rmButton:GetHighlightTexture()

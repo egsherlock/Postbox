@@ -663,6 +663,33 @@ local function OnPendingMail()
   if frame and frame:IsShown() then Refresh(frame) end
 end
 
+-- The fourth detector watches the CAUSE instead of the effect. The server
+-- sends no new-mail push while the mail flag is already up, so an auction
+-- purchase on top of existing unread mail -- the single most common arrival
+-- -- can be completely silent on the mail side. But the purchase itself is
+-- loudly announced to the buyer, and a completed purchase IS mail in
+-- transit. Witnessed cause, honest badge.
+local function OnPurchaseCompleted()
+  if not MemoryEnabled() then return end
+  local snap = StoredSnapshot()
+  if not snap then return end
+  snap.newSince = true
+  local label = L["MEMORY_FROM_AH"]
+  local from = snap.newFrom or {}
+  local listed = false
+  for i = 1, #from do
+    if from[i] == label then
+      listed = true
+      break
+    end
+  end
+  if not listed then from[#from + 1] = label end
+  snap.newFrom = from
+
+  local frame = MM._frame
+  if frame and frame:IsShown() then Refresh(frame) end
+end
+
 local bus = ns.Events
 if bus then
   bus.Register("MAIL_INBOX_UPDATE", QueueCapture)
@@ -671,6 +698,10 @@ if bus then
     PersistOnClose()
   end)
   bus.Register("UPDATE_PENDING_MAIL", OnPendingMail)
+  -- Item purchases and commodity purchases announce themselves on different
+  -- events; both end as mail.
+  bus.Register("AUCTION_HOUSE_PURCHASE_COMPLETED", OnPurchaseCompleted)
+  bus.Register("COMMODITY_PURCHASE_SUCCEEDED", OnPurchaseCompleted)
   bus.Register("PLAYER_ENTERING_WORLD", function()
     loginAt = time()
     if MemoryEnabled() then EnsureBaseline(StoredSnapshot()) end

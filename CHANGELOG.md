@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.24.5
+
+- **Buying at the auction house now lights the "+ new mail" badge
+  directly.** The game sends no new-mail signal at all while your mail flag
+  is already up — an auction purchase on top of existing unread mail, the
+  most common arrival there is, was completely silent even to Blizzard's
+  own UI. So Postbox stops waiting to hear about the mail and reacts to the
+  purchase itself: the game announces your completed buyout, and a
+  completed buyout IS mail on its way. The badge's tooltip credits the
+  Auction House.
+- The Manage Recipients button's fill is the card's own tone one step
+  lighter — a neutral near-black instead of the warm brown, which read as a
+  different material rather than a subtle lift.
+
 ## 1.24.4
 
 - The mailbox memory's arrival detectors now arm themselves on update: a
