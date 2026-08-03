@@ -548,6 +548,14 @@ end
 -- Before collecting a single mail the player clicked. Bulk runs never include
 -- C.O.D. mail -- the domain excludes it -- so this is the only path that can
 -- spend the player's money.
+--
+-- The accept re-verifies the mail's identity: a StaticPopup is not modal, so
+-- the inbox can reindex while the question waits (another row clicked, a
+-- spontaneous inbox update), and the quoted amount must never be paid for
+-- whatever mail slid onto the index since. Forward declaration -- Fingerprint
+-- lives with the mail-identity block below.
+local Fingerprint
+
 local function ConfirmCOD(index, onConfirm)
   local _, _, _, _, _, cod = GetInboxHeaderInfo(index)
   local amount = tonumber(cod) or 0
@@ -555,8 +563,14 @@ local function ConfirmCOD(index, onConfirm)
     onConfirm()
     return
   end
+  local expected = Fingerprint(index)
   Confirm(POPUP_COD, L()["COD_CONFIRM_ACCEPT"], L()["COD_CONFIRM_CANCEL"],
-    L()("COD_CONFIRM_MSG", Helpers().FormatMoney(amount)), onConfirm)
+    L()("COD_CONFIRM_MSG", Helpers().FormatMoney(amount)), function()
+      -- Silently stand down on a mismatch, like every LiveIndex caller: the
+      -- coalesced refresh has already re-bound the rows the player sees.
+      if Fingerprint(index) ~= expected then return end
+      onConfirm()
+    end)
 end
 
 -------------------------------------------------------------
@@ -628,7 +642,8 @@ local function FingerprintOf(sender, subject, cod)
   return tostring(sender) .. "\001" .. tostring(subject) .. "\001" .. tostring(tonumber(cod) or 0)
 end
 
-local function Fingerprint(index)
+-- Declared `local` above ConfirmCOD, which closes over it; assigned here.
+function Fingerprint(index)
   local _, _, sender, subject, _, cod = GetInboxHeaderInfo(index)
   return FingerprintOf(sender, subject, cod)
 end
@@ -1399,9 +1414,11 @@ local function BindRow(panel, row, index, position, compact, done)
 
   -- A partially collected auction stack must not keep advertising the quantity
   -- it arrived with, so a parenthesised count is rewritten to what is left.
+  -- Only a TRAILING count: that is where the auction house writes it, and a
+  -- player-written subject may contain parenthesised numbers of its own.
   local displaySubject = subject or ""
   if quantity > 0 then
-    displaySubject = (displaySubject:gsub("%(%d+%)", "(" .. quantity .. ")"))
+    displaySubject = (displaySubject:gsub("%(%d+%)%s*$", "(" .. quantity .. ")"))
   end
 
   -- The meta line, and -- for the compact layout -- the subset of it that stays
@@ -1752,6 +1769,14 @@ end
 
 function CollectSingleMail(panel, index, opts)
   ConfirmCOD(index, function()
+    -- The one path allowed to pay a C.O.D. -- the player just confirmed this
+    -- exact mail's amount (or it has none). The service refuses everywhere
+    -- else, whatever mail an index turns out to name (see Mail.CollectMail).
+    local confirmed = {}
+    if type(opts) == "table" then
+      for k, v in pairs(opts) do confirmed[k] = v end
+    end
+    confirmed.allowCOD = true
     Mail().CollectMail(index, function(status, refused, reason)
       -- "busy" is a Postbox sequence already owning the channel; that run is
       -- writing its own status and must not be talked over.
@@ -1777,7 +1802,7 @@ function CollectSingleMail(panel, index, opts)
         RefreshIdleSummary()
       end
       RequestRefresh(panel)
-    end, opts)
+    end, confirmed)
   end)
 end
 
@@ -1824,6 +1849,13 @@ local function DeleteAllDone(panel)
   local message = template and format(template, counted)
     or (L()["BTN_DELETE_ALL_DONE"] .. "\n" .. counted)
 
+  -- What each queued index NAMES right now. Deleting is the irreversible one,
+  -- and the inbox can reindex both while the dialog waits and between the
+  -- sweep's own commands -- so the sweep verifies each index against this
+  -- snapshot immediately before its command and skips any that moved.
+  local expected = {}
+  for i = 1, #queue do expected[queue[i]] = Fingerprint(queue[i]) end
+
   Confirm(POPUP_DELETE_ALL, DeleteLabel(), L()["COD_CONFIRM_CANCEL"],
     message, function()
       Mail().DeleteMails(queue, function(_, status)
@@ -1836,7 +1868,7 @@ local function DeleteAllDone(panel)
           ns.Print(L()["MSG_MAIL_TIMEOUT"])
         end
         RequestRefresh(panel)
-      end)
+      end, expected)
     end)
 end
 
@@ -2280,11 +2312,32 @@ local function StartCategoryRun(panel, category)
       -- inbox index first, so the remaining indices stay valid). The player can
       -- click a different category before answering, and this run must collect
       -- what the dialog said it would.
-      local planned = {}
-      for i = 1, fits do planned[i] = queue[i] end
+      local planned, prints = {}, {}
+      for i = 1, fits do
+        planned[i] = queue[i]
+        prints[i] = Fingerprint(queue[i])
+      end
       Confirm(POPUP_BAGSPACE, L()["BAGSPACE_CONFIRM_ACCEPT"], L()["COD_CONFIRM_CANCEL"],
         L()("MSG_BAGSPACE_PARTIAL", #queue, needed, free, fits),
-        function() BeginRun(panel, planned) end)
+        function()
+          -- The dialog is not modal: rows can be clicked and the inbox can
+          -- reindex while it waits, and then these indices name different
+          -- mails -- including, possibly, C.O.D. mail the queue was built to
+          -- exclude. Only the entries that still name the mail the dialog
+          -- described are run; the dropped ones are ordinary uncollected mail
+          -- the next run picks up at their new indices.
+          local verified = {}
+          for i = 1, #planned do
+            if prints[i] and Fingerprint(planned[i]) == prints[i] then
+              verified[#verified + 1] = planned[i]
+            end
+          end
+          if #verified == 0 then
+            RequestRefresh(panel)
+            return
+          end
+          BeginRun(panel, verified)
+        end)
       return
     end
   end

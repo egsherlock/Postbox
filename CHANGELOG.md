@@ -13,6 +13,27 @@
   tab. A new option, "Attach from the Mail tab" (on by default), turns the
   whole thing off for players who use or open items from their bags while
   standing at the mailbox.
+- **Every confirmation dialog now re-checks its mail before acting.** The
+  dialogs are not modal: while one waits, collecting another mail (or new
+  mail arriving) renumbers the whole inbox, and the "delete all read mail"
+  sweep, the partial-run confirmation and the C.O.D. prompt all acted on the
+  numbers they had captured when they opened. Each one now verifies, at the
+  moment you accept — and the delete sweep again before every single delete —
+  that each number still names the mail it described, and quietly skips any
+  that moved. A shifted mail costs one more click; the wrong delete cost the
+  mail.
+- **Bulk collection can no longer pay a C.O.D. under any circumstances.**
+  It was always designed never to touch C.O.D. mail, but that promise was
+  only kept when the queue was built; it is now also enforced at the moment
+  each mail is actually collected, so an inbox that renumbers mid-run cannot
+  slip a C.O.D. mail under a queued number. Only the single-mail path — the
+  one that just showed you the amount and asked — can ever pay.
+- The recipient, subject and message fields now cap their length at what the
+  server actually accepts (64, 64 and 500 letters), so an oversized paste is
+  truncated up front instead of failing the send with a generic error.
+- A remaining-quantity rewrite in mail subjects ("Auction successful: Ore
+  (200)") now only touches a count at the END of the subject, so a
+  player-written subject like "Ore (20) and bars (40)" is left alone.
 
 ## 1.17.2
 

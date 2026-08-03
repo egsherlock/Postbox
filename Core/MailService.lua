@@ -991,9 +991,21 @@ function Mail.CollectMail(index, onDone, opts)
   local fingerprint = Fingerprint(index)
   if not fingerprint then return finish("collected") end
 
-  local _, _, _, _, money, _, _, itemCount = GetInboxHeaderInfo(index)
+  local _, _, _, _, money, cod, _, itemCount = GetInboxHeaderInfo(index)
   money = tonumber(money) or 0
   itemCount = tonumber(itemCount) or 0
+
+  -- TakeInboxItem on a C.O.D. mail PAYS it, and only the single-mail path --
+  -- which just showed the player this exact mail's amount -- may do that
+  -- (opts.allowCOD). Bulk queues exclude C.O.D. at build time, but that
+  -- exclusion named an index, and indices shift: this is the last look before
+  -- any command (even the read-marking body fetch) is issued, so the promise
+  -- is enforced here, on the mail the index names NOW. Refused with no count:
+  -- nothing was taken, nothing is stuck, the mail is not this caller's to
+  -- touch.
+  if (tonumber(cod) or 0) > 0 and not (opts and opts.allowCOD) then
+    return finish("refused", 0, nil)
+  end
 
   -- The body fetch does two jobs: it loads the attachment links (which are nil
   -- until it lands -- enumerating before that finds nothing, which is what makes
@@ -1173,7 +1185,15 @@ end
 -- The list is sorted descending here regardless of what the caller passed:
 -- deleting reindexes the inbox, and a caller that got the order wrong would
 -- delete mail the player never selected.
-function Mail.DeleteMails(indices, onDone)
+--
+-- `expected` (optional): index -> fingerprint, what the caller believes each
+-- index names -- captured when its confirmation dialog went up. Deleting is
+-- the irreversible command, so each index is re-verified immediately before
+-- its DeleteInboxItem and skipped on a mismatch: the inbox can reindex while
+-- a dialog waits AND between the sweep's own commands (a mail arriving
+-- mid-sweep shifts every index), and a skipped mail costs one more click
+-- where a wrong delete costs the mail.
+function Mail.DeleteMails(indices, onDone, expected)
   if type(DeleteInboxItem) ~= "function" then
     if onDone then onDone(0, "unavailable") end
     return
@@ -1214,6 +1234,14 @@ function Mail.DeleteMails(indices, onDone)
     local index = list[cursor]
     if not index then return finish("done") end
     if not MailboxOpen() then return finish("closed") end
+
+    -- The last look before the irreversible command (see the contract above).
+    -- A moved mail is skipped, not chased: fingerprints are not unique across
+    -- identical auction mails, so relocating by fingerprint could delete a
+    -- sibling the caller never listed.
+    if expected and Fingerprint(index) ~= expected[index] then
+      return step()
+    end
 
     DeleteInboxItem(index)
     WaitForCommand(function(timedOut)

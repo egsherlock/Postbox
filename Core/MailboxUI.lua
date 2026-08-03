@@ -790,6 +790,11 @@ function UI.ApplyWindowLayout()
   else
     -- Free-floating: drop the size override (MailFrame keeps its own
     -- reservation) and hold the window's current screen position.
+    -- NOTE: this is still an insecure SetUIPanelAttribute write on MailFrame,
+    -- so switching gridDock off does not shrink the taint surface -- and if
+    -- the SetAlpha taint in HideNativeMailFrame is ever removed
+    -- (COMBAT_TAINT.md 7, #5/#6), this line must be revisited or it will
+    -- quietly keep re-tainting MailFrame on every layout pass.
     ReserveGridWidth(nil)
     local helpers = WindowHelpers()
     if helpers and helpers.PinFrameTopLeft then helpers.PinFrameTopLeft(frame) end

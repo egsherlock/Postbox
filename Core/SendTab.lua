@@ -3621,6 +3621,10 @@ end
 local function BuildRecipientField(panel)
   local label = CreateFieldLabel(panel, panel, "TOPLEFT", M.inset, -M.inset, L["LABEL_RECIPIENT"])
   panel.ToWrap, panel.ToBox = CreateFieldRow(panel, label, false)
+  -- Longest legitimate recipient is a 12-character name plus a hyphenated
+  -- realm; 64 clears every real case while stopping an accidental paste from
+  -- composing an address the server can only answer with a generic failure.
+  panel.ToBox:SetMaxLetters(64)
 
   -- A doorway to the recipient manager at the field's right edge: the window
   -- where this field's suggestions are curated, one click from where
@@ -4172,6 +4176,10 @@ function ST.Build(parent)
   local subjectLabel = CreateFieldLabel(panel, panel.ContactBar, "BOTTOMLEFT",
                                         0, -SUBJECT_LABEL_GAP, L["LABEL_SUBJECT"])
   panel.SubjectWrap, panel.SubjectBox = CreateFieldRow(panel, subjectLabel, false)
+  -- The server's own cap (Blizzard's send frame uses the same number). Typed
+  -- or pasted overflow is truncated here instead of failing the whole send
+  -- with nothing but a generic error to explain it.
+  panel.SubjectBox:SetMaxLetters(64)
   panel.SubjectPlaceholder = AttachPlaceholder(panel.SubjectWrap, panel.SubjectBox,
                                                L["DEFAULT_SUBJECT"], false)
   panel.SubjectBox:SetScript("OnTextChanged", function(self)
@@ -4191,6 +4199,8 @@ function ST.Build(parent)
   BuildSendControls(panel)
 
   panel.BodyWrap, panel.BodyBox = CreateFieldRow(panel, panel.MessageLabel, true)
+  -- The server's body cap, same number as Blizzard's send frame.
+  panel.BodyBox:SetMaxLetters(500)
   -- The body's vertical anchors belong to one function, which is also where the
   -- message box's hard minimum is enforced.
   ST.ApplyBodyBounds(panel)

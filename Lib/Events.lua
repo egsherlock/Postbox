@@ -28,6 +28,11 @@ function Events.NewBus(logFn)
   local frame = CreateFrame("Frame")
   local handlers = {}
   local bus = {}
+  -- How many dispatches are on the stack right now. While it is non-zero a
+  -- removal may only tombstone (see Unregister): compacting shifts the array
+  -- under the dispatch loop's fixed indices, which would skip the handler
+  -- after the removed one.
+  local dispatching = 0
 
   local function Log(...)
     if type(logFn) == "function" then logFn(...) end
@@ -59,6 +64,7 @@ function Events.NewBus(logFn)
     local holes = false
     -- `#list` is evaluated once, so a handler registering another handler
     -- during dispatch cannot extend the iteration under us.
+    dispatching = dispatching + 1
     for i = 1, #list do
       local handler = list[i]
       if handler then
@@ -70,8 +76,12 @@ function Events.NewBus(logFn)
         holes = true
       end
     end
+    dispatching = dispatching - 1
 
-    if holes then Compact(eventName, list) end
+    -- Only at depth zero: an outer dispatch may still be walking this list.
+    -- Tombstones an outer walk leaves behind are compacted on the event's
+    -- next dispatch, whose loop counts them as holes.
+    if holes and dispatching == 0 then Compact(eventName, list) end
   end)
 
   -- Handlers are invoked as handler(eventName, ...) — the event name first,
@@ -117,7 +127,11 @@ function Events.NewBus(logFn)
       end
     end
 
-    if found then Compact(eventName, list) end
+    -- Mid-dispatch the tombstone must STAY a tombstone -- a handler that
+    -- unregisters itself (or an earlier one) during its own event would
+    -- otherwise shift the next handler onto an index the loop has already
+    -- passed. The dispatcher compacts once its walk is done.
+    if found and dispatching == 0 then Compact(eventName, list) end
     return found
   end
 

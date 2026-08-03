@@ -40,7 +40,9 @@ advises, you decide. A failed send keeps your draft.
 
 Right-click an item in your bags — even while reading mail — and the window
 flips to Send with it already attached. While you compose, unmailable items
-wear a padlock in your bags, so what can go is visible at a glance.
+wear a padlock in your bags, so what can go is visible at a glance. (Bag
+replacements like Bagnon or AdiBags: attaching works there too; the padlock
+markers are default-bags-only.)
 
 The window grows as your message does, a line at a time, and shrinks back as
 you delete — your saved size is never touched.
