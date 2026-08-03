@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.30.1
+
+- **Postbox Modern's title bar lines up.** Two separate causes, both mine:
+  the bar was drawn from the window's top edge with a height of its own
+  rather than over the window's actual title area, so everything living in
+  it — title, close button, cog — sat low inside it; and the cog was using
+  the offset meant for EllesmereUI and ElvUI, which rebuild the title bar,
+  when Modern repaints the standard one and needs the standard offset. The
+  bar is now drawn corner to corner over the real title area, and the cog
+  sits where it does on the plain Blizzard look.
+
 ## 1.30.0
 
 - **Postbox Modern styles its own tooltips.** They were still wearing

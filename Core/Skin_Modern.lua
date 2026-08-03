@@ -135,19 +135,22 @@ local function TitleStrip(frame)
   if frame.__pbModernTitle then return end
   frame.__pbModernTitle = true
 
-  -- Inset by the window's own hairline so the strip sits INSIDE the border
-  -- rather than over it -- one edge, not two stacked.
   local edge = Hairline(frame)
   local strip = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
-  strip:SetPoint("TOPLEFT", frame, "TOPLEFT", edge, -edge)
-  strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -edge, -edge)
-  -- Measured from the template's own title area where it has one, not from
-  -- a constant: the title text is centred on THAT, so a strip of some other
-  -- height leaves the caption sitting off-centre in its own bar.
-  local measured = frame.TitleBg and frame.TitleBg.GetHeight and frame.TitleBg:GetHeight()
-  if type(measured) == "number" and measured > 8 then
-    strip:SetHeight(measured)
+
+  -- Anchored to the template's OWN title area, corner to corner, rather
+  -- than to the window top with a height of our choosing. Everything that
+  -- lives in that bar -- the title text, the close button, the cog -- is
+  -- positioned against the template's geometry, so a strip drawn anywhere
+  -- else leaves all three looking low or high inside it. Measuring the
+  -- height was not enough: TitleBg does not start at the window's top edge,
+  -- so the strip still sat a couple of pixels above everything in it.
+  if frame.TitleBg then
+    strip:SetPoint("TOPLEFT", frame.TitleBg, "TOPLEFT", 0, 0)
+    strip:SetPoint("BOTTOMRIGHT", frame.TitleBg, "BOTTOMRIGHT", 0, 0)
   else
+    strip:SetPoint("TOPLEFT", frame, "TOPLEFT", edge, -edge)
+    strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -edge, -edge)
     strip:SetHeight(TITLE_HEIGHT)
   end
   strip:SetColorTexture(C.title[1], C.title[2], C.title[3], C.title[4])

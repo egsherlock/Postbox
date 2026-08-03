@@ -1208,12 +1208,18 @@ end
 local function BuildOptionsButton(frame, theme)
   local button = CreateFrame("Button", nil, frame)
   button:SetSize(18, 18)
-  -- Two different title bars, two different centres: the host skins rebuild
-  -- the bar and -4 sits level with their title text, while the stock
-  -- template's TitleText rides higher and -4 read a couple of pixels low
-  -- beside it. ns.Skin is claimed at PLAYER_LOGIN, before any mailbox can
-  -- build this frame.
-  button:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, ns.Skin and -4 or -2)
+  -- Two different title bars, two different centres: a HOST skin rebuilds
+  -- the bar and -4 sits level with its title text, while the stock template
+  -- keeps its own TitleText higher and -4 reads a couple of pixels low
+  -- beside it.
+  --
+  -- The test is the host UI, not ns.Skin: Postbox Modern claims ns.Skin too
+  -- but repaints the template's OWN bar rather than rebuilding one, so it
+  -- belongs with the stock case -- reading ns.Skin alone dropped Modern's
+  -- cog two pixels. Host globals are settled at login, well before a
+  -- mailbox can build this frame.
+  local hostBar = (ns.Skin and (_G.EllesmereUI or _G.ElvUI)) and true or false
+  button:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, hostBar and -4 or -2)
   button:SetFrameLevel(frame:GetFrameLevel() + 20)
 
   button.icon = button:CreateTexture(nil, "ARTWORK")
