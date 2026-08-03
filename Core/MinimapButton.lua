@@ -814,17 +814,22 @@ local function Build()
   fade:SetSmoothing("IN_OUT")
   button.pulse = pulse
 
-  -- The arrival flash: a soft halo that swells and fades twice, on its own
-  -- texture above the icon.
+  -- The arrival flash: the glow, breathing deeper for a few seconds.
   --
-  -- It was a SCALE on the button -- three sharp beats that jumped the icon,
-  -- the shadow and the glow together and read as a flicker rather than a
-  -- notification. Light is the right medium for "something happened": it
-  -- adds rather than moves, so nothing on the minimap jumps, and because it
-  -- is a texture of our own it cannot fight the standing glow's breathing
-  -- loop whatever the player has set. Green, the colour new mail wears
-  -- everywhere else in the addon.
-  local alert = button:CreateTexture(nil, "OVERLAY")
+  -- Two earlier attempts and what each got wrong. A SCALE on the button
+  -- jumped the icon, its shadow and its glow together -- movement reads as
+  -- flicker. A halo in the OVERLAY layer sat ON TOP of the icon, washing
+  -- out the very art it was meant to draw attention to.
+  --
+  -- This one lives in BACKGROUND, one sublevel above the standing glow and
+  -- therefore still BEHIND the icon and its shadow, and it is barely wider
+  -- than that glow. So the effect is not a new thing appearing: it is the
+  -- existing halo swelling and settling. Where the player already runs a
+  -- glow, this adds to it and recedes into it; where they do not, it rises
+  -- from nothing and returns there. Either way nothing moves, nothing
+  -- covers the icon, and the standing glow's own breathing loop is never
+  -- touched -- it keeps running underneath throughout.
+  local alert = button:CreateTexture(nil, "BACKGROUND", nil, 1)
   alert:SetPoint("CENTER")
   alert:SetTexture(MEDIA .. "minimap-glow.tga")
   alert:SetBlendMode("ADD")
@@ -832,22 +837,22 @@ local function Build()
   button.alert = alert
 
   local flash = alert:CreateAnimationGroup()
-  -- Two full swells. Long enough to read as deliberate, short enough that
-  -- it is over before it becomes furniture.
-  for i = 0, 1 do
-    local up = flash:CreateAnimation("Alpha")
-    up:SetFromAlpha(0)
-    up:SetToAlpha(0.85)
-    up:SetDuration(0.45)
-    up:SetSmoothing("IN_OUT")
-    up:SetOrder(i * 2 + 1)
-
-    local down = flash:CreateAnimation("Alpha")
-    down:SetFromAlpha(0.85)
-    down:SetToAlpha(0)
-    down:SetDuration(0.55)
-    down:SetSmoothing("IN_OUT")
-    down:SetOrder(i * 2 + 2)
+  -- Two slow swells, the second gentler than the first, and a long final
+  -- fade: the tail is what makes it settle rather than stop. IN_OUT at both
+  -- ends means there is no moment where the brightness changes abruptly.
+  local phases = {
+    { 0.00, 0.75, 1.10 },
+    { 0.75, 0.28, 1.30 },
+    { 0.28, 0.62, 1.00 },
+    { 0.62, 0.00, 1.60 },
+  }
+  for i = 1, #phases do
+    local phase = flash:CreateAnimation("Alpha")
+    phase:SetFromAlpha(phases[i][1])
+    phase:SetToAlpha(phases[i][2])
+    phase:SetDuration(phases[i][3])
+    phase:SetSmoothing("IN_OUT")
+    phase:SetOrder(i)
   end
   -- Animations leave the region wherever they finished; the explicit zero
   -- is what guarantees no residue when the sequence ends or is stopped.
@@ -1175,9 +1180,12 @@ function MB.NotifyArrival()
     -- event anyway.
     if button and button:IsShown() and button.flash then
       -- Sized with the icon rather than at build time, so a size change
-      -- between sessions cannot leave the halo the wrong scale.
+      -- between sessions cannot leave the halo the wrong scale. Barely
+      -- wider than the standing glow: it is meant to read as that glow
+      -- swelling, not as a second ring bleeding out past it.
       local size = tonumber(Settings().size) or DEFAULTS.size
-      button.alert:SetSize(size * GLOW_SCALE * 1.15, size * GLOW_SCALE * 1.15)
+      local reach = size * GLOW_SCALE * 1.04
+      button.alert:SetSize(reach, reach)
       local pos = ns.Theme.Colors.positive
       button.alert:SetVertexColor(pos[1], pos[2], pos[3])
       if button.flash:IsPlaying() then button.flash:Stop() end

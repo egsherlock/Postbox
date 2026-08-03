@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.30.3
+
+- **Fixed: Postbox Modern's title bar stopped short of the window.** It was
+  drawn across the standard title area, which is inset — so there was a gap
+  at the left edge and the close button sat outside the bar, looking boxed
+  off. The bar now takes its height from the title area and its width from
+  the window, which is what it should have done in the first place.
+- **The new-mail flash is the glow breathing deeper**, not a separate light.
+  It sits behind the icon rather than over it, reaches barely further than
+  the glow you already have, swells twice slowly and settles on a long
+  fade — so where a glow is switched on the flash rises out of it and
+  recedes back into it with nothing snapping at either end.
+
 ## 1.30.2
 
 - **Fixed: the mailbox memory's "new mail arrived" tooltip printed a raw

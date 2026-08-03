@@ -138,16 +138,22 @@ local function TitleStrip(frame)
   local edge = Hairline(frame)
   local strip = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
 
-  -- Anchored to the template's OWN title area, corner to corner, rather
-  -- than to the window top with a height of our choosing. Everything that
-  -- lives in that bar -- the title text, the close button, the cog -- is
-  -- positioned against the template's geometry, so a strip drawn anywhere
-  -- else leaves all three looking low or high inside it. Measuring the
-  -- height was not enough: TitleBg does not start at the window's top edge,
-  -- so the strip still sat a couple of pixels above everything in it.
+  -- Height from the template's own title area, width from the WINDOW. Four
+  -- cardinal anchors, each contributing one edge, because the two come from
+  -- different frames:
+  --
+  --   * vertical from TitleBg, because the title text, the close button and
+  --     the cog are all positioned against it -- a strip of some other
+  --     height leaves all three looking low inside their own bar;
+  --   * horizontal from the window, because TitleBg is inset and stops
+  --     short of the close button. Taking BOTH from TitleBg (1.30.1) left a
+  --     gap at the left edge and stranded the close button outside the bar,
+  --     which is what made it look boxed off.
   if frame.TitleBg then
-    strip:SetPoint("TOPLEFT", frame.TitleBg, "TOPLEFT", 0, 0)
-    strip:SetPoint("BOTTOMRIGHT", frame.TitleBg, "BOTTOMRIGHT", 0, 0)
+    strip:SetPoint("LEFT", frame, "LEFT", edge, 0)
+    strip:SetPoint("RIGHT", frame, "RIGHT", -edge, 0)
+    strip:SetPoint("TOP", frame.TitleBg, "TOP", 0, 0)
+    strip:SetPoint("BOTTOM", frame.TitleBg, "BOTTOM", 0, 0)
   else
     strip:SetPoint("TOPLEFT", frame, "TOPLEFT", edge, -edge)
     strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -edge, -edge)
