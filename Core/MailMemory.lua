@@ -71,6 +71,11 @@ local captureQueued = false
 local loginAt = nil
 local closedAt = 0
 
+-- What the last pending-mail event did, for /postbox debug: "does the event
+-- even fire here" was undiagnosable from the outside for two releases.
+local lastPendingAt = nil
+local lastPendingVerdict = "never fired"
+
 local function MailboxState()
   return ns.MailboxUI and ns.MailboxUI._state or nil
 end
@@ -145,10 +150,26 @@ local function QueueCapture()
   end
 end
 
+-- The senders of the latest unread mails, as one comparable string. This is
+-- the arrival detector that needs no event: any mail landing -- even while
+-- logged out -- reshuffles this triple, and the snapshot remembers what it
+-- was at close.
+local function SenderTriple()
+  if type(GetLatestThreeSenders) ~= "function" then return nil end
+  local a, b, c = GetLatestThreeSenders()
+  if a == nil and b == nil and c == nil then return "" end
+  return tostring(a) .. "\001" .. tostring(b) .. "\001" .. tostring(c)
+end
+
 local function PersistOnClose()
   if not live then return end
   local snapshot = live
   live = nil
+
+  -- The arrival baseline, taken at the boundary the badge measures from:
+  -- what the client's unread indicators said the moment the box closed.
+  snapshot.baseNew = type(HasNewMail) == "function" and HasNewMail() and true or false
+  snapshot.baseFrom = SenderTriple()
 
   local realm = GetRealmName()
   local name = UnitName("player")
@@ -329,18 +350,44 @@ local function Refresh(frame)
       AgeText(snapshot.seenAt), ns.Plural("COUNT_MAILS", count)))
   end
 
-  -- The badge means one exact thing: the arrival watch SAW mail land after
-  -- this snapshot. It deliberately does NOT read HasNewMail() as state:
-  -- that flag stays true the whole time UNREAD mail sits in the box (it is
-  -- "you have unread mail", not "something arrived") -- reading it here lit
-  -- the badge permanently for anyone with an uncollected AH mail. The watch
-  -- below marks the record on guarded arrival events instead; a mailbox
-  -- visit replaces the record, clearing the mark. Arrivals while logged out
-  -- are undetectable on this API and the badge honestly does not claim
-  -- them. The rows are what was seen; the badge is what was not.
-  local arrived = (snapshot and snapshot.newSince) and true or false
+  -- The badge means one exact thing: mail arrived after this snapshot.
+  -- Three independent detectors, ANY suffices, each sound on its own:
+  --
+  --   1. The arrival watch's stored mark (the pending-mail event, guarded).
+  --   2. The flag FLIP: HasNewMail() is "unread mail exists", so its value
+  --      proves nothing (1.24.1 read it as state and lit the badge for
+  --      every uncollected auction mail) -- but false at close and true now
+  --      can only mean an arrival in between.
+  --   3. The sender-triple CHANGE: the latest-unread-senders line the
+  --      client keeps reshuffles whenever mail lands, including while
+  --      logged out; the snapshot remembers what it said at close.
+  --
+  -- A mailbox visit replaces the record and re-baselines all three. Blind
+  -- spot, stated rather than papered over: >3 unread mails from one sender
+  -- where another lands from the same sender leaves the triple unchanged --
+  -- then only detectors 1 and 2 can see it.
+  local arrived = false
+  local from = nil
+  if snapshot then
+    local state = MailboxState()
+    local away = not (state and state.mailboxOpen)
+    local flagNow = away and type(HasNewMail) == "function" and HasNewMail() and true or false
+    local tripleNow = away and SenderTriple() or nil
+    arrived = snapshot.newSince == true
+      or (flagNow and snapshot.baseNew == false)
+      or (tripleNow ~= nil and snapshot.baseFrom ~= nil and tripleNow ~= snapshot.baseFrom)
+    from = snapshot.newFrom
+    if arrived and not from and type(GetLatestThreeSenders) == "function" then
+      local a, b, c = GetLatestThreeSenders()
+      from = {}
+      if a then from[#from + 1] = tostring(a) end
+      if b then from[#from + 1] = tostring(b) end
+      if c then from[#from + 1] = tostring(c) end
+      if #from == 0 then from = nil end
+    end
+  end
   frame.NewSinceHit:SetShown(arrived)
-  frame.newFrom = arrived and snapshot.newFrom or nil
+  frame.newFrom = arrived and from or nil
 
   local hidden = snapshot and math.max(0, (tonumber(snapshot.total) or count) - count) or 0
   if hidden > 0 then
@@ -527,9 +574,16 @@ function MM.Diagnose()
     parts[#parts + 1] = string.format("%d mails, seen %ds ago",
       #(snap.mails or {}), math.max(0, time() - (tonumber(snap.seenAt) or 0)))
     parts[#parts + 1] = "newSince " .. tostring(snap.newSince == true)
+    local triple = SenderTriple()
+    parts[#parts + 1] = string.format("baseNew %s | tripleChanged %s",
+      tostring(snap.baseNew),
+      tostring(snap.baseFrom ~= nil and triple ~= nil and triple ~= snap.baseFrom))
   else
     parts[#parts + 1] = "no snapshot"
   end
+  parts[#parts + 1] = "pending evt " ..
+    (lastPendingAt and string.format("%ds ago (%s)", time() - lastPendingAt, lastPendingVerdict)
+     or lastPendingVerdict)
   parts[#parts + 1] = "HasNewMail " ..
     tostring(type(HasNewMail) == "function" and HasNewMail() and true or false)
   parts[#parts + 1] = string.format("login %s | closed %ds ago",
@@ -560,15 +614,23 @@ local LOGIN_SETTLE = 10
 local CLOSE_SETTLE = 5
 
 local function OnPendingMail()
+  lastPendingAt = time()
+  lastPendingVerdict = "disabled"
   if not MemoryEnabled() then return end
+  lastPendingVerdict = "at mailbox"
   local state = MailboxState()
   if state and state.mailboxOpen then return end
+  lastPendingVerdict = "login settle"
   if not loginAt or (time() - loginAt) < LOGIN_SETTLE then return end
+  lastPendingVerdict = "close settle"
   if (time() - closedAt) < CLOSE_SETTLE then return end
+  lastPendingVerdict = "flag false"
   if not (type(HasNewMail) == "function" and HasNewMail()) then return end
 
+  lastPendingVerdict = "no snapshot"
   local snap = StoredSnapshot()
   if not snap then return end
+  lastPendingVerdict = "marked"
   snap.newSince = true
   if type(GetLatestThreeSenders) == "function" then
     local a, b, c = GetLatestThreeSenders()

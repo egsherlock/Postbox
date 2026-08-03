@@ -276,6 +276,18 @@ local function Build()
         region:Hide()
       end
     end
+    -- The button template has NO backdrop support, and the theme's panel
+    -- paint declines silently on a frame without it -- which left this
+    -- button entirely transparent, showing the card behind it (two rounds
+    -- of "why is it still black" were colour-tuning a backdrop that never
+    -- existed). Retrofit the mixin first; everything below finally lands.
+    if type(rmButton.SetBackdrop) ~= "function"
+      and type(Mixin) == "function" and type(BackdropTemplateMixin) == "table" then
+      Mixin(rmButton, BackdropTemplateMixin)
+      if type(rmButton.OnBackdropSizeChanged) == "function" then
+        rmButton:HookScript("OnSizeChanged", rmButton.OnBackdropSizeChanged)
+      end
+    end
     ns.Theme.ApplyList(rmButton)
     -- Lifted off the list scheme's pure black: this is a BUTTON wearing the
     -- card surface, and it has to read as raised next to the checkbox column

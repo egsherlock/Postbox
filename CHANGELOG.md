@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.24.3
+
+- **The "+ new mail" badge detects arrivals three independent ways** —
+  because one way kept failing quietly. It still uses the game's arrival
+  event when that fires; it also notices the new-mail flag FLIPPING (off
+  when you left the mailbox, on now — which can only mean an arrival); and
+  it now remembers who your latest unread senders were when the box closed
+  and spots that line changing, which even catches mail that arrived while
+  you were logged out. A mailbox visit resets all three.
+- **The Manage Recipients button was transparent all along** — the plain
+  UI's button frame has no background support, so every earlier colour fix
+  was applied to a background that did not exist and you were seeing the
+  dark card through the button. It gets a real backdrop now, and the warm
+  raised tone finally shows.
+- `/postbox debug` now also reports whether the game's pending-mail event
+  fired at all and what the badge's three detectors each currently say.
+
 ## 1.24.2
 
 - **The "+ new mail" badge is honest at last.** It turns out the game's
