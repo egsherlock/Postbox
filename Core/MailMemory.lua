@@ -244,12 +244,18 @@ end
 -- the server refused is read AND still waiting, which is exactly the stuck
 -- Postmaster mail an unread test silently dropped. An opened text-only
 -- mail holds nothing and is correctly absent.
-local function WaitingBySender(snap)
+-- `wantStuck` selects which half is being asked for: nil counts every mail
+-- that holds something, false only the ones the server has not refused,
+-- true only the refused ones.
+local function WaitingBySender(snap, wantStuck)
   local counts, order = {}, {}
   local mails = snap and snap.mails or {}
   for i = 1, #mails do
     local mail = mails[i]
     local holds = (mail.items or 0) > 0 or (mail.money or 0) > 0 or (mail.cod or 0) > 0
+    if wantStuck ~= nil then
+      holds = holds and ((mail.stuck and true or false) == wantStuck)
+    end
     if holds then
       local who = (mail.sender ~= "" and mail.sender) or L["MEMORY_SENDER_UNKNOWN"]
       if counts[who] then
@@ -321,12 +327,14 @@ local function BuildRow(parent, index)
   row.Value:SetPoint("RIGHT", row.Expiry, "LEFT", -8, 0)
   row.Value:SetJustifyH("RIGHT")
 
-  -- The same "!" the collect screen puts on a refused mail, in the same
-  -- orange: a mail the server would not hand over should look identical
-  -- wherever Postbox shows it.
+  -- The same marker the collect screen puts on a refused mail, in the same
+  -- orange and -- the part that matters -- in the same PLACE: the row's
+  -- right end, after the expiry, exactly where the mail list puts it. A
+  -- mail the server would not hand over should look identical wherever
+  -- Postbox shows it.
   row.Warning = ns.Theme.CreateText(row, "value")
   row.Warning:SetText("!")
-  row.Warning:SetPoint("LEFT", row.Icon, "RIGHT", 5, 0)
+  row.Warning:SetPoint("RIGHT", row, "RIGHT", -4, 0)
   ns.Theme.SetColor(row.Warning, "warning")
   row.Warning:Hide()
 
@@ -379,11 +387,11 @@ local function FillRow(row, mail, now)
     row.Icon:Hide()
   end
 
-  -- The marker takes the sender's first few pixels when a mail is stuck,
-  -- so the name shifts right rather than being drawn over.
+  -- The marker takes the row's last few pixels when a mail is stuck, so
+  -- the expiry shifts left rather than being drawn over.
   row.Warning:SetShown(mail.stuck and true or false)
-  row.Sender:ClearAllPoints()
-  row.Sender:SetPoint("LEFT", row.Icon, "RIGHT", mail.stuck and 16 or 6, 0)
+  row.Expiry:ClearAllPoints()
+  row.Expiry:SetPoint("RIGHT", row, "RIGHT", mail.stuck and -18 or -6, 0)
 
   row.Sender:SetText(mail.sender)
   row.Subject:SetText(mail.subject)
@@ -721,47 +729,52 @@ function MM.MailboxSummary()
   local snap = live or StoredSnapshot()
   if not snap then return nil end
 
-  local order, counts = WaitingBySender(snap)
-  local groups
-  if #order > 0 then
-    groups = {}
-    for i = 1, #order do
-      groups[i] = { name = order[i], count = counts[order[i]] }
-    end
-  end
-
+  -- Two lists, not one with a footnote: a refused mail is still holding
+  -- your item, but "waiting to collect" and "the server would not give me
+  -- this" are different problems with different answers, and reading a
+  -- sender under the first heading and then a count under a separate
+  -- refusal line made one mail look like two.
   local waiting, stuck = 0, 0
   local mails = snap.mails or {}
   for i = 1, #mails do
     local mail = mails[i]
     if (mail.items or 0) > 0 or (mail.money or 0) > 0 or (mail.cod or 0) > 0 then
-      waiting = waiting + 1
-      if mail.stuck then stuck = stuck + 1 end
+      if mail.stuck then stuck = stuck + 1 else waiting = waiting + 1 end
     end
   end
 
+  local function GroupsFor(wantStuck)
+    local order, counts = WaitingBySender(snap, wantStuck)
+    if #order == 0 then return nil end
+    local out = {}
+    for i = 1, #order do
+      out[i] = { name = order[i], count = counts[order[i]] }
+    end
+    return out
+  end
+
   return {
-    groups  = groups,
-    waiting = waiting,
-    stuck   = stuck,
-    total   = #mails,
-    seenAt  = snap.seenAt,
-    arrived = snap.newSince and true or false,
-    newFrom = snap.newSince and snap.newFrom or nil,
+    groups      = GroupsFor(false),
+    stuckGroups = GroupsFor(true),
+    waiting     = waiting,
+    stuck       = stuck,
+    total       = #mails,
+    seenAt      = snap.seenAt,
+    arrived     = snap.newSince and true or false,
+    newFrom     = snap.newSince and snap.newFrom or nil,
   }
 end
 
 -- The minimap tooltip's memory line: the same sentence the window leads
 -- with -- one truth, one phrasing -- or nil when there is nothing to say.
+-- Just the age. The mail count moved up into the breakdown headings, where
+-- the numbers describe the lists they sit above instead of repeating a
+-- total the reader has to reconcile with them.
 function MM.SummaryText()
   if not MemoryEnabled() then return nil end
   local snap = live or StoredSnapshot()
   if not snap then return nil end
-  local count = #(snap.mails or {})
-  if count == 0 then
-    return string.format(L["MEMORY_ASOF_EMPTY"], AgeText(snap.seenAt))
-  end
-  return string.format(L["MEMORY_ASOF"], AgeText(snap.seenAt), ns.Plural("COUNT_MAILS", count))
+  return string.format(L["MEMORY_LASTSEEN"], AgeText(snap.seenAt))
 end
 
 -- One line for /postbox debug: everything needed to see why a badge did or

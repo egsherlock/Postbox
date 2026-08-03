@@ -675,10 +675,12 @@ local function ShowTooltip(button)
     end
   end
 
-  if state and state.groups then
+  -- Each heading carries its own total, so the count is where the thing
+  -- being counted is rather than stranded on a separate line.
+  local function Breakdown(groups, heading, count, hr, hg, hb)
+    if not groups then return end
     GameTooltip:AddLine(" ")
-    GameTooltip:AddLine(L["MEMORY_WAITING_HEAD"], 0.75, 0.75, 0.78)
-    local groups = state.groups
+    GameTooltip:AddLine(string.format(heading, count), hr, hg, hb)
     local shown = math.min(#groups, 5)
     for i = 1, shown do
       GameTooltip:AddDoubleLine(groups[i].name, "x" .. groups[i].count,
@@ -688,14 +690,17 @@ local function ShowTooltip(button)
       GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #groups - shown),
         0.6, 0.6, 0.63)
     end
-    -- The orange a refusal wears everywhere else in the addon -- the row
-    -- marker, the run outcome, the guidance line -- read from the palette
-    -- rather than repeated as numbers here.
-    if state.stuck > 0 then
-      local warn = ns.Theme.Colors.warning
-      GameTooltip:AddLine(ns.Plural("MEMORY_STUCK", state.stuck),
-        warn[1], warn[2], warn[3])
-    end
+  end
+
+  if state and (state.groups or state.stuckGroups) then
+    Breakdown(state.groups, L["MEMORY_WAITING_HEAD"], state.waiting,
+      0.75, 0.75, 0.78)
+    -- Its own heading in the orange a refusal wears everywhere else in the
+    -- addon. Listing these under "waiting to collect" and then counting
+    -- them again below read as twice the mail there actually was.
+    local warn = ns.Theme.Colors.warning
+    Breakdown(state.stuckGroups, L["MEMORY_STUCK_HEAD"], state.stuck,
+      warn[1], warn[2], warn[3])
   elseif state then
     GameTooltip:AddLine(L["MEMORY_NOTHING_WAITING"], 0.75, 0.75, 0.78)
   else
@@ -758,6 +763,10 @@ local function Build()
 
   -- Unnamed: see the header comment before naming this frame.
   local button = CreateFrame("Button", nil, minimap)
+  -- Unnamed, and parented to the MINIMAP rather than to anything of ours,
+  -- so a skin looking for a Postbox ancestor would never find one. Said
+  -- outright instead (Core/Skin_Modern.lua, IsOurs).
+  button.__pbTooltipOwner = true
   button:Hide()
   button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   button:RegisterForDrag("LeftButton")

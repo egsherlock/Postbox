@@ -141,7 +141,15 @@ local function TitleStrip(frame)
   local strip = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
   strip:SetPoint("TOPLEFT", frame, "TOPLEFT", edge, -edge)
   strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -edge, -edge)
-  strip:SetHeight(TITLE_HEIGHT)
+  -- Measured from the template's own title area where it has one, not from
+  -- a constant: the title text is centred on THAT, so a strip of some other
+  -- height leaves the caption sitting off-centre in its own bar.
+  local measured = frame.TitleBg and frame.TitleBg.GetHeight and frame.TitleBg:GetHeight()
+  if type(measured) == "number" and measured > 8 then
+    strip:SetHeight(measured)
+  else
+    strip:SetHeight(TITLE_HEIGHT)
+  end
   strip:SetColorTexture(C.title[1], C.title[2], C.title[3], C.title[4])
 
   -- One hairline under it, the same light edge the panels use, so the bar
@@ -281,6 +289,91 @@ function Skin.Refresh(frame)
 end
 
 -- ------------------------------------------------------------------
+-- Tooltips
+--
+-- Postbox's own tooltips arrive on the shared GameTooltip, which under a
+-- host UI is already that UI's -- EllesmereUI and ElvUI both skin it
+-- globally, so those sessions need nothing from us. On a stock UI it stays
+-- Blizzard's, which beside a flat black window looks like a leftover.
+--
+-- Rerouting 200-odd call sites onto a private tooltip frame is the textbook
+-- answer and the wrong trade: it is a sweeping change for a cosmetic gain,
+-- and a private frame would NOT inherit a host UI's styling. So the art is
+-- swapped in place instead, and only while the tooltip belongs to us: the
+-- template's nine-slice steps aside for our own fill and hairline, and
+-- steps straight back for every other tooltip in the game. Nothing is
+-- destroyed, so there is nothing to restore incorrectly.
+-- ------------------------------------------------------------------
+
+local function IsOurs(owner)
+  local frame = owner
+  for _ = 1, 6 do
+    if type(frame) ~= "table" then return false end
+    if frame.__pbTooltipOwner then return true end
+    local name = frame.GetName and frame:GetName()
+    if type(name) == "string" and name:find("^Postbox") then return true end
+    frame = frame.GetParent and frame:GetParent() or nil
+  end
+  return false
+end
+
+local function DressTooltip(tip, ours)
+  if not tip then return end
+
+  if not tip.__pbModernSkin then
+    tip.__pbModernSkin = true
+    local edge = Hairline(tip)
+    local fill = tip:CreateTexture(nil, "BACKGROUND", nil, -8)
+    fill:SetPoint("TOPLEFT", tip, "TOPLEFT", edge, -edge)
+    fill:SetPoint("BOTTOMRIGHT", tip, "BOTTOMRIGHT", -edge, edge)
+    fill:SetColorTexture(C.window[1], C.window[2], C.window[3], 0.96)
+    fill:Hide()
+
+    -- Four hairlines rather than a backdrop: GameTooltip resizes itself
+    -- constantly, and edge textures anchored to its corners follow for
+    -- free where a backdrop would need re-applying on every resize.
+    local edges = {}
+    local specs = {
+      { "TOPLEFT", "TOPRIGHT", true }, { "BOTTOMLEFT", "BOTTOMRIGHT", true },
+      { "TOPLEFT", "BOTTOMLEFT", false }, { "TOPRIGHT", "BOTTOMRIGHT", false },
+    }
+    for i = 1, #specs do
+      local line = tip:CreateTexture(nil, "BORDER")
+      line:SetPoint(specs[i][1], tip, specs[i][1], 0, 0)
+      line:SetPoint(specs[i][2], tip, specs[i][2], 0, 0)
+      if specs[i][3] then line:SetHeight(edge) else line:SetWidth(edge) end
+      line:SetColorTexture(C.border[1], C.border[2], C.border[3], 0.35)
+      line:Hide()
+      edges[i] = line
+    end
+
+    tip.__pbFill = fill
+    tip.__pbEdges = edges
+  end
+
+  tip.__pbFill:SetShown(ours)
+  for i = 1, #tip.__pbEdges do tip.__pbEdges[i]:SetShown(ours) end
+  -- The template's own art is the thing being replaced, so it is the thing
+  -- that steps aside -- and comes straight back for everyone else's
+  -- tooltips.
+  if tip.NineSlice then tip.NineSlice:SetShown(not ours) end
+end
+
+local tooltipHooked = false
+local function HookTooltips()
+  if tooltipHooked or type(hooksecurefunc) ~= "function" then return end
+  tooltipHooked = true
+  hooksecurefunc(GameTooltip, "SetOwner", function(self, owner)
+    DressTooltip(self, IsOurs(owner))
+  end)
+  -- Blizzard reuses the tooltip for its own frames without always going
+  -- through SetOwner; the hide is the reliable moment to hand the art back.
+  GameTooltip:HookScript("OnHide", function(self)
+    DressTooltip(self, false)
+  end)
+end
+
+-- ------------------------------------------------------------------
 -- The window shell
 -- ------------------------------------------------------------------
 
@@ -320,6 +413,10 @@ function Skin.Apply(frame)
   Paint(frame, C.window)
   TitleStrip(frame)
   FlatClose(frame.CloseButton)
+  -- Every window this skin paints is a tooltip owner worth recognising,
+  -- including its unnamed children (IsOurs walks up to find this).
+  frame.__pbTooltipOwner = true
+  HookTooltips()
 
   -- Tabs: installing the selection override retires the widget's own plate
   -- art (Core/Theme.lua contract); Modern answers with an accent underline

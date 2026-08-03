@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.30.0
+
+- **Postbox Modern styles its own tooltips.** They were still wearing
+  Blizzard's frame beside a flat black window. Now the tooltip takes
+  Postbox's fill and hairline while it belongs to Postbox, and hands the
+  game's own art straight back for every other tooltip in the game — no
+  tooltip addon is disturbed, and under EllesmereUI or ElvUI nothing
+  changes, because those already style tooltips themselves.
+- **The minimap tooltip separates "waiting" from "refused".** A stuck mail
+  was listed under "Waiting to collect" and counted again on a refusal line
+  below, so one mail read as two. There are two headings now, each carrying
+  its own count — "Waiting to collect: 5", "Could not be collected: 1" —
+  and the "Last seen" line has stopped repeating the total.
+- **A stuck mail is marked in the same place in the mailbox memory as in
+  the mail list**: the right-hand end of the row, after the expiry, rather
+  than in front of the sender.
+- **Changing the window style now offers to reload**, with Reload now and
+  Later, instead of printing an instruction in chat. The setting is saved
+  either way.
+- Modern's title bar measures the window's real title area instead of
+  assuming a height, so the title sits centred in its own bar.
+
 ## 1.29.0
 
 - **Colour means something again.** Postbox had drifted into using its gold

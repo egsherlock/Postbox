@@ -598,7 +598,7 @@ L["OPT_ALL_TAB_TITLE"]         = "Show the All view"
 L["OPT_ALL_TAB_DESC"]          = "Keeps the third view on the Mail tab. It lists everything Collect and Done list together; switch it off if the two halves are enough."
 L["OPT_STYLE_SYNCED_DESC"]     = "Postbox follows %s: its colours, font, borders and transparency, live. Its own styles are not offered while that is true."
 L["OPT_REPORT_BUG"]            = "Report a bug"
-L["MEMORY_WAITING_HEAD"]       = "Waiting to collect:"
+L["MEMORY_WAITING_HEAD"]       = "Waiting to collect: %d"
 L["MEMORY_WAITING_MORE"]       = "and %d more"
 L["MEMORY_SENDER_UNKNOWN"]     = "Unknown sender"
 L["OPT_ALERT_SOUND_TITLE"]     = "Sound on new mail"
@@ -609,6 +609,10 @@ L["MEMORY_NOTHING_WAITING"]    = "Nothing waiting to collect."
 L["MEMORY_STUCK_ONE"]          = "%d could not be collected"
 L["MEMORY_STUCK_OTHER"]        = "%d could not be collected"
 L["OPT_ALERTS_HEADING"]        = "Mail alerts"
+L["MEMORY_STUCK_HEAD"]         = "Could not be collected: %d"
+L["MEMORY_LASTSEEN"]           = "Last seen %s."
+L["BTN_RELOAD_NOW"]            = "Reload now"
+L["BTN_LATER"]                 = "Later"
 if GetLocale() == "frFR" then
   -- Chat et dialogues
   L["ERR_OPEN_MAILBOX_LOOT"]     = "Approche-toi d'une boite aux lettres et ouvre-la d'abord."
@@ -973,7 +977,7 @@ if GetLocale() == "frFR" then
   L["OPT_ALL_TAB_DESC"]          = "Garde la troisieme vue de l'onglet Courrier. Elle liste ensemble tout ce que listent A recuperer et Traite ; desactive-la si les deux moities suffisent."
   L["OPT_STYLE_SYNCED_DESC"]     = "Postbox suit %s : ses couleurs, sa police, ses bordures et sa transparence, en direct. Ses propres styles ne sont pas proposes tant que c'est le cas."
   L["OPT_REPORT_BUG"]            = "Signaler un bug"
-  L["MEMORY_WAITING_HEAD"]       = "En attente de recuperation :"
+  L["MEMORY_WAITING_HEAD"]       = "En attente de recuperation : %d"
   L["MEMORY_WAITING_MORE"]       = "et %d de plus"
   L["MEMORY_SENDER_UNKNOWN"]     = "Expediteur inconnu"
   L["OPT_ALERT_SOUND_TITLE"]     = "Son a l'arrivee du courrier"
@@ -984,6 +988,10 @@ if GetLocale() == "frFR" then
   L["MEMORY_STUCK_ONE"]          = "%d n'a pas pu etre recupere"
   L["MEMORY_STUCK_OTHER"]        = "%d n'ont pas pu etre recuperes"
   L["OPT_ALERTS_HEADING"]        = "Alertes courrier"
+  L["MEMORY_STUCK_HEAD"]         = "Impossible a recuperer : %d"
+  L["MEMORY_LASTSEEN"]           = "Vu %s."
+  L["BTN_RELOAD_NOW"]            = "Recharger"
+  L["BTN_LATER"]                 = "Plus tard"
 end
 
 -------------------------------------------------------------
@@ -1352,7 +1360,7 @@ if GetLocale() == "deDE" then
   L["OPT_ALL_TAB_DESC"]          = "Behaelt die dritte Ansicht im Post-Tab. Sie listet zusammen, was Abholen und Erledigt einzeln listen; schalte sie aus, wenn die beiden Haelften genuegen."
   L["OPT_STYLE_SYNCED_DESC"]     = "Postbox folgt %s: Farben, Schrift, Rahmen und Transparenz, live. Eigene Stile werden dabei nicht angeboten."
   L["OPT_REPORT_BUG"]            = "Fehler melden"
-  L["MEMORY_WAITING_HEAD"]       = "Wartet auf Abholung:"
+  L["MEMORY_WAITING_HEAD"]       = "Wartet auf Abholung: %d"
   L["MEMORY_WAITING_MORE"]       = "und %d weitere"
   L["MEMORY_SENDER_UNKNOWN"]     = "Unbekannter Absender"
   L["OPT_ALERT_SOUND_TITLE"]     = "Ton bei neuer Post"
@@ -1363,6 +1371,10 @@ if GetLocale() == "deDE" then
   L["MEMORY_STUCK_ONE"]          = "%d konnte nicht abgeholt werden"
   L["MEMORY_STUCK_OTHER"]        = "%d konnten nicht abgeholt werden"
   L["OPT_ALERTS_HEADING"]        = "Post-Hinweise"
+  L["MEMORY_STUCK_HEAD"]         = "Konnte nicht abgeholt werden: %d"
+  L["MEMORY_LASTSEEN"]           = "Zuletzt gesehen %s."
+  L["BTN_RELOAD_NOW"]            = "Jetzt neu laden"
+  L["BTN_LATER"]                 = "Spaeter"
 end
 
 -------------------------------------------------------------
@@ -1729,7 +1741,7 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["OPT_ALL_TAB_DESC"]          = "Mantiene la tercera vista de la pestana Correo. Lista junto todo lo que listan Recoger y Hecho; desactivala si con las dos mitades te basta."
   L["OPT_STYLE_SYNCED_DESC"]     = "Postbox sigue a %s: sus colores, su fuente, sus bordes y su transparencia, en directo. Sus propios estilos no se ofrecen mientras sea asi."
   L["OPT_REPORT_BUG"]            = "Informar de un fallo"
-  L["MEMORY_WAITING_HEAD"]       = "Pendiente de recoger:"
+  L["MEMORY_WAITING_HEAD"]       = "Pendiente de recoger: %d"
   L["MEMORY_WAITING_MORE"]       = "y %d mas"
   L["MEMORY_SENDER_UNKNOWN"]     = "Remitente desconocido"
   L["OPT_ALERT_SOUND_TITLE"]     = "Sonido al llegar correo"
@@ -1740,6 +1752,10 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["MEMORY_STUCK_ONE"]          = "%d no se pudo recoger"
   L["MEMORY_STUCK_OTHER"]        = "%d no se pudieron recoger"
   L["OPT_ALERTS_HEADING"]        = "Avisos de correo"
+  L["MEMORY_STUCK_HEAD"]         = "No se pudo recoger: %d"
+  L["MEMORY_LASTSEEN"]           = "Visto %s."
+  L["BTN_RELOAD_NOW"]            = "Recargar ahora"
+  L["BTN_LATER"]                 = "Mas tarde"
 end
 
 -------------------------------------------------------------
@@ -2118,7 +2134,7 @@ L["OPT_ALL_TAB_TITLE"]         = "Показывать вкладку «Все»
 L["OPT_ALL_TAB_DESC"]          = "Оставляет третий вид на вкладке «Почта». Он показывает вместе всё, что показывают «Забрать» и «Готово»; выключите, если двух половин достаточно."
 L["OPT_STYLE_SYNCED_DESC"]     = "Postbox следует %s: цвета, шрифт, рамки и прозрачность — вживую. Собственные стили при этом не предлагаются."
 L["OPT_REPORT_BUG"]            = "Сообщить об ошибке"
-L["MEMORY_WAITING_HEAD"]       = "Ждёт получения:"
+L["MEMORY_WAITING_HEAD"]       = "Ждёт получения: %d"
 L["MEMORY_WAITING_MORE"]       = "и ещё %d"
 L["MEMORY_SENDER_UNKNOWN"]     = "Неизвестный отправитель"
 L["OPT_ALERT_SOUND_TITLE"]     = "Звук при новой почте"
@@ -2130,4 +2146,8 @@ L["MEMORY_STUCK_ONE"]          = "%d не удалось получить"
 L["MEMORY_STUCK_FEW"]          = "%d не удалось получить"
 L["MEMORY_STUCK_MANY"]         = "%d не удалось получить"
 L["OPT_ALERTS_HEADING"]        = "Оповещения о почте"
+L["MEMORY_STUCK_HEAD"]         = "Не удалось получить: %d"
+L["MEMORY_LASTSEEN"]           = "Просмотрено %s."
+L["BTN_RELOAD_NOW"]            = "Перезагрузить"
+L["BTN_LATER"]                 = "Позже"
 end

@@ -37,6 +37,28 @@ local function GetSkin()
   return nil
 end
 
+-- The reload offer that follows a style change. Registered on first use, so
+-- a player who never touches the style never pays for the dialog.
+local POPUP_STYLE_RELOAD = "POSTBOX_STYLE_RELOAD"
+local function EnsureStyleDialog()
+  if type(StaticPopupDialogs) ~= "table" or type(StaticPopup_Show) ~= "function" then
+    return false
+  end
+  if StaticPopupDialogs[POPUP_STYLE_RELOAD] then return true end
+  StaticPopupDialogs[POPUP_STYLE_RELOAD] = {
+    text = L["MSG_STYLE_RELOAD"],
+    button1 = L["BTN_RELOAD_NOW"],
+    button2 = L["BTN_LATER"],
+    OnAccept = function() ReloadUI() end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    -- Above the options panel, which is FULLSCREEN_DIALOG strata.
+    preferredIndex = 3,
+  }
+  return true
+end
+
 -- The HOST UI driving the window's look, or nil when the look is Postbox's
 -- own (either style). SkinAppliedBy is the truth once a window has been
 -- painted; before that -- the options panel opens from the minimap icon
@@ -573,7 +595,15 @@ local function Build()
           function() return ns.MailboxUI.GetStyleChoice and ns.MailboxUI.GetStyleChoice() end,
           function(id)
             if ns.MailboxUI.SetStyleChoice then ns.MailboxUI.SetStyleChoice(id) end
-            ns.Print(L["MSG_STYLE_RELOAD"])
+            -- The style is claimed once at login, so the choice needs a
+            -- reload to take. A dialog with the reload in it beats a chat
+            -- line telling the player to go and type one -- and Later is a
+            -- real answer: the setting is already saved either way.
+            if EnsureStyleDialog() then
+              StaticPopup_Show(POPUP_STYLE_RELOAD)
+            else
+              ns.Print(L["MSG_STYLE_RELOAD"])
+            end
           end)
   end
   y = EndSection(frame, card, y)
