@@ -341,6 +341,8 @@ L["REPLY_PREFIX"]              = "Re: %s"
 
 -- Collection safety (server handshake / bag space)
 L["MSG_MAIL_TIMEOUT"]          = "The mailbox did not respond in time. That action may not have completed - reopen the mailbox and check."
+L["MSG_COD_PAID"]              = "C.O.D. paid: %s."
+L["MSG_DELETED_COUNT"]         = "Deleted %s."
 L["MSG_ITEM_NOT_COLLECTED"]    = "Still in your mailbox: that mail was not fully collected. Nothing was lost."
 L["MSG_COLLECT_INCOMPLETE"]    = "Collection stopped: %d mail still in your mailbox. Nothing was lost - reopen the mailbox and try again."
 L["MSG_COLLECT_STOPPED_BAGS"]  = "Collection stopped: your bags are full. %d mail still in your mailbox - nothing was lost."
@@ -634,6 +636,8 @@ if GetLocale() == "frFR" then
 
   -- Collection safety
   L["MSG_MAIL_TIMEOUT"]          = "La boite aux lettres n'a pas repondu a temps. L'action n'a peut-etre pas abouti - rouvre la boite pour verifier."
+  L["MSG_COD_PAID"]              = "Paiement a la livraison regle : %s."
+  L["MSG_DELETED_COUNT"]         = "Supprime : %s."
   L["MSG_ITEM_NOT_COLLECTED"]    = "Toujours dans la boite aux lettres: ce courrier n'a pas ete entierement recupere. Rien n'est perdu."
   L["MSG_COLLECT_INCOMPLETE"]    = "Recuperation interrompue: %d courrier(s) toujours dans la boite aux lettres. Rien n'est perdu - rouvre la boite aux lettres et reessaie."
   L["MSG_COLLECT_STOPPED_BAGS"]  = "Recuperation interrompue: tes sacs sont pleins. %d courrier(s) toujours dans la boite aux lettres - rien n'est perdu."
@@ -942,6 +946,8 @@ if GetLocale() == "deDE" then
 
   -- Collection safety
   L["MSG_MAIL_TIMEOUT"]          = "Der Briefkasten hat nicht rechtzeitig geantwortet. Die Aktion wurde moeglicherweise nicht abgeschlossen - oeffne den Briefkasten erneut und pruefe es."
+  L["MSG_COD_PAID"]              = "Nachnahme bezahlt: %s."
+  L["MSG_DELETED_COUNT"]         = "Geloescht: %s."
   L["MSG_ITEM_NOT_COLLECTED"]    = "Noch im Briefkasten: Diese Post wurde nicht vollstaendig abgeholt. Es ging nichts verloren."
   L["MSG_COLLECT_INCOMPLETE"]    = "Abholen gestoppt: %d Post noch im Briefkasten. Es ging nichts verloren - oeffne den Briefkasten erneut und versuche es noch einmal."
   L["MSG_COLLECT_STOPPED_BAGS"]  = "Abholen gestoppt: Deine Taschen sind voll. %d Post noch im Briefkasten - es ging nichts verloren."
@@ -1168,6 +1174,8 @@ if esLocale == "esES" or esLocale == "esMX" then
 
   -- Collection safety
   L["MSG_MAIL_TIMEOUT"]          = "El buzon no respondio a tiempo. Puede que la accion no se completara: vuelve a abrir el buzon y compruebalo."
+  L["MSG_COD_PAID"]              = "Contra reembolso pagado: %s."
+  L["MSG_DELETED_COUNT"]         = "Eliminado: %s."
   L["MSG_ITEM_NOT_COLLECTED"]    = "Sigue en el buzon: este correo no se recogio por completo. No se perdio nada."
   L["MSG_COLLECT_INCOMPLETE"]    = "Recogida detenida: %d correos siguen en el buzon. No se perdio nada: vuelve a abrir el buzon e intentalo de nuevo."
   L["MSG_COLLECT_STOPPED_BAGS"]  = "Recogida detenida: tus bolsas estan llenas. %d correos siguen en el buzon; no se perdio nada."
@@ -1404,6 +1412,8 @@ L["COUNT_FREE_SLOTS_MANY"]     = "%d свободных слотов"
 
 -- Collection safety
 L["MSG_MAIL_TIMEOUT"]          = "Почтовый ящик не ответил вовремя. Действие могло не завершиться — откройте ящик заново и проверьте."
+L["MSG_COD_PAID"]              = "Наложенный платёж оплачен: %s."
+L["MSG_DELETED_COUNT"]         = "Удалено: %s."
 L["MSG_ITEM_NOT_COLLECTED"]    = "Осталось в почтовом ящике: это письмо забрано не полностью. Ничего не потеряно."
 L["MSG_COLLECT_INCOMPLETE"]    = "Сбор остановлен: %d писем осталось в почтовом ящике. Ничего не потеряно — откройте ящик заново и повторите."
 L["MSG_COLLECT_STOPPED_BAGS"]  = "Сбор остановлен: сумки заполнены. %d писем осталось в почтовом ящике — ничего не потеряно."

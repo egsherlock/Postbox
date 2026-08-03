@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.18.1
+
+- **Postbox now looks right even when a UI pack has replaced the game's own
+  textures.** Packs like AtrocityUI and NaowhUI ship files that silently
+  replace standard Blizzard art for the whole interface — no addon involved —
+  and Postbox's stone surface and panel backgrounds were built from two of
+  the files they replace, which hollowed the window out into a dark
+  transparent shell. Every structural fill, surface and border now comes
+  from Postbox's own texture files, which nothing can override; standard
+  controls (checkboxes, close buttons, glyphs) deliberately keep following
+  whatever your base UI looks like.
+- **Previewing a C.O.D. mail can no longer pay it.** Clicking an attachment
+  inside the mail preview fired the take directly, and the first take from a
+  C.O.D. mail pays the full amount — with no dialog. That click now gets the
+  same confirmation as the Collect button, and the payment rule is enforced
+  in one place for every path: nothing pays a C.O.D. except the single
+  confirmed action you just approved.
+- **Paying and deleting now leave a receipt in chat.** "C.O.D. paid: 12g 50s"
+  after a confirmed payment actually goes through, and "Deleted: 8 mails"
+  after the bulk sweep — so an irreversible action is never silent.
+- Postbox's grey-out of unmailable bag items now restores the exact icon
+  tint another addon may have applied, instead of resetting it to white.
+
 ## 1.18.0
 
 - **Right-click an item in your bags while reading mail and the window flips

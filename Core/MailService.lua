@@ -1091,7 +1091,7 @@ end
 
 -- One attachment slot of a mail whose body is already loaded.
 -- onDone(status, refusedCount, reason).
-function Mail.TakeAttachment(index, slot, onDone)
+function Mail.TakeAttachment(index, slot, onDone, opts)
   local token = Claim()
   local finished = false
 
@@ -1112,6 +1112,15 @@ function Mail.TakeAttachment(index, slot, onDone)
   local fingerprint = Fingerprint(index)
   if not fingerprint or not GetInboxItemLink(index, slot) then
     return finish("collected")
+  end
+
+  -- The FIRST take from a C.O.D. mail pays the whole amount, and this path is
+  -- reachable from a preview overlay opened on any mail. Same choke-point rule
+  -- as Mail.CollectMail: no caller pays without opts.allowCOD, which only the
+  -- flows that just confirmed this mail's amount with the player may pass.
+  local _, _, _, _, _, codNow = GetInboxHeaderInfo(index)
+  if (tonumber(codNow) or 0) > 0 and not (opts and opts.allowCOD) then
+    return finish("refused", 0, nil)
   end
 
   WhenIdle(function()

@@ -1011,7 +1011,10 @@ end
 -- Item slots are NOT panels and must not be tagged. See Theme.ApplySlot.
 -------------------------------------------------------------
 
-local WHITE = "Interface\\Buttons\\WHITE8x8"
+-- The addon's own white tile, not Interface\Buttons\WHITE8x8: structural
+-- fills must survive a UI pack's loose-file texture overrides (see
+-- Lib/UI/Theme.lua).
+local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
 
 -- A 1px border, as the design calls for. The foundation layer's default is the
 -- tooltip nine-slice, whose 12px textured brown edge is a second border colour

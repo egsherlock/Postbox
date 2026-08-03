@@ -145,7 +145,11 @@ local GRID_BUTTON_HEIGHT  = 26
 local SENDER_SHARE = 0.34
 local SENDER_MIN, SENDER_MAX = 70, 170
 
-local WHITE = "Interface\\Buttons\\WHITE8x8"
+-- The addon's own white tile: a UI pack's loose-file overrides can replace
+-- art at Blizzard paths, and a structural fill must survive that (see
+-- Lib/UI/Theme.lua). Glyph art like the empty-slot backpack stays native on
+-- purpose -- it SHOULD follow whatever the player's base UI looks like.
+local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
 local EMPTY_SLOT_ART = "Interface\\PaperDoll\\UI-Backpack-EmptySlot"
 
 -- Art, in preference order, PROBED and never assumed -- SetAtlas with a name the
@@ -1777,7 +1781,24 @@ function CollectSingleMail(panel, index, opts)
       for k, v in pairs(opts) do confirmed[k] = v end
     end
     confirmed.allowCOD = true
+    local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
+    codBefore = tonumber(codBefore) or 0
     Mail().CollectMail(index, function(status, refused, reason)
+      -- A confirmed C.O.D. that actually changed hands is reported in chat,
+      -- with the amount: "collected" means the mail emptied (the first take
+      -- pays), and a partial refusal has paid exactly when the mail's own
+      -- C.O.D. field reads zero afterwards -- the mail is still at this index
+      -- in that case, since only an emptied mail is deleted out from under it.
+      if codBefore > 0 then
+        local paid = status == "collected"
+        if not paid and status == "refused" then
+          local _, _, _, _, _, codNow = GetInboxHeaderInfo(index)
+          paid = (tonumber(codNow) or 0) == 0
+        end
+        if paid then
+          ns.Print(L()("MSG_COD_PAID", Helpers().FormatMoney(codBefore)))
+        end
+      end
       -- "busy" is a Postbox sequence already owning the channel; that run is
       -- writing its own status and must not be talked over.
       if status == "busy" then return end
@@ -1858,7 +1879,7 @@ local function DeleteAllDone(panel)
 
   Confirm(POPUP_DELETE_ALL, DeleteLabel(), L()["COD_CONFIRM_CANCEL"],
     message, function()
-      Mail().DeleteMails(queue, function(_, status)
+      Mail().DeleteMails(queue, function(deleted, status)
         -- The mailbox can close between the confirmation and the answer, and
         -- the sweep stops where it is; saying so beats a dialog that dismisses
         -- itself over a half-deleted list.
@@ -1866,6 +1887,12 @@ local function DeleteAllDone(panel)
           StatusMailboxClosed()
         elseif status == "timeout" then
           ns.Print(L()["MSG_MAIL_TIMEOUT"])
+        end
+        -- The receipt for an irreversible sweep: how many actually went, in
+        -- chat, where it survives the window closing. Zero stays silent --
+        -- every deletable mail moved before the answer, nothing happened.
+        if (tonumber(deleted) or 0) > 0 then
+          ns.Print(L()("MSG_DELETED_COUNT", ns.Plural("COUNT_MAILS", deleted)))
         end
         RequestRefresh(panel)
       end, expected)
@@ -2463,47 +2490,65 @@ local function TakeOneAttachment(detail, slot)
   local index, slotIndex = LiveIndex(detail), slot.slotIndex
   if not index or not slotIndex or not slot.itemLink then return end
 
-  Mail().TakeAttachment(index, slotIndex, function(status, refused, reason)
-    -- The slot is cleared only once the item has actually left the mailbox.
-    -- Blanking it on a timeout, or on a take the server refused, would tell the
-    -- player it was collected while it is still sitting there. It stays
-    -- clickable, so a retry is their decision rather than an automatic one.
-    if status == "busy" then return end
-    if status == "closed" then
-      StatusMailboxClosed()
-      return
-    end
-    if status == "timeout" then
-      ns.Print(L()["MSG_MAIL_TIMEOUT"])
-      return
-    end
-    if status == "refused" or (tonumber(refused) or 0) > 0 then
-      ns.Print(ItemRefusedMessage(reason))
-      -- The domain has just recorded this mail as stuck, and the overlay is
-      -- still the screen the player is looking at. Repainting puts the reason
-      -- in the metadata line where the click was, instead of only in a chat
-      -- message and on a row hidden behind this frame.
-      PaintDetailContent(detail, index)
-      LayoutDetail(detail)
-      RefreshIdleSummary()
-      return
-    end
+  -- The FIRST take from a C.O.D. mail pays the whole amount, so the same
+  -- confirmation the Collect button gets stands in front of a slot click too.
+  -- For everything else ConfirmCOD calls straight through. Its accept
+  -- re-verifies the mail's identity; the index is re-derived after the wait
+  -- because the dialog is not modal and the overlay's mail can move under it.
+  ConfirmCOD(index, function()
+    index = LiveIndex(detail)
+    if not index then return end
+    local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
+    codBefore = tonumber(codBefore) or 0
 
-    -- Taking one attachment can compact the others downwards, so never assume
-    -- the slot is now empty: re-read it.
-    local link = GetInboxItemLink(index, slotIndex)
-    if link then
-      local _, _, texture, count = GetInboxItem(index, slotIndex)
-      if texture then slot.Icon:SetTexture(texture) end
-      slot.Count:SetText((tonumber(count) or 0) > 1 and tostring(count) or "")
-      slot.itemLink = link
-    else
-      slot.Icon:Hide()
-      slot.Count:SetText("")
-      slot.itemLink = nil
-      slot:Hide()
-    end
-    RequestRefresh(detail._panel)
+    Mail().TakeAttachment(index, slotIndex, function(status, refused, reason)
+      -- The slot is cleared only once the item has actually left the mailbox.
+      -- Blanking it on a timeout, or on a take the server refused, would tell
+      -- the player it was collected while it is still sitting there. It stays
+      -- clickable, so a retry is their decision rather than an automatic one.
+      if status == "busy" then return end
+      if status == "closed" then
+        StatusMailboxClosed()
+        return
+      end
+      if status == "timeout" then
+        ns.Print(L()["MSG_MAIL_TIMEOUT"])
+        return
+      end
+      if status == "refused" or (tonumber(refused) or 0) > 0 then
+        ns.Print(ItemRefusedMessage(reason))
+        -- The domain has just recorded this mail as stuck, and the overlay is
+        -- still the screen the player is looking at. Repainting puts the
+        -- reason in the metadata line where the click was, instead of only in
+        -- a chat message and on a row hidden behind this frame.
+        PaintDetailContent(detail, index)
+        LayoutDetail(detail)
+        RefreshIdleSummary()
+        return
+      end
+
+      -- The take landed, so a confirmed C.O.D. was just paid: say so in the
+      -- game's chat, in gold, where the player can check it against the bill.
+      if codBefore > 0 then
+        ns.Print(L()("MSG_COD_PAID", Helpers().FormatMoney(codBefore)))
+      end
+
+      -- Taking one attachment can compact the others downwards, so never
+      -- assume the slot is now empty: re-read it.
+      local link = GetInboxItemLink(index, slotIndex)
+      if link then
+        local _, _, texture, count = GetInboxItem(index, slotIndex)
+        if texture then slot.Icon:SetTexture(texture) end
+        slot.Count:SetText((tonumber(count) or 0) > 1 and tostring(count) or "")
+        slot.itemLink = link
+      else
+        slot.Icon:Hide()
+        slot.Count:SetText("")
+        slot.itemLink = nil
+        slot:Hide()
+      end
+      RequestRefresh(detail._panel)
+    end, { allowCOD = true })
   end)
 end
 

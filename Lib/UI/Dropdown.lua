@@ -16,7 +16,9 @@ Core.UI.Dropdown = Core.UI.Dropdown or {}
 
 local Dropdown = Core.UI.Dropdown
 
-local WHITE = "Interface\\Buttons\\WHITE8X8"
+-- The addon's own white tile: the list panel's fill and edge must survive a
+-- UI pack's loose-file texture overrides (see Lib/UI/Theme.lua).
+local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
 
 local DEFAULT_HEIGHT = 30
 local DEFAULT_ROW_HEIGHT = 20

@@ -35,11 +35,23 @@ end
 -- The overlay is created at most once per button and reused for the rest of
 -- the session. Bag buttons are updated constantly; creating a texture per
 -- update would leak one texture per update for the life of the session.
+--
+-- The icon's tint is captured before greying and put back EXACTLY on unmark:
+-- the button belongs to the client (or to a bag addon), and another consumer
+-- may have tinted the icon for its own reasons -- restoring to hard white
+-- would erase their state, not ours.
 function M.MarkButton(button)
   if not button then return end
 
   local icon = IconOf(button)
   if icon and icon.SetVertexColor then
+    if not button.pbLockSavedTint and icon.GetVertexColor then
+      local r, g, b, a = icon:GetVertexColor()
+      -- Re-marking an already-grey icon must not capture our own grey.
+      if r ~= ICON_GREY or g ~= ICON_GREY or b ~= ICON_GREY then
+        button.pbLockSavedTint = { r or 1, g or 1, b or 1, a or 1 }
+      end
+    end
     icon:SetVertexColor(ICON_GREY, ICON_GREY, ICON_GREY)
   end
 
@@ -66,7 +78,13 @@ function M.UnmarkButton(button)
 
   local icon = IconOf(button)
   if icon and icon.SetVertexColor then
-    icon:SetVertexColor(1, 1, 1)
+    local saved = button.pbLockSavedTint
+    if saved then
+      icon:SetVertexColor(saved[1], saved[2], saved[3], saved[4])
+    else
+      icon:SetVertexColor(1, 1, 1)
+    end
+    button.pbLockSavedTint = nil
   end
 
   if button.pbLockOverlay then

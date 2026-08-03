@@ -87,7 +87,14 @@ Theme.MenuColors = {
   hover = { 0.90, 0.78, 0.30, 0.18 },
 }
 
-local SURFACE_TEXTURE = "Interface\\FrameGeneral\\UI-Background-Rock"
+-- Postbox's OWN stone tile, not Blizzard's UI-Background-Rock: UI packs
+-- (AtrocityUI, NaowhUI, ...) ship loose files under Interface\FrameGeneral\
+-- that the client silently loads in place of Blizzard's art -- no addon
+-- enabled, undetectable from Lua -- and a near-black or near-transparent
+-- replacement hollowed out every surface this paints. Files under
+-- Interface\AddOns\ cannot be overridden. Regenerate with
+-- .dev/tools/gen-ui-textures.js.
+local SURFACE_TEXTURE = "Interface\\AddOns\\Postbox\\Media\\surface-stone.tga"
 local SURFACE_TINT = { 0.40, 0.32, 0.24, 1.00 }
 
 local WINDOW_STONE_TINT = { 0.78, 0.65, 0.50, 1.00 }
