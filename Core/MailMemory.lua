@@ -663,6 +663,23 @@ function MM.Toggle()
   if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, frame) end
 end
 
+-- Unread mail grouped by sender, for the minimap tooltip: a list of
+-- { name = ..., count = ... }, biggest first, or nil when the snapshot has
+-- nothing unread to describe. Same grouping the memory window's badge
+-- tooltip uses, so the two can never disagree.
+function MM.UnreadSummary()
+  if not MemoryEnabled() then return nil end
+  local snap = live or StoredSnapshot()
+  if not snap then return nil end
+  local order, counts = UnreadBySender(snap)
+  if #order == 0 then return nil end
+  local out = {}
+  for i = 1, #order do
+    out[i] = { name = order[i], count = counts[order[i]] }
+  end
+  return out
+end
+
 -- The minimap tooltip's memory line: the same sentence the window leads
 -- with -- one truth, one phrasing -- or nil when there is nothing to say.
 function MM.SummaryText()
@@ -768,6 +785,11 @@ local function OnPendingMail()
   -- only when visible.
   local frame = MM._frame
   if frame and frame:IsShown() then Refresh(frame) end
+
+  -- One witness, two consumers: the badge above and the minimap icon's
+  -- optional sound/flash. Both answer to the same arrival.
+  local Icon = ns.MinimapButton
+  if Icon and type(Icon.NotifyArrival) == "function" then Icon.NotifyArrival() end
 end
 
 -- The fourth detector watches the CAUSE instead of the effect. The server
@@ -795,6 +817,9 @@ local function OnPurchaseCompleted()
 
   local frame = MM._frame
   if frame and frame:IsShown() then Refresh(frame) end
+
+  local Icon = ns.MinimapButton
+  if Icon and type(Icon.NotifyArrival) == "function" then Icon.NotifyArrival() end
 end
 
 -- Same dual close coverage as Core/MailboxUI.lua, for the same reason: the

@@ -48,6 +48,11 @@ local DEFAULTS = {
   glow     = true,
   shadow   = true,
   pulse    = true,   -- the glow's slow breathe; shadows never pulse
+  -- Arrival notification. Both off by default: a sound and a moving icon
+  -- are the two things an addon can do that a player cannot ignore, so
+  -- they are asked for rather than assumed.
+  alertSound = false,
+  alertFlash = false,
   lock     = false,  -- swallow shift-drag entirely: no accidental nudges
 }
 
@@ -669,16 +674,34 @@ local function ShowTooltip(button)
       0.6, 0.6, 0.6, true)
   end
 
-  -- What the memory knows, above the gestures: "Last seen 2 h ago - 12
-  -- mails." -- the answer to "do I need to walk over there" without a
-  -- single click. Same sentence the memory window leads with.
+  -- What the memory knows, above the gestures: the answer to "do I need to
+  -- walk over there" without a single click. The senders line the client
+  -- offers above is only ever three names with no counts; this is the
+  -- inbox as Postbox last read it, grouped -- "Auction House  x5".
   local Memory = ns.MailMemory
+  if Memory and type(Memory.UnreadSummary) == "function" then
+    local groups = Memory.UnreadSummary()
+    if groups then
+      GameTooltip:AddLine(" ")
+      GameTooltip:AddLine(L["MEMORY_WAITING_HEAD"], 0.75, 0.75, 0.78)
+      local shown = math.min(#groups, 5)
+      for i = 1, shown do
+        GameTooltip:AddDoubleLine(groups[i].name, "x" .. groups[i].count,
+          1, 1, 1, 0.75, 0.75, 0.78)
+      end
+      if #groups > shown then
+        GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #groups - shown),
+          0.6, 0.6, 0.63)
+      end
+    end
+  end
   if Memory and type(Memory.SummaryText) == "function" then
     local summary = Memory.SummaryText()
     if summary then
-      GameTooltip:AddLine(summary, 0.8, 0.8, 0.8, true)
+      GameTooltip:AddLine(summary, 0.55, 0.55, 0.58, true)
     end
   end
+  GameTooltip:AddLine(" ")
 
   local UIOpt = ns.MailboxUI
   if UIOpt and type(UIOpt.GetOption) == "function" and UIOpt.GetOption("mailMemory") then
@@ -772,6 +795,31 @@ local function Build()
   fade:SetDuration(1.6)
   fade:SetSmoothing("IN_OUT")
   button.pulse = pulse
+
+  -- The arrival flash: a short scale-up on the BUTTON, three beats, then
+  -- done. Deliberately not an alpha animation and deliberately not on the
+  -- glow -- the glow may already be breathing on its own loop, and two
+  -- alpha animations on one texture fight. Scale composes with everything:
+  -- glow, shadow and accent all ride the button and simply grow with it,
+  -- whatever their settings, and the icon returns to exactly its own size.
+  local flash = button:CreateAnimationGroup()
+  flash:SetLooping("BOUNCE")
+  local grow = flash:CreateAnimation("Scale")
+  if grow.SetScaleFrom then
+    grow:SetScaleFrom(1, 1)
+    grow:SetScaleTo(1.35, 1.35)
+  end
+  grow:SetDuration(0.28)
+  grow:SetSmoothing("IN_OUT")
+  flash:SetScript("OnLoop", function(self)
+    self.beats = (self.beats or 0) + 1
+    -- Three there-and-back beats, then settle at the icon's own size.
+    if self.beats >= 6 then
+      self:Stop()
+      self.beats = 0
+    end
+  end)
+  button.flash = flash
 
   button:SetScript("OnEnter", ShowTooltip)
   button:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1070,6 +1118,53 @@ function MB.SetPosition(position)
     prefs.offsetX, prefs.offsetY = nil, nil
   end
   Refresh()
+end
+
+-- Mail just arrived. Called by Core/MailMemory.lua, which owns the arrival
+-- detection for the whole addon -- one witness, so the badge and the alert
+-- can never disagree about what counts as new.
+function MB.NotifyArrival()
+  local prefs = Settings()
+
+  if prefs.alertSound and type(PlaySound) == "function" and type(SOUNDKIT) == "table" then
+    -- The client's own new-mail sound where it has one, its message chime
+    -- otherwise; never a file of ours, so it obeys the player's sound
+    -- settings like every other UI sound.
+    local id = SOUNDKIT.UI_MAIL_ARRIVED or SOUNDKIT.TELL_MESSAGE
+    if id then pcall(PlaySound, id) end
+  end
+
+  if prefs.alertFlash then
+    local button = MB._button
+    -- Only when the icon is actually on screen: an animation on a hidden
+    -- frame is a promise nobody sees, and the icon shows on this same
+    -- event anyway.
+    if button and button:IsShown() and button.flash then
+      button.flash.beats = 0
+      if not button.flash:IsPlaying() then button.flash:Play() end
+    end
+  end
+end
+
+function MB.GetAlertSound()
+  return Settings().alertSound == true
+end
+
+function MB.SetAlertSound(on)
+  Settings().alertSound = on == true
+end
+
+function MB.GetAlertFlash()
+  return Settings().alertFlash == true
+end
+
+function MB.SetAlertFlash(on)
+  Settings().alertFlash = on == true
+  -- Turning it off mid-flash leaves the icon wherever the animation was.
+  local button = MB._button
+  if not Settings().alertFlash and button and button.flash and button.flash:IsPlaying() then
+    button.flash:Stop()
+  end
 end
 
 function MB.GetLocked()

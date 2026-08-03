@@ -202,17 +202,20 @@ end
 -- the tab.
 --   counts  "Mail (2/5)" -- still to collect over total
 --   total   "Mail (5)"   -- just how much is sitting there
---   dot     "Mail •"     -- an accent dot while anything is uncollected
---   none    "Mail"       -- the default
+--   dot     "Mail •"     -- an accent dot while anything is uncollected;
+--                           the default
+--   none    "Mail"
 local TAB_CAPTION_MODES = { counts = true, total = true, dot = true, none = true }
 
 function UI.GetTabCaptionMode()
   local store = ns.Store
   local stored = store and store.Get and store.Get("profile.tabCaption")
   if TAB_CAPTION_MODES[stored] then return stored end
-  -- Default OFF: a caption on the primary tab is visible UI, so wearing one
-  -- is the user's call -- same reasoning as the minimap icon's default.
-  return "none"
+  -- The dot, not "none" as this defaulted through 1.26: it is the quietest
+  -- caption that still answers "is there anything worth collecting" from
+  -- the Send tab -- one glyph, no arithmetic, no width for a translation to
+  -- overflow. Wearing nothing at all is still one pick away.
+  return "dot"
 end
 
 function UI.SetTabCaptionMode(mode)

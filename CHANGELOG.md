@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.27.0
+
+- **Postbox Modern got its edges right.** Those extra dark pixels above
+  fields, under buttons and along panel edges were the flat look's own
+  hairline: a pure-black border on near-black surfaces, which stacked into
+  a two- or three-pixel smear wherever two elements sat close. The hairline
+  is now a faint light line instead — it separates by brightness, the way
+  flat interfaces actually do, and two of them side by side read as one.
+- **Modern has a title bar again**, a shade above the window behind the
+  title, the cog and the close button, closed off with a hairline — the
+  same distinction every other Postbox look has.
+- **Modern skins the scroll bars too**: the art goes and the thumb becomes a
+  thin bright bar, in the mail list and the recipient window alike. (Scroll
+  bars are ordinary interface frames — restyling them carries no taint and
+  no combat consequence, which is why the host-UI skins have always done
+  the same.)
+- **The minimap icon's tooltip now breaks your mailbox down by sender** —
+  "Auction House  x5", "Postmaster  x1" — instead of the game's bare list of
+  three names. It re-reads every time you hover, so it follows new arrivals.
+- **New: optional alerts when mail arrives.** A sound (the game's own mail
+  chime) and a flash (the icon beats a few times, then settles). Both off by
+  default, both in the Minimap section. The flash is a pulse in size rather
+  than another glow, so it composes with whatever glow, shadow and accent
+  the icon already wears instead of fighting them.
+- The Mail tab's caption now defaults to the quiet dot — the smallest thing
+  that answers "is there anything to collect" from the Send tab.
+
 ## 1.26.0
 
 - **The options panel says one thing in one place.** The footer used to

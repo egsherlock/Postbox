@@ -845,6 +845,17 @@ local function Build()
           function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
           function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end)
 
+    -- Arrival alerts. Both ride the icon and compose with whatever glow,
+    -- shadow and accent it already wears -- the flash is a scale, not a
+    -- second colour or a second fade.
+    cy = AddCheckbox(card, cy, L["OPT_ALERT_SOUND_TITLE"], L["OPT_ALERT_SOUND_DESC"],
+          function() return ns.MinimapButton and ns.MinimapButton.GetAlertSound() end,
+          function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertSound(on) end end)
+
+    cy = AddCheckbox(card, cy, L["OPT_ALERT_FLASH_TITLE"], L["OPT_ALERT_FLASH_DESC"],
+          function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
+          function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end)
+
     cy = AddCheckbox(card, cy, L["OPT_MINIMAP_LOCK_TITLE"], L["OPT_MINIMAP_LOCK_DESC"],
           function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
           function(on) if ns.MinimapButton then ns.MinimapButton.SetLocked(on) end end)

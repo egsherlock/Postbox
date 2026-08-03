@@ -601,6 +601,10 @@ L["OPT_REPORT_BUG"]            = "Report a bug"
 L["MEMORY_WAITING_HEAD"]       = "Unread when you looked:"
 L["MEMORY_WAITING_MORE"]       = "and %d more"
 L["MEMORY_SENDER_UNKNOWN"]     = "Unknown sender"
+L["OPT_ALERT_SOUND_TITLE"]     = "Sound on new mail"
+L["OPT_ALERT_SOUND_DESC"]      = "Plays the game's own mail chime when mail arrives while you are out in the world."
+L["OPT_ALERT_FLASH_TITLE"]     = "Flash on new mail"
+L["OPT_ALERT_FLASH_DESC"]      = "The icon beats a few times when mail arrives, then settles. It works alongside the glow and shadow rather than replacing them."
 if GetLocale() == "frFR" then
   -- Chat et dialogues
   L["ERR_OPEN_MAILBOX_LOOT"]     = "Approche-toi d'une boite aux lettres et ouvre-la d'abord."
@@ -968,6 +972,10 @@ if GetLocale() == "frFR" then
   L["MEMORY_WAITING_HEAD"]       = "Non lus lors de ton passage :"
   L["MEMORY_WAITING_MORE"]       = "et %d de plus"
   L["MEMORY_SENDER_UNKNOWN"]     = "Expediteur inconnu"
+  L["OPT_ALERT_SOUND_TITLE"]     = "Son a l'arrivee du courrier"
+  L["OPT_ALERT_SOUND_DESC"]      = "Joue le carillon de courrier du jeu quand du courrier arrive pendant que tu es dehors."
+  L["OPT_ALERT_FLASH_TITLE"]     = "Clignotement a l'arrivee"
+  L["OPT_ALERT_FLASH_DESC"]      = "L'icone bat quelques fois a l'arrivee du courrier, puis se calme. Cela s'ajoute au halo et a l'ombre au lieu de les remplacer."
 end
 
 -------------------------------------------------------------
@@ -1339,6 +1347,10 @@ if GetLocale() == "deDE" then
   L["MEMORY_WAITING_HEAD"]       = "Ungelesen bei deinem Blick:"
   L["MEMORY_WAITING_MORE"]       = "und %d weitere"
   L["MEMORY_SENDER_UNKNOWN"]     = "Unbekannter Absender"
+  L["OPT_ALERT_SOUND_TITLE"]     = "Ton bei neuer Post"
+  L["OPT_ALERT_SOUND_DESC"]      = "Spielt den Postton des Spiels, wenn Post eintrifft, waehrend du unterwegs bist."
+  L["OPT_ALERT_FLASH_TITLE"]     = "Blinken bei neuer Post"
+  L["OPT_ALERT_FLASH_DESC"]      = "Das Symbol pocht bei neuer Post ein paar Mal und beruhigt sich dann. Es kommt zu Leuchten und Schatten hinzu, statt sie zu ersetzen."
 end
 
 -------------------------------------------------------------
@@ -1708,6 +1720,10 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["MEMORY_WAITING_HEAD"]       = "Sin leer cuando miraste:"
   L["MEMORY_WAITING_MORE"]       = "y %d mas"
   L["MEMORY_SENDER_UNKNOWN"]     = "Remitente desconocido"
+  L["OPT_ALERT_SOUND_TITLE"]     = "Sonido al llegar correo"
+  L["OPT_ALERT_SOUND_DESC"]      = "Reproduce el aviso de correo del propio juego cuando llega correo mientras estas por el mundo."
+  L["OPT_ALERT_FLASH_TITLE"]     = "Destello al llegar correo"
+  L["OPT_ALERT_FLASH_DESC"]      = "El icono late unas cuantas veces al llegar correo y luego se calma. Se suma al brillo y a la sombra en vez de sustituirlos."
 end
 
 -------------------------------------------------------------
@@ -2089,4 +2105,8 @@ L["OPT_REPORT_BUG"]            = "Сообщить об ошибке"
 L["MEMORY_WAITING_HEAD"]       = "Не прочитано на момент просмотра:"
 L["MEMORY_WAITING_MORE"]       = "и ещё %d"
 L["MEMORY_SENDER_UNKNOWN"]     = "Неизвестный отправитель"
+L["OPT_ALERT_SOUND_TITLE"]     = "Звук при новой почте"
+L["OPT_ALERT_SOUND_DESC"]      = "Проигрывает собственный почтовый сигнал игры, когда почта приходит, пока вы в мире."
+L["OPT_ALERT_FLASH_TITLE"]     = "Мигание при новой почте"
+L["OPT_ALERT_FLASH_DESC"]      = "Значок несколько раз пульсирует при новой почте, затем успокаивается. Это добавляется к свечению и тени, а не заменяет их."
 end

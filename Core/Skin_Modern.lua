@@ -28,8 +28,21 @@ local C = {
   panel  = { 0.090, 0.090, 0.105, 0.92 },
   input  = { 0.050, 0.050, 0.060, 0.95 },
   button = { 0.120, 0.120, 0.140, 0.95 },
-  border = { 0.000, 0.000, 0.000, 1.00 },
+  -- A LIGHT hairline, not black. Pure black borders were the flat look's
+  -- worst idea: on near-black fills they are darker than everything around
+  -- them, so every place two elements sit close -- a field under a label, a
+  -- button inside a card, a card inside the window -- stacked two or three
+  -- black lines into a smear that read as dirt on the panel. A faint white
+  -- edge separates by LIGHT, which is what a modern flat UI actually does,
+  -- and two adjacent hairlines simply read as one slightly brighter one.
+  border = { 1.000, 1.000, 1.000, 0.085 },
+  -- The title strip: a shade above the window so the bar holding the title,
+  -- the cog and the close button reads as chrome rather than as more panel.
+  title  = { 0.105, 0.105, 0.122, 0.95 },
 }
+
+-- Title-bar height for the Blizzard window templates Postbox builds on.
+local TITLE_HEIGHT = 22
 
 local FLAT_BACKDROP = {
   bgFile = WHITE,
@@ -93,6 +106,89 @@ local function FlatButton(button)
   end
 end
 
+-- The window's own title strip. The templates draw theirs as part of the
+-- art QuietTemplateArt silences, so without this the title, the cog and the
+-- close button float on the same flat field as the content -- every other
+-- Postbox look distinguishes that bar, and so should this one.
+local function TitleStrip(frame)
+  if frame.__pbModernTitle then return end
+  frame.__pbModernTitle = true
+
+  local strip = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
+  strip:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1)
+  strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -1, -1)
+  strip:SetHeight(TITLE_HEIGHT)
+  strip:SetColorTexture(C.title[1], C.title[2], C.title[3], C.title[4])
+
+  -- One hairline under it, the same light edge the panels use, so the bar
+  -- ends on a line rather than fading into the content.
+  local rule = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
+  rule:SetPoint("TOPLEFT", strip, "BOTTOMLEFT", 0, 0)
+  rule:SetPoint("TOPRIGHT", strip, "BOTTOMRIGHT", 0, 0)
+  rule:SetHeight(1)
+  rule:SetColorTexture(C.border[1], C.border[2], C.border[3], C.border[4])
+end
+
+-- Postbox's lists use UIPanelScrollFrameTemplate, whose bar is the classic
+-- three-piece slider. Same treatment the EllesmereUI skin gives it: the art
+-- goes, the thumb becomes a thin bright bar. Scroll BEHAVIOUR is untouched
+-- -- these are ordinary UI frames with no protected state, so restyling
+-- them carries no taint or combat consequence whatsoever.
+local function FlatScrollBar(sb)
+  if not sb or sb.__pbModernBar then return end
+  sb.__pbModernBar = true
+
+  for _, key in ipairs({ "ScrollUpButton", "ScrollDownButton" }) do
+    local b = sb[key]
+    if b then
+      for _, getter in ipairs({ "GetNormalTexture", "GetPushedTexture",
+                                "GetDisabledTexture", "GetHighlightTexture" }) do
+        local fn = b[getter]
+        local t = fn and fn(b)
+        if t then t:SetAlpha(0) end
+      end
+    end
+  end
+
+  for _, region in ipairs({ sb:GetRegions() }) do
+    if region.IsObjectType and region:IsObjectType("Texture") then
+      region:SetAlpha(0)
+    end
+  end
+
+  -- Modern clients hand back the newer bar instead; it keeps its pieces as
+  -- named children rather than plain regions.
+  for _, key in ipairs({ "Back", "Forward" }) do
+    local b = sb[key]
+    if b then
+      for _, r in ipairs({ b:GetRegions() }) do
+        if r.IsObjectType and r:IsObjectType("Texture") then r:SetAlpha(0) end
+      end
+    end
+  end
+  if sb.Track then
+    for _, r in ipairs({ sb.Track:GetRegions() }) do
+      if r.IsObjectType and r:IsObjectType("Texture") then r:SetAlpha(0) end
+    end
+  end
+
+  local thumb = sb.GetThumbTexture and sb:GetThumbTexture()
+  if thumb then
+    thumb:SetTexture(nil)
+    thumb:SetColorTexture(1, 1, 1, 0.30)
+    thumb:SetWidth(4)
+    -- Region alpha and colour alpha multiply, and the sweep above set every
+    -- region -- this thumb included -- to zero.
+    thumb:SetAlpha(1)
+  end
+end
+
+local function FlatScroll(sf)
+  if not sf then return end
+  local name = sf.GetName and sf:GetName()
+  FlatScrollBar(sf.ScrollBar or (name and _G[name .. "ScrollBar"]))
+end
+
 -- The template's close button is a chunky gold-ringed X that survives every
 -- other repaint because it is Blizzard art on a Blizzard button. Modern
 -- draws its own from two rotated bars of the addon's white tile: crisp at
@@ -142,6 +238,8 @@ local function SkinTree(frame, depth)
         FlatPanel(c, c.__postboxPanel == "band" and C.window or C.panel)
       elseif c.__postboxInputWrap then
         FlatPanel(c, C.input)
+      elseif c:IsObjectType("ScrollFrame") then
+        FlatScroll(c)
       elseif c:IsObjectType("Button") then
         if c.__postboxButton then FlatButton(c) end
       end
@@ -196,6 +294,7 @@ function Skin.Apply(frame)
 
   QuietTemplateArt(frame)
   Paint(frame, C.window)
+  TitleStrip(frame)
   FlatClose(frame.CloseButton)
 
   -- Tabs: installing the selection override retires the widget's own plate
