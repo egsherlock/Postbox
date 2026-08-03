@@ -190,6 +190,20 @@ local function StoredSnapshot()
   return byRealm and byRealm[name] or nil
 end
 
+-- A snapshot from before the baseline fields existed cannot support the
+-- flip/triple detectors. Heal it at the first away-from-box look: the
+-- baseline becomes NOW, so arrivals from this moment on are detectable
+-- without demanding a fresh mailbox visit first. Run at login too, so an
+-- arrival between login and the first window-open is not folded into the
+-- healed baseline.
+local function EnsureBaseline(snap)
+  if not snap or snap.baseFrom ~= nil then return end
+  local state = MailboxState()
+  if state and state.mailboxOpen then return end
+  snap.baseFrom = SenderTriple()
+  snap.baseNew = type(HasNewMail) == "function" and HasNewMail() and true or false
+end
+
 -------------------------------------------------------------
 -- 2. Words for a snapshot's age
 --
@@ -369,6 +383,7 @@ local function Refresh(frame)
   local arrived = false
   local from = nil
   if snapshot then
+    EnsureBaseline(snapshot)
     local state = MailboxState()
     local away = not (state and state.mailboxOpen)
     local flagNow = away and type(HasNewMail) == "function" and HasNewMail() and true or false
@@ -658,5 +673,6 @@ if bus then
   bus.Register("UPDATE_PENDING_MAIL", OnPendingMail)
   bus.Register("PLAYER_ENTERING_WORLD", function()
     loginAt = time()
+    if MemoryEnabled() then EnsureBaseline(StoredSnapshot()) end
   end)
 end

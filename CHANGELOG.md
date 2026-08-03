@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.24.4
+
+- The mailbox memory's arrival detectors now arm themselves on update: a
+  snapshot saved by an older version gets its baseline at login or first
+  look instead of needing one more mailbox visit before the "+ new mail"
+  badge could work at all.
+
 ## 1.24.3
 
 - **The "+ new mail" badge detects arrivals three independent ways** —
