@@ -53,6 +53,26 @@ local function RowsHeight(rows)
   return CHROME_TOP + CHROME_BOTTOM + rows * ROW_HEIGHT + 2
 end
 
+-- The refusal marker's art, probed once. Same candidates and same order as
+-- Core/CollectTab.lua, so both screens land on the same triangle rather
+-- than one of them quietly falling back to the plain glyph.
+local warningAtlas = nil
+local function WarningAtlas()
+  if warningAtlas ~= nil then return warningAtlas or nil end
+  warningAtlas = false
+  local getter = (C_Texture and C_Texture.GetAtlasInfo) or GetAtlasInfo
+  if type(getter) == "function" then
+    for _, name in ipairs({ "services-icon-warning", "Ping_Chat_Warning" }) do
+      local ok, info = pcall(getter, name)
+      if ok and info then
+        warningAtlas = name
+        break
+      end
+    end
+  end
+  return warningAtlas or nil
+end
+
 -------------------------------------------------------------
 -- 1. Capture
 --
@@ -327,13 +347,21 @@ local function BuildRow(parent, index)
   row.Value:SetPoint("RIGHT", row.Expiry, "LEFT", -8, 0)
   row.Value:SetJustifyH("RIGHT")
 
-  -- The same marker the collect screen puts on a refused mail, in the same
-  -- orange and -- the part that matters -- in the same PLACE: the row's
-  -- right end, after the expiry, exactly where the mail list puts it. A
-  -- mail the server would not hand over should look identical wherever
-  -- Postbox shows it.
-  row.Warning = ns.Theme.CreateText(row, "value")
-  row.Warning:SetText("!")
+  -- The same marker the collect screen puts on a refused mail: the client's
+  -- warning-triangle atlas where it exists, the "!" only as the fallback
+  -- for a client that lacks it -- and in the same place, the row's right
+  -- end after the expiry. A mail the server would not hand over should look
+  -- identical wherever Postbox shows it, and it was wearing the fallback
+  -- here while the mail list wore the triangle.
+  local atlas = WarningAtlas()
+  if atlas then
+    row.Warning = row:CreateTexture(nil, "OVERLAY")
+    row.Warning:SetAtlas(atlas, false)
+    row.Warning:SetSize(12, 12)
+  else
+    row.Warning = ns.Theme.CreateText(row, "value")
+    row.Warning:SetText("!")
+  end
   row.Warning:SetPoint("RIGHT", row, "RIGHT", -4, 0)
   ns.Theme.SetColor(row.Warning, "warning")
   row.Warning:Hide()
@@ -350,27 +378,35 @@ local function BuildRow(parent, index)
   row.Subject:SetJustifyH("LEFT")
   row.Subject:SetWordWrap(false)
 
+  -- The tooltip belongs to the ICON, not the whole row: a row-wide hit area
+  -- meant the tooltip followed the cursor across a list you were only
+  -- scanning, and covered the rows below whatever you happened to pass
+  -- over. Hovering the item is a deliberate act; hovering a row is not.
+  --
   -- A real item tooltip where the snapshot kept a link (read mail only --
   -- unread mail's links were never loaded, and this window does not talk to
   -- the server). Otherwise the full subject, which the row truncates
   -- without mercy.
-  row:EnableMouse(true)
-  row:SetScript("OnEnter", function(self)
-    if self.itemLink then
+  local hit = CreateFrame("Frame", nil, row)
+  hit:SetPoint("TOPLEFT", row.Icon, "TOPLEFT", -2, 2)
+  hit:SetPoint("BOTTOMRIGHT", row.Icon, "BOTTOMRIGHT", 2, -2)
+  hit:EnableMouse(true)
+  hit:SetScript("OnEnter", function(self)
+    if row.itemLink then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetHyperlink(self.itemLink)
+      GameTooltip:SetHyperlink(row.itemLink)
       GameTooltip:Show()
       return
     end
-    if not self.fullSubject or self.fullSubject == "" then return end
+    if not row.fullSubject or row.fullSubject == "" then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(self.fullSubject, 1, 1, 1, true)
-    if self.fullSender and self.fullSender ~= "" then
-      GameTooltip:AddLine(self.fullSender, 0.7, 0.7, 0.7)
+    GameTooltip:SetText(row.fullSubject, 1, 1, 1, true)
+    if row.fullSender and row.fullSender ~= "" then
+      GameTooltip:AddLine(row.fullSender, 0.7, 0.7, 0.7)
     end
     GameTooltip:Show()
   end)
-  row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
   return row
 end
@@ -610,20 +646,31 @@ local function Build()
       GameTooltip:AddLine(L["MEMORY_ARRIVED_ANON"], 1, 1, 1, true)
     end
 
-    local snap = live or StoredSnapshot()
-    local order, counts = WaitingBySender(snap)
-    if #order > 0 then
+    -- Same two-section breakdown as the minimap tooltip, from the same
+    -- summary, so the two never describe one mailbox differently. The
+    -- headings carry a count, which is why they are FORMATTED here -- this
+    -- one printed a literal "%d" for a release.
+    local state = MM.MailboxSummary()
+    local function Breakdown(groups, heading, count, hr, hg, hb)
+      if not groups then return end
       GameTooltip:AddLine(" ")
-      GameTooltip:AddLine(L["MEMORY_WAITING_HEAD"], 0.75, 0.75, 0.78)
-      local shown = math.min(#order, SUMMARY_LINES)
+      GameTooltip:AddLine(string.format(heading, count), hr, hg, hb)
+      local shown = math.min(#groups, SUMMARY_LINES)
       for i = 1, shown do
-        GameTooltip:AddDoubleLine(order[i], "x" .. counts[order[i]],
+        GameTooltip:AddDoubleLine(groups[i].name, "x" .. groups[i].count,
           1, 1, 1, 0.75, 0.75, 0.78)
       end
-      if #order > shown then
-        GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #order - shown),
+      if #groups > shown then
+        GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #groups - shown),
           0.6, 0.6, 0.63)
       end
+    end
+    if state then
+      Breakdown(state.groups, L["MEMORY_WAITING_HEAD"], state.waiting,
+        0.75, 0.75, 0.78)
+      local warn = ns.Theme.Colors.warning
+      Breakdown(state.stuckGroups, L["MEMORY_STUCK_HEAD"], state.stuck,
+        warn[1], warn[2], warn[3])
     end
     GameTooltip:Show()
   end)

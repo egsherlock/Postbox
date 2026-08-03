@@ -814,29 +814,45 @@ local function Build()
   fade:SetSmoothing("IN_OUT")
   button.pulse = pulse
 
-  -- The arrival flash: a short scale-up on the BUTTON, three beats, then
-  -- done. Deliberately not an alpha animation and deliberately not on the
-  -- glow -- the glow may already be breathing on its own loop, and two
-  -- alpha animations on one texture fight. Scale composes with everything:
-  -- glow, shadow and accent all ride the button and simply grow with it,
-  -- whatever their settings, and the icon returns to exactly its own size.
-  local flash = button:CreateAnimationGroup()
-  flash:SetLooping("BOUNCE")
-  local grow = flash:CreateAnimation("Scale")
-  if grow.SetScaleFrom then
-    grow:SetScaleFrom(1, 1)
-    grow:SetScaleTo(1.35, 1.35)
+  -- The arrival flash: a soft halo that swells and fades twice, on its own
+  -- texture above the icon.
+  --
+  -- It was a SCALE on the button -- three sharp beats that jumped the icon,
+  -- the shadow and the glow together and read as a flicker rather than a
+  -- notification. Light is the right medium for "something happened": it
+  -- adds rather than moves, so nothing on the minimap jumps, and because it
+  -- is a texture of our own it cannot fight the standing glow's breathing
+  -- loop whatever the player has set. Green, the colour new mail wears
+  -- everywhere else in the addon.
+  local alert = button:CreateTexture(nil, "OVERLAY")
+  alert:SetPoint("CENTER")
+  alert:SetTexture(MEDIA .. "minimap-glow.tga")
+  alert:SetBlendMode("ADD")
+  alert:SetAlpha(0)
+  button.alert = alert
+
+  local flash = alert:CreateAnimationGroup()
+  -- Two full swells. Long enough to read as deliberate, short enough that
+  -- it is over before it becomes furniture.
+  for i = 0, 1 do
+    local up = flash:CreateAnimation("Alpha")
+    up:SetFromAlpha(0)
+    up:SetToAlpha(0.85)
+    up:SetDuration(0.45)
+    up:SetSmoothing("IN_OUT")
+    up:SetOrder(i * 2 + 1)
+
+    local down = flash:CreateAnimation("Alpha")
+    down:SetFromAlpha(0.85)
+    down:SetToAlpha(0)
+    down:SetDuration(0.55)
+    down:SetSmoothing("IN_OUT")
+    down:SetOrder(i * 2 + 2)
   end
-  grow:SetDuration(0.28)
-  grow:SetSmoothing("IN_OUT")
-  flash:SetScript("OnLoop", function(self)
-    self.beats = (self.beats or 0) + 1
-    -- Three there-and-back beats, then settle at the icon's own size.
-    if self.beats >= 6 then
-      self:Stop()
-      self.beats = 0
-    end
-  end)
+  -- Animations leave the region wherever they finished; the explicit zero
+  -- is what guarantees no residue when the sequence ends or is stopped.
+  flash:SetScript("OnFinished", function() alert:SetAlpha(0) end)
+  flash:SetScript("OnStop", function() alert:SetAlpha(0) end)
   button.flash = flash
 
   button:SetScript("OnEnter", ShowTooltip)
@@ -1158,8 +1174,14 @@ function MB.NotifyArrival()
     -- frame is a promise nobody sees, and the icon shows on this same
     -- event anyway.
     if button and button:IsShown() and button.flash then
-      button.flash.beats = 0
-      if not button.flash:IsPlaying() then button.flash:Play() end
+      -- Sized with the icon rather than at build time, so a size change
+      -- between sessions cannot leave the halo the wrong scale.
+      local size = tonumber(Settings().size) or DEFAULTS.size
+      button.alert:SetSize(size * GLOW_SCALE * 1.15, size * GLOW_SCALE * 1.15)
+      local pos = ns.Theme.Colors.positive
+      button.alert:SetVertexColor(pos[1], pos[2], pos[3])
+      if button.flash:IsPlaying() then button.flash:Stop() end
+      button.flash:Play()
     end
   end
 end

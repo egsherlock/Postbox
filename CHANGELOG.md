@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.30.2
+
+- **Fixed: the mailbox memory's "new mail arrived" tooltip printed a raw
+  "%d"** where the count belonged.
+- **The new-mail flash is a soft halo now**, swelling and fading twice,
+  instead of the icon jumping in size three times — which moved the icon,
+  its glow and its shadow together and read as a flicker rather than a
+  notification. Light adds instead of moving, so nothing on the minimap
+  jumps, and it cannot fight the standing glow whatever you have set.
+- **A stuck mail in the mailbox memory wears the same warning triangle as
+  the mail list**, not the plain exclamation mark it had been falling back
+  to.
+- **The mailbox memory shows a tooltip when you hover the item**, not
+  anywhere on the row — so scanning the list no longer drags a tooltip
+  across the rows underneath.
+
 ## 1.30.1
 
 - **Postbox Modern's title bar lines up.** Two separate causes, both mine:
