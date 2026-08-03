@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.25.0
+
+- **A window style of your own: "Postbox Modern".** Players on the plain
+  Blizzard UI get a Style choice in options: **Blizzard** (the built-in
+  warm-stone native look, still the default) or **Postbox Modern** — flat
+  near-black surfaces, hairline borders, and the accent doing all the
+  talking. It rides the exact same skinning pipeline the EllesmereUI and
+  ElvUI integrations use, so every window gets it consistently — and under
+  EllesmereUI or ElvUI the choice doesn't appear at all: those skins always
+  win, exactly as before. Takes effect after a /reload.
+- **The minimap icon's tooltip now answers the real question**: it leads
+  with what your mailbox held — "Last seen 2 h ago — 12 mails" — before the
+  gesture lines, so you know whether the trip is worth it without a click.
+- **German, Spanish and Russian are fully translated.** Around ninety
+  strings per language — the contact picker, the recipient manager's newer
+  screens, and every option added since — no longer fall back to English.
+
 ## 1.24.7
 
 - The mailbox memory window closes itself when you open a real mailbox —

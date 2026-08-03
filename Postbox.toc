@@ -40,7 +40,10 @@ Core\MinimapButton.lua
 Core\OptionsPanel.lua
 Core\RecipientManager.lua
 
-# Optional host-UI skins. Each file is inert unless its host UI is installed.
-# EllesmereUI loads last and wins when both are present (see Skin_EllesmereUI.lua).
+# Skins. Skin_Modern is first-party (claims only on the plain UI when the
+# style option asks for it); the host-UI files are inert unless their host is
+# installed. EllesmereUI loads last and wins when both hosts are present (see
+# Skin_EllesmereUI.lua).
+Core\Skin_Modern.lua
 Core\Skin_ElvUI.lua
 Core\Skin_EllesmereUI.lua

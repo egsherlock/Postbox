@@ -167,6 +167,30 @@ function UI.SetOption(key, value)
   if profile then profile[key] = value == true end
 end
 
+-- The window style for a session with NO host-UI skin: which first-party
+-- look Postbox paints itself. A string with its own accessors, like the tab
+-- caption below. Read once, at PLAYER_LOGIN, by Core/Skin_Modern.lua's
+-- claim -- which is why a change needs a /reload and why these accessors
+-- never repaint anything themselves.
+--   blizzard  the built-in warm-stone Blizzard-native look (default)
+--   modern    the first-party flat skin (Core/Skin_Modern.lua)
+-- Under EllesmereUI or ElvUI this setting is inert: those skins outrank it.
+local STYLE_CHOICES = { blizzard = true, modern = true }
+
+function UI.GetStyleChoice()
+  local store = ns.Store
+  local stored = store and store.Get and store.Get("profile.style")
+  if STYLE_CHOICES[stored] then return stored end
+  return "blizzard"
+end
+
+function UI.SetStyleChoice(style)
+  if not STYLE_CHOICES[style] then return end
+  local store = ns.Store
+  local profile = store and store.EnsurePath and store.EnsurePath("profile")
+  if profile then profile.style = style end
+end
+
 -- The Mail tab's caption mode -- how the inbox shows through the tab while
 -- the mailbox is open. A string, so it gets its own accessors rather than a
 -- widened SetOption: the boolean coercion above is a guarantee, not an

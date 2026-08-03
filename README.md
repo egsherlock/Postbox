@@ -67,8 +67,9 @@ their icon in place instead of adding a second one.
 
 **Options.** Compact mail rows, tab mail counts, a Mail-tab caption (counts, total,
 dot, or nothing), click-to-open vs click-to-collect, grid docking — all in a panel
-behind the window's cog, itself skinned by your host UI. `/postbox` lists the
-handful of slash commands.
+behind the window's cog, itself skinned by your host UI. On the plain Blizzard UI
+there's also a window Style choice: native Blizzard, or **Postbox Modern** — a
+clean flat dark look. `/postbox` lists the handful of slash commands.
 
 **Recipients.** Categories mean what they say: Recent is in recency order, Guild is
 your guild, Friends includes Battle.net. Right-click favourites a name anywhere;

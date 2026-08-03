@@ -669,6 +669,17 @@ local function ShowTooltip(button)
       0.6, 0.6, 0.6, true)
   end
 
+  -- What the memory knows, above the gestures: "Last seen 2 h ago - 12
+  -- mails." -- the answer to "do I need to walk over there" without a
+  -- single click. Same sentence the memory window leads with.
+  local Memory = ns.MailMemory
+  if Memory and type(Memory.SummaryText) == "function" then
+    local summary = Memory.SummaryText()
+    if summary then
+      GameTooltip:AddLine(summary, 0.8, 0.8, 0.8, true)
+    end
+  end
+
   local UIOpt = ns.MailboxUI
   if UIOpt and type(UIOpt.GetOption) == "function" and UIOpt.GetOption("mailMemory") then
     ActionLine("MINIMAP_TIP_ACT_CLICK", "MINIMAP_TIP_D_MEMORY")

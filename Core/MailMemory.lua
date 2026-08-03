@@ -603,6 +603,19 @@ function MM.Toggle()
   if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, frame) end
 end
 
+-- The minimap tooltip's memory line: the same sentence the window leads
+-- with -- one truth, one phrasing -- or nil when there is nothing to say.
+function MM.SummaryText()
+  if not MemoryEnabled() then return nil end
+  local snap = live or StoredSnapshot()
+  if not snap then return nil end
+  local count = #(snap.mails or {})
+  if count == 0 then
+    return string.format(L["MEMORY_ASOF_EMPTY"], AgeText(snap.seenAt))
+  end
+  return string.format(L["MEMORY_ASOF"], AgeText(snap.seenAt), ns.Plural("COUNT_MAILS", count))
+end
+
 -- One line for /postbox debug: everything needed to see why a badge did or
 -- did not show, without asking for a reproduction.
 function MM.Diagnose()

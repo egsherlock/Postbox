@@ -473,6 +473,27 @@ local function Build()
 
   y = EndSection(frame, card, y)
 
+  -- Window style (Core/Skin_Modern.lua). Shown only when no HOST skin owns
+  -- the windows: under EllesmereUI or ElvUI the choice would be a lie, so it
+  -- does not appear. The claim is made once at login, hence the reload note
+  -- in the tooltip and the chat line on change.
+  if not ns.Skin or ns.SkinAppliedBy == "modern" then
+    y = AddSectionHeading(frame, y, L["OPT_STYLE_HEADING"])
+    card = StartCard(frame, y)
+    cy = -12
+    local styleItems = {
+      { id = "blizzard", name = L["OPT_STYLE_BLIZZARD"] },
+      { id = "modern",   name = L["OPT_STYLE_MODERN"] },
+    }
+    cy = AddDropdown(card, cy, L["OPT_STYLE_TITLE"], styleItems,
+          function() return ns.MailboxUI.GetStyleChoice and ns.MailboxUI.GetStyleChoice() end,
+          function(id)
+            if ns.MailboxUI.SetStyleChoice then ns.MailboxUI.SetStyleChoice(id) end
+            ns.Print(L["MSG_STYLE_RELOAD"])
+          end)
+    y = EndSection(frame, card, y)
+  end
+
   -- Minimap mail icon (Core/MinimapButton.lua). Resolved at click time like
   -- every other binding, so the section stays honest if the module is absent.
   --

@@ -73,8 +73,8 @@ since, and never pretends to be live.
 Using **EllesmereUI**? Postbox registers with its skinning API and follows your
 profile's colours, font, border and transparency — live, including mid-session
 profile switches. Using **ElvUI**? It matches your theme, WindTools borders
-included. Using neither? It has its own clean look. `/postbox skin` shows what
-was detected.
+included. Using neither? Pick your look: warm Blizzard-native, or the flat,
+minimal **Postbox Modern** style. `/postbox skin` shows what was detected.
 
 ## Light on purpose
 
