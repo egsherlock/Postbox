@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.18.0
+
+- **Right-click an item in your bags while reading mail and the window flips
+  to Send with it attached** — the same native attach the Send tab has always
+  had, now armed across the whole mail session. The game client itself does
+  the attaching (no bag hooks, nothing protected touched, works in combat and
+  with replacement bag addons); Postbox just notices the attachment land and
+  follows it to the Send tab. The flip side: while the mailbox is open, bag
+  items answer to the mail — an unmailable one raises the game's own "can't
+  be mailed" error instead of being used or opened, exactly as on the Send
+  tab. A new option, "Attach from the Mail tab" (on by default), turns the
+  whole thing off for players who use or open items from their bags while
+  standing at the mailbox.
+
 ## 1.17.2
 
 - **Walking away mid-take no longer paints a phantom "stuck" marker.** The

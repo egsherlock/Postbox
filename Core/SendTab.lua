@@ -373,6 +373,13 @@ local function AttachmentCount()
   return n
 end
 
+-- The quick-attach watcher (Core/MailboxUI.lua 5b) flips to this tab when the
+-- count grows while the collect screen is up. It reads the count from here so
+-- the two modules cannot disagree about what an attachment is.
+function ST.GetAttachmentCount()
+  return AttachmentCount()
+end
+
 -- The three money boxes as copper. What that copper MEANS depends on the
 -- C.O.D. tick: attached gold when it is off, the price the recipient pays when
 -- it is on.
@@ -3551,6 +3558,15 @@ function ST.ActivateNativeSendMail()
   if type(SetSendMailShowing) == "function" then SetSendMailShowing(true) end
   HookVisibleSlots()
   RepaintContainers()
+end
+
+-- The flag alone, without the compose overlays: what the collect tab arms
+-- while quick attach is on, so a bag right-click attaches from there too.
+-- sendTabActive stays down on purpose -- the padlock overlays belong to the
+-- compose screen, and a collect visit's BAG_UPDATE storm should not be paying
+-- for mailability verdicts nobody is looking at.
+function ST.ArmNativeSendMail()
+  if type(SetSendMailShowing) == "function" then SetSendMailShowing(true) end
 end
 
 function ST.DeactivateNativeSendMail()

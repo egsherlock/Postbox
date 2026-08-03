@@ -257,12 +257,21 @@ local function Build()
         function() return ns.MailboxUI.GetOption("previewOnClick") end,
         function(on) ns.MailboxUI.SetOption("previewOnClick", on) end)
 
+  cy = AddCheckbox(card, cy, L["OPT_QUICK_ATTACH_TITLE"], L["OPT_QUICK_ATTACH_DESC"],
+        function() return ns.MailboxUI.GetOption("quickAttach") end,
+        function(on)
+          ns.MailboxUI.SetOption("quickAttach", on)
+          -- Re-arm or disarm the tab already on screen; a toggle made while
+          -- standing at the mailbox should not need a tab switch to bite.
+          if ns.MailboxUI.ApplyQuickAttachState then ns.MailboxUI.ApplyQuickAttachState() end
+        end)
+
   -- Recipient manager: a portrait button filling the space to the right of
-  -- the checkbox column, tall as all four rows. It makes the feature loud
+  -- the checkbox column, tall as all five rows. It makes the feature loud
   -- and shaves a whole row off the card. /postbox recipients is the other
   -- way in.
   local rmButton = ns.Theme.CreateButton(nil, card)
-  rmButton:SetSize(108, (ROW_H * 4) - 8)
+  rmButton:SetSize(108, (ROW_H * 5) - 8)
   rmButton:SetPoint("TOPRIGHT", card, "TOPRIGHT", -PAD, -12)
 
   -- Portrait composition: title up top, the letter-bundle icon full-strength

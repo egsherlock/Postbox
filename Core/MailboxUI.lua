@@ -114,7 +114,7 @@ end
 -------------------------------------------------------------
 -- 1. Options
 --
--- Four booleans on the profile. Reads go through the store's non-creating
+-- Five booleans on the profile. Reads go through the store's non-creating
 -- accessor: merely asking whether a flag is set must not write a node into
 -- saved variables. Defaults live here rather than being seeded on first read,
 -- so an unset option and an option explicitly set to its default behave
@@ -132,6 +132,12 @@ local OPTION_DEFAULTS = {
   -- screen -- the common action is the one-click one -- and because a player who
   -- has used it for a while has the other mapping in their hands.
   previewOnClick  = false,
+  -- Keeps the client's right-click-to-attach armed on the collect tab, so a
+  -- bag click lands on the compose screen (section 5b). On, because being
+  -- carried to the Send tab with the item already attached is the behaviour
+  -- the click expressed; the off-switch exists for players who use or open
+  -- items from their bags while standing at the mailbox.
+  quickAttach     = true,
 }
 
 local OPTION_PATH = {}
@@ -1039,7 +1045,15 @@ function UI.SelectTab(tabId)
     -- not needed for any of it (COMBAT_TAINT.md 4).
     if send and send.ActivateNativeSendMail then send.ActivateNativeSendMail() end
   else
-    if send and send.DeactivateNativeSendMail then send.DeactivateNativeSendMail() end
+    -- Quick attach keeps that same flag armed on the collect tab -- re-armed
+    -- here AFTER the panel loop, because hiding the compose panel above ran
+    -- its OnHide, which dropped it. The overlays stay compose-only either
+    -- way; section 5b is what answers the attach this arming allows.
+    if UI.GetOption("quickAttach") then
+      if send and send.ArmNativeSendMail then send.ArmNativeSendMail() end
+    elseif send and send.DeactivateNativeSendMail then
+      send.DeactivateNativeSendMail()
+    end
     if send and send.ClearBagOverlays then send.ClearBagOverlays() end
     -- The window's compose-only extra height belongs to the compose screen --
     -- both kinds of it. Dropping them here rather than trusting the screen to
@@ -1049,6 +1063,63 @@ function UI.SelectTab(tabId)
     -- to grow again from here anyway; this is what gives back the standing one.)
     UI.SetMessageExtraHeight(0)
     UI.SetAttachmentRows(1)
+  end
+end
+
+-------------------------------------------------------------
+-- 5b. Quick attach
+--
+-- With the client's right-click-to-attach armed on the collect tab (SelectTab
+-- above), a bag click attaches to the hidden draft exactly as it does on the
+-- compose tab -- the client does the attaching, we never touch the container
+-- buttons. The client then announces it with MAIL_SEND_INFO_UPDATE, and when
+-- that reports MORE attachments than the last look while the compose tab is
+-- not on screen, the player just aimed an item at the draft from the collect
+-- tab, and the window follows them to it. Growth only: removals, refreshes
+-- and the send itself all fire the same event, and none of them is a reason
+-- to change tabs. Nothing in this path touches a protected frame or API, so
+-- it works in combat like the rest of the window.
+-------------------------------------------------------------
+
+local lastAttachmentCount = 0
+
+local function ReadAttachmentCount()
+  local send = ns.SendTab
+  if send and type(send.GetAttachmentCount) == "function" then
+    return send.GetAttachmentCount()
+  end
+  return 0
+end
+
+-- The watcher measures growth, so its baseline is re-read at the session
+-- boundary (OnMailShow) rather than trusted across one.
+local function SyncQuickAttachBaseline()
+  lastAttachmentCount = ReadAttachmentCount()
+end
+
+local function OnSendAttachmentsChanged()
+  local count = ReadAttachmentCount()
+  local grew = count > lastAttachmentCount
+  lastAttachmentCount = count
+
+  if not grew or not UI._state.mailboxOpen then return end
+  if UI._state.activeTab == "send" then return end
+  if not UI.GetOption("quickAttach") then return end
+  UI.SelectTab("send")
+end
+
+-- Frozen: Core/OptionsPanel.lua calls this when the quick-attach option
+-- changes. Arming normally happens at tab-select time, so a mid-session
+-- toggle is re-applied to the tab already on screen; the compose tab owns
+-- its own arming and is left alone.
+function UI.ApplyQuickAttachState()
+  if not UI._state.mailboxOpen then return end
+  if UI._state.activeTab == "send" then return end
+  local send = ns.SendTab
+  if UI.GetOption("quickAttach") then
+    if send and send.ArmNativeSendMail then send.ArmNativeSendMail() end
+  elseif send and send.DeactivateNativeSendMail then
+    send.DeactivateNativeSendMail()
   end
 end
 
@@ -1471,6 +1542,7 @@ local function OnMailShow()
   -- MAIL_INBOX_UPDATE; anything that would treat "empty" as a fact about the
   -- mailbox must wait until this flips (see UpdateStatusSummary's erasure).
   UI._state.inboxSeen = false
+  SyncQuickAttachBaseline()
   BuildFrame()
 
   UI.ClearStatus()
@@ -1638,6 +1710,11 @@ function UI.Initialize()
   bus.Register("MAIL_CLOSED", function()
     OnMailClosed()
   end)
+
+  -- Quick attach (section 5b). Registered on the bus rather than on the
+  -- compose panel: the whole point is noticing an attachment land while that
+  -- panel is hidden, which is exactly when its own registration is off.
+  bus.Register("MAIL_SEND_INFO_UPDATE", OnSendAttachmentsChanged)
 
   bus.Register("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", function(_, kind)
     if not IsMailInteraction(kind) then return end
