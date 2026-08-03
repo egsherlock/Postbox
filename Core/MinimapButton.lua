@@ -43,16 +43,21 @@ local DEFAULTS = {
   glow     = false,
   shadow   = false,
   pulse    = true,   -- the glow's slow breathe; shadows never pulse
+  detached = false,  -- free placement; see the note above POSITION_ANGLES
+  lock     = false,  -- swallow shift-drag entirely: no accidental nudges
 }
 
 -- The four corner presets, as rim angles. CUSTOM means "wherever the user
--- shift-dragged it ALONG the rim", carried by `angle` alone. DETACHED means
--- "wherever the user shift-dragged it on screen", carried by `offsetX` /
--- `offsetY` from the minimap centre -- still anchored to the minimap, so it
--- follows the map's own position and scale, just no longer bound to its edge.
--- This stays a MAIL INDICATOR either way; detaching exists because a player's
--- ideal spot for it (inside the map, beside the map, under the clock) is not
--- ours to decide.
+-- shift-dragged it ALONG the rim", carried by `angle` alone.
+--
+-- Detaching is a SEPARATE boolean (`detached`), not a fifth position: while
+-- it is on, shift-drag places the icon anywhere on screen, carried by
+-- `offsetX` / `offsetY` from the minimap centre -- still anchored to the
+-- minimap, so it follows the map's own position and scale, just no longer
+-- bound to its edge. Picking any position below re-attaches. This stays a
+-- MAIL INDICATOR either way; detaching exists because a player's ideal spot
+-- for it (inside the map, beside the map, under the clock) is not ours to
+-- decide.
 local POSITION_ANGLES = {
   TOPRIGHT    = 45,
   TOPLEFT     = 135,
@@ -61,9 +66,17 @@ local POSITION_ANGLES = {
 }
 
 local function IsKnownPosition(position)
-  return POSITION_ANGLES[position] ~= nil
-    or position == "CUSTOM"
-    or position == "DETACHED"
+  return POSITION_ANGLES[position] ~= nil or position == "CUSTOM"
+end
+
+-- 1.19.x briefly stored detachment AS a position. One-line, idempotent, run
+-- by every reader that touches position -- cheaper than a migration pass.
+local function NormalizeSettings(prefs)
+  if prefs.position == "DETACHED" then
+    prefs.position = "CUSTOM"
+    prefs.detached = true
+  end
+  return prefs
 end
 
 local MEDIA = "Interface\\AddOns\\Postbox\\Media\\"
@@ -509,9 +522,9 @@ local function Reposition(button)
   local minimap = _G.Minimap
   if not (button and minimap) then return end
 
-  local prefs = Settings()
+  local prefs = NormalizeSettings(Settings())
   local x, y
-  if prefs.position == "DETACHED" then
+  if prefs.detached then
     x, y = tonumber(prefs.offsetX), tonumber(prefs.offsetY)
     if not (x and y) then
       -- First detach: hold the exact spot the icon already occupies, so the
@@ -622,12 +635,12 @@ local function ShowTooltip(button)
 end
 
 local function OnDragUpdate(button)
-  local prefs = Settings()
+  local prefs = NormalizeSettings(Settings())
 
   -- Detached: the icon follows the cursor itself, in minimap-relative
   -- coordinates so it keeps riding the map through scale and position
   -- changes. Saved live, same as the rim drag.
-  if prefs.position == "DETACHED" then
+  if prefs.detached then
     local minimap = _G.Minimap
     local centerX, centerY = minimap:GetCenter()
     local scale = minimap:GetEffectiveScale()
@@ -723,14 +736,23 @@ local function Build()
   end)
 
   -- Shift-drag anywhere on the rim; a plain drag is ignored so a click can
-  -- never smear the position. The angle is saved live, so releasing the
-  -- button anywhere leaves the icon exactly where it looks.
+  -- never smear the position, and a locked icon ignores even shift. The
+  -- angle is saved live, so releasing the button anywhere leaves the icon
+  -- exactly where it looks.
   button:SetScript("OnDragStart", function(self)
     if not IsShiftKeyDown() then return end
+    if Settings().lock then return end
     self:SetScript("OnUpdate", OnDragUpdate)
   end)
   button:SetScript("OnDragStop", function(self)
     self:SetScript("OnUpdate", nil)
+    -- A drag can silently turn a corner preset into CUSTOM; if the options
+    -- panel is open on screen, its controls should say so without needing
+    -- to be closed and reopened.
+    local Panel = ns.OptionsPanel
+    if Panel and type(Panel.RefreshControls) == "function" then
+      Panel.RefreshControls()
+    end
   end)
 
   MB._button = button
@@ -954,32 +976,54 @@ function MB.SetPulse(on)
 end
 
 function MB.GetPosition()
-  local position = Settings().position
+  local position = NormalizeSettings(Settings()).position
   if IsKnownPosition(position) then return position end
   return DEFAULTS.position
 end
 
 function MB.SetPosition(position)
   if not IsKnownPosition(position) then return end
-  local prefs = Settings()
+  local prefs = NormalizeSettings(Settings())
   prefs.position = position
   -- Keep the angle in step so a later switch to CUSTOM starts from where the
-  -- icon already is instead of teleporting it. DETACHED gets the same
-  -- courtesy in Reposition, which seeds its offset from the current rim spot.
+  -- icon already is instead of teleporting it.
   if POSITION_ANGLES[position] then prefs.angle = POSITION_ANGLES[position] end
-  -- Leaving DETACHED drops its offset: re-detaching later should start from
-  -- wherever the icon is THEN, not teleport to a spot chosen in a layout
-  -- that may no longer exist.
-  if position ~= "DETACHED" then
+  -- Choosing a rim position IS a statement about the rim: it re-attaches a
+  -- detached icon, and drops the free offset so a later re-detach starts
+  -- from wherever the icon is THEN, not a spot from a dead layout.
+  prefs.detached = false
+  prefs.offsetX, prefs.offsetY = nil, nil
+  Refresh()
+end
+
+function MB.GetDetached()
+  return NormalizeSettings(Settings()).detached == true
+end
+
+function MB.SetDetached(on)
+  local prefs = NormalizeSettings(Settings())
+  prefs.detached = on == true
+  if not prefs.detached then
     prefs.offsetX, prefs.offsetY = nil, nil
   end
+  -- Turning it ON moves nothing: Reposition seeds the offset from the spot
+  -- the icon already occupies, and the next shift-drag goes free.
   Refresh()
+end
+
+function MB.GetLocked()
+  return Settings().lock == true
+end
+
+function MB.SetLocked(on)
+  Settings().lock = on == true
 end
 
 function MB.ResetPosition()
   local prefs = Settings()
   prefs.position = DEFAULTS.position
   prefs.angle = DEFAULTS.angle
+  prefs.detached = false
   prefs.offsetX, prefs.offsetY = nil, nil
   Refresh()
 end

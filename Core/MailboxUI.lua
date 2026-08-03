@@ -114,7 +114,7 @@ end
 -------------------------------------------------------------
 -- 1. Options
 --
--- Five booleans on the profile. Reads go through the store's non-creating
+-- Six booleans on the profile. Reads go through the store's non-creating
 -- accessor: merely asking whether a flag is set must not write a node into
 -- saved variables. Defaults live here rather than being seeded on first read,
 -- so an unset option and an option explicitly set to its default behave
@@ -138,6 +138,10 @@ local OPTION_DEFAULTS = {
   -- the click expressed; the off-switch exists for players who use or open
   -- items from their bags while standing at the mailbox.
   quickAttach     = true,
+  -- The minimap icon's left-click snapshot (Core/MailMemory.lua). On: the
+  -- feature is capture-light and idle when unused, and a feature nobody can
+  -- find switched off does not exist.
+  mailMemory      = true,
 }
 
 local OPTION_PATH = {}

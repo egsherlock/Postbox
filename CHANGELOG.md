@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.21.0
+
+- **The mailbox memory window grew manners.** It opens beside the minimap
+  instead of on top of it, shows eight rows by default and scrolls the rest,
+  and resizes vertically with the usual corner grip — between four rows and
+  however many it holds; the width stays put. Hovering a mail shows the real
+  item tooltip where the game had one recorded (read mail), the full subject
+  otherwise. "New mail is waiting" now sits apart from the "last seen" line
+  so the old list and the new arrival can't read as one sentence. And the
+  whole feature has its own switch in the minimap card, on by default —
+  switched off, nothing is recorded and the click does nothing.
+- **Minimap icon placement is now three plain controls instead of one
+  overloaded list.** The position dropdown keeps the corners and Custom; a
+  "Detach from minimap" checkbox frees the icon to sit anywhere on screen
+  (picking a position re-attaches it); and a new "Lock position" checkbox
+  stops shift-drag entirely for anyone tired of nudging their icon by
+  accident. The controls also update immediately after a drag or a reset —
+  no more dropdown claiming a mode the icon left a moment ago.
+- **The attach option finally says what it does**: it is called "Right-click
+  attaches items" now, and its tooltip is one plain sentence instead of a
+  riddle. Still on by default; bags are only ever affected while the mailbox
+  window is open.
+
 ## 1.20.0
 
 - **Left-click the minimap icon to see what your mailbox held — from

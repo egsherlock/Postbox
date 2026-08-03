@@ -8,8 +8,8 @@ local _, ns = ...
 -- shown in a small read-only window from the minimap icon's left-click.
 --
 -- The snapshot is HISTORY and the window never pretends otherwise: it
--- leads with how long ago it was taken, says when new mail has arrived
--- since, and greys mails whose expiry has passed in the meantime.
+-- leads with how long ago it was taken, flags new arrivals since, and
+-- greys mails whose expiry has passed in the meantime.
 --
 -- Cost discipline (the reason this file is small): the capture rides the
 -- MAIL_INBOX_UPDATE walks the mailbox session performs anyway, coalesced
@@ -17,7 +17,9 @@ local _, ns = ...
 -- headers however many hundreds a hoarder character holds, so a pass is
 -- bounded; persistence is ONE saved-variables write per visit, at close;
 -- and the window does not exist until the first time it is asked for.
--- Away from a mailbox this module is completely idle.
+-- Away from a mailbox this module is completely idle, and the "Mailbox
+-- memory" option (on by default) turns even that idle wiring into two
+-- one-comparison no-ops.
 -- =====================================================================
 
 ns.MailMemory = ns.MailMemory or {}
@@ -31,8 +33,24 @@ local MAX_MAILS = 50
 
 local ROW_HEIGHT = 24
 local WINDOW_WIDTH = 400
-local LIST_MAX_HEIGHT = 320
 local PAD = 12
+
+-- The window's fixed chrome: title bar plus the header line above the card,
+-- and the strip below it that holds the overflow note and the resize grip.
+-- The card fills whatever is between the two, which is what makes the resize
+-- grip work with no per-drag layout code at all.
+local CHROME_TOP = 52
+local CHROME_BOTTOM = 26
+
+-- Eight rows by default, four at the smallest: enough to be useful, small
+-- enough to stay a note rather than a second mail window. Height only —
+-- the width is not resizable, so the bounds pin it.
+local DEFAULT_ROWS = 8
+local MIN_ROWS = 4
+
+local function RowsHeight(rows)
+  return CHROME_TOP + CHROME_BOTTOM + rows * ROW_HEIGHT + 2
+end
 
 -------------------------------------------------------------
 -- 1. Capture
@@ -48,6 +66,14 @@ local captureQueued = false
 
 local function MailboxState()
   return ns.MailboxUI and ns.MailboxUI._state or nil
+end
+
+local function MemoryEnabled()
+  local UI = ns.MailboxUI
+  if UI and type(UI.GetOption) == "function" then
+    return UI.GetOption("mailMemory")
+  end
+  return true
 end
 
 local function CaptureNow()
@@ -73,6 +99,13 @@ local function CaptureNow()
     -- A header that has not arrived yet answers all-nil; recording it would
     -- save a blank row for a mail the next look would fill in properly.
     if sender ~= nil or subject ~= nil then
+      -- The first attachment's link, when the client has it (links exist
+      -- only for mail whose body has been fetched, i.e. read mail). It
+      -- buys the row a real item tooltip later, at the cost of one string.
+      local link
+      if (tonumber(itemCount) or 0) > 0 and type(GetInboxItemLink) == "function" then
+        link = GetInboxItemLink(index, 1)
+      end
       mails[#mails + 1] = {
         icon    = packageIcon or stationeryIcon,
         sender  = tostring(sender or ""),
@@ -81,6 +114,7 @@ local function CaptureNow()
         cod     = tonumber(cod) or 0,
         items   = tonumber(itemCount) or 0,
         read    = wasRead and true or false,
+        link    = link,
         -- Absolute, so "has this expired since I saw it" is answerable in a
         -- later session without trusting a stale daysLeft.
         expires = now + math.floor((tonumber(daysLeft) or 0) * 86400),
@@ -95,6 +129,7 @@ end
 local function QueueCapture()
   local state = MailboxState()
   if not (state and state.mailboxOpen) or captureQueued then return end
+  if not MemoryEnabled() then return end
   captureQueued = true
   local ok = pcall(C_Timer.After, 0, CaptureNow)
   if not ok then
@@ -130,12 +165,10 @@ end
 -------------------------------------------------------------
 -- 2. Words for a snapshot's age
 --
--- Short units rather than sentences: the header already carries the sentence.
--- All three go through the locale table like every other user-facing string.
+-- The AGO family carries its own "ago" so every locale can put it where its
+-- grammar wants it; time REMAINING uses bare units, a different family.
 -------------------------------------------------------------
 
--- "just now" / "N min ago": the AGO family carries its own "ago" so every
--- locale can put it where its grammar wants it.
 local function AgeText(seenAt)
   local age = math.max(0, time() - (tonumber(seenAt) or 0))
   if age < 90 then return L["MEMORY_AGO_NOW"] end
@@ -144,7 +177,6 @@ local function AgeText(seenAt)
   return string.format(L["MEMORY_AGO_D"], math.floor(age / 86400 + 0.5))
 end
 
--- Time REMAINING, so its units are bare ("2 d"), not the ago family's.
 local function ExpiryText(expires, now)
   local left = (tonumber(expires) or 0) - now
   if left <= 0 then return L["MEMORY_EXPIRED"], true end
@@ -159,6 +191,10 @@ end
 -- (skins re-point or strip it), the addon's frame theme, Escape to close,
 -- and a themed card whose children both host skins can find. Built on the
 -- first Toggle and reused; rows are pooled and re-filled, never rebuilt.
+--
+-- The card is anchored to the window's edges, so the resize grip needs no
+-- layout code: dragging the grip stretches the card and the scroll frame
+-- inside it, and the scrollbar absorbs whatever no longer fits.
 -------------------------------------------------------------
 
 local function BuildRow(parent, index)
@@ -207,9 +243,18 @@ local function BuildRow(parent, index)
   row.Subject:SetJustifyH("LEFT")
   row.Subject:SetWordWrap(false)
 
-  -- The full subject on hover, because the row truncates it without mercy.
+  -- A real item tooltip where the snapshot kept a link (read mail only --
+  -- unread mail's links were never loaded, and this window does not talk to
+  -- the server). Otherwise the full subject, which the row truncates
+  -- without mercy.
   row:EnableMouse(true)
   row:SetScript("OnEnter", function(self)
+    if self.itemLink then
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetHyperlink(self.itemLink)
+      GameTooltip:Show()
+      return
+    end
     if not self.fullSubject or self.fullSubject == "" then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetText(self.fullSubject, 1, 1, 1, true)
@@ -226,6 +271,7 @@ end
 local function FillRow(row, mail, now)
   row.fullSubject = mail.subject
   row.fullSender = mail.sender
+  row.itemLink = mail.link
 
   if mail.icon then
     row.Icon:SetTexture(mail.icon)
@@ -264,26 +310,26 @@ local function Refresh(frame)
   local snapshot = live or StoredSnapshot()
   local now = time()
 
+  local mails = snapshot and snapshot.mails or nil
+  local count = mails and #mails or 0
+
   if not snapshot then
     frame.Header:SetText(L["MEMORY_EMPTY"])
-    frame.NewSince:Hide()
-    frame.More:Hide()
-    frame.Card:SetHeight(1)
-    frame.Card:Hide()
-    for i = 1, #frame.Rows do frame.Rows[i]:Hide() end
-    return
+  elseif count == 0 then
+    frame.Header:SetText(string.format(L["MEMORY_ASOF_EMPTY"], AgeText(snapshot.seenAt)))
+  else
+    frame.Header:SetText(string.format(L["MEMORY_ASOF"],
+      AgeText(snapshot.seenAt), ns.Plural("COUNT_MAILS", count)))
   end
 
-  local mails = snapshot.mails or {}
-  local counted = ns.Plural("COUNT_MAILS", #mails)
-  frame.Header:SetText(string.format(L["MEMORY_ASOF"], AgeText(snapshot.seenAt), counted))
-
-  -- Only claimable while the client still says there is unread mail waiting;
-  -- HasNewMail is the same signal the default indicator trusts.
-  local hasNew = type(HasNewMail) == "function" and HasNewMail()
+  -- Only claimable while the client still says unread mail is waiting;
+  -- HasNewMail is the same signal the default indicator trusts. On the
+  -- header line's right end, apart from the "last seen" half, so the two
+  -- statements -- old list, new arrivals -- cannot read as one sentence.
+  local hasNew = snapshot and type(HasNewMail) == "function" and HasNewMail()
   frame.NewSince:SetShown(hasNew and true or false)
 
-  local hidden = math.max(0, (tonumber(snapshot.total) or #mails) - #mails)
+  local hidden = snapshot and math.max(0, (tonumber(snapshot.total) or count) - count) or 0
   if hidden > 0 then
     frame.More:SetText(string.format(L["MEMORY_MORE"], hidden))
     frame.More:Show()
@@ -291,39 +337,31 @@ local function Refresh(frame)
     frame.More:Hide()
   end
 
-  if #mails == 0 then
-    frame.Header:SetText(string.format(L["MEMORY_ASOF_EMPTY"], AgeText(snapshot.seenAt)))
-    frame.Card:Hide()
-    for i = 1, #frame.Rows do frame.Rows[i]:Hide() end
-  else
-    frame.Card:Show()
-    for i = 1, #mails do
-      local row = frame.Rows[i]
-      if not row then
-        row = BuildRow(frame.ListChild, i)
-        frame.Rows[i] = row
-      end
-      FillRow(row, mails[i], now)
+  frame.Card:SetShown(count > 0)
+  for i = 1, count do
+    local row = frame.Rows[i]
+    if not row then
+      row = BuildRow(frame.ListChild, i)
+      frame.Rows[i] = row
     end
-    for i = #mails + 1, #frame.Rows do frame.Rows[i]:Hide() end
-
-    local listHeight = math.min(#mails * ROW_HEIGHT, LIST_MAX_HEIGHT)
-    frame.ListChild:SetHeight(#mails * ROW_HEIGHT)
-    frame.Scroll:SetHeight(listHeight)
-    frame.Card:SetHeight(listHeight + 2)
+    FillRow(row, mails[i], now)
   end
+  for i = count + 1, #frame.Rows do frame.Rows[i]:Hide() end
+  frame.ListChild:SetHeight(math.max(1, count * ROW_HEIGHT))
 
-  -- The bands above the card decide the window's height; measure rather than
-  -- guess so hiding a line never leaves a hole.
-  local headerBlock = 30
-  if frame.NewSince:IsShown() then headerBlock = headerBlock + 16 end
-  if frame.More:IsShown() then headerBlock = headerBlock + 16 end
-  local cardHeight = frame.Card:IsShown() and (frame.Scroll:GetHeight() + 2) or 0
-  frame:SetHeight(28 + headerBlock + cardHeight + PAD)
+  -- Height: eight rows by default, the user's own height once they have
+  -- dragged the grip, and never taller than the content or shorter than
+  -- four rows. Width is pinned by the bounds -- this window grows down,
+  -- not sideways.
+  local contentRows = math.max(count, 1)
+  local minH = RowsHeight(math.min(MIN_ROWS, contentRows))
+  local maxH = RowsHeight(contentRows)
+  frame:SetResizeBounds(WINDOW_WIDTH, minH, WINDOW_WIDTH, maxH)
 
-  frame.Card:ClearAllPoints()
-  frame.Card:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -(28 + headerBlock))
-  frame.Card:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
+  local wanted = frame.userHeight or RowsHeight(math.min(DEFAULT_ROWS, contentRows))
+  if wanted < minH then wanted = minH end
+  if wanted > maxH then wanted = maxH end
+  frame:SetSize(WINDOW_WIDTH, wanted)
 end
 
 local function Build()
@@ -331,10 +369,11 @@ local function Build()
 
   local frame = CreateFrame("Frame", "PostboxMailMemoryFrame", UIParent,
                             "BasicFrameTemplateWithInset")
-  frame:SetWidth(WINDOW_WIDTH)
+  frame:SetSize(WINDOW_WIDTH, RowsHeight(DEFAULT_ROWS))
   frame:SetFrameStrata("DIALOG")
   frame:SetToplevel(true)
   frame:SetClampedToScreen(true)
+  frame:SetResizable(true)
   frame:EnableMouse(true)
   frame:SetMovable(true)
   frame:RegisterForDrag("LeftButton")
@@ -356,37 +395,46 @@ local function Build()
   ns.Theme.ApplyFrameTheme(frame)
   ns.Core.UI.Helpers.RegisterEscClose(frame)
 
-  frame.Header = ns.Theme.CreateText(frame, "label")
-  frame.Header:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -32)
-  frame.Header:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
-  frame.Header:SetJustifyH("LEFT")
-  frame.Header:SetWordWrap(false)
-
   frame.NewSince = ns.Theme.CreateText(frame, "small")
-  frame.NewSince:SetPoint("TOPLEFT", frame.Header, "BOTTOMLEFT", 0, -4)
+  frame.NewSince:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -34)
   frame.NewSince:SetText(L["MEMORY_NEW_SINCE"])
   local r, g, b = ns.Theme.GetAccent()
   frame.NewSince:SetTextColor(r, g, b)
   frame.NewSince:Hide()
 
+  frame.Header = ns.Theme.CreateText(frame, "label")
+  frame.Header:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -34)
+  frame.Header:SetPoint("RIGHT", frame.NewSince, "LEFT", -8, 0)
+  frame.Header:SetJustifyH("LEFT")
+  frame.Header:SetWordWrap(false)
+
   frame.More = ns.Theme.CreateText(frame, "tiny")
-  frame.More:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 6)
+  frame.More:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 8)
   frame.More:SetAlpha(0.7)
   frame.More:Hide()
 
   local card = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+  card:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -CHROME_TOP)
+  card:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, CHROME_BOTTOM)
   ns.Theme.ApplyList(card)
   frame.Card = card
 
   frame.Scroll = CreateFrame("ScrollFrame", nil, card, "UIPanelScrollFrameTemplate")
   frame.Scroll:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
-  frame.Scroll:SetPoint("RIGHT", card, "RIGHT", -1, 0)
+  frame.Scroll:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -22, 1)
 
   frame.ListChild = CreateFrame("Frame", nil, frame.Scroll)
-  frame.ListChild:SetWidth(WINDOW_WIDTH - 22)
+  frame.ListChild:SetWidth(WINDOW_WIDTH - 44)
   frame.Scroll:SetScrollChild(frame.ListChild)
 
   frame.Rows = {}
+
+  -- The grip only ever changes height (the bounds pin the width). Once the
+  -- user has chosen a height it is theirs for the session; Refresh keeps
+  -- honouring it within the new content's bounds.
+  ns.Core.UI.Helpers.CreateResizeButton(frame, function(self)
+    self.userHeight = self:GetHeight()
+  end)
 
   -- Same expression as the options panel and the recipient manager: let an
   -- active host-UI skin restyle the shell, whichever entry point it offers.
@@ -402,8 +450,11 @@ end
 -------------------------------------------------------------
 
 -- The minimap icon's left-click. At an open mailbox this is a no-op by
--- contract: the real window is on screen and it is the truth.
-function MM.Toggle(anchor)
+-- contract: the real window is on screen and it is the truth. Opens beside
+-- the minimap rather than under the cursor -- the icon is small and an
+-- anchored window would cover the map.
+function MM.Toggle()
+  if not MemoryEnabled() then return end
   local state = MailboxState()
   if state and state.mailboxOpen then return end
 
@@ -415,8 +466,9 @@ function MM.Toggle(anchor)
 
   Refresh(frame)
   frame:ClearAllPoints()
-  if anchor then
-    frame:SetPoint("TOPRIGHT", anchor, "BOTTOMLEFT", 0, -4)
+  local minimap = _G.Minimap
+  if minimap then
+    frame:SetPoint("TOPRIGHT", minimap, "TOPLEFT", -10, 0)
   else
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
   end

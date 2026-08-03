@@ -710,11 +710,28 @@ local function Build()
       { id = "BOTTOMRIGHT", name = L["OPT_MINIMAP_POS_BR"] },
       { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
       { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
-      { id = "DETACHED",    name = L["OPT_MINIMAP_POS_DETACHED"] },
     }
     cy = AddDropdown(card, cy, L["OPT_MINIMAP_POS_TITLE"], mmPositionItems,
           function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
           function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end)
+
+    -- Placement refinements under the dropdown they refine. Detaching is a
+    -- checkbox rather than a fifth position: the dropdown stays a statement
+    -- about the rim, and picking any entry in it re-attaches (SetPosition),
+    -- which the refreshers reflect next time they run.
+    cy = AddCheckbox(card, cy, L["OPT_MINIMAP_DETACH_TITLE"], L["OPT_MINIMAP_DETACH_DESC"],
+          function() return ns.MinimapButton and ns.MinimapButton.GetDetached() end,
+          function(on) if ns.MinimapButton then ns.MinimapButton.SetDetached(on) end end)
+
+    cy = AddCheckbox(card, cy, L["OPT_MINIMAP_LOCK_TITLE"], L["OPT_MINIMAP_LOCK_DESC"],
+          function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
+          function(on) if ns.MinimapButton then ns.MinimapButton.SetLocked(on) end end)
+
+    -- The icon's left-click feature. Lives here rather than in General
+    -- because the icon is its only doorway.
+    cy = AddCheckbox(card, cy, L["OPT_MEMORY_TITLE"], L["OPT_MEMORY_DESC"],
+          function() return ns.MailboxUI.GetOption("mailMemory") end,
+          function(on) ns.MailboxUI.SetOption("mailMemory", on) end)
   end
 
   if not mmHostStyled then
@@ -722,7 +739,13 @@ local function Build()
     cy = AddButton(card, cy,
           function() return L["OPT_MINIMAP_RESET_POS"] end,
           L["OPT_MINIMAP_RESET_POS_DESC"],
-          function() if ns.MinimapButton then ns.MinimapButton.ResetPosition() end end)
+          function()
+            if ns.MinimapButton then ns.MinimapButton.ResetPosition() end
+            -- The reset just rewrote position AND detachment; the dropdown
+            -- and the checkboxes above must say so immediately, not on the
+            -- panel's next open.
+            Panel.RefreshControls()
+          end)
   else
     -- One quiet line, not a paragraph: the full explanation lives in its
     -- hover tooltip.
@@ -1096,6 +1119,15 @@ end
 function Panel.ToggleBugReport()
   Build()
   if Panel._toggleBugReport then Panel._toggleBugReport() end
+end
+
+-- Re-reads every control from its source of truth. The refreshers replay on
+-- every open anyway; this exists for state that changes WHILE the panel is
+-- up -- a reset button, a shift-drag turning a preset into Custom.
+function Panel.RefreshControls()
+  local frame = Panel._frame
+  if not (frame and frame:IsShown()) then return end
+  for _, fn in ipairs(frame.__refreshers) do pcall(fn) end
 end
 
 function Panel.Toggle(anchor)
