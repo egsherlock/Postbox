@@ -6,8 +6,8 @@
 package-as: Postbox
 
 # Dev-only files: useful in the repo, dead weight in the shipped addon.
-# postbox.png is the 1254px logo master and docs/ its web-sized derivatives;
-# the addon itself ships only Media/icon.png.
+# All art masters and web assets live under docs/; the addon itself ships
+# only Media/. The zip is the addon plus its LICENSE, nothing else.
 ignore:
   - .claude
   - .github
@@ -16,14 +16,7 @@ ignore:
   - COMBAT_TAINT.md
   - ELLESMEREUI_SKINNING.md
   - DEFAULT_UI_AUDIT.md
-  - postbox.png
-  - postboxbanner.png
-  - postboxaddon.png
-  - postboxminiaddon.png
-  - minimapicons.png
-  - minimapicons2.png
-  - minimapicons3.png
-  - minimapicons3clean.png
+  - README.md
   - docs
 
 # Keep the changelog out of the zip but still attach it to the release page.

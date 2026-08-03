@@ -1,6 +1,6 @@
 ## Interface: 120100, 120007
 ## Title: Postbox
-## Notes: Clears a full mailbox in one pass, and remembers everyone you write to.
+## Notes: A modern, lightweight mailbox replacement — one-pass collection, smart recipients, right-click attach, and it wears your UI.
 ## IconTexture: Interface\AddOns\Postbox\Media\icon-pillar.png
 ## Author: egsherlock
 ## Version: @project-version@

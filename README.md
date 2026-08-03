@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="postboxbanner.png" alt="Postbox" />
+  <img src="docs/postboxbanner.png" alt="Postbox" />
 </p>
 
-**Postbox replaces the default World of Warcraft mailbox** with something faster,
-safer and friendlier — one window that opens automatically at any mailbox, clears a
-full inbox in one pass, and remembers everyone you write to.
+**Postbox is a modern, lightweight replacement for the default World of Warcraft
+mailbox** — one window that opens automatically at any mailbox, clears a full inbox
+in one pass, and remembers everyone you write to.
 
 For retail (Midnight, 12.0.x–12.1). No dependencies, nothing to configure — install
 it and open a mailbox.
@@ -18,9 +18,17 @@ it and open a mailbox.
 - **Knows who you mail.** Start typing a name and it completes in place — Tab
   accepts it. Your recent correspondents, alts, friends and guildmates are one
   click away, favourites get a star, and a manager window lets you curate the lot.
+- **Attaches items the moment you click them.** Right-click anything in your bags —
+  even while reading mail — and the window flips to Send with the item already
+  attached. Unmailable items are padlocked in your bags while you compose, so you
+  can see at a glance what can go.
+- **Replaces the minimap mail icon**, if you want it to: over twenty hand-painted
+  styles, sized and placed your way, with an optional accent tint and glow. It
+  coexists cleanly with EllesmereUI's and ElvUI's minimaps.
 - **Stays out of your way.** Move it, resize it, let it grow as you type a longer
   message. It follows your EllesmereUI or ElvUI look automatically if you use one,
-  and looks just as sharp without either.
+  and looks just as sharp without either. Everything it does is taint-clean — no
+  Blizzard mail code is touched, so it cannot break protected UI in combat.
 
 ## Screenshots
 
@@ -30,6 +38,8 @@ it and open a mailbox.
 | *Collect: the whole inbox, one pass* | *Send: completion, favourites, guidance* |
 | ![The recipient manager](docs/screenshots/recipients.png) | ![Skinned by EllesmereUI](docs/screenshots/skinned.png) |
 | *The recipient manager* | *Wearing your EllesmereUI look* |
+| ![Minimap mail icon](docs/screenshots/minimap.png) | ![The options panel](docs/screenshots/options.png) |
+| *The minimap icon, your style* | *Options: icons, captions, layout* |
 
 ## The details, if you want them
 
@@ -42,7 +52,19 @@ half again as many mails in the same window.
 **Sending.** Attachment slots, gold and C.O.D., with a guidance line that says what
 will happen to a mail *before* you send it — instant or delayed, and whether a
 cross-realm send can carry what you attached. Nothing is ever blocked; Postbox
-advises, you decide. A failed send keeps your draft.
+advises, you decide. A failed send keeps your draft. Right-click-to-attach works
+from either tab (switchable off if you'd rather open lockboxes at the mailbox),
+and unmailable items wear a padlock in your bags while you compose.
+
+**Minimap icon.** Optional replacement for the default "you have mail" indicator:
+20+ hand-painted styles at four sizes, positioned by shift-drag, with accent tint,
+glow and a slow pulse while mail waits. Under EllesmereUI's minimap it restyles
+their icon in place instead of adding a second one.
+
+**Options.** Compact mail rows, tab mail counts, a Mail-tab caption (counts, total,
+dot, or nothing), click-to-open vs click-to-collect, grid docking — all in a panel
+behind the window's cog, itself skinned by your host UI. `/postbox` lists the
+handful of slash commands.
 
 **Recipients.** Categories mean what they say: Recent is in recency order, Guild is
 your guild, Friends includes Battle.net. Right-click favourites a name anywhere;
