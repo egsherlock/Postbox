@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.24.6
+
+- **Found a structural way the "+ new mail" badge could never show**: if a
+  mailbox visit ends without the close signal reaching the memory module,
+  the window keeps reading that visit's live capture — which shows the
+  right mails, while every arrival mark lands on the saved record the
+  window is no longer looking at. Content correct, badge impossible. The
+  module now listens to both of the game's close signals like the main
+  window does, settles a missed close by itself the next time the window
+  opens, and carries any arrival marks across.
+- `/postbox debug` now also states whether a live capture is stranded and
+  whether every event the memory relies on actually registered on this
+  client — the two remaining ways this feature could fail invisibly.
+
 ## 1.24.5
 
 - **Buying at the auction house now lights the "+ new mail" badge

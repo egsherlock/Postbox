@@ -76,6 +76,10 @@ local closedAt = 0
 local lastPendingAt = nil
 local lastPendingVerdict = "never fired"
 
+-- Filled by the event wiring (section 5); read by Diagnose, which is why it
+-- is declared here rather than beside the Register calls.
+local registered = {}
+
 local function MailboxState()
   return ns.MailboxUI and ns.MailboxUI._state or nil
 end
@@ -349,6 +353,26 @@ local function FillRow(row, mail, now)
 end
 
 local function Refresh(frame)
+  -- Self-heal for a missed close signal. If `live` still exists while no
+  -- mailbox is open, the visit ended without either close event reaching us
+  -- -- and every arrival mark since then went to the STORED record while
+  -- this window kept reading `live`: content right, badge structurally
+  -- impossible. Settle the visit now exactly as the close handler would,
+  -- carrying marks made against the prior record across the late persist.
+  local state = MailboxState()
+  if live and not (state and state.mailboxOpen) then
+    local prior = StoredSnapshot()
+    local priorMark = prior and prior.newSince and prior.newFrom or nil
+    local priorMarked = prior and prior.newSince == true
+    if closedAt == 0 then closedAt = time() end
+    PersistOnClose()
+    local healed = StoredSnapshot()
+    if healed and priorMarked then
+      healed.newSince = true
+      healed.newFrom = priorMark
+    end
+  end
+
   local snapshot = live or StoredSnapshot()
   local now = time()
 
@@ -599,6 +623,16 @@ function MM.Diagnose()
   parts[#parts + 1] = "pending evt " ..
     (lastPendingAt and string.format("%ds ago (%s)", time() - lastPendingAt, lastPendingVerdict)
      or lastPendingVerdict)
+  -- The two structural tells: a stranded live capture means a close signal
+  -- was missed; a false registration means this client refused an event
+  -- name outright.
+  parts[#parts + 1] = "liveHeld " .. tostring(live ~= nil)
+  local failed = {}
+  for name, ok in pairs(registered) do
+    if not ok then failed[#failed + 1] = name end
+  end
+  parts[#parts + 1] = (#failed == 0) and "events ok"
+    or ("events FAILED: " .. table.concat(failed, ","))
   parts[#parts + 1] = "HasNewMail " ..
     tostring(type(HasNewMail) == "function" and HasNewMail() and true or false)
   parts[#parts + 1] = string.format("login %s | closed %ds ago",
@@ -690,19 +724,37 @@ local function OnPurchaseCompleted()
   if frame and frame:IsShown() then Refresh(frame) end
 end
 
+-- Same dual close coverage as Core/MailboxUI.lua, for the same reason: the
+-- two close signals do not both arrive on every close path, and a session
+-- whose end this module misses strands `live` (see the heal in Refresh).
+local MAIL_INTERACTION = 17
+local function IsMailInteraction(kind)
+  if kind == MAIL_INTERACTION then return true end
+  local enum = type(Enum) == "table" and Enum.PlayerInteractionType or nil
+  return enum ~= nil and kind == enum.MailInfo
+end
+
+local function OnMailboxClosed()
+  closedAt = time()
+  PersistOnClose()
+end
+
+-- Registration results surface in Diagnose (`registered`, declared in
+-- section 1): a name this client does not know is refused by the bus, and
+-- an invisible refusal cost three blind releases of detector archaeology.
 local bus = ns.Events
 if bus then
-  bus.Register("MAIL_INBOX_UPDATE", QueueCapture)
-  bus.Register("MAIL_CLOSED", function()
-    closedAt = time()
-    PersistOnClose()
+  registered.inbox = bus.Register("MAIL_INBOX_UPDATE", QueueCapture)
+  registered.closed = bus.Register("MAIL_CLOSED", OnMailboxClosed)
+  registered.interaction = bus.Register("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", function(_, kind)
+    if IsMailInteraction(kind) then OnMailboxClosed() end
   end)
-  bus.Register("UPDATE_PENDING_MAIL", OnPendingMail)
+  registered.pending = bus.Register("UPDATE_PENDING_MAIL", OnPendingMail)
   -- Item purchases and commodity purchases announce themselves on different
   -- events; both end as mail.
-  bus.Register("AUCTION_HOUSE_PURCHASE_COMPLETED", OnPurchaseCompleted)
-  bus.Register("COMMODITY_PURCHASE_SUCCEEDED", OnPurchaseCompleted)
-  bus.Register("PLAYER_ENTERING_WORLD", function()
+  registered.purchase = bus.Register("AUCTION_HOUSE_PURCHASE_COMPLETED", OnPurchaseCompleted)
+  registered.commodity = bus.Register("COMMODITY_PURCHASE_SUCCEEDED", OnPurchaseCompleted)
+  registered.login = bus.Register("PLAYER_ENTERING_WORLD", function()
     loginAt = time()
     if MemoryEnabled() then EnsureBaseline(StoredSnapshot()) end
   end)
