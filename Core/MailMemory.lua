@@ -122,7 +122,19 @@ local function CaptureNow()
       if (tonumber(itemCount) or 0) > 0 and type(GetInboxItemLink) == "function" then
         link = GetInboxItemLink(index, 1)
       end
+      -- Whether the server refused this mail's attachments on a previous
+      -- attempt. Read from the domain's registry at capture time, because
+      -- it is session state -- the record has to carry it or a reopened
+      -- memory could not tell a stuck mail from an ordinary one.
+      local stuck = false
+      local service = ns.MailService
+      if service and type(service.StuckReason) == "function" then
+        local ok, reason = pcall(service.StuckReason, index)
+        stuck = (ok and reason) and true or false
+      end
+
       mails[#mails + 1] = {
+        stuck   = stuck,
         icon    = packageIcon or stationeryIcon,
         sender  = tostring(sender or ""),
         subject = tostring(subject or ""),
@@ -223,15 +235,22 @@ local function AgeText(seenAt)
   return string.format(L["MEMORY_AGO_D"], math.floor(age / 86400 + 0.5))
 end
 
--- Unread mail in the snapshot, grouped by sender, biggest group first. This
--- is the one summary in the addon built from mails we actually READ rather
--- than inferred: every count is a fact about a mail in the record.
-local function UnreadBySender(snap)
+-- Mail that still HOLDS something -- items, gold or a C.O.D. -- grouped by
+-- sender, biggest group first. This is the one summary in the addon built
+-- from mails actually read rather than inferred: every count is a fact
+-- about a mail in the record.
+--
+-- Deliberately not "unread": a mail that was opened but whose attachment
+-- the server refused is read AND still waiting, which is exactly the stuck
+-- Postmaster mail an unread test silently dropped. An opened text-only
+-- mail holds nothing and is correctly absent.
+local function WaitingBySender(snap)
   local counts, order = {}, {}
   local mails = snap and snap.mails or {}
   for i = 1, #mails do
     local mail = mails[i]
-    if not mail.read then
+    local holds = (mail.items or 0) > 0 or (mail.money or 0) > 0 or (mail.cod or 0) > 0
+    if holds then
       local who = (mail.sender ~= "" and mail.sender) or L["MEMORY_SENDER_UNKNOWN"]
       if counts[who] then
         counts[who] = counts[who] + 1
@@ -563,7 +582,7 @@ local function Build()
     end
 
     local snap = live or StoredSnapshot()
-    local order, counts = UnreadBySender(snap)
+    local order, counts = WaitingBySender(snap)
     if #order > 0 then
       GameTooltip:AddLine(" ")
       GameTooltip:AddLine(L["MEMORY_WAITING_HEAD"], 0.75, 0.75, 0.78)
@@ -668,16 +687,47 @@ end
 -- nothing unread to describe. Same grouping the memory window's badge
 -- tooltip uses, so the two can never disagree.
 function MM.UnreadSummary()
+  local state = MM.MailboxSummary()
+  return state and state.groups or nil
+end
+
+-- Everything the minimap tooltip needs to describe the mailbox in one read,
+-- or nil when there is nothing recorded to describe. Assembled here rather
+-- than in the icon so the tooltip and the memory window can never tell
+-- different stories about the same snapshot.
+function MM.MailboxSummary()
   if not MemoryEnabled() then return nil end
   local snap = live or StoredSnapshot()
   if not snap then return nil end
-  local order, counts = UnreadBySender(snap)
-  if #order == 0 then return nil end
-  local out = {}
-  for i = 1, #order do
-    out[i] = { name = order[i], count = counts[order[i]] }
+
+  local order, counts = WaitingBySender(snap)
+  local groups
+  if #order > 0 then
+    groups = {}
+    for i = 1, #order do
+      groups[i] = { name = order[i], count = counts[order[i]] }
+    end
   end
-  return out
+
+  local waiting, stuck = 0, 0
+  local mails = snap.mails or {}
+  for i = 1, #mails do
+    local mail = mails[i]
+    if (mail.items or 0) > 0 or (mail.money or 0) > 0 or (mail.cod or 0) > 0 then
+      waiting = waiting + 1
+      if mail.stuck then stuck = stuck + 1 end
+    end
+  end
+
+  return {
+    groups  = groups,
+    waiting = waiting,
+    stuck   = stuck,
+    total   = #mails,
+    seenAt  = snap.seenAt,
+    arrived = snap.newSince and true or false,
+    newFrom = snap.newSince and snap.newFrom or nil,
+  }
 end
 
 -- The minimap tooltip's memory line: the same sentence the window leads

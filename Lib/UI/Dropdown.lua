@@ -25,6 +25,9 @@ local DEFAULT_ROW_HEIGHT = 20
 local DEFAULT_TOGGLE_WIDTH = 200
 local DEFAULT_TOGGLE_HEIGHT = 22
 local LIST_PADDING = 4
+-- The gutter the selection dot lives in, reserved on every row so a chosen
+-- and an unchosen caption start at the same x.
+local MARK_GUTTER = 8
 local LIST_GAP = 2
 -- Twelve rows of the default height plus padding. A list taller than this
 -- scrolls instead of growing (opts.maxListHeight overrides).
@@ -292,19 +295,21 @@ function Dropdown.Create(parent, opts)
 
       -- An item may carry its own art: { texture= or atlas=, aspect= }.
       -- Drawn at row height beside the caption, so a list of visual choices
-      -- shows the choices.
-      local textOffset = LIST_PADDING
+      -- shows the choices. Everything sits one gutter in, because the
+      -- selection dot lives in that gutter -- on EVERY row, so the captions
+      -- of chosen and unchosen items line up.
+      local textOffset = LIST_PADDING + MARK_GUTTER
       if type(item.icon) == "table" then
         local art = row:CreateTexture(nil, "ARTWORK")
         local size = rowHeight - 4
         art:SetSize(size, size * (item.icon.aspect or 1))
-        art:SetPoint("LEFT", row, "LEFT", LIST_PADDING, 0)
+        art:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
         if item.icon.atlas then
           art:SetAtlas(item.icon.atlas)
         else
           art:SetTexture(item.icon.texture)
         end
-        textOffset = LIST_PADDING + size + 6
+        textOffset = LIST_PADDING + MARK_GUTTER + size + 6
       end
 
       local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -312,14 +317,18 @@ function Dropdown.Create(parent, opts)
       text:SetText(item.name)
       if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
 
-      -- The current selection's marker: a 2px accent bar on the row's left
-      -- edge, painted on open. Feedback that a choice is in effect even when
-      -- the toggle's caption does not repeat it (an owner may keep a fixed
-      -- title there instead).
+      -- The current selection's marker: a small accent DOT at the row's
+      -- left, painted on open. Feedback that a choice is in effect even
+      -- when the toggle's caption does not repeat it (an owner may keep a
+      -- fixed title there instead).
+      --
+      -- It was a full-height 2px bar down the row's edge, which read as a
+      -- border rather than a mark -- and sat a hairline from the list's own
+      -- edge, so the two looked like one thickened line. The dot is the
+      -- same language the tab caption and the style status already use.
       local mark = row:CreateTexture(nil, "ARTWORK")
-      mark:SetWidth(2)
-      mark:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -1)
-      mark:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 1)
+      mark:SetSize(4, 4)
+      mark:SetPoint("LEFT", row, "LEFT", LIST_PADDING + 2, 0)
       mark:Hide()
       row._selMark = mark
 

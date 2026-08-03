@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.28.0
+
+- **The minimap tooltip is Postbox's own now.** It used to open with the
+  game's "Unread mail from:" and three bare names, then repeat itself in
+  better words underneath. It now describes the mailbox once: what has
+  arrived since you last looked, what is waiting to be collected broken
+  down by sender, and how many of those the game refused to hand over.
+- **A mail you opened but could not empty finally counts.** The breakdown
+  asked which mail was *unread*, so the stuck Postmaster mail — opened,
+  refused, still holding your item — was silently missing while five
+  auction mails were listed. It now asks which mail still *holds*
+  something, which is the question you were actually asking, and says
+  "1 could not be collected" underneath when the game refused one.
+- **The dropdown selection marker is a dot.** It was a tall bar down the
+  row's left edge, a hairline from the list's own border, so the two read as
+  one thick line — and every caption now starts at the same place whether
+  or not it is the chosen one.
+- **Borders land on real pixels.** A one-pixel edge at a fractional UI
+  scale gets rounded per side by the client, which is why some edges looked
+  a shade heavier than others. Every hairline now snaps to a whole physical
+  pixel, so the flat look is even everywhere.
+
 ## 1.27.0
 
 - **Postbox Modern got its edges right.** Those extra dark pixels above

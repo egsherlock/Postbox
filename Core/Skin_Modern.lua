@@ -44,12 +44,24 @@ local C = {
 -- Title-bar height for the Blizzard window templates Postbox builds on.
 local TITLE_HEIGHT = 22
 
-local FLAT_BACKDROP = {
-  bgFile = WHITE,
-  edgeFile = WHITE,
-  edgeSize = 1,
-  insets = { left = 1, right = 1, top = 1, bottom = 1 },
-}
+-- One physical pixel at this frame's scale, not one UI unit. At a UI scale
+-- that is not a whole ratio of the screen, a "1" edge lands on a fraction
+-- of a physical pixel and the client rounds each side independently -- so
+-- one border renders 1px on the left and 2px on the right, which is exactly
+-- the non-uniformity a flat skin cannot hide. Snapping the size to the
+-- nearest real pixel makes every edge the same weight everywhere.
+local function Hairline(frame)
+  local scale = (frame and frame.GetEffectiveScale and frame:GetEffectiveScale()) or 1
+  if PixelUtil and PixelUtil.GetNearestPixelSize then
+    local ok, size = pcall(PixelUtil.GetNearestPixelSize, 1, scale, 1)
+    if ok and type(size) == "number" and size > 0 then return size end
+  end
+  if scale > 0 then
+    local size = math.max(1, math.floor(scale + 0.5)) / scale
+    return size
+  end
+  return 1
+end
 
 local function Accent()
   if ns.Theme and ns.Theme.GetAccent then return ns.Theme.GetAccent() end
@@ -72,7 +84,16 @@ end
 
 local function Paint(frame, color)
   if not EnsureBackdrop(frame) then return end
-  frame:SetBackdrop(FLAT_BACKDROP)
+  local edge = Hairline(frame)
+  -- Built per frame rather than shared: the edge is scale-dependent, and a
+  -- shared table would hand one frame's snapped size to a frame at another
+  -- scale (a popup at a different strata, a host UI's own scaling).
+  frame:SetBackdrop({
+    bgFile = WHITE,
+    edgeFile = WHITE,
+    edgeSize = edge,
+    insets = { left = edge, right = edge, top = edge, bottom = edge },
+  })
   frame:SetBackdropColor(color[1], color[2], color[3], color[4])
   frame:SetBackdropBorderColor(C.border[1], C.border[2], C.border[3], C.border[4])
 end
@@ -114,9 +135,12 @@ local function TitleStrip(frame)
   if frame.__pbModernTitle then return end
   frame.__pbModernTitle = true
 
+  -- Inset by the window's own hairline so the strip sits INSIDE the border
+  -- rather than over it -- one edge, not two stacked.
+  local edge = Hairline(frame)
   local strip = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
-  strip:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1)
-  strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -1, -1)
+  strip:SetPoint("TOPLEFT", frame, "TOPLEFT", edge, -edge)
+  strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -edge, -edge)
   strip:SetHeight(TITLE_HEIGHT)
   strip:SetColorTexture(C.title[1], C.title[2], C.title[3], C.title[4])
 
@@ -125,7 +149,7 @@ local function TitleStrip(frame)
   local rule = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
   rule:SetPoint("TOPLEFT", strip, "BOTTOMLEFT", 0, 0)
   rule:SetPoint("TOPRIGHT", strip, "BOTTOMRIGHT", 0, 0)
-  rule:SetHeight(1)
+  rule:SetHeight(edge)
   rule:SetColorTexture(C.border[1], C.border[2], C.border[3], C.border[4])
 end
 

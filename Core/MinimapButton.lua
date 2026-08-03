@@ -163,19 +163,11 @@ local function MailWaiting()
   return pending and true or false
 end
 
-local function LatestSenders()
-  local senders = {}
-  if type(GetLatestThreeSenders) ~= "function" then return senders end
-  local ok, s1, s2, s3 = pcall(GetLatestThreeSenders)
-  if not ok then return senders end
-  for i = 1, 3 do
-    local sender = (i == 1 and s1) or (i == 2 and s2) or s3
-    if not IsSecret(sender) and type(sender) == "string" and sender ~= "" then
-      senders[#senders + 1] = sender
-    end
-  end
-  return senders
-end
+-- The client's three-sender readout is deliberately NOT used here any more:
+-- the tooltip is served from the mail memory's snapshot, which knows counts,
+-- senders and what is still waiting inside an already-opened mail. Mail
+-- memory keeps its own reader for the arrival watch, where the triple is
+-- the signal rather than the content.
 
 -- The default indicator's own OnLoad stands down under this rule (special
 -- game modes without mail notifications); a replacement must too.
@@ -651,19 +643,6 @@ end
 local function ShowTooltip(button)
   GameTooltip:SetOwner(button, "ANCHOR_BOTTOMLEFT")
 
-  -- Same content as the default indicator: the shared formatter when the
-  -- client provides it, the same strings by hand when it does not.
-  local senders = LatestSenders()
-  local header = (#senders > 0 and HAVE_MAIL_FROM) or HAVE_MAIL or ""
-  local formatted = type(FormatUnreadMailTooltip) == "function"
-    and pcall(FormatUnreadMailTooltip, GameTooltip, header, senders)
-  if not formatted then
-    GameTooltip:SetText(header)
-    for i = 1, #senders do
-      GameTooltip:AddLine(senders[i], 1, 1, 1)
-    end
-  end
-
   -- One line per gesture, the gesture in gold and its effect in the hint
   -- grey -- scannable, and each line exists only while it is TRUE: the
   -- memory line goes when the option is off, the move line goes while the
@@ -674,27 +653,51 @@ local function ShowTooltip(button)
       0.6, 0.6, 0.6, true)
   end
 
-  -- What the memory knows, above the gestures: the answer to "do I need to
-  -- walk over there" without a single click. The senders line the client
-  -- offers above is only ever three names with no counts; this is the
-  -- inbox as Postbox last read it, grouped -- "Auction House  x5".
+  -- Postbox describes the mailbox here, not the client. The default
+  -- indicator's tooltip is "Unread mail from:" plus up to three bare names
+  -- -- no counts, nothing about what is still waiting in a mail already
+  -- opened, and it duplicated the breakdown below it. What the snapshot
+  -- knows is strictly better, so it is the whole tooltip.
   local Memory = ns.MailMemory
-  if Memory and type(Memory.UnreadSummary) == "function" then
-    local groups = Memory.UnreadSummary()
-    if groups then
-      GameTooltip:AddLine(" ")
-      GameTooltip:AddLine(L["MEMORY_WAITING_HEAD"], 0.75, 0.75, 0.78)
-      local shown = math.min(#groups, 5)
-      for i = 1, shown do
-        GameTooltip:AddDoubleLine(groups[i].name, "x" .. groups[i].count,
-          1, 1, 1, 0.75, 0.75, 0.78)
-      end
-      if #groups > shown then
-        GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #groups - shown),
-          0.6, 0.6, 0.63)
-      end
+  local state = Memory and type(Memory.MailboxSummary) == "function"
+    and Memory.MailboxSummary() or nil
+
+  GameTooltip:SetText(L["FRAME_TITLE"])
+
+  if state and state.arrived then
+    local r, g, b = ns.Theme.GetAccent()
+    GameTooltip:AddLine(L["MEMORY_NEW_SINCE"], r, g, b)
+    local from = state.newFrom
+    if type(from) == "table" then
+      for i = 1, #from do GameTooltip:AddLine(from[i], 1, 1, 1) end
     end
   end
+
+  if state and state.groups then
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(L["MEMORY_WAITING_HEAD"], 0.75, 0.75, 0.78)
+    local groups = state.groups
+    local shown = math.min(#groups, 5)
+    for i = 1, shown do
+      GameTooltip:AddDoubleLine(groups[i].name, "x" .. groups[i].count,
+        1, 1, 1, 0.75, 0.75, 0.78)
+    end
+    if #groups > shown then
+      GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #groups - shown),
+        0.6, 0.6, 0.63)
+    end
+    -- Amber, the colour a refusal wears everywhere else in the addon.
+    if state.stuck > 0 then
+      GameTooltip:AddLine(ns.Plural("MEMORY_STUCK", state.stuck), 0.96, 0.72, 0.30)
+    end
+  elseif state then
+    GameTooltip:AddLine(L["MEMORY_NOTHING_WAITING"], 0.75, 0.75, 0.78)
+  else
+    -- No snapshot (memory off, or this character has never opened a
+    -- mailbox with Postbox installed): say only what the client knows.
+    GameTooltip:AddLine(HAVE_MAIL or "", 0.75, 0.75, 0.78)
+  end
+
   if Memory and type(Memory.SummaryText) == "function" then
     local summary = Memory.SummaryText()
     if summary then
