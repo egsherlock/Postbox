@@ -277,6 +277,12 @@ local function Build()
       end
     end
     ns.Theme.ApplyList(rmButton)
+    -- Lifted off the list scheme's pure black: this is a BUTTON wearing the
+    -- card surface, and it has to read as raised next to the checkbox column
+    -- rather than as a hole in the card.
+    if rmButton.SetBackdropColor then
+      rmButton:SetBackdropColor(0.14, 0.12, 0.10, 0.95)
+    end
     rmButton:SetHighlightTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
     local flatHover = rmButton:GetHighlightTexture()
     if flatHover then

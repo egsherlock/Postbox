@@ -324,13 +324,29 @@ local function Refresh(frame)
   end
 
   -- The badge means one exact thing: mail arrived AFTER this snapshot was
-  -- taken (the arrival watch below marks the record; a mailbox visit
-  -- replaces the record and thereby clears it). The rows themselves are
-  -- what was seen -- the badge is what was not, and its tooltip names the
-  -- senders the client offered.
-  local arrived = snapshot and snapshot.newSince and true or false
+  -- taken. Two independent detectors, either suffices: the arrival watch's
+  -- stored mark, and the client's own flag read RIGHT NOW -- away from a
+  -- mailbox HasNewMail() can only be true for arrivals since the last visit
+  -- (a visit clears it), which is by definition since this snapshot. The
+  -- second read is what makes the badge immune to a missed event. A visit
+  -- replaces the record and clears both. The rows are what was seen; the
+  -- badge is what was not, and its tooltip names the senders the client
+  -- offers -- from the mark when it saved them, asked live otherwise.
+  local state = MailboxState()
+  local liveNew = not (state and state.mailboxOpen)
+    and type(HasNewMail) == "function" and HasNewMail() and true or false
+  local arrived = (snapshot and (snapshot.newSince or liveNew)) and true or false
   frame.NewSinceHit:SetShown(arrived)
-  frame.newFrom = arrived and snapshot.newFrom or nil
+  local from = snapshot and snapshot.newFrom or nil
+  if arrived and not from and type(GetLatestThreeSenders) == "function" then
+    local a, b, c = GetLatestThreeSenders()
+    from = {}
+    if a then from[#from + 1] = tostring(a) end
+    if b then from[#from + 1] = tostring(b) end
+    if c then from[#from + 1] = tostring(c) end
+    if #from == 0 then from = nil end
+  end
+  frame.newFrom = arrived and from or nil
 
   local hidden = snapshot and math.max(0, (tonumber(snapshot.total) or count) - count) or 0
   if hidden > 0 then
@@ -505,6 +521,27 @@ function MM.Toggle()
   frame:Show()
   frame:Raise()
   if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, frame) end
+end
+
+-- One line for /postbox debug: everything needed to see why a badge did or
+-- did not show, without asking for a reproduction.
+function MM.Diagnose()
+  local snap = live or StoredSnapshot()
+  local parts = {}
+  parts[#parts + 1] = MemoryEnabled() and "on" or "OFF"
+  if snap then
+    parts[#parts + 1] = string.format("%d mails, seen %ds ago",
+      #(snap.mails or {}), math.max(0, time() - (tonumber(snap.seenAt) or 0)))
+    parts[#parts + 1] = "newSince " .. tostring(snap.newSince == true)
+  else
+    parts[#parts + 1] = "no snapshot"
+  end
+  parts[#parts + 1] = "HasNewMail " ..
+    tostring(type(HasNewMail) == "function" and HasNewMail() and true or false)
+  local a, b, c
+  if type(GetLatestThreeSenders) == "function" then a, b, c = GetLatestThreeSenders() end
+  parts[#parts + 1] = "senders " .. table.concat({ tostring(a), tostring(b), tostring(c) }, "/")
+  return table.concat(parts, " | ")
 end
 
 -------------------------------------------------------------

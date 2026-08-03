@@ -320,6 +320,14 @@ local function BuildDiagnosticReport()
     end
   end
 
+  local Memory = ns.MailMemory
+  if Memory and type(Memory.Diagnose) == "function" then
+    local ok, state = pcall(Memory.Diagnose)
+    if ok and type(state) == "string" then
+      add("Mail memory: " .. state)
+    end
+  end
+
   local Collect = ns.CollectTab
   local record = Collect and type(Collect.GetLastRunRecord) == "function"
     and Collect.GetLastRunRecord()

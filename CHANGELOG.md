@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.24.1
+
+- **The "+ new mail" badge no longer depends on catching the moment.** It
+  now also reads the game's own new-mail flag every time the memory window
+  opens — away from a mailbox that flag can only mean "arrived since your
+  last visit", which is exactly what the badge claims — so a missed event
+  can no longer hide it. `/postbox debug` also reports the memory's whole
+  state now, so if it ever misbehaves again one paste shows why.
+- The Manage Recipients portrait wears a slightly lifted tone on the plain
+  UI instead of pure black, so it reads as a button rather than a hole.
+- "Blizzard's own spot" is now "Blizzard's default" in the position list.
+- **Minimap icon names cleaned up**: variants that said "clean" are now
+  simply "2" ("Letter 2", "London Postbox 2", "Golden crest 2"), and the
+  letter family is named consistently — "Letter minimal", "Sealed envelope",
+  "Weathered letter".
+
 ## 1.24.0
 
 - **Right-click-to-attach is simply how Postbox works now** — the option is
