@@ -321,6 +321,15 @@ local function BuildRow(parent, index)
   row.Value:SetPoint("RIGHT", row.Expiry, "LEFT", -8, 0)
   row.Value:SetJustifyH("RIGHT")
 
+  -- The same "!" the collect screen puts on a refused mail, in the same
+  -- orange: a mail the server would not hand over should look identical
+  -- wherever Postbox shows it.
+  row.Warning = ns.Theme.CreateText(row, "value")
+  row.Warning:SetText("!")
+  row.Warning:SetPoint("LEFT", row.Icon, "RIGHT", 5, 0)
+  ns.Theme.SetColor(row.Warning, "warning")
+  row.Warning:Hide()
+
   row.Sender = ns.Theme.CreateText(row, "label")
   row.Sender:SetPoint("LEFT", row.Icon, "RIGHT", 6, 0)
   row.Sender:SetWidth(92)
@@ -369,6 +378,12 @@ local function FillRow(row, mail, now)
   else
     row.Icon:Hide()
   end
+
+  -- The marker takes the sender's first few pixels when a mail is stuck,
+  -- so the name shifts right rather than being drawn over.
+  row.Warning:SetShown(mail.stuck and true or false)
+  row.Sender:ClearAllPoints()
+  row.Sender:SetPoint("LEFT", row.Icon, "RIGHT", mail.stuck and 16 or 6, 0)
 
   row.Sender:SetText(mail.sender)
   row.Subject:SetText(mail.subject)
@@ -545,11 +560,17 @@ local function Build()
   frame.NewSinceHit:SetHeight(16)
   frame.NewSinceHit:EnableMouse(true)
 
-  local r, g, b = ns.Theme.GetAccent()
+  -- GREEN, not the accent. New mail is good news, and the accent is the
+  -- colour this addon uses for "selected" and "attention" -- an orange-gold
+  -- pill reads as a warning toast, which is the opposite of what arriving
+  -- mail means. Green says it plainly and cannot be confused with the
+  -- orange a stuck mail wears three rows below.
+  local pos = ns.Theme.Colors.positive
+  local r, g, b = pos[1], pos[2], pos[3]
 
-  -- A pill, not a line of accent text: this badge has to be read while the
-  -- eye is on a list of mails, where one more coloured caption reads as a
-  -- column heading. Wash plus dot plus word is unmistakably a marker.
+  -- A pill, not a line of coloured text: this badge has to be read while
+  -- the eye is on a list of mails, where one more coloured caption reads as
+  -- a column heading. Wash plus dot plus word is unmistakably a marker.
   local pill = frame.NewSinceHit:CreateTexture(nil, "BACKGROUND")
   pill:SetAllPoints()
   pill:SetColorTexture(r, g, b, 0.13)

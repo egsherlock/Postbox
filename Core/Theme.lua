@@ -141,10 +141,16 @@ local C = {
   -- textSecondary. C.O.D. is `negative` because it is money leaving the player.
   positive = { 0.2549, 0.8353, 0.3529, 1.00 },
   negative = { 1.0000, 0.2667, 0.2667, 1.00 },
-  -- Amber. The compose screen's guidance line has a genuine middle severity --
-  -- "this will take an hour to arrive" is not an error and must not be red, but
-  -- it is not neutral either. One token, one consumer.
-  warning  = { 1.0000, 0.7200, 0.2600, 1.00 },
+  -- Orange. The genuine middle severity -- "this will take an hour to arrive",
+  -- "the server would not hand this over" -- is not an error and must not be
+  -- red, but it is not neutral either.
+  --
+  -- Pushed from amber (1.00, 0.72, 0.26) to orange, because amber sat within a
+  -- few percent of the gold accent: a stuck marker and a selection marker read
+  -- as the same colour, so "something is wrong here" and "this is the chosen
+  -- one" were indistinguishable at a glance. Attention is orange, selection is
+  -- gold, good news is green, and no two of them can be confused.
+  warning  = { 0.9800, 0.5600, 0.1800, 1.00 },
 
   -- The one card / popup / list surface. Opaque: at high-but-not-full alpha the
   -- borders of widgets behind bleed through as bright seams, and rows scrolling

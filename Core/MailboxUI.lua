@@ -1009,14 +1009,27 @@ local function UpdateCollectTabText()
     local theme = ns.Theme
     local suffix
     if mode == "dot" then
-      -- The lightest possible "you've got mail": an accent dot, gone the
-      -- moment nothing is left to collect. The live accent, not the palette
-      -- token -- under a host skin the user's own colour is the accent.
-      if toCollect > 0 and theme and theme.GetAccent then
-        local r, g, b = theme.GetAccent()
-        suffix = ("|cff%02x%02x%02x\226\128\162|r"):format(
-          math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5),
-          math.floor(b * 255 + 0.5))
+      -- The lightest possible "you've got mail": one dot, gone the moment
+      -- nothing is left to collect -- and it carries the STATE, not just
+      -- the fact. Orange when the server refused something (the same orange
+      -- the row marker and the status line wear), otherwise the live accent
+      -- -- under a host skin the user's own colour is the accent.
+      if toCollect > 0 and theme then
+        local r, g, b
+        local mailApi = ns.MailService
+        local stuck = (mailApi and type(mailApi.StuckCount) == "function"
+          and mailApi.StuckCount()) or 0
+        if stuck > 0 and theme.Colors and theme.Colors.warning then
+          local warn = theme.Colors.warning
+          r, g, b = warn[1], warn[2], warn[3]
+        elseif theme.GetAccent then
+          r, g, b = theme.GetAccent()
+        end
+        if r then
+          suffix = ("|cff%02x%02x%02x\226\128\162|r"):format(
+            math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5),
+            math.floor(b * 255 + 0.5))
+        end
       end
     elseif total > 0 then
       suffix = mode == "total" and ("(" .. total .. ")")

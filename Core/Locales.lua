@@ -608,6 +608,7 @@ L["OPT_ALERT_FLASH_DESC"]      = "The icon beats a few times when mail arrives, 
 L["MEMORY_NOTHING_WAITING"]    = "Nothing waiting to collect."
 L["MEMORY_STUCK_ONE"]          = "%d could not be collected"
 L["MEMORY_STUCK_OTHER"]        = "%d could not be collected"
+L["OPT_ALERTS_HEADING"]        = "Mail alerts"
 if GetLocale() == "frFR" then
   -- Chat et dialogues
   L["ERR_OPEN_MAILBOX_LOOT"]     = "Approche-toi d'une boite aux lettres et ouvre-la d'abord."
@@ -982,6 +983,7 @@ if GetLocale() == "frFR" then
   L["MEMORY_NOTHING_WAITING"]    = "Rien a recuperer."
   L["MEMORY_STUCK_ONE"]          = "%d n'a pas pu etre recupere"
   L["MEMORY_STUCK_OTHER"]        = "%d n'ont pas pu etre recuperes"
+  L["OPT_ALERTS_HEADING"]        = "Alertes courrier"
 end
 
 -------------------------------------------------------------
@@ -1360,6 +1362,7 @@ if GetLocale() == "deDE" then
   L["MEMORY_NOTHING_WAITING"]    = "Nichts zum Abholen."
   L["MEMORY_STUCK_ONE"]          = "%d konnte nicht abgeholt werden"
   L["MEMORY_STUCK_OTHER"]        = "%d konnten nicht abgeholt werden"
+  L["OPT_ALERTS_HEADING"]        = "Post-Hinweise"
 end
 
 -------------------------------------------------------------
@@ -1736,6 +1739,7 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["MEMORY_NOTHING_WAITING"]    = "Nada pendiente de recoger."
   L["MEMORY_STUCK_ONE"]          = "%d no se pudo recoger"
   L["MEMORY_STUCK_OTHER"]        = "%d no se pudieron recoger"
+  L["OPT_ALERTS_HEADING"]        = "Avisos de correo"
 end
 
 -------------------------------------------------------------
@@ -2125,4 +2129,5 @@ L["MEMORY_NOTHING_WAITING"]    = "Получать нечего."
 L["MEMORY_STUCK_ONE"]          = "%d не удалось получить"
 L["MEMORY_STUCK_FEW"]          = "%d не удалось получить"
 L["MEMORY_STUCK_MANY"]         = "%d не удалось получить"
+L["OPT_ALERTS_HEADING"]        = "Оповещения о почте"
 end

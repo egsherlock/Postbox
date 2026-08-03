@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.29.0
+
+- **Colour means something again.** Postbox had drifted into using its gold
+  accent for everything, so "new mail arrived" wore the same colour as a
+  warning and a stuck mail wore the same colour as a selection. Three
+  meanings, three colours now: **green** for good news (mail arrived),
+  **orange** for attention (the game refused to hand something over — and
+  the orange moved further from gold so the two can't be mistaken), and the
+  **accent** for what it should always have meant, the thing you picked.
+- **The Mail tab's dot now carries the state**, not just the fact: orange
+  when something could not be collected, accent otherwise.
+- **A stuck mail is marked in the mailbox memory too**, with the same "!" in
+  the same orange the collect screen uses — one look for one situation,
+  wherever it appears.
+- **The options panel is sorted better.** Sound, flash and the mailbox
+  memory were living in the Minimap section, which is where the icon's
+  *appearance* is configured — a sound is not an appearance. They have
+  their own **Mail alerts** section now, which also shortens the minimap
+  card considerably.
+
 ## 1.28.0
 
 - **The minimap tooltip is Postbox's own now.** It used to open with the

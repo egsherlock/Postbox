@@ -665,8 +665,10 @@ local function ShowTooltip(button)
   GameTooltip:SetText(L["FRAME_TITLE"])
 
   if state and state.arrived then
-    local r, g, b = ns.Theme.GetAccent()
-    GameTooltip:AddLine(L["MEMORY_NEW_SINCE"], r, g, b)
+    -- Green: good news. The accent belongs to selection and the orange to
+    -- refusals; an arrival is neither (see the badge in Core/MailMemory).
+    local pos = ns.Theme.Colors.positive
+    GameTooltip:AddLine(L["MEMORY_NEW_SINCE"], pos[1], pos[2], pos[3])
     local from = state.newFrom
     if type(from) == "table" then
       for i = 1, #from do GameTooltip:AddLine(from[i], 1, 1, 1) end
@@ -686,9 +688,13 @@ local function ShowTooltip(button)
       GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #groups - shown),
         0.6, 0.6, 0.63)
     end
-    -- Amber, the colour a refusal wears everywhere else in the addon.
+    -- The orange a refusal wears everywhere else in the addon -- the row
+    -- marker, the run outcome, the guidance line -- read from the palette
+    -- rather than repeated as numbers here.
     if state.stuck > 0 then
-      GameTooltip:AddLine(ns.Plural("MEMORY_STUCK", state.stuck), 0.96, 0.72, 0.30)
+      local warn = ns.Theme.Colors.warning
+      GameTooltip:AddLine(ns.Plural("MEMORY_STUCK", state.stuck),
+        warn[1], warn[2], warn[3])
     end
   elseif state then
     GameTooltip:AddLine(L["MEMORY_NOTHING_WAITING"], 0.75, 0.75, 0.78)

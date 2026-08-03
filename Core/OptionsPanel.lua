@@ -497,6 +497,29 @@ local function Build()
 
   y = EndSection(frame, card, y)
 
+  -- Mail alerts: the three ways Postbox tells you about mail you are not
+  -- standing in front of. They were scattered through the Minimap card,
+  -- which is where the icon's LOOK is configured -- a sound is not a look,
+  -- and the memory is a window rather than an icon setting. Two of the
+  -- three are delivered THROUGH the icon, which their tooltips say.
+  y = AddSectionHeading(frame, y, L["OPT_ALERTS_HEADING"])
+  card = StartCard(frame, y)
+  cy = -12
+
+  cy = AddCheckbox(card, cy, L["OPT_ALERT_SOUND_TITLE"], L["OPT_ALERT_SOUND_DESC"],
+        function() return ns.MinimapButton and ns.MinimapButton.GetAlertSound() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertSound(on) end end)
+
+  cy = AddCheckbox(card, cy, L["OPT_ALERT_FLASH_TITLE"], L["OPT_ALERT_FLASH_DESC"],
+        function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end)
+
+  cy = AddCheckbox(card, cy, L["OPT_MEMORY_TITLE"], L["OPT_MEMORY_DESC"],
+        function() return ns.MailboxUI.GetOption("mailMemory") end,
+        function(on) ns.MailboxUI.SetOption("mailMemory", on) end)
+
+  y = EndSection(frame, card, y)
+
   -- Style. Always present, and it is the ONE place the addon talks about
   -- how it looks: with a host UI it names the skin driving the window (the
   -- sentence that used to sit in the bottom band, where it was both
@@ -845,26 +868,10 @@ local function Build()
           function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
           function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end)
 
-    -- Arrival alerts. Both ride the icon and compose with whatever glow,
-    -- shadow and accent it already wears -- the flash is a scale, not a
-    -- second colour or a second fade.
-    cy = AddCheckbox(card, cy, L["OPT_ALERT_SOUND_TITLE"], L["OPT_ALERT_SOUND_DESC"],
-          function() return ns.MinimapButton and ns.MinimapButton.GetAlertSound() end,
-          function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertSound(on) end end)
-
-    cy = AddCheckbox(card, cy, L["OPT_ALERT_FLASH_TITLE"], L["OPT_ALERT_FLASH_DESC"],
-          function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
-          function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end)
-
     cy = AddCheckbox(card, cy, L["OPT_MINIMAP_LOCK_TITLE"], L["OPT_MINIMAP_LOCK_DESC"],
           function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
           function(on) if ns.MinimapButton then ns.MinimapButton.SetLocked(on) end end)
 
-    -- The icon's left-click feature. Lives here rather than in General
-    -- because the icon is its only doorway.
-    cy = AddCheckbox(card, cy, L["OPT_MEMORY_TITLE"], L["OPT_MEMORY_DESC"],
-          function() return ns.MailboxUI.GetOption("mailMemory") end,
-          function(on) ns.MailboxUI.SetOption("mailMemory", on) end)
   end
 
   if not mmHostStyled then
