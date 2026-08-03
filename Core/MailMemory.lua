@@ -322,12 +322,14 @@ local function Refresh(frame)
       AgeText(snapshot.seenAt), ns.Plural("COUNT_MAILS", count)))
   end
 
-  -- Only claimable while the client still says unread mail is waiting;
-  -- HasNewMail is the same signal the default indicator trusts. On the
-  -- header line's right end, apart from the "last seen" half, so the two
-  -- statements -- old list, new arrivals -- cannot read as one sentence.
-  local hasNew = snapshot and type(HasNewMail) == "function" and HasNewMail()
-  frame.NewSince:SetShown(hasNew and true or false)
+  -- The badge means one exact thing: mail arrived AFTER this snapshot was
+  -- taken (the arrival watch below marks the record; a mailbox visit
+  -- replaces the record and thereby clears it). The rows themselves are
+  -- what was seen -- the badge is what was not, and its tooltip names the
+  -- senders the client offered.
+  local arrived = snapshot and snapshot.newSince and true or false
+  frame.NewSinceHit:SetShown(arrived)
+  frame.newFrom = arrived and snapshot.newFrom or nil
 
   local hidden = snapshot and math.max(0, (tonumber(snapshot.total) or count) - count) or 0
   if hidden > 0 then
@@ -395,16 +397,37 @@ local function Build()
   ns.Theme.ApplyFrameTheme(frame)
   ns.Core.UI.Helpers.RegisterEscClose(frame)
 
-  frame.NewSince = ns.Theme.CreateText(frame, "small")
-  frame.NewSince:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -34)
+  -- The badge is a real (small) frame so it can carry a tooltip naming who
+  -- the new mail is from -- a bare font string cannot take the mouse.
+  frame.NewSinceHit = CreateFrame("Frame", nil, frame)
+  frame.NewSinceHit:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -32)
+  frame.NewSinceHit:SetHeight(14)
+  frame.NewSinceHit:EnableMouse(true)
+  frame.NewSince = ns.Theme.CreateText(frame.NewSinceHit, "small")
+  frame.NewSince:SetPoint("RIGHT", frame.NewSinceHit, "RIGHT", 0, 0)
   frame.NewSince:SetText(L["MEMORY_NEW_SINCE"])
   local r, g, b = ns.Theme.GetAccent()
   frame.NewSince:SetTextColor(r, g, b)
-  frame.NewSince:Hide()
+  frame.NewSinceHit:SetWidth(frame.NewSince:GetStringWidth() + 4)
+  frame.NewSinceHit:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L["MEMORY_ARRIVED_TIP"])
+    local from = frame.newFrom
+    if type(from) == "table" and #from > 0 then
+      for i = 1, #from do
+        GameTooltip:AddLine(from[i], 1, 1, 1)
+      end
+    else
+      GameTooltip:AddLine(L["MEMORY_ARRIVED_ANON"], 1, 1, 1, true)
+    end
+    GameTooltip:Show()
+  end)
+  frame.NewSinceHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  frame.NewSinceHit:Hide()
 
   frame.Header = ns.Theme.CreateText(frame, "label")
   frame.Header:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -34)
-  frame.Header:SetPoint("RIGHT", frame.NewSince, "LEFT", -8, 0)
+  frame.Header:SetPoint("RIGHT", frame.NewSinceHit, "LEFT", -8, 0)
   frame.Header:SetJustifyH("LEFT")
   frame.Header:SetWordWrap(false)
 
@@ -490,8 +513,33 @@ end
 -- while no mailbox session is open, which is this module's idle state.
 -------------------------------------------------------------
 
+-- The arrival watch. HasNewMail flips true when mail lands after the last
+-- mailbox interaction -- which is exactly "after this snapshot", since a
+-- visit both clears the client's flag and replaces our record. Marking the
+-- SAVED record (a live table) costs one field write per pending-mail event,
+-- of which the client sends a handful an hour at most.
+local function OnPendingMail()
+  if not MemoryEnabled() then return end
+  local state = MailboxState()
+  if state and state.mailboxOpen then return end
+  if not (type(HasNewMail) == "function" and HasNewMail()) then return end
+
+  local snap = StoredSnapshot()
+  if not snap then return end
+  snap.newSince = true
+  if type(GetLatestThreeSenders) == "function" then
+    local a, b, c = GetLatestThreeSenders()
+    local from = {}
+    if a then from[#from + 1] = tostring(a) end
+    if b then from[#from + 1] = tostring(b) end
+    if c then from[#from + 1] = tostring(c) end
+    if #from > 0 then snap.newFrom = from end
+  end
+end
+
 local bus = ns.Events
 if bus then
   bus.Register("MAIL_INBOX_UPDATE", QueueCapture)
   bus.Register("MAIL_CLOSED", PersistOnClose)
+  bus.Register("UPDATE_PENDING_MAIL", OnPendingMail)
 end

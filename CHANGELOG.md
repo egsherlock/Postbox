@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.23.0
+
+- **Turning the minimap icon on now looks good immediately**: fresh setups
+  get the Letter icon at the map's top right with the glow, pulse and shadow
+  already on — switching the feature on is the opt-in, and every piece still
+  has its own checkbox. (Existing setups keep whatever they chose.)
+- **The position list now says where each choice anchors**: "Blizzard's own
+  spot", "Map edge - top right", "Map edge - custom", "Anywhere on screen" —
+  attached-to-the-map versus free is visible in the list itself.
+- **Alt-click the minimap icon to lock or unlock its position**, and the
+  icon's tooltip always says which state it is in — a locked icon that
+  silently ignored shift-drag used to read as broken. The options checkbox
+  and the alt-click stay in step.
+- **The accent tooltip tells the truth on every UI**: it tints with whatever
+  accent Postbox is currently using — your host skin's when one is active,
+  Postbox's own gold otherwise. It previously only mentioned EllesmereUI.
+- **The mailbox memory now separates "seen" from "since".** The list is what
+  your mailbox held when you looked; a small accent "+ new mail" badge
+  appears only when something has arrived AFTER that snapshot, and hovering
+  it names the senders the game offers. No more wondering whether "new mail
+  is waiting" was talking about the rows you were already looking at.
+
 ## 1.22.0
 
 - **Minimap icon placement is one honest list now.** The position dropdown

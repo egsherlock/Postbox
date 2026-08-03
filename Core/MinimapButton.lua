@@ -36,15 +36,17 @@ local DEFAULTS = {
   enabled  = false,  -- turning it on changes visible UI; that is the user's call
   icon     = "letter",
   size     = 20,
-  position = "BLIZZARD", -- fresh installs restyle the default indicator in
-                         -- place, changing nothing about WHERE mail shows.
-                         -- (Installs from before 1.22 already wrote their
-                         -- own value and keep it.)
+  position = "TOPRIGHT", -- just inside the map's top-right corner: the spot
+                         -- says "this replaced your mail icon" at first
+                         -- glance. Blizzard's own spot stays one pick away.
   angle    = 45,     -- degrees, 0 = east, CCW; used when position is CUSTOM,
                      -- and kept in step with the corner presets otherwise
   accent   = false,
-  glow     = false,
-  shadow   = false,
+  -- Glow, pulse and shadow all on: the styled icon should look its best the
+  -- moment the feature is switched on -- the switch-on IS the opt-in, and
+  -- each piece has its own checkbox for anyone who wants it quieter.
+  glow     = true,
+  shadow   = true,
   pulse    = true,   -- the glow's slow breathe; shadows never pulse
   lock     = false,  -- swallow shift-drag entirely: no accidental nudges
 }
@@ -658,6 +660,10 @@ local function ShowTooltip(button)
   end
 
   GameTooltip:AddLine(L["MINIMAP_TIP_HINT"], 0.6, 0.6, 0.6, true)
+  -- The lock state and its own toggle, always on show: a locked icon that
+  -- silently ignores shift-drag reads as broken without this line.
+  GameTooltip:AddLine(Settings().lock and L["MINIMAP_TIP_LOCKED"] or L["MINIMAP_TIP_LOCK"],
+    0.6, 0.6, 0.6, true)
   GameTooltip:Show()
 end
 
@@ -745,6 +751,21 @@ local function Build()
   button:SetScript("OnLeave", function() GameTooltip:Hide() end)
   button:SetScript("OnClick", function(self, mouseButton)
     if IsShiftKeyDown() then return end -- shift is the drag modifier
+    -- Alt-click toggles the position lock in place -- the same setting the
+    -- options panel's checkbox owns, which is refreshed immediately so the
+    -- two can never disagree. The tooltip re-renders so the line under the
+    -- cursor tells the new truth.
+    if IsAltKeyDown() then
+      if mouseButton == "LeftButton" then
+        MB.SetLocked(not MB.GetLocked())
+        local Panel = ns.OptionsPanel
+        if Panel and type(Panel.RefreshControls) == "function" then
+          Panel.RefreshControls()
+        end
+        if GameTooltip:IsOwned(self) then ShowTooltip(self) end
+      end
+      return
+    end
     if mouseButton == "RightButton" then
       -- Settings live behind the deliberate click; a stray left-click must
       -- never fling a window at the player.
