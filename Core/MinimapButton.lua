@@ -659,11 +659,26 @@ local function ShowTooltip(button)
     end
   end
 
-  GameTooltip:AddLine(L["MINIMAP_TIP_HINT"], 0.6, 0.6, 0.6, true)
-  -- The lock state and its own toggle, always on show: a locked icon that
-  -- silently ignores shift-drag reads as broken without this line.
-  GameTooltip:AddLine(Settings().lock and L["MINIMAP_TIP_LOCKED"] or L["MINIMAP_TIP_LOCK"],
-    0.6, 0.6, 0.6, true)
+  -- One line per gesture, the gesture in gold and its effect in the hint
+  -- grey -- scannable, and each line exists only while it is TRUE: the
+  -- memory line goes when the option is off, the move line goes while the
+  -- position is locked, and the alt line always says which way it toggles.
+  local function ActionLine(actionKey, descKey)
+    GameTooltip:AddLine(
+      string.format("|cffffd100%s|r - %s", L[actionKey], L[descKey]),
+      0.6, 0.6, 0.6, true)
+  end
+
+  local UIOpt = ns.MailboxUI
+  if UIOpt and type(UIOpt.GetOption) == "function" and UIOpt.GetOption("mailMemory") then
+    ActionLine("MINIMAP_TIP_ACT_CLICK", "MINIMAP_TIP_D_MEMORY")
+  end
+  ActionLine("MINIMAP_TIP_ACT_RIGHT", "MINIMAP_TIP_D_OPTIONS")
+  local locked = Settings().lock
+  if not locked then
+    ActionLine("MINIMAP_TIP_ACT_DRAG", "MINIMAP_TIP_D_MOVE")
+  end
+  ActionLine("MINIMAP_TIP_ACT_ALT", locked and "MINIMAP_TIP_D_UNLOCK" or "MINIMAP_TIP_D_LOCK")
   GameTooltip:Show()
 end
 

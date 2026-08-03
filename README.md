@@ -56,10 +56,9 @@ half again as many mails in the same window.
 will happen to a mail *before* you send it — instant or delayed, and whether a
 cross-realm send can carry what you attached. Nothing is ever blocked; Postbox
 advises, you decide. A failed send keeps your draft. Right-click-to-attach works
-from either tab (switchable off if you'd rather open lockboxes at the mailbox),
-and unmailable items wear a padlock in your bags while you compose. (With a bag
-replacement — Bagnon, AdiBags and kin — attaching still works; only the padlock
-markers are default-bags-only.)
+from either tab, and unmailable items wear a padlock in your bags while you
+compose. (With a bag replacement — Bagnon, AdiBags and kin — attaching still
+works; only the padlock markers are default-bags-only.)
 
 **Minimap icon.** Optional replacement for the default "you have mail" indicator:
 20+ hand-painted styles at four sizes, positioned by shift-drag, with accent tint,

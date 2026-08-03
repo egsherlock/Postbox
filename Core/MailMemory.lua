@@ -42,11 +42,12 @@ local PAD = 12
 local CHROME_TOP = 52
 local CHROME_BOTTOM = 26
 
--- Eight rows by default, four at the smallest: enough to be useful, small
--- enough to stay a note rather than a second mail window. Height only —
--- the width is not resizable, so the bounds pin it.
-local DEFAULT_ROWS = 8
-local MIN_ROWS = 4
+-- Six rows: the default AND the floor -- enough to be useful, small enough
+-- to stay a note rather than a second mail window; the grip only ever
+-- grows it toward the content. Height only — the width is not resizable,
+-- so the bounds pin it.
+local DEFAULT_ROWS = 6
+local MIN_ROWS = 6
 
 local function RowsHeight(rows)
   return CHROME_TOP + CHROME_BOTTOM + rows * ROW_HEIGHT + 2
@@ -535,6 +536,12 @@ local function OnPendingMail()
     if c then from[#from + 1] = tostring(c) end
     if #from > 0 then snap.newFrom = from end
   end
+
+  -- Mail can land while the window is on screen -- the exact moment the
+  -- badge is worth something. One row-refill against the ≤50 cached mails,
+  -- only when visible.
+  local frame = MM._frame
+  if frame and frame:IsShown() then Refresh(frame) end
 end
 
 local bus = ns.Events

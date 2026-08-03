@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.24.0
+
+- **Right-click-to-attach is simply how Postbox works now** — the option is
+  gone. With a mail window open, clicking an attachable item flips to Send
+  with it attached, the same way Blizzard's own Send tab has always behaved;
+  your bags are untouched the moment the mailbox closes.
+- **The minimap icon's tooltip earns its keep**: one line per gesture with
+  the gesture in gold — Click, Right-click, Shift-drag, Alt-click — and each
+  line only appears while it is true: the mailbox-memory line disappears
+  when that feature is off, and the move line disappears while the position
+  is locked.
+- **Mailbox memory opens at six rows** (its minimum — the grip only grows
+  it), and the "+ new mail" badge now appears the moment mail lands, even
+  while the window is open.
+- The position list says "Minimap" instead of "Map edge" — it never meant
+  the world map.
+- **The Manage Recipients button looks right on the plain UI**: the stock
+  button art is a thin strip that smeared into pixel blocks when stretched
+  to portrait height (host skins repainted over it, the plain UI showed it
+  raw). Without a skin it now wears a flat card surface instead. And the
+  window's options cog sits level with the title on the plain UI.
+
 ## 1.23.0
 
 - **Turning the minimap icon on now looks good immediately**: fresh setups

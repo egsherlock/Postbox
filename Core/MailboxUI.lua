@@ -114,7 +114,7 @@ end
 -------------------------------------------------------------
 -- 1. Options
 --
--- Six booleans on the profile. Reads go through the store's non-creating
+-- Five booleans on the profile. Reads go through the store's non-creating
 -- accessor: merely asking whether a flag is set must not write a node into
 -- saved variables. Defaults live here rather than being seeded on first read,
 -- so an unset option and an option explicitly set to its default behave
@@ -132,17 +132,16 @@ local OPTION_DEFAULTS = {
   -- screen -- the common action is the one-click one -- and because a player who
   -- has used it for a while has the other mapping in their hands.
   previewOnClick  = false,
-  -- Keeps the client's right-click-to-attach armed on the collect tab, so a
-  -- bag click lands on the compose screen (section 5b). On, because being
-  -- carried to the Send tab with the item already attached is the behaviour
-  -- the click expressed; the off-switch exists for players who use or open
-  -- items from their bags while standing at the mailbox.
-  quickAttach     = true,
   -- The minimap icon's left-click snapshot (Core/MailMemory.lua). On: the
   -- feature is capture-light and idle when unused, and a feature nobody can
   -- find switched off does not exist.
   mailMemory      = true,
 }
+-- Right-click-to-attach has no option on purpose (removed in 1.24 after one
+-- release as a toggle): with a mail window open, sending the clicked item is
+-- what the click means, it is how Blizzard's own Send tab has always
+-- behaved, and outside a mail session bags are untouched. An off-switch
+-- would only exist to make the addon do less than the default UI.
 
 local OPTION_PATH = {}
 for key in pairs(OPTION_DEFAULTS) do
@@ -1054,15 +1053,11 @@ function UI.SelectTab(tabId)
     -- not needed for any of it (COMBAT_TAINT.md 4).
     if send and send.ActivateNativeSendMail then send.ActivateNativeSendMail() end
   else
-    -- Quick attach keeps that same flag armed on the collect tab -- re-armed
-    -- here AFTER the panel loop, because hiding the compose panel above ran
-    -- its OnHide, which dropped it. The overlays stay compose-only either
-    -- way; section 5b is what answers the attach this arming allows.
-    if UI.GetOption("quickAttach") then
-      if send and send.ArmNativeSendMail then send.ArmNativeSendMail() end
-    elseif send and send.DeactivateNativeSendMail then
-      send.DeactivateNativeSendMail()
-    end
+    -- The attach flag stays armed on the collect tab too -- re-armed here
+    -- AFTER the panel loop, because hiding the compose panel above ran its
+    -- OnHide, which dropped it. The overlays stay compose-only; section 5b
+    -- is what answers the attach this arming allows.
+    if send and send.ArmNativeSendMail then send.ArmNativeSendMail() end
     if send and send.ClearBagOverlays then send.ClearBagOverlays() end
     -- The window's compose-only extra height belongs to the compose screen --
     -- both kinds of it. Dropping them here rather than trusting the screen to
@@ -1113,23 +1108,7 @@ local function OnSendAttachmentsChanged()
 
   if not grew or not UI._state.mailboxOpen then return end
   if UI._state.activeTab == "send" then return end
-  if not UI.GetOption("quickAttach") then return end
   UI.SelectTab("send")
-end
-
--- Frozen: Core/OptionsPanel.lua calls this when the quick-attach option
--- changes. Arming normally happens at tab-select time, so a mid-session
--- toggle is re-applied to the tab already on screen; the compose tab owns
--- its own arming and is left alone.
-function UI.ApplyQuickAttachState()
-  if not UI._state.mailboxOpen then return end
-  if UI._state.activeTab == "send" then return end
-  local send = ns.SendTab
-  if UI.GetOption("quickAttach") then
-    if send and send.ArmNativeSendMail then send.ArmNativeSendMail() end
-  elseif send and send.DeactivateNativeSendMail then
-    send.DeactivateNativeSendMail()
-  end
 end
 
 -- Frozen: Core/OptionsPanel.lua calls this when the tab-count option changes.
@@ -1175,7 +1154,12 @@ end
 local function BuildOptionsButton(frame, theme)
   local button = CreateFrame("Button", nil, frame)
   button:SetSize(18, 18)
-  button:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -4)
+  -- Two different title bars, two different centres: the host skins rebuild
+  -- the bar and -4 sits level with their title text, while the stock
+  -- template's TitleText rides higher and -4 read a couple of pixels low
+  -- beside it. ns.Skin is claimed at PLAYER_LOGIN, before any mailbox can
+  -- build this frame.
+  button:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, ns.Skin and -4 or -2)
   button:SetFrameLevel(frame:GetFrameLevel() + 20)
 
   button.icon = button:CreateTexture(nil, "ARTWORK")
