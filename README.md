@@ -23,8 +23,11 @@ it and open a mailbox.
   attached. Unmailable items are padlocked in your bags while you compose, so you
   can see at a glance what can go.
 - **Replaces the minimap mail icon**, if you want it to: over twenty hand-painted
-  styles, sized and placed your way, with an optional accent tint and glow. It
-  coexists cleanly with EllesmereUI's and ElvUI's minimaps.
+  styles, sized and placed your way — on the map edge or detached anywhere on
+  screen — with an optional accent tint and glow. It coexists cleanly with
+  EllesmereUI's and ElvUI's minimaps. Left-click it anywhere in the world to
+  see what your mailbox held when you last opened it, with an honest "last
+  seen 2 h ago" header.
 - **Stays out of your way.** Move it, resize it, let it grow as you type a longer
   message. It follows your EllesmereUI or ElvUI look automatically if you use one,
   and looks just as sharp without either. Everything it does is taint-clean — no

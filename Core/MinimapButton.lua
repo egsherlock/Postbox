@@ -705,13 +705,20 @@ local function Build()
   button:SetScript("OnLeave", function() GameTooltip:Hide() end)
   button:SetScript("OnClick", function(self, mouseButton)
     if IsShiftKeyDown() then return end -- shift is the drag modifier
-    -- Right-click only. This is a mail indicator, and a stray left-click on
-    -- it should not fling a settings window at the player; left stays free
-    -- for a future mail action.
-    if mouseButton ~= "RightButton" then return end
-    local Panel = ns.OptionsPanel
-    if Panel and type(Panel.Toggle) == "function" then
-      Panel.Toggle(self)
+    if mouseButton == "RightButton" then
+      -- Settings live behind the deliberate click; a stray left-click must
+      -- never fling a window at the player.
+      local Panel = ns.OptionsPanel
+      if Panel and type(Panel.Toggle) == "function" then
+        Panel.Toggle(self)
+      end
+      return
+    end
+    -- Left is the mail action: what the mailbox held when this character
+    -- last saw it. Toggle itself declines while a real mailbox is open.
+    local Memory = ns.MailMemory
+    if Memory and type(Memory.Toggle) == "function" then
+      Memory.Toggle(self)
     end
   end)
 

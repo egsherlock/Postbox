@@ -87,6 +87,8 @@ local SCHEMA = {
   "altMeta",                  -- realm -> name -> { level, faction, lastSeen }
   "lastRun",                  -- realm -> name -> last bad collect run
                               -- (see Core/CollectTab.lua, run memory)
+  "mailMemory",               -- realm -> name -> last-seen inbox snapshot
+                              -- (see Core/MailMemory.lua)
 }
 
 local function EnsureDB()

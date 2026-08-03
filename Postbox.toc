@@ -35,6 +35,7 @@ Core\ContactService.lua
 Core\CollectTab.lua
 Core\SendTab.lua
 Core\MailboxUI.lua
+Core\MailMemory.lua
 Core\MinimapButton.lua
 Core\OptionsPanel.lua
 Core\RecipientManager.lua

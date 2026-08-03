@@ -57,10 +57,16 @@ bring it back.
 ## A minimap mail icon worth keeping
 
 Optional — replace the default "you have mail" indicator with one of 20+
-hand-painted styles at four sizes, placed anywhere on the minimap rim by
-shift-drag, with an accent tint, a soft glow and a slow pulse while mail
-waits. Under EllesmereUI's minimap it restyles their icon in place rather
-than adding a second one, and everything restores cleanly when switched off.
+hand-painted styles at four sizes, placed by shift-drag on the minimap rim or
+detached anywhere on screen, with an accent tint, a soft glow and a slow
+pulse while mail waits. Under EllesmereUI's minimap it restyles their icon in
+place rather than adding a second one, and everything restores cleanly when
+switched off.
+
+Left-click it — anywhere in the world — and Postbox shows what your mailbox
+held the last time you opened it: senders, subjects, gold, attachments, time
+left. It says how long ago that was, tells you when new mail has arrived
+since, and never pretends to be live.
 
 ## Wears your UI
 

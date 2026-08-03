@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.20.0
+
+- **Left-click the minimap icon to see what your mailbox held — from
+  anywhere.** Postbox now remembers the inbox as you last saw it and shows
+  it in a small window: each mail's icon, sender, subject, its gold or
+  C.O.D. or attachment count, and how long it had left. The window is
+  honest about being a memory: it leads with "Last seen 2 h ago", tells you
+  when new mail has arrived since, and greys mails whose timer has run out
+  in the meantime. At an actual mailbox the click does nothing — the real
+  thing is on screen. The snapshot rides the inbox reads Postbox already
+  does (the game shows at most ~50 mails at a time, so this is light even
+  for the fullest mailbox) and costs one small save per mailbox visit;
+  nothing at all runs while you play.
+
 ## 1.19.1
 
 - **"Attach from the Mail tab" actually works now.** The game's own
