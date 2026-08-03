@@ -36,28 +36,34 @@ local DEFAULTS = {
   enabled  = false,  -- turning it on changes visible UI; that is the user's call
   icon     = "letter",
   size     = 20,
-  position = "TOPRIGHT",
+  position = "BLIZZARD", -- fresh installs restyle the default indicator in
+                         -- place, changing nothing about WHERE mail shows.
+                         -- (Installs from before 1.22 already wrote their
+                         -- own value and keep it.)
   angle    = 45,     -- degrees, 0 = east, CCW; used when position is CUSTOM,
-                     -- and kept in step with the preset otherwise
+                     -- and kept in step with the corner presets otherwise
   accent   = false,
   glow     = false,
   shadow   = false,
   pulse    = true,   -- the glow's slow breathe; shadows never pulse
-  detached = false,  -- free placement; see the note above POSITION_ANGLES
   lock     = false,  -- swallow shift-drag entirely: no accidental nudges
 }
 
--- The four corner presets, as rim angles. CUSTOM means "wherever the user
--- shift-dragged it ALONG the rim", carried by `angle` alone.
+-- ONE dropdown, every placement, no second control to contradict it:
 --
--- Detaching is a SEPARATE boolean (`detached`), not a fifth position: while
--- it is on, shift-drag places the icon anywhere on screen, carried by
--- `offsetX` / `offsetY` from the minimap centre -- still anchored to the
--- minimap, so it follows the map's own position and scale, just no longer
--- bound to its edge. Picking any position below re-attaches. This stays a
--- MAIL INDICATOR either way; detaching exists because a player's ideal spot
--- for it (inside the map, beside the map, under the clock) is not ours to
--- decide.
+--   BLIZZARD     exactly where the default mail indicator sits -- restyle
+--                without moving anything. The default for fresh installs.
+--   corners      rim presets, as angles.
+--   CUSTOM       wherever the user shift-dragged it ALONG the rim (`angle`).
+--   FREE         wherever the user shift-dragged it ON SCREEN (`offsetX` /
+--                `offsetY` from the minimap centre -- still anchored to the
+--                minimap, so it follows the map through moves and scale).
+--
+-- Shift-drag keeps the dropdown honest instead of fighting it: dragging in
+-- any rim mode turns the position into CUSTOM, dragging in FREE stays FREE,
+-- and the options panel's controls are refreshed on drag-stop. This is a
+-- MAIL INDICATOR in every mode; the spread of modes exists because a
+-- player's ideal spot for it is not ours to decide.
 local POSITION_ANGLES = {
   TOPRIGHT    = 45,
   TOPLEFT     = 135,
@@ -66,16 +72,21 @@ local POSITION_ANGLES = {
 }
 
 local function IsKnownPosition(position)
-  return POSITION_ANGLES[position] ~= nil or position == "CUSTOM"
+  return POSITION_ANGLES[position] ~= nil
+    or position == "CUSTOM"
+    or position == "FREE"
+    or position == "BLIZZARD"
 end
 
--- 1.19.x briefly stored detachment AS a position. One-line, idempotent, run
--- by every reader that touches position -- cheaper than a migration pass.
+-- Two short-lived ancestors: 1.19.0 stored detachment AS a position
+-- ("DETACHED"), 1.21.0 as a separate boolean. Both mean FREE now.
+-- Idempotent, run by every reader that touches position -- cheaper than a
+-- migration pass.
 local function NormalizeSettings(prefs)
-  if prefs.position == "DETACHED" then
-    prefs.position = "CUSTOM"
-    prefs.detached = true
+  if prefs.position == "DETACHED" or prefs.detached == true then
+    prefs.position = "FREE"
   end
+  prefs.detached = nil
   return prefs
 end
 
@@ -523,12 +534,28 @@ local function Reposition(button)
   if not (button and minimap) then return end
 
   local prefs = NormalizeSettings(Settings())
+
+  -- BLIZZARD: sit exactly where the default indicator sits, by anchoring to
+  -- it -- the host UI keeps owning WHERE mail shows and we only own how it
+  -- looks. The frame stays anchorable while hidden (our suppression hides
+  -- it, its anchors survive). A client without the frame falls through to
+  -- the rim so the icon is never lost.
+  if prefs.position == "BLIZZARD" then
+    local mail = DefaultIndicator()
+    if mail then
+      button:ClearAllPoints()
+      button:SetPoint("CENTER", mail, "CENTER", 0, 0)
+      button:SetFrameLevel((minimap:GetFrameLevel() or 2) + 20)
+      return
+    end
+  end
+
   local x, y
-  if prefs.detached then
+  if prefs.position == "FREE" then
     x, y = tonumber(prefs.offsetX), tonumber(prefs.offsetY)
     if not (x and y) then
-      -- First detach: hold the exact spot the icon already occupies, so the
-      -- mode switch moves nothing until the player drags.
+      -- First switch to FREE: hold the exact spot the icon already
+      -- occupies, so the mode change moves nothing until the player drags.
       x, y = RimOffset(minimap)
       prefs.offsetX, prefs.offsetY = x, y
     end
@@ -637,10 +664,10 @@ end
 local function OnDragUpdate(button)
   local prefs = NormalizeSettings(Settings())
 
-  -- Detached: the icon follows the cursor itself, in minimap-relative
+  -- FREE: the icon follows the cursor itself, in minimap-relative
   -- coordinates so it keeps riding the map through scale and position
   -- changes. Saved live, same as the rim drag.
-  if prefs.detached then
+  if prefs.position == "FREE" then
     local minimap = _G.Minimap
     local centerX, centerY = minimap:GetCenter()
     local scale = minimap:GetEffectiveScale()
@@ -988,26 +1015,13 @@ function MB.SetPosition(position)
   -- Keep the angle in step so a later switch to CUSTOM starts from where the
   -- icon already is instead of teleporting it.
   if POSITION_ANGLES[position] then prefs.angle = POSITION_ANGLES[position] end
-  -- Choosing a rim position IS a statement about the rim: it re-attaches a
-  -- detached icon, and drops the free offset so a later re-detach starts
-  -- from wherever the icon is THEN, not a spot from a dead layout.
-  prefs.detached = false
-  prefs.offsetX, prefs.offsetY = nil, nil
-  Refresh()
-end
-
-function MB.GetDetached()
-  return NormalizeSettings(Settings()).detached == true
-end
-
-function MB.SetDetached(on)
-  local prefs = NormalizeSettings(Settings())
-  prefs.detached = on == true
-  if not prefs.detached then
+  -- Leaving FREE drops its offset, so choosing FREE again later starts from
+  -- wherever the icon is THEN, not a spot from a dead layout. Choosing FREE
+  -- moves nothing: Reposition seeds the offset from the current spot and
+  -- the next shift-drag goes anywhere.
+  if position ~= "FREE" then
     prefs.offsetX, prefs.offsetY = nil, nil
   end
-  -- Turning it ON moves nothing: Reposition seeds the offset from the spot
-  -- the icon already occupies, and the next shift-drag goes free.
   Refresh()
 end
 
@@ -1023,7 +1037,6 @@ function MB.ResetPosition()
   local prefs = Settings()
   prefs.position = DEFAULTS.position
   prefs.angle = DEFAULTS.angle
-  prefs.detached = false
   prefs.offsetX, prefs.offsetY = nil, nil
   Refresh()
 end

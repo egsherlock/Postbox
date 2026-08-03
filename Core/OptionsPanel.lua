@@ -704,24 +704,22 @@ local function Build()
           function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
           function(id) if ns.MinimapButton then ns.MinimapButton.SetIconSize(id) end end)
 
+    -- Every placement in ONE list -- a mode checkbox beside a position list
+    -- gave two controls authority over one fact, and they contradicted each
+    -- other the moment shift-drag moved the icon. Blizzard default leads:
+    -- it is where the stock indicator lives and the fresh-install default.
     local mmPositionItems = {
+      { id = "BLIZZARD",    name = L["OPT_MINIMAP_POS_BLIZZARD"] },
       { id = "TOPRIGHT",    name = L["OPT_MINIMAP_POS_TR"] },
       { id = "TOPLEFT",     name = L["OPT_MINIMAP_POS_TL"] },
       { id = "BOTTOMRIGHT", name = L["OPT_MINIMAP_POS_BR"] },
       { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
       { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
+      { id = "FREE",        name = L["OPT_MINIMAP_POS_FREE"] },
     }
     cy = AddDropdown(card, cy, L["OPT_MINIMAP_POS_TITLE"], mmPositionItems,
           function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
           function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end)
-
-    -- Placement refinements under the dropdown they refine. Detaching is a
-    -- checkbox rather than a fifth position: the dropdown stays a statement
-    -- about the rim, and picking any entry in it re-attaches (SetPosition),
-    -- which the refreshers reflect next time they run.
-    cy = AddCheckbox(card, cy, L["OPT_MINIMAP_DETACH_TITLE"], L["OPT_MINIMAP_DETACH_DESC"],
-          function() return ns.MinimapButton and ns.MinimapButton.GetDetached() end,
-          function(on) if ns.MinimapButton then ns.MinimapButton.SetDetached(on) end end)
 
     cy = AddCheckbox(card, cy, L["OPT_MINIMAP_LOCK_TITLE"], L["OPT_MINIMAP_LOCK_DESC"],
           function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,

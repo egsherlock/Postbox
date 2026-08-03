@@ -456,7 +456,13 @@ end
 function MM.Toggle()
   if not MemoryEnabled() then return end
   local state = MailboxState()
-  if state and state.mailboxOpen then return end
+  if state and state.mailboxOpen then
+    -- The real mailbox is on screen; a memory of it would be a second,
+    -- staler copy. Say why the click did nothing rather than being a dead
+    -- button.
+    ns.Print(L["MEMORY_MAILBOX_OPEN"])
+    return
+  end
 
   local frame = Build()
   if frame:IsShown() then

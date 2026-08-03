@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.22.0
+
+- **Minimap icon placement is one honest list now.** The position dropdown
+  carries every mode: **Blizzard default** (new — the icon sits exactly
+  where the stock mail indicator does, so you can restyle it without moving
+  anything; this is now the default for fresh installs), the four corners,
+  **Custom** (shift-drag along the map edge) and **Free** (shift-drag
+  anywhere on screen). The separate detach checkbox is gone — it and the
+  dropdown kept contradicting each other. Shift-dragging updates the
+  dropdown itself: a drag in any edge mode becomes Custom, a drag in Free
+  stays Free, and the open options panel reflects it immediately.
+- Left-clicking the minimap icon while your mailbox is already open now says
+  so in chat instead of silently doing nothing.
+
 ## 1.21.0
 
 - **The mailbox memory window grew manners.** It opens beside the minimap
