@@ -46,13 +46,25 @@ local DEFAULTS = {
 }
 
 -- The four corner presets, as rim angles. CUSTOM means "wherever the user
--- shift-dragged it", carried by `angle` alone.
+-- shift-dragged it ALONG the rim", carried by `angle` alone. DETACHED means
+-- "wherever the user shift-dragged it on screen", carried by `offsetX` /
+-- `offsetY` from the minimap centre -- still anchored to the minimap, so it
+-- follows the map's own position and scale, just no longer bound to its edge.
+-- This stays a MAIL INDICATOR either way; detaching exists because a player's
+-- ideal spot for it (inside the map, beside the map, under the clock) is not
+-- ours to decide.
 local POSITION_ANGLES = {
   TOPRIGHT    = 45,
   TOPLEFT     = 135,
   BOTTOMLEFT  = 225,
   BOTTOMRIGHT = 315,
 }
+
+local function IsKnownPosition(position)
+  return POSITION_ANGLES[position] ~= nil
+    or position == "CUSTOM"
+    or position == "DETACHED"
+end
 
 local MEDIA = "Interface\\AddOns\\Postbox\\Media\\"
 
@@ -473,15 +485,12 @@ local function CurrentAngle()
   return tonumber(prefs.angle) or DEFAULTS.angle
 end
 
--- The button centre is the angle's ray from the minimap centre out to the
--- rim -- the circle's radius, or for a square minimap the ray's exit through
--- the square (radius / the larger direction component) -- then pulled back
--- inside by half the button plus a hair. This is an INDICATOR that lives
+-- The rim point for the current angle: the ray from the minimap centre out to
+-- the rim -- the circle's radius, or for a square minimap the ray's exit
+-- through the square (radius / the larger direction component) -- then pulled
+-- back inside by half the button plus a hair. This is an INDICATOR that lives
 -- inside the map, not an addon launcher riding the edge.
-local function Reposition(button)
-  local minimap = _G.Minimap
-  if not (button and minimap) then return end
-
+local function RimOffset(minimap)
   local radius = (minimap:GetWidth() or 140) / 2
   local radians = math.rad(CurrentAngle())
   local cos, sin = math.cos(radians), math.sin(radians)
@@ -493,9 +502,29 @@ local function Reposition(button)
 
   local size = tonumber(Settings().size) or DEFAULTS.size
   reach = math.max(0, reach - (size / 2 + 2))
+  return cos * reach, sin * reach
+end
+
+local function Reposition(button)
+  local minimap = _G.Minimap
+  if not (button and minimap) then return end
+
+  local prefs = Settings()
+  local x, y
+  if prefs.position == "DETACHED" then
+    x, y = tonumber(prefs.offsetX), tonumber(prefs.offsetY)
+    if not (x and y) then
+      -- First detach: hold the exact spot the icon already occupies, so the
+      -- mode switch moves nothing until the player drags.
+      x, y = RimOffset(minimap)
+      prefs.offsetX, prefs.offsetY = x, y
+    end
+  else
+    x, y = RimOffset(minimap)
+  end
 
   button:ClearAllPoints()
-  button:SetPoint("CENTER", minimap, "CENTER", cos * reach, sin * reach)
+  button:SetPoint("CENTER", minimap, "CENTER", x, y)
   button:SetFrameLevel((minimap:GetFrameLevel() or 2) + 20)
 end
 
@@ -593,9 +622,25 @@ local function ShowTooltip(button)
 end
 
 local function OnDragUpdate(button)
+  local prefs = Settings()
+
+  -- Detached: the icon follows the cursor itself, in minimap-relative
+  -- coordinates so it keeps riding the map through scale and position
+  -- changes. Saved live, same as the rim drag.
+  if prefs.position == "DETACHED" then
+    local minimap = _G.Minimap
+    local centerX, centerY = minimap:GetCenter()
+    local scale = minimap:GetEffectiveScale()
+    if not centerX or not scale or scale == 0 then return end
+    local cursorX, cursorY = GetCursorPosition()
+    prefs.offsetX = cursorX / scale - centerX
+    prefs.offsetY = cursorY / scale - centerY
+    Reposition(button)
+    return
+  end
+
   local angle = AngleFromCursor()
   if angle then
-    local prefs = Settings()
     prefs.position = "CUSTOM"
     prefs.angle = angle
     Reposition(button)
@@ -612,6 +657,9 @@ local function Build()
   button:Hide()
   button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   button:RegisterForDrag("LeftButton")
+  -- A detached icon is placed by hand and must never be lost off-screen; on
+  -- the rim the clamp simply never engages.
+  button:SetClampedToScreen(true)
 
   local shadow = button:CreateTexture(nil, "BACKGROUND", nil, -1)
   shadow:SetPoint("CENTER", button, "CENTER", 0, -1)
@@ -655,8 +703,12 @@ local function Build()
 
   button:SetScript("OnEnter", ShowTooltip)
   button:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  button:SetScript("OnClick", function(self)
+  button:SetScript("OnClick", function(self, mouseButton)
     if IsShiftKeyDown() then return end -- shift is the drag modifier
+    -- Right-click only. This is a mail indicator, and a stray left-click on
+    -- it should not fling a settings window at the player; left stays free
+    -- for a future mail action.
+    if mouseButton ~= "RightButton" then return end
     local Panel = ns.OptionsPanel
     if Panel and type(Panel.Toggle) == "function" then
       Panel.Toggle(self)
@@ -896,17 +948,24 @@ end
 
 function MB.GetPosition()
   local position = Settings().position
-  if POSITION_ANGLES[position] or position == "CUSTOM" then return position end
+  if IsKnownPosition(position) then return position end
   return DEFAULTS.position
 end
 
 function MB.SetPosition(position)
-  if not (POSITION_ANGLES[position] or position == "CUSTOM") then return end
+  if not IsKnownPosition(position) then return end
   local prefs = Settings()
   prefs.position = position
   -- Keep the angle in step so a later switch to CUSTOM starts from where the
-  -- icon already is instead of teleporting it.
+  -- icon already is instead of teleporting it. DETACHED gets the same
+  -- courtesy in Reposition, which seeds its offset from the current rim spot.
   if POSITION_ANGLES[position] then prefs.angle = POSITION_ANGLES[position] end
+  -- Leaving DETACHED drops its offset: re-detaching later should start from
+  -- wherever the icon is THEN, not teleport to a spot chosen in a layout
+  -- that may no longer exist.
+  if position ~= "DETACHED" then
+    prefs.offsetX, prefs.offsetY = nil, nil
+  end
   Refresh()
 end
 
@@ -914,6 +973,7 @@ function MB.ResetPosition()
   local prefs = Settings()
   prefs.position = DEFAULTS.position
   prefs.angle = DEFAULTS.angle
+  prefs.offsetX, prefs.offsetY = nil, nil
   Refresh()
 end
 

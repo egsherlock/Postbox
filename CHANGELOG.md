@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.19.0
+
+- **The minimap icon can now leave the minimap edge.** A new "Detached"
+  choice in the position dropdown lets shift-drag place the icon anywhere on
+  screen — beside the map, under the clock, wherever — instead of only along
+  the rim. It still follows the minimap through moves and scale changes,
+  switching modes never teleports it, and it can never be lost off-screen.
+  The corner presets and rim drag work exactly as before.
+- **Opening the options now takes a right-click on the minimap icon.** A
+  plain left-click no longer flings the settings window at you — the icon is
+  a mail indicator first. The tooltip hint says so.
+
 ## 1.18.1
 
 - **Postbox now looks right even when a UI pack has replaced the game's own

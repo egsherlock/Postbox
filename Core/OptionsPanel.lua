@@ -710,6 +710,7 @@ local function Build()
       { id = "BOTTOMRIGHT", name = L["OPT_MINIMAP_POS_BR"] },
       { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
       { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
+      { id = "DETACHED",    name = L["OPT_MINIMAP_POS_DETACHED"] },
     }
     cy = AddDropdown(card, cy, L["OPT_MINIMAP_POS_TITLE"], mmPositionItems,
           function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
