@@ -65,6 +65,12 @@ end
 local live = nil
 local captureQueued = false
 
+-- Session timestamps for the arrival watch (section 5): the client fires
+-- UPDATE_PENDING_MAIL at login to establish state and churns it around a
+-- mailbox close, and neither is an arrival.
+local loginAt = nil
+local closedAt = 0
+
 local function MailboxState()
   return ns.MailboxUI and ns.MailboxUI._state or nil
 end
@@ -323,30 +329,18 @@ local function Refresh(frame)
       AgeText(snapshot.seenAt), ns.Plural("COUNT_MAILS", count)))
   end
 
-  -- The badge means one exact thing: mail arrived AFTER this snapshot was
-  -- taken. Two independent detectors, either suffices: the arrival watch's
-  -- stored mark, and the client's own flag read RIGHT NOW -- away from a
-  -- mailbox HasNewMail() can only be true for arrivals since the last visit
-  -- (a visit clears it), which is by definition since this snapshot. The
-  -- second read is what makes the badge immune to a missed event. A visit
-  -- replaces the record and clears both. The rows are what was seen; the
-  -- badge is what was not, and its tooltip names the senders the client
-  -- offers -- from the mark when it saved them, asked live otherwise.
-  local state = MailboxState()
-  local liveNew = not (state and state.mailboxOpen)
-    and type(HasNewMail) == "function" and HasNewMail() and true or false
-  local arrived = (snapshot and (snapshot.newSince or liveNew)) and true or false
+  -- The badge means one exact thing: the arrival watch SAW mail land after
+  -- this snapshot. It deliberately does NOT read HasNewMail() as state:
+  -- that flag stays true the whole time UNREAD mail sits in the box (it is
+  -- "you have unread mail", not "something arrived") -- reading it here lit
+  -- the badge permanently for anyone with an uncollected AH mail. The watch
+  -- below marks the record on guarded arrival events instead; a mailbox
+  -- visit replaces the record, clearing the mark. Arrivals while logged out
+  -- are undetectable on this API and the badge honestly does not claim
+  -- them. The rows are what was seen; the badge is what was not.
+  local arrived = (snapshot and snapshot.newSince) and true or false
   frame.NewSinceHit:SetShown(arrived)
-  local from = snapshot and snapshot.newFrom or nil
-  if arrived and not from and type(GetLatestThreeSenders) == "function" then
-    local a, b, c = GetLatestThreeSenders()
-    from = {}
-    if a then from[#from + 1] = tostring(a) end
-    if b then from[#from + 1] = tostring(b) end
-    if c then from[#from + 1] = tostring(c) end
-    if #from == 0 then from = nil end
-  end
-  frame.newFrom = arrived and from or nil
+  frame.newFrom = arrived and snapshot.newFrom or nil
 
   local hidden = snapshot and math.max(0, (tonumber(snapshot.total) or count) - count) or 0
   if hidden > 0 then
@@ -538,6 +532,9 @@ function MM.Diagnose()
   end
   parts[#parts + 1] = "HasNewMail " ..
     tostring(type(HasNewMail) == "function" and HasNewMail() and true or false)
+  parts[#parts + 1] = string.format("login %s | closed %ds ago",
+    loginAt and string.format("%ds ago", time() - loginAt) or "unseen",
+    math.max(0, time() - closedAt))
   local a, b, c
   if type(GetLatestThreeSenders) == "function" then a, b, c = GetLatestThreeSenders() end
   parts[#parts + 1] = "senders " .. table.concat({ tostring(a), tostring(b), tostring(c) }, "/")
@@ -551,15 +548,23 @@ end
 -- while no mailbox session is open, which is this module's idle state.
 -------------------------------------------------------------
 
--- The arrival watch. HasNewMail flips true when mail lands after the last
--- mailbox interaction -- which is exactly "after this snapshot", since a
--- visit both clears the client's flag and replaces our record. Marking the
--- SAVED record (a live table) costs one field write per pending-mail event,
+-- The arrival watch. UPDATE_PENDING_MAIL fires when the client's pending
+-- set CHANGES -- the only arrival signal the API offers once unread mail
+-- already sits in the box (HasNewMail stays true throughout, so its VALUE
+-- proves nothing; only the event does). Two time guards keep the event
+-- honest: the client fires one at login to establish state (not an
+-- arrival), and closing the mailbox churns the pending set (also not an
+-- arrival). Marking the SAVED record costs one field write per real event,
 -- of which the client sends a handful an hour at most.
+local LOGIN_SETTLE = 10
+local CLOSE_SETTLE = 5
+
 local function OnPendingMail()
   if not MemoryEnabled() then return end
   local state = MailboxState()
   if state and state.mailboxOpen then return end
+  if not loginAt or (time() - loginAt) < LOGIN_SETTLE then return end
+  if (time() - closedAt) < CLOSE_SETTLE then return end
   if not (type(HasNewMail) == "function" and HasNewMail()) then return end
 
   local snap = StoredSnapshot()
@@ -584,6 +589,12 @@ end
 local bus = ns.Events
 if bus then
   bus.Register("MAIL_INBOX_UPDATE", QueueCapture)
-  bus.Register("MAIL_CLOSED", PersistOnClose)
+  bus.Register("MAIL_CLOSED", function()
+    closedAt = time()
+    PersistOnClose()
+  end)
   bus.Register("UPDATE_PENDING_MAIL", OnPendingMail)
+  bus.Register("PLAYER_ENTERING_WORLD", function()
+    loginAt = time()
+  end)
 end

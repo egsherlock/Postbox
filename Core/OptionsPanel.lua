@@ -279,9 +279,13 @@ local function Build()
     ns.Theme.ApplyList(rmButton)
     -- Lifted off the list scheme's pure black: this is a BUTTON wearing the
     -- card surface, and it has to read as raised next to the checkbox column
-    -- rather than as a hole in the card.
+    -- rather than as a hole in the card. The surface GRAIN has to go first
+    -- -- it is a full-alpha texture painted above the backdrop fill, so any
+    -- colour set below it is invisible (and a texture pack can turn the
+    -- grain itself near-black, which is exactly the hole this fixes).
+    if rmButton.pbSurfaceTexture then rmButton.pbSurfaceTexture:SetAlpha(0) end
     if rmButton.SetBackdropColor then
-      rmButton:SetBackdropColor(0.14, 0.12, 0.10, 0.95)
+      rmButton:SetBackdropColor(0.18, 0.15, 0.12, 0.95)
     end
     rmButton:SetHighlightTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
     local flatHover = rmButton:GetHighlightTexture()
@@ -511,15 +515,20 @@ local function Build()
   local iconItems = {
     { id = "letter",       name = L["OPT_MINIMAP_ICON_LETTER"] },
     { id = "letterclean",  name = CleanName("OPT_MINIMAP_ICON_LETTER") },
+    -- The sealed family is ONE name numbered 1-4: four takes on the same
+    -- object, and the art-derived names read as four different objects.
+    -- stampedclean gets its own key rather than the clean suffix, which
+    -- would have printed "Sealed letter 2 2".
     { id = "sealed",       name = L["OPT_MINIMAP_ICON_SEALED"] },
     { id = "stamped",      name = L["OPT_MINIMAP_ICON_STAMPED"] },
-    { id = "stampedclean", name = CleanName("OPT_MINIMAP_ICON_STAMPED") },
+    { id = "stampedclean", name = L["OPT_MINIMAP_ICON_STAMPED_B"] },
     { id = "weathered",    name = L["OPT_MINIMAP_ICON_WEATHERED"] },
+    -- The bundles ride directly behind the letters they are made of.
+    { id = "bundle",       name = L["OPT_MINIMAP_ICON_BUNDLE"] },
+    { id = "bundleclean",  name = CleanName("OPT_MINIMAP_ICON_BUNDLE") },
     { id = "open",         name = L["OPT_MINIMAP_ICON_OPEN"] },
     { id = "scroll",       name = L["OPT_MINIMAP_ICON_SCROLL"] },
     { id = "seal",         name = L["OPT_MINIMAP_ICON_SEAL"] },
-    { id = "bundle",       name = L["OPT_MINIMAP_ICON_BUNDLE"] },
-    { id = "bundleclean",  name = CleanName("OPT_MINIMAP_ICON_BUNDLE") },
     { id = "parcel",       name = L["OPT_MINIMAP_ICON_PARCEL"] },
     { id = "parcelclean",  name = CleanName("OPT_MINIMAP_ICON_PARCEL") },
     { id = "mailbag",      name = L["OPT_MINIMAP_ICON_MAILBAG"] },

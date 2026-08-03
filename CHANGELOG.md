@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.24.2
+
+- **The "+ new mail" badge is honest at last.** It turns out the game's
+  new-mail flag stays lit the whole time UNREAD mail sits in your box — it
+  means "you have unread mail", not "something just arrived" — which is why
+  the badge lit permanently for anyone with an uncollected auction mail.
+  The badge now marks only a witnessed arrival: the game's pending-mail
+  event, filtered so the login pulse and mailbox-close churn never count.
+  One honest limit comes with that: mail that arrives while you are logged
+  out cannot be told apart from mail you already knew about, so the badge
+  only ever claims arrivals it actually saw this session.
+- **The Manage Recipients portrait actually reads as a button now** — the
+  previous lift was painted underneath the card's opaque surface grain, so
+  it never showed. The grain steps aside and the warm raised tone shows.
+- The sealed letters are one family now: **Sealed letter 1–4** (formerly
+  Sealed letter, Sealed envelope, its "2", and Weathered letter), and the
+  two Letter bundles sit directly after the letters in the icon list.
+
 ## 1.24.1
 
 - **The "+ new mail" badge no longer depends on catching the moment.** It
