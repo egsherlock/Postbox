@@ -29,18 +29,18 @@ local function Round(value)
   return floor((tonumber(value) or 0) + 0.5)
 end
 
--- The default backdrop: a solid tintable fill with a 1px hairline edge, both
--- from the addon's own white tile. This replaced the classic tooltip
--- nine-slice (UI-Tooltip-Background/-Border): UI packs ship loose files at
--- those Blizzard paths that the client loads in place of the real art, and a
--- transparent replacement left every window that trusted the default with no
--- background at all. The addon's own files cannot be overridden, and the
--- hairline matches the design language the themed panels use anyway.
+-- The client's tooltip background and border, tiled, with a 12px edge and 3px
+-- insets: that combination is what produces the classic tooltip frame look.
+-- A UI pack's loose-file texture overrides can restyle these client-wide;
+-- that is accepted on purpose -- see the decision note on SURFACE_TEXTURE in
+-- Lib/UI/Theme.lua.
 local DEFAULT_BACKDROP = {
-  bgFile = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga",
-  edgeFile = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga",
-  edgeSize = 1,
-  insets = { left = 1, right = 1, top = 1, bottom = 1 },
+  bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+  edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+  tile = true,
+  tileSize = 16,
+  edgeSize = 12,
+  insets = { left = 3, right = 3, top = 3, bottom = 3 },
 }
 
 local DEFAULT_BOUNDS = { minW = 400, maxW = 1200, minH = 300, maxH = 900 }

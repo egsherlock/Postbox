@@ -87,14 +87,18 @@ Theme.MenuColors = {
   hover = { 0.90, 0.78, 0.30, 0.18 },
 }
 
--- Postbox's OWN stone tile, not Blizzard's UI-Background-Rock: UI packs
--- (AtrocityUI, NaowhUI, ...) ship loose files under Interface\FrameGeneral\
--- that the client silently loads in place of Blizzard's art -- no addon
--- enabled, undetectable from Lua -- and a near-black or near-transparent
--- replacement hollowed out every surface this paints. Files under
--- Interface\AddOns\ cannot be overridden. Regenerate with
--- .dev/tools/gen-ui-textures.js.
-local SURFACE_TEXTURE = "Interface\\AddOns\\Postbox\\Media\\surface-stone.tga"
+-- Blizzard's rock tile, DELIBERATELY, and a decision worth recording: UI
+-- packs (AtrocityUI, NaowhUI, ...) ship loose files under Interface\ that
+-- replace this art client-wide, which flattens these surfaces on such an
+-- install. 1.18.1 shipped a Postbox-owned stone tile to be immune to that,
+-- and it was reverted: a generated tile matched neither the real rock (so
+-- pristine installs got a worse look) nor the pack (so pack installs got a
+-- third look that matched nothing). A pack-textured install is pack-styled
+-- in every Blizzard window already -- Postbox reading as "part of that UI"
+-- is the correct outcome, and those players run a skin (EllesmereUI/ElvUI)
+-- that replaces these surfaces anyway. Do not re-own this texture without
+-- extracting the genuine art.
+local SURFACE_TEXTURE = "Interface\\FrameGeneral\\UI-Background-Rock"
 local SURFACE_TINT = { 0.40, 0.32, 0.24, 1.00 }
 
 local WINDOW_STONE_TINT = { 0.78, 0.65, 0.50, 1.00 }

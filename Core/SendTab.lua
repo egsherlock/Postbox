@@ -3553,8 +3553,32 @@ end
 -- actually needs. See COMBAT_TAINT.md.
 -------------------------------------------------------------
 
+-- Whether Postbox currently wants the client's right-click-to-attach armed.
+-- Flipped BEFORE the flag itself moves, because the guard below reads it.
+local nativeArmWanted = false
+
+-- The guard. Arming once is not enough: Blizzard's own mailbox-open path
+-- runs AFTER our MAIL_SHOW handler and re-runs its inbox-tab logic, which
+-- calls SetSendMailShowing(false) -- so the flag we had just armed was quietly
+-- dropped, and a bag right-click went back to USING the item (a potion was
+-- drunk, a BoE tried to equip). The open-sequence ordering is not ours to
+-- win, so instead of racing it: whenever ANY caller drops the flag while
+-- Postbox wants it armed, it is re-asserted on the spot. hooksecurefunc, so
+-- the secure caller is untouched; the latch keeps our own re-assert from
+-- re-entering the hook.
+local reasserting = false
+if type(hooksecurefunc) == "function" and type(SetSendMailShowing) == "function" then
+  hooksecurefunc("SetSendMailShowing", function(shown)
+    if shown or not nativeArmWanted or reasserting then return end
+    reasserting = true
+    pcall(SetSendMailShowing, true)
+    reasserting = false
+  end)
+end
+
 function ST.ActivateNativeSendMail()
   sendTabActive = true
+  nativeArmWanted = true
   if type(SetSendMailShowing) == "function" then SetSendMailShowing(true) end
   HookVisibleSlots()
   RepaintContainers()
@@ -3566,11 +3590,14 @@ end
 -- compose screen, and a collect visit's BAG_UPDATE storm should not be paying
 -- for mailability verdicts nobody is looking at.
 function ST.ArmNativeSendMail()
+  nativeArmWanted = true
   if type(SetSendMailShowing) == "function" then SetSendMailShowing(true) end
 end
 
 function ST.DeactivateNativeSendMail()
   sendTabActive = false
+  -- Down BEFORE the flag moves, or the guard would re-arm our own disarm.
+  nativeArmWanted = false
   if type(SetSendMailShowing) == "function" then SetSendMailShowing(false) end
   ClearEveryOverlay()
   RepaintContainers()

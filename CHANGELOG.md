@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.19.1
+
+- **"Attach from the Mail tab" actually works now.** The game's own
+  mailbox-open sequence was quietly switching the attach mode back off a
+  moment after Postbox armed it — so a right-click on a bag item while
+  reading mail USED the item (drank the potion, tried to equip the armour)
+  instead of attaching it. The flag is now guarded for the whole mail
+  session: whatever switches it off while Postbox needs it on, it is
+  re-armed on the spot. Right-clicking a bag item on the Mail tab flips to
+  Send with the item attached, exactly as on the Send tab itself.
+- **The 1.18.1 replacement surfaces are reverted.** The self-made stone tile
+  matched neither real Blizzard rock (pristine installs looked worse) nor a
+  UI pack's replacement art (pack installs got a third look that matched
+  nothing). Postbox draws Blizzard's own surface and border art again, so on
+  a pack-textured install it reads as part of that UI — the same way every
+  Blizzard window does — and on a clean install it looks properly Blizzard
+  again. The one keeper: plain white fills stay Postbox-owned, which is
+  invisible and makes them override-proof.
+
 ## 1.19.0
 
 - **The minimap icon can now leave the minimap edge.** A new "Detached"
