@@ -93,6 +93,39 @@ local function FlatButton(button)
   end
 end
 
+-- The template's close button is a chunky gold-ringed X that survives every
+-- other repaint because it is Blizzard art on a Blizzard button. Modern
+-- draws its own from two rotated bars of the addon's white tile: crisp at
+-- any size, override-proof, and accent-lit on hover like everything else.
+local function FlatClose(button)
+  if not button or button.__pbModernClose then return end
+  button.__pbModernClose = true
+
+  for _, region in ipairs({ button:GetRegions() }) do
+    if region.IsObjectType and region:IsObjectType("Texture") then
+      region:SetTexture(nil)
+      region:Hide()
+    end
+  end
+
+  local bars = {}
+  for _, angle in ipairs({ math.rad(45), math.rad(-45) }) do
+    local bar = button:CreateTexture(nil, "ARTWORK")
+    bar:SetTexture(WHITE)
+    bar:SetSize(11, 1.5)
+    bar:SetPoint("CENTER")
+    if bar.SetRotation then bar:SetRotation(angle) end
+    bars[#bars + 1] = bar
+  end
+
+  local function Tint(r, g, b)
+    for i = 1, #bars do bars[i]:SetVertexColor(r, g, b) end
+  end
+  Tint(0.62, 0.62, 0.66)
+  button:HookScript("OnEnter", function() Tint(Accent()) end)
+  button:HookScript("OnLeave", function() Tint(0.62, 0.62, 0.66) end)
+end
+
 -- ------------------------------------------------------------------
 -- The recursive pass over tagged content, same shape as the host skins'.
 -- Native controls (checkboxes, scrollbars, close buttons, edit boxes) stay
@@ -120,6 +153,9 @@ end
 function Skin.Refresh(frame)
   if not frame then return end
   pcall(function() SkinTree(frame, 0) end)
+  -- Popups built lazily (the bug report, the recipient add/note dialogs)
+  -- arrive after Apply and carry their own small close button.
+  pcall(function() FlatClose(frame.CloseButton) end)
 end
 
 -- ------------------------------------------------------------------
@@ -160,6 +196,7 @@ function Skin.Apply(frame)
 
   QuietTemplateArt(frame)
   Paint(frame, C.window)
+  FlatClose(frame.CloseButton)
 
   -- Tabs: installing the selection override retires the widget's own plate
   -- art (Core/Theme.lua contract); Modern answers with an accent underline

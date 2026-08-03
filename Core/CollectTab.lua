@@ -295,6 +295,15 @@ local function ShowTabCounts()
   return UI.GetOption("showTabCounts") and true or false
 end
 
+-- The third segment. Collect and Done are the two halves of the inbox and
+-- always exist; All is their union, which some players read as one screen
+-- too many. Default on -- it is what the screen has always offered.
+local function ShowAllSegment()
+  local UI = ns.MailboxUI
+  if not UI or type(UI.GetOption) ~= "function" then return true end
+  return UI.GetOption("showAllTab") and true or false
+end
+
 -- Default OFF when the option plumbing has not loaded yet: a plain click that
 -- collects is the mapping every other part of this screen was written around,
 -- and the destructive-looking surprise is the other way round.
@@ -878,6 +887,22 @@ end
 -- Sizes every segment to the longest rendered caption -- counts included -- and
 -- lays them out. A fixed width sized for English "Read (99+)" is what clipped
 -- the German and Russian captions into their neighbour.
+-- The segments actually on screen, in order. Hiding one is a layout fact,
+-- not a special case: everything below sizes and spaces what this returns.
+local function VisibleSegments(container)
+  local shown = {}
+  for i = 1, #container.buttons do
+    local seg = container.buttons[i]
+    if seg.segId ~= VIEW_ALL or ShowAllSegment() then
+      shown[#shown + 1] = seg
+    else
+      seg:Hide()
+    end
+  end
+  for i = 1, #shown do shown[i]:Show() end
+  return shown
+end
+
 local function LayoutViewToggle(panel)
   local container = panel.ViewToggle
   if not container or not container.buttons then return end
@@ -887,15 +912,16 @@ local function LayoutViewToggle(panel)
   -- tightGap, the padding rung, so the group read a shade tighter than the
   -- design says a switch should.
   local gap = T.Metrics.space.snug
+  local shown = VisibleSegments(container)
 
-  local per, total = T.SizeRow(container.buttons, {
+  local per, total = T.SizeRow(shown, {
     height = T.Metrics.segmentHeight,
     gap = gap,
     minWidth = T.Metrics.buttonMinWidth,
   })
 
-  for i = 1, #container.buttons do
-    local seg = container.buttons[i]
+  for i = 1, #shown do
+    local seg = shown[i]
     seg:ClearAllPoints()
     seg:SetPoint("LEFT", container, "LEFT", (i - 1) * (per + gap), 0)
   end
@@ -911,6 +937,18 @@ local function LayoutViewToggle(panel)
   end
 
   PaintViewToggle(panel)
+end
+
+-- Frozen: Core/MailboxUI.lua calls this when the All-segment option changes.
+-- A hidden segment cannot be the one on screen, so the view falls back to
+-- Collect -- and that path re-lays the row on its way through.
+function CT.RefreshSegments(panel)
+  if not panel or not panel.ViewToggle then return end
+  if not ShowAllSegment() and panel.viewMode == VIEW_ALL then
+    SetViewMode(panel, VIEW_COLLECT)
+    return
+  end
+  LayoutViewToggle(panel)
 end
 
 -------------------------------------------------------------
@@ -1614,7 +1652,12 @@ local function UpdateHint(panel, numItems, totalItems)
       ns.Print(text)
     end
   else
-    hint:SetText(L()["HINT_COD"])
+    -- Nothing to say. This line used to carry "C.O.D. mail is never taken
+    -- automatically" -- a promise the screen keeps anyway, standing on the
+    -- top row of every visit to reassure about something that has not
+    -- happened. The confirmation dialog is where that fact belongs, and it
+    -- is already there.
+    hint:SetText("")
     panel._truncationTold = false
   end
 end
@@ -3202,12 +3245,14 @@ function CT.Build(parent)
   -- Top row: the view switch, and the hint to its right.
   BuildViewToggle(panel)
 
+  -- Blank until something needs saying: this line's only remaining job is
+  -- the truncated-inbox notice (see UpdateHint).
   panel.Hint = T.CreateText(panel, "secondary")
   panel.Hint:SetPoint("LEFT", panel.ViewToggle, "RIGHT", M.gap, 0)
   panel.Hint:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
   panel.Hint:SetJustifyH("RIGHT")
   panel.Hint:SetWordWrap(false)
-  panel.Hint:SetText(L()["HINT_COD"])
+  panel.Hint:SetText("")
 
   -- Bottom: one footer holding the two mutually exclusive action areas. Its
   -- height is the only thing a view change moves.

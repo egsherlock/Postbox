@@ -223,6 +223,31 @@ local function AgeText(seenAt)
   return string.format(L["MEMORY_AGO_D"], math.floor(age / 86400 + 0.5))
 end
 
+-- Unread mail in the snapshot, grouped by sender, biggest group first. This
+-- is the one summary in the addon built from mails we actually READ rather
+-- than inferred: every count is a fact about a mail in the record.
+local function UnreadBySender(snap)
+  local counts, order = {}, {}
+  local mails = snap and snap.mails or {}
+  for i = 1, #mails do
+    local mail = mails[i]
+    if not mail.read then
+      local who = (mail.sender ~= "" and mail.sender) or L["MEMORY_SENDER_UNKNOWN"]
+      if counts[who] then
+        counts[who] = counts[who] + 1
+      else
+        counts[who] = 1
+        order[#order + 1] = who
+      end
+    end
+  end
+  table.sort(order, function(a, b)
+    if counts[a] ~= counts[b] then return counts[a] > counts[b] end
+    return a < b
+  end)
+  return order, counts
+end
+
 local function ExpiryText(expires, now)
   local left = (tonumber(expires) or 0) - now
   if left <= 0 then return L["MEMORY_EXPIRED"], true end
@@ -498,14 +523,33 @@ local function Build()
   -- the new mail is from -- a bare font string cannot take the mouse.
   frame.NewSinceHit = CreateFrame("Frame", nil, frame)
   frame.NewSinceHit:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -32)
-  frame.NewSinceHit:SetHeight(14)
+  frame.NewSinceHit:SetHeight(16)
   frame.NewSinceHit:EnableMouse(true)
-  frame.NewSince = ns.Theme.CreateText(frame.NewSinceHit, "small")
-  frame.NewSince:SetPoint("RIGHT", frame.NewSinceHit, "RIGHT", 0, 0)
-  frame.NewSince:SetText(L["MEMORY_NEW_SINCE"])
+
   local r, g, b = ns.Theme.GetAccent()
+
+  -- A pill, not a line of accent text: this badge has to be read while the
+  -- eye is on a list of mails, where one more coloured caption reads as a
+  -- column heading. Wash plus dot plus word is unmistakably a marker.
+  local pill = frame.NewSinceHit:CreateTexture(nil, "BACKGROUND")
+  pill:SetAllPoints()
+  pill:SetColorTexture(r, g, b, 0.13)
+
+  frame.NewSince = ns.Theme.CreateText(frame.NewSinceHit, "small")
+  frame.NewSince:SetPoint("RIGHT", frame.NewSinceHit, "RIGHT", -6, 0)
+  frame.NewSince:SetText(L["MEMORY_NEW_SINCE"])
   frame.NewSince:SetTextColor(r, g, b)
-  frame.NewSinceHit:SetWidth(frame.NewSince:GetStringWidth() + 4)
+
+  local dot = frame.NewSinceHit:CreateTexture(nil, "OVERLAY")
+  dot:SetSize(5, 5)
+  dot:SetPoint("RIGHT", frame.NewSince, "LEFT", -5, 0)
+  dot:SetColorTexture(r, g, b, 1)
+
+  frame.NewSinceHit:SetWidth(frame.NewSince:GetStringWidth() + 22)
+  -- Two facts, in the order they matter: what has landed since (which the
+  -- list below cannot show), then what was already waiting, grouped by
+  -- sender so "Auction House  x10" reads at a glance instead of ten rows.
+  local SUMMARY_LINES = 5
   frame.NewSinceHit:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetText(L["MEMORY_ARRIVED_TIP"])
@@ -516,6 +560,22 @@ local function Build()
       end
     else
       GameTooltip:AddLine(L["MEMORY_ARRIVED_ANON"], 1, 1, 1, true)
+    end
+
+    local snap = live or StoredSnapshot()
+    local order, counts = UnreadBySender(snap)
+    if #order > 0 then
+      GameTooltip:AddLine(" ")
+      GameTooltip:AddLine(L["MEMORY_WAITING_HEAD"], 0.75, 0.75, 0.78)
+      local shown = math.min(#order, SUMMARY_LINES)
+      for i = 1, shown do
+        GameTooltip:AddDoubleLine(order[i], "x" .. counts[order[i]],
+          1, 1, 1, 0.75, 0.75, 0.78)
+      end
+      if #order > shown then
+        GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #order - shown),
+          0.6, 0.6, 0.63)
+      end
     end
     GameTooltip:Show()
   end)

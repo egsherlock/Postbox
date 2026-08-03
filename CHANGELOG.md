@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.26.0
+
+- **The options panel says one thing in one place.** The footer used to
+  announce which look was painting the addon — in the wrong place, and
+  wrongly: it read "Postbox's own style" even when the Blizzard style was
+  the deliberate choice. That sentence now lives in a **Style** section
+  which is always present: with EllesmereUI or ElvUI it names the skin
+  driving the window, and without one it offers the choice. The footer is
+  what a footer is for: the version, and a **Report a bug** label that
+  finally says what clicking the band has always done.
+- **The All view can be switched off.** Collect and Done are the two halves
+  of your inbox; All is their union, and some players want the row shorter.
+  A new General option keeps it or drops it, and the view falls back to
+  Collect if you hide the one you were on.
+- **The mailbox memory's new-mail badge is a badge now** — an accent pill
+  with a dot rather than one more line of coloured text beside a list of
+  mails. Hovering it gives a proper summary: what has arrived since you
+  looked, then what was already unread, grouped by sender —
+  "Auction House  x10" instead of ten rows to count.
+- **Postbox Modern draws its own close button**: a crisp accent-lit X in
+  place of the stock gold-ringed one, which was the last piece of Blizzard
+  chrome surviving the flat look.
+- The Mail tab no longer carries the standing note that C.O.D. mail is
+  never collected automatically. It never was, the confirmation dialog says
+  so at the only moment it matters, and the top row is quieter without it.
+
 ## 1.25.0
 
 - **A window style of your own: "Postbox Modern".** Players on the plain

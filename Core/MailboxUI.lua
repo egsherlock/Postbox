@@ -132,6 +132,10 @@ local OPTION_DEFAULTS = {
   -- screen -- the common action is the one-click one -- and because a player who
   -- has used it for a while has the other mapping in their hands.
   previewOnClick  = false,
+  -- The collect screen's third segment (Collect / Done / All). On: it is
+  -- what the screen has always offered, and it is the union of the other
+  -- two rather than a third idea to learn.
+  showAllTab      = true,
   -- The minimap icon's left-click snapshot (Core/MailMemory.lua). On: the
   -- feature is capture-light and idle when unused, and a feature nobody can
   -- find switched off does not exist.
@@ -1142,6 +1146,16 @@ function UI.RefreshCollectTabCounts()
     collect.UpdateTabCounts(panel)
   end
   UpdateCollectTabText()
+end
+
+-- Frozen: Core/OptionsPanel.lua calls this when the All-segment option
+-- changes. Synchronous for the same reason as the row layout below: it
+-- answers a click the player just made on a screen they are looking at.
+function UI.RefreshCollectSegments()
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect and collect.RefreshSegments then
+    collect.RefreshSegments(panel)
+  end
 end
 
 -- Frozen: Core/OptionsPanel.lua calls this when the compact-row option changes.

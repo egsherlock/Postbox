@@ -37,6 +37,23 @@ local function GetSkin()
   return nil
 end
 
+-- The HOST UI driving the window's look, or nil when the look is Postbox's
+-- own (either style). SkinAppliedBy is the truth once a window has been
+-- painted; before that -- the options panel opens from the minimap icon
+-- without a mailbox ever having been opened -- fall back to who claimed the
+-- skin slot, which login settled.
+local function HostSkinName()
+  local by = ns.SkinAppliedBy
+  if by == "ellesmereui" then return "EllesmereUI" end
+  if by == "elvui" then return "ElvUI" end
+  if by == "modern" then return nil end
+  if ns.Skin then
+    if _G.EllesmereUI then return "EllesmereUI" end
+    if _G.ElvUI then return "ElvUI" end
+  end
+  return nil
+end
+
 -- A host skin's repaint of a tagged panel fades every texture region the
 -- panel itself owns (that is how it substitutes its own art). Any art of
 -- OURS that must survive on such a panel therefore lives on a small child
@@ -243,6 +260,13 @@ local function Build()
           if ns.MailboxUI.RefreshCollectTabCounts then ns.MailboxUI.RefreshCollectTabCounts() end
         end)
 
+  cy = AddCheckbox(card, cy, L["OPT_ALL_TAB_TITLE"], L["OPT_ALL_TAB_DESC"],
+        function() return ns.MailboxUI.GetOption("showAllTab") end,
+        function(on)
+          ns.MailboxUI.SetOption("showAllTab", on)
+          if ns.MailboxUI.RefreshCollectSegments then ns.MailboxUI.RefreshCollectSegments() end
+        end)
+
   cy = AddCheckbox(card, cy, L["OPT_COMPACT_ROWS_TITLE"], L["OPT_COMPACT_ROWS_DESC"],
         function() return ns.MailboxUI.GetOption("compactRows") end,
         function(on)
@@ -258,11 +282,11 @@ local function Build()
         function(on) ns.MailboxUI.SetOption("previewOnClick", on) end)
 
   -- Recipient manager: a portrait button filling the space to the right of
-  -- the checkbox column, tall as the four rows. It makes the feature loud
+  -- the checkbox column, tall as the five rows. It makes the feature loud
   -- and shaves a whole row off the card. /postbox recipients is the other
   -- way in.
   local rmButton = ns.Theme.CreateButton(nil, card)
-  rmButton:SetSize(108, (ROW_H * 4) - 8)
+  rmButton:SetSize(108, (ROW_H * 5) - 8)
 
   -- The stock plate is a ~22px three-slice; stretched to portrait height it
   -- smears into pixel blocks (screenshot-verified). Under a host skin the
@@ -473,14 +497,51 @@ local function Build()
 
   y = EndSection(frame, card, y)
 
-  -- Window style (Core/Skin_Modern.lua). Shown only when no HOST skin owns
-  -- the windows: under EllesmereUI or ElvUI the choice would be a lie, so it
-  -- does not appear. The claim is made once at login, hence the reload note
-  -- in the tooltip and the chat line on change.
-  if not ns.Skin or ns.SkinAppliedBy == "modern" then
-    y = AddSectionHeading(frame, y, L["OPT_STYLE_HEADING"])
-    card = StartCard(frame, y)
-    cy = -12
+  -- Style. Always present, and it is the ONE place the addon talks about
+  -- how it looks: with a host UI it names the skin driving the window (the
+  -- sentence that used to sit in the bottom band, where it was both
+  -- misplaced and wrong -- it read "Postbox's own style" even when the
+  -- Blizzard style was the deliberate choice); without one it offers the
+  -- choice. Which of the two is built is settled by login, long before this
+  -- panel is first opened.
+  y = AddSectionHeading(frame, y, L["OPT_STYLE_HEADING"])
+  card = StartCard(frame, y)
+  cy = -12
+
+  local hostStyle = HostSkinName()
+  if hostStyle then
+    -- Read-only: under a host skin the dropdown would offer a choice the
+    -- addon cannot honour. The green dot is the "wired in correctly"
+    -- language the bottom band used to carry.
+    local row = CreateFrame("Frame", nil, card)
+    row:SetHeight(CHECK_H)
+    row:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
+    row:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
+
+    local dot = row:CreateTexture(nil, "OVERLAY")
+    dot:SetSize(7, 7)
+    dot:SetPoint("LEFT", row, "LEFT", 0, 0)
+    dot:SetColorTexture(0.38, 0.80, 0.44, 1)
+
+    local text = ns.Theme.CreateText(row, "label")
+    text:SetPoint("LEFT", dot, "RIGHT", 7, 0)
+    text:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    text:SetJustifyH("LEFT")
+    text:SetWordWrap(false)
+    text:SetText(L("OPT_STYLE_SYNCED", hostStyle))
+
+    row:EnableMouse(true)
+    row:SetScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(L("OPT_STYLE_SYNCED", hostStyle))
+      GameTooltip:AddLine(L("OPT_STYLE_SYNCED_DESC", hostStyle), 1, 1, 1, true)
+      GameTooltip:Show()
+    end)
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    MarkBottom(card, cy, CHECK_H)
+    cy = cy - ROW_H
+  else
     local styleItems = {
       { id = "blizzard", name = L["OPT_STYLE_BLIZZARD"] },
       { id = "modern",   name = L["OPT_STYLE_MODERN"] },
@@ -491,8 +552,8 @@ local function Build()
             if ns.MailboxUI.SetStyleChoice then ns.MailboxUI.SetStyleChoice(id) end
             ns.Print(L["MSG_STYLE_RELOAD"])
           end)
-    y = EndSection(frame, card, y)
   end
+  y = EndSection(frame, card, y)
 
   -- Minimap mail icon (Core/MinimapButton.lua). Resolved at click time like
   -- every other binding, so the section stays honest if the module is absent.
@@ -915,38 +976,26 @@ local function Build()
     y = EndSection(frame, card, y)
   end
 
-  -- Which look is painting the addon right now: a quiet band phrased as
-  -- reassurance -- "options synced with EllesmereUI" -- with a green status
-  -- light and wash for "successfully wired in", the addon version tucked in
-  -- the corner, and one more job: clicking it opens the bug-report popup
-  -- (the least intrusive home for that). Refreshed on every open rather
-  -- than baked in: skins claim ns.Skin at PLAYER_LOGIN and the EllesmereUI
-  -- handshake can resolve seconds later, after this panel was first built.
+  -- The footer: what this build is, and the one door out to a bug report.
+  -- It used to announce which look was painting the addon -- a sentence
+  -- that belongs with the Style section (and now lives there), and that
+  -- read "Postbox's own style" even when the Blizzard style had been chosen
+  -- deliberately. What is left is the two things a footer is for.
   y = y - 2
-  local GREEN = { 0.38, 0.80, 0.44 }
   local statusBand = CreateFrame("Button", nil, frame, "BackdropTemplate")
   statusBand:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, y)
   statusBand:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
   statusBand:SetHeight(24)
   ns.Theme.ApplyBand(statusBand)
 
-  -- Wash and dot live on an art holder: the band is a tagged panel, and a
-  -- host skin's repaint fades the band's own texture regions (which is why
-  -- both were invisible under EllesmereUI at first).
-  local bandArt = ArtHolder(statusBand)
-  local wash = bandArt:CreateTexture(nil, "ARTWORK")
-  wash:SetPoint("TOPLEFT", statusBand, "TOPLEFT", 1, -1)
-  wash:SetPoint("BOTTOMRIGHT", statusBand, "BOTTOMRIGHT", -1, 1)
-  wash:SetColorTexture(GREEN[1], GREEN[2], GREEN[3], 0.07)
-
   local statusText = ns.Theme.CreateText(statusBand, "bodySmall")
   statusText:SetPoint("CENTER", statusBand, "CENTER", 0, 0)
   statusText:SetJustifyH("CENTER")
   statusText:SetWordWrap(false)
-  local statusDot = bandArt:CreateTexture(nil, "OVERLAY")
-  statusDot:SetSize(7, 7)
-  statusDot:SetPoint("RIGHT", statusText, "LEFT", -7, 0)
-  statusDot:SetColorTexture(GREEN[1], GREEN[2], GREEN[3], 1)
+  -- Says what the click does. The band has always opened the bug report;
+  -- nothing on it ever said so.
+  statusText:SetText(L["OPT_REPORT_BUG"])
+  statusText:SetAlpha(0.85)
 
   -- The packager stamps the release TAG into the TOC, which already carries
   -- its own "v" -- do not add another.
@@ -955,19 +1004,6 @@ local function Build()
   versionText:SetJustifyH("RIGHT")
   versionText:SetText(tostring(ns.VERSION or ""))
   versionText:SetAlpha(0.55)
-
-  local function StyleName()
-    local by = ns.SkinAppliedBy
-    return (by == "ellesmereui" and "EllesmereUI")
-      or (by == "elvui" and "ElvUI")
-      or nil
-  end
-  local function RefreshStyleStatus()
-    local name = StyleName()
-    statusText:SetText(name and L("OPT_STYLE_SYNCED", name) or L["OPT_STYLE_OWN"])
-  end
-  RefreshStyleStatus()
-  frame.__refreshers[#frame.__refreshers + 1] = RefreshStyleStatus
 
   -- The bug-report popup: the report address and a one-line setup summary,
   -- each in a copyable box. No browser can be opened from in-game, so
@@ -1142,15 +1178,17 @@ local function Build()
   Panel._toggleBugReport = ToggleBugReport
 
   statusBand:SetScript("OnClick", ToggleBugReport)
+  -- The band's own text carries the hover now; the green wash it used to
+  -- brighten went with the style sentence to the Style section.
   statusBand:SetScript("OnEnter", function(self)
-    wash:SetColorTexture(GREEN[1], GREEN[2], GREEN[3], 0.13)
+    statusText:SetAlpha(1)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetText(L["OPT_BUG_TIP_TITLE"])
     GameTooltip:AddLine(L["OPT_BUG_TIP_DESC"], 1, 1, 1, true)
     GameTooltip:Show()
   end)
   statusBand:SetScript("OnLeave", function()
-    wash:SetColorTexture(GREEN[1], GREEN[2], GREEN[3], 0.07)
+    statusText:SetAlpha(0.85)
     GameTooltip:Hide()
   end)
   MarkBottom(frame, y, 24)
