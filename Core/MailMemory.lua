@@ -739,6 +739,14 @@ local function OnMailboxClosed()
   PersistOnClose()
 end
 
+-- The real mailbox supersedes its memory: the moment a mail session opens,
+-- the memory window closes itself rather than sitting beside the truth
+-- going stale.
+local function OnMailboxOpened()
+  local frame = MM._frame
+  if frame and frame:IsShown() then frame:Hide() end
+end
+
 -- Registration results surface in Diagnose (`registered`, declared in
 -- section 1): a name this client does not know is refused by the bus, and
 -- an invisible refusal cost three blind releases of detector archaeology.
@@ -748,6 +756,10 @@ if bus then
   registered.closed = bus.Register("MAIL_CLOSED", OnMailboxClosed)
   registered.interaction = bus.Register("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", function(_, kind)
     if IsMailInteraction(kind) then OnMailboxClosed() end
+  end)
+  registered.show = bus.Register("MAIL_SHOW", OnMailboxOpened)
+  registered.showInteraction = bus.Register("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", function(_, kind)
+    if IsMailInteraction(kind) then OnMailboxOpened() end
   end)
   registered.pending = bus.Register("UPDATE_PENDING_MAIL", OnPendingMail)
   -- Item purchases and commodity purchases announce themselves on different

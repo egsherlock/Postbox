@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.24.7
+
+- The mailbox memory window closes itself when you open a real mailbox —
+  the actual inbox supersedes the memory of it.
+
 ## 1.24.6
 
 - **Found a structural way the "+ new mail" badge could never show**: if a
