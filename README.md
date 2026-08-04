@@ -20,9 +20,11 @@ install it and open a mailbox.
 ## What it does
 
 - **Empties a full mailbox in one click, safely.** Every server command is confirmed
-  before the next is sent, items the server refuses are skipped instead of ending the
-  run, and anything that genuinely can't be collected is reported in the game's own
-  words rather than failing silently.
+  before the next is sent, bag space is checked before anything is opened, and items
+  the game refuses are counted and explained in its own words rather than skipped
+  quietly.
+- **Keeps the books.** A running total of what a run earned and what it spent —
+  proceeds, postage and C.O.D. together.
 - **Knows who you mail.** Names complete in place as you type — Tab accepts. Recent
   correspondents, alts, friends (Battle.net included) and guildmates are one click
   away, favourites get a star, and a manager window curates the lot.
@@ -48,10 +50,25 @@ install it and open a mailbox.
 
 ## Collecting
 
-Three views — Collect, Done, All — with one-click sweeps for expired, sold, bought
-and cancelled auction mail. Shift-click a mail to look inside without collecting;
-hover an attachment for its real item tooltip. A finished run reports what it earned
-and spent. Compact rows fit half again as many mails in the same window.
+Three views — Collect, Done, All — with one-click sweeps that pick out a single kind
+of mail: expired, sold, bought, cancelled, or everything else. Shift-click a mail to
+look inside without collecting; hover an attachment for its real item tooltip.
+Compact rows fit half again as many mails in the same window.
+
+A banner under the list keeps a running **total earned and total spent** — proceeds,
+postage and C.O.D. charges — and the finished run repeats it in chat.
+
+**Bag space is checked before the run starts.** If nothing will fit, Postbox says so
+and stops before a single mail is marked read; if only part of it fits, it offers to
+collect exactly that much and says how many. The offer is verified by fingerprint
+when you accept, so a mailbox that reindexes while the dialog is open still collects
+the mail the dialog described.
+
+When the game refuses an item — you already have one, it is unique, you cannot carry
+more — that mail is **marked and counted rather than skipped quietly**. The title bar
+keeps a `Stuck: 2` tally, the row carries the reason, and where the game supplied one
+Postbox quotes it instead of guessing. The count follows through to the mailbox
+memory, so it is still there hours later.
 
 ## Sending
 

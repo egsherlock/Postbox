@@ -10,6 +10,9 @@ Retail only (12.0.7–12.1.x).
 ## What it does
 
 - **Empties a full mailbox in one click, safely** — or just the mail you pick out.
+- **Checks your bags first.** If what is waiting will not fit, it says so before anything is opened, and offers to take what does.
+- **Keeps count of the gold** — total earned and total spent, per run.
+- **Says what it could not take, and why**, instead of skipping it quietly.
 - **Knows who you mail.** Names complete as you type; recent correspondents, alts, friends and guildmates are one click away, and favourites get a star.
 - **Attaches items the moment you click them** — right-click anything in your bags, even while reading a mail.
 - **Remembers what was in the box**, so you can check what is waiting without walking to a mailbox.
@@ -37,6 +40,28 @@ window.
 ![A full inbox, cleared in one pass](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/collect.png)
 
 *Three views, sweeps that pick out one kind of mail at a time, and a running total of what the run earned and spent.*
+
+---
+
+## It counts your gold, and it counts what it could not take
+
+A banner under the list keeps a running **total earned and total spent** — the sale
+proceeds, the postage, the C.O.D. charges — so a session of auction mail tells you
+what it was actually worth rather than leaving you to work it out from your gold
+going up and down. The finished run says the same thing in chat.
+
+**Bag space is checked before the run starts, not discovered during it.** If your
+bags cannot hold what is waiting, Postbox says so and stops before a single mail is
+marked read. If only some of it fits, it offers to collect exactly that much and
+tells you how many — so a full-bags mailbox does not become half-collected mail and
+a wall of red error text.
+
+And when the game refuses a specific item — you already have one, it is unique, you
+cannot carry more — that mail is **marked and counted rather than silently skipped**.
+The title bar keeps a `Stuck: 2` tally, the mail itself carries the reason on its own
+row, and where the game gave a reason Postbox quotes it rather than guessing. The
+count follows through to the mailbox memory, so "could not be collected" is still
+there hours later when you have made room.
 
 ---
 
@@ -123,14 +148,9 @@ switches.
 Using **ElvUI**? It matches your theme, WindTools borders included.
 
 And if you run a UI pack but prefer Postbox's own look, you can simply say so — the
-window style is yours either way. The options panel is plain about which is
-happening: a green dot reads *Inheriting EllesmereUI settings* when Postbox is
-wearing your pack's look, and a neutral one reads *Overriding EllesmereUI* when you
-have chosen otherwise.
-
-![The options panel](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/options.png)
-
-*Everything in one panel, wearing whatever your window is wearing. Border, size and background opacity default to matching your UI pack, so a change there carries here without you touching anything.*
+window style is yours either way. Postbox is plain about which is happening: a green
+dot reads *Inheriting EllesmereUI settings* when it is wearing your pack's look, and
+a neutral one reads *Overriding EllesmereUI* when you have chosen otherwise.
 
 ---
 
@@ -149,14 +169,30 @@ built in.
 
 ---
 
-## The rest of the options
+## One panel, behind the cog
 
-Compact mail rows. Tab mail counts. The Mail-tab caption — counts, a total, a dot, or
-nothing at all. Click-to-open versus click-to-collect. Window grid docking. And the
-mail alerts: a sound, a flash on the minimap icon, and whether the mailbox memory is
-kept at all.
+Postbox is meant to be usable without configuring anything, so nothing here is
+required reading — but if you want the window to work your way, it is all in one
+place.
 
-All of it behind the cog in the window's title bar.
+**How the list behaves.** Compact rows, which fit half again as many mails on
+screen. Mail counts on the tabs. The Mail tab's caption — counts, a running total, a
+single dot, or nothing at all. Whether a left-click opens a mail or collects it, and
+whether the All view is offered beside Collect and Done.
+
+**How mail is announced.** A sound when new mail arrives, a flash on the minimap
+icon, and whether the mailbox memory is kept at all.
+
+**The minimap icon.** On or off, its style from more than two dozen, its size, where
+it sits, and whether it takes your accent colour, a glow, or a pulse while mail
+waits.
+
+**How the window looks.** Style, border, border size and background opacity — the
+section above.
+
+![The options panel](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/options.png)
+
+*One panel, wearing whatever your window is wearing. It opens from the cog in the title bar, or from a right-click on the minimap icon.*
 
 ---
 
