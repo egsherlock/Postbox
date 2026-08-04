@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.33.1
+
+- **Fixed: on Postbox Modern, the window border settings appeared to eat the
+  window rather than draw a border.** Every step up in border size took
+  another slice out of the window's background instead of thickening its
+  edge, the top looked exempt because the title bar covered it, and size 1
+  looked like nothing at all. The border is a faint light line, and the
+  window's background was being held back by its full width to make room for
+  it — so all a wider setting did was open a wider see-through gap. The
+  background now runs to the window's edge and the line sits on top of it,
+  which is what it was always meant to do. This was there before the setting
+  existed; at one pixel it was too small to see.
+- **"Strong" now looks strong.** It sat close enough to "Light" that the
+  three border choices read as one choice with two decoys.
+- **"Following your EllesmereUI settings" moved out of the Appearance box**
+  and onto the Appearance heading, where the minimap section's switch sits.
+  It describes the whole section rather than any setting in it, and inside
+  the box it read as another row.
+
 ## 1.33.0
 
 - **You can now choose Postbox's own look even if you run EllesmereUI or

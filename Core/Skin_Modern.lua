@@ -90,7 +90,12 @@ end
 -- ------------------------------------------------------------------
 
 local BORDER_NONE = "none"
-local BORDER_ALPHA = { none = 0, light = 0.085, strong = 0.200 }
+-- `light` is the authored default and must stay exactly what it was: it is the
+-- edge the whole flat look was tuned around. `strong` is a long way above it
+-- rather than a nudge -- three choices a player cannot tell apart are one
+-- choice with two decoys, and against a near-black fill 0.20 was still reading
+-- as "the same line again".
+local BORDER_ALPHA = { none = 0, light = 0.085, strong = 0.320 }
 local BORDER_ORDER = { BORDER_NONE, "light", "strong" }
 local BORDER_NAME_KEY = {
   none   = "OPT_BORDER_NONE",
@@ -236,7 +241,22 @@ local function Paint(frame, color, outer)
     -- client draws unpredictably. None is expressed as a real edge at zero
     -- alpha, which is nothing to look at and well-defined to draw.
     edgeSize = math.max(edge, unit),
-    insets = { left = edge, right = edge, top = edge, bottom = edge },
+    -- ZERO, and this is the whole reason a wide border used to look like a
+    -- bite taken out of the window.
+    --
+    -- `insets` do not describe the border, they hold the BACKGROUND back from
+    -- the frame's edge. That is right for an opaque border, which would cover
+    -- the gap it makes. This border is a faint light line -- 0.085 alpha, 92%
+    -- see-through -- so insetting the fill by its width did not draw a wider
+    -- border, it carved a transparent ring out of the window and put almost
+    -- nothing in it. The wider the setting, the more window went missing; at
+    -- one pixel it was invisible, which is why this survived until the size
+    -- became adjustable.
+    --
+    -- At zero the fill runs to the frame's edge and the line sits ON it,
+    -- brightening the outermost pixels. Which is what "separates by light"
+    -- meant in the first place.
+    insets = { left = 0, right = 0, top = 0, bottom = 0 },
   })
   frame:SetBackdropColor(color[1], color[2], color[3], fill)
   frame:SetBackdropBorderColor(C.border[1], C.border[2], C.border[3], alpha)

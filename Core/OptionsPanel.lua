@@ -122,12 +122,15 @@ end
 -- with their own inner cursor; EndSection sizes the card to its content and
 -- returns the panel cursor moved past it. The two halves are separate
 -- because the minimap section puts its master checkbox BETWEEN them.
+-- Returns the next y AND the heading itself, so a section that puts something
+-- on the heading line can size it against the heading rather than against a
+-- guessed offset.
 local function AddSectionHeading(frame, y, title)
   local heading = ns.Theme.CreateText(frame, "heading")
   heading:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
   heading:SetWordWrap(false)
   heading:SetText(title)
-  return y - 20
+  return y - 20, heading
 end
 
 local function StartCard(frame, y)
@@ -142,8 +145,9 @@ local function StartCard(frame, y)
 end
 
 local function BeginSection(frame, y, title)
-  y = AddSectionHeading(frame, y, title)
-  return StartCard(frame, y), y
+  local heading
+  y, heading = AddSectionHeading(frame, y, title)
+  return StartCard(frame, y), y, heading
 end
 
 local function EndSection(frame, card, y)
@@ -575,7 +579,9 @@ local function Build()
   -- consequence of the style rather than a peer of it. Splitting them also
   -- spent a whole section's chrome (a heading, a gap and a card's padding) on
   -- one 22px line, which was the worst ratio in the panel.
-  card, y = BeginSection(frame, y, L["OPT_APPEARANCE_HEADING"])
+  local appHeadingY = y
+  local appHeading
+  card, y, appHeading = BeginSection(frame, y, L["OPT_APPEARANCE_HEADING"])
   cy = -12
 
   local installedHost = InstalledHostName()
@@ -605,27 +611,34 @@ local function Build()
           end
         end)
 
-  -- The inheritance line. Only where there is something to inherit FROM, and
-  -- it answers one question: is this window wearing your UI pack's look, or
-  -- Postbox's? Green for inheriting, because that is the state where Postbox
-  -- has wired itself into something else correctly -- the same language the
-  -- bottom band used to carry. Neutral grey for overriding: a deliberate
-  -- choice is not a warning, and colouring it as one would be a scold.
+  -- The inheritance badge. Only where there is something to inherit FROM, and
+  -- it answers one question about the section as a whole: is this window
+  -- wearing your UI pack's look, or Postbox's? Green for inheriting, because
+  -- that is the state where Postbox has wired itself into something else
+  -- correctly -- the same language the bottom band used to carry.
   if installedHost then
-    local row = CreateFrame("Frame", nil, card)
-    row:SetHeight(CHECK_H)
-    row:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
-    row:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
+    -- On the HEADING line, right-aligned, the way the minimap section hangs its
+    -- master switch there. It belongs to the whole section rather than to any
+    -- one row in it -- it is the answer to "where is this section's look coming
+    -- from" -- and inside the card it read as another setting, indented level
+    -- with the controls it was actually describing.
+    --
+    -- Sized against the heading rather than a guessed offset: the badge's top
+    -- and height are the heading's, so anything anchored to its vertical centre
+    -- is on the heading's centre line by construction, whatever font the theme
+    -- gives either of them.
+    local badge = CreateFrame("Frame", nil, frame)
+    badge:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, appHeadingY)
+    badge:SetHeight(math.max(1, math.ceil(appHeading:GetStringHeight() or 12)))
 
-    local dot = row:CreateTexture(nil, "OVERLAY")
+    local dot = badge:CreateTexture(nil, "OVERLAY")
     dot:SetSize(7, 7)
-    dot:SetPoint("LEFT", row, "LEFT", 0, 0)
 
-    local text = ns.Theme.CreateText(row, "secondary")
-    text:SetPoint("LEFT", dot, "RIGHT", 7, 0)
-    text:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-    text:SetJustifyH("LEFT")
+    local text = ns.Theme.CreateText(badge, "secondary")
+    text:SetPoint("RIGHT", badge, "RIGHT", 0, 0)
+    text:SetJustifyH("RIGHT")
     text:SetWordWrap(false)
+    dot:SetPoint("RIGHT", text, "LEFT", -6, 0)
 
     -- Re-derived on every open rather than fixed at build. It describes the
     -- LIVE session -- who is painting right now, not what is saved for the next
@@ -638,35 +651,41 @@ local function Build()
     -- one names the host twice: once for the window, once for the minimap it
     -- still follows) and ns.L formats through string.format WITHOUT a pcall,
     -- so each is given exactly its own.
-    local rowTitle, rowDesc
+    local badgeTitle, badgeDesc
     local function RefreshInheritance()
       if HostSkinName() then
         dot:SetColorTexture(0.38, 0.80, 0.44, 1)
-        rowTitle = L("OPT_STYLE_INHERIT", installedHost)
-        rowDesc  = L("OPT_STYLE_INHERIT_DESC", installedHost)
+        badgeTitle = L("OPT_STYLE_INHERIT", installedHost)
+        badgeDesc  = L("OPT_STYLE_INHERIT_DESC", installedHost)
       else
         -- Neutral grey, not a warning colour: a deliberate choice is not a
         -- fault, and dressing it as one would be a scold.
         dot:SetColorTexture(0.54, 0.54, 0.58, 1)
-        rowTitle = L("OPT_STYLE_OVERRIDE", installedHost)
-        rowDesc  = L("OPT_STYLE_OVERRIDE_DESC", installedHost, installedHost)
+        badgeTitle = L("OPT_STYLE_OVERRIDE", installedHost)
+        badgeDesc  = L("OPT_STYLE_OVERRIDE_DESC", installedHost, installedHost)
       end
-      text:SetText(rowTitle)
+      text:SetText(badgeTitle)
+      -- The badge is only as wide as what it currently says: dot, gap, text.
+      -- Re-measured here because the two states are different lengths, and a
+      -- width left over from the other one would put the hover target in the
+      -- wrong place.
+      badge:SetWidth(7 + 6 + math.ceil(text:GetStringWidth() or 0))
     end
     RefreshInheritance()
     frame.__refreshers[#frame.__refreshers + 1] = RefreshInheritance
 
-    row:EnableMouse(true)
-    row:SetScript("OnEnter", function(self)
+    -- The pointer, not the button. This sits over the section heading, and a
+    -- frame that swallows clicks to show a tooltip is the defect 1.30.5 fixed
+    -- across every window -- there it stopped the title bar being draggable.
+    badge:EnableMouse(true)
+    if badge.SetPropagateMouseClicks then badge:SetPropagateMouseClicks(true) end
+    badge:SetScript("OnEnter", function(self)
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(rowTitle)
-      GameTooltip:AddLine(rowDesc, 1, 1, 1, true)
+      GameTooltip:SetText(badgeTitle)
+      GameTooltip:AddLine(badgeDesc, 1, 1, 1, true)
       GameTooltip:Show()
     end)
-    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    MarkBottom(card, cy, CHECK_H)
-    cy = cy - ROW_H
+    badge:SetScript("OnLeave", function() GameTooltip:Hide() end)
   end
 
   -- The chosen style's own controls. Whichever skin claimed the window
