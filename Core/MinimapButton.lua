@@ -315,10 +315,61 @@ local function FindEuiMailButton()
   end
 end
 
+-- Forward: the tooltip belongs with the button in section 6, but the
+-- EllesmereUI overlay below needs it too.
+local ShowTooltip
+
+-- In EllesmereUI's skin mode Postbox restyles THEIR mail button instead of
+-- drawing its own, which left the icon looking like ours and behaving like
+-- theirs: their one-line "You have unread mail" tooltip, and no way to
+-- reach the mailbox memory or the options at all.
+--
+-- The fix is a transparent button laid over theirs rather than hooks into
+-- their scripts. Hooking would mean widening their RegisterForClicks so
+-- right-clicks reach OUR handler -- which also delivers every right-click
+-- to THEIR handler, whatever they later decide that should do. An overlay
+-- takes the input it wants and touches nothing of theirs; removing it hands
+-- the button back exactly as found.
+--
+-- Position, size and visibility stay EllesmereUI's throughout: the overlay
+-- follows the button and offers only what Postbox owns -- the memory, the
+-- options, and a tooltip that actually describes the mailbox. It carries no
+-- drag or lock, because where the icon sits is not ours to change here.
+local function EnsureEuiOverlay(btn)
+  if btn.__pbOverlay then
+    btn.__pbOverlay:Show()
+    return btn.__pbOverlay
+  end
+
+  local overlay = CreateFrame("Button", nil, btn)
+  overlay:SetAllPoints(btn)
+  overlay:SetFrameLevel((btn:GetFrameLevel() or 1) + 2)
+  overlay:EnableMouse(true)
+  overlay:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  overlay.__pbTooltipOwner = true
+
+  overlay:SetScript("OnEnter", function(self) ShowTooltip(self, true) end)
+  overlay:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  overlay:SetScript("OnClick", function(self, mouseButton)
+    if mouseButton == "RightButton" then
+      local Panel = ns.OptionsPanel
+      if Panel and type(Panel.Toggle) == "function" then Panel.Toggle(self) end
+      return
+    end
+    local Memory = ns.MailMemory
+    if Memory and type(Memory.Toggle) == "function" then Memory.Toggle() end
+  end)
+
+  btn.__pbOverlay = overlay
+  return overlay
+end
+
 local function ApplyEuiSkin()
   local btn = FindEuiMailButton()
   local icon = btn and btn._icon
   if not icon then return false end
+
+  EnsureEuiOverlay(btn)
 
   if not euiSkin.saved then
     local w, h = icon:GetSize()
@@ -418,6 +469,10 @@ RestoreEuiSkin = function()
   local btn = euiSkin.button
   local saved = euiSkin.saved
   if not (btn and saved) then return end
+
+  -- Hand their button back its own input. Hidden rather than destroyed:
+  -- frames cannot be, and the enable/disable cycle can run repeatedly.
+  if btn.__pbOverlay then btn.__pbOverlay:Hide() end
 
   btn._upAtlas, btn._overAtlas = saved.up, saved.over
   local icon = btn._icon
@@ -643,7 +698,10 @@ end
 -- 6. The button
 -------------------------------------------------------------
 
-local function ShowTooltip(button)
+-- `hostMode` is the EllesmereUI overlay: same description of the mailbox,
+-- but without the gestures Postbox does not own there (the icon's position
+-- is EllesmereUI's, so it offers no drag and no lock).
+ShowTooltip = function(button, hostMode)
   GameTooltip:SetOwner(button, "ANCHOR_BOTTOMLEFT")
 
   -- One line per gesture, the gesture in gold and its effect in the hint
@@ -725,11 +783,14 @@ local function ShowTooltip(button)
     ActionLine("MINIMAP_TIP_ACT_CLICK", "MINIMAP_TIP_D_MEMORY")
   end
   ActionLine("MINIMAP_TIP_ACT_RIGHT", "MINIMAP_TIP_D_OPTIONS")
-  local locked = Settings().lock
-  if not locked then
-    ActionLine("MINIMAP_TIP_ACT_DRAG", "MINIMAP_TIP_D_MOVE")
+  -- Moving and locking are Postbox's to offer only on Postbox's own icon.
+  if not hostMode then
+    local locked = Settings().lock
+    if not locked then
+      ActionLine("MINIMAP_TIP_ACT_DRAG", "MINIMAP_TIP_D_MOVE")
+    end
+    ActionLine("MINIMAP_TIP_ACT_ALT", locked and "MINIMAP_TIP_D_UNLOCK" or "MINIMAP_TIP_D_LOCK")
   end
-  ActionLine("MINIMAP_TIP_ACT_ALT", locked and "MINIMAP_TIP_D_UNLOCK" or "MINIMAP_TIP_D_LOCK")
   GameTooltip:Show()
 end
 
@@ -894,7 +955,10 @@ local function Build()
   flash:SetScript("OnStop", Settle)
   button.flash = flash
 
-  button:SetScript("OnEnter", ShowTooltip)
+  -- Wrapped, not passed directly: OnEnter hands the handler (self, motion),
+  -- and that second argument would arrive as `hostMode` and quietly strip
+  -- the drag and lock lines from our OWN icon's tooltip.
+  button:SetScript("OnEnter", function(self) ShowTooltip(self) end)
   button:SetScript("OnLeave", function() GameTooltip:Hide() end)
   button:SetScript("OnClick", function(self, mouseButton)
     if IsShiftKeyDown() then return end -- shift is the drag modifier

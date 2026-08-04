@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.32.0
+
+- **Under EllesmereUI, the mail icon does everything it does everywhere
+  else.** In that mode Postbox restyles EllesmereUI's own mail button
+  rather than drawing its own — so the icon looked like Postbox's but
+  behaved like theirs: a one-line "You have unread mail" tooltip, and no
+  way to reach the mailbox memory or the options from it at all. It now
+  carries the full Postbox tooltip — what has arrived since you looked,
+  what is waiting broken down by sender, what could not be collected — and
+  left-click opens the mailbox memory, right-click the options.
+- Where the icon sits stays EllesmereUI's business: their button keeps its
+  position, size and visibility, and the tooltip offers no move or lock
+  there, because those are not Postbox's to give in that mode.
+
 ## 1.31.0
 
 - **The new-mail flash is smooth now, and the judder had a cause worth
