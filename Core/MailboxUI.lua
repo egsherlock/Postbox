@@ -171,28 +171,65 @@ function UI.SetOption(key, value)
   if profile then profile[key] = value == true end
 end
 
--- The window style for a session with NO host-UI skin: which first-party
--- look Postbox paints itself. A string with its own accessors, like the tab
--- caption below. Read once, at PLAYER_LOGIN, by Core/Skin_Modern.lua's
--- claim -- which is why a change needs a /reload and why these accessors
+-- The window style: which look paints Postbox's windows. A string with its own
+-- accessors, like the tab caption below. Read once, at PLAYER_LOGIN, by each
+-- skin's claim -- which is why a change needs a /reload and why these accessors
 -- never repaint anything themselves.
---   blizzard  the built-in warm-stone Blizzard-native look (default)
+--   host      the installed host UI's skin (EllesmereUI, or ElvUI)
+--   blizzard  the built-in warm-stone Blizzard-native look
 --   modern    the first-party flat skin (Core/Skin_Modern.lua)
--- Under EllesmereUI or ElvUI this setting is inert: those skins outrank it.
-local STYLE_CHOICES = { blizzard = true, modern = true }
+--
+-- This setting now OUTRANKS a host UI. It did not always: the host skin used to
+-- win structurally and this value was inert under one. A player who prefers
+-- Postbox's own look to the one their UI pack imposes could not say so, which
+-- is the whole reason for the change.
+--
+-- "host" is the default wherever a host is installed, so nothing changes for
+-- anyone who does not go looking for this.
+local STYLE_CHOICES = { host = true, blizzard = true, modern = true }
+
+local function HostInstalled()
+  return (_G.EllesmereUI or _G.ElvUI) and true or false
+end
+UI.HostInstalled = HostInstalled
 
 function UI.GetStyleChoice()
   local store = ns.Store
-  local stored = store and store.Get and store.Get("profile.style")
+  local profile = store and store.Get and store.Get("profile")
+  local stored = profile and profile.style
+
+  -- MIGRATION, and the reason this is not just a nil check. Before the setting
+  -- could override a host UI it was inert under one, so an existing profile's
+  -- "blizzard" or "modern" was never a statement about what that player wanted
+  -- while running EllesmereUI -- it is whatever they last picked on a plain UI,
+  -- or the old default. Honouring it now would silently strip the host skin
+  -- from someone who never asked. Until they choose from the host-aware
+  -- control, a detected host wins, which is exactly what they see today.
+  if HostInstalled() and not (profile and profile.styleHostAware) then
+    return "host"
+  end
+
   if STYLE_CHOICES[stored] then return stored end
-  return "blizzard"
+  return HostInstalled() and "host" or "blizzard"
 end
 
 function UI.SetStyleChoice(style)
   if not STYLE_CHOICES[style] then return end
   local store = ns.Store
   local profile = store and store.EnsurePath and store.EnsurePath("profile")
-  if profile then profile.style = style end
+  if not profile then return end
+  profile.style = style
+  -- The choice was made with the host in view, so the migration above stops
+  -- speaking for this profile from here on.
+  profile.styleHostAware = true
+end
+
+-- The gate both host skins consult before claiming. Kept here rather than
+-- duplicated in each: they claim through different handshakes (EllesmereUI
+-- defers behind a watchdog, ElvUI behind a timer) and the one thing they must
+-- agree on is whether the player asked for them at all.
+function UI.HostSkinAllowed()
+  return UI.GetStyleChoice() == "host"
 end
 
 -- The Mail tab's caption mode -- how the inbox shows through the tab while

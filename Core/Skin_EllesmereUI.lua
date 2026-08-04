@@ -1325,6 +1325,15 @@ end
 local function Activate()
   if not S then return end
 
+  -- The player can prefer Postbox's own look to their UI pack's. Checked here
+  -- rather than at the boot handler because this file reaches Activate from
+  -- several paths -- the official handshake, its watchdog, and the compat shim
+  -- -- and every one of them must respect the choice.
+  local UI = ns.MailboxUI
+  if UI and type(UI.HostSkinAllowed) == "function" and not UI.HostSkinAllowed() then
+    return
+  end
+
   -- Handoff with Core/Skin_ElvUI.lua.
   --
   -- Ordinarily this file wins: the ElvUI skin tests _G.EllesmereUI at

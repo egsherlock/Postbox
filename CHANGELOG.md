@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.33.0
+
+- **You can now choose Postbox's own look even if you run EllesmereUI or
+  ElvUI.** Until now a UI pack always won: it dresses your whole interface,
+  so it dressed Postbox too, and the style setting was ignored while one was
+  installed. That is still the default and nothing changes unless you go
+  looking — but it is a default now rather than a rule, and the Window style
+  dropdown offers your UI pack, Blizzard, and Postbox Modern wherever a pack
+  is present.
+- **The options panel says which of those is happening.** A green dot under
+  the style reads "Following your EllesmereUI settings" when Postbox is
+  wearing your pack's look; a grey one reads "Overriding EllesmereUI" when
+  you have chosen otherwise. Hovering either explains what it covers — and
+  what it does not: your minimap icon still belongs to your pack whichever
+  window style you pick, because that is their minimap.
+- **Style and Appearance are one section now.** They were never really two:
+  the border, border size and background opacity controls belong to whichever
+  style is painting the window, so they sat under a heading of their own
+  describing settings that were a consequence of the one above. One card,
+  shorter panel, and the controls follow the style you choose.
+- **Postbox Modern has its own border and transparency settings.** Choosing
+  it no longer means giving up the three controls a UI pack offered you: it
+  brings a border weight, a border thickness and a background opacity of its
+  own, and changes apply the moment you pick them rather than waiting for a
+  reload.
+- Under a UI pack, Postbox Modern leaves your tooltips alone. The game's
+  tooltip is shared with the rest of your interface and your pack has already
+  styled it; choosing a window style is not a reason for Postbox to take that
+  over.
+
 ## 1.32.3
 
 - **Nothing you can see changed.** This one is housekeeping: the favourite

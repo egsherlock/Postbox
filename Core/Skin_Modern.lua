@@ -69,6 +69,134 @@ local function Accent()
 end
 
 -- ------------------------------------------------------------------
+-- Appearance settings
+--
+-- The same contract Core/Skin_EllesmereUI.lua publishes, so Core/OptionsPanel
+-- builds the identical three controls without knowing which skin answers them.
+-- Under a host UI those controls read that UI's own configuration and default
+-- to "match it"; here there is nothing above us to match, so the default is
+-- simply what this skin was authored with.
+--
+-- Modern draws one border and it is a faint LIGHT hairline, so "style" cannot
+-- mean a texture the way it does for a UI pack. It means weight of light --
+-- how present the edge is -- and size means how thick. Both are worth asking:
+-- a thin bright edge and a thick faint one are different looks, not the same
+-- one twice.
+--
+-- All three apply to the WINDOW's outer edge and fill only. The hairlines
+-- between panels, inputs and buttons inside it stay fixed: they are what
+-- separates one control from the next, and a player asking for a heavier
+-- window border is not asking for every seam in the window to thicken.
+-- ------------------------------------------------------------------
+
+local BORDER_NONE = "none"
+local BORDER_ALPHA = { none = 0, light = 0.085, strong = 0.200 }
+local BORDER_ORDER = { BORDER_NONE, "light", "strong" }
+local BORDER_NAME_KEY = {
+  none   = "OPT_BORDER_NONE",
+  light  = "OPT_BORDER_LIGHT",
+  strong = "OPT_BORDER_STRONG",
+}
+
+local DEFAULT_BORDER_STYLE = "light"
+local DEFAULT_BORDER_SIZE  = 1
+-- Read from the palette rather than written twice, so the authored alpha stays
+-- the single source of what "default" means.
+local DEFAULT_BG_OPACITY   = C.window[4]
+
+local function GetProfile()
+  return ns.Store.EnsurePath("profile", {})
+end
+
+function Skin.GetBorderChoices()
+  local out = {}
+  for i = 1, #BORDER_ORDER do
+    local key = BORDER_ORDER[i]
+    out[i] = { key = key, name = ns.L[BORDER_NAME_KEY[key]] }
+  end
+  return out
+end
+
+function Skin.GetBorderStyle()
+  local saved = GetProfile().modernBorder
+  if BORDER_ALPHA[saved] then return saved end
+  return DEFAULT_BORDER_STYLE
+end
+
+function Skin.IsBorderDefault()
+  return GetProfile().modernBorder == nil
+end
+
+function Skin.SetBorderStyle(key)
+  if not BORDER_ALPHA[key] then return end
+  GetProfile().modernBorder = key
+  Skin.ApplyAppearance()
+end
+
+function Skin.ResetBorder()
+  GetProfile().modernBorder = nil
+  Skin.ApplyAppearance()
+end
+
+function Skin.GetBorderSize()
+  local saved = tonumber(GetProfile().modernBorderSize)
+  if saved then return math.max(1, math.min(4, saved)) end
+  return DEFAULT_BORDER_SIZE
+end
+
+function Skin.IsBorderSizeDefault()
+  return GetProfile().modernBorderSize == nil
+end
+
+function Skin.SetBorderSize(step)
+  GetProfile().modernBorderSize = tonumber(step) or DEFAULT_BORDER_SIZE
+  Skin.ApplyAppearance()
+end
+
+function Skin.ResetBorderSize()
+  GetProfile().modernBorderSize = nil
+  Skin.ApplyAppearance()
+end
+
+function Skin.GetBgOpacity()
+  local saved = tonumber(GetProfile().modernBgOpacity)
+  if saved then return math.max(0, math.min(1, saved)) end
+  return DEFAULT_BG_OPACITY
+end
+
+function Skin.IsBgOpacityDefault()
+  return GetProfile().modernBgOpacity == nil
+end
+
+function Skin.SetBgOpacity(value)
+  GetProfile().modernBgOpacity = math.max(0, math.min(1, tonumber(value) or 1))
+  Skin.ApplyAppearance()
+end
+
+function Skin.ResetBgOpacity()
+  GetProfile().modernBgOpacity = nil
+  Skin.ApplyAppearance()
+end
+
+-- The title strip is part of the window, so it fades with it -- a solid bar
+-- floating over a transparent window would read as a separate object. It is
+-- told apart from the window by COLOUR (0.105 against 0.055), not by opacity,
+-- so it stays distinguishable at every setting that shows anything at all.
+--
+-- Scaled rather than set, so the authored pair survives exactly at the default:
+-- 0.94 * (0.95/0.94) is 0.95, the value written in the palette.
+function Skin.TitleAlpha()
+  local ratio = (DEFAULT_BG_OPACITY > 0) and (C.title[4] / DEFAULT_BG_OPACITY) or 1
+  return math.max(0, math.min(1, Skin.GetBgOpacity() * ratio))
+end
+
+-- Every window this skin has painted. Weak-keyed, so a window going away takes
+-- its entry with it. Appearance changes apply to all of them at once -- the
+-- options panel is a Postbox window too, and watching it take the change you
+-- just made is most of how you judge the change.
+Skin._windows = setmetatable({}, { __mode = "k" })
+
+-- ------------------------------------------------------------------
 -- Primitives
 -- ------------------------------------------------------------------
 
@@ -82,20 +210,57 @@ local function EnsureBackdrop(frame)
   return true
 end
 
-local function Paint(frame, color)
+-- `outer` marks the window's own frame -- the one edge and fill the appearance
+-- settings speak for. Everything else keeps the authored hairline: those seams
+-- separate one control from the next and are not what "window border" means.
+local function Paint(frame, color, outer)
   if not EnsureBackdrop(frame) then return end
-  local edge = Hairline(frame)
+
+  local unit = Hairline(frame)
+  local edge, alpha = unit, C.border[4]
+  local fill = color[4]
+
+  if outer then
+    edge  = unit * Skin.GetBorderSize()
+    alpha = BORDER_ALPHA[Skin.GetBorderStyle()] or C.border[4]
+    fill  = Skin.GetBgOpacity()
+  end
+
   -- Built per frame rather than shared: the edge is scale-dependent, and a
   -- shared table would hand one frame's snapped size to a frame at another
   -- scale (a popup at a different strata, a host UI's own scaling).
   frame:SetBackdrop({
     bgFile = WHITE,
     edgeFile = WHITE,
-    edgeSize = edge,
+    -- A zero edgeSize is not "no border", it is an invalid backdrop that the
+    -- client draws unpredictably. None is expressed as a real edge at zero
+    -- alpha, which is nothing to look at and well-defined to draw.
+    edgeSize = math.max(edge, unit),
     insets = { left = edge, right = edge, top = edge, bottom = edge },
   })
-  frame:SetBackdropColor(color[1], color[2], color[3], color[4])
-  frame:SetBackdropBorderColor(C.border[1], C.border[2], C.border[3], C.border[4])
+  frame:SetBackdropColor(color[1], color[2], color[3], fill)
+  frame:SetBackdropBorderColor(C.border[1], C.border[2], C.border[3], alpha)
+end
+
+-- Repaint every window's outer edge, fill and title strip from the current
+-- settings. Safe to call any time; windows this skin never painted are not in
+-- the registry and are left alone.
+--
+-- Defined here rather than up with the accessors that call it because it needs
+-- Paint, which is a local: referenced any earlier it would resolve as a global
+-- and silently do nothing.
+function Skin.ApplyAppearance()
+  for frame in pairs(Skin._windows) do
+    if frame then
+      pcall(function()
+        Paint(frame, C.window, true)
+        local strip = frame.__pbModernStrip
+        if strip then
+          strip:SetColorTexture(C.title[1], C.title[2], C.title[3], Skin.TitleAlpha())
+        end
+      end)
+    end
+  end
 end
 
 -- The themed panels already carry a backdrop and the stone grain; Modern
@@ -159,7 +324,8 @@ local function TitleStrip(frame)
     strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -edge, -edge)
     strip:SetHeight(TITLE_HEIGHT)
   end
-  strip:SetColorTexture(C.title[1], C.title[2], C.title[3], C.title[4])
+  frame.__pbModernStrip = strip
+  strip:SetColorTexture(C.title[1], C.title[2], C.title[3], Skin.TitleAlpha())
 
   -- One hairline under it, the same light edge the panels use, so the bar
   -- ends on a line rather than fading into the content.
@@ -394,6 +560,18 @@ end
 local tooltipHooked = false
 local function HookTooltips()
   if tooltipHooked or type(hooksecurefunc) ~= "function" then return end
+
+  -- GameTooltip is SHARED, and a host UI skins it for the whole interface.
+  -- This skin can now be chosen while EllesmereUI or ElvUI is installed, so
+  -- that is no longer hypothetical: swapping the art in place under one would
+  -- mean two addons trading the same frame's backdrop back and forth, and the
+  -- art we hand back would be the template's rather than theirs.
+  --
+  -- Choosing Modern is a statement about POSTBOX'S WINDOWS. It is not a licence
+  -- to restyle a frame the rest of the interface also uses, so under a host UI
+  -- the tooltip stays entirely theirs.
+  if _G.EllesmereUI or _G.ElvUI then return end
+
   tooltipHooked = true
   hooksecurefunc(GameTooltip, "SetOwner", function(self, owner)
     DressTooltip(self, IsOurs(owner))
@@ -442,7 +620,10 @@ function Skin.Apply(frame)
   end
 
   QuietTemplateArt(frame)
-  Paint(frame, C.window)
+  -- Registered before the paint, so a window built while the panel is open is
+  -- already on the list the next appearance change walks.
+  Skin._windows[frame] = true
+  Paint(frame, C.window, true)
   TitleStrip(frame)
   FlatClose(frame.CloseButton)
   -- Every window this skin paints is a tooltip owner worth recognising,
@@ -508,14 +689,21 @@ boot:RegisterEvent("PLAYER_LOGIN")
 boot:SetScript("OnEvent", function(self)
   self:UnregisterEvent("PLAYER_LOGIN")
 
-  -- A host UI's skin inherits a whole interface's look; the first-party one
-  -- never competes with that, whatever the option says. Host globals are
-  -- settled by login, so this is a fact and not a race.
-  if _G.EllesmereUI or _G.ElvUI then return end
-
   local UI = ns.MailboxUI
   if not (UI and type(UI.GetStyleChoice) == "function") then return end
   if UI.GetStyleChoice() ~= "modern" then return end
+
+  -- A host UI being installed no longer settles this. It used to: the rule was
+  -- that a host skin inherits a whole interface's look and outranks a
+  -- first-party palette, absolutely. That is a good default and it is still the
+  -- default -- "host" is what GetStyleChoice returns wherever one is installed
+  -- -- but it is now a default rather than a law, because a player who prefers
+  -- this look to their pack's had no way to say so.
+  --
+  -- No race with the host skins: reaching here means the player chose "modern",
+  -- and both of them consult UI.HostSkinAllowed() before claiming, so neither
+  -- will. The ns.Skin guard stays for the ordinary case of something else
+  -- having claimed first.
   if ns.Skin then return end
   ns.Skin = Skin
 end)

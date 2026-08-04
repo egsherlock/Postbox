@@ -69,10 +69,35 @@ local function HostSkinName()
   if by == "ellesmereui" then return "EllesmereUI" end
   if by == "elvui" then return "ElvUI" end
   if by == "modern" then return nil end
+
+  -- Nothing has been painted yet, so fall back to who holds the skin slot.
+  --
+  -- The style choice has to be consulted FIRST. This used to read "ns.Skin is
+  -- set and a host global exists, therefore the host is painting", which was
+  -- sound only while a host skin was the only thing that could claim with one
+  -- installed. Postbox Modern can now claim over a host, and on that session
+  -- the old test named the host as the painter -- so the panel would have
+  -- reported inheriting, in green, while Modern was on screen.
+  local UI = ns.MailboxUI
+  if UI and type(UI.HostSkinAllowed) == "function" and not UI.HostSkinAllowed() then
+    return nil
+  end
+
   if ns.Skin then
     if _G.EllesmereUI then return "EllesmereUI" end
     if _G.ElvUI then return "ElvUI" end
   end
+  return nil
+end
+
+-- The host UI that is INSTALLED, whether or not it is the one painting. This
+-- is the one the style dropdown offers and the one the inheritance line names:
+-- a player who has overridden EllesmereUI still needs to see that EllesmereUI
+-- is what they overrode, and HostSkinName above deliberately answers nil in
+-- exactly that case.
+local function InstalledHostName()
+  if _G.EllesmereUI then return "EllesmereUI" end
+  if _G.ElvUI then return "ElvUI" end
   return nil
 end
 
@@ -542,22 +567,51 @@ local function Build()
 
   y = EndSection(frame, card, y)
 
-  -- Style. Always present, and it is the ONE place the addon talks about
-  -- how it looks: with a host UI it names the skin driving the window (the
-  -- sentence that used to sit in the bottom band, where it was both
-  -- misplaced and wrong -- it read "Postbox's own style" even when the
-  -- Blizzard style was the deliberate choice); without one it offers the
-  -- choice. Which of the two is built is settled by login, long before this
-  -- panel is first opened.
-  y = AddSectionHeading(frame, y, L["OPT_STYLE_HEADING"])
-  card = StartCard(frame, y)
+  -- Appearance: everything about how the window looks, in one card.
+  --
+  -- Style and Appearance used to be two sections, which read as siblings and
+  -- were not. The three controls below the style row are the CHOSEN STYLE'S
+  -- OWN -- they call whatever skin claimed the window -- so they are a
+  -- consequence of the style rather than a peer of it. Splitting them also
+  -- spent a whole section's chrome (a heading, a gap and a card's padding) on
+  -- one 22px line, which was the worst ratio in the panel.
+  card, y = BeginSection(frame, y, L["OPT_APPEARANCE_HEADING"])
   cy = -12
 
-  local hostStyle = HostSkinName()
-  if hostStyle then
-    -- Read-only: under a host skin the dropdown would offer a choice the
-    -- addon cannot honour. The green dot is the "wired in correctly"
-    -- language the bottom band used to carry.
+  local installedHost = InstalledHostName()
+
+  -- The style choice. A host UI is offered first and is the default wherever
+  -- one is installed, so the familiar answer is the one already selected --
+  -- but it is now an answer rather than a foregone conclusion.
+  local styleItems = {}
+  if installedHost then
+    styleItems[#styleItems + 1] = { id = "host", name = installedHost }
+  end
+  styleItems[#styleItems + 1] = { id = "blizzard", name = L["OPT_STYLE_BLIZZARD"] }
+  styleItems[#styleItems + 1] = { id = "modern",   name = L["OPT_STYLE_MODERN"] }
+
+  cy = AddDropdown(card, cy, L["OPT_STYLE_TITLE"], styleItems,
+        function() return ns.MailboxUI.GetStyleChoice and ns.MailboxUI.GetStyleChoice() end,
+        function(id)
+          if ns.MailboxUI.SetStyleChoice then ns.MailboxUI.SetStyleChoice(id) end
+          -- The style is claimed once at login, so the choice needs a
+          -- reload to take. A dialog with the reload in it beats a chat
+          -- line telling the player to go and type one -- and Later is a
+          -- real answer: the setting is already saved either way.
+          if EnsureStyleDialog() then
+            StaticPopup_Show(POPUP_STYLE_RELOAD)
+          else
+            ns.Print(L["MSG_STYLE_RELOAD"])
+          end
+        end)
+
+  -- The inheritance line. Only where there is something to inherit FROM, and
+  -- it answers one question: is this window wearing your UI pack's look, or
+  -- Postbox's? Green for inheriting, because that is the state where Postbox
+  -- has wired itself into something else correctly -- the same language the
+  -- bottom band used to carry. Neutral grey for overriding: a deliberate
+  -- choice is not a warning, and colouring it as one would be a scold.
+  if installedHost then
     local row = CreateFrame("Frame", nil, card)
     row:SetHeight(CHECK_H)
     row:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
@@ -566,46 +620,115 @@ local function Build()
     local dot = row:CreateTexture(nil, "OVERLAY")
     dot:SetSize(7, 7)
     dot:SetPoint("LEFT", row, "LEFT", 0, 0)
-    dot:SetColorTexture(0.38, 0.80, 0.44, 1)
 
-    local text = ns.Theme.CreateText(row, "label")
+    local text = ns.Theme.CreateText(row, "secondary")
     text:SetPoint("LEFT", dot, "RIGHT", 7, 0)
     text:SetPoint("RIGHT", row, "RIGHT", 0, 0)
     text:SetJustifyH("LEFT")
     text:SetWordWrap(false)
-    text:SetText(L("OPT_STYLE_SYNCED", hostStyle))
+
+    -- Re-derived on every open rather than fixed at build. It describes the
+    -- LIVE session -- who is painting right now, not what is saved for the next
+    -- one -- and that answer can still change after login: EllesmereUI can be
+    -- published late by a load-on-demand addon, and its skin claims through a
+    -- deferred handshake. A line that had already decided would be wrong for
+    -- the rest of the session.
+    --
+    -- The two descriptions take different numbers of arguments (the override
+    -- one names the host twice: once for the window, once for the minimap it
+    -- still follows) and ns.L formats through string.format WITHOUT a pcall,
+    -- so each is given exactly its own.
+    local rowTitle, rowDesc
+    local function RefreshInheritance()
+      if HostSkinName() then
+        dot:SetColorTexture(0.38, 0.80, 0.44, 1)
+        rowTitle = L("OPT_STYLE_INHERIT", installedHost)
+        rowDesc  = L("OPT_STYLE_INHERIT_DESC", installedHost)
+      else
+        -- Neutral grey, not a warning colour: a deliberate choice is not a
+        -- fault, and dressing it as one would be a scold.
+        dot:SetColorTexture(0.54, 0.54, 0.58, 1)
+        rowTitle = L("OPT_STYLE_OVERRIDE", installedHost)
+        rowDesc  = L("OPT_STYLE_OVERRIDE_DESC", installedHost, installedHost)
+      end
+      text:SetText(rowTitle)
+    end
+    RefreshInheritance()
+    frame.__refreshers[#frame.__refreshers + 1] = RefreshInheritance
 
     row:EnableMouse(true)
     row:SetScript("OnEnter", function(self)
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(L("OPT_STYLE_SYNCED", hostStyle))
-      GameTooltip:AddLine(L("OPT_STYLE_SYNCED_DESC", hostStyle), 1, 1, 1, true)
+      GameTooltip:SetText(rowTitle)
+      GameTooltip:AddLine(rowDesc, 1, 1, 1, true)
       GameTooltip:Show()
     end)
     row:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     MarkBottom(card, cy, CHECK_H)
     cy = cy - ROW_H
-  else
-    local styleItems = {
-      { id = "blizzard", name = L["OPT_STYLE_BLIZZARD"] },
-      { id = "modern",   name = L["OPT_STYLE_MODERN"] },
-    }
-    cy = AddDropdown(card, cy, L["OPT_STYLE_TITLE"], styleItems,
-          function() return ns.MailboxUI.GetStyleChoice and ns.MailboxUI.GetStyleChoice() end,
-          function(id)
-            if ns.MailboxUI.SetStyleChoice then ns.MailboxUI.SetStyleChoice(id) end
-            -- The style is claimed once at login, so the choice needs a
-            -- reload to take. A dialog with the reload in it beats a chat
-            -- line telling the player to go and type one -- and Later is a
-            -- real answer: the setting is already saved either way.
-            if EnsureStyleDialog() then
-              StaticPopup_Show(POPUP_STYLE_RELOAD)
-            else
-              ns.Print(L["MSG_STYLE_RELOAD"])
-            end
-          end)
   end
+
+  -- The chosen style's own controls. Whichever skin claimed the window
+  -- answers these; the panel does not know or care which one it is talking to.
+  -- A style that publishes no such controls (Blizzard) simply contributes
+  -- nothing here, and the card is the style row alone.
+  do
+    local Skin = GetSkin()
+    if Skin then
+      -- "Leave it alone" means different things to different styles: under a
+      -- host it means match that UI, and under Postbox's own it means the
+      -- value the skin was authored with. Same control, honest label either
+      -- way -- it used to read "Match EllesmereUI" from a hardcoded string,
+      -- which was already wrong for ElvUI and would have been wrong here.
+      local autoName = HostSkinName()
+        and L("OPT_APPEARANCE_MATCH", HostSkinName())
+        or L["OPT_APPEARANCE_DEFAULT"]
+
+      local borderItems = { { id = "auto", name = autoName } }
+      for _, choice in ipairs(Skin.GetBorderChoices()) do
+        borderItems[#borderItems + 1] = { id = choice.key, name = choice.name }
+      end
+      cy = AddDropdown(card, cy, L["OPT_BORDER_TITLE"], borderItems,
+            function()
+              if Skin.IsBorderDefault and Skin.IsBorderDefault() then return "auto" end
+              return Skin.GetBorderStyle()
+            end,
+            function(id)
+              if id == "auto" then Skin.ResetBorder() else Skin.SetBorderStyle(id) end
+            end)
+
+      local sizeItems = { { id = "auto", name = autoName } }
+      for step = 1, 4 do
+        sizeItems[#sizeItems + 1] = { id = step, name = string.format(L["OPT_BORDER_SIZE_STEP"], step) }
+      end
+      cy = AddDropdown(card, cy, L["OPT_BORDER_SIZE_TITLE"], sizeItems,
+            function()
+              if Skin.IsBorderSizeDefault and Skin.IsBorderSizeDefault() then return "auto" end
+              return Skin.GetBorderSize()
+            end,
+            function(id)
+              if id == "auto" then Skin.ResetBorderSize() else Skin.SetBorderSize(id) end
+            end)
+
+      local opacityItems = { { id = "auto", name = autoName } }
+      for _, pct in ipairs({ 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 25, 0 }) do
+        opacityItems[#opacityItems + 1] = {
+          id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct),
+        }
+      end
+      cy = AddDropdown(card, cy, L["OPT_BG_OPACITY_TITLE"], opacityItems,
+            function()
+              if Skin.IsBgOpacityDefault and Skin.IsBgOpacityDefault() then return "auto" end
+              return math.floor(Skin.GetBgOpacity() * 100 + 0.5)
+            end,
+            function(id)
+              if id == "auto" then Skin.ResetBgOpacity()
+              else Skin.SetBgOpacity((tonumber(id) or 100) / 100) end
+            end)
+    end
+  end
+
   y = EndSection(frame, card, y)
 
   -- Minimap mail icon (Core/MinimapButton.lua). Resolved at click time like
@@ -969,59 +1092,6 @@ local function Build()
     end
     UpdateMinimapCardState()
     frame.__refreshers[#frame.__refreshers + 1] = UpdateMinimapCardState
-  end
-
-  -- Host-UI appearance section (only when a skin exposes these controls).
-  local Skin = GetSkin()
-  if Skin then
-    card, y = BeginSection(frame, y, L["OPT_APPEARANCE_HEADING"])
-    cy = -12
-
-    -- Border style and size both default to whatever EllesmereUI itself is
-    -- configured for, so a shadow (or none) on the rest of the UI carries here.
-    local borderItems = { { id = "auto", name = L["OPT_BG_OPACITY_AUTO"] } }
-    for _, choice in ipairs(Skin.GetBorderChoices()) do
-      borderItems[#borderItems + 1] = { id = choice.key, name = choice.name }
-    end
-    cy = AddDropdown(card, cy, L["OPT_BORDER_TITLE"], borderItems,
-          function()
-            if Skin.IsBorderDefault and Skin.IsBorderDefault() then return "auto" end
-            return Skin.GetBorderStyle()
-          end,
-          function(id)
-            if id == "auto" then Skin.ResetBorder() else Skin.SetBorderStyle(id) end
-          end)
-
-    local sizeItems = { { id = "auto", name = L["OPT_BG_OPACITY_AUTO"] } }
-    for step = 1, 4 do
-      sizeItems[#sizeItems + 1] = { id = step, name = string.format(L["OPT_BORDER_SIZE_STEP"], step) }
-    end
-    cy = AddDropdown(card, cy, L["OPT_BORDER_SIZE_TITLE"], sizeItems,
-          function()
-            if Skin.IsBorderSizeDefault and Skin.IsBorderSizeDefault() then return "auto" end
-            return Skin.GetBorderSize()
-          end,
-          function(id)
-            if id == "auto" then Skin.ResetBorderSize() else Skin.SetBorderSize(id) end
-          end)
-
-    local opacityItems = { { id = "auto", name = L["OPT_BG_OPACITY_AUTO"] } }
-    for _, pct in ipairs({ 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 25, 0 }) do
-      opacityItems[#opacityItems + 1] = {
-        id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct),
-      }
-    end
-    cy = AddDropdown(card, cy, L["OPT_BG_OPACITY_TITLE"], opacityItems,
-          function()
-            if Skin.IsBgOpacityDefault and Skin.IsBgOpacityDefault() then return "auto" end
-            return math.floor(Skin.GetBgOpacity() * 100 + 0.5)
-          end,
-          function(id)
-            if id == "auto" then Skin.ResetBgOpacity()
-            else Skin.SetBgOpacity((tonumber(id) or 100) / 100) end
-          end)
-
-    y = EndSection(frame, card, y)
   end
 
   -- The footer: what this build is, and the one door out to a bug report.

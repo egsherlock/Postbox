@@ -279,6 +279,12 @@ end
 -- already-stripped window. Neither direction can now produce a half-skinned one.
 local function Claim()
   if ns.Skin and ns.Skin ~= Skin then return end
+  -- The player can prefer Postbox's own look to ElvUI's. Both entry points --
+  -- the immediate claim and the deferred one below -- come through here.
+  local UI = ns.MailboxUI
+  if UI and type(UI.HostSkinAllowed) == "function" and not UI.HostSkinAllowed() then
+    return
+  end
   ns.Skin = Skin
 end
 
