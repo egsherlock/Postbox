@@ -68,9 +68,9 @@ Friends includes Battle.net. Right-click favourites a name anywhere; hiding one
 removes it from every suggestion. The manager (`/postbox rm`, works away from any
 mailbox) does the housekeeping: search, sort, favourite, hide, annotate.
 
-<img src="docs/screenshots/minimapmailicon.png" height="235" align="right" alt="The minimap icon and its tooltip" />
-
 ## The minimap icon
+
+<img src="docs/screenshots/minimapmailicon.png" height="235" align="right" alt="The minimap icon and its tooltip" />
 
 Optional, and off until you ask for it. It replaces the default "you have mail"
 indicator with one of more than two dozen hand-painted styles, at four sizes, placed
@@ -84,9 +84,9 @@ feature off restores everything exactly as it was.
 
 <br clear="all" />
 
-<img src="docs/screenshots/options.png" height="470" align="right" alt="The options panel" />
-
 ## Appearance
+
+<img src="docs/screenshots/options.png" height="430" align="right" alt="The options panel" />
 
 One panel behind the window's cog, and it wears whatever your window is wearing.
 

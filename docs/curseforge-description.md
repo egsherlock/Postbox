@@ -4,12 +4,19 @@ Everything needed to create the listings. **Part 1** is the project metadata —
 name, summary, category, licence. **Part 2**, below the rule, is the description
 body itself.
 
-**Wago** takes Part 2 as markdown, as-is.
+**Wago** and **CurseForge** both take Part 2 as markdown, as-is. The images are
+absolute `raw.githubusercontent.com` URLs, which is what makes that work — a
+relative path like `docs/screenshots/collect.png` resolves on GitHub and nowhere
+else, so pasting it into either site gives you broken images.
 
-**CurseForge**'s editor accepts rich text and HTML, and images go through CF's own
-media manager rather than by path. So: upload the banner and the eight screenshots
-there first, paste Part 2, then replace each `> [screenshot: …]` marker with the
-matching uploaded image. The markers are placement notes, not content.
+**⚠️ Those URLs 404 until the repository is public.** They point at
+`egsherlock/Postbox` on `main`. Flip the repo public before pasting, or the listing
+goes up with nine broken images.
+
+If you would rather not depend on GitHub serving them, CurseForge's own media
+manager works too: upload the files there and swap each `![…](https://raw…)` for
+the uploaded copy. Same images either way — this is just a question of who hosts
+them.
 
 ---
 
@@ -32,22 +39,23 @@ Alternatives, if you'd rather:
 
 ### Summary
 
-One sentence. It is the addon's whole pitch — CurseForge shows it on the search
-card, Wago under the title, and most people never read further:
+One sentence, 250 characters to spend. It is the addon's whole pitch — CurseForge
+shows it on the search card, Wago under the title, and most people never read
+further. This is also the `## Notes` line in `Postbox.toc`, so the two stay in step:
 
 > A modern mailbox replacement that empties a full inbox in one click, completes
-> every recipient as you type, and wears your UI.
+> every recipient as you type, and remembers what was waiting so you can check from
+> anywhere. Wears your ElvUI or EllesmereUI look.
 
-Says what it is before what it does, so "mailbox" lands early for search, then the
-three things a player actually feels: the bulk collect, the name completion, and it
-not looking out of place.
+234 characters. Says what it is before what it does, so "mailbox" lands early for
+search. The budget then buys three things a shorter line cannot afford: **auction
+mail** (heavily searched, and the sweeps are a real feature), **the memory** — the
+one thing nothing else does, so it is worth the words — and **naming both UI packs**,
+because people search for what fits their setup. ElvUI first: far more people run it.
 
-Alternatives, by emphasis:
-- *Function-first, warmer, weaker for search:* "One window that empties your mailbox
-  in a click, remembers everyone you write to, and looks like the rest of your UI."
-- *Widest keyword net, reads more like a list:* "Replaces the default mailbox with
-  one window — bulk collect, auction-mail sweeps, recipient completion, right-click
-  attach, and an optional minimap mail icon."
+The minimap icon is deliberately left out. It is the most visible thing in the
+screenshots, so the listing sells it regardless, whereas the memory is invisible
+until somebody reads about it.
 
 ### Category
 
@@ -61,8 +69,8 @@ credibility with the people who find you through them.
 ### Licence
 
 **GNU General Public License version 3 (GPLv3)** in CF's licence dropdown — it
-matches `LICENSE` and `## X-License` in the .toc. The repository is public, which is
-what GPLv3 asks of you.
+matches `LICENSE` and `## X-License` in the .toc. GPLv3 requires the source to be
+available, which the public repository satisfies.
 
 ### Game versions
 
@@ -77,7 +85,7 @@ Retail only: 12.0.7 and 12.1.x. No Classic, Cata or MoP builds — do not tick t
 
 ## Part 2 — description body
 
-> [screenshot: postboxbanner.png — full width, top of page]
+![Postbox](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/postboxbanner.png)
 
 **Postbox replaces the World of Warcraft mailbox with one window that opens where you
 do.** It clears a full inbox in a single pass, remembers everyone you write to, and
@@ -85,7 +93,7 @@ tells you what your mailbox held even when you are nowhere near one.
 
 No dependencies. No libraries. Nothing to configure — install it and open a mailbox.
 
-> [screenshot: collect.png]
+![A full inbox, cleared in one pass](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/collect.png)
 
 ---
 
@@ -125,7 +133,7 @@ mailed wears a padlock in your bags, so what can go is obvious at a glance.
 The window grows a line at a time as your message does, and shrinks back as you
 delete. Your saved window size is never touched.
 
-> [screenshot: send.png]
+![Composing, with completion and guidance](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/send.png)
 
 ---
 
@@ -138,7 +146,7 @@ means hidden: the name disappears from every suggestion everywhere, and this win
 is where you bring it back. Categories mean exactly what they say — Recent is in
 recency order, Guild is your guild, Friends includes Battle.net.
 
-> [screenshot: recipientmanager.png]
+![The recipient manager](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/recipientmanager.png)
 
 ---
 
@@ -151,7 +159,7 @@ attached, how long each one has left.
 It is honest about being a memory. The header says how long ago you looked, it tells
 you when new mail has arrived since, and it never pretends to be live.
 
-> [screenshot: mailboxmemory.png]
+![What the mailbox held, hours later](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/mailboxmemory.png)
 
 ---
 
@@ -169,7 +177,7 @@ Running EllesmereUI? Postbox restyles *their* mail icon in place rather than add
 second one beside it. Switch the feature off and everything goes back exactly as it
 was.
 
-> [screenshot: minimapmailicon.png]
+![The minimap icon and its tooltip](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/minimapmailicon.png)
 
 ---
 
@@ -190,9 +198,9 @@ happening: a green dot reads *Inheriting EllesmereUI settings* when Postbox is
 wearing your pack's look, and a neutral one reads *Overriding EllesmereUI* when you
 have chosen otherwise.
 
-> [screenshot: defaultblizzard.png]
-> [screenshot: postboxmodern.png]
-> [screenshot: options.png]
+![The Blizzard-native style](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/defaultblizzard.png)
+![Postbox Modern](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/postboxmodern.png)
+![The options panel](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/options.png)
 
 ---
 

@@ -1,6 +1,6 @@
 ## Interface: 120100, 120007
 ## Title: Postbox
-## Notes: A modern, lightweight mailbox replacement — one-pass collection, smart recipients, right-click attach, and it wears your UI.
+## Notes: A modern mailbox replacement that empties a full inbox in one click, completes every recipient as you type, and remembers what was waiting so you can check from anywhere. Wears your ElvUI or EllesmereUI look.
 ## IconTexture: Interface\AddOns\Postbox\Media\icon-pillar.png
 ## Author: egsherlock
 ## Version: @project-version@
