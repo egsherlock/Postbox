@@ -125,12 +125,21 @@ end
 -- Returns the next y AND the heading itself, so a section that puts something
 -- on the heading line can size it against the heading rather than against a
 -- guessed offset.
+--
+-- 24, and ONE number for every section. It used to be 20, with the two sections
+-- that hang a control on the heading line -- Minimap's master switch and
+-- Appearance's inheritance badge -- each subtracting a further 4 of their own
+-- afterwards. That is the right gap for a taller line and the wrong way to
+-- reach it: two thirds of the panel then sat at one spacing and the rest at
+-- another, which reads as the plain headings being crowded rather than as the
+-- tall ones being roomy. The gap now allows for a control on the heading line
+-- whether or not a given section has one, and no section adjusts it.
 local function AddSectionHeading(frame, y, title)
   local heading = ns.Theme.CreateText(frame, "heading")
   heading:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
   heading:SetWordWrap(false)
   heading:SetText(title)
-  return y - 20, heading
+  return y - 24, heading
 end
 
 local function StartCard(frame, y)
@@ -586,12 +595,6 @@ local function Build()
   local appHeadingY = y
   local appHeading
   y, appHeading = AddSectionHeading(frame, y, L["OPT_APPEARANCE_HEADING"])
-  -- The badge makes this heading line taller than heading text alone, which is
-  -- the same thing the minimap section's master switch does to its heading --
-  -- so it takes the same four pixels, and the gap down to the card reads as
-  -- every other section's. Conditional because the badge is: with no host UI
-  -- installed this is a plain heading and wants the plain spacing.
-  if installedHost then y = y - 4 end
   card = StartCard(frame, y)
   cy = -12
 
@@ -648,15 +651,16 @@ local function Build()
     text:SetJustifyH("RIGHT")
     text:SetWordWrap(false)
 
-    -- One pixel UP, and it is a correction rather than a nudge.
+    -- One pixel DOWN, and the direction is the whole point -- 1.33.2 moved it
+    -- the other way on the wrong half of the reasoning.
     --
     -- A font string's box runs from the ascender's top to the descender's
-    -- bottom, so its geometric centre sits below the middle of the letters you
-    -- actually see -- the descender space is empty on a line like this one but
-    -- still counts. Centring the square on that box therefore centres it on the
-    -- box and NOT on the text, which is what reads as low. The letters' own
-    -- centre is half a descent higher, and at this size that is a pixel.
-    dot:SetPoint("RIGHT", text, "LEFT", -6, 1)
+    -- bottom. Both reserves are empty space, but they are not equal: the
+    -- ascender reserves noticeably more above the capitals than the descender
+    -- does below the baseline, so the ink of a line like this sits BELOW the
+    -- middle of its own box. Centring the square on the box therefore puts it
+    -- above the letters, not level with them.
+    dot:SetPoint("RIGHT", text, "LEFT", -6, -1)
 
     -- Re-derived on every open rather than fixed at build. It describes the
     -- LIVE session -- who is painting right now, not what is saved for the next
@@ -777,7 +781,6 @@ local function Build()
   -- the checkbox.
   local mmHeadingY = y
   y = AddSectionHeading(frame, y, L["OPT_MINIMAP_HEADING"])
-  y = y - 4 -- the checkbox is taller than the heading text
 
   local mmHostStyled = ns.MinimapButton and ns.MinimapButton.IsHostStyled
     and ns.MinimapButton.IsHostStyled()

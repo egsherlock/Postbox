@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.33.3
+
+- **The dot beside "Inheriting EllesmereUI settings" is level with the text.**
+  1.33.2 moved it the wrong way: a line of text reserves more empty space
+  above its capitals than below its baseline, so the letters sit slightly
+  below the middle of the space they occupy — and a mark centred on that
+  space lands above them rather than beside them.
+- **Every section heading now sits the same distance above its box.** Two of
+  them — Minimap and Appearance — carry a control on the heading line and had
+  each been given a few extra pixels for it, which left the other headings
+  looking crowded by comparison. There is one spacing for the whole panel
+  now, and it allows for a control on the line whether or not a section has
+  one.
+
 ## 1.33.2
 
 - The Appearance heading now reads "Inheriting EllesmereUI settings".
