@@ -6,20 +6,25 @@
 package-as: Postbox
 
 # Dev-only files: useful in the repo, dead weight in the shipped addon.
-# All art masters and web assets live under docs/; the addon itself ships
-# only Media/. The zip is the addon plus its LICENSE, nothing else.
+#
+# Only TRACKED files need listing. Anything gitignored is already absent from
+# the checkout the packager runs against, so naming it here would be redundant.
+#
+# What ships, verified against the built artifact rather than assumed:
+# Core/, Lib/, Media/, Postbox.toc, Postbox.lua, LICENSE and CHANGELOG.md.
 ignore:
-  - .claude
   - .github
-  - CLAUDE.md
-  - DEVNOTES.md
+  - README.md
   - COMBAT_TAINT.md
   - ELLESMEREUI_SKINNING.md
-  - DEFAULT_UI_AUDIT.md
-  - README.md
   - docs
 
-# Keep the changelog out of the zip but still attach it to the release page.
+# Nominates the changelog for the release page and the CurseForge/Wago upload.
+#
+# It also ships inside the addon folder, which is deliberate: it is written for
+# players rather than developers, so it is worth having where a player can find
+# it. (An earlier note here claimed this kept it out of the zip. It never did —
+# manual-changelog names the file, it does not exclude it.)
 manual-changelog:
   filename: CHANGELOG.md
   markup-type: markdown

@@ -12,7 +12,5 @@ desktop.ini
 # Working notes, specifications and verification tooling.
 # Useful while building; not part of the addon and not for the public repo.
 .dev/
-.claude/
-CLAUDE.md
 DEVNOTES.md
 DEFAULT_UI_AUDIT.md

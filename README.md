@@ -9,6 +9,14 @@ you write to.
 Retail only (12.0.7–12.1.x). No dependencies, no libraries, nothing to configure —
 install it and open a mailbox.
 
+<p align="center">
+  <img src="docs/screenshots/collect.png" height="330" alt="The Collect tab" />
+  <img src="docs/screenshots/send.png" height="330" alt="The Send tab" />
+</p>
+<p align="center">
+  <em>A full inbox cleared in one pass &nbsp;·&nbsp; composing, with completion and guidance</em>
+</p>
+
 ## What it does
 
 - **Empties a full mailbox in one click, safely.** Every server command is confirmed
@@ -22,7 +30,7 @@ install it and open a mailbox.
   even while reading mail, and the window flips to Send with it attached. Unmailable
   items wear a padlock in your bags while you compose.
 - **Remembers what was in the box.** Left-click the minimap icon anywhere in the
-  world to see what your mailbox held when you last opened it, with an honest
+  world to see what your mailbox held when you last opened it — with an honest
   "last seen 2 h ago" header. It never pretends to be live.
 - **Replaces the minimap mail icon**, if you want it to — more than two dozen
   hand-painted styles at four sizes, on the map edge or detached anywhere on screen.
@@ -30,50 +38,87 @@ install it and open a mailbox.
   Blizzard-native or the flat **Postbox Modern**. You can pick Postbox's own look
   even when a UI pack is installed.
 
-## Screenshots
-
-| | |
-|---|---|
-| ![The Collect tab](docs/screenshots/collect.png) | ![The Send tab](docs/screenshots/send.png) |
-| *Collect: the whole inbox, one pass* | *Send: completion, favourites, guidance* |
-| ![The recipient manager](docs/screenshots/recipients.png) | ![Mailbox memory](docs/screenshots/memory.png) |
-| *The recipient manager* | *What the box held, hours later* |
-| ![Minimap mail icon](docs/screenshots/minimap.png) | ![The options panel](docs/screenshots/options.png) |
-| *The minimap icon and its tooltip* | *Options, wearing your host UI* |
-
 <p align="center">
-  <img src="docs/screenshots/modern.png" alt="Postbox Modern" /><br>
-  <em>The same window in Postbox Modern</em>
+  <img src="docs/screenshots/recipientmanager.png" height="250" alt="The recipient manager" />
+  <img src="docs/screenshots/mailboxmemory.png" height="250" alt="Mailbox memory" />
+</p>
+<p align="center">
+  <em>Every name you can write to, curated &nbsp;·&nbsp; what the box held, hours later</em>
 </p>
 
-## The details
+## Collecting
 
-**Collecting.** Three views — Collect, Done, All — with one-click sweeps for expired,
-sold, bought and cancelled auction mail. Shift-click a mail to look inside without
-collecting; hover an attachment for its real item tooltip. A finished run reports
-what it earned and spent. Compact rows fit half again as many mails in the same
-window.
+Three views — Collect, Done, All — with one-click sweeps for expired, sold, bought
+and cancelled auction mail. Shift-click a mail to look inside without collecting;
+hover an attachment for its real item tooltip. A finished run reports what it earned
+and spent. Compact rows fit half again as many mails in the same window.
 
-**Sending.** Attachment slots, gold and C.O.D., with a guidance line that says what
-will happen *before* you send — instant or delayed, and whether a cross-realm send
-can carry what you attached. Nothing is ever blocked: Postbox advises, you decide. A
-failed send keeps your draft. The window grows as your message does and shrinks back
-as you delete, without touching your saved size.
+## Sending
 
-**Recipients.** Categories mean what they say: Recent is in recency order, Guild is
-your guild, Friends includes Battle.net. Right-click favourites a name anywhere;
-hiding one removes it from every suggestion. The manager (`/postbox rm`, works away
-from any mailbox) does the housekeeping: search, sort, favourite, hide, annotate.
+Attachment slots, gold and C.O.D., with a guidance line that says what will happen
+*before* you send — instant or delayed, and whether a cross-realm send can carry what
+you attached. Nothing is ever blocked: Postbox advises, you decide. A failed send
+keeps your draft. The window grows as your message does and shrinks back as you
+delete, without touching your saved size.
 
-**Minimap icon.** Optional replacement for the default indicator, with accent tint,
-soft glow and a flash when mail arrives. Under EllesmereUI's minimap it restyles
-their icon in place rather than adding a second one, and everything restores cleanly
-when switched off.
+## Recipients
 
-**Appearance.** One panel behind the window's cog. Window style, border, border size
-and background opacity — and under a UI pack, a badge on the heading says whether
-Postbox is inheriting that pack's look or overriding it. Postbox Modern carries its
-own border and transparency settings.
+Categories mean what they say: Recent is in recency order, Guild is your guild,
+Friends includes Battle.net. Right-click favourites a name anywhere; hiding one
+removes it from every suggestion. The manager (`/postbox rm`, works away from any
+mailbox) does the housekeeping: search, sort, favourite, hide, annotate.
+
+<img src="docs/screenshots/minimapmailicon.png" height="235" align="right" alt="The minimap icon and its tooltip" />
+
+## The minimap icon
+
+Optional, and off until you ask for it. It replaces the default "you have mail"
+indicator with one of more than two dozen hand-painted styles, at four sizes, placed
+by shift-drag on the minimap rim or detached anywhere on screen — with an accent
+tint, a soft glow, and a flash when new mail arrives.
+
+Hovering it says what has arrived since you last looked, what is waiting broken down
+by sender, and what could not be collected. Under EllesmereUI's minimap it restyles
+*their* icon in place rather than adding a second one beside it, and switching the
+feature off restores everything exactly as it was.
+
+<br clear="all" />
+
+<img src="docs/screenshots/options.png" height="470" align="right" alt="The options panel" />
+
+## Appearance
+
+One panel behind the window's cog, and it wears whatever your window is wearing.
+
+**Window style** picks who paints Postbox: your UI pack, Blizzard-native, or Postbox
+Modern. A badge on the Appearance heading says which is happening — a green dot for
+*Inheriting EllesmereUI settings*, a neutral one for *Overriding EllesmereUI* — so
+the panel is never ambiguous about where the look is coming from.
+
+**Border, border size and background opacity** belong to whichever style is painting.
+Under a UI pack they default to matching it, so a change to your pack's borders or
+transparency carries here without you touching anything. Postbox Modern brings its
+own three.
+
+The rest is behaviour: compact mail rows, tab mail counts, the Mail-tab caption
+(counts, total, a dot, or nothing), click-to-open versus click-to-collect, window
+grid docking, and the mail alerts — sound, flash, and whether the mailbox memory is
+kept at all.
+
+<br clear="all" />
+
+## Choose your look
+
+The screenshots above are Postbox following EllesmereUI. Without a UI pack — or with
+one, if you'd rather — it has two looks of its own:
+
+<p align="center">
+  <img src="docs/screenshots/defaultblizzard.png" height="300" alt="The Blizzard-native style" />
+  <img src="docs/screenshots/postboxmodern.png" height="300" alt="Postbox Modern" />
+</p>
+<p align="center">
+  <em>Blizzard-native, warm and familiar &nbsp;·&nbsp; Postbox Modern, flat and near-black</em>
+</p>
 
 ## Slash commands
 
@@ -110,11 +155,11 @@ memory writes saved variables once per visit.
 is skinnable by all three for free. EllesmereUI is followed through its own API
 (8.6.8+, with a fallback for older builds) including live profile switches; ElvUI
 matches your theme, WindTools borders included; Postbox Modern is a first-party flat
-skin on the same contract. See
-[ELLESMEREUI_SKINNING.md](ELLESMEREUI_SKINNING.md) for the integration in depth.
+skin on the same contract. See [ELLESMEREUI_SKINNING.md](ELLESMEREUI_SKINNING.md)
+for the integration in depth.
 
-**Blizzard's dropdown and menu APIs are deliberately avoided** — they are a known
-taint vector from a mail window. Postbox rolls its own.
+**Blizzard's dropdown and menu APIs are deliberately avoided** — a known taint vector
+from a mail window. Postbox rolls its own.
 
 ## Languages
 
