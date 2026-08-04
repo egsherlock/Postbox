@@ -144,10 +144,12 @@ local function StartCard(frame, y)
   return card
 end
 
+-- The two together, for a section whose heading carries nothing but its title.
+-- A section that hangs a control on the heading line -- Appearance, Minimap --
+-- calls the two itself, because it has to put something between them.
 local function BeginSection(frame, y, title)
-  local heading
-  y, heading = AddSectionHeading(frame, y, title)
-  return StartCard(frame, y), y, heading
+  y = AddSectionHeading(frame, y, title)
+  return StartCard(frame, y), y
 end
 
 local function EndSection(frame, card, y)
@@ -579,12 +581,19 @@ local function Build()
   -- consequence of the style rather than a peer of it. Splitting them also
   -- spent a whole section's chrome (a heading, a gap and a card's padding) on
   -- one 22px line, which was the worst ratio in the panel.
+  local installedHost = InstalledHostName()
+
   local appHeadingY = y
   local appHeading
-  card, y, appHeading = BeginSection(frame, y, L["OPT_APPEARANCE_HEADING"])
+  y, appHeading = AddSectionHeading(frame, y, L["OPT_APPEARANCE_HEADING"])
+  -- The badge makes this heading line taller than heading text alone, which is
+  -- the same thing the minimap section's master switch does to its heading --
+  -- so it takes the same four pixels, and the gap down to the card reads as
+  -- every other section's. Conditional because the badge is: with no host UI
+  -- installed this is a plain heading and wants the plain spacing.
+  if installedHost then y = y - 4 end
+  card = StartCard(frame, y)
   cy = -12
-
-  local installedHost = InstalledHostName()
 
   -- The style choice. A host UI is offered first and is the default wherever
   -- one is installed, so the familiar answer is the one already selected --
@@ -638,7 +647,16 @@ local function Build()
     text:SetPoint("RIGHT", badge, "RIGHT", 0, 0)
     text:SetJustifyH("RIGHT")
     text:SetWordWrap(false)
-    dot:SetPoint("RIGHT", text, "LEFT", -6, 0)
+
+    -- One pixel UP, and it is a correction rather than a nudge.
+    --
+    -- A font string's box runs from the ascender's top to the descender's
+    -- bottom, so its geometric centre sits below the middle of the letters you
+    -- actually see -- the descender space is empty on a line like this one but
+    -- still counts. Centring the square on that box therefore centres it on the
+    -- box and NOT on the text, which is what reads as low. The letters' own
+    -- centre is half a descent higher, and at this size that is a pixel.
+    dot:SetPoint("RIGHT", text, "LEFT", -6, 1)
 
     -- Re-derived on every open rather than fixed at build. It describes the
     -- LIVE session -- who is painting right now, not what is saved for the next

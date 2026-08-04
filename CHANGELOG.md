@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.33.2
+
+- The Appearance heading now reads "Inheriting EllesmereUI settings".
+- **Its dot sits on the text now.** A line of text is measured from the top of
+  its tallest letter to the bottom of its lowest, and the space a letter like
+  "g" reserves below the line counts even where nothing uses it — so centring
+  the square on that measurement put it a pixel below the middle of the
+  letters you can actually see.
+- **The Appearance heading sits the same distance above its box as every other
+  section's.** That heading carries the inheriting/overriding badge, which
+  makes the line taller than a heading alone — the same reason the Minimap
+  heading already reserved a few more pixels for its switch.
+
 ## 1.33.1
 
 - **Fixed: on Postbox Modern, the window border settings appeared to eat the
