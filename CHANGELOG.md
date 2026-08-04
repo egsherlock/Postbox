@@ -1,3 +1,5 @@
+# Changelog
+
 ## 1.30.4
 
 - **Postbox Modern's title bar is aligned by construction, not by
