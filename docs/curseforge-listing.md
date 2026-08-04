@@ -196,16 +196,34 @@ section above.
 
 ---
 
-## Light on purpose
+## Built to be light on performance
 
-Postbox never touches Blizzard's own mail code. It draws its own window and talks to
-the mail API directly, so there are no hooks into protected frames and nothing it
-does can break the default UI in combat.
+**Postbox costs you nothing when you are not using it, and that was a design goal
+rather than an afterthought.**
 
-It also does nothing when nothing is happening: no repeating timers of any kind, and
-the only per-frame work in the whole addon happens while you are actively dragging or
-resizing something. Away from a mailbox it costs you a handful of event handlers that
-return immediately.
+**No timers. None.** A great many addons keep something ticking several times a
+second forever, whether or not anything has changed. Postbox runs no repeating timer
+of any kind. The few per-frame handlers it does have are each tied to something you
+are physically doing — dragging the icon, resizing the window, scrolling a list,
+typing a long message — and every one removes itself the moment that ends. Some last
+a single frame.
+
+**Nothing runs while you are away from a mailbox.** No scanning, no polling, no
+background upkeep. What is left is a handful of event handlers that check one thing
+and return.
+
+**No libraries.** Nothing embedded, nothing shared, nothing to load — no Ace, no
+LibStub, no waiting on a library another addon happens to own a different version of.
+It is the addon and nothing else.
+
+**Work is done once, not per event.** A mailbox that fires twenty updates in a second
+gets one redraw on the next frame, not twenty. The chattier game events are only
+listened to while the tab that needs them is actually on screen, and the mailbox
+memory writes to disk once per visit rather than per mail.
+
+**And it cannot break your interface.** Postbox never touches Blizzard's own mail
+code — it draws its own window and talks to the mail API directly, so there are no
+hooks into protected frames and nothing it does can taint the default UI in combat.
 
 ---
 

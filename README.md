@@ -101,26 +101,34 @@ feature off restores everything exactly as it was.
 
 <br clear="all" />
 
-## Appearance
+## Settings
 
-<img src="docs/screenshots/options.png" height="430" align="right" alt="The options panel" />
+<img src="docs/screenshots/options.png" height="500" align="right" alt="The options panel" />
 
-One panel behind the window's cog, and it wears whatever your window is wearing.
+One panel, from the cog in the title bar or a right-click on the minimap icon.
+Nothing in it is required reading — Postbox is meant to work before you open it — but
+it is where the window becomes yours. In the panel's own order:
 
-**Window style** picks who paints Postbox: your UI pack, Blizzard-native, or Postbox
-Modern. A badge on the Appearance heading says which is happening — a green dot for
-*Inheriting EllesmereUI settings*, a neutral one for *Overriding EllesmereUI* — so
-the panel is never ambiguous about where the look is coming from.
+**General.** Compact mail rows, which fit half again as many mails on screen. Mail
+counts on the tabs. Whether the All view is offered beside Collect and Done. Whether
+a left-click opens a mail or collects it, and the Mail tab's caption: counts, a
+running total, a single dot, or nothing at all. The recipient manager opens from
+here too.
 
-**Border, border size and background opacity** belong to whichever style is painting.
-Under a UI pack they default to matching it, so a change to your pack's borders or
-transparency carries here without you touching anything. Postbox Modern brings its
-own three.
+**Mail alerts.** A sound when mail arrives, a flash on the minimap icon, and whether
+the mailbox memory is kept at all.
 
-The rest is behaviour: compact mail rows, tab mail counts, the Mail-tab caption
-(counts, total, a dot, or nothing), click-to-open versus click-to-collect, window
-grid docking, and the mail alerts — sound, flash, and whether the mailbox memory is
-kept at all.
+**Appearance.** **Window style** picks who paints Postbox: your UI pack,
+Blizzard-native, or Postbox Modern. A badge on that heading says which is happening —
+a green dot for *Inheriting EllesmereUI settings*, a neutral one for *Overriding
+EllesmereUI* — so it is never ambiguous where the look is coming from. **Border,
+border size and background opacity** belong to whichever style is painting; under a
+UI pack they default to matching it, so a change to your pack's borders or
+transparency carries here untouched, and Postbox Modern brings its own three.
+
+**Minimap.** The icon on or off, its style from more than two dozen, its size, where
+it sits, and whether it takes your accent colour, a glow, a shadow or a pulse while
+mail waits.
 
 <br clear="all" />
 
@@ -161,8 +169,9 @@ and no execution path of ours can taint one. The one residual case — the defau
 [COMBAT_TAINT.md](COMBAT_TAINT.md) rather than papered over.
 
 **Nothing runs when nothing is happening.** No repeating timers of any kind, and no
-persistent `OnUpdate`: the only per-frame work in the addon happens while you are
-actively dragging or resizing something, and it clears itself when you stop. Inbox
+persistent `OnUpdate`: the four that exist are each scoped to a gesture — minimap
+drag, window resize, dropdown scrollbar drag, and the compose box's cursor-follow,
+which clears itself on the first frame it runs. Inbox
 refreshes are marked and drained once per frame rather than per event, the chatty
 social events are registered only while the compose tab is visible, and mailbox
 memory writes saved variables once per visit.
