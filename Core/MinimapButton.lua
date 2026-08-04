@@ -338,15 +338,49 @@ local ShowTooltip
 local function EnsureEuiOverlay(btn)
   if btn.__pbOverlay then
     btn.__pbOverlay:Show()
+    -- Re-decide on the next poll rather than assuming the state it was
+    -- hidden in still holds.
+    btn.__pbOverlay._interactive = nil
     return btn.__pbOverlay
   end
 
   local overlay = CreateFrame("Button", nil, btn)
   overlay:SetAllPoints(btn)
   overlay:SetFrameLevel((btn:GetFrameLevel() or 1) + 2)
-  overlay:EnableMouse(true)
+  -- Starts inert; the poll below turns it on once their button is genuinely
+  -- on screen, so it can never be a live hit target before then.
+  overlay:EnableMouse(false)
   overlay:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   overlay.__pbTooltipOwner = true
+
+  -- Their mouseover row FADES its buttons to alpha 0 rather than hiding
+  -- them (see .dev/EUI-FLICKER-REPORT.md), and an alpha-0 frame still takes
+  -- the mouse. So an overlay that is merely invisible is still a live hit
+  -- target sitting on their minimap -- which their hover evaluation reads
+  -- as a button being hovered, and the row flashed whenever the cursor
+  -- crossed the map. The overlay's mouse therefore follows their button's
+  -- EFFECTIVE alpha, not its shown state.
+  --
+  -- Polled rather than hooked: the fade is driven from their bar, their
+  -- layout passes and their own timers, so there is no single setter to
+  -- hook -- and effective alpha is the one question that answers all of
+  -- them at once. Five checks a second, two API calls each, only while
+  -- their skin mode is live.
+  local POLL = 0.2
+  overlay._since = 0
+  overlay:SetScript("OnUpdate", function(self, elapsed)
+    self._since = self._since + elapsed
+    if self._since < POLL then return end
+    self._since = 0
+
+    local live = btn:IsVisible() and (btn:GetEffectiveAlpha() or 1) > 0.15
+    if live == self._interactive then return end
+    self._interactive = live
+    self:EnableMouse(live)
+    -- A tooltip left open by a button that has just faded out of reach
+    -- would hang there with nothing under it.
+    if not live and GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+  end)
 
   overlay:SetScript("OnEnter", function(self) ShowTooltip(self, true) end)
   overlay:SetScript("OnLeave", function() GameTooltip:Hide() end)

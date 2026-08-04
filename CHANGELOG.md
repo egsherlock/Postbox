@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.32.1
+
+- **Fixed: under EllesmereUI, hovering anywhere on the minimap made the
+  mouseover button row flash.** Their row fades its buttons to nothing
+  rather than hiding them, and a fully transparent button still catches the
+  mouse — so the invisible control Postbox had just added over their mail
+  icon read to their hover logic as a button being hovered, over and over.
+  It now goes inert whenever their icon is faded out, and wakes up only
+  when the icon is genuinely on screen.
+
 ## 1.32.0
 
 - **Under EllesmereUI, the mail icon does everything it does everywhere
