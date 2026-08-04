@@ -1368,11 +1368,27 @@ local function BuildFrame()
     -- whenever the text fits.
     local statusHover = CreateFrame("Frame", nil, frame)
     statusHover:SetAllPoints(frame.Status)
-    -- Motion only: clicks pass through, so the title bar drags and the close
-    -- button clicks exactly as before.
-    statusHover:EnableMouse(true)
-    statusHover:SetMouseClickEnabled(false)
-    statusHover:SetMouseMotionEnabled(true)
+
+    -- Motion only, and NEVER EnableMouse: this frame lies across the right
+    -- half of the title bar, and the window is dragged from the title bar.
+    -- `EnableMouse(true)` turns on clicks AND motion, and following it with
+    -- SetMouseClickEnabled(false) does not reliably give the mouse-down
+    -- back to the parent -- so the one strip of title bar this frame covers
+    -- was the one strip the window could not be dragged by. The granular
+    -- setters alone leave the click path untouched from the start.
+    --
+    -- Guarded, and with a propagation fallback: both setters are modern
+    -- additions, and a client with neither must end up with a frame that
+    -- takes no mouse at all rather than one that eats drags.
+    if statusHover.SetMouseMotionEnabled and statusHover.SetMouseClickEnabled then
+      statusHover:SetMouseClickEnabled(false)
+      statusHover:SetMouseMotionEnabled(true)
+      if statusHover.SetPropagateMouseClicks then
+        statusHover:SetPropagateMouseClicks(true)
+      end
+    else
+      statusHover:EnableMouse(false)
+    end
     statusHover:SetScript("OnEnter", function(self)
       local label = frame.Status
       local text = label and label:GetText() or ""

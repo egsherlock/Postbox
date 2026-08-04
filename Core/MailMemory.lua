@@ -53,6 +53,20 @@ local function RowsHeight(rows)
   return CHROME_TOP + CHROME_BOTTOM + rows * ROW_HEIGHT + 2
 end
 
+-- A hover target takes MOTION and never clicks. This window is dragged from
+-- anywhere on it, so a child that swallows the mouse-down is a patch the
+-- window cannot be dragged by -- which is exactly what the main window's
+-- status label did to its own title bar. Nothing here wants a click.
+local function HoverOnly(frame)
+  if frame.SetMouseMotionEnabled and frame.SetMouseClickEnabled then
+    frame:SetMouseClickEnabled(false)
+    frame:SetMouseMotionEnabled(true)
+    if frame.SetPropagateMouseClicks then frame:SetPropagateMouseClicks(true) end
+  else
+    frame:EnableMouse(false)
+  end
+end
+
 -- The refusal marker's art, probed once. Same candidates and same order as
 -- Core/CollectTab.lua, so both screens land on the same triangle rather
 -- than one of them quietly falling back to the plain glyph.
@@ -390,7 +404,7 @@ local function BuildRow(parent, index)
   local hit = CreateFrame("Frame", nil, row)
   hit:SetPoint("TOPLEFT", row.Icon, "TOPLEFT", -2, 2)
   hit:SetPoint("BOTTOMRIGHT", row.Icon, "BOTTOMRIGHT", 2, -2)
-  hit:EnableMouse(true)
+  HoverOnly(hit)
   hit:SetScript("OnEnter", function(self)
     if row.itemLink then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -602,7 +616,7 @@ local function Build()
   frame.NewSinceHit = CreateFrame("Frame", nil, frame)
   frame.NewSinceHit:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -32)
   frame.NewSinceHit:SetHeight(16)
-  frame.NewSinceHit:EnableMouse(true)
+  HoverOnly(frame.NewSinceHit)
 
   -- GREEN, not the accent. New mail is good news, and the accent is the
   -- colour this addon uses for "selected" and "attention" -- an orange-gold

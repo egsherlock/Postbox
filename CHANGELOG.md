@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.30.5
+
+- **Fixed: the window could not be dragged by the right-hand end of its
+  title bar** — the stretch where the "Collected / Stuck" line sits. That
+  line has an invisible frame over it so a truncated status can be read in
+  full on hover, and the frame was taking the mouse button as well as the
+  mouse pointer, so the drag never reached the window underneath. It now
+  takes the pointer only. Every window style was affected; all are fixed.
+- The mailbox memory's hover targets got the same treatment, so that window
+  can be dragged from anywhere on it too.
+
 ## 1.30.4
 
 - **Postbox Modern's title bar is aligned by construction, not by
