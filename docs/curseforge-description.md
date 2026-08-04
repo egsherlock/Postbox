@@ -32,18 +32,22 @@ Alternatives, if you'd rather:
 
 ### Summary
 
-The short field shown on cards and in search results. Keep it under ~200 characters:
+One sentence. It is the addon's whole pitch — CurseForge shows it on the search
+card, Wago under the title, and most people never read further:
 
-> Replaces the default mailbox with one window. Clear a full inbox in one click,
-> name completion for everyone you write to, right-click to attach, and an optional
-> minimap mail icon. Wears your UI.
+> A modern mailbox replacement that empties a full inbox in one click, completes
+> every recipient as you type, and wears your UI.
 
-If the field allows more, this longer form carries more search terms naturally:
+Says what it is before what it does, so "mailbox" lands early for search, then the
+three things a player actually feels: the bulk collect, the name completion, and it
+not looking out of place.
 
-> Postbox replaces the default mailbox with a single window: collect a full inbox in
-> one safe pass, sweep expired and sold auction mail, complete recipient names as you
-> type, right-click items in your bags to attach them, and check what your mailbox
-> held without walking to one. Follows EllesmereUI and ElvUI, or brings its own look.
+Alternatives, by emphasis:
+- *Function-first, warmer, weaker for search:* "One window that empties your mailbox
+  in a click, remembers everyone you write to, and looks like the rest of your UI."
+- *Widest keyword net, reads more like a list:* "Replaces the default mailbox with
+  one window — bulk collect, auction-mail sweeps, recipient completion, right-click
+  attach, and an optional minimap mail icon."
 
 ### Category
 
