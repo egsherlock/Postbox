@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.33.4
+
+- **The dot beside "Inheriting EllesmereUI settings" is level with the text.**
+  It was drawn seven pixels tall and centred, and something of an odd height
+  centred in a space cannot land on whole pixels — so it rendered half a pixel
+  above where it was placed. The two previous attempts to correct that each
+  moved it a full pixel, once up and once down, which is why neither worked:
+  a whole pixel cannot cancel half of one. It is drawn at eight now, in the
+  same frame the Minimap heading has used for its switch since it was built,
+  and it needs no correction at all.
+
 ## 1.33.3
 
 - **The dot beside "Inheriting EllesmereUI settings" is level with the text.**

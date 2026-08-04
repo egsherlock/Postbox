@@ -122,10 +122,6 @@ end
 -- with their own inner cursor; EndSection sizes the card to its content and
 -- returns the panel cursor moved past it. The two halves are separate
 -- because the minimap section puts its master checkbox BETWEEN them.
--- Returns the next y AND the heading itself, so a section that puts something
--- on the heading line can size it against the heading rather than against a
--- guessed offset.
---
 -- 24, and ONE number for every section. It used to be 20, with the two sections
 -- that hang a control on the heading line -- Minimap's master switch and
 -- Appearance's inheritance badge -- each subtracting a further 4 of their own
@@ -139,7 +135,7 @@ local function AddSectionHeading(frame, y, title)
   heading:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
   heading:SetWordWrap(false)
   heading:SetText(title)
-  return y - 24, heading
+  return y - 24
 end
 
 local function StartCard(frame, y)
@@ -593,8 +589,7 @@ local function Build()
   local installedHost = InstalledHostName()
 
   local appHeadingY = y
-  local appHeading
-  y, appHeading = AddSectionHeading(frame, y, L["OPT_APPEARANCE_HEADING"])
+  y = AddSectionHeading(frame, y, L["OPT_APPEARANCE_HEADING"])
   card = StartCard(frame, y)
   cy = -12
 
@@ -639,28 +634,33 @@ local function Build()
     -- and height are the heading's, so anything anchored to its vertical centre
     -- is on the heading's centre line by construction, whatever font the theme
     -- gives either of them.
+    -- EVERY NUMBER HERE IS EVEN, and that is the fix rather than a detail.
+    --
+    -- The square was 7px centred in a container sized from the heading's string
+    -- height. Centring an odd height leaves the texture's edges on half pixels,
+    -- and the client rounds them -- so the square rendered half a pixel off its
+    -- own anchor and read as sitting high. Two releases tried to correct that
+    -- with a one-pixel offset, once in each direction, which is why neither
+    -- landed: a whole pixel cannot cancel half of one, it can only overshoot
+    -- the other way.
+    --
+    -- The geometry is now the minimap section's, which has sat correctly on its
+    -- own heading line since it was built: a CHECK_H-tall frame at heading + 5,
+    -- with the caption anchored RIGHT-to-LEFT against it and no vertical offset
+    -- anywhere. 22 and 8 are both even, so the centre line is a whole pixel and
+    -- nothing needs nudging.
     local badge = CreateFrame("Frame", nil, frame)
-    badge:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, appHeadingY)
-    badge:SetHeight(math.max(1, math.ceil(appHeading:GetStringHeight() or 12)))
-
-    local dot = badge:CreateTexture(nil, "OVERLAY")
-    dot:SetSize(7, 7)
+    badge:SetHeight(CHECK_H)
+    badge:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, appHeadingY + 5)
 
     local text = ns.Theme.CreateText(badge, "secondary")
     text:SetPoint("RIGHT", badge, "RIGHT", 0, 0)
     text:SetJustifyH("RIGHT")
     text:SetWordWrap(false)
 
-    -- One pixel DOWN, and the direction is the whole point -- 1.33.2 moved it
-    -- the other way on the wrong half of the reasoning.
-    --
-    -- A font string's box runs from the ascender's top to the descender's
-    -- bottom. Both reserves are empty space, but they are not equal: the
-    -- ascender reserves noticeably more above the capitals than the descender
-    -- does below the baseline, so the ink of a line like this sits BELOW the
-    -- middle of its own box. Centring the square on the box therefore puts it
-    -- above the letters, not level with them.
-    dot:SetPoint("RIGHT", text, "LEFT", -6, -1)
+    local dot = badge:CreateTexture(nil, "OVERLAY")
+    dot:SetSize(8, 8)
+    dot:SetPoint("RIGHT", text, "LEFT", -6, 0)
 
     -- Re-derived on every open rather than fixed at build. It describes the
     -- LIVE session -- who is painting right now, not what is saved for the next
@@ -691,7 +691,7 @@ local function Build()
       -- Re-measured here because the two states are different lengths, and a
       -- width left over from the other one would put the hover target in the
       -- wrong place.
-      badge:SetWidth(7 + 6 + math.ceil(text:GetStringWidth() or 0))
+      badge:SetWidth(8 + 6 + math.ceil(text:GetStringWidth() or 0))
     end
     RefreshInheritance()
     frame.__refreshers[#frame.__refreshers + 1] = RefreshInheritance
