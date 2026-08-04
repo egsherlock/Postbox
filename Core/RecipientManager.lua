@@ -75,10 +75,10 @@ local BAR_H      = M.segmentHeight
 local BAR_STAR_ICON, BAR_STAR_PAD = M.iconSize, M.tightGap
 local BAR_STAR_W  = BAR_STAR_ICON + BAR_STAR_PAD * 2
 local BAR_COUNT_GAP = M.space.hair
--- Capped: the word tiles share whatever the star leaves them, and at the
--- minimum window width there is not much to give. The tile is measured from the
--- rendered string rather than given a fixed width, so no number ever clips.
-local BAR_COUNT_CAP = 99
+-- The cap on that count is Theme.CountCap: the word tiles share whatever the
+-- star leaves them, and at the minimum window width there is not much to give.
+-- The tile is measured from the rendered string rather than given a fixed
+-- width, so no number ever clips.
 -- Tile to tile inside one dense strip: the ladder's smallest rung, and the same
 -- gap Core/SendTab.lua's category bar uses, so the two bars tile identically.
 local BAR_GAP    = M.space.hair
@@ -410,94 +410,19 @@ end
 -------------------------------------------------------------
 -- Artwork
 --
--- Atlases are preferred over texture paths where one exists: they are cut from
--- the modern high-resolution sheets and stay crisp at the sizes this window
--- uses, where the legacy standalone .blp files visibly soften.
+-- The probe is Core/Theme.lua's, and so is the star: the Send tab's contact bar
+-- draws the same one, and the two windows have to agree about what a favourite
+-- looks like. The reasoning for the artwork lives there with the code.
 --
--- They are also PROBED, never assumed. SetAtlas with an unknown name does not
--- error -- it clears the texture and leaves an empty square, which would be a
--- silent, client-version-dependent hole in the UI. C_Texture.GetAtlasInfo
--- settles it up front, and anything unresolved falls back to a texture path
--- that has shipped since vanilla.
+-- The sort arrow below stays here -- this is the only window that sorts.
 -------------------------------------------------------------
-local function AtlasExists(name)
-  if type(name) ~= "string" or name == "" then return false end
-  local getter = (C_Texture and C_Texture.GetAtlasInfo) or GetAtlasInfo
-  if type(getter) ~= "function" then return false end
-  local ok, info = pcall(getter, name)
-  return ok and info ~= nil
-end
-
--- The favourite star.
---
--- The old artwork was `Interface\Common\FavoritesIcon` at 18px with the off
--- state expressed as "the same star, desaturated and faint" -- two states that
--- differ only in intensity, which is exactly what is hard to read at a glance
--- in a list of several hundred rows.
---
--- The auction house's favourite pair is used instead when the client has it:
--- a filled gold star for on and a hollow outline for off. The states then
--- differ in SHAPE first and colour second, which survives both a dim host UI
--- and a colour-blind eye.
---
--- Neither state is ever faded. "Not a favourite" and "no favourites yet" are
--- both perfectly ordinary states of a working control, and a greyed-out icon
--- cannot be told apart from a disabled one, a half-loaded one, or a bug.
-local STAR_ATLAS = { on = "auctionhouse-icon-favorite", off = "auctionhouse-icon-favorite-off" }
-local STAR_TEXTURE = "Interface\\Common\\FavoritesIcon"
--- One token, read by this window and by Core/SendTab.lua's picker. Both files
--- used to carry the triple literally, each with a comment naming the other.
-local STAR_EMPTY_TINT = ns.Core.UI.Theme.IconTints.starEmpty
-
-local starAtlas, starProbed
-
-local function StarAtlas()
-  if not starProbed then
-    starProbed = true
-    -- Both or neither: an atlas star paired with a legacy outline would be two
-    -- unrelated shapes sitting in the same column.
-    if AtlasExists(STAR_ATLAS.on) and AtlasExists(STAR_ATLAS.off) then
-      starAtlas = STAR_ATLAS
-    end
-  end
-  return starAtlas
-end
+local AtlasExists = Theme.AtlasExists
 
 -- `on` true draws the filled gold star, false the hollow outline. Used for the
 -- per-row toggle and for the Favourites tile alike, which is why there is no
 -- third "dimmed" state: the tile with nothing in it shows the same outline star
 -- a row that is not a favourite shows, at the same full opacity.
-local function SetStarArt(texture, on)
-  if not texture then return end
-  local filled = on and true or false
-  local atlas = StarAtlas()
-
-  texture:SetDesaturated(false)
-  texture:SetAlpha(1)
-
-  if atlas then
-    texture:SetAtlas(filled and atlas.on or atlas.off, false)
-    if filled then
-      texture:SetVertexColor(1, 1, 1, 1)
-    else
-      -- A cool near-white outline: unmistakably "not set" without reading as
-      -- another shade of gold.
-      texture:SetVertexColor(STAR_EMPTY_TINT[1], STAR_EMPTY_TINT[2], STAR_EMPTY_TINT[3], 1)
-    end
-    return
-  end
-
-  texture:SetTexture(STAR_TEXTURE)
-  if filled then
-    texture:SetVertexColor(1, 1, 1, 1)
-  else
-    -- No outline variant in the legacy asset, so the off state falls back to a
-    -- colourless star -- still at full opacity, so it reads as a star that is
-    -- not set rather than a star that failed to draw.
-    texture:SetDesaturated(true)
-    texture:SetVertexColor(STAR_EMPTY_TINT[1], STAR_EMPTY_TINT[2], STAR_EMPTY_TINT[3], 1)
-  end
-end
+local SetStarArt = Theme.SetStarArt
 
 -- The sort direction arrow. Blizzard's own sortable column headers use
 -- `UI-SortArrow` flipped vertically for the opposite direction; that is the
@@ -574,36 +499,27 @@ end
 -- the control -- so that caption is re-tinted after every repaint the factory
 -- makes, including the hover repaints it installs itself.
 local function TintEmptyCaption(tile)
-  if tile and tile.Text and tile._empty and not tile._active then
+  if tile and tile._empty and not tile._active then
     -- Nothing in this category. Still clickable: the empty state it lands on
     -- explains the category better than a disabled button would.
-    Theme.SetColor(tile.Text, "textDisabled")
+    Theme.DimCaption(tile)
   end
 end
 
 local function StyleTile(tile)
   if not tile then return end
 
-  -- The star tile with favourites behind it is `flagged`: one step up from
-  -- idle and no more. Active still wins -- "this is the filter the list is
-  -- under" is the more urgent fact, and the gold count beside the star says
-  -- the rest.
-  Theme.SetPlateFlagged(tile, tile._starTile and not tile._empty)
-  -- Last, and the only call here that paints: SetPlateSelected honours a
-  -- host-UI skin's __setSelectedOverride, after which the skin owns the whole
-  -- visual and our plate art is retired for good.
-  Theme.SetPlateSelected(tile, tile._active and true or false)
+  -- The star tile with favourites behind it is `flagged`: one step up from idle
+  -- and no more. Active still wins -- "this is the filter the list is under" is
+  -- the more urgent fact, and the gold count beside the star says the rest.
+  --
+  -- Theme.SetTileState owns the order (flagged, then selected, then the caption
+  -- tint last), because the Send tab's bar depends on the same one.
+  Theme.SetTileState(tile, tile._active, tile._starTile and not tile._empty)
   TintEmptyCaption(tile)
 end
 
--- Count text for the Favourites tile. nil means "show no number", which is the
--- empty state: a bare "0" would be one more thing to read where the hollow star
--- has already said it.
-local function TileCountText(count)
-  if not count or count <= 0 then return nil end
-  if count > BAR_COUNT_CAP then return BAR_COUNT_CAP .. "+" end
-  return tostring(count)
-end
+local TileCountText = Theme.CountBadgeText
 
 -- Sizes the star tile around its count. The width is derived from the rendered
 -- string, so the bar's own layout pass has to run again afterwards -- see

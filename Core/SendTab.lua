@@ -1103,82 +1103,16 @@ end
 -------------------------------------------------------------
 -- 12. The favourite star
 --
--- Atlases are authored against the UI's own scale and stay crisp at 14px, where
--- Interface\Common\FavoritesIcon -- a 32px .blp with baked-in glow -- turns to
--- mush. Neither the names nor their availability on a given client can be
--- checked from outside the game, so every lookup is probed and has a fallback.
+-- The art, the atlas probe and the empty-state tint are all Core/Theme.lua's --
+-- the recipient manager draws the same star, and the two windows have to agree
+-- about what a favourite looks like. The reasoning for the artwork and for why
+-- neither state is ever faded lives there, next to the code it explains.
 --
--- The auction house's pair gives a filled gold star for "there are favourites"
--- and a hollow outline for "none yet", so the two states differ in SHAPE first
--- and colour second. Core/RecipientManager.lua draws its star from the same
--- pair, so the two windows agree about what a favourite looks like.
---
--- Neither state is ever faded. An empty favourites list is not a disabled
--- button: it does exactly the same thing either way, and dimming it makes
--- "empty" indistinguishable from "broken", "loading" and "unavailable".
+-- Aliased rather than called through Theme at each site: this file names the
+-- control a favourite icon, and the four call sites below read better for it.
 -------------------------------------------------------------
 
-local function AtlasExists(name)
-  local getter = C_Texture and C_Texture.GetAtlasInfo
-  if type(getter) ~= "function" then return false end
-  local ok, info = pcall(getter, name)
-  return ok and info ~= nil
-end
-
-local FAVORITE_ATLAS   = { on = "auctionhouse-icon-favorite", off = "auctionhouse-icon-favorite-off" }
-local FAVORITE_TEXTURE = "Interface\\Common\\FavoritesIcon"
-
-local favoriteAtlas, favoriteProbed
-
-local function FavoriteAtlas()
-  if not favoriteProbed then
-    favoriteProbed = true
-    -- Both or neither: an atlas star paired with the legacy outline would be
-    -- two unrelated shapes in the same slot.
-    if AtlasExists(FAVORITE_ATLAS.on) and AtlasExists(FAVORITE_ATLAS.off) then
-      favoriteAtlas = FAVORITE_ATLAS
-    end
-  end
-  return favoriteAtlas
-end
-
--- The empty star's tint. One token, read by this window and by
--- Core/RecipientManager.lua's star. Both files used to carry the triple
--- literally, each with a comment naming the other, so changing it in one place
--- would have left the two windows drawing different stars.
---
--- It lives in Lib/UI/Theme.lua's IconTints rather than in Core/Theme.lua's
--- palette because Theme.Palette holds backdrop SCHEMES ({bg, border, surface});
--- a bare RGB triple filed among them is a type mismatch ApplyBackdropTheme
--- could trip over.
-local FAVORITE_EMPTY_TINT = ns.Core.UI.Theme.IconTints.starEmpty
-
--- Owns the star's art AND its colour, because on this control the two states
--- are artwork rather than tint.
-local function ApplyFavoriteIcon(texture, filled)
-  if not texture then return end
-  local atlas = FavoriteAtlas()
-  texture:SetDesaturated(false)
-  texture:SetAlpha(1)
-  if atlas then
-    texture:SetAtlas(filled and atlas.on or atlas.off)
-    if filled then
-      texture:SetVertexColor(1, 1, 1)
-    else
-      texture:SetVertexColor(FAVORITE_EMPTY_TINT[1], FAVORITE_EMPTY_TINT[2], FAVORITE_EMPTY_TINT[3])
-    end
-  else
-    -- One star to work with, so the empty state falls back to colour:
-    -- colourless but at full opacity. Fading it is what made it disappear.
-    texture:SetTexture(FAVORITE_TEXTURE)
-    if filled then
-      texture:SetVertexColor(1, 1, 1)
-    else
-      texture:SetDesaturated(true)
-      texture:SetVertexColor(FAVORITE_EMPTY_TINT[1], FAVORITE_EMPTY_TINT[2], FAVORITE_EMPTY_TINT[3])
-    end
-  end
-end
+local ApplyFavoriteIcon = Theme.SetStarArt
 
 -- Reads the stored rows directly rather than calling R.Favorites(): the state
 -- map is sparse (only recipients with non-default state have a row), and this
@@ -1257,10 +1191,10 @@ local BAR_TILE_GAP  = M.space.hair
 -- the two cannot drift if either the button or the glyph is ever resized.
 local BAR_ICON_PAD  = floor((BAR_ICON_W - BAR_ICON_SIZE) / 2)
 local BAR_COUNT_GAP = M.space.hair
--- Capped, because the five word tiles share whatever the star leaves them. The
--- width is still measured from the rendered string, so nothing clips whatever
--- the number turns out to be.
-local BAR_COUNT_CAP = 99
+-- The cap on that count is Theme.CountCap: the five word tiles share whatever
+-- the star leaves them, and the recipient manager's star has the same problem.
+-- The width is still measured from the rendered string, so nothing clips
+-- whatever the number turns out to be.
 
 -- THE STAR AND ITS COUNT ARE ONE OBJECT, and it is centred as one.
 --
@@ -1322,30 +1256,18 @@ end
 -- why this reaches for `Text` alone -- every other tile now wears a word.
 local function TintEmptyCaption(b)
   if not b or b._isStar or not b._empty or b._active then return end
-  if b.Text then Theme.SetColor(b.Text, "textDisabled") end
+  Theme.DimCaption(b)
 end
 
 local function StyleBarButton(b)
   if not b then return end
-
-  if b._isStar then
-    Theme.SetPlateFlagged(b, b._hasFavorites)
-  end
-  -- The only paint call: SetPlateSelected honours a skin's
-  -- __setSelectedOverride, at which point the skin owns the whole visual.
-  Theme.SetPlateSelected(b, b._active)
-
-  -- Last, over the top of everything the factory just painted.
+  -- Flagged then selected, and the caption tint last of all. Theme.SetTileState
+  -- owns that order because the recipient manager's bar depends on it too.
+  Theme.SetTileState(b, b._active, b._isStar and b._hasFavorites)
   TintEmptyCaption(b)
 end
 
-local function FavoriteCountText(count)
-  -- nil means "show no number at all", which is the empty state: a bare "0"
-  -- would be one more thing to read where the hollow star has already said it.
-  if not count or count <= 0 then return nil end
-  if count > BAR_COUNT_CAP then return BAR_COUNT_CAP .. "+" end
-  return tostring(count)
-end
+local FavoriteCountText = Theme.CountBadgeText
 
 -- Tile widths come from the panel width, so no caption here carries a fixed
 -- width. When a translated label is still too long for its share, Theme.FitText

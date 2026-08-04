@@ -1497,6 +1497,183 @@ function Theme.StylePlate(plate)
   PaintPlate(plate)
 end
 
+-------------------------------------------------------------
+-- Atlas probing
+--
+-- Atlases are preferred over texture paths wherever one exists: they are cut
+-- from the modern high-resolution sheets and stay crisp at the sizes these
+-- windows use, where the legacy standalone .blp files visibly soften.
+--
+-- They are PROBED, never assumed. SetAtlas with an unknown name does not error
+-- -- it clears the texture and leaves an empty square, which would be a silent,
+-- client-version-dependent hole in the UI. Neither the names nor their
+-- availability on a given client can be checked from outside the game, so every
+-- lookup is probed here and every caller carries a fallback.
+--
+-- This lives in the theme because the alternative is what the addon actually
+-- had: four separate probes across four files, one of them (the Send tab's)
+-- missing the `GetAtlasInfo` fallback the other three carried. Two windows
+-- drawing the same star from differently-capable probes is precisely the
+-- divergence the shared `starEmpty` tint was extracted to prevent.
+-------------------------------------------------------------
+
+local atlasKnown = {}
+
+function Theme.AtlasExists(name)
+  if type(name) ~= "string" or name == "" then return false end
+  local cached = atlasKnown[name]
+  if cached ~= nil then return cached end
+
+  local getter = (C_Texture and C_Texture.GetAtlasInfo) or GetAtlasInfo
+  local found = false
+  if type(getter) == "function" then
+    local ok, info = pcall(getter, name)
+    found = (ok and info ~= nil) and true or false
+  end
+  atlasKnown[name] = found
+  return found
+end
+
+-- First name in `candidates` the client actually has, or nil. Order is the
+-- preference order, so two screens sharing a candidate list land on the same
+-- art instead of one of them quietly falling back a step further than the other.
+function Theme.FirstAtlas(candidates)
+  if type(candidates) ~= "table" then return nil end
+  for i = 1, #candidates do
+    if Theme.AtlasExists(candidates[i]) then return candidates[i] end
+  end
+  return nil
+end
+
+-- Candidate lists shared by more than one screen. A list used in exactly one
+-- place belongs in that file; these are here because two screens showing
+-- different art for the same fact is a bug that only appears on the clients
+-- where the first choice is missing.
+Theme.AtlasSets = {
+  -- The refusal marker: "this could not be collected".
+  warning = { "services-icon-warning", "Ping_Chat_Warning" },
+}
+
+-------------------------------------------------------------
+-- The favourite star
+--
+-- The auction house's pair when the client has it: a filled gold star for on, a
+-- hollow outline for off, so the two states differ in SHAPE first and colour
+-- second -- which survives both a dim host UI and a colour-blind eye. The
+-- legacy `FavoritesIcon` is one star only, so there the off state falls back to
+-- colour.
+--
+-- Neither state is ever faded. "Not a favourite" and "no favourites yet" are
+-- ordinary states of a working control, and a greyed-out icon cannot be told
+-- apart from a disabled one, a half-loaded one, or a bug.
+--
+-- Both recipient surfaces draw it -- the Send tab's contact bar and the
+-- recipient manager -- and they must agree, so the art, the probe and the tint
+-- are all settled here rather than in either window.
+-------------------------------------------------------------
+
+local STAR_ATLAS   = { on = "auctionhouse-icon-favorite", off = "auctionhouse-icon-favorite-off" }
+local STAR_TEXTURE = "Interface\\Common\\FavoritesIcon"
+local STAR_EMPTY_TINT = ns.Core.UI.Theme.IconTints.starEmpty
+
+local starAtlas, starProbed
+
+local function StarAtlas()
+  if not starProbed then
+    starProbed = true
+    -- Both or neither: an atlas star paired with the legacy outline would be
+    -- two unrelated shapes in the same slot.
+    if Theme.AtlasExists(STAR_ATLAS.on) and Theme.AtlasExists(STAR_ATLAS.off) then
+      starAtlas = STAR_ATLAS
+    end
+  end
+  return starAtlas
+end
+
+-- Owns the star's art AND its colour, because on this control the two states
+-- are artwork rather than tint.
+function Theme.SetStarArt(texture, filled)
+  if not texture then return end
+  filled = filled and true or false
+
+  local atlas = StarAtlas()
+  texture:SetDesaturated(false)
+  texture:SetAlpha(1)
+
+  if atlas then
+    texture:SetAtlas(filled and atlas.on or atlas.off, false)
+    if filled then
+      texture:SetVertexColor(1, 1, 1, 1)
+    else
+      -- A cool near-white outline: unmistakably "not set" without reading as
+      -- another shade of gold.
+      texture:SetVertexColor(STAR_EMPTY_TINT[1], STAR_EMPTY_TINT[2], STAR_EMPTY_TINT[3], 1)
+    end
+    return
+  end
+
+  -- One star to work with, so the empty state falls back to colour: colourless
+  -- but at full opacity. Fading it is what made it disappear.
+  texture:SetTexture(STAR_TEXTURE)
+  if filled then
+    texture:SetVertexColor(1, 1, 1, 1)
+  else
+    texture:SetDesaturated(true)
+    texture:SetVertexColor(STAR_EMPTY_TINT[1], STAR_EMPTY_TINT[2], STAR_EMPTY_TINT[3], 1)
+  end
+end
+
+-------------------------------------------------------------
+-- Tile state
+--
+-- The category bars in the Send tab and the recipient manager are the same
+-- control with different data behind them. What they share is the ORDER, which
+-- is not arbitrary and which both files previously spelled out separately:
+--
+--   flagged, then selected -- SetPlateSelected is the one that honours a host
+--   skin's __setSelectedOverride, and once that fires the skin owns the whole
+--   visual, so nothing of ours may run after it;
+--
+--   the caption tint last of all, over the top of everything the factory just
+--   painted, because it is the one fact the factory cannot know.
+--
+-- What they do NOT share is which tile counts as flagged or empty; that is data,
+-- and each bar works it out from its own state before calling in.
+-------------------------------------------------------------
+
+-- One repaint, not two: the flag is recorded directly and SetPlateSelected does
+-- the painting. That keeps the order honest -- the flag is already set when the
+-- paint happens, and the call that may hand the whole visual to a host skin is
+-- still the last thing to run -- while dropping the redundant intermediate
+-- repaint both bars used to make on every tile.
+function Theme.SetTileState(plate, selected, flagged)
+  if not plate then return end
+  plate.__pbFlagged = flagged and true or false
+  Theme.SetPlateSelected(plate, selected)
+end
+
+-- Darkens a tile's caption, unconditionally -- the caller owns the predicate,
+-- because "empty" means something different in each bar.
+--
+-- There is deliberately no undo. Every repaint re-applies the caption's normal
+-- tone, so restoring is the factory's job; this is what has to run again AFTER
+-- each repaint, which is why both bars call it from OnEnter and OnLeave as well
+-- as from their style pass.
+function Theme.DimCaption(plate)
+  if plate and plate.Text then Theme.SetColor(plate.Text, "textDisabled") end
+end
+
+-- The count beside a tile's glyph. nil means "show no number at all", which is
+-- the empty state: a bare "0" would be one more thing to read where the hollow
+-- star has already said it.
+Theme.CountCap = 99
+
+function Theme.CountBadgeText(count)
+  if not count or count <= 0 then return nil end
+  if count > Theme.CountCap then return Theme.CountCap .. "+" end
+  return tostring(count)
+end
+
 -- Window tabs. The names are kept because Core/MailboxUI.lua and both skin
 -- files call them; each is the plate entry point above at the "tab" variant.
 function Theme.CreateTab(name, parent)

@@ -168,7 +168,10 @@ local EMPTY_SLOT_ART = "Interface\\PaperDoll\\UI-Backpack-EmptySlot"
 -- this control wanted all along.
 local DELETE_ATLASES = { "uitools-icon-close", "transmog-icon-remove", "common-icon-redx" }
 local DELETE_GLYPH = "\195\151"   -- U+00D7 MULTIPLICATION SIGN
-local WARNING_ATLASES = { "services-icon-warning", "Ping_Chat_Warning" }
+-- The refusal marker's candidates are Theme.AtlasSets.warning, NOT a list of
+-- this file's own: the mailbox memory draws the same marker, and a copy here
+-- would let the two screens land on different art on a client that has only the
+-- second choice. Delete is this screen's alone and stays local.
 local WARNING_GLYPH = "!"
 
 -- The glyph is inset inside the control on every side. THE CONTROL IS THE HIT
@@ -181,31 +184,13 @@ local function Clear(t)
   for i = #t, 1, -1 do t[i] = nil end
 end
 
--- candidates -> the first name this client actually has, or nil.
---
--- Memoised on the candidate table itself, so each family is probed once for the
--- session however many rows are built. Answering `false` for "probed, nothing
--- found" is what stops a failed probe being retried on every row.
-local atlasCache = {}
-
+-- candidates -> the first name this client actually has, or nil. Theme's, and
+-- memoised per NAME there, so a family shared with another screen is probed once
+-- for the session and both screens land on the same art. Reached through Th()
+-- like every other theme call in this file, so nothing here depends on load
+-- order.
 local function ProbeAtlas(candidates)
-  local cached = atlasCache[candidates]
-  if cached ~= nil then return cached or nil end
-
-  local getter = (C_Texture and C_Texture.GetAtlasInfo) or GetAtlasInfo
-  local found = false
-  if type(getter) == "function" then
-    for i = 1, #candidates do
-      local ok, info = pcall(getter, candidates[i])
-      if ok and info then
-        found = candidates[i]
-        break
-      end
-    end
-  end
-
-  atlasCache[candidates] = found
-  return found or nil
+  return Th().FirstAtlas(candidates)
 end
 
 -------------------------------------------------------------
@@ -1264,7 +1249,7 @@ local function BuildRow(panel)
   -- tooltip, which is already on screen when the cursor is anywhere on the row,
   -- so the marker takes no mouse input and cannot become a dead spot in the
   -- middle of a clickable row the way an inert child frame would.
-  local warningAtlasName = ProbeAtlas(WARNING_ATLASES)
+  local warningAtlasName = ProbeAtlas(Th().AtlasSets.warning)
   if warningAtlasName then
     row.Warning = row:CreateTexture(nil, "OVERLAY")
     row.Warning:SetAtlas(warningAtlasName, false)

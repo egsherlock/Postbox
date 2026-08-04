@@ -67,24 +67,12 @@ local function HoverOnly(frame)
   end
 end
 
--- The refusal marker's art, probed once. Same candidates and same order as
--- Core/CollectTab.lua, so both screens land on the same triangle rather
--- than one of them quietly falling back to the plain glyph.
-local warningAtlas = nil
+-- The refusal marker's art. The candidate list is Theme.AtlasSets.warning --
+-- literally the same table Core/CollectTab.lua probes, not a matching copy --
+-- so the two screens cannot land on different art on a client that has only the
+-- second choice. Theme memoises the probe per name.
 local function WarningAtlas()
-  if warningAtlas ~= nil then return warningAtlas or nil end
-  warningAtlas = false
-  local getter = (C_Texture and C_Texture.GetAtlasInfo) or GetAtlasInfo
-  if type(getter) == "function" then
-    for _, name in ipairs({ "services-icon-warning", "Ping_Chat_Warning" }) do
-      local ok, info = pcall(getter, name)
-      if ok and info then
-        warningAtlas = name
-        break
-      end
-    end
-  end
-  return warningAtlas or nil
+  return ns.Theme.FirstAtlas(ns.Theme.AtlasSets.warning)
 end
 
 -------------------------------------------------------------

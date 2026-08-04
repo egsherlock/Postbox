@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.32.3
+
+- **Nothing you can see changed.** This one is housekeeping: the favourite
+  star, the atlas lookups behind several icons, and the category bars in the
+  Send tab and the recipient manager were each written twice, once per
+  window. They are now written once and shared, so the two windows cannot
+  drift apart — one of the copies was already slightly less capable than the
+  other. Thirty-seven translated strings that nothing displayed were removed
+  along with it.
+
 ## 1.32.2
 
 - **The new-mail flash works under EllesmereUI.** It only ever existed on
