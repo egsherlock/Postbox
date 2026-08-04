@@ -319,6 +319,60 @@ end
 -- EllesmereUI overlay below needs it too.
 local ShowTooltip
 
+-- The arrival halo, built the same way on whichever button is showing --
+-- ours, or EllesmereUI's in skin mode. One builder so the alert cannot
+-- drift into two different animations, and so a host-skinned session is
+-- not quietly the one that has no alert at all (which it was until now:
+-- the flash only ever existed on Postbox's own button).
+--
+-- Soft art on purpose: a hard-edged icon rasterises to whole pixels, so
+-- scaling one at 20 px renders as three visible steps. A blurred halo has
+-- no edge to snap and grows continuously. Scale and alpha run together in
+-- each phase -- it brightens as it swells, then keeps swelling as it fades.
+local function BuildAlertHalo(parent)
+  local halo = parent:CreateTexture(nil, "BACKGROUND", nil, 1)
+  halo:SetPoint("CENTER")
+  halo:SetTexture(MEDIA .. "minimap-glow.tga")
+  halo:SetBlendMode("ADD")
+  halo:SetAlpha(0)
+
+  local flash = halo:CreateAnimationGroup()
+  -- { order, alphaFrom, alphaTo, scaleFrom, scaleTo, duration }
+  local phases = {
+    { 1, 0.00, 0.80, 0.80, 1.12, 0.70 },
+    { 2, 0.80, 0.00, 1.12, 1.42, 1.10 },
+    { 3, 0.00, 0.45, 0.85, 1.10, 0.60 },
+    { 4, 0.45, 0.00, 1.10, 1.34, 1.20 },
+  }
+  for i = 1, #phases do
+    local p = phases[i]
+    local fade = flash:CreateAnimation("Alpha")
+    fade:SetFromAlpha(p[2])
+    fade:SetToAlpha(p[3])
+    fade:SetDuration(p[6])
+    fade:SetSmoothing("IN_OUT")
+    fade:SetOrder(p[1])
+
+    local grow = flash:CreateAnimation("Scale")
+    if grow.SetScaleFrom then
+      grow:SetScaleFrom(p[4], p[4])
+      grow:SetScaleTo(p[5], p[5])
+    end
+    grow:SetDuration(p[6])
+    grow:SetSmoothing("IN_OUT")
+    grow:SetOrder(p[1])
+  end
+  -- An animation leaves its target wherever it finished, so both properties
+  -- are reset explicitly -- including when the sequence is cut short.
+  local function Settle()
+    halo:SetAlpha(0)
+    halo:SetScale(1)
+  end
+  flash:SetScript("OnFinished", Settle)
+  flash:SetScript("OnStop", Settle)
+  return halo, flash
+end
+
 -- In EllesmereUI's skin mode Postbox restyles THEIR mail button instead of
 -- drawing its own, which left the icon looking like ours and behaving like
 -- theirs: their one-line "You have unread mail" tooltip, and no way to
@@ -338,53 +392,35 @@ local ShowTooltip
 local function EnsureEuiOverlay(btn)
   if btn.__pbOverlay then
     btn.__pbOverlay:Show()
-    -- Re-decide on the next poll rather than assuming the state it was
-    -- hidden in still holds.
-    btn.__pbOverlay._interactive = nil
     return btn.__pbOverlay
   end
 
   local overlay = CreateFrame("Button", nil, btn)
   overlay:SetAllPoints(btn)
   overlay:SetFrameLevel((btn:GetFrameLevel() or 1) + 2)
-  -- Starts inert; the poll below turns it on once their button is genuinely
-  -- on screen, so it can never be a live hit target before then.
-  overlay:EnableMouse(false)
+  overlay:EnableMouse(true)
   overlay:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   overlay.__pbTooltipOwner = true
 
-  -- Their mouseover row FADES its buttons to alpha 0 rather than hiding
-  -- them (see .dev/EUI-FLICKER-REPORT.md), and an alpha-0 frame still takes
-  -- the mouse. So an overlay that is merely invisible is still a live hit
-  -- target sitting on their minimap -- which their hover evaluation reads
-  -- as a button being hovered, and the row flashed whenever the cursor
-  -- crossed the map. The overlay's mouse therefore follows their button's
-  -- EFFECTIVE alpha, not its shown state.
+  -- Reachable only when their icon is genuinely on screen. A frame at alpha
+  -- zero still takes the mouse in this client, so "invisible" is not the
+  -- same as "not there" -- and asking at the moment of the hover costs
+  -- nothing, where watching for it would cost something forever.
   --
-  -- Polled rather than hooked: the fade is driven from their bar, their
-  -- layout passes and their own timers, so there is no single setter to
-  -- hook -- and effective alpha is the one question that answers all of
-  -- them at once. Five checks a second, two API calls each, only while
-  -- their skin mode is live.
-  local POLL = 0.2
-  overlay._since = 0
-  overlay:SetScript("OnUpdate", function(self, elapsed)
-    self._since = self._since + elapsed
-    if self._since < POLL then return end
-    self._since = 0
+  -- 1.32.1 polled this five times a second on an OnUpdate. That was the
+  -- wrong instinct: a mail addon has no business running a timer to watch
+  -- another addon's opacity. There is no idle cost here at all now.
+  local function Reachable()
+    return btn:IsVisible() and (btn:GetEffectiveAlpha() or 1) > 0.15
+  end
 
-    local live = btn:IsVisible() and (btn:GetEffectiveAlpha() or 1) > 0.15
-    if live == self._interactive then return end
-    self._interactive = live
-    self:EnableMouse(live)
-    -- A tooltip left open by a button that has just faded out of reach
-    -- would hang there with nothing under it.
-    if not live and GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+  overlay:SetScript("OnEnter", function(self)
+    if not Reachable() then return end
+    ShowTooltip(self, true)
   end)
-
-  overlay:SetScript("OnEnter", function(self) ShowTooltip(self, true) end)
   overlay:SetScript("OnLeave", function() GameTooltip:Hide() end)
   overlay:SetScript("OnClick", function(self, mouseButton)
+    if not Reachable() then return end
     if mouseButton == "RightButton" then
       local Panel = ns.OptionsPanel
       if Panel and type(Panel.Toggle) == "function" then Panel.Toggle(self) end
@@ -491,6 +527,16 @@ local function ApplyEuiSkin()
     btn.__pbMailPulse:Stop()
     glow:Hide()
   end
+
+  -- Their button gets the arrival halo too. Until now the flash existed
+  -- only on Postbox's own button, so the one mode where Postbox does not
+  -- draw that button -- this one -- was silently the mode with no visible
+  -- alert at all.
+  if not btn.__pbMailAlert then
+    btn.__pbMailAlert, btn.__pbMailFlash = BuildAlertHalo(btn)
+    btn.__pbMailAlert:SetPoint("CENTER", icon, "CENTER")
+  end
+  btn.__pbMailAlert:SetSize(btn:GetWidth() * 1.75, btn:GetHeight() * 1.75)
 
   euiSkin.applied = true
   return true
@@ -926,68 +972,10 @@ local function Build()
   fade:SetSmoothing("IN_OUT")
   button.pulse = pulse
 
-  -- The arrival flash: a soft halo swelling behind the icon.
-  --
-  -- WHY IT IS THE HALO THAT GROWS AND NOT THE ICON. Scaling the icon is
-  -- what produced the juddering, slideshow-like animation of 1.30.4, and
-  -- the cause is arithmetic rather than timing: at 20 px, growing by eight
-  -- percent means 20.0 -> 21.6 px, and a hard-edged texture is rasterised
-  -- to whole pixels -- so the "smooth" curve rendered as three visible
-  -- steps. No easing or duration can fix that; the resolution simply is not
-  -- there. Every earlier attempt to smooth it was tuning the wrong thing.
-  --
-  -- A soft radial glow has no hard edge to snap, so the same scale reads as
-  -- continuous growth however small the steps are. It also sits BEHIND the
-  -- icon (BACKGROUND, one sublevel above the standing glow), so nothing
-  -- covers the art, and the icon itself never moves or resizes: the eye
-  -- sees light swelling around a stationary icon, which is what a
-  -- notification should look like.
-  --
-  -- Scale and alpha run together in each phase -- the glow grows AND
-  -- brightens, then keeps growing as it fades, the way light behaves.
-  local alert = art:CreateTexture(nil, "BACKGROUND", nil, 1)
-  alert:SetPoint("CENTER")
-  alert:SetTexture(MEDIA .. "minimap-glow.tga")
-  alert:SetBlendMode("ADD")
-  alert:SetAlpha(0)
-  button.alert = alert
-
-  local flash = alert:CreateAnimationGroup()
-  -- { order, alphaFrom, alphaTo, scaleFrom, scaleTo, duration }
-  local phases = {
-    { 1, 0.00, 0.80, 0.80, 1.12, 0.70 },
-    { 2, 0.80, 0.00, 1.12, 1.42, 1.10 },
-    { 3, 0.00, 0.45, 0.85, 1.10, 0.60 },
-    { 4, 0.45, 0.00, 1.10, 1.34, 1.20 },
-  }
-  for i = 1, #phases do
-    local p = phases[i]
-    local fade = flash:CreateAnimation("Alpha")
-    fade:SetFromAlpha(p[2])
-    fade:SetToAlpha(p[3])
-    fade:SetDuration(p[6])
-    fade:SetSmoothing("IN_OUT")
-    fade:SetOrder(p[1])
-
-    local grow = flash:CreateAnimation("Scale")
-    if grow.SetScaleFrom then
-      grow:SetScaleFrom(p[4], p[4])
-      grow:SetScaleTo(p[5], p[5])
-    end
-    grow:SetDuration(p[6])
-    grow:SetSmoothing("IN_OUT")
-    grow:SetOrder(p[1])
-  end
-  -- An animation leaves its target wherever it finished, so both properties
-  -- are reset explicitly -- including when the sequence is cut short by the
-  -- option being switched off mid-flash.
-  local function Settle()
-    alert:SetAlpha(0)
-    alert:SetScale(1)
-  end
-  flash:SetScript("OnFinished", Settle)
-  flash:SetScript("OnStop", Settle)
-  button.flash = flash
+  -- The arrival halo, behind the icon (BACKGROUND, one sublevel above the
+  -- standing glow) so nothing ever covers the art. Built by the shared
+  -- helper in section 3, which is also what dresses EllesmereUI's button.
+  button.alert, button.flash = BuildAlertHalo(art)
 
   -- Wrapped, not passed directly: OnEnter hands the handler (self, motion),
   -- and that second argument would arrive as `hostMode` and quietly strip
@@ -1306,24 +1294,35 @@ function MB.NotifyArrival()
   end
 
   if prefs.alertFlash then
-    local button = MB._button
-    -- Only when the icon is actually on screen: an animation on a hidden
-    -- frame is a promise nobody sees, and the icon shows on this same
-    -- event anyway.
-    if button and button:IsShown() and button.flash and button.alert then
-      -- Sized from the icon each time rather than at build, so a size change
-      -- between sessions cannot leave the halo out of proportion. Generous
-      -- to start with: the animation scales it DOWN to 0.8 for the first
-      -- beat, so the swell begins tucked behind the icon.
-      local size = tonumber(Settings().size) or DEFAULTS.size
-      local reach = size * GLOW_SCALE * 1.10
-      button.alert:SetSize(reach, reach)
+    -- Whichever button is actually on screen. In EllesmereUI's skin mode
+    -- that is THEIR button wearing our art; everywhere else it is ours.
+    local halo, flash, sized
+    if MB.IsHostStyled() and euiSkin.applied and euiSkin.button then
+      halo, flash = euiSkin.button.__pbMailAlert, euiSkin.button.__pbMailFlash
+      sized = euiSkin.button:IsVisible()
+    else
+      local button = MB._button
+      if button and button:IsShown() then
+        halo, flash = button.alert, button.flash
+        -- Sized from the icon each time rather than at build, so a size
+        -- change between sessions cannot leave the halo out of proportion.
+        -- Generous to start with: the animation scales it DOWN to 0.8 for
+        -- the first beat, so the swell begins tucked behind the icon.
+        local size = tonumber(Settings().size) or DEFAULTS.size
+        local reach = size * GLOW_SCALE * 1.10
+        halo:SetSize(reach, reach)
+        sized = true
+      end
+    end
+
+    -- An animation on a frame nobody can see is a promise nobody sees.
+    if halo and flash and sized then
       local pos = ns.Theme.Colors.positive
-      button.alert:SetVertexColor(pos[1], pos[2], pos[3])
+      halo:SetVertexColor(pos[1], pos[2], pos[3])
       -- Restarting mid-swell would jump from wherever it is to the first
       -- phase's start; the stop settles it first.
-      if button.flash:IsPlaying() then button.flash:Stop() end
-      button.flash:Play()
+      if flash:IsPlaying() then flash:Stop() end
+      flash:Play()
     end
   end
 end

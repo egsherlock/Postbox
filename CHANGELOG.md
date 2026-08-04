@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.32.2
+
+- **The new-mail flash works under EllesmereUI.** It only ever existed on
+  Postbox's own minimap button — so the one mode where Postbox styles
+  EllesmereUI's button instead of drawing its own was silently the mode
+  with no visible alert. Both buttons are now dressed by the same builder,
+  so there is one animation rather than two that could drift apart.
+- **Removed the timer added in 1.32.1.** It checked five times a second
+  whether EllesmereUI's icon had faded, which is not something a mail addon
+  should be running a clock for. The same question is now asked at the
+  moment you hover or click, which costs nothing at all when you are not.
+  Postbox runs no repeating timers of any kind: the only per-frame work in
+  the addon happens while you are actively dragging or resizing something.
+
 ## 1.32.1
 
 - **Fixed: under EllesmereUI, hovering anywhere on the minimap made the
