@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.31.0
+
+- **The new-mail flash is smooth now, and the judder had a cause worth
+  naming.** Growing the icon could never look smooth at that size: a 20
+  pixel icon growing by eight percent is 20.0 to 21.6 pixels, and hard art
+  is drawn to whole pixels — so the curve rendered as three visible steps,
+  which is the stutter. No amount of easing or duration could have fixed
+  it. What grows now is a soft halo behind the icon, which has no hard edge
+  to snap to and so grows continuously however small the step; it brightens
+  as it swells and keeps swelling as it fades, twice. The icon itself never
+  moves, never resizes and is never covered.
+
 ## 1.30.5
 
 - **Fixed: the window could not be dragged by the right-hand end of its

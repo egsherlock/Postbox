@@ -777,14 +777,15 @@ local function Build()
   -- the rim the clamp simply never engages.
   button:SetClampedToScreen(true)
 
-  -- All the art hangs off this, not off the button, and it is anchored to
-  -- the button's centre with ZERO offset. That is the whole reason it
-  -- exists: the arrival flash scales it, and a frame's anchor offsets are
-  -- read in its own scaled coordinate space -- so scaling the BUTTON, which
-  -- sits fifty-odd pixels out from the minimap's centre, multiplied that
-  -- offset and slid the icon across the map as it grew. Growth read as a
-  -- jump. At offset zero there is nothing to multiply, so this grows about
-  -- its own middle and stays exactly where it is.
+  -- All the art hangs off this rather than off the button, anchored to the
+  -- button's centre at ZERO offset. It groups the four layers -- shadow,
+  -- glow, alert halo, icon -- so they are sized and centred in one place.
+  --
+  -- The zero offset is load-bearing for anything that ever scales in here:
+  -- a frame's anchor offsets are read in its own scaled coordinate space,
+  -- so scaling the BUTTON (which sits fifty-odd pixels out from the
+  -- minimap's centre) multiplies that offset and slides the art across the
+  -- map as it grows. At offset zero there is nothing to multiply.
   local art = CreateFrame("Frame", nil, button)
   art:SetPoint("CENTER", button, "CENTER", 0, 0)
   art:SetSize(DEFAULTS.size, DEFAULTS.size)
@@ -830,41 +831,67 @@ local function Build()
   fade:SetSmoothing("IN_OUT")
   button.pulse = pulse
 
-  -- The arrival flash: the whole icon breathing, once, slowly.
+  -- The arrival flash: a soft halo swelling behind the icon.
   --
-  -- Back to growth after two detours -- an OVERLAY halo that sat on top of
-  -- the art it was announcing, and a background halo that read as a second
-  -- light rather than the icon reacting. What made the FIRST growth attempt
-  -- feel cheap was not growth: it was 35% in a quarter of a second, six
-  -- times, on a frame that slid sideways as it scaled (see `art` above).
+  -- WHY IT IS THE HALO THAT GROWS AND NOT THE ICON. Scaling the icon is
+  -- what produced the juddering, slideshow-like animation of 1.30.4, and
+  -- the cause is arithmetic rather than timing: at 20 px, growing by eight
+  -- percent means 20.0 -> 21.6 px, and a hard-edged texture is rasterised
+  -- to whole pixels -- so the "smooth" curve rendered as three visible
+  -- steps. No easing or duration can fix that; the resolution simply is not
+  -- there. Every earlier attempt to smooth it was tuning the wrong thing.
   --
-  -- Eight percent, over five seconds, twice, on a frame that cannot drift.
-  -- Every phase eases in and out, and the two swells are unequal so it
-  -- reads as breathing rather than as a machine ticking. Small enough that
-  -- the eye catches the movement without the icon becoming a spectacle.
-  local flash = art:CreateAnimationGroup()
+  -- A soft radial glow has no hard edge to snap, so the same scale reads as
+  -- continuous growth however small the steps are. It also sits BEHIND the
+  -- icon (BACKGROUND, one sublevel above the standing glow), so nothing
+  -- covers the art, and the icon itself never moves or resizes: the eye
+  -- sees light swelling around a stationary icon, which is what a
+  -- notification should look like.
+  --
+  -- Scale and alpha run together in each phase -- the glow grows AND
+  -- brightens, then keeps growing as it fades, the way light behaves.
+  local alert = art:CreateTexture(nil, "BACKGROUND", nil, 1)
+  alert:SetPoint("CENTER")
+  alert:SetTexture(MEDIA .. "minimap-glow.tga")
+  alert:SetBlendMode("ADD")
+  alert:SetAlpha(0)
+  button.alert = alert
+
+  local flash = alert:CreateAnimationGroup()
+  -- { order, alphaFrom, alphaTo, scaleFrom, scaleTo, duration }
   local phases = {
-    { 1.00, 1.08, 1.10 },
-    { 1.08, 1.02, 1.30 },
-    { 1.02, 1.05, 0.90 },
-    { 1.05, 1.00, 1.60 },
+    { 1, 0.00, 0.80, 0.80, 1.12, 0.70 },
+    { 2, 0.80, 0.00, 1.12, 1.42, 1.10 },
+    { 3, 0.00, 0.45, 0.85, 1.10, 0.60 },
+    { 4, 0.45, 0.00, 1.10, 1.34, 1.20 },
   }
   for i = 1, #phases do
-    local phase = flash:CreateAnimation("Scale")
-    if phase.SetScaleFrom then
-      phase:SetScaleFrom(phases[i][1], phases[i][1])
-      phase:SetScaleTo(phases[i][2], phases[i][2])
+    local p = phases[i]
+    local fade = flash:CreateAnimation("Alpha")
+    fade:SetFromAlpha(p[2])
+    fade:SetToAlpha(p[3])
+    fade:SetDuration(p[6])
+    fade:SetSmoothing("IN_OUT")
+    fade:SetOrder(p[1])
+
+    local grow = flash:CreateAnimation("Scale")
+    if grow.SetScaleFrom then
+      grow:SetScaleFrom(p[4], p[4])
+      grow:SetScaleTo(p[5], p[5])
     end
-    phase:SetDuration(phases[i][3])
-    phase:SetSmoothing("IN_OUT")
-    phase:SetOrder(i)
+    grow:SetDuration(p[6])
+    grow:SetSmoothing("IN_OUT")
+    grow:SetOrder(p[1])
   end
-  -- An animation leaves its target wherever it finished, so the explicit
-  -- reset is what guarantees the icon is its own size again afterwards --
-  -- including when the sequence is cut short by the option being switched
-  -- off mid-flash.
-  flash:SetScript("OnFinished", function() art:SetScale(1) end)
-  flash:SetScript("OnStop", function() art:SetScale(1) end)
+  -- An animation leaves its target wherever it finished, so both properties
+  -- are reset explicitly -- including when the sequence is cut short by the
+  -- option being switched off mid-flash.
+  local function Settle()
+    alert:SetAlpha(0)
+    alert:SetScale(1)
+  end
+  flash:SetScript("OnFinished", Settle)
+  flash:SetScript("OnStop", Settle)
   button.flash = flash
 
   button:SetScript("OnEnter", ShowTooltip)
@@ -1185,9 +1212,18 @@ function MB.NotifyArrival()
     -- Only when the icon is actually on screen: an animation on a hidden
     -- frame is a promise nobody sees, and the icon shows on this same
     -- event anyway.
-    if button and button:IsShown() and button.flash then
-      -- Restarting mid-breath would jump from the current scale to 1.00;
-      -- the stop resets first so the new sequence starts where it means to.
+    if button and button:IsShown() and button.flash and button.alert then
+      -- Sized from the icon each time rather than at build, so a size change
+      -- between sessions cannot leave the halo out of proportion. Generous
+      -- to start with: the animation scales it DOWN to 0.8 for the first
+      -- beat, so the swell begins tucked behind the icon.
+      local size = tonumber(Settings().size) or DEFAULTS.size
+      local reach = size * GLOW_SCALE * 1.10
+      button.alert:SetSize(reach, reach)
+      local pos = ns.Theme.Colors.positive
+      button.alert:SetVertexColor(pos[1], pos[2], pos[3])
+      -- Restarting mid-swell would jump from wherever it is to the first
+      -- phase's start; the stop settles it first.
       if button.flash:IsPlaying() then button.flash:Stop() end
       button.flash:Play()
     end
