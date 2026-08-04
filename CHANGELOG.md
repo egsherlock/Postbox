@@ -1,4 +1,20 @@
-# Changelog
+## 1.30.4
+
+- **Postbox Modern's title bar is aligned by construction, not by
+  guesswork.** The title, the close button and the cog were each left where
+  the standard template puts them — measured against art this skin hides —
+  and three releases of nudging single pixels never fixed that, because the
+  template and the bar measure from different origins. All three are now
+  centred on the bar itself, so they line up with it and with each other by
+  definition. The other looks are untouched: they keep the standard bar,
+  where the standard offsets are correct.
+- **The new-mail flash grows again, properly this time.** What made the
+  original growth feel cheap was not the growth: the icon sits well out
+  from the minimap's centre, and scaling it multiplied that distance, so it
+  slid across the map as it grew — movement the eye read as a jump. The art
+  now scales inside a holder pinned dead centre, which cannot drift. Eight
+  percent, over five seconds, two uneven swells, eased throughout: the icon
+  breathes once and settles.
 
 ## 1.30.3
 

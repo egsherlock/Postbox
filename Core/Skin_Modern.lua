@@ -168,6 +168,29 @@ local function TitleStrip(frame)
   rule:SetPoint("TOPRIGHT", strip, "BOTTOMRIGHT", 0, 0)
   rule:SetHeight(edge)
   rule:SetColorTexture(C.border[1], C.border[2], C.border[3], C.border[4])
+
+  -- Everything that lives in the bar is centred ON THE BAR, rather than
+  -- left wherever the template put it relative to art this skin has just
+  -- hidden. Three releases of nudging single pixels -- the cog by two, the
+  -- title by one, the close button by whatever it took -- were all attempts
+  -- to guess offsets that the template measures from a different origin
+  -- than the strip does. Anchoring them to the strip makes the question go
+  -- away: one reference, three children, aligned by construction.
+  --
+  -- Only under this skin. The other looks keep the template's own bar, and
+  -- their offsets are correct for it.
+  if frame.TitleText then
+    frame.TitleText:ClearAllPoints()
+    frame.TitleText:SetPoint("CENTER", strip, "CENTER", 0, 0)
+  end
+  if frame.CloseButton then
+    frame.CloseButton:ClearAllPoints()
+    frame.CloseButton:SetPoint("RIGHT", strip, "RIGHT", -3, 0)
+  end
+  if frame.OptionsButton then
+    frame.OptionsButton:ClearAllPoints()
+    frame.OptionsButton:SetPoint("LEFT", strip, "LEFT", 5, 0)
+  end
 end
 
 -- Postbox's lists use UIPanelScrollFrameTemplate, whose bar is the classic
