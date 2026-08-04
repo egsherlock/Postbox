@@ -5,8 +5,16 @@ do.** It clears a full inbox in a single pass, remembers everyone you write to, 
 tells you what your mailbox held even when you are nowhere near one.
 
 No dependencies. No libraries. Nothing to configure — install it and open a mailbox.
+Retail only (12.0.7–12.1.x).
 
-![A full inbox, cleared in one pass](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/collect.png)
+## What it does
+
+- **Empties a full mailbox in one click, safely** — or just the mail you pick out.
+- **Knows who you mail.** Names complete as you type; recent correspondents, alts, friends and guildmates are one click away, and favourites get a star.
+- **Attaches items the moment you click them** — right-click anything in your bags, even while reading a mail.
+- **Remembers what was in the box**, so you can check what is waiting without walking to a mailbox.
+- **Replaces the minimap mail icon**, if you want it to — more than two dozen hand-painted styles at four sizes.
+- **Wears your UI.** EllesmereUI and ElvUI are followed live, or pick a look of Postbox's own.
 
 ---
 
@@ -25,6 +33,10 @@ and what it spent.
 Shift-click any mail to read it without collecting it. Hover an attachment for the
 real item tooltip. Turn on compact rows and half again as many mails fit in the same
 window.
+
+![A full inbox, cleared in one pass](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/collect.png)
+
+*Three views, sweeps that pick out one kind of mail at a time, and a running total of what the run earned and spent.*
 
 ---
 
@@ -48,6 +60,8 @@ delete. Your saved window size is never touched.
 
 ![Composing, with completion and guidance](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/send.png)
 
+*Inline completion, your favourites one click away, and a line telling you what the send will do before you commit to it.*
+
 ---
 
 ## A recipient manager
@@ -61,6 +75,8 @@ recency order, Guild is your guild, Friends includes Battle.net.
 
 ![The recipient manager](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/recipientmanager.png)
 
+*Every name Postbox can offer you, in one place — searchable, sortable, and yours to curate.*
+
 ---
 
 ## Know what is in the box without going to one
@@ -73,6 +89,8 @@ It is honest about being a memory. The header says how long ago you looked, it t
 you when new mail has arrived since, and it never pretends to be live.
 
 ![What the mailbox held, hours later](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/mailboxmemory.png)
+
+*"Last seen 2 h ago" — what was waiting, remembered, wherever you happen to be.*
 
 ---
 
@@ -92,6 +110,8 @@ was.
 
 ![The minimap icon and its tooltip](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/minimapmailicon.png)
 
+*The tooltip answers the question you were going to open the mailbox to ask.*
+
 ---
 
 ## It wears your UI
@@ -102,18 +122,41 @@ switches.
 
 Using **ElvUI**? It matches your theme, WindTools borders included.
 
-Using neither? Choose between the warm Blizzard-native look and **Postbox Modern**, a
-flat, near-black, minimal style with its own border and transparency settings.
-
 And if you run a UI pack but prefer Postbox's own look, you can simply say so — the
 window style is yours either way. The options panel is plain about which is
 happening: a green dot reads *Inheriting EllesmereUI settings* when Postbox is
 wearing your pack's look, and a neutral one reads *Overriding EllesmereUI* when you
 have chosen otherwise.
 
-![The Blizzard-native style](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/defaultblizzard.png)
-![Postbox Modern](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/postboxmodern.png)
 ![The options panel](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/options.png)
+
+*Everything in one panel, wearing whatever your window is wearing. Border, size and background opacity default to matching your UI pack, so a change there carries here without you touching anything.*
+
+---
+
+## Or a look of its own
+
+No UI pack, or you would simply rather Postbox did not borrow yours? Two looks are
+built in.
+
+![The Blizzard-native style](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/defaultblizzard.png)
+
+*Blizzard-native: warm stone, at home beside the rest of the default UI.*
+
+![Postbox Modern](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/postboxmodern.png)
+
+*Postbox Modern: flat, near-black, hairline borders — and its own border and transparency settings.*
+
+---
+
+## The rest of the options
+
+Compact mail rows. Tab mail counts. The Mail-tab caption — counts, a total, a dot, or
+nothing at all. Click-to-open versus click-to-collect. Window grid docking. And the
+mail alerts: a sound, a flash on the minimap icon, and whether the mailbox memory is
+kept at all.
+
+All of it behind the cog in the window's title bar.
 
 ---
 

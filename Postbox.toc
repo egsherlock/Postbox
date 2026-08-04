@@ -1,6 +1,6 @@
 ## Interface: 120100, 120007
 ## Title: Postbox
-## Notes: A modern mailbox replacement that empties a full inbox in one click, completes every recipient as you type, and remembers what was waiting so you can check from anywhere. Wears your ElvUI or EllesmereUI look.
+## Notes: A modern mailbox replacement: clear a full inbox in one click or just the mail you choose, complete any recipient as you type, right-click to attach, and see what is waiting without visiting a mailbox. Wears your ElvUI or EllesmereUI look.
 ## IconTexture: Interface\AddOns\Postbox\Media\icon-pillar.png
 ## Author: egsherlock
 ## Version: @project-version@

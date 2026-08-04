@@ -24,18 +24,26 @@ but the paste.
 ## Summary
 
 Kept identical to `## Notes` in `Postbox.toc`, so the pitch reads the same in the
-in-game AddOns list, on CurseForge and on Wago. 234 of the 250 characters allowed:
+in-game AddOns list, on CurseForge and on Wago. 239 of the 250 characters allowed:
 
-> A modern mailbox replacement that empties a full inbox in one click, completes
-> every recipient as you type, and remembers what was waiting so you can check from
-> anywhere. Wears your ElvUI or EllesmereUI look.
+> A modern mailbox replacement: clear a full inbox in one click or just the mail you
+> choose, complete any recipient as you type, right-click to attach, and see what is
+> waiting without visiting a mailbox. Wears your ElvUI or EllesmereUI look.
 
-Says what it is before what it does, so "mailbox" lands early for search. The
-remaining budget buys **auction mail** (heavily searched, and the sweeps are real),
-**the memory** — the one thing nothing else does, so it earns the words — and
-**both UI packs by name**, because people search for what fits their setup. ElvUI
-first: far more people run it. The minimap icon is deliberately left out; it is the
-most visible thing in the screenshots, so the listing sells it regardless.
+Says what it is before what it does, so "mailbox" lands early for search. Then four
+things a player would actually notice, and **both UI packs by name** — people search
+for what fits their setup, and ElvUI goes first because far more people run it.
+
+**"Or just the mail you choose", not "sweeps your auction mail".** An earlier draft
+said the latter and it was an overstatement: the sweeps filter by KIND — expired,
+sold, bought, cancelled, other — which is mostly auction mail but is not limited to
+it, and "All mail" is a sweep too. Claiming a narrower feature than the one that
+exists is a strange way to lose people.
+
+The minimap icon and the memory are both left out for space. The icon is the most
+visible thing in the screenshots so the listing sells it regardless; the memory is
+covered by "see what is waiting without visiting a mailbox", which describes the
+benefit without spending words naming the mechanism.
 
 **If the summary changes, it changes in three places:** here, `Postbox.toc`, and the
 CurseForge/Wago listing fields.
