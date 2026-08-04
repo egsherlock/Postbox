@@ -1,83 +1,50 @@
-# CurseForge / Wago listing — setup
+# Listing metadata
 
-The fields you fill in when creating the project: name, summary, category, licence,
-game versions, tags.
+The values Postbox is published under, as a record. CurseForge is already set up
+with these — the reason to keep the file is that the same answers are needed again
+for Wago, WoWInterface, or any future listing, and they should not be re-invented
+slightly differently each time.
 
-**The description body is not here.** It is `curseforge-listing.md`, which is that
-file and nothing else — open it, select all, paste. Kept separate so there is never
-a question about where the notes end and the copy begins.
+For the release process — what to update when, and how to write the changelog — see
+[RELEASING.md](RELEASING.md). For the description body, see
+[curseforge-listing.md](curseforge-listing.md): that file is the paste, and nothing
+but the paste.
 
-Both CurseForge and Wago take it as markdown, as-is. Its images are absolute
-`raw.githubusercontent.com` URLs pointing at this repository on `main`, which is
-what makes that work: a relative path like `docs/screenshots/collect.png` resolves
-on GitHub and nowhere else, so pasting one into either site gives a broken image.
-All nine were confirmed serving 200 after the repository went public.
+| | |
+|---|---|
+| Name | **Postbox — Modern Mailbox & Mail Manager** |
+| Slug | `postbox` |
+| Category | **Mail** (secondaries: Map & Minimap, Auction & Economy) |
+| Licence | **GNU General Public License version 3 (GPLv3)** |
+| Game versions | Retail **12.0.7** and **12.1.x** only — no Classic flavours |
+| Tags | `mail`, `mailbox`, `inbox`, `auction house`, `ui replacement`, `quality of life`, `minimap`, `elvui` |
+| CurseForge project id | `1639171` (also in `Postbox.toc`) |
+| Automatic packaging | **Off.** The GitHub Action builds and uploads; two packagers means two competing files per tag. |
 
-If you would rather not depend on GitHub serving them, CurseForge's own media
-manager works too: upload the files there and swap each `![…](https://raw…)` for
-the uploaded copy. Same images either way — only a question of who hosts them.
+## Summary
 
----
-
-## Project metadata
-
-### Project name
-
-**Postbox — Modern Mailbox & Mail Manager**
-
-Brand first so the name stays yours, then the two words people actually search
-(`mailbox`, `mail`). "Manager" catches intent from people looking to *do* something
-with their mail rather than just re-skin it; "Modern" separates it from the older
-mail addons it will sit beside in results. Keep the URL slug plain: `postbox`.
-
-Alternatives, if you'd rather:
-- *Postbox — Mailbox Replacement & Bulk Mail* — heavier on "replacement" and
-  "bulk", lighter on the manager side.
-- *Postbox — Mail, Mailbox & Inbox Manager* — widest keyword net, reads more like
-  a listing than a name.
-
-### Summary
-
-One sentence, 250 characters to spend. It is the addon's whole pitch — CurseForge
-shows it on the search card, Wago under the title, and most people never read
-further. This is also the `## Notes` line in `Postbox.toc`, so the two stay in step:
+Kept identical to `## Notes` in `Postbox.toc`, so the pitch reads the same in the
+in-game AddOns list, on CurseForge and on Wago. 234 of the 250 characters allowed:
 
 > A modern mailbox replacement that empties a full inbox in one click, completes
 > every recipient as you type, and remembers what was waiting so you can check from
 > anywhere. Wears your ElvUI or EllesmereUI look.
 
-234 characters. Says what it is before what it does, so "mailbox" lands early for
-search. The budget then buys three things a shorter line cannot afford: **auction
-mail** (heavily searched, and the sweeps are a real feature), **the memory** — the
-one thing nothing else does, so it is worth the words — and **naming both UI packs**,
-because people search for what fits their setup. ElvUI first: far more people run it.
+Says what it is before what it does, so "mailbox" lands early for search. The
+remaining budget buys **auction mail** (heavily searched, and the sweeps are real),
+**the memory** — the one thing nothing else does, so it earns the words — and
+**both UI packs by name**, because people search for what fits their setup. ElvUI
+first: far more people run it. The minimap icon is deliberately left out; it is the
+most visible thing in the screenshots, so the listing sells it regardless.
 
-The minimap icon is deliberately left out. It is the most visible thing in the
-screenshots, so the listing sells it regardless, whereas the memory is invisible
-until somebody reads about it.
+**If the summary changes, it changes in three places:** here, `Postbox.toc`, and the
+CurseForge/Wago listing fields.
 
-### Category
+## Images
 
-Primary: **Mail** — matches `## X-Category: Mail` in the .toc.
+The description body uses absolute `raw.githubusercontent.com` URLs pointing at this
+repository on `main`. That is what lets the same markdown work on CurseForge, on Wago
+and on GitHub — a relative path resolves on GitHub and nowhere else.
 
-If CurseForge lets you add secondaries, **Map & Minimap** (the minimap icon is a real
-feature, not a footnote) and **Auction & Economy** (the auction-mail sweeps) are both
-honest fits. Do not add more than that; categories you only half-belong in cost you
-credibility with the people who find you through them.
-
-### Licence
-
-**GNU General Public License version 3 (GPLv3)** in CF's licence dropdown — it
-matches `LICENSE` and `## X-License` in the .toc. GPLv3 requires the source to be
-available, which the public repository satisfies.
-
-### Game versions
-
-Retail only: 12.0.7 and 12.1.x. No Classic, Cata or MoP builds — do not tick them.
-
-### Tags
-
-`mail`, `mailbox`, `inbox`, `auction house`, `ui replacement`, `quality of life`,
-`minimap`, `elvui`
-
----
+They depend on the repository staying **public**. If it ever goes private the listing
+images break everywhere at once; CurseForge's own media manager is the fallback.

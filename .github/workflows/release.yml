@@ -32,8 +32,12 @@ jobs:
           # Built-in token — no personal access token needed here. A PAT is only
           # needed on the *client* side (WowUp) for API rate limits.
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
-          # CurseForge / Wago / WoWInterface uploads happen automatically if you
-          # ever add these secrets. Left unset, the packager simply skips them.
-          # CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          # CurseForge. Needs BOTH halves: this secret, and the project id in
+          # Postbox.toc (## X-Curse-Project-ID). With either missing the packager
+          # builds the zip and skips the upload rather than failing the run, so a
+          # release still reaches GitHub either way.
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          # Wago and WoWInterface: add the secret and the matching id in the .toc
+          # (## X-Wago-ID / ## X-WoWI-ID) to switch either on.
           # WAGO_API_KEY: ${{ secrets.WAGO_API_KEY }}
           # WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}

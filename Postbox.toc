@@ -7,6 +7,10 @@
 ## X-License: GPL v3
 ## X-Website: https://github.com/egsherlock/Postbox
 ## X-Category: Mail
+# Read by the release workflow's packager, which uploads the built zip to
+# CurseForge over the API. CurseForge's own repository packaging must stay OFF:
+# with both running, every tag would produce two competing files.
+## X-Curse-Project-ID: 1639171
 ## SavedVariables: PostboxDB
 ## OptionalDeps: EllesmereUI, EllesmereUIBlizzardSkin, ElvUI, ElvUI_WindTools
 
