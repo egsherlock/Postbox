@@ -140,12 +140,17 @@ local OPTION_DEFAULTS = {
   -- feature is capture-light and idle when unused, and a feature nobody can
   -- find switched off does not exist.
   mailMemory      = true,
+  -- Right-click-to-attach while the MAIL tab is showing (section 5b). Off,
+  -- and this is the one default that was argued the other way first: it
+  -- shipped as always-on in 1.24 on the grounds that with a mail window open,
+  -- sending the clicked item is what the click means. In use it is not -- a
+  -- mailbox visit is where auction wins get equipped and gear gets enchanted,
+  -- and a right-click that silently becomes "send this" instead is a surprise
+  -- to a player who has never heard of the feature. The Send tab attaches on
+  -- right-click either way: that is the client's own behaviour and this
+  -- setting neither adds nor removes it.
+  attachFromMail  = false,
 }
--- Right-click-to-attach has no option on purpose (removed in 1.24 after one
--- release as a toggle): with a mail window open, sending the clicked item is
--- what the click means, it is how Blizzard's own Send tab has always
--- behaved, and outside a mail session bags are untouched. An off-switch
--- would only exist to make the addon do less than the default UI.
 
 local OPTION_PATH = {}
 for key in pairs(OPTION_DEFAULTS) do
@@ -1106,6 +1111,27 @@ local function QueueCollectTabText()
   end
 end
 
+-- The Mail tab's half of right-click-to-attach, in one place because two
+-- callers need the same decision: the tab switch below, and the option itself
+-- being changed with the mailbox already open.
+--
+-- The two branches are not symmetrical, and deliberately so. Arming is the
+-- flag alone -- the compose screen's padlock overlays do not belong on the
+-- Mail tab -- so the overlays are cleared separately. Disarming is one call
+-- that drops the flag AND clears the overlays, which is a single container
+-- repaint rather than two.
+local function ApplyMailTabAttach()
+  local send = ns.SendTab
+  if not send then return end
+
+  if UI.GetOption("attachFromMail") then
+    if send.ArmNativeSendMail then send.ArmNativeSendMail() end
+    if send.ClearBagOverlays then send.ClearBagOverlays() end
+  elseif send.DeactivateNativeSendMail then
+    send.DeactivateNativeSendMail()
+  end
+end
+
 function UI.SelectTab(tabId)
   if not TAB_LABEL_KEY[tabId] then return end
 
@@ -1134,12 +1160,10 @@ function UI.SelectTab(tabId)
     -- not needed for any of it (COMBAT_TAINT.md 4).
     if send and send.ActivateNativeSendMail then send.ActivateNativeSendMail() end
   else
-    -- The attach flag stays armed on the collect tab too -- re-armed here
-    -- AFTER the panel loop, because hiding the compose panel above ran its
-    -- OnHide, which dropped it. The overlays stay compose-only; section 5b
-    -- is what answers the attach this arming allows.
-    if send and send.ArmNativeSendMail then send.ArmNativeSendMail() end
-    if send and send.ClearBagOverlays then send.ClearBagOverlays() end
+    -- Called AFTER the panel loop, because hiding the compose panel above ran
+    -- its OnHide, which dropped the attach flag -- so an arming decision made
+    -- before this point would be undone by it either way.
+    ApplyMailTabAttach()
     -- The window's compose-only extra height belongs to the compose screen --
     -- both kinds of it. Dropping them here rather than trusting the screen to
     -- remember means the window can never be left tall on the collect tab,
@@ -1153,6 +1177,9 @@ end
 
 -------------------------------------------------------------
 -- 5b. Quick attach
+--
+-- Off by default; the "Attach from the Mail tab" option is what arms any of
+-- this (see OPTION_DEFAULTS.attachFromMail).
 --
 -- With the client's right-click-to-attach armed on the collect tab (SelectTab
 -- above), a bag click attaches to the hidden draft exactly as it does on the
@@ -1185,11 +1212,30 @@ end
 local function OnSendAttachmentsChanged()
   local count = ReadAttachmentCount()
   local grew = count > lastAttachmentCount
+  -- The baseline is kept up to date whether the feature is on or not, so
+  -- switching it on mid-session compares against what the draft holds NOW
+  -- rather than against a number from before it was off.
   lastAttachmentCount = count
 
   if not grew or not UI._state.mailboxOpen then return end
   if UI._state.activeTab == "send" then return end
+  -- With the option off the flag is not armed, so nothing SHOULD be able to
+  -- grow the draft from here. Stated rather than inferred: whether the
+  -- feature is on is a question this file can answer, and the alternative is
+  -- reading a flag two files away to find out.
+  if not UI.GetOption("attachFromMail") then return end
   UI.SelectTab("send")
+end
+
+-- Frozen: Core/OptionsPanel.lua calls this when the attach option changes.
+-- A setting that only took effect at the next mailbox visit would look broken
+-- to someone who switched it on while standing at one.
+function UI.RefreshMailTabAttach()
+  if not UI._state.mailboxOpen then return end
+  -- The Send tab arms the flag on its own account and this option cannot
+  -- reach it; re-deciding here would disarm the tab the player is looking at.
+  if UI._state.activeTab == "send" then return end
+  ApplyMailTabAttach()
 end
 
 -- Frozen: Core/OptionsPanel.lua calls this when the tab-count option changes.
@@ -1781,7 +1827,84 @@ end
 -- is a second definition of the same state to keep true.
 
 -------------------------------------------------------------
--- 9. Event plumbing
+-- 9. Diagnostics
+--
+-- Two lines for the bug report (Postbox.lua section 6). Both are built from
+-- live state rather than from a list kept alongside it: the settings line
+-- walks OPTION_DEFAULTS, so an option added in six months' time appears in
+-- every report from the day it ships without anyone remembering this
+-- function exists. A report that quietly stops covering a setting is worse
+-- than no report, because it reads as a setting that was checked.
+-------------------------------------------------------------
+
+-- Every profile option, with a "*" against any value the player has moved
+-- off its default -- so a report full of defaults can be dismissed at a
+-- glance and the two settings someone actually changed stand out.
+function UI.DiagnoseOptions()
+  local keys = {}
+  for key in pairs(OPTION_DEFAULTS) do keys[#keys + 1] = key end
+  -- Sorted, so two reports of the same bug are diffable.
+  table.sort(keys)
+
+  local parts = {}
+  for i = 1, #keys do
+    local key = keys[i]
+    local on = UI.GetOption(key)
+    parts[i] = string.format("%s=%s%s", key, on and "on" or "off",
+      (on ~= (OPTION_DEFAULTS[key] == true)) and "*" or "")
+  end
+  -- The two string settings are not in OPTION_DEFAULTS (see GetStyleChoice
+  -- and GetTabCaptionMode -- profile booleans cannot carry a mode), so they
+  -- are named here explicitly.
+  parts[#parts + 1] = "style=" .. tostring((UI.GetStyleChoice()))
+  parts[#parts + 1] = "caption=" .. tostring((UI.GetTabCaptionMode()))
+  return table.concat(parts, " ")
+end
+
+-- Where the window is and what it is doing. Reported even with no window
+-- built, because "the mailbox never opened" is itself a bug report.
+function UI.Diagnose()
+  local state = UI._state
+  local frame = UI._frame
+
+  local geometry = "no window yet"
+  if frame then
+    -- pcall'd, and GetPoint is the reason: on a frame with no anchor points
+    -- it is not a dependable nil -- some clients raise instead -- and there
+    -- is one moment, between construction and the first layout, when that is
+    -- exactly the frame's state. A bug report must not be the second thing
+    -- to break.
+    local ok, text = pcall(function()
+      -- Rounded: a fractional pixel here is UI scale, not information, and
+      -- the scale is already on the report's second line.
+      local point, _, _, x, y = frame:GetPoint()
+      return string.format("%dx%d at %s %d,%d",
+        math.floor(frame:GetWidth() + 0.5), math.floor(frame:GetHeight() + 0.5),
+        tostring(point), math.floor((x or 0) + 0.5), math.floor((y or 0) + 0.5))
+    end)
+    geometry = ok and text or "window built, geometry unreadable"
+  end
+
+  -- The inbox size is the difference between "Postbox showed me nothing" and
+  -- "there was nothing to show", and only the client can settle it.
+  local inbox = "?"
+  if type(GetInboxNumItems) == "function" then
+    local ok, shown, total = pcall(GetInboxNumItems)
+    if ok then inbox = string.format("%s/%s", tostring(shown), tostring(total)) end
+  end
+
+  return string.format(
+    "mailbox %s | window %s | tab %s | inbox %s | free-moved %s | layout deferred %s | %s",
+    state.mailboxOpen and "open" or "closed",
+    state.visible and "shown" or "hidden",
+    tostring(state.activeTab),
+    inbox,
+    tostring(state.freeMoved), tostring(state.layoutDeferred),
+    geometry)
+end
+
+-------------------------------------------------------------
+-- 10. Event plumbing
 -------------------------------------------------------------
 
 -- MAIL_INTERACTION is declared in section 2, where the close path uses it too.

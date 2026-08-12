@@ -28,9 +28,10 @@ install it and open a mailbox.
 - **Knows who you mail.** Names complete in place as you type — Tab accepts. Recent
   correspondents, alts, friends (Battle.net included) and guildmates are one click
   away, favourites get a star, and a manager window curates the lot.
-- **Attaches items the moment you click them.** Right-click anything in your bags,
-  even while reading mail, and the window flips to Send with it attached. Unmailable
-  items wear a padlock in your bags while you compose.
+- **Attaches items the moment you click them.** Right-click anything in your bags
+  while composing and it lands in the mail. Unmailable items wear a padlock in your
+  bags while you compose. An option extends the same click to the Mail tab, so an
+  item can be aimed at a new mail without leaving the one you are reading.
 - **Remembers what was in the box.** Left-click the minimap icon anywhere in the
   world to see what your mailbox held when you last opened it — with an honest
   "last seen 2 h ago" header. It never pretends to be live.
@@ -153,7 +154,7 @@ one, if you'd rather — it has two looks of its own:
 | `/postbox rm` | The recipient manager (also `recipients`). |
 | `/postbox minimap` | Toggle the minimap icon. |
 | `/postbox skin` | What host UI was detected, and which skin claimed the window. |
-| `/postbox debug` | A setup line to paste into a bug report. |
+| `/postbox debug` | A copyable report to paste into a bug report — your settings, your window, anything else installed that touches mail or bags, and any Postbox errors this session. No character name, no full addon list. |
 
 ## How it's built
 

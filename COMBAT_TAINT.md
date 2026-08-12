@@ -180,6 +180,13 @@ were removed** — they tainted `SendMailFrame`/`MailFrame` and were purely cosm
 a "needed two ESC presses on the Send tab" bug (the native send name editbox was
 auto-focusing on `SendMailFrame:Show()` and eating the first ESC).
 
+`Postbox.lua`: the error trap calls `seterrorhandler`. **Not a taint source.** The
+error handler is a plain global function reference, not a frame and not a secure
+capability: replacing it does not touch anything protected, and it is what every
+error-catching addon on the account already does. The handler Postbox installs
+records the message and calls straight through to whatever was there before, so it
+neither swallows an error nor lengthens the chain by anything a secure path reads.
+
 ---
 
 ## 5. What we tried

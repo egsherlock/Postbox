@@ -339,12 +339,20 @@ local function Build()
         function() return ns.MailboxUI.GetOption("previewOnClick") end,
         function(on) ns.MailboxUI.SetOption("previewOnClick", on) end)
 
+  cy = AddCheckbox(card, cy, L["OPT_ATTACH_MAIL_TITLE"], L["OPT_ATTACH_MAIL_DESC"],
+        function() return ns.MailboxUI.GetOption("attachFromMail") end,
+        function(on)
+          ns.MailboxUI.SetOption("attachFromMail", on)
+          -- Applies to the mailbox that is open right now, not the next one.
+          if ns.MailboxUI.RefreshMailTabAttach then ns.MailboxUI.RefreshMailTabAttach() end
+        end)
+
   -- Recipient manager: a portrait button filling the space to the right of
-  -- the checkbox column, tall as the five rows. It makes the feature loud
+  -- the checkbox column, tall as the six rows. It makes the feature loud
   -- and shaves a whole row off the card. /postbox recipients is the other
   -- way in.
   local rmButton = ns.Theme.CreateButton(nil, card)
-  rmButton:SetSize(108, (ROW_H * 5) - 8)
+  rmButton:SetSize(108, (ROW_H * 6) - 8)
 
   -- The stock plate is a ~22px three-slice; stretched to portrait height it
   -- smears into pixel blocks (screenshot-verified). Under a host skin the
@@ -1167,6 +1175,10 @@ local function Build()
   -- each in a copyable box. No browser can be opened from in-game, so
   -- copyable is the whole feature.
   local BUG_URL = "https://github.com/egsherlock/Postbox/issues"
+  -- Wider than the options panel it opens from, and unrelated to it: the
+  -- panel's width is a column of controls, this is a window for reading long
+  -- diagnostic lines out of without every one of them wrapping twice.
+  local BUG_W, BUG_BOX_W = 440, 416
   local bugPopup
   local function AddCopyRow(pop, rowY, labelKey, boxHeight)
     local caption = ns.Theme.CreateText(pop, "label")
@@ -1180,11 +1192,11 @@ local function Build()
       -- viewport clips, the wheel scrolls, and focusing keeps the cursor in
       -- view. A multi-line EditBox sizes its own height to its content.
       local viewport = CreateFrame("ScrollFrame", nil, pop)
-      viewport:SetSize(304, boxHeight)
+      viewport:SetSize(BUG_BOX_W, boxHeight)
       viewport:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY - 14)
 
       box = CreateFrame("EditBox", nil, viewport)
-      box:SetWidth(304)
+      box:SetWidth(BUG_BOX_W)
       box:SetHeight(boxHeight)
       box:SetAutoFocus(false)
       box:SetMultiLine(true)
@@ -1215,7 +1227,7 @@ local function Build()
       box.__viewport = viewport
     else
       box = CreateFrame("EditBox", nil, pop)
-      box:SetSize(304, 14)
+      box:SetSize(BUG_BOX_W, 14)
       box:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY - 14)
       box:SetAutoFocus(false)
     end
@@ -1251,7 +1263,9 @@ local function Build()
       -- list of frame NAMES -- RegisterEscClose is a silent no-op on an
       -- unnamed frame.
       bugPopup = CreateFrame("Frame", "PostboxBugReportFrame", UIParent, "BackdropTemplate")
-      bugPopup:SetSize(324, 196)
+      -- Height: the diagnostic box's own 200, plus the 74 above it (title,
+      -- address row, second caption) and the 22 the hint line needs below.
+      bugPopup:SetSize(BUG_W, 296)
       bugPopup:SetFrameStrata("TOOLTIP")
       bugPopup:SetToplevel(true)
       bugPopup:SetClampedToScreen(true)
@@ -1297,7 +1311,10 @@ local function Build()
       bugPopup.CloseButton = close
 
       bugPopup._url = AddCopyRow(bugPopup, -24, "OPT_BUG_URL_LABEL")
-      bugPopup._diag = AddCopyRow(bugPopup, -60, "OPT_BUG_DIAG_LABEL", 100)
+      -- 200, was 100: the report grew from six lines to something nearer
+      -- twenty, and a box that shows a third of it makes a reader scroll to
+      -- find out whether it is worth copying at all. It still scrolls.
+      bugPopup._diag = AddCopyRow(bugPopup, -60, "OPT_BUG_DIAG_LABEL", 200)
 
       local hint = ns.Theme.CreateText(bugPopup, "bodySmall")
       hint:SetPoint("BOTTOMLEFT", bugPopup, "BOTTOMLEFT", 10, 7)

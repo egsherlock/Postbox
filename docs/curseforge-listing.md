@@ -14,7 +14,7 @@ Retail only (12.0.7–12.1.x).
 - **Keeps count of the gold** — total earned and total spent, per run.
 - **Says what it could not take, and why**, instead of skipping it quietly.
 - **Knows who you mail.** Names complete as you type; recent correspondents, alts, friends and guildmates are one click away, and favourites get a star.
-- **Attaches items the moment you click them** — right-click anything in your bags, even while reading a mail.
+- **Attaches items the moment you click them** — right-click anything in your bags while composing, and optionally while reading a mail too.
 - **Remembers what was in the box**, so you can check what is waiting without walking to a mailbox.
 - **Replaces the minimap mail icon**, if you want it to — more than two dozen hand-painted styles at four sizes.
 - **Wears your UI.** EllesmereUI and ElvUI are followed live, or pick a look of Postbox's own.
@@ -76,9 +76,15 @@ instantly or in an hour, and whether a cross-realm send can actually carry what 
 have attached. Nothing is ever blocked. Postbox tells you, and you decide. If a send
 fails, your draft is still there.
 
-Right-click an item in your bags — even while you are reading a mail — and the window
-flips to Send with it already attached. While you compose, anything that cannot be
-mailed wears a padlock in your bags, so what can go is obvious at a glance.
+Right-click an item in your bags and it goes straight into the mail. While you
+compose, anything that cannot be mailed wears a padlock in your bags, so what can go
+is obvious at a glance.
+
+**Attach from the Mail tab** in the options extends that click to the reading side:
+right-click a bag item while you are reading mail and the window flips to Send with
+it already attached. It is off to begin with, because a mailbox visit is also where
+auction wins get equipped — with it off, your bags behave exactly as they always do
+until you are actually composing.
 
 The window grows a line at a time as your message does, and shrinks back as you
 delete. Your saved window size is never touched.
@@ -233,7 +239,7 @@ hooks into protected frames and nothing it does can taint the default UI in comb
 - `/postbox rm` — the recipient manager, from anywhere
 - `/postbox minimap` — toggle the minimap icon
 - `/postbox skin` — what UI pack was detected, and what is painting the window
-- `/postbox debug` — a setup line to paste into a bug report
+- `/postbox debug` — a copyable report to paste into a bug report: your settings, your window, anything else installed that touches mail or bags, and any Postbox errors this session. Your character name is not in it and neither is your full addon list.
 
 ---
 

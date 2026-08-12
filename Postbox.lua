@@ -6,6 +6,7 @@ local ADDON_NAME, ns = ...
 -- the addon's identity, the two foundation bindings that give the rest of the
 -- tree a saved-variables root and a chat printer, the shape of the saved
 -- variables themselves, the running census of the player's own characters, the
+-- error trap that has to be in place before there is anything to catch, the
 -- slash command, and the event bus every other module registers on.
 --
 -- Two ordering rules govern this file, and both are easy to break by moving a
@@ -195,7 +196,132 @@ ns.EnsureDB = EnsureDB
 ns.RegisterCurrentAlt = RegisterCurrentAlt
 
 -------------------------------------------------------------
--- 5. /postbox
+-- 5. Error capture
+--
+-- A Lua error is announced once and then gone. By the time the player who
+-- hit it gets round to writing the bug report, the single most useful thing
+-- about it has scrolled out of the chat frame -- so what arrives instead is
+-- "it broke", and the report is unactionable. The last few are kept here for
+-- the diagnostic snapshot to carry.
+--
+-- Three rules govern this, and all three exist because the error handler is
+-- shared with every other addon on the account:
+--
+--   * The previous handler is CHAINED, never replaced. Whatever was
+--     installed before -- BugSack, an error-frame addon, Blizzard's own --
+--     receives every error unchanged and in full, including ours.
+--   * Only OUR errors are recorded. Another addon's stack trace is not ours
+--     to collect and would not belong in a Postbox bug report.
+--   * Nothing here runs until something has already gone wrong.
+-------------------------------------------------------------
+
+-- Five, not fifty: the first error is almost always the one that matters and
+-- the rest are its wreckage, and this text is meant to be pasted into an
+-- issue by hand.
+local ERROR_LIMIT = 5
+local errorLog = {}       -- newest last; {text, count, when}
+local errorsSeen = 0      -- everything recorded this session, dropped ones too
+
+-- An addon path in a message is spelled with backslashes on one client and
+-- forward slashes on another, and the prefix is the same for every line --
+-- so it is worth neither the width nor the reader's attention.
+local function ShortenPath(text)
+  text = text:gsub("[Ii]nterface[\\/][Aa]dd[Oo]ns[\\/]Postbox[\\/]", "")
+  return text
+end
+
+-- A repeat is counted, not appended. One error inside an OnUpdate or a list
+-- refresh fires every frame, and five identical lines would push out the
+-- four different errors that came before it -- which are the interesting
+-- ones. The count is itself a diagnosis: "x412" says this fires constantly.
+local function RecordError(text)
+  errorsSeen = errorsSeen + 1
+
+  local newest = errorLog[#errorLog]
+  if newest and newest.text == text then
+    newest.count = newest.count + 1
+    return
+  end
+
+  errorLog[#errorLog + 1] = {
+    text  = text,
+    count = 1,
+    when  = (type(date) == "function" and date("%H:%M:%S")) or "?",
+  }
+  if #errorLog > ERROR_LIMIT then table.remove(errorLog, 1) end
+end
+
+-- The first Postbox frame on a stack -- and the reason this is not simply a
+-- search for "Postbox".
+--
+-- The stack is taken from inside the trap, and the trap is Postbox code, so
+-- its own frames are always on it: a plain search would answer "ours" for
+-- every error raised by every addon on the account. What separates them is
+-- that the trap lives in Postbox.lua and NOTHING else in the addon does --
+-- every other source file is under Core\ or Lib\. So that is the line the
+-- filter draws, and it holds however many frames the trap happens to add.
+--
+-- The cost is that an error raised inside Postbox.lua itself, whose message
+-- somehow does not name the file, goes unrecorded. That file is 700 lines of
+-- setup and its errors name it; the trade is worth making for a test that
+-- cannot produce a false positive.
+local function FirstOurFrame(stack)
+  for line in stack:gmatch("[^\n]+") do
+    if line:find("Postbox[\\/]Core[\\/]") or line:find("Postbox[\\/]Lib[\\/]") then
+      return (line:gsub("^%s+", ""))
+    end
+  end
+  return nil
+end
+
+-- Ours or not. The message names the file that raised the error, which is
+-- the cheap answer and the right one most of the time; when it names someone
+-- else's file the error may still be ours, raised inside a Blizzard or
+-- library function we called, and only the stack can say so. The stack walk
+-- is therefore reached ONLY after the cheap test has already failed, and an
+-- error is a rare enough event that one debugstack is not worth optimising.
+local function ConsiderError(message)
+  local text = tostring(message)
+  if text:find("Postbox", 1, true) then
+    RecordError(ShortenPath(text))
+    return
+  end
+
+  if type(debugstack) ~= "function" then return end
+  local frame = FirstOurFrame(debugstack(2, 10, 0) or "")
+  if not frame then return end
+
+  -- "Their function, blamed on our file" -- the connection is the whole
+  -- point of recording an error whose message names someone else.
+  RecordError(ShortenPath(text) .. "  <- " .. ShortenPath(frame))
+end
+
+if type(geterrorhandler) == "function" and type(seterrorhandler) == "function" then
+  local previous = geterrorhandler()
+  seterrorhandler(function(message, ...)
+    -- Recording must never become the reason an error goes unreported, so it
+    -- is wrapped, and the handler that was here before is called either way.
+    pcall(ConsiderError, message)
+    if type(previous) == "function" then return previous(message, ...) end
+  end)
+end
+
+-- The event bus pcalls its handlers and logs what they threw, which means a
+-- handler error never reaches the trap above -- and event handlers are where
+-- a mail addon does most of its work. This is what the bus's logger is
+-- pointed at, so both roads end in the same place.
+--
+-- Everything it is given is recorded, not just the lines saying "error": the
+-- bus logs nothing routine. Its three messages are a handler that threw, an
+-- event it could not register, and an event this client has never heard of,
+-- and the last two are worth a bug report the first time they happen.
+local function LogLine(text, ...)
+  if type(text) == "string" then pcall(RecordError, ShortenPath(text)) end
+  ns.Print(text, ...)
+end
+
+-------------------------------------------------------------
+-- 6. /postbox
 --
 -- A small diagnostic surface, not a settings interface -- the options live in
 -- the cog. "skin" answers the one question a screenshot cannot: which host-UI
@@ -278,17 +404,143 @@ end
 -- The diagnostic snapshot behind the bug-report window (and nothing else:
 -- assembled on demand, no background collection). Deliberately English --
 -- it exists to be pasted into a GitHub issue and read by the maintainer.
+--
+-- What goes in is decided by one test: could this line be the difference
+-- between reproducing the report and closing it as "cannot reproduce". Every
+-- setting qualifies, because half of the bugs anyone files are a setting
+-- doing exactly what it says; so does the client's own version of what
+-- Postbox is showing, so does anything else installed that touches mail or
+-- bags, and so do the errors themselves.
+--
+-- What stays out: the player's character name, and their addon list in full.
+-- This text goes into a public issue tracker, and neither of those changes
+-- what can be fixed. The realm does -- connected-realm addressing is a whole
+-- class of mail bug -- so the realm is named and the character is not.
 -------------------------------------------------------------
+
+-- Every module's diagnostic is defensive in the same way and for the same
+-- reason: a bug report must not be the second thing to break. A module that
+-- has not loaded, or whose own Diagnose errors, drops its line and the rest
+-- of the report survives.
+local function Ask(module, method)
+  if type(module) ~= "table" or type(module[method]) ~= "function" then return nil end
+  local ok, value = pcall(module[method])
+  if ok and type(value) == "string" then return value end
+  return nil
+end
+
+-- Addons that share Postbox's ground: anything that replaces the mailbox,
+-- the bags or the container buttons, and anything that reskins other addons'
+-- windows. This is not a blocklist -- Postbox is built to coexist with all
+-- of them -- it is the first question worth asking about a report nobody can
+-- reproduce on a clean install.
+local NEIGHBOURS = {
+  "ElvUI", "EllesmereUI", "EllesmereUIBlizzardSkin", "TukUI", "NDui",
+  "Bagnon", "AdiBags", "ArkInventory", "BetterBags", "Baganator",
+  "Combuctor", "Inventorian", "cargBags_Nivaya", "OneBag3", "Sorted",
+  "Postal", "BulkMail", "MailOpener", "Mailbox", "OpeningPandorasBox",
+  "TradeSkillMaster", "Auctionator", "AuctionHouseSearch", "TSM_Mailing",
+  "Masque", "Skinner", "AddOnSkins", "SharedMedia", "BugSack", "BugGrabber",
+}
+
+-- Plus anything whose NAME says what it does: the list above can only ever
+-- know the addons that existed when it was written, and a mail addon nobody
+-- here has heard of is exactly the one worth knowing about.
+local NEIGHBOUR_WORDS = { "mail", "bag", "inventory", "postal", "auction" }
+
+local function LooksRelevant(name)
+  local lower = name:lower()
+  for i = 1, #NEIGHBOUR_WORDS do
+    if lower:find(NEIGHBOUR_WORDS[i], 1, true) then return true end
+  end
+  return false
+end
+
+local function NeighbourAddons()
+  local loaded = C_AddOns and C_AddOns.IsAddOnLoaded
+  local count = C_AddOns and C_AddOns.GetNumAddOns
+  local info = C_AddOns and C_AddOns.GetAddOnInfo
+  if type(loaded) ~= "function" then return nil end
+
+  local found, seen = {}, {}
+  local function note(name, version)
+    if seen[name] then return end
+    seen[name] = true
+    found[#found + 1] = version and version ~= "" and (name .. " " .. version) or name
+  end
+
+  -- The known list first, so a report's most useful names are at the front
+  -- however many "MyBagSorter" entries the sweep below turns up.
+  for i = 1, #NEIGHBOURS do
+    local name = NEIGHBOURS[i]
+    local ok, isLoaded = pcall(loaded, name)
+    if ok and isLoaded then
+      -- The version matters for these and not for the swept ones: a report
+      -- against EllesmereUI or ElvUI is nearly always a report against one
+      -- particular release of it.
+      local gotVersion, version = pcall(C_AddOns.GetAddOnMetadata, name, "Version")
+      note(name, (gotVersion and type(version) == "string") and version or nil)
+    end
+  end
+
+  -- The name sweep. Skipped entirely on a client without the enumeration
+  -- API rather than guessed at.
+  if type(count) == "function" and type(info) == "function" then
+    local ok, total = pcall(count)
+    if ok and type(total) == "number" then
+      for i = 1, total do
+        local gotInfo, name = pcall(info, i)
+        if gotInfo and type(name) == "string" and name ~= ns.ADDON_NAME
+          and LooksRelevant(name) then
+          local gotLoaded, isLoaded = pcall(loaded, i)
+          if gotLoaded and isLoaded then note(name) end
+        end
+      end
+    end
+  end
+
+  if #found == 0 then return nil end
+  return table.concat(found, ", ")
+end
+
 local function BuildDiagnosticReport()
   local lines = {}
   local function add(text) lines[#lines + 1] = text end
 
   add(string.format("Postbox %s (%s)", tostring(ns.VERSION), tostring((GetLocale()))))
 
-  local gameVersion, gameBuild = GetBuildInfo()
+  -- The client's interface number and the one the TOC was built against.
+  -- When those two disagree the addon is running out of date, and half of
+  -- what an out-of-date addon does wrong is unfixable and already fixed --
+  -- so it is worth establishing on line two rather than three exchanges in.
+  local gameVersion, gameBuild, _, clientToc = GetBuildInfo()
+  local ourToc = C_AddOns and C_AddOns.GetAddOnMetadata
+    and C_AddOns.GetAddOnMetadata(ADDON_NAME, "Interface")
   local scale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 0
-  add(string.format("WoW %s (%s) | UI scale %.2f",
-    tostring(gameVersion), tostring(gameBuild), scale))
+  add(string.format("WoW %s (%s) | interface %s, built for %s | UI scale %.2f",
+    tostring(gameVersion), tostring(gameBuild),
+    tostring(clientToc), tostring(ourToc or "?"), scale))
+
+  -- The realm, the faction and the size of the connected group, with no
+  -- character name: "sends to the wrong character" and "cannot find my alt"
+  -- are both connected-realm bugs, and the group is what decides them.
+  local realm = GetRealmName()
+  local faction = UnitFactionGroup("player")
+  local connected = ""
+  if type(GetAutoCompleteRealms) == "function" then
+    local ok, realms = pcall(GetAutoCompleteRealms)
+    if ok and type(realms) == "table" then
+      connected = string.format(" | connected realms %d", #realms)
+    end
+  end
+  add(string.format("Realm: %s (%s)%s",
+    tostring(realm), tostring(faction or "?"), connected))
+
+  local UI = ns.MailboxUI
+  local options = Ask(UI, "DiagnoseOptions")
+  if options then add("Settings: " .. options) end
+  local windowState = Ask(UI, "Diagnose")
+  if windowState then add("Window: " .. windowState) end
 
   local Skin = ns.SkinEllesmere
   if Skin and type(Skin.Diagnose) == "function" then
@@ -303,6 +555,23 @@ local function BuildDiagnosticReport()
   add(string.format("Style: %s | ElvUI loaded: %s",
     tostring(ns.SkinAppliedBy or "own"),
     (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("ElvUI")) and "yes" or "no"))
+
+  -- The border and transparency values, from whichever skin is publishing
+  -- them. These used to appear only on an EllesmereUI install, because the
+  -- only place they were read was inside EllesmereUI's own Diagnose -- so
+  -- every report from a Postbox Modern user, which is precisely where these
+  -- three settings now live, was silent about all three.
+  local paint = ns.Skin
+  if paint and type(paint.GetBorderStyle) == "function" then
+    local ok, border, size, opacity = pcall(function()
+      return paint.GetBorderStyle(), paint.GetBorderSize(), paint.GetBgOpacity()
+    end)
+    if ok then
+      add(string.format("Border: %s (size %s) | bg opacity %d%%",
+        tostring(border), tostring(size),
+        math.floor((tonumber(opacity) or 0) * 100 + 0.5)))
+    end
+  end
 
   local Icon = ns.MinimapButton
   if Icon and type(Icon.GetEnabled) == "function" then
@@ -338,6 +607,43 @@ local function BuildDiagnosticReport()
       tostring(record.left or 0),
       record.stopReason and (" (" .. tostring(record.stopReason) .. ")") or "",
       record.reason and (" | game said: " .. tostring(record.reason)) or ""))
+  end
+
+  -- How much there is, never who. A recipient list that has grown to four
+  -- figures is a performance report; an empty one where the player expected
+  -- their alts is a census report. Neither needs a single name.
+  local Manager = ns.RecipientManager
+  local counts = {}
+  if Manager and type(Manager.Count) == "function" then
+    local ok, count = pcall(Manager.Count)
+    if ok then counts[#counts + 1] = "recipients " .. tostring(count) end
+  end
+  local altsByRealm = ns.Store and ns.Store.Get and ns.Store.Get("alts")
+  if type(altsByRealm) == "table" then
+    local realms, characters = 0, 0
+    for _, names in pairs(altsByRealm) do
+      realms = realms + 1
+      if type(names) == "table" then characters = characters + #names end
+    end
+    counts[#counts + 1] = string.format("own characters %d on %d realms", characters, realms)
+  end
+  if #counts > 0 then add("Address book: " .. table.concat(counts, " | ")) end
+
+  -- pcall'd like every other contributor: this one walks the whole addon
+  -- list through four APIs, and a report that dies on the way to its last
+  -- three lines is worse than one without them.
+  local gotNeighbours, neighbours = pcall(NeighbourAddons)
+  if gotNeighbours and neighbours then add("Also loaded: " .. neighbours) end
+
+  -- Last, and last for a reason: it is the part a maintainer scrolls to, and
+  -- anything appended below it would be missed.
+  if #errorLog > 0 then
+    add(string.format("Errors this session: %d", errorsSeen))
+    for i = 1, #errorLog do
+      local entry = errorLog[i]
+      add(string.format("  [%s]%s %s", entry.when,
+        entry.count > 1 and (" x" .. entry.count) or "", entry.text))
+    end
   end
 
   return table.concat(lines, "\n")
@@ -392,10 +698,13 @@ SlashCmdList["POSTBOX"] = function(input)
 end
 
 -------------------------------------------------------------
--- 6. Event wiring
+-- 7. Event wiring
 -------------------------------------------------------------
 
-ns.Events = ns.Core.Events.NewBus(ns.Print)
+-- LogLine, not ns.Print: the bus pcalls its handlers, so an error inside one
+-- never reaches the global error handler and would otherwise be the one
+-- class of Postbox error the bug report could not see.
+ns.Events = ns.Core.Events.NewBus(LogLine)
 
 ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   if loadedAddon ~= ADDON_NAME then return end

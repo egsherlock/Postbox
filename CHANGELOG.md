@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.34.0
+
+- **Right-clicking a bag item while you are reading mail no longer attaches it
+  to a new mail.** Since 1.24 the mailbox claimed your bags for the whole
+  visit: a right-click anywhere in them sent the item to a draft instead of
+  using it. That is genuinely useful when you went to the mailbox to post
+  something — and a nuisance the rest of the time, because the mailbox is
+  also where the auctions you just won arrive, and equipping one, enchanting
+  it or opening a container is the obvious next thing to do. Standing at a
+  mailbox works like standing anywhere else again.
+- **The behaviour is still there, under "Attach from the Mail tab"** in the
+  options — switch it on and reading mail keeps its right-click-to-attach,
+  exactly as before. It applies to the mailbox you are standing at, not the
+  next one. The Send tab attaches on right-click whichever way you set it;
+  that is the game's own behaviour and this setting does not reach it.
+- **`/postbox debug` now produces a report worth pasting.** It always said
+  which UI pack was in play; it now also carries every setting you have
+  (marking the ones you have changed), where your window is and what it is
+  doing, your border and transparency — which used to be reported only if you
+  ran EllesmereUI, so every Postbox Modern user's report was silent about
+  them — your realm and connected-realm group, how large your address book
+  is, and anything else you have installed that touches mail, bags or
+  skinning.
+- **And it carries the errors.** If something in Postbox goes wrong, the
+  message is printed once and then scrolls away, and by the time anyone
+  writes it up the one useful thing about it is gone. The last five are kept
+  and go into the report — with a repeat count, so a fault that fires
+  constantly says so. Only Postbox's own errors are kept, and any error
+  addon you use still receives everything exactly as before. Nothing runs at
+  all until something goes wrong.
+- The report window is bigger, so the report fits in it.
+- **What the report does not contain:** your character name, or your addon
+  list in full. It goes into a public issue tracker and neither of those
+  helps fix anything.
+
 ## 1.33.4
 
 - **The dot beside "Inheriting EllesmereUI settings" is level with the text.**
