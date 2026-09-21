@@ -67,9 +67,14 @@ there hours later when you have made room.
 
 ## Send without second-guessing
 
-Start typing a name and it completes in place — Tab accepts it. Your recent
+Start typing a name and it completes in place — Tab takes it, and every press after
+walks down the suggestions one row at a time (Shift+Tab walks back up). Your recent
 correspondents, your alts, your friends (Battle.net included) and your guild are one
-click away, and the ones you mail constantly get a star.
+click away, and the ones you mail constantly get a star. Names in any alphabet:
+Cyrillic and accented names complete, sort and favourite like any other.
+
+Mailing a run of things to one bank alt? **Keep recipient after send**, in the
+options, leaves the name in place while everything else clears.
 
 Before you send, a line tells you what is about to happen: whether the mail arrives
 instantly or in an hour, and whether a cross-realm send can actually carry what you
@@ -183,8 +188,12 @@ place.
 
 **How the list behaves.** Compact rows, which fit half again as many mails on
 screen. Mail counts on the tabs. The Mail tab's caption — counts, a running total, a
-single dot, or nothing at all. Whether a left-click opens a mail or collects it, and
-whether the All view is offered beside Collect and Done.
+single dot, or nothing at all. Whether a left-click opens a mail or collects it,
+whether the All view is offered beside Collect and Done, and whether the five
+category buttons sit under the list or only Collect does.
+
+**How sending behaves.** Whether the recipient stays in the Recipient box after a send,
+and whether right-clicking a bag item while reading mail attaches it.
 
 **How mail is announced.** A sound when new mail arrives, a flash on the minimap
 icon, and whether the mailbox memory is kept at all.

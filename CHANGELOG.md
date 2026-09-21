@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.35.0
+
+- **Tab in the recipient box now walks the suggestion list top to bottom, one
+  row per press.** It used to skip rows, and sometimes seemed not to move at
+  all. Two things were going on: the first press only "accepted" whatever was
+  already completed in the box, which looked like nothing happening; and
+  every press after that cycled through only the names that *began* with what
+  you had typed, so with "sh" in the box a row like How-Crushridge was stepped
+  straight over. Now the first press takes the row the completion is already
+  showing (or the top one), each press after moves down a row, Shift+Tab moves
+  back up, and both wrap round. The popup marks the row you are on, and Escape
+  still puts back exactly what you typed.
+- **Fixed: Cyrillic and accented names in the address book.** Reported from a
+  Russian client: favouriting a Cyrillic name drew its first letter as a box,
+  choosing it put the name in the Recipient box one letter short, and picking a
+  Cyrillic name from the Alts, Friends or Guild lists did nothing. Postbox was
+  capitalising the first *byte* of a name, and for a Cyrillic letter that is
+  half a letter. Case is now handled letter by letter for Latin, accented Latin
+  and Cyrillic. Two things come with that: typing a lowercase "ив" now finds
+  Иван, which it never did, and accented names sort under the letter they
+  belong to (É with E, not everything under A). Favourites, hidden names and
+  notes saved before this move across on their own.
+- **New option: "Keep recipient after send".** Off to begin with. On, the name
+  stays in the Recipient box after a mail goes, so a run of mails to the same bank
+  alt needs no retyping and no clicking. Subject, message, attachments and
+  gold still clear, and a fresh mailbox visit still starts empty.
+- **New option: "Show category buttons".** Switch it off and the five one-click
+  sweeps under the list — expired, sold, canceled, bought, other — go away,
+  leaving the full-width Collect button, and the list gets the two rows back.
+  On to begin with, which is what the screen has always shown.
+- **If something else brings Blizzard's own mail window back beside Postbox's,
+  Postbox now puts it away again** — and the `/postbox debug` report names the
+  addon that did it. A report described both windows open at once with a mail
+  notifier, a bag addon and a UI pack loaded, and nothing in Postbox could see
+  what had happened. Now it can, and the report also says which game version
+  Postbox was built for rather than "?".
+
 ## 1.34.0
 
 - **Right-clicking a bag item while you are reading mail no longer attaches it

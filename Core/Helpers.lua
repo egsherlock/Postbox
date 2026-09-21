@@ -27,6 +27,13 @@ H.NormalizeText = ns.Core.Strings.Trim
 -- it must be total and stable.
 H.Lower = ns.Core.Strings.Lower
 
+-- The rest of the foundation's text surface, under the names Core/ reads them
+-- by. Same capture-by-reference contract as the three above.
+H.Upper        = ns.Core.Strings.Upper
+H.Capitalize   = ns.Core.Strings.Capitalize
+H.CharCount    = ns.Core.Strings.CharCount
+H.CharBoundary = ns.Core.Strings.CharBoundary
+
 -- copper -> compact plain text ("12g 30s"), "" for zero.
 H.FormatMoney = ns.Core.Formatting.FormatMoneyText
 

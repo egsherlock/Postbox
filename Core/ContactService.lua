@@ -127,28 +127,25 @@ end
 -- class cache on PLAYER_LEAVING_WORLD only so a session-long list of every name
 -- seen does not outlive the character.
 --
--- THE FOLD SUBSTITUTES BYTES, NOT CHARACTERS, and that shape is load-bearing:
--- Core/SendTab.lua's inline completion reads a match at folded byte N as
--- meaning the raw name resumes at byte N + 1, and refuses to complete at all
--- if a fold ever returns a different length than it was given. Everything
--- below therefore maps n bytes to n bytes.
+-- THE FOLD MAPS CHARACTERS, ONE TO ONE. Every letter comes out as exactly one
+-- letter -- an accented Latin letter as its base letter, a Cyrillic letter
+-- as its capital -- and nothing else in the string moves. Byte lengths are
+-- NOT preserved (É is two bytes, E is one) and nothing may assume they are:
+-- Core/SendTab.lua's inline completion counts characters on the raw name
+-- for that reason. What the one-to-one shape guarantees is the property it
+-- does rely on: fold(name) starts with fold(typed) exactly when the first
+-- characters of name are, letter for letter, what was typed.
 --
--- KNOWN DEFECT, left standing on purpose. The Latin groups are byte sets and
--- they overlap, so a letter does not in fact group with the base letter it was
--- filed under -- every Latin-1 accent groups under A instead (É folds to "AC")
--- -- and only one Cyrillic letter in thirty-three survives the Latin pass to
--- be uppercased. The fold is still deterministic and still length-preserving,
--- which is all the sort and the matcher need in order to agree with each
--- other, so lists sort into a stable order and typing still finds names; they
--- simply group under the wrong initial. Repairing it means making this
--- character-aware AND teaching the completion splice to map fold offsets back
--- to raw ones, which is a two-file change and wants testing in a French or
--- Russian client.
+-- The fold used to substitute bytes, with byte sets that overlapped, so every
+-- Latin-1 accent grouped under A and a Cyrillic letter's continuation byte
+-- was eaten by the Latin pass before its own could see it. It was stable, so
+-- lists sorted consistently -- into the wrong order.
 -------------------------------------------------------------
 
 -- Latin letters carrying a diacritic, filed under the ASCII letter they are
--- meant to sort with. Where two groups want the same byte, the first listed
--- keeps it.
+-- meant to sort with. Both cases are listed: Latin-1 has a case fold in the
+-- foundation, the Latin Extended letters (Ā, Ć, Ł...) do not, and this table
+-- must answer for either spelling.
 local ACCENT_GROUPS = {
   { "A", "ÀÁÂÃÄÅàáâãäåĀāĂăĄą" },
   { "C", "ÇçĆćĈĉĊċČč" },
@@ -160,35 +157,24 @@ local ACCENT_GROUPS = {
   { "Y", "ÝŸýÿŶŷ" },
 }
 
--- byte -> the letter it folds to, flattened once at load. One table means one
--- pass over the name instead of one per group, and it puts the byte-wise
--- nature of the substitution in plain sight rather than hiding it inside eight
--- character classes that only look like characters.
-local ACCENT_BYTE = {}
+-- character -> the letter it folds to, flattened once at load. Every letter
+-- above is a two-byte sequence (lead C3, C4 or C5), so the walk is in twos;
+-- a slice that is not a lead byte followed by a continuation byte means the
+-- source line is malformed, and is skipped rather than allowed to map a
+-- fragment onto a letter.
+local ACCENT_BASE = {}
 for _, group in ipairs(ACCENT_GROUPS) do
   local letter, sources = group[1], group[2]
-  for offset = 1, #sources do
-    local byte = sources:sub(offset, offset)
-    if not ACCENT_BYTE[byte] then ACCENT_BYTE[byte] = letter end
+  local offset = 1
+  while offset < #sources do
+    local lead, trail = sources:byte(offset, offset + 1)
+    if lead >= 0xC0 and lead < 0xE0 and trail and trail >= 0x80 and trail < 0xC0 then
+      ACCENT_BASE[sources:sub(offset, offset + 1)] = letter
+      offset = offset + 2
+    else
+      offset = offset + 1
+    end
   end
-end
-
--- string.upper is ASCII-only in this client, so Cyrillic needs its own case
--- table. Spelled as the alphabet twice, in order, rather than as thirty-three
--- pairs: one line reads against the other and a missing letter is visible.
-local CYRILLIC_LOWER = "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
-local CYRILLIC_UPPER = "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"
-
--- Every letter of both alphabets is two bytes of UTF-8 (D0/D1 lead), which is
--- what lets the pairing be a walk in twos -- and what keeps this step from
--- disturbing the length invariant. A slice that does not come back two bytes
--- long means the two lines above disagree, and is dropped rather than allowed
--- to map a letter onto nothing.
-local CYRILLIC_CASE = {}
-for offset = 1, #CYRILLIC_LOWER, 2 do
-  local lower = CYRILLIC_LOWER:sub(offset, offset + 1)
-  local upper = CYRILLIC_UPPER:sub(offset, offset + 1)
-  if #upper == 2 then CYRILLIC_CASE[lower] = upper end
 end
 
 local foldCache = {}
@@ -201,12 +187,14 @@ function CS.Fold(text)
   local cached = foldCache[input]
   if cached then return cached end
 
-  -- High bytes only, so an ASCII name matches nothing in either pass and pays
-  -- for no substitutions at all. A byte or a letter the tables do not know is
-  -- left exactly as it was, which is what a nil lookup means to gsub.
-  local folded = input:gsub("[\128-\255]", ACCENT_BYTE)
-  folded = folded:gsub("[\208\209][\128-\191]", CYRILLIC_CASE)
-  folded = string.upper(folded)
+  -- Case first, through the foundation's byte-exact tables (never
+  -- string.upper -- see Lib/Util.lua for why), then the diacritics off the
+  -- Latin letters. The second pass touches only the three lead bytes the
+  -- table can answer for, so a Cyrillic or ASCII name pays for no
+  -- substitution at all. A letter the table does not know is left exactly as
+  -- it was, which is what a nil lookup means to gsub.
+  local folded = Helpers().Upper(input)
+  folded = folded:gsub("[\195-\197][\128-\191]", ACCENT_BASE)
 
   foldCache[input] = folded
   return folded

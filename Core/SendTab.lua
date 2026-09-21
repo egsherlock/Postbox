@@ -409,11 +409,18 @@ end
 
 -- Blank every composed field. Shared by ST.Reset and by the post-send cleanup,
 -- which only runs once the send is KNOWN to have succeeded.
-local function ClearDraftFields(panel)
+--
+-- `keepRecipient` leaves the To: box alone -- the post-send cleanup passes
+-- the option of that name, so a player mailing a run of things to one bank
+-- alt is not made to address every one. ST.Reset never passes it: a fresh
+-- mailbox visit starts from nothing, whatever the option says.
+local function ClearDraftFields(panel, keepRecipient)
   if not panel then return end
-  panel.ToBox:SetText("")
-  panel.ToBox:SetCursorPosition(0)
-  ResetInlineCompletion(panel, "")
+  if not keepRecipient then
+    panel.ToBox:SetText("")
+    panel.ToBox:SetCursorPosition(0)
+    ResetInlineCompletion(panel, "")
+  end
   panel.SubjectBox:SetText("")
   panel.SubjectBox:SetCursorPosition(0)
   panel.BodyBox:SetText("")
@@ -803,7 +810,9 @@ local function FinishSend(outcome)
     -- History is written here and nowhere else: a recipient the server refused
     -- is not a recipient the player has mailed.
     Contacts().SaveRecipient(pending.toName)
-    ClearDraftFields(panel)
+    local UI = ns.MailboxUI
+    local keep = UI ~= nil and type(UI.GetOption) == "function" and UI.GetOption("keepRecipient")
+    ClearDraftFields(panel, keep)
     ClearSendMailMoneyState()
   elseif outcome == "timeout" then
     PopupNotice(L["MSG_SEND_TIMEOUT"])
@@ -2138,20 +2147,39 @@ local SUGGEST_ORDER = {
 local suggestFlat, suggestSeen = {}, {}
 
 -------------------------------------------------------------
--- 15a. The To: box completes itself
+-- 15a. The To: box completes itself, and Tab walks the popup
 --
--- Classic inline completion: type "ars", the box reads "Arsol" with "ol"
--- SELECTED, so carrying on typing simply replaces it and the completion never
--- has to be dismissed. Tab accepts it; Tab again cycles.
+-- Two things happen under the To: box, and they are kept distinct on purpose:
 --
--- Three rules keep it from fighting the player, and every one of them is a rule
--- because breaking it is what makes this pattern hated:
+--   INLINE COMPLETION. Type "ars", the box reads "Arsol" with "ol" SELECTED,
+--   so carrying on typing simply replaces it and the completion never has to
+--   be dismissed. It is the popup's first row that can be reached by
+--   EXTENDING what was typed; a row that matched by substring is never
+--   completed to, because that would rewrite the player's own characters.
+--
+--   TAB. Every press puts the next popup row into the box, top to bottom in
+--   the popup's own order -- substring matches included -- and Shift+Tab
+--   walks back up; both wrap. The first press takes the row the inline
+--   completion is already showing, if there is one, and row one otherwise;
+--   there is no separate "accept" press, because the box holding the name IS
+--   acceptance. A row Tab has taken is a whole address, cursor at the end,
+--   nothing selected: typing after it appends, Escape puts the typed text
+--   back. The popup stays open with a marker on the row being held, so the
+--   player can see what Tab took and what the next press will take.
+--
+--   Tab used to walk a different list from the one on screen -- the
+--   completable rows only -- which is why it appeared to skip: with "sh"
+--   typed and Shameo, How-Crushridge, Khrash, Shaanked showing, the second
+--   press went to Shaanked. And the first press was an accept with no
+--   visible effect when the completion was already on screen, so sometimes
+--   Tab moved one row and sometimes none. One list, one rule, now.
+--
+-- Three rules keep the inline half from fighting the player, and every one of
+-- them is a rule because breaking it is what makes this pattern hated:
 --
 --   IT ONLY EVER EXTENDS. The completion is `typed .. remainder` -- the
 --   player's own characters, byte for byte, with their own casing, plus the
---   tail of the suggestion. A suggestion that matched by SUBSTRING ("sol"
---   finding "Arsol") cannot be completed to, because doing so would rewrite
---   what was typed rather than finish it. Those names still appear in the popup.
+--   tail of the suggestion.
 --
 --   IT ONLY FIRES ON AN INSERTION AT THE END. Never on a deletion, never on an
 --   edit in the middle, never on a paste. Backspace that re-completed the
@@ -2161,35 +2189,29 @@ local suggestFlat, suggestSeen = {}, {}
 --   whole of that decision.
 --
 --   IT USES THE POPUP'S OWN RANKING. There is exactly one ordered list of
---   suggestions on this screen (`suggestFlat`) and this reads it rather than
---   scoring anything itself -- the completion is the popup's first COMPLETABLE
---   row, so the two can never disagree about who the best answer is. Skipping
---   the rows it cannot extend is the only liberty it takes, and it is the first
---   rule that demands it: those rows can only be reached by a rewrite.
+--   suggestions on this screen (`suggestFlat`), and both halves read it rather
+--   than scoring anything themselves, so the popup, the completion and Tab
+--   can never disagree about who the best answer is.
 --
--- MATCHING is CS.Fold, the same fold the lists sort by. It is byte-length
--- preserving by construction -- its accent classes are byte sets and its
--- Cyrillic map is two bytes for two -- so a folded prefix match at byte N means
--- the raw name's remainder starts at byte N + 1, with no character counting.
+-- MATCHING is CS.Fold, the same fold the lists sort by. It maps characters one
+-- to one -- an accented letter to its base, a Cyrillic letter to its capital
+-- -- and does NOT preserve byte length, so the splice counts CHARACTERS on the
+-- raw name: fold(name) starting with fold(typed) means the first N characters
+-- of name are what was typed, and the remainder starts after those N.
 -------------------------------------------------------------
 
 -- Panel state, all of it:
 --
 --   _acTyped   what the player actually typed (never includes completed text)
 --   _acPrev    the box's text as of the last time this code looked at it
---   _acFull    the completed string currently ON SCREEN, or nil
---   _acList    the completions offered for _acTyped, in the popup's order
---   _acIndex   which of them is on screen
---   _acCycling Tab has been pressed once, so further Tabs cycle
+--   _acFull    the text this code last wrote into the box, or nil
+--   _acName    the popup row _acFull stands for
+--   _acList    the popup's rows in its order (suggestFlat itself), or nil
+--   _acIndex   where _acName sits in _acList, or nil once it is no longer there
+--   _acTaken   Tab has taken a row: a whole address, nothing selected
 --   _acArmed   the last edit was an insertion at the end (see NoteRecipientEdit)
 --   _acGuard   set around our own SetText, so it cannot read as a player edit
 
--- Reused, like suggestFlat above and for the same reason: this rebuilds on a
--- debounce timer while somebody is typing, and one panel is on screen.
-local completionList = {}
--- The source name behind each completion, index-aligned with completionList:
--- what the popup's Tab marker uses to say WHICH row the box is holding.
-local completionNames = {}
 -- Forward: defined after CompletionShowing, called from the offer paths above it.
 local PaintTabMarker
 
@@ -2216,39 +2238,28 @@ local function AppendedOneChar(base, text)
   return true
 end
 
--- The suggestions that can be reached by EXTENDING `typed`, in the popup's
--- order, each already spliced onto the player's own characters. Returns the
--- shared table; empty means nothing here can be completed to.
-local function CollectCompletions(typed)
-  for i = #completionList, 1, -1 do
-    completionList[i] = nil
-    completionNames[i] = nil
-  end
-  if typed == "" then return completionList end
-
+-- The first popup row that can be reached by EXTENDING `typed`, and the text
+-- that extension puts in the box. nil when no row extends what was typed.
+local function FirstInlineCompletion(typed)
+  if typed == "" then return nil end
   local CS = Contacts()
-  -- string.upper is not the same fold, only a safe one -- reached solely if the
-  -- contact service is unavailable, in which case suggestFlat is empty anyway.
-  local fold = (type(CS) == "table" and type(CS.Fold) == "function") and CS.Fold or string.upper
-  local folded = fold(typed)
-  -- The byte-length invariant, checked rather than assumed. A fold that ever
-  -- stopped preserving it would hand back an offset into the MIDDLE of a
-  -- character, and the completion would splice a name in half; refusing to
-  -- complete is the only safe way to be wrong about this.
-  if #folded ~= #typed then return completionList end
-  local cut = #typed
+  if type(CS) ~= "table" or type(CS.Fold) ~= "function" then return nil end
+  local H = Helpers()
 
+  local folded = CS.Fold(typed)
+  local count = H.CharCount(typed)
   for i = 1, #suggestFlat do
     local name = suggestFlat[i]
-    -- STRICTLY longer: a suggestion that folds to exactly what was typed is
-    -- already in the box, and "completing" it would select an empty range.
-    if #name > cut and fold(name):sub(1, cut) == folded then
-      completionList[#completionList + 1] = typed .. name:sub(cut + 1)
-      completionNames[#completionList] = name
+    if CS.Fold(name):sub(1, #folded) == folded then
+      -- STRICTLY longer: a row that IS what was typed cannot be extended, and
+      -- "completing" it would select an empty range.
+      local at = H.CharBoundary(name, count)
+      if at and at <= #name then
+        return i, typed .. name:sub(at)
+      end
     end
   end
-
-  return completionList
+  return nil
 end
 
 -- The box holds text this code wrote. Everything that overwrites the box from
@@ -2257,25 +2268,33 @@ function ResetInlineCompletion(panel, text)
   if not panel then return end
   local value = text or ""
   panel._acTyped, panel._acPrev = value, value
-  panel._acFull, panel._acList, panel._acIndex = nil, nil, nil
-  panel._acCycling, panel._acArmed = nil, nil
+  panel._acFull, panel._acName = nil, nil
+  panel._acList, panel._acIndex = nil, nil
+  panel._acTaken, panel._acArmed = nil, nil
 end
 
 -- Nothing to complete to. The text on screen is left exactly as it is -- this
 -- says the OFFER has lapsed, not that the box is wrong.
 local function ClearCompletionOffer(panel)
-  panel._acList, panel._acIndex = nil, nil
-  panel._acCycling, panel._acArmed = nil, nil
+  panel._acList, panel._acIndex, panel._acName = nil, nil, nil
+  panel._acTaken, panel._acArmed = nil, nil
   PaintTabMarker(panel)
 end
 
--- Put `full` in the box with everything past the typed prefix selected.
+-- Is the text this code last wrote still what is on screen?
+local function CompletionShowing(panel)
+  local full = panel._acFull
+  return full ~= nil and panel.ToBox:GetText() == full
+end
+
+-- Put `full` -- the typed text plus the tail of row `index` -- in the box with
+-- everything past the typed prefix selected.
 --
 -- The guard is what stops this reading as a player edit. OnTextChanged is told
 -- `userInput = false` for a programmatic SetText and the handler already leans
 -- on that, so this is the second lock on the same door -- and the one that holds
 -- if a host UI ever calls the handler itself.
-local function ShowCompletion(panel, full)
+local function ShowInline(panel, index, full)
   local box = panel.ToBox
   local typedLen = #(panel._acTyped or "")
 
@@ -2288,33 +2307,47 @@ local function ShowCompletion(panel, full)
   panel._acGuard = false
 
   panel._acFull, panel._acPrev = full, full
+  panel._acIndex, panel._acName = index, panel._acList[index]
+  panel._acTaken = nil
   PaintTabMarker(panel)
 end
 
--- Is the completion this code last wrote still what is on screen?
-local function CompletionShowing(panel)
-  local full = panel._acFull
-  return full ~= nil and panel.ToBox:GetText() == full
-end
+-- Put row `index` in the box whole: the same address a click on the row would
+-- insert, cursor at the end, nothing selected. `_acTyped` is left alone, so
+-- Escape still knows what to put back and the popup still knows what it is
+-- answering.
+local function TakeRow(panel, index)
+  local box = panel.ToBox
+  local name = panel._acList[index]
+  local value = name
+  local R = ns.Recipients
+  if type(R) == "table" and type(R.Display) == "function" then
+    local resolved = R.Display(name)
+    if resolved ~= "" then value = resolved end
+  end
 
--- The popup row the completion currently on screen came from, or nil.
-local function CurrentCompletionName(panel)
-  if not CompletionShowing(panel) then return nil end
-  local index = panel._acIndex
-  return index and completionNames[index] or nil
+  panel._acGuard = true
+  box:SetText(value)
+  box:HighlightText(0, 0)
+  box:SetCursorPosition(#value)
+  panel._acGuard = false
+
+  panel._acFull, panel._acPrev = value, value
+  panel._acIndex, panel._acName = index, name
+  panel._acTaken = true
+  PaintTabMarker(panel)
 end
 
 -- Paints "this is the row Tab is holding" onto the popup: a live-accent bar
--- and a faint wash on the source row of the completion in the box, so the
--- player can see what Tab took and what the next Tab would step to.
--- Repainted from every path that changes what Tab holds AND from the popup
--- fill, so the marker can never describe a row that is gone. The art lives
--- on the row buttons, which are not tagged panels, so a host skin's repaint
--- does not fade it.
+-- and a faint wash on the source row of the text in the box, so the player
+-- can see what Tab took and what the next Tab would step to. Repainted from
+-- every path that changes what is held AND from the popup fill, so the marker
+-- can never describe a row that is gone. The art lives on the row buttons,
+-- which are not tagged panels, so a host skin's repaint does not fade it.
 PaintTabMarker = function(panel)
   local sf = panel.SuggestFrame
   if not sf or not sf.buttons then return end
-  local current = CurrentCompletionName(panel)
+  local current = CompletionShowing(panel) and panel._acName or nil
   for i = 1, #sf.buttons do
     local btn = sf.buttons[i]
     local on = current ~= nil and btn.value == current and btn:IsShown()
@@ -2342,39 +2375,40 @@ PaintTabMarker = function(panel)
   end
 end
 
--- Rebuilds the offer from the list the popup is showing, and applies the top of
--- it when the last edit was an insertion at the end. Called at the tail of every
--- suggestion pass, so the popup and the completion are always the same answer.
+-- Binds the offer to the list the popup is showing, and applies the inline
+-- completion when the last edit was an insertion at the end. Called at the
+-- tail of every suggestion pass, so the popup and the completion are always
+-- the same answer.
 local function UpdateInlineCompletion(panel)
   local typed = panel._acTyped or ""
   local armed = panel._acArmed
   panel._acArmed = nil
 
-  local list = CollectCompletions(typed)
-  if #list == 0 then
-    panel._acList, panel._acIndex, panel._acCycling = nil, nil, nil
+  if #suggestFlat == 0 or typed == "" then
+    panel._acList, panel._acIndex, panel._acName, panel._acTaken = nil, nil, nil, nil
     PaintTabMarker(panel)
     return
   end
-  panel._acList = list
+  panel._acList = suggestFlat
 
-  -- A pass rebuilt the offer UNDER a completion that is still on screen -- a
-  -- roster tick refreshing the open popup (ContactsChanged), or the debounce
-  -- landing between two Tab presses. The Tab conversation in progress
-  -- survives: re-find the shown string's place in the new list and keep the
-  -- accepted/cycling state. Wiping it here is what made the second Tab press
-  -- a visible no-op -- accept, silent re-accept, THEN cycle.
+  -- A pass rebuilt the popup UNDER text this code wrote -- a roster tick
+  -- refreshing the open popup (ContactsChanged), or the debounce landing
+  -- between two Tab presses. The Tab conversation in progress survives:
+  -- re-find the held row's place in the new list and keep the taken state.
+  -- Wiping it here is what once made the second Tab press a visible no-op.
+  -- A held row that is no longer listed leaves the index nil, and the next
+  -- Tab starts again from the top.
   if CompletionShowing(panel) then
     panel._acIndex = nil
-    for i = 1, #list do
-      if list[i] == panel._acFull then panel._acIndex = i break end
+    local name = panel._acName
+    for i = 1, #suggestFlat do
+      if suggestFlat[i] == name then panel._acIndex = i break end
     end
-    if not panel._acIndex then panel._acCycling = nil end
     PaintTabMarker(panel)
     return
   end
 
-  panel._acIndex, panel._acCycling = nil, nil
+  panel._acIndex, panel._acName, panel._acTaken = nil, nil, nil
 
   -- The player deleted, pasted, or edited the middle. The offer stands -- Tab
   -- will take it -- but nothing appears in the box uninvited.
@@ -2390,8 +2424,12 @@ local function UpdateInlineCompletion(panel)
     return
   end
 
-  panel._acIndex = 1
-  ShowCompletion(panel, list[1])
+  local index, full = FirstInlineCompletion(typed)
+  if index then
+    ShowInline(panel, index, full)
+  else
+    PaintTabMarker(panel)
+  end
 end
 
 -------------------------------------------------------------
@@ -2413,7 +2451,8 @@ local function RefreshSuggestions(panel)
   local typed = (panel._acFull ~= nil and panel._acFull == raw) and panel._acTyped or raw
   panel._acTyped, panel._acPrev = typed, raw
 
-  local text = Helpers().NormalizeText(typed)
+  local H = Helpers()
+  local text = H.NormalizeText(typed)
   if text == "" then
     ClearCompletionOffer(panel)
     sf:Hide()
@@ -2429,15 +2468,17 @@ local function RefreshSuggestions(panel)
   -- Lowercasing is enough to dedup, but only because every bucket holds a
   -- canonical address built by the same rule -- the buckets that deliberately
   -- repeat a recipient (favourites, alts) hand back the identical string, so
-  -- the only thing left to reconcile is casing.
+  -- the only thing left to reconcile is casing. The foundation's fold, not
+  -- string.lower: see Lib/Util.lua.
+  local lower = H.Lower
   for i = 1, #SUGGEST_ORDER do
     local bucket = results[SUGGEST_ORDER[i]]
     if bucket then
       for j = 1, #bucket do
         local name = bucket[j]
-        local lower = string.lower(name)
-        if not suggestSeen[lower] then
-          suggestSeen[lower] = true
+        local key = lower(name)
+        if not suggestSeen[key] then
+          suggestSeen[key] = true
           suggestFlat[#suggestFlat + 1] = name
         end
         if #suggestFlat >= MAX_SUGGESTIONS then break end
@@ -2514,7 +2555,7 @@ local function NoteRecipientEdit(panel, box)
 
   -- Measured against BOTH readings of "before", because both are edits that
   -- extend: typing over a live completion's selection grows what was TYPED
-  -- ("ars" -> "arso"), while typing after an accepted one grows what is in the
+  -- ("ars" -> "arso"), while typing after a taken row grows what is in the
   -- BOX ("Arsol" -> "Arsolb"). One test alone gets the other case wrong.
   local grew = AppendedOneChar(typed, text) or AppendedOneChar(prev, text)
 
@@ -2525,32 +2566,17 @@ local function NoteRecipientEdit(panel, box)
   -- Whatever is in the box is now the player's own text, and any completion that
   -- was on screen has just been typed through.
   panel._acTyped, panel._acPrev = text, text
-  panel._acFull, panel._acList, panel._acIndex = nil, nil, nil
-  panel._acCycling = nil
+  panel._acFull, panel._acName = nil, nil
+  panel._acList, panel._acIndex, panel._acTaken = nil, nil, nil
 end
 
--- Take the completion as written: cursor to the end, selection gone. The text
--- does not change, so nothing here re-enters OnTextChanged.
-local function AcceptCompletion(panel)
-  local box = panel.ToBox
-  local full = panel._acFull or box:GetText()
-  panel._acGuard = true
-  box:HighlightText(0, 0)
-  box:SetCursorPosition(#full)
-  panel._acGuard = false
-end
-
--- Tab, and Shift+Tab for the other direction.
+-- Tab, and Shift+Tab for the other direction. See the section header for the
+-- rule; this is only its arithmetic.
 --
--- FIRST press accepts what is on offer. Every press after that cycles, wrapping
--- at both ends and re-selecting the completed tail each time -- so holding a
--- conversation with the list is one key, and the thing being swapped is always
--- the highlighted part. The player's own characters never move.
---
--- Tab with nothing on screen yet is an explicit "complete it now", so the
--- debounced pass is run on the spot rather than making them wait it out or press
--- twice; the token is bumped so the pass already in flight does not then run
--- again and reset the cycle.
+-- Tab with no offer built yet is an explicit "complete it now", so the
+-- debounced pass is run on the spot rather than making them wait it out or
+-- press twice; the token is bumped so the pass already in flight does not then
+-- run again and reset the walk.
 local function RecipientTabPressed(panel)
   if not panel._acList then
     panel._suggestToken = (panel._suggestToken or 0) + 1
@@ -2560,35 +2586,21 @@ local function RecipientTabPressed(panel)
   local list = panel._acList
   if not list or #list == 0 then return end
 
-  if not panel._acCycling then
-    if CompletionShowing(panel) then
-      -- A pass may have rebuilt the offer since this string was put on screen,
-      -- so find where it sits in the current list -- otherwise the first cycle
-      -- would step to entry one, which is the entry already showing.
-      if not panel._acIndex then
-        for i = 1, #list do
-          if list[i] == panel._acFull then panel._acIndex = i break end
-        end
-      end
+  local backwards = IsShiftKeyDown()
+  local index
+  if CompletionShowing(panel) and panel._acIndex then
+    if panel._acTaken then
+      index = panel._acIndex + (backwards and -1 or 1)
+      if index < 1 then index = #list elseif index > #list then index = 1 end
     else
-      panel._acIndex = 1
-      ShowCompletion(panel, list[1])
+      -- The inline completion is a row the popup already points at: the first
+      -- press takes THAT row, whichever it is, rather than jumping past it.
+      index = panel._acIndex
     end
-    AcceptCompletion(panel)
-    panel._acCycling = true
-    return
-  end
-
-  local index = panel._acIndex or 0
-  if IsShiftKeyDown() then
-    index = index - 1
-    if index < 1 then index = #list end
   else
-    index = index + 1
-    if index > #list then index = 1 end
+    index = backwards and #list or 1
   end
-  panel._acIndex = index
-  ShowCompletion(panel, list[index])
+  TakeRow(panel, index)
 end
 
 -- Escape, first stage: put back exactly what was typed and close the popup,

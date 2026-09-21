@@ -514,8 +514,15 @@ local function BuildDiagnosticReport()
   -- what an out-of-date addon does wrong is unfixable and already fixed --
   -- so it is worth establishing on line two rather than three exchanges in.
   local gameVersion, gameBuild, _, clientToc = GetBuildInfo()
-  local ourToc = C_AddOns and C_AddOns.GetAddOnMetadata
-    and C_AddOns.GetAddOnMetadata(ADDON_NAME, "Interface")
+  -- GetAddOnInterfaceVersion, not GetAddOnMetadata("Interface"): the metadata
+  -- reader answers only for the fields it lists, and Interface is not one of
+  -- them, so every report ever filed said "built for ?". With several
+  -- interface numbers in the TOC this answers the one the client picked.
+  local ourToc
+  if C_AddOns and type(C_AddOns.GetAddOnInterfaceVersion) == "function" then
+    local ok, value = pcall(C_AddOns.GetAddOnInterfaceVersion, ADDON_NAME)
+    if ok then ourToc = value end
+  end
   local scale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 0
   add(string.format("WoW %s (%s) | interface %s, built for %s | UI scale %.2f",
     tostring(gameVersion), tostring(gameBuild),

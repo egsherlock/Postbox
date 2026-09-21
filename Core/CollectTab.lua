@@ -289,6 +289,14 @@ local function ShowAllSegment()
   return UI.GetOption("showAllTab") and true or false
 end
 
+-- The five category sweeps under the full-width Collect button. Default on,
+-- for the same reason as the All segment; off gives the list their two rows.
+local function ShowCategoryButtons()
+  local UI = ns.MailboxUI
+  if not UI or type(UI.GetOption) ~= "function" then return true end
+  return UI.GetOption("showCategoryButtons") and true or false
+end
+
 -- Default OFF when the option plumbing has not loaded yet: a plain click that
 -- collects is the mapping every other part of this screen was written around,
 -- and the destructive-looking surprise is the other way round.
@@ -381,7 +389,11 @@ end
 --   footer              the category grid: one full-width primary over two rows
 --     inset             of three. The Done view swaps in a single delete button
 --                       and is therefore SHORTER, so sizing for the grid is what
---                       makes the guarantee hold in both views.
+--                       makes the guarantee hold in both views -- and with the
+--                       category buttons switched off, which is shorter again.
+--                       The floor is deliberately NOT lowered for that option:
+--                       a window that shrank when a setting flipped would be
+--                       writing a height nobody chose.
 function CT.MinPanelHeight()
   local M = Th().Metrics
   local footer = GRID_PRIMARY_HEIGHT + M.gap * 2 + GRID_BUTTON_HEIGHT * 2
@@ -3125,6 +3137,10 @@ local function LayoutGrid(panel)
   buttons[1]:SetSize(width, GRID_PRIMARY_HEIGHT)
   buttons[1]:SetPoint("TOPLEFT", grid, "TOPLEFT", 0, 0)
 
+  -- The five sweeps are laid out whether or not they are shown: the option
+  -- can flip while the window is open, and a hidden button that is already in
+  -- its column simply appears.
+  local extras = ShowCategoryButtons()
   local columns = T.ColumnEdges(width, GRID_COLUMNS, M.gap, panel._gridColumns)
   for i = 2, #buttons do
     local slot = i - 2
@@ -3135,6 +3151,7 @@ local function LayoutGrid(panel)
     buttons[i]:SetSize(edge.width, GRID_BUTTON_HEIGHT)
     buttons[i]:SetPoint("TOPLEFT", grid, "TOPLEFT", edge.left,
       -(GRID_PRIMARY_HEIGHT + M.gap + line * (GRID_BUTTON_HEIGHT + M.gap)))
+    buttons[i]:SetShown(extras)
   end
 
   -- Captions are measured against the column they landed in. A caption that
@@ -3144,6 +3161,30 @@ local function LayoutGrid(panel)
     local button = buttons[i]
     T.FitText(button:GetFontString(), button:GetWidth() - M.gap, button.caption, button)
   end
+end
+
+-- What the footer is tall enough for right now. The footer holds the two
+-- mutually exclusive action areas, so a view change or the category-buttons
+-- option changes exactly this one number and everything anchored above it
+-- follows. Only the done view swaps the footer. The all view lists finished
+-- mail but is not a place to sweep it: "delete all done" would act on mails
+-- the segment does not distinguish, so the all view keeps the category grid --
+-- which is exactly as useful there as on the collect view, since a category
+-- run works on the inbox and not on the listing.
+local function FooterHeight(panel)
+  if panel.viewMode == VIEW_DONE then return GRID_BUTTON_HEIGHT end
+  if not ShowCategoryButtons() then return GRID_PRIMARY_HEIGHT end
+  return GRID_PRIMARY_HEIGHT + Th().Metrics.gap * 2 + GRID_BUTTON_HEIGHT * 2
+end
+
+-- Frozen: Core/MailboxUI.lua calls this when the category-buttons option
+-- changes. The window's floor is sized for the full grid either way (see
+-- CT.MinPanelHeight), so switching the buttons off never moves the window;
+-- the two rows they stood on go to the list.
+function CT.RefreshCategoryButtons(panel)
+  if not panel or not panel.Footer then return end
+  panel.Footer:SetHeight(FooterHeight(panel))
+  LayoutGrid(panel)
 end
 
 local function BuildGrid(panel)
@@ -3181,17 +3222,10 @@ end
 function SetViewMode(panel, id)
   if panel.viewMode == id then return end
   panel.viewMode = id
-  -- Only the done view swaps the footer. The all view lists finished mail but is
-  -- not a place to sweep it: "delete all done" would act on mails the segment
-  -- does not distinguish, so the all view keeps the category grid -- which is
-  -- exactly as useful there as on the collect view, since a category run works
-  -- on the inbox and not on the listing.
   local doneView = (id == VIEW_DONE)
 
-  -- The footer holds the two mutually exclusive action areas, so switching view
-  -- changes exactly one number and everything anchored above it follows.
-  panel.Footer:SetHeight(doneView and GRID_BUTTON_HEIGHT
-    or (GRID_PRIMARY_HEIGHT + Th().Metrics.gap * 2 + GRID_BUTTON_HEIGHT * 2))
+  -- See FooterHeight for why only the done view swaps the footer.
+  panel.Footer:SetHeight(FooterHeight(panel))
   panel.Grid:SetShown(not doneView)
   panel.DeleteAllDone:SetShown(doneView)
 
@@ -3244,7 +3278,7 @@ function CT.Build(parent)
   panel.Footer = CreateFrame("Frame", nil, panel)
   panel.Footer:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", M.inset, M.inset)
   panel.Footer:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -M.inset, M.inset)
-  panel.Footer:SetHeight(GRID_PRIMARY_HEIGHT + M.gap * 2 + GRID_BUTTON_HEIGHT * 2)
+  panel.Footer:SetHeight(FooterHeight(panel))
 
   BuildGrid(panel)
 

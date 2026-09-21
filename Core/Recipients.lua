@@ -63,42 +63,23 @@ local function Now()
   return 0
 end
 
--- Counts UTF-8 characters, not bytes. Names and notes arrive as UTF-8 from the
--- client, so a byte length would under-count non-latin realms badly.
-local function CountChars(text)
-  local count, i, len = 0, 1, #text
-  while i <= len do
-    local b = text:byte(i)
-    local size = 1
-    if b >= 240 then size = 4
-    elseif b >= 224 then size = 3
-    elseif b >= 192 then size = 2 end
-    count = count + 1
-    i = i + size
-  end
-  return count
-end
-
 -- Truncates on a UTF-8 character boundary; cutting mid-sequence would leave a
--- broken byte the client renders as garbage.
+-- broken byte the client renders as garbage. Names and notes arrive as UTF-8
+-- from the client, so a byte count would under-cut non-latin realms badly.
 local function TruncateChars(text, maxChars)
-  local count, i, len = 0, 1, #text
-  while i <= len do
-    local b = text:byte(i)
-    local size = 1
-    if b >= 240 then size = 4
-    elseif b >= 224 then size = 3
-    elseif b >= 192 then size = 2 end
-    if count + 1 > maxChars then return text:sub(1, i - 1) end
-    count = count + 1
-    i = i + size
-  end
+  local at = Helpers().CharBoundary(text, maxChars)
+  if at and at <= #text then return text:sub(1, at - 1) end
   return text
 end
 
+-- The presentable form of a name rebuilt from a lowercase key. Delegated to
+-- the foundation because the obvious one-liner -- sub(1, 1):upper() -- is a
+-- byte operation, and on a Cyrillic or accented name the first byte is the
+-- lead of a two-byte letter. Uppercasing THAT produced a name whose first
+-- letter drew as a box and vanished when the string was put into the To:
+-- box, which is the "bad cyrillic support" bug as reported.
 local function Capitalize(text)
-  if text == "" then return text end
-  return text:sub(1, 1):upper() .. text:sub(2)
+  return Helpers().Capitalize(text)
 end
 
 -- Realm names are normalised the way GetNormalizedRealmName() does it: spaces,
@@ -308,12 +289,21 @@ local function LegacyMayDiffer(input, realm)
   return type(input) == "string" and input:find(".", 1, true) ~= nil
 end
 
+-- Defined below; a miss in RowFor is the first place it is wanted.
+local SweepOwnRealmKeys
+
 -- map[key], first moving a pre-fix row onto `key` if that is where it lives.
 -- `input` is the caller's original argument (a raw name or a key) and `realm`
 -- the realm half R.Key resolved from it.
 local function RowFor(map, key, input, realm)
   if type(map) ~= "table" or key == "" then return nil end
   local row = map[key]
+  if type(row) == "table" then return row end
+  -- The one-shot sweep, paid for on the first miss of the session rather than
+  -- only when a list is enumerated: a favourite filed under a pre-fold key
+  -- has to answer to R.Get and R.Display too, and those come first.
+  SweepOwnRealmKeys(map)
+  row = map[key]
   if type(row) == "table" then return row end
   if not LegacyMayDiffer(input, realm) then return nil end
 
@@ -337,9 +327,18 @@ end
 
 -- Runs at most once per resolved realm. Keys are "name-realm" with the name
 -- half guaranteed hyphen-free, so the old realm can be matched as a suffix.
+--
+-- The same pass carries a second, unrelated migration: keys whose name half
+-- holds an uppercase non-ASCII letter. The key fold used to be Lua's
+-- string.lower, which leaves every byte above 127 alone, so a Cyrillic or
+-- accented name was filed under its capitalised spelling ("Иван-realm").
+-- The fold now lowercases those letters too (Lib/Util.lua), and the row has
+-- to move to where the new key will look for it or the favourite is simply
+-- gone. It is a one-string test per key, and inert for a map of plain
+-- ASCII names, which is nearly every map there is.
 local sweptRealm = nil
 
-local function SweepOwnRealmKeys(map)
+function SweepOwnRealmKeys(map)
   if type(map) ~= "table" then return end
   local realm = CurrentRealm()
   if realm == "" or sweptRealm == realm then return end
@@ -347,14 +346,24 @@ local function SweepOwnRealmKeys(map)
 
   local lower = Helpers().Lower
   local legacyRealm = LegacyCurrentRealm()
-  if legacyRealm == "" or lower(legacyRealm) == lower(realm) then return end
+  local suffix = nil
+  if legacyRealm ~= "" and lower(legacyRealm) ~= lower(realm) then
+    suffix = "-" .. lower(legacyRealm)
+  end
 
-  local suffix = "-" .. lower(legacyRealm)
+  -- Collected first and moved after: adding keys to a table under pairs() is
+  -- undefined in Lua, and both migrations add keys.
   local moves = {}
   for key, row in pairs(map) do
-    if type(key) == "string" and type(row) == "table" and #key > #suffix
-       and key:sub(#key - #suffix + 1) == suffix then
-      moves[#moves + 1] = { key, key:sub(1, #key - #suffix) .. "-" .. lower(realm), row }
+    if type(key) == "string" and type(row) == "table" then
+      local target = key
+      if suffix and #key > #suffix and key:sub(#key - #suffix + 1) == suffix then
+        target = key:sub(1, #key - #suffix) .. "-" .. lower(realm)
+      end
+      -- Cheap for the common case: a key with no byte above 127 lowercases
+      -- to itself and is never even compared.
+      if key:find("[\128-\255]") then target = lower(target) end
+      if target ~= key then moves[#moves + 1] = { key, target, row } end
     end
   end
 
@@ -362,7 +371,8 @@ local function SweepOwnRealmKeys(map)
     map[move[1]] = nil
     if type(map[move[2]]) ~= "table" then
       local row = move[3]
-      if type(row.realm) == "string" and lower(NormalizeRealm(row.realm)) ~= lower(realm) then
+      if suffix and type(row.realm) == "string"
+         and lower(NormalizeRealm(row.realm)) ~= lower(realm) then
         -- Unlike the lazy path this one knows the answer: CurrentRealm carries
         -- the client's own spelling and casing of the player's realm.
         row.realm = realm
@@ -554,7 +564,9 @@ function R.Ensure(key, name)
   local keyRealm = realm
 
   local cased = false
-  if type(name) == "string" and name ~= "" then
+  -- A hint that IS the key carries no casing (a key is all lowercase), so it
+  -- is passed over for the recovery below rather than filed as the name.
+  if type(name) == "string" and name ~= "" and name ~= k then
     local nk, nShort, nRealm = R.Key(name)
     if nk == k then
       short, realm = nShort, nRealm
@@ -618,10 +630,17 @@ end
 
 -- fav and hidden are mutually exclusive: a hidden favourite is a contradiction,
 -- so each setter clears the other rather than leaving the UI to sort it out.
+--
+-- Each passes the caller's own string to R.Ensure as the casing source. The
+-- setters are reached from lists that hold the client's spelling of a name,
+-- and a row created from the bare key would have to reconstruct its casing
+-- by capitalising a lowercase key -- a guess, and for a name in any alphabet
+-- the fold does not know, a wrong one. R.Ensure ignores the hint unless it
+-- resolves to the same key, so a caller passing a key gets the old behaviour.
 function R.SetHidden(key, on)
   local k = R.Key(key)
   if k == "" then return false end
-  local row = R.Ensure(k)
+  local row = R.Ensure(k, key)
   if not row then return false end
   row.hidden = on and true or nil
   if row.hidden then row.fav = nil end
@@ -633,7 +652,7 @@ end
 function R.SetFavorite(key, on)
   local k = R.Key(key)
   if k == "" then return false end
-  local row = R.Ensure(k)
+  local row = R.Ensure(k, key)
   if not row then return false end
   row.fav = on and true or nil
   if row.fav then row.hidden = nil end
@@ -648,7 +667,7 @@ function R.SetNote(key, text)
   local k = R.Key(key)
   if k == "" then return nil end
   local note = TruncateChars(Helpers().NormalizeText(text), NOTE_MAX_CHARS)
-  local row = R.Ensure(k)
+  local row = R.Ensure(k, key)
   if not row then return nil end
   if note == "" then
     row.note = nil
@@ -673,11 +692,12 @@ function R.AddManual(name)
   if k == "" or short == "" then return nil, "RM_ERR_NAME_EMPTY" end
   if short:find("%s") then return nil, "RM_ERR_NAME_SPACES" end
 
-  local shortLen = CountChars(short)
+  local charCount = Helpers().CharCount
+  local shortLen = charCount(short)
   if shortLen < NAME_MIN_CHARS or shortLen > NAME_MAX_CHARS then
     return nil, "RM_ERR_NAME_LENGTH"
   end
-  if CountChars(realm) > REALM_MAX_CHARS then return nil, "RM_ERR_NAME_LENGTH" end
+  if charCount(realm) > REALM_MAX_CHARS then return nil, "RM_ERR_NAME_LENGTH" end
 
   local map = StateMapRW()
   if not map then return nil, "RM_ERR_NOT_READY" end

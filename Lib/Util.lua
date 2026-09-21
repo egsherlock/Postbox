@@ -42,12 +42,130 @@ function Strings.Trim(value)
   return (value:match("^%s*(.-)%s*$"))
 end
 
--- Trim, then lowercase. WoW strings are UTF-8 and Lua's lower() only touches
--- ASCII, so non-Latin names compare case-sensitively here. That is acceptable
--- deliberately: this is used for character-name and mail-subject comparison,
--- and the server already case-normalises character names.
+-------------------------------------------------------------
+-- Case
+--
+-- Never string.lower or string.upper, on anything that can carry a name.
+-- Those are the C library's tolower/toupper applied byte by byte, and the
+-- client does not promise to run them in the "C" locale: on a runtime whose
+-- locale is a single-byte Cyrillic or Latin code page they rewrite bytes
+-- above 127 as well -- which in UTF-8 means rewriting the lead or a
+-- continuation byte of a multi-byte letter into something that is no longer
+-- valid UTF-8. A ruRU player reported exactly that shape: a favourited
+-- Cyrillic name whose first letter drew as a box, and came out of the To:
+-- box one letter short.
+--
+-- The mappings here are explicit and byte-exact, and touch only the letters
+-- they know:
+--
+--   ASCII       A-Z / a-z
+--   Latin-1     À..Þ <-> à..þ   (C3 80..9E <-> C3 A0..BE; × and ÷ are not letters)
+--   Cyrillic    А..П <-> а..п   (D0 90..9F <-> D0 B0..BF)
+--               Р..Я <-> р..я   (D0 A0..AF <-> D1 80..8F)
+--               Ѐ..Џ <-> ѐ..џ   (D0 80..8F <-> D1 90..9F, the row that holds Ё)
+--
+-- Every pair is one byte to one byte or two bytes to two, so neither
+-- function ever changes a string's byte length. That is also why a Russian
+-- player typing a lowercase "ив" now finds Иван: the same fold serves the
+-- keys the address book files people under.
+-------------------------------------------------------------
+
+local LOWER = {}   -- "A" -> "a", "И" -> "и"
+local UPPER = {}   -- the reverse
+
+local function Pair(upper, lower)
+  LOWER[upper] = lower
+  UPPER[lower] = upper
+end
+
+for b = 65, 90 do Pair(string.char(b), string.char(b + 32)) end
+for b = 0x80, 0x9E do
+  if b ~= 0x97 then Pair(string.char(0xC3, b), string.char(0xC3, b + 0x20)) end
+end
+for b = 0x90, 0x9F do Pair(string.char(0xD0, b), string.char(0xD0, b + 0x20)) end
+for b = 0xA0, 0xAF do Pair(string.char(0xD0, b), string.char(0xD1, b - 0x20)) end
+for b = 0x80, 0x8F do Pair(string.char(0xD0, b), string.char(0xD1, b + 0x10)) end
+
+-- Character classes are BYTE ranges, deliberately: %a and %l are the locale's
+-- opinion, [A-Z] is not.
+local function LowerBytes(text)
+  text = text:gsub("[A-Z]", LOWER)
+  -- Only the two lead bytes that can start an uppercase letter; the lowercase
+  -- rows under D1 never match and cost nothing.
+  text = text:gsub("[\195\208][\128-\191]", LOWER)
+  return text
+end
+
+local function UpperBytes(text)
+  text = text:gsub("[a-z]", UPPER)
+  text = text:gsub("[\195\208\209][\128-\191]", UPPER)
+  return text
+end
+
+-- Trim, then lowercase. Used as the case-folding key generator for character
+-- names and for mail-subject matching, so it must be total and stable.
 function Strings.Lower(value)
-  return Strings.Trim(value):lower()
+  return LowerBytes(Strings.Trim(value))
+end
+
+-- Uppercase, same alphabet. Not trimmed: this is a fold for comparison, and
+-- what it is given is what it answers for.
+function Strings.Upper(value)
+  if type(value) ~= "string" then value = tostring(value or "") end
+  return UpperBytes(value)
+end
+
+-- First letter uppercased, the rest untouched -- the presentable form of a
+-- name that was rebuilt from a lowercase key. A first character outside the
+-- alphabets above is left exactly as it is.
+function Strings.Capitalize(text)
+  if type(text) ~= "string" or text == "" then return "" end
+  local upper = UPPER[text:sub(1, 1)]
+  if upper then return upper .. text:sub(2) end
+  local lead = text:byte(1)
+  if lead >= 0xC0 then
+    upper = UPPER[text:sub(1, 2)]
+    if upper then return upper .. text:sub(3) end
+  end
+  return text
+end
+
+-------------------------------------------------------------
+-- Character boundaries
+--
+-- WoW strings are UTF-8 and Lua's # counts bytes. A name is cut, counted or
+-- extended on CHARACTER boundaries or it is not cut at all: half a sequence
+-- renders as a broken glyph.
+-------------------------------------------------------------
+
+-- How many bytes the character starting with this lead byte occupies.
+local function CharSize(lead)
+  if lead >= 240 then return 4 end
+  if lead >= 224 then return 3 end
+  if lead >= 192 then return 2 end
+  return 1
+end
+
+function Strings.CharCount(text)
+  local count, i, len = 0, 1, #text
+  while i <= len do
+    count = count + 1
+    i = i + CharSize(text:byte(i))
+  end
+  return count
+end
+
+-- The byte index just past the first `count` characters -- so text:sub(1, at - 1)
+-- is those characters and text:sub(at) is the rest -- or nil when the text has
+-- fewer than `count` characters. Zero answers 1.
+function Strings.CharBoundary(text, count)
+  local i, len = 1, #text
+  while count > 0 do
+    if i > len then return nil end
+    i = i + CharSize(text:byte(i))
+    count = count - 1
+  end
+  return i
 end
 
 -------------------------------------------------------------

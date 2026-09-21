@@ -150,6 +150,17 @@ local OPTION_DEFAULTS = {
   -- right-click either way: that is the client's own behaviour and this
   -- setting neither adds nor removes it.
   attachFromMail  = false,
+  -- The collect screen's five one-click sweeps (expired, sold, canceled,
+  -- bought, other) under the full-width Collect button. On: they are what
+  -- the screen has always offered. Off is for the player who only ever takes
+  -- everything, and would rather have the two rows back for the list.
+  showCategoryButtons = true,
+  -- After a successful send, leave the recipient in the To: box. Off: a
+  -- cleared form is the safe default -- a name left standing is a mail that
+  -- can go to the wrong person on the next Send -- and the option exists for
+  -- the player posting a run of mails to one bank alt, for whom retyping the
+  -- same name is the whole cost of the screen.
+  keepRecipient   = false,
 }
 
 local OPTION_PATH = {}
@@ -280,9 +291,59 @@ end
 -- never made visible at a moment when we are not allowed to hide it again.
 -------------------------------------------------------------
 
+-- Somebody else's SetAlpha on MailFrame, and the answer to it.
+--
+-- Reported from the wild: a player with a mail notifier, a bag addon, a UI
+-- pack and a few more all loaded saw Blizzard's mail window standing beside
+-- Postbox's -- the native frame at full alpha with ours docked over it. The
+-- only thing that can undo the alpha above is another SetAlpha, so that is
+-- what is watched: a post-hook, which runs after the caller's call has
+-- completed and never touches the caller's execution. While Postbox's window
+-- is up, an alpha that is not zero is put back to zero on the spot, and the
+-- addon on the stack at the time is written down ONCE for the diagnostic
+-- report -- so the next report of this names the culprit instead of the
+-- symptom. Idle in every session where nothing fights: the hook costs one
+-- comparison per SetAlpha call on a frame nothing calls SetAlpha on.
+--
+-- The guard is against our own reassert re-entering the hook, not against a
+-- loop with the other addon: their next call is their business, and answered
+-- the same way.
+local alphaHooked = false
+local reasserting = false
+local ADDON_NAME = "Postbox"
+
+-- The first addon folder on the stack that is not this one.
+local function AddonOnStack(stack)
+  for folder in string.gmatch(stack or "", "AddOns[/\\]([^/\\]+)[/\\]") do
+    if folder ~= ADDON_NAME then return folder end
+  end
+  return nil
+end
+
+local function OnNativeAlphaSet(frame, alpha)
+  if reasserting then return end
+  if (tonumber(alpha) or 0) == 0 then return end
+  if not UI._state.mailboxOpen or not UI._state.visible then return end
+
+  UI._state.alphaFights = (UI._state.alphaFights or 0) + 1
+  if not UI._state.alphaCulprit and type(debugstack) == "function" then
+    -- Skip this hook and the secure wrapper that called it; a few frames of
+    -- caller is enough to find the folder.
+    local ok, stack = pcall(debugstack, 3, 6, 0)
+    UI._state.alphaCulprit = (ok and AddonOnStack(stack)) or "unknown"
+  end
+
+  reasserting = true
+  frame:SetAlpha(0)
+  reasserting = false
+end
+
 local function HideNativeMailFrame()
-  if MailFrame and type(MailFrame.SetAlpha) == "function" then
-    MailFrame:SetAlpha(0)
+  if not (MailFrame and type(MailFrame.SetAlpha) == "function") then return end
+  MailFrame:SetAlpha(0)
+  if not alphaHooked and type(hooksecurefunc) == "function" then
+    alphaHooked = true
+    hooksecurefunc(MailFrame, "SetAlpha", OnNativeAlphaSet)
   end
 end
 
@@ -1257,6 +1318,15 @@ function UI.RefreshCollectSegments()
   end
 end
 
+-- Frozen: Core/OptionsPanel.lua calls this when the category-buttons option
+-- changes. Synchronous, like the two around it.
+function UI.RefreshCollectCategoryButtons()
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect and collect.RefreshCategoryButtons then
+    collect.RefreshCategoryButtons(panel)
+  end
+end
+
 -- Frozen: Core/OptionsPanel.lua calls this when the compact-row option changes.
 -- Synchronous, not queued: this one answers a click the player just made on a
 -- list they are looking at, and the collect screen's own entry point is what
@@ -1893,14 +1963,31 @@ function UI.Diagnose()
     if ok then inbox = string.format("%s/%s", tostring(shown), tostring(total)) end
   end
 
+  -- The native frame's own state, because "both windows are open" is the one
+  -- report this addon cannot see from its own side. Alpha and shown, and --
+  -- when the alpha hook in section 2 has had to act -- how often and who.
+  local native = "native ?"
+  if MailFrame and type(MailFrame.GetAlpha) == "function" then
+    local ok, alpha, shown = pcall(function()
+      return MailFrame:GetAlpha(), MailFrame:IsShown()
+    end)
+    if ok then
+      native = string.format("native %s alpha %.2f", shown and "shown" or "hidden", alpha or 0)
+    end
+  end
+  if (state.alphaFights or 0) > 0 then
+    native = string.format("%s | alpha restored %dx after %s", native,
+      state.alphaFights, tostring(state.alphaCulprit))
+  end
+
   return string.format(
-    "mailbox %s | window %s | tab %s | inbox %s | free-moved %s | layout deferred %s | %s",
+    "mailbox %s | window %s | tab %s | inbox %s | free-moved %s | layout deferred %s | %s | %s",
     state.mailboxOpen and "open" or "closed",
     state.visible and "shown" or "hidden",
     tostring(state.activeTab),
     inbox,
     tostring(state.freeMoved), tostring(state.layoutDeferred),
-    geometry)
+    geometry, native)
 end
 
 -------------------------------------------------------------

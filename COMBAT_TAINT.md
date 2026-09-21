@@ -147,6 +147,7 @@ All in `Core/MailboxUI.lua` unless noted. Postbox’s whole design = hide the na
 | `MailFrame:SetAlpha(0)` | `HideNativeMailFrame` | every open | **yes** (confirmed culprit) | no — runs always |
 | `SetUIPanelAttribute(MailFrame,"width",..)` + `UpdateUIPanelPositions(MailFrame)` | `ReserveGridWidth` (grid space-reservation) | every open (grid mode on) | **yes** | yes — deferred via `InCombatLockdown()`, re-applied on `PLAYER_REGEN_ENABLED` |
 | `frame:SetPoint("TOPLEFT", MailFrame, ...)` | `DockToSlot` (grid positioning) | open | **no** — anchoring *our* frame to MailFrame only reads MailFrame; does not taint it | n/a |
+| `hooksecurefunc(MailFrame, "SetAlpha", …)` | `HideNativeMailFrame` (once, first open) | first open | **no** new taint — a secure post-hook; the original runs untouched and the hook runs after it. The frame is already tainted by the `SetAlpha(0)` above, and the hook's own re-zero is that same write again | no — a `SetAlpha` on a protected frame is not a combat-protected call |
 
 **Removed by §7 fix #3** (kept here because the reasoning matters if anyone reinstates them):
 

@@ -325,6 +325,13 @@ local function Build()
           if ns.MailboxUI.RefreshCollectSegments then ns.MailboxUI.RefreshCollectSegments() end
         end)
 
+  cy = AddCheckbox(card, cy, L["OPT_CATEGORY_BUTTONS_TITLE"], L["OPT_CATEGORY_BUTTONS_DESC"],
+        function() return ns.MailboxUI.GetOption("showCategoryButtons") end,
+        function(on)
+          ns.MailboxUI.SetOption("showCategoryButtons", on)
+          if ns.MailboxUI.RefreshCollectCategoryButtons then ns.MailboxUI.RefreshCollectCategoryButtons() end
+        end)
+
   cy = AddCheckbox(card, cy, L["OPT_COMPACT_ROWS_TITLE"], L["OPT_COMPACT_ROWS_DESC"],
         function() return ns.MailboxUI.GetOption("compactRows") end,
         function(on)
@@ -347,12 +354,18 @@ local function Build()
           if ns.MailboxUI.RefreshMailTabAttach then ns.MailboxUI.RefreshMailTabAttach() end
         end)
 
+  -- Nothing to refresh: the option is read at the moment a send succeeds.
+  cy = AddCheckbox(card, cy, L["OPT_KEEP_RECIPIENT_TITLE"], L["OPT_KEEP_RECIPIENT_DESC"],
+        function() return ns.MailboxUI.GetOption("keepRecipient") end,
+        function(on) ns.MailboxUI.SetOption("keepRecipient", on) end)
+
   -- Recipient manager: a portrait button filling the space to the right of
-  -- the checkbox column, tall as the six rows. It makes the feature loud
+  -- the checkbox column, tall as the eight rows. It makes the feature loud
   -- and shaves a whole row off the card. /postbox recipients is the other
-  -- way in.
+  -- way in. (The height set here is nominal: the bottom anchor below
+  -- stretches it to end level with the caption row.)
   local rmButton = ns.Theme.CreateButton(nil, card)
-  rmButton:SetSize(108, (ROW_H * 6) - 8)
+  rmButton:SetSize(108, (ROW_H * 8) - 8)
 
   -- The stock plate is a ~22px three-slice; stretched to portrait height it
   -- smears into pixel blocks (screenshot-verified). Under a host skin the

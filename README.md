@@ -79,6 +79,13 @@ you attached. Nothing is ever blocked: Postbox advises, you decide. A failed sen
 keeps your draft. The window grows as your message does and shrinks back as you
 delete, without touching your saved size.
 
+Start typing a name and it completes in place. Tab takes the suggestion, and
+every press after walks down the list one row at a time (Shift+Tab walks back
+up); Escape puts back what you typed. Names in any alphabet: Cyrillic and
+accented names complete, sort and favourite like any other, and a lowercase
+"ив" finds Иван. An option keeps the recipient in place after a send, for a run
+of mails to the same character.
+
 ## Recipients
 
 Categories mean what they say: Recent is in recency order, Guild is your guild,
@@ -111,8 +118,10 @@ Nothing in it is required reading — Postbox is meant to work before you open i
 it is where the window becomes yours. In the panel's own order:
 
 **General.** Compact mail rows, which fit half again as many mails on screen. Mail
-counts on the tabs. Whether the All view is offered beside Collect and Done. Whether
-a left-click opens a mail or collects it, and the Mail tab's caption: counts, a
+counts on the tabs. Whether the All view is offered beside Collect and Done, and
+whether the five category buttons sit under the list or only the one Collect
+button does. Whether a left-click opens a mail or collects it. Whether the
+recipient stays in the Recipient box after a send. The Mail tab's caption: counts, a
 running total, a single dot, or nothing at all. The recipient manager opens from
 here too.
 
