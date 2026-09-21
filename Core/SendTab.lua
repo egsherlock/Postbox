@@ -635,10 +635,18 @@ function ST.RefreshAttachmentSlots(panel)
   if TopUpFromQueue then TopUpFromQueue(panel) end
   if RefreshQueueLabel then RefreshQueueLabel(panel) end
 
-  local highest = 0
+  local highest, filled = 0, 0
   for i = 1, SEND_SLOT_COUNT do
     local slot = panel.ItemSlots[i]
-    if slot and SyncAttachmentSlot(slot, i) then highest = i end
+    if slot and SyncAttachmentSlot(slot, i) then
+      highest = i
+      filled = filled + 1
+    end
+  end
+  -- "Attachments 3/12": how full the mail is, which is also how close the
+  -- next right-click is to going to the queue instead.
+  if panel.AttachLabel then
+    panel.AttachLabel:SetText(string.format("%s %d/%d", L["LABEL_ATTACHMENTS"], filled, SEND_SLOT_COUNT))
   end
 
   -- One full row by default, then one trailing empty slot as attachments grow,
@@ -3647,7 +3655,8 @@ RefreshQueueLabel = function(panel)
   local button = panel.QueueLabel
   if button then
     if waiting > 0 then
-      button.Text:SetText(ns.Plural("COUNT_QUEUED", waiting))
+      -- In the accent: it is the one thing on the row that changed.
+      button.Text:SetText(Theme.Colorize("accent", ns.Plural("COUNT_QUEUED", waiting)))
       button:SetWidth((button.Text:GetStringWidth() or 0) + 4)
       button:Show()
     else
@@ -4332,6 +4341,8 @@ local function BuildAttachmentArea(panel)
   label:SetPoint("TOPLEFT", area, "TOPLEFT", M.inset, -M.tightGap)
   label:SetHeight(LabelHeight())
   label:SetText(L["LABEL_ATTACHMENTS"])
+  -- The slot refresh writes "Attachments 3/12" onto it.
+  panel.AttachLabel = label
 
   -- The attachment queue's count (section 18a), to the right of the label:
   -- "8 more queued", the items themselves in its tooltip, and a click to
@@ -4365,7 +4376,11 @@ local function BuildAttachmentArea(panel)
     GameTooltip:Show()
   end)
   queueButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  queueButton:SetScript("OnClick", function()
+  -- RIGHT-click forgets the queue, as right-click on a slot returns its
+  -- item to the bags: the same button means "take it back" in both places.
+  queueButton:RegisterForClicks("RightButtonUp")
+  queueButton:SetScript("OnClick", function(_, mouseButton)
+    if mouseButton ~= "RightButton" then return end
     panel._queue = nil
     GameTooltip:Hide()
     if RefreshQueueLabel then RefreshQueueLabel(panel) end

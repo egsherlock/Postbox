@@ -760,9 +760,12 @@ local function MinWindowHeight(rows)
     panel = max(panel, tonumber((send.MinPanelHeight(rows))) or 0)
   end
 
+  -- The collect screen is told the compose screen's need and answers with a
+  -- whole-row height that clears it, so the floor shows whole rows whichever
+  -- screen set it.
   local collect = ns.CollectTab
   if collect and type(collect.MinPanelHeight) == "function" then
-    panel = max(panel, tonumber((collect.MinPanelHeight())) or 0)
+    panel = max(panel, tonumber((collect.MinPanelHeight(panel))) or 0)
   end
 
   return ceil(ChromeHeight() + panel)
@@ -836,6 +839,9 @@ local function ApplyResizeBounds()
 
   local minHeight = MinWindowHeight(UI._state.attachRows)
   local maxHeight = MaxWindowHeight()
+  -- Remembered, so an option that moves the floor can tell whether the
+  -- window was standing on the old one (FollowFloor).
+  UI._state.floorH = minHeight
 
   if type(frame.SetResizeBounds) == "function" then
     frame:SetResizeBounds(MIN_WIDTH, minHeight, MAX_WIDTH, maxHeight)
@@ -1320,15 +1326,40 @@ end
 
 -- Frozen: Core/OptionsPanel.lua calls this when the category-buttons option
 -- changes. Synchronous, like the two around it.
+-- An option moved the window's floor. A window STANDING on the old floor --
+-- which is where a window that has never been resized stands, and where the
+-- list shows exactly its whole rows -- goes with it, up or down, and the
+-- height is saved so the next open agrees. A window the player dragged
+-- taller keeps its height; the bounds alone lift it if the floor rose past
+-- it. The old floor is the one ApplyResizeBounds last recorded, BEFORE the
+-- option flipped -- comparing floors computed after the flip finds them
+-- equal, which is the bug the first attempt at this had.
+local function FollowFloor()
+  local frame = UI._frame
+  if not frame then return end
+  local before = UI._state.floorH
+  local after = MinWindowHeight(UI._state.attachRows)
+  if before and after ~= before then
+    local height = tonumber(frame:GetHeight()) or 0
+    local standing = height - (UI._state.bodyH or 0)
+    if standing - before < 0.5 and before - standing < 0.5 then
+      local helpers = WindowHelpers()
+      if helpers and helpers.PinFrameTopLeft then helpers.PinFrameTopLeft(frame) end
+      frame:SetHeight(height + (after - before))
+      if helpers and helpers.SaveFramePosition and UI._windowStore then
+        helpers.SaveFramePosition(frame, UI._windowStore)
+      end
+    end
+  end
+  ApplyResizeBounds()
+  UI.ApplyWindowLayout()
+end
+
 function UI.RefreshCollectCategoryButtons()
   local panel, collect = CollectPanel(), ns.CollectTab
   if not (panel and collect and collect.RefreshCategoryButtons) then return end
   collect.RefreshCategoryButtons(panel)
-  -- The option moved the floor (CT.MinPanelHeight follows it): a window now
-  -- below it is lifted onto it. Whole rows are the list's own business --
-  -- see Core/CollectTab.lua, FitListToRows.
-  ApplyResizeBounds()
-  UI.ApplyWindowLayout()
+  FollowFloor()
 end
 
 -- Frozen: Core/OptionsPanel.lua calls this when the compact-row option changes.
@@ -1340,9 +1371,8 @@ function UI.RefreshCollectRowLayout()
   if panel and collect and collect.ApplyRowLayout then
     collect.ApplyRowLayout(panel)
   end
-  -- The floor may have moved with the row height.
-  ApplyResizeBounds()
-  UI.ApplyWindowLayout()
+  -- The floor moved with the row pitch.
+  FollowFloor()
 end
 
 -------------------------------------------------------------

@@ -140,6 +140,10 @@ local C = {
   -- Money and errors. Red means error: postage is not an error and is rendered
   -- textSecondary. C.O.D. is `negative` because it is money leaving the player.
   positive = { 0.2549, 0.8353, 0.3529, 1.00 },
+  -- Good news that is not money coming in: an auction won, an arrival. A
+  -- soft blue, so it neither reads as profit (green) nor as a warning
+  -- (amber) nor as the brand (gold).
+  info     = { 0.4200, 0.6800, 1.0000, 1.00 },
   negative = { 1.0000, 0.2667, 0.2667, 1.00 },
   -- Orange. The genuine middle severity -- "this will take an hour to arrive",
   -- "the server would not hand this over" -- is not an error and must not be

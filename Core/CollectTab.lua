@@ -60,7 +60,7 @@ local function Th()      return ns.Theme end
 -- an expiry wants a look, a cancellation is the player's own doing.
 local AUCTION_OUTCOME = {
   sold     = { key = "ROW_AH_SOLD",     role = "positive" },
-  bought   = { key = "ROW_AH_BOUGHT",   role = "accent" },
+  bought   = { key = "ROW_AH_BOUGHT",   role = "info" },
   expired  = { key = "ROW_AH_EXPIRED",  role = "warning" },
   canceled = { key = "ROW_AH_CANCELED", role = "textSecondary" },
 }
@@ -389,10 +389,6 @@ local function RowsHeight(rows, height)
   return rows * height + (rows - 1) * ROW_GAP
 end
 
-local function ListMinHeight()
-  return max(RowsHeight(COMPACT_MIN_ROWS, COMPACT_ROW_HEIGHT),
-             RowsHeight(STANDARD_MIN_ROWS, Th().Metrics.rowHeight))
-end
 
 -- THE PANEL'S FLOOR. Frozen: Core/MailboxUI.lua adds the window's chrome to this
 -- and makes the sum the window's minimum height.
@@ -416,26 +412,48 @@ end
 --                       the five. The Done view swaps in a single delete button
 --                       and is therefore SHORTER, so sizing for the grid is what
 --                       makes the guarantee hold in both views. The floor
---                       follows the option. Whole rows at ANY height are
---                       FitListToRows's job, not the floor's: the window's
---                       floor is the taller of the two tabs' needs, and
---                       this one is not always the taller.
-function CT.MinPanelHeight()
+--                       follows the option, the row mode AND the other tab's
+--                       need -- see the function for how the last is met.
+-- `atLeast` is the OTHER tab's need for the same window. The window's floor
+-- is the taller of the two, and when the compose screen's is the taller the
+-- list would get whatever was left over -- some number of rows and part of
+-- one. So this answers with the smallest WHOLE-ROW height that is at least
+-- both: its own floor, and enough whole rows of the current pitch to clear
+-- the other tab's. The floor is therefore whole rows in every combination
+-- of row mode and category buttons, and Core/MailboxUI.lua moves a window
+-- standing on it whenever it moves.
+function CT.MinPanelHeight(atLeast)
   local M = Th().Metrics
   -- The footer as the option has it: with the five sweeps, or the primary
-  -- alone. The floor follows the option so the list below it always shows
-  -- whole rows -- a floor sized for a grid that is not there gave the list
-  -- two rows' worth of pixels that were half a row too many.
+  -- alone.
   local footer = GRID_PRIMARY_HEIGHT
   if ShowCategoryButtons() then
     footer = footer + M.gap * 2 + GRID_BUTTON_HEIGHT * 2
   end
-  return ceil(M.inset
-            + M.segmentHeight + M.gap
-            + (ListMinHeight() + 2 * M.tightGap) + M.gap
-            + M.controlHeight + M.gap
-            + footer
-            + M.inset)
+  local fixed = M.inset
+              + M.segmentHeight + M.gap
+              + 2 * M.tightGap + M.gap
+              + M.controlHeight + M.gap
+              + footer
+              + M.inset
+
+  local compact, height, stride = RowMetrics()
+  local rows = compact and COMPACT_MIN_ROWS or STANDARD_MIN_ROWS
+  local need = tonumber(atLeast) or 0
+  if need > fixed + RowsHeight(rows, height) then
+    -- Whole rows over the other tab's need: the list height that clears it,
+    -- rounded up to the pitch.
+    rows = max(rows, ceil((need - fixed + ROW_GAP) / stride))
+  end
+  return ceil(fixed + RowsHeight(rows, height))
+end
+
+-- For /postbox debug: the floor's arithmetic, so "half a row" arrives with
+-- the numbers that decided the window's smallest height.
+function CT.Diagnose()
+  local compact, height, stride = RowMetrics()
+  return string.format("compact %s | row %d pitch %d | buttons %s | list floor %d",
+    tostring(compact), height, stride, tostring(ShowCategoryButtons()), CT.MinPanelHeight())
 end
 
 -------------------------------------------------------------
@@ -880,7 +898,6 @@ function CT.RepaintViewToggle(panel)
 end
 
 local SetViewMode  -- forward declaration; the segments call it
-local FitListToRows  -- forward declaration; the list area's size hook calls it
 
 local function BuildViewToggle(panel)
   local T = Th()
@@ -2111,51 +2128,8 @@ end
 -- different mail the instant the stride changes; carrying it across as the
 -- fractional row it was pointing at is what stops the list jumping somewhere
 -- else the moment a display option is toggled.
--- Sizes the scroll frame to whole rows of the current pitch inside the list
--- area (see the note at the area's construction). The remainder stays at
--- the bottom of the area as empty surface. At least one row, always.
-function FitListToRows(panel)
-  local area, scroll = panel and panel.MailListArea, panel and panel.MailListScroll
-  if not area or not scroll then return end
-  local M = Th().Metrics
-  local inner = (area:GetHeight() or 0) - 2 * M.tightGap
-  if inner <= 1 then return end
-  local _, _, stride = RowMetrics()
-  local rows = max(1, floor((inner + ROW_GAP) / stride))
-  local viewport = rows * stride - ROW_GAP
-  if viewport > inner then viewport = inner end
-  local slack = inner - viewport
-  scroll:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -M.scrollGutter, M.tightGap + slack)
-  -- For the report: what this last decided, and how often it has run.
-  panel._fitRuns = (panel._fitRuns or 0) + 1
-  panel._fitNote = string.format("area %d inner %d stride %d rows %d slack %d",
-    floor(area:GetHeight() or 0), floor(inner), stride, rows, floor(slack))
-end
-
--- A frame later as well: anchors settle after the handler that moved them
--- returns, and a height read inside it can be the one from before.
-local function FitListToRowsSoon(panel)
-  FitListToRows(panel)
-  C_Timer.After(0, function() FitListToRows(panel) end)
-end
-
--- For /postbox debug: the list's fit, so "half a row showing" comes with
--- the numbers that decided it.
-function CT.Diagnose()
-  local UI = ns.MailboxUI
-  local frame = UI and UI._frame
-  local panel = frame and frame.Tabs and frame.Tabs.collect
-  if not panel or not panel.MailListScroll then return "no list yet" end
-  local scroll = panel.MailListScroll
-  return string.format("scroll %d | %s | fit runs %d | compact %s",
-    floor(scroll:GetHeight() or 0), tostring(panel._fitNote or "never fitted"),
-    panel._fitRuns or 0, tostring(CompactRows()))
-end
-
 function CT.ApplyRowLayout(panel)
   if not panel or not panel.MailListChild then return end
-  -- A new pitch: the same area now holds a different number of whole rows.
-  FitListToRowsSoon(panel)
   -- The rebuild is what applies the new layout and it will not run on a hidden
   -- panel. Mark it instead; the panel's OnShow drains the flag.
   if not panel:IsShown() then
@@ -3695,9 +3669,6 @@ function CT.RefreshCategoryButtons(panel)
   if not panel or not panel.Footer then return end
   panel.Footer:SetHeight(FooterHeight(panel))
   LayoutGrid(panel)
-  -- The list area just changed height; whole rows again, explicitly, rather
-  -- than trusting the size hooks to have been kept by every skin.
-  FitListToRowsSoon(panel)
 end
 
 local function BuildGrid(panel)
@@ -3854,27 +3825,7 @@ function CT.Build(parent)
 
   -- HookScript, not SetScript: the template installs its own handlers here and
   -- replacing them desynchronises the scroll bar.
-  -- WHOLE ROWS, WHATEVER THE HEIGHT. The list area is the window's elastic
-  -- band and takes whatever the window's height leaves it -- and that is not
-  -- the list's business to make whole rows of: the window's floor is the
-  -- taller of the two tabs' needs, and when the Send tab's is the taller
-  -- (with the category buttons hidden, it is) the area at the floor is a
-  -- few pixels over some number of rows. So the SCROLL FRAME inside the
-  -- area is sized to whole rows of the current pitch, and the remainder is
-  -- blank card under the last row. Nothing about the window moves; nothing
-  -- is snapped; a player who drags to any height sees whole rows and a
-  -- sliver of empty surface, which is what a list with no more rows in it
-  -- looks like. Re-fitted when the area's height changes and when the row
-  -- pitch does.
-  local area = panel.MailListArea
-  area:HookScript("OnSizeChanged", function() FitListToRows(panel) end)
-
   scroll:HookScript("OnSizeChanged", function(_, width)
-    -- From here as well as from the area: a host skin that replaces the
-    -- area's own size script would take the hook above with it, and this
-    -- frame's size follows the area's. Idempotent -- the same slack re-set
-    -- is no size change, so it does not fire itself again.
-    FitListToRows(panel)
     if width and width > 10 then panel.MailListChild:SetWidth(width) end
     UpdateVisibleRows(panel)
   end)
@@ -3895,16 +3846,9 @@ function CT.Build(parent)
   LayoutPanel(panel)
   PaintViewToggle(panel)
 
-  panel:SetScript("OnSizeChanged", function(self)
-    LayoutPanel(self)
-    -- The window was resized: the list area followed, and its rows have to.
-    FitListToRows(self)
-  end)
+  panel:SetScript("OnSizeChanged", function(self) LayoutPanel(self) end)
   panel:SetScript("OnShow", function(self)
     LayoutPanel(self)
-    -- Whole rows before the first bind of this showing -- the area's size
-    -- hooks may have fired while the panel was hidden and read nothing.
-    FitListToRowsSoon(self)
     CT.RefreshMailList(self)
   end)
   panel:SetScript("OnHide", function(self) HideDetail(self) end)

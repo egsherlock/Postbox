@@ -37,22 +37,32 @@
   scroll bar only appears when the text needs one, and the view is the same
   width as the tabs above it. Gold in a mail now appears as a coin tile
   beside the items, with the amount on it; click it to take just the gold.
-- **The list always shows whole rows, at any size.** It used to show a
-  sliver of a next row whenever the window was not exactly the height the
-  rows added up to — most visibly with the category buttons hidden, where
-  the smallest window is decided by the Send tab and not by the rows. The
-  rows now fill whole rows of whatever height they have, and the remainder
-  is a little empty surface under the last one. The window itself is never
-  resized or moved for it. The big button is now the same height as the Send
-  tab's Send button.
+- **The smallest window shows whole rows in every combination.** Compact or
+  full rows, category buttons on or off: the window's smallest height is now
+  worked out for the rows you have, and where the Send tab needs more room
+  than that, the list is given whole extra rows rather than part of one.
+  Change either option and a window standing at its smallest moves to the
+  new smallest, and remembers it. Drag the window taller and it behaves
+  exactly as before. The big button is now the same height as the Send tab's
+  Send button.
 - **The category buttons stay put under a search.** "All sold" over a search
   is the sold mail among the rows shown; they used to disappear while you
   typed.
-- **Fixed: queuing a thirteenth attachment did nothing.** Two causes, both
+- **Fixed: queuing a thirteenth attachment did nothing.** Three causes, all
   gone: the click never reached Postbox under some bag addons (it now
   listens where every bag button reports its clicks, and to the game's own
-  "cannot attach more than 12 items" refusal), and the item was then turned
-  away for reading as locked in the instant after the refusal.
+  "cannot attach more than 12 items" refusal), the item was turned away for
+  reading as locked in the instant after the refusal, and its identity was
+  looked up in a way that never answered. The game's red refusal is cleared
+  when the click queued the item, so the screen does not say the opposite of
+  what happened.
+- **The attachments label counts.** "Attachments 3/12", so you can see how
+  close the next right-click is to queuing instead; the queued count beside
+  it is in the accent colour, and right-click forgets the queue, the same
+  button that takes an item out of a slot.
+- **"AH Won" is blue.** It was the accent gold, which sat between "warning"
+  and "brand" and read as neither; a purchase arriving is good news of a
+  different kind from a sale, so it has a colour of its own.
 - **Fixed: a freshly favourited recipient could be filed under a lowercase
   name** when it was favourited from the recipient manager.
 
