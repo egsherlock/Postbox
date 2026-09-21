@@ -2126,12 +2126,36 @@ function FitListToRows(panel)
   if viewport > inner then viewport = inner end
   local slack = inner - viewport
   scroll:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -M.scrollGutter, M.tightGap + slack)
+  -- For the report: what this last decided, and how often it has run.
+  panel._fitRuns = (panel._fitRuns or 0) + 1
+  panel._fitNote = string.format("area %d inner %d stride %d rows %d slack %d",
+    floor(area:GetHeight() or 0), floor(inner), stride, rows, floor(slack))
+end
+
+-- A frame later as well: anchors settle after the handler that moved them
+-- returns, and a height read inside it can be the one from before.
+local function FitListToRowsSoon(panel)
+  FitListToRows(panel)
+  C_Timer.After(0, function() FitListToRows(panel) end)
+end
+
+-- For /postbox debug: the list's fit, so "half a row showing" comes with
+-- the numbers that decided it.
+function CT.Diagnose()
+  local UI = ns.MailboxUI
+  local frame = UI and UI._frame
+  local panel = frame and frame.Tabs and frame.Tabs.collect
+  if not panel or not panel.MailListScroll then return "no list yet" end
+  local scroll = panel.MailListScroll
+  return string.format("scroll %d | %s | fit runs %d | compact %s",
+    floor(scroll:GetHeight() or 0), tostring(panel._fitNote or "never fitted"),
+    panel._fitRuns or 0, tostring(CompactRows()))
 end
 
 function CT.ApplyRowLayout(panel)
   if not panel or not panel.MailListChild then return end
   -- A new pitch: the same area now holds a different number of whole rows.
-  FitListToRows(panel)
+  FitListToRowsSoon(panel)
   -- The rebuild is what applies the new layout and it will not run on a hidden
   -- panel. Mark it instead; the panel's OnShow drains the flag.
   if not panel:IsShown() then
@@ -3673,7 +3697,7 @@ function CT.RefreshCategoryButtons(panel)
   LayoutGrid(panel)
   -- The list area just changed height; whole rows again, explicitly, rather
   -- than trusting the size hooks to have been kept by every skin.
-  FitListToRows(panel)
+  FitListToRowsSoon(panel)
 end
 
 local function BuildGrid(panel)
@@ -3871,9 +3895,16 @@ function CT.Build(parent)
   LayoutPanel(panel)
   PaintViewToggle(panel)
 
-  panel:SetScript("OnSizeChanged", function(self) LayoutPanel(self) end)
+  panel:SetScript("OnSizeChanged", function(self)
+    LayoutPanel(self)
+    -- The window was resized: the list area followed, and its rows have to.
+    FitListToRows(self)
+  end)
   panel:SetScript("OnShow", function(self)
     LayoutPanel(self)
+    -- Whole rows before the first bind of this showing -- the area's size
+    -- hooks may have fired while the panel was hidden and read nothing.
+    FitListToRowsSoon(self)
     CT.RefreshMailList(self)
   end)
   panel:SetScript("OnHide", function(self) HideDetail(self) end)

@@ -3849,15 +3849,23 @@ local function TryEnqueue(panel, bag, slot)
   local ok, reason = Enqueue(panel, bag, slot)
   if ok then
     queueStats.queued = queueStats.queued + 1
-    -- The client has just said "you cannot attach more than 12 items" in red
-    -- across the screen. It is true and beside the point: the item is queued,
-    -- and the message reads as the click having failed.
-    if UIErrorsFrame and type(UIErrorsFrame.Clear) == "function" then
-      pcall(UIErrorsFrame.Clear, UIErrorsFrame)
-    end
   else
     queueStats.declined[reason] = (queueStats.declined[reason] or 0) + 1
   end
+  return ok, reason
+end
+
+-- The client says "you cannot attach more than 12 items" in red across the
+-- screen for a click that queued the item. True and beside the point. The
+-- message is posted from the UI_ERROR_MESSAGE event, which arrives AFTER
+-- the click that queued the item has finished -- a clear from the click's
+-- own hook ran before there was anything to clear. So the clear is done
+-- from the event, once for the handlers that ran before this one, and once
+-- a frame later for any that run after.
+local function ClearAttachRefusal()
+  if not (UIErrorsFrame and type(UIErrorsFrame.Clear) == "function") then return end
+  pcall(UIErrorsFrame.Clear, UIErrorsFrame)
+  C_Timer.After(0, function() pcall(UIErrorsFrame.Clear, UIErrorsFrame) end)
 end
 
 -- The way in: the client's own right-click, after the client has answered
@@ -3988,7 +3996,10 @@ local function OnAttachRefused()
   queueStats.refused = queueStats.refused + 1
   local bag, slot = BagSlotUnderCursor()
   if not bag then return end
-  TryEnqueue(panel, bag, slot)
+  local ok, reason = TryEnqueue(panel, bag, slot)
+  -- Queued now, or already queued by the click's own hook a moment ago:
+  -- either way the refusal on screen describes a click that worked.
+  if ok or reason == "dup" then ClearAttachRefusal() end
 end
 ST.OnAttachRefused = OnAttachRefused
 end
