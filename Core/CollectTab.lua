@@ -354,13 +354,6 @@ local function RowMetrics()
   return compact, height, height + ROW_GAP
 end
 
--- Frozen: Core/MailboxUI.lua snaps the window's height to whole rows with
--- this. One row's pitch in the current row mode.
-function CT.RowStride()
-  local _, _, stride = RowMetrics()
-  return stride
-end
-
 -------------------------------------------------------------
 -- The screen's floor
 --
@@ -423,8 +416,10 @@ end
 --                       the five. The Done view swaps in a single delete button
 --                       and is therefore SHORTER, so sizing for the grid is what
 --                       makes the guarantee hold in both views. The floor
---                       follows the option, and Core/MailboxUI.lua moves a
---                       window standing on the old floor onto the new one.
+--                       follows the option. Whole rows at ANY height are
+--                       FitListToRows's job, not the floor's: the window's
+--                       floor is the taller of the two tabs' needs, and
+--                       this one is not always the taller.
 function CT.MinPanelHeight()
   local M = Th().Metrics
   -- The footer as the option has it: with the five sweeps, or the primary
@@ -885,6 +880,7 @@ function CT.RepaintViewToggle(panel)
 end
 
 local SetViewMode  -- forward declaration; the segments call it
+local FitListToRows  -- forward declaration; the list area's size hook calls it
 
 local function BuildViewToggle(panel)
   local T = Th()
@@ -2115,8 +2111,27 @@ end
 -- different mail the instant the stride changes; carrying it across as the
 -- fractional row it was pointing at is what stops the list jumping somewhere
 -- else the moment a display option is toggled.
+-- Sizes the scroll frame to whole rows of the current pitch inside the list
+-- area (see the note at the area's construction). The remainder stays at
+-- the bottom of the area as empty surface. At least one row, always.
+function FitListToRows(panel)
+  local area, scroll = panel and panel.MailListArea, panel and panel.MailListScroll
+  if not area or not scroll then return end
+  local M = Th().Metrics
+  local inner = (area:GetHeight() or 0) - 2 * M.tightGap
+  if inner <= 1 then return end
+  local _, _, stride = RowMetrics()
+  local rows = max(1, floor((inner + ROW_GAP) / stride))
+  local viewport = rows * stride - ROW_GAP
+  if viewport > inner then viewport = inner end
+  local slack = inner - viewport
+  scroll:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -M.scrollGutter, M.tightGap + slack)
+end
+
 function CT.ApplyRowLayout(panel)
   if not panel or not panel.MailListChild then return end
+  -- A new pitch: the same area now holds a different number of whole rows.
+  FitListToRows(panel)
   -- The rebuild is what applies the new layout and it will not run on a hidden
   -- panel. Mark it instead; the panel's OnShow drains the flag.
   if not panel:IsShown() then
@@ -3812,6 +3827,21 @@ function CT.Build(parent)
 
   -- HookScript, not SetScript: the template installs its own handlers here and
   -- replacing them desynchronises the scroll bar.
+  -- WHOLE ROWS, WHATEVER THE HEIGHT. The list area is the window's elastic
+  -- band and takes whatever the window's height leaves it -- and that is not
+  -- the list's business to make whole rows of: the window's floor is the
+  -- taller of the two tabs' needs, and when the Send tab's is the taller
+  -- (with the category buttons hidden, it is) the area at the floor is a
+  -- few pixels over some number of rows. So the SCROLL FRAME inside the
+  -- area is sized to whole rows of the current pitch, and the remainder is
+  -- blank card under the last row. Nothing about the window moves; nothing
+  -- is snapped; a player who drags to any height sees whole rows and a
+  -- sliver of empty surface, which is what a list with no more rows in it
+  -- looks like. Re-fitted when the area's height changes and when the row
+  -- pitch does.
+  local area = panel.MailListArea
+  area:HookScript("OnSizeChanged", function() FitListToRows(panel) end)
+
   scroll:HookScript("OnSizeChanged", function(_, width)
     if width and width > 10 then panel.MailListChild:SetWidth(width) end
     UpdateVisibleRows(panel)

@@ -1320,51 +1320,14 @@ end
 
 -- Frozen: Core/OptionsPanel.lua calls this when the category-buttons option
 -- changes. Synchronous, like the two around it.
--- WHOLE ROWS, ALWAYS.
---
--- The list is the window's one elastic band: the floor (MinWindowHeight,
--- from CT.MinPanelHeight) shows exactly its whole rows, and every pixel
--- above the floor lands in the list. So the window shows whole rows exactly
--- when its height above the floor is a multiple of one row's pitch -- and
--- this takes off whatever is left over. It runs wherever the height or the
--- floor can change: the grip's release, the category-buttons option (which
--- moves the floor) and the compact-rows option (which changes the pitch).
--- Down, never up: a window is never made taller than the player left it,
--- and the floor is whole rows by construction so it is never crossed.
--- The message box's elastic extension rides above both and is left alone.
-function UI.SnapToRows(save)
-  local frame, collect = UI._frame, ns.CollectTab
-  if not frame or not (collect and type(collect.RowStride) == "function") then return end
-  local stride = tonumber((collect.RowStride())) or 0
-  if stride <= 0 then return end
-
-  local height = tonumber(frame:GetHeight()) or 0
-  local body = UI._state.bodyH or 0
-  local floorHeight = MinWindowHeight(UI._state.attachRows)
-  local above = height - body - floorHeight
-  if above < 0.5 then return end
-  local excess = above - floor(above / stride + 0.001) * stride
-  if excess < 0.5 then return end
-
-  local helpers = WindowHelpers()
-  if helpers and helpers.PinFrameTopLeft then helpers.PinFrameTopLeft(frame) end
-  frame:SetHeight(height - excess)
-  if save and helpers and helpers.SaveFramePosition and UI._windowStore then
-    helpers.SaveFramePosition(frame, UI._windowStore)
-  end
-end
-
 function UI.RefreshCollectCategoryButtons()
   local panel, collect = CollectPanel(), ns.CollectTab
   if not (panel and collect and collect.RefreshCategoryButtons) then return end
   collect.RefreshCategoryButtons(panel)
-  -- The option moved the floor (CT.MinPanelHeight follows it). The bounds
-  -- first -- a window now below the floor is lifted onto it -- then whole
-  -- rows over whatever stands above the floor, saved so the next open
-  -- agrees. Hiding the five buttons therefore gives the list their space in
-  -- whole rows; showing them takes it back the same way.
+  -- The option moved the floor (CT.MinPanelHeight follows it): a window now
+  -- below it is lifted onto it. Whole rows are the list's own business --
+  -- see Core/CollectTab.lua, FitListToRows.
   ApplyResizeBounds()
-  UI.SnapToRows(true)
   UI.ApplyWindowLayout()
 end
 
@@ -1377,10 +1340,8 @@ function UI.RefreshCollectRowLayout()
   if panel and collect and collect.ApplyRowLayout then
     collect.ApplyRowLayout(panel)
   end
-  -- A different row pitch: the same height now holds a different number of
-  -- whole rows and some of a row, and the floor may have moved too.
+  -- The floor may have moved with the row height.
   ApplyResizeBounds()
-  UI.SnapToRows(true)
   UI.ApplyWindowLayout()
 end
 
@@ -1645,9 +1606,6 @@ local function BuildFrame()
         and h - st.adoptedAtHeight < 0.5 and st.adoptedAtHeight - h < 0.5
       if bareClick then st.bodyH = st.adoptedBodyH or 0 end
       st.adoptedBodyH, st.adoptedAtHeight = nil, nil
-      -- Whole rows before the save, so the height written is the height the
-      -- list is actually showing.
-      if not bareClick then UI.SnapToRows(false) end
       if helpers.SaveFramePosition then helpers.SaveFramePosition(resized, windowStore) end
       UI.ApplyWindowLayout()
       -- Last, and after the re-dock: the compose screen re-reads its baseline

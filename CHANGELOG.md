@@ -37,12 +37,14 @@
   scroll bar only appears when the text needs one, and the view is the same
   width as the tabs above it. Gold in a mail now appears as a coin tile
   beside the items, with the amount on it; click it to take just the gold.
-- **The list always shows whole rows.** Whenever the window's height changes
-  — you let go of the resize grip, you hide or show the category buttons, you
-  switch compact rows on or off — the window settles on a height that shows
-  whole rows and nothing of a next one. Hide the category buttons and the
-  list gains their space in whole rows. The big button is now the same height
-  as the Send tab's Send button.
+- **The list always shows whole rows, at any size.** It used to show a
+  sliver of a next row whenever the window was not exactly the height the
+  rows added up to — most visibly with the category buttons hidden, where
+  the smallest window is decided by the Send tab and not by the rows. The
+  rows now fill whole rows of whatever height they have, and the remainder
+  is a little empty surface under the last one. The window itself is never
+  resized or moved for it. The big button is now the same height as the Send
+  tab's Send button.
 - **The category buttons stay put under a search.** "All sold" over a search
   is the sold mail among the rows shown; they used to disappear while you
   typed.
