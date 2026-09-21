@@ -1949,14 +1949,45 @@ end
 -- The totals banner
 -------------------------------------------------------------
 
-local function UpdateBanner(panel, earned, spent)
-  if not panel.Banner then return end
+-- The banner's text, at whatever detail its width allows. Two sums with
+-- coins outrun a narrow window -- "Total spent: 1309g 62s 0c" ran off the
+-- band's right edge -- so the line is tried at falling detail: both labels
+-- and every coin, then without the copper, then the short labels, then the
+-- largest coin alone. The first that fits is the one shown. Runs again
+-- whenever the band's width changes, from the sums it last drew.
+local function FitBanner(panel)
+  local text = panel.BannerText
+  local sums = panel._bannerSums
+  if not (text and sums) then return end
   local T = Th()
   local icons = ns.Core.Formatting.FormatMoneyIcons
-  panel.BannerText:SetText(
-    L()["BANNER_EARNED"] .. icons(earned, "ff" .. T.Hex.positive) ..
-    "   |   " ..
-    L()["BANNER_SPENT"] .. icons(spent, "ff" .. T.Hex.negative))
+  local strings = L()
+  local up, down = "ff" .. T.Hex.positive, "ff" .. T.Hex.negative
+
+  local function Line(earnedKey, spentKey, parts, gap)
+    return strings[earnedKey] .. icons(sums.earned, up, parts)
+        .. gap .. strings[spentKey] .. icons(sums.spent, down, parts)
+  end
+  local candidates = {
+    Line("BANNER_EARNED", "BANNER_SPENT", 3, "   |   "),
+    Line("BANNER_EARNED", "BANNER_SPENT", 2, "   |   "),
+    Line("BANNER_EARNED_SHORT", "BANNER_SPENT_SHORT", 2, "   |   "),
+    Line("BANNER_EARNED_SHORT", "BANNER_SPENT_SHORT", 1, "  |  "),
+  }
+
+  -- No width yet (the first paint) means no verdict: the fullest line
+  -- stands, and the size change that follows the layout fits it.
+  local room = text:GetWidth() or 0
+  for i = 1, #candidates do
+    text:SetText(candidates[i])
+    if room <= 0 or i == #candidates or (text:GetStringWidth() or 0) <= room then return end
+  end
+end
+
+local function UpdateBanner(panel, earned, spent)
+  if not panel.Banner then return end
+  panel._bannerSums = { earned = tonumber(earned) or 0, spent = tonumber(spent) or 0 }
+  FitBanner(panel)
 end
 
 -------------------------------------------------------------
@@ -3807,6 +3838,10 @@ function CT.Build(parent)
   panel.BannerText:SetPoint("LEFT", bannerIcon, "RIGHT", M.gap, 0)
   panel.BannerText:SetPoint("RIGHT", panel.Banner, "RIGHT", -M.inset, 0)
   panel.BannerText:SetJustifyH("LEFT")
+  panel.BannerText:SetWordWrap(false)
+  -- The sums are re-fitted to whatever width the band ends up with: the
+  -- window resizing, or the first layout after a paint that had none.
+  panel.Banner:SetScript("OnSizeChanged", function() FitBanner(panel) end)
 
   -- The list absorbs everything between the top row and the banner.
   panel.MailListArea = CreateFrame("Frame", nil, panel, "BackdropTemplate")

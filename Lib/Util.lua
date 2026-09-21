@@ -247,7 +247,11 @@ end
 -- `colorHex` is eight hex digits *with* alpha and no escape prefix (call sites
 -- pass green/red literals for income and expenditure). It colours the digits
 -- only — the coin icons stay unmodified. Absent, no colour escape is emitted.
-function Formatting.FormatMoneyIcons(copper, colorHex)
+-- `parts` caps how many coins are shown, counted from the largest that is
+-- non-zero: 2 turns 1309g 62s 40c into 1309g 62s, and 1 into 1309g. A caller
+-- short of room asks for fewer coins rather than letting the string run off
+-- its edge. Without it every coin from the largest non-zero one down is shown.
+function Formatting.FormatMoneyIcons(copper, colorHex, parts)
   local gold, silver, rest = Split(copper)
 
   local open, close = "", ""
@@ -255,18 +259,17 @@ function Formatting.FormatMoneyIcons(copper, colorHex)
     open, close = "|c" .. colorHex, "|r"
   end
 
-  if gold > 0 then
-    return format("%s%d%s%s %s%d%s%s %s%d%s%s",
-      open, gold, close, GOLD_ICON,
-      open, silver, close, SILVER_ICON,
-      open, rest, close, COPPER_ICON)
+  local coins = {}
+  local function Coin(value, icon)
+    coins[#coins + 1] = format("%s%d%s%s", open, value, close, icon)
   end
+  if gold > 0 then Coin(gold, GOLD_ICON) end
+  if gold > 0 or silver > 0 then Coin(silver, SILVER_ICON) end
+  Coin(rest, COPPER_ICON)
 
-  if silver > 0 then
-    return format("%s%d%s%s %s%d%s%s",
-      open, silver, close, SILVER_ICON,
-      open, rest, close, COPPER_ICON)
+  local limit = tonumber(parts)
+  if limit and limit >= 1 then
+    for i = #coins, limit + 1, -1 do coins[i] = nil end
   end
-
-  return format("%s%d%s%s", open, rest, close, COPPER_ICON)
+  return table.concat(coins, " ")
 end

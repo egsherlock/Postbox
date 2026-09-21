@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.38.0
+
+- **Fixed: a queued item the game has to ask about could trap you in its
+  dialog.** Some items — ones you bought recently and could still return —
+  need a yes before they are attached. When the queue reached one of them
+  after a send, the game's question appeared, vanished and appeared again,
+  with its sound each time, until you pressed Escape or reloaded. Now the
+  question is asked once, when that item's turn comes, exactly as it is when
+  you right-click it yourself. Okay attaches it and the run carries on;
+  Cancel leaves it in your bags, drops it from the queue, and carries on with
+  the next item.
+- **One question before a run of mails.** With items queued, pressing Send
+  now asks first: how many mails, to whom, how many items, and the postage
+  for all of them. Nothing changes for a single mail.
+- **Ctrl+Enter sends.** From the recipient, the subject or the message.
+- **Postage is quoted for the whole press.** With items queued, "Cost" is
+  what every mail of the press will cost together, not just the first.
+- **Padlocks in EllesmereUI's bags and in Baganator.** While the Send tab is
+  open, items that cannot be mailed are greyed with a padlock in those bags
+  too, as they already were in the game's own.
+- **The queue's tooltip says what it does.** "To the same recipient with the
+  same subject and message" read as if the draft were kept afterwards. It now
+  says that queued items go out to the same person in further mails, that the
+  game asks about an item when its turn comes, and that right-click clears
+  the queue without touching your bags.
+- **Fixed: the totals line under the inbox could run off the right edge**
+  with large sums. It now drops the copper, then shortens its labels, then
+  keeps only the largest coin — whatever it takes to fit the window — instead
+  of overflowing.
+
 ## 1.37.0
 
 - **Pick the mails to collect.** Shift-click a row on the Mail tab and it is

@@ -83,8 +83,11 @@ Cyrillic and accented names complete, sort and favourite like any other.
 Mailing a run of things to one bank alt? **Keep recipient after send**, in the
 options, leaves the name in place while everything else clears. And more than twelve
 items is not a problem: the label counts up to "Attachments 12/12", then keep
-right-clicking and the rest queue up — the Send button reads "Send 3 mails", and one
-press posts them all, twelve at a time, to the same recipient.
+right-clicking and the rest queue up — the Send button reads "Send 3 mails", the
+postage shown is for all of them, and one press posts them as further mails to the
+same person, twelve items to each, after a single "are you sure" that says exactly
+what is about to go. An item the game asks about before attaching is asked about
+when its turn comes. Ctrl+Enter sends from any field.
 
 An unsent draft survives closing the mailbox: the recipient, subject and message are
 back at the next one.

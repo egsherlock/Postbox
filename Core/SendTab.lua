@@ -327,6 +327,33 @@ local function PopupNotice(message)
   if ns.Print then ns.Print(text) end
 end
 
+-- A question with the same standing. `onConfirm` runs on the accept button
+-- and on nothing else; Escape and the cancel button just close it. Without
+-- the client's dialogs there is no way to ask, so the answer is taken as no
+-- and the message says why nothing happened.
+local function PopupConfirm(message, acceptLabel, onConfirm)
+  local text = tostring(message or "")
+  if type(StaticPopup_Show) == "function" and type(StaticPopupDialogs) == "table" then
+    local key = "POSTBOX_SEND_CONFIRM"
+    if not StaticPopupDialogs[key] then
+      StaticPopupDialogs[key] = {
+        text = "%s",
+        button1 = acceptLabel,
+        button2 = L["SEND_RUN_CANCEL"],
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        OnAccept = function(_, data)
+          if type(data) == "table" and type(data.onConfirm) == "function" then data.onConfirm() end
+        end,
+      }
+    end
+    StaticPopup_Show(key, text, nil, { onConfirm = onConfirm })
+    return
+  end
+  if ns.Print then ns.Print(text) end
+end
+
 -- The live compose panel, or nil before the first mailbox has been opened.
 --
 -- There is one window and therefore one compose screen, but nothing outside the
@@ -691,6 +718,29 @@ end
 -- 6. Postage
 -------------------------------------------------------------
 
+-- How many mails one press of Send posts: the one in the slots, plus a
+-- mail per twelve queued items (section 18a).
+local function MailsInPress(panel)
+  local queue = panel and panel._queue
+  local waiting = queue and #queue or 0
+  if waiting == 0 then return 1 end
+  return 1 + math.ceil(waiting / SEND_SLOT_COUNT)
+end
+
+-- Postage for everything one press posts: the client's price for the mail
+-- in the slots, plus the same per-item rate for each queued item. The rate
+-- is read off the price rather than assumed: every queued mail carries at
+-- least one item, so the base charge for an empty mail never enters into it.
+local function RunPostage(panel)
+  if type(GetSendMailPrice) ~= "function" then return 0 end
+  local cost = GetSendMailPrice() or 0
+  local queue = panel and panel._queue
+  local waiting = queue and #queue or 0
+  if waiting == 0 or cost <= 0 then return cost end
+  local perItem = cost / math.max(1, AttachmentCount())
+  return cost + perItem * waiting
+end
+
 function ST.UpdateSendCost(panel)
   local label = panel and panel.SendCostLabel
   if not label then return end
@@ -700,7 +750,10 @@ function ST.UpdateSendCost(panel)
     return
   end
 
-  local cost = GetSendMailPrice() or 0
+  -- The press, not just the mail: with items queued, one press posts
+  -- several, and the figure is for all of them -- the same total the
+  -- confirmation quotes.
+  local cost = RunPostage(panel)
   if cost <= 0 then
     -- Nothing composed yet. Say nothing rather than invent an amount: the
     -- previous build substituted 30 copper, which was a number the user had no
@@ -799,11 +852,8 @@ local sendToken = 0
 -- "Send mail", or "Send 3 mails" when the attachment queue (section 18a)
 -- means one press posts more than one.
 local function SendButtonCaption(panel)
-  local queue = panel and panel._queue
-  local waiting = queue and #queue or 0
-  if waiting > 0 then
-    return ns.Plural("BTN_SEND_MAILS", 1 + math.ceil(waiting / SEND_SLOT_COUNT))
-  end
+  local mails = MailsInPress(panel)
+  if mails > 1 then return ns.Plural("BTN_SEND_MAILS", mails) end
   return L["BTN_SEND_MAIL"]
 end
 
@@ -874,7 +924,9 @@ local function FieldText(box)
   return Helpers().NormalizeText(box:GetText())
 end
 
-local function DoSendMail(panel)
+-- `confirmedMails` is set only by the confirmation's own accept: the number
+-- of mails the player said yes to.
+local function DoSendMail(panel, confirmedMails)
   local toName  = FieldText(panel.ToBox)
   local subject = FieldText(panel.SubjectBox)
   local body    = FieldText(panel.BodyBox)
@@ -884,6 +936,27 @@ local function DoSendMail(panel)
 
   if type(SendMail) ~= "function" then
     PopupNotice(L["ERR_SENDMAIL_UNAVAILABLE"])
+    return
+  end
+
+  -- The client is asking about a queued item (section 18a): that dialog is
+  -- the thing to answer, and a send under it would post the slots as they
+  -- stand, with the item in question in neither the mail nor the queue.
+  if ST.QueueAwaitingAnswer and ST.QueueAwaitingAnswer() then
+    ns.Print(L["MSG_QUEUE_ANSWER_FIRST"])
+    return
+  end
+
+  -- More than one mail from this press: say what is about to happen, and
+  -- ask once. The count is read again on accept -- the dialog is not modal,
+  -- and a slot emptied or a queue forgotten while it stood changes the
+  -- answer; a changed answer is asked again rather than assumed.
+  local mails = MailsInPress(panel)
+  if mails > 1 and confirmedMails ~= mails then
+    local items = AttachmentCount() + #(panel._queue or {})
+    local postage = ns.Core.Formatting.FormatMoneyIcons(RunPostage(panel))
+    PopupConfirm(L("SEND_RUN_CONFIRM", mails, toName, items, postage), L["SEND_RUN_ACCEPT"],
+      function() DoSendMail(panel, mails) end)
     return
   end
 
@@ -3405,13 +3478,27 @@ end
 -- reason to repaint a slot, so it has to be cheap and it has to cope with
 -- slots outside the backpack chain (bank, reagent bank, warband tabs) turning
 -- up: those get no verdict and no padlock.
+-- Bag and slot of any button built on the container template. GetBagID
+-- asks the button's parent for its bag, and only the client's own container
+-- frames answer that; a bag addon parents its buttons to plain frames that
+-- carry the bag as their ID -- which is what the client's own click handler
+-- reads off such a button too.
+local function SlotAddress(button)
+  local ok, bag = pcall(button.GetBagID, button)
+  if not ok or type(bag) ~= "number" then
+    local parent = button:GetParent()
+    bag = (parent and type(parent.GetID) == "function") and parent:GetID() or nil
+  end
+  return bag, button:GetID()
+end
+
 local function RefreshSlotOverlay(button)
   if not sendTabActive then
     ClearOverlay(button)
     return
   end
 
-  local bag, slot = button:GetBagID(), button:GetID()
+  local bag, slot = SlotAddress(button)
   local unmailable = bag and slot
     and slot >= 1
     and bag >= 0 and bag <= (NUM_TOTAL_BAG_FRAMES or 4)
@@ -3495,9 +3582,81 @@ local function RepaintContainers()
   if type(ContainerFrame_UpdateAll) == "function" then ContainerFrame_UpdateAll() end
 end
 
+-------------------------------------------------------------
+-- 17a. Bags that are not the client's
+--
+-- EllesmereUI's bags and Baganator build their slots on the client's own
+-- container button template, so the verdict and the padlock work on them
+-- unchanged. What differs is how the buttons are found and when they
+-- repaint: neither runs the per-slot update the hook above rides on, and
+-- EllesmereUI hands its pooled buttons to different items from one render
+-- to the next. So each host is met at its own repaint -- EllesmereUI's
+-- RefreshInventory, Baganator's SetItemDetails -- and every button seen is
+-- remembered, so a bag event or the tab activating can repaint them all
+-- without asking the host to. The hosts are looked for at every activation
+-- rather than once at load, for one that loads on demand.
+-------------------------------------------------------------
+do
+local externalSlots = setmetatable({}, { __mode = "k" })
+local hostsHooked = {}
+
+local function Note(button)
+  if type(button) ~= "table" or type(button.GetID) ~= "function" then return end
+  externalSlots[button] = true
+  if sendTabActive then RefreshSlotOverlay(button) else ClearOverlay(button) end
+end
+
+-- EllesmereUI: a slot is an ItemButton inside a plain frame whose ID is the
+-- bag, and those frames are the bag window's direct children.
+local function WalkEllesmere(frame)
+  if not (sendTabActive and frame and frame:IsShown()) then return end
+  local holders = { frame:GetChildren() }
+  for i = 1, #holders do
+    local holder = holders[i]
+    if type(holder.GetID) == "function" then
+      local kids = { holder:GetChildren() }
+      for j = 1, #kids do
+        local kid = kids[j]
+        if kid.IsObjectType and kid:IsObjectType("ItemButton") then Note(kid) end
+      end
+    end
+  end
+end
+
+function ST.HookExternalBags()
+  if type(hooksecurefunc) ~= "function" then return end
+  for _, name in ipairs({ "EUI_Bags", "EUI_BagsReagent" }) do
+    local frame = _G[name]
+    if not hostsHooked[name] and type(frame) == "table" and type(frame.RefreshInventory) == "function" then
+      hostsHooked[name] = true
+      hooksecurefunc(frame, "RefreshInventory", WalkEllesmere)
+    end
+  end
+  local mixin = _G["BaganatorRetailLiveContainerItemButtonMixin"]
+  if not hostsHooked.Baganator and type(mixin) == "table" and type(mixin.SetItemDetails) == "function" then
+    hostsHooked.Baganator = true
+    -- The mixin is copied onto each button as the button is made, so the
+    -- hook reaches every button made after it -- and the bags are not
+    -- built until they are first opened, well after this file has loaded.
+    hooksecurefunc(mixin, "SetItemDetails", Note)
+  end
+end
+
+-- Every external button seen so far that is on screen.
+function ST.RefreshExternalSlots()
+  for button in pairs(externalSlots) do
+    if button:IsShown() then
+      if sendTabActive then RefreshSlotOverlay(button) else ClearOverlay(button) end
+    end
+  end
+end
+end
+
 function ST.UpdateBagOverlays()
   HookVisibleSlots()
+  ST.HookExternalBags()
   RepaintContainers()
+  ST.RefreshExternalSlots()
 end
 
 function ST.ClearBagOverlays()
@@ -3547,7 +3706,9 @@ function ST.ActivateNativeSendMail()
   nativeArmWanted = true
   if type(SetSendMailShowing) == "function" then SetSendMailShowing(true) end
   HookVisibleSlots()
+  ST.HookExternalBags()
   RepaintContainers()
+  ST.RefreshExternalSlots()
 end
 
 -- The flag alone, without the compose overlays: what the collect tab arms
@@ -3602,6 +3763,13 @@ end
 -- the file needs is handed out through the forward-declared names above
 -- (RefreshQueueLabel, TopUpFromQueue, ContinueQueue) and ST.* fields.
 do
+-- How many times each way in fired, and what came of it: the queue has
+-- failed silently in the field once already, and the report is where the
+-- next such report answers itself. ST.Diagnose renders them. `asked` is
+-- the times the client's non-refundable dialog stood between the queue and
+-- a slot.
+local queueStats = { click = 0, use = 0, refused = 0, queued = 0, asked = 0, declined = {} }
+
 local function Queue(panel)
   local queue = panel._queue
   if not queue then
@@ -3666,6 +3834,8 @@ RefreshQueueLabel = function(panel)
   if panel.FillButton and not pendingSend then
     panel.FillButton:SetText(SendButtonCaption(panel))
   end
+  -- Postage is quoted for the whole press, so it moves with the queue.
+  Invalidate(panel, "cost")
 end
 
 -- Returns true, or false and the reason it declined -- the reasons are
@@ -3707,49 +3877,178 @@ local function Enqueue(panel, bag, slot)
   return true
 end
 
--- Moves queued items into free slots, first to last, until the slots are full
--- or the queue is empty. Returns how many were attached and how many had to
--- be dropped because their item could not be found any more.
-local function FillFromQueue(panel)
-  local queue = panel._queue
-  if not queue or #queue == 0 then return 0, 0 end
-  if not (C_Container and type(C_Container.PickupContainerItem) == "function") then return 0, 0 end
-  if type(ClickSendMailItemButton) ~= "function" then return 0, 0 end
-  -- The player is mid-drag; their item comes first.
-  if type(CursorHasItem) == "function" and CursorHasItem() then return 0, 0 end
+-- The client's own question, and the pass that waits for the answer.
+--
+-- An item that can still be refunded is not attached on the spot: the
+-- client answers ClickSendMailItemButton with MAIL_LOCK_SEND_ITEMS, shows
+-- its own "this will make the item non-refundable" dialog, and leaves the
+-- slot empty until the dialog is answered (RespondMailLockSendItem, from
+-- the dialog's buttons; MAIL_UNLOCK_SEND_ITEMS follows either answer). A
+-- right-click on such an item meets the same dialog, so the queue meets it
+-- exactly where the player would have -- one per item, on the item's turn.
+--
+-- The first build read the empty slot as a refusal, put the item back and
+-- tried again from the next slot refresh -- which raised the dialog again,
+-- and again, with its sound, until the player reloaded. Now a pass that
+-- leaves a slot empty stops and asks the events: the lock arrives before
+-- the next frame when it is coming at all, so a frame later either the
+-- dialog is up and the answer resumes the pass, or the client simply
+-- refused and the item goes back to the front as before.
+--
+-- Exactly one pass runs at a time. `fillState` is that pass while it is
+-- waiting; every other way into the slots (a slot refresh, the Send
+-- button) stands aside until it has finished.
+local fillState = nil
 
-  local attached, missing = 0, 0
-  local slotIndex = 1
-  while #queue > 0 do
-    while slotIndex <= SEND_SLOT_COUNT and SlotHasItem(slotIndex) do
-      slotIndex = slotIndex + 1
-    end
-    if slotIndex > SEND_SLOT_COUNT then break end
+local function AttachOne(entry, slotIndex)
+  local bag, slot = Locate(entry)
+  if not bag then return "missing" end
+  pcall(C_Container.PickupContainerItem, bag, slot)
+  pcall(ClickSendMailItemButton, slotIndex)
+  -- The slot is the proof, not the cursor: the item landing in it is what
+  -- an attach IS, and a pickup that found the item locked leaves the cursor
+  -- empty and the slot empty both.
+  if SlotHasItem(slotIndex) then return "attached" end
+  return "pending"
+end
 
-    local entry = table.remove(queue, 1)
-    local bag, slot = Locate(entry)
-    if not bag then
-      missing = missing + 1
-    else
-      pcall(C_Container.PickupContainerItem, bag, slot)
-      pcall(ClickSendMailItemButton, slotIndex)
-      -- The slot is the proof, not the cursor: the item landing in it is
-      -- what an attach IS, and a pickup that found the item locked leaves
-      -- the cursor empty and the slot empty both. Either way the entry goes
-      -- back to the front and the pass stops: whatever refused this one
-      -- will refuse the next.
-      if not SlotHasItem(slotIndex) then
-        if type(ClearCursor) == "function" then ClearCursor() end
-        table.insert(queue, 1, entry)
-        break
-      end
-      attached = attached + 1
-      slotIndex = slotIndex + 1
-    end
+-- The pass itself. Runs the queue into the free slots, first to last, until
+-- the slots are full, the queue is empty, the client refuses one, or the
+-- client asks about one -- and in that last case it returns with the pass
+-- parked in `fillState`, to be run on from Resume once the answer is in.
+local RunFill
+
+local function FinishFill(state)
+  if fillState == state then fillState = nil end
+  RefreshQueueLabel(state.panel)
+  local done = state.done
+  state.done = nil
+  if done then done(state.attached, state.missing) end
+end
+
+-- The player answered, or the client refused after all. `outcome` is
+-- "attached" (the slot holds the item), "declined" (the dialog was
+-- cancelled: the item is forgotten, not retried, and the pass runs on) or
+-- "refused" (no dialog came: the item goes back to the front and the pass
+-- stops, as whatever refused this one will refuse the next).
+local function Resume(state, outcome)
+  if fillState ~= state then return end
+  local pending = state.pending
+  state.pending = nil
+  local queue = state.panel._queue or {}
+
+  if outcome == "attached" then
+    state.attached = state.attached + 1
+    state.slotIndex = pending.slotIndex + 1
+  elseif outcome == "declined" then
+    if type(ClearCursor) == "function" then ClearCursor() end
+    ns.Print(L("MSG_QUEUE_DECLINED", pending.entry.link or "?"))
+  else
+    if type(ClearCursor) == "function" then ClearCursor() end
+    table.insert(queue, 1, pending.entry)
+    FinishFill(state)
+    return
   end
 
-  RefreshQueueLabel(panel)
-  return attached, missing
+  -- The mailbox may have closed while the dialog stood: the queue is gone
+  -- with it (ST.Reset), and so is any reason to go on.
+  local UI = ns.MailboxUI
+  if UI and type(UI.IsMailboxOpen) == "function" and not UI.IsMailboxOpen() then
+    FinishFill(state)
+    return
+  end
+  RunFill(state)
+end
+
+RunFill = function(state)
+  local panel = state.panel
+  local queue = panel._queue
+  while queue and #queue > 0 do
+    while state.slotIndex <= SEND_SLOT_COUNT and SlotHasItem(state.slotIndex) do
+      state.slotIndex = state.slotIndex + 1
+    end
+    if state.slotIndex > SEND_SLOT_COUNT then break end
+
+    local entry = table.remove(queue, 1)
+    local outcome = AttachOne(entry, state.slotIndex)
+    if outcome == "attached" then
+      state.attached = state.attached + 1
+      state.slotIndex = state.slotIndex + 1
+    elseif outcome == "missing" then
+      state.missing = state.missing + 1
+    else
+      -- Empty slot: a dialog, or a refusal. The events decide. The lock
+      -- arrives before the next frame; a tenth of a second is well clear of
+      -- that, costs nothing a player can see, and leaves no room for the
+      -- verdict to be "refused" a frame before the dialog opens -- which
+      -- would put the item back in the queue AND on the client's question.
+      state.pending = { entry = entry, slotIndex = state.slotIndex }
+      fillState = state
+      C_Timer.After(0.1, function()
+        if fillState ~= state or not state.pending then return end
+        if state.pending.locked then return end  -- the dialog is up; its answer resumes
+        Resume(state, "refused")
+      end)
+      return
+    end
+  end
+  FinishFill(state)
+end
+
+-- Moves queued items into free slots. `done(attached, missing)` is called
+-- when the pass has finished -- on the spot when nothing had to be waited
+-- for, later when the client asked about an item -- with how many were
+-- attached and how many were dropped because their item could not be found
+-- any more. A pass already waiting means nothing runs and `done` is not
+-- called: the waiting pass's own completion is the one that counts.
+local function FillFromQueue(panel, done)
+  local queue = panel._queue
+  if fillState then return end
+  if not queue or #queue == 0
+     or not (C_Container and type(C_Container.PickupContainerItem) == "function")
+     or type(ClickSendMailItemButton) ~= "function"
+     -- The player is mid-drag; their item comes first.
+     or (type(CursorHasItem) == "function" and CursorHasItem()) then
+    if done then done(0, 0) end
+    return
+  end
+  RunFill({ panel = panel, attached = 0, missing = 0, slotIndex = 1, done = done })
+end
+
+-- MAIL_LOCK_SEND_ITEMS / MAIL_UNLOCK_SEND_ITEMS / MAIL_SEND_INFO_UPDATE,
+-- from the panel's event handler. Only a waiting pass listens; the
+-- client's dialog for a right-clicked item is its own business.
+function ST.OnSendItemLock(event)
+  local state = fillState
+  local pending = state and state.pending
+  if not pending then return end
+  if event == "MAIL_LOCK_SEND_ITEMS" then
+    pending.locked = true
+    queueStats.asked = (queueStats.asked or 0) + 1
+  elseif SlotHasItem(pending.slotIndex) then
+    Resume(state, "attached")
+  elseif event == "MAIL_UNLOCK_SEND_ITEMS" and pending.locked then
+    -- The answer. An accepted item can land in the slot a moment after the
+    -- unlock, so the verdict is read a frame later, not now.
+    C_Timer.After(0, function()
+      if fillState ~= state or state.pending ~= pending then return end
+      Resume(state, SlotHasItem(pending.slotIndex) and "attached" or "declined")
+    end)
+  end
+end
+
+-- True while the client's question about a queued item is on screen.
+function ST.QueueAwaitingAnswer()
+  local pending = fillState and fillState.pending
+  return (pending and pending.locked) and true or false
+end
+
+-- The mailbox closed under a waiting pass: the dialog goes with it, the
+-- queue is already gone (ST.Reset), and the pass must not run on.
+function ST.AbandonQueuePass()
+  local state = fillState
+  fillState = nil
+  if state then state.done = nil end
 end
 
 -- What the slot refresh calls: a free slot is the queue's, unless a send is
@@ -3759,8 +4058,9 @@ TopUpFromQueue = function(panel)
   local queue = panel and panel._queue
   if not queue or #queue == 0 then return end
   if AttachmentCount() >= SEND_SLOT_COUNT then return end
-  local _, missing = FillFromQueue(panel)
-  if missing > 0 then ns.Print(ns.Plural("MSG_QUEUE_MISSING", missing)) end
+  FillFromQueue(panel, function(_, missing)
+    if missing > 0 then ns.Print(ns.Plural("MSG_QUEUE_MISSING", missing)) end
+  end)
 end
 
 -- One more mail of the same press: whatever the queue has just put in the
@@ -3820,27 +4120,24 @@ ContinueQueue = function(panel, pending)
       return
     end
 
-    local attached, missing = FillFromQueue(panel)
-    if missing > 0 then ns.Print(ns.Plural("MSG_QUEUE_MISSING", missing)) end
+    FillFromQueue(panel, function(attached, missing)
+      if missing > 0 then ns.Print(ns.Plural("MSG_QUEUE_MISSING", missing)) end
+      if UI and type(UI.IsMailboxOpen) == "function" and not UI.IsMailboxOpen() then return end
 
-    if attached == 0 and AttachmentCount() == 0 then
-      -- Nothing could be attached. The queue keeps whatever it still holds
-      -- so the player can see what did not go, and the draft settles.
-      local left = #(panel._queue or {})
-      if left > 0 then ns.Print(ns.Plural("MSG_QUEUE_LEFT", left)) end
-      Settle()
-      return
-    end
+      if attached == 0 and AttachmentCount() == 0 then
+        -- Nothing could be attached. The queue keeps whatever it still holds
+        -- so the player can see what did not go, and the draft settles.
+        local left = #(panel._queue or {})
+        if left > 0 then ns.Print(ns.Plural("MSG_QUEUE_LEFT", left)) end
+        Settle()
+        return
+      end
 
-    SendQueued(panel, toName)
+      SendQueued(panel, toName)
+    end)
   end)
   return true
 end
-
--- How many times each way in fired, and what came of it: the queue has
--- failed silently in the field once already, and the report is where the
--- next such report answers itself. ST.Diagnose renders them.
-local queueStats = { click = 0, use = 0, refused = 0, queued = 0, declined = {} }
 
 -- The state in which a refused bag click can only mean "the slots are full":
 -- the Send tab showing, no send in flight, no C.O.D. armed, every slot
@@ -3924,8 +4221,8 @@ function ST.Diagnose()
     declined[#declined + 1] = reason .. " " .. count
   end
   table.sort(declined)
-  return string.format("attach queue: click %d | use %d | refused %d | queued %d | waiting %d | declined %s",
-    queueStats.click, queueStats.use, queueStats.refused, queueStats.queued, waiting,
+  return string.format("attach queue: click %d | use %d | refused %d | queued %d | asked %d | waiting %d | declined %s",
+    queueStats.click, queueStats.use, queueStats.refused, queueStats.queued, queueStats.asked or 0, waiting,
     (#declined > 0) and table.concat(declined, ", ") or "none")
 end
 
@@ -4065,6 +4362,7 @@ function ST.Reset(panel, reason)
   -- the bags, and a queue that reappeared at the next mailbox would be a
   -- surprise waiting to attach itself.
   panel._queue = nil
+  if ST.AbandonQueuePass then ST.AbandonQueuePass() end
   if RefreshQueueLabel then RefreshQueueLabel(panel) end
 
   if panel.SuggestFrame then panel.SuggestFrame:Hide() end
@@ -4373,6 +4671,8 @@ local function BuildAttachmentArea(panel)
     end
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine(L["QUEUE_TIP_HOW"], 0.75, 0.75, 0.75, true)
+    GameTooltip:AddLine(L["QUEUE_TIP_ASK"], 0.75, 0.75, 0.75, true)
+    GameTooltip:AddLine(" ")
     GameTooltip:AddLine(L["QUEUE_TIP_CLEAR"], 0.75, 0.75, 0.75, true)
     GameTooltip:Show()
   end)
@@ -4579,6 +4879,11 @@ local VISIBILITY_EVENTS = {
 local function InstallEvents(panel)
   panel:RegisterEvent("MAIL_SEND_SUCCESS")
   panel:RegisterEvent("MAIL_FAILED")
+  -- The attachment queue's wait on the client's non-refundable dialog
+  -- (section 18a). Registered for good, like the send outcome: a run of
+  -- mails carries on from the outcome whichever tab is showing.
+  panel:RegisterEvent("MAIL_LOCK_SEND_ITEMS")
+  panel:RegisterEvent("MAIL_UNLOCK_SEND_ITEMS")
 
   panel:SetScript("OnEvent", function(self, event)
     -- The send outcome is settled BEFORE any visibility guard: the user can
@@ -4591,6 +4896,11 @@ local function InstallEvents(panel)
     elseif event == "UI_ERROR_MESSAGE" then
       ST.OnAttachRefused()
       return
+    elseif event == "MAIL_LOCK_SEND_ITEMS" or event == "MAIL_UNLOCK_SEND_ITEMS" then
+      ST.OnSendItemLock(event)
+      return
+    elseif event == "MAIL_SEND_INFO_UPDATE" then
+      ST.OnSendItemLock(event)
     end
 
     if event == "MAIL_SEND_INFO_UPDATE" or event == "MAIL_FAILED" then
@@ -4692,6 +5002,8 @@ function ST.Build(parent)
   -- Whatever the box holds -- typed, completed or taken by Tab -- is the
   -- answer; moving focus drops the selection and, after its grace, the popup.
   panel.ToBox:SetScript("OnEnterPressed", function()
+    -- Ctrl+Enter sends from any field of the draft.
+    if IsControlKeyDown() then DoSendMail(panel) return end
     if panel.SubjectBox then panel.SubjectBox:SetFocus() end
   end)
   panel.ToBox:SetScript("OnEditFocusGained", function(self)
@@ -4724,6 +5036,7 @@ function ST.Build(parent)
     if self:GetText() ~= "" then self:HighlightText() end
   end)
   panel.SubjectBox:SetScript("OnEnterPressed", function()
+    if IsControlKeyDown() then DoSendMail(panel) return end
     if panel.BodyBox then panel.BodyBox:SetFocus() end
   end)
 
@@ -4739,6 +5052,12 @@ function ST.Build(parent)
   panel.BodyWrap, panel.BodyBox = CreateFieldRow(panel, panel.MessageLabel, true)
   -- The server's body cap, same number as Blizzard's send frame.
   panel.BodyBox:SetMaxLetters(500)
+  -- Plain Enter is a new line, as it should be in a message; Ctrl+Enter
+  -- sends, from here as from the other two fields. (The line break the
+  -- keypress adds is trimmed with the rest of the draft's edges on send.)
+  panel.BodyBox:SetScript("OnEnterPressed", function()
+    if IsControlKeyDown() then DoSendMail(panel) end
+  end)
   -- The body's vertical anchors belong to one function, which is also where the
   -- message box's hard minimum is enforced.
   ST.ApplyBodyBounds(panel)
