@@ -1840,17 +1840,24 @@ local function BindRow(panel, row, index, position, compact, done)
   -- The money, in its shortest honest form ("52g 26s", "1309g", "12.3k"):
   -- green for gold that is coming, red for a C.O.D. price to pay and for
   -- what a won auction cost. The reading view prints the exact sums.
+  -- Three tones for three meanings: green is gold arriving, amber is a
+  -- C.O.D. price you would pay by collecting (a decision, so the warning
+  -- tone), red is what a won auction already cost (spent, as the band's
+  -- own "Spent" is red).
   local compactMoney = ns.Core.Formatting.FormatMoneyCompact
-  local money = nil
+  local money, purchaseShown = nil, false
   if moneyValue > 0 then
     money = T.Colorize("positive", compactMoney(moneyValue))
   elseif hasCOD then
     money = (codValue > 0)
-      and T.Colorize("negative", L()["LABEL_COD"] .. compactMoney(codValue))
-      or T.Colorize("negative", L()["LABEL_COD_SHORT"])
+      and T.Colorize("warning", L()["LABEL_COD"] .. compactMoney(codValue))
+      or T.Colorize("warning", L()["LABEL_COD_SHORT"])
   else
     local price = PurchasePrice(index)
-    if price then money = T.Colorize("negative", compactMoney(price)) end
+    if price then
+      money = T.Colorize("negative", compactMoney(price))
+      purchaseShown = true
+    end
   end
   local slots = (remaining > 0) and T.Colorize("accent", ns.Plural("COUNT_SLOTS", remaining)) or nil
 
@@ -1863,18 +1870,24 @@ local function BindRow(panel, row, index, position, compact, done)
     expiry = T.Colorize("warning", format(L()["DAYS_SHORT"], daysLeft))
   end
 
-  -- The standard row reads left to right: money, slots, category, warning.
+  -- The standard row has a line of its own under the name, so it reads left
+  -- to right in full: money, slots, category, the time left (in the quiet
+  -- tone, or the warning tone when it is short), then the invoice's
+  -- figures -- except a won auction's price, which IS the money already.
   if money then parts[#parts + 1] = money end
   if slots then parts[#parts + 1] = slots end
   parts[#parts + 1] = labels[kind] or kind
-  if expiry then parts[#parts + 1] = expiry end
+  if expiry then
+    parts[#parts + 1] = expiry
+  elseif daysLeft then
+    parts[#parts + 1] = T.Colorize("textSecondary", format(L()["DAYS_SHORT"], daysLeft))
+  end
+  if not purchaseShown then AppendInvoiceFigures(parts, index, false) end
   -- The compact strip is right-aligned, so the money goes LAST and lines up
   -- as a column down the list; the warning, when there is one, comes first.
   if expiry then brief[#brief + 1] = expiry end
   if slots then brief[#brief + 1] = slots end
   if money then brief[#brief + 1] = money end
-
-  AppendInvoiceFigures(parts, index, false)
 
   local senderText = sender or L()["SENDER_UNKNOWN"]
   -- Auction mail says what happened where the sender would be: "Sold",
@@ -1893,7 +1906,7 @@ local function BindRow(panel, row, index, position, compact, done)
     local tip = panel._rowTip
     Clear(tip)
     tip[#tip + 1] = labels[kind] or kind
-    AppendInvoiceFigures(tip, index, false)
+    if not purchaseShown then AppendInvoiceFigures(tip, index, false) end
     row.detailFull = concat(tip, "\n")
 
     -- The meta strip claims what it needs and never more than its share; what
@@ -3910,17 +3923,15 @@ function CT.Build(parent)
   panel.Banner:SetHeight(M.controlHeight)
   T.ApplyBand(panel.Banner)
 
-  local bannerIcon = panel.Banner:CreateTexture(nil, "ARTWORK")
-  bannerIcon:SetSize(M.iconSize, M.iconSize)
-  bannerIcon:SetPoint("LEFT", panel.Banner, "LEFT", M.inset, 0)
-  bannerIcon:SetTexture("Interface\\MoneyFrame\\UI-GoldIcon")
-
   panel.BannerText = T.CreateText(panel.Banner, "value")
   -- One anchor and an explicit width (set by FitBanner from the band's
   -- width), not a right anchor: the fit has to know exactly what room the
-  -- string has, and has to be able to make the string honour it.
-  panel.BannerText:SetPoint("LEFT", bannerIcon, "RIGHT", M.gap, 0)
-  panel.BannerText:SetJustifyH("LEFT")
+  -- string has, and has to be able to make the string honour it. Centred
+  -- in the band: two sums with their own coins need no coin at the edge
+  -- to introduce them, and a line that starts at the left edge of a wide
+  -- band reads as a label rather than a total.
+  panel.BannerText:SetPoint("LEFT", panel.Banner, "LEFT", M.inset, 0)
+  panel.BannerText:SetJustifyH("CENTER")
   -- A font string never clips its own text: with wrapping off, a line
   -- wider than the string simply runs past it (which is what was seen).
   -- Wrapping ON with one line allowed is the client's own way to hold a
@@ -3929,7 +3940,7 @@ function CT.Build(parent)
   panel.BannerText:SetWordWrap(true)
   panel.BannerText:SetNonSpaceWrap(false)
   panel.BannerText:SetMaxLines(1)
-  panel._bannerTextLeft  = M.inset + M.iconSize + M.gap
+  panel._bannerTextLeft  = M.inset
   panel._bannerTextRight = M.inset
   -- The sums are re-fitted to whatever width the band ends up with: the
   -- window resizing, or the first layout after a paint that had none.

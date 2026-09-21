@@ -62,7 +62,14 @@
   on every row is gone from the row — it is in the tooltip — and comes back
   in the warning colour only when a mail is about to go: under three days
   for most mail, under a day for a C.O.D. mail, which only ever lives three.
-  The reading view still shows the exact sums.
+  Three tones, three meanings: green is gold arriving, amber is a C.O.D.
+  price you would pay by collecting, red is what a won auction cost. The
+  reading view still shows the exact sums.
+- **Full-size rows use their room.** The line under the name reads money,
+  slots, category, time left, then the auction's deposit and fee — and no
+  longer repeats a won auction's price twice.
+- **"All bought" is "All won"**, the same word the rows use.
+- **The earned/spent totals are centred** in their band.
 - **Resizing is free again.** The window's smallest and tallest heights are
   still whole rows, but between them the grip follows your hand instead of
   jumping a row at a time.

@@ -320,7 +320,7 @@ L["CAT_ALL"]                   = "All mail"
 L["CAT_EXPIRED"]               = "All expired"
 L["CAT_SOLD"]                  = "All sold"
 L["CAT_CANCELED"]              = "All canceled"
-L["CAT_BOUGHT"]                = "All bought"
+L["CAT_BOUGHT"]                = "All won"
 L["CAT_OTHER"]                 = "Other"
 
 -- The three segments over the list. The first two split the inbox by what a
@@ -682,7 +682,7 @@ if GetLocale() == "frFR" then
   L["CAT_EXPIRED"]               = "Tout expire"
   L["CAT_SOLD"]                  = "Tout vendu"
   L["CAT_CANCELED"]              = "Tout annule"
-  L["CAT_BOUGHT"]                = "Tout achete"
+  L["CAT_BOUGHT"]                = "Tout remporte"
   L["CAT_OTHER"]                 = "Autre"
 
   -- Segments et liste
@@ -1102,7 +1102,7 @@ if GetLocale() == "deDE" then
   L["CAT_EXPIRED"]               = "Alle abgelaufen"
   L["CAT_SOLD"]                  = "Alle verkauft"
   L["CAT_CANCELED"]              = "Alle abgebrochen"
-  L["CAT_BOUGHT"]                = "Alle gekauft"
+  L["CAT_BOUGHT"]                = "Alle gewonnen"
   L["CAT_OTHER"]                 = "Sonstige"
 
   -- Drei Segmente teilen sich die Zeile mit dem Nachnahme-Hinweis, also bleibt
@@ -1522,7 +1522,7 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["CAT_EXPIRED"]               = "Todo expirado"
   L["CAT_SOLD"]                  = "Todo vendido"
   L["CAT_CANCELED"]              = "Todo cancelado"
-  L["CAT_BOUGHT"]                = "Todo comprado"
+  L["CAT_BOUGHT"]                = "Todo ganado"
   L["CAT_OTHER"]                 = "Otro"
 
   L["VIEW_TO_COLLECT"]           = "Recoger"
@@ -1943,7 +1943,7 @@ L["CAT_ALL"]                   = "Вся почта"
 L["CAT_EXPIRED"]               = "Истекшие"
 L["CAT_SOLD"]                  = "Продано"
 L["CAT_CANCELED"]              = "Отменено"
-L["CAT_BOUGHT"]                = "Куплено"
+L["CAT_BOUGHT"]                = "Выиграно"
 L["CAT_OTHER"]                 = "Другое"
 
 -- Сегменты и список
