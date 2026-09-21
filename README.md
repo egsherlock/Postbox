@@ -96,8 +96,9 @@ other, and a lowercase "ив" finds Иван. An option keeps the recipient in p
 after a send, for a run of mails to the same character.
 
 **More than twelve items?** Keep right-clicking. The label counts up
-("Attachments 12/12"); once the slots are full, items queue beside it and the Send
-button reads "Send 3 mails". One press posts them all, as further mails to the same
+("Attachments 12/12"); once the slots are full, items queue up in a row of small
+icons under the slots, in the order they will go (right-click one to take it out),
+and the Send button reads "Send 3 mails". One press posts them all, as further mails to the same
 person, twelve items to each; the "Cost" line is the postage for all of them, and
 Send asks once — how many mails, to whom, how many items, what postage — before a
 run begins. The button counts the run off ("Sending 2 of 3..."). If the game has to
