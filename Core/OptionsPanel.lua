@@ -450,7 +450,10 @@ local function Build()
 
   local leftBottom = y
   col = right
-  y = 0
+  -- Level with the left column's first CARD, not its heading: the hero has
+  -- no heading of its own, and its top edge lining up with the Mail tab
+  -- card's is what makes the two columns read as one grid.
+  y = -24
 
   -- Manage Recipients: a hero row at the top of the right column, where the
   -- column had the room and the left had none. It opens a whole window of

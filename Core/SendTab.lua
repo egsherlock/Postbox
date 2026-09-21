@@ -3846,6 +3846,12 @@ local function TryEnqueue(panel, bag, slot)
   local ok, reason = Enqueue(panel, bag, slot)
   if ok then
     queueStats.queued = queueStats.queued + 1
+    -- The client has just said "you cannot attach more than 12 items" in red
+    -- across the screen. It is true and beside the point: the item is queued,
+    -- and the message reads as the click having failed.
+    if UIErrorsFrame and type(UIErrorsFrame.Clear) == "function" then
+      pcall(UIErrorsFrame.Clear, UIErrorsFrame)
+    end
   else
     queueStats.declined[reason] = (queueStats.declined[reason] or 0) + 1
   end

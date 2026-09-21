@@ -354,6 +354,13 @@ local function RowMetrics()
   return compact, height, height + ROW_GAP
 end
 
+-- Frozen: Core/MailboxUI.lua snaps the window's height to whole rows with
+-- this. One row's pitch in the current row mode.
+function CT.RowStride()
+  local _, _, stride = RowMetrics()
+  return stride
+end
+
 -------------------------------------------------------------
 -- The screen's floor
 --
