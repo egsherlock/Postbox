@@ -1975,12 +1975,30 @@ local function FitBanner(panel)
     Line("BANNER_EARNED_SHORT", "BANNER_SPENT_SHORT", 1, "  |  "),
   }
 
-  -- No width yet (the first paint) means no verdict: the fullest line
-  -- stands, and the size change that follows the layout fits it.
-  local room = text:GetWidth() or 0
+  -- The room is the band's, not the string's: asked for its own width, the
+  -- string answered with the width of whatever it was showing, so the
+  -- fullest line always "fit" and ran off the band regardless. The band's
+  -- width is a fact. No width yet (the first paint) means no verdict: the
+  -- fullest line stands, and the size change that follows the layout fits
+  -- it. The width is then SET on the string, so a line that still does not
+  -- fit is cut with an ellipsis rather than drawn past the edge -- and
+  -- whether it was cut is the verdict, textures and all, where the client
+  -- can say; the measured width is the fallback where it cannot.
+  local room = (panel.Banner:GetWidth() or 0) - (panel._bannerTextLeft or 0) - (panel._bannerTextRight or 0)
+  if room <= 0 then
+    text:SetText(candidates[1])
+    return
+  end
+  text:SetWidth(room)
+  local canAsk = type(text.IsTruncated) == "function"
   for i = 1, #candidates do
     text:SetText(candidates[i])
-    if room <= 0 or i == #candidates or (text:GetStringWidth() or 0) <= room then return end
+    if i == #candidates then return end
+    if canAsk then
+      if not text:IsTruncated() then return end
+    elseif (text:GetStringWidth() or 0) <= room then
+      return
+    end
   end
 end
 
@@ -3835,10 +3853,14 @@ function CT.Build(parent)
   bannerIcon:SetTexture("Interface\\MoneyFrame\\UI-GoldIcon")
 
   panel.BannerText = T.CreateText(panel.Banner, "value")
+  -- One anchor and an explicit width (set by FitBanner from the band's
+  -- width), not a right anchor: the fit has to know exactly what room the
+  -- string has, and has to be able to make the string honour it.
   panel.BannerText:SetPoint("LEFT", bannerIcon, "RIGHT", M.gap, 0)
-  panel.BannerText:SetPoint("RIGHT", panel.Banner, "RIGHT", -M.inset, 0)
   panel.BannerText:SetJustifyH("LEFT")
   panel.BannerText:SetWordWrap(false)
+  panel._bannerTextLeft  = M.inset + M.iconSize + M.gap
+  panel._bannerTextRight = M.inset
   -- The sums are re-fitted to whatever width the band ends up with: the
   -- window resizing, or the first layout after a paint that had none.
   panel.Banner:SetScript("OnSizeChanged", function() FitBanner(panel) end)

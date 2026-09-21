@@ -3766,14 +3766,22 @@ end
 -- the file needs is handed out through the forward-declared names above
 -- (RefreshQueueLabel, TopUpFromQueue, ContinueQueue) and ST.* fields.
 do
+-- Every name of the section lives on this one table, so the block costs the
+-- chunk a single local however many helpers it grows: the names declared
+-- above the block are all still live inside it, and the twenty-odd this
+-- section used to declare took the main function past Lua 5.1's two hundred
+-- (SendTab.lua:4218, "main function has more than 200 local variables", and
+-- no Send tab at all). luacheck.js now counts the peak, not the top level.
+local Q = {}
+
 -- How many times each way in fired, and what came of it: the queue has
 -- failed silently in the field once already, and the report is where the
 -- next such report answers itself. ST.Diagnose renders them. `asked` is
 -- the times the client's non-refundable dialog stood between the queue and
 -- a slot.
-local queueStats = { click = 0, use = 0, refused = 0, queued = 0, asked = 0, declined = {} }
+Q.stats = { click = 0, use = 0, refused = 0, queued = 0, asked = 0, declined = {} }
 
-local function Queue(panel)
+function Q.Queue(panel)
   local queue = panel._queue
   if not queue then
     queue = {}
@@ -3782,7 +3790,7 @@ local function Queue(panel)
   return queue
 end
 
-local function GuidAt(bag, slot)
+function Q.GuidAt(bag, slot)
   if type(ItemLocation) ~= "table" or type(ItemLocation.CreateFromBagAndSlot) ~= "function" then return nil end
   if not (C_Item and type(C_Item.GetItemGUID) == "function") then return nil end
   -- A METHOD on ItemLocation, so ItemLocation itself is the first argument.
@@ -3794,24 +3802,24 @@ local function GuidAt(bag, slot)
   return (okGuid and type(guid) == "string") and guid or nil
 end
 
-local function ContainerInfo(bag, slot)
+function Q.ContainerInfo(bag, slot)
   if not (C_Container and type(C_Container.GetContainerItemInfo) == "function") then return nil end
   local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
   return (ok and type(info) == "table") and info or nil
 end
 
-local LAST_BAG = (type(NUM_TOTAL_EQUIPPED_BAG_SLOTS) == "number" and NUM_TOTAL_EQUIPPED_BAG_SLOTS)
+Q.LAST_BAG = (type(NUM_TOTAL_EQUIPPED_BAG_SLOTS) == "number" and NUM_TOTAL_EQUIPPED_BAG_SLOTS)
   or (type(NUM_BAG_SLOTS) == "number" and NUM_BAG_SLOTS) or 4
 
 -- Where the entry's item is now: its own position when the GUID there still
 -- agrees, otherwise wherever the bags hold that GUID, otherwise nowhere.
-local function Locate(entry)
-  if GuidAt(entry.bag, entry.slot) == entry.guid then return entry.bag, entry.slot end
+function Q.Locate(entry)
+  if Q.GuidAt(entry.bag, entry.slot) == entry.guid then return entry.bag, entry.slot end
   if not (C_Container and type(C_Container.GetContainerNumSlots) == "function") then return nil end
-  for bag = 0, LAST_BAG do
+  for bag = 0, Q.LAST_BAG do
     local ok, count = pcall(C_Container.GetContainerNumSlots, bag)
     for slot = 1, (ok and tonumber(count)) or 0 do
-      if GuidAt(bag, slot) == entry.guid then return bag, slot end
+      if Q.GuidAt(bag, slot) == entry.guid then return bag, slot end
     end
   end
   return nil
@@ -3853,14 +3861,14 @@ end
 -- the client refused is not locked; an item it took is. (This test was
 -- taken out once while a different bug -- the GUID lookup -- was making
 -- every item look refused; it was never the culprit.)
-local function Enqueue(panel, bag, slot)
-  local info = ContainerInfo(bag, slot)
+function Q.Enqueue(panel, bag, slot)
+  local info = Q.ContainerInfo(bag, slot)
   if not info then return false, "empty" end
   if info.isLocked then return false, "attached" end
-  local guid = GuidAt(bag, slot)
+  local guid = Q.GuidAt(bag, slot)
   if not guid then return false, "noguid" end
 
-  local queue = Queue(panel)
+  local queue = Q.Queue(panel)
   for i = 1, #queue do
     if queue[i].guid == guid then return false, "dup" end
   end
@@ -3898,13 +3906,13 @@ end
 -- dialog is up and the answer resumes the pass, or the client simply
 -- refused and the item goes back to the front as before.
 --
--- Exactly one pass runs at a time. `fillState` is that pass while it is
+-- Exactly one pass runs at a time. `Q.fillState` is that pass while it is
 -- waiting; every other way into the slots (a slot refresh, the Send
 -- button) stands aside until it has finished.
-local fillState = nil
+Q.fillState = nil
 
-local function AttachOne(entry, slotIndex)
-  local bag, slot = Locate(entry)
+function Q.AttachOne(entry, slotIndex)
+  local bag, slot = Q.Locate(entry)
   if not bag then return "missing" end
   pcall(C_Container.PickupContainerItem, bag, slot)
   pcall(ClickSendMailItemButton, slotIndex)
@@ -3918,11 +3926,10 @@ end
 -- The pass itself. Runs the queue into the free slots, first to last, until
 -- the slots are full, the queue is empty, the client refuses one, or the
 -- client asks about one -- and in that last case it returns with the pass
--- parked in `fillState`, to be run on from Resume once the answer is in.
-local RunFill
+-- parked in `Q.fillState`, to be run on from Resume once the answer is in.
 
-local function FinishFill(state)
-  if fillState == state then fillState = nil end
+function Q.FinishFill(state)
+  if Q.fillState == state then Q.fillState = nil end
   RefreshQueueLabel(state.panel)
   local done = state.done
   state.done = nil
@@ -3934,8 +3941,8 @@ end
 -- cancelled: the item is forgotten, not retried, and the pass runs on) or
 -- "refused" (no dialog came: the item goes back to the front and the pass
 -- stops, as whatever refused this one will refuse the next).
-local function Resume(state, outcome)
-  if fillState ~= state then return end
+function Q.Resume(state, outcome)
+  if Q.fillState ~= state then return end
   local pending = state.pending
   if not pending then return end
   state.pending = nil
@@ -3951,7 +3958,7 @@ local function Resume(state, outcome)
   else
     if type(ClearCursor) == "function" then ClearCursor() end
     table.insert(queue, 1, pending.entry)
-    FinishFill(state)
+    Q.FinishFill(state)
     return
   end
 
@@ -3959,14 +3966,14 @@ local function Resume(state, outcome)
   -- with it (ST.Reset), and so is any reason to go on.
   local UI = ns.MailboxUI
   if UI and type(UI.IsMailboxOpen) == "function" and not UI.IsMailboxOpen() then
-    FinishFill(state)
+    Q.FinishFill(state)
     return
   end
-  RunFill(state)
+  Q.RunFill(state)
 end
 
 -- The client's own dialog for the item, on screen or not.
-local function DialogUp()
+function Q.DialogUp()
   return type(StaticPopup_Visible) == "function"
      and StaticPopup_Visible("CONFIRM_MAIL_ITEM_UNREFUNDABLE") and true or false
 end
@@ -3974,13 +3981,13 @@ end
 -- Ten times a second while a pass is parked on `pending`. True to keep
 -- watching. Whichever of this and the events sees the answer first settles
 -- it; Resume ignores the second.
-local function WatchPending(state, pending)
-  if fillState ~= state or state.pending ~= pending then return false end
+function Q.WatchPending(state, pending)
+  if Q.fillState ~= state or state.pending ~= pending then return false end
   if SlotHasItem(pending.slotIndex) then
-    Resume(state, "attached")
+    Q.Resume(state, "attached")
     return false
   end
-  if DialogUp() then
+  if Q.DialogUp() then
     pending.locked = true
     pending.gone = 0
     return true
@@ -3990,7 +3997,7 @@ local function WatchPending(state, pending)
     -- no, or dismissed some other way. Two looks, in case an accepted
     -- item is a tick behind its dialog closing.
     pending.gone = pending.gone + 1
-    if pending.gone >= 2 then Resume(state, "declined") return false end
+    if pending.gone >= 2 then Q.Resume(state, "declined") return false end
     return true
   end
   -- No dialog yet. The lock event, when it is coming at all, arrives
@@ -3998,13 +4005,13 @@ local function WatchPending(state, pending)
   -- the empty slot was a refusal.
   pending.ticks = pending.ticks + 1
   if pending.ticks >= 2 then
-    Resume(state, "refused")
+    Q.Resume(state, "refused")
     return false
   end
   return true
 end
 
-RunFill = function(state)
+function Q.RunFill(state)
   local panel = state.panel
   local queue = panel._queue
   while queue and #queue > 0 do
@@ -4014,7 +4021,7 @@ RunFill = function(state)
     if state.slotIndex > SEND_SLOT_COUNT then break end
 
     local entry = table.remove(queue, 1)
-    local outcome = AttachOne(entry, state.slotIndex)
+    local outcome = Q.AttachOne(entry, state.slotIndex)
     if outcome == "attached" then
       state.attached = state.attached + 1
       state.slotIndex = state.slotIndex + 1
@@ -4027,14 +4034,14 @@ RunFill = function(state)
       -- neither: it looks at the dialog itself, and at the slot.
       local pending = { entry = entry, slotIndex = state.slotIndex, ticks = 0, gone = 0 }
       state.pending = pending
-      fillState = state
+      Q.fillState = state
       pending.ticker = C_Timer.NewTicker(0.1, function(ticker)
-        if not WatchPending(state, pending) then ticker:Cancel() end
+        if not Q.WatchPending(state, pending) then ticker:Cancel() end
       end)
       return
     end
   end
-  FinishFill(state)
+  Q.FinishFill(state)
 end
 
 -- Moves queued items into free slots. `done(attached, missing)` is called
@@ -4043,9 +4050,9 @@ end
 -- attached and how many were dropped because their item could not be found
 -- any more. A pass already waiting means nothing runs and `done` is not
 -- called: the waiting pass's own completion is the one that counts.
-local function FillFromQueue(panel, done)
+function Q.FillFromQueue(panel, done)
   local queue = panel._queue
-  if fillState then return end
+  if Q.fillState then return end
   if not queue or #queue == 0
      or not (C_Container and type(C_Container.PickupContainerItem) == "function")
      or type(ClickSendMailItemButton) ~= "function"
@@ -4054,42 +4061,42 @@ local function FillFromQueue(panel, done)
     if done then done(0, 0) end
     return
   end
-  RunFill({ panel = panel, attached = 0, missing = 0, slotIndex = 1, done = done })
+  Q.RunFill({ panel = panel, attached = 0, missing = 0, slotIndex = 1, done = done })
 end
 
 -- MAIL_LOCK_SEND_ITEMS / MAIL_UNLOCK_SEND_ITEMS / MAIL_SEND_INFO_UPDATE,
 -- from the panel's event handler. Only a waiting pass listens; the
 -- client's dialog for a right-clicked item is its own business.
 function ST.OnSendItemLock(event)
-  local state = fillState
+  local state = Q.fillState
   local pending = state and state.pending
   if not pending then return end
   if event == "MAIL_LOCK_SEND_ITEMS" then
     pending.locked = true
-    queueStats.asked = (queueStats.asked or 0) + 1
+    Q.stats.asked = (Q.stats.asked or 0) + 1
   elseif SlotHasItem(pending.slotIndex) then
-    Resume(state, "attached")
+    Q.Resume(state, "attached")
   elseif event == "MAIL_UNLOCK_SEND_ITEMS" and pending.locked then
     -- The answer. An accepted item can land in the slot a moment after the
     -- unlock, so the verdict is read a frame later, not now.
     C_Timer.After(0, function()
-      if fillState ~= state or state.pending ~= pending then return end
-      Resume(state, SlotHasItem(pending.slotIndex) and "attached" or "declined")
+      if Q.fillState ~= state or state.pending ~= pending then return end
+      Q.Resume(state, SlotHasItem(pending.slotIndex) and "attached" or "declined")
     end)
   end
 end
 
 -- True while the client's question about a queued item is on screen.
 function ST.QueueAwaitingAnswer()
-  local pending = fillState and fillState.pending
+  local pending = Q.fillState and Q.fillState.pending
   return (pending and pending.locked) and true or false
 end
 
 -- The mailbox closed under a waiting pass: the dialog goes with it, the
 -- queue is already gone (ST.Reset), and the pass must not run on.
 function ST.AbandonQueuePass()
-  local state = fillState
-  fillState = nil
+  local state = Q.fillState
+  Q.fillState = nil
   if not state then return end
   state.done = nil
   local pending = state.pending
@@ -4104,7 +4111,7 @@ TopUpFromQueue = function(panel)
   local queue = panel and panel._queue
   if not queue or #queue == 0 then return end
   if AttachmentCount() >= SEND_SLOT_COUNT then return end
-  FillFromQueue(panel, function(_, missing)
+  Q.FillFromQueue(panel, function(_, missing)
     if missing > 0 then ns.Print(ns.Plural("MSG_QUEUE_MISSING", missing)) end
   end)
 end
@@ -4112,7 +4119,7 @@ end
 -- One more mail of the same press: whatever the queue has just put in the
 -- slots, to the same recipient with the same subject and message, and no
 -- money -- gold and C.O.D. went with the first.
-local function SendQueued(panel, toName)
+function Q.SendQueued(panel, toName)
   local subject = FieldText(panel.SubjectBox)
   local body    = FieldText(panel.BodyBox)
   if subject == "" then subject = L["DEFAULT_NO_SUBJECT"] end
@@ -4166,7 +4173,7 @@ ContinueQueue = function(panel, pending)
       return
     end
 
-    FillFromQueue(panel, function(attached, missing)
+    Q.FillFromQueue(panel, function(attached, missing)
       if missing > 0 then ns.Print(ns.Plural("MSG_QUEUE_MISSING", missing)) end
       if UI and type(UI.IsMailboxOpen) == "function" and not UI.IsMailboxOpen() then return end
 
@@ -4179,7 +4186,7 @@ ContinueQueue = function(panel, pending)
         return
       end
 
-      SendQueued(panel, toName)
+      Q.SendQueued(panel, toName)
     end)
   end)
   return true
@@ -4188,7 +4195,7 @@ end
 -- The state in which a refused bag click can only mean "the slots are full":
 -- the Send tab showing, no send in flight, no C.O.D. armed, every slot
 -- taken. Every way in asks this first.
-local function QueueOpen()
+function Q.QueueOpen()
   if not sendTabActive or pendingSend then return nil end
   local panel = ActivePanel()
   if not panel or not panel:IsShown() then return nil end
@@ -4197,13 +4204,13 @@ local function QueueOpen()
   return panel
 end
 
-local function TryEnqueue(panel, bag, slot)
+function Q.TryEnqueue(panel, bag, slot)
   if type(bag) ~= "number" or type(slot) ~= "number" then return end
-  local ok, reason = Enqueue(panel, bag, slot)
+  local ok, reason = Q.Enqueue(panel, bag, slot)
   if ok then
-    queueStats.queued = queueStats.queued + 1
+    Q.stats.queued = Q.stats.queued + 1
   else
-    queueStats.declined[reason] = (queueStats.declined[reason] or 0) + 1
+    Q.stats.declined[reason] = (Q.stats.declined[reason] or 0) + 1
   end
   return ok, reason
 end
@@ -4215,7 +4222,7 @@ end
 -- own hook ran before there was anything to clear. So the clear is done
 -- from the event, once for the handlers that ran before this one, and once
 -- a frame later for any that run after.
-local function ClearAttachRefusal()
+function Q.ClearAttachRefusal()
   if not (UIErrorsFrame and type(UIErrorsFrame.Clear) == "function") then return end
   pcall(UIErrorsFrame.Clear, UIErrorsFrame)
   C_Timer.After(0, function() pcall(UIErrorsFrame.Clear, UIErrorsFrame) end)
@@ -4232,9 +4239,9 @@ end
 if type(hooksecurefunc) == "function" and type(ContainerFrameItemButton_OnClick) == "function" then
   hooksecurefunc("ContainerFrameItemButton_OnClick", function(button, mouseButton)
     if mouseButton ~= "RightButton" then return end
-    local panel = QueueOpen()
+    local panel = Q.QueueOpen()
     if not panel then return end
-    queueStats.click = queueStats.click + 1
+    Q.stats.click = Q.stats.click + 1
     local bag, slot
     if type(button.GetBagID) == "function" then
       local ok, id = pcall(button.GetBagID, button)
@@ -4244,17 +4251,17 @@ if type(hooksecurefunc) == "function" and type(ContainerFrameItemButton_OnClick)
       local ok, id = pcall(button.GetID, button)
       if ok then slot = id end
     end
-    TryEnqueue(panel, bag, slot)
+    Q.TryEnqueue(panel, bag, slot)
   end)
 end
 
 if type(hooksecurefunc) == "function" and type(C_Container) == "table"
    and type(C_Container.UseContainerItem) == "function" then
   hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot)
-    local panel = QueueOpen()
+    local panel = Q.QueueOpen()
     if not panel then return end
-    queueStats.use = queueStats.use + 1
-    TryEnqueue(panel, bag, slot)
+    Q.stats.use = Q.stats.use + 1
+    Q.TryEnqueue(panel, bag, slot)
   end)
 end
 
@@ -4263,12 +4270,12 @@ function ST.Diagnose()
   local panel = ActivePanel()
   local waiting = (panel and panel._queue) and #panel._queue or 0
   local declined = {}
-  for reason, count in pairs(queueStats.declined) do
+  for reason, count in pairs(Q.stats.declined) do
     declined[#declined + 1] = reason .. " " .. count
   end
   table.sort(declined)
   return string.format("attach queue: click %d | use %d | refused %d | queued %d | asked %d | waiting %d | declined %s",
-    queueStats.click, queueStats.use, queueStats.refused, queueStats.queued, queueStats.asked or 0, waiting,
+    Q.stats.click, Q.stats.use, Q.stats.refused, Q.stats.queued, Q.stats.asked or 0, waiting,
     (#declined > 0) and table.concat(declined, ", ") or "none")
 end
 
@@ -4280,7 +4287,7 @@ end
 -- click has only just happened. Read off whichever bag button is there:
 -- the container template's GetBagID/GetID pair first, then the field names
 -- the other bag addons use, and only for something that is an item button.
-local function BagSlotUnderCursor()
+function Q.BagSlotUnderCursor()
   local frames
   if type(GetMouseFoci) == "function" then
     local ok, list = pcall(GetMouseFoci)
@@ -4343,18 +4350,18 @@ end
 -- armed, and an unlocked item under the cursor -- that is the state, and
 -- the item is queued. The message text is deliberately not matched: its
 -- global is not published, and a state test is honest in every locale.
-local function OnAttachRefused()
-  local panel = QueueOpen()
+function Q.OnAttachRefused()
+  local panel = Q.QueueOpen()
   if not panel then return end
-  queueStats.refused = queueStats.refused + 1
-  local bag, slot = BagSlotUnderCursor()
+  Q.stats.refused = Q.stats.refused + 1
+  local bag, slot = Q.BagSlotUnderCursor()
   if not bag then return end
-  local ok, reason = TryEnqueue(panel, bag, slot)
+  local ok, reason = Q.TryEnqueue(panel, bag, slot)
   -- Queued now, or already queued by the click's own hook a moment ago:
   -- either way the refusal on screen describes a click that worked.
-  if ok or reason == "dup" then ClearAttachRefusal() end
+  if ok or reason == "dup" then Q.ClearAttachRefusal() end
 end
-ST.OnAttachRefused = OnAttachRefused
+ST.OnAttachRefused = Q.OnAttachRefused
 end
 
 -------------------------------------------------------------
