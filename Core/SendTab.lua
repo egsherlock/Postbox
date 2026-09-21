@@ -3606,7 +3606,10 @@ end
 local function GuidAt(bag, slot)
   if type(ItemLocation) ~= "table" or type(ItemLocation.CreateFromBagAndSlot) ~= "function" then return nil end
   if not (C_Item and type(C_Item.GetItemGUID) == "function") then return nil end
-  local ok, location = pcall(ItemLocation.CreateFromBagAndSlot, bag, slot)
+  -- A METHOD on ItemLocation, so ItemLocation itself is the first argument.
+  -- Called without it, this returned nothing and every item was refused
+  -- for "no GUID" -- eleven of eleven, in the report that found it.
+  local ok, location = pcall(ItemLocation.CreateFromBagAndSlot, ItemLocation, bag, slot)
   if not ok or not location then return nil end
   local okGuid, guid = pcall(C_Item.GetItemGUID, location)
   return (okGuid and type(guid) == "string") and guid or nil

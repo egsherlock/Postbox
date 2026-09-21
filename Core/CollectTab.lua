@@ -3671,6 +3671,9 @@ function CT.RefreshCategoryButtons(panel)
   if not panel or not panel.Footer then return end
   panel.Footer:SetHeight(FooterHeight(panel))
   LayoutGrid(panel)
+  -- The list area just changed height; whole rows again, explicitly, rather
+  -- than trusting the size hooks to have been kept by every skin.
+  FitListToRows(panel)
 end
 
 local function BuildGrid(panel)
@@ -3843,6 +3846,11 @@ function CT.Build(parent)
   area:HookScript("OnSizeChanged", function() FitListToRows(panel) end)
 
   scroll:HookScript("OnSizeChanged", function(_, width)
+    -- From here as well as from the area: a host skin that replaces the
+    -- area's own size script would take the hook above with it, and this
+    -- frame's size follows the area's. Idempotent -- the same slack re-set
+    -- is no size change, so it does not fire itself again.
+    FitListToRows(panel)
     if width and width > 10 then panel.MailListChild:SetWidth(width) end
     UpdateVisibleRows(panel)
   end)

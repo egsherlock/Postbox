@@ -133,7 +133,8 @@ local function LocationFor(bag, slot)
   end
 
   if type(ItemLocation.CreateFromBagAndSlot) ~= "function" then return nil end
-  local ok, location = pcall(ItemLocation.CreateFromBagAndSlot, bag, slot)
+  -- A method on ItemLocation: it needs ItemLocation as its first argument.
+  local ok, location = pcall(ItemLocation.CreateFromBagAndSlot, ItemLocation, bag, slot)
   if not ok or type(location) ~= "table" then return nil end
 
   if type(location.SetBagAndSlot) == "function" then sharedLocation = location end
