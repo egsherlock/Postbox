@@ -254,7 +254,11 @@ end
 -- the window back to its default size. The grip is the one control whose
 -- whole meaning is "size", so a second gesture on it that means "the size
 -- you started with" needs no teaching.
-function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn, onReset)
+-- `snapFn(frame, height) -> height`, when given, is asked for every height
+-- the drag proposes, after the bounds have been applied: the owner puts it
+-- on whatever steps its content comes in (whole rows), and the bounds are
+-- applied once more to what it answers.
+function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn, onReset, snapFn)
   if not frame then return nil end
 
   local button = CreateFrame("Button", nil, frame)
@@ -337,6 +341,15 @@ function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn, onR
       if minW then width = max(minW, width) end
       if maxH and maxH > 0 then height = min(maxH, height) end
       if minH then height = max(minH, height) end
+
+      if type(snapFn) == "function" then
+        local snapped = tonumber((snapFn(frame, height)))
+        if snapped then
+          height = snapped
+          if maxH and maxH > 0 then height = min(maxH, height) end
+          if minH then height = max(minH, height) end
+        end
+      end
 
       -- Holding the mouse still would otherwise re-set an identical size every
       -- frame, firing OnSizeChanged and everything hooked to it.

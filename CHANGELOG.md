@@ -42,8 +42,11 @@
   worked out for the rows you have, and where the Send tab needs more room
   than that, the list is given whole extra rows rather than part of one.
   Change either option and a window standing at its smallest moves to the
-  new smallest, and remembers it. Drag the window taller and it behaves
-  exactly as before. The big button is now the same height as the Send tab's
+  new smallest, and remembers it. Above that, the resize grip steps the
+  window a row at a time, the tallest it can be is a whole row too, and a
+  saved height from an older version is brought down to the nearest row when
+  the window opens — so there is no height the window can reach that shows
+  part of a row. The big button is now the same height as the Send tab's
   Send button.
 - **The category buttons stay put under a search.** "All sold" over a search
   is the sold mail among the rows shown; they used to disappear while you

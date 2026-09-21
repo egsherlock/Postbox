@@ -448,6 +448,14 @@ function CT.MinPanelHeight(atLeast)
   return ceil(fixed + RowsHeight(rows, height))
 end
 
+-- Frozen: Core/MailboxUI.lua steps the window's height in these above the
+-- floor -- the ceiling, a drag, a restored height -- so no height it can
+-- reach shows part of a row. One row's pitch in the current row mode.
+function CT.RowStride()
+  local _, _, stride = RowMetrics()
+  return stride
+end
+
 -- For /postbox debug: the floor's arithmetic, so "half a row" arrives with
 -- the numbers that decided the window's smallest height.
 function CT.Diagnose()

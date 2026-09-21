@@ -786,8 +786,30 @@ end
 -- Read by the resize grip's bounds AND by the message box's elastic extension:
 -- the window must never end up at a height the user could not have dragged it
 -- to, or the next grab of the grip would snap it back down to one.
+-- WHOLE ROWS ABOVE THE FLOOR. The floor shows exactly its rows (see
+-- CT.MinPanelHeight), and the list is the one band that grows, so a height
+-- shows whole rows exactly when what stands above the floor is a multiple
+-- of a row's pitch. This puts `height` on the nearest such step -- down,
+-- unless `nearest` asks for the closest, which is what a live drag wants
+-- so the window steps a row at a time under the cursor. `body` is the
+-- message box's elastic extension, which rides above the rows and is left
+-- exactly as it is.
+local function SnapHeight(height, floorHeight, body, nearest)
+  local collect = ns.CollectTab
+  local stride = (collect and type(collect.RowStride) == "function")
+    and tonumber((collect.RowStride())) or 0
+  if stride <= 0 then return height end
+  local above = height - (body or 0) - floorHeight
+  if above <= 0 then return height end
+  local steps = nearest and floor(above / stride + 0.5) or floor(above / stride + 0.001)
+  return floorHeight + (body or 0) + steps * stride
+end
+
+-- The ceiling, on the same steps as everything else: the tallest whole-row
+-- height at or under the taste limit, and never under the floor.
 local function MaxWindowHeight()
-  return max(MAX_HEIGHT, MinWindowHeight(UI._state.attachRows))
+  local floorHeight = MinWindowHeight(UI._state.attachRows)
+  return SnapHeight(max(MAX_HEIGHT, floorHeight), floorHeight, 0, false)
 end
 
 -- THE FLOOR FOR ONE DRAG, which is not the same thing as the window's floor.
@@ -862,6 +884,9 @@ local function ApplyResizeBounds()
   -- exactly their height, which is why they are absent from this line.)
   local body = UI._state.bodyH
   local clampedH = max(minHeight + body, min(maxHeight + body, height))
+  -- And on whole rows: a height restored from an older build, or left over
+  -- by a row mode with a different pitch, is brought down to the row.
+  clampedH = SnapHeight(clampedH, minHeight, body, false)
   if clampedW ~= width or clampedH ~= height then
     -- Pin first, so the correction grows the window down and right rather than
     -- moving the corner the user placed.
@@ -1655,8 +1680,14 @@ local function BuildFrame()
       OnResizeStop(target)
     end
 
+    -- The drag steps a row at a time: every height the grip offers is the
+    -- floor plus whole rows, so the window never stops on part of one.
+    local function OnResizeSnap(_, height)
+      return SnapHeight(height, MinWindowHeight(UI._state.attachRows), UI._state.bodyH, true)
+    end
+
     frame.ResizeButton = helpers.CreateResizeButton(frame, OnResizeStop,
-      AdoptTransientHeight, DragMinHeight, OnResizeReset)
+      AdoptTransientHeight, DragMinHeight, OnResizeReset, OnResizeSnap)
   end
 
   -- Tab bar. One inset below the title bar, and the CONTENT inset on the left
