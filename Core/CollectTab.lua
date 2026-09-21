@@ -159,7 +159,9 @@ local ROW_META_JOIN = "  |  "
 local COMPACT_META_JOIN = "  "
 
 -- Category grid: the full-width primary, then two rows of three.
-local GRID_PRIMARY_HEIGHT = 30
+-- The primary matches the Send tab's Send button exactly: the two tabs'
+-- bottom-most control is the same control in both, and reads as such.
+local GRID_PRIMARY_HEIGHT = 28
 local GRID_BUTTON_HEIGHT  = 26
 
 -- The sender column of a mail row, as a fraction of the text area with a floor
@@ -410,16 +412,22 @@ end
 --   totals banner       controlHeight
 --     gap
 --   footer              the category grid: one full-width primary over two rows
---     inset             of three. The Done view swaps in a single delete button
+--     inset             of three, or the primary alone when the option hides
+--                       the five. The Done view swaps in a single delete button
 --                       and is therefore SHORTER, so sizing for the grid is what
---                       makes the guarantee hold in both views -- and with the
---                       category buttons switched off, which is shorter again.
---                       The floor is deliberately NOT lowered for that option:
---                       a window that shrank when a setting flipped would be
---                       writing a height nobody chose.
+--                       makes the guarantee hold in both views. The floor
+--                       follows the option, and Core/MailboxUI.lua moves a
+--                       window standing on the old floor onto the new one.
 function CT.MinPanelHeight()
   local M = Th().Metrics
-  local footer = GRID_PRIMARY_HEIGHT + M.gap * 2 + GRID_BUTTON_HEIGHT * 2
+  -- The footer as the option has it: with the five sweeps, or the primary
+  -- alone. The floor follows the option so the list below it always shows
+  -- whole rows -- a floor sized for a grid that is not there gave the list
+  -- two rows' worth of pixels that were half a row too many.
+  local footer = GRID_PRIMARY_HEIGHT
+  if ShowCategoryButtons() then
+    footer = footer + M.gap * 2 + GRID_BUTTON_HEIGHT * 2
+  end
   return ceil(M.inset
             + M.segmentHeight + M.gap
             + (ListMinHeight() + 2 * M.tightGap) + M.gap
@@ -2686,7 +2694,8 @@ local function StartCategoryRun(panel, category)
     queue, info = Mail().BuildQueueFor(SelectionIndices(panel))
     ClearSelection(panel)
   elseif Searching(panel) then
-    queue, info = Mail().BuildQueueFor(panel._filtered)
+    -- The rows on screen, narrowed again by the sweep's own category.
+    queue, info = Mail().BuildQueueFor(panel._filtered, category)
   else
     queue, info = Mail().BuildQueue(category)
   end
@@ -2811,7 +2820,18 @@ end
 local function LayoutDetailSlots(detail)
   local T = Th()
   local M = T.Metrics
-  local count = detail._slotCount or 0
+  -- The tiles in row order: the coin first when there is gold, then the
+  -- item slots that hold something.
+  local tiles = detail._tiles
+  if not tiles then
+    tiles = {}
+    detail._tiles = tiles
+  end
+  Clear(tiles)
+  if detail.MoneySlot and (detail._money or 0) > 0 then tiles[#tiles + 1] = detail.MoneySlot end
+  for i = 1, detail._slotCount or 0 do tiles[#tiles + 1] = detail.Slots[i] end
+
+  local count = #tiles
   if count <= 0 then
     detail.SlotRow:SetHeight(1)
     detail.SlotRow:Hide()
@@ -2824,7 +2844,7 @@ local function LayoutDetailSlots(detail)
   local lines = ceil(count / perLine)
 
   for i = 1, count do
-    local slot = detail.Slots[i]
+    local slot = tiles[i]
     local line = floor((i - 1) / perLine)
     local column = (i - 1) - line * perLine
     slot:ClearAllPoints()
@@ -3117,7 +3137,11 @@ local function BuildDetail(panel)
   local M = T.Metrics
 
   local detail = CreateFrame("Frame", nil, panel, "BackdropTemplate")
-  detail:SetAllPoints()
+  -- Inset like the list it covers: the same margin the top row, the list
+  -- area and the footer keep from the panel's edges, so the overlay is
+  -- exactly as wide as the tabs above it rather than running to the window.
+  detail:SetPoint("TOPLEFT", panel, "TOPLEFT", M.inset, -M.inset)
+  detail:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -M.inset, M.inset)
   detail:SetFrameLevel(panel:GetFrameLevel() + 20)
   detail:EnableMouse(true)
   T.ApplyCard(detail)
@@ -3143,6 +3167,58 @@ local function BuildDetail(panel)
   for i = 1, Mail().MAX_ATTACHMENTS do
     detail.Slots[i] = BuildDetailSlot(detail, i)
   end
+
+  -- The coin tile: gold in a mail, shown where the items are and taken the
+  -- way an item is. It used to be a number in the metadata line only, and
+  -- a sale's proceeds read as a fact about the mail rather than as the
+  -- thing there was to collect from it. First in the row, before any item.
+  local money = CreateFrame("Button", nil, detail.SlotRow, "BackdropTemplate")
+  money:SetSize(M.slotSize, M.slotSize)
+  local moneyArt = money:CreateTexture(nil, "BACKGROUND")
+  moneyArt:SetAllPoints()
+  moneyArt:SetTexture(EMPTY_SLOT_ART)
+  moneyArt:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  money.Icon = money:CreateTexture(nil, "ARTWORK")
+  money.Icon:SetAllPoints()
+  money.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  money.Icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_02")
+  money.Count = T.CreateText(money, "numberSmall", "OVERLAY")
+  money.Count:SetPoint("BOTTOMRIGHT", money, "BOTTOMRIGHT", -2, 2)
+  local moneyHighlight = money:CreateTexture(nil, "HIGHLIGHT")
+  moneyHighlight:SetAllPoints()
+  moneyHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+  moneyHighlight:SetBlendMode("ADD")
+  T.ApplySlot(money)
+  money:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L()["LABEL_GOLD"] .. Helpers().FormatMoney(detail._money or 0), 1, 1, 1)
+    GameTooltip:Show()
+  end)
+  money:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  money:SetScript("OnClick", function()
+    local index = LiveIndex(detail)
+    if not index then return end
+    Mail().TakeMoney(index, function(status)
+      if status == "busy" then return end
+      if status == "closed" then
+        StatusMailboxClosed()
+        return
+      end
+      if status == "timeout" then
+        ns.Print(L()["MSG_MAIL_TIMEOUT"])
+        return
+      end
+      -- Re-read rather than assumed: the header says whether the gold went.
+      local live = LiveIndex(detail)
+      if live then
+        PaintDetailContent(detail, live)
+        LayoutDetail(detail)
+      end
+      RequestRefresh(panel)
+    end)
+  end)
+  money:Hide()
+  detail.MoneySlot = money
 
   for i = 1, #DETAIL_ACTIONS do
     detail[DETAIL_ACTIONS[i]] = T.CreateButton(nil, detail.ActionRow)
@@ -3394,6 +3470,20 @@ function PaintDetailContent(detail, index)
     end
   end
   detail._slotCount = shownSlots
+
+  -- The coin tile, with the amount's leading denomination on it ("25g");
+  -- the whole sum is in its tooltip and in the metadata line above.
+  local moneyValue = tonumber(money) or 0
+  detail._money = moneyValue
+  if detail.MoneySlot then
+    if moneyValue > 0 then
+      local text = Helpers().FormatMoney(moneyValue)
+      detail.MoneySlot.Count:SetText(text:match("^%S+") or text)
+      detail.MoneySlot:Show()
+    else
+      detail.MoneySlot:Hide()
+    end
+  end
 end
 
 function ShowDetail(panel, index)
@@ -3501,11 +3591,13 @@ local function LayoutGrid(panel)
   -- can flip while the window is open, and a hidden button that is already in
   -- its column simply appears. A live search withdraws them too, and gives
   -- the primary its narrower name.
-  -- A search withdraws the sweeps (they would act on mail the search hid);
-  -- a selection keeps them, and only renames the primary -- the sweeps still
-  -- mean what they say, and taking them away under a shift-click read as
-  -- the screen changing shape for no reason.
-  local extras = ShowCategoryButtons() and not Searching(panel)
+  -- Neither a search nor a selection withdraws the sweeps. Under a search
+  -- each sweep acts on the rows on screen of its own kind -- "All sold"
+  -- over a search for one seller is the sold mail from that seller -- so
+  -- they still mean what they say; and a footer that changed shape under a
+  -- keystroke or a shift-click read as the screen moving for no reason, and
+  -- pushed the list a half-row off its whole-row floor.
+  local extras = ShowCategoryButtons()
   if Selecting(panel) then
     buttons[1].caption = L()("CAT_SELECTED", SelectionCount(panel))
   elseif Searching(panel) then
@@ -3545,7 +3637,7 @@ end
 -- run works on the inbox and not on the listing.
 local function FooterHeight(panel)
   if panel.viewMode == VIEW_DONE then return GRID_BUTTON_HEIGHT end
-  if not ShowCategoryButtons() or Searching(panel) then return GRID_PRIMARY_HEIGHT end
+  if not ShowCategoryButtons() then return GRID_PRIMARY_HEIGHT end
   return GRID_PRIMARY_HEIGHT + Th().Metrics.gap * 2 + GRID_BUTTON_HEIGHT * 2
 end
 

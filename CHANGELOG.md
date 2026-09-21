@@ -17,11 +17,11 @@
   subject too.
 - **The read/unread dot is a dot.** A round mark, a little further from the
   row's edge, so it no longer sits against the selection bar as one shape.
-- **The options panel is two columns, in the window's order.** The recipient
-  manager has its own button across the top, with the letter bundle and its
-  live count. Below it, the left column is Mail tab, Send tab and Mail alerts;
-  the right is Window (grid docking now sits with the style and border
-  settings) and Minimap. The panel is a rectangle a screen can hold rather
+- **The options panel is two columns, in the window's order.** The left
+  column is Mail tab, Send tab and Mail alerts; the right starts with the
+  recipient manager's own button — the letter bundle and its live count —
+  then Window (grid docking now sits with the style and border settings) and
+  Minimap. The panel is a rectangle a screen can hold rather
   than a strip taller than most, and the Mail tab's caption is a labelled
   dropdown like the Window card's.
 - **A scroll bar of Postbox's own.** Every list — the inbox, a mail's text,
@@ -31,10 +31,20 @@
   all when everything fits. The old bar stood a hand's width from the rows in
   an empty track, off-centre.
 - **Right-click the resize grip to put the window back to its default size.**
-- **The reading view is tidier.** The empty square at the top-left is gone —
-  the item already sits in the attachment row — the message sits on its own
-  surface below the header, and its scroll bar only appears when the text
-  needs one.
+- **The reading view is tidier, and gold is something you can see and take.**
+  The empty square at the top-left is gone — the item already sits in the
+  attachment row — the message sits on its own surface below the header, its
+  scroll bar only appears when the text needs one, and the view is the same
+  width as the tabs above it. Gold in a mail now appears as a coin tile
+  beside the items, with the amount on it; click it to take just the gold.
+- **Hiding the category buttons keeps the list on whole rows.** The window's
+  smallest size follows the option: switch the buttons off and a window
+  standing at its smallest shrinks by their height, so the list still shows
+  five compact rows (or three full ones) exactly, not five and a half. The
+  big button is now the same height as the Send tab's Send button.
+- **The category buttons stay put under a search.** "All sold" over a search
+  is the sold mail among the rows shown; they used to disappear while you
+  typed.
 - **Fixed: queuing a thirteenth attachment did nothing.** Two causes, both
   gone: the click never reached Postbox under some bag addons (it now
   listens where every bag button reports its clicks, and to the game's own

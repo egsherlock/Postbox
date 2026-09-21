@@ -1322,9 +1322,34 @@ end
 -- changes. Synchronous, like the two around it.
 function UI.RefreshCollectCategoryButtons()
   local panel, collect = CollectPanel(), ns.CollectTab
-  if panel and collect and collect.RefreshCategoryButtons then
-    collect.RefreshCategoryButtons(panel)
+  if not (panel and collect and collect.RefreshCategoryButtons) then return end
+
+  -- The option moves the window's floor (CT.MinPanelHeight follows it). A
+  -- window standing ON the floor -- which is where a window that has never
+  -- been resized stands, and where the list shows exactly its whole rows --
+  -- goes with it, so hiding the five buttons shortens the window by their
+  -- height instead of handing the list two rows of pixels that are a half
+  -- row too many. A window the player dragged taller keeps its height and
+  -- gains the room. Saved, so the next open agrees.
+  local frame = UI._frame
+  local floorBefore = frame and MinWindowHeight(UI._state.attachRows) or nil
+  collect.RefreshCategoryButtons(panel)
+  if not frame then return end
+
+  local floorAfter = MinWindowHeight(UI._state.attachRows)
+  local height = tonumber(frame:GetHeight()) or 0
+  local standing = height - (UI._state.bodyH or 0)
+  if floorBefore and floorAfter ~= floorBefore
+     and standing - floorBefore < 0.5 and floorBefore - standing < 0.5 then
+    local helpers = WindowHelpers()
+    if helpers and helpers.PinFrameTopLeft then helpers.PinFrameTopLeft(frame) end
+    frame:SetHeight(height + (floorAfter - floorBefore))
+    if helpers and helpers.SaveFramePosition and UI._windowStore then
+      helpers.SaveFramePosition(frame, UI._windowStore)
+    end
   end
+  ApplyResizeBounds()
+  UI.ApplyWindowLayout()
 end
 
 -- Frozen: Core/OptionsPanel.lua calls this when the compact-row option changes.
@@ -1419,6 +1444,10 @@ local function BuildFrame()
 
   local store = ns.Store
   local windowStore = (store and store.EnsurePath and store.EnsurePath("profile.window", {})) or {}
+  -- Published for the one write outside this function: a floor change
+  -- (RefreshCollectCategoryButtons) that moves the window has to save the
+  -- height it moved to, or the next open clamps back to the old one.
+  UI._windowStore = windowStore
 
   local frame = CreateFrame("Frame", "PostboxFrame", UIParent, WINDOW_TEMPLATE)
   -- The default size IS the derived minimum: the window opens at its floor.

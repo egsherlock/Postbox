@@ -328,7 +328,8 @@ end
 -- a filtered list takes the mails on screen and nothing else. Every rule
 -- BuildQueue applies -- unloaded headers, finished mail, C.O.D. -- applies
 -- here too, and the queue comes out descending for the same reason.
-function Mail.BuildQueueFor(indices)
+function Mail.BuildQueueFor(indices, category)
+  category = category or "all"
   local numItems, totalItems = GetInboxNumItems()
   numItems = tonumber(numItems) or 0
   totalItems = tonumber(totalItems) or numItems
@@ -349,7 +350,7 @@ function Mail.BuildQueueFor(indices)
   end
   table.sort(sorted, function(a, b) return a > b end)
   for i = 1, #sorted do
-    Consider(sorted[i], "all", queue, info)
+    Consider(sorted[i], category, queue, info)
   end
 
   return queue, info
@@ -1215,6 +1216,16 @@ function Mail.DeleteMail(index, onDone)
     return
   end
   SingleCommand(function() DeleteInboxItem(index) end, onDone)
+end
+
+-- The money alone, for the reading view's coin tile. Same channel rules as
+-- everything else: one command at a time, settled by the inbox update.
+function Mail.TakeMoney(index, onDone)
+  if type(TakeInboxMoney) ~= "function" then
+    if onDone then onDone("unavailable") end
+    return
+  end
+  SingleCommand(function() TakeInboxMoney(index) end, onDone)
 end
 
 function Mail.ReturnMail(index, onDone)
