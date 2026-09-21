@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.37.0
+
+- **Pick the mails to collect.** Shift-click a row on the Mail tab and it is
+  selected; shift-click another and everything between the two is; ctrl-click
+  picks or unpicks single rows anywhere, including inside a search. The big
+  button reads "Collect 5 selected" and takes exactly those. Shift-click no
+  longer opens a mail — right-click does that (or left-click, with the option
+  on), exactly as before.
+- **Auction subjects read as the item.** "Auction won: Mana Lily Tea" under a
+  sender of "Auction House" said the same thing three times, and the item's
+  name was the part that got cut off. Rows and the reading view now show the
+  item's name alone for auction mail, in every language the game speaks.
+- **The options panel is in the window's order.** Mail tab, Send tab, Window,
+  Mail alerts, Minimap. The old General card mixed eight unrelated switches
+  with the recipient manager's portrait; grid docking now sits with the other
+  window settings, and the recipient manager is a row under the Send tab's
+  two switches, with its count.
+- **The scroll bar sits beside the rows.** It stood a hand's width away in
+  an empty track; it is now pinned inside the list's edge, and it hides
+  itself when everything fits.
+- **Right-click the resize grip to put the window back to its default size.**
+- **The reading view is tidier.** The empty square at the top-left is gone —
+  the item already sits in the attachment row — the message sits on its own
+  surface below the header, and its scroll bar only appears when the text
+  needs one.
+- **Fixed: queuing a thirteenth attachment did nothing under some bag
+  addons.** The queue now also listens for the game's own "cannot attach more
+  than 12 items" refusal and takes the item under the cursor.
+- **Fixed: a freshly favourited recipient could be filed under a lowercase
+  name** when it was favourited from the recipient manager.
+
 ## 1.36.0
 
 - **Post more than twelve items in one go.** With every attachment slot full,

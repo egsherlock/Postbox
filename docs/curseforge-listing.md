@@ -33,13 +33,16 @@ Sweep buttons pick out just the expired auctions, just the sales, just what you
 bought, just the cancellations. When the run finishes, chat tells you what it earned
 and what it spent.
 
-Shift-click any mail to read it without collecting it. Hover an attachment for the
+Right-click any mail to read it without collecting it. Hover an attachment for the
 real item tooltip. A mail from another player can be returned from the same view.
-Turn on compact rows and half again as many mails fit in the same window.
+Turn on compact rows and half again as many mails fit in the same window. Auction
+mail shows the item's name, not "Auction won:" over and over.
 
-**Search the inbox.** A box on the top row narrows the list by sender or subject.
-While it is on, the big button reads "Collect shown" and takes exactly the mails on
-screen — a search for one sender can never sweep the whole box.
+**Search the inbox, or pick the rows.** A box on the top row narrows the list by
+sender or subject; while it is on, the big button reads "Collect shown" and takes
+exactly the mails on screen. Shift-click and ctrl-click select rows the way a file
+manager does, and the button reads "Collect 5 selected". A search for one sender, or
+a handful of picked rows, can never sweep the whole box.
 
 ![A full inbox, cleared in one pass](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/collect.png)
 
@@ -196,14 +199,17 @@ Postbox is meant to be usable without configuring anything, so nothing here is
 required reading — but if you want the window to work your way, it is all in one
 place.
 
-**How the list behaves.** Compact rows, which fit half again as many mails on
-screen. Mail counts on the tabs. The Mail tab's caption — counts, a running total, a
-single dot, or nothing at all. Whether a left-click opens a mail or collects it,
-whether the All view is offered beside Collect and Done, and whether the five
-category buttons sit under the list or only Collect does.
+**Mail tab.** Compact rows, which fit half again as many mails on screen. Mail counts
+on the tabs. The Mail tab's caption — counts, a running total, a single dot, or
+nothing at all. Whether a left-click opens a mail or collects it, whether the All
+view is offered beside Collect and Done, and whether the five category buttons sit
+under the list or only Collect does.
 
-**How sending behaves.** Whether the recipient stays in the Recipient box after a send,
-and whether right-clicking a bag item while reading mail attaches it.
+**Send tab.** Whether the recipient stays in place after a send, whether
+right-clicking a bag item while reading mail attaches it, and the recipient manager.
+
+**Window.** Grid docking, style, border, border size and background opacity — the
+section above.
 
 **How mail is announced.** A sound when new mail arrives, a flash on the minimap
 icon, and whether the mailbox memory is kept at all.

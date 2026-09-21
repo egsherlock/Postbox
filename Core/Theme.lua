@@ -731,8 +731,14 @@ Theme.Space = SPACE
 -- bar on top of the container's border art. The previous build used four
 -- different widths -- 22, 24, 24 and 26 -- for one bar; 22 was the one over the
 -- art. Derived, not chosen:
-local SCROLLBAR_OFFSET    = 6   -- how far outside the scroll frame the bar sits
-local SCROLLBAR_WIDTH     = 16  -- the bar's own width
+--
+-- Since 1.37 the lists pin the bar themselves (Core/CollectTab.lua's
+-- PinScrollBar) to the container's right edge, so the gutter no longer has
+-- to hold the template's outward offset: it is the bar's own width plus the
+-- clearance to the edge, and the thumb sits right beside the rows instead of
+-- a hand's width from them.
+local SCROLLBAR_OFFSET    = 0   -- the bar is pinned, not left where the template puts it
+local SCROLLBAR_WIDTH     = 12  -- the bar's own width once pinned
 local SCROLLBAR_CLEARANCE = 4   -- room left between the bar and the panel edge
 
 Theme.Metrics = {

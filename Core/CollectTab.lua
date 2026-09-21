@@ -55,6 +55,29 @@ local function Labels()  return ns.CATEGORY_LABELS or {} end
 local function L()       return ns.L end
 local function Th()      return ns.Theme end
 
+-- The template's scroll bar, put where a modern one goes: pinned inside the
+-- container's right edge with the rows ending just beside it, instead of
+-- hanging six pixels outside the scroll frame with a hand's width of empty
+-- track between it and the content. And hidden when there is nothing to
+-- scroll -- the template's own scrollBarHideable flag, honoured by its
+-- OnScrollRangeChanged, so no handler of ours is involved. Both host skins
+-- and Postbox Modern flatten the bar's art; this only decides where it is.
+local function PinScrollBar(scroll, container)
+  if not scroll then return end
+  scroll.scrollBarHideable = 1
+  local name = scroll.GetName and scroll:GetName()
+  local bar = scroll.ScrollBar or (name and _G[name .. "ScrollBar"])
+  if not bar or not container then return end
+  local M = Th().Metrics
+  bar:ClearAllPoints()
+  -- The template's up/down buttons still exist above and below the slider
+  -- (invisible under every skin but Blizzard's); 16 is their height.
+  bar:SetPoint("TOPRIGHT", container, "TOPRIGHT", -M.tightGap, -16)
+  bar:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -M.tightGap, 16)
+  -- The host skins pin the bar to the same edge themselves (and flatten its
+  -- art on the way past); this is the same answer for the unskinned window.
+end
+
 -------------------------------------------------------------
 -- Constants
 --
@@ -978,6 +1001,144 @@ function CT.ClearSearch(panel)
   if box and box:GetText() ~= "" then box:SetText("") end
 end
 
+-------------------------------------------------------------
+-- Selection
+--
+-- Pick the mails to collect before collecting them. Shift-click a row and
+-- it is selected; shift-click another and everything between the two is;
+-- ctrl-click picks or unpicks single rows anywhere. The gestures are the
+-- file manager's, because that is where everyone learned them. Only mail
+-- with something left to collect can be picked -- a finished mail has no
+-- part in a collect run -- and a selection can be made inside a search:
+-- the range runs over the rows on screen, whatever narrowed them.
+--
+-- The selection is a set of inbox INDICES, which is the one thing a collect
+-- run needs and the one thing an inbox reindex invalidates. So it lives
+-- exactly as long as the inbox it was made in: the moment the mail count
+-- changes -- a collect, a delete, a return, new mail landing -- it is
+-- dropped rather than allowed to name different mails. A run started from it
+-- takes the selected indices through the same queue the sweeps use.
+--
+-- While anything is selected the footer behaves as it does under a search:
+-- the category sweeps withdraw and the one button reads "Collect N
+-- selected" and takes exactly those.
+-------------------------------------------------------------
+
+local function Selection(panel)
+  local set = panel._selected
+  if not set then
+    set = {}
+    panel._selected = set
+  end
+  return set
+end
+
+local function SelectionCount(panel)
+  return panel._selectedCount or 0
+end
+
+local function Selecting(panel)
+  return SelectionCount(panel) > 0
+end
+
+-- Searching or selecting: the two states that narrow what the primary
+-- button acts on, and withdraw the sweeps that would not.
+local function Narrowed(panel)
+  return Searching(panel) or Selecting(panel)
+end
+
+-- The selected rows' wash: the accent at low alpha over the stripe, and a
+-- bar at the left edge. Separate textures over the row's own background,
+-- so the hover repaint (which rewrites that background) leaves them be.
+local function PaintRowSelection(panel, row)
+  local on = panel._selected ~= nil and row.mailIndex ~= nil
+    and panel._selected[row.mailIndex] == true
+  if on and not row._selBar then
+    local T = Th()
+    row._selWash = row:CreateTexture(nil, "BACKGROUND", nil, 1)
+    row._selWash:SetAllPoints()
+    row._selBar = row:CreateTexture(nil, "ARTWORK")
+    row._selBar:SetWidth(2)
+    row._selBar:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    row._selBar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+    local r, g, b = T.GetAccent()
+    row._selWash:SetColorTexture(r, g, b, 0.14)
+    row._selBar:SetColorTexture(r, g, b, 0.9)
+  end
+  if row._selBar then
+    if on then
+      -- Re-tinted on every paint: the accent can change under a host skin.
+      local r, g, b = Th().GetAccent()
+      row._selWash:SetColorTexture(r, g, b, 0.14)
+      row._selBar:SetColorTexture(r, g, b, 0.9)
+    end
+    row._selWash:SetShown(on)
+    row._selBar:SetShown(on)
+  end
+end
+
+-- Re-paints every bound row and, when the selection has just appeared or
+-- just emptied, the footer.
+local function AfterSelectionChange(panel, wasSelecting)
+  local rows = panel._rows or {}
+  for i = 1, #rows do
+    if rows[i].mailIndex then PaintRowSelection(panel, rows[i]) end
+  end
+  if wasSelecting ~= Selecting(panel) then CT.RefreshCategoryButtons(panel) end
+end
+
+local function ClearSelection(panel)
+  if not panel or not Selecting(panel) then return end
+  panel._selected, panel._selectedCount = nil, 0
+  panel._selectAnchor = nil
+  AfterSelectionChange(panel, true)
+end
+
+local function SetSelected(panel, index, on)
+  local set = Selection(panel)
+  if (set[index] == true) == on then return end
+  set[index] = on or nil
+  panel._selectedCount = SelectionCount(panel) + (on and 1 or -1)
+end
+
+local function SelectToggle(panel, row)
+  local index = row.mailIndex
+  if not index then return end
+  local was = Selecting(panel)
+  local set = Selection(panel)
+  SetSelected(panel, index, not set[index])
+  -- The row just picked is where the next shift-click measures from,
+  -- picked or unpicked: that is the file manager's rule too.
+  panel._selectAnchor = row._rowIndex
+  AfterSelectionChange(panel, was)
+end
+
+local function SelectRange(panel, row)
+  local anchor = panel._selectAnchor
+  if not anchor or not Selecting(panel) then
+    SelectToggle(panel, row)
+    return
+  end
+  local was = Selecting(panel)
+  local from, to = anchor, row._rowIndex or anchor
+  if from > to then from, to = to, from end
+  local filtered, done = panel._filtered, panel._filteredDone
+  for position = from, to do
+    local index = filtered[position]
+    if index and not done[position] then SetSelected(panel, index, true) end
+  end
+  AfterSelectionChange(panel, was)
+end
+
+-- The selected indices, highest first: the order a collect run wants them
+-- in, so that taking one never shifts the ones still to come.
+local function SelectionIndices(panel)
+  local out = {}
+  for index in pairs(panel._selected or {}) do out[#out + 1] = index end
+  table.sort(out, function(a, b) return a > b end)
+  return out
+end
+
 -- Sizes every segment to the longest rendered caption -- counts included -- and
 -- lays them out. A fixed width sized for English "Read (99+)" is what clipped
 -- the German and Russian captions into their neighbour.
@@ -1114,8 +1275,10 @@ local ShowDetail, CollectSingleMail, DeleteOneMail  -- forward declarations
 --
 --                     option OFF (default)      option ON
 --   left              collect                   open the mail
---   shift+left        open the mail             collect
 --   right             open the mail             collect
+--
+-- Shift-click used to be a second spelling of right-click. It is a selection
+-- gesture now (see "Selection"), which is why it appears in neither column.
 --
 -- A FINISHED mail has nothing to collect, so every button opens it under either
 -- mapping. That is a property of the MAIL and not of the view it is being listed
@@ -1130,7 +1293,7 @@ local ShowDetail, CollectSingleMail, DeleteOneMail  -- forward declarations
 -- Returns true to preview, false to collect.
 local function PreviewGesture(row, button)
   if row.mailDone then return true end
-  local alternate = (button == "RightButton") or IsShiftKeyDown()
+  local alternate = (button == "RightButton")
   if PreviewOnClick() then return not alternate end
   return alternate
 end
@@ -1139,6 +1302,14 @@ local function ActivateRow(row, button)
   local panel = row.panel
   local index = LiveIndex(row)
   if not (panel and index) then return end
+
+  -- A modified left-click is a selection gesture, under either mapping and
+  -- on either button's verb: shift extends a range from the last row picked,
+  -- ctrl picks or unpicks the one row. See "Selection" above.
+  if button == "LeftButton" and not row.mailDone then
+    if IsShiftKeyDown() then SelectRange(panel, row) return end
+    if IsControlKeyDown() then SelectToggle(panel, row) return end
+  end
 
   if not PreviewGesture(row, button) then
     CollectSingleMail(panel, index)
@@ -1423,6 +1594,12 @@ local function BuildRow(panel)
       GameTooltip:AddLine(T2.Colorize("warning", StuckLine(stuck)), 1, 1, 1, true)
     end
     if teach then GameTooltip:AddLine(teach, 0.7, 0.7, 0.7, true) end
+    -- The selection gestures, on the same rows the teach line is about: a
+    -- finished mail cannot be picked, so it gets neither line.
+    if not self.mailDone then
+      local pick = RawKey("HINT_ROW_SELECT")
+      if pick then GameTooltip:AddLine(pick, 0.7, 0.7, 0.7, true) end
+    end
     GameTooltip:Show()
   end)
   row:SetScript("OnLeave", function(self)
@@ -1493,6 +1670,7 @@ local function BindRow(panel, row, index, position, compact, done)
   -- StyleMailRow writes _rowIndex / _hovered, which the hover handlers repaint
   -- from. `position` is the DISPLAYED position, never the inbox index.
   T.StyleMailRow(row, position, false)
+  PaintRowSelection(panel, row)
 
   T.SetColor(row.Indicator, wasRead and "read" or "unread")
   row.Icon:SetTexture(Mail().GetMailIcon(index))
@@ -1554,7 +1732,11 @@ local function BindRow(panel, row, index, position, compact, done)
   -- it arrived with, so a parenthesised count is rewritten to what is left.
   -- Only a TRAILING count: that is where the auction house writes it, and a
   -- player-written subject may contain parenthesised numbers of its own.
-  local displaySubject = subject or ""
+  -- An auction subject is shown as the item's name alone: the sender column
+  -- already says "Auction House" and the category says what kind of mail it
+  -- is, so "Auction won:" was the same fact a third time, and the part that
+  -- pushed the item's name off the end of the row.
+  local displaySubject = Helpers().ShortSubject(subject or "")
   if quantity > 0 then
     displaySubject = (displaySubject:gsub("%(%d+%)%s*$", "(" .. quantity .. ")"))
   end
@@ -1775,6 +1957,14 @@ function CT.RefreshMailList(panel)
     numItems, totalItems = GetInboxNumItems()
     numItems = tonumber(numItems) or 0
     totalItems = tonumber(totalItems) or numItems
+  end
+
+  -- A selection names inbox indices, and a changed count means those indices
+  -- name different mails now. Dropped before the list is rebuilt, so no row
+  -- is ever painted as picked for a mail nobody picked.
+  if panel._lastNumItems ~= numItems then
+    panel._lastNumItems = numItems
+    ClearSelection(panel)
   end
 
   local filtered, filteredDone = panel._filtered, panel._filteredDone
@@ -2465,7 +2655,13 @@ local function StartCategoryRun(panel, category)
   -- while a search is on, so `all` is the only category that can arrive here
   -- in that state.
   local queue, info
-  if Searching(panel) then
+  if Selecting(panel) then
+    -- The picked rows, and only those. The selection is spent by the run
+    -- whatever comes of it: a refused run leaves ordinary uncollected mail,
+    -- which the next press picks up as such.
+    queue, info = Mail().BuildQueueFor(SelectionIndices(panel))
+    ClearSelection(panel)
+  elseif Searching(panel) then
     queue, info = Mail().BuildQueueFor(panel._filtered)
   else
     queue, info = Mail().BuildQueue(category)
@@ -2622,9 +2818,8 @@ end
 local function LayoutDetailHeader(detail)
   local T = Th()
   local M = T.Metrics
-  local textHeight = (detail.Sender:GetStringHeight() or 0)
+  local headerHeight = (detail.Sender:GetStringHeight() or 0)
     + M.tightGap + (detail.Subject:GetStringHeight() or 0)
-  local headerHeight = max(M.slotSize, textHeight)
   detail.Info:ClearAllPoints()
   detail.Info:SetPoint("TOPLEFT", detail, "TOPLEFT", M.inset, -(M.inset + headerHeight + M.gap))
   detail.Info:SetPoint("RIGHT", detail, "RIGHT", -M.inset, 0)
@@ -3003,14 +3198,13 @@ local function BuildDetail(panel)
     DeleteOneMail(panel, index)
   end)
 
-  -- Header.
-  detail.Icon = detail:CreateTexture(nil, "ARTWORK")
-  detail.Icon:SetSize(M.slotSize, M.slotSize)
-  detail.Icon:SetPoint("TOPLEFT", detail, "TOPLEFT", M.inset, -M.inset)
-  detail.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-
+  -- Header: sender, subject, then the metadata line, flush with the panel's
+  -- left edge. There used to be a 36px icon box at the top-left with the
+  -- text hanging off its right; the same icon sits in the attachment row
+  -- below, so up here it was a square of nothing that looked like a slot
+  -- waiting for an item.
   detail.Sender = T.CreateText(detail, "heading")
-  detail.Sender:SetPoint("TOPLEFT", detail.Icon, "TOPRIGHT", M.gap, 0)
+  detail.Sender:SetPoint("TOPLEFT", detail, "TOPLEFT", M.inset, -M.inset)
   detail.Sender:SetPoint("RIGHT", detail, "RIGHT", -M.inset, 0)
   detail.Sender:SetJustifyH("LEFT")
   detail.Sender:SetWordWrap(false)
@@ -3028,11 +3222,21 @@ local function BuildDetail(panel)
   detail.Info:SetJustifyH("LEFT")
   detail.Info:SetWordWrap(true)
 
-  -- Body, between the header and the two bottom bands.
-  detail.BodyScroll = CreateFrame("ScrollFrame", nil, detail, "UIPanelScrollFrameTemplate")
-  detail.BodyScroll:SetPoint("TOPLEFT", detail.Info, "BOTTOMLEFT", 0, -M.gap)
-  detail.BodyScroll:SetPoint("RIGHT", detail, "RIGHT", -(M.inset + M.scrollGutter), 0)
-  detail.BodyScroll:SetPoint("BOTTOM", detail.SlotRow, "TOP", 0, M.gap)
+  -- Body, between the header and the two bottom bands, on its own surface:
+  -- the list surface the mail rows sit on, so the message reads as content
+  -- inside the card and the header as the card's own chrome. The scroll
+  -- frame sits inside it with the rows' padding, and its bar is pinned to
+  -- the surface's edge and hidden until the text needs it.
+  detail.BodyCard = CreateFrame("Frame", nil, detail, "BackdropTemplate")
+  detail.BodyCard:SetPoint("TOPLEFT", detail.Info, "BOTTOMLEFT", 0, -M.gap)
+  detail.BodyCard:SetPoint("RIGHT", detail, "RIGHT", -M.inset, 0)
+  detail.BodyCard:SetPoint("BOTTOM", detail.SlotRow, "TOP", 0, M.gap)
+  T.ApplyList(detail.BodyCard)
+
+  detail.BodyScroll = CreateFrame("ScrollFrame", nil, detail.BodyCard, "UIPanelScrollFrameTemplate")
+  detail.BodyScroll:SetPoint("TOPLEFT", detail.BodyCard, "TOPLEFT", M.gap, -M.gap)
+  detail.BodyScroll:SetPoint("BOTTOMRIGHT", detail.BodyCard, "BOTTOMRIGHT", -M.scrollGutter, M.gap)
+  PinScrollBar(detail.BodyScroll, detail.BodyCard)
 
   detail.BodyChild = CreateFrame("Frame", nil, detail.BodyScroll)
   detail.BodyChild:SetSize(FALLBACK_PANEL_WIDTH, 10)
@@ -3123,9 +3327,8 @@ function PaintDetailContent(detail, index)
   local isCOD = hasCOD and codValue > 0
   local hasContent = (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0
 
-  detail.Icon:SetTexture(Mail().GetMailIcon(index))
   detail.Sender:SetText(sender or L()["SENDER_UNKNOWN"])
-  detail.Subject:SetText(subject or "")
+  detail.Subject:SetText(Helpers().ShortSubject(subject or ""))
   detail.Info:SetText(DetailInfoText(detail, index, kind, hasCOD))
 
   -- Reply exists to hand a C.O.D. mail back. Return is offered wherever the
@@ -3274,9 +3477,14 @@ local function LayoutGrid(panel)
   -- can flip while the window is open, and a hidden button that is already in
   -- its column simply appears. A live search withdraws them too, and gives
   -- the primary its narrower name.
-  local extras = ShowCategoryButtons() and not Searching(panel)
-  buttons[1].caption = Searching(panel) and L()["CAT_SHOWN"]
-    or (Labels().all or "all")
+  local extras = ShowCategoryButtons() and not Narrowed(panel)
+  if Selecting(panel) then
+    buttons[1].caption = L()("CAT_SELECTED", SelectionCount(panel))
+  elseif Searching(panel) then
+    buttons[1].caption = L()["CAT_SHOWN"]
+  else
+    buttons[1].caption = Labels().all or "all"
+  end
   local columns = T.ColumnEdges(width, GRID_COLUMNS, M.gap, panel._gridColumns)
   for i = 2, #buttons do
     local slot = i - 2
@@ -3309,7 +3517,7 @@ end
 -- run works on the inbox and not on the listing.
 local function FooterHeight(panel)
   if panel.viewMode == VIEW_DONE then return GRID_BUTTON_HEIGHT end
-  if not ShowCategoryButtons() or Searching(panel) then return GRID_PRIMARY_HEIGHT end
+  if not ShowCategoryButtons() or Narrowed(panel) then return GRID_PRIMARY_HEIGHT end
   return GRID_PRIMARY_HEIGHT + Th().Metrics.gap * 2 + GRID_BUTTON_HEIGHT * 2
 end
 
@@ -3359,6 +3567,8 @@ function SetViewMode(panel, id)
   if panel.viewMode == id then return end
   panel.viewMode = id
   local doneView = (id == VIEW_DONE)
+  -- A selection was made over one view's rows; the next view lists others.
+  ClearSelection(panel)
 
   -- See FooterHeight for why only the done view swaps the footer.
   panel.Footer:SetHeight(FooterHeight(panel))
@@ -3462,6 +3672,7 @@ function CT.Build(parent)
   local scroll = CreateFrame("ScrollFrame", nil, panel.MailListArea, "UIPanelScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT", panel.MailListArea, "TOPLEFT", M.tightGap, -M.tightGap)
   scroll:SetPoint("BOTTOMRIGHT", panel.MailListArea, "BOTTOMRIGHT", -M.scrollGutter, M.tightGap)
+  PinScrollBar(scroll, panel.MailListArea)
   panel.MailListScroll = scroll
 
   panel.MailListChild = CreateFrame("Frame", nil, scroll)

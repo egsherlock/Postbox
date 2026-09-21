@@ -34,6 +34,59 @@ H.Capitalize   = ns.Core.Strings.Capitalize
 H.CharCount    = ns.Core.Strings.CharCount
 H.CharBoundary = ns.Core.Strings.CharBoundary
 
+-------------------------------------------------------------
+-- Auction subjects, shortened
+--
+-- Every auction-house mail carries a subject built from one of the client's
+-- templates -- "Auction won: %s", "Auction successful: %s" and so on -- and
+-- the list already says who sent it and what kind of mail it is. The
+-- template half is therefore said three times on one row, and the item's
+-- name, the only part that varies, is the part pushed off the end. This
+-- returns just the item name for a subject that matches one of those
+-- templates, and the subject untouched for anything else.
+--
+-- Patterns are built once from the client's own (localised) templates, so
+-- this is right in every locale the client is, and it is plain string work
+-- with no magic characters left live: everything but the placeholder is
+-- escaped before the placeholder becomes a capture.
+-------------------------------------------------------------
+
+local SUBJECT_TEMPLATES = {
+  "AUCTION_WON_MAIL_SUBJECT", "AUCTION_SOLD_MAIL_SUBJECT",
+  "AUCTION_EXPIRED_MAIL_SUBJECT", "AUCTION_REMOVED_MAIL_SUBJECT",
+  "AUCTION_OUTBID_MAIL_SUBJECT", "AUCTION_INVOICE_MAIL_SUBJECT",
+}
+
+local subjectPatterns = nil
+
+local function SubjectPatterns()
+  if subjectPatterns then return subjectPatterns end
+  subjectPatterns = {}
+  for i = 1, #SUBJECT_TEMPLATES do
+    local template = _G[SUBJECT_TEMPLATES[i]]
+    if type(template) == "string" and template:find("%%s", 1, true) then
+      -- Escape everything, then let the one placeholder through as a capture.
+      local escaped = template:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")
+      local pattern = "^%s*" .. escaped:gsub("%%%%s", "(.-)", 1) .. "%s*$"
+      subjectPatterns[#subjectPatterns + 1] = pattern
+    end
+  end
+  return subjectPatterns
+end
+
+-- subject -> the item name alone for an auction-template subject, else the
+-- subject as given. Never empty for a non-empty input: a template whose
+-- capture comes back blank hands the whole subject back instead.
+function H.ShortSubject(subject)
+  if type(subject) ~= "string" or subject == "" then return subject or "" end
+  local patterns = SubjectPatterns()
+  for i = 1, #patterns do
+    local item = subject:match(patterns[i])
+    if item and item ~= "" then return item end
+  end
+  return subject
+end
+
 -- copper -> compact plain text ("12g 30s"), "" for zero.
 H.FormatMoney = ns.Core.Formatting.FormatMoneyText
 

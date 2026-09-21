@@ -54,9 +54,11 @@ install it and open a mailbox.
 Three views — Collect, Done, All — with one-click sweeps that pick out a single kind
 of mail: expired, sold, bought, cancelled, or everything else. A search box narrows
 the list by sender or subject, and while it is on the big button collects only what
-is shown. Shift-click a mail to look inside without collecting; hover an attachment
-for its real item tooltip; return a player's mail from the same view. Compact rows
-fit half again as many mails in the same window.
+is shown. Shift-click and ctrl-click pick rows the way a file manager does, and the
+button collects just those. Right-click a mail to look inside without collecting;
+hover an attachment for its real item tooltip; return a player's mail from the same
+view. Auction mail shows the item's name rather than "Auction won:" three times a
+screen. Compact rows fit half again as many mails in the same window.
 
 A banner under the list keeps a running **total earned and total spent** — proceeds,
 postage and C.O.D. charges — and the finished run repeats it in chat.
@@ -125,24 +127,26 @@ One panel, from the cog in the title bar or a right-click on the minimap icon.
 Nothing in it is required reading — Postbox is meant to work before you open it — but
 it is where the window becomes yours. In the panel's own order:
 
-**General.** Compact mail rows, which fit half again as many mails on screen. Mail
+**Mail tab.** Compact mail rows, which fit half again as many mails on screen. Mail
 counts on the tabs. Whether the All view is offered beside Collect and Done, and
 whether the five category buttons sit under the list or only the one Collect
-button does. Whether a left-click opens a mail or collects it. Whether the
-recipient stays in the Recipient box after a send. The Mail tab's caption: counts, a
-running total, a single dot, or nothing at all. The recipient manager opens from
-here too.
+button does. Whether a left-click opens a mail or collects it. The Mail tab's
+caption: counts, a running total, a single dot, or nothing at all.
 
-**Mail alerts.** A sound when mail arrives, a flash on the minimap icon, and whether
-the mailbox memory is kept at all.
+**Send tab.** Whether right-clicking a bag item while reading mail attaches it, and
+whether the recipient stays in place after a send. The recipient manager opens from
+here, with its count.
 
-**Appearance.** **Window style** picks who paints Postbox: your UI pack,
-Blizzard-native, or Postbox Modern. A badge on that heading says which is happening —
+**Window.** Grid docking, then **Window style**, which picks who paints Postbox: your
+UI pack, Blizzard-native, or Postbox Modern. A badge on that heading says which is happening —
 a green dot for *Inheriting EllesmereUI settings*, a neutral one for *Overriding
 EllesmereUI* — so it is never ambiguous where the look is coming from. **Border,
 border size and background opacity** belong to whichever style is painting; under a
 UI pack they default to matching it, so a change to your pack's borders or
 transparency carries here untouched, and Postbox Modern brings its own three.
+
+**Mail alerts.** A sound when mail arrives, a flash on the minimap icon, and whether
+the mailbox memory is kept at all.
 
 **Minimap.** The icon on or off, its style from more than two dozen, its size, where
 it sits, and whether it takes your accent colour, a glow, a shadow or a pulse while

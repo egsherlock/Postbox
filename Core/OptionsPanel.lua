@@ -300,15 +300,23 @@ local function Build()
   local y = -34
   local card, cy
 
-  card, y = BeginSection(frame, y, L["OPT_GENERAL_HEADING"])
+  -- The panel is ordered the way the window is: the Mail tab, the Send tab,
+  -- the window they sit in, then what happens away from the mailbox. One
+  -- "General" card used to hold eight unrelated switches and the recipient
+  -- manager's portrait; a player looking for the thing about sending had to
+  -- read the things about the list to find it.
+
+  -- Mail tab: the list and how it is read, in the order the eye meets it --
+  -- the rows, the captions above them, the views, the buttons beneath, the
+  -- gesture on a row, and the tab's own caption.
+  card, y = BeginSection(frame, y, L["OPT_MAILTAB_HEADING"])
   cy = -12
 
-  cy = AddCheckbox(card, cy, L["GRID_TOGGLE_TITLE"], L["GRID_TOGGLE_DESC"],
-        function() return ns.MailboxUI.GetOption("gridDock") end,
+  cy = AddCheckbox(card, cy, L["OPT_COMPACT_ROWS_TITLE"], L["OPT_COMPACT_ROWS_DESC"],
+        function() return ns.MailboxUI.GetOption("compactRows") end,
         function(on)
-          ns.MailboxUI.SetOption("gridDock", on)
-          if on and ns.MailboxUI._state then ns.MailboxUI._state.freeMoved = false end
-          if ns.MailboxUI.ApplyWindowLayout then ns.MailboxUI.ApplyWindowLayout() end
+          ns.MailboxUI.SetOption("compactRows", on)
+          if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
         end)
 
   cy = AddCheckbox(card, cy, L["OPT_TAB_COUNTS_TITLE"], L["OPT_TAB_COUNTS_DESC"],
@@ -332,13 +340,6 @@ local function Build()
           if ns.MailboxUI.RefreshCollectCategoryButtons then ns.MailboxUI.RefreshCollectCategoryButtons() end
         end)
 
-  cy = AddCheckbox(card, cy, L["OPT_COMPACT_ROWS_TITLE"], L["OPT_COMPACT_ROWS_DESC"],
-        function() return ns.MailboxUI.GetOption("compactRows") end,
-        function(on)
-          ns.MailboxUI.SetOption("compactRows", on)
-          if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
-        end)
-
   -- Nothing to refresh: the mapping is read at the moment a row is clicked, and
   -- the row tooltip's hint line is composed on hover from the same reading. A
   -- list rebuild would repaint rows that are already correct.
@@ -346,161 +347,17 @@ local function Build()
         function() return ns.MailboxUI.GetOption("previewOnClick") end,
         function(on) ns.MailboxUI.SetOption("previewOnClick", on) end)
 
-  cy = AddCheckbox(card, cy, L["OPT_ATTACH_MAIL_TITLE"], L["OPT_ATTACH_MAIL_DESC"],
-        function() return ns.MailboxUI.GetOption("attachFromMail") end,
-        function(on)
-          ns.MailboxUI.SetOption("attachFromMail", on)
-          -- Applies to the mailbox that is open right now, not the next one.
-          if ns.MailboxUI.RefreshMailTabAttach then ns.MailboxUI.RefreshMailTabAttach() end
-        end)
-
-  -- Nothing to refresh: the option is read at the moment a send succeeds.
-  cy = AddCheckbox(card, cy, L["OPT_KEEP_RECIPIENT_TITLE"], L["OPT_KEEP_RECIPIENT_DESC"],
-        function() return ns.MailboxUI.GetOption("keepRecipient") end,
-        function(on) ns.MailboxUI.SetOption("keepRecipient", on) end)
-
-  -- Recipient manager: a portrait button filling the space to the right of
-  -- the checkbox column, tall as the eight rows. It makes the feature loud
-  -- and shaves a whole row off the card. /postbox recipients is the other
-  -- way in. (The height set here is nominal: the bottom anchor below
-  -- stretches it to end level with the caption row.)
-  local rmButton = ns.Theme.CreateButton(nil, card)
-  rmButton:SetSize(108, (ROW_H * 8) - 8)
-
-  -- The stock plate is a ~22px three-slice; stretched to portrait height it
-  -- smears into pixel blocks (screenshot-verified). Under a host skin the
-  -- repaint hides that, so ONLY the unskinned session flattens it: template
-  -- art gone, one card surface, a quiet flat hover. ns.Skin is claimed at
-  -- PLAYER_LOGIN, well before this lazy Build can run.
-  if not ns.Skin then
-    for _, region in ipairs({ rmButton:GetRegions() }) do
-      if region.IsObjectType and region:IsObjectType("Texture") then
-        region:SetTexture(nil)
-        region:Hide()
-      end
-    end
-    -- The button template has NO backdrop support, and the theme's panel
-    -- paint declines silently on a frame without it -- which left this
-    -- button entirely transparent, showing the card behind it (two rounds
-    -- of "why is it still black" were colour-tuning a backdrop that never
-    -- existed). Retrofit the mixin first; everything below finally lands.
-    if type(rmButton.SetBackdrop) ~= "function"
-      and type(Mixin) == "function" and type(BackdropTemplateMixin) == "table" then
-      Mixin(rmButton, BackdropTemplateMixin)
-      if type(rmButton.OnBackdropSizeChanged) == "function" then
-        rmButton:HookScript("OnSizeChanged", rmButton.OnBackdropSizeChanged)
-      end
-    end
-    ns.Theme.ApplyList(rmButton)
-    -- Lifted off the list scheme's pure black: this is a BUTTON wearing the
-    -- card surface, and it has to read as raised next to the checkbox column
-    -- rather than as a hole in the card. The surface GRAIN has to go first
-    -- -- it is a full-alpha texture painted above the backdrop fill, so any
-    -- colour set below it is invisible (and a texture pack can turn the
-    -- grain itself near-black, which is exactly the hole this fixes).
-    if rmButton.pbSurfaceTexture then rmButton.pbSurfaceTexture:SetAlpha(0) end
-    -- The card behind is pure black; the button is the SAME tone one step
-    -- lighter -- a neutral near-black, not a colour of its own. (A warm
-    -- brown tried here read as a different material entirely.)
-    if rmButton.SetBackdropColor then
-      rmButton:SetBackdropColor(0.10, 0.10, 0.11, 0.95)
-    end
-    rmButton:SetHighlightTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
-    local flatHover = rmButton:GetHighlightTexture()
-    if flatHover then
-      flatHover:SetAllPoints()
-      flatHover:SetAlpha(0.06)
-    end
-  end
-  rmButton:SetPoint("TOPRIGHT", card, "TOPRIGHT", -PAD, -12)
-
-  -- Portrait composition: title up top, the letter-bundle icon full-strength
-  -- in the middle -- the same glyph as the Send tab's doorway, carrying the
-  -- "this is the address book" idea -- and the live count underneath. The
-  -- icon sits in the button's own ARTWORK layer, above the plate fill and
-  -- below the OVERLAY captions.
-  local rmLabel = rmButton:GetFontString()
-  if rmLabel then
-    rmLabel:SetWordWrap(true)
-    rmLabel:SetWidth(92)
-    rmLabel:ClearAllPoints()
-    rmLabel:SetPoint("TOP", rmButton, "TOP", 0, -12)
-    -- One point up from the button role's size: this is the loudest control
-    -- on the card and its title was set no larger than a checkbox caption.
-    -- A host skin's re-font can override this; that is its right.
-    local fontPath, fontSize, fontFlags = rmLabel:GetFont()
-    if fontPath and fontSize then
-      rmLabel:SetFont(fontPath, fontSize + 1, fontFlags)
-    end
-  end
-  rmButton:SetText(L["RM_OPT_BUTTON"])
-  -- On an art holder, not the button: a host skin's button repaint fades
-  -- the tagged button's own texture regions, which kept this icon invisible.
-  local rmHolder = ArtHolder(rmButton)
-  -- A quiet radial glow behind the bundle: the accent at low alpha, static
-  -- -- no pulse; this is presence, not an alert. Under the icon in the same
-  -- ARTWORK layer, both on the holder so a host skin's repaint cannot fade
-  -- either. Re-tinted on every panel open, so an accent retune follows.
-  local rmGlow = rmHolder:CreateTexture(nil, "ARTWORK", nil, -1)
-  rmGlow:SetSize(94, 94)
-  rmGlow:SetPoint("CENTER", rmButton, "CENTER", 0, -4)
-  rmGlow:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-glow.tga")
-  rmGlow:SetBlendMode("ADD")
-  rmGlow:SetAlpha(0.30)
-  local function TintRmGlow()
-    local r, g, b = ns.Theme.GetAccent()
-    rmGlow:SetVertexColor(r, g, b)
-  end
-  TintRmGlow()
-  frame.__refreshers[#frame.__refreshers + 1] = TintRmGlow
-
-  local rmMark = rmHolder:CreateTexture(nil, "ARTWORK")
-  -- 50, was 46: the caption row below bought the portrait an extra row of
-  -- height, and the icon is the thing worth spending it on.
-  rmMark:SetSize(50, 50)
-  rmMark:SetPoint("CENTER", rmButton, "CENTER", 0, -4)
-  rmMark:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
-  local rmCount = ns.Theme.CreateText(rmButton, "bodySmall")
-  rmCount:SetPoint("BOTTOM", rmButton, "BOTTOM", 0, 9)
-  rmCount:SetAlpha(0.8)
-  local function RefreshRmCount()
-    local RM = ns.RecipientManager
-    local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
-    rmCount:SetText(string.format("(%d)", count))
-  end
-  RefreshRmCount()
-  rmButton:SetScript("OnClick", function()
-    local RM = ns.RecipientManager
-    if RM and type(RM.Toggle) == "function" then
-      RM.Toggle()
-    else
-      ns.Print(L["RM_NOT_AVAILABLE"])
-    end
-  end)
-  rmButton:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["RM_OPT_BUTTON"])
-    GameTooltip:AddLine(L["RM_OPT_BUTTON_DESC"], 1, 1, 1, true)
-    GameTooltip:Show()
-  end)
-  rmButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  frame.__refreshers[#frame.__refreshers + 1] = RefreshRmCount
-
-  -- The Mail tab's caption mode, one full-column control under the
-  -- checkboxes. The closed toggle wears the row's NAME, not the selection --
-  -- a bare "Nothing" floating in the card reads as broken -- and the open
-  -- list and the tooltip carry the current choice. The recipients portrait
-  -- keeps its own column and stretches to end level with this row.
+  -- The Mail tab's caption mode, one full-width control under the
+  -- checkboxes. The closed toggle wears the row's NAME while the setting is
+  -- off -- a bare "Nothing" floating in the card reads as broken -- and the
+  -- chosen mode's name once one is actually on, so a glance tells you
+  -- whether the tab carries anything without opening the list.
   local tcItems = {
     { id = "dot",    name = L["OPT_TAB_CAPTION_DOT"] },
     { id = "total",  name = L["OPT_TAB_CAPTION_TOTAL"] },
     { id = "counts", name = L["OPT_TAB_CAPTION_COUNTS"] },
     { id = "none",   name = L["OPT_TAB_CAPTION_NONE"] },
   }
-  -- The toggle wears the row's NAME while the setting is off ("Nothing" is
-  -- the default and a bare "Nothing" floating in the card reads as broken),
-  -- and the chosen mode's name once one is actually on -- so a glance tells
-  -- you whether the tab carries anything without opening the list.
   local function TcToggleText()
     local mode = ns.MailboxUI.GetTabCaptionMode and ns.MailboxUI.GetTabCaptionMode() or "none"
     if mode ~= "none" then
@@ -510,8 +367,7 @@ local function Build()
     end
     return L["OPT_TAB_CAPTION_TITLE"]
   end
-  -- Card width minus its own padding, the portrait column and the gap.
-  local tcWidth = (W - 20) - PAD * 2 - 108 - 10
+  local tcWidth = (W - 20) - PAD * 2
   local tcDD = ns.Core.UI.Dropdown.Create(card, {
     items        = tcItems,
     toggleWidth  = tcWidth,
@@ -520,15 +376,11 @@ local function Build()
     listWidth    = tcWidth,
     defaultId    = ns.MailboxUI.GetTabCaptionMode and ns.MailboxUI.GetTabCaptionMode(),
   })
-  -- Right edge from the CARD, not from rmButton: rmButton's bottom anchors
-  -- to this row below, and any anchor back at it -- even on the other axis
-  -- -- is a cycle the client refuses. The offset is the portrait column's
-  -- width plus the gap, same arithmetic as tcWidth above.
   tcDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
-  tcDD:SetPoint("RIGHT", card, "RIGHT", -(PAD + 108 + 10), 0)
+  tcDD:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
   local tcToggle = tcDD._toggle
   if tcToggle then
-    -- Fill the column whatever the fixed width said.
+    -- Fill the row whatever the fixed width said.
     tcToggle:ClearAllPoints()
     tcToggle:SetPoint("LEFT", tcDD, "LEFT", 0, 0)
     tcToggle:SetPoint("RIGHT", tcDD, "RIGHT", 0, 0)
@@ -562,17 +414,59 @@ local function Build()
     end
     tcDD:SetText(TcToggleText())
   end
-  -- The portrait ends level with this row: top from the card, bottom from
-  -- the TOGGLE (which sits centred inside its slightly taller container --
-  -- anchoring to the container left the portrait a pixel long). The height
-  -- from SetSize above is overridden by the pair of vertical anchors.
-  if tcToggle then
-    rmButton:SetPoint("BOTTOM", tcToggle, "BOTTOM", 0, 0)
-  else
-    rmButton:SetPoint("BOTTOM", tcDD, "BOTTOM", 0, 0)
-  end
   MarkBottom(card, cy, DROPDOWN_H)
   cy = cy - ROW_H
+
+  y = EndSection(frame, card, y)
+
+  -- Send tab: the two switches about composing, and the address book they
+  -- draw on. The recipient manager is a row here rather than a portrait
+  -- beside the list switches: it is about sending, and a row with the live
+  -- count on it says as much as the portrait did in a quarter of the space.
+  -- /postbox recipients is the other way in.
+  card, y = BeginSection(frame, y, L["OPT_SENDTAB_HEADING"])
+  cy = -12
+
+  cy = AddCheckbox(card, cy, L["OPT_ATTACH_MAIL_TITLE"], L["OPT_ATTACH_MAIL_DESC"],
+        function() return ns.MailboxUI.GetOption("attachFromMail") end,
+        function(on)
+          ns.MailboxUI.SetOption("attachFromMail", on)
+          -- Applies to the mailbox that is open right now, not the next one.
+          if ns.MailboxUI.RefreshMailTabAttach then ns.MailboxUI.RefreshMailTabAttach() end
+        end)
+
+  -- Nothing to refresh: the option is read at the moment a send succeeds.
+  cy = AddCheckbox(card, cy, L["OPT_KEEP_RECIPIENT_TITLE"], L["OPT_KEEP_RECIPIENT_DESC"],
+        function() return ns.MailboxUI.GetOption("keepRecipient") end,
+        function(on) ns.MailboxUI.SetOption("keepRecipient", on) end)
+
+  local rmRow
+  cy, rmRow = AddButton(card, cy,
+        function()
+          local RM = ns.RecipientManager
+          local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
+          return string.format("%s (%d)", L["RM_OPT_BUTTON"], count)
+        end,
+        L["RM_OPT_BUTTON_DESC"],
+        function()
+          local RM = ns.RecipientManager
+          if RM and type(RM.Toggle) == "function" then
+            RM.Toggle()
+          else
+            ns.Print(L["RM_NOT_AVAILABLE"])
+          end
+        end)
+  -- The letter-bundle glyph at the row's left edge: the same mark the Send
+  -- tab's doorway to the manager wears, so the two read as one thing. On an
+  -- art holder, not the button, so a host skin's button repaint -- which
+  -- fades a tagged button's own texture regions -- cannot take it.
+  if rmRow then
+    local rmHolder = ArtHolder(rmRow)
+    local rmMark = rmHolder:CreateTexture(nil, "ARTWORK")
+    rmMark:SetSize(18, 18)
+    rmMark:SetPoint("LEFT", rmRow, "LEFT", 8, 0)
+    rmMark:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
+  end
 
   y = EndSection(frame, card, y)
 
@@ -610,9 +504,20 @@ local function Build()
   local installedHost = InstalledHostName()
 
   local appHeadingY = y
-  y = AddSectionHeading(frame, y, L["OPT_APPEARANCE_HEADING"])
+  y = AddSectionHeading(frame, y, L["OPT_WINDOW_HEADING"])
   card = StartCard(frame, y)
   cy = -12
+
+  -- Where the window opens, before how it is painted: the one setting about
+  -- the window's place lived at the top of the old General card, a long way
+  -- from the four about its look.
+  cy = AddCheckbox(card, cy, L["GRID_TOGGLE_TITLE"], L["GRID_TOGGLE_DESC"],
+        function() return ns.MailboxUI.GetOption("gridDock") end,
+        function(on)
+          ns.MailboxUI.SetOption("gridDock", on)
+          if on and ns.MailboxUI._state then ns.MailboxUI._state.freeMoved = false end
+          if ns.MailboxUI.ApplyWindowLayout then ns.MailboxUI.ApplyWindowLayout() end
+        end)
 
   -- The style choice. A host UI is offered first and is the default wherever
   -- one is installed, so the familiar answer is the one already selected --

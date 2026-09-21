@@ -1583,7 +1583,7 @@ local function BuildFrame()
   -- on release. The start callback is what makes the GRIP WIN over the message
   -- box's elastic extension: see AdoptTransientHeight.
   if helpers and helpers.CreateResizeButton then
-    frame.ResizeButton = helpers.CreateResizeButton(frame, function(resized)
+    local function OnResizeStop(resized)
       -- A press that never moved is not a resize. Give the adopted extension
       -- back BEFORE anything saves -- otherwise a mis-click on the grip while a
       -- long message stands writes base+extension to disk as the chosen height
@@ -1601,7 +1601,21 @@ local function BuildFrame()
       -- from the size the user settled on, at the position it settled at.
       local send = ns.SendTab
       if send and send.SuspendElastic then send.SuspendElastic(false, bareClick) end
-    end, AdoptTransientHeight, DragMinHeight)
+    end
+
+    -- Right-click on the grip: the size the window opens at for a player who
+    -- has never touched it -- the default width and the derived floor, which
+    -- is the smallest size the screens fit in -- through the same release
+    -- path a drag takes, so it is saved, re-docked and re-read the same way.
+    local function OnResizeReset(target)
+      AdoptTransientHeight(target)
+      helpers.PinFrameTopLeft(target)
+      target:SetSize(DEFAULT_WIDTH, BaseMinHeight())
+      OnResizeStop(target)
+    end
+
+    frame.ResizeButton = helpers.CreateResizeButton(frame, OnResizeStop,
+      AdoptTransientHeight, DragMinHeight, OnResizeReset)
   end
 
   -- Tab bar. One inset below the title bar, and the CONTENT inset on the left

@@ -3829,6 +3829,73 @@ if type(hooksecurefunc) == "function" and type(C_Container) == "table"
   end)
 end
 
+-- The way in, second route, and the one that holds when the first does not:
+-- the client's refusal itself. A bag addon that captured UseContainerItem
+-- into a local at load never passes through the hook above, but the
+-- "cannot attach more than 12 items" error the client answers with fires
+-- for everyone, and the item it refused is the one under the cursor -- the
+-- click has only just happened. Read off whichever bag button is there:
+-- the container template's GetBagID/GetID pair first, then the field names
+-- the other bag addons use, and only for something that is an item button.
+local function BagSlotUnderCursor()
+  local frames
+  if type(GetMouseFoci) == "function" then
+    local ok, list = pcall(GetMouseFoci)
+    if ok and type(list) == "table" then frames = list end
+  elseif type(GetMouseFocus) == "function" then
+    local ok, focus = pcall(GetMouseFocus)
+    if ok and focus then frames = { focus } end
+  end
+  if not frames then return nil end
+
+  for i = 1, #frames do
+    local f = frames[i]
+    if type(f) == "table" and type(f.IsObjectType) == "function" then
+      local isItemButton = f:IsObjectType("ItemButton") or f.icon ~= nil or f.Icon ~= nil
+      if isItemButton then
+        local bag, slot
+        if type(f.GetBagID) == "function" then
+          local ok, id = pcall(f.GetBagID, f)
+          if ok and type(id) == "number" then bag = id end
+        end
+        if bag == nil and type(f.bagID) == "number" then bag = f.bagID end
+        if bag == nil and type(f.GetParent) == "function" then
+          local parent = f:GetParent()
+          local ok, id = pcall(function() return parent:GetID() end)
+          if ok and type(id) == "number" then bag = id end
+        end
+        if type(f.slotID) == "number" then slot = f.slotID end
+        if slot == nil and type(f.GetID) == "function" then
+          local ok, id = pcall(f.GetID, f)
+          if ok and type(id) == "number" then slot = id end
+        end
+        if type(bag) == "number" and type(slot) == "number" and slot > 0 then
+          return bag, slot
+        end
+      end
+    end
+  end
+  return nil
+end
+
+-- UI_ERROR_MESSAGE, while this tab is showing. Every guard the hook applies,
+-- plus one the hook does not need: the error has to be answered from a
+-- state in which the only thing a right-click on a bag item can be refused
+-- FOR is the slot count. Every slot full, no send in flight, no C.O.D.
+-- armed, and an unlocked item under the cursor -- that is the state, and
+-- the item is queued. The message text is deliberately not matched: its
+-- global is not published, and a state test is honest in every locale.
+local function OnAttachRefused(panel)
+  if not sendTabActive or pendingSend then return end
+  if not panel or not panel:IsShown() then return end
+  if IsCODArmed(panel) then return end
+  if AttachmentCount() < SEND_SLOT_COUNT then return end
+  local bag, slot = BagSlotUnderCursor()
+  if not bag then return end
+  Enqueue(panel, bag, slot)
+end
+ST.OnAttachRefused = OnAttachRefused
+
 -------------------------------------------------------------
 -- 19. Draft reset
 --
@@ -4379,6 +4446,10 @@ end
 local VISIBILITY_EVENTS = {
   "MAIL_SEND_INFO_UPDATE", "ITEM_LOCK_CHANGED", "BAG_UPDATE", "MAIL_SUCCESS",
   "GUILD_ROSTER_UPDATE", "FRIENDLIST_UPDATE", "BN_FRIEND_INFO_CHANGED", "BN_CONNECTED",
+  -- The attachment queue's second way in (section 18a): the client refusing
+  -- a thirteenth attachment. Only while this tab is showing, because that is
+  -- the only time the refusal can mean anything to it.
+  "UI_ERROR_MESSAGE",
 }
 
 local function InstallEvents(panel)
@@ -4393,6 +4464,9 @@ local function InstallEvents(panel)
       FinishSend("success")
     elseif event == "MAIL_FAILED" then
       FinishSend("failed")
+    elseif event == "UI_ERROR_MESSAGE" then
+      OnAttachRefused(self)
+      return
     end
 
     if event == "MAIL_SEND_INFO_UPDATE" or event == "MAIL_FAILED" then

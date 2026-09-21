@@ -250,7 +250,11 @@ end
 -- become the height a stored size is clamped to, and it must not survive the
 -- release. Only ever raises the floor, and never above the height the drag
 -- started at, so the answer cannot move the window on mouse-down.
-function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn)
+-- `onReset`, when given, answers a RIGHT-click on the grip: the owner puts
+-- the window back to its default size. The grip is the one control whose
+-- whole meaning is "size", so a second gesture on it that means "the size
+-- you started with" needs no teaching.
+function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn, onReset)
   if not frame then return nil end
 
   local button = CreateFrame("Button", nil, frame)
@@ -274,7 +278,11 @@ function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn)
     if type(onStop) == "function" then onStop(frame) end
   end
 
-  button:SetScript("OnMouseDown", function(self)
+  button:SetScript("OnMouseDown", function(self, mouseButton)
+    if mouseButton == "RightButton" then
+      if type(onReset) == "function" then onReset(frame) end
+      return
+    end
     -- Before anything is measured: the owner may fold transient height into the
     -- base here, and the start height read below has to be the settled one.
     sizing = true
