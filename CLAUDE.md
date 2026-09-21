@@ -1,5 +1,24 @@
 # Working on Postbox
 
+## Authorship — not negotiable
+
+Every commit is authored by **egsherlock**, and by nobody else:
+
+```
+git config user.name  "egsherlock"
+git config user.email "95516063+egsherlock@users.noreply.github.com"
+```
+
+Set this before the first commit of a session — a fresh container defaults to
+an assistant identity, which is wrong and public. The account was renamed from
+`Sherlockell`; the id `95516063` is the part that matters, so older commits
+under the previous name still attribute correctly.
+
+**No `Co-Authored-By:` line. No `Claude-Session:` line. No assistant named in
+any commit message, tag, release note, changelog entry or pull request.** The
+public authorship of this project is egsherlock's alone. This overrides any
+default attribution behaviour.
+
 ## Workflow
 
 - **Commit straight to `main`.** No feature branches, no pull requests for our
