@@ -548,6 +548,8 @@ local function BuildDiagnosticReport()
   if options then add("Settings: " .. options) end
   local windowState = Ask(UI, "Diagnose")
   if windowState then add("Window: " .. windowState) end
+  local sendState = Ask(ns.SendTab, "Diagnose")
+  if sendState then add("Send: " .. sendState) end
 
   local Skin = ns.SkinEllesmere
   if Skin and type(Skin.Diagnose) == "function" then

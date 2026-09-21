@@ -3813,20 +3813,71 @@ ContinueQueue = function(panel, pending)
   return true
 end
 
+-- How many times each way in fired, and what came of it: the queue has
+-- failed silently in the field once already, and the report is where the
+-- next such report answers itself. ST.Diagnose renders them.
+local queueStats = { click = 0, use = 0, refused = 0, queued = 0 }
+
+-- The state in which a refused bag click can only mean "the slots are full":
+-- the Send tab showing, no send in flight, no C.O.D. armed, every slot
+-- taken. Every way in asks this first.
+local function QueueOpen()
+  if not sendTabActive or pendingSend then return nil end
+  local panel = ActivePanel()
+  if not panel or not panel:IsShown() then return nil end
+  if IsCODArmed(panel) then return nil end
+  if AttachmentCount() < SEND_SLOT_COUNT then return nil end
+  return panel
+end
+
+local function TryEnqueue(panel, bag, slot)
+  if type(bag) ~= "number" or type(slot) ~= "number" then return end
+  if Enqueue(panel, bag, slot) then queueStats.queued = queueStats.queued + 1 end
+end
+
 -- The way in: the client's own right-click, after the client has answered
--- it. With the Send tab showing and every slot taken, the item it refused
--- is queued.
+-- it. ContainerFrameItemButton_OnClick is the global every container button
+-- built on Blizzard's template dispatches to -- the client's own bags, and
+-- the bag addons that reuse the template -- and it is looked up by name at
+-- call time, so a post-hook on it sees every such click. (The first build
+-- hooked C_Container.UseContainerItem instead, which a bag addon that had
+-- captured the function into a local at load never called through; that
+-- hook stays, for a caller that reaches the function some other way.)
+if type(hooksecurefunc) == "function" and type(ContainerFrameItemButton_OnClick) == "function" then
+  hooksecurefunc("ContainerFrameItemButton_OnClick", function(button, mouseButton)
+    if mouseButton ~= "RightButton" then return end
+    local panel = QueueOpen()
+    if not panel then return end
+    queueStats.click = queueStats.click + 1
+    local bag, slot
+    if type(button.GetBagID) == "function" then
+      local ok, id = pcall(button.GetBagID, button)
+      if ok then bag = id end
+    end
+    if type(button.GetID) == "function" then
+      local ok, id = pcall(button.GetID, button)
+      if ok then slot = id end
+    end
+    TryEnqueue(panel, bag, slot)
+  end)
+end
+
 if type(hooksecurefunc) == "function" and type(C_Container) == "table"
    and type(C_Container.UseContainerItem) == "function" then
   hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot)
-    if not sendTabActive or pendingSend then return end
-    if type(bag) ~= "number" or type(slot) ~= "number" then return end
-    local panel = ActivePanel()
-    if not panel or not panel:IsShown() then return end
-    if IsCODArmed(panel) then return end
-    if AttachmentCount() < SEND_SLOT_COUNT then return end
-    Enqueue(panel, bag, slot)
+    local panel = QueueOpen()
+    if not panel then return end
+    queueStats.use = queueStats.use + 1
+    TryEnqueue(panel, bag, slot)
   end)
+end
+
+-- For the report: which ways in have fired this session, and the queue now.
+function ST.Diagnose()
+  local panel = ActivePanel()
+  local waiting = (panel and panel._queue) and #panel._queue or 0
+  return string.format("attach queue: click %d | use %d | refused %d | queued %d | waiting %d",
+    queueStats.click, queueStats.use, queueStats.refused, queueStats.queued, waiting)
 end
 
 -- The way in, second route, and the one that holds when the first does not:
@@ -3848,8 +3899,23 @@ local function BagSlotUnderCursor()
   end
   if not frames then return nil end
 
+  -- The frame with focus can be a child laid over the button -- a cooldown,
+  -- a quality border, an overlay of some bag addon's -- so each focus frame
+  -- is walked up a few parents until something that is an item button
+  -- turns up.
+  local candidates = {}
   for i = 1, #frames do
     local f = frames[i]
+    local depth = 0
+    while type(f) == "table" and depth < 4 do
+      candidates[#candidates + 1] = f
+      f = type(f.GetParent) == "function" and f:GetParent() or nil
+      depth = depth + 1
+    end
+  end
+
+  for i = 1, #candidates do
+    local f = candidates[i]
     if type(f) == "table" and type(f.IsObjectType) == "function" then
       local isItemButton = f:IsObjectType("ItemButton") or f.icon ~= nil or f.Icon ~= nil
       if isItemButton then
@@ -3885,14 +3951,13 @@ end
 -- armed, and an unlocked item under the cursor -- that is the state, and
 -- the item is queued. The message text is deliberately not matched: its
 -- global is not published, and a state test is honest in every locale.
-local function OnAttachRefused(panel)
-  if not sendTabActive or pendingSend then return end
-  if not panel or not panel:IsShown() then return end
-  if IsCODArmed(panel) then return end
-  if AttachmentCount() < SEND_SLOT_COUNT then return end
+local function OnAttachRefused()
+  local panel = QueueOpen()
+  if not panel then return end
+  queueStats.refused = queueStats.refused + 1
   local bag, slot = BagSlotUnderCursor()
   if not bag then return end
-  Enqueue(panel, bag, slot)
+  TryEnqueue(panel, bag, slot)
 end
 ST.OnAttachRefused = OnAttachRefused
 

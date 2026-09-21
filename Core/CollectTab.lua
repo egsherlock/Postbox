@@ -55,6 +55,16 @@ local function Labels()  return ns.CATEGORY_LABELS or {} end
 local function L()       return ns.L end
 local function Th()      return ns.Theme end
 
+-- What a row says in place of "Auction House" for each auction outcome, and
+-- the palette role it says it in: a sale is good news, a win is neutral,
+-- an expiry wants a look, a cancellation is the player's own doing.
+local AUCTION_OUTCOME = {
+  sold     = { key = "ROW_AH_SOLD",     role = "positive" },
+  bought   = { key = "ROW_AH_BOUGHT",   role = "accent" },
+  expired  = { key = "ROW_AH_EXPIRED",  role = "warning" },
+  canceled = { key = "ROW_AH_CANCELED", role = "textSecondary" },
+}
+
 -- The template's scroll bar, put where a modern one goes: pinned inside the
 -- container's right edge with the rows ending just beside it, instead of
 -- hanging six pixels outside the scroll frame with a hand's width of empty
@@ -1041,12 +1051,6 @@ local function Selecting(panel)
   return SelectionCount(panel) > 0
 end
 
--- Searching or selecting: the two states that narrow what the primary
--- button acts on, and withdraw the sweeps that would not.
-local function Narrowed(panel)
-  return Searching(panel) or Selecting(panel)
-end
-
 -- The selected rows' wash: the accent at low alpha over the stripe, and a
 -- bar at the left edge. Separate textures over the row's own background,
 -- so the hover repaint (which rewrites that background) leaves them be.
@@ -1077,21 +1081,22 @@ local function PaintRowSelection(panel, row)
   end
 end
 
--- Re-paints every bound row and, when the selection has just appeared or
--- just emptied, the footer.
-local function AfterSelectionChange(panel, wasSelecting)
+-- Re-paints every bound row and the footer: the primary button's caption
+-- carries the count, so it is redrawn on every change and not only when the
+-- selection appears or empties.
+local function AfterSelectionChange(panel)
   local rows = panel._rows or {}
   for i = 1, #rows do
     if rows[i].mailIndex then PaintRowSelection(panel, rows[i]) end
   end
-  if wasSelecting ~= Selecting(panel) then CT.RefreshCategoryButtons(panel) end
+  CT.RefreshCategoryButtons(panel)
 end
 
 local function ClearSelection(panel)
   if not panel or not Selecting(panel) then return end
   panel._selected, panel._selectedCount = nil, 0
   panel._selectAnchor = nil
-  AfterSelectionChange(panel, true)
+  AfterSelectionChange(panel)
 end
 
 local function SetSelected(panel, index, on)
@@ -1104,30 +1109,36 @@ end
 local function SelectToggle(panel, row)
   local index = row.mailIndex
   if not index then return end
-  local was = Selecting(panel)
   local set = Selection(panel)
   SetSelected(panel, index, not set[index])
   -- The row just picked is where the next shift-click measures from,
   -- picked or unpicked: that is the file manager's rule too.
   panel._selectAnchor = row._rowIndex
-  AfterSelectionChange(panel, was)
+  AfterSelectionChange(panel)
 end
 
+-- Shift-click. A row that is already picked is unpicked -- shift is the
+-- only modifier most people will reach for, so it has to be able to undo
+-- what it did. Otherwise, with something picked, everything between the
+-- anchor and this row is picked; with nothing picked, this row is.
 local function SelectRange(panel, row)
+  local index = row.mailIndex
+  if not index then return end
+  local set = Selection(panel)
   local anchor = panel._selectAnchor
-  if not anchor or not Selecting(panel) then
+  if set[index] or not anchor or not Selecting(panel) then
     SelectToggle(panel, row)
     return
   end
-  local was = Selecting(panel)
   local from, to = anchor, row._rowIndex or anchor
   if from > to then from, to = to, from end
   local filtered, done = panel._filtered, panel._filteredDone
   for position = from, to do
-    local index = filtered[position]
-    if index and not done[position] then SetSelected(panel, index, true) end
+    local at = filtered[position]
+    if at and not done[position] then SetSelected(panel, at, true) end
   end
-  AfterSelectionChange(panel, was)
+  panel._selectAnchor = row._rowIndex
+  AfterSelectionChange(panel)
 end
 
 -- The selected indices, highest first: the order a collect run wants them
@@ -1409,10 +1420,22 @@ local function BuildRow(panel)
   row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   row.panel = panel
 
+  -- The read/unread mark: a flat dot in the theme's two colours. A dot, not
+  -- a square, and one pixel smaller than the space it is given -- the row
+  -- has two marks at its left edge now (the selection bar sits on the edge
+  -- itself) and a square beside a bar read as one shape. Eight in from the
+  -- edge: clear of the bar, clear of the icon.
   row.Indicator = row:CreateTexture(nil, "ARTWORK")
-  row.Indicator:SetSize(ROW_INDICATOR, ROW_INDICATOR)
-  row.Indicator:SetPoint("LEFT", row, "LEFT", T.Metrics.tightGap, 0)
+  row.Indicator:SetSize(ROW_INDICATOR - 1, ROW_INDICATOR - 1)
+  row.Indicator:SetPoint("LEFT", row, "LEFT", 8, 0)
   row.Indicator:SetTexture(WHITE)
+  if type(row.CreateMaskTexture) == "function" then
+    local mask = row:CreateMaskTexture()
+    mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask",
+                    "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetAllPoints(row.Indicator)
+    row.Indicator:AddMaskTexture(mask)
+  end
 
   -- Sized and anchored by ApplyRowMode, which the virtualiser calls before it
   -- binds anything to this row. Same for the two texts below it, the delete
@@ -1781,6 +1804,14 @@ local function BindRow(panel, row, index, position, compact, done)
   AppendInvoiceFigures(parts, index, false)
 
   local senderText = sender or L()["SENDER_UNKNOWN"]
+  -- Auction mail says what happened where the sender would be: "Sold",
+  -- "Won", "Expired", "Cancelled", each in its own colour, with the item's
+  -- name beside it. "Auction House" carried no information the outcome
+  -- does not, and the outcome was the one thing the row did not say.
+  local outcome = AUCTION_OUTCOME[kind]
+  if outcome then
+    senderText = T.Colorize(outcome.role, L()[outcome.key])
+  end
 
   if compact then
     -- Everything the row no longer draws goes to the tooltip, in full.
@@ -3477,7 +3508,11 @@ local function LayoutGrid(panel)
   -- can flip while the window is open, and a hidden button that is already in
   -- its column simply appears. A live search withdraws them too, and gives
   -- the primary its narrower name.
-  local extras = ShowCategoryButtons() and not Narrowed(panel)
+  -- A search withdraws the sweeps (they would act on mail the search hid);
+  -- a selection keeps them, and only renames the primary -- the sweeps still
+  -- mean what they say, and taking them away under a shift-click read as
+  -- the screen changing shape for no reason.
+  local extras = ShowCategoryButtons() and not Searching(panel)
   if Selecting(panel) then
     buttons[1].caption = L()("CAT_SELECTED", SelectionCount(panel))
   elseif Searching(panel) then
@@ -3517,7 +3552,7 @@ end
 -- run works on the inbox and not on the listing.
 local function FooterHeight(panel)
   if panel.viewMode == VIEW_DONE then return GRID_BUTTON_HEIGHT end
-  if not ShowCategoryButtons() or Narrowed(panel) then return GRID_PRIMARY_HEIGHT end
+  if not ShowCategoryButtons() or Searching(panel) then return GRID_PRIMARY_HEIGHT end
   return GRID_PRIMARY_HEIGHT + Th().Metrics.gap * 2 + GRID_BUTTON_HEIGHT * 2
 end
 

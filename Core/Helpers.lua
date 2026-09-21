@@ -64,7 +64,10 @@ local function SubjectPatterns()
   subjectPatterns = {}
   for i = 1, #SUBJECT_TEMPLATES do
     local template = _G[SUBJECT_TEMPLATES[i]]
-    if type(template) == "string" and template:find("%%s", 1, true) then
+    -- A PLAIN find, so the placeholder is spelled as it appears, not as a
+    -- pattern would spell it. (Spelling it "%%s" here matched nothing, and
+    -- every subject came back untouched.)
+    if type(template) == "string" and template:find("%s", 1, true) then
       -- Escape everything, then let the one placeholder through as a capture.
       local escaped = template:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")
       local pattern = "^%s*" .. escaped:gsub("%%%%s", "(.-)", 1) .. "%s*$"

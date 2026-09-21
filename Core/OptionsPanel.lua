@@ -440,33 +440,118 @@ local function Build()
         function() return ns.MailboxUI.GetOption("keepRecipient") end,
         function(on) ns.MailboxUI.SetOption("keepRecipient", on) end)
 
-  local rmRow
-  cy, rmRow = AddButton(card, cy,
-        function()
-          local RM = ns.RecipientManager
-          local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
-          return string.format("%s (%d)", L["RM_OPT_BUTTON"], count)
-        end,
-        L["RM_OPT_BUTTON_DESC"],
-        function()
-          local RM = ns.RecipientManager
-          if RM and type(RM.Toggle) == "function" then
-            RM.Toggle()
-          else
-            ns.Print(L["RM_NOT_AVAILABLE"])
-          end
-        end)
-  -- The letter-bundle glyph at the row's left edge: the same mark the Send
-  -- tab's doorway to the manager wears, so the two read as one thing. On an
-  -- art holder, not the button, so a host skin's button repaint -- which
-  -- fades a tagged button's own texture regions -- cannot take it.
-  if rmRow then
-    local rmHolder = ArtHolder(rmRow)
-    local rmMark = rmHolder:CreateTexture(nil, "ARTWORK")
-    rmMark:SetSize(18, 18)
-    rmMark:SetPoint("LEFT", rmRow, "LEFT", 8, 0)
-    rmMark:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
+  -- Manage Recipients: a hero row. Full width, two rows tall, the letter
+  -- bundle glowing at the left and two lines of text beside it -- the title,
+  -- and the live count underneath. Loud enough to be the thing on the card
+  -- (it is the one control here that opens a whole window) without the
+  -- six-row portrait the old General card had to grow around.
+  local HERO_H = 52
+  local hero = ns.Theme.CreateButton(nil, card)
+  hero:SetHeight(HERO_H)
+  hero:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
+  hero:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
+
+  -- The stock plate is a ~22px three-slice; stretched to this height it
+  -- smears into pixel blocks. Under a host skin the repaint hides that, so
+  -- ONLY the unskinned session flattens it: template art gone, one card
+  -- surface a step lighter than the card behind, a quiet flat hover. The
+  -- button template has no backdrop support, so the mixin is retrofitted
+  -- first or the theme's panel paint declines silently. ns.Skin is claimed
+  -- at PLAYER_LOGIN, well before this lazy Build can run.
+  if not ns.Skin then
+    for _, region in ipairs({ hero:GetRegions() }) do
+      if region.IsObjectType and region:IsObjectType("Texture") then
+        region:SetTexture(nil)
+        region:Hide()
+      end
+    end
+    if type(hero.SetBackdrop) ~= "function"
+      and type(Mixin) == "function" and type(BackdropTemplateMixin) == "table" then
+      Mixin(hero, BackdropTemplateMixin)
+      if type(hero.OnBackdropSizeChanged) == "function" then
+        hero:HookScript("OnSizeChanged", hero.OnBackdropSizeChanged)
+      end
+    end
+    ns.Theme.ApplyList(hero)
+    if hero.pbSurfaceTexture then hero.pbSurfaceTexture:SetAlpha(0) end
+    if hero.SetBackdropColor then hero:SetBackdropColor(0.10, 0.10, 0.11, 0.95) end
+    hero:SetHighlightTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
+    local flatHover = hero:GetHighlightTexture()
+    if flatHover then
+      flatHover:SetAllPoints()
+      flatHover:SetAlpha(0.06)
+    end
   end
+
+  -- The glyph and its glow on an art holder, not the button: a host skin's
+  -- button repaint fades a tagged button's own texture regions. The glow is
+  -- the accent at low alpha, static, re-tinted on every panel open.
+  local heroHolder = ArtHolder(hero)
+  local heroGlow = heroHolder:CreateTexture(nil, "ARTWORK", nil, -1)
+  heroGlow:SetSize(64, 64)
+  heroGlow:SetPoint("LEFT", hero, "LEFT", 4, 0)
+  heroGlow:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-glow.tga")
+  heroGlow:SetBlendMode("ADD")
+  heroGlow:SetAlpha(0.30)
+  local function TintHeroGlow()
+    local r, g, b = ns.Theme.GetAccent()
+    heroGlow:SetVertexColor(r, g, b)
+  end
+  TintHeroGlow()
+  frame.__refreshers[#frame.__refreshers + 1] = TintHeroGlow
+
+  local heroMark = heroHolder:CreateTexture(nil, "ARTWORK")
+  heroMark:SetSize(36, 36)
+  heroMark:SetPoint("LEFT", hero, "LEFT", 18, 0)
+  heroMark:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
+
+  -- Title on the first line, in the button's own label one point up from the
+  -- caption size (it is the loudest control on the card); the count on the
+  -- second, in the secondary role. A host skin's re-font can override the
+  -- size; that is its right.
+  local heroLabel = hero:GetFontString()
+  if heroLabel then
+    heroLabel:ClearAllPoints()
+    heroLabel:SetPoint("TOPLEFT", hero, "TOPLEFT", 64, -11)
+    heroLabel:SetPoint("RIGHT", hero, "RIGHT", -PAD, 0)
+    heroLabel:SetJustifyH("LEFT")
+    heroLabel:SetWordWrap(false)
+    local fontPath, fontSize, fontFlags = heroLabel:GetFont()
+    if fontPath and fontSize then heroLabel:SetFont(fontPath, fontSize + 1, fontFlags) end
+  end
+  hero:SetText(L["RM_OPT_BUTTON"])
+
+  local heroCount = ns.Theme.CreateText(hero, "secondary")
+  heroCount:SetPoint("TOPLEFT", hero, "TOPLEFT", 64, -29)
+  heroCount:SetPoint("RIGHT", hero, "RIGHT", -PAD, 0)
+  heroCount:SetJustifyH("LEFT")
+  heroCount:SetWordWrap(false)
+  local function RefreshHeroCount()
+    local RM = ns.RecipientManager
+    local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
+    heroCount:SetText(ns.Plural("RM_HERO_COUNT", count))
+  end
+  RefreshHeroCount()
+  frame.__refreshers[#frame.__refreshers + 1] = RefreshHeroCount
+
+  hero:SetScript("OnClick", function()
+    local RM = ns.RecipientManager
+    if RM and type(RM.Toggle) == "function" then
+      RM.Toggle()
+    else
+      ns.Print(L["RM_NOT_AVAILABLE"])
+    end
+  end)
+  hero:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L["RM_OPT_BUTTON"])
+    GameTooltip:AddLine(L["RM_OPT_BUTTON_DESC"], 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  hero:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+  MarkBottom(card, cy, HERO_H)
+  cy = cy - HERO_H - 8
 
   y = EndSection(frame, card, y)
 

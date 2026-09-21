@@ -4,19 +4,23 @@
 
 - **Pick the mails to collect.** Shift-click a row on the Mail tab and it is
   selected; shift-click another and everything between the two is; ctrl-click
-  picks or unpicks single rows anywhere, including inside a search. The big
-  button reads "Collect 5 selected" and takes exactly those. Shift-click no
-  longer opens a mail — right-click does that (or left-click, with the option
-  on), exactly as before.
-- **Auction subjects read as the item.** "Auction won: Mana Lily Tea" under a
-  sender of "Auction House" said the same thing three times, and the item's
-  name was the part that got cut off. Rows and the reading view now show the
-  item's name alone for auction mail, in every language the game speaks.
+  picks or unpicks single rows anywhere, including inside a search; shift-click
+  a picked row to unpick it. The big button reads "Collect 5 selected" and
+  takes exactly those, and the category buttons stay where they are.
+  Shift-click no longer opens a mail — right-click does that (or left-click,
+  with the option on), exactly as before.
+- **Auction mail says what happened, not who sent it.** "Auction House —
+  Auction won: Mana Lily Tea" said the same thing three times and cut off the
+  item's name. A row now reads "Won — Mana Lily Tea", "Sold — …", "Expired —
+  …" or "Cancelled — …", each outcome in its own colour, in every language
+  the game speaks. The reading view shows the item's name as the subject too.
+- **The read/unread dot is a dot.** A round mark, a little further from the
+  row's edge, so it no longer sits against the selection bar as one shape.
 - **The options panel is in the window's order.** Mail tab, Send tab, Window,
   Mail alerts, Minimap. The old General card mixed eight unrelated switches
   with the recipient manager's portrait; grid docking now sits with the other
-  window settings, and the recipient manager is a row under the Send tab's
-  two switches, with its count.
+  window settings, and the recipient manager is a two-line button under the
+  Send tab's switches, with the letter bundle and its live count.
 - **The scroll bar sits beside the rows.** It stood a hand's width away in
   an empty track; it is now pinned inside the list's edge, and it hides
   itself when everything fits.
