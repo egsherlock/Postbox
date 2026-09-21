@@ -56,8 +56,10 @@ of mail: expired, sold, bought, cancelled, or everything else. A search box narr
 the list by sender or subject, and while it is on the big button collects only what
 is shown. Shift-click and ctrl-click pick rows the way a file manager does, and the
 button collects just those. Right-click a mail to look inside without collecting;
-hover an attachment for its real item tooltip; return a player's mail from the same
-view. Auction mail shows the item's name rather than "Auction won:" three times a
+hover an attachment for its real item tooltip; gold in a mail is a coin tile you can
+take on its own; return a player's mail from the same view. The window resizes a row
+at a time, so the list never shows part of a row at any size. Auction mail shows the
+item's name with "AH Won" or "AH Sold" in its own colour rather than "Auction won:" three times a
 screen. Compact rows fit half again as many mails in the same window.
 
 A banner under the list keeps a running **total earned and total spent** — proceeds,
@@ -90,11 +92,12 @@ alphabet: Cyrillic and accented names complete, sort and favourite like any
 other, and a lowercase "ив" finds Иван. An option keeps the recipient in place
 after a send, for a run of mails to the same character.
 
-**More than twelve items?** Keep right-clicking. Once the slots are full, items
-queue beside the attachments label and the Send button reads "Send 3 mails": one
-press posts them all, twelve at a time, to the same recipient with the same
-subject and message. An unsent draft survives closing the mailbox, too — the
-text is back at the next one.
+**More than twelve items?** Keep right-clicking. The label counts up
+("Attachments 12/12"); once the slots are full, items queue beside it and the Send
+button reads "Send 3 mails": one press posts them all, twelve at a time, to the same
+recipient with the same subject and message. Right-click the queued count to forget
+it. An unsent draft survives closing the mailbox, too — the text is back at the next
+one.
 
 ## Recipients
 
