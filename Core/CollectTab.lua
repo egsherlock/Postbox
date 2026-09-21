@@ -156,6 +156,11 @@ local COMPACT_META_SHARE = 0.45
 -- every part in it carries its own label or its own colour, so it needs no
 -- rules between them -- only enough air that two numbers do not read as one.
 local ROW_META_JOIN = "  |  "
+
+-- A row says how long a mail has left only when that is short: "30d" on
+-- every row of a full inbox was the one figure nobody read, and the one
+-- that mattered -- a mail about to go -- looked like all the others.
+local EXPIRY_SOON_DAYS = 3
 local COMPACT_META_JOIN = "  "
 
 -- Category grid: the full-width primary, then two rows of three.
@@ -1628,7 +1633,8 @@ local function BuildRow(panel)
       teach = PreviewOnClick() and RawKey("HINT_ROW_COLLECT") or RawKey("HINT_ROW_PREVIEW")
     end
     local stuck = self.stuckReason
-    if not cut and not full and not teach and not stuck then return end
+    local expiry = self.expiryTip
+    if not cut and not full and not teach and not stuck and not expiry then return end
 
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:ClearLines()
@@ -1649,6 +1655,8 @@ local function BuildRow(panel)
     else
       T2.AddOverflowLine(self.Detail, GameTooltip)
     end
+    -- How long the mail has left, always here and on the row only when short.
+    if expiry then GameTooltip:AddLine(expiry, 0.75, 0.75, 0.75, true) end
     -- Air between what the mail is and what a click does with it.
     if teach or stuck then GameTooltip:AddLine(" ") end
     -- After the mail's own text, which identifies WHICH mail this is, and before
@@ -1818,17 +1826,17 @@ local function BindRow(panel, row, index, position, compact, done)
   Clear(parts)
   Clear(brief)
 
+  -- The money leads, in its shortest honest form ("52g 26s", "1309g",
+  -- "12.3k"), green for gold that is coming and red for a C.O.D. price to
+  -- pay; then the slots. The reading view prints the exact sum.
   if moneyValue > 0 then
-    -- The amount alone, to the silver: "52g 26s" says it is gold, and the
-    -- copper on a sale is not what the row is for. The reading view still
-    -- prints the whole sum.
-    local gold = fmt(moneyValue, 2)
+    local gold = T.Colorize("positive", ns.Core.Formatting.FormatMoneyCompact(moneyValue))
     parts[#parts + 1] = gold
     brief[#brief + 1] = gold
   end
   if hasCOD then
     local codText = (codValue > 0)
-      and T.Colorize("negative", L()["LABEL_COD"] .. fmt(codValue))
+      and T.Colorize("negative", L()["LABEL_COD"] .. ns.Core.Formatting.FormatMoneyCompact(codValue))
       or T.Colorize("negative", L()["LABEL_COD_SHORT"])
     parts[#parts + 1] = codText
     brief[#brief + 1] = codText
@@ -1839,8 +1847,11 @@ local function BindRow(panel, row, index, position, compact, done)
     brief[#brief + 1] = slots
   end
   parts[#parts + 1] = labels[kind] or kind
-  if daysLeft then
-    local expiry = format(L()["DAYS_SHORT"], daysLeft)
+  -- Time left is a warning, not a column: on the row only when it is short,
+  -- in the warning tone; always in the tooltip.
+  row.expiryTip = daysLeft and format(L()["DETAIL_EXPIRES"], daysLeft) or nil
+  if daysLeft and daysLeft < EXPIRY_SOON_DAYS then
+    local expiry = T.Colorize("warning", format(L()["DAYS_SHORT"], daysLeft))
     parts[#parts + 1] = expiry
     brief[#brief + 1] = expiry
   end
@@ -1863,11 +1874,7 @@ local function BindRow(panel, row, index, position, compact, done)
     -- the slot count are on the row already and are not said twice.
     local tip = panel._rowTip
     Clear(tip)
-    local category = labels[kind] or kind
-    if daysLeft then
-      category = category .. "  " .. T.Colorize("textSecondary", format(L()["DETAIL_EXPIRES"], daysLeft))
-    end
-    tip[#tip + 1] = category
+    tip[#tip + 1] = labels[kind] or kind
     AppendInvoiceFigures(tip, index, false)
     row.detailFull = concat(tip, "\n")
 
@@ -1962,6 +1969,7 @@ local function UpdateVisibleRows(panel)
     row.iconSlot = nil
     row.stuckReason = nil
     row.detailFull = nil
+    row.expiryTip = nil
     row.Warning:Hide()
     row:Hide()
   end

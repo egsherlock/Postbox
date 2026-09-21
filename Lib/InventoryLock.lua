@@ -105,6 +105,15 @@ function M.MarkQueued(button)
   end
 end
 
+-- Is the item in this slot locked -- held by the client for a pending
+-- action, which at a mailbox means attached to the mail being written?
+function M.IsLockedAt(bag, slot)
+  if type(bag) ~= "number" or type(slot) ~= "number" then return false end
+  if not (C_Container and type(C_Container.GetContainerItemInfo) == "function") then return false end
+  local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+  return ok and type(info) == "table" and info.isLocked == true
+end
+
 -- Puts the colour back, unless the client has meanwhile greyed the item
 -- itself: an item that went from the queue into a slot is locked, and the
 -- client's own grey for that must stand.
@@ -113,21 +122,17 @@ function M.UnmarkQueued(button)
   button.pbQueuedGrey = nil
   local icon = IconOf(button)
   if not (icon and icon.SetDesaturated) then return end
-  local locked = false
-  if C_Container and type(C_Container.GetContainerItemInfo) == "function"
-     and type(button.GetID) == "function" then
-    local bag
+  local bag
+  if type(button.GetBagID) == "function" then
     local ok, id = pcall(button.GetBagID, button)
-    if ok and type(id) == "number" then
-      bag = id
-    else
-      local parent = button:GetParent()
-      bag = (parent and type(parent.GetID) == "function") and parent:GetID() or nil
-    end
-    local okInfo, info = pcall(C_Container.GetContainerItemInfo, bag, button:GetID())
-    locked = okInfo and type(info) == "table" and info.isLocked or false
+    if ok and type(id) == "number" then bag = id end
   end
-  if not locked then icon:SetDesaturated(false) end
+  if bag == nil and type(button.GetParent) == "function" then
+    local parent = button:GetParent()
+    bag = (parent and type(parent.GetID) == "function") and parent:GetID() or nil
+  end
+  local slot = type(button.GetID) == "function" and button:GetID() or nil
+  if not M.IsLockedAt(bag, slot) then icon:SetDesaturated(false) end
 end
 
 -------------------------------------------------------------

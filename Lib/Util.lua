@@ -214,6 +214,20 @@ local COPPER_SUFFIX = _G.COPPER_AMOUNT_SYMBOL or "c"
 -- Every consumer concatenates this into a flowing metadata line
 -- (Core/CollectTab.lua's row detail, detail info line and C.O.D. confirmation),
 -- so nothing depends on the result's width and nothing parses it back.
+-- The shortest honest reading of an amount, for a list row that has one
+-- column for it: "1.2m", "123k", "12.3k", "1309g", "52g 26s", "3s 60c".
+-- Above a thousand gold the silver is dropped, above ten thousand the
+-- amount is in thousands; the reading view has the exact sum.
+function Formatting.FormatMoneyCompact(copper)
+  local gold, _, _, total = Split(copper)
+  if total == 0 then return "" end
+  if gold >= 1000000 then return format("%.1fm", gold / 1000000) end
+  if gold >= 100000 then return format("%dk", floor(gold / 1000)) end
+  if gold >= 10000 then return format("%.1fk", gold / 1000) end
+  if gold >= 1000 then return format("%d%s", gold, GOLD_SUFFIX) end
+  return Formatting.FormatMoneyText(copper, 2)
+end
+
 -- Zero coins in the middle are skipped ("5g 35c"), and `parts` caps the
 -- coins by rank from the largest non-zero one: 2 keeps gold and silver of
 -- an amount with gold in it, silver and copper of one without. A list row

@@ -884,9 +884,6 @@ local function ApplyResizeBounds()
   -- exactly their height, which is why they are absent from this line.)
   local body = UI._state.bodyH
   local clampedH = max(minHeight + body, min(maxHeight + body, height))
-  -- And on whole rows: a height restored from an older build, or left over
-  -- by a row mode with a different pitch, is brought down to the row.
-  clampedH = SnapHeight(clampedH, minHeight, body, false)
   if clampedW ~= width or clampedH ~= height then
     -- Pin first, so the correction grows the window down and right rather than
     -- moving the corner the user placed.
@@ -1680,10 +1677,12 @@ local function BuildFrame()
       OnResizeStop(target)
     end
 
-    -- The drag steps a row at a time: every height the grip offers is the
-    -- floor plus whole rows, so the window never stops on part of one.
+    -- The drag is free between the bounds. It stepped a row at a time for a
+    -- while, so the window never stopped on part of one -- and it felt like
+    -- a window that would not do what the hand asked. The floor and the
+    -- ceiling are whole rows; between them the height is the player's.
     local function OnResizeSnap(_, height)
-      return SnapHeight(height, MinWindowHeight(UI._state.attachRows), UI._state.bodyH, true)
+      return height
     end
 
     frame.ResizeButton = helpers.CreateResizeButton(frame, OnResizeStop,

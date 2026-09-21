@@ -3553,9 +3553,12 @@ local function RefreshSlotOverlay(button)
     InventoryLock.UnmarkQueued(button)
     InventoryLock.MarkButton(button)
     overlaid[button] = true
-  elseif ST.IsQueuedAt and slot and slot >= 1 and ST.IsQueuedAt(bag, slot) then
-    -- Waiting in the queue: greyed as an attached item is greyed, because
-    -- as far as the player is concerned it is spoken for.
+  elseif slot and slot >= 1 and (InventoryLock.IsLockedAt(bag, slot) or (ST.IsQueuedAt and ST.IsQueuedAt(bag, slot))) then
+    -- Attached, or waiting in the queue: greyed, because as far as the
+    -- player is concerned the item is spoken for. The client greys an
+    -- attached (locked) item itself, but only when its bags repaint on
+    -- their own schedule -- a tab switch left it in colour -- so the grey
+    -- is asserted here too, from the lock the client reports.
     InventoryLock.UnmarkButton(button)
     InventoryLock.MarkQueued(button)
     overlaid[button] = true

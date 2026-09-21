@@ -54,9 +54,15 @@
 - **The totals line under the inbox is shorter, and stays inside the window.**
   It reads "Earned 95g 57s | Spent 1309g 62s": no "Total", no copper, and a
   narrow window drops to the gold alone. It used to run off the right edge.
-- **Gold in the list is just the amount.** "Gold: 52g 26s 50c" on a row is
-  now "52g 26s"; the coins say what it is, and the copper was noise there.
-  The reading view still shows the full sum.
+- **Rows lead with the money, and say how long is left only when it is
+  short.** "Gold: 52g 26s 50c" on a row is now "52g 26s" in green, "1309g"
+  above a thousand and "12.3k" above ten thousand; a C.O.D. price is in red.
+  The "30d" that sat on every row is gone from the row — it is in the
+  tooltip — and comes back in the warning colour only when a mail has under
+  three days left. The reading view still shows the exact sum.
+- **Resizing is free again.** The window's smallest and tallest heights are
+  still whole rows, but between them the grip follows your hand instead of
+  jumping a row at a time.
 - **A tidier row tooltip in compact mode.** One fact per line — what the mail
   is and when it expires, then any auction figures — with the click hints set
   apart below, instead of one long line with bars between everything.
@@ -106,12 +112,9 @@
   worked out for the rows you have, and where the Send tab needs more room
   than that, the list is given whole extra rows rather than part of one.
   Change either option and a window standing at its smallest moves to the
-  new smallest, and remembers it. Above that, the resize grip steps the
-  window a row at a time, the tallest it can be is a whole row too, and a
-  saved height from an older version is brought down to the nearest row when
-  the window opens — so there is no height the window can reach that shows
-  part of a row. The big button is now the same height as the Send tab's
-  Send button.
+  new smallest, and remembers it. Above that the window resizes freely, up to
+  a tallest height that is whole rows too. The big button is now the same
+  height as the Send tab's Send button.
 - **The category buttons stay put under a search.** "All sold" over a search
   is the sold mail among the rows shown; they used to disappear while you
   typed.
