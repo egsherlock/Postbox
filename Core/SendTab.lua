@@ -3911,16 +3911,47 @@ end
 -- button) stands aside until it has finished.
 Q.fillState = nil
 
+-- Will the client ask before attaching this item? An item still inside its
+-- refund window is the case: the attach raises the client's "this will make
+-- the item non-refundable" dialog, and nothing is settled until that is
+-- answered. It is known BEFORE the click, from the purchase record, so the
+-- pass can park on such an item whatever the slot reports in the meantime
+-- -- the first builds trusted the slot, and an item the client had taken
+-- provisionally read as attached, so the pass ran on into the next one and
+-- the dialogs piled up.
+function Q.WillAsk(bag, slot)
+  local api = C_Container and C_Container.GetContainerItemPurchaseInfo
+  if type(api) ~= "function" then return false end
+  local ok, a, b, c = pcall(api, bag, slot, false)
+  if not ok then return false end
+  local refund
+  if type(a) == "table" then refund = a.refundSeconds or a.refundSec else refund = c end
+  return (tonumber(refund) or 0) > 0
+end
+
+-- One line per event of a pass, the last dozen kept for the report: what
+-- the client did with each click is exactly what the field reports have
+-- been unable to say.
+function Q.Trace(text)
+  local trace = Q.stats.trace
+  if not trace then trace = {}; Q.stats.trace = trace end
+  trace[#trace + 1] = string.format("%.1f %s", (type(GetTime) == "function" and GetTime() or 0) % 1000, text)
+  if #trace > 12 then table.remove(trace, 1) end
+end
+
+-- Picks the item up and clicks it into the slot. Returns "missing" when the
+-- item is not in the bags any more, otherwise "done" and whether the client
+-- was expected to ask about it.
 function Q.AttachOne(entry, slotIndex)
   local bag, slot = Q.Locate(entry)
   if not bag then return "missing" end
+  local asks = Q.WillAsk(bag, slot)
   pcall(C_Container.PickupContainerItem, bag, slot)
   pcall(ClickSendMailItemButton, slotIndex)
-  -- The slot is the proof, not the cursor: the item landing in it is what
-  -- an attach IS, and a pickup that found the item locked leaves the cursor
-  -- empty and the slot empty both.
-  if SlotHasItem(slotIndex) then return "attached" end
-  return "pending"
+  Q.Trace(string.format("click slot %d asks=%s slot=%s cursor=%s", slotIndex, tostring(asks),
+    tostring(SlotHasItem(slotIndex)),
+    tostring(type(CursorHasItem) == "function" and CursorHasItem() or false)))
+  return "done", asks
 end
 
 -- The pass itself. Runs the queue into the free slots, first to last, until
@@ -3947,6 +3978,7 @@ function Q.Resume(state, outcome)
   if not pending then return end
   state.pending = nil
   if pending.ticker then pending.ticker:Cancel() end
+  Q.Trace("verdict " .. outcome .. " slot " .. pending.slotIndex)
   local queue = state.panel._queue or {}
 
   if outcome == "attached" then
@@ -3972,43 +4004,46 @@ function Q.Resume(state, outcome)
   Q.RunFill(state)
 end
 
--- The client's own dialog for the item, on screen or not.
-function Q.DialogUp()
-  return type(StaticPopup_Visible) == "function"
-     and StaticPopup_Visible("CONFIRM_MAIL_ITEM_UNREFUNDABLE") and true or false
+-- Is the client holding the attach for an answer? Its dialog, where the
+-- client can be asked about one; and either way the lock it lays over its
+-- own send frame for the duration -- MailFrame shows that frame on
+-- MAIL_LOCK_SEND_ITEMS and hides it on the unlock.
+function Q.LockUp()
+  if type(StaticPopup_Visible) == "function"
+     and StaticPopup_Visible("CONFIRM_MAIL_ITEM_UNREFUNDABLE") then
+    return true
+  end
+  local lock = _G["SendMailFrameLockSendMail"]
+  return type(lock) == "table" and type(lock.IsShown) == "function" and lock:IsShown() and true or false
 end
 
 -- Ten times a second while a pass is parked on `pending`. True to keep
--- watching. Whichever of this and the events sees the answer first settles
--- it; Resume ignores the second.
+-- watching. The lock, seen here or announced by its event, means the
+-- player has a question on screen and the pass waits as long as that
+-- takes; the verdict is read from the slot once the lock has lifted.
 function Q.WatchPending(state, pending)
   if Q.fillState ~= state or state.pending ~= pending then return false end
-  if SlotHasItem(pending.slotIndex) then
-    Q.Resume(state, "attached")
-    return false
-  end
-  if Q.DialogUp() then
+  if Q.LockUp() then
+    if not pending.locked then Q.Trace("lock seen") end
     pending.locked = true
     pending.gone = 0
     return true
   end
   if pending.locked then
-    -- The dialog stood and is gone, and the slot is still empty: answered
-    -- no, or dismissed some other way. Two looks, in case an accepted
-    -- item is a tick behind its dialog closing.
+    -- The lock stood and has lifted. Two looks, so an accepted item that
+    -- lands a tick behind the unlock is not read as a refusal.
     pending.gone = pending.gone + 1
-    if pending.gone >= 2 then Q.Resume(state, "declined") return false end
-    return true
-  end
-  -- No dialog yet. The lock event, when it is coming at all, arrives
-  -- before the next frame; two ticks is well clear of that, and past them
-  -- the empty slot was a refusal.
-  pending.ticks = pending.ticks + 1
-  if pending.ticks >= 2 then
-    Q.Resume(state, "refused")
+    if pending.gone < 2 then return true end
+    Q.Resume(state, SlotHasItem(pending.slotIndex) and "attached" or "declined")
     return false
   end
-  return true
+  -- No lock yet. An item expected to be asked about is given a second for
+  -- the dialog to open; for any other item an empty slot after two ticks
+  -- was a refusal.
+  pending.ticks = pending.ticks + 1
+  if pending.ticks < (pending.asks and 10 or 2) then return true end
+  Q.Resume(state, SlotHasItem(pending.slotIndex) and "attached" or "refused")
+  return false
 end
 
 function Q.RunFill(state)
@@ -4021,18 +4056,19 @@ function Q.RunFill(state)
     if state.slotIndex > SEND_SLOT_COUNT then break end
 
     local entry = table.remove(queue, 1)
-    local outcome = Q.AttachOne(entry, state.slotIndex)
-    if outcome == "attached" then
+    local outcome, asks = Q.AttachOne(entry, state.slotIndex)
+    if outcome == "missing" then
+      state.missing = state.missing + 1
+    elseif not asks and SlotHasItem(state.slotIndex) then
+      -- The slot is the proof: the item landing in it is what an attach
+      -- IS. (Only for an item the client had no question about -- see
+      -- WillAsk for why the slot cannot be believed for the other kind.)
       state.attached = state.attached + 1
       state.slotIndex = state.slotIndex + 1
-    elseif outcome == "missing" then
-      state.missing = state.missing + 1
     else
-      -- Empty slot: the client is asking, or it refused. The events say
-      -- which (MAIL_LOCK_SEND_ITEMS marks the dialog up, the unlock
-      -- resolves it), and the watch is the second opinion that depends on
-      -- neither: it looks at the dialog itself, and at the slot.
-      local pending = { entry = entry, slotIndex = state.slotIndex, ticks = 0, gone = 0 }
+      -- Parked: the client is asking, or is about to, or refused. The
+      -- watch reads the lock and the slot and settles it either way.
+      local pending = { entry = entry, slotIndex = state.slotIndex, asks = asks, ticks = 0, gone = 0 }
       state.pending = pending
       Q.fillState = state
       pending.ticker = C_Timer.NewTicker(0.1, function(ticker)
@@ -4070,19 +4106,23 @@ end
 function ST.OnSendItemLock(event)
   local state = Q.fillState
   local pending = state and state.pending
-  if not pending then return end
+  if not pending then
+    -- Not ours: a right-click of the player's own. Noted, so the report
+    -- shows the client's lock events do reach this file at all.
+    if event ~= "MAIL_SEND_INFO_UPDATE" then Q.Trace(event .. " (no pass parked)") end
+    return
+  end
   if event == "MAIL_LOCK_SEND_ITEMS" then
+    if not pending.locked then Q.stats.asked = (Q.stats.asked or 0) + 1 end
     pending.locked = true
-    Q.stats.asked = (Q.stats.asked or 0) + 1
-  elseif SlotHasItem(pending.slotIndex) then
+    pending.gone = 0
+    Q.Trace("lock event")
+  elseif event == "MAIL_UNLOCK_SEND_ITEMS" then
+    -- The answer is in. The watch reads the verdict from the slot two
+    -- ticks on, once the client has finished moving the item.
+    Q.Trace("unlock event")
+  elseif not pending.asks and not pending.locked and SlotHasItem(pending.slotIndex) then
     Q.Resume(state, "attached")
-  elseif event == "MAIL_UNLOCK_SEND_ITEMS" and pending.locked then
-    -- The answer. An accepted item can land in the slot a moment after the
-    -- unlock, so the verdict is read a frame later, not now.
-    C_Timer.After(0, function()
-      if Q.fillState ~= state or state.pending ~= pending then return end
-      Q.Resume(state, SlotHasItem(pending.slotIndex) and "attached" or "declined")
-    end)
   end
 end
 
@@ -4274,9 +4314,11 @@ function ST.Diagnose()
     declined[#declined + 1] = reason .. " " .. count
   end
   table.sort(declined)
-  return string.format("attach queue: click %d | use %d | refused %d | queued %d | asked %d | waiting %d | declined %s",
+  local trace = Q.stats.trace
+  return string.format("attach queue: click %d | use %d | refused %d | queued %d | asked %d | waiting %d | declined %s\n  pass trace: %s",
     Q.stats.click, Q.stats.use, Q.stats.refused, Q.stats.queued, Q.stats.asked or 0, waiting,
-    (#declined > 0) and table.concat(declined, ", ") or "none")
+    (#declined > 0) and table.concat(declined, ", ") or "none",
+    (trace and #trace > 0) and table.concat(trace, " ; ") or "none")
 end
 
 -- The way in, second route, and the one that holds when the first does not:

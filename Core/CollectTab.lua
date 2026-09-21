@@ -1994,11 +1994,11 @@ local function FitBanner(panel)
   for i = 1, #candidates do
     text:SetText(candidates[i])
     if i == #candidates then return end
-    if canAsk then
-      if not text:IsTruncated() then return end
-    elseif (text:GetStringWidth() or 0) <= room then
-      return
-    end
+    -- Both tests, and a line passes only both: the cut flag knows about the
+    -- coin textures, the measured width does not depend on the wrap.
+    local cut = canAsk and text:IsTruncated()
+    local wide = (text:GetStringWidth() or 0) > room
+    if not cut and not wide then return end
   end
 end
 
@@ -3858,7 +3858,14 @@ function CT.Build(parent)
   -- string has, and has to be able to make the string honour it.
   panel.BannerText:SetPoint("LEFT", bannerIcon, "RIGHT", M.gap, 0)
   panel.BannerText:SetJustifyH("LEFT")
-  panel.BannerText:SetWordWrap(false)
+  -- A font string never clips its own text: with wrapping off, a line
+  -- wider than the string simply runs past it (which is what was seen).
+  -- Wrapping ON with one line allowed is the client's own way to hold a
+  -- line to a width -- whatever does not fit goes to a second line that is
+  -- not drawn, an ellipsis marks the cut, and IsTruncated() says so.
+  panel.BannerText:SetWordWrap(true)
+  panel.BannerText:SetNonSpaceWrap(false)
+  panel.BannerText:SetMaxLines(1)
   panel._bannerTextLeft  = M.inset + M.iconSize + M.gap
   panel._bannerTextRight = M.inset
   -- The sums are re-fitted to whatever width the band ends up with: the
