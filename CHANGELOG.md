@@ -29,10 +29,31 @@
   says that queued items go out to the same person in further mails, that the
   game asks about an item when its turn comes, and that right-click clears
   the queue without touching your bags.
-- **Fixed: the totals line under the inbox could run off the right edge**
-  with large sums. It now drops the copper, then shortens its labels, then
-  keeps only the largest coin — whatever it takes to fit the window — instead
-  of overflowing.
+- **A run of mails tells you where it is.** The Send button reads "Sending 2
+  of 3..." while a run goes out, and when the game stops to ask about an item
+  the line above the button says which item and that it is waiting for your
+  answer. In the queue's tooltip, items the game will ask about are marked
+  "asks first" so the questions are no surprise.
+- **A mail with no subject is titled after its first item**, as the game's
+  own send window does it, instead of "Mail". The subject box shows the title
+  it will use while it is empty, so nothing is hidden. Each mail of a run is
+  titled after its own first item.
+- **Enter takes the completed name properly.** With a name completed in the
+  recipient box, Enter now puts the whole name in — capital letter, realm and
+  all — before moving on to the subject, so what you see is exactly what the
+  mail is addressed to.
+- **The totals line under the inbox is shorter, and stays inside the window.**
+  It reads "Earned 95g 57s | Spent 1309g 62s": no "Total", no copper, and a
+  narrow window drops to the gold alone. It used to run off the right edge.
+- **Gold in the list is just the amount.** "Gold: 52g 26s 50c" on a row is
+  now "52g 26s"; the coins say what it is, and the copper was noise there.
+  The reading view still shows the full sum.
+- **A tidier row tooltip in compact mode.** One fact per line — what the mail
+  is and when it expires, then any auction figures — with the click hints set
+  apart below, instead of one long line with bars between everything.
+- **The Manage Recipients button in the options has a surface of its own**,
+  like every other container on the panel, and its icon and text sit
+  centred in it.
 
 ## 1.37.0
 

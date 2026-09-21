@@ -1635,10 +1635,22 @@ local function BuildRow(panel)
     T2.AddOverflowLine(self.Sender, GameTooltip)
     T2.AddOverflowLine(self.Subject, GameTooltip)
     if full then
-      GameTooltip:AddLine(full, 1, 1, 1, true)
+      -- One line per fact: the first is what the mail is, the rest are the
+      -- invoice's figures, in the quieter tone.
+      local first = true
+      for line in full:gmatch("[^\n]+") do
+        if first then
+          GameTooltip:AddLine(line, 1, 1, 1, true)
+        else
+          GameTooltip:AddLine(line, 0.75, 0.75, 0.75, true)
+        end
+        first = false
+      end
     else
       T2.AddOverflowLine(self.Detail, GameTooltip)
     end
+    -- Air between what the mail is and what a click does with it.
+    if teach or stuck then GameTooltip:AddLine(" ") end
     -- After the mail's own text, which identifies WHICH mail this is, and before
     -- the generic gesture hint: this line is about this mail and it is the
     -- reason the marker is there.
@@ -1807,7 +1819,10 @@ local function BindRow(panel, row, index, position, compact, done)
   Clear(brief)
 
   if moneyValue > 0 then
-    local gold = L()["LABEL_GOLD"] .. fmt(moneyValue)
+    -- The amount alone, to the silver: "52g 26s" says it is gold, and the
+    -- copper on a sale is not what the row is for. The reading view still
+    -- prints the whole sum.
+    local gold = fmt(moneyValue, 2)
     parts[#parts + 1] = gold
     brief[#brief + 1] = gold
   end
@@ -1843,8 +1858,18 @@ local function BindRow(panel, row, index, position, compact, done)
   end
 
   if compact then
-    -- Everything the row no longer draws goes to the tooltip, in full.
-    row.detailFull = concat(parts, ROW_META_JOIN)
+    -- What the row does not draw goes to the tooltip, one fact per line:
+    -- the category with the expiry, then the invoice figures. The money and
+    -- the slot count are on the row already and are not said twice.
+    local tip = panel._rowTip
+    Clear(tip)
+    local category = labels[kind] or kind
+    if daysLeft then
+      category = category .. "  " .. T.Colorize("textSecondary", format(L()["DETAIL_EXPIRES"], daysLeft))
+    end
+    tip[#tip + 1] = category
+    AppendInvoiceFigures(tip, index, false)
+    row.detailFull = concat(tip, "\n")
 
     -- The meta strip claims what it needs and never more than its share; what
     -- is left is the line the sender and the subject share.
@@ -1968,12 +1993,23 @@ local function FitBanner(panel)
     return strings[earnedKey] .. icons(sums.earned, up, parts)
         .. gap .. strings[spentKey] .. icons(sums.spent, down, parts)
   end
+  -- Two coins is the whole of it: "Earned 95g 57s". The copper on a total
+  -- of the whole inbox is noise, and "Total" said nothing the band's
+  -- position under the list did not. The single coin is for a narrow window.
   local candidates = {
-    Line("BANNER_EARNED", "BANNER_SPENT", 3, "   |   "),
-    Line("BANNER_EARNED", "BANNER_SPENT", 2, "   |   "),
     Line("BANNER_EARNED_SHORT", "BANNER_SPENT_SHORT", 2, "   |   "),
-    Line("BANNER_EARNED_SHORT", "BANNER_SPENT_SHORT", 1, "  |  "),
+    Line("BANNER_EARNED_SHORT", "BANNER_SPENT_SHORT", 1, "   |   "),
   }
+  -- The client's measurement leaves inline textures out -- the fullest
+  -- line "fitted" and ran off the band by about the width of its coins --
+  -- so each coin is added back at its declared size. Where a client does
+  -- count them the line is judged a little wide, which at the worst costs
+  -- a coin at a borderline width.
+  local iconSize = ns.Core.Formatting.MONEY_ICON_SIZE or 12
+  local function Width(candidate)
+    local _, icons = candidate:gsub("|T", "")
+    return (text:GetStringWidth() or 0) + icons * iconSize
+  end
 
   -- The room is the band's, not the string's: asked for its own width, the
   -- string answered with the width of whatever it was showing, so the
@@ -1997,7 +2033,7 @@ local function FitBanner(panel)
     -- Both tests, and a line passes only both: the cut flag knows about the
     -- coin textures, the measured width does not depend on the wrap.
     local cut = canAsk and text:IsTruncated()
-    local wide = (text:GetStringWidth() or 0) > room
+    local wide = Width(candidates[i]) > room
     if not cut and not wide then return end
   end
 end
@@ -3804,6 +3840,7 @@ function CT.Build(parent)
   -- rather than a second pass: both are filled by the one walk in BindRow.
   panel._rowBrief = {}
 
+  panel._rowTip = {}
   -- Top row: the view switch, the search box at the far right, and the hint
   -- between them.
   BuildViewToggle(panel)

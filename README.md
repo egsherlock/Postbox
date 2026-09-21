@@ -88,7 +88,9 @@ delete, without touching your saved size.
 Start typing a name and it completes in place; that completion is already the
 answer. Tab steps to the next suggestion, and every press after walks down the
 list one row at a time (Shift+Tab walks back up); Escape puts back what you
-typed, Enter moves on to Subject. Names in any
+typed, Enter takes the name whole — capital, realm and all — and moves on to
+Subject. Leave the subject empty and the mail is titled after its first item,
+as the game's own send window does it; the box shows the title it will use. Names in any
 alphabet: Cyrillic and accented names complete, sort and favourite like any
 other, and a lowercase "ив" finds Иван. An option keeps the recipient in place
 after a send, for a run of mails to the same character.
@@ -98,11 +100,13 @@ after a send, for a run of mails to the same character.
 button reads "Send 3 mails". One press posts them all, as further mails to the same
 person, twelve items to each; the "Cost" line is the postage for all of them, and
 Send asks once — how many mails, to whom, how many items, what postage — before a
-run begins. If the game has to ask about an item before it is attached (one you
-could still return, say), it asks when that item's turn comes, exactly as it would
-for a right-click. Right-click the queued count to clear the queue; nothing leaves
-your bags. Ctrl+Enter sends from any field. An unsent draft survives closing the
-mailbox, too — the text is back at the next one.
+run begins. The button counts the run off ("Sending 2 of 3..."). If the game has to
+ask about an item before it is attached (one you could still return, say), it asks
+when that item's turn comes, exactly as it would for a right-click; such items are
+marked "asks first" in the queue's tooltip, and the line above the button says
+which item is waiting on you. Right-click the queued count to clear the queue;
+nothing leaves your bags. Ctrl+Enter sends from any field. An unsent draft survives
+closing the mailbox, too — the text is back at the next one.
 
 ## Recipients
 

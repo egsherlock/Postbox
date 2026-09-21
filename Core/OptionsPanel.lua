@@ -486,9 +486,11 @@ local function Build()
         hero:HookScript("OnSizeChanged", hero.OnBackdropSizeChanged)
       end
     end
-    ns.Theme.ApplyList(hero)
-    if hero.pbSurfaceTexture then hero.pbSurfaceTexture:SetAlpha(0) end
-    if hero.SetBackdropColor then hero:SetBackdropColor(0.10, 0.10, 0.11, 0.95) end
+    -- A card surface of its own, a step above the panel behind it, the way
+    -- every field's container stands off the window: it read as a label
+    -- floating on the window's own fill.
+    ns.Theme.ApplyCard(hero)
+    if hero.SetBackdropColor then hero:SetBackdropColor(0.14, 0.14, 0.15, 0.95) end
     hero:SetHighlightTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
     local flatHover = hero:GetHighlightTexture()
     if flatHover then
@@ -496,14 +498,32 @@ local function Build()
       flatHover:SetAlpha(0.06)
     end
   end
+  -- Under a host skin the same thing by the skin's own hand: tagged as a
+  -- card, it is painted like the other containers rather than as a bare
+  -- button on the window's fill.
+  hero.__postboxPanel = "card"
 
-  -- The glyph and its glow on an art holder, not the button: a host skin's
-  -- button repaint fades a tagged button's own texture regions. The glow is
-  -- the accent at low alpha, static, re-tinted on every panel open.
+  -- The glyph, the title and the count sit on one centred block: the block
+  -- is as wide as the glyph plus the wider of the two lines, and the
+  -- button centres it, so the trio reads as one mark in the middle rather
+  -- than a label pinned to the left edge of a wide button. On an art
+  -- holder, not the button: a host skin's button repaint fades a tagged
+  -- button's own texture regions.
+  local HERO_TEXT_X = 48
   local heroHolder = ArtHolder(hero)
+  local heroContent = CreateFrame("Frame", nil, heroHolder)
+  heroContent:SetPoint("CENTER", hero, "CENTER", 0, 0)
+  heroContent:SetSize(200, HERO_H)
+
+  local heroMark = heroHolder:CreateTexture(nil, "ARTWORK")
+  heroMark:SetSize(36, 36)
+  heroMark:SetPoint("LEFT", heroContent, "LEFT", 0, 0)
+  heroMark:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
+
+  -- The glow is the accent at low alpha, static, re-tinted on every panel open.
   local heroGlow = heroHolder:CreateTexture(nil, "ARTWORK", nil, -1)
   heroGlow:SetSize(64, 64)
-  heroGlow:SetPoint("LEFT", hero, "LEFT", 4, 0)
+  heroGlow:SetPoint("CENTER", heroMark, "CENTER", 0, 0)
   heroGlow:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-glow.tga")
   heroGlow:SetBlendMode("ADD")
   heroGlow:SetAlpha(0.30)
@@ -514,11 +534,6 @@ local function Build()
   TintHeroGlow()
   frame.__refreshers[#frame.__refreshers + 1] = TintHeroGlow
 
-  local heroMark = heroHolder:CreateTexture(nil, "ARTWORK")
-  heroMark:SetSize(36, 36)
-  heroMark:SetPoint("LEFT", hero, "LEFT", 18, 0)
-  heroMark:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
-
   -- Title on the first line, in the button's own label one point up from the
   -- caption size (it is the loudest control on the card); the count on the
   -- second, in the secondary role. A host skin's re-font can override the
@@ -526,8 +541,7 @@ local function Build()
   local heroLabel = hero:GetFontString()
   if heroLabel then
     heroLabel:ClearAllPoints()
-    heroLabel:SetPoint("TOPLEFT", hero, "TOPLEFT", 64, -11)
-    heroLabel:SetPoint("RIGHT", hero, "RIGHT", -PAD, 0)
+    heroLabel:SetPoint("TOPLEFT", heroContent, "TOPLEFT", HERO_TEXT_X, -11)
     heroLabel:SetJustifyH("LEFT")
     heroLabel:SetWordWrap(false)
     local fontPath, fontSize, fontFlags = heroLabel:GetFont()
@@ -536,14 +550,20 @@ local function Build()
   hero:SetText(L["RM_OPT_BUTTON"])
 
   local heroCount = ns.Theme.CreateText(hero, "secondary")
-  heroCount:SetPoint("TOPLEFT", hero, "TOPLEFT", 64, -29)
-  heroCount:SetPoint("RIGHT", hero, "RIGHT", -PAD, 0)
+  heroCount:SetPoint("TOPLEFT", heroContent, "TOPLEFT", HERO_TEXT_X, -29)
   heroCount:SetJustifyH("LEFT")
   heroCount:SetWordWrap(false)
+
+  local function FitHeroContent()
+    local titleW = heroLabel and heroLabel:GetStringWidth() or 0
+    local countW = heroCount:GetStringWidth() or 0
+    heroContent:SetWidth(HERO_TEXT_X + math.max(titleW, countW))
+  end
   local function RefreshHeroCount()
     local RM = ns.RecipientManager
     local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
     heroCount:SetText(ns.Plural("RM_HERO_COUNT", count))
+    FitHeroContent()
   end
   RefreshHeroCount()
   frame.__refreshers[#frame.__refreshers + 1] = RefreshHeroCount

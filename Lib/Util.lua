@@ -177,6 +177,9 @@ local COPPER_PER_GOLD = 10000
 
 -- Rendered inline at body-text size so the coins sit on the text baseline.
 local ICON_SIZE = 12
+-- Published for anything that has to measure a money string: the client's
+-- own measurement leaves inline textures out.
+Formatting.MONEY_ICON_SIZE = ICON_SIZE
 local GOLD_ICON = format("|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:0:0|t", ICON_SIZE, ICON_SIZE)
 local SILVER_ICON = format("|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:0:0|t", ICON_SIZE, ICON_SIZE)
 local COPPER_ICON = format("|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:0:0|t", ICON_SIZE, ICON_SIZE)
@@ -211,31 +214,28 @@ local COPPER_SUFFIX = _G.COPPER_AMOUNT_SYMBOL or "c"
 -- Every consumer concatenates this into a flowing metadata line
 -- (Core/CollectTab.lua's row detail, detail info line and C.O.D. confirmation),
 -- so nothing depends on the result's width and nothing parses it back.
-function Formatting.FormatMoneyText(copper)
+-- Zero coins in the middle are skipped ("5g 35c"), and `parts` caps the
+-- coins by rank from the largest non-zero one: 2 keeps gold and silver of
+-- an amount with gold in it, silver and copper of one without. A list row
+-- has no room for the copper on a sale, and nobody reads it there.
+function Formatting.FormatMoneyText(copper, parts)
   local gold, silver, rest, total = Split(copper)
   if total == 0 then return "" end
 
-  if gold > 0 then
-    if silver > 0 then
-      if rest > 0 then
-        return format("%d%s %d%s %d%s", gold, GOLD_SUFFIX, silver, SILVER_SUFFIX, rest, COPPER_SUFFIX)
-      end
-      return format("%d%s %d%s", gold, GOLD_SUFFIX, silver, SILVER_SUFFIX)
-    end
-    if rest > 0 then
-      return format("%d%s %d%s", gold, GOLD_SUFFIX, rest, COPPER_SUFFIX)
-    end
-    return format("%d%s", gold, GOLD_SUFFIX)
-  end
+  local ranks = { { gold, GOLD_SUFFIX }, { silver, SILVER_SUFFIX }, { rest, COPPER_SUFFIX } }
+  local first = (gold > 0 and 1) or (silver > 0 and 2) or 3
+  local last = 3
+  local limit = tonumber(parts)
+  if limit and limit >= 1 then last = math.min(3, first + limit - 1) end
 
-  if silver > 0 then
-    if rest > 0 then
-      return format("%d%s %d%s", silver, SILVER_SUFFIX, rest, COPPER_SUFFIX)
+  local out = {}
+  for i = first, last do
+    local value = ranks[i][1]
+    if value > 0 or i == first then
+      out[#out + 1] = format("%d%s", value, ranks[i][2])
     end
-    return format("%d%s", silver, SILVER_SUFFIX)
   end
-
-  return format("%d%s", rest, COPPER_SUFFIX)
+  return table.concat(out, " ")
 end
 
 -- Amount rendered with the client's coin textures inline.

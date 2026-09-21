@@ -407,6 +407,19 @@ local function AttachmentCount()
   return n
 end
 
+-- The name of the first attached item, or nil with nothing attached. A mail
+-- sent with no subject is titled after it, as the client's own send frame
+-- titles one -- "Void-Touched Drums" over "Mail" -- and the subject's ghost
+-- text shows that title while the box is empty, so nothing is a surprise.
+local function FirstAttachmentName()
+  if type(GetSendMailItem) ~= "function" then return nil end
+  for i = 1, SEND_SLOT_COUNT do
+    local name = GetSendMailItem(i)
+    if type(name) == "string" and name ~= "" then return name end
+  end
+  return nil
+end
+
 -- The quick-attach watcher (Core/MailboxUI.lua 5b) flips to this tab when the
 -- count grows while the collect screen is up. It reads the count from here so
 -- the two modules cannot disagree about what an attachment is.
@@ -661,6 +674,10 @@ function ST.RefreshAttachmentSlots(panel)
   -- Before the read below, so the slots are drawn as they now stand.
   if TopUpFromQueue then TopUpFromQueue(panel) end
   if RefreshQueueLabel then RefreshQueueLabel(panel) end
+  -- The subject an empty box will send under (see FirstAttachmentName).
+  if panel.SubjectPlaceholder then
+    panel.SubjectPlaceholder:SetText(FirstAttachmentName() or L["DEFAULT_SUBJECT"])
+  end
 
   local highest, filled = 0, 0
   for i = 1, SEND_SLOT_COUNT do
@@ -800,6 +817,15 @@ function ST.UpdateSendGuidance(panel)
   local label = panel and panel.GuidanceLabel
   if not label then return end
 
+  -- The client is asking about a queued item (section 18a). That is the one
+  -- thing on this screen waiting on the player, so it is the line, in the
+  -- warning tone, until it is answered.
+  if ST.QueueAwaitingAnswer and ST.QueueAwaitingAnswer() then
+    label:SetText(L("GUIDE_QUEUE_ASK", (ST.QueueAskedItem and ST.QueueAskedItem()) or "?"))
+    Theme.SetColor(label, GUIDANCE_TOKEN.warn)
+    return
+  end
+
   local MR = ns.MailRules
   local assessment
   if type(MR) == "table" and type(MR.Inspect) == "function" then
@@ -862,7 +888,12 @@ local function SetSendButtonBusy(panel, busy)
   if not button then return end
   if busy then
     if button.Disable then button:Disable() end
-    button:SetText(L["BTN_SEND_MAIL_PENDING"])
+    local run = panel._run
+    if run and run.total > 1 then
+      button:SetText(L("BTN_SEND_RUN_PENDING", run.index, run.total))
+    else
+      button:SetText(L["BTN_SEND_MAIL_PENDING"])
+    end
   else
     if button.Enable then button:Enable() end
     button:SetText(SendButtonCaption(panel))
@@ -883,6 +914,7 @@ end
 local function SettleDraftAfterSuccess(panel)
   local UI = ns.MailboxUI
   local keep = UI ~= nil and type(UI.GetOption) == "function" and UI.GetOption("keepRecipient")
+  panel._run = nil
   ClearDraftFields(panel, keep)
   ClearSendMailMoneyState()
 end
@@ -905,8 +937,10 @@ local function FinishSend(outcome)
     if ContinueQueue(panel, pending) then return end
     SettleDraftAfterSuccess(panel)
   elseif outcome == "timeout" then
+    panel._run = nil
     PopupNotice(L["MSG_SEND_TIMEOUT"])
   else
+    panel._run = nil
     -- The client already shows its own red error for the underlying reason;
     -- this only tells the user their draft is still there.
     if ns.Print then ns.Print(L["MSG_SEND_FAILED"]) end
@@ -932,7 +966,7 @@ local function DoSendMail(panel, confirmedMails)
   local body    = FieldText(panel.BodyBox)
 
   if toName == "" then PopupNotice(L["ERR_NO_RECIPIENT"]) return end
-  if subject == "" then subject = L["DEFAULT_NO_SUBJECT"] end
+  if subject == "" then subject = FirstAttachmentName() or L["DEFAULT_NO_SUBJECT"] end
 
   if type(SendMail) ~= "function" then
     PopupNotice(L["ERR_SENDMAIL_UNAVAILABLE"])
@@ -996,6 +1030,8 @@ local function DoSendMail(panel, confirmedMails)
   sendToken = sendToken + 1
   local myToken = sendToken
   pendingSend = { panel = panel, toName = toName, token = myToken }
+  -- A run of mails counts itself on the button ("Sending 2 of 3...").
+  panel._run = (mails > 1) and { index = 1, total = mails } or nil
   SetSendButtonBusy(panel, true)
 
   SendMail(toName, subject, body)
@@ -3883,6 +3919,9 @@ function Q.Enqueue(panel, bag, slot)
   queue[#queue + 1] = {
     bag = bag, slot = slot, guid = guid,
     link = info.hyperlink, count = info.stackCount,
+    -- Known now, so the tooltip can say which items the client will ask
+    -- about before their turn comes.
+    asks = Q.WillAsk(bag, slot),
   }
   RefreshQueueLabel(panel)
   return true
@@ -3979,6 +4018,8 @@ function Q.Resume(state, outcome)
   state.pending = nil
   if pending.ticker then pending.ticker:Cancel() end
   Q.Trace("verdict " .. outcome .. " slot " .. pending.slotIndex)
+  -- The question is answered: the guidance line goes back to its own business.
+  if pending.locked then Invalidate(state.panel, "guidance") end
   local queue = state.panel._queue or {}
 
   if outcome == "attached" then
@@ -4024,8 +4065,11 @@ end
 function Q.WatchPending(state, pending)
   if Q.fillState ~= state or state.pending ~= pending then return false end
   if Q.LockUp() then
-    if not pending.locked then Q.Trace("lock seen") end
-    pending.locked = true
+    if not pending.locked then
+      Q.Trace("lock seen")
+      pending.locked = true
+      Invalidate(state.panel, "guidance")
+    end
     pending.gone = 0
     return true
   end
@@ -4117,6 +4161,7 @@ function ST.OnSendItemLock(event)
     pending.locked = true
     pending.gone = 0
     Q.Trace("lock event")
+    Invalidate(state.panel, "guidance")
   elseif event == "MAIL_UNLOCK_SEND_ITEMS" then
     -- The answer is in. The watch reads the verdict from the slot two
     -- ticks on, once the client has finished moving the item.
@@ -4130,6 +4175,12 @@ end
 function ST.QueueAwaitingAnswer()
   local pending = Q.fillState and Q.fillState.pending
   return (pending and pending.locked) and true or false
+end
+
+-- The item that question is about, as a link, for the guidance line.
+function ST.QueueAskedItem()
+  local pending = Q.fillState and Q.fillState.pending
+  return pending and pending.entry and pending.entry.link or nil
 end
 
 -- The mailbox closed under a waiting pass: the dialog goes with it, the
@@ -4162,13 +4213,16 @@ end
 function Q.SendQueued(panel, toName)
   local subject = FieldText(panel.SubjectBox)
   local body    = FieldText(panel.BodyBox)
-  if subject == "" then subject = L["DEFAULT_NO_SUBJECT"] end
+  -- Each mail of a run is titled after its own first item when the box is
+  -- empty, as the first one was.
+  if subject == "" then subject = FirstAttachmentName() or L["DEFAULT_NO_SUBJECT"] end
 
   ClearSendMailMoneyState()
 
   sendToken = sendToken + 1
   local myToken = sendToken
   pendingSend = { panel = panel, toName = toName, token = myToken }
+  if panel._run then panel._run.index = panel._run.index + 1 end
   SetSendButtonBusy(panel, true)
 
   SendMail(toName, subject, body)
@@ -4759,6 +4813,9 @@ local function BuildAttachmentArea(panel)
       local entry = queue[i]
       local line = entry.link or "?"
       if (entry.count or 1) > 1 then line = line .. " x" .. entry.count end
+      -- An item the client will ask about before attaching is marked, so
+      -- the questions to come are no surprise.
+      if entry.asks then line = line .. "  " .. Theme.Colorize("warning", L["QUEUE_TIP_ASKS_MARK"]) end
       GameTooltip:AddLine(line, 1, 1, 1)
     end
     if #queue > shown then
@@ -5099,6 +5156,12 @@ function ST.Build(parent)
   panel.ToBox:SetScript("OnEnterPressed", function()
     -- Ctrl+Enter sends from any field of the draft.
     if IsControlKeyDown() then DoSendMail(panel) return end
+    -- The completion in the box is the answer, and Enter makes it the
+    -- proper one: the row taken whole -- capitalised, realm and all -- so
+    -- the name in the box is visibly the name the mail will carry.
+    if CompletionShowing(panel) and panel._acIndex and not panel._acTaken then
+      TakeRow(panel, panel._acIndex)
+    end
     if panel.SubjectBox then panel.SubjectBox:SetFocus() end
   end)
   panel.ToBox:SetScript("OnEditFocusGained", function(self)
