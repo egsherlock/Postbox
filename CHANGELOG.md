@@ -2,83 +2,59 @@
 
 ## 1.38.0
 
-- **Fixed: a queued item the game has to ask about could trap you in its
-  dialog.** Some items — ones you bought recently and could still return —
-  need a yes before they are attached. When the queue reached one of them
-  after a send, the game's question appeared, vanished and appeared again,
-  with its sound each time, until you pressed Escape or reloaded. Now the
-  question is asked once, when that item's turn comes, exactly as it is when
-  you right-click it yourself. Okay attaches it and the run carries on;
-  Cancel leaves it in your bags, drops it from the queue, and carries on with
-  the next item.
-- **One question before a run of mails.** With items queued, pressing Send
-  now asks first: how many mails, to whom, how many items, and the postage
-  for all of them. Nothing changes for a single mail.
-- **Ctrl+Enter sends.** From the recipient, the subject or the message.
-- **Tab no longer wastes a press.** With a name completed in the recipient
-  box, the first Tab used to re-take that same name — a capital letter and
-  the realm, nothing more — and only the second moved on. The completion is
-  already the answer, so Tab now steps straight to the next suggestion.
-- **Postage is quoted for the whole press.** With items queued, "Cost" is
-  what every mail of the press will cost together, not just the first.
-- **Padlocks in EllesmereUI's bags and in Baganator.** While the Send tab is
-  open, items that cannot be mailed are greyed with a padlock in those bags
-  too, as they already were in the game's own.
-- **The queue's tooltip says what it does.** "To the same recipient with the
-  same subject and message" read as if the draft were kept afterwards. It now
-  says that queued items go out to the same person in further mails, that the
-  game asks about an item when its turn comes, and that right-click clears
-  the queue without touching your bags.
-- **You can see the queue.** Items waiting to be attached appear as a grid
-  of small icons in the space to the right of the attachment slots, under
-  the "7 more queued" caption, in the order they will go, with "+N" when the
-  grid is full. Hover one for its tooltip, right-click to take it out of the
-  queue — the same gesture that takes an item out of a slot. Queued items
-  are greyed in your bags too, the way attached ones are.
-- **Fixed: switching to the Mail tab and back left attached and unmailable
-  items looking normal in EllesmereUI's bags and Baganator** until the next
-  bag change. The bags are asked to repaint when the Send tab comes and goes.
-- **A run of mails tells you where it is.** The Send button reads "Sending 2
-  of 3..." while a run goes out, and when the game stops to ask about an item
-  the line above the button says which item and that it is waiting for your
-  answer. In the queue's tooltip, items the game will ask about are marked
-  "asks first" so the questions are no surprise.
-- **A mail with no subject is titled after its first item**, as the game's
-  own send window does it, instead of "Mail". The subject box shows the title
-  it will use while it is empty, so nothing is hidden. Each mail of a run is
-  titled after its own first item.
-- **Enter takes the completed name properly.** With a name completed in the
-  recipient box, Enter now puts the whole name in — capital letter, realm and
-  all — before moving on to the subject, so what you see is exactly what the
-  mail is addressed to.
-- **The totals line under the inbox is shorter, and stays inside the window.**
-  It reads "Earned 95g 57s | Spent 1309g 62s": no "Total", no copper, and a
-  narrow window drops to the gold alone. It used to run off the right edge.
-- **Money has a column of its own, and rows say how long is left only when
-  it is short.** In compact rows the money sits at the right-hand end, lined
-  up down the list: gold arriving in green ("52g 26s", "1309g" above a
-  thousand, "12.3k" above ten thousand), a C.O.D. price in red, and what a
-  won auction cost in red once the game has its receipt. The "30d" that sat
-  on every row is gone from the row — it is in the tooltip — and comes back
-  in the warning colour only when a mail is about to go: under three days
-  for most mail, under a day for a C.O.D. mail, which only ever lives three.
-  Three tones, three meanings: green is gold arriving, amber is a C.O.D.
-  price you would pay by collecting, red is what a won auction cost. The
-  reading view still shows the exact sums.
-- **Full-size rows use their room.** The line under the name reads money,
-  slots, category, time left, then the auction's deposit and fee — and no
-  longer repeats a won auction's price twice.
-- **"All bought" is "All won"**, the same word the rows use.
-- **The earned/spent totals are centred** in their band.
-- **Resizing is free again.** The window's smallest and tallest heights are
-  still whole rows, but between them the grip follows your hand instead of
-  jumping a row at a time.
-- **A tidier row tooltip in compact mode.** One fact per line — what the mail
-  is and when it expires, then any auction figures — with the click hints set
-  apart below, instead of one long line with bars between everything.
-- **The Manage Recipients button in the options has a surface of its own**,
-  like every other container on the panel, and its icon and text sit
-  centred in it.
+### Sending more than twelve items
+
+- **You can see the queue.** Once the twelve slots are full, the items still
+  to go sit in a grid of small icons beside the slots, in the order they will
+  be sent. Hover one for its tooltip; right-click to take it out. Queued
+  items are greyed in your bags, like attached ones.
+- **Fixed: an item the game asks about before attaching could trap you in
+  its dialog.** Items you bought recently and could still return need a yes
+  before they attach. Queued, they made that question pop up again and again
+  after the first mail went, until you reloaded. Now it is asked once, when
+  the item's turn comes: Okay attaches it and the run carries on, Cancel
+  skips it and carries on.
+- **A run of mails explains itself.** Send asks once before a run ("Send 3
+  mails to Bob? 30 items, 10s 80c postage"), the button counts it off
+  ("Sending 2 of 3..."), the cost line is the postage for all of them, and
+  when the game stops to ask about an item, the line above the button says
+  which one. The queue's tooltip marks the items that will be asked about,
+  and now says plainly that queued items go to the same person in further
+  mails.
+
+### Writing a mail
+
+- **Ctrl+Enter sends**, from any field.
+- **Enter takes the completed name whole**, capital letter and realm
+  included, so what you see is who the mail goes to. **Tab steps straight to
+  the next suggestion** instead of re-taking the completed one first.
+- **No subject? The mail is titled after its first item**, as the game does
+  it. The empty subject box shows the title it will use.
+
+### The Mail tab
+
+- **Money has a column of its own.** Compact rows put the amount at the
+  right-hand end, lined up down the list: green for gold arriving ("52g
+  26s", "1309g", "12.3k"), amber for a C.O.D. price, red for what a won
+  auction cost. Full-size rows read money, slots, category, time left, then
+  the auction's deposit and fee. The reading view still shows exact sums.
+- **"30d" is gone from every row.** Time left is in the tooltip, and appears
+  on the row in the warning colour only when a mail is about to go: under
+  three days, or under a day for a C.O.D. mail.
+- **The totals line fits, and is centred.** "Earned 95g 57s | Spent 1309g
+  62s", no copper. It used to run off the right edge.
+- **"All bought" is now "All won"**, matching the rows. Compact-row tooltips
+  show one fact per line.
+- **Resizing is free again** between the window's smallest and tallest
+  heights, instead of jumping a row at a time.
+
+### Bags and options
+
+- **Padlocks in EllesmereUI's bags and in Baganator.** Items that cannot be
+  mailed are greyed with a padlock there too while the Send tab is open, and
+  attached items stay greyed when you switch tabs and back.
+- **The Manage Recipients button** in the options is a card of its own, with
+  its contents centred.
 
 ## 1.37.0
 
