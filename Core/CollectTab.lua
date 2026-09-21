@@ -75,17 +75,7 @@ local AUCTION_OUTCOME = {
 local function PinScrollBar(scroll, container)
   if not scroll then return end
   scroll.scrollBarHideable = 1
-  local name = scroll.GetName and scroll:GetName()
-  local bar = scroll.ScrollBar or (name and _G[name .. "ScrollBar"])
-  if not bar or not container then return end
-  local M = Th().Metrics
-  bar:ClearAllPoints()
-  -- The template's up/down buttons still exist above and below the slider
-  -- (invisible under every skin but Blizzard's); 16 is their height.
-  bar:SetPoint("TOPRIGHT", container, "TOPRIGHT", -M.tightGap, -16)
-  bar:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -M.tightGap, 16)
-  -- The host skins pin the bar to the same edge themselves (and flatten its
-  -- art on the way past); this is the same answer for the unskinned window.
+  Th().SlimScrollBar(scroll, container)
 end
 
 -------------------------------------------------------------

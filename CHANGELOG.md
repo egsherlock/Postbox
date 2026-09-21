@@ -17,22 +17,29 @@
   subject too.
 - **The read/unread dot is a dot.** A round mark, a little further from the
   row's edge, so it no longer sits against the selection bar as one shape.
-- **The options panel is in the window's order.** Mail tab, Send tab, Window,
-  Mail alerts, Minimap. The old General card mixed eight unrelated switches
-  with the recipient manager's portrait; grid docking now sits with the other
-  window settings, and the recipient manager is a two-line button under the
-  Send tab's switches, with the letter bundle and its live count.
-- **The scroll bar sits beside the rows.** It stood a hand's width away in
-  an empty track; it is now pinned inside the list's edge, and it hides
-  itself when everything fits.
+- **The options panel is two columns, in the window's order.** The recipient
+  manager has its own button across the top, with the letter bundle and its
+  live count. Below it, the left column is Mail tab, Send tab and Mail alerts;
+  the right is Window (grid docking now sits with the style and border
+  settings) and Minimap. The panel is a rectangle a screen can hold rather
+  than a strip taller than most, and the Mail tab's caption is a labelled
+  dropdown like the Window card's.
+- **A scroll bar of Postbox's own.** Every list — the inbox, a mail's text,
+  the recipient picker and manager, the mailbox memory, the message you are
+  writing — now has the same slim bar: six pixels, a thumb sized to how much
+  is off screen, a small chevron at each end that steps a row, and nothing at
+  all when everything fits. The old bar stood a hand's width from the rows in
+  an empty track, off-centre.
 - **Right-click the resize grip to put the window back to its default size.**
 - **The reading view is tidier.** The empty square at the top-left is gone —
   the item already sits in the attachment row — the message sits on its own
   surface below the header, and its scroll bar only appears when the text
   needs one.
-- **Fixed: queuing a thirteenth attachment did nothing under some bag
-  addons.** The queue now also listens for the game's own "cannot attach more
-  than 12 items" refusal and takes the item under the cursor.
+- **Fixed: queuing a thirteenth attachment did nothing.** Two causes, both
+  gone: the click never reached Postbox under some bag addons (it now
+  listens where every bag button reports its clicks, and to the game's own
+  "cannot attach more than 12 items" refusal), and the item was then turned
+  away for reading as locked in the instant after the refusal.
 - **Fixed: a freshly favourited recipient could be filed under a lowercase
   name** when it was favourited from the recipient manager.
 

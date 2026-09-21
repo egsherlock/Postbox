@@ -1833,6 +1833,8 @@ local function EnsureContactPicker(panel)
   -- One gutter width for every scroll frame in the addon, wide enough that the
   -- classic bar clears the container's border art.
   scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -M.scrollGutter, PICKER_PAD)
+  scroll.scrollBarHideable = 1
+  Theme.SlimScrollBar(scroll, f, PICKER_PAD)
 
   local child = CreateFrame("Frame", nil, scroll)
   child:SetSize(PICKER_MIN_W - M.scrollGutter - PICKER_PAD, 10)
@@ -2869,22 +2871,12 @@ end
 -- This is also what EllesmereUI's SkinScroll does to it, to the same frame and
 -- within a pixel or two of the same numbers, so the stock and skinned paths now
 -- put the bar in the same place instead of only one of them being deliberate.
-local SCROLL_END_BUTTON = 16   -- fallback only; the button is measured first
+
 
 local function PinScrollBarInside(wrap, scroll, pad)
-  local bar = scroll.ScrollBar
-  if not bar then return end
-
-  -- The end buttons sit outside the slider's own anchors, so the slider has to
-  -- start one button's height in from each edge for them to land inside.
-  local up = bar.ScrollUpButton
-  local room = (up and type(up.GetHeight) == "function" and ceil(up:GetHeight() or 0)) or 0
-  if room < 1 then room = SCROLL_END_BUTTON end
-
-  bar:ClearAllPoints()
-  bar:SetWidth(M.scrollBarWidth)
-  bar:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", -M.scrollBarClearance, -(pad + room))
-  bar:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -M.scrollBarClearance, pad + room)
+  -- The addon's own slim bar (Core/Theme.lua 9), inside the field's wrap.
+  scroll.scrollBarHideable = 1
+  Theme.SlimScrollBar(scroll, wrap, pad)
 end
 
 -- A labelled field spanning the panel width. A multi-line field is left with no
@@ -3664,23 +3656,34 @@ RefreshQueueLabel = function(panel)
   end
 end
 
+-- Returns true, or false and the reason it declined -- the reasons are
+-- counted for the report, which is how "the queue does nothing" became
+-- "every route fires and Enqueue says no" in the field.
+--
+-- A LOCKED item is not refused. The first build refused it on the theory
+-- that a lock meant the click had attached it after all; in the field the
+-- item under a refused click reads as locked for the rest of that frame,
+-- and every one of ten clicks was turned away for it. The slots are full,
+-- so the click cannot have attached anything, and the lock clears before
+-- anything is picked up: FillFromQueue verifies each pickup by the slot it
+-- lands in, so a lock that did outlast this moment costs one skipped item,
+-- not a wrong one.
 local function Enqueue(panel, bag, slot)
   local info = ContainerInfo(bag, slot)
-  -- Locked means the click DID attach it, or something else holds it.
-  if not info or info.isLocked then return false end
+  if not info then return false, "empty" end
   local guid = GuidAt(bag, slot)
-  if not guid then return false end
+  if not guid then return false, "noguid" end
 
   local queue = Queue(panel)
   for i = 1, #queue do
-    if queue[i].guid == guid then return false end
+    if queue[i].guid == guid then return false, "dup" end
   end
 
   -- The same verdict the padlock overlays draw from: an item that cannot be
   -- mailed is not queued to fail later.
   local Lock = ns.Core and ns.Core.InventoryLock
   if Lock and type(Lock.ShouldLockForMail) == "function" and Lock.ShouldLockForMail(bag, slot) then
-    return false
+    return false, "unmailable"
   end
 
   queue[#queue + 1] = {
@@ -3717,10 +3720,12 @@ local function FillFromQueue(panel)
     else
       pcall(C_Container.PickupContainerItem, bag, slot)
       pcall(ClickSendMailItemButton, slotIndex)
-      -- The item still on the cursor is the client's refusal. Put it down,
-      -- put the entry back at the front, and stop: whatever refused it will
-      -- refuse the next one too.
-      if type(CursorHasItem) == "function" and CursorHasItem() then
+      -- The slot is the proof, not the cursor: the item landing in it is
+      -- what an attach IS, and a pickup that found the item locked leaves
+      -- the cursor empty and the slot empty both. Either way the entry goes
+      -- back to the front and the pass stops: whatever refused this one
+      -- will refuse the next.
+      if not SlotHasItem(slotIndex) then
         if type(ClearCursor) == "function" then ClearCursor() end
         table.insert(queue, 1, entry)
         break
@@ -3822,7 +3827,7 @@ end
 -- How many times each way in fired, and what came of it: the queue has
 -- failed silently in the field once already, and the report is where the
 -- next such report answers itself. ST.Diagnose renders them.
-local queueStats = { click = 0, use = 0, refused = 0, queued = 0 }
+local queueStats = { click = 0, use = 0, refused = 0, queued = 0, declined = {} }
 
 -- The state in which a refused bag click can only mean "the slots are full":
 -- the Send tab showing, no send in flight, no C.O.D. armed, every slot
@@ -3838,7 +3843,12 @@ end
 
 local function TryEnqueue(panel, bag, slot)
   if type(bag) ~= "number" or type(slot) ~= "number" then return end
-  if Enqueue(panel, bag, slot) then queueStats.queued = queueStats.queued + 1 end
+  local ok, reason = Enqueue(panel, bag, slot)
+  if ok then
+    queueStats.queued = queueStats.queued + 1
+  else
+    queueStats.declined[reason] = (queueStats.declined[reason] or 0) + 1
+  end
 end
 
 -- The way in: the client's own right-click, after the client has answered
@@ -3882,8 +3892,14 @@ end
 function ST.Diagnose()
   local panel = ActivePanel()
   local waiting = (panel and panel._queue) and #panel._queue or 0
-  return string.format("attach queue: click %d | use %d | refused %d | queued %d | waiting %d",
-    queueStats.click, queueStats.use, queueStats.refused, queueStats.queued, waiting)
+  local declined = {}
+  for reason, count in pairs(queueStats.declined) do
+    declined[#declined + 1] = reason .. " " .. count
+  end
+  table.sort(declined)
+  return string.format("attach queue: click %d | use %d | refused %d | queued %d | waiting %d | declined %s",
+    queueStats.click, queueStats.use, queueStats.refused, queueStats.queued, waiting,
+    (#declined > 0) and table.concat(declined, ", ") or "none")
 end
 
 -- The way in, second route, and the one that holds when the first does not:

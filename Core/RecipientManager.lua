@@ -2115,6 +2115,8 @@ local function Build()
   -- classic bar clears the container's border art. It was 22 here, which is the
   -- one width that put the bar ON that art.
   scroll:SetPoint("BOTTOMRIGHT", listArea, "BOTTOMRIGHT", -M.scrollGutter, LIST_INSET)
+  scroll.scrollBarHideable = 1
+  Theme.SlimScrollBar(scroll, listArea, LIST_INSET)
   frame.ListScroll = scroll
 
   local child = CreateFrame("Frame", nil, scroll)

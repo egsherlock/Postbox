@@ -698,7 +698,9 @@ local function Build()
 
   frame.Scroll = CreateFrame("ScrollFrame", nil, card, "UIPanelScrollFrameTemplate")
   frame.Scroll:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
-  frame.Scroll:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -22, 1)
+  frame.Scroll:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -(ns.Theme.Metrics.scrollGutter), 1)
+  frame.Scroll.scrollBarHideable = 1
+  ns.Theme.SlimScrollBar(frame.Scroll, card, 1)
 
   frame.ListChild = CreateFrame("Frame", nil, frame.Scroll)
   frame.ListChild:SetWidth(WINDOW_WIDTH - 44)

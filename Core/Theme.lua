@@ -737,9 +737,9 @@ Theme.Space = SPACE
 -- to hold the template's outward offset: it is the bar's own width plus the
 -- clearance to the edge, and the thumb sits right beside the rows instead of
 -- a hand's width from them.
-local SCROLLBAR_OFFSET    = 0   -- the bar is pinned, not left where the template puts it
-local SCROLLBAR_WIDTH     = 12  -- the bar's own width once pinned
-local SCROLLBAR_CLEARANCE = 4   -- room left between the bar and the panel edge
+local SCROLLBAR_OFFSET    = 0   -- the bar is drawn here (section 9), not where the template puts it
+local SCROLLBAR_WIDTH     = 6   -- the slim bar's width
+local SCROLLBAR_CLEARANCE = 6   -- from the bar to the panel edge, and a little air before the rows
 
 Theme.Metrics = {
   space = SPACE,
@@ -1740,4 +1740,169 @@ function Theme.StyleMailRow(row, position, hovered)
   if RowStyling and RowStyling.Apply then
     RowStyling.Apply(row, row._rowIndex, row._hovered)
   end
+end
+
+-------------------------------------------------------------
+-- 9. The slim scroll bar
+--
+-- Every list in the addon scrolls through UIPanelScrollFrameTemplate, whose
+-- bar is the classic three-piece slider: sixteen pixels wide, two arrow
+-- buttons, a track, and anchored six pixels OUTSIDE the frame it scrolls.
+-- Every skin then spent code hiding all of that and left a four-pixel
+-- thumb floating in a sixteen-pixel gutter, off-centre -- the "big empty
+-- track" a modern eye reads as wasted space.
+--
+-- This keeps the template's bar for what it is good at -- the bookkeeping
+-- between the scroll frame and a slider's value, which the template's own
+-- handlers do -- but takes it off screen, and draws a bar of its own in the
+-- gutter: six pixels wide, a faint track, a thumb sized to the content, and
+-- a chevron at each end that steps about a row. The two sliders are kept
+-- equal, so the wheel, a drag on the thumb, a click on the track and a
+-- chevron press all move the same number. Hidden while the content fits.
+--
+-- Both host skins and Postbox Modern identify the template's bar by the
+-- flags set here and leave it alone; nothing in their tree walks acts on a
+-- plain Slider, so this bar is painted here and nowhere else.
+-------------------------------------------------------------
+
+local SLIM_W     = 6
+local SLIM_PAD   = 4     -- in from the container's edge
+local CHEVRON_H  = 10    -- each end button; the chevron is drawn inside it
+local THUMB_MIN  = 20
+local SLIM_STEP  = 24    -- one chevron press, in pixels: about one row
+
+-- Two short bars at forty-five degrees meeting at the centre: a chevron
+-- drawn from the addon's white tile, crisp at any scale, no art to ship.
+local function Chevron(parent, up)
+  local btn = CreateFrame("Button", nil, parent)
+  btn:SetSize(SLIM_W + 6, CHEVRON_H)
+  local bars = {}
+  for i = 1, 2 do
+    local bar = btn:CreateTexture(nil, "ARTWORK")
+    bar:SetTexture(WHITE)
+    bar:SetSize(6, 1.2)
+    local side = (i == 1) and -1 or 1
+    bar:SetPoint("CENTER", btn, "CENTER", side * 2, 0)
+    -- The left bar rises to the right for an up chevron; mirrored for down.
+    bar:SetRotation(side * (up and 0.785 or -0.785))
+    bar:SetAlpha(0.35)
+    bars[i] = bar
+  end
+  btn:SetScript("OnEnter", function() bars[1]:SetAlpha(0.8) bars[2]:SetAlpha(0.8) end)
+  btn:SetScript("OnLeave", function() bars[1]:SetAlpha(0.35) bars[2]:SetAlpha(0.35) end)
+  return btn
+end
+
+-- scroll: a UIPanelScrollFrameTemplate frame. container: the frame whose
+-- right edge the bar sits inside (the card or list area, not the scroll
+-- frame, which stops a gutter short of it). padTop/padBottom: how far in
+-- from the container's top and bottom the bar's span starts; the
+-- container's own padding by default.
+function Theme.SlimScrollBar(scroll, container, padTop, padBottom)
+  if not scroll or not container then return nil end
+  local name = scroll.GetName and scroll:GetName()
+  local stock = scroll.ScrollBar or (name and _G[name .. "ScrollBar"])
+  if not stock then return nil end
+  padTop = padTop or SLIM_PAD
+  padBottom = padBottom or padTop
+
+  -- The template's bar: kept, because the scroll frame's own handlers write
+  -- the range and the value into it, but unseen and untouchable. Parked off
+  -- the container's edge rather than hidden, because the template's range
+  -- handler shows it again whenever there is something to scroll.
+  stock:SetAlpha(0)
+  stock:EnableMouse(false)
+  for _, key in ipairs({ "ScrollUpButton", "ScrollDownButton", "Back", "Forward" }) do
+    local b = stock[key]
+    if b and b.EnableMouse then b:EnableMouse(false) end
+  end
+  stock:ClearAllPoints()
+  stock:SetPoint("TOPLEFT", container, "TOPRIGHT", 40, 0)
+  stock:SetPoint("BOTTOMLEFT", container, "BOTTOMRIGHT", 40, 0)
+  -- The flags each skin checks before touching a scroll bar.
+  stock.__pbEuiPinned, stock.__pbEuiSkinned = true, true
+  stock.__pbModernBar, stock.__postboxSkinned = true, true
+
+  local bar = CreateFrame("Slider", nil, container)
+  bar:SetOrientation("VERTICAL")
+  bar:SetWidth(SLIM_W)
+  bar:SetPoint("TOPRIGHT", container, "TOPRIGHT", -SLIM_PAD, -(padTop + CHEVRON_H))
+  bar:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -SLIM_PAD, padBottom + CHEVRON_H)
+  bar:SetFrameLevel(scroll:GetFrameLevel() + 2)
+  if bar.SetObeyStepOnDrag then bar:SetObeyStepOnDrag(false) end
+  bar:SetValueStep(1)
+
+  bar.Track = bar:CreateTexture(nil, "BACKGROUND")
+  bar.Track:SetAllPoints()
+  bar.Track:SetColorTexture(1, 1, 1, 0.06)
+
+  bar:SetThumbTexture(WHITE)
+  local thumb = bar:GetThumbTexture()
+  thumb:SetColorTexture(1, 1, 1, 0.30)
+  thumb:SetSize(SLIM_W, THUMB_MIN)
+
+  bar.Up = Chevron(container, true)
+  bar.Up:SetPoint("BOTTOM", bar, "TOP", 0, 0)
+  bar.Down = Chevron(container, false)
+  bar.Down:SetPoint("TOP", bar, "BOTTOM", 0, 0)
+
+  -- The thumb's length says how much of the content is on screen: the bar's
+  -- own height against the same height plus what is hidden below it.
+  local function FitThumb()
+    local height = bar:GetHeight() or 0
+    local _, range = bar:GetMinMaxValues()
+    if height <= 0 then return end
+    local size = height
+    if (range or 0) > 0 then size = height * height / (height + range) end
+    thumb:SetHeight(math.max(THUMB_MIN, math.min(height, size)))
+  end
+
+  local function SetShown(on)
+    bar:SetShown(on)
+    bar.Up:SetShown(on)
+    bar.Down:SetShown(on)
+  end
+
+  -- Two sliders, one number. The guard stops each write from echoing back
+  -- through the other's handler.
+  local syncing = false
+  bar:SetScript("OnValueChanged", function(_, value)
+    if syncing then return end
+    syncing = true
+    scroll:SetVerticalScroll(value)
+    syncing = false
+  end)
+  stock:HookScript("OnValueChanged", function(_, value)
+    if syncing then return end
+    syncing = true
+    bar:SetValue(value)
+    syncing = false
+  end)
+  stock:HookScript("OnMinMaxChanged", function(_, low, high)
+    bar:SetMinMaxValues(low, high)
+    SetShown((high or 0) > 0)
+    FitThumb()
+  end)
+  bar:SetScript("OnSizeChanged", FitThumb)
+
+  local function Step(delta)
+    local low, high = bar:GetMinMaxValues()
+    bar:SetValue(math.max(low, math.min(high, bar:GetValue() + delta)))
+  end
+  bar.Up:SetScript("OnClick", function() Step(-SLIM_STEP) end)
+  bar.Down:SetScript("OnClick", function() Step(SLIM_STEP) end)
+
+  -- The thumb brightens under the cursor, like every other control's hover.
+  bar:SetScript("OnEnter", function() thumb:SetColorTexture(1, 1, 1, 0.55) end)
+  bar:SetScript("OnLeave", function() thumb:SetColorTexture(1, 1, 1, 0.30) end)
+
+  -- Whatever the template has already decided before this bar existed.
+  local low, high = stock:GetMinMaxValues()
+  bar:SetMinMaxValues(low or 0, high or 0)
+  bar:SetValue(stock:GetValue() or 0)
+  SetShown((high or 0) > 0)
+  FitThumb()
+
+  scroll.SlimBar = bar
+  return bar
 end

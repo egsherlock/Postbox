@@ -300,156 +300,15 @@ local function Build()
   local y = -34
   local card, cy
 
-  -- The panel is ordered the way the window is: the Mail tab, the Send tab,
-  -- the window they sit in, then what happens away from the mailbox. One
-  -- "General" card used to hold eight unrelated switches and the recipient
-  -- manager's portrait; a player looking for the thing about sending had to
-  -- read the things about the list to find it.
-
-  -- Mail tab: the list and how it is read, in the order the eye meets it --
-  -- the rows, the captions above them, the views, the buttons beneath, the
-  -- gesture on a row, and the tab's own caption.
-  card, y = BeginSection(frame, y, L["OPT_MAILTAB_HEADING"])
-  cy = -12
-
-  cy = AddCheckbox(card, cy, L["OPT_COMPACT_ROWS_TITLE"], L["OPT_COMPACT_ROWS_DESC"],
-        function() return ns.MailboxUI.GetOption("compactRows") end,
-        function(on)
-          ns.MailboxUI.SetOption("compactRows", on)
-          if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
-        end)
-
-  cy = AddCheckbox(card, cy, L["OPT_TAB_COUNTS_TITLE"], L["OPT_TAB_COUNTS_DESC"],
-        function() return ns.MailboxUI.GetOption("showTabCounts") end,
-        function(on)
-          ns.MailboxUI.SetOption("showTabCounts", on)
-          if ns.MailboxUI.RefreshCollectTabCounts then ns.MailboxUI.RefreshCollectTabCounts() end
-        end)
-
-  cy = AddCheckbox(card, cy, L["OPT_ALL_TAB_TITLE"], L["OPT_ALL_TAB_DESC"],
-        function() return ns.MailboxUI.GetOption("showAllTab") end,
-        function(on)
-          ns.MailboxUI.SetOption("showAllTab", on)
-          if ns.MailboxUI.RefreshCollectSegments then ns.MailboxUI.RefreshCollectSegments() end
-        end)
-
-  cy = AddCheckbox(card, cy, L["OPT_CATEGORY_BUTTONS_TITLE"], L["OPT_CATEGORY_BUTTONS_DESC"],
-        function() return ns.MailboxUI.GetOption("showCategoryButtons") end,
-        function(on)
-          ns.MailboxUI.SetOption("showCategoryButtons", on)
-          if ns.MailboxUI.RefreshCollectCategoryButtons then ns.MailboxUI.RefreshCollectCategoryButtons() end
-        end)
-
-  -- Nothing to refresh: the mapping is read at the moment a row is clicked, and
-  -- the row tooltip's hint line is composed on hover from the same reading. A
-  -- list rebuild would repaint rows that are already correct.
-  cy = AddCheckbox(card, cy, L["OPT_PREVIEW_CLICK_TITLE"], L["OPT_PREVIEW_CLICK_DESC"],
-        function() return ns.MailboxUI.GetOption("previewOnClick") end,
-        function(on) ns.MailboxUI.SetOption("previewOnClick", on) end)
-
-  -- The Mail tab's caption mode, one full-width control under the
-  -- checkboxes. The closed toggle wears the row's NAME while the setting is
-  -- off -- a bare "Nothing" floating in the card reads as broken -- and the
-  -- chosen mode's name once one is actually on, so a glance tells you
-  -- whether the tab carries anything without opening the list.
-  local tcItems = {
-    { id = "dot",    name = L["OPT_TAB_CAPTION_DOT"] },
-    { id = "total",  name = L["OPT_TAB_CAPTION_TOTAL"] },
-    { id = "counts", name = L["OPT_TAB_CAPTION_COUNTS"] },
-    { id = "none",   name = L["OPT_TAB_CAPTION_NONE"] },
-  }
-  local function TcToggleText()
-    local mode = ns.MailboxUI.GetTabCaptionMode and ns.MailboxUI.GetTabCaptionMode() or "none"
-    if mode ~= "none" then
-      for _, item in ipairs(tcItems) do
-        if item.id == mode then return item.name end
-      end
-    end
-    return L["OPT_TAB_CAPTION_TITLE"]
-  end
-  local tcWidth = (W - 20) - PAD * 2
-  local tcDD = ns.Core.UI.Dropdown.Create(card, {
-    items        = tcItems,
-    toggleWidth  = tcWidth,
-    toggleHeight = 22,
-    height       = DROPDOWN_H,
-    listWidth    = tcWidth,
-    defaultId    = ns.MailboxUI.GetTabCaptionMode and ns.MailboxUI.GetTabCaptionMode(),
-  })
-  tcDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
-  tcDD:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
-  local tcToggle = tcDD._toggle
-  if tcToggle then
-    -- Fill the row whatever the fixed width said.
-    tcToggle:ClearAllPoints()
-    tcToggle:SetPoint("LEFT", tcDD, "LEFT", 0, 0)
-    tcToggle:SetPoint("RIGHT", tcDD, "RIGHT", 0, 0)
-  end
-  tcDD:SetText(TcToggleText())
-  tcDD:SetChangeCallback(function(id)
-    if ns.MailboxUI.SetTabCaptionMode then ns.MailboxUI.SetTabCaptionMode(id) end
-    -- After the widget's own write (see the row OnClick order): the mode's
-    -- name for a live mode, the row name for "Nothing".
-    tcDD:SetText(TcToggleText())
-  end)
-  if tcToggle then
-    tcToggle:HookScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(L["OPT_TAB_CAPTION_TITLE"])
-      GameTooltip:AddLine(L["OPT_TAB_CAPTION_DESC"], 1, 1, 1, true)
-      local mode = ns.MailboxUI.GetTabCaptionMode and ns.MailboxUI.GetTabCaptionMode()
-      for _, item in ipairs(tcItems) do
-        if item.id == mode then
-          GameTooltip:AddLine(item.name, 0.96, 0.80, 0.18)
-          break
-        end
-      end
-      GameTooltip:Show()
-    end)
-    tcToggle:HookScript("OnLeave", function() GameTooltip:Hide() end)
-  end
-  frame.__refreshers[#frame.__refreshers + 1] = function()
-    if ns.MailboxUI.GetTabCaptionMode then
-      tcDD._selectedId = ns.MailboxUI.GetTabCaptionMode()
-    end
-    tcDD:SetText(TcToggleText())
-  end
-  MarkBottom(card, cy, DROPDOWN_H)
-  cy = cy - ROW_H
-
-  y = EndSection(frame, card, y)
-
-  -- Send tab: the two switches about composing, and the address book they
-  -- draw on. The recipient manager is a row here rather than a portrait
-  -- beside the list switches: it is about sending, and a row with the live
-  -- count on it says as much as the portrait did in a quarter of the space.
-  -- /postbox recipients is the other way in.
-  card, y = BeginSection(frame, y, L["OPT_SENDTAB_HEADING"])
-  cy = -12
-
-  cy = AddCheckbox(card, cy, L["OPT_ATTACH_MAIL_TITLE"], L["OPT_ATTACH_MAIL_DESC"],
-        function() return ns.MailboxUI.GetOption("attachFromMail") end,
-        function(on)
-          ns.MailboxUI.SetOption("attachFromMail", on)
-          -- Applies to the mailbox that is open right now, not the next one.
-          if ns.MailboxUI.RefreshMailTabAttach then ns.MailboxUI.RefreshMailTabAttach() end
-        end)
-
-  -- Nothing to refresh: the option is read at the moment a send succeeds.
-  cy = AddCheckbox(card, cy, L["OPT_KEEP_RECIPIENT_TITLE"], L["OPT_KEEP_RECIPIENT_DESC"],
-        function() return ns.MailboxUI.GetOption("keepRecipient") end,
-        function(on) ns.MailboxUI.SetOption("keepRecipient", on) end)
-
-  -- Manage Recipients: a hero row. Full width, two rows tall, the letter
-  -- bundle glowing at the left and two lines of text beside it -- the title,
-  -- and the live count underneath. Loud enough to be the thing on the card
-  -- (it is the one control here that opens a whole window) without the
-  -- six-row portrait the old General card had to grow around.
+  -- Manage Recipients: a hero row across the whole panel, above both
+  -- columns. It opens a whole window of its own, which makes it the one
+  -- control here that is a feature rather than a setting, so it stands
+  -- apart from the settings rather than inside one of their cards.
   local HERO_H = 52
-  local hero = ns.Theme.CreateButton(nil, card)
+  local hero = ns.Theme.CreateButton(nil, frame)
   hero:SetHeight(HERO_H)
-  hero:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
-  hero:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
+  hero:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, y)
+  hero:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
 
   -- The stock plate is a ~22px three-slice; stretched to this height it
   -- smears into pixel blocks. Under a host skin the repaint hides that, so
@@ -550,18 +409,130 @@ local function Build()
   end)
   hero:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-  MarkBottom(card, cy, HERO_H)
-  cy = cy - HERO_H - 8
+  y = y - HERO_H - 16
 
-  y = EndSection(frame, card, y)
+  -- The panel is ordered the way the window is: the Mail tab, the Send tab,
+  -- the window they sit in, then what happens away from the mailbox. One
+  -- "General" card used to hold eight unrelated switches and the recipient
+  -- manager's portrait; a player looking for the thing about sending had to
+  -- read the things about the list to find it.
+
+  -- Two columns, so the panel is a rectangle a screen can hold rather than
+  -- a strip taller than most. Left: the two tabs and the alerts. Right:
+  -- the window and the minimap icon, the two cards with the most in them.
+  -- Each column is a frame the sections build into exactly as they built
+  -- into the panel, sharing the panel's refresher list; the panel's height
+  -- is the taller column's.
+  local colTop = y
+  local left = CreateFrame("Frame", nil, frame)
+  left:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, colTop)
+  left:SetSize(W, 10)
+  left.__refreshers = frame.__refreshers
+  local right = CreateFrame("Frame", nil, frame)
+  right:SetPoint("TOPLEFT", frame, "TOPLEFT", W - 10, colTop)
+  right:SetSize(W, 10)
+  right.__refreshers = frame.__refreshers
+  local col = left
+  y = 0
+
+  -- Mail tab: the list and how it is read, in the order the eye meets it --
+  -- the rows, the captions above them, the views, the buttons beneath, the
+  -- gesture on a row, and the tab's own caption.
+  card, y = BeginSection(col, y, L["OPT_MAILTAB_HEADING"])
+  cy = -12
+
+  cy = AddCheckbox(card, cy, L["OPT_COMPACT_ROWS_TITLE"], L["OPT_COMPACT_ROWS_DESC"],
+        function() return ns.MailboxUI.GetOption("compactRows") end,
+        function(on)
+          ns.MailboxUI.SetOption("compactRows", on)
+          if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
+        end)
+
+  cy = AddCheckbox(card, cy, L["OPT_TAB_COUNTS_TITLE"], L["OPT_TAB_COUNTS_DESC"],
+        function() return ns.MailboxUI.GetOption("showTabCounts") end,
+        function(on)
+          ns.MailboxUI.SetOption("showTabCounts", on)
+          if ns.MailboxUI.RefreshCollectTabCounts then ns.MailboxUI.RefreshCollectTabCounts() end
+        end)
+
+  cy = AddCheckbox(card, cy, L["OPT_ALL_TAB_TITLE"], L["OPT_ALL_TAB_DESC"],
+        function() return ns.MailboxUI.GetOption("showAllTab") end,
+        function(on)
+          ns.MailboxUI.SetOption("showAllTab", on)
+          if ns.MailboxUI.RefreshCollectSegments then ns.MailboxUI.RefreshCollectSegments() end
+        end)
+
+  cy = AddCheckbox(card, cy, L["OPT_CATEGORY_BUTTONS_TITLE"], L["OPT_CATEGORY_BUTTONS_DESC"],
+        function() return ns.MailboxUI.GetOption("showCategoryButtons") end,
+        function(on)
+          ns.MailboxUI.SetOption("showCategoryButtons", on)
+          if ns.MailboxUI.RefreshCollectCategoryButtons then ns.MailboxUI.RefreshCollectCategoryButtons() end
+        end)
+
+  -- Nothing to refresh: the mapping is read at the moment a row is clicked, and
+  -- the row tooltip's hint line is composed on hover from the same reading. A
+  -- list rebuild would repaint rows that are already correct.
+  cy = AddCheckbox(card, cy, L["OPT_PREVIEW_CLICK_TITLE"], L["OPT_PREVIEW_CLICK_DESC"],
+        function() return ns.MailboxUI.GetOption("previewOnClick") end,
+        function(on) ns.MailboxUI.SetOption("previewOnClick", on) end)
+
+  -- The Mail tab's caption mode: a labelled dropdown, the same control the
+  -- Window card uses for its style, so the two cards read as one system.
+  local tcItems = {
+    { id = "dot",    name = L["OPT_TAB_CAPTION_DOT"] },
+    { id = "total",  name = L["OPT_TAB_CAPTION_TOTAL"] },
+    { id = "counts", name = L["OPT_TAB_CAPTION_COUNTS"] },
+    { id = "none",   name = L["OPT_TAB_CAPTION_NONE"] },
+  }
+  local tcDD
+  cy, tcDD = AddDropdown(card, cy, L["OPT_TAB_CAPTION_TITLE"], tcItems,
+        function() return ns.MailboxUI.GetTabCaptionMode and ns.MailboxUI.GetTabCaptionMode() or "none" end,
+        function(id) if ns.MailboxUI.SetTabCaptionMode then ns.MailboxUI.SetTabCaptionMode(id) end end)
+  -- The description on hover, as every checkbox carries its own.
+  local tcToggle = tcDD and tcDD._toggle
+  if tcToggle then
+    tcToggle:HookScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(L["OPT_TAB_CAPTION_TITLE"])
+      GameTooltip:AddLine(L["OPT_TAB_CAPTION_DESC"], 1, 1, 1, true)
+      GameTooltip:Show()
+    end)
+    tcToggle:HookScript("OnLeave", function() GameTooltip:Hide() end)
+  end
+
+  y = EndSection(col, card, y)
+
+  -- Send tab: the two switches about composing, and the address book they
+  -- draw on. The recipient manager is a row here rather than a portrait
+  -- beside the list switches: it is about sending, and a row with the live
+  -- count on it says as much as the portrait did in a quarter of the space.
+  -- /postbox recipients is the other way in.
+  card, y = BeginSection(col, y, L["OPT_SENDTAB_HEADING"])
+  cy = -12
+
+  cy = AddCheckbox(card, cy, L["OPT_ATTACH_MAIL_TITLE"], L["OPT_ATTACH_MAIL_DESC"],
+        function() return ns.MailboxUI.GetOption("attachFromMail") end,
+        function(on)
+          ns.MailboxUI.SetOption("attachFromMail", on)
+          -- Applies to the mailbox that is open right now, not the next one.
+          if ns.MailboxUI.RefreshMailTabAttach then ns.MailboxUI.RefreshMailTabAttach() end
+        end)
+
+  -- Nothing to refresh: the option is read at the moment a send succeeds.
+  cy = AddCheckbox(card, cy, L["OPT_KEEP_RECIPIENT_TITLE"], L["OPT_KEEP_RECIPIENT_DESC"],
+        function() return ns.MailboxUI.GetOption("keepRecipient") end,
+        function(on) ns.MailboxUI.SetOption("keepRecipient", on) end)
+
+
+  y = EndSection(col, card, y)
 
   -- Mail alerts: the three ways Postbox tells you about mail you are not
   -- standing in front of. They were scattered through the Minimap card,
   -- which is where the icon's LOOK is configured -- a sound is not a look,
   -- and the memory is a window rather than an icon setting. Two of the
   -- three are delivered THROUGH the icon, which their tooltips say.
-  y = AddSectionHeading(frame, y, L["OPT_ALERTS_HEADING"])
-  card = StartCard(frame, y)
+  y = AddSectionHeading(col, y, L["OPT_ALERTS_HEADING"])
+  card = StartCard(col, y)
   cy = -12
 
   cy = AddCheckbox(card, cy, L["OPT_ALERT_SOUND_TITLE"], L["OPT_ALERT_SOUND_DESC"],
@@ -576,7 +547,7 @@ local function Build()
         function() return ns.MailboxUI.GetOption("mailMemory") end,
         function(on) ns.MailboxUI.SetOption("mailMemory", on) end)
 
-  y = EndSection(frame, card, y)
+  y = EndSection(col, card, y)
 
   -- Appearance: everything about how the window looks, in one card.
   --
@@ -588,9 +559,13 @@ local function Build()
   -- one 22px line, which was the worst ratio in the panel.
   local installedHost = InstalledHostName()
 
+  local leftBottom = y
+  col = right
+  y = 0
+
   local appHeadingY = y
-  y = AddSectionHeading(frame, y, L["OPT_WINDOW_HEADING"])
-  card = StartCard(frame, y)
+  y = AddSectionHeading(col, y, L["OPT_WINDOW_HEADING"])
+  card = StartCard(col, y)
   cy = -12
 
   -- Where the window opens, before how it is painted: the one setting about
@@ -660,9 +635,9 @@ local function Build()
     -- with the caption anchored RIGHT-to-LEFT against it and no vertical offset
     -- anywhere. 22 and 8 are both even, so the centre line is a whole pixel and
     -- nothing needs nudging.
-    local badge = CreateFrame("Frame", nil, frame)
+    local badge = CreateFrame("Frame", nil, col)
     badge:SetHeight(CHECK_H)
-    badge:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, appHeadingY + 5)
+    badge:SetPoint("TOPRIGHT", col, "TOPRIGHT", -PAD, appHeadingY + 5)
 
     local text = ns.Theme.CreateText(badge, "secondary")
     text:SetPoint("RIGHT", badge, "RIGHT", 0, 0)
@@ -781,7 +756,7 @@ local function Build()
     end
   end
 
-  y = EndSection(frame, card, y)
+  y = EndSection(col, card, y)
 
   -- Minimap mail icon (Core/MinimapButton.lua). Resolved at click time like
   -- every other binding, so the section stays honest if the module is absent.
@@ -791,18 +766,18 @@ local function Build()
   -- stops taking clicks, which is what tells the user those rows belong to
   -- the checkbox.
   local mmHeadingY = y
-  y = AddSectionHeading(frame, y, L["OPT_MINIMAP_HEADING"])
+  y = AddSectionHeading(col, y, L["OPT_MINIMAP_HEADING"])
 
   local mmHostStyled = ns.MinimapButton and ns.MinimapButton.IsHostStyled
     and ns.MinimapButton.IsHostStyled()
   local mmDesc = mmHostStyled and L["OPT_MINIMAP_DESC_EUI"] or L["OPT_MINIMAP_DESC"]
   local UpdateMinimapCardState -- defined once the card exists below
 
-  local mmToggle = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
+  local mmToggle = CreateFrame("CheckButton", nil, col, "UICheckButtonTemplate")
   mmToggle:SetSize(CHECK_H, CHECK_H)
-  mmToggle:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD + 4, mmHeadingY + 5)
+  mmToggle:SetPoint("TOPRIGHT", col, "TOPRIGHT", -PAD + 4, mmHeadingY + 5)
   mmToggle.__postboxCheck = true
-  local mmToggleLabel = ns.Theme.CreateText(frame, "label")
+  local mmToggleLabel = ns.Theme.CreateText(col, "label")
   mmToggleLabel:SetPoint("RIGHT", mmToggle, "LEFT", -4, 0)
   mmToggleLabel:SetWordWrap(false)
   mmToggleLabel:SetText(L["OPT_MINIMAP_TITLE"])
@@ -828,7 +803,7 @@ local function Build()
     mmToggle:SetChecked(ns.MinimapButton and ns.MinimapButton.GetEnabled())
   end
 
-  card = StartCard(frame, y)
+  card = StartCard(col, y)
   cy = -12
 
   -- Each "clean" restyle sits directly beneath its original, named as the
@@ -1115,7 +1090,11 @@ local function Build()
     cy = cy - 20
   end
 
-  y = EndSection(frame, card, y)
+  y = EndSection(col, card, y)
+  local rightBottom = y
+  -- Back on the panel's own cursor: the taller column's bottom, and the
+  -- footer band under it.
+  y = colTop + math.min(leftBottom, rightBottom) + 16
 
   -- The desaturate-and-lock for the card above. Alpha carries the look; the
   -- overlay eats the mouse so nothing inside can be clicked or hovered while
@@ -1374,7 +1353,7 @@ local function Build()
   -- Sized to the last control's own bottom edge plus one pad, so hiding the
   -- appearance section (no host-UI skin) shortens the window rather than
   -- leaving an empty row under the last button.
-  frame:SetSize(W, math.abs(frame.__pbContentBottom or y) + PAD)
+  frame:SetSize(2 * W - 10, math.abs(frame.__pbContentBottom or y) + PAD)
 
   -- Let an active host-UI skin restyle the panel like the main window. ElvUI's
   -- skin has no ApplyWindow, so testing only for that left the options panel
