@@ -3681,22 +3681,41 @@ local function WalkEllesmere(frame)
   end
 end
 
+-- Baganator hands every item button it makes to its skin listeners, with
+-- the ones already made in a list; each is a template button whose own
+-- SetItemDetails runs the client's per-slot update, so the ordinary hook
+-- rides on it from there. (Its mixin table is frozen -- a hook written
+-- onto it was refused with "indexed assignment on a frozen table" -- so
+-- the listener is the way in, not the mixin.)
+local function AdoptBaganatorButton(details)
+  if type(details) ~= "table" or details.regionType ~= "ItemButton" then return end
+  local button = details.region
+  if type(button) ~= "table" then return end
+  if IsSlotButton(button) then HookSlot(button) end
+  Note(button)
+end
+
 function ST.HookExternalBags()
   if type(hooksecurefunc) ~= "function" then return end
   for _, name in ipairs({ "EUI_Bags", "EUI_BagsReagent" }) do
     local frame = _G[name]
     if not hostsHooked[name] and type(frame) == "table" and type(frame.RefreshInventory) == "function" then
       hostsHooked[name] = true
-      hooksecurefunc(frame, "RefreshInventory", WalkEllesmere)
+      pcall(hooksecurefunc, frame, "RefreshInventory", WalkEllesmere)
     end
   end
-  local mixin = _G["BaganatorRetailLiveContainerItemButtonMixin"]
-  if not hostsHooked.Baganator and type(mixin) == "table" and type(mixin.SetItemDetails) == "function" then
+  local api = _G["Baganator"]
+  api = type(api) == "table" and api.API or nil
+  local skins = type(api) == "table" and api.Skins or nil
+  if not hostsHooked.Baganator and type(skins) == "table" and type(skins.RegisterListener) == "function" then
     hostsHooked.Baganator = true
-    -- The mixin is copied onto each button as the button is made, so the
-    -- hook reaches every button made after it -- and the bags are not
-    -- built until they are first opened, well after this file has loaded.
-    hooksecurefunc(mixin, "SetItemDetails", Note)
+    pcall(skins.RegisterListener, AdoptBaganatorButton)
+    if type(skins.GetAllFrames) == "function" then
+      local ok, list = pcall(skins.GetAllFrames)
+      if ok and type(list) == "table" then
+        for i = 1, #list do AdoptBaganatorButton(list[i]) end
+      end
+    end
   end
 end
 
