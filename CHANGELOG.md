@@ -54,12 +54,15 @@
 - **The totals line under the inbox is shorter, and stays inside the window.**
   It reads "Earned 95g 57s | Spent 1309g 62s": no "Total", no copper, and a
   narrow window drops to the gold alone. It used to run off the right edge.
-- **Rows lead with the money, and say how long is left only when it is
-  short.** "Gold: 52g 26s 50c" on a row is now "52g 26s" in green, "1309g"
-  above a thousand and "12.3k" above ten thousand; a C.O.D. price is in red.
-  The "30d" that sat on every row is gone from the row — it is in the
-  tooltip — and comes back in the warning colour only when a mail has under
-  three days left. The reading view still shows the exact sum.
+- **Money has a column of its own, and rows say how long is left only when
+  it is short.** In compact rows the money sits at the right-hand end, lined
+  up down the list: gold arriving in green ("52g 26s", "1309g" above a
+  thousand, "12.3k" above ten thousand), a C.O.D. price in red, and what a
+  won auction cost in red once the game has its receipt. The "30d" that sat
+  on every row is gone from the row — it is in the tooltip — and comes back
+  in the warning colour only when a mail is about to go: under three days
+  for most mail, under a day for a C.O.D. mail, which only ever lives three.
+  The reading view still shows the exact sums.
 - **Resizing is free again.** The window's smallest and tallest heights are
   still whole rows, but between them the grip follows your hand instead of
   jumping a row at a time.

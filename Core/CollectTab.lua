@@ -840,6 +840,17 @@ local function AppendInvoiceFigures(parts, index, withSaleTotal)
   end
 end
 
+-- What a won auction cost, for the row's money column, or nil for any other
+-- mail -- and nil for a won auction whose invoice the client has not
+-- fetched yet, which is every one until its body has been read once.
+local function PurchasePrice(index)
+  if type(GetInboxInvoiceInfo) ~= "function" then return nil end
+  local invoiceType, _, _, bid = GetInboxInvoiceInfo(index)
+  if invoiceType ~= "buyer" then return nil end
+  bid = tonumber(bid) or 0
+  return (bid > 0) and bid or nil
+end
+
 -------------------------------------------------------------
 -- Widths
 --
@@ -1826,35 +1837,42 @@ local function BindRow(panel, row, index, position, compact, done)
   Clear(parts)
   Clear(brief)
 
-  -- The money leads, in its shortest honest form ("52g 26s", "1309g",
-  -- "12.3k"), green for gold that is coming and red for a C.O.D. price to
-  -- pay; then the slots. The reading view prints the exact sum.
+  -- The money, in its shortest honest form ("52g 26s", "1309g", "12.3k"):
+  -- green for gold that is coming, red for a C.O.D. price to pay and for
+  -- what a won auction cost. The reading view prints the exact sums.
+  local compactMoney = ns.Core.Formatting.FormatMoneyCompact
+  local money = nil
   if moneyValue > 0 then
-    local gold = T.Colorize("positive", ns.Core.Formatting.FormatMoneyCompact(moneyValue))
-    parts[#parts + 1] = gold
-    brief[#brief + 1] = gold
-  end
-  if hasCOD then
-    local codText = (codValue > 0)
-      and T.Colorize("negative", L()["LABEL_COD"] .. ns.Core.Formatting.FormatMoneyCompact(codValue))
+    money = T.Colorize("positive", compactMoney(moneyValue))
+  elseif hasCOD then
+    money = (codValue > 0)
+      and T.Colorize("negative", L()["LABEL_COD"] .. compactMoney(codValue))
       or T.Colorize("negative", L()["LABEL_COD_SHORT"])
-    parts[#parts + 1] = codText
-    brief[#brief + 1] = codText
+  else
+    local price = PurchasePrice(index)
+    if price then money = T.Colorize("negative", compactMoney(price)) end
   end
-  if remaining > 0 then
-    local slots = T.Colorize("accent", ns.Plural("COUNT_SLOTS", remaining))
-    parts[#parts + 1] = slots
-    brief[#brief + 1] = slots
-  end
-  parts[#parts + 1] = labels[kind] or kind
+  local slots = (remaining > 0) and T.Colorize("accent", ns.Plural("COUNT_SLOTS", remaining)) or nil
+
   -- Time left is a warning, not a column: on the row only when it is short,
-  -- in the warning tone; always in the tooltip.
+  -- in the warning tone; always in the tooltip. A C.O.D. mail lives three
+  -- days from the start, so for one of those "short" is under a day.
   row.expiryTip = daysLeft and format(L()["DETAIL_EXPIRES"], daysLeft) or nil
-  if daysLeft and daysLeft < EXPIRY_SOON_DAYS then
-    local expiry = T.Colorize("warning", format(L()["DAYS_SHORT"], daysLeft))
-    parts[#parts + 1] = expiry
-    brief[#brief + 1] = expiry
+  local expiry = nil
+  if daysLeft and daysLeft < (hasCOD and 1 or EXPIRY_SOON_DAYS) then
+    expiry = T.Colorize("warning", format(L()["DAYS_SHORT"], daysLeft))
   end
+
+  -- The standard row reads left to right: money, slots, category, warning.
+  if money then parts[#parts + 1] = money end
+  if slots then parts[#parts + 1] = slots end
+  parts[#parts + 1] = labels[kind] or kind
+  if expiry then parts[#parts + 1] = expiry end
+  -- The compact strip is right-aligned, so the money goes LAST and lines up
+  -- as a column down the list; the warning, when there is one, comes first.
+  if expiry then brief[#brief + 1] = expiry end
+  if slots then brief[#brief + 1] = slots end
+  if money then brief[#brief + 1] = money end
 
   AppendInvoiceFigures(parts, index, false)
 
