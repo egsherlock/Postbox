@@ -29,11 +29,15 @@
   says that queued items go out to the same person in further mails, that the
   game asks about an item when its turn comes, and that right-click clears
   the queue without touching your bags.
-- **You can see the queue.** Items waiting to be attached appear as a row
-  of small icons under the attachment slots, in the order they will go, with
-  "+N" when the row is full. Hover one for its tooltip, right-click to take
-  it out of the queue — the same gesture that takes an item out of a slot.
-  The window grows to seat the row, as it does for a second row of slots.
+- **You can see the queue.** Items waiting to be attached appear as a grid
+  of small icons in the space to the right of the attachment slots, under
+  the "7 more queued" caption, in the order they will go, with "+N" when the
+  grid is full. Hover one for its tooltip, right-click to take it out of the
+  queue — the same gesture that takes an item out of a slot. Queued items
+  are greyed in your bags too, the way attached ones are.
+- **Fixed: switching to the Mail tab and back left attached and unmailable
+  items looking normal in EllesmereUI's bags and Baganator** until the next
+  bag change. The bags are asked to repaint when the Send tab comes and goes.
 - **A run of mails tells you where it is.** The Send button reads "Sending 2
   of 3..." while a run goes out, and when the game stops to ask about an item
   the line above the button says which item and that it is waiting for your

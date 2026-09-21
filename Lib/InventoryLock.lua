@@ -92,6 +92,44 @@ function M.UnmarkButton(button)
   end
 end
 
+-- Greys the slot's icon the way the client greys an attached one: an item
+-- waiting in the attachment queue is spoken for, and the bags should say
+-- so in the same voice. Desaturation only, no padlock -- it CAN be mailed,
+-- it is about to be.
+function M.MarkQueued(button)
+  if not button then return end
+  local icon = IconOf(button)
+  if icon and icon.SetDesaturated then
+    icon:SetDesaturated(true)
+    button.pbQueuedGrey = true
+  end
+end
+
+-- Puts the colour back, unless the client has meanwhile greyed the item
+-- itself: an item that went from the queue into a slot is locked, and the
+-- client's own grey for that must stand.
+function M.UnmarkQueued(button)
+  if not button or not button.pbQueuedGrey then return end
+  button.pbQueuedGrey = nil
+  local icon = IconOf(button)
+  if not (icon and icon.SetDesaturated) then return end
+  local locked = false
+  if C_Container and type(C_Container.GetContainerItemInfo) == "function"
+     and type(button.GetID) == "function" then
+    local bag
+    local ok, id = pcall(button.GetBagID, button)
+    if ok and type(id) == "number" then
+      bag = id
+    else
+      local parent = button:GetParent()
+      bag = (parent and type(parent.GetID) == "function") and parent:GetID() or nil
+    end
+    local okInfo, info = pcall(C_Container.GetContainerItemInfo, bag, button:GetID())
+    locked = okInfo and type(info) == "table" and info.isLocked or false
+  end
+  if not locked then icon:SetDesaturated(false) end
+end
+
 -------------------------------------------------------------
 -- Mail policy
 -------------------------------------------------------------

@@ -179,9 +179,8 @@ local SLOT_STEP_X        = SLOT_SIZE + M.gap     -- 42
 -- exactly this much. It derives the same figure from the same two metrics; the
 -- two must never be written as independent literals.
 local ATTACH_ROW_STEP    = SLOT_SIZE + M.tightGap  -- 40
--- The queued-items strip under the slots (section 18a): one row of small
--- icons, shown only while something is queued. Its height is handed to the
--- shell in pixels, as a second row's is, so the window grows to seat it.
+-- The queue pane's icons (section 18a): small, in a grid beside the slots,
+-- in the space the slots leave; the pane takes no height of its own.
 local QUEUE_STRIP_H      = 22
 
 local MAX_SUGGESTIONS = 8
@@ -257,12 +256,9 @@ end
 -- Rows of slots, with no trailing gap after the last one: the area used to
 -- reserve a full ATTACH_ROW_STEP per row and so carried 4px of nothing along its
 -- bottom edge.
--- `strip` is true while the queued-items strip is showing under the slots:
--- a gap and one row of small icons, and nothing at all otherwise.
-local function ItemAreaHeight(rows, strip)
+local function ItemAreaHeight(rows)
   rows = max(1, tonumber(rows) or 1)
   return SlotBandTop() + rows * SLOT_SIZE + (rows - 1) * M.tightGap
-       + (strip and (M.tightGap + QUEUE_STRIP_H) or 0)
 end
 
 -- Panel top down to the top of the message wrap.
@@ -284,11 +280,11 @@ local function BottomBands()
 end
 
 -- THE SUM. Every fixed band, plus whatever the message body is given.
-local function PanelHeightFor(bodyHeight, rows, strip)
+local function PanelHeightFor(bodyHeight, rows)
   return TopBands()
        + bodyHeight
        + BAND_GAP                    -- message body to attachments
-       + ItemAreaHeight(rows, strip)
+       + ItemAreaHeight(rows)
        + BottomBands()
 end
 
@@ -301,10 +297,8 @@ end
 -- live count: a second row of slots raises this by exactly the row it added, so
 -- the window that grew to seat it cannot then be dragged back down onto the
 -- message box.
--- `strip` is the strip's height in pixels as the shell holds it (0 for none);
--- the strip is all or nothing, so any height means it is showing.
-function ST.MinPanelHeight(rows, strip)
-  return ceil(PanelHeightFor(MessageMinHeight(), rows, (tonumber(strip) or 0) > 0))
+function ST.MinPanelHeight(rows)
+  return ceil(PanelHeightFor(MessageMinHeight(), rows))
 end
 
 -------------------------------------------------------------
@@ -713,28 +707,20 @@ function ST.RefreshAttachmentSlots(panel)
 
   local rows = ceil(visible / SEND_SLOTS_PER_ROW)
   panel._attachRows = rows
-  -- The queued-items strip sits under the last row while anything is queued.
-  local strip = (panel._queue ~= nil and #panel._queue > 0)
-  panel._attachStrip = strip
   if panel.ItemArea then
-    panel.ItemArea:SetHeight(ItemAreaHeight(rows, strip))
+    panel.ItemArea:SetHeight(ItemAreaHeight(rows))
   end
-  if panel.QueueStrip then
-    panel.QueueStrip:ClearAllPoints()
-    panel.QueueStrip:SetPoint("TOPLEFT", panel.ItemArea, "TOPLEFT", M.inset,
-      -(SlotBandTop() + rows * SLOT_SIZE + (rows - 1) * M.tightGap + M.tightGap))
-    panel.QueueStrip:SetPoint("RIGHT", panel.ItemArea, "RIGHT", -M.inset, 0)
-    panel.QueueStrip:SetShown(strip)
-  end
+  -- The queue pane's grid depends on the rows beside it.
+  if ST.RefreshQueueStrip then ST.RefreshQueueStrip(panel) end
 
   -- A second row makes the WINDOW taller rather than stealing height from the
   -- message body, and raises the window's FLOOR by the same amount so it cannot
-  -- then be dragged back down onto the body. The strip is handed over the same
-  -- way, in pixels. Only while this tab is actually shown: a background
-  -- refresh must not resize the window out from under the collect screen.
+  -- then be dragged back down onto the body. Only while this tab is actually
+  -- shown: a background refresh must not resize the window out from under the
+  -- collect screen.
   local UI = ns.MailboxUI
   if panel:IsShown() and UI and UI.SetAttachmentRows then
-    UI.SetAttachmentRows(rows, strip and (M.tightGap + QUEUE_STRIP_H) or 0)
+    UI.SetAttachmentRows(rows)
   end
 
   -- The body is anchored above the area that just changed height.
@@ -3176,7 +3162,7 @@ function ST.ApplyBodyBounds(panel)
   -- derived floor guarantees anyway.
   local panelHeight = panel:GetHeight() or 0
   local stretched = (panelHeight <= 1)
-    or ((panelHeight - PanelHeightFor(0, panel._attachRows, panel._attachStrip)) >= minHeight)
+    or ((panelHeight - PanelHeightFor(0, panel._attachRows)) >= minHeight)
 
   if stretched == wrap._stretched then return end
   wrap._stretched = stretched
@@ -3522,6 +3508,7 @@ local hookedSlots = setmetatable({}, { __mode = "k" })
 local function ClearOverlay(button)
   if not overlaid[button] then return end
   InventoryLock.UnmarkButton(button)
+  InventoryLock.UnmarkQueued(button)
   overlaid[button] = nil
 end
 
@@ -3563,7 +3550,14 @@ local function RefreshSlotOverlay(button)
     and InventoryLock.ShouldLockForMail(bag, slot)
 
   if unmailable then
+    InventoryLock.UnmarkQueued(button)
     InventoryLock.MarkButton(button)
+    overlaid[button] = true
+  elseif ST.IsQueuedAt and slot and slot >= 1 and ST.IsQueuedAt(bag, slot) then
+    -- Waiting in the queue: greyed as an attached item is greyed, because
+    -- as far as the player is concerned it is spoken for.
+    InventoryLock.UnmarkButton(button)
+    InventoryLock.MarkQueued(button)
     overlaid[button] = true
   else
     ClearOverlay(button)
@@ -3719,6 +3713,25 @@ function ST.HookExternalBags()
   end
 end
 
+-- Asks each host to draw its bags again from scratch. On the tab changing
+-- hands: the client's own greying of an attached item and its fading of
+-- what the mail context refuses are the host's to paint, and a host that
+-- paints only on its own events was left showing the previous tab's state.
+function ST.RepaintExternalBags()
+  local api = _G["Baganator"]
+  api = type(api) == "table" and api.API or nil
+  if type(api) == "table" and type(api.RequestItemButtonsRefresh) == "function" then
+    pcall(api.RequestItemButtonsRefresh, "Postbox")
+  end
+  for _, name in ipairs({ "EUI_Bags", "EUI_BagsReagent" }) do
+    local frame = _G[name]
+    if type(frame) == "table" and type(frame.RefreshInventory) == "function"
+       and type(frame.IsVisible) == "function" and frame:IsVisible() then
+      pcall(frame.RefreshInventory, frame)
+    end
+  end
+end
+
 -- Every external button seen so far that is on screen.
 function ST.RefreshExternalSlots()
   for button in pairs(externalSlots) do
@@ -3740,6 +3753,7 @@ function ST.ClearBagOverlays()
   sendTabActive = false
   ClearEveryOverlay()
   RepaintContainers()
+  ST.RepaintExternalBags()
 end
 
 -------------------------------------------------------------
@@ -3785,6 +3799,7 @@ function ST.ActivateNativeSendMail()
   HookVisibleSlots()
   ST.HookExternalBags()
   RepaintContainers()
+  ST.RepaintExternalBags()
   ST.RefreshExternalSlots()
 end
 
@@ -3921,10 +3936,27 @@ RefreshQueueLabel = function(panel)
   end
   -- Postage is quoted for the whole press, so it moves with the queue.
   Invalidate(panel, "cost")
-  -- The strip shows the queue itself; when it appears or goes, the area's
-  -- height changes and the slot refresh re-lays it (and tells the shell).
+  -- The pane shows the queue itself.
   if ST.RefreshQueueStrip then ST.RefreshQueueStrip(panel) end
-  if (waiting > 0) ~= (panel._attachStrip == true) then Invalidate(panel, "slots") end
+  -- The bags grey a queued item as they grey an attached one (section 17),
+  -- from a set of the queued GUIDs rebuilt here, so a slot answers in one
+  -- lookup on every container repaint.
+  local guids = {}
+  for i = 1, waiting do
+    local guid = queue[i].guid
+    if guid then guids[guid] = true end
+  end
+  Q.queuedGuids = guids
+  Invalidate(panel, "bags")
+end
+
+-- Is the item in this bag slot waiting in the queue? Asked by the bag
+-- overlays for every slot they repaint.
+function ST.IsQueuedAt(bag, slot)
+  local guids = Q.queuedGuids
+  if not guids or next(guids) == nil then return false end
+  local guid = Q.GuidAt(bag, slot)
+  return guid ~= nil and guids[guid] == true
 end
 
 -- Returns true, or false and the reason it declined -- the reasons are
@@ -4818,32 +4850,42 @@ local function BuildContactBar(panel)
   RefreshContactBar(panel)
 end
 
--- The queued-items strip (section 18a): what is waiting, in the order it
--- will be attached, as one row of small dimmed icons under the slots. A
--- count and a tooltip said there WAS a queue; this shows it, and lets one
--- item be taken out of it -- right-click, the same gesture that takes an
--- item out of a slot. As many icons as the row holds, then "+N" for the
--- rest; the tooltip on the count still lists everything. Redrawn whenever
--- the queue changes and whenever the strip's width does.
+-- The queue pane (section 18a): what is waiting, in the order it will be
+-- attached, in the space to the right of the slots -- which stood empty
+-- above a queue that could only exist once every slot was full. The count
+-- is its caption ("7 more queued", right-click clears the queue), and under
+-- it a grid of small dimmed icons, as many as the pane holds across and
+-- down, the last cell "+N" for the rest; the caption's tooltip still lists
+-- everything. Right-click an icon to take that item out -- the gesture that
+-- takes an item out of a slot. Nothing here changes the area's height: the
+-- pane is as tall as the rows beside it. Redrawn whenever the queue
+-- changes, the rows change, or the pane's width does.
 function ST.RefreshQueueStrip(panel)
-  local strip = panel and panel.QueueStrip
-  if not strip then return end
+  local pane = panel and panel.QueueStrip
+  if not pane then return end
   local queue = panel._queue or {}
-  local icons = strip.icons
+  pane:SetShown(#queue > 0)
+  if #queue == 0 then return end
+
+  local icons = pane.icons
   local step = QUEUE_STRIP_H + M.tightGap
-  local width = strip:GetWidth() or 0
-  -- Room for the "+N" tail is kept whenever the row could overflow, so the
-  -- tail never pushes the last icon past the edge.
-  local tailW = (strip.More:GetStringWidth() or 0) + M.tightGap
-  local fit = (width > 0) and max(1, floor((width - tailW) / step)) or SEND_SLOT_COUNT
-  local shown = min(#queue, fit)
-  if shown == #queue then fit = #queue end
+  local top = LabelHeight() + M.tightGap
+  local width = pane:GetWidth() or 0
+  local height = (pane:GetHeight() or 0) - top
+  local cols = (width > 0) and max(1, floor((width + M.tightGap) / step)) or 4
+  local rowsFit = (height > 0) and max(1, floor((height + M.tightGap) / step)) or 1
+  local cells = cols * rowsFit
+  local shown, rest = #queue, 0
+  if #queue > cells then
+    shown = cells - 1
+    rest = #queue - shown
+  end
 
   for i = 1, max(#icons, shown) do
     local icon = icons[i]
     if i <= shown then
       if not icon then
-        icon = CreateFrame("Button", nil, strip)
+        icon = CreateFrame("Button", nil, pane)
         icon:SetSize(QUEUE_STRIP_H, QUEUE_STRIP_H)
         icon.Icon = icon:CreateTexture(nil, "ARTWORK")
         icon.Icon:SetAllPoints()
@@ -4875,8 +4917,10 @@ function ST.RefreshQueueStrip(panel)
         icons[i] = icon
       end
       local entry = queue[i]
+      local col, row = (i - 1) % cols, floor((i - 1) / cols)
       icon.index = i
-      icon:SetPoint("LEFT", strip, "LEFT", (i - 1) * step, 0)
+      icon:ClearAllPoints()
+      icon:SetPoint("TOPLEFT", pane, "TOPLEFT", col * step, -(top + row * step))
       local texture = entry.link and C_Item and type(C_Item.GetItemIconByID) == "function"
         and C_Item.GetItemIconByID(entry.link) or nil
       icon.Icon:SetTexture(texture or "Interface\\Icons\\INV_Misc_QuestionMark")
@@ -4886,14 +4930,15 @@ function ST.RefreshQueueStrip(panel)
     end
   end
 
-  local rest = #queue - shown
   if rest > 0 then
-    strip.More:SetText(Theme.Colorize("textSecondary", "+" .. rest))
-    strip.More:ClearAllPoints()
-    strip.More:SetPoint("LEFT", strip, "LEFT", shown * step, 0)
-    strip.More:Show()
+    local col, row = shown % cols, floor(shown / cols)
+    pane.More:SetText(Theme.Colorize("textSecondary", "+" .. rest))
+    pane.More:ClearAllPoints()
+    pane.More:SetPoint("TOPLEFT", pane, "TOPLEFT", col * step, -(top + row * step))
+    pane.More:SetSize(QUEUE_STRIP_H, QUEUE_STRIP_H)
+    pane.More:Show()
   else
-    strip.More:Hide()
+    pane.More:Hide()
   end
 end
 
@@ -4916,8 +4961,23 @@ local function BuildAttachmentArea(panel)
   -- The attachment queue's count (section 18a), to the right of the label:
   -- "8 more queued", the items themselves in its tooltip, and a click to
   -- forget them. Hidden while nothing is queued, which is nearly always.
-  local queueButton = CreateFrame("Button", nil, area)
-  queueButton:SetPoint("LEFT", label, "RIGHT", M.gap, 0)
+  -- The queue pane: the space to the right of the slots, from the caption's
+  -- band down to the area's bottom edge. The count is its caption, the grid
+  -- of queued icons is drawn under it by ST.RefreshQueueStrip, and the
+  -- whole pane is hidden while nothing is queued.
+  local pane = CreateFrame("Frame", nil, area)
+  pane:SetPoint("TOPLEFT", area, "TOPLEFT", M.inset + SEND_SLOTS_PER_ROW * SLOT_STEP_X, -M.tightGap)
+  pane:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -M.inset, 0)
+  pane.icons = {}
+  pane.More = Theme.CreateText(pane, "secondary")
+  pane.More:SetJustifyH("CENTER")
+  pane.More:Hide()
+  pane:SetScript("OnSizeChanged", function() ST.RefreshQueueStrip(panel) end)
+  pane:Hide()
+  panel.QueueStrip = pane
+
+  local queueButton = CreateFrame("Button", nil, pane)
+  queueButton:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, 0)
   queueButton:SetHeight(LabelHeight())
   queueButton:SetWidth(1)
   queueButton.Text = Theme.CreateText(queueButton, "secondary")
@@ -4961,19 +5021,6 @@ local function BuildAttachmentArea(panel)
   end)
   queueButton:Hide()
   panel.QueueLabel = queueButton
-
-  -- The queued-items strip under the slots: positioned by the slot refresh
-  -- (it hangs under whichever row is last), drawn by ST.RefreshQueueStrip,
-  -- shown only while something is queued.
-  local strip = CreateFrame("Frame", nil, area)
-  strip:SetHeight(QUEUE_STRIP_H)
-  strip.icons = {}
-  strip.More = Theme.CreateText(strip, "secondary")
-  strip.More:SetJustifyH("LEFT")
-  strip.More:Hide()
-  strip:SetScript("OnSizeChanged", function() ST.RefreshQueueStrip(panel) end)
-  strip:Hide()
-  panel.QueueStrip = strip
 
   local function SlotEnter(self)
     if not self.itemLink then return end
@@ -5248,7 +5295,7 @@ local function InstallEvents(panel)
     -- on a tab switch; this covers every other way the panel can be hidden.
     local UI = ns.MailboxUI
     if UI and UI.SetMessageExtraHeight then UI.SetMessageExtraHeight(0) end
-    if UI and UI.SetAttachmentRows then UI.SetAttachmentRows(1, 0) end
+    if UI and UI.SetAttachmentRows then UI.SetAttachmentRows(1) end
     -- The SLACK deliberately survives being hidden: it is what the user decided
     -- to scroll rather than see, and coming back to a screen they had made
     -- deliberately short must not undo that. It decays with the text on its own

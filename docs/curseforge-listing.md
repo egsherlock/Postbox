@@ -83,7 +83,7 @@ Cyrillic and accented names complete, sort and favourite like any other.
 Mailing a run of things to one bank alt? **Keep recipient after send**, in the
 options, leaves the name in place while everything else clears. And more than twelve
 items is not a problem: the label counts up to "Attachments 12/12", then keep
-right-clicking and the rest queue up in a row of small icons under the slots
+right-clicking and the rest queue up in a grid of small icons beside the slots
 (right-click one to take it out) — the Send button reads "Send 3 mails", the
 postage shown is for all of them, and one press posts them as further mails to the
 same person, twelve items to each, after a single "are you sure" that says exactly

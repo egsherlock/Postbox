@@ -38,8 +38,7 @@ UI._state = UI._state or {
   activeTab      = "collect",
   freeMoved      = false,     -- the user dragged the window this session (grid mode)
   attachRows     = 1,         -- rows of attachment slots the compose screen shows
-  attachStrip    = 0,         -- height of the queued-items strip under them, 0 when none
-  extraH         = 0,         -- transient height added for a second attachment row / the strip
+  extraH         = 0,         -- transient height added for a second attachment row
   bodyH          = 0,         -- transient height added for a message that outgrew its box
   layoutDeferred = false,     -- a grid reservation is waiting for combat to end
 }
@@ -751,14 +750,14 @@ end
 -- attachment row is close enough to depend on the client's measured font
 -- heights, and nothing here needs to know: the max is the answer either way, and
 -- a second attachment row puts the compose screen ahead regardless.
-local function MinWindowHeight(rows, strip)
+local function MinWindowHeight(rows)
   local panel = FALLBACK_PANEL_HEIGHT
 
   local send = ns.SendTab
   if send and type(send.MinPanelHeight) == "function" then
     -- Parenthesised: a cross-module call that grew a second return value would
     -- otherwise spill it into tonumber's base argument, which throws.
-    panel = max(panel, tonumber((send.MinPanelHeight(rows, strip))) or 0)
+    panel = max(panel, tonumber((send.MinPanelHeight(rows))) or 0)
   end
 
   -- The collect screen is told the compose screen's need and answers with a
@@ -809,7 +808,7 @@ end
 -- The ceiling, on the same steps as everything else: the tallest whole-row
 -- height at or under the taste limit, and never under the floor.
 local function MaxWindowHeight()
-  local floorHeight = MinWindowHeight(UI._state.attachRows, UI._state.attachStrip)
+  local floorHeight = MinWindowHeight(UI._state.attachRows)
   return SnapHeight(max(MAX_HEIGHT, floorHeight), floorHeight, 0, false)
 end
 
@@ -830,7 +829,7 @@ end
 -- The Collect tab has no message box, so its drag floor is the derived one
 -- unchanged.
 local function DragMinHeight(frame)
-  local floorHeight = MinWindowHeight(UI._state.attachRows, UI._state.attachStrip)
+  local floorHeight = MinWindowHeight(UI._state.attachRows)
   if UI._state.activeTab ~= "send" then return floorHeight end
 
   local send = ns.SendTab
@@ -860,7 +859,7 @@ local function ApplyResizeBounds()
   local frame = UI._frame
   if not frame then return end
 
-  local minHeight = MinWindowHeight(UI._state.attachRows, UI._state.attachStrip)
+  local minHeight = MinWindowHeight(UI._state.attachRows)
   local maxHeight = MaxWindowHeight()
   -- Remembered, so an option that moves the floor can tell whether the
   -- window was standing on the old one (FollowFloor).
@@ -991,21 +990,16 @@ local function AttachmentRowHeight()
   return (tonumber(metrics.slotSize) or 36) + (tonumber(metrics.tightGap) or 4)
 end
 
--- `strip` is the height of the queued-items strip the compose screen draws
--- under its slots, in pixels, 0 when nothing is queued: it grows the window
--- exactly as a second row does, and raises the floor with it.
-function UI.SetAttachmentRows(rows, strip)
+function UI.SetAttachmentRows(rows)
   local frame = UI._frame
   if not frame then return end
 
   rows = max(1, floor(tonumber(rows) or 1))
-  strip = max(0, floor(tonumber(strip) or 0))
-  if rows == UI._state.attachRows and strip == UI._state.attachStrip then return end
+  if rows == UI._state.attachRows then return end
 
-  local extra = (rows - 1) * AttachmentRowHeight() + strip
+  local extra = (rows - 1) * AttachmentRowHeight()
   local delta = extra - UI._state.extraH
   UI._state.attachRows = rows
-  UI._state.attachStrip = strip
   UI._state.extraH = extra
 
   local helpers = WindowHelpers()
@@ -1369,7 +1363,7 @@ local function FollowFloor()
   local frame = UI._frame
   if not frame then return end
   local before = UI._state.floorH
-  local after = MinWindowHeight(UI._state.attachRows, UI._state.attachStrip)
+  local after = MinWindowHeight(UI._state.attachRows)
   if before and after ~= before then
     local height = tonumber(frame:GetHeight()) or 0
     local standing = height - (UI._state.bodyH or 0)
@@ -1689,7 +1683,7 @@ local function BuildFrame()
     -- The drag steps a row at a time: every height the grip offers is the
     -- floor plus whole rows, so the window never stops on part of one.
     local function OnResizeSnap(_, height)
-      return SnapHeight(height, MinWindowHeight(UI._state.attachRows, UI._state.attachStrip), UI._state.bodyH, true)
+      return SnapHeight(height, MinWindowHeight(UI._state.attachRows), UI._state.bodyH, true)
     end
 
     frame.ResizeButton = helpers.CreateResizeButton(frame, OnResizeStop,
