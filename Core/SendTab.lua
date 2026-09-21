@@ -2274,20 +2274,23 @@ local suggestFlat, suggestSeen = {}, {}
 --
 --   TAB. Every press puts the next popup row into the box, top to bottom in
 --   the popup's own order -- substring matches included -- and Shift+Tab
---   walks back up; both wrap. The first press takes the row the inline
---   completion is already showing, if there is one, and row one otherwise;
---   there is no separate "accept" press, because the box holding the name IS
---   acceptance. A row Tab has taken is a whole address, cursor at the end,
+--   walks back up; both wrap. The row being held is the one in the box: the
+--   inline completion's row when one is showing, so the first press steps
+--   PAST it, to the row below; with nothing completed the first press takes
+--   row one. There is no separate "accept" press, because the box holding
+--   the name IS acceptance -- Enter, or leaving the field, takes what is
+--   there. A row Tab has taken is a whole address, cursor at the end,
 --   nothing selected: typing after it appends, Escape puts the typed text
 --   back. The popup stays open with a marker on the row being held, so the
---   player can see what Tab took and what the next press will take.
+--   player can see what is held and what the next press will take.
 --
 --   Tab used to walk a different list from the one on screen -- the
 --   completable rows only -- which is why it appeared to skip: with "sh"
 --   typed and Shameo, How-Crushridge, Khrash, Shaanked showing, the second
---   press went to Shaanked. And the first press was an accept with no
---   visible effect when the completion was already on screen, so sometimes
---   Tab moved one row and sometimes none. One list, one rule, now.
+--   press went to Shaanked. Then, for a while, the first press re-took the
+--   completed row -- a capital letter and a realm, nothing the player could
+--   use -- so the second name was always two presses away. One list, one
+--   rule, now: the press moves.
 --
 -- Three rules keep the inline half from fighting the player, and every one of
 -- them is a rule because breaking it is what makes this pattern hated:
@@ -2704,14 +2707,14 @@ local function RecipientTabPressed(panel)
   local backwards = IsShiftKeyDown()
   local index
   if CompletionShowing(panel) and panel._acIndex then
-    if panel._acTaken then
-      index = panel._acIndex + (backwards and -1 or 1)
-      if index < 1 then index = #list elseif index > #list then index = 1 end
-    else
-      -- The inline completion is a row the popup already points at: the first
-      -- press takes THAT row, whichever it is, rather than jumping past it.
-      index = panel._acIndex
-    end
+    -- The row in the box -- taken by Tab or completed inline -- is the row
+    -- being held, and the press steps past it. An inline completion is
+    -- already the answer (the box holding the name IS acceptance), so a
+    -- press that merely re-took it, with a capital letter and the realm
+    -- filled in, was a press that did nothing the player could use: "we"
+    -- showed Weep completed, and it took two Tabs to reach Wednesdayx.
+    index = panel._acIndex + (backwards and -1 or 1)
+    if index < 1 then index = #list elseif index > #list then index = 1 end
   else
     index = backwards and #list or 1
   end
@@ -3934,7 +3937,9 @@ end
 local function Resume(state, outcome)
   if fillState ~= state then return end
   local pending = state.pending
+  if not pending then return end
   state.pending = nil
+  if pending.ticker then pending.ticker:Cancel() end
   local queue = state.panel._queue or {}
 
   if outcome == "attached" then
@@ -3960,6 +3965,45 @@ local function Resume(state, outcome)
   RunFill(state)
 end
 
+-- The client's own dialog for the item, on screen or not.
+local function DialogUp()
+  return type(StaticPopup_Visible) == "function"
+     and StaticPopup_Visible("CONFIRM_MAIL_ITEM_UNREFUNDABLE") and true or false
+end
+
+-- Ten times a second while a pass is parked on `pending`. True to keep
+-- watching. Whichever of this and the events sees the answer first settles
+-- it; Resume ignores the second.
+local function WatchPending(state, pending)
+  if fillState ~= state or state.pending ~= pending then return false end
+  if SlotHasItem(pending.slotIndex) then
+    Resume(state, "attached")
+    return false
+  end
+  if DialogUp() then
+    pending.locked = true
+    pending.gone = 0
+    return true
+  end
+  if pending.locked then
+    -- The dialog stood and is gone, and the slot is still empty: answered
+    -- no, or dismissed some other way. Two looks, in case an accepted
+    -- item is a tick behind its dialog closing.
+    pending.gone = pending.gone + 1
+    if pending.gone >= 2 then Resume(state, "declined") return false end
+    return true
+  end
+  -- No dialog yet. The lock event, when it is coming at all, arrives
+  -- before the next frame; two ticks is well clear of that, and past them
+  -- the empty slot was a refusal.
+  pending.ticks = pending.ticks + 1
+  if pending.ticks >= 2 then
+    Resume(state, "refused")
+    return false
+  end
+  return true
+end
+
 RunFill = function(state)
   local panel = state.panel
   local queue = panel._queue
@@ -3977,17 +4021,15 @@ RunFill = function(state)
     elseif outcome == "missing" then
       state.missing = state.missing + 1
     else
-      -- Empty slot: a dialog, or a refusal. The events decide. The lock
-      -- arrives before the next frame; a tenth of a second is well clear of
-      -- that, costs nothing a player can see, and leaves no room for the
-      -- verdict to be "refused" a frame before the dialog opens -- which
-      -- would put the item back in the queue AND on the client's question.
-      state.pending = { entry = entry, slotIndex = state.slotIndex }
+      -- Empty slot: the client is asking, or it refused. The events say
+      -- which (MAIL_LOCK_SEND_ITEMS marks the dialog up, the unlock
+      -- resolves it), and the watch is the second opinion that depends on
+      -- neither: it looks at the dialog itself, and at the slot.
+      local pending = { entry = entry, slotIndex = state.slotIndex, ticks = 0, gone = 0 }
+      state.pending = pending
       fillState = state
-      C_Timer.After(0.1, function()
-        if fillState ~= state or not state.pending then return end
-        if state.pending.locked then return end  -- the dialog is up; its answer resumes
-        Resume(state, "refused")
+      pending.ticker = C_Timer.NewTicker(0.1, function(ticker)
+        if not WatchPending(state, pending) then ticker:Cancel() end
       end)
       return
     end
@@ -4048,7 +4090,11 @@ end
 function ST.AbandonQueuePass()
   local state = fillState
   fillState = nil
-  if state then state.done = nil end
+  if not state then return end
+  state.done = nil
+  local pending = state.pending
+  if pending and pending.ticker then pending.ticker:Cancel() end
+  state.pending = nil
 end
 
 -- What the slot refresh calls: a free slot is the queue's, unless a send is

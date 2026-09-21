@@ -15,6 +15,10 @@
   now asks first: how many mails, to whom, how many items, and the postage
   for all of them. Nothing changes for a single mail.
 - **Ctrl+Enter sends.** From the recipient, the subject or the message.
+- **Tab no longer wastes a press.** With a name completed in the recipient
+  box, the first Tab used to re-take that same name — a capital letter and
+  the realm, nothing more — and only the second moved on. The completion is
+  already the answer, so Tab now steps straight to the next suggestion.
 - **Postage is quoted for the whole press.** With items queued, "Cost" is
   what every mail of the press will cost together, not just the first.
 - **Padlocks in EllesmereUI's bags and in Baganator.** While the Send tab is

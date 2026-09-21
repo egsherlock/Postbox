@@ -85,9 +85,10 @@ you attached. Nothing is ever blocked: Postbox advises, you decide. A failed sen
 keeps your draft. The window grows as your message does and shrinks back as you
 delete, without touching your saved size.
 
-Start typing a name and it completes in place. Tab takes the suggestion, and
-every press after walks down the list one row at a time (Shift+Tab walks back
-up); Escape puts back what you typed, Enter moves on to Subject. Names in any
+Start typing a name and it completes in place; that completion is already the
+answer. Tab steps to the next suggestion, and every press after walks down the
+list one row at a time (Shift+Tab walks back up); Escape puts back what you
+typed, Enter moves on to Subject. Names in any
 alphabet: Cyrillic and accented names complete, sort and favourite like any
 other, and a lowercase "ив" finds Иван. An option keeps the recipient in place
 after a send, for a run of mails to the same character.

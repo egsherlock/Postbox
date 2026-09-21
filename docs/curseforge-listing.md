@@ -74,8 +74,8 @@ there hours later when you have made room.
 
 ## Send without second-guessing
 
-Start typing a name and it completes in place — Tab takes it, and every press after
-walks down the suggestions one row at a time (Shift+Tab walks back up). Your recent
+Start typing a name and it completes in place — that is already the answer, and Tab
+steps to the next suggestion, one row per press (Shift+Tab walks back up). Your recent
 correspondents, your alts, your friends (Battle.net included) and your guild are one
 click away, and the ones you mail constantly get a star. Names in any alphabet:
 Cyrillic and accented names complete, sort and favourite like any other.
