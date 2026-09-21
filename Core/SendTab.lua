@@ -3672,17 +3672,18 @@ end
 -- counted for the report, which is how "the queue does nothing" became
 -- "every route fires and Enqueue says no" in the field.
 --
--- A LOCKED item is not refused. The first build refused it on the theory
--- that a lock meant the click had attached it after all; in the field the
--- item under a refused click reads as locked for the rest of that frame,
--- and every one of ten clicks was turned away for it. The slots are full,
--- so the click cannot have attached anything, and the lock clears before
--- anything is picked up: FillFromQueue verifies each pickup by the slot it
--- lands in, so a lock that did outlast this moment costs one skipped item,
--- not a wrong one.
+-- A LOCKED item is the one the click just attached. The click hook runs
+-- after the client has answered the click, and the twelfth click is the
+-- one that both fills the last slot AND leaves the count at twelve -- so
+-- without this test the twelfth item was queued as well as attached, and
+-- "1 more queued" appeared over a full mail with nothing waiting. An item
+-- the client refused is not locked; an item it took is. (This test was
+-- taken out once while a different bug -- the GUID lookup -- was making
+-- every item look refused; it was never the culprit.)
 local function Enqueue(panel, bag, slot)
   local info = ContainerInfo(bag, slot)
   if not info then return false, "empty" end
+  if info.isLocked then return false, "attached" end
   local guid = GuidAt(bag, slot)
   if not guid then return false, "noguid" end
 
