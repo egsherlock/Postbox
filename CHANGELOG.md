@@ -2,157 +2,107 @@
 
 ## 1.38.0
 
-### Sending more than twelve items
+### New
 
-- **You can see the queue.** Once the twelve slots are full, the items still
-  to go sit in a grid of small icons beside the slots, in the order they will
-  be sent. Hover one for its tooltip; right-click to take it out. Queued
-  items are greyed in your bags, like attached ones.
-- **Fixed: an item the game asks about before attaching could trap you in
-  its dialog.** Items you bought recently and could still return need a yes
-  before they attach. Queued, they made that question pop up again and again
-  after the first mail went, until you reloaded. Now it is asked once, when
-  the item's turn comes: Okay attaches it and the run carries on, Cancel
-  skips it and carries on.
-- **A run of mails explains itself.** Send asks once before a run ("Send 3
-  mails to Bob? 30 items, 10s 80c postage"), the button counts it off
-  ("Sending 2 of 3..."), the cost line is the postage for all of them, and
-  when the game stops to ask about an item, the line above the button says
-  which one. The queue's tooltip marks the items that will be asked about,
-  and now says plainly that queued items go to the same person in further
-  mails.
-
-### Writing a mail
-
+- **The queue is visible.** Items waiting to be sent sit in a grid beside the
+  attachment slots, in order. Hover one for details, right-click to take it
+  out. Queued items are greyed in your bags, like attached ones.
+- **A run of mails explains itself.** Send confirms the run first (how many
+  mails, to whom, how many items, total postage), the button counts it off
+  ("Sending 2 of 3..."), and the line above it says when the game is waiting
+  for your answer about an item.
 - **Ctrl+Enter sends**, from any field.
-- **Enter takes the completed name whole**, capital letter and realm
-  included, so what you see is who the mail goes to. **Tab steps straight to
-  the next suggestion** instead of re-taking the completed one first.
-- **No subject? The mail is titled after its first item**, as the game does
-  it. The empty subject box shows the title it will use.
+- **Padlocks in EllesmereUI's bags and Baganator.** Items that cannot be
+  mailed are greyed with a padlock there too while the Send tab is open.
 
-### The Mail tab
+### Improved
 
-- **Money has a column of its own.** Compact rows put the amount at the
-  right-hand end, lined up down the list: green for gold arriving ("52g
-  26s", "1309g", "12.3k"), amber for a C.O.D. price, red for what a won
-  auction cost. Full-size rows read money, slots, category, time left, then
-  the auction's deposit and fee. The reading view still shows exact sums.
-- **"30d" is gone from every row.** Time left is in the tooltip, and appears
-  on the row in the warning colour only when a mail is about to go: under
-  three days, or under a day for a C.O.D. mail.
-- **The totals line fits, and is centred.** "Earned 95g 57s | Spent 1309g
-  62s", no copper. It used to run off the right edge.
-- **"All bought" is now "All won"**, matching the rows. Compact-row tooltips
-  show one fact per line.
+- **Money has its own column** in the mail list: green for gold arriving,
+  amber for a C.O.D. price, red for what a won auction cost, in short form
+  ("52g 26s", "1309g", "12.3k"). Full-size rows also show slots, category,
+  time left and the auction's fees, without repeating anything.
+- **Time left is shown only when it matters.** Always in the tooltip; on the
+  row only when a mail is about to go (under three days, or under a day for
+  C.O.D.).
+- **Enter takes a completed name whole**, capital letter and realm included,
+  and **Tab moves straight to the next suggestion.**
+- **A mail with no subject is titled after its first item**, as the game does
+  it. The empty box shows the title it will use.
+- **The totals line** under the list is shorter, centred, and stays inside
+  the window.
 - **Resizing is free again** between the window's smallest and tallest
-  heights, instead of jumping a row at a time.
+  heights.
+- "All bought" is now "All won", matching the rows. Compact-row tooltips show
+  one fact per line. The Manage Recipients button in the options has a card
+  of its own.
 
-### Bags and options
+### Fixed
 
-- **Padlocks in EllesmereUI's bags and in Baganator.** Items that cannot be
-  mailed are greyed with a padlock there too while the Send tab is open, and
-  attached items stay greyed when you switch tabs and back.
-- **The Manage Recipients button** in the options is a card of its own, with
-  its contents centred.
+- A queued item the game asks about before attaching (a recent purchase you
+  could still return) trapped you in a repeating dialog after the first mail
+  went. It is now asked once, on the item's turn: Okay attaches it, Cancel
+  skips it.
+- Attached and unmailable items lost their greying in EllesmereUI's bags and
+  Baganator after switching tabs.
+- The postage shown was for the first mail only. It now covers the whole run.
 
 ## 1.37.0
 
-- **Pick the mails to collect.** Shift-click a row on the Mail tab and it is
-  selected; shift-click another and everything between the two is; ctrl-click
-  picks or unpicks single rows anywhere, including inside a search; shift-click
-  a picked row to unpick it. The big button reads "Collect 5 selected" and
-  takes exactly those, and the category buttons stay where they are.
-  Shift-click no longer opens a mail — right-click does that (or left-click,
-  with the option on), exactly as before.
-- **Auction mail says what happened, not who sent it.** "Auction House —
-  Auction won: Mana Lily Tea" said the same thing three times and cut off the
-  item's name. A row now reads "AH Won — Mana Lily Tea", "AH Sold — …", "AH
-  Expired — …" or "AH Cancelled — …", each outcome in its own colour, in every
-  language the game speaks. The reading view shows the item's name as the
-  subject too.
-- **The read/unread dot is a dot.** A round mark, a little further from the
-  row's edge, so it no longer sits against the selection bar as one shape.
-- **The options panel is two columns, in the window's order.** The left
-  column is Mail tab, Send tab and Mail alerts; the right starts with the
-  recipient manager's own button — the letter bundle and its live count —
-  then Window (grid docking now sits with the style and border settings) and
-  Minimap. The panel is a rectangle a screen can hold rather
-  than a strip taller than most, and the Mail tab's caption is a labelled
-  dropdown like the Window card's.
-- **A scroll bar of Postbox's own.** Every list — the inbox, a mail's text,
-  the recipient picker and manager, the mailbox memory, the message you are
-  writing — now has the same slim bar: six pixels, a thumb sized to how much
-  is off screen, a small chevron at each end that steps a row, and nothing at
-  all when everything fits. The old bar stood a hand's width from the rows in
-  an empty track, off-centre.
-- **Right-click the resize grip to put the window back to its default size.**
-- **The reading view is tidier, and gold is something you can see and take.**
-  The empty square at the top-left is gone — the item already sits in the
-  attachment row — the message sits on its own surface below the header, its
-  scroll bar only appears when the text needs one, and the view is the same
-  width as the tabs above it. Gold in a mail now appears as a coin tile
-  beside the items, with the amount on it; click it to take just the gold.
-- **The smallest window shows whole rows in every combination.** Compact or
-  full rows, category buttons on or off: the window's smallest height is now
-  worked out for the rows you have, and where the Send tab needs more room
-  than that, the list is given whole extra rows rather than part of one.
-  Change either option and a window standing at its smallest moves to the
-  new smallest, and remembers it. Above that the window resizes freely, up to
-  a tallest height that is whole rows too. The big button is now the same
-  height as the Send tab's Send button.
-- **The category buttons stay put under a search.** "All sold" over a search
-  is the sold mail among the rows shown; they used to disappear while you
-  typed.
-- **Fixed: queuing a thirteenth attachment did nothing.** Three causes, all
-  gone: the click never reached Postbox under some bag addons (it now
-  listens where every bag button reports its clicks, and to the game's own
-  "cannot attach more than 12 items" refusal), the item was turned away for
-  reading as locked in the instant after the refusal, and its identity was
-  looked up in a way that never answered. The game's red refusal is cleared
-  when the click queued the item, so the screen does not say the opposite of
-  what happened.
-- **The attachments label counts.** "Attachments 3/12", so you can see how
-  close the next right-click is to queuing instead; the queued count beside
-  it is in the accent colour, and right-click forgets the queue, the same
-  button that takes an item out of a slot.
-- **"AH Won" is blue.** It was the accent gold, which sat between "warning"
-  and "brand" and read as neither; a purchase arriving is good news of a
-  different kind from a sale, so it has a colour of its own.
-- **Fixed: a freshly favourited recipient could be filed under a lowercase
-  name** when it was favourited from the recipient manager.
+### New
+
+- **Pick the mails to collect.** Shift-click selects a range, Ctrl-click picks
+  single rows, and the big button reads "Collect 5 selected". Right-click
+  still opens a mail.
+- **Right-click the resize grip** to put the window back to its default size.
+- **Gold in a mail is a coin tile** in the reading view. Click it to take
+  just the gold.
+
+### Improved
+
+- **Auction rows say what happened**: "AH Won", "AH Sold", "AH Expired" or
+  "AH Cancelled", each in its own colour, with the item's name.
+- **The options panel is two columns**, in the window's order, with the
+  recipient manager's button at the top right.
+- **A slim scroll bar of Postbox's own** on every list, shown only when
+  something is off screen.
+- **The reading view is tidier**: the message on its own surface, the same
+  width as the tabs, no empty icon box.
+- **The smallest window shows whole rows** in every combination of compact
+  rows and category buttons, and moves with the option when you change it.
+- "Attachments 3/12" counts up, with the queued count beside it. The
+  read/unread dot is round. "AH Won" is blue. The category buttons stay put
+  during a search.
+
+### Fixed
+
+- Queuing a thirteenth attachment did nothing under some bag addons. It now
+  works with every bag addon, and the game's red "cannot attach more than 12
+  items" message is cleared when the click queued the item.
+- A recipient favourited from the recipient manager could be filed under a
+  lowercase name.
 
 ## 1.36.0
 
-- **Post more than twelve items in one go.** With every attachment slot full,
-  right-clicking another bag item used to do nothing. Now it queues: a count
-  appears beside the attachments label ("8 more queued", with the items in
-  its tooltip), the Send button reads "Send 3 mails", and one press posts
-  them all — twelve at a time, to the same recipient with the same subject
-  and message. Gold and C.O.D. go with the first mail only, and nothing is
-  queued while a C.O.D. price is set. Free a slot and the next queued item
-  moves into it. Click the count to forget the queue; the items never leave
-  your bags until they are actually sent.
-- **Search the inbox.** A box on the Mail tab's top row narrows the list to
-  mails whose sender or subject contains what you type. While a search is on,
-  the category buttons step aside and the big button reads "Collect shown" —
-  it takes exactly the mails on screen, so a search for one sender cannot
-  sweep the whole box. The counts on Collect, Done and All still describe the
-  whole inbox. Escape clears it, and it clears itself when you leave.
-- **Return to sender, on any mail that can be returned.** The detail view
-  offered Return only on C.O.D. mail. It now offers it wherever the game
-  itself would: a mail from another player that still holds items or gold.
-  Auction and system mail cannot be returned, and an emptied mail has
-  nothing to return.
-- **An unsent draft survives leaving the mailbox.** Close the window with a
-  half-written mail — a mis-click, a mob, a summon — and the recipient,
-  subject and message are back the next time you open a mailbox. Attachments
-  and gold are not, because the game drops those the moment the mailbox
-  closes. The draft lasts until you log out or reload.
-- **Enter moves you along.** Enter in the Recipient box goes to Subject, and
-  Enter in Subject goes to the message, as in the game's own send window.
-- Nothing you can see changed in this one: the memory the recipient list
-  keeps for sorting now has a fixed ceiling.
+### New
+
+- **Post more than twelve items in one go.** With every slot full,
+  right-clicked items queue up; the Send button reads "Send 3 mails" and one
+  press posts them all, twelve at a time, to the same person. Gold and C.O.D.
+  go with the first mail only.
+- **Search the inbox** by sender or subject. While a search is on, the big
+  button reads "Collect shown" and takes exactly the mails on screen.
+- **Return to sender** on any mail the game itself would let you return, not
+  only C.O.D. mail.
+- **An unsent draft survives leaving the mailbox**: recipient, subject and
+  message are back at the next one. Attachments and gold cannot be, because
+  the game drops them when the mailbox closes.
+
+### Improved
+
+- Enter in Recipient goes to Subject, and Enter in Subject goes to the
+  message, as in the game's own send window.
+- Nothing you can see changed otherwise: the memory kept for sorting the
+  recipient list now has a fixed ceiling.
 
 ## 1.35.0
 
