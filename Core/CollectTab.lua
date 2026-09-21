@@ -1375,7 +1375,10 @@ local function ApplyRowMode(row, compact, height)
   -- stripe is SetAllPoints(row), so it follows the height.
   row.Icon:SetSize(iconSize, iconSize)
   row.Icon:ClearAllPoints()
-  row.Icon:SetPoint("LEFT", row, "LEFT", M.inset + ROW_INDICATOR, 0)
+  -- Two past the indicator's slot, so the dot has a clear pixel or two
+  -- between it and the icon; the text-width arithmetic in the binder counts
+  -- the same two.
+  row.Icon:SetPoint("LEFT", row, "LEFT", M.inset + ROW_INDICATOR + 2, 0)
 
   -- The BUTTON is the hit area and keeps the full size; only its glyph is inset.
   row.Delete:SetSize(deleteSize, deleteSize)
@@ -1427,7 +1430,7 @@ local function BuildRow(panel)
   -- edge: clear of the bar, clear of the icon.
   row.Indicator = row:CreateTexture(nil, "ARTWORK")
   row.Indicator:SetSize(ROW_INDICATOR - 1, ROW_INDICATOR - 1)
-  row.Indicator:SetPoint("LEFT", row, "LEFT", 8, 0)
+  row.Indicator:SetPoint("LEFT", row, "LEFT", 7, 0)
   row.Indicator:SetTexture(WHITE)
   if type(row.CreateMaskTexture) == "function" then
     local mask = row:CreateMaskTexture()
@@ -1748,7 +1751,7 @@ local function BindRow(panel, row, index, position, compact, done)
   -- tooltip rather than clipped, in any locale and at any window size.
   local iconSize = compact and ROW_ICON_COMPACT or ROW_ICON
   local textWidth = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
-    - (M.inset + ROW_INDICATOR + iconSize + M.gap) - trailing
+    - (M.inset + ROW_INDICATOR + 2 + iconSize + M.gap) - trailing
   textWidth = max(textWidth, 60)
 
   -- A partially collected auction stack must not keep advertising the quantity

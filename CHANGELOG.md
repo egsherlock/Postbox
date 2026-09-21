@@ -11,9 +11,10 @@
   with the option on), exactly as before.
 - **Auction mail says what happened, not who sent it.** "Auction House —
   Auction won: Mana Lily Tea" said the same thing three times and cut off the
-  item's name. A row now reads "Won — Mana Lily Tea", "Sold — …", "Expired —
-  …" or "Cancelled — …", each outcome in its own colour, in every language
-  the game speaks. The reading view shows the item's name as the subject too.
+  item's name. A row now reads "AH Won — Mana Lily Tea", "AH Sold — …", "AH
+  Expired — …" or "AH Cancelled — …", each outcome in its own colour, in every
+  language the game speaks. The reading view shows the item's name as the
+  subject too.
 - **The read/unread dot is a dot.** A round mark, a little further from the
   row's edge, so it no longer sits against the selection bar as one shape.
 - **The options panel is in the window's order.** Mail tab, Send tab, Window,

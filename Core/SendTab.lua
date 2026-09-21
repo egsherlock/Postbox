@@ -3596,6 +3596,12 @@ end
 -- and SendMail are plain C APIs, and a mailbox cannot be open in combat anyway.
 -------------------------------------------------------------
 
+-- One block, so the twenty-odd helpers below are released at its end: a
+-- chunk may hold at most two hundred live locals, and this file reached
+-- them -- the Send tab then failed to load at all. Everything the rest of
+-- the file needs is handed out through the forward-declared names above
+-- (RefreshQueueLabel, TopUpFromQueue, ContinueQueue) and ST.* fields.
+do
 local function Queue(panel)
   local queue = panel._queue
   if not queue then
@@ -3960,6 +3966,7 @@ local function OnAttachRefused()
   TryEnqueue(panel, bag, slot)
 end
 ST.OnAttachRefused = OnAttachRefused
+end
 
 -------------------------------------------------------------
 -- 19. Draft reset
@@ -4530,7 +4537,7 @@ local function InstallEvents(panel)
     elseif event == "MAIL_FAILED" then
       FinishSend("failed")
     elseif event == "UI_ERROR_MESSAGE" then
-      OnAttachRefused(self)
+      ST.OnAttachRefused()
       return
     end
 
