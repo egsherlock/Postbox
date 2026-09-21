@@ -38,7 +38,7 @@ ns.L = setmetatable(L, {
 -- Plurals
 --
 -- Never build a counted string by hand. "%d slot" .. (n > 1 and "s" or "")
--- shipped in every one of the five locales, so a Russian player read an English
+-- shipped in every one of the six locales, so a Russian player read an English
 -- "slots"; and there is no suffix rule that works for Russian anyway, which
 -- needs three forms selected on the last digit AND the last two digits.
 --
