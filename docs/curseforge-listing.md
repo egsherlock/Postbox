@@ -34,8 +34,12 @@ bought, just the cancellations. When the run finishes, chat tells you what it ea
 and what it spent.
 
 Shift-click any mail to read it without collecting it. Hover an attachment for the
-real item tooltip. Turn on compact rows and half again as many mails fit in the same
-window.
+real item tooltip. A mail from another player can be returned from the same view.
+Turn on compact rows and half again as many mails fit in the same window.
+
+**Search the inbox.** A box on the top row narrows the list by sender or subject.
+While it is on, the big button reads "Collect shown" and takes exactly the mails on
+screen — a search for one sender can never sweep the whole box.
 
 ![A full inbox, cleared in one pass](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/collect.png)
 
@@ -74,7 +78,13 @@ click away, and the ones you mail constantly get a star. Names in any alphabet:
 Cyrillic and accented names complete, sort and favourite like any other.
 
 Mailing a run of things to one bank alt? **Keep recipient after send**, in the
-options, leaves the name in place while everything else clears.
+options, leaves the name in place while everything else clears. And more than twelve
+items is not a problem: keep right-clicking once the slots are full and the rest
+queue up — the Send button reads "Send 3 mails", and one press posts them all,
+twelve at a time, to the same recipient.
+
+An unsent draft survives closing the mailbox: the recipient, subject and message are
+back at the next one.
 
 Before you send, a line tells you what is about to happen: whether the mail arrives
 instantly or in an hour, and whether a cross-realm send can actually carry what you

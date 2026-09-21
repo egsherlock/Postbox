@@ -280,6 +280,25 @@ end
 --   unreachable totalItems - numItems
 --   unloaded    indices whose header has not arrived yet
 --   skippedCOD  matching mails held back because they are C.O.D.
+-- One inbox index, tested against the queue's rules and either taken or
+-- accounted for in `info`. Shared by both builders below so they cannot
+-- disagree about what a collectable mail is.
+local function Consider(index, category, queue, info)
+  if not HeaderLoaded(index) then
+    info.unloaded = info.unloaded + 1
+  elseif not Mail.IsReadPersistent(index) then
+    local kind, hasCOD = Mail.ClassifyMail(index)
+    if category == "all" or kind == category then
+      if hasCOD then
+        -- Bulk collection must never spend the player's money.
+        info.skippedCOD = info.skippedCOD + 1
+      else
+        queue[#queue + 1] = index
+      end
+    end
+  end
+end
+
 function Mail.BuildQueue(category)
   local numItems, totalItems = GetInboxNumItems()
   numItems = tonumber(numItems) or 0
@@ -298,19 +317,39 @@ function Mail.BuildQueue(category)
   -- MAIL_INBOX_UPDATE, so an empty result here means "nothing to do OR nothing
   -- known yet" and the caller is told which by info.totalItems.
   for index = numItems, 1, -1 do
-    if not HeaderLoaded(index) then
-      info.unloaded = info.unloaded + 1
-    elseif not Mail.IsReadPersistent(index) then
-      local kind, hasCOD = Mail.ClassifyMail(index)
-      if category == "all" or kind == category then
-        if hasCOD then
-          -- Bulk collection must never spend the player's money.
-          info.skippedCOD = info.skippedCOD + 1
-        else
-          queue[#queue + 1] = index
-        end
-      end
-    end
+    Consider(index, category, queue, info)
+  end
+
+  return queue, info
+end
+
+-- The same queue, over an explicit set of inbox indices rather than the whole
+-- inbox: what the collect screen's search hands over, so that "Collect" under
+-- a filtered list takes the mails on screen and nothing else. Every rule
+-- BuildQueue applies -- unloaded headers, finished mail, C.O.D. -- applies
+-- here too, and the queue comes out descending for the same reason.
+function Mail.BuildQueueFor(indices)
+  local numItems, totalItems = GetInboxNumItems()
+  numItems = tonumber(numItems) or 0
+  totalItems = tonumber(totalItems) or numItems
+
+  local queue = {}
+  local info = {
+    numItems = numItems,
+    totalItems = totalItems,
+    unreachable = math.max(totalItems - numItems, 0),
+    unloaded = 0,
+    skippedCOD = 0,
+  }
+
+  local sorted = {}
+  for i = 1, #indices do
+    local index = tonumber(indices[i])
+    if index and index >= 1 and index <= numItems then sorted[#sorted + 1] = index end
+  end
+  table.sort(sorted, function(a, b) return a > b end)
+  for i = 1, #sorted do
+    Consider(sorted[i], "all", queue, info)
   end
 
   return queue, info

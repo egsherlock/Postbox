@@ -51,6 +51,10 @@ local floor, ceil, min, max = math.floor, math.ceil, math.min, math.max
 -- the player never typed.
 local ResetInlineCompletion
 
+-- Section 18a, the attachment queue: reached from the slot refresh (5) and
+-- the send outcome (8), both of which are defined before it.
+local RefreshQueueLabel, TopUpFromQueue, ContinueQueue
+
 -------------------------------------------------------------
 -- 1. Geometry, and the invariant that holds the screen together
 --
@@ -359,16 +363,19 @@ end
 -------------------------------------------------------------
 
 -- Items sitting in the send frame's attachment slots.
+local function SlotHasItem(i)
+  if type(HasSendMailItem) == "function" then
+    return HasSendMailItem(i) and true or false
+  elseif type(GetSendMailItem) == "function" then
+    return GetSendMailItem(i) ~= nil
+  end
+  return false
+end
+
 local function AttachmentCount()
   local n = 0
   for i = 1, SEND_SLOT_COUNT do
-    local hasItem = false
-    if type(HasSendMailItem) == "function" then
-      hasItem = HasSendMailItem(i) and true or false
-    elseif type(GetSendMailItem) == "function" then
-      hasItem = GetSendMailItem(i) ~= nil
-    end
-    if hasItem then n = n + 1 end
+    if SlotHasItem(i) then n = n + 1 end
   end
   return n
 end
@@ -623,6 +630,11 @@ end
 function ST.RefreshAttachmentSlots(panel)
   if not panel or not panel.ItemSlots then return end
 
+  -- A slot that has just come free is the queue's to fill (section 18a).
+  -- Before the read below, so the slots are drawn as they now stand.
+  if TopUpFromQueue then TopUpFromQueue(panel) end
+  if RefreshQueueLabel then RefreshQueueLabel(panel) end
+
   local highest = 0
   for i = 1, SEND_SLOT_COUNT do
     local slot = panel.ItemSlots[i]
@@ -776,6 +788,17 @@ local SEND_TIMEOUT = 10
 local pendingSend = nil
 local sendToken = 0
 
+-- "Send mail", or "Send 3 mails" when the attachment queue (section 18a)
+-- means one press posts more than one.
+local function SendButtonCaption(panel)
+  local queue = panel and panel._queue
+  local waiting = queue and #queue or 0
+  if waiting > 0 then
+    return ns.Plural("BTN_SEND_MAILS", 1 + math.ceil(waiting / SEND_SLOT_COUNT))
+  end
+  return L["BTN_SEND_MAIL"]
+end
+
 local function SetSendButtonBusy(panel, busy)
   local button = panel and panel.FillButton
   if not button then return end
@@ -784,7 +807,7 @@ local function SetSendButtonBusy(panel, busy)
     button:SetText(L["BTN_SEND_MAIL_PENDING"])
   else
     if button.Enable then button:Enable() end
-    button:SetText(L["BTN_SEND_MAIL"])
+    button:SetText(SendButtonCaption(panel))
   end
 end
 
@@ -795,6 +818,15 @@ local function AbandonPendingSend(panel)
     pendingSend = nil
   end
   if panel then SetSendButtonBusy(panel, false) end
+end
+
+-- The draft after the LAST mail of a press has gone: blanked, apart from the
+-- recipient when the option says to keep it.
+local function SettleDraftAfterSuccess(panel)
+  local UI = ns.MailboxUI
+  local keep = UI ~= nil and type(UI.GetOption) == "function" and UI.GetOption("keepRecipient")
+  ClearDraftFields(panel, keep)
+  ClearSendMailMoneyState()
 end
 
 -- outcome: "success" | "failed" | "timeout"
@@ -810,10 +842,10 @@ local function FinishSend(outcome)
     -- History is written here and nowhere else: a recipient the server refused
     -- is not a recipient the player has mailed.
     Contacts().SaveRecipient(pending.toName)
-    local UI = ns.MailboxUI
-    local keep = UI ~= nil and type(UI.GetOption) == "function" and UI.GetOption("keepRecipient")
-    ClearDraftFields(panel, keep)
-    ClearSendMailMoneyState()
+    -- Attachments still queued: the next mail goes out from here and the
+    -- draft stands until the last one has. ContinueQueue settles it itself.
+    if ContinueQueue(panel, pending) then return end
+    SettleDraftAfterSuccess(panel)
   elseif outcome == "timeout" then
     PopupNotice(L["MSG_SEND_TIMEOUT"])
   else
@@ -3538,19 +3570,317 @@ function ST.DeactivateNativeSendMail()
 end
 
 -------------------------------------------------------------
+-- 18a. The attachment queue
+--
+-- Twelve slots is the server's limit per mail, not a limit on what a player
+-- wants to post. With every slot full, a right-click on a bag item used to be
+-- refused by the client and forgotten by Postbox. Now the item is queued: it
+-- waits under the slots, counted, and goes out after this mail -- twelve at a
+-- time, to the same recipient with the same subject and message -- with one
+-- press of Send. Gold and C.O.D. belong to the first mail only; while a
+-- C.O.D. price is armed nothing is queued at all, because a price per mail
+-- is not something to guess at.
+--
+-- The client's own right-click is the only way in. C_Container.UseContainerItem
+-- is post-hooked (a secure hook; the click itself runs untouched, and this
+-- runs after it) and, with the Send tab showing and every slot taken, the
+-- item the client refused is queued. Whenever a slot frees -- an attachment
+-- removed, a mail sent -- the queue moves in, so the slots and the queue
+-- together are one list in the order the items were clicked.
+--
+-- The queue holds bag positions, each with the item's GUID. A bag can be
+-- sorted between two mails, so an item is attached only where the GUID still
+-- agrees with the position -- or has been found again elsewhere in the bags.
+--
+-- Nothing here is combat-sensitive: PickupContainerItem, ClickSendMailItemButton
+-- and SendMail are plain C APIs, and a mailbox cannot be open in combat anyway.
+-------------------------------------------------------------
+
+local function Queue(panel)
+  local queue = panel._queue
+  if not queue then
+    queue = {}
+    panel._queue = queue
+  end
+  return queue
+end
+
+local function GuidAt(bag, slot)
+  if type(ItemLocation) ~= "table" or type(ItemLocation.CreateFromBagAndSlot) ~= "function" then return nil end
+  if not (C_Item and type(C_Item.GetItemGUID) == "function") then return nil end
+  local ok, location = pcall(ItemLocation.CreateFromBagAndSlot, bag, slot)
+  if not ok or not location then return nil end
+  local okGuid, guid = pcall(C_Item.GetItemGUID, location)
+  return (okGuid and type(guid) == "string") and guid or nil
+end
+
+local function ContainerInfo(bag, slot)
+  if not (C_Container and type(C_Container.GetContainerItemInfo) == "function") then return nil end
+  local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+  return (ok and type(info) == "table") and info or nil
+end
+
+local LAST_BAG = (type(NUM_TOTAL_EQUIPPED_BAG_SLOTS) == "number" and NUM_TOTAL_EQUIPPED_BAG_SLOTS)
+  or (type(NUM_BAG_SLOTS) == "number" and NUM_BAG_SLOTS) or 4
+
+-- Where the entry's item is now: its own position when the GUID there still
+-- agrees, otherwise wherever the bags hold that GUID, otherwise nowhere.
+local function Locate(entry)
+  if GuidAt(entry.bag, entry.slot) == entry.guid then return entry.bag, entry.slot end
+  if not (C_Container and type(C_Container.GetContainerNumSlots) == "function") then return nil end
+  for bag = 0, LAST_BAG do
+    local ok, count = pcall(C_Container.GetContainerNumSlots, bag)
+    for slot = 1, (ok and tonumber(count)) or 0 do
+      if GuidAt(bag, slot) == entry.guid then return bag, slot end
+    end
+  end
+  return nil
+end
+
+-- The queue's face: the count beside the attachments label and the Send
+-- button's caption. Both read the queue, so both are refreshed from here.
+RefreshQueueLabel = function(panel)
+  if not panel then return end
+  local queue = panel._queue
+  local waiting = queue and #queue or 0
+  local button = panel.QueueLabel
+  if button then
+    if waiting > 0 then
+      button.Text:SetText(ns.Plural("COUNT_QUEUED", waiting))
+      button:SetWidth((button.Text:GetStringWidth() or 0) + 4)
+      button:Show()
+    else
+      button:Hide()
+    end
+  end
+  if panel.FillButton and not pendingSend then
+    panel.FillButton:SetText(SendButtonCaption(panel))
+  end
+end
+
+local function Enqueue(panel, bag, slot)
+  local info = ContainerInfo(bag, slot)
+  -- Locked means the click DID attach it, or something else holds it.
+  if not info or info.isLocked then return false end
+  local guid = GuidAt(bag, slot)
+  if not guid then return false end
+
+  local queue = Queue(panel)
+  for i = 1, #queue do
+    if queue[i].guid == guid then return false end
+  end
+
+  -- The same verdict the padlock overlays draw from: an item that cannot be
+  -- mailed is not queued to fail later.
+  local Lock = ns.Core and ns.Core.InventoryLock
+  if Lock and type(Lock.ShouldLockForMail) == "function" and Lock.ShouldLockForMail(bag, slot) then
+    return false
+  end
+
+  queue[#queue + 1] = {
+    bag = bag, slot = slot, guid = guid,
+    link = info.hyperlink, count = info.stackCount,
+  }
+  RefreshQueueLabel(panel)
+  return true
+end
+
+-- Moves queued items into free slots, first to last, until the slots are full
+-- or the queue is empty. Returns how many were attached and how many had to
+-- be dropped because their item could not be found any more.
+local function FillFromQueue(panel)
+  local queue = panel._queue
+  if not queue or #queue == 0 then return 0, 0 end
+  if not (C_Container and type(C_Container.PickupContainerItem) == "function") then return 0, 0 end
+  if type(ClickSendMailItemButton) ~= "function" then return 0, 0 end
+  -- The player is mid-drag; their item comes first.
+  if type(CursorHasItem) == "function" and CursorHasItem() then return 0, 0 end
+
+  local attached, missing = 0, 0
+  local slotIndex = 1
+  while #queue > 0 do
+    while slotIndex <= SEND_SLOT_COUNT and SlotHasItem(slotIndex) do
+      slotIndex = slotIndex + 1
+    end
+    if slotIndex > SEND_SLOT_COUNT then break end
+
+    local entry = table.remove(queue, 1)
+    local bag, slot = Locate(entry)
+    if not bag then
+      missing = missing + 1
+    else
+      pcall(C_Container.PickupContainerItem, bag, slot)
+      pcall(ClickSendMailItemButton, slotIndex)
+      -- The item still on the cursor is the client's refusal. Put it down,
+      -- put the entry back at the front, and stop: whatever refused it will
+      -- refuse the next one too.
+      if type(CursorHasItem) == "function" and CursorHasItem() then
+        if type(ClearCursor) == "function" then ClearCursor() end
+        table.insert(queue, 1, entry)
+        break
+      end
+      attached = attached + 1
+      slotIndex = slotIndex + 1
+    end
+  end
+
+  RefreshQueueLabel(panel)
+  return attached, missing
+end
+
+-- What the slot refresh calls: a free slot is the queue's, unless a send is
+-- in flight -- then the slots belong to the mail the server is holding.
+TopUpFromQueue = function(panel)
+  if pendingSend then return end
+  local queue = panel and panel._queue
+  if not queue or #queue == 0 then return end
+  if AttachmentCount() >= SEND_SLOT_COUNT then return end
+  local _, missing = FillFromQueue(panel)
+  if missing > 0 then ns.Print(ns.Plural("MSG_QUEUE_MISSING", missing)) end
+end
+
+-- One more mail of the same press: whatever the queue has just put in the
+-- slots, to the same recipient with the same subject and message, and no
+-- money -- gold and C.O.D. went with the first.
+local function SendQueued(panel, toName)
+  local subject = FieldText(panel.SubjectBox)
+  local body    = FieldText(panel.BodyBox)
+  if subject == "" then subject = L["DEFAULT_NO_SUBJECT"] end
+
+  ClearSendMailMoneyState()
+
+  sendToken = sendToken + 1
+  local myToken = sendToken
+  pendingSend = { panel = panel, toName = toName, token = myToken }
+  SetSendButtonBusy(panel, true)
+
+  SendMail(toName, subject, body)
+
+  C_Timer.After(SEND_TIMEOUT, function()
+    if pendingSend and pendingSend.token == myToken then
+      FinishSend("timeout")
+    end
+  end)
+end
+
+-- Called from FinishSend on success. True when the queue has taken over the
+-- draft: the next mail will go out, and the draft will be settled from here
+-- when the last one has. False when there is nothing queued, and the caller
+-- settles the draft as it always did.
+ContinueQueue = function(panel, pending)
+  local queue = panel and panel._queue
+  if not queue or #queue == 0 then return false end
+  local UI = ns.MailboxUI
+  if UI and type(UI.IsMailboxOpen) == "function" and not UI.IsMailboxOpen() then return false end
+
+  local toName = pending.toName
+  -- A moment later, not now: the server has confirmed the send, and the
+  -- client empties the slots on its own schedule. A fifth of a second is
+  -- well clear of it and invisible against the round trip just made.
+  C_Timer.After(0.2, function()
+    -- Something else took the draft meanwhile: a send the player started, or
+    -- the mailbox closing, which empties the queue.
+    if pendingSend then return end
+    if UI and type(UI.IsMailboxOpen) == "function" and not UI.IsMailboxOpen() then return end
+
+    local function Settle()
+      SettleDraftAfterSuccess(panel)
+      Invalidate(panel, "slots")
+      Invalidate(panel, "cost")
+      Invalidate(panel, "guidance")
+    end
+
+    -- The player emptied the queue in the meantime: the press is complete.
+    if not panel._queue or #panel._queue == 0 then
+      Settle()
+      return
+    end
+
+    local attached, missing = FillFromQueue(panel)
+    if missing > 0 then ns.Print(ns.Plural("MSG_QUEUE_MISSING", missing)) end
+
+    if attached == 0 and AttachmentCount() == 0 then
+      -- Nothing could be attached. The queue keeps whatever it still holds
+      -- so the player can see what did not go, and the draft settles.
+      local left = #(panel._queue or {})
+      if left > 0 then ns.Print(ns.Plural("MSG_QUEUE_LEFT", left)) end
+      Settle()
+      return
+    end
+
+    SendQueued(panel, toName)
+  end)
+  return true
+end
+
+-- The way in: the client's own right-click, after the client has answered
+-- it. With the Send tab showing and every slot taken, the item it refused
+-- is queued.
+if type(hooksecurefunc) == "function" and type(C_Container) == "table"
+   and type(C_Container.UseContainerItem) == "function" then
+  hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot)
+    if not sendTabActive or pendingSend then return end
+    if type(bag) ~= "number" or type(slot) ~= "number" then return end
+    local panel = ActivePanel()
+    if not panel or not panel:IsShown() then return end
+    if IsCODArmed(panel) then return end
+    if AttachmentCount() < SEND_SLOT_COUNT then return end
+    Enqueue(panel, bag, slot)
+  end)
+end
+
+-------------------------------------------------------------
 -- 19. Draft reset
 --
 -- Called by the shell when the mailbox opens and again when it closes.
 -------------------------------------------------------------
 
-function ST.Reset(panel)
+-- An unsent draft survives walking away from the mailbox.
+--
+-- The three text fields are kept aside on close and put back on the next
+-- open, for the session only: a mis-click on the close button, a mob, a
+-- guildmate's summon -- none of them should cost a half-written mail. Only
+-- text: the server drops attachments and money the moment the mailbox
+-- closes, and pretending otherwise would put back a draft that no longer
+-- says what it did. Never across a successful send (the fields are already
+-- empty by then) and never across a reload.
+local function StashDraft(panel)
+  local to, subject, body = FieldText(panel.ToBox), FieldText(panel.SubjectBox), FieldText(panel.BodyBox)
+  if to == "" and subject == "" and body == "" then
+    panel._draftStash = nil
+    return
+  end
+  panel._draftStash = { to = to, subject = subject, body = body }
+end
+
+local function RestoreDraft(panel)
+  local stash = panel._draftStash
+  panel._draftStash = nil
+  if not stash then return end
+  if stash.to ~= "" then ST.SetRecipient(panel, stash.to) end
+  panel.SubjectBox:SetText(stash.subject)
+  panel.SubjectBox:SetCursorPosition(0)
+  panel.BodyBox:SetText(stash.body)
+  panel.BodyBox:SetCursorPosition(0)
+end
+
+-- `reason` is "open" or "close" (see Core/MailboxUI.lua's ResetDraft); a
+-- caller that says neither gets a plain reset with nothing kept.
+function ST.Reset(panel, reason)
   if not panel then return end
 
   -- Never leave the Send button stuck disabled across a mailbox cycle. The
   -- draft itself is not touched here; ClearDraftFields below does that.
   AbandonPendingSend(panel)
   ClearSendMailMoneyState()
+  if reason == "close" then StashDraft(panel) end
   ClearDraftFields(panel)
+  if reason == "open" then RestoreDraft(panel) end
+  -- The attachment queue does not survive the mailbox: its items are still in
+  -- the bags, and a queue that reappeared at the next mailbox would be a
+  -- surprise waiting to attach itself.
+  panel._queue = nil
+  if RefreshQueueLabel then RefreshQueueLabel(panel) end
 
   if panel.SuggestFrame then panel.SuggestFrame:Hide() end
   if panel.ContactPicker then panel.ContactPicker:Hide() end
@@ -3827,6 +4157,46 @@ local function BuildAttachmentArea(panel)
   label:SetPoint("TOPLEFT", area, "TOPLEFT", M.inset, -M.tightGap)
   label:SetHeight(LabelHeight())
   label:SetText(L["LABEL_ATTACHMENTS"])
+
+  -- The attachment queue's count (section 18a), to the right of the label:
+  -- "8 more queued", the items themselves in its tooltip, and a click to
+  -- forget them. Hidden while nothing is queued, which is nearly always.
+  local queueButton = CreateFrame("Button", nil, area)
+  queueButton:SetPoint("LEFT", label, "RIGHT", M.gap, 0)
+  queueButton:SetHeight(LabelHeight())
+  queueButton:SetWidth(1)
+  queueButton.Text = Theme.CreateText(queueButton, "secondary")
+  queueButton.Text:SetPoint("LEFT", queueButton, "LEFT", 0, 0)
+  queueButton.Text:SetJustifyH("LEFT")
+  queueButton.Text:SetWordWrap(false)
+  queueButton:SetScript("OnEnter", function(self)
+    local queue = panel._queue
+    if not queue or #queue == 0 then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L["QUEUE_TIP_TITLE"], 1, 1, 1)
+    local shown = math.min(#queue, SEND_SLOT_COUNT)
+    for i = 1, shown do
+      local entry = queue[i]
+      local line = entry.link or "?"
+      if (entry.count or 1) > 1 then line = line .. " x" .. entry.count end
+      GameTooltip:AddLine(line, 1, 1, 1)
+    end
+    if #queue > shown then
+      GameTooltip:AddLine(L("MEMORY_WAITING_MORE", #queue - shown), 0.75, 0.75, 0.75)
+    end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(L["QUEUE_TIP_HOW"], 0.75, 0.75, 0.75, true)
+    GameTooltip:AddLine(L["QUEUE_TIP_CLEAR"], 0.75, 0.75, 0.75, true)
+    GameTooltip:Show()
+  end)
+  queueButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  queueButton:SetScript("OnClick", function()
+    panel._queue = nil
+    GameTooltip:Hide()
+    if RefreshQueueLabel then RefreshQueueLabel(panel) end
+  end)
+  queueButton:Hide()
+  panel.QueueLabel = queueButton
 
   local function SlotEnter(self)
     if not self.itemLink then return end
@@ -4120,6 +4490,12 @@ function ST.Build(parent)
     if RecipientEscapePressed(panel) then return end
     self:ClearFocus()
   end)
+  -- Enter is "done, next field", as it is in the client's own send frame.
+  -- Whatever the box holds -- typed, completed or taken by Tab -- is the
+  -- answer; moving focus drops the selection and, after its grace, the popup.
+  panel.ToBox:SetScript("OnEnterPressed", function()
+    if panel.SubjectBox then panel.SubjectBox:SetFocus() end
+  end)
   panel.ToBox:SetScript("OnEditFocusGained", function(self)
     if self:GetText() ~= "" then self:HighlightText() end
     RefreshSuggestions(panel)
@@ -4148,6 +4524,9 @@ function ST.Build(parent)
   end)
   panel.SubjectBox:SetScript("OnEditFocusGained", function(self)
     if self:GetText() ~= "" then self:HighlightText() end
+  end)
+  panel.SubjectBox:SetScript("OnEnterPressed", function()
+    if panel.BodyBox then panel.BodyBox:SetFocus() end
   end)
 
   -- Message label. The field itself is built after the bottom bands, because it

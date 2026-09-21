@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.36.0
+
+- **Post more than twelve items in one go.** With every attachment slot full,
+  right-clicking another bag item used to do nothing. Now it queues: a count
+  appears beside the attachments label ("8 more queued", with the items in
+  its tooltip), the Send button reads "Send 3 mails", and one press posts
+  them all — twelve at a time, to the same recipient with the same subject
+  and message. Gold and C.O.D. go with the first mail only, and nothing is
+  queued while a C.O.D. price is set. Free a slot and the next queued item
+  moves into it. Click the count to forget the queue; the items never leave
+  your bags until they are actually sent.
+- **Search the inbox.** A box on the Mail tab's top row narrows the list to
+  mails whose sender or subject contains what you type. While a search is on,
+  the category buttons step aside and the big button reads "Collect shown" —
+  it takes exactly the mails on screen, so a search for one sender cannot
+  sweep the whole box. The counts on Collect, Done and All still describe the
+  whole inbox. Escape clears it, and it clears itself when you leave.
+- **Return to sender, on any mail that can be returned.** The detail view
+  offered Return only on C.O.D. mail. It now offers it wherever the game
+  itself would: a mail from another player that still holds items or gold.
+  Auction and system mail cannot be returned, and an emptied mail has
+  nothing to return.
+- **An unsent draft survives leaving the mailbox.** Close the window with a
+  half-written mail — a mis-click, a mob, a summon — and the recipient,
+  subject and message are back the next time you open a mailbox. Attachments
+  and gold are not, because the game drops those the moment the mailbox
+  closes. The draft lasts until you log out or reload.
+- **Enter moves you along.** Enter in the Recipient box goes to Subject, and
+  Enter in Subject goes to the message, as in the game's own send window.
+- Nothing you can see changed in this one: the memory the recipient list
+  keeps for sorting now has a fixed ceiling.
+
 ## 1.35.0
 
 - **Tab in the recipient box now walks the suggestion list top to bottom, one

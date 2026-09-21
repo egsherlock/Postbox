@@ -52,9 +52,11 @@ install it and open a mailbox.
 ## Collecting
 
 Three views — Collect, Done, All — with one-click sweeps that pick out a single kind
-of mail: expired, sold, bought, cancelled, or everything else. Shift-click a mail to
-look inside without collecting; hover an attachment for its real item tooltip.
-Compact rows fit half again as many mails in the same window.
+of mail: expired, sold, bought, cancelled, or everything else. A search box narrows
+the list by sender or subject, and while it is on the big button collects only what
+is shown. Shift-click a mail to look inside without collecting; hover an attachment
+for its real item tooltip; return a player's mail from the same view. Compact rows
+fit half again as many mails in the same window.
 
 A banner under the list keeps a running **total earned and total spent** — proceeds,
 postage and C.O.D. charges — and the finished run repeats it in chat.
@@ -81,10 +83,16 @@ delete, without touching your saved size.
 
 Start typing a name and it completes in place. Tab takes the suggestion, and
 every press after walks down the list one row at a time (Shift+Tab walks back
-up); Escape puts back what you typed. Names in any alphabet: Cyrillic and
-accented names complete, sort and favourite like any other, and a lowercase
-"ив" finds Иван. An option keeps the recipient in place after a send, for a run
-of mails to the same character.
+up); Escape puts back what you typed, Enter moves on to Subject. Names in any
+alphabet: Cyrillic and accented names complete, sort and favourite like any
+other, and a lowercase "ив" finds Иван. An option keeps the recipient in place
+after a send, for a run of mails to the same character.
+
+**More than twelve items?** Keep right-clicking. Once the slots are full, items
+queue beside the attachments label and the Send button reads "Send 3 mails": one
+press posts them all, twelve at a time, to the same recipient with the same
+subject and message. An unsent draft survives closing the mailbox, too — the
+text is back at the next one.
 
 ## Recipients
 

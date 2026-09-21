@@ -881,6 +881,103 @@ local function BuildViewToggle(panel)
   panel.ViewToggle = container
 end
 
+-------------------------------------------------------------
+-- Search
+--
+-- One box on the top row, right-aligned, narrowing the list to the mails
+-- whose sender or subject contains what is typed. It is a view of the same
+-- list, not a fourth view: the segment counts still describe the whole
+-- inbox, and the totals banner still describes what is listed. While a
+-- search is on, the five category sweeps are withdrawn and the full-width
+-- button reads "Collect shown" and takes exactly the mails on screen --
+-- "All mail" under a list of three would otherwise take fifty.
+-------------------------------------------------------------
+
+local SEARCH_W = 150
+
+local function Trim(text)
+  local H = ns.Helpers
+  if H and H.NormalizeText then return H.NormalizeText(text) end
+  return (tostring(text or ""):match("^%s*(.-)%s*$"))
+end
+
+-- The query as typed, trimmed; "" when the box is empty or not built.
+local function SearchQuery(panel)
+  local box = panel and panel.SearchBox
+  if not box then return "" end
+  return Trim(box:GetText() or "")
+end
+
+local function Searching(panel)
+  return SearchQuery(panel) ~= ""
+end
+
+-- The case fold the address book uses (Cyrillic-aware, see Lib/Util.lua),
+-- so a Russian player searching in lowercase finds a capitalised sender.
+local function Fold(text)
+  local H = ns.Helpers
+  if H and H.Lower then return H.Lower(text) end
+  return string.lower(tostring(text or ""))
+end
+
+local function BuildSearchBox(panel)
+  local T = Th()
+  local M = T.Metrics
+
+  local wrap = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+  wrap:SetSize(SEARCH_W, M.segmentHeight)
+  wrap:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -M.inset, -M.inset)
+  T.StyleInput(wrap)
+  -- Both host skins act on this tag; the inner box is left to the wrap.
+  wrap.__postboxInputWrap = true
+  panel.SearchWrap = wrap
+
+  local box = CreateFrame("EditBox", nil, wrap)
+  box:SetAutoFocus(false)
+  local font = T.FontObject("bodySmall")
+  if font then box:SetFontObject(font) end
+  T.SetColor(box, "textPrimary")
+  box:SetPoint("TOPLEFT", wrap, "TOPLEFT", 8, -2)
+  box:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -6, 2)
+  box.__postboxNoEditSkin = true
+  -- A sender is at most a name and a realm; a subject at most 64.
+  box:SetMaxLetters(64)
+  panel.SearchBox = box
+
+  local placeholder = T.CreateText(wrap, "placeholder")
+  placeholder:SetPoint("TOPLEFT", wrap, "TOPLEFT", 8, -2)
+  placeholder:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -8, 2)
+  placeholder:SetJustifyH("LEFT")
+  placeholder:SetJustifyV("MIDDLE")
+  placeholder:SetText(L()["SEARCH_PLACEHOLDER"])
+
+  wrap:SetScript("OnMouseDown", function() box:SetFocus() end)
+  box:SetScript("OnEscapePressed", function(self)
+    self:SetText("")
+    self:ClearFocus()
+  end)
+  box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+  box:SetScript("OnTextChanged", function(self)
+    local text = self:GetText() or ""
+    placeholder:SetShown(text == "")
+    local searching = Trim(text) ~= ""
+    -- The footer changes shape only when the search turns on or off, not on
+    -- every keystroke inside one.
+    if searching ~= (panel._searchOn == true) then
+      panel._searchOn = searching
+      CT.RefreshCategoryButtons(panel)
+    end
+    CT.RefreshMailList(panel)
+  end)
+end
+
+-- Frozen: Core/MailboxUI.lua calls this when the mailbox closes. A search is
+-- a question about THIS inbox; the next one starts unfiltered.
+function CT.ClearSearch(panel)
+  local box = panel and panel.SearchBox
+  if box and box:GetText() ~= "" then box:SetText("") end
+end
+
 -- Sizes every segment to the longest rendered caption -- counts included -- and
 -- lays them out. A fixed width sized for English "Read (99+)" is what clipped
 -- the German and Russian captions into their neighbour.
@@ -929,7 +1026,9 @@ local function LayoutViewToggle(panel)
   -- than not showing it, and it has no frame of its own to hang a tooltip on.
   local hint = panel.Hint
   if hint then
+    -- Less the search box on the same row, which has first claim on the right.
     local room = PanelWidth(panel) - 2 * T.Metrics.inset - total - T.Metrics.gap
+    if panel.SearchWrap then room = room - SEARCH_W - T.Metrics.gap end
     hint:SetShown(room >= T.TextWidth(hint))
   end
 
@@ -1695,6 +1794,10 @@ function CT.RefreshMailList(panel)
   -- API calls on every single refresh. This walk is the one that records; see
   -- "The inbox counts".
   local doneCount, toCollectCount = 0, 0
+  -- The search, folded once. Matched against the sender and the subject as
+  -- the client reports them; the counts above are deliberately NOT narrowed
+  -- by it, because the segment captions describe the inbox, not the view.
+  local query = Fold(SearchQuery(panel))
 
   for index = 1, numItems do
     -- "Read" alone will not do: collecting marks every mail read as a side
@@ -1707,12 +1810,21 @@ function CT.RefreshMailList(panel)
     else
       toCollectCount = toCollectCount + 1
     end
-    if showAll or finished == wantFinished then
+    local listed = showAll or finished == wantFinished
+    local money
+    if listed then
+      local _, _, sender, subject
+      _, _, sender, subject, money = GetInboxHeaderInfo(index)
+      if query ~= "" then
+        listed = Fold(sender or ""):find(query, 1, true) ~= nil
+              or Fold(subject or ""):find(query, 1, true) ~= nil
+      end
+    end
+    if listed then
       filtered[#filtered + 1] = index
       -- The verdict travels with the index, so the row binder never repeats the
       -- sixteen-slot scan this walk has already paid for.
       filteredDone[#filtered] = finished
-      local _, _, _, _, money = GetInboxHeaderInfo(index)
       local kind = Mail().ClassifyMail(index)
       local rowEarned, rowSpent = MailEconomy(index, kind, money)
       earned = earned + rowEarned
@@ -1736,7 +1848,9 @@ function CT.RefreshMailList(panel)
   -- on a mailbox that still holds finished mail would be right and would read as
   -- a lie on the all view, where those mails are on screen.
   local emptyKey = "EMPTY_LIST"
-  if showAll then
+  if query ~= "" then
+    emptyKey = "EMPTY_LIST_SEARCH"
+  elseif showAll then
     emptyKey = "EMPTY_LIST_ALL"
   elseif wantFinished then
     emptyKey = "EMPTY_LIST_DONE"
@@ -2346,7 +2460,16 @@ local function StartCategoryRun(panel, category)
     return
   end
 
-  local queue, info = Mail().BuildQueue(category)
+  -- Under a search the primary takes the mails on screen -- the list this
+  -- panel last built -- and nothing else. The category buttons are withdrawn
+  -- while a search is on, so `all` is the only category that can arrive here
+  -- in that state.
+  local queue, info
+  if Searching(panel) then
+    queue, info = Mail().BuildQueueFor(panel._filtered)
+  else
+    queue, info = Mail().BuildQueue(category)
+  end
 
   -- The inbox is still arriving: GetInboxNumItems reports 0 between MAIL_SHOW
   -- and the first MAIL_INBOX_UPDATE, and an index whose header has not landed
@@ -3005,11 +3128,21 @@ function PaintDetailContent(detail, index)
   detail.Subject:SetText(subject or "")
   detail.Info:SetText(DetailInfoText(detail, index, kind, hasCOD))
 
-  -- Reply and Return exist to hand a C.O.D. mail back; once it has been emptied
-  -- there is nothing to return. Delete is never offered on a C.O.D. mail.
+  -- Reply exists to hand a C.O.D. mail back. Return is offered wherever the
+  -- client would offer it in place of Delete: a mail from a player that still
+  -- holds something -- the client's InboxItemCanDelete answers false for
+  -- exactly those, and its own OpenMail frame swaps its Delete button for
+  -- Return on the same test. Once a mail has been emptied there is nothing to
+  -- return, and a system mail (auction house, quest reward) cannot be. Delete
+  -- is never offered on a C.O.D. mail, nor on one the client says to return.
+  local canDelete = true
+  if type(InboxItemCanDelete) == "function" then
+    local ok, answer = pcall(InboxItemCanDelete, index)
+    if ok then canDelete = answer and true or false end
+  end
   detail.Reply:SetShown(isCOD and hasContent)
-  detail.Return:SetShown(isCOD and hasContent)
-  detail.Delete:SetShown(wasRead and not isCOD and true or false)
+  detail.Return:SetShown(hasContent and (isCOD or not canDelete))
+  detail.Delete:SetShown(wasRead and not isCOD and canDelete)
 
   local shownSlots = 0
   for i = 1, Mail().MAX_ATTACHMENTS do
@@ -3139,8 +3272,11 @@ local function LayoutGrid(panel)
 
   -- The five sweeps are laid out whether or not they are shown: the option
   -- can flip while the window is open, and a hidden button that is already in
-  -- its column simply appears.
-  local extras = ShowCategoryButtons()
+  -- its column simply appears. A live search withdraws them too, and gives
+  -- the primary its narrower name.
+  local extras = ShowCategoryButtons() and not Searching(panel)
+  buttons[1].caption = Searching(panel) and L()["CAT_SHOWN"]
+    or (Labels().all or "all")
   local columns = T.ColumnEdges(width, GRID_COLUMNS, M.gap, panel._gridColumns)
   for i = 2, #buttons do
     local slot = i - 2
@@ -3173,7 +3309,7 @@ end
 -- run works on the inbox and not on the listing.
 local function FooterHeight(panel)
   if panel.viewMode == VIEW_DONE then return GRID_BUTTON_HEIGHT end
-  if not ShowCategoryButtons() then return GRID_PRIMARY_HEIGHT end
+  if not ShowCategoryButtons() or Searching(panel) then return GRID_PRIMARY_HEIGHT end
   return GRID_PRIMARY_HEIGHT + Th().Metrics.gap * 2 + GRID_BUTTON_HEIGHT * 2
 end
 
@@ -3261,14 +3397,16 @@ function CT.Build(parent)
   -- rather than a second pass: both are filled by the one walk in BindRow.
   panel._rowBrief = {}
 
-  -- Top row: the view switch, and the hint to its right.
+  -- Top row: the view switch, the search box at the far right, and the hint
+  -- between them.
   BuildViewToggle(panel)
+  BuildSearchBox(panel)
 
   -- Blank until something needs saying: this line's only remaining job is
   -- the truncated-inbox notice (see UpdateHint).
   panel.Hint = T.CreateText(panel, "secondary")
   panel.Hint:SetPoint("LEFT", panel.ViewToggle, "RIGHT", M.gap, 0)
-  panel.Hint:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
+  panel.Hint:SetPoint("RIGHT", panel.SearchWrap, "LEFT", -M.gap, 0)
   panel.Hint:SetJustifyH("RIGHT")
   panel.Hint:SetWordWrap(false)
   panel.Hint:SetText("")

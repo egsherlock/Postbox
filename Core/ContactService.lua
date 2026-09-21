@@ -178,6 +178,15 @@ for _, group in ipairs(ACCENT_GROUPS) do
 end
 
 local foldCache = {}
+local foldCacheCount = 0
+
+-- The memo is fed by every name in every list AND by every prefix the player
+-- types on the way to a name ("s", "sh", "sha", ...). Names are bounded by
+-- the roster; the prefixes are bounded only by the session. Well above any
+-- real roster, and when it is reached the whole memo is dropped rather than
+-- pruned -- a rebuild is one pass over names that are about to be folded
+-- anyway, and a session that reaches this has typed a very great deal.
+local FOLD_CACHE_MAX = 4096
 
 -- Public: the compose screen sorts and filters on this, calling it with the
 -- address strings out of the results arrays; the memo is what makes that one
@@ -186,6 +195,11 @@ function CS.Fold(text)
   local input = (type(text) == "string") and text or tostring(text or "")
   local cached = foldCache[input]
   if cached then return cached end
+  if foldCacheCount >= FOLD_CACHE_MAX then
+    foldCache = {}
+    foldCacheCount = 0
+  end
+  foldCacheCount = foldCacheCount + 1
 
   -- Case first, through the foundation's byte-exact tables (never
   -- string.upper -- see Lib/Util.lua for why), then the diacritics off the
@@ -1009,6 +1023,7 @@ do
       -- -- but a character switch is the natural place to stop carrying every
       -- name the last one ever saw.
       foldCache = {}
+      foldCacheCount = 0
     end)
   end
 end

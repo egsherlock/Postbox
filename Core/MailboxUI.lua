@@ -1737,9 +1737,16 @@ end
 -- 7. Mailbox session lifecycle
 -------------------------------------------------------------
 
-local function ResetDraft()
+-- `reason` is "open" or "close": the compose screen keeps an unsent draft
+-- across the gap between the two, and it needs to know which side of it this
+-- is. The collect screen's search is cleared on the same close.
+local function ResetDraft(reason)
   local panel, send = SendPanel(), ns.SendTab
-  if panel and send and send.Reset then send.Reset(panel) end
+  if panel and send and send.Reset then send.Reset(panel, reason) end
+  if reason == "close" then
+    local collectPanel, collect = CollectPanel(), ns.CollectTab
+    if collectPanel and collect and collect.ClearSearch then collect.ClearSearch(collectPanel) end
+  end
 end
 
 -- A mailbox opened. Three different triggers report it -- MAIL_SHOW, the
@@ -1768,7 +1775,7 @@ local function OnMailShow()
   BuildFrame()
 
   UI.ClearStatus()
-  ResetDraft()
+  ResetDraft("open")
   -- Re-assert the active tab on every open so the native send-mail state is
   -- re-armed; BuildFrame only selects a tab on the very first open.
   UI.SelectTab(UI._state.activeTab)
@@ -1833,7 +1840,7 @@ local function OnMailClosed()
   if send then
     if send.ClearBagOverlays then send.ClearBagOverlays() end
     if send.DeactivateNativeSendMail then send.DeactivateNativeSendMail() end
-    ResetDraft()
+    ResetDraft("close")
   end
 
   -- Give back the compose screen's transient extra height -- the attachment row
