@@ -1,6 +1,16 @@
 ## Interface: 120100, 120007
 ## Title: Postbox
 ## Notes: A modern mailbox replacement: clear a full inbox in one click or just the mail you choose, complete any recipient as you type, right-click to attach, and see what is waiting without visiting a mailbox. Wears your ElvUI or EllesmereUI look.
+# The addon list reads Notes in the client's own language where one is given, and
+# falls back to the English above where it is not. There is no Title-xxXX here on
+# purpose: the addon is called Postbox in every locale, so a localised Title would
+# repeat the line above six times and say nothing.
+## Notes-frFR: Un remplacement moderne de la boîte aux lettres : videz une boîte pleine en un clic, ou seulement le courrier de votre choix, complétez n'importe quel destinataire à la frappe, clic droit pour joindre, et voyez ce qui vous attend sans passer par une boîte aux lettres. Adopte l'apparence de votre ElvUI ou EllesmereUI.
+## Notes-deDE: Ein moderner Ersatz für den Briefkasten: Leert ein volles Postfach mit einem Klick oder nur die Post, die Sie auswählen, vervollständigt jeden Empfänger beim Tippen, Rechtsklick zum Anhängen, und zeigt, was wartet, ohne einen Briefkasten aufzusuchen. Übernimmt das Aussehen Ihres ElvUI oder EllesmereUI.
+## Notes-esES: Un buzón moderno que sustituye al del juego: vacía un buzón lleno de un clic, o solo el correo que elijas, completa cualquier destinatario mientras escribes, clic derecho para adjuntar, y muestra lo que te espera sin ir a un buzón. Adopta el aspecto de tu ElvUI o EllesmereUI.
+## Notes-esMX: Un buzón moderno que sustituye al del juego: vacía un buzón lleno de un clic, o solo el correo que elijas, completa cualquier destinatario mientras escribes, clic derecho para adjuntar, y muestra lo que te espera sin ir a un buzón. Adopta el aspecto de tu ElvUI o EllesmereUI.
+## Notes-ruRU: Современная замена почтового ящика: очистите полный ящик одним щелчком или только выбранные письма, имя получателя дополняется прямо при вводе, правый щелчок прикрепляет предмет, а что вас ждёт, видно и вдали от ящика. Перенимает облик вашего ElvUI или EllesmereUI.
+## Notes-zhCN: 现代邮箱替代品：一键清空整个收件箱，或只收取你选择的邮件；输入时自动补全收件人，右键点击即可附加物品，无需前往邮箱也能看到有什么在等你。外观跟随你的 ElvUI 或 EllesmereUI。
 ## IconTexture: Interface\AddOns\Postbox\Media\icon-pillar.png
 ## Author: egsherlock
 ## Version: @project-version@

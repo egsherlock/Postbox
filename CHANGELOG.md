@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.39.0
+
+### New
+
+- **Postbox speaks Simplified Chinese.** The whole addon, not part of it — every
+  window, every message, every tooltip. Counted things follow Chinese's own
+  rules rather than borrowing English's. With thanks to samuelbears, who
+  translated it.
+- Traditional Chinese still reads English. It needs a translation of its own
+  rather than a conversion of this one, and contributions are welcome.
+
 ## 1.38.0
 
 ### New

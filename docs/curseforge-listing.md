@@ -276,8 +276,8 @@ hooks into protected frames and nothing it does can taint the default UI in comb
 
 ## Languages
 
-English, Français, Deutsch, Español, Русский — complete, not partial, including
-proper plural rules rather than a bolted-on "s".
+English, Français, Deutsch, Español, Русский, 简体中文 — complete, not partial,
+including proper plural rules rather than a bolted-on "s".
 
 Corrections and new languages are welcome on GitHub.
 

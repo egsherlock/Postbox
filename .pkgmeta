@@ -7,13 +7,16 @@ package-as: Postbox
 
 # Dev-only files: useful in the repo, dead weight in the shipped addon.
 #
-# Only TRACKED files need listing. Anything gitignored is already absent from
-# the checkout the packager runs against, so naming it here would be redundant.
+# Gitignored is NOT enough on its own: .dev/ is ignored but two of its files are
+# also tracked, so they were in the checkout the packager runs against and were
+# shipping to players. Anything that must not reach the zip is listed here.
 #
 # What ships, verified against the built artifact rather than assumed:
 # Core/, Lib/, Media/, Postbox.toc, Postbox.lua, LICENSE and CHANGELOG.md.
 ignore:
   - .github
+  - .dev
+  - CLAUDE.md
   - README.md
   - COMBAT_TAINT.md
   - ELLESMEREUI_SKINNING.md

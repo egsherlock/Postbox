@@ -15,7 +15,7 @@ the thing this checklist exists to prevent.
       documented only on GitHub is invisible to most of the people using the addon.
 - [ ] **`Postbox.toc`** `## Notes` — only if the one-line pitch changed. It is kept
       identical to the CurseForge summary on purpose.
-- [ ] **Locales** — every new user-facing string in all five blocks.
+- [ ] **Locales** — every new user-facing string in all six blocks.
 - [ ] **Checkers** — all five in `.dev/tools/` clean. A bare run checks the whole
       addon.
 
@@ -23,6 +23,24 @@ the thing this checklist exists to prevent.
 
 It is the most-read thing in the repository, and the only documentation most users
 will ever see. Plain English, describing what a person notices.
+
+**Shape, from 1.36 on (Elliott, 2026-09-21: the long flat lists were "quite
+overwhelming").** Every version is three sub-headings in this order, each omitted
+when empty:
+
+```
+## 1.39.0
+
+### New          things that did not exist before
+### Improved     existing things that behave or look better
+### Fixed        bugs, one line each: what went wrong, what happens now
+```
+
+One item is one bullet of one to three lines. Lead with the bold effect. A run of
+small cosmetic changes can share one un-bolded bullet at the end of Improved. Twenty
+bullets is too many: if a release has that many, group them. The GitHub release
+notes are the version's section verbatim (`gh release edit vX.Y.Z --notes-file`
+if they need correcting after the tag; CurseForge's copy is edited on its site).
 
 **Lead with the effect, not the cause.** Someone scanning the list wants to know
 whether this release fixes the thing that annoyed them.
