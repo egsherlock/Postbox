@@ -21,6 +21,9 @@
   with mail on its way (an auction you posted, a purchase, something you sent
   it) and no mailbox opened for over three weeks. One line in chat at login
   says the same; it can be switched off under Mail alerts.
+- **From alts.** A sixth category button collects mail from your own
+  characters in one click, on any realm. No setup: every character you have
+  logged into with Postbox installed counts.
 
 ### Improved
 

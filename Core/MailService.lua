@@ -42,8 +42,9 @@ Mail.MAX_ATTACHMENTS = MAX_ATTACHMENTS
 local FALLBACK_ICON = "Interface\\Icons\\INV_Letter_02"
 
 -- The category vocabulary, and the only place it is written down. Five of the
--- six are outcomes ClassifyMail can return; "all" is a filter the collect tab
--- offers and is never a classification result. Core/CollectTab.lua filters on
+-- seven are outcomes ClassifyMail can return; "all" is a filter the collect
+-- tab offers and is never a classification result, and "alts" is a sweep by
+-- SENDER -- mail from the player's own characters -- whatever its kind. Core/CollectTab.lua filters on
 -- these tokens and Core/Locales.lua has to carry a label for each, so a new
 -- category is a three-file change and starts here.
 local CATEGORY_LOCALE_KEY = {
@@ -53,6 +54,7 @@ local CATEGORY_LOCALE_KEY = {
   canceled = "CAT_CANCELED",
   other    = "CAT_OTHER",
   all      = "CAT_ALL",
+  alts     = "CAT_ALTS",
 }
 
 -- token -> the player's word for it, translated on first ask and remembered.
@@ -280,6 +282,35 @@ end
 --   unreachable totalItems - numItems
 --   unloaded    indices whose header has not arrived yet
 --   skippedCOD  matching mails held back because they are C.O.D.
+-- The player's own characters, as recipient keys: Postbox.lua's census,
+-- account-wide, every realm. Built per queue and per list refresh rather than
+-- kept, because the census grows as characters log in.
+function Mail.OwnCharacterKeys()
+  local set = {}
+  local R = ns.Recipients
+  local alts = ns.Store and ns.Store.Get and ns.Store.Get("alts")
+  if not (R and type(R.Key) == "function") or type(alts) ~= "table" then return set end
+  for realm, names in pairs(alts) do
+    if type(names) == "table" then
+      for i = 1, #names do
+        local key = R.Key(names[i] .. "-" .. realm)
+        if key then set[key] = true end
+      end
+    end
+  end
+  return set
+end
+
+-- index [, keys] -> whether the mail is from one of the player's own
+-- characters. A bare sender is on the player's realm, which R.Key resolves.
+function Mail.FromOwnCharacter(index, keys)
+  local _, _, sender = GetInboxHeaderInfo(index)
+  if type(sender) ~= "string" or sender == "" then return false end
+  local R = ns.Recipients
+  local key = R and type(R.Key) == "function" and R.Key(sender) or nil
+  return key ~= nil and (keys or Mail.OwnCharacterKeys())[key] == true
+end
+
 -- One inbox index, tested against the queue's rules and either taken or
 -- accounted for in `info`. Shared by both builders below so they cannot
 -- disagree about what a collectable mail is.
@@ -288,7 +319,13 @@ local function Consider(index, category, queue, info)
     info.unloaded = info.unloaded + 1
   elseif not Mail.IsReadPersistent(index) then
     local kind, hasCOD = Mail.ClassifyMail(index)
-    if category == "all" or kind == category then
+    local match
+    if category == "alts" then
+      match = Mail.FromOwnCharacter(index, info.altKeys)
+    else
+      match = (category == "all" or kind == category)
+    end
+    if match then
       if hasCOD then
         -- Bulk collection must never spend the player's money.
         info.skippedCOD = info.skippedCOD + 1
@@ -312,6 +349,8 @@ function Mail.BuildQueue(category)
     unloaded = 0,
     skippedCOD = 0,
   }
+
+  if category == "alts" then info.altKeys = Mail.OwnCharacterKeys() end
 
   -- GetInboxNumItems returns 0 between MAIL_SHOW and the first
   -- MAIL_INBOX_UPDATE, so an empty result here means "nothing to do OR nothing
@@ -349,6 +388,7 @@ function Mail.BuildQueueFor(indices, category)
     if index and index >= 1 and index <= numItems then sorted[#sorted + 1] = index end
   end
   table.sort(sorted, function(a, b) return a > b end)
+  if category == "alts" then info.altKeys = Mail.OwnCharacterKeys() end
   for i = 1, #sorted do
     Consider(sorted[i], category, queue, info)
   end

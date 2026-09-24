@@ -108,7 +108,9 @@ local VIEW_COLLECT, VIEW_DONE, VIEW_ALL = "collect", "done", "all"
 
 -- The category vocabulary is the domain's; the order is presentation. "all"
 -- leads and spans the full width -- deliberate hierarchy, not an accident.
-local CATEGORY_ORDER = { "all", "expired", "sold", "canceled", "bought", "other" }
+-- "alts" -- mail from the player's own characters -- takes the sixth cell of
+-- the two rows of three, which stood empty.
+local CATEGORY_ORDER = { "all", "expired", "sold", "canceled", "bought", "other", "alts" }
 local GRID_COLUMNS = 3
 
 -- Tab counts above this render as "99+" so a three-digit count cannot push a
@@ -2358,6 +2360,7 @@ function CT.RefreshMailList(panel)
   local measureSlots = compact and RowShows("rowSlots")
   local measureExpiry = compact and RowShows("rowExpiry")
   local slotsMost, anyDone, anyStuck = 0, false, false
+  local altKeys = Mail().OwnCharacterKeys()
 
   for index = 1, numItems do
     -- "Read" alone will not do: collecting marks every mail read as a side
@@ -2395,6 +2398,7 @@ function CT.RefreshMailList(panel)
       if not finished and not hasCOD then
         counts.all = (counts.all or 0) + 1
         counts[kind] = (counts[kind] or 0) + 1
+        if Mail().FromOwnCharacter(index, altKeys) then counts.alts = (counts.alts or 0) + 1 end
       end
 
       -- The sender column is as wide as the widest name it will show, up to
@@ -4067,11 +4071,18 @@ local function BuildGrid(panel)
     button.caption = labels[category] or category
     button:SetText(button.caption)
     button:SetScript("OnClick", function() StartCategoryRun(panel, category) end)
+    -- From alts is the one sweep whose name does not say what it covers.
+    if category == "alts" then button.tip = L()["CAT_ALTS_TIP"] end
     button:SetScript("OnEnter", function(self)
-      if not self.__pbOverflowText then return end
+      if not self.__pbOverflowText and not self.tip then return end
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:ClearLines()
-      Th().AddOverflowLine(self, GameTooltip)
+      if self.tip then
+        GameTooltip:SetText(self.caption)
+        GameTooltip:AddLine(self.tip, 1, 1, 1, true)
+      else
+        Th().AddOverflowLine(self, GameTooltip)
+      end
       GameTooltip:Show()
     end)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
