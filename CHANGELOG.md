@@ -24,6 +24,10 @@
 - **From alts.** A sixth category button collects mail from your own
   characters in one click, on any realm. No setup: every character you have
   logged into with Postbox installed counts.
+- **History.** A clock beside Done lists what Postbox collected on this
+  character in the last seven days, newest first: when, from whom, what came
+  out and what it was worth, with the week's earned and spent totals
+  underneath. Search works there too. Nothing older than a week is kept.
 
 ### Improved
 

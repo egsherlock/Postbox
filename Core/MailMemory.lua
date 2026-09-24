@@ -537,6 +537,124 @@ function MM.NoteSentTo(toName)
 end
 
 -------------------------------------------------------------
+-- 2c. What came out of the box
+--
+-- A short record of what Postbox collected on each character: a week of it,
+-- at most HISTORY_CAP entries, one entry per mail however many takes that
+-- mail needed. Written by Core/MailService.lua as each take is CONFIRMED --
+-- never when the command is sent, since the server may refuse it -- and read
+-- by the Mail tab's History view. Pruned on every write, so it never holds
+-- more than the week it shows.
+-------------------------------------------------------------
+
+local HISTORY_KEEP = 7 * DAY
+local HISTORY_CAP = 500
+
+local function HistoryList(create)
+  local realm, name = Me()
+  if not (realm and name) then return nil end
+  local root
+  if create then
+    root = ns.Store.EnsurePath("mailHistory")
+  else
+    root = ns.Store and ns.Store.Get and ns.Store.Get("mailHistory")
+  end
+  if type(root) ~= "table" then return nil end
+  local byRealm = root[realm]
+  if type(byRealm) ~= "table" then
+    if not create then return nil end
+    byRealm = {}
+    root[realm] = byRealm
+  end
+  local list = byRealm[name]
+  if type(list) ~= "table" and create then
+    list = {}
+    byRealm[name] = list
+  end
+  return list
+end
+
+local function PruneHistory(list, now)
+  local cutoff = now - HISTORY_KEEP
+  local drop = 0
+  while list[drop + 1] and ((tonumber(list[drop + 1].t) or 0) < cutoff or #list - drop > HISTORY_CAP) do
+    drop = drop + 1
+  end
+  if drop > 0 then
+    for i = 1, #list - drop do list[i] = list[i + drop] end
+    for i = #list, #list - drop + 1, -1 do list[i] = nil end
+  end
+end
+
+-- This character's record, oldest first, pruned to the week; empty when
+-- there is none.
+function MM.History()
+  local list = HistoryList(false)
+  if not list then return {} end
+  PruneHistory(list, time())
+  return list
+end
+
+-- index -> what is known about the mail before anything is taken from it,
+-- or nil when its header has not arrived. Its first confirmed take turns it
+-- into an entry.
+function MM.HistoryBegin(index)
+  local _, _, sender, subject, _, cod = GetInboxHeaderInfo(index)
+  if sender == nil and subject == nil then return nil end
+  local service = ns.MailService
+  local kind = service and service.ClassifyMail and service.ClassifyMail(index) or "other"
+  local price
+  if kind == "bought" and type(GetInboxInvoiceInfo) == "function" then
+    local invoiceType, _, _, bid = GetInboxInvoiceInfo(index)
+    bid = tonumber(bid) or 0
+    if invoiceType == "buyer" and bid > 0 then price = bid end
+  end
+  return {
+    sender = tostring(sender or ""), subject = tostring(subject or ""),
+    kind = kind, cod = tonumber(cod) or 0, price = price,
+  }
+end
+
+-- One confirmed take from the mail `ctx` describes: "money" and a sum in
+-- copper, or "item", a link and a count. The first take of a C.O.D. mail is
+-- the one that paid the price.
+function MM.HistoryTook(ctx, what, value, count)
+  if not ctx then return end
+  local list = HistoryList(true)
+  if not list then return end
+  local entry = ctx.entry
+  if not entry then
+    entry = {
+      t = time(),
+      s = ctx.sender,
+      k = (ctx.kind ~= "other") and ctx.kind or nil,
+      sub = ctx.subject,
+    }
+    list[#list + 1] = entry
+    ctx.entry = entry
+    PruneHistory(list, entry.t)
+  end
+  if what == "money" then
+    entry.m = (entry.m or 0) + (tonumber(value) or 0)
+    return
+  end
+  if ctx.cod > 0 and not ctx.codPaid then
+    entry.c = ctx.cod
+    ctx.codPaid = true
+  end
+  if ctx.price and not entry.p then entry.p = ctx.price end
+  if type(value) ~= "string" then return end
+  entry.it = entry.it or {}
+  for i = 1, #entry.it do
+    if entry.it[i].l == value then
+      entry.it[i].n = (entry.it[i].n or 1) + (tonumber(count) or 1)
+      return
+    end
+  end
+  entry.it[#entry.it + 1] = { l = value, n = tonumber(count) or 1 }
+end
+
+-------------------------------------------------------------
 -- 3. The window
 --
 -- Same construction family as the options panel: a Blizzard window template

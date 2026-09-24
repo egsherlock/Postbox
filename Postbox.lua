@@ -93,6 +93,8 @@ local SCHEMA = {
                               -- (see Core/MailMemory.lua)
   "mailWatch",                -- realm -> name -> mail known to be on the way
                               -- since the last visit (Core/MailMemory.lua, 2b)
+  "mailHistory",              -- realm -> name -> a week of what was collected
+                              -- (Core/MailMemory.lua, 2c)
 }
 
 local function EnsureDB()

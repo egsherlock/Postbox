@@ -105,6 +105,10 @@ end
 -- (`row.mailDone`), which is why a done mail carries its delete control and
 -- opens on any click whether it is being shown under "Done" or under "All".
 local VIEW_COLLECT, VIEW_DONE, VIEW_ALL = "collect", "done", "all"
+-- A week of what Postbox collected here (Core/MailMemory.lua, 2c). Not a part
+-- of the inbox, so not in the counts' arithmetic: an icon after the three.
+local VIEW_HISTORY = "history"
+local HISTORY_ATLASES = { "auctionhouse-icon-clock", "worldquest-icon-clock" }
 
 -- The category vocabulary is the domain's; the order is presentation. "all"
 -- leads and spans the full width -- deliberate hierarchy, not an accident.
@@ -1088,6 +1092,7 @@ local function PaintViewToggle(panel)
     local seg = container.buttons[i]
     T.SetPlateSelected(seg, seg.segId == active)
   end
+  if container.history then T.SetPlateSelected(container.history, active == VIEW_HISTORY) end
 end
 
 -- Frozen: Core/Skin_EllesmereUI.lua calls this when the user changes their
@@ -1127,6 +1132,33 @@ local function BuildViewToggle(panel)
     -- nothing to hook and nothing to replace them with.
     container.buttons[i] = seg
   end
+
+  -- History: a square icon plate after the captions. Kept out of `buttons`,
+  -- which the counts and the caption sizing walk -- it has neither.
+  local hist = T.CreatePlate(container, "segment")
+  hist.segId = VIEW_HISTORY
+  local atlas = T.FirstAtlas(HISTORY_ATLASES)
+  if atlas then
+    hist:SetText("")
+    hist.Icon = hist:CreateTexture(nil, "OVERLAY")
+    hist.Icon:SetAtlas(atlas, false)
+    hist.Icon:SetSize(14, 14)
+    hist.Icon:SetPoint("CENTER")
+    -- Chrome stays neutral: a grey glyph, like the captions beside it.
+    hist.Icon:SetDesaturated(true)
+    hist.Icon:SetAlpha(0.85)
+  else
+    hist:SetText(L()["VIEW_HISTORY"])
+  end
+  hist:SetScript("OnClick", function(self) SetViewMode(panel, self.segId) end)
+  hist:HookScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L()["VIEW_HISTORY"])
+    GameTooltip:AddLine(L()["HISTORY_TIP"], 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  hist:HookScript("OnLeave", function() GameTooltip:Hide() end)
+  container.history = hist
 
   panel.ViewToggle = container
 end
@@ -1407,6 +1439,17 @@ local function LayoutViewToggle(panel)
     local seg = shown[i]
     seg:ClearAllPoints()
     seg:SetPoint("LEFT", container, "LEFT", (i - 1) * (per + gap), 0)
+  end
+  -- The history plate: square when it wears the icon, its caption's width
+  -- when it fell back to text.
+  local hist = container.history
+  if hist then
+    local width = hist.Icon and T.Metrics.segmentHeight + 6
+      or ceil(T.TextWidth(hist)) + 2 * T.Metrics.tightGap + 8
+    hist:SetSize(width, T.Metrics.segmentHeight)
+    hist:ClearAllPoints()
+    hist:SetPoint("LEFT", container, "LEFT", total + gap, 0)
+    total = total + gap + width
   end
   container:SetWidth(max(total, 1))
 
@@ -2120,6 +2163,216 @@ local function BindRow(panel, row, index, position, compact, done)
 end
 
 -------------------------------------------------------------
+-- History :: rows
+--
+-- One line per mail collected, newest first: how long ago, who from (or the
+-- auction outcome), what came out of it, and what it was worth. Rows of their
+-- own, not mail rows: a mail row collects on a click, and nothing here may.
+-- Pooled and virtualised exactly like the mail list, in the same scroll.
+-------------------------------------------------------------
+
+-- One table for the whole section: CollectTab.lua sits near Lua 5.1's
+-- two-hundred-local ceiling (see SendTab's history), so a section adds one.
+local HV = {}
+
+HV.AGE_W = 30
+
+function HV.HistoryAge(seconds)
+  seconds = max(0, seconds)
+  if seconds < 3600 then return format(L()["HISTORY_AGE_M"], max(1, floor(seconds / 60))) end
+  if seconds < 86400 then return format(L()["MEMORY_LEFT_H"], floor(seconds / 3600)) end
+  return format(L()["MEMORY_LEFT_D"], floor(seconds / 86400))
+end
+
+function HV.ItemName(link)
+  return type(link) == "string" and link:match("%[(.-)%]") or nil
+end
+
+-- entry -> what came out of it, as one short line: the first item and its
+-- count, "+N" for the rest, or the subject when only money came out.
+function HV.HistoryWhat(entry)
+  local items = entry.it
+  if items and items[1] then
+    local text = HV.ItemName(items[1].l) or ""
+    if (items[1].n or 1) > 1 then text = text .. " x" .. items[1].n end
+    if #items > 1 then text = text .. "  +" .. (#items - 1) end
+    return text
+  end
+  return Helpers().ShortSubject(entry.sub or "")
+end
+
+-- entry, brief -> the money line in its tone, or nil: gold in green, a
+-- C.O.D. paid in amber, a won auction's price in red.
+function HV.HistoryMoney(entry, brief)
+  local T = Th()
+  local compactMoney = ns.Core.Formatting.FormatMoneyCompact
+  if (entry.m or 0) > 0 then return T.Colorize("positive", "+" .. compactMoney(entry.m, brief)) end
+  if (entry.c or 0) > 0 then return T.Colorize("warning", "-" .. compactMoney(entry.c, brief)) end
+  if (entry.p or 0) > 0 then return T.Colorize("negative", "-" .. compactMoney(entry.p, brief)) end
+  return nil
+end
+
+function HV.BuildHistoryRow(panel)
+  local T = Th()
+  local M = T.Metrics
+  local row = CreateFrame("Button", nil, panel.MailListChild)
+  row:SetHeight(COMPACT_ROW_HEIGHT)
+
+  row.Age = T.CreateText(row, "secondary")
+  row.Age:SetPoint("LEFT", row, "LEFT", M.inset, 0)
+  row.Age:SetWidth(HV.AGE_W)
+  row.Age:SetJustifyH("RIGHT")
+
+  row.Icon = row:CreateTexture(nil, "ARTWORK")
+  row.Icon:SetSize(ROW_ICON_COMPACT, ROW_ICON_COMPACT)
+  row.Icon:SetPoint("LEFT", row.Age, "RIGHT", M.gap, 0)
+  row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+  row.Sender = T.CreateText(row, "label")
+  row.Sender:SetPoint("LEFT", row.Icon, "RIGHT", M.gap, 0)
+  row.Sender:SetJustifyH("LEFT")
+
+  row.Subject = T.CreateText(row, "value")
+  row.Subject:SetPoint("LEFT", row.Sender, "RIGHT", M.gap, 0)
+  row.Subject:SetJustifyH("LEFT")
+
+  row.Money = T.CreateText(row, "secondary")
+  row.Money:SetPoint("RIGHT", row, "RIGHT", -M.inset, 0)
+  row.Money:SetJustifyH("RIGHT")
+
+  row:SetScript("OnEnter", function(self)
+    Th().StyleMailRow(self, self._rowIndex, true)
+    local entry = self.entry
+    if not entry then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:ClearLines()
+    GameTooltip:SetText(entry.s ~= "" and entry.s or L()["SENDER_UNKNOWN"])
+    if entry.sub and entry.sub ~= "" then GameTooltip:AddLine(entry.sub, 0.75, 0.75, 0.75, true) end
+    if type(date) == "function" and entry.t then
+      GameTooltip:AddLine(date("%Y-%m-%d %H:%M", entry.t), 0.6, 0.6, 0.6)
+    end
+    local items = entry.it or {}
+    for i = 1, #items do
+      local line = items[i].l or ""
+      if (items[i].n or 1) > 1 then line = line .. " x" .. items[i].n end
+      GameTooltip:AddLine(line, 1, 1, 1)
+    end
+    local money = HV.HistoryMoney(entry, false)
+    if money then GameTooltip:AddLine(money, 1, 1, 1) end
+    GameTooltip:Show()
+  end)
+  row:SetScript("OnLeave", function(self)
+    Th().StyleMailRow(self, self._rowIndex, false)
+    GameTooltip:Hide()
+  end)
+  return row
+end
+
+function HV.BindHistoryRow(panel, row, entry, position, now)
+  local T = Th()
+  local M = T.Metrics
+  local R = CT.RowRules
+  row.entry = entry
+  T.StyleMailRow(row, position, false)
+
+  row.Age:SetText(HV.HistoryAge(now - (tonumber(entry.t) or now)))
+
+  local icon
+  local first = entry.it and entry.it[1]
+  if first and first.l then
+    if C_Item and type(C_Item.GetItemIconByID) == "function" then
+      icon = C_Item.GetItemIconByID(first.l)
+    end
+  end
+  if not icon and (entry.m or 0) > 0 then icon = "Interface\\Icons\\INV_Misc_Coin_01" end
+  row.Icon:SetTexture(icon or "Interface\\Icons\\INV_Letter_02")
+
+  local cols = panel._hcols
+  local width = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
+  local textWidth = width - (M.inset + HV.AGE_W + M.gap + ROW_ICON_COMPACT + M.gap) - M.inset
+  local moneyWidth = cols.money or 0
+  T.FitText(row.Money, moneyWidth, HV.HistoryMoney(entry, true) or "", nil)
+  row.Money:SetShown(moneyWidth > 0)
+  local lineWidth = max(textWidth - ((moneyWidth > 0) and (moneyWidth + M.gap) or 0), 40)
+
+  local sender = R.OutcomeSender(entry.k) or R.DisplaySender(entry.s) or L()["SENDER_UNKNOWN"]
+  local senderWidth = min(cols.sender or SENDER_MIN, floor(lineWidth / 2))
+  T.FitText(row.Sender, senderWidth, sender, nil)
+  T.FitText(row.Subject, max(lineWidth - senderWidth - M.gap, 20), HV.HistoryWhat(entry), nil)
+  row:Show()
+end
+
+-- The history view's list, newest first, narrowed by the search; its totals
+-- for the banner; its columns, measured as the mail list measures its own.
+function HV.BuildHistoryList(panel, query)
+  local out = panel._history
+  Clear(out)
+  local Memory = ns.MailMemory
+  local list = Memory and Memory.History and Memory.History() or {}
+  local R = CT.RowRules
+  local sample = AcquireRow(panel, 1)
+  local cap = SenderColumnWidth(panel, sample.Sender)
+  local cols = panel._hcols
+  cols.sender, cols.money = 0, 0
+  local earned, spent = 0, 0
+  for i = #list, 1, -1 do
+    local entry = list[i]
+    local keep = true
+    if query ~= "" then
+      local hay = (entry.s or "") .. "\001" .. (entry.sub or "")
+      local items = entry.it or {}
+      for j = 1, #items do hay = hay .. "\001" .. (HV.ItemName(items[j].l) or "") end
+      keep = Fold(hay):find(query, 1, true) ~= nil
+    end
+    if keep then
+      out[#out + 1] = entry
+      earned = earned + (entry.m or 0)
+      spent = spent + (entry.c or 0) + (entry.p or 0)
+      if cols.sender < cap then
+        local label = (AUCTION_OUTCOME[entry.k] and L()[AUCTION_OUTCOME[entry.k].key]) or R.DisplaySender(entry.s) or ""
+        cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), cap)
+      end
+      local money = HV.HistoryMoney(entry, true)
+      if money then cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, money)) end
+    end
+  end
+  return earned, spent
+end
+
+function HV.UpdateHistoryRows(panel)
+  local stride = COMPACT_ROW_HEIGHT + ROW_GAP
+  panel._rowStride = stride
+  local list = panel._history
+  local scroll = panel.MailListScroll
+  local viewport = scroll:GetHeight() or 0
+  local offset = scroll:GetVerticalScroll() or 0
+  local first = max(1, floor(offset / stride) + 1)
+  local last = first - 1
+  if viewport > 0 then last = min(#list, ceil((offset + viewport) / stride)) end
+
+  local pool = panel._hrows
+  local now = time()
+  local used = 0
+  for i = first, last do
+    used = used + 1
+    local row = pool[used]
+    if not row then
+      row = HV.BuildHistoryRow(panel)
+      pool[used] = row
+    end
+    local y = -((i - 1) * stride)
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
+    row:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
+    HV.BindHistoryRow(panel, row, list[i], i, now)
+  end
+  for i = used + 1, #pool do
+    pool[i].entry = nil
+    pool[i]:Hide()
+  end
+end
+
+-------------------------------------------------------------
 -- Mail rows :: the virtualiser
 --
 -- Only the rows the viewport can show are materialised. The pool therefore
@@ -2128,6 +2381,15 @@ end
 -------------------------------------------------------------
 
 local function UpdateVisibleRows(panel)
+  local historyView = (panel.viewMode == VIEW_HISTORY)
+  if historyView then
+    HV.UpdateHistoryRows(panel)
+  else
+    for i = 1, #panel._hrows do
+      panel._hrows[i].entry = nil
+      panel._hrows[i]:Hide()
+    end
+  end
   local compact, height, stride = RowMetrics()
   -- The stride this pass laid the list out at. Read by CT.ApplyRowLayout, which
   -- has to convert a scroll offset taken under one stride into the same place
@@ -2140,9 +2402,10 @@ local function UpdateVisibleRows(panel)
 
   local first = max(1, floor(offset / stride) + 1)
   local last = first - 1
-  if viewport > 0 then
+  if viewport > 0 and not historyView then
     last = min(#filtered, ceil((offset + viewport) / stride))
   end
+  if historyView then panel._rowStride = COMPACT_ROW_HEIGHT + ROW_GAP end
 
   local used = 0
   for i = first, last do
@@ -2441,12 +2704,20 @@ function CT.RefreshMailList(panel)
   end
 
   local _, _, stride = RowMetrics()
-  panel.MailListChild:SetHeight(max(#filtered * stride, 1))
+  local listed = #filtered
+  -- The history view lists the record, not the inbox. The walk above still
+  -- ran: the segment counts describe the inbox whichever view is showing.
+  if view == VIEW_HISTORY then
+    earned, spent = HV.BuildHistoryList(panel, query)
+    stride = COMPACT_ROW_HEIGHT + ROW_GAP
+    listed = #panel._history
+  end
+  panel.MailListChild:SetHeight(max(listed * stride, 1))
 
   -- A shorter list can leave the scroll offset past the new end, which would
   -- render an empty viewport over a list that has content.
   local scroll = panel.MailListScroll
-  local maxScroll = max(0, #filtered * stride - (scroll:GetHeight() or 0))
+  local maxScroll = max(0, listed * stride - (scroll:GetHeight() or 0))
   if (scroll:GetVerticalScroll() or 0) > maxScroll then scroll:SetVerticalScroll(maxScroll) end
   if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
 
@@ -2458,13 +2729,15 @@ function CT.RefreshMailList(panel)
   local emptyKey = "EMPTY_LIST"
   if query ~= "" then
     emptyKey = "EMPTY_LIST_SEARCH"
+  elseif view == VIEW_HISTORY then
+    emptyKey = "EMPTY_LIST_HISTORY"
   elseif showAll then
     emptyKey = "EMPTY_LIST_ALL"
   elseif wantFinished then
     emptyKey = "EMPTY_LIST_DONE"
   end
   panel.Empty:SetText(L()[emptyKey])
-  panel.Empty:SetShown(#filtered == 0)
+  panel.Empty:SetShown(listed == 0)
 
   UpdateBanner(panel, earned, spent)
   -- The verdicts this walk reached, published before anything renders them: all
@@ -4040,7 +4313,7 @@ end
 -- which is exactly as useful there as on the collect view, since a category
 -- run works on the inbox and not on the listing.
 local function FooterHeight(panel)
-  if panel.viewMode == VIEW_DONE then return GRID_BUTTON_HEIGHT end
+  if panel.viewMode == VIEW_DONE or panel.viewMode == VIEW_HISTORY then return GRID_BUTTON_HEIGHT end
   if not ShowCategoryButtons() then return GRID_PRIMARY_HEIGHT end
   return GRID_PRIMARY_HEIGHT + Th().Metrics.gap * 2 + GRID_BUTTON_HEIGHT * 2
 end
@@ -4098,13 +4371,15 @@ function SetViewMode(panel, id)
   if panel.viewMode == id then return end
   panel.viewMode = id
   local doneView = (id == VIEW_DONE)
+  local historyView = (id == VIEW_HISTORY)
   -- A selection was made over one view's rows; the next view lists others.
   ClearSelection(panel)
 
-  -- See FooterHeight for why only the done view swaps the footer.
+  -- See FooterHeight for why only the done and history views swap the footer.
   panel.Footer:SetHeight(FooterHeight(panel))
-  panel.Grid:SetShown(not doneView)
+  panel.Grid:SetShown(not doneView and not historyView)
   panel.DeleteAllDone:SetShown(doneView)
+  panel.HistoryNote:SetShown(historyView)
 
   panel.MailListScroll:SetVerticalScroll(0)
   PaintViewToggle(panel)
@@ -4141,6 +4416,10 @@ function CT.Build(parent)
   panel._cols = {}
   -- What each category button would collect right now, from the same walk.
   panel._catCounts = {}
+  -- The history view: its listed entries, row pool and columns.
+  panel._history = {}
+  panel._hrows = {}
+  panel._hcols = {}
 
   panel._rowTip = {}
   -- Top row: the view switch, the search box at the far right, and the hint
@@ -4165,6 +4444,16 @@ function CT.Build(parent)
   panel.Footer:SetHeight(FooterHeight(panel))
 
   BuildGrid(panel)
+
+  -- The history view has nothing to act on, so its footer says what the list
+  -- is instead: whose, and how far back.
+  panel.HistoryNote = T.CreateText(panel.Footer, "secondary")
+  panel.HistoryNote:SetPoint("LEFT", panel.Footer, "LEFT", M.inset, 0)
+  panel.HistoryNote:SetPoint("RIGHT", panel.Footer, "RIGHT", -M.inset, 0)
+  panel.HistoryNote:SetJustifyH("CENTER")
+  panel.HistoryNote:SetWordWrap(false)
+  panel.HistoryNote:SetText(L()["HISTORY_NOTE"])
+  panel.HistoryNote:Hide()
 
   panel.DeleteAllDone = T.CreateButton(nil, panel.Footer)
   panel.DeleteAllDone:SetPoint("TOPLEFT", panel.Footer, "TOPLEFT", 0, 0)

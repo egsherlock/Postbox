@@ -938,6 +938,15 @@ local function RunPlan(index, fingerprint, plan, done)
   local refused = 0
   local reason, reasonMixed = nil, false
 
+  -- The history (Core/MailMemory.lua, 2c) hears of each take once it is
+  -- CONFIRMED, from the two places below that establish it. Under pcall: a
+  -- record that fails to write must never stop a collection.
+  local History = ns.MailMemory
+  local record = History and History.HistoryBegin and History.HistoryBegin(index) or nil
+  local function Took(op, value, count)
+    if record and History.HistoryTook then pcall(History.HistoryTook, record, op.kind, value, count) end
+  end
+
   local function noteReason(text)
     if not text or text == "" or reasonMixed then return end
     if reason == nil then
@@ -978,6 +987,15 @@ local function RunPlan(index, fingerprint, plan, done)
     local before = measure()
     if before <= 0 then return step() end
 
+    -- What this take is about to move, read before it moves: the sum, or the
+    -- item and its stack size.
+    local takes, takeCount = before, nil
+    if op.kind == "item" then
+      takes = GetInboxItemLink(index, op.slot)
+      local _, _, _, count = GetInboxItem(index, op.slot)
+      takeCount = tonumber(count) or 1
+    end
+
     ErrorWatch.Open()
     if op.kind == "money" then
       TakeInboxMoney(index)
@@ -993,6 +1011,7 @@ local function RunPlan(index, fingerprint, plan, done)
       end
       if Fingerprint(index) ~= fingerprint or measure() < before then
         ErrorWatch.Close()
+        Took(op, takes, takeCount)
         step()
         return
       end
@@ -1003,6 +1022,7 @@ local function RunPlan(index, fingerprint, plan, done)
       C_Timer.After(ERROR_WATCH_GRACE, function()
         local text = ErrorWatch.Close()
         if Fingerprint(index) ~= fingerprint or measure() < before then
+          Took(op, takes, takeCount)
           step()
           return
         end
@@ -1265,7 +1285,16 @@ function Mail.TakeMoney(index, onDone)
     if onDone then onDone("unavailable") end
     return
   end
-  SingleCommand(function() TakeInboxMoney(index) end, onDone)
+  -- The coin tile's take is recorded like a run's (Core/MailMemory.lua, 2c).
+  local History = ns.MailMemory
+  local record = History and History.HistoryBegin and History.HistoryBegin(index) or nil
+  local amount = Mail.MoneyLeft(index)
+  SingleCommand(function() TakeInboxMoney(index) end, function(status)
+    if status == "done" and record and amount > 0 then
+      pcall(History.HistoryTook, record, "money", amount)
+    end
+    if onDone then onDone(status) end
+  end)
 end
 
 function Mail.ReturnMail(index, onDone)
