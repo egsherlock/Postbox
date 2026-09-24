@@ -27,9 +27,10 @@ local MM = ns.MailMemory
 
 local L = ns.L
 
--- The client's inbox page cap, restated here as our own bound so a future
--- client raising its page size cannot silently grow the saved record.
-local MAX_MAILS = 50
+-- Our own bound on the saved record. It was 50 -- the page the client used
+-- to show -- and the client now shows more, so a full box was cut off at 50
+-- while the Collect tab counted 56. The client's inbox holds at most 100.
+local MAX_MAILS = 100
 
 local ROW_HEIGHT = 24
 local WINDOW_WIDTH = 400
@@ -290,6 +291,7 @@ local function WaitingBySender(snap, wantStuck)
   for i = 1, #mails do
     local mail = mails[i]
     local holds = (mail.items or 0) > 0 or (mail.money or 0) > 0 or (mail.cod or 0) > 0
+      or not mail.read
     if wantStuck ~= nil then
       holds = holds and ((mail.stuck and true or false) == wantStuck)
     end
@@ -446,7 +448,8 @@ local function Figures(mail, now)
   local R = Rules()
   local T = ns.Theme
   local hasCOD = mail.cod > 0
-  local money = R and R.MoneyText(hasCOD, mail.money, mail.cod, mail.paid, true) or nil
+  local money, moneyKind
+  if R then money, moneyKind = R.MoneyText(hasCOD, mail.money, mail.cod, mail.paid, true) end
   local slots = (mail.items > 0) and T.Colorize("accent", ns.Plural("COUNT_SLOTS", mail.items)) or nil
 
   -- Time left as the mail list shows it: only when short, in the warning
@@ -458,7 +461,7 @@ local function Figures(mail, now)
   local expiry = (expired or left < soon) and T.Colorize("warning", expiryText) or nil
 
   local facts = {}
-  if R and money and not R.Shows("rowMoney") then
+  if R and money and not R.MoneyShown(moneyKind) then
     facts[#facts + 1] = R.MoneyText(hasCOD, mail.money, mail.cod, mail.paid, false)
     money = nil
   end
@@ -478,9 +481,19 @@ local function MeasureColumns(frame, mails, now, sample)
   local cols = frame._cols or {}
   frame._cols = cols
   cols.money, cols.slots, cols.time, cols.stuck = 0, 0, 0, false
-  cols.sender = R and R.SenderColumn(frame, sample.Sender) or 92
-  if not R then return cols end
+  if not R then
+    cols.sender = 92
+    return cols
+  end
+  -- The widest name shown, up to the auction labels' width: the mail list's rule.
+  local cap = R.SenderColumn(frame, sample.Sender)
+  cols.sender = 0
   for i = 1, #mails do
+    local mail = mails[i]
+    if cols.sender < cap then
+      local label = R.OutcomeSender(mail.kind) or R.DisplaySender(mail.sender) or ""
+      cols.sender = math.min(math.max(cols.sender, R.Measure(frame, sample.Sender, label) + 2), cap)
+    end
     local money, slots, expiry = Figures(mails[i], now)
     if money then cols.money = math.max(cols.money, R.Measure(frame, sample.ColMoney, money)) end
     if slots then cols.slots = math.max(cols.slots, R.Measure(frame, sample.ColSlots, slots)) end
@@ -524,7 +537,7 @@ local function FillRow(row, mail, now, cols)
     right = R.PlaceColumn(row, row.ColTime, right, cols.time, expiry, room - (right - trail))
   end
 
-  local senderText = (R and R.OutcomeSender(mail.kind)) or mail.sender
+  local senderText = (R and (R.OutcomeSender(mail.kind) or R.DisplaySender(mail.sender))) or mail.sender
   local subject = (ns.Helpers and ns.Helpers.ShortSubject) and ns.Helpers.ShortSubject(mail.subject) or mail.subject
   local lineWidth = math.max(textWidth - (right - trail), 40)
   local senderWidth = math.min(cols.sender, math.floor(lineWidth / 2))
@@ -876,7 +889,9 @@ function MM.MailboxSummary()
   local mails = snap.mails or {}
   for i = 1, #mails do
     local mail = mails[i]
-    if (mail.items or 0) > 0 or (mail.money or 0) > 0 or (mail.cod or 0) > 0 then
+    -- The Collect tab's rule, so the two counts agree: a mail waits while it
+    -- holds anything, or has not been read.
+    if (mail.items or 0) > 0 or (mail.money or 0) > 0 or (mail.cod or 0) > 0 or not mail.read then
       if mail.stuck then stuck = stuck + 1 else waiting = waiting + 1 end
     end
   end

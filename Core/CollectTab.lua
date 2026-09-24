@@ -878,24 +878,65 @@ end
 -- green is gold arriving, amber is a C.O.D. price you would pay by collecting
 -- (a decision, so the warning tone), red is what a won auction already cost
 -- (spent, as the band's own "Spent" is red). Returns the text or nil, and
--- whether it is a won auction's price -- which the invoice figures then skip.
+-- which of the three it is: "earned", "cod" or "spent" -- a won auction's
+-- price, which the invoice figures then skip.
 -- `price` is that price, or nil; it may be a function of no arguments, asked
 -- only when nothing else answered, because reading it costs an invoice call.
 local function MoneyText(hasCOD, moneyValue, codValue, price, brief)
   local T = Th()
   local compactMoney = ns.Core.Formatting.FormatMoneyCompact
   if moneyValue > 0 then
-    return T.Colorize("positive", compactMoney(moneyValue, brief)), false
+    return T.Colorize("positive", compactMoney(moneyValue, brief)), "earned"
   end
   if hasCOD then
     if codValue > 0 then
-      return T.Colorize("warning", L()["LABEL_COD"] .. compactMoney(codValue, brief)), false
+      return T.Colorize("warning", L()["LABEL_COD"] .. compactMoney(codValue, brief)), "cod"
     end
-    return T.Colorize("warning", L()["LABEL_COD_SHORT"]), false
+    return T.Colorize("warning", L()["LABEL_COD_SHORT"]), "cod"
   end
   if type(price) == "function" then price = price() end
-  if price then return T.Colorize("negative", compactMoney(price, brief)), true end
-  return nil, false
+  if price then return T.Colorize("negative", compactMoney(price, brief)), "spent" end
+  return nil, nil
+end
+
+-- Whether money of this kind stands on the row. Earned and spent each have a
+-- switch; a C.O.D. price has none and always shows, because it is the one sum
+-- nothing collects on its own -- Postbox never pays one without asking.
+local function MoneyShown(kind)
+  if kind == "earned" then return RowShows("rowEarned") end
+  if kind == "spent" then return RowShows("rowSpent") end
+  return true
+end
+
+-- The name a row shows for a sender. A player's realm is dropped -- the row is
+-- for recognising a name, and the tooltip and Reply both use the whole of it
+-- from the mail itself. An NPC's leading article is dropped too ("The
+-- Postmaster" -> "Postmaster"); an NPC is the only sender with a space in its
+-- name, since a player's name cannot hold one, so no player is ever touched.
+local NPC_ARTICLES = ({
+  enUS = { "The " }, enGB = { "The " },
+  deDE = { "Der ", "Die ", "Das " },
+  frFR = { "Le ", "La ", "Les ", "L'" },
+  esES = { "El ", "La ", "Los ", "Las " }, esMX = { "El ", "La ", "Los ", "Las " },
+})[GetLocale()] or {}
+
+local function DisplaySender(sender)
+  if type(sender) ~= "string" or sender == "" then return sender end
+  -- Name-Realm first: the name part never has a space, the realm part may.
+  local dash = sender:find("-", 1, true)
+  if dash and dash > 1 and not sender:sub(1, dash - 1):find(" ", 1, true) then
+    return sender:sub(1, dash - 1)
+  end
+  if sender:find(" ", 1, true) then
+    for i = 1, #NPC_ARTICLES do
+      local article = NPC_ARTICLES[i]
+      if #sender > #article and sender:sub(1, #article) == article then
+        return sender:sub(#article + 1)
+      end
+    end
+    return sender
+  end
+  return sender
 end
 
 local function RowMoneyText(index, hasCOD, moneyValue, codValue, brief)
@@ -927,7 +968,10 @@ local function MeasureWith(panel, sample, text)
   return ceil(fs:GetStringWidth() or 0)
 end
 
--- The sender column's width, from the four outcome labels in `sample`'s font.
+-- The sender column's CEILING, from the four outcome labels in `sample`'s font.
+-- The column itself is the widest sender actually listed, up to this: a list
+-- of short names gives the subjects the room, and a long name is cut at the
+-- same width an auction label needs.
 local function SenderColumnWidth(panel, sample)
   local widest = 0
   for _, outcome in pairs(AUCTION_OUTCOME) do
@@ -969,6 +1013,8 @@ end
 -- windows cannot come to disagree about what a mail row says.
 CT.RowRules = {
   Shows = RowShows,
+  MoneyShown = MoneyShown,
+  DisplaySender = DisplaySender,
   MoneyText = MoneyText,
   Measure = MeasureWith,
   SenderColumn = SenderColumnWidth,
@@ -1783,11 +1829,18 @@ local function BuildRow(panel)
     local stuck = self.stuckReason
     local expiry = self.expiryTip
     local facts = self.factsTip
-    if not cut and not full and not teach and not stuck and not expiry and not facts then return end
+    local whole = self.senderTip
+    if not cut and not full and not teach and not stuck and not expiry and not facts and not whole then return end
 
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:ClearLines()
-    T2.AddOverflowLine(self.Sender, GameTooltip)
+    -- The sender's whole name, realm and all, when the row shortened it; it
+    -- supersedes the overflow line, which would only repeat the short form.
+    if whole then
+      GameTooltip:AddLine(whole, 1, 1, 1, true)
+    else
+      T2.AddOverflowLine(self.Sender, GameTooltip)
+    end
     T2.AddOverflowLine(self.Subject, GameTooltip)
     if full then
       -- One line per fact: the first is what the mail is, the rest are the
@@ -1980,8 +2033,9 @@ local function BindRow(panel, row, index, position, compact, done)
   Clear(parts)
   Clear(facts)
 
-  local showMoney, showSlots, showExpiry = RowShows("rowMoney"), RowShows("rowSlots"), RowShows("rowExpiry")
-  local money, purchaseShown = RowMoneyText(index, hasCOD, moneyValue, codValue, compact)
+  local showSlots, showExpiry = RowShows("rowSlots"), RowShows("rowExpiry")
+  local money, moneyKind = RowMoneyText(index, hasCOD, moneyValue, codValue, compact)
+  local purchaseShown = (moneyKind == "spent")
   local slots = (remaining > 0) and T.Colorize("accent", ns.Plural("COUNT_SLOTS", remaining)) or nil
 
   -- Time left is a warning, not a column: on the row only when it is short;
@@ -1990,7 +2044,7 @@ local function BindRow(panel, row, index, position, compact, done)
   local expiry = RowExpiryText(daysLeft, hasCOD)
 
   -- A figure switched off leaves the row and goes to its tooltip, in full.
-  if money and not showMoney then
+  if money and not MoneyShown(moneyKind) then
     facts[#facts + 1] = RowMoneyText(index, hasCOD, moneyValue, codValue, false)
     money = nil
   end
@@ -2017,13 +2071,15 @@ local function BindRow(panel, row, index, position, compact, done)
   end
   if not purchaseShown then AppendInvoiceFigures(parts, index, false) end
 
-  local senderText = sender or L()["SENDER_UNKNOWN"]
+  local senderText = DisplaySender(sender) or L()["SENDER_UNKNOWN"]
+  -- The whole name, for the tooltip, when the row shows less of it.
+  row.senderTip = (sender and senderText ~= sender) and sender or nil
   -- Auction mail says what happened where the sender would be: "Sold",
   -- "Won", "Expired", "Cancelled", each in its own colour, with the item's
   -- name beside it. "Auction House" carried no information the outcome
   -- does not, and the outcome was the one thing the row did not say.
   senderText = OutcomeSender(kind) or senderText
-  local senderColumn = ((cols.sender or 0) > 0) and cols.sender or SENDER_MAX
+  local senderColumn = ((cols.sender or 0) > 0) and cols.sender or SENDER_MIN
 
   if compact then
     -- What the row does not draw goes to the tooltip, one fact per line:
@@ -2115,6 +2171,7 @@ local function UpdateVisibleRows(panel)
     row.detailFull = nil
     row.expiryTip = nil
     row.factsTip = nil
+    row.senderTip = nil
     row.Warning:Hide()
     row:Hide()
   end
@@ -2294,9 +2351,10 @@ function CT.RefreshMailList(panel)
   for key in pairs(counts) do counts[key] = nil end
   local compact = CompactRows()
   local sample = AcquireRow(panel, 1)
-  cols.sender = SenderColumnWidth(panel, sample.Sender)
+  local senderCap = SenderColumnWidth(panel, sample.Sender)
+  cols.sender = 0
   cols.money, cols.slots, cols.time = 0, 0, 0
-  local measureMoney = compact and RowShows("rowMoney")
+  local measureMoney = compact
   local measureSlots = compact and RowShows("rowSlots")
   local measureExpiry = compact and RowShows("rowExpiry")
   local slotsMost, anyDone, anyStuck = 0, false, false
@@ -2313,9 +2371,9 @@ function CT.RefreshMailList(panel)
       toCollectCount = toCollectCount + 1
     end
     local listed = showAll or finished == wantFinished
-    local money, cod, daysLeft, itemCount
+    local money, cod, daysLeft, itemCount, sender
     if listed then
-      local _, _, sender, subject
+      local _, _, subject
       _, _, sender, subject, money, cod, daysLeft, itemCount = GetInboxHeaderInfo(index)
       if query ~= "" then
         listed = Fold(sender or ""):find(query, 1, true) ~= nil
@@ -2339,12 +2397,22 @@ function CT.RefreshMailList(panel)
         counts[kind] = (counts[kind] or 0) + 1
       end
 
+      -- The sender column is as wide as the widest name it will show, up to
+      -- the ceiling; an auction outcome shows its label, not "Auction House".
+      if cols.sender < senderCap then
+        local label = AUCTION_OUTCOME[kind] and L()[AUCTION_OUTCOME[kind].key]
+          or DisplaySender(sender or L()["SENDER_UNKNOWN"])
+        cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), senderCap)
+      end
+
       if compact then
         if finished then anyDone = true end
         if Mail().StuckReason(index) then anyStuck = true end
         if measureMoney then
-          local text = RowMoneyText(index, hasCOD, tonumber(money) or 0, tonumber(cod) or 0, true)
-          if text then cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, text)) end
+          local text, moneyKind = RowMoneyText(index, hasCOD, tonumber(money) or 0, tonumber(cod) or 0, true)
+          if text and MoneyShown(moneyKind) then
+            cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, text))
+          end
         end
         if measureSlots then slotsMost = max(slotsMost, tonumber(itemCount) or 0) end
         if measureExpiry then

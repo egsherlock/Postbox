@@ -414,7 +414,8 @@ local function Build()
     }
   end
   cy = AddCheckGroup(card, cy, L["OPT_ROW_FIGURES_TITLE"], {
-    RowFigure("rowMoney", L["OPT_ROW_MONEY"], L["OPT_ROW_MONEY_DESC"]),
+    RowFigure("rowEarned", L["OPT_ROW_EARNED"], L["OPT_ROW_EARNED_DESC"]),
+    RowFigure("rowSpent", L["OPT_ROW_SPENT"], L["OPT_ROW_SPENT_DESC"]),
     RowFigure("rowSlots", L["OPT_ROW_SLOTS"], L["OPT_ROW_SLOTS_DESC"]),
     RowFigure("rowExpiry", L["OPT_ROW_EXPIRY"], L["OPT_ROW_EXPIRY_DESC"]),
   })

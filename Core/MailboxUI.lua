@@ -161,11 +161,13 @@ local OPTION_DEFAULTS = {
   -- the player posting a run of mails to one bank alt, for whom retyping the
   -- same name is the whole cost of the screen.
   keepRecipient   = false,
-  -- What a mail row shows besides its sender and subject: the money, the
-  -- attachment slots still to take, and the time left when it is short. On:
-  -- the figures are what a list of auction mail is read for. Each one off
-  -- moves to the row's tooltip rather than disappearing.
-  rowMoney        = true,
+  -- What a mail row shows besides its sender and subject: gold coming in,
+  -- what a won auction cost, the attachment slots still to take, and the time
+  -- left. On: the figures are what a list of auction mail is read for. Each
+  -- one off moves to the row's tooltip rather than disappearing. A C.O.D.
+  -- price has no switch -- it always shows (see CollectTab's MoneyShown).
+  rowEarned       = true,
+  rowSpent        = true,
   rowSlots        = true,
   rowExpiry       = true,
 }

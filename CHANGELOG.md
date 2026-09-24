@@ -16,12 +16,15 @@
 
 ### Improved
 
-- **Mail rows line up.** Names sit in one column as wide as "AH Expired", so
-  every item name starts in the same place, and gold, slots and time left
-  stand in their own right-aligned columns down the list.
-- **Choose what each row shows.** Gold, slots and time left can each be
-  switched off (Options, Mail tab, "Show on each mail"). Whatever you switch
-  off moves to the row's tooltip rather than disappearing.
+- **Mail rows line up.** Names sit in one column, as wide as the longest name
+  listed and never wider than "AH Expired", so every item name starts in the
+  same place; gold, slots and time left stand in their own right-aligned
+  columns down the list. Rows show a sender without their realm, and "The
+  Postmaster" as "Postmaster"; the tooltip has the full name.
+- **Choose what each row shows.** Gold earned, gold spent, slots and time
+  left can each be switched off (Options, Mail tab, "Show on each mail").
+  Whatever you switch off moves to the row's tooltip. A C.O.D. price always
+  shows, because Postbox never pays one without asking.
 - **Category buttons count.** "All sold (7)", and a button with nothing to
   collect is greyed out rather than answering "Done" when clicked.
 - **Mailbox memory matches the mail list:** auction mail reads "AH Sold" and
@@ -29,6 +32,11 @@
   same switches.
 - Compact rows show money as its largest coin ("1309g", "19g", "33s"); the
   full sum is in the mail.
+
+### Fixed
+
+- **Mailbox memory lost track past 50 mails**, and did not count an unread
+  letter with nothing attached. Its count now matches the Collect tab.
 
 ## 1.39.0
 
