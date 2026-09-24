@@ -4446,8 +4446,8 @@ function ST.Diagnose()
   end
   table.sort(declined)
   local trace = Q.stats.trace
-  return string.format("attach queue: click %d | use %d | refused %d | queued %d | asked %d | waiting %d | declined %s\n  pass trace: %s",
-    Q.stats.click, Q.stats.use, Q.stats.refused, Q.stats.queued, Q.stats.asked or 0, waiting,
+  return string.format("attach queue: click %d | use %d | alt %d | refused %d | queued %d | asked %d | waiting %d | declined %s\n  pass trace: %s",
+    Q.stats.click, Q.stats.use, Q.stats.all or 0, Q.stats.refused, Q.stats.queued, Q.stats.asked or 0, waiting,
     (#declined > 0) and table.concat(declined, ", ") or "none",
     (trace and #trace > 0) and table.concat(trace, " ; ") or "none")
 end
@@ -4535,6 +4535,65 @@ function Q.OnAttachRefused()
   if ok or reason == "dup" then Q.ClearAttachRefusal() end
 end
 ST.OnAttachRefused = Q.OnAttachRefused
+
+-- Alt+right-click on a bag item: every stack of it, from every bag, into
+-- this mail and the queue behind it -- the materials run to a crafter or a
+-- bank alt, in one click instead of one per stack.
+--
+-- Alt, not Shift, because Shift+right-click is taken twice over by the
+-- client: it opens the split-stack box on any stack and the socketing window
+-- on a socketed item. Alt+right-click does nothing on a bag item in the
+-- client's own bags or EllesmereUI's, and Baganator answers it by
+-- highlighting the item's other stacks -- which is exactly what is about to
+-- be attached. A modified click never reaches ContainerFrameItemButton_OnClick,
+-- so it is read here from GLOBAL_MOUSE_DOWN (registered only while this tab
+-- is showing) and the item found the way the refusal route finds it: from
+-- the button under the cursor, whoever built it.
+--
+-- Every stack goes through Q.Enqueue, so every rule a single right-click
+-- meets holds: nothing unmailable, nothing already attached or queued, and
+-- the client's own question for a refundable item on that item's turn.
+-- Under a C.O.D. nothing is queued (see above), so the free slots are the
+-- whole of what this can do.
+function Q.AttachAll(panel, bag, slot)
+  local info = Q.ContainerInfo(bag, slot)
+  local itemID = info and info.itemID
+  if not itemID then return end
+  local limit = IsCODArmed(panel) and (SEND_SLOT_COUNT - AttachmentCount()) or nil
+  local added = 0
+  local function Take(b, s)
+    if limit and added >= limit then return end
+    if Q.TryEnqueue(panel, b, s) then added = added + 1 end
+  end
+  -- The clicked stack first, then the rest in bag order.
+  Take(bag, slot)
+  for b = 0, Q.LAST_BAG do
+    local ok, count = pcall(C_Container.GetContainerNumSlots, b)
+    for s = 1, (ok and tonumber(count)) or 0 do
+      if b ~= bag or s ~= slot then
+        local other = Q.ContainerInfo(b, s)
+        if other and other.itemID == itemID then Take(b, s) end
+      end
+    end
+  end
+  if added == 0 then return end
+  Q.stats.all = (Q.stats.all or 0) + 1
+  -- Into whatever slots are free now; the rest waits in the queue.
+  TopUpFromQueue(panel)
+  ns.Print(ns.Plural("MSG_ATTACH_ALL", added, info.hyperlink or ""))
+end
+
+function ST.OnGlobalMouseDown(button)
+  if button ~= "RightButton" or not IsAltKeyDown() then return end
+  if not sendTabActive or pendingSend then return end
+  local panel = ActivePanel()
+  if not panel or not panel:IsShown() then return end
+  local bag, slot = Q.BagSlotUnderCursor()
+  -- The player's own bags only: a bank or a guild bank button under the
+  -- cursor is not something a mail can take from.
+  if not bag or bag < 0 or bag > Q.LAST_BAG then return end
+  Q.AttachAll(panel, bag, slot)
+end
 end
 
 -------------------------------------------------------------
@@ -4960,6 +5019,18 @@ local function BuildAttachmentArea(panel)
   label:SetText(L["LABEL_ATTACHMENTS"])
   -- The slot refresh writes "Attachments 3/12" onto it.
   panel.AttachLabel = label
+  -- Hovering the caption teaches the ways in, one of which -- Alt+right-click,
+  -- every stack at once -- nothing on screen would otherwise suggest.
+  panel.AttachHit = CreateFrame("Frame", nil, area)
+  panel.AttachHit:SetAllPoints(label)
+  panel.AttachHit:EnableMouse(true)
+  panel.AttachHit:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L["LABEL_ATTACHMENTS"])
+    GameTooltip:AddLine(L["ATTACH_TIP_HOW"], 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  panel.AttachHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
   -- The attachment queue's count (section 18a), to the right of the label:
   -- "8 more queued", the items themselves in its tooltip, and a click to
@@ -5210,6 +5281,9 @@ local VISIBILITY_EVENTS = {
   -- a thirteenth attachment. Only while this tab is showing, because that is
   -- the only time the refusal can mean anything to it.
   "UI_ERROR_MESSAGE",
+  -- Alt+right-click on a bag item (section 18a), which no click hook sees.
+  -- One comparison per click, and only while this tab is showing.
+  "GLOBAL_MOUSE_DOWN",
 }
 
 local function InstallEvents(panel)
@@ -5221,7 +5295,11 @@ local function InstallEvents(panel)
   panel:RegisterEvent("MAIL_LOCK_SEND_ITEMS")
   panel:RegisterEvent("MAIL_UNLOCK_SEND_ITEMS")
 
-  panel:SetScript("OnEvent", function(self, event)
+  panel:SetScript("OnEvent", function(self, event, arg1)
+    if event == "GLOBAL_MOUSE_DOWN" then
+      ST.OnGlobalMouseDown(arg1)
+      return
+    end
     -- The send outcome is settled BEFORE any visibility guard: the user can
     -- switch to the collect screen while the server is still working, and the
     -- draft must still be handled correctly when they do.

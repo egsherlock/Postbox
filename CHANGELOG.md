@@ -9,6 +9,10 @@
   分身, 戰隊, 伺服器. With thanks to samuelbears, who translated it. It has not
   yet been read on a Traditional Chinese client, so if a word is off, please
   say so on GitHub.
+- **Alt+right-click attaches every stack.** Alt+right-click an item in your
+  bags while writing a mail and every stack of it goes in: what fits into the
+  slots, the rest into the queue behind them. Works in the default bags,
+  EllesmereUI's and Baganator's. Hover "Attachments" for a reminder.
 
 ### Improved
 
