@@ -13,6 +13,14 @@
   bags while writing a mail and every stack of it goes in: what fits into the
   slots, the rest into the queue behind them. Works in the default bags,
   EllesmereUI's and Baganator's. Hover "Attachments" for a reminder.
+- **Every character's mailbox, in one place.** The mailbox memory (left-click
+  the minimap icon, or /postbox mail) has a character picker, so you can see
+  what any of your characters' boxes held.
+- **Warnings before mail is lost on another character.** The minimap icon's
+  tooltip names any character with mail under three days from expiring, or
+  with mail on its way (an auction you posted, a purchase, something you sent
+  it) and no mailbox opened for over three weeks. One line in chat at login
+  says the same; it can be switched off under Mail alerts.
 
 ### Improved
 

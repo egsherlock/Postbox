@@ -160,7 +160,15 @@ function Dropdown.Create(parent, opts)
     local viewport = maxHeight - (LIST_PADDING * 2)
 
     list = CreateFrame("Frame", nil, toggle, "BackdropTemplate")
-    list:SetPoint("TOPRIGHT", toggle, "BOTTOMRIGHT", 0, -LIST_GAP)
+    -- Under the toggle's right edge by default, growing leftwards: the
+    -- options panel's toggles sit at the right of their rows. opts.listLeft
+    -- is for a toggle at a window's LEFT edge, whose list would otherwise
+    -- hang off the window.
+    if opts.listLeft then
+      list:SetPoint("TOPLEFT", toggle, "BOTTOMLEFT", 0, -LIST_GAP)
+    else
+      list:SetPoint("TOPRIGHT", toggle, "BOTTOMRIGHT", 0, -LIST_GAP)
+    end
     list:SetWidth(tonumber(opts.listWidth) or toggleWidth)
     list:SetHeight(scrolling and maxHeight or ((LIST_PADDING * 2) + contentHeight))
     list:SetFrameStrata("FULLSCREEN_DIALOG")

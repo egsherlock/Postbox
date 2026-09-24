@@ -233,6 +233,8 @@ local function PersistOnClose()
   local root = ns.Store.EnsurePath("mailMemory")
   root[realm] = root[realm] or {}
   root[realm][name] = snapshot
+  -- Defined in section 2b, below this function in the file.
+  if MM._SettleWatch then MM._SettleWatch(realm, name, snapshot.seenAt or time()) end
 end
 
 local function StoredSnapshot()
@@ -317,6 +319,221 @@ local function ExpiryText(expires, now)
   if left <= 0 then return L["MEMORY_EXPIRED"], true end
   if left < 86400 then return string.format(L["MEMORY_LEFT_H"], math.max(1, math.floor(left / 3600))), false end
   return string.format(L["MEMORY_LEFT_D"], math.floor(left / 86400 + 0.5)), false
+end
+
+-------------------------------------------------------------
+-- 2b. Every character's mailbox
+--
+-- The memory is account-wide already (realm -> name -> snapshot), so what
+-- every other character's box held is on disk. Two things a snapshot cannot
+-- know are kept beside it, in `mailWatch` (realm -> name):
+--
+--   newAt          the first time since that character's last mailbox visit
+--                  that mail is KNOWN to have arrived: an arrival event, an
+--                  auction bought or expired, the unread flag up at login
+--                  when it was down at the last close, or Postbox sending it
+--                  mail from another character.
+--   auctionAt /    an auction was posted, and its mail -- the gold, or the
+--   auctionsUntil  item back -- has had no visit to land in yet. Until is the
+--                  latest such auction could end (48h, the longest listing).
+--
+-- Mail lives thirty days. Either time is therefore the earliest that unseen
+-- mail could start to be lost, and a character is flagged a week before it.
+-- A character whose snapshot holds mail under three days from expiring is
+-- flagged too. That is the whole of it: nothing is guessed, and a character
+-- with nothing on the way says nothing, however long it has been idle.
+-------------------------------------------------------------
+
+local DAY = 86400
+local SOON = 3 * DAY
+local UNSEEN_WARN = 23 * DAY
+local AUCTION_LONGEST = 48 * 3600
+
+local function Me()
+  return GetRealmName(), UnitName("player")
+end
+
+local function WatchFor(realm, name, create)
+  if not (realm and name) then return nil end
+  local root
+  if create then
+    root = ns.Store.EnsurePath("mailWatch")
+  else
+    root = ns.Store and ns.Store.Get and ns.Store.Get("mailWatch")
+  end
+  if type(root) ~= "table" then return nil end
+  local byRealm = root[realm]
+  if type(byRealm) ~= "table" then
+    if not create then return nil end
+    byRealm = {}
+    root[realm] = byRealm
+  end
+  local watch = byRealm[name]
+  if type(watch) ~= "table" and create then
+    watch = {}
+    byRealm[name] = watch
+  end
+  return watch
+end
+
+local function SnapshotFor(realm, name)
+  local root = ns.Store and ns.Store.Get and ns.Store.Get("mailMemory")
+  local byRealm = type(root) == "table" and root[realm] or nil
+  return type(byRealm) == "table" and byRealm[name] or nil
+end
+
+-- Mail is known to have arrived for this character.
+local function NoteArrival(realm, name)
+  if not MemoryEnabled() then return end
+  local watch = WatchFor(realm, name, true)
+  if watch and not watch.newAt then watch.newAt = time() end
+end
+
+-- This character's box was opened and recorded: what the watch guarded is in
+-- the snapshot now. An auction still running can send mail after the visit,
+-- so it stays watched -- from now.
+function MM._SettleWatch(realm, name, now)
+  local watch = WatchFor(realm, name, false)
+  if not watch then return end
+  watch.newAt = nil
+  if watch.auctionsUntil and watch.auctionsUntil > now then
+    watch.auctionAt = now
+  else
+    watch.auctionAt, watch.auctionsUntil = nil, nil
+  end
+end
+
+-- A mail waits while it holds anything, or is unread: the Collect tab's rule.
+local function Holds(mail)
+  return (mail.items or 0) > 0 or (mail.money or 0) > 0 or (mail.cod or 0) > 0 or not mail.read
+end
+
+-- realm, name, now -> what there is to say about that character's mail.
+--   waiting    mails in its snapshot still waiting
+--   soon       how many of them expire within three days, and `soonest`
+--   unseenDays set when mail known to be on the way has gone unopened
+--              long enough to be a week from its earliest loss
+local function Status(realm, name, now)
+  local snap = SnapshotFor(realm, name)
+  local st = { realm = realm, name = name, waiting = 0, seenAt = snap and snap.seenAt or nil }
+  local mails = snap and snap.mails or {}
+  for i = 1, #mails do
+    local mail = mails[i]
+    if Holds(mail) then
+      st.waiting = st.waiting + 1
+      local left = (tonumber(mail.expires) or 0) - now
+      if left > 0 and left < SOON then
+        st.soon = (st.soon or 0) + 1
+        if not st.soonest or mail.expires < st.soonest then st.soonest = mail.expires end
+      end
+    end
+  end
+  local watch = WatchFor(realm, name, false)
+  if watch then
+    local since = watch.newAt
+    if watch.auctionAt and (not since or watch.auctionAt < since) then since = watch.auctionAt end
+    if since and now - since >= UNSEEN_WARN then
+      st.unseenDays = math.floor((now - (st.seenAt or since)) / DAY)
+    end
+  end
+  st.warn = (st.soon ~= nil) or (st.unseenDays ~= nil)
+  return st
+end
+
+-- The status as a phrase, in the warning tone; nil when there is none.
+local function WarningText(st, now)
+  local parts = {}
+  if st.soon then
+    parts[#parts + 1] = ns.Plural("OVERVIEW_EXPIRE", st.soon, (ExpiryText(st.soonest, now)))
+  end
+  if st.unseenDays then
+    parts[#parts + 1] = ns.Plural("OVERVIEW_UNSEEN", st.unseenDays)
+  end
+  if #parts == 0 then return nil end
+  return table.concat(parts, "; ")
+end
+
+-- A character's name as the lists show it: the realm only when it is not
+-- the one being played.
+local function CharacterLabel(realm, name)
+  local myRealm = GetRealmName()
+  if realm ~= myRealm then return name .. " - " .. realm end
+  return name
+end
+
+-- Every character Postbox knows a mailbox for: this one first, then those
+-- with something to say, then by name.
+function MM.Characters()
+  local now = time()
+  local seen, list = {}, {}
+  local function Add(realm, name)
+    local key = realm .. "\001" .. name
+    if seen[key] then return end
+    seen[key] = true
+    list[#list + 1] = Status(realm, name, now)
+  end
+  for _, rootName in ipairs({ "mailMemory", "mailWatch" }) do
+    local root = ns.Store and ns.Store.Get and ns.Store.Get(rootName)
+    if type(root) == "table" then
+      for realm, byRealm in pairs(root) do
+        if type(byRealm) == "table" then
+          for name in pairs(byRealm) do Add(realm, name) end
+        end
+      end
+    end
+  end
+  local myRealm, myName = Me()
+  table.sort(list, function(a, b)
+    local aMe = (a.realm == myRealm and a.name == myName)
+    local bMe = (b.realm == myRealm and b.name == myName)
+    if aMe ~= bMe then return aMe end
+    if a.warn ~= b.warn then return a.warn end
+    if a.name ~= b.name then return a.name < b.name end
+    return a.realm < b.realm
+  end)
+  for i = 1, #list do
+    local st = list[i]
+    st.me = (st.realm == myRealm and st.name == myName)
+    st.label = CharacterLabel(st.realm, st.name)
+    st.text = WarningText(st, now)
+  end
+  return list
+end
+
+-- The other characters with something to say, for the minimap tooltip and
+-- the login line. Empty when memory is off.
+function MM.OtherWarnings()
+  local out = {}
+  if not MemoryEnabled() then return out end
+  local all = MM.Characters()
+  for i = 1, #all do
+    if all[i].warn and not all[i].me then out[#out + 1] = all[i] end
+  end
+  return out
+end
+
+-- Postbox just sent mail to `toName`. If that is one of the player's own
+-- characters, mail is now waiting in its box -- and nothing else would know,
+-- if that character is not played for a month.
+function MM.NoteSentTo(toName)
+  if not MemoryEnabled() or type(toName) ~= "string" or toName == "" then return end
+  local R = ns.Recipients
+  if not (R and type(R.Key) == "function") then return end
+  local key = R.Key(toName)
+  local alts = ns.Store and ns.Store.Get and ns.Store.Get("alts")
+  if not key or type(alts) ~= "table" then return end
+  local myRealm, myName = Me()
+  for realm, names in pairs(alts) do
+    if type(names) == "table" then
+      for i = 1, #names do
+        local name = names[i]
+        if not (realm == myRealm and name == myName) and R.Key(name .. "-" .. realm) == key then
+          NoteArrival(realm, name)
+          return
+        end
+      end
+    end
+  end
 end
 
 -------------------------------------------------------------
@@ -503,6 +720,8 @@ local function MeasureColumns(frame, mails, now, sample)
   return cols
 end
 
+local Refresh
+
 local function FillRow(row, mail, now, cols)
   local R = Rules()
   local T = ns.Theme
@@ -551,7 +770,88 @@ local function FillRow(row, mail, now, cols)
   row:Show()
 end
 
-local function Refresh(frame)
+-- The character picker: only when there is more than one character to pick
+-- from. Rebuilt when the set of characters or what they say changes -- the
+-- dropdown takes its items at build -- and never otherwise.
+local function UpdatePicker(frame)
+  local chars = MM.Characters()
+  local items, labels, sig = {}, {}, {}
+  for i = 1, #chars do
+    local st = chars[i]
+    local id = st.realm .. "\001" .. st.name
+    local tail
+    if st.text then
+      tail = ns.Theme.Colorize("warning", st.text)
+    elseif st.seenAt then
+      tail = ns.Theme.Colorize("textSecondary", ns.Plural("COUNT_MAILS", st.waiting))
+    end
+    items[i] = { id = id, name = tail and (st.label .. "   " .. tail) or st.label }
+    labels[id] = st.label
+    sig[i] = items[i].name
+  end
+  frame._pickLabels = labels
+
+  local want = #chars > 1
+  local signature = table.concat(sig, "\002")
+  if want and frame._pickSig ~= signature then
+    if frame.Picker then frame.Picker:Hide() end
+    local widest = 0
+    local probe = frame._probe or frame:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    frame._probe = probe
+    probe:Hide()
+    for i = 1, #chars do
+      probe:SetText(chars[i].label)
+      widest = math.max(widest, probe:GetStringWidth() or 0)
+    end
+    local picker = ns.Core.UI.Dropdown.Create(frame, {
+      items = items,
+      toggleWidth = math.min(math.max(math.ceil(widest) + 34, 90), 170),
+      toggleHeight = 20,
+      height = 20,
+      listWidth = 300,
+      listLeft = true,
+    })
+    picker:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD - 2, -30)
+    picker:SetWidth(math.min(math.max(math.ceil(widest) + 34, 90), 170))
+    picker:SetChangeCallback(function(id)
+      local realm, name = id:match("^(.-)\001(.*)$")
+      local myRealm, myName = Me()
+      if realm == myRealm and name == myName then
+        frame.viewing = nil
+      else
+        frame.viewing = { realm = realm, name = name }
+      end
+      Refresh(frame)
+    end)
+    if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, picker) end
+    frame.Picker = picker
+    frame._pickSig = signature
+  end
+
+  if frame.Picker then
+    frame.Picker:SetShown(want)
+    if want then
+      local v = frame.viewing
+      local myRealm, myName = Me()
+      local id = v and (v.realm .. "\001" .. v.name) or (myRealm .. "\001" .. myName)
+      frame.Picker._selectedId = id
+      frame.Picker:SetText(labels[id] or myName)
+    end
+  end
+  frame.Header:ClearAllPoints()
+  if want and frame.Picker then
+    frame.Header:SetPoint("LEFT", frame.Picker, "RIGHT", 8, 0)
+  else
+    frame.Header:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -34)
+  end
+  frame.Header:SetPoint("RIGHT", frame.NewSinceHit, "LEFT", -8, 0)
+end
+
+function Refresh(frame)
+  UpdatePicker(frame)
+  -- Another character's box is read-only history: no live look, no heal, no
+  -- arrival badge -- those all describe the character being played.
+  local viewing = frame.viewing
   -- Self-heal for a missed close signal. If `live` still exists while no
   -- mailbox is open, the visit ended without either close event reaching us
   -- -- and every arrival mark since then went to the STORED record while
@@ -559,7 +859,7 @@ local function Refresh(frame)
   -- impossible. Settle the visit now exactly as the close handler would,
   -- carrying marks made against the prior record across the late persist.
   local state = MailboxState()
-  if live and not (state and state.mailboxOpen) then
+  if not viewing and live and not (state and state.mailboxOpen) then
     local prior = StoredSnapshot()
     local priorMark = prior and prior.newSince and prior.newFrom or nil
     local priorMarked = prior and prior.newSince == true
@@ -572,7 +872,12 @@ local function Refresh(frame)
     end
   end
 
-  local snapshot = live or StoredSnapshot()
+  local snapshot
+  if viewing then
+    snapshot = SnapshotFor(viewing.realm, viewing.name)
+  else
+    snapshot = live or StoredSnapshot()
+  end
   local now = time()
 
   local mails = snapshot and snapshot.mails or nil
@@ -605,7 +910,7 @@ local function Refresh(frame)
   -- then only detectors 1 and 2 can see it.
   local arrived = false
   local from = nil
-  if snapshot then
+  if snapshot and not viewing then
     EnsureBaseline(snapshot)
     local state = MailboxState()
     local away = not (state and state.mailboxOpen)
@@ -849,6 +1154,8 @@ function MM.Toggle()
     return
   end
 
+  -- Every open starts on the character being played.
+  frame.viewing = nil
   Refresh(frame)
   frame:ClearAllPoints()
   local minimap = _G.Minimap
@@ -1003,6 +1310,9 @@ local function OnPendingMail()
   lastPendingVerdict = "flag false"
   if not (type(HasNewMail) == "function" and HasNewMail()) then return end
 
+  -- Arrived, whatever else is known: the watch needs no snapshot.
+  NoteArrival(Me())
+
   lastPendingVerdict = "no snapshot"
   local snap = StoredSnapshot()
   if not snap then return end
@@ -1037,6 +1347,7 @@ end
 -- transit. Witnessed cause, honest badge.
 local function OnPurchaseCompleted()
   if not MemoryEnabled() then return end
+  NoteArrival(Me())
   local snap = StoredSnapshot()
   if not snap then return end
   snap.newSince = true
@@ -1101,8 +1412,41 @@ if bus then
   -- events; both end as mail.
   registered.purchase = bus.Register("AUCTION_HOUSE_PURCHASE_COMPLETED", OnPurchaseCompleted)
   registered.commodity = bus.Register("COMMODITY_PURCHASE_SUCCEEDED", OnPurchaseCompleted)
-  registered.login = bus.Register("PLAYER_ENTERING_WORLD", function()
+  -- Posting an auction starts mail on its way: the gold when it sells, the
+  -- item when it does not. An expiry while online is that mail arriving.
+  registered.auctionPosted = bus.Register("AUCTION_HOUSE_AUCTION_CREATED", function()
+    if not MemoryEnabled() then return end
+    local watch = WatchFor(GetRealmName(), UnitName("player"), true)
+    if not watch then return end
+    local now = time()
+    watch.auctionAt = watch.auctionAt or now
+    watch.auctionsUntil = math.max(watch.auctionsUntil or 0, now + AUCTION_LONGEST)
+  end)
+  registered.auctionExpired = bus.Register("AUCTION_HOUSE_AUCTIONS_EXPIRED", function()
+    NoteArrival(Me())
+  end)
+  registered.login = bus.Register("PLAYER_ENTERING_WORLD", function(_, isInitialLogin)
     loginAt = time()
     if MemoryEnabled() then EnsureBaseline(StoredSnapshot()) end
+    if not isInitialLogin then return end
+    -- Once the client has settled its mail state: mail that arrived while
+    -- logged out raised the unread flag that was down at the last close.
+    -- Then, once per login, the one line about the other characters.
+    C_Timer.After(LOGIN_SETTLE + 5, function()
+      if not MemoryEnabled() then return end
+      local snap = StoredSnapshot()
+      local flag = type(HasNewMail) == "function" and HasNewMail() and true or false
+      if flag and (not snap or snap.baseNew == false) then NoteArrival(Me()) end
+
+      local UI = ns.MailboxUI
+      if UI and type(UI.GetOption) == "function" and not UI.GetOption("mailWarnings") then return end
+      local others = MM.OtherWarnings()
+      if #others == 0 then return end
+      local parts = {}
+      for i = 1, #others do
+        parts[#parts + 1] = others[i].label .. " (" .. others[i].text .. ")"
+      end
+      ns.Print(L("OVERVIEW_LOGIN", table.concat(parts, ", ")))
+    end)
   end)
 end

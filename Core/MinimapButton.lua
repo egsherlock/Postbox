@@ -850,6 +850,22 @@ ShowTooltip = function(button, hostMode)
     GameTooltip:AddLine(HAVE_MAIL or "", 0.75, 0.75, 0.78)
   end
 
+  -- The other characters with mail close to being lost (Core/MailMemory,
+  -- section 2b): a heading and one line each, only when there is one.
+  local others = Memory and type(Memory.OtherWarnings) == "function" and Memory.OtherWarnings() or nil
+  if others and #others > 0 then
+    local warn = ns.Theme.Colors.warning
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(L["OVERVIEW_HEAD"], 0.75, 0.75, 0.78)
+    local shown = math.min(#others, 4)
+    for i = 1, shown do
+      GameTooltip:AddDoubleLine(others[i].label, others[i].text, 1, 1, 1, warn[1], warn[2], warn[3])
+    end
+    if #others > shown then
+      GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #others - shown), 0.6, 0.6, 0.63)
+    end
+  end
+
   if Memory and type(Memory.SummaryText) == "function" then
     local summary = Memory.SummaryText()
     if summary then

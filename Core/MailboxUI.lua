@@ -140,6 +140,9 @@ local OPTION_DEFAULTS = {
   -- feature is capture-light and idle when unused, and a feature nobody can
   -- find switched off does not exist.
   mailMemory      = true,
+  -- One chat line at login when another character's mail is close to being
+  -- lost (Core/MailMemory, section 2b). On: that is the mail people lose.
+  mailWarnings    = true,
   -- Right-click-to-attach while the MAIL tab is showing (section 5b). Off,
   -- and this is the one default that was argued the other way first: it
   -- shipped as always-on in 1.24 on the grounds that with a mail window open,

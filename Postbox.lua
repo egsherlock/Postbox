@@ -91,6 +91,8 @@ local SCHEMA = {
                               -- (see Core/CollectTab.lua, run memory)
   "mailMemory",               -- realm -> name -> last-seen inbox snapshot
                               -- (see Core/MailMemory.lua)
+  "mailWatch",                -- realm -> name -> mail known to be on the way
+                              -- since the last visit (Core/MailMemory.lua, 2b)
 }
 
 local function EnsureDB()
@@ -396,6 +398,7 @@ end
 local function ReportHelp()
   ns.Print("Commands:  /postbox skin  — report skin status")
   ns.Print("           /postbox minimap  — toggle the minimap mail icon")
+  ns.Print("           /postbox mail  — what your mailboxes held, every character")
   ns.Print("           /postbox debug  — open the bug-report window")
   ns.Print(ns.L["RM_SLASH_HELP"])
 end
@@ -689,7 +692,14 @@ end
 -- One word each, aliases included. Anything unrecognised -- the empty string
 -- most of all, since a bare /postbox is how people go looking -- falls through
 -- to the help text.
+local function OpenMailMemory()
+  local Memory = ns.MailMemory
+  if Memory and type(Memory.Toggle) == "function" then Memory.Toggle() end
+end
+
 local COMMANDS = {
+  mail        = OpenMailMemory,
+  memory      = OpenMailMemory,
   skin        = ReportSkin,
   recipients  = OpenRecipientManager,
   rm          = OpenRecipientManager,

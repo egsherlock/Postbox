@@ -937,6 +937,9 @@ local function FinishSend(outcome)
     -- History is written here and nowhere else: a recipient the server refused
     -- is not a recipient the player has mailed.
     Contacts().SaveRecipient(pending.toName)
+    -- Mail to one of the player's own characters is mail that character has
+    -- waiting, whether or not it is played again this month.
+    if ns.MailMemory and ns.MailMemory.NoteSentTo then ns.MailMemory.NoteSentTo(pending.toName) end
     -- Attachments still queued: the next mail goes out from here and the
     -- draft stands until the last one has. ContinueQueue settles it itself.
     if ContinueQueue(panel, pending) then return end

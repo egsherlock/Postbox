@@ -519,6 +519,10 @@ local function Build()
         function() return ns.MailboxUI.GetOption("mailMemory") end,
         function(on) ns.MailboxUI.SetOption("mailMemory", on) end)
 
+  cy = AddCheckbox(card, cy, L["OPT_ALERT_OTHERS_TITLE"], L["OPT_ALERT_OTHERS_DESC"],
+        function() return ns.MailboxUI.GetOption("mailWarnings") end,
+        function(on) ns.MailboxUI.SetOption("mailWarnings", on) end)
+
   y = EndSection(col, card, y)
 
   -- Appearance: everything about how the window looks, in one card.
