@@ -147,21 +147,19 @@ local ROW_WARNING_COMPACT = 11
 -- being that. It is a hair under 60% of the standard 44.
 local COMPACT_ROW_HEIGHT = 26
 
--- The most of a compact row's text area the inline meta may claim. The sender
--- and the subject are what a mailbox is scanned by; the gold and the expiry
--- annotate them, and an annotation may not crowd out the thing it annotates.
+-- The most of a compact row's text area its right-hand columns may claim. The
+-- sender and the subject are what a mailbox is scanned by; the gold, the slots
+-- and the expiry annotate them, and an annotation may not crowd out the thing
+-- it annotates.
 local COMPACT_META_SHARE = 0.45
 
--- The meta line's separator, and the compact strip's. The strip is narrow and
--- every part in it carries its own label or its own colour, so it needs no
--- rules between them -- only enough air that two numbers do not read as one.
+-- The standard row's meta line separator.
 local ROW_META_JOIN = "  |  "
 
 -- A row says how long a mail has left only when that is short: "30d" on
 -- every row of a full inbox was the one figure nobody read, and the one
 -- that mattered -- a mail about to go -- looked like all the others.
 local EXPIRY_SOON_DAYS = 3
-local COMPACT_META_JOIN = "  "
 
 -- Category grid: the full-width primary, then two rows of three.
 -- The primary matches the Send tab's Send button exactly: the two tabs'
@@ -169,11 +167,12 @@ local COMPACT_META_JOIN = "  "
 local GRID_PRIMARY_HEIGHT = 28
 local GRID_BUTTON_HEIGHT  = 26
 
--- The sender column of a mail row, as a fraction of the text area with a floor
--- and a ceiling. A share rather than a constant because a 480px window and a
--- 750px one want different splits, and clamped because neither extreme reads.
-local SENDER_SHARE = 0.34
-local SENDER_MIN, SENDER_MAX = 70, 170
+-- The sender column of a mail row: as wide as the widest auction outcome in the
+-- player's own language ("AH Expired" in English), MEASURED rather than tuned,
+-- so every subject starts on the same line down the list. A name longer than
+-- that is cut and the row's tooltip carries it whole. The floor and ceiling are
+-- for a locale whose four labels are unusually short or long.
+local SENDER_MIN, SENDER_MAX = 48, 140
 
 -- The addon's own white tile: a UI pack's loose-file overrides can replace
 -- art at Blizzard paths, and a structural fill must survive that (see
@@ -852,6 +851,134 @@ local function PurchasePrice(index)
 end
 
 -------------------------------------------------------------
+-- Mail rows :: the columns
+--
+-- A compact row is a table, not a sentence. The sender sits in a column as
+-- wide as the widest auction outcome, the subject takes everything left, and
+-- up to three columns stand at the right edge -- time left, money, slots --
+-- each as wide as its widest entry ANYWHERE in the list. Measured over the
+-- list rather than the rows on screen, so a column does not twitch as the list
+-- scrolls; and the room the delete and stuck marks need is reserved on every
+-- row when any listed row carries one, so a mark on one mail cannot knock the
+-- figures out of line on the others.
+--
+-- Money, slots and time left are each behind their own option. What a switch
+-- hides still reaches the row's tooltip, so no fact becomes unreachable.
+-------------------------------------------------------------
+
+-- Default on when the option plumbing has not loaded yet.
+local function RowShows(key)
+  local UI = ns.MailboxUI
+  if not UI or type(UI.GetOption) ~= "function" then return true end
+  return UI.GetOption(key) and true or false
+end
+
+-- The money, in its shortest honest form ("52g 26s", "1309g", "12.3k"; the
+-- compact row keeps the largest coin alone). Three tones for three meanings:
+-- green is gold arriving, amber is a C.O.D. price you would pay by collecting
+-- (a decision, so the warning tone), red is what a won auction already cost
+-- (spent, as the band's own "Spent" is red). Returns the text or nil, and
+-- whether it is a won auction's price -- which the invoice figures then skip.
+-- `price` is that price, or nil; it may be a function of no arguments, asked
+-- only when nothing else answered, because reading it costs an invoice call.
+local function MoneyText(hasCOD, moneyValue, codValue, price, brief)
+  local T = Th()
+  local compactMoney = ns.Core.Formatting.FormatMoneyCompact
+  if moneyValue > 0 then
+    return T.Colorize("positive", compactMoney(moneyValue, brief)), false
+  end
+  if hasCOD then
+    if codValue > 0 then
+      return T.Colorize("warning", L()["LABEL_COD"] .. compactMoney(codValue, brief)), false
+    end
+    return T.Colorize("warning", L()["LABEL_COD_SHORT"]), false
+  end
+  if type(price) == "function" then price = price() end
+  if price then return T.Colorize("negative", compactMoney(price, brief)), true end
+  return nil, false
+end
+
+local function RowMoneyText(index, hasCOD, moneyValue, codValue, brief)
+  return MoneyText(hasCOD, moneyValue, codValue, function() return PurchasePrice(index) end, brief)
+end
+
+-- Time left, as a warning: only when it is short. A C.O.D. mail lives three
+-- days from the start, so for one of those "short" is under a day.
+local function RowExpiryText(daysLeft, hasCOD)
+  if daysLeft and daysLeft < (hasCOD and 1 or EXPIRY_SOON_DAYS) then
+    return Th().Colorize("warning", format(L()["DAYS_SHORT"], daysLeft))
+  end
+  return nil
+end
+
+-- The rendered width of `text` in `sample`'s font. One hidden string per
+-- panel, re-fonted from the sample on every call, so the measurement is taken
+-- in exactly the face and size the row draws in -- whatever skin set it.
+local function MeasureWith(panel, sample, text)
+  local fs = panel._measure
+  if not fs then
+    fs = panel:CreateFontString(nil, "ARTWORK")
+    fs:Hide()
+    panel._measure = fs
+  end
+  local path, size, flags = sample:GetFont()
+  if path then fs:SetFont(path, size, flags or "") end
+  fs:SetText(text or "")
+  return ceil(fs:GetStringWidth() or 0)
+end
+
+-- The sender column's width, from the four outcome labels in `sample`'s font.
+local function SenderColumnWidth(panel, sample)
+  local widest = 0
+  for _, outcome in pairs(AUCTION_OUTCOME) do
+    widest = max(widest, MeasureWith(panel, sample, L()[outcome.key]))
+  end
+  return min(max(widest + 2, SENDER_MIN), SENDER_MAX)
+end
+
+-- One right-hand column, placed `right` pixels in from the row's edge.
+-- Returns where the next column in starts. A column with no measured width
+-- takes no room; one with width but no text for this mail keeps its room,
+-- which is what keeps the columns either side of it in line.
+local function PlaceColumn(row, fs, right, width, text, room)
+  width = min(width, room)
+  if width < 12 then
+    fs:Hide()
+    return right
+  end
+  if fs._right ~= right then
+    fs._right = right
+    fs:ClearAllPoints()
+    fs:SetPoint("RIGHT", row, "RIGHT", -right, 0)
+  end
+  Th().FitText(fs, width, text or "", nil)
+  fs:Show()
+  return right + width + Th().Metrics.gap
+end
+
+-- What an auction mail says where its sender would be, in its own tone, or
+-- nil for any other kind of mail.
+local function OutcomeSender(kind)
+  local outcome = AUCTION_OUTCOME[kind]
+  if not outcome then return nil end
+  return Th().Colorize(outcome.role, L()[outcome.key])
+end
+
+-- Published for the mailbox memory, which draws its rows by these same rules
+-- from a snapshot instead of the live inbox. One copy of the rules, so the two
+-- windows cannot come to disagree about what a mail row says.
+CT.RowRules = {
+  Shows = RowShows,
+  MoneyText = MoneyText,
+  Measure = MeasureWith,
+  SenderColumn = SenderColumnWidth,
+  PlaceColumn = PlaceColumn,
+  OutcomeSender = OutcomeSender,
+  EXPIRY_SOON_DAYS = EXPIRY_SOON_DAYS,
+  META_SHARE = COMPACT_META_SHARE,
+}
+
+-------------------------------------------------------------
 -- Widths
 --
 -- A container anchored to its parent's edges measures zero until the first
@@ -1442,20 +1569,18 @@ local function ApplyRowMode(row, compact, height)
   if compact then
     row.Sender:SetPoint("LEFT", row.Icon, "RIGHT", M.gap, 0)
     row.Subject:SetPoint("LEFT", row.Sender, "RIGHT", M.gap, 0)
-    -- Right-aligned against the trailing edge. The offset is re-written on bind
-    -- whenever it changes, because what sits outboard of it -- the delete
-    -- control, the stuck marker -- is a property of the mail and of the view,
-    -- not of the layout. `_detailTrailing` always describes the anchor the
-    -- string is currently carrying.
-    row.Detail:SetPoint("RIGHT", row, "RIGHT", -M.inset, 0)
-    row._detailTrailing = M.inset
-    row.Detail:SetJustifyH("RIGHT")
+    -- The compact row draws its figures in the three columns instead; the
+    -- meta string waits, hidden, for the standard layout.
+    row.Detail:Hide()
   else
     row.Sender:SetPoint("TOPLEFT", row.Icon, "TOPRIGHT", M.gap, 2)
     row.Subject:SetPoint("TOPLEFT", row.Sender, "TOPRIGHT", M.gap, 0)
     row.Detail:SetPoint("BOTTOMLEFT", row.Icon, "BOTTOMRIGHT", M.gap, -2)
-    row._detailTrailing = nil
     row.Detail:SetJustifyH("LEFT")
+    row.Detail:Show()
+    row.ColTime:Hide()
+    row.ColMoney:Hide()
+    row.ColSlots:Hide()
   end
 end
 
@@ -1526,6 +1651,18 @@ local function BuildRow(panel)
   -- C.O.D., the remaining slots, the category and the expiry. It is the densest
   -- line on the screen and it is not inactive.
   row.Detail = T.CreateText(row, "secondary")
+
+  -- The compact row's three figure columns (see "the columns"). Anchored on
+  -- bind, because where each stands depends on the list, not on the row.
+  row.ColTime = T.CreateText(row, "secondary")
+  row.ColMoney = T.CreateText(row, "secondary")
+  row.ColSlots = T.CreateText(row, "secondary")
+  row.ColTime:SetJustifyH("RIGHT")
+  row.ColMoney:SetJustifyH("RIGHT")
+  row.ColSlots:SetJustifyH("RIGHT")
+  row.ColTime:Hide()
+  row.ColMoney:Hide()
+  row.ColSlots:Hide()
 
   -- Shown on a DONE mail, wherever that mail is being listed. Built once and
   -- shown per bind, because a row is recycled between the views. Its anchor is
@@ -1645,7 +1782,8 @@ local function BuildRow(panel)
     end
     local stuck = self.stuckReason
     local expiry = self.expiryTip
-    if not cut and not full and not teach and not stuck and not expiry then return end
+    local facts = self.factsTip
+    if not cut and not full and not teach and not stuck and not expiry and not facts then return end
 
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:ClearLines()
@@ -1665,6 +1803,11 @@ local function BuildRow(panel)
       end
     else
       T2.AddOverflowLine(self.Detail, GameTooltip)
+    end
+    -- The figures an option took off the row, so switching one off never
+    -- makes it unreachable.
+    if facts then
+      for line in facts:gmatch("[^\n]+") do GameTooltip:AddLine(line, 1, 1, 1, true) end
     end
     -- How long the mail has left, always here and on the row only when short.
     if expiry then GameTooltip:AddLine(expiry, 0.75, 0.75, 0.75, true) end
@@ -1803,6 +1946,10 @@ local function BindRow(panel, row, index, position, compact, done)
   local trailing = M.inset
   if showDelete then trailing = trailing + deleteSize + M.tightGap end
   if stuckReason then trailing = trailing + warningSize + M.tightGap end
+  -- A compact row stops its text where the LIST's reserve ends rather than its
+  -- own, so its columns stand exactly where every other row's do.
+  local cols = panel._cols
+  if compact and cols.trail then trailing = max(trailing, cols.trail) end
 
   -- Widths derived from the list's own width, so a caption is truncated with a
   -- tooltip rather than clipped, in any locale and at any window size.
@@ -1824,122 +1971,88 @@ local function BindRow(panel, row, index, position, compact, done)
     displaySubject = (displaySubject:gsub("%(%d+%)%s*$", "(" .. quantity .. ")"))
   end
 
-  -- The meta line, and -- for the compact layout -- the subset of it that stays
-  -- on the row. `parts` is what the standard row draws and what the compact
-  -- row's tooltip carries whole; `brief` is what a mail is WORTH and how long it
-  -- has left, which is the part a one-line row cannot make the reader hover for.
-  -- The category and the invoice breakdown are the two that describe rather than
-  -- alert, so they are the two that move.
-  --
-  -- Both tables live on the panel and are reused: this runs for every visible
-  -- row on every refresh, and a run refreshes once per mail.
-  local parts, brief = panel._rowParts, panel._rowBrief
+  -- The meta line. `parts` is what the standard row draws under the name; the
+  -- compact row draws the same figures in its columns and hands the rest --
+  -- category and invoice breakdown, the two that describe rather than alert --
+  -- to its tooltip. Reused tables: this runs for every visible row on every
+  -- refresh, and a run refreshes once per mail.
+  local parts, facts = panel._rowParts, panel._rowFacts
   Clear(parts)
-  Clear(brief)
+  Clear(facts)
 
-  -- The money, in its shortest honest form ("52g 26s", "1309g", "12.3k"):
-  -- green for gold that is coming, red for a C.O.D. price to pay and for
-  -- what a won auction cost. The reading view prints the exact sums.
-  -- Three tones for three meanings: green is gold arriving, amber is a
-  -- C.O.D. price you would pay by collecting (a decision, so the warning
-  -- tone), red is what a won auction already cost (spent, as the band's
-  -- own "Spent" is red).
-  local compactMoney = ns.Core.Formatting.FormatMoneyCompact
-  local money, purchaseShown = nil, false
-  if moneyValue > 0 then
-    money = T.Colorize("positive", compactMoney(moneyValue))
-  elseif hasCOD then
-    money = (codValue > 0)
-      and T.Colorize("warning", L()["LABEL_COD"] .. compactMoney(codValue))
-      or T.Colorize("warning", L()["LABEL_COD_SHORT"])
-  else
-    local price = PurchasePrice(index)
-    if price then
-      money = T.Colorize("negative", compactMoney(price))
-      purchaseShown = true
-    end
-  end
+  local showMoney, showSlots, showExpiry = RowShows("rowMoney"), RowShows("rowSlots"), RowShows("rowExpiry")
+  local money, purchaseShown = RowMoneyText(index, hasCOD, moneyValue, codValue, compact)
   local slots = (remaining > 0) and T.Colorize("accent", ns.Plural("COUNT_SLOTS", remaining)) or nil
 
-  -- Time left is a warning, not a column: on the row only when it is short,
-  -- in the warning tone; always in the tooltip. A C.O.D. mail lives three
-  -- days from the start, so for one of those "short" is under a day.
+  -- Time left is a warning, not a column: on the row only when it is short;
+  -- always in the tooltip.
   row.expiryTip = daysLeft and format(L()["DETAIL_EXPIRES"], daysLeft) or nil
-  local expiry = nil
-  if daysLeft and daysLeft < (hasCOD and 1 or EXPIRY_SOON_DAYS) then
-    expiry = T.Colorize("warning", format(L()["DAYS_SHORT"], daysLeft))
-  end
+  local expiry = RowExpiryText(daysLeft, hasCOD)
 
-  -- The standard row has a line of its own under the name, so it reads left
-  -- to right in full: money, slots, category, the time left (in the quiet
-  -- tone, or the warning tone when it is short), then the invoice's
-  -- figures -- except a won auction's price, which IS the money already.
+  -- A figure switched off leaves the row and goes to its tooltip, in full.
+  if money and not showMoney then
+    facts[#facts + 1] = RowMoneyText(index, hasCOD, moneyValue, codValue, false)
+    money = nil
+  end
+  if slots and not showSlots then
+    facts[#facts + 1] = slots
+    slots = nil
+  end
+  row.factsTip = (#facts > 0) and concat(facts, "\n") or nil
+
+  -- The standard row reads left to right in full: money, slots, category, the
+  -- time left (in the quiet tone, or the warning tone when it is short), then
+  -- the invoice's figures -- except a won auction's price, which IS the money.
   if money then parts[#parts + 1] = money end
   if slots then parts[#parts + 1] = slots end
   parts[#parts + 1] = labels[kind] or kind
-  if expiry then
-    parts[#parts + 1] = expiry
-  elseif daysLeft then
-    parts[#parts + 1] = T.Colorize("textSecondary", format(L()["DAYS_SHORT"], daysLeft))
+  if showExpiry then
+    if expiry then
+      parts[#parts + 1] = expiry
+    elseif daysLeft then
+      parts[#parts + 1] = T.Colorize("textSecondary", format(L()["DAYS_SHORT"], daysLeft))
+    end
+  else
+    expiry = nil
   end
   if not purchaseShown then AppendInvoiceFigures(parts, index, false) end
-  -- The compact strip is right-aligned, so the money goes LAST and lines up
-  -- as a column down the list; the warning, when there is one, comes first.
-  if expiry then brief[#brief + 1] = expiry end
-  if slots then brief[#brief + 1] = slots end
-  if money then brief[#brief + 1] = money end
 
   local senderText = sender or L()["SENDER_UNKNOWN"]
   -- Auction mail says what happened where the sender would be: "Sold",
   -- "Won", "Expired", "Cancelled", each in its own colour, with the item's
   -- name beside it. "Auction House" carried no information the outcome
   -- does not, and the outcome was the one thing the row did not say.
-  local outcome = AUCTION_OUTCOME[kind]
-  if outcome then
-    senderText = T.Colorize(outcome.role, L()[outcome.key])
-  end
+  senderText = OutcomeSender(kind) or senderText
+  local senderColumn = ((cols.sender or 0) > 0) and cols.sender or SENDER_MAX
 
   if compact then
     -- What the row does not draw goes to the tooltip, one fact per line:
-    -- the category with the expiry, then the invoice figures. The money and
-    -- the slot count are on the row already and are not said twice.
+    -- the category, then the invoice figures. The money and the slot count
+    -- are on the row already and are not said twice.
     local tip = panel._rowTip
     Clear(tip)
     tip[#tip + 1] = labels[kind] or kind
     if not purchaseShown then AppendInvoiceFigures(tip, index, false) end
     row.detailFull = concat(tip, "\n")
 
-    -- The meta strip claims what it needs and never more than its share; what
-    -- is left is the line the sender and the subject share.
-    local metaCap = floor(textWidth * COMPACT_META_SHARE)
-    local metaText = concat(brief, COMPACT_META_JOIN)
-    T.FitText(row.Detail, metaCap, metaText, row.Detail)
-    -- FitText reports the width the string WANTS, so a strip narrower than its
-    -- allowance gives the difference back to the subject instead of leaving a
-    -- ragged gap in the middle of every row.
-    local metaWidth = (metaText ~= "") and min(ceil(T.TextWidth(row.Detail)), metaCap) or 0
-    row.Detail:SetWidth(max(metaWidth, 1))
-    if row._detailTrailing ~= trailing then
-      row._detailTrailing = trailing
-      row.Detail:ClearAllPoints()
-      row.Detail:SetPoint("RIGHT", row, "RIGHT", -trailing, 0)
-    end
+    -- Right to left: slots on the edge, money inside them, the time-left
+    -- warning inside that -- each at the width the list measured for it.
+    local room = floor(textWidth * COMPACT_META_SHARE)
+    local right = trailing
+    right = PlaceColumn(row, row.ColSlots, right, cols.slots or 0, slots, room)
+    right = PlaceColumn(row, row.ColMoney, right, cols.money or 0, money, room - (right - trailing))
+    right = PlaceColumn(row, row.ColTime, right, cols.time or 0, expiry, room - (right - trailing))
 
-    -- The sender is measured first and keeps only what it actually needs, up to
-    -- the same share of the line it gets in the standard layout: a name is what
-    -- a mailbox is scanned by, and the subject is what there is most of to cut.
-    local lineWidth = max(textWidth - ((metaWidth > 0) and (metaWidth + M.gap) or 0), 40)
-    local senderCap = min(max(floor(lineWidth * SENDER_SHARE), SENDER_MIN), SENDER_MAX)
-    senderCap = min(senderCap, floor(lineWidth / 2))
-    T.FitText(row.Sender, senderCap, senderText, row.Sender)
-    local senderWidth = min(ceil(T.TextWidth(row.Sender)), senderCap)
-    row.Sender:SetWidth(max(senderWidth, 1))
+    -- The sender keeps its column whatever this mail's name is, so the
+    -- subjects start on one line down the whole list.
+    local lineWidth = max(textWidth - (right - trailing), 40)
+    local senderWidth = min(senderColumn, floor(lineWidth / 2))
+    T.FitText(row.Sender, senderWidth, senderText, row.Sender)
     T.FitText(row.Subject, max(lineWidth - senderWidth - M.gap, 20), displaySubject, row.Subject)
   else
     row.detailFull = nil
 
-    local senderWidth = min(max(floor(textWidth * SENDER_SHARE), SENDER_MIN), SENDER_MAX)
-    senderWidth = min(senderWidth, floor(textWidth / 2))
+    local senderWidth = min(senderColumn, floor(textWidth / 2))
     T.FitText(row.Sender, senderWidth, senderText, row.Sender)
     T.FitText(row.Subject, max(textWidth - senderWidth - M.gap, 20), displaySubject, row.Subject)
     T.FitText(row.Detail, textWidth, concat(parts, ROW_META_JOIN), row.Detail)
@@ -2001,6 +2114,7 @@ local function UpdateVisibleRows(panel)
     row.stuckReason = nil
     row.detailFull = nil
     row.expiryTip = nil
+    row.factsTip = nil
     row.Warning:Hide()
     row:Hide()
   end
@@ -2173,6 +2287,20 @@ function CT.RefreshMailList(panel)
   -- by it, because the segment captions describe the inbox, not the view.
   local query = Fold(SearchQuery(panel))
 
+  -- The compact row's columns and the category buttons' counts, from this same
+  -- walk (see "the columns"). The first pooled row is the font sample, so the
+  -- measuring is done in the face the rows actually draw in.
+  local cols, counts = panel._cols, panel._catCounts
+  for key in pairs(counts) do counts[key] = nil end
+  local compact = CompactRows()
+  local sample = AcquireRow(panel, 1)
+  cols.sender = SenderColumnWidth(panel, sample.Sender)
+  cols.money, cols.slots, cols.time = 0, 0, 0
+  local measureMoney = compact and RowShows("rowMoney")
+  local measureSlots = compact and RowShows("rowSlots")
+  local measureExpiry = compact and RowShows("rowExpiry")
+  local slotsMost, anyDone, anyStuck = 0, false, false
+
   for index = 1, numItems do
     -- "Read" alone will not do: collecting marks every mail read as a side
     -- effect of loading its attachments, so a mail that was read but still
@@ -2185,10 +2313,10 @@ function CT.RefreshMailList(panel)
       toCollectCount = toCollectCount + 1
     end
     local listed = showAll or finished == wantFinished
-    local money
+    local money, cod, daysLeft, itemCount
     if listed then
       local _, _, sender, subject
-      _, _, sender, subject, money = GetInboxHeaderInfo(index)
+      _, _, sender, subject, money, cod, daysLeft, itemCount = GetInboxHeaderInfo(index)
       if query ~= "" then
         listed = Fold(sender or ""):find(query, 1, true) ~= nil
               or Fold(subject or ""):find(query, 1, true) ~= nil
@@ -2199,11 +2327,45 @@ function CT.RefreshMailList(panel)
       -- The verdict travels with the index, so the row binder never repeats the
       -- sixteen-slot scan this walk has already paid for.
       filteredDone[#filtered] = finished
-      local kind = Mail().ClassifyMail(index)
+      local kind, hasCOD = Mail().ClassifyMail(index)
       local rowEarned, rowSpent = MailEconomy(index, kind, money)
       earned = earned + rowEarned
       spent = spent + rowSpent
+
+      -- What each sweep would take: unfinished, and never C.O.D. -- the rule
+      -- the queue builder applies, so a count is a promise the button keeps.
+      if not finished and not hasCOD then
+        counts.all = (counts.all or 0) + 1
+        counts[kind] = (counts[kind] or 0) + 1
+      end
+
+      if compact then
+        if finished then anyDone = true end
+        if Mail().StuckReason(index) then anyStuck = true end
+        if measureMoney then
+          local text = RowMoneyText(index, hasCOD, tonumber(money) or 0, tonumber(cod) or 0, true)
+          if text then cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, text)) end
+        end
+        if measureSlots then slotsMost = max(slotsMost, tonumber(itemCount) or 0) end
+        if measureExpiry then
+          local text = RowExpiryText(daysLeft, hasCOD)
+          if text then cols.time = max(cols.time, MeasureWith(panel, sample.ColTime, text)) end
+        end
+      end
     end
+  end
+
+  if slotsMost > 0 then
+    cols.slots = MeasureWith(panel, sample.ColSlots, ns.Plural("COUNT_SLOTS", slotsMost))
+  end
+  -- The trailing reserve every compact row keeps: the marks' room whenever any
+  -- listed row carries one, so no row's columns stand anywhere else.
+  do
+    local M = Th().Metrics
+    local trail = M.inset
+    if anyDone then trail = trail + ROW_DELETE_COMPACT + M.tightGap end
+    if anyStuck then trail = trail + ROW_WARNING_COMPACT + M.tightGap end
+    cols.trail = trail
   end
 
   local _, _, stride = RowMetrics()
@@ -2242,6 +2404,8 @@ function CT.RefreshMailList(panel)
   -- row, and UpdateTabCounts ends in the one layout pass that measures it.
   UpdateHint(panel, numItems, totalItems)
   CT.UpdateTabCounts(panel)
+  -- The category buttons carry counts from this walk too.
+  CT.RefreshCategoryButtons(panel)
   -- The stuck registry can have changed under this refresh, so the idle line is
   -- re-rendered rather than left showing whatever the last inbox event computed.
   RefreshIdleSummary()
@@ -3773,9 +3937,25 @@ local function LayoutGrid(panel)
   -- Captions are measured against the column they landed in. A caption that
   -- does not fit is truncated and its full text goes to the button's tooltip;
   -- it is never clipped, and word wrap is never left on inside a 26px button.
+  --
+  -- Each button also says how many mails it would collect, and one that would
+  -- collect nothing is disabled: a sweep that can only answer "Done" is not
+  -- worth a click, and the grey says so before the click rather than after.
+  -- The count follows the segments' own switch; the disabling does not. The
+  -- primary under a selection names its own count already.
+  local counts = panel._catCounts or {}
+  local withCounts = ShowTabCounts()
+  local picked = Selecting(panel)
   for i = 1, #buttons do
     local button = buttons[i]
-    T.FitText(button:GetFontString(), button:GetWidth() - M.gap, button.caption, button)
+    local own = (i == 1 and picked)
+    local n = counts[CATEGORY_ORDER[i]] or 0
+    local caption = button.caption
+    if withCounts and n > 0 and not own then
+      caption = caption .. " (" .. FormatCount(n) .. ")"
+    end
+    button:SetEnabled(own or n > 0)
+    T.FitText(button:GetFontString(), button:GetWidth() - M.gap, caption, button)
   end
 end
 
@@ -3875,9 +4055,13 @@ function CT.Build(parent)
   panel._filteredDone = {}
   panel._rows = {}
   panel._rowParts = {}
-  -- The compact row's inline subset of the meta line. A second reused table
-  -- rather than a second pass: both are filled by the one walk in BindRow.
-  panel._rowBrief = {}
+  -- The figures an option took off a row, for its tooltip.
+  panel._rowFacts = {}
+  -- The list's column widths and reserve, measured by RefreshMailList for
+  -- every row it binds (see "the columns").
+  panel._cols = {}
+  -- What each category button would collect right now, from the same walk.
+  panel._catCounts = {}
 
   panel._rowTip = {}
   -- Top row: the view switch, the search box at the far right, and the hint

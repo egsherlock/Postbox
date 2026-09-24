@@ -10,6 +10,22 @@
   yet been read on a Traditional Chinese client, so if a word is off, please
   say so on GitHub.
 
+### Improved
+
+- **Mail rows line up.** Names sit in one column as wide as "AH Expired", so
+  every item name starts in the same place, and gold, slots and time left
+  stand in their own right-aligned columns down the list.
+- **Choose what each row shows.** Gold, slots and time left can each be
+  switched off (Options, Mail tab, "Show on each mail"). Whatever you switch
+  off moves to the row's tooltip rather than disappearing.
+- **Category buttons count.** "All sold (7)", and a button with nothing to
+  collect is greyed out rather than answering "Done" when clicked.
+- **Mailbox memory matches the mail list:** auction mail reads "AH Sold" and
+  "AH Won" in colour with the item's name, in the same columns, following the
+  same switches.
+- Compact rows show money as its largest coin ("1309g", "19g", "33s"); the
+  full sum is in the mail.
+
 ## 1.39.0
 
 ### New

@@ -154,6 +154,19 @@ local function CaptureNow()
         local ok, reason = pcall(service.StuckReason, index)
         stuck = (ok and reason) and true or false
       end
+      -- What kind of mail it is, so the row can say "AH Sold" in its tone as
+      -- the mail list does; and what a won auction cost, which only its
+      -- invoice knows. "other" is not stored: it is what a missing kind means.
+      local kind, paid
+      if service and type(service.ClassifyMail) == "function" then
+        local ok, k = pcall(service.ClassifyMail, index)
+        if ok and k ~= "other" then kind = k end
+      end
+      if kind == "bought" and type(GetInboxInvoiceInfo) == "function" then
+        local ok, invoiceType, _, _, bid = pcall(GetInboxInvoiceInfo, index)
+        bid = ok and tonumber(bid) or 0
+        if invoiceType == "buyer" and bid > 0 then paid = bid end
+      end
 
       mails[#mails + 1] = {
         stuck   = stuck,
@@ -165,6 +178,8 @@ local function CaptureNow()
         items   = tonumber(itemCount) or 0,
         read    = wasRead and true or false,
         link    = link,
+        kind    = kind,
+        paid    = paid,
         -- Absolute, so "has this expired since I saw it" is answerable in a
         -- later session without trusting a stale daysLeft.
         expires = now + math.floor((tonumber(daysLeft) or 0) * 86400),
@@ -338,16 +353,15 @@ local function BuildRow(parent, index)
   row.Icon:SetPoint("LEFT", row, "LEFT", 4, 0)
   row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-  row.Expiry = ns.Theme.CreateText(row, "tiny")
-  row.Expiry:SetPoint("RIGHT", row, "RIGHT", -6, 0)
-  row.Expiry:SetJustifyH("RIGHT")
-  -- Wide enough for deDE's "abgelaufen", the longest word this column shows.
-  row.Expiry:SetWidth(52)
-  row.Expiry:SetAlpha(0.7)
-
-  row.Value = ns.Theme.CreateText(row, "small")
-  row.Value:SetPoint("RIGHT", row.Expiry, "LEFT", -8, 0)
-  row.Value:SetJustifyH("RIGHT")
+  -- The same three figure columns the compact mail list stands at its right
+  -- edge -- time left, money, slots -- placed on fill, because where each
+  -- stands depends on the whole snapshot (see FillRow).
+  row.ColTime = ns.Theme.CreateText(row, "secondary")
+  row.ColMoney = ns.Theme.CreateText(row, "secondary")
+  row.ColSlots = ns.Theme.CreateText(row, "secondary")
+  row.ColTime:SetJustifyH("RIGHT")
+  row.ColMoney:SetJustifyH("RIGHT")
+  row.ColSlots:SetJustifyH("RIGHT")
 
   -- The same marker the collect screen puts on a refused mail: the client's
   -- warning-triangle atlas where it exists, the "!" only as the fallback
@@ -368,15 +382,15 @@ local function BuildRow(parent, index)
   ns.Theme.SetColor(row.Warning, "warning")
   row.Warning:Hide()
 
+  -- Sender and subject in the mail list's own roles and widths, so a memory
+  -- row reads as the row it was.
   row.Sender = ns.Theme.CreateText(row, "label")
   row.Sender:SetPoint("LEFT", row.Icon, "RIGHT", 6, 0)
-  row.Sender:SetWidth(92)
   row.Sender:SetJustifyH("LEFT")
   row.Sender:SetWordWrap(false)
 
-  row.Subject = ns.Theme.CreateText(row, "small")
+  row.Subject = ns.Theme.CreateText(row, "value")
   row.Subject:SetPoint("LEFT", row.Sender, "RIGHT", 6, 0)
-  row.Subject:SetPoint("RIGHT", row.Value, "LEFT", -8, 0)
   row.Subject:SetJustifyH("LEFT")
   row.Subject:SetWordWrap(false)
 
@@ -406,6 +420,12 @@ local function BuildRow(parent, index)
     if row.fullSender and row.fullSender ~= "" then
       GameTooltip:AddLine(row.fullSender, 0.7, 0.7, 0.7)
     end
+    -- The figures an option keeps off the row, and the time left, which the
+    -- row shows only when it is short.
+    if row.factsTip then
+      for line in row.factsTip:gmatch("[^\n]+") do GameTooltip:AddLine(line, 1, 1, 1, true) end
+    end
+    if row.expiryTip then GameTooltip:AddLine(row.expiryTip, 0.75, 0.75, 0.75) end
     GameTooltip:Show()
   end)
   hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -413,7 +433,66 @@ local function BuildRow(parent, index)
   return row
 end
 
-local function FillRow(row, mail, now)
+-- The mail row rules (Core/CollectTab.lua's CT.RowRules), or nil when the
+-- collect screen has not loaded -- in which case the row falls back to plain
+-- text, which is still a correct if plainer row.
+local function Rules()
+  return ns.CollectTab and ns.CollectTab.RowRules or nil
+end
+
+-- mail, now -> the row's three figures as coloured text (or nil each), what
+-- the switches keep off the row for its tooltip, and the time-left line.
+local function Figures(mail, now)
+  local R = Rules()
+  local T = ns.Theme
+  local hasCOD = mail.cod > 0
+  local money = R and R.MoneyText(hasCOD, mail.money, mail.cod, mail.paid, true) or nil
+  local slots = (mail.items > 0) and T.Colorize("accent", ns.Plural("COUNT_SLOTS", mail.items)) or nil
+
+  -- Time left as the mail list shows it: only when short, in the warning
+  -- tone -- and "expired" counts as short.
+  local expiryText, expired = ExpiryText(mail.expires, now)
+  local left = (tonumber(mail.expires) or 0) - now
+  local soon = (R and R.EXPIRY_SOON_DAYS or 3) * 86400
+  if hasCOD then soon = 86400 end
+  local expiry = (expired or left < soon) and T.Colorize("warning", expiryText) or nil
+
+  local facts = {}
+  if R and money and not R.Shows("rowMoney") then
+    facts[#facts + 1] = R.MoneyText(hasCOD, mail.money, mail.cod, mail.paid, false)
+    money = nil
+  end
+  if R and slots and not R.Shows("rowSlots") then
+    facts[#facts + 1] = slots
+    slots = nil
+  end
+  if R and not R.Shows("rowExpiry") then expiry = nil end
+  return money, slots, expiry, (#facts > 0) and table.concat(facts, "\n") or nil, expiryText, expired
+end
+
+-- The snapshot's column widths, measured over every mail in it: the same
+-- "widest entry anywhere" rule the mail list uses, so nothing twitches as the
+-- window scrolls. `sample` is a built row, for its fonts.
+local function MeasureColumns(frame, mails, now, sample)
+  local R = Rules()
+  local cols = frame._cols or {}
+  frame._cols = cols
+  cols.money, cols.slots, cols.time, cols.stuck = 0, 0, 0, false
+  cols.sender = R and R.SenderColumn(frame, sample.Sender) or 92
+  if not R then return cols end
+  for i = 1, #mails do
+    local money, slots, expiry = Figures(mails[i], now)
+    if money then cols.money = math.max(cols.money, R.Measure(frame, sample.ColMoney, money)) end
+    if slots then cols.slots = math.max(cols.slots, R.Measure(frame, sample.ColSlots, slots)) end
+    if expiry then cols.time = math.max(cols.time, R.Measure(frame, sample.ColTime, expiry)) end
+    if mails[i].stuck then cols.stuck = true end
+  end
+  return cols
+end
+
+local function FillRow(row, mail, now, cols)
+  local R = Rules()
+  local T = ns.Theme
   row.fullSubject = mail.subject
   row.fullSender = mail.sender
   row.itemLink = mail.link
@@ -425,31 +504,33 @@ local function FillRow(row, mail, now)
     row.Icon:Hide()
   end
 
-  -- The marker takes the row's last few pixels when a mail is stuck, so
-  -- the expiry shifts left rather than being drawn over.
   row.Warning:SetShown(mail.stuck and true or false)
-  row.Expiry:ClearAllPoints()
-  row.Expiry:SetPoint("RIGHT", row, "RIGHT", mail.stuck and -18 or -6, 0)
 
-  row.Sender:SetText(mail.sender)
-  row.Subject:SetText(mail.subject)
+  local money, slots, expiry, facts, expiryText, expired = Figures(mail, now)
+  row.factsTip = facts
+  row.expiryTip = expiryText
 
-  local money = ns.Helpers and ns.Helpers.FormatMoney
-  if mail.cod > 0 then
-    row.Value:SetText(L["MEMORY_COD"])
-    row.Value:SetTextColor(0.90, 0.45, 0.35)
-  elseif mail.money > 0 and money then
-    row.Value:SetText(money(mail.money))
-    row.Value:SetTextColor(1, 1, 1)
-  elseif mail.items > 0 then
-    row.Value:SetText(ns.Plural("COUNT_SLOTS", mail.items))
-    row.Value:SetTextColor(1, 1, 1)
-  else
-    row.Value:SetText("")
+  -- Right to left, as the compact mail list: slots on the edge, money inside
+  -- them, time left inside that, each at the width the snapshot measured.
+  -- The stuck marker's room is kept on every row when any mail has one.
+  local width = WINDOW_WIDTH - 44
+  local trail = 6 + (cols.stuck and 16 or 0)
+  local textWidth = width - (4 + 18 + 6) - trail
+  local right = trail
+  if R then
+    local room = math.floor(textWidth * R.META_SHARE)
+    right = R.PlaceColumn(row, row.ColSlots, right, cols.slots, slots, room)
+    right = R.PlaceColumn(row, row.ColMoney, right, cols.money, money, room - (right - trail))
+    right = R.PlaceColumn(row, row.ColTime, right, cols.time, expiry, room - (right - trail))
   end
 
-  local expiryText, expired = ExpiryText(mail.expires, now)
-  row.Expiry:SetText(expiryText)
+  local senderText = (R and R.OutcomeSender(mail.kind)) or mail.sender
+  local subject = (ns.Helpers and ns.Helpers.ShortSubject) and ns.Helpers.ShortSubject(mail.subject) or mail.subject
+  local lineWidth = math.max(textWidth - (right - trail), 40)
+  local senderWidth = math.min(cols.sender, math.floor(lineWidth / 2))
+  T.FitText(row.Sender, senderWidth, senderText, nil)
+  T.FitText(row.Subject, math.max(lineWidth - senderWidth - 6, 20), subject, nil)
+
   -- A mail past its date is PROBABLY gone (returned or deleted by the
   -- server); the row stays listed -- it was true when seen -- but visibly
   -- belongs to the past.
@@ -543,12 +624,11 @@ local function Refresh(frame)
 
   frame.Card:SetShown(count > 0)
   for i = 1, count do
-    local row = frame.Rows[i]
-    if not row then
-      row = BuildRow(frame.ListChild, i)
-      frame.Rows[i] = row
-    end
-    FillRow(row, mails[i], now)
+    if not frame.Rows[i] then frame.Rows[i] = BuildRow(frame.ListChild, i) end
+  end
+  local cols = (count > 0) and MeasureColumns(frame, mails, now, frame.Rows[1]) or nil
+  for i = 1, count do
+    FillRow(frame.Rows[i], mails[i], now, cols)
   end
   for i = count + 1, #frame.Rows do frame.Rows[i]:Hide() end
   frame.ListChild:SetHeight(math.max(1, count * ROW_HEIGHT))
@@ -732,6 +812,13 @@ end
 -- contract: the real window is on screen and it is the truth. Opens beside
 -- the minimap rather than under the cursor -- the icon is small and an
 -- anchored window would cover the map.
+-- The options panel's row switches: repaint the window if it is showing. A
+-- hidden window is filled fresh on its next open anyway.
+function MM.Refresh()
+  local frame = MM._frame
+  if frame and frame:IsShown() then Refresh(frame) end
+end
+
 function MM.Toggle()
   if not MemoryEnabled() then return end
   local state = MailboxState()
