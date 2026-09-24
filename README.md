@@ -224,7 +224,7 @@ from a mail window. Postbox rolls its own.
 
 ## Languages
 
-English, Français, Deutsch, Español, Русский, 简体中文 — complete, not partial. Strings live in
+English, Français, Deutsch, Español, Русский, 简体中文, 繁體中文 — complete, not partial. Strings live in
 `Core/Locales.lua` and fall back to English per key, so corrections and new languages
 are safe to contribute piecemeal. Counted strings are declared as plural families
 with per-locale rules (Russian selects one/few/many; French counts zero as one)

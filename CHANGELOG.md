@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.40.0
+
+### New
+
+- **Postbox speaks Traditional Chinese.** The whole addon — every window,
+  every message, every tooltip — in the words Taiwan's servers use: 拍賣場,
+  分身, 戰隊, 伺服器. With thanks to samuelbears, who translated it. It has not
+  yet been read on a Traditional Chinese client, so if a word is off, please
+  say so on GitHub.
+
 ## 1.39.0
 
 ### New

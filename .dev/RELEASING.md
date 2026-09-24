@@ -15,7 +15,7 @@ the thing this checklist exists to prevent.
       documented only on GitHub is invisible to most of the people using the addon.
 - [ ] **`Postbox.toc`** `## Notes` — only if the one-line pitch changed. It is kept
       identical to the CurseForge summary on purpose.
-- [ ] **Locales** — every new user-facing string in all six blocks.
+- [ ] **Locales** — every new user-facing string in all seven blocks.
 - [ ] **Checkers** — all five in `.dev/tools/` clean. A bare run checks the whole
       addon.
 

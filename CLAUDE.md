@@ -51,7 +51,7 @@ easiest to forget, because both are player-facing and neither is in the code:
 ## House rules worth knowing
 
 - **No libraries.** `Lib/` is hand-rolled. No Ace, no LibStub, nothing embedded.
-- **Locales are complete, not partial** — six blocks in `Core/Locales.lua`, and
+- **Locales are complete, not partial** — seven blocks in `Core/Locales.lua`, and
   a new user-facing string is added to all of them.
 - **Postbox never touches Blizzard's mail code.** Read `COMBAT_TAINT.md` before
   changing anything near `MailFrame`, the UI-panel layout, or the open/close
