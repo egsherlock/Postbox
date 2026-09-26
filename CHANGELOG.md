@@ -14,7 +14,7 @@
   slots, the rest into the queue behind them. Works in the default bags,
   EllesmereUI's and Baganator's. Hover "Attachments" for a reminder.
 - **Every character's mailbox, in one place.** The mailbox memory (left-click
-  the minimap icon, or /postbox mail) has a character switcher in its corner,
+  the minimap icon, or /postbox mail) has a character switcher at its foot,
   listing every character with mail waiting.
 - **New mail shows up in the memory as rows.** When an auction sells, expires
   or is won while you are away, the memory lists it by item ("AH Sold -
@@ -36,6 +36,12 @@
 
 ### Improved
 
+- **One inbox instead of three views.** The Mail tab is now Inbox and
+  History. The inbox lists what still holds something first, then the read
+  mail with nothing left in it, under a divider that deletes them in one
+  click. The Done and All views, and the option for All, are gone.
+- **Click "Stuck: N"** in the title bar to see only the mail the game would
+  not hand over, and click it again to see everything.
 - **Mail rows line up.** Names sit in one column, as wide as the longest name
   listed and never wider than "AH Expired", so every item name starts in the
   same place. Gold, slots and time left sit at the right edge of each row,
@@ -57,6 +63,8 @@
 
 ### Fixed
 
+- Hovering the icon of a mail with no item in the mailbox memory raised a
+  Lua error.
 - **Mailbox memory lost track past 50 mails**, and did not count an unread
   letter with nothing attached. Its count now matches the Collect tab.
 

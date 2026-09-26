@@ -104,7 +104,14 @@ end
 -- appearance or behaviour depends on comes from that row's own verdict
 -- (`row.mailDone`), which is why a done mail carries its delete control and
 -- opens on any click whether it is being shown under "Done" or under "All".
-local VIEW_COLLECT, VIEW_DONE, VIEW_ALL = "collect", "done", "all"
+-- Two views. The inbox lists every mail: what still holds something first,
+-- then -- under a divider that carries their delete -- the read mails with
+-- nothing left. (Collect / Done / All used to be three views of the same box,
+-- two of them overlapping.) History is what Postbox took out.
+local VIEW_COLLECT = "collect"
+-- The divider's place in the inbox list. Inbox indices start at 1, so 0 can
+-- never name a mail; everything that walks the list skips it.
+local DIVIDER = 0
 -- A week of what Postbox collected here (Core/MailMemory.lua, 2c). Not a part
 -- of the inbox, so not in the counts' arithmetic: an icon after the three.
 local VIEW_HISTORY = "history"
@@ -318,10 +325,10 @@ end
 -- The third segment. Collect and Done are the two halves of the inbox and
 -- always exist; All is their union, which some players read as one screen
 -- too many. Default on -- it is what the screen has always offered.
-local function ShowAllSegment()
-  local UI = ns.MailboxUI
-  if not UI or type(UI.GetOption) ~= "function" then return true end
-  return UI.GetOption("showAllTab") and true or false
+-- The stuck filter: the title bar's "Stuck: N", clicked, narrows the inbox
+-- to the mails the server refused. Off by itself when nothing is stuck.
+local function StuckOnly(panel)
+  return panel and panel._stuckOnly == true
 end
 
 -- The five category sweeps under the full-width Collect button. Default on,
@@ -1135,9 +1142,7 @@ local function BuildViewToggle(panel)
   -- "what is left, what is finished, everything" -- the order the counts add up
   -- in, which is the order a reader checks them in.
   local segments = {
-    { id = VIEW_COLLECT, label = L()["VIEW_TO_COLLECT"] },
-    { id = VIEW_DONE,    label = L()["VIEW_DONE"] },
-    { id = VIEW_ALL,     label = L()["VIEW_ALL"] },
+    { id = VIEW_COLLECT, label = L()["VIEW_INBOX"] },
   }
 
   for i = 1, #segments do
@@ -1279,6 +1284,27 @@ end
 function CT.ClearSearch(panel)
   local box = panel and panel.SearchBox
   if box and box:GetText() ~= "" then box:SetText("") end
+  if panel then panel._stuckOnly = false end
+end
+
+-- The title bar's "Stuck: N", clicked (Core/MailboxUI.lua). Toggles the
+-- inbox between everything and only the refused mails, and puts the inbox
+-- on screen if History was.
+function CT.ToggleStuckFilter(panel)
+  if not panel then return end
+  panel._stuckOnly = not StuckOnly(panel) and Mail().StuckCount() > 0
+  if panel.viewMode ~= VIEW_COLLECT then
+    SetViewMode(panel, VIEW_COLLECT)
+  else
+    if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
+    CT.RefreshMailList(panel)
+  end
+  local UI = ns.MailboxUI
+  if UI and UI.UpdateStatusSummary then UI.UpdateStatusSummary() end
+end
+
+function CT.StuckFilterOn(panel)
+  return StuckOnly(panel)
 end
 
 -------------------------------------------------------------
@@ -1429,11 +1455,7 @@ local function VisibleSegments(container)
   local shown = {}
   for i = 1, #container.buttons do
     local seg = container.buttons[i]
-    if seg.segId ~= VIEW_ALL or ShowAllSegment() then
-      shown[#shown + 1] = seg
-    else
-      seg:Hide()
-    end
+    shown[#shown + 1] = seg
   end
   for i = 1, #shown do shown[i]:Show() end
   return shown
@@ -1493,10 +1515,6 @@ end
 -- Collect -- and that path re-lays the row on its way through.
 function CT.RefreshSegments(panel)
   if not panel or not panel.ViewToggle then return end
-  if not ShowAllSegment() and panel.viewMode == VIEW_ALL then
-    SetViewMode(panel, VIEW_COLLECT)
-    return
-  end
   LayoutViewToggle(panel)
 end
 
@@ -1526,13 +1544,8 @@ function CT.UpdateTabCounts(panel)
     local seg = container.buttons[i]
     local base = seg.baseLabel or seg:GetText() or ""
     if show then
-      local count = toCollect
-      if seg.segId == VIEW_DONE then
-        count = done
-      elseif seg.segId == VIEW_ALL then
-        count = total
-      end
-      seg:SetText(base .. " (" .. FormatCount(count) .. ")")
+      -- The inbox counts what is still to collect: the number worth acting on.
+      seg:SetText(base .. " (" .. FormatCount(toCollect) .. ")")
     else
       seg:SetText(base)
     end
@@ -2016,6 +2029,8 @@ local function BindRow(panel, row, index, position, compact, done)
   -- from. `position` is the DISPLAYED position, never the inbox index.
   T.StyleMailRow(row, position, false)
   PaintRowSelection(panel, row)
+  -- A finished mail is kept, not waiting: it sits back under the divider.
+  row:SetAlpha(showDelete and 0.6 or 1)
 
   T.SetColor(row.Indicator, wasRead and "read" or "unread")
   row.Icon:SetTexture(Mail().GetMailIcon(index))
@@ -2433,7 +2448,18 @@ local function UpdateVisibleRows(panel)
   if historyView then panel._rowStride = COMPACT_ROW_HEIGHT + ROW_GAP end
 
   local used = 0
+  local divider = panel.Divider
+  if divider then divider:Hide() end
   for i = first, last do
+    if filtered[i] == DIVIDER then
+      local y = -((i - 1) * stride)
+      divider:SetHeight(height)
+      divider:ClearAllPoints()
+      divider:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
+      divider:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
+      divider.Label:SetText(L()("INBOX_READ_DIVIDER", panel._readCount or 0))
+      divider:Show()
+    else
     used = used + 1
     local row = AcquireRow(panel, used)
     -- Before the bind, and before the row is positioned: this is what gives a
@@ -2447,6 +2473,7 @@ local function UpdateVisibleRows(panel)
     row:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
     row:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
     BindRow(panel, row, filtered[i], i, compact, panel._filteredDone[i])
+    end
   end
 
   for i = used + 1, #panel._rows do
@@ -2563,7 +2590,9 @@ local function UpdateHint(panel, numItems, totalItems)
   if not hint then return end
 
   local truncated = totalItems > numItems
-  if truncated then
+  if StuckOnly(panel) then
+    hint:SetText(Th().Colorize("warning", L()["HINT_STUCK_ONLY"]))
+  elseif truncated then
     local template = RawKey("MSG_INBOX_TRUNCATED")
     -- Until the locale pass adds the key, a bare ratio: no language at all, so
     -- it cannot read wrongly in any of the five.
@@ -2616,11 +2645,14 @@ function CT.RefreshMailList(panel)
   Clear(filtered)
   Clear(filteredDone)
 
-  -- The all view applies no filter; the other two keep the mails whose verdict
-  -- matches. One predicate, one pass, whichever of the three is showing.
+  -- The inbox lists every mail; what is finished goes after the rest, under
+  -- the divider. One pass either way.
   local view = panel.viewMode
-  local showAll = (view == VIEW_ALL)
-  local wantFinished = (view == VIEW_DONE)
+  local tail, tailDone = panel._tail, panel._tailDone
+  Clear(tail)
+  -- Nothing stuck any more: the filter has nothing to show and lets go.
+  if StuckOnly(panel) and Mail().StuckCount() == 0 then panel._stuckOnly = false end
+  local stuckOnly = StuckOnly(panel)
   local earned, spent = 0, 0
   -- Tallied here rather than by a second walk anywhere else. Every consumer
   -- wants the same verdict for the same mails, and that verdict is the expensive
@@ -2661,7 +2693,7 @@ function CT.RefreshMailList(panel)
     else
       toCollectCount = toCollectCount + 1
     end
-    local listed = showAll or finished == wantFinished
+    local listed = not stuckOnly or Mail().StuckReason(index) ~= nil
     local money, cod, daysLeft, itemCount, sender
     if listed then
       local _, _, subject
@@ -2672,10 +2704,14 @@ function CT.RefreshMailList(panel)
       end
     end
     if listed then
-      filtered[#filtered + 1] = index
       -- The verdict travels with the index, so the row binder never repeats the
       -- sixteen-slot scan this walk has already paid for.
-      filteredDone[#filtered] = finished
+      if finished then
+        tail[#tail + 1] = index
+      else
+        filtered[#filtered + 1] = index
+        filteredDone[#filtered] = false
+      end
       local kind, hasCOD = Mail().ClassifyMail(index)
       local rowEarned, rowSpent = MailEconomy(index, kind, money)
       earned = earned + rowEarned
@@ -2720,6 +2756,17 @@ function CT.RefreshMailList(panel)
     end
   end
 
+  -- The finished mails, after the divider.
+  panel._readCount = #tail
+  if #tail > 0 then
+    filtered[#filtered + 1] = DIVIDER
+    filteredDone[#filtered] = true
+    for i = 1, #tail do
+      filtered[#filtered + 1] = tail[i]
+      filteredDone[#filtered] = true
+    end
+  end
+
   if slotsMost > 0 then
     cols.slots = MeasureWith(panel, sample.ColSlots, ns.Plural("COUNT_SLOTS", slotsMost))
   end
@@ -2756,15 +2803,11 @@ function CT.RefreshMailList(panel)
   -- One sentence per view, each true of exactly that view: "nothing to collect"
   -- on a mailbox that still holds finished mail would be right and would read as
   -- a lie on the all view, where those mails are on screen.
-  local emptyKey = "EMPTY_LIST"
+  local emptyKey = "EMPTY_LIST_ALL"
   if query ~= "" then
     emptyKey = "EMPTY_LIST_SEARCH"
   elseif view == VIEW_HISTORY then
     emptyKey = "EMPTY_LIST_HISTORY"
-  elseif showAll then
-    emptyKey = "EMPTY_LIST_ALL"
-  elseif wantFinished then
-    emptyKey = "EMPTY_LIST_DONE"
   end
   panel.Empty:SetText(L()[emptyKey])
   panel.Empty:SetShown(listed == 0)
@@ -4343,7 +4386,7 @@ end
 -- which is exactly as useful there as on the collect view, since a category
 -- run works on the inbox and not on the listing.
 local function FooterHeight(panel)
-  if panel.viewMode == VIEW_DONE or panel.viewMode == VIEW_HISTORY then return GRID_BUTTON_HEIGHT end
+  if panel.viewMode == VIEW_HISTORY then return GRID_BUTTON_HEIGHT end
   if not ShowCategoryButtons() then return GRID_PRIMARY_HEIGHT end
   return GRID_PRIMARY_HEIGHT + Th().Metrics.gap * 2 + GRID_BUTTON_HEIGHT * 2
 end
@@ -4401,15 +4444,15 @@ end
 function SetViewMode(panel, id)
   if panel.viewMode == id then return end
   panel.viewMode = id
-  local doneView = (id == VIEW_DONE)
   local historyView = (id == VIEW_HISTORY)
   -- A selection was made over one view's rows; the next view lists others.
   ClearSelection(panel)
+  -- The stuck filter is about the inbox.
+  if historyView then panel._stuckOnly = false end
 
-  -- See FooterHeight for why only the done and history views swap the footer.
+  -- See FooterHeight for why only the history view swaps the footer.
   panel.Footer:SetHeight(FooterHeight(panel))
-  panel.Grid:SetShown(not doneView and not historyView)
-  panel.DeleteAllDone:SetShown(doneView)
+  panel.Grid:SetShown(not historyView)
   panel.HistoryNote:SetShown(historyView)
 
   panel.MailListScroll:SetVerticalScroll(0)
@@ -4449,6 +4492,9 @@ function CT.Build(parent)
   panel._cols = {}
   -- What each category button would collect right now, from the same walk.
   panel._catCounts = {}
+  -- The inbox's finished mails, gathered by the walk to go after the divider.
+  panel._tail = {}
+  panel._tailDone = {}
   -- The history view: its listed entries, row pool and columns.
   panel._history = {}
   panel._hrows = {}
@@ -4488,13 +4534,6 @@ function CT.Build(parent)
   panel.HistoryNote:SetText(L()["HISTORY_NOTE"])
   panel.HistoryNote:Hide()
 
-  panel.DeleteAllDone = T.CreateButton(nil, panel.Footer)
-  panel.DeleteAllDone:SetPoint("TOPLEFT", panel.Footer, "TOPLEFT", 0, 0)
-  panel.DeleteAllDone:SetPoint("TOPRIGHT", panel.Footer, "TOPRIGHT", 0, 0)
-  panel.DeleteAllDone:SetHeight(GRID_BUTTON_HEIGHT)
-  panel.DeleteAllDone:SetText(L()["BTN_DELETE_ALL_DONE"])
-  panel.DeleteAllDone:SetScript("OnClick", function() DeleteAllDone(panel) end)
-  panel.DeleteAllDone:Hide()
 
   -- The totals banner: a divider, not a panel, aligned to the same inset as the
   -- grid below it so the columns line up. Its fill is `bandFill`, which is held
@@ -4553,6 +4592,40 @@ function CT.Build(parent)
   if childWidth <= 10 then childWidth = FALLBACK_PANEL_WIDTH - M.scrollGutter end
   panel.MailListChild:SetSize(childWidth, 1)
   scroll:SetScrollChild(panel.MailListChild)
+
+  -- The inbox divider: "Read, nothing left (3)" with their delete at its right.
+  -- A row's slot in the list, so the virtualiser places it like one; its own
+  -- frame, because nothing about it is a mail.
+  local divider = CreateFrame("Frame", nil, panel.MailListChild)
+  divider.Rule = divider:CreateTexture(nil, "ARTWORK")
+  divider.Rule:SetHeight(1)
+  divider.Rule:SetPoint("TOPLEFT", divider, "TOPLEFT", M.inset, -1)
+  divider.Rule:SetPoint("TOPRIGHT", divider, "TOPRIGHT", -M.inset, -1)
+  divider.Rule:SetTexture(WHITE)
+  T.SetColor(divider.Rule, "textSecondary")
+  divider.Rule:SetAlpha(0.25)
+  divider.Label = T.CreateText(divider, "secondary")
+  divider.Label:SetPoint("LEFT", divider, "LEFT", M.inset + ROW_INDICATOR + 2, 0)
+  divider.Delete = CreateFrame("Button", nil, divider)
+  divider.Delete:SetPoint("RIGHT", divider, "RIGHT", -M.inset, 0)
+  divider.Delete.Text = T.CreateText(divider.Delete, "secondary")
+  divider.Delete.Text:SetPoint("RIGHT")
+  divider.Delete.Text:SetText(DeleteLabel())
+  divider.Delete:SetSize(max(T.TextWidth(divider.Delete.Text) + 8, 40), 18)
+  divider.Delete:SetScript("OnClick", function() DeleteAllDone(panel) end)
+  divider.Delete:SetScript("OnEnter", function(self)
+    Th().SetColor(self.Text, "negative")
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L()["BTN_DELETE_ALL_DONE"])
+    GameTooltip:AddLine(RawKey("HINT_DELETE_READ") or "", 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  divider.Delete:SetScript("OnLeave", function(self)
+    Th().SetColor(self.Text, "textSecondary")
+    GameTooltip:Hide()
+  end)
+  divider:Hide()
+  panel.Divider = divider
 
   -- HookScript, not SetScript: the template installs its own handlers here and
   -- replacing them desynchronises the scroll bar.

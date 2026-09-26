@@ -135,7 +135,6 @@ local OPTION_DEFAULTS = {
   -- The collect screen's third segment (Collect / Done / All). On: it is
   -- what the screen has always offered, and it is the union of the other
   -- two rather than a third idea to learn.
-  showAllTab      = true,
   -- The minimap icon's left-click snapshot (Core/MailMemory.lua). On: the
   -- feature is capture-light and idle when unused, and a feature nobody can
   -- find switched off does not exist.
@@ -581,9 +580,18 @@ function UI.UpdateStatusSummary()
     -- to pass. Colouring the text itself keeps the warning with the warning.
     local text = LF("STATUS_STUCK", stuck)
     local theme = ns.Theme
-    if theme and theme.Colorize then text = theme.Colorize("warning", text) end
+    -- In the accent while it is filtering the inbox: a pressed control, not
+    -- a warning, for as long as the list shows only these.
+    local panel = CollectPanel()
+    local filtering = ns.CollectTab and ns.CollectTab.StuckFilterOn and ns.CollectTab.StuckFilterOn(panel)
+    if theme and theme.Colorize then text = theme.Colorize(filtering and "accent" or "warning", text) end
     status.summary = text
   end
+  -- The count is a control only while there is one to click; otherwise the
+  -- title bar drags from under it like anywhere else.
+  local frame = UI._frame
+  local hover = frame and frame.StatusHover
+  if hover and hover.SetMouseClickEnabled then hover:SetMouseClickEnabled(stuck > 0) end
 
   -- The saved record renders NOTHING of its own. Its stuck fingerprints were
   -- seeded into the live registry at mail open, so anything that still
@@ -1676,10 +1684,24 @@ local function BuildFrame()
             GameTooltip:AddLine(LF("STUCK_LINE", d.reason), 0.75, 0.75, 0.75, true)
           end
         end
+        local collect = ns.CollectTab
+        local on = collect and collect.StuckFilterOn and collect.StuckFilterOn(CollectPanel())
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(L(on and "STUCK_FILTER_OFF_TIP" or "STUCK_FILTER_ON_TIP"), 0.6, 0.6, 0.6, true)
       end
       GameTooltip:Show()
     end)
     statusHover:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- A click on "Stuck: N" narrows the inbox to those mails, and back.
+    statusHover:SetScript("OnMouseUp", function(_, button)
+      if button ~= "LeftButton" then return end
+      local mail = ns.MailService
+      local stuck = mail and type(mail.StuckCount) == "function" and mail.StuckCount() or 0
+      if stuck == 0 then return end
+      local collect = ns.CollectTab
+      if collect and collect.ToggleStuckFilter then collect.ToggleStuckFilter(CollectPanel()) end
+    end)
+    frame.StatusHover = statusHover
   end
 
   frame.OptionsButton = BuildOptionsButton(frame, theme)

@@ -756,7 +756,7 @@ local function BuildRow(parent, index)
     end
     if not row.fullSubject or row.fullSubject == "" then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(row.fullSubject, 1, 1, 1, true)
+    GameTooltip:SetText(row.fullSubject, 1, 1, 1, 1, true)
     if row.fullSender and row.fullSender ~= "" then
       GameTooltip:AddLine(row.fullSender, 0.7, 0.7, 0.7)
     end
@@ -982,8 +982,9 @@ end
 -------------------------------------------------------------
 -- 3c. The character switcher
 --
--- An icon in the title bar's corner -- the main window keeps its cog in the
--- same place -- and a small list under it. Only characters with something to
+-- At the window's foot, left: an icon and the name of the character whose
+-- box is showing -- the name is what is being switched, so it is the control
+-- -- and a small list that opens upward from it. Only characters with something to
 -- look at are listed: the one being played, and any other whose box held
 -- mail, has mail on the way, or has a warning. Names and counts stand in two
 -- columns, so the counts line up however long a name and realm run, and the
@@ -1003,11 +1004,8 @@ local function SwitchChoices()
   return out
 end
 
-local catcher
-
 local function HideSwitchList(frame)
   if frame.SwitchList then frame.SwitchList:Hide() end
-  if catcher then catcher:Hide() end
 end
 
 local function ShowSwitchList(frame)
@@ -1018,18 +1016,21 @@ local function ShowSwitchList(frame)
     list.__pbPopupAlways = true
     T.ApplyCard(list)
     list:SetFrameStrata("FULLSCREEN_DIALOG")
+    list:EnableMouse(true)
     list.rows = {}
-    list:SetScript("OnHide", function() if catcher then catcher:Hide() end end)
+    -- Closes on any click outside it. No full-screen catcher frame: one sat
+    -- above the list's own rows and swallowed the very click that chose a
+    -- character. The client's global mouse event says where every press
+    -- lands without standing in its way.
+    list:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
+    list:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
+    list:SetScript("OnEvent", function(self)
+      if self:IsMouseOver() or (frame.Switch and frame.Switch:IsMouseOver()) then return end
+      self:Hide()
+    end)
     frame:HookScript("OnHide", function() HideSwitchList(frame) end)
     frame.SwitchList = list
     if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, list) end
-  end
-  if not catcher then
-    catcher = CreateFrame("Frame", nil, UIParent)
-    catcher:SetAllPoints(UIParent)
-    catcher:SetFrameStrata("FULLSCREEN_DIALOG")
-    catcher:EnableMouse(true)
-    catcher:SetScript("OnMouseDown", function() HideSwitchList(frame) end)
   end
 
   local choices = SwitchChoices()
@@ -1042,6 +1043,7 @@ local function ShowSwitchList(frame)
     if not row then
       row = CreateFrame("Button", nil, list)
       row:SetHeight(SWITCH_ROW_H)
+      row:RegisterForClicks("LeftButtonUp")
       row.Hover = row:CreateTexture(nil, "BACKGROUND")
       row.Hover:SetAllPoints()
       row.Hover:SetColorTexture(1, 1, 1, 0.06)
@@ -1061,7 +1063,7 @@ local function ShowSwitchList(frame)
         self.Hover:Show()
         if self.reason then
           GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-          GameTooltip:SetText(self.reason, 1, 1, 1, true)
+          GameTooltip:SetText(self.reason, 1, 1, 1, 1, true)
           GameTooltip:Show()
         end
       end)
@@ -1113,25 +1115,23 @@ local function ShowSwitchList(frame)
   end
   list:SetSize(width, 8 + #choices * SWITCH_ROW_H)
   list:ClearAllPoints()
-  list:SetPoint("TOPLEFT", frame.Switch, "BOTTOMLEFT", -2, -4)
-  catcher:SetFrameLevel(math.max(list:GetFrameLevel() - 1, 0))
-  catcher:Show()
+  list:SetPoint("BOTTOMLEFT", frame.Switch, "TOPLEFT", -4, 6)
   list:Show()
   list:Raise()
 end
 
+-- The switcher: an icon and the name beside it, one control. Sized to the
+-- name on every refresh.
 local function BuildSwitcher(frame)
   local T = ns.Theme
   local button = CreateFrame("Button", nil, frame)
-  button:SetSize(18, 18)
-  -- Placed exactly as the main window's cog is (Core/MailboxUI.lua): a host
-  -- skin's rebuilt title bar sits two pixels lower than the stock one.
-  local hostBar = (ns.Skin and (_G.EllesmereUI or _G.ElvUI)) and true or false
-  button:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, hostBar and -4 or -2)
+  button:SetHeight(16)
+  button:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD - 2, 7)
   button:SetFrameLevel(frame:GetFrameLevel() + 20)
 
   button.icon = button:CreateTexture(nil, "ARTWORK")
-  button.icon:SetAllPoints()
+  button.icon:SetSize(14, 14)
+  button.icon:SetPoint("LEFT", button, "LEFT", 0, 0)
   local atlas = T.FirstAtlas(SWITCH_ATLASES)
   if atlas then
     button.icon:SetAtlas(atlas, false)
@@ -1140,13 +1140,10 @@ local function BuildSwitcher(frame)
   end
   button.icon:SetDesaturated(true)
   if T.GetAccent then button.icon:SetVertexColor(T.GetAccent()) end
-  button:SetHighlightTexture(button.icon:GetTexture() or "Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
-  local highlight = button:GetHighlightTexture()
-  if highlight then
-    if atlas then highlight:SetAtlas(atlas, false) end
-    highlight:SetBlendMode("ADD")
-    highlight:SetAlpha(0.4)
-  end
+
+  button.Name = T.CreateText(button, "label")
+  button.Name:SetPoint("LEFT", button.icon, "RIGHT", 4, 0)
+  button.Name:SetWordWrap(false)
 
   button:SetScript("OnClick", function()
     if frame.SwitchList and frame.SwitchList:IsShown() then
@@ -1156,12 +1153,16 @@ local function BuildSwitcher(frame)
     end
   end)
   button:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    self.icon:SetAlpha(0.7)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
     GameTooltip:SetText(L["MEMORY_SWITCH_TITLE"])
     GameTooltip:AddLine(L["MEMORY_SWITCH_TIP"], 1, 1, 1, true)
     GameTooltip:Show()
   end)
-  button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  button:SetScript("OnLeave", function(self)
+    self.icon:SetAlpha(1)
+    GameTooltip:Hide()
+  end)
   frame.Switch = button
 end
 
@@ -1253,12 +1254,23 @@ function Refresh(frame)
   end
   local hidden = snapshot and math.max(0, (tonumber(snapshot.total) or #mails) - #mails) or 0
   if hidden > 0 then text = text .. "  " .. string.format(L["MEMORY_MORE"], hidden) end
-  local choices = SwitchChoices()
-  if #choices > 1 or viewing then
-    text = ns.Theme.Colorize("accent", CharacterLabel(realm, name)) .. "  " .. text
-  end
   frame.Status:SetText(text)
-  frame.Switch:SetShown(#choices > 1 or viewing ~= nil)
+
+  -- The switcher at the left of the foot: whose box this is, and the way to
+  -- another's. Only when there is another to go to.
+  local choices = SwitchChoices()
+  local switchable = #choices > 1 or viewing ~= nil
+  local switch = frame.Switch
+  switch:SetShown(switchable)
+  frame.Status:ClearAllPoints()
+  frame.Status:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -26, 8)
+  if switchable then
+    switch.Name:SetText(CharacterLabel(realm, name))
+    switch:SetWidth(14 + 4 + math.ceil(switch.Name:GetStringWidth() or 0))
+    frame.Status:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD - 2 + switch:GetWidth() + 10, 8)
+  else
+    frame.Status:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 8)
+  end
 
   frame.Card:SetShown(count > 0)
   for i = 1, count do
@@ -1317,13 +1329,14 @@ local function Build()
   ns.Theme.ApplyFrameTheme(frame)
   ns.Core.UI.Helpers.RegisterEscClose(frame)
 
-  -- The status line: the foot of the window, left of the grip. Truncates
+  -- The status line: the foot of the window, right-aligned against the grip;
+  -- the character switcher takes the left of the same line. Truncates
   -- with an ellipsis rather than running under the grip; the whole line is
   -- the hover area's tooltip when it did.
   frame.Status = ns.Theme.CreateText(frame, "secondary")
+  frame.Status:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -26, 8)
   frame.Status:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 8)
-  frame.Status:SetPoint("RIGHT", frame, "RIGHT", -26, 0)
-  frame.Status:SetJustifyH("LEFT")
+  frame.Status:SetJustifyH("RIGHT")
   frame.Status:SetWordWrap(false)
   frame.StatusHit = CreateFrame("Frame", nil, frame)
   frame.StatusHit:SetAllPoints(frame.Status)
@@ -1331,7 +1344,7 @@ local function Build()
   frame.StatusHit:SetScript("OnEnter", function(self)
     if not (frame.Status.IsTruncated and frame.Status:IsTruncated()) then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(frame.Status:GetText(), 1, 1, 1, true)
+    GameTooltip:SetText(frame.Status:GetText(), 1, 1, 1, 1, true)
     GameTooltip:Show()
   end)
   frame.StatusHit:SetScript("OnLeave", function() GameTooltip:Hide() end)

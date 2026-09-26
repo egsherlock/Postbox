@@ -503,12 +503,6 @@ local function Build()
           if ns.MailboxUI.RefreshCollectTabCounts then ns.MailboxUI.RefreshCollectTabCounts() end
         end)
 
-  cy = AddCheckbox(card, cy, L["OPT_ALL_TAB_TITLE"], L["OPT_ALL_TAB_DESC"],
-        function() return ns.MailboxUI.GetOption("showAllTab") end,
-        function(on)
-          ns.MailboxUI.SetOption("showAllTab", on)
-          if ns.MailboxUI.RefreshCollectSegments then ns.MailboxUI.RefreshCollectSegments() end
-        end)
 
   cy = AddCheckbox(card, cy, L["OPT_CATEGORY_BUTTONS_TITLE"], L["OPT_CATEGORY_BUTTONS_DESC"],
         function() return ns.MailboxUI.GetOption("showCategoryButtons") end,
