@@ -290,10 +290,14 @@ end
 local function WaitingBySender(snap, wantStuck)
   local counts, order = {}, {}
   local mails = snap and snap.mails or {}
+  local now = time()
   for i = 1, #mails do
     local mail = mails[i]
+    local expires = tonumber(mail.expires)
     local holds = (mail.items or 0) > 0 or (mail.money or 0) > 0 or (mail.cod or 0) > 0
       or not mail.read
+    -- Past its date it is gone, whatever it held.
+    if expires and expires > 0 and expires <= now then holds = false end
     if wantStuck ~= nil then
       holds = holds and ((mail.stuck and true or false) == wantStuck)
     end
@@ -348,6 +352,10 @@ local DAY = 86400
 local SOON = 3 * DAY
 local UNSEEN_WARN = 23 * DAY
 local AUCTION_LONGEST = 48 * 3600
+-- Past this the mail the watch guarded has been returned or deleted: a
+-- warning then could only nag, about a character that may no longer exist.
+local MAIL_LIFE = 30 * DAY
+local UNSEEN_STOP = MAIL_LIFE + AUCTION_LONGEST
 
 local function Me()
   return GetRealmName(), UnitName("player")
@@ -382,11 +390,25 @@ local function SnapshotFor(realm, name)
   return type(byRealm) == "table" and byRealm[name] or nil
 end
 
--- Mail is known to have arrived for this character.
-local function NoteArrival(realm, name)
+-- Mail is known to have arrived for this character -- at `at` at the latest
+-- (default now; the earliest it could have landed is the safer guess when
+-- all that is known is "since the last visit").
+local function NoteArrival(realm, name, at)
   if not MemoryEnabled() then return end
   local watch = WatchFor(realm, name, true)
-  if watch and not watch.newAt then watch.newAt = time() end
+  if watch and not watch.newAt then watch.newAt = tonumber(at) or time() end
+end
+
+-- The notifications' rows still describing mail that exists: an auction's
+-- mail lands within the hour and lives thirty days.
+local function LivePending(watch, now)
+  local out = {}
+  local pending = watch and type(watch.pending) == "table" and watch.pending or {}
+  local cutoff = (now or time()) - MAIL_LIFE
+  for i = 1, #pending do
+    if (tonumber(pending[i].t) or 0) > cutoff then out[#out + 1] = pending[i] end
+  end
+  return out
 end
 
 -- This character's box was opened and recorded: what the watch guarded is in
@@ -405,8 +427,12 @@ function MM._SettleWatch(realm, name, now)
   end
 end
 
--- A mail waits while it holds anything, or is unread: the Collect tab's rule.
-local function Holds(mail)
+-- A mail waits while it holds anything, or is unread: the Collect tab's rule
+-- -- and only until its date. Past it the server has returned or deleted it,
+-- and a character idle for months must not keep counting mail that is gone.
+local function Holds(mail, now)
+  local expires = tonumber(mail.expires)
+  if expires and expires > 0 and expires <= (now or time()) then return false end
   return (mail.items or 0) > 0 or (mail.money or 0) > 0 or (mail.cod or 0) > 0 or not mail.read
 end
 
@@ -421,7 +447,7 @@ local function Status(realm, name, now)
   local mails = snap and snap.mails or {}
   for i = 1, #mails do
     local mail = mails[i]
-    if Holds(mail) then
+    if Holds(mail, now) then
       st.waiting = st.waiting + 1
       local left = (tonumber(mail.expires) or 0) - now
       if left > 0 and left < SOON then
@@ -431,11 +457,11 @@ local function Status(realm, name, now)
     end
   end
   local watch = WatchFor(realm, name, false)
-  st.pending = (watch and type(watch.pending) == "table") and #watch.pending or 0
+  st.pending = #LivePending(watch, now)
   if watch then
     local since = watch.newAt
     if watch.auctionAt and (not since or watch.auctionAt < since) then since = watch.auctionAt end
-    if since and now - since >= UNSEEN_WARN then
+    if since and now - since >= UNSEEN_WARN and now - since < UNSEEN_STOP then
       st.unseenDays = math.floor((now - (st.seenAt or since)) / DAY)
     end
   end
@@ -475,6 +501,11 @@ function MM.Characters()
     seen[key] = true
     list[#list + 1] = Status(realm, name, now)
   end
+  -- The character being played is always a choice, recorded or not: a
+  -- character that has never opened a mailbox is exactly the one that
+  -- comes here for its alts', and needs a way back to its own.
+  local myRealm, myName = Me()
+  if myRealm and myName then Add(myRealm, myName) end
   for _, rootName in ipairs({ "mailMemory", "mailWatch" }) do
     local root = ns.Store and ns.Store.Get and ns.Store.Get(rootName)
     if type(root) == "table" then
@@ -485,7 +516,6 @@ function MM.Characters()
       end
     end
   end
-  local myRealm, myName = Me()
   table.sort(list, function(a, b)
     local aMe = (a.realm == myRealm and a.name == myName)
     local bMe = (b.realm == myRealm and b.name == myName)
@@ -960,10 +990,18 @@ local function PendingIcon(entry)
   return "Interface\\Icons\\INV_Letter_02"
 end
 
--- watch, arrived, from -> the rows for mail known to have arrived, newest first.
-local function PendingRows(watch, arrived, from)
+-- watch, arrived, from, snap -> the rows for mail known to have arrived,
+-- newest first. The client's latest-senders line names every UNREAD sender,
+-- not only new ones, so a sender with unread mail already in the snapshot is
+-- that mail, not an arrival.
+local function PendingRows(watch, arrived, from, snap)
   local out = {}
-  local pending = watch and type(watch.pending) == "table" and watch.pending or {}
+  local pending = LivePending(watch)
+  local known = {}
+  local mails = snap and snap.mails or {}
+  for i = 1, #mails do
+    if not mails[i].read and mails[i].sender then known[mails[i].sender] = true end
+  end
   for i = #pending, 1, -1 do
     local p = pending[i]
     local subject = p.item or ""
@@ -978,7 +1016,7 @@ local function PendingRows(watch, arrived, from)
         local sender = from[i]
         local isAH = (sender == ah or sender == hostAH)
         -- The auction house's arrivals are already rows, by item.
-        if not (isAH and #pending > 0) then
+        if not (isAH and #pending > 0) and not known[sender] then
           out[#out + 1] = { pending = true, sender = sender, subject = L["MEMORY_NEW_UNOPENED"],
             icon = "Interface\\Icons\\INV_Letter_02" }
         end
@@ -997,7 +1035,7 @@ end
 function MM.PendingSummary()
   local realm, name = Me()
   local watch = WatchFor(realm, name, false)
-  local pending = watch and type(watch.pending) == "table" and watch.pending or {}
+  local pending = LivePending(watch)
   local R = Rules()
   local out = {}
   for i = #pending, 1, -1 do
@@ -1061,6 +1099,9 @@ local function ShowSwitchList(frame)
     frame:HookScript("OnHide", function() HideSwitchList(frame) end)
     frame.SwitchList = list
     if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, list) end
+    -- A new frame starts SHOWN, so the Show below would not fire OnShow and
+    -- the click-away would never be registered on the first open.
+    list:Hide()
   end
 
   local choices = SwitchChoices()
@@ -1402,7 +1443,10 @@ function Refresh(frame)
     end
   end
 
-  local rows = PendingRows(WatchFor(realm, name, false), arrived, from)
+  -- At a mailbox the live look already holds what arrived: rows for it
+  -- would list those mails twice.
+  local atBox = (not viewing) and state and state.mailboxOpen
+  local rows = atBox and {} or PendingRows(WatchFor(realm, name, false), arrived, from, snapshot)
   local mails = snapshot and snapshot.mails or {}
   for i = 1, #mails do rows[#rows + 1] = mails[i] end
 
@@ -1618,7 +1662,9 @@ end
 function MM.ShowOthers(owner)
   if not MemoryEnabled() then return end
   local frame = Build()
-  if frame:IsShown() and frame.SwitchList and frame.SwitchList:IsShown() then
+  -- A second click closes it. (The list cannot be asked: the press that
+  -- made this click has already closed it on its way through.)
+  if frame:IsShown() then
     frame:Hide()
     return
   end
@@ -1694,11 +1740,12 @@ function MM.MailboxSummary()
   -- refusal line made one mail look like two.
   local waiting, stuck = 0, 0
   local mails = snap.mails or {}
+  local now = time()
   for i = 1, #mails do
     local mail = mails[i]
     -- The Collect tab's rule, so the two counts agree: a mail waits while it
-    -- holds anything, or has not been read.
-    if (mail.items or 0) > 0 or (mail.money or 0) > 0 or (mail.cod or 0) > 0 or not mail.read then
+    -- holds anything, or has not been read -- until its date.
+    if Holds(mail, now) then
       if mail.stuck then stuck = stuck + 1 else waiting = waiting + 1 end
     end
   end
@@ -1971,7 +2018,12 @@ if bus then
       if not MemoryEnabled() then return end
       local snap = StoredSnapshot()
       local flag = type(HasNewMail) == "function" and HasNewMail() and true or false
-      if flag and (not snap or snap.baseNew == false) then NoteArrival(Me()) end
+      if flag and (not snap or snap.baseNew == false) then
+        -- It landed some time since the last visit: dated from that visit,
+        -- the earliest it could have, so a warning never comes late.
+        local realm, name = Me()
+        NoteArrival(realm, name, snap and snap.seenAt)
+      end
 
       local UI = ns.MailboxUI
       if UI and type(UI.GetOption) == "function" and not UI.GetOption("mailWarnings") then return end

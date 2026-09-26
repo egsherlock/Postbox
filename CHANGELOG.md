@@ -32,7 +32,7 @@
   characters in one click, on any realm. No setup: every character you have
   logged into with Postbox installed counts. Other now means everything that
   is neither auction mail nor from your alts, so the two never overlap.
-- **History.** A clock beside Done lists what Postbox collected on this
+- **History.** A clock beside Inbox lists what Postbox collected on this
   character in the last seven days, newest first: when, from whom, what came
   out and what it was worth, with the week's earned and spent totals
   underneath. Letters you read are listed too. Search works there as well.
@@ -49,7 +49,8 @@
   are gone. The Mail tab's caption offers the count of mail to collect in
   place of the old collect/total and total.
 - **Click "Stuck: N"** in the title bar to see only the mail the game would
-  not hand over, and click it again to see everything.
+  not hand over (the buttons below then collect just those), and click it
+  again to see everything.
 - **Mail rows line up.** Names sit in one column, as wide as the longest name
   listed and never wider than "AH Expired", so every item name starts in the
   same place. Gold, slots and time left sit at the right edge of each row,
@@ -75,7 +76,7 @@
 - Hovering the icon of a mail with no item in the mailbox memory raised a
   Lua error.
 - **Mailbox memory lost track past 50 mails**, and did not count an unread
-  letter with nothing attached. Its count now matches the Collect tab.
+  letter with nothing attached. Its count now matches the Mail tab.
 
 ## 1.39.0
 

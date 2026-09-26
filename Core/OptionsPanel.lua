@@ -532,9 +532,6 @@ local function Build()
   local col = left
   y = 0
 
-  -- Mail tab: the list and how it is read, in the order the eye meets it --
-  -- the rows, the captions above them, the views, the buttons beneath, the
-  -- gesture on a row, and the tab's own caption.
   -- Mail rows: how a row looks and what it carries -- the one card about the
   -- list's contents, so the switches about the tab's behaviour stand apart.
   card, y = BeginSection(col, y, L["OPT_ROWS_HEADING"])
@@ -629,6 +626,50 @@ local function Build()
         function() return ns.MailboxUI.GetOption("keepRecipient") end,
         function(on) ns.MailboxUI.SetOption("keepRecipient", on) end)
 
+
+  y = EndSection(col, card, y)
+
+  -- Mail alerts: the ways Postbox tells you about mail you are not standing
+  -- in front of. They were scattered through the Minimap card, which is
+  -- where the icon's LOOK is configured -- a sound is not a look, and the
+  -- memory is a window rather than an icon setting. Back in the left column
+  -- under the two tabs: under Minimap it made the right column some 270px
+  -- taller than the left, and the panel taller than a UI-scale-1 screen.
+  y = AddSectionHeading(col, y, L["OPT_ALERTS_HEADING"])
+  card = StartCard(col, y)
+  cy = -12
+
+  cy = AddCheckbox(card, cy, L["OPT_ALERT_SOUND_TITLE"], L["OPT_ALERT_SOUND_DESC"],
+        function() return ns.MinimapButton and ns.MinimapButton.GetAlertSound() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertSound(on) end end)
+
+  cy = AddCheckbox(card, cy, L["OPT_ALERT_FLASH_TITLE"], L["OPT_ALERT_FLASH_DESC"],
+        function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end)
+
+  -- The warning about other characters reads the memory, so it is greyed
+  -- while the memory is off rather than a switch that silently does nothing.
+  local warnCheck
+  local function SyncWarn()
+    if not warnCheck then return end
+    local on = ns.MailboxUI.GetOption("mailMemory") and true or false
+    warnCheck:SetEnabled(on)
+    warnCheck:SetAlpha(on and 1 or 0.5)
+    if warnCheck.__label then warnCheck.__label:SetAlpha(on and 1 or 0.5) end
+  end
+
+  cy = AddCheckbox(card, cy, L["OPT_MEMORY_TITLE"], L["OPT_MEMORY_DESC"],
+        function() return ns.MailboxUI.GetOption("mailMemory") end,
+        function(on)
+          ns.MailboxUI.SetOption("mailMemory", on)
+          SyncWarn()
+        end)
+
+  cy, warnCheck = AddCheckbox(card, cy, L["OPT_ALERT_OTHERS_TITLE"], L["OPT_ALERT_OTHERS_DESC"],
+        function() return ns.MailboxUI.GetOption("mailWarnings") end,
+        function(on) ns.MailboxUI.SetOption("mailWarnings", on) end)
+  SyncWarn()
+  card.__refreshers[#card.__refreshers + 1] = SyncWarn
 
   y = EndSection(col, card, y)
 
@@ -1309,49 +1350,6 @@ local function Build()
 
   y = EndSection(col, card, y)
   local minimapCard = card
-
-  -- Mail alerts: the three ways Postbox tells you about mail you are not
-  -- standing in front of. They were scattered through the Minimap card,
-  -- which is where the icon's LOOK is configured -- a sound is not a look,
-  -- and the memory is a window rather than an icon setting. Two of the
-  -- three are delivered THROUGH the icon, which their tooltips say.
-  y = AddSectionHeading(col, y, L["OPT_ALERTS_HEADING"])
-  card = StartCard(col, y)
-  cy = -12
-
-  cy = AddCheckbox(card, cy, L["OPT_ALERT_SOUND_TITLE"], L["OPT_ALERT_SOUND_DESC"],
-        function() return ns.MinimapButton and ns.MinimapButton.GetAlertSound() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertSound(on) end end)
-
-  cy = AddCheckbox(card, cy, L["OPT_ALERT_FLASH_TITLE"], L["OPT_ALERT_FLASH_DESC"],
-        function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end)
-
-  -- The warning about other characters reads the memory, so it is greyed
-  -- while the memory is off rather than a switch that silently does nothing.
-  local warnCheck
-  local function SyncWarn()
-    if not warnCheck then return end
-    local on = ns.MailboxUI.GetOption("mailMemory") and true or false
-    warnCheck:SetEnabled(on)
-    warnCheck:SetAlpha(on and 1 or 0.5)
-    if warnCheck.__label then warnCheck.__label:SetAlpha(on and 1 or 0.5) end
-  end
-
-  cy = AddCheckbox(card, cy, L["OPT_MEMORY_TITLE"], L["OPT_MEMORY_DESC"],
-        function() return ns.MailboxUI.GetOption("mailMemory") end,
-        function(on)
-          ns.MailboxUI.SetOption("mailMemory", on)
-          SyncWarn()
-        end)
-
-  cy, warnCheck = AddCheckbox(card, cy, L["OPT_ALERT_OTHERS_TITLE"], L["OPT_ALERT_OTHERS_DESC"],
-        function() return ns.MailboxUI.GetOption("mailWarnings") end,
-        function(on) ns.MailboxUI.SetOption("mailWarnings", on) end)
-  SyncWarn()
-  card.__refreshers[#card.__refreshers + 1] = SyncWarn
-
-  y = EndSection(col, card, y)
 
   local rightBottom = y
   -- Back on the panel's own cursor: the taller column's bottom, and the

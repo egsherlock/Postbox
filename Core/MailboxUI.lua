@@ -1409,6 +1409,10 @@ function UI.RefreshCollectTabCounts()
   if panel and collect and collect.UpdateTabCounts then
     collect.UpdateTabCounts(panel)
   end
+  -- The category buttons carry the same switch's counts.
+  if panel and collect and collect.RefreshCategoryButtons then
+    collect.RefreshCategoryButtons(panel)
+  end
   UpdateCollectTabText()
 end
 
@@ -1760,14 +1764,31 @@ local function BuildFrame()
       GameTooltip:Show()
     end)
     statusHover:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    -- A click on "Stuck: N" narrows the inbox to those mails, and back.
-    statusHover:SetScript("OnMouseUp", function(_, button)
+    -- A click on "Stuck: N" narrows the inbox to those mails, and back. The
+    -- press also reaches the title bar, which drags the window from it: a
+    -- press that moved is a drag, and a drag is not a click.
+    statusHover:SetScript("OnMouseDown", function(self)
+      self._downX, self._downY = GetCursorPosition()
+    end)
+    statusHover:SetScript("OnMouseUp", function(self, button)
       if button ~= "LeftButton" then return end
+      local x, y = GetCursorPosition()
+      local dx, dy = (x or 0) - (self._downX or x or 0), (y or 0) - (self._downY or y or 0)
+      self._downX, self._downY = nil, nil
+      if dx * dx + dy * dy > 16 then return end
       local mail = ns.MailService
       local stuck = mail and type(mail.StuckCount) == "function" and mail.StuckCount() or 0
       if stuck == 0 then return end
       local collect = ns.CollectTab
-      if collect and collect.ToggleStuckFilter then collect.ToggleStuckFilter(CollectPanel()) end
+      if not (collect and collect.ToggleStuckFilter) then return end
+      -- From the Send tab the click means "show me them": the Mail tab comes
+      -- forward with the filter on, never off where nobody can see it.
+      if UI._state.activeTab ~= "collect" then
+        UI.SelectTab("collect")
+        collect.ToggleStuckFilter(CollectPanel(), true)
+        return
+      end
+      collect.ToggleStuckFilter(CollectPanel())
     end)
     frame.StatusHover = statusHover
   end

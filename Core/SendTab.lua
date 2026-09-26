@@ -4463,7 +4463,11 @@ end
 -- click has only just happened. Read off whichever bag button is there:
 -- the container template's GetBagID/GetID pair first, then the field names
 -- the other bag addons use, and only for something that is an item button.
-function Q.BagSlotUnderCursor()
+-- `strict`: only a button that says which bag it is in (GetBagID or bagID)
+-- counts. Alt+right-click asks this of whatever is under the cursor, and an
+-- action button or a gear slot has an icon and an ID too -- read through the
+-- parent fallback, either became "backpack slot N".
+function Q.BagSlotUnderCursor(strict)
   local frames
   if type(GetMouseFoci) == "function" then
     local ok, list = pcall(GetMouseFoci)
@@ -4500,7 +4504,7 @@ function Q.BagSlotUnderCursor()
           if ok and type(id) == "number" then bag = id end
         end
         if bag == nil and type(f.bagID) == "number" then bag = f.bagID end
-        if bag == nil and type(f.GetParent) == "function" then
+        if bag == nil and not strict and type(f.GetParent) == "function" then
           local parent = f:GetParent()
           local ok, id = pcall(function() return parent:GetID() end)
           if ok and type(id) == "number" then bag = id end
@@ -4509,6 +4513,20 @@ function Q.BagSlotUnderCursor()
         if slot == nil and type(f.GetID) == "function" then
           local ok, id = pcall(f.GetID, f)
           if ok and type(id) == "number" then slot = id end
+        end
+        -- Strict also asks the button to be SHOWING that bag slot's item:
+        -- its icon is the item's own art. Compared only when both sides are
+        -- file ids, so a bag addon that draws its icon some other way is
+        -- never refused on a mismatch of formats.
+        if strict and type(bag) == "number" and type(slot) == "number" then
+          local art = f.icon or f.Icon
+          local shown = art and type(art.GetTexture) == "function" and art:GetTexture() or nil
+          local info = C_Container and C_Container.GetContainerItemInfo
+            and C_Container.GetContainerItemInfo(bag, slot) or nil
+          if type(shown) == "number" and info and type(info.iconFileID) == "number"
+            and shown ~= info.iconFileID then
+            bag = nil
+          end
         end
         if type(bag) == "number" and type(slot) == "number" and slot > 0 then
           return bag, slot
@@ -4591,7 +4609,7 @@ function ST.OnGlobalMouseDown(button)
   if not sendTabActive or pendingSend then return end
   local panel = ActivePanel()
   if not panel or not panel:IsShown() then return end
-  local bag, slot = Q.BagSlotUnderCursor()
+  local bag, slot = Q.BagSlotUnderCursor(true)
   -- The player's own bags only: a bank or a guild bank button under the
   -- cursor is not something a mail can take from.
   if not bag or bag < 0 or bag > Q.LAST_BAG then return end

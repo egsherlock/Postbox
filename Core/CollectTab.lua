@@ -1300,26 +1300,6 @@ function CT.ClearSearch(panel)
   if panel then panel._stuckOnly = false end
 end
 
--- The title bar's "Stuck: N", clicked (Core/MailboxUI.lua). Toggles the
--- inbox between everything and only the refused mails, and puts the inbox
--- on screen if History was.
-function CT.ToggleStuckFilter(panel)
-  if not panel then return end
-  panel._stuckOnly = not StuckOnly(panel) and Mail().StuckCount() > 0
-  if panel.viewMode ~= VIEW_COLLECT then
-    SetViewMode(panel, VIEW_COLLECT)
-  else
-    if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
-    CT.RefreshMailList(panel)
-  end
-  local UI = ns.MailboxUI
-  if UI and UI.UpdateStatusSummary then UI.UpdateStatusSummary() end
-end
-
-function CT.StuckFilterOn(panel)
-  return StuckOnly(panel)
-end
-
 -------------------------------------------------------------
 -- Selection
 --
@@ -1457,6 +1437,30 @@ local function SelectionIndices(panel)
   for index in pairs(panel._selected or {}) do out[#out + 1] = index end
   table.sort(out, function(a, b) return a > b end)
   return out
+end
+
+-- The title bar's "Stuck: N", clicked (Core/MailboxUI.lua). Toggles the
+-- inbox between everything and only the refused mails -- or sets it, when
+-- `on` is given -- and puts the inbox on screen if History was.
+function CT.ToggleStuckFilter(panel, on)
+  if not panel then return end
+  if on == nil then on = not StuckOnly(panel) end
+  panel._stuckOnly = on and Mail().StuckCount() > 0
+  -- A selection made over the whole list would reach rows the filter hides.
+  ClearSelection(panel)
+  if panel.viewMode ~= VIEW_COLLECT then
+    SetViewMode(panel, VIEW_COLLECT)
+  else
+    if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
+    CT.RefreshMailList(panel)
+  end
+  CT.RefreshCategoryButtons(panel)
+  local UI = ns.MailboxUI
+  if UI and UI.UpdateStatusSummary then UI.UpdateStatusSummary() end
+end
+
+function CT.StuckFilterOn(panel)
+  return StuckOnly(panel)
 end
 
 -- Sizes every segment to the longest rendered caption -- counts included -- and
@@ -2346,7 +2350,9 @@ function HV.BindHistoryRow(panel, row, entry, position, now)
   row.Money:SetShown(moneyWidth > 0)
   local lineWidth = max(textWidth - ((moneyWidth > 0) and (moneyWidth + M.gap) or 0), 40)
 
-  local sender = R.OutcomeSender(entry.k) or R.DisplaySender(entry.s) or L()["SENDER_UNKNOWN"]
+  -- A system mail's sender is recorded as "": that is "unknown", not a name.
+  local named = (entry.s ~= "" and entry.s) or nil
+  local sender = R.OutcomeSender(entry.k) or R.DisplaySender(named) or L()["SENDER_UNKNOWN"]
   local senderWidth = min(cols.sender or SENDER_MIN, floor(lineWidth / 2))
   T.FitText(row.Sender, senderWidth, sender, nil)
   T.FitText(row.Subject, max(lineWidth - senderWidth - M.gap, 20), HV.HistoryWhat(entry), nil)
@@ -2836,6 +2842,8 @@ function CT.RefreshMailList(panel)
   -- what the client can actually address -- is the total they add up to and the
   -- number the all segment carries.
   RecordCounts(toCollectCount, doneCount, numItems)
+  -- More mail on the server than the client lists: the primary stays live.
+  panel._moreOnServer = totalItems > numItems
   -- Hint first, counts second: both change the width of something in the top
   -- row, and UpdateTabCounts ends in the one layout pass that measures it.
   UpdateHint(panel, numItems, totalItems)
@@ -2877,7 +2885,8 @@ function CT.ApplyRowLayout(panel)
 
   local stride = panel._rowStride or 0
   if stride <= 0 then return end
-  local maxScroll = max(0, #panel._filtered * stride - (scroll:GetHeight() or 0))
+  local listed = (panel.viewMode == VIEW_HISTORY) and #panel._history or #panel._filtered
+  local maxScroll = max(0, listed * stride - (scroll:GetHeight() or 0))
   scroll:SetVerticalScroll(min(anchor * stride, maxScroll))
   if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
   -- Explicit rather than left to the scroll frame's own handler: that fires only
@@ -2991,6 +3000,17 @@ local function DeleteAllDone(panel)
     return
   end
   local queue = Mail().BuildDeleteQueue()
+  -- Under a search the divider counts the read mail it lists, so Delete
+  -- takes exactly those: the dialog must name the number the divider did.
+  if Searching(panel) then
+    local shown = {}
+    for i = 1, #panel._tail do shown[panel._tail[i]] = true end
+    local narrowed = {}
+    for i = 1, #queue do
+      if shown[queue[i]] then narrowed[#narrowed + 1] = queue[i] end
+    end
+    queue = narrowed
+  end
   if #queue == 0 then return end
 
   local counted = ns.Plural("COUNT_MAILS", #queue)
@@ -3445,8 +3465,10 @@ local function StartCategoryRun(panel, category)
     -- which the next press picks up as such.
     queue, info = Mail().BuildQueueFor(SelectionIndices(panel))
     ClearSelection(panel)
-  elseif Searching(panel) then
-    -- The rows on screen, narrowed again by the sweep's own category.
+  elseif Searching(panel) or StuckOnly(panel) then
+    -- The rows on screen, narrowed again by the sweep's own category. The
+    -- stuck filter is a narrowing like a search: the buttons count what it
+    -- shows, so they take what it shows.
     queue, info = Mail().BuildQueueFor(panel._filtered, category)
   else
     queue, info = Mail().BuildQueue(category)
@@ -3457,6 +3479,15 @@ local function StartCategoryRun(panel, category)
   -- is left out of the queue. Running now would sweep a truncated list and then
   -- report a clean finish over the mails it never saw.
   if info.unloaded > 0 or (info.numItems == 0 and info.totalItems > 0) then
+    StatusOutcome(L()["STATUS_READY"])
+    Mail().RequestInboxRefresh()
+    RequestRefresh(panel)
+    return
+  end
+
+  -- Everything the client shows is dealt with but the server holds more:
+  -- the click asks for the next batch rather than answering "Done".
+  if #queue == 0 and (tonumber(info.totalItems) or 0) > (tonumber(info.numItems) or 0) then
     StatusOutcome(L()["STATUS_READY"])
     Mail().RequestInboxRefresh()
     RequestRefresh(panel)
@@ -3702,7 +3733,7 @@ local function TakeOneAttachment(detail, slot)
         slot:Hide()
       end
       RequestRefresh(detail._panel)
-    end, { allowCOD = true })
+    end, { allowCOD = true, history = detail._history })
   end)
 end
 
@@ -3967,7 +3998,7 @@ local function BuildDetail(panel)
         LayoutDetail(detail)
       end
       RequestRefresh(panel)
-    end)
+    end, detail._history)
   end)
   money:Hide()
   detail.MoneySlot = money
@@ -3993,7 +4024,10 @@ local function BuildDetail(panel)
     -- command channel -- so the flag follows what happened rather than what was
     -- asked for. MailService re-checks it anyway; a caller should still not be
     -- asserting something it does not know.
-    CollectSingleMail(panel, index, { skipFetch = detail._bodyFetched and true or false })
+    CollectSingleMail(panel, index, {
+      skipFetch = detail._bodyFetched and true or false,
+      history = detail._history,
+    })
   end)
 
   detail.Reply:SetScript("OnClick", function()
@@ -4260,7 +4294,12 @@ function ShowDetail(panel, index)
   -- rather than trusted to the row gate, because this is where the command would
   -- actually be issued, and a fetch mid-run would be read by the run's own
   -- sequence as its acknowledgement.
-  ShowBody(detail, (not Run.active) and Mail().FetchMailBody(index) or nil)
+  -- One History record for this mail, however many separate takes follow
+  -- from here: the coin, each tile, Take all. Taken before the fetch, while
+  -- the header still says what arrived.
+  detail._history = Mail().HistoryRecord and Mail().HistoryRecord(index) or nil
+  local body = (not Run.active) and Mail().FetchMailBody(index) or nil
+  ShowBody(detail, body)
   PaintDetailContent(detail, index)
 
   LayoutDetail(detail)
@@ -4276,12 +4315,11 @@ function ShowDetail(panel, index)
   if not wasRead then
     -- A letter with nothing to take is "collected" by reading it: History
     -- lists it, so the record is every mail dealt with, not only the ones
-    -- that held something.
+    -- that held something. Only when the fetch went out -- a declined fetch
+    -- read nothing, and the letter is still unread.
     local _, _, _, _, money, _, _, items = GetInboxHeaderInfo(index)
-    local Memory = ns.MailMemory
-    if (tonumber(money) or 0) == 0 and (tonumber(items) or 0) == 0 and Memory and Memory.HistoryBegin then
-      local record = Memory.HistoryBegin(index)
-      if record then pcall(Memory.HistoryTook, record, "read") end
+    if body ~= nil and (tonumber(money) or 0) == 0 and (tonumber(items) or 0) == 0 and Mail().HistoryNote then
+      Mail().HistoryNote(detail._history, "read")
     end
     RequestRefresh(panel)
   end
@@ -4363,7 +4401,7 @@ local function LayoutGrid(panel)
   local extras = ShowCategoryButtons()
   if Selecting(panel) then
     buttons[1].caption = L()("CAT_SELECTED", SelectionCount(panel))
-  elseif Searching(panel) then
+  elseif Searching(panel) or StuckOnly(panel) then
     buttons[1].caption = L()["CAT_SHOWN"]
   else
     buttons[1].caption = Labels().all or "all"
@@ -4395,7 +4433,9 @@ local function LayoutGrid(panel)
   local picked = Selecting(panel)
   for i = 1, #buttons do
     local button = buttons[i]
-    local own = (i == 1 and picked)
+    -- The primary also stays live while the server holds mail the client
+    -- has not shown yet: its click fetches the next batch.
+    local own = (i == 1 and (picked or panel._moreOnServer))
     local n = counts[CATEGORY_ORDER[i]] or 0
     local caption = button.caption
     -- The primary's count is the Inbox segment's own; said once, up there.
@@ -4629,6 +4669,8 @@ function CT.Build(parent)
   local divider = CreateFrame("Button", nil, panel.MailListChild)
   divider:RegisterForClicks("LeftButtonUp")
   divider:SetScript("OnClick", function()
+    -- A search holds the fold open; a click then would flip it unseen.
+    if Searching(panel) then return end
     panel._readOpen = not panel._readOpen
     CT.RefreshMailList(panel)
   end)

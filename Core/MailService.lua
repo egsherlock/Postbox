@@ -938,18 +938,39 @@ end
 -- Calls done(timedOut, refusedCount, reason) exactly once.
 -------------------------------------------------------------
 
-local function RunPlan(index, fingerprint, plan, done)
+-- The history (Core/MailMemory.lua, 2c): what is known of a mail before its
+-- first take, and each CONFIRMED take after it. One record is one History
+-- entry, so a caller making several separate takes from one mail -- the
+-- reading view's tiles and its Take all -- hands the same record to each.
+-- Under pcall: a record that fails to write must never stop a collection.
+local function HistoryRecord(index, given)
+  if given then return given end
+  local History = ns.MailMemory
+  if not (History and type(History.HistoryBegin) == "function") then return nil end
+  local ok, record = pcall(History.HistoryBegin, index)
+  return ok and record or nil
+end
+
+local function HistoryNote(record, what, value, count)
+  local History = ns.MailMemory
+  if record and History and type(History.HistoryTook) == "function" then
+    pcall(History.HistoryTook, record, what, value, count)
+  end
+end
+
+Mail.HistoryRecord = HistoryRecord
+Mail.HistoryNote = HistoryNote
+
+local function RunPlan(index, fingerprint, plan, done, record)
   local cursor = 0
   local refused = 0
   local reason, reasonMixed = nil, false
 
-  -- The history (Core/MailMemory.lua, 2c) hears of each take once it is
-  -- CONFIRMED, from the two places below that establish it. Under pcall: a
-  -- record that fails to write must never stop a collection.
-  local History = ns.MailMemory
-  local record = History and History.HistoryBegin and History.HistoryBegin(index) or nil
+  -- Each take is recorded once it is CONFIRMED, from the two places below
+  -- that establish it.
+  record = HistoryRecord(index, record)
   local function Took(op, value, count)
-    if record and History.HistoryTook then pcall(History.HistoryTook, record, op.kind, value, count) end
+    HistoryNote(record, op.kind, value, count)
   end
 
   local function noteReason(text)
@@ -1096,9 +1117,11 @@ function Mail.CollectMail(index, onDone, opts)
   local fingerprint = Fingerprint(index)
   if not fingerprint then return finish("collected") end
 
-  local _, _, _, _, money, cod, _, itemCount = GetInboxHeaderInfo(index)
+  local _, _, _, _, money, cod, _, itemCount, wasRead = GetInboxHeaderInfo(index)
   money = tonumber(money) or 0
   itemCount = tonumber(itemCount) or 0
+  -- Taken before anything moves: the entry names the mail as it arrived.
+  local record = HistoryRecord(index, opts and opts.history)
 
   -- TakeInboxItem on a C.O.D. mail PAYS it, and only the single-mail path --
   -- which just showed the player this exact mail's amount -- may do that
@@ -1154,6 +1177,9 @@ function Mail.CollectMail(index, onDone, opts)
       -- Nothing left to take: the mail is empty, so whatever was refused before
       -- is no longer true of it.
       ForgetStuck(fingerprint)
+      -- A letter with nothing in it is dealt with by reading it, and the
+      -- fetch above just did: History lists it, however it was collected.
+      if not wasRead and needFetch then HistoryNote(record, "read") end
       return finish("collected")
     end
 
@@ -1177,7 +1203,7 @@ function Mail.CollectMail(index, onDone, opts)
       end
       ForgetStuck(fingerprint)
       finish("collected", 0, reason)
-    end)
+    end, record)
   end
 
   WhenIdle(function()
@@ -1238,7 +1264,7 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
         -- is refused anyway, RunPlan records it again immediately.
         ForgetStuck(fingerprint)
         finish("collected", 0, reason)
-      end)
+      end, opts and opts.history)
   end, function() finish("timeout") end)
 end
 
@@ -1285,18 +1311,23 @@ end
 
 -- The money alone, for the reading view's coin tile. Same channel rules as
 -- everything else: one command at a time, settled by the inbox update.
-function Mail.TakeMoney(index, onDone)
+-- `history` is the reading view's record for this mail, so the coin and the
+-- items taken after it land in one History entry.
+function Mail.TakeMoney(index, onDone, history)
   if type(TakeInboxMoney) ~= "function" then
     if onDone then onDone("unavailable") end
     return
   end
-  -- The coin tile's take is recorded like a run's (Core/MailMemory.lua, 2c).
-  local History = ns.MailMemory
-  local record = History and History.HistoryBegin and History.HistoryBegin(index) or nil
+  -- The coin tile's take is recorded like a run's (Core/MailMemory.lua, 2c),
+  -- and only once the sum has actually left the mail: "done" means only that
+  -- the handshake cleared.
+  local record = HistoryRecord(index, history)
+  local fingerprint = Fingerprint(index)
   local amount = Mail.MoneyLeft(index)
   SingleCommand(function() TakeInboxMoney(index) end, function(status)
-    if status == "done" and record and amount > 0 then
-      pcall(History.HistoryTook, record, "money", amount)
+    if status == "done" and amount > 0
+      and (Fingerprint(index) ~= fingerprint or Mail.MoneyLeft(index) < amount) then
+      HistoryNote(record, "money", amount)
     end
     if onDone then onDone(status) end
   end)
