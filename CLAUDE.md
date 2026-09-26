@@ -34,9 +34,9 @@ trailers. This applies whatever the tooling's own defaults are.
 
 ## Version numbers
 
-The line is `1.x.y` and `x` is past 9 — v1.38.0, v1.39.0. **The next minor is
-v1.40.0, never v1.4.0.** Addon managers compare these numerically, so 1.4.0
-reads as *older* than 1.39.0 and the update is never offered.
+Addon managers compare each part as a number, so the minor counts on past 9:
+v1.39.0 is followed by v1.40.0, never v1.4.0, which would read as older and
+never be offered as an update. The last tag is the current version.
 
 ## Before a tag
 
