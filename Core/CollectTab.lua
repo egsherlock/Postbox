@@ -916,9 +916,11 @@ end
 -- switch; a C.O.D. price has none and always shows, because it is the one sum
 -- nothing collects on its own -- Postbox never pays one without asking.
 local function MoneyShown(kind)
-  if kind == "earned" then return RowShows("rowEarned") end
-  if kind == "spent" then return RowShows("rowSpent") end
-  return true
+  if kind ~= "earned" and kind ~= "spent" then return true end
+  if not RowShows("rowGold") then return false end
+  local UI = ns.MailboxUI
+  local mode = UI and UI.GetGoldMode and UI.GetGoldMode() or "both"
+  return mode == "both" or mode == kind
 end
 
 -- The name a row shows for a sender. A player's realm is dropped -- the row is
@@ -956,13 +958,24 @@ local function RowMoneyText(index, hasCOD, moneyValue, codValue, brief)
   return MoneyText(hasCOD, moneyValue, codValue, function() return PurchasePrice(index) end, brief)
 end
 
--- Time left, as a warning: only when it is short. A C.O.D. mail lives three
--- days from the start, so for one of those "short" is under a day.
+-- daysLeft, hasCOD -> whether the row shows the time left, and whether in
+-- the warning tone. Shown under the player's threshold (three days by
+-- default) or always; amber when it is genuinely short -- under three days,
+-- or under one for a C.O.D. mail, which only lives three.
+local function ExpiryState(daysLeft, hasCOD)
+  local UI = ns.MailboxUI
+  local when = UI and UI.GetExpiryWhen and UI.GetExpiryWhen() or "3"
+  local limit = (when ~= "always") and tonumber(when) or nil
+  local show = (limit == nil) or daysLeft < limit
+  local warn = daysLeft < (hasCOD and 1 or EXPIRY_SOON_DAYS)
+  return show, warn
+end
+
 local function RowExpiryText(daysLeft, hasCOD)
-  if daysLeft and daysLeft < (hasCOD and 1 or EXPIRY_SOON_DAYS) then
-    return Th().Colorize("warning", format(L()["DAYS_SHORT"], daysLeft))
-  end
-  return nil
+  if not daysLeft then return nil end
+  local show, warn = ExpiryState(daysLeft, hasCOD)
+  if not show then return nil end
+  return Th().Colorize(warn and "warning" or "textSecondary", format(L()["DAYS_SHORT"], daysLeft))
 end
 
 -- The rendered width of `text` in `sample`'s font. One hidden string per
@@ -1055,6 +1068,7 @@ CT.RowRules = {
   RowOrder = RowOrder,
   OutcomeSender = OutcomeSender,
   EXPIRY_SOON_DAYS = EXPIRY_SOON_DAYS,
+  ExpiryState = ExpiryState,
   META_SHARE = COMPACT_META_SHARE,
 }
 
@@ -2140,12 +2154,10 @@ local function BindRow(panel, row, index, position, compact, done)
   -- the invoice's figures -- except a won auction's price, which IS the money.
   -- The time left on a standard row is always there (quiet), and in the
   -- warning tone when short; a compact row carries only the warning.
+  -- Both layouts follow the same time-left rule (ExpiryState).
   local timeText = nil
   if showExpiry then
     timeText = expiry
-    if not timeText and daysLeft then
-      timeText = T.Colorize("textSecondary", format(L()["DAYS_SHORT"], daysLeft))
-    end
   else
     expiry = nil
   end
@@ -2458,6 +2470,8 @@ local function UpdateVisibleRows(panel)
       divider:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
       divider:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
       divider.Label:SetText(L()("INBOX_READ_DIVIDER", panel._readCount or 0))
+      local open = panel._readOpen or Searching(panel)
+      divider.Fold:SetTexture(open and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
       divider:Show()
     else
     used = used + 1
@@ -2757,13 +2771,18 @@ function CT.RefreshMailList(panel)
   end
 
   -- The finished mails, after the divider.
+  -- Folded by default: they are kept, not waiting, and a click on the
+  -- divider opens them. A search opens them too -- it is looking for
+  -- something, and a match must not hide behind a fold.
   panel._readCount = #tail
   if #tail > 0 then
     filtered[#filtered + 1] = DIVIDER
     filteredDone[#filtered] = true
-    for i = 1, #tail do
-      filtered[#filtered + 1] = tail[i]
-      filteredDone[#filtered] = true
+    if panel._readOpen or query ~= "" then
+      for i = 1, #tail do
+        filtered[#filtered + 1] = tail[i]
+        filteredDone[#filtered] = true
+      end
     end
   end
 
@@ -4255,7 +4274,18 @@ function ShowDetail(panel, index)
   --
   -- Coalesced, and it cannot close the overlay: the fingerprint is sender +
   -- subject + C.O.D., none of which reading alters.
-  if not wasRead then RequestRefresh(panel) end
+  if not wasRead then
+    -- A letter with nothing to take is "collected" by reading it: History
+    -- lists it, so the record is every mail dealt with, not only the ones
+    -- that held something.
+    local _, _, _, _, money, _, _, items = GetInboxHeaderInfo(index)
+    local Memory = ns.MailMemory
+    if (tonumber(money) or 0) == 0 and (tonumber(items) or 0) == 0 and Memory and Memory.HistoryBegin then
+      local record = Memory.HistoryBegin(index)
+      if record then pcall(Memory.HistoryTook, record, "read") end
+    end
+    RequestRefresh(panel)
+  end
 end
 
 -------------------------------------------------------------
@@ -4369,7 +4399,8 @@ local function LayoutGrid(panel)
     local own = (i == 1 and picked)
     local n = counts[CATEGORY_ORDER[i]] or 0
     local caption = button.caption
-    if withCounts and n > 0 and not own then
+    -- The primary's count is the Inbox segment's own; said once, up there.
+    if withCounts and n > 0 and not own and i > 1 then
       caption = caption .. " (" .. FormatCount(n) .. ")"
     end
     button:SetEnabled(own or n > 0)
@@ -4596,7 +4627,17 @@ function CT.Build(parent)
   -- The inbox divider: "Read, nothing left (3)" with their delete at its right.
   -- A row's slot in the list, so the virtualiser places it like one; its own
   -- frame, because nothing about it is a mail.
-  local divider = CreateFrame("Frame", nil, panel.MailListChild)
+  local divider = CreateFrame("Button", nil, panel.MailListChild)
+  divider:RegisterForClicks("LeftButtonUp")
+  divider:SetScript("OnClick", function()
+    panel._readOpen = not panel._readOpen
+    CT.RefreshMailList(panel)
+  end)
+  divider.Fold = divider:CreateTexture(nil, "ARTWORK")
+  divider.Fold:SetSize(12, 12)
+  divider.Fold:SetPoint("LEFT", divider, "LEFT", M.inset, 0)
+  divider.Fold:SetDesaturated(true)
+  divider.Fold:SetAlpha(0.7)
   divider.Rule = divider:CreateTexture(nil, "ARTWORK")
   divider.Rule:SetHeight(1)
   divider.Rule:SetPoint("TOPLEFT", divider, "TOPLEFT", M.inset, -1)
@@ -4605,7 +4646,7 @@ function CT.Build(parent)
   T.SetColor(divider.Rule, "textSecondary")
   divider.Rule:SetAlpha(0.25)
   divider.Label = T.CreateText(divider, "secondary")
-  divider.Label:SetPoint("LEFT", divider, "LEFT", M.inset + ROW_INDICATOR + 2, 0)
+  divider.Label:SetPoint("LEFT", divider.Fold, "RIGHT", 6, 0)
   divider.Delete = CreateFrame("Button", nil, divider)
   divider.Delete:SetPoint("RIGHT", divider, "RIGHT", -M.inset, 0)
   divider.Delete.Text = T.CreateText(divider.Delete, "secondary")

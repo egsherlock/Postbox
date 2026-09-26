@@ -204,29 +204,28 @@ local function AddCheckbox(frame, y, title, desc, get, set)
 
   frame.__refreshers[#frame.__refreshers + 1] = function() cb:SetChecked(get()) end
   MarkBottom(frame, y, CHECK_H)
-  return y - ROW_H
+  return y - ROW_H, cb
 end
 
--- The figures a mail row carries, as a line of plates in the order the rows
--- draw them: click one to show or hide it, drag one sideways to move it.
--- One control answers both questions -- which, and in what order -- and it
--- reads as the row it configures rather than as a list of switches. Gold is
--- one plate with four states, because earned and spent share a column (a
--- mail has at most one sum): Gold, Earned, Spent, hidden, in that cycle.
+-- The figures a mail row carries, as a short list in the order the rows
+-- draw them left to right: one line per figure with a grip to drag it up or
+-- down, a checkbox for whether it shows at all, and -- where there is a real
+-- choice to make -- a dropdown for which or when. Gold: earned and spent,
+-- earned only, spent only. Time left: always, or under 7, 3 or 1 days. A
+-- C.O.D. price has no line: it always shows.
 --
 -- `onChange` runs after every change, to repaint whatever lists rows.
-local function AddFigurePills(frame, y, title, hint, onChange)
+local GRIP_W = 10
+
+local function AddFigureList(frame, y, title, hint, onChange)
   local T = ns.Theme
   local UI = ns.MailboxUI
-  local indent = PAD + CHECK_H + 4
 
   local caption = T.CreateText(frame, "label")
-  caption:SetPoint("TOPLEFT", frame, "TOPLEFT", indent, y - 4)
+  caption:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y - 4)
   caption:SetJustifyH("LEFT")
   caption:SetWordWrap(false)
   caption:SetText(title)
-
-  -- How to use it, quietly, on the caption's own line.
   local how = T.CreateText(frame, "secondary")
   how:SetPoint("LEFT", caption, "RIGHT", 8, 0)
   how:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
@@ -234,128 +233,186 @@ local function AddFigurePills(frame, y, title, hint, onChange)
   how:SetWordWrap(false)
   how:SetText(hint)
 
-  local lineY = y - 22
-  local plates = {}
-
-  local function Gold()
-    local earned, spent = UI.GetOption("rowEarned"), UI.GetOption("rowSpent")
-    if earned and spent then return "both" end
-    if earned then return "earned" end
-    if spent then return "spent" end
-    return "none"
-  end
-  local GOLD_NEXT = { both = "earned", earned = "spent", spent = "none", none = "both" }
-  local GOLD_LABEL = { both = "OPT_ROW_GOLD", earned = "OPT_ROW_EARNED", spent = "OPT_ROW_SPENT", none = "OPT_ROW_GOLD" }
+  local top = y - 24
+  local rows = {}
 
   local spec = {
-    time = {
-      label = function() return L["OPT_ROW_EXPIRY"] end,
-      desc = L["OPT_ROW_EXPIRY_DESC"],
-      on = function() return UI.GetOption("rowExpiry") end,
-      click = function() UI.SetOption("rowExpiry", not UI.GetOption("rowExpiry")) end,
-    },
     money = {
-      label = function() return L[GOLD_LABEL[Gold()]] end,
-      desc = L["OPT_ROW_GOLD_DESC"],
-      on = function() return Gold() ~= "none" end,
-      click = function()
-        local nextState = GOLD_NEXT[Gold()]
-        UI.SetOption("rowEarned", nextState == "both" or nextState == "earned")
-        UI.SetOption("rowSpent", nextState == "both" or nextState == "spent")
-      end,
+      title = L["OPT_ROW_GOLD"], desc = L["OPT_ROW_GOLD_DESC"], option = "rowGold",
+      modes = {
+        { id = "both",   name = L["OPT_GOLD_BOTH"] },
+        { id = "earned", name = L["OPT_GOLD_EARNED"] },
+        { id = "spent",  name = L["OPT_GOLD_SPENT"] },
+      },
+      get = function() return UI.GetGoldMode() end,
+      set = function(id) UI.SetGoldMode(id) end,
     },
-    slots = {
-      label = function() return L["OPT_ROW_SLOTS"] end,
-      desc = L["OPT_ROW_SLOTS_DESC"],
-      on = function() return UI.GetOption("rowSlots") end,
-      click = function() UI.SetOption("rowSlots", not UI.GetOption("rowSlots")) end,
+    slots = { title = L["OPT_ROW_SLOTS"], desc = L["OPT_ROW_SLOTS_DESC"], option = "rowSlots" },
+    time = {
+      title = L["OPT_ROW_EXPIRY"], desc = L["OPT_ROW_EXPIRY_DESC"], option = "rowExpiry",
+      modes = {
+        { id = "always", name = L["OPT_EXPIRY_ALWAYS"] },
+        { id = "7", name = ns.Plural("OPT_EXPIRY_UNDER", 7) },
+        { id = "3", name = ns.Plural("OPT_EXPIRY_UNDER", 3) },
+        { id = "1", name = ns.Plural("OPT_EXPIRY_UNDER", 1) },
+      },
+      get = function() return UI.GetExpiryWhen() end,
+      set = function(id) UI.SetExpiryWhen(id) end,
     },
   }
 
-  local function Paint(plate)
-    local s = spec[plate.figure]
-    plate:SetText(s.label())
-    plate:SetWidth(math.ceil(T.TextWidth(plate)) + 24)
-    local on = s.on() and true or false
-    T.SetPlateSelected(plate, on)
-    if not on then T.DimCaption(plate) end
-  end
-
-  local function Layout()
+  local function Place()
     local order = UI.GetRowOrder()
-    local x = indent
     for i = 1, #order do
-      local plate = plates[order[i]]
-      Paint(plate)
-      plate:ClearAllPoints()
-      plate:SetPoint("TOPLEFT", frame, "TOPLEFT", x, lineY)
-      x = x + plate:GetWidth() + 6
+      local row = rows[order[i]]
+      row:ClearAllPoints()
+      row:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, top - (i - 1) * ROW_H)
+      row:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
     end
   end
 
-  for id in pairs(spec) do
-    local plate = T.CreatePlate(frame, "segment")
-    plate.figure = id
-    plate:SetHeight(CHECK_H)
-    plate:RegisterForDrag("LeftButton")
-    plate:SetScript("OnClick", function(self)
-      -- A drag ends in a click on some clients; the drag already did its job.
-      if self._dragged then
-        self._dragged = nil
-        return
+  local function Sync(row)
+    local s = spec[row.id]
+    local on = UI.GetOption(s.option) and true or false
+    row.check:SetChecked(on)
+    if row.dd then
+      row.dd:SetAlpha(on and 1 or 0.4)
+      if row.dd._toggle then row.dd._toggle:SetEnabled(on) end
+      local current = s.get()
+      for _, item in ipairs(s.modes) do
+        if item.id == current then
+          row.dd._selectedId = current
+          row.dd:SetText(item.name)
+        end
       end
-      spec[self.figure].click()
-      Layout()
-      if type(SOUNDKIT) == "table" then PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON) end
-      onChange()
-    end)
-    plate:SetScript("OnDragStart", function(self)
-      local scale = self:GetEffectiveScale()
-      local cursorX = GetCursorPosition() / scale
-      self._grab = cursorX - (self:GetLeft() or cursorX)
-      self:SetFrameLevel(self:GetFrameLevel() + 5)
-      self:SetScript("OnUpdate", function(me)
-        local left = frame:GetLeft() or 0
-        local x = GetCursorPosition() / scale - left - me._grab
-        me:ClearAllPoints()
-        me:SetPoint("TOPLEFT", frame, "TOPLEFT", x, lineY)
-      end)
-    end)
-    plate:SetScript("OnDragStop", function(self)
-      self:SetScript("OnUpdate", nil)
-      self:SetFrameLevel(math.max(self:GetFrameLevel() - 5, 0))
-      self._dragged = true
-      C_Timer.After(0, function() self._dragged = nil end)
-      -- The new order is the plates' order across the line, dragged one
-      -- included, read from where each one's centre now stands.
-      local order = UI.GetRowOrder()
-      table.sort(order, function(p, q)
-        return (plates[p]:GetCenter() or 0) < (plates[q]:GetCenter() or 0)
-      end)
-      UI.SetRowOrder(order)
-      Layout()
-      onChange()
-    end)
-    plate:HookScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(spec[self.figure].label())
-      GameTooltip:AddLine(spec[self.figure].desc, 1, 1, 1, true)
-      GameTooltip:AddLine(hint, 0.6, 0.6, 0.6, true)
-      GameTooltip:Show()
-    end)
-    -- The plate's own hover repaints its caption; a hidden figure has to go
-    -- dim again after it.
-    plate:HookScript("OnLeave", function(self)
-      GameTooltip:Hide()
-      if not spec[self.figure].on() then T.DimCaption(self) end
-    end)
-    plates[id] = plate
+    end
   end
 
-  Layout()
-  frame.__refreshers[#frame.__refreshers + 1] = Layout
-  MarkBottom(frame, lineY, CHECK_H)
-  return lineY - ROW_H
+  local function Tip(owner, s)
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    GameTooltip:SetText(s.title)
+    GameTooltip:AddLine(s.desc, 1, 1, 1, true)
+    GameTooltip:Show()
+  end
+
+  for id, s in pairs(spec) do
+    local row = CreateFrame("Frame", nil, frame)
+    row:SetHeight(CHECK_H)
+    row.id = id
+
+    -- The grip: three short rules, the sign for "this moves". It is the only
+    -- handle; the checkbox and the dropdown keep their own clicks.
+    local grip = CreateFrame("Frame", nil, row)
+    grip:SetSize(GRIP_W, CHECK_H)
+    grip:SetPoint("LEFT", row, "LEFT", 0, 0)
+    grip:EnableMouse(true)
+    grip:RegisterForDrag("LeftButton")
+    grip.lines = {}
+    for i = 1, 3 do
+      local line = grip:CreateTexture(nil, "ARTWORK")
+      line:SetSize(GRIP_W, 1)
+      line:SetPoint("CENTER", grip, "CENTER", 0, (2 - i) * 4)
+      line:SetTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
+      T.SetColor(line, "textSecondary")
+      line:SetAlpha(0.6)
+      grip.lines[i] = line
+    end
+    local function Lit(alpha) for i = 1, 3 do grip.lines[i]:SetAlpha(alpha) end end
+    grip:SetScript("OnEnter", function(self)
+      Lit(1)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(hint)
+      GameTooltip:Show()
+    end)
+    grip:SetScript("OnLeave", function() Lit(0.6) GameTooltip:Hide() end)
+    grip:SetScript("OnDragStart", function()
+      local scale = row:GetEffectiveScale()
+      local _, cursorY = GetCursorPosition()
+      row._grab = (row:GetTop() or 0) - cursorY / scale
+      row:SetFrameLevel(row:GetFrameLevel() + 10)
+      row:SetScript("OnUpdate", function(self)
+        local _, cy = GetCursorPosition()
+        local rowTop = cy / scale + self._grab
+        self:ClearAllPoints()
+        self:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, rowTop - (frame:GetTop() or 0))
+        self:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
+      end)
+    end)
+    grip:SetScript("OnDragStop", function()
+      row:SetScript("OnUpdate", nil)
+      row:SetFrameLevel(math.max(row:GetFrameLevel() - 10, 0))
+      -- The new order is the rows' order down the list, the dragged one
+      -- included, read from where each one's middle now stands.
+      local order = UI.GetRowOrder()
+      table.sort(order, function(p, q)
+        local _, py = rows[p]:GetCenter()
+        local _, qy = rows[q]:GetCenter()
+        return (py or 0) > (qy or 0)
+      end)
+      UI.SetRowOrder(order)
+      Place()
+      onChange()
+    end)
+
+    local check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+    check:SetSize(CHECK_H, CHECK_H)
+    check:SetPoint("LEFT", grip, "RIGHT", 4, 0)
+    check.__postboxCheck = true
+    row.check = check
+
+    local label = T.CreateText(row, "label")
+    label:SetPoint("LEFT", check, "RIGHT", 4, 0)
+    label:SetWordWrap(false)
+    label:SetText(s.title)
+    check.__label = label
+
+    check:SetScript("OnClick", function(self)
+      local on = self:GetChecked() and true or false
+      UI.SetOption(s.option, on)
+      Sync(row)
+      onChange()
+      if type(SOUNDKIT) == "table" then
+        PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
+                     or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+      end
+    end)
+    check:SetScript("OnEnter", function(self) Tip(self, s) end)
+    check:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    if s.modes then
+      local dd = ns.Core.UI.Dropdown.Create(row, {
+        items        = s.modes,
+        toggleWidth  = 150,
+        toggleHeight = 20,
+        alignRight   = true,
+        height       = CHECK_H,
+        defaultId    = s.get(),
+      })
+      dd:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+      dd:SetWidth(150)
+      dd:SetChangeCallback(function(choice)
+        s.set(choice)
+        onChange()
+      end)
+      if dd._toggle then
+        dd._toggle:HookScript("OnEnter", function(self) Tip(self, s) end)
+        dd._toggle:HookScript("OnLeave", function() GameTooltip:Hide() end)
+      end
+      row.dd = dd
+    end
+
+    rows[id] = row
+    Sync(row)
+  end
+
+  Place()
+  frame.__refreshers[#frame.__refreshers + 1] = function()
+    for _, row in pairs(rows) do Sync(row) end
+    Place()
+  end
+  local bottom = top - 2 * ROW_H
+  MarkBottom(frame, bottom, CHECK_H)
+  return bottom - ROW_H
 end
 
 -- A full-width push-button row. `getText` is re-evaluated every time the panel
@@ -478,7 +535,9 @@ local function Build()
   -- Mail tab: the list and how it is read, in the order the eye meets it --
   -- the rows, the captions above them, the views, the buttons beneath, the
   -- gesture on a row, and the tab's own caption.
-  card, y = BeginSection(col, y, L["OPT_MAILTAB_HEADING"])
+  -- Mail rows: how a row looks and what it carries -- the one card about the
+  -- list's contents, so the switches about the tab's behaviour stand apart.
+  card, y = BeginSection(col, y, L["OPT_ROWS_HEADING"])
   cy = -12
 
   cy = AddCheckbox(card, cy, L["OPT_COMPACT_ROWS_TITLE"], L["OPT_COMPACT_ROWS_DESC"],
@@ -491,10 +550,16 @@ local function Build()
   -- The figures a row carries, under the row layout they belong to. A change
   -- repaints the list and, when it is open, the mailbox memory, which draws
   -- its rows by the same rules.
-  cy = AddFigurePills(card, cy, L["OPT_ROW_FIGURES_TITLE"], L["OPT_ROW_FIGURES_HINT"], function()
+  cy = AddFigureList(card, cy, L["OPT_ROW_FIGURES_TITLE"], L["OPT_ROW_FIGURES_HINT"], function()
     if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
     if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
   end)
+
+  y = EndSection(col, card, y)
+
+  -- Mail tab: the counts, the buttons, the click, and the tab's caption.
+  card, y = BeginSection(col, y, L["OPT_MAILTAB_HEADING"])
+  cy = -12
 
   cy = AddCheckbox(card, cy, L["OPT_TAB_COUNTS_TITLE"], L["OPT_TAB_COUNTS_DESC"],
         function() return ns.MailboxUI.GetOption("showTabCounts") end,
@@ -521,10 +586,9 @@ local function Build()
   -- The Mail tab's caption mode: a labelled dropdown, the same control the
   -- Window card uses for its style, so the two cards read as one system.
   local tcItems = {
-    { id = "dot",    name = L["OPT_TAB_CAPTION_DOT"] },
-    { id = "total",  name = L["OPT_TAB_CAPTION_TOTAL"] },
-    { id = "counts", name = L["OPT_TAB_CAPTION_COUNTS"] },
-    { id = "none",   name = L["OPT_TAB_CAPTION_NONE"] },
+    { id = "dot",   name = L["OPT_TAB_CAPTION_DOT"] },
+    { id = "count", name = L["OPT_TAB_CAPTION_COUNT"] },
+    { id = "none",  name = L["OPT_TAB_CAPTION_NONE"] },
   }
   local tcDD
   cy, tcDD = AddDropdown(card, cy, L["OPT_TAB_CAPTION_TITLE"], tcItems,
@@ -565,33 +629,6 @@ local function Build()
         function() return ns.MailboxUI.GetOption("keepRecipient") end,
         function(on) ns.MailboxUI.SetOption("keepRecipient", on) end)
 
-
-  y = EndSection(col, card, y)
-
-  -- Mail alerts: the three ways Postbox tells you about mail you are not
-  -- standing in front of. They were scattered through the Minimap card,
-  -- which is where the icon's LOOK is configured -- a sound is not a look,
-  -- and the memory is a window rather than an icon setting. Two of the
-  -- three are delivered THROUGH the icon, which their tooltips say.
-  y = AddSectionHeading(col, y, L["OPT_ALERTS_HEADING"])
-  card = StartCard(col, y)
-  cy = -12
-
-  cy = AddCheckbox(card, cy, L["OPT_ALERT_SOUND_TITLE"], L["OPT_ALERT_SOUND_DESC"],
-        function() return ns.MinimapButton and ns.MinimapButton.GetAlertSound() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertSound(on) end end)
-
-  cy = AddCheckbox(card, cy, L["OPT_ALERT_FLASH_TITLE"], L["OPT_ALERT_FLASH_DESC"],
-        function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end)
-
-  cy = AddCheckbox(card, cy, L["OPT_MEMORY_TITLE"], L["OPT_MEMORY_DESC"],
-        function() return ns.MailboxUI.GetOption("mailMemory") end,
-        function(on) ns.MailboxUI.SetOption("mailMemory", on) end)
-
-  cy = AddCheckbox(card, cy, L["OPT_ALERT_OTHERS_TITLE"], L["OPT_ALERT_OTHERS_DESC"],
-        function() return ns.MailboxUI.GetOption("mailWarnings") end,
-        function(on) ns.MailboxUI.SetOption("mailWarnings", on) end)
 
   y = EndSection(col, card, y)
 
@@ -1271,6 +1308,51 @@ local function Build()
   end
 
   y = EndSection(col, card, y)
+  local minimapCard = card
+
+  -- Mail alerts: the three ways Postbox tells you about mail you are not
+  -- standing in front of. They were scattered through the Minimap card,
+  -- which is where the icon's LOOK is configured -- a sound is not a look,
+  -- and the memory is a window rather than an icon setting. Two of the
+  -- three are delivered THROUGH the icon, which their tooltips say.
+  y = AddSectionHeading(col, y, L["OPT_ALERTS_HEADING"])
+  card = StartCard(col, y)
+  cy = -12
+
+  cy = AddCheckbox(card, cy, L["OPT_ALERT_SOUND_TITLE"], L["OPT_ALERT_SOUND_DESC"],
+        function() return ns.MinimapButton and ns.MinimapButton.GetAlertSound() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertSound(on) end end)
+
+  cy = AddCheckbox(card, cy, L["OPT_ALERT_FLASH_TITLE"], L["OPT_ALERT_FLASH_DESC"],
+        function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
+        function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end)
+
+  -- The warning about other characters reads the memory, so it is greyed
+  -- while the memory is off rather than a switch that silently does nothing.
+  local warnCheck
+  local function SyncWarn()
+    if not warnCheck then return end
+    local on = ns.MailboxUI.GetOption("mailMemory") and true or false
+    warnCheck:SetEnabled(on)
+    warnCheck:SetAlpha(on and 1 or 0.5)
+    if warnCheck.__label then warnCheck.__label:SetAlpha(on and 1 or 0.5) end
+  end
+
+  cy = AddCheckbox(card, cy, L["OPT_MEMORY_TITLE"], L["OPT_MEMORY_DESC"],
+        function() return ns.MailboxUI.GetOption("mailMemory") end,
+        function(on)
+          ns.MailboxUI.SetOption("mailMemory", on)
+          SyncWarn()
+        end)
+
+  cy, warnCheck = AddCheckbox(card, cy, L["OPT_ALERT_OTHERS_TITLE"], L["OPT_ALERT_OTHERS_DESC"],
+        function() return ns.MailboxUI.GetOption("mailWarnings") end,
+        function(on) ns.MailboxUI.SetOption("mailWarnings", on) end)
+  SyncWarn()
+  card.__refreshers[#card.__refreshers + 1] = SyncWarn
+
+  y = EndSection(col, card, y)
+
   local rightBottom = y
   -- Back on the panel's own cursor: the taller column's bottom, and the
   -- footer band under it.
@@ -1280,7 +1362,7 @@ local function Build()
   -- overlay eats the mouse so nothing inside can be clicked or hovered while
   -- the feature is off. Level +40 clears every row control in the card.
   do
-    local mmCard = card
+    local mmCard = minimapCard
     local blocker = CreateFrame("Frame", nil, mmCard)
     blocker:SetAllPoints(mmCard)
     blocker:SetFrameLevel(mmCard:GetFrameLevel() + 40)

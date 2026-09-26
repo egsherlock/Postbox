@@ -709,6 +709,31 @@ local COMMANDS = {
   debug       = OpenBugReport,
 }
 
+-- The minimap's addon compartment (Postbox.toc names these). The one way to
+-- the mailbox memory that is always there: the minimap mail icon exists only
+-- while this character has mail, and a character with none still wants to
+-- see its alts'. Left-click the memory, right-click the options.
+function Postbox_OnAddonCompartmentClick(_, mouseButton)
+  if mouseButton == "RightButton" then
+    local panel = ns.OptionsPanel
+    if panel and panel.Toggle then panel.Toggle() end
+    return
+  end
+  local Memory = ns.MailMemory
+  if Memory and Memory.ShowOthers then Memory.ShowOthers() end
+end
+
+function Postbox_OnAddonCompartmentEnter(_, button)
+  GameTooltip:SetOwner(button, "ANCHOR_LEFT")
+  GameTooltip:SetText("Postbox")
+  GameTooltip:AddLine(ns.L["COMPARTMENT_TIP"], 1, 1, 1, true)
+  GameTooltip:Show()
+end
+
+function Postbox_OnAddonCompartmentLeave()
+  GameTooltip:Hide()
+end
+
 SLASH_POSTBOX1 = "/postbox"
 SlashCmdList["POSTBOX"] = function(input)
   local word = string.lower(string.match(input or "", "^%s*(.-)%s*$"))

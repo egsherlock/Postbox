@@ -641,6 +641,8 @@ function MM.HistoryTook(ctx, what, value, count)
     entry.m = (entry.m or 0) + (tonumber(value) or 0)
     return
   end
+  -- A letter read: the entry is the whole record.
+  if what == "read" then return end
   if ctx.cod > 0 and not ctx.codPaid then
     entry.c = ctx.cod
     ctx.codPaid = true
@@ -790,13 +792,17 @@ local function Figures(mail, now)
   if R then money, moneyKind = R.MoneyText(hasCOD, mail.money, mail.cod, mail.paid, true) end
   local slots = (mail.items > 0) and T.Colorize("accent", ns.Plural("COUNT_SLOTS", mail.items)) or nil
 
-  -- Time left as the mail list shows it: only when short, in the warning
-  -- tone -- and "expired" counts as short.
+  -- Time left by the mail list's own rule (ExpiryState): the player's
+  -- threshold, amber when genuinely short -- and "expired" always shows.
   local expiryText, expired = ExpiryText(mail.expires, now)
   local left = (tonumber(mail.expires) or 0) - now
-  local soon = (R and R.EXPIRY_SOON_DAYS or 3) * 86400
-  if hasCOD then soon = 86400 end
-  local expiry = (expired or left < soon) and T.Colorize("warning", expiryText) or nil
+  local expiry
+  if expired then
+    expiry = T.Colorize("warning", expiryText)
+  elseif R then
+    local show, warn = R.ExpiryState(left / 86400, hasCOD)
+    if show then expiry = T.Colorize(warn and "warning" or "textSecondary", expiryText) end
+  end
 
   local facts = {}
   if R and money and not R.MoneyShown(moneyKind) then
@@ -1406,6 +1412,41 @@ end
 function MM.Refresh()
   local frame = MM._frame
   if frame and frame:IsShown() then Refresh(frame) end
+end
+
+-- Whether there is another character's mail to look at, for the main
+-- window's button beside its cog.
+function MM.HasOthers()
+  if not MemoryEnabled() then return false end
+  local choices = SwitchChoices()
+  for i = 1, #choices do
+    if not choices[i].me then return true end
+  end
+  return false
+end
+
+-- The main window's button: the memory beside it, with the character list
+-- open. Allowed at a mailbox -- it is the OTHER characters' boxes that are
+-- wanted from there, and nothing else can show them.
+function MM.ShowOthers(owner)
+  if not MemoryEnabled() then return end
+  local frame = Build()
+  if frame:IsShown() and frame.SwitchList and frame.SwitchList:IsShown() then
+    frame:Hide()
+    return
+  end
+  frame.viewing = nil
+  Refresh(frame)
+  frame:ClearAllPoints()
+  if owner then
+    frame:SetPoint("TOPLEFT", owner, "TOPRIGHT", 8, 0)
+  else
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+  end
+  frame:Show()
+  frame:Raise()
+  if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, frame) end
+  if frame.Switch:IsShown() then ShowSwitchList(frame) end
 end
 
 function MM.Toggle()

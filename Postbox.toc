@@ -13,6 +13,9 @@
 ## Notes-zhCN: 现代邮箱替代品：一键清空整个收件箱，或只收取你选择的邮件；输入时自动补全收件人，右键点击即可附加物品，无需前往邮箱也能看到有什么在等你。外观跟随你的 ElvUI 或 EllesmereUI。
 ## Notes-zhTW: 現代化的信箱替代品：一鍵清空整個收件匣，或只領取你選擇的郵件；輸入時自動完成收件者，右鍵點擊即可附加物品，不必前往信箱也能看到有什麼在等你。外觀跟隨你的 ElvUI 或 EllesmereUI。
 ## IconTexture: Interface\AddOns\Postbox\Media\icon-pillar.png
+## AddonCompartmentFunc: Postbox_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: Postbox_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: Postbox_OnAddonCompartmentLeave
 ## Author: egsherlock
 ## Version: @project-version@
 ## X-License: GPL v3

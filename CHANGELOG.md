@@ -13,9 +13,10 @@
   bags while writing a mail and every stack of it goes in: what fits into the
   slots, the rest into the queue behind them. Works in the default bags,
   EllesmereUI's and Baganator's. Hover "Attachments" for a reminder.
-- **Every character's mailbox, in one place.** The mailbox memory (left-click
-  the minimap icon, or /postbox mail) has a character switcher at its foot,
-  listing every character with mail waiting.
+- **Every character's mailbox, in one place.** The mailbox memory has a
+  character switcher at its foot, listing every character with mail waiting.
+  Open it from the minimap icon, from the button beside the cog in the
+  Postbox window, from the minimap's addon menu, or with /postbox mail.
 - **New mail shows up in the memory as rows.** When an auction sells, expires
   or is won while you are away, the memory lists it by item ("AH Sold -
   Lightning Etched Specs"), and other new mail by sender, until you next open
@@ -32,14 +33,17 @@
 - **History.** A clock beside Done lists what Postbox collected on this
   character in the last seven days, newest first: when, from whom, what came
   out and what it was worth, with the week's earned and spent totals
-  underneath. Search works there too. Nothing older than a week is kept.
+  underneath. Letters you read are listed too. Search works there as well.
+  Nothing older than a week is kept.
 
 ### Improved
 
 - **One inbox instead of three views.** The Mail tab is now Inbox and
   History. The inbox lists what still holds something first, then the read
-  mail with nothing left in it, under a divider that deletes them in one
-  click. The Done and All views, and the option for All, are gone.
+  mail with nothing left in it, folded under a divider that opens them and
+  deletes them in one click. The Done and All views, and the option for All,
+  are gone. The Mail tab's caption offers the count of mail to collect in
+  place of the old collect/total and total.
 - **Click "Stuck: N"** in the title bar to see only the mail the game would
   not hand over, and click it again to see everything.
 - **Mail rows line up.** Names sit in one column, as wide as the longest name
@@ -48,11 +52,12 @@
   and the item name uses whatever room they leave. Rows show a sender
   without their realm, and "The Postmaster" as "Postmaster"; the tooltip has
   the full name.
-- **Choose what each row shows, and in what order.** Options, Mail tab,
-  "Show on each mail": click Time left, Gold or Slots to hide it, drag one to
-  move it. Gold cycles through both, earned only and spent only. Whatever you
-  hide moves to the row's tooltip. A C.O.D. price always shows, because
-  Postbox never pays one without asking.
+- **Choose what each row shows, and in what order.** Options, Mail rows:
+  tick Gold, Slots and Time left on or off, drag them into the order you want,
+  and pick which gold (earned, spent or both) and when the time left shows
+  (always, or under 7, 3 or 1 days). Whatever you hide moves to the row's
+  tooltip. A C.O.D. price always shows, because Postbox never pays one
+  without asking.
 - **Category buttons count.** "All sold (7)", and a button with nothing to
   collect is greyed out rather than answering "Done" when clicked.
 - **Mailbox memory matches the mail list:** auction mail reads "AH Sold" and

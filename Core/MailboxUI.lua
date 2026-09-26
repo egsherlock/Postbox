@@ -168,8 +168,7 @@ local OPTION_DEFAULTS = {
   -- left. On: the figures are what a list of auction mail is read for. Each
   -- one off moves to the row's tooltip rather than disappearing. A C.O.D.
   -- price has no switch -- it always shows (see CollectTab's MoneyShown).
-  rowEarned       = true,
-  rowSpent        = true,
+  rowGold         = true,
   rowSlots        = true,
   rowExpiry       = true,
 }
@@ -264,16 +263,20 @@ end
 -- widened SetOption: the boolean coercion above is a guarantee, not an
 -- accident. `showTabCounts` stays the segments' own switch; this one owns
 -- the tab.
---   counts  "Mail (2/5)" -- still to collect over total
---   total   "Mail (5)"   -- just how much is sitting there
+--   count   "Mail (2)"   -- how many still hold something to collect: the
+--                           same number the Inbox segment carries
 --   dot     "Mail •"     -- an accent dot while anything is uncollected;
 --                           the default
 --   none    "Mail"
-local TAB_CAPTION_MODES = { counts = true, total = true, dot = true, none = true }
+-- "counts" (collect / total) and "total" were retired with the Done and All
+-- views: a total that counts read letters is not a number anyone acts on.
+-- Either stored value reads as "count".
+local TAB_CAPTION_MODES = { count = true, dot = true, none = true }
 
 function UI.GetTabCaptionMode()
   local store = ns.Store
   local stored = store and store.Get and store.Get("profile.tabCaption")
+  if stored == "counts" or stored == "total" then return "count" end
   if TAB_CAPTION_MODES[stored] then return stored end
   -- The dot, not "none" as this defaulted through 1.26: it is the quietest
   -- caption that still answers "is there anything worth collecting" from
@@ -312,6 +315,31 @@ function UI.GetRowOrder()
     if #out == 3 then return out end
   end
   return { ROW_ORDER_DEFAULT[1], ROW_ORDER_DEFAULT[2], ROW_ORDER_DEFAULT[3] }
+end
+
+-- Which gold a row shows while Gold is on: "both", "earned" or "spent".
+local GOLD_MODES = { both = true, earned = true, spent = true }
+function UI.GetGoldMode()
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.goldMode")
+  return GOLD_MODES[stored] and stored or "both"
+end
+function UI.SetGoldMode(mode)
+  if not GOLD_MODES[mode] then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.goldMode = mode end
+end
+
+-- When a row shows the time left: "always", or under "7", "3" or "1" days.
+-- Three by default -- the point at which a mail wants a look.
+local EXPIRY_WHEN = { always = true, ["7"] = true, ["3"] = true, ["1"] = true }
+function UI.GetExpiryWhen()
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.expiryWhen")
+  return EXPIRY_WHEN[stored] and stored or "3"
+end
+function UI.SetExpiryWhen(when)
+  if not EXPIRY_WHEN[when] then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.expiryWhen = when end
 end
 
 function UI.SetRowOrder(order)
@@ -1213,12 +1241,8 @@ local function UpdateCollectTabText()
             math.floor(b * 255 + 0.5))
         end
       end
-    elseif total > 0 then
-      suffix = mode == "total" and ("(" .. total .. ")")
-        or ("(" .. toCollect .. "/" .. total .. ")")
-      if toCollect == 0 and theme and theme.Colorize then
-        suffix = theme.Colorize("textDisabled", suffix)
-      end
+    elseif toCollect > 0 then
+      suffix = "(" .. toCollect .. ")"
     end
     if suffix then text = text .. " " .. suffix end
   end
@@ -1515,6 +1539,49 @@ local function BuildOptionsButton(frame, theme)
   return button
 end
 
+-- Beside the cog: the other characters' mailboxes (Core/MailMemory.lua), for
+-- the character that has no mail of its own to put the minimap icon up.
+-- Shown only while there is another character with mail to look at.
+local function BuildMemoryButton(frame, theme)
+  local button = CreateFrame("Button", nil, frame)
+  button:SetSize(16, 16)
+  local hostBar = (ns.Skin and (_G.EllesmereUI or _G.ElvUI)) and true or false
+  button:SetPoint("TOPLEFT", frame, "TOPLEFT", 28, hostBar and -5 or -3)
+  button:SetFrameLevel(frame:GetFrameLevel() + 20)
+  button.icon = button:CreateTexture(nil, "ARTWORK")
+  button.icon:SetAllPoints()
+  local atlas = theme and theme.FirstAtlas and theme.FirstAtlas({ "socialqueuing-icon-group", "groupfinder-icon-friend" })
+  if atlas then button.icon:SetAtlas(atlas, false) end
+  button.icon:SetDesaturated(true)
+  if theme and theme.GetAccent then button.icon:SetVertexColor(theme.GetAccent()) end
+  button:SetScript("OnClick", function()
+    local Memory = ns.MailMemory
+    if Memory and Memory.ShowOthers then Memory.ShowOthers(frame) end
+  end)
+  button:SetScript("OnEnter", function(self)
+    self.icon:SetAlpha(0.7)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L("MEMORY_SWITCH_TITLE"))
+    GameTooltip:AddLine(L("MEMORY_OPEN_TIP"), 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  button:SetScript("OnLeave", function(self)
+    self.icon:SetAlpha(1)
+    GameTooltip:Hide()
+  end)
+  button:Hide()
+  return button
+end
+
+-- Whether the memory button has anything to open. Called as the window shows.
+function UI.RefreshMemoryButton()
+  local frame = UI._frame
+  local button = frame and frame.MemoryButton
+  if not button then return end
+  local Memory = ns.MailMemory
+  button:SetShown(Memory and Memory.HasOthers and Memory.HasOthers() or false)
+end
+
 local function BuildFrame()
   if UI._frame then return end
 
@@ -1705,6 +1772,8 @@ local function BuildFrame()
   end
 
   frame.OptionsButton = BuildOptionsButton(frame, theme)
+  frame.MemoryButton = BuildMemoryButton(frame, theme)
+  frame:HookScript("OnShow", function() UI.RefreshMemoryButton() end)
 
   -- Resize grip. The foundation layer debounces the size write, so a drag does
   -- not write saved variables sixty times a second; the stop callback only runs
