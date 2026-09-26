@@ -123,6 +123,8 @@ local VIEW_DONE = "done"
 -- What a finished mail does and where it goes: the read-mail mode, the pinned
 -- divider, auto-delete, the quality mark. One table, for the file's local count.
 local RV = {}
+-- Another character's box in this list (section "Other characters").
+local AV = {}
 
 function RV.Mode()
   local UI = ns.MailboxUI
@@ -1175,13 +1177,17 @@ local function PaintViewToggle(panel)
   local container = panel and panel.ViewToggle
   if not container or not container.buttons then return end
   local T = Th()
-  local active = panel.viewMode
+  -- Another box on screen (or every box's matches) owns the selection: this
+  -- character's segments stand unselected beside it, as the way back.
+  local away = AV.Active(panel)
+  local active = (not away) and panel.viewMode or nil
 
   for i = 1, #container.buttons do
     local seg = container.buttons[i]
     T.SetPlateSelected(seg, seg.segId == active)
   end
   if container.history then T.SetPlateSelected(container.history, active == VIEW_HISTORY) end
+  if container.alt then T.SetPlateSelected(container.alt, away and panel._alt ~= nil) end
 end
 
 -- Frozen: Core/Skin_EllesmereUI.lua calls this when the user changes their
@@ -1213,7 +1219,11 @@ local function BuildViewToggle(panel)
     -- "(count)" suffix can be added and removed without corrupting the label.
     seg.baseLabel = segments[i].label
     seg:SetText(segments[i].label)
-    seg:SetScript("OnClick", function(self) SetViewMode(panel, self.segId) end)
+    -- From another character's box, a segment is the way home first.
+    seg:SetScript("OnClick", function(self)
+      AV.Leave(panel)
+      SetViewMode(panel, self.segId)
+    end)
     -- Hover is the plate's own OnEnter/OnLeave, installed by the factory and
     -- deliberately left alone: these segments carry no tooltip, so there is
     -- nothing to hook and nothing to replace them with.
@@ -1237,7 +1247,10 @@ local function BuildViewToggle(panel)
   else
     hist:SetText(L()["VIEW_HISTORY"])
   end
-  hist:SetScript("OnClick", function(self) SetViewMode(panel, self.segId) end)
+  hist:SetScript("OnClick", function(self)
+    AV.Leave(panel)
+    SetViewMode(panel, self.segId)
+  end)
   hist:HookScript("OnEnter", function(self)
     local UI = ns.MailboxUI
     local days = UI and type(UI.GetHistoryDays) == "function" and UI.GetHistoryDays() or 7
@@ -1248,6 +1261,14 @@ local function BuildViewToggle(panel)
   end)
   hist:HookScript("OnLeave", function() GameTooltip:Hide() end)
   container.history = hist
+
+  -- Another character's box, while one is on screen: its name in its class
+  -- colour and its count, selected, where this character's Inbox sits beside
+  -- it. A click opens the character list again.
+  local alt = T.CreatePlate(container, "segment")
+  alt:SetScript("OnClick", function() CT.OpenPicker(panel) end)
+  alt:Hide()
+  container.alt = alt
 
   panel.ViewToggle = container
 end
@@ -1337,9 +1358,67 @@ local function BuildSearchBox(panel)
     if searching ~= (panel._searchOn == true) then
       panel._searchOn = searching
       CT.RefreshCategoryButtons(panel)
+      -- With every box searched, a query is what puts the matches on screen.
+      if panel._searchAll then AV.Paint(panel) end
     end
     CT.RefreshMailList(panel)
   end)
+  panel.SearchPlaceholder = placeholder
+
+  -- Every character's box, or the one on screen: a toggle inside the box's
+  -- right end, in the accent while it is on -- a group of figures, where the
+  -- picker beside the box wears one character's crest. Mail Memory's own
+  -- search has the same toggle in the same place.
+  local all = CreateFrame("Button", nil, wrap)
+  all:SetSize(14, 14)
+  all:SetPoint("RIGHT", wrap, "RIGHT", -4, 0)
+  all.icon = all:CreateTexture(nil, "ARTWORK")
+  all.icon:SetAllPoints()
+  local groupAtlas = T.FirstAtlas({ "socialqueuing-icon-group", "groupfinder-icon-friend" })
+  if groupAtlas then all.icon:SetAtlas(groupAtlas, false) end
+  all.icon:SetDesaturated(true)
+  all:SetScript("OnClick", function()
+    panel._searchAll = not panel._searchAll
+    if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
+    AV.Paint(panel)
+    CT.RefreshMailList(panel)
+  end)
+  all:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText(L()["MEMORY_SEARCH_ALL_TITLE"])
+    GameTooltip:AddLine(L()[panel._searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"], 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  all:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  all:Hide()
+  panel.SearchAll = all
+
+  -- The character picker, left of the search box: it wears the crest of the
+  -- box on screen, and lists every character with mail to look at.
+  local picker = T.CreatePlate(panel, "segment")
+  picker:SetSize(M.segmentHeight, M.segmentHeight)
+  picker:SetPoint("RIGHT", wrap, "LEFT", -M.gap, 0)
+  picker:SetText("")
+  picker.Icon = picker:CreateTexture(nil, "OVERLAY")
+  picker.Icon:SetSize(M.segmentHeight - 8, M.segmentHeight - 8)
+  picker.Icon:SetPoint("CENTER")
+  picker:SetScript("OnClick", function() CT.OpenPicker(panel) end)
+  picker:HookScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText(L()["PICKER_TITLE"])
+    GameTooltip:AddLine(L()["PICKER_TIP"], 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  picker:HookScript("OnLeave", function() GameTooltip:Hide() end)
+  picker:Hide()
+  panel.Picker = picker
+end
+
+-- The auction outcome a row shows where its sender would be ("AH Sold"), so
+-- a search finds the mail by the words on screen, as the other lists do.
+function RV.OutcomeMatches(index, query)
+  local outcome = AUCTION_OUTCOME[Mail().ClassifyMail(index)]
+  return outcome ~= nil and Fold(L()[outcome.key]):find(query, 1, true) ~= nil
 end
 
 -- Frozen: Core/MailboxUI.lua calls this when the mailbox closes. A search is
@@ -1347,7 +1426,15 @@ end
 function CT.ClearSearch(panel)
   local box = panel and panel.SearchBox
   if box and box:GetText() ~= "" then box:SetText("") end
-  if panel then panel._stuckOnly = false end
+  if panel then
+    panel._stuckOnly = false
+    -- And back to this character's own box: a later visit must never open
+    -- on somebody else's mail.
+    panel._alt = nil
+    panel._searchAll = false
+    AV.Paint(panel)
+    if ns.MailMemory and ns.MailMemory.ClosePicker then ns.MailMemory.ClosePicker() end
+  end
 end
 
 -------------------------------------------------------------
@@ -1494,6 +1581,11 @@ end
 -- `on` is given -- and puts the inbox on screen if History was.
 function CT.ToggleStuckFilter(panel, on)
   if not panel then return end
+  -- The stuck mail is this character's: from another box, come home first.
+  if panel._alt or panel._searchAll then
+    panel._alt, panel._searchAll = nil, false
+    AV.Paint(panel)
+  end
   if on == nil then on = not StuckOnly(panel) end
   panel._stuckOnly = on and Mail().StuckCount() > 0
   -- A selection made over the whole list would reach rows the filter hides.
@@ -1552,6 +1644,16 @@ local function LayoutViewToggle(panel)
     seg:ClearAllPoints()
     seg:SetPoint("LEFT", container, "LEFT", (i - 1) * (per + gap), 0)
   end
+  -- Another character's name, after this character's segments, as wide as
+  -- its caption.
+  local alt = container.alt
+  if alt and alt:IsShown() then
+    local width = ceil(T.TextWidth(alt)) + 2 * T.Metrics.tightGap + 12
+    alt:SetSize(width, T.Metrics.segmentHeight)
+    alt:ClearAllPoints()
+    alt:SetPoint("LEFT", container, "LEFT", total + gap, 0)
+    total = total + gap + width
+  end
   -- The history plate: square when it wears the icon, its caption's width
   -- when it fell back to text.
   local hist = container.history
@@ -1573,7 +1675,10 @@ local function LayoutViewToggle(panel)
     -- Less the search box on the same row, which has first claim on the right.
     local room = PanelWidth(panel) - 2 * T.Metrics.inset - total - T.Metrics.gap
     if panel.SearchWrap then room = room - SEARCH_W - T.Metrics.gap end
-    hint:SetShown(room >= T.TextWidth(hint))
+    if panel.Picker and panel.Picker:IsShown() then
+      room = room - T.Metrics.segmentHeight - T.Metrics.gap
+    end
+    hint:SetShown(room >= T.TextWidth(hint) and not AV.Active(panel))
   end
 
   PaintViewToggle(panel)
@@ -1628,6 +1733,216 @@ function CT.UpdateTabCounts(panel)
 
   -- The captions just changed length, so the row has to be measured again.
   LayoutViewToggle(panel)
+end
+
+-------------------------------------------------------------
+-- Other characters
+--
+-- The Mail tab shows another character's box, as Mail Memory remembers it:
+-- pick a character with the button beside the search box and the list is
+-- that box -- read-only, the same rows, the name in its class colour beside
+-- this character's own Inbox, which is the way back. The toggle inside the
+-- search box searches every character's box at once, each character's
+-- matches under its name. The mailbox closing puts everything back to this
+-- character's own box, so a later visit never opens on somebody else's mail.
+-------------------------------------------------------------
+
+function AV.Memory()
+  local Memory = ns.MailMemory
+  if not (Memory and type(Memory.RowsFor) == "function") then return nil end
+  local UI = ns.MailboxUI
+  if UI and type(UI.GetOption) == "function" and not UI.GetOption("mailMemory") then return nil end
+  return Memory
+end
+
+-- Showing another box, or every box's matches for a search.
+function AV.Active(panel)
+  if not panel or not AV.Memory() then return false end
+  if panel._alt then return true end
+  return panel._searchAll == true and Searching(panel)
+end
+
+-- The picker's crest, the toggle's tint, the other box's name beside Inbox,
+-- and where the hint stops -- everything the state above changes on screen.
+function AV.Paint(panel)
+  if not (panel and panel.Picker) then return end
+  local T = Th()
+  local M = T.Metrics
+  local Memory = AV.Memory()
+  local others = Memory and Memory.HasOthers() or false
+  local who = panel._alt
+
+  panel.Picker:SetShown(others or who ~= nil)
+  if Memory then
+    local crest = Memory.ClassIcon(who and who.realm or GetRealmName(), who and who.name or UnitName("player"))
+    if crest then panel.Picker.Icon:SetAtlas(crest, false) end
+  end
+  T.SetPlateSelected(panel.Picker, who ~= nil)
+
+  local all = panel.SearchAll
+  all:SetShown(others)
+  if panel._searchAll and T.GetAccent then
+    all.icon:SetVertexColor(T.GetAccent())
+    all.icon:SetAlpha(1)
+  else
+    all.icon:SetVertexColor(1, 1, 1)
+    all.icon:SetAlpha(0.45)
+  end
+  -- The box's text stops short of the toggle only while there is one.
+  local inset = others and 22 or 6
+  panel.SearchBox:SetPoint("BOTTOMRIGHT", panel.SearchWrap, "BOTTOMRIGHT", -inset, 2)
+  panel.SearchPlaceholder:SetPoint("BOTTOMRIGHT", panel.SearchWrap, "BOTTOMRIGHT", -inset - 2, 2)
+
+  local hint = panel.Hint
+  if hint then
+    hint:SetPoint("RIGHT", panel.Picker:IsShown() and panel.Picker or panel.SearchWrap, "LEFT", -M.gap, 0)
+  end
+
+  local plate = panel.ViewToggle and panel.ViewToggle.alt
+  if plate then
+    if who and Memory then
+      local caption = Memory.ClassName(who.realm, who.name)
+      if ShowTabCounts() then
+        caption = caption .. " (" .. FormatCount((Memory.CountFor(who.realm, who.name))) .. ")"
+      end
+      plate:SetText(caption)
+      plate:Show()
+    else
+      plate:Hide()
+    end
+  end
+  LayoutViewToggle(panel)
+  if RV.ApplyFooter then RV.ApplyFooter(panel) end
+end
+
+-- who: { realm, name } of another character, or nil for this one.
+function AV.Show(panel, who)
+  panel._alt = who
+  ClearSelection(panel)
+  if panel.Detail then panel.Detail:Hide() end
+  if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
+  AV.Paint(panel)
+  CT.RefreshMailList(panel)
+end
+
+-- Back to this character's own box. Whether there was anywhere to come back
+-- from.
+function AV.Leave(panel)
+  if not (panel and (panel._alt or panel._searchAll)) then return false end
+  panel._searchAll = false
+  AV.Show(panel, nil)
+  return true
+end
+
+-- A character's heading among every box's matches, clicked: that box.
+function AV.OpenHeader(panel, realm, name)
+  panel._searchAll = false
+  if panel.SearchBox then panel.SearchBox:SetText("") end
+  local mine = (realm == GetRealmName() and name == UnitName("player"))
+  AV.Show(panel, (not mine) and { realm = realm, name = name } or nil)
+end
+
+-- Frozen: Core/MailboxUI.lua calls this when Mail Memory is switched on or
+-- off. Off, there is no other box to show, so this character's comes back.
+function CT.RefreshOthers(panel)
+  if not panel then return end
+  if not AV.Memory() then
+    panel._alt, panel._searchAll = nil, false
+  end
+  AV.Paint(panel)
+  RequestRefresh(panel)
+end
+
+-- Frozen: Core/MailboxUI.lua calls this for every way into Mail Memory while
+-- a mailbox is open -- the character list, under its button.
+function CT.OpenPicker(panel)
+  local Memory = AV.Memory()
+  if not (panel and panel.Picker and Memory) then return end
+  if not panel.Picker:IsShown() then AV.Paint(panel) end
+  if not panel.Picker:IsShown() then return end
+  Memory.OpenPicker(panel.Picker, panel._alt, function(realm, name, isMe)
+    AV.Show(panel, (not isMe) and { realm = realm, name = name } or nil)
+  end)
+end
+
+-- The pool of memory rows, built by Mail Memory (one row construction for
+-- both windows) and placed here at the list's own pitch.
+function AV.Row(panel, slot)
+  local pool = panel._avPool
+  local row = pool[slot]
+  if row then return row end
+  row = ns.MailMemory.NewRow(panel.MailListChild)
+  row:SetHeight(COMPACT_ROW_HEIGHT)
+  pool[slot] = row
+  return row
+end
+
+function AV.HideRows(panel)
+  local pool = panel._avPool or {}
+  for i = 1, #pool do pool[i]:Hide() end
+end
+
+-- The rows, their columns, the note under them and the totals they carry.
+-- Returns earned, spent and how many rows are listed.
+function AV.Build(panel, query)
+  local Memory = AV.Memory()
+  local who = panel._alt
+  local rows, info = Memory.RowsFor(who and who.realm, who and who.name,
+    { query = query, all = panel._searchAll })
+  panel._avRows, panel._avInfo = rows, info
+  local now = time()
+  panel._avCols = (#rows > 0) and Memory.MeasureRows(panel, rows, now, AV.Row(panel, 1)) or {}
+
+  local earned, spent = 0, 0
+  for i = 1, #rows do
+    local mail = rows[i]
+    if not mail.header and not mail.pending then
+      earned = earned + (tonumber(mail.money) or 0)
+      spent = spent + (tonumber(mail.paid) or 0) + (tonumber(mail.cod) or 0)
+    end
+  end
+
+  -- The note where the sweeps stand: whose box and when it was seen, and
+  -- where to go to collect it; or what a search of every box found.
+  local note
+  if info.matched and panel._searchAll and query ~= "" then
+    note = ns.Plural("MEMORY_MATCHES", info.matched)
+    if (info.onCharacters or 0) > 1 then
+      note = note .. "  " .. ns.Plural("MEMORY_ON_CHARACTERS", info.onCharacters)
+    end
+  elseif who and info.snapshot then
+    note = L()("ALT_NOTE", Memory.AgeText(info.snapshot), Memory.ClassName(who.realm, who.name))
+  else
+    note = Memory.SeenText(info.snapshot)
+  end
+  panel.AltNote:SetText(note)
+  return earned, spent, #rows
+end
+
+function AV.UpdateRows(panel)
+  local stride = COMPACT_ROW_HEIGHT + ROW_GAP
+  panel._rowStride = stride
+  local rows = panel._avRows or {}
+  local scroll = panel.MailListScroll
+  local viewport = scroll:GetHeight() or 0
+  local offset = scroll:GetVerticalScroll() or 0
+  local first = max(1, floor(offset / stride) + 1)
+  local last = first - 1
+  if viewport > 0 then last = min(#rows, ceil((offset + viewport) / stride)) end
+  local now = time()
+  local used = 0
+  local onHeader = function(realm, name) AV.OpenHeader(panel, realm, name) end
+  for i = first, last do
+    used = used + 1
+    local row = AV.Row(panel, used)
+    local y = -((i - 1) * stride)
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
+    row:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
+    ns.MailMemory.FillRow(row, rows[i], now, panel._avCols, i, onHeader)
+  end
+  local pool = panel._avPool
+  for i = used + 1, #pool do pool[i]:Hide() end
 end
 
 -------------------------------------------------------------
@@ -2452,7 +2767,9 @@ function HV.BuildHistoryList(panel, query)
     local entry = list[i]
     local keep = true
     if query ~= "" then
+      local outcome = AUCTION_OUTCOME[entry.k]
       local hay = (entry.s or "") .. "\001" .. (entry.sub or "")
+        .. "\001" .. (outcome and L()[outcome.key] or "")
       local items = entry.it or {}
       for j = 1, #items do hay = hay .. "\001" .. (HV.ItemName(items[j].l) or "") end
       keep = Fold(hay):find(query, 1, true) ~= nil
@@ -2542,7 +2859,10 @@ end
 -------------------------------------------------------------
 
 local function UpdateVisibleRows(panel)
-  local historyView = (panel.viewMode == VIEW_HISTORY)
+  -- Another character's box takes the list: its own rows, and none of these.
+  local away = AV.Active(panel)
+  if away then AV.UpdateRows(panel) else AV.HideRows(panel) end
+  local historyView = (panel.viewMode == VIEW_HISTORY) and not away
   if historyView then
     HV.UpdateHistoryRows(panel)
   else
@@ -2563,10 +2883,10 @@ local function UpdateVisibleRows(panel)
 
   local first = max(1, floor(offset / stride) + 1)
   local last = first - 1
-  if viewport > 0 and not historyView then
+  if viewport > 0 and not historyView and not away then
     last = min(#filtered, ceil((offset + viewport) / stride))
   end
-  if historyView then panel._rowStride = COMPACT_ROW_HEIGHT + ROW_GAP end
+  if historyView or away then panel._rowStride = COMPACT_ROW_HEIGHT + ROW_GAP end
 
   local used = 0
   local divider = panel.Divider
@@ -2615,7 +2935,7 @@ local function UpdateVisibleRows(panel)
   end
   -- Pinned, the divider's copy stands at the foot and its own place (at most
   -- a sliver of it, at the viewport's bottom edge) is not drawn twice.
-  if RV.UpdatePin(panel, offset, historyView and 0 or viewport, stride, height) and divider then
+  if RV.UpdatePin(panel, offset, (historyView or away) and 0 or viewport, stride, height) and divider then
     divider:Hide()
   end
   -- Rows carry no skinnable children -- no tagged push button, no themed panel,
@@ -2827,6 +3147,7 @@ function CT.RefreshMailList(panel)
       if query ~= "" then
         listed = Fold(sender or ""):find(query, 1, true) ~= nil
               or Fold(subject or ""):find(query, 1, true) ~= nil
+              or RV.OutcomeMatches(index, query)
       end
     end
     if listed then
@@ -2933,6 +3254,13 @@ function CT.RefreshMailList(panel)
     listed = #panel._history
     panel.HistoryNote:SetText(ns.Plural("HISTORY_NOTE", HV.Days()))
   end
+  -- Another character's box, or every box's matches: that list instead.
+  local away = AV.Active(panel)
+  if away then
+    earned, spent, listed = AV.Build(panel, query)
+    stride = COMPACT_ROW_HEIGHT + ROW_GAP
+  end
+  RV.ApplyFooter(panel)
   panel.MailListChild:SetHeight(max(listed * stride, 1))
 
   -- A shorter list can leave the scroll offset past the new end, which would
@@ -2950,6 +3278,8 @@ function CT.RefreshMailList(panel)
   local emptyText = L()["EMPTY_LIST_ALL"]
   if query ~= "" then
     emptyText = L()["EMPTY_LIST_SEARCH"]
+  elseif away then
+    emptyText = ns.MailMemory.SeenText(panel._avInfo and panel._avInfo.snapshot)
   elseif view == VIEW_HISTORY then
     emptyText = ns.Plural("EMPTY_LIST_HISTORY", HV.Days())
   elseif view == VIEW_DONE then
@@ -3011,7 +3341,12 @@ function CT.ApplyRowLayout(panel)
 
   local stride = panel._rowStride or 0
   if stride <= 0 then return end
-  local listed = (panel.viewMode == VIEW_HISTORY) and #panel._history or #panel._filtered
+  local listed = #panel._filtered
+  if AV.Active(panel) then
+    listed = #(panel._avRows or {})
+  elseif panel.viewMode == VIEW_HISTORY then
+    listed = #panel._history
+  end
   local maxScroll = max(0, listed * stride - (scroll:GetHeight() or 0))
   scroll:SetVerticalScroll(min(anchor * stride, maxScroll))
   if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
@@ -4634,6 +4969,7 @@ end
 -- which is exactly as useful there as on the collect view, since a category
 -- run works on the inbox and not on the listing.
 local function FooterHeight(panel)
+  if AV.Active(panel) then return GRID_BUTTON_HEIGHT end
   if panel.viewMode == VIEW_HISTORY then return GRID_BUTTON_HEIGHT end
   if panel.viewMode == VIEW_DONE then return GRID_PRIMARY_HEIGHT end
   if not ShowCategoryButtons() then return GRID_PRIMARY_HEIGHT end
@@ -4648,6 +4984,20 @@ function CT.RefreshCategoryButtons(panel)
   if not panel or not panel.Footer then return end
   panel.Footer:SetHeight(FooterHeight(panel))
   LayoutGrid(panel)
+end
+
+-- Each view's own footer: the sweeps under the inbox, Delete under Done, a
+-- note under History, and a note under another character's box -- which
+-- nothing here can collect from.
+function RV.ApplyFooter(panel)
+  if not (panel and panel.Footer and panel.Grid) then return end
+  local away = AV.Active(panel)
+  local id = panel.viewMode
+  panel.Footer:SetHeight(FooterHeight(panel))
+  panel.Grid:SetShown(not away and id == VIEW_COLLECT)
+  if panel.HistoryNote then panel.HistoryNote:SetShown(not away and id == VIEW_HISTORY) end
+  if panel.DoneFooter then panel.DoneFooter:SetShown(not away and id == VIEW_DONE) end
+  if panel.AltNote then panel.AltNote:SetShown(away) end
 end
 
 local function BuildGrid(panel)
@@ -4693,18 +5043,12 @@ end
 function SetViewMode(panel, id)
   if panel.viewMode == id then return end
   panel.viewMode = id
-  local historyView = (id == VIEW_HISTORY)
   -- A selection was made over one view's rows; the next view lists others.
   ClearSelection(panel)
   -- The stuck filter is about the inbox.
   if id ~= VIEW_COLLECT then panel._stuckOnly = false end
 
-  -- Each view's own footer: the sweeps under the inbox, Delete under Done, a
-  -- note under History.
-  panel.Footer:SetHeight(FooterHeight(panel))
-  panel.Grid:SetShown(id == VIEW_COLLECT)
-  panel.HistoryNote:SetShown(historyView)
-  if panel.DoneFooter then panel.DoneFooter:SetShown(id == VIEW_DONE) end
+  RV.ApplyFooter(panel)
 
   panel.MailListScroll:SetVerticalScroll(0)
   PaintViewToggle(panel)
@@ -4794,6 +5138,8 @@ function CT.Build(parent)
   panel._history = {}
   panel._hrows = {}
   panel._hcols = {}
+  -- Another character's box: its row pool (Mail Memory's rows).
+  panel._avPool = {}
 
   panel._rowTip = {}
   -- Top row: the view switch, the search box at the far right, and the hint
@@ -4845,6 +5191,15 @@ function CT.Build(parent)
   end)
   panel.DoneFooter:SetScript("OnLeave", function() GameTooltip:Hide() end)
   panel.DoneFooter:Hide()
+
+  -- Under another character's box: whose it is, when it was seen, and where
+  -- to go to collect it -- nothing here can.
+  panel.AltNote = T.CreateText(panel.Footer, "secondary")
+  panel.AltNote:SetPoint("LEFT", panel.Footer, "LEFT", M.inset, 0)
+  panel.AltNote:SetPoint("RIGHT", panel.Footer, "RIGHT", -M.inset, 0)
+  panel.AltNote:SetJustifyH("CENTER")
+  panel.AltNote:SetWordWrap(false)
+  panel.AltNote:Hide()
 
 
   -- The totals banner: a divider, not a panel, aligned to the same inset as the
@@ -4970,14 +5325,19 @@ function CT.Build(parent)
   -- into place after the window appeared. Genuine resizes still arrive through
   -- OnSizeChanged.
   LayoutPanel(panel)
-  PaintViewToggle(panel)
+  AV.Paint(panel)
 
   panel:SetScript("OnSizeChanged", function(self) LayoutPanel(self) end)
   panel:SetScript("OnShow", function(self)
     LayoutPanel(self)
+    -- Whether there is another character to pick changes between visits.
+    AV.Paint(self)
     CT.RefreshMailList(self)
   end)
-  panel:SetScript("OnHide", function(self) HideDetail(self) end)
+  panel:SetScript("OnHide", function(self)
+    HideDetail(self)
+    if ns.MailMemory and ns.MailMemory.ClosePicker then ns.MailMemory.ClosePicker() end
+  end)
 
   return panel
 end

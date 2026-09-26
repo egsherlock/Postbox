@@ -19,7 +19,12 @@ local Panel = ns.OptionsPanel
 
 local L = ns.L
 
-local W, ROW_H, PAD = 340, 30, 14
+local W, ROW_H, PAD = 340, 28, 14
+-- A section's heading, the gap after its card, and the card's own padding.
+-- Tightened in 1.40 (from 24, 16 and 12, with 30px rows): the panel had
+-- grown taller than a UI-scale-1 screen once History and read mail got
+-- their settings.
+local SECTION_STEP, SECTION_GAP, CARD_PAD = 22, 12, 10
 local CHECK_H, BUTTON_H, DROPDOWN_H = 22, 24, 24
 
 -- Rows are laid out downwards from a negative `y`, which is the TOP of the next
@@ -122,20 +127,22 @@ end
 -- with their own inner cursor; EndSection sizes the card to its content and
 -- returns the panel cursor moved past it. The two halves are separate
 -- because the minimap section puts its master checkbox BETWEEN them.
--- 24, and ONE number for every section. It used to be 20, with the two sections
+-- SECTION_STEP, and ONE number for every section. It used to be 20, with the two sections
 -- that hang a control on the heading line -- Minimap's master switch and
 -- Appearance's inheritance badge -- each subtracting a further 4 of their own
 -- afterwards. That is the right gap for a taller line and the wrong way to
 -- reach it: two thirds of the panel then sat at one spacing and the rest at
 -- another, which reads as the plain headings being crowded rather than as the
 -- tall ones being roomy. The gap now allows for a control on the heading line
--- whether or not a given section has one, and no section adjusts it.
+-- whether or not a given section has one, and no section adjusts it. (22 now:
+-- a heading-line control is CHECK_H tall from heading + 5, so its foot still
+-- clears the card by five.)
 local function AddSectionHeading(frame, y, title)
   local heading = ns.Theme.CreateText(frame, "heading")
   heading:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
   heading:SetWordWrap(false)
   heading:SetText(title)
-  return y - 24
+  return y - SECTION_STEP
 end
 
 local function StartCard(frame, y)
@@ -158,10 +165,10 @@ local function BeginSection(frame, y, title)
 end
 
 local function EndSection(frame, card, y)
-  local height = math.abs(card.__pbContentBottom or -12) + 12
+  local height = math.abs(card.__pbContentBottom or -CARD_PAD) + CARD_PAD
   card:SetHeight(height)
   MarkBottom(frame, y, height)
-  return y - height - 16
+  return y - height - SECTION_GAP
 end
 local function AddCheckbox(frame, y, title, desc, get, set)
   local cb = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
@@ -435,7 +442,7 @@ local function AddButton(frame, y, getText, desc, onClick)
 
   frame.__refreshers[#frame.__refreshers + 1] = function() btn:SetText(getText()) end
   MarkBottom(frame, y, BUTTON_H)
-  return y - (ROW_H + 4), btn
+  return y - (ROW_H + 2), btn
 end
 
 -- Uses Postbox's own dropdown element, not UIDropDownMenu / MenuUtil, so the
@@ -466,7 +473,7 @@ local function AddDropdown(frame, y, label, items, getValue, setValue)
     end
   end
   MarkBottom(frame, y, DROPDOWN_H)
-  return y - (ROW_H + 4), dd
+  return y - (ROW_H + 2), dd
 end
 
 -- A dropdown's description on hover, as every checkbox carries its own.
@@ -548,7 +555,7 @@ local function Build()
   -- Mail rows: how a row looks and what it carries -- the one card about the
   -- list's contents, so the switches about the tab's behaviour stand apart.
   card, y = BeginSection(col, y, L["OPT_ROWS_HEADING"])
-  cy = -12
+  cy = -CARD_PAD
 
   cy = AddCheckbox(card, cy, L["OPT_COMPACT_ROWS_TITLE"], L["OPT_COMPACT_ROWS_DESC"],
         function() return ns.MailboxUI.GetOption("compactRows") end,
@@ -579,7 +586,7 @@ local function Build()
 
   -- Mail tab: the counts, the buttons, the click, and the tab's caption.
   card, y = BeginSection(col, y, L["OPT_MAILTAB_HEADING"])
-  cy = -12
+  cy = -CARD_PAD
 
   cy = AddCheckbox(card, cy, L["OPT_TAB_COUNTS_TITLE"], L["OPT_TAB_COUNTS_DESC"],
         function() return ns.MailboxUI.GetOption("showTabCounts") end,
@@ -650,7 +657,7 @@ local function Build()
   -- count on it says as much as the portrait did in a quarter of the space.
   -- /postbox recipients is the other way in.
   card, y = BeginSection(col, y, L["OPT_SENDTAB_HEADING"])
-  cy = -12
+  cy = -CARD_PAD
 
   cy = AddCheckbox(card, cy, L["OPT_ATTACH_MAIL_TITLE"], L["OPT_ATTACH_MAIL_DESC"],
         function() return ns.MailboxUI.GetOption("attachFromMail") end,
@@ -668,15 +675,13 @@ local function Build()
 
   y = EndSection(col, card, y)
 
-  -- Mail alerts: the ways Postbox tells you about mail you are not standing
-  -- in front of. They were scattered through the Minimap card, which is
-  -- where the icon's LOOK is configured -- a sound is not a look, and the
-  -- memory is a window rather than an icon setting. Back in the left column
-  -- under the two tabs: under Minimap it made the right column some 270px
-  -- taller than the left, and the panel taller than a UI-scale-1 screen.
+  -- Mail alerts: the sound and the flash when mail arrives while you are out
+  -- in the world. They were in the Minimap card, which is where the icon's
+  -- LOOK is configured -- a sound is not a look. In the left column under
+  -- the two tabs, which keeps the two columns level.
   y = AddSectionHeading(col, y, L["OPT_ALERTS_HEADING"])
   card = StartCard(col, y)
-  cy = -12
+  cy = -CARD_PAD
 
   cy = AddCheckbox(card, cy, L["OPT_ALERT_SOUND_TITLE"], L["OPT_ALERT_SOUND_DESC"],
         function() return ns.MinimapButton and ns.MinimapButton.GetAlertSound() end,
@@ -686,29 +691,6 @@ local function Build()
         function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
         function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end)
 
-  -- The warning about other characters reads the memory, so it is greyed
-  -- while the memory is off rather than a switch that silently does nothing.
-  local warnCheck
-  local function SyncWarn()
-    if not warnCheck then return end
-    local on = ns.MailboxUI.GetOption("mailMemory") and true or false
-    warnCheck:SetEnabled(on)
-    warnCheck:SetAlpha(on and 1 or 0.5)
-    if warnCheck.__label then warnCheck.__label:SetAlpha(on and 1 or 0.5) end
-  end
-
-  cy = AddCheckbox(card, cy, L["OPT_MEMORY_TITLE"], L["OPT_MEMORY_DESC"],
-        function() return ns.MailboxUI.GetOption("mailMemory") end,
-        function(on)
-          ns.MailboxUI.SetOption("mailMemory", on)
-          SyncWarn()
-        end)
-
-  cy, warnCheck = AddCheckbox(card, cy, L["OPT_ALERT_OTHERS_TITLE"], L["OPT_ALERT_OTHERS_DESC"],
-        function() return ns.MailboxUI.GetOption("mailWarnings") end,
-        function(on) ns.MailboxUI.SetOption("mailWarnings", on) end)
-  SyncWarn()
-  card.__refreshers[#card.__refreshers + 1] = SyncWarn
 
   y = EndSection(col, card, y)
 
@@ -727,7 +709,7 @@ local function Build()
   -- Level with the left column's first CARD, not its heading: the hero has
   -- no heading of its own, and its top edge lining up with the Mail tab
   -- card's is what makes the two columns read as one grid.
-  y = -24
+  y = -SECTION_STEP
 
   -- Manage Recipients: a hero row at the top of the right column, where the
   -- column had the room and the left had none. It opens a whole window of
@@ -858,12 +840,12 @@ local function Build()
   end)
   hero:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-  y = y - HERO_H - 16
+  y = y - HERO_H - SECTION_GAP
 
   local appHeadingY = y
   y = AddSectionHeading(col, y, L["OPT_WINDOW_HEADING"])
   card = StartCard(col, y)
-  cy = -12
+  cy = -CARD_PAD
 
   -- Where the window opens, before how it is painted: the one setting about
   -- the window's place lived at the top of the old General card, a long way
@@ -1101,7 +1083,7 @@ local function Build()
   end
 
   card = StartCard(col, y)
-  cy = -12
+  cy = -CARD_PAD
 
   -- Each "clean" restyle sits directly beneath its original, named as the
   -- original plus the localized clean suffix.
@@ -1390,6 +1372,55 @@ local function Build()
   y = EndSection(col, card, y)
   local minimapCard = card
 
+  -- Mail Memory: every character's last-seen mailbox -- a window of its own
+  -- away from the mailbox, and the other characters in the Mail tab at one.
+  -- Built like the Minimap section: the master switch on the heading line,
+  -- and the card greys and stops taking clicks while it is off, which is what
+  -- says the warning below belongs to it. It used to be the third row of Mail
+  -- alerts, where it read as one more alert.
+  local memHeadingY = y
+  y = AddSectionHeading(col, y, L["OPT_MEMORY_TITLE"])
+  local UpdateMemoryCardState -- defined once the card exists below
+
+  local memToggle = CreateFrame("CheckButton", nil, col, "UICheckButtonTemplate")
+  memToggle:SetSize(CHECK_H, CHECK_H)
+  memToggle:SetPoint("TOPRIGHT", col, "TOPRIGHT", -PAD + 4, memHeadingY + 5)
+  memToggle.__postboxCheck = true
+  local memToggleLabel = ns.Theme.CreateText(col, "label")
+  memToggleLabel:SetPoint("RIGHT", memToggle, "LEFT", -4, 0)
+  memToggleLabel:SetWordWrap(false)
+  memToggleLabel:SetText(L["OPT_MEMORY_SWITCH"])
+  memToggle.__label = memToggleLabel
+  memToggle:SetChecked(ns.MailboxUI.GetOption("mailMemory"))
+  memToggle:SetScript("OnClick", function(self)
+    local on = self:GetChecked() and true or false
+    ns.MailboxUI.SetOption("mailMemory", on)
+    if ns.MailboxUI.RefreshMemoryState then ns.MailboxUI.RefreshMemoryState() end
+    if UpdateMemoryCardState then UpdateMemoryCardState() end
+    if type(SOUNDKIT) == "table" then
+      PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
+                   or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+    end
+  end)
+  memToggle:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L["OPT_MEMORY_TITLE"])
+    GameTooltip:AddLine(L["OPT_MEMORY_DESC"], 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  memToggle:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  frame.__refreshers[#frame.__refreshers + 1] = function()
+    memToggle:SetChecked(ns.MailboxUI.GetOption("mailMemory"))
+  end
+
+  card = StartCard(col, y)
+  cy = -CARD_PAD
+  cy = AddCheckbox(card, cy, L["OPT_ALERT_OTHERS_TITLE"], L["OPT_ALERT_OTHERS_DESC"],
+        function() return ns.MailboxUI.GetOption("mailWarnings") end,
+        function(on) ns.MailboxUI.SetOption("mailWarnings", on) end)
+  y = EndSection(col, card, y)
+  local memoryCard = card
+
   local rightBottom = y
   -- Back on the panel's own cursor: the taller column's bottom, and the
   -- footer band under it.
@@ -1421,6 +1452,23 @@ local function Build()
     end
     UpdateMinimapCardState()
     frame.__refreshers[#frame.__refreshers + 1] = UpdateMinimapCardState
+  end
+
+  -- The same for the Mail Memory card, following its heading switch.
+  do
+    local memCard = memoryCard
+    local blocker = CreateFrame("Frame", nil, memCard)
+    blocker:SetAllPoints(memCard)
+    blocker:SetFrameLevel(memCard:GetFrameLevel() + 40)
+    blocker:EnableMouse(true)
+    blocker:Hide()
+    UpdateMemoryCardState = function()
+      local on = ns.MailboxUI.GetOption("mailMemory") and true or false
+      memCard:SetAlpha(on and 1 or 0.4)
+      blocker:SetShown(not on)
+    end
+    UpdateMemoryCardState()
+    frame.__refreshers[#frame.__refreshers + 1] = UpdateMemoryCardState
   end
 
   -- The footer: what this build is, and the one door out to a bug report.

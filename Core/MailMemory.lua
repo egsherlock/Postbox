@@ -1,11 +1,13 @@
 local _, ns = ...
 
 -- =====================================================================
--- Postbox :: mailbox memory
+-- Postbox :: Mail Memory
 -- ---------------------------------------------------------------------
 -- "What was in my mailbox?", answered away from any mailbox: a snapshot
--- of the inbox as it looked the last time this character had it open,
--- shown in a small read-only window from the minimap icon's left-click.
+-- of the inbox as it looked the last time each character had it open.
+-- Shown in a small read-only window (the minimap icon, the addon
+-- compartment, /postbox mail) and, for the other characters, in the Postbox
+-- window's own Mail tab while a mailbox is open.
 --
 -- The snapshot is HISTORY and the window never pretends otherwise: it
 -- leads with how long ago it was taken, flags new arrivals since, and
@@ -13,12 +15,12 @@ local _, ns = ...
 --
 -- Cost discipline (the reason this file is small): the capture rides the
 -- MAIL_INBOX_UPDATE walks the mailbox session performs anyway, coalesced
--- to one pass per frame; the client caps the shown inbox page at ~50
--- headers however many hundreds a hoarder character holds, so a pass is
--- bounded; persistence is ONE saved-variables write per visit, at close;
--- and the window does not exist until the first time it is asked for.
--- Away from a mailbox this module is completely idle, and the "Mailbox
--- memory" option (on by default) turns even that idle wiring into two
+-- to one pass per frame; the record keeps at most MAX_MAILS however many
+-- hundreds a hoarder character holds, so a pass is bounded; the snapshot
+-- is written once per visit, at close (History and the arrival notices add
+-- a small write per event); and the window does not exist until the first
+-- time it is asked for. Away from a mailbox this module is idle, and the
+-- "Mail Memory" option (on by default) turns even that idle wiring into
 -- one-comparison no-ops.
 -- =====================================================================
 
@@ -32,21 +34,24 @@ local L = ns.L
 -- while the Collect tab counted 56. The client's inbox holds at most 100.
 local MAX_MAILS = 100
 
-local ROW_HEIGHT = 24
+-- The Mail tab's compact row height, so a row reads the same in both windows.
+local ROW_HEIGHT = 26
+-- Narrowest and widest: the grip stretches it between the two.
 local WINDOW_WIDTH = 400
+local WINDOW_MAX_WIDTH = 640
 local PAD = 12
 
--- The window's fixed chrome: title bar plus the header line above the card,
--- and the strip below it that holds the overflow note and the resize grip.
--- The card fills whatever is between the two, which is what makes the resize
--- grip work with no per-drag layout code at all.
-local CHROME_TOP = 30
+-- The window's fixed chrome: title bar plus the top row (whose box, the
+-- picker, the search) above the card, and the strip below it that holds the
+-- seen-when line and the resize grip. The card fills whatever is between
+-- the two, which is what makes the resize grip work with no per-drag layout
+-- code at all.
+local CHROME_TOP = 56
 local CHROME_BOTTOM = 26
 
 -- Six rows: the default AND the floor -- enough to be useful, small enough
 -- to stay a note rather than a second mail window; the grip only ever
--- grows it toward the content. Height only — the width is not resizable,
--- so the bounds pin it.
+-- grows it toward the content.
 local DEFAULT_ROWS = 6
 local MIN_ROWS = 6
 
@@ -708,91 +713,137 @@ function MM.HistoryTook(ctx, what, value, count)
 end
 
 -------------------------------------------------------------
--- 3. The window
+-- 3. Rows
 --
--- Same construction family as the options panel: a Blizzard window template
--- (skins re-point or strip it), the addon's frame theme, Escape to close,
--- and a themed card whose children both host skins can find. Built on the
--- first Toggle and reused; rows are pooled and re-filled, never rebuilt.
---
--- The card is anchored to the window's edges, so the resize grip needs no
--- layout code: dragging the grip stretches the card and the scroll frame
--- inside it, and the scrollbar absorbs whatever no longer fits.
+-- A memory row is a mail row drawn from a snapshot instead of the live
+-- inbox: the same columns, words and colours (Core/CollectTab.lua's
+-- CT.RowRules), read-only. Built here and used by both windows -- this one,
+-- and the Postbox window's Mail tab when it shows another character's box.
 -------------------------------------------------------------
 
-local function BuildRow(parent, index)
+local ROW_ICON = 18
+
+-- The mail row rules, or nil when the collect screen has not loaded -- in
+-- which case the row falls back to plain text, which is still a correct if
+-- plainer row.
+local function Rules()
+  return ns.CollectTab and ns.CollectTab.RowRules or nil
+end
+
+-- A character's class, as Postbox recorded it at that character's login.
+local function ClassOf(realm, name)
+  local classes = ns.Store and ns.Store.Get and ns.Store.Get("altClasses")
+  local byRealm = type(classes) == "table" and classes[realm] or nil
+  return type(byRealm) == "table" and byRealm[name] or nil
+end
+
+local function ClassColour(token)
+  if type(token) ~= "string" then return nil end
+  if C_ClassColor and type(C_ClassColor.GetClassColor) == "function" then
+    local ok, colour = pcall(C_ClassColor.GetClassColor, token)
+    if ok and colour then return colour end
+  end
+  return type(RAID_CLASS_COLORS) == "table" and RAID_CLASS_COLORS[token] or nil
+end
+
+-- realm, name -> the name in its class colour (plain where the class is not
+-- known), and the realm after it, quieter, when it is not the one being
+-- played. Both windows say whose box they show in these words.
+function MM.ClassName(realm, name)
+  local text = tostring(name or "")
+  local colour = ClassColour(ClassOf(realm, name))
+  if colour then
+    if type(colour.WrapTextInColorCode) == "function" then
+      text = colour:WrapTextInColorCode(text)
+    else
+      text = string.format("|cff%02x%02x%02x%s|r", math.floor((colour.r or 1) * 255 + 0.5),
+        math.floor((colour.g or 1) * 255 + 0.5), math.floor((colour.b or 1) * 255 + 0.5), text)
+    end
+  end
+  if realm and realm ~= GetRealmName() then
+    text = text .. " " .. ns.Theme.Colorize("textSecondary", "- " .. realm)
+  end
+  return text
+end
+
+-- realm, name -> the atlas for that character's class crest, or a generic
+-- figure where the class is not known. The character picker wears the crest
+-- of the box on screen, so the control says whose box it is.
+local CLASS_FALLBACK = { "groupfinder-icon-friend", "socialqueuing-icon-group" }
+function MM.ClassIcon(realm, name)
+  local T = ns.Theme
+  local token = ClassOf(realm, name)
+  if type(token) == "string" and token ~= "" then
+    local H = ns.Helpers
+    local lower = (H and H.Lower) and H.Lower(token) or token
+    local atlas = T.FirstAtlas({ "classicon-" .. lower, "groupfinder-icon-class-" .. lower })
+    if atlas then return atlas end
+  end
+  return T.FirstAtlas(CLASS_FALLBACK)
+end
+
+-- The crafting quality mark for a remembered mail's item: its own link where
+-- the snapshot kept one, the item's generic link by id otherwise.
+local function MailMark(mail)
+  local R = Rules()
+  if not (R and R.QualityMark and R.Shows("rowQuality")) then return nil end
+  local mark = R.QualityMark(mail.link)
+  if not mark and mail.id and C_Item and type(C_Item.GetItemInfo) == "function" then
+    local _, link = C_Item.GetItemInfo(mail.id)
+    mark = R.QualityMark(link)
+  end
+  return mark
+end
+
+-- parent -> a row for the pool; the caller places it.
+function MM.NewRow(parent)
+  local T = ns.Theme
   local row = CreateFrame("Frame", nil, parent)
   row:SetHeight(ROW_HEIGHT)
-  row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(index - 1) * ROW_HEIGHT)
-  row:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
-
-  -- The stripe is the list's own even/odd wash, so the window reads as the
-  -- same surface family as the mail list itself.
-  local stripe = row:CreateTexture(nil, "BACKGROUND")
-  stripe:SetAllPoints()
-  local colors = ns.Theme and ns.Theme.RowColors
-  local tint = colors and (index % 2 == 0 and colors.even or colors.odd)
-  if tint then
-    stripe:SetColorTexture(tint[1], tint[2], tint[3], tint[4])
-  else
-    stripe:SetColorTexture(1, 1, 1, index % 2 == 0 and 0.06 or 0.03)
-  end
 
   row.Icon = row:CreateTexture(nil, "ARTWORK")
-  row.Icon:SetSize(18, 18)
-  row.Icon:SetPoint("LEFT", row, "LEFT", 4, 0)
+  row.Icon:SetSize(ROW_ICON, ROW_ICON)
+  row.Icon:SetPoint("LEFT", row, "LEFT", 6, 0)
   row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
   -- The same three figure columns the compact mail list stands at its right
   -- edge -- time left, money, slots -- placed on fill, because where each
-  -- stands depends on the whole snapshot (see FillRow).
-  row.ColTime = ns.Theme.CreateText(row, "secondary")
-  row.ColMoney = ns.Theme.CreateText(row, "secondary")
-  row.ColSlots = ns.Theme.CreateText(row, "secondary")
+  -- stands depends on the whole list (see MeasureRows).
+  row.ColTime = T.CreateText(row, "secondary")
+  row.ColMoney = T.CreateText(row, "secondary")
+  row.ColSlots = T.CreateText(row, "secondary")
   row.ColTime:SetJustifyH("RIGHT")
   row.ColMoney:SetJustifyH("RIGHT")
   row.ColSlots:SetJustifyH("RIGHT")
 
-  -- The same marker the collect screen puts on a refused mail: the client's
-  -- warning-triangle atlas where it exists, the "!" only as the fallback
-  -- for a client that lacks it -- and in the same place, the row's right
-  -- end after the expiry. A mail the server would not hand over should look
-  -- identical wherever Postbox shows it, and it was wearing the fallback
-  -- here while the mail list wore the triangle.
+  -- The same marker the mail list puts on a refused mail, from the same art.
   local atlas = WarningAtlas()
   if atlas then
     row.Warning = row:CreateTexture(nil, "OVERLAY")
     row.Warning:SetAtlas(atlas, false)
     row.Warning:SetSize(12, 12)
   else
-    row.Warning = ns.Theme.CreateText(row, "value")
+    row.Warning = T.CreateText(row, "value")
     row.Warning:SetText("!")
   end
   row.Warning:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-  ns.Theme.SetColor(row.Warning, "warning")
+  T.SetColor(row.Warning, "warning")
   row.Warning:Hide()
 
-  -- Sender and subject in the mail list's own roles and widths, so a memory
-  -- row reads as the row it was.
-  row.Sender = ns.Theme.CreateText(row, "label")
+  row.Sender = T.CreateText(row, "label")
   row.Sender:SetPoint("LEFT", row.Icon, "RIGHT", 6, 0)
   row.Sender:SetJustifyH("LEFT")
   row.Sender:SetWordWrap(false)
 
-  row.Subject = ns.Theme.CreateText(row, "value")
+  row.Subject = T.CreateText(row, "value")
   row.Subject:SetPoint("LEFT", row.Sender, "RIGHT", 6, 0)
   row.Subject:SetJustifyH("LEFT")
   row.Subject:SetWordWrap(false)
 
   -- The tooltip belongs to the ICON, not the whole row: a row-wide hit area
   -- meant the tooltip followed the cursor across a list you were only
-  -- scanning, and covered the rows below whatever you happened to pass
-  -- over. Hovering the item is a deliberate act; hovering a row is not.
-  --
-  -- A real item tooltip where the snapshot kept a link (read mail only --
-  -- unread mail's links were never loaded, and this window does not talk to
-  -- the server). Otherwise the full subject, which the row truncates
-  -- without mercy.
+  -- scanning. The item's own tooltip where the snapshot kept its link or id,
+  -- the full subject otherwise.
   local hit = CreateFrame("Frame", nil, row)
   hit:SetPoint("TOPLEFT", row.Icon, "TOPLEFT", -2, 2)
   hit:SetPoint("BOTTOMRIGHT", row.Icon, "BOTTOMRIGHT", 2, -2)
@@ -801,6 +852,12 @@ local function BuildRow(parent, index)
     if row.itemLink then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:SetHyperlink(row.itemLink)
+      GameTooltip:Show()
+      return
+    end
+    if row.itemID and type(GameTooltip.SetItemByID) == "function" then
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetItemByID(row.itemID)
       GameTooltip:Show()
       return
     end
@@ -819,15 +876,32 @@ local function BuildRow(parent, index)
     GameTooltip:Show()
   end)
   hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  row.IconHit = hit
+
+  -- A character's name heading its matches in a search of every box: a
+  -- click opens that box.
+  row.HeaderHit = CreateFrame("Button", nil, row)
+  row.HeaderHit:SetAllPoints()
+  row.HeaderHit:RegisterForClicks("LeftButtonUp")
+  row.HeaderHit:SetScript("OnClick", function(self)
+    local owner = self:GetParent()
+    if owner.onHeader then owner.onHeader(owner.headerRealm, owner.headerName) end
+  end)
+  row.HeaderHit:SetScript("OnEnter", function(self)
+    local owner = self:GetParent()
+    ns.Theme.StyleMailRow(owner, owner._rowIndex, true)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L["MEMORY_HEADER_TIP"], 1, 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  row.HeaderHit:SetScript("OnLeave", function(self)
+    local owner = self:GetParent()
+    ns.Theme.StyleMailRow(owner, owner._rowIndex, false)
+    GameTooltip:Hide()
+  end)
+  row.HeaderHit:Hide()
 
   return row
-end
-
--- The mail row rules (Core/CollectTab.lua's CT.RowRules), or nil when the
--- collect screen has not loaded -- in which case the row falls back to plain
--- text, which is still a correct if plainer row.
-local function Rules()
-  return ns.CollectTab and ns.CollectTab.RowRules or nil
 end
 
 -- mail, now -> the row's three figures as coloured text (or nil each), what
@@ -835,10 +909,10 @@ end
 local function Figures(mail, now)
   local R = Rules()
   local T = ns.Theme
-  local hasCOD = mail.cod > 0
+  local hasCOD = (mail.cod or 0) > 0
   local money, moneyKind
-  if R then money, moneyKind = R.MoneyText(hasCOD, mail.money, mail.cod, mail.paid, true) end
-  local slots = (mail.items > 0) and T.Colorize("accent", ns.Plural("COUNT_SLOTS", mail.items)) or nil
+  if R then money, moneyKind = R.MoneyText(hasCOD, mail.money or 0, mail.cod or 0, mail.paid, true) end
+  local slots = ((mail.items or 0) > 0) and T.Colorize("accent", ns.Plural("COUNT_SLOTS", mail.items)) or nil
 
   -- Time left by the mail list's own rule (ExpiryState): the player's
   -- threshold, amber when genuinely short -- and "expired" always shows.
@@ -854,7 +928,7 @@ local function Figures(mail, now)
 
   local facts = {}
   if R and money and not R.MoneyShown(moneyKind) then
-    facts[#facts + 1] = R.MoneyText(hasCOD, mail.money, mail.cod, mail.paid, false)
+    facts[#facts + 1] = R.MoneyText(hasCOD, mail.money or 0, mail.cod or 0, mail.paid, false)
     money = nil
   end
   if R and slots and not R.Shows("rowSlots") then
@@ -865,9 +939,6 @@ local function Figures(mail, now)
   return money, slots, expiry, (#facts > 0) and table.concat(facts, "\n") or nil, expiryText, expired
 end
 
--- The snapshot's column widths, measured over every mail in it: the same
--- "widest entry anywhere" rule the mail list uses, so nothing twitches as the
--- window scrolls. `sample` is a built row, for its fonts.
 -- One row's figure texts, keyed as PackFigures takes them, plus what the
 -- tooltip carries. A row known to have arrived but never opened says "New"
 -- where the row's last figure would stand, and nothing else.
@@ -885,64 +956,71 @@ local function RowTexts(mail, now)
 end
 
 -- The list's column widths, measured over every row in it: the mail list's
--- "widest entry anywhere" rule, so nothing twitches as the window scrolls.
--- `sample` is a built row, for its fonts.
-local function MeasureColumns(frame, rows, now, sample)
+-- "widest entry anywhere" rule, so nothing twitches as the list scrolls.
+-- `owner` is a frame to measure with; `sample` a built row, for its fonts.
+function MM.MeasureRows(owner, rows, now, sample)
   local R = Rules()
-  local cols = frame._cols or {}
-  frame._cols = cols
+  local cols = owner._memCols or {}
+  owner._memCols = cols
   cols.money, cols.slots, cols.time, cols.stuck = 0, 0, 0, false
   if not R then
     cols.sender = 92
     return cols
   end
-  -- The widest name shown, up to the auction labels' width: the mail list's rule.
-  local cap = R.SenderColumn(frame, sample.Sender)
+  local cap = R.SenderColumn(owner, sample.Sender)
   cols.sender = 0
   local fsFor = { time = sample.ColTime, money = sample.ColMoney, slots = sample.ColSlots }
   for i = 1, #rows do
     local mail = rows[i]
-    if mail.header then
-      -- A character's name heads its matches; it measures nothing.
-    elseif cols.sender < cap then
+    if not mail.header and cols.sender < cap then
       local label = R.OutcomeSender(mail.kind) or R.DisplaySender(mail.sender) or ""
-      cols.sender = math.min(math.max(cols.sender, R.Measure(frame, sample.Sender, label) + 2), cap)
+      cols.sender = math.min(math.max(cols.sender, R.Measure(owner, sample.Sender, label) + 2), cap)
     end
     local texts = RowTexts(mail, now)
     for id, fs in pairs(fsFor) do
-      if texts[id] then cols[id] = math.max(cols[id], R.Measure(frame, fs, texts[id])) end
+      if texts[id] then cols[id] = math.max(cols[id], R.Measure(owner, fs, texts[id])) end
     end
     if mail.stuck then cols.stuck = true end
   end
   return cols
 end
 
-local Refresh
-
-local function FillRow(row, mail, now, cols)
+-- row, mail, now, cols, position [, onHeader] -> the row bound to the mail.
+-- `onHeader(realm, name)` answers a click on a character's heading.
+function MM.FillRow(row, mail, now, cols, position, onHeader)
   local R = Rules()
   local T = ns.Theme
+  T.StyleMailRow(row, position, false)
+  row.onHeader = onHeader
   if mail.header then
     -- A search across characters: the name the matches below belong to.
-    row.fullSubject, row.fullSender, row.itemLink = nil, nil, nil
+    row.fullSubject, row.fullSender, row.itemLink, row.itemID = nil, nil, nil, nil
     row.factsTip, row.expiryTip = nil, nil
-    row.Icon:Hide()
+    row.headerRealm, row.headerName = mail.realm, mail.name
+    local crest = MM.ClassIcon(mail.realm, mail.name)
+    if crest then row.Icon:SetAtlas(crest, false) else row.Icon:SetTexture(nil) end
+    row.Icon:SetTexCoord(0, 1, 0, 1)
+    row.Icon:Show()
     row.Warning:Hide()
     row.ColTime:Hide()
     row.ColMoney:Hide()
     row.ColSlots:Hide()
-    local width = row:GetParent():GetWidth() or 0
+    local width = row:GetWidth() or 0
     if width < 100 then width = WINDOW_WIDTH - 44 end
-    T.FitText(row.Sender, width - 40, T.Colorize("accent", mail.label), nil)
+    T.FitText(row.Sender, width - 40, mail.label, nil)
     T.FitText(row.Subject, 1, "", nil)
+    row.HeaderHit:SetShown(onHeader ~= nil)
     row:SetAlpha(1)
     row:Show()
     return
   end
+  row.HeaderHit:Hide()
   row.fullSubject = mail.subject
   row.fullSender = mail.sender
   row.itemLink = mail.link
+  row.itemID = mail.id
 
+  row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
   if mail.icon then
     row.Icon:SetTexture(mail.icon)
     row.Icon:Show()
@@ -962,20 +1040,23 @@ local function FillRow(row, mail, now, cols)
 
   -- The figures this mail has, packed to the right edge in the player's
   -- order -- the mail list's own rule -- and the subject up to the first.
-  -- The width is the list's own, so the rows run all the way to the bar.
-  local width = row:GetParent():GetWidth() or 0
+  local width = row:GetWidth() or 0
   if width < 100 then width = WINDOW_WIDTH - 44 end
   local trail = 6 + (cols.stuck and 16 or 0)
-  local textWidth = width - (4 + 18 + 6) - trail
+  local textWidth = width - (6 + ROW_ICON + 6) - trail
   local right = trail
   if R then
     right = R.PackFigures(row, trail, math.floor(textWidth * R.META_SHARE), cols, texts)
   end
 
-  local senderText = (R and (R.OutcomeSender(mail.kind) or R.DisplaySender(mail.sender))) or mail.sender
-  local subject = (ns.Helpers and ns.Helpers.ShortSubject) and ns.Helpers.ShortSubject(mail.subject) or mail.subject
+  local named = (mail.sender ~= "" and mail.sender) or nil
+  local senderText = (R and (R.OutcomeSender(mail.kind) or R.DisplaySender(named)))
+    or named or L["MEMORY_SENDER_UNKNOWN"]
+  local subject = (ns.Helpers and ns.Helpers.ShortSubject) and ns.Helpers.ShortSubject(mail.subject or "")
+    or (mail.subject or "")
+  if R and R.WithMark then subject = R.WithMark(subject, MailMark(mail)) end
   local lineWidth = math.max(textWidth - (right - trail), 40)
-  local senderWidth = math.min(cols.sender, math.floor(lineWidth / 2))
+  local senderWidth = math.min(cols.sender or 92, math.floor(lineWidth / 2))
   T.FitText(row.Sender, senderWidth, senderText, nil)
   T.FitText(row.Subject, math.max(lineWidth - senderWidth - 6, 20), subject, nil)
 
@@ -1066,19 +1147,18 @@ function MM.PendingSummary()
 end
 
 -------------------------------------------------------------
--- 3c. The character switcher
+-- 3c. Characters
 --
--- In the title bar's corner, where the main window keeps its cog: an icon
--- and the name of the character whose box is showing -- the name is what is
--- being switched, so it is the control -- and a small list under it. Only characters with something to
--- look at are listed: the one being played, and any other whose box held
--- mail, has mail on the way, or has a warning. Names and counts stand in two
--- columns, so the counts line up however long a name and realm run, and the
--- list is exactly as wide as its widest row.
+-- Who has a box worth looking at -- the one being played, and any other
+-- whose box held mail, has mail on the way, or has a warning -- and the
+-- picker that lists them. One picker for both windows: it opens under the
+-- button that asked for it, lists names in class colour with their counts in
+-- a column, marks the box on screen, and closes on a pick or a click
+-- anywhere else.
 -------------------------------------------------------------
 
-local SWITCH_ATLASES = { "socialqueuing-icon-group", "groupfinder-icon-friend" }
-local SWITCH_ROW_H = 20
+local PICK_ROW_H = 20
+local PICK_MAX = 14
 
 local function SwitchChoices()
   local all = MM.Characters()
@@ -1090,59 +1170,52 @@ local function SwitchChoices()
   return out
 end
 
-local function HideSwitchList(frame)
-  if frame.SwitchList then frame.SwitchList:Hide() end
+-- Whether there is another character's box to look at.
+function MM.HasOthers()
+  if not MemoryEnabled() then return false end
+  local choices = SwitchChoices()
+  for i = 1, #choices do
+    if not choices[i].me then return true end
+  end
+  return false
 end
 
-local function ShowSwitchList(frame)
-  local T = ns.Theme
-  local list = frame.SwitchList
-  if not list then
-    list = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-    list.__pbPopupAlways = true
-    T.ApplyCard(list)
-    list:SetFrameStrata("FULLSCREEN_DIALOG")
-    list:EnableMouse(true)
-    list.rows = {}
-    -- Closes on any click outside it. No full-screen catcher frame: one sat
-    -- above the list's own rows and swallowed the very click that chose a
-    -- character. The client's global mouse event says where every press
-    -- lands without standing in its way.
-    list:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
-    list:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
-    list:SetScript("OnEvent", function(self)
-      if self:IsMouseOver() or (frame.Switch and frame.Switch:IsMouseOver()) then return end
-      self:Hide()
-    end)
-    frame:HookScript("OnHide", function() HideSwitchList(frame) end)
-    frame.SwitchList = list
-    if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, list) end
-    -- A new frame starts SHOWN, so the Show below would not fire OnShow and
-    -- the click-away would never be registered on the first open.
-    list:Hide()
-  end
+-- realm, name -> what the picker says of that character: its count of mail
+-- waiting (with what is known to be on the way) and whether it warns.
+function MM.CountFor(realm, name)
+  local myRealm, myName = Me()
+  local st = Status(realm or myRealm, name or myName, time())
+  return st.waiting + (st.pending or 0), st.warn, WarningText(st, time())
+end
 
-  local choices = SwitchChoices()
-  local myRealm = GetRealmName()
-  local v = frame.viewing
+local function PaintPicker(list)
+  local T = ns.Theme
+  local choices = list.choices or {}
+  local cur = list.current
+  local first = list.offset + 1
+  local shown = math.min(#choices, PICK_MAX)
   local nameW, countW = 0, 0
-  for i = 1, #choices do
-    local st = choices[i]
+  for i = 1, shown do
+    local st = choices[first + i - 1]
     local row = list.rows[i]
     if not row then
       row = CreateFrame("Button", nil, list)
-      row:SetHeight(SWITCH_ROW_H)
+      row:SetHeight(PICK_ROW_H)
       row:RegisterForClicks("LeftButtonUp")
       row.Hover = row:CreateTexture(nil, "BACKGROUND")
       row.Hover:SetAllPoints()
       row.Hover:SetColorTexture(1, 1, 1, 0.06)
       row.Hover:Hide()
-      row.Mark = row:CreateTexture(nil, "ARTWORK")
-      row.Mark:SetSize(4, 4)
-      row.Mark:SetPoint("LEFT", row, "LEFT", 6, 0)
-      row.Mark:SetTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
+      row.Bar = row:CreateTexture(nil, "ARTWORK")
+      row.Bar:SetWidth(2)
+      row.Bar:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+      row.Bar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+      row.Bar:SetTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
+      row.Crest = row:CreateTexture(nil, "ARTWORK")
+      row.Crest:SetSize(14, 14)
+      row.Crest:SetPoint("LEFT", row, "LEFT", 8, 0)
       row.Name = T.CreateText(row, "value")
-      row.Name:SetPoint("LEFT", row, "LEFT", 16, 0)
+      row.Name:SetPoint("LEFT", row.Crest, "RIGHT", 6, 0)
       row.Name:SetJustifyH("LEFT")
       row.Name:SetWordWrap(false)
       row.Count = T.CreateText(row, "secondary")
@@ -1161,110 +1234,108 @@ local function ShowSwitchList(frame)
         GameTooltip:Hide()
       end)
       row:SetScript("OnClick", function(self)
-        if self.isMe then
-          frame.viewing = nil
-        else
-          frame.viewing = { realm = self.realm, name = self.charName }
-        end
-        HideSwitchList(frame)
-        Refresh(frame)
+        local pick = list.onPick
+        list:Hide()
+        if pick then pick(self.realm, self.charName, self.isMe) end
       end)
       list.rows[i] = row
     end
     row.realm, row.charName, row.isMe = st.realm, st.name, st.me
     row.reason = st.text
-    local label = st.name
-    if st.realm ~= myRealm then
-      label = label .. "  " .. T.Colorize("textSecondary", st.realm)
-    end
-    row.Name:SetText(label)
+    local crest = MM.ClassIcon(st.realm, st.name)
+    if crest then row.Crest:SetAtlas(crest, false) else row.Crest:SetTexture(nil) end
+    row.Name:SetWidth(0)
+    row.Name:SetText(MM.ClassName(st.realm, st.name))
     local waiting = st.waiting + (st.pending or 0)
     local count = ns.Plural("COUNT_MAILS", waiting)
     row.Count:SetText(st.warn and T.Colorize("warning", count) or count)
     nameW = math.max(nameW, row.Name:GetStringWidth() or 0)
     countW = math.max(countW, row.Count:GetStringWidth() or 0)
-
-    local current = (v == nil and st.me) or (v ~= nil and v.realm == st.realm and v.name == st.name)
+    local current = (cur == nil and st.me) or (cur ~= nil and cur.realm == st.realm and cur.name == st.name)
     if current and T.GetAccent then
       local r, g, b = T.GetAccent()
-      row.Mark:SetVertexColor(r, g, b, 0.9)
+      row.Bar:SetVertexColor(r, g, b, 0.9)
     end
-    row.Mark:SetShown(current and true or false)
+    row.Bar:SetShown(current and true or false)
   end
-  for i = #choices + 1, #list.rows do list.rows[i]:Hide() end
+  for i = shown + 1, #list.rows do list.rows[i]:Hide() end
 
-  local width = 16 + math.ceil(nameW) + 20 + math.ceil(countW) + 8
-  for i = 1, #choices do
+  local width = 8 + 14 + 6 + math.ceil(nameW) + 20 + math.ceil(countW) + 8
+  for i = 1, shown do
     local row = list.rows[i]
     row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", list, "TOPLEFT", 1, -4 - (i - 1) * SWITCH_ROW_H)
+    row:SetPoint("TOPLEFT", list, "TOPLEFT", 1, -4 - (i - 1) * PICK_ROW_H)
     row:SetWidth(width - 2)
     row.Name:SetWidth(math.ceil(nameW) + 2)
     row:Show()
   end
-  list:SetSize(width, 8 + #choices * SWITCH_ROW_H)
+  list:SetSize(width, 8 + shown * PICK_ROW_H)
+end
+
+-- anchor, current, onPick -> the character list under `anchor`. `current` is
+-- the box on screen ({ realm, name }, or nil for the one being played);
+-- onPick(realm, name, isMe) answers a pick. A second click on the same
+-- anchor closes it.
+function MM.OpenPicker(anchor, current, onPick)
+  local T = ns.Theme
+  local list = MM._picker
+  if list and list:IsShown() and list.anchor == anchor then
+    list:Hide()
+    return
+  end
+  if not list then
+    list = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    list.__pbPopupAlways = true
+    T.ApplyCard(list)
+    list:SetFrameStrata("FULLSCREEN_DIALOG")
+    list:SetClampedToScreen(true)
+    list:EnableMouse(true)
+    list:EnableMouseWheel(true)
+    list.rows = {}
+    -- Closes on any click outside it -- the list and the button that opened
+    -- it excepted, so that button's own click can close it. No full-screen
+    -- catcher frame: one swallowed the very click that chose a character.
+    list:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
+    list:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
+    list:SetScript("OnEvent", function(self)
+      if self:IsMouseOver() or (self.anchor and self.anchor:IsMouseOver()) then return end
+      self:Hide()
+    end)
+    -- Past PICK_MAX names the wheel moves the list a name at a time.
+    list:SetScript("OnMouseWheel", function(self, delta)
+      local most = math.max(0, #(self.choices or {}) - PICK_MAX)
+      local offset = math.max(0, math.min(most, self.offset - delta))
+      if offset ~= self.offset then
+        self.offset = offset
+        PaintPicker(self)
+      end
+    end)
+    MM._picker = list
+    if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, list) end
+    -- A new frame starts SHOWN, so the Show below would not fire OnShow and
+    -- the click-away would never be registered on the first open.
+    list:Hide()
+  end
+  list.anchor, list.onPick, list.current = anchor, onPick, current
+  list.choices = SwitchChoices()
+  list.offset = 0
+  PaintPicker(list)
   list:ClearAllPoints()
-  list:SetPoint("TOPLEFT", frame.Switch, "BOTTOMLEFT", -4, -6)
+  list:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -4)
   list:Show()
   list:Raise()
 end
 
--- The switcher: an icon and the name beside it, one control. Sized to the
--- name on every refresh.
-local function BuildSwitcher(frame)
-  local T = ns.Theme
-  local button = CreateFrame("Button", nil, frame)
-  button:SetHeight(16)
-  -- Placed as the main window's cog is (Core/MailboxUI.lua): a host skin's
-  -- rebuilt title bar sits two pixels lower than the stock one.
-  local hostBar = (ns.Skin and (_G.EllesmereUI or _G.ElvUI)) and true or false
-  button:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, hostBar and -5 or -3)
-  button:SetFrameLevel(frame:GetFrameLevel() + 20)
-
-  button.icon = button:CreateTexture(nil, "ARTWORK")
-  button.icon:SetSize(14, 14)
-  button.icon:SetPoint("LEFT", button, "LEFT", 0, 0)
-  local atlas = T.FirstAtlas(SWITCH_ATLASES)
-  if atlas then
-    button.icon:SetAtlas(atlas, false)
-  else
-    button.icon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Male")
-  end
-  button.icon:SetDesaturated(true)
-  if T.GetAccent then button.icon:SetVertexColor(T.GetAccent()) end
-
-  button.Name = T.CreateText(button, "label")
-  button.Name:SetPoint("LEFT", button.icon, "RIGHT", 4, 0)
-  button.Name:SetWordWrap(false)
-
-  button:SetScript("OnClick", function()
-    if frame.SwitchList and frame.SwitchList:IsShown() then
-      HideSwitchList(frame)
-    else
-      ShowSwitchList(frame)
-    end
-  end)
-  button:SetScript("OnEnter", function(self)
-    self.icon:SetAlpha(0.7)
-    GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
-    GameTooltip:SetText(L["MEMORY_SWITCH_TITLE"])
-    GameTooltip:AddLine(L["MEMORY_SWITCH_TIP"], 1, 1, 1, true)
-    GameTooltip:Show()
-  end)
-  button:SetScript("OnLeave", function(self)
-    self.icon:SetAlpha(1)
-    GameTooltip:Hide()
-  end)
-  frame.Switch = button
+function MM.ClosePicker()
+  if MM._picker then MM._picker:Hide() end
 end
 
 -------------------------------------------------------------
--- 3d. Search
+-- 3d. What a box shows
 --
--- A box at the window's foot narrows the list to mails whose sender, subject
--- or auction outcome contains what is typed. A toggle inside the box widens
--- it to every character's box: the matches are then listed under each
--- character's name, so a search for "Luredrop" finds which alt has them.
+-- The rows for one character's box, narrowed by a search; or, searching every
+-- character, each character's matches under a heading with its name. Sorted
+-- as the box has them (newest first) or with the soonest to expire first.
 -------------------------------------------------------------
 
 local function Fold(text)
@@ -1273,6 +1344,9 @@ local function Fold(text)
   return string.lower(tostring(text or ""))
 end
 
+-- One matcher for every list a search narrows: the sender as written, the
+-- sender as the row shows it (an auction outcome, "AH Sold"), and the
+-- subject -- which for an auction mail is the item's name.
 local function Matches(mail, query)
   local R = Rules()
   local outcome = R and R.OutcomeSender and mail.kind and R.OutcomeSender(mail.kind) or ""
@@ -1281,28 +1355,64 @@ local function Matches(mail, query)
   local hay = (mail.sender or "") .. "\001" .. (mail.subject or "") .. "\001" .. outcome
   return Fold(hay):find(query, 1, true) ~= nil
 end
+MM.Fold = Fold
 
-local function SearchQuery(frame)
-  local box = frame.SearchBox
-  local text = box and box:GetText() or ""
-  return Fold((text:match("^%s*(.-)%s*$")))
+-- mails, sort, now -> the mails in the order asked for. "expiry": the
+-- soonest to go first, and what has already gone last.
+local function Sorted(mails, sort, now)
+  if sort ~= "expiry" then return mails end
+  local out = {}
+  for i = 1, #mails do out[i] = mails[i] end
+  table.sort(out, function(a, b)
+    local ea, eb = tonumber(a.expires) or 0, tonumber(b.expires) or 0
+    local ga, gb = ea <= now, eb <= now
+    if ga ~= gb then return gb end
+    if ea ~= eb then return ea < eb end
+    return (a.subject or "") < (b.subject or "")
+  end)
+  return out
 end
 
--- Every character's matches, each under a header row with its name.
-local function SearchAll(query, now)
+-- A visit that ended without either close event reaching this module
+-- stranded `live`: settle it now exactly as the close handler would,
+-- carrying marks made against the prior record across the late persist.
+local function HealLive()
+  local state = MailboxState()
+  if not live or (state and state.mailboxOpen) then return end
+  local prior = StoredSnapshot()
+  local priorMark = prior and prior.newSince and prior.newFrom or nil
+  local priorMarked = prior and prior.newSince == true
+  if closedAt == 0 then closedAt = time() end
+  PersistOnClose()
+  local healed = StoredSnapshot()
+  if healed and priorMarked then
+    healed.newSince = true
+    healed.newFrom = priorMark
+  end
+end
+
+local function SnapshotOf(realm, name)
+  local myRealm, myName = Me()
+  if realm == myRealm and name == myName then return live or StoredSnapshot() end
+  return SnapshotFor(realm, name)
+end
+
+-- Every character's matches, each under a heading with its name.
+local function SearchAll(query, now, sort)
   local rows, characters = {}, 0
   local all = MM.Characters()
   for i = 1, #all do
     local st = all[i]
-    local snap = SnapshotFor(st.realm, st.name)
-    local mails = snap and snap.mails or {}
+    local snap = SnapshotOf(st.realm, st.name)
+    local mails = Sorted(snap and snap.mails or {}, sort, now)
     local found = nil
     for j = 1, #mails do
       if Matches(mails[j], query) then
         if not found then
           found = true
           characters = characters + 1
-          rows[#rows + 1] = { header = true, label = CharacterLabel(st.realm, st.name) }
+          rows[#rows + 1] = { header = true, realm = st.realm, name = st.name,
+            label = MM.ClassName(st.realm, st.name) }
         end
         rows[#rows + 1] = mails[j]
       end
@@ -1311,12 +1421,142 @@ local function SearchAll(query, now)
   return rows, characters
 end
 
+-- realm, name, opts -> rows, info. `realm`/`name` nil for the character
+-- being played. opts.query: the search, folded ("" for none); opts.all:
+-- search every character's box; opts.sort: "expiry" for the soonest first.
+-- info: realm, name, me, snapshot, total (mails in the snapshot), hidden
+-- (in the box but past the record's cap), matched, onCharacters.
+function MM.RowsFor(realm, name, opts)
+  opts = opts or {}
+  local myRealm, myName = Me()
+  realm, name = realm or myRealm, name or myName
+  local me = (realm == myRealm and name == myName)
+  local now = time()
+  local state = MailboxState()
+  if me then HealLive() end
+  local snapshot = SnapshotOf(realm, name)
+
+  -- Mail known to have arrived after the snapshot. Three independent
+  -- detectors, ANY suffices, each sound on its own:
+  --
+  --   1. The arrival watch's stored mark (the pending-mail event, guarded).
+  --   2. The flag FLIP: HasNewMail() is "unread mail exists", so its value
+  --      proves nothing -- but false at close and true now can only mean an
+  --      arrival in between.
+  --   3. The sender-triple CHANGE: the latest-unread-senders line the
+  --      client keeps reshuffles whenever mail lands, including while
+  --      logged out; the snapshot remembers what it said at close.
+  --
+  -- A mailbox visit replaces the record and re-baselines all three. Only
+  -- the character being played can be asked; another's watch says the rest.
+  local arrived, from = false, nil
+  if snapshot and me then
+    EnsureBaseline(snapshot)
+    local away = not (state and state.mailboxOpen)
+    local flagNow = away and type(HasNewMail) == "function" and HasNewMail() and true or false
+    local tripleNow = away and SenderTriple() or nil
+    arrived = snapshot.newSince == true
+      or (flagNow and snapshot.baseNew == false)
+      or (tripleNow ~= nil and snapshot.baseFrom ~= nil and tripleNow ~= snapshot.baseFrom)
+    from = snapshot.newFrom
+    if arrived and not from and type(GetLatestThreeSenders) == "function" then
+      local a, b, c = GetLatestThreeSenders()
+      from = {}
+      if a then from[#from + 1] = tostring(a) end
+      if b then from[#from + 1] = tostring(b) end
+      if c then from[#from + 1] = tostring(c) end
+      if #from == 0 then from = nil end
+    end
+  end
+
+  -- At a mailbox the live look already holds what arrived: rows for it
+  -- would list those mails twice.
+  local atBox = me and state and state.mailboxOpen
+  local rows = atBox and {} or PendingRows(WatchFor(realm, name, false), arrived, from, snapshot)
+  local mails = Sorted(snapshot and snapshot.mails or {}, opts.sort, now)
+  for i = 1, #mails do rows[#rows + 1] = mails[i] end
+
+  local info = { realm = realm, name = name, me = me, snapshot = snapshot, total = #mails }
+  info.hidden = snapshot and math.max(0, (tonumber(snapshot.total) or #mails) - #mails) or 0
+
+  local query = opts.query or ""
+  if query ~= "" then
+    if opts.all then
+      rows, info.onCharacters = SearchAll(query, now, opts.sort)
+      local matched = 0
+      for i = 1, #rows do if not rows[i].header then matched = matched + 1 end end
+      info.matched = matched
+    else
+      local kept = {}
+      for i = 1, #rows do
+        if Matches(rows[i], query) then kept[#kept + 1] = rows[i] end
+      end
+      rows = kept
+      info.matched = #rows
+    end
+  end
+  return rows, info
+end
+
+-- snapshot -> "Last seen 27 min ago." or the words for none / an empty box.
+function MM.SeenText(snapshot)
+  if not snapshot then return L["MEMORY_EMPTY"] end
+  if #(snapshot.mails or {}) == 0 then
+    return string.format(L["MEMORY_ASOF_EMPTY"], AgeText(snapshot.seenAt))
+  end
+  return string.format(L["MEMORY_LASTSEEN"], AgeText(snapshot.seenAt))
+end
+
+-- snapshot -> just the age, "27 min ago".
+function MM.AgeText(snapshot)
+  return snapshot and AgeText(snapshot.seenAt) or ""
+end
+
+-------------------------------------------------------------
+-- 3e. The window
+--
+-- Mail Memory: what the boxes held, for when there is no mailbox to open. A
+-- Blizzard window template (skins re-point or strip it), the addon's frame
+-- theme, Escape to close, and a themed card whose children both host skins
+-- can find. Laid out as the Mail tab is: whose box on the left of the top
+-- row, the character picker and the search at its right, the list, and a
+-- quiet line at the foot saying when the box was seen.
+-------------------------------------------------------------
+
+local HEADER_Y = -28
+local HEADER_H = 22
+local SEARCH_W = 150
+local SORT_ATLASES = { "auctionhouse-ui-sortarrow", "UI-HUD-ActionBar-PageDownArrow-Up", "NPE_ArrowDown" }
+local ALL_ATLASES = { "socialqueuing-icon-group", "groupfinder-icon-friend" }
+
+local Refresh
+
+local function SearchQuery(frame)
+  local box = frame.SearchBox
+  local text = box and box:GetText() or ""
+  return Fold((text:match("^%s*(.-)%s*$")))
+end
+
+-- A square control from the theme's segment plate, wearing an atlas: the
+-- same control the Mail tab's History clock is.
+local function IconPlate(parent, atlases, size)
+  local T = ns.Theme
+  local plate = T.CreatePlate(parent, "segment")
+  plate:SetSize(size, size)
+  plate:SetText("")
+  plate.Icon = plate:CreateTexture(nil, "OVERLAY")
+  plate.Icon:SetSize(size - 8, size - 8)
+  plate.Icon:SetPoint("CENTER")
+  local atlas = atlases and T.FirstAtlas(atlases)
+  if atlas then plate.Icon:SetAtlas(atlas, false) end
+  return plate
+end
+
 local function BuildSearch(frame)
   local T = ns.Theme
-  local M = T.Metrics
   local wrap = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-  wrap:SetSize(160, 20)
-  wrap:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD - 2, 5)
+  wrap:SetSize(SEARCH_W, HEADER_H)
+  wrap:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(PAD - 2), HEADER_Y)
   T.StyleInput(wrap)
   wrap.__postboxInputWrap = true
   frame.SearchWrap = wrap
@@ -1350,19 +1590,16 @@ local function BuildSearch(frame)
     Refresh(frame)
   end)
 
-  -- Every character, or the one showing: a toggle inside the box's right end,
-  -- in the accent while it is on.
+  -- Every character's box, or the one on screen: a toggle inside the box's
+  -- right end, in the accent while it is on. A group of figures, where the
+  -- picker beside the box wears one character's crest.
   local all = CreateFrame("Button", nil, wrap)
   all:SetSize(14, 14)
   all:SetPoint("RIGHT", wrap, "RIGHT", -4, 0)
   all.icon = all:CreateTexture(nil, "ARTWORK")
   all.icon:SetAllPoints()
-  local atlas = T.FirstAtlas(SWITCH_ATLASES)
-  if atlas then
-    all.icon:SetAtlas(atlas, false)
-  else
-    all.icon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Male")
-  end
+  local atlas = T.FirstAtlas(ALL_ATLASES)
+  if atlas then all.icon:SetAtlas(atlas, false) end
   all.icon:SetDesaturated(true)
   local function Paint()
     if frame.searchAll and T.GetAccent then
@@ -1385,171 +1622,141 @@ local function BuildSearch(frame)
     GameTooltip:Show()
   end)
   all:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  all.Paint = Paint
   frame.SearchAllButton = all
   Paint()
 end
 
-function Refresh(frame)
-  -- Another character's box is read-only history: no live look, no heal, no
-  -- arrival detection -- those all describe the character being played.
-  local viewing = frame.viewing
-  -- Self-heal for a missed close signal. If `live` still exists while no
-  -- mailbox is open, the visit ended without either close event reaching us
-  -- -- and every arrival mark since then went to the STORED record while
-  -- this window kept reading `live`: content right, arrivals structurally
-  -- invisible. Settle the visit now exactly as the close handler would,
-  -- carrying marks made against the prior record across the late persist.
-  local state = MailboxState()
-  if not viewing and live and not (state and state.mailboxOpen) then
-    local prior = StoredSnapshot()
-    local priorMark = prior and prior.newSince and prior.newFrom or nil
-    local priorMarked = prior and prior.newSince == true
-    if closedAt == 0 then closedAt = time() end
-    PersistOnClose()
-    local healed = StoredSnapshot()
-    if healed and priorMarked then
-      healed.newSince = true
-      healed.newFrom = priorMark
-    end
-  end
+-- The character picker and the sort, left of the search on the top row.
+local function BuildHeader(frame)
+  local T = ns.Theme
+  local picker = IconPlate(frame, CLASS_FALLBACK, HEADER_H)
+  picker:SetPoint("RIGHT", frame.SearchWrap, "LEFT", -4, 0)
+  picker:SetScript("OnClick", function(self)
+    MM.OpenPicker(self, frame.viewing, function(realm, name, isMe)
+      frame.viewing = (not isMe) and { realm = realm, name = name } or nil
+      if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
+      Refresh(frame)
+    end)
+  end)
+  picker:HookScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText(L["PICKER_TITLE"])
+    GameTooltip:AddLine(L["PICKER_TIP"], 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  picker:HookScript("OnLeave", function() GameTooltip:Hide() end)
+  frame.Picker = picker
 
+  -- Newest first, as the box has them, or the soonest to expire first.
+  local sort = IconPlate(frame, SORT_ATLASES, HEADER_H)
+  if not (sort.Icon.GetAtlas and sort.Icon:GetAtlas()) then sort:SetText("v") end
+  sort:SetPoint("RIGHT", picker, "LEFT", -4, 0)
+  local function PaintSort()
+    T.SetPlateSelected(sort, frame.sort == "expiry")
+  end
+  sort:SetScript("OnClick", function()
+    frame.sort = (frame.sort ~= "expiry") and "expiry" or nil
+    PaintSort()
+    if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
+    Refresh(frame)
+  end)
+  sort:HookScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText(L[frame.sort == "expiry" and "SORT_EXPIRY_TITLE" or "SORT_NEWEST_TITLE"])
+    GameTooltip:AddLine(L["SORT_TIP"], 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  sort:HookScript("OnLeave", function() GameTooltip:Hide() end)
+  frame.Sort = sort
+  PaintSort()
+
+  -- Whose box, and how much is waiting in it: the name in its class colour,
+  -- the count beside it, in the warning tone when the box needs a look.
+  frame.Who = T.CreateText(frame, "label")
+  frame.Who:SetPoint("LEFT", frame, "TOPLEFT", PAD, HEADER_Y - HEADER_H / 2)
+  frame.Who:SetPoint("RIGHT", sort, "LEFT", -8, 0)
+  frame.Who:SetJustifyH("LEFT")
+  frame.Who:SetWordWrap(false)
+end
+
+-- A search across every box lists each character under a heading; a click
+-- on one opens that character's box.
+local function OnHeader(frame, realm, name)
   local myRealm, myName = Me()
-  local realm = viewing and viewing.realm or myRealm
-  local name = viewing and viewing.name or myName
-  local snapshot
-  if viewing then
-    snapshot = SnapshotFor(realm, name)
-  else
-    snapshot = live or StoredSnapshot()
-  end
-  local now = time()
+  frame.viewing = (realm == myRealm and name == myName) and nil or { realm = realm, name = name }
+  frame.searchAll = false
+  if frame.SearchAllButton then frame.SearchAllButton.Paint() end
+  if frame.SearchBox then frame.SearchBox:SetText("") end
+  if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
+  Refresh(frame)
+end
 
-  -- Mail known to have arrived after the snapshot. Three independent
-  -- detectors, ANY suffices, each sound on its own:
-  --
-  --   1. The arrival watch's stored mark (the pending-mail event, guarded).
-  --   2. The flag FLIP: HasNewMail() is "unread mail exists", so its value
-  --      proves nothing (1.24.1 read it as state and lit the badge for
-  --      every uncollected auction mail) -- but false at close and true now
-  --      can only mean an arrival in between.
-  --   3. The sender-triple CHANGE: the latest-unread-senders line the
-  --      client keeps reshuffles whenever mail lands, including while
-  --      logged out; the snapshot remembers what it said at close.
-  --
-  -- A mailbox visit replaces the record and re-baselines all three. Blind
-  -- spot, stated rather than papered over: >3 unread mails from one sender
-  -- where another lands from the same sender leaves the triple unchanged --
-  -- then only detectors 1 and 2 can see it.
-  local arrived = false
-  local from = nil
-  if snapshot and not viewing then
-    EnsureBaseline(snapshot)
-    local away = not (state and state.mailboxOpen)
-    local flagNow = away and type(HasNewMail) == "function" and HasNewMail() and true or false
-    local tripleNow = away and SenderTriple() or nil
-    arrived = snapshot.newSince == true
-      or (flagNow and snapshot.baseNew == false)
-      or (tripleNow ~= nil and snapshot.baseFrom ~= nil and tripleNow ~= snapshot.baseFrom)
-    from = snapshot.newFrom
-    if arrived and not from and type(GetLatestThreeSenders) == "function" then
-      local a, b, c = GetLatestThreeSenders()
-      from = {}
-      if a then from[#from + 1] = tostring(a) end
-      if b then from[#from + 1] = tostring(b) end
-      if c then from[#from + 1] = tostring(c) end
-      if #from == 0 then from = nil end
-    end
-  end
-
-  -- At a mailbox the live look already holds what arrived: rows for it
-  -- would list those mails twice.
-  local atBox = (not viewing) and state and state.mailboxOpen
-  local rows = atBox and {} or PendingRows(WatchFor(realm, name, false), arrived, from, snapshot)
-  local mails = snapshot and snapshot.mails or {}
-  for i = 1, #mails do rows[#rows + 1] = mails[i] end
-
-  -- The search: this box, or every character's under their names.
+function Refresh(frame)
+  local T = ns.Theme
+  local v = frame.viewing
   local query = SearchQuery(frame)
-  local matched, onCharacters = nil, nil
-  if query ~= "" then
-    if frame.searchAll then
-      rows, onCharacters = SearchAll(query, now)
-      matched = 0
-      for i = 1, #rows do if not rows[i].header then matched = matched + 1 end end
-    else
-      local kept = {}
-      for i = 1, #rows do
-        if Matches(rows[i], query) then kept[#kept + 1] = rows[i] end
-      end
-      rows = kept
-      matched = #rows
-    end
-  end
+  local rows, info = MM.RowsFor(v and v.realm, v and v.name,
+    { query = query, all = frame.searchAll, sort = frame.sort })
+  local now = time()
   local count = #rows
 
-  -- The status line, at the foot: whose box, when it was seen, how much.
-  local text
-  if not snapshot then
-    text = L["MEMORY_EMPTY"]
-  elseif #mails == 0 then
-    text = string.format(L["MEMORY_ASOF_EMPTY"], AgeText(snapshot.seenAt))
-  else
-    text = string.format(L["MEMORY_ASOF"], AgeText(snapshot.seenAt), ns.Plural("COUNT_MAILS", #mails))
-  end
-  local hidden = snapshot and math.max(0, (tonumber(snapshot.total) or #mails) - #mails) or 0
-  if hidden > 0 then text = text .. "  " .. string.format(L["MEMORY_MORE"], hidden) end
-  -- While searching, the foot says what the search found instead.
-  if matched then
-    text = ns.Plural("MEMORY_MATCHES", matched)
-    if onCharacters and onCharacters > 1 then
-      text = text .. "  " .. ns.Plural("MEMORY_ON_CHARACTERS", onCharacters)
+  -- The top row: whose box, and its count, where the Mail tab has Inbox.
+  local waiting, warn = MM.CountFor(info.realm, info.name)
+  local tally = ns.Plural("COUNT_MAILS", waiting)
+  frame.Who:SetText(MM.ClassName(info.realm, info.name) .. "  "
+    .. T.Colorize(warn and "warning" or "textSecondary", "(" .. tally .. ")"))
+  local crest = MM.ClassIcon(info.realm, info.name)
+  if crest then frame.Picker.Icon:SetAtlas(crest, false) end
+  local others = #MM.Characters() > 1
+  frame.Picker:SetShown(others)
+  frame.SearchAllButton:SetShown(others)
+  T.SetPlateSelected(frame.Picker, v ~= nil)
+
+  -- The foot: when the box was seen, or what a search found.
+  local text = MM.SeenText(info.snapshot)
+  if (info.hidden or 0) > 0 then text = text .. "  " .. string.format(L["MEMORY_MORE"], info.hidden) end
+  if info.matched then
+    text = ns.Plural("MEMORY_MATCHES", info.matched)
+    if (info.onCharacters or 0) > 1 then
+      text = text .. "  " .. ns.Plural("MEMORY_ON_CHARACTERS", info.onCharacters)
     end
   end
   frame.Status:SetText(text)
 
-  -- The switcher at the left of the foot: whose box this is, and the way to
-  -- another's. Only when there is another to go to.
-  local choices = SwitchChoices()
-  local switchable = #choices > 1 or viewing ~= nil
-  local switch = frame.Switch
-  switch:SetShown(switchable)
-  if switchable then
-    switch.Name:SetText(CharacterLabel(realm, name))
-    -- Capped short of the centred title.
-    local nameWidth = math.min(math.ceil(switch.Name:GetStringWidth() or 0), 110)
-    switch.Name:SetWidth(nameWidth)
-    switch:SetWidth(14 + 4 + nameWidth)
-  end
-  -- The search reaches other boxes only when there are others to reach.
-  frame.SearchAllButton:SetShown(#MM.Characters() > 1)
-  frame.Status:ClearAllPoints()
-  frame.Status:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -26, 8)
-  frame.Status:SetPoint("BOTTOMLEFT", frame.SearchWrap, "BOTTOMRIGHT", 10, 3)
-
   frame.Card:SetShown(count > 0)
   for i = 1, count do
-    if not frame.Rows[i] then frame.Rows[i] = BuildRow(frame.ListChild, i) end
+    local row = frame.Rows[i]
+    if not row then
+      row = MM.NewRow(frame.ListChild)
+      row:SetPoint("TOPLEFT", frame.ListChild, "TOPLEFT", 0, -(i - 1) * ROW_HEIGHT)
+      row:SetPoint("TOPRIGHT", frame.ListChild, "TOPRIGHT", 0, -(i - 1) * ROW_HEIGHT)
+      frame.Rows[i] = row
+    end
   end
-  local cols = (count > 0) and MeasureColumns(frame, rows, now, frame.Rows[1]) or nil
+  local cols = (count > 0) and MM.MeasureRows(frame, rows, now, frame.Rows[1]) or nil
+  local onHeader = function(realm, name) OnHeader(frame, realm, name) end
   for i = 1, count do
-    FillRow(frame.Rows[i], rows[i], now, cols)
+    MM.FillRow(frame.Rows[i], rows[i], now, cols, i, onHeader)
   end
   for i = count + 1, #frame.Rows do frame.Rows[i]:Hide() end
   frame.ListChild:SetHeight(math.max(1, count * ROW_HEIGHT))
 
   -- Height: six rows by default, the user's own height once they have
-  -- dragged the grip, and never taller than the content or shorter than
-  -- six rows. Width is pinned by the bounds -- this window grows down, not
-  -- sideways.
+  -- dragged the grip, and never taller than the content or shorter than six
+  -- rows. Width: the user's, between the window's narrowest and widest.
   local contentRows = math.max(count, 1)
   local minH = RowsHeight(math.min(MIN_ROWS, contentRows))
   local maxH = RowsHeight(contentRows)
-  frame:SetResizeBounds(WINDOW_WIDTH, minH, WINDOW_WIDTH, maxH)
-
+  frame:SetResizeBounds(WINDOW_WIDTH, minH, WINDOW_MAX_WIDTH, math.max(maxH, minH))
+  -- Mid-drag the grip owns the size: a refresh the drag itself caused (the
+  -- rows re-fill as the width changes) must not pull the window back.
+  if frame.sizing then return end
   local wanted = frame.userHeight or RowsHeight(math.min(DEFAULT_ROWS, contentRows))
   if wanted < minH then wanted = minH end
   if wanted > maxH then wanted = maxH end
-  frame:SetSize(WINDOW_WIDTH, wanted)
+  local width = math.max(WINDOW_WIDTH, math.min(WINDOW_MAX_WIDTH, frame:GetWidth() or WINDOW_WIDTH))
+  frame:SetSize(width, wanted)
 end
 
 local function Build()
@@ -1583,14 +1790,12 @@ local function Build()
   ns.Theme.ApplyFrameTheme(frame)
   ns.Core.UI.Helpers.RegisterEscClose(frame)
 
-  -- The status line: the foot of the window, right-aligned against the grip;
-  -- the search box takes the left of the same line. Truncates
-  -- with an ellipsis rather than running under the grip; the whole line is
-  -- the hover area's tooltip when it did.
+  -- The foot: when the box was seen, left-aligned, stopping short of the grip.
+  -- Truncates with an ellipsis; the whole line is the tooltip when it did.
   frame.Status = ns.Theme.CreateText(frame, "secondary")
-  frame.Status:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -26, 8)
   frame.Status:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 8)
-  frame.Status:SetJustifyH("RIGHT")
+  frame.Status:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -26, 8)
+  frame.Status:SetJustifyH("LEFT")
   frame.Status:SetWordWrap(false)
   frame.StatusHit = CreateFrame("Frame", nil, frame)
   frame.StatusHit:SetAllPoints(frame.Status)
@@ -1603,22 +1808,30 @@ local function Build()
   end)
   frame.StatusHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
+  BuildSearch(frame)
+  BuildHeader(frame)
+
   local card = CreateFrame("Frame", nil, frame, "BackdropTemplate")
   card:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -CHROME_TOP)
   card:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, CHROME_BOTTOM)
   ns.Theme.ApplyList(card)
   frame.Card = card
 
+  -- The rows run to the card's edge while nothing scrolls, and stop short of
+  -- the bar only while it is there (Theme's slim bar calls this).
+  local gutter = ns.Theme.Metrics.scrollGutter or 16
   frame.Scroll = CreateFrame("ScrollFrame", nil, card, "UIPanelScrollFrameTemplate")
   frame.Scroll:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
-  frame.Scroll:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -(ns.Theme.Metrics.scrollGutter), 1)
+  frame.Scroll:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -gutter, 1)
   frame.Scroll.scrollBarHideable = 1
+  frame.Scroll.__pbGutter = function(scrolling)
+    frame.Scroll:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -(scrolling and gutter or 1), 1)
+  end
   ns.Theme.SlimScrollBar(frame.Scroll, card, 1)
 
-  -- The rows are the scroll frame's full width: the child follows it, so no
-  -- band is left between the rows and the bar.
+  -- The rows are the scroll frame's full width: the child follows it.
   frame.ListChild = CreateFrame("Frame", nil, frame.Scroll)
-  frame.ListChild:SetWidth(WINDOW_WIDTH - 20 - 2 - (ns.Theme.Metrics.scrollGutter or 0))
+  frame.ListChild:SetWidth(WINDOW_WIDTH - 20 - 2 - gutter)
   frame.Scroll:SetScrollChild(frame.ListChild)
   frame.Scroll:HookScript("OnSizeChanged", function(_, width)
     if width and width > 10 and math.abs((frame.ListChild:GetWidth() or 0) - width) > 0.5 then
@@ -1629,15 +1842,15 @@ local function Build()
 
   frame.Rows = {}
 
-  BuildSwitcher(frame)
-  BuildSearch(frame)
-
-  -- The grip only ever changes height (the bounds pin the width). Once the
-  -- user has chosen a height it is theirs for the session; Refresh keeps
-  -- honouring it within the new content's bounds.
+  -- The grip changes both: once the user has chosen a size it is theirs for
+  -- the session; Refresh keeps honouring it within the content's bounds.
   ns.Core.UI.Helpers.CreateResizeButton(frame, function(self)
+    self.sizing = false
     self.userHeight = self:GetHeight()
+  end, function(self)
+    self.sizing = true
   end)
+  frame:HookScript("OnHide", function() MM.ClosePicker() end)
 
   -- Same expression as the options panel and the recipient manager: let an
   -- active host-UI skin restyle the shell, whichever entry point it offers.
@@ -1652,10 +1865,6 @@ end
 -- 4. Public API
 -------------------------------------------------------------
 
--- The minimap icon's left-click. At an open mailbox this is a no-op by
--- contract: the real window is on screen and it is the truth. Opens beside
--- the minimap rather than under the cursor -- the icon is small and an
--- anchored window would cover the map.
 -- The options panel's row switches: repaint the window if it is showing. A
 -- hidden window is filled fresh on its next open anyway.
 function MM.Refresh()
@@ -1663,51 +1872,21 @@ function MM.Refresh()
   if frame and frame:IsShown() then Refresh(frame) end
 end
 
--- Whether there is another character's mail to look at, for the main
--- window's button beside its cog.
-function MM.HasOthers()
-  if not MemoryEnabled() then return false end
-  local choices = SwitchChoices()
-  for i = 1, #choices do
-    if not choices[i].me then return true end
-  end
-  return false
-end
-
--- The main window's button: the memory beside it, with the character list
--- open. Allowed at a mailbox -- it is the OTHER characters' boxes that are
--- wanted from there, and nothing else can show them.
-function MM.ShowOthers(owner)
-  if not MemoryEnabled() then return end
-  local frame = Build()
-  -- A second click closes it. (The list cannot be asked: the press that
-  -- made this click has already closed it on its way through.)
-  if frame:IsShown() then
-    frame:Hide()
+-- Every way in -- the minimap icon, the addon compartment, /postbox mail --
+-- comes here, and all of them do the same thing. Away from a mailbox: this
+-- window, on the character being played, beside the minimap. At a mailbox
+-- the Postbox window already shows the other characters (its Mail tab's
+-- character picker), so that is what opens. And with Mail Memory switched
+-- off, a line saying where to switch it on, rather than a dead click.
+function MM.Toggle()
+  if not MemoryEnabled() then
+    ns.Print(L["MEMORY_OFF"])
     return
   end
-  frame.viewing = nil
-  Refresh(frame)
-  frame:ClearAllPoints()
-  if owner then
-    frame:SetPoint("TOPLEFT", owner, "TOPRIGHT", 8, 0)
-  else
-    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
-  end
-  frame:Show()
-  frame:Raise()
-  if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, frame) end
-  if frame.Switch:IsShown() then ShowSwitchList(frame) end
-end
-
-function MM.Toggle()
-  if not MemoryEnabled() then return end
   local state = MailboxState()
   if state and state.mailboxOpen then
-    -- The real mailbox is on screen; a memory of it would be a second,
-    -- staler copy. Say why the click did nothing rather than being a dead
-    -- button.
-    ns.Print(L["MEMORY_MAILBOX_OPEN"])
+    local UI = ns.MailboxUI
+    if UI and type(UI.ShowCharacterPicker) == "function" then UI.ShowCharacterPicker() end
     return
   end
 
@@ -1717,9 +1896,12 @@ function MM.Toggle()
     return
   end
 
-  -- Every open starts on the character being played.
+  -- Every open starts on the character being played, unsearched.
   frame.viewing = nil
-  if frame.SwitchList then frame.SwitchList:Hide() end
+  frame.searchAll = false
+  if frame.SearchAllButton then frame.SearchAllButton.Paint() end
+  if frame.SearchBox then frame.SearchBox:SetText("") end
+  frame.Scroll:SetVerticalScroll(0)
   Refresh(frame)
   frame:ClearAllPoints()
   local minimap = _G.Minimap
@@ -1864,8 +2046,6 @@ local CLOSE_SETTLE = 5
 
 local function OnPendingMail()
   lastPendingAt = time()
-  lastPendingVerdict = "disabled"
-  if not MemoryEnabled() then return end
   lastPendingVerdict = "at mailbox"
   local state = MailboxState()
   if state and state.mailboxOpen then return end
@@ -1875,6 +2055,14 @@ local function OnPendingMail()
   if (time() - closedAt) < CLOSE_SETTLE then return end
   lastPendingVerdict = "flag false"
   if not (type(HasNewMail) == "function" and HasNewMail()) then return end
+
+  -- An arrival. The minimap icon's sound and flash answer it whether or not
+  -- Mail Memory is on to record it: they are alerts, not memory.
+  local Icon = ns.MinimapButton
+  if Icon and type(Icon.NotifyArrival) == "function" then Icon.NotifyArrival() end
+
+  lastPendingVerdict = "memory off"
+  if not MemoryEnabled() then return end
 
   -- Arrived, whatever else is known: the watch needs no snapshot.
   NoteArrival(Me())
@@ -1898,11 +2086,6 @@ local function OnPendingMail()
   -- only when visible.
   local frame = MM._frame
   if frame and frame:IsShown() then Refresh(frame) end
-
-  -- One witness, two consumers: the badge above and the minimap icon's
-  -- optional sound/flash. Both answer to the same arrival.
-  local Icon = ns.MinimapButton
-  if Icon and type(Icon.NotifyArrival) == "function" then Icon.NotifyArrival() end
 end
 
 -- The fourth detector watches the CAUSE instead of the effect. The server
@@ -1912,6 +2095,9 @@ end
 -- loudly announced to the buyer, and a completed purchase IS mail in
 -- transit. Witnessed cause, honest badge.
 local function OnPurchaseCompleted()
+  -- The alert first: it does not depend on the memory.
+  local Icon = ns.MinimapButton
+  if Icon and type(Icon.NotifyArrival) == "function" then Icon.NotifyArrival() end
   if not MemoryEnabled() then return end
   NoteArrival(Me())
   local snap = StoredSnapshot()
@@ -1931,9 +2117,6 @@ local function OnPurchaseCompleted()
 
   local frame = MM._frame
   if frame and frame:IsShown() then Refresh(frame) end
-
-  local Icon = ns.MinimapButton
-  if Icon and type(Icon.NotifyArrival) == "function" then Icon.NotifyArrival() end
 end
 
 -- Same dual close coverage as Core/MailboxUI.lua, for the same reason: the

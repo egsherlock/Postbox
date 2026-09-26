@@ -400,7 +400,7 @@ end
 local function ReportHelp()
   ns.Print("Commands:  /postbox skin  — report skin status")
   ns.Print("           /postbox minimap  — toggle the minimap mail icon")
-  ns.Print("           /postbox mail  — what your mailboxes held, every character")
+  ns.Print("           /postbox mail  — Mail Memory: every character's mailbox")
   ns.Print("           /postbox debug  — open the bug-report window")
   ns.Print(ns.L["RM_SLASH_HELP"])
 end
@@ -710,9 +710,10 @@ local COMMANDS = {
 }
 
 -- The minimap's addon compartment (Postbox.toc names these). The one way to
--- the mailbox memory that is always there: the minimap mail icon exists only
--- while this character has mail, and a character with none still wants to
--- see its alts'. Left-click the memory, right-click the options.
+-- Mail Memory that is always there: the minimap mail icon exists only while
+-- this character has mail, and a character with none still wants to see its
+-- alts'. Left-click does what the icon's left-click does; right-click the
+-- options.
 function Postbox_OnAddonCompartmentClick(_, mouseButton)
   if mouseButton == "RightButton" then
     local panel = ns.OptionsPanel
@@ -720,7 +721,7 @@ function Postbox_OnAddonCompartmentClick(_, mouseButton)
     return
   end
   local Memory = ns.MailMemory
-  if Memory and Memory.ShowOthers then Memory.ShowOthers() end
+  if Memory and Memory.Toggle then Memory.Toggle() end
 end
 
 function Postbox_OnAddonCompartmentEnter(_, button)

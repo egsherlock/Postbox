@@ -13,21 +13,24 @@
   bags while writing a mail and every stack of it goes in: what fits into the
   slots, the rest into the queue behind them. Works in the default bags,
   EllesmereUI's and Baganator's. Hover "Attachments" for a reminder.
-- **Every character's mailbox, in one place.** The mailbox memory has a
-  character switcher in its corner, listing every character with mail
-  waiting, and a search box that looks in one character's box or, with its
-  toggle on, in every character's, the matches listed under each name.
-  Open it from the minimap icon, from the button beside the cog in the
-  Postbox window, from the minimap's addon menu, or with /postbox mail.
-- **New mail shows up in the memory as rows.** When an auction sells, expires
-  or is won while you are away, the memory lists it by item ("AH Sold -
-  Lightning Etched Specs"), and other new mail by sender, until you next open
-  a mailbox.
+- **Every character's mailbox, in one place.** The mailbox memory is now
+  Mail Memory, and it remembers every character. At a mailbox, the button
+  beside the Mail tab's search lists your characters, names in their class
+  colour, and picks one to show its box right in the Mail tab, beside your
+  own Inbox; closing the mailbox brings your own back. Away from one, Mail
+  Memory's window works the same way, and can sort the mail closest to
+  expiring to the top. In both, the toggle inside the search box searches
+  every character at once, each one's matches under its name. The minimap
+  icon, the minimap's addon menu and /postbox mail all open it.
+- **New mail shows up in Mail Memory as rows.** When an auction sells,
+  expires or is won while you are away, it is listed by item ("AH Sold -
+  Lightning Etched Specs"), and other new mail by sender, until you next
+  open a mailbox.
 - **Warnings before mail is lost on another character.** The minimap icon's
   tooltip names any character with mail under three days from expiring, or
   with mail on its way (an auction you posted, a purchase, something you sent
   it) and no mailbox opened for over three weeks. One line in chat at login
-  says the same; it can be switched off under Mail alerts.
+  says the same; it can be switched off in Options, under Mail Memory.
 - **From alts.** A sixth category button collects mail from your own
   characters in one click, on any realm. No setup: every character you have
   logged into with Postbox installed counts. Other now means everything that
@@ -70,9 +73,13 @@
   that can be switched off too.
 - **Category buttons count.** "All sold (7)", and a button with nothing to
   collect is greyed out rather than answering "Done" when clicked.
-- **Mailbox memory matches the mail list:** auction mail reads "AH Sold" and
+- **Mail Memory matches the mail list:** auction mail reads "AH Sold" and
   "AH Won" in colour with the item's name, in the same columns, following the
-  same switches.
+  same switches. Its window can be made wider, and searching for "sold" or
+  "AH" now finds auction mail in the Inbox and History too.
+- **Options fit on screen again**, in two even columns. Mail Memory has its
+  own section with its switch on the heading, like the minimap icon's, and
+  the new-mail sound and flash no longer stop working when it is off.
 - Compact rows show money as its largest coin ("1309g", "19g", "33s"); the
   full sum is in the mail. Rows use the list's whole width when it does not
   scroll, two-line rows no longer repeat "Auction sold" under "AH Sold", and
@@ -82,7 +89,7 @@
 
 - Hovering the icon of a mail with no item in the mailbox memory raised a
   Lua error.
-- **Mailbox memory lost track past 50 mails**, and did not count an unread
+- **The mailbox memory lost track past 50 mails**, and did not count an unread
   letter with nothing attached. Its count now matches the Mail tab.
 
 ## 1.39.0

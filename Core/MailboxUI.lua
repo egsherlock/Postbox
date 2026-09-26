@@ -1568,47 +1568,28 @@ local function BuildOptionsButton(frame, theme)
   return button
 end
 
--- Beside the cog: the other characters' mailboxes (Core/MailMemory.lua), for
--- the character that has no mail of its own to put the minimap icon up.
--- Shown only while there is another character with mail to look at.
-local function BuildMemoryButton(frame, theme)
-  local button = CreateFrame("Button", nil, frame)
-  button:SetSize(16, 16)
-  local hostBar = (ns.Skin and (_G.EllesmereUI or _G.ElvUI)) and true or false
-  button:SetPoint("TOPLEFT", frame, "TOPLEFT", 28, hostBar and -5 or -3)
-  button:SetFrameLevel(frame:GetFrameLevel() + 20)
-  button.icon = button:CreateTexture(nil, "ARTWORK")
-  button.icon:SetAllPoints()
-  local atlas = theme and theme.FirstAtlas and theme.FirstAtlas({ "socialqueuing-icon-group", "groupfinder-icon-friend" })
-  if atlas then button.icon:SetAtlas(atlas, false) end
-  button.icon:SetDesaturated(true)
-  if theme and theme.GetAccent then button.icon:SetVertexColor(theme.GetAccent()) end
-  button:SetScript("OnClick", function()
-    local Memory = ns.MailMemory
-    if Memory and Memory.ShowOthers then Memory.ShowOthers(frame) end
-  end)
-  button:SetScript("OnEnter", function(self)
-    self.icon:SetAlpha(0.7)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L("MEMORY_SWITCH_TITLE"))
-    GameTooltip:AddLine(L("MEMORY_OPEN_TIP"), 1, 1, 1, true)
-    GameTooltip:Show()
-  end)
-  button:SetScript("OnLeave", function(self)
-    self.icon:SetAlpha(1)
-    GameTooltip:Hide()
-  end)
-  button:Hide()
-  return button
+-- Every way into Mail Memory, while a mailbox is open (Core/MailMemory.lua's
+-- Toggle): this window's Mail tab already shows the other characters, so it
+-- comes forward with the character list open under its button.
+-- Frozen: Core/OptionsPanel.lua calls this when Mail Memory is switched on
+-- or off. The Mail tab's picker and search toggle come and go with it, and
+-- the memory's own window closes when there is no memory to show.
+function UI.RefreshMemoryState()
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect and collect.RefreshOthers then collect.RefreshOthers(panel) end
+  local memory = ns.MailMemory
+  if memory and memory._frame and not UI.GetOption("mailMemory") then memory._frame:Hide() end
 end
 
--- Whether the memory button has anything to open. Called as the window shows.
-function UI.RefreshMemoryButton()
+function UI.ShowCharacterPicker()
   local frame = UI._frame
-  local button = frame and frame.MemoryButton
-  if not button then return end
-  local Memory = ns.MailMemory
-  button:SetShown(Memory and Memory.HasOthers and Memory.HasOthers() or false)
+  if not (frame and frame:IsShown()) then return end
+  if UI._state.activeTab ~= "collect" then UI.SelectTab("collect") end
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if not (panel and collect and collect.OpenPicker) then return end
+  -- A frame later: the tab has only just been laid out, and the list hangs
+  -- from its button.
+  C_Timer.After(0, function() collect.OpenPicker(panel) end)
 end
 
 local function BuildFrame()
@@ -1818,8 +1799,6 @@ local function BuildFrame()
   end
 
   frame.OptionsButton = BuildOptionsButton(frame, theme)
-  frame.MemoryButton = BuildMemoryButton(frame, theme)
-  frame:HookScript("OnShow", function() UI.RefreshMemoryButton() end)
 
   -- Resize grip. The foundation layer debounces the size write, so a drag does
   -- not write saved variables sixty times a second; the stop callback only runs
