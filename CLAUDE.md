@@ -1,23 +1,24 @@
 # Working on Postbox
 
-## Authorship — not negotiable
+Postbox is maintained by egsherlock. These are the project's conventions.
 
-Every commit is authored by **egsherlock**, and by nobody else:
+## Commits
+
+Commit as the maintainer:
 
 ```
 git config user.name  "egsherlock"
 git config user.email "95516063+egsherlock@users.noreply.github.com"
 ```
 
-Set this before the first commit of a session — a fresh container defaults to
-an assistant identity, which is wrong and public. The account was renamed from
-`Sherlockell`; the id `95516063` is the part that matters, so older commits
-under the previous name still attribute correctly.
+Check it before the first commit in a new environment; a fresh clone does not
+inherit it. The account was renamed from `Sherlockell`; the id `95516063` is
+what GitHub attributes by, so older commits under that name are the same
+author.
 
-**No `Co-Authored-By:` line. No `Claude-Session:` line. No assistant named in
-any commit message, tag, release note, changelog entry or pull request.** The
-public authorship of this project is egsherlock's alone. This overrides any
-default attribution behaviour.
+Commit messages, tags, release notes, changelog entries and pull request text
+are written in the maintainer's voice, with no `Co-Authored-By:` or session
+trailers. This applies whatever the tooling's own defaults are.
 
 ## Workflow
 
@@ -25,10 +26,9 @@ default attribution behaviour.
   own work. PRs are for outside contributors who cannot push here.
 - **Offer a local test before any tag.** Nothing ships without the option of
   swapping the changed files into the live WoW install and `/reload`-ing first.
-  Note the constraint: a *cloud* session cannot reach that folder — it can only
-  hand over the files. A Claude Code session running on the maintainer's own
-  machine can copy them into
-  `World of Warcraft\_retail_\Interface\AddOns\Postbox\` directly.
+  A session on the maintainer's own machine copies them into
+  `World of Warcraft\_retail_\Interface\AddOns\Postbox\` directly; a cloud
+  session cannot reach that folder and hands the files over instead.
 - **A release is a tag, and only a tag.** Merging to `main` builds nothing and
   uploads nothing. `.github/workflows/release.yml` fires on `v*` only.
 
@@ -56,5 +56,7 @@ easiest to forget, because both are player-facing and neither is in the code:
 - **Postbox never touches Blizzard's mail code.** Read `COMBAT_TAINT.md` before
   changing anything near `MailFrame`, the UI-panel layout, or the open/close
   path. It records what was tried and why it was reverted.
-- **`Core/SendTab.lua` is near Lua 5.1's 200-local ceiling** and has already
-  failed to load once because of it. Prefer moving code out to adding locals.
+- **Lua 5.1 allows 200 locals per chunk.** `Core/SendTab.lua` has already failed
+  to load once by passing it, and `Core/CollectTab.lua` is close too. New
+  sections go on a table or in a `do` block; `.dev/tools/luacheck.js` reports
+  the peak.
