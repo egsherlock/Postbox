@@ -319,9 +319,14 @@ local function Consider(index, category, queue, info)
     info.unloaded = info.unloaded + 1
   elseif not Mail.IsReadPersistent(index) then
     local kind, hasCOD = Mail.ClassifyMail(index)
+    -- "alts" and "other" split what is not auction mail between them: mail
+    -- from your own characters, and everything else. They never overlap, so
+    -- the two buttons never count or take the same mail.
     local match
     if category == "alts" then
       match = Mail.FromOwnCharacter(index, info.altKeys)
+    elseif category == "other" then
+      match = kind == "other" and not Mail.FromOwnCharacter(index, info.altKeys)
     else
       match = (category == "all" or kind == category)
     end
@@ -350,7 +355,7 @@ function Mail.BuildQueue(category)
     skippedCOD = 0,
   }
 
-  if category == "alts" then info.altKeys = Mail.OwnCharacterKeys() end
+  if category == "alts" or category == "other" then info.altKeys = Mail.OwnCharacterKeys() end
 
   -- GetInboxNumItems returns 0 between MAIL_SHOW and the first
   -- MAIL_INBOX_UPDATE, so an empty result here means "nothing to do OR nothing
@@ -388,7 +393,7 @@ function Mail.BuildQueueFor(indices, category)
     if index and index >= 1 and index <= numItems then sorted[#sorted + 1] = index end
   end
   table.sort(sorted, function(a, b) return a > b end)
-  if category == "alts" then info.altKeys = Mail.OwnCharacterKeys() end
+  if category == "alts" or category == "other" then info.altKeys = Mail.OwnCharacterKeys() end
   for i = 1, #sorted do
     Consider(sorted[i], category, queue, info)
   end

@@ -986,24 +986,44 @@ local function SenderColumnWidth(panel, sample)
   return min(max(widest + 2, SENDER_MIN), SENDER_MAX)
 end
 
--- One right-hand column, placed `right` pixels in from the row's edge.
--- Returns where the next column in starts. A column with no measured width
--- takes no room; one with width but no text for this mail keeps its room,
--- which is what keeps the columns either side of it in line.
-local function PlaceColumn(row, fs, right, width, text, room)
-  width = min(width, room)
-  if width < 12 then
-    fs:Hide()
-    return right
+-- The order the figures stand in, left to right (MailboxUI.GetRowOrder).
+local function RowOrder()
+  local UI = ns.MailboxUI
+  if UI and type(UI.GetRowOrder) == "function" then return UI.GetRowOrder() end
+  return { "time", "money", "slots" }
+end
+
+-- A row's figures, packed against its right edge in the player's order.
+-- `texts` is { time=, money=, slots= }, each a string or nil; `cols` the
+-- list-wide width of each kind. A figure this mail does not have takes NO
+-- room -- the next one in moves up to the edge, and the subject gets the
+-- space -- so every row ends on the same right edge, and a figure in the
+-- same position on two rows stands in the same column. `room` caps what the
+-- figures may claim. Returns how far in from the edge they reach.
+local function PackFigures(row, trailing, room, cols, texts)
+  local order = RowOrder()
+  local gap = Th().Metrics.gap
+  local fsFor = { time = row.ColTime, money = row.ColMoney, slots = row.ColSlots }
+  local right = trailing
+  for i = #order, 1, -1 do
+    local id = order[i]
+    local fs = fsFor[id]
+    local text = texts[id]
+    local width = min(cols[id] or 0, room - (right - trailing))
+    if fs and text and width >= 12 then
+      if fs._right ~= right then
+        fs._right = right
+        fs:ClearAllPoints()
+        fs:SetPoint("RIGHT", row, "RIGHT", -right, 0)
+      end
+      Th().FitText(fs, width, text, nil)
+      fs:Show()
+      right = right + width + gap
+    elseif fs then
+      fs:Hide()
+    end
   end
-  if fs._right ~= right then
-    fs._right = right
-    fs:ClearAllPoints()
-    fs:SetPoint("RIGHT", row, "RIGHT", -right, 0)
-  end
-  Th().FitText(fs, width, text or "", nil)
-  fs:Show()
-  return right + width + Th().Metrics.gap
+  return right
 end
 
 -- What an auction mail says where its sender would be, in its own tone, or
@@ -1024,7 +1044,8 @@ CT.RowRules = {
   MoneyText = MoneyText,
   Measure = MeasureWith,
   SenderColumn = SenderColumnWidth,
-  PlaceColumn = PlaceColumn,
+  PackFigures = PackFigures,
+  RowOrder = RowOrder,
   OutcomeSender = OutcomeSender,
   EXPIRY_SOON_DAYS = EXPIRY_SOON_DAYS,
   META_SHARE = COMPACT_META_SHARE,
@@ -2102,18 +2123,23 @@ local function BindRow(panel, row, index, position, compact, done)
   -- The standard row reads left to right in full: money, slots, category, the
   -- time left (in the quiet tone, or the warning tone when it is short), then
   -- the invoice's figures -- except a won auction's price, which IS the money.
-  if money then parts[#parts + 1] = money end
-  if slots then parts[#parts + 1] = slots end
-  parts[#parts + 1] = labels[kind] or kind
+  -- The time left on a standard row is always there (quiet), and in the
+  -- warning tone when short; a compact row carries only the warning.
+  local timeText = nil
   if showExpiry then
-    if expiry then
-      parts[#parts + 1] = expiry
-    elseif daysLeft then
-      parts[#parts + 1] = T.Colorize("textSecondary", format(L()["DAYS_SHORT"], daysLeft))
+    timeText = expiry
+    if not timeText and daysLeft then
+      timeText = T.Colorize("textSecondary", format(L()["DAYS_SHORT"], daysLeft))
     end
   else
     expiry = nil
   end
+  local byId = { time = timeText, money = money, slots = slots }
+  local order = RowOrder()
+  for i = 1, #order do
+    if byId[order[i]] then parts[#parts + 1] = byId[order[i]] end
+  end
+  parts[#parts + 1] = labels[kind] or kind
   if not purchaseShown then AppendInvoiceFigures(parts, index, false) end
 
   local senderText = DisplaySender(sender) or L()["SENDER_UNKNOWN"]
@@ -2136,13 +2162,12 @@ local function BindRow(panel, row, index, position, compact, done)
     if not purchaseShown then AppendInvoiceFigures(tip, index, false) end
     row.detailFull = concat(tip, "\n")
 
-    -- Right to left: slots on the edge, money inside them, the time-left
-    -- warning inside that -- each at the width the list measured for it.
+    -- The figures this mail has, packed to the right edge in the player's
+    -- order; the subject runs up to the first of them.
     local room = floor(textWidth * COMPACT_META_SHARE)
-    local right = trailing
-    right = PlaceColumn(row, row.ColSlots, right, cols.slots or 0, slots, room)
-    right = PlaceColumn(row, row.ColMoney, right, cols.money or 0, money, room - (right - trailing))
-    right = PlaceColumn(row, row.ColTime, right, cols.time or 0, expiry, room - (right - trailing))
+    local texts = panel._rowTexts
+    texts.time, texts.money, texts.slots = expiry, money, slots
+    local right = PackFigures(row, trailing, room, cols, texts)
 
     -- The sender keeps its column whatever this mail's name is, so the
     -- subjects start on one line down the whole list.
@@ -2660,8 +2685,13 @@ function CT.RefreshMailList(panel)
       -- the queue builder applies, so a count is a promise the button keeps.
       if not finished and not hasCOD then
         counts.all = (counts.all or 0) + 1
-        counts[kind] = (counts[kind] or 0) + 1
-        if Mail().FromOwnCharacter(index, altKeys) then counts.alts = (counts.alts or 0) + 1 end
+        -- From alts and Other split the non-auction mail between them.
+        if Mail().FromOwnCharacter(index, altKeys) then
+          counts.alts = (counts.alts or 0) + 1
+          if kind ~= "other" then counts[kind] = (counts[kind] or 0) + 1 end
+        else
+          counts[kind] = (counts[kind] or 0) + 1
+        end
       end
 
       -- The sender column is as wide as the widest name it will show, up to
@@ -4344,8 +4374,9 @@ local function BuildGrid(panel)
     button.caption = labels[category] or category
     button:SetText(button.caption)
     button:SetScript("OnClick", function() StartCategoryRun(panel, category) end)
-    -- From alts is the one sweep whose name does not say what it covers.
+    -- The two sweeps whose names do not say exactly what they cover.
     if category == "alts" then button.tip = L()["CAT_ALTS_TIP"] end
+    if category == "other" then button.tip = L()["CAT_OTHER_TIP"] end
     button:SetScript("OnEnter", function(self)
       if not self.__pbOverflowText and not self.tip then return end
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -4411,6 +4442,8 @@ function CT.Build(parent)
   panel._rowParts = {}
   -- The figures an option took off a row, for its tooltip.
   panel._rowFacts = {}
+  -- The compact row's figure texts, handed to PackFigures.
+  panel._rowTexts = {}
   -- The list's column widths and reserve, measured by RefreshMailList for
   -- every row it binds (see "the columns").
   panel._cols = {}

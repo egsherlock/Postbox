@@ -207,64 +207,153 @@ local function AddCheckbox(frame, y, title, desc, get, set)
   return y - ROW_H
 end
 
--- A caption over a line of short checkboxes that answer one question between
--- them -- "what does each mail row show" -- where three full-width rows would
--- ask it three times. Both the caption and the boxes stand one checkbox in, so
--- the caption lines up with every other caption in the card and the boxes read
--- as belonging to it. The boxes flow left to right and wrap when a translation
--- runs long; each carries its own tooltip, as every checkbox here does.
+-- The figures a mail row carries, as a line of plates in the order the rows
+-- draw them: click one to show or hide it, drag one sideways to move it.
+-- One control answers both questions -- which, and in what order -- and it
+-- reads as the row it configures rather than as a list of switches. Gold is
+-- one plate with four states, because earned and spent share a column (a
+-- mail has at most one sum): Gold, Earned, Spent, hidden, in that cycle.
 --
--- items = { { title = , desc = , get = , set = }, ... }
-local function AddCheckGroup(frame, y, title, items)
+-- `onChange` runs after every change, to repaint whatever lists rows.
+local function AddFigurePills(frame, y, title, hint, onChange)
+  local T = ns.Theme
+  local UI = ns.MailboxUI
   local indent = PAD + CHECK_H + 4
-  local caption = ns.Theme.CreateText(frame, "label")
+
+  local caption = T.CreateText(frame, "label")
   caption:SetPoint("TOPLEFT", frame, "TOPLEFT", indent, y - 4)
-  caption:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
   caption:SetJustifyH("LEFT")
   caption:SetWordWrap(false)
   caption:SetText(title)
 
-  local lineY = y - 20
-  local x = indent
-  local limit = (frame:GetWidth() or W) - PAD
-  if limit < 100 then limit = W - 20 - PAD end
-  for _, item in ipairs(items) do
-    local cb = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-    cb:SetSize(CHECK_H, CHECK_H)
-    cb.__postboxCheck = true
+  -- How to use it, quietly, on the caption's own line.
+  local how = T.CreateText(frame, "secondary")
+  how:SetPoint("LEFT", caption, "RIGHT", 8, 0)
+  how:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
+  how:SetJustifyH("RIGHT")
+  how:SetWordWrap(false)
+  how:SetText(hint)
 
-    local label = ns.Theme.CreateText(frame, "value")
-    label:SetJustifyH("LEFT")
-    label:SetWordWrap(false)
-    label:SetText(item.title)
-    local width = CHECK_H + 2 + math.ceil(label:GetStringWidth() or 0)
-    if x > indent and x + width > limit then
-      x = indent
-      lineY = lineY - ROW_H
-    end
-    cb:SetPoint("TOPLEFT", frame, "TOPLEFT", x, lineY)
-    label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
-    x = x + width + 14
+  local lineY = y - 22
+  local plates = {}
 
-    cb:SetChecked(item.get())
-    cb:SetScript("OnClick", function(self)
-      local on = self:GetChecked() and true or false
-      item.set(on)
-      if type(SOUNDKIT) == "table" then
-        PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
-                     or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
-      end
-    end)
-    cb:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(item.title)
-      if item.desc then GameTooltip:AddLine(item.desc, 1, 1, 1, true) end
-      GameTooltip:Show()
-    end)
-    cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    frame.__refreshers[#frame.__refreshers + 1] = function() cb:SetChecked(item.get()) end
+  local function Gold()
+    local earned, spent = UI.GetOption("rowEarned"), UI.GetOption("rowSpent")
+    if earned and spent then return "both" end
+    if earned then return "earned" end
+    if spent then return "spent" end
+    return "none"
+  end
+  local GOLD_NEXT = { both = "earned", earned = "spent", spent = "none", none = "both" }
+  local GOLD_LABEL = { both = "OPT_ROW_GOLD", earned = "OPT_ROW_EARNED", spent = "OPT_ROW_SPENT", none = "OPT_ROW_GOLD" }
+
+  local spec = {
+    time = {
+      label = function() return L["OPT_ROW_EXPIRY"] end,
+      desc = L["OPT_ROW_EXPIRY_DESC"],
+      on = function() return UI.GetOption("rowExpiry") end,
+      click = function() UI.SetOption("rowExpiry", not UI.GetOption("rowExpiry")) end,
+    },
+    money = {
+      label = function() return L[GOLD_LABEL[Gold()]] end,
+      desc = L["OPT_ROW_GOLD_DESC"],
+      on = function() return Gold() ~= "none" end,
+      click = function()
+        local nextState = GOLD_NEXT[Gold()]
+        UI.SetOption("rowEarned", nextState == "both" or nextState == "earned")
+        UI.SetOption("rowSpent", nextState == "both" or nextState == "spent")
+      end,
+    },
+    slots = {
+      label = function() return L["OPT_ROW_SLOTS"] end,
+      desc = L["OPT_ROW_SLOTS_DESC"],
+      on = function() return UI.GetOption("rowSlots") end,
+      click = function() UI.SetOption("rowSlots", not UI.GetOption("rowSlots")) end,
+    },
+  }
+
+  local function Paint(plate)
+    local s = spec[plate.figure]
+    plate:SetText(s.label())
+    plate:SetWidth(math.ceil(T.TextWidth(plate)) + 24)
+    local on = s.on() and true or false
+    T.SetPlateSelected(plate, on)
+    if not on then T.DimCaption(plate) end
   end
 
+  local function Layout()
+    local order = UI.GetRowOrder()
+    local x = indent
+    for i = 1, #order do
+      local plate = plates[order[i]]
+      Paint(plate)
+      plate:ClearAllPoints()
+      plate:SetPoint("TOPLEFT", frame, "TOPLEFT", x, lineY)
+      x = x + plate:GetWidth() + 6
+    end
+  end
+
+  for id in pairs(spec) do
+    local plate = T.CreatePlate(frame, "segment")
+    plate.figure = id
+    plate:SetHeight(CHECK_H)
+    plate:RegisterForDrag("LeftButton")
+    plate:SetScript("OnClick", function(self)
+      -- A drag ends in a click on some clients; the drag already did its job.
+      if self._dragged then
+        self._dragged = nil
+        return
+      end
+      spec[self.figure].click()
+      Layout()
+      if type(SOUNDKIT) == "table" then PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON) end
+      onChange()
+    end)
+    plate:SetScript("OnDragStart", function(self)
+      local scale = self:GetEffectiveScale()
+      local cursorX = GetCursorPosition() / scale
+      self._grab = cursorX - (self:GetLeft() or cursorX)
+      self:SetFrameLevel(self:GetFrameLevel() + 5)
+      self:SetScript("OnUpdate", function(me)
+        local left = frame:GetLeft() or 0
+        local x = GetCursorPosition() / scale - left - me._grab
+        me:ClearAllPoints()
+        me:SetPoint("TOPLEFT", frame, "TOPLEFT", x, lineY)
+      end)
+    end)
+    plate:SetScript("OnDragStop", function(self)
+      self:SetScript("OnUpdate", nil)
+      self:SetFrameLevel(math.max(self:GetFrameLevel() - 5, 0))
+      self._dragged = true
+      C_Timer.After(0, function() self._dragged = nil end)
+      -- The new order is the plates' order across the line, dragged one
+      -- included, read from where each one's centre now stands.
+      local order = UI.GetRowOrder()
+      table.sort(order, function(p, q)
+        return (plates[p]:GetCenter() or 0) < (plates[q]:GetCenter() or 0)
+      end)
+      UI.SetRowOrder(order)
+      Layout()
+      onChange()
+    end)
+    plate:HookScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(spec[self.figure].label())
+      GameTooltip:AddLine(spec[self.figure].desc, 1, 1, 1, true)
+      GameTooltip:AddLine(hint, 0.6, 0.6, 0.6, true)
+      GameTooltip:Show()
+    end)
+    -- The plate's own hover repaints its caption; a hidden figure has to go
+    -- dim again after it.
+    plate:HookScript("OnLeave", function(self)
+      GameTooltip:Hide()
+      if not spec[self.figure].on() then T.DimCaption(self) end
+    end)
+    plates[id] = plate
+  end
+
+  Layout()
+  frame.__refreshers[#frame.__refreshers + 1] = Layout
   MarkBottom(frame, lineY, CHECK_H)
   return lineY - ROW_H
 end
@@ -399,26 +488,13 @@ local function Build()
           if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
         end)
 
-  -- The three figures a row may carry, under the row layout they belong to.
-  -- Each repaints the list and, when it is open, the mailbox memory, which
-  -- draws its rows by the same rules.
-  local function RowFigure(key, title, desc)
-    return {
-      title = title, desc = desc,
-      get = function() return ns.MailboxUI.GetOption(key) end,
-      set = function(on)
-        ns.MailboxUI.SetOption(key, on)
-        if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
-        if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
-      end,
-    }
-  end
-  cy = AddCheckGroup(card, cy, L["OPT_ROW_FIGURES_TITLE"], {
-    RowFigure("rowEarned", L["OPT_ROW_EARNED"], L["OPT_ROW_EARNED_DESC"]),
-    RowFigure("rowSpent", L["OPT_ROW_SPENT"], L["OPT_ROW_SPENT_DESC"]),
-    RowFigure("rowSlots", L["OPT_ROW_SLOTS"], L["OPT_ROW_SLOTS_DESC"]),
-    RowFigure("rowExpiry", L["OPT_ROW_EXPIRY"], L["OPT_ROW_EXPIRY_DESC"]),
-  })
+  -- The figures a row carries, under the row layout they belong to. A change
+  -- repaints the list and, when it is open, the mailbox memory, which draws
+  -- its rows by the same rules.
+  cy = AddFigurePills(card, cy, L["OPT_ROW_FIGURES_TITLE"], L["OPT_ROW_FIGURES_HINT"], function()
+    if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
+    if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
+  end)
 
   cy = AddCheckbox(card, cy, L["OPT_TAB_COUNTS_TITLE"], L["OPT_TAB_COUNTS_DESC"],
         function() return ns.MailboxUI.GetOption("showTabCounts") end,

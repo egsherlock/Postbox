@@ -810,9 +810,22 @@ ShowTooltip = function(button, hostMode)
     -- refusals; an arrival is neither (see the badge in Core/MailMemory).
     local pos = ns.Theme.Colors.positive
     GameTooltip:AddLine(L["MEMORY_NEW_SINCE"], pos[1], pos[2], pos[3])
-    local from = state.newFrom
-    if type(from) == "table" then
-      for i = 1, #from do GameTooltip:AddLine(from[i], 1, 1, 1) end
+    -- What the auction house said arrived, by item, when it said; the
+    -- client's bare sender names otherwise.
+    local pending = state.pending
+    if type(pending) == "table" and #pending > 0 then
+      local shown = math.min(#pending, 5)
+      for i = 1, shown do
+        GameTooltip:AddDoubleLine(pending[i].label, pending[i].item, 1, 1, 1, 1, 1, 1)
+      end
+      if #pending > shown then
+        GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #pending - shown), 0.6, 0.6, 0.63)
+      end
+    else
+      local from = state.newFrom
+      if type(from) == "table" then
+        for i = 1, #from do GameTooltip:AddLine(from[i], 1, 1, 1) end
+      end
     end
   end
 

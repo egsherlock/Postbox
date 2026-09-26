@@ -40,7 +40,7 @@ local PAD = 12
 -- and the strip below it that holds the overflow note and the resize grip.
 -- The card fills whatever is between the two, which is what makes the resize
 -- grip work with no per-drag layout code at all.
-local CHROME_TOP = 52
+local CHROME_TOP = 30
 local CHROME_BOTTOM = 26
 
 -- Six rows: the default AND the floor -- enough to be useful, small enough
@@ -396,6 +396,8 @@ function MM._SettleWatch(realm, name, now)
   local watch = WatchFor(realm, name, false)
   if not watch then return end
   watch.newAt = nil
+  -- What the notifications said had arrived is in the snapshot now.
+  watch.pending = nil
   if watch.auctionsUntil and watch.auctionsUntil > now then
     watch.auctionAt = now
   else
@@ -429,6 +431,7 @@ local function Status(realm, name, now)
     end
   end
   local watch = WatchFor(realm, name, false)
+  st.pending = (watch and type(watch.pending) == "table") and #watch.pending or 0
   if watch then
     local since = watch.newAt
     if watch.auctionAt and (not since or watch.auctionAt < since) then since = watch.auctionAt end
@@ -811,7 +814,25 @@ end
 -- The snapshot's column widths, measured over every mail in it: the same
 -- "widest entry anywhere" rule the mail list uses, so nothing twitches as the
 -- window scrolls. `sample` is a built row, for its fonts.
-local function MeasureColumns(frame, mails, now, sample)
+-- One row's figure texts, keyed as PackFigures takes them, plus what the
+-- tooltip carries. A row known to have arrived but never opened says "New"
+-- where the row's last figure would stand, and nothing else.
+local function RowTexts(mail, now)
+  local R = Rules()
+  if mail.pending then
+    local texts = {}
+    local order = R and R.RowOrder() or { "slots" }
+    texts[order[#order]] = ns.Theme.Colorize("positive", L["MEMORY_NEW_ROW"])
+    return texts
+  end
+  local money, slots, expiry, facts, expiryText, expired = Figures(mail, now)
+  return { time = expiry, money = money, slots = slots, facts = facts, expiryText = expiryText, expired = expired }
+end
+
+-- The list's column widths, measured over every row in it: the mail list's
+-- "widest entry anywhere" rule, so nothing twitches as the window scrolls.
+-- `sample` is a built row, for its fonts.
+local function MeasureColumns(frame, rows, now, sample)
   local R = Rules()
   local cols = frame._cols or {}
   frame._cols = cols
@@ -823,17 +844,18 @@ local function MeasureColumns(frame, mails, now, sample)
   -- The widest name shown, up to the auction labels' width: the mail list's rule.
   local cap = R.SenderColumn(frame, sample.Sender)
   cols.sender = 0
-  for i = 1, #mails do
-    local mail = mails[i]
+  local fsFor = { time = sample.ColTime, money = sample.ColMoney, slots = sample.ColSlots }
+  for i = 1, #rows do
+    local mail = rows[i]
     if cols.sender < cap then
       local label = R.OutcomeSender(mail.kind) or R.DisplaySender(mail.sender) or ""
       cols.sender = math.min(math.max(cols.sender, R.Measure(frame, sample.Sender, label) + 2), cap)
     end
-    local money, slots, expiry = Figures(mails[i], now)
-    if money then cols.money = math.max(cols.money, R.Measure(frame, sample.ColMoney, money)) end
-    if slots then cols.slots = math.max(cols.slots, R.Measure(frame, sample.ColSlots, slots)) end
-    if expiry then cols.time = math.max(cols.time, R.Measure(frame, sample.ColTime, expiry)) end
-    if mails[i].stuck then cols.stuck = true end
+    local texts = RowTexts(mail, now)
+    for id, fs in pairs(fsFor) do
+      if texts[id] then cols[id] = math.max(cols[id], R.Measure(frame, fs, texts[id])) end
+    end
+    if mail.stuck then cols.stuck = true end
   end
   return cols
 end
@@ -856,22 +878,20 @@ local function FillRow(row, mail, now, cols)
 
   row.Warning:SetShown(mail.stuck and true or false)
 
-  local money, slots, expiry, facts, expiryText, expired = Figures(mail, now)
-  row.factsTip = facts
-  row.expiryTip = expiryText
+  local texts = RowTexts(mail, now)
+  row.factsTip = texts.facts
+  row.expiryTip = texts.expiryText
 
-  -- Right to left, as the compact mail list: slots on the edge, money inside
-  -- them, time left inside that, each at the width the snapshot measured.
-  -- The stuck marker's room is kept on every row when any mail has one.
-  local width = WINDOW_WIDTH - 44
+  -- The figures this mail has, packed to the right edge in the player's
+  -- order -- the mail list's own rule -- and the subject up to the first.
+  -- The width is the list's own, so the rows run all the way to the bar.
+  local width = row:GetParent():GetWidth() or 0
+  if width < 100 then width = WINDOW_WIDTH - 44 end
   local trail = 6 + (cols.stuck and 16 or 0)
   local textWidth = width - (4 + 18 + 6) - trail
   local right = trail
   if R then
-    local room = math.floor(textWidth * R.META_SHARE)
-    right = R.PlaceColumn(row, row.ColSlots, right, cols.slots, slots, room)
-    right = R.PlaceColumn(row, row.ColMoney, right, cols.money, money, room - (right - trail))
-    right = R.PlaceColumn(row, row.ColTime, right, cols.time, expiry, room - (right - trail))
+    right = R.PackFigures(row, trail, math.floor(textWidth * R.META_SHARE), cols, texts)
   end
 
   local senderText = (R and (R.OutcomeSender(mail.kind) or R.DisplaySender(mail.sender))) or mail.sender
@@ -884,97 +904,276 @@ local function FillRow(row, mail, now, cols)
   -- A mail past its date is PROBABLY gone (returned or deleted by the
   -- server); the row stays listed -- it was true when seen -- but visibly
   -- belongs to the past.
-  row:SetAlpha(expired and 0.45 or 1)
+  row:SetAlpha(texts.expired and 0.45 or 1)
   row:Show()
 end
 
--- The character picker: only when there is more than one character to pick
--- from. Rebuilt when the set of characters or what they say changes -- the
--- dropdown takes its items at build -- and never otherwise.
-local function UpdatePicker(frame)
-  local chars = MM.Characters()
-  local items, labels, sig = {}, {}, {}
-  for i = 1, #chars do
-    local st = chars[i]
-    local id = st.realm .. "\001" .. st.name
-    local tail
-    if st.text then
-      tail = ns.Theme.Colorize("warning", st.text)
-    elseif st.seenAt then
-      tail = ns.Theme.Colorize("textSecondary", ns.Plural("COUNT_MAILS", st.waiting))
-    end
-    items[i] = { id = id, name = tail and (st.label .. "   " .. tail) or st.label }
-    labels[id] = st.label
-    sig[i] = items[i].name
-  end
-  frame._pickLabels = labels
+-------------------------------------------------------------
+-- 3b. Mail that arrived after the snapshot
+--
+-- Shown as rows at the top of the list, not as a badge: what is known about
+-- it is shown the way the rest of the box is. The auction house names the
+-- item when an auction sells, expires or is won (its notification, which
+-- reaches the client wherever the player is), so those rows say "AH Sold --
+-- Lightning Etched Specs". Anything else that is known to have arrived --
+-- the client's latest-senders line, the unread flag -- is a row from that
+-- sender, "not opened yet". Everything a visit will show properly, and a
+-- visit clears it.
+-------------------------------------------------------------
 
-  local want = #chars > 1
-  local signature = table.concat(sig, "\002")
-  if want and frame._pickSig ~= signature then
-    if frame.Picker then frame.Picker:Hide() end
-    local widest = 0
-    local probe = frame._probe or frame:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    frame._probe = probe
-    probe:Hide()
-    for i = 1, #chars do
-      probe:SetText(chars[i].label)
-      widest = math.max(widest, probe:GetStringWidth() or 0)
-    end
-    local picker = ns.Core.UI.Dropdown.Create(frame, {
-      items = items,
-      toggleWidth = math.min(math.max(math.ceil(widest) + 34, 90), 170),
-      toggleHeight = 20,
-      height = 20,
-      listWidth = 300,
-      listLeft = true,
-    })
-    picker:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD - 2, -30)
-    picker:SetWidth(math.min(math.max(math.ceil(widest) + 34, 90), 170))
-    picker:SetChangeCallback(function(id)
-      local realm, name = id:match("^(.-)\001(.*)$")
-      local myRealm, myName = Me()
-      if realm == myRealm and name == myName then
-        frame.viewing = nil
-      else
-        frame.viewing = { realm = realm, name = name }
+local function PendingIcon(entry)
+  if C_Item and type(C_Item.GetItemIconByID) == "function" and entry.item then
+    local ok, icon = pcall(C_Item.GetItemIconByID, entry.item)
+    if ok and icon then return icon end
+  end
+  if entry.k == "sold" then return "Interface\\Icons\\INV_Misc_Coin_01" end
+  return "Interface\\Icons\\INV_Letter_02"
+end
+
+-- watch, arrived, from -> the rows for mail known to have arrived, newest first.
+local function PendingRows(watch, arrived, from)
+  local out = {}
+  local pending = watch and type(watch.pending) == "table" and watch.pending or {}
+  for i = #pending, 1, -1 do
+    local p = pending[i]
+    local subject = p.item or ""
+    if (tonumber(p.n) or 1) > 1 then subject = subject .. " (" .. p.n .. ")" end
+    out[#out + 1] = { pending = true, kind = p.k, sender = "", subject = subject, icon = PendingIcon(p) }
+  end
+  if arrived then
+    local ah = L["MEMORY_FROM_AH"]
+    local hostAH = type(_G.AUCTION_HOUSE) == "string" and _G.AUCTION_HOUSE or nil
+    if type(from) == "table" then
+      for i = 1, #from do
+        local sender = from[i]
+        local isAH = (sender == ah or sender == hostAH)
+        -- The auction house's arrivals are already rows, by item.
+        if not (isAH and #pending > 0) then
+          out[#out + 1] = { pending = true, sender = sender, subject = L["MEMORY_NEW_UNOPENED"],
+            icon = "Interface\\Icons\\INV_Letter_02" }
+        end
       end
-      Refresh(frame)
-    end)
-    if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, picker) end
-    frame.Picker = picker
-    frame._pickSig = signature
-  end
-
-  if frame.Picker then
-    frame.Picker:SetShown(want)
-    if want then
-      local v = frame.viewing
-      local myRealm, myName = Me()
-      local id = v and (v.realm .. "\001" .. v.name) or (myRealm .. "\001" .. myName)
-      frame.Picker._selectedId = id
-      frame.Picker:SetText(labels[id] or myName)
+    end
+    if #out == 0 then
+      out[1] = { pending = true, sender = L["MEMORY_SENDER_UNKNOWN"], subject = L["MEMORY_NEW_UNOPENED"],
+        icon = "Interface\\Icons\\INV_Letter_02" }
     end
   end
-  frame.Header:ClearAllPoints()
-  if want and frame.Picker then
-    frame.Header:SetPoint("LEFT", frame.Picker, "RIGHT", 8, 0)
-  else
-    frame.Header:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -34)
+  return out
+end
+
+-- For the minimap tooltip's "arrived" section: what the notifications named,
+-- newest first, as { label = outcome in its tone, item = name }.
+function MM.PendingSummary()
+  local realm, name = Me()
+  local watch = WatchFor(realm, name, false)
+  local pending = watch and type(watch.pending) == "table" and watch.pending or {}
+  local R = Rules()
+  local out = {}
+  for i = #pending, 1, -1 do
+    local p = pending[i]
+    local item = p.item or ""
+    if (tonumber(p.n) or 1) > 1 then item = item .. " (" .. p.n .. ")" end
+    out[#out + 1] = { label = (R and R.OutcomeSender(p.k)) or L["MEMORY_FROM_AH"], item = item }
   end
-  frame.Header:SetPoint("RIGHT", frame.NewSinceHit, "LEFT", -8, 0)
+  return out
+end
+
+-------------------------------------------------------------
+-- 3c. The character switcher
+--
+-- An icon in the title bar's corner -- the main window keeps its cog in the
+-- same place -- and a small list under it. Only characters with something to
+-- look at are listed: the one being played, and any other whose box held
+-- mail, has mail on the way, or has a warning. Names and counts stand in two
+-- columns, so the counts line up however long a name and realm run, and the
+-- list is exactly as wide as its widest row.
+-------------------------------------------------------------
+
+local SWITCH_ATLASES = { "socialqueuing-icon-group", "groupfinder-icon-friend" }
+local SWITCH_ROW_H = 20
+
+local function SwitchChoices()
+  local all = MM.Characters()
+  local out = {}
+  for i = 1, #all do
+    local st = all[i]
+    if st.me or st.waiting > 0 or (st.pending or 0) > 0 or st.warn then out[#out + 1] = st end
+  end
+  return out
+end
+
+local catcher
+
+local function HideSwitchList(frame)
+  if frame.SwitchList then frame.SwitchList:Hide() end
+  if catcher then catcher:Hide() end
+end
+
+local function ShowSwitchList(frame)
+  local T = ns.Theme
+  local list = frame.SwitchList
+  if not list then
+    list = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    list.__pbPopupAlways = true
+    T.ApplyCard(list)
+    list:SetFrameStrata("FULLSCREEN_DIALOG")
+    list.rows = {}
+    list:SetScript("OnHide", function() if catcher then catcher:Hide() end end)
+    frame:HookScript("OnHide", function() HideSwitchList(frame) end)
+    frame.SwitchList = list
+    if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, list) end
+  end
+  if not catcher then
+    catcher = CreateFrame("Frame", nil, UIParent)
+    catcher:SetAllPoints(UIParent)
+    catcher:SetFrameStrata("FULLSCREEN_DIALOG")
+    catcher:EnableMouse(true)
+    catcher:SetScript("OnMouseDown", function() HideSwitchList(frame) end)
+  end
+
+  local choices = SwitchChoices()
+  local myRealm = GetRealmName()
+  local v = frame.viewing
+  local nameW, countW = 0, 0
+  for i = 1, #choices do
+    local st = choices[i]
+    local row = list.rows[i]
+    if not row then
+      row = CreateFrame("Button", nil, list)
+      row:SetHeight(SWITCH_ROW_H)
+      row.Hover = row:CreateTexture(nil, "BACKGROUND")
+      row.Hover:SetAllPoints()
+      row.Hover:SetColorTexture(1, 1, 1, 0.06)
+      row.Hover:Hide()
+      row.Mark = row:CreateTexture(nil, "ARTWORK")
+      row.Mark:SetSize(4, 4)
+      row.Mark:SetPoint("LEFT", row, "LEFT", 6, 0)
+      row.Mark:SetTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
+      row.Name = T.CreateText(row, "value")
+      row.Name:SetPoint("LEFT", row, "LEFT", 16, 0)
+      row.Name:SetJustifyH("LEFT")
+      row.Name:SetWordWrap(false)
+      row.Count = T.CreateText(row, "secondary")
+      row.Count:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+      row.Count:SetJustifyH("RIGHT")
+      row:SetScript("OnEnter", function(self)
+        self.Hover:Show()
+        if self.reason then
+          GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+          GameTooltip:SetText(self.reason, 1, 1, 1, true)
+          GameTooltip:Show()
+        end
+      end)
+      row:SetScript("OnLeave", function(self)
+        self.Hover:Hide()
+        GameTooltip:Hide()
+      end)
+      row:SetScript("OnClick", function(self)
+        if self.isMe then
+          frame.viewing = nil
+        else
+          frame.viewing = { realm = self.realm, name = self.charName }
+        end
+        HideSwitchList(frame)
+        Refresh(frame)
+      end)
+      list.rows[i] = row
+    end
+    row.realm, row.charName, row.isMe = st.realm, st.name, st.me
+    row.reason = st.text
+    local label = st.name
+    if st.realm ~= myRealm then
+      label = label .. "  " .. T.Colorize("textSecondary", st.realm)
+    end
+    row.Name:SetText(label)
+    local waiting = st.waiting + (st.pending or 0)
+    local count = ns.Plural("COUNT_MAILS", waiting)
+    row.Count:SetText(st.warn and T.Colorize("warning", count) or count)
+    nameW = math.max(nameW, row.Name:GetStringWidth() or 0)
+    countW = math.max(countW, row.Count:GetStringWidth() or 0)
+
+    local current = (v == nil and st.me) or (v ~= nil and v.realm == st.realm and v.name == st.name)
+    if current and T.GetAccent then
+      local r, g, b = T.GetAccent()
+      row.Mark:SetVertexColor(r, g, b, 0.9)
+    end
+    row.Mark:SetShown(current and true or false)
+  end
+  for i = #choices + 1, #list.rows do list.rows[i]:Hide() end
+
+  local width = 16 + math.ceil(nameW) + 20 + math.ceil(countW) + 8
+  for i = 1, #choices do
+    local row = list.rows[i]
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", list, "TOPLEFT", 1, -4 - (i - 1) * SWITCH_ROW_H)
+    row:SetWidth(width - 2)
+    row.Name:SetWidth(math.ceil(nameW) + 2)
+    row:Show()
+  end
+  list:SetSize(width, 8 + #choices * SWITCH_ROW_H)
+  list:ClearAllPoints()
+  list:SetPoint("TOPLEFT", frame.Switch, "BOTTOMLEFT", -2, -4)
+  catcher:SetFrameLevel(math.max(list:GetFrameLevel() - 1, 0))
+  catcher:Show()
+  list:Show()
+  list:Raise()
+end
+
+local function BuildSwitcher(frame)
+  local T = ns.Theme
+  local button = CreateFrame("Button", nil, frame)
+  button:SetSize(18, 18)
+  -- Placed exactly as the main window's cog is (Core/MailboxUI.lua): a host
+  -- skin's rebuilt title bar sits two pixels lower than the stock one.
+  local hostBar = (ns.Skin and (_G.EllesmereUI or _G.ElvUI)) and true or false
+  button:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, hostBar and -4 or -2)
+  button:SetFrameLevel(frame:GetFrameLevel() + 20)
+
+  button.icon = button:CreateTexture(nil, "ARTWORK")
+  button.icon:SetAllPoints()
+  local atlas = T.FirstAtlas(SWITCH_ATLASES)
+  if atlas then
+    button.icon:SetAtlas(atlas, false)
+  else
+    button.icon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Male")
+  end
+  button.icon:SetDesaturated(true)
+  if T.GetAccent then button.icon:SetVertexColor(T.GetAccent()) end
+  button:SetHighlightTexture(button.icon:GetTexture() or "Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
+  local highlight = button:GetHighlightTexture()
+  if highlight then
+    if atlas then highlight:SetAtlas(atlas, false) end
+    highlight:SetBlendMode("ADD")
+    highlight:SetAlpha(0.4)
+  end
+
+  button:SetScript("OnClick", function()
+    if frame.SwitchList and frame.SwitchList:IsShown() then
+      HideSwitchList(frame)
+    else
+      ShowSwitchList(frame)
+    end
+  end)
+  button:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L["MEMORY_SWITCH_TITLE"])
+    GameTooltip:AddLine(L["MEMORY_SWITCH_TIP"], 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  frame.Switch = button
 end
 
 function Refresh(frame)
-  UpdatePicker(frame)
   -- Another character's box is read-only history: no live look, no heal, no
-  -- arrival badge -- those all describe the character being played.
+  -- arrival detection -- those all describe the character being played.
   local viewing = frame.viewing
   -- Self-heal for a missed close signal. If `live` still exists while no
   -- mailbox is open, the visit ended without either close event reaching us
   -- -- and every arrival mark since then went to the STORED record while
-  -- this window kept reading `live`: content right, badge structurally
-  -- impossible. Settle the visit now exactly as the close handler would,
+  -- this window kept reading `live`: content right, arrivals structurally
+  -- invisible. Settle the visit now exactly as the close handler would,
   -- carrying marks made against the prior record across the late persist.
   local state = MailboxState()
   if not viewing and live and not (state and state.mailboxOpen) then
@@ -990,28 +1189,19 @@ function Refresh(frame)
     end
   end
 
+  local myRealm, myName = Me()
+  local realm = viewing and viewing.realm or myRealm
+  local name = viewing and viewing.name or myName
   local snapshot
   if viewing then
-    snapshot = SnapshotFor(viewing.realm, viewing.name)
+    snapshot = SnapshotFor(realm, name)
   else
     snapshot = live or StoredSnapshot()
   end
   local now = time()
 
-  local mails = snapshot and snapshot.mails or nil
-  local count = mails and #mails or 0
-
-  if not snapshot then
-    frame.Header:SetText(L["MEMORY_EMPTY"])
-  elseif count == 0 then
-    frame.Header:SetText(string.format(L["MEMORY_ASOF_EMPTY"], AgeText(snapshot.seenAt)))
-  else
-    frame.Header:SetText(string.format(L["MEMORY_ASOF"],
-      AgeText(snapshot.seenAt), ns.Plural("COUNT_MAILS", count)))
-  end
-
-  -- The badge means one exact thing: mail arrived after this snapshot.
-  -- Three independent detectors, ANY suffices, each sound on its own:
+  -- Mail known to have arrived after the snapshot. Three independent
+  -- detectors, ANY suffices, each sound on its own:
   --
   --   1. The arrival watch's stored mark (the pending-mail event, guarded).
   --   2. The flag FLIP: HasNewMail() is "unread mail exists", so its value
@@ -1030,7 +1220,6 @@ function Refresh(frame)
   local from = nil
   if snapshot and not viewing then
     EnsureBaseline(snapshot)
-    local state = MailboxState()
     local away = not (state and state.mailboxOpen)
     local flagNow = away and type(HasNewMail) == "function" and HasNewMail() and true or false
     local tripleNow = away and SenderTriple() or nil
@@ -1047,32 +1236,45 @@ function Refresh(frame)
       if #from == 0 then from = nil end
     end
   end
-  frame.NewSinceHit:SetShown(arrived)
-  frame.newFrom = arrived and from or nil
 
-  local hidden = snapshot and math.max(0, (tonumber(snapshot.total) or count) - count) or 0
-  if hidden > 0 then
-    frame.More:SetText(string.format(L["MEMORY_MORE"], hidden))
-    frame.More:Show()
+  local rows = PendingRows(WatchFor(realm, name, false), arrived, from)
+  local mails = snapshot and snapshot.mails or {}
+  for i = 1, #mails do rows[#rows + 1] = mails[i] end
+  local count = #rows
+
+  -- The status line, at the foot: whose box, when it was seen, how much.
+  local text
+  if not snapshot then
+    text = L["MEMORY_EMPTY"]
+  elseif #mails == 0 then
+    text = string.format(L["MEMORY_ASOF_EMPTY"], AgeText(snapshot.seenAt))
   else
-    frame.More:Hide()
+    text = string.format(L["MEMORY_ASOF"], AgeText(snapshot.seenAt), ns.Plural("COUNT_MAILS", #mails))
   end
+  local hidden = snapshot and math.max(0, (tonumber(snapshot.total) or #mails) - #mails) or 0
+  if hidden > 0 then text = text .. "  " .. string.format(L["MEMORY_MORE"], hidden) end
+  local choices = SwitchChoices()
+  if #choices > 1 or viewing then
+    text = ns.Theme.Colorize("accent", CharacterLabel(realm, name)) .. "  " .. text
+  end
+  frame.Status:SetText(text)
+  frame.Switch:SetShown(#choices > 1 or viewing ~= nil)
 
   frame.Card:SetShown(count > 0)
   for i = 1, count do
     if not frame.Rows[i] then frame.Rows[i] = BuildRow(frame.ListChild, i) end
   end
-  local cols = (count > 0) and MeasureColumns(frame, mails, now, frame.Rows[1]) or nil
+  local cols = (count > 0) and MeasureColumns(frame, rows, now, frame.Rows[1]) or nil
   for i = 1, count do
-    FillRow(frame.Rows[i], mails[i], now, cols)
+    FillRow(frame.Rows[i], rows[i], now, cols)
   end
   for i = count + 1, #frame.Rows do frame.Rows[i]:Hide() end
   frame.ListChild:SetHeight(math.max(1, count * ROW_HEIGHT))
 
-  -- Height: eight rows by default, the user's own height once they have
+  -- Height: six rows by default, the user's own height once they have
   -- dragged the grip, and never taller than the content or shorter than
-  -- four rows. Width is pinned by the bounds -- this window grows down,
-  -- not sideways.
+  -- six rows. Width is pinned by the bounds -- this window grows down, not
+  -- sideways.
   local contentRows = math.max(count, 1)
   local minH = RowsHeight(math.min(MIN_ROWS, contentRows))
   local maxH = RowsHeight(contentRows)
@@ -1115,96 +1317,24 @@ local function Build()
   ns.Theme.ApplyFrameTheme(frame)
   ns.Core.UI.Helpers.RegisterEscClose(frame)
 
-  -- The badge is a real (small) frame so it can carry a tooltip naming who
-  -- the new mail is from -- a bare font string cannot take the mouse.
-  frame.NewSinceHit = CreateFrame("Frame", nil, frame)
-  frame.NewSinceHit:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -32)
-  frame.NewSinceHit:SetHeight(16)
-  HoverOnly(frame.NewSinceHit)
-
-  -- GREEN, not the accent. New mail is good news, and the accent is the
-  -- colour this addon uses for "selected" and "attention" -- an orange-gold
-  -- pill reads as a warning toast, which is the opposite of what arriving
-  -- mail means. Green says it plainly and cannot be confused with the
-  -- orange a stuck mail wears three rows below.
-  local pos = ns.Theme.Colors.positive
-  local r, g, b = pos[1], pos[2], pos[3]
-
-  -- A pill, not a line of coloured text: this badge has to be read while
-  -- the eye is on a list of mails, where one more coloured caption reads as
-  -- a column heading. Wash plus dot plus word is unmistakably a marker.
-  local pill = frame.NewSinceHit:CreateTexture(nil, "BACKGROUND")
-  pill:SetAllPoints()
-  pill:SetColorTexture(r, g, b, 0.13)
-
-  frame.NewSince = ns.Theme.CreateText(frame.NewSinceHit, "small")
-  frame.NewSince:SetPoint("RIGHT", frame.NewSinceHit, "RIGHT", -6, 0)
-  frame.NewSince:SetText(L["MEMORY_NEW_SINCE"])
-  frame.NewSince:SetTextColor(r, g, b)
-
-  local dot = frame.NewSinceHit:CreateTexture(nil, "OVERLAY")
-  dot:SetSize(5, 5)
-  dot:SetPoint("RIGHT", frame.NewSince, "LEFT", -5, 0)
-  dot:SetColorTexture(r, g, b, 1)
-
-  frame.NewSinceHit:SetWidth(frame.NewSince:GetStringWidth() + 22)
-  -- Two facts, in the order they matter: what has landed since (which the
-  -- list below cannot show), then what was already waiting, grouped by
-  -- sender so "Auction House  x10" reads at a glance instead of ten rows.
-  local SUMMARY_LINES = 5
-  frame.NewSinceHit:SetScript("OnEnter", function(self)
+  -- The status line: the foot of the window, left of the grip. Truncates
+  -- with an ellipsis rather than running under the grip; the whole line is
+  -- the hover area's tooltip when it did.
+  frame.Status = ns.Theme.CreateText(frame, "secondary")
+  frame.Status:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 8)
+  frame.Status:SetPoint("RIGHT", frame, "RIGHT", -26, 0)
+  frame.Status:SetJustifyH("LEFT")
+  frame.Status:SetWordWrap(false)
+  frame.StatusHit = CreateFrame("Frame", nil, frame)
+  frame.StatusHit:SetAllPoints(frame.Status)
+  HoverOnly(frame.StatusHit)
+  frame.StatusHit:SetScript("OnEnter", function(self)
+    if not (frame.Status.IsTruncated and frame.Status:IsTruncated()) then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["MEMORY_ARRIVED_TIP"])
-    local from = frame.newFrom
-    if type(from) == "table" and #from > 0 then
-      for i = 1, #from do
-        GameTooltip:AddLine(from[i], 1, 1, 1)
-      end
-    else
-      GameTooltip:AddLine(L["MEMORY_ARRIVED_ANON"], 1, 1, 1, true)
-    end
-
-    -- Same two-section breakdown as the minimap tooltip, from the same
-    -- summary, so the two never describe one mailbox differently. The
-    -- headings carry a count, which is why they are FORMATTED here -- this
-    -- one printed a literal "%d" for a release.
-    local state = MM.MailboxSummary()
-    local function Breakdown(groups, heading, count, hr, hg, hb)
-      if not groups then return end
-      GameTooltip:AddLine(" ")
-      GameTooltip:AddLine(string.format(heading, count), hr, hg, hb)
-      local shown = math.min(#groups, SUMMARY_LINES)
-      for i = 1, shown do
-        GameTooltip:AddDoubleLine(groups[i].name, "x" .. groups[i].count,
-          1, 1, 1, 0.75, 0.75, 0.78)
-      end
-      if #groups > shown then
-        GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #groups - shown),
-          0.6, 0.6, 0.63)
-      end
-    end
-    if state then
-      Breakdown(state.groups, L["MEMORY_WAITING_HEAD"], state.waiting,
-        0.75, 0.75, 0.78)
-      local warn = ns.Theme.Colors.warning
-      Breakdown(state.stuckGroups, L["MEMORY_STUCK_HEAD"], state.stuck,
-        warn[1], warn[2], warn[3])
-    end
+    GameTooltip:SetText(frame.Status:GetText(), 1, 1, 1, true)
     GameTooltip:Show()
   end)
-  frame.NewSinceHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  frame.NewSinceHit:Hide()
-
-  frame.Header = ns.Theme.CreateText(frame, "label")
-  frame.Header:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -34)
-  frame.Header:SetPoint("RIGHT", frame.NewSinceHit, "LEFT", -8, 0)
-  frame.Header:SetJustifyH("LEFT")
-  frame.Header:SetWordWrap(false)
-
-  frame.More = ns.Theme.CreateText(frame, "tiny")
-  frame.More:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 8)
-  frame.More:SetAlpha(0.7)
-  frame.More:Hide()
+  frame.StatusHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
   local card = CreateFrame("Frame", nil, frame, "BackdropTemplate")
   card:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -CHROME_TOP)
@@ -1218,11 +1348,21 @@ local function Build()
   frame.Scroll.scrollBarHideable = 1
   ns.Theme.SlimScrollBar(frame.Scroll, card, 1)
 
+  -- The rows are the scroll frame's full width: the child follows it, so no
+  -- band is left between the rows and the bar.
   frame.ListChild = CreateFrame("Frame", nil, frame.Scroll)
-  frame.ListChild:SetWidth(WINDOW_WIDTH - 44)
+  frame.ListChild:SetWidth(WINDOW_WIDTH - 20 - 2 - (ns.Theme.Metrics.scrollGutter or 0))
   frame.Scroll:SetScrollChild(frame.ListChild)
+  frame.Scroll:HookScript("OnSizeChanged", function(_, width)
+    if width and width > 10 and math.abs((frame.ListChild:GetWidth() or 0) - width) > 0.5 then
+      frame.ListChild:SetWidth(width)
+      if frame:IsShown() then Refresh(frame) end
+    end
+  end)
 
   frame.Rows = {}
+
+  BuildSwitcher(frame)
 
   -- The grip only ever changes height (the bounds pin the width). Once the
   -- user has chosen a height it is theirs for the session; Refresh keeps
@@ -1274,6 +1414,7 @@ function MM.Toggle()
 
   -- Every open starts on the character being played.
   frame.viewing = nil
+  if frame.SwitchList then frame.SwitchList:Hide() end
   Refresh(frame)
   frame:ClearAllPoints()
   local minimap = _G.Minimap
@@ -1340,6 +1481,7 @@ function MM.MailboxSummary()
     seenAt      = snap.seenAt,
     arrived     = snap.newSince and true or false,
     newFrom     = snap.newSince and snap.newFrom or nil,
+    pending     = MM.PendingSummary and MM.PendingSummary() or nil,
   }
 end
 
@@ -1542,6 +1684,40 @@ if bus then
   end)
   registered.auctionExpired = bus.Register("AUCTION_HOUSE_AUCTIONS_EXPIRED", function()
     NoteArrival(Me())
+  end)
+
+  -- The auction house's own notices -- sold, expired, won -- name the item,
+  -- and reach the client wherever the player is. Each is mail on its way, and
+  -- the memory's new-mail rows say what (section 3b).
+  local function NotePending(kind, item, count)
+    if not MemoryEnabled() or not kind or type(item) ~= "string" or item == "" then return end
+    local realm, name = Me()
+    local watch = WatchFor(realm, name, true)
+    if not watch then return end
+    watch.pending = type(watch.pending) == "table" and watch.pending or {}
+    if #watch.pending >= 30 then table.remove(watch.pending, 1) end
+    watch.pending[#watch.pending + 1] = { k = kind, item = item, n = tonumber(count), t = time() }
+    NoteArrival(realm, name)
+    local snap = StoredSnapshot()
+    if snap then snap.newSince = true end
+    local frame = MM._frame
+    if frame and frame:IsShown() then Refresh(frame) end
+  end
+  registered.ahNotice = bus.Register("AUCTION_HOUSE_SHOW_FORMATTED_NOTIFICATION", function(_, notification, item)
+    local E = type(Enum) == "table" and Enum.AuctionHouseNotification or nil
+    if not E then return end
+    local kind
+    if notification == E.AuctionSold then
+      kind = "sold"
+    elseif notification == E.AuctionExpired then
+      kind = "expired"
+    elseif notification == E.AuctionWon then
+      kind = "bought"
+    end
+    NotePending(kind, item)
+  end)
+  registered.commodityWon = bus.Register("AUCTION_HOUSE_SHOW_COMMODITY_WON_NOTIFICATION", function(_, item, quantity)
+    NotePending("bought", item, quantity)
   end)
   registered.login = bus.Register("PLAYER_ENTERING_WORLD", function(_, isInitialLogin)
     loginAt = time()

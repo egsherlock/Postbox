@@ -14,8 +14,12 @@
   slots, the rest into the queue behind them. Works in the default bags,
   EllesmereUI's and Baganator's. Hover "Attachments" for a reminder.
 - **Every character's mailbox, in one place.** The mailbox memory (left-click
-  the minimap icon, or /postbox mail) has a character picker, so you can see
-  what any of your characters' boxes held.
+  the minimap icon, or /postbox mail) has a character switcher in its corner,
+  listing every character with mail waiting.
+- **New mail shows up in the memory as rows.** When an auction sells, expires
+  or is won while you are away, the memory lists it by item ("AH Sold -
+  Lightning Etched Specs"), and other new mail by sender, until you next open
+  a mailbox.
 - **Warnings before mail is lost on another character.** The minimap icon's
   tooltip names any character with mail under three days from expiring, or
   with mail on its way (an auction you posted, a purchase, something you sent
@@ -23,7 +27,8 @@
   says the same; it can be switched off under Mail alerts.
 - **From alts.** A sixth category button collects mail from your own
   characters in one click, on any realm. No setup: every character you have
-  logged into with Postbox installed counts.
+  logged into with Postbox installed counts. Other now means everything that
+  is neither auction mail nor from your alts, so the two never overlap.
 - **History.** A clock beside Done lists what Postbox collected on this
   character in the last seven days, newest first: when, from whom, what came
   out and what it was worth, with the week's earned and spent totals
@@ -33,13 +38,15 @@
 
 - **Mail rows line up.** Names sit in one column, as wide as the longest name
   listed and never wider than "AH Expired", so every item name starts in the
-  same place; gold, slots and time left stand in their own right-aligned
-  columns down the list. Rows show a sender without their realm, and "The
-  Postmaster" as "Postmaster"; the tooltip has the full name.
-- **Choose what each row shows.** Gold earned, gold spent, slots and time
-  left can each be switched off (Options, Mail tab, "Show on each mail").
-  Whatever you switch off moves to the row's tooltip. A C.O.D. price always
-  shows, because Postbox never pays one without asking.
+  same place. Gold, slots and time left sit at the right edge of each row,
+  and the item name uses whatever room they leave. Rows show a sender
+  without their realm, and "The Postmaster" as "Postmaster"; the tooltip has
+  the full name.
+- **Choose what each row shows, and in what order.** Options, Mail tab,
+  "Show on each mail": click Time left, Gold or Slots to hide it, drag one to
+  move it. Gold cycles through both, earned only and spent only. Whatever you
+  hide moves to the row's tooltip. A C.O.D. price always shows, because
+  Postbox never pays one without asking.
 - **Category buttons count.** "All sold (7)", and a button with nothing to
   collect is greyed out rather than answering "Done" when clicked.
 - **Mailbox memory matches the mail list:** auction mail reads "AH Sold" and

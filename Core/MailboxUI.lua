@@ -291,6 +291,37 @@ function UI.SetTabCaptionMode(mode)
   UI.RefreshCollectTabCounts()
 end
 
+-- The order a mail row's figures stand in, left to right: an array of the
+-- three ids "time", "money" and "slots". A string on the profile, with its
+-- own accessors like the tab caption, because profile options are booleans.
+-- Anything unreadable -- a missing id, a duplicate, an unknown word -- falls
+-- back to the default whole rather than being half-repaired.
+local ROW_FIGURES = { time = true, money = true, slots = true }
+local ROW_ORDER_DEFAULT = { "time", "money", "slots" }
+
+function UI.GetRowOrder()
+  local store = ns.Store
+  local stored = store and store.Get and store.Get("profile.rowOrder")
+  if type(stored) == "string" then
+    local out, seen = {}, {}
+    for id in stored:gmatch("[^,]+") do
+      if ROW_FIGURES[id] and not seen[id] then
+        seen[id] = true
+        out[#out + 1] = id
+      end
+    end
+    if #out == 3 then return out end
+  end
+  return { ROW_ORDER_DEFAULT[1], ROW_ORDER_DEFAULT[2], ROW_ORDER_DEFAULT[3] }
+end
+
+function UI.SetRowOrder(order)
+  if type(order) ~= "table" or #order ~= 3 then return end
+  local store = ns.Store
+  local profile = store and store.EnsurePath and store.EnsurePath("profile")
+  if profile then profile.rowOrder = table.concat(order, ",") end
+end
+
 -------------------------------------------------------------
 -- 2. The native mail frame
 --
