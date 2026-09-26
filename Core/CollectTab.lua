@@ -348,11 +348,10 @@ local function PreviewOnClick()
   return UI.GetOption("previewOnClick") and true or false
 end
 
--- Default OFF when the option plumbing has not loaded yet: the standard row is
--- what every other measurement in this file was drawn around.
+-- Default ON when the option plumbing has not loaded yet, as the option is.
 local function CompactRows()
   local UI = ns.MailboxUI
-  if not UI or type(UI.GetOption) ~= "function" then return false end
+  if not UI or type(UI.GetOption) ~= "function" then return true end
   return UI.GetOption("compactRows") and true or false
 end
 

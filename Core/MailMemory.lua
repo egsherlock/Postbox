@@ -825,6 +825,7 @@ end
 -- where the row's last figure would stand, and nothing else.
 local function RowTexts(mail, now)
   local R = Rules()
+  if mail.header then return {} end
   if mail.pending then
     local texts = {}
     local order = R and R.RowOrder() or { "slots" }
@@ -853,7 +854,9 @@ local function MeasureColumns(frame, rows, now, sample)
   local fsFor = { time = sample.ColTime, money = sample.ColMoney, slots = sample.ColSlots }
   for i = 1, #rows do
     local mail = rows[i]
-    if cols.sender < cap then
+    if mail.header then
+      -- A character's name heads its matches; it measures nothing.
+    elseif cols.sender < cap then
       local label = R.OutcomeSender(mail.kind) or R.DisplaySender(mail.sender) or ""
       cols.sender = math.min(math.max(cols.sender, R.Measure(frame, sample.Sender, label) + 2), cap)
     end
@@ -871,6 +874,23 @@ local Refresh
 local function FillRow(row, mail, now, cols)
   local R = Rules()
   local T = ns.Theme
+  if mail.header then
+    -- A search across characters: the name the matches below belong to.
+    row.fullSubject, row.fullSender, row.itemLink = nil, nil, nil
+    row.factsTip, row.expiryTip = nil, nil
+    row.Icon:Hide()
+    row.Warning:Hide()
+    row.ColTime:Hide()
+    row.ColMoney:Hide()
+    row.ColSlots:Hide()
+    local width = row:GetParent():GetWidth() or 0
+    if width < 100 then width = WINDOW_WIDTH - 44 end
+    T.FitText(row.Sender, width - 40, T.Colorize("accent", mail.label), nil)
+    T.FitText(row.Subject, 1, "", nil)
+    row:SetAlpha(1)
+    row:Show()
+    return
+  end
   row.fullSubject = mail.subject
   row.fullSender = mail.sender
   row.itemLink = mail.link
@@ -883,6 +903,10 @@ local function FillRow(row, mail, now, cols)
   end
 
   row.Warning:SetShown(mail.stuck and true or false)
+  -- A header on a reused row hid these; a mail row shows whichever it has.
+  row.ColTime:Show()
+  row.ColMoney:Show()
+  row.ColSlots:Show()
 
   local texts = RowTexts(mail, now)
   row.factsTip = texts.facts
@@ -988,9 +1012,9 @@ end
 -------------------------------------------------------------
 -- 3c. The character switcher
 --
--- At the window's foot, left: an icon and the name of the character whose
--- box is showing -- the name is what is being switched, so it is the control
--- -- and a small list that opens upward from it. Only characters with something to
+-- In the title bar's corner, where the main window keeps its cog: an icon
+-- and the name of the character whose box is showing -- the name is what is
+-- being switched, so it is the control -- and a small list under it. Only characters with something to
 -- look at are listed: the one being played, and any other whose box held
 -- mail, has mail on the way, or has a warning. Names and counts stand in two
 -- columns, so the counts line up however long a name and realm run, and the
@@ -1121,7 +1145,7 @@ local function ShowSwitchList(frame)
   end
   list:SetSize(width, 8 + #choices * SWITCH_ROW_H)
   list:ClearAllPoints()
-  list:SetPoint("BOTTOMLEFT", frame.Switch, "TOPLEFT", -4, 6)
+  list:SetPoint("TOPLEFT", frame.Switch, "BOTTOMLEFT", -4, -6)
   list:Show()
   list:Raise()
 end
@@ -1132,7 +1156,10 @@ local function BuildSwitcher(frame)
   local T = ns.Theme
   local button = CreateFrame("Button", nil, frame)
   button:SetHeight(16)
-  button:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD - 2, 7)
+  -- Placed as the main window's cog is (Core/MailboxUI.lua): a host skin's
+  -- rebuilt title bar sits two pixels lower than the stock one.
+  local hostBar = (ns.Skin and (_G.EllesmereUI or _G.ElvUI)) and true or false
+  button:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, hostBar and -5 or -3)
   button:SetFrameLevel(frame:GetFrameLevel() + 20)
 
   button.icon = button:CreateTexture(nil, "ARTWORK")
@@ -1160,7 +1187,7 @@ local function BuildSwitcher(frame)
   end)
   button:SetScript("OnEnter", function(self)
     self.icon:SetAlpha(0.7)
-    GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+    GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
     GameTooltip:SetText(L["MEMORY_SWITCH_TITLE"])
     GameTooltip:AddLine(L["MEMORY_SWITCH_TIP"], 1, 1, 1, true)
     GameTooltip:Show()
@@ -1170,6 +1197,137 @@ local function BuildSwitcher(frame)
     GameTooltip:Hide()
   end)
   frame.Switch = button
+end
+
+-------------------------------------------------------------
+-- 3d. Search
+--
+-- A box at the window's foot narrows the list to mails whose sender, subject
+-- or auction outcome contains what is typed. A toggle inside the box widens
+-- it to every character's box: the matches are then listed under each
+-- character's name, so a search for "Luredrop" finds which alt has them.
+-------------------------------------------------------------
+
+local function Fold(text)
+  local H = ns.Helpers
+  if H and H.Lower then return H.Lower(tostring(text or "")) end
+  return string.lower(tostring(text or ""))
+end
+
+local function Matches(mail, query)
+  local R = Rules()
+  local outcome = R and R.OutcomeSender and mail.kind and R.OutcomeSender(mail.kind) or ""
+  -- The outcome label arrives coloured; the escape codes are not searched.
+  outcome = outcome:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+  local hay = (mail.sender or "") .. "\001" .. (mail.subject or "") .. "\001" .. outcome
+  return Fold(hay):find(query, 1, true) ~= nil
+end
+
+local function SearchQuery(frame)
+  local box = frame.SearchBox
+  local text = box and box:GetText() or ""
+  return Fold((text:match("^%s*(.-)%s*$")))
+end
+
+-- Every character's matches, each under a header row with its name.
+local function SearchAll(query, now)
+  local rows, characters = {}, 0
+  local all = MM.Characters()
+  for i = 1, #all do
+    local st = all[i]
+    local snap = SnapshotFor(st.realm, st.name)
+    local mails = snap and snap.mails or {}
+    local found = nil
+    for j = 1, #mails do
+      if Matches(mails[j], query) then
+        if not found then
+          found = true
+          characters = characters + 1
+          rows[#rows + 1] = { header = true, label = CharacterLabel(st.realm, st.name) }
+        end
+        rows[#rows + 1] = mails[j]
+      end
+    end
+  end
+  return rows, characters
+end
+
+local function BuildSearch(frame)
+  local T = ns.Theme
+  local M = T.Metrics
+  local wrap = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+  wrap:SetSize(160, 20)
+  wrap:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD - 2, 5)
+  T.StyleInput(wrap)
+  wrap.__postboxInputWrap = true
+  frame.SearchWrap = wrap
+
+  local box = CreateFrame("EditBox", nil, wrap)
+  box:SetAutoFocus(false)
+  local font = T.FontObject and T.FontObject("bodySmall")
+  if font then box:SetFontObject(font) end
+  T.SetColor(box, "textPrimary")
+  box:SetPoint("TOPLEFT", wrap, "TOPLEFT", 6, -2)
+  box:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -22, 2)
+  box.__postboxNoEditSkin = true
+  box:SetMaxLetters(64)
+  frame.SearchBox = box
+
+  local placeholder = T.CreateText(wrap, "placeholder")
+  placeholder:SetPoint("TOPLEFT", wrap, "TOPLEFT", 6, -2)
+  placeholder:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -22, 2)
+  placeholder:SetJustifyH("LEFT")
+  placeholder:SetJustifyV("MIDDLE")
+  placeholder:SetText(L["SEARCH_PLACEHOLDER"])
+
+  wrap:SetScript("OnMouseDown", function() box:SetFocus() end)
+  box:SetScript("OnEscapePressed", function(self)
+    self:SetText("")
+    self:ClearFocus()
+  end)
+  box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+  box:SetScript("OnTextChanged", function(self)
+    placeholder:SetShown((self:GetText() or "") == "")
+    Refresh(frame)
+  end)
+
+  -- Every character, or the one showing: a toggle inside the box's right end,
+  -- in the accent while it is on.
+  local all = CreateFrame("Button", nil, wrap)
+  all:SetSize(14, 14)
+  all:SetPoint("RIGHT", wrap, "RIGHT", -4, 0)
+  all.icon = all:CreateTexture(nil, "ARTWORK")
+  all.icon:SetAllPoints()
+  local atlas = T.FirstAtlas(SWITCH_ATLASES)
+  if atlas then
+    all.icon:SetAtlas(atlas, false)
+  else
+    all.icon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Male")
+  end
+  all.icon:SetDesaturated(true)
+  local function Paint()
+    if frame.searchAll and T.GetAccent then
+      all.icon:SetVertexColor(T.GetAccent())
+      all.icon:SetAlpha(1)
+    else
+      all.icon:SetVertexColor(1, 1, 1)
+      all.icon:SetAlpha(0.45)
+    end
+  end
+  all:SetScript("OnClick", function()
+    frame.searchAll = not frame.searchAll
+    Paint()
+    Refresh(frame)
+  end)
+  all:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText(L["MEMORY_SEARCH_ALL_TITLE"])
+    GameTooltip:AddLine(L[frame.searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"], 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  all:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  frame.SearchAllButton = all
+  Paint()
 end
 
 function Refresh(frame)
@@ -1247,6 +1405,24 @@ function Refresh(frame)
   local rows = PendingRows(WatchFor(realm, name, false), arrived, from)
   local mails = snapshot and snapshot.mails or {}
   for i = 1, #mails do rows[#rows + 1] = mails[i] end
+
+  -- The search: this box, or every character's under their names.
+  local query = SearchQuery(frame)
+  local matched, onCharacters = nil, nil
+  if query ~= "" then
+    if frame.searchAll then
+      rows, onCharacters = SearchAll(query, now)
+      matched = 0
+      for i = 1, #rows do if not rows[i].header then matched = matched + 1 end end
+    else
+      local kept = {}
+      for i = 1, #rows do
+        if Matches(rows[i], query) then kept[#kept + 1] = rows[i] end
+      end
+      rows = kept
+      matched = #rows
+    end
+  end
   local count = #rows
 
   -- The status line, at the foot: whose box, when it was seen, how much.
@@ -1260,6 +1436,13 @@ function Refresh(frame)
   end
   local hidden = snapshot and math.max(0, (tonumber(snapshot.total) or #mails) - #mails) or 0
   if hidden > 0 then text = text .. "  " .. string.format(L["MEMORY_MORE"], hidden) end
+  -- While searching, the foot says what the search found instead.
+  if matched then
+    text = ns.Plural("MEMORY_MATCHES", matched)
+    if onCharacters and onCharacters > 1 then
+      text = text .. "  " .. ns.Plural("MEMORY_ON_CHARACTERS", onCharacters)
+    end
+  end
   frame.Status:SetText(text)
 
   -- The switcher at the left of the foot: whose box this is, and the way to
@@ -1268,15 +1451,18 @@ function Refresh(frame)
   local switchable = #choices > 1 or viewing ~= nil
   local switch = frame.Switch
   switch:SetShown(switchable)
-  frame.Status:ClearAllPoints()
-  frame.Status:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -26, 8)
   if switchable then
     switch.Name:SetText(CharacterLabel(realm, name))
-    switch:SetWidth(14 + 4 + math.ceil(switch.Name:GetStringWidth() or 0))
-    frame.Status:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD - 2 + switch:GetWidth() + 10, 8)
-  else
-    frame.Status:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 8)
+    -- Capped short of the centred title.
+    local nameWidth = math.min(math.ceil(switch.Name:GetStringWidth() or 0), 110)
+    switch.Name:SetWidth(nameWidth)
+    switch:SetWidth(14 + 4 + nameWidth)
   end
+  -- The search reaches other boxes only when there are others to reach.
+  frame.SearchAllButton:SetShown(#MM.Characters() > 1)
+  frame.Status:ClearAllPoints()
+  frame.Status:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -26, 8)
+  frame.Status:SetPoint("BOTTOMLEFT", frame.SearchWrap, "BOTTOMRIGHT", 10, 3)
 
   frame.Card:SetShown(count > 0)
   for i = 1, count do
@@ -1336,7 +1522,7 @@ local function Build()
   ns.Core.UI.Helpers.RegisterEscClose(frame)
 
   -- The status line: the foot of the window, right-aligned against the grip;
-  -- the character switcher takes the left of the same line. Truncates
+  -- the search box takes the left of the same line. Truncates
   -- with an ellipsis rather than running under the grip; the whole line is
   -- the hover area's tooltip when it did.
   frame.Status = ns.Theme.CreateText(frame, "secondary")
@@ -1382,6 +1568,7 @@ local function Build()
   frame.Rows = {}
 
   BuildSwitcher(frame)
+  BuildSearch(frame)
 
   -- The grip only ever changes height (the bounds pin the width). Once the
   -- user has chosen a height it is theirs for the session; Refresh keeps

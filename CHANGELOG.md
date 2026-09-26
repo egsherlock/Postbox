@@ -14,7 +14,9 @@
   slots, the rest into the queue behind them. Works in the default bags,
   EllesmereUI's and Baganator's. Hover "Attachments" for a reminder.
 - **Every character's mailbox, in one place.** The mailbox memory has a
-  character switcher at its foot, listing every character with mail waiting.
+  character switcher in its corner, listing every character with mail
+  waiting, and a search box that looks in one character's box or, with its
+  toggle on, in every character's, the matches listed under each name.
   Open it from the minimap icon, from the button beside the cog in the
   Postbox window, from the minimap's addon menu, or with /postbox mail.
 - **New mail shows up in the memory as rows.** When an auction sells, expires
@@ -38,6 +40,8 @@
 
 ### Improved
 
+- **Compact rows are the default.** One line per mail, with everything the
+  two-line row showed; the two-line row is one click away in Options.
 - **One inbox instead of three views.** The Mail tab is now Inbox and
   History. The inbox lists what still holds something first, then the read
   mail with nothing left in it, folded under a divider that opens them and

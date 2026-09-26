@@ -124,9 +124,10 @@ end
 local OPTION_DEFAULTS = {
   gridDock        = true,
   showTabCounts   = true,
-  -- The collect screen's single-line mail rows. Off: the standard row is what
-  -- the screen is designed around, and density is a preference, not a default.
-  compactRows     = false,
+  -- The collect screen's single-line mail rows. On: with the figures packed
+  -- to the right edge a one-line row carries everything a list is scanned
+  -- for, and half again as many mails fit. The two-line row is one click away.
+  compactRows     = true,
   -- Swaps the two gestures on a to-collect row: on, a plain click OPENS the mail
   -- and shift/right-click collects it. Off, because the screen is a collect
   -- screen -- the common action is the one-click one -- and because a player who
