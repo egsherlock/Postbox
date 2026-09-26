@@ -1747,6 +1747,58 @@ function Theme.StyleMailRow(row, position, hovered)
 end
 
 -------------------------------------------------------------
+-- 8b. The hint
+--
+-- A few short lines on a small card of the theme's own, in the small font:
+-- for a control whose gestures want saying but not a full tooltip's weight
+-- (the resize grips: "Drag: Resize", "Right-click: Reset"). One frame for the
+-- whole addon. It sits just above the control, right-aligned with it, so it
+-- stays over the window the control belongs to.
+-------------------------------------------------------------
+
+local HINT_PAD_X, HINT_PAD_Y, HINT_LINE = 6, 4, 13
+
+function Theme.ShowHint(owner, lines)
+  if not owner or type(lines) ~= "table" then return end
+  local hint = Theme._hint
+  if not hint then
+    hint = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    hint:SetFrameStrata("TOOLTIP")
+    hint:EnableMouse(false)
+    -- A floating card, opaque under every skin: it is read over the game.
+    hint.__pbPopupAlways = true
+    Theme.ApplyCard(hint)
+    hint.lines = {}
+    Theme._hint = hint
+    if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, hint) end
+  end
+  local width = 0
+  for i = 1, #lines do
+    local fs = hint.lines[i]
+    if not fs then
+      fs = Theme.CreateText(hint, "bodySmall")
+      fs:SetJustifyH("LEFT")
+      fs:SetWordWrap(false)
+      hint.lines[i] = fs
+    end
+    fs:ClearAllPoints()
+    fs:SetPoint("TOPLEFT", hint, "TOPLEFT", HINT_PAD_X, -HINT_PAD_Y - (i - 1) * HINT_LINE)
+    fs:SetText(lines[i])
+    fs:Show()
+    width = math.max(width, fs:GetStringWidth() or 0)
+  end
+  for i = #lines + 1, #hint.lines do hint.lines[i]:Hide() end
+  hint:SetSize(math.ceil(width) + 2 * HINT_PAD_X, #lines * HINT_LINE + 2 * HINT_PAD_Y - 2)
+  hint:ClearAllPoints()
+  hint:SetPoint("BOTTOMRIGHT", owner, "TOPRIGHT", 0, 4)
+  hint:Show()
+end
+
+function Theme.HideHint()
+  if Theme._hint then Theme._hint:Hide() end
+end
+
+-------------------------------------------------------------
 -- 9. The slim scroll bar
 --
 -- Every list in the addon scrolls through UIPanelScrollFrameTemplate, whose

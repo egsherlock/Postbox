@@ -170,10 +170,6 @@ local OPTION_DEFAULTS = {
   rowGold         = true,
   rowSlots        = true,
   rowExpiry       = true,
-  -- The crafting quality mark beside an item's name, as a chat link shows
-  -- it. On: History drew it from the first build and the list did not,
-  -- which read as the list having lost something.
-  rowQuality      = true,
 }
 
 local OPTION_PATH = {}
@@ -261,39 +257,32 @@ function UI.HostSkinAllowed()
   return UI.GetStyleChoice() == "host"
 end
 
--- The Mail tab's caption mode -- how the inbox shows through the tab while
--- the mailbox is open. A string, so it gets its own accessors rather than a
--- widened SetOption: the boolean coercion above is a guarantee, not an
--- accident. `showTabCounts` stays the segments' own switch; this one owns
--- the tab.
---   count   "Mail (2)"   -- how many still hold something to collect: the
---                           same number the Inbox segment carries
---   dot     "Mail •"     -- an accent dot while anything is uncollected;
---                           the default
---   none    "Mail"
--- "counts" (collect / total) and "total" were retired with the Done and All
--- views: a total that counts read letters is not a number anyone acts on.
--- Either stored value reads as "count".
-local TAB_CAPTION_MODES = { count = true, dot = true, none = true }
-
+-- The Mail tab's caption while the mailbox is open, from "Show counts":
+--   on   "Mail (2)"   -- how many still hold something to collect: the same
+--                       number the Inbox segment carries
+--   off  "Mail •"     -- an accent dot while anything is uncollected
+-- It had a dropdown of its own (dot / count / none) beside "Show counts", and
+-- two switches over one number read as the count being broken when the
+-- caption kept its dot. One switch now; a stored tabCaption is ignored.
 function UI.GetTabCaptionMode()
-  local store = ns.Store
-  local stored = store and store.Get and store.Get("profile.tabCaption")
-  if stored == "counts" or stored == "total" then return "count" end
-  if TAB_CAPTION_MODES[stored] then return stored end
-  -- The dot, not "none" as this defaulted through 1.26: it is the quietest
-  -- caption that still answers "is there anything worth collecting" from
-  -- the Send tab -- one glyph, no arithmetic, no width for a translation to
-  -- overflow. Wearing nothing at all is still one pick away.
-  return "dot"
+  return UI.GetOption("showTabCounts") and "count" or "dot"
 end
 
-function UI.SetTabCaptionMode(mode)
-  if not TAB_CAPTION_MODES[mode] then return end
-  local store = ns.Store
-  local profile = store and store.EnsurePath and store.EnsurePath("profile")
-  if profile then profile.tabCaption = mode end
-  UI.RefreshCollectTabCounts()
+-- What a quality mark is drawn on: "icon" (the corner of the row's item
+-- icon, the default), "name" (after the item's name, as a chat link has it),
+-- "both" or "off". Before this was a choice it was the rowQuality switch,
+-- and a player who had switched that off keeps it off.
+local QUALITY_MARKS = { icon = true, name = true, both = true, off = true }
+function UI.GetQualityMark()
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.qualityMark")
+  if QUALITY_MARKS[stored] then return stored end
+  if ns.Store and ns.Store.Get and ns.Store.Get("profile.rowQuality") == false then return "off" end
+  return "icon"
+end
+function UI.SetQualityMark(mode)
+  if not QUALITY_MARKS[mode] then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.qualityMark = mode end
 end
 
 -- The order a mail row's figures stand in, left to right: an array of the
@@ -1846,15 +1835,14 @@ local function BuildFrame()
 
     frame.ResizeButton = helpers.CreateResizeButton(frame, OnResizeStop,
       AdoptTransientHeight, DragMinHeight, OnResizeReset, OnResizeSnap)
-    -- The right-click cannot be discovered by looking: one quiet line says it.
+    -- The right-click cannot be discovered by looking: a small hint of the
+    -- theme's own says both gestures, quieter than a full tooltip.
     local grip = frame.ResizeButton
-    if grip then
+    if grip and ns.Theme and ns.Theme.ShowHint then
       grip:HookScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
-        GameTooltip:SetText(L("GRIP_RESET_TIP"), 0.8, 0.8, 0.8, 1, true)
-        GameTooltip:Show()
+        ns.Theme.ShowHint(self, { L("GRIP_TIP_DRAG"), L("GRIP_TIP_RESET") })
       end)
-      grip:HookScript("OnLeave", function() GameTooltip:Hide() end)
+      grip:HookScript("OnLeave", function() ns.Theme.HideHint() end)
     end
   end
 

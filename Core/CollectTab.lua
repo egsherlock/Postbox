@@ -155,6 +155,44 @@ function RV.QualityMark(index, slot)
   return RV.MarkOf(link)
 end
 
+-- Where a quality mark goes (MailboxUI.GetQualityMark): "icon", "name",
+-- "both" or "off".
+function RV.QualityMode()
+  local UI = ns.MailboxUI
+  return UI and type(UI.GetQualityMark) == "function" and UI.GetQualityMark() or "icon"
+end
+
+function RV.MarkOnName()
+  local mode = RV.QualityMode()
+  return mode == "name" or mode == "both"
+end
+
+function RV.MarkOnIcon()
+  local mode = RV.QualityMode()
+  return mode == "icon" or mode == "both"
+end
+
+-- row, mark -> a small copy of the mark over the bottom-right corner of the
+-- row's item icon -- the art an item button wears there, where the client
+-- has it -- or nothing. Created on first use: most rows never carry one.
+function RV.PaintQuality(row, mark)
+  local atlas = type(mark) == "string" and mark:match("|A:([^:|]+)") or nil
+  if not (atlas and row.Icon and RV.MarkOnIcon()) then
+    if row.Quality then row.Quality:Hide() end
+    return
+  end
+  if not row.Quality then
+    row.Quality = row:CreateTexture(nil, "OVERLAY", nil, 2)
+  end
+  local small = Th().FirstAtlas({ (atlas:gsub("ChatIcon", "Icon")) .. "-Small", atlas })
+  row.Quality:SetAtlas(small or atlas, false)
+  local size = max(10, floor((row.Icon:GetWidth() or 18) * 0.6 + 0.5))
+  row.Quality:SetSize(size, size)
+  row.Quality:ClearAllPoints()
+  row.Quality:SetPoint("BOTTOMRIGHT", row.Icon, "BOTTOMRIGHT", 3, -3)
+  row.Quality:Show()
+end
+
 -- text, mark -> the text with the mark after the item's name and before a
 -- trailing "(20)" count, where a chat link draws it.
 function RV.WithMark(text, mark)
@@ -171,10 +209,6 @@ end
 -- the two rows of three, which stood empty.
 local CATEGORY_ORDER = { "all", "expired", "sold", "canceled", "bought", "other", "alts" }
 local GRID_COLUMNS = 3
-
--- Tab counts above this render as "99+" so a three-digit count cannot push a
--- segment past the width its neighbour needs.
-local COUNT_CAP = 99
 
 -- The window's persisted minimum is 480 wide; the shell's content inset takes
 -- ~20 of it. Used only as the fallback when a container's anchored width still
@@ -1119,6 +1153,8 @@ CT.RowRules = {
   META_SHARE = COMPACT_META_SHARE,
   QualityMark = RV.MarkOf,
   WithMark = RV.WithMark,
+  MarkOnName = RV.MarkOnName,
+  PaintQuality = RV.PaintQuality,
 }
 
 -------------------------------------------------------------
@@ -1265,7 +1301,7 @@ local function BuildViewToggle(panel)
   -- Another character's box, while one is on screen: its name in its class
   -- colour and its count, selected, where this character's Inbox sits beside
   -- it. A click opens the character list again.
-  local alt = T.CreatePlate(container, "segment")
+  local alt = T.CreatePlate(panel, "segment")
   alt:SetScript("OnClick", function() CT.OpenPicker(panel) end)
   alt:Hide()
   container.alt = alt
@@ -1377,18 +1413,21 @@ local function BuildSearchBox(panel)
   local groupAtlas = T.FirstAtlas({ "socialqueuing-icon-group", "groupfinder-icon-friend" })
   if groupAtlas then all.icon:SetAtlas(groupAtlas, false) end
   all.icon:SetDesaturated(true)
-  all:SetScript("OnClick", function()
-    panel._searchAll = not panel._searchAll
-    if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
-    AV.Paint(panel)
-    CT.RefreshMailList(panel)
-  end)
-  all:SetScript("OnEnter", function(self)
+  local function AllTip(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
     GameTooltip:SetText(L()["MEMORY_SEARCH_ALL_TITLE"])
     GameTooltip:AddLine(L()[panel._searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"], 1, 1, 1, true)
     GameTooltip:Show()
+  end
+  all:SetScript("OnClick", function(self)
+    panel._searchAll = not panel._searchAll
+    if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
+    AV.Paint(panel)
+    CT.RefreshMailList(panel)
+    -- The tooltip says what the next click does: it follows the click.
+    if GameTooltip:IsOwned(self) then AllTip(self) end
   end)
+  all:SetScript("OnEnter", AllTip)
   all:SetScript("OnLeave", function() GameTooltip:Hide() end)
   all:Hide()
   panel.SearchAll = all
@@ -1428,6 +1467,8 @@ function CT.ClearSearch(panel)
   if box and box:GetText() ~= "" then box:SetText("") end
   if panel then
     panel._stuckOnly = false
+    -- The read mail starts folded on every visit.
+    panel._readOpen = false
     -- And back to this character's own box: a later visit must never open
     -- on somebody else's mail.
     panel._alt = nil
@@ -1644,20 +1685,6 @@ local function LayoutViewToggle(panel)
     seg:ClearAllPoints()
     seg:SetPoint("LEFT", container, "LEFT", (i - 1) * (per + gap), 0)
   end
-  -- Another character's name, after this character's segments, as wide as
-  -- its caption.
-  local alt = container.alt
-  if alt and alt:IsShown() then
-    -- Capped: a long name and realm are cut, whole in the tooltip, rather
-    -- than pushing into the picker and the search box.
-    local pad = 2 * T.Metrics.tightGap + 12
-    local width = min(MeasureWith(panel, alt:GetFontString(), alt.caption or "") + pad, 160)
-    T.FitText(alt:GetFontString(), width - pad, alt.caption or alt:GetText() or "", alt)
-    alt:SetSize(width, T.Metrics.segmentHeight)
-    alt:ClearAllPoints()
-    alt:SetPoint("LEFT", container, "LEFT", total + gap, 0)
-    total = total + gap + width
-  end
   -- The history plate: square when it wears the icon, its caption's width
   -- when it fell back to text.
   local hist = container.history
@@ -1682,6 +1709,9 @@ local function LayoutViewToggle(panel)
     if panel.Picker and panel.Picker:IsShown() then
       room = room - T.Metrics.segmentHeight - T.Metrics.gap
     end
+    if container.alt and container.alt:IsShown() then
+      room = room - (container.alt:GetWidth() or 0) - T.Metrics.space.snug
+    end
     hint:SetShown(room >= T.TextWidth(hint) and not AV.Active(panel))
   end
 
@@ -1704,8 +1734,10 @@ end
 -- Segment counts
 -------------------------------------------------------------
 
+-- The true count, however large: the segments and buttons are measured from
+-- their rendered captions, so three digits cannot push a neighbour out (a
+-- "99+" cap used to stand in for that).
 local function FormatCount(n)
-  if n > COUNT_CAP then return tostring(COUNT_CAP) .. "+" end
   return tostring(n)
 end
 
@@ -1797,24 +1829,36 @@ function AV.Paint(panel)
   panel.SearchBox:SetPoint("BOTTOMRIGHT", panel.SearchWrap, "BOTTOMRIGHT", -inset, 2)
   panel.SearchPlaceholder:SetPoint("BOTTOMRIGHT", panel.SearchWrap, "BOTTOMRIGHT", -inset - 2, 2)
 
-  local hint = panel.Hint
-  if hint then
-    hint:SetPoint("RIGHT", panel.Picker:IsShown() and panel.Picker or panel.SearchWrap, "LEFT", -M.gap, 0)
-  end
-
+  -- The other box's name and count, just left of the picker that chose it:
+  -- the two read as one control. No realm -- the list the name was picked
+  -- from said which -- and capped, a long name cut rather than pushing the
+  -- row. Measured from the full caption, so a cut never feeds the next width.
   local plate = panel.ViewToggle and panel.ViewToggle.alt
   if plate then
     if who and Memory then
-      local caption = Memory.ClassName(who.realm, who.name)
+      local caption = Memory.ClassName(who.realm, who.name, true)
       if ShowTabCounts() then
         caption = caption .. " (" .. FormatCount((Memory.CountFor(who.realm, who.name))) .. ")"
       end
       plate.caption = caption
+      local pad = 2 * M.tightGap + 12
+      local width = min(MeasureWith(panel, plate:GetFontString(), caption) + pad, 160)
       plate:SetText(caption)
+      T.FitText(plate:GetFontString(), width - pad, caption, plate)
+      plate:SetSize(width, M.segmentHeight)
+      plate:ClearAllPoints()
+      plate:SetPoint("RIGHT", panel.Picker, "LEFT", -M.space.snug, 0)
       plate:Show()
     else
       plate:Hide()
     end
+  end
+
+  local hint = panel.Hint
+  if hint then
+    local edge = (plate and plate:IsShown() and plate)
+      or (panel.Picker:IsShown() and panel.Picker) or panel.SearchWrap
+    hint:SetPoint("RIGHT", edge, "LEFT", -M.gap, 0)
   end
   LayoutViewToggle(panel)
   if RV.ApplyFooter then RV.ApplyFooter(panel) end
@@ -1922,7 +1966,7 @@ function AV.Build(panel, query)
       note = note .. "  " .. ns.Plural("MEMORY_ON_CHARACTERS", info.onCharacters)
     end
   elseif who and info.snapshot then
-    note = L()("ALT_NOTE", Memory.AgeText(info.snapshot), Memory.ClassName(who.realm, who.name))
+    note = L()("ALT_NOTE", Memory.AgeText(info.snapshot), Memory.ClassName(who.realm, who.name, true))
   else
     note = Memory.SeenText(info.snapshot)
   end
@@ -2503,10 +2547,11 @@ local function BindRow(panel, row, index, position, compact, done)
   if quantity > 0 then
     displaySubject = (displaySubject:gsub("%(%d+%)%s*$", "(" .. quantity .. ")"))
   end
-  -- The crafting quality mark, as the item's own link draws it.
-  if iconSlot and RowShows("rowQuality") then
-    displaySubject = RV.WithMark(displaySubject, RV.QualityMark(index, iconSlot))
-  end
+  -- The crafting quality mark, as the item's own link draws it: on the
+  -- icon's corner, after the name, or both.
+  local mark = (iconSlot and RV.QualityMode() ~= "off") and RV.QualityMark(index, iconSlot) or nil
+  if mark and RV.MarkOnName() then displaySubject = RV.WithMark(displaySubject, mark) end
+  RV.PaintQuality(row, mark)
 
   -- The meta line. `parts` is what the standard row draws under the name; the
   -- compact row draws the same figures in its columns and hands the rest --
@@ -2634,7 +2679,7 @@ function HV.ItemName(link)
   local name = type(link) == "string" and link:match("%[(.-)%]") or nil
   -- The crafting quality mark rides inside the link's name; the option that
   -- hides it in the list hides it here too.
-  if name and not RowShows("rowQuality") then
+  if name and not RV.MarkOnName() then
     name = (name:gsub("%s*|A:.-|a", ""))
   end
   return name
@@ -2748,6 +2793,8 @@ function HV.BindHistoryRow(panel, row, entry, position, now)
   end
   if not icon and (entry.m or 0) > 0 then icon = "Interface\\Icons\\INV_Misc_Coin_01" end
   row.Icon:SetTexture(icon or "Interface\\Icons\\INV_Letter_02")
+  -- The first item's quality mark on the icon's corner, as the list has it.
+  RV.PaintQuality(row, first and RV.MarkOf(first.l) or nil)
 
   local cols = panel._hcols
   local width = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
@@ -2846,6 +2893,37 @@ function RV.PaintDivider(panel, divider)
   divider.Label:SetText(L()("INBOX_READ_DIVIDER", panel._readCount or 0))
   local open = panel._readOpen or Searching(panel)
   divider.Fold:SetTexture(open and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
+end
+
+-- The read mail under the divider opens as a scroll brings the divider fully
+-- into view and folds again as a scroll takes it back below the view:
+-- scrolling down through the inbox runs on into its read mail, scrolling back
+-- up folds it away. Only a SCROLL does this -- a list short enough to show
+-- the divider without scrolling starts folded and stays so until clicked.
+-- Opening adds rows below the divider and folding takes away rows below the
+-- viewport, so nothing on screen moves either way. Returns whether it
+-- changed anything (and so rebuilt the list).
+function RV.ScrollFold(panel)
+  local at = panel._dividerAt
+  if not at or panel.viewMode ~= VIEW_COLLECT or AV.Active(panel) or Searching(panel) then
+    return false
+  end
+  local _, height, stride = RowMetrics()
+  local scroll = panel.MailListScroll
+  local viewport = scroll:GetHeight() or 0
+  if viewport <= 0 then return false end
+  local bottom = (scroll:GetVerticalScroll() or 0) + viewport
+  local top = (at - 1) * stride
+  local open = panel._readOpen and true or false
+  if not open and top + height <= bottom + 0.5 then
+    panel._readOpen = true
+  elseif open and top >= bottom - 0.5 then
+    panel._readOpen = false
+  else
+    return false
+  end
+  CT.RefreshMailList(panel)
+  return true
 end
 
 -- The divider pinned to the list's foot while its own place is below the
@@ -3416,7 +3494,7 @@ end
 function RV.Identity(index)
   local _, _, sender, subject = GetInboxHeaderInfo(index)
   if sender == nil and subject == nil then return nil end
-  return tostring(sender) .. "" .. tostring(subject)
+  return tostring(sender) .. "\001" .. tostring(subject)
 end
 
 -- Whether the mail held gold or items, from its header (an unread mail's
@@ -5103,8 +5181,9 @@ function RV.BuildDivider(panel, parent)
   divider.Fold:SetAlpha(0.7)
   divider.Rule = divider:CreateTexture(nil, "ARTWORK")
   divider.Rule:SetHeight(1)
-  divider.Rule:SetPoint("TOPLEFT", divider, "TOPLEFT", M.inset, -1)
-  divider.Rule:SetPoint("TOPRIGHT", divider, "TOPRIGHT", -M.inset, -1)
+  -- Edge to edge, as wide as the rows it separates.
+  divider.Rule:SetPoint("TOPLEFT", divider, "TOPLEFT", 0, -1)
+  divider.Rule:SetPoint("TOPRIGHT", divider, "TOPRIGHT", 0, -1)
   divider.Rule:SetTexture(WHITE)
   T.SetColor(divider.Rule, "textSecondary")
   divider.Rule:SetAlpha(0.25)
@@ -5339,7 +5418,9 @@ function CT.Build(parent)
     if width and width > 10 then panel.MailListChild:SetWidth(width) end
     UpdateVisibleRows(panel)
   end)
-  scroll:HookScript("OnVerticalScroll", function() UpdateVisibleRows(panel) end)
+  scroll:HookScript("OnVerticalScroll", function()
+    if not RV.ScrollFold(panel) then UpdateVisibleRows(panel) end
+  end)
 
   panel.Empty = T.CreateText(panel.MailListArea, "secondary")
   panel.Empty:SetPoint("TOPLEFT", panel.MailListArea, "TOPLEFT", M.inset * 2, -M.inset * 2)

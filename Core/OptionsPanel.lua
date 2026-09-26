@@ -564,15 +564,24 @@ local function Build()
           if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
         end)
 
-  -- The crafting quality mark beside an item's name, in the list, History
-  -- and the memory alike.
-  cy = AddCheckbox(card, cy, L["OPT_QUALITY_TITLE"], L["OPT_QUALITY_DESC"],
-        function() return ns.MailboxUI.GetOption("rowQuality") end,
-        function(on)
-          ns.MailboxUI.SetOption("rowQuality", on)
+  -- Where the crafting quality mark goes, in the list, History and the
+  -- memory alike: on the corner of the item's icon (the default), after its
+  -- name as a chat link has it, both, or nowhere.
+  local qualityItems = {
+    { id = "icon", name = L["OPT_QUALITY_ICON"] },
+    { id = "name", name = L["OPT_QUALITY_NAME"] },
+    { id = "both", name = L["OPT_QUALITY_BOTH"] },
+    { id = "off",  name = L["OPT_QUALITY_OFF"] },
+  }
+  local qualityDD
+  cy, qualityDD = AddDropdown(card, cy, L["OPT_QUALITY_TITLE"], qualityItems,
+        function() return ns.MailboxUI.GetQualityMark and ns.MailboxUI.GetQualityMark() or "icon" end,
+        function(id)
+          if ns.MailboxUI.SetQualityMark then ns.MailboxUI.SetQualityMark(id) end
           if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
           if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
         end)
+  DropdownTip(qualityDD, L["OPT_QUALITY_TITLE"], L["OPT_QUALITY_DESC"])
 
   -- The figures a row carries, under the row layout they belong to. A change
   -- repaints the list and, when it is open, the mailbox memory, which draws
@@ -610,18 +619,6 @@ local function Build()
         function() return ns.MailboxUI.GetOption("previewOnClick") end,
         function(on) ns.MailboxUI.SetOption("previewOnClick", on) end)
 
-  -- The Mail tab's caption mode: a labelled dropdown, the same control the
-  -- Window card uses for its style, so the two cards read as one system.
-  local tcItems = {
-    { id = "dot",   name = L["OPT_TAB_CAPTION_DOT"] },
-    { id = "count", name = L["OPT_TAB_CAPTION_COUNT"] },
-    { id = "none",  name = L["OPT_TAB_CAPTION_NONE"] },
-  }
-  local tcDD
-  cy, tcDD = AddDropdown(card, cy, L["OPT_TAB_CAPTION_TITLE"], tcItems,
-        function() return ns.MailboxUI.GetTabCaptionMode and ns.MailboxUI.GetTabCaptionMode() or "none" end,
-        function(id) if ns.MailboxUI.SetTabCaptionMode then ns.MailboxUI.SetTabCaptionMode(id) end end)
-  DropdownTip(tcDD, L["OPT_TAB_CAPTION_TITLE"], L["OPT_TAB_CAPTION_DESC"])
 
   -- Read mail with nothing left: under a divider after the inbox, in a Done
   -- tab of its own, or deleted once finished with. One choice, three answers

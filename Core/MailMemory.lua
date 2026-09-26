@@ -760,10 +760,11 @@ local function ClassColour(token)
   return type(RAID_CLASS_COLORS) == "table" and RAID_CLASS_COLORS[token] or nil
 end
 
--- realm, name -> the name in its class colour (plain where the class is not
--- known), and the realm after it, quieter, when it is not the one being
--- played. Both windows say whose box they show in these words.
-function MM.ClassName(realm, name)
+-- realm, name [, noRealm] -> the name in its class colour (plain where the
+-- class is not known), and the realm after it, quieter, when it is not the
+-- one being played -- unless `noRealm`: where a box is already on screen,
+-- picked from a list that named the realm, the name alone says whose.
+function MM.ClassName(realm, name, noRealm)
   local text = tostring(name or "")
   local colour = ClassColour(ClassOf(realm, name))
   if colour then
@@ -774,7 +775,7 @@ function MM.ClassName(realm, name)
         math.floor((colour.g or 1) * 255 + 0.5), math.floor((colour.b or 1) * 255 + 0.5), text)
     end
   end
-  if realm and realm ~= GetRealmName() then
+  if not noRealm and realm and realm ~= GetRealmName() then
     text = text .. " " .. ns.Theme.Colorize("textSecondary", "- " .. realm)
   end
   return text
@@ -800,7 +801,7 @@ end
 -- the snapshot kept one, the item's generic link by id otherwise.
 local function MailMark(mail)
   local R = Rules()
-  if not (R and R.QualityMark and R.Shows("rowQuality")) then return nil end
+  if not (R and R.QualityMark) then return nil end
   local mark = R.QualityMark(mail.link)
   if not mark and mail.id and C_Item and type(C_Item.GetItemInfo) == "function" then
     local _, link = C_Item.GetItemInfo(mail.id)
@@ -1025,6 +1026,8 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     T.FitText(row.Sender, width - 40, mail.label, nil)
     T.FitText(row.Subject, 1, "", nil)
     row.HeaderHit:SetShown(onHeader ~= nil)
+    local R0 = Rules()
+    if R0 and R0.PaintQuality then R0.PaintQuality(row, nil) end
     row:SetAlpha(1)
     row:Show()
     return
@@ -1069,7 +1072,11 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     or named or L["MEMORY_SENDER_UNKNOWN"]
   local subject = (ns.Helpers and ns.Helpers.ShortSubject) and ns.Helpers.ShortSubject(mail.subject or "")
     or (mail.subject or "")
-  if R and R.WithMark then subject = R.WithMark(subject, MailMark(mail)) end
+  -- The crafting quality mark: on the icon's corner, after the name, or both
+  -- -- wherever the Mail tab puts it.
+  local mark = (not mail.pending) and MailMark(mail) or nil
+  if R and R.WithMark and R.MarkOnName and R.MarkOnName() then subject = R.WithMark(subject, mark) end
+  if R and R.PaintQuality then R.PaintQuality(row, mark) end
   local lineWidth = math.max(textWidth - (right - trail), 40)
   local senderWidth = math.min(cols.sender or 92, math.floor(lineWidth / 2))
   T.FitText(row.Sender, senderWidth, senderText, nil)
@@ -1335,8 +1342,11 @@ function MM.OpenPicker(anchor, current, onPick)
   list.choices = SwitchChoices()
   list.offset = 0
   PaintPicker(list)
+  -- Hanging from the button's left edge and growing right, as a menu opens
+  -- from what was clicked -- out past the window's edge where it must; it
+  -- is clamped to the screen, not the window.
   list:ClearAllPoints()
-  list:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -4)
+  list:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
   list:Show()
   list:Raise()
 end
@@ -1625,17 +1635,20 @@ local function BuildSearch(frame)
       all.icon:SetAlpha(0.45)
     end
   end
-  all:SetScript("OnClick", function()
-    frame.searchAll = not frame.searchAll
-    Paint()
-    Refresh(frame)
-  end)
-  all:SetScript("OnEnter", function(self)
+  local function Tip(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
     GameTooltip:SetText(L["MEMORY_SEARCH_ALL_TITLE"])
     GameTooltip:AddLine(L[frame.searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"], 1, 1, 1, true)
     GameTooltip:Show()
+  end
+  all:SetScript("OnClick", function(self)
+    frame.searchAll = not frame.searchAll
+    Paint()
+    Refresh(frame)
+    -- The tooltip says what the NEXT click does: it follows the click.
+    if GameTooltip:IsOwned(self) then Tip(self) end
   end)
+  all:SetScript("OnEnter", Tip)
   all:SetScript("OnLeave", function() GameTooltip:Hide() end)
   all.Paint = Paint
   frame.SearchAllButton = all
@@ -1670,18 +1683,21 @@ local function BuildHeader(frame)
   local function PaintSort()
     T.SetPlateSelected(sort, frame.sort == "expiry")
   end
-  sort:SetScript("OnClick", function()
-    frame.sort = (frame.sort ~= "expiry") and "expiry" or nil
-    PaintSort()
-    if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
-    Refresh(frame)
-  end)
-  sort:HookScript("OnEnter", function(self)
+  local function SortTip(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
     GameTooltip:SetText(L[frame.sort == "expiry" and "SORT_EXPIRY_TITLE" or "SORT_NEWEST_TITLE"])
     GameTooltip:AddLine(L["SORT_TIP"], 1, 1, 1, true)
     GameTooltip:Show()
+  end
+  sort:SetScript("OnClick", function(self)
+    frame.sort = (frame.sort ~= "expiry") and "expiry" or nil
+    PaintSort()
+    if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
+    Refresh(frame)
+    -- The tooltip names the order on screen: it changes with the click.
+    if GameTooltip:IsOwned(self) then SortTip(self) end
   end)
+  sort:HookScript("OnEnter", SortTip)
   sort:HookScript("OnLeave", function() GameTooltip:Hide() end)
   frame.Sort = sort
   PaintSort()
@@ -1719,7 +1735,7 @@ function Refresh(frame)
   -- The top row: whose box, and its count, where the Mail tab has Inbox.
   local waiting, warn = MM.CountFor(info.realm, info.name)
   local tally = ns.Plural("COUNT_MAILS", waiting)
-  frame.Who:SetText(MM.ClassName(info.realm, info.name) .. "  "
+  frame.Who:SetText(MM.ClassName(info.realm, info.name, true) .. "  "
     .. T.Colorize(warn and "warning" or "textSecondary", "(" .. tally .. ")"))
   local crest = MM.ClassIcon(info.realm, info.name)
   if crest then frame.Picker.Icon:SetAtlas(crest, false) end
@@ -1859,12 +1875,25 @@ local function Build()
 
   -- The grip changes both: once the user has chosen a size it is theirs for
   -- the session; Refresh keeps honouring it within the content's bounds.
-  ns.Core.UI.Helpers.CreateResizeButton(frame, function(self)
+  -- Right-click resets it, as the Postbox window's grip does: the default
+  -- width and six rows (or the content, if less).
+  local grip = ns.Core.UI.Helpers.CreateResizeButton(frame, function(self)
     self.sizing = false
     self.userHeight = self:GetHeight()
   end, function(self)
     self.sizing = true
+  end, nil, function(self)
+    self.sizing = false
+    self.userHeight = nil
+    self:SetWidth(WINDOW_WIDTH)
+    Refresh(self)
   end)
+  if grip then
+    grip:HookScript("OnEnter", function(self)
+      ns.Theme.ShowHint(self, { L["GRIP_TIP_DRAG"], L["GRIP_TIP_RESET"] })
+    end)
+    grip:HookScript("OnLeave", function() ns.Theme.HideHint() end)
+  end
   frame:HookScript("OnHide", function() MM.ClosePicker() end)
 
   -- Same expression as the options panel and the recipient manager: let an

@@ -49,12 +49,11 @@
   History. The inbox lists what still holds something first, then the read
   mail with nothing left in it, folded under a divider that opens them and
   deletes them in one click. In a long inbox the divider waits at the bottom
-  of the list, so you can see there is read mail without scrolling for it.
-  Prefer the old way? Options, Read mail, puts it in a Done tab of its own,
-  or deletes each mail as soon as it is finished with (History keeps what a
-  letter said). The All view and its option are gone. The Mail tab's caption
-  offers the count of mail to collect in place of the old collect/total and
-  total.
+  of the list, so you can see there is read mail without scrolling for it;
+  scroll down to it and the read mail opens, scroll back up and it folds
+  away. Prefer the old way? Options, Read mail, puts it in a Done tab of its
+  own, or deletes each mail as soon as it is finished with (History keeps
+  what a letter said). The All view and its option are gone.
 - **Click "Stuck: N"** in the title bar to see only the mail the game would
   not hand over (the buttons below then collect just those), and click it
   again to see everything.
@@ -69,10 +68,14 @@
   and pick which gold (earned, spent or both) and when the time left shows
   (always, or under 7, 3 or 1 days). Whatever you hide moves to the row's
   tooltip. A C.O.D. price always shows, because Postbox never pays one
-  without asking. Item names carry their crafting quality mark, as in chat;
-  that can be switched off too.
-- **Category buttons count.** "All sold (7)", and a button with nothing to
-  collect is greyed out rather than answering "Done" when clicked.
+  without asking. Items show their crafting quality mark on the corner of
+  their icon; Options can put it after the name instead, show both, or hide
+  it.
+- **Counts are the true number.** "All sold (7)", "Inbox (124)" rather than
+  "99+", and a button with nothing to collect is greyed out rather than
+  answering "Done" when clicked. With Show counts on, the Mail tab reads
+  "Mail (23)"; off, it wears a dot while there is mail to collect. The
+  separate Mail tab caption setting is gone.
 - **Mail Memory matches the mail list:** auction mail reads "AH Sold" and
   "AH Won" in colour with the item's name, in the same columns, following the
   same switches. Its window can be made wider, and searching for "sold" or
@@ -83,7 +86,8 @@
 - Compact rows show money as its largest coin ("1309g", "19g", "33s"); the
   full sum is in the mail. Rows use the list's whole width when it does not
   scroll, two-line rows no longer repeat "Auction sold" under "AH Sold", and
-  hovering the resize grip says what a right-click does.
+  hovering the resize grip (in both windows) says what dragging and a
+  right-click do; a right-click resets Mail Memory's size too.
 
 ### Fixed
 
