@@ -14,3 +14,9 @@ desktop.ini
 .dev/
 DEVNOTES.md
 DEFAULT_UI_AUDIT.md
+
+# Local assistant and editor state. Never public.
+.claude/
+CLAUDE.local.md
+.vscode/
+.idea/
