@@ -1424,7 +1424,7 @@ local function Build()
   local rightBottom = y
   -- Back on the panel's own cursor: the taller column's bottom, and the
   -- footer band under it.
-  y = colTop + math.min(leftBottom, rightBottom) + 16
+  y = colTop + math.min(leftBottom, rightBottom) + SECTION_GAP
 
   -- The desaturate-and-lock for the card above. Alpha carries the look; the
   -- overlay eats the mouse so nothing inside can be clicked or hovered while

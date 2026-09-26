@@ -1648,7 +1648,11 @@ local function LayoutViewToggle(panel)
   -- its caption.
   local alt = container.alt
   if alt and alt:IsShown() then
-    local width = ceil(T.TextWidth(alt)) + 2 * T.Metrics.tightGap + 12
+    -- Capped: a long name and realm are cut, whole in the tooltip, rather
+    -- than pushing into the picker and the search box.
+    local pad = 2 * T.Metrics.tightGap + 12
+    local width = min(MeasureWith(panel, alt:GetFontString(), alt.caption or "") + pad, 160)
+    T.FitText(alt:GetFontString(), width - pad, alt.caption or alt:GetText() or "", alt)
     alt:SetSize(width, T.Metrics.segmentHeight)
     alt:ClearAllPoints()
     alt:SetPoint("LEFT", container, "LEFT", total + gap, 0)
@@ -1805,6 +1809,7 @@ function AV.Paint(panel)
       if ShowTabCounts() then
         caption = caption .. " (" .. FormatCount((Memory.CountFor(who.realm, who.name))) .. ")"
       end
+      plate.caption = caption
       plate:SetText(caption)
       plate:Show()
     else
@@ -1828,7 +1833,9 @@ end
 -- Back to this character's own box. Whether there was anywhere to come back
 -- from.
 function AV.Leave(panel)
-  if not (panel and (panel._alt or panel._searchAll)) then return false end
+  -- Only from somewhere: the toggle on with nothing typed changes nothing
+  -- on screen, and a segment click leaves it be.
+  if not (panel and (panel._alt or AV.Active(panel))) then return false end
   panel._searchAll = false
   AV.Show(panel, nil)
   return true
@@ -1859,7 +1866,11 @@ function CT.OpenPicker(panel)
   local Memory = AV.Memory()
   if not (panel and panel.Picker and Memory) then return end
   if not panel.Picker:IsShown() then AV.Paint(panel) end
-  if not panel.Picker:IsShown() then return end
+  if not panel.Picker:IsShown() then
+    -- No other character has a box to show: say so, not a dead click.
+    ns.Print(L()["MEMORY_NO_OTHERS"])
+    return
+  end
   Memory.OpenPicker(panel.Picker, panel._alt, function(realm, name, isMe)
     AV.Show(panel, (not isMe) and { realm = realm, name = name } or nil)
   end)
@@ -2620,7 +2631,13 @@ function HV.HistoryAge(seconds)
 end
 
 function HV.ItemName(link)
-  return type(link) == "string" and link:match("%[(.-)%]") or nil
+  local name = type(link) == "string" and link:match("%[(.-)%]") or nil
+  -- The crafting quality mark rides inside the link's name; the option that
+  -- hides it in the list hides it here too.
+  if name and not RowShows("rowQuality") then
+    name = (name:gsub("%s*|A:.-|a", ""))
+  end
+  return name
 end
 
 -- entry -> what came out of it, as one short line: the first item and its
@@ -3217,6 +3234,9 @@ function CT.RefreshMailList(panel)
       filtered[i] = tail[i]
       filteredDone[i] = true
     end
+    -- The band totals what is listed, and read mail with nothing left in it
+    -- carries no gold either way.
+    earned, spent = 0, 0
   elseif #tail > 0 and RV.Mode() ~= "tab" then
     filtered[#filtered + 1] = DIVIDER
     filteredDone[#filtered] = true
@@ -3369,23 +3389,41 @@ end
 -- Single-mail actions
 -------------------------------------------------------------
 
--- Read-mail mode "delete": a mail Postbox has just emptied, or the reading
--- view has just closed on, goes the moment it is finished with -- read, and
--- nothing left in it. Checked against the fingerprint taken before the take:
--- an auction mail the server deleted on its own has moved on, and whatever
--- slid into its index is not this call's to delete. `record` is the mail's
+-- Read-mail mode "delete": a mail Postbox has just emptied of gold or items,
+-- or a letter the reading view's Back has just closed on, goes the moment it
+-- is finished with -- read, and nothing left in it. Checked against the
+-- identity taken before the take: an auction mail the server deleted on its
+-- own has moved on, and whatever slid into its index is not this call's to
+-- delete. `record` is the mail's
 -- History record, so a deleted letter stays listed there with what it said.
 -- `andThen` runs whatever happened.
-function RV.AutoDelete(panel, index, fingerprint, record, andThen)
+function RV.AutoDelete(panel, index, identity, record, andThen)
   local function Continue() if andThen then andThen() end end
-  if RV.Mode() ~= "delete" or not index or not fingerprint then return Continue() end
+  if RV.Mode() ~= "delete" or not index or not identity then return Continue() end
   if not MailboxOpen() or Mail().IsBusy() then return Continue() end
-  if Fingerprint(index) ~= fingerprint or not Mail().IsReadPersistent(index) then return Continue() end
+  if RV.Identity(index) ~= identity or not Mail().IsReadPersistent(index) then return Continue() end
   if record and Mail().HistoryNote then Mail().HistoryNote(record, "read") end
-  Mail().DeleteMail(index, function()
+  -- Through the sweep that re-checks the index immediately before its
+  -- command: deleting is the irreversible one.
+  Mail().DeleteMails({ index }, function()
     RequestRefresh(panel)
     Continue()
-  end)
+  end, { [index] = Fingerprint(index) })
+end
+
+-- index -> sender and subject: the part of a mail's identity a take cannot
+-- change (a paid C.O.D. reads 0 afterwards, which the full fingerprint counts).
+function RV.Identity(index)
+  local _, _, sender, subject = GetInboxHeaderInfo(index)
+  if sender == nil and subject == nil then return nil end
+  return tostring(sender) .. "" .. tostring(subject)
+end
+
+-- Whether the mail held gold or items, from its header (an unread mail's
+-- attachment links are not loaded yet, so the header is the one reading).
+function RV.HeldSomething(index)
+  local _, _, _, _, money, _, _, itemCount = GetInboxHeaderInfo(index)
+  return (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0
 end
 
 function CollectSingleMail(panel, index, opts)
@@ -3400,7 +3438,9 @@ function CollectSingleMail(panel, index, opts)
     confirmed.allowCOD = true
     local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
     codBefore = tonumber(codBefore) or 0
-    local before = Fingerprint(index)
+    -- Only a mail that held something is finished by a collect: an unread
+    -- letter "collected" was read by the fetch, not by the player.
+    local before = RV.HeldSomething(index) and RV.Identity(index) or nil
     Mail().CollectMail(index, function(status, refused, reason)
       -- Emptied: in the "delete" read-mail mode it goes now, not later.
       if status == "collected" then
@@ -3864,7 +3904,7 @@ local function RunStep()
   local _, _, _, _, money = GetInboxHeaderInfo(index)
   local kind = Mail().ClassifyMail(index)
   local mailEarned, mailSpent = MailEconomy(index, kind, money)
-  local before = Fingerprint(index)
+  local before = RV.HeldSomething(index) and RV.Identity(index) or nil
 
   Mail().CollectMail(index, function(status, refused, reason)
     Run.current = nil
@@ -4505,12 +4545,19 @@ local function BuildDetail(panel)
   detail.Return:SetText(L()["BTN_RETURN"])
   detail.Delete:SetText(DeleteLabel())
 
-  detail.Back:SetScript("OnClick", function() detail:Hide() end)
+  -- Back on a letter that is finished with -- read, and nothing left in it --
+  -- deletes it in the "delete" read-mail mode; History keeps what it said.
+  -- Back only: Escape and the tab switching away also hide this, and neither
+  -- is a player saying they are done with the letter.
+  detail.Back:SetScript("OnClick", function()
+    local index = LiveIndex(detail)
+    detail:Hide()
+    if index then RV.AutoDelete(panel, index, RV.Identity(index), detail._history) end
+  end)
 
   detail.Collect:SetScript("OnClick", function()
     local index = LiveIndex(detail)
     if not index then return end
-    detail._keep = true
     detail:Hide()
     -- skipFetch is a claim that this mail's attachment links are already loaded,
     -- and only a fetch that actually went out can make it. Opening the overlay
@@ -4531,8 +4578,6 @@ local function BuildDetail(panel)
     local index = LiveIndex(detail)
     if not index then return end
     local _, _, sender = GetInboxHeaderInfo(index)
-    -- Kept: the letter being answered stays while the answer is written.
-    detail._keep = true
     detail:Hide()
     CT.RequestReply(sender, detail.Subject:GetText() or "")
   end)
@@ -4542,7 +4587,6 @@ local function BuildDetail(panel)
     -- may only ever be aimed at an index that still names this mail.
     local index = LiveIndex(detail)
     if not index then return end
-    detail._keep = true
     detail:Hide()
     Mail().ReturnMail(index, function(status)
       if status == "closed" then
@@ -4569,7 +4613,6 @@ local function BuildDetail(panel)
         or DeleteLabel()
       Confirm(POPUP_DELETE_ONE, DeleteLabel(), L()["COD_CONFIRM_CANCEL"],
         message, function()
-          detail._keep = true
           detail:Hide()
           -- Re-verified on the way out of the dialog: the inbox can reindex
           -- between the question and the answer, and this is the irreversible
@@ -4578,22 +4621,8 @@ local function BuildDetail(panel)
         end)
       return
     end
-    detail._keep = true
     detail:Hide()
     DeleteOneMail(panel, index)
-  end)
-
-  -- Closing the reading view on a letter that is finished with -- read, and
-  -- nothing left in it -- deletes it in the "delete" read-mail mode; History
-  -- keeps what it said. Not when the close is on its way to another action
-  -- on the same mail (Take all, Reply, Return, Delete), nor while a run owns
-  -- the indices.
-  detail:HookScript("OnHide", function(self)
-    local keep = self._keep
-    self._keep = nil
-    if keep or Run.active then return end
-    local index = LiveIndex(self)
-    if index then RV.AutoDelete(panel, index, self.fingerprint, self._history) end
   end)
 
   -- Header: sender, subject, then the metadata line, flush with the panel's

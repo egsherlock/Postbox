@@ -591,9 +591,23 @@ end
 -- record is saved per character, and a month of a busy auction goblin's mail
 -- must not become megabytes of saved variables.
 local HISTORY_CAP = 1000
--- The longest letter text a History entry keeps. The game caps a mail's body
--- at 500 characters; this leaves room for a client that sends more.
-local HISTORY_BODY_MAX = 600
+-- The longest letter text a History entry keeps, in BYTES. The game caps a
+-- mail's body at 500 characters, which is up to 1500 bytes of Chinese or
+-- 1000 of Cyrillic; this keeps all of any of them.
+local HISTORY_BODY_MAX = 1600
+
+-- text, bytes -> the text cut to at most that many bytes, never inside a
+-- character: the cut steps back past UTF-8 continuation bytes.
+local function CutUtf8(text, bytes)
+  if #text <= bytes then return text end
+  local cut = bytes
+  while cut > 0 do
+    local b = text:byte(cut + 1)
+    if not b or b < 0x80 or b >= 0xC0 then break end
+    cut = cut - 1
+  end
+  return text:sub(1, cut)
+end
 
 local function HistoryKeep()
   local UI = ns.MailboxUI
@@ -688,7 +702,7 @@ function MM.HistoryTook(ctx, what, value, count)
   -- What the letter said, when Postbox read it: the mail itself may be
   -- deleted (the "delete" read-mail mode), and this is then the only copy.
   if not entry.b and type(ctx.body) == "string" and ctx.body ~= "" then
-    entry.b = ctx.body:sub(1, HISTORY_BODY_MAX)
+    entry.b = CutUtf8(ctx.body, HISTORY_BODY_MAX)
   end
   if what == "money" then
     entry.m = (entry.m or 0) + (tonumber(value) or 0)
@@ -997,9 +1011,10 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     row.fullSubject, row.fullSender, row.itemLink, row.itemID = nil, nil, nil, nil
     row.factsTip, row.expiryTip = nil, nil
     row.headerRealm, row.headerName = mail.realm, mail.name
+    -- SetAtlas sets the atlas's own coordinates; a SetTexCoord after it would
+    -- show the whole sheet the crest lives on.
     local crest = MM.ClassIcon(mail.realm, mail.name)
     if crest then row.Icon:SetAtlas(crest, false) else row.Icon:SetTexture(nil) end
-    row.Icon:SetTexCoord(0, 1, 0, 1)
     row.Icon:Show()
     row.Warning:Hide()
     row.ColTime:Hide()
