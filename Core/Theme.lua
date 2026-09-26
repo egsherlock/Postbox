@@ -1861,10 +1861,14 @@ function Theme.SlimScrollBar(scroll, container, padTop, padBottom)
     thumb:SetHeight(math.max(THUMB_MIN, math.min(height, size)))
   end
 
+  -- `scroll.__pbGutter(scrolling)`, where an owner sets one, moves the scroll
+  -- frame's right edge: the rows run to the container's edge while nothing
+  -- scrolls, and stop short of the bar only while it is there.
   local function SetShown(on)
     bar:SetShown(on)
     bar.Up:SetShown(on)
     bar.Down:SetShown(on)
+    if type(scroll.__pbGutter) == "function" then scroll.__pbGutter(on and true or false) end
   end
 
   -- Two sliders, one number. The guard stops each write from echoing back

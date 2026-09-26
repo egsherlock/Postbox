@@ -116,6 +116,52 @@ local DIVIDER = 0
 -- of the inbox, so not in the counts' arithmetic: an icon after the three.
 local VIEW_HISTORY = "history"
 local HISTORY_ATLASES = { "auctionhouse-icon-clock", "worldquest-icon-clock" }
+-- The read mail's own segment, when the player asks for read mail in a tab of
+-- its own rather than under the divider (MailboxUI.GetReadMode "tab").
+local VIEW_DONE = "done"
+
+-- What a finished mail does and where it goes: the read-mail mode, the pinned
+-- divider, auto-delete, the quality mark. One table, for the file's local count.
+local RV = {}
+
+function RV.Mode()
+  local UI = ns.MailboxUI
+  return UI and type(UI.GetReadMode) == "function" and UI.GetReadMode() or "fold"
+end
+
+-- link -> the crafting quality mark an item link carries in its name (the
+-- atlas escape the client puts there for tiered reagents and crafted gear),
+-- or nil. Read from the link rather than built from an atlas name: the name
+-- has changed between expansions and the link is always the client's own.
+function RV.MarkOf(link)
+  if type(link) ~= "string" then return nil end
+  return link:match("|A:Professions%-[^|]*|a") or link:match("|A:[^|]*[Qq]uality[^|]*|a")
+end
+
+-- The mark for a mail's attachment: its own link once the body is loaded, the
+-- item's generic link by id before (tiered reagents are a different item per
+-- tier, so the generic link carries the right mark).
+function RV.QualityMark(index, slot)
+  local link = GetInboxItemLink(index, slot)
+  if not link then
+    local _, itemID = GetInboxItem(index, slot)
+    if itemID and C_Item and type(C_Item.GetItemInfo) == "function" then
+      local _, generic = C_Item.GetItemInfo(itemID)
+      link = generic
+    end
+  end
+  return RV.MarkOf(link)
+end
+
+-- text, mark -> the text with the mark after the item's name and before a
+-- trailing "(20)" count, where a chat link draws it.
+function RV.WithMark(text, mark)
+  if not mark or type(text) ~= "string" then return text end
+  local safe = mark:gsub("%%", "%%%%")
+  local marked, n = text:gsub("%s*(%(%d+%))%s*$", " " .. safe .. " %1", 1)
+  if n > 0 then return marked end
+  return text .. " " .. mark
+end
 
 -- The category vocabulary is the domain's; the order is presentation. "all"
 -- leads and spans the full width -- deliberate hierarchy, not an accident.
@@ -1069,6 +1115,8 @@ CT.RowRules = {
   EXPIRY_SOON_DAYS = EXPIRY_SOON_DAYS,
   ExpiryState = ExpiryState,
   META_SHARE = COMPACT_META_SHARE,
+  QualityMark = RV.MarkOf,
+  WithMark = RV.WithMark,
 }
 
 -------------------------------------------------------------
@@ -1151,11 +1199,11 @@ local function BuildViewToggle(panel)
   container:SetHeight(T.Metrics.segmentHeight)
 
   container.buttons = {}
-  -- The two halves first, then their union. Reading left to right that is
-  -- "what is left, what is finished, everything" -- the order the counts add up
-  -- in, which is the order a reader checks them in.
+  -- The inbox, and -- only when read mail is kept in a tab of its own -- the
+  -- Done segment beside it.
   local segments = {
     { id = VIEW_COLLECT, label = L()["VIEW_INBOX"] },
+    { id = VIEW_DONE, label = L()["VIEW_DONE"] },
   }
 
   for i = 1, #segments do
@@ -1191,9 +1239,11 @@ local function BuildViewToggle(panel)
   end
   hist:SetScript("OnClick", function(self) SetViewMode(panel, self.segId) end)
   hist:HookScript("OnEnter", function(self)
+    local UI = ns.MailboxUI
+    local days = UI and type(UI.GetHistoryDays) == "function" and UI.GetHistoryDays() or 7
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetText(L()["VIEW_HISTORY"])
-    GameTooltip:AddLine(L()["HISTORY_TIP"], 1, 1, 1, true)
+    GameTooltip:AddLine(ns.Plural("HISTORY_TIP", days), 1, 1, 1, true)
     GameTooltip:Show()
   end)
   hist:HookScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1470,11 +1520,13 @@ end
 -- not a special case: everything below sizes and spaces what this returns.
 local function VisibleSegments(container)
   local shown = {}
+  local tab = RV.Mode() == "tab"
   for i = 1, #container.buttons do
     local seg = container.buttons[i]
-    shown[#shown + 1] = seg
+    local on = (seg.segId ~= VIEW_DONE) or tab
+    seg:SetShown(on)
+    if on then shown[#shown + 1] = seg end
   end
-  for i = 1, #shown do shown[i]:Show() end
   return shown
 end
 
@@ -1527,12 +1579,16 @@ local function LayoutViewToggle(panel)
   PaintViewToggle(panel)
 end
 
--- Frozen: Core/MailboxUI.lua calls this when the All-segment option changes.
--- A hidden segment cannot be the one on screen, so the view falls back to
--- Collect -- and that path re-lays the row on its way through.
-function CT.RefreshSegments(panel)
+-- Frozen: Core/MailboxUI.lua calls this when the read-mail option changes.
+-- A hidden segment cannot be the one on screen, so the Done view falls back
+-- to the inbox -- and that path re-lays the row on its way through.
+function CT.RefreshReadMode(panel)
   if not panel or not panel.ViewToggle then return end
-  LayoutViewToggle(panel)
+  if RV.Mode() ~= "tab" and panel.viewMode == VIEW_DONE then
+    SetViewMode(panel, VIEW_COLLECT)
+  end
+  CT.UpdateTabCounts(panel)
+  RequestRefresh(panel)
 end
 
 -------------------------------------------------------------
@@ -1561,8 +1617,10 @@ function CT.UpdateTabCounts(panel)
     local seg = container.buttons[i]
     local base = seg.baseLabel or seg:GetText() or ""
     if show then
-      -- The inbox counts what is still to collect: the number worth acting on.
-      seg:SetText(base .. " (" .. FormatCount(toCollect) .. ")")
+      -- The inbox counts what is still to collect: the number worth acting
+      -- on. Done counts what it lists.
+      local n = (seg.segId == VIEW_DONE) and done or toCollect
+      seg:SetText(base .. " (" .. FormatCount(n) .. ")")
     else
       seg:SetText(base)
     end
@@ -2018,8 +2076,6 @@ end
 local function BindRow(panel, row, index, position, compact, done)
   local T = Th()
   local M = T.Metrics
-  local fmt = Helpers().FormatMoney
-  local labels = Labels()
 
   local _, _, sender, subject, money, cod, daysLeft, itemCount, wasRead = GetInboxHeaderInfo(index)
   local kind, hasCOD = Mail().ClassifyMail(index)
@@ -2121,6 +2177,10 @@ local function BindRow(panel, row, index, position, compact, done)
   if quantity > 0 then
     displaySubject = (displaySubject:gsub("%(%d+%)%s*$", "(" .. quantity .. ")"))
   end
+  -- The crafting quality mark, as the item's own link draws it.
+  if iconSlot and RowShows("rowQuality") then
+    displaySubject = RV.WithMark(displaySubject, RV.QualityMark(index, iconSlot))
+  end
 
   -- The meta line. `parts` is what the standard row draws under the name; the
   -- compact row draws the same figures in its columns and hands the rest --
@@ -2164,12 +2224,13 @@ local function BindRow(panel, row, index, position, compact, done)
   else
     expiry = nil
   end
+  -- No category on the line: the sender column already says "AH Sold", and
+  -- "Other" says nothing at all.
   local byId = { time = timeText, money = money, slots = slots }
   local order = RowOrder()
   for i = 1, #order do
     if byId[order[i]] then parts[#parts + 1] = byId[order[i]] end
   end
-  parts[#parts + 1] = labels[kind] or kind
   if not purchaseShown then AppendInvoiceFigures(parts, index, false) end
 
   local senderText = DisplaySender(sender) or L()["SENDER_UNKNOWN"]
@@ -2183,14 +2244,14 @@ local function BindRow(panel, row, index, position, compact, done)
   local senderColumn = ((cols.sender or 0) > 0) and cols.sender or SENDER_MIN
 
   if compact then
-    -- What the row does not draw goes to the tooltip, one fact per line:
-    -- the category, then the invoice figures. The money and the slot count
-    -- are on the row already and are not said twice.
+    -- What the row does not draw goes to the tooltip, one fact per line: the
+    -- invoice figures. The money and the slot count are on the row already
+    -- and are not said twice, and nor is the kind of mail -- the sender
+    -- column says it.
     local tip = panel._rowTip
     Clear(tip)
-    tip[#tip + 1] = labels[kind] or kind
     if not purchaseShown then AppendInvoiceFigures(tip, index, false) end
-    row.detailFull = concat(tip, "\n")
+    row.detailFull = (#tip > 0) and concat(tip, "\n") or nil
 
     -- The figures this mail has, packed to the right edge in the player's
     -- order; the subject runs up to the first of them.
@@ -2230,7 +2291,11 @@ end
 -- two-hundred-local ceiling (see SendTab's history), so a section adds one.
 local HV = {}
 
-HV.AGE_W = 30
+-- How many days History keeps (Options, Mail tab): 7 unless the player chose more.
+function HV.Days()
+  local UI = ns.MailboxUI
+  return UI and type(UI.GetHistoryDays) == "function" and UI.GetHistoryDays() or 7
+end
 
 function HV.HistoryAge(seconds)
   seconds = max(0, seconds)
@@ -2273,10 +2338,13 @@ function HV.BuildHistoryRow(panel)
   local row = CreateFrame("Button", nil, panel.MailListChild)
   row:SetHeight(COMPACT_ROW_HEIGHT)
 
+  -- As wide as the widest age listed (BuildHistoryList measures it), and one
+  -- line always: "23 d" wrapped at a fixed 30px and pushed its row to two.
   row.Age = T.CreateText(row, "secondary")
   row.Age:SetPoint("LEFT", row, "LEFT", M.inset, 0)
-  row.Age:SetWidth(HV.AGE_W)
+  row.Age:SetWidth(30)
   row.Age:SetJustifyH("RIGHT")
+  row.Age:SetWordWrap(false)
 
   row.Icon = row:CreateTexture(nil, "ARTWORK")
   row.Icon:SetSize(ROW_ICON_COMPACT, ROW_ICON_COMPACT)
@@ -2314,6 +2382,11 @@ function HV.BuildHistoryRow(panel)
     end
     local money = HV.HistoryMoney(entry, false)
     if money then GameTooltip:AddLine(money, 1, 1, 1) end
+    -- What the letter said, kept because the mail itself may be gone.
+    if type(entry.b) == "string" and entry.b ~= "" then
+      GameTooltip:AddLine(" ")
+      GameTooltip:AddLine(entry.b, 1, 0.82, 0.55, true)
+    end
     GameTooltip:Show()
   end)
   row:SetScript("OnLeave", function(self)
@@ -2330,6 +2403,8 @@ function HV.BindHistoryRow(panel, row, entry, position, now)
   row.entry = entry
   T.StyleMailRow(row, position, false)
 
+  local ageWidth = panel._hcols.age or 30
+  row.Age:SetWidth(ageWidth)
   row.Age:SetText(HV.HistoryAge(now - (tonumber(entry.t) or now)))
 
   local icon
@@ -2344,7 +2419,7 @@ function HV.BindHistoryRow(panel, row, entry, position, now)
 
   local cols = panel._hcols
   local width = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
-  local textWidth = width - (M.inset + HV.AGE_W + M.gap + ROW_ICON_COMPACT + M.gap) - M.inset
+  local textWidth = width - (M.inset + ageWidth + M.gap + ROW_ICON_COMPACT + M.gap) - M.inset
   local moneyWidth = cols.money or 0
   T.FitText(row.Money, moneyWidth, HV.HistoryMoney(entry, true) or "", nil)
   row.Money:SetShown(moneyWidth > 0)
@@ -2370,8 +2445,9 @@ function HV.BuildHistoryList(panel, query)
   local sample = AcquireRow(panel, 1)
   local cap = SenderColumnWidth(panel, sample.Sender)
   local cols = panel._hcols
-  cols.sender, cols.money = 0, 0
+  cols.sender, cols.money, cols.age = 0, 0, 0
   local earned, spent = 0, 0
+  local now = time()
   for i = #list, 1, -1 do
     local entry = list[i]
     local keep = true
@@ -2391,6 +2467,8 @@ function HV.BuildHistoryList(panel, query)
       end
       local money = HV.HistoryMoney(entry, true)
       if money then cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, money)) end
+      local age = HV.HistoryAge(now - (tonumber(entry.t) or now))
+      cols.age = max(cols.age, MeasureWith(panel, sample.ColTime, age) + 2)
     end
   end
   return earned, spent
@@ -2427,6 +2505,32 @@ function HV.UpdateHistoryRows(panel)
     pool[i].entry = nil
     pool[i]:Hide()
   end
+end
+
+-- The divider's words and fold mark, for the one in the list and its pinned copy.
+function RV.PaintDivider(panel, divider)
+  divider.Label:SetText(L()("INBOX_READ_DIVIDER", panel._readCount or 0))
+  local open = panel._readOpen or Searching(panel)
+  divider.Fold:SetTexture(open and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
+end
+
+-- The divider pinned to the list's foot while its own place is below the
+-- viewport: in a long inbox it is the one sign that read mail is waiting to
+-- be cleared, and it has to be seen without scrolling down to find out. The
+-- moment its own place scrolls into view it un-pins and sits there. Returns
+-- whether it is pinned.
+function RV.UpdatePin(panel, offset, viewport, stride, height)
+  local pin = panel.DividerPin
+  if not pin then return false end
+  local at = (panel.viewMode == VIEW_COLLECT) and panel._dividerAt or nil
+  if not at or viewport <= 0 or (at - 1) * stride + height <= offset + viewport + 0.5 then
+    pin:Hide()
+    return false
+  end
+  RV.PaintDivider(panel, pin)
+  pin:SetHeight(height)
+  pin:Show()
+  return true
 end
 
 -------------------------------------------------------------
@@ -2474,9 +2578,7 @@ local function UpdateVisibleRows(panel)
       divider:ClearAllPoints()
       divider:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
       divider:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
-      divider.Label:SetText(L()("INBOX_READ_DIVIDER", panel._readCount or 0))
-      local open = panel._readOpen or Searching(panel)
-      divider.Fold:SetTexture(open and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
+      RV.PaintDivider(panel, divider)
       divider:Show()
     else
     used = used + 1
@@ -2510,6 +2612,11 @@ local function UpdateVisibleRows(panel)
     row.senderTip = nil
     row.Warning:Hide()
     row:Hide()
+  end
+  -- Pinned, the divider's copy stands at the foot and its own place (at most
+  -- a sliver of it, at the viewport's bottom edge) is not drawn twice.
+  if RV.UpdatePin(panel, offset, historyView and 0 or viewport, stride, height) and divider then
+    divider:Hide()
   end
   -- Rows carry no skinnable children -- no tagged push button, no themed panel,
   -- no edit box -- so a newly grown pool entry needs no ns.Skin.Refresh pass.
@@ -2698,7 +2805,7 @@ function CT.RefreshMailList(panel)
   local measureMoney = compact
   local measureSlots = compact and RowShows("rowSlots")
   local measureExpiry = compact and RowShows("rowExpiry")
-  local slotsMost, anyDone, anyStuck = 0, false, false
+  local slotsMost, anyStuck = 0, false
   local altKeys = Mail().OwnCharacterKeys()
 
   for index = 1, numItems do
@@ -2758,7 +2865,6 @@ function CT.RefreshMailList(panel)
       end
 
       if compact then
-        if finished then anyDone = true end
         if Mail().StuckReason(index) then anyStuck = true end
         if measureMoney then
           local text, moneyKind = RowMoneyText(index, hasCOD, tonumber(money) or 0, tonumber(cod) or 0, true)
@@ -2779,10 +2885,21 @@ function CT.RefreshMailList(panel)
   -- Folded by default: they are kept, not waiting, and a click on the
   -- divider opens them. A search opens them too -- it is looking for
   -- something, and a match must not hide behind a fold.
+  -- In a tab of their own they are that tab's whole list, and the inbox has
+  -- no divider at all.
   panel._readCount = #tail
-  if #tail > 0 then
+  panel._dividerAt = nil
+  if view == VIEW_DONE then
+    Clear(filtered)
+    Clear(filteredDone)
+    for i = 1, #tail do
+      filtered[i] = tail[i]
+      filteredDone[i] = true
+    end
+  elseif #tail > 0 and RV.Mode() ~= "tab" then
     filtered[#filtered + 1] = DIVIDER
     filteredDone[#filtered] = true
+    panel._dividerAt = #filtered
     if panel._readOpen or query ~= "" then
       for i = 1, #tail do
         filtered[#filtered + 1] = tail[i]
@@ -2794,12 +2911,14 @@ function CT.RefreshMailList(panel)
   if slotsMost > 0 then
     cols.slots = MeasureWith(panel, sample.ColSlots, ns.Plural("COUNT_SLOTS", slotsMost))
   end
-  -- The trailing reserve every compact row keeps: the marks' room whenever any
-  -- listed row carries one, so no row's columns stand anywhere else.
+  -- The trailing reserve every compact row keeps: the stuck mark's room
+  -- whenever any listed row carries one, so no row's columns stand anywhere
+  -- else. Not the delete mark's: only read mail carries it, and read mail
+  -- sits under its own divider, so every other row gave up that room for a
+  -- mark it would never show.
   do
     local M = Th().Metrics
     local trail = M.inset
-    if anyDone then trail = trail + ROW_DELETE_COMPACT + M.tightGap end
     if anyStuck then trail = trail + ROW_WARNING_COMPACT + M.tightGap end
     cols.trail = trail
   end
@@ -2812,6 +2931,7 @@ function CT.RefreshMailList(panel)
     earned, spent = HV.BuildHistoryList(panel, query)
     stride = COMPACT_ROW_HEIGHT + ROW_GAP
     listed = #panel._history
+    panel.HistoryNote:SetText(ns.Plural("HISTORY_NOTE", HV.Days()))
   end
   panel.MailListChild:SetHeight(max(listed * stride, 1))
 
@@ -2827,13 +2947,19 @@ function CT.RefreshMailList(panel)
   -- One sentence per view, each true of exactly that view: "nothing to collect"
   -- on a mailbox that still holds finished mail would be right and would read as
   -- a lie on the all view, where those mails are on screen.
-  local emptyKey = "EMPTY_LIST_ALL"
+  local emptyText = L()["EMPTY_LIST_ALL"]
   if query ~= "" then
-    emptyKey = "EMPTY_LIST_SEARCH"
+    emptyText = L()["EMPTY_LIST_SEARCH"]
   elseif view == VIEW_HISTORY then
-    emptyKey = "EMPTY_LIST_HISTORY"
+    emptyText = ns.Plural("EMPTY_LIST_HISTORY", HV.Days())
+  elseif view == VIEW_DONE then
+    emptyText = L()["EMPTY_LIST_DONE"]
+  elseif #tail > 0 then
+    -- Read mail waits in the Done tab: the box is not empty, there is just
+    -- nothing to collect.
+    emptyText = L()["EMPTY_LIST_COLLECT"]
   end
-  panel.Empty:SetText(L()[emptyKey])
+  panel.Empty:SetText(emptyText)
   panel.Empty:SetShown(listed == 0)
 
   UpdateBanner(panel, earned, spent)
@@ -2908,6 +3034,25 @@ end
 -- Single-mail actions
 -------------------------------------------------------------
 
+-- Read-mail mode "delete": a mail Postbox has just emptied, or the reading
+-- view has just closed on, goes the moment it is finished with -- read, and
+-- nothing left in it. Checked against the fingerprint taken before the take:
+-- an auction mail the server deleted on its own has moved on, and whatever
+-- slid into its index is not this call's to delete. `record` is the mail's
+-- History record, so a deleted letter stays listed there with what it said.
+-- `andThen` runs whatever happened.
+function RV.AutoDelete(panel, index, fingerprint, record, andThen)
+  local function Continue() if andThen then andThen() end end
+  if RV.Mode() ~= "delete" or not index or not fingerprint then return Continue() end
+  if not MailboxOpen() or Mail().IsBusy() then return Continue() end
+  if Fingerprint(index) ~= fingerprint or not Mail().IsReadPersistent(index) then return Continue() end
+  if record and Mail().HistoryNote then Mail().HistoryNote(record, "read") end
+  Mail().DeleteMail(index, function()
+    RequestRefresh(panel)
+    Continue()
+  end)
+end
+
 function CollectSingleMail(panel, index, opts)
   ConfirmCOD(index, function()
     -- The one path allowed to pay a C.O.D. -- the player just confirmed this
@@ -2920,7 +3065,12 @@ function CollectSingleMail(panel, index, opts)
     confirmed.allowCOD = true
     local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
     codBefore = tonumber(codBefore) or 0
+    local before = Fingerprint(index)
     Mail().CollectMail(index, function(status, refused, reason)
+      -- Emptied: in the "delete" read-mail mode it goes now, not later.
+      if status == "collected" then
+        RV.AutoDelete(panel, index, before, confirmed.history)
+      end
       -- A confirmed C.O.D. that actually changed hands is reported in chat,
       -- with the amount: "collected" means the mail emptied (the first take
       -- pays), and a partial refusal has paid exactly when the mail's own
@@ -3379,6 +3529,7 @@ local function RunStep()
   local _, _, _, _, money = GetInboxHeaderInfo(index)
   local kind = Mail().ClassifyMail(index)
   local mailEarned, mailSpent = MailEconomy(index, kind, money)
+  local before = Fingerprint(index)
 
   Mail().CollectMail(index, function(status, refused, reason)
     Run.current = nil
@@ -3428,7 +3579,14 @@ local function RunStep()
       Run.collected = Run.collected + 1
     end
 
-    RunStep()
+    -- An emptied letter goes before the next mail, in the "delete" read-mail
+    -- mode. The run works downwards, so deleting this index moves none of the
+    -- indices still queued.
+    if status == "collected" then
+      RV.AutoDelete(Run.panel, index, before, nil, RunStep)
+    else
+      RunStep()
+    end
   end)
 end
 
@@ -4017,6 +4175,7 @@ local function BuildDetail(panel)
   detail.Collect:SetScript("OnClick", function()
     local index = LiveIndex(detail)
     if not index then return end
+    detail._keep = true
     detail:Hide()
     -- skipFetch is a claim that this mail's attachment links are already loaded,
     -- and only a fetch that actually went out can make it. Opening the overlay
@@ -4037,6 +4196,8 @@ local function BuildDetail(panel)
     local index = LiveIndex(detail)
     if not index then return end
     local _, _, sender = GetInboxHeaderInfo(index)
+    -- Kept: the letter being answered stays while the answer is written.
+    detail._keep = true
     detail:Hide()
     CT.RequestReply(sender, detail.Subject:GetText() or "")
   end)
@@ -4046,6 +4207,7 @@ local function BuildDetail(panel)
     -- may only ever be aimed at an index that still names this mail.
     local index = LiveIndex(detail)
     if not index then return end
+    detail._keep = true
     detail:Hide()
     Mail().ReturnMail(index, function(status)
       if status == "closed" then
@@ -4072,6 +4234,7 @@ local function BuildDetail(panel)
         or DeleteLabel()
       Confirm(POPUP_DELETE_ONE, DeleteLabel(), L()["COD_CONFIRM_CANCEL"],
         message, function()
+          detail._keep = true
           detail:Hide()
           -- Re-verified on the way out of the dialog: the inbox can reindex
           -- between the question and the answer, and this is the irreversible
@@ -4080,8 +4243,22 @@ local function BuildDetail(panel)
         end)
       return
     end
+    detail._keep = true
     detail:Hide()
     DeleteOneMail(panel, index)
+  end)
+
+  -- Closing the reading view on a letter that is finished with -- read, and
+  -- nothing left in it -- deletes it in the "delete" read-mail mode; History
+  -- keeps what it said. Not when the close is on its way to another action
+  -- on the same mail (Take all, Reply, Return, Delete), nor while a run owns
+  -- the indices.
+  detail:HookScript("OnHide", function(self)
+    local keep = self._keep
+    self._keep = nil
+    if keep or Run.active then return end
+    local index = LiveIndex(self)
+    if index then RV.AutoDelete(panel, index, self.fingerprint, self._history) end
   end)
 
   -- Header: sender, subject, then the metadata line, flush with the panel's
@@ -4299,6 +4476,7 @@ function ShowDetail(panel, index)
   -- the header still says what arrived.
   detail._history = Mail().HistoryRecord and Mail().HistoryRecord(index) or nil
   local body = (not Run.active) and Mail().FetchMailBody(index) or nil
+  if detail._history and type(body) == "string" and body ~= "" then detail._history.body = body end
   ShowBody(detail, body)
   PaintDetailContent(detail, index)
 
@@ -4457,6 +4635,7 @@ end
 -- run works on the inbox and not on the listing.
 local function FooterHeight(panel)
   if panel.viewMode == VIEW_HISTORY then return GRID_BUTTON_HEIGHT end
+  if panel.viewMode == VIEW_DONE then return GRID_PRIMARY_HEIGHT end
   if not ShowCategoryButtons() then return GRID_PRIMARY_HEIGHT end
   return GRID_PRIMARY_HEIGHT + Th().Metrics.gap * 2 + GRID_BUTTON_HEIGHT * 2
 end
@@ -4518,12 +4697,14 @@ function SetViewMode(panel, id)
   -- A selection was made over one view's rows; the next view lists others.
   ClearSelection(panel)
   -- The stuck filter is about the inbox.
-  if historyView then panel._stuckOnly = false end
+  if id ~= VIEW_COLLECT then panel._stuckOnly = false end
 
-  -- See FooterHeight for why only the history view swaps the footer.
+  -- Each view's own footer: the sweeps under the inbox, Delete under Done, a
+  -- note under History.
   panel.Footer:SetHeight(FooterHeight(panel))
-  panel.Grid:SetShown(not historyView)
+  panel.Grid:SetShown(id == VIEW_COLLECT)
   panel.HistoryNote:SetShown(historyView)
+  if panel.DoneFooter then panel.DoneFooter:SetShown(id == VIEW_DONE) end
 
   panel.MailListScroll:SetVerticalScroll(0)
   PaintViewToggle(panel)
@@ -4533,6 +4714,50 @@ end
 -------------------------------------------------------------
 -- Build
 -------------------------------------------------------------
+
+-- "Read, nothing left (3)" with a fold mark and their Delete at its right.
+-- Built twice: the one in the list, and its copy pinned at the list's foot.
+-- The caller sets the click.
+function RV.BuildDivider(panel, parent)
+  local T = Th()
+  local M = T.Metrics
+  local divider = CreateFrame("Button", nil, parent)
+  divider:RegisterForClicks("LeftButtonUp")
+  divider.Fold = divider:CreateTexture(nil, "ARTWORK")
+  divider.Fold:SetSize(12, 12)
+  divider.Fold:SetPoint("LEFT", divider, "LEFT", M.inset, 0)
+  divider.Fold:SetDesaturated(true)
+  divider.Fold:SetAlpha(0.7)
+  divider.Rule = divider:CreateTexture(nil, "ARTWORK")
+  divider.Rule:SetHeight(1)
+  divider.Rule:SetPoint("TOPLEFT", divider, "TOPLEFT", M.inset, -1)
+  divider.Rule:SetPoint("TOPRIGHT", divider, "TOPRIGHT", -M.inset, -1)
+  divider.Rule:SetTexture(WHITE)
+  T.SetColor(divider.Rule, "textSecondary")
+  divider.Rule:SetAlpha(0.25)
+  divider.Label = T.CreateText(divider, "secondary")
+  divider.Label:SetPoint("LEFT", divider.Fold, "RIGHT", 6, 0)
+  divider.Delete = CreateFrame("Button", nil, divider)
+  divider.Delete:SetPoint("RIGHT", divider, "RIGHT", -M.inset, 0)
+  divider.Delete.Text = T.CreateText(divider.Delete, "secondary")
+  divider.Delete.Text:SetPoint("RIGHT")
+  divider.Delete.Text:SetText(DeleteLabel())
+  divider.Delete:SetSize(max(T.TextWidth(divider.Delete.Text) + 8, 40), 18)
+  divider.Delete:SetScript("OnClick", function() DeleteAllDone(panel) end)
+  divider.Delete:SetScript("OnEnter", function(self)
+    Th().SetColor(self.Text, "negative")
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L()["BTN_DELETE_ALL_DONE"])
+    GameTooltip:AddLine(RawKey("HINT_DELETE_READ") or "", 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  divider.Delete:SetScript("OnLeave", function(self)
+    Th().SetColor(self.Text, "textSecondary")
+    GameTooltip:Hide()
+  end)
+  divider:Hide()
+  return divider
+end
 
 local function LayoutPanel(panel)
   LayoutViewToggle(panel)
@@ -4601,8 +4826,25 @@ function CT.Build(parent)
   panel.HistoryNote:SetPoint("RIGHT", panel.Footer, "RIGHT", -M.inset, 0)
   panel.HistoryNote:SetJustifyH("CENTER")
   panel.HistoryNote:SetWordWrap(false)
-  panel.HistoryNote:SetText(L()["HISTORY_NOTE"])
+  panel.HistoryNote:SetText(ns.Plural("HISTORY_NOTE", HV.Days()))
   panel.HistoryNote:Hide()
+
+  -- The Done view's footer: its one action, full width, where the inbox has
+  -- its primary.
+  panel.DoneFooter = T.CreateButton(nil, panel.Footer)
+  panel.DoneFooter:SetPoint("TOPLEFT", panel.Footer, "TOPLEFT", 0, 0)
+  panel.DoneFooter:SetPoint("TOPRIGHT", panel.Footer, "TOPRIGHT", 0, 0)
+  panel.DoneFooter:SetHeight(GRID_PRIMARY_HEIGHT)
+  panel.DoneFooter:SetText(L()["BTN_DELETE_ALL_DONE"])
+  panel.DoneFooter:SetScript("OnClick", function() DeleteAllDone(panel) end)
+  panel.DoneFooter:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L()["BTN_DELETE_ALL_DONE"])
+    GameTooltip:AddLine(RawKey("HINT_DELETE_READ") or "", 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  panel.DoneFooter:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  panel.DoneFooter:Hide()
 
 
   -- The totals banner: a divider, not a panel, aligned to the same inset as the
@@ -4647,11 +4889,17 @@ function CT.Build(parent)
   panel.MailListArea:SetPoint("BOTTOM", panel.Banner, "TOP", 0, M.gap)
   T.ApplyList(panel.MailListArea)
 
-  -- One gutter width, wide enough that the classic scroll bar -- which anchors
-  -- outside its frame's right edge -- clears the container's border art.
+  -- The list runs to the container's inner edge while nothing scrolls, and
+  -- stops a gutter short of it only while the bar is there (Theme's slim bar
+  -- calls this as it shows and hides). Set before the bar is built: the
+  -- build's own first show calls it too.
   local scroll = CreateFrame("ScrollFrame", nil, panel.MailListArea, "UIPanelScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT", panel.MailListArea, "TOPLEFT", M.tightGap, -M.tightGap)
   scroll:SetPoint("BOTTOMRIGHT", panel.MailListArea, "BOTTOMRIGHT", -M.scrollGutter, M.tightGap)
+  scroll.__pbGutter = function(scrolling)
+    scroll:SetPoint("BOTTOMRIGHT", panel.MailListArea, "BOTTOMRIGHT",
+      -(scrolling and M.scrollGutter or M.tightGap), M.tightGap)
+  end
   PinScrollBar(scroll, panel.MailListArea)
   panel.MailListScroll = scroll
 
@@ -4666,48 +4914,40 @@ function CT.Build(parent)
   -- The inbox divider: "Read, nothing left (3)" with their delete at its right.
   -- A row's slot in the list, so the virtualiser places it like one; its own
   -- frame, because nothing about it is a mail.
-  local divider = CreateFrame("Button", nil, panel.MailListChild)
-  divider:RegisterForClicks("LeftButtonUp")
+  local divider = RV.BuildDivider(panel, panel.MailListChild)
   divider:SetScript("OnClick", function()
     -- A search holds the fold open; a click then would flip it unseen.
     if Searching(panel) then return end
     panel._readOpen = not panel._readOpen
     CT.RefreshMailList(panel)
   end)
-  divider.Fold = divider:CreateTexture(nil, "ARTWORK")
-  divider.Fold:SetSize(12, 12)
-  divider.Fold:SetPoint("LEFT", divider, "LEFT", M.inset, 0)
-  divider.Fold:SetDesaturated(true)
-  divider.Fold:SetAlpha(0.7)
-  divider.Rule = divider:CreateTexture(nil, "ARTWORK")
-  divider.Rule:SetHeight(1)
-  divider.Rule:SetPoint("TOPLEFT", divider, "TOPLEFT", M.inset, -1)
-  divider.Rule:SetPoint("TOPRIGHT", divider, "TOPRIGHT", -M.inset, -1)
-  divider.Rule:SetTexture(WHITE)
-  T.SetColor(divider.Rule, "textSecondary")
-  divider.Rule:SetAlpha(0.25)
-  divider.Label = T.CreateText(divider, "secondary")
-  divider.Label:SetPoint("LEFT", divider.Fold, "RIGHT", 6, 0)
-  divider.Delete = CreateFrame("Button", nil, divider)
-  divider.Delete:SetPoint("RIGHT", divider, "RIGHT", -M.inset, 0)
-  divider.Delete.Text = T.CreateText(divider.Delete, "secondary")
-  divider.Delete.Text:SetPoint("RIGHT")
-  divider.Delete.Text:SetText(DeleteLabel())
-  divider.Delete:SetSize(max(T.TextWidth(divider.Delete.Text) + 8, 40), 18)
-  divider.Delete:SetScript("OnClick", function() DeleteAllDone(panel) end)
-  divider.Delete:SetScript("OnEnter", function(self)
-    Th().SetColor(self.Text, "negative")
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L()["BTN_DELETE_ALL_DONE"])
-    GameTooltip:AddLine(RawKey("HINT_DELETE_READ") or "", 1, 1, 1, true)
-    GameTooltip:Show()
-  end)
-  divider.Delete:SetScript("OnLeave", function(self)
-    Th().SetColor(self.Text, "textSecondary")
-    GameTooltip:Hide()
-  end)
-  divider:Hide()
   panel.Divider = divider
+
+  -- Its pinned copy, on the list's foot over the last row, while the divider's
+  -- own place is further down (RV.UpdatePin). A click opens the read mail and
+  -- scrolls to it; its Delete is the same Delete.
+  local pin = RV.BuildDivider(panel, panel.MailListArea)
+  pin:SetPoint("BOTTOMLEFT", scroll, "BOTTOMLEFT", 0, 0)
+  pin:SetPoint("BOTTOMRIGHT", scroll, "BOTTOMRIGHT", 0, 0)
+  pin:SetFrameLevel(scroll:GetFrameLevel() + 6)
+  -- A ground of its own, so the row it covers does not show through. On a
+  -- child one level down, not on the pin: a host skin fades every texture a
+  -- tagged panel owns, and the pin's fold mark and rule are textures.
+  local ground = CreateFrame("Frame", nil, pin)
+  ground:SetAllPoints(pin)
+  ground:SetFrameLevel(max(0, pin:GetFrameLevel() - 1))
+  T.ApplyBand(ground)
+  pin:SetScript("OnClick", function()
+    panel._readOpen = true
+    CT.RefreshMailList(panel)
+    local at = panel._dividerAt
+    if not at then return end
+    local _, _, stride = RowMetrics()
+    local maxScroll = max(0, #panel._filtered * stride - (scroll:GetHeight() or 0))
+    scroll:SetVerticalScroll(min((at - 1) * stride, maxScroll))
+    UpdateVisibleRows(panel)
+  end)
+  panel.DividerPin = pin
 
   -- HookScript, not SetScript: the template installs its own handlers here and
   -- replacing them desynchronises the scroll bar.

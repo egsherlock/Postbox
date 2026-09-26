@@ -1208,7 +1208,10 @@ function Mail.CollectMail(index, onDone, opts)
 
   WhenIdle(function()
     if not needFetch then return execute() end
-    GetInboxText(index)
+    -- The body comes back with the fetch: History keeps a letter's words
+    -- (the mail may be deleted once it is finished with).
+    local body = GetInboxText(index)
+    if record and type(body) == "string" and body ~= "" then record.body = body end
     WaitForCommand(function(timedOut)
       if timedOut then
         -- Attachment data never arrived. Taking blind would fire commands at a

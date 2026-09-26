@@ -133,12 +133,10 @@ local OPTION_DEFAULTS = {
   -- screen -- the common action is the one-click one -- and because a player who
   -- has used it for a while has the other mapping in their hands.
   previewOnClick  = false,
-  -- The collect screen's third segment (Collect / Done / All). On: it is
-  -- what the screen has always offered, and it is the union of the other
-  -- two rather than a third idea to learn.
-  -- The minimap icon's left-click snapshot (Core/MailMemory.lua). On: the
-  -- feature is capture-light and idle when unused, and a feature nobody can
-  -- find switched off does not exist.
+  -- Mail Memory (Core/MailMemory.lua): every character's last-seen mailbox,
+  -- in its own window and in this one. On: the feature is capture-light and
+  -- idle when unused, and a feature nobody can find switched off does not
+  -- exist.
   mailMemory      = true,
   -- One chat line at login when another character's mail is close to being
   -- lost (Core/MailMemory, section 2b). On: that is the mail people lose.
@@ -172,6 +170,10 @@ local OPTION_DEFAULTS = {
   rowGold         = true,
   rowSlots        = true,
   rowExpiry       = true,
+  -- The crafting quality mark beside an item's name, as a chat link shows
+  -- it. On: History drew it from the first build and the list did not,
+  -- which read as the list having lost something.
+  rowQuality      = true,
 }
 
 local OPTION_PATH = {}
@@ -341,6 +343,38 @@ function UI.SetExpiryWhen(when)
   if not EXPIRY_WHEN[when] then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if profile then profile.expiryWhen = when end
+end
+
+-- What happens to read mail with nothing left in it: "fold", listed after
+-- the inbox under a divider (the default); "tab", listed under a Done
+-- segment of its own; "delete", deleted the moment Postbox empties it or
+-- the reading view closes on it -- History keeps what it said.
+local READ_MODES = { fold = true, tab = true, delete = true }
+function UI.GetReadMode()
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.readMail")
+  return READ_MODES[stored] and stored or "fold"
+end
+function UI.SetReadMode(mode)
+  if not READ_MODES[mode] then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.readMail = mode end
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect and collect.RefreshReadMode then collect.RefreshReadMode(panel) end
+end
+
+-- How many days History keeps: 7 by default, up to 30.
+local HISTORY_DAYS = { [7] = true, [14] = true, [21] = true, [30] = true }
+function UI.GetHistoryDays()
+  local stored = tonumber(ns.Store and ns.Store.Get and ns.Store.Get("profile.historyDays"))
+  return (stored and HISTORY_DAYS[stored]) and stored or 7
+end
+function UI.SetHistoryDays(days)
+  days = tonumber(days)
+  if not (days and HISTORY_DAYS[days]) then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.historyDays = tostring(days) end
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect and collect.RequestRefresh then collect.RequestRefresh(panel) end
 end
 
 function UI.SetRowOrder(order)
@@ -1416,16 +1450,6 @@ function UI.RefreshCollectTabCounts()
   UpdateCollectTabText()
 end
 
--- Frozen: Core/OptionsPanel.lua calls this when the All-segment option
--- changes. Synchronous for the same reason as the row layout below: it
--- answers a click the player just made on a screen they are looking at.
-function UI.RefreshCollectSegments()
-  local panel, collect = CollectPanel(), ns.CollectTab
-  if panel and collect and collect.RefreshSegments then
-    collect.RefreshSegments(panel)
-  end
-end
-
 -- Frozen: Core/OptionsPanel.lua calls this when the category-buttons option
 -- changes. Synchronous, like the two around it.
 -- An option moved the window's floor. A window STANDING on the old floor --
@@ -1843,6 +1867,16 @@ local function BuildFrame()
 
     frame.ResizeButton = helpers.CreateResizeButton(frame, OnResizeStop,
       AdoptTransientHeight, DragMinHeight, OnResizeReset, OnResizeSnap)
+    -- The right-click cannot be discovered by looking: one quiet line says it.
+    local grip = frame.ResizeButton
+    if grip then
+      grip:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+        GameTooltip:SetText(L("GRIP_RESET_TIP"), 0.8, 0.8, 0.8, 1, true)
+        GameTooltip:Show()
+      end)
+      grip:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    end
   end
 
   -- Tab bar. One inset below the title bar, and the CONTENT inset on the left

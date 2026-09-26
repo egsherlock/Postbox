@@ -469,6 +469,19 @@ local function AddDropdown(frame, y, label, items, getValue, setValue)
   return y - (ROW_H + 4), dd
 end
 
+-- A dropdown's description on hover, as every checkbox carries its own.
+local function DropdownTip(dd, title, desc)
+  local toggle = dd and dd._toggle
+  if not toggle then return end
+  toggle:HookScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(title)
+    GameTooltip:AddLine(desc, 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  toggle:HookScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
 -------------------------------------------------------------
 -- Build
 -------------------------------------------------------------
@@ -544,6 +557,16 @@ local function Build()
           if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
         end)
 
+  -- The crafting quality mark beside an item's name, in the list, History
+  -- and the memory alike.
+  cy = AddCheckbox(card, cy, L["OPT_QUALITY_TITLE"], L["OPT_QUALITY_DESC"],
+        function() return ns.MailboxUI.GetOption("rowQuality") end,
+        function(on)
+          ns.MailboxUI.SetOption("rowQuality", on)
+          if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
+          if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
+        end)
+
   -- The figures a row carries, under the row layout they belong to. A change
   -- repaints the list and, when it is open, the mailbox memory, which draws
   -- its rows by the same rules.
@@ -591,17 +614,33 @@ local function Build()
   cy, tcDD = AddDropdown(card, cy, L["OPT_TAB_CAPTION_TITLE"], tcItems,
         function() return ns.MailboxUI.GetTabCaptionMode and ns.MailboxUI.GetTabCaptionMode() or "none" end,
         function(id) if ns.MailboxUI.SetTabCaptionMode then ns.MailboxUI.SetTabCaptionMode(id) end end)
-  -- The description on hover, as every checkbox carries its own.
-  local tcToggle = tcDD and tcDD._toggle
-  if tcToggle then
-    tcToggle:HookScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(L["OPT_TAB_CAPTION_TITLE"])
-      GameTooltip:AddLine(L["OPT_TAB_CAPTION_DESC"], 1, 1, 1, true)
-      GameTooltip:Show()
-    end)
-    tcToggle:HookScript("OnLeave", function() GameTooltip:Hide() end)
+  DropdownTip(tcDD, L["OPT_TAB_CAPTION_TITLE"], L["OPT_TAB_CAPTION_DESC"])
+
+  -- Read mail with nothing left: under a divider after the inbox, in a Done
+  -- tab of its own, or deleted once finished with. One choice, three answers
+  -- -- a switch for the tab and another for deleting would have been two
+  -- controls over one fact.
+  local readItems = {
+    { id = "fold",   name = L["OPT_READ_FOLD"] },
+    { id = "tab",    name = L["OPT_READ_TAB"] },
+    { id = "delete", name = L["OPT_READ_DELETE"] },
+  }
+  local readDD
+  cy, readDD = AddDropdown(card, cy, L["OPT_READ_MAIL_TITLE"], readItems,
+        function() return ns.MailboxUI.GetReadMode and ns.MailboxUI.GetReadMode() or "fold" end,
+        function(id) if ns.MailboxUI.SetReadMode then ns.MailboxUI.SetReadMode(id) end end)
+  DropdownTip(readDD, L["OPT_READ_MAIL_TITLE"], L["OPT_READ_MAIL_DESC"])
+
+  -- How far back History goes.
+  local dayItems = {}
+  for _, days in ipairs({ 7, 14, 21, 30 }) do
+    dayItems[#dayItems + 1] = { id = days, name = ns.Plural("OPT_HISTORY_DAYS", days) }
   end
+  local daysDD
+  cy, daysDD = AddDropdown(card, cy, L["OPT_HISTORY_KEEP_TITLE"], dayItems,
+        function() return ns.MailboxUI.GetHistoryDays and ns.MailboxUI.GetHistoryDays() or 7 end,
+        function(id) if ns.MailboxUI.SetHistoryDays then ns.MailboxUI.SetHistoryDays(id) end end)
+  DropdownTip(daysDD, L["OPT_HISTORY_KEEP_TITLE"], L["OPT_HISTORY_KEEP_DESC"])
 
   y = EndSection(col, card, y)
 

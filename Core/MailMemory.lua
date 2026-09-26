@@ -572,16 +572,29 @@ end
 -------------------------------------------------------------
 -- 2c. What came out of the box
 --
--- A short record of what Postbox collected on each character: a week of it,
--- at most HISTORY_CAP entries, one entry per mail however many takes that
--- mail needed. Written by Core/MailService.lua as each take is CONFIRMED --
--- never when the command is sent, since the server may refuse it -- and read
--- by the Mail tab's History view. Pruned on every write, so it never holds
--- more than the week it shows.
+-- A short record of what Postbox collected on each character: as many days
+-- of it as the player chose, at most HISTORY_CAP entries, one entry per mail
+-- however many takes that mail needed -- the caller holding one record per
+-- mail is what makes it one. Written by Core/MailService.lua as each take is
+-- CONFIRMED -- never when the command is sent, since the server may refuse
+-- it -- and read by the Mail tab's History view. Pruned on every write, so
+-- it never holds more than the days it shows.
 -------------------------------------------------------------
 
-local HISTORY_KEEP = 7 * DAY
-local HISTORY_CAP = 500
+-- Kept as long as the player chose (Options, Mail tab: 7 days by default, up
+-- to 30), and never more than HISTORY_CAP entries however busy the box: the
+-- record is saved per character, and a month of a busy auction goblin's mail
+-- must not become megabytes of saved variables.
+local HISTORY_CAP = 1000
+-- The longest letter text a History entry keeps. The game caps a mail's body
+-- at 500 characters; this leaves room for a client that sends more.
+local HISTORY_BODY_MAX = 600
+
+local function HistoryKeep()
+  local UI = ns.MailboxUI
+  local days = UI and type(UI.GetHistoryDays) == "function" and UI.GetHistoryDays() or 7
+  return (tonumber(days) or 7) * DAY
+end
 
 local function HistoryList(create)
   local realm, name = Me()
@@ -608,7 +621,7 @@ local function HistoryList(create)
 end
 
 local function PruneHistory(list, now)
-  local cutoff = now - HISTORY_KEEP
+  local cutoff = now - HistoryKeep()
   local drop = 0
   while list[drop + 1] and ((tonumber(list[drop + 1].t) or 0) < cutoff or #list - drop > HISTORY_CAP) do
     drop = drop + 1
@@ -666,6 +679,11 @@ function MM.HistoryTook(ctx, what, value, count)
     list[#list + 1] = entry
     ctx.entry = entry
     PruneHistory(list, entry.t)
+  end
+  -- What the letter said, when Postbox read it: the mail itself may be
+  -- deleted (the "delete" read-mail mode), and this is then the only copy.
+  if not entry.b and type(ctx.body) == "string" and ctx.body ~= "" then
+    entry.b = ctx.body:sub(1, HISTORY_BODY_MAX)
   end
   if what == "money" then
     entry.m = (entry.m or 0) + (tonumber(value) or 0)

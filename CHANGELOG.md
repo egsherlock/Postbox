@@ -33,10 +33,10 @@
   logged into with Postbox installed counts. Other now means everything that
   is neither auction mail nor from your alts, so the two never overlap.
 - **History.** A clock beside Inbox lists what Postbox collected on this
-  character in the last seven days, newest first: when, from whom, what came
-  out and what it was worth, with the week's earned and spent totals
-  underneath. Letters you read are listed too. Search works there as well.
-  Nothing older than a week is kept.
+  character, newest first: when, from whom, what came out and what it was
+  worth, with earned and spent totals underneath. Letters you read are listed
+  too, and hovering one shows what it said. Search works there as well. It
+  keeps a week by default; Options can keep up to 30 days.
 
 ### Improved
 
@@ -45,9 +45,13 @@
 - **One inbox instead of three views.** The Mail tab is now Inbox and
   History. The inbox lists what still holds something first, then the read
   mail with nothing left in it, folded under a divider that opens them and
-  deletes them in one click. The Done and All views, and the option for All,
-  are gone. The Mail tab's caption offers the count of mail to collect in
-  place of the old collect/total and total.
+  deletes them in one click. In a long inbox the divider waits at the bottom
+  of the list, so you can see there is read mail without scrolling for it.
+  Prefer the old way? Options, Read mail, puts it in a Done tab of its own,
+  or deletes each mail as soon as it is finished with (History keeps what a
+  letter said). The All view and its option are gone. The Mail tab's caption
+  offers the count of mail to collect in place of the old collect/total and
+  total.
 - **Click "Stuck: N"** in the title bar to see only the mail the game would
   not hand over (the buttons below then collect just those), and click it
   again to see everything.
@@ -62,14 +66,17 @@
   and pick which gold (earned, spent or both) and when the time left shows
   (always, or under 7, 3 or 1 days). Whatever you hide moves to the row's
   tooltip. A C.O.D. price always shows, because Postbox never pays one
-  without asking.
+  without asking. Item names carry their crafting quality mark, as in chat;
+  that can be switched off too.
 - **Category buttons count.** "All sold (7)", and a button with nothing to
   collect is greyed out rather than answering "Done" when clicked.
 - **Mailbox memory matches the mail list:** auction mail reads "AH Sold" and
   "AH Won" in colour with the item's name, in the same columns, following the
   same switches.
 - Compact rows show money as its largest coin ("1309g", "19g", "33s"); the
-  full sum is in the mail.
+  full sum is in the mail. Rows use the list's whole width when it does not
+  scroll, two-line rows no longer repeat "Auction sold" under "AH Sold", and
+  hovering the resize grip says what a right-click does.
 
 ### Fixed
 
