@@ -615,6 +615,14 @@ local function Build()
           if ns.MailboxUI.RefreshCollectCategoryButtons then ns.MailboxUI.RefreshCollectCategoryButtons() end
         end)
 
+  -- Character groups (Core/CharacterGroups.lua): the player's own sweeps, one
+  -- per group of characters, under the category buttons they join. A window
+  -- of its own, like the recipient manager -- a list to build, not a switch.
+  cy = AddButton(card, cy, function() return L["GROUPS_TITLE"] end, L["GROUPS_OPT_DESC"], function()
+    local groups = ns.CharacterGroups
+    if groups and type(groups.OpenEditor) == "function" then groups.OpenEditor(nil, frame) end
+  end)
+
   -- Nothing to refresh: the mapping is read at the moment a row is clicked, and
   -- the row tooltip's hint line is composed on hover from the same reading. A
   -- list rebuild would repaint rows that are already correct.
