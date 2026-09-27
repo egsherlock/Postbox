@@ -2309,6 +2309,14 @@ function UI.Initialize()
     -- not license the last-run record's erasure.
     if UI._state.mailboxOpen then UI._state.inboxSeen = true end
 
+    -- Refusals whose mail has gone are forgotten here, where the whole inbox
+    -- can be seen (the service decides whether it can): before the summary
+    -- below counts them.
+    local service = ns.MailService
+    if service and type(service.PruneStuck) == "function" then
+      service.PruneStuck(UI._state.inboxSeen)
+    end
+
     -- A run refreshes the list itself as it goes; refreshing again from here
     -- would be a second pass per mail over the same data.
     if UI._state.visible and not RunInProgress() then

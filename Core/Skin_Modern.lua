@@ -537,6 +537,12 @@ end
 
 local function DressTooltip(tip, ours)
   if not tip then return end
+  -- Only ever undo what this did. The hooks below see every tooltip the game
+  -- shows, and handing the template's art back to one Postbox never dressed
+  -- would switch its border on under whatever a tooltip addon drew instead.
+  local wasDressed = tip.__pbDressed
+  if not ours and not wasDressed then return end
+  tip.__pbDressed = ours or nil
 
   if not tip.__pbModernSkin then
     tip.__pbModernSkin = true
@@ -572,9 +578,18 @@ local function DressTooltip(tip, ours)
   tip.__pbFill:SetShown(ours)
   for i = 1, #tip.__pbEdges do tip.__pbEdges[i]:SetShown(ours) end
   -- The template's own art is the thing being replaced, so it is the thing
-  -- that steps aside -- and comes straight back for everyone else's
-  -- tooltips.
-  if tip.NineSlice then tip.NineSlice:SetShown(not ours) end
+  -- that steps aside -- and comes back as it was found for everyone else's
+  -- tooltips (a tooltip addon may have hidden it for good).
+  if tip.NineSlice then
+    if ours then
+      -- Recorded on the way in only: a second dressing would record our own
+      -- hide and hand that back.
+      if not wasDressed then tip.__pbNineShown = tip.NineSlice:IsShown() end
+      tip.NineSlice:Hide()
+    else
+      tip.NineSlice:SetShown(tip.__pbNineShown ~= false)
+    end
+  end
 end
 
 local tooltipHooked = false

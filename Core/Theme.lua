@@ -1785,6 +1785,120 @@ function Theme.AddClearButton(wrap, box)
 end
 
 -------------------------------------------------------------
+-- 8a'. The search box
+--
+-- One construction for both windows' search boxes, the Mail tab's and Mail
+-- Memory's, which had drifted apart as two copies (the text's inset, and
+-- whether the placeholder moved with the text). The box and its placeholder,
+-- the every-character toggle inside its right end, and the clear button left
+-- of that. The caller anchors `search.Wrap` and says what a keystroke and a
+-- toggle click do:
+--   opts.onTextChanged(text)  after the placeholder has followed the text
+--   opts.onToggle()           the toggle was clicked; its tooltip follows
+--   opts.toggleTip(tooltip)   fills the toggle's tooltip for the current state
+-- search.Place(withToggle) shows the toggle or not, and moves the clear button
+-- and the text's right edge to suit; search.PaintToggle(on) is its tint.
+-------------------------------------------------------------
+
+local SEARCH_TEXT_INSET = 8
+local SEARCH_ALL_ATLASES = { "socialqueuing-icon-group", "groupfinder-icon-friend" }
+
+function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
+  opts = opts or {}
+  local search = {}
+
+  local wrap = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+  wrap:SetSize(width, height)
+  Theme.StyleInput(wrap)
+  -- Both host skins act on this tag; the inner box is left to the wrap.
+  wrap.__postboxInputWrap = true
+
+  local box = CreateFrame("EditBox", nil, wrap)
+  box:SetAutoFocus(false)
+  local font = Theme.FontObject and Theme.FontObject("bodySmall")
+  if font then box:SetFontObject(font) end
+  Theme.SetColor(box, "textPrimary")
+  box:SetPoint("TOPLEFT", wrap, "TOPLEFT", SEARCH_TEXT_INSET, -2)
+  box.__postboxNoEditSkin = true
+  -- A sender is at most a name and a realm; a subject at most 64.
+  box:SetMaxLetters(64)
+
+  local placeholder = Theme.CreateText(wrap, "placeholder")
+  placeholder:SetPoint("TOPLEFT", wrap, "TOPLEFT", SEARCH_TEXT_INSET, -2)
+  placeholder:SetJustifyH("LEFT")
+  placeholder:SetJustifyV("MIDDLE")
+  placeholder:SetText(placeholderText or "")
+
+  wrap:SetScript("OnMouseDown", function() box:SetFocus() end)
+  box:SetScript("OnEscapePressed", function(self)
+    self:SetText("")
+    self:ClearFocus()
+  end)
+  box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+  box:SetScript("OnTextChanged", function(self)
+    local text = self:GetText() or ""
+    placeholder:SetShown(text == "")
+    if opts.onTextChanged then opts.onTextChanged(text) end
+  end)
+
+  -- Every character's box, or the one on screen: a group of figures, in the
+  -- accent while it is on -- where the picker beside the box wears one
+  -- character's crest.
+  local all = CreateFrame("Button", nil, wrap)
+  all:SetSize(14, 14)
+  all:SetPoint("RIGHT", wrap, "RIGHT", -4, 0)
+  all.icon = all:CreateTexture(nil, "ARTWORK")
+  all.icon:SetAllPoints()
+  local atlas = Theme.FirstAtlas(SEARCH_ALL_ATLASES)
+  if atlas then all.icon:SetAtlas(atlas, false) end
+  all.icon:SetDesaturated(true)
+  local function Tip(self)
+    if not opts.toggleTip then return end
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    opts.toggleTip(GameTooltip)
+    GameTooltip:Show()
+  end
+  all:SetScript("OnClick", function(self)
+    if opts.onToggle then opts.onToggle() end
+    -- The tooltip says what the next click does: it follows the click.
+    if GameTooltip:IsOwned(self) then Tip(self) end
+  end)
+  all:SetScript("OnEnter", Tip)
+  all:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  all:Hide()
+
+  local clear = Theme.AddClearButton(wrap, box)
+
+  function search.PaintToggle(on)
+    if on and Theme.GetAccent then
+      all.icon:SetVertexColor(Theme.GetAccent())
+      all.icon:SetAlpha(1)
+    else
+      all.icon:SetVertexColor(1, 1, 1)
+      all.icon:SetAlpha(0.45)
+    end
+  end
+
+  -- The clear button stands left of the toggle, or at the end without one,
+  -- and the text (and its placeholder) stops short of both.
+  function search.Place(withToggle)
+    all:SetShown(withToggle and true or false)
+    local clearAt = withToggle and 20 or 4
+    clear:ClearAllPoints()
+    clear:SetPoint("RIGHT", wrap, "RIGHT", -clearAt, 0)
+    local inset = clearAt + 14
+    box:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -inset, 2)
+    placeholder:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -inset - 2, 2)
+  end
+
+  search.Wrap, search.Box, search.Placeholder = wrap, box, placeholder
+  search.All, search.Clear = all, clear
+  search.PaintToggle(false)
+  search.Place(false)
+  return search
+end
+
+-------------------------------------------------------------
 -- 8b. The hint
 --
 -- A few short lines, centred, on a small card of its own in the small font:

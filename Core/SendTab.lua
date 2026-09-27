@@ -88,6 +88,11 @@ local RefreshQueueLabel, TopUpFromQueue, ContinueQueue
 -- floor together instead of one of the three drifting.
 -------------------------------------------------------------
 
+-- The bands' constants below live on one table, K, rather than as twenty
+-- locals: this file sits near Lua 5.1's two hundred locals per chunk, and
+-- has failed to load once for passing it.
+local K = {}
+
 -- Every band gap and band height below is a Theme.Metrics token or a stated
 -- exception to one. Nothing here is a bare pixel count that happens to agree
 -- with the design system: the panel margin is M.inset (the tab bar above and
@@ -103,26 +108,26 @@ local RefreshQueueLabel, TopUpFromQueue, ContinueQueue
 -- total height is what the window's floor is derived from. Widening them to
 -- M.sectionGap would raise that floor by 12px to buy grouping this screen does
 -- not have, so the value is deliberate and the name now matches it.
-local BAND_GAP          = M.gap
+K.BAND_GAP          = M.gap
 -- The recipient field and the category bar under it are ONE control as far as
 -- the eye is concerned, so the gap between them is the ladder's smallest rung
 -- (M.space.hair), the same one that binds a caption to its field.
-local BAR_GAP           = M.space.hair
+K.BAR_GAP           = M.space.hair
 -- The category bar (section 13) is a row of flat tiles in a dense strip: the
 -- lightest control class the theme names, and exactly what M.tileHeight is for.
 -- It is declared here with the other bands because the height sum below has to
 -- see it, and Theme.CreatePlate("tile") gives every tile the same height from
 -- the same token.
-local BAR_H             = M.tileHeight
+K.BAR_H             = M.tileHeight
 -- Caption to the field it names is M.labelGap everywhere; the SUBJECT caption
 -- is the one that follows a control rather than a field, and the bar above it
 -- is already inset, so it gets the padding rung instead of the section one.
-local SUBJECT_LABEL_GAP = M.tightGap
-local MONEY_INPUT_H     = M.controlHeight -- the money boxes and the C.O.D. box share it
+K.SUBJECT_LABEL_GAP = M.tightGap
+K.MONEY_INPUT_H     = M.controlHeight -- the money boxes and the C.O.D. box share it
 -- The money row is its tallest control plus a hair of air, not a round number:
 -- it was 28px around controls of 22, and those 6px were dead space directly
 -- above the Send button -- exactly the space the message box was short of.
-local MONEY_ROW_H       = MONEY_INPUT_H + M.tightGap  -- 28
+K.MONEY_ROW_H       = K.MONEY_INPUT_H + M.tightGap  -- 28
 -- Deliberately NOT M.buttonHeight (26). Send is this screen's one irreversible
 -- action and the only full-width control on it; the theme's button height is
 -- for the buttons that sit several to a row, and giving the primary action the
@@ -130,8 +135,8 @@ local MONEY_ROW_H       = MONEY_INPUT_H + M.tightGap  -- 28
 -- 28 is M.tabHeight -- "the heaviest control on screen" -- which is what this
 -- is, and it is written out rather than borrowed from the tab token because a
 -- change to the window tabs must not silently move the compose screen's floor.
-local SEND_BUTTON_H     = 28
-local GUIDANCE_GAP      = M.tightGap      -- 4
+K.SEND_BUTTON_H     = 28
+K.GUIDANCE_GAP      = M.tightGap      -- 4
 
 -- The guidance band above the Send button (section 7) is reserved permanently
 -- rather than grown on demand: re-laying out the body while somebody is typing a
@@ -139,7 +144,7 @@ local GUIDANCE_GAP      = M.tightGap      -- 4
 -- wraps to two at the minimum window width in the wordiest locale and a clipped
 -- warning is the one thing worse than a shorter message box. MEASURED at two
 -- lines rather than rounded up to 28.
-local GUIDANCE_LINES = 2
+K.GUIDANCE_LINES = 2
 
 -- The message box's hard floor, in lines of its own font. TWO, and two is a
 -- GUARANTEE rather than a size anybody will normally see.
@@ -162,28 +167,28 @@ local GUIDANCE_LINES = 2
 -- forced on screen at the absolute floor would be cramped. It takes both the
 -- window at its floor AND the elastic growth exhausted (section 16b) for that to
 -- happen, and the bar is hidden whenever there is nothing to scroll.
-local MESSAGE_MIN_LINES = 2
+K.MESSAGE_MIN_LINES = 2
 
 -- What the message wrap gives up to its border, top and bottom. The single-line
 -- fields use the same inset; the body used to use M.gap, which cost it 4px of
 -- text for no visual gain.
-local BODY_PAD = M.tightGap
+K.BODY_PAD = M.tightGap
 
 -- Attachments. Read the client's own limit; twelve is only the fallback.
-local SEND_SLOT_COUNT    = (type(ATTACHMENTS_MAX_SEND) == "number" and ATTACHMENTS_MAX_SEND) or 12
-local SEND_SLOTS_PER_ROW = 6
-local SLOT_SIZE          = M.slotSize            -- 36
-local SLOT_STEP_X        = SLOT_SIZE + M.gap     -- 42
+K.SEND_SLOT_COUNT    = (type(ATTACHMENTS_MAX_SEND) == "number" and ATTACHMENTS_MAX_SEND) or 12
+K.SEND_SLOTS_PER_ROW = 6
+K.SLOT_SIZE          = M.slotSize            -- 36
+K.SLOT_STEP_X        = K.SLOT_SIZE + M.gap     -- 42
 -- A second row of slots grows the WINDOW by its height rather than stealing
 -- height from the message body, so Core/MailboxUI.lua has to grow the window by
 -- exactly this much. It derives the same figure from the same two metrics; the
 -- two must never be written as independent literals.
-local ATTACH_ROW_STEP    = SLOT_SIZE + M.tightGap  -- 40
+K.ATTACH_ROW_STEP    = K.SLOT_SIZE + M.tightGap  -- 40
 -- The queue pane's icons (section 18a): small, in a grid beside the slots,
 -- in the space the slots leave; the pane takes no height of its own.
-local QUEUE_STRIP_H      = 22
+K.QUEUE_STRIP_H      = 22
 
-local MAX_SUGGESTIONS = 8
+K.MAX_SUGGESTIONS = 8
 
 -- The rendered height of N lines of a text role, as the CLIENT lays them out --
 -- not a pixel count chosen here. Three derived heights read this (the field
@@ -240,12 +245,12 @@ end
 -- and each is given this height explicitly (CreateFieldLabel) so the stack is
 -- exactly as tall as the sum below says it is.
 local function LabelHeight()    return TextHeight("label", 1) end
-local function GuidanceHeight() return TextHeight("secondary", GUIDANCE_LINES) end
+local function GuidanceHeight() return TextHeight("secondary", K.GUIDANCE_LINES) end
 
 -- The message wrap at its floor: MESSAGE_MIN_LINES of the body font plus the
 -- padding the wrap's border takes.
 local function MessageMinHeight()
-  return TextHeight("bodySmall", MESSAGE_MIN_LINES) + 2 * BODY_PAD
+  return TextHeight("bodySmall", K.MESSAGE_MIN_LINES) + 2 * K.BODY_PAD
 end
 
 -- The "Attachments" caption's band, above the first row of slots.
@@ -258,7 +263,7 @@ end
 -- bottom edge.
 local function ItemAreaHeight(rows)
   rows = max(1, tonumber(rows) or 1)
-  return SlotBandTop() + rows * SLOT_SIZE + (rows - 1) * M.tightGap
+  return SlotBandTop() + rows * K.SLOT_SIZE + (rows - 1) * M.tightGap
 end
 
 -- Panel top down to the top of the message wrap.
@@ -266,16 +271,16 @@ local function TopBands()
   local caption = LabelHeight()
   return M.inset
        + caption + M.labelGap + M.controlHeight          -- recipient
-       + BAR_GAP + BAR_H                                 -- category bar
-       + SUBJECT_LABEL_GAP + caption + M.labelGap + M.controlHeight  -- subject
-       + BAND_GAP + caption + M.labelGap                 -- message caption
+       + K.BAR_GAP + K.BAR_H                                 -- category bar
+       + K.SUBJECT_LABEL_GAP + caption + M.labelGap + M.controlHeight  -- subject
+       + K.BAND_GAP + caption + M.labelGap                 -- message caption
 end
 
 -- The attachment area's bottom edge down to the panel's.
 local function BottomBands()
-  return M.tightGap + MONEY_ROW_H
+  return M.tightGap + K.MONEY_ROW_H
        + M.tightGap + GuidanceHeight()
-       + GUIDANCE_GAP + SEND_BUTTON_H
+       + K.GUIDANCE_GAP + K.SEND_BUTTON_H
        + M.inset
 end
 
@@ -283,7 +288,7 @@ end
 local function PanelHeightFor(bodyHeight, rows)
   return TopBands()
        + bodyHeight
-       + BAND_GAP                    -- message body to attachments
+       + K.BAND_GAP                    -- message body to attachments
        + ItemAreaHeight(rows)
        + BottomBands()
 end
@@ -404,7 +409,7 @@ end
 
 local function AttachmentCount()
   local n = 0
-  for i = 1, SEND_SLOT_COUNT do
+  for i = 1, K.SEND_SLOT_COUNT do
     if SlotHasItem(i) then n = n + 1 end
   end
   return n
@@ -416,7 +421,7 @@ end
 -- text shows that title while the box is empty, so nothing is a surprise.
 local function FirstAttachmentName()
   if type(GetSendMailItem) ~= "function" then return nil end
-  for i = 1, SEND_SLOT_COUNT do
+  for i = 1, K.SEND_SLOT_COUNT do
     local name = GetSendMailItem(i)
     if type(name) == "string" and name ~= "" then return name end
   end
@@ -585,13 +590,13 @@ end
 
 local function CreateAttachmentSlot(parent, slotIndex)
   local slot = CreateFrame("Button", nil, parent, "BackdropTemplate")
-  slot:SetSize(SLOT_SIZE, SLOT_SIZE)
+  slot:SetSize(K.SLOT_SIZE, K.SLOT_SIZE)
 
-  local col = (slotIndex - 1) % SEND_SLOTS_PER_ROW
-  local row = floor((slotIndex - 1) / SEND_SLOTS_PER_ROW)
+  local col = (slotIndex - 1) % K.SEND_SLOTS_PER_ROW
+  local row = floor((slotIndex - 1) / K.SEND_SLOTS_PER_ROW)
   slot:SetPoint("TOPLEFT", parent, "TOPLEFT",
-                M.inset + col * SLOT_STEP_X,
-                -SlotBandTop() - row * ATTACH_ROW_STEP)
+                M.inset + col * K.SLOT_STEP_X,
+                -SlotBandTop() - row * K.ATTACH_ROW_STEP)
 
   -- Under the item, outwards from the frame edge: the client's own empty-slot
   -- art, then a shade to lift an icon off it, then the skin's own border.
@@ -683,7 +688,7 @@ function ST.RefreshAttachmentSlots(panel)
   end
 
   local highest, filled = 0, 0
-  for i = 1, SEND_SLOT_COUNT do
+  for i = 1, K.SEND_SLOT_COUNT do
     local slot = panel.ItemSlots[i]
     if slot and SyncAttachmentSlot(slot, i) then
       highest = i
@@ -693,19 +698,19 @@ function ST.RefreshAttachmentSlots(panel)
   -- "Attachments 3/12": how full the mail is, which is also how close the
   -- next right-click is to going to the queue instead.
   if panel.AttachLabel then
-    panel.AttachLabel:SetText(string.format("%s %d/%d", L["LABEL_ATTACHMENTS"], filled, SEND_SLOT_COUNT))
+    panel.AttachLabel:SetText(string.format("%s %d/%d", L["LABEL_ATTACHMENTS"], filled, K.SEND_SLOT_COUNT))
   end
 
   -- One full row by default, then one trailing empty slot as attachments grow,
   -- up to the client's limit: 6 boxes at 0-5 attached, 7 once the row fills,
   -- ... 12 once 11 are attached.
-  local visible = min(SEND_SLOT_COUNT, max(SEND_SLOTS_PER_ROW, highest + 1))
-  for i = 1, SEND_SLOT_COUNT do
+  local visible = min(K.SEND_SLOT_COUNT, max(K.SEND_SLOTS_PER_ROW, highest + 1))
+  for i = 1, K.SEND_SLOT_COUNT do
     local slot = panel.ItemSlots[i]
     if slot then slot:SetShown(i <= visible) end
   end
 
-  local rows = ceil(visible / SEND_SLOTS_PER_ROW)
+  local rows = ceil(visible / K.SEND_SLOTS_PER_ROW)
   panel._attachRows = rows
   if panel.ItemArea then
     panel.ItemArea:SetHeight(ItemAreaHeight(rows))
@@ -746,7 +751,7 @@ local function MailsInPress(panel)
   local queue = panel and panel._queue
   local waiting = queue and #queue or 0
   if waiting == 0 then return 1 end
-  return 1 + math.ceil(waiting / SEND_SLOT_COUNT)
+  return 1 + math.ceil(waiting / K.SEND_SLOT_COUNT)
 end
 
 -- Postage for everything one press posts: the client's price for the mail
@@ -2643,10 +2648,10 @@ local function RefreshSuggestions(panel)
           suggestSeen[key] = true
           suggestFlat[#suggestFlat + 1] = name
         end
-        if #suggestFlat >= MAX_SUGGESTIONS then break end
+        if #suggestFlat >= K.MAX_SUGGESTIONS then break end
       end
     end
-    if #suggestFlat >= MAX_SUGGESTIONS then break end
+    if #suggestFlat >= K.MAX_SUGGESTIONS then break end
   end
 
   if #suggestFlat == 0 then
@@ -2660,7 +2665,7 @@ local function RefreshSuggestions(panel)
   local R = ns.Recipients
   local GetRow = (type(R) == "table" and type(R.Get) == "function") and R.Get or nil
 
-  for i = 1, MAX_SUGGESTIONS do
+  for i = 1, K.MAX_SUGGESTIONS do
     local btn = sf.buttons[i]
     local name = suggestFlat[i]
     if name then
@@ -2857,7 +2862,7 @@ local function CreateSuggestionPopup(panel)
   sf:Hide()
 
   sf.buttons = {}
-  for i = 1, MAX_SUGGESTIONS do
+  for i = 1, K.MAX_SUGGESTIONS do
     local btn = CreateFrame("Button", nil, sf)
     btn:SetHeight(SUGGEST_ROW_H)
     btn:SetPoint("TOPLEFT", sf, "TOPLEFT", SUGGEST_PAD, -SUGGEST_PAD - (i - 1) * SUGGEST_ROW_H)
@@ -3023,8 +3028,8 @@ local function CreateFieldRow(panel, anchorLabel, multiLine)
     -- the field, so it sits within the field's border rather than over it or
     -- outside it. Reserved permanently, and permanently the same width, so
     -- showing the bar never re-flows the text the user is reading.
-    scroll:SetPoint("TOPLEFT", wrap, "TOPLEFT", M.inset, -BODY_PAD)
-    scroll:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -M.scrollGutter, BODY_PAD)
+    scroll:SetPoint("TOPLEFT", wrap, "TOPLEFT", M.inset, -K.BODY_PAD)
+    scroll:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -M.scrollGutter, K.BODY_PAD)
 
     box = CreateFrame("EditBox", nil, scroll)
     box:SetMultiLine(true)
@@ -3063,7 +3068,7 @@ local function CreateFieldRow(panel, anchorLabel, multiLine)
       if not bar then return end
       bar:SetShown(range > 1)
     end
-    PinScrollBarInside(wrap, scroll, BODY_PAD)
+    PinScrollBarInside(wrap, scroll, K.BODY_PAD)
     scroll:HookScript("OnScrollRangeChanged", UpdateScrollBar)
     UpdateScrollBar()
 
@@ -3176,7 +3181,7 @@ function ST.ApplyBodyBounds(panel)
   if stretched then
     -- Zero clears the explicit height so the two anchors decide it.
     wrap:SetHeight(0)
-    wrap:SetPoint("BOTTOM", panel.ItemArea, "TOP", 0, BAND_GAP)
+    wrap:SetPoint("BOTTOM", panel.ItemArea, "TOP", 0, K.BAND_GAP)
   else
     wrap:SetHeight(minHeight)
   end
@@ -3438,7 +3443,7 @@ end
 -- digits, not a translated caption.
 local function CreateMoneyInput(parent, anchor, width, maxLetters)
   local wrap = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-  wrap:SetSize(width, MONEY_INPUT_H)
+  wrap:SetSize(width, K.MONEY_INPUT_H)
   wrap:SetPoint("LEFT", anchor, "RIGHT", M.tightGap, 0)
 
   local box = CreateFrame("EditBox", nil, wrap)
@@ -3462,7 +3467,7 @@ local function AttachPlaceholder(wrap, box, text, multiLine)
   local ph = Theme.CreateText(wrap, "placeholder")
   -- Anchored on the same insets as the box it stands in for, so the ghost text
   -- and the real text sit on the same line rather than a pixel or two apart.
-  local topInset    = multiLine and BODY_PAD or M.tightGap
+  local topInset    = multiLine and K.BODY_PAD or M.tightGap
   local bottomInset = topInset
   local rightInset  = multiLine and M.scrollGutter or M.inset
   ph:SetPoint("TOPLEFT", wrap, "TOPLEFT", M.inset, -topInset)
@@ -3501,10 +3506,22 @@ end
 -- ones are tracked in a set so unmarking is O(marked) rather than O(all slots).
 -- Both tables are weak-keyed so a container frame the client rebuilds is not
 -- pinned by us.
+--
+-- Sections 17 and 18 are one `do` block: their twenty-odd names are needed
+-- nowhere else, and the file sits near Lua 5.1's two hundred locals per
+-- chunk (it has failed to load once for passing it). The one fact the
+-- queue below needs, whether the compose screen is active, it reads through
+-- ST.SendTabActive().
 -------------------------------------------------------------
+
+do
 
 local InventoryLock = ns.Core.InventoryLock
 local sendTabActive = false
+
+function ST.SendTabActive()
+  return sendTabActive
+end
 local overlaid    = setmetatable({}, { __mode = "k" })
 local hookedSlots = setmetatable({}, { __mode = "k" })
 
@@ -3827,6 +3844,8 @@ function ST.DeactivateNativeSendMail()
   ClearEveryOverlay()
   RepaintContainers()
 end
+
+end -- sections 17 and 18
 
 -------------------------------------------------------------
 -- 18a. The attachment queue
@@ -4174,10 +4193,10 @@ function Q.RunFill(state)
   local panel = state.panel
   local queue = panel._queue
   while queue and #queue > 0 do
-    while state.slotIndex <= SEND_SLOT_COUNT and SlotHasItem(state.slotIndex) do
+    while state.slotIndex <= K.SEND_SLOT_COUNT and SlotHasItem(state.slotIndex) do
       state.slotIndex = state.slotIndex + 1
     end
-    if state.slotIndex > SEND_SLOT_COUNT then break end
+    if state.slotIndex > K.SEND_SLOT_COUNT then break end
 
     local entry = table.remove(queue, 1)
     local outcome, asks = Q.AttachOne(entry, state.slotIndex)
@@ -4281,7 +4300,7 @@ TopUpFromQueue = function(panel)
   if pendingSend then return end
   local queue = panel and panel._queue
   if not queue or #queue == 0 then return end
-  if AttachmentCount() >= SEND_SLOT_COUNT then return end
+  if AttachmentCount() >= K.SEND_SLOT_COUNT then return end
   Q.FillFromQueue(panel, function(_, missing)
     if missing > 0 then ns.Print(ns.Plural("MSG_QUEUE_MISSING", missing)) end
   end)
@@ -4370,11 +4389,11 @@ end
 -- the Send tab showing, no send in flight, no C.O.D. armed, every slot
 -- taken. Every way in asks this first.
 function Q.QueueOpen()
-  if not sendTabActive or pendingSend then return nil end
+  if not ST.SendTabActive() or pendingSend then return nil end
   local panel = ActivePanel()
   if not panel or not panel:IsShown() then return nil end
   if IsCODArmed(panel) then return nil end
-  if AttachmentCount() < SEND_SLOT_COUNT then return nil end
+  if AttachmentCount() < K.SEND_SLOT_COUNT then return nil end
   return panel
 end
 
@@ -4580,7 +4599,7 @@ function Q.AttachAll(panel, bag, slot)
   local info = Q.ContainerInfo(bag, slot)
   local itemID = info and info.itemID
   if not itemID then return end
-  local limit = IsCODArmed(panel) and (SEND_SLOT_COUNT - AttachmentCount()) or nil
+  local limit = IsCODArmed(panel) and (K.SEND_SLOT_COUNT - AttachmentCount()) or nil
   local added = 0
   local function Take(b, s)
     if limit and added >= limit then return end
@@ -4606,7 +4625,7 @@ end
 
 function ST.OnGlobalMouseDown(button)
   if button ~= "RightButton" or not IsAltKeyDown() then return end
-  if not sendTabActive or pendingSend then return end
+  if not ST.SendTabActive() or pendingSend then return end
   local panel = ActivePanel()
   if not panel or not panel:IsShown() then return end
   local bag, slot = Q.BagSlotUnderCursor(true)
@@ -4764,8 +4783,8 @@ end
 
 local function BuildContactBar(panel)
   local bar = CreateFrame("Frame", nil, panel)
-  bar:SetHeight(BAR_H)
-  bar:SetPoint("TOPLEFT", panel.ToWrap, "BOTTOMLEFT", 0, -BAR_GAP)
+  bar:SetHeight(K.BAR_H)
+  bar:SetPoint("TOPLEFT", panel.ToWrap, "BOTTOMLEFT", 0, -K.BAR_GAP)
   bar:SetPoint("RIGHT", panel.ToWrap, "RIGHT", 0, 0)
   panel.ContactBar = bar
 
@@ -4951,7 +4970,7 @@ function ST.RefreshQueueStrip(panel)
   if #queue == 0 then return end
 
   local icons = pane.icons
-  local step = QUEUE_STRIP_H + M.tightGap
+  local step = K.QUEUE_STRIP_H + M.tightGap
   local top = LabelHeight() + M.tightGap
   local width = pane:GetWidth() or 0
   local height = (pane:GetHeight() or 0) - top
@@ -4969,7 +4988,7 @@ function ST.RefreshQueueStrip(panel)
     if i <= shown then
       if not icon then
         icon = CreateFrame("Button", nil, pane)
-        icon:SetSize(QUEUE_STRIP_H, QUEUE_STRIP_H)
+        icon:SetSize(K.QUEUE_STRIP_H, K.QUEUE_STRIP_H)
         icon.Icon = icon:CreateTexture(nil, "ARTWORK")
         icon.Icon:SetAllPoints()
         CropIconBorder(icon.Icon)
@@ -5018,7 +5037,7 @@ function ST.RefreshQueueStrip(panel)
     pane.More:SetText(Theme.Colorize("textSecondary", "+" .. rest))
     pane.More:ClearAllPoints()
     pane.More:SetPoint("TOPLEFT", pane, "TOPLEFT", col * step, -(top + row * step))
-    pane.More:SetSize(QUEUE_STRIP_H, QUEUE_STRIP_H)
+    pane.More:SetSize(K.QUEUE_STRIP_H, K.QUEUE_STRIP_H)
     pane.More:Show()
   else
     pane.More:Hide()
@@ -5061,7 +5080,7 @@ local function BuildAttachmentArea(panel)
   -- of queued icons is drawn under it by ST.RefreshQueueStrip, and the
   -- whole pane is hidden while nothing is queued.
   local pane = CreateFrame("Frame", nil, area)
-  pane:SetPoint("TOPLEFT", area, "TOPLEFT", M.inset + SEND_SLOTS_PER_ROW * SLOT_STEP_X, -M.tightGap)
+  pane:SetPoint("TOPLEFT", area, "TOPLEFT", M.inset + K.SEND_SLOTS_PER_ROW * K.SLOT_STEP_X, -M.tightGap)
   pane:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -M.inset, 0)
   pane.icons = {}
   pane.More = Theme.CreateText(pane, "secondary")
@@ -5084,7 +5103,7 @@ local function BuildAttachmentArea(panel)
     if not queue or #queue == 0 then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetText(L["QUEUE_TIP_TITLE"], 1, 1, 1)
-    local shown = math.min(#queue, SEND_SLOT_COUNT)
+    local shown = math.min(#queue, K.SEND_SLOT_COUNT)
     for i = 1, shown do
       local entry = queue[i]
       local line = entry.link or "?"
@@ -5156,7 +5175,7 @@ local function BuildAttachmentArea(panel)
   end
 
   panel.ItemSlots = {}
-  for i = 1, SEND_SLOT_COUNT do
+  for i = 1, K.SEND_SLOT_COUNT do
     local slot = CreateAttachmentSlot(area, i)
     slot:SetScript("OnEnter", SlotEnter)
     slot:SetScript("OnLeave", SlotLeave)
@@ -5173,7 +5192,7 @@ local function BuildMoneyRow(panel)
   -- not need belongs to the message body.
   row:SetPoint("TOPLEFT", panel.ItemArea, "BOTTOMLEFT", 0, -M.tightGap)
   row:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
-  row:SetHeight(MONEY_ROW_H)
+  row:SetHeight(K.MONEY_ROW_H)
   panel.GoldArea = row
 
   local label = Theme.CreateText(row, "label")
@@ -5215,7 +5234,7 @@ local function BuildMoneyRow(panel)
   -- find the box and __label is how they find its caption. Without them this was
   -- the one control on the compose screen no skin styled at all.
   local cod = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
-  cod:SetSize(MONEY_INPUT_H, MONEY_INPUT_H)
+  cod:SetSize(K.MONEY_INPUT_H, K.MONEY_INPUT_H)
   cod:SetPoint("LEFT", copperIcon, "RIGHT", M.gap * 2, 0)
   cod.text = Theme.CreateText(cod, "label")
   cod.text:SetPoint("LEFT", cod, "RIGHT", 2, 0)
@@ -5245,7 +5264,7 @@ end
 local function BuildSendControls(panel)
   local button = (Theme.CreateButton and Theme.CreateButton(nil, panel))
     or CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-  button:SetHeight(SEND_BUTTON_H)
+  button:SetHeight(K.SEND_BUTTON_H)
   button:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", M.inset, M.inset)
   button:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -M.inset, M.inset)
   button:SetText(L["BTN_SEND_MAIL"])
@@ -5261,8 +5280,8 @@ local function BuildSendControls(panel)
   -- to two lines in a narrow window, and the one-line notes then still sit level
   -- in the same band instead of hanging from its top edge.
   local guidance = Theme.CreateText(panel, "secondary")
-  guidance:SetPoint("BOTTOMLEFT", button, "TOPLEFT", 0, GUIDANCE_GAP)
-  guidance:SetPoint("BOTTOMRIGHT", button, "TOPRIGHT", 0, GUIDANCE_GAP)
+  guidance:SetPoint("BOTTOMLEFT", button, "TOPLEFT", 0, K.GUIDANCE_GAP)
+  guidance:SetPoint("BOTTOMRIGHT", button, "TOPRIGHT", 0, K.GUIDANCE_GAP)
   guidance:SetHeight(GuidanceHeight())
   guidance:SetJustifyH("LEFT")
   guidance:SetJustifyV("MIDDLE")
@@ -5462,7 +5481,7 @@ function ST.Build(parent)
 
   -- Subject
   local subjectLabel = CreateFieldLabel(panel, panel.ContactBar, "BOTTOMLEFT",
-                                        0, -SUBJECT_LABEL_GAP, L["LABEL_SUBJECT"])
+                                        0, -K.SUBJECT_LABEL_GAP, L["LABEL_SUBJECT"])
   panel.SubjectWrap, panel.SubjectBox = CreateFieldRow(panel, subjectLabel, false)
   -- The server's own cap (Blizzard's send frame uses the same number). Typed
   -- or pasted overflow is truncated here instead of failing the whole send
@@ -5484,7 +5503,7 @@ function ST.Build(parent)
   -- Message label. The field itself is built after the bottom bands, because it
   -- absorbs whatever height they leave.
   panel.MessageLabel = CreateFieldLabel(panel, panel.SubjectWrap, "BOTTOMLEFT",
-                                        0, -BAND_GAP, L["LABEL_MESSAGE"])
+                                        0, -K.BAND_GAP, L["LABEL_MESSAGE"])
 
   BuildAttachmentArea(panel)
   BuildMoneyRow(panel)

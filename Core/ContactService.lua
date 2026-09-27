@@ -1003,11 +1003,14 @@ do
       RequestGuildRoster()
     end)
 
-    -- Login and zone-in: ask early so the caches are warm long before the
-    -- player opens a mailbox and starts typing.
-    bus.Register("PLAYER_ENTERING_WORLD", function()
+    -- Login: ask early so the caches are warm long before the player opens a
+    -- mailbox and starts typing. Every loading screen used to ask again, a
+    -- guild roster and a friends list from the server that every addon
+    -- listening then processes; a zone-in changes neither. The caches are
+    -- still marked stale, and MAIL_SHOW below asks afresh at every mailbox.
+    bus.Register("PLAYER_ENTERING_WORLD", function(_, isInitialLogin, isReloadingUi)
       MarkAllDirty()
-      RequestSources()
+      if isInitialLogin or isReloadingUi then RequestSources() end
     end)
     bus.Register("MAIL_SHOW", function()
       -- C_RecentAllies publishes no update event, so a mailbox open -- the one

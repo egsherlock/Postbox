@@ -158,11 +158,13 @@ local function TemplateLiteral(template)
   return literal
 end
 
--- subject, globalPattern -> boolean. Case-insensitive, plain matching, false
--- for an empty subject or a template that does not exist in this client build.
-function H.SubjectLooksLike(subject, globalPattern)
+-- subject, globalPattern [, folded] -> boolean. Case-insensitive, plain
+-- matching, false for an empty subject or a template that does not exist in
+-- this client build. `folded` is H.Lower(subject) where the caller already has
+-- it: a caller testing one subject against several templates folds it once.
+function H.SubjectLooksLike(subject, globalPattern, folded)
   if type(globalPattern) ~= "string" then return false end
-  local source = H.Lower(subject)
+  local source = folded or H.Lower(subject)
   if source == "" then return false end
 
   local literal = TemplateLiteral(globalPattern)

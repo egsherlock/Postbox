@@ -156,9 +156,12 @@ local SUBJECT_CATEGORY = {
 
 local function SubjectCategory(subject)
   if type(subject) ~= "string" or subject == "" then return nil end
-  local looksLike = ns.Helpers.SubjectLooksLike
+  local H = ns.Helpers
+  -- Folded once, not once per rule: this runs for every mail on every
+  -- refresh, and every inbox update of a collect run.
+  local folded = H.Lower(subject)
   for _, rule in ipairs(SUBJECT_CATEGORY) do
-    if looksLike(subject, rule[1]) then return rule[2] end
+    if H.SubjectLooksLike(subject, rule[1], folded) then return rule[2] end
   end
   return nil
 end
@@ -283,13 +286,22 @@ end
 --   unloaded    indices whose header has not arrived yet
 --   skippedCOD  matching mails held back because they are C.O.D.
 -- The player's own characters, as recipient keys: Postbox.lua's census,
--- account-wide, every realm. Built per queue and per list refresh rather than
--- kept, because the census grows as characters log in.
+-- account-wide, every realm. Read-only to every caller. Kept between calls
+-- -- it was rebuilt on every list refresh, ten string operations per alt --
+-- and rebuilt when the census has changed: characters are only ever added
+-- to it (at their login), so the count of names is the whole signature. Each
+-- name carries its realm, so a key never depends on the realm being known yet.
+local ownKeys, ownKeysFrom, ownKeysCount = nil, nil, -1
 function Mail.OwnCharacterKeys()
-  local set = {}
   local R = ns.Recipients
   local alts = ns.Store and ns.Store.Get and ns.Store.Get("alts")
-  if not (R and type(R.Key) == "function") or type(alts) ~= "table" then return set end
+  if not (R and type(R.Key) == "function") or type(alts) ~= "table" then return {} end
+  local count = 0
+  for _, names in pairs(alts) do
+    if type(names) == "table" then count = count + #names end
+  end
+  if ownKeys and ownKeysFrom == alts and ownKeysCount == count then return ownKeys end
+  local set = {}
   for realm, names in pairs(alts) do
     if type(names) == "table" then
       for i = 1, #names do
@@ -298,6 +310,7 @@ function Mail.OwnCharacterKeys()
       end
     end
   end
+  ownKeys, ownKeysFrom, ownKeysCount = set, alts, count
   return set
 end
 
@@ -878,6 +891,38 @@ function Mail.StuckDetails()
     end
   end
   return out
+end
+
+-- Forgets the fingerprints no mail in the inbox carries any more -- but only
+-- when the whole inbox is in view: every mail the server holds is listed and
+-- every header has arrived. A truncated or half-loaded inbox cannot tell
+-- "gone" from "not shown yet" (LIFETIME, above), which is why every read
+-- filters rather than deletes; this is the one place "gone" is a safe
+-- verdict. Without it an entry outlived its mail for good -- saved at each
+-- close, revived the next session -- and the next mail with the same sender,
+-- subject and C.O.D. (another "Auction won:" for the same item) wore a
+-- refusal it never had. `seen` is the caller's word that a real inbox update
+-- has landed this visit.
+function Mail.PruneStuck(seen)
+  if stuckEntries == 0 or not seen or not MailboxOpen() or Mail.IsBusy() then return end
+  local numItems, totalItems = GetInboxNumItems()
+  numItems = tonumber(numItems) or 0
+  totalItems = tonumber(totalItems) or numItems
+  if totalItems ~= numItems then return end
+  for key in pairs(stuckSeen) do stuckSeen[key] = nil end
+  for index = 1, numItems do
+    local _, _, sender, subject, money, _, _, itemCount = GetInboxHeaderInfo(index)
+    if sender == nil and subject == nil then return end
+    -- Whatever the header still counts keeps the entry: an emptied mail's
+    -- header reads zero, one whose item links have not loaded yet does not.
+    if (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0
+      or Mail.AttachmentsLeft(index) > 0 then
+      stuckSeen[Fingerprint(index)] = true
+    end
+  end
+  for fingerprint in pairs(stuck) do
+    if not stuckSeen[fingerprint] then ForgetStuck(fingerprint) end
+  end
 end
 
 -- The registry flattened for run memory's saved layer (fingerprint -> reason,

@@ -173,6 +173,25 @@ function Store.EnsurePath(path, defaults)
   return node
 end
 
+-- path -> its segments, split once. The same few dozen paths are read on
+-- every list refresh (a row's figures ask for their settings), and a gmatch
+-- per read built a closure every time. Bounded, since nothing stops a caller
+-- passing arbitrary strings; the real key set is small.
+local SEGMENT_CACHE_MAX = 256
+local segmentCache, segmentCacheCount = {}, 0
+local function Segments(path)
+  local segments = segmentCache[path]
+  if segments then return segments end
+  segments = {}
+  for segment in path:gmatch("[^%.]+") do segments[#segments + 1] = segment end
+  if segmentCacheCount >= SEGMENT_CACHE_MAX then
+    segmentCache, segmentCacheCount = {}, 0
+  end
+  segmentCache[path] = segments
+  segmentCacheCount = segmentCacheCount + 1
+  return segments
+end
+
 -- Read-only sibling of EnsurePath: resolves without creating anything, so
 -- merely checking a setting cannot write empty tables into saved variables.
 -- Returns `fallback` (default nil) when any segment is missing.
@@ -180,9 +199,10 @@ function Store.Get(path, fallback)
   local node = Root()
   if type(path) ~= "string" or path == "" then return node end
 
-  for segment in path:gmatch("[^%.]+") do
+  local segments = Segments(path)
+  for i = 1, #segments do
     if type(node) ~= "table" then return fallback end
-    node = node[segment]
+    node = node[segments[i]]
     if node == nil then return fallback end
   end
 

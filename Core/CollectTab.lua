@@ -1082,17 +1082,48 @@ end
 -- The rendered width of `text` in `sample`'s font. One hidden string per
 -- panel, re-fonted from the sample on every call, so the measurement is taken
 -- in exactly the face and size the row draws in -- whatever skin set it.
+--
+-- One hidden measuring string per sample, re-fonted only when the sample's
+-- font changes: a walk alternates between two or three samples, and one
+-- shared string was re-fonted on nearly every call. Where the owner counts
+-- passes (`_measurePass`, the Mail tab's list), each distinct text is also
+-- measured once per pass -- "AH Sold" forty times is one measure. Per pass
+-- and never longer, so a width read before a font had finished loading is
+-- put right by the next refresh, as it always was.
 local function MeasureWith(panel, sample, text)
-  local fs = panel._measure
+  text = text or ""
+  local strings = panel._measureFor
+  if not strings then
+    strings = {}
+    panel._measureFor = strings
+  end
+  local fs = strings[sample]
   if not fs then
     fs = panel:CreateFontString(nil, "ARTWORK")
     fs:Hide()
-    panel._measure = fs
+    strings[sample] = fs
   end
   local path, size, flags = sample:GetFont()
-  if path then fs:SetFont(path, size, flags or "") end
-  fs:SetText(text or "")
-  return ceil(fs:GetStringWidth() or 0)
+  if path and (fs.__pbPath ~= path or fs.__pbSize ~= size or fs.__pbFlags ~= flags) then
+    fs:SetFont(path, size, flags or "")
+    fs.__pbPath, fs.__pbSize, fs.__pbFlags = path, size, flags
+    fs.__pbMemo = nil
+  end
+  local pass = panel._measurePass
+  if pass == nil then
+    fs:SetText(text)
+    return ceil(fs:GetStringWidth() or 0)
+  end
+  if fs.__pbMemoPass ~= pass or not fs.__pbMemo then
+    fs.__pbMemo, fs.__pbMemoPass = {}, pass
+  end
+  local width = fs.__pbMemo[text]
+  if not width then
+    fs:SetText(text)
+    width = ceil(fs:GetStringWidth() or 0)
+    fs.__pbMemo[text] = width
+  end
+  return width
 end
 
 -- The sender column's CEILING, from the four outcome labels in `sample`'s font.
@@ -1372,88 +1403,38 @@ local function BuildSearchBox(panel)
   local T = Th()
   local M = T.Metrics
 
-  local wrap = CreateFrame("Frame", nil, panel, "BackdropTemplate")
-  wrap:SetSize(SEARCH_W, M.segmentHeight)
+  -- Theme's search box, as Mail Memory's is: the toggle inside its right end
+  -- searches every character's box (AV.Paint shows it and places the clear
+  -- button beside it).
+  local search = T.CreateSearchBox(panel, SEARCH_W, M.segmentHeight, L()["SEARCH_PLACEHOLDER"], {
+    onTextChanged = function(text)
+      local searching = Trim(text) ~= ""
+      -- The footer changes shape only when the search turns on or off, not
+      -- on every keystroke inside one.
+      if searching ~= (panel._searchOn == true) then
+        panel._searchOn = searching
+        CT.RefreshCategoryButtons(panel)
+        -- With every box searched, a query is what puts the matches on screen.
+        if panel._searchAll then AV.Paint(panel) end
+      end
+      CT.RefreshMailList(panel)
+    end,
+    onToggle = function()
+      panel._searchAll = not panel._searchAll
+      if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
+      AV.Paint(panel)
+      CT.RefreshMailList(panel)
+    end,
+    toggleTip = function(tip)
+      tip:SetText(L()["MEMORY_SEARCH_ALL_TITLE"])
+      tip:AddLine(L()[panel._searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"], 1, 1, 1, true)
+    end,
+  })
+  local wrap = search.Wrap
   wrap:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -M.inset, -M.inset)
-  T.StyleInput(wrap)
-  -- Both host skins act on this tag; the inner box is left to the wrap.
-  wrap.__postboxInputWrap = true
-  panel.SearchWrap = wrap
-
-  local box = CreateFrame("EditBox", nil, wrap)
-  box:SetAutoFocus(false)
-  local font = T.FontObject("bodySmall")
-  if font then box:SetFontObject(font) end
-  T.SetColor(box, "textPrimary")
-  box:SetPoint("TOPLEFT", wrap, "TOPLEFT", 8, -2)
-  box:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -6, 2)
-  box.__postboxNoEditSkin = true
-  -- A sender is at most a name and a realm; a subject at most 64.
-  box:SetMaxLetters(64)
-  panel.SearchBox = box
-
-  local placeholder = T.CreateText(wrap, "placeholder")
-  placeholder:SetPoint("TOPLEFT", wrap, "TOPLEFT", 8, -2)
-  placeholder:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -8, 2)
-  placeholder:SetJustifyH("LEFT")
-  placeholder:SetJustifyV("MIDDLE")
-  placeholder:SetText(L()["SEARCH_PLACEHOLDER"])
-
-  wrap:SetScript("OnMouseDown", function() box:SetFocus() end)
-  box:SetScript("OnEscapePressed", function(self)
-    self:SetText("")
-    self:ClearFocus()
-  end)
-  box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
-  box:SetScript("OnTextChanged", function(self)
-    local text = self:GetText() or ""
-    placeholder:SetShown(text == "")
-    local searching = Trim(text) ~= ""
-    -- The footer changes shape only when the search turns on or off, not on
-    -- every keystroke inside one.
-    if searching ~= (panel._searchOn == true) then
-      panel._searchOn = searching
-      CT.RefreshCategoryButtons(panel)
-      -- With every box searched, a query is what puts the matches on screen.
-      if panel._searchAll then AV.Paint(panel) end
-    end
-    CT.RefreshMailList(panel)
-  end)
-  panel.SearchPlaceholder = placeholder
-
-  -- Every character's box, or the one on screen: a toggle inside the box's
-  -- right end, in the accent while it is on -- a group of figures, where the
-  -- picker beside the box wears one character's crest. Mail Memory's own
-  -- search has the same toggle in the same place.
-  local all = CreateFrame("Button", nil, wrap)
-  all:SetSize(14, 14)
-  all:SetPoint("RIGHT", wrap, "RIGHT", -4, 0)
-  all.icon = all:CreateTexture(nil, "ARTWORK")
-  all.icon:SetAllPoints()
-  local groupAtlas = T.FirstAtlas({ "socialqueuing-icon-group", "groupfinder-icon-friend" })
-  if groupAtlas then all.icon:SetAtlas(groupAtlas, false) end
-  all.icon:SetDesaturated(true)
-  local function AllTip(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:SetText(L()["MEMORY_SEARCH_ALL_TITLE"])
-    GameTooltip:AddLine(L()[panel._searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"], 1, 1, 1, true)
-    GameTooltip:Show()
-  end
-  all:SetScript("OnClick", function(self)
-    panel._searchAll = not panel._searchAll
-    if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
-    AV.Paint(panel)
-    CT.RefreshMailList(panel)
-    -- The tooltip says what the next click does: it follows the click.
-    if GameTooltip:IsOwned(self) then AllTip(self) end
-  end)
-  all:SetScript("OnEnter", AllTip)
-  all:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  all:Hide()
-  panel.SearchAll = all
-
-  -- The clear button, left of the toggle (AV.Paint places both).
-  panel.SearchClear = T.AddClearButton(wrap, box)
+  panel.Search = search
+  panel.SearchWrap, panel.SearchBox, panel.SearchPlaceholder = wrap, search.Box, search.Placeholder
+  panel.SearchAll, panel.SearchClear = search.All, search.Clear
 
   -- The character picker, left of the search box: it wears the crest of the
   -- box on screen, and lists every character with mail to look at.
@@ -1838,23 +1819,9 @@ function AV.Paint(panel)
   end
   T.SetPlateSelected(panel.Picker, who ~= nil)
 
-  local all = panel.SearchAll
-  all:SetShown(others)
-  if panel._searchAll and T.GetAccent then
-    all.icon:SetVertexColor(T.GetAccent())
-    all.icon:SetAlpha(1)
-  else
-    all.icon:SetVertexColor(1, 1, 1)
-    all.icon:SetAlpha(0.45)
-  end
-  -- The clear button stands left of the toggle, or at the end without one,
-  -- and the box's text stops short of both.
-  local clearAt = others and 20 or 4
-  panel.SearchClear:ClearAllPoints()
-  panel.SearchClear:SetPoint("RIGHT", panel.SearchWrap, "RIGHT", -clearAt, 0)
-  local inset = clearAt + 14
-  panel.SearchBox:SetPoint("BOTTOMRIGHT", panel.SearchWrap, "BOTTOMRIGHT", -inset, 2)
-  panel.SearchPlaceholder:SetPoint("BOTTOMRIGHT", panel.SearchWrap, "BOTTOMRIGHT", -inset - 2, 2)
+  -- The every-character toggle shows while there is another box to search.
+  panel.Search.PaintToggle(panel._searchAll)
+  panel.Search.Place(others)
 
   -- The other box's name and count, just left of the picker that chose it:
   -- the two read as one control. No realm -- the list the name was picked
@@ -2623,13 +2590,16 @@ local function BindRow(panel, row, index, position, compact, done)
     expiry = nil
   end
   -- No category on the line: the sender column already says "AH Sold", and
-  -- "Other" says nothing at all.
-  local byId = { time = timeText, money = money, slots = slots }
-  local order = RowOrder()
-  for i = 1, #order do
-    if byId[order[i]] then parts[#parts + 1] = byId[order[i]] end
+  -- "Other" says nothing at all. Only the two-line row draws this line; the
+  -- compact row packs the same figures into columns below.
+  if not compact then
+    local byId = { time = timeText, money = money, slots = slots }
+    local order = RowOrder()
+    for i = 1, #order do
+      if byId[order[i]] then parts[#parts + 1] = byId[order[i]] end
+    end
+    if not purchaseShown then AppendInvoiceFigures(parts, index, false) end
   end
-  if not purchaseShown then AppendInvoiceFigures(parts, index, false) end
 
   local senderText = DisplaySender(sender) or L()["SENDER_UNKNOWN"]
   -- The whole name, for the tooltip, when the row shows less of it.
@@ -2840,6 +2810,31 @@ function HV.BindHistoryRow(panel, row, entry, position, now)
   row:Show()
 end
 
+-- entry -> the folded text a search looks in: sender, subject, the outcome
+-- label and every item's name. Built once per entry, not per keystroke per
+-- entry (a month of History is up to a thousand of them). Weak keys, and
+-- never a field on the entry, which is saved variables. Rebuilt when the
+-- entry gains an item -- the reading view adds to its entry as it takes --
+-- and all of it when the quality-mark option changes what a name carries.
+HV.searchText = setmetatable({}, { __mode = "k" })
+function HV.SearchText(entry)
+  local mode = RV.MarkOnName()
+  if HV.searchMode ~= mode then
+    HV.searchText = setmetatable({}, { __mode = "k" })
+    HV.searchMode = mode
+  end
+  local items = entry.it or {}
+  local cached = HV.searchText[entry]
+  if cached and cached.n == #items then return cached.text end
+  local outcome = AUCTION_OUTCOME[entry.k]
+  local hay = (entry.s or "") .. "\001" .. (entry.sub or "")
+    .. "\001" .. (outcome and L()[outcome.key] or "")
+  for j = 1, #items do hay = hay .. "\001" .. (HV.ItemName(items[j].l) or "") end
+  local text = Fold(hay)
+  HV.searchText[entry] = { text = text, n = #items }
+  return text
+end
+
 -- The history view's list, newest first, narrowed by the search; its totals
 -- for the banner; its columns, measured as the mail list measures its own.
 function HV.BuildHistoryList(panel, query)
@@ -2858,12 +2853,7 @@ function HV.BuildHistoryList(panel, query)
     local entry = list[i]
     local keep = true
     if query ~= "" then
-      local outcome = AUCTION_OUTCOME[entry.k]
-      local hay = (entry.s or "") .. "\001" .. (entry.sub or "")
-        .. "\001" .. (outcome and L()[outcome.key] or "")
-      local items = entry.it or {}
-      for j = 1, #items do hay = hay .. "\001" .. (HV.ItemName(items[j].l) or "") end
-      keep = Fold(hay):find(query, 1, true) ~= nil
+      keep = HV.SearchText(entry):find(query, 1, true) ~= nil
     end
     if keep then
       out[#out + 1] = entry
@@ -3245,14 +3235,21 @@ function CT.RefreshMailList(panel)
   -- measuring is done in the face the rows actually draw in.
   local cols, counts = panel._cols, panel._catCounts
   for key in pairs(counts) do counts[key] = nil end
+  -- A new measuring pass: each distinct text is measured once in it.
+  panel._measurePass = (panel._measurePass or 0) + 1
   local compact = CompactRows()
   local sample = AcquireRow(panel, 1)
   local senderCap = SenderColumnWidth(panel, sample.Sender)
   cols.sender = 0
   cols.money, cols.slots, cols.time = 0, 0, 0
-  local measureMoney = compact
-  local measureSlots = compact and RowShows("rowSlots")
-  local measureExpiry = compact and RowShows("rowExpiry")
+  -- The inbox's own columns are measured only while its rows are what is on
+  -- screen: History and another character's box measure their own, and the
+  -- walk below still has to run for the counts and the totals. Coming back
+  -- to the inbox refreshes the list, which measures again.
+  local measuring = not (view == VIEW_HISTORY or AV.Active(panel))
+  local measureMoney = compact and measuring
+  local measureSlots = compact and measuring and RowShows("rowSlots")
+  local measureExpiry = compact and measuring and RowShows("rowExpiry")
   local slotsMost, anyStuck = 0, false
   local altKeys = Mail().OwnCharacterKeys()
 
@@ -3307,7 +3304,7 @@ function CT.RefreshMailList(panel)
 
       -- The sender column is as wide as the widest name it will show, up to
       -- the ceiling; an auction outcome shows its label, not "Auction House".
-      if cols.sender < senderCap then
+      if measuring and cols.sender < senderCap then
         local label = AUCTION_OUTCOME[kind] and L()[AUCTION_OUTCOME[kind].key]
           or DisplaySender(sender or L()["SENDER_UNKNOWN"])
         cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), senderCap)
@@ -3898,8 +3895,10 @@ end
 -- walked out of writes nothing, a clean sweep of one category erases the
 -- record while another category's mail is still stuck, and a single-click
 -- take never touches the record at all. One sync at the boundary covers
--- every path, and prunes fingerprints whose mail was freed since (they
--- would be filtered at read anyway; there is just no reason to save them).
+-- every path. What it saves has been pruned of fingerprints whose mail has
+-- gone whenever the whole inbox was in view (Mail.PruneStuck, on each inbox
+-- update); with a truncated inbox they ride along, capped, and are filtered
+-- at read.
 function CT.SyncStuckRecord()
   local M = Mail()
   local snap = M and type(M.StuckSnapshot) == "function" and M.StuckSnapshot() or nil

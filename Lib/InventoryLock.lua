@@ -200,7 +200,9 @@ do
   local watcher = CreateFrame("Frame")
   watcher:RegisterEvent("BAG_UPDATE_DELAYED")
   watcher:SetScript("OnEvent", function()
-    verdictCache = {}
+    -- Emptied in place: this fires on every loot all session, and a new
+    -- table each time was garbage for nothing.
+    for guid in pairs(verdictCache) do verdictCache[guid] = nil end
   end)
 end
 

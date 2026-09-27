@@ -651,6 +651,28 @@ local function PruneHistory(list, now)
   end
 end
 
+-- Every character's History, pruned to the days the player chose. A list is
+-- otherwise pruned only when its own character reads or writes it, so an alt
+-- not played for months kept all it had -- and a lower "Keep History" never
+-- reached it. Once per login; each list is in date order, so this touches
+-- only what goes. A list left empty is dropped.
+local function PruneAllHistory()
+  local root = ns.Store and ns.Store.Get and ns.Store.Get("mailHistory")
+  if type(root) ~= "table" then return end
+  local now = time()
+  for realm, byRealm in pairs(root) do
+    if type(byRealm) == "table" then
+      for name, list in pairs(byRealm) do
+        if type(list) == "table" then
+          PruneHistory(list, now)
+          if #list == 0 then byRealm[name] = nil end
+        end
+      end
+      if next(byRealm) == nil then root[realm] = nil end
+    end
+  end
+end
+
 -- This character's record, oldest first, pruned to the week; empty when
 -- there is none.
 function MM.History()
@@ -985,15 +1007,32 @@ function MM.MeasureRows(owner, rows, now, sample)
   local cap = R.SenderColumn(owner, sample.Sender)
   cols.sender = 0
   local fsFor = { time = sample.ColTime, money = sample.ColMoney, slots = sample.ColSlots }
+  -- Each distinct text measured once per pass: a list of every box's matches
+  -- repeats "AH Sold", "2 slots" and "29 d" hundreds of times, and each
+  -- measure is a SetText and a width read.
+  local widths = {}
+  local function Width(fs, text)
+    local byFont = widths[fs]
+    if not byFont then
+      byFont = {}
+      widths[fs] = byFont
+    end
+    local width = byFont[text]
+    if not width then
+      width = R.Measure(owner, fs, text)
+      byFont[text] = width
+    end
+    return width
+  end
   for i = 1, #rows do
     local mail = rows[i]
     if not mail.header and cols.sender < cap then
       local label = R.OutcomeSender(mail.kind) or R.DisplaySender(mail.sender) or ""
-      cols.sender = math.min(math.max(cols.sender, R.Measure(owner, sample.Sender, label) + 2), cap)
+      cols.sender = math.min(math.max(cols.sender, Width(sample.Sender, label) + 2), cap)
     end
     local texts = RowTexts(mail, now)
     for id, fs in pairs(fsFor) do
-      if texts[id] then cols[id] = math.max(cols[id], R.Measure(owner, fs, texts[id])) end
+      if texts[id] then cols[id] = math.max(cols[id], Width(fs, texts[id])) end
     end
     if mail.stuck then cols.stuck = true end
   end
@@ -1200,8 +1239,8 @@ end
 local PICK_ROW_H = 20
 local PICK_MAX = 14
 
-local function SwitchChoices()
-  local all = MM.Characters()
+local function SwitchChoices(all)
+  all = all or MM.Characters()
   local out = {}
   for i = 1, #all do
     local st = all[i]
@@ -1210,10 +1249,11 @@ local function SwitchChoices()
   return out
 end
 
--- Whether there is another character's box to look at.
-function MM.HasOthers()
+-- Whether there is another character's box to look at. `all` is an
+-- MM.Characters() list the caller has already built, where it has one.
+function MM.HasOthers(all)
   if not MemoryEnabled() then return false end
-  local choices = SwitchChoices()
+  local choices = SwitchChoices(all)
   for i = 1, #choices do
     if not choices[i].me then return true end
   end
@@ -1339,6 +1379,10 @@ function MM.OpenPicker(anchor, current, onPick)
     list:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
     list:SetScript("OnEvent", function(self)
       if self:IsMouseOver() or (self.anchor and self.anchor:IsMouseOver()) then return end
+      -- When, so a click that closed it here and then reaches a way in
+      -- (the minimap icon, the addon menu) reads as the second click of a
+      -- toggle, not as a request to open it again (MM.Toggle).
+      self.closedAt = type(GetTime) == "function" and GetTime() or nil
       self:Hide()
     end)
     -- Past PICK_MAX names the wheel moves the list a name at a time.
@@ -1390,13 +1434,24 @@ end
 -- One matcher for every list a search narrows: the sender as written, the
 -- sender as the row shows it (an auction outcome, "AH Sold"), and the
 -- subject -- which for an auction mail is the item's name.
+--
+-- The folded text is kept per mail table: a search of every box used to
+-- colour, uncolour and fold every remembered mail on every keystroke. Weak
+-- keys, so a snapshot replaced at the next capture takes its entries with it
+-- -- and never a field on the mail itself, which is saved variables.
+local searchText = setmetatable({}, { __mode = "k" })
 local function Matches(mail, query)
-  local R = Rules()
-  local outcome = R and R.OutcomeSender and mail.kind and R.OutcomeSender(mail.kind) or ""
-  -- The outcome label arrives coloured; the escape codes are not searched.
-  outcome = outcome:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-  local hay = (mail.sender or "") .. "\001" .. (mail.subject or "") .. "\001" .. outcome
-  return Fold(hay):find(query, 1, true) ~= nil
+  local hay = searchText[mail]
+  if not hay then
+    local R = Rules()
+    local outcome = R and R.OutcomeSender and mail.kind and R.OutcomeSender(mail.kind) or ""
+    -- The outcome label arrives coloured; the escape codes are not searched.
+    outcome = outcome:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    hay = Fold((mail.sender or "") .. "\001" .. (mail.subject or "") .. "\001" .. outcome)
+    -- Kept only once the row rules could name the outcome.
+    if R then searchText[mail] = hay end
+  end
+  return hay:find(query, 1, true) ~= nil
 end
 MM.Fold = Fold
 
@@ -1441,9 +1496,9 @@ local function SnapshotOf(realm, name)
 end
 
 -- Every character's matches, each under a heading with its name.
-local function SearchAll(query, now, sort)
+local function SearchAll(query, now, sort, all)
   local rows, characters = {}, 0
-  local all = MM.Characters()
+  all = all or MM.Characters()
   for i = 1, #all do
     local st = all[i]
     local snap = SnapshotOf(st.realm, st.name)
@@ -1466,7 +1521,8 @@ end
 
 -- realm, name, opts -> rows, info. `realm`/`name` nil for the character
 -- being played. opts.query: the search, folded ("" for none); opts.all:
--- search every character's box; opts.sort: "expiry" for the soonest first.
+-- search every character's box; opts.sort: "expiry" for the soonest first;
+-- opts.characters: an MM.Characters() list already built for this refresh.
 -- info: realm, name, me, snapshot, total (mails in the snapshot), hidden
 -- (in the box but past the record's cap), matched, onCharacters.
 function MM.RowsFor(realm, name, opts)
@@ -1525,7 +1581,7 @@ function MM.RowsFor(realm, name, opts)
   local query = opts.query or ""
   if query ~= "" then
     if opts.all then
-      rows, info.onCharacters = SearchAll(query, now, opts.sort)
+      rows, info.onCharacters = SearchAll(query, now, opts.sort, opts.characters)
       local matched = 0
       for i = 1, #rows do if not rows[i].header then matched = matched + 1 end end
       info.matched = matched
@@ -1570,7 +1626,6 @@ local HEADER_Y = -28
 local HEADER_H = 22
 local SEARCH_W = 150
 local SORT_ATLASES = { "auctionhouse-ui-sortarrow", "UI-HUD-ActionBar-PageDownArrow-Up", "NPE_ArrowDown" }
-local ALL_ATLASES = { "socialqueuing-icon-group", "groupfinder-icon-friend" }
 
 local Refresh
 
@@ -1597,83 +1652,28 @@ end
 
 local function BuildSearch(frame)
   local T = ns.Theme
-  local wrap = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-  wrap:SetSize(SEARCH_W, HEADER_H)
-  wrap:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(PAD - 2), HEADER_Y)
-  T.StyleInput(wrap)
-  wrap.__postboxInputWrap = true
-  frame.SearchWrap = wrap
-
-  local box = CreateFrame("EditBox", nil, wrap)
-  box:SetAutoFocus(false)
-  local font = T.FontObject and T.FontObject("bodySmall")
-  if font then box:SetFontObject(font) end
-  T.SetColor(box, "textPrimary")
-  box:SetPoint("TOPLEFT", wrap, "TOPLEFT", 6, -2)
-  box:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -22, 2)
-  box.__postboxNoEditSkin = true
-  box:SetMaxLetters(64)
-  frame.SearchBox = box
-
-  local placeholder = T.CreateText(wrap, "placeholder")
-  placeholder:SetPoint("TOPLEFT", wrap, "TOPLEFT", 6, -2)
-  placeholder:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -22, 2)
-  placeholder:SetJustifyH("LEFT")
-  placeholder:SetJustifyV("MIDDLE")
-  placeholder:SetText(L["SEARCH_PLACEHOLDER"])
-
-  wrap:SetScript("OnMouseDown", function() box:SetFocus() end)
-  box:SetScript("OnEscapePressed", function(self)
-    self:SetText("")
-    self:ClearFocus()
-  end)
-  box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
-  box:SetScript("OnTextChanged", function(self)
-    placeholder:SetShown((self:GetText() or "") == "")
-    Refresh(frame)
-  end)
-
-  -- Every character's box, or the one on screen: a toggle inside the box's
-  -- right end, in the accent while it is on. A group of figures, where the
-  -- picker beside the box wears one character's crest.
-  local all = CreateFrame("Button", nil, wrap)
-  all:SetSize(14, 14)
-  all:SetPoint("RIGHT", wrap, "RIGHT", -4, 0)
-  all.icon = all:CreateTexture(nil, "ARTWORK")
-  all.icon:SetAllPoints()
-  local atlas = T.FirstAtlas(ALL_ATLASES)
-  if atlas then all.icon:SetAtlas(atlas, false) end
-  all.icon:SetDesaturated(true)
-  local function Paint()
-    if frame.searchAll and T.GetAccent then
-      all.icon:SetVertexColor(T.GetAccent())
-      all.icon:SetAlpha(1)
-    else
-      all.icon:SetVertexColor(1, 1, 1)
-      all.icon:SetAlpha(0.45)
-    end
-  end
-  local function Tip(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:SetText(L["MEMORY_SEARCH_ALL_TITLE"])
-    GameTooltip:AddLine(L[frame.searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"], 1, 1, 1, true)
-    GameTooltip:Show()
-  end
-  all:SetScript("OnClick", function(self)
-    frame.searchAll = not frame.searchAll
-    Paint()
-    Refresh(frame)
-    -- The tooltip says what the NEXT click does: it follows the click.
-    if GameTooltip:IsOwned(self) then Tip(self) end
-  end)
-  all:SetScript("OnEnter", Tip)
-  all:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  all.Paint = Paint
-  frame.SearchAllButton = all
-  Paint()
-
-  -- The clear button, left of the toggle (Refresh places both).
-  frame.SearchClear = T.AddClearButton(wrap, box)
+  -- Theme's search box, as the Mail tab's is: the toggle inside its right end
+  -- searches every character's box (Refresh shows it and places the clear
+  -- button beside it).
+  local search
+  search = T.CreateSearchBox(frame, SEARCH_W, HEADER_H, L["SEARCH_PLACEHOLDER"], {
+    onTextChanged = function() Refresh(frame) end,
+    onToggle = function()
+      frame.searchAll = not frame.searchAll
+      search.PaintToggle(frame.searchAll)
+      Refresh(frame)
+    end,
+    toggleTip = function(tip)
+      tip:SetText(L["MEMORY_SEARCH_ALL_TITLE"])
+      tip:AddLine(L[frame.searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"], 1, 1, 1, true)
+    end,
+  })
+  search.Wrap:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(PAD - 2), HEADER_Y)
+  frame.Search = search
+  frame.SearchWrap, frame.SearchBox, frame.SearchClear = search.Wrap, search.Box, search.Clear
+  -- Repaints the toggle for frame.searchAll, wherever that is set from.
+  search.All.Paint = function() search.PaintToggle(frame.searchAll) end
+  frame.SearchAllButton = search.All
 end
 
 -- The character picker and the sort, left of the search on the top row.
@@ -1779,8 +1779,11 @@ function Refresh(frame)
   local T = ns.Theme
   local v = frame.viewing
   local query = SearchQuery(frame)
+  -- One character list for the whole refresh: the search of every box and
+  -- the picker's "anyone else?" both read it.
+  local characters = MM.Characters()
   local rows, info = MM.RowsFor(v and v.realm, v and v.name,
-    { query = query, all = frame.searchAll, sort = frame.sort })
+    { query = query, all = frame.searchAll, sort = frame.sort, characters = characters })
   local now = time()
   local count = #rows
 
@@ -1793,15 +1796,9 @@ function Refresh(frame)
   if crest then frame.Picker.Icon:SetAtlas(crest, false) end
   -- The Mail tab's rule: a picker while there is another box with mail to
   -- show (the list it opens holds only those), or while one is on screen.
-  local others = MM.HasOthers() or v ~= nil
+  local others = MM.HasOthers(characters) or v ~= nil
   frame.Picker:SetShown(others)
-  frame.SearchAllButton:SetShown(others)
-  -- The clear button left of the toggle, or at the box's end without one;
-  -- the text stops short of both.
-  local clearAt = others and 20 or 4
-  frame.SearchClear:ClearAllPoints()
-  frame.SearchClear:SetPoint("RIGHT", frame.SearchWrap, "RIGHT", -clearAt, 0)
-  frame.SearchBox:SetPoint("BOTTOMRIGHT", frame.SearchWrap, "BOTTOMRIGHT", -(clearAt + 14), 2)
+  frame.Search.Place(others)
   T.SetPlateSelected(frame.Picker, v ~= nil)
 
   -- The foot: when the box was seen, or what a search found.
@@ -1999,6 +1996,14 @@ function MM.Toggle()
   end
   local state = MailboxState()
   if state and state.mailboxOpen then
+    -- The press of this very click just closed the character list (its
+    -- click-away): that was the toggle, and it is done.
+    local picker = MM._picker
+    local now = type(GetTime) == "function" and GetTime() or nil
+    if picker and picker.closedAt and now and now - picker.closedAt < 0.5 then
+      picker.closedAt = nil
+      return
+    end
     local UI = ns.MailboxUI
     if UI and type(UI.ShowCharacterPicker) == "function" then UI.ShowCharacterPicker() end
     return
@@ -2326,6 +2331,8 @@ if bus then
     loginAt = time()
     if MemoryEnabled() then EnsureBaseline(StoredSnapshot()) end
     if not isInitialLogin then return end
+    -- History is kept whether or not Mail Memory is on; so is its pruning.
+    pcall(PruneAllHistory)
     -- Once the client has settled its mail state: mail that arrived while
     -- logged out raised the unread flag that was down at the last close.
     -- Then, once per login, the one line about the other characters.

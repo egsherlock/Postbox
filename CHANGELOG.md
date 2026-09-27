@@ -91,9 +91,27 @@
   have a small clear button while they hold text, and a cancelled auction's
   row reads "AH Cancel". "AH Won" is "AH Bought" again, and its button "All
   bought".
+- **Quicker where there is a lot to get through.** Searching every character
+  in Mail Memory, searching a month of History, and the inbox's own refresh
+  all do less work per keystroke and per mail; nothing looks different.
+  History is trimmed to the days you keep on every character at login, not
+  only on the one you are playing. Clicking the minimap icon while the
+  character list is open now closes it.
 
 ### Fixed
 
+- **"Stuck" no longer outlives its mail.** A mail the game refused was
+  remembered until it was collected through Postbox, even across sessions,
+  so once it had expired or been emptied some other way, the next mail like
+  it — another "Auction won:" for the same item — could wear the warning and
+  count in "Stuck: N" without ever being refused. Postbox now forgets a
+  refusal as soon as it can see the mail has gone.
+- **One alert per new mail.** Buying from the auction house played the
+  new-mail sound and flash twice: once at the purchase and again as the mail
+  landed.
+- **Postbox Modern leaves other tooltips alone.** It was putting the game's
+  tooltip border back on every tooltip it had not styled itself, which could
+  fight a tooltip addon's own look.
 - Hovering the icon of a mail with no item in the mailbox memory raised a
   Lua error.
 - **The mailbox memory lost track past 50 mails**, and did not count an unread

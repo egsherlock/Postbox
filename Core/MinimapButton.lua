@@ -1311,7 +1311,17 @@ end
 -- Mail just arrived. Called by Core/MailMemory.lua, which owns the arrival
 -- detection for the whole addon -- one witness, so the badge and the alert
 -- can never disagree about what counts as new.
+--
+-- One arrival, one alert. An auction purchase is announced the moment it
+-- completes, and its mail landing seconds later raises the unread flag and
+-- announces it again: the same mail, sound and flash twice. A repeat inside
+-- ALERT_REPEAT seconds is that echo, and is let pass quietly.
+local ALERT_REPEAT = 20
+local lastAlertAt = nil
 function MB.NotifyArrival()
+  local now = type(GetTime) == "function" and GetTime() or nil
+  if now and lastAlertAt and now - lastAlertAt < ALERT_REPEAT then return end
+  lastAlertAt = now
   local prefs = Settings()
 
   if prefs.alertSound and type(PlaySound) == "function" and type(SOUNDKIT) == "table" then
