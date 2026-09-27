@@ -5477,32 +5477,65 @@ end
 -- player's arrangement of them. Kept on the panel for the layout passes a
 -- resize makes; read afresh on every refresh. A button the stored list names
 -- that is gone for good is forgotten there too.
+--
+-- Read afresh, but not rebuilt when nothing it is built from has moved: the
+-- same stored arrangement (MailboxUI hands back the same table while the
+-- saved string is the same), the same ids in the same order, the groups
+-- module answering or not as before, and the list on the panel still the
+-- one made here. Then the entries made last time are the answer; they are
+-- never edited in place (the arrange mode copies them, RV.CopyEntries, and
+-- stores a new list, RV.StoreGrid), so they are still exactly what
+-- reconciling again would give. The ids go into one list kept on the panel,
+-- noting as they are written whether any differs from last time.
 function RV.GridEntries(panel)
   local specs = RV.GroupSpecs(panel)
-  local available = RV.BuiltinGridIds()
+  local available = panel._gridAvailable or {}
+  panel._gridAvailable = available
+  local before, n, changed = #available, 0, false
+  for i = 2, #CATEGORY_ORDER do
+    n = n + 1
+    if available[n] ~= CATEGORY_ORDER[i] then available[n] = CATEGORY_ORDER[i]; changed = true end
+  end
   local bySpec = panel._gridSpecs or {}
   panel._gridSpecs = bySpec
   for id in pairs(bySpec) do bySpec[id] = nil end
   if specs then
     -- An id is one button: a group's that repeats another's, or a
-    -- built-in's, is not a second one.
-    local taken = {}
-    for i = 1, #available do taken[available[i]] = true end
+    -- built-in's, is not a second one. The groups' ids taken so far are
+    -- bySpec's keys; the built-ins' are the first `builtins` of the list.
+    local builtins = n
     for i = 1, #specs do
       local spec = specs[i]
       local id = type(spec) == "table" and spec.id or nil
-      if type(id) == "string" and id ~= "" and not taken[id] then
-        taken[id] = true
+      local taken = type(id) ~= "string" or id == "" or bySpec[id] ~= nil
+      for k = 1, builtins do
+        if taken then break end
+        if available[k] == id then taken = true end
+      end
+      if not taken then
         bySpec[id] = spec
-        available[#available + 1] = id
+        n = n + 1
+        if available[n] ~= id then available[n] = id; changed = true end
       end
     end
   end
+  for i = before, n + 1, -1 do available[i] = nil end
+  if before ~= n then changed = true end
+
   local UI = ns.MailboxUI
   local stored = UI and type(UI.GetGridLayout) == "function" and UI.GetGridLayout() or {}
-  local entries, stale = RV.ReconcileGrid(stored, available, specs ~= nil)
-  if stale and specs ~= nil and UI and UI.SetGridLayout then UI.SetGridLayout(entries) end
+  local known = specs ~= nil
+  local last = panel._gridLast
+  if last and not changed and last.stored == stored and last.known == known
+      and last.entries == panel._gridEntries then
+    return last.entries
+  end
+  local entries, stale = RV.ReconcileGrid(stored, available, known)
+  if stale and known and UI and UI.SetGridLayout then UI.SetGridLayout(entries) end
   panel._gridEntries = entries
+  last = last or {}
+  panel._gridLast = last
+  last.stored, last.known, last.entries = stored, known, entries
   return entries
 end
 

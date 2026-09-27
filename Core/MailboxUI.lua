@@ -185,8 +185,8 @@ for key in pairs(OPTION_DEFAULTS) do
 end
 
 -- The settings a list refresh reads for every row -- these switches, and the
--- row arrangement, gold, time left and quality mark below -- answered from
--- memory until one of them is written. Every write to them is one of this
+-- row arrangement, gold, time left and quality mark below, and the category
+-- grid's arrangement -- answered from memory until one of them is written. Every write to them is one of this
 -- section's setters or UI.ResetSettings, and each of those calls
 -- ForgetSettings; a saved-variables root or profile table other than the one
 -- the answers were read from (the client restoring saved variables, anything
@@ -200,6 +200,7 @@ local function ForgetSettings()
   for key in pairs(opt) do opt[key] = nil end
   memo.root, memo.profile = nil, nil
   memo.quality, memo.gold, memo.expiry, memo.layout = nil, nil, nil, nil
+  memo.grid, memo.gridText = nil, nil
 end
 
 -- The root is read off the global the store is bound to (Postbox.lua), not
@@ -678,19 +679,27 @@ local function GridUnescape(text)
   return (text:gsub("%%2C", ","):gsub("%%25", "%%"))
 end
 
+-- The answer is shared, like the row arrangement's, and must not be written
+-- to: it is the same table for as long as the stored string is the same one
+-- (the settings memo above, and the string itself compared, since the grid
+-- asks for it on every list refresh).
 function UI.GetGridLayout()
+  local memo = Settings()
   local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.gridLayout")
+  if memo.grid and memo.gridText == stored then return memo.grid end
   local out = {}
-  if type(stored) ~= "string" then return out end
-  local seen = {}
-  for token in stored:gmatch("[^,]+") do
-    local hidden = token:sub(1, 1) == "-"
-    local id = GridUnescape(hidden and token:sub(2) or token)
-    if id ~= "" and not seen[id] then
-      seen[id] = true
-      out[#out + 1] = { id = id, shown = not hidden }
+  if type(stored) == "string" then
+    local seen = {}
+    for token in stored:gmatch("[^,]+") do
+      local hidden = token:sub(1, 1) == "-"
+      local id = GridUnescape(hidden and token:sub(2) or token)
+      if id ~= "" and not seen[id] then
+        seen[id] = true
+        out[#out + 1] = { id = id, shown = not hidden }
+      end
     end
   end
+  memo.grid, memo.gridText = out, stored
   return out
 end
 
@@ -700,6 +709,7 @@ function UI.SetGridLayout(list)
   if not profile then return end
   if type(list) ~= "table" then
     profile.gridLayout = nil
+    ForgetSettings()
     return
   end
   local parts = {}
@@ -710,6 +720,7 @@ function UI.SetGridLayout(list)
     end
   end
   profile.gridLayout = table.concat(parts, ",")
+  ForgetSettings()
 end
 
 -------------------------------------------------------------
