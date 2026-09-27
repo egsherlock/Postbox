@@ -1100,7 +1100,7 @@ function Skin.Apply(frame)
   -- repaints the host shell on our frame at full alpha and tells nobody. It
   -- also catches anything a future EllesmereUI moves without saying so.
   pcall(function()
-    frame:HookScript("OnShow", function() Skin.OnHostLooksChanged() end)
+    frame:HookScript("OnShow", function() Skin.OnHostLooksChanged(true) end)
   end)
 
   Skin.Refresh(frame)
@@ -1123,7 +1123,7 @@ function Skin.ApplyWindow(frame)
   pcall(function() if frame.TitleText then S.Font(frame.TitleText, 1, 1, 1) end end)
   pcall(function() Skin.ApplyBorder(frame) end)
   pcall(function()
-    frame:HookScript("OnShow", function() Skin.OnHostLooksChanged() end)
+    frame:HookScript("OnShow", function() Skin.OnHostLooksChanged(true) end)
   end)
   Skin.Refresh(frame)
 end
@@ -1197,11 +1197,57 @@ end
 -- the restyle finishes before these callbacks fire. If it were the other way
 -- round the window would sit at the host's own alpha until the next window
 -- open, which the OnShow hook in Apply already covers.
-function Skin.OnHostLooksChanged()
+--
+-- `fromShow` is that hook. A window opening repaints its fill, border and
+-- accent icons every time, but the accent text and the plate sweep only when
+-- the looks they paint from are not the ones they were last painted in: every
+-- live signal repaints both on the spot, open window or not, so on an open the
+-- sweep is usually a repeat. What they paint from is read afresh here -- the
+-- facade and which skin holds the window, the accent, the window style, the
+-- house font and the panel colour -- so a change that arrived with no signal
+-- while the window was closed (a Blizz UI Enhanced style switch, or a hook
+-- that never registered) still differs, and the next open paints it.
+local looksPainted, looksNow = {}, {}
+local LOOKS_COUNT = 12
+
+local function ReadLooks(out)
+  local r, g, b = Skin.GetAccent()
+  out[1], out[2], out[3], out[4], out[5] = S, ns.Skin, r, g, b
+  local style, path, flag, pr, pg, pb, pa
+  if type(S.GetStyle) == "function" then
+    local ok, v = pcall(S.GetStyle)
+    if ok then style = v end
+  end
+  if type(S.GetFont) == "function" then
+    local ok, v1, v2 = pcall(S.GetFont)
+    if ok then path, flag = v1, v2 end
+  end
+  if type(S.GetPanelColor) == "function" then
+    local ok, v1, v2, v3, v4 = pcall(S.GetPanelColor)
+    if ok then pr, pg, pb, pa = v1, v2, v3, v4 end
+  end
+  out[6], out[7], out[8], out[9], out[10], out[11], out[12] = style, path, flag, pr, pg, pb, pa
+end
+
+function Skin.OnHostLooksChanged(fromShow)
   if not S then return end
   pcall(Skin.ApplyBgOpacity)          -- baseline fill colour + opacity
   pcall(Skin.ApplyBorder)             -- the user's configured window border
   pcall(Skin.RefreshAccents)          -- options cog, collect view toggle
+
+  local ok = pcall(ReadLooks, looksNow)
+  local same = ok and looksPainted.valid
+  if same then
+    for i = 1, LOOKS_COUNT do
+      if looksNow[i] ~= looksPainted[i] then same = false break end
+    end
+  end
+  if fromShow and same then return end
+  if ok then
+    for i = 1, LOOKS_COUNT do looksPainted[i] = looksNow[i] end
+  end
+  looksPainted.valid = ok
+
   -- Accent-toned TEXT. The plate sweep below repaints art; headings, field
   -- captions and tile captions are font strings and were the half nothing
   -- tracked, so they kept the previous accent until their role happened to be
