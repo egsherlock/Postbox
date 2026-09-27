@@ -36,6 +36,10 @@ when empty:
 ### Fixed        bugs, one line each: what went wrong, what happens now
 ```
 
+A release players should notice -- a big one, or one that needs a full restart --
+may open with one or two plain sentences above the headings: what it is, and
+anything the player has to do. Nothing else goes above them.
+
 One item is one bullet of one to three lines. Lead with the bold effect. A run of
 small cosmetic changes can share one un-bolded bullet at the end of Improved. Twenty
 bullets is too many: if a release has that many, group them. The GitHub release

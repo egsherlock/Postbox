@@ -558,9 +558,9 @@ local function Build()
   cy = -CARD_PAD
 
   -- Compact is the default, so the switch is the one a player turns ON to
-  -- change it: two-line rows. The stored option is still compactRows, read
+  -- change it: larger, two-line rows. The stored option is still compactRows, read
   -- inverted, so nobody's choice moves.
-  cy = AddCheckbox(card, cy, L["OPT_TWO_LINE_ROWS_TITLE"], L["OPT_TWO_LINE_ROWS_DESC"],
+  cy = AddCheckbox(card, cy, L["OPT_LARGER_ROWS_TITLE"], L["OPT_LARGER_ROWS_DESC"],
         function() return not ns.MailboxUI.GetOption("compactRows") end,
         function(on)
           ns.MailboxUI.SetOption("compactRows", not on)

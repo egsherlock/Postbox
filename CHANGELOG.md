@@ -2,125 +2,59 @@
 
 ## 1.40.0
 
+**The biggest Postbox update yet.** Every character's mailbox in one place, a
+History of everything you collect, a tidier inbox, and Traditional Chinese.
+*After updating, restart the game once (a /reload is not enough) so Postbox
+shows up in the minimap's addon menu.*
+
 ### New
 
-- **Postbox speaks Traditional Chinese.** The whole addon — every window,
-  every message, every tooltip — in the words Taiwan's servers use: 拍賣場,
-  分身, 戰隊, 伺服器. With thanks to samuelbears, who translated it. It has not
-  yet been read on a Traditional Chinese client, so if a word is off, please
-  say so on GitHub.
-- **Alt+right-click attaches every stack.** Alt+right-click an item in your
-  bags while writing a mail and every stack of it goes in: what fits into the
-  slots, the rest into the queue behind them. Works in the default bags,
-  EllesmereUI's and Baganator's. Hover "Attachments" for a reminder.
-- **Every character's mailbox, in one place.** The mailbox memory is now
-  Mail Memory, and it remembers every character. At a mailbox, the button
-  beside the Mail tab's search lists your characters, names in their class
-  colour, and picks one to show its box right in the Mail tab, beside your
-  own Inbox; closing the mailbox brings your own back. Away from one, Mail
-  Memory's window works the same way, and can sort the mail closest to
-  expiring to the top. In both, the toggle inside the search box searches
-  every character at once, each one's matches under its name. The minimap
-  icon, the minimap's addon menu and /postbox mail all open it.
-- **New mail shows up in Mail Memory as rows.** When an auction sells,
-  expires or is won while you are away, it is listed by item ("AH Sold -
-  Lightning Etched Specs"), and other new mail by sender, until you next
-  open a mailbox.
-- **Warnings before mail is lost on another character.** The minimap icon's
-  tooltip names any character with mail under three days from expiring, or
-  with mail on its way (an auction you posted, a purchase, something you sent
-  it) and no mailbox opened for over three weeks. One line in chat at login
-  says the same; it can be switched off in Options, under Mail Memory.
-- **From alts.** A sixth category button collects mail from your own
-  characters in one click, on any realm. No setup: every character you have
-  logged into with Postbox installed counts. Other now means everything that
-  is neither auction mail nor from your alts, so the two never overlap.
-- **History.** A clock beside Inbox lists what Postbox collected on this
-  character, newest first: when, from whom, what came out and what it was
-  worth, with earned and spent totals underneath. Letters you read are listed
-  too, and hovering one shows what it said. Search works there as well. It
-  keeps a week by default; Options can keep up to 30 days.
+- **Every character's mailbox, in one place.** Mail Memory remembers what each
+  of your characters has waiting. Check any of them from the minimap icon,
+  wherever you are, or right in the Mail tab when you are at a mailbox, and
+  search all of them at once.
+- **History.** The clock beside Inbox lists everything Postbox collected: when,
+  from whom, what it was worth, and what each letter said. It keeps a week, or
+  up to a month if you like.
+- **Warnings before mail is lost.** Postbox tells you when mail on another
+  character is about to expire, or has been waiting on a character you have
+  not played in weeks.
+- **See new mail before you reach a mailbox.** Auctions that sell, expire or
+  are bought while you are away show up in Mail Memory by item name.
+- **From alts.** A new button collects everything your own characters sent
+  you, on any realm.
+- **Alt+right-click attaches every stack** of an item at once; whatever does
+  not fit waits in the queue.
+- **Postbox speaks Traditional Chinese (繁體中文),** translated by samuelbears,
+  who also brought us Simplified Chinese. Thank you! If a word reads oddly,
+  please say so on GitHub.
 
 ### Improved
 
-- **Compact rows are the default.** One line per mail, with everything the
-  two-line row showed; "Two-line mail rows" in Options brings the larger row
-  back.
-- **One inbox instead of three views.** The Mail tab is now Inbox and
-  History. The inbox lists what still holds something first, then the read
-  mail with nothing left in it, folded under a divider that opens them and
-  deletes them in one click. In a long inbox the divider waits at the bottom
-  of the list, so you can see there is read mail without scrolling for it;
-  scroll down to it and the read mail opens, scroll back up and it folds
-  away. Prefer the old way? Options, Read mail, puts it in a Done tab of its
-  own, or deletes each mail as soon as it is finished with (History keeps
-  what a letter said). The All view and its option are gone.
-- **Click "Stuck: N"** in the title bar to see only the mail the game would
-  not hand over (the buttons below then collect just those), and click it
-  again to see everything.
-- **Mail rows line up.** Names sit in one column, as wide as the longest name
-  listed and never wider than "AH Expired", so every item name starts in the
-  same place. Gold, slots and time left sit at the right edge of each row,
-  and the item name uses whatever room they leave. Rows show a sender
-  without their realm, and "The Postmaster" as "Postmaster"; the tooltip has
-  the full name.
-- **Choose what each row shows, and in what order.** Options, Mail rows:
-  tick Gold, Slots and Time left on or off, drag them into the order you want,
-  and pick which gold (earned, spent or both) and when the time left shows
-  (always, or under 7, 3 or 1 days). Whatever you hide moves to the row's
-  tooltip. A C.O.D. price always shows, because Postbox never pays one
-  without asking. Items show their crafting quality mark on the corner of
-  their icon; Options can put it after the name instead, show both, or hide
-  it.
-- **Counts are the true number, and each one says one thing.** "Inbox (124)"
-  is everything in the box, read mail included; every button counts what it
-  would collect, "All mail (98)" too; and a button with nothing to collect is
-  greyed out rather than answering "Done" when clicked. No more "99+". The
-  Mail tab itself wears a dot while there is mail to collect, orange when
-  some of it would not come out. Its separate caption setting is gone.
-- **Right-click "Attachments" to take everything out.** Every attached item
-  goes back to your bags and the queue is cleared, as right-clicking a slot
-  does for one item.
-- **Mail Memory matches the mail list:** auction mail reads "AH Sold" and
-  "AH Bought" in colour with the item's name, in the same columns, following the
-  same switches. Its window can be made wider, and searching for "sold" or
-  "AH" now finds auction mail in the Inbox and History too.
-- **Options fit on screen again**, in two even columns. Mail Memory has its
-  own section with its switch on the heading, like the minimap icon's, and
-  the new-mail sound and flash no longer stop working when it is off.
-- Compact rows show money as its largest coin ("1309g", "19g", "33s"); the
-  full sum is in the mail. Rows use the list's whole width when it does not
-  scroll, two-line rows no longer repeat "Auction sold" under "AH Sold", and
-  hovering the resize grip (in both windows) says what dragging and a
-  right-click do; a right-click resets Mail Memory's size too. Search boxes
-  have a small clear button while they hold text, and a cancelled auction's
-  row reads "AH Cancel". "AH Won" is "AH Bought" again, and its button "All
-  bought" now leads the category buttons, where "All expired" was.
-- **Quicker where there is a lot to get through.** Searching every character
-  in Mail Memory, searching a month of History, and the inbox's own refresh
-  all do less work per keystroke and per mail; nothing looks different.
-  History is trimmed to the days you keep on every character at login, not
-  only on the one you are playing. Clicking the minimap icon while the
-  character list is open now closes it.
+- **One tidy inbox.** Mail still to collect comes first. Read mail with
+  nothing left in it folds away under a divider that deletes it in one click.
+  Rather have it elsewhere? Options can give it a tab of its own, or delete it
+  for you as you go (History keeps what it said).
+- **Compact rows by default,** lined up in neat columns. You choose what each
+  row shows (gold, slots, time left) and in what order; "Larger mail rows"
+  brings the two-line rows back.
+- **Clearer counts.** Inbox counts everything in the box, each button counts
+  what it would collect, and a button with nothing to do is greyed out.
+- **Crafted items and reagents show their quality mark** on the icon.
+- **Handy shortcuts:** click "Stuck" in the title bar to see only the mail the
+  game would not hand over, right-click "Attachments" to empty a mail you are
+  writing, and clear a search with one click. "AH Bought" is back, and its
+  button now leads the row.
+- **Faster** on big mailboxes and long histories, and the options fit on
+  screen again.
 
 ### Fixed
 
-- **"Stuck" no longer outlives its mail.** A mail the game refused was
-  remembered until it was collected through Postbox, even across sessions,
-  so once it had expired or been emptied some other way, the next mail like
-  it — another "Auction won:" for the same item — could wear the warning and
-  count in "Stuck: N" without ever being refused. Postbox now forgets a
-  refusal as soon as it can see the mail has gone.
-- **One alert per new mail.** Buying from the auction house played the
-  new-mail sound and flash twice: once at the purchase and again as the mail
-  landed.
-- **Postbox Modern leaves other tooltips alone.** It was putting the game's
-  tooltip border back on every tooltip it had not styled itself, which could
-  fight a tooltip addon's own look.
-- Hovering the icon of a mail with no item in the mailbox memory raised a
-  Lua error.
-- **The mailbox memory lost track past 50 mails**, and did not count an unread
-  letter with nothing attached. Its count now matches the Mail tab.
+- "Stuck" warnings could appear on mail that was never refused.
+- Buying from the auction house played the new-mail alert twice.
+- The Postbox Modern look could interfere with other addons' tooltips.
+- Mail Memory lost track past 50 mails, and one of its tooltips could cause an
+  error.
 
 ## 1.39.0
 
