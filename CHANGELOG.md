@@ -52,6 +52,9 @@ longer play.
   padlocks and greys.
 - Large counts in long translations no longer run into each other: the
   window widens just enough while it needs to, then returns to your size.
+- **The mail list stops at its last mail.** In the Mail tab and in Mail
+  Memory, the last row now sits on the list's edge when scrolled to the
+  bottom, and a list that exactly fits no longer shows a scroll bar.
 - Questions asked from the options, the groups window or the recipient
   manager (a reload, a delete, a note) no longer open hidden behind them.
 - On EllesmereUI's round minimaps the mail icon sits on the rim, and on the
