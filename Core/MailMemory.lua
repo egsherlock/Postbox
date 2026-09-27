@@ -1791,7 +1791,9 @@ function Refresh(frame)
     .. T.Colorize(warn and "warning" or "textSecondary", "(" .. tally .. ")"))
   local crest = MM.ClassIcon(info.realm, info.name)
   if crest then frame.Picker.Icon:SetAtlas(crest, false) end
-  local others = #MM.Characters() > 1
+  -- The Mail tab's rule: a picker while there is another box with mail to
+  -- show (the list it opens holds only those), or while one is on screen.
+  local others = MM.HasOthers() or v ~= nil
   frame.Picker:SetShown(others)
   frame.SearchAllButton:SetShown(others)
   -- The clear button left of the toggle, or at the box's end without one;

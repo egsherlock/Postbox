@@ -2925,9 +2925,15 @@ function RV.ScrollFold(panel)
   local scroll = panel.MailListScroll
   local viewport = scroll:GetHeight() or 0
   if viewport <= 0 then return false end
-  local bottom = (scroll:GetVerticalScroll() or 0) + viewport
+  local offset = scroll:GetVerticalScroll() or 0
+  local bottom = offset + viewport
   local top = (at - 1) * stride
   local open = panel._readOpen and true or false
+  -- Never opened at the very top. A folded list whose divider shows there
+  -- needs no scroll at all, and the only thing that puts the offset back at
+  -- the top is the code -- a view switch, a search, another box -- whose
+  -- SetVerticalScroll(0) reaches this handler too, and is not a scroll.
+  if not open and offset <= 0 then return false end
   if not open and top + height <= bottom + 0.5 then
     panel._readOpen = true
   elseif open and top >= bottom - 0.5 then
@@ -3482,17 +3488,18 @@ end
 
 -- Read-mail mode "delete": a mail Postbox has just emptied of gold or items,
 -- or a letter the reading view's Back has just closed on, goes the moment it
--- is finished with -- read, and nothing left in it. Checked against the
--- identity taken before the take: an auction mail the server deleted on its
+-- is finished with -- read, and nothing left in it. Checked against what
+-- RV.Before took before the take: an auction mail the server deleted on its
 -- own has moved on, and whatever slid into its index is not this call's to
 -- delete. `record` is the mail's
 -- History record, so a deleted letter stays listed there with what it said.
 -- `andThen` runs whatever happened.
-function RV.AutoDelete(panel, index, identity, record, andThen)
+function RV.AutoDelete(panel, index, before, record, andThen)
   local function Continue() if andThen then andThen() end end
-  if RV.Mode() ~= "delete" or not index or not identity then return Continue() end
+  if RV.Mode() ~= "delete" or not index or type(before) ~= "table" then return Continue() end
   if not MailboxOpen() or Mail().IsBusy() then return Continue() end
-  if RV.Identity(index) ~= identity or not Mail().IsReadPersistent(index) then return Continue() end
+  if (tonumber((GetInboxNumItems())) or 0) ~= before.count then return Continue() end
+  if RV.Identity(index) ~= before.id or not Mail().IsReadPersistent(index) then return Continue() end
   if record and Mail().HistoryNote then Mail().HistoryNote(record, "read") end
   -- Through the sweep that re-checks the index immediately before its
   -- command: deleting is the irreversible one.
@@ -3508,6 +3515,18 @@ function RV.Identity(index)
   local _, _, sender, subject = GetInboxHeaderInfo(index)
   if sender == nil and subject == nil then return nil end
   return tostring(sender) .. "\001" .. tostring(subject)
+end
+
+-- index -> what RV.AutoDelete checks the mail against once the take is done:
+-- its identity, and how many mails the client lists. Sender and subject alone
+-- are not enough: a mail emptied of everything and with no text is deleted
+-- by the server, the one above it slides into its index, and two mails from
+-- one alt with one subject read alike. A count that moved means the listing
+-- changed under the take, and nothing is deleted on a guess.
+function RV.Before(index)
+  local id = RV.Identity(index)
+  if not id then return nil end
+  return { id = id, count = tonumber((GetInboxNumItems())) or 0 }
 end
 
 -- Whether the mail held gold or items, from its header (an unread mail's
@@ -3531,7 +3550,7 @@ function CollectSingleMail(panel, index, opts)
     codBefore = tonumber(codBefore) or 0
     -- Only a mail that held something is finished by a collect: an unread
     -- letter "collected" was read by the fetch, not by the player.
-    local before = RV.HeldSomething(index) and RV.Identity(index) or nil
+    local before = RV.HeldSomething(index) and RV.Before(index) or nil
     Mail().CollectMail(index, function(status, refused, reason)
       -- Emptied: in the "delete" read-mail mode it goes now, not later.
       if status == "collected" then
@@ -3995,7 +4014,7 @@ local function RunStep()
   local _, _, _, _, money = GetInboxHeaderInfo(index)
   local kind = Mail().ClassifyMail(index)
   local mailEarned, mailSpent = MailEconomy(index, kind, money)
-  local before = RV.HeldSomething(index) and RV.Identity(index) or nil
+  local before = RV.HeldSomething(index) and RV.Before(index) or nil
 
   Mail().CollectMail(index, function(status, refused, reason)
     Run.current = nil
@@ -4639,11 +4658,18 @@ local function BuildDetail(panel)
   -- Back on a letter that is finished with -- read, and nothing left in it --
   -- deletes it in the "delete" read-mail mode; History keeps what it said.
   -- Back only: Escape and the tab switching away also hide this, and neither
-  -- is a player saying they are done with the letter.
+  -- is a player saying they are done with the letter. And only a letter
+  -- History holds from this reading -- read here for the first time, or
+  -- emptied here -- which is also what makes "History keeps what it said"
+  -- true. An old letter opened again stays under the divider until the
+  -- player clears it, as the option's description promises.
   detail.Back:SetScript("OnClick", function()
     local index = LiveIndex(detail)
     detail:Hide()
-    if index then RV.AutoDelete(panel, index, RV.Identity(index), detail._history) end
+    local record = detail._history
+    if index and record and record.entry then
+      RV.AutoDelete(panel, index, RV.Before(index), record)
+    end
   end)
 
   detail.Collect:SetScript("OnClick", function()

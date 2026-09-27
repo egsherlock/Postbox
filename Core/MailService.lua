@@ -1144,7 +1144,15 @@ function Mail.CollectMail(index, onDone, opts)
   -- deletes it, so there is nothing left to be unread. Skipping the fetch there
   -- saves a full round trip per mail, and auction gold is the bulk case.
   local needFetch = not (opts and opts.skipFetch)
-  if itemCount == 0 and money > 0 then needFetch = false end
+  -- Except a READ letter from a person holding only gold: it keeps its text
+  -- once emptied, and the fetch is what hands that text to History -- the
+  -- only copy once the "delete" read-mail mode has removed the letter. It is
+  -- already read, so nothing about its state changes; auction mail has no
+  -- text to keep and stays on the fast path.
+  if itemCount == 0 and money > 0
+    and (not wasRead or Mail.ClassifyMail(index) ~= "other") then
+    needFetch = false
+  end
 
   -- skipFetch is a hint, not a promise. If the header says this mail has
   -- attachments and not one link has loaded, the body was never fetched -- so
