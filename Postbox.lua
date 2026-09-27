@@ -358,6 +358,7 @@ end
 --   * The inbox walk and the profiler reads happen at the window's two ends,
 --     at the close, and when a report is built, never per event. The two item-data events
 --     are listened to only while a window is open.
+--   * One table per open, allocated once: no table built per step.
 --   * Numbers only, and nothing saved: no character, sender or item name is
 --     recorded, and a /reload starts afresh (as the profiler itself does).
 -------------------------------------------------------------
@@ -396,13 +397,46 @@ do
   local BAGS = { "arm", "rearm", "blizz", "baganator", "eui", "eui on show", "slots", "ungrey", "hooks" }
   local IS_BAG = {}
   for i = 1, #BAGS do IS_BAG[BAGS[i]] = true end
-  -- The session's first of each of these is a build: the Send tab's first
-  -- show fills its contact lists, History makes its rows, the picker its frame.
-  local FIRST = { send = true, contacts = true, history = true, picker = true }
   local CLOSE_PARTS = { "memory", "settle", "bags", "draft", "hide" }
 
+  -- A record's numbered slots, which Perf.Open's constructor lays out:
+  --     1-15  each timed step of the window: count, total ms and longest ms,
+  --           three apiece from KIND_AT[kind];
+  --    16-21  each stage's ms, from STAGE_AT[name];
+  --    22-48  the profiler's slow-frame counts, nine at a time (the game's
+  --           three, all addons' three, Postbox's three): at the open from
+  --           SLOW_OPEN, at the window's end from SLOW_END, at the close from
+  --           SLOW_CLOSE;
+  --    49-96  each visit timing (ACTS, BAGS, then the verdicts'): count, total
+  --           ms and longest ms, from ACT_AT[kind];
+  --   97-100  the session's first of these, from FIRST_AT[kind]: the Send
+  --           tab's first show fills its contact lists, History makes its
+  --           rows, the picker its frame;
+  --  101-105  each part of the close, from PART_AT[name];
+  --  106-112  the named ones below: the bag calls' total ms, the tooltip reads
+  --           so far at the open and at the close, the close's clock mark and
+  --           its ms, the inbox walk at the window's end, and the memory reads
+  --           of reports made during the window.
+  -- false is "not yet" (or, for a slow count, "the profiler would not say").
+  -- Slots rather than named fields, because a slot costs 16 bytes and a
+  -- named field 40, and rather than tables of their own, because this way
+  -- an open is one allocation.
+  local KIND_AT = { sync = 1, refresh = 4, rows = 7, capture = 10, summary = 13 }
+  local STAGE_AT = {}
+  for i = 1, #STAGES do STAGE_AT[STAGES[i]] = 15 + i end
+  local SLOW_OPEN, SLOW_END, SLOW_CLOSE = 22, 31, 40
+  local ACT_AT = {}
+  for i = 1, #ACTS do ACT_AT[ACTS[i]] = 46 + 3 * i end
+  for i = 1, #BAGS do ACT_AT[BAGS[i]] = 64 + 3 * i end
+  ACT_AT.verdict = 94
+  local FIRST_AT = { send = 97, contacts = 98, history = 99, picker = 100 }
+  local PART_AT = {}
+  for i = 1, #CLOSE_PARTS do PART_AT[CLOSE_PARTS[i]] = 100 + i end
+  local BAG_MS, SCANS, SCANS_END, CLOSE_AT, CLOSE_MS, END_WALK, REPORT_MS =
+    106, 107, 108, 109, 110, 111, 112
+
   local opens, count = {}, 0
-  local firstDone = {}      -- which of FIRST this session has already timed
+  local firstDone = {}      -- which of FIRST_AT this session has already timed
   local lastInbox = nil     -- the inbox as last read at a mailbox
   local watching = false
   local memoryReadMs = 0    -- the costliest memory read a report has made
@@ -451,19 +485,26 @@ do
     return value
   end
 
-  -- Frames over 100 / 500 / 1000 ms so far this session: the whole game, all
-  -- addons together, and Postbox alone.
-  local function SlowCounts()
+  -- Frames over 100 / 500 / 1000 ms so far this session, into t[at] onwards:
+  -- the whole game's three, all addons' together, Postbox's alone.
+  -- -> whether the profiler answered at all.
+  local function SlowInto(t, at)
     local api = Profiler()
-    if not api then return nil end
-    local out = { app = {}, all = {}, own = {} }
+    if not api then return false end
     for i = 1, #SLOW do
       local id = MetricId(SLOW[i])
-      out.app[i] = Metric(api.GetApplicationMetric, id)
-      out.all[i] = Metric(api.GetOverallMetric, id)
-      out.own[i] = Metric(api.GetAddOnMetric, ADDON_NAME, id)
+      t[at + i - 1] = Metric(api.GetApplicationMetric, id) or false
+      t[at + i + 2] = Metric(api.GetOverallMetric, id) or false
+      t[at + i + 5] = Metric(api.GetAddOnMetric, ADDON_NAME, id) or false
     end
-    return out
+    return true
+  end
+
+  -- The same counts now, in a table of their own (from slot 1): for a report.
+  local function SlowCounts()
+    local t = {}
+    if SlowInto(t, 1) then return t end
+    return nil
   end
 
   local function InboxCount()
@@ -575,23 +616,39 @@ do
 
   -- The full open path has begun (Core/MailboxUI.lua, OnMailShow). -> a clock
   -- mark for the first Stage.
+  --
+  -- Every field is named here, false for "not yet", so the record is sized
+  -- once and never grows.
   function Perf.Open()
     if Perf.cur then Perf.Settle("reopened") end
     count = count + 1
     local rec = {
+      0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,              -- KIND_AT
+      false, false, false, false, false, false,                      -- STAGE_AT
+      false, false, false,  false, false, false,  false, false, false, -- SLOW_OPEN
+      false, false, false,  false, false, false,  false, false, false, -- SLOW_END
+      false, false, false,  false, false, false,  false, false, false, -- SLOW_CLOSE
+      0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,    -- ACT_AT: ACTS
+      0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,              -- BAGS
+      0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,
+      0, 0, 0,                                                       -- verdict
+      false, false, false, false,                                    -- FIRST_AT
+      false, false, false, false, false,                             -- PART_AT
+      0, 0, false, false, false, false, false,                       -- BAG_MS...REPORT_MS
       no = count,
       at = (type(date) == "function" and date("%H:%M")) or "?",
-      openedAt = Now(),
-      stage = {},
-      evt = 0, frames = 0,
-      n = {}, ms = {}, max = {},
+      openedAt = Now(), t0 = 0, show = false,
+      evt = 0, frames = 0, lastFrame = false, firstEvt = false, lastEvt = false,
+      openShown = 0, openTotal = 0, firstShown = false, firstTotal = false,
+      lastShown = false, lastTotal = false,
       walk = 0, binds = 0, items = 0, asks = 0, cold = 0,
-      longest = 0,
-      act = {}, firsts = {}, bagMs = 0,
+      longest = 0, longestKind = false,
+      prof = false, profEnd = false, profClose = false, ended = false, span = 0,
+      closing = false,
     }
     rec.openShown, rec.openTotal = InboxCount()
-    rec.slow = SlowCounts()
-    rec.scans = TooltipScans()
+    rec.prof = SlowInto(rec, SLOW_OPEN)
+    rec[SCANS] = TooltipScans()
     opens[(count - 1) % KEEP + 1] = rec
     Perf.cur = rec
     Perf.visit = rec
@@ -605,7 +662,8 @@ do
   function Perf.Stage(name, since, last)
     local rec = Perf.cur
     if not (rec and since) then return nil end
-    rec.stage[name] = (rec.stage[name] or 0) + Since(since)
+    local at = STAGE_AT[name]
+    if at then rec[at] = (rec[at] or 0) + Since(since) end
     -- The total is on the line as it is, so it does not compete for the
     -- longest step; the refresh inside its select stage does, as a refresh.
     if last then rec.show = Since(rec.t0) end
@@ -622,9 +680,12 @@ do
     local rec = Perf.cur
     if not (rec and mark) then return end
     local ms = Since(mark)
-    rec.n[kind] = (rec.n[kind] or 0) + 1
-    rec.ms[kind] = (rec.ms[kind] or 0) + ms
-    if ms > (rec.max[kind] or 0) then rec.max[kind] = ms end
+    local at = KIND_AT[kind]
+    if at then
+      rec[at] = rec[at] + 1
+      rec[at + 1] = rec[at + 1] + ms
+      if ms > rec[at + 2] then rec[at + 2] = ms end
+    end
     Note(rec, ms, kind)
   end
 
@@ -683,21 +744,23 @@ do
     local rec = Perf.visit
     if not (rec and mark) then return nil end
     local ms = Since(mark)
-    local t = rec.act[kind]
-    if not t then
-      t = { n = 0, ms = 0, max = 0 }
-      rec.act[kind] = t
+    local at = ACT_AT[kind]
+    if at then
+      rec[at] = rec[at] + 1
+      rec[at + 1] = rec[at + 1] + ms
+      if ms > rec[at + 2] then rec[at + 2] = ms end
     end
-    t.n = t.n + 1
-    t.ms = t.ms + ms
-    if ms > t.max then t.max = ms end
     if IS_BAG[kind] then
-      rec.bagMs = rec.bagMs + ms
-      if rec.closing then rec.closeParts.bags = (rec.closeParts.bags or 0) + ms end
+      rec[BAG_MS] = rec[BAG_MS] + ms
+      if rec.closing then
+        local part = PART_AT.bags
+        rec[part] = (rec[part] or 0) + ms
+      end
     end
-    if FIRST[kind] and not firstDone[kind] then
+    local first = FIRST_AT[kind]
+    if first and not firstDone[kind] then
       firstDone[kind] = true
-      rec.firsts[kind] = ms
+      rec[first] = ms
     end
     if kind ~= "verdict" then Note(rec, ms, kind) end
     return ms
@@ -710,25 +773,25 @@ do
     local rec = Perf.visit
     if not rec or rec.closing then return end
     rec.closing = true
-    rec.closeAt = Clock()
-    rec.closeParts = {}
+    rec[CLOSE_AT] = Clock()
     -- Read before the window's own end, in the same frame: the close's frame
     -- is counted by the next read, which is the next open's.
-    rec.slowClose = SlowCounts()
+    rec.profClose = SlowInto(rec, SLOW_CLOSE)
   end
 
   function Perf.ClosePart(name, mark)
     local rec = Perf.visit
     if not (rec and rec.closing and mark) then return end
-    rec.closeParts[name] = (rec.closeParts[name] or 0) + Since(mark)
+    local at = PART_AT[name]
+    if at then rec[at] = (rec[at] or 0) + Since(mark) end
   end
 
   function Perf.CloseEnd()
     local rec = Perf.visit
     if not (rec and rec.closing) then return end
-    rec.close = Since(rec.closeAt)
-    rec.closing = nil
-    rec.scansEnd = TooltipScans()
+    rec[CLOSE_MS] = Since(rec[CLOSE_AT])
+    rec.closing = false
+    rec[SCANS_END] = TooltipScans()
     Perf.visit = nil
   end
 
@@ -741,15 +804,15 @@ do
     WatchItems(false)
     rec.ended = reason
     rec.span = Now() - rec.openedAt
-    rec.slowEnd = SlowCounts()
+    rec.profEnd = SlowInto(rec, SLOW_END)
     -- A closing mailbox may already read empty. That says nothing about the
     -- box this open saw, so the counts its last update read stand in for it;
     -- an open that saw no update at all has nothing to add. The walk is
     -- Postbox's own work, and at a close it is part of the close.
     local walkAt = Clock()
     local ok, summary = pcall(InboxSummary)
-    rec.endWalk = Since(walkAt)
-    if rec.closing then rec.closeParts.settle = rec.endWalk end
+    rec[END_WALK] = Since(walkAt)
+    if rec.closing then rec[PART_AT.settle] = rec[END_WALK] end
     if not ok then summary = nil end
     local seen = rec.lastShown or 0
     if summary and (summary.shown > 0 or (rec.firstShown and seen == 0)) then
@@ -775,28 +838,33 @@ do
     return format("%d", floor(value + 0.5))
   end
 
-  local function Triple(a, b)
+  -- Three counts' differences, "3/1/0": b[bi..bi+2] less a[ai..ai+2].
+  local function Triple(a, ai, b, bi)
     local out = {}
-    for i = 1, #SLOW do
-      local x, y = a and a[i], b and b[i]
-      out[i] = (x and y) and format("%d", floor(y - x + 0.5)) or "?"
+    for i = 0, #SLOW - 1 do
+      local x, y = a[ai + i], b[bi + i]
+      out[i + 1] = (x and y) and format("%d", floor(y - x + 0.5)) or "?"
     end
     return concat(out, "/")
   end
 
   local function SlowDelta(rec)
-    local stop = rec.slowEnd
-    if not rec.ended then stop = SlowCounts() end
-    if not (rec.slow and stop) then return "slow n/a" end
-    return format("slow %s, %s, %s", Triple(rec.slow.app, stop.app),
-      Triple(rec.slow.all, stop.all), Triple(rec.slow.own, stop.own))
+    local stop, at, read = rec, SLOW_END, rec.profEnd
+    if not rec.ended then
+      stop, at = SlowCounts(), 1
+      read = stop ~= nil
+    end
+    if not (rec.prof and read) then return "slow n/a" end
+    return format("slow %s, %s, %s", Triple(rec, SLOW_OPEN, stop, at),
+      Triple(rec, SLOW_OPEN + 3, stop, at + 3), Triple(rec, SLOW_OPEN + 6, stop, at + 6))
   end
 
   local function Timed(rec, kind, withMax)
-    local n = rec.n[kind] or 0
+    local at = KIND_AT[kind]
+    local n = rec[at]
     if n == 0 then return nil end
-    local text = format("%s %dx %sms", kind, n, Ms(rec.ms[kind]))
-    if withMax then text = text .. " max " .. Ms(rec.max[kind]) end
+    local text = format("%s %dx %sms", kind, n, Ms(rec[at + 1]))
+    if withMax then text = text .. " max " .. Ms(rec[at + 2]) end
     return text
   end
 
@@ -817,7 +885,7 @@ do
     if rec.show then
       local stages = {}
       for i = 1, #STAGES do
-        local ms = rec.stage[STAGES[i]]
+        local ms = rec[STAGE_AT[STAGES[i]]]
         if ms then stages[#stages + 1] = STAGES[i] .. " " .. Ms(ms) end
       end
       put(format("show %sms (%s)", Ms(rec.show), concat(stages, ", ")))
@@ -829,7 +897,7 @@ do
     if rec.firstEvt then
       events = events .. format(" %.1f-%.1fs", rec.firstEvt, rec.lastEvt)
     end
-    put(events .. ", sync " .. Ms(rec.ms.sync) .. "ms")
+    put(events .. ", sync " .. Ms(rec[KIND_AT.sync + 1]) .. "ms")
 
     local refresh = Timed(rec, "refresh", true)
     put(refresh and (refresh .. ", walk " .. Ms(rec.walk)) or "refresh 0")
@@ -842,8 +910,8 @@ do
       put(format("item events %d, asked %d (%d cold)", rec.items, rec.asks, rec.cold))
     end
     put(SlowDelta(rec))
-    if rec.report then
-      put(format("a report's memory read %sms in the window", Ms(rec.report)))
+    if rec[REPORT_MS] then
+      put(format("a report's memory read %sms in the window", Ms(rec[REPORT_MS])))
     end
     if rec.longestKind then
       put(format("longest step %sms %s", Ms(rec.longest), rec.longestKind))
@@ -854,24 +922,28 @@ do
   -- "send 45ms", or "send 3x 60ms max 45"; "(first)" when the session's
   -- first of it fell in this visit.
   local function Act(rec, kind)
-    local t = rec.act[kind]
-    if not t then return nil end
+    local at = ACT_AT[kind]
+    local n = rec[at]
+    if n == 0 then return nil end
     local text
-    if t.n == 1 then
-      text = format("%s %sms", kind, Ms(t.ms))
+    if n == 1 then
+      text = format("%s %sms", kind, Ms(rec[at + 1]))
     else
-      text = format("%s %dx %sms max %s", kind, t.n, Ms(t.ms), Ms(t.max))
+      text = format("%s %dx %sms max %s", kind, n, Ms(rec[at + 1]), Ms(rec[at + 2]))
     end
-    local first = rec.firsts[kind]
+    local first = FIRST_AT[kind]
+    first = first and rec[first]
     if first then
-      text = text .. (t.n == 1 and " (first)" or format(" (first %s)", Ms(first)))
+      text = text .. (n == 1 and " (first)" or format(" (first %s)", Ms(first)))
     end
     return text
   end
 
-  local function OwnSlow(a, b)
+  -- Postbox's own three slow counts, from a[ai] to b[bi] (each the start of
+  -- nine); nil when either end was not read.
+  local function OwnSlow(a, ai, b, bi)
     if not (a and b) then return nil end
-    return Triple(a.own, b.own)
+    return Triple(a, ai + 6, b, bi + 6)
   end
 
   -- Up to three lines under an open's own: what the player did in the visit,
@@ -882,41 +954,53 @@ do
     local parts = {}
     for i = 1, #ACTS do parts[#parts + 1] = Act(rec, ACTS[i]) end
     -- At a close the inbox read is one of the close's parts, below.
-    if rec.endWalk and rec.ended == "timed out" then
-      parts[#parts + 1] = format("inbox read at the window's end %sms", Ms(rec.endWalk))
+    if rec[END_WALK] and rec.ended == "timed out" then
+      parts[#parts + 1] = format("inbox read at the window's end %sms", Ms(rec[END_WALK]))
     end
     if #parts > 0 then out[#out + 1] = "    actions: " .. concat(parts, ", ") end
 
     parts = {}
     for i = 1, #BAGS do parts[#parts + 1] = Act(rec, BAGS[i]) end
-    local verdict = rec.act.verdict
-    local scans = (rec.scansEnd or TooltipScans()) - (rec.scans or 0)
-    if verdict or scans > 0 then
+    local v = ACT_AT.verdict
+    local scans = (rec[SCANS_END] or TooltipScans()) - (rec[SCANS] or 0)
+    if rec[v] > 0 or scans > 0 then
       parts[#parts + 1] = format("verdicts %d in %sms, %d tooltip reads",
-        verdict and verdict.n or 0, Ms(verdict and verdict.ms), scans)
+        rec[v], Ms(rec[v + 1]), scans)
     end
     if #parts > 0 then
-      out[#out + 1] = format("    bags %sms: %s", Ms(rec.bagMs), concat(parts, ", "))
+      out[#out + 1] = format("    bags %sms: %s", Ms(rec[BAG_MS]), concat(parts, ", "))
     end
 
     parts = {}
-    if rec.close then
+    if rec[CLOSE_MS] then
       local each = {}
       for i = 1, #CLOSE_PARTS do
-        local ms = rec.closeParts[CLOSE_PARTS[i]]
+        local ms = rec[PART_AT[CLOSE_PARTS[i]]]
         if ms then each[#each + 1] = CLOSE_PARTS[i] .. " " .. Ms(ms) end
       end
-      parts[#parts + 1] = format("close %sms (%s)", Ms(rec.close), concat(each, ", "))
+      parts[#parts + 1] = format("close %sms (%s)", Ms(rec[CLOSE_MS]), concat(each, ", "))
     end
     -- Postbox's slow frames that the window did not see: after it ended and
     -- before the close, and from the close to the next open (or to now).
     local live = Perf.visit == rec
     if rec.ended and rec.ended ~= "closed" and rec.ended ~= "reopened" then
-      local after = OwnSlow(rec.slowEnd, rec.slowClose or (live and SlowCounts()) or nil)
+      local stop, stopAt = nil, 1
+      if rec.profClose then
+        stop, stopAt = rec, SLOW_CLOSE
+      elseif live then
+        stop = SlowCounts()
+      end
+      local after = OwnSlow(rec.profEnd and rec, SLOW_END, stop, stopAt)
       if after then parts[#parts + 1] = "Postbox slow after the window " .. after end
     end
-    if rec.slowClose then
-      local away = OwnSlow(rec.slowClose, nextRec and nextRec.slow or SlowCounts())
+    if rec.profClose then
+      local stop, stopAt
+      if nextRec and nextRec.prof then
+        stop, stopAt = nextRec, SLOW_OPEN
+      else
+        stop, stopAt = SlowCounts(), 1
+      end
+      local away = OwnSlow(rec, SLOW_CLOSE, stop, stopAt)
       if away then
         parts[#parts + 1] = (nextRec and "Postbox slow from the close to the next open "
           or "Postbox slow since the close ") .. away
@@ -954,14 +1038,17 @@ do
       return
     end
     local now = SlowCounts() or {}
-    local function three(t)
+    local function three(at)
       local out = {}
-      for i = 1, #SLOW do out[i] = t and t[i] and format("%d", floor(t[i] + 0.5)) or "?" end
+      for i = 0, #SLOW - 1 do
+        local v = now[at + i]
+        out[i + 1] = v and format("%d", floor(v + 0.5)) or "?"
+      end
       return concat(out, "/")
     end
     local peak = Metric(api.GetAddOnMetric, ADDON_NAME, MetricId("PeakTime"))
     add(format("  Profiler this session, frames over 100/500/1000ms: game %s, addons %s, Postbox %s | Postbox peak %sms, recent avg %.2fms",
-      three(now.app), three(now.all), three(now.own), Ms(peak),
+      three(1), three(4), three(7), Ms(peak),
       Metric(api.GetAddOnMetric, ADDON_NAME, MetricId("RecentAverageTime")) or 0))
 
     if type(api.GetTopKAddOnsForMetric) == "function" then
@@ -1098,7 +1185,7 @@ do
       if readMs > memoryReadMs then memoryReadMs = readMs end
       -- An open still counting reads the profiler again when it ends.
       local live = Perf.cur
-      if live then live.report = (live.report or 0) + readMs end
+      if live then live[REPORT_MS] = (live[REPORT_MS] or 0) + readMs end
     end
 
     if count == 0 then
