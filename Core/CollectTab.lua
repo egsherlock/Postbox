@@ -153,7 +153,7 @@ function RV.QualityMark(index, slot)
       -- An uncached answer is a request to the server; /postbox debug counts
       -- them while an open is being measured (Postbox.lua, 5b).
       local perf = ns.Perf
-      if perf and perf.cur then perf.ItemAsk(generic ~= nil) end
+      if perf and perf.cur and perf.ItemAsk then perf.ItemAsk(generic ~= nil) end
     end
   end
   return RV.MarkOf(link)
@@ -3498,7 +3498,7 @@ local function UpdateVisibleRows(panel)
   -- Timed, with the rows it binds, while an open is being measured
   -- (Postbox.lua, 5b); nil otherwise.
   local perf = ns.Perf
-  local perfAt = perf and perf.Begin()
+  local perfAt = perf and perf.cur and perf.Begin and perf.Begin()
   -- Another character's box takes the list: its own rows, and none of these.
   local away = AV.Active(panel)
   if away then AV.UpdateRows(panel) else AV.HideRows(panel) end
@@ -3718,7 +3718,7 @@ function CT.RefreshMailList(panel)
   -- Timed while an open is being measured (Postbox.lua, 5b): the whole
   -- refresh, and the walk up to the row binds. nil otherwise.
   local perf = ns.Perf
-  local perfAt = perf and perf.Begin()
+  local perfAt = perf and perf.cur and perf.Begin and perf.Begin()
 
   CloseDetailIfStale(panel)
 

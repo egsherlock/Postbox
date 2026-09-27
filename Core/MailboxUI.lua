@@ -1720,7 +1720,7 @@ local function InboxPass()
   inboxPassQueued = false
   -- Timed with the rest of an open's work (Postbox.lua, 5b).
   local perf = ns.Perf
-  local perfAt = perf and type(perf.Begin) == "function" and perf.Begin() or nil
+  local perfAt = perf and perf.cur and type(perf.Begin) == "function" and perf.Begin() or nil
 
   -- Refusals whose mail has gone are forgotten first, where the whole inbox
   -- can be seen (the service decides whether it can): before the summary
@@ -2872,7 +2872,7 @@ function UI.Initialize()
     -- Counted, with this handler's own time, while an open's record is
     -- measuring (Postbox.lua, 5b); nil otherwise.
     local perf = ns.Perf
-    local perfAt = perf and type(perf.InboxEvent) == "function" and perf.InboxEvent() or nil
+    local perfAt = perf and perf.cur and type(perf.InboxEvent) == "function" and perf.InboxEvent() or nil
 
     -- Only two flags are set here, per event; everything that reads the inbox
     -- waits for the next frame, once, however many events arrive in this one.

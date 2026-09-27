@@ -148,7 +148,7 @@ local function CaptureNow()
 
   -- Timed while an open is being measured (Postbox.lua, 5b); nil otherwise.
   local perf = ns.Perf
-  local perfAt = perf and perf.Begin()
+  local perfAt = perf and perf.cur and perf.Begin and perf.Begin()
 
   local numItems, totalItems = GetInboxNumItems()
   numItems = tonumber(numItems) or 0
