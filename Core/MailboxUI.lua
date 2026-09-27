@@ -200,6 +200,95 @@ function UI.SetOption(key, value)
   if profile then profile[key] = value == true end
 end
 
+-- RESET TO DEFAULTS (the options panel's footer).
+--
+-- Everything under `profile` is a setting except the keys named in
+-- RESET_KEEP, which are the player's own data and survive. Clearing rather
+-- than listing is the point: a setting added next month is reset by this
+-- without anyone having to remember it exists, because every accessor reads
+-- a missing value as its default. Player-made data belongs at the
+-- saved-variables root (Postbox.lua, SCHEMA), where this never looks; data
+-- that has to live under `profile` goes in RESET_KEEP or the first reset
+-- deletes it.
+--
+-- A table is emptied where it stands, never replaced. The store memoises
+-- every path it has resolved (Lib/Store.lua) and the windows hold their
+-- position tables for the whole session (Lib/UI/Window.lua), so a fresh
+-- table would leave the minimap icon reading, and both windows saving, into
+-- a table nothing saves. The price is that an EMPTY table has to read as the
+-- default too -- which the window, recipient-window and minimap tables all
+-- do -- and so must any table-valued setting added after them.
+local RESET_KEEP = {
+  recipientHistory = true,  -- the Send tab's recent recipients (ContactService)
+}
+
+-- One step of the re-apply below. Every step runs whatever the one before it
+-- did: the settings are already cleared, and a screen left half on the old
+-- settings because an unrelated repaint threw is worse than the error. The
+-- error is still reported, through the handler every other error reaches.
+local function ResetStep(fn, arg)
+  if type(fn) ~= "function" then return end
+  local ok, err = pcall(fn, arg)
+  if not ok and type(geterrorhandler) == "function" then
+    local handler = geterrorhandler()
+    if type(handler) == "function" then handler(err) end
+  end
+end
+
+-- Clears every setting, then puts what is on screen onto the defaults.
+-- Returns true when the window style changed: the one part that waits for a
+-- /reload, because the style is claimed once, at login.
+function UI.ResetSettings()
+  local store = ns.Store
+  local profile = store and store.Get and store.Get("profile")
+  if type(profile) ~= "table" then return false end
+
+  local styleBefore = UI.GetStyleChoice()
+
+  for key, value in pairs(profile) do
+    if not RESET_KEEP[key] then
+      if type(value) == "table" then
+        for inner in pairs(value) do value[inner] = nil end
+      else
+        profile[key] = nil
+      end
+    end
+  end
+
+  -- The chosen look's border, border size and opacity. Each Reset re-reads
+  -- its value -- absent now, so the default -- and repaints every window the
+  -- skin has painted. A style with none of the three has none to repaint.
+  local skin = ns.Skin
+  if skin then
+    ResetStep(skin.ResetBorder)
+    ResetStep(skin.ResetBorderSize)
+    ResetStep(skin.ResetBgOpacity)
+  end
+
+  -- The mail window's content, through the entry points the options use.
+  ResetStep(UI.RefreshCollectRowLayout)
+  ResetStep(UI.RefreshCollectCategoryButtons)
+  ResetStep(UI.RefreshCollectTabCounts)
+  ResetStep(UI.RefreshMailTabAttach)
+  ResetStep(UI.RefreshMemoryState)
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect then
+    -- Read mail back under its divider, unfolded, and History's days.
+    ResetStep(collect.RefreshReadMode, panel)
+    ResetStep(collect.RequestRefresh, panel)
+  end
+  -- The window's size and place last, onto the floor the settings above
+  -- have just decided.
+  ResetStep(UI.ResetWindowGeometry)
+
+  local memory, icon, manager = ns.MailMemory, ns.MinimapButton, ns.RecipientManager
+  if memory then ResetStep(memory.Refresh) end
+  if icon then ResetStep(icon.Refresh) end
+  if manager then ResetStep(manager.ResetWindow) end
+
+  return UI.GetStyleChoice() ~= styleBefore
+end
+
 -- The window style: which look paints Postbox's windows. A string with its own
 -- accessors, like the tab caption below. Read once, at PLAYER_LOGIN, by each
 -- skin's claim -- which is why a change needs a /reload and why these accessors
@@ -1210,6 +1299,34 @@ local function AdoptTransientHeight(frame)
   UI._state.bodyH = 0
   local send = ns.SendTab
   if send and send.SuspendElastic then send.SuspendElastic(true) end
+end
+
+-- Reset to defaults (UI.ResetSettings): the size and place a first open
+-- uses. The stored ones are already cleared; this moves the window still
+-- standing on them, which would otherwise write them straight back the next
+-- time it hides. The message extension is folded away the way the grip does
+-- it and the compose screen re-reads its baseline at the new size; an
+-- attachment row keeps its height, being still on screen. Docked, the window
+-- goes back into its slot.
+function UI.ResetWindowGeometry()
+  local frame = UI._frame
+  if not frame then return end
+  local state = UI._state
+  AdoptTransientHeight(frame)
+  state.adoptedBodyH, state.adoptedAtHeight = nil, nil
+  state.freeMoved = false
+
+  -- Where BuildFrame first puts it.
+  frame:ClearAllPoints()
+  frame:SetPoint("CENTER", UIParent, "CENTER", 0, 50)
+  local helpers = WindowHelpers()
+  if helpers and helpers.PinFrameTopLeft then helpers.PinFrameTopLeft(frame) end
+  frame:SetSize(DEFAULT_WIDTH, BaseMinHeight() + state.extraH)
+  ApplyResizeBounds()
+  UI.ApplyWindowLayout()
+
+  local send = ns.SendTab
+  if send and send.SuspendElastic then send.SuspendElastic(false) end
 end
 
 -------------------------------------------------------------

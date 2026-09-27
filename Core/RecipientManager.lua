@@ -2193,6 +2193,18 @@ function RM.IsShown()
   return RM._frame ~= nil and RM._frame:IsShown()
 end
 
+-- Options > Reset to defaults (MailboxUI.ResetSettings) has cleared the
+-- stored size and place; this puts a window already built back where a first
+-- open would, or its next hide writes the old ones straight back.
+function RM.ResetWindow()
+  local frame = RM._frame
+  if not frame then return end
+  frame:ClearAllPoints()
+  frame:SetSize(DEFAULT_W, DEFAULT_H)
+  frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+  ns.Core.UI.Helpers.PinFrameTopLeft(frame)
+end
+
 function RM.Toggle()
   local frame = Build()
   if frame:IsShown() then
