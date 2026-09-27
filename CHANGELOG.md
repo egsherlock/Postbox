@@ -34,6 +34,9 @@ longer play.
 - **Lighter on your game.** The mail list, History, Mail Memory and the Send
   tab do far less work and leave a fraction of the memory garbage, so there is
   less for the game to clean up while your inbox fills.
+- **Your bags are redrawn once, not three times.** Switching between Mail and
+  Send asks Baganator, EllesmereUI's bags or the default bags to redraw once,
+  and a visit that never opens Send asks them nothing.
 - Also: the "Show on each mail" list moved from the options into the window,
   Mail Memory rows show the read mark, "Flash on new mail" greys out while
   the minimap icon is off, and the window border no longer offers "Match
@@ -41,6 +44,8 @@ longer play.
 
 ### Fixed
 
+- EllesmereUI bags opened after switching to or from Send show the right
+  padlocks and greys.
 - Questions asked from the options, the groups window or the recipient
   manager (a reload, a delete, a note) no longer open hidden behind them.
 - On EllesmereUI's round minimaps the mail icon sits on the rim, and on the
