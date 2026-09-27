@@ -1081,6 +1081,95 @@ function Mail.SeedStuck(entries)
 end
 
 -------------------------------------------------------------
+-- Mail on its way out
+--
+-- A mail with no text of its own -- every auction house mail, most of the
+-- game's own mail, a parcel sent without a note -- does not outlive what is
+-- in it: once its last item or coin is taken, the client deletes it. That
+-- delete is a round trip of its own, so the inbox update that removes the
+-- mail comes a moment after the one that shows it emptied, and in between it
+-- reads read and empty -- exactly what finished mail looks like. The collect
+-- screen listed it under the divider and counted it, and the next update
+-- took it away again: "Read, nothing left (1)" flashing up at the foot of
+-- the list for a mail that was never going to stay.
+--
+-- WHICH MAILS GO. The header's textCreated. A mail sent with no text arrives
+-- already marked as copied -- there is nothing in it to copy -- just as one
+-- is marked once its text has been taken as a letter, and it is the flag the
+-- client's own mail frame deletes an emptied mail on as it closes. A letter
+-- that still has its words does not carry it, and stays. An auction mail has
+-- no text to keep whatever the flag says, so its category is a second
+-- witness.
+--
+-- WHICH MAILS ARE HELD. Only a mail Postbox is emptying. Each take marks its
+-- mail as it is issued -- before, because the update showing the mail
+-- emptied can reach the list before the take's own handshake is read -- and
+-- again once it has landed. Marked by sender and subject, the part of a mail
+-- a take cannot change (a paid C.O.D. reads 0 afterwards); two identical
+-- auction mails share a mark, and both are on their way out once empty.
+--
+-- FOR HOW LONG. Until it goes, which needs nothing from here: the mail stops
+-- matching. A mark lapses LEAVING_HOLD seconds after its last take, so a mail
+-- that stays after all -- a letter whose text was taken as an item outside
+-- Postbox -- is listed and counted again then, and the collect screen looks
+-- again when it lapses (Core/CollectTab.lua, RV.Leaving). Session state only.
+-------------------------------------------------------------
+
+local LEAVING_HOLD = 5
+
+-- sender -> subject -> when that mark's hold lapses (GetTime). Two levels
+-- rather than one joined key, so the list walk's lookup builds no string.
+-- `last` is the latest lapse of all, so a registry whose holds have all
+-- lapsed empties itself on the next ask.
+local leaving = { marks = {}, count = 0, last = 0 }
+
+-- index -> the mail's mark, as sender and subject; nil for a header that has
+-- not arrived.
+local function LeavingMark(index)
+  local _, _, sender, subject = GetInboxHeaderInfo(index)
+  if sender == nil and subject == nil then return nil end
+  return sender or "", subject or ""
+end
+
+-- Starts, or restarts, a mark's hold.
+local function HoldLeaving(sender, subject)
+  if sender == nil or type(GetTime) ~= "function" then return end
+  local at = GetTime() + LEAVING_HOLD
+  local bySender = leaving.marks[sender]
+  if not bySender then
+    bySender = {}
+    leaving.marks[sender] = bySender
+  end
+  if bySender[subject] == nil then leaving.count = leaving.count + 1 end
+  bySender[subject] = at
+  if at > leaving.last then leaving.last = at end
+end
+
+-- index -> when the hold on the mail at this index lapses, or nil. Non-nil:
+-- Postbox has just emptied this mail and the client is deleting it, so the
+-- collect screen leaves it out of the list and every count. Free while
+-- nothing is held -- the answer almost every time -- so the list walk asks
+-- it of every mail.
+function Mail.Leaving(index)
+  if leaving.count == 0 then return nil end
+  local now = GetTime()
+  if now >= leaving.last then
+    for sender in pairs(leaving.marks) do leaving.marks[sender] = nil end
+    leaving.count = 0
+    return nil
+  end
+  local _, _, sender, subject, money, _, _, itemCount, _, _, textCreated = GetInboxHeaderInfo(index)
+  if sender == nil and subject == nil then return nil end
+  local bySender = leaving.marks[sender or ""]
+  local at = bySender and bySender[subject or ""]
+  if not at or now >= at then return nil end
+  if (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0 then return nil end
+  if not textCreated and Mail.ClassifyMail(index) == "other" then return nil end
+  if Mail.AttachmentsLeft(index) > 0 then return nil end
+  return at
+end
+
+-------------------------------------------------------------
 -- Command layer :: per-mail take runner
 --
 -- Two very different things go wrong during a take and they need opposite
@@ -1134,7 +1223,12 @@ local function RunPlan(index, fingerprint, plan, done, record)
   -- Each take is recorded once it is CONFIRMED, from the two places below
   -- that establish it.
   record = HistoryRecord(index, record)
+  -- The mail's mark for "Mail on its way out", read before each take while
+  -- the index still names it: by the time a take is confirmed, an emptied
+  -- mail may already be gone and the index somebody else's.
+  local markSender, markSubject
   local function Took(op, value, count)
+    HoldLeaving(markSender, markSubject)
     HistoryNote(record, op.kind, value, count)
   end
 
@@ -1187,6 +1281,8 @@ local function RunPlan(index, fingerprint, plan, done, record)
       takeCount = tonumber(count) or 1
     end
 
+    markSender, markSubject = LeavingMark(index)
+    HoldLeaving(markSender, markSubject)
     ErrorWatch.Open()
     if op.kind == "money" then
       TakeInboxMoney(index)
@@ -1500,9 +1596,17 @@ function Mail.TakeMoney(index, onDone, history)
   local record = HistoryRecord(index, history)
   local fingerprint = Fingerprint(index)
   local amount = Mail.MoneyLeft(index)
-  SingleCommand(function() TakeInboxMoney(index) end, function(status)
+  -- Held as a run's take is ("Mail on its way out"): a gold-only mail with
+  -- no text goes with its gold.
+  local markSender, markSubject
+  SingleCommand(function()
+    markSender, markSubject = LeavingMark(index)
+    HoldLeaving(markSender, markSubject)
+    TakeInboxMoney(index)
+  end, function(status)
     if status == "done" and amount > 0
       and (Fingerprint(index) ~= fingerprint or Mail.MoneyLeft(index) < amount) then
+      HoldLeaving(markSender, markSubject)
       HistoryNote(record, "money", amount)
     end
     if onDone then onDone(status) end

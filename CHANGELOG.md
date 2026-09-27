@@ -67,6 +67,9 @@ longer play.
 
 ### Fixed
 
+- Collecting auction house mail no longer flashes a "Read, nothing left (1)"
+  bar (or Done (1)) at the foot of the list, with Inbox one too high, for a
+  mail the game was already deleting.
 - Baganator bags update when you switch between Mail and Send, so items that
   cannot be mailed are greyed as they should be.
 
