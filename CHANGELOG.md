@@ -32,11 +32,14 @@ longer play.
 - **EllesmereUI profile, Dark Mode and accent changes** reach an open mailbox
   straight away.
 - Also: the "Show on each mail" list moved from the options into the window,
-  Mail Memory rows show the read mark, and the window border no longer offers
-  "Match EllesmereUI", which never drew a border.
+  Mail Memory rows show the read mark, "Flash on new mail" greys out while
+  the minimap icon is off, and the window border no longer offers "Match
+  EllesmereUI", which never drew a border.
 
 ### Fixed
 
+- Questions asked from the options, the groups window or the recipient
+  manager (a reload, a delete, a note) no longer open hidden behind them.
 - On EllesmereUI's round minimaps the mail icon sits on the rim, and on the
   Classic ring it shows whole.
 - With EllesmereUI's Modern window style, lowering the opacity no longer
