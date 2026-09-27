@@ -294,6 +294,13 @@ function UI.ResetSettings()
 
   local styleBefore = UI.GetStyleChoice()
 
+  -- Whether the minimap icon is on survives: it is the player's choice of
+  -- whether Postbox replaces the game's own new-mail icon at all, not a look,
+  -- and a reset that silently brought the game's icon back read as broken.
+  -- Everything else about the icon -- its art, size, place -- is reset.
+  local minimap = profile.minimap
+  local iconOn = type(minimap) == "table" and minimap.enabled or nil
+
   for key, value in pairs(profile) do
     if not RESET_KEEP[key] then
       if type(value) == "table" then
@@ -303,6 +310,7 @@ function UI.ResetSettings()
       end
     end
   end
+  if iconOn ~= nil and type(minimap) == "table" then minimap.enabled = iconOn end
   ForgetSettings()
 
   -- The arrange mode closes first: its strip, its card and the grid's
