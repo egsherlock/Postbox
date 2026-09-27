@@ -10,7 +10,7 @@ Retail only (12.0.7–12.1.x). No dependencies, no libraries, nothing to configu
 install it and open a mailbox.
 
 <p align="center">
-  <img src="docs/screenshots/collect.png" height="330" alt="The Collect tab" />
+  <img src="docs/screenshots/collect.png" height="330" alt="The Mail tab" />
   <img src="docs/screenshots/send.png" height="330" alt="The Send tab" />
 </p>
 <p align="center">
@@ -24,17 +24,22 @@ install it and open a mailbox.
   the game refuses are counted and explained in its own words rather than skipped
   quietly.
 - **Keeps the books.** A running total of what a run earned and what it spent —
-  proceeds, postage and C.O.D. together.
+  proceeds, postage and C.O.D. together — and a History of what each character
+  collected, letters included, for a week or up to a month.
 - **Knows who you mail.** Names complete in place as you type — Tab accepts. Recent
   correspondents, alts, friends (Battle.net included) and guildmates are one click
   away, favourites get a star, and a manager window curates the lot.
 - **Attaches items the moment you click them.** Right-click anything in your bags
-  while composing and it lands in the mail. Unmailable items wear a padlock in your
-  bags while you compose. An option extends the same click to the Mail tab, so an
-  item can be aimed at a new mail without leaving the one you are reading.
-- **Remembers what was in the box.** Left-click the minimap icon anywhere in the
-  world to see what your mailbox held when you last opened it — with an honest
-  "last seen 2 h ago" header. It never pretends to be live.
+  while composing and it lands in the mail; Alt+right-click takes every stack of it.
+  Unmailable items wear a padlock in your bags while you compose. An option extends
+  the same click to the Mail tab, so an item can be aimed at a new mail without
+  leaving the one you are reading.
+- **Remembers every character's mailbox.** Mail Memory keeps what each character's
+  box held when it last opened one: look any of them up from the minimap icon
+  anywhere in the world, or show an alt's box right in the Mail tab. It searches
+  every character at once and warns before mail on one you have not played in a
+  while is lost. Every box says how long ago it was seen; it never pretends to be
+  live.
 - **Replaces the minimap mail icon**, if you want it to — more than two dozen
   hand-painted styles at four sizes, on the map edge or detached anywhere on screen.
 - **Wears your UI.** EllesmereUI and ElvUI are followed live; without either, choose
@@ -46,21 +51,31 @@ install it and open a mailbox.
   <img src="docs/screenshots/mailboxmemory.png" height="250" alt="Mailbox memory" />
 </p>
 <p align="center">
-  <em>Every name you can write to, curated &nbsp;·&nbsp; what the box held, hours later</em>
+  <em>Every name you can write to, curated &nbsp;·&nbsp; every character's box, hours later</em>
 </p>
 
 ## Collecting
 
-Three views — Collect, Done, All — with one-click sweeps that pick out a single kind
-of mail: expired, sold, bought, cancelled, or everything else. A search box narrows
-the list by sender or subject, and while it is on the big button collects only what
-is shown. Shift-click and ctrl-click pick rows the way a file manager does, and the
-button collects just those. Right-click a mail to look inside without collecting;
-hover an attachment for its real item tooltip; gold in a mail is a coin tile you can
-take on its own; return a player's mail from the same view. The window resizes a row
-at a time, so the list never shows part of a row at any size. Auction mail shows the
-item's name with "AH Won" or "AH Sold" in its own colour rather than "Auction won:" three times a
-screen. Compact rows fit half again as many mails in the same window.
+One inbox: what still holds something first, then the read mail with nothing left
+in it, folded under a divider that deletes it in one click. In a long inbox the
+divider waits at the foot of the list, and scrolling down to it opens the read
+mail. Rather keep it apart? Options puts it in a Done tab of its own, or deletes
+each mail the moment it is finished with.
+
+One-click sweeps pick out a single kind of mail: expired, sold, cancelled, bought,
+from your alts, or everything else. A search box narrows the list by sender,
+subject or what happened to it ("sold"), and while it is on the big button collects
+only what is shown; clicking `Stuck: 2` in the title bar does the same for the mail
+the game would not hand over. Shift-click and ctrl-click pick rows the way a file
+manager does, and the button collects just those. Right-click a mail to look inside
+without collecting; hover an attachment for its real item tooltip; gold in a mail is
+a coin tile you can take on its own; return a player's mail from the same view.
+
+Auction mail shows the item's name with "AH Bought" or "AH Sold" in its own colour
+rather than "Auction won:" three times a screen, and crafted items wear their
+quality mark. Each row's gold, slots and time left line up at its right edge, in the
+order you choose. Compact rows, the default, fit half again as many mails as
+two-line ones.
 
 A banner under the list keeps a running **total earned and total spent** — proceeds,
 postage and C.O.D. charges — and the finished run repeats it in chat.
@@ -74,8 +89,30 @@ the mail the dialog described.
 When the game refuses an item — you already have one, it is unique, you cannot carry
 more — that mail is **marked and counted rather than skipped quietly**. The title bar
 keeps a `Stuck: 2` tally, the row carries the reason, and where the game supplied one
-Postbox quotes it instead of guessing. The count follows through to the mailbox
-memory, so it is still there hours later.
+Postbox quotes it instead of guessing. The count follows through to Mail Memory,
+so it is still there hours later.
+
+## History
+
+The clock beside Inbox lists what Postbox collected on this character, newest first:
+when, from whom, what came out and what it was worth, with earned and spent totals
+underneath. Letters you read are there too, and hovering one shows what it said —
+even after the mail itself is gone. Search works there as well. It keeps a week by
+default, up to 30 days if you ask.
+
+## Mail Memory
+
+Every character's mailbox, as it looked the last time that character opened one.
+Away from a mailbox, the minimap icon, the minimap's addon menu or `/postbox mail`
+opens it: pick a character from the list (names in class colour, with what is
+waiting), sort what expires soonest to the top, or search every character's box at
+once, each one's matches under its name. At a mailbox the same list sits beside the
+Mail tab's search, and shows an alt's box right there beside your own.
+
+Auctions that sell, expire or are bought while you are away appear as rows by item
+until your next visit. The minimap tooltip — and one line in chat at login — names
+any character with mail close to expiring, or with mail on its way and no mailbox
+visit in over three weeks.
 
 ## Sending
 
@@ -106,8 +143,9 @@ ask about an item before it is attached (one you could still return, say), it as
 when that item's turn comes, exactly as it would for a right-click; such items are
 marked "asks first" in the queue's tooltip, and the line above the button says
 which item is waiting on you. Right-click the queued count to clear the queue;
-nothing leaves your bags. Ctrl+Enter sends from any field. An unsent draft survives
-closing the mailbox, too — the text is back at the next one.
+nothing leaves your bags. Alt+right-click an item and every stack of it goes in:
+what fits into the slots, the rest into the queue. Ctrl+Enter sends from any field.
+An unsent draft survives closing the mailbox, too — the text is back at the next one.
 
 ## Recipients
 
@@ -140,15 +178,21 @@ One panel, from the cog in the title bar or a right-click on the minimap icon.
 Nothing in it is required reading — Postbox is meant to work before you open it — but
 it is where the window becomes yours. In the panel's own order:
 
-**Mail tab.** Compact mail rows, which fit half again as many mails on screen. Mail
-counts on the tabs. Whether the All view is offered beside Collect and Done, and
-whether the five category buttons sit under the list or only the one Collect
-button does. Whether a left-click opens a mail or collects it. The Mail tab's
-caption: counts, a running total, a single dot, or nothing at all.
+**Mail rows.** Compact or two-line rows. Where an item's crafting quality mark goes:
+on its icon, after its name, both, or nowhere. The figures a row carries — gold,
+slots, time left — each on or off and dragged into the order you want, with which
+gold (earned, spent or both) and when the time left shows.
+
+**Mail tab.** Counts on the tab and its buttons. Whether the six category buttons
+sit under the list or only the one Collect button does. Whether a left-click opens a
+mail or collects it. What happens to read mail with nothing left: under the divider,
+in a Done tab, or deleted when done. How long History keeps.
 
 **Send tab.** Whether right-clicking a bag item while reading mail attaches it, and
 whether the recipient stays in place after a send. The recipient manager opens from
-here, with its count.
+the top of the panel, with its count.
+
+**Mail alerts.** A sound when mail arrives, and a flash on the minimap icon.
 
 **Window.** Grid docking, then **Window style**, which picks who paints Postbox: your
 UI pack, Blizzard-native, or Postbox Modern. A badge on that heading says which is happening —
@@ -158,12 +202,12 @@ border size and background opacity** belong to whichever style is painting; unde
 UI pack they default to matching it, so a change to your pack's borders or
 transparency carries here untouched, and Postbox Modern brings its own three.
 
-**Mail alerts.** A sound when mail arrives, a flash on the minimap icon, and whether
-the mailbox memory is kept at all.
-
 **Minimap.** The icon on or off, its style from more than two dozen, its size, where
 it sits, and whether it takes your accent colour, a glow, a shadow or a pulse while
 mail waits.
+
+**Mail Memory.** On or off, and whether the login line warns about mail on your
+other characters.
 
 <br clear="all" />
 
@@ -186,6 +230,7 @@ one, if you'd rather — it has two looks of its own:
 |---|---|
 | `/postbox` | The help text. |
 | `/postbox rm` | The recipient manager (also `recipients`). |
+| `/postbox mail` | Mail Memory: every character's mailbox. |
 | `/postbox minimap` | Toggle the minimap icon. |
 | `/postbox skin` | What host UI was detected, and which skin claimed the window. |
 | `/postbox debug` | A copyable report to paste into a bug report — your settings, your window, anything else installed that touches mail or bags, and any Postbox errors this session. No character name, no full addon list. |
@@ -208,8 +253,8 @@ persistent `OnUpdate`: the four that exist are each scoped to a gesture — mini
 drag, window resize, dropdown scrollbar drag, and the compose box's cursor-follow,
 which clears itself on the first frame it runs. Inbox
 refreshes are marked and drained once per frame rather than per event, the chatty
-social events are registered only while the compose tab is visible, and mailbox
-memory writes saved variables once per visit.
+social events are registered only while the compose tab is visible, and Mail
+Memory writes its snapshot once per visit.
 
 **One skinning contract, three skins.** A skin claims `ns.Skin` at login and answers
 `Apply`/`Refresh` over tagged children, so every window that knows how to be skinned
