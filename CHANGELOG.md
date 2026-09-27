@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.41.0
+
+**Make Postbox yours.** Arrange your mail rows and buttons right in the
+window, give your alts buttons of their own, and hide the characters you no
+longer play.
+*After updating, restart the game once (a /reload is not enough).*
+
+### New
+
+- **Arrange your mail rows.** The grip beside the options cog lets you drag
+  a row's columns into your own order, hide the ones you don't need, and set
+  gold and time left on the spot. The Mail tab, History and Mail Memory all
+  follow it.
+- **Arrange the category buttons too:** drag them into your order and hide
+  the ones you never use; the list gets the room.
+- **Character groups.** Put characters together (your bank alts, your
+  crafters, a friend who sends you materials) and each group gets a button
+  that collects everything they sent. Make them in Options, Mail tab, or
+  right-click From alts.
+- **Hide a character** from the character list with a right-click. Postbox
+  still remembers its mail; Show brings it back.
+- **Reset to defaults**, at the foot of the options, puts every setting and
+  window back the way Postbox ships, after asking. Your recipients, groups,
+  Mail Memory and History are kept.
+
+### Improved
+
+- **Postbox follows EllesmereUI's look.** On Blizzard Style or Classic WoW UI
+  it wears its own Blizzard look, to match your other windows.
+- **EllesmereUI profile, Dark Mode and accent changes** reach an open mailbox
+  straight away.
+- Also: the "Show on each mail" list moved from the options into the window,
+  Mail Memory rows show the read mark, and the window border no longer offers
+  "Match EllesmereUI", which never drew a border.
+
+### Fixed
+
+- On EllesmereUI's round minimaps the mail icon sits on the rim, and on the
+  Classic ring it shows whole.
+- With EllesmereUI's Modern window style, lowering the opacity no longer
+  brings the EllesmereUI backdrop back underneath.
+
 ## 1.40.1
 
 ### Improved
