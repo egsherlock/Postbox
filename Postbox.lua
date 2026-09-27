@@ -719,7 +719,8 @@ do
     local rows = Timed(rec, "rows")
     put(rows and (rows .. ", " .. rec.binds .. " binds"))
     put(Timed(rec, "capture"))
-    put(Timed(rec, "tab"))
+    -- The shell's once-per-frame pass: stuck prune, status line, tab caption.
+    put(Timed(rec, "summary"))
     if rec.items + rec.asks > 0 then
       put(format("item events %d, asked %d (%d cold)", rec.items, rec.asks, rec.cold))
     end

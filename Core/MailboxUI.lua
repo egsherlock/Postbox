@@ -1289,27 +1289,44 @@ local function UpdateCollectTabText()
   end
 end
 
--- MAIL_INBOX_UPDATE arrives in bursts, and with the collect panel hidden (the
--- one case this caption is FOR) nothing else has walked the inbox -- so a
--- synchronous update per event would pay one walk per event. Coalesced to the
--- next frame instead, same pattern as the collect list's own refresh.
-local tabCountQueued = false
-local function QueueCollectTabText()
-  if tabCountQueued then return end
-  tabCountQueued = true
-  local ok = pcall(C_Timer.After, 0, function()
-    tabCountQueued = false
-    -- With the collect screen hidden this is the inbox walk, so it is timed
-    -- with the rest of an open's work (Postbox.lua, 5b).
-    local perf = ns.Perf
-    local perfAt = perf and type(perf.Begin) == "function" and perf.Begin() or nil
-    UpdateCollectTabText()
-    if perfAt then perf.End("tab", perfAt) end
-  end)
-  if not ok then
-    tabCountQueued = false
-    UpdateCollectTabText()
+-- What the shell does about an inbox update, once per frame however many
+-- updates arrive in it. MAIL_INBOX_UPDATE comes in bursts -- the initial load,
+-- every body fetch, every CheckInbox -- and each of the three steps below can
+-- walk the whole inbox: the stuck prune, the stuck count behind the status
+-- line (both whenever anything has been refused), and the tab caption's counts
+-- (with the collect panel hidden, the one case that caption is FOR, nothing
+-- else has walked). Run per event, a burst of N paid N walks of each; run
+-- here, it pays one, a frame later, the same pattern as the list's own refresh.
+local inboxPassQueued = false
+
+local function InboxPass()
+  inboxPassQueued = false
+  -- Timed with the rest of an open's work (Postbox.lua, 5b).
+  local perf = ns.Perf
+  local perfAt = perf and type(perf.Begin) == "function" and perf.Begin() or nil
+
+  -- Refusals whose mail has gone are forgotten first, where the whole inbox
+  -- can be seen (the service decides whether it can): before the summary
+  -- below counts them.
+  local service = ns.MailService
+  if service and type(service.PruneStuck) == "function" then
+    service.PruneStuck(UI._state.inboxSeen)
   end
+  -- Safe unconditionally: this only recomputes the idle summary, which is the
+  -- lowest-priority layer and can never displace a run's status.
+  UI.UpdateStatusSummary()
+  -- The tab caption's numbers moved with the inbox.
+  UpdateCollectTabText()
+
+  if perfAt then perf.End("summary", perfAt) end
+end
+
+local function QueueInboxPass()
+  if inboxPassQueued then return end
+  inboxPassQueued = true
+  local ok = pcall(C_Timer.After, 0, InboxPass)
+  -- The flag is a latch; a pass that could not be scheduled runs now instead.
+  if not ok then InboxPass() end
 end
 
 -- The Mail tab's half of right-click-to-attach, in one place because two
@@ -2332,12 +2349,14 @@ function UI.Initialize()
     local perf = ns.Perf
     local perfAt = perf and type(perf.InboxEvent) == "function" and perf.InboxEvent() or nil
 
+    -- Only two flags are set here, per event; everything that reads the inbox
+    -- waits for the next frame, once, however many events arrive in this one.
+
     -- The inbox moved, so what the collect screen last counted is no longer
-    -- true. Said before either line below reads it: the refresh recounts and
+    -- true. Said now, before anything can read it: the refresh recounts and
     -- records as it rebuilds, but it is coalesced to the next frame AND skipped
-    -- entirely while its panel is hidden -- so the summary, which is rendered
-    -- now and shows on every tab, would otherwise be reporting the last visit's
-    -- numbers.
+    -- entirely while its panel is hidden -- so the caption, which shows on
+    -- every tab, would otherwise be reporting the last visit's numbers.
     local collect = ns.CollectTab
     if collect and collect.InvalidateCounts then collect.InvalidateCounts() end
 
@@ -2346,26 +2365,18 @@ function UI.Initialize()
     -- not license the last-run record's erasure.
     if UI._state.mailboxOpen then UI._state.inboxSeen = true end
 
-    -- Refusals whose mail has gone are forgotten here, where the whole inbox
-    -- can be seen (the service decides whether it can): before the summary
-    -- below counts them.
-    local service = ns.MailService
-    if service and type(service.PruneStuck) == "function" then
-      service.PruneStuck(UI._state.inboxSeen)
-    end
-
     -- A run refreshes the list itself as it goes; refreshing again from here
     -- would be a second pass per mail over the same data.
     if UI._state.visible and not RunInProgress() then
       QueueCollectRefresh()
     end
-    -- Safe unconditionally: this only recomputes the idle summary, which is the
-    -- lowest-priority layer and can never displace a run's status.
-    UI.UpdateStatusSummary()
-    -- The tab caption's numbers moved with the inbox. Queued, not synchronous:
-    -- with the collect panel hidden this is the only reader, and a walk per
-    -- burst event would be paid for one visible change.
-    QueueCollectTabText()
+    -- The stuck prune, the status summary and the tab caption (InboxPass,
+    -- section 5): after the list refresh queued above, so its recorded counts
+    -- are what the caption reads. The refresh re-renders the summary itself,
+    -- and reads the registry through the same live-inbox filter the prune
+    -- applies, so a refresh that runs first shows nothing the prune would
+    -- have taken away.
+    QueueInboxPass()
 
     if perfAt then perf.End("sync", perfAt) end
   end)
