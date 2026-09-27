@@ -2978,6 +2978,31 @@ function RV.ScrollFold(panel)
   return true
 end
 
+-- The wheel turned down with the divider in view goes on into the read mail:
+-- it opens. The divider is the folded list's last row, so in view means the
+-- list fits or has reached its end -- either way nothing is left to move, and
+-- RV.ScrollFold, which answers movement, never hears of it. Without this, a
+-- list that fits could only open its read mail by a click. Only down, and
+-- only open: folding stays with the scroll that takes the divider out of
+-- view, and the click. Any scroll bar that follows is the opened read mail's
+-- own need.
+function RV.WheelOpen(panel, delta)
+  if (tonumber(delta) or 0) >= 0 or panel._readOpen then return end
+  local at = panel._dividerAt
+  if not at or panel.viewMode ~= VIEW_COLLECT or AV.Active(panel) or Searching(panel) then return end
+  local _, height, stride = RowMetrics()
+  local scroll = panel.MailListScroll
+  local viewport = scroll:GetHeight() or 0
+  if viewport <= 0 then return end
+  local offset = scroll:GetVerticalScroll() or 0
+  local top = (at - 1) * stride
+  if top < offset - 0.5 or top + height > offset + viewport + 0.5 then return end
+  -- A deliberate turn: a hand fold's hold (RV.ScrollFold) ends with it.
+  panel._foldHeld = nil
+  panel._readOpen = true
+  CT.RefreshMailList(panel)
+end
+
 -- The divider pinned to the list's foot while its own place is below the
 -- viewport: in a long inbox it is the one sign that read mail is waiting to
 -- be cleared, and it has to be seen without scrolling down to find out. The
@@ -5521,6 +5546,8 @@ function CT.Build(parent)
   scroll:HookScript("OnVerticalScroll", function()
     if not RV.ScrollFold(panel) then UpdateVisibleRows(panel) end
   end)
+  -- After the template's own wheel handler: a turn it could not answer.
+  scroll:HookScript("OnMouseWheel", function(_, delta) RV.WheelOpen(panel, delta) end)
 
   panel.Empty = T.CreateText(panel.MailListArea, "secondary")
   panel.Empty:SetPoint("TOPLEFT", panel.MailListArea, "TOPLEFT", M.inset * 2, -M.inset * 2)

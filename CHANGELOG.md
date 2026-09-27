@@ -6,6 +6,8 @@
 
 - The button on the "Read, nothing left" divider now says **Delete all**, so
   it is clear it removes every read mail at once.
+- **Scroll into the read mail.** Turning the mouse wheel down at the divider
+  opens it, even in an inbox short enough that nothing scrolls.
 
 ### Fixed
 
