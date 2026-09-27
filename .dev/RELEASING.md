@@ -75,6 +75,36 @@ and say so in the changelog either way.
 existing files needs `/reload`.** Worth saying in the release notes when it applies
 — v1.32.0 looked broken until a reload.
 
+## Betas
+
+A beta is a tag with `beta` in its name, cut from `main` like any other. No branch,
+nothing to switch on at CurseForge or GitHub:
+
+```
+git tag v1.41.0-beta.1 && git push origin v1.41.0-beta.1
+```
+
+The packager decides the channel from the tag's text: `beta` makes a CurseForge Beta
+file and a GitHub pre-release, `alpha` the same one step quieter, and anything else
+(`-rc` included) is a full release that everyone is offered. Nothing compares version
+numbers: managers offer the newest file the player's channel allows, by date.
+
+- **Who sees it.** Only players who opted in. WowUp's CurseForge build and Wago:
+  right-click the addon → Channel → Beta. WowUp installing from GitHub has no
+  per-addon channel; its installation-wide *Default Addon Channel* decides, for
+  every GitHub addon in that install.
+- **Numbering.** `-beta.1`, `-beta.2`, … then the plain tag. Testers are moved onto
+  the full release the moment it is published.
+- **Changelog.** The whole file is uploaded with every file, beta or not. Betas add
+  to the coming version's section; the heading carries the version it will ship as
+  (`## 1.41.0`), not the beta number.
+- **A stable fix while `main` carries a beta.** Branch from the last full tag, fix,
+  tag the patch (`v1.40.1`) there, merge it back to `main`. A full release
+  published after a beta is newer by date, so testers drop onto it until the next
+  beta tag.
+- **One tester, one question.** Every GitHub release carries its zip; a link to the
+  pre-release page is enough for someone who installs by hand.
+
 ## Where the publishing bits live
 
 | | |
