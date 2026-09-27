@@ -2165,6 +2165,44 @@ function Refresh(frame)
   frame:SetSize(width, wanted)
 end
 
+-- The arrange mode over this window (Core/Arrange.lua): the strip stands
+-- where the card's top was and the card steps down under it; the top row
+-- stays, so another box can still be picked to see the arrangement on it.
+-- The window widens, if it must, until every chip says its name whole, and
+-- goes back to the width it had.
+function MM.ArrangeHost(frame)
+  if not (frame and frame.Card) then return nil end
+  if frame._arrangeHost then return frame._arrangeHost end
+  local host = { owner = frame }
+  function host.PlaceStrip(strip)
+    strip:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -CHROME_TOP)
+    strip:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
+  end
+  function host.OnEnter(strip)
+    MM.ClosePicker()
+    frame.Card:SetPoint("TOPLEFT", strip, "BOTTOMLEFT", 0, -6)
+    local arrange = ns.Arrange
+    local need = (arrange and arrange.StripNeed and arrange.StripNeed(host) or 0) + 20
+    local width = frame:GetWidth() or WINDOW_WIDTH
+    if need > width then
+      frame._widthBeforeArrange = width
+      frame:SetWidth(math.min(WINDOW_MAX_WIDTH, math.ceil(need)))
+      frame._widthForArrange = frame:GetWidth()
+    end
+  end
+  function host.OnLeave()
+    frame.Card:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -CHROME_TOP)
+    -- Back to the player's width, unless they chose another meanwhile.
+    local before = frame._widthBeforeArrange
+    frame._widthBeforeArrange = nil
+    if before and math.abs((frame:GetWidth() or 0) - (frame._widthForArrange or 0)) < 0.5 then
+      frame:SetWidth(before)
+    end
+  end
+  frame._arrangeHost = host
+  return host
+end
+
 local function Build()
   if MM._frame then return MM._frame end
 
@@ -2285,12 +2323,35 @@ local function Build()
     grip:HookScript("OnLeave", function() ns.Theme.HideHint() end)
     grip:HookScript("OnMouseDown", function() ns.Theme.HideHint() end)
   end
-  frame:HookScript("OnHide", function() MM.ClosePicker() end)
+  frame:HookScript("OnHide", function()
+    MM.ClosePicker()
+    -- The arrange mode ends with the window it was opened in.
+    if ns.Arrange and ns.Arrange.LeaveIf then ns.Arrange.LeaveIf(frame) end
+  end)
 
   -- Same expression as the options panel and the recipient manager: let an
   -- active host-UI skin restyle the shell, whichever entry point it offers.
   local applyWindow = ns.Skin and (ns.Skin.ApplyWindow or ns.Skin.Apply)
   if applyWindow then applyWindow(frame) end
+
+  -- The arrange grip, where the Postbox window has its cog and its own grip:
+  -- the rows here are the Mail tab's rows, and arranging them is as close as
+  -- the window. After the skin, so it stands in the bar the skin drew.
+  local arrange = ns.Arrange
+  if arrange and arrange.BuildToggle then
+    frame.ArrangeButton = arrange.BuildToggle(frame, function(button)
+      -- Postbox Modern centres its bar's children on the strip it draws;
+      -- the other looks keep the template's bar, where the cog's own
+      -- offsets are right.
+      local strip = frame.__pbModernStrip
+      if strip then
+        button:SetPoint("LEFT", strip, "LEFT", 5, 0)
+      else
+        local hostBar = (ns.Skin and (_G.EllesmereUI or _G.ElvUI)) and true or false
+        button:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, hostBar and -4 or -2)
+      end
+    end, function() return MM.ArrangeHost(frame) end)
+  end
 
   MM._frame = frame
   return frame

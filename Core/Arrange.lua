@@ -55,10 +55,13 @@ AR.COLUMNS = {
 }
 
 -- The chips' geometry: a grip, the caption or glyph, and air either side.
-local CHIP_GAP = 4
-local CHIP_LEAD = 15   -- the grip and the space after it
-local CHIP_TAIL = 7
+-- Tight on purpose: seven chips and Done fit the Mail tab at its narrowest
+-- in German, and Mail Memory's window widens for them while it arranges.
+local CHIP_GAP = 3
+local CHIP_LEAD = 13   -- the grip (four in, six wide) and the space after it
+local CHIP_TAIL = 6
 local GLYPH = 14
+local DONE_GAP = 6
 
 -- Who is arranging (a host, below), and what the rows' wash points at.
 AR.host = nil
@@ -535,7 +538,7 @@ local function BuildChip(strip, host, id)
   chip:SetHeight(T.Metrics.tileHeight)
 
   chip.grip = AR.Grip(chip, 2, 2)
-  chip.grip:SetPoint("LEFT", chip, "LEFT", 5, 0)
+  chip.grip:SetPoint("LEFT", chip, "LEFT", 4, 0)
 
   if spec.glyph then
     chip:SetText("")
@@ -609,7 +612,7 @@ function AR.BuildStrip(host)
   local done = T.CreateButton(nil, strip)
   done:SetText(L()["ARRANGE_DONE"])
   done:SetHeight(T.Metrics.tileHeight)
-  done:SetWidth(math.max(math.ceil(T.TextWidth(done)) + 24, 56))
+  done:SetWidth(math.max(math.ceil(T.TextWidth(done)) + 20, 44))
   done:SetPoint("RIGHT", strip, "RIGHT", 0, 0)
   done:SetScript("OnClick", function() AR.Leave() end)
   done:SetScript("OnEnter", function(self)
@@ -641,6 +644,20 @@ local function Natural(chip)
   return CHIP_LEAD + math.ceil(chip.Text:GetStringWidth() or 0) + CHIP_TAIL
 end
 
+-- The width the strip needs to say every name whole: a window that can grow
+-- (Mail Memory's) grows to it while it arranges.
+function AR.StripNeed(host)
+  local strip = host and host.strip
+  if not strip then return 0 end
+  local total = (strip.Done:GetWidth() or 0) + DONE_GAP
+  local n = 0
+  for _, chip in pairs(strip.chips) do
+    total = total + Natural(chip)
+    n = n + 1
+  end
+  return total + CHIP_GAP * math.max(n - 1, 0)
+end
+
 -- Lays the chips out in the arrangement's order. The chip in the hand is
 -- left where the cursor holds it and its slot takes the ghost; the others
 -- stand in theirs. Where the strip is short the names give up room in
@@ -653,7 +670,7 @@ function AR.LayoutStrip(host)
   local T = Th()
   local width = strip:GetWidth() or 0
   if width < 60 then return end
-  local avail = width - (strip.Done:GetWidth() or 0) - 8
+  local avail = width - (strip.Done:GetWidth() or 0) - DONE_GAP
   strip._avail = avail
 
   local total, flexible = CHIP_GAP * (#layout - 1), 0
