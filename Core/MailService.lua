@@ -56,6 +56,10 @@ local CATEGORY_LOCALE_KEY = {
   all      = "CAT_ALL",
   alts     = "CAT_ALTS",
 }
+-- One more family of tokens has no entry here because it has no fixed label:
+-- "group:<id>", a sweep by the senders in one of the player's character
+-- groups (Core/CharacterGroups.lua), labelled with the player's own name for
+-- it. The queue builders resolve it through Mail.SenderSet below.
 
 -- token -> the player's word for it, translated on first ask and remembered.
 -- Deferring the lookup is what keeps this module free of a load-order
@@ -324,6 +328,39 @@ function Mail.FromOwnCharacter(index, keys)
   return key ~= nil and (keys or Mail.OwnCharacterKeys())[key] == true
 end
 
+-- sender text -> its recipient key, or nil for no sender at all (the game's
+-- own mail) or a key that cannot be built. A bare sender is on the player's
+-- realm, which R.Key resolves.
+local function SenderKeyOf(sender)
+  if type(sender) ~= "string" or sender == "" then return nil end
+  local R = ns.Recipients
+  if not (R and type(R.Key) == "function") then return nil end
+  local key = R.Key(sender)
+  if type(key) ~= "string" or key == "" then return nil end
+  return key
+end
+
+-- index -> the mail's sender as a recipient key, or nil.
+function Mail.SenderKey(index)
+  local _, _, sender = GetInboxHeaderInfo(index)
+  return SenderKeyOf(sender)
+end
+
+-- category -> the set of sender keys (key -> true) a sweep BY SENDER takes,
+-- or nil when the category is not one. Resolved at call time, so a group
+-- deleted after its button was drawn resolves to the empty set and its sweep
+-- finds nothing, never everything. The set is the caller's to read, never to
+-- write.
+local NO_SENDERS = {}
+function Mail.SenderSet(category)
+  if type(category) ~= "string" then return nil end
+  local id = category:match("^group:(.+)$")
+  if not id then return nil end
+  local groups = ns.CharacterGroups
+  local set = groups and type(groups.KeySet) == "function" and groups.KeySet(id) or nil
+  return type(set) == "table" and set or NO_SENDERS
+end
+
 -- One inbox index, tested against the queue's rules and either taken or
 -- accounted for in `info`. Shared by both builders below so they cannot
 -- disagree about what a collectable mail is.
@@ -336,7 +373,11 @@ local function Consider(index, category, queue, info)
     -- from your own characters, and everything else. They never overlap, so
     -- the two buttons never count or take the same mail.
     local match
-    if category == "alts" then
+    if info.senders then
+      -- A sweep by sender (a character group): the mail these characters
+      -- sent, of whatever kind.
+      match = info.senders[Mail.SenderKey(index) or ""] == true
+    elseif category == "alts" then
       match = Mail.FromOwnCharacter(index, info.altKeys)
     elseif category == "other" then
       match = kind == "other" and not Mail.FromOwnCharacter(index, info.altKeys)
@@ -369,6 +410,7 @@ function Mail.BuildQueue(category)
   }
 
   if category == "alts" or category == "other" then info.altKeys = Mail.OwnCharacterKeys() end
+  info.senders = Mail.SenderSet(category)
 
   -- GetInboxNumItems returns 0 between MAIL_SHOW and the first
   -- MAIL_INBOX_UPDATE, so an empty result here means "nothing to do OR nothing
@@ -407,11 +449,48 @@ function Mail.BuildQueueFor(indices, category)
   end
   table.sort(sorted, function(a, b) return a > b end)
   if category == "alts" or category == "other" then info.altKeys = Mail.OwnCharacterKeys() end
+  info.senders = Mail.SenderSet(category)
   for i = 1, #sorted do
     Consider(sorted[i], category, queue, info)
   end
 
   return queue, info
+end
+
+-- indices [, done] -> sender key -> how many of those mails a sweep by sender
+-- would take right now. Consider's rules -- the header has arrived, something
+-- is left in the mail, no C.O.D. -- applied once to the whole list, so every
+-- sender-based button counts from ONE walk (a character group's count is a sum
+-- over its members) instead of one walk per button. `done`, where given, is
+-- the caller's verdict for each position of `indices` (true: finished), which
+-- the collect screen's list walk has already paid for; without it each mail is
+-- asked, sixteen slots and all. Entries that are not inbox indices -- the
+-- list's divider -- are skipped.
+function Mail.SenderTally(indices, done)
+  local tally = {}
+  if type(indices) ~= "table" then return tally end
+  local numItems = tonumber((GetInboxNumItems())) or 0
+  for i = 1, #indices do
+    local index = tonumber(indices[i])
+    if index and index >= 1 and index <= numItems then
+      local _, _, sender, subject, money, cod = GetInboxHeaderInfo(index)
+      -- ReadHeader's "has it arrived", on the one read.
+      local arrived = sender ~= nil or subject ~= nil or money ~= nil or cod ~= nil
+      if arrived and (tonumber(cod) or 0) <= 0 then
+        local finished
+        if done then
+          finished = done[i] == true
+        else
+          finished = Mail.IsReadPersistent(index)
+        end
+        if not finished then
+          local key = SenderKeyOf(sender)
+          if key then tally[key] = (tally[key] or 0) + 1 end
+        end
+      end
+    end
+  end
+  return tally
 end
 
 -- Mails that "delete all read" may remove: read, no money, no attachments.

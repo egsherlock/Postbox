@@ -4233,6 +4233,9 @@ local function StartCategoryRun(panel, category)
 
   BeginRun(panel, queue)
 end
+-- For a sweep drawn outside this file: a character group's button starts its
+-- run here with the token "group:<id>" (Core/CharacterGroups.lua).
+CT.StartCategoryRun = StartCategoryRun
 
 -------------------------------------------------------------
 -- The detail view
