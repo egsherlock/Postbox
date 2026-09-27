@@ -413,7 +413,9 @@ local function BuildShim()
   function shim.GetPanelColor() return 0.08, 0.08, 0.08, 0.92 end
   function shim.GetFont() return ShimFont() end
   function shim.IsEnabled() return true end
-  -- 8.6.6 has no live-looks callback; accent edits need a /reload on this path.
+  -- No facade, no facade callback. The compat backend follows accent, Dark
+  -- Mode and profile changes live through the parent addon's own registries
+  -- instead (HookHostRefreshes), and every window open re-resolves regardless.
   function shim.OnLooksChanged() end
 
   return shim
@@ -1092,13 +1094,11 @@ function Skin.Apply(frame)
 
   -- Re-resolve everything host-owned each time the window opens.
   --
-  -- On the api backend S.OnLooksChanged drives this live, but only for what
-  -- EllesmereUI counts as "looks": accent, bar fill, Modern backdrop colour and
-  -- window styles. The Dark Mode fill that HostBaseline reads -- and therefore
-  -- our whole baseline colour and its alpha -- moves on a PROFILE switch, which
-  -- is not on that list, and neither is the window border read out of
-  -- EllesmereUIDB. On compat there is no callback at all. Close-and-reopen
-  -- covers both gaps, and beats the /reload it used to need.
+  -- Accent, Dark Mode and profile changes arrive live (RequestHostRefresh), so
+  -- this is the backstop for the one change with no signal at all: a window
+  -- style switch in Blizz UI Enhanced (eui <-> modern), whose RefreshStyles
+  -- repaints the host shell on our frame at full alpha and tells nobody. It
+  -- also catches anything a future EllesmereUI moves without saying so.
   pcall(function()
     frame:HookScript("OnShow", function() Skin.OnHostLooksChanged() end)
   end)
@@ -1213,6 +1213,65 @@ function Skin.OnHostLooksChanged()
   Skin.ForEachWindow(function(f) RepaintPlates(f, 0) end)
 end
 
+-- Every live "EllesmereUI's looks changed" signal lands here and is folded into
+-- ONE pass of the handler above, on the next frame. Three sources:
+--
+--   S.OnLooksChanged (api backend). Rides EllesmereUI's accent registry, so it
+--     fires on the accent and on Blizz UI Enhanced's global look settings --
+--     once per tick while a colour picker is being dragged. It does NOT fire on
+--     a window-style switch or a profile switch, whatever its comment says.
+--   EllesmereUI.RegisterDarkModeRefresh (both backends; the parent addon). Runs
+--     on every Dark Mode palette edit AND on every profile switch, because the
+--     profile repoint calls RefreshDarkMode. The palette is Postbox's baseline,
+--     colour and alpha, so this is what makes a profile switch live at last.
+--   EllesmereUI.RegAccent (compat backend only). The registry the api facade's
+--     own callback rides on. Compat is where every player with Blizz UI
+--     Enhanced disabled lands, and there an accent change used to wait for the
+--     next window open.
+--
+-- Next frame rather than in place: a profile switch refreshes the dark palette
+-- first and re-resolves the accent after it (RefreshAllAddons runs
+-- RefreshAccent once the repoint is done), so a pass run inside the first
+-- callback would paint the old accent. The next frame is also after every host
+-- repaint queued in this one, which settles the ordering question above. A
+-- flag, not a timer per call: a picker drag costs one pass per frame at most.
+local refreshPending = false
+
+local function RunHostRefresh()
+  refreshPending = false
+  pcall(Skin.OnHostLooksChanged)
+end
+
+local function RequestHostRefresh()
+  if refreshPending then return end
+  refreshPending = true
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, RunHostRefresh)
+  else
+    RunHostRefresh()
+  end
+end
+
+-- Registered once each, whichever backend activates first: EllesmereUI keeps
+-- its refreshers in plain lists, so a second registration would run twice.
+local hooked = { darkMode = false, accent = false }
+
+local function HookHostRefreshes()
+  if not EUI then return end
+  if not hooked.darkMode and type(EUI.RegisterDarkModeRefresh) == "function" then
+    hooked.darkMode = pcall(EUI.RegisterDarkModeRefresh, function() RequestHostRefresh() end)
+  end
+  -- The api facade already delivers accent changes through S.OnLooksChanged.
+  -- RegAccent calls its entries without a pcall of its own, in the middle of
+  -- EllesmereUI's accent pass, so this entry must never be able to throw.
+  if BACKEND == "compat" and not hooked.accent and type(EUI.RegAccent) == "function" then
+    hooked.accent = pcall(EUI.RegAccent, {
+      type = "callback",
+      fn = function() pcall(RequestHostRefresh) end,
+    })
+  end
+end
+
 -------------------------------------------------------------
 -- Host state probes
 -------------------------------------------------------------
@@ -1251,7 +1310,7 @@ local function HostSkinningAllowed()
   return true
 end
 
--- Set when this skin refuses the window on purpose. Two causes:
+-- Set when this skin refuses the window on purpose. Three causes:
 --
 --   "elvui"       the ElvUI skin has already painted it (see Activate).
 --   "hostoptout"  the user switched third-party skinning off for Postbox, or
@@ -1263,16 +1322,97 @@ end
 --                 renders its own theme. The registration stays in
 --                 EllesmereUI's queue, so switching it back on dispatches live
 --                 and AdoptFacade takes over without a reload.
+--   "stocklook"   EllesmereUI's whole UI is on one of its stock looks
+--                 (Blizzard Style or Classic WoW UI; see HostLook below), so
+--                 Postbox wears its own Blizzard look to match.
 --
 -- Reported by Diagnose -- i.e. /postbox skin, which is this addon's only debug
 -- channel. A chat line at login would be noise about a situation nobody can act
 -- on from the chat frame.
-local standDown          -- nil | "elvui" | "hostoptout"
+local standDown          -- nil | "elvui" | "hostoptout" | "stocklook"
 
 local STAND_DOWN_TEXT = {
   elvui      = "stood down (ElvUI painted first)",
   hostoptout = "stood down (EllesmereUI skinning is switched off for Postbox)",
+  stocklook  = "stood down (EllesmereUI is on a stock look; Postbox's own Blizzard look matches it)",
 }
+
+-------------------------------------------------------------
+-- EllesmereUI's look (Global Settings > Style)
+-------------------------------------------------------------
+-- EllesmereUI 9.2.5 added three looks: its own, "Blizzard Style" (the current
+-- stock art) and "Classic WoW UI" (the vanilla art). The flags are per MODULE
+-- and every one is reload-gated and latched for the session; there is no single
+-- whole-UI setting. What there is, is a record of the WHOLE-UI switch -- the
+-- first-install picker and the Style page's Apply to All -- kept per profile:
+--
+--   profiles[p].windowSkinLook      written beside the window-skin swap (Blizz
+--                                   UI Enhanced only), and what decides the
+--                                   look of Blizzard's own windows;
+--   fonts._styleSlots.active        written beside the font swap, in the parent
+--                                   addon, so present with Blizz UI Enhanced
+--                                   off (not in glyph-fallback locales).
+--
+-- EllesmereUI.ProfileWindowSkinLook reads exactly this pair, in that order,
+-- when Blizz UI Enhanced is loaded; the fallback below repeats it for when it
+-- is not. None of this is the skinning API -- that answers only "eui" or
+-- "modern", and deliberately keeps third-party skins on the EllesmereUI theme
+-- under a stock look (GetThirdPartySkinStyle votes from the EllesmereUI look's
+-- window slot). Every step is nil-guarded, and anything unreadable is the
+-- EllesmereUI look, which is what every session was before this existed.
+--
+-- Why a stock look steps Postbox down: under one, EllesmereUI turns its skins
+-- off Blizzard's windows (first visit: every window at Blizz Default), so the
+-- mailbox, bags and character sheet the player sees are Blizzard's. Postbox's
+-- own look is built from Blizzard's art for exactly that company; EllesmereUI's
+-- flat dark window would be the odd one out. Classic WoW UI maps there too: of
+-- the looks Postbox has, the stone-and-gold one is the vanilla UI's relative.
+--
+-- Read once, when the skin first activates, like every EllesmereUI module
+-- latches its style: a profile switch that changes the look is reload-bound in
+-- EllesmereUI itself (it offers the reload), and Postbox's style is claimed at
+-- login, so the two change together at that reload.
+local LOOKS = { eui = true, blizzard = true, classic = true }
+local hostLook           -- nil until read; then "eui" | "blizzard" | "classic"
+
+local function ReadHostLook()
+  local db = _G.EllesmereUIDB
+  if type(db) ~= "table" then return "eui" end
+
+  if EUI and type(EUI.ProfileWindowSkinLook) == "function"
+     and type(EUI.GetActiveProfileData) == "function" then
+    local ok, look = pcall(function()
+      return EUI.ProfileWindowSkinLook(EUI.GetActiveProfileData(), db.fonts)
+    end)
+    if ok and LOOKS[look] then return look end
+  end
+
+  local profiles = db.profiles
+  local prof = type(profiles) == "table" and profiles[db.activeProfile or "Default"] or nil
+  local look = type(prof) == "table" and prof.windowSkinLook or nil
+  if LOOKS[look] then return look end
+
+  local fonts = db.fonts
+  local slots = type(fonts) == "table" and fonts._styleSlots or nil
+  look = type(slots) == "table" and slots.active or nil
+  if LOOKS[look] then return look end
+  return "eui"
+end
+
+local function HostLook()
+  if hostLook == nil then
+    local ok, look = pcall(ReadHostLook)
+    hostLook = (ok and LOOKS[look]) and look or "eui"
+  end
+  return hostLook
+end
+
+-- "blizzard" or "classic" while this skin has stood down for EllesmereUI's
+-- stock look; nil otherwise. The options panel's inheritance badge reads it.
+function Skin.GetStockLook()
+  if standDown == "stocklook" then return hostLook end
+  return nil
+end
 
 -- Why the official callback never arrived, once the watchdog has established
 -- that it did not. nil while the handshake is still in play, or after it won.
@@ -1344,7 +1484,11 @@ function Skin.Diagnose()
     silenceText = silence and SILENCE_TEXT[silence] or nil,
     dispatcher  = DispatcherLoaded(),
     hostEnabled = hostEnabled,
-    style       = style,
+    -- The skinning API's theme, then EllesmereUI's whole-UI look once it has
+    -- been read (Activate reads it; a style choice other than EllesmereUI never
+    -- gets that far). Printed as one field by /postbox skin.
+    style       = hostLook and (style .. ", EllesmereUI look " .. hostLook) or style,
+    look        = hostLook,
     borderStyle = Skin.GetBorderStyle(),
     borderSize  = Skin.GetBorderSize(),
     bgOpacity   = Skin.GetBgOpacity(),
@@ -1386,6 +1530,17 @@ local function Activate()
     standDown = "elvui"
     return
   end
+
+  -- EllesmereUI's whole UI on Blizzard Style or Classic WoW UI: Postbox wears
+  -- its own Blizzard look to match (see HostLook). Nothing is claimed, exactly
+  -- as for the opt-out, so the window builds in Postbox's own theme and the
+  -- options panel offers no EllesmereUI appearance rows. Only a player who left
+  -- the style on EllesmereUI gets here: an explicit Postbox style already
+  -- returned above.
+  if HostLook() ~= "eui" then
+    standDown = "stocklook"
+    return
+  end
   standDown = nil
 
   ns.Skin = Skin      -- take precedence over the ElvUI skin, if one loaded
@@ -1393,10 +1548,12 @@ local function Activate()
 
   -- Everything host-derived, not just the two accent-tinted icons: an accent,
   -- profile or border change moves the fill colour, its alpha, the border and
-  -- every plate caption in the window.
+  -- every plate caption in the window. All of it through the one coalesced
+  -- request (see RequestHostRefresh).
   if type(S.OnLooksChanged) == "function" then
-    pcall(S.OnLooksChanged, function() Skin.OnHostLooksChanged() end)
+    pcall(S.OnLooksChanged, function() RequestHostRefresh() end)
   end
+  HookHostRefreshes()
 
   local frame = ns.MailboxUI and ns.MailboxUI._frame
   if frame then Skin.Apply(frame) end

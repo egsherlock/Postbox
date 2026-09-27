@@ -940,10 +940,23 @@ local function Build()
     -- so each is given exactly its own.
     local badgeTitle, badgeDesc
     local function RefreshInheritance()
+      -- EllesmereUI on one of its stock looks, with the style left on
+      -- EllesmereUI: its skin stood down so Postbox could wear its own
+      -- Blizzard look beside Blizzard's windows. Still green -- the window is
+      -- following the host, just not in the host's own paint -- and said in
+      -- the host's own words for the look, so the player can find the switch.
+      local eui = ns.SkinEllesmere
+      local stock = eui and type(eui.GetStockLook) == "function" and eui.GetStockLook()
+      local stockName = stock == "classic" and L["OPT_STYLE_LOOK_CLASSIC"]
+        or stock == "blizzard" and L["OPT_STYLE_LOOK_BLIZZARD"] or nil
       if HostSkinName() then
         dot:SetColorTexture(0.38, 0.80, 0.44, 1)
         badgeTitle = L("OPT_STYLE_INHERIT", installedHost)
         badgeDesc  = L("OPT_STYLE_INHERIT_DESC", installedHost)
+      elseif stockName then
+        dot:SetColorTexture(0.38, 0.80, 0.44, 1)
+        badgeTitle = L("OPT_STYLE_FOLLOW", installedHost)
+        badgeDesc  = L("OPT_STYLE_FOLLOW_DESC", installedHost, stockName)
       else
         -- Neutral grey, not a warning colour: a deliberate choice is not a
         -- fault, and dressing it as one would be a scold.
