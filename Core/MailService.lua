@@ -845,6 +845,20 @@ local function Fingerprint(index)
   return tostring(sender) .. "\001" .. tostring(subject) .. "\001" .. tostring(tonumber(cod) or 0)
 end
 
+-- fingerprint -> what the same mail's fingerprint reads once its C.O.D. is
+-- paid, or nil for a mail that owes none. The first take from a C.O.D. mail
+-- pays the whole amount and the header reads 0 from then on, so a mail with
+-- more than one item changes fingerprint under a take that landed while the
+-- rest of its items are still in it. RunPlan follows it across that one
+-- change and no other. A mail that owes nothing -- almost every mail --
+-- answers from the find, which builds no string.
+local function PaidFingerprint(fingerprint)
+  if type(fingerprint) ~= "string" or fingerprint:find("\0010$") then return nil end
+  local head, cod = fingerprint:match("^(.*\001)([^\001]*)$")
+  if not head or (tonumber(cod) or 0) <= 0 then return nil end
+  return head .. "0"
+end
+
 -------------------------------------------------------------
 -- The stuck registry
 --
@@ -1189,7 +1203,9 @@ end
 -- is a snapshot and each entry fires at most once, so a refused attachment is
 -- never retried within a run and the runner cannot loop.
 --
--- Calls done(timedOut, refusedCount, reason) exactly once.
+-- Calls done(timedOut, refusedCount, reason, fingerprint) exactly once, where
+-- `fingerprint` is the mail's as the plan last knew it: the one it was given,
+-- or its paid form once a take has paid the mail's C.O.D. (PaidFingerprint).
 -------------------------------------------------------------
 
 -- The history (Core/MailMemory.lua, 2c): what is known of a mail before its
@@ -1219,6 +1235,10 @@ local function RunPlan(index, fingerprint, plan, done, record)
   local cursor = 0
   local refused = 0
   local reason, reasonMixed = nil, false
+  -- A C.O.D. mail's fingerprint once paid, and whether an item take of ours
+  -- has landed on it -- the first one is the payment. Until one has, the
+  -- paid form names some other mail, not this one.
+  local paidFingerprint, tookItem = PaidFingerprint(fingerprint), false
 
   -- Each take is recorded once it is CONFIRMED, from the two places below
   -- that establish it.
@@ -1228,6 +1248,7 @@ local function RunPlan(index, fingerprint, plan, done, record)
   -- mail may already be gone and the index somebody else's.
   local markSender, markSubject
   local function Took(op, value, count)
+    if op.kind == "item" then tookItem = true end
     HoldLeaving(markSender, markSubject)
     HistoryNote(record, op.kind, value, count)
   end
@@ -1247,15 +1268,30 @@ local function RunPlan(index, fingerprint, plan, done, record)
     cursor = cursor + 1
     local op = plan[cursor]
     if not op then
-      done(false, refused, reason)
+      done(false, refused, reason, fingerprint)
       return
     end
 
     -- The mail went away (emptied and deleted, or the inbox reindexed). Whatever
     -- is at this index now is not ours to take from.
-    if Fingerprint(index) ~= fingerprint then
-      done(false, refused, reason)
-      return
+    local now = Fingerprint(index)
+    if now ~= fingerprint then
+      -- Except the one change our own take makes to a mail that stays: the
+      -- C.O.D. it paid, which the header reads as 0 from then on. Same sender
+      -- and subject, nothing owed, and an item of the plan's still to take,
+      -- so the take that paid cannot have emptied it: this is the mail the
+      -- player confirmed, paid, with the rest of its items. Adopted once;
+      -- from then on a mail that still owes a C.O.D. never matches, so
+      -- nothing is paid twice and nothing is paid unasked.
+      if not (tookItem and paidFingerprint and now == paidFingerprint) then
+        done(false, refused, reason, fingerprint)
+        return
+      end
+      -- A refusal recorded against the mail as it read before the payment
+      -- is still this mail's: an item refused ahead of the take that paid.
+      local entry = stuck[fingerprint]
+      if entry ~= nil then NoteStuck(now, entry ~= true and entry or nil) end
+      fingerprint, paidFingerprint = now, nil
     end
 
     local function measure()
@@ -1293,7 +1329,7 @@ local function RunPlan(index, fingerprint, plan, done, record)
     WaitForCommand(function(timedOut)
       if timedOut then
         ErrorWatch.Close()
-        done(true, refused, reason)
+        done(true, refused, reason, fingerprint)
         return
       end
       if Fingerprint(index) ~= fingerprint or measure() < before then
@@ -1321,7 +1357,7 @@ local function RunPlan(index, fingerprint, plan, done, record)
         -- perfectly collectable mail (and, via the fingerprint, onto every
         -- identical sibling). End the plan; record nothing.
         if not MailboxOpen() then
-          done(false, refused, reason)
+          done(false, refused, reason, fingerprint)
           return
         end
         refused = refused + 1
@@ -1452,7 +1488,7 @@ function Mail.CollectMail(index, onDone, opts)
       return finish("collected")
     end
 
-    RunPlan(index, fingerprint, plan, function(timedOut, refusedCount, reason)
+    RunPlan(index, fingerprint, plan, function(timedOut, refusedCount, reason, current)
       if timedOut then return finish("timeout", refusedCount, reason) end
       if refusedCount > 0 then return finish("refused", refusedCount, reason) end
       -- Verify rather than assume, independently of the per-operation
@@ -1464,13 +1500,17 @@ function Mail.CollectMail(index, onDone, opts)
       if not MailboxOpen() then
         return finish("closed", refusedCount, reason)
       end
-      if Fingerprint(index) == fingerprint and Mail.HasContent(index) then
+      -- Checked against the mail as the plan last knew it: a C.O.D. it paid
+      -- reads 0 now, and the mail it names is still this one.
+      current = current or fingerprint
+      if Fingerprint(index) == current and Mail.HasContent(index) then
         -- Every handshake completed and the mail is still not empty. Nothing
         -- attributable to one take, but the mail is stuck all the same.
-        NoteStuck(fingerprint, reason)
+        NoteStuck(current, reason)
         return finish("refused", 1, reason)
       end
       ForgetStuck(fingerprint)
+      if current ~= fingerprint then ForgetStuck(current) end
       finish("collected", 0, reason)
     end, record)
   end
