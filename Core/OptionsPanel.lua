@@ -991,26 +991,38 @@ local function Build()
         and L("OPT_APPEARANCE_MATCH", HostSkinName())
         or L["OPT_APPEARANCE_DEFAULT"]
 
-      local borderItems = { { id = "auto", name = autoName } }
+      -- The border rows offer that entry only where it names something. Under
+      -- EllesmereUI it cannot: the suite has no window border to match (see
+      -- Core/Skin_EllesmereUI.lua), and "Match EllesmereUI" had always drawn
+      -- None. There an unset border simply shows as None and its size as the
+      -- step it would draw at -- which is what it has always looked like.
+      local borderAuto = true
+      if type(Skin.OffersBorderDefault) == "function" then
+        borderAuto = Skin.OffersBorderDefault() and true or false
+      end
+
+      local borderItems = {}
+      if borderAuto then borderItems[1] = { id = "auto", name = autoName } end
       for _, choice in ipairs(Skin.GetBorderChoices()) do
         borderItems[#borderItems + 1] = { id = choice.key, name = choice.name }
       end
       cy = AddDropdown(card, cy, L["OPT_BORDER_TITLE"], borderItems,
             function()
-              if Skin.IsBorderDefault and Skin.IsBorderDefault() then return "auto" end
+              if borderAuto and Skin.IsBorderDefault and Skin.IsBorderDefault() then return "auto" end
               return Skin.GetBorderStyle()
             end,
             function(id)
               if id == "auto" then Skin.ResetBorder() else Skin.SetBorderStyle(id) end
             end)
 
-      local sizeItems = { { id = "auto", name = autoName } }
+      local sizeItems = {}
+      if borderAuto then sizeItems[1] = { id = "auto", name = autoName } end
       for step = 1, 4 do
         sizeItems[#sizeItems + 1] = { id = step, name = string.format(L["OPT_BORDER_SIZE_STEP"], step) }
       end
       cy = AddDropdown(card, cy, L["OPT_BORDER_SIZE_TITLE"], sizeItems,
             function()
-              if Skin.IsBorderSizeDefault and Skin.IsBorderSizeDefault() then return "auto" end
+              if borderAuto and Skin.IsBorderSizeDefault and Skin.IsBorderSizeDefault() then return "auto" end
               return Skin.GetBorderSize()
             end,
             function(id)

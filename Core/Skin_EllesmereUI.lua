@@ -425,8 +425,19 @@ end
 -- Present in 8.6.6 and later, so this works on both backends: the same
 -- Glow/Shadow/texture picker the rest of the suite uses. Drawn outside the
 -- shell's own chrome, so switching styles is live with no reload.
+--
+-- There is no "match EllesmereUI" here, and there never really was one.
+-- EllesmereUI has no border for windows in general: every module owns the
+-- border of its own kind of frame -- each unit frame, each bar, the minimap,
+-- the chat panel, each damage meter window, the tooltip and the popup menus --
+-- and most of them default to none or to a 1px black line hugging a bar. The
+-- old "Match" read EllesmereUIDB.windowBorderSize/Texture, keys that no version
+-- of EllesmereUI has ever written at the root (the damage meter keeps its
+-- window border in its own profile, default size 0), so it always resolved to
+-- no border. That is kept as the default, exactly: an unset profile draws no
+-- border, as every unset profile always has, and nothing needs migrating.
 local BORDER_NONE = "none"
-local DEFAULT_BORDER = "shadow"
+local DEFAULT_BORDER = BORDER_NONE
 local DEFAULT_BORDER_SIZE = 2
 local THICKNESS_STEP = { thin = 1, normal = 2, heavy = 3 }
 
@@ -445,28 +456,22 @@ function Skin.ForEachWindow(fn)
   end
 end
 
--- EllesmereUI's own configured window border (the one its Damage Meters window
--- and friends use), read live. Size 0 means "no border", which we express as
--- our BORDER_NONE. Returns styleKey, sizeStep.
-local function HostBorder()
-  local db = EllesmereUIDB
-  if type(db) ~= "table" then return BORDER_NONE, DEFAULT_BORDER_SIZE end
-  local size = tonumber(db.windowBorderSize)
-  local tex  = db.windowBorderTexture
-  if size == nil and tex == nil then return BORDER_NONE, DEFAULT_BORDER_SIZE end
-  if (size or 0) <= 0 then return BORDER_NONE, DEFAULT_BORDER_SIZE end
-  return tex or "solid", math.max(1, math.min(4, size))
-end
-Skin.GetHostBorder = HostBorder
-
 function Skin.GetBorderStyle()
   local saved = GetProfile().euiBorder
   if saved ~= nil then return saved end
-  return (HostBorder())
+  return DEFAULT_BORDER
 end
 
 function Skin.IsBorderDefault()
   return GetProfile().euiBorder == nil
+end
+
+-- Read by the options panel: whether the border rows offer a "leave it alone"
+-- entry. Postbox Modern does (its authored hairline); this skin does not,
+-- because the only thing such an entry could name is the None already listed.
+-- Unset still reads as None, through GetBorderStyle above.
+function Skin.OffersBorderDefault()
+  return false
 end
 
 function Skin.ResetBorder()
@@ -476,10 +481,9 @@ function Skin.ResetBorder()
 end
 
 function Skin.GetBorderSize()
-  local saved = tonumber(GetProfile().euiBorderSize)
+  local saved = tonumber((GetProfile().euiBorderSize))
   if saved then return saved end
-  local _, size = HostBorder()
-  return size
+  return DEFAULT_BORDER_SIZE
 end
 
 function Skin.IsBorderSizeDefault()
