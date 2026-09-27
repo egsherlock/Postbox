@@ -1382,8 +1382,10 @@ local function Build()
 end
 
 -- Where the window opens: beside the mailbox window when that is up, beside
--- the options panel when that is, else the middle of the screen. Clamped, so
--- a window near the screen's edge still lands whole.
+-- the options panel when that is, else the middle of the screen. Beside
+-- means the side with room for it -- right first -- compared in screen
+-- pixels, since the windows can carry different scales. Clamped, so a
+-- window with no room either side still lands whole.
 local function Place(frame, anchor)
   if not anchor then
     local UI = ns.MailboxUI
@@ -1396,10 +1398,19 @@ local function Place(frame, anchor)
     end
   end
   frame:ClearAllPoints()
-  if anchor and anchor.GetRight and anchor:GetRight() then
-    frame:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 8, 0)
-  else
+  local left = anchor and anchor.GetLeft and anchor:GetLeft()
+  local right = anchor and anchor.GetRight and anchor:GetRight()
+  if not (left and right) then
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
+    return
+  end
+  local scale = anchor:GetEffectiveScale() or 1
+  local own = EDITOR_W * (frame:GetEffectiveScale() or 1)
+  local screen = (UIParent:GetRight() or 0) * (UIParent:GetEffectiveScale() or 1)
+  if right * scale + 8 + own > screen and left * scale - 8 - own >= 0 then
+    frame:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -8, 0)
+  else
+    frame:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 8, 0)
   end
 end
 
