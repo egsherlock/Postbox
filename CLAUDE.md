@@ -22,16 +22,20 @@ trailers. This applies whatever the tooling's own defaults are.
 
 ## Workflow
 
-- **Two branches, both ours to push.** `main` is what players have: a fix for
-  the live release is committed there and shipped as a patch tag (`v1.40.2`),
-  then `main` is merged into `beta`. `beta` is where new features are built,
-  and beta tags (`v1.41.0-beta.1`) are cut from it for testers. When a beta is
-  ready for everyone, `beta` is merged into `main` and the full version is
-  tagged there. No other branches, no pull requests for our own work; PRs are
-  for outside contributors who cannot push here.
-- **Dev builds for the live install** come from whichever branch is being
-  worked on, stamped `-devN` on the version that branch will ship
-  (`v1.41.0-devN` on `beta`, `v1.40.2-devN` on `main`).
+- **All work and testing happens on `beta`.** Features and fixes alike are
+  committed there, tested there, and beta tags (`v1.41.0-beta.1`) are cut from
+  it for testers.
+- **`main` is what players have, and it moves only when we ship.** Shipping is
+  `beta` merged into `main` and the version tagged on `main`; that tag is what
+  publishes to CurseForge. Nothing is committed to `main` directly. If a live
+  fix is urgent while `beta` carries unfinished work, raise it before choosing
+  how to ship it.
+- **No other long-lived branches, no pull requests for our own work.** Short
+  local branches that are merged into `beta` and deleted are fine; nothing but
+  `beta` and `main` is pushed. PRs are for outside contributors who cannot push
+  here.
+- **Dev builds for the live install** come from `beta`, stamped `-devN` on the
+  version `beta` will ship (`v1.41.0-devN`).
 - **Offer a local test before any tag.** Nothing ships without the option of
   swapping the changed files into the live WoW install and `/reload`-ing first.
   A session on the maintainer's own machine copies them into
