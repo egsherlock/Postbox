@@ -474,10 +474,17 @@ do
           local ok, done = pcall(Mail.IsReadPersistent, index)
           if ok and done then s.done = s.done + 1 end
         end
+        -- Attachments can sit in any of the slots, so the walk goes until the
+        -- header's count of them has been found rather than through all 16.
         if itemCount > 0 and canScan then
+          local found = 0
           for slot = 1, slotsMax do
             local _, itemID = GetInboxItem(index, slot)
-            if itemID and not cached(itemID) then s.cold = s.cold + 1 end
+            if itemID then
+              if not cached(itemID) then s.cold = s.cold + 1 end
+              found = found + 1
+              if found >= itemCount then break end
+            end
           end
         end
       end
