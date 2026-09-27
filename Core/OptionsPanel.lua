@@ -1418,6 +1418,99 @@ local function Build()
   cy = AddCheckbox(card, cy, L["OPT_ALERT_OTHERS_TITLE"], L["OPT_ALERT_OTHERS_DESC"],
         function() return ns.MailboxUI.GetOption("mailWarnings") end,
         function(on) ns.MailboxUI.SetOption("mailWarnings", on) end)
+
+  -- The characters hidden from the character list (Core/MailMemory.lua, 2b):
+  -- who they are, and one button that shows them all again. The list's own
+  -- foot brings them back one at a time; this row is the way back that is
+  -- always here, even once nobody is left for that list to offer.
+  do
+    local T = ns.Theme
+    local row = CreateFrame("Frame", nil, card)
+    row:SetHeight(CHECK_H)
+    row:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
+    row:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
+
+    local caption = T.CreateText(row, "label")
+    caption:SetPoint("LEFT", row, "LEFT", 0, 0)
+    caption:SetWordWrap(false)
+    caption:SetText(L["HIDDEN_TITLE"])
+
+    local showAll = T.CreateButton(nil, row)
+    showAll:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    showAll:SetText(L["OPT_HIDDEN_SHOW_ALL"])
+    showAll:SetScript("OnClick", function()
+      local Memory = ns.MailMemory
+      if Memory and type(Memory.ShowAllHidden) == "function" then Memory.ShowAllHidden() end
+    end)
+    showAll:SetScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(L["OPT_HIDDEN_SHOW_ALL"])
+      GameTooltip:AddLine(L["OPT_HIDDEN_SHOW_ALL_DESC"], 1, 1, 1, true)
+      GameTooltip:Show()
+    end)
+    showAll:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    -- The names, right-aligned against the button: class colours, the realm
+    -- where it is not this one, cut short -- the whole list is on hover.
+    local names = T.CreateText(row, "secondary")
+    names:SetJustifyH("RIGHT")
+    names:SetWordWrap(false)
+
+    local hiddenList = {}
+    local function NameOf(who)
+      local Memory = ns.MailMemory
+      return (Memory and Memory.ClassName) and Memory.ClassName(who.realm, who.name) or who.name
+    end
+    local function RefreshHidden()
+      local Memory = ns.MailMemory
+      hiddenList = (Memory and type(Memory.HiddenCharacters) == "function") and Memory.HiddenCharacters() or {}
+      local any = #hiddenList > 0
+      -- Measured on every open: a host skin re-fonts the button after build.
+      T.SizeToText(showAll, { height = CHECK_H })
+      showAll:SetShown(any)
+      names:ClearAllPoints()
+      if any then
+        names:SetPoint("RIGHT", showAll, "LEFT", -8, 0)
+      else
+        names:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+      end
+      local parts = {}
+      for i = 1, #hiddenList do parts[i] = NameOf(hiddenList[i]) end
+      -- The row's width from its anchors, or from the column's own numbers
+      -- before the panel has ever been laid out.
+      local width = row:GetWidth() or 0
+      if width < 50 then width = W - 20 - 2 * PAD end
+      local room = width - math.ceil(caption:GetStringWidth() or 0) - 8
+        - (any and (math.ceil(showAll:GetWidth() or 0) + 8) or 0)
+      T.FitText(names, math.max(room, 20), any and table.concat(parts, ", ") or L["OPT_HIDDEN_NONE"])
+    end
+    RefreshHidden()
+    frame.__refreshers[#frame.__refreshers + 1] = RefreshHidden
+
+    -- The row explains itself on hover, and lists every name the row may
+    -- have cut; the button has its own tooltip. Motion only: a click passes
+    -- on, as the Window heading's badge does.
+    row:EnableMouse(true)
+    if row.SetPropagateMouseClicks then row:SetPropagateMouseClicks(true) end
+    row:SetScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(L["HIDDEN_TITLE"])
+      GameTooltip:AddLine(L["HIDDEN_DESC"], 1, 1, 1, true)
+      if #hiddenList > 0 then
+        GameTooltip:AddLine(" ")
+        local shown = math.min(#hiddenList, 12)
+        for i = 1, shown do GameTooltip:AddLine(NameOf(hiddenList[i]), 1, 1, 1) end
+        if #hiddenList > shown then
+          GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #hiddenList - shown), 0.6, 0.6, 0.63)
+        end
+      end
+      GameTooltip:Show()
+    end)
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    MarkBottom(card, cy, CHECK_H)
+    cy = cy - ROW_H
+  end
   y = EndSection(col, card, y)
   local memoryCard = card
 

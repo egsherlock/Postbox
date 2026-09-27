@@ -1341,6 +1341,10 @@ end
 -- button that asked for it, lists names in class colour with their counts in
 -- a column, marks the box on screen, and closes on a pick or a click
 -- anywhere else.
+--
+-- A right-click hides a character (section 2b). It does not vanish: it drops
+-- under "Hidden (N)" at the foot of the list, which unfolds to show it greyed
+-- with Show beside it -- the undo, one click away, in the list it left.
 -------------------------------------------------------------
 
 local PICK_ROW_H = 20
@@ -1380,20 +1384,70 @@ function MM.CountFor(realm, name)
   return st.waiting + (st.pending or 0), st.warn, WarningText(st, time())
 end
 
+-- The foot of the list, standing for the characters the player hid: one
+-- shared marker, told apart from a character by `foot`.
+local PICK_FOOT = { foot = true }
+
+-- The list's entries, read afresh -- a hide or a show moves a character
+-- from one half to the other: the characters it offers, then, while any are
+-- hidden, the foot that folds them away and, unfolded, the hidden ones under
+-- it by name. The offset stays inside what is left.
+local function LoadPicker(list)
+  local choices, hidden = SwitchChoices()
+  table.sort(hidden, ByName)
+  list.choices, list.hidden = choices, hidden
+  local entries = {}
+  for i = 1, #choices do entries[#entries + 1] = choices[i] end
+  if #hidden > 0 then
+    entries[#entries + 1] = PICK_FOOT
+    if list.showHidden then
+      for i = 1, #hidden do entries[#entries + 1] = hidden[i] end
+    end
+  end
+  list.entries = entries
+  list.offset = math.max(0, math.min(list.offset or 0, #entries - PICK_MAX))
+end
+
+-- A row's tooltip: whose it is and what it has to say, then the gesture the
+-- row cannot show by itself -- the Mail tab's rows teach theirs the same way.
+-- The character being played has no gesture, so it says something only when
+-- it has something to say.
+local function PickerTip(row)
+  local kind = row.kind
+  if kind == "character" and row.isMe and not row.reason then
+    GameTooltip:Hide()
+    return
+  end
+  GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+  if kind == "foot" then
+    GameTooltip:SetText(L["HIDDEN_TITLE"])
+    GameTooltip:AddLine(L["HIDDEN_DESC"], 1, 1, 1, true)
+  else
+    GameTooltip:SetText(MM.ClassName(row.realm, row.charName))
+    if kind == "hidden" then
+      GameTooltip:AddLine(L["PICKER_SHOW_TIP"], 1, 1, 1, true)
+    else
+      if row.reason then GameTooltip:AddLine(row.reason, 1, 1, 1, true) end
+      if not row.isMe then GameTooltip:AddLine(L["PICKER_HIDE_HINT"], 0.7, 0.7, 0.7, true) end
+    end
+  end
+  GameTooltip:Show()
+end
+
 local function PaintPicker(list)
   local T = ns.Theme
-  local choices = list.choices or {}
+  local entries = list.entries or {}
   local cur = list.current
   local first = list.offset + 1
-  local shown = math.min(#choices, PICK_MAX)
-  local nameW, countW = 0, 0
+  local shown = math.min(#entries, PICK_MAX)
+  local nameW, countW, footW = 0, 0, 0
   for i = 1, shown do
-    local st = choices[first + i - 1]
+    local st = entries[first + i - 1]
     local row = list.rows[i]
     if not row then
       row = CreateFrame("Button", nil, list)
       row:SetHeight(PICK_ROW_H)
-      row:RegisterForClicks("LeftButtonUp")
+      row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
       row.Hover = row:CreateTexture(nil, "BACKGROUND")
       row.Hover:SetAllPoints()
       row.Hover:SetColorTexture(1, 1, 1, 0.06)
@@ -1403,11 +1457,18 @@ local function PaintPicker(list)
       row.Bar:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
       row.Bar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
       row.Bar:SetTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
+      -- The hairline over the foot: the names above it are offered, the ones
+      -- below it are not. Neutral, as a row heading's rule is.
+      row.Rule = row:CreateTexture(nil, "ARTWORK")
+      row.Rule:SetHeight(1)
+      row.Rule:SetPoint("TOPLEFT", row, "TOPLEFT", 6, 0)
+      row.Rule:SetPoint("TOPRIGHT", row, "TOPRIGHT", -6, 0)
+      row.Rule:SetColorTexture(1, 1, 1, 0.12)
+      row.Rule:Hide()
       row.Crest = row:CreateTexture(nil, "ARTWORK")
       row.Crest:SetSize(14, 14)
       row.Crest:SetPoint("LEFT", row, "LEFT", 8, 0)
       row.Name = T.CreateText(row, "value")
-      row.Name:SetPoint("LEFT", row.Crest, "RIGHT", 6, 0)
       row.Name:SetJustifyH("LEFT")
       row.Name:SetWordWrap(false)
       row.Count = T.CreateText(row, "secondary")
@@ -1415,50 +1476,112 @@ local function PaintPicker(list)
       row.Count:SetJustifyH("RIGHT")
       row:SetScript("OnEnter", function(self)
         self.Hover:Show()
-        if self.reason then
-          GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-          GameTooltip:SetText(self.reason, 1, 1, 1, 1, true)
-          GameTooltip:Show()
-        end
+        PickerTip(self)
       end)
       row:SetScript("OnLeave", function(self)
         self.Hover:Hide()
         GameTooltip:Hide()
       end)
-      row:SetScript("OnClick", function(self)
-        local pick = list.onPick
-        list:Hide()
-        if pick then pick(self.realm, self.charName, self.isMe) end
+      -- A left click on a character picks it. A right click hides it, and it
+      -- drops under the foot, unfolded, so where it went is on screen and so
+      -- is the way back. A click on the foot folds or unfolds it; one on a
+      -- hidden character shows it again. The list stays up for all three.
+      row:SetScript("OnClick", function(self, button)
+        local kind = self.kind
+        if kind == "character" and button ~= "RightButton" then
+          local pick = list.onPick
+          list:Hide()
+          if pick then pick(self.realm, self.charName, self.isMe) end
+          return
+        end
+        if kind == "foot" then
+          list.showHidden = not list.showHidden
+        elseif kind == "hidden" then
+          MM.SetHidden(self.realm, self.charName, false)
+          list.dirty = true
+        elseif not self.isMe then
+          MM.SetHidden(self.realm, self.charName, true)
+          list.dirty = true
+          list.showHidden = true
+        else
+          return
+        end
+        LoadPicker(list)
+        PaintPicker(list)
+        -- The row under the pointer may stand for another entry now.
+        if self:IsShown() and self:IsMouseOver() then PickerTip(self) else GameTooltip:Hide() end
       end)
       list.rows[i] = row
     end
-    row.realm, row.charName, row.isMe = st.realm, st.name, st.me
-    row.reason = st.text
-    local crest = MM.ClassIcon(st.realm, st.name)
-    if crest then row.Crest:SetAtlas(crest, false) else row.Crest:SetTexture(nil) end
+
+    row.Name:ClearAllPoints()
     row.Name:SetWidth(0)
-    row.Name:SetText(MM.ClassName(st.realm, st.name))
-    local waiting = st.waiting + (st.pending or 0)
-    local count = ns.Plural("COUNT_MAILS", waiting)
-    row.Count:SetText(st.warn and T.Colorize("warning", count) or count)
-    nameW = math.max(nameW, row.Name:GetStringWidth() or 0)
-    countW = math.max(countW, row.Count:GetStringWidth() or 0)
-    local current = (cur == nil and st.me) or (cur ~= nil and cur.realm == st.realm and cur.name == st.name)
+    local current = false
+    if st.foot then
+      row.kind = "foot"
+      row.realm, row.charName, row.isMe, row.reason = nil, nil, false, nil
+      row.Crest:Hide()
+      row.Rule:Show()
+      row.Name:SetPoint("LEFT", row, "LEFT", 8, 0)
+      row.Name:SetText(string.format(L["PICKER_HIDDEN"], #(list.hidden or {})))
+      -- Brighter while unfolded: its state rises in colour, not alpha alone.
+      T.SetColor(row.Name, list.showHidden and "textPrimary" or "textSecondary")
+      row.Name:SetAlpha(1)
+      row.Count:SetText("")
+      footW = math.max(footW, row.Name:GetStringWidth() or 0)
+    else
+      row.kind = st.hidden and "hidden" or "character"
+      row.realm, row.charName, row.isMe = st.realm, st.name, st.me
+      row.reason = (not st.hidden) and st.text or nil
+      row.Rule:Hide()
+      local crest = MM.ClassIcon(st.realm, st.name)
+      if crest then row.Crest:SetAtlas(crest, false) else row.Crest:SetTexture(nil) end
+      row.Crest:Show()
+      row.Name:SetPoint("LEFT", row.Crest, "RIGHT", 6, 0)
+      if st.hidden then
+        -- Greyed in colour AND alpha together: no class colour, a crest
+        -- without its hue, both a step back -- and Show beside it at full
+        -- strength, the one thing on the row to do.
+        row.Crest:SetDesaturated(true)
+        row.Crest:SetAlpha(0.5)
+        T.SetColor(row.Name, "textDisabled")
+        row.Name:SetAlpha(0.8)
+        row.Name:SetText(st.label)
+        row.Count:SetText(L["PICKER_SHOW"])
+      else
+        row.Crest:SetDesaturated(false)
+        row.Crest:SetAlpha(1)
+        T.SetColor(row.Name, "textPrimary")
+        row.Name:SetAlpha(1)
+        row.Name:SetText(MM.ClassName(st.realm, st.name))
+        local waiting = st.waiting + (st.pending or 0)
+        local count = ns.Plural("COUNT_MAILS", waiting)
+        row.Count:SetText(st.warn and T.Colorize("warning", count) or count)
+      end
+      nameW = math.max(nameW, row.Name:GetStringWidth() or 0)
+      countW = math.max(countW, row.Count:GetStringWidth() or 0)
+      current = (cur == nil and st.me) or (cur ~= nil and cur.realm == st.realm and cur.name == st.name)
+    end
     if current and T.GetAccent then
       local r, g, b = T.GetAccent()
       row.Bar:SetVertexColor(r, g, b, 0.9)
     end
     row.Bar:SetShown(current and true or false)
   end
-  for i = shown + 1, #list.rows do list.rows[i]:Hide() end
+  -- A row no longer needed keeps no hover wash for the next time it is.
+  for i = shown + 1, #list.rows do
+    list.rows[i].Hover:Hide()
+    list.rows[i]:Hide()
+  end
 
   local width = 8 + 14 + 6 + math.ceil(nameW) + 20 + math.ceil(countW) + 8
+  width = math.max(width, 8 + math.ceil(footW) + 8)
   for i = 1, shown do
     local row = list.rows[i]
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", list, "TOPLEFT", 1, -4 - (i - 1) * PICK_ROW_H)
     row:SetWidth(width - 2)
-    row.Name:SetWidth(math.ceil(nameW) + 2)
+    row.Name:SetWidth(math.ceil(row.kind == "foot" and footW or nameW) + 2)
     row:Show()
   end
   list:SetSize(width, 8 + shown * PICK_ROW_H)
@@ -1488,7 +1611,16 @@ function MM.OpenPicker(anchor, current, onPick)
     -- it excepted, so that button's own click can close it. No full-screen
     -- catcher frame: one swallowed the very click that chose a character.
     list:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
-    list:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
+    list:SetScript("OnHide", function(self)
+      self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+      -- A hide or a show made while the list was up repaints everything that
+      -- lists characters now, once: until the list closes, the button it
+      -- hangs from has to stay where it is.
+      if self.dirty then
+        self.dirty = false
+        MM.HiddenChanged()
+      end
+    end)
     list:SetScript("OnEvent", function(self)
       if self:IsMouseOver() or (self.anchor and self.anchor:IsMouseOver()) then return end
       -- When, so a click that closed it here and then reaches a way in
@@ -1499,7 +1631,7 @@ function MM.OpenPicker(anchor, current, onPick)
     end)
     -- Past PICK_MAX names the wheel moves the list a name at a time.
     list:SetScript("OnMouseWheel", function(self, delta)
-      local most = math.max(0, #(self.choices or {}) - PICK_MAX)
+      local most = math.max(0, #(self.entries or {}) - PICK_MAX)
       local offset = math.max(0, math.min(most, self.offset - delta))
       if offset ~= self.offset then
         self.offset = offset
@@ -1513,8 +1645,11 @@ function MM.OpenPicker(anchor, current, onPick)
     list:Hide()
   end
   list.anchor, list.onPick, list.current = anchor, onPick, current
-  list.choices = SwitchChoices()
   list.offset = 0
+  -- The hidden characters folded away -- unless the box on screen is one of
+  -- them, when the mark that says which box it is has to be seen.
+  list.showHidden = current ~= nil and MM.IsHidden(current.realm, current.name)
+  LoadPicker(list)
   PaintPicker(list)
   -- Hanging from the button's left edge and growing right, as a menu opens
   -- from what was clicked -- out past the window's edge where it must; it

@@ -1923,8 +1923,10 @@ function CT.OpenPicker(panel)
   if not (panel and panel.Picker and Memory) then return end
   if not panel.Picker:IsShown() then AV.Paint(panel) end
   if not panel.Picker:IsShown() then
-    -- No other character has a box to show: say so, not a dead click.
-    ns.Print(L()["MEMORY_NO_OTHERS"])
+    -- No other character has a box to show: say so, not a dead click -- and,
+    -- when it is only because the player hid them, where they come back.
+    local _, hidden = Memory.HasOthers()
+    ns.Print(L()[(tonumber(hidden) or 0) > 0 and "MEMORY_NO_OTHERS_HIDDEN" or "MEMORY_NO_OTHERS"])
     return
   end
   Memory.OpenPicker(panel.Picker, panel._alt, function(realm, name, isMe)
