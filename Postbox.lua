@@ -87,6 +87,7 @@ local SCHEMA = {
   "altClasses",               -- realm -> name -> class token
   "recipients",               -- recipient key -> curation state
   "altMeta",                  -- realm -> name -> { level, faction, lastSeen }
+  "charGroups",               -- the player's character groups (Core/CharacterGroups.lua)
   "lastRun",                  -- realm -> name -> last bad collect run
                               -- (see Core/CollectTab.lua, run memory)
   "mailMemory",               -- realm -> name -> last-seen inbox snapshot

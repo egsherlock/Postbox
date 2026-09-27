@@ -55,6 +55,7 @@ Core\SendTab.lua
 Core\MailboxUI.lua
 Core\MailMemory.lua
 Core\MinimapButton.lua
+Core\CharacterGroups.lua
 Core\OptionsPanel.lua
 Core\RecipientManager.lua
 
