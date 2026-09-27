@@ -3523,6 +3523,21 @@ function ST.SendTabActive()
   return sendTabActive
 end
 
+-- What the bags were last asked to draw, so that one transition asks each
+-- bag host once. A tab switch reaches the passes below two or three times in
+-- the same frame -- the panel's own OnShow or OnHide, the shell's SelectTab,
+-- the close -- and each used to ask every host to draw its bags again, much
+-- of it inside Postbox's own call. The frame's clock and the state asked for
+-- say whether a host has had this transition already.
+ST._paintAt, ST._paintFor = {}, {}
+
+function ST.PaintDue(host)
+  local now = GetTime()
+  if ST._paintAt[host] == now and ST._paintFor[host] == sendTabActive then return false end
+  ST._paintAt[host], ST._paintFor[host] = now, sendTabActive
+  return true
+end
+
 -- A call into a bag host, timed on the visit's record (Postbox.lua, 5b).
 function ST.Timed(kind, fn, ...)
   local perf = ns.Perf
@@ -3670,7 +3685,8 @@ end
 -- One container repaint per user action: the hooks do the marking, this only
 -- asks the client to run them.
 local function RepaintContainers()
-  if type(ContainerFrame_UpdateAll) == "function" then ST.Timed("blizz", ContainerFrame_UpdateAll) end
+  if type(ContainerFrame_UpdateAll) ~= "function" or not ST.PaintDue("blizz") then return end
+  ST.Timed("blizz", ContainerFrame_UpdateAll)
 end
 
 -------------------------------------------------------------
@@ -3756,10 +3772,12 @@ end
 -- hands: the client's own greying of an attached item and its fading of
 -- what the mail context refuses are the host's to paint, and a host that
 -- paints only on its own events was left showing the previous tab's state.
+-- Once per host per transition (ST.PaintDue).
 function ST.RepaintExternalBags()
   local api = _G["Baganator"]
   api = type(api) == "table" and api.API or nil
-  if type(api) == "table" and type(api.RequestItemButtonsRefresh) == "function" then
+  if type(api) == "table" and type(api.RequestItemButtonsRefresh) == "function"
+     and ST.PaintDue("baganator") then
     -- No argument. Its one parameter is a LIST of Baganator's refresh reasons,
     -- walked with ipairs, and nil means its own default (item widgets and
     -- searches). A caller's name here made ipairs throw inside the pcall, so
@@ -3769,7 +3787,8 @@ function ST.RepaintExternalBags()
   for _, name in ipairs({ "EUI_Bags", "EUI_BagsReagent" }) do
     local frame = _G[name]
     if type(frame) == "table" and type(frame.RefreshInventory) == "function"
-       and type(frame.IsVisible) == "function" and frame:IsVisible() then
+       and type(frame.IsVisible) == "function" and frame:IsVisible()
+       and ST.PaintDue(name) then
       ST.Timed("eui", pcall, frame.RefreshInventory, frame)
     end
   end
@@ -3829,8 +3848,20 @@ local nativeArmWanted = false
 -- the secure caller is untouched; the latch keeps our own re-assert from
 -- re-entering the hook.
 local reasserting = false
+
+-- The flag as the client holds it, as the hook below last saw it set -- by
+-- Postbox, by the mail frame's own tab code, by anyone -- and the frame it was
+-- set in. Every call runs each bag addon's context repaint (Baganator's hook
+-- on it redraws the context fading of every button it shows, whatever the
+-- value), and one switch or close used to set the same value two or three
+-- times over. ST.SetArm leaves alone a value the client already holds:
+-- `false` whenever it was last seen set so, `true` only within the frame it
+-- was set in, since the client could drop that one on its own.
+ST._armSeen, ST._armSeenAt = nil, nil
+
 if type(hooksecurefunc) == "function" and type(SetSendMailShowing) == "function" then
   hooksecurefunc("SetSendMailShowing", function(shown)
+    ST._armSeen, ST._armSeenAt = shown and true or false, GetTime()
     if shown or not nativeArmWanted or reasserting then return end
     reasserting = true
     local perf = ns.Perf
@@ -3841,17 +3872,20 @@ if type(hooksecurefunc) == "function" and type(SetSendMailShowing) == "function"
   end)
 end
 
--- The client's flag, set and timed (Postbox.lua, 5b): every call runs each
--- bag addon's context repaint.
 function ST.SetArm(shown)
   if type(SetSendMailShowing) ~= "function" then return end
-  ST.Timed("arm", SetSendMailShowing, shown and true or false)
+  shown = shown and true or false
+  if ST._armSeen == shown and (not shown or ST._armSeenAt == GetTime()) then return end
+  ST.Timed("arm", SetSendMailShowing, shown)
 end
 
 function ST.ActivateNativeSendMail()
   sendTabActive = true
   nativeArmWanted = true
   ST.SetArm(true)
+  -- One pass per transition: a switch to this tab comes here from the
+  -- panel's own OnShow and again from the shell's SelectTab, in one frame.
+  if not ST.PaintDue("activate") then return end
   ST.Timed("hooks", HookVisibleSlots)
   ST.Timed("hooks", ST.HookExternalBags)
   RepaintContainers()
