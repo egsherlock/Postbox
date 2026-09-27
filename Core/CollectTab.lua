@@ -150,6 +150,10 @@ function RV.QualityMark(index, slot)
     if itemID and C_Item and type(C_Item.GetItemInfo) == "function" then
       local _, generic = C_Item.GetItemInfo(itemID)
       link = generic
+      -- An uncached answer is a request to the server; /postbox debug counts
+      -- them while an open is being measured (Postbox.lua, 5b).
+      local perf = ns.Perf
+      if perf and perf.cur then perf.ItemAsk(generic ~= nil) end
     end
   end
   return RV.MarkOf(link)
@@ -3288,6 +3292,10 @@ end
 -------------------------------------------------------------
 
 local function UpdateVisibleRows(panel)
+  -- Timed, with the rows it binds, while an open is being measured
+  -- (Postbox.lua, 5b); nil otherwise.
+  local perf = ns.Perf
+  local perfAt = perf and perf.Begin()
   -- Another character's box takes the list: its own rows, and none of these.
   local away = AV.Active(panel)
   if away then AV.UpdateRows(panel) else AV.HideRows(panel) end
@@ -3375,6 +3383,7 @@ local function UpdateVisibleRows(panel)
   -- Rows carry no skinnable children -- no tagged push button, no themed panel,
   -- no edit box -- so a newly grown pool entry needs no ns.Skin.Refresh pass.
   -- Adding one here would re-walk the whole panel on every scroll tick.
+  if perfAt then perf.Rows(perfAt, used) end
 end
 
 -------------------------------------------------------------
@@ -3503,6 +3512,10 @@ function CT.RefreshMailList(panel)
     return
   end
   panel._dirty = false
+  -- Timed while an open is being measured (Postbox.lua, 5b): the whole
+  -- refresh, and the walk up to the row binds. nil otherwise.
+  local perf = ns.Perf
+  local perfAt = perf and perf.Begin()
 
   CloseDetailIfStale(panel)
 
@@ -3718,6 +3731,7 @@ function CT.RefreshMailList(panel)
   if (scroll:GetVerticalScroll() or 0) > maxScroll then scroll:SetVerticalScroll(maxScroll) end
   if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
 
+  if perfAt then perf.Walk(perfAt) end
   UpdateVisibleRows(panel)
 
   -- One sentence per view, each true of exactly that view: "nothing to collect"
@@ -3761,6 +3775,8 @@ function CT.RefreshMailList(panel)
   -- A run owns the status line for its whole duration. Re-asserting it here
   -- means nothing else can leave a stale idle summary on screen mid-run.
   if CT.IsRunning() then CT.RefreshRunStatus() end
+
+  if perfAt then perf.End("refresh", perfAt) end
 end
 
 -- The row layout option changed. Frozen: Core/MailboxUI.lua calls this from the

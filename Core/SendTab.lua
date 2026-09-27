@@ -3744,7 +3744,11 @@ function ST.RepaintExternalBags()
   local api = _G["Baganator"]
   api = type(api) == "table" and api.API or nil
   if type(api) == "table" and type(api.RequestItemButtonsRefresh) == "function" then
-    pcall(api.RequestItemButtonsRefresh, "Postbox")
+    -- No argument. Its one parameter is a LIST of Baganator's refresh reasons,
+    -- walked with ipairs, and nil means its own default (item widgets and
+    -- searches). A caller's name here made ipairs throw inside the pcall, so
+    -- this repaint silently never happened.
+    pcall(api.RequestItemButtonsRefresh)
   end
   for _, name in ipairs({ "EUI_Bags", "EUI_BagsReagent" }) do
     local frame = _G[name]
@@ -4688,7 +4692,12 @@ function ST.Reset(panel, reason)
   ClearSendMailMoneyState()
   if reason == "close" then StashDraft(panel) end
   ClearDraftFields(panel)
-  if reason == "open" then RestoreDraft(panel) end
+  if reason == "open" then
+    RestoreDraft(panel)
+    -- A new visit: the tab's first appearance in it refreshes the contact
+    -- sources once more (the panel's OnShow, CS.RefreshForVisit).
+    panel._contactsAsked = nil
+  end
   -- The attachment queue does not survive the mailbox: its items are still in
   -- the bags, and a queue that reappeared at the next mailbox would be a
   -- surprise waiting to attach itself.
@@ -5406,6 +5415,20 @@ local function InstallEvents(panel)
     -- Registered before the refresh below, so anything that fires during it is
     -- still coalesced into the same drain.
     for i = 1, #VISIBILITY_EVENTS do self:RegisterEvent(VISIBILITY_EVENTS[i]) end
+
+    -- Once per mailbox visit (ST.Reset re-arms it at each open): fresh guild
+    -- and friends lists asked of the server, and the recent-allies list marked
+    -- for a re-read -- here, where the suggestions are about to be read,
+    -- rather than at the mailbox opening, where every guild-aware addon then
+    -- processed the roster for a visit that may never come to this tab.
+    -- Before the category pass below, which reads the recent allies.
+    if not self._contactsAsked then
+      self._contactsAsked = true
+      local CS = Contacts()
+      if type(CS) == "table" and type(CS.RefreshForVisit) == "function" then
+        CS.RefreshForVisit()
+      end
+    end
 
     ST.ActivateNativeSendMail()
     -- Drop MailRules' memos before anything asks it a question: opening the
