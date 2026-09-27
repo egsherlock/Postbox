@@ -376,6 +376,7 @@ do
   local opens, count = {}, 0
   local lastInbox = nil     -- the inbox as last read at a mailbox
   local watching = false
+  local memoryReadMs = 0    -- the costliest memory read a report has made
 
   -- Milliseconds, high resolution: what every duration here is measured in.
   local Clock = type(debugprofilestop) == "function" and debugprofilestop
@@ -735,6 +736,9 @@ do
       put(format("item events %d, asked %d (%d cold)", rec.items, rec.asks, rec.cold))
     end
     put(SlowDelta(rec))
+    if rec.report then
+      put(format("a report's memory read %sms in the window", Ms(rec.report)))
+    end
     if rec.longestKind then
       put(format("longest step %sms %s", Ms(rec.longest), rec.longestKind))
     end
@@ -774,9 +778,9 @@ do
       for i = 1, #SLOW do out[i] = t and t[i] and format("%d", floor(t[i] + 0.5)) or "?" end
       return concat(out, "/")
     end
+    local peak = Metric(api.GetAddOnMetric, ADDON_NAME, MetricId("PeakTime"))
     add(format("  Profiler this session, frames over 100/500/1000ms: game %s, addons %s, Postbox %s | Postbox peak %sms, recent avg %.2fms",
-      three(now.app), three(now.all), three(now.own),
-      Ms(Metric(api.GetAddOnMetric, ADDON_NAME, MetricId("PeakTime"))),
+      three(now.app), three(now.all), three(now.own), Ms(peak),
       Metric(api.GetAddOnMetric, ADDON_NAME, MetricId("RecentAverageTime")) or 0))
 
     if type(api.GetTopKAddOnsForMetric) == "function" then
@@ -792,6 +796,7 @@ do
         if #names > 0 then add("  Peak ms: " .. concat(names, ", ")) end
       end
     end
+    return peak
   end
 
   local function DataLine()
@@ -854,15 +859,21 @@ do
     counted("friends", type(C_FriendList) == "table" and C_FriendList.GetNumFriends)
     counted("bnet", BNGetNumFriends)
 
-    -- Asked for here and only here: the update walks every addon's heap.
+    -- Asked for here and only here: the update walks every addon's heap, and
+    -- the game's profiler may charge that walk to Postbox, which asked for it.
+    -- So it is timed, and the report reads the profiler before it.
+    local readMs = nil
     if type(UpdateAddOnMemoryUsage) == "function" and type(GetAddOnMemoryUsage) == "function" then
+      local mark = Clock()
       local updated = pcall(UpdateAddOnMemoryUsage)
+      local spent = Since(mark)
       local ok, kb = pcall(GetAddOnMemoryUsage, ADDON_NAME)
+      if updated then readMs = spent end
       if updated and ok and tonumber(kb) then
-        parts[#parts + 1] = format("Postbox %d KB", floor(kb + 0.5))
+        parts[#parts + 1] = format("Postbox %d KB (read in %sms)", floor(kb + 0.5), Ms(spent))
       end
     end
-    return "  Data: " .. concat(parts, " | ")
+    return "  Data: " .. concat(parts, " | "), readMs
   end
 
   -- The block, as lines. Each part is guarded on its own, so one that breaks
@@ -872,9 +883,34 @@ do
     local function add(text) lines[#lines + 1] = text end
     local ok, text = pcall(InboxLine)
     if ok then add(text) end
-    pcall(ProfilerLines, add)
-    ok, text = pcall(DataLine)
+    local _, peak = pcall(ProfilerLines, add)
+
+    -- Built before the Data line and added after it: an open still counting
+    -- reads the profiler for its line, and every profiler read has to come
+    -- before the memory read.
+    local openLines = {}
+    for n = math.max(1, count - KEEP + 1), count do
+      local rec = opens[(n - 1) % KEEP + 1]
+      local built, line = pcall(OpenLine, rec)
+      openLines[#openLines + 1] = built and line or ("  #" .. n .. " unreadable")
+    end
+
+    local readMs
+    ok, text, readMs = pcall(DataLine)
     if ok then add(text) end
+    -- An earlier report's memory read may be what the profiler saw as
+    -- Postbox's slowest moment, and this says so when the two agree.
+    if type(peak) == "number" and memoryReadMs > 0
+       and math.abs(peak - memoryReadMs) <= memoryReadMs * 0.1 then
+      add(format("  Note: Postbox's peak is within 10%% of an earlier report's memory read (%sms), so the peak may be that report.",
+        Ms(memoryReadMs)))
+    end
+    if type(readMs) == "number" then
+      if readMs > memoryReadMs then memoryReadMs = readMs end
+      -- An open still counting reads the profiler again when it ends.
+      local live = Perf.cur
+      if live then live.report = (live.report or 0) + readMs end
+    end
 
     if count == 0 then
       add("  Opens: none this session")
@@ -882,11 +918,7 @@ do
     end
     add(format("  Last %d opens (slow = frames over 100/500/1000ms in the window: game, addons, Postbox):",
       math.min(count, KEEP)))
-    for n = math.max(1, count - KEEP + 1), count do
-      local rec = opens[(n - 1) % KEEP + 1]
-      local built, line = pcall(OpenLine, rec)
-      add(built and line or ("  #" .. n .. " unreadable"))
-    end
+    for i = 1, #openLines do add(openLines[i]) end
     return lines
   end
 end
