@@ -8,7 +8,8 @@ the thing this checklist exists to prevent.
 
 - [ ] **`CHANGELOG.md`** — a new version heading and an entry per user-visible
       change. Never skipped: this is what CurseForge, Wago and WowUp show a player
-      who is deciding whether to update. Voice rules below.
+      who is deciding whether to update. The newest heading must be the version
+      being tagged, or the release stops before it builds. Voice rules below.
 - [ ] **`README.md`** — if the feature set, defaults or screenshots moved.
 - [ ] **`docs/curseforge-listing.md`** — same test. This is the CurseForge and Wago
       description, and it reaches far more people than the README does. A feature
@@ -24,27 +25,30 @@ the thing this checklist exists to prevent.
 It is the most-read thing in the repository, and the only documentation most users
 will ever see. Plain English, describing what a person notices.
 
-**Shape, from 1.36 on (Elliott, 2026-09-21: the long flat lists were "quite
-overwhelming").** Every version is three sub-headings in this order, each omitted
-when empty:
+**Shape (Elliott, 2026-09-21: the long flat lists were "quite overwhelming").**
+Every version is three sub-headings in this order, each omitted when empty. The
+whole history was rewritten into it on 2026-09-27, so every version reads alike:
 
 ```
 ## 1.39.0
 
 ### New          things that did not exist before
 ### Improved     existing things that behave or look better
-### Fixed        bugs, one line each: what went wrong, what happens now
+### Fixed        bugs: what went wrong, what happens now
 ```
 
 A release players should notice -- a big one, or one that needs a full restart --
 may open with one or two plain sentences above the headings: what it is, and
 anything the player has to do. Nothing else goes above them.
 
-One item is one bullet of one to three lines. Lead with the bold effect. A run of
-small cosmetic changes can share one un-bolded bullet at the end of Improved. Twenty
-bullets is too many: if a release has that many, group them. The GitHub release
-notes are the version's section verbatim (`gh release edit vX.Y.Z --notes-file`
-if they need correcting after the tag; CurseForge's copy is edited on its site).
+**Concise, not necessarily one line (Elliott, 2026-09-27).** An entry explains
+itself in a short, clear form, and is never a wall of text. Most are one line; a
+larger feature that genuinely needs explaining may take a touch more (a second
+line), but always concise. Lead with the bold effect in New and Improved; a Fixed
+entry is a plain sentence. A run of small changes can share one un-bolded "Also:"
+bullet at the end of Improved. Twenty bullets is too many: if a release has that
+many, group them. Name things the way the addon names them. `## 1.40.1` is the
+model.
 
 **Lead with the effect, not the cause.** Someone scanning the list wants to know
 whether this release fixes the thing that annoyed them.
@@ -63,14 +67,50 @@ An internal change with no user-visible effect still gets an entry, and it says 
 *"Nothing you can see changed."* That is more honest than silence and stops people
 wondering what they missed.
 
+## What a release shows
+
+The repo holds one changelog, `CHANGELOG.md`, every version. It ships inside the
+addon zip on purpose, for players who look there.
+
+What CurseForge, Wago and the GitHub release show is shorter: **the newest five
+versions, then a link to the full changelog on GitHub** (Elliott, 2026-09-27: the
+whole file was far too long, one version alone too short). Nobody writes it by hand.
+The release workflow runs `.github/release-changelog.py` on the tag, which writes
+`.github/release-changelog.md` from `CHANGELOG.md`; `.pkgmeta` names that file as
+the manual changelog. The packager reads it from the checkout and never copies it
+into the zip. The GitHub release body is the same generated text, not the version's
+own section.
+
+- **The tag must match the newest heading.** `v1.40.2` needs `## 1.40.2` on top; a
+  beta tag needs the version it will ship as (`v1.41.0-beta.1` → `## 1.41.0`).
+  Otherwise the workflow stops before anything is built or uploaded: write the
+  section, delete the tag (`git tag -d vX.Y.Z && git push origin :vX.Y.Z`), and tag
+  again.
+- **Preview it** before tagging: `python3 .github/release-changelog.py vX.Y.Z`
+  prints exactly what will be uploaded.
+- **Correcting it after the tag.** Fix `CHANGELOG.md`, then
+  `python3 .github/release-changelog.py vX.Y.Z > notes.md` and
+  `gh release edit vX.Y.Z --notes-file notes.md` for GitHub; CurseForge's copy is
+  edited on its site.
+
 ## Cutting the release
 
+Everything is built and tested on `beta`. A release is `beta` merged into `main`
+and the version tagged on `main`:
+
 ```
-git tag vX.Y.Z && git push origin vX.Y.Z
+git checkout main
+git merge --ff-only beta
+git tag vX.Y.Z
+git push origin main vX.Y.Z
+git checkout beta
 ```
 
-The workflow builds the zip, attaches it to the GitHub release, and uploads to
-CurseForge. Nothing else is needed.
+`--ff-only` because `main` never holds anything `beta` lacks. If it refuses,
+something was committed to `main` directly; sort that out before tagging.
+
+The workflow writes the uploaded changelog, builds the zip, attaches it to the
+GitHub release, and uploads to CurseForge. Nothing else is needed.
 
 **Versioning.** Patch for fixes, minor for anything a user would call a feature,
 and say so in the changelog either way.
@@ -81,9 +121,9 @@ existing files needs `/reload`.** Worth saying in the release notes when it appl
 
 ## Betas
 
-A beta is a tag with `beta` in its name, cut from the **`beta` branch**, where new
-features are built (CLAUDE.md, Workflow). Nothing to switch on at CurseForge or
-GitHub:
+A beta is a tag with `beta` in its name, cut from the **`beta` branch**, where all
+work is built and tested (CLAUDE.md, Workflow). Nothing to switch on at CurseForge
+or GitHub:
 
 ```
 git checkout beta
@@ -101,15 +141,17 @@ numbers: managers offer the newest file the player's channel allows, by date.
   every GitHub addon in that install.
 - **Numbering.** `-beta.1`, `-beta.2`, … then the plain tag. Testers are moved onto
   the full release the moment it is published.
-- **Changelog.** The whole file is uploaded with every file, beta or not. Betas add
-  to the coming version's section; the heading carries the version it will ship as
-  (`## 1.41.0`), not the beta number.
-- **A fix for the live release while a beta is running.** Fix it on `main`, tag
-  the patch (`v1.40.2`) there, then merge `main` into `beta`. A full release
-  published after a beta is newer by date, so testers drop onto it until the next
-  beta tag.
-- **A beta ready for everyone.** Merge `beta` into `main`, tag the full version
-  (`v1.41.0`) on `main`. `beta` carries on from there for the next one.
+- **Changelog.** Betas add to the coming version's section, whose heading is the
+  version it will ship as (`## 1.41.0`), not the beta number; the workflow refuses
+  a beta tag without it. Each beta uploads what that section holds so far and the
+  four versions before it, then the link, like any release.
+- **A beta ready for everyone.** It ships as in *Cutting the release*: `beta` into
+  `main`, the full version (`v1.41.0`) tagged on `main`. `beta` carries on from
+  there for the next one.
+- **A fix for the live release.** Made and tested on `beta` like everything else,
+  and shipped with the next version. Nothing is committed to `main` directly. If a
+  live fix is urgent while `beta` carries work that is not ready for everyone,
+  raise it before choosing how to ship it.
 - **One tester, one question.** Every GitHub release carries its zip; a link to the
   pre-release page is enough for someone who installs by hand.
 
@@ -121,6 +163,7 @@ numbers: managers offer the newest file the player's channel allows, by date.
 | CurseForge API key | GitHub repo → Settings → Secrets → `CF_API_KEY` |
 | Wago / WoWInterface | Add the id to the `.toc` and uncomment the secret in the workflow |
 | What ships in the zip | `.pkgmeta` — verified against the built artifact, not assumed |
+| The uploaded changelog | `.github/release-changelog.py`, run by `.github/workflows/release.yml` |
 
 **CurseForge's own repository packaging must stay OFF.** The GitHub Action is the
 only thing that builds and uploads; with CF also watching the repo, every tag would
