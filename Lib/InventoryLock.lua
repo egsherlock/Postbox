@@ -23,36 +23,94 @@ local M = Core.InventoryLock
 local LOCK_TEXTURE = "Interface\\PetBattles\\PetBattle-LockIcon"
 local LOCK_SIZE = 14
 local LOCK_TINT = { 0.85, 0.40, 0.40 }
-local ICON_GREY = 0.45
+-- The grey: black this opaque over the icon leaves it at 45% of its light,
+-- which is exactly what tinting the icon to 0.45 used to draw.
+local SHADE_ALPHA = 0.55
 
 -- Bag button implementations expose the item icon under either spelling.
 local function IconOf(button)
   return button.icon or button.Icon
 end
 
--- Greys the slot's icon and shows a padlock over it.
+-- The grey is a layer of Postbox's own over the icon; the icon's colour is
+-- left alone, because it is the bag's. The client sets it back to white each
+-- time it draws an item's cooldown (ContainerFrameItemButtonMixin:
+-- UpdateCooldown, in every redraw of a bag and on every BAG_UPDATE_COOLDOWN),
+-- Baganator does the same for any item with a use (BGRUpdateCooldown), and
+-- EllesmereUI on every render -- none of them followed by Postbox's hook. A
+-- grey written into that colour was grey or white by whichever side painted
+-- last, and every bag pass of Postbox's, one after each attach, turned the
+-- items the bag had whitened darker until its next cooldown redraw turned
+-- them back.
 --
--- The overlay is created at most once per button and reused for the rest of
--- the session. Bag buttons are updated constantly; creating a texture per
--- update would leak one texture per update for the life of the session.
+-- Drawn on the icon's own layer, one step above it, so the quality border,
+-- the count and the other overlays stay as bright as they were under the
+-- tint. The layer is read again at each mark, for a skin that moves the icon.
+local function ShadeFor(button, icon)
+  local layer, sublevel = "BORDER", 0
+  if type(icon.GetDrawLayer) == "function" then
+    local l, s = icon:GetDrawLayer()
+    if type(l) == "string" then layer, sublevel = l, tonumber(s) or 0 end
+  end
+  sublevel = math.min(sublevel + 1, 7)
+
+  local shade = button.pbLockShade
+  if not shade then
+    if type(button.CreateTexture) ~= "function" then return nil end
+    shade = button:CreateTexture(nil, layer, nil, sublevel)
+    shade:SetColorTexture(0, 0, 0, SHADE_ALPHA)
+    shade:SetAllPoints(icon)
+    -- A masked icon keeps its shape under the grey.
+    if type(icon.GetNumMaskTextures) == "function" and type(icon.GetMaskTexture) == "function" then
+      pcall(function()
+        for i = 1, icon:GetNumMaskTextures() do
+          local mask = icon:GetMaskTexture(i)
+          if mask then shade:AddMaskTexture(mask) end
+        end
+      end)
+    end
+    shade.pbLayer, shade.pbSublevel = layer, sublevel
+    button.pbLockShade = shade
+  elseif shade.pbLayer ~= layer or shade.pbSublevel ~= sublevel then
+    shade:SetDrawLayer(layer, sublevel)
+    shade.pbLayer, shade.pbSublevel = layer, sublevel
+  end
+  return shade
+end
+
+-- Whether the bag already dims this item, with the client's context overlay
+-- (80% black). Baganator's context fading does, while the attach flag is up,
+-- for every item its mail test refuses -- bound and not allowed in the
+-- warband bank, which is Postbox's own verdict on a bound item -- and the
+-- grey laid under it took those items near black. There the padlock is
+-- Postbox's whole mark. The field is written only by the button's
+-- UpdateItemContextMatching, which the hook in SendTab.lua (17) follows, and
+-- a search never touches it, so a mark always reads it current.
+local function DimmedByBag(button)
+  local results = ItemButtonUtil and ItemButtonUtil.ItemContextMatchResult
+  local mismatch = type(results) == "table" and results.Mismatch or nil
+  if mismatch == nil or button.itemContextMatchResult ~= mismatch then return false end
+  local overlay = button.ItemContextOverlay
+  return type(overlay) == "table" and type(overlay.IsShown) == "function" and overlay:IsShown() and true or false
+end
+
+-- Greys the slot's icon and shows a padlock over it. Marking a marked slot
+-- again changes nothing on screen, whatever the bag has painted meanwhile.
 --
--- The icon's tint is captured before greying and put back EXACTLY on unmark:
--- the button belongs to the client (or to a bag addon), and another consumer
--- may have tinted the icon for its own reasons -- restoring to hard white
--- would erase their state, not ours.
+-- The grey and the padlock are created at most once per button and reused
+-- for the rest of the session. Bag buttons are updated constantly; creating
+-- a texture per update would leak one texture per update for the life of the
+-- session. Both are put back to full alpha at each mark: EllesmereUI's skin
+-- fades every texture of a skinned button it did not mean to keep whenever it
+-- restrips its windows, and ours were never among the ones it keeps.
 function M.MarkButton(button)
   if not button then return end
 
   local icon = IconOf(button)
-  if icon and icon.SetVertexColor then
-    if not button.pbLockSavedTint and icon.GetVertexColor then
-      local r, g, b, a = icon:GetVertexColor()
-      -- Re-marking an already-grey icon must not capture our own grey.
-      if r ~= ICON_GREY or g ~= ICON_GREY or b ~= ICON_GREY then
-        button.pbLockSavedTint = { r or 1, g or 1, b or 1, a or 1 }
-      end
-    end
-    icon:SetVertexColor(ICON_GREY, ICON_GREY, ICON_GREY)
+  local shade = icon and ShadeFor(button, icon)
+  if shade then
+    shade:SetAlpha(1)
+    shade:SetShown(not DimmedByBag(button))
   end
 
   local overlay = button.pbLockOverlay
@@ -69,27 +127,16 @@ function M.MarkButton(button)
     button.pbLockOverlay = overlay
   end
 
+  overlay:SetAlpha(1)
   overlay:Show()
 end
 
--- Restores the icon and hides (never destroys) the overlay.
+-- Hides (never destroys) the grey and the padlock. The icon itself was never
+-- touched, so there is nothing of the bag's to put back.
 function M.UnmarkButton(button)
   if not button then return end
-
-  local icon = IconOf(button)
-  if icon and icon.SetVertexColor then
-    local saved = button.pbLockSavedTint
-    if saved then
-      icon:SetVertexColor(saved[1], saved[2], saved[3], saved[4])
-    else
-      icon:SetVertexColor(1, 1, 1)
-    end
-    button.pbLockSavedTint = nil
-  end
-
-  if button.pbLockOverlay then
-    button.pbLockOverlay:Hide()
-  end
+  if button.pbLockShade then button.pbLockShade:Hide() end
+  if button.pbLockOverlay then button.pbLockOverlay:Hide() end
 end
 
 -- Greys the slot's icon the way the client greys an attached one: an item
