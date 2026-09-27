@@ -21,6 +21,9 @@ longer play.
   right-click From alts.
 - **Hide a character** from the character list with a right-click. Postbox
   still remembers its mail; Show brings it back.
+- **Another character's mailbox fits the top row.** Done and History step
+  aside while you look at it, and a long name is shortened with its count
+  kept (full name on hover).
 - **Reset to defaults**, at the foot of the options, puts every setting and
   window back the way Postbox ships, after asking. Your recipients, groups,
   Mail Memory and History are kept.
@@ -47,6 +50,8 @@ longer play.
 
 - EllesmereUI bags opened after switching to or from Send show the right
   padlocks and greys.
+- Large counts in long translations no longer run into each other: the
+  window widens just enough while it needs to, then returns to your size.
 - Questions asked from the options, the groups window or the recipient
   manager (a reload, a delete, a note) no longer open hidden behind them.
 - On EllesmereUI's round minimaps the mail icon sits on the rim, and on the
