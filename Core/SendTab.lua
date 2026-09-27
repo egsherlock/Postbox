@@ -3789,7 +3789,8 @@ end
 local function AdoptBaganatorButton(details)
   if type(details) ~= "table" or details.regionType ~= "ItemButton" then return end
   local button = details.region
-  if type(button) ~= "table" or type(button.GetID) ~= "function" then return end
+  if type(button) ~= "table" or type(button.GetID) ~= "function"
+     or type(button.IsVisible) ~= "function" then return end
   if IsSlotButton(button) then HookSlot(button) end
   externalSlots[button] = true
 end
