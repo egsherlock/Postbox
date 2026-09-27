@@ -3,6 +3,11 @@ name: Release
 # Cut a release by pushing a version tag:
 #   git tag -a v1.2.0 -m "1.2.0" && git push origin v1.2.0
 #
+# The tag's name sets the channel. One containing "beta" (v1.41.0-beta.1)
+# goes to CurseForge as a Beta file and to GitHub as a pre-release, so only
+# players who opted into betas are offered it; "alpha" likewise. Anything
+# else -- "-rc" included -- is a full release that every player is offered.
+#
 # The packager builds a zip whose ROOT folder is "Postbox" (see .pkgmeta),
 # substitutes @project-version@ in the TOC with the tag, and attaches the zip
 # to the GitHub release. Addon managers such as WowUp read that release asset —
@@ -11,7 +16,9 @@ on:
   push:
     tags:
       - "v*"
-  # Lets you cut a release from the Actions tab without pushing a tag.
+  # Re-runs a release from the Actions tab: pick the TAG in "Use workflow
+  # from". Run on a branch it would build an untagged alpha and upload it to
+  # CurseForge with no GitHub release at all, so the job below refuses that.
   workflow_dispatch:
 
 permissions:
@@ -19,6 +26,7 @@ permissions:
 
 jobs:
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -38,6 +46,7 @@ jobs:
           # release still reaches GitHub either way.
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           # Wago and WoWInterface: add the secret and the matching id in the .toc
-          # (## X-Wago-ID / ## X-WoWI-ID) to switch either on.
-          # WAGO_API_KEY: ${{ secrets.WAGO_API_KEY }}
+          # (## X-Wago-ID / ## X-WoWI-ID) to switch either on. The packager reads
+          # WAGO_API_TOKEN; under any other name the upload is silently skipped.
+          # WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
           # WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
