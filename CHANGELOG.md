@@ -6,8 +6,11 @@
 
 - The button on the "Read, nothing left" divider now says **Delete all**, so
   it is clear it removes every read mail at once.
-- **Scroll into the read mail.** Turning the mouse wheel down at the divider
-  opens it, even in an inbox short enough that nothing scrolls.
+- **Read mail is simply part of the list.** It follows your inbox under its
+  divider, which waits at the foot of a long list with Delete all and
+  settles into place as you scroll down to it; click it to jump there. The
+  scroll bar shows the whole list from the start, so it no longer jumps as
+  read mail opens.
 
 ### Fixed
 
@@ -17,8 +20,6 @@
 - The "Read, nothing left" bar pinned at the foot of a long inbox no longer
   shows the mail passing under it, and hands over to the divider in the list
   without a jump, in either row size.
-- Folding the read mail with a click, while some of it showed below the
-  divider, no longer springs straight back open.
 
 ## 1.40.0
 

@@ -1480,9 +1480,6 @@ function CT.ClearSearch(panel)
   if box and box:GetText() ~= "" then box:SetText("") end
   if panel then
     panel._stuckOnly = false
-    -- The read mail starts folded on every visit.
-    panel._readOpen = false
-    panel._foldHeld = nil
     -- And back to this character's own box: a later visit must never open
     -- on somebody else's mail.
     panel._alt = nil
@@ -2926,89 +2923,17 @@ function HV.UpdateHistoryRows(panel)
   end
 end
 
--- The divider's words and fold mark, for the one in the list and its pinned copy.
+-- The divider's words, for the one in the list and its pinned copy.
 function RV.PaintDivider(panel, divider)
   divider.Label:SetText(L()("INBOX_READ_DIVIDER", panel._readCount or 0))
-  local open = panel._readOpen or Searching(panel)
-  divider.Fold:SetTexture(open and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
 end
 
--- The read mail under the divider opens as a scroll brings the divider fully
--- into view and folds again as a scroll takes it back below the view:
--- scrolling down through the inbox runs on into its read mail, scrolling back
--- up folds it away. Only a SCROLL does this -- a list short enough to show
--- the divider without scrolling starts folded and stays so until clicked.
--- Opening adds rows below the divider and folding takes away rows below the
--- viewport, so nothing on screen moves either way. Returns whether it
--- changed anything (and so rebuilt the list).
--- How near "fully in view" counts as there. A window dragged to a size of
--- its own has a viewport that is not a whole number of pixels, and the scroll
--- bar rounds its value: the list can stop a hair short of its true end, and at
--- half a pixel of slack the divider then never "arrived" -- the read mail would
--- not open by scrolling, though it still folded on the way back up.
+-- How near "fully in view" counts as there, for the pinned divider's
+-- hand-over. A window dragged to a size of its own has a viewport that is not
+-- a whole number of pixels, and the scroll bar rounds its value: the list can
+-- stop a hair short of its true end, and at half a pixel the divider never
+-- quite "arrived".
 RV.ARRIVED_SLACK = 2
-
-function RV.ScrollFold(panel)
-  local at = panel._dividerAt
-  if not at or panel.viewMode ~= VIEW_COLLECT or AV.Active(panel) or Searching(panel) then
-    return false
-  end
-  local _, height, stride = RowMetrics()
-  local scroll = panel.MailListScroll
-  local viewport = scroll:GetHeight() or 0
-  if viewport <= 0 then return false end
-  local offset = scroll:GetVerticalScroll() or 0
-  local bottom = offset + viewport
-  local top = (at - 1) * stride
-  local open = panel._readOpen and true or false
-  -- Never opened at the very top. A folded list whose divider shows there
-  -- needs no scroll at all, and the only thing that puts the offset back at
-  -- the top is the code -- a view switch, a search, another box -- whose
-  -- SetVerticalScroll(0) reaches this handler too, and is not a scroll.
-  if not open and offset <= 0 then return false end
-  -- Folded by a click: held shut until the divider has left the view.
-  -- Without it, folding while read mail showed below the divider shortened
-  -- the list, the scroll snapped back to the new end -- with the divider
-  -- fully in view -- and that snap opened it again under the click.
-  if not open and panel._foldHeld then
-    if top + height > bottom + RV.ARRIVED_SLACK then panel._foldHeld = nil end
-    return false
-  end
-  if not open and top + height <= bottom + RV.ARRIVED_SLACK then
-    panel._readOpen = true
-  elseif open and top >= bottom - 0.5 then
-    panel._readOpen = false
-  else
-    return false
-  end
-  CT.RefreshMailList(panel)
-  return true
-end
-
--- The wheel turned down with the divider in view goes on into the read mail:
--- it opens. The divider is the folded list's last row, so in view means the
--- list fits or has reached its end -- either way nothing is left to move, and
--- RV.ScrollFold, which answers movement, never hears of it. Without this, a
--- list that fits could only open its read mail by a click. Only down, and
--- only open: folding stays with the scroll that takes the divider out of
--- view, and the click. Any scroll bar that follows is the opened read mail's
--- own need.
-function RV.WheelOpen(panel, delta)
-  if (tonumber(delta) or 0) >= 0 or panel._readOpen then return end
-  local at = panel._dividerAt
-  if not at or panel.viewMode ~= VIEW_COLLECT or AV.Active(panel) or Searching(panel) then return end
-  local _, height, stride = RowMetrics()
-  local scroll = panel.MailListScroll
-  local viewport = scroll:GetHeight() or 0
-  if viewport <= 0 then return end
-  local offset = scroll:GetVerticalScroll() or 0
-  local top = (at - 1) * stride
-  if top < offset - RV.ARRIVED_SLACK or top + height > offset + viewport + RV.ARRIVED_SLACK then return end
-  -- A deliberate turn: a hand fold's hold (RV.ScrollFold) ends with it.
-  panel._foldHeld = nil
-  panel._readOpen = true
-  CT.RefreshMailList(panel)
-end
 
 -- The divider pinned to the list's foot while its own place is below the
 -- viewport: in a long inbox it is the one sign that read mail is waiting to
@@ -3405,10 +3330,12 @@ function CT.RefreshMailList(panel)
     end
   end
 
-  -- The finished mails, after the divider.
-  -- Folded by default: they are kept, not waiting, and a click on the
-  -- divider opens them. A search opens them too -- it is looking for
-  -- something, and a match must not hide behind a fold.
+  -- The finished mails, after the divider: simply the rest of the list, so
+  -- the scroll bar is the whole list from the start. The divider is their
+  -- heading, pinned at the list's foot while its place is further down
+  -- (RV.UpdatePin): read mail waiting is seen without a scroll, and scrolled
+  -- into like everything else. (They were folded once, opened and closed by
+  -- the scroll -- and the scroll bar jumped each time the list grew.)
   -- In a tab of their own they are that tab's whole list, and the inbox has
   -- no divider at all.
   panel._readCount = #tail
@@ -3427,11 +3354,9 @@ function CT.RefreshMailList(panel)
     filtered[#filtered + 1] = DIVIDER
     filteredDone[#filtered] = true
     panel._dividerAt = #filtered
-    if panel._readOpen or query ~= "" then
-      for i = 1, #tail do
-        filtered[#filtered + 1] = tail[i]
-        filteredDone[#filtered] = true
-      end
+    for i = 1, #tail do
+      filtered[#filtered + 1] = tail[i]
+      filteredDone[#filtered] = true
     end
   end
 
@@ -5315,11 +5240,6 @@ function RV.BuildDivider(panel, parent)
   divider.Fill = divider:CreateTexture(nil, "BACKGROUND")
   divider.Fill:SetAllPoints()
   divider.Fill:SetColorTexture(0.05, 0.05, 0.06, 0.95)
-  divider.Fold = divider:CreateTexture(nil, "ARTWORK")
-  divider.Fold:SetSize(12, 12)
-  divider.Fold:SetPoint("LEFT", divider, "LEFT", M.inset, 0)
-  divider.Fold:SetDesaturated(true)
-  divider.Fold:SetAlpha(0.7)
   divider.Rule = divider:CreateTexture(nil, "ARTWORK")
   divider.Rule:SetHeight(1)
   -- Edge to edge, as wide as the rows it separates.
@@ -5329,7 +5249,7 @@ function RV.BuildDivider(panel, parent)
   T.SetColor(divider.Rule, "textSecondary")
   divider.Rule:SetAlpha(0.25)
   divider.Label = T.CreateText(divider, "secondary")
-  divider.Label:SetPoint("LEFT", divider.Fold, "RIGHT", 6, 0)
+  divider.Label:SetPoint("LEFT", divider, "LEFT", M.inset, 0)
   divider.Delete = CreateFrame("Button", nil, divider)
   divider.Delete:SetPoint("RIGHT", divider, "RIGHT", -M.inset, 0)
   divider.Delete.Text = T.CreateText(divider.Delete, "secondary")
@@ -5524,24 +5444,13 @@ function CT.Build(parent)
   -- A row's slot in the list, so the virtualiser places it like one; its own
   -- frame, because nothing about it is a mail.
   local divider = RV.BuildDivider(panel, panel.MailListChild)
-  divider:SetScript("OnClick", function()
-    -- A search holds the fold open; a click then would flip it unseen.
-    if Searching(panel) then return end
-    panel._readOpen = not panel._readOpen
-    -- Folded by hand stays folded until the next scroll (RV.ScrollFold).
-    panel._foldHeld = (not panel._readOpen) or nil
-    CT.RefreshMailList(panel)
-  end)
   panel.Divider = divider
 
-  -- Its pinned copy, on the list's foot over the last row, while the divider's
-  -- own place is further down (RV.UpdatePin). A click opens the read mail and
-  -- scrolls to it; its Delete is the same Delete.
-  -- In the list, with the rows; RV.UpdatePin places it at the view's foot.
+  -- Its pinned copy, in the list with the rows, standing at the view's foot
+  -- while the divider's own place is further down (RV.UpdatePin). A click
+  -- scrolls to the read mail; its Delete all is the same Delete all.
   local pin = RV.BuildDivider(panel, panel.MailListChild)
   pin:SetScript("OnClick", function()
-    panel._readOpen = true
-    CT.RefreshMailList(panel)
     local at = panel._dividerAt
     if not at then return end
     local _, _, stride = RowMetrics()
@@ -5557,11 +5466,7 @@ function CT.Build(parent)
     if width and width > 10 then panel.MailListChild:SetWidth(width) end
     UpdateVisibleRows(panel)
   end)
-  scroll:HookScript("OnVerticalScroll", function()
-    if not RV.ScrollFold(panel) then UpdateVisibleRows(panel) end
-  end)
-  -- After the template's own wheel handler: a turn it could not answer.
-  scroll:HookScript("OnMouseWheel", function(_, delta) RV.WheelOpen(panel, delta) end)
+  scroll:HookScript("OnVerticalScroll", function() UpdateVisibleRows(panel) end)
 
   panel.Empty = T.CreateText(panel.MailListArea, "secondary")
   panel.Empty:SetPoint("TOPLEFT", panel.MailListArea, "TOPLEFT", M.inset * 2, -M.inset * 2)
