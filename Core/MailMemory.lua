@@ -1159,18 +1159,18 @@ local function Figures(mail, now)
     if show then expiry = T.Colorize(warn and "warning" or "textSecondary", expiryText) end
   end
 
-  local facts = {}
+  -- At most two lines, joined as they come: no list to build per row.
+  local facts
   if R and money and not R.MoneyShown(moneyKind) then
-    facts[#facts + 1] = R.MoneyText(hasCOD, mail.money or 0, mail.cod or 0, mail.paid, false)
+    facts = R.MoneyText(hasCOD, mail.money or 0, mail.cod or 0, mail.paid, false)
     money = nil
   end
   if R and slots and not R.Shows("slots") then
-    facts[#facts + 1] = slots
+    facts = facts and (facts .. "\n" .. slots) or slots
     slots = nil
   end
   if R and not R.Shows("time") then expiry = nil end
-  return money, slots, expiry, (#facts > 0) and table.concat(facts, "\n") or nil, expiryText, expired,
-    moneyKind == "cod" and money ~= nil
+  return money, slots, expiry, facts, expiryText, expired, moneyKind == "cod" and money ~= nil
 end
 
 -- The last figure the arrangement shows, left to right, or nil.
@@ -1187,18 +1187,24 @@ end
 -- One row's figure texts, keyed by column, plus what the tooltip carries.
 -- A row known to have arrived but never opened says "New" where the row's
 -- last figure would stand, and nothing else.
+--
+-- One table, filled again for every row: both callers read it before they
+-- ask for the next row, and neither keeps it. The figure ids are the three
+-- columns (the rules' IsFigure), so the fields cleared here are all it holds.
+local rowTexts = {}
 local function RowTexts(mail, now)
   local R = Rules()
-  if mail.header then return {} end
+  local texts = rowTexts
+  texts.time, texts.money, texts.slots, texts.facts = nil, nil, nil, nil
+  texts.expiryText, texts.expired, texts.cod = nil, nil, nil
+  if mail.header then return texts end
   if mail.pending then
-    local texts = {}
     local last = LastShownFigure(R)
     if last then texts[last] = ns.Theme.Colorize("positive", L["MEMORY_NEW_ROW"]) end
     return texts
   end
-  local money, slots, expiry, facts, expiryText, expired, cod = Figures(mail, now)
-  return { time = expiry, money = money, slots = slots, facts = facts, expiryText = expiryText,
-    expired = expired, cod = cod }
+  texts.money, texts.slots, texts.time, texts.facts, texts.expiryText, texts.expired, texts.cod = Figures(mail, now)
+  return texts
 end
 
 -- The list's column widths, measured over every row in it: the mail list's
@@ -1327,7 +1333,10 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
   -- not yet opened is unread by definition.
   T.SetColor(row.Indicator, (mail.read and not mail.pending) and "read" or "unread")
 
+  -- Read at once: RowTexts fills the same table for the next row.
   local texts = RowTexts(mail, now)
+  local timeText, moneyText, slotsText = texts.time, texts.money, texts.slots
+  local codShown, expired = texts.cod, texts.expired
   row.factsTip = texts.facts
   row.expiryTip = texts.expiryText
 
@@ -1359,14 +1368,14 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     el.read, el.icon, el.sender, el.subject = row.Indicator, row.Icon, row.Sender, row.Subject
     el.time, el.money, el.slots = row.ColTime, row.ColMoney, row.ColSlots
     text.sender, text.subject = senderText, subject
-    text.time, text.money, text.slots = texts.time, texts.money, texts.slots
+    text.time, text.money, text.slots = timeText, moneyText, slotsText
     spec.size.icon = ROW_ICON
     spec.width, spec.left, spec.trail, spec.gap = width, 6, trail, 6
     spec.cols = cols
     spec.senderCol = cols.sender or 92
     spec.share, spec.reserve, spec.two = R.META_SHARE, false, false
     -- A C.O.D. price shows with the gold column hidden, as on the Mail tab.
-    spec.force = texts.cod and "money" or nil
+    spec.force = codShown and "money" or nil
     spec.focus = R.Focus and R.Focus() or nil
     R.Place(row, spec)
     -- The icon's hover goes with the icon.
@@ -1382,7 +1391,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
   -- A mail past its date is PROBABLY gone (returned or deleted by the
   -- server); the row stays listed -- it was true when seen -- but visibly
   -- belongs to the past.
-  row:SetAlpha(texts.expired and 0.45 or 1)
+  row:SetAlpha(expired and 0.45 or 1)
   row:Show()
 end
 
