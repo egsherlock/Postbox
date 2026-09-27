@@ -3602,6 +3602,10 @@ function CT.RefreshMailList(panel)
   -- to the inbox refreshes the list, which measures again.
   local measuring = not (view == VIEW_HISTORY or AV.Active(panel))
   local measureMoney = compact and measuring
+  -- Whether the gold column shows each kind, asked once for the walk rather
+  -- than once per mail.
+  local showEarned = measureMoney and MoneyShown("earned")
+  local showSpent = measureMoney and MoneyShown("spent")
   local measureSlots = compact and measuring and RowShows("slots")
   local measureExpiry = compact and measuring and RowShows("time")
   local slotsMost, anyStuck = 0, false
@@ -3669,7 +3673,9 @@ function CT.RefreshMailList(panel)
         if Mail().StuckReason(index) then anyStuck = true end
         if measureMoney then
           local text, moneyKind = RowMoneyText(index, hasCOD, tonumber(money) or 0, tonumber(cod) or 0, true)
-          if text and MoneyShown(moneyKind) then
+          local shown = true
+          if moneyKind == "earned" then shown = showEarned elseif moneyKind == "spent" then shown = showSpent end
+          if text and shown then
             cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, text))
           end
         end
