@@ -3690,7 +3690,10 @@ local function HookVisibleSlots()
 end
 
 -- One container repaint per user action: the hooks do the marking, this only
--- asks the client to run them.
+-- asks the client to run them. The client's bags need nothing more while they
+-- are closed: ContainerFrame_UpdateAll repaints only the open ones, and a bag
+-- opening draws every slot afresh (ContainerFrame_GenerateFrame -> Update),
+-- which runs the hooks.
 local function RepaintContainers()
   if type(ContainerFrame_UpdateAll) ~= "function" or not ST.PaintDue("blizz") then return end
   ST.Timed("blizz", ContainerFrame_UpdateAll)
@@ -3713,6 +3716,9 @@ end
 do
 local externalSlots = setmetatable({}, { __mode = "k" })
 local hostsHooked = {}
+-- EllesmereUI bag window -> the repaint it is owed ("mark" or "clear"; see
+-- ST.RepaintExternalBags).
+ST._euiOwed = {}
 
 local function Note(button)
   if type(button) ~= "table" or type(button.GetID) ~= "function" then return end
@@ -3721,8 +3727,11 @@ local function Note(button)
 end
 
 -- EllesmereUI: a slot is an ItemButton inside a plain frame whose ID is the
--- bag, and those frames are the bag window's direct children.
+-- bag, and those frames are the bag window's direct children. A repaint
+-- that happened for any reason pays off one this side owed (see
+-- ST.OnEllesmereShown); a closed window's RefreshInventory draws nothing.
 local function WalkEllesmere(frame)
+  if frame and ST._euiOwed[frame] and frame:IsVisible() then ST._euiOwed[frame] = nil end
   if not (sendTabActive and frame and frame:IsShown()) then return end
   local holders = { frame:GetChildren() }
   for i = 1, #holders do
@@ -3758,6 +3767,9 @@ function ST.HookExternalBags()
     if not hostsHooked[name] and type(frame) == "table" and type(frame.RefreshInventory) == "function" then
       hostsHooked[name] = true
       pcall(hooksecurefunc, frame, "RefreshInventory", WalkEllesmere)
+      if type(frame.HookScript) == "function" then
+        pcall(frame.HookScript, frame, "OnShow", ST.OnEllesmereShown)
+      end
     end
   end
   local api = _G["Baganator"]
@@ -3780,6 +3792,16 @@ end
 -- what the mail context refuses are the host's to paint, and a host that
 -- paints only on its own events was left showing the previous tab's state.
 -- Once per host per transition (ST.PaintDue).
+--
+-- Closed bags, host by host:
+--   * Baganator is asked all the same. With its bags closed the request only
+--     marks its views, and the next opening redraws every button from the
+--     mark; without one, an opening redraws only the bags whose contents
+--     moved, and would bring back the previous tab's state.
+--   * EllesmereUI's RefreshInventory draws nothing while its window is
+--     closed, and the window's opening repaints only when EllesmereUI's own
+--     state moved meanwhile -- so the repaint is owed, and paid when the
+--     window next opens (ST.OnEllesmereShown).
 function ST.RepaintExternalBags()
   local api = _G["Baganator"]
   api = type(api) == "table" and api.API or nil
@@ -3794,10 +3816,28 @@ function ST.RepaintExternalBags()
   for _, name in ipairs({ "EUI_Bags", "EUI_BagsReagent" }) do
     local frame = _G[name]
     if type(frame) == "table" and type(frame.RefreshInventory) == "function"
-       and type(frame.IsVisible) == "function" and frame:IsVisible()
-       and ST.PaintDue(name) then
-      ST.Timed("eui", pcall, frame.RefreshInventory, frame)
+       and type(frame.IsVisible) == "function" then
+      if not frame:IsVisible() then
+        -- Marking needs the Send tab still up when it opens; unmarking is
+        -- owed whatever happens meanwhile.
+        ST._euiOwed[frame] = sendTabActive and (ST._euiOwed[frame] or "mark") or "clear"
+      elseif ST.PaintDue(name) then
+        ST.Timed("eui", pcall, frame.RefreshInventory, frame)
+      end
     end
+  end
+end
+
+-- EllesmereUI's bag window opening (an OnShow hook, installed with the
+-- RefreshInventory one): the repaint a closed window was owed, unless one has
+-- happened since or there is nothing left to mark.
+function ST.OnEllesmereShown(frame)
+  local owed = type(frame) == "table" and ST._euiOwed[frame]
+  if not owed then return end
+  ST._euiOwed[frame] = nil
+  if owed == "mark" and not sendTabActive then return end
+  if type(frame.RefreshInventory) == "function" then
+    ST.Timed("eui on show", pcall, frame.RefreshInventory, frame)
   end
 end
 
