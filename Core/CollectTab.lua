@@ -1044,9 +1044,10 @@ end
 -- (spent, as the band's own "Spent" is red). Returns the text or nil, and
 -- which of the three it is: "earned", "cod" or "spent" -- a won auction's
 -- price, which the invoice figures then skip.
--- `price` is that price, or nil; it may be a function of no arguments, asked
--- only when nothing else answered, because reading it costs an invoice call.
-local function MoneyText(hasCOD, moneyValue, codValue, price, brief)
+-- `price` is that price, or nil. A live inbox row passes its index as
+-- `priceIndex` instead, and the price is read from the invoice only when
+-- nothing else answered, because reading it costs an invoice call.
+local function MoneyText(hasCOD, moneyValue, codValue, price, brief, priceIndex)
   local T = Th()
   local compactMoney = ns.Core.Formatting.FormatMoneyCompact
   if moneyValue > 0 then
@@ -1058,7 +1059,7 @@ local function MoneyText(hasCOD, moneyValue, codValue, price, brief)
     end
     return T.Colorize("warning", L()["LABEL_COD_SHORT"]), "cod"
   end
-  if type(price) == "function" then price = price() end
+  if price == nil and priceIndex then price = PurchasePrice(priceIndex) end
   if price then return T.Colorize("negative", compactMoney(price, brief)), "spent" end
   return nil, nil
 end
@@ -1107,7 +1108,7 @@ local function DisplaySender(sender)
 end
 
 local function RowMoneyText(index, hasCOD, moneyValue, codValue, brief)
-  return MoneyText(hasCOD, moneyValue, codValue, function() return PurchasePrice(index) end, brief)
+  return MoneyText(hasCOD, moneyValue, codValue, nil, brief, index)
 end
 
 -- daysLeft, hasCOD -> whether the row shows the time left, and whether in
