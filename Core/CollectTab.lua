@@ -614,15 +614,19 @@ end
 -- answer is preferred and why there is no second counter anywhere.
 -------------------------------------------------------------
 
-local counts = { toCollect = 0, done = 0, total = 0, server = 0, known = false }
+local counts = { toCollect = 0, done = 0, total = 0, server = 0, gone = 0, known = false }
 
 -- `total` is what the client lists; `server` what the mailbox holds, which is
--- more once it passes what the client will list at a time.
-local function RecordCounts(toCollect, done, total, server)
+-- more once it passes what the client will list at a time. `gone` of those are
+-- on their way out (RV.Leaving), and neither number counts them: the next
+-- update will not list them either.
+local function RecordCounts(toCollect, done, total, server, gone)
+  gone = tonumber(gone) or 0
   counts.toCollect = toCollect
   counts.done = done
-  counts.total = total
-  counts.server = math.max(tonumber(server) or total, total)
+  counts.total = total - gone
+  counts.server = math.max((tonumber(server) or total) - gone, total - gone)
+  counts.gone = gone
   counts.known = true
 end
 
@@ -630,11 +634,15 @@ local function WalkCounts()
   local total, server = 0, 0
   if type(GetInboxNumItems) == "function" then total, server = GetInboxNumItems() end
   total = tonumber(total) or 0
-  local done = 0
+  local done, gone = 0, 0
   for index = 1, total do
-    if Mail().IsReadPersistent(index) then done = done + 1 end
+    if RV.Leaving(index) then
+      gone = gone + 1
+    elseif Mail().IsReadPersistent(index) then
+      done = done + 1
+    end
   end
-  RecordCounts(total - done, done, total, server)
+  RecordCounts(total - done - gone, done, total, server, gone)
 end
 
 -- -> toCollect, done, total (listed), server (in the mailbox).
@@ -685,6 +693,39 @@ local function RequestRefresh(panel)
 end
 
 CT.RequestRefresh = RequestRefresh
+
+-- index -> whether the mail at this index is on its way out: emptied by
+-- Postbox a moment ago and being deleted by the client (MailService, "Mail on
+-- its way out"). The list and every count leave it out, so an auction mail
+-- just emptied never shows under the divider or as Done on its way to going.
+-- The hold is bounded, and the screen looks again when it lapses: a mail that
+-- stays after all is listed then, not whenever something else refreshes.
+function RV.Leaving(index)
+  local service = Mail()
+  local at = service and type(service.Leaving) == "function" and service.Leaving(index)
+  if not at then return false end
+  RV.WakeAt(at)
+  return true
+end
+
+-- One wake at a time, and one-shot. Holds lapse in the order they start, so a
+-- wake already queued is never later than the one a newer hold would ask for,
+-- and the refresh it brings asks again of whatever is still held.
+function RV.WakeAt(at)
+  if RV.waking then return end
+  RV.waking = true
+  local ok = pcall(C_Timer.After, max(0, at - GetTime()) + 0.1, function()
+    RV.waking = false
+    -- The mail went, as it almost always has by now, and the update that
+    -- removed it has already refreshed everything.
+    if (counts.gone or 0) == 0 then return end
+    CT.InvalidateCounts()
+    local UI = ns.MailboxUI
+    RequestRefresh(UI and UI._frame and UI._frame.Tabs and UI._frame.Tabs.collect)
+    if UI and type(UI.RefreshCollectTabCounts) == "function" then UI.RefreshCollectTabCounts() end
+  end)
+  if not ok then RV.waking = false end
+end
 
 -------------------------------------------------------------
 -- Confirmations
@@ -3263,7 +3304,7 @@ function CT.RefreshMailList(panel)
   -- mail, so a second walk cost a fifty-mail inbox some eight hundred redundant
   -- API calls on every single refresh. This walk is the one that records; see
   -- "The inbox counts".
-  local doneCount, toCollectCount = 0, 0
+  local doneCount, toCollectCount, goneCount = 0, 0, 0
   -- The search, folded once. Matched against the sender and the subject as
   -- the client reports them; the counts above are deliberately NOT narrowed
   -- by it, because the segment captions describe the inbox, not the view.
@@ -3297,13 +3338,18 @@ function CT.RefreshMailList(panel)
     -- effect of loading its attachments, so a mail that was read but still
     -- holds items -- the normal outcome when bags fill mid-run -- has to stay
     -- in the actionable list.
-    local finished = Mail().IsReadPersistent(index)
-    if finished then
+    -- A mail on its way out is neither: as far as the list and its counts
+    -- go, it has already gone (RV.Leaving).
+    local leaving = RV.Leaving(index)
+    local finished = not leaving and Mail().IsReadPersistent(index)
+    if leaving then
+      goneCount = goneCount + 1
+    elseif finished then
       doneCount = doneCount + 1
     else
       toCollectCount = toCollectCount + 1
     end
-    local listed = not stuckOnly or Mail().StuckReason(index) ~= nil
+    local listed = not leaving and (not stuckOnly or Mail().StuckReason(index) ~= nil)
     local money, cod, daysLeft, itemCount, sender
     if listed then
       local _, _, subject
@@ -3468,7 +3514,7 @@ function CT.RefreshMailList(panel)
   -- three segment captions are readings of these two numbers, and `numItems` --
   -- what the client can actually address -- is the total they add up to and the
   -- number the all segment carries.
-  RecordCounts(toCollectCount, doneCount, numItems, totalItems)
+  RecordCounts(toCollectCount, doneCount, numItems, totalItems, goneCount)
   -- More mail on the server than the client lists: the primary stays live.
   panel._moreOnServer = totalItems > numItems
   -- Hint first, counts second: both change the width of something in the top
