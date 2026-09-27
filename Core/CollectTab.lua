@@ -1620,7 +1620,13 @@ local function PaintViewToggle(panel)
     T.SetPlateSelected(seg, seg.segId == active)
   end
   if container.history then T.SetPlateSelected(container.history, active == VIEW_HISTORY) end
-  if container.alt then T.SetPlateSelected(container.alt, away and panel._alt ~= nil) end
+  local alt = container.alt
+  if alt then
+    T.SetPlateSelected(alt, away and panel._alt ~= nil)
+    -- The count beside a cut name wears the caption's colour, as it does
+    -- inside the whole caption.
+    T.SetColor(alt.Count, alt.isSelected and "accentBright" or "plateCaption")
+  end
 end
 
 -- Frozen: Core/Skin_EllesmereUI.lua calls this when the user changes their
@@ -1700,6 +1706,23 @@ local function BuildViewToggle(panel)
   -- it. A click opens the character list again.
   local alt = T.CreatePlate(panel, "segment")
   alt:SetScript("OnClick", function() CT.OpenPicker(panel) end)
+  -- The count on a caption of its own, used only while a long name is cut:
+  -- the ellipsis then falls in the name and the number stays whole beside
+  -- it (AV.FitPlate). Coloured as the caption is (PaintViewToggle).
+  alt.Count = T.CreateText(alt, "segment")
+  alt.Count:SetPoint("LEFT", alt.Text, "RIGHT", 0, 0)
+  alt.Count:SetWordWrap(false)
+  alt.Count:Hide()
+  -- The whole name, realm and all, while the plate shows only its start.
+  alt:HookScript("OnEnter", function(self)
+    if not (self.__pbOverflowText and self.fullName) then return end
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText(self.fullName)
+    GameTooltip:Show()
+  end)
+  alt:HookScript("OnLeave", function(self)
+    if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+  end)
   alt:Hide()
   container.alt = alt
 
@@ -2000,9 +2023,11 @@ end
 -- the German and Russian captions into their neighbour.
 -- The segments actually on screen, in order. Hiding one is a layout fact,
 -- not a special case: everything below sizes and spaces what this returns.
-local function VisibleSegments(container)
+-- Done is this character's read mail, so it steps out while another box is
+-- on screen (`other`), and is back the moment this one is.
+local function VisibleSegments(container, other)
   local shown = {}
-  local tab = RV.Mode() == "tab"
+  local tab = RV.Mode() == "tab" and not other
   for i = 1, #container.buttons do
     local seg = container.buttons[i]
     local on = (seg.segId ~= VIEW_DONE) or tab
@@ -2021,7 +2046,11 @@ local function LayoutViewToggle(panel)
   -- tightGap, the padding rung, so the group read a shade tighter than the
   -- design says a switch should.
   local gap = T.Metrics.space.snug
-  local shown = VisibleSegments(container)
+  -- Another character's box: nothing there can be deleted or collected, and
+  -- History is this character's, so the row is the Inbox (the way home), the
+  -- box's name, the picker and the search.
+  local other = AV.Other(panel)
+  local shown = VisibleSegments(container, other)
 
   local per, total = T.SizeRow(shown, {
     height = T.Metrics.segmentHeight,
@@ -2038,29 +2067,37 @@ local function LayoutViewToggle(panel)
   -- when it fell back to text.
   local hist = container.history
   if hist then
-    local width = hist.Icon and T.Metrics.segmentHeight + 6
-      or ceil(T.TextWidth(hist)) + 2 * T.Metrics.tightGap + 8
-    hist:SetSize(width, T.Metrics.segmentHeight)
-    hist:ClearAllPoints()
-    hist:SetPoint("LEFT", container, "LEFT", total + gap, 0)
-    total = total + gap + width
+    hist:SetShown(not other)
+    if not other then
+      local width = hist.Icon and T.Metrics.segmentHeight + 6
+        or ceil(T.TextWidth(hist)) + 2 * T.Metrics.tightGap + 8
+      hist:SetSize(width, T.Metrics.segmentHeight)
+      hist:ClearAllPoints()
+      hist:SetPoint("LEFT", container, "LEFT", total + gap, 0)
+      total = total + gap + width
+    end
   end
   container:SetWidth(max(total, 1))
+
+  -- The right-hand end of the row, which gives way to nothing: the search box,
+  -- the picker left of it, and the other box's name left of that -- which is
+  -- given the room the rest of the row leaves it (AV.FitPlate).
+  local M = T.Metrics
+  local row = PanelWidth(panel) - 2 * M.inset
+  local right = panel.SearchWrap and SEARCH_W or 0
+  if panel.Picker and panel.Picker:IsShown() then right = right + M.gap + M.segmentHeight end
+  local alt = container.alt
+  if alt and alt:IsShown() and alt.natW then
+    right = right + M.space.snug + AV.FitPlate(panel, row - total - M.gap - right - M.space.snug)
+  end
 
   -- The hint shares the top row. It is genuinely optional text, so it is shown
   -- only when it fits beside the segments in full: clipping it would be worse
   -- than not showing it, and it has no frame of its own to hang a tooltip on.
   local hint = panel.Hint
   if hint then
-    -- Less the search box on the same row, which has first claim on the right.
-    local room = PanelWidth(panel) - 2 * T.Metrics.inset - total - T.Metrics.gap
-    if panel.SearchWrap then room = room - SEARCH_W - T.Metrics.gap end
-    if panel.Picker and panel.Picker:IsShown() then
-      room = room - T.Metrics.segmentHeight - T.Metrics.gap
-    end
-    if container.alt and container.alt:IsShown() then
-      room = room - (container.alt:GetWidth() or 0) - T.Metrics.space.snug
-    end
+    -- A gap either side of it.
+    local room = row - total - M.gap - right - M.gap
     hint:SetShown(room >= T.TextWidth(hint) and not AV.Active(panel))
   end
 
@@ -2158,6 +2195,89 @@ function AV.Active(panel)
   return panel._searchAll == true and Searching(panel)
 end
 
+-- Showing another character's box -- one box, not every box's matches: the
+-- state the plate stands for, and the one this character's Done and History
+-- step out of the row for.
+function AV.Other(panel)
+  return panel ~= nil and panel._alt ~= nil and AV.Memory() ~= nil
+end
+
+-- The plate's widest, and the letters of a name it keeps however narrow it
+-- has to go. Three: with the class colour and the crest beside them they
+-- tell a roster's characters apart, where two letters too often do not; a
+-- name no longer than that is never cut at all.
+AV.PLATE_MAX = 160
+AV.PLATE_LETTERS = 3
+
+-- The plate's caption, measured when a box is put on screen: whole, as it is
+-- shown while it fits; and the name and the count apart, with the narrowest
+-- the name may go, for when it does not. `minW` is the narrowest the plate
+-- itself may be.
+function AV.MeasurePlate(panel, plate, Memory, who)
+  local M = Th().Metrics
+  local name = Memory.ClassName(who.realm, who.name, true)
+  local count = ""
+  if ShowTabCounts() then
+    count = " (" .. FormatCount((Memory.CountFor(who.realm, who.name))) .. ")"
+  end
+  local fs = plate:GetFontString()
+  plate.pad = 2 * M.tightGap + 12
+  plate.caption, plate.nameText = name .. count, name
+  plate.fullName = Memory.ClassName(who.realm, who.name)
+  plate.Count:SetText(count)
+  plate.natW = MeasureWith(panel, fs, plate.caption) + plate.pad
+  plate.nameW = MeasureWith(panel, fs, name)
+  plate.countW = (count ~= "") and MeasureWith(panel, fs, count) or 0
+  -- The first letters, by character: a name can be accented or Cyrillic.
+  local raw = tostring(who.name or "")
+  local cut, letters = 0, 0
+  for letter in raw:gmatch("[^\128-\191][\128-\191]*") do
+    letters = letters + 1
+    cut = cut + #letter
+    if letters >= AV.PLATE_LETTERS then break end
+  end
+  -- A pixel over the measure, so the client's own cut leaves them standing.
+  local least = MeasureWith(panel, fs, raw:sub(1, cut) .. "...") + 1
+  plate.minNameW = min(plate.nameW, least)
+  plate.minW = min(plate.natW, plate.pad + plate.minNameW + plate.countW)
+end
+
+-- The plate at the width the row can give it (`room`), capped. While its
+-- whole caption fits it is drawn exactly as it always was; past that the
+-- name gives way -- an ellipsis, down to its first letters -- and the count
+-- stays whole beside it, the full name in the tooltip. Never narrower than
+-- `minW`. Returns the width.
+function AV.FitPlate(panel, room)
+  local T = Th()
+  local plate = panel.ViewToggle.alt
+  local fs, pad = plate.Text, plate.pad
+  local cap = min(AV.PLATE_MAX, room)
+  local whole = plate.natW <= cap
+  if whole ~= plate._whole then
+    plate._whole = whole
+    fs:ClearAllPoints()
+    if whole then
+      fs:SetPoint("CENTER", plate, "CENTER", 0, 0)
+      fs:SetJustifyH("CENTER")
+    else
+      fs:SetPoint("LEFT", plate, "LEFT", pad / 2, 0)
+      fs:SetJustifyH("LEFT")
+    end
+    plate.Count:SetShown(not whole)
+  end
+  local width
+  if whole then
+    width = plate.natW
+    T.FitText(fs, width - pad, plate.caption, plate)
+  else
+    local nameW = min(plate.nameW, max(plate.minNameW, floor(cap - pad - plate.countW)))
+    T.FitText(fs, nameW, plate.nameText, plate)
+    width = pad + nameW + plate.countW
+  end
+  plate:SetWidth(width)
+  return width
+end
+
 -- The picker's crest, the toggle's tint, the other box's name beside Inbox,
 -- and where the hint stops -- everything the state above changes on screen.
 function AV.Paint(panel)
@@ -2181,21 +2301,14 @@ function AV.Paint(panel)
 
   -- The other box's name and count, just left of the picker that chose it:
   -- the two read as one control. No realm -- the list the name was picked
-  -- from said which -- and capped, a long name cut rather than pushing the
-  -- row. Measured from the full caption, so a cut never feeds the next width.
+  -- from said which -- and never wider than the row can give it: a long name
+  -- is cut, its count kept (AV.FitPlate, from the row's layout below).
+  -- Measured from the full caption, so a cut never feeds the next width.
   local plate = panel.ViewToggle and panel.ViewToggle.alt
   if plate then
     if who and Memory then
-      local caption = Memory.ClassName(who.realm, who.name, true)
-      if ShowTabCounts() then
-        caption = caption .. " (" .. FormatCount((Memory.CountFor(who.realm, who.name))) .. ")"
-      end
-      plate.caption = caption
-      local pad = 2 * M.tightGap + 12
-      local width = min(MeasureWith(panel, plate:GetFontString(), caption) + pad, 160)
-      plate:SetText(caption)
-      T.FitText(plate:GetFontString(), width - pad, caption, plate)
-      plate:SetSize(width, M.segmentHeight)
+      AV.MeasurePlate(panel, plate, Memory, who)
+      plate:SetHeight(M.segmentHeight)
       plate:ClearAllPoints()
       plate:SetPoint("RIGHT", panel.Picker, "LEFT", -M.space.snug, 0)
       plate:Show()
