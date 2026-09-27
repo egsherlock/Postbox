@@ -100,6 +100,14 @@ local captureQueued = false
 -- puts another mail into one of this visit's tables drops that table's text.
 local searchText = setmetatable({}, { __mode = "k" })
 
+-- MM.Characters is memoised (section 2b); this generation says its list is
+-- stale. Everything in this file that writes what the list reads -- a
+-- snapshot saved, an arrival or auction noted, a watch settled, a character
+-- hidden or shown -- calls CharactersChanged. Nothing outside the file
+-- writes mailMemory, mailWatch or hiddenChars.
+local charactersGen = 0
+local function CharactersChanged() charactersGen = charactersGen + 1 end
+
 -- Session timestamps for the arrival watch (section 5): the client fires
 -- UPDATE_PENDING_MAIL at login to establish state and churns it around a
 -- mailbox close, and neither is an arrival.
@@ -271,6 +279,7 @@ local function PersistOnClose()
   local root = ns.Store.EnsurePath("mailMemory")
   root[realm] = root[realm] or {}
   root[realm][name] = snapshot
+  CharactersChanged()
   -- Defined in section 2b, below this function in the file.
   if MM._SettleWatch then MM._SettleWatch(realm, name, snapshot.seenAt or time()) end
 end
@@ -433,6 +442,8 @@ local function WatchFor(realm, name, create)
   if type(watch) ~= "table" and create then
     watch = {}
     byRealm[name] = watch
+    -- A character the list may not have had.
+    CharactersChanged()
   end
   return watch
 end
@@ -449,7 +460,10 @@ end
 local function NoteArrival(realm, name, at)
   if not MemoryEnabled() then return end
   local watch = WatchFor(realm, name, true)
-  if watch and not watch.newAt then watch.newAt = tonumber(at) or time() end
+  if watch and not watch.newAt then
+    watch.newAt = tonumber(at) or time()
+    CharactersChanged()
+  end
 end
 
 -- The notifications' rows still describing mail that exists: an auction's
@@ -478,6 +492,7 @@ function MM._SettleWatch(realm, name, now)
   else
     watch.auctionAt, watch.auctionsUntil = nil, nil
   end
+  CharactersChanged()
 end
 
 -- A mail waits while it holds anything, or is unread: the Collect tab's rule
@@ -536,9 +551,8 @@ local function WarningText(st, now)
 end
 
 -- A character's name as the lists show it: the realm only when it is not
--- the one being played.
-local function CharacterLabel(realm, name)
-  local myRealm = GetRealmName()
+-- `myRealm`, the one being played.
+local function CharacterLabel(realm, name, myRealm)
   if realm ~= myRealm then return name .. " - " .. realm end
   return name
 end
@@ -573,11 +587,31 @@ local function ByName(a, b)
   return a.realm < b.realm
 end
 
+-- The last list MM.Characters built, and what it was built from.
+local charactersMemo = {}
+
 -- Every character Postbox knows a mailbox for: this one first, then those
 -- with something to say, then by name. Each carries `hidden`, read from the
 -- set once here, so every list built from this one filters for nothing.
+--
+-- One list serves every caller until something it reads is written
+-- (charactersGen, section 1), the saved roots themselves are replaced, or
+-- the minute turns: its counts and warnings are read against the clock, and
+-- a minute is as stale as they get. Callers read it and never change it.
 function MM.Characters()
   local now = time()
+  local myRealm, myName = Me()
+  local get = ns.Store and ns.Store.Get
+  local memory = get and get("mailMemory")
+  local watches = get and get("mailWatch")
+  local hiddenRoot = get and get("hiddenChars")
+  local minute = math.floor(now / 60)
+  local memo = charactersMemo
+  if memo.list and memo.gen == charactersGen and memo.minute == minute and memo.memory == memory
+    and memo.watches == watches and memo.hiddenRoot == hiddenRoot
+    and memo.realm == myRealm and memo.name == myName then
+    return memo.list
+  end
   local seen, list = {}, {}
   local function Add(realm, name)
     local key = realm .. "\001" .. name
@@ -588,7 +622,6 @@ function MM.Characters()
   -- The character being played is always a choice, recorded or not: a
   -- character that has never opened a mailbox is exactly the one that
   -- comes here for its alts', and needs a way back to its own.
-  local myRealm, myName = Me()
   if myRealm and myName then Add(myRealm, myName) end
   for _, rootName in ipairs({ "mailMemory", "mailWatch" }) do
     local root = ns.Store and ns.Store.Get and ns.Store.Get(rootName)
@@ -613,9 +646,12 @@ function MM.Characters()
     local st = list[i]
     st.me = (st.realm == myRealm and st.name == myName)
     st.hidden = (not st.me) and InHiddenSet(hidden, st.realm, st.name)
-    st.label = CharacterLabel(st.realm, st.name)
+    st.label = CharacterLabel(st.realm, st.name, myRealm)
     st.text = WarningText(st, now)
   end
+  memo.list, memo.gen, memo.minute = list, charactersGen, minute
+  memo.memory, memo.watches, memo.hiddenRoot = memory, watches, hiddenRoot
+  memo.realm, memo.name = myRealm, myName
   return list
 end
 
@@ -642,6 +678,7 @@ function MM.SetHidden(realm, name, hidden)
     local set = HiddenSet(true)
     if type(set[realm]) ~= "table" then set[realm] = {} end
     set[realm][name] = true
+    CharactersChanged()
     return
   end
   local set = HiddenSet(false)
@@ -649,6 +686,7 @@ function MM.SetHidden(realm, name, hidden)
   if type(byRealm) ~= "table" then return end
   byRealm[name] = nil
   if next(byRealm) == nil then set[realm] = nil end
+  CharactersChanged()
 end
 
 -- Every hidden character, by name, as { realm, name }: the options panel's
@@ -687,6 +725,7 @@ function MM.ShowAllHidden()
   if set then
     for realm in pairs(set) do set[realm] = nil end
   end
+  CharactersChanged()
   MM.HiddenChanged()
 end
 
@@ -2729,6 +2768,7 @@ if bus then
     local now = time()
     watch.auctionAt = watch.auctionAt or now
     watch.auctionsUntil = math.max(watch.auctionsUntil or 0, now + AUCTION_LONGEST)
+    CharactersChanged()
   end)
   registered.auctionExpired = bus.Register("AUCTION_HOUSE_AUCTIONS_EXPIRED", function()
     NoteArrival(Me())
@@ -2745,6 +2785,7 @@ if bus then
     watch.pending = type(watch.pending) == "table" and watch.pending or {}
     if #watch.pending >= 30 then table.remove(watch.pending, 1) end
     watch.pending[#watch.pending + 1] = { k = kind, item = item, n = tonumber(count), t = time() }
+    CharactersChanged()
     NoteArrival(realm, name)
     local snap = StoredSnapshot()
     if snap then snap.newSince = true end
