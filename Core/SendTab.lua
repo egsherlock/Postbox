@@ -3744,7 +3744,11 @@ function ST.RepaintExternalBags()
   local api = _G["Baganator"]
   api = type(api) == "table" and api.API or nil
   if type(api) == "table" and type(api.RequestItemButtonsRefresh) == "function" then
-    pcall(api.RequestItemButtonsRefresh, "Postbox")
+    -- No argument. Its one parameter is a LIST of Baganator's refresh reasons,
+    -- walked with ipairs, and nil means its own default (item widgets and
+    -- searches). A caller's name here made ipairs throw inside the pcall, so
+    -- this repaint silently never happened.
+    pcall(api.RequestItemButtonsRefresh)
   end
   for _, name in ipairs({ "EUI_Bags", "EUI_BagsReagent" }) do
     local frame = _G[name]
