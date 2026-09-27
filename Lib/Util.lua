@@ -235,24 +235,38 @@ end
 -- coins by rank from the largest non-zero one: 2 keeps gold and silver of
 -- an amount with gold in it, silver and copper of one without. A list row
 -- has no room for the copper on a sale, and nobody reads it there.
+--
+-- One format per amount and no tables: every money figure on every list
+-- refresh comes through here, a month of History is a thousand of them, and
+-- the pieces-and-join way made five tables a call.
 function Formatting.FormatMoneyText(copper, parts)
   local gold, silver, rest, total = Split(copper)
   if total == 0 then return "" end
 
-  local ranks = { { gold, GOLD_SUFFIX }, { silver, SILVER_SUFFIX }, { rest, COPPER_SUFFIX } }
-  local first = (gold > 0 and 1) or (silver > 0 and 2) or 3
-  local last = 3
+  -- How many coins, counted from the largest non-zero one, the cap leaves:
+  -- a cap under one is no cap.
   local limit = tonumber(parts)
-  if limit and limit >= 1 then last = math.min(3, first + limit - 1) end
+  if not (limit and limit >= 1) then limit = 3 end
 
-  local out = {}
-  for i = first, last do
-    local value = ranks[i][1]
-    if value > 0 or i == first then
-      out[#out + 1] = format("%d%s", value, ranks[i][2])
+  if gold > 0 then
+    local withSilver = silver > 0 and limit >= 2
+    local withCopper = rest > 0 and limit >= 3
+    if withSilver and withCopper then
+      return format("%d%s %d%s %d%s", gold, GOLD_SUFFIX, silver, SILVER_SUFFIX, rest, COPPER_SUFFIX)
+    elseif withSilver then
+      return format("%d%s %d%s", gold, GOLD_SUFFIX, silver, SILVER_SUFFIX)
+    elseif withCopper then
+      return format("%d%s %d%s", gold, GOLD_SUFFIX, rest, COPPER_SUFFIX)
     end
+    return format("%d%s", gold, GOLD_SUFFIX)
   end
-  return table.concat(out, " ")
+  if silver > 0 then
+    if rest > 0 and limit >= 2 then
+      return format("%d%s %d%s", silver, SILVER_SUFFIX, rest, COPPER_SUFFIX)
+    end
+    return format("%d%s", silver, SILVER_SUFFIX)
+  end
+  return format("%d%s", rest, COPPER_SUFFIX)
 end
 
 -- Amount rendered with the client's coin textures inline.
