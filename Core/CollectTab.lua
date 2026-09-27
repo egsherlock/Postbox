@@ -2081,14 +2081,17 @@ local function LayoutViewToggle(panel)
 
   -- The right-hand end of the row, which gives way to nothing: the search box,
   -- the picker left of it, and the other box's name left of that -- which is
-  -- given the room the rest of the row leaves it (AV.FitPlate).
+  -- given the room the rest of the row leaves it (AV.FitPlate). `least` is the
+  -- same end with the name at its narrowest.
   local M = T.Metrics
   local row = PanelWidth(panel) - 2 * M.inset
   local right = panel.SearchWrap and SEARCH_W or 0
   if panel.Picker and panel.Picker:IsShown() then right = right + M.gap + M.segmentHeight end
+  local least = right
   local alt = container.alt
   if alt and alt:IsShown() and alt.natW then
     right = right + M.space.snug + AV.FitPlate(panel, row - total - M.gap - right - M.space.snug)
+    least = least + M.space.snug + alt.minW
   end
 
   -- The hint shares the top row. It is genuinely optional text, so it is shown
@@ -2102,6 +2105,24 @@ local function LayoutViewToggle(panel)
   end
 
   PaintViewToggle(panel)
+
+  -- The width this row needs, whatever the window is now: the segments as
+  -- measured, a gap, and the right-hand end with the name at its narrowest.
+  -- Where the window is narrower than that, the window's floor is raised to
+  -- it (Core/MailboxUI.lua, UI.RefreshCollectWidth) -- which hears of it only
+  -- when it moves. Last, so a resize it causes finds the row already laid.
+  local need = ceil(total + M.gap + least + 2 * M.inset)
+  if need ~= panel._needW then
+    panel._needW = need
+    local UI = ns.MailboxUI
+    if UI and type(UI.RefreshCollectWidth) == "function" then UI.RefreshCollectWidth() end
+  end
+end
+
+-- Frozen: Core/MailboxUI.lua reads this for the window's floor. The panel
+-- width the top row needs (see LayoutViewToggle); 0 before the first layout.
+function CT.MinPanelWidth(panel)
+  return panel and panel._needW or 0
 end
 
 -- Frozen: Core/MailboxUI.lua calls this when the read-mail option changes.
@@ -2212,7 +2233,7 @@ AV.PLATE_LETTERS = 3
 -- The plate's caption, measured when a box is put on screen: whole, as it is
 -- shown while it fits; and the name and the count apart, with the narrowest
 -- the name may go, for when it does not. `minW` is the narrowest the plate
--- itself may be.
+-- itself may be, which is what the row reports as its need.
 function AV.MeasurePlate(panel, plate, Memory, who)
   local M = Th().Metrics
   local name = Memory.ClassName(who.realm, who.name, true)
@@ -2246,7 +2267,8 @@ end
 -- whole caption fits it is drawn exactly as it always was; past that the
 -- name gives way -- an ellipsis, down to its first letters -- and the count
 -- stays whole beside it, the full name in the tooltip. Never narrower than
--- `minW`. Returns the width.
+-- `minW`: a row that cannot give it that much has the window made wider
+-- instead (LayoutViewToggle). Returns the width.
 function AV.FitPlate(panel, room)
   local T = Th()
   local plate = panel.ViewToggle.alt

@@ -40,6 +40,7 @@ UI._state = UI._state or {
   attachRows     = 1,         -- rows of attachment slots the compose screen shows
   extraH         = 0,         -- transient height added for a second attachment row
   bodyH          = 0,         -- transient height added for a message that outgrew its box
+  extraW         = 0,         -- transient width lent while the Mail tab's top row needs more
   layoutDeferred = false,     -- a grid reservation is waiting for combat to end
 }
 
@@ -1087,10 +1088,14 @@ end
 -- The height of the window template's title-bar art. A platform constant.
 local TITLE_BAR_HEIGHT = 24
 
--- Width has no derived floor -- nothing on either tab has a horizontal minimum
--- beyond the category bar's tiles, and those measure themselves -- so it stays a
--- chosen number, and the default width is that minimum. There is deliberately no
--- minimum or default HEIGHT here: both are computed below.
+-- Width's floor is a chosen number, and the default width is that minimum:
+-- everything on both tabs fits it and measures itself to it. The one exception
+-- is an edge case of the Mail tab's top row -- counts in the thousands beside a
+-- long translation, a wide host font, another character's box with a long name
+-- -- which can need more than 480 however its parts give way; for exactly as
+-- long as that lasts the floor is raised to what the row needs (MinWindowWidth,
+-- below). There is deliberately no minimum or default HEIGHT here: both are
+-- computed below.
 local MIN_WIDTH, DEFAULT_WIDTH = 480, 480
 -- The ceilings are taste, not structure: past this the window is bigger than the
 -- content it holds.
@@ -1240,6 +1245,27 @@ local function BaseMinHeight()
   return MinWindowHeight(1)
 end
 
+-- THE WIDTH FLOOR: 480, or what the Mail tab's top row needs where that is
+-- more (Core/CollectTab.lua, CT.MinPanelWidth -- the row with every part at
+-- its narrowest), plus the shell's own margin either side of the panel. Never
+-- past the ceiling.
+--
+-- TRANSIENT WIDTH is the width a raised floor LENDS the window (`extraW`),
+-- the way the compose screen lends it height: the width the player chose is
+-- the window's less it, it is what persists, and it is what the window goes
+-- back to when the floor comes down. A drag or a reset on the grip makes the
+-- window's width the player's own again (AdoptTransientHeight).
+local function MinWindowWidth()
+  local need = MIN_WIDTH
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect and type(collect.MinPanelWidth) == "function" then
+    -- Parenthesised: the shell's inset is ChromeChain's first return.
+    local width = tonumber((collect.MinPanelWidth(panel))) or 0
+    if width > 0 then need = max(need, ceil(width + 2 * (ChromeChain()))) end
+  end
+  return min(need, MAX_WIDTH)
+end
+
 -- The ceiling, from the one place that owns it. MAX_HEIGHT is taste, so the
 -- derived floor overrides it wherever the two would cross -- a window that
 -- cannot be as tall as its own content needs is not a matter of taste.
@@ -1322,14 +1348,15 @@ local function ApplyResizeBounds()
 
   local minHeight = MinWindowHeight(UI._state.attachRows)
   local maxHeight = MaxWindowHeight()
+  local minWidth = MinWindowWidth()
   -- Remembered, so an option that moves the floor can tell whether the
   -- window was standing on the old one (FollowFloor).
   UI._state.floorH = minHeight
 
   if type(frame.SetResizeBounds) == "function" then
-    frame:SetResizeBounds(MIN_WIDTH, minHeight, MAX_WIDTH, maxHeight)
+    frame:SetResizeBounds(minWidth, minHeight, MAX_WIDTH, maxHeight)
   elseif type(frame.SetMinResize) == "function" then
-    frame:SetMinResize(MIN_WIDTH, minHeight)
+    frame:SetMinResize(minWidth, minHeight)
     if type(frame.SetMaxResize) == "function" then
       frame:SetMaxResize(MAX_WIDTH, maxHeight)
     end
@@ -1337,7 +1364,12 @@ local function ApplyResizeBounds()
 
   local width  = tonumber(frame:GetWidth()) or 0
   local height = tonumber(frame:GetHeight()) or 0
-  local clampedW = max(MIN_WIDTH, min(MAX_WIDTH, width))
+  -- The width the player chose, held to the chosen bounds, and the floor's
+  -- loan on top of it where the floor stands higher: raised, the window
+  -- grows to it; lowered, the loan is given back, down to their width.
+  local chosen = max(MIN_WIDTH, min(MAX_WIDTH, width - UI._state.extraW))
+  local clampedW = max(chosen, minWidth)
+  UI._state.extraW = clampedW - chosen
   -- The message box's elastic extension rides on top of BOTH bounds. It is
   -- content the window is showing right now rather than a size anybody chose,
   -- so the clamp must neither claw it back nor let the floor drop through it.
@@ -1551,6 +1583,9 @@ end
 --
 -- The attachment rows are NOT adopted: a row is still on screen after the drag
 -- and still owns its height.
+--
+-- The width a raised floor lent the window is adopted the same way: whatever
+-- width the drag leaves is the player's, and stays when the floor comes down.
 local function AdoptTransientHeight(frame)
   -- Remembered so a press that never becomes a drag can be undone on release:
   -- adopting on a bare click would otherwise fold the extension into the base
@@ -1558,6 +1593,9 @@ local function AdoptTransientHeight(frame)
   UI._state.adoptedBodyH = UI._state.bodyH
   UI._state.adoptedAtHeight = (frame and frame.GetHeight) and frame:GetHeight() or nil
   UI._state.bodyH = 0
+  UI._state.adoptedExtraW = UI._state.extraW
+  UI._state.adoptedAtWidth = (frame and frame.GetWidth) and frame:GetWidth() or nil
+  UI._state.extraW = 0
   local send = ns.SendTab
   if send and send.SuspendElastic then send.SuspendElastic(true) end
 end
@@ -1575,6 +1613,7 @@ function UI.ResetWindowGeometry()
   local state = UI._state
   AdoptTransientHeight(frame)
   state.adoptedBodyH, state.adoptedAtHeight = nil, nil
+  state.adoptedExtraW, state.adoptedAtWidth = nil, nil
   state.freeMoved = false
 
   -- Where BuildFrame first puts it.
@@ -1901,6 +1940,22 @@ end
 -- this runs only when that number changes.
 function UI.RefreshCollectFloor()
   FollowFloor()
+end
+
+-- The Mail tab's top row needs a different width (CT.MinPanelWidth): another
+-- character's box came or went, a count gained or lost a digit, the fonts
+-- changed. Called by the row only when that number moves. The floor follows
+-- it, and the window with it -- grown to a raised floor, and given back to the
+-- player's own width as the floor comes down (MinWindowWidth). Docked, the
+-- panel slot is re-reserved at the new width.
+function UI.RefreshCollectWidth()
+  local frame = UI._frame
+  -- Not while the screens are still being built: the build's own bounds pass
+  -- comes after the saved size is restored.
+  if not (frame and CollectPanel()) then return end
+  local before = frame:GetWidth()
+  ApplyResizeBounds()
+  if frame:GetWidth() ~= before then UI.ApplyWindowLayout() end
 end
 
 -- Frozen: Core/OptionsPanel.lua calls this when the compact-row option changes.
@@ -2251,6 +2306,17 @@ local function BuildFrame()
         and h - st.adoptedAtHeight < 0.5 and st.adoptedAtHeight - h < 0.5
       if bareClick then st.bodyH = st.adoptedBodyH or 0 end
       st.adoptedBodyH, st.adoptedAtHeight = nil, nil
+      -- The same for the width a raised floor lent: a drag that left the
+      -- width as it was leaves it on loan, and it still goes back.
+      local w = (resized and resized.GetWidth) and resized:GetWidth() or nil
+      if st.adoptedAtWidth ~= nil and w ~= nil
+          and w - st.adoptedAtWidth < 0.5 and st.adoptedAtWidth - w < 0.5 then
+        st.extraW = st.adoptedExtraW or 0
+      end
+      st.adoptedExtraW, st.adoptedAtWidth = nil, nil
+      -- The drag was held to the floor as it stood at the press; one raised
+      -- since (a count gaining a digit mid-drag) is met now.
+      if w ~= nil and w < MinWindowWidth() then ApplyResizeBounds() end
       if helpers.SaveFramePosition then helpers.SaveFramePosition(resized, windowStore) end
       UI.ApplyWindowLayout()
       -- Last, and after the re-dock: the compose screen re-reads its baseline
@@ -2263,10 +2329,16 @@ local function BuildFrame()
     -- has never touched it -- the default width and the derived floor, which
     -- is the smallest size the screens fit in -- through the same release
     -- path a drag takes, so it is saved, re-docked and re-read the same way.
+    -- Where the Mail tab's top row has raised the width's floor, the window
+    -- stands on that instead, on loan, and comes back to the default width
+    -- when the floor does.
     local function OnResizeReset(target)
       AdoptTransientHeight(target)
       helpers.PinFrameTopLeft(target)
-      target:SetSize(DEFAULT_WIDTH, BaseMinHeight())
+      local width = max(DEFAULT_WIDTH, MinWindowWidth())
+      target:SetSize(width, BaseMinHeight())
+      UI._state.extraW = width - DEFAULT_WIDTH
+      UI._state.adoptedAtWidth = nil
       OnResizeStop(target)
     end
 
@@ -2403,6 +2475,8 @@ local function BuildFrame()
       -- the message extension both -- before it clamps and writes.
       minH = baseMin, maxH = max(MAX_HEIGHT, baseMin),
       extraHeightFn = TotalExtra,
+      -- And the width a raised floor lent, so what is saved is the player's.
+      extraWidthFn = function() return UI._state.extraW end,
     })
   end
 

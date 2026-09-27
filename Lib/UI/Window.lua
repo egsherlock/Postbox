@@ -124,14 +124,16 @@ end
 -- user actually chose -- the mail window grows to fit a second row of attachment
 -- slots, and again to fit a message that has outgrown its box. Subtract it so
 -- the persisted height is always the user's base size, whatever the window
--- happens to be showing at the moment the write lands.
-local function SaveFrameSize(frame, store, bounds, extraHeight)
+-- happens to be showing at the moment the write lands. `extraWidth` is the
+-- same for width: the mail window is widened while one of its rows needs more.
+local function SaveFrameSize(frame, store, bounds, extraHeight, extraWidth)
   if not frame or type(store) ~= "table" then return false end
 
   local width, height = frame:GetSize()
   if not width or not height then return false end
 
   height = height - (tonumber(extraHeight) or 0)
+  width = width - (tonumber(extraWidth) or 0)
   store.width = Clamp(Round(width), bounds.minW, bounds.maxW)
   store.height = Clamp(Round(height), bounds.minH, bounds.maxH)
   return true
@@ -159,6 +161,11 @@ function Helpers.ApplyWindowPersistence(frame, store, opts)
     -- second into tonumber's base argument, which must be 2-36 and throws.
     return tonumber((extraHeightFn())) or 0
   end
+  local extraWidthFn = type(opts.extraWidthFn) == "function" and opts.extraWidthFn or nil
+  local function ExtraWidth()
+    if not extraWidthFn then return 0 end
+    return tonumber((extraWidthFn())) or 0
+  end
 
   -- Restore size first, then position, then pin immediately — otherwise the
   -- very first layout after login uses a centre anchor and the first resize
@@ -182,7 +189,7 @@ function Helpers.ApplyWindowPersistence(frame, store, opts)
     scheduled = false
     if not dirty then return end
     dirty = false
-    SaveFrameSize(frame, store, bounds, ExtraHeight())
+    SaveFrameSize(frame, store, bounds, ExtraHeight(), ExtraWidth())
   end
 
   local function Queue()
