@@ -177,7 +177,8 @@ end
 -- has it -- or nothing. Created on first use: most rows never carry one.
 function RV.PaintQuality(row, mark)
   local atlas = type(mark) == "string" and mark:match("|A:([^:|]+)") or nil
-  if not (atlas and row.Icon and RV.MarkOnIcon()) then
+  -- Nothing to mark when the arrangement hides the icon.
+  if not (atlas and row.Icon and RV.MarkOnIcon() and RV.Layout().shown.icon) then
     if row.QualityHolder then row.QualityHolder:Hide() end
     return
   end
@@ -978,22 +979,56 @@ end
 --
 -- A compact row is a table, not a sentence. The sender sits in a column as
 -- wide as the widest auction outcome, the subject takes everything left, and
--- up to three columns stand at the right edge -- time left, money, slots --
--- each as wide as its widest entry ANYWHERE in the list. Measured over the
+-- the three figures -- time left, money, slots -- stand where the player's
+-- arrangement puts them (at the right edge, as they come), each as wide as
+-- its widest entry ANYWHERE in the list. Measured over the
 -- list rather than the rows on screen, so a column does not twitch as the list
 -- scrolls; and the room the delete and stuck marks need is reserved on every
 -- row when any listed row carries one, so a mark on one mail cannot knock the
 -- figures out of line on the others.
 --
--- Money, slots and time left are each behind their own option. What a switch
--- hides still reaches the row's tooltip, so no fact becomes unreachable.
+-- Which columns a row shows, and in what order, is the player's arrangement
+-- (MailboxUI.GetRowLayout, arranged in the window by Core/Arrange.lua), and
+-- it is ONE arrangement for every list that draws mail rows. What a hidden
+-- column would have said still reaches the row's tooltip, so no fact
+-- becomes unreachable.
 -------------------------------------------------------------
 
--- Default on when the option plumbing has not loaded yet.
-local function RowShows(key)
+-- The row's columns as the player has arranged them: { {id=, shown=}, ...,
+-- shown = { [id] = bool } }, shared and read-only. The default arrangement
+-- when the option plumbing has not loaded yet.
+RV.DEFAULT_LAYOUT = { shown = {} }
+for _, id in ipairs({ "read", "icon", "sender", "subject", "time", "money", "slots" }) do
+  RV.DEFAULT_LAYOUT[#RV.DEFAULT_LAYOUT + 1] = { id = id, shown = true }
+  RV.DEFAULT_LAYOUT.shown[id] = true
+end
+
+function RV.Layout()
   local UI = ns.MailboxUI
-  if not UI or type(UI.GetOption) ~= "function" then return true end
-  return UI.GetOption(key) and true or false
+  if UI and type(UI.GetRowLayout) == "function" then return UI.GetRowLayout() end
+  return RV.DEFAULT_LAYOUT
+end
+
+-- The three figures: columns with a list-wide width of their own.
+RV.FIGURE = { time = true, money = true, slots = true }
+
+-- Whether the arrangement shows this column ("read", "icon", "sender",
+-- "subject", "time", "money" or "slots").
+local function RowShows(id)
+  return RV.Layout().shown[id] == true
+end
+
+-- The arrange mode's state, as the rows need it: whether it is open over
+-- this panel (a row click then does nothing -- a stray click while columns
+-- are being moved must not collect a mail), and which column it points at.
+function RV.Arranging(owner)
+  local A = ns.Arrange
+  return A ~= nil and type(A.IsActive) == "function" and A.IsActive(owner) or false
+end
+
+function RV.Focus()
+  local A = ns.Arrange
+  return A and type(A.Focus) == "function" and A.Focus() or nil
 end
 
 -- The money, in its shortest honest form ("52g 26s", "1309g", "12.3k"; the
@@ -1022,12 +1057,13 @@ local function MoneyText(hasCOD, moneyValue, codValue, price, brief)
   return nil, nil
 end
 
--- Whether money of this kind stands on the row. Earned and spent each have a
--- switch; a C.O.D. price has none and always shows, because it is the one sum
--- nothing collects on its own -- Postbox never pays one without asking.
+-- Whether money of this kind stands on the row. Earned and spent go with the
+-- gold column and its choice of which; a C.O.D. price always shows, because
+-- it is the one sum nothing collects on its own -- Postbox never pays one
+-- without asking.
 local function MoneyShown(kind)
   if kind ~= "earned" and kind ~= "spent" then return true end
-  if not RowShows("rowGold") then return false end
+  if not RowShows("money") then return false end
   local UI = ns.MailboxUI
   local mode = UI and UI.GetGoldMode and UI.GetGoldMode() or "both"
   return mode == "both" or mode == kind
@@ -1147,44 +1183,274 @@ local function SenderColumnWidth(panel, sample)
   return min(max(widest + 2, SENDER_MIN), SENDER_MAX)
 end
 
--- The order the figures stand in, left to right (MailboxUI.GetRowOrder).
+-- The figures' order, left to right, shown or not: the arrangement's.
 local function RowOrder()
-  local UI = ns.MailboxUI
-  if UI and type(UI.GetRowOrder) == "function" then return UI.GetRowOrder() end
-  return { "time", "money", "slots" }
+  local layout, out = RV.Layout(), {}
+  for i = 1, #layout do
+    if RV.FIGURE[layout[i].id] then out[#out + 1] = layout[i].id end
+  end
+  return out
 end
 
--- A row's figures, packed against its right edge in the player's order.
--- `texts` is { time=, money=, slots= }, each a string or nil; `cols` the
--- list-wide width of each kind. A figure this mail does not have takes NO
--- room -- the next one in moves up to the edge, and the subject gets the
--- space -- so every row ends on the same right edge, and a figure in the
--- same position on two rows stands in the same column. `room` caps what the
--- figures may claim. Returns how far in from the edge they reach.
-local function PackFigures(row, trailing, room, cols, texts)
-  local order = RowOrder()
-  local gap = Th().Metrics.gap
-  local fsFor = { time = row.ColTime, money = row.ColMoney, slots = row.ColSlots }
-  local right = trailing
-  for i = #order, 1, -1 do
-    local id = order[i]
-    local fs = fsFor[id]
-    local text = texts[id]
-    local width = min(cols[id] or 0, room - (right - trailing))
-    if fs and text and width >= 12 then
-      if fs._right ~= right then
-        fs._right = right
-        fs:ClearAllPoints()
-        fs:SetPoint("RIGHT", row, "RIGHT", -right, 0)
-      end
-      Th().FitText(fs, width, text, nil)
-      fs:Show()
-      right = right + width + gap
-    elseif fs then
-      fs:Hide()
+-- The spots an anchor can take, by number: a row re-bound where it already
+-- stands -- nearly every bind -- is then left alone without comparing a
+-- string or re-anchoring anything.
+RV.POINTS = { "LEFT", "RIGHT", "TOPLEFT", "TOPRIGHT", "BOTTOMLEFT" }
+
+-- region -> anchored to its row at POINTS[point], x, y. Everything that
+-- anchors a column region goes through here, so the remembered spot is
+-- always the region's real one.
+function RV.Anchor(row, region, point, x, y)
+  if region.__pbAt == point and region.__pbAtX == x and region.__pbAtY == y then return end
+  region.__pbAt, region.__pbAtX, region.__pbAtY = point, x, y
+  local name = RV.POINTS[point]
+  region:ClearAllPoints()
+  region:SetPoint(name, row, name, x, y)
+end
+
+-- The arrange mode's pointer on a row: a soft accent wash around the column
+-- being moved or chosen, so the column the strip's chip stands for is found
+-- in the list at a glance. On a texture of the row's own, made on first use;
+-- nil takes it away.
+function RV.Wash(row, target)
+  local wash = row.__pbWash
+  if not target then
+    if wash then wash:Hide() end
+    return
+  end
+  if not wash then
+    wash = row:CreateTexture(nil, "BACKGROUND", nil, 3)
+    row.__pbWash = wash
+  end
+  local r, g, b = Th().GetAccent()
+  wash:SetColorTexture(r, g, b, 0.22)
+  wash:ClearAllPoints()
+  wash:SetPoint("TOPLEFT", target, "TOPLEFT", -3, 2)
+  wash:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", 3, -2)
+  wash:Show()
+end
+
+-- A placement table for RV.Place, one per list, reused for every row it binds.
+function RV.NewSpec()
+  return { el = {}, size = {}, text = {}, w = {} }
+end
+
+-- What a graphic takes from the text area: the dot sits in the gap before
+-- its neighbour on the left of the subject, as a bullet does -- two in from
+-- the icon, as the dot has always stood -- and takes a gap like any other
+-- column on the right.
+function RV.Footprint(id, before, size, gap)
+  if id == "read" then return before and (ROW_INDICATOR + 2) or (ROW_INDICATOR - 1 + gap) end
+  return (size.icon or 0) + gap
+end
+
+-- THE placement of a mail row's columns, and the only one: the Mail tab's
+-- two row sizes, History's rows and Mail Memory's all come through here, so
+-- a column the player moves moves in every list at once.
+--
+-- The row is read in the arrangement's order and split at the subject --
+-- the one column with no width of its own, which takes what the others
+-- leave. What stands before it packs from the left; what stands after it
+-- packs from the right edge inward, so every row ends on the same edge.
+-- After the subject a figure this mail does not have takes NO room and the
+-- next one in moves up to the edge (a figure in the same place from the edge
+-- on two rows stands in the same column); before it, a figure keeps its
+-- column on every row, so the subject still starts on one line down the list.
+-- The figures together may claim at most `share` of the text area: the
+-- sender and the subject are what a mailbox is scanned by.
+--
+-- The two-line row keeps the arrangement's order on each line: the icon and
+-- the dot keep their side, the sender and the subject share the first line
+-- in their order, and the figures are written out in theirs on the second.
+--
+-- `s` (RV.NewSpec, reused):
+--   width, left, trail, gap   the row's width; where its first column may
+--                             start; what its trailing marks take; the step
+--   el[id]                    the region drawing each column (nil: this list
+--                             has no such column); el.detail the second line
+--   size.icon                 the icon's width
+--   cols[id], senderCol       the figures' list-wide widths; the sender's
+--   text[id]                  what each text column says (a figure nil: this
+--                             mail does not have it)
+--   share, reserve            the figures' cap (nil: none); whether a figure
+--                             keeps its room on a row without it (History)
+--   force                     a hidden figure this row shows anyway (a C.O.D.
+--                             price always shows)
+--   two, top, bottom          the two-line row, and its lines' offsets
+--   detailText                the second line
+--   focus                     the column the arrange mode points at
+function RV.Place(row, s)
+  local layout = RV.Layout()
+  local T = Th()
+  local el, text, cols, size, w = s.el, s.text, s.cols or {}, s.size, s.w
+  local gap, two, force = s.gap, s.two, s.force
+  local n = #layout
+  local at = n
+  for i = 1, n do
+    if layout[i].id == "subject" then at = i break end
+  end
+
+  -- The graphics' footprint on both sides, and so the text area between.
+  local fixed = 0
+  for i = 1, n do
+    local id = layout[i].id
+    if layout[i].shown and el[id] and (id == "read" or id == "icon") then
+      fixed = fixed + RV.Footprint(id, i < at, size, gap)
     end
   end
-  return right
+  local textWidth = max(s.width - s.left - s.trail - fixed, 60)
+
+  -- The figures' widths: those after the subject from the edge in, then
+  -- those before it, out of one allowance.
+  local room = s.share and floor(textWidth * s.share) or textWidth
+  local used = 0
+  for pass = 1, 2 do
+    local from, to, step = n, at + 1, -1
+    if pass == 2 then from, to, step = 1, at - 1, 1 end
+    for i = from, to, step do
+      local id = layout[i].id
+      if RV.FIGURE[id] and el[id] then
+        local width = 0
+        if (layout[i].shown or force == id) and not two then
+          local has = pass == 2 or s.reserve or text[id] ~= nil
+          width = min(cols[id] or 0, room - used)
+          if not has or width < 12 then width = 0 end
+        end
+        w[id] = width
+        if width > 0 then used = used + width + gap end
+      end
+    end
+  end
+
+  local lineWidth = max(textWidth - used, 40)
+  local senderShown = layout.shown.sender and el.sender ~= nil
+  local senderW = senderShown and min(s.senderCol or SENDER_MIN, floor(lineWidth / 2)) or 0
+  local subjectW = max(lineWidth - (senderShown and (senderW + gap) or 0), 20)
+
+  local focus, target = s.focus, nil
+  local x = s.left
+  for i = 1, at - 1 do
+    local id = layout[i].id
+    local region = el[id]
+    if region then
+      local placed = false
+      if layout[i].shown or force == id then
+        if id == "read" then
+          RV.Anchor(row, region, 1, x - 3, 0)
+          x = x + ROW_INDICATOR + 2
+          placed = true
+        elseif id == "icon" then
+          RV.Anchor(row, region, 1, x, 0)
+          x = x + (size.icon or 0) + gap
+          placed = true
+        elseif two then
+          placed = nil  -- a name, on the first line below
+        elseif id == "sender" then
+          RV.Anchor(row, region, 1, x, 0)
+          T.FitText(region, senderW, text.sender, region)
+          x = x + senderW + gap
+          placed = true
+        elseif (w[id] or 0) > 0 then
+          RV.Anchor(row, region, 1, x, 0)
+          T.FitText(region, w[id], text[id] or "", nil)
+          x = x + w[id] + gap
+          placed = true
+        end
+      end
+      if placed ~= nil then
+        region:SetShown(placed)
+        if placed and id == focus then target = region end
+      end
+    end
+  end
+
+  local edge = s.trail
+  for i = n, at + 1, -1 do
+    local id = layout[i].id
+    local region = el[id]
+    if region then
+      local placed = false
+      if layout[i].shown or force == id then
+        if id == "read" then
+          RV.Anchor(row, region, 2, -edge, 0)
+          edge = edge + ROW_INDICATOR - 1 + gap
+          placed = true
+        elseif id == "icon" then
+          RV.Anchor(row, region, 2, -edge, 0)
+          edge = edge + (size.icon or 0) + gap
+          placed = true
+        elseif two then
+          placed = nil
+        elseif id == "sender" then
+          RV.Anchor(row, region, 2, -edge, 0)
+          T.FitText(region, senderW, text.sender, region)
+          edge = edge + senderW + gap
+          placed = true
+        elseif (w[id] or 0) > 0 then
+          RV.Anchor(row, region, 2, -edge, 0)
+          T.FitText(region, w[id], text[id] or "", nil)
+          edge = edge + w[id] + gap
+          placed = true
+        end
+      end
+      if placed ~= nil then
+        region:SetShown(placed)
+        if placed and id == focus then target = region end
+      end
+    end
+  end
+
+  local subject, sender, detail = el.subject, el.sender, el.detail
+  if not two then
+    RV.Anchor(row, subject, 1, x, 0)
+    T.FitText(subject, subjectW, text.subject, subject)
+    subject:Show()
+    if detail then detail:Hide() end
+    -- The two-line row's figures live on its second line; this row's are
+    -- columns, placed above.
+  else
+    -- The names share the first line in their order; the figures are the
+    -- second line's, in theirs. A figure's column region stands down.
+    for id in pairs(RV.FIGURE) do
+      if el[id] then el[id]:Hide() end
+    end
+    local top = s.top or 0
+    if senderShown then
+      if layout.shown.sender and RV.IndexOf(layout, "sender") < at then
+        RV.Anchor(row, sender, 3, x, top)
+        T.FitText(sender, senderW, text.sender, sender)
+        RV.Anchor(row, subject, 3, x + senderW + gap, top)
+      else
+        RV.Anchor(row, subject, 3, x, top)
+        RV.Anchor(row, sender, 4, -edge, top)
+        T.FitText(sender, senderW, text.sender, sender)
+      end
+      sender:Show()
+    else
+      if sender then sender:Hide() end
+      RV.Anchor(row, subject, 3, x, top)
+    end
+    T.FitText(subject, subjectW, text.subject, subject)
+    subject:Show()
+    if detail then
+      RV.Anchor(row, detail, 5, x, s.bottom or 0)
+      T.FitText(detail, textWidth, s.detailText or "", detail)
+      detail:Show()
+    end
+    if focus == "sender" and senderShown then target = sender end
+    if RV.FIGURE[focus] and layout.shown[focus] then target = detail end
+  end
+  if focus == "subject" then target = subject end
+  if not senderShown and sender then sender:Hide() end
+  RV.Wash(row, target)
+end
+
+-- layout, id -> where the arrangement has that column.
+function RV.IndexOf(layout, id)
+  for i = 1, #layout do
+    if layout[i].id == id then return i end
+  end
+  return 0
 end
 
 -- What an auction mail says where its sender would be, in its own tone, or
@@ -1205,7 +1471,15 @@ CT.RowRules = {
   MoneyText = MoneyText,
   Measure = MeasureWith,
   SenderColumn = SenderColumnWidth,
-  PackFigures = PackFigures,
+  -- The one placement (RV.Place) and what it reads.
+  Place = RV.Place,
+  NewSpec = RV.NewSpec,
+  Anchor = RV.Anchor,
+  Wash = RV.Wash,
+  Layout = RV.Layout,
+  Focus = RV.Focus,
+  IsFigure = function(id) return RV.FIGURE[id] == true end,
+  DOT = ROW_INDICATOR,
   RowOrder = RowOrder,
   OutcomeSender = OutcomeSender,
   EXPIRY_SOON_DAYS = EXPIRY_SOON_DAYS,
@@ -2066,6 +2340,9 @@ local function ActivateRow(row, button)
   local panel = row.panel
   local index = LiveIndex(row)
   if not (panel and index) then return end
+  -- While the columns are being arranged the list is a preview of them, and
+  -- a click that slipped off a chip must not collect a mail.
+  if RV.Arranging(panel) then return end
 
   -- A modified left-click is a selection gesture, under either mapping and
   -- on either button's verb: shift extends a range from the last row picked,
@@ -2102,36 +2379,32 @@ end
 --             row's hover tooltip carries the WHOLE meta line instead, so
 --             nothing a standard row says stops being reachable.
 --
--- A row is pooled and recycled between the two, so this re-anchors only when the
+-- A row is pooled and recycled between the two, so this re-sizes only when the
 -- mode a row is wearing is not the mode it is being bound into -- which for the
 -- overwhelmingly common case (the option never changes mid-session) is once, at
--- build. Everything that depends on the MAIL rather than on the layout -- which
+-- build. WHERE each column stands is the arrangement's, and RV.Place decides it
+-- on every bind for both layouts; everything that depends on the MAIL -- which
 -- trailing controls are showing, how wide each string may be -- stays in
 -- BindRow.
 --
--- `row._compact` starts nil, so a freshly built row is always laid out by the
--- first call: BuildRow deliberately leaves every mode-dependent size and anchor
--- unset rather than duplicating one of the two branches below.
+-- `row._compact` starts nil, so a freshly built row is always sized by the
+-- first call: BuildRow deliberately leaves every mode-dependent size unset
+-- rather than duplicating one of the two branches below.
 -------------------------------------------------------------
 
 local function ApplyRowMode(row, compact, height)
   if row._compact == compact then return end
   row._compact = compact
 
-  local M = Th().Metrics
   local iconSize = compact and ROW_ICON_COMPACT or ROW_ICON
   local deleteSize = compact and ROW_DELETE_COMPACT or ROW_DELETE
 
   row:SetHeight(height)
 
-  -- The hit area is SetAllPoints(row.Icon), so it follows both of these; the
-  -- stripe is SetAllPoints(row), so it follows the height.
+  -- The hit area is SetAllPoints(row.Icon), so it follows the icon wherever
+  -- the arrangement puts it; the stripe is SetAllPoints(row), so it follows
+  -- the height.
   row.Icon:SetSize(iconSize, iconSize)
-  row.Icon:ClearAllPoints()
-  -- Two past the indicator's slot, so the dot has a clear pixel or two
-  -- between it and the icon; the text-width arithmetic in the binder counts
-  -- the same two.
-  row.Icon:SetPoint("LEFT", row, "LEFT", M.inset + ROW_INDICATOR + 2, 0)
 
   -- The BUTTON is the hit area and keeps the full size; only its glyph is inset.
   row.Delete:SetSize(deleteSize, deleteSize)
@@ -2145,27 +2418,6 @@ local function ApplyRowMode(row, compact, height)
     local warningSize = compact and ROW_WARNING_COMPACT or ROW_WARNING
     row.Warning:SetSize(warningSize, warningSize)
   end
-
-  row.Sender:ClearAllPoints()
-  row.Subject:ClearAllPoints()
-  row.Detail:ClearAllPoints()
-
-  if compact then
-    row.Sender:SetPoint("LEFT", row.Icon, "RIGHT", M.gap, 0)
-    row.Subject:SetPoint("LEFT", row.Sender, "RIGHT", M.gap, 0)
-    -- The compact row draws its figures in the three columns instead; the
-    -- meta string waits, hidden, for the standard layout.
-    row.Detail:Hide()
-  else
-    row.Sender:SetPoint("TOPLEFT", row.Icon, "TOPRIGHT", M.gap, 2)
-    row.Subject:SetPoint("TOPLEFT", row.Sender, "TOPRIGHT", M.gap, 0)
-    row.Detail:SetPoint("BOTTOMLEFT", row.Icon, "BOTTOMRIGHT", M.gap, -2)
-    row.Detail:SetJustifyH("LEFT")
-    row.Detail:Show()
-    row.ColTime:Hide()
-    row.ColMoney:Hide()
-    row.ColSlots:Hide()
-  end
 end
 
 local function BuildRow(panel)
@@ -2177,11 +2429,11 @@ local function BuildRow(panel)
   -- The read/unread mark: a flat dot in the theme's two colours. A dot, not
   -- a square, and one pixel smaller than the space it is given -- the row
   -- has two marks at its left edge now (the selection bar sits on the edge
-  -- itself) and a square beside a bar read as one shape. Eight in from the
-  -- edge: clear of the bar, clear of the icon.
+  -- itself) and a square beside a bar read as one shape. Where it stands is
+  -- the arrangement's (RV.Place): first, it is seven in from the edge, clear
+  -- of the bar and clear of the icon.
   row.Indicator = row:CreateTexture(nil, "ARTWORK")
   row.Indicator:SetSize(ROW_INDICATOR - 1, ROW_INDICATOR - 1)
-  row.Indicator:SetPoint("LEFT", row, "LEFT", 7, 0)
   row.Indicator:SetTexture(WHITE)
   if type(row.CreateMaskTexture) == "function" then
     local mask = row:CreateMaskTexture()
@@ -2191,9 +2443,9 @@ local function BuildRow(panel)
     row.Indicator:AddMaskTexture(mask)
   end
 
-  -- Sized and anchored by ApplyRowMode, which the virtualiser calls before it
-  -- binds anything to this row. Same for the two texts below it, the delete
-  -- control and the stuck marker.
+  -- Sized by ApplyRowMode, which the virtualiser calls before it binds
+  -- anything to this row, and placed by the bind. Same for the texts below
+  -- it; the delete control and the stuck marker are sized there too.
   row.Icon = row:CreateTexture(nil, "ARTWORK")
   row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
@@ -2235,6 +2487,8 @@ local function BuildRow(panel)
   -- C.O.D., the remaining slots, the category and the expiry. It is the densest
   -- line on the screen and it is not inactive.
   row.Detail = T.CreateText(row, "secondary")
+  row.Detail:SetJustifyH("LEFT")
+  row.Detail:Hide()
 
   -- The compact row's three figure columns (see "the columns"). Anchored on
   -- bind, because where each stands depends on the list, not on the row.
@@ -2306,6 +2560,8 @@ local function BuildRow(panel)
   end)
   row.Delete:SetScript("OnClick", function(self)
     local parent = self:GetParent()
+    -- Nor delete one, while the columns are being arranged.
+    if RV.Arranging(parent.panel) then return end
     -- Verified, not assumed: deleting is irreversible, so it may only ever act
     -- on an index that still names the mail this row is showing.
     DeleteOneMail(parent.panel, LiveIndex(parent))
@@ -2542,13 +2798,6 @@ local function BindRow(panel, row, index, position, compact, done)
   local cols = panel._cols
   if compact and cols.trail then trailing = max(trailing, cols.trail) end
 
-  -- Widths derived from the list's own width, so a caption is truncated with a
-  -- tooltip rather than clipped, in any locale and at any window size.
-  local iconSize = compact and ROW_ICON_COMPACT or ROW_ICON
-  local textWidth = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
-    - (M.inset + ROW_INDICATOR + 2 + iconSize + M.gap) - trailing
-  textWidth = max(textWidth, 60)
-
   -- A partially collected auction stack must not keep advertising the quantity
   -- it arrived with, so a parenthesised count is rewritten to what is left.
   -- Only a TRAILING count: that is where the auction house writes it, and a
@@ -2576,7 +2825,7 @@ local function BindRow(panel, row, index, position, compact, done)
   Clear(parts)
   Clear(facts)
 
-  local showSlots, showExpiry = RowShows("rowSlots"), RowShows("rowExpiry")
+  local showSlots, showExpiry = RowShows("slots"), RowShows("time")
   local money, moneyKind = RowMoneyText(index, hasCOD, moneyValue, codValue, compact)
   local purchaseShown = (moneyKind == "spent")
   local slots = (remaining > 0) and T.Colorize("accent", ns.Plural("COUNT_SLOTS", remaining)) or nil
@@ -2610,13 +2859,16 @@ local function BindRow(panel, row, index, position, compact, done)
     expiry = nil
   end
   -- No category on the line: the sender column already says "AH Sold", and
-  -- "Other" says nothing at all. Only the two-line row draws this line; the
-  -- compact row packs the same figures into columns below.
+  -- "Other" says nothing at all. Only the two-line row draws this line, the
+  -- figures in the arrangement's order; the compact row gives each its own
+  -- column (RV.Place).
   if not compact then
-    local byId = { time = timeText, money = money, slots = slots }
-    local order = RowOrder()
-    for i = 1, #order do
-      if byId[order[i]] then parts[#parts + 1] = byId[order[i]] end
+    local texts = panel._rowTexts
+    texts.time, texts.money, texts.slots = timeText, money, slots
+    local layout = RV.Layout()
+    for i = 1, #layout do
+      local text = texts[layout[i].id]
+      if RV.FIGURE[layout[i].id] and text then parts[#parts + 1] = text end
     end
     if not purchaseShown then AppendInvoiceFigures(parts, index, false) end
   end
@@ -2629,7 +2881,8 @@ local function BindRow(panel, row, index, position, compact, done)
   -- name beside it. "Auction House" carried no information the outcome
   -- does not, and the outcome was the one thing the row did not say.
   senderText = OutcomeSender(kind) or senderText
-  local senderColumn = ((cols.sender or 0) > 0) and cols.sender or SENDER_MIN
+  -- A hidden sender column is said by the tooltip instead.
+  if not RowShows("sender") then row.senderTip = senderText end
 
   if compact then
     -- What the row does not draw goes to the tooltip, one fact per line: the
@@ -2640,28 +2893,37 @@ local function BindRow(panel, row, index, position, compact, done)
     Clear(tip)
     if not purchaseShown then AppendInvoiceFigures(tip, index, false) end
     row.detailFull = (#tip > 0) and concat(tip, "\n") or nil
-
-    -- The figures this mail has, packed to the right edge in the player's
-    -- order; the subject runs up to the first of them.
-    local room = floor(textWidth * COMPACT_META_SHARE)
-    local texts = panel._rowTexts
-    texts.time, texts.money, texts.slots = expiry, money, slots
-    local right = PackFigures(row, trailing, room, cols, texts)
-
-    -- The sender keeps its column whatever this mail's name is, so the
-    -- subjects start on one line down the whole list.
-    local lineWidth = max(textWidth - (right - trailing), 40)
-    local senderWidth = min(senderColumn, floor(lineWidth / 2))
-    T.FitText(row.Sender, senderWidth, senderText, row.Sender)
-    T.FitText(row.Subject, max(lineWidth - senderWidth - M.gap, 20), displaySubject, row.Subject)
   else
     row.detailFull = nil
-
-    local senderWidth = min(senderColumn, floor(textWidth / 2))
-    T.FitText(row.Sender, senderWidth, senderText, row.Sender)
-    T.FitText(row.Subject, max(textWidth - senderWidth - M.gap, 20), displaySubject, row.Subject)
-    T.FitText(row.Detail, textWidth, concat(parts, ROW_META_JOIN), row.Detail)
   end
+
+  -- Widths derived from the list's own width, so a caption is truncated with a
+  -- tooltip rather than clipped, in any locale and at any window size. The
+  -- sender keeps its column whatever this mail's name is, so the subjects
+  -- start on one line down the whole list.
+  local spec = panel._rowSpec
+  local el, text = spec.el, spec.text
+  el.read, el.icon, el.sender, el.subject = row.Indicator, row.Icon, row.Sender, row.Subject
+  el.time, el.money, el.slots, el.detail = row.ColTime, row.ColMoney, row.ColSlots, row.Detail
+  text.sender, text.subject = senderText, displaySubject
+  text.time, text.money, text.slots = expiry, money, slots
+  spec.size.icon = compact and ROW_ICON_COMPACT or ROW_ICON
+  spec.width = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
+  spec.left, spec.trail, spec.gap = M.inset, trailing, M.gap
+  spec.cols = cols
+  spec.senderCol = ((cols.sender or 0) > 0) and cols.sender or SENDER_MIN
+  spec.share, spec.reserve = COMPACT_META_SHARE, false
+  -- A C.O.D. price stands on the row even with the gold column hidden.
+  spec.force = (moneyKind == "cod" and money) and "money" or nil
+  spec.two = not compact
+  -- The two-line row's lines sit two above and below its icon's edges.
+  local lines = ((row:GetHeight() or 0) - ROW_ICON) / 2 - 2
+  spec.top, spec.bottom = -lines, lines
+  spec.detailText = (not compact) and concat(parts, ROW_META_JOIN) or nil
+  spec.focus = RV.Focus()
+  RV.Place(row, spec)
+  -- The icon's hover area goes with the icon.
+  row.IconHit:SetShown(row.Icon:IsShown())
 
   row:Show()
 end
@@ -2740,21 +3002,19 @@ function HV.BuildHistoryRow(panel)
   row.Age:SetJustifyH("RIGHT")
   row.Age:SetWordWrap(false)
 
+  -- The rest follows the mail rows' arrangement, placed on bind (RV.Place):
+  -- the age is History's own column and leads, as the list is by time.
   row.Icon = row:CreateTexture(nil, "ARTWORK")
   row.Icon:SetSize(ROW_ICON_COMPACT, ROW_ICON_COMPACT)
-  row.Icon:SetPoint("LEFT", row.Age, "RIGHT", M.gap, 0)
   row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
   row.Sender = T.CreateText(row, "label")
-  row.Sender:SetPoint("LEFT", row.Icon, "RIGHT", M.gap, 0)
   row.Sender:SetJustifyH("LEFT")
 
   row.Subject = T.CreateText(row, "value")
-  row.Subject:SetPoint("LEFT", row.Sender, "RIGHT", M.gap, 0)
   row.Subject:SetJustifyH("LEFT")
 
   row.Money = T.CreateText(row, "secondary")
-  row.Money:SetPoint("RIGHT", row, "RIGHT", -M.inset, 0)
   row.Money:SetJustifyH("RIGHT")
 
   row:SetScript("OnEnter", function(self)
@@ -2813,21 +3073,38 @@ function HV.BindHistoryRow(panel, row, entry, position, now)
   -- The first item's quality mark on the icon's corner, as the list has it.
   RV.PaintQuality(row, first and RV.MarkOf(first.l) or nil)
 
+  -- The mail rows' arrangement after the age, with the columns History has:
+  -- the icon, the sender, what came out, and the money -- which keeps its
+  -- column on every row, so the list reads as a ledger.
   local cols = panel._hcols
-  local width = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
-  local textWidth = width - (M.inset + ageWidth + M.gap + ROW_ICON_COMPACT + M.gap) - M.inset
-  local moneyWidth = cols.money or 0
-  T.FitText(row.Money, moneyWidth, HV.HistoryMoney(entry, true) or "", nil)
-  row.Money:SetShown(moneyWidth > 0)
-  local lineWidth = max(textWidth - ((moneyWidth > 0) and (moneyWidth + M.gap) or 0), 40)
-
+  local kind = HV.MoneyKind(entry)
   -- A system mail's sender is recorded as "": that is "unknown", not a name.
   local named = (entry.s ~= "" and entry.s) or nil
-  local sender = R.OutcomeSender(entry.k) or R.DisplaySender(named) or L()["SENDER_UNKNOWN"]
-  local senderWidth = min(cols.sender or SENDER_MIN, floor(lineWidth / 2))
-  T.FitText(row.Sender, senderWidth, sender, nil)
-  T.FitText(row.Subject, max(lineWidth - senderWidth - M.gap, 20), HV.HistoryWhat(entry), nil)
+  local spec = panel._histSpec
+  local el, text = spec.el, spec.text
+  el.icon, el.sender, el.subject, el.money = row.Icon, row.Sender, row.Subject, row.Money
+  text.sender = R.OutcomeSender(entry.k) or R.DisplaySender(named) or L()["SENDER_UNKNOWN"]
+  text.subject = HV.HistoryWhat(entry)
+  text.money = MoneyShown(kind) and HV.HistoryMoney(entry, true) or nil
+  spec.size.icon = ROW_ICON_COMPACT
+  spec.width = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
+  spec.left, spec.trail, spec.gap = M.inset + ageWidth + M.gap, M.inset, M.gap
+  spec.cols = cols
+  spec.senderCol = cols.sender or SENDER_MIN
+  spec.share, spec.reserve, spec.two = nil, true, false
+  spec.force = (kind == "cod") and "money" or nil
+  spec.focus = RV.Focus()
+  RV.Place(row, spec)
   row:Show()
+end
+
+-- entry -> what its money is, as a mail row's money is: "earned", "cod"
+-- (a C.O.D. paid) or "spent" (a won auction's price), or nil.
+function HV.MoneyKind(entry)
+  if (entry.m or 0) > 0 then return "earned" end
+  if (entry.c or 0) > 0 then return "cod" end
+  if (entry.p or 0) > 0 then return "spent" end
+  return nil
 end
 
 -- entry -> the folded text a search looks in: sender, subject, the outcome
@@ -2867,6 +3144,7 @@ function HV.BuildHistoryList(panel, query)
   local cap = SenderColumnWidth(panel, sample.Sender)
   local cols = panel._hcols
   cols.sender, cols.money, cols.age = 0, 0, 0
+  local showSender = RowShows("sender")
   local earned, spent = 0, 0
   local now = time()
   for i = #list, 1, -1 do
@@ -2879,11 +3157,11 @@ function HV.BuildHistoryList(panel, query)
       out[#out + 1] = entry
       earned = earned + (entry.m or 0)
       spent = spent + (entry.c or 0) + (entry.p or 0)
-      if cols.sender < cap then
+      if cols.sender < cap and showSender then
         local label = (AUCTION_OUTCOME[entry.k] and L()[AUCTION_OUTCOME[entry.k].key]) or R.DisplaySender(entry.s) or ""
         cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), cap)
       end
-      local money = HV.HistoryMoney(entry, true)
+      local money = MoneyShown(HV.MoneyKind(entry)) and HV.HistoryMoney(entry, true) or nil
       if money then cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, money)) end
       local age = HV.HistoryAge(now - (tonumber(entry.t) or now))
       cols.age = max(cols.age, MeasureWith(panel, sample.ColTime, age) + 2)
@@ -3267,7 +3545,7 @@ function CT.RefreshMailList(panel)
   panel._measurePass = (panel._measurePass or 0) + 1
   local compact = CompactRows()
   local sample = AcquireRow(panel, 1)
-  local senderCap = SenderColumnWidth(panel, sample.Sender)
+  local senderCap = RowShows("sender") and SenderColumnWidth(panel, sample.Sender) or 0
   cols.sender = 0
   cols.money, cols.slots, cols.time = 0, 0, 0
   -- The inbox's own columns are measured only while its rows are what is on
@@ -3276,8 +3554,8 @@ function CT.RefreshMailList(panel)
   -- to the inbox refreshes the list, which measures again.
   local measuring = not (view == VIEW_HISTORY or AV.Active(panel))
   local measureMoney = compact and measuring
-  local measureSlots = compact and measuring and RowShows("rowSlots")
-  local measureExpiry = compact and measuring and RowShows("rowExpiry")
+  local measureSlots = compact and measuring and RowShows("slots")
+  local measureExpiry = compact and measuring and RowShows("time")
   local slotsMost, anyStuck = 0, false
   local altKeys = Mail().OwnCharacterKeys()
 
@@ -3332,6 +3610,7 @@ function CT.RefreshMailList(panel)
 
       -- The sender column is as wide as the widest name it will show, up to
       -- the ceiling; an auction outcome shows its label, not "Auction House".
+      -- (senderCap is zero while the arrangement hides the column.)
       if measuring and cols.sender < senderCap then
         local label = AUCTION_OUTCOME[kind] and L()[AUCTION_OUTCOME[kind].key]
           or DisplaySender(sender or L()["SENDER_UNKNOWN"])
@@ -5250,6 +5529,42 @@ function SetViewMode(panel, id)
   CT.RefreshMailList(panel)
 end
 
+-- The arrange mode over this tab (Core/Arrange.lua): the strip of columns
+-- stands between the top row and the list, which steps down under it, and
+-- the category grid takes its drags and clicks instead of collecting. The
+-- top row stays as it is -- a view can still be switched, or a mail found,
+-- to see how the arrangement reads on it. Built once per panel.
+function CT.ArrangeHost(panel)
+  if not (panel and panel.MailListArea) then return nil end
+  if panel._arrangeHost then return panel._arrangeHost end
+  local host = { owner = panel }
+  function host.PlaceStrip(strip)
+    local M = Th().Metrics
+    strip:SetPoint("TOPLEFT", panel.ViewToggle, "BOTTOMLEFT", 0, -M.gap)
+    strip:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
+  end
+  function host.OnEnter(strip)
+    local M = Th().Metrics
+    -- The reading view is over the list the strip describes.
+    HideDetail(panel)
+    panel.MailListArea:SetPoint("TOPLEFT", strip, "BOTTOMLEFT", 0, -M.gap)
+    if RV.ArrangeGrid then RV.ArrangeGrid(panel, true) end
+  end
+  function host.OnLeave()
+    local M = Th().Metrics
+    panel.MailListArea:SetPoint("TOPLEFT", panel.ViewToggle, "BOTTOMLEFT", 0, -M.gap)
+    if RV.ArrangeGrid then RV.ArrangeGrid(panel, false) end
+  end
+  panel._arrangeHost = host
+  return host
+end
+
+-- The rows on screen bound again where they are -- the arrange mode's pointer
+-- moved -- without the walk a refresh makes.
+function CT.RebindRows(panel)
+  if panel and panel.MailListChild and panel:IsShown() then UpdateVisibleRows(panel) end
+end
+
 -------------------------------------------------------------
 -- Build
 -------------------------------------------------------------
@@ -5333,8 +5648,11 @@ function CT.Build(parent)
   panel._rowParts = {}
   -- The figures an option took off a row, for its tooltip.
   panel._rowFacts = {}
-  -- The compact row's figure texts, handed to PackFigures.
+  -- The two-line row's figure texts, in the arrangement's order.
   panel._rowTexts = {}
+  -- What RV.Place is handed for each mail row, and for each History row.
+  panel._rowSpec = RV.NewSpec()
+  panel._histSpec = RV.NewSpec()
   -- The list's column widths and reserve, measured by RefreshMailList for
   -- every row it binds (see "the columns").
   panel._cols = {}
@@ -5557,6 +5875,9 @@ function CT.Build(parent)
   panel:SetScript("OnHide", function(self)
     HideDetail(self)
     if ns.MailMemory and ns.MailMemory.ClosePicker then ns.MailMemory.ClosePicker() end
+    -- The arrange mode ends with the tab: the Send tab, the window closing,
+    -- the mailbox going away.
+    if ns.Arrange and ns.Arrange.LeaveIf then ns.Arrange.LeaveIf(self) end
   end)
 
   return panel

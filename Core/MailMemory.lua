@@ -945,14 +945,29 @@ function MM.NewRow(parent)
   local row = CreateFrame("Frame", nil, parent)
   row:SetHeight(ROW_HEIGHT)
 
+  -- Every column is placed on fill, where the mail rows' arrangement puts
+  -- it (the Mail tab's RV.Place, through the row rules): the read mark, the
+  -- icon, the sender, the subject and the three figure columns -- time
+  -- left, money, slots -- whose widths depend on the whole list (see
+  -- MeasureRows).
+  row.Indicator = row:CreateTexture(nil, "ARTWORK")
+  local dot = ((Rules() and Rules().DOT) or 8) - 1
+  row.Indicator:SetSize(dot, dot)
+  row.Indicator:SetTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
+  if type(row.CreateMaskTexture) == "function" then
+    local mask = row:CreateMaskTexture()
+    mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask",
+                    "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetAllPoints(row.Indicator)
+    row.Indicator:AddMaskTexture(mask)
+  end
+  row.Indicator:Hide()
+
   row.Icon = row:CreateTexture(nil, "ARTWORK")
   row.Icon:SetSize(ROW_ICON, ROW_ICON)
   row.Icon:SetPoint("LEFT", row, "LEFT", 6, 0)
   row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-  -- The same three figure columns the compact mail list stands at its right
-  -- edge -- time left, money, slots -- placed on fill, because where each
-  -- stands depends on the whole list (see MeasureRows).
   row.ColTime = T.CreateText(row, "secondary")
   row.ColMoney = T.CreateText(row, "secondary")
   row.ColSlots = T.CreateText(row, "secondary")
@@ -983,6 +998,8 @@ function MM.NewRow(parent)
   row.Subject:SetPoint("LEFT", row.Sender, "RIGHT", 6, 0)
   row.Subject:SetJustifyH("LEFT")
   row.Subject:SetWordWrap(false)
+  -- The two anchors above are the fallback for a client without the row
+  -- rules; with them, FillRow places everything.
 
   -- The tooltip belongs to the ICON, not the whole row: a row-wide hit area
   -- meant the tooltip followed the cursor across a list you were only
@@ -1075,28 +1092,41 @@ local function Figures(mail, now)
     facts[#facts + 1] = R.MoneyText(hasCOD, mail.money or 0, mail.cod or 0, mail.paid, false)
     money = nil
   end
-  if R and slots and not R.Shows("rowSlots") then
+  if R and slots and not R.Shows("slots") then
     facts[#facts + 1] = slots
     slots = nil
   end
-  if R and not R.Shows("rowExpiry") then expiry = nil end
-  return money, slots, expiry, (#facts > 0) and table.concat(facts, "\n") or nil, expiryText, expired
+  if R and not R.Shows("time") then expiry = nil end
+  return money, slots, expiry, (#facts > 0) and table.concat(facts, "\n") or nil, expiryText, expired,
+    moneyKind == "cod" and money ~= nil
 end
 
--- One row's figure texts, keyed as PackFigures takes them, plus what the
--- tooltip carries. A row known to have arrived but never opened says "New"
--- where the row's last figure would stand, and nothing else.
+-- The last figure the arrangement shows, left to right, or nil.
+local function LastShownFigure(R)
+  local layout = R and R.Layout and R.Layout()
+  if not layout then return "slots" end
+  for i = #layout, 1, -1 do
+    local id = layout[i].id
+    if R.IsFigure(id) and layout[i].shown then return id end
+  end
+  return nil
+end
+
+-- One row's figure texts, keyed by column, plus what the tooltip carries.
+-- A row known to have arrived but never opened says "New" where the row's
+-- last figure would stand, and nothing else.
 local function RowTexts(mail, now)
   local R = Rules()
   if mail.header then return {} end
   if mail.pending then
     local texts = {}
-    local order = R and R.RowOrder() or { "slots" }
-    texts[order[#order]] = ns.Theme.Colorize("positive", L["MEMORY_NEW_ROW"])
+    local last = LastShownFigure(R)
+    if last then texts[last] = ns.Theme.Colorize("positive", L["MEMORY_NEW_ROW"]) end
     return texts
   end
-  local money, slots, expiry, facts, expiryText, expired = Figures(mail, now)
-  return { time = expiry, money = money, slots = slots, facts = facts, expiryText = expiryText, expired = expired }
+  local money, slots, expiry, facts, expiryText, expired, cod = Figures(mail, now)
+  return { time = expiry, money = money, slots = slots, facts = facts, expiryText = expiryText,
+    expired = expired, cod = cod }
 end
 
 -- The list's column widths, measured over every row in it: the mail list's
@@ -1131,6 +1161,8 @@ function MM.MeasureRows(owner, rows, now, sample)
     end
     return width
   end
+  -- The sender column is measured only while the arrangement shows it.
+  if not R.Shows("sender") then cap = 0 end
   for i = 1, #rows do
     local mail = rows[i]
     if not mail.header and cols.sender < cap then
@@ -1177,12 +1209,23 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     row.HeaderWash:Show()
     row.HeaderRule:Show()
     row.Icon:Show()
+    row.Indicator:Hide()
     row.Warning:Hide()
     row.ColTime:Hide()
     row.ColMoney:Hide()
     row.ColSlots:Hide()
     local width = row:GetParent():GetWidth() or 0
     if width < 100 then width = WINDOW_WIDTH - 44 end
+    -- A heading is a crest and a name, whatever the arrangement: it is not
+    -- a mail. Through the rules' own anchor, so a row reused for a mail
+    -- afterwards is placed from where it really stands.
+    if R and R.Anchor then
+      R.Anchor(row, row.Icon, 1, 6, 0)
+      R.Anchor(row, row.Sender, 1, 6 + ROW_ICON + 6, 0)
+      R.Wash(row, nil)
+    end
+    row.Sender:Show()
+    row.Subject:Show()
     T.FitText(row.Sender, width - 40, mail.label, nil)
     T.FitText(row.Subject, 1, "", nil)
     row.HeaderHit:SetShown(onHeader ~= nil)
@@ -1202,34 +1245,23 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
   row.itemLink = mail.link
   row.itemID = mail.id
 
+  -- No icon of its own (a letter the snapshot kept none for): the column
+  -- keeps its place, empty, so the names still start on one line.
   row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-  if mail.icon then
-    row.Icon:SetTexture(mail.icon)
-    row.Icon:Show()
-  else
-    row.Icon:Hide()
-  end
+  row.Icon:SetTexture(mail.icon)
 
   row.Warning:SetShown(mail.stuck and true or false)
-  -- A header on a reused row hid these; a mail row shows whichever it has.
-  row.ColTime:Show()
-  row.ColMoney:Show()
-  row.ColSlots:Show()
+  -- The read mark, as the Mail tab has it: mail known to have arrived and
+  -- not yet opened is unread by definition.
+  T.SetColor(row.Indicator, (mail.read and not mail.pending) and "read" or "unread")
 
   local texts = RowTexts(mail, now)
   row.factsTip = texts.facts
   row.expiryTip = texts.expiryText
 
-  -- The figures this mail has, packed to the right edge in the player's
-  -- order -- the mail list's own rule -- and the subject up to the first.
   local width = row:GetParent():GetWidth() or 0
   if width < 100 then width = WINDOW_WIDTH - 44 end
   local trail = 6 + (cols.stuck and 16 or 0)
-  local textWidth = width - (6 + ROW_ICON + 6) - trail
-  local right = trail
-  if R then
-    right = R.PackFigures(row, trail, math.floor(textWidth * R.META_SHARE), cols, texts)
-  end
 
   local named = (mail.sender ~= "" and mail.sender) or nil
   local senderText = (R and (R.OutcomeSender(mail.kind) or R.DisplaySender(named)))
@@ -1241,10 +1273,39 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
   local mark = (not mail.pending) and MailMark(mail) or nil
   if R and R.WithMark and R.MarkOnName and R.MarkOnName() then subject = R.WithMark(subject, mark) end
   if R and R.PaintQuality then R.PaintQuality(row, mark) end
-  local lineWidth = math.max(textWidth - (right - trail), 40)
-  local senderWidth = math.min(cols.sender or 92, math.floor(lineWidth / 2))
-  T.FitText(row.Sender, senderWidth, senderText, nil)
-  T.FitText(row.Subject, math.max(lineWidth - senderWidth - 6, 20), subject, nil)
+
+  if R and R.Place then
+    -- The Mail tab's own placement, at this window's spacing: every column
+    -- where the arrangement puts it, the figures packed to the right edge
+    -- by the mail list's own rule, the subject taking the rest.
+    local spec = MM._fillSpec
+    if not spec then
+      spec = R.NewSpec()
+      MM._fillSpec = spec
+    end
+    local el, text = spec.el, spec.text
+    el.read, el.icon, el.sender, el.subject = row.Indicator, row.Icon, row.Sender, row.Subject
+    el.time, el.money, el.slots = row.ColTime, row.ColMoney, row.ColSlots
+    text.sender, text.subject = senderText, subject
+    text.time, text.money, text.slots = texts.time, texts.money, texts.slots
+    spec.size.icon = ROW_ICON
+    spec.width, spec.left, spec.trail, spec.gap = width, 6, trail, 6
+    spec.cols = cols
+    spec.senderCol = cols.sender or 92
+    spec.share, spec.reserve, spec.two = R.META_SHARE, false, false
+    -- A C.O.D. price shows with the gold column hidden, as on the Mail tab.
+    spec.force = texts.cod and "money" or nil
+    spec.focus = R.Focus and R.Focus() or nil
+    R.Place(row, spec)
+    -- The icon's hover goes with the icon.
+    if row.IconHit then row.IconHit:SetShown(row.Icon:IsShown()) end
+  else
+    -- No row rules (the Mail tab's file did not load): the names alone.
+    local textWidth = width - (6 + ROW_ICON + 6) - trail
+    local senderWidth = math.min(cols.sender or 92, math.floor(textWidth / 2))
+    T.FitText(row.Sender, senderWidth, senderText, nil)
+    T.FitText(row.Subject, math.max(textWidth - senderWidth - 6, 20), subject, nil)
+  end
 
   -- A mail past its date is PROBABLY gone (returned or deleted by the
   -- server); the row stays listed -- it was true when seen -- but visibly
@@ -2244,6 +2305,13 @@ end
 function MM.Refresh()
   local frame = MM._frame
   if frame and frame:IsShown() then Refresh(frame) end
+end
+
+-- The rows on screen bound again where they stand, without re-reading the
+-- box: the arrange mode's pointer moved (Core/Arrange.lua).
+function MM.Rebind()
+  local frame = MM._frame
+  if frame and frame:IsShown() and frame._list then BindRows(frame) end
 end
 
 -- Every way in -- the minimap icon, the addon compartment, /postbox mail --

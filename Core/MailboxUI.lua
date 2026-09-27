@@ -166,15 +166,14 @@ local OPTION_DEFAULTS = {
   -- the player posting a run of mails to one bank alt, for whom retyping the
   -- same name is the whole cost of the screen.
   keepRecipient   = false,
-  -- What a mail row shows besides its sender and subject: gold coming in,
-  -- what a won auction cost, the attachment slots still to take, and the time
-  -- left. On: the figures are what a list of auction mail is read for. Each
-  -- one off moves to the row's tooltip rather than disappearing. A C.O.D.
-  -- price has no switch -- it always shows (see CollectTab's MoneyShown).
-  rowGold         = true,
-  rowSlots        = true,
-  rowExpiry       = true,
+  -- The arrange mode's how-to card has been read: the player has pressed a
+  -- column or a button in it once (Core/Arrange.lua). Until then it opens
+  -- with the mode.
+  arrangeTaught   = false,
 }
+-- What a mail row shows, and in what order, is no longer three switches here
+-- (rowGold, rowSlots, rowExpiry): it is the row's arrangement, UI.GetRowLayout
+-- below, which reads those three switches only to carry an old profile over.
 
 local OPTION_PATH = {}
 for key in pairs(OPTION_DEFAULTS) do
@@ -382,11 +381,12 @@ function UI.SetQualityMark(mode)
   if profile then profile.qualityMark = mode end
 end
 
--- The order a mail row's figures stand in, left to right: an array of the
--- three ids "time", "money" and "slots". A string on the profile, with its
--- own accessors like the tab caption, because profile options are booleans.
--- Anything unreadable -- a missing id, a duplicate, an unknown word -- falls
--- back to the default whole rather than being half-repaired.
+-- The order a mail row's figures stood in before the row had an arrangement
+-- of its own (UI.GetRowLayout, below): an array of the three ids "time",
+-- "money" and "slots". Read now only to carry a profile that has never been
+-- arranged across unchanged. Anything unreadable -- a missing id, a
+-- duplicate, an unknown word -- falls back to the default whole rather than
+-- being half-repaired.
 local ROW_FIGURES = { time = true, money = true, slots = true }
 local ROW_ORDER_DEFAULT = { "time", "money", "slots" }
 
@@ -463,11 +463,164 @@ function UI.SetHistoryDays(days)
   if panel and collect and collect.RequestRefresh then collect.RequestRefresh(panel) end
 end
 
-function UI.SetRowOrder(order)
-  if type(order) ~= "table" or #order ~= 3 then return end
+-- A mail row's columns: which it shows, and in what order, left to right.
+-- One string on the profile -- "read,icon,sender,subject,time,money,slots",
+-- a leading "-" on a column it hides -- and ONE arrangement for every list
+-- that draws mail rows: the Mail tab in both row sizes, its History, and
+-- Mail Memory in both windows. It is arranged in the window itself
+-- (Core/Arrange.lua). The subject is the one column that cannot be hidden:
+-- it takes whatever room the others leave.
+--
+-- A profile that has never been arranged reads exactly as it did under the
+-- three switches and the figure order it had before (rowGold, rowSlots,
+-- rowExpiry, rowOrder): the name columns first, then the figures in their
+-- order, each hidden where its switch was off. Those keys are only read, so
+-- a profile taken back to an older version still has them.
+--
+-- Anything unreadable -- a missing column, a duplicate, an unknown word -- is
+-- not half-repaired: the old keys decide, and failing those the default.
+--
+-- The answer is shared and must not be written to: { {id=, shown=}, ...,
+-- shown = { [id] = bool } }. It is kept until one of the keys it was read
+-- from changes, so the row binder can ask on every row for the price of a
+-- few field reads -- and a profile cleared from under it is noticed.
+local ROW_COLUMNS = { "read", "icon", "sender", "subject", "time", "money", "slots" }
+local ROW_COLUMN_KNOWN = {}
+for i = 1, #ROW_COLUMNS do ROW_COLUMN_KNOWN[ROW_COLUMNS[i]] = true end
+local ROW_LAYOUT_DEFAULT = "read,icon,sender,subject,time,money,slots"
+-- The switch each figure had before it had a place in the arrangement.
+local LEGACY_SWITCH = { time = "rowExpiry", money = "rowGold", slots = "rowSlots" }
+
+local function ParseRowLayout(text)
+  if type(text) ~= "string" then return nil end
+  local out, seen = { shown = {} }, {}
+  for token in text:gmatch("[^,]+") do
+    local hidden = token:sub(1, 1) == "-"
+    local id = hidden and token:sub(2) or token
+    if not ROW_COLUMN_KNOWN[id] or seen[id] then return nil end
+    seen[id] = true
+    local shown = (not hidden) or id == "subject"
+    out[#out + 1] = { id = id, shown = shown }
+    out.shown[id] = shown
+  end
+  if #out ~= #ROW_COLUMNS then return nil end
+  return out
+end
+
+local function FormatRowLayout(layout)
+  if type(layout) ~= "table" then return nil end
+  local parts = {}
+  for i = 1, #layout do
+    local entry = layout[i]
+    local id = type(entry) == "table" and entry.id or nil
+    if not id then return nil end
+    parts[#parts + 1] = ((entry.shown == false and id ~= "subject") and "-" or "") .. id
+  end
+  local text = table.concat(parts, ",")
+  return ParseRowLayout(text) and text or nil
+end
+
+-- What an unarranged profile's rows showed: the names, then the figures in
+-- the old order, each with its old switch (unset was on).
+local function LegacyRowLayout(profile)
+  local order = UI.GetRowOrder()
+  local parts = { "read", "icon", "sender", "subject" }
+  for i = 1, #order do
+    local id = order[i]
+    -- Not `profile and profile[...] or nil`: the switch is false exactly
+    -- when it matters.
+    local switch = nil
+    if type(profile) == "table" then switch = profile[LEGACY_SWITCH[id]] end
+    parts[#parts + 1] = ((switch ~= nil and switch ~= true) and "-" or "") .. id
+  end
+  return table.concat(parts, ",")
+end
+
+local rowLayoutMemo = {}
+
+function UI.GetRowLayout()
   local store = ns.Store
-  local profile = store and store.EnsurePath and store.EnsurePath("profile")
-  if profile then profile.rowOrder = table.concat(order, ",") end
+  local profile = store and store.Get and store.Get("profile")
+  if type(profile) ~= "table" then profile = nil end
+  local a = profile and profile.rowLayout
+  local b = profile and profile.rowOrder
+  local c = profile and profile.rowExpiry
+  local d = profile and profile.rowGold
+  local e = profile and profile.rowSlots
+  local memo = rowLayoutMemo
+  if memo.layout and memo.a == a and memo.b == b and memo.c == c and memo.d == d and memo.e == e then
+    return memo.layout
+  end
+  memo.a, memo.b, memo.c, memo.d, memo.e = a, b, c, d, e
+  memo.layout = ParseRowLayout(a) or ParseRowLayout(LegacyRowLayout(profile))
+    or ParseRowLayout(ROW_LAYOUT_DEFAULT)
+  return memo.layout
+end
+
+-- layout: { {id=, shown=}, ... } in the new order, or nil for the default.
+function UI.SetRowLayout(layout)
+  local text = (layout == nil) and ROW_LAYOUT_DEFAULT or FormatRowLayout(layout)
+  if not text then return false end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if not profile then return false end
+  profile.rowLayout = text
+  return true
+end
+
+-- Whether a mail row shows this column (an id from ROW_COLUMNS).
+function UI.RowColumnShown(id)
+  return UI.GetRowLayout().shown[id] == true
+end
+
+-- The category buttons under the list: their order and which are hidden, as
+-- "bought,sold,-canceled,...". The ids are CollectTab's built-in sweeps and
+-- "group:<key>" for a character group's own button (ns.CharacterGroups).
+-- Only the stored list is read here; which of those ids still exist, and
+-- where a new one goes, is the grid's to decide (CollectTab, "The category
+-- grid"), because only the grid knows what can be shown. An id is written
+-- with its commas and percent signs escaped, so a group's key can be
+-- anything. Unset or unreadable is the default: every button, in the grid's
+-- own order.
+local function GridEscape(id)
+  return (id:gsub("%%", "%%25"):gsub(",", "%%2C"))
+end
+
+local function GridUnescape(text)
+  return (text:gsub("%%2C", ","):gsub("%%25", "%%"))
+end
+
+function UI.GetGridLayout()
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.gridLayout")
+  local out = {}
+  if type(stored) ~= "string" then return out end
+  local seen = {}
+  for token in stored:gmatch("[^,]+") do
+    local hidden = token:sub(1, 1) == "-"
+    local id = GridUnescape(hidden and token:sub(2) or token)
+    if id ~= "" and not seen[id] then
+      seen[id] = true
+      out[#out + 1] = { id = id, shown = not hidden }
+    end
+  end
+  return out
+end
+
+-- list: { {id=, shown=}, ... }, or nil to forget the arrangement.
+function UI.SetGridLayout(list)
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if not profile then return end
+  if type(list) ~= "table" then
+    profile.gridLayout = nil
+    return
+  end
+  local parts = {}
+  for i = 1, #list do
+    local entry = list[i]
+    if type(entry) == "table" and type(entry.id) == "string" and entry.id ~= "" then
+      parts[#parts + 1] = (entry.shown == false and "-" or "") .. GridEscape(entry.id)
+    end
+  end
+  profile.gridLayout = table.concat(parts, ",")
 end
 
 -------------------------------------------------------------
@@ -1602,6 +1755,16 @@ function UI.RefreshCollectCategoryButtons()
   FollowFloor()
 end
 
+-- The category grid grew or lost a row of buttons without an option moving
+-- -- a button hidden or shown in the arrange mode, a character group's
+-- button come or gone -- and the window's floor moves with it, exactly as
+-- it does for the option above. Called by the grid itself (CollectTab, "The
+-- category grid"), which remembers the rows the floor was last taken at, so
+-- this runs only when that number changes.
+function UI.RefreshCollectFloor()
+  FollowFloor()
+end
+
 -- Frozen: Core/OptionsPanel.lua calls this when the compact-row option changes.
 -- Synchronous, not queued: this one answers a click the player just made on a
 -- list they are looking at, and the collect screen's own entry point is what
@@ -1680,6 +1843,24 @@ local function BuildOptionsButton(frame, theme)
   end)
 
   return button
+end
+
+-- The arrange grip, right of the cog and anchored TO it, so it stands level
+-- with the cog in every look -- the skins move the cog, and it follows. It
+-- arranges the Mail tab's rows and buttons, bringing that tab forward from
+-- the Send tab first (Core/Arrange.lua). Nothing at all without that file:
+-- it is new in 1.41, and a /reload does not load a new file.
+local function BuildArrangeButton(frame)
+  local arrange = ns.Arrange
+  if not (arrange and arrange.BuildToggle and frame.OptionsButton) then return nil end
+  return arrange.BuildToggle(frame, function(button)
+    button:SetPoint("LEFT", frame.OptionsButton, "RIGHT", 4, 0)
+  end, function()
+    if UI._state.activeTab ~= "collect" then UI.SelectTab("collect") end
+    local panel, collect = CollectPanel(), ns.CollectTab
+    if not (panel and collect and collect.ArrangeHost) then return nil end
+    return collect.ArrangeHost(panel)
+  end)
 end
 
 -- Every way into Mail Memory, while a mailbox is open (Core/MailMemory.lua's
@@ -1913,6 +2094,7 @@ local function BuildFrame()
   end
 
   frame.OptionsButton = BuildOptionsButton(frame, theme)
+  frame.ArrangeButton = BuildArrangeButton(frame)
 
   -- Resize grip. The foundation layer debounces the size write, so a drag does
   -- not write saved variables sixty times a second; the stop callback only runs

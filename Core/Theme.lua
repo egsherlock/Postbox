@@ -1916,12 +1916,16 @@ local HINT_BACKDROP = {
   insets = { left = 1, right = 1, top = 1, bottom = 1 },
 }
 
-function Theme.ShowHint(owner, lines)
+-- `anchor`, optional: { point, relativeTo, relativePoint, x, y } to stand the
+-- card somewhere of its own rather than under the cursor -- the arrange
+-- mode's how-to, under the strip it explains.
+function Theme.ShowHint(owner, lines, anchor)
   if not owner or type(lines) ~= "table" then return end
+  if type(anchor) ~= "table" then anchor = nil end
   -- Never while a mouse button is held: a resize drag moves the grip under
   -- the cursor, and each time it slid back under it the hint reopened
   -- mid-drag.
-  if type(IsMouseButtonDown) == "function"
+  if not anchor and type(IsMouseButtonDown) == "function"
     and (IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton")) then
     return
   end
@@ -1971,12 +1975,17 @@ function Theme.ShowHint(owner, lines)
     fs:SetHeight(lineH)
   end
   hint:SetSize(width + 2 * HINT_PAD_X, #lines * lineH + (#lines - 1) * HINT_GAP + 2 * HINT_PAD_Y)
+  hint:ClearAllPoints()
+  if anchor then
+    hint:SetPoint(anchor[1], anchor[2], anchor[3], anchor[4] or 0, anchor[5] or 0)
+    hint:Show()
+    return
+  end
   -- Under the cursor, clear of its pointer; clamped, so a grip at the
   -- screen's foot puts it wherever it still fits.
   local x, y = GetCursorPosition()
   local scale = UIParent:GetEffectiveScale()
   if type(scale) ~= "number" or scale <= 0 then scale = 1 end
-  hint:ClearAllPoints()
   hint:SetPoint("TOP", UIParent, "BOTTOMLEFT", (x or 0) / scale, (y or 0) / scale - 22)
   hint:Show()
 end

@@ -214,212 +214,22 @@ local function AddCheckbox(frame, y, title, desc, get, set)
   return y - ROW_H, cb
 end
 
--- The figures a mail row carries, as a short list in the order the rows
--- draw them left to right: one line per figure with a grip to drag it up or
--- down, a checkbox for whether it shows at all, and -- where there is a real
--- choice to make -- a dropdown for which or when. Gold: earned and spent,
--- earned only, spent only. Time left: always, or under 7, 3 or 1 days. A
--- C.O.D. price has no line: it always shows.
---
--- `onChange` runs after every change, to repaint whatever lists rows.
-local GRIP_W = 10
-
-local function AddFigureList(frame, y, title, hint, onChange)
-  local T = ns.Theme
-  local UI = ns.MailboxUI
-
-  local caption = T.CreateText(frame, "label")
-  caption:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y - 4)
-  caption:SetJustifyH("LEFT")
-  caption:SetWordWrap(false)
-  caption:SetText(title)
-  local how = T.CreateText(frame, "secondary")
-  how:SetPoint("LEFT", caption, "RIGHT", 8, 0)
-  how:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
-  how:SetJustifyH("RIGHT")
-  how:SetWordWrap(false)
-  how:SetText(hint)
-
-  local top = y - 24
-  local rows = {}
-
-  local spec = {
-    money = {
-      title = L["OPT_ROW_GOLD"], desc = L["OPT_ROW_GOLD_DESC"], option = "rowGold",
-      modes = {
-        { id = "both",   name = L["OPT_GOLD_BOTH"] },
-        { id = "earned", name = L["OPT_GOLD_EARNED"] },
-        { id = "spent",  name = L["OPT_GOLD_SPENT"] },
-      },
-      get = function() return UI.GetGoldMode() end,
-      set = function(id) UI.SetGoldMode(id) end,
-    },
-    slots = { title = L["OPT_ROW_SLOTS"], desc = L["OPT_ROW_SLOTS_DESC"], option = "rowSlots" },
-    time = {
-      title = L["OPT_ROW_EXPIRY"], desc = L["OPT_ROW_EXPIRY_DESC"], option = "rowExpiry",
-      modes = {
-        { id = "always", name = L["OPT_EXPIRY_ALWAYS"] },
-        { id = "7", name = ns.Plural("OPT_EXPIRY_UNDER", 7) },
-        { id = "3", name = ns.Plural("OPT_EXPIRY_UNDER", 3) },
-        { id = "1", name = ns.Plural("OPT_EXPIRY_UNDER", 1) },
-      },
-      get = function() return UI.GetExpiryWhen() end,
-      set = function(id) UI.SetExpiryWhen(id) end,
-    },
-  }
-
-  local function Place()
-    local order = UI.GetRowOrder()
-    for i = 1, #order do
-      local row = rows[order[i]]
-      row:ClearAllPoints()
-      row:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, top - (i - 1) * ROW_H)
-      row:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
-    end
-  end
-
-  local function Sync(row)
-    local s = spec[row.id]
-    local on = UI.GetOption(s.option) and true or false
-    row.check:SetChecked(on)
-    if row.dd then
-      row.dd:SetAlpha(on and 1 or 0.4)
-      if row.dd._toggle then row.dd._toggle:SetEnabled(on) end
-      local current = s.get()
-      for _, item in ipairs(s.modes) do
-        if item.id == current then
-          row.dd._selectedId = current
-          row.dd:SetText(item.name)
-        end
-      end
-    end
-  end
-
-  local function Tip(owner, s)
-    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-    GameTooltip:SetText(s.title)
-    GameTooltip:AddLine(s.desc, 1, 1, 1, true)
-    GameTooltip:Show()
-  end
-
-  for id, s in pairs(spec) do
-    local row = CreateFrame("Frame", nil, frame)
-    row:SetHeight(CHECK_H)
-    row.id = id
-
-    -- The grip: three short rules, the sign for "this moves". It is the only
-    -- handle; the checkbox and the dropdown keep their own clicks.
-    local grip = CreateFrame("Frame", nil, row)
-    grip:SetSize(GRIP_W, CHECK_H)
-    grip:SetPoint("LEFT", row, "LEFT", 0, 0)
-    grip:EnableMouse(true)
-    grip:RegisterForDrag("LeftButton")
-    grip.lines = {}
-    for i = 1, 3 do
-      local line = grip:CreateTexture(nil, "ARTWORK")
-      line:SetSize(GRIP_W, 1)
-      line:SetPoint("CENTER", grip, "CENTER", 0, (2 - i) * 4)
-      line:SetTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
-      T.SetColor(line, "textSecondary")
-      line:SetAlpha(0.6)
-      grip.lines[i] = line
-    end
-    local function Lit(alpha) for i = 1, 3 do grip.lines[i]:SetAlpha(alpha) end end
-    grip:SetScript("OnEnter", function(self)
-      Lit(1)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(hint)
-      GameTooltip:Show()
-    end)
-    grip:SetScript("OnLeave", function() Lit(0.6) GameTooltip:Hide() end)
-    grip:SetScript("OnDragStart", function()
-      local scale = row:GetEffectiveScale()
-      local _, cursorY = GetCursorPosition()
-      row._grab = (row:GetTop() or 0) - cursorY / scale
-      row:SetFrameLevel(row:GetFrameLevel() + 10)
-      row:SetScript("OnUpdate", function(self)
-        local _, cy = GetCursorPosition()
-        local rowTop = cy / scale + self._grab
-        self:ClearAllPoints()
-        self:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, rowTop - (frame:GetTop() or 0))
-        self:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
-      end)
-    end)
-    grip:SetScript("OnDragStop", function()
-      row:SetScript("OnUpdate", nil)
-      row:SetFrameLevel(math.max(row:GetFrameLevel() - 10, 0))
-      -- The new order is the rows' order down the list, the dragged one
-      -- included, read from where each one's middle now stands.
-      local order = UI.GetRowOrder()
-      table.sort(order, function(p, q)
-        local _, py = rows[p]:GetCenter()
-        local _, qy = rows[q]:GetCenter()
-        return (py or 0) > (qy or 0)
-      end)
-      UI.SetRowOrder(order)
-      Place()
-      onChange()
-    end)
-
-    local check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
-    check:SetSize(CHECK_H, CHECK_H)
-    check:SetPoint("LEFT", grip, "RIGHT", 4, 0)
-    check.__postboxCheck = true
-    row.check = check
-
-    local label = T.CreateText(row, "label")
-    label:SetPoint("LEFT", check, "RIGHT", 4, 0)
-    label:SetWordWrap(false)
-    label:SetText(s.title)
-    check.__label = label
-
-    check:SetScript("OnClick", function(self)
-      local on = self:GetChecked() and true or false
-      UI.SetOption(s.option, on)
-      Sync(row)
-      onChange()
-      if type(SOUNDKIT) == "table" then
-        PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
-                     or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
-      end
-    end)
-    check:SetScript("OnEnter", function(self) Tip(self, s) end)
-    check:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    if s.modes then
-      local dd = ns.Core.UI.Dropdown.Create(row, {
-        items        = s.modes,
-        toggleWidth  = 150,
-        toggleHeight = 20,
-        alignRight   = true,
-        height       = CHECK_H,
-        defaultId    = s.get(),
-      })
-      dd:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-      dd:SetWidth(150)
-      dd:SetChangeCallback(function(choice)
-        s.set(choice)
-        onChange()
-      end)
-      if dd._toggle then
-        dd._toggle:HookScript("OnEnter", function(self) Tip(self, s) end)
-        dd._toggle:HookScript("OnLeave", function() GameTooltip:Hide() end)
-      end
-      row.dd = dd
-    end
-
-    rows[id] = row
-    Sync(row)
-  end
-
-  Place()
-  frame.__refreshers[#frame.__refreshers + 1] = function()
-    for _, row in pairs(rows) do Sync(row) end
-    Place()
-  end
-  local bottom = top - 2 * ROW_H
-  MarkBottom(frame, bottom, CHECK_H)
-  return bottom - ROW_H
+-- A line of quiet text in a card, wrapped to the card's width: a pointer to
+-- where something is done rather than a control that does it.
+local function AddNote(frame, y, text)
+  local note = ns.Theme.CreateText(frame, "secondary")
+  note:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y - 2)
+  -- An explicit width, so the height is right at build: a card is not laid
+  -- out yet, and it is a column's width less its own margins.
+  local width = frame:GetWidth() or 0
+  if width < 50 then width = W - 20 end
+  note:SetWidth(width - 2 * PAD)
+  note:SetJustifyH("LEFT")
+  note:SetWordWrap(true)
+  note:SetText(text)
+  local height = math.ceil(note:GetStringHeight() or 12)
+  MarkBottom(frame, y - 2, height)
+  return y - 2 - height - (ROW_H - CHECK_H)
 end
 
 -- A full-width push-button row. `getText` is re-evaluated every time the panel
@@ -586,13 +396,10 @@ local function Build()
         end)
   DropdownTip(qualityDD, L["OPT_QUALITY_TITLE"], L["OPT_QUALITY_DESC"])
 
-  -- The figures a row carries, under the row layout they belong to. A change
-  -- repaints the list and, when it is open, the mailbox memory, which draws
-  -- its rows by the same rules.
-  cy = AddFigureList(card, cy, L["OPT_ROW_FIGURES_TITLE"], L["OPT_ROW_FIGURES_HINT"], function()
-    if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
-    if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
-  end)
+  -- Which columns a row shows, in what order, and the gold's and the time
+  -- left's own choices are arranged in the window itself now, where the rows
+  -- are (Core/Arrange.lua): the grip beside the cog. This card says where.
+  cy = AddNote(card, cy, L["OPT_ARRANGE_POINTER"])
 
   y = EndSection(col, card, y)
 
