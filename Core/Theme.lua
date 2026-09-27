@@ -1747,16 +1747,60 @@ function Theme.StyleMailRow(row, position, hovered)
 end
 
 -------------------------------------------------------------
--- 8b. The hint
+-- 8a. A search box's clear button
 --
--- A few short lines on a small card of the theme's own, in the small font:
--- for a control whose gestures want saying but not a full tooltip's weight
--- (the resize grips: "Drag: Resize", "Right-click: Reset"). One frame for the
--- whole addon. It sits just above the control, right-aligned with it, so it
--- stays over the window the control belongs to.
+-- A small × at the box's right end, there only while the box holds text: a
+-- click empties it. Both windows' search boxes carry one; the caller places
+-- it (left of the every-character toggle, where there is one).
 -------------------------------------------------------------
 
-local HINT_PAD_X, HINT_PAD_Y, HINT_LINE = 6, 4, 13
+local CLEAR_ATLASES = { "uitools-icon-close", "transmog-icon-remove" }
+
+function Theme.AddClearButton(wrap, box)
+  local btn = CreateFrame("Button", nil, wrap)
+  btn:SetSize(12, 12)
+  local atlas = Theme.FirstAtlas(CLEAR_ATLASES)
+  if atlas then
+    btn.Glyph = btn:CreateTexture(nil, "ARTWORK")
+    btn.Glyph:SetAtlas(atlas, false)
+    btn.Glyph:SetSize(9, 9)
+    btn.Glyph:SetPoint("CENTER")
+  else
+    btn.Glyph = Theme.CreateText(btn, "value")
+    btn.Glyph:SetPoint("CENTER")
+    btn.Glyph:SetText("\195\151")
+  end
+  Theme.SetColor(btn.Glyph, "textSecondary")
+  btn:SetScript("OnEnter", function(self) Theme.SetColor(self.Glyph, "textPrimary") end)
+  btn:SetScript("OnLeave", function(self) Theme.SetColor(self.Glyph, "textSecondary") end)
+  btn:SetScript("OnClick", function()
+    box:SetText("")
+    box:ClearFocus()
+  end)
+  btn:Hide()
+  box:HookScript("OnTextChanged", function(self)
+    btn:SetShown((self:GetText() or "") ~= "")
+  end)
+  return btn
+end
+
+-------------------------------------------------------------
+-- 8b. The hint
+--
+-- A few short lines, centred, on a small card of its own in the small font:
+-- for a control whose gestures want saying but not a full tooltip's weight
+-- (the resize grips: "Drag: Resize", "Right-click: Reset"). It opens just
+-- under the cursor, where the eye already is, and its ground is a shade
+-- lighter than a popup's -- a note, not a window. Untagged, so no host skin
+-- repaints it: it is the one surface that is Postbox's own everywhere.
+-- One frame for the whole addon.
+-------------------------------------------------------------
+
+local HINT_PAD_X, HINT_PAD_Y, HINT_LINE = 7, 4, 13
+local HINT_BACKDROP = {
+  bgFile = WHITE, edgeFile = WHITE, edgeSize = 1,
+  insets = { left = 1, right = 1, top = 1, bottom = 1 },
+}
 
 function Theme.ShowHint(owner, lines)
   if not owner or type(lines) ~= "table" then return end
@@ -1764,33 +1808,38 @@ function Theme.ShowHint(owner, lines)
   if not hint then
     hint = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     hint:SetFrameStrata("TOOLTIP")
+    hint:SetClampedToScreen(true)
     hint:EnableMouse(false)
-    -- A floating card, opaque under every skin: it is read over the game.
-    hint.__pbPopupAlways = true
-    Theme.ApplyCard(hint)
+    hint:SetBackdrop(HINT_BACKDROP)
+    hint:SetBackdropColor(0.05, 0.05, 0.06, 0.82)
+    hint:SetBackdropBorderColor(1, 1, 1, 0.14)
     hint.lines = {}
     Theme._hint = hint
-    if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, hint) end
   end
   local width = 0
   for i = 1, #lines do
     local fs = hint.lines[i]
     if not fs then
       fs = Theme.CreateText(hint, "bodySmall")
-      fs:SetJustifyH("LEFT")
+      fs:SetJustifyH("CENTER")
       fs:SetWordWrap(false)
       hint.lines[i] = fs
     end
     fs:ClearAllPoints()
-    fs:SetPoint("TOPLEFT", hint, "TOPLEFT", HINT_PAD_X, -HINT_PAD_Y - (i - 1) * HINT_LINE)
+    fs:SetPoint("TOP", hint, "TOP", 0, -HINT_PAD_Y - (i - 1) * HINT_LINE)
     fs:SetText(lines[i])
     fs:Show()
     width = math.max(width, fs:GetStringWidth() or 0)
   end
   for i = #lines + 1, #hint.lines do hint.lines[i]:Hide() end
   hint:SetSize(math.ceil(width) + 2 * HINT_PAD_X, #lines * HINT_LINE + 2 * HINT_PAD_Y - 2)
+  -- Under the cursor, clear of its pointer; clamped, so a grip at the
+  -- screen's foot puts it wherever it still fits.
+  local x, y = GetCursorPosition()
+  local scale = UIParent:GetEffectiveScale()
+  if type(scale) ~= "number" or scale <= 0 then scale = 1 end
   hint:ClearAllPoints()
-  hint:SetPoint("BOTTOMRIGHT", owner, "TOPRIGHT", 0, 4)
+  hint:SetPoint("TOP", UIParent, "BOTTOMLEFT", (x or 0) / scale, (y or 0) / scale - 22)
   hint:Show()
 end
 

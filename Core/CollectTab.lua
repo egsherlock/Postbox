@@ -186,10 +186,14 @@ function RV.PaintQuality(row, mark)
   end
   local small = Th().FirstAtlas({ (atlas:gsub("ChatIcon", "Icon")) .. "-Small", atlas })
   row.Quality:SetAtlas(small or atlas, false)
-  local size = max(10, floor((row.Icon:GetWidth() or 18) * 0.6 + 0.5))
+  -- Most of the icon's lower-right quarter, and out past its corner a little:
+  -- at compact size anything smaller was a speck.
+  local iconSize = row.Icon:GetWidth() or 18
+  local size = max(13, floor(iconSize * 0.8 + 0.5))
+  local bleed = floor(size * 0.3 + 0.5)
   row.Quality:SetSize(size, size)
   row.Quality:ClearAllPoints()
-  row.Quality:SetPoint("BOTTOMRIGHT", row.Icon, "BOTTOMRIGHT", 3, -3)
+  row.Quality:SetPoint("BOTTOMRIGHT", row.Icon, "BOTTOMRIGHT", bleed, -bleed)
   row.Quality:Show()
 end
 
@@ -1432,6 +1436,9 @@ local function BuildSearchBox(panel)
   all:Hide()
   panel.SearchAll = all
 
+  -- The clear button, left of the toggle (AV.Paint places both).
+  panel.SearchClear = T.AddClearButton(wrap, box)
+
   -- The character picker, left of the search box: it wears the crest of the
   -- box on screen, and lists every character with mail to look at.
   local picker = T.CreatePlate(panel, "segment")
@@ -1824,8 +1831,12 @@ function AV.Paint(panel)
     all.icon:SetVertexColor(1, 1, 1)
     all.icon:SetAlpha(0.45)
   end
-  -- The box's text stops short of the toggle only while there is one.
-  local inset = others and 22 or 6
+  -- The clear button stands left of the toggle, or at the end without one,
+  -- and the box's text stops short of both.
+  local clearAt = others and 20 or 4
+  panel.SearchClear:ClearAllPoints()
+  panel.SearchClear:SetPoint("RIGHT", panel.SearchWrap, "RIGHT", -clearAt, 0)
+  local inset = clearAt + 14
   panel.SearchBox:SetPoint("BOTTOMRIGHT", panel.SearchWrap, "BOTTOMRIGHT", -inset, 2)
   panel.SearchPlaceholder:SetPoint("BOTTOMRIGHT", panel.SearchWrap, "BOTTOMRIGHT", -inset - 2, 2)
 

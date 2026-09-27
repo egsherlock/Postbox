@@ -1016,6 +1016,20 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     -- show the whole sheet the crest lives on.
     local crest = MM.ClassIcon(mail.realm, mail.name)
     if crest then row.Icon:SetAtlas(crest, false) else row.Icon:SetTexture(nil) end
+    -- A heading, not a mail: a quiet band of its own and a hairline above it,
+    -- neutral (the name's class colour is the only colour it needs).
+    if not row.HeaderWash then
+      row.HeaderWash = row:CreateTexture(nil, "BACKGROUND", nil, 2)
+      row.HeaderWash:SetAllPoints()
+      row.HeaderWash:SetColorTexture(1, 1, 1, 0.07)
+      row.HeaderRule = row:CreateTexture(nil, "ARTWORK")
+      row.HeaderRule:SetHeight(1)
+      row.HeaderRule:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+      row.HeaderRule:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
+      row.HeaderRule:SetColorTexture(1, 1, 1, 0.16)
+    end
+    row.HeaderWash:Show()
+    row.HeaderRule:Show()
     row.Icon:Show()
     row.Warning:Hide()
     row.ColTime:Hide()
@@ -1033,6 +1047,10 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     return
   end
   row.HeaderHit:Hide()
+  if row.HeaderWash then
+    row.HeaderWash:Hide()
+    row.HeaderRule:Hide()
+  end
   row.fullSubject = mail.subject
   row.fullSender = mail.sender
   row.itemLink = mail.link
@@ -1653,6 +1671,9 @@ local function BuildSearch(frame)
   all.Paint = Paint
   frame.SearchAllButton = all
   Paint()
+
+  -- The clear button, left of the toggle (Refresh places both).
+  frame.SearchClear = T.AddClearButton(wrap, box)
 end
 
 -- The character picker and the sort, left of the search on the top row.
@@ -1742,6 +1763,12 @@ function Refresh(frame)
   local others = #MM.Characters() > 1
   frame.Picker:SetShown(others)
   frame.SearchAllButton:SetShown(others)
+  -- The clear button left of the toggle, or at the box's end without one;
+  -- the text stops short of both.
+  local clearAt = others and 20 or 4
+  frame.SearchClear:ClearAllPoints()
+  frame.SearchClear:SetPoint("RIGHT", frame.SearchWrap, "RIGHT", -clearAt, 0)
+  frame.SearchBox:SetPoint("BOTTOMRIGHT", frame.SearchWrap, "BOTTOMRIGHT", -(clearAt + 14), 2)
   T.SetPlateSelected(frame.Picker, v ~= nil)
 
   -- The foot: when the box was seen, or what a search found.
@@ -1864,11 +1891,17 @@ local function Build()
   frame.ListChild = CreateFrame("Frame", nil, frame.Scroll)
   frame.ListChild:SetWidth(WINDOW_WIDTH - 20 - 2 - gutter)
   frame.Scroll:SetScrollChild(frame.ListChild)
-  frame.Scroll:HookScript("OnSizeChanged", function(_, width)
+  frame.Scroll:HookScript("OnSizeChanged", function(self, width, height)
     if width and width > 10 and math.abs((frame.ListChild:GetWidth() or 0) - width) > 0.5 then
       frame.ListChild:SetWidth(width)
       if frame:IsShown() then Refresh(frame) end
     end
+    -- Any size change: keep the offset inside the new range, and make the
+    -- scroll frame re-read its child. Without it, a reset after a drag drew
+    -- one row until the next scroll -- the old rectangle, still clipped.
+    local most = math.max(0, (frame.ListChild:GetHeight() or 0) - (height or self:GetHeight() or 0))
+    if (self:GetVerticalScroll() or 0) > most then self:SetVerticalScroll(most) end
+    if self.UpdateScrollChildRect then self:UpdateScrollChildRect() end
   end)
 
   frame.Rows = {}
@@ -1885,8 +1918,13 @@ local function Build()
   end, nil, function(self)
     self.sizing = false
     self.userHeight = nil
+    self.Scroll:SetVerticalScroll(0)
     self:SetWidth(WINDOW_WIDTH)
     Refresh(self)
+    -- Once more after the layout has settled at the new size.
+    C_Timer.After(0, function()
+      if self:IsShown() then Refresh(self) end
+    end)
   end)
   if grip then
     grip:HookScript("OnEnter", function(self)

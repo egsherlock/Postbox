@@ -87,7 +87,8 @@
   full sum is in the mail. Rows use the list's whole width when it does not
   scroll, two-line rows no longer repeat "Auction sold" under "AH Sold", and
   hovering the resize grip (in both windows) says what dragging and a
-  right-click do; a right-click resets Mail Memory's size too.
+  right-click do; a right-click resets Mail Memory's size too. Search boxes
+  have a small clear button while they hold text.
 
 ### Fixed
 
