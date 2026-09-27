@@ -2469,10 +2469,11 @@ end
 --
 -- Two lines for the bug report (Postbox.lua section 6). Both are built from
 -- live state rather than from a list kept alongside it: the settings line
--- walks OPTION_DEFAULTS, so an option added in six months' time appears in
+-- walks OPTION_DEFAULTS, so a switch added in six months' time appears in
 -- every report from the day it ships without anyone remembering this
--- function exists. A report that quietly stops covering a setting is worse
--- than no report, because it reads as a setting that was checked.
+-- function exists. (A setting that is a word or a number has to be named in
+-- it, below.) A report that quietly stops covering a setting is worse than
+-- no report, because it reads as a setting that was checked.
 -------------------------------------------------------------
 
 -- Every profile option, with a "*" against any value the player has moved
@@ -2491,11 +2492,36 @@ function UI.DiagnoseOptions()
     parts[i] = string.format("%s=%s%s", key, on and "on" or "off",
       (on ~= (OPTION_DEFAULTS[key] == true)) and "*" or "")
   end
-  -- The two string settings are not in OPTION_DEFAULTS (see GetStyleChoice
-  -- and GetTabCaptionMode -- profile booleans cannot carry a mode), so they
-  -- are named here explicitly.
-  parts[#parts + 1] = "style=" .. tostring((UI.GetStyleChoice()))
-  parts[#parts + 1] = "caption=" .. tostring((UI.GetTabCaptionMode()))
+  -- The settings that are a word or a number are not in OPTION_DEFAULTS, so
+  -- each is named here: the value its accessor answers with -- the one in
+  -- force, whatever is stored -- and the same "*" off its default.
+  local function Named(key, value, default)
+    value = tostring(value)
+    parts[#parts + 1] = string.format("%s=%s%s", key, value, (value ~= default) and "*" or "")
+  end
+  Named("style", (UI.GetStyleChoice()), HostInstalled() and "host" or "blizzard")
+  -- EllesmereUI's own look, and the skin standing down, where its skin says.
+  local eui = ns.SkinEllesmere
+  if eui and type(eui.Diagnose) == "function" then
+    local ok, report = pcall(eui.Diagnose)
+    if ok and type(report) == "table" then
+      if report.look then parts[#parts + 1] = "look=" .. tostring(report.look) end
+      if report.standDown then parts[#parts + 1] = "standdown=" .. tostring(report.standDown) end
+    end
+  end
+  Named("quality", UI.GetQualityMark(), "icon")
+  Named("readMail", UI.GetReadMode(), "fold")
+  Named("historyDays", UI.GetHistoryDays(), "7")
+  Named("gold", UI.GetGoldMode(), "both")
+  Named("expiry", UI.GetExpiryWhen(), "3")
+  Named("rows", FormatRowLayout(UI.GetRowLayout()) or "?", ROW_LAYOUT_DEFAULT)
+  -- The grid as stored: its group buttons are ids ("group:3"), never names.
+  local grid = ns.Store and ns.Store.Get and ns.Store.Get("profile.gridLayout")
+  Named("grid", (type(grid) == "string" and grid ~= "") and grid or "default", "default")
+  local icon = ns.MinimapButton
+  if icon and type(icon.GetEnabled) == "function" then
+    Named("minimap", icon.GetEnabled() and "on" or "off", "off")
+  end
   return table.concat(parts, " ")
 end
 
