@@ -1482,6 +1482,7 @@ function CT.ClearSearch(panel)
     panel._stuckOnly = false
     -- The read mail starts folded on every visit.
     panel._readOpen = false
+    panel._foldHeld, panel._wheelOffset = nil, nil
     -- And back to this character's own box: a later visit must never open
     -- on somebody else's mail.
     panel._alt = nil
@@ -2958,6 +2959,15 @@ function RV.ScrollFold(panel)
   -- the top is the code -- a view switch, a search, another box -- whose
   -- SetVerticalScroll(0) reaches this handler too, and is not a scroll.
   if not open and offset <= 0 then return false end
+  -- Folded by a click: held shut until the divider has left the view, or the
+  -- next turn of the wheel (RV.WheelFold). Without it, folding while read
+  -- mail showed below the divider shortened the list, the scroll snapped
+  -- back to the new end -- with the divider fully in view -- and that snap
+  -- opened it again under the click.
+  if not open and panel._foldHeld then
+    if top + height > bottom + 0.5 then panel._foldHeld = nil end
+    return false
+  end
   if not open and top + height <= bottom + 0.5 then
     panel._readOpen = true
   elseif open and top >= bottom - 0.5 then
@@ -2967,6 +2977,41 @@ function RV.ScrollFold(panel)
   end
   CT.RefreshMailList(panel)
   return true
+end
+
+-- A turn of the wheel the list could not answer by moving -- it fits, or is
+-- already at that end -- still says "into the read mail" or "out of it". Down
+-- at the foot, with the divider in view, opens it; up at the top, with the
+-- divider in view, folds it. A turn that did move the list is RV.ScrollFold's.
+-- Needed because a list that fits has no scroll at all: the read mail under
+-- a divider that fits on screen could only be opened by a click.
+function RV.WheelFold(panel, delta)
+  local scroll = panel.MailListScroll
+  local offset = scroll:GetVerticalScroll() or 0
+  local moved = panel._wheelOffset ~= nil and math.abs(offset - panel._wheelOffset) > 0.5
+  panel._wheelOffset = offset
+  -- Any turn is a fresh gesture: a hand fold's hold ends here.
+  panel._foldHeld = nil
+  local at = panel._dividerAt
+  if moved or not at or panel.viewMode ~= VIEW_COLLECT or AV.Active(panel) or Searching(panel) then
+    return
+  end
+  local _, height, stride = RowMetrics()
+  local viewport = scroll:GetHeight() or 0
+  if viewport <= 0 then return end
+  local range = (scroll.GetVerticalScrollRange and scroll:GetVerticalScrollRange()) or 0
+  local top = (at - 1) * stride
+  local inView = top >= offset - 0.5 and top + height <= offset + viewport + 0.5
+  if not inView then return end
+  if delta < 0 and not panel._readOpen and offset >= range - 0.5 then
+    panel._readOpen = true
+  elseif delta > 0 and panel._readOpen and offset <= 0.5 then
+    panel._readOpen = false
+  else
+    return
+  end
+  CT.RefreshMailList(panel)
+  panel._wheelOffset = scroll:GetVerticalScroll() or 0
 end
 
 -- The divider pinned to the list's foot while its own place is below the
@@ -5262,7 +5307,7 @@ function RV.BuildDivider(panel, parent)
   -- the rows read through it).
   divider.Fill = divider:CreateTexture(nil, "BACKGROUND")
   divider.Fill:SetAllPoints()
-  divider.Fill:SetColorTexture(0.05, 0.05, 0.06, 0.9)
+  divider.Fill:SetColorTexture(0.05, 0.05, 0.06, 0.95)
   divider.Fold = divider:CreateTexture(nil, "ARTWORK")
   divider.Fold:SetSize(12, 12)
   divider.Fold:SetPoint("LEFT", divider, "LEFT", M.inset, 0)
@@ -5476,6 +5521,8 @@ function CT.Build(parent)
     -- A search holds the fold open; a click then would flip it unseen.
     if Searching(panel) then return end
     panel._readOpen = not panel._readOpen
+    -- Folded by hand stays folded until the next scroll (RV.ScrollFold).
+    panel._foldHeld = (not panel._readOpen) or nil
     CT.RefreshMailList(panel)
   end)
   panel.Divider = divider
@@ -5510,6 +5557,9 @@ function CT.Build(parent)
   scroll:HookScript("OnVerticalScroll", function()
     if not RV.ScrollFold(panel) then UpdateVisibleRows(panel) end
   end)
+  -- After the template's own wheel handler has scrolled, or found it could
+  -- not.
+  scroll:HookScript("OnMouseWheel", function(_, delta) RV.WheelFold(panel, delta) end)
 
   panel.Empty = T.CreateText(panel.MailListArea, "secondary")
   panel.Empty:SetPoint("TOPLEFT", panel.MailListArea, "TOPLEFT", M.inset * 2, -M.inset * 2)
