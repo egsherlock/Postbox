@@ -3174,6 +3174,9 @@ function HV.BuildHistoryList(panel, query)
   local cols = panel._hcols
   cols.sender, cols.money, cols.age = 0, 0, 0
   local showSender = RowShows("sender")
+  -- Whether the gold column shows each kind, asked once for the list rather
+  -- than once per entry: a month of History is a thousand of them.
+  local showEarned, showSpent = MoneyShown("earned"), MoneyShown("spent")
   local earned, spent = 0, 0
   local now = time()
   for i = #list, 1, -1 do
@@ -3190,7 +3193,10 @@ function HV.BuildHistoryList(panel, query)
         local label = (AUCTION_OUTCOME[entry.k] and L()[AUCTION_OUTCOME[entry.k].key]) or R.DisplaySender(entry.s) or ""
         cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), cap)
       end
-      local money = MoneyShown(HV.MoneyKind(entry)) and HV.HistoryMoney(entry, true) or nil
+      local kind = HV.MoneyKind(entry)
+      local shown = true
+      if kind == "earned" then shown = showEarned elseif kind == "spent" then shown = showSpent end
+      local money = shown and HV.HistoryMoney(entry, true) or nil
       if money then cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, money)) end
       local age = HV.HistoryAge(now - (tonumber(entry.t) or now))
       cols.age = max(cols.age, MeasureWith(panel, sample.ColTime, age) + 2)
