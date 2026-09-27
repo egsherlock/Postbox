@@ -1185,20 +1185,45 @@ function CS.BuildSuggestions(text, opts)
   -- the exception, so the decision is made once per build: with nothing hidden
   -- the gate is one scan of that map instead of a state lookup per entry, and a
   -- guild roster is hundreds of entries on every keystroke.
-  local anyHidden = false
+  --
+  -- With something hidden, a second pass keeps every row's flag by key, so an
+  -- entry costs a table lookup instead of an R.IsHidden, which rebuilds the key
+  -- from the string every time. The answers are R.IsHidden's: a key with a row
+  -- gets that row's flag, and R.IsHidden itself is still asked about the two
+  -- kinds of key it may resolve to another row -- one whose pre-apostrophe
+  -- spelling has a row (Recipients finds that row and re-files it, as it
+  -- always has), and one R.Key would spell differently today (no realm half,
+  -- or a period), which no source produces once the realm is known.
+  local state = nil
   if not includeHidden and type(R) == "table"
      and type(R.ForEach) == "function" and type(R.IsHidden) == "function" then
+    local anyHidden = false
     R.ForEach(function(_, row)
       if row.hidden then
         anyHidden = true
         return true
       end
     end)
+    if anyHidden then
+      state = {}
+      R.ForEach(function(key, row) state[key] = row.hidden == true end)
+    end
   end
 
   local function IsHidden(key)
-    if not anyHidden then return false end
-    return R.IsHidden(key) == true
+    if not state then return false end
+    if key:find(".", 1, true) or not key:find("-", 1, true) then
+      return R.IsHidden(key) == true
+    end
+    local hidden = state[key]
+    if hidden ~= nil then return hidden end
+    if not key:find("'", 1, true) then return false end
+    local short, realm = key:match("^([^%-]+)%-(.+)$")
+    if realm and realm:find("'", 1, true)
+       and state[short .. "-" .. (realm:gsub("'", ""))] ~= nil then
+      return R.IsHidden(key) == true
+    end
+    return false
   end
 
   -- Matched against the address AND the key. The key always carries the realm
