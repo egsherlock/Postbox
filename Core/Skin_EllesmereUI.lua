@@ -1239,6 +1239,9 @@ local refreshPending = false
 
 local function RunHostRefresh()
   refreshPending = false
+  -- The host's font can move with the rest of its looks, and a caption Theme
+  -- measured in the old one is measured again on its next fit.
+  if ns.Theme and type(ns.Theme.ForgetFits) == "function" then ns.Theme.ForgetFits() end
   pcall(Skin.OnHostLooksChanged)
 end
 

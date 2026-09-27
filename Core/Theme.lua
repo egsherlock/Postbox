@@ -983,19 +983,85 @@ end
 -- OnEnter and silently replacing it is how tooltips go missing.
 --
 -- Returns true when the caption was truncated.
+--
+-- A list refresh fits the same captions into the same columns over and over,
+-- and measuring one is a text layout. So each font string remembers what the
+-- last fit left on it (`__pbFit`, one small table, rewritten in place) and a
+-- call that would change nothing answers from that instead. "Nothing" is read
+-- off the string itself, never assumed: the text it shows, the width it
+-- reports (so another SetWidth is noticed), its font file, size and flags (so
+-- a host font, a skin's re-font or a font object's change is), and its
+-- effective scale, which moves a rendered width by a hair. A caption that
+-- measured nothing at all is never remembered: that is a font still loading,
+-- not an answer.
+--
+-- The font is kept as one key per file, size and flags, handed out here, so
+-- the memo holds a single reference for it; Theme.ForgetFits hands out new
+-- keys, which is every memo forgotten at once, for the moments the host UI
+-- says its looks changed.
+local fontKeys = {}
+
+local function FontKey(fontString)
+  local path, size, flags = fontString:GetFont()
+  if path == nil then path = false end
+  if size == nil then size = false end
+  if flags == nil then flags = false end
+  local bySize = fontKeys[path]
+  if not bySize then bySize = {}; fontKeys[path] = bySize end
+  local byFlags = bySize[size]
+  if not byFlags then byFlags = {}; bySize[size] = byFlags end
+  local key = byFlags[flags]
+  if not key then key = {}; byFlags[flags] = key end
+  return key
+end
+
+function Theme.ForgetFits()
+  fontKeys = {}
+end
+
 function Theme.FitText(fontString, width, text, owner)
   if not fontString or type(fontString.SetText) ~= "function" then return false end
   text = tostring(text or "")
+  width = tonumber(width) or 0
+
+  local memo = fontString.__pbFit
+  if memo and memo[1] == text and memo[2] == width
+      and fontString:GetText() == text
+      and (width <= 0 or fontString:GetWidth() == memo[4])
+      and fontString:GetEffectiveScale() == memo[6]
+      and FontKey(fontString) == memo[5] then
+    local truncated = memo[3]
+    if owner then owner.__pbOverflowText = truncated and text or nil end
+    return truncated
+  end
+
   fontString:SetText(text)
   if type(fontString.SetWordWrap) == "function" then fontString:SetWordWrap(false) end
 
-  width = tonumber(width) or 0
   if width > 0 and type(fontString.SetWidth) == "function" then
     fontString:SetWidth(width)
   end
 
-  local truncated = width > 0 and Theme.TextWidth(fontString) > width
+  local measured = width > 0 and Theme.TextWidth(fontString) or 0
+  local truncated = width > 0 and measured > width
   if owner then owner.__pbOverflowText = truncated and text or nil end
+
+  if not memo and type(fontString.GetText) == "function" and type(fontString.GetFont) == "function"
+      and type(fontString.GetWidth) == "function" and type(fontString.GetEffectiveScale) == "function" then
+    -- text, width, truncated, reported width, font key, scale: six slots made
+    -- once, so filling them never grows the table.
+    memo = { false, 0, false, false, false, false }
+    fontString.__pbFit = memo
+  end
+  if memo then
+    if width > 0 and measured <= 0 and text ~= "" then
+      memo[1] = false
+    else
+      memo[1], memo[2], memo[3] = text, width, truncated
+      memo[4] = width > 0 and fontString:GetWidth() or false
+      memo[5], memo[6] = FontKey(fontString), fontString:GetEffectiveScale()
+    end
+  end
   return truncated
 end
 
