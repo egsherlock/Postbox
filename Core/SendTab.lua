@@ -3529,7 +3529,12 @@ end
 -- the close -- and each used to ask every host to draw its bags again, much
 -- of it inside Postbox's own call. The frame's clock and the state asked for
 -- say whether a host has had this transition already.
-ST._paintAt, ST._paintFor = {}, {}
+--
+-- _greyed: whether any slot was marked since the hosts last drew for the Mail
+-- tab. Nothing marked is nothing of Postbox's to paint over, so a visit that
+-- never shows the Send tab asks no bag host for anything, at the open or at
+-- the close.
+ST._paintAt, ST._paintFor, ST._greyed = {}, {}, false
 
 function ST.PaintDue(host)
   local now = GetTime()
@@ -3603,6 +3608,7 @@ local function RefreshSlotOverlay(button)
     InventoryLock.UnmarkQueued(button)
     InventoryLock.MarkButton(button)
     overlaid[button] = true
+    ST._greyed = true
   elseif slot and slot >= 1 and (InventoryLock.IsLockedAt(bag, slot) or (ST.IsQueuedAt and ST.IsQueuedAt(bag, slot))) then
     -- Attached, or waiting in the queue: greyed, because as far as the
     -- player is concerned the item is spoken for. The client greys an
@@ -3612,6 +3618,7 @@ local function RefreshSlotOverlay(button)
     InventoryLock.UnmarkButton(button)
     InventoryLock.MarkQueued(button)
     overlaid[button] = true
+    ST._greyed = true
   else
     ClearOverlay(button)
   end
@@ -3808,17 +3815,26 @@ end
 end
 
 function ST.UpdateBagOverlays()
+  -- Off the Send tab with nothing marked, every slot a pass would visit is
+  -- already clear: the drain a close leaves behind lands here.
+  if not sendTabActive and not ST._greyed and not next(overlaid) then return end
   ST.Timed("hooks", HookVisibleSlots)
   ST.Timed("hooks", ST.HookExternalBags)
   RepaintContainers()
   ST.RefreshExternalSlots()
 end
 
+-- The overlays off, and the hosts asked to draw their bags without them --
+-- unless nothing was marked since they last drew for the Mail tab, when
+-- there is nothing to paint over: a visit that never shows the Send tab,
+-- and a close after a switch back to Mail, ask no host for anything.
 function ST.ClearBagOverlays()
   sendTabActive = false
   if next(overlaid) then ST.Timed("ungrey", ClearEveryOverlay) end
+  if not ST._greyed then return end
   RepaintContainers()
   ST.RepaintExternalBags()
+  ST._greyed = false
 end
 
 -------------------------------------------------------------
@@ -3909,7 +3925,9 @@ function ST.DeactivateNativeSendMail()
   nativeArmWanted = false
   ST.SetArm(false)
   if next(overlaid) then ST.Timed("ungrey", ClearEveryOverlay) end
-  RepaintContainers()
+  -- Only over something marked (ST.ClearBagOverlays, which is what hands
+  -- the other hosts their repaint).
+  if ST._greyed then RepaintContainers() end
 end
 
 end -- sections 17 and 18
