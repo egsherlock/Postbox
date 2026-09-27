@@ -3,7 +3,7 @@
 ## 1.40.0
 
 **The biggest Postbox update yet.** Every character's mailbox in one place, a
-History of everything you collect, a tidier inbox, and Traditional Chinese.
+History of everything you collect, and a tidier inbox.
 *After updating, restart the game once (a /reload is not enough) so Postbox
 shows up in the minimap's addon menu.*
 
@@ -47,9 +47,15 @@ shows up in the minimap's addon menu.*
   button now leads the row.
 - **Faster** on big mailboxes and long histories, and the options fit on
   screen again.
+- Also: names without the realm, searching "sold" or "AH" finds auction mail,
+  Mail Memory can list what expires first and be made wider, the resize grips
+  explain themselves, and the new-mail sound and flash work with Mail Memory
+  switched off.
 
 ### Fixed
 
+- The minimap icon's tooltip could say "Nothing waiting" on a character whose
+  mail had arrived while it was logged out.
 - "Stuck" warnings could appear on mail that was never refused.
 - Buying from the auction house played the new-mail alert twice.
 - The Postbox Modern look could interfere with other addons' tooltips.

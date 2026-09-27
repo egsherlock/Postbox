@@ -252,17 +252,32 @@ local function StoredSnapshot()
 end
 
 -- A snapshot from before the baseline fields existed cannot support the
--- flip/triple detectors. Heal it at the first away-from-box look: the
--- baseline becomes NOW, so arrivals from this moment on are detectable
+-- flip/triple detectors. Heal it at the first away-from-box look: the sender
+-- line's baseline becomes NOW, so arrivals from this moment on are detectable
 -- without demanding a fresh mailbox visit first. Run at login too, so an
 -- arrival between login and the first window-open is not folded into the
 -- healed baseline.
+--
+-- The unread flag's baseline is read from the snapshot itself rather than
+-- from the flag now: any unread mail in it held the flag up at close, and
+-- none means it was down. The flag NOW would fold mail that arrived while
+-- the character was logged out into the baseline, and the flip detector
+-- could then never see it. A snapshot cut short by the record's cap may
+-- have had unread mail past the cut, so it counts as up.
 local function EnsureBaseline(snap)
   if not snap or snap.baseFrom ~= nil then return end
   local state = MailboxState()
   if state and state.mailboxOpen then return end
   snap.baseFrom = SenderTriple()
-  snap.baseNew = type(HasNewMail) == "function" and HasNewMail() and true or false
+  local mails = snap.mails or {}
+  local unread = (tonumber(snap.total) or #mails) > #mails
+  for i = 1, #mails do
+    if not mails[i].read then
+      unread = true
+      break
+    end
+  end
+  snap.baseNew = unread
 end
 
 -------------------------------------------------------------
@@ -1519,6 +1534,46 @@ local function SearchAll(query, now, sort, all)
   return rows, characters
 end
 
+-- snapshot -> arrived, from: whether mail is known to have landed since this
+-- character's snapshot, and who from, where the client says. Three
+-- independent detectors, ANY suffices, each sound on its own:
+--
+--   1. The arrival watch's stored mark (the pending-mail event, guarded).
+--   2. The flag FLIP: HasNewMail() is "unread mail exists", so its value
+--      proves nothing -- but false at close and true now can only mean an
+--      arrival in between.
+--   3. The sender-triple CHANGE: the latest-unread-senders line the
+--      client keeps reshuffles whenever mail lands, including while
+--      logged out; the snapshot remembers what it said at close.
+--
+-- A mailbox visit replaces the record and re-baselines all three. Only the
+-- character being played can be asked, and only away from a mailbox (at one,
+-- the live look holds the mail itself). Mail Memory's rows and the minimap
+-- tooltip both ask here: the tooltip used to read the stored mark alone, and
+-- told a character back after days away "nothing waiting" over mail that had
+-- landed while it was logged out.
+local function ArrivedSince(snapshot)
+  if not snapshot then return false, nil end
+  EnsureBaseline(snapshot)
+  local state = MailboxState()
+  local away = not (state and state.mailboxOpen)
+  local flagNow = away and type(HasNewMail) == "function" and HasNewMail() and true or false
+  local tripleNow = away and SenderTriple() or nil
+  local arrived = snapshot.newSince == true
+    or (flagNow and snapshot.baseNew == false)
+    or (tripleNow ~= nil and snapshot.baseFrom ~= nil and tripleNow ~= snapshot.baseFrom)
+  local from = snapshot.newFrom
+  if arrived and not from and type(GetLatestThreeSenders) == "function" then
+    local a, b, c = GetLatestThreeSenders()
+    from = {}
+    if a then from[#from + 1] = tostring(a) end
+    if b then from[#from + 1] = tostring(b) end
+    if c then from[#from + 1] = tostring(c) end
+    if #from == 0 then from = nil end
+  end
+  return arrived and true or false, from
+end
+
 -- realm, name, opts -> rows, info. `realm`/`name` nil for the character
 -- being played. opts.query: the search, folded ("" for none); opts.all:
 -- search every character's box; opts.sort: "expiry" for the soonest first;
@@ -1535,38 +1590,10 @@ function MM.RowsFor(realm, name, opts)
   if me then HealLive() end
   local snapshot = SnapshotOf(realm, name)
 
-  -- Mail known to have arrived after the snapshot. Three independent
-  -- detectors, ANY suffices, each sound on its own:
-  --
-  --   1. The arrival watch's stored mark (the pending-mail event, guarded).
-  --   2. The flag FLIP: HasNewMail() is "unread mail exists", so its value
-  --      proves nothing -- but false at close and true now can only mean an
-  --      arrival in between.
-  --   3. The sender-triple CHANGE: the latest-unread-senders line the
-  --      client keeps reshuffles whenever mail lands, including while
-  --      logged out; the snapshot remembers what it said at close.
-  --
-  -- A mailbox visit replaces the record and re-baselines all three. Only
-  -- the character being played can be asked; another's watch says the rest.
+  -- Mail known to have arrived after the snapshot (ArrivedSince). Only the
+  -- character being played can be asked; another's watch says the rest.
   local arrived, from = false, nil
-  if snapshot and me then
-    EnsureBaseline(snapshot)
-    local away = not (state and state.mailboxOpen)
-    local flagNow = away and type(HasNewMail) == "function" and HasNewMail() and true or false
-    local tripleNow = away and SenderTriple() or nil
-    arrived = snapshot.newSince == true
-      or (flagNow and snapshot.baseNew == false)
-      or (tripleNow ~= nil and snapshot.baseFrom ~= nil and tripleNow ~= snapshot.baseFrom)
-    from = snapshot.newFrom
-    if arrived and not from and type(GetLatestThreeSenders) == "function" then
-      local a, b, c = GetLatestThreeSenders()
-      from = {}
-      if a then from[#from + 1] = tostring(a) end
-      if b then from[#from + 1] = tostring(b) end
-      if c then from[#from + 1] = tostring(c) end
-      if #from == 0 then from = nil end
-    end
-  end
+  if snapshot and me then arrived, from = ArrivedSince(snapshot) end
 
   -- At a mailbox the live look already holds what arrived: rows for it
   -- would list those mails twice.
@@ -2079,6 +2106,9 @@ function MM.MailboxSummary()
     return out
   end
 
+  -- By all three detectors, as Mail Memory's rows are (ArrivedSince).
+  local arrived, newFrom = ArrivedSince(snap)
+
   return {
     groups      = GroupsFor(false),
     stuckGroups = GroupsFor(true),
@@ -2086,8 +2116,8 @@ function MM.MailboxSummary()
     stuck       = stuck,
     total       = #mails,
     seenAt      = snap.seenAt,
-    arrived     = snap.newSince and true or false,
-    newFrom     = snap.newSince and snap.newFrom or nil,
+    arrived     = arrived,
+    newFrom     = arrived and newFrom or nil,
     pending     = MM.PendingSummary and MM.PendingSummary() or nil,
   }
 end

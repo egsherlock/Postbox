@@ -855,7 +855,10 @@ ShowTooltip = function(button, hostMode)
     local warn = ns.Theme.Colors.warning
     Breakdown(state.stuckGroups, L["MEMORY_STUCK_HEAD"], state.stuck,
       warn[1], warn[2], warn[3])
-  elseif state then
+  elseif state and not state.arrived then
+    -- "Nothing waiting" only while nothing has arrived since: over new mail
+    -- it would be the snapshot's stale answer, under the client's own
+    -- you-have-mail icon.
     GameTooltip:AddLine(L["MEMORY_NOTHING_WAITING"], 0.75, 0.75, 0.78)
   else
     -- No snapshot (memory off, or this character has never opened a
