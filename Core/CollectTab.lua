@@ -4409,6 +4409,59 @@ end
 -- painter is defined further down beside the rest of the overlay's content.
 local PaintDetailContent
 
+-- The reading view across the C.O.D. its own tile pays. The overlay names its
+-- mail by fingerprint, C.O.D. included, and the header reads the C.O.D. as 0
+-- once the first take has paid it: a mail with several items is the same
+-- mail afterwards, still holding the rest (RunPlan follows the same change
+-- for Take all). A tile take on a C.O.D. the player has just confirmed is
+-- armed before it is issued; a refresh that finds the mail reading as that
+-- take's paid form leaves the overlay up until the take reports; the report
+-- adopts the paid fingerprint, once, or the overlay closes as it always has.
+
+-- detail, index, cod -> the tile take about to be issued, armed on the
+-- overlay; nil where there is nothing to follow: no C.O.D., a take that
+-- would empty the mail (one item, which goes as any emptied mail does), or a
+-- channel another take owns (the click is answered "busy", nothing issued).
+function RV.ArmPaidTake(detail, index, cod)
+  if (tonumber(cod) or 0) <= 0 or Mail().IsBusy() then return nil end
+  local _, _, sender, subject, money, _, _, itemCount = GetInboxHeaderInfo(index)
+  if (tonumber(itemCount) or 0) < 2 and (tonumber(money) or 0) <= 0 then return nil end
+  local take = { index = index, from = detail.fingerprint, paid = FingerprintOf(sender, subject, 0) }
+  detail._paidTake = take
+  return take
+end
+
+-- detail -> whether the overlay waits for its armed take to report: the mail
+-- at its index reads as the take's paid form (same sender and subject,
+-- nothing owed) and still holds something.
+function RV.AwaitsPaidTake(detail)
+  local take = detail._paidTake
+  if not take or detail.fingerprint ~= take.from or detail.mailIndex ~= take.index then return false end
+  if Fingerprint(take.index) ~= take.paid or not RV.HeldSomething(take.index) then return false end
+  take.held = true
+  return true
+end
+
+-- detail, take, landed -> whether the overlay now follows the paid mail. The
+-- one place the paid form is adopted: the take landed, the overlay still
+-- shows the mail it was confirmed on, and that mail is at its index, paid and
+-- holding something. From then on the fingerprint reads nothing owed, so a
+-- mail that owes a C.O.D. never matches it, and every take still goes through
+-- ConfirmCOD. Anything else disarms, and an overlay held for this report is
+-- checked now, as the refresh it waited through would have.
+function RV.SettlePaidTake(detail, take, landed)
+  if not take or detail._paidTake ~= take then return false end
+  detail._paidTake = nil
+  if landed and detail:IsShown() and detail.fingerprint == take.from
+    and detail.mailIndex == take.index and Fingerprint(take.index) == take.paid
+    and RV.HeldSomething(take.index) then
+    detail.fingerprint = take.paid
+    return true
+  end
+  if take.held then CloseDetailIfStale(detail._panel) end
+  return false
+end
+
 local function TakeOneAttachment(detail, slot)
   -- LiveIndex, not detail.mailIndex: a take is a command, and it may only be
   -- aimed at an index that still names the mail this overlay is showing.
@@ -4432,8 +4485,10 @@ local function TakeOneAttachment(detail, slot)
     if not index then return end
     local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
     codBefore = tonumber(codBefore) or 0
+    local paying = RV.ArmPaidTake(detail, index, codBefore)
 
     Mail().TakeAttachment(index, slotIndex, function(status, refused, reason)
+      local followed = RV.SettlePaidTake(detail, paying, status == "collected")
       -- The slot is cleared only once the item has actually left the mailbox.
       -- Blanking it on a timeout, or on a take the server refused, would tell
       -- the player it was collected while it is still sitting there. It stays
@@ -4478,6 +4533,11 @@ local function TakeOneAttachment(detail, slot)
         slot.Count:SetText("")
         slot.itemLink = nil
         slot:Hide()
+      end
+      -- The same mail, paid: repainted as it reads now, with nothing owed.
+      if followed then
+        PaintDetailContent(detail, index)
+        LayoutDetail(detail)
       end
       RequestRefresh(detail._panel)
     end, { allowCOD = true, history = detail._history })
@@ -4547,7 +4607,8 @@ end
 -- the moment the mail is emptied. Rather than closing on every refresh -- which
 -- used to need a timer, because reading a mail marks it read and refreshes the
 -- list underneath the thing just opened -- the overlay closes only when its
--- mail has actually gone, or when a run is shifting indices wholesale.
+-- mail has actually gone, or when a run is shifting indices wholesale. A tile
+-- take paying the mail's C.O.D. is waited for (RV.AwaitsPaidTake).
 function CloseDetailIfStale(panel)
   local detail = panel.Detail
   if not detail or not detail:IsShown() then return end
@@ -4555,7 +4616,7 @@ function CloseDetailIfStale(panel)
     detail:Hide()
     return
   end
-  if not LiveIndex(detail) then detail:Hide() end
+  if not LiveIndex(detail) and not RV.AwaitsPaidTake(detail) then detail:Hide() end
 end
 
 -------------------------------------------------------------
