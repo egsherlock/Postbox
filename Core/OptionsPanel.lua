@@ -1593,6 +1593,96 @@ local function Build()
   versionText:SetText(tostring(ns.VERSION or ""))
   versionText:SetAlpha(0.55)
 
+  -- Reset to defaults, at the band's left end across from the version: the
+  -- one control here that undoes the player's own choices, so it is as quiet
+  -- as the version until pointed at, and it asks first -- the dialog says
+  -- what goes and what stays. A button of its own laid over the band, so a
+  -- click on it is never also a click on the bug report.
+  do
+    local POPUP_RESET = "POSTBOX_RESET_SETTINGS"
+
+    -- A static popup is DIALOG strata and this panel FULLSCREEN_DIALOG, so
+    -- one shown from here opens BEHIND the panel. Lifted for as long as it
+    -- is up; the popup code sets the strata afresh on its next show.
+    local function Lift(dialog)
+      if dialog and dialog.SetFrameStrata then
+        dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+        dialog:Raise()
+      end
+    end
+
+    local function ResetNow()
+      local UI = ns.MailboxUI
+      if not (UI and type(UI.ResetSettings) == "function") then return end
+      local styleChanged = UI.ResetSettings()
+      Panel.RefreshControls()
+      -- The style is the one setting that waits for a reload: the same offer
+      -- a style change makes.
+      if styleChanged then
+        if EnsureStyleDialog() then
+          Lift(StaticPopup_Show(POPUP_STYLE_RELOAD))
+        else
+          ns.Print(L["MSG_STYLE_RELOAD"])
+        end
+      end
+    end
+
+    -- Registered on first use, like the reload offer. No popup, no reset:
+    -- this never happens without the question being asked.
+    local function EnsureResetDialog()
+      if type(StaticPopupDialogs) ~= "table" or type(StaticPopup_Show) ~= "function" then
+        return false
+      end
+      if StaticPopupDialogs[POPUP_RESET] then return true end
+      StaticPopupDialogs[POPUP_RESET] = {
+        text = "%s",
+        button1 = L["BTN_RESET"],
+        button2 = L["COD_CONFIRM_CANCEL"],
+        OnAccept = ResetNow,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        showAlert = true,
+        preferredIndex = 3,
+      }
+      return true
+    end
+
+    local reset = CreateFrame("Button", nil, statusBand)
+    reset:SetPoint("TOPLEFT", statusBand, "TOPLEFT", 4, 0)
+    reset:SetPoint("BOTTOMLEFT", statusBand, "BOTTOMLEFT", 4, 0)
+    reset:SetFrameLevel(statusBand:GetFrameLevel() + 2)
+    local resetText = ns.Theme.CreateText(reset, "bodySmall")
+    resetText:SetPoint("LEFT", reset, "LEFT", 4, 0)
+    resetText:SetWordWrap(false)
+    resetText:SetText(L["OPT_RESET_DEFAULTS"])
+    resetText:SetAlpha(0.55)
+    -- As wide as what it says, re-measured on every open: a host skin can
+    -- re-font it after the panel is built.
+    local function FitReset()
+      reset:SetWidth(math.ceil(resetText:GetStringWidth() or 0) + 8)
+    end
+    FitReset()
+    frame.__refreshers[#frame.__refreshers + 1] = FitReset
+
+    reset:SetScript("OnClick", function()
+      if EnsureResetDialog() then
+        Lift(StaticPopup_Show(POPUP_RESET, L["MSG_RESET_CONFIRM"]))
+      end
+    end)
+    reset:SetScript("OnEnter", function(self)
+      resetText:SetAlpha(1)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(L["OPT_RESET_DEFAULTS"])
+      GameTooltip:AddLine(L["OPT_RESET_DEFAULTS_DESC"], 1, 1, 1, true)
+      GameTooltip:Show()
+    end)
+    reset:SetScript("OnLeave", function()
+      resetText:SetAlpha(0.55)
+      GameTooltip:Hide()
+    end)
+  end
+
   -- The bug-report popup: the report address and a one-line setup summary,
   -- each in a copyable box. No browser can be opened from in-game, so
   -- copyable is the whole feature.
