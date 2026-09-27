@@ -866,6 +866,13 @@ function Mail.StuckCount()
   return n
 end
 
+-- How many fingerprints the registry holds, matched or not: for /postbox
+-- debug, where a large number is the cost every inbox update pays (PruneStuck
+-- and StuckCount walk the inbox whenever this is above zero).
+function Mail.StuckEntries()
+  return stuckEntries
+end
+
 -- The stuck mails as the status tooltip tells them: one row per distinct
 -- fingerprint currently matching a live mail -- sender, subject, and the
 -- game's words where it left any. nil rather than an empty table when there

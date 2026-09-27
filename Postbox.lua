@@ -7,7 +7,8 @@ local ADDON_NAME, ns = ...
 -- tree a saved-variables root and a chat printer, the shape of the saved
 -- variables themselves, the running census of the player's own characters, the
 -- error trap that has to be in place before there is anything to catch, the
--- slash command, and the event bus every other module registers on.
+-- timing record the bug report carries, the slash command, and the event bus
+-- every other module registers on.
 --
 -- Two ordering rules govern this file, and both are easy to break by moving a
 -- line a few rows up:
@@ -325,6 +326,561 @@ local function LogLine(text, ...)
 end
 
 -------------------------------------------------------------
+-- 5b. The performance record
+--
+-- "The game freezes for a few seconds when I open the mailbox" arrives from a
+-- machine nobody here can sit at, about an inbox nobody here has. The next
+-- report has to carry numbers, so each mailbox open is measured: its own
+-- stages, then -- for a bounded window after it -- what every inbox update
+-- cost, and, at both ends of that window, how many slow frames the game's own
+-- addon profiler counted. That last pair is what says whether a freeze during
+-- the open was Postbox, some other addon, or not addon code at all.
+-- /postbox debug prints it (BuildDiagnosticReport, section 6).
+--
+-- The rules, because this rides the one path a player has called slow:
+--   * Nothing is measured outside the window. A call site reads ns.Perf, finds
+--     no open record, and carries on; inside the window a measured step costs
+--     two debugprofilestop() calls and a few additions.
+--   * The window ends by itself: at the mailbox closing, or at the first
+--     measured step more than WINDOW seconds after the open. No timer, no
+--     OnUpdate.
+--   * The inbox walk and the profiler reads happen at the window's two ends
+--     and when a report is built, never per event. The two item-data events
+--     are listened to only while a window is open.
+--   * Numbers only, and nothing saved: no character, sender or item name is
+--     recorded, and a /reload starts afresh (as the profiler itself does).
+-------------------------------------------------------------
+
+-- Perf.cur is the open being counted, or nil: the one field a call site may
+-- read directly, as the cheapest possible "is anything measuring".
+local Perf = {}
+ns.Perf = Perf
+
+do
+  local WINDOW = 30         -- seconds after an open that its costs are counted
+  local KEEP = 8            -- opens remembered
+
+  -- Enum.AddOnProfilerMetric's values today, for a client that publishes the
+  -- profiler without the enum. The enum wins wherever it answers.
+  local METRIC = {
+    RecentAverageTime = 1, PeakTime = 4,
+    CountTimeOver100Ms = 9, CountTimeOver500Ms = 10, CountTimeOver1000Ms = 11,
+  }
+  local SLOW = { "CountTimeOver100Ms", "CountTimeOver500Ms", "CountTimeOver1000Ms" }
+  local STAGES = { "build", "draft", "select", "seed", "refresh", "layout" }
+  local ITEM_EVENTS = { "GET_ITEM_INFO_RECEIVED", "ITEM_DATA_LOAD_RESULT" }
+
+  local opens, count = {}, 0
+  local lastInbox = nil     -- the inbox as last read at a mailbox
+  local watching = false
+
+  -- Milliseconds, high resolution: what every duration here is measured in.
+  local Clock = type(debugprofilestop) == "function" and debugprofilestop
+    or function() return 0 end
+
+  -- Clamped: another addon calling debugprofilestart moves the clock's origin,
+  -- and one step measured across that would come out negative.
+  local function Since(mark)
+    local ms = Clock() - mark
+    return ms > 0 and ms or 0
+  end
+
+  -- Seconds, and the frame's own clock: the same for everything that runs
+  -- within one frame, which is what makes it the frame counter below.
+  local function Now()
+    return type(GetTime) == "function" and GetTime() or 0
+  end
+
+  local function MetricId(name)
+    local enum = type(Enum) == "table" and Enum.AddOnProfilerMetric
+    local id = type(enum) == "table" and enum[name]
+    return type(id) == "number" and id or METRIC[name]
+  end
+
+  -- The profiler, or nil and the reason there is none to read.
+  local function Profiler()
+    local api = C_AddOnProfiler
+    if type(api) ~= "table" or type(api.GetApplicationMetric) ~= "function" then
+      return nil, "not on this client"
+    end
+    if type(api.IsEnabled) == "function" then
+      local ok, on = pcall(api.IsEnabled)
+      if ok and not on then return nil, "profiler off" end
+    end
+    return api
+  end
+
+  local function Metric(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, value = pcall(fn, ...)
+    if not ok or type(value) ~= "number" then return nil end
+    if type(issecretvalue) == "function" and issecretvalue(value) then return nil end
+    return value
+  end
+
+  -- Frames over 100 / 500 / 1000 ms so far this session: the whole game, all
+  -- addons together, and Postbox alone.
+  local function SlowCounts()
+    local api = Profiler()
+    if not api then return nil end
+    local out = { app = {}, all = {}, own = {} }
+    for i = 1, #SLOW do
+      local id = MetricId(SLOW[i])
+      out.app[i] = Metric(api.GetApplicationMetric, id)
+      out.all[i] = Metric(api.GetOverallMetric, id)
+      out.own[i] = Metric(api.GetAddOnMetric, ADDON_NAME, id)
+    end
+    return out
+  end
+
+  local function InboxCount()
+    if type(GetInboxNumItems) ~= "function" then return 0, 0 end
+    local ok, shown, total = pcall(GetInboxNumItems)
+    if not ok then return 0, 0 end
+    shown = tonumber(shown) or 0
+    return shown, tonumber(total) or shown
+  end
+
+  -- What the inbox holds, as counts. One walk, at a window's end or for a
+  -- report; never per event.
+  local function InboxSummary()
+    if type(GetInboxHeaderInfo) ~= "function" then return nil end
+    local shown, total = InboxCount()
+    local s = { shown = shown, total = total, withItems = 0, slots = 0, cold = 0,
+                auction = 0, cod = 0, done = 0, unloaded = 0 }
+    local Mail = ns.MailService or {}
+    local slotsMax = tonumber(Mail.MAX_ATTACHMENTS) or 16
+    local cached = type(C_Item) == "table" and C_Item.IsItemDataCachedByID or nil
+    local canScan = type(GetInboxItem) == "function" and type(cached) == "function"
+    for index = 1, shown do
+      local _, _, sender, subject, _, cod, _, itemCount = GetInboxHeaderInfo(index)
+      if sender == nil and subject == nil then
+        s.unloaded = s.unloaded + 1
+      else
+        itemCount = tonumber(itemCount) or 0
+        if itemCount > 0 then
+          s.withItems = s.withItems + 1
+          s.slots = s.slots + itemCount
+        end
+        if (tonumber(cod) or 0) > 0 then s.cod = s.cod + 1 end
+        if type(Mail.ClassifyMail) == "function" then
+          local ok, kind = pcall(Mail.ClassifyMail, index)
+          if ok and kind and kind ~= "other" then s.auction = s.auction + 1 end
+        end
+        if type(Mail.IsReadPersistent) == "function" then
+          local ok, done = pcall(Mail.IsReadPersistent, index)
+          if ok and done then s.done = s.done + 1 end
+        end
+        if itemCount > 0 and canScan then
+          for slot = 1, slotsMax do
+            local _, itemID = GetInboxItem(index, slot)
+            if itemID and not cached(itemID) then s.cold = s.cold + 1 end
+          end
+        end
+      end
+    end
+    return s
+  end
+
+  local function OnItemData()
+    local rec = Perf.Live()
+    if rec then rec.items = rec.items + 1 end
+  end
+
+  -- Checked first: the bus logs an event it cannot register, and a log line
+  -- is recorded as an error in the very report this is for.
+  local function EventKnown(name)
+    local utils = C_EventUtils
+    if type(utils) ~= "table" or type(utils.IsEventValid) ~= "function" then return false end
+    local ok, valid = pcall(utils.IsEventValid, name)
+    return ok and valid == true
+  end
+
+  local function WatchItems(on)
+    local bus = ns.Events
+    if on == watching or type(bus) ~= "table" then return end
+    watching = on
+    for i = 1, #ITEM_EVENTS do
+      local name = ITEM_EVENTS[i]
+      if on then
+        if EventKnown(name) then bus.Register(name, OnItemData) end
+      elseif type(bus.Unregister) == "function" then
+        bus.Unregister(name, OnItemData)
+      end
+    end
+  end
+
+  local function Note(rec, ms, kind)
+    if ms > rec.longest then rec.longest, rec.longestKind = ms, kind end
+  end
+
+  -- The open being counted, or nil. The window's end is noticed here, by
+  -- whatever asks first after it has passed.
+  function Perf.Live()
+    local rec = Perf.cur
+    if not rec then return nil end
+    if Now() - rec.openedAt > WINDOW then
+      Perf.Settle("timed out")
+      return nil
+    end
+    return rec
+  end
+
+  -- The full open path has begun (Core/MailboxUI.lua, OnMailShow). -> a clock
+  -- mark for the first Stage.
+  function Perf.Open()
+    if Perf.cur then Perf.Settle("reopened") end
+    count = count + 1
+    local rec = {
+      no = count,
+      at = (type(date) == "function" and date("%H:%M")) or "?",
+      openedAt = Now(),
+      stage = {},
+      evt = 0, frames = 0,
+      n = {}, ms = {}, max = {},
+      walk = 0, binds = 0, items = 0, asks = 0, cold = 0,
+      longest = 0,
+    }
+    rec.openShown, rec.openTotal = InboxCount()
+    rec.slow = SlowCounts()
+    opens[(count - 1) % KEEP + 1] = rec
+    Perf.cur = rec
+    WatchItems(true)
+    rec.t0 = Clock()
+    return rec.t0
+  end
+
+  -- One stage of the open path, from `since`; `last` closes the open's total.
+  -- -> the mark for the next stage.
+  function Perf.Stage(name, since, last)
+    local rec = Perf.cur
+    if not (rec and since) then return nil end
+    rec.stage[name] = (rec.stage[name] or 0) + Since(since)
+    -- The total is on the line as it is, so it does not compete for the
+    -- longest step; the refresh inside its select stage does, as a refresh.
+    if last then rec.show = Since(rec.t0) end
+    return Clock()
+  end
+
+  -- A measured step: Begin -> mark or nil, End(kind, mark).
+  function Perf.Begin()
+    if not Perf.Live() then return nil end
+    return Clock()
+  end
+
+  function Perf.End(kind, mark)
+    local rec = Perf.cur
+    if not (rec and mark) then return end
+    local ms = Since(mark)
+    rec.n[kind] = (rec.n[kind] or 0) + 1
+    rec.ms[kind] = (rec.ms[kind] or 0) + ms
+    if ms > (rec.max[kind] or 0) then rec.max[kind] = ms end
+    Note(rec, ms, kind)
+  end
+
+  -- The list refresh's walk, up to where it binds rows: a part of the
+  -- refresh, so it is added up but never the longest step on its own.
+  function Perf.Walk(mark)
+    local rec = Perf.cur
+    if rec and mark then rec.walk = rec.walk + Since(mark) end
+  end
+
+  function Perf.Rows(mark, bound)
+    local rec = Perf.cur
+    if not (rec and mark) then return end
+    rec.binds = rec.binds + (tonumber(bound) or 0)
+    Perf.End("rows", mark)
+  end
+
+  -- A row asked the client for an item's info by id; `cached` is whether it
+  -- had it. An uncached ask is a server request, answered by an item event.
+  function Perf.ItemAsk(cached)
+    local rec = Perf.Live()
+    if not rec then return end
+    rec.asks = rec.asks + 1
+    if not cached then rec.cold = rec.cold + 1 end
+  end
+
+  -- MAIL_INBOX_UPDATE, from the shell's handler. -> a mark for End("sync").
+  function Perf.InboxEvent()
+    local rec = Perf.Live()
+    if not rec then return nil end
+    rec.evt = rec.evt + 1
+    local now = Now()
+    if now ~= rec.lastFrame then
+      rec.frames = rec.frames + 1
+      rec.lastFrame = now
+    end
+    rec.firstEvt = rec.firstEvt or (now - rec.openedAt)
+    rec.lastEvt = now - rec.openedAt
+    local shown, total = InboxCount()
+    if not rec.firstShown then rec.firstShown, rec.firstTotal = shown, total end
+    rec.lastShown, rec.lastTotal = shown, total
+    return Clock()
+  end
+
+  -- The window is over: the mailbox closed, time ran out, or another open
+  -- began. Safe to call with nothing open.
+  function Perf.Settle(reason)
+    local rec = Perf.cur
+    if not rec then return end
+    Perf.cur = nil
+    WatchItems(false)
+    rec.ended = reason
+    rec.span = Now() - rec.openedAt
+    rec.slowEnd = SlowCounts()
+    -- A closing mailbox may already read empty. That says nothing about the
+    -- box this open saw, so the counts its last update read stand in for it;
+    -- an open that saw no update at all has nothing to add.
+    local ok, summary = pcall(InboxSummary)
+    if not ok then summary = nil end
+    local seen = rec.lastShown or 0
+    if summary and (summary.shown > 0 or (rec.firstShown and seen == 0)) then
+      lastInbox = summary
+    elseif seen > 0 then
+      lastInbox = { shown = seen, total = rec.lastTotal or seen, partial = true }
+    else
+      return
+    end
+    lastInbox.at = rec.at
+  end
+
+  -----------------------------------------------------------
+  -- The report's block
+  -----------------------------------------------------------
+
+  local floor, format, concat = math.floor, string.format, table.concat
+
+  local function Ms(value)
+    value = tonumber(value) or 0
+    if value < 0.05 then return "0" end
+    if value < 10 then return (format("%.1f", value):gsub("%.0$", "")) end
+    return format("%d", floor(value + 0.5))
+  end
+
+  local function Triple(a, b)
+    local out = {}
+    for i = 1, #SLOW do
+      local x, y = a and a[i], b and b[i]
+      out[i] = (x and y) and format("%d", floor(y - x + 0.5)) or "?"
+    end
+    return concat(out, "/")
+  end
+
+  local function SlowDelta(rec)
+    local stop = rec.slowEnd
+    if not rec.ended then stop = SlowCounts() end
+    if not (rec.slow and stop) then return "slow n/a" end
+    return format("slow %s, %s, %s", Triple(rec.slow.app, stop.app),
+      Triple(rec.slow.all, stop.all), Triple(rec.slow.own, stop.own))
+  end
+
+  local function Timed(rec, kind, withMax)
+    local n = rec.n[kind] or 0
+    if n == 0 then return nil end
+    local text = format("%s %dx %sms", kind, n, Ms(rec.ms[kind]))
+    if withMax then text = text .. " max " .. Ms(rec.max[kind]) end
+    return text
+  end
+
+  local function OpenLine(rec)
+    local parts = {}
+    local function put(text) if text then parts[#parts + 1] = text end end
+
+    local span = rec.ended and rec.span or (Now() - rec.openedAt)
+    put(format("#%d %s %s %ds", rec.no, rec.at, rec.ended or "still open", floor(span + 0.5)))
+    -- The first update's reading and the last one's: the box as it arrived
+    -- and as it settled. (At the open itself it always reads empty.)
+    if rec.firstShown then
+      put(format("inbox %d/%d->%d/%d", rec.firstShown, rec.firstTotal, rec.lastShown, rec.lastTotal))
+    else
+      put(format("inbox %d/%d", rec.openShown or 0, rec.openTotal or 0))
+    end
+
+    if rec.show then
+      local stages = {}
+      for i = 1, #STAGES do
+        local ms = rec.stage[STAGES[i]]
+        if ms then stages[#stages + 1] = STAGES[i] .. " " .. Ms(ms) end
+      end
+      put(format("show %sms (%s)", Ms(rec.show), concat(stages, ", ")))
+    else
+      put("show unfinished")
+    end
+
+    local events = format("evt %d in %d frames", rec.evt, rec.frames)
+    if rec.firstEvt then
+      events = events .. format(" %.1f-%.1fs", rec.firstEvt, rec.lastEvt)
+    end
+    put(events .. ", sync " .. Ms(rec.ms.sync) .. "ms")
+
+    local refresh = Timed(rec, "refresh", true)
+    put(refresh and (refresh .. ", walk " .. Ms(rec.walk)) or "refresh 0")
+    local rows = Timed(rec, "rows")
+    put(rows and (rows .. ", " .. rec.binds .. " binds"))
+    put(Timed(rec, "capture"))
+    put(Timed(rec, "tab"))
+    if rec.items + rec.asks > 0 then
+      put(format("item events %d, asked %d (%d cold)", rec.items, rec.asks, rec.cold))
+    end
+    put(SlowDelta(rec))
+    if rec.longestKind then
+      put(format("longest step %sms %s", Ms(rec.longest), rec.longestKind))
+    end
+    return "  " .. concat(parts, " | ")
+  end
+
+  local function InboxLine()
+    local summary, when
+    local UI = ns.MailboxUI
+    if UI and type(UI.IsMailboxOpen) == "function" and UI.IsMailboxOpen() then
+      local ok, live = pcall(InboxSummary)
+      if ok and live then summary, when = live, "now" end
+    end
+    if not summary and lastInbox then
+      summary, when = lastInbox, "at the " .. tostring(lastInbox.at) .. " visit"
+    end
+    if not summary then return "  Inbox: no mailbox this session" end
+    if summary.partial then
+      return format("  Inbox %s: %d/%d (the rest was unreadable at close)",
+        when, summary.shown, summary.total)
+    end
+    return format("  Inbox %s: %d/%d | with items %d, slots %d, uncached %d | AH %d | C.O.D. %d | read+empty %d%s",
+      when, summary.shown, summary.total, summary.withItems, summary.slots,
+      summary.cold, summary.auction, summary.cod, summary.done,
+      summary.unloaded > 0 and (" | headers missing " .. summary.unloaded) or "")
+  end
+
+  local function ProfilerLines(add)
+    local api, why = Profiler()
+    if not api then
+      add("  Profiler: " .. why)
+      return
+    end
+    local now = SlowCounts() or {}
+    local function three(t)
+      local out = {}
+      for i = 1, #SLOW do out[i] = t and t[i] and format("%d", floor(t[i] + 0.5)) or "?" end
+      return concat(out, "/")
+    end
+    add(format("  Profiler this session, frames over 100/500/1000ms: game %s, addons %s, Postbox %s | Postbox peak %sms, recent avg %.2fms",
+      three(now.app), three(now.all), three(now.own),
+      Ms(Metric(api.GetAddOnMetric, ADDON_NAME, MetricId("PeakTime"))),
+      Metric(api.GetAddOnMetric, ADDON_NAME, MetricId("RecentAverageTime")) or 0))
+
+    if type(api.GetTopKAddOnsForMetric) == "function" then
+      local ok, top = pcall(api.GetTopKAddOnsForMetric, MetricId("PeakTime"), 5)
+      if ok and type(top) == "table" and #top > 0 then
+        local names = {}
+        for i = 1, #top do
+          local entry = top[i]
+          if type(entry) == "table" and type(entry.addOnName) == "string" then
+            names[#names + 1] = entry.addOnName .. " " .. Ms(entry.metricValue)
+          end
+        end
+        if #names > 0 then add("  Peak ms: " .. concat(names, ", ")) end
+      end
+    end
+  end
+
+  local function DataLine()
+    local parts = {}
+    local get = ns.Store and ns.Store.Get
+    if type(get) == "function" then
+      local alts, chars = get("alts"), 0
+      if type(alts) == "table" then
+        for _, names in pairs(alts) do
+          if type(names) == "table" then chars = chars + #names end
+        end
+      end
+      parts[#parts + 1] = chars .. " characters"
+
+      local memory, boxes, mails = get("mailMemory"), 0, 0
+      if type(memory) == "table" then
+        for _, byName in pairs(memory) do
+          if type(byName) == "table" then
+            for _, snap in pairs(byName) do
+              if type(snap) == "table" then
+                boxes = boxes + 1
+                if type(snap.mails) == "table" then mails = mails + #snap.mails end
+              end
+            end
+          end
+        end
+      end
+      parts[#parts + 1] = format("memory %d boxes, %d mails", boxes, mails)
+
+      local history, entries, most, bytes = get("mailHistory"), 0, 0, 0
+      if type(history) == "table" then
+        for _, byName in pairs(history) do
+          if type(byName) == "table" then
+            for _, list in pairs(byName) do
+              if type(list) == "table" then
+                entries = entries + #list
+                if #list > most then most = #list end
+                for i = 1, #list do
+                  local entry = list[i]
+                  if type(entry) == "table" and type(entry.b) == "string" then bytes = bytes + #entry.b end
+                end
+              end
+            end
+          end
+        end
+      end
+      parts[#parts + 1] = format("history %d (most %d), letters %d KB", entries, most, floor(bytes / 1024 + 0.5))
+    end
+
+    -- The first value only: GetNumGuildMembers and BNGetNumFriends both
+    -- return several, and it is the total that is wanted.
+    local function counted(label, fn)
+      if type(fn) ~= "function" then return end
+      local ok, n = pcall(fn)
+      n = ok and tonumber(n) or nil
+      parts[#parts + 1] = label .. " " .. (n and format("%d", n) or "?")
+    end
+    counted("stuck", ns.MailService and ns.MailService.StuckEntries)
+    if type(IsInGuild) == "function" and IsInGuild() then counted("guild", GetNumGuildMembers) end
+    counted("friends", type(C_FriendList) == "table" and C_FriendList.GetNumFriends)
+    counted("bnet", BNGetNumFriends)
+
+    -- Asked for here and only here: the update walks every addon's heap.
+    if type(UpdateAddOnMemoryUsage) == "function" and type(GetAddOnMemoryUsage) == "function" then
+      local updated = pcall(UpdateAddOnMemoryUsage)
+      local ok, kb = pcall(GetAddOnMemoryUsage, ADDON_NAME)
+      if updated and ok and tonumber(kb) then
+        parts[#parts + 1] = format("Postbox %d KB", floor(kb + 0.5))
+      end
+    end
+    return "  Data: " .. concat(parts, " | ")
+  end
+
+  -- The block, as lines. Each part is guarded on its own, so one that breaks
+  -- costs its line and not the others.
+  function Perf.ReportLines()
+    local lines = { "Performance:" }
+    local function add(text) lines[#lines + 1] = text end
+    local ok, text = pcall(InboxLine)
+    if ok then add(text) end
+    pcall(ProfilerLines, add)
+    ok, text = pcall(DataLine)
+    if ok then add(text) end
+
+    if count == 0 then
+      add("  Opens: none this session")
+      return lines
+    end
+    add(format("  Last %d opens (slow = frames over 100/500/1000ms in the window: game, addons, Postbox):",
+      math.min(count, KEEP)))
+    for n = math.max(1, count - KEEP + 1), count do
+      local rec = opens[(n - 1) % KEEP + 1]
+      local built, line = pcall(OpenLine, rec)
+      add(built and line or ("  #" .. n .. " unreadable"))
+    end
+    return lines
+  end
+end
+
+-------------------------------------------------------------
 -- 6. /postbox
 --
 -- A small diagnostic surface, not a settings interface -- the options live in
@@ -407,8 +963,9 @@ end
 
 -------------------------------------------------------------
 -- The diagnostic snapshot behind the bug-report window (and nothing else:
--- assembled on demand, no background collection). Deliberately English --
--- it exists to be pasted into a GitHub issue and read by the maintainer.
+-- assembled on demand; the one thing gathered ahead of it is section 5b's
+-- timing of mailbox opens). Deliberately English -- it exists to be pasted
+-- into a GitHub issue and read by the maintainer.
 --
 -- What goes in is decided by one test: could this line be the difference
 -- between reproducing the report and closing it as "cannot reproduce". Every
@@ -650,6 +1207,15 @@ local function BuildDiagnosticReport()
   -- three lines is worse than one without them.
   local gotNeighbours, neighbours = pcall(NeighbourAddons)
   if gotNeighbours and neighbours then add("Also loaded: " .. neighbours) end
+
+  -- What the last few mailbox opens cost, and what the game's own profiler
+  -- counted around them (section 5b). Numbers only, like the line above.
+  if type(Perf.ReportLines) == "function" then
+    local gotPerf, perfLines = pcall(Perf.ReportLines)
+    if gotPerf and type(perfLines) == "table" then
+      for i = 1, #perfLines do add(perfLines[i]) end
+    end
+  end
 
   -- Last, and last for a reason: it is the part a maintainer scrolls to, and
   -- anything appended below it would be missed.
