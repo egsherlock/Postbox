@@ -31,6 +31,9 @@ longer play.
   it wears its own Blizzard look, to match your other windows.
 - **EllesmereUI profile, Dark Mode and accent changes** reach an open mailbox
   straight away.
+- **Lighter on your game.** The mail list, History, Mail Memory and the Send
+  tab do far less work and leave a fraction of the memory garbage, so there is
+  less for the game to clean up while your inbox fills.
 - Also: the "Show on each mail" list moved from the options into the window,
   Mail Memory rows show the read mark, "Flash on new mail" greys out while
   the minimap icon is off, and the window border no longer offers "Match
