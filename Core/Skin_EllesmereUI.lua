@@ -659,11 +659,41 @@ function Skin.ApplyBgOpacity(frame)
       art:SetAlpha((opaque or OwnsFill(f)) and a or 0)
     end
 
+    -- The host's art is driven to the chosen alpha only where the HOST shows
+    -- it. EllesmereUI's shell carries both of its backdrops at once and picks
+    -- one by region alpha: under its Modern style it holds the atlas art and
+    -- its darkening overlay at 0 and shows a flat fill (WindowEngine's
+    -- ApplyShellStyle). Raising every region to the chosen alpha put the
+    -- EllesmereUI art back under the Modern fill.
+    --
+    -- The host writes only 0 or 1, and only when it restyles, so a region whose
+    -- alpha is no longer the one written here last was set by the host since:
+    -- that is when its shown/hidden state is re-read. First sight reads it
+    -- straight from the host. Under the EllesmereUI style every region is shown
+    -- and this is the same single SetAlpha it always was. The one case it
+    -- cannot see is a restyle while the window sits at 0% -- zero over zero --
+    -- which the next restyle or /reload settles.
     local hostArt = f.__pbEuiHostArt
     if hostArt then
+      local wrote, shown = f.__pbEuiArtWrote, f.__pbEuiArtShown
+      if not (wrote and shown) then
+        wrote, shown = {}, {}
+        f.__pbEuiArtWrote, f.__pbEuiArtShown = wrote, shown
+      end
       for i = 1, #hostArt do
         local region = hostArt[i]
-        if region and region.SetAlpha then region:SetAlpha(a) end
+        if region and region.SetAlpha then
+          local now = region.GetAlpha and region:GetAlpha()
+          local last = wrote[region]
+          if shown[region] == nil
+             or (type(now) == "number" and type(last) == "number"
+                 and math.abs(now - last) > 0.01) then
+            shown[region] = not (type(now) == "number" and now <= 0.01)
+          end
+          local target = shown[region] and a or 0
+          region:SetAlpha(target)
+          wrote[region] = target
+        end
       end
     end
 
