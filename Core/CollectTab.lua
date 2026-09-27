@@ -524,10 +524,12 @@ end
 -- scrolled that much further (six pixels at compact size), leaving air under
 -- the last row -- and a list that exactly fits showed a scroll bar. So after
 -- the template has written the client's range into the bar, the range is
--- held to the list's own height less the view, rounded down as the template
--- rounds the client's. It only ever lowers it.
-function RV.HoldRange(panel)
-  local scroll, child = panel.MailListScroll, panel.MailListChild
+-- held to the scroll child's own height less the view, rounded down as the
+-- template rounds the client's. It only ever lowers it. Hooked on
+-- OnScrollRangeChanged of the Mail tab's list and of Mail Memory's (through
+-- CT.RowRules), whose rows carry the same mark.
+function RV.HoldRange(scroll)
+  local child = scroll and scroll:GetScrollChild()
   local bar = scroll and scroll.ScrollBar
   if not (bar and child) then return end
   local most = max(0, floor((child:GetHeight() or 0) - (scroll:GetHeight() or 0)))
@@ -1570,6 +1572,7 @@ CT.RowRules = {
   WithMark = RV.WithMark,
   MarkOnName = RV.MarkOnName,
   PaintQuality = RV.PaintQuality,
+  HoldRange = RV.HoldRange,
 }
 
 -------------------------------------------------------------
@@ -6694,7 +6697,7 @@ function CT.Build(parent)
   scroll:HookScript("OnVerticalScroll", function() UpdateVisibleRows(panel) end)
   -- After the template's own handler, which sets the bar from the client's
   -- measure of the list (RV.HoldRange).
-  scroll:HookScript("OnScrollRangeChanged", function() RV.HoldRange(panel) end)
+  scroll:HookScript("OnScrollRangeChanged", RV.HoldRange)
 
   panel.Empty = T.CreateText(panel.MailListArea, "secondary")
   panel.Empty:SetPoint("TOPLEFT", panel.MailListArea, "TOPLEFT", M.inset * 2, -M.inset * 2)

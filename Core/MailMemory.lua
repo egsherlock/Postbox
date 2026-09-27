@@ -2403,6 +2403,12 @@ local function Build()
     if frame:IsShown() then BindRows(frame) end
   end)
   frame.Scroll:HookScript("OnVerticalScroll", function() BindRows(frame) end)
+  -- The list ends where its rows end, as the Mail tab's does: a quality mark
+  -- reaching past the last row's foot does not lengthen the scroll.
+  frame.Scroll:HookScript("OnScrollRangeChanged", function(self)
+    local R = Rules()
+    if R and R.HoldRange then R.HoldRange(self) end
+  end)
 
   frame.Rows = {}
   -- A click on a character's heading, among every box's matches.
