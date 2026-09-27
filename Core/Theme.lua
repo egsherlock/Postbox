@@ -1918,6 +1918,13 @@ local HINT_BACKDROP = {
 
 function Theme.ShowHint(owner, lines)
   if not owner or type(lines) ~= "table" then return end
+  -- Never while a mouse button is held: a resize drag moves the grip under
+  -- the cursor, and each time it slid back under it the hint reopened
+  -- mid-drag.
+  if type(IsMouseButtonDown) == "function"
+    and (IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton")) then
+    return
+  end
   local hint = Theme._hint
   if not hint then
     hint = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")

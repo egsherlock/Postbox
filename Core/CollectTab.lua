@@ -485,20 +485,13 @@ end
 -- MinWindowHeight takes the taller of this and the compose screen's demand), and
 -- the window cannot be dragged -- or restored from saved variables -- below it.
 --
--- THE MINIMUM IS ONE NUMBER FOR BOTH ROW LAYOUTS, and that is the point.
--- `compactRows` is a display preference; a display preference that resizes the
--- window is a preference that fights the size the player chose, and toggling it
--- twice would have to land back on the same window or it is worse still. So the
--- floor satisfies BOTH layouts at once and RowMetrics is deliberately not
--- consulted here: five compact rows and three standard ones, whichever of the
--- two wants more.
---
--- Five and three are the same judgement expressed in the two densities -- enough
--- rows that scrolling continues something rather than being the only way to see
--- anything -- and the two happen to land within a few pixels of each other. That
--- near-coincidence is a property of today's row heights and nothing to rely on,
--- which is why the max is taken from the LIVE metrics: retune either height and
--- both guarantees still hold, rather than one of them silently lapsing.
+-- The minimum is WHOLE ROWS OF THE ROW SIZE ON SCREEN: five compact rows, or
+-- three larger ones -- the same judgement in the two densities, enough rows
+-- that scrolling continues something rather than being the only way to see
+-- anything. (It was once one number for both layouts; whole rows in every
+-- combination won, 1.37.) The two land two pixels apart with today's heights
+-- (138 and 136), so a window standing on its floor moves by that much when
+-- the row size is switched -- Core/MailboxUI.lua's FollowFloor carries it.
 local COMPACT_MIN_ROWS  = 5
 local STANDARD_MIN_ROWS = 3
 
@@ -508,6 +501,15 @@ local STANDARD_MIN_ROWS = 3
 -- rows fitting and four rows plus a sliver.
 local function RowsHeight(rows, height)
   return rows * height + (rows - 1) * ROW_GAP
+end
+
+-- The same arithmetic for a list's content: n rows at this pitch are n rows
+-- and the n-1 gaps between them. The list used to be n pitches tall, a
+-- trailing gap after the last row that nothing needed -- and a list that
+-- exactly filled its floor then scrolled by those two pixels, bar and all.
+function RV.ListHeight(n, stride)
+  if n <= 0 then return 0 end
+  return n * stride - ROW_GAP
 end
 
 
@@ -3409,12 +3411,12 @@ function CT.RefreshMailList(panel)
     stride = COMPACT_ROW_HEIGHT + ROW_GAP
   end
   RV.ApplyFooter(panel)
-  panel.MailListChild:SetHeight(max(listed * stride, 1))
+  panel.MailListChild:SetHeight(max(RV.ListHeight(listed, stride), 1))
 
   -- A shorter list can leave the scroll offset past the new end, which would
   -- render an empty viewport over a list that has content.
   local scroll = panel.MailListScroll
-  local maxScroll = max(0, listed * stride - (scroll:GetHeight() or 0))
+  local maxScroll = max(0, RV.ListHeight(listed, stride) - (scroll:GetHeight() or 0))
   if (scroll:GetVerticalScroll() or 0) > maxScroll then scroll:SetVerticalScroll(maxScroll) end
   if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
 
@@ -3495,7 +3497,7 @@ function CT.ApplyRowLayout(panel)
   elseif panel.viewMode == VIEW_HISTORY then
     listed = #panel._history
   end
-  local maxScroll = max(0, listed * stride - (scroll:GetHeight() or 0))
+  local maxScroll = max(0, RV.ListHeight(listed, stride) - (scroll:GetHeight() or 0))
   scroll:SetVerticalScroll(min(anchor * stride, maxScroll))
   if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
   -- Explicit rather than left to the scroll frame's own handler: that fires only
@@ -5491,7 +5493,7 @@ function CT.Build(parent)
     local at = panel._dividerAt
     if not at then return end
     local _, _, stride = RowMetrics()
-    local maxScroll = max(0, #panel._filtered * stride - (scroll:GetHeight() or 0))
+    local maxScroll = max(0, RV.ListHeight(#panel._filtered, stride) - (scroll:GetHeight() or 0))
     scroll:SetVerticalScroll(min((at - 1) * stride, maxScroll))
     UpdateVisibleRows(panel)
   end)

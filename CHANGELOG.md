@@ -7,6 +7,12 @@
 - The button on the "Read, nothing left" divider now says **Delete all**, so
   it is clear it removes every read mail at once.
 
+### Fixed
+
+- A list whose mails all fit on screen no longer shows a scroll bar that
+  scrolls by only a couple of pixels.
+- The resize grip's hint no longer pops back up while you are dragging.
+
 ## 1.40.0
 
 **The biggest Postbox update yet.** Every character's mailbox in one place, a
