@@ -368,6 +368,10 @@ end
 -- StaticPopup does not read the field and no longer defines
 -- STATICPOPUP_NUMDIALOGS, so every one of them was writing nil. See
 -- Core/CollectTab.lua's fuller note.
+--
+-- Every dialog here is shown from this window, which is FULLSCREEN_DIALOG
+-- strata, a step above where a popup opens: each show is lifted over it
+-- (Theme.LiftPopup), or it would open behind the window that asked.
 local function Notice(message)
   local text = tostring(message or "")
   if type(StaticPopup_Show) == "function" and type(StaticPopupDialogs) == "table" then
@@ -380,7 +384,7 @@ local function Notice(message)
         hideOnEscape = true,
       }
     end
-    StaticPopup_Show(NOTICE_POPUP, text)
+    Theme.LiftPopup(StaticPopup_Show(NOTICE_POPUP, text))
     return
   end
   ns.Print(text)
@@ -1583,8 +1587,8 @@ function RM.ConfirmDelete(key, display)
     RM.DeleteRecipient(key, display)
     return
   end
-  StaticPopup_Show(DELETE_POPUP, L("RM_DELETE_CONFIRM", display or key), nil,
-                   { key = key, display = display })
+  Theme.LiftPopup(StaticPopup_Show(DELETE_POPUP, L("RM_DELETE_CONFIRM", display or key), nil,
+                                   { key = key, display = display }))
 end
 
 function RM.DeleteRecipient(key, display)
@@ -1600,8 +1604,8 @@ end
 function RM.EditNote(key, display, note)
   if not key then return end
   if not EnsureNoteDialog() or type(StaticPopup_Show) ~= "function" then return end
-  StaticPopup_Show(NOTE_POPUP, L("RM_NOTE_TITLE", display or key), nil,
-                   { key = key, note = note })
+  Theme.LiftPopup(StaticPopup_Show(NOTE_POPUP, L("RM_NOTE_TITLE", display or key), nil,
+                                   { key = key, note = note }))
 end
 
 function RM.SetNote(key, text)
@@ -1661,7 +1665,7 @@ function RM.Bulk(hide)
   -- rather than to whatever is listed when OK is pressed.
   local msg = hide and L("RM_BULK_HIDE_CONFIRM", #keys, scope)
                     or L("RM_BULK_SHOW_CONFIRM", #keys, scope)
-  StaticPopup_Show(BULK_POPUP, msg, nil, { hide = hide, keys = keys })
+  Theme.LiftPopup(StaticPopup_Show(BULK_POPUP, msg, nil, { hide = hide, keys = keys }))
 end
 
 -- Total manageable recipients, for the options-panel button badge.
@@ -2025,7 +2029,7 @@ local function Build()
   addButton:SetText(addButton.caption)
   addButton:SetScript("OnClick", function()
     if not EnsureAddDialog() or type(StaticPopup_Show) ~= "function" then return end
-    StaticPopup_Show(ADD_POPUP, L["RM_ADD_TITLE"])
+    Theme.LiftPopup(StaticPopup_Show(ADD_POPUP, L["RM_ADD_TITLE"]))
   end)
 
   -- Right-most control stops short of the resize grip in the corner.

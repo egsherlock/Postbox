@@ -58,7 +58,9 @@ local function EnsureStyleDialog()
     timeout = 0,
     whileDead = true,
     hideOnEscape = true,
-    -- Above the options panel, which is FULLSCREEN_DIALOG strata.
+    -- Not what puts it above the options panel, which is FULLSCREEN_DIALOG
+    -- strata: 12.x's StaticPopup does not read this. Every show is lifted
+    -- (Theme.LiftPopup).
     preferredIndex = 3,
   }
   return true
@@ -692,7 +694,7 @@ local function Build()
           -- line telling the player to go and type one -- and Later is a
           -- real answer: the setting is already saved either way.
           if EnsureStyleDialog() then
-            StaticPopup_Show(POPUP_STYLE_RELOAD)
+            ns.Theme.LiftPopup(StaticPopup_Show(POPUP_STYLE_RELOAD))
           else
             ns.Print(L["MSG_STYLE_RELOAD"])
           end
@@ -1441,16 +1443,6 @@ local function Build()
   do
     local POPUP_RESET = "POSTBOX_RESET_SETTINGS"
 
-    -- A static popup is DIALOG strata and this panel FULLSCREEN_DIALOG, so
-    -- one shown from here opens BEHIND the panel. Lifted for as long as it
-    -- is up; the popup code sets the strata afresh on its next show.
-    local function Lift(dialog)
-      if dialog and dialog.SetFrameStrata then
-        dialog:SetFrameStrata("FULLSCREEN_DIALOG")
-        dialog:Raise()
-      end
-    end
-
     local function ResetNow()
       local UI = ns.MailboxUI
       if not (UI and type(UI.ResetSettings) == "function") then return end
@@ -1460,7 +1452,7 @@ local function Build()
       -- a style change makes.
       if styleChanged then
         if EnsureStyleDialog() then
-          Lift(StaticPopup_Show(POPUP_STYLE_RELOAD))
+          ns.Theme.LiftPopup(StaticPopup_Show(POPUP_STYLE_RELOAD))
         else
           ns.Print(L["MSG_STYLE_RELOAD"])
         end
@@ -1507,7 +1499,7 @@ local function Build()
 
     reset:SetScript("OnClick", function()
       if EnsureResetDialog() then
-        Lift(StaticPopup_Show(POPUP_RESET, L["MSG_RESET_CONFIRM"]))
+        ns.Theme.LiftPopup(StaticPopup_Show(POPUP_RESET, L["MSG_RESET_CONFIRM"]))
       end
     end)
     reset:SetScript("OnEnter", function(self)

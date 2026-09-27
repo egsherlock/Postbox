@@ -701,8 +701,9 @@ local function DeleteSelected(frame)
     Remove()
     return
   end
-  StaticPopup_Show(POPUP_DELETE, L("GROUPS_DELETE_CONFIRM", CG.DisplayName(group)), nil,
-    { onConfirm = Remove })
+  -- Lifted over this window, which is a strata above where a popup opens.
+  ns.Theme.LiftPopup(StaticPopup_Show(POPUP_DELETE, L("GROUPS_DELETE_CONFIRM", CG.DisplayName(group)), nil,
+    { onConfirm = Remove }))
 end
 
 -- The selection's look, as the Mail tab's selected rows wear it: the accent

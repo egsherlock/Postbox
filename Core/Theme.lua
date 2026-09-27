@@ -1207,6 +1207,20 @@ function Theme.ApplyCard(frame)
   if frame and (frame.__pbPopupAlways or Floats(frame)) then PinPopupOpacity(frame) end
 end
 
+-- A static popup opens at DIALOG strata, so one asked for from a window at
+-- FULLSCREEN_DIALOG -- the options panel, the groups window, the recipient
+-- manager -- opens BEHIND it. Pass it what StaticPopup_Show returned: it is
+-- lifted to that strata for as long as it is up, and Blizzard's popup code
+-- sets the strata afresh on its next show. Methods only: nothing is written
+-- onto Blizzard's frame.
+function Theme.LiftPopup(dialog)
+  if dialog and dialog.SetFrameStrata then
+    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+    dialog:Raise()
+  end
+  return dialog
+end
+
 -- The totals banner, and nothing else. A divider, not a panel; the skins treat
 -- `band` differently, with no inset.
 function Theme.ApplyBand(frame)
