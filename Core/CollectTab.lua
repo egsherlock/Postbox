@@ -518,6 +518,24 @@ function RV.ListHeight(n, stride)
   return n * stride - ROW_GAP
 end
 
+-- The scroll ends where that height ends. The client measures a scroll child
+-- by everything drawn in it, and a row's quality mark reaches past the row's
+-- foot: on the list's last row it reached past the list's, and the list
+-- scrolled that much further (six pixels at compact size), leaving air under
+-- the last row -- and a list that exactly fits showed a scroll bar. So after
+-- the template has written the client's range into the bar, the range is
+-- held to the list's own height less the view, rounded down as the template
+-- rounds the client's. It only ever lowers it.
+function RV.HoldRange(panel)
+  local scroll, child = panel.MailListScroll, panel.MailListChild
+  local bar = scroll and scroll.ScrollBar
+  if not (bar and child) then return end
+  local most = max(0, floor((child:GetHeight() or 0) - (scroll:GetHeight() or 0)))
+  local low, high = bar:GetMinMaxValues()
+  if (high or 0) > most then bar:SetMinMaxValues(low or 0, most) end
+  if (scroll:GetVerticalScroll() or 0) > most then scroll:SetVerticalScroll(most) end
+end
+
 
 -- THE PANEL'S FLOOR. Frozen: Core/MailboxUI.lua adds the window's chrome to this
 -- and makes the sum the window's minimum height.
@@ -6674,6 +6692,9 @@ function CT.Build(parent)
     UpdateVisibleRows(panel)
   end)
   scroll:HookScript("OnVerticalScroll", function() UpdateVisibleRows(panel) end)
+  -- After the template's own handler, which sets the bar from the client's
+  -- measure of the list (RV.HoldRange).
+  scroll:HookScript("OnScrollRangeChanged", function() RV.HoldRange(panel) end)
 
   panel.Empty = T.CreateText(panel.MailListArea, "secondary")
   panel.Empty:SetPoint("TOPLEFT", panel.MailListArea, "TOPLEFT", M.inset * 2, -M.inset * 2)
