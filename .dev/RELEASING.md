@@ -126,17 +126,21 @@ existing files needs `/reload`.** Worth saying in the release notes when it appl
 
 The branches match CurseForge's channels (CLAUDE.md, Workflow):
 
-| Branch  | Holds                                         | Tags                | Channel |
-|---------|-----------------------------------------------|---------------------|---------|
-| `main`  | what players have                             | `v1.40.2`           | Release |
-| `beta`  | the next release: fixes, and finished features | `v1.40.2-beta.1`    | Beta    |
-| `alpha` | new features being built and iterated          | `v1.41.0-alpha.1`   | Alpha   |
+| Branch  | Holds                                                       | Tags              | Channel |
+|---------|-------------------------------------------------------------|-------------------|---------|
+| `main`  | what players have                                           | `v1.40.2`         | Release |
+| `beta`  | the next release, tested by players: fixes, and features the maintainer has tested locally | `v1.41.0-beta.1` | Beta |
+| `alpha` | new features being built, tested by the maintainer's dev builds | `v1.41.0-alpha.1` | Alpha |
 
 **Fixes** are made on `beta`, tagged `-beta.N` if someone needs to test them, and
-shipped as in *Cutting the release*. **Features** are built on `alpha`; when a set
-is ready for wider testing, `alpha` is merged into `beta`, and it ships from there.
-Whenever `beta` moves, it is merged into `alpha`, so the feature line always
-carries every fix. Nothing is committed to `main` directly.
+shipped as in *Cutting the release*. **Features** are built on `alpha` and move to
+`beta` only once they are fleshed out and the maintainer has tested them locally;
+beta is where adventurous players try them before everyone does, and a bigger or
+more ambitious feature gets at least one beta round before `main`. Whenever `beta`
+moves, it is merged into `alpha`, so the feature line always carries every fix.
+Nothing is committed to `main` directly. A live fix that cannot wait for the
+features on `beta` goes out from a short branch off `main` (1.40.2 did), after
+which that branch is merged into `beta`.
 
 Tagging a pre-release, from its own branch:
 

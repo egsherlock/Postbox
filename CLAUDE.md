@@ -26,14 +26,20 @@ trailers. This applies whatever the tooling's own defaults are.
   - `main` is what players have. It moves only when a version ships:
     fast-forwarded to `beta` and tagged (`v1.40.2`, Release channel). Nothing is
     committed to it directly.
-  - `beta` is the next release: fixes, and features that are finished. Beta
-    tags (`v1.40.2-beta.1`) go to the Beta channel for testers.
-  - `alpha` is where new features are built and iterated. Alpha tags
-    (`v1.41.0-alpha.1`) go to the Alpha channel.
-- **Fixes go on `beta`; features go on `alpha`.** A finished feature set is
-  merged from `alpha` into `beta` for wider testing and ships from there.
-  Whenever `beta` moves, it is merged into `alpha`, so the feature line always
-  carries every fix.
+  - `beta` is the next release, tested by real players: fixes, and features
+    that are fleshed out and have passed the maintainer's own local testing.
+    Beta tags (`v1.41.0-beta.1`) go to the Beta channel, so adventurous
+    players can try them before they reach everyone.
+  - `alpha` is where new features are built and iterated, tested by the
+    maintainer through dev builds. Alpha tags (`v1.41.0-alpha.1`) go to the
+    Alpha channel.
+- **Fixes go on `beta`; features go on `alpha`.** A feature moves from `alpha`
+  to `beta` only once it is fleshed out and the maintainer has tested it
+  locally. Bigger or more ambitious features get at least one beta round with
+  players before `main`. Whenever `beta` moves, it is merged into `alpha`, so
+  the feature line always carries every fix. If a live fix is urgent while
+  `beta` holds features still under test, raise it before choosing how to ship
+  it (a short branch off `main`, as 1.40.2 was, is the usual answer).
 - **Branches are pushed as work lands**, so GitHub mirrors what is being built.
   Tags publish to players and are cut only on the maintainer's word.
 - **No other long-lived branches, no pull requests for our own work.** Short
