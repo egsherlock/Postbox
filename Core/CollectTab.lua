@@ -178,25 +178,39 @@ end
 function RV.PaintQuality(row, mark)
   local atlas = type(mark) == "string" and mark:match("|A:([^:|]+)") or nil
   if not (atlas and row.Icon and RV.MarkOnIcon()) then
-    if row.Quality then row.Quality:Hide() end
+    if row.QualityHolder then row.QualityHolder:Hide() end
     return
   end
-  if not row.Quality then
-    row.Quality = row:CreateTexture(nil, "OVERLAY", nil, 2)
+  if not row.QualityHolder then
+    -- On a frame of its own, a level above the row: the mark reaches past
+    -- the row's foot, and the next row's ground must not paint over it.
+    local holder = CreateFrame("Frame", nil, row)
+    holder:SetAllPoints(row)
+    holder:SetFrameLevel(row:GetFrameLevel() + 2)
+    -- A soft dark copy just behind it, so the mark reads on light item art.
+    row.QualityShadow = holder:CreateTexture(nil, "ARTWORK")
+    row.QualityShadow:SetAlpha(0.6)
+    row.Quality = holder:CreateTexture(nil, "OVERLAY")
+    row.QualityHolder = holder
   end
   local small = Th().FirstAtlas({ (atlas:gsub("ChatIcon", "Icon")) .. "-Small", atlas })
   row.Quality:SetAtlas(small or atlas, false)
-  -- Most of the icon's lower-right, and out past its corner a little. The
-  -- small compact icon takes a mark nearly its own size (anything less was
-  -- a speck); the two-line row's larger icon a little under it.
+  row.QualityShadow:SetAtlas(small or atlas, false)
+  row.QualityShadow:SetVertexColor(0, 0, 0, 1)
+  -- The icon's lower-right corner and out past it. The small compact icon
+  -- takes a mark a little larger than itself (at its own size it was hard
+  -- to see); the two-line row's larger icon a little under its own.
   local iconSize = row.Icon:GetWidth() or 18
-  local share = (iconSize <= 20) and 1.0 or 0.9
+  local share = (iconSize <= 20) and 1.2 or 0.9
   local size = max(15, floor(iconSize * share + 0.5))
-  local bleed = floor(size * 0.3 + 0.5)
+  local bleed = floor(size * 0.3 + 0.5) + 2
   row.Quality:SetSize(size, size)
   row.Quality:ClearAllPoints()
   row.Quality:SetPoint("BOTTOMRIGHT", row.Icon, "BOTTOMRIGHT", bleed, -bleed)
-  row.Quality:Show()
+  row.QualityShadow:SetSize(size + 2, size + 2)
+  row.QualityShadow:ClearAllPoints()
+  row.QualityShadow:SetPoint("CENTER", row.Quality, "CENTER", 0, -1)
+  row.QualityHolder:Show()
 end
 
 -- text, mark -> the text with the mark after the item's name and before a

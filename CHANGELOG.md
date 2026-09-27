@@ -77,7 +77,7 @@
   "Mail (23)"; off, it wears a dot while there is mail to collect. The
   separate Mail tab caption setting is gone.
 - **Mail Memory matches the mail list:** auction mail reads "AH Sold" and
-  "AH Won" in colour with the item's name, in the same columns, following the
+  "AH Bought" in colour with the item's name, in the same columns, following the
   same switches. Its window can be made wider, and searching for "sold" or
   "AH" now finds auction mail in the Inbox and History too.
 - **Options fit on screen again**, in two even columns. Mail Memory has its
@@ -89,7 +89,8 @@
   hovering the resize grip (in both windows) says what dragging and a
   right-click do; a right-click resets Mail Memory's size too. Search boxes
   have a small clear button while they hold text, and a cancelled auction's
-  row reads "AH Cancel".
+  row reads "AH Cancel". "AH Won" is "AH Bought" again, and its button "All
+  bought".
 
 ### Fixed
 
