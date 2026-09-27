@@ -75,6 +75,8 @@ longer play.
 - **A C.O.D. mail with several items comes out whole.** After you confirm
   the payment, every item is collected in one go; before, only the first
   came out and the rest waited in the mail for another click.
+- Taking one item from a C.O.D. mail in the reading view keeps the mail
+  open for the rest, each a click with no second question.
 - Collecting auction house mail no longer flashes a "Read, nothing left (1)"
   bar (or Done (1)) at the foot of the list, with Inbox one too high, for a
   mail the game was already deleting.
