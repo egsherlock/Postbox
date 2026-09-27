@@ -82,7 +82,7 @@ into the zip. The GitHub release body is the same generated text, not the versio
 own section.
 
 - **The tag must match the newest heading.** `v1.40.2` needs `## 1.40.2` on top; a
-  beta tag needs the version it will ship as (`v1.41.0-beta.1` → `## 1.41.0`).
+  pre-release tag needs the version it will ship as (`v1.41.0-alpha.1` → `## 1.41.0`).
   Otherwise the workflow stops before anything is built or uploaded: write the
   section, delete the tag (`git tag -d vX.Y.Z && git push origin :vX.Y.Z`), and tag
   again.
@@ -95,15 +95,18 @@ own section.
 
 ## Cutting the release
 
-Everything is built and tested on `beta`. A release is `beta` merged into `main`
-and the version tagged on `main`:
+A release is `main` fast-forwarded to `beta` and the version tagged on `main`;
+then `beta` is merged into `alpha` so the feature line carries everything that
+shipped:
 
 ```
 git checkout main
 git merge --ff-only beta
 git tag vX.Y.Z
 git push origin main vX.Y.Z
-git checkout beta
+git checkout alpha
+git merge beta
+git push origin alpha
 ```
 
 `--ff-only` because `main` never holds anything `beta` lacks. If it refuses,
@@ -119,15 +122,27 @@ and say so in the changelog either way.
 existing files needs `/reload`.** Worth saying in the release notes when it applies
 — v1.32.0 looked broken until a reload.
 
-## Betas
+## Three branches, three channels
 
-A beta is a tag with `beta` in its name, cut from the **`beta` branch**, where all
-work is built and tested (CLAUDE.md, Workflow). Nothing to switch on at CurseForge
-or GitHub:
+The branches match CurseForge's channels (CLAUDE.md, Workflow):
+
+| Branch  | Holds                                         | Tags                | Channel |
+|---------|-----------------------------------------------|---------------------|---------|
+| `main`  | what players have                             | `v1.40.2`           | Release |
+| `beta`  | the next release: fixes, and finished features | `v1.40.2-beta.1`    | Beta    |
+| `alpha` | new features being built and iterated          | `v1.41.0-alpha.1`   | Alpha   |
+
+**Fixes** are made on `beta`, tagged `-beta.N` if someone needs to test them, and
+shipped as in *Cutting the release*. **Features** are built on `alpha`; when a set
+is ready for wider testing, `alpha` is merged into `beta`, and it ships from there.
+Whenever `beta` moves, it is merged into `alpha`, so the feature line always
+carries every fix. Nothing is committed to `main` directly.
+
+Tagging a pre-release, from its own branch:
 
 ```
 git checkout beta
-git tag v1.41.0-beta.1 && git push origin v1.41.0-beta.1
+git tag v1.40.2-beta.1 && git push origin v1.40.2-beta.1
 ```
 
 The packager decides the channel from the tag's text: `beta` makes a CurseForge Beta
@@ -135,23 +150,19 @@ file and a GitHub pre-release, `alpha` the same one step quieter, and anything e
 (`-rc` included) is a full release that everyone is offered. Nothing compares version
 numbers: managers offer the newest file the player's channel allows, by date.
 
-- **Who sees it.** Only players who opted in. WowUp's CurseForge build and Wago:
-  right-click the addon → Channel → Beta. WowUp installing from GitHub has no
-  per-addon channel; its installation-wide *Default Addon Channel* decides, for
-  every GitHub addon in that install.
-- **Numbering.** `-beta.1`, `-beta.2`, … then the plain tag. Testers are moved onto
-  the full release the moment it is published.
-- **Changelog.** Betas add to the coming version's section, whose heading is the
-  version it will ship as (`## 1.41.0`), not the beta number; the workflow refuses
-  a beta tag without it. Each beta uploads what that section holds so far and the
-  four versions before it, then the link, like any release.
-- **A beta ready for everyone.** It ships as in *Cutting the release*: `beta` into
-  `main`, the full version (`v1.41.0`) tagged on `main`. `beta` carries on from
-  there for the next one.
-- **A fix for the live release.** Made and tested on `beta` like everything else,
-  and shipped with the next version. Nothing is committed to `main` directly. If a
-  live fix is urgent while `beta` carries work that is not ready for everyone,
-  raise it before choosing how to ship it.
+- **Who sees it.** Only players who opted in, and an Alpha player sees Betas and
+  Releases too. WowUp's CurseForge build and Wago: right-click the addon → Channel.
+  The CurseForge app: the addon's release-type setting. WowUp installing from
+  GitHub has no per-addon channel; its installation-wide *Default Addon Channel*
+  decides, for every GitHub addon in that install. Wago uploads are not wired yet
+  (no `X-Wago-ID`, secret commented out in the workflow).
+- **Numbering.** `-beta.1`, `-beta.2`, … (`-alpha.N` likewise), then the plain tag.
+  Testers are moved onto the full release the moment it is published; tell a
+  tester who switched channel for one fix to switch back.
+- **Changelog.** Pre-releases add to the coming version's section, whose heading is
+  the version it will ship as (`## 1.41.0`), not the pre-release number; the
+  workflow refuses a tag without it. Each uploads what that section holds so far
+  and the four versions before it, then the link, like any release.
 - **One tester, one question.** Every GitHub release carries its zip; a link to the
   pre-release page is enough for someone who installs by hand.
 
