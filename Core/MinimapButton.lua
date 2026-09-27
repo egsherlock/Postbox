@@ -475,7 +475,7 @@ local function ApplyEuiSkin()
   local prefs = Settings()
   local spec = ICONS[prefs.icon] or ICONS[DEFAULTS.icon]
   local r, g, b = 1, 1, 1
-  if prefs.accent ~= false then r, g, b = ns.Theme.GetAccent() end
+  if prefs.accent == true then r, g, b = ns.Theme.GetAccent() end
   local side, artW, artH = EuiArtSize(btn, icon)
 
   if prefs.icon == "blizzard" then
@@ -791,7 +791,7 @@ local function ApplyLook(button)
   -- EllesmereUI accent when that skin is active, Postbox's own otherwise.
   -- Untintable art keeps its colours and only the glow carries the accent.
   local r, g, b = 1, 1, 1
-  if prefs.accent ~= false then
+  if prefs.accent == true then
     r, g, b = ns.Theme.GetAccent()
   end
   if spec.tintable then
@@ -1310,7 +1310,8 @@ function MB.SetIconSize(px)
   Refresh()
 end
 
-function MB.GetAccentTint() return Settings().accent ~= false end
+-- Off unless switched on, as DEFAULTS has it.
+function MB.GetAccentTint() return Settings().accent == true end
 
 function MB.SetAccentTint(on)
   Settings().accent = on == true
