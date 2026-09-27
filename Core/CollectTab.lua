@@ -5520,9 +5520,24 @@ function RV.GridClick(panel, id)
   StartCategoryRun(panel, id)
 end
 
+-- A sweep's right-click: the groups window beside the Postbox window, on
+-- this group for a group's button, on the one it last showed for From alts.
+-- Nothing for the other sweeps, and nothing while arranging, where a click
+-- in the grid means the arrangement.
+function RV.GridEdit(panel, id)
+  if panel._gridArranging then return end
+  if not (panel._gridSpecs[id] or id == "alts") then return end
+  local groups = ns.CharacterGroups
+  if not (groups and type(groups.OpenEditor) == "function") then return end
+  local UI = ns.MailboxUI
+  local ok, err = pcall(groups.OpenEditor, id ~= "alts" and id or nil, UI and UI._frame)
+  if not ok and type(geterrorhandler) == "function" then geterrorhandler()(err) end
+end
+
 -- The tooltip a sweep says: a group's own, the two sweeps whose names do
 -- not say exactly what they cover, or the whole of a cut caption. In the
--- arrange mode every button says what a drag and a click do there.
+-- arrange mode every button says what a drag and a click do there, and
+-- nothing about a right-click, which does nothing there.
 function RV.GridTip(panel, button)
   local arranging = panel._gridArranging
   local spec = panel._gridSpecs[button.gridId]
@@ -5531,12 +5546,17 @@ function RV.GridTip(panel, button)
   if plain and not button.__pbOverflowText and not arranging then return end
   GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
   GameTooltip:ClearLines()
-  if spec and type(spec.tooltip) == "function" then
+  if spec and type(spec.tooltip) == "function" and not arranging then
     local ok = pcall(spec.tooltip, GameTooltip)
     if not ok then GameTooltip:SetText(button.caption or "") end
   elseif button.tip then
     GameTooltip:SetText(button.caption)
     GameTooltip:AddLine(button.tip, 1, 1, 1, true)
+    -- From alts says it can be split into the player's own groups.
+    local groups = ns.CharacterGroups
+    if button.gridId == "alts" and not arranging and groups and type(groups.AltsTooltip) == "function" then
+      pcall(groups.AltsTooltip, GameTooltip)
+    end
   elseif button.__pbOverflowText then
     Th().AddOverflowLine(button, GameTooltip)
   else
@@ -5568,6 +5588,15 @@ function RV.GridButton(panel, id)
   button:SetScript("OnClick", function(self) RV.GridClick(panel, self.gridId) end)
   button:SetScript("OnEnter", function(self) RV.GridTip(panel, self) end)
   button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  -- The right-click rides on the mouse-up, which a button greyed at 0 still
+  -- gets and its click does not: a group with nothing to collect right now
+  -- is still one to edit. Those two buttons say so on hover when greyed too.
+  button:HookScript("OnMouseUp", function(self, mouse)
+    if mouse == "RightButton" and self:IsMouseOver() then RV.GridEdit(panel, self.gridId) end
+  end)
+  if (spec or id == "alts") and button.SetMotionScriptsWhileDisabled then
+    button:SetMotionScriptsWhileDisabled(true)
+  end
   button:Hide()
   panel._gridById[id] = button
   -- Made after the window's skin pass: it takes the host's look now, as its

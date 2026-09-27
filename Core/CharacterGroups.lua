@@ -24,8 +24,8 @@ local _, ns = ...
 --                   exclusion, stuck registry, the lot.
 --   3. THE EDITOR   one window to create, name, fill, reorder and delete the
 --                   groups, opened from the options panel's Mail tab card
---                   (and, once the grid wires it, by right-clicking a group's
---                   button or From alts).
+--                   and by right-clicking a group's button or From alts in
+--                   the grid (CollectTab, RV.GridEdit).
 --
 -- Nothing here runs away from a mailbox or the editor: no events, no timers.
 -- =====================================================================
