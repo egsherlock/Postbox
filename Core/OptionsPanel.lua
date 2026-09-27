@@ -504,9 +504,22 @@ local function Build()
         function() return ns.MinimapButton and ns.MinimapButton.GetAlertSound() end,
         function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertSound(on) end end)
 
-  cy = AddCheckbox(card, cy, L["OPT_ALERT_FLASH_TITLE"], L["OPT_ALERT_FLASH_DESC"],
+  local flashCheck
+  cy, flashCheck = AddCheckbox(card, cy, L["OPT_ALERT_FLASH_TITLE"], L["OPT_ALERT_FLASH_DESC"],
         function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
         function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end)
+
+  -- The flash is drawn on the minimap icon, so with the icon off it has
+  -- nothing to draw on: greyed in colour and alpha, as the icon's own card
+  -- greys, and not clickable -- its tooltip still says why. Painted with
+  -- that card, from the Minimap section's switch (UpdateMinimapCardState).
+  if flashCheck.SetMotionScriptsWhileDisabled then flashCheck:SetMotionScriptsWhileDisabled(true) end
+  local function PaintFlashState(on)
+    flashCheck:SetEnabled(on)
+    flashCheck:SetAlpha(on and 1 or 0.4)
+    flashCheck.__label:SetAlpha(on and 1 or 0.4)
+    ns.Theme.SetColor(flashCheck.__label, on and "accent" or "textDisabled")
+  end
 
 
   y = EndSection(col, card, y)
@@ -1376,6 +1389,7 @@ local function Build()
         and ns.MinimapButton.GetEnabled()
       mmCard:SetAlpha(on and 1 or 0.4)
       blocker:SetShown(not on)
+      PaintFlashState(on and true or false)
       -- A disabled card must not keep moving: the preview's pulse animation
       -- plays on regardless of frame alpha, so it is stopped here and
       -- re-derived from the settings when the feature comes back on.
