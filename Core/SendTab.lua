@@ -4027,6 +4027,25 @@ function ST.DeactivateNativeSendMail()
   if ST._greyed then RepaintContainers() end
 end
 
+-- The compose panel going away (its OnHide). A switch to the Mail tab with
+-- quick attach on leaves the flag up: the switch arms it for the Mail tab as
+-- the next thing it does (MailboxUI's ApplyMailTabAttach), and dropping it
+-- here first made two calls for no change -- two context redraws in every
+-- bag addon that follows the flag, and Baganator lays its view out afresh on
+-- each. The overlays go either way; a close, the window hidden by Escape,
+-- or a switch with quick attach off still disarms.
+function ST.LeaveSendTab()
+  ST.ClearBagOverlays()
+  local UI = ns.MailboxUI
+  local state = type(UI) == "table" and UI._state
+  local frame = type(UI) == "table" and UI._frame
+  local handedOver = type(state) == "table" and state.activeTab ~= "send"
+    and type(UI.IsMailboxOpen) == "function" and UI.IsMailboxOpen()
+    and type(frame) == "table" and frame:IsShown()
+    and type(UI.GetOption) == "function" and UI.GetOption("attachFromMail")
+  if not handedOver then ST.DeactivateNativeSendMail() end
+end
+
 end -- sections 17 and 18
 
 -------------------------------------------------------------
@@ -5632,8 +5651,7 @@ local function InstallEvents(panel)
     for i = 1, #VISIBILITY_EVENTS do self:UnregisterEvent(VISIBILITY_EVENTS[i]) end
 
     CloseOtherLists(self)
-    ST.ClearBagOverlays()
-    ST.DeactivateNativeSendMail()
+    ST.LeaveSendTab()
     -- Never leave C.O.D. / attached money armed on a tab the user has left. Any
     -- send sets both explicitly anyway, so this costs nothing and closes the
     -- window where an abandoned draft could influence a later mail.
