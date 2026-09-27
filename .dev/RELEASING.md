@@ -45,6 +45,9 @@ small cosmetic changes can share one un-bolded bullet at the end of Improved. Tw
 bullets is too many: if a release has that many, group them. The GitHub release
 notes are the version's section verbatim (`gh release edit vX.Y.Z --notes-file`
 if they need correcting after the tag; CurseForge's copy is edited on its site).
+A patch that follows a big release closely may carry that release's section
+too, below its own (v1.40.1 did): a player updating straight from the release
+before reads what they are actually getting.
 
 **Lead with the effect, not the cause.** Someone scanning the list wants to know
 whether this release fixes the thing that annoyed them.
@@ -81,10 +84,12 @@ existing files needs `/reload`.** Worth saying in the release notes when it appl
 
 ## Betas
 
-A beta is a tag with `beta` in its name, cut from `main` like any other. No branch,
-nothing to switch on at CurseForge or GitHub:
+A beta is a tag with `beta` in its name, cut from the **`beta` branch**, where new
+features are built (CLAUDE.md, Workflow). Nothing to switch on at CurseForge or
+GitHub:
 
 ```
+git checkout beta
 git tag v1.41.0-beta.1 && git push origin v1.41.0-beta.1
 ```
 
@@ -102,10 +107,12 @@ numbers: managers offer the newest file the player's channel allows, by date.
 - **Changelog.** The whole file is uploaded with every file, beta or not. Betas add
   to the coming version's section; the heading carries the version it will ship as
   (`## 1.41.0`), not the beta number.
-- **A stable fix while `main` carries a beta.** Branch from the last full tag, fix,
-  tag the patch (`v1.40.1`) there, merge it back to `main`. A full release
+- **A fix for the live release while a beta is running.** Fix it on `main`, tag
+  the patch (`v1.40.2`) there, then merge `main` into `beta`. A full release
   published after a beta is newer by date, so testers drop onto it until the next
   beta tag.
+- **A beta ready for everyone.** Merge `beta` into `main`, tag the full version
+  (`v1.41.0`) on `main`. `beta` carries on from there for the next one.
 - **One tester, one question.** Every GitHub release carries its zip; a link to the
   pre-release page is enough for someone who installs by hand.
 

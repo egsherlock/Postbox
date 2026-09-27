@@ -22,8 +22,16 @@ trailers. This applies whatever the tooling's own defaults are.
 
 ## Workflow
 
-- **Commit straight to `main`.** No feature branches, no pull requests for our
-  own work. PRs are for outside contributors who cannot push here.
+- **Two branches, both ours to push.** `main` is what players have: a fix for
+  the live release is committed there and shipped as a patch tag (`v1.40.2`),
+  then `main` is merged into `beta`. `beta` is where new features are built,
+  and beta tags (`v1.41.0-beta.1`) are cut from it for testers. When a beta is
+  ready for everyone, `beta` is merged into `main` and the full version is
+  tagged there. No other branches, no pull requests for our own work; PRs are
+  for outside contributors who cannot push here.
+- **Dev builds for the live install** come from whichever branch is being
+  worked on, stamped `-devN` on the version that branch will ship
+  (`v1.41.0-devN` on `beta`, `v1.40.2-devN` on `main`).
 - **Offer a local test before any tag.** Nothing ships without the option of
   swapping the changed files into the live WoW install and `/reload`-ing first.
   A session on the maintainer's own machine copies them into
