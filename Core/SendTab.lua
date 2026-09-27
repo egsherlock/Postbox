@@ -3689,13 +3689,35 @@ local function HookVisibleSlots()
   end
 end
 
+-- Whether any of the client's own container frames is on screen: the frames
+-- ContainerFrame_UpdateAll walks, from the same enumerator, asked IsVisible
+-- where it asks IsShown. EllesmereUIBags and Baganator each park every one of
+-- them under a hidden frame of their own (EllesmereUIBags' KillBlizzard, run
+-- again after every OpenAllBags; Baganator's HideDefaultBackpack), but the
+-- mailbox still opens them (MailFrame_Show -> OpenAllBags), so they count as
+-- shown, and ContainerFrame_UpdateAll repainted every slot of them unseen,
+-- with a padlock verdict on each: 30 ms a call on a 150-slot bag. With no
+-- enumerator to ask, the answer is yes, and the repaint runs as it always did.
+function ST.ClientBagsOnScreen()
+  local Enumerate = ContainerFrameUtil_EnumerateContainerFrames
+  if type(Enumerate) ~= "function" then return true end
+  for _, frame in Enumerate() do
+    if type(frame) == "table" and type(frame.IsVisible) == "function" and frame:IsVisible() then
+      return true
+    end
+  end
+  return false
+end
+
 -- One container repaint per user action: the hooks do the marking, this only
 -- asks the client to run them. The client's bags need nothing more while they
 -- are closed: ContainerFrame_UpdateAll repaints only the open ones, and a bag
 -- opening draws every slot afresh (ContainerFrame_GenerateFrame -> Update),
--- which runs the hooks.
+-- which runs the hooks. Nor while none is on screen: the only bags the player
+-- sees then are another addon's, which are asked for their own repaint.
 local function RepaintContainers()
-  if type(ContainerFrame_UpdateAll) ~= "function" or not ST.PaintDue("blizz") then return end
+  if type(ContainerFrame_UpdateAll) ~= "function" or not ST.ClientBagsOnScreen()
+     or not ST.PaintDue("blizz") then return end
   ST.Timed("blizz", ContainerFrame_UpdateAll)
 end
 
