@@ -2923,9 +2923,25 @@ function HV.UpdateHistoryRows(panel)
   end
 end
 
--- The divider's words, for the one in the list and its pinned copy.
+-- Whether the read mail is folded away under its divider: the player's own
+-- click, remembered between visits. A search shows it regardless -- a match
+-- must not hide behind a fold. Nothing else folds or opens it: not a scroll.
+function RV.Folded(panel)
+  local UI = ns.MailboxUI
+  local folded = UI and type(UI.GetOption) == "function" and UI.GetOption("readFolded") or false
+  return folded and not Searching(panel)
+end
+
+function RV.SetFolded(folded)
+  local UI = ns.MailboxUI
+  if UI and type(UI.SetOption) == "function" then UI.SetOption("readFolded", folded and true or false) end
+end
+
+-- The divider's words and fold mark, for the one in the list and its pinned copy.
 function RV.PaintDivider(panel, divider)
   divider.Label:SetText(L()("INBOX_READ_DIVIDER", panel._readCount or 0))
+  divider.Fold:SetTexture(RV.Folded(panel) and "Interface\\Buttons\\UI-PlusButton-Up"
+    or "Interface\\Buttons\\UI-MinusButton-Up")
 end
 
 -- How near "fully in view" counts as there, for the pinned divider's
@@ -2946,6 +2962,7 @@ function RV.UpdatePin(panel, offset, viewport, stride, height)
   local at = (panel.viewMode == VIEW_COLLECT) and panel._dividerAt or nil
   if not at or viewport <= 0 or (at - 1) * stride + height <= offset + viewport + RV.ARRIVED_SLACK then
     pin:Hide()
+    if pin.Foot then pin.Foot:Hide() end
     return false
   end
   RV.PaintDivider(panel, pin)
@@ -2964,6 +2981,7 @@ function RV.UpdatePin(panel, offset, viewport, stride, height)
   pin:SetHeight(COMPACT_ROW_HEIGHT)
   pin:SetFrameLevel(child:GetFrameLevel() + 8)
   pin:Show()
+  if pin.Foot then pin.Foot:Show() end
   return true
 end
 
@@ -3331,11 +3349,12 @@ function CT.RefreshMailList(panel)
   end
 
   -- The finished mails, after the divider: simply the rest of the list, so
-  -- the scroll bar is the whole list from the start. The divider is their
-  -- heading, pinned at the list's foot while its place is further down
-  -- (RV.UpdatePin): read mail waiting is seen without a scroll, and scrolled
-  -- into like everything else. (They were folded once, opened and closed by
-  -- the scroll -- and the scroll bar jumped each time the list grew.)
+  -- the scroll bar is the whole list from the start -- unless the player has
+  -- folded them away with a click (RV.Folded). The divider is their heading,
+  -- pinned at the list's foot while its place is further down (RV.UpdatePin):
+  -- read mail waiting is seen without a scroll. (They were once opened and
+  -- folded BY the scroll, and the scroll bar jumped each time the list grew;
+  -- only a click moves the fold now.)
   -- In a tab of their own they are that tab's whole list, and the inbox has
   -- no divider at all.
   panel._readCount = #tail
@@ -3354,9 +3373,11 @@ function CT.RefreshMailList(panel)
     filtered[#filtered + 1] = DIVIDER
     filteredDone[#filtered] = true
     panel._dividerAt = #filtered
-    for i = 1, #tail do
-      filtered[#filtered + 1] = tail[i]
-      filteredDone[#filtered] = true
+    if not RV.Folded(panel) then
+      for i = 1, #tail do
+        filtered[#filtered + 1] = tail[i]
+        filteredDone[#filtered] = true
+      end
     end
   end
 
@@ -5248,8 +5269,15 @@ function RV.BuildDivider(panel, parent)
   divider.Rule:SetTexture(WHITE)
   T.SetColor(divider.Rule, "textSecondary")
   divider.Rule:SetAlpha(0.25)
+  -- The fold mark: plus while folded, minus while open. The cue that a click
+  -- here folds the read mail away.
+  divider.Fold = divider:CreateTexture(nil, "ARTWORK")
+  divider.Fold:SetSize(12, 12)
+  divider.Fold:SetPoint("LEFT", divider, "LEFT", M.inset, 0)
+  divider.Fold:SetDesaturated(true)
+  divider.Fold:SetAlpha(0.7)
   divider.Label = T.CreateText(divider, "secondary")
-  divider.Label:SetPoint("LEFT", divider, "LEFT", M.inset, 0)
+  divider.Label:SetPoint("LEFT", divider.Fold, "RIGHT", 6, 0)
   divider.Delete = CreateFrame("Button", nil, divider)
   divider.Delete:SetPoint("RIGHT", divider, "RIGHT", -M.inset, 0)
   divider.Delete.Text = T.CreateText(divider.Delete, "secondary")
@@ -5444,13 +5472,25 @@ function CT.Build(parent)
   -- A row's slot in the list, so the virtualiser places it like one; its own
   -- frame, because nothing about it is a mail.
   local divider = RV.BuildDivider(panel, panel.MailListChild)
+  -- A click folds the read mail away or brings it back, and it stays so.
+  divider:SetScript("OnClick", function()
+    -- A search shows it regardless; a click then would flip it unseen.
+    if Searching(panel) then return end
+    RV.SetFolded(not RV.Folded(panel))
+    CT.RefreshMailList(panel)
+  end)
   panel.Divider = divider
 
   -- Its pinned copy, in the list with the rows, standing at the view's foot
   -- while the divider's own place is further down (RV.UpdatePin). A click
-  -- scrolls to the read mail; its Delete all is the same Delete all.
+  -- goes to the read mail -- unfolding it if it was folded; its Delete all is
+  -- the same Delete all.
   local pin = RV.BuildDivider(panel, panel.MailListChild)
   pin:SetScript("OnClick", function()
+    if RV.Folded(panel) then
+      RV.SetFolded(false)
+      CT.RefreshMailList(panel)
+    end
     local at = panel._dividerAt
     if not at then return end
     local _, _, stride = RowMetrics()
@@ -5459,6 +5499,20 @@ function CT.Build(parent)
     UpdateVisibleRows(panel)
   end)
   panel.DividerPin = pin
+
+  -- The pinned bar's foot: the list's bottom margin under it, painted as the
+  -- bar is, so the bar reaches the container's edge instead of stopping the
+  -- margin short of it. Outside the scroll area, where nothing scrolls, and
+  -- shown only with the bar (RV.UpdatePin).
+  local foot = CreateFrame("Frame", nil, panel.MailListArea)
+  foot:SetPoint("TOPLEFT", scroll, "BOTTOMLEFT", 0, 0)
+  foot:SetPoint("TOPRIGHT", scroll, "BOTTOMRIGHT", 0, 0)
+  foot:SetHeight(max(1, M.tightGap - 1))
+  foot.Fill = foot:CreateTexture(nil, "BACKGROUND")
+  foot.Fill:SetAllPoints()
+  foot.Fill:SetColorTexture(0.05, 0.05, 0.06, 0.95)
+  foot:Hide()
+  pin.Foot = foot
 
   -- HookScript, not SetScript: the template installs its own handlers here and
   -- replacing them desynchronises the scroll bar.

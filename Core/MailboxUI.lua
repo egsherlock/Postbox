@@ -141,6 +141,10 @@ local OPTION_DEFAULTS = {
   -- One chat line at login when another character's mail is close to being
   -- lost (Core/MailMemory, section 2b). On: that is the mail people lose.
   mailWarnings    = true,
+  -- The read mail folded away under its divider, by a click on it, and kept
+  -- so between visits (Core/CollectTab.lua, RV.Folded). Off: it is simply
+  -- the rest of the list, and the scroll bar is the whole list.
+  readFolded      = false,
   -- Right-click-to-attach while the MAIL tab is showing (section 5b). Off,
   -- and this is the one default that was argued the other way first: it
   -- shipped as always-on in 1.24 on the grounds that with a mail window open,

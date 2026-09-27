@@ -8,9 +8,9 @@
   it is clear it removes every read mail at once.
 - **Read mail is simply part of the list.** It follows your inbox under its
   divider, which waits at the foot of a long list with Delete all and
-  settles into place as you scroll down to it; click it to jump there. The
-  scroll bar shows the whole list from the start, so it no longer jumps as
-  read mail opens.
+  settles into place as you scroll down to it. The scroll bar shows the whole
+  list from the start, so it no longer jumps as read mail opens. Rather not
+  scroll past it? Click the divider to fold it away; Postbox remembers.
 
 ### Fixed
 
@@ -18,8 +18,8 @@
   scrolls by only a couple of pixels.
 - The resize grip's hint no longer pops back up while you are dragging.
 - The "Read, nothing left" bar pinned at the foot of a long inbox no longer
-  shows the mail passing under it, and hands over to the divider in the list
-  without a jump, in either row size.
+  shows the mail passing under it, reaches the bottom edge of the list at any
+  window size, and hands over to the divider in the list without a jump.
 
 ## 1.40.0
 
