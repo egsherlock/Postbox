@@ -62,7 +62,7 @@ local function L(key)
   return type(text) == "string" and text or key
 end
 
--- Format-string reads are protected: a mistyped placeholder in one of the five
+-- Format-string reads are protected: a mistyped placeholder in one of the seven
 -- locale blocks would otherwise raise inside an event handler.
 local function LF(key, ...)
   local template = L(key)
@@ -114,11 +114,14 @@ end
 -------------------------------------------------------------
 -- 1. Options
 --
--- Five booleans on the profile. Reads go through the store's non-creating
--- accessor: merely asking whether a flag is set must not write a node into
--- saved variables. Defaults live here rather than being seeded on first read,
--- so an unset option and an option explicitly set to its default behave
--- identically and neither one costs a write.
+-- The switches on the profile, below; the settings that are a word or a
+-- number (style, quality mark, read mail, History's days, the row and grid
+-- arrangements...) have accessor pairs of their own after them. Reads go
+-- through the store's non-creating accessor: merely asking whether a flag is
+-- set must not write a node into saved variables. Defaults live here rather
+-- than being seeded on first read, so an unset option and an option
+-- explicitly set to its default behave identically and neither one costs a
+-- write.
 -------------------------------------------------------------
 
 local OPTION_DEFAULTS = {
@@ -155,10 +158,11 @@ local OPTION_DEFAULTS = {
   -- right-click either way: that is the client's own behaviour and this
   -- setting neither adds nor removes it.
   attachFromMail  = false,
-  -- The collect screen's five one-click sweeps (expired, sold, canceled,
-  -- bought, other) under the full-width Collect button. On: they are what
-  -- the screen has always offered. Off is for the player who only ever takes
-  -- everything, and would rather have the two rows back for the list.
+  -- The collect screen's one-click sweeps (bought, sold, canceled, expired,
+  -- other, from alts, and each character group's) under the full-width
+  -- Collect button. On: they are what the screen has always offered. Off is
+  -- for the player who only ever takes everything, and would rather have
+  -- their rows back for the list.
   showCategoryButtons = true,
   -- After a successful send, leave the recipient in the To: box. Off: a
   -- cleared form is the safe default -- a name left standing is a mail that

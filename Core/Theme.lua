@@ -327,10 +327,9 @@ Theme.Colors = C
 --
 -- Derived, never cached. A repaint is re-driven when the host UI's looks change
 -- -- Core/Skin_EllesmereUI.lua's Skin.OnHostLooksChanged, live off the host's
--- own callback on the api backend and at window-show on the compat backend
--- (8.6.6, which is what real users have) -- so a cached tone would be stale from
--- the moment the user retuned their accent. The arithmetic is a dozen
--- operations and runs only on repaint.
+-- own signals on both backends -- so a cached tone would be stale from the
+-- moment the user retuned their accent. The arithmetic is a dozen operations
+-- and runs only on repaint.
 -------------------------------------------------------------
 
 -- Scaled until its brightest channel is white, then blended most of the way to
@@ -418,9 +417,9 @@ function Theme.Colorize(token, text)
 end
 
 -- The live accent: a host-UI skin may publish the user's own. Resolved on every
--- call and never cached -- Skin.OnHostLooksChanged re-drives the repaints (live
--- on the EllesmereUI api backend, at window-show on compat), and a cached copy
--- would be stale from the moment the user retuned their accent.
+-- call and never cached -- Skin.OnHostLooksChanged re-drives the repaints, live
+-- on both EllesmereUI backends, and a cached copy would be stale from the
+-- moment the user retuned their accent.
 --
 -- This is the ONLY place the question "which accent" is answered. Nothing else
 -- reads C.accent to paint with.

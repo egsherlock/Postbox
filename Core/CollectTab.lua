@@ -437,8 +437,9 @@ local function StuckOnly(panel)
   return panel and panel._stuckOnly == true
 end
 
--- The five category sweeps under the full-width Collect button. Default on,
--- for the same reason as the All segment; off gives the list their two rows.
+-- The category sweeps under the full-width Collect button: the six built in
+-- and a character group's own, all or none. Default on, for the same reason
+-- as the All segment; off gives the list their rows.
 local function ShowCategoryButtons()
   local UI = ns.MailboxUI
   if not UI or type(UI.GetOption) ~= "function" then return true end
@@ -549,8 +550,8 @@ end
 -- standing on it whenever it moves.
 function CT.MinPanelHeight(atLeast)
   local M = Th().Metrics
-  -- The footer as the option has it: with the five sweeps, or the primary
-  -- alone.
+  -- The footer as the option has it: with the rows the sweeps it shows fill,
+  -- or the primary alone.
   local footer = GRID_PRIMARY_HEIGHT
   if ShowCategoryButtons() then
     footer = footer + RV.FloorGridRows() * (M.gap + GRID_BUTTON_HEIGHT)
@@ -1651,9 +1652,10 @@ end
 -- whose sender or subject contains what is typed. It is a view of the same
 -- list, not a fourth view: the segment counts still describe the whole
 -- inbox, and the totals banner still describes what is listed. While a
--- search is on, the five category sweeps are withdrawn and the full-width
--- button reads "Collect shown" and takes exactly the mails on screen --
--- "All mail" under a list of three would otherwise take fifty.
+-- search is on, each category sweep takes the mails on screen of its own
+-- kind, and the full-width button reads "Collect shown" and takes exactly
+-- the mails on screen -- "All mail" under a list of three would otherwise
+-- take fifty.
 -------------------------------------------------------------
 
 local SEARCH_W = 150
