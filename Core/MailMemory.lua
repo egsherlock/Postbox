@@ -478,6 +478,19 @@ local function LivePending(watch, now)
   return out
 end
 
+-- How many LivePending would list, by its rule, without the list: the
+-- character list counts every character's.
+local function LivePendingCount(watch, now)
+  local pending = watch and type(watch.pending) == "table" and watch.pending or nil
+  if not pending then return 0 end
+  local cutoff = now - MAIL_LIFE
+  local count = 0
+  for i = 1, #pending do
+    if (tonumber(pending[i].t) or 0) > cutoff then count = count + 1 end
+  end
+  return count
+end
+
 -- This character's box was opened and recorded: what the watch guarded is in
 -- the snapshot now. An auction still running can send mail after the visit,
 -- so it stays watched -- from now.
@@ -511,7 +524,12 @@ end
 --              long enough to be a week from its earliest loss
 local function Status(realm, name, now)
   local snap = SnapshotFor(realm, name)
-  local st = { realm = realm, name = name, waiting = 0, seenAt = snap and snap.seenAt or nil }
+  -- Every field it will carry, here and in MM.Characters, named at once so
+  -- the table is sized once rather than grown twice; the ones left nil are
+  -- set below, or there, when they apply.
+  local st = { realm = realm, name = name, waiting = 0, seenAt = snap and snap.seenAt or nil,
+    soon = nil, soonest = nil, pending = 0, unseenDays = nil, warn = false,
+    me = nil, hidden = nil, label = nil, text = nil }
   local mails = snap and snap.mails or {}
   for i = 1, #mails do
     local mail = mails[i]
@@ -525,7 +543,7 @@ local function Status(realm, name, now)
     end
   end
   local watch = WatchFor(realm, name, false)
-  st.pending = #LivePending(watch, now)
+  st.pending = LivePendingCount(watch, now)
   if watch then
     local since = watch.newAt
     if watch.auctionAt and (not since or watch.auctionAt < since) then since = watch.auctionAt end
@@ -538,16 +556,17 @@ local function Status(realm, name, now)
 end
 
 -- The status as a phrase, in the warning tone; nil when there is none.
+-- At most two phrases, joined as they come: no list per character.
 local function WarningText(st, now)
-  local parts = {}
+  local text
   if st.soon then
-    parts[#parts + 1] = ns.Plural("OVERVIEW_EXPIRE", st.soon, (ExpiryText(st.soonest, now)))
+    text = ns.Plural("OVERVIEW_EXPIRE", st.soon, (ExpiryText(st.soonest, now)))
   end
   if st.unseenDays then
-    parts[#parts + 1] = ns.Plural("OVERVIEW_UNSEEN", st.unseenDays)
+    local unseen = ns.Plural("OVERVIEW_UNSEEN", st.unseenDays)
+    text = text and (text .. "; " .. unseen) or unseen
   end
-  if #parts == 0 then return nil end
-  return table.concat(parts, "; ")
+  return text
 end
 
 -- A character's name as the lists show it: the realm only when it is not
