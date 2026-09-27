@@ -84,14 +84,21 @@ end
 -------------------------------------------------------------
 -- 1. Capture
 --
--- `live` is this visit's latest look, replaced wholesale on every coalesced
+-- `live` is this visit's latest look, refilled in place on every coalesced
 -- capture and persisted (then dropped) when the session closes. MAIL_CLOSED
 -- and the interaction manager's hide event both fire for one close; dropping
--- `live` on the first persist is what makes the second arrival a no-op.
+-- `live` on the first persist is what makes the second arrival a no-op, and
+-- what keeps a later capture from ever writing into the saved record.
 -------------------------------------------------------------
 
 local live = nil
 local captureQueued = false
+
+-- The search's folded text, kept per mail table (Matches, section 3d). Weak
+-- keys, so a snapshot dropped takes its entries with it -- and never a field
+-- on the mail itself, which is saved variables. Here because a capture that
+-- puts another mail into one of this visit's tables drops that table's text.
+local searchText = setmetatable({}, { __mode = "k" })
 
 -- Session timestamps for the arrival watch (section 5): the client fires
 -- UPDATE_PENDING_MAIL at login to establish state and churns it around a
@@ -140,7 +147,12 @@ local function CaptureNow()
   totalItems = tonumber(totalItems) or numItems
 
   local now = time()
-  local mails = {}
+  -- This visit's tables, filled again: a burst of inbox updates reuses one
+  -- set of mails rather than building a fresh set on every frame. Nothing
+  -- outside this file ever holds them (RowsFor hands out copies).
+  local prev = live
+  local mails = prev and prev.mails or {}
+  local count = 0
   for index = 1, numItems do
     local packageIcon, stationeryIcon, sender, subject, money, cod, daysLeft,
       itemCount, wasRead = GetInboxHeaderInfo(index)
@@ -178,27 +190,43 @@ local function CaptureNow()
         if invoiceType == "buyer" and bid > 0 then paid = bid end
       end
 
-      mails[#mails + 1] = {
-        stuck   = stuck,
-        icon    = packageIcon or stationeryIcon,
-        sender  = tostring(sender or ""),
-        subject = tostring(subject or ""),
-        money   = tonumber(money) or 0,
-        cod     = tonumber(cod) or 0,
-        items   = tonumber(itemCount) or 0,
-        read    = wasRead and true or false,
-        link    = link,
-        kind    = kind,
-        paid    = paid,
-        -- Absolute, so "has this expired since I saw it" is answerable in a
-        -- later session without trusting a stale daysLeft.
-        expires = now + math.floor((tonumber(daysLeft) or 0) * 86400),
-      }
-      if #mails >= MAX_MAILS then break end
+      sender, subject = tostring(sender or ""), tostring(subject or "")
+      count = count + 1
+      local mail = mails[count]
+      if not mail then
+        -- Sized for all its fields at once; each is set just below.
+        mail = { stuck = false, icon = false, sender = "", subject = "", money = 0, cod = 0, items = 0,
+          read = false, link = false, kind = false, paid = false, expires = 0 }
+        mails[count] = mail
+      elseif mail.sender ~= sender or mail.subject ~= subject or mail.kind ~= kind then
+        -- Another mail in this slot now: the text a search folded is not its.
+        searchText[mail] = nil
+      end
+      mail.stuck   = stuck
+      mail.icon    = packageIcon or stationeryIcon
+      mail.sender  = sender
+      mail.subject = subject
+      mail.money   = tonumber(money) or 0
+      mail.cod     = tonumber(cod) or 0
+      mail.items   = tonumber(itemCount) or 0
+      mail.read    = wasRead and true or false
+      mail.link    = link
+      mail.kind    = kind
+      mail.paid    = paid
+      -- Absolute, so "has this expired since I saw it" is answerable in a
+      -- later session without trusting a stale daysLeft.
+      mail.expires = now + math.floor((tonumber(daysLeft) or 0) * 86400)
+      if count >= MAX_MAILS then break end
     end
   end
 
-  live = { seenAt = now, total = totalItems, mails = mails }
+  -- A box that shrank keeps nothing past its new end.
+  for i = #mails, count + 1, -1 do mails[i] = nil end
+  if prev then
+    prev.seenAt, prev.total = now, totalItems
+  else
+    live = { seenAt = now, total = totalItems, mails = mails }
+  end
   if perfAt then perf.End("capture", perfAt) end
 end
 
@@ -1748,11 +1776,9 @@ end
 -- sender as the row shows it (an auction outcome, "AH Sold"), and the
 -- subject -- which for an auction mail is the item's name.
 --
--- The folded text is kept per mail table: a search of every box used to
--- colour, uncolour and fold every remembered mail on every keystroke. Weak
--- keys, so a snapshot replaced at the next capture takes its entries with it
--- -- and never a field on the mail itself, which is saved variables.
-local searchText = setmetatable({}, { __mode = "k" })
+-- The folded text is kept per mail table (`searchText`, section 1): a search
+-- of every box used to colour, uncolour and fold every remembered mail on
+-- every keystroke.
 local function Matches(mail, query)
   local hay = searchText[mail]
   if not hay then
@@ -1782,6 +1808,15 @@ local function Sorted(mails, sort, now)
     return (a.subject or "") < (b.subject or "")
   end)
   return out
+end
+
+-- A mail of this visit's look, as a list may keep it: the next capture fills
+-- that look's tables again (section 1), and a list built from them must go on
+-- showing what it was built from.
+local function Frozen(mail)
+  local copy = {}
+  for key, value in pairs(mail) do copy[key] = value end
+  return copy
 end
 
 -- A visit that ended without either close event reaching this module
@@ -1827,7 +1862,7 @@ local function SearchAll(query, now, sort, all)
           rows[#rows + 1] = { header = true, realm = st.realm, name = st.name,
             label = MM.ClassName(st.realm, st.name) }
         end
-        rows[#rows + 1] = mails[j]
+        rows[#rows + 1] = (snap == live) and Frozen(mails[j]) or mails[j]
       end
     end
   end
@@ -1920,6 +1955,11 @@ function MM.RowsFor(realm, name, opts)
       rows = kept
       info.matched = #rows
     end
+  end
+  -- This character's box at a mailbox is this visit's look (SearchAll makes
+  -- its own copies).
+  if live and snapshot == live and not (query ~= "" and opts.all) then
+    for i = 1, #rows do rows[i] = Frozen(rows[i]) end
   end
   return rows, info
 end
