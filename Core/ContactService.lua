@@ -292,7 +292,7 @@ local MAX_SOURCE_ENTRIES = 2000
 
 -- Both the roster request and the friends request are throttled by the server;
 -- asking more often than this achieves nothing and the interval is generous
--- enough that a mailbox open per minute never hits it.
+-- enough that a mailbox visit per minute never hits it.
 local REQUEST_INTERVAL = 10
 local guildRequestedAt, friendsRequestedAt = 0, 0
 
@@ -984,6 +984,21 @@ function CS.RefreshPending()
   RequestSources()
 end
 
+-- A mailbox visit's one refresh, asked for by the Send tab the first time it
+-- is on screen in that visit (Core/SendTab.lua, the panel's OnShow) -- the
+-- moment the suggestions are about to be read. It used to run at every
+-- MAIL_SHOW, and the server's answers then landed a moment after the mailbox
+-- opened, in every guild-aware addon at once, for a visit that may never
+-- come near the Send tab. Nothing typed waits on it: the login's answers are
+-- already in the client, so the first keystroke is served from those.
+function CS.RefreshForVisit()
+  -- C_RecentAllies publishes no update event, so the moment its contents are
+  -- about to be read is where it is refreshed.
+  MarkDirty("grouped", true)
+  -- Both requests keep their own throttle (REQUEST_INTERVAL).
+  RequestSources()
+end
+
 do
   local bus = ns.Events
   if type(bus) == "table" and type(bus.Register) == "function" then
@@ -1007,16 +1022,12 @@ do
     -- mailbox and starts typing. Every loading screen used to ask again, a
     -- guild roster and a friends list from the server that every addon
     -- listening then processes; a zone-in changes neither. The caches are
-    -- still marked stale, and MAIL_SHOW below asks afresh at every mailbox.
+    -- still marked stale, and the Send tab asks afresh once per mailbox visit
+    -- (CS.RefreshForVisit) -- not the mailbox opening, which is most visits
+    -- and the moment least able to absorb every addon's roster pass.
     bus.Register("PLAYER_ENTERING_WORLD", function(_, isInitialLogin, isReloadingUi)
       MarkAllDirty()
       if isInitialLogin or isReloadingUi then RequestSources() end
-    end)
-    bus.Register("MAIL_SHOW", function()
-      -- C_RecentAllies publishes no update event, so a mailbox open -- the one
-      -- moment its contents are about to be read -- is where it is refreshed.
-      MarkDirty("grouped", true)
-      RequestSources()
     end)
 
     bus.Register("PLAYER_LEAVING_WORLD", function()
