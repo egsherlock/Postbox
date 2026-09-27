@@ -2944,13 +2944,6 @@ function RV.PaintDivider(panel, divider)
     or "Interface\\Buttons\\UI-MinusButton-Up")
 end
 
--- How near "fully in view" counts as there, for the pinned divider's
--- hand-over. A window dragged to a size of its own has a viewport that is not
--- a whole number of pixels, and the scroll bar rounds its value: the list can
--- stop a hair short of its true end, and at half a pixel the divider never
--- quite "arrived".
-RV.ARRIVED_SLACK = 2
-
 -- The divider pinned to the list's foot while its own place is below the
 -- viewport: in a long inbox it is the one sign that read mail is waiting to
 -- be cleared, and it has to be seen without scrolling down to find out. The
@@ -2960,9 +2953,21 @@ function RV.UpdatePin(panel, offset, viewport, stride, height)
   local pin = panel.DividerPin
   if not pin then return false end
   local at = (panel.viewMode == VIEW_COLLECT) and panel._dividerAt or nil
-  if not at or viewport <= 0 or (at - 1) * stride + height <= offset + viewport + RV.ARRIVED_SLACK then
+  -- The foot fills the list's bottom margin under whichever copy of the
+  -- divider is standing on the view's foot -- this pinned one, or the one in
+  -- the list at its very end -- so the bar is one height either side of the
+  -- hand-over. (Shown with the pin alone, it made the bar 3px shorter the
+  -- moment it settled into place.)
+  local slotBottom = at and ((at - 1) * stride + height) or 0
+  local viewBottom = offset + viewport
+  -- Handed over within half a pixel of its place, so the bar does not move.
+  -- A list whose scroll stops a hair short of its end keeps the pinned copy,
+  -- in the same place.
+  if not at or viewport <= 0 or slotBottom <= viewBottom + 0.5 then
     pin:Hide()
-    if pin.Foot then pin.Foot:Hide() end
+    if pin.Foot then
+      pin.Foot:SetShown(at ~= nil and viewport > 0 and math.abs(slotBottom - viewBottom) <= 0.5)
+    end
     return false
   end
   RV.PaintDivider(panel, pin)
