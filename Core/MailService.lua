@@ -336,26 +336,42 @@ function Mail.OwnCharacterKeys()
   return set
 end
 
+-- sender text -> its recipient key, or nil for no sender at all (the game's
+-- own mail) or a key that cannot be built. A bare sender is on the player's
+-- realm, which R.Key resolves.
+--
+-- Remembered per sender text, because every list refresh asks it of every
+-- mail. R.Key is pure once the player's realm is known, so an answer is kept
+-- only when it carried a realm: a bare name keyed in the moment after login
+-- when the realm is not known yet is asked again. The census is no part of a
+-- key, so nothing it learns makes one stale. Bounded as the subjects are.
+local SENDER_MEMO_MAX = 256
+local senderMemo, senderMemoCount = {}, 0
+
+local function SenderKeyOf(sender)
+  if type(sender) ~= "string" or sender == "" then return nil end
+  local known = senderMemo[sender]
+  if known ~= nil then return known or nil end
+  local R = ns.Recipients
+  if not (R and type(R.Key) == "function") then return nil end
+  local key, _, realm = R.Key(sender)
+  if type(key) ~= "string" or key == "" then key = nil end
+  if type(realm) == "string" and realm ~= "" then
+    if senderMemoCount >= SENDER_MEMO_MAX then
+      senderMemo, senderMemoCount = {}, 0
+    end
+    senderMemo[sender] = key or false
+    senderMemoCount = senderMemoCount + 1
+  end
+  return key
+end
+
 -- index [, keys] -> whether the mail is from one of the player's own
 -- characters. A bare sender is on the player's realm, which R.Key resolves.
 function Mail.FromOwnCharacter(index, keys)
   local _, _, sender = GetInboxHeaderInfo(index)
-  if type(sender) ~= "string" or sender == "" then return false end
-  local R = ns.Recipients
-  local key = R and type(R.Key) == "function" and R.Key(sender) or nil
+  local key = SenderKeyOf(sender)
   return key ~= nil and (keys or Mail.OwnCharacterKeys())[key] == true
-end
-
--- sender text -> its recipient key, or nil for no sender at all (the game's
--- own mail) or a key that cannot be built. A bare sender is on the player's
--- realm, which R.Key resolves.
-local function SenderKeyOf(sender)
-  if type(sender) ~= "string" or sender == "" then return nil end
-  local R = ns.Recipients
-  if not (R and type(R.Key) == "function") then return nil end
-  local key = R.Key(sender)
-  if type(key) ~= "string" or key == "" then return nil end
-  return key
 end
 
 -- index -> the mail's sender as a recipient key, or nil.
