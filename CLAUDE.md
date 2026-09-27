@@ -84,3 +84,35 @@ easiest to forget, because both are player-facing and neither is in the code:
   to load once by passing it, and `Core/CollectTab.lua` is close too. New
   sections go on a table or in a `do` block; `.dev/tools/luacheck.js` reports
   the peak.
+
+## How we build it: light, measured, hard to break
+
+Postbox is meant to cost nothing you can feel. The 1.41 performance pass cut a
+list refresh's garbage from 33 KB to 2 KB and a Mail/Send switch from three bag
+redraws to one, and every new change should keep it that way.
+
+- **Measure, then change.** `/postbox debug` has a Performance block: each
+  mailbox visit's stages and the game's own profiler, split into Postbox, other
+  addons and the game. Pure logic and allocation are measured headless in
+  fengari. A performance claim comes with before/after numbers; "should be
+  faster" is not a claim.
+- **Nothing runs away from a mailbox.** No persistent `OnUpdate`, no repeating
+  timers. Work is event-driven, coalesced to once per frame, and skipped when
+  nothing on screen needs it (a hidden bag is not repainted).
+- **No garbage in hot paths.** A refresh, a row bind or a capture reuses its
+  tables: no closures per row or per call, no table-building formatters, no
+  `{...}` in loops. Caches are bounded and invalidated explicitly (a write
+  counter, a generation), never by guesswork.
+- **Other addons' work that Postbox triggers is Postbox's cost.** The profiler
+  bills it to us. Ask a bag addon or skin to repaint at most once per change,
+  and only when its frames are showing.
+- **Same output, proved.** A change meant to keep behaviour identical is
+  checked against the old code: row text and geometry dumps, differential tests,
+  equivalence runs on real saved data. Static checks passing does not mean it
+  runs; only the game says that.
+- **Edge cases get rules, not special looks.** The normal case keeps its look
+  and size; an edge case (a long name, a four-digit count, a long German label)
+  is handled by measuring what is needed, and only that case changes.
+- **Fix the cause, once.** When a behaviour needs a rule per edge case (the
+  scroll-driven divider did), step back and ask which part the player actually
+  dislikes before adding the next rule.
