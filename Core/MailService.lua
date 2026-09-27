@@ -158,16 +158,34 @@ local SUBJECT_CATEGORY = {
   { AUCTION_REMOVED_MAIL_SUBJECT, "canceled" },
 }
 
+-- subject -> category, remembered: this runs for every mail on every refresh,
+-- and every inbox update of a collect run, and a subject's answer never
+-- changes (the templates above are fixed at load). Bounded the way Helpers'
+-- template cache is: when full it starts again, so a long session of auction
+-- mail cannot grow it without limit. `false` remembers "no category".
+local SUBJECT_MEMO_MAX = 256
+local subjectMemo, subjectMemoCount = {}, 0
+
 local function SubjectCategory(subject)
   if type(subject) ~= "string" or subject == "" then return nil end
+  local known = subjectMemo[subject]
+  if known ~= nil then return known or nil end
   local H = ns.Helpers
-  -- Folded once, not once per rule: this runs for every mail on every
-  -- refresh, and every inbox update of a collect run.
+  -- Folded once, not once per rule.
   local folded = H.Lower(subject)
+  local category = nil
   for _, rule in ipairs(SUBJECT_CATEGORY) do
-    if H.SubjectLooksLike(subject, rule[1], folded) then return rule[2] end
+    if H.SubjectLooksLike(subject, rule[1], folded) then
+      category = rule[2]
+      break
+    end
   end
-  return nil
+  if subjectMemoCount >= SUBJECT_MEMO_MAX then
+    subjectMemo, subjectMemoCount = {}, 0
+  end
+  subjectMemo[subject] = category or false
+  subjectMemoCount = subjectMemoCount + 1
+  return category
 end
 
 -- index -> category token, hasCOD
