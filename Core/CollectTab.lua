@@ -2625,7 +2625,9 @@ local function BuildRow(panel)
     local expiry = self.expiryTip
     local facts = self.factsTip
     local whole = self.senderTip
-    if not cut and not full and not teach and not stuck and not expiry and not facts and not whole then return end
+    local unread = self.unreadTip
+    if not cut and not full and not teach and not stuck and not expiry and not facts and not whole
+      and not unread then return end
 
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:ClearLines()
@@ -2653,10 +2655,12 @@ local function BuildRow(panel)
       T2.AddOverflowLine(self.Detail, GameTooltip)
     end
     -- The figures an option took off the row, so switching one off never
-    -- makes it unreachable.
+    -- makes it unreachable -- and the read mark's word, when its column is
+    -- hidden.
     if facts then
       for line in facts:gmatch("[^\n]+") do GameTooltip:AddLine(line, 1, 1, 1, true) end
     end
+    if unread then GameTooltip:AddLine(unread, 0.75, 0.75, 0.75, true) end
     -- How long the mail has left, always here and on the row only when short.
     if expiry then GameTooltip:AddLine(expiry, 0.75, 0.75, 0.75, true) end
     -- Air between what the mail is and what a click does with it.
@@ -2747,6 +2751,8 @@ local function BindRow(panel, row, index, position, compact, done)
   row:SetAlpha(showDelete and 0.6 or 1)
 
   T.SetColor(row.Indicator, wasRead and "read" or "unread")
+  -- The mark's column hidden: the tooltip says what it would have.
+  row.unreadTip = (not wasRead and not RowShows("read")) and L()["STATUS_UNREAD"] or nil
   row.Icon:SetTexture(Mail().GetMailIcon(index))
   row.Delete:SetShown(showDelete)
   -- Back to the idle tint, for the same reason StyleMailRow above re-asserts the
@@ -3355,6 +3361,7 @@ local function UpdateVisibleRows(panel)
     row.expiryTip = nil
     row.factsTip = nil
     row.senderTip = nil
+    row.unreadTip = nil
     row.Warning:Hide()
     row:Hide()
   end
@@ -5423,7 +5430,8 @@ end
 function RV.GridEntries(panel)
   local specs = RV.GroupSpecs(panel)
   local available = RV.BuiltinGridIds()
-  local bySpec = panel._gridSpecs
+  local bySpec = panel._gridSpecs or {}
+  panel._gridSpecs = bySpec
   for id in pairs(bySpec) do bySpec[id] = nil end
   if specs then
     -- An id is one button: a group's that repeats another's, or a
@@ -5582,9 +5590,6 @@ local function LayoutGrid(panel)
   primary:SetSize(width, GRID_PRIMARY_HEIGHT)
   primary:SetPoint("TOPLEFT", grid, "TOPLEFT", 0, 0)
 
-  -- The sweeps are laid out whether or not the option shows them: it can
-  -- flip while the window is open, and a hidden button that is already in
-  -- its column simply appears.
   -- Neither a search nor a selection withdraws the sweeps. Under a search
   -- each sweep acts on the rows on screen of its own kind -- "All sold"
   -- over a search for one seller is the sold mail from that seller -- so
@@ -5842,7 +5847,11 @@ function RV.ArrangeGrid(panel, on)
   else
     local drag = panel._gridDrag
     panel._gridDrag = nil
-    if drag then drag.button:SetFrameLevel(drag.level) end
+    if drag then
+      drag.button:SetFrameLevel(drag.level)
+      local handle = panel._gridHandles and panel._gridHandles[drag.button]
+      if handle and handle.Ring then handle.Ring:Hide() end
+    end
     if panel._gridGhost then panel._gridGhost:Hide() end
   end
   CT.RefreshCategoryButtons(panel)
@@ -5885,6 +5894,17 @@ function RV.GridPress(panel, button)
         dx = x0 - (button:GetLeft() or x0), dy = y0 - (button:GetTop() or y0),
       }
       button:SetFrameLevel(panel.Grid:GetFrameLevel() + 30)
+      -- The button in the hand is ringed in the accent, as its cell is.
+      local handle = RV.GridHandle(panel, button)
+      if not handle.Ring and A.NewGhost then
+        handle.Ring = A.NewGhost(button)
+        handle.Ring:SetAllPoints(button)
+      end
+      if handle.Ring then
+        handle.Ring:SetFrameLevel(button:GetFrameLevel() + 2)
+        A.PaintGhost(handle.Ring)
+        handle.Ring:Show()
+      end
       LayoutGrid(panel)
     end,
     move = function(x, y) RV.GridDrag(panel, x, y) end,
@@ -5945,6 +5965,8 @@ function RV.GridDrop(panel)
   panel._gridDrag = nil
   if not drag then return end
   drag.button:SetFrameLevel(drag.level)
+  local handle = panel._gridHandles and panel._gridHandles[drag.button]
+  if handle and handle.Ring then handle.Ring:Hide() end
   if panel._gridGhost then panel._gridGhost:Hide() end
   LayoutGrid(panel)
 end
