@@ -388,13 +388,17 @@ do
   -- the close's "bags". A verdict is Postbox's own padlock check on one bag
   -- slot: it runs inside those calls and inside the bag addons' own repaints,
   -- so it is counted apart and never stands as the longest step.
-  local ACTS = { "send", "mail", "history", "view", "picker" }
+  -- "contacts" is a part of a switch to Send, not an action of its own: the
+  -- category bar's dimming read from the contact lists, whose first read in
+  -- a session (or after a loading screen) builds them -- the guild roster
+  -- walked, every name keyed and sorted -- before the tab's first frame.
+  local ACTS = { "send", "contacts", "mail", "history", "view", "picker" }
   local BAGS = { "arm", "rearm", "blizz", "baganator", "eui", "eui on show", "slots", "ungrey", "hooks" }
   local IS_BAG = {}
   for i = 1, #BAGS do IS_BAG[BAGS[i]] = true end
   -- The session's first of each of these is a build: the Send tab's first
   -- show fills its contact lists, History makes its rows, the picker its frame.
-  local FIRST = { send = true, history = true, picker = true }
+  local FIRST = { send = true, contacts = true, history = true, picker = true }
   local CLOSE_PARTS = { "memory", "settle", "bags", "draft", "hide" }
 
   local opens, count = {}, 0

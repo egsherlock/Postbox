@@ -5640,8 +5640,10 @@ local function InstallEvents(panel)
     -- Favourites can change while this tab is hidden (the recipient manager is
     -- its own window and can sit open beside the mailbox), and so can what any
     -- of the categories hold -- so the dimming is re-decided before the bar is
-    -- repainted from it.
-    RefreshCategoryEmptiness(self)
+    -- repainted from it. Timed on the visit's record (Postbox.lua, 5b): the
+    -- first read of the contact lists in a session builds them, and the first
+    -- frame needs its answer.
+    ST.Timed("contacts", RefreshCategoryEmptiness, self)
     RefreshContactBar(self)
     -- Whatever went stale while the tab was hidden, plus the bag pass.
     Invalidate(self, "bags")
