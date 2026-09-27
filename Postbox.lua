@@ -340,22 +340,31 @@ end
 -- the open was Postbox, some other addon, or not addon code at all.
 -- /postbox debug prints it (BuildDiagnosticReport, section 6).
 --
+-- The window leaves out what the player does later in the same visit, and the
+-- close: the profiler charged Postbox slow frames that none of the window's
+-- steps accounted for. So the visit is recorded too, on the same open: each
+-- tab switch, view switch and first build, every call that asks a bag addon
+-- to repaint, and the close with its parts -- one timing per action, not per
+-- event -- until the close has been timed.
+--
 -- The rules, because this rides the one path a player has called slow:
---   * Nothing is measured outside the window. A call site reads ns.Perf, finds
---     no open record, and carries on; inside the window a measured step costs
---     two debugprofilestop() calls and a few additions.
+--   * Nothing is measured away from a mailbox. A call site reads ns.Perf, finds
+--     no open record (Perf.cur for the window, Perf.visit for the visit), and
+--     carries on; a measured step costs two debugprofilestop() calls and a few
+--     additions.
 --   * The window ends by itself: at the mailbox closing, or at the first
 --     measured step more than WINDOW seconds after the open. No timer, no
 --     OnUpdate.
---   * The inbox walk and the profiler reads happen at the window's two ends
---     and when a report is built, never per event. The two item-data events
+--   * The inbox walk and the profiler reads happen at the window's two ends,
+--     at the close, and when a report is built, never per event. The two item-data events
 --     are listened to only while a window is open.
 --   * Numbers only, and nothing saved: no character, sender or item name is
 --     recorded, and a /reload starts afresh (as the profiler itself does).
 -------------------------------------------------------------
 
--- Perf.cur is the open being counted, or nil: the one field a call site may
--- read directly, as the cheapest possible "is anything measuring".
+-- Perf.cur is the open being counted, or nil, and Perf.visit the open whose
+-- visit is being recorded, or nil: the two fields a call site may read
+-- directly, as the cheapest possible "is anything measuring".
 local Perf = {}
 ns.Perf = Perf
 
@@ -373,7 +382,23 @@ do
   local STAGES = { "build", "draft", "select", "seed", "refresh", "layout" }
   local ITEM_EVENTS = { "GET_ITEM_INFO_RECEIVED", "ITEM_DATA_LOAD_RESULT" }
 
+  -- The visit's timings (Perf.Done), in the order the report lists them.
+  -- ACTS are what the player did. BAGS are the calls that ask a bag addon, or
+  -- the client's own bags, to draw again, and their sum is the visit's and
+  -- the close's "bags". A verdict is Postbox's own padlock check on one bag
+  -- slot: it runs inside those calls and inside the bag addons' own repaints,
+  -- so it is counted apart and never stands as the longest step.
+  local ACTS = { "send", "mail", "history", "view", "picker" }
+  local BAGS = { "arm", "rearm", "blizz", "baganator", "eui", "eui on show", "slots", "ungrey", "hooks" }
+  local IS_BAG = {}
+  for i = 1, #BAGS do IS_BAG[BAGS[i]] = true end
+  -- The session's first of each of these is a build: the Send tab's first
+  -- show fills its contact lists, History makes its rows, the picker its frame.
+  local FIRST = { send = true, history = true, picker = true }
+  local CLOSE_PARTS = { "memory", "settle", "bags", "draft", "hide" }
+
   local opens, count = {}, 0
+  local firstDone = {}      -- which of FIRST this session has already timed
   local lastInbox = nil     -- the inbox as last read at a mailbox
   local watching = false
   local memoryReadMs = 0    -- the costliest memory read a report has made
@@ -443,6 +468,13 @@ do
     if not ok then return 0, 0 end
     shown = tonumber(shown) or 0
     return shown, tonumber(total) or shown
+  end
+
+  -- The tooltip reads the padlock verdicts have made this session
+  -- (Lib/InventoryLock.lua): the costly part of a verdict.
+  local function TooltipScans()
+    local lock = ns.Core and ns.Core.InventoryLock
+    return lock and tonumber(lock.tooltipScans) or 0
   end
 
   -- What the inbox holds, as counts. One walk, at a window's end or for a
@@ -551,11 +583,14 @@ do
       n = {}, ms = {}, max = {},
       walk = 0, binds = 0, items = 0, asks = 0, cold = 0,
       longest = 0,
+      act = {}, firsts = {}, bagMs = 0,
     }
     rec.openShown, rec.openTotal = InboxCount()
     rec.slow = SlowCounts()
+    rec.scans = TooltipScans()
     opens[(count - 1) % KEEP + 1] = rec
     Perf.cur = rec
+    Perf.visit = rec
     WatchItems(true)
     rec.t0 = Clock()
     return rec.t0
@@ -630,6 +665,69 @@ do
     return Clock()
   end
 
+  -----------------------------------------------------------
+  -- The visit: Mark -> clock mark or nil, Done(kind, mark)
+  -----------------------------------------------------------
+
+  function Perf.Mark()
+    if not Perf.visit then return nil end
+    return Clock()
+  end
+
+  -- One action or one bag call, on the open it belongs to. -> its ms.
+  function Perf.Done(kind, mark)
+    local rec = Perf.visit
+    if not (rec and mark) then return nil end
+    local ms = Since(mark)
+    local t = rec.act[kind]
+    if not t then
+      t = { n = 0, ms = 0, max = 0 }
+      rec.act[kind] = t
+    end
+    t.n = t.n + 1
+    t.ms = t.ms + ms
+    if ms > t.max then t.max = ms end
+    if IS_BAG[kind] then
+      rec.bagMs = rec.bagMs + ms
+      if rec.closing then rec.closeParts.bags = (rec.closeParts.bags or 0) + ms end
+    end
+    if FIRST[kind] and not firstDone[kind] then
+      firstDone[kind] = true
+      rec.firsts[kind] = ms
+    end
+    if kind ~= "verdict" then Note(rec, ms, kind) end
+    return ms
+  end
+
+  -- The close, from the first of the handlers that answer it (Mail Memory's
+  -- save runs before the shell's close) to the end of the shell's. Both close
+  -- signals arrive for one close; the second finds nothing to time.
+  function Perf.CloseBegin()
+    local rec = Perf.visit
+    if not rec or rec.closing then return end
+    rec.closing = true
+    rec.closeAt = Clock()
+    rec.closeParts = {}
+    -- Read before the window's own end, in the same frame: the close's frame
+    -- is counted by the next read, which is the next open's.
+    rec.slowClose = SlowCounts()
+  end
+
+  function Perf.ClosePart(name, mark)
+    local rec = Perf.visit
+    if not (rec and rec.closing and mark) then return end
+    rec.closeParts[name] = (rec.closeParts[name] or 0) + Since(mark)
+  end
+
+  function Perf.CloseEnd()
+    local rec = Perf.visit
+    if not (rec and rec.closing) then return end
+    rec.close = Since(rec.closeAt)
+    rec.closing = nil
+    rec.scansEnd = TooltipScans()
+    Perf.visit = nil
+  end
+
   -- The window is over: the mailbox closed, time ran out, or another open
   -- began. Safe to call with nothing open.
   function Perf.Settle(reason)
@@ -642,8 +740,12 @@ do
     rec.slowEnd = SlowCounts()
     -- A closing mailbox may already read empty. That says nothing about the
     -- box this open saw, so the counts its last update read stand in for it;
-    -- an open that saw no update at all has nothing to add.
+    -- an open that saw no update at all has nothing to add. The walk is
+    -- Postbox's own work, and at a close it is part of the close.
+    local walkAt = Clock()
     local ok, summary = pcall(InboxSummary)
+    rec.endWalk = Since(walkAt)
+    if rec.closing then rec.closeParts.settle = rec.endWalk end
     if not ok then summary = nil end
     local seen = rec.lastShown or 0
     if summary and (summary.shown > 0 or (rec.firstShown and seen == 0)) then
@@ -743,6 +845,81 @@ do
       put(format("longest step %sms %s", Ms(rec.longest), rec.longestKind))
     end
     return "  " .. concat(parts, " | ")
+  end
+
+  -- "send 45ms", or "send 3x 60ms max 45"; "(first)" when the session's
+  -- first of it fell in this visit.
+  local function Act(rec, kind)
+    local t = rec.act[kind]
+    if not t then return nil end
+    local text
+    if t.n == 1 then
+      text = format("%s %sms", kind, Ms(t.ms))
+    else
+      text = format("%s %dx %sms max %s", kind, t.n, Ms(t.ms), Ms(t.max))
+    end
+    local first = rec.firsts[kind]
+    if first then
+      text = text .. (t.n == 1 and " (first)" or format(" (first %s)", Ms(first)))
+    end
+    return text
+  end
+
+  local function OwnSlow(a, b)
+    if not (a and b) then return nil end
+    return Triple(a.own, b.own)
+  end
+
+  -- Up to three lines under an open's own: what the player did in the visit,
+  -- what the bags were asked to do, and the close. `nextRec` is the open
+  -- after this one, whose first profiler read ends this one's time away.
+  local function VisitLines(rec, nextRec)
+    local out = {}
+    local parts = {}
+    for i = 1, #ACTS do parts[#parts + 1] = Act(rec, ACTS[i]) end
+    -- At a close the inbox read is one of the close's parts, below.
+    if rec.endWalk and rec.ended == "timed out" then
+      parts[#parts + 1] = format("inbox read at the window's end %sms", Ms(rec.endWalk))
+    end
+    if #parts > 0 then out[#out + 1] = "    actions: " .. concat(parts, ", ") end
+
+    parts = {}
+    for i = 1, #BAGS do parts[#parts + 1] = Act(rec, BAGS[i]) end
+    local verdict = rec.act.verdict
+    local scans = (rec.scansEnd or TooltipScans()) - (rec.scans or 0)
+    if verdict or scans > 0 then
+      parts[#parts + 1] = format("verdicts %d in %sms, %d tooltip reads",
+        verdict and verdict.n or 0, Ms(verdict and verdict.ms), scans)
+    end
+    if #parts > 0 then
+      out[#out + 1] = format("    bags %sms: %s", Ms(rec.bagMs), concat(parts, ", "))
+    end
+
+    parts = {}
+    if rec.close then
+      local each = {}
+      for i = 1, #CLOSE_PARTS do
+        local ms = rec.closeParts[CLOSE_PARTS[i]]
+        if ms then each[#each + 1] = CLOSE_PARTS[i] .. " " .. Ms(ms) end
+      end
+      parts[#parts + 1] = format("close %sms (%s)", Ms(rec.close), concat(each, ", "))
+    end
+    -- Postbox's slow frames that the window did not see: after it ended and
+    -- before the close, and from the close to the next open (or to now).
+    local live = Perf.visit == rec
+    if rec.ended and rec.ended ~= "closed" and rec.ended ~= "reopened" then
+      local after = OwnSlow(rec.slowEnd, rec.slowClose or (live and SlowCounts()) or nil)
+      if after then parts[#parts + 1] = "Postbox slow after the window " .. after end
+    end
+    if rec.slowClose then
+      local away = OwnSlow(rec.slowClose, nextRec and nextRec.slow or SlowCounts())
+      if away then
+        parts[#parts + 1] = (nextRec and "Postbox slow from the close to the next open "
+          or "Postbox slow since the close ") .. away
+      end
+    end
+    if #parts > 0 then out[#out + 1] = "    " .. concat(parts, " | ") end
+    return out
   end
 
   local function InboxLine()
@@ -888,11 +1065,19 @@ do
     -- Built before the Data line and added after it: an open still counting
     -- reads the profiler for its line, and every profiler read has to come
     -- before the memory read.
-    local openLines = {}
+    local openLines, visits = {}, false
     for n = math.max(1, count - KEEP + 1), count do
       local rec = opens[(n - 1) % KEEP + 1]
       local built, line = pcall(OpenLine, rec)
       openLines[#openLines + 1] = built and line or ("  #" .. n .. " unreadable")
+      local nextRec = n < count and opens[n % KEEP + 1] or nil
+      local got, more = pcall(VisitLines, rec, nextRec)
+      if got and type(more) == "table" then
+        for i = 1, #more do
+          openLines[#openLines + 1] = more[i]
+          visits = true
+        end
+      end
     end
 
     local readMs
@@ -919,6 +1104,9 @@ do
     add(format("  Last %d opens (slow = frames over 100/500/1000ms in the window: game, addons, Postbox):",
       math.min(count, KEEP)))
     for i = 1, #openLines do add(openLines[i]) end
+    if visits then
+      add("  (Indented: the whole visit, not only the window. The bag calls run inside the switches and the close; the verdicts inside the bag calls and the bag addons' own repaints.)")
+    end
     return lines
   end
 end

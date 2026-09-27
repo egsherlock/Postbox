@@ -230,12 +230,17 @@ local function ClassifyBindingLine(line)
   return nil
 end
 
+-- How many tooltips the verdicts have read this session: the costly part of a
+-- verdict, counted for /postbox debug (Postbox.lua, 5b).
+M.tooltipScans = 0
+
 -- Consulted only when the cheaper checks were inconclusive. SurfaceArgs has to
 -- be called on the tooltip data and again on each line before the line's text
 -- fields are readable; that sequence is dictated by the API.
 local function TooltipVerdict(bag, slot)
   if not C_TooltipInfo or type(C_TooltipInfo.GetBagItem) ~= "function" then return nil end
 
+  M.tooltipScans = M.tooltipScans + 1
   local ok, data = pcall(C_TooltipInfo.GetBagItem, bag, slot)
   if not ok or type(data) ~= "table" then return nil end
 

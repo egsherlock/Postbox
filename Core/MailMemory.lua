@@ -2757,7 +2757,13 @@ end
 
 local function OnMailboxClosed()
   closedAt = time()
+  -- The first handler to hear of a close, so the close's timing starts here
+  -- (Postbox.lua, 5b); the shell ends it.
+  local perf = ns.Perf
+  if perf and type(perf.CloseBegin) == "function" then perf.CloseBegin() end
+  local perfAt = perf and perf.visit and perf.Mark()
   PersistOnClose()
+  if perfAt then perf.ClosePart("memory", perfAt) end
 end
 
 -- The real mailbox supersedes its memory: the moment a mail session opens,

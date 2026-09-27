@@ -3522,6 +3522,15 @@ local sendTabActive = false
 function ST.SendTabActive()
   return sendTabActive
 end
+
+-- A call into a bag host, timed on the visit's record (Postbox.lua, 5b).
+function ST.Timed(kind, fn, ...)
+  local perf = ns.Perf
+  local at = perf and perf.visit and perf.Mark()
+  fn(...)
+  if at then perf.Done(kind, at) end
+end
+
 local overlaid    = setmetatable({}, { __mode = "k" })
 local hookedSlots = setmetatable({}, { __mode = "k" })
 
@@ -3563,6 +3572,12 @@ local function RefreshSlotOverlay(button)
     return
   end
 
+  -- Timed while a visit is recorded (Postbox.lua, 5b): the verdicts are
+  -- Postbox's own share of every bag repaint on the Send tab, the hosts' own
+  -- included.
+  local perf = ns.Perf
+  local perfAt = perf and perf.visit and perf.Mark()
+
   local bag, slot = SlotAddress(button)
   local unmailable = bag and slot
     and slot >= 1
@@ -3585,6 +3600,7 @@ local function RefreshSlotOverlay(button)
   else
     ClearOverlay(button)
   end
+  if perfAt then perf.Done("verdict", perfAt) end
 end
 
 -- Anything claiming to be an item button has to prove it can name its own
@@ -3654,7 +3670,7 @@ end
 -- One container repaint per user action: the hooks do the marking, this only
 -- asks the client to run them.
 local function RepaintContainers()
-  if type(ContainerFrame_UpdateAll) == "function" then ContainerFrame_UpdateAll() end
+  if type(ContainerFrame_UpdateAll) == "function" then ST.Timed("blizz", ContainerFrame_UpdateAll) end
 end
 
 -------------------------------------------------------------
@@ -3748,37 +3764,40 @@ function ST.RepaintExternalBags()
     -- walked with ipairs, and nil means its own default (item widgets and
     -- searches). A caller's name here made ipairs throw inside the pcall, so
     -- this repaint silently never happened.
-    pcall(api.RequestItemButtonsRefresh)
+    ST.Timed("baganator", pcall, api.RequestItemButtonsRefresh)
   end
   for _, name in ipairs({ "EUI_Bags", "EUI_BagsReagent" }) do
     local frame = _G[name]
     if type(frame) == "table" and type(frame.RefreshInventory) == "function"
        and type(frame.IsVisible) == "function" and frame:IsVisible() then
-      pcall(frame.RefreshInventory, frame)
+      ST.Timed("eui", pcall, frame.RefreshInventory, frame)
     end
   end
 end
 
 -- Every external button seen so far that is on screen.
 function ST.RefreshExternalSlots()
+  local perf = ns.Perf
+  local perfAt = perf and perf.visit and perf.Mark()
   for button in pairs(externalSlots) do
     if button:IsShown() then
       if sendTabActive then RefreshSlotOverlay(button) else ClearOverlay(button) end
     end
   end
+  if perfAt then perf.Done("slots", perfAt) end
 end
 end
 
 function ST.UpdateBagOverlays()
-  HookVisibleSlots()
-  ST.HookExternalBags()
+  ST.Timed("hooks", HookVisibleSlots)
+  ST.Timed("hooks", ST.HookExternalBags)
   RepaintContainers()
   ST.RefreshExternalSlots()
 end
 
 function ST.ClearBagOverlays()
   sendTabActive = false
-  ClearEveryOverlay()
+  if next(overlaid) then ST.Timed("ungrey", ClearEveryOverlay) end
   RepaintContainers()
   ST.RepaintExternalBags()
 end
@@ -3814,17 +3833,27 @@ if type(hooksecurefunc) == "function" and type(SetSendMailShowing) == "function"
   hooksecurefunc("SetSendMailShowing", function(shown)
     if shown or not nativeArmWanted or reasserting then return end
     reasserting = true
+    local perf = ns.Perf
+    local perfAt = perf and perf.visit and perf.Mark()
     pcall(SetSendMailShowing, true)
     reasserting = false
+    if perfAt then perf.Done("rearm", perfAt) end
   end)
+end
+
+-- The client's flag, set and timed (Postbox.lua, 5b): every call runs each
+-- bag addon's context repaint.
+function ST.SetArm(shown)
+  if type(SetSendMailShowing) ~= "function" then return end
+  ST.Timed("arm", SetSendMailShowing, shown and true or false)
 end
 
 function ST.ActivateNativeSendMail()
   sendTabActive = true
   nativeArmWanted = true
-  if type(SetSendMailShowing) == "function" then SetSendMailShowing(true) end
-  HookVisibleSlots()
-  ST.HookExternalBags()
+  ST.SetArm(true)
+  ST.Timed("hooks", HookVisibleSlots)
+  ST.Timed("hooks", ST.HookExternalBags)
   RepaintContainers()
   ST.RepaintExternalBags()
   ST.RefreshExternalSlots()
@@ -3837,15 +3866,15 @@ end
 -- for mailability verdicts nobody is looking at.
 function ST.ArmNativeSendMail()
   nativeArmWanted = true
-  if type(SetSendMailShowing) == "function" then SetSendMailShowing(true) end
+  ST.SetArm(true)
 end
 
 function ST.DeactivateNativeSendMail()
   sendTabActive = false
   -- Down BEFORE the flag moves, or the guard would re-arm our own disarm.
   nativeArmWanted = false
-  if type(SetSendMailShowing) == "function" then SetSendMailShowing(false) end
-  ClearEveryOverlay()
+  ST.SetArm(false)
+  if next(overlaid) then ST.Timed("ungrey", ClearEveryOverlay) end
   RepaintContainers()
 end
 

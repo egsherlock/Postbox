@@ -1723,6 +1723,12 @@ end
 function UI.SelectTab(tabId)
   if not TAB_LABEL_KEY[tabId] then return end
 
+  -- A switch, timed on the visit's record (Postbox.lua, 5b) with everything
+  -- it sets off: the panels' own show and hide, and the bags' repaints. The
+  -- open's re-assertion of the same tab is part of the open's own stages.
+  local perf = ns.Perf
+  local perfAt = perf and perf.visit and UI._state.activeTab ~= tabId and perf.Mark() or nil
+
   UI._state.activeTab = tabId
 
   local frame = UI._frame
@@ -1761,6 +1767,8 @@ function UI.SelectTab(tabId)
     UI.SetMessageExtraHeight(0)
     UI.SetAttachmentRows(1)
   end
+
+  if perfAt then perf.Done(tabId == "send" and "send" or "mail", perfAt) end
 end
 
 -------------------------------------------------------------
@@ -2488,7 +2496,10 @@ end
 local function OnMailClosed()
   -- The open's measuring window ends with the session (Postbox.lua, 5b). First,
   -- while the inbox can still be read, and a no-op on the second close signal.
+  -- The close itself is timed too, in parts, on the same open's record: it
+  -- began with Mail Memory's save if that ran first, and ends below.
   local perf = ns.Perf
+  if perf and type(perf.CloseBegin) == "function" then perf.CloseBegin() end
   if perf and type(perf.Settle) == "function" then perf.Settle("closed") end
 
   if not UI._state.mailboxOpen and not UI._state.visible then return end
@@ -2533,7 +2544,9 @@ local function OnMailClosed()
   if send then
     if send.ClearBagOverlays then send.ClearBagOverlays() end
     if send.DeactivateNativeSendMail then send.DeactivateNativeSendMail() end
+    local draftAt = perf and perf.visit and perf.Mark()
     ResetDraft("close")
+    if draftAt then perf.ClosePart("draft", draftAt) end
   end
 
   -- Give back the compose screen's transient extra height -- the attachment row
@@ -2548,9 +2561,14 @@ local function OnMailClosed()
   -- one the line above may just have queued.
   UI._state.layoutDeferred = false
 
+  -- Hiding the window runs every panel's OnHide, the compose screen's bag
+  -- clearing among them when that screen was up.
+  local hideAt = perf and perf.visit and perf.Mark()
   if UI._frame then UI._frame:Hide() end
+  if hideAt then perf.ClosePart("hide", hideAt) end
   UI._state.visible = false
   UI.ClearStatus()
+  if perf and type(perf.CloseEnd) == "function" then perf.CloseEnd() end
 
   -- MailFrame is deliberately not touched here. Blizzard's own secure hide runs
   -- from the interaction manager and puts the frame away for us, so restoring

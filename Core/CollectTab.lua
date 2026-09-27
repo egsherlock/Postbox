@@ -2218,6 +2218,10 @@ end
 function CT.OpenPicker(panel)
   local Memory = AV.Memory()
   if not (panel and panel.Picker and Memory) then return end
+  -- Timed on the visit's record (Postbox.lua, 5b): the list's frame is built
+  -- on the first.
+  local perf = ns.Perf
+  local perfAt = perf and perf.visit and perf.Mark()
   if not panel.Picker:IsShown() then AV.Paint(panel) end
   if not panel.Picker:IsShown() then
     -- No other character has a box to show: say so, not a dead click -- and,
@@ -2229,6 +2233,7 @@ function CT.OpenPicker(panel)
   Memory.OpenPicker(panel.Picker, panel._alt, function(realm, name, isMe)
     AV.Show(panel, (not isMe) and { realm = realm, name = name } or nil)
   end)
+  if perfAt then perf.Done("picker", perfAt) end
 end
 
 -- The pool of memory rows, built by Mail Memory (one row construction for
@@ -6089,6 +6094,10 @@ end
 
 function SetViewMode(panel, id)
   if panel.viewMode == id then return end
+  -- Timed on the visit's record (Postbox.lua, 5b): History's rows are first
+  -- built here.
+  local perf = ns.Perf
+  local perfAt = perf and perf.visit and perf.Mark()
   panel.viewMode = id
   -- A selection was made over one view's rows; the next view lists others.
   ClearSelection(panel)
@@ -6100,6 +6109,7 @@ function SetViewMode(panel, id)
   panel.MailListScroll:SetVerticalScroll(0)
   PaintViewToggle(panel)
   CT.RefreshMailList(panel)
+  if perfAt then perf.Done(id == VIEW_HISTORY and "history" or "view", perfAt) end
 end
 
 -- The arrange mode over this tab (Core/Arrange.lua): the strip of columns
