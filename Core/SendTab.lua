@@ -3598,6 +3598,10 @@ local function RefreshSlotOverlay(button)
   local perf = ns.Perf
   local perfAt = perf and perf.visit and perf.Mark()
 
+  -- Noted for the activation's own sweep (ST.ActivateNativeSendMail).
+  local judged = ST._judged
+  if judged then judged[button] = true end
+
   local bag, slot = SlotAddress(button)
   local unmailable = bag and slot
     and slot >= 1
@@ -3881,12 +3885,14 @@ end
 -- (ST.OnEllesmereShown). A Baganator button coming on screen runs the
 -- client's per-slot update from the template's own OnShow, and again from
 -- the SetItemDetails of the redraw it was asked for; the hook rides both.
-function ST.RefreshExternalSlots()
+-- `skip`: the buttons already judged in the same pass (see
+-- ST.ActivateNativeSendMail).
+function ST.RefreshExternalSlots(skip)
   local perf = ns.Perf
   local perfAt = perf and perf.visit and perf.Mark()
   for button in pairs(externalSlots) do
     if sendTabActive then
-      if button:IsVisible() then RefreshSlotOverlay(button) end
+      if button:IsVisible() and not (skip and skip[button]) then RefreshSlotOverlay(button) end
     elseif button:IsShown() then
       ClearOverlay(button)
     end
@@ -3979,15 +3985,25 @@ end
 function ST.ActivateNativeSendMail()
   sendTabActive = true
   nativeArmWanted = true
-  ST.SetArm(true)
   -- One pass per transition: a switch to this tab comes here from the
   -- panel's own OnShow and again from the shell's SelectTab, in one frame.
-  if not ST.PaintDue("activate") then return end
-  ST.Timed("hooks", HookVisibleSlots)
-  ST.Timed("hooks", ST.HookExternalBags)
-  RepaintContainers()
-  ST.RepaintExternalBags()
-  ST.RefreshExternalSlots()
+  local pass = ST.PaintDue("activate")
+  -- Every slot the other addons' own repaints judge during the pass --
+  -- Baganator's, on the flag set below (it redraws the context of every
+  -- button it shows), and EllesmereUI's, whose RefreshInventory the walk in
+  -- 17a rides -- is not judged again by the sweep that ends it. All of it
+  -- runs in this one call, where nothing a verdict reads can move.
+  local judged = pass and {} or nil
+  ST._judged = judged
+  ST.SetArm(true)
+  if pass then
+    ST.Timed("hooks", HookVisibleSlots)
+    ST.Timed("hooks", ST.HookExternalBags)
+    RepaintContainers()
+    ST.RepaintExternalBags()
+  end
+  ST._judged = nil
+  if pass then ST.RefreshExternalSlots(judged) end
 end
 
 -- The flag alone, without the compose overlays: what the collect tab arms
