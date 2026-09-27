@@ -131,6 +131,10 @@ local function CaptureNow()
   -- that boundary -- the same one its status line trusts.
   if not state.inboxSeen then return end
 
+  -- Timed while an open is being measured (Postbox.lua, 5b); nil otherwise.
+  local perf = ns.Perf
+  local perfAt = perf and perf.Begin()
+
   local numItems, totalItems = GetInboxNumItems()
   numItems = tonumber(numItems) or 0
   totalItems = tonumber(totalItems) or numItems
@@ -195,6 +199,7 @@ local function CaptureNow()
   end
 
   live = { seenAt = now, total = totalItems, mails = mails }
+  if perfAt then perf.End("capture", perfAt) end
 end
 
 local function QueueCapture()

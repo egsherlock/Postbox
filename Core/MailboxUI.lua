@@ -1299,7 +1299,12 @@ local function QueueCollectTabText()
   tabCountQueued = true
   local ok = pcall(C_Timer.After, 0, function()
     tabCountQueued = false
+    -- With the collect screen hidden this is the inbox walk, so it is timed
+    -- with the rest of an open's work (Postbox.lua, 5b).
+    local perf = ns.Perf
+    local perfAt = perf and type(perf.Begin) == "function" and perf.Begin() or nil
     UpdateCollectTabText()
+    if perfAt then perf.End("tab", perfAt) end
   end)
   if not ok then
     tabCountQueued = false
@@ -2019,6 +2024,12 @@ local function OnMailShow()
     return
   end
 
+  -- /postbox debug's record of this open (Postbox.lua, 5b): each stage's time,
+  -- then what the next half minute of inbox updates costs. `mark` is nil when
+  -- the record is unavailable, and every Stage call below is skipped with it.
+  local perf = ns.Perf
+  local mark = perf and type(perf.Open) == "function" and perf.Open() or nil
+
   UI._state.mailboxOpen = true
   -- The inbox always reads empty between MAIL_SHOW and the first
   -- MAIL_INBOX_UPDATE; anything that would treat "empty" as a fact about the
@@ -2026,31 +2037,44 @@ local function OnMailShow()
   UI._state.inboxSeen = false
   SyncQuickAttachBaseline()
   BuildFrame()
+  if mark then mark = perf.Stage("build", mark) end
 
   UI.ClearStatus()
   ResetDraft("open")
+  if mark then mark = perf.Stage("draft", mark) end
   -- Re-assert the active tab on every open so the native send-mail state is
   -- re-armed; BuildFrame only selects a tab on the very first open.
   UI.SelectTab(UI._state.activeTab)
   UI.Show(true)
+  -- Showing the window runs its OnShow hooks: the skin's refresh pass and the
+  -- visible panel's own OnShow, which for the collect screen is a list refresh.
+  if mark then mark = perf.Stage("select", mark) end
   -- Before the list refresh: the revived registry is what paints the row
   -- triangles on the very first build after a relog.
   local collectTab = ns.CollectTab
   if collectTab and type(collectTab.SeedStuckFromRecord) == "function" then
     collectTab.SeedStuckFromRecord()
   end
+  if mark then mark = perf.Stage("seed", mark) end
   RefreshCollectPanel()
   UI.UpdateStatusSummary()
   -- After the refresh, which records the inbox counts this reads.
   UpdateCollectTabText()
+  if mark then mark = perf.Stage("refresh", mark) end
   -- Dock last, now that both our window and the invisible MailFrame are shown
   -- and positioned.
   UI.ApplyWindowLayout()
+  if mark then perf.Stage("layout", mark, true) end
 end
 
 -- The mail session ended. MAIL_CLOSED and the interaction manager's hide event
 -- both fire for one close, so this is idempotent.
 local function OnMailClosed()
+  -- The open's measuring window ends with the session (Postbox.lua, 5b). First,
+  -- while the inbox can still be read, and a no-op on the second close signal.
+  local perf = ns.Perf
+  if perf and type(perf.Settle) == "function" then perf.Settle("closed") end
+
   if not UI._state.mailboxOpen and not UI._state.visible then return end
 
   -- Cleared before the frame is hidden: the OnHide hook reads this to decide
@@ -2303,6 +2327,11 @@ function UI.Initialize()
   end)
 
   bus.Register("MAIL_INBOX_UPDATE", function()
+    -- Counted, with this handler's own time, while an open's record is
+    -- measuring (Postbox.lua, 5b); nil otherwise.
+    local perf = ns.Perf
+    local perfAt = perf and type(perf.InboxEvent) == "function" and perf.InboxEvent() or nil
+
     -- The inbox moved, so what the collect screen last counted is no longer
     -- true. Said before either line below reads it: the refresh recounts and
     -- records as it rebuilds, but it is coalesced to the next frame AND skipped
@@ -2337,6 +2366,8 @@ function UI.Initialize()
     -- with the collect panel hidden this is the only reader, and a walk per
     -- burst event would be paid for one visible change.
     QueueCollectTabText()
+
+    if perfAt then perf.End("sync", perfAt) end
   end)
 
   bus.Register("MAIL_SUCCESS", function()
