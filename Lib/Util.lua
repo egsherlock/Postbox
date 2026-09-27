@@ -282,6 +282,8 @@ end
 -- non-zero: 2 turns 1309g 62s 40c into 1309g 62s, and 1 into 1309g. A caller
 -- short of room asks for fewer coins rather than letting the string run off
 -- its edge. Without it every coin from the largest non-zero one down is shown.
+-- One format per amount, as FormatMoneyText: the banner asks for its two sums
+-- on every list refresh, at up to four widths.
 function Formatting.FormatMoneyIcons(copper, colorHex, parts)
   local gold, silver, rest = Split(copper)
 
@@ -290,17 +292,26 @@ function Formatting.FormatMoneyIcons(copper, colorHex, parts)
     open, close = "|c" .. colorHex, "|r"
   end
 
-  local coins = {}
-  local function Coin(value, icon)
-    coins[#coins + 1] = format("%s%d%s%s", open, value, close, icon)
-  end
-  if gold > 0 then Coin(gold, GOLD_ICON) end
-  if gold > 0 or silver > 0 then Coin(silver, SILVER_ICON) end
-  Coin(rest, COPPER_ICON)
-
+  -- How many of those coins stand: all of them, or no more than the cap, a
+  -- fractional cap rounding up.
+  local shown = (gold > 0 and 3) or (silver > 0 and 2) or 1
   local limit = tonumber(parts)
-  if limit and limit >= 1 then
-    for i = #coins, limit + 1, -1 do coins[i] = nil end
+  if limit and limit >= 1 then shown = math.min(shown, math.ceil(limit)) end
+
+  if gold > 0 then
+    if shown >= 3 then
+      return format("%s%d%s%s %s%d%s%s %s%d%s%s", open, gold, close, GOLD_ICON,
+        open, silver, close, SILVER_ICON, open, rest, close, COPPER_ICON)
+    elseif shown == 2 then
+      return format("%s%d%s%s %s%d%s%s", open, gold, close, GOLD_ICON, open, silver, close, SILVER_ICON)
+    end
+    return format("%s%d%s%s", open, gold, close, GOLD_ICON)
   end
-  return table.concat(coins, " ")
+  if silver > 0 then
+    if shown >= 2 then
+      return format("%s%d%s%s %s%d%s%s", open, silver, close, SILVER_ICON, open, rest, close, COPPER_ICON)
+    end
+    return format("%s%d%s%s", open, silver, close, SILVER_ICON)
+  end
+  return format("%s%d%s%s", open, rest, close, COPPER_ICON)
 end
