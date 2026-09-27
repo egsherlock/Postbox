@@ -44,7 +44,8 @@
 ### Improved
 
 - **Compact rows are the default.** One line per mail, with everything the
-  two-line row showed; the two-line row is one click away in Options.
+  two-line row showed; "Two-line mail rows" in Options brings the larger row
+  back.
 - **One inbox instead of three views.** The Mail tab is now Inbox and
   History. The inbox lists what still holds something first, then the read
   mail with nothing left in it, folded under a divider that opens them and
@@ -71,11 +72,15 @@
   without asking. Items show their crafting quality mark on the corner of
   their icon; Options can put it after the name instead, show both, or hide
   it.
-- **Counts are the true number.** "All sold (7)", "Inbox (124)" rather than
-  "99+", and a button with nothing to collect is greyed out rather than
-  answering "Done" when clicked. With Show counts on, the Mail tab reads
-  "Mail (23)"; off, it wears a dot while there is mail to collect. The
-  separate Mail tab caption setting is gone.
+- **Counts are the true number, and each one says one thing.** "Inbox (124)"
+  is everything in the box, read mail included; every button counts what it
+  would collect, "All mail (98)" too; and a button with nothing to collect is
+  greyed out rather than answering "Done" when clicked. No more "99+". The
+  Mail tab itself wears a dot while there is mail to collect, orange when
+  some of it would not come out. Its separate caption setting is gone.
+- **Right-click "Attachments" to take everything out.** Every attached item
+  goes back to your bags and the queue is cleared, as right-clicking a slot
+  does for one item.
 - **Mail Memory matches the mail list:** auction mail reads "AH Sold" and
   "AH Bought" in colour with the item's name, in the same columns, following the
   same switches. Its window can be made wider, and searching for "sold" or
@@ -90,7 +95,7 @@
   right-click do; a right-click resets Mail Memory's size too. Search boxes
   have a small clear button while they hold text, and a cancelled auction's
   row reads "AH Cancel". "AH Won" is "AH Bought" again, and its button "All
-  bought".
+  bought" now leads the category buttons, where "All expired" was.
 - **Quicker where there is a lot to get through.** Searching every character
   in Mail Memory, searching a month of History, and the inbox's own refresh
   all do less work per keystroke and per mail; nothing looks different.

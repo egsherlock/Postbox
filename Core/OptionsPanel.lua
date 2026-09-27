@@ -557,10 +557,13 @@ local function Build()
   card, y = BeginSection(col, y, L["OPT_ROWS_HEADING"])
   cy = -CARD_PAD
 
-  cy = AddCheckbox(card, cy, L["OPT_COMPACT_ROWS_TITLE"], L["OPT_COMPACT_ROWS_DESC"],
-        function() return ns.MailboxUI.GetOption("compactRows") end,
+  -- Compact is the default, so the switch is the one a player turns ON to
+  -- change it: two-line rows. The stored option is still compactRows, read
+  -- inverted, so nobody's choice moves.
+  cy = AddCheckbox(card, cy, L["OPT_TWO_LINE_ROWS_TITLE"], L["OPT_TWO_LINE_ROWS_DESC"],
+        function() return not ns.MailboxUI.GetOption("compactRows") end,
         function(on)
-          ns.MailboxUI.SetOption("compactRows", on)
+          ns.MailboxUI.SetOption("compactRows", not on)
           if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
         end)
 

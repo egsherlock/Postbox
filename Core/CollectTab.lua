@@ -199,11 +199,14 @@ function RV.PaintQuality(row, mark)
   row.QualityShadow:SetVertexColor(0, 0, 0, 1)
   -- The icon's lower-right corner and out past it. The small compact icon
   -- takes a mark a little larger than itself (at its own size it was hard
-  -- to see); the two-line row's larger icon a little under its own.
+  -- to see); the two-line row's larger icon a little under its own. Sizes
+  -- are not rounded: at UI scale 1 a unit is nearly two screen pixels, too
+  -- coarse a step to tune a mark this small in. Its centre sits a fixed
+  -- distance inside the icon's corner, so a change of size never moves it.
   local iconSize = row.Icon:GetWidth() or 18
-  local share = (iconSize <= 20) and 1.2 or 0.9
-  local size = max(15, floor(iconSize * share + 0.5))
-  local bleed = floor(size * 0.3 + 0.5) + 2
+  local compactIcon = iconSize <= 20
+  local size = max(15, iconSize * (compactIcon and 1.2 or 0.9))
+  local bleed = size / 2 - (compactIcon and 2 or 2.5)
   row.Quality:SetSize(size, size)
   row.Quality:ClearAllPoints()
   row.Quality:SetPoint("BOTTOMRIGHT", row.Icon, "BOTTOMRIGHT", bleed, -bleed)
@@ -227,7 +230,7 @@ end
 -- leads and spans the full width -- deliberate hierarchy, not an accident.
 -- "alts" -- mail from the player's own characters -- takes the sixth cell of
 -- the two rows of three, which stood empty.
-local CATEGORY_ORDER = { "all", "expired", "sold", "canceled", "bought", "other", "alts" }
+local CATEGORY_ORDER = { "all", "bought", "sold", "canceled", "expired", "other", "alts" }
 local GRID_COLUMNS = 3
 
 -- The window's persisted minimum is 480 wide; the shell's content inset takes
@@ -605,29 +608,33 @@ end
 -- answer is preferred and why there is no second counter anywhere.
 -------------------------------------------------------------
 
-local counts = { toCollect = 0, done = 0, total = 0, known = false }
+local counts = { toCollect = 0, done = 0, total = 0, server = 0, known = false }
 
-local function RecordCounts(toCollect, done, total)
+-- `total` is what the client lists; `server` what the mailbox holds, which is
+-- more once it passes what the client will list at a time.
+local function RecordCounts(toCollect, done, total, server)
   counts.toCollect = toCollect
   counts.done = done
   counts.total = total
+  counts.server = math.max(tonumber(server) or total, total)
   counts.known = true
 end
 
 local function WalkCounts()
-  local total = (type(GetInboxNumItems) == "function" and GetInboxNumItems()) or 0
+  local total, server = 0, 0
+  if type(GetInboxNumItems) == "function" then total, server = GetInboxNumItems() end
   total = tonumber(total) or 0
   local done = 0
   for index = 1, total do
     if Mail().IsReadPersistent(index) then done = done + 1 end
   end
-  RecordCounts(total - done, done, total)
+  RecordCounts(total - done, done, total, server)
 end
 
--- -> toCollect, done, total.
+-- -> toCollect, done, total (listed), server (in the mailbox).
 function CT.InboxCounts()
   if not counts.known then WalkCounts() end
-  return counts.toCollect, counts.done, counts.total
+  return counts.toCollect, counts.done, counts.total, counts.server
 end
 
 -- The inbox changed and no refresh has looked at it yet. Frozen: Core/MailboxUI.lua
@@ -1755,16 +1762,27 @@ function CT.UpdateTabCounts(panel)
   local show = ShowTabCounts()
   -- Asked for only when a caption will carry it: with the option off the walk
   -- this can trigger would be paid for a number nobody is shown.
-  local toCollect, done, total
-  if show then toCollect, done, total = CT.InboxCounts() end
+  local toCollect, done, total, server
+  if show then toCollect, done, total, server = CT.InboxCounts() end
+  local tabbed = RV.Mode() == "tab"
 
   for i = 1, #container.buttons do
     local seg = container.buttons[i]
     local base = seg.baseLabel or seg:GetText() or ""
     if show then
-      -- The inbox counts what is still to collect: the number worth acting
-      -- on. Done counts what it lists.
-      local n = (seg.segId == VIEW_DONE) and done or toCollect
+      -- Each segment counts the mail it holds. The Inbox is the whole box --
+      -- read mail with nothing left included, and mail the server holds past
+      -- what the client lists -- unless read mail has a Done tab of its own,
+      -- which then counts it. What there is to COLLECT is the number on the
+      -- button that collects it.
+      local n
+      if seg.segId == VIEW_DONE then
+        n = done
+      elseif tabbed then
+        n = toCollect + max(0, server - total)
+      else
+        n = server
+      end
       seg:SetText(base .. " (" .. FormatCount(n) .. ")")
     else
       seg:SetText(base)
@@ -2963,7 +2981,9 @@ function RV.UpdatePin(panel, offset, viewport, stride, height)
     return false
   end
   RV.PaintDivider(panel, pin)
-  pin:SetHeight(height)
+  -- One compact row, whichever row size the list is in: it is a label and a
+  -- button, and at a two-line row's height it hid most of a mail to say so.
+  pin:SetHeight(COMPACT_ROW_HEIGHT)
   pin:Show()
   return true
 end
@@ -3425,7 +3445,7 @@ function CT.RefreshMailList(panel)
   -- three segment captions are readings of these two numbers, and `numItems` --
   -- what the client can actually address -- is the total they add up to and the
   -- number the all segment carries.
-  RecordCounts(toCollectCount, doneCount, numItems)
+  RecordCounts(toCollectCount, doneCount, numItems, totalItems)
   -- More mail on the server than the client lists: the primary stays live.
   panel._moreOnServer = totalItems > numItems
   -- Hint first, counts second: both change the width of something in the top
@@ -5110,8 +5130,10 @@ local function LayoutGrid(panel)
     local own = (i == 1 and (picked or panel._moreOnServer))
     local n = counts[CATEGORY_ORDER[i]] or 0
     local caption = button.caption
-    -- The primary's count is the Inbox segment's own; said once, up there.
-    if withCounts and n > 0 and not own and i > 1 then
+    -- Every button counts what it would collect, the primary too: the Inbox
+    -- segment above counts the whole box. Under a selection the primary's
+    -- caption names its number already.
+    if withCounts and n > 0 and not (i == 1 and picked) then
       caption = caption .. " (" .. FormatCount(n) .. ")"
     end
     button:SetEnabled(own or n > 0)
@@ -5452,6 +5474,15 @@ function CT.Build(parent)
   ground:SetAllPoints(pin)
   ground:SetFrameLevel(max(0, pin:GetFrameLevel() - 1))
   T.ApplyBand(ground)
+  -- And beneath that, one that is always opaque and never skinned: a host
+  -- skin takes the band's own fill down with the window's opacity, and the
+  -- row the pin stands over read through it.
+  local under = CreateFrame("Frame", nil, pin)
+  under:SetAllPoints(pin)
+  under:SetFrameLevel(max(0, pin:GetFrameLevel() - 2))
+  under.Fill = under:CreateTexture(nil, "BACKGROUND")
+  under.Fill:SetAllPoints()
+  under.Fill:SetColorTexture(0.05, 0.05, 0.06, 1)
   pin:SetScript("OnClick", function()
     panel._readOpen = true
     CT.RefreshMailList(panel)

@@ -62,7 +62,7 @@ divider waits at the foot of the list, and scrolling down to it opens the read
 mail. Rather keep it apart? Options puts it in a Done tab of its own, or deletes
 each mail the moment it is finished with.
 
-One-click sweeps pick out a single kind of mail: expired, sold, cancelled, bought,
+One-click sweeps pick out a single kind of mail: bought, sold, cancelled, expired,
 from your alts, or everything else. A search box narrows the list by sender,
 subject or what happened to it ("sold"), and while it is on the big button collects
 only what is shown; clicking `Stuck: 2` in the title bar does the same for the mail
@@ -143,7 +143,8 @@ ask about an item before it is attached (one you could still return, say), it as
 when that item's turn comes, exactly as it would for a right-click; such items are
 marked "asks first" in the queue's tooltip, and the line above the button says
 which item is waiting on you. Right-click the queued count to clear the queue;
-nothing leaves your bags. Alt+right-click an item and every stack of it goes in:
+nothing leaves your bags. Right-click "Attachments" to take everything out at
+once, attached items and queue alike. Alt+right-click an item and every stack of it goes in:
 what fits into the slots, the rest into the queue. Ctrl+Enter sends from any field.
 An unsent draft survives closing the mailbox, too — the text is back at the next one.
 
@@ -183,7 +184,8 @@ on its icon, after its name, both, or nowhere. The figures a row carries — gol
 slots, time left — each on or off and dragged into the order you want, with which
 gold (earned, spent or both) and when the time left shows.
 
-**Mail tab.** Counts on the tab and its buttons. Whether the six category buttons
+**Mail tab.** Counts on Inbox — everything in the box, read mail included — and
+on each button, what it would collect. Whether the six category buttons
 sit under the list or only the one Collect button does. Whether a left-click opens a
 mail or collects it. What happens to read mail with nothing left: under the divider,
 in a Done tab, or deleted when done. How long History keeps.

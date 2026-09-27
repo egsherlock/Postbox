@@ -4276,6 +4276,12 @@ function ST.QueueAwaitingAnswer()
   return (pending and pending.locked) and true or false
 end
 
+-- Whether a pass is moving queued items into the slots right now: the
+-- Attachments caption's right-click leaves the slots alone while one is.
+function ST.QueuePassActive()
+  return Q.fillState ~= nil
+end
+
 -- The item that question is about, as a link, for the guidance line.
 function ST.QueueAskedItem()
   local pending = Q.fillState and Q.fillState.pending
@@ -5068,9 +5074,30 @@ local function BuildAttachmentArea(panel)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetText(L["LABEL_ATTACHMENTS"])
     GameTooltip:AddLine(L["ATTACH_TIP_HOW"], 1, 1, 1, true)
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(L["ATTACH_TIP_CLEAR"], 0.75, 0.75, 0.75, true)
     GameTooltip:Show()
   end)
   panel.AttachHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  -- Right-click takes everything out, as right-click on a slot takes out its
+  -- one item and on the queue's count forgets the queue. The queue goes too:
+  -- left behind, it would only refill the slots this has just emptied. Not
+  -- while a send or a queue pass is in flight -- the slots then belong to
+  -- the mail the server is holding. Highest slot first: the client compacts
+  -- the rest as each one empties.
+  panel.AttachHit:SetScript("OnMouseUp", function(self, mouseButton)
+    if mouseButton ~= "RightButton" or not self:IsMouseOver() then return end
+    if pendingSend or ST.QueuePassActive() or type(ClickSendMailItemButton) ~= "function" then return end
+    panel._queue = nil
+    for i = K.SEND_SLOT_COUNT, 1, -1 do
+      if SlotHasItem(i) then ClickSendMailItemButton(i, true) end
+    end
+    GameTooltip:Hide()
+    if RefreshQueueLabel then RefreshQueueLabel(panel) end
+    Invalidate(panel, "slots")
+    Invalidate(panel, "bags")
+    Invalidate(panel, "cost")
+  end)
 
   -- The attachment queue's count (section 18a), to the right of the label:
   -- "8 more queued", the items themselves in its tooltip, and a click to

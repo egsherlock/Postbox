@@ -30,8 +30,8 @@ the game refuses — bags full, a unique you already carry — is skipped and ma
 the game's own reason, instead of ending the run or sitting there looking ignored. A
 run that cannot finish says so; it never reports success it did not have.
 
-Sweep buttons pick out just the expired auctions, just the sales, just what you
-bought, just the cancellations, or just the mail from your own alts. When the run
+Sweep buttons pick out just what you bought, just the sales, just the
+cancellations, just the expired auctions, or just the mail from your own alts. When the run
 finishes, chat tells you what it earned and what it spent.
 
 Read mail with nothing left in it waits below the rest under a divider, one click
@@ -100,7 +100,8 @@ Mailing a run of things to one bank alt? **Keep recipient after send**, in the
 options, leaves the name in place while everything else clears. And more than twelve
 items is not a problem: the label counts up to "Attachments 12/12", then keep
 right-clicking and the rest queue up in a grid of small icons beside the slots
-(right-click one to take it out) — the Send button reads "Send 3 mails", the
+(right-click one to take it out, or "Attachments" to take everything out) — the
+Send button reads "Send 3 mails", the
 postage shown is for all of them, and one press posts them as further mails to the
 same person, twelve items to each, after a single "are you sure" that says exactly
 what is about to go; the button counts the run off as it goes. An item the game
@@ -233,7 +234,7 @@ place.
 **Mail rows.** Compact or two-line rows, where an item's quality mark goes, and which
 figures each row carries — gold, slots, time left — in the order you want.
 
-**Mail tab.** Counts on the tab and its buttons, whether the category buttons sit
+**Mail tab.** Counts on Inbox and its buttons, whether the category buttons sit
 under the list, whether a left-click opens a mail or collects it, what happens to
 read mail, and how long History keeps.
 

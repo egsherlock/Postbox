@@ -264,8 +264,12 @@ end
 -- It had a dropdown of its own (dot / count / none) beside "Show counts", and
 -- two switches over one number read as the count being broken when the
 -- caption kept its dot. One switch now; a stored tabCaption is ignored.
+--
+-- Now the dot either way. The number moved off the window's tab: the Inbox
+-- segment right under it counts the whole box and each button what it would
+-- collect, and a second copy of one of those on the tab read as a duplicate.
 function UI.GetTabCaptionMode()
-  return UI.GetOption("showTabCounts") and "count" or "dot"
+  return "dot"
 end
 
 -- What a quality mark is drawn on: "icon" (the corner of the row's item
