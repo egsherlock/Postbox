@@ -3774,12 +3774,20 @@ end
 -- rides on it from there. (Its mixin table is frozen -- a hook written
 -- onto it was refused with "indexed assignment on a frozen table" -- so
 -- the listener is the way in, not the mixin.)
+--
+-- Adopting a button is remembering it and hooking it, nothing more. The
+-- session's first activation adopts every button Baganator has made so far
+-- (GetAllFrames: every view, the bank's included), and judging each one on
+-- the spot made that one call a verdict pass over hundreds of buttons, most
+-- of them hidden: 33 ms of the first switch in the report. The sweep that
+-- follows every adoption (ST.RefreshExternalSlots) judges the ones on
+-- screen, and the hook judges each of the others as it comes on screen.
 local function AdoptBaganatorButton(details)
   if type(details) ~= "table" or details.regionType ~= "ItemButton" then return end
   local button = details.region
-  if type(button) ~= "table" then return end
+  if type(button) ~= "table" or type(button.GetID) ~= "function" then return end
   if IsSlotButton(button) then HookSlot(button) end
-  Note(button)
+  externalSlots[button] = true
 end
 
 function ST.HookExternalBags()
@@ -3863,13 +3871,24 @@ function ST.OnEllesmereShown(frame)
   end
 end
 
--- Every external button seen so far that is on screen.
+-- Every external button seen so far that is on screen: judged while the Send
+-- tab is up, cleared while it is not. Judged only when VISIBLE, not merely
+-- shown: the slots of a closed EllesmereUI window and of Baganator's closed
+-- views (the bank's among them) keep their own shown flag, and every pass
+-- judged them for nobody. Leaving them costs nothing on screen. EllesmereUI
+-- opens its window only through a RefreshInventory, which the walk above
+-- rides, and a repaint owed meanwhile is paid at the opening
+-- (ST.OnEllesmereShown). A Baganator button coming on screen runs the
+-- client's per-slot update from the template's own OnShow, and again from
+-- the SetItemDetails of the redraw it was asked for; the hook rides both.
 function ST.RefreshExternalSlots()
   local perf = ns.Perf
   local perfAt = perf and perf.visit and perf.Mark()
   for button in pairs(externalSlots) do
-    if button:IsShown() then
-      if sendTabActive then RefreshSlotOverlay(button) else ClearOverlay(button) end
+    if sendTabActive then
+      if button:IsVisible() then RefreshSlotOverlay(button) end
+    elseif button:IsShown() then
+      ClearOverlay(button)
     end
   end
   if perfAt then perf.Done("slots", perfAt) end
