@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.40.1
+
+### Improved
+
+- The button on the "Read, nothing left" divider now says **Delete all**, so
+  it is clear it removes every read mail at once.
+
 ## 1.40.0
 
 **The biggest Postbox update yet.** Every character's mailbox in one place, a

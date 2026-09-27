@@ -450,6 +450,7 @@ L["COUNT_ITEMS_OTHER"]         = "%d items"
 -- and not for the read flag, which would promise something it deliberately does
 -- not do.
 L["BTN_DELETE_ALL_DONE"]       = "Delete all done"
+L["BTN_DELETE_ALL"]            = "Delete all"
 L["CONFIRM_DELETE_ALL_DONE"]   = "Delete %s? This cannot be undone."
 L["CONFIRM_DELETE_MAIL"]       = "Delete this mail? Anything still attached to it will be lost."
 L["MSG_INBOX_TRUNCATED"]       = "Showing %d of %d mails - the game only sends this many at once. Collect some and reopen the mailbox to see the rest."
@@ -807,6 +808,7 @@ if GetLocale() == "frFR" then
 
   -- Actions groupees
   L["BTN_DELETE_ALL_DONE"]       = "Supprimer les traites"
+  L["BTN_DELETE_ALL"]            = "Tout supprimer"
   L["CONFIRM_DELETE_ALL_DONE"]   = "Supprimer %s ? Cette action est irreversible."
 
   -- Comptages. Le francais compte zero comme un singulier.
@@ -1293,6 +1295,7 @@ if GetLocale() == "deDE" then
 
   -- Sammelaktionen
   L["BTN_DELETE_ALL_DONE"]       = "Alle erledigten loeschen"
+  L["BTN_DELETE_ALL"]            = "Alle loeschen"
   L["CONFIRM_DELETE_ALL_DONE"]   = "%s loeschen? Das laesst sich nicht rueckgaengig machen."
 
   -- Zaehlungen
@@ -1777,6 +1780,7 @@ if esLocale == "esES" or esLocale == "esMX" then
 
   -- Acciones en bloque
   L["BTN_DELETE_ALL_DONE"]       = "Eliminar lo vaciado"
+  L["BTN_DELETE_ALL"]            = "Borrar todo"
   L["CONFIRM_DELETE_ALL_DONE"]   = "Eliminar %s? Esto no se puede deshacer."
 
   -- Recuentos
@@ -2269,6 +2273,7 @@ L["BTN_RETURN"]                = "Вернуть"
 
 -- Массовые действия
 L["BTN_DELETE_ALL_DONE"]       = "Удалить все разобранные"
+L["BTN_DELETE_ALL"]            = "Удалить все"
 L["CONFIRM_DELETE_ALL_DONE"]   = "Удалить %s? Это действие необратимо."
 
 -- Счётные формы. Русский требует трёх: 1 слот / 2-4 слота / 5-20 слотов,
@@ -2946,6 +2951,7 @@ if GetLocale() == "zhCN" then
   L["COUNT_ITEMS_ONE"]         = "%d 件物品"
   L["COUNT_ITEMS_OTHER"]       = "%d 件物品"
   L["BTN_DELETE_ALL_DONE"]     = "删除全部已处理"
+  L["BTN_DELETE_ALL"]          = "全部删除"
   L["CONFIRM_DELETE_ALL_DONE"] = "删除 %s？此操作无法撤销。"
   L["CONFIRM_DELETE_MAIL"]     = "删除这封邮件？其中仍附带的任何东西都将丢失。"
   L["MSG_INBOX_TRUNCATED"]     = "显示 %d / %d 封邮件 - 游戏每次只发送这么多。收取一些后重新打开邮箱，查看其余邮件。"
@@ -3407,6 +3413,7 @@ if GetLocale() == "zhTW" then
   L["COUNT_ITEMS_ONE"]         = "%d 件物品"
   L["COUNT_ITEMS_OTHER"]       = "%d 件物品"
   L["BTN_DELETE_ALL_DONE"]     = "刪除全部已處理"
+  L["BTN_DELETE_ALL"]          = "全部刪除"
   L["CONFIRM_DELETE_ALL_DONE"] = "刪除 %s？此操作無法復原。"
   L["CONFIRM_DELETE_MAIL"]     = "刪除這封郵件？其中仍附帶的任何東西都將遺失。"
   L["MSG_INBOX_TRUNCATED"]     = "顯示 %d / %d 封郵件 - 遊戲每次只傳送這麼多。先領取一些，再重新打開信箱查看其餘郵件。"

@@ -5267,7 +5267,9 @@ function RV.BuildDivider(panel, parent)
   divider.Delete:SetPoint("RIGHT", divider, "RIGHT", -M.inset, 0)
   divider.Delete.Text = T.CreateText(divider.Delete, "secondary")
   divider.Delete.Text:SetPoint("RIGHT")
-  divider.Delete.Text:SetText(DeleteLabel())
+  -- "Delete all", not the one-mail "Delete": this button takes every read
+  -- mail with nothing left, and the word has to say so before the click.
+  divider.Delete.Text:SetText(L()["BTN_DELETE_ALL"])
   divider.Delete:SetSize(max(T.TextWidth(divider.Delete.Text) + 8, 40), 18)
   divider.Delete:SetScript("OnClick", function() DeleteAllDone(panel) end)
   divider.Delete:SetScript("OnEnter", function(self)
