@@ -1935,6 +1935,8 @@ local function Build()
   frame.Scroll:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
   frame.Scroll:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -gutter, 1)
   frame.Scroll.scrollBarHideable = 1
+  -- As the Mail tab's list: rows end at the card's edge.
+  if frame.Scroll.SetClipsChildren then frame.Scroll:SetClipsChildren(true) end
   frame.Scroll.__pbGutter = function(scrolling)
     frame.Scroll:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -(scrolling and gutter or 1), 1)
   end

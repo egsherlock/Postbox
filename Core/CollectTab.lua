@@ -3033,8 +3033,12 @@ local function UpdateVisibleRows(panel)
   if divider then divider:Hide() end
   for i = first, last do
     if filtered[i] == DIVIDER then
-      local y = -((i - 1) * stride)
-      divider:SetHeight(height)
+      -- One compact row in either row size, at the FOOT of its slot: that is
+      -- where the pinned copy stands at the moment it hands over (its slot
+      -- has just come fully into view), so the bar stays where it is. Larger
+      -- rows leave the rest of the slot as air above it.
+      local y = -((i - 1) * stride) - (height - COMPACT_ROW_HEIGHT)
+      divider:SetHeight(COMPACT_ROW_HEIGHT)
       divider:ClearAllPoints()
       divider:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
       divider:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
@@ -5250,6 +5254,15 @@ function RV.BuildDivider(panel, parent)
   local M = T.Metrics
   local divider = CreateFrame("Button", nil, parent)
   divider:RegisterForClicks("LeftButtonUp")
+  -- The same ground on both copies, so the pinned one hands over to the one
+  -- in the list without changing its look: a neutral fill, nearly opaque --
+  -- enough to hide a row passing under the pinned copy, not a hard block.
+  -- Untagged and plain, so no host skin repaints it or fades it with the
+  -- window's opacity (it wore the band surface once, and under EllesmereUI
+  -- the rows read through it).
+  divider.Fill = divider:CreateTexture(nil, "BACKGROUND")
+  divider.Fill:SetAllPoints()
+  divider.Fill:SetColorTexture(0.05, 0.05, 0.06, 0.9)
   divider.Fold = divider:CreateTexture(nil, "ARTWORK")
   divider.Fold:SetSize(12, 12)
   divider.Fold:SetPoint("LEFT", divider, "LEFT", M.inset, 0)
@@ -5442,6 +5455,9 @@ function CT.Build(parent)
       -(scrolling and M.scrollGutter or M.tightGap), M.tightGap)
   end
   PinScrollBar(scroll, panel.MailListArea)
+  -- The rows end at the list's edge. A row partly scrolled out drew on past
+  -- it, into the padding under the pinned divider and below the list.
+  if scroll.SetClipsChildren then scroll:SetClipsChildren(true) end
   panel.MailListScroll = scroll
 
   panel.MailListChild = CreateFrame("Frame", nil, scroll)
@@ -5470,23 +5486,9 @@ function CT.Build(parent)
   local pin = RV.BuildDivider(panel, panel.MailListArea)
   pin:SetPoint("BOTTOMLEFT", scroll, "BOTTOMLEFT", 0, 0)
   pin:SetPoint("BOTTOMRIGHT", scroll, "BOTTOMRIGHT", 0, 0)
+  -- Above the rows: its fill (RV.BuildDivider) is what covers the one passing
+  -- under it.
   pin:SetFrameLevel(scroll:GetFrameLevel() + 6)
-  -- A ground of its own, so the row it covers does not show through. On a
-  -- child one level down, not on the pin: a host skin fades every texture a
-  -- tagged panel owns, and the pin's fold mark and rule are textures.
-  local ground = CreateFrame("Frame", nil, pin)
-  ground:SetAllPoints(pin)
-  ground:SetFrameLevel(max(0, pin:GetFrameLevel() - 1))
-  T.ApplyBand(ground)
-  -- And beneath that, one that is always opaque and never skinned: a host
-  -- skin takes the band's own fill down with the window's opacity, and the
-  -- row the pin stands over read through it.
-  local under = CreateFrame("Frame", nil, pin)
-  under:SetAllPoints(pin)
-  under:SetFrameLevel(max(0, pin:GetFrameLevel() - 2))
-  under.Fill = under:CreateTexture(nil, "BACKGROUND")
-  under.Fill:SetAllPoints()
-  under.Fill:SetColorTexture(0.05, 0.05, 0.06, 1)
   pin:SetScript("OnClick", function()
     panel._readOpen = true
     CT.RefreshMailList(panel)

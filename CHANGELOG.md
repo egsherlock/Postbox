@@ -12,6 +12,9 @@
 - A list whose mails all fit on screen no longer shows a scroll bar that
   scrolls by only a couple of pixels.
 - The resize grip's hint no longer pops back up while you are dragging.
+- The "Read, nothing left" bar pinned at the foot of a long inbox no longer
+  shows the mail passing under it, and hands over to the divider in the list
+  without a jump, in either row size.
 
 ## 1.40.0
 
