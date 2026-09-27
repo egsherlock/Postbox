@@ -3592,11 +3592,13 @@ local function RefreshSlotOverlay(button)
     return
   end
 
-  -- Timed while a visit is recorded (Postbox.lua, 5b): the verdicts are
+  -- Counted while a visit is recorded (Postbox.lua, 5b): the verdicts are
   -- Postbox's own share of every bag repaint on the Send tab, the hosts' own
-  -- included.
+  -- included. Timed as well only with /postbox perf on: at hundreds a
+  -- switch, two clock reads apiece were most of what the record cost.
   local perf = ns.Perf
-  local perfAt = perf and perf.visit and perf.Mark()
+  local perfRec = perf and perf.visit
+  local perfAt = perfRec and perf.detail and perf.Mark()
 
   -- Noted for the activation's own sweep (ST.ActivateNativeSendMail).
   local judged = ST._judged
@@ -3626,7 +3628,10 @@ local function RefreshSlotOverlay(button)
   else
     ClearOverlay(button)
   end
-  if perfAt then perf.Done("verdict", perfAt) end
+  if perfRec then
+    perfRec.verdicts = perfRec.verdicts + 1
+    if perfAt then perf.Done("verdict", perfAt) end
+  end
 end
 
 -- Anything claiming to be an item button has to prove it can name its own

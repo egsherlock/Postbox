@@ -356,12 +356,13 @@ end
 --     measured step more than WINDOW seconds after the open. No timer, no
 --     OnUpdate.
 --   * Always on, the record is kept lean: one table per open, allocated once,
---     and the profiler read at the window's two ends and at the close. The
---     two dearest parts -- walking the inbox at a window's end, and answering
---     the two item-data events every other addon's item loads fire -- are
---     detail, which /postbox perf turns on until the next /reload. Even then
---     the item events are listened to only while a window is open. A report
---     walks the inbox for itself while a mailbox is open, either way.
+--     the profiler read at the window's two ends and at the close, and the
+--     padlock verdicts counted rather than timed. The dearest parts -- walking
+--     the inbox at a window's end, answering the two item-data events every
+--     other addon's item loads fire, and timing each verdict -- are detail,
+--     which /postbox perf turns on until the next /reload. Even then the item
+--     events are listened to only while a window is open. A report walks the
+--     inbox for itself while a mailbox is open, either way.
 --   * Numbers only, and nothing saved: no character, sender or item name is
 --     recorded, and a /reload starts afresh (as the profiler itself does).
 -------------------------------------------------------------
@@ -665,7 +666,7 @@ do
       walk = 0, binds = 0, items = 0, asks = 0, cold = 0,
       longest = 0, longestKind = false,
       prof = false, profEnd = false, profClose = false, ended = false, span = 0,
-      closing = false, detail = detail,
+      closing = false, verdicts = 0, detail = detail,
     }
     rec.openShown, rec.openTotal = InboxCount()
     rec.prof = SlowInto(rec, SLOW_OPEN)
@@ -761,6 +762,8 @@ do
   end
 
   -- One action or one bag call, on the open it belongs to. -> its ms.
+  -- A verdict is also counted by its caller, straight onto rec.verdicts,
+  -- and comes here only to be timed, with detail on.
   function Perf.Done(kind, mark)
     local rec = Perf.visit
     if not (rec and mark) then return nil end
@@ -855,8 +858,9 @@ do
   end
 
   -- /postbox perf, for this session: a /reload starts with it off. An open
-  -- still counting starts or stops its item events now; its inbox is walked,
-  -- or not, by whatever the switch says when it ends.
+  -- still counting starts or stops its item events now, and the verdicts
+  -- their timing; its inbox is walked, or not, by whatever the switch says
+  -- when it ends.
   function Perf.SetDetail(on)
     on = on and true or false
     Perf.detail = on
@@ -1007,11 +1011,21 @@ do
 
     parts = {}
     for i = 1, #BAGS do parts[#parts + 1] = Act(rec, BAGS[i]) end
+    -- Every verdict is counted; with detail on it is timed as well.
     local v = ACT_AT.verdict
+    local timed = rec[v]
+    local verdicts = math.max(rec.verdicts, timed)
     local scans = (rec[SCANS_END] or TooltipScans()) - (rec[SCANS] or 0)
-    if rec[v] > 0 or scans > 0 then
-      parts[#parts + 1] = format("verdicts %d in %sms, %d tooltip reads",
-        rec[v], Ms(rec[v + 1]), scans)
+    if verdicts > 0 or scans > 0 then
+      local counted
+      if timed == 0 then
+        counted = format("verdicts %d", verdicts)
+      elseif timed == verdicts then
+        counted = format("verdicts %d in %sms", verdicts, Ms(rec[v + 1]))
+      else
+        counted = format("verdicts %d (%d timed, %sms)", verdicts, timed, Ms(rec[v + 1]))
+      end
+      parts[#parts + 1] = format("%s, %d tooltip reads", counted, scans)
     end
     if #parts > 0 then
       out[#out + 1] = format("    bags %sms: %s", Ms(rec[BAG_MS]), concat(parts, ", "))
