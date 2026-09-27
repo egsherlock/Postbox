@@ -34,6 +34,15 @@ jobs:
         with:
           fetch-depth: 0   # packager needs full history for the changelog
 
+      # What CurseForge, Wago and the GitHub release show: the newest five
+      # versions in CHANGELOG.md and a link to the rest. .pkgmeta names this
+      # file as the manual changelog; the packager reads it from the checkout,
+      # and .github never reaches the zip, so the zip keeps the whole
+      # CHANGELOG.md. Fails, before anything is built, if the tag's version is
+      # not the newest heading (a beta's is the version it will ship as).
+      - name: Changelog for the upload
+        run: python3 .github/release-changelog.py "$GITHUB_REF_NAME" > .github/release-changelog.md
+
       - name: Package and release
         uses: BigWigsMods/packager@master
         env:
