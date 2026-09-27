@@ -510,8 +510,39 @@ local function CharacterLabel(realm, name)
   return name
 end
 
+-- The characters the player has hidden: `hiddenChars`, realm -> name -> true,
+-- keyed exactly as mailMemory is, and kept at the saved-variable root because
+-- it is something the player made, not a setting. Hidden is about what is
+-- OFFERED, never about what is recorded: a hidden character's box is still
+-- captured, watched and kept. It is only left out of the lists of other
+-- characters -- the character list, the search of every box, the minimap
+-- tooltip's warnings and the login line -- so showing it again brings back
+-- everything, as if it had never gone. The character being played is never
+-- hidden from itself.
+local function HiddenSet(create)
+  if create then return ns.Store.EnsurePath("hiddenChars") end
+  local set = ns.Store and ns.Store.Get and ns.Store.Get("hiddenChars")
+  return type(set) == "table" and set or nil
+end
+
+local function InHiddenSet(set, realm, name)
+  local byRealm = set and set[realm]
+  return type(byRealm) == "table" and byRealm[name] and true or false
+end
+
+function MM.IsHidden(realm, name)
+  return InHiddenSet(HiddenSet(false), realm, name)
+end
+
+-- Characters by name, then realm: how the hidden ones are listed.
+local function ByName(a, b)
+  if a.name ~= b.name then return a.name < b.name end
+  return a.realm < b.realm
+end
+
 -- Every character Postbox knows a mailbox for: this one first, then those
--- with something to say, then by name.
+-- with something to say, then by name. Each carries `hidden`, read from the
+-- set once here, so every list built from this one filters for nothing.
 function MM.Characters()
   local now = time()
   local seen, list = {}, {}
@@ -544,9 +575,11 @@ function MM.Characters()
     if a.name ~= b.name then return a.name < b.name end
     return a.realm < b.realm
   end)
+  local hidden = HiddenSet(false)
   for i = 1, #list do
     local st = list[i]
     st.me = (st.realm == myRealm and st.name == myName)
+    st.hidden = (not st.me) and InHiddenSet(hidden, st.realm, st.name)
     st.label = CharacterLabel(st.realm, st.name)
     st.text = WarningText(st, now)
   end
@@ -554,15 +587,74 @@ function MM.Characters()
 end
 
 -- The other characters with something to say, for the minimap tooltip and
--- the login line. Empty when memory is off.
+-- the login line. Empty when memory is off. A hidden character says nothing:
+-- the player hid it, most often an alt that was deleted or moved, and a
+-- warning about it could only nag.
 function MM.OtherWarnings()
   local out = {}
   if not MemoryEnabled() then return out end
   local all = MM.Characters()
   for i = 1, #all do
-    if all[i].warn and not all[i].me then out[#out + 1] = all[i] end
+    if all[i].warn and not all[i].me and not all[i].hidden then out[#out + 1] = all[i] end
   end
   return out
+end
+
+-- realm, name, hidden -> the character hidden from the lists of other
+-- characters, or shown in them again. The caller repaints (MM.HiddenChanged);
+-- the character list does that once, when it closes.
+function MM.SetHidden(realm, name, hidden)
+  if type(realm) ~= "string" or type(name) ~= "string" then return end
+  if hidden then
+    local set = HiddenSet(true)
+    if type(set[realm]) ~= "table" then set[realm] = {} end
+    set[realm][name] = true
+    return
+  end
+  local set = HiddenSet(false)
+  local byRealm = set and set[realm]
+  if type(byRealm) ~= "table" then return end
+  byRealm[name] = nil
+  if next(byRealm) == nil then set[realm] = nil end
+end
+
+-- Every hidden character, by name, as { realm, name }: the options panel's
+-- list, which is the way back that is always there -- even once nobody is
+-- left for the character list to offer.
+function MM.HiddenCharacters()
+  local out = {}
+  local set = HiddenSet(false)
+  if not set then return out end
+  for realm, byRealm in pairs(set) do
+    if type(realm) == "string" and type(byRealm) == "table" then
+      for name, on in pairs(byRealm) do
+        if on and type(name) == "string" then out[#out + 1] = { realm = realm, name = name } end
+      end
+    end
+  end
+  table.sort(out, ByName)
+  return out
+end
+
+-- Everything that lists other characters, repainted after a hide or a show:
+-- the memory window, the Mail tab (its character button, its search of every
+-- box) and the options panel's list. The minimap tooltip and the login line
+-- read the set whenever they are built.
+function MM.HiddenChanged()
+  if MM.Refresh then MM.Refresh() end
+  local UI = ns.MailboxUI
+  if UI and type(UI.RefreshMemoryState) == "function" then UI.RefreshMemoryState() end
+  local Panel = ns.OptionsPanel
+  if Panel and type(Panel.RefreshControls) == "function" then Panel.RefreshControls() end
+end
+
+-- Every hidden character shown again.
+function MM.ShowAllHidden()
+  local set = HiddenSet(false)
+  if set then
+    for realm in pairs(set) do set[realm] = nil end
+  end
+  MM.HiddenChanged()
 end
 
 -- Postbox just sent mail to `toName`. If that is one of the player's own
@@ -1254,25 +1346,30 @@ end
 local PICK_ROW_H = 20
 local PICK_MAX = 14
 
+-- all -> the characters the picker offers, and the ones it would offer but
+-- the player hid. Everything else about a hidden character is as it was.
 local function SwitchChoices(all)
   all = all or MM.Characters()
-  local out = {}
+  local out, hidden = {}, {}
   for i = 1, #all do
     local st = all[i]
-    if st.me or st.waiting > 0 or (st.pending or 0) > 0 or st.warn then out[#out + 1] = st end
+    if st.me or st.waiting > 0 or (st.pending or 0) > 0 or st.warn then
+      if st.hidden then hidden[#hidden + 1] = st else out[#out + 1] = st end
+    end
   end
-  return out
+  return out, hidden
 end
 
--- Whether there is another character's box to look at. `all` is an
+-- Whether there is another character's box to look at, and how many more
+-- there would be but for the ones the player hid. `all` is an
 -- MM.Characters() list the caller has already built, where it has one.
 function MM.HasOthers(all)
-  if not MemoryEnabled() then return false end
-  local choices = SwitchChoices(all)
+  if not MemoryEnabled() then return false, 0 end
+  local choices, hidden = SwitchChoices(all)
   for i = 1, #choices do
-    if not choices[i].me then return true end
+    if not choices[i].me then return true, #hidden end
   end
-  return false
+  return false, #hidden
 end
 
 -- realm, name -> what the picker says of that character: its count of mail
@@ -1510,13 +1607,15 @@ local function SnapshotOf(realm, name)
   return SnapshotFor(realm, name)
 end
 
--- Every character's matches, each under a heading with its name.
+-- Every character's matches, each under a heading with its name. A hidden
+-- character is not searched: the search of every box browses the other
+-- characters, and the player took that one out of them.
 local function SearchAll(query, now, sort, all)
   local rows, characters = {}, 0
   all = all or MM.Characters()
   for i = 1, #all do
     local st = all[i]
-    local snap = SnapshotOf(st.realm, st.name)
+    local snap = (not st.hidden) and SnapshotOf(st.realm, st.name) or nil
     local mails = Sorted(snap and snap.mails or {}, sort, now)
     local found = nil
     for j = 1, #mails do

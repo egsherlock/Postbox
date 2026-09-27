@@ -95,6 +95,8 @@ local SCHEMA = {
                               -- since the last visit (Core/MailMemory.lua, 2b)
   "mailHistory",              -- realm -> name -> a week of what was collected
                               -- (Core/MailMemory.lua, 2c)
+  "hiddenChars",              -- realm -> name -> true: hidden from the lists
+                              -- of other characters (Core/MailMemory.lua, 2b)
 }
 
 local function EnsureDB()
