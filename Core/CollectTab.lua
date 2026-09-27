@@ -1142,6 +1142,12 @@ end
 -- measured once per pass -- "AH Sold" forty times is one measure. Per pass
 -- and never longer, so a width read before a font had finished loading is
 -- put right by the next refresh, as it always was.
+--
+-- While the list's own walk measures (`_measureWalk` is its pass), each
+-- sample's font is read once: the walk runs to its end in one go and nothing
+-- re-fonts a row inside it. Anywhere else the font is read on every call, as
+-- it always was. The memo is one table per string, emptied for each pass
+-- rather than made anew.
 local function MeasureWith(panel, sample, text)
   text = text or ""
   local strings = panel._measureFor
@@ -1155,25 +1161,34 @@ local function MeasureWith(panel, sample, text)
     fs:Hide()
     strings[sample] = fs
   end
-  local path, size, flags = sample:GetFont()
-  if path and (fs.__pbPath ~= path or fs.__pbSize ~= size or fs.__pbFlags ~= flags) then
-    fs:SetFont(path, size, flags or "")
-    fs.__pbPath, fs.__pbSize, fs.__pbFlags = path, size, flags
-    fs.__pbMemo = nil
-  end
   local pass = panel._measurePass
+  if pass == nil or panel._measureWalk ~= pass or fs.__pbFontPass ~= pass then
+    local path, size, flags = sample:GetFont()
+    if path and (fs.__pbPath ~= path or fs.__pbSize ~= size or fs.__pbFlags ~= flags) then
+      fs:SetFont(path, size, flags or "")
+      fs.__pbPath, fs.__pbSize, fs.__pbFlags = path, size, flags
+      -- Widths taken in the old font: emptied on the next memo read.
+      fs.__pbMemoPass = nil
+    end
+    fs.__pbFontPass = pass
+  end
   if pass == nil then
     fs:SetText(text)
     return ceil(fs:GetStringWidth() or 0)
   end
-  if fs.__pbMemoPass ~= pass or not fs.__pbMemo then
-    fs.__pbMemo, fs.__pbMemoPass = {}, pass
+  local memo = fs.__pbMemo
+  if not memo then
+    memo = {}
+    fs.__pbMemo, fs.__pbMemoPass = memo, pass
+  elseif fs.__pbMemoPass ~= pass then
+    for key in pairs(memo) do memo[key] = nil end
+    fs.__pbMemoPass = pass
   end
-  local width = fs.__pbMemo[text]
+  local width = memo[text]
   if not width then
     fs:SetText(text)
     width = ceil(fs:GetStringWidth() or 0)
-    fs.__pbMemo[text] = width
+    memo[text] = width
   end
   return width
 end
@@ -3565,8 +3580,11 @@ function CT.RefreshMailList(panel)
   -- measuring is done in the face the rows actually draw in.
   local cols, counts = panel._cols, panel._catCounts
   for key in pairs(counts) do counts[key] = nil end
-  -- A new measuring pass: each distinct text is measured once in it.
+  -- A new measuring pass: each distinct text is measured once in it. The
+  -- walk's measuring runs from here to the other lists' builds below, and
+  -- reads each sample's font once (MeasureWith).
   panel._measurePass = (panel._measurePass or 0) + 1
+  panel._measureWalk = panel._measurePass
   local compact = CompactRows()
   local sample = AcquireRow(panel, 1)
   local senderCap = RowShows("sender") and SenderColumnWidth(panel, sample.Sender) or 0
@@ -3722,6 +3740,7 @@ function CT.RefreshMailList(panel)
     earned, spent, listed = AV.Build(panel, query)
     stride = COMPACT_ROW_HEIGHT + ROW_GAP
   end
+  panel._measureWalk = nil
   RV.ApplyFooter(panel)
   panel.MailListChild:SetHeight(max(RV.ListHeight(listed, stride), 1))
 
