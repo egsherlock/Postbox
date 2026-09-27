@@ -22,20 +22,26 @@ trailers. This applies whatever the tooling's own defaults are.
 
 ## Workflow
 
-- **All work and testing happens on `beta`.** Features and fixes alike are
-  committed there, tested there, and beta tags (`v1.41.0-beta.1`) are cut from
-  it for testers.
-- **`main` is what players have, and it moves only when we ship.** Shipping is
-  `beta` merged into `main` and the version tagged on `main`; that tag is what
-  publishes to CurseForge. Nothing is committed to `main` directly. If a live
-  fix is urgent while `beta` carries unfinished work, raise it before choosing
-  how to ship it.
+- **Three branches, matching CurseForge's three channels.**
+  - `main` is what players have. It moves only when a version ships:
+    fast-forwarded to `beta` and tagged (`v1.40.2`, Release channel). Nothing is
+    committed to it directly.
+  - `beta` is the next release: fixes, and features that are finished. Beta
+    tags (`v1.40.2-beta.1`) go to the Beta channel for testers.
+  - `alpha` is where new features are built and iterated. Alpha tags
+    (`v1.41.0-alpha.1`) go to the Alpha channel.
+- **Fixes go on `beta`; features go on `alpha`.** A finished feature set is
+  merged from `alpha` into `beta` for wider testing and ships from there.
+  Whenever `beta` moves, it is merged into `alpha`, so the feature line always
+  carries every fix.
+- **Branches are pushed as work lands**, so GitHub mirrors what is being built.
+  Tags publish to players and are cut only on the maintainer's word.
 - **No other long-lived branches, no pull requests for our own work.** Short
-  local branches that are merged into `beta` and deleted are fine; nothing but
-  `beta` and `main` is pushed. PRs are for outside contributors who cannot push
-  here.
-- **Dev builds for the live install** come from `beta`, stamped `-devN` on the
-  version `beta` will ship (`v1.41.0-devN`).
+  local branches merged and deleted are fine. PRs are for outside contributors
+  who cannot push here.
+- **Dev builds for the live install** come from the branch being worked on,
+  stamped `-devN` on the version it will ship (`v1.41.0-devN` from `alpha`,
+  `v1.40.2-devN` from `beta`).
 - **Offer a local test before any tag.** Nothing ships without the option of
   swapping the changed files into the live WoW install and `/reload`-ing first.
   A session on the maintainer's own machine copies them into
