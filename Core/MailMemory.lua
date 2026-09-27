@@ -1035,7 +1035,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     row.ColTime:Hide()
     row.ColMoney:Hide()
     row.ColSlots:Hide()
-    local width = row:GetWidth() or 0
+    local width = row:GetParent():GetWidth() or 0
     if width < 100 then width = WINDOW_WIDTH - 44 end
     T.FitText(row.Sender, width - 40, mail.label, nil)
     T.FitText(row.Subject, 1, "", nil)
@@ -1076,7 +1076,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
 
   -- The figures this mail has, packed to the right edge in the player's
   -- order -- the mail list's own rule -- and the subject up to the first.
-  local width = row:GetWidth() or 0
+  local width = row:GetParent():GetWidth() or 0
   if width < 100 then width = WINDOW_WIDTH - 44 end
   local trail = 6 + (cols.stuck and 16 or 0)
   local textWidth = width - (6 + ROW_ICON + 6) - trail
@@ -1734,6 +1734,37 @@ end
 
 -- A search across every box lists each character under a heading; a click
 -- on one opens that character's box.
+-- The rows the viewport can show, bound and placed by position -- the Mail
+-- tab's own virtualiser. Every row is re-anchored on every bind: rows placed
+-- once at creation, down a list that a resize or a reset had just rebuilt,
+-- drew only the first of them until something forced a redraw.
+local function BindRows(frame)
+  local rows = frame._list or {}
+  local scroll = frame.Scroll
+  local viewport = scroll:GetHeight() or 0
+  if viewport <= 0 then viewport = DEFAULT_ROWS * ROW_HEIGHT end
+  local offset = scroll:GetVerticalScroll() or 0
+  local first = math.max(1, math.floor(offset / ROW_HEIGHT) + 1)
+  local last = math.min(#rows, math.ceil((offset + viewport) / ROW_HEIGHT))
+  local now = frame._now or time()
+  local onHeader = frame._onHeader
+  local used = 0
+  for i = first, last do
+    used = used + 1
+    local row = frame.Rows[used]
+    if not row then
+      row = MM.NewRow(frame.ListChild)
+      frame.Rows[used] = row
+    end
+    local y = -(i - 1) * ROW_HEIGHT
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", frame.ListChild, "TOPLEFT", 0, y)
+    row:SetPoint("TOPRIGHT", frame.ListChild, "TOPRIGHT", 0, y)
+    MM.FillRow(row, rows[i], now, frame._cols or {}, i, onHeader)
+  end
+  for i = used + 1, #frame.Rows do frame.Rows[i]:Hide() end
+end
+
 local function OnHeader(frame, realm, name)
   local myRealm, myName = Me()
   frame.viewing = (realm == myRealm and name == myName) and nil or { realm = realm, name = name }
@@ -1783,22 +1814,18 @@ function Refresh(frame)
   frame.Status:SetText(text)
 
   frame.Card:SetShown(count > 0)
-  for i = 1, count do
-    local row = frame.Rows[i]
-    if not row then
-      row = MM.NewRow(frame.ListChild)
-      row:SetPoint("TOPLEFT", frame.ListChild, "TOPLEFT", 0, -(i - 1) * ROW_HEIGHT)
-      row:SetPoint("TOPRIGHT", frame.ListChild, "TOPRIGHT", 0, -(i - 1) * ROW_HEIGHT)
-      frame.Rows[i] = row
-    end
-  end
-  local cols = (count > 0) and MM.MeasureRows(frame, rows, now, frame.Rows[1]) or nil
-  local onHeader = function(realm, name) OnHeader(frame, realm, name) end
-  for i = 1, count do
-    MM.FillRow(frame.Rows[i], rows[i], now, cols, i, onHeader)
-  end
-  for i = count + 1, #frame.Rows do frame.Rows[i]:Hide() end
+  if count > 0 and not frame.Rows[1] then frame.Rows[1] = MM.NewRow(frame.ListChild) end
+  frame._list = rows
+  frame._now = now
+  frame._cols = (count > 0) and MM.MeasureRows(frame, rows, now, frame.Rows[1]) or nil
   frame.ListChild:SetHeight(math.max(1, count * ROW_HEIGHT))
+  -- The scroll frame re-reads its child the moment the child's height is
+  -- set, as the Mail tab's list does, and the offset stays inside the list.
+  local scroll = frame.Scroll
+  if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
+  local most = math.max(0, count * ROW_HEIGHT - (scroll:GetHeight() or 0))
+  if (scroll:GetVerticalScroll() or 0) > most then scroll:SetVerticalScroll(most) end
+  BindRows(frame)
 
   -- Height: six rows by default, the user's own height once they have
   -- dragged the grip, and never taller than the content or shorter than six
@@ -1891,20 +1918,22 @@ local function Build()
   frame.ListChild = CreateFrame("Frame", nil, frame.Scroll)
   frame.ListChild:SetWidth(WINDOW_WIDTH - 20 - 2 - gutter)
   frame.Scroll:SetScrollChild(frame.ListChild)
+  -- A size change re-binds the rows (never a rebuild from inside the
+  -- resize): the width reaches the rows through the child, and the offset
+  -- stays inside the list.
   frame.Scroll:HookScript("OnSizeChanged", function(self, width, height)
     if width and width > 10 and math.abs((frame.ListChild:GetWidth() or 0) - width) > 0.5 then
       frame.ListChild:SetWidth(width)
-      if frame:IsShown() then Refresh(frame) end
     end
-    -- Any size change: keep the offset inside the new range, and make the
-    -- scroll frame re-read its child. Without it, a reset after a drag drew
-    -- one row until the next scroll -- the old rectangle, still clipped.
     local most = math.max(0, (frame.ListChild:GetHeight() or 0) - (height or self:GetHeight() or 0))
     if (self:GetVerticalScroll() or 0) > most then self:SetVerticalScroll(most) end
-    if self.UpdateScrollChildRect then self:UpdateScrollChildRect() end
+    if frame:IsShown() then BindRows(frame) end
   end)
+  frame.Scroll:HookScript("OnVerticalScroll", function() BindRows(frame) end)
 
   frame.Rows = {}
+  -- A click on a character's heading, among every box's matches.
+  frame._onHeader = function(realm, name) OnHeader(frame, realm, name) end
 
   -- The grip changes both: once the user has chosen a size it is theirs for
   -- the session; Refresh keeps honouring it within the content's bounds.
@@ -1931,6 +1960,7 @@ local function Build()
       ns.Theme.ShowHint(self, { L["GRIP_TIP_DRAG"], L["GRIP_TIP_RESET"] })
     end)
     grip:HookScript("OnLeave", function() ns.Theme.HideHint() end)
+    grip:HookScript("OnMouseDown", function() ns.Theme.HideHint() end)
   end
   frame:HookScript("OnHide", function() MM.ClosePicker() end)
 

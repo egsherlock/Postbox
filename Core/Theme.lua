@@ -1796,7 +1796,7 @@ end
 -- One frame for the whole addon.
 -------------------------------------------------------------
 
-local HINT_PAD_X, HINT_PAD_Y, HINT_LINE = 7, 4, 13
+local HINT_PAD_X, HINT_PAD_Y, HINT_GAP = 7, 5, 2
 local HINT_BACKDROP = {
   bgFile = WHITE, edgeFile = WHITE, edgeSize = 1,
   insets = { left = 1, right = 1, top = 1, bottom = 1 },
@@ -1816,23 +1816,40 @@ function Theme.ShowHint(owner, lines)
     hint.lines = {}
     Theme._hint = hint
   end
-  local width = 0
+  -- Measured, then laid out in a box that is exactly the text's size plus
+  -- the same padding on every side: each line spans the box's inner width
+  -- and centres in it, and the height is the lines' own, not a guessed
+  -- pitch that left more room under the text than over it.
+  local width, lineH = 0, 0
   for i = 1, #lines do
     local fs = hint.lines[i]
     if not fs then
       fs = Theme.CreateText(hint, "bodySmall")
       fs:SetJustifyH("CENTER")
+      fs:SetJustifyV("MIDDLE")
       fs:SetWordWrap(false)
       hint.lines[i] = fs
     end
+    -- One anchor while measuring: a width left from the last layout would
+    -- cap what the string reports.
     fs:ClearAllPoints()
-    fs:SetPoint("TOP", hint, "TOP", 0, -HINT_PAD_Y - (i - 1) * HINT_LINE)
+    fs:SetPoint("TOPLEFT", hint, "TOPLEFT", 0, 0)
     fs:SetText(lines[i])
     fs:Show()
     width = math.max(width, fs:GetStringWidth() or 0)
+    lineH = math.max(lineH, fs:GetStringHeight() or 0)
   end
   for i = #lines + 1, #hint.lines do hint.lines[i]:Hide() end
-  hint:SetSize(math.ceil(width) + 2 * HINT_PAD_X, #lines * HINT_LINE + 2 * HINT_PAD_Y - 2)
+  width, lineH = math.ceil(width), math.ceil(lineH)
+  for i = 1, #lines do
+    local fs = hint.lines[i]
+    local top = HINT_PAD_Y + (i - 1) * (lineH + HINT_GAP)
+    fs:ClearAllPoints()
+    fs:SetPoint("TOPLEFT", hint, "TOPLEFT", HINT_PAD_X, -top)
+    fs:SetPoint("TOPRIGHT", hint, "TOPRIGHT", -HINT_PAD_X, -top)
+    fs:SetHeight(lineH)
+  end
+  hint:SetSize(width + 2 * HINT_PAD_X, #lines * lineH + (#lines - 1) * HINT_GAP + 2 * HINT_PAD_Y)
   -- Under the cursor, clear of its pointer; clamped, so a grip at the
   -- screen's foot puts it wherever it still fits.
   local x, y = GetCursorPosition()

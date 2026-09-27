@@ -1843,6 +1843,9 @@ local function BuildFrame()
         ns.Theme.ShowHint(self, { L("GRIP_TIP_DRAG"), L("GRIP_TIP_RESET") })
       end)
       grip:HookScript("OnLeave", function() ns.Theme.HideHint() end)
+      -- Gone the moment the grip is pressed: a drag moves the window from
+      -- under it, and it has said what it had to.
+      grip:HookScript("OnMouseDown", function() ns.Theme.HideHint() end)
     end
   end
 

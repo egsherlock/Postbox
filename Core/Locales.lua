@@ -219,7 +219,7 @@ L["CAT_SELECTED"]              = "Collect %d selected"
 L["ROW_AH_SOLD"]               = "AH Sold"
 L["ROW_AH_BOUGHT"]             = "AH Won"
 L["ROW_AH_EXPIRED"]            = "AH Expired"
-L["ROW_AH_CANCELED"]           = "AH Cancelled"
+L["ROW_AH_CANCELED"]           = "AH Cancel"
 L["RM_HERO_COUNT_ONE"]         = "%d recipient"
 L["RM_HERO_COUNT_OTHER"]       = "%d recipients"
 -- The attachment queue: what the Send button says when one press posts more

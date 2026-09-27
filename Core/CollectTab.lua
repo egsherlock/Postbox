@@ -186,10 +186,12 @@ function RV.PaintQuality(row, mark)
   end
   local small = Th().FirstAtlas({ (atlas:gsub("ChatIcon", "Icon")) .. "-Small", atlas })
   row.Quality:SetAtlas(small or atlas, false)
-  -- Most of the icon's lower-right quarter, and out past its corner a little:
-  -- at compact size anything smaller was a speck.
+  -- Most of the icon's lower-right, and out past its corner a little. The
+  -- small compact icon takes a mark nearly its own size (anything less was
+  -- a speck); the two-line row's larger icon a little under it.
   local iconSize = row.Icon:GetWidth() or 18
-  local size = max(13, floor(iconSize * 0.8 + 0.5))
+  local share = (iconSize <= 20) and 1.0 or 0.9
+  local size = max(15, floor(iconSize * share + 0.5))
   local bleed = floor(size * 0.3 + 0.5)
   row.Quality:SetSize(size, size)
   row.Quality:ClearAllPoints()
