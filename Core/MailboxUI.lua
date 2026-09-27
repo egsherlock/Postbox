@@ -184,14 +184,58 @@ for key in pairs(OPTION_DEFAULTS) do
   OPTION_PATH[key] = "profile." .. key
 end
 
+-- The settings a list refresh reads for every row -- these switches, and the
+-- row arrangement, gold, time left and quality mark below -- answered from
+-- memory until one of them is written. Every write to them is one of this
+-- section's setters or UI.ResetSettings, and each of those calls
+-- ForgetSettings; a saved-variables root or profile table other than the one
+-- the answers were read from (the client restoring saved variables, anything
+-- swapping the profile) forgets them as well. A new writer of any of these
+-- keys, anywhere, has to go through a setter or call ForgetSettings too.
+local settingsMemo = { opt = {} }
+
+local function ForgetSettings()
+  local memo = settingsMemo
+  local opt = memo.opt
+  for key in pairs(opt) do opt[key] = nil end
+  memo.root, memo.profile = nil, nil
+  memo.quality, memo.gold, memo.expiry, memo.layout = nil, nil, nil, nil
+end
+
+-- The root is read off the global the store is bound to (Postbox.lua), not
+-- through Store.Get: this runs for every setting a row asks for, and a call
+-- per read was most of what the memo is here to save. Absent, it is nil, and
+-- the first read through the store that creates it is a new root like any
+-- other.
+local function Settings()
+  local memo = settingsMemo
+  local root = PostboxDB
+  local profile = type(root) == "table" and root.profile or nil
+  if memo.root ~= root or memo.profile ~= profile then
+    ForgetSettings()
+    memo.root, memo.profile = root, profile
+  end
+  return memo
+end
+
 function UI.GetOption(key)
   local path = OPTION_PATH[key]
   if not path then return false end
 
+  local memo = Settings()
+  local known = memo.opt[key]
+  if known ~= nil then return known end
+
   local store = ns.Store
   local stored = store and store.Get and store.Get(path)
-  if stored == nil then return OPTION_DEFAULTS[key] == true end
-  return stored == true
+  local value
+  if stored == nil then
+    value = OPTION_DEFAULTS[key] == true
+  else
+    value = stored == true
+  end
+  memo.opt[key] = value
+  return value
 end
 
 function UI.SetOption(key, value)
@@ -201,6 +245,7 @@ function UI.SetOption(key, value)
   -- Every profile value is coerced to a boolean here, which is why the
   -- recipient tables live at the saved-variables root instead (see Postbox.lua).
   if profile then profile[key] = value == true end
+  ForgetSettings()
 end
 
 -- RESET TO DEFAULTS (the options panel's footer).
@@ -257,6 +302,7 @@ function UI.ResetSettings()
       end
     end
   end
+  ForgetSettings()
 
   -- The arrange mode closes first: its strip, its card and the grid's
   -- handles were drawn from the arrangement just cleared.
@@ -383,15 +429,23 @@ end
 -- and a player who had switched that off keeps it off.
 local QUALITY_MARKS = { icon = true, name = true, both = true, off = true }
 function UI.GetQualityMark()
+  local memo = Settings()
+  if memo.quality then return memo.quality end
   local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.qualityMark")
-  if QUALITY_MARKS[stored] then return stored end
-  if ns.Store and ns.Store.Get and ns.Store.Get("profile.rowQuality") == false then return "off" end
-  return "icon"
+  local mode = "icon"
+  if QUALITY_MARKS[stored] then
+    mode = stored
+  elseif ns.Store and ns.Store.Get and ns.Store.Get("profile.rowQuality") == false then
+    mode = "off"
+  end
+  memo.quality = mode
+  return mode
 end
 function UI.SetQualityMark(mode)
   if not QUALITY_MARKS[mode] then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if profile then profile.qualityMark = mode end
+  ForgetSettings()
 end
 
 -- The order a mail row's figures stood in before the row had an arrangement
@@ -422,26 +476,34 @@ end
 -- Which gold a row shows while Gold is on: "both", "earned" or "spent".
 local GOLD_MODES = { both = true, earned = true, spent = true }
 function UI.GetGoldMode()
+  local memo = Settings()
+  if memo.gold then return memo.gold end
   local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.goldMode")
-  return GOLD_MODES[stored] and stored or "both"
+  memo.gold = GOLD_MODES[stored] and stored or "both"
+  return memo.gold
 end
 function UI.SetGoldMode(mode)
   if not GOLD_MODES[mode] then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if profile then profile.goldMode = mode end
+  ForgetSettings()
 end
 
 -- When a row shows the time left: "always", or under "7", "3" or "1" days.
 -- Three by default -- the point at which a mail wants a look.
 local EXPIRY_WHEN = { always = true, ["7"] = true, ["3"] = true, ["1"] = true }
 function UI.GetExpiryWhen()
+  local memo = Settings()
+  if memo.expiry then return memo.expiry end
   local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.expiryWhen")
-  return EXPIRY_WHEN[stored] and stored or "3"
+  memo.expiry = EXPIRY_WHEN[stored] and stored or "3"
+  return memo.expiry
 end
 function UI.SetExpiryWhen(when)
   if not EXPIRY_WHEN[when] then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if profile then profile.expiryWhen = when end
+  ForgetSettings()
 end
 
 -- What happens to read mail with nothing left in it: "fold", listed after
@@ -551,7 +613,10 @@ end
 
 local rowLayoutMemo = {}
 
-function UI.GetRowLayout()
+-- Read through the settings memo above (UI.GetRowLayout, below): this one is
+-- asked only after a write, and keeps the answer's identity when a write left
+-- the arrangement's own keys as they were.
+local function ReadRowLayout()
   local store = ns.Store
   local profile = store and store.Get and store.Get("profile")
   if type(profile) ~= "table" then profile = nil end
@@ -570,6 +635,16 @@ function UI.GetRowLayout()
   return memo.layout
 end
 
+function UI.GetRowLayout()
+  local memo = Settings()
+  local layout = memo.layout
+  if not layout then
+    layout = ReadRowLayout()
+    memo.layout = layout
+  end
+  return layout
+end
+
 -- layout: { {id=, shown=}, ... } in the new order, or nil for the default.
 function UI.SetRowLayout(layout)
   local text = (layout == nil) and ROW_LAYOUT_DEFAULT or FormatRowLayout(layout)
@@ -577,6 +652,7 @@ function UI.SetRowLayout(layout)
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if not profile then return false end
   profile.rowLayout = text
+  ForgetSettings()
   return true
 end
 
