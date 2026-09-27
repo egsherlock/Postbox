@@ -45,9 +45,6 @@ small cosmetic changes can share one un-bolded bullet at the end of Improved. Tw
 bullets is too many: if a release has that many, group them. The GitHub release
 notes are the version's section verbatim (`gh release edit vX.Y.Z --notes-file`
 if they need correcting after the tag; CurseForge's copy is edited on its site).
-A patch that follows a big release closely may carry that release's section
-too, below its own (v1.40.1 did): a player updating straight from the release
-before reads what they are actually getting.
 
 **Lead with the effect, not the cause.** Someone scanning the list wants to know
 whether this release fixes the thing that annoyed them.
