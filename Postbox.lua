@@ -355,17 +355,21 @@ end
 --   * The window ends by itself: at the mailbox closing, or at the first
 --     measured step more than WINDOW seconds after the open. No timer, no
 --     OnUpdate.
---   * The inbox walk and the profiler reads happen at the window's two ends,
---     at the close, and when a report is built, never per event. The two item-data events
---     are listened to only while a window is open.
---   * One table per open, allocated once: no table built per step.
+--   * Always on, the record is kept lean: one table per open, allocated once,
+--     and the profiler read at the window's two ends and at the close. The
+--     two dearest parts -- walking the inbox at a window's end, and answering
+--     the two item-data events every other addon's item loads fire -- are
+--     detail, which /postbox perf turns on until the next /reload. Even then
+--     the item events are listened to only while a window is open. A report
+--     walks the inbox for itself while a mailbox is open, either way.
 --   * Numbers only, and nothing saved: no character, sender or item name is
 --     recorded, and a /reload starts afresh (as the profiler itself does).
 -------------------------------------------------------------
 
--- Perf.cur is the open being counted, or nil, and Perf.visit the open whose
--- visit is being recorded, or nil: the two fields a call site may read
--- directly, as the cheapest possible "is anything measuring".
+-- Perf.cur is the open being counted, or nil, Perf.visit the open whose
+-- visit is being recorded, or nil, and Perf.detail whether /postbox perf is
+-- on: the fields a call site may read directly, as the cheapest possible "is
+-- anything measuring".
 local Perf = {}
 ns.Perf = Perf
 
@@ -438,8 +442,14 @@ do
   local opens, count = {}, 0
   local firstDone = {}      -- which of FIRST_AT this session has already timed
   local lastInbox = nil     -- the inbox as last read at a mailbox
+  -- Without detail, the counts the last visit's updates read, in the one
+  -- table this keeps for them.
+  local lastCounts = { counts = true, shown = 0, total = 0, at = "?" }
   local watching = false
+  local itemFrame = nil     -- detail's item-event listener, made on first use
   local memoryReadMs = 0    -- the costliest memory read a report has made
+
+  Perf.detail = false
 
   -- Milliseconds, high resolution: what every duration here is measured in.
   local Clock = type(debugprofilestop) == "function" and debugprofilestop
@@ -522,8 +532,8 @@ do
     return lock and tonumber(lock.tooltipScans) or 0
   end
 
-  -- What the inbox holds, as counts. One walk, at a window's end or for a
-  -- report; never per event.
+  -- What the inbox holds, as counts. One walk, at a window's end with detail
+  -- on, or for a report; never per event.
   local function InboxSummary()
     if type(GetInboxHeaderInfo) ~= "function" then return nil end
     local shown, total = InboxCount()
@@ -570,13 +580,15 @@ do
     return s
   end
 
+  -- Perf.cur and not Perf.Live(): the window's end is noticed by the steps
+  -- around this, and one GetTime per item event was most of its cost.
   local function OnItemData()
-    local rec = Perf.Live()
+    local rec = Perf.cur
     if rec then rec.items = rec.items + 1 end
   end
 
-  -- Checked first: the bus logs an event it cannot register, and a log line
-  -- is recorded as an error in the very report this is for.
+  -- Checked first, and the registration pcalled as well: a client that has
+  -- dropped one of these events must not throw from here.
   local function EventKnown(name)
     local utils = C_EventUtils
     if type(utils) ~= "table" or type(utils.IsEventValid) ~= "function" then return false end
@@ -584,16 +596,24 @@ do
     return ok and valid == true
   end
 
+  -- A frame of its own rather than the event bus. A window ends inside
+  -- another event's dispatch (the close, or an inbox update past its time),
+  -- where the bus can only mark a handler removed, so both events stayed
+  -- registered until each next fired. A frame lets go at once.
   local function WatchItems(on)
-    local bus = ns.Events
-    if on == watching or type(bus) ~= "table" then return end
+    if on == watching then return end
+    if on and not itemFrame then
+      if type(CreateFrame) ~= "function" then return end
+      itemFrame = CreateFrame("Frame")
+      itemFrame:SetScript("OnEvent", OnItemData)
+    end
     watching = on
     for i = 1, #ITEM_EVENTS do
       local name = ITEM_EVENTS[i]
-      if on then
-        if EventKnown(name) then bus.Register(name, OnItemData) end
-      elseif type(bus.Unregister) == "function" then
-        bus.Unregister(name, OnItemData)
+      if not on then
+        pcall(itemFrame.UnregisterEvent, itemFrame, name)
+      elseif EventKnown(name) then
+        pcall(itemFrame.RegisterEvent, itemFrame, name)
       end
     end
   end
@@ -622,6 +642,7 @@ do
   function Perf.Open()
     if Perf.cur then Perf.Settle("reopened") end
     count = count + 1
+    local detail = Perf.detail and true or false
     local rec = {
       0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,              -- KIND_AT
       false, false, false, false, false, false,                      -- STAGE_AT
@@ -644,7 +665,7 @@ do
       walk = 0, binds = 0, items = 0, asks = 0, cold = 0,
       longest = 0, longestKind = false,
       prof = false, profEnd = false, profClose = false, ended = false, span = 0,
-      closing = false,
+      closing = false, detail = detail,
     }
     rec.openShown, rec.openTotal = InboxCount()
     rec.prof = SlowInto(rec, SLOW_OPEN)
@@ -652,7 +673,7 @@ do
     opens[(count - 1) % KEEP + 1] = rec
     Perf.cur = rec
     Perf.visit = rec
-    WatchItems(true)
+    if detail then WatchItems(true) end
     rec.t0 = Clock()
     return rec.t0
   end
@@ -805,16 +826,24 @@ do
     rec.ended = reason
     rec.span = Now() - rec.openedAt
     rec.profEnd = SlowInto(rec, SLOW_END)
-    -- A closing mailbox may already read empty. That says nothing about the
-    -- box this open saw, so the counts its last update read stand in for it;
-    -- an open that saw no update at all has nothing to add. The walk is
-    -- Postbox's own work, and at a close it is part of the close.
+    -- An open that saw no update has nothing to add. Without detail, the
+    -- box is what the last update read.
+    local seen = rec.lastShown or 0
+    if not Perf.detail then
+      if not rec.firstShown then return end
+      lastCounts.shown, lastCounts.total, lastCounts.at = seen, rec.lastTotal or seen, rec.at
+      lastInbox = lastCounts
+      return
+    end
+    -- With detail, the box is walked. A closing mailbox may already read
+    -- empty; that says nothing about the box this open saw, so the counts
+    -- its last update read stand in for it. The walk is Postbox's own work,
+    -- and at a close it is part of the close.
     local walkAt = Clock()
     local ok, summary = pcall(InboxSummary)
     rec[END_WALK] = Since(walkAt)
     if rec.closing then rec[PART_AT.settle] = rec[END_WALK] end
     if not ok then summary = nil end
-    local seen = rec.lastShown or 0
     if summary and (summary.shown > 0 or (rec.firstShown and seen == 0)) then
       lastInbox = summary
     elseif seen > 0 then
@@ -823,6 +852,18 @@ do
       return
     end
     lastInbox.at = rec.at
+  end
+
+  -- /postbox perf, for this session: a /reload starts with it off. An open
+  -- still counting starts or stops its item events now; its inbox is walked,
+  -- or not, by whatever the switch says when it ends.
+  function Perf.SetDetail(on)
+    on = on and true or false
+    Perf.detail = on
+    local rec = Perf.Live()
+    if not rec then return end
+    if on then rec.detail = true end
+    WatchItems(on)
   end
 
   -----------------------------------------------------------
@@ -906,8 +947,13 @@ do
     put(Timed(rec, "capture"))
     -- The shell's once-per-frame pass: stuck prune, status line, tab caption.
     put(Timed(rec, "summary"))
-    if rec.items + rec.asks > 0 then
-      put(format("item events %d, asked %d (%d cold)", rec.items, rec.asks, rec.cold))
+    -- Item events are counted only with detail on.
+    if rec.detail then
+      if rec.items + rec.asks > 0 then
+        put(format("item events %d, asked %d (%d cold)", rec.items, rec.asks, rec.cold))
+      end
+    elseif rec.asks > 0 then
+      put(format("items asked %d (%d cold)", rec.asks, rec.cold))
     end
     put(SlowDelta(rec))
     if rec[REPORT_MS] then
@@ -1021,6 +1067,9 @@ do
       summary, when = lastInbox, "at the " .. tostring(lastInbox.at) .. " visit"
     end
     if not summary then return "  Inbox: no mailbox this session" end
+    if summary.counts then
+      return format("  Inbox %s: %d/%d (detail off)", when, summary.shown, summary.total)
+    end
     if summary.partial then
       return format("  Inbox %s: %d/%d (the rest was unreadable at close)",
         when, summary.shown, summary.total)
@@ -1147,7 +1196,7 @@ do
   -- The block, as lines. Each part is guarded on its own, so one that breaks
   -- costs its line and not the others.
   function Perf.ReportLines()
-    local lines = { "Performance:" }
+    local lines = { Perf.detail and "Performance (detail on):" or "Performance:" }
     local function add(text) lines[#lines + 1] = text end
     local ok, text = pcall(InboxLine)
     if ok then add(text) end
@@ -1280,6 +1329,7 @@ local function ReportHelp()
   ns.Print("           /postbox minimap  — toggle the minimap mail icon")
   ns.Print("           /postbox mail  — Mail Memory: every character's mailbox")
   ns.Print("           /postbox debug  — open the bug-report window")
+  ns.Print("           /postbox perf [on|off]  — more detail in the bug report's Performance block, until /reload")
   ns.Print(ns.L["RM_SLASH_HELP"])
 end
 
@@ -1579,12 +1629,21 @@ local function OpenRecipientManager()
   end
 end
 
--- One word each, aliases included. Anything unrecognised -- the empty string
--- most of all, since a bare /postbox is how people go looking -- falls through
--- to the help text.
+-- One word each, aliases included, and perf's own "on" and "off" after it.
+-- Anything unrecognised -- the empty string most of all, since a bare
+-- /postbox is how people go looking -- falls through to the help text.
 local function OpenMailMemory()
   local Memory = ns.MailMemory
   if Memory and type(Memory.Toggle) == "function" then Memory.Toggle() end
+end
+
+-- /postbox perf: section 5b's detail, for this session (nil toggles). Said in
+-- chat either way, because nothing on screen changes.
+local function SetPerfDetail(on)
+  if type(Perf.SetDetail) ~= "function" then return end
+  if on == nil then on = not Perf.detail end
+  Perf.SetDetail(on)
+  ns.Print(ns.L[on and "PERF_DETAIL_ON" or "PERF_DETAIL_OFF"])
 end
 
 local COMMANDS = {
@@ -1595,6 +1654,9 @@ local COMMANDS = {
   rm          = OpenRecipientManager,
   minimap     = ToggleMinimapIcon,
   debug       = OpenBugReport,
+  perf        = function() SetPerfDetail(nil) end,
+  ["perf on"] = function() SetPerfDetail(true) end,
+  ["perf off"] = function() SetPerfDetail(false) end,
 }
 
 -- The minimap's addon compartment (Postbox.toc names these). The one way to
@@ -1626,6 +1688,8 @@ end
 SLASH_POSTBOX1 = "/postbox"
 SlashCmdList["POSTBOX"] = function(input)
   local word = string.lower(string.match(input or "", "^%s*(.-)%s*$"))
+  -- One space between words, so "perf  on" is "perf on".
+  word = string.gsub(word, "%s+", " ")
   local handler = COMMANDS[word]
   if handler then
     handler()
