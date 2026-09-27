@@ -191,18 +191,47 @@ local function IsValidLocation(location)
 end
 
 -- Verdicts are memoised on the item's GUID, which identifies the item instance
--- rather than the slot, so moving an item between bags reuses the answer. The
--- cache is dropped wholesale on BAG_UPDATE_DELAYED, which is what corrects a
--- transient "locked" verdict for an item still loading from the server.
-local verdictCache = {}
+-- rather than the slot: a split stack or a new item is a new GUID and is
+-- judged afresh, and an item nothing has happened to is not judged twice.
+--
+-- The memo used to be dropped wholesale on every BAG_UPDATE_DELAYED, which
+-- fires on every loot, so a visit that collected anything between two trips
+-- to the Send tab read every bound item's tooltip again on the second -- the
+-- costly part of a verdict. Now a bag's verdicts go when THAT bag changes
+-- (BAG_UPDATE names it). Whatever can change a verdict updates the bags it
+-- touches: a move, a split, an item added or taken, an item equipped from a
+-- bag (which is how a warbound-until-equipped item becomes soulbound) and put
+-- back. A bag nothing happened to keeps its verdicts.
+--
+-- A "locked" reached only because nothing decisive could be read yet -- an
+-- item still loading from the server -- is provisional, and still goes on
+-- BAG_UPDATE_DELAYED as every verdict used to: that is what corrects it once
+-- the data has arrived.
+local verdictCache = {}   -- guid -> verdict
+local provisional = {}    -- guid -> true: a verdict nothing decisive backed
+local judgedIn = {}       -- bag -> { guid = true }, the verdicts judged there
 
 do
   local watcher = CreateFrame("Frame")
+  watcher:RegisterEvent("BAG_UPDATE")
   watcher:RegisterEvent("BAG_UPDATE_DELAYED")
-  watcher:SetScript("OnEvent", function()
+  watcher:SetScript("OnEvent", function(_, event, bag)
+    if event == "BAG_UPDATE" then
+      local guids = judgedIn[bag]
+      if not guids then return end
+      judgedIn[bag] = nil
+      for guid in pairs(guids) do
+        verdictCache[guid] = nil
+        provisional[guid] = nil
+      end
+      return
+    end
     -- Emptied in place: this fires on every loot all session, and a new
     -- table each time was garbage for nothing.
-    for guid in pairs(verdictCache) do verdictCache[guid] = nil end
+    for guid in pairs(provisional) do
+      verdictCache[guid] = nil
+      provisional[guid] = nil
+    end
   end)
 end
 
@@ -266,12 +295,13 @@ local function TooltipVerdict(bag, slot)
   return nil
 end
 
+-- -> the verdict, and whether anything decisive was read to reach it.
 local function Resolve(bag, slot, location, info)
   -- Warbound until equipped: the container reports it as bound, but it can
   -- still be mailed to your own characters.
   if C_Item and type(C_Item.IsBoundToAccountUntilEquip) == "function" and IsValidLocation(location) then
     local ok, warbound = pcall(C_Item.IsBoundToAccountUntilEquip, location)
-    if ok and warbound then return false end
+    if ok and warbound then return false, true end
   end
 
   -- The item's declared bind type settles most account-wide bindings without
@@ -281,16 +311,16 @@ local function Resolve(bag, slot, location, info)
   if link and type(getItemInfo) == "function" then
     -- bindType is GetItemInfo's 14th return; nil for an item not yet cached.
     local ok, _, _, _, _, _, _, _, _, _, _, _, _, _, bindType = pcall(getItemInfo, link)
-    if ok and bindType ~= nil and ACCOUNT_BINDINGS[bindType] then return false end
+    if ok and bindType ~= nil and ACCOUNT_BINDINGS[bindType] then return false, true end
   end
 
   local verdict = TooltipVerdict(bag, slot)
-  if verdict ~= nil then return verdict end
+  if verdict ~= nil then return verdict, true end
 
   -- Bound, but the kind could not be determined. Greying a mailable item is
   -- the harmless failure; letting the user believe an unmailable one can be
   -- attached is not.
-  return true
+  return true, false
 end
 
 -- True only when the item in this slot definitely cannot be mailed.
@@ -309,7 +339,16 @@ function M.ShouldLockForMail(bag, slot)
     if cached ~= nil then return cached end
   end
 
-  local verdict = Resolve(bag, slot, location, info)
-  if guid then verdictCache[guid] = verdict end
+  local verdict, decided = Resolve(bag, slot, location, info)
+  if guid then
+    verdictCache[guid] = verdict
+    if not decided then provisional[guid] = true end
+    local guids = judgedIn[bag]
+    if not guids then
+      guids = {}
+      judgedIn[bag] = guids
+    end
+    guids[guid] = true
+  end
   return verdict
 end
