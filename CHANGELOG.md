@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.40.2
+
+### Improved
+
+- **Opening a mailbox is lighter.** Postbox no longer asks the server for
+  your guild and friends lists every time, only when you first switch to
+  Send, and a burst of new mail is handled once per frame.
+- **/postbox debug includes performance figures:** how long your last few
+  mailbox opens took and what the game's own profiler saw, so a slow mailbox
+  can be tracked down from one paste.
+
+### Fixed
+
+- Baganator bags update when you switch between Mail and Send, so items that
+  cannot be mailed are greyed as they should be.
+
 ## 1.40.1
 
 ### Improved
