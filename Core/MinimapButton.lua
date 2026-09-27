@@ -434,6 +434,29 @@ local function EnsureEuiOverlay(btn)
   return overlay
 end
 
+-- How big our art is on their button: the icon's side, and the width and height
+-- the glow, shadow and arrival halo scale from.
+--
+-- EllesmereUI's Classic WoW UI minimap dresses its indicators as the vanilla
+-- round buttons (EllesmereUIMinimap's _ClassicRingButton): the button grows to
+-- 31px and the icon is clipped by a 16px circular mask in the ring's opening.
+-- Sized from the button, our art came out 25px under a 16px hole -- its middle
+-- only -- and the two addons traded the icon's size on every layout pass, since
+-- theirs puts it back to 16. Under the dress the icon takes the mask's opening
+-- and the halo scales from what an undressed button of that icon would be.
+-- Everywhere else (their own look, Blizzard Style, a corner-pinned mail, which
+-- they undress) this is the button, exactly as before.
+local function EuiArtSize(btn, icon)
+  if icon._classicMasked then
+    local mask = btn._classicMask
+    local side = mask and mask.GetWidth and mask:GetWidth()
+    if type(side) ~= "number" or side <= 0 then side = 16 end
+    return side, side + 6, side + 6
+  end
+  local w, h = btn:GetWidth(), btn:GetHeight()
+  return math.max(10, math.min(w, h) - 6), w, h
+end
+
 local function ApplyEuiSkin()
   local btn = FindEuiMailButton()
   local icon = btn and btn._icon
@@ -453,6 +476,7 @@ local function ApplyEuiSkin()
   local spec = ICONS[prefs.icon] or ICONS[DEFAULTS.icon]
   local r, g, b = 1, 1, 1
   if prefs.accent ~= false then r, g, b = ns.Theme.GetAccent() end
+  local side, artW, artH = EuiArtSize(btn, icon)
 
   if prefs.icon == "blizzard" then
     -- "Blizzard" here means EllesmereUI's stock look, which is the same art.
@@ -473,7 +497,6 @@ local function ApplyEuiSkin()
     else
       icon:SetTexture(spec.texture)
     end
-    local side = math.max(10, math.min(btn:GetWidth(), btn:GetHeight()) - 6)
     icon:SetSize(side, side * (spec.aspect or 1))
     if spec.tintable then
       icon:SetVertexColor(r, g, b)
@@ -492,7 +515,7 @@ local function ApplyEuiSkin()
       shadow:SetAlpha(0.9)
       btn.__pbMailShadow = shadow
     end
-    shadow:SetSize(btn:GetWidth() * 1.3, btn:GetHeight() * 1.3)
+    shadow:SetSize(artW * 1.3, artH * 1.3)
     shadow:Show()
   elseif shadow then
     shadow:Hide()
@@ -515,7 +538,7 @@ local function ApplyEuiSkin()
       fade:SetSmoothing("IN_OUT")
       btn.__pbMailPulse = pulse
     end
-    glow:SetSize(btn:GetWidth() * 1.6, btn:GetHeight() * 1.6)
+    glow:SetSize(artW * 1.6, artH * 1.6)
     glow:SetVertexColor(r, g, b)
     glow:Show()
     if prefs.pulse ~= false then
@@ -536,7 +559,7 @@ local function ApplyEuiSkin()
     btn.__pbMailAlert, btn.__pbMailFlash = BuildAlertHalo(btn)
     btn.__pbMailAlert:SetPoint("CENTER", icon, "CENTER")
   end
-  btn.__pbMailAlert:SetSize(btn:GetWidth() * 1.75, btn:GetHeight() * 1.75)
+  btn.__pbMailAlert:SetSize(artW * 1.75, artH * 1.75)
 
   euiSkin.applied = true
   return true
@@ -608,30 +631,52 @@ end
 -- 4. Position on the rim
 -------------------------------------------------------------
 
--- Round unless somebody says square. GetMinimapShape is the LibDBIcon-era
+-- The visible map's outline: "round", or "box" with its half-height as a
+-- fraction of its half-width (1 for a square).
+--
+-- Round unless somebody says otherwise. GetMinimapShape is the LibDBIcon-era
 -- convention ElvUI implements; corner-rounded hybrid shapes are treated as
 -- round, which errs toward keeping the button on the visible map edge.
 -- EllesmereUI's minimap module defines no shape API at all, so its live
 -- profile is read instead -- via Lite.GetAddon, because its SavedVariables
--- global is vestigial and wiped at load.
-local function MinimapIsRound()
+-- global is vestigial and wiped at load. Two things in it are not the stored
+-- shape:
+--
+--   * its Blizzard Style and Classic WoW UI looks always draw the ROUND map,
+--     whatever shape is stored ("the stock map is round; the stored shape
+--     waits for the EUI look"). Reading the stored "square" there put the
+--     corner presets on the square's corners -- off the round map. Its own
+--     answer for the session is published on the module namespace;
+--   * "rectangular" is the square canvas cropped to a centred 4:3 band -- a
+--     box three quarters as tall as it is wide -- not a round map.
+--
+-- This only places Postbox's OWN button. With EllesmereUI's minimap running,
+-- Postbox restyles their mail button and they place it (section 3), on any
+-- look; this is the fallback for when that button cannot be found.
+local RECT_HEIGHT = 192 / 256
+
+local function MinimapOutline()
   if type(_G.GetMinimapShape) == "function" then
     local ok, shape = pcall(_G.GetMinimapShape)
     if ok and type(shape) == "string" then
-      return shape ~= "SQUARE"
+      if shape == "SQUARE" then return "box", 1 end
+      return "round"
     end
   end
   local host = _G.EllesmereUI
-  if host and host.Lite and type(host.Lite.GetAddon) == "function" then
-    local ok, mm = pcall(function()
-      local sub = host.Lite.GetAddon("EllesmereUIMinimap", true)
-      return sub and sub.db and sub.db.profile and sub.db.profile.minimap
-    end)
-    if ok and type(mm) == "table" then
-      return (mm.shape or "square") ~= "square"
-    end
+  local mod = type(host) == "table" and type(host._ModuleNS) == "table"
+    and host._ModuleNS.EllesmereUIMinimap or nil
+  if type(mod) == "table" and type(mod.MinimapBlizz) == "function" then
+    local ok, stock = pcall(mod.MinimapBlizz)
+    if ok and stock == true then return "round" end
   end
-  return true
+  local mm = EuiMinimapProfile()
+  if mm then
+    local shape = mm.shape or "square"
+    if shape == "square" then return "box", 1 end
+    if shape == "rectangular" then return "box", RECT_HEIGHT end
+  end
+  return "round"
 end
 
 -- The angle the button actually sits at: the corner preset's, or the
@@ -644,18 +689,23 @@ local function CurrentAngle()
 end
 
 -- The rim point for the current angle: the ray from the minimap centre out to
--- the rim -- the circle's radius, or for a square minimap the ray's exit
--- through the square (radius / the larger direction component) -- then pulled
--- back inside by half the button plus a hair. This is an INDICATOR that lives
--- inside the map, not an addon launcher riding the edge.
+-- the rim -- the circle's radius, or for a box the ray's exit through it (the
+-- nearer of the side and the top/bottom it is heading for; for a square that
+-- is radius / the larger direction component) -- then pulled back inside by
+-- half the button plus a hair. This is an INDICATOR that lives inside the map,
+-- not an addon launcher riding the edge.
 local function RimOffset(minimap)
   local radius = (minimap:GetWidth() or 140) / 2
   local radians = math.rad(CurrentAngle())
   local cos, sin = math.cos(radians), math.sin(radians)
 
   local reach = radius
-  if not MinimapIsRound() then
-    reach = radius / math.max(math.abs(cos), math.abs(sin))
+  local outline, height = MinimapOutline()
+  if outline == "box" then
+    local ac, as = math.abs(cos), math.abs(sin)
+    local across = ac > 1e-6 and radius / ac or math.huge
+    local up = as > 1e-6 and (radius * height) / as or math.huge
+    reach = math.min(across, up)
   end
 
   local size = tonumber(Settings().size) or DEFAULTS.size
