@@ -2941,6 +2941,13 @@ end
 -- Opening adds rows below the divider and folding takes away rows below the
 -- viewport, so nothing on screen moves either way. Returns whether it
 -- changed anything (and so rebuilt the list).
+-- How near "fully in view" counts as there. A window dragged to a size of
+-- its own has a viewport that is not a whole number of pixels, and the scroll
+-- bar rounds its value: the list can stop a hair short of its true end, and at
+-- half a pixel of slack the divider then never "arrived" -- the read mail would
+-- not open by scrolling, though it still folded on the way back up.
+RV.ARRIVED_SLACK = 2
+
 function RV.ScrollFold(panel)
   local at = panel._dividerAt
   if not at or panel.viewMode ~= VIEW_COLLECT or AV.Active(panel) or Searching(panel) then
@@ -2964,10 +2971,10 @@ function RV.ScrollFold(panel)
   -- the list, the scroll snapped back to the new end -- with the divider
   -- fully in view -- and that snap opened it again under the click.
   if not open and panel._foldHeld then
-    if top + height > bottom + 0.5 then panel._foldHeld = nil end
+    if top + height > bottom + RV.ARRIVED_SLACK then panel._foldHeld = nil end
     return false
   end
-  if not open and top + height <= bottom + 0.5 then
+  if not open and top + height <= bottom + RV.ARRIVED_SLACK then
     panel._readOpen = true
   elseif open and top >= bottom - 0.5 then
     panel._readOpen = false
@@ -2996,7 +3003,7 @@ function RV.WheelOpen(panel, delta)
   if viewport <= 0 then return end
   local offset = scroll:GetVerticalScroll() or 0
   local top = (at - 1) * stride
-  if top < offset - 0.5 or top + height > offset + viewport + 0.5 then return end
+  if top < offset - RV.ARRIVED_SLACK or top + height > offset + viewport + RV.ARRIVED_SLACK then return end
   -- A deliberate turn: a hand fold's hold (RV.ScrollFold) ends with it.
   panel._foldHeld = nil
   panel._readOpen = true
@@ -3012,14 +3019,25 @@ function RV.UpdatePin(panel, offset, viewport, stride, height)
   local pin = panel.DividerPin
   if not pin then return false end
   local at = (panel.viewMode == VIEW_COLLECT) and panel._dividerAt or nil
-  if not at or viewport <= 0 or (at - 1) * stride + height <= offset + viewport + 0.5 then
+  if not at or viewport <= 0 or (at - 1) * stride + height <= offset + viewport + RV.ARRIVED_SLACK then
     pin:Hide()
     return false
   end
   RV.PaintDivider(panel, pin)
   -- One compact row, whichever row size the list is in: it is a label and a
   -- button, and at a two-line row's height it hid most of a mail to say so.
+  -- It lives in the list itself, a sibling of the rows a few levels above
+  -- them, and is placed at the view's foot on every bind. Outside the list
+  -- it was drawn UNDER the rows whatever its own level said -- the row
+  -- passing beneath read straight through its fill -- and it was not clipped
+  -- as they are.
+  local child = panel.MailListChild
+  local y = -(offset + viewport - COMPACT_ROW_HEIGHT)
+  pin:ClearAllPoints()
+  pin:SetPoint("TOPLEFT", child, "TOPLEFT", 0, y)
+  pin:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, y)
   pin:SetHeight(COMPACT_ROW_HEIGHT)
+  pin:SetFrameLevel(child:GetFrameLevel() + 8)
   pin:Show()
   return true
 end
@@ -5519,12 +5537,8 @@ function CT.Build(parent)
   -- Its pinned copy, on the list's foot over the last row, while the divider's
   -- own place is further down (RV.UpdatePin). A click opens the read mail and
   -- scrolls to it; its Delete is the same Delete.
-  local pin = RV.BuildDivider(panel, panel.MailListArea)
-  pin:SetPoint("BOTTOMLEFT", scroll, "BOTTOMLEFT", 0, 0)
-  pin:SetPoint("BOTTOMRIGHT", scroll, "BOTTOMRIGHT", 0, 0)
-  -- Above the rows: its fill (RV.BuildDivider) is what covers the one passing
-  -- under it.
-  pin:SetFrameLevel(scroll:GetFrameLevel() + 6)
+  -- In the list, with the rows; RV.UpdatePin places it at the view's foot.
+  local pin = RV.BuildDivider(panel, panel.MailListChild)
   pin:SetScript("OnClick", function()
     panel._readOpen = true
     CT.RefreshMailList(panel)
