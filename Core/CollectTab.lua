@@ -531,9 +531,10 @@ end
 --     gap
 --   totals banner       controlHeight
 --     gap
---   footer              the category grid: one full-width primary over two rows
---     inset             of three, or the primary alone when the option hides
---                       the five. The Done view swaps in a single delete button
+--   footer              the category grid: one full-width primary over the rows
+--     inset             of three its sweeps fill (two, as the grid comes), or
+--                       the primary alone when the option hides them or the
+--                       player hid them all. The Done view swaps in a single delete button
 --                       and is therefore SHORTER, so sizing for the grid is what
 --                       makes the guarantee hold in both views. The floor
 --                       follows the option, the row mode AND the other tab's
@@ -552,7 +553,7 @@ function CT.MinPanelHeight(atLeast)
   -- alone.
   local footer = GRID_PRIMARY_HEIGHT
   if ShowCategoryButtons() then
-    footer = footer + M.gap * 2 + GRID_BUTTON_HEIGHT * 2
+    footer = footer + RV.FloorGridRows() * (M.gap + GRID_BUTTON_HEIGHT)
   end
   local fixed = M.inset
               + M.segmentHeight + M.gap
@@ -5355,11 +5356,217 @@ end
 -------------------------------------------------------------
 -- The category grid
 --
--- Six buttons: the full-width primary, then five tiling in two rows of three.
--- Column edges are derived from the usable width so the right-hand column lands
--- exactly on the grid edge -- flooring one button width instead discards up to
--- a pixel per column and the right margin visibly shifts as the window resizes.
+-- The full-width primary, then the sweeps tiling in rows of three: six of
+-- them as the grid comes (two rows), and a character group's own button for
+-- each group the player has made (ns.CharacterGroups.GridButtons), wrapping
+-- onto as many rows as they need. Which sweeps show and in what order is the
+-- player's (MailboxUI.GetGridLayout), arranged in the arrange mode; the
+-- primary is not part of it -- it is the one button that takes everything,
+-- and it always stands first. Column edges are derived from the usable width
+-- so the right-hand column lands exactly on the grid edge -- flooring one
+-- button width instead discards up to a pixel per column and the right
+-- margin visibly shifts as the window resizes.
 -------------------------------------------------------------
+
+-- The built-in sweeps, in the grid's own order: CATEGORY_ORDER after "all".
+function RV.BuiltinGridIds()
+  local out = {}
+  for i = 2, #CATEGORY_ORDER do out[#out + 1] = CATEGORY_ORDER[i] end
+  return out
+end
+
+-- The character groups' buttons, or nil when there is no groups module to
+-- ask. Their failure must not take the grid with it: it is reported, and
+-- the grid stands without them.
+function RV.GroupSpecs(panel)
+  local groups = ns.CharacterGroups
+  if not (groups and type(groups.GridButtons) == "function") then return nil end
+  local ok, specs = pcall(groups.GridButtons, panel)
+  if not ok then
+    if type(geterrorhandler) == "function" then geterrorhandler()(specs) end
+    return nil
+  end
+  return type(specs) == "table" and specs or {}
+end
+
+-- stored, available, known -> the grid's entries { {id=, shown=}, ... } and
+-- whether the stored list named a button that no longer exists.
+-- The stored order first, for the ids that exist; then every id it has never
+-- seen, at the end and shown, in the order `available` gives them. A group's
+-- id can only be judged gone when the groups module answered (`known`);
+-- until then it is kept for later rather than forgotten.
+function RV.ReconcileGrid(stored, available, known)
+  local isAvailable, seen, out = {}, {}, {}
+  for i = 1, #available do isAvailable[available[i]] = true end
+  local stale = false
+  for i = 1, #(stored or {}) do
+    local entry = stored[i]
+    local id = type(entry) == "table" and entry.id or nil
+    if id ~= nil and isAvailable[id] and not seen[id] then
+      seen[id] = true
+      out[#out + 1] = { id = id, shown = entry.shown ~= false }
+    elseif id ~= nil and not isAvailable[id] then
+      if known or not (type(id) == "string" and id:sub(1, 6) == "group:") then stale = true end
+    end
+  end
+  for i = 1, #available do
+    local id = available[i]
+    if not seen[id] then out[#out + 1] = { id = id, shown = true } end
+  end
+  return out, stale
+end
+
+-- The grid's entries now: the built-ins, the groups' buttons, and the
+-- player's arrangement of them. Kept on the panel for the layout passes a
+-- resize makes; read afresh on every refresh. A button the stored list names
+-- that is gone for good is forgotten there too.
+function RV.GridEntries(panel)
+  local specs = RV.GroupSpecs(panel)
+  local available = RV.BuiltinGridIds()
+  local bySpec = panel._gridSpecs
+  for id in pairs(bySpec) do bySpec[id] = nil end
+  if specs then
+    -- An id is one button: a group's that repeats another's, or a
+    -- built-in's, is not a second one.
+    local taken = {}
+    for i = 1, #available do taken[available[i]] = true end
+    for i = 1, #specs do
+      local spec = specs[i]
+      local id = type(spec) == "table" and spec.id or nil
+      if type(id) == "string" and id ~= "" and not taken[id] then
+        taken[id] = true
+        bySpec[id] = spec
+        available[#available + 1] = id
+      end
+    end
+  end
+  local UI = ns.MailboxUI
+  local stored = UI and type(UI.GetGridLayout) == "function" and UI.GetGridLayout() or {}
+  local entries, stale = RV.ReconcileGrid(stored, available, specs ~= nil)
+  if stale and specs ~= nil and UI and UI.SetGridLayout then UI.SetGridLayout(entries) end
+  panel._gridEntries = entries
+  return entries
+end
+
+-- How many sweeps the grid shows outside the arrange mode. Without a panel
+-- (the window's floor is asked for before the grid exists), from the stored
+-- arrangement and the built-ins alone; the first refresh corrects it.
+function RV.GridShownCount(panel)
+  local entries = panel and panel._gridEntries
+  if not entries then
+    local UI = ns.MailboxUI
+    local stored = UI and type(UI.GetGridLayout) == "function" and UI.GetGridLayout() or {}
+    entries = RV.ReconcileGrid(stored, RV.BuiltinGridIds(), false)
+  end
+  local n = 0
+  for i = 1, #entries do
+    if entries[i].shown then n = n + 1 end
+  end
+  return n
+end
+
+-- Rows of sweeps on screen: every button while arranging, the shown ones
+-- otherwise, none with the option off.
+function RV.GridRows(panel)
+  if not ShowCategoryButtons() then return 0 end
+  local n = RV.GridShownCount(panel)
+  if panel and panel._gridArranging and panel._gridEntries then n = #panel._gridEntries end
+  return ceil(n / GRID_COLUMNS)
+end
+
+-- The rows the window's floor is taken at (CT.MinPanelHeight), remembered so
+-- the grid can tell when a hidden button or a new group has moved it.
+function RV.FloorGridRows()
+  local UI = ns.MailboxUI
+  local frame = UI and UI._frame
+  local panel = frame and frame.Tabs and frame.Tabs.collect
+  local rows = ceil(RV.GridShownCount(panel) / GRID_COLUMNS)
+  RV._floorRows = rows
+  return rows
+end
+
+-- What a sweep would collect: the walk's own count for a built-in, the
+-- group's answer for a group's button.
+function RV.GridCount(panel, id)
+  local spec = panel._gridSpecs[id]
+  if spec then
+    if type(spec.count) ~= "function" then return 0 end
+    local ok, n = pcall(spec.count, panel)
+    return (ok and tonumber(n)) or 0
+  end
+  return (panel._catCounts or {})[id] or 0
+end
+
+-- A sweep's click: its run, or the group's own collect.
+function RV.GridClick(panel, id)
+  if panel._gridArranging then return end
+  local spec = panel._gridSpecs[id]
+  if spec then
+    if CT.IsRunning() then return end
+    if type(spec.collect) == "function" then
+      local ok, err = pcall(spec.collect, panel)
+      if not ok and type(geterrorhandler) == "function" then geterrorhandler()(err) end
+    end
+    return
+  end
+  StartCategoryRun(panel, id)
+end
+
+-- The tooltip a sweep says: a group's own, the two sweeps whose names do
+-- not say exactly what they cover, or the whole of a cut caption. In the
+-- arrange mode every button says what a drag and a click do there.
+function RV.GridTip(panel, button)
+  local arranging = panel._gridArranging
+  local spec = panel._gridSpecs[button.gridId]
+  local primary = (button == panel._gridButtons[1])
+  local plain = not (spec and type(spec.tooltip) == "function") and not button.tip
+  if plain and not button.__pbOverflowText and not arranging then return end
+  GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+  GameTooltip:ClearLines()
+  if spec and type(spec.tooltip) == "function" then
+    local ok = pcall(spec.tooltip, GameTooltip)
+    if not ok then GameTooltip:SetText(button.caption or "") end
+  elseif button.tip then
+    GameTooltip:SetText(button.caption)
+    GameTooltip:AddLine(button.tip, 1, 1, 1, true)
+  elseif button.__pbOverflowText then
+    Th().AddOverflowLine(button, GameTooltip)
+  else
+    GameTooltip:SetText(button.caption or "")
+  end
+  if arranging then
+    GameTooltip:AddLine(L()[primary and "GRID_PRIMARY_FIXED" or "GRID_ARRANGE_TIP"], 0.7, 0.7, 0.7, true)
+  end
+  GameTooltip:Show()
+end
+
+-- The button for a sweep, made on first use: the built-ins at build, a
+-- group's when it first appears. A group's name can change, so its caption
+-- is read again on every layout.
+function RV.GridButton(panel, id)
+  local button = panel._gridById[id]
+  local spec = panel._gridSpecs[id]
+  if button then
+    if spec then button.caption = tostring(spec.label or id) end
+    return button
+  end
+  local T = Th()
+  button = T.CreateButton(nil, panel.Grid)
+  button.gridId = id
+  button.caption = spec and tostring(spec.label or id) or (Labels()[id] or id)
+  button:SetText(button.caption)
+  if id == "alts" then button.tip = L()["CAT_ALTS_TIP"] end
+  if id == "other" then button.tip = L()["CAT_OTHER_TIP"] end
+  button:SetScript("OnClick", function(self) RV.GridClick(panel, self.gridId) end)
+  button:SetScript("OnEnter", function(self) RV.GridTip(panel, self) end)
+  button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  button:Hide()
+  panel._gridById[id] = button
+  -- Made after the window's skin pass: it takes the host's look now, as its
+  -- neighbours did then.
+  if panel._gridBuilt and ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, panel.Grid) end
+  return button
+end
 
 local function LayoutGrid(panel)
   local grid = panel.Grid
@@ -5367,16 +5574,17 @@ local function LayoutGrid(panel)
   local T = Th()
   local M = T.Metrics
   local width = UsableWidth(grid, PanelWidth(panel) - 2 * M.inset)
-  local buttons = panel._gridButtons
+  local primary = panel._gridButtons[1]
+  local arranging = panel._gridArranging
+  local drag = panel._gridDrag
 
-  buttons[1]:ClearAllPoints()
-  buttons[1]:SetSize(width, GRID_PRIMARY_HEIGHT)
-  buttons[1]:SetPoint("TOPLEFT", grid, "TOPLEFT", 0, 0)
+  primary:ClearAllPoints()
+  primary:SetSize(width, GRID_PRIMARY_HEIGHT)
+  primary:SetPoint("TOPLEFT", grid, "TOPLEFT", 0, 0)
 
-  -- The five sweeps are laid out whether or not they are shown: the option
-  -- can flip while the window is open, and a hidden button that is already in
-  -- its column simply appears. A live search withdraws them too, and gives
-  -- the primary its narrower name.
+  -- The sweeps are laid out whether or not the option shows them: it can
+  -- flip while the window is open, and a hidden button that is already in
+  -- its column simply appears.
   -- Neither a search nor a selection withdraws the sweeps. Under a search
   -- each sweep acts on the rows on screen of its own kind -- "All sold"
   -- over a search for one seller is the sold mail from that seller -- so
@@ -5385,24 +5593,58 @@ local function LayoutGrid(panel)
   -- pushed the list a half-row off its whole-row floor.
   local extras = ShowCategoryButtons()
   if Selecting(panel) then
-    buttons[1].caption = L()("CAT_SELECTED", SelectionCount(panel))
+    primary.caption = L()("CAT_SELECTED", SelectionCount(panel))
   elseif Searching(panel) or StuckOnly(panel) then
-    buttons[1].caption = L()["CAT_SHOWN"]
+    primary.caption = L()["CAT_SHOWN"]
   else
-    buttons[1].caption = Labels().all or "all"
+    primary.caption = Labels().all or "all"
   end
+
+  -- The sweeps the arrangement shows, in its order, filling the rows of
+  -- three -- every one of them while it is being arranged, the hidden ones
+  -- greyed and struck through, so one can be brought back where it was.
+  -- The one in the hand stands where the cursor holds it; its cell takes
+  -- the ghost.
   local columns = T.ColumnEdges(width, GRID_COLUMNS, M.gap, panel._gridColumns)
-  for i = 2, #buttons do
-    local slot = i - 2
-    local line = floor(slot / GRID_COLUMNS)
-    local column = slot - line * GRID_COLUMNS
-    local edge = columns[column + 1]
-    buttons[i]:ClearAllPoints()
-    buttons[i]:SetSize(edge.width, GRID_BUTTON_HEIGHT)
-    buttons[i]:SetPoint("TOPLEFT", grid, "TOPLEFT", edge.left,
-      -(GRID_PRIMARY_HEIGHT + M.gap + line * (GRID_BUTTON_HEIGHT + M.gap)))
-    buttons[i]:SetShown(extras)
+  local entries = panel._gridEntries or RV.GridEntries(panel)
+  local placed = panel._gridPlaced
+  for id in pairs(placed) do placed[id] = nil end
+  local slot = 0
+  for i = 1, #entries do
+    local entry = entries[i]
+    local button = RV.GridButton(panel, entry.id)
+    if extras and (entry.shown or arranging) then
+      local line = floor(slot / GRID_COLUMNS)
+      local edge = columns[slot - line * GRID_COLUMNS + 1]
+      local y = -(GRID_PRIMARY_HEIGHT + M.gap + line * (GRID_BUTTON_HEIGHT + M.gap))
+      button:SetSize(edge.width, GRID_BUTTON_HEIGHT)
+      button._cellX, button._cellY = edge.left, y
+      if drag and drag.button == button then
+        local ghost = panel._gridGhost
+        if ghost and ns.Arrange then
+          ghost:ClearAllPoints()
+          ghost:SetPoint("TOPLEFT", grid, "TOPLEFT", edge.left, y)
+          ghost:SetSize(edge.width, GRID_BUTTON_HEIGHT)
+          ns.Arrange.PaintGhost(ghost)
+          ghost:Show()
+        end
+      else
+        button:ClearAllPoints()
+        button:SetPoint("TOPLEFT", grid, "TOPLEFT", edge.left, y)
+      end
+      button.hiddenInGrid = not entry.shown
+      button:Show()
+      placed[entry.id] = true
+      slot = slot + 1
+    else
+      button:Hide()
+    end
   end
+  -- A group's button whose group is gone.
+  for id, button in pairs(panel._gridById) do
+    if not placed[id] then button:Hide() end
+  end
+  if panel._gridGhost and not drag then panel._gridGhost:Hide() end
 
   -- Captions are measured against the column they landed in. A caption that
   -- does not fit is truncated and its full text goes to the button's tooltip;
@@ -5412,26 +5654,35 @@ local function LayoutGrid(panel)
   -- collect nothing is disabled: a sweep that can only answer "Done" is not
   -- worth a click, and the grey says so before the click rather than after.
   -- The count follows the segments' own switch; the disabling does not. The
-  -- primary under a selection names its own count already.
+  -- primary under a selection names its own count already. In the arrange
+  -- mode the grey means hidden instead.
   local counts = panel._catCounts or {}
   local withCounts = ShowTabCounts()
   local picked = Selecting(panel)
-  for i = 1, #buttons do
-    local button = buttons[i]
+  do
     -- The primary also stays live while the server holds mail the client
     -- has not shown yet: its click fetches the next batch.
-    local own = (i == 1 and (picked or panel._moreOnServer))
-    local n = counts[CATEGORY_ORDER[i]] or 0
-    local caption = button.caption
-    -- Every button counts what it would collect, the primary too: the Inbox
-    -- segment above counts the whole box. Under a selection the primary's
-    -- caption names its number already.
-    if withCounts and n > 0 and not (i == 1 and picked) then
-      caption = caption .. " (" .. FormatCount(n) .. ")"
-    end
-    button:SetEnabled(own or n > 0)
-    T.FitText(button:GetFontString(), button:GetWidth() - M.gap, caption, button)
+    local n = counts.all or 0
+    local caption = primary.caption
+    if withCounts and n > 0 and not picked then caption = caption .. " (" .. FormatCount(n) .. ")" end
+    primary:SetEnabled(picked or panel._moreOnServer or n > 0)
+    T.FitText(primary:GetFontString(), primary:GetWidth() - M.gap, caption, primary)
   end
+  for i = 1, #entries do
+    local button = panel._gridById[entries[i].id]
+    if button and placed[entries[i].id] then
+      local n = RV.GridCount(panel, entries[i].id)
+      local caption = button.caption
+      if withCounts and n > 0 then caption = caption .. " (" .. FormatCount(n) .. ")" end
+      if arranging then
+        button:SetEnabled(not button.hiddenInGrid)
+      else
+        button:SetEnabled(n > 0)
+      end
+      T.FitText(button:GetFontString(), button:GetWidth() - M.gap, caption, button)
+    end
+  end
+  RV.PaintGridHandles(panel)
 end
 
 -- What the footer is tall enough for right now. The footer holds the two
@@ -5441,23 +5692,34 @@ end
 -- mail but is not a place to sweep it: "delete all done" would act on mails
 -- the segment does not distinguish, so the all view keeps the category grid --
 -- which is exactly as useful there as on the collect view, since a category
--- run works on the inbox and not on the listing.
+-- run works on the inbox and not on the listing. The grid is as tall as its
+-- rows of sweeps.
 local function FooterHeight(panel)
   if AV.Active(panel) then return GRID_BUTTON_HEIGHT end
   if panel.viewMode == VIEW_HISTORY then return GRID_BUTTON_HEIGHT end
   if panel.viewMode == VIEW_DONE then return GRID_PRIMARY_HEIGHT end
-  if not ShowCategoryButtons() then return GRID_PRIMARY_HEIGHT end
-  return GRID_PRIMARY_HEIGHT + Th().Metrics.gap * 2 + GRID_BUTTON_HEIGHT * 2
+  return GRID_PRIMARY_HEIGHT + RV.GridRows(panel) * (Th().Metrics.gap + GRID_BUTTON_HEIGHT)
 end
 
 -- Frozen: Core/MailboxUI.lua calls this when the category-buttons option
--- changes. The window's floor is sized for the full grid either way (see
--- CT.MinPanelHeight), so switching the buttons off never moves the window;
--- the two rows they stood on go to the list.
+-- changes, and the list's refresh calls it for the counts. The window's
+-- floor is sized for the grid's rows (see CT.MinPanelHeight); when those
+-- rows change without the option moving -- a button hidden in the arrange
+-- mode, a group's button come or gone -- the floor is asked to follow, as
+-- the option's change moves it.
 function CT.RefreshCategoryButtons(panel)
   if not panel or not panel.Footer then return end
+  RV.GridEntries(panel)
   panel.Footer:SetHeight(FooterHeight(panel))
   LayoutGrid(panel)
+  if not panel._gridArranging and ShowCategoryButtons() and RV._floorRows ~= nil then
+    local rows = ceil(RV.GridShownCount(panel) / GRID_COLUMNS)
+    local UI = ns.MailboxUI
+    if rows ~= RV._floorRows and UI and type(UI.RefreshCollectFloor) == "function" then
+      RV._floorRows = rows
+      UI.RefreshCollectFloor()
+    end
+  end
 end
 
 -- Each view's own footer: the sweeps under the inbox, Delete under Done, a
@@ -5483,31 +5745,208 @@ local function BuildGrid(panel)
 
   panel._gridButtons = {}
   panel._gridColumns = {}
+  panel._gridById = {}
+  panel._gridSpecs = {}
+  panel._gridPlaced = {}
 
-  for i = 1, #CATEGORY_ORDER do
-    local category = CATEGORY_ORDER[i]
-    local button = T.CreateButton(nil, panel.Grid)
-    button.caption = labels[category] or category
-    button:SetText(button.caption)
-    button:SetScript("OnClick", function() StartCategoryRun(panel, category) end)
-    -- The two sweeps whose names do not say exactly what they cover.
-    if category == "alts" then button.tip = L()["CAT_ALTS_TIP"] end
-    if category == "other" then button.tip = L()["CAT_OTHER_TIP"] end
-    button:SetScript("OnEnter", function(self)
-      if not self.__pbOverflowText and not self.tip then return end
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:ClearLines()
-      if self.tip then
-        GameTooltip:SetText(self.caption)
-        GameTooltip:AddLine(self.tip, 1, 1, 1, true)
-      else
-        Th().AddOverflowLine(self, GameTooltip)
-      end
-      GameTooltip:Show()
-    end)
-    button:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    panel._gridButtons[i] = button
+  -- The primary: everything, always first.
+  local primary = T.CreateButton(nil, panel.Grid)
+  primary.caption = labels.all or "all"
+  primary.gridId = "all"
+  primary:SetText(primary.caption)
+  primary:SetScript("OnClick", function()
+    if panel._gridArranging then return end
+    StartCategoryRun(panel, "all")
+  end)
+  primary:SetScript("OnEnter", function(self) RV.GridTip(panel, self) end)
+  primary:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  panel._gridButtons[1] = primary
+
+  local builtins = RV.BuiltinGridIds()
+  for i = 1, #builtins do RV.GridButton(panel, builtins[i]) end
+  panel._gridBuilt = true
+end
+
+-------------------------------------------------------------
+-- The category grid :: arranged
+--
+-- While the arrange mode is open over the tab (Core/Arrange.lua) every sweep
+-- shows, the hidden ones greyed and struck through, and each wears a handle
+-- over it that takes the mouse instead of the button: a drag moves the
+-- button through the grid, its cell ringed where it will land, the others
+-- stepping aside; a click hides or shows it. Nothing collects while this is
+-- open. The primary wears an inert handle: it always stands first.
+-------------------------------------------------------------
+
+function RV.GridHandle(panel, button)
+  local handles = panel._gridHandles
+  if not handles then
+    handles = {}
+    panel._gridHandles = handles
   end
+  local handle = handles[button]
+  if handle then return handle end
+  handle = CreateFrame("Frame", nil, panel.Grid)
+  handle:SetAllPoints(button)
+  handle:EnableMouse(true)
+  handle.button = button
+  handle.Strike = handle:CreateTexture(nil, "OVERLAY")
+  handle.Strike:SetTexture(WHITE)
+  handle.Strike:SetHeight(1)
+  handle.Strike:SetPoint("LEFT", handle, "LEFT", 8, 0)
+  handle.Strike:SetPoint("RIGHT", handle, "RIGHT", -8, 0)
+  Th().SetColor(handle.Strike, "textSecondary")
+  handle.Strike:Hide()
+  handle:SetScript("OnEnter", function(self) RV.GridTip(panel, self.button) end)
+  handle:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  handle:SetScript("OnMouseDown", function(self, mouse)
+    if mouse ~= "LeftButton" or self.button == panel._gridButtons[1] then return end
+    RV.GridPress(panel, self.button)
+  end)
+  handle:Hide()
+  handles[button] = handle
+  return handle
+end
+
+function RV.PaintGridHandles(panel)
+  local arranging = panel._gridArranging and ShowCategoryButtons()
+  local primary = panel._gridButtons[1]
+  -- The primary's handle stands with the option off too: nothing collects
+  -- while the mode is open.
+  if panel._gridArranging then
+    local handle = RV.GridHandle(panel, primary)
+    handle:SetFrameLevel(primary:GetFrameLevel() + 5)
+    handle:Show()
+  elseif panel._gridHandles and panel._gridHandles[primary] then
+    panel._gridHandles[primary]:Hide()
+  end
+  for id, button in pairs(panel._gridById) do
+    if arranging and button:IsShown() then
+      local handle = RV.GridHandle(panel, button)
+      local drag = panel._gridDrag
+      if not (drag and drag.button == button) then handle:SetFrameLevel(button:GetFrameLevel() + 5) end
+      handle.Strike:SetShown(button.hiddenInGrid and true or false)
+      handle:Show()
+    elseif panel._gridHandles and panel._gridHandles[button] then
+      panel._gridHandles[button]:Hide()
+    end
+  end
+end
+
+-- The arrange mode opening or closing over this tab's grid.
+function RV.ArrangeGrid(panel, on)
+  panel._gridArranging = on and true or nil
+  if on then
+    local A = ns.Arrange
+    if not panel._gridGhost and A and A.NewGhost then panel._gridGhost = A.NewGhost(panel.Grid) end
+  else
+    local drag = panel._gridDrag
+    panel._gridDrag = nil
+    if drag then drag.button:SetFrameLevel(drag.level) end
+    if panel._gridGhost then panel._gridGhost:Hide() end
+  end
+  CT.RefreshCategoryButtons(panel)
+end
+
+-- The arrangement with one button's place or visibility changed: stored,
+-- and the grid laid out from it.
+function RV.StoreGrid(panel, entries)
+  local UI = ns.MailboxUI
+  if UI and type(UI.SetGridLayout) == "function" then UI.SetGridLayout(entries) end
+  panel._gridEntries = entries
+end
+
+function RV.CopyEntries(entries)
+  local out = {}
+  for i = 1, #entries do out[i] = { id = entries[i].id, shown = entries[i].shown } end
+  return out
+end
+
+function RV.GridToggle(panel, id)
+  local entries = RV.CopyEntries(panel._gridEntries or RV.GridEntries(panel))
+  for i = 1, #entries do
+    if entries[i].id == id then entries[i].shown = not entries[i].shown end
+  end
+  RV.StoreGrid(panel, entries)
+  CT.RefreshCategoryButtons(panel)
+end
+
+function RV.GridPress(panel, button)
+  local A = ns.Arrange
+  if not (A and A.Press) then return end
+  if A.EndTeach then A.EndTeach(true) end
+  local id = button.gridId
+  A.Press(button, {
+    start = function(x0, y0)
+      if not panel._gridArranging then return end
+      GameTooltip:Hide()
+      panel._gridDrag = {
+        button = button, level = button:GetFrameLevel(),
+        dx = x0 - (button:GetLeft() or x0), dy = y0 - (button:GetTop() or y0),
+      }
+      button:SetFrameLevel(panel.Grid:GetFrameLevel() + 30)
+      LayoutGrid(panel)
+    end,
+    move = function(x, y) RV.GridDrag(panel, x, y) end,
+    drop = function() RV.GridDrop(panel) end,
+    click = function()
+      if panel._gridArranging then RV.GridToggle(panel, id) end
+    end,
+  })
+end
+
+-- The button follows the cursor over the grid; the cell under its middle is
+-- where it goes, and the others step along to make room -- in the stored
+-- arrangement itself, so what is on screen is what is kept.
+function RV.GridDrag(panel, x, y)
+  local drag = panel._gridDrag
+  if not drag then return end
+  local grid, button = panel.Grid, drag.button
+  local left, top = grid:GetLeft(), grid:GetTop()
+  if not (left and top) then return end
+  local M = Th().Metrics
+  local width = grid:GetWidth() or 0
+  local w, h = button:GetWidth() or 0, button:GetHeight() or 0
+  local rows = max(RV.GridRows(panel), 1)
+  local firstY = GRID_PRIMARY_HEIGHT + M.gap
+  local lastY = firstY + (rows - 1) * (GRID_BUTTON_HEIGHT + M.gap)
+  local bx = min(max(x - left - drag.dx, 0), max(width - w, 0))
+  local by = min(max(top - y + drag.dy, firstY), lastY)
+  button:ClearAllPoints()
+  button:SetPoint("TOPLEFT", grid, "TOPLEFT", bx, -by)
+
+  local columns = panel._gridColumns
+  local cx = bx + w / 2
+  local column = GRID_COLUMNS
+  for c = 1, GRID_COLUMNS do
+    local edge = columns[c]
+    if edge and cx < edge.right + M.gap / 2 then
+      column = c
+      break
+    end
+  end
+  local line = floor((by + h / 2 - firstY) / (GRID_BUTTON_HEIGHT + M.gap))
+  line = min(max(line, 0), rows - 1)
+  local entries = panel._gridEntries or {}
+  local target = min(max(line * GRID_COLUMNS + column, 1), #entries)
+  local k
+  for i = 1, #entries do
+    if panel._gridById[entries[i].id] == button then k = i break end
+  end
+  if not k or k == target then return end
+  local moved = RV.CopyEntries(entries)
+  table.insert(moved, target, table.remove(moved, k))
+  RV.StoreGrid(panel, moved)
+  LayoutGrid(panel)
+end
+
+function RV.GridDrop(panel)
+  local drag = panel._gridDrag
+  panel._gridDrag = nil
+  if not drag then return end
+  drag.button:SetFrameLevel(drag.level)
+  if panel._gridGhost then panel._gridGhost:Hide() end
+  LayoutGrid(panel)
 end
 
 -------------------------------------------------------------
