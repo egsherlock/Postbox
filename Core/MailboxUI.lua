@@ -254,6 +254,11 @@ function UI.ResetSettings()
     end
   end
 
+  -- The arrange mode closes first: its strip, its card and the grid's
+  -- handles were drawn from the arrangement just cleared.
+  local arrange = ns.Arrange
+  if arrange then ResetStep(arrange.Leave) end
+
   -- The chosen look's border, border size and opacity. Each Reset re-reads
   -- its value -- absent now, so the default -- and repaints every window the
   -- skin has painted. A style with none of the three has none to repaint.
@@ -265,6 +270,10 @@ function UI.ResetSettings()
   end
 
   -- The mail window's content, through the entry points the options use.
+  -- The rows re-lay on the default arrangement wherever it applies: the
+  -- Mail tab's list in every view, History and another character's box
+  -- among them (row layout), the category grid (category buttons), and
+  -- Mail Memory's own window (memory.Refresh, below).
   ResetStep(UI.RefreshCollectRowLayout)
   ResetStep(UI.RefreshCollectCategoryButtons)
   ResetStep(UI.RefreshCollectTabCounts)
