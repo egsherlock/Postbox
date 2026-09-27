@@ -1,10 +1,12 @@
 # Skinning an addon for EllesmereUI — findings and lessons
 
 Written while adding EllesmereUI support to Postbox (July 2026, WoW 12.0.7 → 12.1),
-and updated on 2026-07-31 against the shipped skinning API in **EllesmereUI
-v8.6.8**. Most of this was learned the hard way and is **not** in EllesmereUI's
-own developer guide. It should transfer directly to the MountsJournal
-EllesmereUI skin and any other addon in the suite's style.
+updated on 2026-07-31 against the shipped skinning API in **EllesmereUI v8.6.8**,
+and again on 2026-09-27 against **EllesmereUI v9.2.9** (the looks of §1.3, the
+live signals of §1.4, the border survey of §4). Most of this was learned the hard
+way and is **not** in EllesmereUI's own developer guide. It should transfer
+directly to the MountsJournal EllesmereUI skin and any other addon in the suite's
+style.
 
 ---
 
@@ -50,6 +52,16 @@ root. It shipped in a tagged release on **2026-07-31, v8.6.8**, having lived on
   PageButton, SquareIcon, SortHeaderBar, Font, White, ApplyBarFill`, and the
   getters `GetStyle() -> "eui"|"modern"`, `GetAccentColor() -> r,g,b`,
   `GetPanelColor() -> r,g,b,a`, `GetFont() -> path, flag`, `OnLooksChanged(fn)`.
+- **`OnLooksChanged` fires less often than its comment says.** It rides
+  EllesmereUI's accent registry (`WSkin.RefreshLooks`, a `RegAccent` callback),
+  so it fires on accent changes — once per tick while a colour picker is
+  dragged — and on Blizz UI Enhanced's global look settings. It does **not**
+  fire on a window-style switch (that path calls only `RefreshStyles`) or on a
+  profile switch. See §1.4 for what does.
+- **This whole API needs Blizz UI Enhanced** (`EllesmereUIBlizzardSkin`). Players
+  who run EllesmereUI with that module disabled — Postbox's own maintainer among
+  them — never get a facade at all, so the compat backend below is not a legacy
+  path: it is the everyday path for a real share of players.
 - **The pass-throughs are late-bound.** Each looks its primitive up in the
   engine at call time and returns quietly if it is not there. A call that did
   nothing therefore still comes back from `pcall` as a success — see §6 for the
@@ -120,12 +132,12 @@ ElvUI they are also running.
   up empty — a host that draws no reachable art at all — Postbox's own flat fill
   carries the backdrop instead, and that path is compat-shim-shaped even on the
   `api` backend.
-- `S.OnLooksChanged` fires for what EllesmereUI counts as looks: accent, bar
-  fill, Modern backdrop colour, window styles. A **profile switch** — which moves
-  `GetDarkModeFill()`, i.e. Postbox's entire baseline colour *and* its alpha —
-  is not on that list, and neither is the window border read straight out of
-  `EllesmereUIDB`. Postbox covers both with an `OnShow` hook on each skinned
-  window, so close-and-reopen picks them up.
+- `S.OnLooksChanged` does not fire on a **profile switch**, which moves
+  `GetDarkModeFill()` — Postbox's entire baseline colour *and* its alpha — nor
+  on a window-style switch. The profile switch is now covered live by
+  `RegisterDarkModeRefresh` (§1.4). The window-style switch has no signal at all;
+  Postbox keeps an `OnShow` hook on each skinned window, so close-and-reopen
+  picks it up.
 
 ### 1.2 Live restyles: what the engine does, and what you still have to do
 
@@ -141,14 +153,84 @@ not re-call `S.Shell`. Two cases, and Postbox's region/child **count** heuristic
   `OnLooksChanged` handler re-applying opacity is what puts it back.
 
 What is **not** provable from the published API is the *ordering* — whether the
-restyle completes before the `OnLooksChanged` callbacks fire. If it is the other
-way round, the window sits at the host's alpha until the next window open, which
-the `OnShow` hook already covers. There is also a case worth watching in game:
-if a restyle retires old art by zeroing its alpha rather than hiding it, a
-re-applied opacity pass would drive it back up and resurrect the old style under
-the new one. Postbox deliberately does **not** guard against this speculatively,
-because a guard that misfires during a transient would delete the live backdrop
-— a worse bug than the one it prevents. It is on the in-game test list instead.
+restyle completes before the `OnLooksChanged` callbacks fire. Postbox sidesteps
+it: every live signal is folded into one pass on the **next frame** (§1.4), after
+anything the host queued in this one.
+
+**The restyle does retire art by alpha — so the opacity pass must not undo it.**
+Reading the 9.2.9 engine settled what used to be a watch item. `S.Shell` lays
+down *both* backdrops at once — the `modern_blizz.png` atlas at `BACKGROUND -8`,
+a black 0.62 overlay at `-7`, a flat Modern fill at `-6`, the title strip at `-5`
+— and `ApplyShellStyle` picks one purely by region alpha: under Modern it holds
+the atlas and overlay at **0**, and on every `RefreshStyles` it sets them back to
+0 or 1. An opacity pass that raised every host region to the player's alpha put
+the EllesmereUI atlas back under the Modern fill. Postbox now drives a host region
+only while the host shows it: it remembers the alpha it wrote last, and a region
+whose alpha no longer matches was set by the host since, so its shown/hidden
+state is re-read from that value (the host only ever writes 0 or 1). Under the
+EllesmereUI style every region is shown and the pass is the single `SetAlpha` it
+always was. The one blind spot is a restyle while the window sits at exactly 0%
+opacity (zero over zero), which the next restyle or `/reload` settles.
+
+`RefreshStyles` also resets the shown regions to alpha **1** — full opacity —
+and tells no one; the `OnShow` re-assert is what brings the player's alpha back.
+
+### 1.3 EllesmereUI's looks (9.2.5+) and what a third-party window should do
+
+EllesmereUI 9.2.5 added a look switch under **Global Settings › Style**: its own
+look, **Blizzard Style** (the current stock art) and **Classic WoW UI** (the
+vanilla art). What there is to read, and what there is not:
+
+- **The flags are per module and reload-gated.** Each module (unit frames,
+  action bars, minimap, damage meters, chat, …) has `useBlizzardStyle` /
+  `useClassicStyle` in its own profile, written only inside the reload prompt's
+  confirm, and latches its rendering style once per session
+  (`EllesmereUI._ModuleNS[folder].<Module>Style()`, e.g.
+  `_ModuleNS.EllesmereUIMinimap.MinimapStyle()`).
+- **There is no single whole-UI setting, but there is a record of the whole-UI
+  switch** (the first-install picker and the Style page's *Apply to All*), per
+  profile: `profiles[p].windowSkinLook` (written beside the window-skin swap, Blizz
+  UI Enhanced only) and the parent's font record `fonts._styleSlots.active`
+  (present without Blizz UI Enhanced; absent in glyph-fallback locales).
+  `EllesmereUI.ProfileWindowSkinLook(prof, liveFonts)` reads exactly that pair
+  when Blizz UI Enhanced is loaded. Under a stock look Blizz UI Enhanced turns its
+  skins **off** Blizzard's windows (first visit: every window at *Blizz Default*).
+- **The skinning API ignores all of it.** `S.GetStyle()` still answers only
+  `eui`/`modern`, and `GetThirdPartySkinStyle` deliberately keeps voting from the
+  EllesmereUI look's window slot, so a third-party skin stays on the EllesmereUI
+  theme under a stock look. There is no change signal either: a look change is a
+  reload in EllesmereUI itself.
+
+What Postbox does with that: its style option's first entry ("EllesmereUI") now
+means *follow EllesmereUI's look*. Under the EllesmereUI look it is the skin
+described in this document, unchanged. Under Blizzard Style or Classic WoW UI —
+read once at activation, like the modules' own latches — the skin stands down
+and Postbox wears its own Blizzard-art look, which is what sits right next to
+the stock Blizzard windows EllesmereUI now leaves alone. The options panel says
+so ("Following EllesmereUI's look"), and a player who wants something else picks
+another style. Every read is nil-guarded, and anything unreadable is the
+EllesmereUI look — what every session was before 9.2.5.
+
+**Dark Mode** is a per-module switch between class-coloured and dark bars; the
+*palette* behind it (`GetDarkModeFill`) is what Postbox follows, whether or not
+any module has Dark Mode on — the window has no class colour to fall back to.
+
+### 1.4 Live signals: what fires, and when
+
+| Signal | Where | Fires on | Backend |
+|---|---|---|---|
+| `S.OnLooksChanged(fn)` | skin facade | accent (per picker tick), Blizz UI Enhanced global look settings | api only |
+| `EllesmereUI.RegisterDarkModeRefresh(fn)` | parent addon | Dark Mode palette edits, darken sliders, the Dark Mode master switch, **every profile switch** (the repoint calls `RefreshDarkMode`) | both |
+| `EllesmereUI.RegAccent({ type = "callback", fn = fn })` | parent addon | accent (per picker tick); calls entries **without** a pcall | both (Postbox uses it on compat only) |
+| *(nothing)* | Blizz UI Enhanced | window-style switch (`RefreshStyles`), Modern colour edits | — |
+
+Postbox routes all three into one request that runs on the next frame. Two
+reasons beyond de-duplicating a picker drag: a profile switch refreshes the dark
+palette *before* it re-resolves the accent (`RefreshAllAddons` calls
+`RefreshAccent` after the repoint), so a pass inside the first callback would
+paint the old accent; and the next frame is after every host repaint queued in
+this one. A `RegAccent` entry must never throw — it runs in the middle of
+EllesmereUI's own accent pass — so Postbox's is a `pcall` around a flag.
 
 ---
 
@@ -175,8 +257,11 @@ bars and panels, and it is what a profile import actually sets:
 
 **Use this as your baseline colour *and* transparency.** It is per-profile and
 live, so reading the accessor (never hardcoding, never caching) means the addon
-follows profile switches for free. atrocityUI is not doing anything magic — it is
-just an EllesmereUI profile that sets these keys.
+follows profile switches — once something makes it read again.
+`EllesmereUI.RegisterDarkModeRefresh(fn)` is that something: EllesmereUI runs its
+refreshers on every palette edit and every profile switch (§1.4). atrocityUI is
+not doing anything magic — it is just an EllesmereUI profile that sets these
+keys.
 
 ### `EllesmereUI.RESKIN` — tooltips, context menus, popups only
 
@@ -254,15 +339,36 @@ Built-in keys: `solid`, `glow`, `shadow`, `blizz`, `lightspark`, `dialog`, plus 
 `GetBorderStyleSelectDefaults` returns black plus a `behind` flag — seat the host
 at `parentLevel - 1`.
 
-**Inherit the user's choice** rather than picking your own:
-
-```lua
-EllesmereUIDB.windowBorderTexture   -- e.g. "solid"
-EllesmereUIDB.windowBorderSize      -- 0 means no border
-```
-
 Draw your border *outside* the shell's own chrome and switching styles stays live
 with no reload.
+
+### There is no "EllesmereUI window border" to inherit
+
+An earlier version of this section said to inherit
+`EllesmereUIDB.windowBorderTexture` / `windowBorderSize`. **Those keys do not
+exist at the root of `EllesmereUIDB`** — not in 8.6.5, 8.6.6 or 9.2.9 — so a
+"match EllesmereUI" border built on them has always resolved to *no border*.
+Postbox shipped exactly that bug. The window border those names belong to is the
+damage meter's, in the meter's own profile. Every EllesmereUI module owns the
+border of its own kind of frame:
+
+| Module | Setting (9.2.9) | Controls | A source for a third-party window? |
+|---|---|---|---|
+| Damage Meters | `profiles[p].addons.EllesmereUIDamageMeters.dm.windowBorderSize` / `windowBorderTexture` / `windowBorderColor` (default size **0**) | the meter window's frame | No. Default is none; forced to 0 under the meter's Blizzard/Classic look; plenty of players run the meter with no background or border at all. |
+| Damage Meters | `dm.borderSize`, `dm.iconBorderSize`, `dm.hdrBottomBorderSize` | bars, icons, header rule | No — bar furniture. |
+| Unit Frames | per unit `borderSize` (1), `borderTexture` ("solid"), `borderColor` (black) | a 1px black line hugging each frame | No — every default install has one, so "match" would put a black edge on every window. |
+| Action Bars | per bar `borderSize`, `borderThickness`, `borderTexture`, `bgBorderThickness` | button and bar-background borders | No — button furniture. |
+| Minimap | `minimap.borderSize`, `borderTexture`, `borderR..A` | the map's frame; dropped under the stock looks | No. |
+| Chat | `chat.panelBorderThickness` (default **"none"**), `panelBorderTexture` | the chat panel | No — default none, chat-specific. |
+| Resource Bars, Raid Frames, Nameplates, Cooldown Manager, Friends | per element `borderSize` / `borderTexture` | their own bars and icons | No. |
+| Bags | — | no user border setting | — |
+| Blizz UI Enhanced | account-wide `tooltipBorder*`, `popupMenuBorder*`, `popupMenuButtonBorder*` (Texture, Thickness none…strong, Color, ColorMode, Opacity, offsets, Behind) via `EllesmereUI._applyBlizzardConfiguredBorder(owner, prefix)` | tooltips, context menus, static popups, the game menu | Closest in spirit, but these are popups, not windows, and the module can be disabled. |
+| Blizz UI Enhanced windows | none — the fixed `AdventureMap_TopBorder` atlas that `S.Shell` lays down unless `opts.noBorder` | every skinned Blizzard window | This **is** the house window border, and `S.Shell` already draws it. |
+
+So Postbox offers no "match" for the border. An unset border is **None** —
+precisely what the broken "match" always drew — and the player can still pick any
+texture from the shared engine and a size for it. Nothing needed migrating:
+"match" was stored as *unset*, and unset now means the None it always rendered.
 
 ---
 
@@ -328,6 +434,15 @@ mutually exclusive on open.
   its own plate and its own mirrored label, i.e. **new regions on the frame** —
   count before and after, and if nothing appeared, hand the widget back to your
   own painting intact.
+- **Restyling one of EllesmereUI's own frames means following its looks too.**
+  Postbox restyles EllesmereUIMinimap's mail button rather than drawing its own
+  (see `Core/MinimapButton.lua`). Under Blizzard Style and Classic WoW UI that
+  module always draws the **round** map, whatever `shape` its profile stores —
+  ask its latched `_ModuleNS.EllesmereUIMinimap.MinimapBlizz()` before trusting
+  the stored shape — and Classic dresses the indicators as vanilla ring buttons:
+  a 31px button whose icon is clipped by a **16px circular mask**. Art sized from
+  the button there is cut to its middle, and the module resizes the icon back on
+  every layout pass, so the two fight. Size to the mask.
 
 ---
 
@@ -373,12 +488,14 @@ print(sorted(called - defined))   # must be empty
 | UI font | `S.GetFont()` / `EllesmereUI.GetFontPath("blizzardSkin")` |
 | Pixel-perfect 1px border | `EllesmereUI.PP.CreateBorder(frame, r,g,b,a, 1, "OVERLAY", 7)` |
 | Glow / shadow / textured border | `EllesmereUI.ApplyBorderStyle(...)` |
-| User's configured window border | `EllesmereUIDB.windowBorderTexture` / `windowBorderSize` |
-| Live theme-change hook | `S.OnLooksChanged(fn)` (8.6.8+ only) |
+| User's configured window border | none exists — see §4 |
+| Live accent hook | `S.OnLooksChanged(fn)` (8.6.8+, Blizz UI Enhanced loaded); `EllesmereUI.RegAccent({type="callback", fn=fn})` otherwise |
+| Live palette + profile-switch hook | `EllesmereUI.RegisterDarkModeRefresh(fn)` |
+| Whole-UI look (9.2.5+) | `EllesmereUI.ProfileWindowSkinLook(GetActiveProfileData(), EllesmereUIDB.fonts)`, else `profiles[p].windowSkinLook`, else `EllesmereUIDB.fonts._styleSlots.active` (§1.3) |
 | Is skinning on for me right now | `S.IsEnabled()` (8.6.8+ only) |
 | Tooltip / menu / popup palette | `EllesmereUI.RESKIN` |
 
-Everything above except `S.*` works on 8.6.6.
+Everything above except `S.*` and the 9.2.5 look records works on 8.6.6.
 
 ### What Postbox does *not* take from the facade, and why
 
