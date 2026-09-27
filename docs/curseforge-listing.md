@@ -280,9 +280,9 @@ LibStub, no waiting on a library another addon happens to own a different versio
 It is the addon and nothing else.
 
 **Work is done once, not per event.** A mailbox that fires twenty updates in a second
-gets one redraw on the next frame, not twenty. The chattier game events are only
-listened to while the tab that needs them is actually on screen, and the mailbox
-memory writes to disk once per visit rather than per mail.
+gets one redraw on the next frame, not twenty. The chattier game events only do
+real work while the tab that needs them is actually on screen, and Mail Memory
+writes to disk once per visit rather than per mail.
 
 **And it cannot break your interface.** Postbox never touches Blizzard's own mail
 code — it draws its own window and talks to the mail API directly, so there are no

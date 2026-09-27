@@ -249,12 +249,14 @@ and no execution path of ours can taint one. The one residual case — the defau
 [COMBAT_TAINT.md](COMBAT_TAINT.md) rather than papered over.
 
 **Nothing runs when nothing is happening.** No repeating timers of any kind, and no
-persistent `OnUpdate`: the four that exist are each scoped to a gesture — minimap
-drag, window resize, dropdown scrollbar drag, and the compose box's cursor-follow,
-which clears itself on the first frame it runs. Inbox
+persistent `OnUpdate`: the five that exist are each scoped to a gesture — minimap
+drag, window resize, dropdown scrollbar drag, dragging a row figure into place in
+Options, and the compose box's cursor-follow, which clears itself on the first frame
+it runs. Inbox
 refreshes are marked and drained once per frame rather than per event, the chatty
-social events are registered only while the compose tab is visible, and Mail
-Memory writes its snapshot once per visit.
+social events do real work only while the compose tab is visible (the rest of the
+time they mark a list stale and return), and Mail Memory writes its snapshot once
+per visit.
 
 **One skinning contract, three skins.** A skin claims `ns.Skin` at login and answers
 `Apply`/`Refresh` over tagged children, so every window that knows how to be skinned
