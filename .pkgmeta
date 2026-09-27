@@ -22,12 +22,22 @@ ignore:
   - ELLESMEREUI_SKINNING.md
   - docs
 
-# Nominates the changelog for the release page and the CurseForge/Wago upload.
+# The changelog CurseForge, Wago and the GitHub release show: the newest five
+# versions and a link to the full CHANGELOG.md on GitHub. The release workflow
+# writes it from CHANGELOG.md just before the packager runs
+# (.github/release-changelog.py), so the repo only ever holds one changelog.
 #
-# It also ships inside the addon folder, which is deliberate: it is written for
-# players rather than developers, so it is worth having where a player can find
-# it. (An earlier note here claimed this kept it out of the zip. It never did —
-# manual-changelog names the file, it does not exclude it.)
+# The packager reads a manual changelog from the checkout (from the package
+# only if a copy landed there), and naming a file here does not keep it out of
+# the zip: it is even exempt from the rule that leaves untracked files behind.
+# So this one lives under .github, which never reaches the zip: the packager
+# skips every dot-folder, and .github is ignored above as well. The full
+# CHANGELOG.md does ship, deliberately: it is written for players, so it is
+# worth having where a player can find it.
+#
+# Run the packager by hand and this file has to be written first. Without it
+# the packager falls back to a changelog of commits, and writes that over the
+# CHANGELOG.md in the package.
 manual-changelog:
-  filename: CHANGELOG.md
+  filename: .github/release-changelog.md
   markup-type: markdown
