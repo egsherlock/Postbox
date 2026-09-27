@@ -13,6 +13,9 @@
 
 ### Fixed
 
+- **A C.O.D. mail with several items comes out whole.** After you confirm
+  the payment, every item is collected in one go; before, only the first
+  came out and the rest waited in the mail for another click.
 - Collecting auction house mail no longer flashes a "Read, nothing left (1)"
   bar (or Done (1)) at the foot of the list, with Inbox one too high, for a
   mail the game was already deleting.
