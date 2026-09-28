@@ -5,11 +5,11 @@ versions in CHANGELOG.md, then a link to the whole file on GitHub. The repo
 keeps one changelog; this excerpt is made from it at build time and never
 ships in the zip (see .pkgmeta). The zip still carries the full CHANGELOG.md.
 
-    python3 .github/release-changelog.py v1.41.0-beta.1 > .github/release-changelog.md
+    python3 .github/release-changelog.py v1.50.0-beta.1 > .github/release-changelog.md
 
 The newest heading must be the version being tagged: v1.40.2 needs
-"## 1.40.2" on top, and a beta (v1.41.0-beta.1) needs the version it will ship
-as, "## 1.41.0". A tag with no section of its own stops the release here,
+"## 1.40.2" on top, and a beta (v1.50.0-beta.1) needs the version it will ship
+as, "## 1.50.0". A tag with no section of its own stops the release here,
 before anything is built or uploaded.
 """
 
@@ -39,7 +39,7 @@ def main(argv):
         fail(path + " has no version headings")
 
     version = tag[1:] if tag.startswith("v") else tag
-    version = version.split("-")[0]  # 1.41.0-beta.1 ships as 1.41.0
+    version = version.split("-")[0]  # 1.50.0-beta.1 ships as 1.50.0
     top = lines[starts[0]][3:].split()
     if not top or top[0] != version:
         fail("%s is tagged, but the newest section in %s is \"%s\". "

@@ -2158,7 +2158,7 @@ end
 -- with the cog in every look -- the skins move the cog, and it follows. It
 -- arranges the Mail tab's rows and buttons, bringing that tab forward from
 -- the Send tab first (Core/Arrange.lua). Nothing at all without that file:
--- it is new in 1.41, and a /reload does not load a new file.
+-- it is new in 1.50, and a /reload does not load a new file.
 local function BuildArrangeButton(frame)
   local arrange = ns.Arrange
   if not (arrange and arrange.BuildToggle and frame.OptionsButton) then return nil end

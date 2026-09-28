@@ -3,7 +3,7 @@ name: Release
 # Cut a release by pushing a version tag:
 #   git tag -a v1.2.0 -m "1.2.0" && git push origin v1.2.0
 #
-# The tag's name sets the channel. One containing "beta" (v1.41.0-beta.1)
+# The tag's name sets the channel. One containing "beta" (v1.50.0-beta.1)
 # goes to CurseForge as a Beta file and to GitHub as a pre-release, so only
 # players who opted into betas are offered it; "alpha" likewise. Anything
 # else -- "-rc" included -- is a full release that every player is offered.

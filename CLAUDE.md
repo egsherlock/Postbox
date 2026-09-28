@@ -28,10 +28,10 @@ trailers. This applies whatever the tooling's own defaults are.
     committed to it directly.
   - `beta` is the next release, tested by real players: fixes, and features
     that are fleshed out and have passed the maintainer's own local testing.
-    Beta tags (`v1.41.0-beta.1`) go to the Beta channel, so adventurous
+    Beta tags (`v1.50.0-beta.1`) go to the Beta channel, so adventurous
     players can try them before they reach everyone.
   - `alpha` is where new features are built and iterated, tested by the
-    maintainer through dev builds. Alpha tags (`v1.41.0-alpha.1`) go to the
+    maintainer through dev builds. Alpha tags (`v1.50.0-alpha.1`) go to the
     Alpha channel.
 - **Fixes go on `beta`; features go on `alpha`.** A feature moves from `alpha`
   to `beta` only once it is fleshed out and the maintainer has tested it
@@ -46,7 +46,7 @@ trailers. This applies whatever the tooling's own defaults are.
   local branches merged and deleted are fine. PRs are for outside contributors
   who cannot push here.
 - **Dev builds for the live install** come from the branch being worked on,
-  stamped `-devN` on the version it will ship (`v1.41.0-devN` from `alpha`,
+  stamped `-devN` on the version it will ship (`v1.50.0-devN` from `alpha`,
   `v1.40.2-devN` from `beta`).
 - **Offer a local test before any tag.** Nothing ships without the option of
   swapping the changed files into the live WoW install and `/reload`-ing first.
@@ -87,7 +87,7 @@ easiest to forget, because both are player-facing and neither is in the code:
 
 ## How we build it: light, measured, hard to break
 
-Postbox is meant to cost nothing you can feel. The 1.41 performance pass cut a
+Postbox is meant to cost nothing you can feel. The 1.50 performance pass cut a
 list refresh's garbage from 33 KB to 2 KB and a Mail/Send switch from three bag
 redraws to one, and every new change should keep it that way.
 

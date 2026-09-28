@@ -82,7 +82,7 @@ into the zip. The GitHub release body is the same generated text, not the versio
 own section.
 
 - **The tag must match the newest heading.** `v1.40.2` needs `## 1.40.2` on top; a
-  pre-release tag needs the version it will ship as (`v1.41.0-alpha.1` → `## 1.41.0`).
+  pre-release tag needs the version it will ship as (`v1.50.0-alpha.1` → `## 1.50.0`).
   Otherwise the workflow stops before anything is built or uploaded: write the
   section, delete the tag (`git tag -d vX.Y.Z && git push origin :vX.Y.Z`), and tag
   again.
@@ -129,8 +129,8 @@ The branches match CurseForge's channels (CLAUDE.md, Workflow):
 | Branch  | Holds                                                       | Tags              | Channel |
 |---------|-------------------------------------------------------------|-------------------|---------|
 | `main`  | what players have                                           | `v1.40.2`         | Release |
-| `beta`  | the next release, tested by players: fixes, and features the maintainer has tested locally | `v1.41.0-beta.1` | Beta |
-| `alpha` | new features being built, tested by the maintainer's dev builds | `v1.41.0-alpha.1` | Alpha |
+| `beta`  | the next release, tested by players: fixes, and features the maintainer has tested locally | `v1.50.0-beta.1` | Beta |
+| `alpha` | new features being built, tested by the maintainer's dev builds | `v1.50.0-alpha.1` | Alpha |
 
 **Fixes** are made on `beta`, tagged `-beta.N` if someone needs to test them, and
 shipped as in *Cutting the release*. **Features** are built on `alpha` and move to
@@ -164,7 +164,7 @@ numbers: managers offer the newest file the player's channel allows, by date.
   Testers are moved onto the full release the moment it is published; tell a
   tester who switched channel for one fix to switch back.
 - **Changelog.** Pre-releases add to the coming version's section, whose heading is
-  the version it will ship as (`## 1.41.0`), not the pre-release number; the
+  the version it will ship as (`## 1.50.0`), not the pre-release number; the
   workflow refuses a tag without it. Each uploads what that section holds so far
   and the four versions before it, then the link, like any release.
 - **One tester, one question.** Every GitHub release carries its zip; a link to the

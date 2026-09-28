@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.41.0
+## 1.50.0
 
 **Make Postbox yours.** Arrange your mail rows and buttons right in the
 window, give your alts buttons of their own, and hide the characters you no
