@@ -6311,6 +6311,7 @@ function RV.NewStackCard(panel, id)
   card:EnableMouse(true)
   card:SetScript("OnEnter", RV.StackCardEnter)
   card:SetScript("OnLeave", RV.StackCardLeave)
+  card:SetScript("OnMouseDown", RV.StackCardDown)
   panel._stackCards[id] = card
   return card
 end
@@ -6373,6 +6374,190 @@ function RV.StackCardLeave(card)
   end
   local A = ns.Arrange
   if A and A.MoveCursor then A.MoveCursor(false) end
+end
+
+function RV.StackCardDown(card, mouse)
+  if mouse ~= "LeftButton" then return end
+  RV.StackPress(card.panel, card.stackId, card)
+end
+
+-- A block taken by its card. A press that moves four units is a drag (the
+-- shared gesture, Core/Arrange.lua's AR.Press): the block follows the
+-- pointer up and down the stack, over the others, its slot ringed where it
+-- will land; past the middle of the block above or below, the two change
+-- places -- in the stored order itself, so the rest of the stack steps
+-- aside as it goes. A press let go where it began is a click.
+function RV.StackPress(panel, id, card)
+  local A = ns.Arrange
+  if not (A and A.Press) then return end
+  if A.EndTeach then A.EndTeach(true) end
+  A.Press(card, {
+    start = function(_, y0) RV.StackStart(panel, id, y0) end,
+    move = function(_, y) RV.StackDrag(panel, y) end,
+    drop = function() RV.StackDrop(panel) end,
+  })
+end
+
+function RV.StackStart(panel, id, y0)
+  local s = panel._stack
+  local top = panel.Footer:GetTop()
+  if not (panel._gridArranging and s and s.y[id] and top) then return end
+  GameTooltip:Hide()
+  local order = RV.StackOrder()
+  panel._stackHover, panel._sweepHover = nil, nil
+  panel._stackDrag = {
+    id = id, y = s.y[id],
+    -- The pointer's distance under the block's top, kept as it moves.
+    grab = (top - s.y[id]) - y0,
+    -- The order as it was, for Escape to put back (Arrange.lua, section 5).
+    before = { order[1], order[2], order[3] },
+  }
+  RV.StackRaise(panel, id, true)
+  local A = ns.Arrange
+  if A and A.MoveCursor then A.MoveCursor(true) end
+  RV.StackMoved(panel)
+end
+
+-- The present block next to `id` in the order, above (step -1) or below
+-- (step 1), and its index; nil where there is none.
+function RV.StackNeighbour(panel, order, k, step)
+  local y = panel._stack.y
+  local j = k + step
+  while order[j] do
+    if y[order[j]] then return order[j], j end
+    j = j + step
+  end
+  return nil
+end
+
+function RV.StackDrag(panel, cursorY)
+  local drag, s = panel._stackDrag, panel._stack
+  local top = panel.Footer:GetTop()
+  if not (drag and s and top) then return end
+  local h = s.h[drag.id] or 0
+  drag.y = min(max(top - cursorY - drag.grab, 0), max(s.total - h, 0))
+  local centre = drag.y + h / 2
+  local UI = ns.MailboxUI
+  -- A quick hand can cross more than one block in a frame.
+  for _ = 1, #RV.STACK_IDS do
+    local order = RV.StackOrder()
+    local k
+    for i = 1, #order do
+      if order[i] == drag.id then k = i break end
+    end
+    if not k then break end
+    local prev, pj = RV.StackNeighbour(panel, order, k, -1)
+    local nxt, nj = RV.StackNeighbour(panel, order, k, 1)
+    local j
+    if prev and centre < s.y[prev] + s.h[prev] / 2 then
+      j = pj
+    elseif nxt and centre > s.y[nxt] + s.h[nxt] / 2 then
+      j = nj
+    end
+    if not (j and UI and type(UI.SetStackOrder) == "function") then break end
+    local moved = { order[1], order[2], order[3] }
+    moved[k], moved[j] = moved[j], moved[k]
+    UI.SetStackOrder(moved)
+    RV.StackBlocks(panel)
+  end
+  RV.StackMoved(panel)
+end
+
+-- The gesture's end, however it ends: levels back, the ghost gone.
+function RV.StackEnd(panel)
+  local drag = panel._stackDrag
+  panel._stackDrag = nil
+  if not drag then return nil end
+  RV.StackRaise(panel, drag.id, false)
+  if panel._stackGhost then panel._stackGhost:Hide() end
+  return drag
+end
+
+function RV.StackDrop(panel)
+  if not RV.StackEnd(panel) then return end
+  RV.StackBlocks(panel)
+  RV.StackMoved(panel)
+  -- The sweeps' cards back at their buttons' levels.
+  LayoutGrid(panel)
+  RV.Rehover(panel)
+end
+
+-- Everything placed again while a block is in the hand: the others in
+-- their slots, the one in the hand where it is held, the ghost in its slot.
+function RV.StackMoved(panel)
+  RV.PlaceStack(panel)
+  RV.PlaceSweeps(panel)
+  local drag, A = panel._stackDrag, ns.Arrange
+  local ghost = panel._stackGhost
+  if not drag then
+    if ghost then ghost:Hide() end
+    return
+  end
+  if not (A and A.NewGhost) then return end
+  if not ghost then
+    ghost = A.NewGhost(panel.Footer)
+    panel._stackGhost = ghost
+  end
+  local s = panel._stack
+  local slot = s.y[drag.id]
+  if not slot then
+    ghost:Hide()
+    return
+  end
+  local pad = (drag.id == "grid") and RV.TRAY_PAD + 1 or 1
+  local y = slot - pad
+  ghost:ClearAllPoints()
+  ghost:SetPoint("TOPLEFT", panel.Footer, "TOPLEFT", -pad, -y)
+  ghost:SetPoint("TOPRIGHT", panel.Footer, "TOPRIGHT", pad, -y)
+  ghost:SetHeight(s.h[drag.id] + 2 * pad)
+  ghost:SetFrameLevel(panel.Footer:GetFrameLevel() + 7)
+  A.PaintGhost(ghost)
+  ghost:Show()
+end
+
+-- The block in the hand is drawn over the others it crosses: its content
+-- and its card lifted above theirs for the gesture, each frame's own level
+-- kept to be put back after.
+function RV.LiftLevel(panel, frame, level)
+  if not frame then return end
+  local levels = panel._stackLevels
+  if not levels then
+    levels = {}
+    panel._stackLevels = levels
+  end
+  if levels[frame] == nil then levels[frame] = frame:GetFrameLevel() end
+  frame:SetFrameLevel(level)
+end
+
+function RV.StackRaise(panel, id, on)
+  local levels = panel._stackLevels
+  if not on then
+    if levels then
+      for frame, level in pairs(levels) do
+        frame:SetFrameLevel(level)
+        levels[frame] = nil
+      end
+    end
+    return
+  end
+  local base = panel.Footer:GetFrameLevel()
+  local cards = panel._stackCards
+  if id == "band" then
+    RV.LiftLevel(panel, panel.Banner, base + 20)
+  elseif id == "all" then
+    RV.LiftLevel(panel, panel._gridButtons and panel._gridButtons[1], base + 20)
+    RV.LiftLevel(panel, panel.DoneFooter, base + 20)
+  elseif id == "grid" then
+    local placed, byId, handles = panel._gridPlaced, panel._gridById, panel._gridHandles
+    for gridId in pairs(placed) do
+      local button = byId[gridId]
+      RV.LiftLevel(panel, button, base + 20)
+      RV.LiftLevel(panel, handles and handles[button], base + 25)
+    end
+    RV.LiftLevel(panel, cards and cards.grid, base + 19)
+    return
+  end
+  RV.LiftLevel(panel, cards and cards[id], base + 25)
 end
 
 -- The mode opening: the blocks settle up into place top down, 90 ms apart,
@@ -6614,6 +6799,7 @@ function RV.ArrangeGrid(panel, on)
     panel._gridDrag = nil
     if drag then drag.button:SetFrameLevel(drag.level) end
     if panel._gridGhost then panel._gridGhost:Hide() end
+    RV.StackEnd(panel)
   end
   CT.RefreshCategoryButtons(panel)
 end

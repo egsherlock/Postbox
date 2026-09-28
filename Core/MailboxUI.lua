@@ -848,6 +848,59 @@ function UI.SetGridLayout(list)
   ForgetSettings()
 end
 
+-- The blocks under the Mail tab's list, top down: the totals ("band"), the
+-- full-width All mail ("all") and the category buttons ("grid"), as
+-- "band,all,grid". Moved in the arrange mode (CollectTab, "The blocks under
+-- the list"). Unset -- as Reset leaves it -- or unreadable (a block missing
+-- or repeated, an unknown word) is the default order, so it never needs
+-- seeding. The answer is shared, like the grid's, and must not be written
+-- to: the same table for as long as the stored string is the same one.
+local STACK_BLOCKS = { band = true, all = true, grid = true }
+local STACK_DEFAULT = { "band", "all", "grid" }
+
+function UI.GetStackOrder()
+  local memo = Settings()
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.stackOrder")
+  if memo.stack and memo.stackText == stored then return memo.stack end
+  local out
+  if type(stored) == "string" then
+    out = {}
+    for id in stored:gmatch("[^,]+") do
+      if not STACK_BLOCKS[id] then out = nil break end
+      for i = 1, #out do
+        if out[i] == id then out = nil break end
+      end
+      if not out then break end
+      out[#out + 1] = id
+    end
+    if out and #out ~= #STACK_DEFAULT then out = nil end
+  end
+  memo.stack, memo.stackText = out or STACK_DEFAULT, stored
+  return memo.stack
+end
+
+-- order: the three ids in their new order, or nil for the default. The
+-- default is stored as nothing at all.
+function UI.SetStackOrder(order)
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if not profile then return end
+  local text
+  if type(order) == "table" and #order == #STACK_DEFAULT then
+    local seen, same = {}, true
+    for i = 1, #order do
+      local id = order[i]
+      if not STACK_BLOCKS[id] or seen[id] then return end
+      seen[id] = true
+      if id ~= STACK_DEFAULT[i] then same = false end
+    end
+    if not same then text = table.concat(order, ",") end
+  elseif order ~= nil then
+    return
+  end
+  profile.stackOrder = text
+  ForgetSettings()
+end
+
 -------------------------------------------------------------
 -- 2. The native mail frame
 --

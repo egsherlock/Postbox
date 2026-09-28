@@ -154,8 +154,8 @@ function AR.GridChanged()
   if collect and panel and collect.RefreshCategoryButtons then collect.RefreshCategoryButtons(panel) end
 end
 
--- Right-click on the lit key: the rows and the buttons as they come, with
--- the gold's and the time left's own defaults.
+-- Right-click on the lit key: the rows, the blocks under the list and the
+-- buttons as they come, with the gold's and the time left's own defaults.
 function AR.Reset()
   local ui = UI()
   if not ui then return end
@@ -163,6 +163,7 @@ function AR.Reset()
   if ui.SetGoldMode then ui.SetGoldMode("both") end
   if ui.SetExpiryWhen then ui.SetExpiryWhen("3") end
   if ui.SetGridLayout then ui.SetGridLayout(nil) end
+  if ui.SetStackOrder then ui.SetStackOrder(nil) end
   if AR._pop then AR._pop:Hide() end
   if AR.host then AR.LayoutStrip(AR.host) end
   AR.RowsChanged(true)
