@@ -169,6 +169,31 @@ function AR.Reset()
   AR.GridChanged()
 end
 
+-- The reset is asked for first: one StaticPopup, its key added on first use
+-- and only where the client offers the popup at all -- no popup, no reset.
+-- Lifted over the windows it may open from (Theme.LiftPopup). The answer
+-- resets whether or not the mode is still open by then: the question was
+-- about the arrangement, not the mode.
+AR.POPUP_RESET = "POSTBOX_ARRANGE_RESET"
+
+function AR.AskReset()
+  if type(StaticPopupDialogs) ~= "table" or type(StaticPopup_Show) ~= "function" then return end
+  if not StaticPopupDialogs[AR.POPUP_RESET] then
+    StaticPopupDialogs[AR.POPUP_RESET] = {
+      text = "%s",
+      button1 = L()["BTN_RESET"],
+      button2 = L()["COD_CONFIRM_CANCEL"],
+      OnAccept = function() AR.Reset() end,
+      timeout = 0,
+      whileDead = true,
+      hideOnEscape = true,
+    }
+  end
+  local dialog = StaticPopup_Show(AR.POPUP_RESET, L()["ARRANGE_RESET_CONFIRM"])
+  local T = Th()
+  if dialog and T and T.LiftPopup then T.LiftPopup(dialog) end
+end
+
 -- The column the rows wash: the one being dragged, else the one under the
 -- cursor, else the one whose card is open. Only while the mode is open.
 function AR.Focus()
@@ -518,7 +543,10 @@ function AR.BuildToggle(parent, place, getHost)
   button:SetScript("OnClick", function(self, mouse)
     local active = AR.host ~= nil and AR.host.toggle == self
     if mouse == "RightButton" then
-      if active then AR.Reset() end
+      if active then
+        GameTooltip:Hide()
+        AR.AskReset()
+      end
       return
     end
     if active then
