@@ -980,10 +980,12 @@ end
 -- A hidden column is a peg on the header where it stands; a click shows it
 -- again, there. A shown one with no lane in this list -- no mail listed has
 -- it, or the list has no such column -- keeps a narrow dimmed heading in
--- its place, out of the subject's room where it stands beside the subject,
--- over the boundary where it stands otherwise. With no lanes at all -- an
--- empty list, or Larger mail rows, whose figures are a line of text -- the
--- header keeps the one-line order at widths of its own.
+-- its place. Pegs and narrow headings take room of their own: out of the
+-- subject's heading where they stand beside the subject, out of the
+-- headings either side of them otherwise, and the heading beside them ends
+-- GAP before them. With no lanes at all -- an empty list, or Larger mail
+-- rows, whose figures are a line of text -- the header keeps the one-line
+-- order at widths of its own, pegs among them.
 --
 -- Headings are movable things (section 3b): at rest, pointed at, selected,
 -- in the hand. A press on one, or on its column in any row (section 7a), is
@@ -1003,6 +1005,7 @@ local HEAD = {
   ARROW_GAP = 6,    -- the subject's name to its stretch arrow
   ARROW_MIN = 12,   -- the shortest stretch arrow drawn
   SUBJECT_MIN = 40, -- the subject's heading never gives up more than this
+  KEEP = 12,        -- nor does any other heading, for a peg beside it
   -- A shown heading with no lane of its own.
   NARROW = { read = 14, icon = 22, sender = 44, subject = 60, time = 22, money = 22, slots = 22 },
   -- Every heading's width where the list publishes no lanes.
@@ -1308,82 +1311,114 @@ function AR.BuildStrip(host)
   return strip
 end
 
--- The narrow headings standing next to the subject, on one side (`dir`, 1
--- the right, -1 the left), up to the first column with a lane: out of the
--- subject's heading, in their order, while it keeps SUBJECT_MIN.
-function AR.CarveNarrow(layout, at, dir, strip)
-  local bx, bw, kind = strip.bx, strip.bw, strip.kind
-  local need = 0
-  local i = at + dir
-  while layout[i] and kind[layout[i].id] ~= "lane" do
-    local id = layout[i].id
-    if kind[id] == "narrow" then need = need + (HEAD.NARROW[id] or 22) + HEAD.GAP end
-    i = i + dir
-  end
-  if need == 0 or not bw.subject or bw.subject - need < HEAD.SUBJECT_MIN then return end
-  bw.subject = bw.subject - need
-  local x
-  if dir == 1 then
-    x = bx.subject + bw.subject + HEAD.GAP
-  else
-    bx.subject = bx.subject + need
-    x = bx.subject - HEAD.GAP
-  end
-  i = at + dir
-  while layout[i] and kind[layout[i].id] ~= "lane" do
-    local id = layout[i].id
-    if kind[id] == "narrow" then
-      local w = HEAD.NARROW[id] or 22
-      if dir == 1 then
-        bx[id], bw[id] = x, w
-        x = x + w + HEAD.GAP
-      else
-        bx[id], bw[id] = x - w, w
-        x = x - w - HEAD.GAP
-      end
-    end
-    i = i + dir
-  end
-end
-
--- What is still without a place -- the pegs, and narrow headings not
--- beside the subject -- side by side, centred on the boundary between the
--- headings either side of them, and inside the list's width. They stand
--- over their neighbours' edges, as a peg does, so a narrow heading that
--- wears a glyph takes no more than a peg's width here.
-local function RunWidth(strip, id)
+-- A run -- pegs and narrow headings standing together between two lanes'
+-- headings -- and each one's width in it: a peg's; a narrow heading's own
+-- beside the subject, where the subject gives the room, and a peg's width
+-- elsewhere for one that wears a glyph.
+local function RunWidth(strip, id, beside)
   if strip.kind[id] == "peg" then return HEAD.PEG end
-  local head = strip.heads[id]
-  if head and head.Glyph then return HEAD.PEG end
+  if not beside then
+    local head = strip.heads[id]
+    if head and head.Glyph then return HEAD.PEG end
+  end
   return HEAD.NARROW[id] or 22
 end
 
-function AR.PlaceRuns(layout, strip, span)
+-- How much of its width a heading can give to a run beside it, and how
+-- much of that lies outside its lane, a unit clear of it, on the run's side
+-- (`after`: the run stands after it).
+local function Spare(strip, id)
+  if not id then return 0 end
+  local keep = (id == "subject") and HEAD.SUBJECT_MIN or HEAD.KEEP
+  return math.max((strip.bw[id] or 0) - keep, 0)
+end
+
+local function Free(strip, id, lx, lw, after)
+  if not (id and lx and lw) then return 0 end
+  local room
+  if after then
+    room = strip.bx[id] + strip.bw[id] - (lx + lw) - 1
+  else
+    room = lx - strip.bx[id] - 1
+  end
+  return math.min(math.max(room, 0), Spare(strip, id))
+end
+
+-- Each run, with room of its own: the room between the headings either side
+-- of it (at the header's start, the room before the first heading; at its
+-- end, none), and what that leaves it short from the headings beside it --
+-- first what they have outside their lanes, then the subject's where it
+-- stands beside the subject, then a name's column before a glyph's (a
+-- name moved along its column still names it; a glyph moved off its column
+-- does not), and last half from each, one giving what the other cannot. No
+-- heading gives up more than it keeps (Spare), and the one that gives ends
+-- GAP before the run. A run with room to spare stands against its lane (at
+-- the header's start, the one after it), else in the middle of its room.
+-- Only where both neighbours are down to what they keep does a run stand
+-- over their edges, a few levels up.
+function AR.PlaceRuns(layout, strip, span, laneX, laneW)
   local bx, bw, over = strip.bx, strip.bw, strip.over
   local n = #layout
   local i = 1
   while i <= n do
     if bx[layout[i].id] == nil then
-      local j, total = i, -HEAD.RUN_GAP
-      while j <= n and bx[layout[j].id] == nil do
-        total = total + RunWidth(strip, layout[j].id) + HEAD.RUN_GAP
-        j = j + 1
-      end
-      local left, right = 0, span
-      for k = i - 1, 1, -1 do
-        local id = layout[k].id
-        if bx[id] then
-          left = bx[id] + bw[id]
-          break
+      local a = (i > 1) and layout[i - 1].id or nil
+      local j = i
+      while j <= n and bx[layout[j].id] == nil do j = j + 1 end
+      local b = (j <= n) and layout[j].id or nil
+      local beside = a == "subject" or b == "subject"
+      local total = -HEAD.RUN_GAP
+      for k = i, j - 1 do total = total + RunWidth(strip, layout[k].id, beside) + HEAD.RUN_GAP end
+      local left = a and (bx[a] + bw[a] + HEAD.GAP) or 0
+      local right = b and (bx[b] - HEAD.GAP) or span
+      local need = total - (right - left)
+      if need > 0 then
+        local capA, capB = Spare(strip, a), Spare(strip, b)
+        local takeA = math.min(Free(strip, a, a and laneX[a], a and laneW[a], true), need)
+        local takeB = math.min(Free(strip, b, b and laneX[b], b and laneW[b], false), need - takeA)
+        local rest = need - takeA - takeB
+        if rest > 0 and a == "subject" then
+          local give = math.min(capA - takeA, rest)
+          takeA, rest = takeA + give, rest - give
+        elseif rest > 0 and b == "subject" then
+          local give = math.min(capB - takeB, rest)
+          takeB, rest = takeB + give, rest - give
         end
+        if rest > 0 then
+          local glyphA = not a or strip.heads[a].Glyph ~= nil
+          local glyphB = not b or strip.heads[b].Glyph ~= nil
+          if glyphA and not glyphB then
+            local give = math.min(capB - takeB, rest)
+            takeB, rest = takeB + give, rest - give
+          elseif glyphB and not glyphA then
+            local give = math.min(capA - takeA, rest)
+            takeA, rest = takeA + give, rest - give
+          end
+        end
+        if rest > 0 then
+          local gb = math.min(capB - takeB, math.ceil(rest / 2))
+          local ga = math.min(capA - takeA, rest - gb)
+          gb = math.min(capB - takeB, rest - ga)
+          takeA, takeB = takeA + ga, takeB + gb
+        end
+        if a then bw[a] = bw[a] - takeA end
+        if b then bx[b], bw[b] = bx[b] + takeB, bw[b] - takeB end
+        left, right = left - takeA, right + takeB
       end
-      if j <= n then right = bx[layout[j].id] end
-      local x = math.floor((left + right - total) / 2 + 0.5)
+      local x
+      if not a then
+        x = right - total
+      elseif not b then
+        x = left
+      else
+        x = math.floor((left + right - total) / 2 + 0.5)
+      end
       x = math.max(0, math.min(x, span - total))
+      local short = right - left < total
       for k = i, j - 1 do
         local id = layout[k].id
-        local w = RunWidth(strip, id)
-        bx[id], bw[id], over[id] = x, w, true
+        local w = RunWidth(strip, id, beside)
+        bx[id], bw[id], over[id] = x, w, short or nil
         x = x + w + HEAD.RUN_GAP
       end
       i = j
@@ -1447,32 +1482,36 @@ function AR.LayoutStrip(host)
       local id = layout[i].id
       if kind[id] == "lane" then hx[id], hw[id] = bx[id], bw[id] end
     end
-    local at = IndexOf(layout, "subject") or 1
-    AR.CarveNarrow(layout, at, 1, strip)
-    AR.CarveNarrow(layout, at, -1, strip)
+    AR.PlaceRuns(layout, strip, span, laneX, laneW)
   else
-    -- No lanes: the one-line order at the header's own widths, the subject
-    -- taking what they leave.
+    -- No lanes: the one-line order at the header's own widths, pegs among
+    -- them, the subject taking what they leave.
     local total, count = 0, 0
     for i = 1, n do
       local id = layout[i].id
-      if kind[id] == "lane" then
-        count = count + 1
-        if id ~= "subject" then total = total + (HEAD.FALLBACK[id] or 40) end
+      count = count + 1
+      if kind[id] == "peg" then
+        total = total + HEAD.PEG
+      elseif id ~= "subject" then
+        total = total + (HEAD.FALLBACK[id] or 40)
       end
     end
     local subjectW = math.max(width - total - HEAD.GAP * math.max(count - 1, 0), HEAD.SUBJECT_MIN)
     local x = 0
     for i = 1, n do
       local id = layout[i].id
-      if kind[id] == "lane" then
-        local w = (id == "subject") and subjectW or (HEAD.FALLBACK[id] or 40)
-        bx[id], bw[id] = x, w
-        x = x + w + HEAD.GAP
+      local w
+      if kind[id] == "peg" then
+        w = HEAD.PEG
+      elseif id == "subject" then
+        w = subjectW
+      else
+        w = HEAD.FALLBACK[id] or 40
       end
+      bx[id], bw[id] = x, w
+      x = x + w + HEAD.GAP
     end
   end
-  AR.PlaceRuns(layout, strip, span)
   strip.lanes, strip.span = lanes, span
 
   local drag = AR.drag
