@@ -65,12 +65,15 @@ AR.COLUMNS = {
 }
 
 -- The cog key (section 4): the cog's size at rest; lit, a check and Done on
--- the accent, `KEY_LEAD` in, the check's width and `KEY_GAP`, the word, and
--- `KEY_TAIL` after it.
+-- a selected plate, `KEY_LEAD` in, the check's width and `KEY_GAP`, the
+-- word, and `KEY_TAIL` after it, both lifted `KEY_LIFT` off the plate's
+-- middle: a word with no descenders sits a unit low in a line box centred
+-- on an 18-unit plate whose foot is the underline.
 local KEY_SIZE = 18
 local KEY_MARK = 12
 local KEY_CHECK = 8
 local KEY_LEAD, KEY_GAP, KEY_TAIL = 6, 4, 7
+local KEY_LIFT = 1
 -- The mark's grey at rest: the chrome's quietest text grey, as near as the
 -- palette comes to the mockup's #a2a2a2, so the accent cog beside it is the
 -- louder of the two at a glance.
@@ -669,8 +672,9 @@ end
 -- bright scene. It reads as neither a handle nor the cog: a different
 -- silhouette, a quieter colour, four units apart. Pointed at, the mark goes
 -- white on a faint plate. While the mode is open it widens in place into a
--- lit Done -- a check and the word on the accent -- which is the way out;
--- right-click on it goes back to the default arrangement. `place` anchors
+-- lit Done -- a check and the word on a selected plate, as the window's
+-- selected tab and segments draw it -- which is the way out; right-click on
+-- it goes back to the default arrangement. `place` anchors
 -- it by its left edge, so the widening runs to the right; `getHost` answers
 -- which list it arranges, and may bring that list forward first.
 --
@@ -678,17 +682,14 @@ end
 -- is laid on the title bar or on any frame a skin repaints.
 -------------------------------------------------------------
 
--- The ink a lit accent carries: dark on a light accent, as on the brand
--- gold; white on a dark one a host UI might publish.
-local function Ink(r, g, b)
-  if 0.2126 * r + 0.7152 * g + 0.0722 * b >= 0.45 then return 0.086, 0.071, 0 end
-  return 1, 1, 1
-end
-
 -- Every look the key has, from its state: at rest the mark alone; pointed
 -- at, white on a plate (a 7% white fill, a grey ring, a black keyline);
--- lit, the accent with a black keyline and a darker foot, the check and
--- Done in its ink, and pointed at while lit, a lighter accent with a halo.
+-- lit, the house's selected plate (Theme's PaintPlate, from the same
+-- palette): a dark fill with the accent's wash, the selected ring, a lit top
+-- edge and the accent's underline, the check and Done in the accent's
+-- selected-caption tone, in a black keyline that holds it over a bright
+-- scene. Pointed at while lit, the plate's hover wash lifts it, as it lifts
+-- a selected tab.
 function AR.PaintToggle(button)
   if not button then return end
   local T = Th()
@@ -696,24 +697,30 @@ function AR.PaintToggle(button)
   local hover = button.hover and true or false
   local mark, check, label = button.Mark, button.Check, button.Label
   if lit then
-    local r, g, b = T.GetAccent()
-    local ir, ig, ib = Ink(r, g, b)
-    AR.TintEdges(button.Glow, r, g, b, 0.35)
-    AR.ShowEdges(button.Glow, hover)
-    if hover then r, g, b = r + (1 - r) * 0.38, g + (1 - g) * 0.38, b + (1 - b) * 0.38 end
-    button.Fill:SetVertexColor(r, g, b, 1)
+    local C = T.Colors
+    local fill, ring, bevel, lift = C.plateSelected, C.plateEdgeSelected, C.plateBevel, C.plateHighlight
+    button.Fill:SetVertexColor(fill[1], fill[2], fill[3], fill[4])
     button.Fill:Show()
-    AR.ShowEdges(button.Ring, false)
+    AR.TintEdges(button.Ring, ring[1], ring[2], ring[3], ring[4])
+    AR.ShowEdges(button.Ring, true)
     AR.TintEdges(button.Key, 0, 0, 0, 1)
     AR.ShowEdges(button.Key, true)
+    local r, g, b = T.GetAccentTone("base")
+    button.Wash:SetVertexColor(r, g, b, C.accentWash[4])
+    button.Wash:Show()
+    button.Base:SetVertexColor(r, g, b, 1)
     button.Base:Show()
+    button.Bevel:SetVertexColor(bevel[1], bevel[2], bevel[3], bevel[4])
+    button.Bevel:Show()
+    button.Lift:SetVertexColor(lift[1], lift[2], lift[3], lift[4])
+    button.Lift:SetShown(hover)
     if mark then mark:Hide() end
     if button.grip then button.grip:Hide() end
     if check then
-      check:SetVertexColor(ir, ig, ib, 1)
+      T.SetColor(check, "accentBright")
       check:Show()
     end
-    label:SetTextColor(ir, ig, ib, 1)
+    T.SetColor(label, "accentBright")
     label:Show()
     button:SetWidth(KEY_LEAD + KEY_CHECK + KEY_GAP + math.ceil(T.TextWidth(label)) + KEY_TAIL)
     return
@@ -725,8 +732,10 @@ function AR.PaintToggle(button)
   AR.ShowEdges(button.Ring, hover)
   AR.TintEdges(button.Key, 0, 0, 0, 0.8)
   AR.ShowEdges(button.Key, hover)
-  AR.ShowEdges(button.Glow, false)
+  button.Wash:Hide()
   button.Base:Hide()
+  button.Bevel:Hide()
+  button.Lift:Hide()
   if check then check:Hide() end
   label:Hide()
   local token = hover and "textPrimary" or KEY_REST
@@ -753,23 +762,35 @@ local function ToggleTip(button)
   GameTooltip:Show()
 end
 
--- The key's art, made once with the key. Back to front: the lit halo, the
--- keyline, the fill, the ring and the lit foot, then the mark, the check
--- and the word.
+-- The key's art, made once with the key. Back to front: the keyline, the
+-- fill, the accent's wash, the ring, the lit top edge, the underline and
+-- the hover wash, then the mark, the check and the word.
 local function BuildKeyArt(button)
   local T = Th()
-  button.Glow = AR.NewEdges(button, "BACKGROUND", -8, 2, 1)
   button.Key = AR.NewEdges(button, "BACKGROUND", -7, 1, 1)
   button.Fill = button:CreateTexture(nil, "BACKGROUND", nil, -6)
   button.Fill:SetTexture(WHITE)
   button.Fill:SetAllPoints()
+  button.Wash = button:CreateTexture(nil, "BACKGROUND", nil, -5)
+  button.Wash:SetTexture(WHITE)
+  button.Wash:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
+  button.Wash:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
   button.Ring = AR.NewEdges(button, "BORDER", 0, 0, 1)
-  button.Base = button:CreateTexture(nil, "BORDER", nil, 1)
+  button.Bevel = button:CreateTexture(nil, "BORDER", nil, 1)
+  button.Bevel:SetTexture(WHITE)
+  button.Bevel:SetHeight(1)
+  button.Bevel:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
+  button.Bevel:SetPoint("TOPRIGHT", button, "TOPRIGHT", -1, -1)
+  -- The underline, two units tall inside the ring, as a selected tab's.
+  button.Base = button:CreateTexture(nil, "BORDER", nil, 2)
   button.Base:SetTexture(WHITE)
-  button.Base:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 0, 0)
-  button.Base:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
-  button.Base:SetHeight(1)
-  button.Base:SetVertexColor(0, 0, 0, 0.25)
+  button.Base:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 1, 1)
+  button.Base:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
+  button.Base:SetHeight(2)
+  button.Lift = button:CreateTexture(nil, "BORDER", nil, 3)
+  button.Lift:SetTexture(WHITE)
+  button.Lift:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
+  button.Lift:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
 
   -- The mark, and where the glyph art is missing the six dots it replaced.
   button.Mark = T.Glyph and T.Glyph(button, "layout", KEY_MARK, "ARTWORK") or nil
@@ -781,13 +802,13 @@ local function BuildKeyArt(button)
   end
   button.Check = T.Glyph and T.Glyph(button, "check", KEY_CHECK, "ARTWORK") or nil
   if button.Check then
-    button.Check:SetPoint("CENTER", button, "LEFT", KEY_LEAD + KEY_CHECK / 2, 0)
+    button.Check:SetPoint("CENTER", button, "LEFT", KEY_LEAD + KEY_CHECK / 2, KEY_LIFT)
   end
+  -- The plates' caption font, and its own shadow: light words on a dark
+  -- plate, as every other caption in the window.
   button.Label = T.CreateText(button, "segment", "ARTWORK")
-  button.Label:SetPoint("LEFT", button, "LEFT", KEY_LEAD + KEY_CHECK + KEY_GAP, 0)
+  button.Label:SetPoint("LEFT", button, "LEFT", KEY_LEAD + KEY_CHECK + KEY_GAP, KEY_LIFT)
   button.Label:SetWordWrap(false)
-  -- Ink on the accent, flat: the role's drop shadow would muddy it.
-  if button.Label.SetShadowOffset then button.Label:SetShadowOffset(0, 0) end
   button.Label:SetText(L()["ARRANGE_DONE"])
 end
 
