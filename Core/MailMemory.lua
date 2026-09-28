@@ -1069,17 +1069,20 @@ function MM.NewRow(parent)
   row.ColMoney:SetJustifyH("RIGHT")
   row.ColSlots:SetJustifyH("RIGHT")
 
-  -- The same marker the mail list puts on a refused mail, from the same art.
+  -- The same marker the mail list puts on a refused mail, from the same art
+  -- and at its size, in the same place: centred on the read mark, which it
+  -- stands in for (the rules' PaintDot; the placement shows it).
   local atlas = WarningAtlas()
   if atlas then
     row.Warning = row:CreateTexture(nil, "OVERLAY")
     row.Warning:SetAtlas(atlas, false)
-    row.Warning:SetSize(12, 12)
+    local size = (Rules() and Rules().WARNING) or 11
+    row.Warning:SetSize(size, size)
   else
     row.Warning = T.CreateText(row, "value")
     row.Warning:SetText("!")
   end
-  row.Warning:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+  row.Warning:SetPoint("CENTER", row.Indicator, "CENTER", 0, 0)
   T.SetColor(row.Warning, "warning")
   row.Warning:Hide()
 
@@ -1103,16 +1106,25 @@ function MM.NewRow(parent)
   hit:SetPoint("TOPLEFT", row.Icon, "TOPLEFT", -2, 2)
   hit:SetPoint("BOTTOMRIGHT", row.Icon, "BOTTOMRIGHT", 2, -2)
   HoverOnly(hit)
+  -- A mail the server refused, as it was remembered, said last in every
+  -- form of the tooltip: its mark in the row is the read mark's, and the
+  -- arrangement may hide that.
+  local function StuckLine()
+    if not row.stuck then return end
+    GameTooltip:AddLine(ns.Theme.Colorize("warning", L("STUCK_LINE", L["STUCK_GENERIC"])), 1, 1, 1, true)
+  end
   hit:SetScript("OnEnter", function(self)
     if row.itemLink then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:SetHyperlink(row.itemLink)
+      StuckLine()
       GameTooltip:Show()
       return
     end
     if row.itemID and type(GameTooltip.SetItemByID) == "function" then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:SetItemByID(row.itemID)
+      StuckLine()
       GameTooltip:Show()
       return
     end
@@ -1128,6 +1140,7 @@ function MM.NewRow(parent)
       for line in row.factsTip:gmatch("[^\n]+") do GameTooltip:AddLine(line, 1, 1, 1, true) end
     end
     if row.expiryTip then GameTooltip:AddLine(row.expiryTip, 0.75, 0.75, 0.75) end
+    StuckLine()
     GameTooltip:Show()
   end)
   hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1239,7 +1252,7 @@ function MM.MeasureRows(owner, rows, now, sample)
   local R = Rules()
   local cols = owner._memCols or {}
   owner._memCols = cols
-  cols.money, cols.slots, cols.time, cols.stuck = 0, 0, 0, false
+  cols.money, cols.slots, cols.time = 0, 0, 0
   if not R then
     cols.sender = 92
     return cols
@@ -1276,7 +1289,6 @@ function MM.MeasureRows(owner, rows, now, sample)
     for id, fs in pairs(fsFor) do
       if texts[id] then cols[id] = math.max(cols[id], Width(fs, texts[id])) end
     end
-    if mail.stuck then cols.stuck = true end
   end
   return cols
 end
@@ -1304,7 +1316,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
   if mail.header then
     -- A search across characters: the name the matches below belong to.
     row.fullSubject, row.fullSender, row.itemLink, row.itemID = nil, nil, nil, nil
-    row.factsTip, row.expiryTip = nil, nil
+    row.factsTip, row.expiryTip, row.stuck = nil, nil, nil
     row.headerRealm, row.headerName = mail.realm, mail.name
     -- SetAtlas sets the atlas's own coordinates; a SetTexCoord after it would
     -- show the whole sheet the crest lives on.
@@ -1367,10 +1379,18 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
   row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
   row.Icon:SetTexture(mail.icon)
 
-  row.Warning:SetShown(mail.stuck and true or false)
   -- The read mark, as the Mail tab has it: mail known to have arrived and
-  -- not yet opened is unread by definition.
-  T.SetColor(row.Indicator, (mail.read and not mail.pending) and "read" or "unread")
+  -- not yet opened is unread by definition. On a mail remembered as stuck,
+  -- the warning triangle stands in its place (the rules' PaintDot; the
+  -- placement shows it).
+  local stuck = mail.stuck and true or false
+  row.stuck = stuck
+  local read = mail.read and not mail.pending
+  if R and R.PaintDot then
+    R.PaintDot(row.Indicator, read, stuck)
+  else
+    T.SetColor(row.Indicator, read and "read" or "unread")
+  end
 
   -- Read at once: RowTexts fills the same table for the next row.
   local texts = RowTexts(mail, now)
@@ -1382,11 +1402,9 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
   local list = row:GetParent()
   local width = list:GetWidth() or 0
   if width < 100 then width = WINDOW_WIDTH - 44 end
-  -- The room the stuck mark keeps at the row's right end, on every row of a
-  -- list where any row has one (its 12 units and the 4 it stands in from
-  -- the edge), inside the trailing inset.
-  local marks = cols.stuck and 16 or 0
-  local trail = 6 + marks
+  -- The trailing inset. No mark keeps room at the row's end: the stuck mark
+  -- stands in the read mark's place.
+  local trail = 6
 
   local named = (mail.sender ~= "" and mail.sender) or nil
   local senderText = (R and (R.OutcomeSender(mail.kind) or R.DisplaySender(named)))
@@ -1408,11 +1426,11 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     local el, text = spec.el, spec.text
     el.read, el.icon, el.sender, el.subject = row.Indicator, row.Icon, row.Sender, row.Subject
     el.time, el.money, el.slots = row.ColTime, row.ColMoney, row.ColSlots
+    el.stuck, spec.stuck = row.Warning, stuck
     text.sender, text.subject = senderText, subject
     text.time, text.money, text.slots = timeText, moneyText, slotsText
     spec.size.icon = ROW_ICON
     spec.width, spec.left, spec.trail, spec.gap = width, 6, trail, 6
-    spec.marks = marks
     spec.cols = cols
     spec.senderCol = cols.sender or 92
     spec.share, spec.reserve, spec.two = R.META_SHARE, false, false
@@ -1424,6 +1442,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     if row.IconHit then row.IconHit:SetShown(row.Icon:IsShown()) end
   else
     -- No row rules (the Mail tab's file did not load): the names alone.
+    row.Warning:Hide()
     local textWidth = width - (6 + ROW_ICON + 6) - trail
     local senderWidth = math.min(cols.sender or 92, math.floor(textWidth / 2))
     T.FitText(row.Sender, senderWidth, senderText, nil)

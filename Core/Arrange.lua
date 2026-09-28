@@ -1088,6 +1088,7 @@ local function HeadTip(head)
   local spec = AR.COLUMNS[head.colId]
   GameTooltip:SetOwner(head, "ANCHOR_TOP")
   GameTooltip:SetText(L()[spec.title])
+  if head.colId == "read" then GameTooltip:AddLine(L()["COL_READ_STUCK"], 1, 1, 1, true) end
   if head.narrow then GameTooltip:AddLine(L()["ARRANGE_HEADING_EMPTY"], 1, 1, 1, true) end
   GameTooltip:AddLine(AR.GestureLine(spec.fixed and "fixed" or "hide"), 0.7, 0.7, 0.7, true)
   GameTooltip:Show()

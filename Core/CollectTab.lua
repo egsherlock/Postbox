@@ -258,10 +258,12 @@ local ROW_ICON = 28
 local ROW_ICON_COMPACT = 18
 local ROW_DELETE = 20
 local ROW_DELETE_COMPACT = 16
--- The stuck marker. Small on purpose: it appears on the handful of rows the
--- server refused and must read as an annotation on the row, not as a control.
-local ROW_WARNING = 14
-local ROW_WARNING_COMPACT = 11
+-- The stuck marker: a warning triangle standing in the read mark's place
+-- (RV.PaintDot), one size in both row layouts, as the dot is. Small on
+-- purpose: it appears on the handful of rows the server refused and must
+-- read as an annotation on the row, not as a control; centred on the dot,
+-- it keeps clear of the lane lines either side of the dot's column.
+local ROW_WARNING = 11
 
 -- The compact row's height, and NOT a fraction of Theme.Metrics.rowHeight: this
 -- is the height at which one line of the small font sits centred beside an 18px
@@ -1059,9 +1061,9 @@ end
 -- arrangement puts them (at the right edge, as they come), each as wide as
 -- its widest entry ANYWHERE in the list. Measured over the
 -- list rather than the rows on screen, so a column does not twitch as the list
--- scrolls; and the room the delete and stuck marks need is reserved on every
--- row when any listed row carries one, so a mark on one mail cannot knock the
--- figures out of line on the others.
+-- scrolls. A stuck mail's mark takes the read mark's place, so it needs no
+-- room of its own; the delete mark's is kept on the read mails that carry
+-- it, under their own divider (RV.MarkRoom).
 --
 -- Which columns a row shows, and in what order, is the player's arrangement
 -- (MailboxUI.GetRowLayout, arranged in the window by Core/Arrange.lua), and
@@ -1385,17 +1387,13 @@ function RV.Wash(row, target)
 end
 
 -- The room a mail row keeps at its right end for its marks, inside its
--- trailing inset: the delete mark on a read mail, the stuck mark on a mail
--- the server would not hand over, each with the small gap before it; on a
--- one-line row (`compact`) the smaller of each. Every other number the
--- rows, the list's reserve and the arrange mode's header read for it comes
--- from here.
-function RV.MarkRoom(compact, delete, stuck)
-  local gap = Th().Metrics.tightGap
-  local room = 0
-  if delete then room = room + (compact and ROW_DELETE_COMPACT or ROW_DELETE) + gap end
-  if stuck then room = room + (compact and ROW_WARNING_COMPACT or ROW_WARNING) + gap end
-  return room
+-- trailing inset: the delete mark on a read mail, with the small gap before
+-- it; on a one-line row (`compact`) the smaller one. The stuck mark takes
+-- the read mark's place (RV.PaintDot) and needs none. Every other number
+-- the rows and the arrange mode's header read for it comes from here.
+function RV.MarkRoom(compact, delete)
+  if not delete then return 0 end
+  return (compact and ROW_DELETE_COMPACT or ROW_DELETE) + Th().Metrics.tightGap
 end
 
 -- A placement table for RV.Place, one per list, reused for every row it binds;
@@ -1433,6 +1431,23 @@ function RV.ShadeDot(row)
   shade:SetPoint("CENTER", dot, "CENTER", 0, -1)
   shade:SetShown(dot:IsShown())
   dot.__pbShade = shade
+end
+
+-- The read mark's paint for the mail a row is bound to: its colour, read
+-- or unread -- or, on a mail the server refused (stuck), none. There a
+-- warning triangle stands in the dot's place: the row's `el.stuck`,
+-- anchored to the dot's centre when the row is made and shown by RV.Place
+-- where the dot is. The dot keeps its place, so the column, its lane and
+-- the arrange mode's grip on it are the same on every row; it is just not
+-- drawn. A shape, not a colour, so it reads colour-blind and on a window
+-- faded near to nothing. A stuck mail has been tried, so it is read: the
+-- dot there only ever said so.
+function RV.PaintDot(dot, read, stuck)
+  if stuck then
+    dot:SetVertexColor(1, 1, 1, 0)
+  else
+    Th().SetColor(dot, read and "read" or "unread")
+  end
 end
 
 -- What a graphic takes from the text area: the dot sits in the gap before
@@ -1496,7 +1511,11 @@ end
 --                             (nil: its left edge; History's age stands
 --                             before it)
 --   el[id]                    the region drawing each column (nil: this list
---                             has no such column); el.detail the second line
+--                             has no such column); el.detail the second line;
+--                             el.stuck the warning triangle anchored to the
+--                             read mark (RV.PaintDot)
+--   stuck                     true: this mail is stuck, and el.stuck shows
+--                             where the read mark stands
 --   size.icon                 the icon's width
 --   cols[id], senderCol       the figures' list-wide widths; the sender's
 --   text[id]                  what each text column says (a figure nil: this
@@ -1778,10 +1797,19 @@ function RV.Place(row, s)
     RV.Wash(row, target)
   end
   -- The read mark's shadow goes where the mark went, and with it: placed,
-  -- hidden, or in the arrange mode's hand.
+  -- hidden, or in the arrange mode's hand. On a stuck mail the warning
+  -- triangle is shown where the mark is, and the shadow is not: the disc
+  -- is the dot's size, and behind a larger triangle it shows only as a
+  -- smudge beside its apex.
   local dot = el.read
-  local shade = dot and dot.__pbShade
-  if shade then shade:SetShown(dot:IsShown()) end
+  if dot then
+    local on = dot:IsShown()
+    local stuck = on and s.stuck == true
+    local warn = el.stuck
+    if warn then warn:SetShown(stuck) end
+    local shade = dot.__pbShade
+    if shade then shade:SetShown(on and not stuck) end
+  end
 end
 
 -- layout, id -> where the arrangement has that column.
@@ -1816,6 +1844,8 @@ CT.RowRules = {
   Anchor = RV.Anchor,
   Wash = RV.Wash,
   ShadeDot = RV.ShadeDot,
+  PaintDot = RV.PaintDot,
+  WARNING = ROW_WARNING,
   Layout = RV.Layout,
   Focus = RV.Focus,
   IsFigure = function(id) return RV.FIGURE[id] == true end,
@@ -2931,12 +2961,6 @@ local function ApplyRowMode(row, compact, height)
     local glyphSize = max(deleteSize - 2 * DELETE_GLYPH_INSET, 1)
     row.Delete.Glyph:SetSize(glyphSize, glyphSize)
   end
-  -- Only the texture form has a size to give: the fallback is a font string
-  -- carrying a single character, and constraining that would clip it.
-  if row._warningTexture then
-    local warningSize = compact and ROW_WARNING_COMPACT or ROW_WARNING
-    row.Warning:SetSize(warningSize, warningSize)
-  end
 end
 
 local function BuildRow(panel)
@@ -2966,7 +2990,7 @@ local function BuildRow(panel)
 
   -- Sized by ApplyRowMode, which the virtualiser calls before it binds
   -- anything to this row, and placed by the bind. Same for the texts below
-  -- it; the delete control and the stuck marker are sized there too.
+  -- it; the delete control is sized there too.
   row.Icon = row:CreateTexture(nil, "ARTWORK")
   row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
@@ -3097,17 +3121,24 @@ local function BuildRow(panel)
   -- tooltip, which is already on screen when the cursor is anywhere on the row,
   -- so the marker takes no mouse input and cannot become a dead spot in the
   -- middle of a clickable row the way an inert child frame would.
+  --
+  -- It stands in the read mark's place, centred on the dot wherever the
+  -- arrangement puts it, and RV.Place shows it there (RV.PaintDot): a mail
+  -- whose read mark is hidden shows no mark in the row, and its tooltip and
+  -- the title bar's "Stuck: N" still say it.
   local warningAtlasName = ProbeAtlas(Th().AtlasSets.warning)
   if warningAtlasName then
     row.Warning = row:CreateTexture(nil, "OVERLAY")
     row.Warning:SetAtlas(warningAtlasName, false)
-    -- Which of the two representations this row got. ApplyRowMode may resize a
-    -- texture and may not resize the glyph.
-    row._warningTexture = true
+    -- Only the texture form has a size to give: the fallback is a font
+    -- string carrying a single character, and constraining that would clip
+    -- it.
+    row.Warning:SetSize(ROW_WARNING, ROW_WARNING)
   else
     row.Warning = T.CreateText(row, "value")
     row.Warning:SetText(WARNING_GLYPH)
   end
+  row.Warning:SetPoint("CENTER", row.Indicator, "CENTER", 0, 0)
   -- One tone for both representations, from the palette. Theme.SetColor tints a
   -- texture and colours a font string, so the caller does not have to know which
   -- of the two it got.
@@ -3249,12 +3280,9 @@ local function BindRow(panel, row, index, position, compact, done)
   -- A finished mail is the only thing there is to delete from here, and it
   -- carries the control in every view that lists it.
   local showDelete = (done == true)
-  -- Read before the columns are measured, because a marked row gives up the
-  -- width the marker occupies and the text must not run under it. Free when
-  -- nothing has been refused this visit -- the domain answers from an empty
-  -- registry without touching the inbox.
+  -- Free when nothing has been refused this visit -- the domain answers from
+  -- an empty registry without touching the inbox.
   local stuckReason = Mail().StuckReason(index)
-  local deleteSize = compact and ROW_DELETE_COMPACT or ROW_DELETE
 
   row.mailIndex = index
   row.mailDone = showDelete
@@ -3269,7 +3297,9 @@ local function BindRow(panel, row, index, position, compact, done)
   -- A finished mail is kept, not waiting: it sits back under the divider.
   row:SetAlpha(showDelete and 0.6 or 1)
 
-  T.SetColor(row.Indicator, wasRead and "read" or "unread")
+  -- The read mark, or on a stuck mail the warning triangle in its place
+  -- (RV.PaintDot; RV.Place shows the triangle).
+  RV.PaintDot(row.Indicator, wasRead, stuckReason ~= nil)
   -- The mark's column hidden: the tooltip says what it would have.
   row.unreadTip = (not wasRead and not RowShows("read")) and L()["STATUS_UNREAD"] or nil
   row.Icon:SetTexture(Mail().GetMailIcon(index))
@@ -3279,19 +3309,8 @@ local function BindRow(panel, row, index, position, compact, done)
   -- hover state the last one left on it is not this one's.
   if showDelete then T.SetColor(row.Delete.Glyph, "textSecondary") end
 
-  -- The marker sits at the trailing edge, inside the delete control wherever
-  -- one is showing, so the two can never overlap. Anchored on bind rather than
-  -- at build because which of the two offsets applies is a property of the view
-  -- the row is currently bound into, and a row is recycled between both.
+  -- The tooltip's reason line reads it.
   row.stuckReason = stuckReason
-  if stuckReason then
-    row.Warning:ClearAllPoints()
-    row.Warning:SetPoint("RIGHT", row, "RIGHT",
-      -(M.tightGap + (showDelete and (deleteSize + M.tightGap) or 0)), 0)
-    row.Warning:Show()
-  else
-    row.Warning:Hide()
-  end
 
   -- One scan of the attachment slots, not two, and none at all for a mail whose
   -- header says it has no attachments. This runs for every visible row on every
@@ -3316,11 +3335,8 @@ local function BindRow(panel, row, index, position, compact, done)
   -- right edge. One number, read by both layouts: the standard row measures its
   -- text area against it and the compact row anchors its meta strip to it, so
   -- the two can never disagree about where the text has to stop.
-  local trailing = M.inset + RV.MarkRoom(compact, showDelete, stuckReason ~= nil)
-  -- A compact row stops its text where the LIST's reserve ends rather than its
-  -- own, so its columns stand exactly where every other row's do.
+  local trailing = M.inset + RV.MarkRoom(compact, showDelete)
   local cols = panel._cols
-  if compact and cols.trail then trailing = max(trailing, cols.trail) end
 
   -- A partially collected auction stack must not keep advertising the quantity
   -- it arrived with, so a parenthesised count is rewritten to what is left.
@@ -3429,6 +3445,7 @@ local function BindRow(panel, row, index, position, compact, done)
   local el, text = spec.el, spec.text
   el.read, el.icon, el.sender, el.subject = row.Indicator, row.Icon, row.Sender, row.Subject
   el.time, el.money, el.slots, el.detail = row.ColTime, row.ColMoney, row.ColSlots, row.Detail
+  el.stuck, spec.stuck = row.Warning, stuckReason ~= nil
   text.sender, text.subject = senderText, displaySubject
   text.time, text.money, text.slots = expiry, money, slots
   spec.size.icon = compact and ROW_ICON_COMPACT or ROW_ICON
@@ -4117,7 +4134,7 @@ function CT.RefreshMailList(panel)
   local showSpent = measureMoney and MoneyShown("spent")
   local measureSlots = compact and measuring and RowShows("slots")
   local measureExpiry = compact and measuring and RowShows("time")
-  local slotsMost, anyStuck = 0, false
+  local slotsMost = 0
   local altKeys = Mail().OwnCharacterKeys()
 
   for index = 1, numItems do
@@ -4189,7 +4206,6 @@ function CT.RefreshMailList(panel)
       end
 
       if compact then
-        if Mail().StuckReason(index) then anyStuck = true end
         if measureMoney then
           local text, moneyKind = RowMoneyText(index, hasCOD, tonumber(money) or 0, tonumber(cod) or 0, true)
           local shown = true
@@ -4243,12 +4259,9 @@ function CT.RefreshMailList(panel)
   if slotsMost > 0 then
     cols.slots = RV.SlotsWidth(panel, sample.ColSlots, slotsMost)
   end
-  -- The trailing reserve every compact row keeps: the stuck mark's room
-  -- whenever any listed row carries one, so no row's columns stand anywhere
-  -- else. Not the delete mark's: only read mail carries it, and read mail
-  -- sits under its own divider, so every other row gave up that room for a
-  -- mark it would never show.
-  cols.trail = Th().Metrics.inset + RV.MarkRoom(true, false, anyStuck)
+  -- No trailing reserve for the list: a stuck mail's mark stands in its read
+  -- mark's place, and only read mail carries the delete mark's room, under
+  -- its own divider.
 
   local _, _, stride = RowMetrics()
   local listed = #filtered
