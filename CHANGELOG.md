@@ -29,7 +29,9 @@ longer play.
 - **Character groups.** Put characters together (your bank alts, your
   crafters, a friend who sends you materials) and each group gets a button
   that collects everything they sent. Make them in Options, Mail tab, or
-  right-click From alts.
+  right-click From alts. The groups window shows which groups have a button:
+  a crossed eye on one you hid while arranging (click it to bring the button
+  back), and a note on a group with nobody in it yet.
 - **The options show what they do.** Five tabs, one tidy column of settings,
   and a panel beside it that explains whatever you point at and shows it: a
   sample mail row, your window's border and opacity over the world, the
