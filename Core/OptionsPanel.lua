@@ -12,6 +12,17 @@ local _, ns = ...
 -- rendered with no background at all and could not be fixed from here.
 -- Owning the frame means we own its opacity, and every control is visible
 -- at once instead of hidden behind hover-out submenus.
+--
+-- The layout: tabs across the top -- Mail tab, Send tab, Window, Minimap,
+-- Mail Memory -- one list of settings under them, and beside the list an
+-- inspector that says what the setting under the pointer does. Every row
+-- reads the same way, the way Blizzard's own Settings panel reads: its
+-- name on the left, its control on the right, every control in one column.
+-- A feature's switch is its tab's first, larger row, and the rows it
+-- governs grey with it. The two lists a player builds, character groups
+-- and recipients, are tiles at the top of the inspector on the tab they
+-- belong to. The drawing it was built from is .dev/design/options,
+-- layout 3; one CSS pixel there is one UI unit here.
 -- =====================================================================
 
 ns.OptionsPanel = ns.OptionsPanel or {}
@@ -19,22 +30,9 @@ local Panel = ns.OptionsPanel
 
 local L = ns.L
 
-local W, ROW_H, PAD = 340, 28, 14
--- A section's heading, the gap after its card, and the card's own padding.
--- Tightened in 1.40 (from 24, 16 and 12, with 30px rows): the panel had
--- grown taller than a UI-scale-1 screen once History and read mail got
--- their settings.
-local SECTION_STEP, SECTION_GAP, CARD_PAD = 22, 12, 10
-local CHECK_H, BUTTON_H, DROPDOWN_H = 22, 24, 24
-
--- Rows are laid out downwards from a negative `y`, which is the TOP of the next
--- row -- a full row-pitch below the last control's own bottom. Sizing the frame
--- from that left a whole empty row under the last control (34px on a stock UI,
--- where the appearance section is hidden). Every builder records where its
--- control actually ends, and the frame is sized from that plus one pad.
-local function MarkBottom(frame, y, height)
-  frame.__pbContentBottom = y - height
-end
+-- The bug report window's padding: the options panel's own card inset and
+-- heading indent, which that window was built to match.
+local PAD, CARD_PAD = 14, 10
 
 local function GetSkin()
   local s = ns.Skin
@@ -117,188 +115,6 @@ local function ArtHolder(parent)
   holder:SetAllPoints(parent)
   holder:SetFrameLevel(parent:GetFrameLevel() + 1)
   return holder
-end
-
--------------------------------------------------------------
--- Row builders
--------------------------------------------------------------
-
--- A titled section: a heading, then a quiet list-surface card the section's
--- rows sit inside -- the same surface the main window's panels use, so both
--- host-UI skins already know how to paint it. Rows are laid into the card
--- with their own inner cursor; EndSection sizes the card to its content and
--- returns the panel cursor moved past it. The two halves are separate
--- because the minimap section puts its master checkbox BETWEEN them.
--- SECTION_STEP, and ONE number for every section. It used to be 20, with the two sections
--- that hang a control on the heading line -- Minimap's master switch and
--- Appearance's inheritance badge -- each subtracting a further 4 of their own
--- afterwards. That is the right gap for a taller line and the wrong way to
--- reach it: two thirds of the panel then sat at one spacing and the rest at
--- another, which reads as the plain headings being crowded rather than as the
--- tall ones being roomy. The gap now allows for a control on the heading line
--- whether or not a given section has one, and no section adjusts it. (22 now:
--- a heading-line control is CHECK_H tall from heading + 5, so its foot still
--- clears the card by five.)
-local function AddSectionHeading(frame, y, title)
-  local heading = ns.Theme.CreateText(frame, "heading")
-  heading:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
-  heading:SetWordWrap(false)
-  heading:SetText(title)
-  return y - SECTION_STEP
-end
-
-local function StartCard(frame, y)
-  local card = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-  card:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, y)
-  card:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
-  ns.Theme.ApplyList(card)
-  -- Shared by reference: rows built into the card register their refreshers
-  -- on the panel, which is what replays them on open.
-  card.__refreshers = frame.__refreshers
-  return card
-end
-
--- The two together, for a section whose heading carries nothing but its title.
--- A section that hangs a control on the heading line -- Appearance, Minimap --
--- calls the two itself, because it has to put something between them.
-local function BeginSection(frame, y, title)
-  y = AddSectionHeading(frame, y, title)
-  return StartCard(frame, y), y
-end
-
-local function EndSection(frame, card, y)
-  local height = math.abs(card.__pbContentBottom or -CARD_PAD) + CARD_PAD
-  card:SetHeight(height)
-  MarkBottom(frame, y, height)
-  return y - height - SECTION_GAP
-end
-local function AddCheckbox(frame, y, title, desc, get, set)
-  local cb = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-  cb:SetSize(CHECK_H, CHECK_H)
-  cb:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
-  cb.__postboxCheck = true
-
-  -- A control's caption is the design system's `label` role -- the same gold
-  -- GameFontNormalSmall the rest of the addon labels its controls with. These
-  -- were raw white GameFontHighlight, the one place in the addon where a
-  -- caption did not follow the palette.
-  --
-  -- Word wrap off: the label carries both a LEFT and a RIGHT anchor, and rows
-  -- are a fixed pitch apart, so a translated caption would otherwise wrap into
-  -- the row below it.
-  local label = ns.Theme.CreateText(frame, "label")
-  label:SetPoint("LEFT", cb, "RIGHT", 4, 0)
-  label:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
-  label:SetJustifyH("LEFT")
-  label:SetWordWrap(false)
-  label:SetText(title)
-  cb.__label = label
-
-  cb:SetChecked(get())
-  cb:SetScript("OnClick", function(self)
-    local on = self:GetChecked() and true or false
-    set(on)
-    if type(SOUNDKIT) == "table" then
-      PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
-                   or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
-    end
-  end)
-  cb:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(title)
-    if desc then GameTooltip:AddLine(desc, 1, 1, 1, true) end
-    GameTooltip:Show()
-  end)
-  cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-  frame.__refreshers[#frame.__refreshers + 1] = function() cb:SetChecked(get()) end
-  MarkBottom(frame, y, CHECK_H)
-  return y - ROW_H, cb
-end
-
--- A line of quiet text in a card, wrapped to the card's width: a pointer to
--- where something is done rather than a control that does it.
-local function AddNote(frame, y, text)
-  local note = ns.Theme.CreateText(frame, "secondary")
-  note:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y - 2)
-  -- An explicit width, so the height is right at build: a card is not laid
-  -- out yet, and it is a column's width less its own margins.
-  local width = frame:GetWidth() or 0
-  if width < 50 then width = W - 20 end
-  note:SetWidth(width - 2 * PAD)
-  note:SetJustifyH("LEFT")
-  note:SetWordWrap(true)
-  note:SetText(text)
-  local height = math.ceil(note:GetStringHeight() or 12)
-  MarkBottom(frame, y - 2, height)
-  return y - 2 - height - (ROW_H - CHECK_H)
-end
-
--- A full-width push-button row. `getText` is re-evaluated every time the panel
--- opens, so a button whose caption carries a live count (e.g. how many
--- recipients there are to manage) stays accurate without a refresh event.
-local function AddButton(frame, y, getText, desc, onClick)
-  local btn = ns.Theme.CreateButton(nil, frame)
-  btn:SetHeight(BUTTON_H)
-  btn:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
-  btn:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
-  btn:SetText(getText())
-  btn:SetScript("OnClick", onClick)
-  btn:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(self:GetText())
-    if desc then GameTooltip:AddLine(desc, 1, 1, 1, true) end
-    GameTooltip:Show()
-  end)
-  btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-  frame.__refreshers[#frame.__refreshers + 1] = function() btn:SetText(getText()) end
-  MarkBottom(frame, y, BUTTON_H)
-  return y - (ROW_H + 2), btn
-end
-
--- Uses Postbox's own dropdown element, not UIDropDownMenu / MenuUtil, so the
--- list panel is a frame we own and can keep fully opaque.
-local function AddDropdown(frame, y, label, items, getValue, setValue)
-  local dd = ns.Core.UI.Dropdown.Create(frame, {
-    label       = label,
-    items       = items,
-    toggleWidth = 165,
-    toggleHeight = 22,
-    alignRight  = true,
-    height      = DROPDOWN_H,
-    defaultId   = getValue(),
-  })
-  dd:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
-  dd:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
-  dd:SetChangeCallback(function(id) setValue(id) end)
-
-  -- Reflect the stored value in the toggle text on every open.
-  frame.__refreshers[#frame.__refreshers + 1] = function()
-    local current = getValue()
-    for _, item in ipairs(items) do
-      if item.id == current then
-        dd._selectedId = current
-        if dd.SetText then dd:SetText(item.name) end
-        break
-      end
-    end
-  end
-  MarkBottom(frame, y, DROPDOWN_H)
-  return y - (ROW_H + 2), dd
-end
-
--- A dropdown's description on hover, as every checkbox carries its own.
-local function DropdownTip(dd, title, desc)
-  local toggle = dd and dd._toggle
-  if not toggle then return end
-  toggle:HookScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(title)
-    GameTooltip:AddLine(desc, 1, 1, 1, true)
-    GameTooltip:Show()
-  end)
-  toggle:HookScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
 -------------------------------------------------------------
@@ -693,643 +509,1548 @@ do
 end
 
 -------------------------------------------------------------
--- Build
+-- Geometry
+--
+-- The drawing's numbers: a 34-unit title, a row of 26-unit tabs, the
+-- 400-unit list beside the 240-unit inspector, 10 between each, and the
+-- footer band. A list row is 28 units, a feature's switch 30, a group's
+-- heading 26.
 -------------------------------------------------------------
-local function Build()
-  if Panel._frame then return Panel._frame end
+local PANEL_W = 670
+local EDGE, TOP = 10, 34
+local TAB_H, TAB_GAP, BODY_GAP = 26, 4, 10
+local LIST_W, INSP_W = 400, 240
+-- Inside the list's one-unit edge: the width a row has, and the list's own
+-- padding over its first row and under its last.
+local ROW_W, LIST_PAD = LIST_W - 2, 4
+local ROW_H, MASTER_H, GROUP_H = 28, 30, 26
+-- A row's name stands NAME_X in from its left, its control CONTROL_R in
+-- from its right, and the two keep at least NAME_GAP apart.
+local NAME_X, CONTROL_R, NAME_GAP = 12, 10, 8
+local CHECK_H, BUTTON_H = 22, 22
+-- A dropdown's toggle, and the narrowest a long translated name may squeeze
+-- it to before the name itself is cut short.
+local DD_W, DD_H, DD_MIN_W = 165, 22, 120
+local BAND_H, FOOT_BOTTOM = 24, 14
+-- The inspector: its drawings stand CTX_X in (its edge and ten), and its
+-- text has the padding below.
+local CTX_X = 11
+local CTX_W = INSP_W - 2 * CTX_X
+local TEXT_X, TEXT_TOP, TEXT_BOTTOM, TEXT_GAP = 12, 9, 11, 4
+local TEXT_W = INSP_W - 2 - 2 * TEXT_X
+-- The text zone is never shorter than this: most descriptions fit it, so
+-- the text does not jump as the pointer moves from setting to setting.
+local SAY_MIN = 150
+local TILE_H, HOST_H = 46, 32
+local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
+local GLOW_TGA = "Interface\\AddOns\\Postbox\\Media\\minimap-glow.tga"
+-- Hairlines between rows and the wash under the row the pointer is on:
+-- chrome, so white at a low alpha.
+local HAIR_A, WASH_A = 0.08, 0.05
+-- A plain 1-unit frame for Postbox's own drawings, which no skin repaints.
+local PLAIN_BACKDROP = {
+  bgFile = WHITE, edgeFile = WHITE, edgeSize = 1,
+  insets = { left = 1, right = 1, top = 1, bottom = 1 },
+}
+-- A push button's size, from its caption: 14 each side of it.
+local BUTTON_FIT = { height = BUTTON_H, padding = 28, minWidth = 64 }
 
-  local frame = CreateFrame("Frame", "PostboxOptionsFrame", UIParent,
-                            "BasicFrameTemplateWithInset")
-  frame:SetFrameStrata("FULLSCREEN_DIALOG")
-  frame:SetToplevel(true)
-  frame:SetClampedToScreen(true)
-  frame:EnableMouse(true)
-  frame:SetMovable(true)
-  frame:RegisterForDrag("LeftButton")
-  frame:SetScript("OnDragStart", frame.StartMoving)
-  frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-  frame:Hide()
-  frame.__refreshers = {}
+local TABS = {
+  { key = "mail",    caption = "OPT_MAILTAB_HEADING" },
+  { key = "send",    caption = "OPT_SENDTAB_HEADING" },
+  { key = "window",  caption = "OPT_WINDOW_HEADING",  square = true },
+  { key = "minimap", caption = "OPT_MINIMAP_HEADING", square = true },
+  { key = "memory",  caption = "OPT_MEMORY_TITLE",    square = true },
+}
 
-  -- Never transparent: you need to read it while adjusting the transparency of
-  -- the window behind it. Skin.ApplyBgOpacity honours this flag.
-  frame.__pbEuiAlwaysOpaque = true
+-- Everything the panel keeps between calls, on one table.
+local S = {
+  cells = {},     -- every row, or half-row, the pointer can rest on
+  entries = {},   -- every title and text the inspector can show
+  groups = {},    -- the group headings, whose rules are measured
+  refresh = {},   -- run on every open and after a reset
+  idle = {},      -- tab key -> what the inspector says at rest
+  pages = {},     -- tab key -> its page of the list
+  plates = {},    -- tab key -> its tab
+  ctx = {},       -- tab key -> its drawing, once built
+  tab = "mail",
+  shown = false,  -- the entry the inspector's text zone shows (nil: at rest)
+  bodyH = 0,
+}
 
-  -- TitleText is not guaranteed: Blizzard has been moving it behind
-  -- TitleContainer, and the TOC declares two interface versions. The main
-  -- window and the recipient manager already guard the identical access on the
-  -- identical template; an unguarded index here would make the options panel
-  -- permanently unreachable rather than merely untitled.
-  if frame.SetTitle then
-    frame:SetTitle(L["OPTIONS_TITLE"])
-  elseif frame.TitleText then
-    frame.TitleText:SetText(L["OPTIONS_TITLE"])
+-- The sections below, declared together so each can reach the others.
+local Tip, Insp, Ctx, Rows, Tabs, Pages, State, Footer = {}, {}, {}, {}, {}, {}, {}, {}
+
+-- title, text [, extra]: one thing the inspector can say. `extra` names a
+-- drawing shown under the text ("arrange").
+local function Entry(title, text, extra)
+  local entry = { title = title, text = text, extra = extra }
+  S.entries[#S.entries + 1] = entry
+  return entry
+end
+
+-- A caption's width with nothing holding it in.
+local function TextW(fs)
+  if not fs then return 0 end
+  local w = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()
+  return math.ceil(tonumber(w) or 0)
+end
+
+-------------------------------------------------------------
+-- Tooltips
+--
+-- Every control keeps the tooltip it has always had, as in every Postbox
+-- window. It stands beside the panel, level with the control, on the side
+-- with room: over the panel it would cover the inspector, which is saying
+-- the same thing.
+-------------------------------------------------------------
+
+function Tip.Begin(owner, title, text)
+  local tip = GameTooltip
+  tip:SetOwner(owner, "ANCHOR_NONE")
+  tip:SetText(title or "")
+  if text and text ~= "" then tip:AddLine(text, 1, 1, 1, true) end
+  return tip
+end
+
+function Tip.Show(owner)
+  local tip, frame = GameTooltip, S.frame
+  tip:Show()
+  if not frame then return end
+  local fs = frame:GetEffectiveScale() or 1
+  local ts = tip:GetEffectiveScale() or 1
+  local own = owner:GetEffectiveScale() or fs
+  local top, ftop = owner:GetTop(), frame:GetTop()
+  local left, right = frame:GetLeft(), frame:GetRight()
+  tip:ClearAllPoints()
+  if not (top and ftop and left and right) then
+    tip:SetPoint("BOTTOMLEFT", owner, "TOPRIGHT", 0, 0)
+    return
   end
-  ns.Theme.ApplyFrameTheme(frame)
-  ns.Core.UI.Helpers.RegisterEscClose(frame)
+  local dy = (top * own - ftop * fs) / ts
+  local width = (tip:GetWidth() or 0) * ts
+  local screen = (UIParent:GetRight() or 0) * (UIParent:GetEffectiveScale() or 1)
+  if right * fs + 6 * ts + width > screen and left * fs - 6 * ts - width >= 0 then
+    tip:SetPoint("TOPRIGHT", frame, "TOPLEFT", -6, dy)
+  else
+    tip:SetPoint("TOPLEFT", frame, "TOPRIGHT", 6, dy)
+  end
+end
 
-  local y = -34
-  local card, cy
+function Tip.Entry(owner, entry)
+  if not entry then return end
+  Tip.Begin(owner, entry.title, entry.text)
+  Tip.Show(owner)
+end
 
-  -- The panel is ordered the way the window is: the Mail tab, the Send tab,
-  -- the window they sit in, then what happens away from the mailbox. One
-  -- "General" card used to hold eight unrelated switches and the recipient
-  -- manager's portrait; a player looking for the thing about sending had to
-  -- read the things about the list to find it.
+-------------------------------------------------------------
+-- The inspector
+--
+-- A card beside the list, in two zones. The top is the tab's own drawing
+-- (Ctx, below): what the tab builds or opens, or what its settings look
+-- like. The foot is text: the tab's own description at rest, and while the
+-- pointer is on a setting that setting's description -- on a raised card
+-- over the foot, which grows up over the drawing only for a description
+-- that needs the room.
+--
+-- Calm, by one rule: the text follows the pointer from setting to setting,
+-- and stays on the last one while the pointer is anywhere over the list or
+-- the inspector -- a group's heading, the hairline between two rows, on its
+-- way across to read a long description. It goes back to the tab's own
+-- when the pointer leaves them both, or the tab changes. Crossing the list
+-- never flashes the tab's text between two rows.
+--
+-- A hover allocates nothing: every text is a string its entry already
+-- holds and every region exists, so a hover sets text, a height and what
+-- is shown.
+-------------------------------------------------------------
+do
+  local function TextBlock(block)
+    local T = ns.Theme
+    local title = T.CreateText(block, "body")
+    title:SetPoint("TOPLEFT", block, "TOPLEFT", TEXT_X, -TEXT_TOP)
+    title:SetWidth(TEXT_W)
+    title:SetJustifyH("LEFT")
+    title:SetWordWrap(true)
+    local text = T.CreateText(block, "secondary")
+    text:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -TEXT_GAP)
+    text:SetWidth(TEXT_W)
+    text:SetJustifyH("LEFT")
+    text:SetWordWrap(true)
+    if text.SetSpacing then text:SetSpacing(2) end
+    block.Title, block.Text = title, text
+  end
 
-  -- Two columns, so the panel is a rectangle a screen can hold rather than
-  -- a strip taller than most. Left: the two tabs and the alerts. Right:
-  -- the window and the minimap icon, the two cards with the most in them.
-  -- Each column is a frame the sections build into exactly as they built
-  -- into the panel, sharing the panel's refresher list; the panel's height
-  -- is the taller column's.
-  local colTop = y
-  local left = CreateFrame("Frame", nil, frame)
-  left:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, colTop)
-  left:SetSize(W, 10)
-  left.__refreshers = frame.__refreshers
-  local right = CreateFrame("Frame", nil, frame)
-  right:SetPoint("TOPLEFT", frame, "TOPLEFT", W - 10, colTop)
-  right:SetSize(W, 10)
-  right.__refreshers = frame.__refreshers
-  local col = left
-  y = 0
+  -- A title and a text into `block`, and the height they take with its
+  -- padding and `extraH` more kept under the text.
+  local function Lay(block, title, text, extraH)
+    local t, d = block.Title, block.Text
+    t:SetText(title or "")
+    local h = TEXT_TOP + math.ceil(t:GetStringHeight() or 0)
+    if text and text ~= "" then
+      d:SetText(text)
+      d:Show()
+      h = h + TEXT_GAP + math.ceil(d:GetStringHeight() or 0)
+    else
+      d:SetText("")
+      d:Hide()
+    end
+    return h + (extraH or 0) + TEXT_BOTTOM
+  end
 
-  -- Mail rows: how a row looks and what it carries -- the one card about the
-  -- list's contents, so the switches about the tab's behaviour stand apart.
-  card, y = BeginSection(col, y, L["OPT_ROWS_HEADING"])
-  cy = -CARD_PAD
+  function Insp.Build(card)
+    local T = ns.Theme
 
+    -- At rest: the tab's own text, under a hairline.
+    local idle = CreateFrame("Frame", nil, card)
+    idle:SetFrameLevel(card:GetFrameLevel() + 2)
+    idle:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 1, 1)
+    idle:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -1, 1)
+    idle:SetHeight(SAY_MIN)
+    TextBlock(idle)
+    local rule = idle:CreateTexture(nil, "ARTWORK")
+    rule:SetHeight(1)
+    rule:SetPoint("TOPLEFT", idle, "TOPLEFT", 0, 0)
+    rule:SetPoint("TOPRIGHT", idle, "TOPRIGHT", 0, 0)
+    rule:SetColorTexture(1, 1, 1, HAIR_A)
+    idle.Rule = rule
+    S.idleBlock = idle
+
+    -- Pointed at: a card of its own over the foot, above the drawings. A
+    -- declared popup, so it keeps the opacity floor whatever a skin paints
+    -- over it: the drawing it covers never shows through the text.
+    local say = CreateFrame("Frame", nil, card, "BackdropTemplate")
+    say:SetFrameLevel(card:GetFrameLevel() + 20)
+    say:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 0, 0)
+    say:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", 0, 0)
+    say:SetHeight(SAY_MIN)
+    say.__pbPopupAlways = true
+    T.ApplyCard(say)
+    TextBlock(say)
+    say:Hide()
+    S.say = say
+
+    -- Where every text is measured: the same roles at the same width.
+    local measure = CreateFrame("Frame", nil, card)
+    measure:SetPoint("TOPLEFT", card, "TOPLEFT", 0, 0)
+    measure:SetSize(INSP_W, 10)
+    TextBlock(measure)
+    measure:Hide()
+    S.measure = measure
+  end
+
+  -- entry, or nil for the tab's own text.
+  function Insp.Show(entry)
+    if entry == S.shown then return end
+    S.shown = entry
+    local say, idle = S.say, S.idleBlock
+    if not say then return end
+    if not entry then
+      say:Hide()
+      idle:Show()
+      return
+    end
+    local extra = nil
+    local was = S.extraShown
+    if was and was ~= extra then was:Hide() end
+    S.extraShown = extra
+    -- Shown before it is measured, in the same frame: nothing is drawn in
+    -- between, and the text lays out on a shown card.
+    say:Show()
+    idle:Hide()
+    local h = Lay(say, entry.title, entry.text, extra and extra.height or 0)
+    if extra then extra:Show() end
+    if h < SAY_MIN then h = SAY_MIN end
+    if S.bodyH > 0 and h > S.bodyH then h = S.bodyH end
+    say:SetHeight(h)
+  end
+
+  -- The tab's own text, laid under its drawing -- or over the whole card,
+  -- for a tab that draws nothing.
+  function Insp.Idle(key)
+    local idle, entry = S.idleBlock, S.idle[key]
+    if not (idle and entry) then return end
+    local h = Lay(idle, entry.title, entry.text, 0)
+    if Ctx.Height(key) == 0 then
+      idle.Rule:Hide()
+      h = math.max(h, S.bodyH - 2)
+    else
+      idle.Rule:Show()
+      if h < SAY_MIN then h = SAY_MIN end
+    end
+    idle:SetHeight(h)
+  end
+
+  function Insp.SetTab(key)
+    S.shown = false
+    Insp.Show(nil)
+    Insp.Idle(key)
+  end
+
+  -- The same entry again, after its text or the tab's changed.
+  function Insp.Repaint()
+    local entry = S.shown
+    S.shown = false
+    Insp.Idle(S.tab)
+    Insp.Show(entry or nil)
+  end
+
+end
+
+-------------------------------------------------------------
+-- The inspector's drawings (Ctx)
+--
+-- One per tab, built the first time its tab is shown and painted every
+-- time it is: the Mail tab's character groups tile and a sample mail row
+-- that grows with Larger mail rows and wears the quality mark where the
+-- setting puts it; the Send tab's recipients tile; the window over a bit
+-- of world, at the player's opacity and border; the minimap icon at a size
+-- you can judge, wearing its glow, shadow and accent. Drawn here, from the
+-- settings, rather than borrowed from the windows they describe: those
+-- windows' own code is not the panel's to reach into.
+-------------------------------------------------------------
+do
+  local CTX_TOP = 11
+
+  -- The fixed height of each tab's drawing, and the gap under it.
+  function Ctx.Height(key)
+    if key == "mail" then return CTX_TOP + TILE_H + 10 end
+    if key == "send" then return CTX_TOP + TILE_H + 10 end
+    if key == "window" then return S.installedHost and (CTX_TOP + HOST_H + 10) or 0 end
+    return 0
+  end
+
+  -- Shows `key`'s drawing, building it the first time, and paints it.
+  function Ctx.Show(key)
+    for k, f in pairs(S.ctx) do
+      if k ~= key and f:IsShown() then
+        f:Hide()
+        if f.Stop then f.Stop() end
+      end
+    end
+    local f = S.ctx[key]
+    local build = Ctx[key]
+    if not f and type(build) == "function" and S.insp then
+      f = build(S.insp)
+      S.ctx[key] = f
+    end
+    if f then
+      f:Show()
+      if f.Paint then f.Paint() end
+    end
+  end
+
+  -- Paints `key`'s drawing if it is the one on show.
+  function Ctx.Paint(key)
+    local f = S.ctx[key]
+    if f and f:IsShown() and f.Paint then f.Paint() end
+  end
+
+  -- A setting that shows in the drawing changed.
+  function Ctx.Repaint()
+    Ctx.Paint(S.tab)
+  end
+
+  -- The mark for the way into arranging: the art the title bar wears for it
+  -- (Theme.Glyph "layout"), else the grip it wore before that art. A white
+  -- texture, or a frame of white dots, to tint and to anchor by its CENTER
+  -- (a glyph's keyline overhangs it evenly); `w` is the mark's own width.
+  function Ctx.Mark(parent, size, layer)
+    local T = ns.Theme
+    local glyph = T and type(T.Glyph) == "function" and T.Glyph(parent, "layout", size, layer or "ARTWORK") or nil
+    if glyph then
+      glyph.w = size
+      return glyph
+    end
+    local AR = ns.Arrange
+    if AR and type(AR.Grip) == "function" then
+      local dot = size >= 14 and 3 or 2
+      local grip = AR.Grip(parent, dot, 2)
+      grip.w = 2 * dot + 2
+      return grip
+    end
+    return nil
+  end
+
+  function Ctx.TintMark(mark, r, g, b, a)
+    if not mark then return end
+    local dots = mark.dots
+    if dots then
+      for i = 1, #dots do dots[i]:SetVertexColor(r, g, b, a or 1) end
+    elseif mark.SetVertexColor then
+      mark:SetVertexColor(r, g, b, a or 1)
+    end
+  end
+
+  -- A right-pointing chevron: the theme's glyph for it, else two bars of
+  -- the addon's white tile.
+  local function Chevron(parent, anchor)
+    local T = ns.Theme
+    local glyph = T and type(T.Glyph) == "function" and T.Glyph(parent, "chevron", 14, "OVERLAY") or nil
+    if glyph then
+      glyph:SetPoint("CENTER", anchor, "RIGHT", -15, 0)
+      return { glyph }
+    end
+    local bars = {}
+    for i = 1, 2 do
+      local bar = parent:CreateTexture(nil, "OVERLAY")
+      bar:SetTexture(WHITE)
+      bar:SetSize(7, 1.6)
+      bar:SetRotation(i == 1 and -0.785 or 0.785)
+      bar:SetPoint("CENTER", anchor, "RIGHT", -15, i == 1 and 2.2 or -2.2)
+      bars[i] = bar
+    end
+    return bars
+  end
+
+  -- Chrome at rest, lit while pointed at.
+  local function TintChevron(tile, hot)
+    local T = ns.Theme
+    local parts = tile.Chevron
+    for i = 1, #parts do T.SetColor(parts[i], hot and "textPrimary" or "textDisabled") end
+  end
+
+  -- The pointer on a drawing: the inspector says what it is, the tooltip
+  -- too. Shared by every tile and badge, so a hover builds nothing.
+  local function SpotEnter(self)
+    if self.Hover then
+      self.Hover:Show()
+      TintChevron(self, true)
+    end
+    Rows.Hover(self)
+    Tip.Entry(self, self.entry)
+  end
+
+  local function SpotLeave(self)
+    if self.Hover then
+      self.Hover:Hide()
+      TintChevron(self, false)
+    end
+    GameTooltip:Hide()
+    Rows.Unhover(self)
+  end
+
+  -- A tile: a list the player builds, which opens a window of its own. The
+  -- art with the accent's glow behind it, the name, a line of fact, and a
+  -- chevron that says it opens something. Tagged as a card, so every skin
+  -- paints it as it paints the house's other cards; what must survive that
+  -- lives on a holder of its own (ArtHolder).
+  function Ctx.Tile(parent, art, title, entry, onClick)
+    local T = ns.Theme
+    local tile = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    tile:SetSize(CTX_W, TILE_H)
+    T.ApplyCard(tile)
+    local holder = ArtHolder(tile)
+
+    local hover = holder:CreateTexture(nil, "BACKGROUND")
+    hover:SetPoint("TOPLEFT", tile, "TOPLEFT", 1, -1)
+    hover:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", -1, 1)
+    hover:SetColorTexture(1, 1, 1, WASH_A)
+    hover:Hide()
+
+    local mark = holder:CreateTexture(nil, "ARTWORK")
+    mark:SetSize(32, 32)
+    mark:SetPoint("LEFT", tile, "LEFT", 8, 0)
+    mark:SetTexture(art)
+    local glow = holder:CreateTexture(nil, "ARTWORK", nil, -1)
+    glow:SetSize(58, 58)
+    glow:SetPoint("CENTER", mark, "CENTER", 0, 0)
+    glow:SetTexture(GLOW_TGA)
+    glow:SetBlendMode("ADD")
+    glow:SetAlpha(0.30)
+
+    local name = T.CreateText(holder, "label")
+    if _G.GameFontNormal then name:SetFontObject(_G.GameFontNormal) end
+    T.SetColor(name, "accent")
+    name:SetPoint("BOTTOMLEFT", tile, "LEFT", 48, 1)
+    name:SetJustifyH("LEFT")
+    name:SetWordWrap(false)
+    local sub = T.CreateText(holder, "secondary")
+    sub:SetPoint("TOPLEFT", tile, "LEFT", 48, -1)
+    sub:SetJustifyH("LEFT")
+    sub:SetWordWrap(false)
+
+    tile.Chevron = Chevron(holder, tile)
+    tile.Hover, tile.Glow, tile.Title, tile.Sub = hover, glow, name, sub
+    tile.titleText, tile.entry = title, entry
+    TintChevron(tile, false)
+    tile:SetScript("OnEnter", SpotEnter)
+    tile:SetScript("OnLeave", SpotLeave)
+    tile:SetScript("OnClick", onClick)
+    return tile
+  end
+
+  function Ctx.PaintTile(tile, fact)
+    local T = ns.Theme
+    tile.Glow:SetVertexColor(T.GetAccent())
+    local room = CTX_W - 48 - 28
+    T.FitText(tile.Title, room, tile.titleText, tile)
+    T.FitText(tile.Sub, room, fact or "")
+  end
+
+  -- A window a tile opened: its tile says what it holds again once it
+  -- closes, so a group made there is counted on the way back.
+  local watched = setmetatable({}, { __mode = "k" })
+  local function Watch(window, key)
+    if not window or watched[window] or type(window.HookScript) ~= "function" then return end
+    watched[window] = key
+    window:HookScript("OnHide", function(self)
+      if watched[self] == "send" then S.sendText = nil end
+      local panel = S.frame
+      if panel and panel:IsShown() then Ctx.Paint(watched[self]) end
+    end)
+  end
+
+  function Ctx.OpenGroups()
+    local groups = ns.CharacterGroups
+    if groups and type(groups.OpenEditor) == "function" then
+      Watch(groups.OpenEditor(nil, S.frame), "mail")
+    end
+  end
+
+  function Ctx.OpenRecipients()
+    local RM = ns.RecipientManager
+    if RM and type(RM.Toggle) == "function" then
+      RM.Toggle()
+      Watch(RM._frame, "send")
+    else
+      ns.Print(L["RM_NOT_AVAILABLE"])
+    end
+  end
+
+  -- The Mail tab: the character groups tile.
+  function Ctx.mail(card)
+    local f = CreateFrame("Frame", nil, card)
+    f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
+    f:SetSize(CTX_W, TILE_H)
+    local tile = Ctx.Tile(f, "Interface\\AddOns\\Postbox\\Media\\minimap-mailbag.tga",
+      L["GROUPS_TITLE"], S.idle.mail, Ctx.OpenGroups)
+    tile:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    f.Paint = function()
+      -- How many groups there are; none reads as the tile's way in.
+      local CG = ns.CharacterGroups
+      local list = CG and type(CG.List) == "function" and CG.List() or nil
+      local n = type(list) == "table" and #list or 0
+      Ctx.PaintTile(tile, n > 0 and ns.Plural("OPT_GROUPS_COUNT", n) or L["GROUPS_NEW"])
+    end
+    return f
+  end
+
+  -- The Send tab: the recipients tile. Its count walks every recipient
+  -- Postbox knows, so it is counted only when this tab is shown, once each
+  -- time the panel opens, and again after the manager closes.
+  function Ctx.send(card)
+    local f = CreateFrame("Frame", nil, card)
+    f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
+    f:SetSize(CTX_W, TILE_H)
+    local tile = Ctx.Tile(f, "Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga",
+      L["RM_OPT_BUTTON"], S.idle.send, Ctx.OpenRecipients)
+    tile:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    f.Paint = function()
+      if not S.sendText then
+        local RM = ns.RecipientManager
+        local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
+        S.sendText = ns.Plural("RM_HERO_COUNT", count)
+      end
+      Ctx.PaintTile(tile, S.sendText)
+    end
+    return f
+  end
+
+  -- The Window tab: who the look comes from.
+  function Ctx.window(card)
+    local T = ns.Theme
+    local f = CreateFrame("Frame", nil, card)
+    f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
+    local y = 0
+    local host
+    if S.installedHost then
+      -- The badge that used to hang on the Window heading: is this window
+      -- wearing your UI's look, or Postbox's?
+      host = CreateFrame("Frame", nil, f, "BackdropTemplate")
+      host:SetBackdrop(PLAIN_BACKDROP)
+      host:SetBackdropColor(0, 0, 0, 0.45)
+      host:SetBackdropBorderColor(0.17, 0.17, 0.17, 1)
+      host:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+      host:SetSize(CTX_W, HOST_H)
+      host.Dot = host:CreateTexture(nil, "OVERLAY")
+      host.Dot:SetSize(8, 8)
+      host.Dot:SetPoint("LEFT", host, "LEFT", 10, 0)
+      host.Text = T.CreateText(host, "secondary")
+      host.Text:SetPoint("LEFT", host.Dot, "RIGHT", 8, 0)
+      host.Text:SetJustifyH("LEFT")
+      host.Text:SetWordWrap(false)
+      host.entry = S.idle.window
+      -- Motion only: a click passes on, so the panel still drags from here.
+      host:EnableMouse(true)
+      if host.SetPropagateMouseClicks then host:SetPropagateMouseClicks(true) end
+      host:SetScript("OnEnter", SpotEnter)
+      host:SetScript("OnLeave", SpotLeave)
+      y = HOST_H + 8
+    end
+    f:SetSize(CTX_W, math.max(1, y))
+    f.Paint = function()
+      if host then
+        if S.badgeGreen then
+          host.Dot:SetColorTexture(0.38, 0.80, 0.44, 1)
+        else
+          -- Neutral grey, not a warning colour: a deliberate choice is not
+          -- a fault.
+          host.Dot:SetColorTexture(0.54, 0.54, 0.58, 1)
+        end
+        T.FitText(host.Text, CTX_W - 36, S.idle.window.title, host)
+      end
+    end
+    return f
+  end
+
+end
+
+-------------------------------------------------------------
+-- Rows
+--
+-- The list is built from a handful of row kinds, all read the same way: a
+-- checkbox, a dropdown, a push button, a pair of checkboxes side by side, a
+-- quiet note, a full-width action. Each row, or half-row, is a cell: it
+-- washes while the pointer is on it and hands the inspector its entry. The
+-- scripts are shared -- a cell and its control carry what they need on
+-- themselves -- so a hover builds no closure and no table.
+--
+-- A column is where rows go: a page of the list, or a block inside one
+-- whose rows grey with a feature's switch.
+-------------------------------------------------------------
+do
+  function Rows.Hover(cell, entry)
+    local washed = S.washed
+    if washed ~= cell then
+      if washed and washed.Wash then washed.Wash:Hide() end
+      S.washed = cell
+      if cell.Wash then cell.Wash:Show() end
+    end
+    if cell.onHover then cell.onHover(cell) end
+    Insp.Show(entry or cell.entry)
+  end
+
+  -- The pointer left a cell. Its wash goes unless the pointer only moved
+  -- onto the cell's own control; the inspector keeps its text while the
+  -- pointer is anywhere over the list or the inspector (see above).
+  function Rows.Unhover(cell)
+    if S.washed == cell and not cell:IsMouseOver() then
+      if cell.Wash then cell.Wash:Hide() end
+      S.washed = nil
+    end
+    local body = S.body
+    if not (body and body:IsMouseOver()) then Insp.Show(nil) end
+  end
+
+  local function CellEnter(self) Rows.Hover(self) end
+  local function CellLeave(self) Rows.Unhover(self) end
+
+  -- A control: the inspector for its cell (or its own entry, where it has
+  -- one), and its tooltip.
+  local function ControlEnter(self)
+    local cell = self.__pbCell
+    Rows.Hover(cell, self.__pbEntry)
+    Tip.Entry(self, self.__pbEntry or cell.entry)
+  end
+
+  local function ControlLeave(self)
+    GameTooltip:Hide()
+    Rows.Unhover(self.__pbCell)
+  end
+
+  Rows.ControlEnter, Rows.ControlLeave = ControlEnter, ControlLeave
+
+  -- A row with a tooltip of its own leaving: the tooltip goes with it.
+  function Rows.LeaveRow(self)
+    GameTooltip:Hide()
+    Rows.Unhover(self)
+  end
+
+  local function CheckSound(on)
+    if type(SOUNDKIT) == "table" then
+      PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
+                   or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+    end
+  end
+
+  local function CheckClick(self)
+    local cell = self.__pbCell
+    local on = self:GetChecked() and true or false
+    cell.set(on)
+    if cell.after then cell.after(on) end
+    CheckSound(on)
+  end
+
+  function Rows.Column(parent)
+    return { frame = parent, y = -LIST_PAD, first = true, cells = {} }
+  end
+
+  -- A block of rows in `col` that greys as one: what a feature's switch
+  -- governs. Rows.EndBlock closes it and moves `col` past it.
+  function Rows.Block(col)
+    local frame = CreateFrame("Frame", nil, col.frame)
+    frame:SetPoint("TOPLEFT", col.frame, "TOPLEFT", 0, col.y)
+    frame:SetPoint("TOPRIGHT", col.frame, "TOPRIGHT", 0, col.y)
+    return { frame = frame, y = 0, first = col.first, cells = {}, parent = col }
+  end
+
+  function Rows.EndBlock(block)
+    local col = block.parent
+    block.frame:SetHeight(math.max(1, -block.y))
+    col.y = col.y + block.y
+    col.first = block.first
+    return block
+  end
+
+  -- A row `height` tall at the column's cursor, under a hairline unless it
+  -- opens the page or a group.
+  function Rows.New(col, height)
+    local row = CreateFrame("Frame", nil, col.frame)
+    row:SetHeight(height)
+    row:SetPoint("TOPLEFT", col.frame, "TOPLEFT", 0, col.y)
+    row:SetPoint("TOPRIGHT", col.frame, "TOPRIGHT", 0, col.y)
+    if not col.first then
+      local line = row:CreateTexture(nil, "BORDER")
+      line:SetHeight(1)
+      line:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+      line:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
+      line:SetColorTexture(1, 1, 1, HAIR_A)
+    end
+    col.y = col.y - height
+    col.first = false
+    return row
+  end
+
+  -- Makes `cell` (a row, or half of one, `width` wide) a place the pointer
+  -- rests: its wash, its name, its entry. Motion only: a click passes on,
+  -- so the panel still drags from anywhere on the list.
+  function Rows.Cell(col, cell, width, title, text, role)
+    local T = ns.Theme
+    local wash = cell:CreateTexture(nil, "BACKGROUND")
+    wash:SetAllPoints()
+    wash:SetColorTexture(1, 1, 1, WASH_A)
+    wash:Hide()
+    local name = T.CreateText(cell, role or "label")
+    name:SetPoint("LEFT", cell, "LEFT", NAME_X, 0)
+    name:SetJustifyH("LEFT")
+    name:SetWordWrap(false)
+    name:SetText(title)
+    cell.Wash, cell.Name, cell.nameText, cell.w = wash, name, title, width
+    cell.entry = Entry(title, text)
+    cell.kind = "plain"
+    cell:EnableMouse(true)
+    if cell.SetPropagateMouseClicks then cell:SetPropagateMouseClicks(true) end
+    cell:SetScript("OnEnter", CellEnter)
+    cell:SetScript("OnLeave", CellLeave)
+    S.cells[#S.cells + 1] = cell
+    col.cells[#col.cells + 1] = cell
+    return cell
+  end
+
+  -- A control's shared scripts, and what it needs to find its cell.
+  local function Wire(control, cell, hook)
+    control.__pbCell = cell
+    if control.SetMotionScriptsWhileDisabled then control:SetMotionScriptsWhileDisabled(true) end
+    if hook then
+      control:HookScript("OnEnter", ControlEnter)
+      control:HookScript("OnLeave", ControlLeave)
+    else
+      control:SetScript("OnEnter", ControlEnter)
+      control:SetScript("OnLeave", ControlLeave)
+    end
+  end
+
+  local function AddCheck(cell, spec)
+    local cb = CreateFrame("CheckButton", nil, cell, "UICheckButtonTemplate")
+    cb:SetSize(CHECK_H, CHECK_H)
+    cb:SetPoint("RIGHT", cell, "RIGHT", -CONTROL_R, 0)
+    -- What the skins look for: a house checkbox, and the caption they
+    -- re-font with it.
+    cb.__postboxCheck = true
+    cb.__label = cell.Name
+    Wire(cb, cell)
+    cb:SetScript("OnClick", CheckClick)
+    cell.kind, cell.control, cell.controlW = "check", cb, CHECK_H
+    cell.get, cell.set, cell.after = spec.get, spec.set, spec.after
+    local ok, on = pcall(spec.get)
+    cb:SetChecked(ok and on and true or false)
+    return cb
+  end
+
+  -- spec: title, text, get, set [, after(on)] [, master] [, entryTitle]
+  function Rows.Check(col, spec)
+    local row = Rows.New(col, spec.master and MASTER_H or ROW_H)
+    Rows.Cell(col, row, ROW_W, spec.title, spec.text)
+    if spec.master then
+      -- A feature's switch reads a step up from the rows it governs.
+      if _G.GameFontNormal then row.Name:SetFontObject(_G.GameFontNormal) end
+      ns.Theme.SetColor(row.Name, "accent")
+    end
+    if spec.entryTitle then row.entry.title = spec.entryTitle end
+    AddCheck(row, spec)
+    return row
+  end
+
+  -- Two checkboxes side by side, each a cell of its own.
+  function Rows.Pair(col, a, b)
+    local row = Rows.New(col, ROW_H)
+    local half = ROW_W / 2
+    for i = 1, 2 do
+      local spec = (i == 1) and a or b
+      local cell = CreateFrame("Frame", nil, row)
+      cell:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * half, 0)
+      cell:SetSize(half, ROW_H)
+      Rows.Cell(col, cell, half, spec.title, spec.text)
+      AddCheck(cell, spec)
+    end
+    local mid = row:CreateTexture(nil, "BORDER")
+    mid:SetWidth(1)
+    mid:SetPoint("TOPLEFT", row, "TOPLEFT", half, 0)
+    mid:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", half, 0)
+    mid:SetColorTexture(1, 1, 1, HAIR_A)
+    return row
+  end
+
+  -- Reflects the stored value in the toggle's caption.
+  function Rows.PaintDropdown(cell)
+    local ok, current = pcall(cell.get)
+    if not ok then return end
+    local items = cell.items
+    for i = 1, #items do
+      local item = items[i]
+      if item.id == current then
+        cell.dd._selectedId = current
+        cell.dd:SetText(item.name)
+        return
+      end
+    end
+  end
+
+  -- A dropdown with nothing written about it says what it offers.
+  local function Choices(items)
+    local names = {}
+    for i = 1, #items do names[i] = items[i].name end
+    return table.concat(names, "  \194\183  ")
+  end
+
+  -- Postbox's own dropdown element, not UIDropDownMenu / MenuUtil, so the
+  -- list panel is a frame we own and can keep fully opaque. spec: title,
+  -- text, items, get, set(id).
+  function Rows.Dropdown(col, spec)
+    local row = Rows.New(col, ROW_H)
+    Rows.Cell(col, row, ROW_W, spec.title, spec.text or Choices(spec.items))
+    local ok, current = pcall(spec.get)
+    local dd = ns.Core.UI.Dropdown.Create(row, {
+      items        = spec.items,
+      toggleWidth  = DD_W,
+      toggleHeight = DD_H,
+      alignRight   = true,
+      height       = DD_H + 2,
+      defaultId    = ok and current or nil,
+    })
+    dd:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
+    dd:SetWidth(DD_W)
+    dd:SetChangeCallback(spec.set)
+    local toggle = dd._toggle
+    Wire(toggle, row, true)
+    row.kind, row.control, row.dd, row.items = "dropdown", toggle, dd, spec.items
+    row.get, row.controlW = spec.get, DD_W
+    Rows.PaintDropdown(row)
+    return row
+  end
+
+  -- A push button on the right. spec: title, text, caption, onClick.
+  function Rows.Button(col, spec)
+    local row = Rows.New(col, ROW_H)
+    Rows.Cell(col, row, ROW_W, spec.title, spec.text)
+    local btn = ns.Theme.CreateButton(nil, row)
+    btn:SetHeight(BUTTON_H)
+    btn:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
+    btn:SetText(spec.caption)
+    btn:SetScript("OnClick", spec.onClick)
+    Wire(btn, row, true)
+    row.kind, row.control = "button", btn
+    return row
+  end
+
+  -- A quiet line across the row, centred: something to know, not a setting.
+  function Rows.Note(col, text, title, desc)
+    local row = Rows.New(col, ROW_H)
+    Rows.Cell(col, row, ROW_W, title, desc, "secondary")
+    row.Name:ClearAllPoints()
+    row.Name:SetPoint("CENTER", row, "CENTER", 0, 0)
+    row.Name:SetJustifyH("CENTER")
+    row.Name:SetAlpha(0.78)
+    row.Name:SetText(text)
+    row.nameText = text
+    row.kind = "note"
+    return row
+  end
+
+  -- A button across the row that does something rather than setting
+  -- something, its mark before its caption. spec: title, text, onClick,
+  -- onHover(cell), mark.
+  function Rows.Action(col, spec)
+    local row = Rows.New(col, ROW_H)
+    Rows.Cell(col, row, ROW_W, spec.title, spec.text)
+    row.Name:Hide()
+    local btn = ns.Theme.CreateButton(nil, row)
+    btn:SetHeight(BUTTON_H)
+    btn:SetPoint("LEFT", row, "LEFT", NAME_X, 0)
+    btn:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
+    btn:SetText(spec.title)
+    btn:SetScript("OnClick", spec.onClick)
+    Wire(btn, row, true)
+    -- On a holder of its own: a skin's button repaint fades the button's
+    -- own textures.
+    if spec.mark then btn.Mark = Ctx.Mark(ArtHolder(btn), 12) end
+    row.kind, row.control, row.button, row.onHover = "action", btn, btn, spec.onHover
+    return row
+  end
+
+  -- A group's heading: its name and a rule in the accent to the row's end.
+  function Rows.Group(col, title)
+    local T = ns.Theme
+    local head = CreateFrame("Frame", nil, col.frame)
+    head:SetHeight(GROUP_H)
+    head:SetPoint("TOPLEFT", col.frame, "TOPLEFT", 0, col.y)
+    head:SetPoint("TOPRIGHT", col.frame, "TOPRIGHT", 0, col.y)
+    local text = T.CreateText(head, "heading")
+    text:SetPoint("BOTTOMLEFT", head, "BOTTOMLEFT", NAME_X, 5)
+    text:SetWordWrap(false)
+    text:SetText(title)
+    local rule = head:CreateTexture(nil, "ARTWORK")
+    rule:SetHeight(1)
+    rule:SetPoint("LEFT", text, "RIGHT", NAME_GAP, -1)
+    T.FillColor(rule, "accentRule")
+    head.Text, head.Rule = text, rule
+    S.groups[#S.groups + 1] = head
+    col.y = col.y - GROUP_H
+    col.first = true
+    return head
+  end
+
+  -- Greyed in colour and alpha together, and not clickable; its motion
+  -- scripts stay, so the inspector and the tooltip still say what it does.
+  function Rows.SetEnabled(cell, on)
+    local control = cell.control
+    if control and control.SetEnabled then control:SetEnabled(on) end
+    local more = cell.more
+    if more and more.SetEnabled then more:SetEnabled(on) end
+    if cell.kind ~= "note" and cell.Name then
+      ns.Theme.SetColor(cell.Name, on and "accent" or "textDisabled")
+    end
+  end
+
+  function Rows.SetBlock(block, on)
+    if not block then return end
+    block.frame:SetAlpha(on and 1 or 0.4)
+    for i = 1, #block.cells do Rows.SetEnabled(block.cells[i], on) end
+    if not on then ns.Core.UI.Dropdown.CloseAll() end
+  end
+
+  -- The action's caption and mark, centred as one across its button.
+  local function FitAction(cell, inner)
+    local T = ns.Theme
+    local btn = cell.button
+    local fs = btn:GetFontString()
+    if not fs then return end
+    local mark = btn.Mark
+    local lead = mark and (mark.w + 6) or 0
+    local room = inner - 24 - lead
+    T.FitText(fs, room, cell.nameText, cell)
+    fs:SetWidth(math.min(TextW(fs), room))
+    fs:ClearAllPoints()
+    fs:SetPoint("CENTER", btn, "CENTER", lead / 2, 0)
+    if mark then
+      mark:ClearAllPoints()
+      mark:SetPoint("CENTER", fs, "LEFT", -(6 + mark.w / 2), 0)
+    end
+  end
+
+  -- Measured on every open, after the skins have had their say about
+  -- fonts, and in whatever language the client speaks. The normal case
+  -- keeps its look: a name that would reach the dropdown beside it narrows
+  -- that toggle, down to DD_MIN_W, and only past that is the name cut short
+  -- -- the inspector's title still carries it whole.
+  function Rows.Fit()
+    local T = ns.Theme
+    local cells = S.cells
+    for i = 1, #cells do
+      local cell = cells[i]
+      local kind = cell.kind
+      local inner = cell.w - NAME_X - CONTROL_R
+      if kind == "action" then
+        FitAction(cell, inner)
+      elseif kind == "note" then
+        T.FitText(cell.Name, inner - NAME_X, cell.nameText, cell)
+      elseif kind == "hidden" then
+        State.FitHidden()
+      else
+        local controlW = cell.controlW or 0
+        if kind == "dropdown" then
+          local want = DD_W
+          local nameW = TextW(cell.Name)
+          if nameW + NAME_GAP + DD_W > inner then
+            want = math.max(DD_MIN_W, inner - nameW - NAME_GAP)
+          end
+          if cell.controlW ~= want then
+            cell.controlW = want
+            cell.dd:SetWidth(want)
+            cell.control:SetWidth(want)
+          end
+          controlW = want
+        elseif kind == "button" then
+          controlW = T.SizeToText(cell.control, BUTTON_FIT)
+        end
+        T.FitText(cell.Name, inner - controlW - NAME_GAP, cell.nameText, cell)
+      end
+    end
+    for i = 1, #S.groups do
+      local head = S.groups[i]
+      head.Rule:SetWidth(math.max(0, ROW_W - NAME_X - CONTROL_R - NAME_GAP - TextW(head.Text)))
+      T.FillColor(head.Rule, "accentRule")
+    end
+  end
+end
+
+-------------------------------------------------------------
+-- Tabs
+--
+-- Five house plates, like the window's own segments: the selected one in
+-- the accent, the others neutral. Window, Minimap and Mail Memory carry a
+-- small square beside their name, the Window badge's dot lifted onto the
+-- tab: green for inheriting or on, a grey ring for overriding or off.
+-------------------------------------------------------------
+do
+  local function TabClick(self)
+    if S.tab ~= self.key then Panel.SelectTab(self.key) end
+  end
+
+  -- Only a caption cut short has anything to add.
+  local function TabEnter(self)
+    if self.__pbOverflowText then
+      GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+      GameTooltip:SetText(self.__pbOverflowText)
+      GameTooltip:Show()
+    end
+  end
+
+  local function TabLeave(self)
+    if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+  end
+
+  local function AddSquare(plate)
+    local sq = CreateFrame("Frame", nil, plate)
+    sq:SetSize(8, 8)
+    sq.Fill = sq:CreateTexture(nil, "OVERLAY")
+    sq.Fill:SetAllPoints()
+    local ring = {}
+    for i = 1, 4 do
+      ring[i] = sq:CreateTexture(nil, "OVERLAY")
+      ring[i]:SetColorTexture(0.54, 0.54, 0.58, 1)
+    end
+    ring[1]:SetPoint("TOPLEFT", sq, "TOPLEFT", 0, 0)
+    ring[1]:SetPoint("TOPRIGHT", sq, "TOPRIGHT", 0, 0)
+    ring[1]:SetHeight(1)
+    ring[2]:SetPoint("BOTTOMLEFT", sq, "BOTTOMLEFT", 0, 0)
+    ring[2]:SetPoint("BOTTOMRIGHT", sq, "BOTTOMRIGHT", 0, 0)
+    ring[2]:SetHeight(1)
+    ring[3]:SetPoint("TOPLEFT", sq, "TOPLEFT", 0, -1)
+    ring[3]:SetPoint("BOTTOMLEFT", sq, "BOTTOMLEFT", 0, 1)
+    ring[3]:SetWidth(1)
+    ring[4]:SetPoint("TOPRIGHT", sq, "TOPRIGHT", 0, -1)
+    ring[4]:SetPoint("BOTTOMRIGHT", sq, "BOTTOMRIGHT", 0, 1)
+    ring[4]:SetWidth(1)
+    sq.Ring = ring
+    sq:Hide()
+    plate.Square = sq
+  end
+
+  function Tabs.Build(frame)
+    local T = ns.Theme
+    local edges = T.ColumnEdges(PANEL_W - 2 * EDGE, #TABS, TAB_GAP)
+    for i = 1, #TABS do
+      local spec = TABS[i]
+      local plate = T.CreatePlate(frame, "tab")
+      plate:SetHeight(TAB_H)
+      plate:SetWidth(edges[i].width)
+      plate:SetPoint("TOPLEFT", frame, "TOPLEFT", EDGE + edges[i].left, -TOP)
+      plate.key, plate.caption = spec.key, L[spec.caption]
+      plate:SetText(plate.caption)
+      plate:SetScript("OnClick", TabClick)
+      plate:HookScript("OnEnter", TabEnter)
+      plate:HookScript("OnLeave", TabLeave)
+      if spec.square then AddSquare(plate) end
+      S.plates[spec.key] = plate
+    end
+  end
+
+  -- The caption, cut to its plate where a translation will not fit, and
+  -- centred with its square as one.
+  local function FitOne(plate)
+    local T = ns.Theme
+    local sq = plate.Square
+    local withSquare = sq and sq:IsShown()
+    local room = (plate:GetWidth() or 0) - 12 - (withSquare and 14 or 0)
+    local text = plate.Text
+    T.FitText(text, room, plate.caption, plate)
+    text:SetWidth(math.min(TextW(text), room))
+    text:ClearAllPoints()
+    text:SetPoint("CENTER", plate, "CENTER", withSquare and -7 or 0, 0)
+    if withSquare then
+      sq:ClearAllPoints()
+      sq:SetPoint("LEFT", text, "RIGHT", 6, 0)
+    end
+  end
+
+  function Tabs.Fit()
+    for i = 1, #TABS do FitOne(S.plates[TABS[i].key]) end
+  end
+
+  -- state: "on", "off", or nil for no square at all.
+  function Tabs.SetSquare(key, state)
+    local plate = S.plates[key]
+    local sq = plate and plate.Square
+    if not sq then return end
+    if state == "on" then
+      sq.Fill:SetColorTexture(0.38, 0.80, 0.44, 1)
+      sq.Fill:Show()
+      for i = 1, 4 do sq.Ring[i]:Hide() end
+    elseif state == "off" then
+      sq.Fill:Hide()
+      for i = 1, 4 do sq.Ring[i]:Show() end
+    end
+    local want = state ~= nil
+    if sq:IsShown() ~= want then
+      sq:SetShown(want)
+      FitOne(plate)
+    end
+  end
+
+  function Tabs.Select(key)
+    for i = 1, #TABS do
+      local k = TABS[i].key
+      S.pages[k]:SetShown(k == key)
+      ns.Theme.SetPlateSelected(S.plates[k], k == key)
+    end
+  end
+end
+
+-------------------------------------------------------------
+-- What a switch or a window changes elsewhere on the panel
+-------------------------------------------------------------
+
+-- The minimap icon's switch: its rows grey with it, its tab's square, the
+-- icon on its stage.
+function State.Minimap()
+  local Icon = ns.MinimapButton
+  local on = Icon and Icon.GetEnabled and Icon.GetEnabled() and true or false
+  Rows.SetBlock(S.minimapBlock, on)
+  Tabs.SetSquare("minimap", on and "on" or "off")
+  Ctx.Paint("minimap")
+end
+
+function State.Memory()
+  local on = ns.MailboxUI.GetOption("mailMemory") and true or false
+  Rows.SetBlock(S.memoryBlock, on)
+  Tabs.SetSquare("memory", on and "on" or "off")
+end
+
+-- Who the window's look comes from. Re-derived on every open rather than
+-- fixed at build: it describes the LIVE session -- who is painting right
+-- now, not what is saved for the next one -- and EllesmereUI can be
+-- published late by a load-on-demand addon, its skin claiming through a
+-- deferred handshake.
+--
+-- The two descriptions take different numbers of arguments (the override
+-- one names the host twice: once for the window, once for the minimap it
+-- still follows) and ns.L formats through string.format WITHOUT a pcall,
+-- so each is given exactly its own.
+function State.Inheritance()
+  local host = S.installedHost
+  local entry = S.idle.window
+  if not host then
+    entry.title, entry.text = L["OPT_STYLE_TITLE"], L["OPT_STYLE_DESC"]
+    Tabs.SetSquare("window", nil)
+    return
+  end
+  -- EllesmereUI on one of its stock looks, with the style left on
+  -- EllesmereUI: its skin stood down so Postbox could wear its own Blizzard
+  -- look beside Blizzard's windows. Still green -- the window is following
+  -- the host, just not in the host's own paint -- and said in the host's
+  -- own words for the look, so the player can find the switch.
+  local eui = ns.SkinEllesmere
+  local stock = eui and type(eui.GetStockLook) == "function" and eui.GetStockLook()
+  local stockName = stock == "classic" and L["OPT_STYLE_LOOK_CLASSIC"]
+    or stock == "blizzard" and L["OPT_STYLE_LOOK_BLIZZARD"] or nil
+  if HostSkinName() then
+    S.badgeGreen = true
+    entry.title = L("OPT_STYLE_INHERIT", host)
+    entry.text = L("OPT_STYLE_INHERIT_DESC", host)
+  elseif stockName then
+    S.badgeGreen = true
+    entry.title = L("OPT_STYLE_FOLLOW", host)
+    entry.text = L("OPT_STYLE_FOLLOW_DESC", host, stockName)
+  else
+    S.badgeGreen = false
+    entry.title = L("OPT_STYLE_OVERRIDE", host)
+    entry.text = L("OPT_STYLE_OVERRIDE_DESC", host, host)
+  end
+  Tabs.SetSquare("window", S.badgeGreen and "on" or "off")
+end
+
+-- The window arranging opens over: the Postbox window at a mailbox, else
+-- Mail Memory's window where that is open -- each has the mark in its
+-- title bar. Nil when neither is on screen.
+function State.ArrangeToggle()
+  local UI = ns.MailboxUI
+  local window = UI and UI._frame
+  if window and window:IsShown() and window.ArrangeButton then return window.ArrangeButton end
+  local memory = ns.MailMemory
+  local mwindow = memory and memory._frame
+  if mwindow and mwindow:IsShown() and mwindow.ArrangeButton then return mwindow.ArrangeButton end
+  return nil
+end
+
+-- The arrange button: live only where there is a window to arrange, and
+-- saying why when there is not. Read on every hover, since a mailbox can
+-- close under the open panel.
+function State.Arrange(cell)
+  cell = cell or S.arrangeCell
+  if not cell then return end
+  local can = State.ArrangeToggle() ~= nil
+  cell.entry = can and S.arrangeOn or S.arrangeOff
+  local btn = cell.button
+  if btn:IsEnabled() ~= can then
+    btn:SetEnabled(can)
+    ns.Theme.SetColor(cell.Name, can and "accent" or "textDisabled")
+  end
+  if btn.Mark then
+    local T = ns.Theme
+    local c = T.Colors[can and "textPrimary" or "textDisabled"]
+    Ctx.TintMark(btn.Mark, c[1], c[2], c[3], 1)
+  end
+end
+
+-- The characters hidden from the character list (Core/MailMemory.lua, 2b):
+-- who they are, and one button that shows them all again. The list's own
+-- foot brings them back one at a time; this row is the way back that is
+-- always here, even once nobody is left for that list to offer. The names,
+-- and the lines the row's tooltip lists, are made here, on open, so a hover
+-- only reads them.
+function State.Hidden()
+  local row = S.hiddenRow
+  if not row then return end
+  local Memory = ns.MailMemory
+  local list = (Memory and type(Memory.HiddenCharacters) == "function") and Memory.HiddenCharacters() or {}
+  local names, lines = {}, row.lines
+  for i = 1, #list do
+    local who = list[i]
+    names[i] = (Memory and Memory.ClassName) and Memory.ClassName(who.realm, who.name) or who.name
+  end
+  for i = #lines, 1, -1 do lines[i] = nil end
+  local shown = math.min(#names, 12)
+  for i = 1, shown do lines[i] = names[i] end
+  row.moreLine = #names > shown and string.format(L["MEMORY_WAITING_MORE"], #names - shown) or nil
+  row.any = #names > 0
+  row.namesText = row.any and table.concat(names, ", ") or L["OPT_HIDDEN_NONE"]
+  row.more:SetShown(row.any)
+end
+
+-- The names, right-aligned against the button: class colours, the realm
+-- where it is not this one, cut short -- the whole list is on hover.
+-- Measured on every open: a host skin re-fonts the button after build.
+function State.FitHidden()
+  local row = S.hiddenRow
+  if not row then return end
+  local T = ns.Theme
+  T.SizeToText(row.more, { height = CHECK_H })
+  row.Names:ClearAllPoints()
+  if row.any then
+    row.Names:SetPoint("RIGHT", row.more, "LEFT", -8, 0)
+  else
+    row.Names:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
+  end
+  T.FitText(row.Name, ROW_W - NAME_X - CONTROL_R, row.nameText, row)
+  local room = ROW_W - NAME_X - CONTROL_R - TextW(row.Name) - NAME_GAP
+    - (row.any and (math.ceil(row.more:GetWidth() or 0) + NAME_GAP) or 0)
+  T.FitText(row.Names, math.max(room, 20), row.namesText or "")
+end
+
+-------------------------------------------------------------
+-- The pages
+--
+-- Each tab's rows, in the order a player reads them. Every setting keeps
+-- the saved path, the default and the effect it has always had; only where
+-- it sits has changed.
+-------------------------------------------------------------
+
+-- The Mail tab: how a row looks, how the tab behaves, and the sound when
+-- mail arrives -- which a player looks for with the mail, not under the
+-- minimap.
+function Pages.mail(col)
+  Rows.Group(col, L["OPT_ROWS_HEADING"])
   -- Compact is the default, so the switch is the one a player turns ON to
-  -- change it: larger, two-line rows. The stored option is still compactRows, read
-  -- inverted, so nobody's choice moves.
-  cy = AddCheckbox(card, cy, L["OPT_LARGER_ROWS_TITLE"], L["OPT_LARGER_ROWS_DESC"],
-        function() return not ns.MailboxUI.GetOption("compactRows") end,
-        function(on)
-          ns.MailboxUI.SetOption("compactRows", not on)
-          if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
-        end)
+  -- change it: larger, two-line rows. The stored option is still
+  -- compactRows, read inverted, so nobody's choice moves.
+  Rows.Check(col, {
+    title = L["OPT_LARGER_ROWS_TITLE"], text = L["OPT_LARGER_ROWS_DESC"],
+    get = function() return not ns.MailboxUI.GetOption("compactRows") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("compactRows", not on)
+      if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
+    end,
+    after = Ctx.Repaint,
+  })
 
   -- Where the crafting quality mark goes, in the list, History and the
   -- memory alike: on the corner of the item's icon (the default), after its
   -- name as a chat link has it, both, or nowhere.
-  local qualityItems = {
-    { id = "icon", name = L["OPT_QUALITY_ICON"] },
-    { id = "name", name = L["OPT_QUALITY_NAME"] },
-    { id = "both", name = L["OPT_QUALITY_BOTH"] },
-    { id = "off",  name = L["OPT_QUALITY_OFF"] },
-  }
-  local qualityDD
-  cy, qualityDD = AddDropdown(card, cy, L["OPT_QUALITY_TITLE"], qualityItems,
-        function() return ns.MailboxUI.GetQualityMark and ns.MailboxUI.GetQualityMark() or "icon" end,
-        function(id)
-          if ns.MailboxUI.SetQualityMark then ns.MailboxUI.SetQualityMark(id) end
-          if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
-          if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
-        end)
-  DropdownTip(qualityDD, L["OPT_QUALITY_TITLE"], L["OPT_QUALITY_DESC"])
+  Rows.Dropdown(col, {
+    title = L["OPT_QUALITY_TITLE"], text = L["OPT_QUALITY_DESC"],
+    items = {
+      { id = "icon", name = L["OPT_QUALITY_ICON"] },
+      { id = "name", name = L["OPT_QUALITY_NAME"] },
+      { id = "both", name = L["OPT_QUALITY_BOTH"] },
+      { id = "off",  name = L["OPT_QUALITY_OFF"] },
+    },
+    get = function() return ns.MailboxUI.GetQualityMark and ns.MailboxUI.GetQualityMark() or "icon" end,
+    set = function(id)
+      if ns.MailboxUI.SetQualityMark then ns.MailboxUI.SetQualityMark(id) end
+      if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
+      if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
+      Ctx.Repaint()
+    end,
+  })
 
   -- Which columns a row shows, in what order, and the gold's and the time
-  -- left's own choices are arranged in the window itself now, where the rows
-  -- are (Core/Arrange.lua): the grip beside the cog. This card says where.
-  cy = AddNote(card, cy, L["OPT_ARRANGE_POINTER"])
+  -- left's own choices are arranged in the window itself, where the rows
+  -- are (Core/Arrange.lua). This is the way in from here: the same one the
+  -- mark beside the cog is.
+  local arrange = Rows.Action(col, {
+    title = L["OPT_ARRANGE_BUTTON"], text = L["ARRANGE_TIP"],
+    onClick = Panel.Arrange, onHover = State.Arrange, mark = true,
+  })
+  arrange.entry.extra = "arrange"
+  S.arrangeCell, S.arrangeOn = arrange, arrange.entry
+  S.arrangeOff = Entry(L["OPT_ARRANGE_BUTTON"], L["ARRANGE_TIP"] .. "\n\n" .. L["ERR_OPEN_MAILBOX_LOOT"], "arrange")
 
-  y = EndSection(col, card, y)
-
-  -- Mail tab: the counts, the buttons, the click, and the tab's caption.
-  card, y = BeginSection(col, y, L["OPT_MAILTAB_HEADING"])
-  cy = -CARD_PAD
-
-  cy = AddCheckbox(card, cy, L["OPT_TAB_COUNTS_TITLE"], L["OPT_TAB_COUNTS_DESC"],
-        function() return ns.MailboxUI.GetOption("showTabCounts") end,
-        function(on)
-          ns.MailboxUI.SetOption("showTabCounts", on)
-          if ns.MailboxUI.RefreshCollectTabCounts then ns.MailboxUI.RefreshCollectTabCounts() end
-        end)
-
-
-  cy = AddCheckbox(card, cy, L["OPT_CATEGORY_BUTTONS_TITLE"], L["OPT_CATEGORY_BUTTONS_DESC"],
-        function() return ns.MailboxUI.GetOption("showCategoryButtons") end,
-        function(on)
-          ns.MailboxUI.SetOption("showCategoryButtons", on)
-          if ns.MailboxUI.RefreshCollectCategoryButtons then ns.MailboxUI.RefreshCollectCategoryButtons() end
-        end)
-
-  -- Character groups (Core/CharacterGroups.lua): the player's own sweeps, one
-  -- per group of characters, under the category buttons they join. A window
-  -- of its own, like the recipient manager -- a list to build, not a switch.
-  cy = AddButton(card, cy, function() return L["GROUPS_TITLE"] end, L["GROUPS_OPT_DESC"], function()
-    local groups = ns.CharacterGroups
-    if groups and type(groups.OpenEditor) == "function" then groups.OpenEditor(nil, frame) end
-  end)
-
-  -- Nothing to refresh: the mapping is read at the moment a row is clicked, and
-  -- the row tooltip's hint line is composed on hover from the same reading. A
-  -- list rebuild would repaint rows that are already correct.
-  cy = AddCheckbox(card, cy, L["OPT_PREVIEW_CLICK_TITLE"], L["OPT_PREVIEW_CLICK_DESC"],
-        function() return ns.MailboxUI.GetOption("previewOnClick") end,
-        function(on) ns.MailboxUI.SetOption("previewOnClick", on) end)
-
-
+  Rows.Group(col, L["OPT_MAILTAB_HEADING"])
+  Rows.Check(col, {
+    title = L["OPT_TAB_COUNTS_TITLE"], text = L["OPT_TAB_COUNTS_DESC"],
+    get = function() return ns.MailboxUI.GetOption("showTabCounts") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("showTabCounts", on)
+      if ns.MailboxUI.RefreshCollectTabCounts then ns.MailboxUI.RefreshCollectTabCounts() end
+    end,
+  })
+  Rows.Check(col, {
+    title = L["OPT_CATEGORY_BUTTONS_TITLE"], text = L["OPT_CATEGORY_BUTTONS_DESC"],
+    get = function() return ns.MailboxUI.GetOption("showCategoryButtons") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("showCategoryButtons", on)
+      if ns.MailboxUI.RefreshCollectCategoryButtons then ns.MailboxUI.RefreshCollectCategoryButtons() end
+    end,
+  })
+  -- Nothing to refresh: the mapping is read at the moment a row is clicked,
+  -- and the row tooltip's hint line is composed on hover from the same
+  -- reading. A list rebuild would repaint rows that are already correct.
+  Rows.Check(col, {
+    title = L["OPT_PREVIEW_CLICK_TITLE"], text = L["OPT_PREVIEW_CLICK_DESC"],
+    get = function() return ns.MailboxUI.GetOption("previewOnClick") end,
+    set = function(on) ns.MailboxUI.SetOption("previewOnClick", on) end,
+  })
   -- Read mail with nothing left: under a divider after the inbox, in a Done
-  -- tab of its own, or deleted once finished with. One choice, three answers
-  -- -- a switch for the tab and another for deleting would have been two
-  -- controls over one fact.
-  local readItems = {
-    { id = "fold",   name = L["OPT_READ_FOLD"] },
-    { id = "tab",    name = L["OPT_READ_TAB"] },
-    { id = "delete", name = L["OPT_READ_DELETE"] },
-  }
-  local readDD
-  cy, readDD = AddDropdown(card, cy, L["OPT_READ_MAIL_TITLE"], readItems,
-        function() return ns.MailboxUI.GetReadMode and ns.MailboxUI.GetReadMode() or "fold" end,
-        function(id) if ns.MailboxUI.SetReadMode then ns.MailboxUI.SetReadMode(id) end end)
-  DropdownTip(readDD, L["OPT_READ_MAIL_TITLE"], L["OPT_READ_MAIL_DESC"])
-
+  -- tab of its own, or deleted once finished with. One choice, three
+  -- answers -- a switch for the tab and another for deleting would have
+  -- been two controls over one fact.
+  Rows.Dropdown(col, {
+    title = L["OPT_READ_MAIL_TITLE"], text = L["OPT_READ_MAIL_DESC"],
+    items = {
+      { id = "fold",   name = L["OPT_READ_FOLD"] },
+      { id = "tab",    name = L["OPT_READ_TAB"] },
+      { id = "delete", name = L["OPT_READ_DELETE"] },
+    },
+    get = function() return ns.MailboxUI.GetReadMode and ns.MailboxUI.GetReadMode() or "fold" end,
+    set = function(id) if ns.MailboxUI.SetReadMode then ns.MailboxUI.SetReadMode(id) end end,
+  })
   -- How far back History goes.
   local dayItems = {}
   for _, days in ipairs({ 7, 14, 21, 30 }) do
     dayItems[#dayItems + 1] = { id = days, name = ns.Plural("OPT_HISTORY_DAYS", days) }
   end
-  local daysDD
-  cy, daysDD = AddDropdown(card, cy, L["OPT_HISTORY_KEEP_TITLE"], dayItems,
-        function() return ns.MailboxUI.GetHistoryDays and ns.MailboxUI.GetHistoryDays() or 7 end,
-        function(id) if ns.MailboxUI.SetHistoryDays then ns.MailboxUI.SetHistoryDays(id) end end)
-  DropdownTip(daysDD, L["OPT_HISTORY_KEEP_TITLE"], L["OPT_HISTORY_KEEP_DESC"])
+  Rows.Dropdown(col, {
+    title = L["OPT_HISTORY_KEEP_TITLE"], text = L["OPT_HISTORY_KEEP_DESC"],
+    items = dayItems,
+    get = function() return ns.MailboxUI.GetHistoryDays and ns.MailboxUI.GetHistoryDays() or 7 end,
+    set = function(id) if ns.MailboxUI.SetHistoryDays then ns.MailboxUI.SetHistoryDays(id) end end,
+  })
 
-  y = EndSection(col, card, y)
+  -- The sound when mail arrives while you are out in the world. The flash
+  -- stays with the minimap icon: it is drawn on the icon.
+  Rows.Group(col, L["OPT_ALERTS_HEADING"])
+  Rows.Check(col, {
+    title = L["OPT_ALERT_SOUND_TITLE"], text = L["OPT_ALERT_SOUND_DESC"],
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertSound() end,
+    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertSound(on) end end,
+  })
+end
 
-  -- Send tab: the two switches about composing, and the address book they
-  -- draw on. The recipient manager is a row here rather than a portrait
-  -- beside the list switches: it is about sending, and a row with the live
-  -- count on it says as much as the portrait did in a quarter of the space.
-  -- /postbox recipients is the other way in.
-  card, y = BeginSection(col, y, L["OPT_SENDTAB_HEADING"])
-  cy = -CARD_PAD
-
-  cy = AddCheckbox(card, cy, L["OPT_ATTACH_MAIL_TITLE"], L["OPT_ATTACH_MAIL_DESC"],
-        function() return ns.MailboxUI.GetOption("attachFromMail") end,
-        function(on)
-          ns.MailboxUI.SetOption("attachFromMail", on)
-          -- Applies to the mailbox that is open right now, not the next one.
-          if ns.MailboxUI.RefreshMailTabAttach then ns.MailboxUI.RefreshMailTabAttach() end
-        end)
-
+-- The Send tab: the two switches about composing. The address book they
+-- draw on is the tile at the top of the inspector; /postbox recipients is
+-- the other way in.
+function Pages.send(col)
+  Rows.Check(col, {
+    title = L["OPT_ATTACH_MAIL_TITLE"], text = L["OPT_ATTACH_MAIL_DESC"],
+    get = function() return ns.MailboxUI.GetOption("attachFromMail") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("attachFromMail", on)
+      -- Applies to the mailbox that is open right now, not the next one.
+      if ns.MailboxUI.RefreshMailTabAttach then ns.MailboxUI.RefreshMailTabAttach() end
+    end,
+  })
   -- Nothing to refresh: the option is read at the moment a send succeeds.
-  cy = AddCheckbox(card, cy, L["OPT_KEEP_RECIPIENT_TITLE"], L["OPT_KEEP_RECIPIENT_DESC"],
-        function() return ns.MailboxUI.GetOption("keepRecipient") end,
-        function(on) ns.MailboxUI.SetOption("keepRecipient", on) end)
+  Rows.Check(col, {
+    title = L["OPT_KEEP_RECIPIENT_TITLE"], text = L["OPT_KEEP_RECIPIENT_DESC"],
+    get = function() return ns.MailboxUI.GetOption("keepRecipient") end,
+    set = function(on) ns.MailboxUI.SetOption("keepRecipient", on) end,
+  })
+end
 
+-- The Window tab: where the window opens, then how it is painted.
+function Pages.window(col)
+  Rows.Check(col, {
+    title = L["GRID_TOGGLE_TITLE"], text = L["GRID_TOGGLE_DESC"],
+    get = function() return ns.MailboxUI.GetOption("gridDock") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("gridDock", on)
+      if on and ns.MailboxUI._state then ns.MailboxUI._state.freeMoved = false end
+      if ns.MailboxUI.ApplyWindowLayout then ns.MailboxUI.ApplyWindowLayout() end
+    end,
+  })
 
-  y = EndSection(col, card, y)
-
-  -- Mail alerts: the sound and the flash when mail arrives while you are out
-  -- in the world. They were in the Minimap card, which is where the icon's
-  -- LOOK is configured -- a sound is not a look. In the left column under
-  -- the two tabs, which keeps the two columns level.
-  y = AddSectionHeading(col, y, L["OPT_ALERTS_HEADING"])
-  card = StartCard(col, y)
-  cy = -CARD_PAD
-
-  cy = AddCheckbox(card, cy, L["OPT_ALERT_SOUND_TITLE"], L["OPT_ALERT_SOUND_DESC"],
-        function() return ns.MinimapButton and ns.MinimapButton.GetAlertSound() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertSound(on) end end)
-
-  local flashCheck
-  cy, flashCheck = AddCheckbox(card, cy, L["OPT_ALERT_FLASH_TITLE"], L["OPT_ALERT_FLASH_DESC"],
-        function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end)
-
-  -- The flash is drawn on the minimap icon, so with the icon off it has
-  -- nothing to draw on: greyed in colour and alpha, as the icon's own card
-  -- greys, and not clickable -- its tooltip still says why. Painted with
-  -- that card, from the Minimap section's switch (UpdateMinimapCardState).
-  if flashCheck.SetMotionScriptsWhileDisabled then flashCheck:SetMotionScriptsWhileDisabled(true) end
-  local function PaintFlashState(on)
-    flashCheck:SetEnabled(on)
-    flashCheck:SetAlpha(on and 1 or 0.4)
-    flashCheck.__label:SetAlpha(on and 1 or 0.4)
-    ns.Theme.SetColor(flashCheck.__label, on and "accent" or "textDisabled")
-  end
-
-
-  y = EndSection(col, card, y)
-
-  -- Appearance: everything about how the window looks, in one card.
-  --
-  -- Style and Appearance used to be two sections, which read as siblings and
-  -- were not. The three controls below the style row are the CHOSEN STYLE'S
-  -- OWN -- they call whatever skin claimed the window -- so they are a
-  -- consequence of the style rather than a peer of it. Splitting them also
-  -- spent a whole section's chrome (a heading, a gap and a card's padding) on
-  -- one 22px line, which was the worst ratio in the panel.
-  local installedHost = InstalledHostName()
-
-  local leftBottom = y
-  col = right
-  -- Level with the left column's first CARD, not its heading: the hero has
-  -- no heading of its own, and its top edge lining up with the Mail tab
-  -- card's is what makes the two columns read as one grid.
-  y = -SECTION_STEP
-
-  -- Manage Recipients: a hero row at the top of the right column, where the
-  -- column had the room and the left had none. It opens a whole window of
-  -- its own, which makes it the one control here that is a feature rather
-  -- than a setting, so it stands apart from the cards rather than in one.
-  local HERO_H = 52
-  local hero = ns.Theme.CreateButton(nil, right)
-  hero:SetHeight(HERO_H)
-  hero:SetPoint("TOPLEFT", right, "TOPLEFT", 10, y)
-  hero:SetPoint("RIGHT", right, "RIGHT", -10, 0)
-
-  -- The stock plate is a ~22px three-slice; stretched to this height it
-  -- smears into pixel blocks. Under a host skin the repaint hides that, so
-  -- ONLY the unskinned session flattens it: template art gone, one card
-  -- surface a step lighter than the card behind, a quiet flat hover. The
-  -- button template has no backdrop support, so the mixin is retrofitted
-  -- first or the theme's panel paint declines silently. ns.Skin is claimed
-  -- at PLAYER_LOGIN, well before this lazy Build can run.
-  if not ns.Skin then
-    for _, region in ipairs({ hero:GetRegions() }) do
-      if region.IsObjectType and region:IsObjectType("Texture") then
-        region:SetTexture(nil)
-        region:Hide()
-      end
-    end
-    if type(hero.SetBackdrop) ~= "function"
-      and type(Mixin) == "function" and type(BackdropTemplateMixin) == "table" then
-      Mixin(hero, BackdropTemplateMixin)
-      if type(hero.OnBackdropSizeChanged) == "function" then
-        hero:HookScript("OnSizeChanged", hero.OnBackdropSizeChanged)
-      end
-    end
-    -- A card surface of its own, a step above the panel behind it, the way
-    -- every field's container stands off the window: it read as a label
-    -- floating on the window's own fill.
-    ns.Theme.ApplyCard(hero)
-    if hero.SetBackdropColor then hero:SetBackdropColor(0.14, 0.14, 0.15, 0.95) end
-    hero:SetHighlightTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
-    local flatHover = hero:GetHighlightTexture()
-    if flatHover then
-      flatHover:SetAllPoints()
-      flatHover:SetAlpha(0.06)
-    end
-  end
-  -- Under a host skin the same thing by the skin's own hand: tagged as a
-  -- card, it is painted like the other containers rather than as a bare
-  -- button on the window's fill.
-  hero.__postboxPanel = "card"
-
-  -- The glyph, the title and the count sit on one centred block: the block
-  -- is as wide as the glyph plus the wider of the two lines, and the
-  -- button centres it, so the trio reads as one mark in the middle rather
-  -- than a label pinned to the left edge of a wide button. On an art
-  -- holder, not the button: a host skin's button repaint fades a tagged
-  -- button's own texture regions.
-  local HERO_TEXT_X = 48
-  local heroHolder = ArtHolder(hero)
-  local heroContent = CreateFrame("Frame", nil, heroHolder)
-  heroContent:SetPoint("CENTER", hero, "CENTER", 0, 0)
-  heroContent:SetSize(200, HERO_H)
-
-  local heroMark = heroHolder:CreateTexture(nil, "ARTWORK")
-  heroMark:SetSize(36, 36)
-  heroMark:SetPoint("LEFT", heroContent, "LEFT", 0, 0)
-  heroMark:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
-
-  -- The glow is the accent at low alpha, static, re-tinted on every panel open.
-  local heroGlow = heroHolder:CreateTexture(nil, "ARTWORK", nil, -1)
-  heroGlow:SetSize(64, 64)
-  heroGlow:SetPoint("CENTER", heroMark, "CENTER", 0, 0)
-  heroGlow:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-glow.tga")
-  heroGlow:SetBlendMode("ADD")
-  heroGlow:SetAlpha(0.30)
-  local function TintHeroGlow()
-    local r, g, b = ns.Theme.GetAccent()
-    heroGlow:SetVertexColor(r, g, b)
-  end
-  TintHeroGlow()
-  frame.__refreshers[#frame.__refreshers + 1] = TintHeroGlow
-
-  -- Title on the first line, in the button's own label one point up from the
-  -- caption size (it is the loudest control on the card); the count on the
-  -- second, in the secondary role. A host skin's re-font can override the
-  -- size; that is its right.
-  local heroLabel = hero:GetFontString()
-  if heroLabel then
-    heroLabel:ClearAllPoints()
-    heroLabel:SetPoint("TOPLEFT", heroContent, "TOPLEFT", HERO_TEXT_X, -11)
-    heroLabel:SetJustifyH("LEFT")
-    heroLabel:SetWordWrap(false)
-    local fontPath, fontSize, fontFlags = heroLabel:GetFont()
-    if fontPath and fontSize then heroLabel:SetFont(fontPath, fontSize + 1, fontFlags) end
-  end
-  hero:SetText(L["RM_OPT_BUTTON"])
-
-  local heroCount = ns.Theme.CreateText(hero, "secondary")
-  heroCount:SetPoint("TOPLEFT", heroContent, "TOPLEFT", HERO_TEXT_X, -29)
-  heroCount:SetJustifyH("LEFT")
-  heroCount:SetWordWrap(false)
-
-  local function FitHeroContent()
-    local titleW = heroLabel and heroLabel:GetStringWidth() or 0
-    local countW = heroCount:GetStringWidth() or 0
-    heroContent:SetWidth(HERO_TEXT_X + math.max(titleW, countW))
-  end
-  local function RefreshHeroCount()
-    local RM = ns.RecipientManager
-    local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
-    heroCount:SetText(ns.Plural("RM_HERO_COUNT", count))
-    FitHeroContent()
-  end
-  RefreshHeroCount()
-  frame.__refreshers[#frame.__refreshers + 1] = RefreshHeroCount
-
-  hero:SetScript("OnClick", function()
-    local RM = ns.RecipientManager
-    if RM and type(RM.Toggle) == "function" then
-      RM.Toggle()
-    else
-      ns.Print(L["RM_NOT_AVAILABLE"])
-    end
-  end)
-  hero:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["RM_OPT_BUTTON"])
-    GameTooltip:AddLine(L["RM_OPT_BUTTON_DESC"], 1, 1, 1, true)
-    GameTooltip:Show()
-  end)
-  hero:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-  y = y - HERO_H - SECTION_GAP
-
-  local appHeadingY = y
-  y = AddSectionHeading(col, y, L["OPT_WINDOW_HEADING"])
-  card = StartCard(col, y)
-  cy = -CARD_PAD
-
-  -- Where the window opens, before how it is painted: the one setting about
-  -- the window's place lived at the top of the old General card, a long way
-  -- from the four about its look.
-  cy = AddCheckbox(card, cy, L["GRID_TOGGLE_TITLE"], L["GRID_TOGGLE_DESC"],
-        function() return ns.MailboxUI.GetOption("gridDock") end,
-        function(on)
-          ns.MailboxUI.SetOption("gridDock", on)
-          if on and ns.MailboxUI._state then ns.MailboxUI._state.freeMoved = false end
-          if ns.MailboxUI.ApplyWindowLayout then ns.MailboxUI.ApplyWindowLayout() end
-        end)
-
-  -- The style choice. A host UI is offered first and is the default wherever
-  -- one is installed, so the familiar answer is the one already selected --
-  -- but it is now an answer rather than a foregone conclusion.
+  -- The style choice. A host UI is offered first and is the default
+  -- wherever one is installed, so the familiar answer is the one already
+  -- selected -- but it is now an answer rather than a foregone conclusion.
+  local host = S.installedHost
   local styleItems = {}
-  if installedHost then
-    styleItems[#styleItems + 1] = { id = "host", name = installedHost }
-  end
+  if host then styleItems[#styleItems + 1] = { id = "host", name = host } end
   styleItems[#styleItems + 1] = { id = "blizzard", name = L["OPT_STYLE_BLIZZARD"] }
   styleItems[#styleItems + 1] = { id = "modern",   name = L["OPT_STYLE_MODERN"] }
-
-  cy = AddDropdown(card, cy, L["OPT_STYLE_TITLE"], styleItems,
-        function() return ns.MailboxUI.GetStyleChoice and ns.MailboxUI.GetStyleChoice() end,
-        function(id)
-          if ns.MailboxUI.SetStyleChoice then ns.MailboxUI.SetStyleChoice(id) end
-          -- The style is claimed once at login, so the choice needs a
-          -- reload to take. A dialog with the reload in it beats a chat
-          -- line telling the player to go and type one -- and Later is a
-          -- real answer: the setting is already saved either way.
-          if EnsureStyleDialog() then
-            ns.Theme.LiftPopup(StaticPopup_Show(POPUP_STYLE_RELOAD))
-          else
-            ns.Print(L["MSG_STYLE_RELOAD"])
-          end
-        end)
-
-  -- The inheritance badge. Only where there is something to inherit FROM, and
-  -- it answers one question about the section as a whole: is this window
-  -- wearing your UI pack's look, or Postbox's? Green for inheriting, because
-  -- that is the state where Postbox has wired itself into something else
-  -- correctly -- the same language the bottom band used to carry.
-  if installedHost then
-    -- On the HEADING line, right-aligned, the way the minimap section hangs its
-    -- master switch there. It belongs to the whole section rather than to any
-    -- one row in it -- it is the answer to "where is this section's look coming
-    -- from" -- and inside the card it read as another setting, indented level
-    -- with the controls it was actually describing.
-    --
-    -- Sized against the heading rather than a guessed offset: the badge's top
-    -- and height are the heading's, so anything anchored to its vertical centre
-    -- is on the heading's centre line by construction, whatever font the theme
-    -- gives either of them.
-    -- EVERY NUMBER HERE IS EVEN, and that is the fix rather than a detail.
-    --
-    -- The square was 7px centred in a container sized from the heading's string
-    -- height. Centring an odd height leaves the texture's edges on half pixels,
-    -- and the client rounds them -- so the square rendered half a pixel off its
-    -- own anchor and read as sitting high. Two releases tried to correct that
-    -- with a one-pixel offset, once in each direction, which is why neither
-    -- landed: a whole pixel cannot cancel half of one, it can only overshoot
-    -- the other way.
-    --
-    -- The geometry is now the minimap section's, which has sat correctly on its
-    -- own heading line since it was built: a CHECK_H-tall frame at heading + 5,
-    -- with the caption anchored RIGHT-to-LEFT against it and no vertical offset
-    -- anywhere. 22 and 8 are both even, so the centre line is a whole pixel and
-    -- nothing needs nudging.
-    local badge = CreateFrame("Frame", nil, col)
-    badge:SetHeight(CHECK_H)
-    badge:SetPoint("TOPRIGHT", col, "TOPRIGHT", -PAD, appHeadingY + 5)
-
-    local text = ns.Theme.CreateText(badge, "secondary")
-    text:SetPoint("RIGHT", badge, "RIGHT", 0, 0)
-    text:SetJustifyH("RIGHT")
-    text:SetWordWrap(false)
-
-    local dot = badge:CreateTexture(nil, "OVERLAY")
-    dot:SetSize(8, 8)
-    dot:SetPoint("RIGHT", text, "LEFT", -6, 0)
-
-    -- Re-derived on every open rather than fixed at build. It describes the
-    -- LIVE session -- who is painting right now, not what is saved for the next
-    -- one -- and that answer can still change after login: EllesmereUI can be
-    -- published late by a load-on-demand addon, and its skin claims through a
-    -- deferred handshake. A line that had already decided would be wrong for
-    -- the rest of the session.
-    --
-    -- The two descriptions take different numbers of arguments (the override
-    -- one names the host twice: once for the window, once for the minimap it
-    -- still follows) and ns.L formats through string.format WITHOUT a pcall,
-    -- so each is given exactly its own.
-    local badgeTitle, badgeDesc
-    local function RefreshInheritance()
-      -- EllesmereUI on one of its stock looks, with the style left on
-      -- EllesmereUI: its skin stood down so Postbox could wear its own
-      -- Blizzard look beside Blizzard's windows. Still green -- the window is
-      -- following the host, just not in the host's own paint -- and said in
-      -- the host's own words for the look, so the player can find the switch.
-      local eui = ns.SkinEllesmere
-      local stock = eui and type(eui.GetStockLook) == "function" and eui.GetStockLook()
-      local stockName = stock == "classic" and L["OPT_STYLE_LOOK_CLASSIC"]
-        or stock == "blizzard" and L["OPT_STYLE_LOOK_BLIZZARD"] or nil
-      if HostSkinName() then
-        dot:SetColorTexture(0.38, 0.80, 0.44, 1)
-        badgeTitle = L("OPT_STYLE_INHERIT", installedHost)
-        badgeDesc  = L("OPT_STYLE_INHERIT_DESC", installedHost)
-      elseif stockName then
-        dot:SetColorTexture(0.38, 0.80, 0.44, 1)
-        badgeTitle = L("OPT_STYLE_FOLLOW", installedHost)
-        badgeDesc  = L("OPT_STYLE_FOLLOW_DESC", installedHost, stockName)
+  Rows.Dropdown(col, {
+    title = L["OPT_STYLE_TITLE"], text = L["OPT_STYLE_DESC"], items = styleItems,
+    get = function() return ns.MailboxUI.GetStyleChoice and ns.MailboxUI.GetStyleChoice() end,
+    set = function(id)
+      if ns.MailboxUI.SetStyleChoice then ns.MailboxUI.SetStyleChoice(id) end
+      -- The style is claimed once at login, so the choice needs a reload
+      -- to take. A dialog with the reload in it beats a chat line telling
+      -- the player to go and type one -- and Later is a real answer: the
+      -- setting is already saved either way.
+      if EnsureStyleDialog() then
+        ns.Theme.LiftPopup(StaticPopup_Show(POPUP_STYLE_RELOAD))
       else
-        -- Neutral grey, not a warning colour: a deliberate choice is not a
-        -- fault, and dressing it as one would be a scold.
-        dot:SetColorTexture(0.54, 0.54, 0.58, 1)
-        badgeTitle = L("OPT_STYLE_OVERRIDE", installedHost)
-        badgeDesc  = L("OPT_STYLE_OVERRIDE_DESC", installedHost, installedHost)
+        ns.Print(L["MSG_STYLE_RELOAD"])
       end
-      text:SetText(badgeTitle)
-      -- The badge is only as wide as what it currently says: dot, gap, text.
-      -- Re-measured here because the two states are different lengths, and a
-      -- width left over from the other one would put the hover target in the
-      -- wrong place.
-      badge:SetWidth(8 + 6 + math.ceil(text:GetStringWidth() or 0))
-    end
-    RefreshInheritance()
-    frame.__refreshers[#frame.__refreshers + 1] = RefreshInheritance
-
-    -- The pointer, not the button. This sits over the section heading, and a
-    -- frame that swallows clicks to show a tooltip is the defect 1.30.5 fixed
-    -- across every window -- there it stopped the title bar being draggable.
-    badge:EnableMouse(true)
-    if badge.SetPropagateMouseClicks then badge:SetPropagateMouseClicks(true) end
-    badge:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(badgeTitle)
-      GameTooltip:AddLine(badgeDesc, 1, 1, 1, true)
-      GameTooltip:Show()
-    end)
-    badge:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  end
+    end,
+  })
 
   -- The chosen style's own controls. Whichever skin claimed the window
-  -- answers these; the panel does not know or care which one it is talking to.
-  -- A style that publishes no such controls (Blizzard) simply contributes
-  -- nothing here, and the card is the style row alone.
-  do
-    local Skin = GetSkin()
-    if Skin then
-      -- "Leave it alone" means different things to different styles: under a
-      -- host it means match that UI, and under Postbox's own it means the
-      -- value the skin was authored with. Same control, honest label either
-      -- way -- it used to read "Match EllesmereUI" from a hardcoded string,
-      -- which was already wrong for ElvUI and would have been wrong here.
-      local autoName = HostSkinName()
-        and L("OPT_APPEARANCE_MATCH", HostSkinName())
-        or L["OPT_APPEARANCE_DEFAULT"]
-
-      -- The border rows offer that entry only where it names something. Under
-      -- EllesmereUI it cannot: the suite has no window border to match (see
-      -- Core/Skin_EllesmereUI.lua), and "Match EllesmereUI" had always drawn
-      -- None. There an unset border simply shows as None and its size as the
-      -- step it would draw at -- which is what it has always looked like.
-      local borderAuto = true
-      if type(Skin.OffersBorderDefault) == "function" then
-        borderAuto = Skin.OffersBorderDefault() and true or false
-      end
-
-      local borderItems = {}
-      if borderAuto then borderItems[1] = { id = "auto", name = autoName } end
-      for _, choice in ipairs(Skin.GetBorderChoices()) do
-        borderItems[#borderItems + 1] = { id = choice.key, name = choice.name }
-      end
-      cy = AddDropdown(card, cy, L["OPT_BORDER_TITLE"], borderItems,
-            function()
-              if borderAuto and Skin.IsBorderDefault and Skin.IsBorderDefault() then return "auto" end
-              return Skin.GetBorderStyle()
-            end,
-            function(id)
-              if id == "auto" then Skin.ResetBorder() else Skin.SetBorderStyle(id) end
-            end)
-
-      local sizeItems = {}
-      if borderAuto then sizeItems[1] = { id = "auto", name = autoName } end
-      for step = 1, 4 do
-        sizeItems[#sizeItems + 1] = { id = step, name = string.format(L["OPT_BORDER_SIZE_STEP"], step) }
-      end
-      cy = AddDropdown(card, cy, L["OPT_BORDER_SIZE_TITLE"], sizeItems,
-            function()
-              if borderAuto and Skin.IsBorderSizeDefault and Skin.IsBorderSizeDefault() then return "auto" end
-              return Skin.GetBorderSize()
-            end,
-            function(id)
-              if id == "auto" then Skin.ResetBorderSize() else Skin.SetBorderSize(id) end
-            end)
-
-      local opacityItems = { { id = "auto", name = autoName } }
-      for _, pct in ipairs({ 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 25, 0 }) do
-        opacityItems[#opacityItems + 1] = {
-          id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct),
-        }
-      end
-      cy = AddDropdown(card, cy, L["OPT_BG_OPACITY_TITLE"], opacityItems,
-            function()
-              if Skin.IsBgOpacityDefault and Skin.IsBgOpacityDefault() then return "auto" end
-              return math.floor(Skin.GetBgOpacity() * 100 + 0.5)
-            end,
-            function(id)
-              if id == "auto" then Skin.ResetBgOpacity()
-              else Skin.SetBgOpacity((tonumber(id) or 100) / 100) end
-            end)
-    end
+  -- answers these; the panel does not know or care which one it is
+  -- talking to. A style that publishes no such controls (Blizzard) simply
+  -- contributes nothing here.
+  local Skin = GetSkin()
+  if not Skin then return end
+  -- "Leave it alone" means different things to different styles: under a
+  -- host it means match that UI, and under Postbox's own it means the
+  -- value the skin was authored with.
+  local autoName = HostSkinName() and L("OPT_APPEARANCE_MATCH", HostSkinName()) or L["OPT_APPEARANCE_DEFAULT"]
+  -- The border rows offer that entry only where it names something. Under
+  -- EllesmereUI it cannot: the suite has no window border to match (see
+  -- Core/Skin_EllesmereUI.lua), and "Match EllesmereUI" had always drawn
+  -- None. There an unset border simply shows as None and its size as the
+  -- step it would draw at.
+  local borderAuto = true
+  if type(Skin.OffersBorderDefault) == "function" then
+    borderAuto = Skin.OffersBorderDefault() and true or false
   end
 
-  y = EndSection(col, card, y)
-
-  -- Minimap mail icon (Core/MinimapButton.lua). Resolved at click time like
-  -- every other binding, so the section stays honest if the module is absent.
-  --
-  -- The master checkbox shares the heading line, right-aligned, and the card
-  -- carries the feature's settings: unchecked, the card desaturates and
-  -- stops taking clicks, which is what tells the user those rows belong to
-  -- the checkbox.
-  local mmHeadingY = y
-  y = AddSectionHeading(col, y, L["OPT_MINIMAP_HEADING"])
-
-  local mmHostStyled = ns.MinimapButton and ns.MinimapButton.IsHostStyled
-    and ns.MinimapButton.IsHostStyled()
-  local mmDesc = mmHostStyled and L["OPT_MINIMAP_DESC_EUI"] or L["OPT_MINIMAP_DESC"]
-  local UpdateMinimapCardState -- defined once the card exists below
-
-  local mmToggle = CreateFrame("CheckButton", nil, col, "UICheckButtonTemplate")
-  mmToggle:SetSize(CHECK_H, CHECK_H)
-  mmToggle:SetPoint("TOPRIGHT", col, "TOPRIGHT", -PAD + 4, mmHeadingY + 5)
-  mmToggle.__postboxCheck = true
-  local mmToggleLabel = ns.Theme.CreateText(col, "label")
-  mmToggleLabel:SetPoint("RIGHT", mmToggle, "LEFT", -4, 0)
-  mmToggleLabel:SetWordWrap(false)
-  mmToggleLabel:SetText(L["OPT_MINIMAP_TITLE"])
-  mmToggle.__label = mmToggleLabel
-  mmToggle:SetChecked(ns.MinimapButton and ns.MinimapButton.GetEnabled())
-  mmToggle:SetScript("OnClick", function(self)
-    local on = self:GetChecked() and true or false
-    if ns.MinimapButton then ns.MinimapButton.SetEnabled(on) end
-    if UpdateMinimapCardState then UpdateMinimapCardState() end
-    if type(SOUNDKIT) == "table" then
-      PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
-                   or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
-    end
-  end)
-  mmToggle:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["OPT_MINIMAP_TITLE"])
-    GameTooltip:AddLine(mmDesc, 1, 1, 1, true)
-    GameTooltip:Show()
-  end)
-  mmToggle:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  frame.__refreshers[#frame.__refreshers + 1] = function()
-    mmToggle:SetChecked(ns.MinimapButton and ns.MinimapButton.GetEnabled())
+  local borderItems = {}
+  if borderAuto then borderItems[1] = { id = "auto", name = autoName } end
+  for _, choice in ipairs(Skin.GetBorderChoices()) do
+    borderItems[#borderItems + 1] = { id = choice.key, name = choice.name }
   end
+  Rows.Dropdown(col, {
+    title = L["OPT_BORDER_TITLE"], text = L["OPT_BORDER_DESC"], items = borderItems,
+    get = function()
+      if borderAuto and Skin.IsBorderDefault and Skin.IsBorderDefault() then return "auto" end
+      return Skin.GetBorderStyle()
+    end,
+    set = function(id)
+      if id == "auto" then Skin.ResetBorder() else Skin.SetBorderStyle(id) end
+      Ctx.Repaint()
+    end,
+  })
 
-  card = StartCard(col, y)
-  cy = -CARD_PAD
+  local sizeItems = {}
+  if borderAuto then sizeItems[1] = { id = "auto", name = autoName } end
+  for step = 1, 4 do
+    sizeItems[#sizeItems + 1] = { id = step, name = string.format(L["OPT_BORDER_SIZE_STEP"], step) }
+  end
+  Rows.Dropdown(col, {
+    title = L["OPT_BORDER_SIZE_TITLE"], text = L["OPT_BORDER_SIZE_DESC"], items = sizeItems,
+    get = function()
+      if borderAuto and Skin.IsBorderSizeDefault and Skin.IsBorderSizeDefault() then return "auto" end
+      return Skin.GetBorderSize()
+    end,
+    set = function(id)
+      if id == "auto" then Skin.ResetBorderSize() else Skin.SetBorderSize(id) end
+      Ctx.Repaint()
+    end,
+  })
+
+  local opacityItems = { { id = "auto", name = autoName } }
+  for _, pct in ipairs({ 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 25, 0 }) do
+    opacityItems[#opacityItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
+  end
+  Rows.Dropdown(col, {
+    title = L["OPT_BG_OPACITY_TITLE"], text = L["OPT_BG_OPACITY_DESC"], items = opacityItems,
+    get = function()
+      if Skin.IsBgOpacityDefault and Skin.IsBgOpacityDefault() then return "auto" end
+      return math.floor(Skin.GetBgOpacity() * 100 + 0.5)
+    end,
+    set = function(id)
+      if id == "auto" then Skin.ResetBgOpacity()
+      else Skin.SetBgOpacity((tonumber(id) or 100) / 100) end
+      Ctx.Repaint()
+    end,
+  })
+end
+
+-- The Minimap tab (Core/MinimapButton.lua): the switch, then everything
+-- about the icon, then the flash that is drawn on it. Resolved at click
+-- time like every other binding, so the page stays honest if the module is
+-- absent.
+function Pages.minimap(col)
+  local Icon = ns.MinimapButton
+  -- With EllesmereUI's minimap module running, Postbox restyles its own
+  -- mail icon in place rather than drawing a second one; position and size
+  -- are then EllesmereUI's to control, so those rows would be dead weight
+  -- and are left out (see Core/MinimapButton.lua section 3).
+  local hostStyled = Icon and Icon.IsHostStyled and Icon.IsHostStyled()
+  local desc = hostStyled and L["OPT_MINIMAP_DESC_EUI"] or L["OPT_MINIMAP_DESC"]
+  S.idle.minimap.text = desc
+
+  Rows.Check(col, {
+    master = true, title = L["OPT_MINIMAP_TITLE"], text = desc,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetEnabled() end,
+    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetEnabled(on) end end,
+    after = State.Minimap,
+  })
+
+  local block = Rows.Block(col)
+  S.minimapBlock = block
 
   -- Each "clean" restyle sits directly beneath its original, named as the
   -- original plus the localized clean suffix.
@@ -1370,467 +2091,196 @@ local function Build()
     { id = "postbox",      name = L["OPT_MINIMAP_ICON_POSTBOX"] },
     { id = "badge",        name = L["OPT_MINIMAP_ICON_BADGE"] },
   }
-  -- This section exists to pick this icon, so the row IS the picker: a live
-  -- swatch of the current choice beside a dropdown that fills the rest of
-  -- the row -- not a small toggle stranded across the card from a label.
-  -- Every item also carries its art, so the open list shows the icons
-  -- themselves -- the only way to browse them without pending mail.
-  if ns.MinimapButton and ns.MinimapButton.GetIconSpec then
-    for _, item in ipairs(iconItems) do
-      item.icon = ns.MinimapButton.GetIconSpec(item.id)
-    end
+  -- Every item carries its art, so the open list shows the icons themselves
+  -- -- the only way to browse them without pending mail.
+  if Icon and Icon.GetIconSpec then
+    for _, item in ipairs(iconItems) do item.icon = Icon.GetIconSpec(item.id) end
   end
-  -- The showcase stage: the current icon at a size you can actually judge,
-  -- on a quiet dark plate, WEARING the live settings -- accent tint, glow
-  -- (with its pulse) and shadow render here exactly as they will on the
-  -- minimap, so the card previews the feature instead of naming it.
-  local GLOW_TGA = "Interface\\AddOns\\Postbox\\Media\\minimap-glow.tga"
-  local PREVIEW_ICON_SIZE = 38
-  -- Sized and placed so its top edge lines up with the toggle grid's top and
-  -- its bottom with the icon switcher's bottom: one rectangle, two columns.
-  local stage = CreateFrame("Frame", nil, card)
-  stage:SetSize(72, 72)
-  stage:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy - 4)
-  stage:SetClipsChildren(true)
-  local stageArt = ArtHolder(stage)
-  -- A neutral mid-tone ground, not black: the shadow option is jet black
-  -- and was invisible against a dark plate. This is roughly a minimap's
-  -- average terrain value, so both glow and shadow read the way they will
-  -- in the world.
-  local stageBg = stageArt:CreateTexture(nil, "BACKGROUND", nil, -7)
-  stageBg:SetAllPoints()
-  stageBg:SetColorTexture(0.40, 0.41, 0.38, 1)
-  local prevShadow = stageArt:CreateTexture(nil, "BACKGROUND", nil, -1)
-  prevShadow:SetPoint("CENTER", stage, "CENTER", 0, -1)
-  prevShadow:SetTexture(GLOW_TGA)
-  prevShadow:SetVertexColor(0, 0, 0)
-  prevShadow:SetAlpha(0.9)
-  prevShadow:SetSize(PREVIEW_ICON_SIZE * 1.8, PREVIEW_ICON_SIZE * 1.8)
-  local prevGlow = stageArt:CreateTexture(nil, "BACKGROUND", nil, 0)
-  prevGlow:SetPoint("CENTER", stage, "CENTER", 0, 0)
-  prevGlow:SetTexture(GLOW_TGA)
-  prevGlow:SetBlendMode("ADD")
-  prevGlow:SetSize(PREVIEW_ICON_SIZE * 2.2, PREVIEW_ICON_SIZE * 2.2)
-  local prevPulse = prevGlow:CreateAnimationGroup()
-  prevPulse:SetLooping("BOUNCE")
-  local prevFade = prevPulse:CreateAnimation("Alpha")
-  prevFade:SetFromAlpha(1)
-  prevFade:SetToAlpha(0.55)
-  prevFade:SetDuration(1.6)
-  prevFade:SetSmoothing("IN_OUT")
-  local iconPreview = stageArt:CreateTexture(nil, "ARTWORK")
-  iconPreview:SetPoint("CENTER", stage, "CENTER", 0, 0)
-
-  local function PaintIconPreview()
-    local Icon = ns.MinimapButton
-    local spec = Icon and Icon.GetIconSpec and Icon.GetIconSpec()
-    if not spec then
-      iconPreview:Hide()
-      prevGlow:Hide()
-      prevShadow:Hide()
-      return
-    end
-    iconPreview:Show()
-    if spec.atlas then
-      iconPreview:SetAtlas(spec.atlas)
-    else
-      iconPreview:SetTexture(spec.texture)
-    end
-    iconPreview:SetSize(PREVIEW_ICON_SIZE, PREVIEW_ICON_SIZE * (spec.aspect or 1))
-
-    local r, g, b = 1, 1, 1
-    local accentOn = Icon.GetAccentTint and Icon.GetAccentTint()
-    if accentOn then r, g, b = ns.Theme.GetAccent() end
-    if spec.tintable and accentOn then
-      iconPreview:SetVertexColor(r, g, b)
-    else
-      iconPreview:SetVertexColor(1, 1, 1)
-    end
-
-    prevGlow:SetVertexColor(r, g, b)
-    if Icon.GetGlow and Icon.GetGlow() then
-      prevGlow:Show()
-      if not Icon.GetPulse or Icon.GetPulse() then
-        if not prevPulse:IsPlaying() then prevPulse:Play() end
-      else
-        prevPulse:Stop()
-      end
-    else
-      prevPulse:Stop()
-      prevGlow:Hide()
-    end
-    prevShadow:SetShown(Icon.GetShadow and Icon.GetShadow() or false)
-  end
-  -- The chunk beside the stage: a 2x2 grid of compact toggles -- the two
-  -- effects on top, their two modifiers beneath (Accent colours the glow,
-  -- Pulse breathes it) -- with the icon switcher under the grid. One
-  -- rectangle, clear reading order, no wasted rows.
-  local function MiniCheck(gridX, gridY, labelKey, descKey, get, set)
-    local cb = CreateFrame("CheckButton", nil, card, "UICheckButtonTemplate")
-    cb:SetSize(20, 20)
-    cb:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 80 + gridX * 106, cy - 4 - gridY * 24)
-    cb.__postboxCheck = true
-    local label = ns.Theme.CreateText(card, "label")
-    label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
-    label:SetWordWrap(false)
-    label:SetText(L[labelKey])
-    cb.__label = label
-    cb:SetChecked(get())
-    cb:SetScript("OnClick", function(self)
-      local on = self:GetChecked() and true or false
-      set(on)
-      PaintIconPreview()
-      if type(SOUNDKIT) == "table" then
-        PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
-                     or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
-      end
-    end)
-    cb:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(L[labelKey])
-      GameTooltip:AddLine(L[descKey], 1, 1, 1, true)
-      GameTooltip:Show()
-    end)
-    cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    frame.__refreshers[#frame.__refreshers + 1] = function() cb:SetChecked(get()) end
-  end
-
-  MiniCheck(0, 0, "OPT_MINIMAP_GLOW_TITLE", "OPT_MINIMAP_GLOW_DESC",
-        function() return ns.MinimapButton and ns.MinimapButton.GetGlow() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetGlow(on) end end)
-  MiniCheck(1, 0, "OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC",
-        function() return ns.MinimapButton and ns.MinimapButton.GetShadow() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetShadow(on) end end)
-  MiniCheck(0, 1, "OPT_MINIMAP_ACCENT_TITLE", "OPT_MINIMAP_ACCENT_DESC",
-        function() return ns.MinimapButton and ns.MinimapButton.GetAccentTint() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetAccentTint(on) end end)
-  MiniCheck(1, 1, "OPT_MINIMAP_PULSE_TITLE", "OPT_MINIMAP_PULSE_DESC",
-        function() return ns.MinimapButton and ns.MinimapButton.GetPulse() end,
-        function(on) if ns.MinimapButton then ns.MinimapButton.SetPulse(on) end end)
-
-  local iconDD = ns.Core.UI.Dropdown.Create(card, {
-    items        = iconItems,
-    toggleWidth  = 212,
-    toggleHeight = 22,
-    alignRight   = true,
-    height       = DROPDOWN_H,
-    defaultId    = ns.MinimapButton and ns.MinimapButton.GetIcon(),
+  Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_ICON_TITLE"], text = L["OPT_MINIMAP_ICON_DESC"], items = iconItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetIcon() end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end
+      Ctx.Repaint()
+    end,
   })
-  -- cy - 53, not - 54: mathematically -54 puts the toggle's bottom flush with
-  -- the stage's, but the rendered button reads 1px low against it (border and
-  -- baseline both draw inside the frame rect). Tuned by eye in game.
-  iconDD:SetPoint("TOPLEFT", card, "TOPLEFT", PAD + 80, cy - 53)
-  iconDD:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
-  iconDD:SetChangeCallback(function(id)
-    if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end
-    PaintIconPreview()
-  end)
-  frame.__refreshers[#frame.__refreshers + 1] = function()
-    local current = ns.MinimapButton and ns.MinimapButton.GetIcon()
-    for _, item in ipairs(iconItems) do
-      if item.id == current then
-        iconDD._selectedId = current
-        iconDD:SetText(item.name)
-        break
-      end
-    end
-    PaintIconPreview()
-  end
-  PaintIconPreview()
-  MarkBottom(card, cy, 80)
-  cy = cy - 88
 
-  -- With EllesmereUI's minimap module running, Postbox restyles EllesmereUI's
-  -- own mail icon in place rather than drawing a second one; position and
-  -- size are then EllesmereUI's to control, so those rows would be dead
-  -- weight and are left out (see Core/MinimapButton.lua section 3).
-  if not mmHostStyled then
-    local mmSizeItems = {}
-    for _, px in ipairs({ 16, 20, 24, 28 }) do
-      mmSizeItems[#mmSizeItems + 1] = {
-        id = px, name = string.format(L["OPT_MINIMAP_SIZE_STEP"], px),
-      }
-    end
-    cy = AddDropdown(card, cy, L["OPT_MINIMAP_SIZE_TITLE"], mmSizeItems,
-          function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
-          function(id) if ns.MinimapButton then ns.MinimapButton.SetIconSize(id) end end)
-
-    -- Every placement in ONE list -- a mode checkbox beside a position list
-    -- gave two controls authority over one fact, and they contradicted each
-    -- other the moment shift-drag moved the icon. Blizzard default leads:
-    -- it is where the stock indicator lives and the fresh-install default.
-    local mmPositionItems = {
-      { id = "BLIZZARD",    name = L["OPT_MINIMAP_POS_BLIZZARD"] },
-      { id = "TOPRIGHT",    name = L["OPT_MINIMAP_POS_TR"] },
-      { id = "TOPLEFT",     name = L["OPT_MINIMAP_POS_TL"] },
-      { id = "BOTTOMRIGHT", name = L["OPT_MINIMAP_POS_BR"] },
-      { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
-      { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
-      { id = "FREE",        name = L["OPT_MINIMAP_POS_FREE"] },
+  -- The two effects side by side, their two modifiers beneath (Accent
+  -- colours the glow, Pulse breathes it).
+  local function Effect(titleKey, descKey, get, set)
+    return {
+      title = L[titleKey], text = L[descKey],
+      get = function() return ns.MinimapButton and ns.MinimapButton[get]() end,
+      set = function(on) if ns.MinimapButton then ns.MinimapButton[set](on) end end,
+      after = Ctx.Repaint,
     }
-    cy = AddDropdown(card, cy, L["OPT_MINIMAP_POS_TITLE"], mmPositionItems,
-          function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
-          function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end)
-
-    cy = AddCheckbox(card, cy, L["OPT_MINIMAP_LOCK_TITLE"], L["OPT_MINIMAP_LOCK_DESC"],
-          function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
-          function(on) if ns.MinimapButton then ns.MinimapButton.SetLocked(on) end end)
-
   end
+  Rows.Pair(block,
+    Effect("OPT_MINIMAP_GLOW_TITLE", "OPT_MINIMAP_GLOW_DESC", "GetGlow", "SetGlow"),
+    Effect("OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC", "GetShadow", "SetShadow"))
+  Rows.Pair(block,
+    Effect("OPT_MINIMAP_ACCENT_TITLE", "OPT_MINIMAP_ACCENT_DESC", "GetAccentTint", "SetAccentTint"),
+    Effect("OPT_MINIMAP_PULSE_TITLE", "OPT_MINIMAP_PULSE_DESC", "GetPulse", "SetPulse"))
 
-  if not mmHostStyled then
-    cy = cy - 4
-    cy = AddButton(card, cy,
-          function() return L["OPT_MINIMAP_RESET_POS"] end,
-          L["OPT_MINIMAP_RESET_POS_DESC"],
-          function()
-            if ns.MinimapButton then ns.MinimapButton.ResetPosition() end
-            -- The reset just rewrote position AND detachment; the dropdown
-            -- and the checkboxes above must say so immediately, not on the
-            -- panel's next open.
-            Panel.RefreshControls()
-          end)
+  if hostStyled then
+    -- One quiet line, not a paragraph: the whole of it is in the inspector.
+    Rows.Note(block, L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_STYLED"])
   else
-    -- One quiet line, not a paragraph: the full explanation lives in its
-    -- hover tooltip.
-    local hint = CreateFrame("Frame", nil, card)
-    hint:SetHeight(14)
-    hint:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
-    hint:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
-    hint:EnableMouse(true)
-    local hintText = ns.Theme.CreateText(hint, "bodySmall")
-    hintText:SetPoint("CENTER", hint, "CENTER", 0, 0)
-    hintText:SetJustifyH("CENTER")
-    hintText:SetWordWrap(false)
-    hintText:SetText(L["OPT_MINIMAP_EUI_SHORT"])
-    hintText:SetAlpha(0.7)
-    hint:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(L["OPT_MINIMAP_EUI_SHORT"])
-      GameTooltip:AddLine(L["OPT_MINIMAP_EUI_STYLED"], 1, 1, 1, true)
-      GameTooltip:Show()
-    end)
-    hint:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    MarkBottom(card, cy, 14)
-    cy = cy - 20
+    local sizeItems = {}
+    for _, px in ipairs({ 16, 20, 24, 28 }) do
+      sizeItems[#sizeItems + 1] = { id = px, name = string.format(L["OPT_MINIMAP_SIZE_STEP"], px) }
+    end
+    Rows.Dropdown(block, {
+      title = L["OPT_MINIMAP_SIZE_TITLE"], text = L["OPT_MINIMAP_SIZE_DESC"], items = sizeItems,
+      get = function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
+      set = function(id) if ns.MinimapButton then ns.MinimapButton.SetIconSize(id) end end,
+    })
+    -- Every placement in ONE list -- a mode checkbox beside a position list
+    -- gave two controls authority over one fact, and they contradicted
+    -- each other the moment shift-drag moved the icon. Blizzard default
+    -- leads: it is where the stock indicator lives and the fresh-install
+    -- default.
+    Rows.Dropdown(block, {
+      title = L["OPT_MINIMAP_POS_TITLE"], text = L["OPT_MINIMAP_POS_DESC"],
+      items = {
+        { id = "BLIZZARD",    name = L["OPT_MINIMAP_POS_BLIZZARD"] },
+        { id = "TOPRIGHT",    name = L["OPT_MINIMAP_POS_TR"] },
+        { id = "TOPLEFT",     name = L["OPT_MINIMAP_POS_TL"] },
+        { id = "BOTTOMRIGHT", name = L["OPT_MINIMAP_POS_BR"] },
+        { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
+        { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
+        { id = "FREE",        name = L["OPT_MINIMAP_POS_FREE"] },
+      },
+      get = function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
+      set = function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end,
+    })
+    Rows.Check(block, {
+      title = L["OPT_MINIMAP_LOCK_TITLE"], text = L["OPT_MINIMAP_LOCK_DESC"],
+      get = function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
+      set = function(on) if ns.MinimapButton then ns.MinimapButton.SetLocked(on) end end,
+    })
+    Rows.Button(block, {
+      title = L["OPT_MINIMAP_RESET_POS"], text = L["OPT_MINIMAP_RESET_POS_DESC"], caption = L["BTN_RESET"],
+      onClick = function()
+        if ns.MinimapButton then ns.MinimapButton.ResetPosition() end
+        -- The reset just rewrote position AND detachment; the dropdown and
+        -- the checkbox above must say so immediately, not on the panel's
+        -- next open.
+        Panel.RefreshControls()
+      end,
+    })
   end
 
-  y = EndSection(col, card, y)
-  local minimapCard = card
+  -- The flash is drawn on the icon, so with the icon off it has nothing to
+  -- draw on: it greys with the rows above.
+  Rows.Check(block, {
+    title = L["OPT_ALERT_FLASH_TITLE"], text = L["OPT_ALERT_FLASH_DESC"],
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
+    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end,
+  })
+  Rows.EndBlock(block)
+end
 
-  -- Mail Memory: every character's last-seen mailbox -- a window of its own
-  -- away from the mailbox, and the other characters in the Mail tab at one.
-  -- Built like the Minimap section: the master switch on the heading line,
-  -- and the card greys and stops taking clicks while it is off, which is what
-  -- says the warning below belongs to it. It used to be the third row of Mail
-  -- alerts, where it read as one more alert.
-  local memHeadingY = y
-  y = AddSectionHeading(col, y, L["OPT_MEMORY_TITLE"])
-  local UpdateMemoryCardState -- defined once the card exists below
+-- Mail Memory: every character's last-seen mailbox -- a window of its own
+-- away from the mailbox, and the other characters in the Mail tab at one.
+function Pages.memory(col)
+  local T = ns.Theme
+  Rows.Check(col, {
+    master = true, title = L["OPT_MEMORY_SWITCH"], entryTitle = L["OPT_MEMORY_TITLE"],
+    text = L["OPT_MEMORY_DESC"],
+    get = function() return ns.MailboxUI.GetOption("mailMemory") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("mailMemory", on)
+      if ns.MailboxUI.RefreshMemoryState then ns.MailboxUI.RefreshMemoryState() end
+    end,
+    after = State.Memory,
+  })
 
-  local memToggle = CreateFrame("CheckButton", nil, col, "UICheckButtonTemplate")
-  memToggle:SetSize(CHECK_H, CHECK_H)
-  memToggle:SetPoint("TOPRIGHT", col, "TOPRIGHT", -PAD + 4, memHeadingY + 5)
-  memToggle.__postboxCheck = true
-  local memToggleLabel = ns.Theme.CreateText(col, "label")
-  memToggleLabel:SetPoint("RIGHT", memToggle, "LEFT", -4, 0)
-  memToggleLabel:SetWordWrap(false)
-  memToggleLabel:SetText(L["OPT_MEMORY_SWITCH"])
-  memToggle.__label = memToggleLabel
-  memToggle:SetChecked(ns.MailboxUI.GetOption("mailMemory"))
-  memToggle:SetScript("OnClick", function(self)
-    local on = self:GetChecked() and true or false
-    ns.MailboxUI.SetOption("mailMemory", on)
-    if ns.MailboxUI.RefreshMemoryState then ns.MailboxUI.RefreshMemoryState() end
-    if UpdateMemoryCardState then UpdateMemoryCardState() end
-    if type(SOUNDKIT) == "table" then
-      PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
-                   or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
-    end
+  local block = Rows.Block(col)
+  S.memoryBlock = block
+  Rows.Check(block, {
+    title = L["OPT_ALERT_OTHERS_TITLE"], text = L["OPT_ALERT_OTHERS_DESC"],
+    get = function() return ns.MailboxUI.GetOption("mailWarnings") end,
+    set = function(on) ns.MailboxUI.SetOption("mailWarnings", on) end,
+  })
+
+  -- Hidden characters: the caption, the names, and Show all.
+  local row = Rows.New(block, ROW_H)
+  Rows.Cell(block, row, ROW_W, L["HIDDEN_TITLE"], L["HIDDEN_DESC"])
+  row.kind = "hidden"
+  local showAll = T.CreateButton(nil, row)
+  showAll:SetHeight(CHECK_H)
+  showAll:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
+  showAll:SetText(L["OPT_HIDDEN_SHOW_ALL"])
+  showAll:SetScript("OnClick", function()
+    local Memory = ns.MailMemory
+    if Memory and type(Memory.ShowAllHidden) == "function" then Memory.ShowAllHidden() end
   end)
-  memToggle:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["OPT_MEMORY_TITLE"])
-    GameTooltip:AddLine(L["OPT_MEMORY_DESC"], 1, 1, 1, true)
-    GameTooltip:Show()
+  showAll.__pbCell = row
+  showAll.__pbEntry = Entry(L["OPT_HIDDEN_SHOW_ALL"], L["OPT_HIDDEN_SHOW_ALL_DESC"])
+  if showAll.SetMotionScriptsWhileDisabled then showAll:SetMotionScriptsWhileDisabled(true) end
+  showAll:HookScript("OnEnter", Rows.ControlEnter)
+  showAll:HookScript("OnLeave", Rows.ControlLeave)
+  showAll:Hide()
+  local names = T.CreateText(row, "secondary")
+  names:SetJustifyH("RIGHT")
+  names:SetWordWrap(false)
+  row.more, row.Names, row.lines = showAll, names, {}
+  -- Its tooltip also lists every name the row may have cut.
+  row:SetScript("OnEnter", function(self)
+    Rows.Hover(self)
+    local tip = Tip.Begin(self, self.entry.title, self.entry.text)
+    local lines = self.lines
+    if #lines > 0 then
+      tip:AddLine(" ")
+      for i = 1, #lines do tip:AddLine(lines[i], 1, 1, 1) end
+      if self.moreLine then tip:AddLine(self.moreLine, 0.6, 0.6, 0.63) end
+    end
+    Tip.Show(self)
   end)
-  memToggle:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  frame.__refreshers[#frame.__refreshers + 1] = function()
-    memToggle:SetChecked(ns.MailboxUI.GetOption("mailMemory"))
-  end
+  row:SetScript("OnLeave", Rows.LeaveRow)
+  S.hiddenRow = row
+  Rows.EndBlock(block)
+end
 
-  card = StartCard(col, y)
-  cy = -CARD_PAD
-  cy = AddCheckbox(card, cy, L["OPT_ALERT_OTHERS_TITLE"], L["OPT_ALERT_OTHERS_DESC"],
-        function() return ns.MailboxUI.GetOption("mailWarnings") end,
-        function(on) ns.MailboxUI.SetOption("mailWarnings", on) end)
+-------------------------------------------------------------
+-- The footer
+--
+-- What this build is, the one door out to a bug report, and Reset to
+-- defaults at the band's left end. Unchanged in behaviour; it sits under
+-- the list and the inspector.
+-------------------------------------------------------------
+-- One of the theme's glyphs, white like the band's text beside it, or nil
+-- where the theme has none: the band then reads as words alone.
+function Footer.Glyph(parent, name, size)
+  local T = ns.Theme
+  local glyph = T and type(T.Glyph) == "function" and T.Glyph(parent, name, size, "ARTWORK") or nil
+  if glyph then T.SetColor(glyph, "textPrimary") end
+  return glyph
+end
 
-  -- The characters hidden from the character list (Core/MailMemory.lua, 2b):
-  -- who they are, and one button that shows them all again. The list's own
-  -- foot brings them back one at a time; this row is the way back that is
-  -- always here, even once nobody is left for that list to offer.
-  do
-    local T = ns.Theme
-    local row = CreateFrame("Frame", nil, card)
-    row:SetHeight(CHECK_H)
-    row:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, cy)
-    row:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
-
-    local caption = T.CreateText(row, "label")
-    caption:SetPoint("LEFT", row, "LEFT", 0, 0)
-    caption:SetWordWrap(false)
-    caption:SetText(L["HIDDEN_TITLE"])
-
-    local showAll = T.CreateButton(nil, row)
-    showAll:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-    showAll:SetText(L["OPT_HIDDEN_SHOW_ALL"])
-    showAll:SetScript("OnClick", function()
-      local Memory = ns.MailMemory
-      if Memory and type(Memory.ShowAllHidden) == "function" then Memory.ShowAllHidden() end
-    end)
-    showAll:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(L["OPT_HIDDEN_SHOW_ALL"])
-      GameTooltip:AddLine(L["OPT_HIDDEN_SHOW_ALL_DESC"], 1, 1, 1, true)
-      GameTooltip:Show()
-    end)
-    showAll:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    -- The names, right-aligned against the button: class colours, the realm
-    -- where it is not this one, cut short -- the whole list is on hover.
-    local names = T.CreateText(row, "secondary")
-    names:SetJustifyH("RIGHT")
-    names:SetWordWrap(false)
-
-    local hiddenList = {}
-    local function NameOf(who)
-      local Memory = ns.MailMemory
-      return (Memory and Memory.ClassName) and Memory.ClassName(who.realm, who.name) or who.name
-    end
-    local function RefreshHidden()
-      local Memory = ns.MailMemory
-      hiddenList = (Memory and type(Memory.HiddenCharacters) == "function") and Memory.HiddenCharacters() or {}
-      local any = #hiddenList > 0
-      -- Measured on every open: a host skin re-fonts the button after build.
-      T.SizeToText(showAll, { height = CHECK_H })
-      showAll:SetShown(any)
-      names:ClearAllPoints()
-      if any then
-        names:SetPoint("RIGHT", showAll, "LEFT", -8, 0)
-      else
-        names:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-      end
-      local parts = {}
-      for i = 1, #hiddenList do parts[i] = NameOf(hiddenList[i]) end
-      -- The row's width from its anchors, or from the column's own numbers
-      -- before the panel has ever been laid out.
-      local width = row:GetWidth() or 0
-      if width < 50 then width = W - 20 - 2 * PAD end
-      local room = width - math.ceil(caption:GetStringWidth() or 0) - 8
-        - (any and (math.ceil(showAll:GetWidth() or 0) + 8) or 0)
-      T.FitText(names, math.max(room, 20), any and table.concat(parts, ", ") or L["OPT_HIDDEN_NONE"])
-    end
-    RefreshHidden()
-    frame.__refreshers[#frame.__refreshers + 1] = RefreshHidden
-
-    -- The row explains itself on hover, and lists every name the row may
-    -- have cut; the button has its own tooltip. Motion only: a click passes
-    -- on, as the Window heading's badge does.
-    row:EnableMouse(true)
-    if row.SetPropagateMouseClicks then row:SetPropagateMouseClicks(true) end
-    row:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(L["HIDDEN_TITLE"])
-      GameTooltip:AddLine(L["HIDDEN_DESC"], 1, 1, 1, true)
-      if #hiddenList > 0 then
-        GameTooltip:AddLine(" ")
-        local shown = math.min(#hiddenList, 12)
-        for i = 1, shown do GameTooltip:AddLine(NameOf(hiddenList[i]), 1, 1, 1) end
-        if #hiddenList > shown then
-          GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #hiddenList - shown), 0.6, 0.6, 0.63)
-        end
-      end
-      GameTooltip:Show()
-    end)
-    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    MarkBottom(card, cy, CHECK_H)
-    cy = cy - ROW_H
-  end
-  y = EndSection(col, card, y)
-  local memoryCard = card
-
-  local rightBottom = y
-  -- Back on the panel's own cursor: the taller column's bottom, and the
-  -- footer band under it.
-  y = colTop + math.min(leftBottom, rightBottom) + SECTION_GAP
-
-  -- The desaturate-and-lock for the card above. Alpha carries the look; the
-  -- overlay eats the mouse so nothing inside can be clicked or hovered while
-  -- the feature is off. Level +40 clears every row control in the card.
-  do
-    local mmCard = minimapCard
-    local blocker = CreateFrame("Frame", nil, mmCard)
-    blocker:SetAllPoints(mmCard)
-    blocker:SetFrameLevel(mmCard:GetFrameLevel() + 40)
-    blocker:EnableMouse(true)
-    blocker:Hide()
-    UpdateMinimapCardState = function()
-      local on = ns.MinimapButton and ns.MinimapButton.GetEnabled
-        and ns.MinimapButton.GetEnabled()
-      mmCard:SetAlpha(on and 1 or 0.4)
-      blocker:SetShown(not on)
-      PaintFlashState(on and true or false)
-      -- A disabled card must not keep moving: the preview's pulse animation
-      -- plays on regardless of frame alpha, so it is stopped here and
-      -- re-derived from the settings when the feature comes back on.
-      if on then
-        PaintIconPreview()
-      else
-        prevPulse:Stop()
-      end
-    end
-    UpdateMinimapCardState()
-    frame.__refreshers[#frame.__refreshers + 1] = UpdateMinimapCardState
-  end
-
-  -- The same for the Mail Memory card, following its heading switch.
-  do
-    local memCard = memoryCard
-    local blocker = CreateFrame("Frame", nil, memCard)
-    blocker:SetAllPoints(memCard)
-    blocker:SetFrameLevel(memCard:GetFrameLevel() + 40)
-    blocker:EnableMouse(true)
-    blocker:Hide()
-    UpdateMemoryCardState = function()
-      local on = ns.MailboxUI.GetOption("mailMemory") and true or false
-      memCard:SetAlpha(on and 1 or 0.4)
-      blocker:SetShown(not on)
-    end
-    UpdateMemoryCardState()
-    frame.__refreshers[#frame.__refreshers + 1] = UpdateMemoryCardState
-  end
-
-  -- The footer: what this build is, and the one door out to a bug report.
-  -- It used to announce which look was painting the addon -- a sentence
-  -- that belongs with the Style section (and now lives there), and that
-  -- read "Postbox's own style" even when the Blizzard style had been chosen
-  -- deliberately. What is left is the two things a footer is for.
-  y = y - 2
+function Footer.Build(frame, above)
   local statusBand = CreateFrame("Button", nil, frame, "BackdropTemplate")
-  statusBand:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, y)
-  statusBand:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
-  statusBand:SetHeight(24)
+  statusBand:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -BODY_GAP)
+  statusBand:SetPoint("RIGHT", frame, "RIGHT", -EDGE, 0)
+  statusBand:SetHeight(BAND_H)
   ns.Theme.ApplyBand(statusBand)
 
   local statusText = ns.Theme.CreateText(statusBand, "bodySmall")
-  statusText:SetPoint("CENTER", statusBand, "CENTER", 0, 0)
   statusText:SetJustifyH("CENTER")
   statusText:SetWordWrap(false)
   -- Says what the click does. The band has always opened the bug report;
   -- nothing on it ever said so.
   statusText:SetText(L["OPT_REPORT_BUG"])
   statusText:SetAlpha(0.85)
+  -- Its mark before it, the pair centred as one.
+  local bugArt = ArtHolder(statusBand)
+  local bug = Footer.Glyph(bugArt, "bug", 12)
+  statusText:SetPoint("CENTER", statusBand, "CENTER", bug and 8 or 0, 0)
+  if bug then
+    bug:SetPoint("CENTER", statusText, "LEFT", -11, 0)
+    bug:SetAlpha(0.85)
+  end
 
   -- The packager stamps the release TAG into the TOC, which already carries
   -- its own "v" -- do not add another.
@@ -1841,10 +2291,10 @@ local function Build()
   versionText:SetAlpha(0.55)
 
   -- Reset to defaults, at the band's left end across from the version: the
-  -- one control here that undoes the player's own choices, so it is as quiet
-  -- as the version until pointed at, and it asks first -- the dialog says
-  -- what goes and what stays. A button of its own laid over the band, so a
-  -- click on it is never also a click on the bug report.
+  -- one control here that undoes the player's own choices, so it is as
+  -- quiet as the version until pointed at, and it asks first -- the dialog
+  -- says what goes and what stays. A button of its own laid over the band,
+  -- so a click on it is never also a click on the bug report.
   --
   -- Two resets, offered side by side: the settings alone, or everything
   -- Postbox keeps but the list of the player's characters. The second
@@ -1863,6 +2313,9 @@ local function Build()
     -- style change makes. Nothing else needs one: everything a reset
     -- touches is put back on screen as it happens (MailboxUI, the resets).
     local function AfterReset(styleChanged)
+      -- Everything can clear the recipients: the Send tab's tile counts
+      -- them again.
+      S.sendText = nil
       Panel.RefreshControls()
       if styleChanged then
         if EnsureStyleDialog() then
@@ -1960,18 +2413,29 @@ local function Build()
     reset:SetPoint("TOPLEFT", statusBand, "TOPLEFT", 4, 0)
     reset:SetPoint("BOTTOMLEFT", statusBand, "BOTTOMLEFT", 4, 0)
     reset:SetFrameLevel(statusBand:GetFrameLevel() + 2)
+    -- Its arrow before it and a caret after: a choice opens from here.
+    local arrow = Footer.Glyph(reset, "reset", 12)
+    local caret = Footer.Glyph(reset, "caret", 6)
     local resetText = ns.Theme.CreateText(reset, "bodySmall")
-    resetText:SetPoint("LEFT", reset, "LEFT", 4, 0)
+    resetText:SetPoint("LEFT", reset, "LEFT", arrow and 21 or 4, 0)
     resetText:SetWordWrap(false)
     resetText:SetText(L["OPT_RESET_DEFAULTS"])
-    resetText:SetAlpha(0.55)
+    if arrow then arrow:SetPoint("CENTER", reset, "LEFT", 10, 0) end
+    if caret then caret:SetPoint("CENTER", resetText, "RIGHT", 9, 0) end
+    local function Quiet(on)
+      local a = on and 0.55 or 1
+      resetText:SetAlpha(a)
+      if arrow then arrow:SetAlpha(a) end
+      if caret then caret:SetAlpha(a) end
+    end
+    Quiet(true)
     -- As wide as what it says, re-measured on every open: a host skin can
     -- re-font it after the panel is built.
     local function FitReset()
-      reset:SetWidth(math.ceil(resetText:GetStringWidth() or 0) + 8)
+      reset:SetWidth(math.ceil(resetText:GetStringWidth() or 0) + (arrow and 21 or 4) + (caret and 18 or 4))
     end
     FitReset()
-    frame.__refreshers[#frame.__refreshers + 1] = FitReset
+    S.refresh[#S.refresh + 1] = FitReset
 
     reset:SetScript("OnClick", function()
       if Busy() then return end
@@ -1980,55 +2444,192 @@ local function Build()
       end
     end)
     reset:SetScript("OnEnter", function(self)
-      resetText:SetAlpha(1)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(L["OPT_RESET_DEFAULTS"])
-      GameTooltip:AddLine(L["OPT_RESET_DEFAULTS_DESC"], 1, 1, 1, true)
-      GameTooltip:Show()
+      Quiet(false)
+      Tip.Begin(self, L["OPT_RESET_DEFAULTS"], L["OPT_RESET_DEFAULTS_DESC"])
+      Tip.Show(self)
     end)
     reset:SetScript("OnLeave", function()
-      resetText:SetAlpha(0.55)
+      Quiet(true)
       GameTooltip:Hide()
     end)
   end
 
-  -- The bug-report popup: the report address and a one-line setup summary,
-  -- each in a copyable box. No browser can be opened from in-game, so
-  -- copyable is the whole feature.
-  --
-  -- It is a window of its own now (BugReport, above), built on first use.
-  -- The panel's refresh repaints its recording switch, and after a reset
-  -- takes the record down with the cleared choice.
+  -- The bug-report window (BugReport, above), built on first use. The
+  -- panel's refresh repaints its recording switch, and after a reset takes
+  -- the record down with the cleared choice.
   local function ToggleBugReport() BugReport.Toggle(frame) end
-  frame.__refreshers[#frame.__refreshers + 1] = BugReport.Sync
+  S.refresh[#S.refresh + 1] = BugReport.Sync
   -- /postbox debug reaches this without the panel being open.
   Panel._toggleBugReport = ToggleBugReport
 
   statusBand:SetScript("OnClick", ToggleBugReport)
-  -- The band's own text carries the hover now; the green wash it used to
-  -- brighten went with the style sentence to the Style section.
   statusBand:SetScript("OnEnter", function(self)
     statusText:SetAlpha(1)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["OPT_BUG_TIP_TITLE"])
-    GameTooltip:AddLine(L["OPT_BUG_TIP_DESC"], 1, 1, 1, true)
-    GameTooltip:Show()
+    if bug then bug:SetAlpha(1) end
+    Tip.Begin(self, L["OPT_BUG_TIP_TITLE"], L["OPT_BUG_TIP_DESC"])
+    Tip.Show(self)
   end)
   statusBand:SetScript("OnLeave", function()
     statusText:SetAlpha(0.85)
+    if bug then bug:SetAlpha(0.85) end
     GameTooltip:Hide()
   end)
-  MarkBottom(frame, y, 24)
+end
 
-  -- Sized to the last control's own bottom edge plus one pad, so hiding the
-  -- appearance section (no host-UI skin) shortens the window rather than
-  -- leaving an empty row under the last button.
-  frame:SetSize(2 * W - 10, math.abs(frame.__pbContentBottom or y) + PAD)
+-------------------------------------------------------------
+-- Build, refresh, layout
+-------------------------------------------------------------
 
-  -- Let an active host-UI skin restyle the panel like the main window. ElvUI's
-  -- skin has no ApplyWindow, so testing only for that left the options panel
-  -- wearing Postbox's gold chrome while Skin.Refresh below ElvUI-skinned every
-  -- control inside it. Same expression as Core/RecipientManager.lua.
+-- Every control from its source of truth, and every state that follows.
+local function Refresh()
+  local cells = S.cells
+  for i = 1, #cells do
+    local cell = cells[i]
+    if cell.kind == "check" then
+      local ok, on = pcall(cell.get)
+      cell.control:SetChecked(ok and on and true or false)
+    elseif cell.kind == "dropdown" then
+      Rows.PaintDropdown(cell)
+    end
+  end
+  for i = 1, #S.refresh do pcall(S.refresh[i]) end
+end
+
+-- The list and the inspector are one height, so the panel never jumps as
+-- the tabs change: the tallest page of rows.
+local function Layout()
+  local need = math.ceil(S.listNeed or 0)
+  if need ~= S.bodyH then
+    S.bodyH = need
+    S.body:SetHeight(need)
+    S.list:SetHeight(need)
+    S.insp:SetHeight(need)
+    S.frame:SetHeight(TOP + TAB_H + BODY_GAP + need + BODY_GAP + BAND_H + FOOT_BOTTOM)
+  end
+end
+
+-- The pointer left the list and the inspector from somewhere no row is.
+local function BodyLeave(self)
+  if self:IsMouseOver() then return end
+  local washed = S.washed
+  if washed and washed.Wash then washed.Wash:Hide() end
+  S.washed = nil
+  Insp.Show(nil)
+end
+
+-- Closing stops everything the panel set moving.
+local function PanelHide()
+  local washed = S.washed
+  if washed and washed.Wash then washed.Wash:Hide() end
+  S.washed = nil
+  Insp.Show(nil)
+  for _, f in pairs(S.ctx) do
+    if f.Stop then f.Stop() end
+  end
+end
+
+local function Build()
+  if S.frame then return S.frame end
+  local T = ns.Theme
+
+  local frame = CreateFrame("Frame", "PostboxOptionsFrame", UIParent, "BasicFrameTemplateWithInset")
+  frame:SetFrameStrata("FULLSCREEN_DIALOG")
+  frame:SetToplevel(true)
+  frame:SetClampedToScreen(true)
+  frame:EnableMouse(true)
+  frame:SetMovable(true)
+  frame:RegisterForDrag("LeftButton")
+  frame:SetScript("OnDragStart", frame.StartMoving)
+  frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+  frame:Hide()
+  frame:SetSize(PANEL_W, 480)
+
+  -- Never transparent: you need to read it while adjusting the transparency
+  -- of the window behind it. Skin.ApplyBgOpacity honours this flag.
+  frame.__pbEuiAlwaysOpaque = true
+
+  -- TitleText is not guaranteed: Blizzard has been moving it behind
+  -- TitleContainer, and the TOC declares two interface versions. The main
+  -- window and the recipient manager already guard the identical access on
+  -- the identical template; an unguarded index here would make the options
+  -- panel permanently unreachable rather than merely untitled.
+  if frame.SetTitle then
+    frame:SetTitle(L["OPTIONS_TITLE"])
+  elseif frame.TitleText then
+    frame.TitleText:SetText(L["OPTIONS_TITLE"])
+  end
+  T.ApplyFrameTheme(frame)
+  ns.Core.UI.Helpers.RegisterEscClose(frame)
+  S.frame = frame
+  S.installedHost = InstalledHostName()
+
+  -- What the inspector says at rest on each tab: the tile's own words on
+  -- the two tabs with one, the look's source on Window, the switch's own
+  -- on the two tabs a switch leads. The Window and Minimap texts are
+  -- settled below, once it is known what is painting.
+  S.idle.mail = Entry(L["GROUPS_TITLE"], L["GROUPS_OPT_DESC"])
+  S.idle.send = Entry(L["RM_OPT_BUTTON"], L["RM_OPT_BUTTON_DESC"])
+  S.idle.window = Entry(L["OPT_STYLE_TITLE"], L["OPT_STYLE_DESC"])
+  S.idle.minimap = Entry(L["OPT_MINIMAP_TITLE"], L["OPT_MINIMAP_DESC"])
+  S.idle.memory = Entry(L["OPT_MEMORY_TITLE"], L["OPT_MEMORY_DESC"])
+
+  Tabs.Build(frame)
+
+  -- The body: the list and the inspector, and the gap between them, as one
+  -- place the pointer can be (see the inspector's rule). Motion only.
+  local top = TOP + TAB_H + BODY_GAP
+  local body = CreateFrame("Frame", nil, frame)
+  body:SetPoint("TOPLEFT", frame, "TOPLEFT", EDGE, -top)
+  body:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -EDGE, -top)
+  body:SetHeight(300)
+  body:EnableMouse(true)
+  if body.SetPropagateMouseClicks then body:SetPropagateMouseClicks(true) end
+  body:SetScript("OnLeave", BodyLeave)
+  S.body = body
+
+  -- Both on the list surface the main window's panels use, so every skin
+  -- already knows how to paint them.
+  local list = CreateFrame("Frame", nil, body, "BackdropTemplate")
+  list:SetPoint("TOPLEFT", body, "TOPLEFT", 0, 0)
+  list:SetSize(LIST_W, 300)
+  T.ApplyList(list)
+  local insp = CreateFrame("Frame", nil, body, "BackdropTemplate")
+  insp:SetPoint("TOPRIGHT", body, "TOPRIGHT", 0, 0)
+  insp:SetSize(INSP_W, 300)
+  T.ApplyList(insp)
+  S.list, S.insp = list, insp
+  Insp.Build(insp)
+
+  local need = 0
+  for i = 1, #TABS do
+    local key = TABS[i].key
+    local page = CreateFrame("Frame", nil, list)
+    page:SetPoint("TOPLEFT", list, "TOPLEFT", 1, -1)
+    page:SetPoint("TOPRIGHT", list, "TOPRIGHT", -1, -1)
+    page:Hide()
+    local col = Rows.Column(page)
+    Pages[key](col)
+    local h = -col.y + LIST_PAD
+    page:SetHeight(h)
+    S.pages[key] = page
+    if h + 2 > need then need = h + 2 end
+  end
+  S.listNeed = need
+
+  S.refresh[#S.refresh + 1] = State.Inheritance
+  S.refresh[#S.refresh + 1] = State.Minimap
+  S.refresh[#S.refresh + 1] = State.Memory
+  S.refresh[#S.refresh + 1] = State.Hidden
+  S.refresh[#S.refresh + 1] = State.Arrange
+
+  Footer.Build(frame, list)
+  frame:HookScript("OnHide", PanelHide)
+
+  -- Let an active host-UI skin restyle the panel like the main window.
+  -- ElvUI's skin has no ApplyWindow, so testing only for that left the
+  -- options panel wearing Postbox's gold chrome while Skin.Refresh below
+  -- ElvUI-skinned every control inside it. Same expression as
+  -- Core/RecipientManager.lua.
   local applyWindow = ns.Skin and (ns.Skin.ApplyWindow or ns.Skin.Apply)
   if applyWindow then applyWindow(frame) end
 
@@ -2047,13 +2648,52 @@ function Panel.ToggleBugReport()
   if Panel._toggleBugReport then Panel._toggleBugReport() end
 end
 
--- Re-reads every control from its source of truth. The refreshers replay on
+-- The tab the panel shows; kept for the session, so the panel reopens where
+-- it was left.
+function Panel.SelectTab(key)
+  if not S.pages[key] then key = "mail" end
+  S.tab = key
+  if not S.frame then return end
+  -- A row left washed on the page going away would still be washed when
+  -- that page came back.
+  local washed = S.washed
+  if washed and washed.Wash then washed.Wash:Hide() end
+  S.washed = nil
+  Tabs.Select(key)
+  Ctx.Show(key)
+  Insp.SetTab(key)
+end
+
+-- Re-reads every control from its source of truth. The panel does this on
 -- every open anyway; this exists for state that changes WHILE the panel is
--- up -- a reset button, a shift-drag turning a preset into Custom.
+-- up -- a reset button, a shift-drag turning a preset into Custom. The
+-- inspector keeps what it was showing.
 function Panel.RefreshControls()
-  local frame = Panel._frame
+  local frame = S.frame
   if not (frame and frame:IsShown()) then return end
-  for _, fn in ipairs(frame.__refreshers) do pcall(fn) end
+  Refresh()
+  Rows.Fit()
+  Tabs.Fit()
+  Layout()
+  Ctx.Paint(S.tab)
+  Insp.Repaint()
+end
+
+-- Arrange columns and buttons: the arrange mode on the Postbox window, the
+-- way its own mark beside the cog opens it -- which brings the Mail tab
+-- forward first when the Send tab is showing. Called through the mark
+-- itself, at click time, so whatever that mark does, this does. The panel
+-- steps out of the way of the rows being arranged.
+function Panel.Arrange()
+  local toggle = State.ArrangeToggle()
+  if not toggle then
+    State.Arrange()
+    return
+  end
+  local AR = ns.Arrange
+  local active = AR and AR.host ~= nil and AR.host.toggle == toggle
+  if not active and type(toggle.Click) == "function" then toggle:Click("LeftButton") end
+  if S.frame then S.frame:Hide() end
 end
 
 function Panel.Toggle(anchor)
@@ -2062,7 +2702,9 @@ function Panel.Toggle(anchor)
     frame:Hide()
     return
   end
-  for _, fn in ipairs(frame.__refreshers) do pcall(fn) end
+  -- Counted again when the Send tab is next shown.
+  S.sendText = nil
+  Refresh()
   frame:ClearAllPoints()
   if anchor then
     frame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
@@ -2072,4 +2714,9 @@ function Panel.Toggle(anchor)
   frame:Show()
   frame:Raise()
   if ns.Skin and ns.Skin.Refresh then ns.Skin.Refresh(frame) end
+  -- Measured after the skin has re-fonted what it re-fonts.
+  Rows.Fit()
+  Tabs.Fit()
+  Layout()
+  Panel.SelectTab(S.tab)
 end
