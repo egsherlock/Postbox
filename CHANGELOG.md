@@ -19,6 +19,12 @@ longer play.
   crafters, a friend who sends you materials) and each group gets a button
   that collects everything they sent. Make them in Options, Mail tab, or
   right-click From alts.
+- **The options show what they do.** Five tabs, one tidy column of settings,
+  and a panel beside it that explains whatever you point at and shows it: a
+  sample mail row, your window's border and opacity over the world, the
+  minimap icon at full size. Every dropdown now has a description, Sound on
+  new mail moved to the Mail tab under Mail alerts, and Arrange columns and
+  buttons opens arranging from either tab.
 - **Hide a character** from the character list with a right-click. Postbox
   still remembers its mail; Show brings it back.
 - **Another character's mailbox fits the top row.** Done and History step
@@ -49,6 +55,8 @@ longer play.
   redraw once, not three times, the game's own hidden bag frames are left
   alone, and which items can be mailed is remembered until that bag changes.
   A visit that never opens Send asks your bags nothing.
+- **The options open quicker:** your recipients are counted when you look at
+  the Send tab, not every time the options open.
 - Also: the "Show on each mail" list moved from the options into the window,
   Mail Memory rows show the read mark, "Flash on new mail" greys out while
   the minimap icon is off, and the window border no longer offers "Match
