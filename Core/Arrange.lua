@@ -679,6 +679,22 @@ function AR.GestureLine(state)
   return L()[GESTURE[state] or GESTURE.fixed]
 end
 
+-- Eyes carry news, nothing else: a hidden thing wears the crossed eye,
+-- always; a shown thing that can be hidden shows an open eye only while it
+-- is pointed at. Either eye is itself the direct control: a click on it
+-- hides or shows the thing, where a click anywhere else on it selects it.
+-- No frame of its own -- a press is looked at where it lands: this answers
+-- whether the pointer is on `eye`, a glyph drawn on `frame` and shown,
+-- give or take `pad` units either side, over the whole height of `frame`.
+function AR.OverEye(frame, eye, pad)
+  if not (frame and eye and eye:IsShown()) then return false end
+  local l, r = eye:GetLeft(), eye:GetRight()
+  if not (l and r) then return false end
+  local x = AR.Cursor(frame)
+  pad = pad or 3
+  return x >= l - pad and x <= r + pad
+end
+
 -------------------------------------------------------------
 -- 4. The cog key
 --
@@ -1007,7 +1023,11 @@ end
 -- Headings are movable things (section 3b): at rest, pointed at, selected,
 -- in the hand. A press on one, or on its column in any row (section 7a), is
 -- the column's: a drag moves it, a click selects it for the inspector, a
--- right-click hides it (the subject's does nothing).
+-- right-click hides it (the subject's does nothing). Pointed at, a heading
+-- that can be hidden shows its open eye at its right end, the click that
+-- hides it (AR.OverEye) -- where the eye clears the heading's glyph or name
+-- by EYE_GAP; a heading too narrow for one has none, and hides by its
+-- right-click or its card.
 --
 -- Built the first time the mode opens over a list, and laid out again after
 -- every pass of the list's rows (AR.ListPlaced): the lanes are the rows'.
@@ -1024,6 +1044,9 @@ local HEAD = {
   ARROW_MIN = 12,   -- the shortest stretch arrow drawn
   SUBJECT_MIN = 40, -- the subject's heading never gives up more than this
   KEEP = 12,        -- nor does any other heading, for a peg beside it
+  EYE = 6,          -- a heading's open eye, as tall as a peg's crossed one
+  EYE_INSET = 3,    -- from the heading's right edge
+  EYE_GAP = 2,      -- clear of its glyph or name
   -- A shown heading with no lane of its own.
   NARROW = { read = 14, icon = 22, sender = 44, subject = 60, time = 22, money = 22, slots = 22 },
   -- Every heading's width where the list publishes no lanes.
@@ -1106,34 +1129,54 @@ function AR.PaintHead(head)
     end
     for k = 1, 3 do arrow[k]:SetVertexColor(r, g, b, 1) end
   end
+  -- The open eye, only while the heading itself is pointed at, and only
+  -- where it fits (AR.FitHead).
+  local eye = head.Eye
+  if eye then
+    local show = head.eyeFits and head.hover and not hand
+    eye:SetShown(show and true or false)
+    if show then T.SetColor(eye, "textSecondary") end
+  end
 end
 
 -- A heading's glyph or name where it stands (`_cx`, the glyph's middle,
--- and `_tx`, the name's start, both from the heading's left), and the name
--- and the subject's arrow fitted to its width: again only when one of them
--- changes (AR.LayoutStrip).
+-- and `_tx`, the name's start, both from the heading's left), the name and
+-- the subject's arrow fitted to its width, and whether its eye fits beside
+-- them: again only when one of them changes (AR.LayoutStrip).
 function AR.FitHead(head)
+  local w = head._w or 0
   local glyph = head.Glyph
+  -- Where what the heading shows ends, for its eye.
+  local ends
   if glyph then
     glyph:ClearAllPoints()
     glyph:SetPoint("CENTER", head, "LEFT", head._cx or 0, 0)
+    ends = (head._cx or 0) + (head.glyphHalf or 0)
   end
   local text = head.Text
-  if not text then return end
-  local w, tx = head._w or 0, head._tx or HEAD.TEXT
-  text:ClearAllPoints()
-  text:SetPoint("LEFT", head, "LEFT", tx, 0)
-  local room = math.max(w - tx - HEAD.TEXT, 1)
-  Th().FitText(text, room, head.caption, head)
-  local arrow = head.Stretch
-  if not arrow then return end
-  local measure = head.Measure
-  measure:SetText(head.caption)
-  local from = tx + math.min(math.ceil(measure:GetStringWidth() or 0), room) + HEAD.ARROW_GAP
-  local show = w - HEAD.TEXT - from >= HEAD.ARROW_MIN
-  arrow[1]:ClearAllPoints()
-  arrow[1]:SetPoint("LEFT", head, "LEFT", from, 0)
-  for k = 1, 3 do arrow[k]:SetShown(show) end
+  if text then
+    local tx = head._tx or HEAD.TEXT
+    text:ClearAllPoints()
+    text:SetPoint("LEFT", head, "LEFT", tx, 0)
+    local room = math.max(w - tx - HEAD.TEXT, 1)
+    Th().FitText(text, room, head.caption, head)
+    local measure = head.Measure
+    measure:SetText(head.caption)
+    ends = tx + math.min(math.ceil(measure:GetStringWidth() or 0), room)
+    local arrow = head.Stretch
+    if arrow then
+      local from = ends + HEAD.ARROW_GAP
+      local show = w - HEAD.TEXT - from >= HEAD.ARROW_MIN
+      arrow[1]:ClearAllPoints()
+      arrow[1]:SetPoint("LEFT", head, "LEFT", from, 0)
+      for k = 1, 3 do arrow[k]:SetShown(show) end
+    end
+  end
+  local eye = head.Eye
+  if eye then
+    head.eyeFits = ends ~= nil and ends + HEAD.EYE_GAP + (eye:GetWidth() or 0) + HEAD.EYE_INSET <= w
+    if not head.eyeFits then eye:Hide() end
+  end
 end
 
 -- Where a heading's glyph and name stand in its box (above): over its
@@ -1169,10 +1212,14 @@ local function HeadLeave(self)
   if not AR.drag then AR.MoveCursor(false) end
 end
 
+-- A press on the heading takes the column; one on its open eye hides it
+-- when let go without a drag.
 local function HeadDown(self, button)
   if button ~= "LeftButton" then return end
   local host = AR.host
-  if host and host.strip == self:GetParent() then AR.PressColumn(host, self.colId, self) end
+  if host and host.strip == self:GetParent() then
+    AR.PressColumn(host, self.colId, self, AR.OverEye(self, self.Eye, 2))
+  end
 end
 
 -- A right-click, let go over the heading: the column hidden (AR.ToggleColumn).
@@ -1254,6 +1301,15 @@ local function BuildHead(strip, id)
       m:SetPoint("RIGHT", r, "LEFT", 0, 0)
       head.Stretch = { l, m, r }
       l:SetPoint("LEFT", head, "LEFT", HEAD.TEXT, 0)
+    end
+  end
+  -- The open eye of a column that can be hidden, at the right end; shown
+  -- only while the heading is pointed at (AR.PaintHead).
+  if not spec.fixed and T.Glyph then
+    head.Eye = T.Glyph(head, "eye", HEAD.EYE, "OVERLAY")
+    if head.Eye then
+      head.Eye:SetPoint("RIGHT", head, "RIGHT", -HEAD.EYE_INSET, 0)
+      head.Eye:Hide()
     end
   end
   head:SetScript("OnEnter", HeadEnter)
@@ -1625,11 +1681,18 @@ function columnPress.cancel()
   AR.RowsChanged(true)
 end
 function columnPress.click()
-  if AR.host == pressed.host then AR.Select("column", pressed.id) end
+  if AR.host ~= pressed.host then return end
+  if pressed.eye then
+    AR.ToggleColumn(pressed.id)
+  else
+    AR.Select("column", pressed.id)
+  end
 end
 
-function AR.PressColumn(host, id, frame)
-  pressed.host, pressed.id = host, id
+-- `eye`: the press landed on the heading's open eye, whose click hides the
+-- column rather than selecting it.
+function AR.PressColumn(host, id, frame, eye)
+  pressed.host, pressed.id, pressed.eye = host, id, eye and true or false
   columnPress.name = L()[AR.COLUMNS[id].title]
   AR.Press(frame, columnPress)
 end
