@@ -1352,6 +1352,33 @@ function RV.NewSpec()
   return { el = {}, size = {}, text = {}, w = {}, laneX = {}, laneW = {} }
 end
 
+-- Where the read mark stands before the subject, `x` being where its column
+-- begins on a row whose first column begins at `left`. Leading the row, it
+-- is centred between the row's left edge and where the next column's room
+-- begins, half a house gap before it, on whole units. Elsewhere it sits in
+-- the gap before the next column, as a bullet does.
+function RV.DotX(x, left, gap)
+  if x ~= left then return x - 3 end
+  return floor((x + ROW_INDICATOR + 2 - floor(gap / 2) - (ROW_INDICATOR - 1)) / 2)
+end
+
+-- The read mark's soft shadow (Theme.GLYPHS "dot-shadow"): black at a low
+-- alpha, behind the dot and a unit under it, shown and hidden with it at the
+-- end of every RV.Place. Made once with the row; nil where the art is
+-- missing.
+RV.SHADE_ALPHA = 0.5
+
+function RV.ShadeDot(row)
+  local dot, T = row.Indicator, Th()
+  local shade = dot and T.Glyph and T.Glyph(row, "dot-shadow", nil, "ARTWORK") or nil
+  if not shade then return end
+  shade:SetDrawLayer("ARTWORK", -1)
+  shade:SetVertexColor(0, 0, 0, RV.SHADE_ALPHA)
+  shade:SetPoint("CENTER", dot, "CENTER", 0, -1)
+  shade:SetShown(dot:IsShown())
+  dot.__pbShade = shade
+end
+
 -- What a graphic takes from the text area: the dot sits in the gap before
 -- its neighbour on the left of the subject, as a bullet does -- two in from
 -- the icon, as the dot has always stood -- and takes a gap like any other
@@ -1510,8 +1537,8 @@ function RV.Place(row, s)
       local lx, lw = x, 0
       if layout[i].shown or force == id then
         if id == "read" then
-          RV.Anchor(row, region, 1, x - 3, 0)
-          lx, lw = x - 3, ROW_INDICATOR - 1
+          lx, lw = RV.DotX(x, s.left, gap), ROW_INDICATOR - 1
+          RV.Anchor(row, region, 1, lx, 0)
           x = x + ROW_INDICATOR + 2
           placed = true
         elseif id == "icon" then
@@ -1694,6 +1721,11 @@ function RV.Place(row, s)
   else
     RV.Wash(row, target)
   end
+  -- The read mark's shadow goes where the mark went, and with it: placed,
+  -- hidden, or in the arrange mode's hand.
+  local dot = el.read
+  local shade = dot and dot.__pbShade
+  if shade then shade:SetShown(dot:IsShown()) end
 end
 
 -- layout, id -> where the arrangement has that column.
@@ -1727,6 +1759,7 @@ CT.RowRules = {
   NewSpec = RV.NewSpec,
   Anchor = RV.Anchor,
   Wash = RV.Wash,
+  ShadeDot = RV.ShadeDot,
   Layout = RV.Layout,
   Focus = RV.Focus,
   IsFigure = function(id) return RV.FIGURE[id] == true end,
@@ -2860,8 +2893,9 @@ local function BuildRow(panel)
   -- a square, and one pixel smaller than the space it is given -- the row
   -- has two marks at its left edge now (the selection bar sits on the edge
   -- itself) and a square beside a bar read as one shape. Where it stands is
-  -- the arrangement's (RV.Place): first, it is seven in from the edge, clear
-  -- of the bar and clear of the icon.
+  -- the arrangement's (RV.Place, RV.DotX): first, it is centred between the
+  -- row's edge and the icon's column, clear of the bar. A soft shadow under
+  -- it holds it over a bright scene.
   row.Indicator = row:CreateTexture(nil, "ARTWORK")
   row.Indicator:SetSize(ROW_INDICATOR - 1, ROW_INDICATOR - 1)
   row.Indicator:SetTexture(WHITE)
@@ -2872,6 +2906,7 @@ local function BuildRow(panel)
     mask:SetAllPoints(row.Indicator)
     row.Indicator:AddMaskTexture(mask)
   end
+  RV.ShadeDot(row)
 
   -- Sized by ApplyRowMode, which the virtualiser calls before it binds
   -- anything to this row, and placed by the bind. Same for the texts below

@@ -1054,6 +1054,8 @@ function MM.NewRow(parent)
     row.Indicator:AddMaskTexture(mask)
   end
   row.Indicator:Hide()
+  -- Its soft shadow, as the Mail tab's rows have it (RV.Place shows it).
+  if Rules() and Rules().ShadeDot then Rules().ShadeDot(row) end
 
   row.Icon = row:CreateTexture(nil, "ARTWORK")
   row.Icon:SetSize(ROW_ICON, ROW_ICON)
@@ -1324,6 +1326,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     row.HeaderRule:Show()
     row.Icon:Show()
     row.Indicator:Hide()
+    if row.Indicator.__pbShade then row.Indicator.__pbShade:Hide() end
     row.Warning:Hide()
     row.ColTime:Hide()
     row.ColMoney:Hide()

@@ -1683,6 +1683,9 @@ Theme.AtlasSets = {
 --     bottom-right; Lib/UI/Window.lua sits it in its grip's corner.
 --   arrow-back  the arrange mode's inspector: on a card, back to its
 --     overview, where the overview has its cross.
+--   dot-shadow  a soft disc two units wider than a mail row's read mark on
+--     every side, tinted black at a low alpha under it (CollectTab's
+--     RV.ShadeDot).
 --
 -- Sharpness. The art is 2 texels per UI unit. A texel snapping bias above 0
 -- "sharpens": the renderer picks a texel instead of blending texels (the API
@@ -1723,6 +1726,7 @@ do
     bug = { file = MEDIA .. "glyph-bug.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
     resize = { file = MEDIA .. "glyph-resize.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
     ["arrow-back"] = { file = MEDIA .. "glyph-arrow-back.tga", w = 10, h = 9, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.59375 },
+    ["dot-shadow"] = { file = MEDIA .. "glyph-dot-shadow.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
   }
 
