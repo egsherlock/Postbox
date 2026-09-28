@@ -2458,6 +2458,16 @@ function Pages.mail(col)
       if ns.MailboxUI.RefreshCollectCategoryButtons then ns.MailboxUI.RefreshCollectCategoryButtons() end
     end,
   })
+  -- The totals band is a block under the list as the buttons are: the same
+  -- refresh stacks the blocks again and moves the window's floor.
+  Rows.Check(col, {
+    title = L["OPT_TOTALS_TITLE"], text = L["OPT_TOTALS_DESC"],
+    get = function() return ns.MailboxUI.GetOption("showTotals") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("showTotals", on)
+      if ns.MailboxUI.RefreshCollectCategoryButtons then ns.MailboxUI.RefreshCollectCategoryButtons() end
+    end,
+  })
   -- Nothing to refresh: the mapping is read at the moment a row is clicked,
   -- and the row tooltip's hint line is composed on hover from the same
   -- reading. A list rebuild would repaint rows that are already correct.

@@ -449,6 +449,15 @@ local function ShowCategoryButtons()
   return UI.GetOption("showCategoryButtons") and true or false
 end
 
+-- The totals band under the list: default on, as the option is. Off, the
+-- stack under the list has no band (RV.StackBlocks) and the floor none
+-- either (CT.MinPanelHeight).
+function RV.ShowTotals()
+  local UI = ns.MailboxUI
+  if not UI or type(UI.GetOption) ~= "function" then return true end
+  return UI.GetOption("showTotals") and true or false
+end
+
 -- Default OFF when the option plumbing has not loaded yet: a plain click that
 -- collects is the mapping every other part of this screen was written around,
 -- and the destructive-looking surprise is the other way round.
@@ -553,7 +562,7 @@ end
 --     gap               adds nothing to the height)
 --   list container      tightGap, the scroll viewport, tightGap
 --     gap
---   totals banner       controlHeight
+--   totals banner       controlHeight, while the option shows it (RV.ShowTotals)
 --     gap
 --   footer              the category grid: one full-width primary over the rows
 --     inset             of three its sweeps fill (two, as the grid comes), or
@@ -579,10 +588,11 @@ function CT.MinPanelHeight(atLeast)
   if ShowCategoryButtons() then
     footer = footer + RV.FloorGridRows() * (M.gap + GRID_BUTTON_HEIGHT)
   end
+  local band = RV.ShowTotals() and (M.controlHeight + M.gap) or 0
   local fixed = M.inset
               + M.segmentHeight + M.gap
               + 2 * M.tightGap + M.gap
-              + M.controlHeight + M.gap
+              + band
               + footer
               + M.inset
 
@@ -6485,13 +6495,15 @@ end
 -- The blocks under the list
 --
 -- Three blocks stand between the list and the panel's foot: the totals band
--- ("band"); the full-width primary ("all"), whose place the Done view's
--- Delete, History's note and another character's note take in those views;
--- and the category buttons ("grid"), in the inbox view only and only while
--- the option shows them. Their order, top down, is the player's
--- (MailboxUI.GetStackOrder, arranged in the arrange mode). Every order is
--- the same height, so the list above -- the one elastic part -- and the
--- window's floor (CT.MinPanelHeight) do not depend on it.
+-- ("band"), while its option shows it; the full-width primary ("all"),
+-- whose place the Done view's Delete, History's note and another
+-- character's note take in those views; and the category buttons ("grid"),
+-- in the inbox view only and only while the option shows them. Their
+-- order, top down, is the player's (MailboxUI.GetStackOrder, arranged in
+-- the arrange mode). Every order is the same height, so the list above --
+-- the one elastic part -- and the window's floor (CT.MinPanelHeight) do not
+-- depend on it; a hidden block is simply not in the stack, the others
+-- close up, and the floor leaves it out.
 --
 -- All three stand in the footer, placed from its top, and the list's foot
 -- is the footer's top. panel._stack holds each block's offset and height
@@ -6510,9 +6522,10 @@ end
 -- arrange mode's inspector shows its card -- Move up and down, and for the
 -- grid its own eye, which is the "Show category buttons" option itself --
 -- and a right-click hides or shows it (All mail cannot be hidden: its
--- right-click does nothing). While the option hides the grid a folded
--- placeholder stands in its slot, so it can still be moved, or selected, or
--- brought back with a right-click or a click on its crossed eye. The tray
+-- right-click does nothing). While the option hides the grid, or the
+-- totals, a folded placeholder stands in its slot, so it can still be
+-- moved, or selected, or brought back with a right-click or a click on its
+-- crossed eye; the totals' card, pointed at, shows its open eye. The tray
 -- itself wears no eye: its rim has no room for one beside the buttons,
 -- each of which has its own. Outside the mode the option works as it
 -- always has, and a hidden grid simply is not there.
@@ -6553,7 +6566,16 @@ function RV.StackBlocks(panel)
   end
   local y, h = s.y, s.h
   local away, view = AV.Active(panel), panel.viewMode
-  h.band = M.controlHeight
+  -- The band, or while the arrange mode is open and its option hides it,
+  -- its folded placeholder -- in every view, as the band is.
+  h.band = nil
+  s.bandFolded = false
+  if RV.ShowTotals() then
+    h.band = M.controlHeight
+  elseif panel._gridArranging then
+    h.band = RV.FOLD_HEIGHT
+    s.bandFolded = true
+  end
   h.all = (away or view == VIEW_HISTORY) and GRID_BUTTON_HEIGHT or GRID_PRIMARY_HEIGHT
   h.grid = nil
   s.folded = false
@@ -6600,8 +6622,15 @@ function RV.PlaceStack(panel)
   local s, footer = panel._stack, panel.Footer
   if not (s and footer and panel.Banner) then return end
   local placed = s.placed
+  -- The band is on screen where the stack has it, and not while it is
+  -- hidden or stands folded; shown or hidden again only when that changes.
+  local band = s.y.band ~= nil and not s.bandFolded
+  if placed.bandShown ~= band then
+    placed.bandShown = band
+    panel.Banner:SetShown(band)
+  end
   local y = RV.StackY(panel, "band")
-  if placed.band ~= y then
+  if band and placed.band ~= y then
     placed.band = y
     panel.Banner:SetPoint("TOPLEFT", footer, "TOPLEFT", 0, -y)
     panel.Banner:SetPoint("TOPRIGHT", footer, "TOPRIGHT", 0, -y)
@@ -6720,6 +6749,11 @@ function RV.PlaceCards(panel)
       key = s.folded and "fold" or "grid"
       local other = cards[s.folded and "grid" or "fold"]
       if other then other:Hide() end
+    elseif id == "band" then
+      -- The band's card, or its placeholder while the option hides it.
+      key = s.bandFolded and "bandFold" or "band"
+      local other = cards[s.bandFolded and "band" or "bandFold"]
+      if other then other:Hide() end
     end
     local card = cards[key]
     if s.y[id] then
@@ -6743,11 +6777,16 @@ end
 -- mouse, so nothing there collects or deletes while arranging; the tray
 -- stands under the sweeps, whose own cards take the mouse over them, and
 -- takes it in the gaps and at its rim.
+-- Keys: "band", "all", "grid" (the tray), and the placeholders "fold" (the
+-- grid's) and "bandFold" (the totals').
+RV.FOLD_OF = { fold = "grid", bandFold = "band" }
+
 function RV.NewStackCard(panel, key)
   local A, T = ns.Arrange, Th()
-  local kind = (key == "grid" and "tray") or (key == "fold" and "fold") or "block"
+  local folds = RV.FOLD_OF[key]
+  local kind = (key == "grid" and "tray") or (folds and "fold") or "block"
   local card = A.NewCard(panel.Footer, kind)
-  card.stackId, card.panel = (key == "fold") and "grid" or key, panel
+  card.stackId, card.panel = folds or key, panel
   local base = panel.Footer:GetFrameLevel()
   card:SetFrameLevel(key == "grid" and base or base + 8)
   card:EnableMouse(true)
@@ -6755,15 +6794,23 @@ function RV.NewStackCard(panel, key)
   card:SetScript("OnLeave", RV.StackCardLeave)
   card:SetScript("OnMouseDown", RV.StackCardDown)
   card:SetScript("OnMouseUp", RV.StackCardUp)
-  if key == "fold" then
-    -- A crossed eye and the grid's name, together in the middle; a click
-    -- on the eye shows the grid (RV.StackCardDown).
+  if folds then
+    -- A crossed eye and the block's name, together in the middle; a click
+    -- on the eye shows the block (RV.StackCardDown).
     card.Text = T.CreateText(card, "secondary", "OVERLAY")
     card.Text:SetWordWrap(false)
-    card.Text:SetText(L()["ARRANGE_BLOCK_GRID"])
+    card.Text:SetText(L()[folds == "grid" and "ARRANGE_BLOCK_GRID" or "ARRANGE_BLOCK_TOTALS"])
     card.Text:SetPoint("CENTER", card, "CENTER", 9, 0)
     card.Eye = T.Glyph and T.Glyph(card, "eye-off", 8, "OVERLAY") or nil
     if card.Eye then card.Eye:SetPoint("RIGHT", card.Text, "LEFT", -6, 0) end
+  elseif key == "band" and T.Glyph then
+    -- The totals can be hidden: their open eye at the right end, as a
+    -- category button's stands, only while pointed at (RV.PaintStackCard).
+    card.Eye = T.Glyph(card, "eye", 8, "OVERLAY")
+    if card.Eye then
+      card.Eye:SetPoint("CENTER", card, "RIGHT", -RV.EYE_RIGHT, 0)
+      card.Eye:Hide()
+    end
   end
   panel._stackCards[key] = card
   return card
@@ -6787,6 +6834,11 @@ function RV.PaintStackCard(panel, card)
     local token = (state == "rest") and "textDisabled" or "textSecondary"
     Th().SetColor(card.Text, token)
     if card.Eye then Th().SetColor(card.Eye, token) end
+  elseif card.Eye then
+    -- A shown block's open eye, only while it is pointed at.
+    local show = over and not drag
+    card.Eye:SetShown(show and true or false)
+    if show then Th().SetColor(card.Eye, "textSecondary") end
   end
 end
 
@@ -6819,6 +6871,7 @@ end
 -- (Arrange.lua's AR.GestureLine).
 function RV.BlockGesture(panel, id)
   if id == "grid" then return (panel._stack and panel._stack.folded) and "show" or "hide" end
+  if id == "band" then return (panel._stack and panel._stack.bandFolded) and "show" or "hide" end
   return "fixed"
 end
 
@@ -6923,11 +6976,15 @@ function RV.StackClick(panel, id)
   if A and A.Select then A.Select("block", id) end
 end
 
--- A block's right-click: the grid hidden or shown (its tray, or its
--- placeholder). All mail has nothing to hide.
+-- A block's right-click: the grid or the totals hidden or shown (the block,
+-- or its placeholder). All mail has nothing to hide.
 function RV.BlockToggle(panel, id)
   if not panel._gridArranging then return end
-  if id == "grid" then RV.SetGridShown(panel, not ShowCategoryButtons()) end
+  if id == "grid" then
+    RV.SetGridShown(panel, not ShowCategoryButtons())
+  elseif id == "band" then
+    RV.SetTotalsShown(panel, not RV.ShowTotals())
+  end
 end
 
 -- The grid's eye: the "Show category buttons" option itself, and the
@@ -6939,11 +6996,34 @@ function RV.SetGridShown(panel, show)
   GameTooltip:Hide()
   panel._stackHover = nil
   UI.SetOption("showCategoryButtons", show)
+  RV.BlockOptionChanged(panel, show)
+end
+
+-- The totals' eye: the "Show totals" option itself, as the grid's is Show
+-- category buttons, and the window's floor follows it the same way.
+function RV.SetTotalsShown(panel, show)
+  local UI = ns.MailboxUI
+  if not (UI and type(UI.SetOption) == "function") then return end
+  show = show and true or false
+  GameTooltip:Hide()
+  panel._stackHover = nil
+  UI.SetOption("showTotals", show)
+  RV.BlockOptionChanged(panel, show)
+end
+
+-- A block's option written from the mode: the stack and the floor after it
+-- (MailboxUI's refresh moves a window standing on its floor), the options
+-- panel's switch where it is open, the switch's sound, and whatever card is
+-- under the pointer now.
+function RV.BlockOptionChanged(panel, show)
+  local UI = ns.MailboxUI
   if type(UI.RefreshCollectCategoryButtons) == "function" then
     UI.RefreshCollectCategoryButtons()
   else
     CT.RefreshCategoryButtons(panel)
   end
+  local options = ns.OptionsPanel
+  if options and type(options.RefreshControls) == "function" then options.RefreshControls() end
   if type(SOUNDKIT) == "table" and type(PlaySound) == "function" then
     PlaySound(show and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
   end
@@ -7129,7 +7209,10 @@ function RV.StackRaise(panel, id, on)
   end
   local base = panel.Footer:GetFrameLevel()
   local cards = panel._stackCards
-  if id == "band" then
+  if id == "band" and panel._stack.bandFolded then
+    RV.LiftLevel(panel, cards and cards.bandFold, base + 25)
+    return
+  elseif id == "band" then
     RV.LiftLevel(panel, panel.Banner, base + 20)
   elseif id == "all" then
     RV.LiftLevel(panel, panel._gridButtons and panel._gridButtons[1], base + 20)
@@ -7158,7 +7241,9 @@ function RV.RiseStack(panel)
   local order, k = RV.StackOrder(), 0
   for i = 1, #order do
     local id = order[i]
-    local card = (id == "grid" and s.folded) and cards.fold or cards[id]
+    local card = cards[id]
+    if id == "grid" and s.folded then card = cards.fold end
+    if id == "band" and s.bandFolded then card = cards.bandFold end
     if s.y[id] and card and card:IsShown() then
       A.Rise(card, k * 0.09)
       if id == "grid" and panel._gridHandles then
@@ -7485,10 +7570,12 @@ function RV.GridToggle(panel, id)
   CT.RefreshCategoryButtons(panel)
 end
 
--- What is hidden under the list, for the inspector's overview: the grid
--- itself while the option hides it (its own hidden buttons wait with it),
--- else each hidden button, in the grid's order. put(kind, key, name).
+-- What is hidden under the list, for the inspector's overview: the totals
+-- while their option hides them; the grid itself while the option hides it
+-- (its own hidden buttons wait with it), else each hidden button, in the
+-- grid's order. put(kind, key, name).
 function RV.ListHidden(panel, put)
+  if not RV.ShowTotals() then put("band", "band", L()["ARRANGE_BLOCK_TOTALS"]) end
   if not ShowCategoryButtons() then
     put("grid", "grid", L()["ARRANGE_BLOCK_GRID"])
     return
@@ -7506,6 +7593,8 @@ end
 function RV.ShowHidden(panel, kind, key)
   if kind == "grid" then
     RV.SetGridShown(panel, true)
+  elseif kind == "band" then
+    RV.SetTotalsShown(panel, true)
   elseif kind == "button" then
     RV.GridToggle(panel, key)
   end
@@ -7780,13 +7869,22 @@ function CT.ArrangeHost(panel)
   function host.BlockPresent(id) return panel._stack ~= nil and panel._stack.y[id] ~= nil end
   function host.BlockName(id) return RV.BlockName(panel, id) end
   function host.BlockText(id) return L()[RV.BLOCK_TEXT[id] or "ARRANGE_BLOCK_ALL_DESC"] end
-  function host.BlockNote(id) return id == "grid" and L()["ARRANGE_GRID_FOLD_NOTE"] or nil end
+  function host.BlockNote(id)
+    if id == "grid" then return L()["ARRANGE_GRID_FOLD_NOTE"] end
+    if id == "band" then return L()["ARRANGE_TOTALS_FOLD_NOTE"] end
+    return nil
+  end
   function host.BlockShown(id)
     if id == "grid" then return ShowCategoryButtons() end
+    if id == "band" then return RV.ShowTotals() end
     return nil
   end
   function host.SetBlockShown(id, on)
-    if id == "grid" then RV.SetGridShown(panel, on) end
+    if id == "grid" then
+      RV.SetGridShown(panel, on)
+    elseif id == "band" then
+      RV.SetTotalsShown(panel, on)
+    end
   end
   function host.CanMoveBlock(id, step) return RV.CanMoveBlock(panel, id, step) end
   function host.MoveBlock(id, step) RV.MoveBlock(panel, id, step) end

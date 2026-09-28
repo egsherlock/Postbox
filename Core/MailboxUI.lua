@@ -174,6 +174,11 @@ local OPTION_DEFAULTS = {
   -- for the player who only ever takes everything, and would rather have
   -- their rows back for the list.
   showCategoryButtons = true,
+  -- The totals band under the Mail tab's list: earned and spent across the
+  -- mail listed. On: it is what the tab has always shown. Off, the blocks
+  -- under the list close up and the window's floor comes down with them
+  -- (CollectTab, CT.MinPanelHeight). The arrange mode hides and shows it too.
+  showTotals      = true,
   -- After a successful send, leave the recipient in the To: box. Off: a
   -- cleared form is the safe default -- a name left standing is a mail that
   -- can go to the wrong person on the next Send -- and the option exists for

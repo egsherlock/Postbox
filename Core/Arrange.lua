@@ -178,13 +178,16 @@ function AR.Reset()
   if ui.SetExpiryWhen then ui.SetExpiryWhen("3") end
   if ui.SetGridLayout then ui.SetGridLayout(nil) end
   if ui.SetStackOrder then ui.SetStackOrder(nil) end
-  -- The grid hidden in the mode is the "Show category buttons" option, so
-  -- it comes back with the rest, and the window's floor with it.
+  -- The grid and the totals hidden in the mode are the "Show category
+  -- buttons" and "Show totals" options, so they come back with the rest,
+  -- and the window's floor with them.
   local gridBack = ui.GetOption and ui.SetOption and not ui.GetOption("showCategoryButtons")
   if gridBack then ui.SetOption("showCategoryButtons", true) end
+  local totalsBack = ui.GetOption and ui.SetOption and not ui.GetOption("showTotals")
+  if totalsBack then ui.SetOption("showTotals", true) end
   AR.RowsChanged(true)
   if AR.host then AR.LayoutStrip(AR.host) end
-  if gridBack and ui.RefreshCollectCategoryButtons then
+  if (gridBack or totalsBack) and ui.RefreshCollectCategoryButtons then
     ui.RefreshCollectCategoryButtons()
   else
     AR.GridChanged()
@@ -2895,8 +2898,8 @@ local function HiddenClick(self)
   elseif host.ShowHidden then
     host.ShowHidden(self.kind, self.key)
   end
-  -- The grid's own switch makes its own sound.
-  if self.kind ~= "grid" then PlayToggle(true) end
+  -- A block's own switch (the grid's, the totals') makes its own sound.
+  if self.kind ~= "grid" and self.kind ~= "band" then PlayToggle(true) end
   AR.Inspect()
 end
 
