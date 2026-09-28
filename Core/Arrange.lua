@@ -2594,7 +2594,7 @@ local function PaintLanes(sw)
 end
 
 local function LanesTip(self)
-  GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+  AR.InspTip(self)
   GameTooltip:SetText(L()["OPT_LINE_UP_TITLE"])
   GameTooltip:AddLine(L()["OPT_LINE_UP_DESC"], 1, 1, 1, true)
   GameTooltip:Show()
@@ -2784,7 +2784,7 @@ end
 -- The cross: back to the overview from a card, out of the mode from the
 -- overview -- Escape's layers, less the drag.
 local function CloseTip(self)
-  GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+  AR.InspTip(self)
   if AR.selKind then
     GameTooltip:SetText(L()["ARRANGE_BACK_TIP"], 1, 1, 1, 1, true)
   else
@@ -3054,6 +3054,33 @@ function AR.Dock(insp, host)
     insp:SetPoint("TOPLEFT", dock, "TOPRIGHT", P.DOCK, dy)
   else
     insp:SetPoint("TOPRIGHT", dock, "TOPLEFT", -P.DOCK, dy)
+  end
+end
+
+-- Postbox's tooltips while the inspector is up, so none covers it: a thing
+-- in the window opens its tooltip above itself, reaching away from the
+-- inspector from its own edge on the inspector's side (which is inside the
+-- window, and the inspector stands outside it); anywhere else, or with no
+-- inspector, the tooltip goes where `anchor` puts it. The headings' own
+-- open above them, over the inspector's top edge, and keep ANCHOR_TOP.
+function AR.TipOwner(owner, anchor)
+  local insp = AR._insp
+  if AR.host and insp and insp.side and insp:IsShown() then
+    anchor = (insp.side == 1) and "ANCHOR_TOPRIGHT" or "ANCHOR_TOPLEFT"
+  end
+  GameTooltip:SetOwner(owner, anchor)
+end
+
+-- The inspector's own controls open their tooltips above the inspector,
+-- off it, on its edge away from the window.
+function AR.InspTip(owner)
+  local insp = AR._insp
+  GameTooltip:SetOwner(owner, "ANCHOR_NONE")
+  GameTooltip:ClearAllPoints()
+  if insp.side == -1 then
+    GameTooltip:SetPoint("BOTTOMLEFT", insp, "TOPLEFT", 0, 4)
+  else
+    GameTooltip:SetPoint("BOTTOMRIGHT", insp, "TOPRIGHT", 0, 4)
   end
 end
 

@@ -6202,7 +6202,9 @@ function RV.GridTip(panel, button)
   local plain = not (spec and type(spec.tooltip) == "function") and not button.tip
     and button.gridId ~= "all"
   if plain and not button.__pbOverflowText and not arranging then return end
-  GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+  -- While arranging, clear of the inspector beside the window.
+  local A = ns.Arrange
+  if arranging and A and A.TipOwner then A.TipOwner(button, "ANCHOR_RIGHT") else GameTooltip:SetOwner(button, "ANCHOR_RIGHT") end
   GameTooltip:ClearLines()
   if spec and type(spec.tooltip) == "function" and not arranging then
     local ok = pcall(spec.tooltip, GameTooltip)
@@ -6678,7 +6680,9 @@ end
 
 function RV.StackTip(panel, card)
   local id = card.stackId
-  GameTooltip:SetOwner(card, "ANCHOR_CURSOR")
+  -- Clear of the arrange mode's inspector beside the window.
+  local A = ns.Arrange
+  if A and A.TipOwner then A.TipOwner(card, "ANCHOR_CURSOR") else GameTooltip:SetOwner(card, "ANCHOR_CURSOR") end
   GameTooltip:SetText(RV.BlockName(panel, id))
   GameTooltip:AddLine(L()["ARRANGE_BLOCK_TIP"], 1, 1, 1, true)
   -- A click selects the block for the inspector; the grid's placeholder's
