@@ -2111,24 +2111,56 @@ local function BuildSearch(frame)
   frame.SearchAllButton = search.All
 end
 
+-- The picker's tooltip; the way back only while there is one to take.
+local function PickerButtonTip(frame)
+  GameTooltip:SetOwner(frame.Picker, "ANCHOR_TOPRIGHT")
+  GameTooltip:SetText(L["PICKER_TITLE"])
+  GameTooltip:AddLine(L["PICKER_TIP"], 1, 1, 1, true)
+  if frame.viewing then GameTooltip:AddLine(L["PICKER_BACK_HINT"], 0.7, 0.7, 0.7, true) end
+  GameTooltip:Show()
+end
+
+-- A right-click on the picker or on the name while another character's box
+-- is on screen: back to this character's own, as picking its own name from
+-- the list is, and the list closes. A search of every box ends with the
+-- visit, as it does on the Mail tab's way back (AV.Back); what is typed
+-- stays. On this character's own box it does nothing.
+local function Back(frame)
+  if not frame.viewing then return end
+  MM.ClosePicker()
+  frame.viewing = nil
+  frame.searchAll = false
+  if frame.SearchAllButton then frame.SearchAllButton.Paint() end
+  if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
+  Refresh(frame)
+  -- The tooltip under the pointer spoke of the box just left: the name's
+  -- goes with the name, the picker's is said again without the way back.
+  if GameTooltip:IsOwned(frame.WhoHit) then GameTooltip:Hide() end
+  if GameTooltip:IsOwned(frame.Picker) then
+    if frame.Picker:IsShown() then PickerButtonTip(frame) else GameTooltip:Hide() end
+  end
+end
+
 -- The character picker and the sort, left of the search on the top row.
 local function BuildHeader(frame)
   local T = ns.Theme
   local picker = IconPlate(frame, CLASS_FALLBACK, HEADER_H)
   picker:SetPoint("RIGHT", frame.SearchWrap, "LEFT", -4, 0)
-  picker:SetScript("OnClick", function(self)
+  -- A right-click, while another character's box is on screen, goes back to
+  -- this character's own (Back); on this character's own it does nothing.
+  picker:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  picker:SetScript("OnClick", function(self, button)
+    if button == "RightButton" then
+      Back(frame)
+      return
+    end
     MM.OpenPicker(self, frame.viewing, function(realm, name, isMe)
       frame.viewing = (not isMe) and { realm = realm, name = name } or nil
       if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
       Refresh(frame)
     end)
   end)
-  picker:HookScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:SetText(L["PICKER_TITLE"])
-    GameTooltip:AddLine(L["PICKER_TIP"], 1, 1, 1, true)
-    GameTooltip:Show()
-  end)
+  picker:HookScript("OnEnter", function() PickerButtonTip(frame) end)
   picker:HookScript("OnLeave", function() GameTooltip:Hide() end)
   frame.Picker = picker
 
@@ -2165,6 +2197,37 @@ local function BuildHeader(frame)
   frame.Who:SetPoint("RIGHT", sort, "LEFT", -8, 0)
   frame.Who:SetJustifyH("LEFT")
   frame.Who:SetWordWrap(false)
+
+  -- The name is a way back as well while it is another character's: a
+  -- right-click on it goes back as the picker's does (Back), and its tooltip
+  -- gives the whole name, realm and all, and says so. It answers over the
+  -- words and no further -- the rest of the row is the window's -- measured
+  -- when Refresh writes them and again when a resize moves the row's end.
+  -- A left-drag on it moves the window, which is dragged from anywhere.
+  local whoHit = CreateFrame("Button", nil, frame)
+  whoHit:SetPoint("TOPLEFT", frame.Who, "LEFT", 0, HEADER_H / 2)
+  whoHit:SetPoint("BOTTOMRIGHT", frame.Who, "RIGHT", 0, -HEADER_H / 2)
+  whoHit:RegisterForClicks("RightButtonUp")
+  whoHit:RegisterForDrag("LeftButton")
+  whoHit:SetScript("OnDragStart", function() frame:StartMoving() end)
+  whoHit:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
+  whoHit:SetScript("OnClick", function() Back(frame) end)
+  whoHit.Fit = function(self, width)
+    width = width or self:GetWidth() or 0
+    self:SetHitRectInsets(0, math.max(0, width - (frame.Who:GetStringWidth() or 0)), 0, 0)
+  end
+  whoHit:SetScript("OnSizeChanged", whoHit.Fit)
+  whoHit:SetScript("OnEnter", function(self)
+    local v = frame.viewing
+    if not v then return end
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText(MM.ClassName(v.realm, v.name))
+    GameTooltip:AddLine(L["PICKER_BACK_HINT"], 0.7, 0.7, 0.7, true)
+    GameTooltip:Show()
+  end)
+  whoHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  whoHit:Hide()
+  frame.WhoHit = whoHit
 end
 
 -- A search across every box lists each character under a heading; a click
@@ -2235,6 +2298,9 @@ function Refresh(frame)
   frame.Picker:SetShown(others)
   frame.Search.Place(others)
   T.SetPlateSelected(frame.Picker, v ~= nil)
+  -- The name is the way back while it is another character's (Back).
+  frame.WhoHit:SetShown(v ~= nil)
+  if v then frame.WhoHit:Fit() end
 
   -- The foot: when the box was seen, or what a search found.
   local text = MM.SeenText(info.snapshot)
