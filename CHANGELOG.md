@@ -91,7 +91,8 @@ longer play.
 - **Sharper small icons and a cleaner resize corner.** The History clock,
   Mail Memory's sort arrow and the search box's every-character toggle are
   drawn pixel-sharp, and every Postbox window's resize corner is two thin
-  lines that light up when you point at them.
+  lines that light up when you point at them. The read dot sits evenly before
+  the item icon, with a soft shadow, and icons are centred in their column.
 - **The options open quicker:** your recipients are counted when you look at
   the Send tab, not every time the options open.
 - Also: the "Show on each mail" list moved from the options into the window,
@@ -101,6 +102,8 @@ longer play.
 
 ### Fixed
 
+- Slot counts are never cut short ("4 slo…") in fonts whose digits differ
+  in width.
 - Free space in the reagent bag no longer counts as room for everything
   else, so full bags stop a collection instead of leaving each remaining mail
   marked as stuck.
