@@ -1354,12 +1354,16 @@ end
 
 -- Where the read mark stands before the subject, `x` being where its column
 -- begins on a row whose first column begins at `left`. Leading the row, it
--- is centred between the row's left edge and where the next column's room
--- begins, half a house gap before it, on whole units. Elsewhere it sits in
--- the gap before the next column, as a bullet does.
+-- is centred between the row's left edge and the line before the next
+-- column -- the arrange mode's lane line, in the middle of the gap between
+-- the two -- and that line stands as far from the next column as the line
+-- after that column does from it, half a house gap: so the dot and the
+-- icon after it are each centred in their column. Elsewhere it sits in the
+-- gap before the next column, as a bullet does.
 function RV.DotX(x, left, gap)
   if x ~= left then return x - 3 end
-  return floor((x + ROW_INDICATOR + 2 - floor(gap / 2) - (ROW_INDICATOR - 1)) / 2)
+  local line = x + ROW_INDICATOR + 2 - 1 - floor(gap / 2)
+  return floor((line - (ROW_INDICATOR - 1)) / 2)
 end
 
 -- The read mark's soft shadow (Theme.GLYPHS "dot-shadow"): black at a low
