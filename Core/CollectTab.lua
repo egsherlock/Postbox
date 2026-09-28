@@ -1097,6 +1097,18 @@ function RV.Focus()
   return A and type(A.Focus) == "function" and A.Focus() or nil
 end
 
+-- Whether the figures stand in lanes (RV.Place): the "Line up columns"
+-- option, unset meaning on, and always while the arrange mode is open over
+-- either window -- the columns being arranged are the lanes. Read once per
+-- row placed: a field, then the options' memo.
+function RV.LinedUp()
+  local A = ns.Arrange
+  if A and A.host then return true end
+  local UI = ns.MailboxUI
+  if not (UI and UI.GetOption) then return true end
+  return UI.GetOption("lineUpColumns")
+end
+
 -- The money, in its shortest honest form ("52g 26s", "1309g", "12.3k"; the
 -- compact row keeps the largest coin alone). Three tones for three meanings:
 -- green is gold arriving, amber is a C.O.D. price you would pay by collecting

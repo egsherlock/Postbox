@@ -132,6 +132,15 @@ local OPTION_DEFAULTS = {
   -- to the right edge a one-line row carries everything a list is scanned
   -- for, and half again as many mails fit. The two-line row is one click away.
   compactRows     = true,
+  -- A one-line mail row's figures -- time left, gold, slots -- each in its
+  -- own column on every row (CollectTab, RV.Place), in the Mail tab, History
+  -- and Mail Memory alike: a subject runs on through the columns its mail
+  -- leaves empty, up to the first figure the mail has. On: gold standing
+  -- under gold is what lets a list of figures be read down. Off is the rows
+  -- as they were before 1.50, a mail's figures closed up to the right edge
+  -- and its subject given every unit they leave. The arrange mode lines the
+  -- columns up whatever this says.
+  lineUpColumns   = true,
   -- Swaps the two gestures on a to-collect row: on, a plain click OPENS the mail
   -- and shift/right-click collects it. Off, because the screen is a collect
   -- screen -- the common action is the one-click one -- and because a player who
