@@ -24,6 +24,8 @@ longer play.
 - **Another character's mailbox fits the top row.** Done and History step
   aside while you look at it, and a long name is shortened with its count
   kept (full name on hover).
+- **Right-click the character picker, or the other character's name,** to go
+  back to your own mailbox.
 - **Reset to defaults**, at the foot of the options, puts every setting and
   window back the way Postbox ships, after asking. Your recipients, groups,
   Mail Memory and History are kept.
