@@ -2781,12 +2781,14 @@ local function HiddenChip(insp, i)
   return chip
 end
 
--- The cross: back to the overview from a card, out of the mode from the
--- overview -- Escape's layers, less the drag.
+-- The cross on the overview, out of the mode, and on a card the arrow back
+-- to the overview (AR.Inspect shows the one that fits) -- Escape's layers,
+-- less the drag.
 local function CloseTip(self)
   AR.InspTip(self)
   if AR.selKind then
-    GameTooltip:SetText(L()["ARRANGE_BACK_TIP"], 1, 1, 1, 1, true)
+    GameTooltip:SetText(L()["ARRANGE_BACK"])
+    GameTooltip:AddLine(L()["ARRANGE_BACK_TIP"], 1, 1, 1, true)
   else
     GameTooltip:SetText(L()["ARRANGE_DONE"])
     GameTooltip:AddLine(L()["ARRANGE_DONE_TIP"], 1, 1, 1, true)
@@ -2797,11 +2799,13 @@ end
 
 local function CloseEnter(self)
   Grey(self.Text, 1)
+  if self.Back then Grey(self.Back, 1) end
   CloseTip(self)
 end
 
 local function CloseLeave(self)
   Grey(self.Text, 0.74)
+  if self.Back then Grey(self.Back, 0.74) end
   GameTooltip:Hide()
 end
 
@@ -2924,6 +2928,13 @@ function AR.BuildInspector()
   close.Text:SetPoint("CENTER", close, "CENTER", 0, 1)
   close.Text:SetText("\195\151")
   Grey(close.Text, 0.74)
+  -- On a card, the arrow back in the cross's place (Theme.GLYPHS).
+  close.Back = T.Glyph and T.Glyph(close, "arrow-back", nil, "ARTWORK") or nil
+  if close.Back then
+    close.Back:SetPoint("CENTER", close, "CENTER", 0, 0)
+    Grey(close.Back, 0.74)
+    close.Back:Hide()
+  end
   close:SetScript("OnEnter", CloseEnter)
   close:SetScript("OnLeave", CloseLeave)
   close:SetScript("OnClick", CloseClick)
@@ -3459,6 +3470,11 @@ function AR.Inspect()
   else
     title = L()["ARRANGE_TITLE"]
   end
+  -- The cross on the overview, the arrow back on a card: what a click on
+  -- it does now.
+  local back = AR.selKind ~= nil and insp.Close.Back ~= nil
+  insp.Close.Text:SetShown(not back)
+  if insp.Close.Back then insp.Close.Back:SetShown(back) end
   T.FitText(insp.Title, P.INNER - P.CLOSE, title, nil)
   local y = -P.TOP - math.max(Measured(insp.Title, title, true), P.CLOSE - 4) - P.HEAD_GAP
   if kind == "column" then
