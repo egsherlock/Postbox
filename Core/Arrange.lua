@@ -62,7 +62,7 @@ AR.COLUMNS = {
   subject = { title = "COL_SUBJECT",    desc = "COL_SUBJECT_DESC",    fixed = true },
   time    = { title = "OPT_ROW_EXPIRY", desc = "OPT_ROW_EXPIRY_DESC", choice = "expiry", figure = true, head = "clock" },
   money   = { title = "OPT_ROW_GOLD",   desc = "OPT_ROW_GOLD_DESC",   choice = "gold", figure = true, head = "coin" },
-  slots   = { title = "OPT_ROW_SLOTS",  desc = "OPT_ROW_SLOTS_DESC", figure = true, head = "slot" },
+  slots   = { title = "OPT_ROW_SLOTS",  desc = "OPT_ROW_SLOTS_DESC", choice = "slots", figure = true, head = "slot" },
 }
 
 -- The cog key (section 4): the cog's size at rest; lit, a check and Done on
@@ -2533,8 +2533,8 @@ local function PlayToggle(on)
   end
 end
 
--- The column's own choice: the gold's and the time left's. The lists are
--- made once; what is chosen and how to choose are read each time.
+-- The column's own choice: the gold's, the time left's and the slots'. The
+-- lists are made once; what is chosen and how to choose are read each time.
 function AR.Choices(kind)
   local ui = UI()
   local lists = AR._choices
@@ -2542,7 +2542,7 @@ function AR.Choices(kind)
     lists = { none = {} }
     AR._choices = lists
   end
-  if not ui or (kind ~= "gold" and kind ~= "expiry") then return lists.none, nil, nil end
+  if not ui or (kind ~= "gold" and kind ~= "expiry" and kind ~= "slots") then return lists.none, nil, nil end
   local list = lists[kind]
   if not list then
     if kind == "gold" then
@@ -2550,6 +2550,12 @@ function AR.Choices(kind)
         { id = "both",   name = L()["OPT_GOLD_BOTH"] },
         { id = "earned", name = L()["OPT_GOLD_EARNED"] },
         { id = "spent",  name = L()["OPT_GOLD_SPENT"] },
+      }
+    elseif kind == "slots" then
+      -- "4 slots" or "4": how the rows write the count.
+      list = {
+        { id = "words",  name = L()["OPT_SLOTS_WORDS"] },
+        { id = "number", name = L()["OPT_SLOTS_NUMBER"] },
       }
     else
       list = {
@@ -2562,6 +2568,7 @@ function AR.Choices(kind)
     lists[kind] = list
   end
   if kind == "gold" then return list, ui.GetGoldMode and ui.GetGoldMode(), ui.SetGoldMode end
+  if kind == "slots" then return list, ui.GetSlotsStyle and ui.GetSlotsStyle(), ui.SetSlotsStyle end
   return list, ui.GetExpiryWhen and ui.GetExpiryWhen(), ui.SetExpiryWhen
 end
 

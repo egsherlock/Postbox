@@ -1089,6 +1089,11 @@ end
 
 -- The three figures: columns with a list-wide width of their own.
 RV.FIGURE = { time = true, money = true, slots = true }
+-- The narrowest a figure's column is drawn (RV.Place): squeezed below it
+-- by the others, a figure gives up its column. A column whose widest entry
+-- is narrower -- a slot count written as the number alone -- is measured
+-- up to it (RV.SlotsWidth, Mail Memory's MeasureRows), not dropped.
+RV.FIGURE_MIN = 12
 
 -- Whether the arrangement shows this column ("read", "icon", "sender",
 -- "subject", "time", "money" or "slots").
@@ -1277,14 +1282,31 @@ local function MeasureWith(panel, sample, text)
   return width
 end
 
+-- Whether a row writes its slot count as the number alone (MailboxUI's
+-- "Slots" choice): "4" rather than "4 slots".
+function RV.SlotsNumber()
+  local UI = ns.MailboxUI
+  return UI ~= nil and type(UI.GetSlotsStyle) == "function" and UI.GetSlotsStyle() == "number"
+end
+
+-- n, onRow -> the slot count as a row writes it: the number alone where the
+-- player chose it and it stands on the row, the plural words otherwise --
+-- a tooltip always says "4 slots".
+function RV.SlotsText(n, onRow)
+  if onRow and RV.SlotsNumber() then return tostring(n) end
+  return ns.Plural("COUNT_SLOTS", n)
+end
+
 -- The slots column's width for counts up to `most`: the widest any of them
 -- is written, every digit the font's widest, in the plural word each count
 -- takes -- "4 slots" is wider than "7 slots" in a font whose 4 is wider, and
--- Russian's forms differ in length -- so no count is cut. The widest digit
--- and each width are kept per font (a host UI re-fonts after load), and
--- measured again only when the font under `sample` changes; the locale
--- needs a reload to change. A font not laid out yet measures nothing, and
--- nothing is kept from it.
+-- Russian's forms differ in length -- so no count is cut; the number alone
+-- where the player chose it (RV.SlotsText). The widest digit and each width
+-- are kept per font (a host UI re-fonts after load), and measured again
+-- only when the font under `sample` changes; the locale needs a reload to
+-- change. A number-only width is kept under -most, so the two styles never
+-- read each other's. A font not laid out yet measures nothing, and nothing
+-- is kept from it.
 RV.DIGITS = { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" }
 
 function RV.SlotsWidth(panel, sample, most)
@@ -1298,7 +1320,9 @@ function RV.SlotsWidth(panel, sample, most)
     fit.path, fit.size, fit.flags, fit.digit = path, size, flags, nil
     for key in pairs(fit.w) do fit.w[key] = nil end
   end
-  local width = fit.w[most]
+  local number = RV.SlotsNumber()
+  local key = number and -most or most
+  local width = fit.w[key]
   if width then return width end
   local digit = fit.digit
   if not digit then
@@ -1307,15 +1331,23 @@ function RV.SlotsWidth(panel, sample, most)
       local w = MeasureWith(panel, sample, RV.DIGITS[i])
       if w > widest then digit, widest = RV.DIGITS[i], w end
     end
-    if not digit then return MeasureWith(panel, sample, ns.Plural("COUNT_SLOTS", most)) end
+    if not digit then
+      local w = MeasureWith(panel, sample, RV.SlotsText(most, true))
+      return (w > 0) and max(w, RV.FIGURE_MIN) or 0
+    end
     fit.digit = digit
   end
   width = 0
   for n = 1, most do
-    local text = ns.Plural("COUNT_SLOTS", n):gsub("%d", digit)
+    local text = RV.SlotsText(n, true):gsub("%d", digit)
     width = max(width, MeasureWith(panel, sample, text))
   end
-  if width > 0 then fit.w[most] = width end
+  -- A lone digit is narrower than any column is drawn: the column stands
+  -- at the narrowest (RV.FIGURE_MIN), the count at its right edge.
+  if width > 0 then
+    width = max(width, RV.FIGURE_MIN)
+    fit.w[key] = width
+  end
   return width
 end
 
@@ -1572,6 +1604,8 @@ function RV.Place(row, s)
   -- hidden one forced onto this row is left to the subject's room (below).
   local room = s.share and floor(textWidth * s.share) or textWidth
   local used = 0
+  -- The narrowest a figure's column may be drawn (RV.FIGURE_MIN).
+  local least = RV.FIGURE_MIN
   -- Lined up: whether a figure the row may show has no lane (below).
   local laneless = lanes and force ~= nil and not layout.shown[force]
   for pass = 1, 2 do
@@ -1584,8 +1618,8 @@ function RV.Place(row, s)
         if (layout[i].shown or (force == id and not lanes)) and not two then
           local has = pass == 2 or s.reserve or lanes or text[id] ~= nil
           width = min(cols[id] or 0, room - used)
-          if not has or width < 12 then
-            if lanes and width < 12 and (cols[id] or 0) >= 12 then laneless = true end
+          if not has or width < least then
+            if lanes and width < least and (cols[id] or 0) >= least then laneless = true end
             width = 0
           end
         end
@@ -1730,7 +1764,7 @@ function RV.Place(row, s)
           if region and RV.FIGURE[id] and (w[id] or 0) == 0 and text[id] ~= nil
               and (layout[i].shown or force == id) then
             local width = min(cols[id] or 0, room - drawn, run - gap - 20)
-            if width >= 12 then
+            if width >= least then
               run = run - width - gap
               drawn = drawn + width + gap
               if pass == 2 then
@@ -1849,12 +1883,14 @@ CT.RowRules = {
   Layout = RV.Layout,
   Focus = RV.Focus,
   IsFigure = function(id) return RV.FIGURE[id] == true end,
+  FIGURE_MIN = RV.FIGURE_MIN,
   DOT = ROW_INDICATOR,
   RowOrder = RowOrder,
   OutcomeSender = OutcomeSender,
   EXPIRY_SOON_DAYS = EXPIRY_SOON_DAYS,
   ExpiryState = ExpiryState,
   META_SHARE = COMPACT_META_SHARE,
+  SlotsText = RV.SlotsText,
   QualityMark = RV.MarkOf,
   WithMark = RV.WithMark,
   MarkOnName = RV.MarkOnName,
@@ -3369,8 +3405,9 @@ local function BindRow(panel, row, index, position, compact, done)
   local money, moneyKind = RowMoneyText(index, hasCOD, moneyValue, codValue, compact)
   local purchaseShown = (moneyKind == "spent")
   -- In the quiet tone the time left wears: a count, not a warning. The
-  -- money is the row's one coloured figure.
-  local slots = (remaining > 0) and T.Colorize("textSecondary", ns.Plural("COUNT_SLOTS", remaining)) or nil
+  -- money is the row's one coloured figure. The number alone where the
+  -- player chose it; in the words when it goes to the tooltip (below).
+  local slots = (remaining > 0) and T.Colorize("textSecondary", RV.SlotsText(remaining, showSlots)) or nil
 
   -- Time left is a warning, not a column: on the row only when it is short;
   -- always in the tooltip.

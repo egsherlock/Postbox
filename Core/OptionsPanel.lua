@@ -1239,7 +1239,9 @@ do
         S.sampleFigures = fig
       end
       s.Gold:SetText(fig[1])
-      s.Slots:SetText(fig[2])
+      -- The slot as the Slots column's choice writes it: "1 slot", or "1".
+      local number = UI and type(UI.GetSlotsStyle) == "function" and UI.GetSlotsStyle() == "number"
+      s.Slots:SetText(number and "1" or fig[2])
       s.Gold2:SetText(fig[3])
       T.SetColor(s.Gold, "negative")
       T.SetColor(s.Slots, "textSecondary")

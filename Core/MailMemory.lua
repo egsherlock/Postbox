@@ -1183,8 +1183,14 @@ local function Figures(mail, now)
   local hasCOD = (mail.cod or 0) > 0
   local money, moneyKind
   if R then money, moneyKind = R.MoneyText(hasCOD, mail.money or 0, mail.cod or 0, mail.paid, true) end
-  -- The slot count in the quiet tone, as the Mail tab has it.
-  local slots = ((mail.items or 0) > 0) and T.Colorize("textSecondary", ns.Plural("COUNT_SLOTS", mail.items)) or nil
+  -- The slot count in the quiet tone, and as the player chose it written, as
+  -- the Mail tab has it: in the words when it goes to the tooltip (below).
+  local slots
+  if (mail.items or 0) > 0 then
+    local onRow = not R or R.Shows("slots")
+    local text = (R and R.SlotsText) and R.SlotsText(mail.items, onRow) or ns.Plural("COUNT_SLOTS", mail.items)
+    slots = T.Colorize("textSecondary", text)
+  end
 
   -- Time left by the mail list's own rule (ExpiryState): the player's
   -- threshold, amber when genuinely short -- and "expired" always shows.
@@ -1291,6 +1297,9 @@ function MM.MeasureRows(owner, rows, now, sample)
       if texts[id] then cols[id] = math.max(cols[id], Width(fs, texts[id])) end
     end
   end
+  -- Slot counts written as the number alone can measure narrower than any
+  -- column is drawn: the column stands at the narrowest, as the Mail tab's.
+  if cols.slots > 0 then cols.slots = math.max(cols.slots, R.FIGURE_MIN or 12) end
   return cols
 end
 

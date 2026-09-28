@@ -210,7 +210,7 @@ local function ForgetSettings()
   local opt = memo.opt
   for key in pairs(opt) do opt[key] = nil end
   memo.root, memo.profile = nil, nil
-  memo.quality, memo.gold, memo.expiry, memo.layout = nil, nil, nil, nil
+  memo.quality, memo.gold, memo.expiry, memo.layout, memo.slots = nil, nil, nil, nil, nil
   memo.grid, memo.gridText = nil, nil
 end
 
@@ -623,6 +623,24 @@ function UI.SetExpiryWhen(when)
   if not EXPIRY_WHEN[when] then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if profile then profile.expiryWhen = when end
+  ForgetSettings()
+end
+
+-- How a row writes the slots a mail still holds: "words" ("4 slots", the
+-- default) or "number" ("4"). The row's tooltip keeps the words either way.
+-- Stored only when it is the number, so nothing stored means the words.
+-- Remembered with the other row settings (ForgetSettings).
+function UI.GetSlotsStyle()
+  local memo = Settings()
+  if memo.slots then return memo.slots end
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.slotsStyle")
+  memo.slots = (stored == "number") and "number" or "words"
+  return memo.slots
+end
+function UI.SetSlotsStyle(style)
+  if style ~= nil and style ~= "words" and style ~= "number" then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.slotsStyle = (style == "number") and "number" or nil end
   ForgetSettings()
 end
 
@@ -2987,6 +3005,7 @@ function UI.DiagnoseOptions()
   Named("historyDays", UI.GetHistoryDays(), "7")
   Named("gold", UI.GetGoldMode(), "both")
   Named("expiry", UI.GetExpiryWhen(), "3")
+  Named("slots", UI.GetSlotsStyle(), "words")
   Named("rows", FormatRowLayout(UI.GetRowLayout()) or "?", ROW_LAYOUT_DEFAULT)
   -- The grid as stored: its group buttons are ids ("group:3"), never names.
   local grid = ns.Store and ns.Store.Get and ns.Store.Get("profile.gridLayout")
