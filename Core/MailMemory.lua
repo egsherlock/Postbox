@@ -1276,6 +1276,19 @@ function MM.MeasureRows(owner, rows, now, sample)
   return cols
 end
 
+-- list -> the placement table (the rules' NewSpec) for one list of these
+-- rows: this window's, or the Mail tab's view of another character's box.
+-- Made on the list's first row and kept on the list's own frame, so each
+-- list's lanes (RV.Place) are its own. Nil without the row rules.
+function MM.PlaceSpec(list)
+  local spec = list and list.__pbPlaceSpec
+  if spec then return spec end
+  local R = Rules()
+  spec = list and R and R.NewSpec and R.NewSpec() or nil
+  if spec then list.__pbPlaceSpec = spec end
+  return spec
+end
+
 -- row, mail, now, cols, position [, onHeader] -> the row bound to the mail.
 -- `onHeader(realm, name)` answers a click on a character's heading.
 function MM.FillRow(row, mail, now, cols, position, onHeader)
@@ -1360,7 +1373,8 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
   row.factsTip = texts.facts
   row.expiryTip = texts.expiryText
 
-  local width = row:GetParent():GetWidth() or 0
+  local list = row:GetParent()
+  local width = list:GetWidth() or 0
   if width < 100 then width = WINDOW_WIDTH - 44 end
   local trail = 6 + (cols.stuck and 16 or 0)
 
@@ -1375,15 +1389,12 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
   if R and R.WithMark and R.MarkOnName and R.MarkOnName() then subject = R.WithMark(subject, mark) end
   if R and R.PaintQuality then R.PaintQuality(row, mark) end
 
-  if R and R.Place then
+  local spec = R and R.Place and MM.PlaceSpec(list)
+  if spec then
     -- The Mail tab's own placement, at this window's spacing: every column
-    -- where the arrangement puts it, the figures packed to the right edge
-    -- by the mail list's own rule, the subject taking the rest.
-    local spec = MM._fillSpec
-    if not spec then
-      spec = R.NewSpec()
-      MM._fillSpec = spec
-    end
+    -- where the arrangement puts it, the figures lined up or closed up by
+    -- the mail list's own rule (the "Line up columns" option), the subject
+    -- taking the rest.
     local el, text = spec.el, spec.text
     el.read, el.icon, el.sender, el.subject = row.Indicator, row.Icon, row.Sender, row.Subject
     el.time, el.money, el.slots = row.ColTime, row.ColMoney, row.ColSlots

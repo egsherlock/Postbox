@@ -3466,7 +3466,9 @@ function HV.BindHistoryRow(panel, row, entry, position, now)
 
   -- The mail rows' arrangement after the age, with the columns History has:
   -- the icon, the sender, what came out, and the money -- which keeps its
-  -- column on every row, so the list reads as a ledger.
+  -- column on every row, so the list reads as a ledger, whether or not the
+  -- rows line up; lined up, what came out runs on into the money's column
+  -- on a row with none, as a mail row's subject does (RV.Place).
   local cols = panel._hcols
   local kind = HV.MoneyKind(entry)
   -- A system mail's sender is recorded as "": that is "unknown", not a name.
