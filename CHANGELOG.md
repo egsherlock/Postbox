@@ -9,12 +9,16 @@ longer play.
 
 ### New
 
-- **Arrange your mail rows.** The grip beside the options cog lets you drag
-  a row's columns into your own order, hide the ones you don't need, and set
-  gold and time left on the spot. The Mail tab, History and Mail Memory all
-  follow it.
-- **Arrange the category buttons too:** drag them into your order and hide
-  the ones you never use; the list gets the room.
+- **Arrange your mail rows.** The small layout mark beside the options cog
+  lets you drag a row's columns into your own order, hide the ones you don't
+  need, and set gold and time left on the spot. The Mail tab, History and Mail
+  Memory all follow it. While you arrange, the mark is a lit Done; right-click
+  it to go back to the default arrangement.
+- **Arrange what sits under the list too.** Drag the totals, All mail and the
+  category buttons into the order you like; each lifts off the window while
+  you arrange, so you can see what moves. Drag the category buttons into your
+  order and hide the ones you never use (the list gets the room), or click
+  their tray to hide them all. Escape steps back one thing at a time.
 - **Character groups.** Put characters together (your bank alts, your
   crafters, a friend who sends you materials) and each group gets a button
   that collects everything they sent. Make them in Options, Mail tab, or
