@@ -2213,7 +2213,8 @@ end
 --   a column or a block selected: its card -- what it is, its eye, its own
 --     choice, Move (the way to reorder without a drag), and, for a figure,
 --     what the rows do on a mail without it; for the subject, Line up
---     columns and what it does; for a block, the stack's order.
+--     columns, what the rows show of its run, and what Line up columns
+--     does; for a block, the stack's order.
 -- A click on a heading, a column on a row or a block selects it, a second
 -- click lets it go; the cross and Escape go back a layer (section 5).
 --
@@ -2239,6 +2240,7 @@ local INSP = {
   CHIP_H = 19, CHIP_GAP = 4, CHIP_LEAD = 6, CHIP_EYE = 12, CHIP_EYE_GAP = 5, CHIP_TAIL = 7,
   LINE_H = 18, LINE_NUM = 14,  -- a line of the stack's order, and its number's column
   NOTE_TOP = 8, NOTE_PAD = 7,
+  SWATCH_W = 14, SWATCH_H = 9, SWATCH_GAP = 5,  -- the hatch's sample before a note
   FOOT_TOP = 10, FOOT_PAD = 7, FOOT_GAP = 8, KEY_PAD = 4, KEY_H = 15, KEY_GAP = 4,
   SPACING = 2,
   MEMO_MAX = 96,
@@ -2793,6 +2795,21 @@ function AR.BuildInspector()
   insp.Empty = Paragraph(art, "body", 0.55)
   insp.Note = Paragraph(art, "secondary", 0.66)
   insp.Kicker = Paragraph(art, "secondary", 0.55)
+  -- The subject's card: how far each row's subject runs, in words.
+  insp.Why = Paragraph(art, "body", 0.81)
+  -- A note that begins with the hatch the rows draw (PutSwatchNote): the
+  -- sample at the note's left, the words beside it.
+  insp.SwatchNote = Paragraph(art, "secondary", 0.66)
+  insp.SwatchNote:SetWidth(P.INNER - P.SWATCH_W - P.SWATCH_GAP)
+  insp.Swatch = T.Glyph and T.Glyph(art, "hatch", nil, "ARTWORK") or nil
+  if insp.Swatch then
+    insp.Swatch:SetSize(P.SWATCH_W, P.SWATCH_H)
+    insp.Swatch:SetTexCoord(0, P.SWATCH_W / 8, 0, P.SWATCH_H / 8)
+    insp.SwatchRing = AR.NewEdges(art, "ARTWORK", 1, 0, 1)
+    AR.PlaceEdges(insp.SwatchRing, insp.Swatch, 0, 1)
+    insp.Swatch:Hide()
+    AR.ShowEdges(insp.SwatchRing, false)
+  end
   insp.MoveLabel = Line(art, "body")
   Grey(insp.MoveLabel, 0.74)
   insp.NoteRule = Rule(art)
@@ -2985,6 +3002,35 @@ local function PutNote(text, y)
   y = y - INSP.NOTE_TOP
   PutRule(insp.NoteRule, y)
   return PutText(insp.Note, text, y - 1 - INSP.NOTE_PAD)
+end
+
+-- A note that speaks of the hatch the rows draw: the sample first, as the
+-- rows have it -- in the accent where it is the subject's borrowed room,
+-- grey where it is a figure's lane the subject runs through -- and the
+-- words beside it. A plain note where the hatch's art is missing.
+local function PutSwatchNote(text, y, accent)
+  local insp, P = AR._insp, INSP
+  local swatch = insp.Swatch
+  if not swatch then return PutNote(text, y) end
+  y = y - P.NOTE_TOP
+  PutRule(insp.NoteRule, y)
+  y = y - 1 - P.NOTE_PAD
+  if accent then
+    local r, g, b = Th().GetAccent()
+    swatch:SetVertexColor(r, g, b, 0.7)
+    AR.TintEdges(insp.SwatchRing, r, g, b, 0.6)
+  else
+    swatch:SetVertexColor(1, 1, 1, 0.35)
+    AR.TintEdges(insp.SwatchRing, 1, 1, 1, 0.3)
+  end
+  swatch:ClearAllPoints()
+  swatch:SetPoint("TOPLEFT", insp, "TOPLEFT", P.PAD, y - 2)
+  swatch:Show()
+  AR.ShowEdges(insp.SwatchRing, true)
+  local fs = insp.SwatchNote
+  At(fs, P.PAD + P.SWATCH_W + P.SWATCH_GAP, y)
+  fs:Show()
+  return y - math.max(Measured(fs, text, true), P.SWATCH_H + 2)
 end
 
 -- The eye switch at the row's left; answers its width.
@@ -3192,6 +3238,12 @@ local function FillColumn(id, y)
   local used
   if spec.fixed then used = PutLanes(y) else used = PutSwitch(shown, y) end
   y = PutMove(y, false, k > 1, layout ~= nil and k < #layout, used)
+  -- The subject's card says what the rows show while it is selected: each
+  -- row's run, and why it stops where it does.
+  if spec.fixed then
+    y = PutKicker(L()["ARRANGE_SUBJECT_WHY"], y)
+    y = PutText(insp.Why, L()["ARRANGE_SUBJECT_RUN"], y)
+  end
   local choices, current, set = AR.Choices(spec.choice)
   insp.set = set
   if #choices > 0 then
@@ -3202,14 +3254,17 @@ local function FillColumn(id, y)
   end
   -- A figure's place beside the subject, and after it whether the columns
   -- line up, say what a mail without it does; the subject's card says what
-  -- Line up columns does, as it stands.
+  -- Line up columns does, as it stands. Where the subject runs on into a
+  -- column, the note begins with the hatch the rows draw there.
   if spec.figure and layout then
     local at = IndexOf(layout, "subject") or 0
-    local note = "ARRANGE_NOTE_LEFT"
-    if k > at then note = LinedUp() and "ARRANGE_NOTE_RIGHT" or "ARRANGE_NOTE_RIGHT_OFF" end
-    y = PutNote(L()[note], y)
+    if k > at then
+      y = PutSwatchNote(L()[LinedUp() and "ARRANGE_NOTE_RIGHT" or "ARRANGE_NOTE_RIGHT_OFF"], y, false)
+    else
+      y = PutNote(L()["ARRANGE_NOTE_LEFT"], y)
+    end
   elseif spec.fixed then
-    y = PutNote(L()[LinedUp() and "ARRANGE_LANES_ON" or "ARRANGE_LANES_OFF"], y)
+    y = PutSwatchNote(L()[LinedUp() and "ARRANGE_LANES_ON" or "ARRANGE_LANES_OFF"], y, true)
   end
   return y
 end
@@ -3235,6 +3290,12 @@ local function HideParts(insp)
   insp.Lead:Hide()
   insp.Empty:Hide()
   insp.Note:Hide()
+  insp.Why:Hide()
+  insp.SwatchNote:Hide()
+  if insp.Swatch then
+    insp.Swatch:Hide()
+    AR.ShowEdges(insp.SwatchRing, false)
+  end
   insp.Kicker:Hide()
   insp.MoveLabel:Hide()
   insp.NoteRule:Hide()
