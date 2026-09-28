@@ -2154,8 +2154,9 @@ local function BuildOptionsButton(frame, theme)
   return button
 end
 
--- The arrange grip, right of the cog and anchored TO it, so it stands level
--- with the cog in every look -- the skins move the cog, and it follows. It
+-- The cog key, right of the cog and anchored TO it by its left edge, so it
+-- stands level with the cog in every look -- the skins move the cog, and it
+-- follows -- and widens to the right into Done while the mode is open. It
 -- arranges the Mail tab's rows and buttons, bringing that tab forward from
 -- the Send tab first (Core/Arrange.lua). Nothing at all without that file:
 -- it is new in 1.50, and a /reload does not load a new file.

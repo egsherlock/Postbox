@@ -5,21 +5,22 @@ local _, ns = ...
 --
 -- A mail row's columns -- the read mark, the item's icon, the sender, the
 -- subject, the time left, the gold, the slots -- in the player's own order,
--- each shown or hidden, arranged right where the rows are. A small grip
--- beside the options cog opens it (and the same grip in Mail Memory's title
--- bar); a strip of chips then stands over the list, one chip per column in
--- the row's order, the subject stretched across the middle as the subject is
--- in the row. Drag a chip and the others slide aside, the rows re-laying
--- under it as it crosses them; let go and it snaps into its slot. Click a
--- chip for its own card: show or hide the column, and the gold's and the
--- time left's own choices. The category buttons under the list take the same
--- drag and a click to hide or show while the mode is open. Done, the grip
--- again, Escape, or the window going away all end it.
+-- each shown or hidden, arranged right where the rows are. The layout mark
+-- beside the options cog opens it (the cog key; the same key stands in Mail
+-- Memory's title bar); a strip of chips then stands over the list, one chip
+-- per column in the row's order, the subject stretched across the middle as
+-- the subject is in the row. Drag a chip and the others slide aside, the
+-- rows re-laying under it as it crosses them; let go and it snaps into its
+-- slot. Click a chip for its own card: show or hide the column, and the
+-- gold's and the time left's own choices. The category buttons under the
+-- list take the same drag and a click to hide or show while the mode is
+-- open. The key, lit as Done while the mode is open, Escape, or the window
+-- going away all end it.
 --
 -- One arrangement for every list that draws mail rows: it is stored by
 -- MailboxUI.GetRowLayout / SetRowLayout, and drawn by CollectTab's RV.Place,
 -- which the Mail tab, its History and Mail Memory all go through. This file
--- owns only the mode: the strip, the card, the drag, the grip, Escape.
+-- owns only the mode: the strip, the card, the drag, the key, Escape.
 --
 -- A drag is a gesture, not a state: its OnUpdate runs from the press to the
 -- release and clears itself, with GLOBAL_MOUSE_UP as the net for a release
@@ -55,13 +56,24 @@ AR.COLUMNS = {
 }
 
 -- The chips' geometry: a grip, the caption or glyph, and air either side.
--- Tight on purpose: seven chips and Done fit the Mail tab at its narrowest
--- in German, and Mail Memory's window widens for them while it arranges.
+-- Tight on purpose: seven chips fit the Mail tab at its narrowest in German,
+-- and Mail Memory's window widens for them while it arranges.
 local CHIP_GAP = 3
 local CHIP_LEAD = 13   -- the grip (four in, six wide) and the space after it
 local CHIP_TAIL = 6
 local GLYPH = 14
-local DONE_GAP = 6
+
+-- The cog key (section 4): the cog's size at rest; lit, a check and Done on
+-- the accent, `KEY_LEAD` in, the check's width and `KEY_GAP`, the word, and
+-- `KEY_TAIL` after it.
+local KEY_SIZE = 18
+local KEY_MARK = 12
+local KEY_CHECK = 8
+local KEY_LEAD, KEY_GAP, KEY_TAIL = 6, 4, 7
+-- The mark's grey at rest: the chrome's quietest text grey, as near as the
+-- palette comes to the mockup's #a2a2a2, so the accent cog beside it is the
+-- louder of the two at a glance.
+local KEY_REST = "textDisabled"
 
 -- Who is arranging (a host, below), and what the rows' wash points at.
 AR.host = nil
@@ -142,8 +154,8 @@ function AR.GridChanged()
   if collect and panel and collect.RefreshCategoryButtons then collect.RefreshCategoryButtons(panel) end
 end
 
--- Right-click on the grip while arranging: the rows and the buttons as they
--- come, with the gold's and the time left's own defaults.
+-- Right-click on the lit key: the rows and the buttons as they come, with
+-- the gold's and the time left's own defaults.
 function AR.Reset()
   local ui = UI()
   if not ui then return end
@@ -256,9 +268,10 @@ end
 -- 3. Parts
 -------------------------------------------------------------
 
--- The grip: two columns of three dots, the sign for "this moves". The title
--- bar's button and every chip wear it. Round where the dots are big enough
--- for a mask to show.
+-- The grip: two columns of three dots, the sign for "this moves". Every chip
+-- wears it. Round where the dots are big enough for a mask to show. Kept
+-- whole for a caller outside this file that asks for it where the glyph art
+-- is missing (the options panel's mark).
 function AR.Grip(parent, dot, step)
   local holder = CreateFrame("Frame", nil, parent)
   holder:SetSize(2 * dot + step, 3 * dot + 2 * step)
@@ -309,41 +322,188 @@ function AR.PaintGhost(ghost)
   ghost:SetBackdropBorderColor(r, g, b, 0.9)
 end
 
+-- Four edges of `owner`'s rect as white textures, to tint: a ring drawn
+-- inside it, or a line drawn outside it. `out` is how far the outer side
+-- of each edge stands past the rect (0 for a ring inside, 1 for a keyline
+-- just outside), `thick` how far the edge reaches in from there. Set again
+-- with another thickness by AR.PlaceEdges.
+function AR.NewEdges(owner, layer, sublevel, out, thick)
+  local edges = {}
+  for i = 1, 4 do
+    local t = owner:CreateTexture(nil, layer, nil, sublevel)
+    t:SetTexture(WHITE)
+    edges[i] = t
+  end
+  AR.PlaceEdges(edges, owner, out, thick)
+  return edges
+end
+
+function AR.PlaceEdges(edges, owner, out, thick)
+  local top, bottom, left, right = edges[1], edges[2], edges[3], edges[4]
+  top:ClearAllPoints()
+  top:SetPoint("TOPLEFT", owner, "TOPLEFT", -out, out)
+  top:SetPoint("TOPRIGHT", owner, "TOPRIGHT", out, out)
+  top:SetHeight(thick)
+  bottom:ClearAllPoints()
+  bottom:SetPoint("BOTTOMLEFT", owner, "BOTTOMLEFT", -out, -out)
+  bottom:SetPoint("BOTTOMRIGHT", owner, "BOTTOMRIGHT", out, -out)
+  bottom:SetHeight(thick)
+  left:ClearAllPoints()
+  left:SetPoint("TOPLEFT", owner, "TOPLEFT", -out, out - thick)
+  left:SetPoint("BOTTOMLEFT", owner, "BOTTOMLEFT", -out, thick - out)
+  left:SetWidth(thick)
+  right:ClearAllPoints()
+  right:SetPoint("TOPRIGHT", owner, "TOPRIGHT", out, out - thick)
+  right:SetPoint("BOTTOMRIGHT", owner, "BOTTOMRIGHT", out, thick - out)
+  right:SetWidth(thick)
+end
+
+function AR.TintEdges(edges, r, g, b, a)
+  for i = 1, 4 do edges[i]:SetVertexColor(r, g, b, a) end
+end
+
+function AR.ShowEdges(edges, shown)
+  for i = 1, 4 do edges[i]:SetShown(shown) end
+end
+
 -------------------------------------------------------------
--- 4. The grip in the title bar
+-- 4. The cog key
 --
--- Beside the cog, the cog's size, drawn rather than borrowed: six dots, in
--- the chrome's grey, lit in the accent while the mode is open. `place`
--- anchors it; `getHost` answers which list it arranges, and may bring that
--- list forward first.
+-- Beside the cog, the cog's size: the layout mark, a plan of the window --
+-- the list on top, two blocks under it, one of them being placed -- in the
+-- chrome's grey, with a black keyline baked into the art so it holds over a
+-- bright scene. It reads as neither a handle nor the cog: a different
+-- silhouette, a quieter colour, four units apart. Pointed at, the mark goes
+-- white on a faint plate. While the mode is open it widens in place into a
+-- lit Done -- a check and the word on the accent -- which is the way out;
+-- right-click on it goes back to the default arrangement. `place` anchors
+-- it by its left edge, so the widening runs to the right; `getHost` answers
+-- which list it arranges, and may bring that list forward first.
+--
+-- All of it is drawn on the key itself, a button of Postbox's own: nothing
+-- is laid on the title bar or on any frame a skin repaints.
 -------------------------------------------------------------
 
+-- The ink a lit accent carries: dark on a light accent, as on the brand
+-- gold; white on a dark one a host UI might publish.
+local function Ink(r, g, b)
+  if 0.2126 * r + 0.7152 * g + 0.0722 * b >= 0.45 then return 0.086, 0.071, 0 end
+  return 1, 1, 1
+end
+
+-- Every look the key has, from its state: at rest the mark alone; pointed
+-- at, white on a plate (a 7% white fill, a grey ring, a black keyline);
+-- lit, the accent with a black keyline and a darker foot, the check and
+-- Done in its ink, and pointed at while lit, a lighter accent with a halo.
 function AR.PaintToggle(button)
   if not button then return end
-  local active = AR.host ~= nil and AR.host.toggle == button
-  AR.TintGrip(button.grip, button.hover and "textPrimary" or "textSecondary", active)
+  local T = Th()
+  local lit = AR.host ~= nil and AR.host.toggle == button
+  local hover = button.hover and true or false
+  local mark, check, label = button.Mark, button.Check, button.Label
+  if lit then
+    local r, g, b = T.GetAccent()
+    local ir, ig, ib = Ink(r, g, b)
+    AR.TintEdges(button.Glow, r, g, b, 0.35)
+    AR.ShowEdges(button.Glow, hover)
+    if hover then r, g, b = r + (1 - r) * 0.38, g + (1 - g) * 0.38, b + (1 - b) * 0.38 end
+    button.Fill:SetVertexColor(r, g, b, 1)
+    button.Fill:Show()
+    AR.ShowEdges(button.Ring, false)
+    AR.TintEdges(button.Key, 0, 0, 0, 1)
+    AR.ShowEdges(button.Key, true)
+    button.Base:Show()
+    if mark then mark:Hide() end
+    if button.grip then button.grip:Hide() end
+    if check then
+      check:SetVertexColor(ir, ig, ib, 1)
+      check:Show()
+    end
+    label:SetTextColor(ir, ig, ib, 1)
+    label:Show()
+    button:SetWidth(KEY_LEAD + KEY_CHECK + KEY_GAP + math.ceil(T.TextWidth(label)) + KEY_TAIL)
+    return
+  end
+  button:SetWidth(KEY_SIZE)
+  button.Fill:SetVertexColor(1, 1, 1, 0.07)
+  button.Fill:SetShown(hover)
+  AR.TintEdges(button.Ring, 0.365, 0.365, 0.365, 1)
+  AR.ShowEdges(button.Ring, hover)
+  AR.TintEdges(button.Key, 0, 0, 0, 0.8)
+  AR.ShowEdges(button.Key, hover)
+  AR.ShowEdges(button.Glow, false)
+  button.Base:Hide()
+  if check then check:Hide() end
+  label:Hide()
+  local token = hover and "textPrimary" or KEY_REST
+  if mark then
+    T.SetColor(mark, token)
+    mark:Show()
+  elseif button.grip then
+    for i = 1, #button.grip.dots do T.SetColor(button.grip.dots[i], token) end
+    button.grip:Show()
+  end
 end
 
 local function ToggleTip(button)
   GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
-  GameTooltip:SetText(L()["ARRANGE_TITLE"])
-  GameTooltip:AddLine(L()["ARRANGE_TIP"], 1, 1, 1, true)
   if AR.host and AR.host.toggle == button then
-    GameTooltip:AddLine(" ")
+    GameTooltip:SetText(L()["ARRANGE_DONE"])
+    GameTooltip:AddLine(L()["ARRANGE_DONE_TIP"], 1, 1, 1, true)
     GameTooltip:AddLine(L()["ARRANGE_TIP_ACTIVE"], 0.7, 0.7, 0.7, true)
     GameTooltip:AddLine(L()["ARRANGE_TIP_RESET"], 0.7, 0.7, 0.7, true)
+  else
+    GameTooltip:SetText(L()["ARRANGE_TITLE"])
+    GameTooltip:AddLine(L()["ARRANGE_TIP"], 1, 1, 1, true)
   end
   GameTooltip:Show()
 end
 
+-- The key's art, made once with the key. Back to front: the lit halo, the
+-- keyline, the fill, the ring and the lit foot, then the mark, the check
+-- and the word.
+local function BuildKeyArt(button)
+  local T = Th()
+  button.Glow = AR.NewEdges(button, "BACKGROUND", -8, 2, 1)
+  button.Key = AR.NewEdges(button, "BACKGROUND", -7, 1, 1)
+  button.Fill = button:CreateTexture(nil, "BACKGROUND", nil, -6)
+  button.Fill:SetTexture(WHITE)
+  button.Fill:SetAllPoints()
+  button.Ring = AR.NewEdges(button, "BORDER", 0, 0, 1)
+  button.Base = button:CreateTexture(nil, "BORDER", nil, 1)
+  button.Base:SetTexture(WHITE)
+  button.Base:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 0, 0)
+  button.Base:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
+  button.Base:SetHeight(1)
+  button.Base:SetVertexColor(0, 0, 0, 0.25)
+
+  -- The mark, and where the glyph art is missing the six dots it replaced.
+  button.Mark = T.Glyph and T.Glyph(button, "layout", KEY_MARK, "ARTWORK") or nil
+  if button.Mark then
+    button.Mark:SetPoint("CENTER", button, "CENTER", 0, 0)
+  else
+    button.grip = AR.Grip(button, 4, 3)
+    button.grip:SetPoint("CENTER")
+  end
+  button.Check = T.Glyph and T.Glyph(button, "check", KEY_CHECK, "ARTWORK") or nil
+  if button.Check then
+    button.Check:SetPoint("CENTER", button, "LEFT", KEY_LEAD + KEY_CHECK / 2, 0)
+  end
+  button.Label = T.CreateText(button, "segment", "ARTWORK")
+  button.Label:SetPoint("LEFT", button, "LEFT", KEY_LEAD + KEY_CHECK + KEY_GAP, 0)
+  button.Label:SetWordWrap(false)
+  -- Ink on the accent, flat: the role's drop shadow would muddy it.
+  if button.Label.SetShadowOffset then button.Label:SetShadowOffset(0, 0) end
+  button.Label:SetText(L()["ARRANGE_DONE"])
+end
+
 function AR.BuildToggle(parent, place, getHost)
   local button = CreateFrame("Button", nil, parent)
-  button:SetSize(18, 18)
+  button:SetSize(KEY_SIZE, KEY_SIZE)
   place(button)
   button:SetFrameLevel(parent:GetFrameLevel() + 20)
   button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-  button.grip = AR.Grip(button, 4, 3)
-  button.grip:SetPoint("CENTER")
+  BuildKeyArt(button)
   button.getHost = getHost
   button:SetScript("OnEnter", function(self)
     self.hover = true
@@ -494,7 +654,7 @@ end
 -- The subject's chip stretches across what the others leave, as the subject
 -- does in the row, so the strip reads as the row it arranges. A hidden
 -- column's chip keeps its place, struck through and greyed: showing it again
--- puts it back where it was. Done stands at the end.
+-- puts it back where it was.
 -------------------------------------------------------------
 
 local function ChipTip(chip)
@@ -609,29 +769,13 @@ function AR.BuildStrip(host)
   strip.chips = {}
   for id in pairs(AR.COLUMNS) do strip.chips[id] = BuildChip(strip, host, id) end
 
-  local done = T.CreateButton(nil, strip)
-  done:SetText(L()["ARRANGE_DONE"])
-  done:SetHeight(T.Metrics.tileHeight)
-  done:SetWidth(math.max(math.ceil(T.TextWidth(done)) + 20, 44))
-  done:SetPoint("RIGHT", strip, "RIGHT", 0, 0)
-  done:SetScript("OnClick", function() AR.Leave() end)
-  done:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L()["ARRANGE_DONE"])
-    GameTooltip:AddLine(L()["ARRANGE_DONE_TIP"], 1, 1, 1, true)
-    GameTooltip:Show()
-  end)
-  done:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  strip.Done = done
-
   strip.Ghost = AR.NewGhost(strip)
   strip:SetScript("OnSizeChanged", function()
     if AR.host == host then AR.LayoutStrip(host) end
   end)
   host.strip = strip
-  -- The Done button wears the host UI's button look, as every push button
-  -- in the window does; the chips are Postbox's own plates, as the view
-  -- switch beside them is.
+  -- The chips are Postbox's own plates, as the view switch beside them is;
+  -- the skin's pass finds whatever it styles among them, as it always has.
   if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, strip) end
   return strip
 end
@@ -649,7 +793,7 @@ end
 function AR.StripNeed(host)
   local strip = host and host.strip
   if not strip then return 0 end
-  local total = (strip.Done:GetWidth() or 0) + DONE_GAP
+  local total = 0
   local n = 0
   for _, chip in pairs(strip.chips) do
     total = total + Natural(chip)
@@ -670,7 +814,7 @@ function AR.LayoutStrip(host)
   local T = Th()
   local width = strip:GetWidth() or 0
   if width < 60 then return end
-  local avail = width - (strip.Done:GetWidth() or 0) - DONE_GAP
+  local avail = width
   strip._avail = avail
 
   local total, flexible = CHIP_GAP * (#layout - 1), 0
@@ -998,7 +1142,7 @@ end
 -- 10. Opening and closing
 --
 -- A host is the list being arranged: { owner = its frame, PlaceStrip(strip),
--- OnEnter(strip), OnLeave(), toggle = the grip that opened it }. The Mail
+-- OnEnter(strip), OnLeave(), toggle = the key that opened it }. The Mail
 -- tab's is CollectTab's CT.ArrangeHost; Mail Memory's is its own. One at a
 -- time: opening one closes the other.
 -------------------------------------------------------------

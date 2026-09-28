@@ -2519,9 +2519,10 @@ local function Build()
   local applyWindow = ns.Skin and (ns.Skin.ApplyWindow or ns.Skin.Apply)
   if applyWindow then applyWindow(frame) end
 
-  -- The arrange grip, where the Postbox window has its cog and its own grip:
-  -- the rows here are the Mail tab's rows, and arranging them is as close as
-  -- the window. After the skin, so it stands in the bar the skin drew.
+  -- The cog key, where the Postbox window has its cog and its own key: the
+  -- rows here are the Mail tab's rows, and arranging them is as close as the
+  -- window. After the skin, so it stands in the bar the skin drew; anchored
+  -- by its left edge, so its lit Done widens to the right.
   local arrange = ns.Arrange
   if arrange and arrange.BuildToggle then
     frame.ArrangeButton = arrange.BuildToggle(frame, function(button)
