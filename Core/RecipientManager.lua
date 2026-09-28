@@ -102,10 +102,38 @@ local SORT_DIR_GLYPH = 12
 -- the same gap the category strips use between tiles in one dense bar.
 local SORT_GROUP_W  = SORT_TOGGLE_W + M.space.hair + SORT_DIR_W
 
+-- THE VERTICAL CHAIN, top to bottom. Named once because two places read it:
+-- the anchors in Build and the height floor (HeightBounds), which have to agree
+-- to the pixel or the floor stops on part of a row.
+--
+--   frame top
+--     BAND_TOP       the template's title bar
+--   header band      BAND_H: search and sort over the category tiles
+--     SUMMARY_GAP
+--   summary line     one line of the `secondary` font, measured
+--     SUMMARY_GAP
+--   list             LIST_INSET, the rows, LIST_INSET
+--     FOOT_GAP
+--   action bar       CTRL_H
+--     FOOT_PAD
+local BAND_TOP    = 28
+local BAND_H      = (BAND_PAD * 2) + CTRL_H + BAND_PAD + BAR_H
+local SUMMARY_GAP = 6
+local FOOT_GAP    = 8
+local FOOT_PAD    = 10
+-- The action bar's right-most control stops this far in from the window's
+-- right edge, clear of the resize grip in the corner.
+local GRIP_CLEAR  = 26
+
 local DEFAULT_W, DEFAULT_H = 600, 480
--- The header is two rows tall, so the floor is higher than it was: below this
--- the list is not enough rows to be worth scrolling.
-local MIN_W, MIN_H = 480, 360
+-- The bounds, of which only these are chosen; the section "Size bounds" below
+-- measures the rest. The narrowest width is the Postbox window's own, so the
+-- two windows stop at the same place, and it gives way only where this
+-- window's content measures wider. The shortest height is the chain above
+-- around MIN_ROWS whole rows. The ceilings are taste: past them the window is
+-- bigger than anything it holds.
+local MIN_W    = 480
+local MIN_ROWS = 6
 local MAX_W, MAX_H = 1000, 800
 
 local ADD_POPUP    = "POSTBOX_RM_ADD"
@@ -1675,6 +1703,133 @@ function RM.Count()
 end
 
 -------------------------------------------------------------
+-- Size bounds
+--
+-- Measured, as the Postbox window's are, on every open: the skin has had its
+-- say about fonts by then, and a host font or a translation moves all of it.
+--
+-- The width floor protects the two things that do not narrow gracefully:
+--
+--   * the category tiles. Their captions are centred and unconstrained, so a
+--     tile narrower than its word does not clip it, it spills it over the
+--     tiles either side. German needs more than 480 for this in every font
+--     measured, Spanish in most.
+--   * the action bar. Narrower than its captions, its three buttons end on
+--     the fit rule's last resort -- ellipsized, the full caption in a tooltip
+--     -- which is not a state the window should rest in at its floor. German,
+--     Spanish and Russian need more than 480 for this in most fonts measured.
+--
+-- Everything else gives way by design and was measured not to bind: the
+-- search field narrows, the summary, name and detail lines ellipsize, and a
+-- row's buttons leave its name column over 150px in every locale at 480.
+--
+-- A floor above the size the player chose is a LOAN (RM._loanW, RM._loanH),
+-- as it is on the Postbox window: the window stands on the floor, the saved
+-- size stays the player's (ApplyWindowPersistence's extra*Fn subtracts the
+-- loan), and the loan is handed back when the floor comes down. A drag or a
+-- reset on the grip makes the size on screen the player's own.
+-------------------------------------------------------------
+
+-- The width the content needs with every part at its narrowest, never under
+-- MIN_W and never past MAX_W.
+local function WidthFloor(frame)
+  -- The category bar: the star tile at its widest -- its count at the cap, so
+  -- the floor does not move with the number of favourites -- and each word tile
+  -- its caption plus the least padding a caption takes.
+  local star, caption, words = BAR_STAR_W, 0, 0
+  for _, tile in ipairs(frame.CategoryTiles) do
+    if tile._starTile then
+      -- Measured in the count's own font string and put back in the same
+      -- call, so nothing is ever drawn with the probe in it.
+      local count = tile.Count
+      local shown = count:GetText()
+      count:SetText(TileCountText(Theme.CountCap + 1))
+      star = BAR_STAR_W + BAR_COUNT_GAP + math.ceil(Theme.TextWidth(count))
+      count:SetText(shown)
+    else
+      words = words + 1
+      caption = math.max(caption, Theme.TextWidth(tile))
+    end
+  end
+  -- Whole pixels per tile: LayoutCategoryBar rounds its edges, and a bar that
+  -- is a whole number of pixels per tile is one it divides exactly.
+  local bar = star + BAR_GAP + words * (math.ceil(caption) + M.buttonPaddingMin + BAR_GAP)
+  local need = bar + 2 * PAD + 2 * (BAND_PAD + 1)
+
+  -- The action bar as LayoutActionBar lays it: evened to the longest caption,
+  -- at the least padding (Theme.LayoutRow's second step, before any truncation).
+  local buttons, longest = frame.ActionButtons, 0
+  for index = 1, #buttons do
+    longest = math.max(longest, Theme.TextWidth(buttons[index]))
+  end
+  local per = math.max(math.ceil(longest) + M.buttonPaddingMin, M.buttonMinWidth)
+  need = math.max(need, #buttons * per + (#buttons - 1) * ACTION_GAP + PAD + GRIP_CLEAR + M.gap)
+
+  return math.min(math.max(MIN_W, math.ceil(need)), MAX_W)
+end
+
+-- Everything above and below the list: THE VERTICAL CHAIN, with the summary
+-- line measured in the font it is wearing.
+local function ChromeHeight(frame)
+  local summary = frame.Summary
+  local line = summary:GetStringHeight() or 0
+  if line <= 0 then
+    -- Empty until the first refresh, when it measures nothing; one line of it
+    -- is its font's size.
+    local _, size = summary:GetFont()
+    line = tonumber(size) or 0
+  end
+  return math.ceil(BAND_TOP + BAND_H + SUMMARY_GAP + line + SUMMARY_GAP
+                   + 2 * LIST_INSET + FOOT_GAP + CTRL_H + FOOT_PAD)
+end
+
+-- The floor is MIN_ROWS whole rows; the ceiling the most whole rows at or
+-- under MAX_H. Between the two the height is the player's, row or no row.
+local function HeightBounds(frame)
+  local chrome = ChromeHeight(frame)
+  local rows = math.max(MIN_ROWS, math.floor((MAX_H - chrome) / ROW_H))
+  return chrome + MIN_ROWS * ROW_H, chrome + rows * ROW_H
+end
+
+-- Sets the bounds and holds the window to them.
+local function ApplyBounds(frame)
+  local minW = WidthFloor(frame)
+  local minH, maxH = HeightBounds(frame)
+  if frame.SetResizeBounds then
+    frame:SetResizeBounds(minW, minH, MAX_W, maxH)
+  elseif frame.SetMinResize then
+    frame:SetMinResize(minW, minH)
+    frame:SetMaxResize(MAX_W, maxH)
+  end
+
+  -- The size the player chose, held under the ceilings, and the floor's loan
+  -- on top where the floor stands higher: raised, the window grows onto it;
+  -- lowered, the loan goes back, down to the player's own size.
+  local width, height = frame:GetWidth(), frame:GetHeight()
+  local chosenW = math.min(width - (RM._loanW or 0), MAX_W)
+  local chosenH = math.min(height - (RM._loanH or 0), maxH)
+  local newW, newH = math.max(chosenW, minW), math.max(chosenH, minH)
+  RM._loanW, RM._loanH = newW - chosenW, newH - chosenH
+  if newW ~= width or newH ~= height then
+    -- Pinned first, so the correction grows the window down and right rather
+    -- than moving the corner the player placed.
+    ns.Core.UI.Helpers.PinFrameTopLeft(frame)
+    frame:SetSize(newW, newH)
+  end
+end
+
+-- The size a first open uses: the default, or the floor where that stands
+-- higher, on loan like any other.
+local function SetDefaultSize(frame)
+  local minW, minH
+  if frame.GetResizeBounds then minW, minH = frame:GetResizeBounds() end
+  local width = math.max(DEFAULT_W, tonumber(minW) or 0)
+  local height = math.max(DEFAULT_H, tonumber(minH) or 0)
+  RM._loanW, RM._loanH = width - DEFAULT_W, height - DEFAULT_H
+  frame:SetSize(width, height)
+end
+
+-------------------------------------------------------------
 -- Build
 -------------------------------------------------------------
 local function Build()
@@ -1687,6 +1842,8 @@ local function Build()
   end
   RM._filter = RM._filter or "all"
   RM._query = RM._query or ""
+  -- Nothing is on loan until the first open measures the floor.
+  RM._loanW, RM._loanH = 0, 0
 
   -- The global name is required: Helpers.RegisterEscClose puts frame:GetName()
   -- into UISpecialFrames and silently does nothing for an anonymous frame.
@@ -1699,13 +1856,9 @@ local function Build()
   frame:SetClampedToScreen(true)
   frame:EnableMouse(true)
   frame:SetMovable(true)
+  -- The bounds are measured on every open (ApplyBounds, from RM.Show), before
+  -- the grip can be reached.
   frame:SetResizable(true)
-  if frame.SetResizeBounds then
-    frame:SetResizeBounds(MIN_W, MIN_H, MAX_W, MAX_H)
-  elseif frame.SetMinResize then
-    frame:SetMinResize(MIN_W, MIN_H)
-    frame:SetMaxResize(MAX_W, MAX_H)
-  end
   frame:RegisterForDrag("LeftButton")
   frame:SetScript("OnDragStart", frame.StartMoving)
   frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
@@ -1731,9 +1884,9 @@ local function Build()
   -- containers.
   -----------------------------------------------------------
   local band = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-  band:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -28)
-  band:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -28)
-  band:SetHeight((BAND_PAD * 2) + CTRL_H + BAND_PAD + BAR_H)
+  band:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -BAND_TOP)
+  band:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -BAND_TOP)
+  band:SetHeight(BAND_H)
   Theme.ApplyBand(band)
   frame.HeaderBand = band
 
@@ -2013,8 +2166,8 @@ local function Build()
   -- `secondary`, not the disabled font object: this sentence is the one that
   -- explains why the list below is twelve rows long, and it is never inactive.
   frame.Summary = Theme.CreateText(frame, "secondary")
-  frame.Summary:SetPoint("TOPLEFT", band, "BOTTOMLEFT", 2, -6)
-  frame.Summary:SetPoint("TOPRIGHT", band, "BOTTOMRIGHT", -2, -6)
+  frame.Summary:SetPoint("TOPLEFT", band, "BOTTOMLEFT", 2, -SUMMARY_GAP)
+  frame.Summary:SetPoint("TOPRIGHT", band, "BOTTOMRIGHT", -2, -SUMMARY_GAP)
   frame.Summary:SetJustifyH("LEFT")
   frame.Summary:SetWordWrap(false)
   frame.Summary:SetText("")
@@ -2024,7 +2177,7 @@ local function Build()
   -----------------------------------------------------------
   local addButton = Theme.CreateButton(nil, frame)
   addButton:SetHeight(CTRL_H)
-  addButton:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 10)
+  addButton:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, FOOT_PAD)
   addButton.caption = L["RM_BTN_ADD"]
   addButton:SetText(addButton.caption)
   addButton:SetScript("OnClick", function()
@@ -2035,7 +2188,7 @@ local function Build()
   -- Right-most control stops short of the resize grip in the corner.
   local showAll = Theme.CreateButton(nil, frame)
   showAll:SetHeight(CTRL_H)
-  showAll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -26, 10)
+  showAll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -GRIP_CLEAR, FOOT_PAD)
   showAll.caption = L["RM_BTN_SHOW_ALL"]
   showAll:SetText(showAll.caption)
   showAll:SetScript("OnClick", function() RM.Bulk(false) end)
@@ -2055,11 +2208,13 @@ local function Build()
   -- which point FitText ellipsizes and the tooltip carries the full caption, so
   -- nothing is ever silently clipped.
   local actionButtons = { addButton, hideAll, showAll }
+  -- The width floor measures them too (WidthFloor).
+  frame.ActionButtons = actionButtons
 
   local function LayoutActionBar()
     -- PAD at the left, the resize grip's clearance at the right, and one gap of
     -- genuine separation between the add button and the bulk pair.
-    local available = (frame:GetWidth() or DEFAULT_W) - PAD - 26 - M.gap
+    local available = (frame:GetWidth() or DEFAULT_W) - PAD - GRIP_CLEAR - M.gap
     Theme.LayoutRow(actionButtons, available, {
       height = CTRL_H, gap = ACTION_GAP, maxLines = 1, truncate = true,
       minWidth = M.buttonMinWidth,
@@ -2105,9 +2260,9 @@ local function Build()
   local listArea = CreateFrame("Frame", nil, frame, "BackdropTemplate")
   -- Anchored under the summary rather than at a fixed offset, so the header can
   -- change height without a second number needing to be kept in step with it.
-  listArea:SetPoint("TOPLEFT", frame.Summary, "BOTTOMLEFT", -2, -6)
+  listArea:SetPoint("TOPLEFT", frame.Summary, "BOTTOMLEFT", -2, -SUMMARY_GAP)
   listArea:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
-  listArea:SetPoint("BOTTOM", addButton, "TOP", 0, 8)
+  listArea:SetPoint("BOTTOM", addButton, "TOP", 0, FOOT_GAP)
   Theme.ApplyList(listArea)
   frame.ListArea = listArea
 
@@ -2130,8 +2285,14 @@ local function Build()
 
   -- HookScript, not SetScript: the template installs its own handlers here and
   -- replacing them desynchronises the scroll bar.
-  scroll:HookScript("OnSizeChanged", function(self, width)
+  scroll:HookScript("OnSizeChanged", function(self, width, height)
     if width and width > 10 then child:SetWidth(width) end
+    -- A taller view at the foot of the list leaves the offset past where the
+    -- list now scrolls to, and the rows would bind from there with a gap under
+    -- the last one until the template's range caught up. Held to the list's
+    -- end first, so a drag on the grip relays the rows it is showing.
+    local most = math.max(0, (child:GetHeight() or 0) - (height or self:GetHeight() or 0))
+    if (self:GetVerticalScroll() or 0) > most then self:SetVerticalScroll(most) end
     UpdateVisibleRows()
   end)
   scroll:HookScript("OnVerticalScroll", function() UpdateVisibleRows() end)
@@ -2145,22 +2306,70 @@ local function Build()
   frame.Empty:Hide()
 
   -----------------------------------------------------------
-  -- Position / size persistence
+  -- Position / size persistence, and the resize grip
+  --
+  -- The grip is the Postbox window's: the same helper, so the same art in the
+  -- same corner under every look, the same two gestures and the same hint.
+  -- The layout follows a drag live through the size hooks above -- the action
+  -- bar, the category bar and the rows -- and the helper's OnUpdate lasts only
+  -- as long as the press.
   -----------------------------------------------------------
   local store = ns.Store.EnsurePath("profile.rmWindow", {})
-  -- The header grew a row, so the minimum window height did too. A size stored
-  -- under the old floor would be restored verbatim (persistence clamps on save,
-  -- not on restore) and hand back a two-row list; raise it here instead.
-  if type(store.width) == "number" and store.width < MIN_W then store.width = MIN_W end
-  if type(store.height) == "number" and store.height < MIN_H then store.height = MIN_H end
+  local helpers = ns.Core.UI.Helpers
 
-  frame.ResizeButton = ns.Core.UI.Helpers.CreateResizeButton(frame, function(f)
-    ns.Core.UI.Helpers.SaveFramePosition(f, store)
+  -- The size and the loans as the grip found them, for a press that never moved.
+  local pressW, pressH, pressLoanW, pressLoanH
+
+  -- The grip takes hold: the size on screen becomes the player's own, loan and
+  -- all, so the drag starts from what they can see.
+  local function OnGripStart(f)
+    pressW, pressH = f:GetWidth(), f:GetHeight()
+    pressLoanW, pressLoanH = RM._loanW, RM._loanH
+    RM._loanW, RM._loanH = 0, 0
+  end
+
+  -- Released. A press that left an axis where it was has not resized it:
+  -- whatever the floor had lent there stays lent, or the next save would write
+  -- the floor down as the player's choice.
+  local function OnGripStop(f)
+    if pressW then
+      if math.abs(f:GetWidth() - pressW) < 0.5 then RM._loanW = pressLoanW end
+      if math.abs(f:GetHeight() - pressH) < 0.5 then RM._loanH = pressLoanH end
+      pressW = nil
+    end
+    helpers.SaveFramePosition(f, store)
     UpdateVisibleRows()
-  end)
+  end
+
+  -- Right-click: the size a first open uses, where the window stands. The
+  -- top-left corner stays put, as it does on the Postbox window's reset.
+  local function OnGripReset(f)
+    helpers.PinFrameTopLeft(f)
+    SetDefaultSize(f)
+    helpers.SaveFramePosition(f, store)
+  end
+
+  frame.ResizeButton = helpers.CreateResizeButton(frame, OnGripStop, OnGripStart, nil, OnGripReset)
+  local grip = frame.ResizeButton
+  if grip then
+    -- The right-click cannot be discovered by looking, so the hint says both
+    -- gestures, in the Postbox window's words. Built once, not on every hover.
+    local hint = { L["GRIP_TIP_DRAG"], L["GRIP_TIP_RESET"] }
+    grip:HookScript("OnEnter", function(self) Theme.ShowHint(self, hint) end)
+    grip:HookScript("OnLeave", function() Theme.HideHint() end)
+    -- Gone the moment the grip is pressed: a drag moves the window from under it.
+    grip:HookScript("OnMouseDown", function() Theme.HideHint() end)
+  end
+
   -- After the frame's own OnDragStop is set: ApplyWindowPersistence wraps it.
-  ns.Core.UI.Helpers.ApplyWindowPersistence(frame, store, {
-    minW = MIN_W, maxW = MAX_W, minH = MIN_H, maxH = MAX_H,
+  -- What it writes is the window less the floor's loan, so a stored size under
+  -- today's floor is kept as the player left it and stands on a loan until they
+  -- change it. Its own clamp is a sanity bound on what it writes; the real
+  -- floor is the measured one (ApplyBounds), which never goes under these rows.
+  helpers.ApplyWindowPersistence(frame, store, {
+    minW = MIN_W, maxW = MAX_W, minH = MIN_ROWS * ROW_H, maxH = MAX_H,
+    extraWidthFn = function() return RM._loanW end,
+    extraHeightFn = function() return RM._loanH end,
   })
 
   RM._frame = frame
@@ -2187,6 +2396,9 @@ function RM.Show()
   RM.Refresh()
   frame:Raise()
   if ns.Skin and ns.Skin.Refresh then ns.Skin.Refresh(frame) end
+  -- Last: the summary line has its text and the skin its fonts, so both are
+  -- measured as they will be seen.
+  ApplyBounds(frame)
 end
 
 function RM.Hide()
@@ -2204,7 +2416,7 @@ function RM.ResetWindow()
   local frame = RM._frame
   if not frame then return end
   frame:ClearAllPoints()
-  frame:SetSize(DEFAULT_W, DEFAULT_H)
+  SetDefaultSize(frame)
   frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
   ns.Core.UI.Helpers.PinFrameTopLeft(frame)
 end
