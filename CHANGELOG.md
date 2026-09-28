@@ -28,9 +28,10 @@ longer play.
   back to your own mailbox.
 - **The Recipients window resizes like the Postbox window:** drag its corner,
   or right-click the corner for the default size.
-- **Reset to defaults**, at the foot of the options, puts every setting and
-  window back the way Postbox ships, after asking. Your recipients, groups,
-  Mail Memory and History are kept.
+- **Reset to defaults**, at the foot of the options, offers two resets.
+  Reset settings puts every option and window back and keeps your recipients,
+  groups, hidden characters, Mail Memory and History; Reset everything clears
+  those too, keeps only the list of your characters, and asks twice.
 
 ### Improved
 
