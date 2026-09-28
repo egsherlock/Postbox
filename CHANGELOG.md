@@ -10,15 +10,17 @@ longer play.
 ### New
 
 - **Arrange your mail rows.** The small layout mark beside the options cog
-  lets you drag a row's columns into your own order, hide the ones you don't
-  need, and set gold and time left on the spot. The Mail tab, History and Mail
-  Memory all follow it. While you arrange, the mark is a lit Done; right-click
-  it to go back to the default arrangement.
+  opens arranging: a column header takes the top row's place, each heading
+  right over its column, and you drag a column by its heading or straight
+  from any row. Hide the columns you don't need (a peg marks where one
+  stands) and set gold and time left on the spot. The Mail tab, History and
+  Mail Memory all follow it. While you arrange, the mark is a lit Done;
+  right-click it to go back to the default arrangement.
 - **An inspector beside the window while you arrange.** It explains the mode,
   lists everything you have hidden (a click brings it back) and holds Reset.
   Click a column or a block for its card: show or hide it, its own choices,
-  and Move buttons if you would rather not drag. Escape steps back one thing
-  at a time.
+  and Move buttons if you would rather not drag. Select Subject to see why
+  each subject stops where it does. Escape steps back one thing at a time.
 - **Arrange what sits under the list too.** Drag the totals, All mail and the
   category buttons into the order you like; each lifts off the window while
   you arrange, so you can see what moves. Drag the category buttons into your
