@@ -72,6 +72,10 @@ ns.Core.Logger.Bind(ns, "Postbox", "d3a44a")
 -- Realm keys throughout are the RAW GetRealmName() -- spaces, apostrophes and
 -- all. Core/ContactService.lua and Core/Recipients.lua both index with exactly
 -- that, so alts, altClasses and altMeta line up character for character.
+--
+-- The options' Reset everything (Core/MailboxUI.lua) empties every root here
+-- but the census of the player's characters -- alts, altClasses, altMeta. A
+-- new root is cleared by it too, unless it is added to CENSUS_KEEP there.
 -------------------------------------------------------------
 
 local PROFILE = "profile"

@@ -14,7 +14,8 @@ local _, ns = ...
 --   1. THE GROUPS   PostboxDB.charGroups, at the saved-variable root: they are
 --                   something the player built, so a Reset of the settings
 --                   (which clears `profile`) never touches them. Every write
---                   goes through this file.
+--                   goes through this file, but for Reset everything, which
+--                   empties the table and says so (CG.DataCleared).
 --   2. THE BUTTONS  CG.GridButtons(panel): the specs the Mail tab's category
 --                   grid draws, one per group that has anyone in it. Nothing
 --                   here collects: a group's sweep is the category token
@@ -1442,4 +1443,20 @@ end
 
 function CG.EditorShown()
   return CG._editor ~= nil and CG._editor:IsShown()
+end
+
+-- The groups were emptied from outside this file (Options, Reset
+-- everything): the saved table is the same one, bare, and Data() shapes it
+-- again on its next read. What was remembered about the old groups goes,
+-- and an open editor shows the none that is left. The caller redraws the
+-- Mail tab's grid.
+function CG.DataCleared()
+  normalized = false
+  for id in pairs(keySets) do keySets[id] = nil end
+  local frame = CG._editor
+  if not frame then return end
+  frame.selected = nil
+  if frame.NameBox then frame.NameBox:ClearFocus() end
+  if frame.Search and frame.Search.Box then frame.Search.Box:SetText("") end
+  if frame:IsShown() then Paint(frame) end
 end

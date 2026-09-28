@@ -2435,10 +2435,11 @@ function AV.OpenHeader(panel, realm, name)
 end
 
 -- Frozen: Core/MailboxUI.lua calls this when Mail Memory is switched on or
--- off. Off, there is no other box to show, so this character's comes back.
-function CT.RefreshOthers(panel)
+-- off. Off, there is no other box to show, so this character's comes back;
+-- `home` brings it back regardless (Reset everything: the others are gone).
+function CT.RefreshOthers(panel, home)
   if not panel then return end
-  if not AV.Memory() then
+  if home or not AV.Memory() then
     panel._alt, panel._searchAll = nil, false
   end
   AV.Paint(panel)

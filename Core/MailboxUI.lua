@@ -188,7 +188,7 @@ end
 -- The settings a list refresh reads for every row -- these switches, and the
 -- row arrangement, gold, time left and quality mark below, and the category
 -- grid's arrangement -- answered from memory until one of them is written. Every write to them is one of this
--- section's setters or UI.ResetSettings, and each of those calls
+-- section's setters or one of the resets below, and each of those calls
 -- ForgetSettings; a saved-variables root or profile table other than the one
 -- the answers were read from (the client restoring saved variables, anything
 -- swapping the profile) forgets them as well. A new writer of any of these
@@ -276,34 +276,20 @@ local RESET_KEEP = {
 -- did: the settings are already cleared, and a screen left half on the old
 -- settings because an unrelated repaint threw is worse than the error. The
 -- error is still reported, through the handler every other error reaches.
-local function ResetStep(fn, arg)
+local function ResetStep(fn, ...)
   if type(fn) ~= "function" then return end
-  local ok, err = pcall(fn, arg)
+  local ok, err = pcall(fn, ...)
   if not ok and type(geterrorhandler) == "function" then
     local handler = geterrorhandler()
     if type(handler) == "function" then handler(err) end
   end
 end
 
--- Clears every setting, then puts what is on screen onto the defaults.
--- Returns true when the window style changed: the one part that waits for a
--- /reload, because the style is claimed once, at login.
-function UI.ResetSettings()
-  local store = ns.Store
-  local profile = store and store.Get and store.Get("profile")
-  if type(profile) ~= "table" then return false end
-
-  local styleBefore = UI.GetStyleChoice()
-
-  -- Whether the minimap icon is on survives: it is the player's choice of
-  -- whether Postbox replaces the game's own new-mail icon at all, not a look,
-  -- and a reset that silently brought the game's icon back read as broken.
-  -- Everything else about the icon -- its art, size, place -- is reset.
-  local minimap = profile.minimap
-  local iconOn = type(minimap) == "table" and minimap.enabled or nil
-
+-- `profile` cleared as described above: a table emptied where it stands,
+-- anything else removed. `keep` names the keys left alone, or is nil.
+local function ClearProfile(profile, keep)
   for key, value in pairs(profile) do
-    if not RESET_KEEP[key] then
+    if not (keep and keep[key]) then
       if type(value) == "table" then
         for inner in pairs(value) do value[inner] = nil end
       else
@@ -311,7 +297,11 @@ function UI.ResetSettings()
       end
     end
   end
-  if iconOn ~= nil and type(minimap) == "table" then minimap.enabled = iconOn end
+end
+
+-- What is on screen, put onto the settings as they now stand: the second
+-- half of both resets, once the first has cleared what it clears.
+local function ApplyResetLive()
   ForgetSettings()
 
   -- The arrange mode closes first: its strip, its card and the grid's
@@ -353,6 +343,99 @@ function UI.ResetSettings()
   if memory then ResetStep(memory.Refresh) end
   if icon then ResetStep(icon.Refresh) end
   if manager then ResetStep(manager.ResetWindow) end
+end
+
+-- Clears every setting, then puts what is on screen onto the defaults.
+-- Returns true when the window style changed: the one part that waits for a
+-- /reload, because the style is claimed once, at login.
+function UI.ResetSettings()
+  local store = ns.Store
+  local profile = store and store.Get and store.Get("profile")
+  if type(profile) ~= "table" then return false end
+
+  local styleBefore = UI.GetStyleChoice()
+
+  -- Whether the minimap icon is on survives: it is the player's choice of
+  -- whether Postbox replaces the game's own new-mail icon at all, not a look,
+  -- and a reset that silently brought the game's icon back read as broken.
+  -- Everything else about the icon -- its art, size, place -- is reset.
+  local minimap = profile.minimap
+  local iconOn = type(minimap) == "table" and minimap.enabled or nil
+
+  ClearProfile(profile, RESET_KEEP)
+  if iconOn ~= nil and type(minimap) == "table" then minimap.enabled = iconOn end
+  ApplyResetLive()
+
+  return UI.GetStyleChoice() ~= styleBefore
+end
+
+-- RESET EVERYTHING (the footer's other choice): Postbox as a first install
+-- has it, but for the census of the player's own characters.
+--
+-- Every root of the saved variables (Postbox.lua, SCHEMA) is cleared except
+-- the ones in CENSUS_KEEP. The census is facts, not choices: each character
+-- writes its own entry only when it logs in, so a census cleared here would
+-- stay empty for every alt until that alt was played again -- and From
+-- alts, the groups window's list of characters and the Send tab's alts all
+-- read it. As with the settings, clearing rather than listing is the point:
+-- a root added later is cleared without anyone having to remember it, and
+-- one that must survive this goes in CENSUS_KEEP.
+--
+-- Emptied where they stand, like the settings and for the same reasons: the
+-- store has memoised every root (Postbox.lua, EnsureDB) and modules hold
+-- theirs. Every root is still a table afterwards, as a first install's are.
+local CENSUS_KEEP = {
+  alts       = true,  -- realm -> the characters seen logging in
+  altClasses = true,  -- realm -> name -> class
+  altMeta    = true,  -- realm -> name -> level, faction, last seen
+}
+
+-- Clears everything but the census, tells the modules that remember what
+-- they read, then puts what is on screen onto the defaults. Returns true
+-- when the window style changed, as UI.ResetSettings does.
+function UI.ResetEverything()
+  local root = PostboxDB
+  if type(root) ~= "table" then return false end
+
+  local styleBefore = UI.GetStyleChoice()
+
+  for key, value in pairs(root) do
+    if not CENSUS_KEEP[key] then
+      if key == "profile" and type(value) == "table" then
+        -- Every setting, and this time the recent recipients and the
+        -- minimap icon's switch as well. Its own tables stay, emptied:
+        -- they are the ones memoised and held (see RESET TO DEFAULTS).
+        ClearProfile(value, nil)
+      elseif type(value) == "table" then
+        for inner in pairs(value) do value[inner] = nil end
+      else
+        root[key] = nil
+      end
+    end
+  end
+
+  -- What was remembered about the data just cleared. The contact lists,
+  -- recent recipients among them, are built afresh on their next read; Mail
+  -- Memory's character list and window, and the groups' member sets and
+  -- window, are told. The Mail tab comes back to this character's own box:
+  -- any other it was showing is gone. The grid, the lists and the windows
+  -- are repainted by the re-apply that follows.
+  local contacts, memory, groups = ns.ContactService, ns.MailMemory, ns.CharacterGroups
+  if contacts then ResetStep(contacts.Invalidate) end
+  if memory then ResetStep(memory.DataCleared) end
+  if groups then ResetStep(groups.DataCleared) end
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect then ResetStep(collect.RefreshOthers, panel, true) end
+
+  ApplyResetLive()
+
+  -- The recipients last, on the contact lists rebuilt: the manager's list,
+  -- when it is open, and the Send tab's favourites count.
+  local manager, send = ns.RecipientManager, ns.SendTab
+  if manager and type(manager.IsShown) == "function" and manager.IsShown() then
+    ResetStep(manager.Refresh, true)
+  end
+  if send then ResetStep(send.RefreshRecipientBar) end
 
   return UI.GetStyleChoice() ~= styleBefore
 end

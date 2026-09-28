@@ -104,7 +104,8 @@ local searchText = setmetatable({}, { __mode = "k" })
 -- stale. Everything in this file that writes what the list reads -- a
 -- snapshot saved, an arrival or auction noted, a watch settled, a character
 -- hidden or shown -- calls CharactersChanged. Nothing outside the file
--- writes mailMemory, mailWatch or hiddenChars.
+-- writes mailMemory, mailWatch or hiddenChars, but for the options' Reset
+-- everything, which empties them and says so (MM.DataCleared).
 local charactersGen = 0
 local function CharactersChanged() charactersGen = charactersGen + 1 end
 
@@ -2491,6 +2492,24 @@ end
 function MM.Rebind()
   local frame = MM._frame
   if frame and frame:IsShown() and frame._list then BindRows(frame) end
+end
+
+-- What this file keeps -- mailMemory, mailWatch, mailHistory, hiddenChars --
+-- was emptied from outside it (Options, Reset everything), each table where
+-- it stands. The character list is remembered against those same tables,
+-- so it is told here; the character list's popup closes, and the window,
+-- which may be on a box that no longer exists, goes back to the character
+-- being played. This visit's own look at an open mailbox is not a record
+-- and stays. The caller repaints (MM.Refresh).
+function MM.DataCleared()
+  CharactersChanged()
+  MM.ClosePicker()
+  local frame = MM._frame
+  if not frame then return end
+  frame.viewing = nil
+  frame.searchAll = false
+  if frame.SearchAllButton then frame.SearchAllButton.Paint() end
+  if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
 end
 
 -- Every way in -- the minimap icon, the addon compartment, /postbox mail --
