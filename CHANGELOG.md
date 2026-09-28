@@ -14,18 +14,23 @@ longer play.
   right over its column, and you drag a column by its heading or straight
   from any row. Hide the columns you don't need (a peg marks where one
   stands) and set gold and time left on the spot. The Mail tab, History and
-  Mail Memory all follow it. While you arrange, the mark is a lit Done;
+  Mail Memory all follow it. One set of gestures for everything: drag to
+  move, click for its options, right-click to hide or show; a crossed eye
+  marks what is hidden. While you arrange, the mark is a lit Done;
   right-click it to go back to the default arrangement.
 - **An inspector beside the window while you arrange.** It explains the mode,
-  lists everything you have hidden (a click brings it back) and holds Reset.
-  Click a column or a block for its card: show or hide it, its own choices,
+  lists everything you have hidden (a click brings it back), holds Line up
+  columns and Reset, and lists the blocks under the list so you can pick one
+  without aiming. Click a column, a block or a category button for its card:
+  show or hide it, its own choices,
   and Move buttons if you would rather not drag. Select Subject to see why
   each subject stops where it does. Escape steps back one thing at a time.
 - **Arrange what sits under the list too.** Drag the totals, All mail and the
   category buttons into the order you like; each lifts off the window while
   you arrange, so you can see what moves. Drag the category buttons into your
   order and hide the ones you never use (the list gets the room), or hide them
-  all from their card.
+  all; their tray grows while you point at it, and its card opens Character
+  groups. The totals can be hidden too (Show totals, in the options).
 - **Character groups.** Put characters together (your bank alts, your
   crafters, a friend who sends you materials) and each group gets a button
   that collects everything they sent. Make them in Options, Mail tab, or
@@ -67,8 +72,7 @@ longer play.
 - **Gold stands under gold.** Each figure keeps its own column down the
   list, in the Mail tab, History and Mail Memory, and a subject runs on only
   through columns its mail leaves empty. For the old close-packed rows, turn
-  off Line up columns (Options, Mail tab, or the Subject's card while you
-  arrange).
+  off Line up columns (Options, Mail tab, or the arrange overview).
 - **Postbox follows EllesmereUI's look.** On Blizzard Style or Classic WoW UI
   it wears its own Blizzard look, to match your other windows.
 - **EllesmereUI profile, Dark Mode and accent changes** reach an open mailbox
