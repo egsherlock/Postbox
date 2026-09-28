@@ -62,7 +62,8 @@ longer play.
 - **Stuck means one mail's own problem**, such as a unique item you already
   carry. It counts mails, never items, and two identical mails count as two.
   The collect buttons leave a stuck mail to a click on its row, so a run does
-  not keep meeting the same one.
+  not keep meeting the same one; click "Stuck: N" to show only those mails,
+  then Collect shown to try them all again.
 - **Gold stands under gold.** Each figure keeps its own column down the
   list, in the Mail tab, History and Mail Memory, and a subject runs on only
   through columns its mail leaves empty. For the old close-packed rows, turn
