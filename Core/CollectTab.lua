@@ -6503,13 +6503,16 @@ end
 -- While arranging, every block is a card (Core/Arrange.lua, "Lift"),
 -- rising a unit and ringed in white when pointed at. The grid sits in a
 -- tray, a card of its own four units out on every side, which is what
--- takes it; its buttons are smaller cards on it, each with its eye. A click
--- on a block's card, or on the tray, selects the block, and the arrange
--- mode's inspector shows its card: Move up and down, and for the grid its
--- own eye, which is the "Show category buttons" option itself. While the
--- option hides the grid a folded placeholder stands in its slot, so it can
--- still be moved, or brought back with a click. Outside the mode the
--- option works as it always has, and a hidden grid simply is not there.
+-- takes it; its buttons are smaller cards on it, each with its eye. The
+-- mode's one gesture model holds on every card: a drag moves the block, a
+-- click on a block's card, or on the tray, selects the block, and the
+-- arrange mode's inspector shows its card -- Move up and down, and for the
+-- grid its own eye, which is the "Show category buttons" option itself --
+-- and a right-click hides or shows it (All mail cannot be hidden: its
+-- right-click does nothing). While the option hides the grid a folded
+-- placeholder stands in its slot, so it can still be moved, or selected, or
+-- brought back with a right-click. Outside the mode the option works as it
+-- always has, and a hidden grid simply is not there.
 -- The cards are made the first time the mode opens, and the whole of it
 -- costs one comparison per layout while the mode is shut.
 -------------------------------------------------------------
@@ -6714,6 +6717,7 @@ function RV.NewStackCard(panel, key)
   card:SetScript("OnEnter", RV.StackCardEnter)
   card:SetScript("OnLeave", RV.StackCardLeave)
   card:SetScript("OnMouseDown", RV.StackCardDown)
+  card:SetScript("OnMouseUp", RV.StackCardUp)
   if key == "fold" then
     -- A crossed eye and the grid's name, together in the middle.
     card.Text = T.CreateText(card, "secondary", "OVERLAY")
@@ -6772,17 +6776,21 @@ function RV.BlockName(panel, id)
   return RV.SlotName(panel)
 end
 
+-- Whether a right-click shows the block ("show"), hides it ("hide"), or
+-- does nothing to it ("fixed"): the mode's words for its gestures
+-- (Arrange.lua's AR.GestureLine).
+function RV.BlockGesture(panel, id)
+  if id == "grid" then return (panel._stack and panel._stack.folded) and "show" or "hide" end
+  return "fixed"
+end
+
 function RV.StackTip(panel, card)
   local id = card.stackId
   -- Clear of the arrange mode's inspector beside the window.
   local A = ns.Arrange
   if A and A.TipOwner then A.TipOwner(card, "ANCHOR_CURSOR") else GameTooltip:SetOwner(card, "ANCHOR_CURSOR") end
   GameTooltip:SetText(RV.BlockName(panel, id))
-  GameTooltip:AddLine(L()["ARRANGE_BLOCK_TIP"], 1, 1, 1, true)
-  -- A click selects the block for the inspector; the grid's placeholder's
-  -- brings the grid back.
-  local folded = id == "grid" and panel._stack and panel._stack.folded
-  GameTooltip:AddLine(L()[folded and "ARRANGE_GRID_SHOW_TIP" or "ARRANGE_CLICK_TIP"], 0.7, 0.7, 0.7, true)
+  if A and A.GestureLine then GameTooltip:AddLine(A.GestureLine(RV.BlockGesture(panel, id)), 0.7, 0.7, 0.7, true) end
   GameTooltip:Show()
 end
 
@@ -6816,23 +6824,38 @@ function RV.StackCardDown(card, mouse)
   RV.StackPress(card.panel, card.stackId, card)
 end
 
+-- A right-click let go over a block's card hides or shows the block
+-- (RV.BlockToggle); not while something is in the hand.
+function RV.StackCardUp(card, mouse)
+  if mouse ~= "RightButton" or not card:IsMouseOver() then return end
+  local A = ns.Arrange
+  if A and A.Dragging and A.Dragging() then return end
+  RV.BlockToggle(card.panel, card.stackId)
+end
+
 -- A block taken by its card. A press that moves four units is a drag (the
 -- shared gesture, Core/Arrange.lua's AR.Press): the block follows the
 -- pointer up and down the stack, over the others, its slot ringed where it
 -- will land; past the middle of the block above or below, the two change
 -- places -- in the stored order itself, so the rest of the stack steps
--- aside as it goes. A press let go where it began is a click.
+-- aside as it goes. A press let go where it began is a click. The handlers
+-- are one table per panel, made on the first press, and what they act on
+-- is written into it: nothing is made per press.
 function RV.StackPress(panel, id, card)
   local A = ns.Arrange
   if not (A and A.Press) then return end
-  A.Press(card, {
-    name = RV.BlockName(panel, id),
-    start = function(_, y0) RV.StackStart(panel, id, y0) end,
-    move = function(_, y) RV.StackDrag(panel, y) end,
-    drop = function() RV.StackDrop(panel) end,
-    cancel = function() RV.StackCancel(panel) end,
-    click = function() RV.StackClick(panel, id) end,
-  })
+  local h = panel._stackPress
+  if not h then
+    h = {}
+    function h.start(_, y0) RV.StackStart(h.panel, h.id, y0) end
+    function h.move(_, y) RV.StackDrag(h.panel, y) end
+    function h.drop() RV.StackDrop(h.panel) end
+    function h.cancel() RV.StackCancel(h.panel) end
+    function h.click() RV.StackClick(h.panel, h.id) end
+    panel._stackPress = h
+  end
+  h.panel, h.id, h.name = panel, id, RV.BlockName(panel, id)
+  A.Press(card, h)
 end
 
 -- Escape during a drag: the order as it was when the block was taken.
@@ -6844,16 +6867,20 @@ end
 
 -- A click on a block selects it, and the inspector shows its card; a
 -- second click lets it go. A click anywhere on the grid's tray, the gaps
--- between its buttons included, selects the grid and moves nothing. The
--- placeholder, while the option hides the grid, brings the grid back.
+-- between its buttons included, selects the grid and moves nothing, and so
+-- does one on its placeholder while the option hides the grid: the card's
+-- switch shows it.
 function RV.StackClick(panel, id)
   if not panel._gridArranging then return end
-  if id == "grid" and panel._stack and panel._stack.folded then
-    RV.SetGridShown(panel, true)
-    return
-  end
   local A = ns.Arrange
   if A and A.Select then A.Select("block", id) end
+end
+
+-- A block's right-click: the grid hidden or shown (its tray, or its
+-- placeholder). All mail has nothing to hide.
+function RV.BlockToggle(panel, id)
+  if not panel._gridArranging then return end
+  if id == "grid" then RV.SetGridShown(panel, not ShowCategoryButtons()) end
 end
 
 -- The grid's eye: the "Show category buttons" option itself, and the
@@ -7183,10 +7210,11 @@ end
 -- shows, the hidden ones dimmed with their eye crossed, and each wears a
 -- small card over it (Arrange.lua's "Lift") that takes the mouse instead of
 -- the button: a drag moves the button through the grid, its cell ringed
--- where it will land, the others stepping aside; a click hides or shows it.
--- Pointed at, a card rises a unit and its ring goes white. Nothing collects
--- while this is open: the primary's slot is under a card of its own (the
--- blocks under the list).
+-- where it will land, the others stepping aside; a click selects it, for
+-- its card in the inspector; a right-click hides or shows it. Pointed at, a
+-- card rises a unit and its ring goes white. Nothing collects while this is
+-- open: the primary's slot is under a card of its own (the blocks under the
+-- list).
 -------------------------------------------------------------
 
 function RV.GridHandle(panel, button)
@@ -7213,23 +7241,29 @@ function RV.GridHandle(panel, button)
   handle:SetScript("OnEnter", RV.HandleEnter)
   handle:SetScript("OnLeave", RV.HandleLeave)
   handle:SetScript("OnMouseDown", RV.HandleDown)
+  handle:SetScript("OnMouseUp", RV.HandleUp)
   handle:Hide()
   handles[button] = handle
   return handle
 end
 
--- A sweep's card in its state: in the hand, hidden (and pointed at), pointed
--- at, or at rest.
+-- A sweep's card in its state: in the hand, hidden, selected, both, or
+-- neither, each pointed at or not.
 function RV.PaintGridHandle(panel, handle)
   local A = ns.Arrange
   if not (A and A.PaintCard and handle.Ring) then return end
   local button, drag = handle.button, panel._gridDrag
   local over = panel._sweepHover == button
+  local sel = A.Selected and A.Selected("button", button.gridId)
   local state = "rest"
   if drag and drag.button == button then
     state = "hand"
+  elseif button.hiddenInGrid and sel then
+    state = over and "hiddenSelHover" or "hiddenSel"
   elseif button.hiddenInGrid then
     state = over and "hiddenHover" or "hidden"
+  elseif sel then
+    state = over and "selHover" or "sel"
   elseif over then
     state = "hover"
   end
@@ -7256,7 +7290,21 @@ function RV.HandleEnter(handle)
   RV.PaintGridHandle(panel, handle)
   local A = ns.Arrange
   if A and A.MoveCursor then A.MoveCursor(true) end
-  RV.GridTip(panel, handle.button)
+  RV.HandleTip(panel, handle.button)
+end
+
+-- A sweep's tooltip while arranging: its whole name, what it collects where
+-- the name does not say, and the mode's gestures -- clear of the inspector
+-- beside the window.
+function RV.HandleTip(panel, button)
+  local A = ns.Arrange
+  if A and A.TipOwner then A.TipOwner(button, "ANCHOR_RIGHT") else GameTooltip:SetOwner(button, "ANCHOR_RIGHT") end
+  GameTooltip:SetText(button.caption or "")
+  if button.tip then GameTooltip:AddLine(button.tip, 1, 1, 1, true) end
+  if A and A.GestureLine then
+    GameTooltip:AddLine(A.GestureLine(button.hiddenInGrid and "show" or "hide"), 0.7, 0.7, 0.7, true)
+  end
+  GameTooltip:Show()
 end
 
 function RV.HandleLeave(handle)
@@ -7275,6 +7323,29 @@ end
 function RV.HandleDown(handle, mouse)
   if mouse ~= "LeftButton" then return end
   RV.GridPress(handle.panel, handle.button)
+end
+
+-- A right-click let go over a sweep hides it, or shows it again.
+function RV.HandleUp(handle, mouse)
+  if mouse ~= "RightButton" or not handle:IsMouseOver() then return end
+  local panel, A = handle.panel, ns.Arrange
+  if not panel._gridArranging or (A and A.Dragging and A.Dragging()) then return end
+  RV.SweepToggle(panel, handle.button.gridId)
+end
+
+-- A sweep hidden or shown from the mode, with the switch's sound.
+function RV.SweepToggle(panel, id)
+  GameTooltip:Hide()
+  local hidden = false
+  local entries = panel._gridEntries or RV.GridEntries(panel)
+  for i = 1, #entries do
+    if entries[i].id == id then hidden = not entries[i].shown end
+  end
+  RV.GridToggle(panel, id)
+  if type(SOUNDKIT) == "table" and type(PlaySound) == "function" then
+    PlaySound(hidden and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+  end
+  RV.Rehover(panel)
 end
 
 -- After a drop: whatever card is under the pointer now takes it, as if it
@@ -7384,40 +7455,92 @@ function RV.ShowHidden(panel, kind, key)
   end
 end
 
+-- A sweep's card in the inspector (Arrange.lua, section 9): where it stands
+-- in the grid's order, whether it shows, what it collects, and a step
+-- along the order either way.
+function RV.SweepIndex(panel, id)
+  local entries = panel._gridEntries or RV.GridEntries(panel)
+  for i = 1, #entries do
+    if entries[i].id == id then return i, entries end
+  end
+  return nil, entries
+end
+
+function RV.SweepShown(panel, id)
+  local k, entries = RV.SweepIndex(panel, id)
+  return k ~= nil and entries[k].shown and true or false
+end
+
+function RV.SweepText(panel, id)
+  local button = panel._gridById[id]
+  if button and button.tip then return button.tip end
+  return L()[panel._gridSpecs[id] and "ARRANGE_BUTTON_GROUP_DESC" or "ARRANGE_BUTTON_DESC"]
+end
+
+function RV.CanMoveSweep(panel, id, step)
+  local k, entries = RV.SweepIndex(panel, id)
+  return k ~= nil and entries[k + step] ~= nil
+end
+
+function RV.MoveSweep(panel, id, step)
+  local k, entries = RV.SweepIndex(panel, id)
+  if not (k and entries[k + step]) then return end
+  local moved = RV.CopyEntries(entries)
+  moved[k], moved[k + step] = moved[k + step], moved[k]
+  RV.StoreGrid(panel, moved)
+  CT.RefreshCategoryButtons(panel)
+end
+
+-- A sweep taken by its card: a drag moves it (RV.GridStart, below), a
+-- click selects it. The handlers are one table per panel, made on the
+-- first press, and the button they act on is written into it: nothing is
+-- made per press.
 function RV.GridPress(panel, button)
   local A = ns.Arrange
   if not (A and A.Press) then return end
-  local id = button.gridId
-  A.Press(button, {
-    name = button.caption,
-    start = function(x0, y0)
-      if not panel._gridArranging then return end
-      GameTooltip:Hide()
-      panel._gridDrag = {
-        button = button, level = button:GetFrameLevel(),
-        dx = x0 - (button:GetLeft() or x0), dy = y0 - (button:GetTop() or y0),
-        -- The arrangement as it was, for Escape to put back.
-        before = RV.CopyEntries(panel._gridEntries or RV.GridEntries(panel)),
-      }
-      button:SetFrameLevel(panel.Grid:GetFrameLevel() + 30)
-      -- The button in the hand is a card in the hand: ringed in the accent,
-      -- as its cell is, and over everything it crosses.
-      local handle = RV.GridHandle(panel, button)
-      handle:SetFrameLevel(button:GetFrameLevel() + 5)
-      if A.MoveCursor then A.MoveCursor(true) end
-      LayoutGrid(panel)
-    end,
-    move = function(x, y) RV.GridDrag(panel, x, y) end,
-    drop = function() RV.GridDrop(panel) end,
-    cancel = function()
-      local drag = panel._gridDrag
-      if drag and drag.before then RV.StoreGrid(panel, drag.before) end
-      RV.GridDrop(panel)
-    end,
-    click = function()
-      if panel._gridArranging then RV.GridToggle(panel, id) end
-    end,
-  })
+  local h = panel._gridPress
+  if not h then
+    h = {}
+    function h.start(x0, y0) RV.GridStart(h.panel, h.button, x0, y0) end
+    function h.move(x, y) RV.GridDrag(h.panel, x, y) end
+    function h.drop() RV.GridDrop(h.panel) end
+    function h.cancel()
+      local drag = h.panel._gridDrag
+      if drag and drag.before then RV.StoreGrid(h.panel, drag.before) end
+      RV.GridDrop(h.panel)
+    end
+    function h.click() RV.SweepClick(h.panel, h.button.gridId) end
+    panel._gridPress = h
+  end
+  h.panel, h.button, h.name = panel, button, button.caption
+  A.Press(button, h)
+end
+
+function RV.GridStart(panel, button, x0, y0)
+  if not panel._gridArranging then return end
+  GameTooltip:Hide()
+  panel._gridDrag = {
+    button = button, level = button:GetFrameLevel(),
+    dx = x0 - (button:GetLeft() or x0), dy = y0 - (button:GetTop() or y0),
+    -- The arrangement as it was, for Escape to put back.
+    before = RV.CopyEntries(panel._gridEntries or RV.GridEntries(panel)),
+  }
+  button:SetFrameLevel(panel.Grid:GetFrameLevel() + 30)
+  -- The button in the hand is a card in the hand: ringed in the accent,
+  -- as its cell is, and over everything it crosses.
+  local handle = RV.GridHandle(panel, button)
+  handle:SetFrameLevel(button:GetFrameLevel() + 5)
+  local A = ns.Arrange
+  if A and A.MoveCursor then A.MoveCursor(true) end
+  LayoutGrid(panel)
+end
+
+-- A sweep's click selects it for its card in the inspector; a second click
+-- lets it go.
+function RV.SweepClick(panel, id)
+  if not panel._gridArranging then return end
+  local A = ns.Arrange
+  if A and A.Select then A.Select("button", id) end
 end
 
 -- The button follows the cursor over the grid; the cell under its middle is
@@ -7606,7 +7729,23 @@ function CT.ArrangeHost(panel)
   function host.CanMoveBlock(id, step) return RV.CanMoveBlock(panel, id, step) end
   function host.MoveBlock(id, step) RV.MoveBlock(panel, id, step) end
   function host.StackOrder() return RV.StackOrder() end
-  function host.PaintBlocks() RV.PaintStackCards(panel) end
+  function host.PaintBlocks()
+    RV.PaintStackCards(panel)
+    if panel._gridArranging then RV.PaintGridHandles(panel) end
+  end
+  -- And for the category buttons, each by its grid id.
+  function host.ButtonPresent(id) return panel._gridArranging ~= nil and panel._gridPlaced[id] == true end
+  function host.ButtonName(id)
+    local button = panel._gridById[id]
+    return button and button.caption or tostring(id)
+  end
+  function host.ButtonText(id) return RV.SweepText(panel, id) end
+  function host.ButtonShown(id) return RV.SweepShown(panel, id) end
+  function host.SetButtonShown(id, on)
+    if RV.SweepShown(panel, id) ~= (on and true or false) then RV.GridToggle(panel, id) end
+  end
+  function host.CanMoveButton(id, step) return RV.CanMoveSweep(panel, id, step) end
+  function host.MoveButton(id, step) RV.MoveSweep(panel, id, step) end
   panel._arrangeHost = host
   return host
 end

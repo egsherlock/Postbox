@@ -13,15 +13,16 @@ local _, ns = ...
 -- a column by its heading or on any row and drag it: its lane lifts and
 -- rides over the list, the others slide aside and the rows re-lay as it
 -- crosses them; let go and it snaps into its slot. Click a heading, a row's
--- column or a block under the list to select it: the inspector docked
--- beside the window shows its card -- show or hide it, its own choices,
--- Move for the no-drag way -- and the rows show the column; for the
--- subject, how far each row's runs and why. With nothing selected the
--- inspector says how the mode works, lists what is hidden and offers the
--- reset. The category buttons under the list take the same drag and a
--- click to hide or show while the mode is open. The key, lit as Done while
--- the mode is open, Escape, or the window going away all end it, and the
--- top row comes back as it was.
+-- column, a block under the list or a category button to select it: the
+-- inspector docked beside the window shows its card -- show or hide it, its
+-- own choices, Move for the no-drag way -- and the rows show the column; for
+-- the subject, how far each row's runs and why. A right-click hides or
+-- shows it. One gesture model for everything the mode arranges: a drag
+-- moves, a click selects, a right-click hides or shows; the subject and All
+-- mail cannot be hidden, and their right-click does nothing. With nothing
+-- selected the inspector says how the mode works, lists what is hidden and
+-- offers the reset. The key, lit as Done while the mode is open, Escape, or
+-- the window going away all end it, and the top row comes back as it was.
 --
 -- One arrangement for every list that draws mail rows: it is stored by
 -- MailboxUI.GetRowLayout / SetRowLayout, and drawn by CollectTab's RV.Place,
@@ -88,8 +89,8 @@ AR.focus = nil
 AR.drag = nil
 AR.rowHover = nil
 -- What the inspector shows (section 8): the selected thing, as a kind
--- ("column" or "block") and an id, or nil for the overview; and while
--- something is in the hand, its name.
+-- ("column", "block" or "button", a category button) and an id, or nil for
+-- the overview; and while something is in the hand, its name.
 AR.selKind = nil
 AR.selId = nil
 AR.moving = nil
@@ -263,7 +264,7 @@ function AR.Select(kind, id)
 end
 
 -- One selectable thing painted from its state: a column's heading, or the
--- host's blocks.
+-- host's blocks and buttons.
 function AR.PaintSelected(kind, id)
   local host = AR.host
   if not (host and kind) then return end
@@ -481,7 +482,8 @@ end
 --   head   a column's heading in the header, which is the card itself;
 --   lane   the column's lane in the hand, over the list.
 -- `hidden` is a small card's look while its button is hidden; `sel` and
--- `selHover` a block's while it is selected.
+-- `selHover` a block's or a button's while it is selected, and
+-- `hiddenSel` a hidden button's, dark as it is and ringed in the accent.
 --
 -- A spec is { fill = {grey, alpha}, wash = {grey, alpha}, accent = the
 -- accent wash's alpha, ring = the ring's grey (nil: the accent), ringW,
@@ -504,6 +506,10 @@ local LIFT = {
     hand        = { accent = 0.16, ringW = 2, drop = 8, dropA = 0.6 },
     hidden      = { wash = { 0, 0.40 }, ring = 0.29, drop = 2, dropA = 0.35 },
     hiddenHover = { wash = { 0, 0.25 }, ring = 0.62, top = 0.06, drop = 3, dropA = 0.45 },
+    sel            = { accent = 0.12, top = 0.08, drop = 2, dropA = 0.45 },
+    selHover       = { accent = 0.18, top = 0.12, drop = 3, dropA = 0.55 },
+    hiddenSel      = { wash = { 0, 0.40 }, drop = 2, dropA = 0.35 },
+    hiddenSelHover = { wash = { 0, 0.25 }, top = 0.06, drop = 3, dropA = 0.45 },
   },
   tray = {
     rest     = { fill = { 0.10, 0.93 }, ring = 0.38, top = 0.07, drop = 4, dropA = 0.42 },
@@ -661,6 +667,16 @@ function AR.MoveCursor(on)
   elseif type(SetCursor) == "function" then
     SetCursor(nil)
   end
+end
+
+-- The line every tooltip in the mode ends with: what the three gestures do
+-- to the thing under the pointer, the same words everywhere. `state` is
+-- "hide" for a shown thing a right-click hides, "show" for a hidden thing
+-- it shows, "fixed" for one that cannot be hidden (the subject, All mail).
+local GESTURE = { hide = "ARRANGE_GESTURE_HIDE", show = "ARRANGE_GESTURE_SHOW", fixed = "ARRANGE_GESTURE_FIXED" }
+
+function AR.GestureLine(state)
+  return L()[GESTURE[state] or GESTURE.fixed]
 end
 
 -------------------------------------------------------------
@@ -977,8 +993,9 @@ end
 -- tooltip and the inspector; the subject's heading carries the stretch
 -- arrow across the room it takes.
 --
--- A hidden column is a peg on the header where it stands; a click shows it
--- again, there. A shown one with no lane in this list -- no mail listed has
+-- A hidden column is a peg on the header where it stands, its crossed eye
+-- and nothing else; a click on it, or a right-click, shows the column again,
+-- there. A shown one with no lane in this list -- no mail listed has
 -- it, or the list has no such column -- keeps a narrow dimmed heading in
 -- its place. Pegs and narrow headings take room of their own: out of the
 -- subject's heading where they stand beside the subject, out of the
@@ -989,7 +1006,8 @@ end
 --
 -- Headings are movable things (section 3b): at rest, pointed at, selected,
 -- in the hand. A press on one, or on its column in any row (section 7a), is
--- the column's: a drag moves it, a click selects it for the inspector.
+-- the column's: a drag moves it, a click selects it for the inspector, a
+-- right-click hides it (the subject's does nothing).
 --
 -- Built the first time the mode opens over a list, and laid out again after
 -- every pass of the list's rows (AR.ListPlaced): the lanes are the rows'.
@@ -1028,15 +1046,17 @@ function AR.CoinArt()
   return AR._coin or nil
 end
 
--- A heading's tooltip: its column's name, and how to take it. Not over the
--- selected one, whose card is in the inspector, nor during a drag.
+-- A heading's tooltip: its column's name, why it has no lane where it has
+-- none, and the gestures. Not over the selected one, whose card is in the
+-- inspector, nor during a drag.
 local function HeadTip(head)
   if AR.drag then return end
   if AR.Selected("column", head.colId) then return end
+  local spec = AR.COLUMNS[head.colId]
   GameTooltip:SetOwner(head, "ANCHOR_TOP")
-  GameTooltip:SetText(L()[AR.COLUMNS[head.colId].title])
-  GameTooltip:AddLine(L()["ARRANGE_HEADING_TIP"], 1, 1, 1, true)
-  if head.narrow then GameTooltip:AddLine(L()["ARRANGE_HEADING_EMPTY"], 0.7, 0.7, 0.7, true) end
+  GameTooltip:SetText(L()[spec.title])
+  if head.narrow then GameTooltip:AddLine(L()["ARRANGE_HEADING_EMPTY"], 1, 1, 1, true) end
+  GameTooltip:AddLine(AR.GestureLine(spec.fixed and "fixed" or "hide"), 0.7, 0.7, 0.7, true)
   GameTooltip:Show()
 end
 
@@ -1155,6 +1175,13 @@ local function HeadDown(self, button)
   if host and host.strip == self:GetParent() then AR.PressColumn(host, self.colId, self) end
 end
 
+-- A right-click, let go over the heading: the column hidden (AR.ToggleColumn).
+local function HeadUp(self, button)
+  if button ~= "RightButton" or not self:IsMouseOver() then return end
+  local host = AR.host
+  if host and host.strip == self:GetParent() then AR.ToggleColumn(self.colId) end
+end
+
 -- One heading: a lifted card with the column's glyph, or its name.
 local function BuildHead(strip, id)
   local T = Th()
@@ -1232,6 +1259,7 @@ local function BuildHead(strip, id)
   head:SetScript("OnEnter", HeadEnter)
   head:SetScript("OnLeave", HeadLeave)
   head:SetScript("OnMouseDown", HeadDown)
+  head:SetScript("OnMouseUp", HeadUp)
   return head
 end
 
@@ -1279,7 +1307,10 @@ local function BuildPeg(strip, id)
   if peg.Eye then peg.Eye:SetPoint("CENTER", peg, "CENTER", 0, 0) end
   peg:SetScript("OnEnter", PegEnter)
   peg:SetScript("OnLeave", PegLeave)
-  peg:SetScript("OnClick", function(self) AR.ShowPeg(self) end)
+  -- The peg is its crossed eye: a click on it shows the column, and so does
+  -- a right-click, as it would on any hidden thing.
+  peg:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  peg:SetScript("OnClick", AR.ShowPeg)
   PaintPeg(peg)
   peg:Hide()
   return peg
@@ -1705,9 +1736,10 @@ end
 --                    from the header through the rows;
 --   the press        on any row, the column whose lane is under the cursor
 --                    (on a two-line row, whatever the row draws there) is
---                    taken as its heading would be; pointed at, its heading
---                    lights. So a click on a row does nothing else while
---                    the mode is open: nothing opens, nothing is collected;
+--                    taken as its heading would be, and a right-click hides
+--                    it; pointed at, its heading lights. So a click on a
+--                    row does nothing else while the mode is open: nothing
+--                    opens, nothing is collected;
 --   the hand         while a column is dragged, its slot ringed down the
 --                    list and the column riding offset in a lifted lane,
 --                    its cells copied onto the lane from the rows.
@@ -1799,6 +1831,16 @@ local function CoverDown(self, button)
   if id then AR.PressColumn(host, id, self) end
 end
 
+-- A right-click on a row hides the column it lands on, as one on its
+-- heading does.
+local function CoverUp(self, button)
+  if button ~= "RightButton" or not self:IsMouseOver() then return end
+  local host = AR.host
+  if not (host and host.cover == self) then return end
+  local id = AR.ColumnAt(host)
+  if id then AR.ToggleColumn(id) end
+end
+
 function AR.BuildCover(host)
   local scroll = host.Scroll and host.Scroll()
   local strip = host.strip
@@ -1820,6 +1862,7 @@ function AR.BuildCover(host)
   cover:SetScript("OnLeave", CoverLeave)
   cover:SetScript("OnHide", CoverLeave)
   cover:SetScript("OnMouseDown", CoverDown)
+  cover:SetScript("OnMouseUp", CoverUp)
   cover:Hide()
   host.cover = cover
   return cover
@@ -2305,13 +2348,14 @@ end
 --   nothing selected: how the mode works, what is hidden (each a chip; a
 --     click shows it again), the reset, and that Escape finishes;
 --   something in the hand: what is moving, and that Escape puts it back;
---   a column or a block selected: its card -- what it is, its eye, its own
---     choice, Move (the way to reorder without a drag), and, for a figure,
---     what the rows do on a mail without it; for the subject, Line up
---     columns, what the rows show of its run, and what Line up columns
---     does; for a block, the stack's order.
--- A click on a heading, a column on a row or a block selects it, a second
--- click lets it go; the cross and Escape go back a layer (section 5).
+--   a column, a block or a category button selected: its card -- what it
+--     is, its eye, its own choice, Move (the way to reorder without a
+--     drag), and, for a figure, what the rows do on a mail without it; for
+--     the subject, Line up columns, what the rows show of its run, and what
+--     Line up columns does; for a block, the stack's order.
+-- A click on a heading, a column on a row, a block or a button selects it,
+-- a second click lets it go; the cross and Escape go back a layer (section
+-- 5).
 --
 -- Built the first time the mode opens and refilled in place: every region
 -- exists once, the choices are lists made once, and a fill sets texts,
@@ -2462,6 +2506,19 @@ function AR.ShowPeg(peg)
   AR.Inspect()
 end
 
+-- A right-click on a column, on its heading or on any row: hidden if it
+-- shows, shown if it is hidden. The subject is never hidden, so its
+-- right-click does nothing; nor does one while something is in the hand.
+function AR.ToggleColumn(id)
+  local spec, layout = AR.COLUMNS[id], AR.Layout()
+  if not (AR.host and spec and layout) or spec.fixed or AR.Dragging() then return end
+  local on = not layout.shown[id]
+  GameTooltip:Hide()
+  AR.ShowColumn(id, on)
+  PlayToggle(on)
+  AR.Inspect()
+end
+
 -- A column one place along the row, left (-1) or right (1).
 function AR.NudgeColumn(id, step)
   local layout = AR.Layout()
@@ -2560,6 +2617,9 @@ local function SwitchClick(self)
     PlayToggle(on)
   elseif AR.selKind == "block" and host.SetBlockShown then
     host.SetBlockShown(AR.selId, on)
+  elseif AR.selKind == "button" and host.SetButtonShown then
+    host.SetButtonShown(AR.selId, on)
+    PlayToggle(on)
   end
   AR.Inspect()
 end
@@ -2657,6 +2717,8 @@ local function NudgeClick(self)
     AR.NudgeColumn(AR.selId, self.step)
   elseif AR.selKind == "block" and host.MoveBlock then
     host.MoveBlock(AR.selId, self.step)
+  elseif AR.selKind == "button" and host.MoveButton then
+    host.MoveButton(AR.selId, self.step)
   end
   AR.Inspect()
 end
@@ -3419,6 +3481,15 @@ local function FillBlock(host, id, y)
   return y
 end
 
+-- A category button's card: the host's words for it, its eye switch, and
+-- Move back and on along the grid's order.
+local function FillButton(host, id, y)
+  local insp, P = AR._insp, INSP
+  y = PutText(insp.Lead, host.ButtonText(id), y) - P.ROW_GAP
+  local used = PutSwitch(host.ButtonShown(id), y)
+  return PutMove(y, false, host.CanMoveButton(id, -1), host.CanMoveButton(id, 1), used)
+end
+
 local function HideParts(insp)
   insp.Lead:Hide()
   insp.Empty:Hide()
@@ -3449,13 +3520,15 @@ local function HideParts(insp)
 end
 
 -- The inspector filled again for what is selected now, if it is up. Called
--- after anything it shows may have changed; a block the view no longer has
--- is let go first.
+-- after anything it shows may have changed; a block or a button the view no
+-- longer has is let go first.
 function AR.Inspect()
   local insp, host = AR._insp, AR.host
   if not (insp and host and insp:IsShown()) then return end
   local P, T = INSP, Th()
-  if AR.selKind == "block" and not (host.BlockPresent and host.BlockPresent(AR.selId)) then
+  local sel = AR.selKind
+  if (sel == "block" and not (host.BlockPresent and host.BlockPresent(AR.selId)))
+      or (sel == "button" and not (host.ButtonPresent and host.ButtonPresent(AR.selId))) then
     AR.selKind, AR.selId = nil, nil
     AR.UpdateFocus()
   end
@@ -3467,6 +3540,8 @@ function AR.Inspect()
     title = L()[AR.COLUMNS[id].title]
   elseif kind == "block" then
     title = host.BlockName(id)
+  elseif kind == "button" then
+    title = host.ButtonName(id)
   else
     title = L()["ARRANGE_TITLE"]
   end
@@ -3481,6 +3556,8 @@ function AR.Inspect()
     y = FillColumn(id, y)
   elseif kind == "block" then
     y = FillBlock(host, id, y)
+  elseif kind == "button" then
+    y = FillButton(host, id, y)
   else
     y = FillOverview(host, y)
   end
@@ -3519,7 +3596,10 @@ end
 -- answers for them by id: BlockPresent, BlockName, BlockText, BlockNote
 -- (or nil), BlockShown (a switch's state, or nil for none), SetBlockShown,
 -- CanMoveBlock(id, step), MoveBlock(id, step), StackOrder() and
--- PaintBlocks() (the selection's ring moved).
+-- PaintBlocks() (the selection's ring moved, on a block or a button). One
+-- with category buttons answers for them by id the same way: ButtonPresent,
+-- ButtonName, ButtonText, ButtonShown, SetButtonShown, CanMoveButton(id,
+-- step) and MoveButton(id, step).
 -------------------------------------------------------------
 
 function AR.Enter(host)
