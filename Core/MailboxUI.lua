@@ -1059,7 +1059,8 @@ local status = {
   -- What the outcome reports, where it is something that can stop being true
   -- by itself: "bags" for a run's "Bags full: N left", which comes down when
   -- the bags have room (UI.OnBagsFullChanged). nil for an ordinary outcome.
-  outcomeKind = nil,
+  -- outcomeAfter is the line once it has; read only while outcomeKind is set.
+  outcomeKind = nil, outcomeAfter = nil,
   summary  = nil,
   rendered = "",              -- what we last put on the label
 }
@@ -1141,10 +1142,12 @@ function UI.SetStatusOutcome(text, tone)
 end
 
 -- Says what the outcome just set reports, where it can stop being true by
--- itself ("bags": see status.outcomeKind). Called right after
--- SetStatusOutcome; a later outcome, activity or clear forgets it.
-function UI.TagStatusOutcome(kind)
-  if status.outcome then status.outcomeKind = kind end
+-- itself ("bags": see status.outcomeKind), and what the line reads once it
+-- has (`after`: the same outcome without that part, or nil for nothing).
+-- Called right after SetStatusOutcome; a later outcome, activity or clear
+-- forgets it.
+function UI.TagStatusOutcome(kind, after)
+  if status.outcome then status.outcomeKind, status.outcomeAfter = kind, after end
 end
 
 function UI.ClearStatus()
@@ -1157,12 +1160,13 @@ end
 -- or has cleared because the bags have room. The buttons count again -- the
 -- mails with items leave their counts while it holds and return when it
 -- clears -- and the status line follows: a run's "Bags full: N left" comes
--- down with the state, since what it said is no longer so.
+-- down with the state, since what it said is no longer so, and the rest of
+-- the outcome stays ("Collected: 41"), as it would read after a clean run.
 function UI.OnBagsFullChanged()
   local mail = ns.MailService
   local full = mail and type(mail.BagsFull) == "function" and mail.BagsFull()
   if not full and status.outcomeKind == "bags" then
-    status.outcome, status.outcomeTone, status.outcomeKind = nil, nil, nil
+    status.outcome, status.outcomeTone, status.outcomeKind = status.outcomeAfter, nil, nil
   end
   local collect = ns.CollectTab
   if collect and type(collect.RequestRefresh) == "function" then collect.RequestRefresh(CollectPanel()) end

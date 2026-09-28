@@ -4865,8 +4865,14 @@ local function FinishRun(left, stopReason)
     end
     if problem then
       StatusOutcome(WithCollected(problem))
+      -- When room appears only the bags part comes down: the line then reads
+      -- as it would have after a clean run, with any stuck mail still named.
       local UI = ns.MailboxUI
-      if waiting > 0 and UI and type(UI.TagStatusOutcome) == "function" then UI.TagStatusOutcome("bags") end
+      if waiting > 0 and UI and type(UI.TagStatusOutcome) == "function" then
+        UI.TagStatusOutcome("bags", stuck > 0
+          and WithCollected(Tinted("warning", format(L()["STATUS_PARTIAL"], stuck)))
+          or Tinted("positive", format(L()["STATUS_COLLECTED"], got)))
+      end
     else
       StatusOutcome(Tinted("positive", format(L()["STATUS_COLLECTED"], got)))
     end
