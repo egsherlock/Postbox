@@ -4151,6 +4151,10 @@ function CT.RefreshMailList(panel)
       earned = earned + rowEarned
       spent = spent + rowSpent
 
+      -- Under the stuck filter every listed mail is stuck, which no sweep
+      -- takes; the primary ("Shown") retries them as a selection would
+      -- (StartCategoryRun), so it counts them. The block below never does.
+      if stuckOnly and not finished and not hasCOD then counts.all = (counts.all or 0) + 1 end
       -- What each sweep would take: unfinished, never C.O.D., and not held
       -- back -- stuck, or holding items while the bags are full -- the rules
       -- the queue builder applies, so a count is a promise the button keeps.
@@ -5024,9 +5028,11 @@ local function StartCategoryRun(panel, category)
   elseif Searching(panel) or StuckOnly(panel) then
     -- The rows on screen, narrowed again by the sweep's own category. The
     -- stuck filter is a narrowing like a search: the buttons count what it
-    -- shows, so they take what it shows -- which, like every sweep, leaves
-    -- the stuck mails themselves to a click on their rows.
-    queue, info = Mail().BuildQueueFor(panel._filtered, category)
+    -- shows, so they take what it shows. Its rows are the stuck mails the
+    -- player asked to see, so the primary ("Shown") retries them as it
+    -- would a selection; the category sweeps still leave them be.
+    queue, info = Mail().BuildQueueFor(panel._filtered, category,
+      StuckOnly(panel) and category == "all")
   else
     queue, info = Mail().BuildQueue(category)
   end
@@ -6253,9 +6259,10 @@ function RV.AllMailRoom(panel, tooltip)
   if Selecting(panel) and panel._selected then
     for index in pairs(panel._selected) do items = items + RV.RoomItems(index, true) end
   else
-    local list, done = panel._filtered, panel._filteredDone
+    -- Under the stuck filter the rows are retried as picks would be.
+    local list, done, retry = panel._filtered, panel._filteredDone, StuckOnly(panel)
     for i = 1, #list do
-      if done[i] == false and type(list[i]) == "number" then items = items + RV.RoomItems(list[i]) end
+      if done[i] == false and type(list[i]) == "number" then items = items + RV.RoomItems(list[i], retry) end
     end
   end
   local text = ns.Plural("ROOM_FREE", free)
