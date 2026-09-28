@@ -1324,9 +1324,10 @@ function RV.Wash(row, target)
   wash:Show()
 end
 
--- A placement table for RV.Place, one per list, reused for every row it binds.
+-- A placement table for RV.Place, one per list, reused for every row it binds;
+-- laneX and laneW are where RV.Place publishes the list's lanes.
 function RV.NewSpec()
-  return { el = {}, size = {}, text = {}, w = {} }
+  return { el = {}, size = {}, text = {}, w = {}, laneX = {}, laneW = {} }
 end
 
 -- What a graphic takes from the text area: the dot sits in the gap before
@@ -1369,6 +1370,17 @@ end
 -- in their order, and the figures are written out in theirs on the second.
 -- It has no columns to line up, and is placed the same either way.
 --
+-- While a one-line row is lined up -- and so always while arranging -- each
+-- column's lane is published into the spec as it is placed, in units from
+-- the row's left edge: s.laneX[id], s.laneW[id], for every column this list
+-- has. The subject's is its own room, before it runs on; a column with no
+-- room is 0 wide where it would stand. One row's lanes are its whole
+-- list's, but for a row whose trailing marks take more room (a read mail's
+-- delete mark, under the divider): a binder whose rows differ so sets
+-- s.publish before each pass, and only the first row placed -- the top of
+-- the list as it stands -- publishes. Closed up, nothing is published: a
+-- row's figures are its own.
+--
 -- `s` (RV.NewSpec, reused):
 --   width, left, trail, gap   the row's width; where its first column may
 --                             start; what its trailing marks take; the step
@@ -1385,6 +1397,9 @@ end
 --   two, top, bottom          the two-line row, and its lines' offsets
 --   detailText                the second line
 --   focus                     the column the arrange mode points at
+--   laneX[id], laneW[id]      written here: each column's lane (above)
+--   publish                   true: the next row placed publishes, the rest
+--                             of the pass not; nil: every row does
 function RV.Place(row, s)
   local layout = RV.Layout()
   local T = Th()
@@ -1392,6 +1407,15 @@ function RV.Place(row, s)
   local gap, two, force = s.gap, s.two, s.force
   -- Lanes are a one-line row's: the two-line row writes its figures out.
   local lanes = not two and RV.LinedUp()
+  local publish = lanes and s.publish ~= false
+  local laneX, laneW = s.laneX, s.laneW
+  if publish then
+    if s.publish then s.publish = false end
+    if not laneX then
+      laneX, laneW = {}, {}
+      s.laneX, s.laneW = laneX, laneW
+    end
+  end
   local n = #layout
   local at = n
   for i = 1, n do
@@ -1452,13 +1476,16 @@ function RV.Place(row, s)
     local region = el[id]
     if region then
       local placed = false
+      local lx, lw = x, 0
       if layout[i].shown or force == id then
         if id == "read" then
           RV.Anchor(row, region, 1, x - 3, 0)
+          lx, lw = x - 3, ROW_INDICATOR - 1
           x = x + ROW_INDICATOR + 2
           placed = true
         elseif id == "icon" then
           RV.Anchor(row, region, 1, x, 0)
+          lw = size.icon or 0
           x = x + (size.icon or 0) + gap
           placed = true
         elseif two then
@@ -1466,6 +1493,7 @@ function RV.Place(row, s)
         elseif id == "sender" then
           RV.Anchor(row, region, 1, x, 0)
           T.FitText(region, senderW, text.sender, region)
+          lw = senderW
           x = x + senderW + gap
           placed = true
         elseif (w[id] or 0) > 0 then
@@ -1476,9 +1504,11 @@ function RV.Place(row, s)
             T.FitText(region, w[id], text[id] or "", nil)
             drawn = drawn + w[id] + gap
           end
+          lw = w[id]
           x = x + w[id] + gap
         end
       end
+      if publish then laneX[id], laneW[id] = lx, lw end
       if placed ~= nil then
         region:SetShown(placed)
         if placed and id == focus then target = region end
@@ -1492,13 +1522,16 @@ function RV.Place(row, s)
     local region = el[id]
     if region then
       local placed = false
+      local from, lw = edge, 0
       if layout[i].shown or force == id then
         if id == "read" then
           RV.Anchor(row, region, 2, -edge, 0)
+          lw = ROW_INDICATOR - 1
           edge = edge + ROW_INDICATOR - 1 + gap
           placed = true
         elseif id == "icon" then
           RV.Anchor(row, region, 2, -edge, 0)
+          lw = size.icon or 0
           edge = edge + (size.icon or 0) + gap
           placed = true
         elseif two then
@@ -1506,6 +1539,7 @@ function RV.Place(row, s)
         elseif id == "sender" then
           RV.Anchor(row, region, 2, -edge, 0)
           T.FitText(region, senderW, text.sender, region)
+          lw = senderW
           edge = edge + senderW + gap
           placed = true
         elseif (w[id] or 0) > 0 then
@@ -1515,9 +1549,11 @@ function RV.Place(row, s)
             T.FitText(region, w[id], text[id] or "", nil)
             drawn = drawn + w[id] + gap
           end
+          lw = w[id]
           edge = edge + w[id] + gap
         end
       end
+      if publish then laneX[id], laneW[id] = s.width - from - lw, lw end
       if placed ~= nil then
         region:SetShown(placed)
         if placed and id == focus then target = region end
@@ -1526,6 +1562,7 @@ function RV.Place(row, s)
   end
 
   local subject, sender, detail = el.subject, el.sender, el.detail
+  if publish then laneX.subject, laneW.subject = x, subjectW end
   if not two then
     local sx, run = x, subjectW
     if lanes then
@@ -3675,6 +3712,9 @@ local function UpdateVisibleRows(panel)
   local used = 0
   local divider = panel.Divider
   if divider then divider:Hide() end
+  -- The list's lanes are its first row's (RV.Place): a read mail's delete
+  -- mark, further down, takes room of its own.
+  panel._rowSpec.publish = true
   for i = first, last do
     if filtered[i] == DIVIDER then
       -- One compact row in either row size, at the FOOT of its slot: that is
