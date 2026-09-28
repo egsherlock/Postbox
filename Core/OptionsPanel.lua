@@ -1454,16 +1454,25 @@ local function Build()
   -- as the version until pointed at, and it asks first -- the dialog says
   -- what goes and what stays. A button of its own laid over the band, so a
   -- click on it is never also a click on the bug report.
+  --
+  -- Two resets, offered side by side: the settings alone, or everything
+  -- Postbox keeps but the list of the player's characters. The second
+  -- clears what the player built -- recipients, groups, Mail Memory,
+  -- History -- so it is the dialog's last button, kept apart from the first
+  -- by Cancel, and it only asks again: nothing is cleared until a second
+  -- dialog, which says it cannot be undone, is answered. Enter answers
+  -- neither dialog (no enterClicksFirstButton); Escape and Cancel close
+  -- both without a change.
   do
     local POPUP_RESET = "POSTBOX_RESET_SETTINGS"
+    local POPUP_RESET_ALL = "POSTBOX_RESET_EVERYTHING"
 
-    local function ResetNow()
-      local UI = ns.MailboxUI
-      if not (UI and type(UI.ResetSettings) == "function") then return end
-      local styleChanged = UI.ResetSettings()
+    -- Either reset ends here: the panel re-reads its controls, and the
+    -- style -- the one setting that waits for a reload -- makes the offer a
+    -- style change makes. Nothing else needs one: everything a reset
+    -- touches is put back on screen as it happens (MailboxUI, the resets).
+    local function AfterReset(styleChanged)
       Panel.RefreshControls()
-      -- The style is the one setting that waits for a reload: the same offer
-      -- a style change makes.
       if styleChanged then
         if EnsureStyleDialog() then
           ns.Theme.LiftPopup(StaticPopup_Show(POPUP_STYLE_RELOAD))
@@ -1473,24 +1482,70 @@ local function Build()
       end
     end
 
+    local function ResetSettingsNow()
+      local UI = ns.MailboxUI
+      if not (UI and type(UI.ResetSettings) == "function") then return end
+      AfterReset(UI.ResetSettings())
+    end
+
+    local function ResetEverythingNow()
+      local UI = ns.MailboxUI
+      if not (UI and type(UI.ResetEverything) == "function") then return end
+      AfterReset(UI.ResetEverything())
+      ns.Print(L["MSG_RESET_ALL_DONE"])
+    end
+
+    -- The second question, a frame after the first dialog has closed, so it
+    -- opens where the first one was rather than stacked under it.
+    local function AskEverything()
+      local function Show()
+        ns.Theme.LiftPopup(StaticPopup_Show(POPUP_RESET_ALL, L["MSG_RESET_ALL_CONFIRM"]))
+      end
+      if type(C_Timer) == "table" and type(C_Timer.After) == "function" then
+        C_Timer.After(0, Show)
+      else
+        Show()
+      end
+    end
+
     -- Registered on first use, like the reload offer. No popup, no reset:
     -- this never happens without the question being asked.
     local function EnsureResetDialog()
       if type(StaticPopupDialogs) ~= "table" or type(StaticPopup_Show) ~= "function" then
         return false
       end
-      if StaticPopupDialogs[POPUP_RESET] then return true end
-      StaticPopupDialogs[POPUP_RESET] = {
-        text = "%s",
-        button1 = L["BTN_RESET"],
-        button2 = L["COD_CONFIRM_CANCEL"],
-        OnAccept = ResetNow,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        showAlert = true,
-        preferredIndex = 3,
-      }
+      if not StaticPopupDialogs[POPUP_RESET] then
+        StaticPopupDialogs[POPUP_RESET] = {
+          text = "%s",
+          button1 = L["BTN_RESET_SETTINGS"],
+          button2 = L["COD_CONFIRM_CANCEL"],
+          button3 = L["BTN_RESET_EVERYTHING"],
+          OnAccept = ResetSettingsNow,
+          OnAlt = AskEverything,
+          timeout = 0,
+          whileDead = true,
+          hideOnEscape = true,
+          showAlert = true,
+          -- Its text describes both choices, so it takes the popup's wider
+          -- width; so does the second, for the same length of text.
+          wideText = true,
+          preferredIndex = 3,
+        }
+      end
+      if not StaticPopupDialogs[POPUP_RESET_ALL] then
+        StaticPopupDialogs[POPUP_RESET_ALL] = {
+          text = "%s",
+          button1 = L["BTN_RESET"],
+          button2 = L["COD_CONFIRM_CANCEL"],
+          OnAccept = ResetEverythingNow,
+          timeout = 0,
+          whileDead = true,
+          hideOnEscape = true,
+          showAlert = true,
+          wideText = true,
+          preferredIndex = 3,
+        }
+      end
       return true
     end
 
