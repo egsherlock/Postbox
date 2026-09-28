@@ -307,6 +307,8 @@ end
 --   unreachable totalItems - numItems
 --   unloaded    indices whose header has not arrived yet
 --   skippedCOD  matching mails held back because they are C.O.D.
+--   heldBack    matching mails left for now (Mail.HeldBack): stuck, or
+--               holding items while the bags are full
 -- The player's own characters, as recipient keys: Postbox.lua's census,
 -- account-wide, every realm. Read-only to every caller. Kept between calls
 -- -- it was rebuilt on every list refresh, ten string operations per alt --
@@ -422,6 +424,10 @@ local function Consider(index, category, queue, info)
       if hasCOD then
         -- Bulk collection must never spend the player's money.
         info.skippedCOD = info.skippedCOD + 1
+      elseif not info.picked and Mail.HeldBack(index) then
+        -- Stuck, or waiting for bag room: a sweep that took it would only
+        -- meet the same refusal again. The player's own picks are tried.
+        info.heldBack = info.heldBack + 1
       else
         queue[#queue + 1] = index
       end
@@ -441,6 +447,7 @@ function Mail.BuildQueue(category)
     unreachable = math.max(totalItems - numItems, 0),
     unloaded = 0,
     skippedCOD = 0,
+    heldBack = 0,
   }
 
   if category == "alts" or category == "other" then info.altKeys = Mail.OwnCharacterKeys() end
@@ -459,9 +466,12 @@ end
 -- The same queue, over an explicit set of inbox indices rather than the whole
 -- inbox: what the collect screen's search hands over, so that "Collect" under
 -- a filtered list takes the mails on screen and nothing else. Every rule
--- BuildQueue applies -- unloaded headers, finished mail, C.O.D. -- applies
--- here too, and the queue comes out descending for the same reason.
-function Mail.BuildQueueFor(indices, category)
+-- BuildQueue applies -- unloaded headers, finished mail, C.O.D., held back --
+-- applies here too, and the queue comes out descending for the same reason.
+-- `picked`: these are rows the player picked one by one, which are tried as a
+-- click on each row would be -- stuck or not, bags full or not (C.O.D. is
+-- still never swept).
+function Mail.BuildQueueFor(indices, category, picked)
   category = category or "all"
   local numItems, totalItems = GetInboxNumItems()
   numItems = tonumber(numItems) or 0
@@ -474,6 +484,8 @@ function Mail.BuildQueueFor(indices, category)
     unreachable = math.max(totalItems - numItems, 0),
     unloaded = 0,
     skippedCOD = 0,
+    heldBack = 0,
+    picked = picked and true or nil,
   }
 
   local sorted = {}
@@ -493,13 +505,13 @@ end
 
 -- indices [, done] -> sender key -> how many of those mails a sweep by sender
 -- would take right now. Consider's rules -- the header has arrived, something
--- is left in the mail, no C.O.D. -- applied once to the whole list, so every
--- sender-based button counts from ONE walk (a character group's count is a sum
--- over its members) instead of one walk per button. `done`, where given, is
--- the caller's verdict for each position of `indices` (true: finished), which
--- the collect screen's list walk has already paid for; without it each mail is
--- asked, sixteen slots and all. Entries that are not inbox indices -- the
--- list's divider -- are skipped.
+-- is left in the mail, no C.O.D., not held back -- applied once to the whole
+-- list, so every sender-based button counts from ONE walk (a character group's
+-- count is a sum over its members) instead of one walk per button. `done`,
+-- where given, is the caller's verdict for each position of `indices` (true:
+-- finished), which the collect screen's list walk has already paid for;
+-- without it each mail is asked, sixteen slots and all. Entries that are not
+-- inbox indices -- the list's divider -- are skipped.
 function Mail.SenderTally(indices, done)
   local tally = {}
   if type(indices) ~= "table" then return tally end
@@ -507,7 +519,7 @@ function Mail.SenderTally(indices, done)
   for i = 1, #indices do
     local index = tonumber(indices[i])
     if index and index >= 1 and index <= numItems then
-      local _, _, sender, subject, money, cod = GetInboxHeaderInfo(index)
+      local _, _, sender, subject, money, cod, _, itemCount = GetInboxHeaderInfo(index)
       -- ReadHeader's "has it arrived", on the one read.
       local arrived = sender ~= nil or subject ~= nil or money ~= nil or cod ~= nil
       if arrived and (tonumber(cod) or 0) <= 0 then
@@ -517,7 +529,7 @@ function Mail.SenderTally(indices, done)
         else
           finished = Mail.IsReadPersistent(index)
         end
-        if not finished then
+        if not finished and not Mail.HeldBack(index, tonumber(itemCount) or 0) then
           local key = SenderKeyOf(sender)
           if key then tally[key] = (tally[key] or 0) + 1 end
         end
@@ -552,30 +564,46 @@ end
 -- cannot physically fit is the damaging part, so the room is counted first.
 -------------------------------------------------------------
 
--- Free slots in ordinary (family 0) bags, or nil when the container API is
--- unavailable -- in which case the caller should skip the check rather than
--- guess. Profession and reagent bags are excluded: they only accept their own
--- item family, so counting them would overstate the room available for
--- arbitrary mail attachments.
+-- -> free slots in the general bags, free slots in the reagent bag; nil when
+-- the container API is unavailable -- in which case the caller should skip
+-- the check rather than guess.
+--
+-- The general bags are the backpack and the four bag slots (NUM_BAG_SLOTS),
+-- and of those only the ones of family 0: a profession bag takes only its own
+-- trade's goods. That is the room any attachment can use.
+--
+-- The reagent bag is counted apart. It takes only crafting reagents, so its
+-- free slots are room for some mail and none at all for the rest -- and it
+-- cannot be told apart by family, since it reports family 0 like any ordinary
+-- bag (the client's own container code knows it by its bag id). Added into
+-- one number, as it once was, a reagent bag with room left read as room while
+-- every general slot was full. Callers choose: the collect run's pre-flight
+-- adds it (reagent mail may well fit, and a run that meets full bags stops
+-- cleanly -- "Bags full"), All mail's tooltip names it on a line of its own.
 function Mail.FreeBagSlots()
   local getFree = (type(C_Container) == "table" and C_Container.GetContainerNumFreeSlots) or nil
   if type(getFree) ~= "function" then return nil end
 
-  -- NUM_TOTAL_EQUIPPED_BAG_SLOTS covers the reagent bag on current clients. The
-  -- family filter below excludes it anyway; including the id costs nothing and
-  -- keeps the loop correct if Blizzard makes it a general-purpose bag.
-  local lastBag = (type(NUM_TOTAL_EQUIPPED_BAG_SLOTS) == "number" and NUM_TOTAL_EQUIPPED_BAG_SLOTS)
-    or (type(NUM_BAG_SLOTS) == "number" and NUM_BAG_SLOTS)
-    or 4
+  local lastBag = (type(NUM_BAG_SLOTS) == "number" and NUM_BAG_SLOTS) or 4
+  local reagentBag = type(Enum) == "table" and type(Enum.BagIndex) == "table"
+    and Enum.BagIndex.ReagentBag or nil
+  if reagentBag == nil and type(NUM_TOTAL_EQUIPPED_BAG_SLOTS) == "number"
+    and NUM_TOTAL_EQUIPPED_BAG_SLOTS > lastBag then
+    reagentBag = lastBag + 1
+  end
 
   local free = 0
   for bag = 0, lastBag do
-    local slots, family = getFree(bag)
-    if (tonumber(family) or 0) == 0 then
-      free = free + (tonumber(slots) or 0)
+    if bag ~= reagentBag then
+      local slots, family = getFree(bag)
+      if (tonumber(family) or 0) == 0 then
+        free = free + (tonumber(slots) or 0)
+      end
     end
   end
-  return free
+  local reagent = 0
+  if reagentBag then reagent = tonumber((getFree(reagentBag))) or 0 end
+  return free, reagent
 end
 
 -- Total attachment slots a queue needs.
@@ -881,6 +909,19 @@ end
 --   timeout  the command may still be in flight; the take may yet land.
 --   busy     nothing was sent at all -- another sequence owned the channel.
 --   closed   nothing was sent at all -- the player walked away.
+-- And one refusal is not about the mail at all: no room in the bags. That is
+-- a state of the character -- every mail with an item in it would be refused
+-- the same way, and all of them come out the moment a slot is free -- so it
+-- is kept as one (see "Bags full" below) and never recorded here. What is
+-- recorded is what stays true of THIS mail until it is taken: "you can't carry
+-- any more of those", a unique the player already holds, or a refusal with no
+-- words attributable to it while the bags had room.
+--
+-- COUNTED BY MAIL. Every read below is per inbox index: two identical mails
+-- that share a fingerprint are two stuck mails, and both are counted and
+-- listed. (The registry keys them together, which is right for the only
+-- question it answers -- the twin of a mail refused for a unique would be
+-- refused too.)
 --
 -- LIFETIME. The session -- entries live until logout, not until the mailbox
 -- closes (see .dev/SPEC-RunMemory.md: the close-time wipe was reversed, since
@@ -905,24 +946,74 @@ end
 --   * NOT wiped at mailbox close. The filter above already silences any entry
 --     the next visit cannot re-match, the marker is phrased as history in the
 --     game's own words rather than a claim about the present, and one retry
---     re-establishes the truth. Nothing is saved; logout is the boundary.
+--     re-establishes the truth. Run memory saves a capped snapshot at each
+--     close (Core/CollectTab.lua) and seeds it back after a relog.
 -------------------------------------------------------------
 
 -- fingerprint -> the game's error text, or `true` for "refused, no attributable
 -- reason". Never false and never nil for a live entry, so `~= nil` is the test.
 local stuck = {}
 local stuckEntries = 0
--- Scratch for the counting pass, so a summary refresh allocates nothing.
+-- Scratch for the prune pass, so it allocates nothing.
 local stuckSeen = {}
+-- sender -> subject -> how many entries carry that sender and subject: the
+-- part of a fingerprint a header read hands over without building a string.
+-- StuckAt asks it first, so a mail that shares neither with any stuck mail --
+-- almost every mail, on every list walk and row bind -- costs two lookups
+-- and no fingerprint. Kept in step by the three writers below.
+local stuckMarks = {}
 
+-- The game's words for "no room in your bags", in the client's own language:
+-- its global strings, compared as they are (the error watch hands over the
+-- text the client displayed). Built on first use; a client missing one simply
+-- has one fewer to match.
+local bagWords = nil
+
+local function IsBagsWords(text)
+  if type(text) ~= "string" or text == "" then return false end
+  if not bagWords then
+    bagWords = {}
+    if type(ERR_INV_FULL) == "string" and ERR_INV_FULL ~= "" then bagWords[ERR_INV_FULL] = true end
+    if type(ERR_BAG_FULL) == "string" and ERR_BAG_FULL ~= "" then bagWords[ERR_BAG_FULL] = true end
+  end
+  return bagWords[text] == true
+end
+
+-- fingerprint -> its sender and subject as Fingerprint wrote them.
+local function MarkOf(fingerprint)
+  return fingerprint:match("^([^\001]*)\001(.*)\001[^\001]*$")
+end
+
+local function Mark(fingerprint, delta)
+  local sender, subject = MarkOf(fingerprint)
+  if not sender then return end
+  local bySender = stuckMarks[sender]
+  if not bySender then
+    if delta < 0 then return end
+    bySender = {}
+    stuckMarks[sender] = bySender
+  end
+  local n = (bySender[subject] or 0) + delta
+  if n > 0 then
+    bySender[subject] = n
+  else
+    bySender[subject] = nil
+    if next(bySender) == nil then stuckMarks[sender] = nil end
+  end
+end
+
+-- The one way in. `fingerprint` is the mail's, `reason` the game's words or
+-- nil; words that are about the bags are never recorded (see above).
 local function NoteStuck(fingerprint, reason)
   if not fingerprint then return end
   local text = (type(reason) == "string" and reason ~= "") and reason or nil
+  if text and IsBagsWords(text) then return end
 
   local prior = stuck[fingerprint]
   if prior == nil then
     stuckEntries = stuckEntries + 1
     stuck[fingerprint] = text or true
+    Mark(fingerprint, 1)
     return
   end
   -- A refusal with no attributable text leaves what we already have alone; one
@@ -938,18 +1029,22 @@ local function ForgetStuck(fingerprint)
   if not fingerprint or stuck[fingerprint] == nil then return end
   stuck[fingerprint] = nil
   stuckEntries = stuckEntries - 1
+  Mark(fingerprint, -1)
 end
 
 -- index -> entry, fingerprint. The single reading of "is the mail at this index
 -- stuck", so the marker on a row, the line in the detail view and the number in
 -- the summary can never disagree.
 --
--- Three tests, and each rules out a different way of being wrong:
+-- Four tests, and each rules out a different way of being wrong:
 --   the registry is empty         nothing has been refused this visit. First,
 --                                 because it is the answer almost every time and
 --                                 it costs no API call at all -- which is what
 --                                 makes this free to call from the row binder,
 --                                 once per visible row per refresh.
+--   sender and subject are marked no stuck mail looks like this one, which
+--                                 one header read and two lookups settle
+--                                 without building its fingerprint.
 --   the fingerprint matches       the flag belongs to the mail AT this index and
 --                                 not to whoever slid down into the slot.
 --   the mail still holds something  a flag only means anything while what was
@@ -959,6 +1054,10 @@ end
 --                                 empty mail is simply false.
 local function StuckAt(index)
   if stuckEntries == 0 then return nil end
+  local _, _, sender, subject = GetInboxHeaderInfo(index)
+  if sender == nil and subject == nil then return nil end
+  local bySender = stuckMarks[tostring(sender)]
+  if not (bySender and bySender[tostring(subject)]) then return nil end
   local fingerprint = Fingerprint(index)
   if not fingerprint then return nil end
   local entry = stuck[fingerprint]
@@ -968,27 +1067,22 @@ local function StuckAt(index)
 end
 
 -- index -> the game's refusal text for this mail, `true` when it was refused
--- with nothing quotable, or nil when it is not stuck. One value, always.
+-- with nothing quotable, or nil when it is not stuck. One value, always, and
+-- only ever about the mail itself: a refusal for want of bag room is never
+-- recorded, so it never answers here.
 function Mail.StuckReason(index)
   return (StuckAt(index))
 end
 
--- How many stuck mails are actually in the inbox right now. Deduplicated by
--- fingerprint: two identical auction mails share one, and one entry must not be
--- counted twice just because the mail that produced it has a twin.
+-- How many stuck mails are actually in the inbox right now: one per inbox
+-- index, so two identical mails refused alike are two (COUNTED BY MAIL).
 function Mail.StuckCount()
   if stuckEntries == 0 then return 0 end
 
   local numItems = tonumber((GetInboxNumItems())) or 0
-  for key in pairs(stuckSeen) do stuckSeen[key] = nil end
-
   local n = 0
   for index = 1, numItems do
-    local entry, fingerprint = StuckAt(index)
-    if entry ~= nil and not stuckSeen[fingerprint] then
-      stuckSeen[fingerprint] = true
-      n = n + 1
-    end
+    if StuckAt(index) ~= nil then n = n + 1 end
   end
   return n
 end
@@ -1000,21 +1094,18 @@ function Mail.StuckEntries()
   return stuckEntries
 end
 
--- The stuck mails as the status tooltip tells them: one row per distinct
--- fingerprint currently matching a live mail -- sender, subject, and the
--- game's words where it left any. nil rather than an empty table when there
--- is nothing to say, so callers can gate on the return alone.
+-- The stuck mails as the status tooltip tells them: one row per stuck mail in
+-- the inbox, twins included -- sender, subject, and the game's words where it
+-- left any. nil rather than an empty table when there is nothing to say, so
+-- callers can gate on the return alone. Built only when the tooltip opens.
 function Mail.StuckDetails()
   if stuckEntries == 0 then return nil end
 
   local numItems = tonumber((GetInboxNumItems())) or 0
-  for key in pairs(stuckSeen) do stuckSeen[key] = nil end
-
   local out
   for index = 1, numItems do
-    local entry, fingerprint = StuckAt(index)
-    if entry ~= nil and not stuckSeen[fingerprint] then
-      stuckSeen[fingerprint] = true
+    local entry = StuckAt(index)
+    if entry ~= nil then
       local _, _, sender, subject = GetInboxHeaderInfo(index)
       out = out or {}
       out[#out + 1] = {
@@ -1083,15 +1174,152 @@ end
 -- keeps this session's verdict. Safe to revive optimistically: every read
 -- re-validates against the live inbox (StuckAt), so an entry whose mail was
 -- collected, returned or expired since simply never shows.
+--
+-- An entry in the game's words for full bags is dropped, not revived: records
+-- saved before bags full became a state of its own carry them, and full bags
+-- were never a fact about the mail (see WHAT GETS RECORDED).
 function Mail.SeedStuck(entries)
   if type(entries) ~= "table" then return end
   for fingerprint, entry in pairs(entries) do
     if type(fingerprint) == "string" and stuck[fingerprint] == nil
-      and (entry == true or type(entry) == "string") then
+      and (entry == true or (type(entry) == "string" and not IsBagsWords(entry))) then
       stuckEntries = stuckEntries + 1
       stuck[fingerprint] = entry
+      Mark(fingerprint, 1)
     end
   end
+end
+
+-------------------------------------------------------------
+-- Bags full
+--
+-- A take the server refuses for want of room (the game's words are
+-- ERR_INV_FULL or ERR_BAG_FULL, or it said nothing we could attribute while
+-- no general bag slot was free) is a fact about the character, not the mail:
+-- every mail with an item in it would be refused the same way, and every one
+-- of them comes out once there is room. So it is a state, set by the refusal
+-- (RunPlan), and it does three things while it holds:
+--   * the run that met it stops there, as a bags stop;
+--   * bulk collection leaves every mail holding items where it is
+--     (Mail.HeldBack), so the buttons count, and take, only what needs no
+--     room -- gold -- instead of walking into the same refusal mail by mail;
+--   * the status line says so, with how many mails are waiting for room
+--     (Mail.BagsWaiting).
+-- Nothing is marked on a mail and nothing is saved.
+--
+-- It lasts while the mailbox is open and the bags have no more room than they
+-- had when it was set. BAG_UPDATE_DELAYED is listened to only while it holds,
+-- and each one compares the free slots (Mail.FreeBagSlots, general and reagent
+-- together: room in either may be what the refused item needed) with the
+-- fewest seen since: more than that, and it clears -- the shell is told, and
+-- the buttons count those mails again. It never collects by itself; the
+-- player clicks. The mailbox closing ends it quietly, and the listener goes
+-- with it.
+-------------------------------------------------------------
+
+local bags = { on = false, low = nil, frame = nil }
+
+-- Every free slot the player has, or nil when the bags cannot be counted.
+local function RoomNow()
+  local free, reagent = Mail.FreeBagSlots()
+  if free == nil then return nil end
+  return free + (reagent or 0)
+end
+
+-- The shell repaints its status line and recounts the buttons.
+local function BagsChanged()
+  local UI = ns.MailboxUI
+  if UI and type(UI.OnBagsFullChanged) == "function" then pcall(UI.OnBagsFullChanged) end
+end
+
+local function ClearBagsFull(quiet)
+  if not bags.on then return end
+  bags.on, bags.low = false, nil
+  local f = bags.frame
+  if f then
+    f:UnregisterEvent("BAG_UPDATE_DELAYED")
+    f:UnregisterEvent("MAIL_CLOSED")
+    f:UnregisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+  end
+  if not quiet then BagsChanged() end
+end
+
+local function OnBagsEvent(_, event, kind)
+  if not bags.on then return end
+  -- The mailbox closed, by either signal: the state ends with the visit. The
+  -- interaction manager's hide is every window's; only the mailbox's counts.
+  if event == "MAIL_CLOSED" then return ClearBagsFull(true) end
+  if event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
+    local enum = type(Enum) == "table" and Enum.PlayerInteractionType or nil
+    if enum and kind == enum.MailInfo then ClearBagsFull(true) end
+    return
+  end
+  if not MailboxOpen() then return ClearBagsFull(true) end
+  local free = RoomNow()
+  -- Uncountable bags cannot say there is still no room; the next try will.
+  if free == nil or bags.low == nil or free > bags.low then return ClearBagsFull() end
+  if free < bags.low then bags.low = free end
+end
+
+-- A take was refused for want of room. Idempotent: a second refusal only
+-- lowers the mark room has to rise above.
+local function SetBagsFull()
+  local free = RoomNow()
+  if bags.on then
+    if free and bags.low and free < bags.low then bags.low = free end
+    return
+  end
+  bags.on, bags.low = true, free
+  if not bags.frame then
+    bags.frame = CreateFrame("Frame")
+    bags.frame:SetScript("OnEvent", OnBagsEvent)
+  end
+  bags.frame:RegisterEvent("BAG_UPDATE_DELAYED")
+  bags.frame:RegisterEvent("MAIL_CLOSED")
+  bags.frame:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+  BagsChanged()
+end
+
+-- Whether the bags-full state holds. A mailbox that has closed without either
+-- close signal reaching us ends it here, quietly.
+function Mail.BagsFull()
+  if not bags.on then return false end
+  if not MailboxOpen() then
+    ClearBagsFull(true)
+    return false
+  end
+  return true
+end
+
+-- index [, itemCount] -> why bulk collection leaves this mail where it is for
+-- now, or nil: "bags" for a mail holding items while the bags are full,
+-- "stuck" for a mail the server refused (Mail.StuckReason). `itemCount`, the
+-- header's, where the caller has already read it. Free while neither state
+-- holds -- two comparisons -- so the list walk asks it of every mail.
+function Mail.HeldBack(index, itemCount)
+  if bags.on then
+    if itemCount == nil then itemCount = Mail.AttachmentCount(index) end
+    if itemCount > 0 then return "bags" end
+  end
+  if stuckEntries > 0 and StuckAt(index) ~= nil then return "stuck" end
+  return nil
+end
+
+-- How many mails are waiting for bag room: holding items, and otherwise
+-- what a sweep would take (no C.O.D., not stuck, not on its way out). 0 while
+-- the bags are not full. Asked by the status line, never by the list walk.
+function Mail.BagsWaiting()
+  if not bags.on then return 0 end
+  local numItems = tonumber((GetInboxNumItems())) or 0
+  local n = 0
+  for index = 1, numItems do
+    local _, _, sender, subject, _, cod, _, itemCount = GetInboxHeaderInfo(index)
+    if (sender ~= nil or subject ~= nil) and (tonumber(itemCount) or 0) > 0
+      and (tonumber(cod) or 0) <= 0 and StuckAt(index) == nil and not Mail.Leaving(index) then
+      n = n + 1
+    end
+  end
+  return n
 end
 
 -------------------------------------------------------------
@@ -1197,15 +1425,18 @@ end
 --     the server rejected this particular take: an item the player already
 --     holds, a unique item, one they cannot carry more of. Nothing is at risk.
 --     Skip that slot and carry on, because one un-takeable item must not block
---     everything else.
+--     everything else. Unless the refusal was for want of room ("Bags full"):
+--     then every further take would be refused too, and the plan ends there.
 --
 -- `plan` entries are { kind = "money" } or { kind = "item", slot = n }. The plan
 -- is a snapshot and each entry fires at most once, so a refused attachment is
 -- never retried within a run and the runner cannot loop.
 --
--- Calls done(timedOut, refusedCount, reason, fingerprint) exactly once, where
--- `fingerprint` is the mail's as the plan last knew it: the one it was given,
--- or its paid form once a take has paid the mail's C.O.D. (PaidFingerprint).
+-- Calls done(timedOut, refusedCount, reason, fingerprint, bags) exactly once,
+-- where `fingerprint` is the mail's as the plan last knew it: the one it was
+-- given, or its paid form once a take has paid the mail's C.O.D.
+-- (PaidFingerprint), and `bags` is true when a take was refused for want of
+-- room and the plan stopped there.
 -------------------------------------------------------------
 
 -- The history (Core/MailMemory.lua, 2c): what is known of a mail before its
@@ -1362,6 +1593,17 @@ local function RunPlan(index, fingerprint, plan, done, record)
         end
         refused = refused + 1
         noteReason(text)
+        -- Which refusal this was decides everything after it. No room in the
+        -- bags -- the game's words say so, or it said nothing we could
+        -- attribute while no general slot was free -- is the character's
+        -- state: nothing is recorded against the mail, and the plan stops,
+        -- since every further take would meet the same want of room.
+        if op.kind == "item"
+          and (IsBagsWords(text) or (text == nil and Mail.FreeBagSlots() == 0)) then
+          SetBagsFull()
+          done(false, refused, reason, fingerprint, true)
+          return
+        end
         -- The one place a hard per-item refusal is established. Everything the
         -- registry holds comes through here or through CollectMail's closing
         -- verification; no timeout, busy or closed path can reach it -- and
@@ -1387,9 +1629,13 @@ end
 --               issue another one.
 --   "busy"      another Postbox command sequence owns the channel.
 --   "closed"    the mailbox is not open; nothing was attempted.
+-- A "refused" answer carries a fourth value, `kind`: "bags" when the take was
+-- refused for want of bag room ("Bags full": nothing is recorded against the
+-- mail, and a run stops), nil when the refusal is the mail's own (recorded in
+-- the stuck registry).
 -------------------------------------------------------------
 
--- index, onDone [, opts] -> nothing. onDone(status, refusedCount, reason).
+-- index, onDone [, opts] -> nothing. onDone(status, refusedCount, reason, kind).
 --
 -- opts.skipFetch  the caller has already loaded this mail's body (the detail
 --                 overlay has), so the fetch would be a wasted round trip that
@@ -1398,11 +1644,11 @@ function Mail.CollectMail(index, onDone, opts)
   local token = Claim()
   local finished = false
 
-  local function finish(status, refusedCount, reason)
+  local function finish(status, refusedCount, reason, kind)
     if finished then return end
     finished = true
     Release(token)
-    if onDone then onDone(status, tonumber(refusedCount) or 0, reason) end
+    if onDone then onDone(status, tonumber(refusedCount) or 0, reason, kind) end
   end
 
   if not token then
@@ -1488,8 +1734,9 @@ function Mail.CollectMail(index, onDone, opts)
       return finish("collected")
     end
 
-    RunPlan(index, fingerprint, plan, function(timedOut, refusedCount, reason, current)
+    RunPlan(index, fingerprint, plan, function(timedOut, refusedCount, reason, current, full)
       if timedOut then return finish("timeout", refusedCount, reason) end
+      if full then return finish("refused", refusedCount, reason, "bags") end
       if refusedCount > 0 then return finish("refused", refusedCount, reason) end
       -- Verify rather than assume, independently of the per-operation
       -- measurements. Only meaningful while the index still names this mail:
@@ -1505,7 +1752,13 @@ function Mail.CollectMail(index, onDone, opts)
       current = current or fingerprint
       if Fingerprint(index) == current and Mail.HasContent(index) then
         -- Every handshake completed and the mail is still not empty. Nothing
-        -- attributable to one take, but the mail is stuck all the same.
+        -- attributable to one take -- so where items stayed while no general
+        -- slot was free, that is the bags (see "Bags full"); otherwise the
+        -- mail is stuck all the same.
+        if Mail.AttachmentsLeft(index) > 0 and Mail.FreeBagSlots() == 0 then
+          SetBagsFull()
+          return finish("refused", 1, reason, "bags")
+        end
         NoteStuck(current, reason)
         return finish("refused", 1, reason)
       end
@@ -1533,16 +1786,16 @@ function Mail.CollectMail(index, onDone, opts)
 end
 
 -- One attachment slot of a mail whose body is already loaded.
--- onDone(status, refusedCount, reason).
+-- onDone(status, refusedCount, reason, kind), as Mail.CollectMail's.
 function Mail.TakeAttachment(index, slot, onDone, opts)
   local token = Claim()
   local finished = false
 
-  local function finish(status, refusedCount, reason)
+  local function finish(status, refusedCount, reason, kind)
     if finished then return end
     finished = true
     Release(token)
-    if onDone then onDone(status, tonumber(refusedCount) or 0, reason) end
+    if onDone then onDone(status, tonumber(refusedCount) or 0, reason, kind) end
   end
 
   if not token then
@@ -1568,8 +1821,9 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
 
   WhenIdle(function()
     RunPlan(index, fingerprint, { { kind = "item", slot = slot } },
-      function(timedOut, refusedCount, reason)
+      function(timedOut, refusedCount, reason, _, full)
         if timedOut then return finish("timeout", refusedCount, reason) end
+        if full then return finish("refused", refusedCount, reason, "bags") end
         if refusedCount > 0 then return finish("refused", refusedCount, reason) end
         -- A take that landed is proof the refusal no longer holds -- the player
         -- made room, or dropped the unique they already had. If the next slot
