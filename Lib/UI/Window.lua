@@ -273,9 +273,31 @@ function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn, onR
   button:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 6)
   button:SetFrameStrata(frame:GetFrameStrata())
   button:SetFrameLevel(frame:GetFrameLevel() + 30)
-  button:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
-  button:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
-  button:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+
+  -- The art: the mockups' two thin diagonals (Theme.GLYPHS.resize) at their
+  -- own size, their box flush with the grip's bottom-right corner, pointing
+  -- into the window's. Grey at rest; white while pointed at and while
+  -- held, a drag that outruns the pointer included. The grip, not the
+  -- window, owns the texture (see Theme.Glyph). Blizzard's chat grabber
+  -- where the theme's glyphs are not to be had. Read at call time: Lib
+  -- loads before Core/Theme.lua.
+  local T = ns.Theme
+  local glyph = T and type(T.Glyph) == "function" and T.Glyph(button, "resize", nil, "ARTWORK") or nil
+  local held = false
+  local function Tint(lit)
+    if glyph and T.SetColor then T.SetColor(glyph, lit and "textPrimary" or "textDisabled") end
+  end
+  if glyph then
+    local w, h = T.GLYPHS.resize.w, T.GLYPHS.resize.h
+    glyph:SetPoint("CENTER", button, "BOTTOMRIGHT", -w / 2, h / 2)
+    Tint(false)
+    button:SetScript("OnEnter", function() Tint(true) end)
+    button:SetScript("OnLeave", function() Tint(held) end)
+  else
+    button:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    button:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    button:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+  end
 
   local sizing = false
 
@@ -284,12 +306,17 @@ function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn, onR
     -- Also cancel any engine-driven move in progress (a title-bar drag when the
     -- window is hidden mid-gesture). Harmless otherwise.
     if type(frame.StopMovingOrSizing) == "function" then frame:StopMovingOrSizing() end
+    -- Let go, or hidden: lit only if the pointer is still on the grip.
+    held = false
+    Tint(button:IsVisible() and button:IsMouseOver())
     if not sizing then return end
     sizing = false
     if type(onStop) == "function" then onStop(frame) end
   end
 
   button:SetScript("OnMouseDown", function(self, mouseButton)
+    held = true
+    Tint(true)
     if mouseButton == "RightButton" then
       if type(onReset) == "function" then onReset(frame) end
       return

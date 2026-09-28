@@ -1669,7 +1669,8 @@ Theme.AtlasSets = {
 -- a keyline; nil keeps the mockup's size), its width following the glyph's
 -- aspect, or nil for an unknown name. Anchor it by CENTER: a keylined glyph
 -- overhangs its box evenly. It is white: tint it with SetVertexColor or
--- Theme.FillColor. Nothing is allocated but the texture. Give it a button or
+-- Theme.SetColor (not Theme.FillColor, whose SetColorTexture replaces the
+-- art). Nothing is allocated but the texture. Give it a button or
 -- an art-holder child as its parent, never a frame tagged __postboxPanel:
 -- EllesmereUI's repaint fades the textures such a frame owns itself.
 --
@@ -1678,6 +1679,8 @@ Theme.AtlasSets = {
 --     two-point anchoring sets its width).
 --   hatch  a tile: size the texture, then SetTexCoord(0, width / 8, 0,
 --     height / 8). It is already set with REPEAT wrapping.
+--   resize  the windows' resize corner, two diagonals pointing into the
+--     bottom-right; Lib/UI/Window.lua sits it in its grip's corner.
 --
 -- Sharpness. The art is 2 texels per UI unit. A texel snapping bias above 0
 -- "sharpens": the renderer picks a texel instead of blending texels (the API
@@ -1716,6 +1719,7 @@ do
     reset = { file = MEDIA .. "glyph-reset.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
     caret = { file = MEDIA .. "glyph-caret.tga", w = 8, h = 6, l = 0.03125, r = 0.53125, t = 0.0625, b = 0.8125 },
     bug = { file = MEDIA .. "glyph-bug.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
+    resize = { file = MEDIA .. "glyph-resize.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
   }
 
