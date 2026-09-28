@@ -7025,7 +7025,7 @@ end
 -- under the pointer now.
 function RV.BlockOptionChanged(panel, show)
   local UI = ns.MailboxUI
-  if type(UI.RefreshCollectCategoryButtons) == "function" then
+  if UI and type(UI.RefreshCollectCategoryButtons) == "function" then
     UI.RefreshCollectCategoryButtons()
   else
     CT.RefreshCategoryButtons(panel)
