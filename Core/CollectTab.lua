@@ -1302,14 +1302,22 @@ function RV.Anchor(row, region, point, x, y)
   region:SetPoint(name, row, name, x, y)
 end
 
--- The arrange mode's pointer on a row: a soft accent wash around the column
--- being moved or chosen, so the column the strip's chip stands for is found
--- in the list at a glance. On a texture of the row's own, made on first use;
--- nil takes it away.
+-- The arrange mode's pointer on a row with no lanes to mark (Larger mail
+-- rows, or a figure standing in the subject's room): a soft accent wash
+-- around what the row draws of the column being moved or chosen, so the
+-- column its heading stands for is found in the list at a glance. On a
+-- texture of the row's own, made on first use; nil takes it away, and with
+-- it whatever else the mode marked on the row.
 function RV.Wash(row, target)
   local wash = row.__pbWash
   if not target then
     if wash then wash:Hide() end
+    -- And what the mode marked on it (Core/Arrange.lua, AR.MarkRow).
+    local marks = row.__pbMarks
+    if marks and marks.on then
+      local A = ns.Arrange
+      if A and A.UnmarkRow then A.UnmarkRow(row) end
+    end
     return
   end
   if not wash then
@@ -1563,8 +1571,10 @@ function RV.Place(row, s)
 
   local subject, sender, detail = el.subject, el.sender, el.detail
   if publish then laneX.subject, laneW.subject = x, subjectW end
+  -- Where a one-line row's subject starts and how far it runs.
+  local sx, run
   if not two then
-    local sx, run = x, subjectW
+    sx, run = x, subjectW
     if lanes then
       -- The subject runs on through the lanes next to it that this mail
       -- leaves empty, up to the first thing it has; a lane with no room
@@ -1652,7 +1662,15 @@ function RV.Place(row, s)
   end
   if focus == "subject" then target = subject end
   if not senderShown and sender then sender:Hide() end
-  RV.Wash(row, target)
+  -- While the arrange mode points at a column the rows show it
+  -- (Core/Arrange.lua, AR.MarkRow): its lane, the subject's run, the column
+  -- in the hand. Otherwise nothing is marked.
+  local A = focus and ns.Arrange
+  if A and A.MarkRow then
+    A.MarkRow(row, s, target, lanes, x, subjectW, sx, run)
+  else
+    RV.Wash(row, target)
+  end
 end
 
 -- layout, id -> where the arrangement has that column.
@@ -2268,6 +2286,9 @@ local function LayoutViewToggle(panel)
     local UI = ns.MailboxUI
     if UI and type(UI.RefreshCollectWidth) == "function" then UI.RefreshCollectWidth() end
   end
+  -- While the arrange mode's column header stands in the row's place, what
+  -- was just laid out stays out of sight (CT.ArrangeHost).
+  if panel._topHidden then RV.HideTopRow(panel) end
 end
 
 -- Frozen: Core/MailboxUI.lua reads this for the window's floor. The panel
@@ -2725,8 +2746,9 @@ local function ActivateRow(row, button)
   local panel = row.panel
   local index = LiveIndex(row)
   if not (panel and index) then return end
-  -- While the columns are being arranged the list is a preview of them, and
-  -- a click that slipped off a chip must not collect a mail.
+  -- While the columns are being arranged a press on a row takes the column
+  -- under it (Core/Arrange.lua lays a cover of its own over the list), and
+  -- nothing that reaches a row may collect or open a mail.
   if RV.Arranging(panel) then return end
 
   -- A modified left-click is a selection gesture, under either mapping and
@@ -3682,6 +3704,12 @@ local function UpdateVisibleRows(panel)
   -- (Postbox.lua, 5b); nil otherwise.
   local perf = ns.Perf
   local perfAt = perf and perf.cur and perf.Begin and perf.Begin()
+  -- While the arrange mode is open over this tab its column header stands on
+  -- the lanes this pass publishes (Core/Arrange.lua): told before, so a pass
+  -- that places no one-line row leaves none, and after.
+  local A = ns.Arrange
+  local arranging = A ~= nil and A.host ~= nil and A.host.owner == panel
+  if arranging and A.ListPlacing then A.ListPlacing(panel) end
   -- Another character's box takes the list: its own rows, and none of these.
   local away = AV.Active(panel)
   if away then AV.UpdateRows(panel) else AV.HideRows(panel) end
@@ -3772,6 +3800,7 @@ local function UpdateVisibleRows(panel)
   -- Rows carry no skinnable children -- no tagged push button, no themed panel,
   -- no edit box -- so a newly grown pool entry needs no ns.Skin.Refresh pass.
   -- Adding one here would re-walk the whole panel on every scroll tick.
+  if arranging and A.ListPlaced then A.ListPlaced(panel) end
   if perfAt then perf.Rows(perfAt, used) end
 end
 
@@ -7252,45 +7281,96 @@ function SetViewMode(panel, id)
   if perfAt then perf.Done(id == VIEW_HISTORY and "history" or "view", perfAt) end
 end
 
--- The arrange mode over this tab (Core/Arrange.lua): the strip of columns
--- stands between the top row and the list, which steps down under it; the
--- blocks under the list become cards, and the category grid takes its drags
--- and clicks instead of collecting. The top row stays as it is -- a view
--- can still be switched, or a mail found, to see how the arrangement reads
--- on it. Built once per panel.
+-- The top row -- the view switch, the other box's name, the hint, the
+-- character picker and the search -- steps aside while the arrange mode's
+-- column header stands in its place, and comes back as the tab's own
+-- layout has it: the view switch and the search are always there, and the
+-- rest is laid out again from where things stand (AV.Paint), so nothing the
+-- mode did is left on it. Hidden, not moved: the list under it stays where
+-- it is. LayoutViewToggle hides it again whenever it lays the row out
+-- while the header stands there.
+function RV.HideTopRow(panel)
+  panel._topHidden = true
+  local toggle = panel.ViewToggle
+  if toggle then
+    toggle:Hide()
+    if toggle.alt then toggle.alt:Hide() end
+  end
+  if panel.Hint then panel.Hint:Hide() end
+  if panel.Picker then panel.Picker:Hide() end
+  -- The keyboard never stays with a box nobody can see.
+  if panel.SearchBox and panel.SearchBox.ClearFocus then panel.SearchBox:ClearFocus() end
+  if panel.SearchWrap then panel.SearchWrap:Hide() end
+end
+
+function RV.ShowTopRow(panel)
+  if not panel._topHidden then return end
+  panel._topHidden = nil
+  if panel.ViewToggle then panel.ViewToggle:Show() end
+  if panel.SearchWrap then panel.SearchWrap:Show() end
+  AV.Paint(panel)
+end
+
+-- The arrange mode over this tab (Core/Arrange.lua): its column header
+-- stands in the top row's place, over the list's lanes, and the list does
+-- not move; the blocks under the list become cards, and the category grid
+-- takes its drags and clicks instead of collecting. The top row comes back
+-- as it was when the mode ends. Built once per panel.
 function CT.ArrangeHost(panel)
   if not (panel and panel.MailListArea) then return nil end
   if panel._arrangeHost then return panel._arrangeHost end
   local host = { owner = panel }
+  -- The header's left edge is the rows' own (the list's inset inside its
+  -- container), so a lane's x is a heading's; its top is the top row's.
   function host.PlaceStrip(strip)
     local M = Th().Metrics
-    strip:SetPoint("TOPLEFT", panel.ViewToggle, "BOTTOMLEFT", 0, -M.gap)
-    strip:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
+    strip:SetPoint("TOPLEFT", panel.ViewToggle, "TOPLEFT", M.tightGap, 0)
+    strip:SetPoint("RIGHT", panel.MailListScroll, "RIGHT", 0, 0)
   end
-  function host.OnEnter(strip)
-    local M = Th().Metrics
-    -- The reading view is over the list the strip describes.
+  function host.OnEnter()
+    -- The reading view is over the list the header describes.
     HideDetail(panel)
-    panel.MailListArea:SetPoint("TOPLEFT", strip, "BOTTOMLEFT", 0, -M.gap)
+    RV.HideTopRow(panel)
     if RV.ArrangeGrid then RV.ArrangeGrid(panel, true) end
   end
   function host.OnLeave()
-    local M = Th().Metrics
-    panel.MailListArea:SetPoint("TOPLEFT", panel.ViewToggle, "BOTTOMLEFT", 0, -M.gap)
+    RV.ShowTopRow(panel)
     if RV.ArrangeGrid then RV.ArrangeGrid(panel, false) end
+  end
+  -- What the header and the rows' marks read, for the list on screen: its
+  -- placement table (whose lanes RV.Place publishes), its row pool, its
+  -- scroll frame and the frame its rows stand in, and whether its rows are
+  -- the two-line ones, which have no lanes.
+  function host.Spec()
+    if AV.Active(panel) then
+      local Memory = ns.MailMemory
+      return Memory and Memory.PlaceSpec and Memory.PlaceSpec(panel.MailListChild) or nil
+    end
+    if panel.viewMode == VIEW_HISTORY then return panel._histSpec end
+    return panel._rowSpec
+  end
+  function host.Pool()
+    if AV.Active(panel) then return panel._avPool end
+    if panel.viewMode == VIEW_HISTORY then return panel._hrows end
+    return panel._rows
+  end
+  function host.Scroll() return panel.MailListScroll end
+  function host.List() return panel.MailListChild end
+  function host.TwoLine()
+    return not AV.Active(panel) and panel.viewMode ~= VIEW_HISTORY and not RowMetrics()
   end
   -- The blocks and the buttons settle into place as the mode opens.
   function host.Rise()
     RV.RiseStack(panel)
   end
   -- The inspector docks beside the Postbox window, level with this tab's
-  -- top row, and answers for the blocks under the list (Arrange.lua,
-  -- section 9).
+  -- top row -- the header, while it stands there -- and answers for the
+  -- blocks under the list (Arrange.lua, section 9).
   function host.Dock()
     local UI = ns.MailboxUI
     return UI and UI._frame or panel
   end
-  function host.DockTop() return panel.ViewToggle end
+  function host.DockTop() return host.strip or panel.ViewToggle end
   function host.ListHidden(put) RV.ListHidden(panel, put) end
   function host.ShowHidden(kind, key) RV.ShowHidden(panel, kind, key) end
   function host.BlockPresent(id) return panel._stack ~= nil and panel._stack.y[id] ~= nil end
@@ -7364,7 +7444,10 @@ function RV.BuildDivider(panel, parent)
   -- mail with nothing left, and the word has to say so before the click.
   divider.Delete.Text:SetText(L()["BTN_DELETE_ALL"])
   divider.Delete:SetSize(max(T.TextWidth(divider.Delete.Text) + 8, 40), 18)
-  divider.Delete:SetScript("OnClick", function() DeleteAllDone(panel) end)
+  -- Nothing is deleted from the list while its columns are being arranged.
+  divider.Delete:SetScript("OnClick", function()
+    if not RV.Arranging(panel) then DeleteAllDone(panel) end
+  end)
   divider.Delete:SetScript("OnEnter", function(self)
     Th().SetColor(self.Text, "negative")
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -7559,8 +7642,9 @@ function CT.Build(parent)
   local divider = RV.BuildDivider(panel, panel.MailListChild)
   -- A click folds the read mail away or brings it back, and it stays so.
   divider:SetScript("OnClick", function()
-    -- A search shows it regardless; a click then would flip it unseen.
-    if Searching(panel) then return end
+    -- A search shows it regardless; a click then would flip it unseen. The
+    -- arrange mode's list folds nothing either.
+    if Searching(panel) or RV.Arranging(panel) then return end
     RV.SetFolded(not RV.Folded(panel))
     CT.RefreshMailList(panel)
   end)
@@ -7572,6 +7656,7 @@ function CT.Build(parent)
   -- the same Delete all.
   local pin = RV.BuildDivider(panel, panel.MailListChild)
   pin:SetScript("OnClick", function()
+    if RV.Arranging(panel) then return end
     if RV.Folded(panel) then
       RV.SetFolded(false)
       CT.RefreshMailList(panel)

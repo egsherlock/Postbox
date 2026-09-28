@@ -1138,6 +1138,9 @@ function MM.NewRow(parent)
   row.HeaderHit:RegisterForClicks("LeftButtonUp")
   row.HeaderHit:SetScript("OnClick", function(self)
     local owner = self:GetParent()
+    -- No other box opens under a list whose columns are being arranged.
+    local arrange = ns.Arrange
+    if arrange and arrange.host then return end
     if owner.onHeader then owner.onHeader(owner.headerRealm, owner.headerName) end
   end)
   row.HeaderHit:SetScript("OnEnter", function(self)
@@ -2269,6 +2272,11 @@ local function BindRows(frame)
   local last = math.min(#rows, math.ceil((offset + viewport) / ROW_HEIGHT))
   local now = frame._now or time()
   local onHeader = frame._onHeader
+  -- While the arrange mode is open over this window its column header stands
+  -- on the lanes this pass publishes (Core/Arrange.lua).
+  local A = ns.Arrange
+  local arranging = A ~= nil and A.host ~= nil and A.host.owner == frame
+  if arranging and A.ListPlacing then A.ListPlacing(frame) end
   local used = 0
   for i = first, last do
     used = used + 1
@@ -2284,6 +2292,7 @@ local function BindRows(frame)
     MM.FillRow(row, rows[i], now, frame._cols or {}, i, onHeader)
   end
   for i = used + 1, #frame.Rows do frame.Rows[i]:Hide() end
+  if arranging and A.ListPlaced then A.ListPlaced(frame) end
 end
 
 local function OnHeader(frame, realm, name)
@@ -2324,6 +2333,8 @@ function Refresh(frame)
   -- The name is the way back while it is another character's (Back).
   frame.WhoHit:SetShown(v ~= nil)
   if v then frame.WhoHit:Fit() end
+  -- The arrange mode's column header stands where this row is.
+  if frame._topHidden then MM.HideTopRow(frame) end
 
   -- The foot: when the box was seen, or what a search found.
   local text = MM.SeenText(info.snapshot)
@@ -2367,43 +2378,78 @@ function Refresh(frame)
   frame:SetSize(width, wanted)
 end
 
--- The arrange mode over this window (Core/Arrange.lua): the strip stands
--- where the card's top was and the card steps down under it; the top row
--- stays, so another box can still be picked to see the arrangement on it.
--- The window widens, if it must, until every chip says its name whole, and
--- goes back to the width it had.
+-- The top row -- whose box, its sort, the character picker and the search --
+-- steps aside while the arrange mode's column header stands in its place,
+-- and comes back as it was: each part as Refresh last left it, shown or
+-- not (Refresh, while the header stands, records what it lays out and
+-- hides it again). `set` is what Refresh shows or hides by itself; the rest
+-- is always there.
+MM.TOP_ROW = { "Who", "WhoHit", "Sort", "Picker", "SearchWrap", set = { WhoHit = true, Picker = true } }
+
+function MM.HideTopRow(frame)
+  local kept = frame._topKept
+  if not kept then
+    kept = {}
+    frame._topKept = kept
+  end
+  local parts = MM.TOP_ROW
+  for i = 1, #parts do
+    local key = parts[i]
+    local part = frame[key]
+    if part then
+      -- Recorded as the header first stands there; after that only what
+      -- Refresh has just laid out again.
+      if not frame._topHidden or parts.set[key] then kept[key] = part:IsShown() and true or false end
+      part:Hide()
+    end
+  end
+  if frame.SearchBox and frame.SearchBox.ClearFocus then frame.SearchBox:ClearFocus() end
+  frame._topHidden = true
+end
+
+function MM.ShowTopRow(frame)
+  if not frame._topHidden then return end
+  frame._topHidden = nil
+  local kept, parts = frame._topKept, MM.TOP_ROW
+  for i = 1, #parts do
+    local part = frame[parts[i]]
+    if part and kept then part:SetShown(kept[parts[i]] and true or false) end
+  end
+end
+
+-- The arrange mode over this window (Core/Arrange.lua): its column header
+-- stands in the top row's place, over the list's lanes, and the list does
+-- not move; the top row comes back as it was when the mode ends. The header
+-- takes no more width than the rows do, so the window keeps its own.
 function MM.ArrangeHost(frame)
   if not (frame and frame.Card) then return nil end
   if frame._arrangeHost then return frame._arrangeHost end
   local host = { owner = frame }
+  -- The header's left edge is the rows' own (inside the card's edge), so a
+  -- lane's x is a heading's; its top is the top row's.
   function host.PlaceStrip(strip)
-    strip:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -CHROME_TOP)
-    strip:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
+    strip:SetPoint("TOPLEFT", frame, "TOPLEFT", 11, HEADER_Y)
+    strip:SetPoint("RIGHT", frame.Scroll, "RIGHT", 0, 0)
   end
-  function host.OnEnter(strip)
+  function host.OnEnter()
     MM.ClosePicker()
-    frame.Card:SetPoint("TOPLEFT", strip, "BOTTOMLEFT", 0, -6)
-    local arrange = ns.Arrange
-    local need = (arrange and arrange.StripNeed and arrange.StripNeed(host) or 0) + 20
-    local width = frame:GetWidth() or WINDOW_WIDTH
-    if need > width then
-      frame._widthBeforeArrange = width
-      frame:SetWidth(math.min(WINDOW_MAX_WIDTH, math.ceil(need)))
-      frame._widthForArrange = frame:GetWidth()
-    end
+    MM.HideTopRow(frame)
   end
   function host.OnLeave()
-    frame.Card:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -CHROME_TOP)
-    -- Back to the player's width, unless they chose another meanwhile.
-    local before = frame._widthBeforeArrange
-    frame._widthBeforeArrange = nil
-    if before and math.abs((frame:GetWidth() or 0) - (frame._widthForArrange or 0)) < 0.5 then
-      frame:SetWidth(before)
-    end
+    MM.ShowTopRow(frame)
   end
-  -- The inspector docks beside this window, level with its top row.
+  -- What the header and the rows' marks read: the list's placement table
+  -- (whose lanes RV.Place publishes), its rows, its scroll frame and the
+  -- frame its rows stand in. Its rows are always one line.
+  function host.Spec() return MM.PlaceSpec(frame.ListChild) end
+  function host.Pool() return frame.Rows end
+  function host.Scroll() return frame.Scroll end
+  function host.List() return frame.ListChild end
+  function host.TwoLine() return false end
+  -- The inspector docks beside this window, level with its top row -- the
+  -- header, while it stands there.
   function host.Dock() return frame end
-  function host.DockTop() return frame.SearchWrap end
+  function host.DockTop() return host.strip or frame.SearchWrap end
   frame._arrangeHost = host
   return host
 end
