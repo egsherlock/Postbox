@@ -541,9 +541,10 @@ local TEXT_W = INSP_W - 2 - 2 * TEXT_X
 -- The text zone is never shorter than this: most descriptions fit it, so
 -- the text does not jump as the pointer moves from setting to setting.
 local SAY_MIN = 150
-local TILE_H, HOST_H = 46, 32
+local TILE_H, HOST_H, SWATCH_H, STAGE, STAGE_ICON, SAMPLE_MAX, MOCK_H = 46, 32, 74, 104, 54, 48, 34
 local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
 local GLOW_TGA = "Interface\\AddOns\\Postbox\\Media\\minimap-glow.tga"
+local ROUND_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 -- Hairlines between rows and the wash under the row the pointer is on:
 -- chrome, so white at a low alpha.
 local HAIR_A, WASH_A = 0.08, 0.05
@@ -750,7 +751,7 @@ do
       idle:Show()
       return
     end
-    local extra = nil
+    local extra = entry.extra and Ctx.Extra(entry.extra) or nil
     local was = S.extraShown
     if was and was ~= extra then was:Hide() end
     S.extraShown = extra
@@ -795,6 +796,12 @@ do
     Insp.Show(entry or nil)
   end
 
+  -- The height a text of the secondary role takes across the text zone.
+  function Insp.TextHeight(text)
+    local d = S.measure.Text
+    d:SetText(text or "")
+    return math.ceil(d:GetStringHeight() or 0)
+  end
 end
 
 -------------------------------------------------------------
@@ -811,12 +818,16 @@ end
 -------------------------------------------------------------
 do
   local CTX_TOP = 11
+  -- Sample mail: a tiered reagent, whose link carries a quality mark.
+  local SAMPLE_ITEM = 191462
+  local SAMPLE_DAYS = 29
 
   -- The fixed height of each tab's drawing, and the gap under it.
   function Ctx.Height(key)
-    if key == "mail" then return CTX_TOP + TILE_H + 10 end
+    if key == "mail" then return CTX_TOP + TILE_H + 8 + SAMPLE_MAX + 10 end
     if key == "send" then return CTX_TOP + TILE_H + 10 end
-    if key == "window" then return S.installedHost and (CTX_TOP + HOST_H + 10) or 0 end
+    if key == "window" then return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + SWATCH_H + 10 end
+    if key == "minimap" then return CTX_TOP + 4 + STAGE + 10 end
     return 0
   end
 
@@ -1018,20 +1029,157 @@ do
     end
   end
 
-  -- The Mail tab: the character groups tile.
+  ---------------------------------------------------------
+  -- The sample mail row
+  --
+  -- A small drawing of one row, from the settings rather than from the
+  -- list's own code: the icon, the name, where the mail came from and how
+  -- long it has left. Two lines with a larger icon under Larger mail rows;
+  -- the quality mark on the icon's corner, after the name, both or neither.
+  ---------------------------------------------------------
+
+  -- The sample item's name, link and quality, asked for once if the client
+  -- has not loaded it yet; the row repaints when it arrives.
+  local function SampleItem()
+    local info = C_Item and C_Item.GetItemInfo
+    local name, link, quality
+    if type(info) == "function" then name, link, quality = info(SAMPLE_ITEM) end
+    if not name and not S.sampleAsked then
+      S.sampleAsked = true
+      local item = type(Item) == "table" and type(Item.CreateFromItemID) == "function"
+        and Item:CreateFromItemID(SAMPLE_ITEM) or nil
+      if item and item.ContinueOnItemLoad then
+        item:ContinueOnItemLoad(function()
+          local f = S.ctx.mail
+          if f and f:IsVisible() and f.Paint then f.Paint() end
+        end)
+      end
+    end
+    return name, link, quality
+  end
+
+  function Ctx.Sample(parent)
+    local T = ns.Theme
+    local s = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    s:SetBackdrop(PLAIN_BACKDROP)
+    s:SetBackdropColor(0, 0, 0, 0.45)
+    s:SetBackdropBorderColor(0.17, 0.17, 0.17, 1)
+    s:SetWidth(CTX_W)
+    local art = ArtHolder(s)
+    s.IconEdge = art:CreateTexture(nil, "ARTWORK", nil, 0)
+    s.Icon = art:CreateTexture(nil, "ARTWORK", nil, 1)
+    s.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    s.IconEdge:SetPoint("TOPLEFT", s.Icon, "TOPLEFT", -1, 1)
+    s.IconEdge:SetPoint("BOTTOMRIGHT", s.Icon, "BOTTOMRIGHT", 1, -1)
+    -- The mark over the icon's corner, a level above, with a soft dark copy
+    -- behind it so it reads on light item art.
+    local over = CreateFrame("Frame", nil, s)
+    over:SetAllPoints(s)
+    over:SetFrameLevel(art:GetFrameLevel() + 1)
+    s.MarkShadow = over:CreateTexture(nil, "ARTWORK")
+    s.MarkShadow:SetAlpha(0.6)
+    s.Mark = over:CreateTexture(nil, "OVERLAY")
+    s.Name = T.CreateText(art, "value")
+    s.Name:SetJustifyH("LEFT")
+    s.Name:SetWordWrap(false)
+    s.Meta = T.CreateText(art, "secondary")
+    s.Meta:SetJustifyH("RIGHT")
+    s.Meta:SetWordWrap(false)
+    s.Line2 = T.CreateText(art, "secondary")
+    s.Line2:SetJustifyH("LEFT")
+    s.Line2:SetWordWrap(false)
+    return s
+  end
+
+  function Ctx.PaintSample(s)
+    local T = ns.Theme
+    local UI = ns.MailboxUI
+    local larger = UI and not UI.GetOption("compactRows") or false
+    local mode = UI and type(UI.GetQualityMark) == "function" and UI.GetQualityMark() or "icon"
+    local iconSize = larger and 24 or 18
+    local lineH = larger and 30 or 24
+    s:SetHeight(lineH + (larger and 16 or 0) + 2)
+
+    local name, link, quality = SampleItem()
+    local icon = C_Item and type(C_Item.GetItemIconByID) == "function" and C_Item.GetItemIconByID(SAMPLE_ITEM) or nil
+    s.Icon:SetTexture(icon or 134400)
+    s.Icon:SetSize(iconSize, iconSize)
+    s.Icon:ClearAllPoints()
+    s.Icon:SetPoint("CENTER", s, "TOPLEFT", 8 + iconSize / 2, -(1 + lineH / 2))
+    local r, g, b = 1, 1, 1
+    if quality and C_Item and type(C_Item.GetItemQualityColor) == "function" then
+      local qr, qg, qb = C_Item.GetItemQualityColor(quality)
+      if qr then r, g, b = qr, qg, qb end
+    end
+    s.IconEdge:SetColorTexture(r * 0.6, g * 0.6, b * 0.6, 1)
+
+    -- The mark the link carries, as the list reads it.
+    local mark = type(link) == "string" and (link:match("|A:Professions%-[^|]*|a")
+      or link:match("|A:[^|]*[Qq]uality[^|]*|a")) or nil
+    local atlas = mark and mark:match("|A:([^:|]+)") or nil
+    if atlas and (mode == "icon" or mode == "both") then
+      local small = T.FirstAtlas({ (atlas:gsub("ChatIcon", "Icon")) .. "-Small", atlas })
+      s.Mark:SetAtlas(small or atlas, false)
+      s.MarkShadow:SetAtlas(small or atlas, false)
+      s.MarkShadow:SetVertexColor(0, 0, 0, 1)
+      local size = math.max(15, iconSize * (larger and 0.9 or 1.2))
+      local bleed = size / 2 - (larger and 2.5 or 2)
+      s.Mark:SetSize(size, size)
+      s.Mark:ClearAllPoints()
+      s.Mark:SetPoint("BOTTOMRIGHT", s.Icon, "BOTTOMRIGHT", bleed, -bleed)
+      s.MarkShadow:SetSize(size + 2, size + 2)
+      s.MarkShadow:ClearAllPoints()
+      s.MarkShadow:SetPoint("CENTER", s.Mark, "CENTER", 0, -1)
+      s.Mark:Show()
+      s.MarkShadow:Show()
+    else
+      s.Mark:Hide()
+      s.MarkShadow:Hide()
+    end
+
+    local text = name or ""
+    if mark and name and (mode == "name" or mode == "both") then text = name .. " " .. mark end
+    s.Name:SetTextColor(r, g, b, 1)
+    s.Name:ClearAllPoints()
+    s.Name:SetPoint("LEFT", s.Icon, "RIGHT", 7, 0)
+    if not S.sampleMeta then
+      S.sampleMeta = L["ROW_AH_BOUGHT"] .. "  \194\183  " .. string.format(L["DAYS_SHORT"], SAMPLE_DAYS)
+    end
+    local nameX = 8 + iconSize + 7
+    if larger then
+      s.Meta:Hide()
+      s.Line2:ClearAllPoints()
+      s.Line2:SetPoint("TOPLEFT", s, "TOPLEFT", nameX, -(1 + lineH - 3))
+      T.FitText(s.Line2, CTX_W - nameX - 8, S.sampleMeta)
+      s.Line2:Show()
+      T.FitText(s.Name, CTX_W - nameX - 8, text)
+    else
+      s.Line2:Hide()
+      s.Meta:ClearAllPoints()
+      s.Meta:SetPoint("RIGHT", s, "TOPRIGHT", -8, -(1 + lineH / 2))
+      s.Meta:SetText(S.sampleMeta)
+      s.Meta:Show()
+      T.FitText(s.Name, math.max(40, CTX_W - nameX - 8 - TextW(s.Meta) - 10), text)
+    end
+  end
+
+  -- The Mail tab: the character groups tile and the sample row.
   function Ctx.mail(card)
     local f = CreateFrame("Frame", nil, card)
     f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
-    f:SetSize(CTX_W, TILE_H)
+    f:SetSize(CTX_W, TILE_H + 8 + SAMPLE_MAX)
     local tile = Ctx.Tile(f, "Interface\\AddOns\\Postbox\\Media\\minimap-mailbag.tga",
       L["GROUPS_TITLE"], S.idle.mail, Ctx.OpenGroups)
     tile:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    local sample = Ctx.Sample(f)
+    sample:SetPoint("TOPLEFT", tile, "BOTTOMLEFT", 0, -8)
     f.Paint = function()
       -- How many groups there are; none reads as the tile's way in.
       local CG = ns.CharacterGroups
       local list = CG and type(CG.List) == "function" and CG.List() or nil
       local n = type(list) == "table" and #list or 0
       Ctx.PaintTile(tile, n > 0 and ns.Plural("OPT_GROUPS_COUNT", n) or L["GROUPS_NEW"])
+      Ctx.PaintSample(sample)
     end
     return f
   end
@@ -1057,7 +1205,137 @@ do
     return f
   end
 
-  -- The Window tab: who the look comes from.
+  ---------------------------------------------------------
+  -- The window over a bit of world
+  --
+  -- Its fill in the host's colour at the player's opacity, its border at
+  -- the chosen weight, and what it holds, which stays solid at every
+  -- opacity: the rule the real window keeps.
+  ---------------------------------------------------------
+  function Ctx.Swatch(parent)
+    local sw = CreateFrame("Frame", nil, parent)
+    sw:SetSize(CTX_W, SWATCH_H)
+    -- The world is drawn on a frame of its own inside the swatch, which
+    -- clips it: the patches of light reach past the swatch's edge.
+    if sw.SetClipsChildren then sw:SetClipsChildren(true) end
+    local world = CreateFrame("Frame", nil, sw)
+    world:SetAllPoints(sw)
+    local ground = world:CreateTexture(nil, "BACKGROUND", nil, -8)
+    ground:SetAllPoints()
+    ground:SetTexture(WHITE)
+    if ground.SetGradient and type(CreateColor) == "function" then
+      ground:SetGradient("VERTICAL", CreateColor(0.11, 0.16, 0.15, 1), CreateColor(0.18, 0.29, 0.27, 1))
+    else
+      ground:SetVertexColor(0.15, 0.22, 0.21, 1)
+    end
+    -- Two soft patches of light, green and earth, from the minimap's glow.
+    for i = 1, 2 do
+      local patch = world:CreateTexture(nil, "BACKGROUND", nil, -6)
+      patch:SetTexture(GLOW_TGA)
+      patch:SetBlendMode("ADD")
+      if i == 1 then
+        patch:SetVertexColor(0.37, 0.56, 0.49)
+        patch:SetAlpha(0.9)
+        patch:SetSize(160, 100)
+        patch:SetPoint("CENTER", sw, "CENTER", -46, 14)
+      else
+        patch:SetVertexColor(0.54, 0.44, 0.25)
+        patch:SetAlpha(0.8)
+        patch:SetSize(180, 110)
+        patch:SetPoint("CENTER", sw, "CENTER", 76, -30)
+      end
+    end
+    local edge = CreateFrame("Frame", nil, sw, "BackdropTemplate")
+    edge:SetAllPoints(sw)
+    edge:SetFrameLevel(world:GetFrameLevel() + 1)
+    edge:SetBackdrop({ edgeFile = WHITE, edgeSize = 1 })
+    edge:SetBackdropBorderColor(0.17, 0.17, 0.17, 1)
+
+    local win = CreateFrame("Frame", nil, sw)
+    win:SetFrameLevel(world:GetFrameLevel() + 1)
+    win:SetPoint("TOPLEFT", sw, "TOPLEFT", 34, -10)
+    win:SetPoint("BOTTOMRIGHT", sw, "BOTTOMRIGHT", -34, 10)
+    win.Fill = win:CreateTexture(nil, "BACKGROUND")
+    win.Fill:SetAllPoints()
+    win.Edges = {}
+    for i = 1, 4 do win.Edges[i] = win:CreateTexture(nil, "BORDER") end
+    local title = win:CreateTexture(nil, "ARTWORK")
+    title:SetSize(69, 5)
+    title:SetPoint("TOP", win, "TOP", 0, -6)
+    title:SetColorTexture(0.91, 0.91, 0.91, 0.8)
+    for i = 1, 3 do
+      local row = win:CreateTexture(nil, "ARTWORK")
+      row:SetHeight(7)
+      row:SetPoint("TOPLEFT", win, "TOPLEFT", 7, -(17 + (i - 1) * 12))
+      row:SetPoint("TOPRIGHT", win, "TOPRIGHT", -7, -(17 + (i - 1) * 12))
+      if i == 2 then win.Selected = row else row:SetColorTexture(1, 1, 1, 0.10) end
+    end
+    sw.Win = win
+    return sw
+  end
+
+  function Ctx.PaintSwatch(sw)
+    local T = ns.Theme
+    local win = sw.Win
+    local skin = GetSkin()
+    local alpha = 1
+    if skin and type(skin.GetBgOpacity) == "function" then
+      local ok, a = pcall(skin.GetBgOpacity)
+      if ok and type(a) == "number" then alpha = math.max(0, math.min(1, a)) end
+    end
+    local r, g, b
+    local base = ns.Skin and ns.Skin.GetHostBaseline
+    if type(base) == "function" then
+      local ok, br, bg, bb = pcall(base)
+      if ok and type(br) == "number" then r, g, b = br, bg, bb end
+    end
+    if not r then
+      local c = T.Colors.surface
+      r, g, b = c[1], c[2], c[3]
+    end
+    win.Fill:SetColorTexture(r, g, b, alpha)
+
+    -- The border: none, or a line as thick as its size step. A skin with no
+    -- border of its own to choose (ElvUI) draws its one-unit edge; a stock
+    -- window wears Blizzard's frame.
+    local size, a = 0, 0
+    if skin then
+      local style = type(skin.GetBorderStyle) == "function" and skin.GetBorderStyle() or "none"
+      if style ~= "none" then
+        local step = type(skin.GetBorderSize) == "function" and tonumber((skin.GetBorderSize())) or 1
+        size = math.max(1, math.min(4, step or 1))
+        a = (style == "light") and 0.35 or 0.75
+      end
+    elseif ns.Skin then
+      size, a = 1, 0.6
+    else
+      size, a = 2, 0.45
+    end
+    local e = win.Edges
+    for i = 1, 4 do
+      e[i]:ClearAllPoints()
+      e[i]:SetColorTexture(1, 1, 1, a)
+      e[i]:SetShown(size > 0)
+    end
+    if size > 0 then
+      e[1]:SetPoint("TOPLEFT", win, "TOPLEFT", 0, 0)
+      e[1]:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, 0)
+      e[1]:SetHeight(size)
+      e[2]:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 0, 0)
+      e[2]:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", 0, 0)
+      e[2]:SetHeight(size)
+      e[3]:SetPoint("TOPLEFT", win, "TOPLEFT", 0, -size)
+      e[3]:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 0, size)
+      e[3]:SetWidth(size)
+      e[4]:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, -size)
+      e[4]:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", 0, size)
+      e[4]:SetWidth(size)
+    end
+    local ar, ag, ab = T.GetAccent()
+    win.Selected:SetColorTexture(ar, ag, ab, 0.22)
+  end
+
+  -- The Window tab: who the look comes from, and the window itself.
   function Ctx.window(card)
     local T = ns.Theme
     local f = CreateFrame("Frame", nil, card)
@@ -1088,7 +1366,9 @@ do
       host:SetScript("OnLeave", SpotLeave)
       y = HOST_H + 8
     end
-    f:SetSize(CTX_W, math.max(1, y))
+    local sw = Ctx.Swatch(f)
+    sw:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -y)
+    f:SetSize(CTX_W, y + SWATCH_H)
     f.Paint = function()
       if host then
         if S.badgeGreen then
@@ -1100,10 +1380,188 @@ do
         end
         T.FitText(host.Text, CTX_W - 36, S.idle.window.title, host)
       end
+      Ctx.PaintSwatch(sw)
     end
     return f
   end
 
+  ---------------------------------------------------------
+  -- The minimap icon at a size you can judge
+  --
+  -- On a quiet ground roughly a minimap's own average value, so both glow
+  -- and shadow read the way they will in the world, WEARING the live
+  -- settings: accent tint, glow (with its pulse) and shadow render here as
+  -- they will on the minimap. Faded, and still, while the icon is off.
+  ---------------------------------------------------------
+  function Ctx.minimap(card)
+    local f = CreateFrame("Frame", nil, card)
+    f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
+    f:SetSize(CTX_W, 4 + STAGE)
+    local stage = CreateFrame("Frame", nil, f)
+    stage:SetSize(STAGE, STAGE)
+    stage:SetPoint("TOP", f, "TOP", 0, -4)
+    -- Clipped, with its art on a holder inside it: the glow reaches past
+    -- the stage's edge.
+    if stage.SetClipsChildren then stage:SetClipsChildren(true) end
+    local art = ArtHolder(stage)
+    local ground = art:CreateTexture(nil, "BACKGROUND", nil, -7)
+    ground:SetAllPoints()
+    ground:SetColorTexture(0.40, 0.41, 0.38, 1)
+    local shadow = art:CreateTexture(nil, "BACKGROUND", nil, -1)
+    shadow:SetPoint("CENTER", stage, "CENTER", 0, -1)
+    shadow:SetTexture(GLOW_TGA)
+    shadow:SetVertexColor(0, 0, 0)
+    shadow:SetAlpha(0.9)
+    shadow:SetSize(STAGE_ICON * 1.8, STAGE_ICON * 1.8)
+    local glow = art:CreateTexture(nil, "BACKGROUND", nil, 0)
+    glow:SetPoint("CENTER", stage, "CENTER", 0, 0)
+    glow:SetTexture(GLOW_TGA)
+    glow:SetBlendMode("ADD")
+    glow:SetSize(STAGE_ICON * 2.2, STAGE_ICON * 2.2)
+    local pulse = glow:CreateAnimationGroup()
+    pulse:SetLooping("BOUNCE")
+    local fade = pulse:CreateAnimation("Alpha")
+    fade:SetFromAlpha(1)
+    fade:SetToAlpha(0.55)
+    fade:SetDuration(1.6)
+    fade:SetSmoothing("IN_OUT")
+    local icon = art:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("CENTER", stage, "CENTER", 0, 0)
+
+    f.Stop = function() pulse:Stop() end
+    f.Paint = function()
+      local Icon = ns.MinimapButton
+      local on = Icon and Icon.GetEnabled and Icon.GetEnabled() and true or false
+      stage:SetAlpha(on and 1 or 0.4)
+      local spec = Icon and Icon.GetIconSpec and Icon.GetIconSpec()
+      if not spec then
+        icon:Hide()
+        glow:Hide()
+        shadow:Hide()
+        pulse:Stop()
+        return
+      end
+      icon:Show()
+      if spec.atlas then icon:SetAtlas(spec.atlas) else icon:SetTexture(spec.texture) end
+      icon:SetSize(STAGE_ICON, STAGE_ICON * (spec.aspect or 1))
+      icon:SetDesaturated(not on)
+      local r, g, b = 1, 1, 1
+      local accentOn = Icon.GetAccentTint and Icon.GetAccentTint()
+      if accentOn then r, g, b = ns.Theme.GetAccent() end
+      if spec.tintable and accentOn then icon:SetVertexColor(r, g, b) else icon:SetVertexColor(1, 1, 1) end
+      glow:SetVertexColor(r, g, b)
+      if Icon.GetGlow and Icon.GetGlow() then
+        glow:Show()
+        -- A switched-off icon does not keep moving.
+        if on and (not Icon.GetPulse or Icon.GetPulse()) then
+          if not pulse:IsPlaying() then pulse:Play() end
+        else
+          pulse:Stop()
+        end
+      else
+        pulse:Stop()
+        glow:Hide()
+      end
+      shadow:SetShown(Icon.GetShadow and Icon.GetShadow() or false)
+    end
+    return f
+  end
+
+  ---------------------------------------------------------
+  -- Where the way into arranging sits
+  --
+  -- Shown under the arrange button's description: the Postbox window's
+  -- title bar, its cog, and the mark beside it ringed in the accent.
+  ---------------------------------------------------------
+  local function Disc(parent, size, sublevel)
+    local disc = parent:CreateTexture(nil, "ARTWORK", nil, sublevel)
+    disc:SetSize(size, size)
+    disc:SetTexture(WHITE)
+    if type(parent.CreateMaskTexture) == "function" then
+      local mask = parent:CreateMaskTexture()
+      mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+      mask:SetAllPoints(disc)
+      disc:AddMaskTexture(mask)
+    end
+    return disc
+  end
+
+  -- The drawing's height under the text, its gap included.
+  function Ctx.ExtraHeight(kind)
+    if kind ~= "arrange" then return 0 end
+    local h = 8 + Insp.TextHeight(L["OPT_ARRANGE_WHERE"]) + 6 + MOCK_H
+    local extra = S.arrangeMock
+    if extra then
+      extra.height = h
+      extra:SetHeight(h - 8)
+    end
+    return h
+  end
+
+  function Ctx.Extra(kind)
+    if kind ~= "arrange" then return nil end
+    local extra = S.arrangeMock
+    if extra then return extra end
+    local T = ns.Theme
+    local say = S.say
+    extra = CreateFrame("Frame", nil, say)
+    extra:SetPoint("TOPLEFT", say.Text, "BOTTOMLEFT", 0, -8)
+    extra:SetWidth(TEXT_W)
+    local caption = T.CreateText(extra, "secondary")
+    caption:SetPoint("TOPLEFT", extra, "TOPLEFT", 0, 0)
+    caption:SetWidth(TEXT_W)
+    caption:SetJustifyH("LEFT")
+    caption:SetWordWrap(true)
+    if caption.SetSpacing then caption:SetSpacing(2) end
+    caption:SetText(L["OPT_ARRANGE_WHERE"])
+
+    local bar = CreateFrame("Frame", nil, extra, "BackdropTemplate")
+    bar:SetPoint("TOPLEFT", caption, "BOTTOMLEFT", 0, -6)
+    bar:SetSize(TEXT_W, MOCK_H)
+    bar:SetBackdrop(PLAIN_BACKDROP)
+    bar:SetBackdropColor(0.02, 0.02, 0.02, 1)
+    bar:SetBackdropBorderColor(0.17, 0.17, 0.17, 1)
+    local art = ArtHolder(bar)
+    local cog = art:CreateTexture(nil, "ARTWORK")
+    cog:SetSize(14, 14)
+    cog:SetPoint("LEFT", bar, "LEFT", 8, 0)
+    cog:SetTexture("Interface\\Buttons\\UI-OptionsButton")
+    local ring = Disc(art, 20, 1)
+    ring:SetPoint("LEFT", cog, "RIGHT", 4, 0)
+    local hole = Disc(art, 17, 2)
+    hole:SetPoint("CENTER", ring, "CENTER", 0, 0)
+    hole:SetVertexColor(0.02, 0.02, 0.02, 1)
+    local mark = Ctx.Mark(art, 12, "OVERLAY")
+    if mark then
+      mark:SetPoint("CENTER", ring, "CENTER", 0, 0)
+      Ctx.TintMark(mark, 1, 1, 1, 1)
+    end
+    local title = T.CreateText(art, "bodySmall")
+    title:SetPoint("CENTER", bar, "CENTER", 0, 0)
+    title:SetText(L["FRAME_TITLE"])
+    local close = art:CreateTexture(nil, "ARTWORK")
+    close:SetSize(9, 9)
+    close:SetPoint("RIGHT", bar, "RIGHT", -9, 0)
+    local closeAtlas = T.FirstAtlas({ "uitools-icon-close", "transmog-icon-remove" })
+    if closeAtlas then close:SetAtlas(closeAtlas, false) else close:Hide() end
+    T.SetColor(close, "textSecondary")
+
+    extra.Cog, extra.Ring = cog, ring
+    S.arrangeMock = extra
+    Ctx.ExtraHeight(kind)
+    Ctx.PaintExtra()
+    extra:Hide()
+    return extra
+  end
+
+  -- The accent the mock wears, from the live accent.
+  function Ctx.PaintExtra()
+    local extra = S.arrangeMock
+    if not extra then return end
+    local r, g, b = ns.Theme.GetAccent()
+    extra.Cog:SetVertexColor(r, g, b)
+    extra.Ring:SetVertexColor(r, g, b, 1)
+  end
 end
 
 -------------------------------------------------------------
@@ -2621,6 +3079,7 @@ local function Build()
   S.refresh[#S.refresh + 1] = State.Memory
   S.refresh[#S.refresh + 1] = State.Hidden
   S.refresh[#S.refresh + 1] = State.Arrange
+  S.refresh[#S.refresh + 1] = Ctx.PaintExtra
 
   Footer.Build(frame, list)
   frame:HookScript("OnHide", PanelHide)
