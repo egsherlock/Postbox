@@ -1724,9 +1724,13 @@ local function BuildViewToggle(panel)
 
   -- Another character's box, while one is on screen: its name in its class
   -- colour and its count, selected, where this character's Inbox sits beside
-  -- it. A click opens the character list again.
+  -- it. A click opens the character list again; a right-click goes back to
+  -- this character's own box (AV.Back).
   local alt = T.CreatePlate(panel, "segment")
-  alt:SetScript("OnClick", function() CT.OpenPicker(panel) end)
+  alt:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  alt:SetScript("OnClick", function(_, button)
+    if button == "RightButton" then AV.Back(panel) else CT.OpenPicker(panel) end
+  end)
   -- The count on a caption of its own, used only while a long name is cut:
   -- the ellipsis then falls in the name and the number stays whole beside
   -- it (AV.FitPlate). Coloured as the caption is (PaintViewToggle).
@@ -1734,11 +1738,13 @@ local function BuildViewToggle(panel)
   alt.Count:SetPoint("LEFT", alt.Text, "RIGHT", 0, 0)
   alt.Count:SetWordWrap(false)
   alt.Count:Hide()
-  -- The whole name, realm and all, while the plate shows only its start.
+  -- The whole name, realm and all -- the plate may show only its start --
+  -- and the way back, which the plate cannot show by itself.
   alt:HookScript("OnEnter", function(self)
-    if not (self.__pbOverflowText and self.fullName) then return end
+    if not (self.fullName and AV.Other(panel)) then return end
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
     GameTooltip:SetText(self.fullName)
+    GameTooltip:AddLine(L()["PICKER_BACK_HINT"], 0.7, 0.7, 0.7, true)
     GameTooltip:Show()
   end)
   alt:HookScript("OnLeave", function(self)
@@ -1836,13 +1842,13 @@ local function BuildSearchBox(panel)
   picker.Icon = picker:CreateTexture(nil, "OVERLAY")
   picker.Icon:SetSize(M.segmentHeight - 8, M.segmentHeight - 8)
   picker.Icon:SetPoint("CENTER")
-  picker:SetScript("OnClick", function() CT.OpenPicker(panel) end)
-  picker:HookScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:SetText(L()["PICKER_TITLE"])
-    GameTooltip:AddLine(L()["PICKER_TIP"], 1, 1, 1, true)
-    GameTooltip:Show()
+  -- A right-click, while another character's box is on screen, goes back to
+  -- this character's own (AV.Back); on this character's own it does nothing.
+  picker:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  picker:SetScript("OnClick", function(_, button)
+    if button == "RightButton" then AV.Back(panel) else CT.OpenPicker(panel) end
   end)
+  picker:HookScript("OnEnter", function(self) AV.PickerTip(self, panel) end)
   picker:HookScript("OnLeave", function() GameTooltip:Hide() end)
   picker:Hide()
   panel.Picker = picker
@@ -2389,6 +2395,35 @@ function AV.Leave(panel)
   panel._searchAll = false
   AV.Show(panel, nil)
   return true
+end
+
+-- A right-click on the picker or on the other box's plate: back to this
+-- character's own box, as picking its own name from the list is -- the list
+-- closes, and the view on screen before the visit returns. From this
+-- character's own box it does nothing. Whether there was anywhere to come
+-- back from.
+function AV.Back(panel)
+  if not AV.Other(panel) then return false end
+  local Memory = ns.MailMemory
+  if Memory and Memory.ClosePicker then Memory.ClosePicker() end
+  AV.Leave(panel)
+  -- The tooltip under the pointer spoke of the box just left: the plate's
+  -- goes with the plate, the picker's is said again without the way back.
+  local plate, picker = panel.ViewToggle and panel.ViewToggle.alt, panel.Picker
+  if plate and GameTooltip:IsOwned(plate) then GameTooltip:Hide() end
+  if picker and GameTooltip:IsOwned(picker) then
+    if picker:IsShown() then AV.PickerTip(picker, panel) else GameTooltip:Hide() end
+  end
+  return true
+end
+
+-- The picker's tooltip; the way back only while there is one to take.
+function AV.PickerTip(picker, panel)
+  GameTooltip:SetOwner(picker, "ANCHOR_TOPRIGHT")
+  GameTooltip:SetText(L()["PICKER_TITLE"])
+  GameTooltip:AddLine(L()["PICKER_TIP"], 1, 1, 1, true)
+  if AV.Other(panel) then GameTooltip:AddLine(L()["PICKER_BACK_HINT"], 0.7, 0.7, 0.7, true) end
+  GameTooltip:Show()
 end
 
 -- A character's heading among every box's matches, clicked: that box.
