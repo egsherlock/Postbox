@@ -392,6 +392,176 @@ function AR.ShowEdges(edges, shown)
 end
 
 -------------------------------------------------------------
+-- 3b. Lift: the look of a thing that moves
+--
+-- While the mode is open, whatever can be moved is a card lifted off the
+-- panel: one step lighter, a grey ring inside a black keyline, a lit top
+-- edge and a short shadow under it. Pointed at, it rises a unit, its ring
+-- goes white and its shadow lengthens; in the hand it is ringed twice as
+-- thick in the accent over an accent wash, with a long shadow. State rises
+-- in colour and in alpha together, never in alpha alone, and the keyline
+-- and the ring hold the outline over a bright scene at any window opacity.
+--
+-- A card is a frame of its own, laid over the thing it lifts or, for the
+-- tray and the placeholder, under and in place of it. Its kind says which:
+--   block  over a block under the list: a wash, no fill of its own;
+--   small  over a category button: the same, with a shorter shadow;
+--   tray   under the category buttons, four units out: a fill of its own;
+--   fold   the grid's placeholder while the option hides it: a dim fill.
+-- `hidden` is a small card's look while its button is hidden.
+--
+-- A spec is { fill = {grey, alpha}, wash = {grey, alpha}, accent = the
+-- accent wash's alpha, ring = the ring's grey (nil: the accent), ringW,
+-- top = the lit edge's alpha, drop = the shadow's length, dropA = its
+-- alpha at the top }. Cards are made on first use and hidden with the mode.
+-------------------------------------------------------------
+
+local LIFT = {
+  block = {
+    rest  = { wash = { 1, 0.08 }, ring = 0.48, top = 0.09, drop = 4, dropA = 0.45 },
+    hover = { wash = { 1, 0.14 }, ring = 0.89, top = 0.14, drop = 6, dropA = 0.55 },
+    hand  = { accent = 0.16, ringW = 2, drop = 10, dropA = 0.6 },
+  },
+  small = {
+    rest        = { wash = { 1, 0.06 }, ring = 0.48, top = 0.09, drop = 2, dropA = 0.45 },
+    hover       = { wash = { 1, 0.12 }, ring = 0.89, top = 0.14, drop = 3, dropA = 0.55 },
+    hand        = { accent = 0.16, ringW = 2, drop = 8, dropA = 0.6 },
+    hidden      = { wash = { 0, 0.40 }, ring = 0.29, drop = 2, dropA = 0.35 },
+    hiddenHover = { wash = { 0, 0.25 }, ring = 0.62, top = 0.06, drop = 3, dropA = 0.45 },
+  },
+  tray = {
+    rest  = { fill = { 0.10, 0.93 }, ring = 0.38, top = 0.07, drop = 4, dropA = 0.42 },
+    hover = { fill = { 0.157, 0.96 }, ring = 0.89, top = 0.12, drop = 6, dropA = 0.5 },
+    hand  = { fill = { 0.10, 0.97 }, accent = 0.14, ringW = 2, drop = 10, dropA = 0.6 },
+  },
+  fold = {
+    rest  = { fill = { 0.063, 0.94 }, ring = 0.29, drop = 2, dropA = 0.35 },
+    hover = { fill = { 0.12, 0.96 }, ring = 0.62, top = 0.06, drop = 3, dropA = 0.45 },
+    hand  = { fill = { 0.063, 0.97 }, accent = 0.14, ringW = 2, drop = 10, dropA = 0.6 },
+  },
+}
+AR.LIFT = LIFT
+
+function AR.NewCard(parent, kind)
+  local card = CreateFrame("Frame", nil, parent)
+  card.kind = LIFT[kind] and kind or "block"
+  card.Fill = card:CreateTexture(nil, "BACKGROUND", nil, -7)
+  card.Fill:SetTexture(WHITE)
+  card.Fill:SetAllPoints()
+  card.Drop = card:CreateTexture(nil, "BACKGROUND", nil, -8)
+  card.Drop:SetTexture(WHITE)
+  card.Drop:SetPoint("TOPLEFT", card, "BOTTOMLEFT", -1, -1)
+  card.Drop:SetPoint("TOPRIGHT", card, "BOTTOMRIGHT", 1, -1)
+  card.Wash = card:CreateTexture(nil, "BORDER", nil, -1)
+  card.Wash:SetTexture(WHITE)
+  card.Wash:SetAllPoints()
+  card.Key = AR.NewEdges(card, "BORDER", 0, 1, 1)
+  AR.TintEdges(card.Key, 0, 0, 0, 1)
+  card.ringW = 1
+  card.Ring = AR.NewEdges(card, "BORDER", 1, 0, 1)
+  card.Top = card:CreateTexture(nil, "BORDER", nil, 2)
+  card.Top:SetTexture(WHITE)
+  card.Top:SetHeight(1)
+  -- The shadow's two ends, kept and retinted: a gradient takes colour
+  -- objects, and a new pair per paint would be garbage per hover.
+  if type(CreateColor) == "function" and card.Drop.SetGradient then
+    card.dropLow, card.dropHigh = CreateColor(0, 0, 0, 0), CreateColor(0, 0, 0, 0.45)
+  end
+  card:Hide()
+  return card
+end
+
+function AR.PaintCard(card, state)
+  local set = LIFT[card.kind] or LIFT.block
+  local s = set[state] or set.rest
+  card.state = state
+  local ar, ag, ab = Th().GetAccent()
+  local fill = s.fill
+  if fill then
+    card.Fill:SetVertexColor(fill[1], fill[1], fill[1], fill[2])
+    card.Fill:Show()
+  else
+    card.Fill:Hide()
+  end
+  local wash = s.wash
+  if s.accent then
+    card.Wash:SetVertexColor(ar, ag, ab, s.accent)
+    card.Wash:Show()
+  elseif wash then
+    card.Wash:SetVertexColor(wash[1], wash[1], wash[1], wash[2])
+    card.Wash:Show()
+  else
+    card.Wash:Hide()
+  end
+  local w = s.ringW or 1
+  if card.ringW ~= w then
+    AR.PlaceEdges(card.Ring, card, 0, w)
+    card.ringW = w
+  end
+  if s.ring then
+    AR.TintEdges(card.Ring, s.ring, s.ring, s.ring, 1)
+  else
+    AR.TintEdges(card.Ring, ar, ag, ab, 1)
+  end
+  local top = s.top or 0
+  if top > 0 then
+    card.Top:ClearAllPoints()
+    card.Top:SetPoint("TOPLEFT", card, "TOPLEFT", w, -w)
+    card.Top:SetPoint("TOPRIGHT", card, "TOPRIGHT", -w, -w)
+    card.Top:SetVertexColor(1, 1, 1, top)
+    card.Top:Show()
+  else
+    card.Top:Hide()
+  end
+  card.Drop:SetHeight(s.drop or 4)
+  local dropA = s.dropA or 0.45
+  if card.dropHigh then
+    card.dropHigh:SetRGBA(0, 0, 0, dropA)
+    card.Drop:SetVertexColor(1, 1, 1, 1)
+    card.Drop:SetGradient("VERTICAL", card.dropLow, card.dropHigh)
+  else
+    card.Drop:SetVertexColor(0, 0, 0, dropA * 0.5)
+  end
+end
+
+-- The mode opening: each card settles up from a unit below its place, once,
+-- `delay` seconds after the first. One animation group per card, made on
+-- its first rise: a step down at once, then the rise.
+function AR.Rise(card, delay)
+  if not card or type(card.CreateAnimationGroup) ~= "function" then return end
+  local group = card.RiseGroup
+  if not group then
+    group = card:CreateAnimationGroup()
+    local down = group:CreateAnimation("Translation")
+    down:SetOffset(0, -1)
+    down:SetDuration(0.001)
+    down:SetOrder(1)
+    local up = group:CreateAnimation("Translation")
+    up:SetOffset(0, 1)
+    up:SetDuration(0.38)
+    up:SetOrder(2)
+    if up.SetSmoothing then up:SetSmoothing("OUT") end
+    group.up = up
+    card.RiseGroup = group
+  end
+  group:Stop()
+  group.up:SetStartDelay(delay or 0)
+  group:Play()
+end
+
+-- The pointer over something that moves is the client's own move cross (the
+-- cursor its panels' drag bars show); anywhere else it is the pointer.
+function AR.MoveCursor(on)
+  if on then
+    if type(SetCursor) == "function" then SetCursor("UI_MOVE_CURSOR") end
+  elseif type(ResetCursor) == "function" then
+    ResetCursor()
+  elseif type(SetCursor) == "function" then
+    SetCursor(nil)
+  end
+end
+
+-------------------------------------------------------------
 -- 4. The cog key
 --
 -- Beside the cog, the cog's size: the layout mark, a plan of the window --
@@ -1170,7 +1340,8 @@ end
 -- 10. Opening and closing
 --
 -- A host is the list being arranged: { owner = its frame, PlaceStrip(strip),
--- OnEnter(strip), OnLeave(), toggle = the key that opened it }. The Mail
+-- OnEnter(strip), OnLeave(), Rise() (optional: its cards settle in, played
+-- once as the mode opens), toggle = the key that opened it }. The Mail
 -- tab's is CollectTab's CT.ArrangeHost; Mail Memory's is its own. One at a
 -- time: opening one closes the other.
 -------------------------------------------------------------
@@ -1187,6 +1358,8 @@ function AR.Enter(host)
   AR.CatchEscape(true)
   if host.toggle then AR.PaintToggle(host.toggle) end
   AR.RowsChanged(false)
+  -- The host's cards settle into place, once (AR.Rise).
+  if host.Rise then host.Rise() end
   AR.Teach(host)
 end
 
@@ -1208,6 +1381,8 @@ function AR.Leave()
   end
   if host.OnLeave then host.OnLeave() end
   if host.toggle then AR.PaintToggle(host.toggle) end
+  -- A card that went with the mode may have had the pointer.
+  AR.MoveCursor(false)
   AR.RowsChanged(false)
 end
 

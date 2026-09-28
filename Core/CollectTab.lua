@@ -6002,9 +6002,12 @@ local function LayoutGrid(panel)
   local arranging = panel._gridArranging
   local drag = panel._gridDrag
 
+  -- The primary in its slot of the stack, the sweeps in theirs (RV.StackY:
+  -- the blocks under the list).
   primary:ClearAllPoints()
   primary:SetSize(width, GRID_PRIMARY_HEIGHT)
-  primary:SetPoint("TOPLEFT", grid, "TOPLEFT", 0, 0)
+  primary:SetPoint("TOPLEFT", grid, "TOPLEFT", 0, -RV.StackY(panel, "all"))
+  local gridY = RV.StackY(panel, "grid")
 
   -- Neither a search nor a selection withdraws the sweeps. Under a search
   -- each sweep acts on the rows on screen of its own kind -- "All sold"
@@ -6037,21 +6040,21 @@ local function LayoutGrid(panel)
     if extras and (entry.shown or arranging) then
       local line = floor(slot / GRID_COLUMNS)
       local edge = columns[slot - line * GRID_COLUMNS + 1]
-      local y = -(GRID_PRIMARY_HEIGHT + M.gap + line * (GRID_BUTTON_HEIGHT + M.gap))
+      -- From the grid block's top.
+      local y = -(line * (GRID_BUTTON_HEIGHT + M.gap))
       button:SetSize(edge.width, GRID_BUTTON_HEIGHT)
       button._cellX, button._cellY = edge.left, y
       if drag and drag.button == button then
         local ghost = panel._gridGhost
         if ghost and ns.Arrange then
           ghost:ClearAllPoints()
-          ghost:SetPoint("TOPLEFT", grid, "TOPLEFT", edge.left, y)
+          ghost:SetPoint("TOPLEFT", grid, "TOPLEFT", edge.left, y - gridY)
           ghost:SetSize(edge.width, GRID_BUTTON_HEIGHT)
           ns.Arrange.PaintGhost(ghost)
           ghost:Show()
         end
       else
-        button:ClearAllPoints()
-        button:SetPoint("TOPLEFT", grid, "TOPLEFT", edge.left, y)
+        RV.PlaceSweep(panel, button, gridY)
       end
       button.hiddenInGrid = not entry.shown
       button:Show()
@@ -6106,20 +6109,297 @@ local function LayoutGrid(panel)
   RV.PaintGridHandles(panel)
 end
 
--- What the footer is tall enough for right now. The footer holds the two
--- mutually exclusive action areas, so a view change or the category-buttons
--- option changes exactly this one number and everything anchored above it
--- follows. Only the done view swaps the footer. The all view lists finished
--- mail but is not a place to sweep it: "delete all done" would act on mails
--- the segment does not distinguish, so the all view keeps the category grid --
--- which is exactly as useful there as on the collect view, since a category
--- run works on the inbox and not on the listing. The grid is as tall as its
--- rows of sweeps.
+-------------------------------------------------------------
+-- The blocks under the list
+--
+-- Three blocks stand between the list and the panel's foot: the totals band
+-- ("band"); the full-width primary ("all"), whose place the Done view's
+-- Delete, History's note and another character's note take in those views;
+-- and the category buttons ("grid"), in the inbox view only and only while
+-- the option shows them. Their order, top down, is the player's
+-- (MailboxUI.GetStackOrder, arranged in the arrange mode). Every order is
+-- the same height, so the list above -- the one elastic part -- and the
+-- window's floor (CT.MinPanelHeight) do not depend on it.
+--
+-- All three stand in the footer, placed from its top, and the list's foot
+-- is the footer's top. panel._stack holds each block's offset and height
+-- for the view on screen, filled in place (RV.StackBlocks); RV.PlaceStack
+-- anchors the band and the primary's slot from it, and LayoutGrid the
+-- sweeps. In the default order every block stands exactly where it stood
+-- when the band was anchored over the footer on its own.
+--
+-- While arranging, every block is a card (Core/Arrange.lua, "Lift"),
+-- rising a unit and ringed in white when pointed at. The grid sits in a
+-- tray, a card of its own four units out on every side, which is what
+-- takes it; its buttons are smaller cards on it. The cards are made the
+-- first time the mode opens, and the whole of it costs one comparison per
+-- layout while the mode is shut.
+-------------------------------------------------------------
+
+RV.STACK_IDS = { "band", "all", "grid" }
+RV.TRAY_PAD = 4
+
+-- The order, top down: the player's, or the default when there is no
+-- settings module to ask. Shared; never written to.
+function RV.StackOrder()
+  local UI = ns.MailboxUI
+  local order = UI and type(UI.GetStackOrder) == "function" and UI.GetStackOrder() or nil
+  return type(order) == "table" and order or RV.STACK_IDS
+end
+
+-- Each block's offset from the footer's top and its height, for the view
+-- on screen, into panel._stack; the total height is the answer (the
+-- footer's height). A block the view does not have has no offset.
+function RV.StackBlocks(panel)
+  local M = Th().Metrics
+  local s = panel._stack
+  if not s then
+    s = { y = {}, h = {}, placed = {} }
+    panel._stack = s
+  end
+  local y, h = s.y, s.h
+  local away, view = AV.Active(panel), panel.viewMode
+  h.band = M.controlHeight
+  h.all = (away or view == VIEW_HISTORY) and GRID_BUTTON_HEIGHT or GRID_PRIMARY_HEIGHT
+  h.grid = nil
+  if not away and view == VIEW_COLLECT then
+    local rows = RV.GridRows(panel)
+    if rows > 0 then h.grid = rows * GRID_BUTTON_HEIGHT + (rows - 1) * M.gap end
+  end
+  y.band, y.all, y.grid = nil, nil, nil
+  local order, top = RV.StackOrder(), 0
+  for i = 1, #order do
+    local id = order[i]
+    local height = h[id]
+    if height and not y[id] then
+      y[id] = top
+      top = top + height + M.gap
+    end
+  end
+  s.total = top > 0 and top - M.gap or 0
+  return s.total
+end
+
+-- Where a block's content stands now, from the footer's top: its slot, a
+-- unit higher while it is pointed at in the arrange mode, or wherever the
+-- hand holds it while it is dragged.
+function RV.StackY(panel, id)
+  local s = panel._stack
+  local y = s and s.y[id]
+  if not y then return 0 end
+  local drag = panel._stackDrag
+  if drag and drag.id == id then return drag.y end
+  if panel._stackHover == id then return y - 1 end
+  return y
+end
+
+-- The band and whatever holds the primary's slot, anchored from their
+-- offsets -- again only where an offset moved -- and, while arranging, the
+-- cards over them.
+function RV.PlaceStack(panel)
+  local s, footer = panel._stack, panel.Footer
+  if not (s and footer and panel.Banner) then return end
+  local placed = s.placed
+  local y = RV.StackY(panel, "band")
+  if placed.band ~= y then
+    placed.band = y
+    panel.Banner:SetPoint("TOPLEFT", footer, "TOPLEFT", 0, -y)
+    panel.Banner:SetPoint("TOPRIGHT", footer, "TOPRIGHT", 0, -y)
+  end
+  y = RV.StackY(panel, "all")
+  if placed.all ~= y then
+    placed.all = y
+    local primary = panel._gridButtons and panel._gridButtons[1]
+    if primary then primary:SetPoint("TOPLEFT", panel.Grid, "TOPLEFT", 0, -y) end
+    local done = panel.DoneFooter
+    if done then
+      done:SetPoint("TOPLEFT", footer, "TOPLEFT", 0, -y)
+      done:SetPoint("TOPRIGHT", footer, "TOPRIGHT", 0, -y)
+    end
+    -- The notes stand in the middle of the slot, as tall as a button.
+    local inset, mid = Th().Metrics.inset, -(y + GRID_BUTTON_HEIGHT / 2)
+    local note = panel.HistoryNote
+    if note then
+      note:SetPoint("LEFT", footer, "TOPLEFT", inset, mid)
+      note:SetPoint("RIGHT", footer, "TOPRIGHT", -inset, mid)
+    end
+    note = panel.AltNote
+    if note then
+      note:SetPoint("LEFT", footer, "TOPLEFT", inset, mid)
+      note:SetPoint("RIGHT", footer, "TOPRIGHT", -inset, mid)
+    end
+  end
+  RV.PlaceCards(panel)
+end
+
+-- A sweep at its cell: `gridY` is the grid block's top, from the footer's.
+-- A unit higher while it is pointed at in the arrange mode.
+function RV.PlaceSweep(panel, button, gridY)
+  local raise = (panel._sweepHover == button) and 1 or 0
+  button:ClearAllPoints()
+  button:SetPoint("TOPLEFT", panel.Grid, "TOPLEFT", button._cellX or 0, (button._cellY or 0) - gridY + raise)
+end
+
+-- Every sweep on screen at its cell again, the one in the hand apart: the
+-- grid block moved, or rose.
+function RV.PlaceSweeps(panel)
+  local placed, byId = panel._gridPlaced, panel._gridById
+  if not (placed and byId) then return end
+  local gridY = RV.StackY(panel, "grid")
+  local drag = panel._gridDrag
+  for id in pairs(placed) do
+    local button = byId[id]
+    if button and not (drag and drag.button == button) then RV.PlaceSweep(panel, button, gridY) end
+  end
+end
+
+-- The blocks moved, rose or settled: placed and painted again.
+function RV.StackChanged(panel)
+  RV.PlaceStack(panel)
+  RV.PlaceSweeps(panel)
+end
+
+-- The cards, while arranging: over the band and the primary's slot, and the
+-- tray under the grid. Shut, they are hidden once and then left alone.
+function RV.PlaceCards(panel)
+  local cards = panel._stackCards
+  if not panel._gridArranging then
+    if panel._stackCardsOn then
+      panel._stackCardsOn = nil
+      panel._stackHover = nil
+      for _, card in pairs(cards) do card:Hide() end
+    end
+    return
+  end
+  local A = ns.Arrange
+  if not (A and A.NewCard) then return end
+  if not cards then
+    cards = {}
+    panel._stackCards = cards
+  end
+  panel._stackCardsOn = true
+  local s, ids = panel._stack, RV.STACK_IDS
+  for i = 1, #ids do
+    local id = ids[i]
+    local card = cards[id]
+    if s.y[id] then
+      card = card or RV.NewStackCard(panel, id)
+      local pad = (id == "grid") and RV.TRAY_PAD or 0
+      local top = RV.StackY(panel, id) - pad
+      card:SetPoint("TOPLEFT", panel.Footer, "TOPLEFT", -pad, -top)
+      card:SetPoint("TOPRIGHT", panel.Footer, "TOPRIGHT", pad, -top)
+      card:SetHeight(s.h[id] + 2 * pad)
+      RV.PaintStackCard(panel, card)
+      card:Show()
+    elseif card then
+      card:Hide()
+    end
+  end
+end
+
+-- A block's card, made the first time the mode shows the block. Over the
+-- band and the primary's slot it stands above what it lifts and takes the
+-- mouse, so nothing there collects or deletes while arranging; the tray
+-- stands under the sweeps, whose own cards take the mouse over them, and
+-- takes it in the gaps and at its rim.
+function RV.NewStackCard(panel, id)
+  local A = ns.Arrange
+  local card = A.NewCard(panel.Footer, id == "grid" and "tray" or "block")
+  card.stackId, card.panel = id, panel
+  local base = panel.Footer:GetFrameLevel()
+  card:SetFrameLevel(id == "grid" and base or base + 8)
+  card:EnableMouse(true)
+  card:SetScript("OnEnter", RV.StackCardEnter)
+  card:SetScript("OnLeave", RV.StackCardLeave)
+  panel._stackCards[id] = card
+  return card
+end
+
+function RV.PaintStackCard(panel, card)
+  local A = ns.Arrange
+  if not (A and A.PaintCard) then return end
+  local id, drag = card.stackId, panel._stackDrag
+  local state = "rest"
+  if drag and drag.id == id then
+    state = "hand"
+  elseif panel._stackHover == id then
+    state = "hover"
+  end
+  A.PaintCard(card, state)
+end
+
+-- What the primary's slot holds, in words, for its card's tooltip.
+function RV.SlotName(panel)
+  if AV.Active(panel) then return panel.AltNote and panel.AltNote:GetText() or "" end
+  if panel.viewMode == VIEW_HISTORY then return L()["VIEW_HISTORY"] end
+  if panel.viewMode == VIEW_DONE then return L()["BTN_DELETE_ALL_DONE"] end
+  return Labels().all or "all"
+end
+
+function RV.StackTip(panel, card)
+  local id = card.stackId
+  GameTooltip:SetOwner(card, "ANCHOR_CURSOR")
+  if id == "band" then
+    GameTooltip:SetText(L()["ARRANGE_BLOCK_TOTALS"])
+  elseif id == "grid" then
+    GameTooltip:SetText(L()["ARRANGE_BLOCK_GRID"])
+  else
+    GameTooltip:SetText(RV.SlotName(panel))
+  end
+  GameTooltip:AddLine(L()["ARRANGE_BLOCK_TIP"], 1, 1, 1, true)
+  GameTooltip:Show()
+end
+
+-- Pointed at: the block rises a unit, its ring goes white, the pointer is
+-- the move cross. Not while something is in the hand, whose drag decides
+-- what is lifted.
+function RV.StackCardEnter(card)
+  local panel = card.panel
+  if panel._stackDrag or panel._gridDrag then return end
+  panel._stackHover = card.stackId
+  RV.StackChanged(panel)
+  local A = ns.Arrange
+  if A and A.MoveCursor then A.MoveCursor(true) end
+  RV.StackTip(panel, card)
+end
+
+function RV.StackCardLeave(card)
+  local panel = card.panel
+  GameTooltip:Hide()
+  if panel._stackDrag or panel._gridDrag then return end
+  if panel._stackHover == card.stackId then
+    panel._stackHover = nil
+    RV.StackChanged(panel)
+  end
+  local A = ns.Arrange
+  if A and A.MoveCursor then A.MoveCursor(false) end
+end
+
+-- The mode opening: the blocks settle up into place top down, 90 ms apart,
+-- the grid's buttons with their tray.
+function RV.RiseStack(panel)
+  local A, cards, s = ns.Arrange, panel._stackCards, panel._stack
+  if not (A and A.Rise and cards and s) then return end
+  local order, k = RV.StackOrder(), 0
+  for i = 1, #order do
+    local id = order[i]
+    local card = cards[id]
+    if s.y[id] and card and card:IsShown() then
+      A.Rise(card, k * 0.09)
+      if id == "grid" and panel._gridHandles then
+        for _, handle in pairs(panel._gridHandles) do
+          if handle:IsShown() then A.Rise(handle, k * 0.09) end
+        end
+      end
+      k = k + 1
+    end
+  end
+end
+
+-- The footer's height is the stack's: every block the view has, and the
+-- gaps between them.
 local function FooterHeight(panel)
-  if AV.Active(panel) then return GRID_BUTTON_HEIGHT end
-  if panel.viewMode == VIEW_HISTORY then return GRID_BUTTON_HEIGHT end
-  if panel.viewMode == VIEW_DONE then return GRID_PRIMARY_HEIGHT end
-  return GRID_PRIMARY_HEIGHT + RV.GridRows(panel) * (Th().Metrics.gap + GRID_BUTTON_HEIGHT)
+  return RV.StackBlocks(panel)
 end
 
 -- Frozen: Core/MailboxUI.lua calls this when the category-buttons option
@@ -6132,6 +6412,7 @@ function CT.RefreshCategoryButtons(panel)
   if not panel or not panel.Footer then return end
   RV.GridEntries(panel)
   panel.Footer:SetHeight(FooterHeight(panel))
+  RV.PlaceStack(panel)
   LayoutGrid(panel)
   if not panel._gridArranging and ShowCategoryButtons() and RV._floorRows ~= nil then
     local rows = ceil(RV.GridShownCount(panel) / GRID_COLUMNS)
@@ -6151,6 +6432,7 @@ function RV.ApplyFooter(panel)
   local away = AV.Active(panel)
   local id = panel.viewMode
   panel.Footer:SetHeight(FooterHeight(panel))
+  RV.PlaceStack(panel)
   panel.Grid:SetShown(not away and id == VIEW_COLLECT)
   if panel.HistoryNote then panel.HistoryNote:SetShown(not away and id == VIEW_HISTORY) end
   if panel.DoneFooter then panel.DoneFooter:SetShown(not away and id == VIEW_DONE) end
@@ -6192,11 +6474,13 @@ end
 -- The category grid :: arranged
 --
 -- While the arrange mode is open over the tab (Core/Arrange.lua) every sweep
--- shows, the hidden ones greyed and struck through, and each wears a handle
--- over it that takes the mouse instead of the button: a drag moves the
--- button through the grid, its cell ringed where it will land, the others
--- stepping aside; a click hides or shows it. Nothing collects while this is
--- open. The primary wears an inert handle: it always stands first.
+-- shows, the hidden ones dimmed and struck through, and each wears a small
+-- card over it (Arrange.lua's "Lift") that takes the mouse instead of the
+-- button: a drag moves the button through the grid, its cell ringed where
+-- it will land, the others stepping aside; a click hides or shows it.
+-- Pointed at, a card rises a unit and its ring goes white. Nothing collects
+-- while this is open: the primary's slot is under a card of its own (the
+-- blocks under the list).
 -------------------------------------------------------------
 
 function RV.GridHandle(panel, button)
@@ -6207,10 +6491,11 @@ function RV.GridHandle(panel, button)
   end
   local handle = handles[button]
   if handle then return handle end
-  handle = CreateFrame("Frame", nil, panel.Grid)
+  local A = ns.Arrange
+  handle = (A and A.NewCard) and A.NewCard(panel.Grid, "small") or CreateFrame("Frame", nil, panel.Grid)
   handle:SetAllPoints(button)
   handle:EnableMouse(true)
-  handle.button = button
+  handle.button, handle.panel = button, panel
   handle.Strike = handle:CreateTexture(nil, "OVERLAY")
   handle.Strike:SetTexture(WHITE)
   handle.Strike:SetHeight(1)
@@ -6218,35 +6503,98 @@ function RV.GridHandle(panel, button)
   handle.Strike:SetPoint("RIGHT", handle, "RIGHT", -8, 0)
   Th().SetColor(handle.Strike, "textSecondary")
   handle.Strike:Hide()
-  handle:SetScript("OnEnter", function(self) RV.GridTip(panel, self.button) end)
-  handle:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  handle:SetScript("OnMouseDown", function(self, mouse)
-    if mouse ~= "LeftButton" or self.button == panel._gridButtons[1] then return end
-    RV.GridPress(panel, self.button)
-  end)
+  handle:SetScript("OnEnter", RV.HandleEnter)
+  handle:SetScript("OnLeave", RV.HandleLeave)
+  handle:SetScript("OnMouseDown", RV.HandleDown)
   handle:Hide()
   handles[button] = handle
   return handle
 end
 
+-- A sweep's card in its state: in the hand, hidden (and pointed at), pointed
+-- at, or at rest.
+function RV.PaintGridHandle(panel, handle)
+  local A = ns.Arrange
+  if not (A and A.PaintCard and handle.Ring) then return end
+  local button, drag = handle.button, panel._gridDrag
+  local over = panel._sweepHover == button
+  local state = "rest"
+  if drag and drag.button == button then
+    state = "hand"
+  elseif button.hiddenInGrid then
+    state = over and "hiddenHover" or "hidden"
+  elseif over then
+    state = "hover"
+  end
+  A.PaintCard(handle, state)
+end
+
+-- Pointed at: the sweep rises a unit, its ring goes white, the pointer is
+-- the move cross. Not while something is in the hand.
+function RV.HandleEnter(handle)
+  local panel = handle.panel
+  if panel._gridDrag or panel._stackDrag then return end
+  panel._sweepHover = handle.button
+  RV.PlaceSweep(panel, handle.button, RV.StackY(panel, "grid"))
+  RV.PaintGridHandle(panel, handle)
+  local A = ns.Arrange
+  if A and A.MoveCursor then A.MoveCursor(true) end
+  RV.GridTip(panel, handle.button)
+end
+
+function RV.HandleLeave(handle)
+  local panel = handle.panel
+  GameTooltip:Hide()
+  if panel._gridDrag or panel._stackDrag then return end
+  if panel._sweepHover == handle.button then
+    panel._sweepHover = nil
+    RV.PlaceSweep(panel, handle.button, RV.StackY(panel, "grid"))
+    RV.PaintGridHandle(panel, handle)
+  end
+  local A = ns.Arrange
+  if A and A.MoveCursor then A.MoveCursor(false) end
+end
+
+function RV.HandleDown(handle, mouse)
+  if mouse ~= "LeftButton" then return end
+  RV.GridPress(handle.panel, handle.button)
+end
+
+-- After a drop: whatever card is under the pointer now takes it, as if it
+-- had just been pointed at -- its hover was held off while the hand was
+-- full. None, and the pointer is the pointer again.
+function RV.Rehover(panel)
+  local handles = panel._gridHandles
+  if handles then
+    for _, handle in pairs(handles) do
+      if handle:IsShown() and handle:IsMouseOver() then
+        RV.HandleEnter(handle)
+        return
+      end
+    end
+  end
+  local cards = panel._stackCards
+  if cards then
+    for _, card in pairs(cards) do
+      if card:IsShown() and card:IsMouseOver() then
+        RV.StackCardEnter(card)
+        return
+      end
+    end
+  end
+  local A = ns.Arrange
+  if A and A.MoveCursor then A.MoveCursor(false) end
+end
+
 function RV.PaintGridHandles(panel)
   local arranging = panel._gridArranging and ShowCategoryButtons()
-  local primary = panel._gridButtons[1]
-  -- The primary's handle stands with the option off too: nothing collects
-  -- while the mode is open.
-  if panel._gridArranging then
-    local handle = RV.GridHandle(panel, primary)
-    handle:SetFrameLevel(primary:GetFrameLevel() + 5)
-    handle:Show()
-  elseif panel._gridHandles and panel._gridHandles[primary] then
-    panel._gridHandles[primary]:Hide()
-  end
   for id, button in pairs(panel._gridById) do
     if arranging and button:IsShown() then
       local handle = RV.GridHandle(panel, button)
       local drag = panel._gridDrag
       if not (drag and drag.button == button) then handle:SetFrameLevel(button:GetFrameLevel() + 5) end
       handle.Strike:SetShown(button.hiddenInGrid and true or false)
+      RV.PaintGridHandle(panel, handle)
       handle:Show()
     elseif panel._gridHandles and panel._gridHandles[button] then
       panel._gridHandles[button]:Hide()
@@ -6257,17 +6605,14 @@ end
 -- The arrange mode opening or closing over this tab's grid.
 function RV.ArrangeGrid(panel, on)
   panel._gridArranging = on and true or nil
+  panel._sweepHover, panel._stackHover = nil, nil
   if on then
     local A = ns.Arrange
     if not panel._gridGhost and A and A.NewGhost then panel._gridGhost = A.NewGhost(panel.Grid) end
   else
     local drag = panel._gridDrag
     panel._gridDrag = nil
-    if drag then
-      drag.button:SetFrameLevel(drag.level)
-      local handle = panel._gridHandles and panel._gridHandles[drag.button]
-      if handle and handle.Ring then handle.Ring:Hide() end
-    end
+    if drag then drag.button:SetFrameLevel(drag.level) end
     if panel._gridGhost then panel._gridGhost:Hide() end
   end
   CT.RefreshCategoryButtons(panel)
@@ -6310,17 +6655,11 @@ function RV.GridPress(panel, button)
         dx = x0 - (button:GetLeft() or x0), dy = y0 - (button:GetTop() or y0),
       }
       button:SetFrameLevel(panel.Grid:GetFrameLevel() + 30)
-      -- The button in the hand is ringed in the accent, as its cell is.
+      -- The button in the hand is a card in the hand: ringed in the accent,
+      -- as its cell is, and over everything it crosses.
       local handle = RV.GridHandle(panel, button)
-      if not handle.Ring and A.NewGhost then
-        handle.Ring = A.NewGhost(button)
-        handle.Ring:SetAllPoints(button)
-      end
-      if handle.Ring then
-        handle.Ring:SetFrameLevel(button:GetFrameLevel() + 2)
-        A.PaintGhost(handle.Ring)
-        handle.Ring:Show()
-      end
+      handle:SetFrameLevel(button:GetFrameLevel() + 5)
+      if A.MoveCursor then A.MoveCursor(true) end
       LayoutGrid(panel)
     end,
     move = function(x, y) RV.GridDrag(panel, x, y) end,
@@ -6344,7 +6683,7 @@ function RV.GridDrag(panel, x, y)
   local width = grid:GetWidth() or 0
   local w, h = button:GetWidth() or 0, button:GetHeight() or 0
   local rows = max(RV.GridRows(panel), 1)
-  local firstY = GRID_PRIMARY_HEIGHT + M.gap
+  local firstY = RV.StackY(panel, "grid")
   local lastY = firstY + (rows - 1) * (GRID_BUTTON_HEIGHT + M.gap)
   local bx = min(max(x - left - drag.dx, 0), max(width - w, 0))
   local by = min(max(top - y + drag.dy, firstY), lastY)
@@ -6381,10 +6720,10 @@ function RV.GridDrop(panel)
   panel._gridDrag = nil
   if not drag then return end
   drag.button:SetFrameLevel(drag.level)
-  local handle = panel._gridHandles and panel._gridHandles[drag.button]
-  if handle and handle.Ring then handle.Ring:Hide() end
   if panel._gridGhost then panel._gridGhost:Hide() end
+  panel._sweepHover = nil
   LayoutGrid(panel)
+  RV.Rehover(panel)
 end
 
 -------------------------------------------------------------
@@ -6412,10 +6751,11 @@ function SetViewMode(panel, id)
 end
 
 -- The arrange mode over this tab (Core/Arrange.lua): the strip of columns
--- stands between the top row and the list, which steps down under it, and
--- the category grid takes its drags and clicks instead of collecting. The
--- top row stays as it is -- a view can still be switched, or a mail found,
--- to see how the arrangement reads on it. Built once per panel.
+-- stands between the top row and the list, which steps down under it; the
+-- blocks under the list become cards, and the category grid takes its drags
+-- and clicks instead of collecting. The top row stays as it is -- a view
+-- can still be switched, or a mail found, to see how the arrangement reads
+-- on it. Built once per panel.
 function CT.ArrangeHost(panel)
   if not (panel and panel.MailListArea) then return nil end
   if panel._arrangeHost then return panel._arrangeHost end
@@ -6436,6 +6776,10 @@ function CT.ArrangeHost(panel)
     local M = Th().Metrics
     panel.MailListArea:SetPoint("TOPLEFT", panel.ViewToggle, "BOTTOMLEFT", 0, -M.gap)
     if RV.ArrangeGrid then RV.ArrangeGrid(panel, false) end
+  end
+  -- The blocks and the buttons settle into place as the mode opens.
+  function host.Rise()
+    RV.RiseStack(panel)
   end
   panel._arrangeHost = host
   return host
@@ -6511,6 +6855,7 @@ end
 
 local function LayoutPanel(panel)
   LayoutViewToggle(panel)
+  RV.PlaceStack(panel)
   LayoutGrid(panel)
   if panel.Detail then LayoutDetail(panel.Detail) end
 end
@@ -6565,8 +6910,10 @@ function CT.Build(parent)
   panel.Hint:SetWordWrap(false)
   panel.Hint:SetText("")
 
-  -- Bottom: one footer holding the two mutually exclusive action areas. Its
-  -- height is the only thing a view change moves.
+  -- Bottom: one footer holding the blocks under the list -- the totals band,
+  -- the primary's slot and the category grid, in the player's order (RV,
+  -- "The blocks under the list"). Its height is the only thing a view change
+  -- moves.
   panel.Footer = CreateFrame("Frame", nil, panel)
   panel.Footer:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", M.inset, M.inset)
   panel.Footer:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -M.inset, M.inset)
@@ -6615,11 +6962,12 @@ function CT.Build(parent)
   -- grid below it so the columns line up. Its fill is `bandFill`, which is held
   -- at the plate opacity floor -- it carries the run's gold earned/spent
   -- figures, and a text-bearing surface may not depend on the window's own fill
-  -- to stay legible.
+  -- to stay legible. It is a block of the stack under the list, which the
+  -- footer holds: placed from the footer's top by RV.PlaceStack, and at its
+  -- top until then, which is where the default order has it.
   panel.Banner = CreateFrame("Frame", nil, panel, "BackdropTemplate")
-  panel.Banner:SetPoint("LEFT", panel, "LEFT", M.inset, 0)
-  panel.Banner:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
-  panel.Banner:SetPoint("BOTTOM", panel.Footer, "TOP", 0, M.gap)
+  panel.Banner:SetPoint("TOPLEFT", panel.Footer, "TOPLEFT", 0, 0)
+  panel.Banner:SetPoint("TOPRIGHT", panel.Footer, "TOPRIGHT", 0, 0)
   panel.Banner:SetHeight(M.controlHeight)
   T.ApplyBand(panel.Banner)
 
@@ -6646,11 +6994,11 @@ function CT.Build(parent)
   -- window resizing, or the first layout after a paint that had none.
   panel.Banner:SetScript("OnSizeChanged", function() FitBanner(panel) end)
 
-  -- The list absorbs everything between the top row and the banner.
+  -- The list absorbs everything between the top row and the blocks under it.
   panel.MailListArea = CreateFrame("Frame", nil, panel, "BackdropTemplate")
   panel.MailListArea:SetPoint("TOPLEFT", panel.ViewToggle, "BOTTOMLEFT", 0, -M.gap)
   panel.MailListArea:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
-  panel.MailListArea:SetPoint("BOTTOM", panel.Banner, "TOP", 0, M.gap)
+  panel.MailListArea:SetPoint("BOTTOM", panel.Footer, "TOP", 0, M.gap)
   T.ApplyList(panel.MailListArea)
 
   -- The list runs to the container's inner edge while nothing scrolls, and
