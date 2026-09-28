@@ -545,9 +545,11 @@ end
 
 -- What a quality mark is drawn on: "icon" (the corner of the row's item
 -- icon, the default), "name" (after the item's name, as a chat link has it),
--- "both" or "off". Before this was a choice it was the rowQuality switch,
--- and a player who had switched that off keeps it off.
-local QUALITY_MARKS = { icon = true, name = true, both = true, off = true }
+-- "both" (the icon and after the name), "before" (before the name, with the
+-- room for it kept on every row so the names stay in line) or "off". Before
+-- this was a choice it was the rowQuality switch, and a player who had
+-- switched that off keeps it off.
+local QUALITY_MARKS = { icon = true, name = true, both = true, before = true, off = true }
 function UI.GetQualityMark()
   local memo = Settings()
   if memo.quality then return memo.quality end

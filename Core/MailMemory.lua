@@ -1370,6 +1370,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     row.HeaderHit:SetShown(onHeader ~= nil)
     local R0 = Rules()
     if R0 and R0.PaintQuality then R0.PaintQuality(row, nil) end
+    if R0 and R0.PaintNameMark then R0.PaintNameMark(row, nil) end
     row:SetAlpha(1)
     row:Show()
     return
@@ -1421,11 +1422,12 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     or named or L["MEMORY_SENDER_UNKNOWN"]
   local subject = (ns.Helpers and ns.Helpers.ShortSubject) and ns.Helpers.ShortSubject(mail.subject or "")
     or (mail.subject or "")
-  -- The crafting quality mark: on the icon's corner, after the name, or both
-  -- -- wherever the Mail tab puts it.
+  -- The crafting quality mark: on the icon's corner, after the name, both,
+  -- or before the name -- wherever the Mail tab puts it.
   local mark = (not mail.pending) and MailMark(mail) or nil
   if R and R.WithMark and R.MarkOnName and R.MarkOnName() then subject = R.WithMark(subject, mark) end
   if R and R.PaintQuality then R.PaintQuality(row, mark) end
+  if R and R.PaintNameMark then R.PaintNameMark(row, mark) end
 
   local spec = R and R.Place and MM.PlaceSpec(list)
   if spec then
@@ -1446,6 +1448,8 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     spec.share, spec.reserve, spec.two = R.META_SHARE, false, false
     -- A C.O.D. price shows with the gold column hidden, as on the Mail tab.
     spec.force = codShown and "money" or nil
+    -- "Before the name": the mark's room before every row's subject.
+    spec.markW = R.NameMarkRoom and R.NameMarkRoom() or nil
     spec.focus = R.Focus and R.Focus() or nil
     R.Place(row, spec)
     -- The icon's hover goes with the icon.

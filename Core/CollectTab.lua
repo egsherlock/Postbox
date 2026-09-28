@@ -159,7 +159,8 @@ function RV.QualityMark(index, slot)
 end
 
 -- Where a quality mark goes (MailboxUI.GetQualityMark): "icon", "name",
--- "both" or "off".
+-- "both" (the icon and after the name), "before" (before the name) or
+-- "off".
 function RV.QualityMode()
   local UI = ns.MailboxUI
   return UI and type(UI.GetQualityMark) == "function" and UI.GetQualityMark() or "icon"
@@ -173,6 +174,59 @@ end
 function RV.MarkOnIcon()
   local mode = RV.QualityMode()
   return mode == "icon" or mode == "both"
+end
+
+function RV.MarkBefore()
+  return RV.QualityMode() == "before"
+end
+
+-- "Before the name": the mark drawn as the item's link draws it inline --
+-- the size its own markup gives it, |A:name:17:15::1|a, 17 tall and 15
+-- wide, fitted into that box whatever another mark asks for -- and the
+-- gap after it. Every row of a list keeps that room before the subject
+-- (RV.Place, s.markW), so the names start on one line down the list
+-- whether or not a row's item has a mark: 17 units of the subject.
+RV.NAME_MARK_W, RV.NAME_MARK_H, RV.NAME_MARK_GAP = 15, 17, 2
+
+-- The room a row keeps before its subject for the mark: nothing unless the
+-- player chose "Before the name".
+function RV.NameMarkRoom()
+  if not RV.MarkBefore() then return 0 end
+  return RV.NAME_MARK_W + RV.NAME_MARK_GAP
+end
+
+-- row, mark[, parent, anchor] -> the mark before the item's name, or
+-- nothing: its right edge the gap before `anchor`'s left (the row's
+-- subject), where RV.Place leaves it room, and shown and hidden with the
+-- subject there. On a texture of `parent`'s (the row), made on first use:
+-- most rows never carry one. The atlas and its size are set again only
+-- when the mark changes.
+function RV.PaintNameMark(row, mark, parent, anchor)
+  local atlas = (type(mark) == "string" and RV.MarkBefore()) and mark:match("|A:([^:|]+)") or nil
+  local tex = row.QualityName
+  if not atlas then
+    if tex then
+      tex.__pbOn = false
+      tex:Hide()
+    end
+    return
+  end
+  if not tex then
+    tex = (parent or row):CreateTexture(nil, "ARTWORK")
+    tex:SetPoint("RIGHT", anchor or row.Subject, "LEFT", -RV.NAME_MARK_GAP, 0)
+    row.QualityName = tex
+  end
+  if tex.__pbAtlas ~= atlas then
+    tex.__pbAtlas = atlas
+    tex:SetAtlas(atlas, false)
+    local h, w = mark:match("|A:[^:|]+:(%d+):(%d+)")
+    h, w = tonumber(h) or 0, tonumber(w) or 0
+    if h <= 0 or w <= 0 then h, w = RV.NAME_MARK_H, RV.NAME_MARK_W end
+    local k = min(1, RV.NAME_MARK_W / w, RV.NAME_MARK_H / h)
+    tex:SetSize(w * k, h * k)
+  end
+  tex.__pbOn = true
+  tex:Show()
 end
 
 -- row, mark -> a small copy of the mark over the bottom-right corner of the
@@ -1548,6 +1602,10 @@ end
 --                             read mark (RV.PaintDot)
 --   stuck                     true: this mail is stuck, and el.stuck shows
 --                             where the read mark stands
+--   markW                     the room every row keeps before its subject's
+--                             text for the quality mark (RV.NameMarkRoom;
+--                             nil: none); inside the subject's own room, so
+--                             its lane and every other column stay put
 --   size.icon                 the icon's width
 --   cols[id], senderCol       the figures' list-wide widths; the sender's
 --   text[id]                  what each text column says (a figure nil: this
@@ -1729,6 +1787,9 @@ function RV.Place(row, s)
   end
 
   local subject, sender, detail = el.subject, el.sender, el.detail
+  -- The quality mark's room before the subject's text, on every row
+  -- ("Before the name"): part of the subject's room, lane and all.
+  local mw = s.markW or 0
   if publish then laneX.subject, laneW.subject = x, subjectW end
   -- Where a one-line row's subject starts and how far it runs.
   local sx, run
@@ -1763,7 +1824,7 @@ function RV.Place(row, s)
           local region = el[id]
           if region and RV.FIGURE[id] and (w[id] or 0) == 0 and text[id] ~= nil
               and (layout[i].shown or force == id) then
-            local width = min(cols[id] or 0, room - drawn, run - gap - 20)
+            local width = min(cols[id] or 0, room - drawn, run - gap - 20 - mw)
             if width >= least then
               run = run - width - gap
               drawn = drawn + width + gap
@@ -1781,8 +1842,8 @@ function RV.Place(row, s)
         end
       end
     end
-    RV.Anchor(row, subject, 1, sx, 0)
-    T.FitText(subject, run, text.subject, subject)
+    RV.Anchor(row, subject, 1, sx + mw, 0)
+    T.FitText(subject, run - mw, text.subject, subject)
     subject:Show()
     if detail then detail:Hide() end
     -- The two-line row's figures live on its second line; this row's are
@@ -1798,18 +1859,18 @@ function RV.Place(row, s)
       if layout.shown.sender and RV.IndexOf(layout, "sender") < at then
         RV.Anchor(row, sender, 3, x, top)
         T.FitText(sender, senderW, text.sender, sender)
-        RV.Anchor(row, subject, 3, x + senderW + gap, top)
+        RV.Anchor(row, subject, 3, x + senderW + gap + mw, top)
       else
-        RV.Anchor(row, subject, 3, x, top)
+        RV.Anchor(row, subject, 3, x + mw, top)
         RV.Anchor(row, sender, 4, -edge, top)
         T.FitText(sender, senderW, text.sender, sender)
       end
       sender:Show()
     else
       if sender then sender:Hide() end
-      RV.Anchor(row, subject, 3, x, top)
+      RV.Anchor(row, subject, 3, x + mw, top)
     end
-    T.FitText(subject, subjectW, text.subject, subject)
+    T.FitText(subject, subjectW - mw, text.subject, subject)
     subject:Show()
     if detail then
       RV.Anchor(row, detail, 5, x, s.bottom or 0)
@@ -1844,6 +1905,10 @@ function RV.Place(row, s)
     local shade = dot.__pbShade
     if shade then shade:SetShown(on and not stuck) end
   end
+  -- The quality mark before the name goes with the name: drawn, or in the
+  -- arrange mode's hand.
+  local named = row.QualityName
+  if named then named:SetShown(named.__pbOn == true and subject:IsShown()) end
 end
 
 -- layout, id -> where the arrangement has that column.
@@ -1895,6 +1960,8 @@ CT.RowRules = {
   WithMark = RV.WithMark,
   MarkOnName = RV.MarkOnName,
   PaintQuality = RV.PaintQuality,
+  PaintNameMark = RV.PaintNameMark,
+  NameMarkRoom = RV.NameMarkRoom,
   HoldRange = RV.HoldRange,
 }
 
@@ -3387,10 +3454,11 @@ local function BindRow(panel, row, index, position, compact, done)
     displaySubject = (displaySubject:gsub("%(%d+%)%s*$", "(" .. quantity .. ")"))
   end
   -- The crafting quality mark, as the item's own link draws it: on the
-  -- icon's corner, after the name, or both.
+  -- icon's corner, after the name, both, or before the name.
   local mark = (iconSlot and RV.QualityMode() ~= "off") and RV.QualityMark(index, iconSlot) or nil
   if mark and RV.MarkOnName() then displaySubject = RV.WithMark(displaySubject, mark) end
   RV.PaintQuality(row, mark)
+  RV.PaintNameMark(row, mark)
 
   -- The meta line. `parts` is what the standard row draws under the name; the
   -- compact row draws the same figures in its columns and hands the rest --
@@ -3485,6 +3553,7 @@ local function BindRow(panel, row, index, position, compact, done)
   el.read, el.icon, el.sender, el.subject = row.Indicator, row.Icon, row.Sender, row.Subject
   el.time, el.money, el.slots, el.detail = row.ColTime, row.ColMoney, row.ColSlots, row.Detail
   el.stuck, spec.stuck = row.Warning, stuckReason ~= nil
+  spec.markW = RV.NameMarkRoom()
   text.sender, text.subject = senderText, displaySubject
   text.time, text.money, text.slots = expiry, money, slots
   spec.size.icon = compact and ROW_ICON_COMPACT or ROW_ICON
@@ -3651,8 +3720,11 @@ function HV.BindHistoryRow(panel, row, entry, position, now)
   end
   if not icon and (entry.m or 0) > 0 then icon = "Interface\\Icons\\INV_Misc_Coin_01" end
   row.Icon:SetTexture(icon or "Interface\\Icons\\INV_Letter_02")
-  -- The first item's quality mark on the icon's corner, as the list has it.
-  RV.PaintQuality(row, first and RV.MarkOf(first.l) or nil)
+  -- The first item's quality mark on the icon's corner or before its name,
+  -- as the list has it.
+  local mark = first and RV.MarkOf(first.l) or nil
+  RV.PaintQuality(row, mark)
+  RV.PaintNameMark(row, mark)
 
   -- The mail rows' arrangement after the age, with the columns History has:
   -- the icon, the sender, what came out, and the money -- which keeps its
@@ -3677,6 +3749,7 @@ function HV.BindHistoryRow(panel, row, entry, position, now)
   spec.senderCol = cols.sender or SENDER_MIN
   spec.share, spec.reserve, spec.two = nil, true, false
   spec.force = (kind == "cod") and "money" or nil
+  spec.markW = RV.NameMarkRoom()
   spec.focus = RV.Focus()
   RV.Place(row, spec)
   row:Show()

@@ -1053,7 +1053,10 @@ do
   -- in the list's default order, gold then slots. Under Larger mail rows,
   -- the first mail alone on two lines with a larger icon, where it came from
   -- and how long it has left under its name: those rows have no columns.
-  -- The quality mark on the icon's corner, after the name, both or neither.
+  -- The quality mark on the icon's corner, after the name, both, before the
+  -- name -- where both names then start after its room, as every row of
+  -- the list keeps it -- or neither. The slot as the Slots choice writes
+  -- it.
   ---------------------------------------------------------
 
   -- A figure of the sample's, right-aligned in its column.
@@ -1100,6 +1103,8 @@ do
     s:SetBackdropBorderColor(0.17, 0.17, 0.17, 1)
     s:SetWidth(CTX_W)
     local art = ArtHolder(s)
+    -- For the mark before the name, made the first time it is drawn.
+    s.Art = art
     s.IconEdge = art:CreateTexture(nil, "ARTWORK", nil, 0)
     s.Icon = art:CreateTexture(nil, "ARTWORK", nil, 1)
     s.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -1208,9 +1213,14 @@ do
 
     local text = name or ""
     if mark and name and (mode == "name" or mode == "both") then text = name .. " " .. mark end
+    -- Before the name: the mark where the name began, and the room for it
+    -- before both names (the list's own, RowRules.NameMarkRoom).
+    local R = ns.CollectTab and ns.CollectTab.RowRules
+    local room = (mode == "before" and R and R.NameMarkRoom) and R.NameMarkRoom() or 0
     s.Name:SetTextColor(r, g, b, 1)
     s.Name:ClearAllPoints()
-    s.Name:SetPoint("LEFT", s.Icon, "RIGHT", 7, 0)
+    s.Name:SetPoint("LEFT", s.Icon, "RIGHT", 7 + room, 0)
+    if R and R.PaintNameMark then R.PaintNameMark(s, name and mark or nil, s.Art, s.Name) end
     if not S.sampleMeta then
       S.sampleMeta = L["ROW_AH_BOUGHT"] .. "  \194\183  " .. string.format(L["DAYS_SHORT"], SAMPLE_DAYS)
     end
@@ -1226,7 +1236,7 @@ do
       s.Line2:SetPoint("TOPLEFT", s, "TOPLEFT", nameX, -(1 + lineH - 3))
       T.FitText(s.Line2, CTX_W - nameX - 8, S.sampleMeta)
       s.Line2:Show()
-      T.FitText(s.Name, CTX_W - nameX - 8, text)
+      T.FitText(s.Name, CTX_W - nameX - 8 - room, text)
     else
       s.Line2:Hide()
       -- The figures, made once: the price, the slot, the sale's gold.
@@ -1250,7 +1260,8 @@ do
       -- edge in. Lined up, the sale's gold stands in the gold column; closed
       -- up, at the edge, where the slot it does not have would be.
       local goldW = math.max(TextW(s.Gold), TextW(s.Gold2))
-      local slotsW = TextW(s.Slots)
+      -- The number alone stands in a column as narrow as the list draws one.
+      local slotsW = math.max(TextW(s.Slots), (R and R.FIGURE_MIN) or 0)
       local edge = CTX_W - 8
       local goldEdge = edge - slotsW - SAMPLE_GAP
       local lined = not (UI and UI.GetOption) or UI.GetOption("lineUpColumns")
@@ -1259,7 +1270,7 @@ do
       PlaceFigure(s, s.Slots, edge, slotsW, y1)
       PlaceFigure(s, s.Gold, goldEdge, goldW, y1)
       PlaceFigure(s, s.Gold2, saleEdge, goldW, y2)
-      T.FitText(s.Name, math.max(40, goldEdge - goldW - SAMPLE_GAP - nameX), text)
+      T.FitText(s.Name, math.max(40, goldEdge - goldW - SAMPLE_GAP - nameX - room), text)
 
       s.Stripe:ClearAllPoints()
       s.Stripe:SetPoint("TOPLEFT", s, "TOPLEFT", 1, -(1 + lineH))
@@ -1268,8 +1279,8 @@ do
       s.Icon2:ClearAllPoints()
       s.Icon2:SetPoint("CENTER", s, "TOPLEFT", 8 + iconSize / 2, y2)
       s.Name2:ClearAllPoints()
-      s.Name2:SetPoint("LEFT", s.Icon2, "RIGHT", 7, 0)
-      T.FitText(s.Name2, math.max(40, saleEdge - goldW - SAMPLE_GAP - nameX), name or "")
+      s.Name2:SetPoint("LEFT", s.Icon2, "RIGHT", 7 + room, 0)
+      T.FitText(s.Name2, math.max(40, saleEdge - goldW - SAMPLE_GAP - nameX - room), name or "")
     end
     Ctx.PaintSampleWash(s)
   end
@@ -2413,14 +2424,17 @@ function Pages.mail(col)
 
   -- Where the crafting quality mark goes, in the list, History and the
   -- memory alike: on the corner of the item's icon (the default), after its
-  -- name as a chat link has it, both, or nowhere.
+  -- name as a chat link has it, both, before its name with the names kept
+  -- in line, or nowhere. "Both" stays the icon and after the name, beside
+  -- the two it joins.
   Rows.Dropdown(col, {
     title = L["OPT_QUALITY_TITLE"], text = L["OPT_QUALITY_DESC"],
     items = {
-      { id = "icon", name = L["OPT_QUALITY_ICON"] },
-      { id = "name", name = L["OPT_QUALITY_NAME"] },
-      { id = "both", name = L["OPT_QUALITY_BOTH"] },
-      { id = "off",  name = L["OPT_QUALITY_OFF"] },
+      { id = "icon",   name = L["OPT_QUALITY_ICON"] },
+      { id = "name",   name = L["OPT_QUALITY_NAME"] },
+      { id = "both",   name = L["OPT_QUALITY_BOTH"] },
+      { id = "before", name = L["OPT_QUALITY_BEFORE"] },
+      { id = "off",    name = L["OPT_QUALITY_OFF"] },
     },
     get = function() return ns.MailboxUI.GetQualityMark and ns.MailboxUI.GetQualityMark() or "icon" end,
     set = function(id)
