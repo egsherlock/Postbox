@@ -648,6 +648,22 @@ function UI.SetHistoryDays(days)
   if panel and collect and collect.RequestRefresh then collect.RequestRefresh(panel) end
 end
 
+-- Performance recording for the bug report (Postbox.lua, 5b): "off" (the
+-- default), "on" or "detail". Saved, because the open a report is wanted for
+-- is often the first after a /reload. This pair only reads and stores: the
+-- record follows the choice through ns.SetPerfRecording, which is the way to
+-- change it.
+local PERF_RECORD = { off = true, on = true, detail = true }
+function UI.GetPerfRecord()
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.perfRecord")
+  return PERF_RECORD[stored] and stored or "off"
+end
+function UI.SetPerfRecord(mode)
+  if not PERF_RECORD[mode] then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.perfRecord = mode end
+end
+
 -- A mail row's columns: which it shows, and in what order, left to right.
 -- One string on the profile -- "read,icon,sender,subject,time,money,slots",
 -- a leading "-" on a column it hides -- and ONE arrangement for every list

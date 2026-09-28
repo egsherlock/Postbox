@@ -352,31 +352,38 @@ end
 -- event -- until the close has been timed.
 --
 -- The rules, because this rides the one path a player has called slow:
---   * Nothing is measured away from a mailbox. A call site reads ns.Perf, finds
---     no open record (Perf.cur for the window, Perf.visit for the visit), and
---     carries on; a measured step costs two debugprofilestop() calls and a few
---     additions.
+--   * Off unless the player turns it on. Recording is a saved choice -- "off"
+--     (the default), "on" or "detail" -- made in the bug report's window or
+--     with /postbox perf, and read at login: the hitch a report is wanted for
+--     is often the first open after a /reload. Off, ns.Perf is not published
+--     at all, so every call site reads nil and carries on exactly as it would
+--     with this section gone. The report's profiler and data lines are read
+--     when a report is made, whatever the setting.
+--   * Nothing is measured away from a mailbox. On, a call site reads ns.Perf,
+--     finds no open record (Perf.cur for the window, Perf.visit for the
+--     visit), and carries on; a measured step costs two debugprofilestop()
+--     calls and a few additions.
 --   * The window ends by itself: at the mailbox closing, or at the first
 --     measured step more than WINDOW seconds after the open. No timer, no
 --     OnUpdate.
---   * Always on, the record is kept lean: one table per open, allocated once,
---     the profiler read at the window's two ends and at the close, and the
+--   * On, the record is kept lean: one table per open, allocated once, the
+--     profiler read at the window's two ends and at the close, and the
 --     padlock verdicts counted rather than timed. The dearest parts -- walking
 --     the inbox at a window's end, answering the two item-data events every
---     other addon's item loads fire, and timing each verdict -- are detail,
---     which /postbox perf turns on until the next /reload. Even then the item
---     events are listened to only while a window is open. A report walks the
---     inbox for itself while a mailbox is open, either way.
---   * Numbers only, and nothing saved: no character, sender or item name is
---     recorded, and a /reload starts afresh (as the profiler itself does).
+--     other addon's item loads fire, and timing each verdict -- are "detail".
+--     Even then the item events are listened to only while a window is open.
+--     A report walks the inbox for itself while a mailbox is open, either way.
+--   * Numbers only, and nothing saved but the choice itself: no character,
+--     sender or item name is recorded, and a /reload starts the record afresh
+--     (as the profiler itself does).
 -------------------------------------------------------------
 
 -- Perf.cur is the open being counted, or nil, Perf.visit the open whose
--- visit is being recorded, or nil, and Perf.detail whether /postbox perf is
--- on: the fields a call site may read directly, as the cheapest possible "is
--- anything measuring".
+-- visit is being recorded, or nil, and Perf.detail whether recording is on in
+-- detail: the fields a call site may read directly, as the cheapest possible
+-- "is anything measuring". Published as ns.Perf only while recording is on
+-- (ns.SetPerfRecording, below).
 local Perf = {}
-ns.Perf = Perf
 
 do
   local WINDOW = 30         -- seconds after an open that its costs are counted
@@ -453,6 +460,12 @@ do
   local watching = false
   local itemFrame = nil     -- detail's item-event listener, made on first use
   local memoryReadMs = 0    -- the costliest memory read a report has made
+
+  -- What is recording now: "off", "on" or "detail". The saved choice
+  -- (Core/MailboxUI.lua, UI.GetPerfRecord) is the truth; this follows it at
+  -- login and at every change made through the switch below.
+  local MODES = { off = true, on = true, detail = true }
+  local mode = "off"
 
   Perf.detail = false
 
@@ -861,10 +874,10 @@ do
     lastInbox.at = rec.at
   end
 
-  -- /postbox perf, for this session: a /reload starts with it off. An open
-  -- still counting starts or stops its item events now, and the verdicts
-  -- their timing; its inbox is walked, or not, by whatever the switch says
-  -- when it ends.
+  -- Detail on or off, now: the switch below's live half. An open still
+  -- counting starts or stops its item events now, and the verdicts their
+  -- timing; its inbox is walked, or not, by whatever detail says when it
+  -- ends.
   function Perf.SetDetail(on)
     on = on and true or false
     Perf.detail = on
@@ -872,6 +885,47 @@ do
     if not rec then return end
     if on then rec.detail = true end
     WatchItems(on)
+  end
+
+  -- The switch, published whatever it says: the bug report's control and
+  -- /postbox perf both turn it. `m` is saved, then made live; nil makes the
+  -- saved choice live, which is what login does and what follows a reset.
+  -- -> the mode now live.
+  --
+  -- Off ends the open being counted, and its visit with it, and takes the
+  -- record down: from then on every call site reads nil. On starts at the
+  -- next open, whose stages the record has to see from the beginning.
+  function ns.SetPerfRecording(m)
+    local UI = ns.MailboxUI
+    if m == nil then
+      m = UI and type(UI.GetPerfRecord) == "function" and UI.GetPerfRecord() or mode
+    elseif not MODES[m] then
+      return mode
+    else
+      if UI and type(UI.SetPerfRecord) == "function" then UI.SetPerfRecord(m) end
+      -- Turned on after a mailbox has been open this session (the window is
+      -- built at the first open): the session's firsts may have happened
+      -- unrecorded, so no later timing is marked as one.
+      if mode == "off" and m ~= "off" and UI and UI._frame then
+        for kind in pairs(FIRST_AT) do firstDone[kind] = true end
+      end
+    end
+    if not MODES[m] then m = "off" end
+    mode = m
+    if m == "off" then
+      if Perf.cur then Perf.Settle("recording off") end
+      Perf.visit = nil
+      Perf.detail = false
+      ns.Perf = nil
+    else
+      Perf.SetDetail(m == "detail")
+      ns.Perf = Perf
+    end
+    return mode
+  end
+
+  function ns.GetPerfRecording()
+    return mode
   end
 
   -----------------------------------------------------------
@@ -1084,7 +1138,11 @@ do
     if not summary and lastInbox then
       summary, when = lastInbox, "at the " .. tostring(lastInbox.at) .. " visit"
     end
-    if not summary then return "  Inbox: no mailbox this session" end
+    -- With recording off a visit leaves nothing behind, so all that can be
+    -- said is that no mailbox is open now.
+    if not summary then
+      return mode == "off" and "  Inbox: no mailbox open" or "  Inbox: no mailbox this session"
+    end
     if summary.counts then
       return format("  Inbox %s: %d/%d (detail off)", when, summary.shown, summary.total)
     end
@@ -1211,10 +1269,16 @@ do
     return "  Data: " .. concat(parts, " | "), readMs
   end
 
+  local HEADING = {
+    off = "Performance (recording off):",
+    on = "Performance (recording on):",
+    detail = "Performance (recording on, detailed):",
+  }
+
   -- The block, as lines. Each part is guarded on its own, so one that breaks
   -- costs its line and not the others.
   function Perf.ReportLines()
-    local lines = { Perf.detail and "Performance (detail on):" or "Performance:" }
+    local lines = { HEADING[mode] or HEADING.off }
     local function add(text) lines[#lines + 1] = text end
     local ok, text = pcall(InboxLine)
     if ok then add(text) end
@@ -1255,7 +1319,16 @@ do
       if live then live[REPORT_MS] = (live[REPORT_MS] or 0) + readMs end
     end
 
-    if count == 0 then
+    -- Off, the visits are not recorded, and the report says so and how to
+    -- change it: the reader in the window is the one who can. Opens recorded
+    -- before it was turned off still follow.
+    if mode == "off" then
+      if count == 0 then
+        add("  Visits: not recorded, because performance recording is off. To record them, set it to On in this window (or type /postbox perf on), then visit the mailbox again.")
+        return lines
+      end
+      add("  Visits: performance recording is off now, so only the opens below, recorded before it was turned off, are here. Set it to On in this window (or type /postbox perf on) to record more.")
+    elseif count == 0 then
       add("  Opens: none this session")
       return lines
     end
@@ -1347,15 +1420,16 @@ local function ReportHelp()
   ns.Print("           /postbox minimap  — toggle the minimap mail icon")
   ns.Print("           /postbox mail  — Mail Memory: every character's mailbox")
   ns.Print("           /postbox debug  — open the bug-report window")
-  ns.Print("           /postbox perf [on|off]  — more detail in the bug report's Performance block, until /reload")
+  ns.Print("           /postbox perf [off|on|detail]  — time mailbox visits for the bug report (kept until turned off)")
   ns.Print(ns.L["RM_SLASH_HELP"])
 end
 
 -------------------------------------------------------------
 -- The diagnostic snapshot behind the bug-report window (and nothing else:
 -- assembled on demand; the one thing gathered ahead of it is section 5b's
--- timing of mailbox opens). Deliberately English -- it exists to be pasted
--- into a GitHub issue and read by the maintainer.
+-- timing of mailbox opens, while the player has that recording on).
+-- Deliberately English -- it exists to be pasted into a GitHub issue and
+-- read by the maintainer.
 --
 -- What goes in is decided by one test: could this line be the difference
 -- between reproducing the report and closing it as "cannot reproduce". Every
@@ -1647,7 +1721,7 @@ local function OpenRecipientManager()
   end
 end
 
--- One word each, aliases included, and perf's own "on" and "off" after it.
+-- One word each, aliases included, and perf's own words after it.
 -- Anything unrecognised -- the empty string most of all, since a bare
 -- /postbox is how people go looking -- falls through to the help text.
 local function OpenMailMemory()
@@ -1655,13 +1729,23 @@ local function OpenMailMemory()
   if Memory and type(Memory.Toggle) == "function" then Memory.Toggle() end
 end
 
--- /postbox perf: section 5b's detail, for this session (nil toggles). Said in
--- chat either way, because nothing on screen changes.
-local function SetPerfDetail(on)
-  if type(Perf.SetDetail) ~= "function" then return end
-  if on == nil then on = not Perf.detail end
-  Perf.SetDetail(on)
-  ns.Print(ns.L[on and "PERF_DETAIL_ON" or "PERF_DETAIL_OFF"])
+-- /postbox perf: section 5b's recording, the same saved choice as the bug
+-- report's control. Bare, it steps Off -> On -> Detailed -> Off; with a word,
+-- it sets that. Said in chat, because nothing on screen changes.
+local PERF_NEXT = { off = "on", on = "detail", detail = "off" }
+-- Each mode's name and what it does: the bug report's switch says the same.
+local PERF_SAID = {
+  off = { "PERF_REC_OFF", "PERF_REC_OFF_DESC" },
+  on = { "PERF_REC_ON", "PERF_REC_ON_DESC" },
+  detail = { "PERF_REC_DETAIL", "PERF_REC_DETAIL_DESC" },
+}
+
+local function SetPerfRecording(m)
+  local set, get = ns.SetPerfRecording, ns.GetPerfRecording
+  if type(set) ~= "function" or type(get) ~= "function" then return end
+  m = set(m or PERF_NEXT[get()] or "on")
+  local said = PERF_SAID[m] or PERF_SAID.off
+  ns.Print(ns.L("PERF_REC_CHAT", ns.L[said[1]]) .. " " .. ns.L[said[2]])
 end
 
 local COMMANDS = {
@@ -1672,9 +1756,11 @@ local COMMANDS = {
   rm          = OpenRecipientManager,
   minimap     = ToggleMinimapIcon,
   debug       = OpenBugReport,
-  perf        = function() SetPerfDetail(nil) end,
-  ["perf on"] = function() SetPerfDetail(true) end,
-  ["perf off"] = function() SetPerfDetail(false) end,
+  perf        = function() SetPerfRecording(nil) end,
+  ["perf off"] = function() SetPerfRecording("off") end,
+  ["perf on"] = function() SetPerfRecording("on") end,
+  ["perf detail"] = function() SetPerfRecording("detail") end,
+  ["perf detailed"] = function() SetPerfRecording("detail") end,
 }
 
 -- The minimap's addon compartment (Postbox.toc names these). The one way to
@@ -1733,6 +1819,11 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   -- depend on whether the census found a usable name.
   EnsureDB()
   RegisterCurrentAlt()
+
+  -- The performance record as the player left it (section 5b), before
+  -- anything can open a mailbox: the first open after a /reload is one of
+  -- the opens it is for.
+  if type(ns.SetPerfRecording) == "function" then ns.SetPerfRecording() end
 
   local UI = ns.MailboxUI
   if UI and type(UI.Initialize) == "function" then
