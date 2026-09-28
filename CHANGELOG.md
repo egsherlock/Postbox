@@ -59,6 +59,10 @@ longer play.
   redraw once, not three times, the game's own hidden bag frames are left
   alone, and which items can be mailed is remembered until that bag changes.
   A visit that never opens Send asks your bags nothing.
+- **Sharper small icons and a cleaner resize corner.** The History clock,
+  Mail Memory's sort arrow and the search box's every-character toggle are
+  drawn pixel-sharp, and every Postbox window's resize corner is two thin
+  lines that light up when you point at them.
 - **The options open quicker:** your recipients are counted when you look at
   the Send tab, not every time the options open.
 - Also: the "Show on each mail" list moved from the options into the window,
