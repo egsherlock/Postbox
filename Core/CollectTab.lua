@@ -1265,6 +1265,48 @@ local function MeasureWith(panel, sample, text)
   return width
 end
 
+-- The slots column's width for counts up to `most`: the widest any of them
+-- is written, every digit the font's widest, in the plural word each count
+-- takes -- "4 slots" is wider than "7 slots" in a font whose 4 is wider, and
+-- Russian's forms differ in length -- so no count is cut. The widest digit
+-- and each width are kept per font (a host UI re-fonts after load), and
+-- measured again only when the font under `sample` changes; the locale
+-- needs a reload to change. A font not laid out yet measures nothing, and
+-- nothing is kept from it.
+RV.DIGITS = { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" }
+
+function RV.SlotsWidth(panel, sample, most)
+  local fit = panel._slotsFit
+  if not fit then
+    fit = { w = {} }
+    panel._slotsFit = fit
+  end
+  local path, size, flags = sample:GetFont()
+  if fit.path ~= path or fit.size ~= size or fit.flags ~= flags then
+    fit.path, fit.size, fit.flags, fit.digit = path, size, flags, nil
+    for key in pairs(fit.w) do fit.w[key] = nil end
+  end
+  local width = fit.w[most]
+  if width then return width end
+  local digit = fit.digit
+  if not digit then
+    local widest = 0
+    for i = 1, #RV.DIGITS do
+      local w = MeasureWith(panel, sample, RV.DIGITS[i])
+      if w > widest then digit, widest = RV.DIGITS[i], w end
+    end
+    if not digit then return MeasureWith(panel, sample, ns.Plural("COUNT_SLOTS", most)) end
+    fit.digit = digit
+  end
+  width = 0
+  for n = 1, most do
+    local text = ns.Plural("COUNT_SLOTS", n):gsub("%d", digit)
+    width = max(width, MeasureWith(panel, sample, text))
+  end
+  if width > 0 then fit.w[most] = width end
+  return width
+end
+
 -- The sender column's CEILING, from the four outcome labels in `sample`'s font.
 -- The column itself is the widest sender actually listed, up to this: a list
 -- of short names gives the subjects the room, and a long name is cut at the
@@ -4185,7 +4227,7 @@ function CT.RefreshMailList(panel)
   end
 
   if slotsMost > 0 then
-    cols.slots = MeasureWith(panel, sample.ColSlots, ns.Plural("COUNT_SLOTS", slotsMost))
+    cols.slots = RV.SlotsWidth(panel, sample.ColSlots, slotsMost)
   end
   -- The trailing reserve every compact row keeps: the stuck mark's room
   -- whenever any listed row carries one, so no row's columns stand anywhere
