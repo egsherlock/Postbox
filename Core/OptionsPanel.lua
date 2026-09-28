@@ -817,11 +817,11 @@ end
 -- time it is: the Mail tab's character groups tile and sample mail rows
 -- that grow with Larger mail rows, line their gold up with Line up columns
 -- and wear the quality mark where the setting puts it; the Send tab's
--- recipients tile; the window over a bit
--- of world, at the player's opacity and border; the minimap icon at a size
--- you can judge, wearing its glow, shadow and accent. Drawn here, from the
--- settings, rather than borrowed from the windows they describe: those
--- windows' own code is not the panel's to reach into.
+-- recipients tile; the window over a bit of world, at the player's
+-- opacity and border; the minimap icon at a size you can judge, wearing
+-- its glow, shadow and accent. Drawn here, from the settings, rather than
+-- borrowed from the windows they describe: those windows' own code is not
+-- the panel's to reach into.
 -------------------------------------------------------------
 do
   local CTX_TOP = 11
