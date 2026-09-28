@@ -25,7 +25,7 @@ longer play.
   aside while you look at it, and a long name is shortened with its count
   kept (full name on hover).
 - **Right-click the character picker, or the other character's name,** to go
-  back to your own mailbox.
+  back to your own mailbox, in the Mail tab and in the Mail Memory window.
 - **The Recipients window resizes like the Postbox window:** drag its corner,
   or right-click the corner for the default size.
 - **Reset to defaults**, at the foot of the options, offers two resets.
