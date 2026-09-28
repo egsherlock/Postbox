@@ -4048,9 +4048,10 @@ function CT.RefreshMailList(panel)
       earned = earned + rowEarned
       spent = spent + rowSpent
 
-      -- What each sweep would take: unfinished, and never C.O.D. -- the rule
+      -- What each sweep would take: unfinished, never C.O.D., and not held
+      -- back -- stuck, or holding items while the bags are full -- the rules
       -- the queue builder applies, so a count is a promise the button keeps.
-      if not finished and not hasCOD then
+      if not finished and not hasCOD and not Mail().HeldBack(index, tonumber(itemCount) or 0) then
         counts.all = (counts.all or 0) + 1
         -- From alts and Other split the non-auction mail between them.
         if Mail().FromOwnCharacter(index, altKeys) then
@@ -4472,9 +4473,12 @@ end
 -- silent-loss bug invisible, so the three outcomes are kept apart:
 --
 --   left > 0      the run was STOPPED and that many queued mails are still in
---                 the mailbox. stopReason says which guard stopped it.
---   refused > 0   the run reached the end of its queue, but the server would
---                 not hand over some attachments. Nothing was at risk.
+--                 the mailbox. stopReason says which guard stopped it: the
+--                 connection ("timeout"), or bags with no room left ("bags",
+--                 which is a state rather than a failure -- see FinishRun).
+--   refused > 0   the server would not hand over some attachments, for
+--                 reasons of those mails' own (Run.stuck counts the mails).
+--                 Nothing was at risk.
 --   neither       everything came through.
 --
 -- The run state lives here rather than on the shell's shared table: the shell
@@ -4496,6 +4500,9 @@ local Run = {
   current = nil,
   collected = 0,
   refused = 0,
+  -- Mails the server refused for reasons of their own: the outcome's
+  -- "Stuck: N", counted by mail as the title bar's is. `refused` counts items.
+  stuck = 0,
   earned = 0,
   spent = 0,
   reason = nil,
@@ -4536,6 +4543,7 @@ local function ResetRun()
   Clear(Run.queue)
   Run.collected = 0
   Run.refused = 0
+  Run.stuck = 0
   Run.earned = 0
   Run.spent = 0
   Run.reason = nil
@@ -4689,6 +4697,7 @@ end
 
 local function FinishRun(left, stopReason)
   local refused = Run.refused
+  local stuck = Run.stuck
   local collected = Run.collected
   local reason = Run.reason
   local earned, spent = Run.earned, Run.spent
@@ -4731,24 +4740,46 @@ local function FinishRun(left, stopReason)
     return problemText
   end
 
-  if left > 0 then
+  -- Bags full is the character's state, not this run's alone (MailService,
+  -- "Bags full"): whenever it holds as a run ends -- this run stopped on it,
+  -- or an earlier one did and this one took what needed no room -- the
+  -- outcome says how many mails are waiting for room, and the shell takes
+  -- the line down by itself once there is room (MailboxUI.OnBagsFullChanged).
+  local M = Mail()
+  local waiting = (M.BagsFull and M.BagsFull() and M.BagsWaiting and M.BagsWaiting()) or 0
+
+  if left > 0 and stopReason ~= "bags" then
     StatusOutcome(WithCollected(
       Tinted("negative", format(L()["STATUS_INCOMPLETE"], left))))
+    ns.Print(format(L()["MSG_COLLECT_INCOMPLETE"], left))
+  else
+    -- What stayed behind, by mail: the stuck ones, then the ones waiting for
+    -- room. Either, both, or neither.
+    local problem
+    if stuck > 0 then problem = Tinted("warning", format(L()["STATUS_PARTIAL"], stuck)) end
+    if waiting > 0 then
+      local full = Tinted("warning", format(L()["STATUS_BAGS_FULL"], waiting))
+      problem = problem and (problem .. JOIN .. full) or full
+    end
+    if problem then
+      StatusOutcome(WithCollected(problem))
+      local UI = ns.MailboxUI
+      if waiting > 0 and UI and type(UI.TagStatusOutcome) == "function" then UI.TagStatusOutcome("bags") end
+    else
+      StatusOutcome(Tinted("positive", format(L()["STATUS_COLLECTED"], got)))
+    end
+    -- The chat keeps the items: which of a mail's attachments stayed is what
+    -- the game's words are about.
+    if refused > 0 then
+      if reason and reason ~= "" then
+        ns.Print(L()("MSG_COLLECT_PARTIAL_REASON", collected, refused, reason))
+      else
+        ns.Print(L()("MSG_COLLECT_PARTIAL", collected, refused))
+      end
+    end
     if stopReason == "bags" then
       ns.Print(format(L()["MSG_COLLECT_STOPPED_BAGS"], left))
-    else
-      ns.Print(format(L()["MSG_COLLECT_INCOMPLETE"], left))
     end
-  elseif refused > 0 then
-    StatusOutcome(WithCollected(
-      Tinted("warning", format(L()["STATUS_PARTIAL"], refused))))
-    if reason and reason ~= "" then
-      ns.Print(L()("MSG_COLLECT_PARTIAL_REASON", collected, refused, reason))
-    else
-      ns.Print(L()("MSG_COLLECT_PARTIAL", collected, refused))
-    end
-  else
-    StatusOutcome(Tinted("positive", format(L()["STATUS_COLLECTED"], got)))
   end
 
   -- After the outcome, never instead of it: a stopped run's "3 left" is the line
@@ -4798,7 +4829,7 @@ local function RunStep()
   local mailEarned, mailSpent = MailEconomy(index, kind, money)
   local before = RV.HeldSomething(index) and RV.Before(index) or nil
 
-  Mail().CollectMail(index, function(status, refused, reason)
+  Mail().CollectMail(index, function(status, refused, reason, refusal)
     Run.current = nil
     RequestRefresh(Run.panel)
 
@@ -4826,22 +4857,23 @@ local function RunStep()
     Run.earned = Run.earned + mailEarned
     Run.spent = Run.spent + mailSpent
 
-    if status == "refused" then
+    if status == "refused" and refusal == "bags" then
+      -- The one refusal that stops the run: the bags are full (the service
+      -- has set its bags-full state and marked nothing on the mail). Every
+      -- further take would be refused too, and each mail walked past would be
+      -- marked read for nothing. The mail just refused still holds its items,
+      -- so it counts as left alongside everything still queued.
+      FinishRun(Remaining() + 1, "bags")
+      return
+    elseif status == "refused" then
       -- A fact about those items, not about the run: record them and keep
       -- going, because one item the player cannot hold must not block every
-      -- other mail in the queue.
-      Run.refused = Run.refused + (tonumber(refused) or 0)
+      -- other mail in the queue. Counted by mail for the outcome, by item for
+      -- the chat line.
+      local n = tonumber(refused) or 0
+      Run.refused = Run.refused + n
+      if n > 0 then Run.stuck = Run.stuck + 1 end
       NoteReason(reason)
-      -- One refusal does justify stopping: bags that filled on the way. Every
-      -- further take would be refused too, and each mail walked past would be
-      -- marked read for nothing.
-      local free = Mail().FreeBagSlots()
-      if free ~= nil and free <= 0 then
-        -- The mail that was just refused still holds something, so it counts as
-        -- left behind alongside everything still queued.
-        FinishRun(Remaining() + 1, "bags")
-        return
-      end
     else
       Run.collected = Run.collected + 1
     end
@@ -4887,13 +4919,15 @@ local function StartCategoryRun(panel, category)
   if Selecting(panel) then
     -- The picked rows, and only those. The selection is spent by the run
     -- whatever comes of it: a refused run leaves ordinary uncollected mail,
-    -- which the next press picks up as such.
-    queue, info = Mail().BuildQueueFor(SelectionIndices(panel))
+    -- which the next press picks up as such. Picked one by one, they are
+    -- tried as a click on each row would be, stuck or not.
+    queue, info = Mail().BuildQueueFor(SelectionIndices(panel), nil, true)
     ClearSelection(panel)
   elseif Searching(panel) or StuckOnly(panel) then
     -- The rows on screen, narrowed again by the sweep's own category. The
     -- stuck filter is a narrowing like a search: the buttons count what it
-    -- shows, so they take what it shows.
+    -- shows, so they take what it shows -- which, like every sweep, leaves
+    -- the stuck mails themselves to a click on their rows.
     queue, info = Mail().BuildQueueFor(panel._filtered, category)
   else
     queue, info = Mail().BuildQueue(category)
@@ -4920,13 +4954,23 @@ local function StartCategoryRun(panel, category)
   end
 
   if #queue == 0 then
-    StatusOutcome(L()["STATUS_DONE"], "positive")
+    -- Everything it matched is stuck or waiting for bag room: not "Done",
+    -- and the status line already says which.
+    if (info.heldBack or 0) > 0 then
+      RefreshIdleSummary()
+    else
+      StatusOutcome(L()["STATUS_DONE"], "positive")
+    end
     RequestRefresh(panel)
     return
   end
 
-  local free = Mail().FreeBagSlots()
+  -- The general bags and the reagent bag together, as this check has always
+  -- counted: reagent mail may well fit there, and a run that meets full bags
+  -- anyway stops cleanly as a bags stop.
+  local free, reagent = Mail().FreeBagSlots()
   if free ~= nil then
+    free = free + (reagent or 0)
     local needed = Mail().QueueAttachmentSlots(queue)
     if needed > free then
       local fits = Mail().QueuePrefixThatFits(queue, free)
@@ -6079,14 +6123,67 @@ function RV.GridEdit(panel, id)
   if not ok and type(geterrorhandler) == "function" then geterrorhandler()(err) end
 end
 
+-- index [, picked] -> the attachments a sweep would take from this mail: its
+-- header's count, or 0 for a mail no sweep takes -- not arrived, C.O.D., or
+-- held back (stuck, or waiting for bag room). The player's picks are taken
+-- held back or not, as their run takes them.
+function RV.RoomItems(index, picked)
+  local _, _, sender, subject, _, cod, _, itemCount = GetInboxHeaderInfo(index)
+  if sender == nil and subject == nil then return 0 end
+  if (tonumber(cod) or 0) > 0 then return 0 end
+  local n = tonumber(itemCount) or 0
+  if n > 0 and not picked and Mail().HeldBack(index, n) then return 0 end
+  return n
+end
+
+-- All mail's own line: whether what it would collect fits the bags -- "Up to
+-- 23 items · 12 bag slots free", in the warning colour when the items are
+-- more than the slots. "Up to", because the header counts attachments and a
+-- stack that joins one already in the bags needs no slot of its own. The
+-- mails are the ones its count is of: the picked rows under a selection,
+-- otherwise the unfinished rows the list walk kept (panel._filtered, the
+-- whole inbox when nothing narrows it) -- one header read each, only while
+-- the tooltip is up, and nothing kept but the lines themselves. The slots are
+-- the general bags' (MailService.FreeBagSlots: backpack and bag slots), the
+-- room every attachment can use; a reagent bag with room says so on a line
+-- of its own, since only reagents can go there.
+function RV.AllMailRoom(panel, tooltip)
+  local M = Mail()
+  local free, reagent = M.FreeBagSlots()
+  if not free then return end
+  local items = 0
+  if Selecting(panel) and panel._selected then
+    for index in pairs(panel._selected) do items = items + RV.RoomItems(index, true) end
+  else
+    local list, done = panel._filtered, panel._filteredDone
+    for i = 1, #list do
+      if done[i] == false and type(list[i]) == "number" then items = items + RV.RoomItems(list[i]) end
+    end
+  end
+  local text = ns.Plural("ROOM_FREE", free)
+  if items > 0 then text = ns.Plural("ROOM_ITEMS", items) .. " \194\183 " .. text end
+  local warn = items > free and Th().Colors and Th().Colors.warning
+  if warn then
+    tooltip:AddLine(text, warn[1], warn[2], warn[3], true)
+  else
+    tooltip:AddLine(text, 1, 1, 1, true)
+  end
+  if (reagent or 0) > 0 then tooltip:AddLine(ns.Plural("ROOM_REAGENT", reagent), 0.7, 0.7, 0.7, true) end
+  -- While the bags are full the mails with items wait, and the count above
+  -- is only what needs no room: say why.
+  if M.BagsFull and M.BagsFull() then tooltip:AddLine(L()["BAGS_FULL_TIP"], 0.7, 0.7, 0.7, true) end
+end
+
 -- The tooltip a sweep says: a group's own, the two sweeps whose names do
--- not say exactly what they cover, or the whole of a cut caption. In the
+-- not say exactly what they cover, or the whole of a cut caption; All mail
+-- adds the bag room its sweep needs (RV.AllMailRoom). In the
 -- arrange mode every button says what a drag and a click do there, and
 -- nothing about a right-click, which does nothing there.
 function RV.GridTip(panel, button)
   local arranging = panel._gridArranging
   local spec = panel._gridSpecs[button.gridId]
   local plain = not (spec and type(spec.tooltip) == "function") and not button.tip
+    and button.gridId ~= "all"
   if plain and not button.__pbOverflowText and not arranging then return end
   GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
   GameTooltip:ClearLines()
@@ -6106,6 +6203,7 @@ function RV.GridTip(panel, button)
   else
     GameTooltip:SetText(button.caption or "")
   end
+  if button.gridId == "all" and not arranging then RV.AllMailRoom(panel, GameTooltip) end
   -- The primary is under the All mail block's card while arranging, which
   -- says its own.
   if arranging and button ~= panel._gridButtons[1] then

@@ -1056,6 +1056,10 @@ local STATUS_DEFAULT_TONE = "textSecondary"
 local status = {
   activity = nil, activityTone = nil,
   outcome  = nil, outcomeTone  = nil,
+  -- What the outcome reports, where it is something that can stop being true
+  -- by itself: "bags" for a run's "Bags full: N left", which comes down when
+  -- the bags have room (UI.OnBagsFullChanged). nil for an ordinary outcome.
+  outcomeKind = nil,
   summary  = nil,
   rendered = "",              -- what we last put on the label
 }
@@ -1082,6 +1086,7 @@ local function AdoptForeignText()
 
   status.outcome = (shown ~= "" and shown) or nil
   status.outcomeTone = nil
+  status.outcomeKind = nil
 end
 
 local function RenderStatus()
@@ -1113,7 +1118,7 @@ function UI.SetStatusActivity(text, tone)
   if type(text) == "string" and text ~= "" then
     status.activity, status.activityTone = text, tone
     -- A new run supersedes the previous run's verdict.
-    status.outcome, status.outcomeTone = nil, nil
+    status.outcome, status.outcomeTone, status.outcomeKind = nil, nil, nil
   else
     status.activity, status.activityTone = nil, nil
   end
@@ -1126,6 +1131,7 @@ function UI.SetStatusOutcome(text, tone)
   AdoptForeignText()
   -- An outcome is a report on the activity it replaces, so the activity ends.
   status.activity, status.activityTone = nil, nil
+  status.outcomeKind = nil
   if type(text) == "string" and text ~= "" then
     status.outcome, status.outcomeTone = text, tone
   else
@@ -1134,43 +1140,78 @@ function UI.SetStatusOutcome(text, tone)
   RenderStatus()
 end
 
+-- Says what the outcome just set reports, where it can stop being true by
+-- itself ("bags": see status.outcomeKind). Called right after
+-- SetStatusOutcome; a later outcome, activity or clear forgets it.
+function UI.TagStatusOutcome(kind)
+  if status.outcome then status.outcomeKind = kind end
+end
+
 function UI.ClearStatus()
   status.activity, status.activityTone = nil, nil
-  status.outcome, status.outcomeTone = nil, nil
+  status.outcome, status.outcomeTone, status.outcomeKind = nil, nil, nil
   RenderStatus()
+end
+
+-- The domain's bags-full state (Core/MailService.lua, "Bags full") was set,
+-- or has cleared because the bags have room. The buttons count again -- the
+-- mails with items leave their counts while it holds and return when it
+-- clears -- and the status line follows: a run's "Bags full: N left" comes
+-- down with the state, since what it said is no longer so.
+function UI.OnBagsFullChanged()
+  local mail = ns.MailService
+  local full = mail and type(mail.BagsFull) == "function" and mail.BagsFull()
+  if not full and status.outcomeKind == "bags" then
+    status.outcome, status.outcomeTone, status.outcomeKind = nil, nil, nil
+  end
+  local collect = ns.CollectTab
+  if collect and type(collect.RequestRefresh) == "function" then collect.RequestRefresh(CollectPanel()) end
+  UI.UpdateStatusSummary()
 end
 
 -- Recomputes the idle line and repaints. Safe to call from anywhere at any time:
 -- it only ever touches the lowest-priority layer, so it cannot overwrite a run's
 -- activity or its outcome.
 --
--- Says one thing, unconditionally, and only when it is true: some mail in this
--- inbox will not come out. A mail the server refused this visit still counts as
--- to-collect on the segment above, and trying again will not empty it until
--- whatever the game objected to is dealt with -- which is precisely the fact a
--- count cannot carry. Everything healthy renders as nothing at all.
+-- Says two things, each only when it is true: the bags are full and mail with
+-- items is waiting for room ("Bags full: 6 left"), and some mail in this inbox
+-- will not come out ("Stuck: 2"). A mail the server refused this visit still
+-- counts as to-collect on the segment above, and trying again will not empty
+-- it until whatever the game objected to is dealt with -- which is precisely
+-- the fact a count cannot carry. Both count mails, one per inbox index.
+-- Everything healthy renders as nothing at all.
 --
 -- No extra event traffic: this rides the same MAIL_INBOX_UPDATE the counts
 -- already follow, and the domain answers 0 without touching the inbox whenever
--- nothing has been refused.
+-- nothing has been refused and the bags are not full.
 function UI.UpdateStatusSummary()
   AdoptForeignText()
 
   status.summary = nil
   local mail = ns.MailService
   local stuck = (mail and type(mail.StuckCount) == "function" and mail.StuckCount()) or 0
+  local waiting = (mail and type(mail.BagsFull) == "function" and mail.BagsFull()
+    and type(mail.BagsWaiting) == "function" and mail.BagsWaiting()) or 0
+  -- Inline escapes rather than a tone: RenderStatus paints the whole label
+  -- one colour from the layer that won, and this layer has no tone of its own
+  -- to pass. Colouring the text itself keeps the warning with the warning.
+  local theme = ns.Theme
+  local colorize = theme and theme.Colorize
+  if waiting > 0 then
+    local text = LF("STATUS_BAGS_FULL", waiting)
+    if colorize then text = colorize("warning", text) end
+    status.summary = text
+  end
   if stuck > 0 then
-    -- An inline escape rather than a tone: RenderStatus paints the whole label
-    -- one colour from the layer that won, and this layer has no tone of its own
-    -- to pass. Colouring the text itself keeps the warning with the warning.
     local text = LF("STATUS_STUCK", stuck)
-    local theme = ns.Theme
     -- In the accent while it is filtering the inbox: a pressed control, not
     -- a warning, for as long as the list shows only these.
     local panel = CollectPanel()
     local filtering = ns.CollectTab and ns.CollectTab.StuckFilterOn and ns.CollectTab.StuckFilterOn(panel)
-    if theme and theme.Colorize then text = theme.Colorize(filtering and "accent" or "warning", text) end
-    status.summary = text
+    if colorize then text = colorize(filtering and "accent" or "warning", text) end
+    -- After the bags, em dash between: the bags line is the one a player acts
+    -- on first, and it clears by itself.
+    status.summary = status.summary and (status.summary .. " \226\128\148 " .. text) or text
   end
   -- The count is a control only while there is one to click; otherwise the
   -- title bar drags from under it like anywhere else.
@@ -2401,18 +2442,23 @@ local function BuildFrame()
       local text = label and label:GetText() or ""
       if text == "" then return end
 
-      -- Two things worth a tooltip: a truncated line (the full text), and a
-      -- stuck count (WHICH mails, in the same words the row tooltips use).
-      -- The details come from the registry's validated read, so this list and
-      -- the row triangles can never disagree.
+      -- Three things worth a tooltip: a truncated line (the full text), full
+      -- bags (what waits for room, and what brings it back), and a stuck
+      -- count (WHICH mails, one line each, in the same words the row
+      -- tooltips use). The details come from the registry's validated read,
+      -- so this list and the row triangles can never disagree.
       local mail = ns.MailService
       local details = mail and type(mail.StuckDetails) == "function"
         and mail.StuckDetails() or nil
+      local full = mail and type(mail.BagsFull) == "function" and mail.BagsFull()
       local truncated = label.IsTruncated and label:IsTruncated()
-      if not details and not truncated then return end
+      if not details and not full and not truncated then return end
 
       GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
       GameTooltip:SetText(text, 1, 1, 1, 1, true)
+      if full then
+        GameTooltip:AddLine(L("BAGS_FULL_TIP"), 0.75, 0.75, 0.75, true)
+      end
       if details then
         for i = 1, #details do
           local d = details[i]
