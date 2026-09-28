@@ -1849,6 +1849,11 @@ do
     row.Name:SetText(text)
     row.nameText = text
     row.kind = "note"
+    -- The line is all there is to point at, so it carries the tooltip the
+    -- line always had.
+    row.__pbCell = row
+    row:SetScript("OnEnter", ControlEnter)
+    row:SetScript("OnLeave", ControlLeave)
     return row
   end
 
