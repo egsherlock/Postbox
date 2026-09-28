@@ -6072,13 +6072,15 @@ function RV.GroupSpecs(panel)
   return type(specs) == "table" and specs or {}
 end
 
--- stored, available, known -> the grid's entries { {id=, shown=}, ... } and
--- whether the stored list named a button that no longer exists.
+-- stored, available, known [, keep] -> the grid's entries { {id=, shown=},
+-- ... } and whether the stored list named a button that no longer exists.
 -- The stored order first, for the ids that exist; then every id it has never
 -- seen, at the end and shown, in the order `available` gives them. A group's
 -- id can only be judged gone when the groups module answered (`known`);
--- until then it is kept for later rather than forgotten.
-function RV.ReconcileGrid(stored, available, known)
+-- until then it is kept for later rather than forgotten. `keep(id)`, where
+-- given, names an id the grid cannot draw now that is not gone either -- an
+-- empty group's, whose button comes back with its first member.
+function RV.ReconcileGrid(stored, available, known, keep)
   local isAvailable, seen, out = {}, {}, {}
   for i = 1, #available do isAvailable[available[i]] = true end
   local stale = false
@@ -6089,7 +6091,9 @@ function RV.ReconcileGrid(stored, available, known)
       seen[id] = true
       out[#out + 1] = { id = id, shown = entry.shown ~= false }
     elseif id ~= nil and not isAvailable[id] then
-      if known or not (type(id) == "string" and id:sub(1, 6) == "group:") then stale = true end
+      if (known or not (type(id) == "string" and id:sub(1, 6) == "group:")) and not (keep and keep(id)) then
+        stale = true
+      end
     end
   end
   for i = 1, #available do
@@ -6102,7 +6106,9 @@ end
 -- The grid's entries now: the built-ins, the groups' buttons, and the
 -- player's arrangement of them. Kept on the panel for the layout passes a
 -- resize makes; read afresh on every refresh. A button the stored list names
--- that is gone for good is forgotten there too.
+-- that is gone for good is forgotten there too; an empty group's is not
+-- gone (RV.KeepGone), and a deleted group's is forgotten by the deletion
+-- itself (CharacterGroups, CG.Delete), whichever tab is open.
 --
 -- Read afresh, but not rebuilt when nothing it is built from has moved: the
 -- same stored arrangement (MailboxUI hands back the same table while the
@@ -6156,8 +6162,10 @@ function RV.GridEntries(panel)
       and last.entries == panel._gridEntries then
     return last.entries
   end
-  local entries, stale = RV.ReconcileGrid(stored, available, known)
-  if stale and known and UI and UI.SetGridLayout then UI.SetGridLayout(entries) end
+  local groups = ns.CharacterGroups
+  local keep = groups and type(groups.Exists) == "function" and groups.Exists or nil
+  local entries, stale = RV.ReconcileGrid(stored, available, known, keep)
+  if stale and known and UI and UI.SetGridLayout then UI.SetGridLayout(RV.KeepGone(entries)) end
   panel._gridEntries = entries
   last = last or {}
   panel._gridLast = last
@@ -7551,8 +7559,56 @@ end
 -- and the grid laid out from it.
 function RV.StoreGrid(panel, entries)
   local UI = ns.MailboxUI
-  if UI and type(UI.SetGridLayout) == "function" then UI.SetGridLayout(entries) end
+  if UI and type(UI.SetGridLayout) == "function" then UI.SetGridLayout(RV.KeepGone(entries)) end
   panel._gridEntries = entries
+end
+
+-- The arrangement to store for `entries` -- the grid's, which name only the
+-- buttons it can draw now -- with every stored entry the grid does not draw
+-- but must not forget put back after the entry it followed: an empty
+-- group's, whose button comes back where it was, hidden or shown as it
+-- was, when the group has someone in it again. Only a group's deletion
+-- drops its entry (CharacterGroups, CG.Delete). `entries` itself, when
+-- there is nothing to keep.
+function RV.KeepGone(entries)
+  local UI, groups = ns.MailboxUI, ns.CharacterGroups
+  local keep = groups and groups.Exists
+  local stored = UI and type(UI.GetGridLayout) == "function" and UI.GetGridLayout()
+  if type(keep) ~= "function" or type(stored) ~= "table" then return entries end
+  local drawn = RV._drawn or {}
+  RV._drawn = drawn
+  for id in pairs(drawn) do drawn[id] = nil end
+  for i = 1, #entries do drawn[entries[i].id] = true end
+  -- Each kept entry under the drawn one it followed (false: at the front).
+  local after, prev = nil, false
+  for i = 1, #stored do
+    local entry = stored[i]
+    if drawn[entry.id] then
+      prev = entry.id
+    elseif keep(entry.id) then
+      after = after or {}
+      local list = after[prev]
+      if not list then
+        list = {}
+        after[prev] = list
+      end
+      list[#list + 1] = entry
+    end
+  end
+  if not after then return entries end
+  local out = {}
+  local lead = after[false]
+  if lead then
+    for k = 1, #lead do out[#out + 1] = lead[k] end
+  end
+  for i = 1, #entries do
+    out[#out + 1] = entries[i]
+    local list = after[entries[i].id]
+    if list then
+      for k = 1, #list do out[#out + 1] = list[k] end
+    end
+  end
+  return out
 end
 
 function RV.CopyEntries(entries)

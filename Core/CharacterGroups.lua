@@ -310,13 +310,43 @@ function CG.Rename(id, name)
   return true
 end
 
+-- A deleted group's button forgotten by the grid's stored arrangement: its
+-- place and whether it was hidden. Only a deletion drops them -- an empty
+-- group keeps both for when someone is in it again (CollectTab,
+-- RV.KeepGone) -- and it drops them whichever tab is open.
+local function ForgetButton(gridId)
+  local UI = ns.MailboxUI
+  if not (UI and type(UI.GetGridLayout) == "function" and type(UI.SetGridLayout) == "function") then return end
+  local stored = UI.GetGridLayout()
+  local kept, found = {}, false
+  for i = 1, #stored do
+    local entry = stored[i]
+    if entry.id == gridId then
+      found = true
+    else
+      kept[#kept + 1] = { id = entry.id, shown = entry.shown }
+    end
+  end
+  if found then UI.SetGridLayout(kept) end
+end
+
 function CG.Delete(id)
   local root = Data()
   local group, index = Find(id)
   if not (root and group) then return false end
   table.remove(root.list, index)
+  ForgetButton("group:" .. group.id)
   Changed()
   return true
+end
+
+-- Whether a group's button ("group:<id>") still has a group behind it,
+-- empty or not: the grid keeps such a button's place and whether it was
+-- hidden until the group is deleted (CollectTab, RV.KeepGone).
+function CG.Exists(gridId)
+  if type(gridId) ~= "string" then return false end
+  local id = gridId:match("^group:(.+)$")
+  return id ~= nil and Find(id) ~= nil
 end
 
 -- The groups in the order of `ids`; any group the list leaves out keeps its
@@ -623,19 +653,12 @@ function CG.GridButtons()
 end
 
 -- Whether the arrange mode hid a group's button ("group:<id>"): the grid's
--- stored arrangement, read as it stands (`layout`, when the caller has it
--- already). An id it does not name is shown, as the grid places any id it
--- has not seen. Whether the group has a button at all is the caller's to
--- ask first: an empty one has none to hide.
-local function ButtonHidden(gridId, layout)
-  if not layout then
-    local UI = ns.MailboxUI
-    layout = UI and type(UI.GetGridLayout) == "function" and UI.GetGridLayout() or EMPTY
-  end
-  for i = 1, #layout do
-    if layout[i].id == gridId then return layout[i].shown == false end
-  end
-  return false
+-- stored arrangement, read as it stands (MailboxUI.GridIdHidden). Whether
+-- the group has a button at all is the caller's to ask first: an empty one
+-- has none to hide.
+local function ButtonHidden(gridId)
+  local UI = ns.MailboxUI
+  return UI ~= nil and type(UI.GridIdHidden) == "function" and UI.GridIdHidden(gridId) or false
 end
 
 -- A group's hidden button shown again, as the arrange mode shows one: the
@@ -650,8 +673,8 @@ function CG.ShowButton(id)
     return false
   end
   local gridId = "group:" .. tostring(id)
+  if not ButtonHidden(gridId) then return false end
   local stored = UI.GetGridLayout()
-  if not ButtonHidden(gridId, stored) then return false end
   local entries = {}
   for i = 1, #stored do
     local entry = stored[i]
@@ -681,7 +704,9 @@ end
 -- arrange mode hid the button (a click shows it again), and a quiet note
 -- while nobody is in the group, which has no button yet. The list follows
 -- both while it is open: every change to the groups repaints it, and so does
--- the grid's arrangement moving under it.
+-- the grid's arrangement moving under it. While the Mail tab's category
+-- buttons are off, one quiet line under the panes says that no group has a
+-- button until they are on again.
 -------------------------------------------------------------
 
 local EDITOR_W, EDITOR_H = 480, 430
@@ -946,13 +971,22 @@ local function FitNote(row, room)
   return math.min(T.TextWidth(row.Note), most)
 end
 
+-- Whether the Mail tab's category buttons are off, so no group has one.
+local function ButtonsOff()
+  local UI = ns.MailboxUI
+  return UI ~= nil and type(UI.GetOption) == "function" and not UI.GetOption("showCategoryButtons")
+end
+
 function PaintGroupRows(frame)
   local T = ns.Theme
   local list = CG.List()
   local UI = ns.MailboxUI
   local layout = UI and type(UI.GetGridLayout) == "function" and UI.GetGridLayout() or EMPTY
-  -- The arrangement these marks were read from, for FollowEditor.
+  -- The arrangement these marks were read from, and whether the buttons
+  -- were on, for FollowEditor.
   frame._gridSeen = layout
+  frame._buttonsOff = ButtonsOff()
+  frame.ButtonsOff:SetShown(frame._buttonsOff)
   local room = (frame.GroupList:GetWidth() or LIST_W) - 2 - (6 + GRIP_W + 6) - 6
   for i = 1, #list do
     local group = list[i]
@@ -975,7 +1009,7 @@ function PaintGroupRows(frame)
     -- a grey quieter for each step away from the grid, and only the two
     -- exceptions carry a mark, which takes its room from the name's end.
     local empty = #group.members == 0
-    local hidden = not empty and ButtonHidden(row.gridId, layout)
+    local hidden = not empty and ButtonHidden(row.gridId)
     local width = room
     if hidden then
       width = room - (row.Eye.Glyph and row.Eye.Glyph:GetWidth() or 0) - 6
@@ -995,14 +1029,15 @@ end
 -- The list again, while the window is open: `always` after a change to the
 -- groups, else only when the grid's arrangement is no longer the one its
 -- marks were read from (MailboxUI hands back the same table for as long as
--- the stored arrangement is the same).
+-- the stored arrangement is the same), or the category buttons were turned
+-- on or off since.
 function FollowEditor(always)
   local frame = CG._editor
   if not (frame and frame:IsShown()) then return end
   if not always then
     local UI = ns.MailboxUI
     local layout = UI and type(UI.GetGridLayout) == "function" and UI.GetGridLayout() or EMPTY
-    if layout == frame._gridSeen then return end
+    if layout == frame._gridSeen and ButtonsOff() == frame._buttonsOff then return end
   end
   PaintGroupRows(frame)
 end
@@ -1313,6 +1348,7 @@ function Paint(frame)
   if empty then
     frame.selected = nil
     for i = 1, #frame.GroupRows do frame.GroupRows[i]:Hide() end
+    frame.ButtonsOff:Hide()
     return
   end
   if not Find(frame.selected) then frame.selected = list[1].id end
@@ -1491,6 +1527,20 @@ local function Build()
   T.SizeToText(delete, { minWidth = 96, height = BUTTON_H })
   delete:SetScript("OnClick", function() DeleteSelected(frame) end)
   parts[#parts + 1] = delete
+
+  -- While the category buttons are off no group has a button, whatever its
+  -- row says: said once, quietly, between the two buttons under the panes
+  -- (PaintGroupRows), on two lines where a language runs long.
+  local off = T.CreateText(frame, "secondary")
+  off:SetPoint("LEFT", new, "RIGHT", M.gap, 0)
+  off:SetPoint("RIGHT", delete, "LEFT", -M.gap, 0)
+  off:SetJustifyH("CENTER")
+  off:SetWordWrap(true)
+  if off.SetMaxLines then off:SetMaxLines(2) end
+  T.SetColor(off, "textDisabled")
+  off:SetText(L["GROUPS_BUTTONS_OFF"])
+  off:Hide()
+  frame.ButtonsOff = off
 
   -- No groups yet: what they are, in one sentence, and the one way to start.
   local emptyState = CreateFrame("Frame", nil, frame)

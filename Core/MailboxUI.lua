@@ -838,6 +838,17 @@ function UI.GetGridLayout()
   return out
 end
 
+-- Whether the arrangement hides the category button `id` ("bought",
+-- "group:<key>"...): its stored entry says so. An id it does not name is
+-- shown, as the grid places any id it has not seen.
+function UI.GridIdHidden(id)
+  local layout = UI.GetGridLayout()
+  for i = 1, #layout do
+    if layout[i].id == id then return layout[i].shown == false end
+  end
+  return false
+end
+
 -- list: { {id=, shown=}, ... }, or nil to forget the arrangement.
 function UI.SetGridLayout(list)
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
