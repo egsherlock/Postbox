@@ -5924,7 +5924,6 @@ end
 function RV.GridTip(panel, button)
   local arranging = panel._gridArranging
   local spec = panel._gridSpecs[button.gridId]
-  local primary = (button == panel._gridButtons[1])
   local plain = not (spec and type(spec.tooltip) == "function") and not button.tip
   if plain and not button.__pbOverflowText and not arranging then return end
   GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
@@ -5945,8 +5944,10 @@ function RV.GridTip(panel, button)
   else
     GameTooltip:SetText(button.caption or "")
   end
-  if arranging then
-    GameTooltip:AddLine(L()[primary and "GRID_PRIMARY_FIXED" or "GRID_ARRANGE_TIP"], 0.7, 0.7, 0.7, true)
+  -- The primary is under the All mail block's card while arranging, which
+  -- says its own.
+  if arranging and button ~= panel._gridButtons[1] then
+    GameTooltip:AddLine(L()["GRID_ARRANGE_TIP"], 0.7, 0.7, 0.7, true)
   end
   GameTooltip:Show()
 end
@@ -6129,17 +6130,22 @@ end
 -- While arranging, every block is a card (Core/Arrange.lua, "Lift"),
 -- rising a unit and ringed in white when pointed at. The grid sits in a
 -- tray, a card of its own four units out on every side, which is what
--- takes it; its buttons are smaller cards on it, each with its eye. The
--- grid's own eye is the "Show category buttons" option itself: a click on
--- the tray hides the grid, and while it is hidden a folded placeholder
--- stands in its slot, so it can still be moved, or brought back with a
--- click. Outside the mode the option works as it always has, and a hidden
--- grid simply is not there. The cards are made the first time the mode
--- opens, and the whole of it costs one comparison per layout while the
--- mode is shut.
+-- takes it; its buttons are smaller cards on it, each with its eye. A click
+-- on a block's card, or on the tray, selects the block, and the arrange
+-- mode's inspector shows its card: Move up and down, and for the grid its
+-- own eye, which is the "Show category buttons" option itself. While the
+-- option hides the grid a folded placeholder stands in its slot, so it can
+-- still be moved, or brought back with a click. Outside the mode the
+-- option works as it always has, and a hidden grid simply is not there.
+-- The cards are made the first time the mode opens, and the whole of it
+-- costs one comparison per layout while the mode is shut.
 -------------------------------------------------------------
 
 RV.STACK_IDS = { "band", "all", "grid" }
+-- What each block is, in its card in the arrange mode's inspector.
+RV.BLOCK_TEXT = {
+  band = "ARRANGE_BLOCK_TOTALS_DESC", all = "ARRANGE_BLOCK_ALL_DESC", grid = "ARRANGE_BLOCK_GRID_DESC",
+}
 RV.TRAY_PAD = 4
 RV.FOLD_HEIGHT = 22
 -- A sweep's eye, in from its right edge, and the room its caption keeps
@@ -6352,10 +6358,13 @@ function RV.PaintStackCard(panel, card)
   local A = ns.Arrange
   if not (A and A.PaintCard) then return end
   local id, drag = card.stackId, panel._stackDrag
+  local over = panel._stackHover == id
   local state = "rest"
   if drag and drag.id == id then
     state = "hand"
-  elseif panel._stackHover == id then
+  elseif A.Selected and A.Selected("block", id) then
+    state = over and "selHover" or "sel"
+  elseif over then
     state = "hover"
   end
   A.PaintCard(card, state)
@@ -6363,6 +6372,15 @@ function RV.PaintStackCard(panel, card)
     local token = (state == "rest") and "textDisabled" or "textSecondary"
     Th().SetColor(card.Text, token)
     if card.Eye then Th().SetColor(card.Eye, token) end
+  end
+end
+
+-- Every card on screen painted again: the selection moved.
+function RV.PaintStackCards(panel)
+  local cards = panel._stackCards
+  if not (cards and panel._gridArranging) then return end
+  for _, card in pairs(cards) do
+    if card:IsShown() then RV.PaintStackCard(panel, card) end
   end
 end
 
@@ -6374,21 +6392,22 @@ function RV.SlotName(panel)
   return Labels().all or "all"
 end
 
+-- A block's name, for its tooltip and its card in the inspector.
+function RV.BlockName(panel, id)
+  if id == "band" then return L()["ARRANGE_BLOCK_TOTALS"] end
+  if id == "grid" then return L()["ARRANGE_BLOCK_GRID"] end
+  return RV.SlotName(panel)
+end
+
 function RV.StackTip(panel, card)
   local id = card.stackId
   GameTooltip:SetOwner(card, "ANCHOR_CURSOR")
-  if id == "band" then
-    GameTooltip:SetText(L()["ARRANGE_BLOCK_TOTALS"])
-  elseif id == "grid" then
-    GameTooltip:SetText(L()["ARRANGE_BLOCK_GRID"])
-  else
-    GameTooltip:SetText(RV.SlotName(panel))
-  end
+  GameTooltip:SetText(RV.BlockName(panel, id))
   GameTooltip:AddLine(L()["ARRANGE_BLOCK_TIP"], 1, 1, 1, true)
-  if id == "grid" then
-    local folded = panel._stack and panel._stack.folded
-    GameTooltip:AddLine(L()[folded and "ARRANGE_GRID_SHOW_TIP" or "ARRANGE_GRID_HIDE_TIP"], 0.7, 0.7, 0.7, true)
-  end
+  -- A click selects the block for the inspector; the grid's placeholder's
+  -- brings the grid back.
+  local folded = id == "grid" and panel._stack and panel._stack.folded
+  GameTooltip:AddLine(L()[folded and "ARRANGE_GRID_SHOW_TIP" or "ARRANGE_CLICK_TIP"], 0.7, 0.7, 0.7, true)
   GameTooltip:Show()
 end
 
@@ -6432,6 +6451,7 @@ function RV.StackPress(panel, id, card)
   local A = ns.Arrange
   if not (A and A.Press) then return end
   A.Press(card, {
+    name = RV.BlockName(panel, id),
     start = function(_, y0) RV.StackStart(panel, id, y0) end,
     move = function(_, y) RV.StackDrag(panel, y) end,
     drop = function() RV.StackDrop(panel) end,
@@ -6447,12 +6467,18 @@ function RV.StackCancel(panel)
   RV.StackDrop(panel)
 end
 
--- A click on a block: the grid's is its eye -- the tray hides the category
--- buttons, the placeholder shows them again. The others' clicks do nothing
--- yet.
+-- A click on a block selects it, and the inspector shows its card; a
+-- second click lets it go. A click anywhere on the grid's tray, the gaps
+-- between its buttons included, selects the grid and moves nothing. The
+-- placeholder, while the option hides the grid, brings the grid back.
 function RV.StackClick(panel, id)
-  if id ~= "grid" or not panel._gridArranging then return end
-  RV.SetGridShown(panel, panel._stack and panel._stack.folded)
+  if not panel._gridArranging then return end
+  if id == "grid" and panel._stack and panel._stack.folded then
+    RV.SetGridShown(panel, true)
+    return
+  end
+  local A = ns.Arrange
+  if A and A.Select then A.Select("block", id) end
 end
 
 -- The grid's eye: the "Show category buttons" option itself, and the
@@ -6473,6 +6499,34 @@ function RV.SetGridShown(panel, show)
     PlaySound(show and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
   end
   RV.Rehover(panel)
+end
+
+-- Move up (-1) or down (1) from the inspector: the block changes places
+-- with the next one the view has that way, as a drag past it would.
+function RV.MoveBlock(panel, id, step)
+  local UI = ns.MailboxUI
+  if not (panel._stack and UI and type(UI.SetStackOrder) == "function") then return end
+  local order = RV.StackOrder()
+  local k
+  for i = 1, #order do
+    if order[i] == id then k = i break end
+  end
+  if not k then return end
+  local _, j = RV.StackNeighbour(panel, order, k, step)
+  if not j then return end
+  local moved = { order[1], order[2], order[3] }
+  moved[k], moved[j] = moved[j], moved[k]
+  UI.SetStackOrder(moved)
+  CT.RefreshCategoryButtons(panel)
+end
+
+function RV.CanMoveBlock(panel, id, step)
+  if not panel._stack then return false end
+  local order = RV.StackOrder()
+  for i = 1, #order do
+    if order[i] == id then return RV.StackNeighbour(panel, order, i, step) ~= nil end
+  end
+  return false
 end
 
 function RV.StackStart(panel, id, y0)
@@ -6687,7 +6741,8 @@ function CT.RefreshCategoryButtons(panel)
       UI.RefreshCollectFloor()
     end
   end
-  -- While arranging, the inspector says what is hidden under the list now.
+  -- While arranging, the inspector says what the blocks and the buttons are
+  -- now: their order, what is hidden, the view's own block names.
   if panel._gridArranging then
     local A = ns.Arrange
     if A and A.Inspect then A.Inspect() end
@@ -7096,7 +7151,7 @@ function CT.ArrangeHost(panel)
     RV.RiseStack(panel)
   end
   -- The inspector docks beside the Postbox window, level with this tab's
-  -- top row, and lists what is hidden under the list (Arrange.lua,
+  -- top row, and answers for the blocks under the list (Arrange.lua,
   -- section 9).
   function host.Dock()
     local UI = ns.MailboxUI
@@ -7105,6 +7160,21 @@ function CT.ArrangeHost(panel)
   function host.DockTop() return panel.ViewToggle end
   function host.ListHidden(put) RV.ListHidden(panel, put) end
   function host.ShowHidden(kind, key) RV.ShowHidden(panel, kind, key) end
+  function host.BlockPresent(id) return panel._stack ~= nil and panel._stack.y[id] ~= nil end
+  function host.BlockName(id) return RV.BlockName(panel, id) end
+  function host.BlockText(id) return L()[RV.BLOCK_TEXT[id] or "ARRANGE_BLOCK_ALL_DESC"] end
+  function host.BlockNote(id) return id == "grid" and L()["ARRANGE_GRID_FOLD_NOTE"] or nil end
+  function host.BlockShown(id)
+    if id == "grid" then return ShowCategoryButtons() end
+    return nil
+  end
+  function host.SetBlockShown(id, on)
+    if id == "grid" then RV.SetGridShown(panel, on) end
+  end
+  function host.CanMoveBlock(id, step) return RV.CanMoveBlock(panel, id, step) end
+  function host.MoveBlock(id, step) RV.MoveBlock(panel, id, step) end
+  function host.StackOrder() return RV.StackOrder() end
+  function host.PaintBlocks() RV.PaintStackCards(panel) end
   panel._arrangeHost = host
   return host
 end
