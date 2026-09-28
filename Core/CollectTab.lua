@@ -6098,12 +6098,14 @@ local function LayoutGrid(panel)
       local n = RV.GridCount(panel, entries[i].id)
       local caption = button.caption
       if withCounts and n > 0 then caption = caption .. " (" .. FormatCount(n) .. ")" end
+      local room = button:GetWidth() - M.gap
       if arranging then
         button:SetEnabled(not button.hiddenInGrid)
+        room = button:GetWidth() - 2 * RV.EYE_ROOM
       else
         button:SetEnabled(n > 0)
       end
-      T.FitText(button:GetFontString(), button:GetWidth() - M.gap, caption, button)
+      T.FitText(button:GetFontString(), room, caption, button)
     end
   end
   RV.PaintGridHandles(panel)
@@ -6131,13 +6133,24 @@ end
 -- While arranging, every block is a card (Core/Arrange.lua, "Lift"),
 -- rising a unit and ringed in white when pointed at. The grid sits in a
 -- tray, a card of its own four units out on every side, which is what
--- takes it; its buttons are smaller cards on it. The cards are made the
--- first time the mode opens, and the whole of it costs one comparison per
--- layout while the mode is shut.
+-- takes it; its buttons are smaller cards on it, each with its eye. The
+-- grid's own eye is the "Show category buttons" option itself: a click on
+-- the tray hides the grid, and while it is hidden a folded placeholder
+-- stands in its slot, so it can still be moved, or brought back with a
+-- click. Outside the mode the option works as it always has, and a hidden
+-- grid simply is not there. The cards are made the first time the mode
+-- opens, and the whole of it costs one comparison per layout while the
+-- mode is shut.
 -------------------------------------------------------------
 
 RV.STACK_IDS = { "band", "all", "grid" }
 RV.TRAY_PAD = 4
+RV.FOLD_HEIGHT = 22
+-- A sweep's eye, in from its right edge, and the room its caption keeps
+-- clear of it on both sides while arranging, so a centred caption never
+-- runs under it.
+RV.EYE_RIGHT = 13
+RV.EYE_ROOM = 22
 
 -- The order, top down: the player's, or the default when there is no
 -- settings module to ask. Shared; never written to.
@@ -6162,9 +6175,15 @@ function RV.StackBlocks(panel)
   h.band = M.controlHeight
   h.all = (away or view == VIEW_HISTORY) and GRID_BUTTON_HEIGHT or GRID_PRIMARY_HEIGHT
   h.grid = nil
+  s.folded = false
   if not away and view == VIEW_COLLECT then
     local rows = RV.GridRows(panel)
-    if rows > 0 then h.grid = rows * GRID_BUTTON_HEIGHT + (rows - 1) * M.gap end
+    if rows > 0 then
+      h.grid = rows * GRID_BUTTON_HEIGHT + (rows - 1) * M.gap
+    elseif panel._gridArranging and not ShowCategoryButtons() then
+      h.grid = RV.FOLD_HEIGHT
+      s.folded = true
+    end
   end
   y.band, y.all, y.grid = nil, nil, nil
   local order, top = RV.StackOrder(), 0
@@ -6281,10 +6300,17 @@ function RV.PlaceCards(panel)
   local s, ids = panel._stack, RV.STACK_IDS
   for i = 1, #ids do
     local id = ids[i]
-    local card = cards[id]
+    local key = id
+    if id == "grid" then
+      -- The tray, or the placeholder while the option hides the grid.
+      key = s.folded and "fold" or "grid"
+      local other = cards[s.folded and "grid" or "fold"]
+      if other then other:Hide() end
+    end
+    local card = cards[key]
     if s.y[id] then
-      card = card or RV.NewStackCard(panel, id)
-      local pad = (id == "grid") and RV.TRAY_PAD or 0
+      card = card or RV.NewStackCard(panel, key)
+      local pad = (key == "grid") and RV.TRAY_PAD or 0
       local top = RV.StackY(panel, id) - pad
       card:SetPoint("TOPLEFT", panel.Footer, "TOPLEFT", -pad, -top)
       card:SetPoint("TOPRIGHT", panel.Footer, "TOPRIGHT", pad, -top)
@@ -6302,17 +6328,27 @@ end
 -- mouse, so nothing there collects or deletes while arranging; the tray
 -- stands under the sweeps, whose own cards take the mouse over them, and
 -- takes it in the gaps and at its rim.
-function RV.NewStackCard(panel, id)
-  local A = ns.Arrange
-  local card = A.NewCard(panel.Footer, id == "grid" and "tray" or "block")
-  card.stackId, card.panel = id, panel
+function RV.NewStackCard(panel, key)
+  local A, T = ns.Arrange, Th()
+  local kind = (key == "grid" and "tray") or (key == "fold" and "fold") or "block"
+  local card = A.NewCard(panel.Footer, kind)
+  card.stackId, card.panel = (key == "fold") and "grid" or key, panel
   local base = panel.Footer:GetFrameLevel()
-  card:SetFrameLevel(id == "grid" and base or base + 8)
+  card:SetFrameLevel(key == "grid" and base or base + 8)
   card:EnableMouse(true)
   card:SetScript("OnEnter", RV.StackCardEnter)
   card:SetScript("OnLeave", RV.StackCardLeave)
   card:SetScript("OnMouseDown", RV.StackCardDown)
-  panel._stackCards[id] = card
+  if key == "fold" then
+    -- A crossed eye and the grid's name, together in the middle.
+    card.Text = T.CreateText(card, "secondary", "OVERLAY")
+    card.Text:SetWordWrap(false)
+    card.Text:SetText(L()["ARRANGE_BLOCK_GRID"])
+    card.Text:SetPoint("CENTER", card, "CENTER", 9, 0)
+    card.Eye = T.Glyph and T.Glyph(card, "eye-off", 8, "OVERLAY") or nil
+    if card.Eye then card.Eye:SetPoint("RIGHT", card.Text, "LEFT", -6, 0) end
+  end
+  panel._stackCards[key] = card
   return card
 end
 
@@ -6327,6 +6363,11 @@ function RV.PaintStackCard(panel, card)
     state = "hover"
   end
   A.PaintCard(card, state)
+  if card.Text then
+    local token = (state == "rest") and "textDisabled" or "textSecondary"
+    Th().SetColor(card.Text, token)
+    if card.Eye then Th().SetColor(card.Eye, token) end
+  end
 end
 
 -- What the primary's slot holds, in words, for its card's tooltip.
@@ -6348,6 +6389,10 @@ function RV.StackTip(panel, card)
     GameTooltip:SetText(RV.SlotName(panel))
   end
   GameTooltip:AddLine(L()["ARRANGE_BLOCK_TIP"], 1, 1, 1, true)
+  if id == "grid" then
+    local folded = panel._stack and panel._stack.folded
+    GameTooltip:AddLine(L()[folded and "ARRANGE_GRID_SHOW_TIP" or "ARRANGE_GRID_HIDE_TIP"], 0.7, 0.7, 0.7, true)
+  end
   GameTooltip:Show()
 end
 
@@ -6395,7 +6440,31 @@ function RV.StackPress(panel, id, card)
     start = function(_, y0) RV.StackStart(panel, id, y0) end,
     move = function(_, y) RV.StackDrag(panel, y) end,
     drop = function() RV.StackDrop(panel) end,
+    click = function() RV.StackClick(panel, id) end,
   })
+end
+
+-- A click on a block: the grid's is its eye -- the tray hides the category
+-- buttons, the placeholder shows them again -- through the option itself,
+-- and the window's floor follows it as it follows the option. The others'
+-- clicks do nothing yet.
+function RV.StackClick(panel, id)
+  if id ~= "grid" or not panel._gridArranging then return end
+  local UI = ns.MailboxUI
+  if not (UI and type(UI.SetOption) == "function") then return end
+  local show = panel._stack and panel._stack.folded and true or false
+  GameTooltip:Hide()
+  panel._stackHover = nil
+  UI.SetOption("showCategoryButtons", show)
+  if type(UI.RefreshCollectCategoryButtons) == "function" then
+    UI.RefreshCollectCategoryButtons()
+  else
+    CT.RefreshCategoryButtons(panel)
+  end
+  if type(SOUNDKIT) == "table" and type(PlaySound) == "function" then
+    PlaySound(show and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+  end
+  RV.Rehover(panel)
 end
 
 function RV.StackStart(panel, id, y0)
@@ -6547,6 +6616,9 @@ function RV.StackRaise(panel, id, on)
   elseif id == "all" then
     RV.LiftLevel(panel, panel._gridButtons and panel._gridButtons[1], base + 20)
     RV.LiftLevel(panel, panel.DoneFooter, base + 20)
+  elseif id == "grid" and panel._stack.folded then
+    RV.LiftLevel(panel, cards and cards.fold, base + 25)
+    return
   elseif id == "grid" then
     local placed, byId, handles = panel._gridPlaced, panel._gridById, panel._gridHandles
     for gridId in pairs(placed) do
@@ -6568,7 +6640,7 @@ function RV.RiseStack(panel)
   local order, k = RV.StackOrder(), 0
   for i = 1, #order do
     local id = order[i]
-    local card = cards[id]
+    local card = (id == "grid" and s.folded) and cards.fold or cards[id]
     if s.y[id] and card and card:IsShown() then
       A.Rise(card, k * 0.09)
       if id == "grid" and panel._gridHandles then
@@ -6659,10 +6731,10 @@ end
 -- The category grid :: arranged
 --
 -- While the arrange mode is open over the tab (Core/Arrange.lua) every sweep
--- shows, the hidden ones dimmed and struck through, and each wears a small
--- card over it (Arrange.lua's "Lift") that takes the mouse instead of the
--- button: a drag moves the button through the grid, its cell ringed where
--- it will land, the others stepping aside; a click hides or shows it.
+-- shows, the hidden ones dimmed with their eye crossed, and each wears a
+-- small card over it (Arrange.lua's "Lift") that takes the mouse instead of
+-- the button: a drag moves the button through the grid, its cell ringed
+-- where it will land, the others stepping aside; a click hides or shows it.
 -- Pointed at, a card rises a unit and its ring goes white. Nothing collects
 -- while this is open: the primary's slot is under a card of its own (the
 -- blocks under the list).
@@ -6681,13 +6753,14 @@ function RV.GridHandle(panel, button)
   handle:SetAllPoints(button)
   handle:EnableMouse(true)
   handle.button, handle.panel = button, panel
-  handle.Strike = handle:CreateTexture(nil, "OVERLAY")
-  handle.Strike:SetTexture(WHITE)
-  handle.Strike:SetHeight(1)
-  handle.Strike:SetPoint("LEFT", handle, "LEFT", 8, 0)
-  handle.Strike:SetPoint("RIGHT", handle, "RIGHT", -8, 0)
-  Th().SetColor(handle.Strike, "textSecondary")
-  handle.Strike:Hide()
+  -- Its eye, open while the button shows and crossed while it is hidden.
+  local T = Th()
+  if T.Glyph then
+    handle.Eye = T.Glyph(handle, "eye", 8, "OVERLAY")
+    handle.EyeOff = T.Glyph(handle, "eye-off", 8, "OVERLAY")
+    if handle.Eye then handle.Eye:SetPoint("CENTER", handle, "RIGHT", -RV.EYE_RIGHT, 0) end
+    if handle.EyeOff then handle.EyeOff:SetPoint("CENTER", handle, "RIGHT", -RV.EYE_RIGHT, 0) end
+  end
   handle:SetScript("OnEnter", RV.HandleEnter)
   handle:SetScript("OnLeave", RV.HandleLeave)
   handle:SetScript("OnMouseDown", RV.HandleDown)
@@ -6712,6 +6785,16 @@ function RV.PaintGridHandle(panel, handle)
     state = "hover"
   end
   A.PaintCard(handle, state)
+  local hidden, T = button.hiddenInGrid and true or false, Th()
+  local token = (over or state == "hand") and "textSecondary" or "textDisabled"
+  if handle.Eye then
+    handle.Eye:SetShown(not hidden)
+    T.SetColor(handle.Eye, token)
+  end
+  if handle.EyeOff then
+    handle.EyeOff:SetShown(hidden)
+    T.SetColor(handle.EyeOff, token)
+  end
 end
 
 -- Pointed at: the sweep rises a unit, its ring goes white, the pointer is
@@ -6778,7 +6861,6 @@ function RV.PaintGridHandles(panel)
       local handle = RV.GridHandle(panel, button)
       local drag = panel._gridDrag
       if not (drag and drag.button == button) then handle:SetFrameLevel(button:GetFrameLevel() + 5) end
-      handle.Strike:SetShown(button.hiddenInGrid and true or false)
       RV.PaintGridHandle(panel, handle)
       handle:Show()
     elseif panel._gridHandles and panel._gridHandles[button] then

@@ -55,12 +55,16 @@ AR.COLUMNS = {
   slots   = { title = "OPT_ROW_SLOTS",  desc = "OPT_ROW_SLOTS_DESC" },
 }
 
--- The chips' geometry: a grip, the caption or glyph, and air either side.
--- Tight on purpose: seven chips fit the Mail tab at its narrowest in German,
--- and Mail Memory's window widens for them while it arranges.
+-- The chips' geometry: the caption or glyph with air either side, and, on a
+-- hidden column's chip, its crossed eye before them. The whole chip is the
+-- handle: it wears no grip. Tight on purpose: seven chips fit the Mail tab
+-- at its narrowest in German, and Mail Memory's window widens for them
+-- while it arranges.
 local CHIP_GAP = 3
-local CHIP_LEAD = 13   -- the grip (four in, six wide) and the space after it
+local CHIP_LEAD = 6
 local CHIP_TAIL = 6
+local CHIP_EYE = 12    -- the crossed eye's width, and the space after it
+local CHIP_EYE_GAP = 4
 local GLYPH = 14
 
 -- The cog key (section 4): the cog's size at rest; lit, a check and Done on
@@ -164,10 +168,18 @@ function AR.Reset()
   if ui.SetExpiryWhen then ui.SetExpiryWhen("3") end
   if ui.SetGridLayout then ui.SetGridLayout(nil) end
   if ui.SetStackOrder then ui.SetStackOrder(nil) end
+  -- The grid hidden in the mode is the "Show category buttons" option, so
+  -- it comes back with the rest, and the window's floor with it.
+  local gridBack = ui.GetOption and ui.SetOption and not ui.GetOption("showCategoryButtons")
+  if gridBack then ui.SetOption("showCategoryButtons", true) end
   if AR._pop then AR._pop:Hide() end
   if AR.host then AR.LayoutStrip(AR.host) end
   AR.RowsChanged(true)
-  AR.GridChanged()
+  if gridBack and ui.RefreshCollectCategoryButtons then
+    ui.RefreshCollectCategoryButtons()
+  else
+    AR.GridChanged()
+  end
 end
 
 -- The reset is asked for first: one StaticPopup, its key added on first use
@@ -294,10 +306,11 @@ end
 -- 3. Parts
 -------------------------------------------------------------
 
--- The grip: two columns of three dots, the sign for "this moves". Every chip
--- wears it. Round where the dots are big enough for a mask to show. Kept
--- whole for a caller outside this file that asks for it where the glyph art
--- is missing (the options panel's mark).
+-- The grip: two columns of three dots, the sign for "this moves" the title
+-- bar and the chips wore before the layout mark and the eyes. Round where
+-- the dots are big enough for a mask to show. Kept whole for a caller that
+-- asks for it where the glyph art is missing (the key below, and the
+-- options panel's mark).
 function AR.Grip(parent, dot, step)
   local holder = CreateFrame("Frame", nil, parent)
   holder:SetSize(2 * dot + step, 3 * dot + 2 * step)
@@ -318,19 +331,6 @@ function AR.Grip(parent, dot, step)
     end
   end
   return holder
-end
-
-function AR.TintGrip(grip, token, accent)
-  local T = Th()
-  for i = 1, #grip.dots do
-    local dot = grip.dots[i]
-    if accent then
-      local r, g, b = T.GetAccent()
-      dot:SetVertexColor(r, g, b, 1)
-    else
-      T.SetColor(dot, token)
-    end
-  end
 end
 
 -- Where a dragged chip or button will land: its slot, ringed and washed in
@@ -848,11 +848,11 @@ end
 -------------------------------------------------------------
 -- 7. The strip
 --
--- A row of chips, one per column, in the row's order: a grip and the
--- column's name (or, for the read mark and the icon, what the column draws).
--- The subject's chip stretches across what the others leave, as the subject
--- does in the row, so the strip reads as the row it arranges. A hidden
--- column's chip keeps its place, struck through and greyed: showing it again
+-- A row of chips, one per column, in the row's order: the column's name (or,
+-- for the read mark and the icon, what the column draws). The subject's chip
+-- stretches across what the others leave, as the subject does in the row,
+-- so the strip reads as the row it arranges. A hidden column's chip keeps
+-- its place, greyed, with a crossed eye before its name: showing it again
 -- puts it back where it was.
 -------------------------------------------------------------
 
@@ -865,9 +865,33 @@ local function ChipTip(chip)
   GameTooltip:Show()
 end
 
--- The chip's look after every repaint the plate makes of itself: selected
--- while in the hand or while its card is open; struck and greyed while its
+-- Where a chip's name or glyph starts: past the crossed eye while its
 -- column is hidden.
+local function ChipLead(chip)
+  return chip.hidden and (CHIP_LEAD + CHIP_EYE + CHIP_EYE_GAP) or CHIP_LEAD
+end
+
+-- The name or glyph at the chip's lead, and the crossed eye before it.
+local function PlaceChipContent(chip)
+  local lead = ChipLead(chip)
+  if chip.lead == lead then return end
+  chip.lead = lead
+  if chip.Glyph then
+    chip.Glyph:ClearAllPoints()
+    if chip.glyphKind == "dot" then
+      chip.Glyph:SetPoint("CENTER", chip, "LEFT", lead + GLYPH / 2, 0)
+    else
+      chip.Glyph:SetPoint("LEFT", chip, "LEFT", lead, 0)
+    end
+  elseif chip.Text then
+    chip.Text:ClearAllPoints()
+    chip.Text:SetPoint("LEFT", chip, "LEFT", lead, 0)
+  end
+end
+
+-- The chip's look after every repaint the plate makes of itself: selected
+-- while in the hand or while its card is open; greyed, with its eye
+-- crossed, while its column is hidden.
 function AR.PaintChip(chip)
   local T = Th()
   local pop = AR._pop
@@ -884,9 +908,10 @@ function AR.PaintChip(chip)
       chip.Glyph:SetAlpha(hidden and 0.55 or 1)
     end
   end
-  chip.Strike:SetShown(hidden and true or false)
-  local lit = selected or chip.__pbHover
-  AR.TintGrip(chip.grip, lit and "textPrimary" or "textSecondary")
+  if chip.EyeOff then
+    chip.EyeOff:SetShown(hidden and true or false)
+    T.SetColor(chip.EyeOff, (selected or chip.__pbHover) and "textSecondary" or "textDisabled")
+  end
 end
 
 local function BuildChip(strip, host, id)
@@ -895,9 +920,6 @@ local function BuildChip(strip, host, id)
   local chip = T.CreatePlate(strip, "tile")
   chip.colId = id
   chip:SetHeight(T.Metrics.tileHeight)
-
-  chip.grip = AR.Grip(chip, 2, 2)
-  chip.grip:SetPoint("LEFT", chip, "LEFT", 4, 0)
 
   if spec.glyph then
     chip:SetText("")
@@ -914,30 +936,25 @@ local function BuildChip(strip, host, id)
         chip.Glyph:AddMaskTexture(mask)
       end
       chip.glyphW = GLYPH
-      chip.Glyph:SetPoint("CENTER", chip, "LEFT", CHIP_LEAD + GLYPH / 2, 0)
     else
       chip.Glyph:SetSize(GLYPH, GLYPH)
       chip.Glyph:SetTexture(ICON_SAMPLE)
       chip.Glyph:SetTexCoord(0.08, 0.92, 0.08, 0.92)
       chip.glyphW = GLYPH
-      chip.Glyph:SetPoint("LEFT", chip, "LEFT", CHIP_LEAD, 0)
     end
   else
     chip.caption = L()[spec.title]
     chip:SetText(chip.caption)
-    chip.Text:ClearAllPoints()
-    chip.Text:SetPoint("LEFT", chip, "LEFT", CHIP_LEAD, 0)
     chip.Text:SetJustifyH("LEFT")
   end
+  PlaceChipContent(chip)
 
-  -- Struck through while the column is hidden.
-  chip.Strike = chip:CreateTexture(nil, "OVERLAY", nil, 2)
-  chip.Strike:SetTexture(WHITE)
-  chip.Strike:SetHeight(1)
-  chip.Strike:SetPoint("LEFT", chip, "LEFT", CHIP_LEAD - 2, 0)
-  chip.Strike:SetPoint("RIGHT", chip, "RIGHT", -(CHIP_TAIL - 2), 0)
-  T.SetColor(chip.Strike, "textSecondary")
-  chip.Strike:Hide()
+  -- Crossed while the column is hidden, before its name or glyph.
+  chip.EyeOff = T.Glyph and T.Glyph(chip, "eye-off", 8, "OVERLAY") or nil
+  if chip.EyeOff then
+    chip.EyeOff:SetPoint("CENTER", chip, "LEFT", CHIP_LEAD + CHIP_EYE / 2, 0)
+    chip.EyeOff:Hide()
+  end
 
   -- After the plate's own hover repaint, so the hidden look survives it.
   chip:HookScript("OnEnter", function(self)
@@ -979,12 +996,13 @@ function AR.BuildStrip(host)
   return strip
 end
 
--- A chip's width with nothing cut: the grip, the name or glyph, and air.
+-- A chip's width with nothing cut: the eye if its column is hidden, the
+-- name or glyph, and air.
 local function Natural(chip)
-  if chip.Glyph then return CHIP_LEAD + chip.glyphW + CHIP_TAIL end
+  if chip.Glyph then return ChipLead(chip) + chip.glyphW + CHIP_TAIL end
   chip.Text:SetWidth(0)
   chip.Text:SetText(chip.caption)
-  return CHIP_LEAD + math.ceil(chip.Text:GetStringWidth() or 0) + CHIP_TAIL
+  return ChipLead(chip) + math.ceil(chip.Text:GetStringWidth() or 0) + CHIP_TAIL
 end
 
 -- The width the strip needs to say every name whole: a window that can grow
@@ -1019,9 +1037,11 @@ function AR.LayoutStrip(host)
   local total, flexible = CHIP_GAP * (#layout - 1), 0
   for i = 1, #layout do
     local chip = strip.chips[layout[i].id]
+    chip.hidden = not layout[i].shown
+    PlaceChipContent(chip)
     chip._nat = Natural(chip)
     total = total + chip._nat
-    if not chip.Glyph then flexible = flexible + chip._nat - CHIP_LEAD - CHIP_TAIL end
+    if not chip.Glyph then flexible = flexible + chip._nat - ChipLead(chip) - CHIP_TAIL end
   end
   local spare = avail - total
   local scale = 1
@@ -1033,8 +1053,9 @@ function AR.LayoutStrip(host)
     local entry = layout[i]
     local chip = strip.chips[entry.id]
     local w = chip._nat
+    local lead = ChipLead(chip)
     if spare < 0 and not chip.Glyph then
-      w = CHIP_LEAD + CHIP_TAIL + math.floor((chip._nat - CHIP_LEAD - CHIP_TAIL) * scale)
+      w = lead + CHIP_TAIL + math.floor((chip._nat - lead - CHIP_TAIL) * scale)
     elseif spare > 0 and entry.id == "subject" then
       w = w + spare
     end
@@ -1051,8 +1072,7 @@ function AR.LayoutStrip(host)
       chip:ClearAllPoints()
       chip:SetPoint("LEFT", strip, "LEFT", x, 0)
     end
-    if chip.caption then T.FitText(chip.Text, w - CHIP_LEAD - CHIP_TAIL + 2, chip.caption, chip) end
-    chip.hidden = not entry.shown
+    if chip.caption then T.FitText(chip.Text, w - lead - CHIP_TAIL + 2, chip.caption, chip) end
     chip:Show()
     AR.PaintChip(chip)
     x = x + w + CHIP_GAP
