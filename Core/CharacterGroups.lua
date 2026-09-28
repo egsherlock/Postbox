@@ -257,9 +257,15 @@ local function RefreshGrid()
   end
 end
 
+-- An open editor's list of groups, painted again (section 3): after every
+-- change here, since whether a group has a button follows its members, and
+-- when the grid's arrangement has moved under it (CG.GridButtons, below).
+local FollowEditor
+
 local function Changed()
   for id in pairs(keySets) do keySets[id] = nil end
   RefreshGrid()
+  if FollowEditor then FollowEditor(true) end
 end
 
 -- The lowest "Group N" not already taken, so a second new group does not
@@ -604,7 +610,57 @@ function CG.GridButtons()
       out[#out + 1] = spec
     end
   end
+  -- The grid asks for its buttons on every layout, and lays itself out after
+  -- every change to its arrangement, which the arrange mode stores first
+  -- (MailboxUI.SetGridLayout) and redraws after. An open editor takes the
+  -- ask as its cue to see whether the arrangement it marked has moved. Its
+  -- failure is its own: the grid keeps its buttons.
+  if CG._editor and FollowEditor then
+    local ok, err = pcall(FollowEditor, false)
+    if not ok and type(geterrorhandler) == "function" then geterrorhandler()(err) end
+  end
   return out
+end
+
+-- Whether the arrange mode hid a group's button ("group:<id>"): the grid's
+-- stored arrangement, read as it stands (`layout`, when the caller has it
+-- already). An id it does not name is shown, as the grid places any id it
+-- has not seen. Whether the group has a button at all is the caller's to
+-- ask first: an empty one has none to hide.
+local function ButtonHidden(gridId, layout)
+  if not layout then
+    local UI = ns.MailboxUI
+    layout = UI and type(UI.GetGridLayout) == "function" and UI.GetGridLayout() or EMPTY
+  end
+  for i = 1, #layout do
+    if layout[i].id == gridId then return layout[i].shown == false end
+  end
+  return false
+end
+
+-- A group's hidden button shown again, as the arrange mode shows one: the
+-- stored arrangement with that one entry on, written through the setter the
+-- mode writes with, and the grid laid out from it -- which an open arrange
+-- mode's inspector follows (CollectTab, CT.RefreshCategoryButtons). The rest
+-- is written back as it was read, and the grid reconciles it as before.
+-- -> true when the button was hidden.
+function CG.ShowButton(id)
+  local UI = ns.MailboxUI
+  if not (UI and type(UI.GetGridLayout) == "function" and type(UI.SetGridLayout) == "function") then
+    return false
+  end
+  local gridId = "group:" .. tostring(id)
+  local stored = UI.GetGridLayout()
+  if not ButtonHidden(gridId, stored) then return false end
+  local entries = {}
+  for i = 1, #stored do
+    local entry = stored[i]
+    entries[i] = { id = entry.id, shown = entry.shown or entry.id == gridId }
+  end
+  UI.SetGridLayout(entries)
+  RefreshGrid()
+  if FollowEditor then FollowEditor(false) end
+  return true
 end
 
 -------------------------------------------------------------
@@ -618,6 +674,14 @@ end
 -- who match, and -- when what is typed can be a character's name and nobody
 -- listed is it -- offers to add exactly that name. Enter takes the obvious
 -- one. With no groups at all the window is one sentence and one button.
+--
+-- The list also says where each group's button is. A group with its button
+-- in the grid is just its name. The two that have none on screen step their
+-- name down and carry a mark at the row's right end: a crossed eye where the
+-- arrange mode hid the button (a click shows it again), and a quiet note
+-- while nobody is in the group, which has no button yet. The list follows
+-- both while it is open: every change to the groups repaints it, and so does
+-- the grid's arrangement moving under it.
 -------------------------------------------------------------
 
 local EDITOR_W, EDITOR_H = 480, 430
@@ -810,6 +874,48 @@ local function GroupRow(frame, i)
   row.Name:SetJustifyH("LEFT")
   row.Name:SetWordWrap(false)
 
+  -- The crossed eye, tinted as the arrange mode tints its hidden marks and
+  -- set in from the row's right end by the name's own margin. Its own
+  -- control: pointed at, it lights and the row stays lit under it; a click
+  -- shows the button and leaves the selection where it was.
+  local eye = CreateFrame("Button", nil, row)
+  eye:RegisterForClicks("LeftButtonUp")
+  eye.Glyph = T.Glyph(eye, "eye-off", 8)
+  local glyphW = 0
+  if eye.Glyph then
+    eye.Glyph:SetPoint("CENTER", eye, "CENTER", 0, 0)
+    T.SetColor(eye.Glyph, "textDisabled")
+    glyphW = eye.Glyph:GetWidth() or 0
+  end
+  eye:SetSize(glyphW + 2 * 6, GROUP_ROW_H)
+  eye:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+  eye:SetScript("OnEnter", function(self)
+    T.StyleMailRow(row, row.position, true)
+    if self.Glyph then T.SetColor(self.Glyph, "textSecondary") end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L["GROUPS_HIDDEN_TIP"], 1, 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  eye:SetScript("OnLeave", function(self)
+    T.StyleMailRow(row, row.position, false)
+    if self.Glyph then T.SetColor(self.Glyph, "textDisabled") end
+    GameTooltip:Hide()
+  end)
+  eye:SetScript("OnClick", function()
+    GameTooltip:Hide()
+    if CG.ShowButton(row.groupId) then PlayTick(true) end
+  end)
+  eye:Hide()
+  row.Eye = eye
+
+  -- The note an empty group's row carries, in the quietest grey.
+  row.Note = T.CreateText(row, "secondary")
+  row.Note:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+  row.Note:SetJustifyH("RIGHT")
+  row.Note:SetWordWrap(false)
+  T.SetColor(row.Note, "textDisabled")
+  row.Note:Hide()
+
   row:SetScript("OnClick", function(self) Select(frame, self.groupId) end)
   row:SetScript("OnEnter", function(self)
     T.StyleMailRow(self, self.position, true)
@@ -829,14 +935,32 @@ local function GroupRow(frame, i)
   return row
 end
 
+-- An empty group's note, fitted into the room the row has for text (`room`,
+-- the name's whole width): at its own width, or -- where a translation or a
+-- host font runs long -- cut to leave the name a third of that room, so the
+-- note gives way before the name does. -> the width it takes.
+local function FitNote(row, room)
+  local T = ns.Theme
+  local most = math.floor(room * 2 / 3) - 6
+  T.FitText(row.Note, most, L["GROUPS_NO_BUTTON"])
+  return math.min(T.TextWidth(row.Note), most)
+end
+
 function PaintGroupRows(frame)
   local T = ns.Theme
   local list = CG.List()
-  local width = (frame.GroupList:GetWidth() or LIST_W) - 2 - (6 + GRIP_W + 6) - 6
+  local UI = ns.MailboxUI
+  local layout = UI and type(UI.GetGridLayout) == "function" and UI.GetGridLayout() or EMPTY
+  -- The arrangement these marks were read from, for FollowEditor.
+  frame._gridSeen = layout
+  local room = (frame.GroupList:GetWidth() or LIST_W) - 2 - (6 + GRIP_W + 6) - 6
   for i = 1, #list do
     local group = list[i]
     local row = GroupRow(frame, i)
-    row.groupId = group.id
+    if row.groupId ~= group.id then
+      row.groupId = group.id
+      row.gridId = "group:" .. group.id
+    end
     row.position = i
     if not row._dragging then
       local y = -1 - (i - 1) * GROUP_ROW_H
@@ -846,13 +970,41 @@ function PaintGroupRows(frame)
     end
     T.StyleMailRow(row, i, false)
     PaintSelection(row, group.id == frame.selected)
+    -- Where the group's button is: nowhere while nobody is in the group,
+    -- hidden where the arrange mode hid it, else in the grid. The name reads
+    -- a grey quieter for each step away from the grid, and only the two
+    -- exceptions carry a mark, which takes its room from the name's end.
+    local empty = #group.members == 0
+    local hidden = not empty and ButtonHidden(row.gridId, layout)
+    local width = room
+    if hidden then
+      width = room - (row.Eye.Glyph and row.Eye.Glyph:GetWidth() or 0) - 6
+    elseif empty then
+      width = room - FitNote(row, room) - 6
+    end
+    row.Eye:SetShown(hidden)
+    row.Note:SetShown(empty)
     T.FitText(row.Name, width, CG.DisplayName(group), row)
-    -- A group with nobody in it has no button yet, and reads quieter for it.
-    T.SetColor(row.Name, #group.members > 0 and "textPrimary" or "textSecondary")
+    T.SetColor(row.Name, (empty and "textDisabled") or (hidden and "textSecondary") or "textPrimary")
     row:Show()
   end
   for i = #list + 1, #frame.GroupRows do frame.GroupRows[i]:Hide() end
   frame.NewButton:SetEnabled(#list < MAX_GROUPS)
+end
+
+-- The list again, while the window is open: `always` after a change to the
+-- groups, else only when the grid's arrangement is no longer the one its
+-- marks were read from (MailboxUI hands back the same table for as long as
+-- the stored arrangement is the same).
+function FollowEditor(always)
+  local frame = CG._editor
+  if not (frame and frame:IsShown()) then return end
+  if not always then
+    local UI = ns.MailboxUI
+    local layout = UI and type(UI.GetGridLayout) == "function" and UI.GetGridLayout() or EMPTY
+    if layout == frame._gridSeen then return end
+  end
+  PaintGroupRows(frame)
 end
 
 -- The line over the member list: how many characters the group holds.
@@ -1079,11 +1231,12 @@ function ToggleEntry(frame, row)
   local entry = row.entry
   local id = frame.selected
   if not (entry and id) then return end
+  -- The groups' list follows from CG.AddMember and CG.RemoveMember
+  -- themselves (Changed); the header and the box are this pane's.
   if entry.kind == "add" then
     if CG.AddMember(id, entry.member) then
       PlayTick(true)
       PaintHeader(frame)
-      PaintGroupRows(frame)
       -- The list comes back whole, with the new name ticked in it.
       frame.Search.Box:SetText("")
     end
@@ -1101,7 +1254,6 @@ function ToggleEntry(frame, row)
   row.Check:SetChecked(CG.HasMember(id, entry.key))
   PlayTick(on)
   PaintHeader(frame)
-  PaintGroupRows(frame)
 end
 
 -- Enter in the find-or-add box takes the obvious one: the name typed, when a
@@ -1138,7 +1290,6 @@ local function EnterPressed(frame)
     if not CG.AddMember(frame.selected, target.member) then return false end
     PlayTick(true)
     PaintHeader(frame)
-    PaintGroupRows(frame)
   end
   frame.Search.Box:SetText("")
   return true
@@ -1255,10 +1406,11 @@ local function Build()
   nameBox:SetPoint("BOTTOMRIGHT", nameWrap, "BOTTOMRIGHT", -8, 2)
   nameBox:SetMaxLetters(NAME_MAX)
   nameWrap:SetScript("OnMouseDown", function() nameBox:SetFocus() end)
-  -- Renamed as it is typed: the list and the button follow the keystrokes.
+  -- Renamed as it is typed: the list and the button follow the keystrokes
+  -- (CG.Rename repaints both).
   nameBox:SetScript("OnTextChanged", function(self, userInput)
     if not userInput or not frame.selected then return end
-    if CG.Rename(frame.selected, self:GetText()) then PaintGroupRows(frame) end
+    CG.Rename(frame.selected, self:GetText())
   end)
   nameBox:SetScript("OnEditFocusGained", function(self)
     local group = Selected(frame)
@@ -1275,7 +1427,6 @@ local function Build()
   nameBox:SetScript("OnEscapePressed", function(self)
     if self._before and frame.selected then CG.Rename(frame.selected, self._before) end
     self:ClearFocus()
-    PaintGroupRows(frame)
   end)
   frame.NameBox = nameBox
   parts[#parts + 1] = nameWrap
