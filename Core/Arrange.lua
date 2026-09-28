@@ -2415,15 +2415,15 @@ end
 -- right edge (from its left one when the screen has no room on the right),
 -- its top level with the window's top row. Shown only while the mode is
 -- open, and nothing of it covers the rows. It says one of three things:
---   nothing selected: how the mode works, the blocks under the list (each a
---     line that selects it), what is hidden (each a chip; a click shows it
---     again), the reset, and that Escape finishes;
+--   nothing selected: how the mode works, Line up columns, the blocks
+--     under the list (each a line that selects it), what is hidden (each a
+--     chip; a click shows it again), the reset, and that Escape finishes;
 --   something in the hand: what is moving, and that Escape puts it back;
 --   a column, a block or a category button selected: its card -- what it
 --     is, its eye, its own choice, Move (the way to reorder without a
 --     drag), and, for a figure, what the rows do on a mail without it; for
---     the subject, Line up columns, what the rows show of its run, and what
---     Line up columns does; for a block, the stack's order, and for the
+--     the subject, what the rows show of its run, what Line up columns does
+--     and where it is; for a block, the stack's order, and for the
 --     grid the way to the character groups; for a button, the link up to
 --     the grid's card.
 -- A click on a heading, a column on a row, a block or a button selects it,
@@ -2698,13 +2698,14 @@ local function SwitchClick(self)
   AR.Inspect()
 end
 
--- Line up columns, on the subject's card: the options panel's own switch
--- (MailboxUI, lineUpColumns; unset is on), since it decides how much room
--- the subject has. A box before its name, filled with the accent and
--- checked while on; its words and ring rise with it, and go white when
--- pointed at. While arranging the rows line up whatever it says, so a click
--- places nothing again: the rows follow it when the mode ends
--- (AR.Leave), and the card's note says what it does meanwhile.
+-- Line up columns, in the overview's Mail rows group: the options panel's
+-- own switch (MailboxUI, lineUpColumns; unset is on), which decides how
+-- every column of every row stands, so it belongs to no one column's card.
+-- A box before its name, filled with the accent and checked while on; its
+-- words and ring rise with it, and go white when pointed at. While
+-- arranging the rows line up whatever it says, so a click places nothing
+-- again: the rows follow it when the mode ends (AR.Leave), and the
+-- subject's card says what it does meanwhile.
 local function LinedUp()
   local ui = UI()
   return not (ui and ui.GetOption) or ui.GetOption("lineUpColumns")
@@ -3124,8 +3125,10 @@ function AR.BuildInspector()
   insp.Empty = Paragraph(art, "body", 0.55)
   insp.Note = Paragraph(art, "secondary", 0.66)
   insp.Kicker = Paragraph(art, "secondary", 0.55)
-  -- The subject's card: how far each row's subject runs, in words.
+  -- The subject's card: how far each row's subject runs, in words, and
+  -- where the switch that decides it is.
   insp.Why = Paragraph(art, "body", 0.81)
+  insp.Where = Paragraph(art, "secondary", 0.55)
   -- A note that begins with the hatch the rows draw (PutSwatchNote): the
   -- sample at the note's left, the words beside it.
   insp.SwatchNote = Paragraph(art, "secondary", 0.66)
@@ -3444,8 +3447,8 @@ local function PutSwitch(on, y)
   return w
 end
 
--- Line up columns at the row's left, on the subject's card; answers its
--- width. A name too long for the card is cut, and whole in the tooltip.
+-- Line up columns at the row's left, in the overview; answers its width. A
+-- name too long for the card is cut, and whole in the tooltip.
 local function PutLanes(y)
   local insp, P = AR._insp, INSP
   local sw = insp.Lanes
@@ -3648,13 +3651,17 @@ local function PutFoot(y)
 end
 
 -- With nothing selected: how the mode works (or, while something is in the
--- hand, what is moving), the blocks under the list -- each a line that
+-- hand, what is moving), Line up columns in a small group of its own --
+-- it is every column's -- the blocks under the list -- each a line that
 -- selects it, the way to a block that is hard to take in the window --
 -- what is hidden, and the foot.
 local function FillOverview(host, y)
   local insp, P = AR._insp, INSP
   local lead = AR.moving and MovingText(AR.moving) or L()["ARRANGE_OVERVIEW"]
   y = PutText(insp.Lead, lead, y)
+  y = PutKicker(L()["OPT_ROWS_HEADING"], y)
+  PutLanes(y)
+  y = y - P.SWITCH_H
   if host.StackOrder and host.BlockName then
     y = PutKicker(L()["ARRANGE_UNDER_LIST"], y)
     local order, n = host.StackOrder(), 0
@@ -3699,8 +3706,9 @@ local function FillColumn(id, y)
   local shown = layout and layout.shown[id] or false
   local k = layout and IndexOf(layout, id) or 1
   y = PutText(insp.Lead, L()[spec.desc], y) - P.ROW_GAP
-  local used
-  if spec.fixed then used = PutLanes(y) else used = PutSwitch(shown, y) end
+  -- The subject cannot be hidden: no eye, and Move has the row.
+  local used = 0
+  if not spec.fixed then used = PutSwitch(shown, y) end
   y = PutMove(y, false, k > 1, layout ~= nil and k < #layout, used)
   -- The subject's card says what the rows show while it is selected: each
   -- row's run, and why it stops where it does.
@@ -3718,8 +3726,9 @@ local function FillColumn(id, y)
   end
   -- A figure's place beside the subject, and after it whether the columns
   -- line up, say what a mail without it does; the subject's card says what
-  -- Line up columns does, as it stands. Where the subject runs on into a
-  -- column, the note begins with the hatch the rows draw there.
+  -- Line up columns does, as it stands, and in one quiet line where the
+  -- switch is. Where the subject runs on into a column, the note begins
+  -- with the hatch the rows draw there.
   if spec.figure and layout then
     local at = IndexOf(layout, "subject") or 0
     if k > at then
@@ -3729,6 +3738,7 @@ local function FillColumn(id, y)
     end
   elseif spec.fixed then
     y = PutSwatchNote(L()[LinedUp() and "ARRANGE_LANES_ON" or "ARRANGE_LANES_OFF"], y, true)
+    y = PutText(insp.Where, L()["ARRANGE_LANES_WHERE"], y - P.ROW_WRAP)
   end
   return y
 end
@@ -3771,6 +3781,7 @@ local function HideParts(insp)
   insp.Empty:Hide()
   insp.Note:Hide()
   insp.Why:Hide()
+  insp.Where:Hide()
   insp.SwatchNote:Hide()
   if insp.Swatch then
     insp.Swatch:Hide()
