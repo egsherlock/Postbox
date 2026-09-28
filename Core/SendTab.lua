@@ -4489,6 +4489,16 @@ function ST.QueuePassActive()
   return Q.fillState ~= nil
 end
 
+-- Whether a send is under way: a mail with the server, a pass moving queued
+-- items into the slots, or a run of mails between two of its sends (the
+-- queue still holding what the next one takes). Options > Reset to defaults
+-- waits for it: a send saves its recipient and notes its arrival as it ends.
+function ST.IsSending()
+  if pendingSend or Q.fillState then return true end
+  local panel = ActivePanel()
+  return (panel and panel._run and panel._queue and #panel._queue > 0) and true or false
+end
+
 -- The item that question is about, as a link, for the guidance line.
 function ST.QueueAskedItem()
   local pending = Q.fillState and Q.fillState.pending

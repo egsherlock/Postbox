@@ -1482,22 +1482,38 @@ local function Build()
       end
     end
 
+    -- Neither reset runs while Postbox is collecting or sending (MailboxUI,
+    -- UI.ResetBlockedBy): true, and a line in chat saying what to wait for.
+    -- Asked at the footer's click and again at every answer, since a run can
+    -- start while a dialog stands; a refused answer closes its dialog.
+    local function Busy()
+      local UI = ns.MailboxUI
+      local by = UI and type(UI.ResetBlockedBy) == "function" and UI.ResetBlockedBy() or nil
+      if not by then return false end
+      ns.Print(L[by == "send" and "MSG_RESET_WAIT_SEND" or "MSG_RESET_WAIT_COLLECT"])
+      return true
+    end
+
     local function ResetSettingsNow()
       local UI = ns.MailboxUI
-      if not (UI and type(UI.ResetSettings) == "function") then return end
-      AfterReset(UI.ResetSettings())
+      if Busy() or not (UI and type(UI.ResetSettings) == "function") then return end
+      local styleChanged, refused = UI.ResetSettings()
+      if not refused then AfterReset(styleChanged) end
     end
 
     local function ResetEverythingNow()
       local UI = ns.MailboxUI
-      if not (UI and type(UI.ResetEverything) == "function") then return end
-      AfterReset(UI.ResetEverything())
+      if Busy() or not (UI and type(UI.ResetEverything) == "function") then return end
+      local styleChanged, refused = UI.ResetEverything()
+      if refused then return end
+      AfterReset(styleChanged)
       ns.Print(L["MSG_RESET_ALL_DONE"])
     end
 
     -- The second question, a frame after the first dialog has closed, so it
     -- opens where the first one was rather than stacked under it.
     local function AskEverything()
+      if Busy() then return end
       local function Show()
         ns.Theme.LiftPopup(StaticPopup_Show(POPUP_RESET_ALL, L["MSG_RESET_ALL_CONFIRM"]))
       end
@@ -1567,6 +1583,7 @@ local function Build()
     frame.__refreshers[#frame.__refreshers + 1] = FitReset
 
     reset:SetScript("OnClick", function()
+      if Busy() then return end
       if EnsureResetDialog() then
         ns.Theme.LiftPopup(StaticPopup_Show(POPUP_RESET, L["MSG_RESET_CONFIRM"]))
       end

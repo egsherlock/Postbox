@@ -345,10 +345,26 @@ local function ApplyResetLive()
   if manager then ResetStep(manager.ResetWindow) end
 end
 
+-- What stops a reset now: "collect" while Postbox is taking mail out of the
+-- box (a collect run, or any sequence holding the mail channel), "send"
+-- while a send is under way, nil when nothing is. Both resets wait: a run
+-- reads the settings as it goes (what becomes of a read mail, the rows and
+-- the grid it repaints) and writes the records Reset everything clears --
+-- the History entry of the mail it is taking, the recipient a send saves.
+function UI.ResetBlockedBy()
+  local collect, mail, send = ns.CollectTab, ns.MailService, ns.SendTab
+  if collect and type(collect.IsRunning) == "function" and collect.IsRunning() then return "collect" end
+  if mail and type(mail.IsBusy) == "function" and mail.IsBusy() then return "collect" end
+  if send and type(send.IsSending) == "function" and send.IsSending() then return "send" end
+  return nil
+end
+
 -- Clears every setting, then puts what is on screen onto the defaults.
 -- Returns true when the window style changed: the one part that waits for a
--- /reload, because the style is claimed once, at login.
+-- /reload, because the style is claimed once, at login. Refused, clearing
+-- nothing, while UI.ResetBlockedBy answers: false, true.
 function UI.ResetSettings()
+  if UI.ResetBlockedBy() then return false, true end
   local store = ns.Store
   local profile = store and store.Get and store.Get("profile")
   if type(profile) ~= "table" then return false end
@@ -392,8 +408,9 @@ local CENSUS_KEEP = {
 
 -- Clears everything but the census, tells the modules that remember what
 -- they read, then puts what is on screen onto the defaults. Returns true
--- when the window style changed, as UI.ResetSettings does.
+-- when the window style changed, and is refused, as UI.ResetSettings is.
 function UI.ResetEverything()
+  if UI.ResetBlockedBy() then return false, true end
   local root = PostboxDB
   if type(root) ~= "table" then return false end
 
