@@ -302,6 +302,397 @@ local function DropdownTip(dd, title, desc)
 end
 
 -------------------------------------------------------------
+-- The bug report window
+--
+-- Where to report, the report to paste, and the one switch that decides how
+-- much the report can say about a slow mailbox. A window of the house's own
+-- kind -- the options panel's, the groups editor's: the template, the
+-- theme, whichever skin paints those -- where it used to be a bare black box
+-- that ran its text past its own edges and belonged to no skin.
+--
+-- A fixed size. What sits above and below the report is measured on every
+-- open (a translation can wrap the recording note onto another line) and the
+-- report takes the height that is left; only if that would fall below a
+-- readable minimum does the window grow.
+--
+-- Nothing in the game can open a browser or write the clipboard, so copyable
+-- is the whole feature: both fields select everything on a click or on
+-- focus, and Copy report selects the report with the keyboard in it, one
+-- Ctrl+C from done.
+-------------------------------------------------------------
+local BugReport = {}
+do
+  local BUG_URL = "https://github.com/egsherlock/Postbox/issues"
+  local WIN_W, WIN_H = 500, 440
+  local TOP = 30            -- under the template's title bar
+  local LINE_H = 22         -- a heading line, with room for a control on it
+  local BOX_MIN = 140       -- the least of the report worth showing
+  local MODES = { "off", "on", "detail" }
+  local MODE_KEY = { off = "PERF_REC_OFF", on = "PERF_REC_ON", detail = "PERF_REC_DETAIL" }
+  local MODE_DESC = { off = "PERF_REC_OFF_DESC", on = "PERF_REC_ON_DESC", detail = "PERF_REC_DETAIL_DESC" }
+
+  local win
+
+  -- An edit box that can be selected and copied from but not changed: any
+  -- edit snaps the text back and selects it again, so Ctrl+C always copies
+  -- the intact value. OnTextChanged rather than OnChar: Backspace, Delete and
+  -- Enter change the text without ever firing OnChar. The flag stops the
+  -- restore re-entering itself. Flagged for the skins as the options' own
+  -- boxes are: the surface around it is the field, not the box.
+  local function ReadOnly(box)
+    local T = ns.Theme
+    box:SetAutoFocus(false)
+    box.__postboxNoEditSkin = true
+    box:SetFontObject(T.FontObject("bodySmall") or GameFontHighlightSmall)
+    T.SetColor(box, "textPrimary")
+    box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+    box:SetScript("OnEditFocusLost", function(self) self:HighlightText(0, 0) end)
+    box:SetScript("OnMouseUp", function(self) self:HighlightText() end)
+    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    box:SetScript("OnTextChanged", function(self, userInput)
+      if not userInput or self._restoring then return end
+      self._restoring = true
+      self:SetText(self._value or "")
+      self._restoring = false
+      self:HighlightText()
+    end)
+  end
+
+  local function Tip(owner, title, desc)
+    owner:HookScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(type(title) == "function" and title(self) or title)
+      GameTooltip:AddLine(type(desc) == "function" and desc(self) or desc, 1, 1, 1, true)
+      GameTooltip:Show()
+    end)
+    owner:HookScript("OnLeave", function() GameTooltip:Hide() end)
+  end
+
+  -- A heading line across the window: the caption at the options panel's
+  -- heading indent, room on the right for a hint or a control. `anchor` is
+  -- the field above it, which spans the window less 10 either side, as the
+  -- options panel's cards do.
+  local function HeadingLine(f, anchor, gap, key)
+    local line = CreateFrame("Frame", nil, f)
+    line:SetHeight(LINE_H)
+    if anchor then
+      line:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", PAD - 10, -gap)
+      line:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 10 - PAD, -gap)
+    else
+      line:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -TOP)
+      line:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -TOP)
+    end
+    local caption = ns.Theme.CreateText(line, "heading")
+    caption:SetPoint("LEFT", line, "LEFT", 0, 0)
+    caption:SetWordWrap(false)
+    caption:SetText(L[key])
+    line.Caption = caption
+    return line
+  end
+
+  local function Build()
+    local T = ns.Theme
+    local M = T.Metrics
+
+    -- Named: Escape closes it through UISpecialFrames, a list of names.
+    local f = CreateFrame("Frame", "PostboxBugReportFrame", UIParent, "BasicFrameTemplateWithInset")
+    f:SetSize(WIN_W, WIN_H)
+    -- The options panel's strata, raised above it on every open, as the
+    -- groups editor is.
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
+    f:SetToplevel(true)
+    f:SetClampedToScreen(true)
+    f:EnableMouse(true)
+    f:SetMovable(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:Hide()
+    -- Read to the letter, so opaque whatever the mailbox window's opacity.
+    -- Skin.ApplyBgOpacity honours this flag.
+    f.__pbEuiAlwaysOpaque = true
+    if f.SetTitle then
+      f:SetTitle(L["OPT_BUG_TIP_TITLE"])
+    elseif f.TitleText then
+      f.TitleText:SetText(L["OPT_BUG_TIP_TITLE"])
+    end
+    T.ApplyFrameTheme(f)
+    ns.Core.UI.Helpers.RegisterEscClose(f)
+
+    -- 1. Where: the address, in a field of its own, and how to copy it.
+    local urlLine = HeadingLine(f, nil, 0, "OPT_BUG_URL_LABEL")
+    local hint = T.CreateText(urlLine, "secondary")
+    hint:SetPoint("RIGHT", urlLine, "RIGHT", 0, 0)
+    hint:SetJustifyH("RIGHT")
+    -- Motion only, for the rare translation the line cuts short: a click
+    -- passes on, so the window still drags from here.
+    urlLine:EnableMouse(true)
+    if urlLine.SetPropagateMouseClicks then urlLine:SetPropagateMouseClicks(true) end
+    urlLine:SetScript("OnEnter", function(self)
+      if not self.__pbOverflowText then return end
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      T.AddOverflowLine(self, GameTooltip)
+      GameTooltip:Show()
+    end)
+    urlLine:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    local urlWrap = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    urlWrap:SetPoint("TOPLEFT", urlLine, "BOTTOMLEFT", 10 - PAD, -M.labelGap)
+    urlWrap:SetPoint("TOPRIGHT", urlLine, "BOTTOMRIGHT", PAD - 10, -M.labelGap)
+    urlWrap:SetHeight(M.controlHeight)
+    local url = CreateFrame("EditBox", nil, urlWrap)
+    T.StyleInput(urlWrap, url)
+    url:SetPoint("TOPLEFT", urlWrap, "TOPLEFT", 8, -2)
+    url:SetPoint("BOTTOMRIGHT", urlWrap, "BOTTOMRIGHT", -8, 2)
+    ReadOnly(url)
+    url:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    urlWrap:SetScript("OnMouseDown", function() url:SetFocus() end)
+
+    -- 2. What: the report, and the one click that selects it.
+    local reportLine = HeadingLine(f, urlWrap, M.gap, "OPT_BUG_DIAG_LABEL")
+    local copy = T.CreateButton(nil, reportLine)
+    copy:SetPoint("RIGHT", reportLine, "RIGHT", 0, 0)
+    copy:SetText(L["OPT_BUG_COPY"])
+    copy:SetScript("OnClick", function() BugReport.SelectReport() end)
+    Tip(copy, L["OPT_BUG_COPY"], L["OPT_BUG_COPY_DESC"])
+
+    local card = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    card:SetPoint("TOPLEFT", reportLine, "BOTTOMLEFT", 10 - PAD, -M.labelGap)
+    card:SetPoint("TOPRIGHT", reportLine, "BOTTOMRIGHT", PAD - 10, -M.labelGap)
+    T.ApplyList(card)
+
+    -- The gutter is the report's for good, bar or no bar, so the bar
+    -- arriving never re-flows the text being read (the Send tab's body does
+    -- the same). The scroll frame clips: whatever a line holds, nothing is
+    -- drawn outside the card.
+    local gutter = M.scrollGutter
+    local scroll = CreateFrame("ScrollFrame", nil, card, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -6)
+    scroll:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -gutter, 6)
+    if scroll.SetClipsChildren then scroll:SetClipsChildren(true) end
+    scroll.scrollBarHideable = 1
+    T.SlimScrollBar(scroll, card)
+
+    -- A multi-line edit box sizes its own height to its text, and wraps at
+    -- its width: the scroll frame's, followed on every size change.
+    local box = CreateFrame("EditBox", nil, scroll)
+    box:SetMultiLine(true)
+    box:SetWidth(WIN_W - 20 - 8 - gutter)
+    ReadOnly(box)
+    scroll:SetScrollChild(box)
+    scroll:HookScript("OnSizeChanged", function(_, width)
+      if width and width > 10 and math.abs((box:GetWidth() or 0) - width) > 0.5 then
+        box:SetWidth(width)
+      end
+    end)
+    -- Arrowing through the text keeps the cursor's line in view.
+    box:SetScript("OnCursorChanged", function(_, _, cursorY, _, cursorH)
+      local view = scroll:GetHeight() or 0
+      local offset = scroll:GetVerticalScroll() or 0
+      local top = -(tonumber(cursorY) or 0)
+      local bottom = top + (tonumber(cursorH) or 0)
+      local range = scroll:GetVerticalScrollRange() or 0
+      if top < offset then
+        scroll:SetVerticalScroll(math.max(0, top))
+      elseif bottom > offset + view then
+        scroll:SetVerticalScroll(math.min(range, bottom - view))
+      end
+    end)
+
+    -- 3. How much: the recording switch, in a card at the foot like the
+    -- options panel's own.
+    local rec = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    rec:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
+    rec:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 10)
+    T.ApplyList(rec)
+    card:SetPoint("BOTTOMLEFT", rec, "TOPLEFT", 0, M.sectionGap)
+    card:SetPoint("BOTTOMRIGHT", rec, "TOPRIGHT", 0, M.sectionGap)
+
+    local recLabel = T.CreateText(rec, "label")
+    recLabel:SetWordWrap(false)
+    recLabel:SetText(L["PERF_REC_TITLE"])
+    local segments = {}
+    for i = 1, #MODES do
+      local seg = T.CreatePlate(rec, "segment")
+      seg.mode = MODES[i]
+      seg:SetText(L[MODE_KEY[seg.mode]])
+      seg:SetScript("OnClick", function(self) BugReport.SetMode(self.mode) end)
+      Tip(seg, function(self) return L[MODE_KEY[self.mode]] end,
+        function(self) return L[MODE_DESC[self.mode]] end)
+      segments[i] = seg
+    end
+    local note = T.CreateText(rec, "secondary")
+    note:SetJustifyH("LEFT")
+    note:SetWordWrap(true)
+    note:SetText(L["PERF_REC_DESC"])
+
+    -- Closing lets go of the keyboard, wherever it was.
+    f:SetScript("OnHide", function()
+      url:ClearFocus()
+      box:ClearFocus()
+      GameTooltip:Hide()
+    end)
+
+    f.UrlLine, f.Hint, f.Url = urlLine, hint, url
+    f.ReportLine, f.Copy, f.Scroll, f.Report = reportLine, copy, scroll, box
+    f.RecCard, f.RecLabel, f.Segments, f.RecNote = rec, recLabel, segments, note
+    return f
+  end
+
+  -- Measured on every open: a host skin re-fonts the button after build,
+  -- and every caption here is a translation. Only the edge cases move --
+  -- the hint is cut where a caption would reach it, and the recording
+  -- label takes a line of its own where it and the switch cannot share one.
+  local function Layout(f)
+    local T = ns.Theme
+    local M = T.Metrics
+    local lineW = WIN_W - 2 * PAD
+    T.FitText(f.Hint, lineW - math.ceil(T.TextWidth(f.UrlLine.Caption)) - M.gap,
+      L["OPT_BUG_HINT"], f.UrlLine)
+    T.SizeToText(f.Copy, { height = LINE_H, minWidth = 96 })
+
+    local rec, label, segments = f.RecCard, f.RecLabel, f.Segments
+    local inner = WIN_W - 20 - 2 * CARD_PAD
+    local gap = M.space.snug
+    local per, total = T.SizeRow(segments, { height = M.segmentHeight, gap = gap, minWidth = M.buttonMinWidth })
+    local labelW = math.ceil(T.TextWidth(label))
+    local y = -CARD_PAD
+    local x = CARD_PAD
+    label:ClearAllPoints()
+    if labelW + M.gap + total > inner then
+      label:SetPoint("TOPLEFT", rec, "TOPLEFT", CARD_PAD, y)
+      y = y - math.ceil(label:GetStringHeight() or 12) - M.gap
+    else
+      label:SetPoint("LEFT", rec, "TOPLEFT", CARD_PAD, y - M.segmentHeight / 2)
+      x = CARD_PAD + inner - total
+    end
+    for i = 1, #segments do
+      local seg = segments[i]
+      seg:ClearAllPoints()
+      seg:SetPoint("TOPLEFT", rec, "TOPLEFT", x + (i - 1) * (per + gap), y)
+    end
+    y = y - M.segmentHeight - M.gap
+
+    local note = f.RecNote
+    note:ClearAllPoints()
+    note:SetPoint("TOPLEFT", rec, "TOPLEFT", CARD_PAD, y)
+    note:SetWidth(inner)
+    y = y - math.ceil(note:GetStringHeight() or 12) - CARD_PAD
+    rec:SetHeight(-y)
+
+    -- The report takes what is left, down to its minimum.
+    local above = TOP + LINE_H + M.labelGap + M.controlHeight + M.gap + LINE_H + M.labelGap
+    local below = M.sectionGap - y + 10
+    f:SetHeight(math.max(WIN_H, above + BOX_MIN + below))
+  end
+
+  -- The recording switch, painted from what is live.
+  local function Paint(f)
+    local get = ns.GetPerfRecording
+    local mode = type(get) == "function" and get() or "off"
+    for i = 1, #f.Segments do
+      local seg = f.Segments[i]
+      ns.Theme.SetPlateSelected(seg, seg.mode == mode)
+    end
+  end
+
+  -- The report, afresh. Built here and only here: it reads the game's
+  -- profiler and every addon's memory, which is the report's own cost.
+  local function Fill(f)
+    local build = ns.BuildDiagnosticReport
+    local ok, text = false, nil
+    if type(build) == "function" then ok, text = pcall(build) end
+    if not ok or type(text) ~= "string" then text = "" end
+    local box = f.Report
+    box._value = text
+    box:SetText(text)
+    box:SetCursorPosition(0)
+    f.Scroll:SetVerticalScroll(0)
+  end
+
+  -- Beside the options panel when it is up -- the side with room, right
+  -- first, level with its foot, where the line that opens this sits --
+  -- else the middle of the screen. The groups editor's rule.
+  local function Place(f, panel)
+    f:ClearAllPoints()
+    local left = panel and panel:IsShown() and panel:GetLeft()
+    local right = left and panel:GetRight()
+    if not (left and right) then
+      f:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
+      return
+    end
+    local scale = panel:GetEffectiveScale() or 1
+    local own = (f:GetWidth() or WIN_W) * (f:GetEffectiveScale() or 1)
+    local screen = (UIParent:GetRight() or 0) * (UIParent:GetEffectiveScale() or 1)
+    if right * scale + 8 + own > screen and left * scale - 8 - own >= 0 then
+      f:SetPoint("BOTTOMRIGHT", panel, "BOTTOMLEFT", -8, 0)
+    else
+      f:SetPoint("BOTTOMLEFT", panel, "BOTTOMRIGHT", 8, 0)
+    end
+  end
+
+  -- `panel`: the options panel, which takes this window with it when it
+  -- closes.
+  function BugReport.Toggle(panel)
+    if not win then
+      win = Build()
+      if panel then panel:HookScript("OnHide", function() win:Hide() end) end
+      -- The same expression as the options panel and the groups editor.
+      local applyWindow = ns.Skin and (ns.Skin.ApplyWindow or ns.Skin.Apply)
+      if applyWindow then applyWindow(win) end
+    end
+    if win:IsShown() then
+      win:Hide()
+      return
+    end
+    win.Url._value = BUG_URL
+    win.Url:SetText(BUG_URL)
+    win.Url:SetCursorPosition(0)
+    Layout(win)
+    Paint(win)
+    Fill(win)
+    Place(win, panel)
+    win:Show()
+    win:Raise()
+    if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, win) end
+    -- The address arrives focused and selected: Ctrl+C is all it needs.
+    win.Url:SetFocus()
+  end
+
+  -- Copy report: everything selected, the keyboard in the box.
+  function BugReport.SelectReport()
+    if not win then return end
+    win.Report:SetFocus()
+    win.Report:HighlightText()
+  end
+
+  -- A segment's click. The report is built again only when the choice
+  -- changed, so it says what is recording now.
+  function BugReport.SetMode(mode)
+    local set, get = ns.SetPerfRecording, ns.GetPerfRecording
+    if type(set) ~= "function" or type(get) ~= "function" then return end
+    local before = get()
+    set(mode)
+    if not win then return end
+    Paint(win)
+    if get() ~= before and win:IsShown() then Fill(win) end
+  end
+
+  -- The options panel's refresh, on every open and after a reset: the
+  -- record follows the saved choice (a reset clears it), and the switch is
+  -- painted from it.
+  function BugReport.Sync()
+    local set, get = ns.SetPerfRecording, ns.GetPerfRecording
+    if type(set) ~= "function" or type(get) ~= "function" then return end
+    local before = get()
+    set()
+    if not win then return end
+    Paint(win)
+    if get() ~= before and win:IsShown() then Fill(win) end
+  end
+end
+
+-------------------------------------------------------------
 -- Build
 -------------------------------------------------------------
 local function Build()
@@ -1604,181 +1995,12 @@ local function Build()
   -- The bug-report popup: the report address and a one-line setup summary,
   -- each in a copyable box. No browser can be opened from in-game, so
   -- copyable is the whole feature.
-  local BUG_URL = "https://github.com/egsherlock/Postbox/issues"
-  -- Wider than the options panel it opens from, and unrelated to it: the
-  -- panel's width is a column of controls, this is a window for reading long
-  -- diagnostic lines out of without every one of them wrapping twice.
-  local BUG_W, BUG_BOX_W = 440, 416
-  local bugPopup
-  local function AddCopyRow(pop, rowY, labelKey, boxHeight)
-    local caption = ns.Theme.CreateText(pop, "label")
-    caption:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY)
-    caption:SetText(L[labelKey])
-
-    local box
-    if boxHeight then
-      -- The diagnostic report outgrows any fixed height as the addon learns
-      -- to say more, so the multi-line box lives inside a scroll frame: the
-      -- viewport clips, the wheel scrolls, and focusing keeps the cursor in
-      -- view. A multi-line EditBox sizes its own height to its content.
-      local viewport = CreateFrame("ScrollFrame", nil, pop)
-      viewport:SetSize(BUG_BOX_W, boxHeight)
-      viewport:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY - 14)
-
-      box = CreateFrame("EditBox", nil, viewport)
-      box:SetWidth(BUG_BOX_W)
-      box:SetHeight(boxHeight)
-      box:SetAutoFocus(false)
-      box:SetMultiLine(true)
-      viewport:SetScrollChild(box)
-
-      local function Range()
-        return math.max(0, box:GetHeight() - boxHeight)
-      end
-      local function Wheel(_, delta)
-        viewport:SetVerticalScroll(
-          math.max(0, math.min(Range(), viewport:GetVerticalScroll() - delta * 24)))
-      end
-      viewport:EnableMouseWheel(true)
-      viewport:SetScript("OnMouseWheel", Wheel)
-      box:EnableMouseWheel(true)
-      box:SetScript("OnMouseWheel", Wheel)
-      -- Arrowing through the text keeps the cursor line inside the viewport.
-      box:SetScript("OnCursorChanged", function(_, _, cursorY, _, cursorH)
-        local offset = viewport:GetVerticalScroll()
-        local top = -(tonumber(cursorY) or 0)
-        local bottom = top + (tonumber(cursorH) or 0)
-        if top < offset then
-          viewport:SetVerticalScroll(math.max(0, top))
-        elseif bottom > offset + boxHeight then
-          viewport:SetVerticalScroll(math.min(Range(), bottom - boxHeight))
-        end
-      end)
-      box.__viewport = viewport
-    else
-      box = CreateFrame("EditBox", nil, pop)
-      box:SetSize(BUG_BOX_W, 14)
-      box:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, rowY - 14)
-      box:SetAutoFocus(false)
-    end
-    box:SetFontObject(ns.Theme.FontObject("bodySmall") or GameFontHighlightSmall)
-    box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
-    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-    -- Read-only in effect: any user edit snaps the text back and re-selects,
-    -- so Ctrl+C always copies the intact value. OnTextChanged rather than
-    -- OnChar: Backspace, Delete and Enter change the text without ever
-    -- firing OnChar. The flag stops the restore re-entering itself.
-    box:SetScript("OnTextChanged", function(self, userInput)
-      if not userInput or self._restoring then return end
-      self._restoring = true
-      self:SetText(self._value or "")
-      self._restoring = false
-      self:HighlightText()
-    end)
-    function box:SetValue(value)
-      self._value = value or ""
-      self:SetText(self._value)
-      if self.__viewport then self.__viewport:SetVerticalScroll(0) end
-    end
-    return box
-  end
-  local function ToggleBugReport()
-    if not bugPopup then
-      -- Its own little window, not a child of the panel: parented into the
-      -- panel at the same strata it interleaved with the panel's controls
-      -- and could be neither raised nor moved. UIParent + TOOLTIP strata
-      -- puts it above everything, and the opaque flag keeps it readable at
-      -- any host opacity.
-      -- Named: Escape-to-close works through UISpecialFrames, which is a
-      -- list of frame NAMES -- RegisterEscClose is a silent no-op on an
-      -- unnamed frame.
-      bugPopup = CreateFrame("Frame", "PostboxBugReportFrame", UIParent, "BackdropTemplate")
-      -- Height: the diagnostic box's own 200, plus the 74 above it (title,
-      -- address row, second caption) and the 22 the hint line needs below.
-      bugPopup:SetSize(BUG_W, 296)
-      bugPopup:SetFrameStrata("TOOLTIP")
-      bugPopup:SetToplevel(true)
-      bugPopup:SetClampedToScreen(true)
-      bugPopup:EnableMouse(true)
-      bugPopup:SetMovable(true)
-      bugPopup:RegisterForDrag("LeftButton")
-      bugPopup:SetScript("OnDragStart", bugPopup.StartMoving)
-      bugPopup:SetScript("OnDragStop", bugPopup.StopMovingOrSizing)
-      bugPopup.__pbEuiAlwaysOpaque = true
-      ns.Theme.ApplyCard(bugPopup)
-
-      -- A guaranteed-opaque ground. This window exists to read exact text
-      -- out of, so it opts out of every transparency system: the popup
-      -- floor stops at 95%, and a host skin paints its card art at the
-      -- user's opacity above that. The ground sits on a holder one frame
-      -- level BELOW the popup -- the same trick the floor itself uses --
-      -- so everything the popup and the skin draw composites over solid.
-      local groundHolder = CreateFrame("Frame", nil, bugPopup)
-      groundHolder:SetAllPoints(bugPopup)
-      groundHolder:SetFrameLevel(math.max(0, bugPopup:GetFrameLevel() - 1))
-      local groundEdge = groundHolder:CreateTexture(nil, "BACKGROUND", nil, -8)
-      groundEdge:SetPoint("TOPLEFT", groundHolder, "TOPLEFT", -1, 1)
-      groundEdge:SetPoint("BOTTOMRIGHT", groundHolder, "BOTTOMRIGHT", 1, -1)
-      groundEdge:SetColorTexture(1, 1, 1, 0.15)
-      local ground = groundHolder:CreateTexture(nil, "BACKGROUND", nil, -7)
-      ground:SetAllPoints(groundHolder)
-      ground:SetColorTexture(0.05, 0.05, 0.06, 1)
-
-      local title = ns.Theme.CreateText(bugPopup, "heading")
-      title:SetPoint("TOPLEFT", bugPopup, "TOPLEFT", 10, -8)
-      title:SetText(L["OPT_BUG_TIP_TITLE"])
-
-      -- The standard close button, same species as the options panel's own,
-      -- so both host skins restyle it the way they restyle every close box.
-      local close = CreateFrame("Button", nil, bugPopup, "UIPanelCloseButton")
-      close:SetSize(24, 24)
-      close:SetPoint("TOPRIGHT", bugPopup, "TOPRIGHT", -2, -2)
-      close:SetScript("OnClick", function() bugPopup:Hide() end)
-      -- Under the field name the skins look for: both restyle a window's
-      -- `CloseButton` into their own small X, which is what keeps this one
-      -- the same species as the options panel's instead of the stock art
-      -- at full size.
-      bugPopup.CloseButton = close
-
-      bugPopup._url = AddCopyRow(bugPopup, -24, "OPT_BUG_URL_LABEL")
-      -- 200, was 100: the report grew from six lines to something nearer
-      -- twenty, and a box that shows a third of it makes a reader scroll to
-      -- find out whether it is worth copying at all. It still scrolls.
-      bugPopup._diag = AddCopyRow(bugPopup, -60, "OPT_BUG_DIAG_LABEL", 200)
-
-      local hint = ns.Theme.CreateText(bugPopup, "bodySmall")
-      hint:SetPoint("BOTTOMLEFT", bugPopup, "BOTTOMLEFT", 10, 7)
-      hint:SetText(L["OPT_BUG_HINT"])
-      hint:SetAlpha(0.6)
-
-      ns.Core.UI.Helpers.RegisterEscClose(bugPopup)
-      -- Not a child of the panel any more, so closing the panel must take
-      -- the popup with it explicitly.
-      frame:HookScript("OnHide", function() bugPopup:Hide() end)
-      bugPopup:Hide()
-      if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, bugPopup) end
-    end
-    if bugPopup:IsShown() then
-      bugPopup:Hide()
-      return
-    end
-    bugPopup._url:SetValue(BUG_URL)
-    bugPopup._diag:SetValue(
-      (type(ns.BuildDiagnosticReport) == "function" and ns.BuildDiagnosticReport())
-      or "")
-    bugPopup:ClearAllPoints()
-    if statusBand:GetTop() then
-      bugPopup:SetPoint("BOTTOM", statusBand, "TOP", 0, 8)
-    else
-      -- /postbox debug before the panel has ever been positioned: the band
-      -- has no resolvable rect, and a frame anchored to one never lays out.
-      bugPopup:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
-    end
-    bugPopup:Show()
-    -- Effortless copying: the address arrives focused and selected, so
-    -- Ctrl+C is the only keystroke needed.
-    bugPopup._url:SetFocus()
-  end
+  --
+  -- It is a window of its own now (BugReport, above), built on first use.
+  -- The panel's refresh repaints its recording switch, and after a reset
+  -- takes the record down with the cleared choice.
+  local function ToggleBugReport() BugReport.Toggle(frame) end
+  frame.__refreshers[#frame.__refreshers + 1] = BugReport.Sync
   -- /postbox debug reaches this without the panel being open.
   Panel._toggleBugReport = ToggleBugReport
 
