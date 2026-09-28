@@ -577,6 +577,7 @@ local S = {
   tab = "mail",
   shown = false,  -- the entry the inspector's text zone shows (nil: at rest)
   bodyH = 0,
+  textGen = 0,    -- counts changes to a text the inspector can show
 }
 
 -- The sections below, declared together so each can reach the others.
@@ -794,6 +795,11 @@ do
     S.shown = false
     Insp.Idle(S.tab)
     Insp.Show(entry or nil)
+  end
+
+  -- The height an entry's text needs, `extraH` included.
+  function Insp.Need(entry, extraH)
+    return Lay(S.measure, entry.title, entry.text, extraH)
   end
 
   -- The height a text of the secondary role takes across the text zone.
@@ -2129,8 +2135,13 @@ end
 function State.Inheritance()
   local host = S.installedHost
   local entry = S.idle.window
+  local title, text
   if not host then
-    entry.title, entry.text = L["OPT_STYLE_TITLE"], L["OPT_STYLE_DESC"]
+    title, text = L["OPT_STYLE_TITLE"], L["OPT_STYLE_DESC"]
+    if entry.title ~= title or entry.text ~= text then
+      entry.title, entry.text = title, text
+      S.textGen = S.textGen + 1
+    end
     Tabs.SetSquare("window", nil)
     return
   end
@@ -2145,16 +2156,20 @@ function State.Inheritance()
     or stock == "blizzard" and L["OPT_STYLE_LOOK_BLIZZARD"] or nil
   if HostSkinName() then
     S.badgeGreen = true
-    entry.title = L("OPT_STYLE_INHERIT", host)
-    entry.text = L("OPT_STYLE_INHERIT_DESC", host)
+    title = L("OPT_STYLE_INHERIT", host)
+    text = L("OPT_STYLE_INHERIT_DESC", host)
   elseif stockName then
     S.badgeGreen = true
-    entry.title = L("OPT_STYLE_FOLLOW", host)
-    entry.text = L("OPT_STYLE_FOLLOW_DESC", host, stockName)
+    title = L("OPT_STYLE_FOLLOW", host)
+    text = L("OPT_STYLE_FOLLOW_DESC", host, stockName)
   else
     S.badgeGreen = false
-    entry.title = L("OPT_STYLE_OVERRIDE", host)
-    entry.text = L("OPT_STYLE_OVERRIDE_DESC", host, host)
+    title = L("OPT_STYLE_OVERRIDE", host)
+    text = L("OPT_STYLE_OVERRIDE_DESC", host, host)
+  end
+  if entry.title ~= title or entry.text ~= text then
+    entry.title, entry.text = title, text
+    S.textGen = S.textGen + 1
   end
   Tabs.SetSquare("window", S.badgeGreen and "on" or "off")
 end
@@ -2953,10 +2968,55 @@ local function Refresh()
   for i = 1, #S.refresh do pcall(S.refresh[i]) end
 end
 
--- The list and the inspector are one height, so the panel never jumps as
--- the tabs change: the tallest page of rows.
+-- What the texts' heights depend on, as they were last measured: the
+-- measuring strings' fonts (a host skin's re-font moves them), their scale,
+-- and the texts themselves (textGen). The same on an open means the same
+-- heights, and nothing is laid out again.
+local measuredWith = { false, false, false, false, false, false, false, false }
+
+local function MeasuredAlready()
+  local m = S.measure
+  local p1, s1, f1 = m.Title:GetFont()
+  local p2, s2, f2 = m.Text:GetFont()
+  local scale, gen = m:GetEffectiveScale(), S.textGen
+  local k = measuredWith
+  if k[1] == p1 and k[2] == s1 and k[3] == f1 and k[4] == p2 and k[5] == s2 and k[6] == f2
+      and k[7] == scale and k[8] == gen then
+    return true
+  end
+  k[1], k[2], k[3], k[4], k[5], k[6], k[7], k[8] = p1, s1, f1, p2, s2, f2, scale, gen
+  return false
+end
+
+-- The list and the inspector are one height, the tallest either needs, so
+-- the panel never jumps as the tabs change: the tallest page of rows, or
+-- the tallest description the inspector can be asked for -- measured in
+-- the client's language and the host's font, with the drawing it must
+-- leave room for where it sits under one. In English the pages set it;
+-- only a language whose descriptions run longer makes the panel taller.
 local function Layout()
-  local need = math.ceil(S.listNeed or 0)
+  local text = S.textNeed
+  if not (MeasuredAlready() and text) then
+    text = 0
+    local entries = S.entries
+    for i = 1, #entries do
+      local entry = entries[i]
+      local h = Insp.Need(entry, entry.extra and Ctx.ExtraHeight(entry.extra) or 0)
+      if h > text then text = h end
+    end
+    for i = 1, #TABS do
+      local key = TABS[i].key
+      local ctxH = Ctx.Height(key)
+      local entry = S.idle[key]
+      if entry and ctxH > 0 then
+        local h = Insp.Need(entry, 0)
+        if h < SAY_MIN then h = SAY_MIN end
+        if ctxH + h > text then text = ctxH + h end
+      end
+    end
+    S.textNeed = text
+  end
+  local need = math.ceil(math.max(S.listNeed or 0, text))
   if need ~= S.bodyH then
     S.bodyH = need
     S.body:SetHeight(need)
