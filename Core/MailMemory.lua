@@ -2167,11 +2167,18 @@ local function BuildHeader(frame)
   -- same square plate as the picker's, wearing the sort glyph at its own
   -- size in the middle. It does not turn with the order, as the atlas it
   -- replaced did not: the order shows in the plate's selection (PaintSort).
+  -- One grey in every state: textSecondary, the token nearest the mockup's
+  -- #cfcfcf for this plate's glyph.
   local sort = T.CreatePlate(frame, "segment")
   sort:SetSize(HEADER_H, HEADER_H)
   sort:SetText("")
   sort.Icon = T.Glyph and T.Glyph(sort, "sort", nil, "OVERLAY") or nil
-  if sort.Icon then sort.Icon:SetPoint("CENTER") else sort:SetText("v") end
+  if sort.Icon then
+    sort.Icon:SetPoint("CENTER")
+    T.SetColor(sort.Icon, "textSecondary")
+  else
+    sort:SetText("v")
+  end
   sort:SetPoint("RIGHT", picker, "LEFT", -4, 0)
   local function PaintSort()
     T.SetPlateSelected(sort, frame.sort == "expiry")
