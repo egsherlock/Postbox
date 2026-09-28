@@ -541,7 +541,7 @@ local TEXT_W = INSP_W - 2 - 2 * TEXT_X
 -- The text zone is never shorter than this: most descriptions fit it, so
 -- the text does not jump as the pointer moves from setting to setting.
 local SAY_MIN = 150
-local TILE_H, HOST_H, SWATCH_H, STAGE, STAGE_ICON, SAMPLE_MAX, MOCK_H = 46, 32, 74, 104, 54, 48, 34
+local TILE_H, HOST_H, SWATCH_H, STAGE, STAGE_ICON, SAMPLE_MAX, MOCK_H = 46, 32, 74, 104, 54, 50, 34
 local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
 local GLOW_TGA = "Interface\\AddOns\\Postbox\\Media\\minimap-glow.tga"
 local ROUND_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
@@ -814,9 +814,10 @@ end
 -- The inspector's drawings (Ctx)
 --
 -- One per tab, built the first time its tab is shown and painted every
--- time it is: the Mail tab's character groups tile and a sample mail row
--- that grows with Larger mail rows and wears the quality mark where the
--- setting puts it; the Send tab's recipients tile; the window over a bit
+-- time it is: the Mail tab's character groups tile and sample mail rows
+-- that grow with Larger mail rows, line their gold up with Line up columns
+-- and wear the quality mark where the setting puts it; the Send tab's
+-- recipients tile; the window over a bit
 -- of world, at the player's opacity and border; the minimap icon at a size
 -- you can judge, wearing its glow, shadow and accent. Drawn here, from the
 -- settings, rather than borrowed from the windows they describe: those
@@ -824,9 +825,15 @@ end
 -------------------------------------------------------------
 do
   local CTX_TOP = 11
-  -- Sample mail: a tiered reagent, whose link carries a quality mark.
+  -- Sample mail: a tiered reagent, whose link carries a quality mark --
+  -- bought for SAMPLE_PRICE and, on the second row, sold for SAMPLE_SALE,
+  -- the gold coming with a coin for its icon.
   local SAMPLE_ITEM = 191462
   local SAMPLE_DAYS = 29
+  local SAMPLE_PRICE, SAMPLE_SALE = 522600, 13090000
+  local SAMPLE_COIN = "Interface\\Icons\\INV_Misc_Coin_01"
+  -- The step between the sample's figure columns, as Mail Memory's rows.
+  local SAMPLE_GAP = 6
 
   -- The fixed height of each tab's drawing, and the gap under it.
   function Ctx.Height(key)
@@ -1036,13 +1043,34 @@ do
   end
 
   ---------------------------------------------------------
-  -- The sample mail row
+  -- The sample mail rows
   --
-  -- A small drawing of one row, from the settings rather than from the
-  -- list's own code: the icon, the name, where the mail came from and how
-  -- long it has left. Two lines with a larger icon under Larger mail rows;
-  -- the quality mark on the icon's corner, after the name, both or neither.
+  -- A small drawing of the list, from the settings rather than from the
+  -- list's own code. One-line rows: two mails, the sample item bought --
+  -- its price and its slot -- and the same item sold, gold and no slot, so
+  -- Line up columns visibly moves the sale's gold: under the other gold
+  -- lined up, out at the edge under the slot closed up. Their figures stand
+  -- in the list's default order, gold then slots. Under Larger mail rows,
+  -- the first mail alone on two lines with a larger icon, where it came from
+  -- and how long it has left under its name: those rows have no columns.
+  -- The quality mark on the icon's corner, after the name, both or neither.
   ---------------------------------------------------------
+
+  -- A figure of the sample's, right-aligned in its column.
+  local function SampleFigure(art)
+    local fs = ns.Theme.CreateText(art, "secondary")
+    fs:SetJustifyH("RIGHT")
+    fs:SetWordWrap(false)
+    return fs
+  end
+
+  -- fs, its column's right edge and width, and the row's middle.
+  local function PlaceFigure(s, fs, right, width, y)
+    fs:ClearAllPoints()
+    fs:SetPoint("RIGHT", s, "TOPLEFT", right, y)
+    fs:SetWidth(width)
+    fs:Show()
+  end
 
   -- The sample item's name, link and quality, asked for once if the client
   -- has not loaded it yet; the row repaints when it arrives.
@@ -1088,13 +1116,48 @@ do
     s.Name = T.CreateText(art, "value")
     s.Name:SetJustifyH("LEFT")
     s.Name:SetWordWrap(false)
-    s.Meta = T.CreateText(art, "secondary")
-    s.Meta:SetJustifyH("RIGHT")
-    s.Meta:SetWordWrap(false)
     s.Line2 = T.CreateText(art, "secondary")
     s.Line2:SetJustifyH("LEFT")
     s.Line2:SetWordWrap(false)
+    -- The second mail: a stripe, as the list's rows alternate, its coin and
+    -- its name; and the figures of both.
+    s.Stripe = art:CreateTexture(nil, "BACKGROUND", nil, 1)
+    s.Stripe:SetColorTexture(1, 1, 1, 0.035)
+    s.Icon2 = art:CreateTexture(nil, "ARTWORK", nil, 1)
+    s.Icon2:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    s.Icon2:SetTexture(SAMPLE_COIN)
+    s.Name2 = T.CreateText(art, "value")
+    s.Name2:SetJustifyH("LEFT")
+    s.Name2:SetWordWrap(false)
+    s.Gold, s.Slots, s.Gold2 = SampleFigure(art), SampleFigure(art), SampleFigure(art)
+    -- Behind both golds while Line up columns is pointed at: the column the
+    -- switch moves, washed as the arrange mode washes one.
+    s.Wash = art:CreateTexture(nil, "BACKGROUND", nil, 3)
+    s.Wash2 = art:CreateTexture(nil, "BACKGROUND", nil, 3)
+    s.Wash:Hide()
+    s.Wash2:Hide()
     return s
+  end
+
+  -- The golds' wash, while the pointer is on Line up columns (its row or
+  -- its checkbox) and the sample has columns to show.
+  function Ctx.PaintSampleWash(s)
+    s = s or S.sample
+    if not s then return end
+    local cell = S.lanesCell
+    local on = s.Gold:IsShown() and cell ~= nil and cell:IsMouseOver() or false
+    if on then
+      local r, g, b = ns.Theme.GetAccent()
+      for i = 1, 2 do
+        local wash, fs = (i == 1) and s.Wash or s.Wash2, (i == 1) and s.Gold or s.Gold2
+        wash:SetColorTexture(r, g, b, 0.22)
+        wash:ClearAllPoints()
+        wash:SetPoint("TOPLEFT", fs, "TOPLEFT", -3, 2)
+        wash:SetPoint("BOTTOMRIGHT", fs, "BOTTOMRIGHT", 3, -2)
+      end
+    end
+    s.Wash:SetShown(on)
+    s.Wash2:SetShown(on)
   end
 
   function Ctx.PaintSample(s)
@@ -1104,7 +1167,7 @@ do
     local mode = UI and type(UI.GetQualityMark) == "function" and UI.GetQualityMark() or "icon"
     local iconSize = larger and 24 or 18
     local lineH = larger and 30 or 24
-    s:SetHeight(lineH + (larger and 16 or 0) + 2)
+    s:SetHeight(larger and (lineH + 16 + 2) or (2 * lineH + 2))
 
     local name, link, quality = SampleItem()
     local icon = C_Item and type(C_Item.GetItemIconByID) == "function" and C_Item.GetItemIconByID(SAMPLE_ITEM) or nil
@@ -1152,8 +1215,13 @@ do
       S.sampleMeta = L["ROW_AH_BOUGHT"] .. "  \194\183  " .. string.format(L["DAYS_SHORT"], SAMPLE_DAYS)
     end
     local nameX = 8 + iconSize + 7
+    s.Stripe:SetShown(not larger)
+    s.Icon2:SetShown(not larger)
+    s.Name2:SetShown(not larger)
     if larger then
-      s.Meta:Hide()
+      s.Gold:Hide()
+      s.Slots:Hide()
+      s.Gold2:Hide()
       s.Line2:ClearAllPoints()
       s.Line2:SetPoint("TOPLEFT", s, "TOPLEFT", nameX, -(1 + lineH - 3))
       T.FitText(s.Line2, CTX_W - nameX - 8, S.sampleMeta)
@@ -1161,12 +1229,47 @@ do
       T.FitText(s.Name, CTX_W - nameX - 8, text)
     else
       s.Line2:Hide()
-      s.Meta:ClearAllPoints()
-      s.Meta:SetPoint("RIGHT", s, "TOPRIGHT", -8, -(1 + lineH / 2))
-      s.Meta:SetText(S.sampleMeta)
-      s.Meta:Show()
-      T.FitText(s.Name, math.max(40, CTX_W - nameX - 8 - TextW(s.Meta) - 10), text)
+      -- The figures, made once: the price, the slot, the sale's gold.
+      local fig = S.sampleFigures
+      if not fig then
+        local F = ns.Core and ns.Core.Formatting
+        local money = F and F.FormatMoneyCompact
+        fig = { money and money(SAMPLE_PRICE, true) or "52g", ns.Plural("COUNT_SLOTS", 1),
+          money and money(SAMPLE_SALE, true) or "1309g" }
+        S.sampleFigures = fig
+      end
+      s.Gold:SetText(fig[1])
+      s.Slots:SetText(fig[2])
+      s.Gold2:SetText(fig[3])
+      T.SetColor(s.Gold, "negative")
+      T.SetColor(s.Slots, "accent")
+      T.SetColor(s.Gold2, "positive")
+      -- Each column as wide as its widest entry, gold then slots from the
+      -- edge in. Lined up, the sale's gold stands in the gold column; closed
+      -- up, at the edge, where the slot it does not have would be.
+      local goldW = math.max(TextW(s.Gold), TextW(s.Gold2))
+      local slotsW = TextW(s.Slots)
+      local edge = CTX_W - 8
+      local goldEdge = edge - slotsW - SAMPLE_GAP
+      local lined = not (UI and UI.GetOption) or UI.GetOption("lineUpColumns")
+      local saleEdge = lined and goldEdge or edge
+      local y1, y2 = -(1 + lineH / 2), -(1 + lineH + lineH / 2)
+      PlaceFigure(s, s.Slots, edge, slotsW, y1)
+      PlaceFigure(s, s.Gold, goldEdge, goldW, y1)
+      PlaceFigure(s, s.Gold2, saleEdge, goldW, y2)
+      T.FitText(s.Name, math.max(40, goldEdge - goldW - SAMPLE_GAP - nameX), text)
+
+      s.Stripe:ClearAllPoints()
+      s.Stripe:SetPoint("TOPLEFT", s, "TOPLEFT", 1, -(1 + lineH))
+      s.Stripe:SetPoint("BOTTOMRIGHT", s, "BOTTOMRIGHT", -1, 1)
+      s.Icon2:SetSize(iconSize, iconSize)
+      s.Icon2:ClearAllPoints()
+      s.Icon2:SetPoint("CENTER", s, "TOPLEFT", 8 + iconSize / 2, y2)
+      s.Name2:ClearAllPoints()
+      s.Name2:SetPoint("LEFT", s.Icon2, "RIGHT", 7, 0)
+      T.FitText(s.Name2, math.max(40, saleEdge - goldW - SAMPLE_GAP - nameX), name or "")
     end
+    Ctx.PaintSampleWash(s)
   end
 
   -- The Mail tab: the character groups tile and the sample row.
@@ -1179,6 +1282,7 @@ do
     tile:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
     local sample = Ctx.Sample(f)
     sample:SetPoint("TOPLEFT", tile, "BOTTOMLEFT", 0, -8)
+    S.sample = sample
     f.Paint = function()
       -- How many groups there are; none reads as the tile's way in.
       local CG = ns.CharacterGroups
@@ -2282,6 +2386,28 @@ function Pages.mail(col)
     end,
     after = Ctx.Repaint,
   })
+
+  -- Every figure in its own column on every row, or a mail's figures closed
+  -- up to the right edge with its subject given their room: in the Mail
+  -- tab, History and Mail Memory alike. Every list's rows are placed again
+  -- where they stand; the sample rows show the sale's gold move, and while
+  -- the switch is pointed at, where the gold stands.
+  local lanes = Rows.Check(col, {
+    title = L["OPT_LINE_UP_TITLE"], text = L["OPT_LINE_UP_DESC"],
+    get = function() return ns.MailboxUI.GetOption("lineUpColumns") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("lineUpColumns", on)
+      local AR = ns.Arrange
+      if AR and AR.RowsChanged then AR.RowsChanged(false) end
+    end,
+    after = Ctx.Repaint,
+  })
+  S.lanesCell = lanes
+  local function PaintWash() Ctx.PaintSampleWash() end
+  lanes:HookScript("OnEnter", PaintWash)
+  lanes:HookScript("OnLeave", PaintWash)
+  lanes.control:HookScript("OnEnter", PaintWash)
+  lanes.control:HookScript("OnLeave", PaintWash)
 
   -- Where the crafting quality mark goes, in the list, History and the
   -- memory alike: on the corner of the item's icon (the default), after its
