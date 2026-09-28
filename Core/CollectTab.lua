@@ -1346,16 +1346,28 @@ end
 -- the one column with no width of its own, which takes what the others
 -- leave. What stands before it packs from the left; what stands after it
 -- packs from the right edge inward, so every row ends on the same edge.
--- After the subject a figure this mail does not have takes NO room and the
--- next one in moves up to the edge (a figure in the same place from the edge
--- on two rows stands in the same column); before it, a figure keeps its
--- column on every row, so the subject still starts on one line down the list.
+-- Before the subject a figure keeps its column on every row, so the subject
+-- still starts on one line down the list. After it, the player's choice
+-- ("Line up columns", RV.LinedUp):
+--   lined up   the same: a figure the arrangement shows keeps its column on
+--              every row, so gold stands under gold. A lane this mail leaves
+--              empty is kept and not drawn, and the subject runs on through
+--              the empty lanes next to it, up to the first thing the mail
+--              has. A figure with no lane in the list -- hidden by the
+--              arrangement but shown on this row anyway (`force`), or left
+--              no room by the lanes further out in a narrow list -- takes
+--              the subject's room next to it on its own side, within the
+--              row's share, and no lane moves for one row.
+--   closed up  a figure this mail does not have takes NO room and the next
+--              one in moves up to the edge, so the subject has all the room
+--              the mail's own figures leave -- the rows before 1.50.
 -- The figures together may claim at most `share` of the text area: the
 -- sender and the subject are what a mailbox is scanned by.
 --
 -- The two-line row keeps the arrangement's order on each line: the icon and
 -- the dot keep their side, the sender and the subject share the first line
 -- in their order, and the figures are written out in theirs on the second.
+-- It has no columns to line up, and is placed the same either way.
 --
 -- `s` (RV.NewSpec, reused):
 --   width, left, trail, gap   the row's width; where its first column may
@@ -1378,6 +1390,8 @@ function RV.Place(row, s)
   local T = Th()
   local el, text, cols, size, w = s.el, s.text, s.cols or {}, s.size, s.w
   local gap, two, force = s.gap, s.two, s.force
+  -- Lanes are a one-line row's: the two-line row writes its figures out.
+  local lanes = not two and RV.LinedUp()
   local n = #layout
   local at = n
   for i = 1, n do
@@ -1395,9 +1409,14 @@ function RV.Place(row, s)
   local textWidth = max(s.width - s.left - s.trail - fixed, 60)
 
   -- The figures' widths: those after the subject from the edge in, then
-  -- those before it, out of one allowance.
+  -- those before it, out of one allowance. Lined up, a figure the
+  -- arrangement shows has its width whether this mail has it or not, as
+  -- every figure before the subject does and History's reserve does; a
+  -- hidden one forced onto this row is left to the subject's room (below).
   local room = s.share and floor(textWidth * s.share) or textWidth
   local used = 0
+  -- Lined up: whether a figure the row may show has no lane (below).
+  local laneless = lanes and force ~= nil and not layout.shown[force]
   for pass = 1, 2 do
     local from, to, step = n, at + 1, -1
     if pass == 2 then from, to, step = 1, at - 1, 1 end
@@ -1405,10 +1424,13 @@ function RV.Place(row, s)
       local id = layout[i].id
       if RV.FIGURE[id] and el[id] then
         local width = 0
-        if (layout[i].shown or force == id) and not two then
-          local has = pass == 2 or s.reserve or text[id] ~= nil
+        if (layout[i].shown or (force == id and not lanes)) and not two then
+          local has = pass == 2 or s.reserve or lanes or text[id] ~= nil
           width = min(cols[id] or 0, room - used)
-          if not has or width < 12 then width = 0 end
+          if not has or width < 12 then
+            if lanes and width < 12 and (cols[id] or 0) >= 12 then laneless = true end
+            width = 0
+          end
         end
         w[id] = width
         if width > 0 then used = used + width + gap end
@@ -1422,6 +1444,8 @@ function RV.Place(row, s)
   local subjectW = max(lineWidth - (senderShown and (senderW + gap) or 0), 20)
 
   local focus, target = s.focus, nil
+  -- What this row's own figures take, lined up (below).
+  local drawn = 0
   local x = s.left
   for i = 1, at - 1 do
     local id = layout[i].id
@@ -1445,10 +1469,14 @@ function RV.Place(row, s)
           x = x + senderW + gap
           placed = true
         elseif (w[id] or 0) > 0 then
-          RV.Anchor(row, region, 1, x, 0)
-          T.FitText(region, w[id], text[id] or "", nil)
+          -- Lined up, a lane this mail leaves empty is kept, not drawn.
+          placed = not (lanes and text[id] == nil)
+          if placed then
+            RV.Anchor(row, region, 1, x, 0)
+            T.FitText(region, w[id], text[id] or "", nil)
+            drawn = drawn + w[id] + gap
+          end
           x = x + w[id] + gap
-          placed = true
         end
       end
       if placed ~= nil then
@@ -1481,10 +1509,13 @@ function RV.Place(row, s)
           edge = edge + senderW + gap
           placed = true
         elseif (w[id] or 0) > 0 then
-          RV.Anchor(row, region, 2, -edge, 0)
-          T.FitText(region, w[id], text[id] or "", nil)
+          placed = not (lanes and text[id] == nil)
+          if placed then
+            RV.Anchor(row, region, 2, -edge, 0)
+            T.FitText(region, w[id], text[id] or "", nil)
+            drawn = drawn + w[id] + gap
+          end
           edge = edge + w[id] + gap
-          placed = true
         end
       end
       if placed ~= nil then
@@ -1496,8 +1527,56 @@ function RV.Place(row, s)
 
   local subject, sender, detail = el.subject, el.sender, el.detail
   if not two then
-    RV.Anchor(row, subject, 1, x, 0)
-    T.FitText(subject, subjectW, text.subject, subject)
+    local sx, run = x, subjectW
+    if lanes then
+      -- The subject runs on through the lanes next to it that this mail
+      -- leaves empty, up to the first thing it has; a lane with no room
+      -- takes none.
+      for i = at + 1, n do
+        local id = layout[i].id
+        if el[id] and layout[i].shown then
+          if not RV.FIGURE[id] then break end
+          local width = w[id] or 0
+          if width > 0 then
+            if text[id] ~= nil then break end
+            run = run + width + gap
+          end
+        end
+      end
+      -- A figure with no lane in this list that this row has -- one the
+      -- arrangement hides but the row shows anyway (a C.O.D. price), or one
+      -- the lanes further out left no room -- stands in the subject's room,
+      -- next to the subject on its own side and in its own order, so no lane
+      -- moves for one row. The row's own figures still claim no more than
+      -- their share, as closed-up rows' do.
+      for pass = 1, laneless and 2 or 0 do
+        local from, to, step = n, at + 1, -1
+        if pass == 2 then from, to, step = 1, at - 1, 1 end
+        for i = from, to, step do
+          local id = layout[i].id
+          local region = el[id]
+          if region and RV.FIGURE[id] and (w[id] or 0) == 0 and text[id] ~= nil
+              and (layout[i].shown or force == id) then
+            local width = min(cols[id] or 0, room - drawn, run - gap - 20)
+            if width >= 12 then
+              run = run - width - gap
+              drawn = drawn + width + gap
+              if pass == 2 then
+                RV.Anchor(row, region, 1, sx, 0)
+                sx = sx + width + gap
+              else
+                RV.Anchor(row, region, 1, sx + run + gap, 0)
+              end
+              T.FitText(region, width, text[id], nil)
+              region:Show()
+              if id == focus then target = region end
+            end
+          end
+        end
+      end
+    end
+    RV.Anchor(row, subject, 1, sx, 0)
+    T.FitText(subject, run, text.subject, subject)
     subject:Show()
     if detail then detail:Hide() end
     -- The two-line row's figures live on its second line; this row's are
