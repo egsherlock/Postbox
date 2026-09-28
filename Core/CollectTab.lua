@@ -3368,7 +3368,9 @@ local function BindRow(panel, row, index, position, compact, done)
   local showSlots, showExpiry = RowShows("slots"), RowShows("time")
   local money, moneyKind = RowMoneyText(index, hasCOD, moneyValue, codValue, compact)
   local purchaseShown = (moneyKind == "spent")
-  local slots = (remaining > 0) and T.Colorize("accent", ns.Plural("COUNT_SLOTS", remaining)) or nil
+  -- In the quiet tone the time left wears: a count, not a warning. The
+  -- money is the row's one coloured figure.
+  local slots = (remaining > 0) and T.Colorize("textSecondary", ns.Plural("COUNT_SLOTS", remaining)) or nil
 
   -- Time left is a warning, not a column: on the row only when it is short;
   -- always in the tooltip.

@@ -1183,7 +1183,8 @@ local function Figures(mail, now)
   local hasCOD = (mail.cod or 0) > 0
   local money, moneyKind
   if R then money, moneyKind = R.MoneyText(hasCOD, mail.money or 0, mail.cod or 0, mail.paid, true) end
-  local slots = ((mail.items or 0) > 0) and T.Colorize("accent", ns.Plural("COUNT_SLOTS", mail.items)) or nil
+  -- The slot count in the quiet tone, as the Mail tab has it.
+  local slots = ((mail.items or 0) > 0) and T.Colorize("textSecondary", ns.Plural("COUNT_SLOTS", mail.items)) or nil
 
   -- Time left by the mail list's own rule (ExpiryState): the player's
   -- threshold, amber when genuinely short -- and "expired" always shows.

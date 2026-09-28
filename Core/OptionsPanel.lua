@@ -1242,7 +1242,7 @@ do
       s.Slots:SetText(fig[2])
       s.Gold2:SetText(fig[3])
       T.SetColor(s.Gold, "negative")
-      T.SetColor(s.Slots, "accent")
+      T.SetColor(s.Slots, "textSecondary")
       T.SetColor(s.Gold2, "positive")
       -- Each column as wide as its widest entry, gold then slots from the
       -- edge in. Lined up, the sale's gold stands in the gold column; closed
