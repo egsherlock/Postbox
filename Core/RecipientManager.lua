@@ -134,6 +134,7 @@ local DEFAULT_W, DEFAULT_H = 600, 480
 -- bigger than anything it holds.
 local MIN_W    = 480
 local MIN_ROWS = 6
+local DEFAULT_ROWS = 9
 local MAX_W, MAX_H = 1000, 800
 
 local ADD_POPUP    = "POSTBOX_RM_ADD"
@@ -1820,12 +1821,15 @@ end
 
 -- The size a first open uses: the default, or the floor where that stands
 -- higher, on loan like any other.
+-- The default height is whole rows (DEFAULT_ROWS under the measured chrome),
+-- so a first open never shows a row cut off at the list's foot.
 local function SetDefaultSize(frame)
   local minW, minH
   if frame.GetResizeBounds then minW, minH = frame:GetResizeBounds() end
+  local defaultH = ChromeHeight(frame) + DEFAULT_ROWS * ROW_H
   local width = math.max(DEFAULT_W, tonumber(minW) or 0)
-  local height = math.max(DEFAULT_H, tonumber(minH) or 0)
-  RM._loanW, RM._loanH = width - DEFAULT_W, height - DEFAULT_H
+  local height = math.max(defaultH, tonumber(minH) or 0)
+  RM._loanW, RM._loanH = width - DEFAULT_W, height - defaultH
   frame:SetSize(width, height)
 end
 
@@ -2399,6 +2403,10 @@ function RM.Show()
   -- Last: the summary line has its text and the skin its fonts, so both are
   -- measured as they will be seen.
   ApplyBounds(frame)
+  -- With no size stored yet (a first open, or after Reset to defaults), the
+  -- default is whole rows, which only a measured chrome can say.
+  local saved = ns.Store.Get("profile.rmWindow")
+  if not (type(saved) == "table" and tonumber(saved.height)) then SetDefaultSize(frame) end
 end
 
 function RM.Hide()
