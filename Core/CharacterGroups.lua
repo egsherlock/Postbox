@@ -1523,6 +1523,9 @@ local function Build()
     self.NameBox:ClearFocus()
     self.Search.Box:ClearFocus()
     GameTooltip:Hide()
+    -- When: an Escape that closed this window over the arrange mode is this
+    -- window's, not a layer of the mode's (Arrange.lua, AR.OnEscape).
+    CG._hiddenAt = GetTime()
   end)
 
   -- Same expression as the options panel and Mail Memory: let an active
@@ -1536,10 +1539,12 @@ end
 
 -- Where the window opens: beside the mailbox window when that is up, beside
 -- the options panel when that is, else the middle of the screen. Beside
--- means the side with room for it -- right first -- compared in screen
+-- means the side with room for it -- right first, or `side` first where the
+-- caller names one (-1 the left: the arrange mode's inspector, docked on
+-- the window's left, opens it away from the window) -- compared in screen
 -- pixels, since the windows can carry different scales. Clamped, so a
 -- window with no room either side still lands whole.
-local function Place(frame, anchor)
+local function Place(frame, anchor, side)
   if not anchor then
     local UI = ns.MailboxUI
     local window = UI and UI._frame
@@ -1560,21 +1565,30 @@ local function Place(frame, anchor)
   local scale = anchor:GetEffectiveScale() or 1
   local own = EDITOR_W * (frame:GetEffectiveScale() or 1)
   local screen = (UIParent:GetRight() or 0) * (UIParent:GetEffectiveScale() or 1)
-  if right * scale + 8 + own > screen and left * scale - 8 - own >= 0 then
+  local fitsRight = right * scale + 8 + own <= screen
+  local fitsLeft = left * scale - 8 - own >= 0
+  local goLeft
+  if side == -1 then
+    goLeft = fitsLeft or not fitsRight
+  else
+    goLeft = not fitsRight and fitsLeft
+  end
+  if goLeft then
     frame:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -8, 0)
   else
     frame:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 8, 0)
   end
 end
 
--- [id or "group:<id>"] [, anchor] -> the editor, open on that group (or on
--- the one it last showed). Raises it when it is already open.
-function CG.OpenEditor(id, anchor)
+-- [id or "group:<id>"] [, anchor [, side]] -> the editor, open on that
+-- group (or on the one it last showed), beside `anchor` on `side` first
+-- where there is room (Place). Raises it when it is already open.
+function CG.OpenEditor(id, anchor, side)
   local frame = Build()
   if type(id) == "string" then id = id:match("^group:(.+)$") or id end
   local opening = not frame:IsShown()
   if opening then
-    Place(frame, anchor)
+    Place(frame, anchor, side)
     frame.Scroll:SetVerticalScroll(0)
   end
   frame:Show()

@@ -899,7 +899,8 @@ end
 -- that frame hiding is what an Escape is heard by. In place, so no other
 -- entry shifts. A layer short of the last shows the frame again for the
 -- next Escape; the swap is undone on the way out, however the mode ends.
--- No keyboard is taken for any of it.
+-- An Escape that closes the character groups' window, which the grid's
+-- card opens, is that window's alone. No keyboard is taken for any of it.
 -------------------------------------------------------------
 
 AR.ESC_WINDOWS = { PostboxFrame = true, PostboxMailMemoryFrame = true }
@@ -921,6 +922,7 @@ function AR.CatchEscape(on)
       -- Hidden by the client's close-windows pass on an Escape: answered a
       -- frame later, off that path, as the window's own close is
       -- (COMBAT_TAINT.md).
+      AR._escAt = GetTime()
       C_Timer.After(0, AR.OnEscape)
     end)
     AR._esc = catcher
@@ -971,16 +973,21 @@ function AR.CatchEscape(on)
   end
 end
 
--- One Escape, one layer.
+-- One Escape, one layer. An Escape that also closed the character groups'
+-- window -- which the grid's card opens (a host's FollowBlockLink) -- was that
+-- window's: the mode keeps its layers and listens for the next.
 function AR.OnEscape()
   if not AR.host then return end
-  if AR.Dragging() then
-    AR.CancelPress(true)
-  elseif AR.selKind then
-    AR.Select(nil)
-  else
-    AR.Leave()
-    return
+  local groups = ns.CharacterGroups
+  if not (groups and AR._escAt ~= nil and groups._hiddenAt == AR._escAt) then
+    if AR.Dragging() then
+      AR.CancelPress(true)
+    elseif AR.selKind then
+      AR.Select(nil)
+    else
+      AR.Leave()
+      return
+    end
   end
   -- The mode stays open: the catcher, whose name still stands in the
   -- windows' places, listens for the next Escape.
@@ -2408,14 +2415,17 @@ end
 -- right edge (from its left one when the screen has no room on the right),
 -- its top level with the window's top row. Shown only while the mode is
 -- open, and nothing of it covers the rows. It says one of three things:
---   nothing selected: how the mode works, what is hidden (each a chip; a
---     click shows it again), the reset, and that Escape finishes;
+--   nothing selected: how the mode works, the blocks under the list (each a
+--     line that selects it), what is hidden (each a chip; a click shows it
+--     again), the reset, and that Escape finishes;
 --   something in the hand: what is moving, and that Escape puts it back;
 --   a column, a block or a category button selected: its card -- what it
 --     is, its eye, its own choice, Move (the way to reorder without a
 --     drag), and, for a figure, what the rows do on a mail without it; for
 --     the subject, Line up columns, what the rows show of its run, and what
---     Line up columns does; for a block, the stack's order.
+--     Line up columns does; for a block, the stack's order, and for the
+--     grid the way to the character groups; for a button, the link up to
+--     the grid's card.
 -- A click on a heading, a column on a row, a block or a button selects it,
 -- a second click lets it go; the cross and Escape go back a layer (section
 -- 5).
@@ -2442,6 +2452,7 @@ local INSP = {
   CHIP_H = 19, CHIP_GAP = 4, CHIP_LEAD = 6, CHIP_EYE = 12, CHIP_EYE_GAP = 5, CHIP_TAIL = 7,
   LINE_H = 18, LINE_NUM = 14,  -- a line of the stack's order, and its number's column
   NOTE_TOP = 8, NOTE_PAD = 7,
+  UP_GAP = 4, UP_ARROW = 10,  -- the link up: its words to its arrow, and the arrow's room
   SWATCH_W = 14, SWATCH_H = 9, SWATCH_GAP = 5,  -- the hatch's sample before a note
   FOOT_TOP = 10, FOOT_PAD = 7, FOOT_GAP = 8, KEY_PAD = 4, KEY_H = 15, KEY_GAP = 4,
   SPACING = 2,
@@ -2965,6 +2976,100 @@ local function LinkClick()
   AR.AskReset()
 end
 
+-- The link up from a category button's card to the block it stands in: the
+-- block's words, underlined as the reset is, and an arrow after them.
+local function PaintUp(up)
+  PaintLink(up)
+  if up.Arrow then Grey(up.Arrow, up.hover and 1 or 0.74) end
+end
+
+local function UpEnter(self)
+  self.hover = true
+  PaintUp(self)
+end
+
+local function UpLeave(self)
+  self.hover = false
+  PaintUp(self)
+end
+
+local function UpClick(self)
+  if AR.host and self.blockId then AR.Select("block", self.blockId) end
+end
+
+-- A block's own way elsewhere (the grid's: the character groups' window),
+-- as a plate with its words, lit as the switch is when pointed at.
+local function PaintAction(b)
+  local spec = PLATE.switch
+  local hover = b.hover
+  TintPlate(b, hover and 0.17 or spec.fill, hover and spec.hover or spec.ring)
+  Grey(b.Label, hover and 1 or 0.84)
+end
+
+local function ActionEnter(self)
+  self.hover = true
+  PaintAction(self)
+end
+
+local function ActionLeave(self)
+  self.hover = false
+  PaintAction(self)
+end
+
+local function ActionClick()
+  local host = AR.host
+  if host and AR.selKind == "block" and host.FollowBlockLink then host.FollowBlockLink(AR.selId) end
+end
+
+-- The overview's line for a block under the list: its place, its name --
+-- a grey quieter while it is hidden -- and an arrow; a click selects it.
+local function PaintBlockRow(row)
+  local hover = row.hover
+  row.Hover:SetShown(hover and true or false)
+  Grey(row.Name, hover and 1 or (row.hidden and 0.55 or 0.91))
+  Grey(row.Num, hover and 0.84 or 0.6)
+  if row.Arrow then Grey(row.Arrow, hover and 1 or 0.5) end
+end
+
+local function BlockRowEnter(self)
+  self.hover = true
+  PaintBlockRow(self)
+end
+
+local function BlockRowLeave(self)
+  self.hover = false
+  PaintBlockRow(self)
+end
+
+local function BlockRowClick(self)
+  if AR.host and self.blockId then AR.Select("block", self.blockId) end
+end
+
+local function BlockRow(insp, i)
+  local T = Th()
+  local row = CreateFrame("Button", nil, insp)
+  row:SetSize(INSP.INNER, INSP.RADIO_H)
+  row.hover, row.hidden = false, false
+  row.Hover = row:CreateTexture(nil, "BACKGROUND")
+  row.Hover:SetTexture(WHITE)
+  row.Hover:SetVertexColor(1, 1, 1, 0.06)
+  row.Hover:SetAllPoints()
+  row.Hover:Hide()
+  row.Num = T.CreateText(row, "body")
+  row.Num:SetPoint("LEFT", row, "LEFT", 3, 0)
+  row.Name = T.CreateText(row, "body")
+  row.Name:SetPoint("LEFT", row, "LEFT", INSP.RADIO_TEXT, 0)
+  row.Name:SetJustifyH("LEFT")
+  row.Name:SetWordWrap(false)
+  row.Arrow = T.Glyph and T.Glyph(row, "arrow-right", 6, "ARTWORK") or nil
+  if row.Arrow then row.Arrow:SetPoint("RIGHT", row, "RIGHT", -4, 0) end
+  row:SetScript("OnEnter", BlockRowEnter)
+  row:SetScript("OnLeave", BlockRowLeave)
+  row:SetScript("OnClick", BlockRowClick)
+  insp.BlockRows[i] = row
+  return row
+end
+
 -- A text of the inspector, wrapped across its width, in a role and a grey.
 local function Paragraph(art, role, grey)
   local fs = Th().CreateText(art, role)
@@ -3004,7 +3109,7 @@ function AR.BuildInspector()
   insp:SetClampedToScreen(true)
   insp:EnableMouse(true)
   insp:SetWidth(P.W)
-  insp.Radios, insp.Chips, insp.OrderNum, insp.OrderName = {}, {}, {}, {}
+  insp.Radios, insp.Chips, insp.OrderNum, insp.OrderName, insp.BlockRows = {}, {}, {}, {}, {}
 
   -- Every text and rule is on this holder, never on the card itself.
   local art = CreateFrame("Frame", nil, insp)
@@ -3137,6 +3242,39 @@ function AR.BuildInspector()
   link:SetScript("OnClick", LinkClick)
   link:Hide()
   insp.Reset = link
+
+  -- The link up from a button's card (PaintUp).
+  local up = CreateFrame("Button", nil, insp)
+  up.hover = false
+  up.Label = T.CreateText(up, "secondary")
+  up.Label:SetPoint("TOPLEFT", up, "TOPLEFT", 0, 0)
+  up.Label:SetWordWrap(false)
+  up.Line = up:CreateTexture(nil, "ARTWORK")
+  up.Line:SetTexture(WHITE)
+  up.Line:SetHeight(1)
+  up.Line:SetPoint("TOPLEFT", up.Label, "BOTTOMLEFT", 0, -1)
+  up.Line:SetPoint("TOPRIGHT", up.Label, "BOTTOMRIGHT", 0, -1)
+  up.Arrow = T.Glyph and T.Glyph(up, "arrow-right", 6, "ARTWORK") or nil
+  if up.Arrow then up.Arrow:SetPoint("LEFT", up.Label, "RIGHT", P.UP_GAP, 0) end
+  up:SetScript("OnEnter", UpEnter)
+  up:SetScript("OnLeave", UpLeave)
+  up:SetScript("OnClick", UpClick)
+  up:Hide()
+  insp.Up = up
+
+  -- A block's own way elsewhere (PaintAction).
+  local act = InspPlate(insp, "Button", true)
+  act:SetHeight(P.SWITCH_H)
+  act.hover = false
+  act.Label = T.CreateText(act, "segment")
+  act.Label:SetPoint("LEFT", act, "LEFT", P.SWITCH_TAIL, 0)
+  act.Label:SetJustifyH("LEFT")
+  act.Label:SetWordWrap(false)
+  act:SetScript("OnEnter", ActionEnter)
+  act:SetScript("OnLeave", ActionLeave)
+  act:SetScript("OnClick", ActionClick)
+  act:Hide()
+  insp.Action = act
 
   local key = InspPlate(insp, "Frame", false)
   TintPlate(key, PLATE.key.fill, PLATE.key.ring)
@@ -3390,6 +3528,61 @@ local function PutOrderLine(i, name, selected, y)
   return y - INSP.LINE_H
 end
 
+-- The overview's line for a block (BlockRow), clickable.
+local function PutBlockRow(i, id, name, hidden, y)
+  local insp = AR._insp
+  local row = insp.BlockRows[i] or BlockRow(insp, i)
+  row.blockId, row.hidden = id, hidden and true or false
+  row.hover = row.hover and row:IsMouseOver() or false
+  row.Num:SetFormattedText("%d", i)
+  Th().FitText(row.Name, INSP.INNER - INSP.RADIO_TEXT - INSP.UP_ARROW, name, row)
+  At(row, INSP.PAD, y)
+  PaintBlockRow(row)
+  row:Show()
+  return y - INSP.RADIO_H
+end
+
+-- The link up from a button's card, after a rule: the words for the block
+-- it stands in and the arrow after them, cut where the card is too narrow.
+local UP_TEXT = { grid = "ARRANGE_UP_GRID" }
+
+local function PutUp(blockId, y)
+  local insp, P = AR._insp, INSP
+  local key = UP_TEXT[blockId]
+  if not key then return y end
+  local text = L()[key]
+  y = y - P.NOTE_TOP
+  PutRule(insp.NoteRule, y)
+  y = y - 1 - P.NOTE_PAD
+  local up = insp.Up
+  local room = P.INNER - P.UP_ARROW
+  local w = math.min(Measured(insp.MeasureSmall, text, false), room)
+  local h = Measured(insp.MeasureSmall, text, true)
+  Th().FitText(up.Label, room, text, up)
+  up.blockId = blockId
+  up.hover = up.hover and up:IsMouseOver() or false
+  up:SetSize(w + P.UP_ARROW, h + 2)
+  At(up, P.PAD, y)
+  PaintUp(up)
+  up:Show()
+  return y - h - 2
+end
+
+-- A block's own way elsewhere, on a plate at the row's left; answers the y
+-- under it.
+local function PutAction(text, y)
+  local insp, P = AR._insp, INSP
+  local b = insp.Action
+  local w = math.min(2 * P.SWITCH_TAIL + Measured(insp.MeasureSegment, text, false), P.INNER)
+  Th().FitText(b.Label, w - 2 * P.SWITCH_TAIL + 1, text, b)
+  b:SetWidth(w)
+  b.hover = b.hover and b:IsMouseOver() or false
+  At(b, P.PAD, y)
+  PaintAction(b)
+  b:Show()
+  return y - P.SWITCH_H
+end
+
 -- The hidden list, flowing left to right in rows; the host's own are put
 -- through the same function (host.ListHidden).
 local chipsN, chipsX, chipsY = 0, 0, 0
@@ -3455,11 +3648,24 @@ local function PutFoot(y)
 end
 
 -- With nothing selected: how the mode works (or, while something is in the
--- hand, what is moving), what is hidden, and the foot.
+-- hand, what is moving), the blocks under the list -- each a line that
+-- selects it, the way to a block that is hard to take in the window --
+-- what is hidden, and the foot.
 local function FillOverview(host, y)
   local insp, P = AR._insp, INSP
   local lead = AR.moving and MovingText(AR.moving) or L()["ARRANGE_OVERVIEW"]
   y = PutText(insp.Lead, lead, y)
+  if host.StackOrder and host.BlockName then
+    y = PutKicker(L()["ARRANGE_UNDER_LIST"], y)
+    local order, n = host.StackOrder(), 0
+    for i = 1, #order do
+      local id = order[i]
+      if not host.BlockPresent or host.BlockPresent(id) then
+        n = n + 1
+        y = PutBlockRow(n, id, host.BlockName(id), host.BlockShown and host.BlockShown(id) == false, y)
+      end
+    end
+  end
   -- What is hidden: the columns, then the host's own -- counted first, so
   -- the kicker says whether a click shows them.
   local layout = AR.Layout()
@@ -3527,8 +3733,9 @@ local function FillColumn(id, y)
   return y
 end
 
--- A block's card: the host's words for it, the grid's switch, Move up and
--- down, and the stack's order.
+-- A block's card: the host's words for it, its switch, Move up and down,
+-- its own way elsewhere (the grid's: the character groups), and the stack's
+-- order.
 local function FillBlock(host, id, y)
   local insp, P = AR._insp, INSP
   y = PutText(insp.Lead, host.BlockText(id), y) - P.ROW_GAP
@@ -3536,6 +3743,8 @@ local function FillBlock(host, id, y)
   local on = host.BlockShown and host.BlockShown(id)
   if on ~= nil then used = PutSwitch(on, y) end
   y = PutMove(y, true, host.CanMoveBlock(id, -1), host.CanMoveBlock(id, 1), used)
+  local link = host.BlockLink and host.BlockLink(id)
+  if link then y = PutAction(link, y - P.ROW_WRAP) end
   y = PutKicker(L()["ARRANGE_UNDER_LIST"], y)
   local order = host.StackOrder()
   for i = 1, #order do y = PutOrderLine(i, host.BlockName(order[i]), order[i] == id, y) end
@@ -3544,13 +3753,17 @@ local function FillBlock(host, id, y)
   return y
 end
 
--- A category button's card: the host's words for it, its eye switch, and
--- Move back and on along the grid's order.
+-- A category button's card: the host's words for it, its eye switch, Move
+-- back and on along the grid's order, and the link up to the block it
+-- stands in, whose card is the grid's as a whole.
 local function FillButton(host, id, y)
   local insp, P = AR._insp, INSP
   y = PutText(insp.Lead, host.ButtonText(id), y) - P.ROW_GAP
   local used = PutSwitch(host.ButtonShown(id), y)
-  return PutMove(y, false, host.CanMoveButton(id, -1), host.CanMoveButton(id, 1), used)
+  y = PutMove(y, false, host.CanMoveButton(id, -1), host.CanMoveButton(id, 1), used)
+  local block = host.ButtonBlock and host.ButtonBlock(id)
+  if block then y = PutUp(block, y) end
+  return y
 end
 
 local function HideParts(insp)
@@ -3574,8 +3787,11 @@ local function HideParts(insp)
   insp.NudgeB:Hide()
   insp.Reset:Hide()
   insp.Key:Hide()
+  insp.Up:Hide()
+  insp.Action:Hide()
   for i = 1, #insp.Radios do insp.Radios[i]:Hide() end
   for i = 1, #insp.Chips do insp.Chips[i]:Hide() end
+  for i = 1, #insp.BlockRows do insp.BlockRows[i]:Hide() end
   for i = 1, #insp.OrderNum do
     insp.OrderNum[i]:Hide()
     insp.OrderName[i]:Hide()
@@ -3659,10 +3875,12 @@ end
 -- answers for them by id: BlockPresent, BlockName, BlockText, BlockNote
 -- (or nil), BlockShown (a switch's state, or nil for none), SetBlockShown,
 -- CanMoveBlock(id, step), MoveBlock(id, step), StackOrder() and
--- PaintBlocks() (the selection's ring moved, on a block or a button). One
--- with category buttons answers for them by id the same way: ButtonPresent,
--- ButtonName, ButtonText, ButtonShown, SetButtonShown, CanMoveButton(id,
--- step) and MoveButton(id, step).
+-- PaintBlocks() (the selection's ring moved, on a block or a button), and
+-- may offer a block's own way elsewhere: BlockLink(id) (its words, or nil)
+-- and FollowBlockLink(id). One with category buttons answers for them by id
+-- the same way: ButtonPresent, ButtonName, ButtonText, ButtonShown,
+-- SetButtonShown, CanMoveButton(id, step), MoveButton(id, step) and
+-- ButtonBlock(id) (the block the button stands in, for the link up).
 -------------------------------------------------------------
 
 function AR.Enter(host)

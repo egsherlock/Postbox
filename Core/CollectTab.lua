@@ -6502,8 +6502,9 @@ end
 --
 -- While arranging, every block is a card (Core/Arrange.lua, "Lift"),
 -- rising a unit and ringed in white when pointed at. The grid sits in a
--- tray, a card of its own four units out on every side, which is what
--- takes it; its buttons are smaller cards on it, each with its eye. The
+-- tray, a card of its own four units out on every side -- further while
+-- the pointer is over the grid, so it is easy to reach (RV.TrayPads) --
+-- which is what takes it; its buttons are smaller cards on it. The
 -- mode's one gesture model holds on every card: a drag moves the block, a
 -- click on a block's card, or on the tray, selects the block, and the
 -- arrange mode's inspector shows its card -- Move up and down, and for the
@@ -6658,6 +6659,39 @@ function RV.StackChanged(panel)
   RV.PlaceSweeps(panel)
 end
 
+-- The tray's rim, from the buttons out (top, bottom, sides): TRAY_PAD at
+-- rest; while the pointer is over the grid -- the tray or any button on it
+-- -- as far out as the gaps and margins round it allow, two units short of
+-- what stands beyond: the block or the list above and below it (the
+-- stack's gap), the panel's edge at the sides and under the stack's last
+-- block (the panel's inset). Drawn outward only: nothing else moves.
+function RV.TrayPads(panel)
+  local pad = RV.TRAY_PAD
+  if not panel._gridOver then return pad, pad, pad end
+  local M = Th().Metrics
+  local near, edge = M.gap - 2, M.inset - 2
+  local order, y = RV.StackOrder(), panel._stack.y
+  local last
+  for i = #order, 1, -1 do
+    if y[order[i]] then
+      last = order[i]
+      break
+    end
+  end
+  return near, (last == "grid") and edge or near, edge
+end
+
+-- The pointer came to the grid or left it: the tray's rim follows
+-- (RV.TrayPads). Asked on every enter and leave of the tray and of its
+-- buttons; the tray's own rect holds its buttons, so it answers for both.
+function RV.GridOver(panel)
+  local tray = panel._stackCards and panel._stackCards.grid
+  local over = (panel._gridArranging and tray and tray:IsShown() and tray:IsMouseOver()) and true or nil
+  if over == panel._gridOver then return end
+  panel._gridOver = over
+  RV.PlaceCards(panel)
+end
+
 -- The cards, while arranging: over the band and the primary's slot, and the
 -- tray under the grid. Shut, they are hidden once and then left alone.
 function RV.PlaceCards(panel)
@@ -6665,7 +6699,7 @@ function RV.PlaceCards(panel)
   if not panel._gridArranging then
     if panel._stackCardsOn then
       panel._stackCardsOn = nil
-      panel._stackHover = nil
+      panel._stackHover, panel._gridOver = nil, nil
       for _, card in pairs(cards) do card:Hide() end
     end
     return
@@ -6690,11 +6724,12 @@ function RV.PlaceCards(panel)
     local card = cards[key]
     if s.y[id] then
       card = card or RV.NewStackCard(panel, key)
-      local pad = (key == "grid") and RV.TRAY_PAD or 0
-      local top = RV.StackY(panel, id) - pad
-      card:SetPoint("TOPLEFT", panel.Footer, "TOPLEFT", -pad, -top)
-      card:SetPoint("TOPRIGHT", panel.Footer, "TOPRIGHT", pad, -top)
-      card:SetHeight(s.h[id] + 2 * pad)
+      local above, below, side = 0, 0, 0
+      if key == "grid" then above, below, side = RV.TrayPads(panel) end
+      local top = RV.StackY(panel, id) - above
+      card:SetPoint("TOPLEFT", panel.Footer, "TOPLEFT", -side, -top)
+      card:SetPoint("TOPRIGHT", panel.Footer, "TOPRIGHT", side, -top)
+      card:SetHeight(s.h[id] + above + below)
       RV.PaintStackCard(panel, card)
       card:Show()
     elseif card then
@@ -6804,6 +6839,8 @@ function RV.StackCardEnter(card)
   local panel = card.panel
   if panel._stackDrag or panel._gridDrag then return end
   panel._stackHover = card.stackId
+  -- On the tray, the pointer is over the grid: its rim grows as it rises.
+  if card == panel._stackCards.grid then panel._gridOver = true end
   RV.StackChanged(panel)
   local A = ns.Arrange
   if A and A.MoveCursor then A.MoveCursor(true) end
@@ -6818,6 +6855,7 @@ function RV.StackCardLeave(card)
     panel._stackHover = nil
     RV.StackChanged(panel)
   end
+  RV.GridOver(panel)
   local A = ns.Arrange
   if A and A.MoveCursor then A.MoveCursor(false) end
 end
@@ -6946,7 +6984,8 @@ function RV.StackStart(panel, id, y0)
   if not (panel._gridArranging and s and s.y[id] and top) then return end
   GameTooltip:Hide()
   local order = RV.StackOrder()
-  panel._stackHover, panel._sweepHover = nil, nil
+  -- The tray in the hand at its rest rim, as its slot's ring is drawn.
+  panel._stackHover, panel._sweepHover, panel._gridOver = nil, nil, nil
   panel._stackDrag = {
     id = id, y = s.y[id],
     -- The pointer's distance under the block's top, kept as it moves.
@@ -7298,6 +7337,7 @@ function RV.HandleEnter(handle)
   panel._sweepHover = handle.button
   RV.PlaceSweep(panel, handle.button, RV.StackY(panel, "grid"))
   RV.PaintGridHandle(panel, handle)
+  RV.GridOver(panel)
   local A = ns.Arrange
   if A and A.MoveCursor then A.MoveCursor(true) end
   RV.HandleTip(panel, handle.button)
@@ -7326,6 +7366,7 @@ function RV.HandleLeave(handle)
     RV.PlaceSweep(panel, handle.button, RV.StackY(panel, "grid"))
     RV.PaintGridHandle(panel, handle)
   end
+  RV.GridOver(panel)
   local A = ns.Arrange
   if A and A.MoveCursor then A.MoveCursor(false) end
 end
@@ -7366,6 +7407,7 @@ end
 -- had just been pointed at -- its hover was held off while the hand was
 -- full. None, and the pointer is the pointer again.
 function RV.Rehover(panel)
+  RV.GridOver(panel)
   local handles = panel._gridHandles
   if handles then
     for _, handle in pairs(handles) do
@@ -7406,7 +7448,7 @@ end
 -- The arrange mode opening or closing over this tab's grid.
 function RV.ArrangeGrid(panel, on)
   panel._gridArranging = on and true or nil
-  panel._sweepHover, panel._stackHover = nil, nil
+  panel._sweepHover, panel._stackHover, panel._gridOver = nil, nil, nil
   if on then
     local A = ns.Arrange
     if not panel._gridGhost and A and A.NewGhost then panel._gridGhost = A.NewGhost(panel.Grid) end
@@ -7766,6 +7808,21 @@ function CT.ArrangeHost(panel)
   end
   function host.CanMoveButton(id, step) return RV.CanMoveSweep(panel, id, step) end
   function host.MoveButton(id, step) RV.MoveSweep(panel, id, step) end
+  -- The block a button stands in, for the link up from its card; and the
+  -- grid's own way to the character groups, whose buttons stand in it.
+  function host.ButtonBlock() return "grid" end
+  function host.BlockLink(id) return id == "grid" and L()["ARRANGE_GROUPS_OPEN"] or nil end
+  function host.FollowBlockLink(id)
+    local groups = ns.CharacterGroups
+    if id ~= "grid" or not (groups and type(groups.OpenEditor) == "function") then return end
+    -- Beside the inspector, on its side away from the window.
+    local A = ns.Arrange
+    local insp = A and A._insp
+    local UI = ns.MailboxUI
+    local anchor = (insp and insp:IsShown()) and insp or (UI and UI._frame)
+    local ok, err = pcall(groups.OpenEditor, nil, anchor, insp and insp:IsShown() and insp.side or nil)
+    if not ok and type(geterrorhandler) == "function" then geterrorhandler()(err) end
+  end
   panel._arrangeHost = host
   return host
 end
