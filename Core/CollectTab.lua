@@ -1332,6 +1332,20 @@ function RV.Wash(row, target)
   wash:Show()
 end
 
+-- The room a mail row keeps at its right end for its marks, inside its
+-- trailing inset: the delete mark on a read mail, the stuck mark on a mail
+-- the server would not hand over, each with the small gap before it; on a
+-- one-line row (`compact`) the smaller of each. Every other number the
+-- rows, the list's reserve and the arrange mode's header read for it comes
+-- from here.
+function RV.MarkRoom(compact, delete, stuck)
+  local gap = Th().Metrics.tightGap
+  local room = 0
+  if delete then room = room + (compact and ROW_DELETE_COMPACT or ROW_DELETE) + gap end
+  if stuck then room = room + (compact and ROW_WARNING_COMPACT or ROW_WARNING) + gap end
+  return room
+end
+
 -- A placement table for RV.Place, one per list, reused for every row it binds;
 -- laneX and laneW are where RV.Place publishes the list's lanes.
 function RV.NewSpec()
@@ -1391,7 +1405,13 @@ end
 --
 -- `s` (RV.NewSpec, reused):
 --   width, left, trail, gap   the row's width; where its first column may
---                             start; what its trailing marks take; the step
+--                             start; what its trailing inset and marks
+--                             take; the step
+--   marks                     the marks' part of `trail` (RV.MarkRoom; nil:
+--                             none)
+--   lead                      where the arrangement's room begins on the row
+--                             (nil: its left edge; History's age stands
+--                             before it)
 --   el[id]                    the region drawing each column (nil: this list
 --                             has no such column); el.detail the second line
 --   size.icon                 the icon's width
@@ -1406,6 +1426,8 @@ end
 --   detailText                the second line
 --   focus                     the column the arrange mode points at
 --   laneX[id], laneW[id]      written here: each column's lane (above)
+--   laneEnd                   written with them: where the room kept for
+--                             the marks begins
 --   publish                   true: the next row placed publishes, the rest
 --                             of the pass not; nil: every row does
 function RV.Place(row, s)
@@ -1423,6 +1445,7 @@ function RV.Place(row, s)
       laneX, laneW = {}, {}
       s.laneX, s.laneW = laneX, laneW
     end
+    s.laneEnd = s.width - (s.marks or 0)
   end
   local n = #layout
   local at = n
@@ -3141,7 +3164,6 @@ local function BindRow(panel, row, index, position, compact, done)
   -- registry without touching the inbox.
   local stuckReason = Mail().StuckReason(index)
   local deleteSize = compact and ROW_DELETE_COMPACT or ROW_DELETE
-  local warningSize = compact and ROW_WARNING_COMPACT or ROW_WARNING
 
   row.mailIndex = index
   row.mailDone = showDelete
@@ -3203,9 +3225,7 @@ local function BindRow(panel, row, index, position, compact, done)
   -- right edge. One number, read by both layouts: the standard row measures its
   -- text area against it and the compact row anchors its meta strip to it, so
   -- the two can never disagree about where the text has to stop.
-  local trailing = M.inset
-  if showDelete then trailing = trailing + deleteSize + M.tightGap end
-  if stuckReason then trailing = trailing + warningSize + M.tightGap end
+  local trailing = M.inset + RV.MarkRoom(compact, showDelete, stuckReason ~= nil)
   -- A compact row stops its text where the LIST's reserve ends rather than its
   -- own, so its columns stand exactly where every other row's do.
   local cols = panel._cols
@@ -3323,6 +3343,7 @@ local function BindRow(panel, row, index, position, compact, done)
   spec.size.icon = compact and ROW_ICON_COMPACT or ROW_ICON
   spec.width = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
   spec.left, spec.trail, spec.gap = M.inset, trailing, M.gap
+  spec.marks = trailing - M.inset
   spec.cols = cols
   spec.senderCol = ((cols.sender or 0) > 0) and cols.sender or SENDER_MIN
   spec.share, spec.reserve = COMPACT_META_SHARE, false
@@ -3504,6 +3525,7 @@ function HV.BindHistoryRow(panel, row, entry, position, now)
   spec.size.icon = ROW_ICON_COMPACT
   spec.width = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
   spec.left, spec.trail, spec.gap = M.inset + ageWidth + M.gap, M.inset, M.gap
+  spec.lead = spec.left - floor(M.gap / 2)
   spec.cols = cols
   spec.senderCol = cols.sender or SENDER_MIN
   spec.share, spec.reserve, spec.two = nil, true, false
@@ -4131,12 +4153,7 @@ function CT.RefreshMailList(panel)
   -- else. Not the delete mark's: only read mail carries it, and read mail
   -- sits under its own divider, so every other row gave up that room for a
   -- mark it would never show.
-  do
-    local M = Th().Metrics
-    local trail = M.inset
-    if anyStuck then trail = trail + ROW_WARNING_COMPACT + M.tightGap end
-    cols.trail = trail
-  end
+  cols.trail = Th().Metrics.inset + RV.MarkRoom(true, false, anyStuck)
 
   local _, _, stride = RowMetrics()
   local listed = #filtered

@@ -965,12 +965,17 @@ end
 -- While the mode is open, the list's top row steps aside (Inbox, History and
 -- the search on the Mail tab; the box, its sort, the picker and the search
 -- in Mail Memory) and a column header takes its place, so the list itself
--- does not move. Each heading stands exactly over its column: its x and
--- width are the column's lane as RV.Place publishes it for the list
--- (s.laneX, s.laneW, from the row's left edge, which is the header's), three
--- units out either side. The narrow figures wear glyphs -- the clock, the
--- coin, the slots -- with their names in the tooltip and the inspector; the
--- subject's heading carries the stretch arrow across the room it takes.
+-- does not move. The headings fill the row between them: each is its
+-- column, from the line between its lane and the one before it (the row's
+-- edge, for the first) to the line after it (where the room the rows keep
+-- for their marks begins, for the last), GAP between two, the lanes being
+-- the columns as RV.Place publishes them for the list (s.laneX, s.laneW,
+-- from the row's left edge, which is the header's; s.lead and s.laneEnd,
+-- where the arrangement's room begins and ends). A heading's glyph or name
+-- stands over its lane, not in the middle of its box. The narrow figures
+-- wear glyphs -- the clock, the coin, the slots -- with their names in the
+-- tooltip and the inspector; the subject's heading carries the stretch
+-- arrow across the room it takes.
 --
 -- A hidden column is a peg on the header where it stands; a click shows it
 -- again, there. A shown one with no lane in this list -- no mail listed has
@@ -990,8 +995,8 @@ end
 -------------------------------------------------------------
 
 local HEAD = {
-  PAD = 3,          -- a heading stands this far out from its lane, either side
-  GAP = 2,          -- the least room between two headings
+  PAD = 3,          -- a row's mark of a column stands this far out from its lane
+  GAP = 2,          -- between two headings
   PEG = 12,         -- a hidden column's peg
   RUN_GAP = 1,      -- between pegs and narrow headings standing together
   TEXT = 4,         -- a name's inset from its heading's edges
@@ -1080,23 +1085,46 @@ function AR.PaintHead(head)
   end
 end
 
--- A heading's name, and the subject's arrow, fitted to its width: again
--- only when the width changes.
+-- A heading's glyph or name where it stands (`_cx`, the glyph's middle,
+-- and `_tx`, the name's start, both from the heading's left), and the name
+-- and the subject's arrow fitted to its width: again only when one of them
+-- changes (AR.LayoutStrip).
 function AR.FitHead(head)
+  local glyph = head.Glyph
+  if glyph then
+    glyph:ClearAllPoints()
+    glyph:SetPoint("CENTER", head, "LEFT", head._cx or 0, 0)
+  end
   local text = head.Text
   if not text then return end
-  local w = head._w or 0
-  local room = math.max(w - 2 * HEAD.TEXT, 1)
+  local w, tx = head._w or 0, head._tx or HEAD.TEXT
+  text:ClearAllPoints()
+  text:SetPoint("LEFT", head, "LEFT", tx, 0)
+  local room = math.max(w - tx - HEAD.TEXT, 1)
   Th().FitText(text, room, head.caption, head)
   local arrow = head.Stretch
   if not arrow then return end
   local measure = head.Measure
   measure:SetText(head.caption)
-  local from = HEAD.TEXT + math.min(math.ceil(measure:GetStringWidth() or 0), room) + HEAD.ARROW_GAP
+  local from = tx + math.min(math.ceil(measure:GetStringWidth() or 0), room) + HEAD.ARROW_GAP
   local show = w - HEAD.TEXT - from >= HEAD.ARROW_MIN
   arrow[1]:ClearAllPoints()
   arrow[1]:SetPoint("LEFT", head, "LEFT", from, 0)
   for k = 1, 3 do arrow[k]:SetShown(show) end
+end
+
+-- Where a heading's glyph and name stand in its box (above): over its
+-- column's lane where the list has one, else its glyph in the middle and
+-- its name at the inset; a glyph is kept inside the box.
+function AR.HeadContent(head, lx, lw, w)
+  local cx, tx = w / 2, HEAD.TEXT
+  if lx and lw and lw > 0 then
+    cx = lx + lw / 2
+    tx = math.max(lx, HEAD.TEXT)
+  end
+  local half = head.glyphHalf or 0
+  cx = math.max(math.min(cx, w - half - 1), half + 1)
+  return cx, tx
 end
 
 local function HeadEnter(self)
@@ -1171,6 +1199,7 @@ local function BuildHead(strip, id)
   if glyph then
     glyph:SetPoint("CENTER", head, "CENTER", 0, 0)
     head.Glyph, head.glyphKind = glyph, kind
+    head.glyphHalf = (glyph:GetWidth() or 0) / 2 + ((kind == "icon") and 1 or 0)
   else
     -- A name, and where its glyph's art is missing, the name too.
     head.caption = L()[spec.title]
@@ -1367,7 +1396,7 @@ end
 -- The header laid out on the list's lanes (above), and put on screen: a
 -- heading, or a peg, per column; the heading in the hand is left where the
 -- cursor holds it and its slot takes the ghost. Anchored again only where
--- a place or a width changed.
+-- a place, a width or where its glyph and name stand changed.
 function AR.LayoutStrip(host)
   local strip = host and host.strip
   local layout = AR.Layout()
@@ -1379,7 +1408,6 @@ function AR.LayoutStrip(host)
   local laneX, laneW = spec and spec.laneX, spec and spec.laneW
   local lanes = laneX ~= nil and laneW ~= nil and laneW.subject ~= nil and laneX.subject ~= nil
   local bx, bw, kind, hx, hw = strip.bx, strip.bw, strip.kind, strip.hx, strip.hw
-  local at = IndexOf(layout, "subject") or 1
   local span = width
   for i = 1, n do
     local id = layout[i].id
@@ -1390,33 +1418,36 @@ function AR.LayoutStrip(host)
       kind[id] = "lane"
     elseif laneX[id] ~= nil and (laneW[id] or 0) > 0 then
       kind[id] = "lane"
-      bx[id], bw[id] = laneX[id] - HEAD.PAD, laneW[id] + 2 * HEAD.PAD
     else
       kind[id] = "narrow"
     end
   end
   if lanes then
-    span = math.max(spec.width or width, 60)
-    -- Two lanes' headings keep GAP between them, each giving up half.
+    -- Each lane's heading is its column: it ends on the line between its
+    -- lane and the next, which stands in the middle of the gap between
+    -- them, and the next starts GAP after that line.
+    local from = spec.lead or 0
+    span = math.max(spec.laneEnd or spec.width or width, from + 60)
     local prev
     for i = 1, n do
       local id = layout[i].id
       if kind[id] == "lane" then
         if prev then
-          local over = bx[prev] + bw[prev] + HEAD.GAP - bx[id]
-          if over > 0 then
-            local half = math.floor(over / 2)
-            bw[prev] = bw[prev] - half
-            bx[id], bw[id] = bx[id] + over - half, bw[id] - (over - half)
-          end
+          local line = math.floor((laneX[prev] + laneW[prev] + laneX[id]) / 2)
+          bw[prev] = math.max(line - bx[prev], 1)
+          bx[id] = line + HEAD.GAP
+        else
+          bx[id] = from
         end
         prev = id
       end
     end
+    if prev then bw[prev] = math.max(span - bx[prev], 1) end
     for i = 1, n do
       local id = layout[i].id
       if kind[id] == "lane" then hx[id], hw[id] = bx[id], bw[id] end
     end
+    local at = IndexOf(layout, "subject") or 1
     AR.CarveNarrow(layout, at, 1, strip)
     AR.CarveNarrow(layout, at, -1, strip)
   else
@@ -1461,8 +1492,11 @@ function AR.LayoutStrip(host)
         peg:Hide()
         local narrow = kind[id] == "narrow"
         local w = bw[id]
-        if head._w ~= w or head.narrow ~= narrow then
-          head._w, head.narrow = w, narrow
+        local lx, lw
+        if lanes and not narrow then lx, lw = laneX[id] - bx[id], laneW[id] end
+        local cx, tx = AR.HeadContent(head, lx, lw, w)
+        if head._w ~= w or head.narrow ~= narrow or head._cx ~= cx or head._tx ~= tx then
+          head._w, head.narrow, head._cx, head._tx = w, narrow, cx, tx
           head:SetWidth(w)
           AR.FitHead(head)
         end
@@ -1774,7 +1808,8 @@ local function NewLine(cover, i)
   return line
 end
 
--- One line down each boundary between two lanes. None without lanes.
+-- One line down each boundary between two lanes, where the heading before
+-- it ends (AR.LayoutStrip). None without lanes.
 function AR.PlaceLines(host)
   local cover, strip = host.cover, host.strip
   if not (cover and strip) then return end
@@ -1789,7 +1824,7 @@ function AR.PlaceLines(host)
         if prev then
           count = count + 1
           local line = cover.Lines[count] or NewLine(cover, count)
-          local x = math.floor((hx[prev] + hw[prev] + hx[id]) / 2)
+          local x = hx[id] - HEAD.GAP
           if line._x ~= x then
             line:ClearAllPoints()
             line:SetPoint("TOPLEFT", cover, "TOPLEFT", x, 0)

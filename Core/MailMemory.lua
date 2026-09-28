@@ -1379,7 +1379,11 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
   local list = row:GetParent()
   local width = list:GetWidth() or 0
   if width < 100 then width = WINDOW_WIDTH - 44 end
-  local trail = 6 + (cols.stuck and 16 or 0)
+  -- The room the stuck mark keeps at the row's right end, on every row of a
+  -- list where any row has one (its 12 units and the 4 it stands in from
+  -- the edge), inside the trailing inset.
+  local marks = cols.stuck and 16 or 0
+  local trail = 6 + marks
 
   local named = (mail.sender ~= "" and mail.sender) or nil
   local senderText = (R and (R.OutcomeSender(mail.kind) or R.DisplaySender(named)))
@@ -1405,6 +1409,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     text.time, text.money, text.slots = timeText, moneyText, slotsText
     spec.size.icon = ROW_ICON
     spec.width, spec.left, spec.trail, spec.gap = width, 6, trail, 6
+    spec.marks = marks
     spec.cols = cols
     spec.senderCol = cols.sender or 92
     spec.share, spec.reserve, spec.two = R.META_SHARE, false, false
