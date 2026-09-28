@@ -7,22 +7,27 @@ local _, ns = ...
 -- subject, the time left, the gold, the slots -- in the player's own order,
 -- each shown or hidden, arranged right where the rows are. The layout mark
 -- beside the options cog opens it (the cog key; the same key stands in Mail
--- Memory's title bar); a strip of chips then stands over the list, one chip
--- per column in the row's order, the subject stretched across the middle as
--- the subject is in the row. Drag a chip and the others slide aside, the
--- rows re-laying under it as it crosses them; let go and it snaps into its
--- slot. Click a chip, or a block under the list, to select it: the
--- inspector docked beside the window shows its card -- show or hide it,
--- its own choices, Move for the no-drag way. With nothing selected the
+-- Memory's title bar); a column header then takes the top row's place, one
+-- heading standing exactly over each column, placed from the lanes the rows
+-- are laid on, with faint lines down the boundaries through the rows. Take
+-- a column by its heading or on any row and drag it: its lane lifts and
+-- rides over the list, the others slide aside and the rows re-lay as it
+-- crosses them; let go and it snaps into its slot. Click a heading, a row's
+-- column or a block under the list to select it: the inspector docked
+-- beside the window shows its card -- show or hide it, its own choices,
+-- Move for the no-drag way -- and the rows show the column; for the
+-- subject, how far each row's runs and why. With nothing selected the
 -- inspector says how the mode works, lists what is hidden and offers the
 -- reset. The category buttons under the list take the same drag and a
 -- click to hide or show while the mode is open. The key, lit as Done while
--- the mode is open, Escape, or the window going away all end it.
+-- the mode is open, Escape, or the window going away all end it, and the
+-- top row comes back as it was.
 --
 -- One arrangement for every list that draws mail rows: it is stored by
 -- MailboxUI.GetRowLayout / SetRowLayout, and drawn by CollectTab's RV.Place,
 -- which the Mail tab, its History and Mail Memory all go through. This file
--- owns only the mode: the strip, the inspector, the drag, the key, Escape.
+-- owns only the mode: the header, the marks on the rows, the inspector, the
+-- drag, the key, Escape.
 --
 -- A drag is a gesture, not a state: its OnUpdate runs from the press to the
 -- release and clears itself, with GLOBAL_MOUSE_UP as the net for a release
@@ -43,32 +48,21 @@ local function L() return ns.L end
 local function Th() return ns.Theme end
 local function UI() return ns.MailboxUI end
 
--- The columns, in the words the strip and the inspector use. `glyph` chips
--- show what the column draws rather than a word; `fixed` is the subject,
--- which takes whatever room the others leave and so cannot be hidden;
--- `choice` is the column's own setting; `figure`, a figure a mail may not
--- have.
+-- The columns, in the words the header and the inspector use. `head` is the
+-- glyph a heading wears in place of the name -- what the column draws, or
+-- its sign -- where the column is too narrow for a word; `fixed` is the
+-- subject, which takes whatever room the others leave and so cannot be
+-- hidden; `choice` is the column's own setting; `figure`, a figure a mail
+-- may not have.
 AR.COLUMNS = {
-  read    = { title = "COL_READ",       desc = "COL_READ_DESC",       glyph = "dot" },
-  icon    = { title = "COL_ICON",       desc = "COL_ICON_DESC",       glyph = "icon" },
+  read    = { title = "COL_READ",       desc = "COL_READ_DESC",       head = "dot" },
+  icon    = { title = "COL_ICON",       desc = "COL_ICON_DESC",       head = "icon" },
   sender  = { title = "COL_SENDER",     desc = "COL_SENDER_DESC" },
   subject = { title = "COL_SUBJECT",    desc = "COL_SUBJECT_DESC",    fixed = true },
-  time    = { title = "OPT_ROW_EXPIRY", desc = "OPT_ROW_EXPIRY_DESC", choice = "expiry", figure = true },
-  money   = { title = "OPT_ROW_GOLD",   desc = "OPT_ROW_GOLD_DESC",   choice = "gold", figure = true },
-  slots   = { title = "OPT_ROW_SLOTS",  desc = "OPT_ROW_SLOTS_DESC", figure = true },
+  time    = { title = "OPT_ROW_EXPIRY", desc = "OPT_ROW_EXPIRY_DESC", choice = "expiry", figure = true, head = "clock" },
+  money   = { title = "OPT_ROW_GOLD",   desc = "OPT_ROW_GOLD_DESC",   choice = "gold", figure = true, head = "coin" },
+  slots   = { title = "OPT_ROW_SLOTS",  desc = "OPT_ROW_SLOTS_DESC", figure = true, head = "slot" },
 }
-
--- The chips' geometry: the caption or glyph with air either side, and, on a
--- hidden column's chip, its crossed eye before them. The whole chip is the
--- handle: it wears no grip. Tight on purpose: seven chips fit the Mail tab
--- at its narrowest in German, and Mail Memory's window widens for them
--- while it arranges.
-local CHIP_GAP = 3
-local CHIP_LEAD = 6
-local CHIP_TAIL = 6
-local CHIP_EYE = 12    -- the crossed eye's width, and the space after it
-local CHIP_EYE_GAP = 4
-local GLYPH = 14
 
 -- The cog key (section 4): the cog's size at rest; lit, a check and Done on
 -- the accent, `KEY_LEAD` in, the check's width and `KEY_GAP`, the word, and
@@ -82,11 +76,14 @@ local KEY_LEAD, KEY_GAP, KEY_TAIL = 6, 4, 7
 -- louder of the two at a glance.
 local KEY_REST = "textDisabled"
 
--- Who is arranging (a host, below), and what the rows' wash points at.
+-- Who is arranging (a host, below), and what the rows' marks point at: the
+-- heading pointed at, the column the marks show, the column in the hand;
+-- and the column the pointer is over in the rows, whose heading lights.
 AR.host = nil
 AR.hover = nil
 AR.focus = nil
 AR.drag = nil
+AR.rowHover = nil
 -- What the inspector shows (section 8): the selected thing, as a kind
 -- ("column" or "block") and an id, or nil for the overview; and while
 -- something is in the hand, its name.
@@ -181,8 +178,8 @@ function AR.Reset()
   -- it comes back with the rest, and the window's floor with it.
   local gridBack = ui.GetOption and ui.SetOption and not ui.GetOption("showCategoryButtons")
   if gridBack then ui.SetOption("showCategoryButtons", true) end
-  if AR.host then AR.LayoutStrip(AR.host) end
   AR.RowsChanged(true)
+  if AR.host then AR.LayoutStrip(AR.host) end
   if gridBack and ui.RefreshCollectCategoryButtons then
     ui.RefreshCollectCategoryButtons()
   else
@@ -217,15 +214,16 @@ function AR.AskReset()
   if dialog and T and T.LiftPopup then T.LiftPopup(dialog) end
 end
 
--- The column the rows wash: the one being dragged, else the one under the
--- cursor, else the selected one. Only while the mode is open.
+-- The column the rows mark (section 7b): the one being dragged, else the one
+-- whose heading is under the cursor, else the selected one. Only while the
+-- mode is open.
 function AR.Focus()
   if not AR.host then return nil end
   return AR.focus
 end
 
 function AR.UpdateFocus()
-  local focus = (AR.drag and AR.drag.chip.colId) or AR.hover
+  local focus = (AR.drag and AR.drag.id) or AR.hover
     or (AR.selKind == "column" and AR.selId) or nil
   if not AR.host then focus = nil end
   if focus == AR.focus then return end
@@ -242,10 +240,11 @@ function AR.Selected(kind, id)
   return AR.host ~= nil and AR.selKind == kind and AR.selId == id
 end
 
--- Selects a column's chip or a block (a host's, by id) for the inspector's
--- card; the same thing again, or nil, goes back to the overview. What it
--- was and what it is are painted again, the rows' wash follows a column,
--- and the inspector is filled for it.
+-- Selects a column or a block (a host's, by id) for the inspector's card;
+-- the same thing again, or nil, goes back to the overview. What it was and
+-- what it is are painted again, the rows' marks follow a column -- in the
+-- accent once it is selected, even where the pointer already had them
+-- showing it -- and the inspector is filled for it.
 function AR.Select(kind, id)
   if not AR.host then return end
   if kind == nil or (AR.selKind == kind and AR.selId == id) then kind, id = nil, nil end
@@ -254,18 +253,20 @@ function AR.Select(kind, id)
   AR.PaintSelected(wasKind, wasId)
   AR.PaintSelected(kind, id)
   GameTooltip:Hide()
+  local before = AR.focus
   AR.UpdateFocus()
+  if AR.focus == before and before ~= nil and (before == id or before == wasId) then AR.RowsChanged(false) end
   AR.Inspect()
 end
 
--- One selectable thing painted from its state: a chip in the strip, or the
+-- One selectable thing painted from its state: a column's heading, or the
 -- host's blocks.
 function AR.PaintSelected(kind, id)
   local host = AR.host
   if not (host and kind) then return end
   if kind == "column" then
-    local chip = host.strip and host.strip.chips[id]
-    if chip then AR.PaintChip(chip) end
+    local head = host.strip and host.strip.heads[id]
+    if head then AR.PaintHead(head) end
   elseif host.PaintBlocks then
     host.PaintBlocks()
   end
@@ -473,14 +474,17 @@ end
 --   block  over a block under the list: a wash, no fill of its own;
 --   small  over a category button: the same, with a shorter shadow;
 --   tray   under the category buttons, four units out: a fill of its own;
---   fold   the grid's placeholder while the option hides it: a dim fill.
+--   fold   the grid's placeholder while the option hides it: a dim fill;
+--   head   a column's heading in the header, which is the card itself;
+--   lane   the column's lane in the hand, over the list.
 -- `hidden` is a small card's look while its button is hidden; `sel` and
 -- `selHover` a block's while it is selected.
 --
 -- A spec is { fill = {grey, alpha}, wash = {grey, alpha}, accent = the
 -- accent wash's alpha, ring = the ring's grey (nil: the accent), ringW,
--- top = the lit edge's alpha, drop = the shadow's length, dropA = its
--- alpha at the top }. Cards are made on first use and hidden with the mode.
+-- top = the lit edge's alpha, drop = the shadow's length (0: none),
+-- dropA = its alpha at the top }. Cards are made on first use and hidden
+-- with the mode.
 -------------------------------------------------------------
 
 local LIFT = {
@@ -511,6 +515,22 @@ local LIFT = {
     sel      = { fill = { 0.063, 0.94 }, accent = 0.12, drop = 2, dropA = 0.35 },
     selHover = { fill = { 0.12, 0.96 }, accent = 0.16, top = 0.06, drop = 3, dropA = 0.45 },
     hand     = { fill = { 0.063, 0.97 }, accent = 0.14, ringW = 2, drop = 10, dropA = 0.6 },
+  },
+  -- A column's heading in the header (section 6): flat on the header until
+  -- it is taken, then lifted; `dim` while the column has no lane in the
+  -- list shown.
+  head = {
+    rest     = { wash = { 1, 0.05 }, ring = 0.48, drop = 0 },
+    hover    = { wash = { 1, 0.10 }, ring = 0.86, drop = 0 },
+    sel      = { accent = 0.10, drop = 0 },
+    selHover = { accent = 0.15, drop = 0 },
+    hand     = { fill = { 0.06, 0.97 }, accent = 0.10, ringW = 2, drop = 9, dropA = 0.6 },
+    dim      = { wash = { 1, 0.02 }, ring = 0.29, drop = 0 },
+    dimHover = { wash = { 1, 0.07 }, ring = 0.62, drop = 0 },
+  },
+  -- The column's lane in the hand, over the list (section 7a).
+  lane = {
+    hand     = { fill = { 0.06, 0.97 }, accent = 0.10, ringW = 2, drop = 10, dropA = 0.6 },
   },
 }
 AR.LIFT = LIFT
@@ -586,7 +606,13 @@ function AR.PaintCard(card, state)
   else
     card.Top:Hide()
   end
-  card.Drop:SetHeight(s.drop or 4)
+  local drop = s.drop or 4
+  if drop <= 0 then
+    card.Drop:Hide()
+    return
+  end
+  card.Drop:SetHeight(drop)
+  card.Drop:Show()
   local dropA = s.dropA or 0.45
   if card.dropHigh then
     card.dropHigh:SetRGBA(0, 0, 0, dropA)
@@ -913,141 +939,297 @@ function AR.OnEscape()
 end
 
 -------------------------------------------------------------
--- 6. The strip
+-- 6. The column header
 --
--- A row of chips, one per column, in the row's order: the column's name (or,
--- for the read mark and the icon, what the column draws). The subject's chip
--- stretches across what the others leave, as the subject does in the row,
--- so the strip reads as the row it arranges. A hidden column's chip keeps
--- its place, greyed, with a crossed eye before its name: showing it again
--- puts it back where it was. A click selects a chip, and the inspector
--- shows its column's card; the chip is then ringed in the accent.
+-- While the mode is open, the list's top row steps aside (Inbox, History and
+-- the search on the Mail tab; the box, its sort, the picker and the search
+-- in Mail Memory) and a column header takes its place, so the list itself
+-- does not move. Each heading stands exactly over its column: its x and
+-- width are the column's lane as RV.Place publishes it for the list
+-- (s.laneX, s.laneW, from the row's left edge, which is the header's), three
+-- units out either side. The narrow figures wear glyphs -- the clock, the
+-- coin, the slots -- with their names in the tooltip and the inspector; the
+-- subject's heading carries the stretch arrow across the room it takes.
+--
+-- A hidden column is a peg on the header where it stands; a click shows it
+-- again, there. A shown one with no lane in this list -- no mail listed has
+-- it, or the list has no such column -- keeps a narrow dimmed heading in
+-- its place, out of the subject's room where it stands beside the subject,
+-- over the boundary where it stands otherwise. With no lanes at all -- an
+-- empty list, or Larger mail rows, whose figures are a line of text -- the
+-- header keeps the one-line order at widths of its own.
+--
+-- Headings are movable things (section 3b): at rest, pointed at, selected,
+-- in the hand. A press on one, or on its column in any row (section 7a), is
+-- the column's: a drag moves it, a click selects it for the inspector.
+--
+-- Built the first time the mode opens over a list, and laid out again after
+-- every pass of the list's rows (AR.ListPlaced): the lanes are the rows'.
+-- Every table the layout fills is made with the header.
 -------------------------------------------------------------
 
-local function ChipTip(chip)
+local HEAD = {
+  PAD = 3,          -- a heading stands this far out from its lane, either side
+  GAP = 2,          -- the least room between two headings
+  PEG = 12,         -- a hidden column's peg
+  RUN_GAP = 1,      -- between pegs and narrow headings standing together
+  TEXT = 4,         -- a name's inset from its heading's edges
+  ARROW_GAP = 6,    -- the subject's name to its stretch arrow
+  ARROW_MIN = 12,   -- the shortest stretch arrow drawn
+  SUBJECT_MIN = 40, -- the subject's heading never gives up more than this
+  -- A shown heading with no lane of its own.
+  NARROW = { read = 14, icon = 22, sender = 44, subject = 60, time = 22, money = 22, slots = 22 },
+  -- Every heading's width where the list publishes no lanes.
+  FALLBACK = { read = 14, icon = 24, sender = 72, time = 22, money = 40, slots = 42 },
+}
+AR.HEAD = HEAD
+
+-- The native gold coin, where the client has the file.
+local COIN_ART = "Interface\\MoneyFrame\\UI-GoldIcon"
+
+function AR.CoinArt()
+  if AR._coin == nil then
+    local id
+    if type(GetFileIDFromPath) == "function" then
+      local ok, found = pcall(GetFileIDFromPath, COIN_ART)
+      if ok then id = found end
+    end
+    AR._coin = (type(id) == "number" and id > 0) and COIN_ART or false
+  end
+  return AR._coin or nil
+end
+
+-- A heading's tooltip: its column's name, and how to take it. Not over the
+-- selected one, whose card is in the inspector, nor during a drag.
+local function HeadTip(head)
   if AR.drag then return end
-  if AR.Selected("column", chip.colId) then return end
-  GameTooltip:SetOwner(chip, "ANCHOR_TOP")
-  GameTooltip:SetText(L()[AR.COLUMNS[chip.colId].title])
+  if AR.Selected("column", head.colId) then return end
+  GameTooltip:SetOwner(head, "ANCHOR_TOP")
+  GameTooltip:SetText(L()[AR.COLUMNS[head.colId].title])
+  GameTooltip:AddLine(L()["ARRANGE_HEADING_TIP"], 1, 1, 1, true)
+  if head.narrow then GameTooltip:AddLine(L()["ARRANGE_HEADING_EMPTY"], 0.7, 0.7, 0.7, true) end
   GameTooltip:Show()
 end
 
--- Where a chip's name or glyph starts: past the crossed eye while its
--- column is hidden.
-local function ChipLead(chip)
-  return chip.hidden and (CHIP_LEAD + CHIP_EYE + CHIP_EYE_GAP) or CHIP_LEAD
-end
-
--- The name or glyph at the chip's lead, and the crossed eye before it.
-local function PlaceChipContent(chip)
-  local lead = ChipLead(chip)
-  if chip.lead == lead then return end
-  chip.lead = lead
-  if chip.Glyph then
-    chip.Glyph:ClearAllPoints()
-    if chip.glyphKind == "dot" then
-      chip.Glyph:SetPoint("CENTER", chip, "LEFT", lead + GLYPH / 2, 0)
-    else
-      chip.Glyph:SetPoint("LEFT", chip, "LEFT", lead, 0)
-    end
-  elseif chip.Text then
-    chip.Text:ClearAllPoints()
-    chip.Text:SetPoint("LEFT", chip, "LEFT", lead, 0)
-  end
-end
-
--- The chip's look after every repaint the plate makes of itself: selected
--- while in the hand or while its card is in the inspector, and then ringed
--- in the accent inside its edge (the ring made the first time); greyed,
--- with its eye crossed, while its column is hidden.
-function AR.PaintChip(chip)
+-- Every look a heading has, from its state: the lift's (section 3b), then
+-- its name or glyph -- white while it is pointed at, selected or in the
+-- hand, a lighter grey at rest, dimmed while it has no lane -- and the
+-- subject's arrow, in the accent while selected.
+function AR.PaintHead(head)
   local T = Th()
-  local selected = (AR.drag ~= nil and AR.drag.chip == chip) or AR.Selected("column", chip.colId)
-  T.SetPlateSelected(chip, selected)
-  if selected and not chip.SelRing then chip.SelRing = AR.NewEdges(chip, "ARTWORK", 3, 0, 1) end
-  if chip.SelRing then
-    if selected then
-      local r, g, b = T.GetAccent()
-      AR.TintEdges(chip.SelRing, r, g, b, 1)
-    end
-    AR.ShowEdges(chip.SelRing, selected)
+  local id = head.colId
+  local hand = AR.drag ~= nil and AR.drag.id == id
+  local sel = AR.Selected("column", id)
+  local hover = head.hover or AR.rowHover == id
+  local state
+  if hand then
+    state = "hand"
+  elseif sel then
+    state = hover and "selHover" or "sel"
+  elseif head.narrow then
+    state = hover and "dimHover" or "dim"
+  else
+    state = hover and "hover" or "rest"
   end
-  local hidden = chip.hidden
-  if chip.caption and hidden then T.SetColor(chip.Text, "textDisabled") end
-  if chip.Glyph then
-    if chip.glyphKind == "dot" then
-      T.SetColor(chip.Glyph, hidden and "textDisabled" or "unread")
+  AR.PaintCard(head, state)
+  local lit = hand or sel or hover
+  local dim = head.narrow and not lit
+  local grey = dim and 0.45 or (lit and 1 or 0.9)
+  if head.Text then head.Text:SetTextColor(grey, grey, grey, 1) end
+  local glyph = head.Glyph
+  if glyph then
+    if head.glyphKind == "dot" then
+      T.SetColor(glyph, dim and "textDisabled" or "unread")
+    elseif head.glyphKind == "clock" or head.glyphKind == "slot" then
+      glyph:SetVertexColor(grey, grey, grey, 1)
     else
-      chip.Glyph:SetDesaturated(hidden and true or false)
-      chip.Glyph:SetAlpha(hidden and 0.55 or 1)
+      glyph:SetDesaturated(dim and true or false)
+      glyph:SetAlpha(dim and 0.55 or 1)
     end
   end
-  if chip.EyeOff then
-    chip.EyeOff:SetShown(hidden and true or false)
-    T.SetColor(chip.EyeOff, (selected or chip.__pbHover) and "textSecondary" or "textDisabled")
+  local arrow = head.Stretch
+  if arrow then
+    local r, g, b = 0.6, 0.6, 0.6
+    if hand or sel then
+      r, g, b = T.GetAccent()
+    elseif hover then
+      r, g, b = 0.8, 0.8, 0.8
+    end
+    for k = 1, 3 do arrow[k]:SetVertexColor(r, g, b, 1) end
   end
 end
 
-local function BuildChip(strip, host, id)
+-- A heading's name, and the subject's arrow, fitted to its width: again
+-- only when the width changes.
+function AR.FitHead(head)
+  local text = head.Text
+  if not text then return end
+  local w = head._w or 0
+  local room = math.max(w - 2 * HEAD.TEXT, 1)
+  Th().FitText(text, room, head.caption, head)
+  local arrow = head.Stretch
+  if not arrow then return end
+  local measure = head.Measure
+  measure:SetText(head.caption)
+  local from = HEAD.TEXT + math.min(math.ceil(measure:GetStringWidth() or 0), room) + HEAD.ARROW_GAP
+  local show = w - HEAD.TEXT - from >= HEAD.ARROW_MIN
+  arrow[1]:ClearAllPoints()
+  arrow[1]:SetPoint("LEFT", head, "LEFT", from, 0)
+  for k = 1, 3 do arrow[k]:SetShown(show) end
+end
+
+local function HeadEnter(self)
+  self.hover = true
+  AR.hover = self.colId
+  AR.PaintHead(self)
+  AR.UpdateFocus()
+  HeadTip(self)
+  AR.MoveCursor(true)
+end
+
+local function HeadLeave(self)
+  self.hover = false
+  if AR.hover == self.colId then AR.hover = nil end
+  AR.PaintHead(self)
+  AR.UpdateFocus()
+  GameTooltip:Hide()
+  -- A column in the hand keeps the move cross wherever it passes.
+  if not AR.drag then AR.MoveCursor(false) end
+end
+
+local function HeadDown(self, button)
+  if button ~= "LeftButton" then return end
+  local host = AR.host
+  if host and host.strip == self:GetParent() then AR.PressColumn(host, self.colId, self) end
+end
+
+-- One heading: a lifted card with the column's glyph, or its name.
+local function BuildHead(strip, id)
   local T = Th()
   local spec = AR.COLUMNS[id]
-  local chip = T.CreatePlate(strip, "tile")
-  chip.colId = id
-  chip:SetHeight(T.Metrics.tileHeight)
-
-  if spec.glyph then
-    chip:SetText("")
-    chip.Glyph = chip:CreateTexture(nil, "OVERLAY")
-    chip.glyphKind = spec.glyph
-    if spec.glyph == "dot" then
-      local size = (ns.CollectTab and ns.CollectTab.RowRules and ns.CollectTab.RowRules.DOT or 8) - 1
-      chip.Glyph:SetSize(size, size)
-      chip.Glyph:SetTexture(WHITE)
-      if type(chip.CreateMaskTexture) == "function" then
-        local mask = chip:CreateMaskTexture()
-        mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        mask:SetAllPoints(chip.Glyph)
-        chip.Glyph:AddMaskTexture(mask)
-      end
-      chip.glyphW = GLYPH
-    else
-      chip.Glyph:SetSize(GLYPH, GLYPH)
-      chip.Glyph:SetTexture(ICON_SAMPLE)
-      chip.Glyph:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-      chip.glyphW = GLYPH
+  local head = AR.NewCard(strip, "head")
+  head.colId = id
+  head:SetHeight(T.Metrics.tileHeight)
+  head:EnableMouse(true)
+  local kind = spec.head
+  local glyph
+  if kind == "dot" then
+    local size = (ns.CollectTab and ns.CollectTab.RowRules and ns.CollectTab.RowRules.DOT or 8) - 1
+    glyph = head:CreateTexture(nil, "ARTWORK")
+    glyph:SetSize(size, size)
+    glyph:SetTexture(WHITE)
+    if type(head.CreateMaskTexture) == "function" then
+      local mask = head:CreateMaskTexture()
+      mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+      mask:SetAllPoints(glyph)
+      glyph:AddMaskTexture(mask)
     end
+  elseif kind == "icon" then
+    -- What the column shows: an item, in a black keyline.
+    glyph = head:CreateTexture(nil, "ARTWORK", nil, 1)
+    glyph:SetSize(11, 11)
+    glyph:SetTexture(ICON_SAMPLE)
+    glyph:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    local key = head:CreateTexture(nil, "ARTWORK", nil, 0)
+    key:SetTexture(WHITE)
+    key:SetVertexColor(0, 0, 0, 1)
+    key:SetSize(13, 13)
+    key:SetPoint("CENTER", glyph, "CENTER", 0, 0)
+  elseif kind == "clock" then
+    glyph = T.Glyph and T.Glyph(head, "clock", 11, "ARTWORK") or nil
+  elseif kind == "slot" then
+    glyph = T.Glyph and T.Glyph(head, "slot", nil, "ARTWORK") or nil
+  elseif kind == "coin" then
+    local art = AR.CoinArt()
+    if art then
+      glyph = head:CreateTexture(nil, "ARTWORK")
+      glyph:SetTexture(art)
+      glyph:SetSize(11, 11)
+    end
+  end
+  if glyph then
+    glyph:SetPoint("CENTER", head, "CENTER", 0, 0)
+    head.Glyph, head.glyphKind = glyph, kind
   else
-    chip.caption = L()[spec.title]
-    chip:SetText(chip.caption)
-    chip.Text:SetJustifyH("LEFT")
+    -- A name, and where its glyph's art is missing, the name too.
+    head.caption = L()[spec.title]
+    head.Text = T.CreateText(head, "value", "OVERLAY")
+    head.Text:SetPoint("LEFT", head, "LEFT", HEAD.TEXT, 0)
+    head.Text:SetJustifyH("LEFT")
+    head.Text:SetWordWrap(false)
+    head.Text:SetText(head.caption)
+    -- Where the whole name is measured, whatever width the shown one has.
+    head.Measure = T.CreateText(head, "value", "OVERLAY")
+    head.Measure:Hide()
   end
-  PlaceChipContent(chip)
-
-  -- Crossed while the column is hidden, before its name or glyph.
-  chip.EyeOff = T.Glyph and T.Glyph(chip, "eye-off", 8, "OVERLAY") or nil
-  if chip.EyeOff then
-    chip.EyeOff:SetPoint("CENTER", chip, "LEFT", CHIP_LEAD + CHIP_EYE / 2, 0)
-    chip.EyeOff:Hide()
+  -- The subject's stretch arrow, in its three slices: the heads at the
+  -- ends, the middle anchored between them.
+  if spec.fixed and head.Text and T.Glyph then
+    local l = T.Glyph(head, "stretch-left", nil, "ARTWORK")
+    local m = T.Glyph(head, "stretch-mid", nil, "ARTWORK")
+    local r = T.Glyph(head, "stretch-right", nil, "ARTWORK")
+    if l and m and r then
+      r:SetPoint("RIGHT", head, "RIGHT", -HEAD.TEXT, 0)
+      m:SetPoint("LEFT", l, "RIGHT", 0, 0)
+      m:SetPoint("RIGHT", r, "LEFT", 0, 0)
+      head.Stretch = { l, m, r }
+      l:SetPoint("LEFT", head, "LEFT", HEAD.TEXT, 0)
+    end
   end
+  head:SetScript("OnEnter", HeadEnter)
+  head:SetScript("OnLeave", HeadLeave)
+  head:SetScript("OnMouseDown", HeadDown)
+  return head
+end
 
-  -- After the plate's own hover repaint, so the hidden look survives it.
-  chip:HookScript("OnEnter", function(self)
-    AR.hover = self.colId
-    AR.PaintChip(self)
-    AR.UpdateFocus()
-    ChipTip(self)
-  end)
-  chip:HookScript("OnLeave", function(self)
-    if AR.hover == self.colId then AR.hover = nil end
-    AR.PaintChip(self)
-    AR.UpdateFocus()
-    GameTooltip:Hide()
-  end)
-  chip:SetScript("OnMouseDown", function(self, button)
-    if button ~= "LeftButton" then return end
-    AR.PressChip(host, self)
-  end)
-  return chip
+-- A hidden column's peg: a dark plate with the crossed eye, lighter when
+-- pointed at.
+local function PaintPeg(peg)
+  local hover = peg.hover
+  local fill = hover and 0.12 or 0.063
+  peg.Fill:SetVertexColor(fill, fill, fill, 0.95)
+  local ring = hover and 0.62 or 0.353
+  AR.TintEdges(peg.Ring, ring, ring, ring, 1)
+  local eye = hover and 1 or 0.6
+  if peg.Eye then peg.Eye:SetVertexColor(eye, eye, eye, 1) end
+end
+
+local function PegEnter(self)
+  self.hover = true
+  PaintPeg(self)
+  GameTooltip:SetOwner(self, "ANCHOR_TOP")
+  GameTooltip:SetText(L()[AR.COLUMNS[self.colId].title])
+  GameTooltip:AddLine(L()["ARRANGE_PEG_TIP"], 1, 1, 1, true)
+  GameTooltip:Show()
+end
+
+local function PegLeave(self)
+  self.hover = false
+  PaintPeg(self)
+  GameTooltip:Hide()
+end
+
+local function BuildPeg(strip, id)
+  local T = Th()
+  local peg = CreateFrame("Button", nil, strip)
+  peg.colId = id
+  peg.hover = false
+  peg:SetSize(HEAD.PEG, T.Metrics.tileHeight)
+  peg:SetFrameLevel(strip:GetFrameLevel() + 6)
+  peg.Fill = peg:CreateTexture(nil, "BACKGROUND")
+  peg.Fill:SetTexture(WHITE)
+  peg.Fill:SetAllPoints()
+  peg.Key = AR.NewEdges(peg, "BORDER", 0, 1, 1)
+  AR.TintEdges(peg.Key, 0, 0, 0, 1)
+  peg.Ring = AR.NewEdges(peg, "BORDER", 1, 0, 1)
+  peg.Eye = T.Glyph and T.Glyph(peg, "eye-off", 6, "ARTWORK") or nil
+  if peg.Eye then peg.Eye:SetPoint("CENTER", peg, "CENTER", 0, 0) end
+  peg:SetScript("OnEnter", PegEnter)
+  peg:SetScript("OnLeave", PegLeave)
+  peg:SetScript("OnClick", function(self) AR.ShowPeg(self) end)
+  PaintPeg(peg)
+  peg:Hide()
+  return peg
 end
 
 function AR.BuildStrip(host)
@@ -1056,194 +1238,966 @@ function AR.BuildStrip(host)
   strip:SetHeight(T.Metrics.tileHeight)
   host.PlaceStrip(strip)
   strip:Hide()
-  strip.chips = {}
-  for id in pairs(AR.COLUMNS) do strip.chips[id] = BuildChip(strip, host, id) end
-
+  strip.heads, strip.pegs = {}, {}
+  -- The layout's working tables, made once: each column's heading x and
+  -- width, its kind ("lane", "narrow", "peg"), its lane's own heading
+  -- before the subject gives room away (where a row is hit), and whether
+  -- it stands over its neighbours' edges.
+  strip.bx, strip.bw, strip.kind, strip.hx, strip.hw, strip.over = {}, {}, {}, {}, {}, {}
+  for id in pairs(AR.COLUMNS) do
+    strip.heads[id] = BuildHead(strip, id)
+    strip.pegs[id] = BuildPeg(strip, id)
+  end
   strip.Ghost = AR.NewGhost(strip)
+  strip.Ghost:SetFrameLevel(strip:GetFrameLevel() + 2)
   strip:SetScript("OnSizeChanged", function()
     if AR.host == host then AR.LayoutStrip(host) end
   end)
   host.strip = strip
-  -- The chips are Postbox's own plates, as the view switch beside them is;
-  -- the skin's pass finds whatever it styles among them, as it always has.
   if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, strip) end
   return strip
 end
 
--- A chip's width with nothing cut: the eye if its column is hidden, the
--- name or glyph, and air.
-local function Natural(chip)
-  if chip.Glyph then return ChipLead(chip) + chip.glyphW + CHIP_TAIL end
-  chip.Text:SetWidth(0)
-  chip.Text:SetText(chip.caption)
-  return ChipLead(chip) + math.ceil(chip.Text:GetStringWidth() or 0) + CHIP_TAIL
+-- The narrow headings standing next to the subject, on one side (`dir`, 1
+-- the right, -1 the left), up to the first column with a lane: out of the
+-- subject's heading, in their order, while it keeps SUBJECT_MIN.
+function AR.CarveNarrow(layout, at, dir, strip)
+  local bx, bw, kind = strip.bx, strip.bw, strip.kind
+  local need = 0
+  local i = at + dir
+  while layout[i] and kind[layout[i].id] ~= "lane" do
+    local id = layout[i].id
+    if kind[id] == "narrow" then need = need + (HEAD.NARROW[id] or 22) + HEAD.GAP end
+    i = i + dir
+  end
+  if need == 0 or not bw.subject or bw.subject - need < HEAD.SUBJECT_MIN then return end
+  bw.subject = bw.subject - need
+  local x
+  if dir == 1 then
+    x = bx.subject + bw.subject + HEAD.GAP
+  else
+    bx.subject = bx.subject + need
+    x = bx.subject - HEAD.GAP
+  end
+  i = at + dir
+  while layout[i] and kind[layout[i].id] ~= "lane" do
+    local id = layout[i].id
+    if kind[id] == "narrow" then
+      local w = HEAD.NARROW[id] or 22
+      if dir == 1 then
+        bx[id], bw[id] = x, w
+        x = x + w + HEAD.GAP
+      else
+        bx[id], bw[id] = x - w, w
+        x = x - w - HEAD.GAP
+      end
+    end
+    i = i + dir
+  end
 end
 
--- The width the strip needs to say every name whole: a window that can grow
--- (Mail Memory's) grows to it while it arranges.
-function AR.StripNeed(host)
-  local strip = host and host.strip
-  if not strip then return 0 end
-  local total = 0
-  local n = 0
-  -- Each chip as the arrangement has it now: a hidden column's is wider by
-  -- its eye.
-  local layout = AR.Layout()
-  if layout then
-    for i = 1, #layout do
-      local chip = strip.chips[layout[i].id]
-      if chip then chip.hidden = not layout[i].shown end
+-- What is still without a place -- the pegs, and narrow headings not
+-- beside the subject -- side by side, centred on the boundary between the
+-- headings either side of them, and inside the list's width. They stand
+-- over their neighbours' edges, as a peg does, so a narrow heading that
+-- wears a glyph takes no more than a peg's width here.
+local function RunWidth(strip, id)
+  if strip.kind[id] == "peg" then return HEAD.PEG end
+  local head = strip.heads[id]
+  if head and head.Glyph then return HEAD.PEG end
+  return HEAD.NARROW[id] or 22
+end
+
+function AR.PlaceRuns(layout, strip, span)
+  local bx, bw, over = strip.bx, strip.bw, strip.over
+  local n = #layout
+  local i = 1
+  while i <= n do
+    if bx[layout[i].id] == nil then
+      local j, total = i, -HEAD.RUN_GAP
+      while j <= n and bx[layout[j].id] == nil do
+        total = total + RunWidth(strip, layout[j].id) + HEAD.RUN_GAP
+        j = j + 1
+      end
+      local left, right = 0, span
+      for k = i - 1, 1, -1 do
+        local id = layout[k].id
+        if bx[id] then
+          left = bx[id] + bw[id]
+          break
+        end
+      end
+      if j <= n then right = bx[layout[j].id] end
+      local x = math.floor((left + right - total) / 2 + 0.5)
+      x = math.max(0, math.min(x, span - total))
+      for k = i, j - 1 do
+        local id = layout[k].id
+        local w = RunWidth(strip, id)
+        bx[id], bw[id], over[id] = x, w, true
+        x = x + w + HEAD.RUN_GAP
+      end
+      i = j
+    else
+      i = i + 1
     end
   end
-  for _, chip in pairs(strip.chips) do
-    total = total + Natural(chip)
-    n = n + 1
-  end
-  return total + CHIP_GAP * math.max(n - 1, 0)
 end
 
--- Lays the chips out in the arrangement's order. The chip in the hand is
--- left where the cursor holds it and its slot takes the ghost; the others
--- stand in theirs. Where the strip is short the names give up room in
--- proportion (cut, with the whole name on hover); where it is long the
--- subject takes the rest.
+-- The header laid out on the list's lanes (above), and put on screen: a
+-- heading, or a peg, per column; the heading in the hand is left where the
+-- cursor holds it and its slot takes the ghost. Anchored again only where
+-- a place or a width changed.
 function AR.LayoutStrip(host)
   local strip = host and host.strip
   local layout = AR.Layout()
   if not (strip and layout) then return end
-  local T = Th()
   local width = strip:GetWidth() or 0
   if width < 60 then return end
-  local avail = width
-  strip._avail = avail
-
-  local total, flexible = CHIP_GAP * (#layout - 1), 0
-  for i = 1, #layout do
-    local chip = strip.chips[layout[i].id]
-    chip.hidden = not layout[i].shown
-    PlaceChipContent(chip)
-    chip._nat = Natural(chip)
-    total = total + chip._nat
-    if not chip.Glyph then flexible = flexible + chip._nat - ChipLead(chip) - CHIP_TAIL end
+  local n = #layout
+  local spec = host.Spec and host.Spec()
+  local laneX, laneW = spec and spec.laneX, spec and spec.laneW
+  local lanes = laneX ~= nil and laneW ~= nil and laneW.subject ~= nil and laneX.subject ~= nil
+  local bx, bw, kind, hx, hw = strip.bx, strip.bw, strip.kind, strip.hx, strip.hw
+  local at = IndexOf(layout, "subject") or 1
+  local span = width
+  for i = 1, n do
+    local id = layout[i].id
+    bx[id], bw[id], hx[id], hw[id], strip.over[id] = nil, nil, nil, nil, nil
+    if not layout[i].shown and not AR.COLUMNS[id].fixed then
+      kind[id] = "peg"
+    elseif not lanes then
+      kind[id] = "lane"
+    elseif laneX[id] ~= nil and (laneW[id] or 0) > 0 then
+      kind[id] = "lane"
+      bx[id], bw[id] = laneX[id] - HEAD.PAD, laneW[id] + 2 * HEAD.PAD
+    else
+      kind[id] = "narrow"
+    end
   end
-  local spare = avail - total
-  local scale = 1
-  if spare < 0 and flexible > 0 then scale = math.max(0.25, (flexible + spare) / flexible) end
+  if lanes then
+    span = math.max(spec.width or width, 60)
+    -- Two lanes' headings keep GAP between them, each giving up half.
+    local prev
+    for i = 1, n do
+      local id = layout[i].id
+      if kind[id] == "lane" then
+        if prev then
+          local over = bx[prev] + bw[prev] + HEAD.GAP - bx[id]
+          if over > 0 then
+            local half = math.floor(over / 2)
+            bw[prev] = bw[prev] - half
+            bx[id], bw[id] = bx[id] + over - half, bw[id] - (over - half)
+          end
+        end
+        prev = id
+      end
+    end
+    for i = 1, n do
+      local id = layout[i].id
+      if kind[id] == "lane" then hx[id], hw[id] = bx[id], bw[id] end
+    end
+    AR.CarveNarrow(layout, at, 1, strip)
+    AR.CarveNarrow(layout, at, -1, strip)
+  else
+    -- No lanes: the one-line order at the header's own widths, the subject
+    -- taking what they leave.
+    local total, count = 0, 0
+    for i = 1, n do
+      local id = layout[i].id
+      if kind[id] == "lane" then
+        count = count + 1
+        if id ~= "subject" then total = total + (HEAD.FALLBACK[id] or 40) end
+      end
+    end
+    local subjectW = math.max(width - total - HEAD.GAP * math.max(count - 1, 0), HEAD.SUBJECT_MIN)
+    local x = 0
+    for i = 1, n do
+      local id = layout[i].id
+      if kind[id] == "lane" then
+        local w = (id == "subject") and subjectW or (HEAD.FALLBACK[id] or 40)
+        bx[id], bw[id] = x, w
+        x = x + w + HEAD.GAP
+      end
+    end
+  end
+  AR.PlaceRuns(layout, strip, span)
+  strip.lanes, strip.span = lanes, span
 
   local drag = AR.drag
-  local x = 0
-  for i = 1, #layout do
-    local entry = layout[i]
-    local chip = strip.chips[entry.id]
-    local w = chip._nat
-    local lead = ChipLead(chip)
-    if spare < 0 and not chip.Glyph then
-      w = lead + CHIP_TAIL + math.floor((chip._nat - lead - CHIP_TAIL) * scale)
-    elseif spare > 0 and entry.id == "subject" then
-      w = w + spare
+  for i = 1, n do
+    local id = layout[i].id
+    local head, peg = strip.heads[id], strip.pegs[id]
+    if head and peg then
+      if kind[id] == "peg" then
+        head:Hide()
+        if peg._x ~= bx[id] then
+          peg:ClearAllPoints()
+          peg:SetPoint("LEFT", strip, "LEFT", bx[id], 0)
+          peg._x = bx[id]
+        end
+        peg:Show()
+      else
+        peg:Hide()
+        local narrow = kind[id] == "narrow"
+        local w = bw[id]
+        if head._w ~= w or head.narrow ~= narrow then
+          head._w, head.narrow = w, narrow
+          head:SetWidth(w)
+          AR.FitHead(head)
+        end
+        if drag and drag.id == id then
+          local ghost = strip.Ghost
+          ghost:ClearAllPoints()
+          ghost:SetPoint("LEFT", strip, "LEFT", bx[id], 0)
+          ghost:SetSize(w, Th().Metrics.tileHeight)
+          AR.PaintGhost(ghost)
+          ghost:Show()
+        else
+          if head._x ~= bx[id] then
+            head:ClearAllPoints()
+            head:SetPoint("LEFT", strip, "LEFT", bx[id], 0)
+            head._x = bx[id]
+          end
+          -- Over its neighbours' edges, a heading stands a few levels up.
+          local level = strip:GetFrameLevel() + (strip.over[id] and 5 or 1)
+          if head:GetFrameLevel() ~= level then head:SetFrameLevel(level) end
+        end
+        head:Show()
+        AR.PaintHead(head)
+      end
     end
-    chip:SetWidth(w)
-    chip._x, chip._w = x, w
-    if drag and drag.chip == chip then
-      local ghost = strip.Ghost
-      ghost:ClearAllPoints()
-      ghost:SetPoint("LEFT", strip, "LEFT", x, 0)
-      ghost:SetSize(w, T.Metrics.tileHeight)
-      AR.PaintGhost(ghost)
-      ghost:Show()
-    else
-      chip:ClearAllPoints()
-      chip:SetPoint("LEFT", strip, "LEFT", x, 0)
-    end
-    if chip.caption then T.FitText(chip.Text, w - lead - CHIP_TAIL + 2, chip.caption, chip) end
-    chip:Show()
-    AR.PaintChip(chip)
-    x = x + w + CHIP_GAP
   end
   if not drag then strip.Ghost:Hide() end
+  AR.PlaceLines(host)
 end
 
 -------------------------------------------------------------
--- 7. Dragging a chip
+-- 7. Moving a column
+--
+-- By its heading or by its column on any row (section 7a), one press at a
+-- time (section 2). The heading lifts and follows the cursor along the
+-- header; past the middle of the heading beside it, the two change places
+-- -- in the arrangement itself, so the rows re-lay under it and the header
+-- stands on their new lanes, the heading's slot ringed. In the rows the
+-- column rides in a lifted lane of its own over the list (7a), drawn
+-- offset by as much as the heading is from its slot: each frame of the
+-- drag moves that lane and its cells, and nothing is bound again unless
+-- the order changed. A click selects the column.
 -------------------------------------------------------------
 
-function AR.PressChip(host, chip)
-  AR.Press(chip, {
-    name = L()[AR.COLUMNS[chip.colId].title],
-    start = function(x0)
-      if AR.host ~= host then return end
-      GameTooltip:Hide()
-      AR.drag = {
-        chip = chip, grab = x0 - (chip:GetLeft() or x0), level = chip:GetFrameLevel(),
-        -- The arrangement as it was, for Escape to put back.
-        before = CopyLayout(),
-      }
-      chip:SetFrameLevel(host.strip:GetFrameLevel() + 20)
-      AR.LayoutStrip(host)
-      AR.UpdateFocus()
-    end,
-    move = function(x) AR.DragChip(host, x) end,
-    drop = function() AR.DropChip(host) end,
-    cancel = function()
-      local drag, ui = AR.drag, UI()
-      if drag and drag.before and ui and ui.SetRowLayout then ui.SetRowLayout(drag.before) end
-      AR.DropChip(host)
-      AR.RowsChanged(true)
-    end,
-    click = function()
-      if AR.host == host then AR.Select("column", chip.colId) end
-    end,
-  })
+-- The press in flight: one table of handlers for every column press, and
+-- what they act on -- nothing is made per press.
+local pressed = {}
+local columnPress = {}
+
+function columnPress.start(x0) AR.LiftColumn(pressed.host, pressed.id, x0) end
+function columnPress.move(x) AR.DragColumn(pressed.host, x) end
+function columnPress.drop() AR.DropColumn(pressed.host) end
+function columnPress.cancel()
+  local drag, ui = AR.drag, UI()
+  if drag and drag.before and ui and ui.SetRowLayout then ui.SetRowLayout(drag.before) end
+  AR.DropColumn(pressed.host)
+  AR.RowsChanged(true)
+end
+function columnPress.click()
+  if AR.host == pressed.host then AR.Select("column", pressed.id) end
 end
 
--- The chip follows the cursor along the strip. Past the middle of the chip
--- beside it, the two change places -- in the arrangement itself, so the rows
--- under the strip follow as it goes.
-function AR.DragChip(host, cursorX)
+function AR.PressColumn(host, id, frame)
+  pressed.host, pressed.id = host, id
+  columnPress.name = L()[AR.COLUMNS[id].title]
+  AR.Press(frame, columnPress)
+end
+
+-- The rows bound again for a change in what the mode draws on them, when
+-- the column they point at stayed the same (AR.UpdateFocus binds them
+-- itself when it moved).
+local function RefocusRows()
+  local before = AR.focus
+  AR.UpdateFocus()
+  if AR.focus == before then AR.RowsChanged(false) end
+end
+
+function AR.LiftColumn(host, id, x0)
+  if AR.host ~= host then return end
+  local strip = host.strip
+  local head = strip and strip.heads[id]
+  if not (head and head:IsShown()) then return end
+  GameTooltip:Hide()
+  AR.drag = {
+    id = id, head = head, grab = x0 - (head:GetLeft() or x0), level = head:GetFrameLevel(),
+    x = head._x or 0, dx = 0,
+    -- The arrangement as it was, for Escape to put back.
+    before = CopyLayout(),
+  }
+  head:SetFrameLevel(strip:GetFrameLevel() + 20)
+  -- Lifted a unit above and below its place.
+  head:SetHeight(Th().Metrics.tileHeight + 2)
+  AR.LayoutStrip(host)
+  AR.ShowHand(host)
+  RefocusRows()
+end
+
+-- The heading follows the cursor along the header, and the column's lane
+-- follows it over the rows.
+function AR.DragColumn(host, cursorX)
   local drag, strip = AR.drag, host.strip
   if not (drag and strip) then return end
-  local chip = drag.chip
+  local head = drag.head
   local left = strip:GetLeft()
   if not left then return end
-  local x = math.min(math.max(cursorX - left - drag.grab, 0), math.max((strip._avail or 0) - chip._w, 0))
-  chip:ClearAllPoints()
-  chip:SetPoint("LEFT", strip, "LEFT", x, 0)
-  local centre = x + chip._w / 2
-  local moved = false
-  -- A quick hand can cross more than one chip in a frame.
-  for _ = 1, 8 do
-    local layout = AR.Layout()
-    local k = IndexOf(layout, chip.colId)
-    if not k then break end
-    local target
-    local prev, nxt = layout[k - 1], layout[k + 1]
-    if prev then
-      local p = strip.chips[prev.id]
-      if centre < p._x + p._w / 2 then target = k - 1 end
-    end
-    if not target and nxt then
-      local q = strip.chips[nxt.id]
-      if centre > q._x + q._w / 2 then target = k + 1 end
-    end
-    if not target then break end
-    AR.MoveColumn(k, target)
-    AR.LayoutStrip(host)
-    moved = true
+  local w = head._w or head:GetWidth() or 0
+  local x = math.min(math.max(cursorX - left - drag.grab, 0), math.max((strip:GetWidth() or 0) - w, 0))
+  if x ~= drag.x then
+    drag.x = x
+    head:ClearAllPoints()
+    head:SetPoint("LEFT", strip, "LEFT", x, 0)
+    head._x = nil
   end
-  if moved then AR.RowsChanged(true) end
+  -- One place a frame: the lanes the next decision reads are the ones the
+  -- rows have just been laid on.
+  local layout = AR.Layout()
+  local k = layout and IndexOf(layout, drag.id)
+  local moved = false
+  if k then
+    local bx, bw = strip.bx, strip.bw
+    local centre = x + w / 2
+    local prev, nxt = layout[k - 1], layout[k + 1]
+    local target
+    if prev and bx[prev.id] and centre < bx[prev.id] + bw[prev.id] / 2 then target = k - 1 end
+    if not target and nxt and bx[nxt.id] and centre > bx[nxt.id] + bw[nxt.id] / 2 then target = k + 1 end
+    if target then
+      AR.MoveColumn(k, target)
+      AR.RowsChanged(true)
+      moved = true
+    end
+  end
+  local dx = x - (strip.bx[drag.id] or x)
+  if moved or dx ~= drag.dx then
+    drag.dx = dx
+    AR.CarryRows(host, dx)
+  end
 end
 
-function AR.DropChip(host)
+function AR.DropColumn(host)
   local drag = AR.drag
   AR.drag = nil
   if not drag then return end
-  drag.chip:SetFrameLevel(drag.level)
-  if host.strip then
+  local head = drag.head
+  head:SetFrameLevel(drag.level)
+  head:SetHeight(Th().Metrics.tileHeight)
+  head._x = nil
+  AR.HideHand(host)
+  -- What the pointer is over is looked at again (the list's, next frame).
+  AR.rowHover = nil
+  if host and host.strip then
     host.strip.Ghost:Hide()
     AR.LayoutStrip(host)
   end
-  AR.hover = drag.chip:IsMouseOver() and drag.chip.colId or nil
-  AR.UpdateFocus()
+  local over = head:IsMouseOver()
+  AR.hover = over and head.colId or nil
+  AR.MoveCursor(over)
+  RefocusRows()
+  AR.PaintHead(head)
+end
+
+-------------------------------------------------------------
+-- 7a. The list under the header
+--
+-- A frame of Postbox's own over the list's rows while the mode is open (the
+-- cover), from under the header to the list's foot, a few levels above the
+-- rows. It carries:
+--   the lane lines   one faint line down each boundary between two lanes,
+--                    from the header through the rows;
+--   the press        on any row, the column whose lane is under the cursor
+--                    (on a two-line row, whatever the row draws there) is
+--                    taken as its heading would be; pointed at, its heading
+--                    lights. So a click on a row does nothing else while
+--                    the mode is open: nothing opens, nothing is collected;
+--   the hand         while a column is dragged, its slot ringed down the
+--                    list and the column riding offset in a lifted lane,
+--                    its cells copied onto the lane from the rows.
+-- The mouse wheel is not taken: the list still scrolls under it. Nothing
+-- here runs while the mode is closed; pointed at, a check a frame of which
+-- column is under the cursor, gone with the pointer.
+-------------------------------------------------------------
+
+-- Which column a press or the pointer on the list is over, or nil: by the
+-- lanes where the rows have them, by what a two-line row draws otherwise.
+local REGION_OF = { read = "Indicator", icon = "Icon", sender = "Sender", subject = "Subject" }
+
+function AR.RegionAt(host, cx, cy)
+  local pool = host.Pool and host.Pool()
+  if not pool then return nil end
+  for i = 1, #pool do
+    local row = pool[i]
+    if row:IsShown() then
+      local top, bottom = row:GetTop(), row:GetBottom()
+      if top and bottom and cy <= top and cy >= bottom then
+        for id, key in pairs(REGION_OF) do
+          local region = row[key]
+          if region and region:IsShown() then
+            local l, r = region:GetLeft(), region:GetRight()
+            if l and r and cx >= l - 3 and cx <= r + 3 then return id end
+          end
+        end
+        return nil
+      end
+    end
+  end
+  return nil
+end
+
+function AR.ColumnAt(host)
+  local cover, strip = host.cover, host.strip
+  local layout = AR.Layout()
+  if not (cover and strip and layout) then return nil end
+  local left = cover:GetLeft()
+  if not left then return nil end
+  local cx, cy = AR.Cursor(cover)
+  if strip.lanes then
+    local x = cx - left
+    local hx, hw, kind = strip.hx, strip.hw, strip.kind
+    for i = 1, #layout do
+      local id = layout[i].id
+      if kind[id] == "lane" and hx[id] and x >= hx[id] - 1 and x < hx[id] + hw[id] + 1 then return id end
+    end
+    return nil
+  end
+  if host.TwoLine and host.TwoLine() then return AR.RegionAt(host, cx, cy) end
+  return nil
+end
+
+-- The column the pointer is over in the rows: its heading lights, and the
+-- pointer is the move cross while it is over one.
+function AR.SetRowHover(id)
+  local was = AR.rowHover
+  AR.rowHover = id
+  local strip = AR.host and AR.host.strip
+  if strip then
+    if was and strip.heads[was] then AR.PaintHead(strip.heads[was]) end
+    if id and strip.heads[id] then AR.PaintHead(strip.heads[id]) end
+  end
+  AR.MoveCursor(id ~= nil)
+end
+
+local function CoverUpdate(self)
+  local host = AR.host
+  if not (host and host.cover == self) or AR.drag then return end
+  local id = AR.ColumnAt(host)
+  if id ~= AR.rowHover then AR.SetRowHover(id) end
+end
+
+local function CoverEnter(self)
+  self:SetScript("OnUpdate", CoverUpdate)
+end
+
+local function CoverLeave(self)
+  self:SetScript("OnUpdate", nil)
+  if AR.rowHover then AR.SetRowHover(nil) end
+end
+
+local function CoverDown(self, button)
+  if button ~= "LeftButton" then return end
+  local host = AR.host
+  if not (host and host.cover == self) then return end
+  local id = AR.ColumnAt(host)
+  if id then AR.PressColumn(host, id, self) end
+end
+
+function AR.BuildCover(host)
+  local scroll = host.Scroll and host.Scroll()
+  local strip = host.strip
+  if not (scroll and strip and host.List) then return nil end
+  local cover = CreateFrame("Frame", nil, scroll:GetParent())
+  cover:SetPoint("TOPLEFT", strip, "BOTTOMLEFT", 0, 0)
+  cover:SetPoint("BOTTOMRIGHT", scroll, "BOTTOMRIGHT", 0, 0)
+  cover:EnableMouse(true)
+  cover.Lines = {}
+  cover.Ghost = AR.NewGhost(cover)
+  -- The lane in the hand: a lifted card (section 3b) whose cells ride on a
+  -- frame of their own inside it, clipped to it.
+  local hand = AR.NewCard(cover, "lane")
+  if hand.SetClipsChildren then hand:SetClipsChildren(true) end
+  hand.Cells = CreateFrame("Frame", nil, hand)
+  hand.Cells:SetAllPoints()
+  cover.Hand = hand
+  cover:SetScript("OnEnter", CoverEnter)
+  cover:SetScript("OnLeave", CoverLeave)
+  cover:SetScript("OnHide", CoverLeave)
+  cover:SetScript("OnMouseDown", CoverDown)
+  cover:Hide()
+  host.cover = cover
+  return cover
+end
+
+-- A few levels over the rows and the list's pinned divider, whatever
+-- raised the window since.
+function AR.CoverLevel(host)
+  local cover, list = host.cover, host.List and host.List()
+  if not (cover and list) then return end
+  local level = list:GetFrameLevel() + 12
+  if cover:GetFrameLevel() ~= level then
+    cover:SetFrameLevel(level)
+    cover.Ghost:SetFrameLevel(level + 1)
+    cover.Hand:SetFrameLevel(level + 3)
+  end
+end
+
+local function NewLine(cover, i)
+  local line = cover:CreateTexture(nil, "ARTWORK")
+  line:SetTexture(WHITE)
+  line:SetWidth(1)
+  line:SetVertexColor(1, 1, 1, 0.13)
+  cover.Lines[i] = line
+  return line
+end
+
+-- One line down each boundary between two lanes. None without lanes.
+function AR.PlaceLines(host)
+  local cover, strip = host.cover, host.strip
+  if not (cover and strip) then return end
+  local layout = AR.Layout()
+  local count = 0
+  if strip.lanes and layout then
+    local hx, hw, kind = strip.hx, strip.hw, strip.kind
+    local prev
+    for i = 1, #layout do
+      local id = layout[i].id
+      if kind[id] == "lane" and hx[id] then
+        if prev then
+          count = count + 1
+          local line = cover.Lines[count] or NewLine(cover, count)
+          local x = math.floor((hx[prev] + hw[prev] + hx[id]) / 2)
+          if line._x ~= x then
+            line:ClearAllPoints()
+            line:SetPoint("TOPLEFT", cover, "TOPLEFT", x, 0)
+            line:SetPoint("BOTTOMLEFT", cover, "BOTTOMLEFT", x, 0)
+            line._x = x
+          end
+          line:Show()
+        end
+        prev = id
+      end
+    end
+  end
+  for i = count + 1, #cover.Lines do cover.Lines[i]:Hide() end
+end
+
+-- The dragged column's slot down the list, and its lane over it, offset by
+-- as much as its heading is from the slot. Only where the rows have lanes.
+function AR.PlaceHand(host)
+  local cover, strip, drag = host.cover, host.strip, AR.drag
+  local scroll = host.Scroll and host.Scroll()
+  if not (cover and strip and drag and scroll) then return end
+  local x, w = strip.hx[drag.id], strip.hw[drag.id]
+  if not (strip.lanes and x and w) then
+    cover.Hand:Hide()
+    cover.Ghost:Hide()
+    return
+  end
+  local ghost, hand = cover.Ghost, cover.Hand
+  ghost:SetPoint("TOPLEFT", scroll, "TOPLEFT", x - 1, 3)
+  ghost:SetPoint("BOTTOMLEFT", scroll, "BOTTOMLEFT", x - 1, 0)
+  ghost:SetWidth(w + 2)
+  hand:SetPoint("TOPLEFT", scroll, "TOPLEFT", x - 1 + drag.dx, 3)
+  hand:SetPoint("BOTTOMLEFT", scroll, "BOTTOMLEFT", x - 1 + drag.dx, 0)
+  hand:SetWidth(w + 2)
+  ghost:Show()
+  hand:Show()
+end
+
+function AR.ShowHand(host)
+  local cover = host and host.cover
+  if not cover then return end
+  AR.PaintCard(cover.Hand, "hand")
+  AR.PaintGhost(cover.Ghost)
+  AR.PlaceHand(host)
+end
+
+function AR.HideHand(host)
+  local cover = host and host.cover
+  if not cover then return end
+  cover.Hand:Hide()
+  cover.Ghost:Hide()
+end
+
+-- A frame of the drag: the lane over the list, and every row's cell on it,
+-- moved by `dx`. Nothing is bound again and nothing is made.
+function AR.CarryRows(host, dx)
+  AR.PlaceHand(host)
+  local pool = host.Pool and host.Pool()
+  if not pool then return end
+  for i = 1, #pool do
+    local row = pool[i]
+    local marks = row.__pbMarks
+    local carry = marks and marks.carry
+    if carry and carry.on and row:IsShown() then
+      carry.cur:SetPoint("LEFT", row, "LEFT", carry.left + dx, 0)
+    end
+  end
+end
+
+-- A list's pass of its rows is about to publish its lanes: last pass's go,
+-- so a pass that places no one-line row leaves the header on widths of its
+-- own rather than on lanes from another view. And the pass is done: the
+-- header stands on what it published.
+function AR.ListPlacing(owner)
+  local host = AR.host
+  if not (host and host.owner == owner) then return end
+  local spec = host.Spec and host.Spec()
+  local widths = spec and spec.laneW
+  if widths then
+    for id in pairs(widths) do widths[id] = nil end
+  end
+end
+
+function AR.ListPlaced(owner)
+  local host = AR.host
+  if not (host and host.owner == owner) then return end
+  AR.CoverLevel(host)
+  AR.LayoutStrip(host)
+  if AR.drag then AR.PlaceHand(host) end
+end
+
+-------------------------------------------------------------
+-- 7b. The rows while arranging
+--
+-- RV.Place hands each row it places while the mode points at a column
+-- (AR.Focus: the one in the hand, else under the pointer in the header,
+-- else the selected one) to AR.MarkRow, with where the row's subject stands
+-- and runs. On a one-line row, which has lanes:
+--   a column         its lane washed where the row draws it; for a figure,
+--                    hatched where the subject runs on through it, and
+--                    outlined where the mail has none and the subject
+--                    stopped short of it;
+--   the subject      its own room washed, the room it borrowed from empty
+--                    columns hatched, and a tick where it stops;
+--   in the hand      the row's cell leaves its lane and rides on the lifted
+--                    lane over the list (7a).
+-- The accent while the column is selected or in the hand, white while it
+-- is only pointed at. A two-line row keeps RV.Wash's wash around what it
+-- draws of the column. Every mark is a texture of the row's own, made the
+-- first time the row needs one and reused, as RV.Wash's is; a mark is
+-- anchored again only where it moved. RV.Wash with nothing to point at
+-- takes them all away (AR.UnmarkRow).
+-------------------------------------------------------------
+
+local MARK = {
+  -- look -> { fill grey or "accent", fill alpha, ring grey or "accent", ring alpha }
+  sel        = { "accent", 0.11, "accent", 0.45 },
+  hover      = { 1, 0.10, 1, 0.45 },
+  lent       = { 1, 0, 1, 0.18 },
+  empty      = { "accent", 0, "accent", 0.28 },
+  emptyHover = { 1, 0, 1, 0.25 },
+}
+AR.MARK = MARK
+
+local function Rules()
+  return ns.CollectTab and ns.CollectTab.RowRules or nil
+end
+
+-- The marks' textures by number, for where each was last anchored (kept in
+-- the row's marks table, not on the textures).
+local BOX, HATCH, TICK, TICK_KEY = 1, 2, 3, 4
+
+-- Mark `i` (`tex`) from `x` for `w` units along the row, `inset` in from its
+-- top and foot.
+local function Span(m, i, tex, row, x, w, inset)
+  if m.sx[i] ~= x or m.sw[i] ~= w or m.si[i] ~= inset then
+    m.sx[i], m.sw[i], m.si[i] = x, w, inset
+    tex:ClearAllPoints()
+    tex:SetPoint("TOPLEFT", row, "TOPLEFT", x, -inset)
+    tex:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", x, inset)
+    tex:SetWidth(math.max(w, 1))
+  end
+  tex:Show()
+end
+
+function AR.NewMarks(row)
+  local T = Th()
+  -- Every field the marks ever hold, set here: the table never grows.
+  local m = {
+    sx = {}, sw = {}, si = {}, on = false, carry = false, flatHatch = false, tileW = 0, tileH = 0,
+    box = false, ring = false, hatch = false, hatchTop = false, hatchFoot = false, tickKey = false, tick = false,
+  }
+  m.box = row:CreateTexture(nil, "BACKGROUND", nil, 4)
+  m.box:SetTexture(WHITE)
+  m.ring = AR.NewEdges(row, "BACKGROUND", 5, 0, 1)
+  AR.PlaceEdges(m.ring, m.box, 0, 1)
+  -- The hatch tiles (Theme.GLYPHS: sized, then its coordinates set to the
+  -- size); a flat wash where its art is missing.
+  m.hatch = T.Glyph and T.Glyph(row, "hatch", nil, "BACKGROUND") or false
+  if m.hatch then
+    m.hatch:SetDrawLayer("BACKGROUND", 5)
+  else
+    m.hatch = row:CreateTexture(nil, "BACKGROUND", nil, 5)
+    m.hatch:SetTexture(WHITE)
+    m.flatHatch = true
+  end
+  m.hatchTop = row:CreateTexture(nil, "BACKGROUND", nil, 6)
+  m.hatchTop:SetTexture(WHITE)
+  m.hatchTop:SetHeight(1)
+  m.hatchTop:SetPoint("TOPLEFT", m.hatch, "TOPLEFT", 0, 0)
+  m.hatchTop:SetPoint("TOPRIGHT", m.hatch, "TOPRIGHT", 0, 0)
+  m.hatchFoot = row:CreateTexture(nil, "BACKGROUND", nil, 6)
+  m.hatchFoot:SetTexture(WHITE)
+  m.hatchFoot:SetHeight(1)
+  m.hatchFoot:SetPoint("BOTTOMLEFT", m.hatch, "BOTTOMLEFT", 0, 0)
+  m.hatchFoot:SetPoint("BOTTOMRIGHT", m.hatch, "BOTTOMRIGHT", 0, 0)
+  m.tickKey = row:CreateTexture(nil, "ARTWORK", nil, 6)
+  m.tickKey:SetTexture(WHITE)
+  m.tickKey:SetVertexColor(0, 0, 0, 1)
+  m.tick = row:CreateTexture(nil, "ARTWORK", nil, 7)
+  m.tick:SetTexture(WHITE)
+  m.box:Hide()
+  AR.ShowEdges(m.ring, false)
+  m.hatch:Hide()
+  m.hatchTop:Hide()
+  m.hatchFoot:Hide()
+  m.tickKey:Hide()
+  m.tick:Hide()
+  row.__pbMarks = m
+  return m
+end
+
+local function MarkBox(row, m, x, w, look)
+  local spec = MARK[look] or MARK.sel
+  local ar, ag, ab = Th().GetAccent()
+  Span(m, BOX, m.box, row, x, w, 1)
+  if spec[1] == "accent" then
+    m.box:SetVertexColor(ar, ag, ab, spec[2])
+  else
+    m.box:SetVertexColor(spec[1], spec[1], spec[1], spec[2])
+  end
+  if spec[3] == "accent" then
+    AR.TintEdges(m.ring, ar, ag, ab, spec[4])
+  else
+    AR.TintEdges(m.ring, spec[3], spec[3], spec[3], spec[4])
+  end
+  AR.ShowEdges(m.ring, true)
+end
+
+local function HideBox(m)
+  m.box:Hide()
+  AR.ShowEdges(m.ring, false)
+end
+
+-- The hatch from `x` for `w`: the subject's borrowed room (`edged`, with a
+-- line along its top and foot) or a figure's lane it runs through.
+local function MarkHatch(row, m, x, w, accent, edged)
+  local hatch = m.hatch
+  Span(m, HATCH, hatch, row, x, w, 1)
+  local h = math.max((row:GetHeight() or 26) - 2, 1)
+  if not m.flatHatch and (m.tileW ~= w or m.tileH ~= h) then
+    m.tileW, m.tileH = w, h
+    hatch:SetTexCoord(0, w / 8, 0, h / 8)
+  end
+  local r, g, b, a = 1, 1, 1, edged and 0.3 or 0.2
+  if accent then
+    r, g, b = Th().GetAccent()
+    a = 0.4
+  end
+  if m.flatHatch then a = a * 0.3 end
+  hatch:SetVertexColor(r, g, b, a)
+  m.hatchTop:SetShown(edged and true or false)
+  m.hatchFoot:SetShown(edged and true or false)
+  if edged then
+    local la = accent and 0.45 or 0.35
+    m.hatchTop:SetVertexColor(r, g, b, la)
+    m.hatchFoot:SetVertexColor(r, g, b, la)
+  end
+end
+
+local function HideHatch(m)
+  m.hatch:Hide()
+  m.hatchTop:Hide()
+  m.hatchFoot:Hide()
+end
+
+-- The tick where the subject stops: two units wide, centred on `x`, in a
+-- black keyline.
+local function MarkTick(row, m, x, accent)
+  Span(m, TICK_KEY, m.tickKey, row, x - 2, 4, 2)
+  Span(m, TICK, m.tick, row, x - 1, 2, 3)
+  if accent then
+    local r, g, b = Th().GetAccent()
+    m.tick:SetVertexColor(r, g, b, 1)
+  else
+    m.tick:SetVertexColor(0.85, 0.85, 0.85, 1)
+  end
+end
+
+local function HideTick(m)
+  m.tick:Hide()
+  m.tickKey:Hide()
+end
+
+-- The cells the lane in the hand carries: a copy of a row's own, on the
+-- lane (7a), made once per row and filled from the row whenever it is
+-- bound during a drag.
+local function NewCarry(cover)
+  local cells = cover.Hand.Cells
+  local carry = { cover = cover, Text = false, Tex = false, Dot = false, cur = false, left = 0, on = false }
+  carry.Text = cells:CreateFontString(nil, "OVERLAY")
+  Th().ApplyTextRole(carry.Text, "value")
+  carry.Text:SetWordWrap(false)
+  carry.Tex = cells:CreateTexture(nil, "ARTWORK")
+  carry.Dot = cells:CreateTexture(nil, "ARTWORK")
+  carry.Dot:SetTexture(WHITE)
+  if type(cells.CreateMaskTexture) == "function" then
+    local mask = cells:CreateMaskTexture()
+    mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetAllPoints(carry.Dot)
+    carry.Dot:AddMaskTexture(mask)
+  end
+  carry.Text:Hide()
+  carry.Tex:Hide()
+  carry.Dot:Hide()
+  return carry
+end
+
+local function Uncarry(m)
+  local carry = m.carry
+  if carry and carry.on then
+    carry.on = false
+    carry.cur:Hide()
+  end
+end
+
+-- The row's cell of the column in the hand, onto the lane: where the row
+-- has it, moved by the drag's offset. The subject's is its own room.
+local function Carry(row, m, region, s, x, subjectW, dx)
+  local host = AR.host
+  local cover = host and host.cover
+  if not cover then return end
+  local carry = m.carry
+  if not carry or carry.cover ~= cover then
+    carry = NewCarry(cover)
+    m.carry = carry
+  end
+  local w = region:GetWidth() or 0
+  local left = region.__pbAtX or 0
+  if region.__pbAt == 2 then left = (s.width or 0) + left - w end
+  if region == s.el.subject then w = math.max(math.min(w, x + subjectW - left), 1) end
+  local cur
+  if region:GetObjectType() == "FontString" then
+    cur = carry.Text
+    local path, size, flags = region:GetFont()
+    if path then cur:SetFont(path, size, flags or "") end
+    cur:SetTextColor(region:GetTextColor())
+    if region.GetShadowOffset then
+      cur:SetShadowOffset(region:GetShadowOffset())
+      cur:SetShadowColor(region:GetShadowColor())
+    end
+    cur:SetJustifyH(region:GetJustifyH() or "LEFT")
+    cur:SetWidth(w)
+    cur:SetText(region:GetText() or "")
+    carry.Tex:Hide()
+    carry.Dot:Hide()
+  else
+    cur = (region == s.el.read) and carry.Dot or carry.Tex
+    if cur == carry.Tex then
+      cur:SetTexture(region:GetTexture())
+      cur:SetTexCoord(region:GetTexCoord())
+      carry.Dot:Hide()
+    else
+      carry.Tex:Hide()
+    end
+    cur:SetVertexColor(region:GetVertexColor())
+    cur:SetSize(w, region:GetHeight() or w)
+    carry.Text:Hide()
+  end
+  carry.cur, carry.left, carry.on = cur, left, true
+  cur:ClearAllPoints()
+  cur:SetPoint("LEFT", row, "LEFT", left + dx, 0)
+  cur:Show()
+end
+
+function AR.UnmarkRow(row)
+  local m = row.__pbMarks
+  if not (m and m.on) then return end
+  m.on = false
+  HideBox(m)
+  HideHatch(m)
+  HideTick(m)
+  Uncarry(m)
+end
+
+-- RV.Place's last step for a row, while the mode points at a column: see
+-- above. `lanes` is whether the row stands in lanes; `x`, `subjectW` the
+-- subject's own room; `sx`, `run` where it starts and how far it runs.
+function AR.MarkRow(row, s, target, lanes, x, subjectW, sx, run)
+  local R = Rules()
+  local focus = s.focus
+  local host = AR.host
+  -- The other window's rows, if it is up, keep the plain wash: the header,
+  -- its lanes and the lane in the hand are this list's.
+  local list = host and host.List and host.List()
+  if not (lanes and sx and list and row:GetParent() == list) then
+    AR.UnmarkRow(row)
+    if R and R.Wash then R.Wash(row, target) end
+    return
+  end
+  local wash = row.__pbWash
+  if wash then wash:Hide() end
+  local m = row.__pbMarks or AR.NewMarks(row)
+  m.on = true
+  local drag = AR.drag
+  if drag and drag.id == focus then
+    HideBox(m)
+    HideHatch(m)
+    HideTick(m)
+    local region = s.el[focus]
+    if region and region:IsShown() then
+      Carry(row, m, region, s, x, subjectW, drag.dx)
+      region:Hide()
+      -- The icon's quality mark goes with it (the row paints it again
+      -- when it is next bound).
+      if region == s.el.icon and row.QualityHolder then row.QualityHolder:Hide() end
+    else
+      Uncarry(m)
+    end
+    return
+  end
+  Uncarry(m)
+  local sel = AR.Selected("column", focus)
+  local pad = HEAD.PAD
+  local ownEnd = x + subjectW
+  local runEnd = sx + (run or subjectW)
+  if focus == "subject" then
+    MarkBox(row, m, sx - pad, math.min(ownEnd, runEnd) - sx + 2 * pad, sel and "sel" or "hover")
+    if runEnd > ownEnd + 0.5 then
+      MarkHatch(row, m, ownEnd + pad, runEnd - ownEnd, sel, true)
+    else
+      HideHatch(m)
+    end
+    MarkTick(row, m, runEnd + pad, sel)
+    return
+  end
+  HideTick(m)
+  local laneX, laneW = s.laneX, s.laneW
+  local lx = laneX and laneX[focus]
+  local lw = laneW and laneW[focus] or 0
+  if not lx or lw <= 0 then
+    -- No lane in this list: what the row draws of it, if anything, washed
+    -- where it stands.
+    HideBox(m)
+    HideHatch(m)
+    if target and R and R.Wash then R.Wash(row, target) end
+    return
+  end
+  local region = s.el[focus]
+  if region and region:IsShown() then
+    MarkBox(row, m, lx - pad, lw + 2 * pad, sel and "sel" or "hover")
+    HideHatch(m)
+  elseif AR.COLUMNS[focus] and AR.COLUMNS[focus].figure and lx >= ownEnd - 0.5 and lx + lw <= runEnd + 0.5 then
+    MarkBox(row, m, lx - pad, lw + 2 * pad, "lent")
+    MarkHatch(row, m, lx - pad, lw + 2 * pad, false, false)
+  else
+    MarkBox(row, m, lx - pad, lw + 2 * pad, sel and "empty" or "emptyHover")
+    HideHatch(m)
+  end
 end
 
 -------------------------------------------------------------
@@ -1260,8 +2214,8 @@ end
 --     choice, Move (the way to reorder without a drag), and, for a figure,
 --     what the rows do on a mail without it; for the subject, Line up
 --     columns and what it does; for a block, the stack's order.
--- A click on a chip or a block selects it, a second click lets it go; the
--- cross and Escape go back a layer (section 5).
+-- A click on a heading, a column on a row or a block selects it, a second
+-- click lets it go; the cross and Escape go back a layer (section 5).
 --
 -- Built the first time the mode opens and refilled in place: every region
 -- exists once, the choices are lists made once, and a fill sets texts,
@@ -1392,12 +2346,23 @@ function AR.Choices(kind)
   return list, ui.GetExpiryWhen and ui.GetExpiryWhen(), ui.SetExpiryWhen
 end
 
--- A column shown or hidden from the inspector: the strip and the rows
--- follow, as they follow a drag.
+-- A column shown or hidden from the inspector: the rows and the header on
+-- their lanes follow, as they follow a drag.
 function AR.ShowColumn(id, on)
   AR.SetColumnShown(id, on)
-  if AR.host then AR.LayoutStrip(AR.host) end
   AR.RowsChanged(true)
+  if AR.host then AR.LayoutStrip(AR.host) end
+end
+
+-- A hidden column's peg, clicked (section 6): the column back where it
+-- stands.
+function AR.ShowPeg(peg)
+  if not (AR.host and peg and peg.colId) then return end
+  peg.hover = false
+  GameTooltip:Hide()
+  AR.ShowColumn(peg.colId, true)
+  PlayToggle(true)
+  AR.Inspect()
 end
 
 -- A column one place along the row, left (-1) or right (1).
@@ -1408,8 +2373,8 @@ function AR.NudgeColumn(id, step)
   local to = k + step
   if to < 1 or to > #layout then return end
   AR.MoveColumn(k, to)
-  if AR.host then AR.LayoutStrip(AR.host) end
   AR.RowsChanged(true)
+  if AR.host then AR.LayoutStrip(AR.host) end
 end
 
 -- What is moving, while a drag lasts (section 2), or nil.
@@ -2335,9 +3300,16 @@ end
 -------------------------------------------------------------
 -- 9. Opening and closing
 --
--- A host is the list being arranged: { owner = its frame, PlaceStrip(strip),
--- OnEnter(strip), OnLeave(), Rise() (optional: its cards settle in, played
--- once as the mode opens), toggle = the key that opened it }. The Mail
+-- A host is the list being arranged: { owner = its frame, PlaceStrip(strip)
+-- (the header in the top row's place, its left edge the rows' own),
+-- OnEnter(strip) (the top row steps aside), OnLeave() (and comes back as it
+-- was), Rise() (optional: its cards settle in, played once as the mode
+-- opens), toggle = the key that opened it }. For the header and the rows it
+-- answers, for the list on screen: Spec() (its placement table, whose lanes
+-- RV.Place publishes), Pool() (its rows), Scroll() (its scroll frame),
+-- List() (the frame its rows stand in) and TwoLine() (whether its rows are
+-- the two-line ones, which have no lanes). It tells the mode when a pass
+-- of its rows begins and ends (AR.ListPlacing, AR.ListPlaced). The Mail
 -- tab's is CollectTab's CT.ArrangeHost; Mail Memory's is its own. One at a
 -- time: opening one closes the other.
 --
@@ -2355,15 +3327,23 @@ function AR.Enter(host)
   if not host or AR.host == host then return end
   if AR.host then AR.Leave() end
   local strip = host.strip or AR.BuildStrip(host)
+  local cover = host.cover or AR.BuildCover(host)
   AR.host = host
-  AR.hover, AR.focus, AR.drag = nil, nil, nil
+  AR.hover, AR.focus, AR.drag, AR.rowHover = nil, nil, nil, nil
   AR.selKind, AR.selId, AR.moving = nil, nil, nil
   strip:Show()
   if host.OnEnter then host.OnEnter(strip) end
-  AR.LayoutStrip(host)
+  if cover then
+    AR.CoverLevel(host)
+    cover:Show()
+  end
   AR.CatchEscape(true)
   if host.toggle then AR.PaintToggle(host.toggle) end
+  -- The rows line up while the mode is open: placed again, and the header
+  -- laid on their lanes as each pass ends (AR.ListPlaced) -- and here, for
+  -- a list that placed none.
   AR.RowsChanged(false)
+  AR.LayoutStrip(host)
   -- The host's cards settle into place, once (AR.Rise).
   if host.Rise then host.Rise() end
   AR.ShowInspector(host)
@@ -2375,20 +3355,35 @@ function AR.Leave()
   AR.CancelPress()
   local drag = AR.drag
   AR.drag = nil
-  if drag then drag.chip:SetFrameLevel(drag.level) end
+  if drag then
+    drag.head:SetFrameLevel(drag.level)
+    drag.head:SetHeight(Th().Metrics.tileHeight)
+    drag.head._x = nil
+  end
   AR.selKind, AR.selId, AR.moving = nil, nil, nil
   AR.host = nil
   if AR._insp then AR._insp:Hide() end
-  AR.hover, AR.focus = nil, nil
+  AR.hover, AR.focus, AR.rowHover = nil, nil, nil
   AR.CatchEscape(false)
-  if host.strip then
-    host.strip.Ghost:Hide()
-    host.strip:Hide()
+  local strip = host.strip
+  if strip then
+    strip.Ghost:Hide()
+    strip:Hide()
+    for _, head in pairs(strip.heads) do head.hover = false end
+    for _, peg in pairs(strip.pegs) do peg.hover = false end
+  end
+  local cover = host.cover
+  if cover then
+    cover:SetScript("OnUpdate", nil)
+    cover.Hand:Hide()
+    cover.Ghost:Hide()
+    cover:Hide()
   end
   if host.OnLeave then host.OnLeave() end
   if host.toggle then AR.PaintToggle(host.toggle) end
   -- A card that went with the mode may have had the pointer.
   AR.MoveCursor(false)
+  -- The rows as the switch has them again, and nothing marked on them.
   AR.RowsChanged(false)
 end
 
