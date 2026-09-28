@@ -1258,7 +1258,8 @@ end
 --   something in the hand: what is moving, and that Escape puts it back;
 --   a column or a block selected: its card -- what it is, its eye, its own
 --     choice, Move (the way to reorder without a drag), and, for a figure,
---     what the rows do on a mail without it; for a block, the stack's order.
+--     what the rows do on a mail without it; for the subject, Line up
+--     columns and what it does; for a block, the stack's order.
 -- A click on a chip or a block selects it, a second click lets it go; the
 -- cross and Escape go back a layer (section 5).
 --
@@ -1499,6 +1500,67 @@ local function SwitchClick(self)
     host.SetBlockShown(AR.selId, on)
   end
   AR.Inspect()
+end
+
+-- Line up columns, on the subject's card: the options panel's own switch
+-- (MailboxUI, lineUpColumns; unset is on), since it decides how much room
+-- the subject has. A box before its name, filled with the accent and
+-- checked while on; its words and ring rise with it, and go white when
+-- pointed at. While arranging the rows line up whatever it says, so a click
+-- places nothing again: the rows follow it when the mode ends
+-- (AR.Leave), and the card's note says what it does meanwhile.
+local function LinedUp()
+  local ui = UI()
+  return not (ui and ui.GetOption) or ui.GetOption("lineUpColumns")
+end
+
+local function PaintLanes(sw)
+  local spec = PLATE.switch
+  local on, hover = sw.on, sw.hover
+  TintPlate(sw, hover and 0.17 or spec.fill, hover and spec.hover or (on and spec.on or spec.ring))
+  if on then
+    local r, g, b = Th().GetAccent()
+    sw.Box:SetVertexColor(r, g, b, 1)
+  else
+    Grey(sw.Box, hover and 0.36 or 0.22)
+  end
+  if sw.Check then
+    sw.Check:SetShown(on and true or false)
+    Grey(sw.Check, 0.06)
+  end
+  Grey(sw.Label, (on or hover) and 1 or 0.74)
+end
+
+local function LanesTip(self)
+  GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+  GameTooltip:SetText(L()["OPT_LINE_UP_TITLE"])
+  GameTooltip:AddLine(L()["OPT_LINE_UP_DESC"], 1, 1, 1, true)
+  GameTooltip:Show()
+end
+
+local function LanesEnter(self)
+  self.hover = true
+  PaintLanes(self)
+  LanesTip(self)
+end
+
+local function LanesLeave(self)
+  self.hover = false
+  PaintLanes(self)
+  GameTooltip:Hide()
+end
+
+local function LanesClick(self)
+  local ui = UI()
+  if not (AR.host and ui and ui.SetOption) then return end
+  local on = not LinedUp()
+  ui.SetOption("lineUpColumns", on)
+  PlayToggle(on)
+  -- The options panel, where it is open, shows the switch as it now is.
+  local panel = ns.OptionsPanel
+  if panel and type(panel.RefreshControls) == "function" then panel.RefreshControls() end
+  AR.Inspect()
+  if GameTooltip:IsOwned(self) then LanesTip(self) end
 end
 
 -- Move, one step: an arrow on a plate, dimmed where the thing cannot go
@@ -1806,6 +1868,31 @@ function AR.BuildInspector()
   sw:Hide()
   insp.Switch = sw
 
+  -- Line up columns (above): a box in a black keyline, checked while on.
+  local lanes = InspPlate(insp, "Button", true)
+  lanes:SetHeight(P.SWITCH_H)
+  lanes.hover, lanes.on = false, false
+  lanes.BoxKey = lanes:CreateTexture(nil, "ARTWORK", nil, 0)
+  lanes.BoxKey:SetTexture(WHITE)
+  lanes.BoxKey:SetVertexColor(0, 0, 0, 1)
+  lanes.BoxKey:SetSize(10, 10)
+  lanes.BoxKey:SetPoint("CENTER", lanes, "LEFT", 12, 0)
+  lanes.Box = lanes:CreateTexture(nil, "ARTWORK", nil, 1)
+  lanes.Box:SetTexture(WHITE)
+  lanes.Box:SetSize(8, 8)
+  lanes.Box:SetPoint("CENTER", lanes.BoxKey, "CENTER", 0, 0)
+  lanes.Check = T.Glyph and T.Glyph(lanes, "check", 6, "OVERLAY") or nil
+  if lanes.Check then lanes.Check:SetPoint("CENTER", lanes.BoxKey, "CENTER", 0, 0) end
+  lanes.Label = T.CreateText(lanes, "segment")
+  lanes.Label:SetPoint("LEFT", lanes, "LEFT", P.SWITCH_LEAD, 0)
+  lanes.Label:SetJustifyH("LEFT")
+  lanes.Label:SetWordWrap(false)
+  lanes:SetScript("OnEnter", LanesEnter)
+  lanes:SetScript("OnLeave", LanesLeave)
+  lanes:SetScript("OnClick", LanesClick)
+  lanes:Hide()
+  insp.Lanes = lanes
+
   for i = 1, 2 do
     local b = InspPlate(insp, "Button", true)
     b:SetSize(P.NUDGE_W, P.NUDGE_H)
@@ -1946,6 +2033,22 @@ local function PutSwitch(on, y)
   sw:SetWidth(w)
   At(sw, P.PAD, y)
   PaintSwitch(sw)
+  sw:Show()
+  return w
+end
+
+-- Line up columns at the row's left, on the subject's card; answers its
+-- width. A name too long for the card is cut, and whole in the tooltip.
+local function PutLanes(y)
+  local insp, P = AR._insp, INSP
+  local sw = insp.Lanes
+  local text = L()["OPT_LINE_UP_TITLE"]
+  local w = math.min(P.SWITCH_LEAD + Measured(insp.MeasureSegment, text, false) + P.SWITCH_TAIL, P.INNER)
+  sw.on = LinedUp() and true or false
+  Th().FitText(sw.Label, w - P.SWITCH_LEAD - P.SWITCH_TAIL + 1, text, sw)
+  sw:SetWidth(w)
+  At(sw, P.PAD, y)
+  PaintLanes(sw)
   sw:Show()
   return w
 end
@@ -2121,8 +2224,8 @@ local function FillColumn(id, y)
   local shown = layout and layout.shown[id] or false
   local k = layout and IndexOf(layout, id) or 1
   y = PutText(insp.Lead, L()[spec.desc], y) - P.ROW_GAP
-  local used = 0
-  if not spec.fixed then used = PutSwitch(shown, y) end
+  local used
+  if spec.fixed then used = PutLanes(y) else used = PutSwitch(shown, y) end
   y = PutMove(y, false, k > 1, layout ~= nil and k < #layout, used)
   local choices, current, set = AR.Choices(spec.choice)
   insp.set = set
@@ -2132,10 +2235,16 @@ local function FillColumn(id, y)
       y = PutRadio(i, choices[i], choices[i].id == current, shown and true or false, y)
     end
   end
-  -- A figure's place beside the subject says what a mail without it does.
+  -- A figure's place beside the subject, and after it whether the columns
+  -- line up, say what a mail without it does; the subject's card says what
+  -- Line up columns does, as it stands.
   if spec.figure and layout then
     local at = IndexOf(layout, "subject") or 0
-    y = PutNote(L()[k < at and "ARRANGE_NOTE_LEFT" or "ARRANGE_NOTE_RIGHT"], y)
+    local note = "ARRANGE_NOTE_LEFT"
+    if k > at then note = LinedUp() and "ARRANGE_NOTE_RIGHT" or "ARRANGE_NOTE_RIGHT_OFF" end
+    y = PutNote(L()[note], y)
+  elseif spec.fixed then
+    y = PutNote(L()[LinedUp() and "ARRANGE_LANES_ON" or "ARRANGE_LANES_OFF"], y)
   end
   return y
 end
@@ -2167,6 +2276,7 @@ local function HideParts(insp)
   insp.FootRule:Hide()
   insp.Finish:Hide()
   insp.Switch:Hide()
+  insp.Lanes:Hide()
   insp.NudgeA:Hide()
   insp.NudgeB:Hide()
   insp.Reset:Hide()
