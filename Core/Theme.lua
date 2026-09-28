@@ -1644,6 +1644,104 @@ Theme.AtlasSets = {
 }
 
 -------------------------------------------------------------
+-- Glyphs
+--
+-- Small white marks from Postbox's own textures (Media/glyph-*.tga and
+-- Media/hatch.tga), made from the design mockups' own drawings by
+-- .dev/tools/gen-glyphs.py. The table below is the one that tool prints: a
+-- change on either side is made on both.
+--
+-- They are Postbox's own for the reason white8x8 is (see SURFACE_TEXTURE in
+-- Lib/UI/Theme.lua): white art, tinted entirely in code, standing in for no
+-- Blizzard art a UI pack could restyle. The colour is the caller's, from this
+-- file: a chrome token at rest, textPrimary when pointed at, GetAccent when
+-- lit. The two layout marks carry a baked black keyline, which no tint
+-- changes, so they hold over a bright scene.
+--
+-- Theme.GLYPHS: name -> { file, w, h, l, r, t, b [, pad] [, wrap] }. w and h
+-- are the texture's size in UI units at the mockup's size; l, r, t, b crop
+-- the file to the art. `pad` (the keylined marks) is the keyline's overhang
+-- on every side, already inside w and h: the mark itself is w - 2 pad by
+-- h - 2 pad. `wrap` is "REPEAT" on the tiling hatch.
+--
+-- Theme.Glyph(parent, name, size, layer) returns a new Texture on `parent`
+-- showing the glyph `size` UI units tall (the mark's own height, not counting
+-- a keyline; nil keeps the mockup's size), its width following the glyph's
+-- aspect, or nil for an unknown name. Anchor it by CENTER: a keylined glyph
+-- overhangs its box evenly. It is white: tint it with SetVertexColor or
+-- Theme.FillColor. Nothing is allocated but the texture. Give it a button or
+-- an art-holder child as its parent, never a frame tagged __postboxPanel:
+-- EllesmereUI's repaint fades the textures such a frame owns itself.
+--
+--   stretch-left / -mid / -right  the Subject heading's double arrow in three
+--     slices: the heads at the ends, the middle anchored between them (its
+--     two-point anchoring sets its width).
+--   hatch  a tile: size the texture, then SetTexCoord(0, width / 8, 0,
+--     height / 8). It is already set with REPEAT wrapping.
+--
+-- Sharpness. The art is 2 texels per UI unit. A texel snapping bias above 0
+-- "sharpens": the renderer picks a texel instead of blending texels (the API
+-- documentation's words; Blizzard's own NineSliceUtil.DisableSharpening sets
+-- the bias to 0 and the snap off, so a texture's default sharpens). On 2x art
+-- that throws half the anti-aliasing away. So the bias is 0 while the quad
+-- still snaps to the pixel grid: at one screen pixel per unit (EllesmereUI's
+-- pixel-perfect scale) the client then samples exactly between four texels,
+-- and the tool made every four average to the mockup's own pixel. Both
+-- setters are nil-guarded.
+--
+-- A new file under Media/ is found only after a full client restart.
+-------------------------------------------------------------
+
+do
+  local MEDIA = "Interface\\AddOns\\Postbox\\Media\\"
+
+  Theme.GLYPHS = {
+    layout = { file = MEDIA .. "glyph-layout.tga", w = 14, h = 14, l = 0.03125, r = 0.90625, t = 0.03125, b = 0.90625, pad = 1 },
+    ["layout-small"] = { file = MEDIA .. "glyph-layout-small.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875, pad = 1 },
+    check = { file = MEDIA .. "glyph-check.tga", w = 8, h = 8, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125 },
+    eye = { file = MEDIA .. "glyph-eye.tga", w = 12, h = 8, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.53125 },
+    ["eye-off"] = { file = MEDIA .. "glyph-eye-off.tga", w = 12, h = 8, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.53125 },
+    clock = { file = MEDIA .. "glyph-clock.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
+    slot = { file = MEDIA .. "glyph-slot.tga", w = 12, h = 11, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.71875 },
+    ["arrow-left"] = { file = MEDIA .. "glyph-arrow-left.tga", w = 6, h = 8, l = 0.0625, r = 0.8125, t = 0.03125, b = 0.53125 },
+    ["arrow-right"] = { file = MEDIA .. "glyph-arrow-right.tga", w = 6, h = 8, l = 0.0625, r = 0.8125, t = 0.03125, b = 0.53125 },
+    ["arrow-up"] = { file = MEDIA .. "glyph-arrow-up.tga", w = 8, h = 6, l = 0.03125, r = 0.53125, t = 0.0625, b = 0.8125 },
+    ["arrow-down"] = { file = MEDIA .. "glyph-arrow-down.tga", w = 8, h = 6, l = 0.03125, r = 0.53125, t = 0.0625, b = 0.8125 },
+    ["stretch-left"] = { file = MEDIA .. "glyph-stretch.tga", w = 4, h = 7, l = 0.015625, r = 0.140625, t = 0.0625, b = 0.9375 },
+    ["stretch-mid"] = { file = MEDIA .. "glyph-stretch.tga", w = 2, h = 7, l = 0.234375, r = 0.296875, t = 0.0625, b = 0.9375 },
+    ["stretch-right"] = { file = MEDIA .. "glyph-stretch.tga", w = 4, h = 7, l = 0.390625, r = 0.515625, t = 0.0625, b = 0.9375 },
+    sort = { file = MEDIA .. "glyph-sort.tga", w = 9, h = 6, l = 0.03125, r = 0.59375, t = 0.0625, b = 0.8125 },
+    people = { file = MEDIA .. "glyph-people.tga", w = 12, h = 10, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.65625 },
+    chevron = { file = MEDIA .. "glyph-chevron.tga", w = 10, h = 14, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.90625 },
+    reset = { file = MEDIA .. "glyph-reset.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
+    caret = { file = MEDIA .. "glyph-caret.tga", w = 8, h = 6, l = 0.03125, r = 0.53125, t = 0.0625, b = 0.8125 },
+    bug = { file = MEDIA .. "glyph-bug.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
+    hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
+  }
+
+  local GLYPHS = Theme.GLYPHS
+
+  function Theme.Glyph(parent, name, size, layer)
+    local g = GLYPHS[name]
+    if not g or not parent or type(parent.CreateTexture) ~= "function" then return nil end
+    local tex = parent:CreateTexture(nil, layer or "ARTWORK")
+    if g.wrap then
+      tex:SetTexture(g.file, g.wrap, g.wrap)
+    else
+      tex:SetTexture(g.file)
+    end
+    tex:SetTexCoord(g.l, g.r, g.t, g.b)
+    local k = 1
+    size = tonumber(size)
+    if size and size > 0 then k = size / (g.h - 2 * (g.pad or 0)) end
+    tex:SetSize(g.w * k, g.h * k)
+    if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(true) end
+    if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
+    return tex
+  end
+end
+
+-------------------------------------------------------------
 -- The favourite star
 --
 -- The auction house's pair when the client has it: a filled gold star for on, a
