@@ -171,10 +171,6 @@ local OPTION_DEFAULTS = {
   -- the player posting a run of mails to one bank alt, for whom retyping the
   -- same name is the whole cost of the screen.
   keepRecipient   = false,
-  -- The arrange mode's how-to card has been read: the player has pressed a
-  -- column or a button in it once (Core/Arrange.lua). Until then it opens
-  -- with the mode.
-  arrangeTaught   = false,
 }
 -- What a mail row shows, and in what order, is no longer three switches here
 -- (rowGold, rowSlots, rowExpiry): it is the row's arrangement, UI.GetRowLayout

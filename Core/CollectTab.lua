@@ -6431,7 +6431,6 @@ end
 function RV.StackPress(panel, id, card)
   local A = ns.Arrange
   if not (A and A.Press) then return end
-  if A.EndTeach then A.EndTeach(true) end
   A.Press(card, {
     start = function(_, y0) RV.StackStart(panel, id, y0) end,
     move = function(_, y) RV.StackDrag(panel, y) end,
@@ -6449,14 +6448,19 @@ function RV.StackCancel(panel)
 end
 
 -- A click on a block: the grid's is its eye -- the tray hides the category
--- buttons, the placeholder shows them again -- through the option itself,
--- and the window's floor follows it as it follows the option. The others'
--- clicks do nothing yet.
+-- buttons, the placeholder shows them again. The others' clicks do nothing
+-- yet.
 function RV.StackClick(panel, id)
   if id ~= "grid" or not panel._gridArranging then return end
+  RV.SetGridShown(panel, panel._stack and panel._stack.folded)
+end
+
+-- The grid's eye: the "Show category buttons" option itself, and the
+-- window's floor follows it as it follows the option.
+function RV.SetGridShown(panel, show)
   local UI = ns.MailboxUI
   if not (UI and type(UI.SetOption) == "function") then return end
-  local show = panel._stack and panel._stack.folded and true or false
+  show = show and true or false
   GameTooltip:Hide()
   panel._stackHover = nil
   UI.SetOption("showCategoryButtons", show)
@@ -6682,6 +6686,11 @@ function CT.RefreshCategoryButtons(panel)
       RV._floorRows = rows
       UI.RefreshCollectFloor()
     end
+  end
+  -- While arranging, the inspector says what is hidden under the list now.
+  if panel._gridArranging then
+    local A = ns.Arrange
+    if A and A.Inspect then A.Inspect() end
   end
 end
 
@@ -6913,12 +6922,38 @@ function RV.GridToggle(panel, id)
   CT.RefreshCategoryButtons(panel)
 end
 
+-- What is hidden under the list, for the inspector's overview: the grid
+-- itself while the option hides it (its own hidden buttons wait with it),
+-- else each hidden button, in the grid's order. put(kind, key, name).
+function RV.ListHidden(panel, put)
+  if not ShowCategoryButtons() then
+    put("grid", "grid", L()["ARRANGE_BLOCK_GRID"])
+    return
+  end
+  local entries = panel._gridEntries or RV.GridEntries(panel)
+  for i = 1, #entries do
+    local entry = entries[i]
+    if not entry.shown then
+      local button = panel._gridById[entry.id]
+      put("button", entry.id, button and button.caption or entry.id)
+    end
+  end
+end
+
+function RV.ShowHidden(panel, kind, key)
+  if kind == "grid" then
+    RV.SetGridShown(panel, true)
+  elseif kind == "button" then
+    RV.GridToggle(panel, key)
+  end
+end
+
 function RV.GridPress(panel, button)
   local A = ns.Arrange
   if not (A and A.Press) then return end
-  if A.EndTeach then A.EndTeach(true) end
   local id = button.gridId
   A.Press(button, {
+    name = button.caption,
     start = function(x0, y0)
       if not panel._gridArranging then return end
       GameTooltip:Hide()
@@ -7060,6 +7095,16 @@ function CT.ArrangeHost(panel)
   function host.Rise()
     RV.RiseStack(panel)
   end
+  -- The inspector docks beside the Postbox window, level with this tab's
+  -- top row, and lists what is hidden under the list (Arrange.lua,
+  -- section 9).
+  function host.Dock()
+    local UI = ns.MailboxUI
+    return UI and UI._frame or panel
+  end
+  function host.DockTop() return panel.ViewToggle end
+  function host.ListHidden(put) RV.ListHidden(panel, put) end
+  function host.ShowHidden(kind, key) RV.ShowHidden(panel, kind, key) end
   panel._arrangeHost = host
   return host
 end

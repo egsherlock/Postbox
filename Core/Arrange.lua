@@ -11,16 +11,18 @@ local _, ns = ...
 -- per column in the row's order, the subject stretched across the middle as
 -- the subject is in the row. Drag a chip and the others slide aside, the
 -- rows re-laying under it as it crosses them; let go and it snaps into its
--- slot. Click a chip for its own card: show or hide the column, and the
--- gold's and the time left's own choices. The category buttons under the
--- list take the same drag and a click to hide or show while the mode is
--- open. The key, lit as Done while the mode is open, Escape, or the window
--- going away all end it.
+-- slot. Click a chip, or a block under the list, to select it: the
+-- inspector docked beside the window shows its card -- show or hide it,
+-- its own choices, Move for the no-drag way. With nothing selected the
+-- inspector says how the mode works, lists what is hidden and offers the
+-- reset. The category buttons under the list take the same drag and a
+-- click to hide or show while the mode is open. The key, lit as Done while
+-- the mode is open, Escape, or the window going away all end it.
 --
 -- One arrangement for every list that draws mail rows: it is stored by
 -- MailboxUI.GetRowLayout / SetRowLayout, and drawn by CollectTab's RV.Place,
 -- which the Mail tab, its History and Mail Memory all go through. This file
--- owns only the mode: the strip, the card, the drag, the key, Escape.
+-- owns only the mode: the strip, the inspector, the drag, the key, Escape.
 --
 -- A drag is a gesture, not a state: its OnUpdate runs from the press to the
 -- release and clears itself, with GLOBAL_MOUSE_UP as the net for a release
@@ -41,18 +43,19 @@ local function L() return ns.L end
 local function Th() return ns.Theme end
 local function UI() return ns.MailboxUI end
 
--- The columns, in the words the strip and the card use. `glyph` chips show
--- what the column draws rather than a word; `fixed` is the subject, which
--- takes whatever room the others leave and so cannot be hidden; `choice` is
--- the column's own setting.
+-- The columns, in the words the strip and the inspector use. `glyph` chips
+-- show what the column draws rather than a word; `fixed` is the subject,
+-- which takes whatever room the others leave and so cannot be hidden;
+-- `choice` is the column's own setting; `figure`, a figure a mail may not
+-- have.
 AR.COLUMNS = {
   read    = { title = "COL_READ",       desc = "COL_READ_DESC",       glyph = "dot" },
   icon    = { title = "COL_ICON",       desc = "COL_ICON_DESC",       glyph = "icon" },
   sender  = { title = "COL_SENDER",     desc = "COL_SENDER_DESC" },
   subject = { title = "COL_SUBJECT",    desc = "COL_SUBJECT_DESC",    fixed = true },
-  time    = { title = "OPT_ROW_EXPIRY", desc = "OPT_ROW_EXPIRY_DESC", choice = "expiry" },
-  money   = { title = "OPT_ROW_GOLD",   desc = "OPT_ROW_GOLD_DESC",   choice = "gold" },
-  slots   = { title = "OPT_ROW_SLOTS",  desc = "OPT_ROW_SLOTS_DESC" },
+  time    = { title = "OPT_ROW_EXPIRY", desc = "OPT_ROW_EXPIRY_DESC", choice = "expiry", figure = true },
+  money   = { title = "OPT_ROW_GOLD",   desc = "OPT_ROW_GOLD_DESC",   choice = "gold", figure = true },
+  slots   = { title = "OPT_ROW_SLOTS",  desc = "OPT_ROW_SLOTS_DESC", figure = true },
 }
 
 -- The chips' geometry: the caption or glyph with air either side, and, on a
@@ -84,6 +87,12 @@ AR.host = nil
 AR.hover = nil
 AR.focus = nil
 AR.drag = nil
+-- What the inspector shows (section 8): the selected thing, as a kind
+-- ("column" or "block") and an id, or nil for the overview; and while
+-- something is in the hand, its name.
+AR.selKind = nil
+AR.selId = nil
+AR.moving = nil
 
 -------------------------------------------------------------
 -- 1. The arrangement, read and written
@@ -172,7 +181,6 @@ function AR.Reset()
   -- it comes back with the rest, and the window's floor with it.
   local gridBack = ui.GetOption and ui.SetOption and not ui.GetOption("showCategoryButtons")
   if gridBack then ui.SetOption("showCategoryButtons", true) end
-  if AR._pop then AR._pop:Hide() end
   if AR.host then AR.LayoutStrip(AR.host) end
   AR.RowsChanged(true)
   if gridBack and ui.RefreshCollectCategoryButtons then
@@ -180,6 +188,8 @@ function AR.Reset()
   else
     AR.GridChanged()
   end
+  -- The selection stays: the thing it names is still there, shown.
+  AR.Inspect()
 end
 
 -- The reset is asked for first: one StaticPopup, its key added on first use
@@ -208,16 +218,15 @@ function AR.AskReset()
 end
 
 -- The column the rows wash: the one being dragged, else the one under the
--- cursor, else the one whose card is open. Only while the mode is open.
+-- cursor, else the selected one. Only while the mode is open.
 function AR.Focus()
   if not AR.host then return nil end
   return AR.focus
 end
 
 function AR.UpdateFocus()
-  local pop = AR._pop
   local focus = (AR.drag and AR.drag.chip.colId) or AR.hover
-    or (pop and pop:IsShown() and pop.chip and pop.chip.colId) or nil
+    or (AR.selKind == "column" and AR.selId) or nil
   if not AR.host then focus = nil end
   if focus == AR.focus then return end
   AR.focus = focus
@@ -228,6 +237,40 @@ function AR.IsActive(owner)
   return AR.host ~= nil and AR.host.owner == owner
 end
 
+-- Whether `kind`/`id` is the thing selected in the mode now.
+function AR.Selected(kind, id)
+  return AR.host ~= nil and AR.selKind == kind and AR.selId == id
+end
+
+-- Selects a column's chip or a block (a host's, by id) for the inspector's
+-- card; the same thing again, or nil, goes back to the overview. What it
+-- was and what it is are painted again, the rows' wash follows a column,
+-- and the inspector is filled for it.
+function AR.Select(kind, id)
+  if not AR.host then return end
+  if kind == nil or (AR.selKind == kind and AR.selId == id) then kind, id = nil, nil end
+  local wasKind, wasId = AR.selKind, AR.selId
+  AR.selKind, AR.selId = kind, id
+  AR.PaintSelected(wasKind, wasId)
+  AR.PaintSelected(kind, id)
+  GameTooltip:Hide()
+  AR.UpdateFocus()
+  AR.Inspect()
+end
+
+-- One selectable thing painted from its state: a chip in the strip, or the
+-- host's blocks.
+function AR.PaintSelected(kind, id)
+  local host = AR.host
+  if not (host and kind) then return end
+  if kind == "column" then
+    local chip = host.strip and host.strip.chips[id]
+    if chip then AR.PaintChip(chip) end
+  elseif host.PaintBlocks then
+    host.PaintBlocks()
+  end
+end
+
 -------------------------------------------------------------
 -- 2. The press
 --
@@ -236,7 +279,8 @@ end
 -- start(x0, y0) once, then move(x, y) every frame; its release is drop(). A
 -- press that never moved is a click(). A drag Escape puts back is cancel():
 -- the arrangement as it was when the drag began. Coordinates are in the
--- pressed frame's own scale.
+-- pressed frame's own scale. `name`, if the handlers carry one, is what the
+-- inspector says is moving while the drag lasts.
 -------------------------------------------------------------
 
 local gesture = {}
@@ -262,14 +306,15 @@ local function EndGesture(released, putBack)
   end
   if putBack then
     if dragging and handlers.cancel then handlers.cancel() end
-    return dragging
+  elseif released then
+    if dragging then
+      if handlers.drop then handlers.drop() end
+    elseif handlers.click then
+      handlers.click()
+    end
   end
-  if not released then return dragging end
-  if dragging then
-    if handlers.drop then handlers.drop() end
-  elseif handlers.click then
-    handlers.click()
-  end
+  -- Nothing is moving now: the inspector says what it said before.
+  if dragging and AR.moving then AR.Moving(nil) end
   return dragging
 end
 
@@ -289,6 +334,7 @@ local function OnGestureUpdate()
     if gesture.handlers.start then gesture.handlers.start(gesture.x0, gesture.y0) end
     -- The start may have ended the mode.
     if not gesture.frame then return end
+    if gesture.handlers.name and AR.host then AR.Moving(gesture.handlers.name) end
   end
   if gesture.handlers.move then gesture.handlers.move(x, y) end
 end
@@ -415,10 +461,12 @@ end
 -- While the mode is open, whatever can be moved is a card lifted off the
 -- panel: one step lighter, a grey ring inside a black keyline, a lit top
 -- edge and a short shadow under it. Pointed at, it rises a unit, its ring
--- goes white and its shadow lengthens; in the hand it is ringed twice as
--- thick in the accent over an accent wash, with a long shadow. State rises
--- in colour and in alpha together, never in alpha alone, and the keyline
--- and the ring hold the outline over a bright scene at any window opacity.
+-- goes white and its shadow lengthens; selected (its card in the
+-- inspector), its ring is the accent over a faint accent wash; in the hand
+-- it is ringed twice as thick in the accent over an accent wash, with a
+-- long shadow. State rises in colour and in alpha together, never in alpha
+-- alone, and the keyline and the ring hold the outline over a bright scene
+-- at any window opacity.
 --
 -- A card is a frame of its own, laid over the thing it lifts or, for the
 -- tray and the placeholder, under and in place of it. Its kind says which:
@@ -426,7 +474,8 @@ end
 --   small  over a category button: the same, with a shorter shadow;
 --   tray   under the category buttons, four units out: a fill of its own;
 --   fold   the grid's placeholder while the option hides it: a dim fill.
--- `hidden` is a small card's look while its button is hidden.
+-- `hidden` is a small card's look while its button is hidden; `sel` and
+-- `selHover` a block's while it is selected.
 --
 -- A spec is { fill = {grey, alpha}, wash = {grey, alpha}, accent = the
 -- accent wash's alpha, ring = the ring's grey (nil: the accent), ringW,
@@ -436,9 +485,11 @@ end
 
 local LIFT = {
   block = {
-    rest  = { wash = { 1, 0.08 }, ring = 0.48, top = 0.09, drop = 4, dropA = 0.45 },
-    hover = { wash = { 1, 0.14 }, ring = 0.89, top = 0.14, drop = 6, dropA = 0.55 },
-    hand  = { accent = 0.16, ringW = 2, drop = 10, dropA = 0.6 },
+    rest     = { wash = { 1, 0.08 }, ring = 0.48, top = 0.09, drop = 4, dropA = 0.45 },
+    hover    = { wash = { 1, 0.14 }, ring = 0.89, top = 0.14, drop = 6, dropA = 0.55 },
+    sel      = { accent = 0.12, top = 0.08, drop = 4, dropA = 0.45 },
+    selHover = { accent = 0.18, top = 0.12, drop = 6, dropA = 0.55 },
+    hand     = { accent = 0.16, ringW = 2, drop = 10, dropA = 0.6 },
   },
   small = {
     rest        = { wash = { 1, 0.06 }, ring = 0.48, top = 0.09, drop = 2, dropA = 0.45 },
@@ -448,14 +499,18 @@ local LIFT = {
     hiddenHover = { wash = { 0, 0.25 }, ring = 0.62, top = 0.06, drop = 3, dropA = 0.45 },
   },
   tray = {
-    rest  = { fill = { 0.10, 0.93 }, ring = 0.38, top = 0.07, drop = 4, dropA = 0.42 },
-    hover = { fill = { 0.157, 0.96 }, ring = 0.89, top = 0.12, drop = 6, dropA = 0.5 },
-    hand  = { fill = { 0.10, 0.97 }, accent = 0.14, ringW = 2, drop = 10, dropA = 0.6 },
+    rest     = { fill = { 0.10, 0.93 }, ring = 0.38, top = 0.07, drop = 4, dropA = 0.42 },
+    hover    = { fill = { 0.157, 0.96 }, ring = 0.89, top = 0.12, drop = 6, dropA = 0.5 },
+    sel      = { fill = { 0.10, 0.93 }, accent = 0.08, top = 0.07, drop = 4, dropA = 0.42 },
+    selHover = { fill = { 0.157, 0.96 }, accent = 0.12, top = 0.12, drop = 6, dropA = 0.5 },
+    hand     = { fill = { 0.10, 0.97 }, accent = 0.14, ringW = 2, drop = 10, dropA = 0.6 },
   },
   fold = {
-    rest  = { fill = { 0.063, 0.94 }, ring = 0.29, drop = 2, dropA = 0.35 },
-    hover = { fill = { 0.12, 0.96 }, ring = 0.62, top = 0.06, drop = 3, dropA = 0.45 },
-    hand  = { fill = { 0.063, 0.97 }, accent = 0.14, ringW = 2, drop = 10, dropA = 0.6 },
+    rest     = { fill = { 0.063, 0.94 }, ring = 0.29, drop = 2, dropA = 0.35 },
+    hover    = { fill = { 0.12, 0.96 }, ring = 0.62, top = 0.06, drop = 3, dropA = 0.45 },
+    sel      = { fill = { 0.063, 0.94 }, accent = 0.12, drop = 2, dropA = 0.35 },
+    selHover = { fill = { 0.12, 0.96 }, accent = 0.16, top = 0.06, drop = 3, dropA = 0.45 },
+    hand     = { fill = { 0.063, 0.97 }, accent = 0.14, ringW = 2, drop = 10, dropA = 0.6 },
   },
 }
 AR.LIFT = LIFT
@@ -757,13 +812,15 @@ end
 --
 -- Escape works in layers, one per press, and never closes the window under
 -- the mode -- nor the mailbox: a drag in progress is put back where it
--- began; else an open card closes; else the mode ends. The client closes
--- windows on Escape by hiding every shown frame named in UISpecialFrames;
--- while the mode is open the Postbox windows' names there are swapped IN
--- PLACE for a small frame of ours, and that frame hiding is what an Escape
--- is heard by. In place, so no other entry shifts. A layer short of the
--- last shows the frame again for the next Escape; the swap is undone on the
--- way out, however the mode ends. No keyboard is taken for any of it.
+-- began; else a selection is let go, and the inspector goes back to its
+-- overview; else the mode ends. The inspector's cross does the same, less
+-- the drag. The client closes windows on Escape by hiding every shown
+-- frame named in UISpecialFrames; while the mode is open the Postbox
+-- windows' names there are swapped IN PLACE for a small frame of ours, and
+-- that frame hiding is what an Escape is heard by. In place, so no other
+-- entry shifts. A layer short of the last shows the frame again for the
+-- next Escape; the swap is undone on the way out, however the mode ends.
+-- No keyboard is taken for any of it.
 -------------------------------------------------------------
 
 AR.ESC_WINDOWS = { PostboxFrame = true, PostboxMailMemoryFrame = true }
@@ -840,8 +897,8 @@ function AR.OnEscape()
   if not AR.host then return end
   if AR.Dragging() then
     AR.CancelPress(true)
-  elseif AR._pop and AR._pop:IsShown() then
-    AR._pop:Hide()
+  elseif AR.selKind then
+    AR.Select(nil)
   else
     AR.Leave()
     return
@@ -856,51 +913,20 @@ function AR.OnEscape()
 end
 
 -------------------------------------------------------------
--- 6. The how-to
---
--- Three short lines under the strip the first time the mode opens, gone at
--- the first press on a chip or a button, and not shown again once one has
--- been pressed (MailboxUI option `arrangeTaught`).
--------------------------------------------------------------
-
-function AR.Teach(host)
-  local ui = UI()
-  if not ui or (ui.GetOption and ui.GetOption("arrangeTaught")) then return end
-  C_Timer.After(0, function()
-    if AR.host ~= host or not host.strip or not host.strip:IsVisible() then return end
-    local T = Th()
-    if not (T and T.ShowHint) then return end
-    T.ShowHint(host.strip, { L()["ARRANGE_HOW_DRAG"], L()["ARRANGE_HOW_CLICK"], L()["ARRANGE_HOW_DONE"] },
-      { "TOP", host.strip, "BOTTOM", 0, -10 })
-    AR._teaching = true
-  end)
-end
-
-function AR.EndTeach(learned)
-  if AR._teaching then
-    AR._teaching = false
-    local T = Th()
-    if T and T.HideHint then T.HideHint() end
-  end
-  local ui = UI()
-  if learned and ui and ui.SetOption then ui.SetOption("arrangeTaught", true) end
-end
-
--------------------------------------------------------------
--- 7. The strip
+-- 6. The strip
 --
 -- A row of chips, one per column, in the row's order: the column's name (or,
 -- for the read mark and the icon, what the column draws). The subject's chip
 -- stretches across what the others leave, as the subject does in the row,
 -- so the strip reads as the row it arranges. A hidden column's chip keeps
 -- its place, greyed, with a crossed eye before its name: showing it again
--- puts it back where it was.
+-- puts it back where it was. A click selects a chip, and the inspector
+-- shows its column's card; the chip is then ringed in the accent.
 -------------------------------------------------------------
 
 local function ChipTip(chip)
   if AR.drag then return end
-  local pop = AR._pop
-  if pop and pop:IsShown() and pop.chip == chip then return end
+  if AR.Selected("column", chip.colId) then return end
   GameTooltip:SetOwner(chip, "ANCHOR_TOP")
   GameTooltip:SetText(L()[AR.COLUMNS[chip.colId].title])
   GameTooltip:Show()
@@ -931,14 +957,21 @@ local function PlaceChipContent(chip)
 end
 
 -- The chip's look after every repaint the plate makes of itself: selected
--- while in the hand or while its card is open; greyed, with its eye
--- crossed, while its column is hidden.
+-- while in the hand or while its card is in the inspector, and then ringed
+-- in the accent inside its edge (the ring made the first time); greyed,
+-- with its eye crossed, while its column is hidden.
 function AR.PaintChip(chip)
   local T = Th()
-  local pop = AR._pop
-  local selected = (AR.drag ~= nil and AR.drag.chip == chip)
-    or (pop ~= nil and pop:IsShown() and pop.chip == chip)
+  local selected = (AR.drag ~= nil and AR.drag.chip == chip) or AR.Selected("column", chip.colId)
   T.SetPlateSelected(chip, selected)
+  if selected and not chip.SelRing then chip.SelRing = AR.NewEdges(chip, "ARTWORK", 3, 0, 1) end
+  if chip.SelRing then
+    if selected then
+      local r, g, b = T.GetAccent()
+      AR.TintEdges(chip.SelRing, r, g, b, 1)
+    end
+    AR.ShowEdges(chip.SelRing, selected)
+  end
   local hidden = chip.hidden
   if chip.caption and hidden then T.SetColor(chip.Text, "textDisabled") end
   if chip.Glyph then
@@ -1131,15 +1164,14 @@ function AR.LayoutStrip(host)
 end
 
 -------------------------------------------------------------
--- 8. Dragging a chip
+-- 7. Dragging a chip
 -------------------------------------------------------------
 
 function AR.PressChip(host, chip)
-  AR.EndTeach(true)
   AR.Press(chip, {
+    name = L()[AR.COLUMNS[chip.colId].title],
     start = function(x0)
       if AR.host ~= host then return end
-      if AR._pop then AR._pop:Hide() end
       GameTooltip:Hide()
       AR.drag = {
         chip = chip, grab = x0 - (chip:GetLeft() or x0), level = chip:GetFrameLevel(),
@@ -1159,7 +1191,7 @@ function AR.PressChip(host, chip)
       AR.RowsChanged(true)
     end,
     click = function()
-      if AR.host == host then AR.TogglePopover(host, chip) end
+      if AR.host == host then AR.Select("column", chip.colId) end
     end,
   })
 end
@@ -1215,216 +1247,998 @@ function AR.DropChip(host)
 end
 
 -------------------------------------------------------------
--- 9. A column's card
+-- 8. The inspector
 --
--- Opened by a click on its chip, under it: the column's name and what it
--- shows, Show, and -- for the gold and the time left -- its own choice,
--- which stands greyed while the column is hidden. Closes on a click
--- anywhere else (no full-screen catcher: one swallowed the row clicks
--- once), on a second click on the chip, and with the mode.
+-- One card docked beside the window being arranged, 8 units out from its
+-- right edge (from its left one when the screen has no room on the right),
+-- its top level with the window's top row. Shown only while the mode is
+-- open, and nothing of it covers the rows. It says one of three things:
+--   nothing selected: how the mode works, what is hidden (each a chip; a
+--     click shows it again), the reset, and that Escape finishes;
+--   something in the hand: what is moving, and that Escape puts it back;
+--   a column or a block selected: its card -- what it is, its eye, its own
+--     choice, Move (the way to reorder without a drag), and, for a figure,
+--     what the rows do on a mail without it; for a block, the stack's order.
+-- A click on a chip or a block selects it, a second click lets it go; the
+-- cross and Escape go back a layer (section 5).
+--
+-- Built the first time the mode opens and refilled in place: every region
+-- exists once, the choices are lists made once, and a fill sets texts,
+-- colours and points -- a selection or a pointer allocates nothing. A text
+-- is measured once per string and font (Measured). Everything it draws is
+-- on child frames of its own: the card itself is tagged for the host skin
+-- (Theme.ApplyCard), and EllesmereUI fades a tagged frame's own textures.
 -------------------------------------------------------------
 
-local CARD_W, CARD_PAD, CHOICE_H = 236, 10, 20
+-- The inspector's measures, from the mockup (concept-c.html), in UI units.
+local INSP = {
+  W = 208, PAD = 11, TOP = 10, BOTTOM = 11, DOCK = 8,
+  CLOSE = 18,                 -- the cross's square, in the top right corner
+  HEAD_GAP = 6,               -- the title to what follows it
+  ROW_GAP = 8,                -- a text to the switch and Move under it
+  ROW_WRAP = 6,               -- the switch to Move, where one row is too narrow
+  SWITCH_H = 20, SWITCH_LEAD = 24, SWITCH_TAIL = 8,
+  NUDGE_W = 22, NUDGE_H = 18, NUDGE_GAP = 4, MOVE_GAP = 8,
+  KICK_TOP = 10, KICK_GAP = 4,
+  RADIO_H = 19, RADIO_TEXT = 17,
+  CHIP_H = 19, CHIP_GAP = 4, CHIP_LEAD = 6, CHIP_EYE = 12, CHIP_EYE_GAP = 5, CHIP_TAIL = 7,
+  LINE_H = 18, LINE_NUM = 14,  -- a line of the stack's order, and its number's column
+  NOTE_TOP = 8, NOTE_PAD = 7,
+  FOOT_TOP = 10, FOOT_PAD = 7, FOOT_GAP = 8, KEY_PAD = 4, KEY_H = 15, KEY_GAP = 4,
+  SPACING = 2,
+  MEMO_MAX = 96,
+}
+INSP.INNER = INSP.W - 2 * INSP.PAD
+AR.INSP = INSP
 
-function AR.Choices(kind)
-  local ui = UI()
-  if not ui then return {}, nil, nil end
-  if kind == "gold" then
-    return {
-      { id = "both",   name = L()["OPT_GOLD_BOTH"] },
-      { id = "earned", name = L()["OPT_GOLD_EARNED"] },
-      { id = "spent",  name = L()["OPT_GOLD_SPENT"] },
-    }, ui.GetGoldMode and ui.GetGoldMode(), ui.SetGoldMode
-  elseif kind == "expiry" then
-    return {
-      { id = "always", name = L()["OPT_EXPIRY_ALWAYS"] },
-      { id = "7", name = ns.Plural("OPT_EXPIRY_UNDER", 7) },
-      { id = "3", name = ns.Plural("OPT_EXPIRY_UNDER", 3) },
-      { id = "1", name = ns.Plural("OPT_EXPIRY_UNDER", 1) },
-    }, ui.GetExpiryWhen and ui.GetExpiryWhen(), ui.SetExpiryWhen
+-- The greys of the inspector's own plates (a fill, a grey ring and, but
+-- for the key cap, a black keyline): at rest, pointed at, and -- the switch
+-- while shown, a Move that cannot go further -- in their other state.
+local PLATE = {
+  switch = { fill = 0.13, ring = 0.365, hover = 0.86, on = 0.54 },
+  nudge  = { fill = 0.13, ring = 0.365, hover = 0.86, off = 0.22 },
+  chip   = { fill = 0.057, ring = 0.28, hover = 0.62 },
+  key    = { fill = 0.17, ring = 0.33 },
+}
+
+-- A text's width on one line, or its height wrapped at the string's own
+-- width, remembered per string: the inspector's texts are the locale's own
+-- and a few names, so the memo stays small. It empties when the font under
+-- it changes (a host UI re-fonts after load) or its scale does, and past
+-- MEMO_MAX strings.
+local function Measured(fs, text, wrapped)
+  fs:SetText(text)
+  local memo = fs.__arMemo
+  if not memo then
+    memo = { w = {}, h = {}, n = 0 }
+    fs.__arMemo = memo
   end
-  return {}, nil, nil
+  local path, size, flags = fs:GetFont()
+  local scale = fs:GetEffectiveScale()
+  if memo.path ~= path or memo.size ~= size or memo.flags ~= flags or memo.scale ~= scale
+      or memo.n > INSP.MEMO_MAX then
+    local w, h = memo.w, memo.h
+    for key in pairs(w) do w[key] = nil end
+    for key in pairs(h) do h[key] = nil end
+    memo.path, memo.size, memo.flags, memo.scale, memo.n = path, size, flags, scale, 0
+  end
+  local sizes = wrapped and memo.h or memo.w
+  local v = sizes[text]
+  if not v then
+    if wrapped then v = fs:GetStringHeight() else v = fs:GetStringWidth() end
+    v = math.ceil(v or 0)
+    -- A font the client has not laid out yet measures nothing: not kept.
+    if v > 0 then
+      sizes[text] = v
+      memo.n = memo.n + 1
+    end
+  end
+  return v
 end
 
-local function ChoiceRow(pop, i)
+-- A kicker's words in capitals, made once per string (Strings.Upper knows
+-- the Latin-1 and Cyrillic letters string.upper does not).
+local function Upper(text)
+  local cache = AR._upper
+  if not cache then
+    cache = {}
+    AR._upper = cache
+  end
+  local up = cache[text]
+  if not up then
+    local S = ns.Core and ns.Core.Strings
+    up = (S and type(S.Upper) == "function") and S.Upper(text) or text
+    cache[text] = up
+  end
+  return up
+end
+
+local function PlayToggle(on)
+  if type(SOUNDKIT) == "table" and type(PlaySound) == "function" then
+    PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+  end
+end
+
+-- The column's own choice: the gold's and the time left's. The lists are
+-- made once; what is chosen and how to choose are read each time.
+function AR.Choices(kind)
+  local ui = UI()
+  local lists = AR._choices
+  if not lists then
+    lists = { none = {} }
+    AR._choices = lists
+  end
+  if not ui or (kind ~= "gold" and kind ~= "expiry") then return lists.none, nil, nil end
+  local list = lists[kind]
+  if not list then
+    if kind == "gold" then
+      list = {
+        { id = "both",   name = L()["OPT_GOLD_BOTH"] },
+        { id = "earned", name = L()["OPT_GOLD_EARNED"] },
+        { id = "spent",  name = L()["OPT_GOLD_SPENT"] },
+      }
+    else
+      list = {
+        { id = "always", name = L()["OPT_EXPIRY_ALWAYS"] },
+        { id = "7", name = ns.Plural("OPT_EXPIRY_UNDER", 7) },
+        { id = "3", name = ns.Plural("OPT_EXPIRY_UNDER", 3) },
+        { id = "1", name = ns.Plural("OPT_EXPIRY_UNDER", 1) },
+      }
+    end
+    lists[kind] = list
+  end
+  if kind == "gold" then return list, ui.GetGoldMode and ui.GetGoldMode(), ui.SetGoldMode end
+  return list, ui.GetExpiryWhen and ui.GetExpiryWhen(), ui.SetExpiryWhen
+end
+
+-- A column shown or hidden from the inspector: the strip and the rows
+-- follow, as they follow a drag.
+function AR.ShowColumn(id, on)
+  AR.SetColumnShown(id, on)
+  if AR.host then AR.LayoutStrip(AR.host) end
+  AR.RowsChanged(true)
+end
+
+-- A column one place along the row, left (-1) or right (1).
+function AR.NudgeColumn(id, step)
+  local layout = AR.Layout()
+  local k = layout and IndexOf(layout, id)
+  if not k then return end
+  local to = k + step
+  if to < 1 or to > #layout then return end
+  AR.MoveColumn(k, to)
+  if AR.host then AR.LayoutStrip(AR.host) end
+  AR.RowsChanged(true)
+end
+
+-- What is moving, while a drag lasts (section 2), or nil.
+function AR.Moving(name)
+  if AR.moving == name then return end
+  AR.moving = name
+  AR.Inspect()
+end
+
+-- The moving line: made once per name.
+local function MovingText(name)
+  if AR._movingName ~= name then
+    AR._movingName = name
+    AR._movingText = "|cffffffff" .. L()("ARRANGE_MOVING", name) .. "|r " .. L()["ARRANGE_MOVING_HOW"]
+  end
+  return AR._movingText
+end
+
+-------------------------------------------------------------
+-- 8a. Its parts
+-------------------------------------------------------------
+
+-- A small plate of the inspector's own: a fill, a grey ring and a black
+-- keyline outside it, as the mockup draws its switch, Move buttons and
+-- hidden chips; the key cap has no keyline.
+local function InspPlate(parent, frameType, keyline)
+  local plate = CreateFrame(frameType, nil, parent)
+  plate.Fill = plate:CreateTexture(nil, "BACKGROUND", nil, -7)
+  plate.Fill:SetTexture(WHITE)
+  plate.Fill:SetAllPoints()
+  if keyline then
+    plate.Key = AR.NewEdges(plate, "BORDER", 0, 1, 1)
+    AR.TintEdges(plate.Key, 0, 0, 0, 1)
+  end
+  plate.Ring = AR.NewEdges(plate, "BORDER", 1, 0, 1)
+  return plate
+end
+
+local function TintPlate(plate, fill, ring)
+  plate.Fill:SetVertexColor(fill, fill, fill, 0.95)
+  AR.TintEdges(plate.Ring, ring, ring, ring, 1)
+end
+
+local function Grey(region, v)
+  if region.SetTextColor then
+    region:SetTextColor(v, v, v, 1)
+  else
+    region:SetVertexColor(v, v, v, 1)
+  end
+end
+
+-- The eye switch: open and "Shown", or crossed and "Hidden". Its words
+-- rise to white and its ring to a lighter grey while shown, and both go
+-- white when pointed at.
+local function PaintSwitch(sw)
+  local spec = PLATE.switch
+  local on, hover = sw.on, sw.hover
+  TintPlate(sw, hover and 0.17 or spec.fill, hover and spec.hover or (on and spec.on or spec.ring))
+  if sw.Eye then
+    sw.Eye:SetShown(on and true or false)
+    Grey(sw.Eye, hover and 1 or 0.84)
+  end
+  if sw.EyeOff then
+    sw.EyeOff:SetShown(not on)
+    Grey(sw.EyeOff, hover and 1 or 0.84)
+  end
+  Grey(sw.Label, (on or hover) and 1 or 0.74)
+end
+
+local function SwitchEnter(self)
+  self.hover = true
+  PaintSwitch(self)
+end
+
+local function SwitchLeave(self)
+  self.hover = false
+  PaintSwitch(self)
+end
+
+local function SwitchClick(self)
+  local host = AR.host
+  if not host then return end
+  local on = not self.on
+  if AR.selKind == "column" then
+    AR.ShowColumn(AR.selId, on)
+    PlayToggle(on)
+  elseif AR.selKind == "block" and host.SetBlockShown then
+    host.SetBlockShown(AR.selId, on)
+  end
+  AR.Inspect()
+end
+
+-- Move, one step: an arrow on a plate, dimmed where the thing cannot go
+-- further that way.
+local function PaintNudge(b)
+  local spec = PLATE.nudge
+  local live, hover = b.live, b.hover and b.live
+  TintPlate(b, hover and 0.17 or spec.fill, live and (hover and spec.hover or spec.ring) or spec.off)
+  local glyph = b.vertical and b.V or b.H
+  local other = b.vertical and b.H or b.V
+  if other then other:Hide() end
+  if glyph then
+    glyph:Show()
+    Grey(glyph, live and (hover and 1 or 0.84) or 0.4)
+  end
+end
+
+local function NudgeEnter(self)
+  self.hover = true
+  PaintNudge(self)
+end
+
+local function NudgeLeave(self)
+  self.hover = false
+  PaintNudge(self)
+end
+
+local function NudgeClick(self)
+  local host = AR.host
+  if not (host and self.live) then return end
+  if AR.selKind == "column" then
+    AR.NudgeColumn(AR.selId, self.step)
+  elseif AR.selKind == "block" and host.MoveBlock then
+    host.MoveBlock(AR.selId, self.step)
+  end
+  AR.Inspect()
+end
+
+-- The chosen one of a column's own choices: a small accent square in a
+-- black keyline before its name, the name white; the others a lighter
+-- grey; all of it grey while the column is hidden.
+local function PaintRadio(row)
+  local live, chosen, hover = row.live, row.chosen, row.hover and row.live
+  row.Hover:SetShown(hover and true or false)
+  if chosen then
+    if live then
+      local r, g, b = Th().GetAccent()
+      row.Mark:SetVertexColor(r, g, b, 1)
+    else
+      Grey(row.Mark, 0.44)
+    end
+  end
+  row.Mark:SetShown(chosen and true or false)
+  row.MarkKey:SetShown(chosen and true or false)
+  Grey(row.Text, live and ((chosen or hover) and 1 or 0.91) or 0.44)
+end
+
+local function RadioEnter(self)
+  self.hover = true
+  PaintRadio(self)
+end
+
+local function RadioLeave(self)
+  self.hover = false
+  PaintRadio(self)
+end
+
+local function RadioClick(self)
+  local insp = AR._insp
+  if not (self.live and insp and insp.set) then return end
+  insp.set(self.choiceId)
+  AR.RowsChanged(true)
+  AR.Inspect()
+end
+
+local function Radio(insp, i)
   local T = Th()
-  local row = CreateFrame("Button", nil, pop)
-  row:SetHeight(CHOICE_H)
-  row:RegisterForClicks("LeftButtonUp")
+  local row = CreateFrame("Button", nil, insp)
+  row:SetSize(INSP.INNER, INSP.RADIO_H)
+  row.hover, row.live, row.chosen = false, false, false
   row.Hover = row:CreateTexture(nil, "BACKGROUND")
+  row.Hover:SetTexture(WHITE)
+  row.Hover:SetVertexColor(1, 1, 1, 0.06)
   row.Hover:SetAllPoints()
-  row.Hover:SetColorTexture(1, 1, 1, 0.06)
   row.Hover:Hide()
-  -- The chosen one's mark: a small accent dot, as the select lists have.
-  row.Mark = row:CreateTexture(nil, "ARTWORK")
-  row.Mark:SetSize(4, 4)
-  row.Mark:SetPoint("LEFT", row, "LEFT", 6, 0)
+  row.MarkKey = row:CreateTexture(nil, "ARTWORK", nil, 0)
+  row.MarkKey:SetTexture(WHITE)
+  row.MarkKey:SetVertexColor(0, 0, 0, 1)
+  row.MarkKey:SetSize(7, 7)
+  row.MarkKey:SetPoint("LEFT", row, "LEFT", 3, 0)
+  row.Mark = row:CreateTexture(nil, "ARTWORK", nil, 1)
   row.Mark:SetTexture(WHITE)
-  row.Text = T.CreateText(row, "value")
-  row.Text:SetPoint("LEFT", row, "LEFT", 16, 0)
+  row.Mark:SetSize(5, 5)
+  row.Mark:SetPoint("CENTER", row.MarkKey, "CENTER", 0, 0)
+  row.Text = T.CreateText(row, "body")
+  row.Text:SetPoint("LEFT", row, "LEFT", INSP.RADIO_TEXT, 0)
   row.Text:SetJustifyH("LEFT")
   row.Text:SetWordWrap(false)
-  row:SetScript("OnEnter", function(self) if self.enabled then self.Hover:Show() end end)
-  row:SetScript("OnLeave", function(self) self.Hover:Hide() end)
-  row:SetScript("OnClick", function(self)
-    if not self.enabled or not pop.set then return end
-    pop.set(self.choiceId)
-    AR.RowsChanged(true)
-    AR.FillPopover(pop)
-  end)
-  pop.rows[i] = row
+  row:SetScript("OnEnter", RadioEnter)
+  row:SetScript("OnLeave", RadioLeave)
+  row:SetScript("OnClick", RadioClick)
+  insp.Radios[i] = row
   return row
 end
 
-function AR.BuildPopover()
+-- A hidden thing's chip: a crossed eye and its name on a dark plate; a
+-- click shows it again. Pointed at, its ring and its words lighten.
+local function PaintHiddenChip(chip)
+  local spec = PLATE.chip
+  local hover = chip.hover
+  TintPlate(chip, hover and 0.12 or spec.fill, hover and spec.hover or spec.ring)
+  local v = hover and 1 or 0.6
+  Grey(chip.Label, v)
+  if chip.Eye then Grey(chip.Eye, v) end
+end
+
+local function HiddenEnter(self)
+  self.hover = true
+  PaintHiddenChip(self)
+end
+
+local function HiddenLeave(self)
+  self.hover = false
+  PaintHiddenChip(self)
+end
+
+local function HiddenClick(self)
+  local host = AR.host
+  if not host then return end
+  self.hover = false
+  if self.kind == "column" then
+    AR.ShowColumn(self.key, true)
+  elseif host.ShowHidden then
+    host.ShowHidden(self.kind, self.key)
+  end
+  -- The grid's own switch makes its own sound.
+  if self.kind ~= "grid" then PlayToggle(true) end
+  AR.Inspect()
+end
+
+local function HiddenChip(insp, i)
   local T = Th()
-  local pop = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-  pop.__pbPopupAlways = true
-  T.ApplyCard(pop)
-  pop:SetFrameStrata("FULLSCREEN_DIALOG")
-  pop:SetClampedToScreen(true)
-  pop:EnableMouse(true)
-  pop.rows = {}
+  local chip = InspPlate(insp, "Button", true)
+  chip:SetHeight(INSP.CHIP_H)
+  chip.hover = false
+  chip.Eye = T.Glyph and T.Glyph(chip, "eye-off", 8, "ARTWORK") or nil
+  if chip.Eye then chip.Eye:SetPoint("CENTER", chip, "LEFT", INSP.CHIP_LEAD + INSP.CHIP_EYE / 2, 0) end
+  chip.Label = T.CreateText(chip, "body")
+  chip.Label:SetPoint("LEFT", chip, "LEFT", INSP.CHIP_LEAD + INSP.CHIP_EYE + INSP.CHIP_EYE_GAP, 0)
+  chip.Label:SetJustifyH("LEFT")
+  chip.Label:SetWordWrap(false)
+  chip:SetScript("OnEnter", HiddenEnter)
+  chip:SetScript("OnLeave", HiddenLeave)
+  chip:SetScript("OnClick", HiddenClick)
+  insp.Chips[i] = chip
+  return chip
+end
 
-  pop.Title = T.CreateText(pop, "label")
-  pop.Title:SetJustifyH("LEFT")
-  pop.Title:SetWordWrap(false)
-  pop.Desc = T.CreateText(pop, "secondary")
-  pop.Desc:SetJustifyH("LEFT")
-  pop.Desc:SetWordWrap(true)
+-- The cross: back to the overview from a card, out of the mode from the
+-- overview -- Escape's layers, less the drag.
+local function CloseTip(self)
+  GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+  if AR.selKind then
+    GameTooltip:SetText(L()["ARRANGE_BACK_TIP"], 1, 1, 1, 1, true)
+  else
+    GameTooltip:SetText(L()["ARRANGE_DONE"])
+    GameTooltip:AddLine(L()["ARRANGE_DONE_TIP"], 1, 1, 1, true)
+    GameTooltip:AddLine(L()["ARRANGE_TIP_ACTIVE"], 0.7, 0.7, 0.7, true)
+  end
+  GameTooltip:Show()
+end
 
-  local show = CreateFrame("CheckButton", nil, pop, "UICheckButtonTemplate")
-  show:SetSize(20, 20)
-  show.__postboxCheck = true
-  local label = T.CreateText(pop, "label")
-  label:SetPoint("LEFT", show, "RIGHT", 4, 0)
-  label:SetText(L()["COL_SHOW"])
-  show.__label = label
-  show:SetScript("OnClick", function(self)
-    local chip = pop.chip
-    if not chip then return end
-    local on = self:GetChecked() and true or false
-    AR.SetColumnShown(chip.colId, on)
-    if pop.host then AR.LayoutStrip(pop.host) end
-    AR.RowsChanged(true)
-    AR.FillPopover(pop)
-    if type(SOUNDKIT) == "table" then
-      PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
-    end
-  end)
-  pop.ShowCheck = show
-  pop.ShowLabel = label
+local function CloseEnter(self)
+  Grey(self.Text, 1)
+  CloseTip(self)
+end
 
-  -- Closes on a click anywhere but itself and its chip, whose own click
-  -- toggles it.
-  pop:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
-  pop:SetScript("OnHide", function(self)
-    self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
-    local chip = self.chip
-    if chip then AR.PaintChip(chip) end
-    AR.UpdateFocus()
-  end)
-  pop:SetScript("OnEvent", function(self)
-    if self:IsMouseOver() or (self.chip and self.chip:IsMouseOver()) then return end
-    self:Hide()
+local function CloseLeave(self)
+  Grey(self.Text, 0.74)
+  GameTooltip:Hide()
+end
+
+local function CloseClick(self)
+  if AR.selKind then
+    AR.Select(nil)
+    if GameTooltip:IsOwned(self) then CloseTip(self) end
+  else
+    GameTooltip:Hide()
+    AR.Leave()
+  end
+end
+
+-- The reset, as a link: underlined, lighter when pointed at.
+local function PaintLink(link)
+  local hover = link.hover
+  Grey(link.Label, hover and 1 or 0.74)
+  Grey(link.Line, hover and 0.6 or 0.33)
+end
+
+local function LinkEnter(self)
+  self.hover = true
+  PaintLink(self)
+end
+
+local function LinkLeave(self)
+  self.hover = false
+  PaintLink(self)
+end
+
+local function LinkClick()
+  AR.AskReset()
+end
+
+-- A text of the inspector, wrapped across its width, in a role and a grey.
+local function Paragraph(art, role, grey)
+  local fs = Th().CreateText(art, role)
+  fs:SetWidth(INSP.INNER)
+  fs:SetJustifyH("LEFT")
+  fs:SetWordWrap(true)
+  if fs.SetSpacing then fs:SetSpacing(INSP.SPACING) end
+  if grey then Grey(fs, grey) end
+  fs:Hide()
+  return fs
+end
+
+local function Line(art, role)
+  local fs = Th().CreateText(art, role)
+  fs:SetJustifyH("LEFT")
+  fs:SetWordWrap(false)
+  fs:Hide()
+  return fs
+end
+
+local function Rule(art)
+  local rule = art:CreateTexture(nil, "ARTWORK")
+  rule:SetTexture(WHITE)
+  rule:SetHeight(1)
+  Grey(rule, 0.17)
+  rule:Hide()
+  return rule
+end
+
+function AR.BuildInspector()
+  local T = Th()
+  local P = INSP
+  local insp = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+  insp.__pbPopupAlways = true
+  T.ApplyCard(insp)
+  insp:SetFrameStrata("FULLSCREEN_DIALOG")
+  insp:SetClampedToScreen(true)
+  insp:EnableMouse(true)
+  insp:SetWidth(P.W)
+  insp.Radios, insp.Chips, insp.OrderNum, insp.OrderName = {}, {}, {}, {}
+
+  -- Every text and rule is on this holder, never on the card itself.
+  local art = CreateFrame("Frame", nil, insp)
+  art:SetAllPoints()
+  insp.Art = art
+
+  insp.Title = Line(art, "title")
+  insp.Title:SetPoint("TOPLEFT", insp, "TOPLEFT", P.PAD, -P.TOP)
+  T.SetColor(insp.Title, "accent")
+  insp.Title:Show()
+  insp.Lead = Paragraph(art, "body", 0.81)
+  insp.Empty = Paragraph(art, "body", 0.55)
+  insp.Note = Paragraph(art, "secondary", 0.66)
+  insp.Kicker = Paragraph(art, "secondary", 0.55)
+  insp.MoveLabel = Line(art, "body")
+  Grey(insp.MoveLabel, 0.74)
+  insp.NoteRule = Rule(art)
+  insp.FootRule = Rule(art)
+  insp.Finish = Line(art, "secondary")
+  Grey(insp.Finish, 0.55)
+  -- One line of each role, never shown: where a single line is measured
+  -- whole, whatever width the one on show was fitted to.
+  insp.MeasureBody = Line(art, "body")
+  insp.MeasureSegment = Line(art, "segment")
+  insp.MeasureSmall = Line(art, "secondary")
+
+  local close = CreateFrame("Button", nil, insp)
+  close:SetSize(P.CLOSE, P.CLOSE)
+  close:SetPoint("TOPRIGHT", insp, "TOPRIGHT", -(P.PAD - 5), -(P.TOP - 3))
+  close.Text = T.CreateText(close, "title")
+  close.Text:SetPoint("CENTER", close, "CENTER", 0, 1)
+  close.Text:SetText("\195\151")
+  Grey(close.Text, 0.74)
+  close:SetScript("OnEnter", CloseEnter)
+  close:SetScript("OnLeave", CloseLeave)
+  close:SetScript("OnClick", CloseClick)
+  insp.Close = close
+
+  local sw = InspPlate(insp, "Button", true)
+  sw:SetHeight(P.SWITCH_H)
+  sw.hover, sw.on = false, false
+  sw.Eye = T.Glyph and T.Glyph(sw, "eye", 8, "ARTWORK") or nil
+  sw.EyeOff = T.Glyph and T.Glyph(sw, "eye-off", 8, "ARTWORK") or nil
+  if sw.Eye then sw.Eye:SetPoint("CENTER", sw, "LEFT", 12, 0) end
+  if sw.EyeOff then sw.EyeOff:SetPoint("CENTER", sw, "LEFT", 12, 0) end
+  sw.Label = T.CreateText(sw, "segment")
+  sw.Label:SetPoint("LEFT", sw, "LEFT", P.SWITCH_LEAD, 0)
+  sw.Label:SetWordWrap(false)
+  sw:SetScript("OnEnter", SwitchEnter)
+  sw:SetScript("OnLeave", SwitchLeave)
+  sw:SetScript("OnClick", SwitchClick)
+  sw:Hide()
+  insp.Switch = sw
+
+  for i = 1, 2 do
+    local b = InspPlate(insp, "Button", true)
+    b:SetSize(P.NUDGE_W, P.NUDGE_H)
+    b.step = (i == 1) and -1 or 1
+    b.hover, b.live, b.vertical = false, false, false
+    b.H = T.Glyph and T.Glyph(b, i == 1 and "arrow-left" or "arrow-right", 8, "ARTWORK") or nil
+    b.V = T.Glyph and T.Glyph(b, i == 1 and "arrow-up" or "arrow-down", 6, "ARTWORK") or nil
+    if b.H then b.H:SetPoint("CENTER", b, "CENTER", 0, 0) end
+    if b.V then b.V:SetPoint("CENTER", b, "CENTER", 0, 0) end
+    b:SetScript("OnEnter", NudgeEnter)
+    b:SetScript("OnLeave", NudgeLeave)
+    b:SetScript("OnClick", NudgeClick)
+    b:Hide()
+    if i == 1 then insp.NudgeA = b else insp.NudgeB = b end
+  end
+
+  local link = CreateFrame("Button", nil, insp)
+  link.hover = false
+  link.Label = T.CreateText(link, "secondary")
+  link.Label:SetPoint("TOPLEFT", link, "TOPLEFT", 0, 0)
+  link.Label:SetWordWrap(false)
+  link.Line = link:CreateTexture(nil, "ARTWORK")
+  link.Line:SetTexture(WHITE)
+  link.Line:SetHeight(1)
+  link.Line:SetPoint("TOPLEFT", link.Label, "BOTTOMLEFT", 0, -1)
+  link.Line:SetPoint("TOPRIGHT", link.Label, "BOTTOMRIGHT", 0, -1)
+  link:SetScript("OnEnter", LinkEnter)
+  link:SetScript("OnLeave", LinkLeave)
+  link:SetScript("OnClick", LinkClick)
+  link:Hide()
+  insp.Reset = link
+
+  local key = InspPlate(insp, "Frame", false)
+  TintPlate(key, PLATE.key.fill, PLATE.key.ring)
+  key:SetHeight(P.KEY_H)
+  key.Label = T.CreateText(key, "secondary")
+  key.Label:SetPoint("CENTER", key, "CENTER", 0, 0)
+  key.Label:SetWordWrap(false)
+  Grey(key.Label, 0.87)
+  key:Hide()
+  insp.Key = key
+
+  -- The side it docks on is looked at again after every mouse release while
+  -- it is up: a window dragged to the screen's edge, or widened, is only
+  -- ever moved by a press that ends.
+  insp:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_UP") end)
+  insp:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_UP") end)
+  insp:SetScript("OnEvent", function(self)
+    if AR.host then AR.Dock(self, AR.host) end
   end)
   -- A new frame starts shown: hidden now, so the first Show fires OnShow.
-  pop:Hide()
-  if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, pop) end
-  AR._pop = pop
-  return pop
+  insp:Hide()
+  if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, insp) end
+  AR._insp = insp
+  return insp
 end
 
-function AR.FillPopover(pop)
-  local T = Th()
-  local chip = pop.chip
-  if not chip then return end
-  local id = chip.colId
-  local spec = AR.COLUMNS[id]
-  local layout = AR.Layout()
-  local shown = layout and layout.shown[id] or false
-  local inner = CARD_W - 2 * CARD_PAD
-  local y = -CARD_PAD
-
-  pop.Title:ClearAllPoints()
-  pop.Title:SetPoint("TOPLEFT", pop, "TOPLEFT", CARD_PAD, y)
-  pop.Title:SetWidth(inner)
-  pop.Title:SetText(L()[spec.title])
-  y = y - math.ceil(pop.Title:GetStringHeight() or 12) - 4
-
-  pop.Desc:ClearAllPoints()
-  pop.Desc:SetPoint("TOPLEFT", pop, "TOPLEFT", CARD_PAD, y)
-  pop.Desc:SetWidth(inner)
-  pop.Desc:SetText(L()[spec.desc])
-  y = y - math.ceil(pop.Desc:GetStringHeight() or 12) - 8
-
-  local check = pop.ShowCheck
-  if spec.fixed then
-    check:Hide()
-    pop.ShowLabel:Hide()
+-- Beside the host's window, its top level with the window's top row (the
+-- host's DockTop), on the right unless the screen has no room there and
+-- more on the left. Anchored to the window, so it follows the window while
+-- it is dragged; re-anchored only when the side or the row moved.
+function AR.Dock(insp, host)
+  local dock = (host.Dock and host.Dock()) or host.owner
+  if not (insp and dock) then return end
+  local left, right, top = dock:GetLeft(), dock:GetRight(), dock:GetTop()
+  if not (left and right and top) then return end
+  local P = INSP
+  local dy = 0
+  local row = host.DockTop and host.DockTop()
+  local rowTop = row and row:GetTop()
+  if rowTop then dy = math.floor(rowTop - top + 0.5) end
+  local ds = dock:GetEffectiveScale() or 1
+  local us = UIParent:GetEffectiveScale() or 1
+  local screen = (UIParent:GetRight() or 0) * us
+  local need = (P.DOCK + P.W) * (insp:GetEffectiveScale() or 1)
+  local roomRight, roomLeft = screen - right * ds, left * ds
+  local side = (roomRight >= need or roomRight >= roomLeft) and 1 or -1
+  if insp.side == side and insp.dockTo == dock and insp.dy == dy then return end
+  insp.side, insp.dockTo, insp.dy = side, dock, dy
+  insp:ClearAllPoints()
+  if side == 1 then
+    insp:SetPoint("TOPLEFT", dock, "TOPRIGHT", P.DOCK, dy)
   else
-    check:ClearAllPoints()
-    check:SetPoint("TOPLEFT", pop, "TOPLEFT", CARD_PAD - 4, y)
-    check:SetChecked(shown)
-    check:Show()
-    pop.ShowLabel:Show()
-    y = y - 24
+    insp:SetPoint("TOPRIGHT", dock, "TOPLEFT", -P.DOCK, dy)
   end
-
-  local choices, current, set = AR.Choices(spec.choice)
-  pop.set = set
-  local r, g, b = T.GetAccent()
-  for i = 1, math.max(#choices, #pop.rows) do
-    local choice = choices[i]
-    local row = pop.rows[i]
-    if choice then
-      row = row or ChoiceRow(pop, i)
-      row.choiceId = choice.id
-      row.enabled = shown
-      row.Text:SetText(choice.name)
-      T.SetColor(row.Text, shown and "textPrimary" or "textDisabled")
-      row.Mark:SetVertexColor(r, g, b, shown and 0.9 or 0.35)
-      row.Mark:SetShown(choice.id == current)
-      row:ClearAllPoints()
-      row:SetPoint("TOPLEFT", pop, "TOPLEFT", 4, y)
-      row:SetPoint("RIGHT", pop, "RIGHT", -4, 0)
-      row:Show()
-      y = y - CHOICE_H
-    elseif row then
-      row:Hide()
-    end
-  end
-  pop:SetSize(CARD_W, -y + CARD_PAD - 2)
-end
-
-function AR.TogglePopover(host, chip)
-  local pop = AR._pop
-  if pop and pop:IsShown() and pop.chip == chip then
-    pop:Hide()
-    return
-  end
-  pop = pop or AR.BuildPopover()
-  local previous = pop:IsShown() and pop.chip or nil
-  pop.chip, pop.host = chip, host
-  GameTooltip:Hide()
-  AR.FillPopover(pop)
-  pop:ClearAllPoints()
-  pop:SetPoint("TOPLEFT", chip, "BOTTOMLEFT", 0, -4)
-  pop:Show()
-  pop:Raise()
-  if previous and previous ~= chip then AR.PaintChip(previous) end
-  AR.PaintChip(chip)
-  AR.UpdateFocus()
 end
 
 -------------------------------------------------------------
--- 10. Opening and closing
+-- 8b. Filling it
+--
+-- Top down from `y` (the card's own, negative downward); each Put answers
+-- the y under what it placed.
+-------------------------------------------------------------
+
+local function At(region, x, y)
+  region:ClearAllPoints()
+  region:SetPoint("TOPLEFT", AR._insp, "TOPLEFT", x, y)
+end
+
+local function PutText(fs, text, y)
+  At(fs, INSP.PAD, y)
+  fs:Show()
+  return y - Measured(fs, text, true)
+end
+
+-- A kicker in capitals; one that does not fit the width (a long German one)
+-- takes a second line rather than losing its end.
+local function PutKicker(text, y)
+  local k = AR._insp.Kicker
+  y = y - INSP.KICK_TOP
+  At(k, INSP.PAD, y)
+  k:Show()
+  return y - Measured(k, Upper(text), true) - INSP.KICK_GAP
+end
+
+local function PutRule(rule, y)
+  rule:ClearAllPoints()
+  rule:SetPoint("TOPLEFT", AR._insp, "TOPLEFT", INSP.PAD, y)
+  rule:SetPoint("TOPRIGHT", AR._insp, "TOPRIGHT", -INSP.PAD, y)
+  rule:Show()
+end
+
+local function PutNote(text, y)
+  local insp = AR._insp
+  y = y - INSP.NOTE_TOP
+  PutRule(insp.NoteRule, y)
+  return PutText(insp.Note, text, y - 1 - INSP.NOTE_PAD)
+end
+
+-- The eye switch at the row's left; answers its width.
+local function PutSwitch(on, y)
+  local insp, P = AR._insp, INSP
+  local sw = insp.Switch
+  local text = L()[on and "ARRANGE_SHOWN" or "ARRANGE_HIDDEN_STATE"]
+  local w = P.SWITCH_LEAD + Measured(insp.MeasureSegment, text, false) + P.SWITCH_TAIL
+  sw.on = on and true or false
+  sw.Label:SetText(text)
+  sw:SetWidth(w)
+  At(sw, P.PAD, y)
+  PaintSwitch(sw)
+  sw:Show()
+  return w
+end
+
+-- Move and its two arrows at the row's right: left and right for a column,
+-- up and down for a block, each live only where there is a place to go.
+-- `used` is the width the row's left already has (the switch); where the
+-- words and the arrows do not fit beside it, they take a row of their own
+-- under it. Answers the y under the row.
+local function PutMove(y, vertical, back, forward, used)
+  local insp, P = AR._insp, INSP
+  local text = L()["ARRANGE_MOVE"]
+  local need = Measured(insp.MeasureBody, text, false) + P.MOVE_GAP + 2 * P.NUDGE_W + P.NUDGE_GAP
+  local rowY = y
+  if used > 0 and used + P.MOVE_GAP + need > P.INNER then rowY = y - P.SWITCH_H - P.ROW_WRAP end
+  local a, b = insp.NudgeA, insp.NudgeB
+  local ny = rowY - (P.SWITCH_H - P.NUDGE_H) / 2
+  b:ClearAllPoints()
+  b:SetPoint("TOPRIGHT", insp, "TOPLEFT", P.PAD + P.INNER, ny)
+  a:ClearAllPoints()
+  a:SetPoint("TOPRIGHT", b, "TOPLEFT", -P.NUDGE_GAP, 0)
+  a.vertical, a.live = vertical, back and true or false
+  b.vertical, b.live = vertical, forward and true or false
+  PaintNudge(a)
+  PaintNudge(b)
+  a:Show()
+  b:Show()
+  local label = insp.MoveLabel
+  label:ClearAllPoints()
+  label:SetPoint("RIGHT", a, "LEFT", -P.MOVE_GAP, 0)
+  label:SetText(text)
+  label:Show()
+  return rowY - P.SWITCH_H
+end
+
+local function PutRadio(i, choice, chosen, live, y)
+  local insp = AR._insp
+  local row = insp.Radios[i] or Radio(insp, i)
+  row.choiceId, row.chosen, row.live = choice.id, chosen, live
+  row.hover = row.hover and row:IsMouseOver() or false
+  Th().FitText(row.Text, INSP.INNER - INSP.RADIO_TEXT, choice.name, row)
+  At(row, INSP.PAD, y)
+  PaintRadio(row)
+  row:Show()
+  return y - INSP.RADIO_H
+end
+
+-- A line of the stack's order: its place and its name, the selected block
+-- in the accent.
+local function PutOrderLine(i, name, selected, y)
+  local insp, T = AR._insp, Th()
+  local num, text = insp.OrderNum[i], insp.OrderName[i]
+  if not num then
+    num, text = Line(insp.Art, "body"), Line(insp.Art, "body")
+    insp.OrderNum[i], insp.OrderName[i] = num, text
+  end
+  num:SetFormattedText("%d", i)
+  At(num, INSP.PAD, y)
+  At(text, INSP.PAD + INSP.LINE_NUM, y)
+  T.FitText(text, INSP.INNER - INSP.LINE_NUM, name, nil)
+  if selected then
+    T.SetColor(num, "accent")
+    T.SetColor(text, "accent")
+  else
+    T.SetColor(num, "textSecondary")
+    T.SetColor(text, "textSecondary")
+  end
+  num:Show()
+  text:Show()
+  return y - INSP.LINE_H
+end
+
+-- The hidden list, flowing left to right in rows; the host's own are put
+-- through the same function (host.ListHidden).
+local chipsN, chipsX, chipsY = 0, 0, 0
+
+local function PutHidden(kind, key, name)
+  local insp, P = AR._insp, INSP
+  chipsN = chipsN + 1
+  local chip = insp.Chips[chipsN] or HiddenChip(insp, chipsN)
+  chip.kind, chip.key = kind, key
+  chip.hover = chip:IsMouseOver() and true or false
+  local lead = P.CHIP_LEAD + P.CHIP_EYE + P.CHIP_EYE_GAP
+  local w = math.min(lead + Measured(insp.MeasureBody, name, false) + P.CHIP_TAIL, P.INNER)
+  if chipsX > P.PAD and chipsX + w > P.PAD + P.INNER then
+    chipsX = P.PAD
+    chipsY = chipsY - P.CHIP_H - P.CHIP_GAP
+  end
+  chip:SetWidth(w)
+  Th().FitText(chip.Label, w - lead - P.CHIP_TAIL + 1, name, chip)
+  At(chip, chipsX, chipsY)
+  PaintHiddenChip(chip)
+  chip:Show()
+  chipsX = chipsX + w + P.CHIP_GAP
+end
+
+local function CountHidden()
+  chipsN = chipsN + 1
+end
+
+-- The foot: the reset on the left, the key cap and "to finish" on the right,
+-- each centred on a row the key cap's height -- the right-hand pair on a
+-- row of its own under the reset where the two do not fit side by side.
+local function PutFoot(y)
+  local insp, P = AR._insp, INSP
+  y = y - P.FOOT_TOP
+  PutRule(insp.FootRule, y)
+  y = y - 1 - P.FOOT_PAD
+  local link, key, finish = insp.Reset, insp.Key, insp.Finish
+  local resetText, keyText, finishText = L()["ARRANGE_RESET"], L()["ARRANGE_ESC_KEY"], L()["ARRANGE_ESC_FINISH"]
+  local linkW = Measured(insp.MeasureSmall, resetText, false)
+  local keyW = Measured(insp.MeasureSmall, keyText, false) + 2 * P.KEY_PAD
+  local finishW = Measured(insp.MeasureSmall, finishText, false)
+  local lineH = Measured(insp.MeasureSmall, resetText, true)
+  link.Label:SetText(resetText)
+  link:SetSize(linkW, lineH + 2)
+  link:ClearAllPoints()
+  link:SetPoint("LEFT", insp, "TOPLEFT", P.PAD, y - P.KEY_H / 2)
+  PaintLink(link)
+  link:Show()
+  local rowY = y
+  if linkW + P.FOOT_GAP + keyW + P.KEY_GAP + finishW > P.INNER then
+    rowY = y - P.KEY_H - P.KEY_GAP
+  end
+  finish:SetText(finishText)
+  finish:ClearAllPoints()
+  finish:SetPoint("RIGHT", insp, "TOPLEFT", P.PAD + P.INNER, rowY - P.KEY_H / 2)
+  finish:Show()
+  key.Label:SetText(keyText)
+  key:SetWidth(keyW)
+  key:ClearAllPoints()
+  key:SetPoint("RIGHT", finish, "LEFT", -P.KEY_GAP, 0)
+  key:Show()
+  return rowY - P.KEY_H
+end
+
+-- With nothing selected: how the mode works (or, while something is in the
+-- hand, what is moving), what is hidden, and the foot.
+local function FillOverview(host, y)
+  local insp, P = AR._insp, INSP
+  local lead = AR.moving and MovingText(AR.moving) or L()["ARRANGE_OVERVIEW"]
+  y = PutText(insp.Lead, lead, y)
+  -- What is hidden: the columns, then the host's own -- counted first, so
+  -- the kicker says whether a click shows them.
+  local layout = AR.Layout()
+  chipsN = 0
+  if layout then
+    for i = 1, #layout do
+      local spec = AR.COLUMNS[layout[i].id]
+      if spec and not layout[i].shown and not spec.fixed then chipsN = chipsN + 1 end
+    end
+  end
+  if host.ListHidden then host.ListHidden(CountHidden) end
+  y = PutKicker(L()[chipsN > 0 and "ARRANGE_HIDDEN_CLICK" or "ARRANGE_HIDDEN"], y)
+  if chipsN == 0 then return PutFoot(PutText(insp.Empty, L()["ARRANGE_HIDDEN_NONE"], y)) end
+  chipsN, chipsX, chipsY = 0, P.PAD, y
+  if layout then
+    for i = 1, #layout do
+      local entry = layout[i]
+      local spec = AR.COLUMNS[entry.id]
+      if spec and not entry.shown and not spec.fixed then PutHidden("column", entry.id, L()[spec.title]) end
+    end
+  end
+  if host.ListHidden then host.ListHidden(PutHidden) end
+  return PutFoot(chipsY - P.CHIP_H)
+end
+
+-- A column's card.
+local function FillColumn(id, y)
+  local insp, P = AR._insp, INSP
+  local spec = AR.COLUMNS[id]
+  local layout = AR.Layout()
+  local shown = layout and layout.shown[id] or false
+  local k = layout and IndexOf(layout, id) or 1
+  y = PutText(insp.Lead, L()[spec.desc], y) - P.ROW_GAP
+  local used = 0
+  if not spec.fixed then used = PutSwitch(shown, y) end
+  y = PutMove(y, false, k > 1, layout ~= nil and k < #layout, used)
+  local choices, current, set = AR.Choices(spec.choice)
+  insp.set = set
+  if #choices > 0 then
+    y = PutKicker(L()["COL_SHOW"], y)
+    for i = 1, #choices do
+      y = PutRadio(i, choices[i], choices[i].id == current, shown and true or false, y)
+    end
+  end
+  -- A figure's place beside the subject says what a mail without it does.
+  if spec.figure and layout then
+    local at = IndexOf(layout, "subject") or 0
+    y = PutNote(L()[k < at and "ARRANGE_NOTE_LEFT" or "ARRANGE_NOTE_RIGHT"], y)
+  end
+  return y
+end
+
+-- A block's card: the host's words for it, the grid's switch, Move up and
+-- down, and the stack's order.
+local function FillBlock(host, id, y)
+  local insp, P = AR._insp, INSP
+  y = PutText(insp.Lead, host.BlockText(id), y) - P.ROW_GAP
+  local used = 0
+  local on = host.BlockShown and host.BlockShown(id)
+  if on ~= nil then used = PutSwitch(on, y) end
+  y = PutMove(y, true, host.CanMoveBlock(id, -1), host.CanMoveBlock(id, 1), used)
+  y = PutKicker(L()["ARRANGE_UNDER_LIST"], y)
+  local order = host.StackOrder()
+  for i = 1, #order do y = PutOrderLine(i, host.BlockName(order[i]), order[i] == id, y) end
+  local note = host.BlockNote and host.BlockNote(id)
+  if note then y = PutNote(note, y) end
+  return y
+end
+
+local function HideParts(insp)
+  insp.Lead:Hide()
+  insp.Empty:Hide()
+  insp.Note:Hide()
+  insp.Kicker:Hide()
+  insp.MoveLabel:Hide()
+  insp.NoteRule:Hide()
+  insp.FootRule:Hide()
+  insp.Finish:Hide()
+  insp.Switch:Hide()
+  insp.NudgeA:Hide()
+  insp.NudgeB:Hide()
+  insp.Reset:Hide()
+  insp.Key:Hide()
+  for i = 1, #insp.Radios do insp.Radios[i]:Hide() end
+  for i = 1, #insp.Chips do insp.Chips[i]:Hide() end
+  for i = 1, #insp.OrderNum do
+    insp.OrderNum[i]:Hide()
+    insp.OrderName[i]:Hide()
+  end
+end
+
+-- The inspector filled again for what is selected now, if it is up. Called
+-- after anything it shows may have changed; a block the view no longer has
+-- is let go first.
+function AR.Inspect()
+  local insp, host = AR._insp, AR.host
+  if not (insp and host and insp:IsShown()) then return end
+  local P, T = INSP, Th()
+  if AR.selKind == "block" and not (host.BlockPresent and host.BlockPresent(AR.selId)) then
+    AR.selKind, AR.selId = nil, nil
+    AR.UpdateFocus()
+  end
+  local kind, id = AR.selKind, AR.selId
+  if AR.moving then kind = nil end
+  HideParts(insp)
+  local title
+  if kind == "column" then
+    title = L()[AR.COLUMNS[id].title]
+  elseif kind == "block" then
+    title = host.BlockName(id)
+  else
+    title = L()["ARRANGE_TITLE"]
+  end
+  T.FitText(insp.Title, P.INNER - P.CLOSE, title, nil)
+  local y = -P.TOP - math.max(Measured(insp.Title, title, true), P.CLOSE - 4) - P.HEAD_GAP
+  if kind == "column" then
+    y = FillColumn(id, y)
+  elseif kind == "block" then
+    y = FillBlock(host, id, y)
+  else
+    y = FillOverview(host, y)
+  end
+  insp:SetHeight(math.ceil(-y + P.BOTTOM))
+end
+
+-- Up beside the host's window, on the overview.
+function AR.ShowInspector(host)
+  local insp = AR._insp or AR.BuildInspector()
+  insp.side = nil
+  AR.Dock(insp, host)
+  insp:Show()
+  AR.Inspect()
+end
+
+-------------------------------------------------------------
+-- 9. Opening and closing
 --
 -- A host is the list being arranged: { owner = its frame, PlaceStrip(strip),
 -- OnEnter(strip), OnLeave(), Rise() (optional: its cards settle in, played
 -- once as the mode opens), toggle = the key that opened it }. The Mail
 -- tab's is CollectTab's CT.ArrangeHost; Mail Memory's is its own. One at a
 -- time: opening one closes the other.
+--
+-- For the inspector a host may also answer: Dock() (the window it docks
+-- beside; the owner if absent) and DockTop() (the top row it lines up
+-- with); ListHidden(put) (put(kind, key, name) for each hidden thing of
+-- its own) and ShowHidden(kind, key). A host with blocks under its list
+-- answers for them by id: BlockPresent, BlockName, BlockText, BlockNote
+-- (or nil), BlockShown (a switch's state, or nil for none), SetBlockShown,
+-- CanMoveBlock(id, step), MoveBlock(id, step), StackOrder() and
+-- PaintBlocks() (the selection's ring moved).
 -------------------------------------------------------------
 
 function AR.Enter(host)
@@ -1433,6 +2247,7 @@ function AR.Enter(host)
   local strip = host.strip or AR.BuildStrip(host)
   AR.host = host
   AR.hover, AR.focus, AR.drag = nil, nil, nil
+  AR.selKind, AR.selId, AR.moving = nil, nil, nil
   strip:Show()
   if host.OnEnter then host.OnEnter(strip) end
   AR.LayoutStrip(host)
@@ -1441,7 +2256,7 @@ function AR.Enter(host)
   AR.RowsChanged(false)
   -- The host's cards settle into place, once (AR.Rise).
   if host.Rise then host.Rise() end
-  AR.Teach(host)
+  AR.ShowInspector(host)
 end
 
 function AR.Leave()
@@ -1451,10 +2266,10 @@ function AR.Leave()
   local drag = AR.drag
   AR.drag = nil
   if drag then drag.chip:SetFrameLevel(drag.level) end
+  AR.selKind, AR.selId, AR.moving = nil, nil, nil
   AR.host = nil
-  if AR._pop then AR._pop:Hide() end
+  if AR._insp then AR._insp:Hide() end
   AR.hover, AR.focus = nil, nil
-  AR.EndTeach(false)
   AR.CatchEscape(false)
   if host.strip then
     host.strip.Ghost:Hide()

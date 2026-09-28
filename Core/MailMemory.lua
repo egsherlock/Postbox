@@ -2390,6 +2390,9 @@ function MM.ArrangeHost(frame)
       frame:SetWidth(before)
     end
   end
+  -- The inspector docks beside this window, level with its top row.
+  function host.Dock() return frame end
+  function host.DockTop() return frame.SearchWrap end
   frame._arrangeHost = host
   return host
 end
