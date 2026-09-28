@@ -6838,13 +6838,19 @@ function RV.StackNeighbour(panel, order, k, step)
   return nil
 end
 
+-- The block in the hand changes places with the one above when its top edge
+-- crosses that block's middle, and with the one below when its foot does.
+-- By its edges, not its middle: the hand stops at the stack's ends, and a
+-- block taller than the one at the end it is dragged to could never bring
+-- its own middle past that one's. Crossing back takes the gap between the
+-- blocks again, so a hand held still at the line does not flip them.
 function RV.StackDrag(panel, cursorY)
   local drag, s = panel._stackDrag, panel._stack
   local top = panel.Footer:GetTop()
   if not (drag and s and top) then return end
   local h = s.h[drag.id] or 0
   drag.y = min(max(top - cursorY - drag.grab, 0), max(s.total - h, 0))
-  local centre = drag.y + h / 2
+  local foot = drag.y + h
   local UI = ns.MailboxUI
   -- A quick hand can cross more than one block in a frame.
   for _ = 1, #RV.STACK_IDS do
@@ -6857,9 +6863,9 @@ function RV.StackDrag(panel, cursorY)
     local prev, pj = RV.StackNeighbour(panel, order, k, -1)
     local nxt, nj = RV.StackNeighbour(panel, order, k, 1)
     local j
-    if prev and centre < s.y[prev] + s.h[prev] / 2 then
+    if prev and drag.y < s.y[prev] + s.h[prev] / 2 then
       j = pj
-    elseif nxt and centre > s.y[nxt] + s.h[nxt] / 2 then
+    elseif nxt and foot > s.y[nxt] + s.h[nxt] / 2 then
       j = nj
     end
     if not (j and UI and type(UI.SetStackOrder) == "function") then break end
