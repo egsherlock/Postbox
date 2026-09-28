@@ -64,6 +64,12 @@ longer play.
 - **Report a bug is a proper Postbox window.** The address and the report each
   select with one click for Ctrl+C, and it holds a Performance recording switch,
   off by default, for when a mailbox feels slow.
+- **/postbox debug includes performance figures:** what the game's own
+  profiler saw and, with Performance recording on, how long your last few
+  mailbox opens took, so a slow mailbox can be tracked down from one paste.
+- **Opening a mailbox is lighter.** Postbox no longer asks the server for
+  your guild and friends lists every time, only when you first switch to
+  Send, and a burst of new mail is handled once per frame.
 - **Lighter on your game.** The mail list, History, Mail Memory and the Send
   tab do far less work and leave a fraction of the memory garbage, so there is
   less for the game to clean up while your inbox fills.
@@ -84,33 +90,6 @@ longer play.
 
 ### Fixed
 
-- EllesmereUI bags opened after switching to or from Send show the right
-  padlocks and greys.
-- Large counts in long translations no longer run into each other: the
-  window widens just enough while it needs to, then returns to your size.
-- **The mail list stops at its last mail.** In the Mail tab and in Mail
-  Memory, the last row now sits on the list's edge when scrolled to the
-  bottom, and a list that exactly fits no longer shows a scroll bar.
-- Questions asked from the options, the groups window or the recipient
-  manager (a reload, a delete, a note) no longer open hidden behind them.
-- On EllesmereUI's round minimaps the mail icon sits on the rim, and on the
-  Classic ring it shows whole.
-- With EllesmereUI's Modern window style, lowering the opacity no longer
-  brings the EllesmereUI backdrop back underneath.
-
-## 1.40.2
-
-### Improved
-
-- **Opening a mailbox is lighter.** Postbox no longer asks the server for
-  your guild and friends lists every time, only when you first switch to
-  Send, and a burst of new mail is handled once per frame.
-- **/postbox debug includes performance figures:** how long your last few
-  mailbox opens took and what the game's own profiler saw, so a slow mailbox
-  can be tracked down from one paste.
-
-### Fixed
-
 - **A C.O.D. mail with several items comes out whole.** After you confirm
   the payment, every item is collected in one go; before, only the first
   came out and the rest waited in the mail for another click.
@@ -124,6 +103,19 @@ longer play.
   padlock. In the default bags they also stay grey after you cast a spell.
 - Baganator bags update when you switch between Mail and Send, so items that
   cannot be mailed are greyed as they should be.
+- EllesmereUI bags opened after switching to or from Send show the right
+  padlocks and greys.
+- Large counts in long translations no longer run into each other: the
+  window widens just enough while it needs to, then returns to your size.
+- **The mail list stops at its last mail.** In the Mail tab and in Mail
+  Memory, the last row now sits on the list's edge when scrolled to the
+  bottom, and a list that exactly fits no longer shows a scroll bar.
+- Questions asked from the options, the groups window or the recipient
+  manager (a reload, a delete, a note) no longer open hidden behind them.
+- On EllesmereUI's round minimaps the mail icon sits on the rim, and on the
+  Classic ring it shows whole.
+- With EllesmereUI's Modern window style, lowering the opacity no longer
+  brings the EllesmereUI backdrop back underneath.
 
 ## 1.40.1
 
