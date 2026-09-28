@@ -231,10 +231,12 @@ end
 -------------------------------------------------------------
 -- 2. The press
 --
--- One press in flight at a time, for the chips and the category buttons
--- alike. A press that moves four units is a drag: start(x0, y0) once, then
--- move(x, y) every frame; its release is drop(). A press that never moved is
--- a click(). Coordinates are in the pressed frame's own scale.
+-- One press in flight at a time, for the chips, the category buttons and
+-- the blocks under the list alike. A press that moves four units is a drag:
+-- start(x0, y0) once, then move(x, y) every frame; its release is drop(). A
+-- press that never moved is a click(). A drag Escape puts back is cancel():
+-- the arrangement as it was when the drag began. Coordinates are in the
+-- pressed frame's own scale.
 -------------------------------------------------------------
 
 local gesture = {}
@@ -247,20 +249,28 @@ function AR.Cursor(frame)
   return (x or 0) / scale, (y or 0) / scale
 end
 
-local function EndGesture(released)
-  if not gesture.frame then return end
+-- Ends the press in flight: released (the drop, or the click), put back
+-- (Escape: the drag's cancel), or neither (the mode closing under it).
+-- Answers whether it was a drag.
+local function EndGesture(released, putBack)
+  if not gesture.frame then return false end
   local handlers, dragging = gesture.handlers, gesture.dragging
   gesture.frame, gesture.handlers, gesture.dragging = nil, nil, false
   if driver then
     driver:SetScript("OnUpdate", nil)
     driver:UnregisterEvent("GLOBAL_MOUSE_UP")
   end
-  if not released then return end
+  if putBack then
+    if dragging and handlers.cancel then handlers.cancel() end
+    return dragging
+  end
+  if not released then return dragging end
   if dragging then
     if handlers.drop then handlers.drop() end
   elseif handlers.click then
     handlers.click()
   end
+  return dragging
 end
 
 local function OnGestureUpdate()
@@ -297,9 +307,16 @@ function AR.Press(frame, handlers)
   driver:SetScript("OnUpdate", OnGestureUpdate)
 end
 
--- Ends a press without its release: the mode is closing under it.
-function AR.CancelPress()
-  EndGesture(false)
+-- Ends a press without its release: the mode is closing under it, or,
+-- with `putBack`, Escape is putting a drag back where it began. Answers
+-- whether a drag was in progress.
+function AR.CancelPress(putBack)
+  return EndGesture(false, putBack)
+end
+
+-- A drag in progress, rather than a press still deciding.
+function AR.Dragging()
+  return gesture.frame ~= nil and gesture.dragging == true
 end
 
 -------------------------------------------------------------
@@ -738,12 +755,15 @@ end
 -------------------------------------------------------------
 -- 5. Escape
 --
--- Escape closes the mode, not the window under it -- and never the mailbox.
--- The client closes windows on Escape by hiding every shown frame named in
--- UISpecialFrames; while the mode is open the Postbox windows' names there
--- are swapped IN PLACE for a small frame of ours, and that frame hiding is
--- what ends the mode. In place, so no other entry shifts. The swap is undone
--- on the way out, however the mode ends.
+-- Escape works in layers, one per press, and never closes the window under
+-- the mode -- nor the mailbox: a drag in progress is put back where it
+-- began; else an open card closes; else the mode ends. The client closes
+-- windows on Escape by hiding every shown frame named in UISpecialFrames;
+-- while the mode is open the Postbox windows' names there are swapped IN
+-- PLACE for a small frame of ours, and that frame hiding is what an Escape
+-- is heard by. In place, so no other entry shifts. A layer short of the
+-- last shows the frame again for the next Escape; the swap is undone on the
+-- way out, however the mode ends. No keyboard is taken for any of it.
 -------------------------------------------------------------
 
 AR.ESC_WINDOWS = { PostboxFrame = true, PostboxMailMemoryFrame = true }
@@ -762,9 +782,10 @@ function AR.CatchEscape(on)
     catcher:SetScript("OnHide", function(self)
       if not self.armed then return end
       self.armed = false
-      -- Hidden by the client's close-windows pass on an Escape: left a frame
-      -- later, off that path, as the window's own close is (COMBAT_TAINT.md).
-      C_Timer.After(0, function() AR.Leave() end)
+      -- Hidden by the client's close-windows pass on an Escape: answered a
+      -- frame later, off that path, as the window's own close is
+      -- (COMBAT_TAINT.md).
+      C_Timer.After(0, AR.OnEscape)
     end)
     AR._esc = catcher
   end
@@ -811,6 +832,26 @@ function AR.CatchEscape(on)
         if not present then list[#list + 1] = name end
       end
     end
+  end
+end
+
+-- One Escape, one layer.
+function AR.OnEscape()
+  if not AR.host then return end
+  if AR.Dragging() then
+    AR.CancelPress(true)
+  elseif AR._pop and AR._pop:IsShown() then
+    AR._pop:Hide()
+  else
+    AR.Leave()
+    return
+  end
+  -- The mode stays open: the catcher, whose name still stands in the
+  -- windows' places, listens for the next Escape.
+  local catcher = AR._esc
+  if catcher and AR._escTaken then
+    catcher.armed = true
+    catcher:Show()
   end
 end
 
@@ -1091,13 +1132,23 @@ function AR.PressChip(host, chip)
       if AR.host ~= host then return end
       if AR._pop then AR._pop:Hide() end
       GameTooltip:Hide()
-      AR.drag = { chip = chip, grab = x0 - (chip:GetLeft() or x0), level = chip:GetFrameLevel() }
+      AR.drag = {
+        chip = chip, grab = x0 - (chip:GetLeft() or x0), level = chip:GetFrameLevel(),
+        -- The arrangement as it was, for Escape to put back.
+        before = CopyLayout(),
+      }
       chip:SetFrameLevel(host.strip:GetFrameLevel() + 20)
       AR.LayoutStrip(host)
       AR.UpdateFocus()
     end,
     move = function(x) AR.DragChip(host, x) end,
     drop = function() AR.DropChip(host) end,
+    cancel = function()
+      local drag, ui = AR.drag, UI()
+      if drag and drag.before and ui and ui.SetRowLayout then ui.SetRowLayout(drag.before) end
+      AR.DropChip(host)
+      AR.RowsChanged(true)
+    end,
     click = function()
       if AR.host == host then AR.TogglePopover(host, chip) end
     end,

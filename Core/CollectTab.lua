@@ -6440,8 +6440,16 @@ function RV.StackPress(panel, id, card)
     start = function(_, y0) RV.StackStart(panel, id, y0) end,
     move = function(_, y) RV.StackDrag(panel, y) end,
     drop = function() RV.StackDrop(panel) end,
+    cancel = function() RV.StackCancel(panel) end,
     click = function() RV.StackClick(panel, id) end,
   })
+end
+
+-- Escape during a drag: the order as it was when the block was taken.
+function RV.StackCancel(panel)
+  local drag, UI = panel._stackDrag, ns.MailboxUI
+  if drag and drag.before and UI and type(UI.SetStackOrder) == "function" then UI.SetStackOrder(drag.before) end
+  RV.StackDrop(panel)
 end
 
 -- A click on a block: the grid's is its eye -- the tray hides the category
@@ -6921,6 +6929,8 @@ function RV.GridPress(panel, button)
       panel._gridDrag = {
         button = button, level = button:GetFrameLevel(),
         dx = x0 - (button:GetLeft() or x0), dy = y0 - (button:GetTop() or y0),
+        -- The arrangement as it was, for Escape to put back.
+        before = RV.CopyEntries(panel._gridEntries or RV.GridEntries(panel)),
       }
       button:SetFrameLevel(panel.Grid:GetFrameLevel() + 30)
       -- The button in the hand is a card in the hand: ringed in the accent,
@@ -6932,6 +6942,11 @@ function RV.GridPress(panel, button)
     end,
     move = function(x, y) RV.GridDrag(panel, x, y) end,
     drop = function() RV.GridDrop(panel) end,
+    cancel = function()
+      local drag = panel._gridDrag
+      if drag and drag.before then RV.StoreGrid(panel, drag.before) end
+      RV.GridDrop(panel)
+    end,
     click = function()
       if panel._gridArranging then RV.GridToggle(panel, id) end
     end,
