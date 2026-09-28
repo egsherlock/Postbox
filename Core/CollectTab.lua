@@ -115,7 +115,6 @@ local DIVIDER = 0
 -- A week of what Postbox collected here (Core/MailMemory.lua, 2c). Not a part
 -- of the inbox, so not in the counts' arithmetic: an icon after the three.
 local VIEW_HISTORY = "history"
-local HISTORY_ATLASES = { "auctionhouse-icon-clock", "worldquest-icon-clock" }
 -- The read mail's own segment, when the player asks for read mail in a tab of
 -- its own rather than under the divider (MailboxUI.GetReadMode "tab").
 local VIEW_DONE = "done"
@@ -1694,15 +1693,12 @@ local function BuildViewToggle(panel)
   -- which the counts and the caption sizing walk -- it has neither.
   local hist = T.CreatePlate(container, "segment")
   hist.segId = VIEW_HISTORY
-  local atlas = T.FirstAtlas(HISTORY_ATLASES)
-  if atlas then
+  -- The clock glyph at the mockup's size, made once with the plate.
+  hist.Icon = T.Glyph and T.Glyph(hist, "clock", 11, "OVERLAY") or nil
+  if hist.Icon then
     hist:SetText("")
-    hist.Icon = hist:CreateTexture(nil, "OVERLAY")
-    hist.Icon:SetAtlas(atlas, false)
-    hist.Icon:SetSize(14, 14)
     hist.Icon:SetPoint("CENTER")
     -- Chrome stays neutral: a grey glyph, like the captions beside it.
-    hist.Icon:SetDesaturated(true)
     hist.Icon:SetAlpha(0.85)
   else
     hist:SetText(L()["VIEW_HISTORY"])

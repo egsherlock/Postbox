@@ -1982,7 +1982,6 @@ end
 -------------------------------------------------------------
 
 local SEARCH_TEXT_INSET = 8
-local SEARCH_ALL_ATLASES = { "socialqueuing-icon-group", "groupfinder-icon-friend" }
 
 function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
   opts = opts or {}
@@ -2024,15 +2023,14 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
 
   -- Every character's box, or the one on screen: a group of figures, in the
   -- accent while it is on -- where the picker beside the box wears one
-  -- character's crest.
+  -- character's crest. The figures are the people glyph at its own size,
+  -- centred on the button; the button is the hit area. White art, so the
+  -- tint below is the whole colour, with nothing to desaturate.
   local all = CreateFrame("Button", nil, wrap)
   all:SetSize(14, 14)
   all:SetPoint("RIGHT", wrap, "RIGHT", -4, 0)
-  all.icon = all:CreateTexture(nil, "ARTWORK")
-  all.icon:SetAllPoints()
-  local atlas = Theme.FirstAtlas(SEARCH_ALL_ATLASES)
-  if atlas then all.icon:SetAtlas(atlas, false) end
-  all.icon:SetDesaturated(true)
+  all.icon = Theme.Glyph(all, "people", nil, "ARTWORK") or all:CreateTexture(nil, "ARTWORK")
+  all.icon:SetPoint("CENTER")
   local function Tip(self)
     if not opts.toggleTip then return end
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")

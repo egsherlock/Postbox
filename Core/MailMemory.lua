@@ -2060,7 +2060,6 @@ end
 local HEADER_Y = -28
 local HEADER_H = 22
 local SEARCH_W = 150
-local SORT_ATLASES = { "auctionhouse-ui-sortarrow", "UI-HUD-ActionBar-PageDownArrow-Up", "NPE_ArrowDown" }
 
 local Refresh
 
@@ -2164,9 +2163,15 @@ local function BuildHeader(frame)
   picker:HookScript("OnLeave", function() GameTooltip:Hide() end)
   frame.Picker = picker
 
-  -- Newest first, as the box has them, or the soonest to expire first.
-  local sort = IconPlate(frame, SORT_ATLASES, HEADER_H)
-  if not (sort.Icon.GetAtlas and sort.Icon:GetAtlas()) then sort:SetText("v") end
+  -- Newest first, as the box has them, or the soonest to expire first. The
+  -- same square plate as the picker's, wearing the sort glyph at its own
+  -- size in the middle. It does not turn with the order, as the atlas it
+  -- replaced did not: the order shows in the plate's selection (PaintSort).
+  local sort = T.CreatePlate(frame, "segment")
+  sort:SetSize(HEADER_H, HEADER_H)
+  sort:SetText("")
+  sort.Icon = T.Glyph and T.Glyph(sort, "sort", nil, "OVERLAY") or nil
+  if sort.Icon then sort.Icon:SetPoint("CENTER") else sort:SetText("v") end
   sort:SetPoint("RIGHT", picker, "LEFT", -4, 0)
   local function PaintSort()
     T.SetPlateSelected(sort, frame.sort == "expiry")
