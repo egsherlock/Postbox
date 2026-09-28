@@ -39,6 +39,9 @@ longer play.
   it wears its own Blizzard look, to match your other windows.
 - **EllesmereUI profile, Dark Mode and accent changes** reach an open mailbox
   straight away.
+- **Report a bug is a proper Postbox window.** The address and the report each
+  select with one click for Ctrl+C, and it holds a Performance recording switch,
+  off by default, for when a mailbox feels slow.
 - **Lighter on your game.** The mail list, History, Mail Memory and the Send
   tab do far less work and leave a fraction of the memory garbage, so there is
   less for the game to clean up while your inbox fills.
