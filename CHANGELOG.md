@@ -54,6 +54,15 @@ longer play.
 
 ### Improved
 
+- **Full bags stop a collection cleanly.** The title says how many mails are
+  left ("Bags full: 6 left"), nothing is marked stuck, and as soon as you free
+  a slot the line clears and All mail counts those mails again. All mail's
+  tooltip shows how many items it would collect against your free bag slots,
+  in orange when they will not all fit.
+- **Stuck means one mail's own problem**, such as a unique item you already
+  carry. It counts mails, never items, and two identical mails count as two.
+  The collect buttons leave a stuck mail to a click on its row, so a run does
+  not keep meeting the same one.
 - **Gold stands under gold.** Each figure keeps its own column down the
   list, in the Mail tab, History and Mail Memory, and a subject runs on only
   through columns its mail leaves empty. For the old close-packed rows, turn
@@ -92,6 +101,9 @@ longer play.
 
 ### Fixed
 
+- Free space in the reagent bag no longer counts as room for everything
+  else, so full bags stop a collection instead of leaving each remaining mail
+  marked as stuck.
 - **A C.O.D. mail with several items comes out whole.** After you confirm
   the payment, every item is collected in one go; before, only the first
   came out and the rest waited in the mail for another click.
