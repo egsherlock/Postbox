@@ -1053,6 +1053,15 @@ function AR.StripNeed(host)
   if not strip then return 0 end
   local total = 0
   local n = 0
+  -- Each chip as the arrangement has it now: a hidden column's is wider by
+  -- its eye.
+  local layout = AR.Layout()
+  if layout then
+    for i = 1, #layout do
+      local chip = strip.chips[layout[i].id]
+      if chip then chip.hidden = not layout[i].shown end
+    end
+  end
   for _, chip in pairs(strip.chips) do
     total = total + Natural(chip)
     n = n + 1
