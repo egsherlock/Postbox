@@ -26,6 +26,8 @@ longer play.
   kept (full name on hover).
 - **Right-click the character picker, or the other character's name,** to go
   back to your own mailbox.
+- **The Recipients window resizes like the Postbox window:** drag its corner,
+  or right-click the corner for the default size.
 - **Reset to defaults**, at the foot of the options, puts every setting and
   window back the way Postbox ships, after asking. Your recipients, groups,
   Mail Memory and History are kept.
