@@ -6451,20 +6451,18 @@ end
 
 -- The tooltip a sweep says: a group's own, the two sweeps whose names do
 -- not say exactly what they cover, or the whole of a cut caption; All mail
--- adds the bag room its sweep needs (RV.AllMailRoom). In the
--- arrange mode every button says what a drag and a click do there, and
--- nothing about a right-click, which does nothing there.
+-- adds the bag room its sweep needs (RV.AllMailRoom). In the arrange mode
+-- the pointer never reaches a button: each wears a card that takes it and
+-- says the mode's own (RV.HandleTip), and the primary is under the All mail
+-- block's card.
 function RV.GridTip(panel, button)
-  local arranging = panel._gridArranging
   local spec = panel._gridSpecs[button.gridId]
   local plain = not (spec and type(spec.tooltip) == "function") and not button.tip
     and button.gridId ~= "all"
-  if plain and not button.__pbOverflowText and not arranging then return end
-  -- While arranging, clear of the inspector beside the window.
-  local A = ns.Arrange
-  if arranging and A and A.TipOwner then A.TipOwner(button, "ANCHOR_RIGHT") else GameTooltip:SetOwner(button, "ANCHOR_RIGHT") end
+  if plain and not button.__pbOverflowText then return end
+  GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
   GameTooltip:ClearLines()
-  if spec and type(spec.tooltip) == "function" and not arranging then
+  if spec and type(spec.tooltip) == "function" then
     local ok = pcall(spec.tooltip, GameTooltip)
     if not ok then GameTooltip:SetText(button.caption or "") end
   elseif button.tip then
@@ -6472,7 +6470,7 @@ function RV.GridTip(panel, button)
     GameTooltip:AddLine(button.tip, 1, 1, 1, true)
     -- From alts says it can be split into the player's own groups.
     local groups = ns.CharacterGroups
-    if button.gridId == "alts" and not arranging and groups and type(groups.AltsTooltip) == "function" then
+    if button.gridId == "alts" and groups and type(groups.AltsTooltip) == "function" then
       pcall(groups.AltsTooltip, GameTooltip)
     end
   elseif button.__pbOverflowText then
@@ -6480,12 +6478,7 @@ function RV.GridTip(panel, button)
   else
     GameTooltip:SetText(button.caption or "")
   end
-  if button.gridId == "all" and not arranging then RV.AllMailRoom(panel, GameTooltip) end
-  -- The primary is under the All mail block's card while arranging, which
-  -- says its own.
-  if arranging and button ~= panel._gridButtons[1] then
-    GameTooltip:AddLine(L()["GRID_ARRANGE_TIP"], 0.7, 0.7, 0.7, true)
-  end
+  if button.gridId == "all" then RV.AllMailRoom(panel, GameTooltip) end
   GameTooltip:Show()
 end
 
