@@ -1499,7 +1499,8 @@ end
 -- trailing inset: the delete mark on a read mail, with the small gap before
 -- it; on a one-line row (`compact`) the smaller one. The stuck mark takes
 -- the read mark's place (RV.PaintDot) and needs none. Every other number
--- the rows and the arrange mode's header read for it comes from here.
+-- the rows read for it comes from here. It belongs to no column: in the
+-- arrange mode the last column's box runs on to the row's edge under it.
 function RV.MarkRoom(compact, delete)
   if not delete then return 0 end
   return (compact and ROW_DELETE_COMPACT or ROW_DELETE) + Th().Metrics.tightGap
@@ -1633,12 +1634,17 @@ end
 --
 -- While a one-line row is lined up, each column's lane is published into
 -- the spec as it is placed, in units from the row's left edge: s.laneX[id],
--- s.laneW[id], for every column this list has. The subject's is its own
--- room, before it runs on; a column with no room is 0 wide where it would
--- stand. One row's lanes are its whole list's, but for a row whose trailing
--- marks take more room (a read mail's delete mark, under the divider): a
--- binder whose rows differ so sets s.publish before each pass, and only the
--- first row placed -- the top of the list as it stands -- publishes. Closed
+-- s.laneW[id], for every column this list has. A lane is what the column
+-- draws in -- its content -- and nothing more: the arrange mode's column
+-- boxes are drawn from the lanes by one rule of its own (Core/Arrange.lua,
+-- AR.CellBox), which gives the row's edge insets to the columns at its
+-- ends. The subject's is its own room, before it runs on; a column with no
+-- room is 0 wide where it would stand. One row's lanes are its whole
+-- list's, but for a row whose trailing marks take more room (a read mail's
+-- delete mark, under the divider), whose columns after the subject stand
+-- that much further in: a binder whose rows differ so sets s.publish before
+-- each pass, and only the first row placed -- the top of the list as it
+-- stands -- publishes, with its trailing room (s.laneTrail). Closed
 -- up, a row's figures are its own and nothing is published, but for the
 -- arrange mode: while it is open the header still stands on each column's
 -- home lane, where a row with every figure has it, and the row publishes
@@ -1647,9 +1653,7 @@ end
 -- `s` (RV.NewSpec, reused):
 --   width, left, trail, gap   the row's width; where its first column may
 --                             start; what its trailing inset and marks
---                             take; the step
---   marks                     the marks' part of `trail` (RV.MarkRoom; nil:
---                             none)
+--                             (RV.MarkRoom) take; the step
 --   lead                      where the arrangement's room begins on the row
 --                             (nil: its left edge; History's age stands
 --                             before it)
@@ -1675,8 +1679,8 @@ end
 --   detailText                the second line
 --   focus                     the column the arrange mode points at
 --   laneX[id], laneW[id]      written here: each column's lane (above)
---   laneEnd                   written with them: where the room kept for
---                             the marks begins
+--   laneTrail                 written with them: the `trail` of the row
+--                             they are from
 --   publish                   true: the next row placed publishes, the rest
 --                             of the pass not; nil: every row does
 function RV.Place(row, s)
@@ -1694,7 +1698,7 @@ function RV.Place(row, s)
       laneX, laneW = {}, {}
       s.laneX, s.laneW = laneX, laneW
     end
-    s.laneEnd = s.width - (s.marks or 0)
+    s.laneTrail = s.trail
   end
   local n = #layout
   local at = n
@@ -1978,7 +1982,7 @@ function RV.Place(row, s)
 end
 
 -- Each column's home lane, published into `s` as RV.Place publishes a
--- lined-up row's (s.laneX, s.laneW, s.laneEnd): where it stands on a row
+-- lined-up row's (s.laneX, s.laneW, s.laneTrail): where it stands on a row
 -- that has every figure, which a closed-up row places the same way. By the
 -- same arithmetic as RV.Place, from the room the row was given (`at` the
 -- subject's place in `layout`, `textWidth` and `room` its text area and the
@@ -1992,7 +1996,7 @@ function RV.HomeLanes(s, layout, at, textWidth, room)
     laneX, laneW = {}, {}
     s.laneX, s.laneW = laneX, laneW
   end
-  s.laneEnd = s.width - (s.marks or 0)
+  s.laneTrail = s.trail
   local n = #layout
   local least = RV.FIGURE_MIN
   local used = 0
@@ -3746,7 +3750,6 @@ local function BindRow(panel, row, index, position, compact, done)
   spec.size.icon = compact and ROW_ICON_COMPACT or ROW_ICON
   spec.width = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
   spec.left, spec.trail, spec.gap = M.inset, trailing, M.gap
-  spec.marks = trailing - M.inset
   spec.cols = cols
   spec.senderCol = ((cols.sender or 0) > 0) and cols.sender or SENDER_MIN
   spec.share, spec.reserve = COMPACT_META_SHARE, false
