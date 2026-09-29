@@ -3672,7 +3672,7 @@ local function BindRow(panel, row, index, position, compact, done)
   -- over the end of the last column's box, and its own text stopping short
   -- of it (markEnd).
   local markRoom = RV.MarkRoom(compact, showDelete)
-  local trailing = M.inset + ((compact and RV.LinedUp()) and (panel._markReserve or 0) or markRoom)
+  local trailing = M.inset + (compact and panel._markReserve or markRoom)
   local cols = panel._cols
 
   -- A partially collected auction stack must not keep advertising the quantity
@@ -4227,10 +4227,11 @@ local function UpdateVisibleRows(panel)
   if divider then divider:Hide() end
   -- The list's lanes are its first row's (RV.Place): in columns every
   -- one-line row keeps the same room for the delete mark a read mail draws
-  -- over its last column (RV.MarkReserve), from what the list's walk found.
+  -- over its last column (RV.MarkReserve), from what the list's walk found;
+  -- false while they are packed, each row keeping its own mark's room.
   panel._rowSpec.publish = true
   panel._markReserve = (compact and not historyView and not away and RV.LinedUp())
-    and RV.MarkReserve(RV.Layout(), panel._cols, panel._markHas, panel._markAny, true) or 0
+    and RV.MarkReserve(RV.Layout(), panel._cols, panel._markHas, panel._markAny, true) or false
   for i = first, last do
     if filtered[i] == DIVIDER then
       -- One compact row in either row size, at the FOOT of its slot: that is
