@@ -1281,7 +1281,7 @@ local function BuildRow(parent)
     if entry.note then GameTooltip:AddLine("\"" .. entry.note .. "\"", 0.83, 0.64, 0.29, true) end
     if entry.stale then GameTooltip:AddLine(L["RM_TIP_STALE"], 1, 0.6, 0.25, true) end
     -- The same gesture, said the same way, as the Send tab's contact picker.
-    GameTooltip:AddLine(L["RM_TIP_ROW_FAV"], 0.5, 0.5, 0.5, true)
+    GameTooltip:AddLine(L["RM_TIP_ROW_FAV"], 0.7, 0.7, 0.7, true)
     GameTooltip:Show()
   end)
   row:SetScript("OnLeave", function() GameTooltip:Hide() end)

@@ -1260,15 +1260,16 @@ end
 
 local function RightClickText() return KEY_BUTTON2 or "Right Click" end
 
--- "Right Click: Favourites"
+-- "Right Click: Favourites" -- the fallback built only where the key is
+-- missing, not on every hover.
 local function FavHintText()
-  return Localized("CONTACT_FAV_HINT", RightClickText() .. ": " .. L["CONTACT_FAVORITES"])
+  return Localized("CONTACT_FAV_HINT") or (RightClickText() .. ": " .. L["CONTACT_FAVORITES"])
 end
 
--- "Shift + Right Click: Hide"
-local function HideHintText()
-  return Localized("CONTACT_HIDE_HINT",
-    (SHIFT_KEY_TEXT or "Shift") .. " + " .. RightClickText() .. ": " .. (HIDE or "Hide"))
+-- A name's two gestures, favourite and hide, in one grey line of the arrange
+-- mode's gesture form.
+local function RowHintText()
+  return Localized("CONTACT_ROW_TIP") or FavHintText()
 end
 
 -------------------------------------------------------------
@@ -1686,8 +1687,7 @@ local function RowEnter(self)
   Theme.StyleMailRow(self, self._position or 0, true)
   GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
   GameTooltip:SetText(self.address or "", 1, 1, 1)
-  GameTooltip:AddLine(FavHintText(), 0.75, 0.75, 0.75, true)
-  GameTooltip:AddLine(HideHintText(), 0.75, 0.75, 0.75, true)
+  GameTooltip:AddLine(RowHintText(), 0.7, 0.7, 0.7, true)
   GameTooltip:Show()
 end
 
@@ -2807,8 +2807,7 @@ local function SuggestionEnter(self)
   if not self.value then return end
   GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
   GameTooltip:SetText(self.value, 1, 1, 1)
-  GameTooltip:AddLine(FavHintText(), 0.75, 0.75, 0.75, true)
-  GameTooltip:AddLine(HideHintText(), 0.75, 0.75, 0.75, true)
+  GameTooltip:AddLine(RowHintText(), 0.7, 0.7, 0.7, true)
   GameTooltip:Show()
 end
 
@@ -5155,11 +5154,11 @@ local function BuildContactBar(panel)
       GameTooltip:AddLine(L("CONTACT_FAV_COUNT", count), 1, 1, 1)
       GameTooltip:AddLine(L["CONTACT_FAV_OPEN"], 0.75, 0.75, 0.75, true)
     else
-      -- Says what the empty state is, then how to leave it. Both are needed:
-      -- "no favourites" alone is a dead end.
+      -- Says what the empty state is, then how to leave it -- both ways, the
+      -- name's right-click and the manager's star, in one line. Both are
+      -- needed: "no favourites" alone is a dead end.
       GameTooltip:AddLine(L["CONTACT_FAV_NONE"], 1, 1, 1)
       GameTooltip:AddLine(FavHintText(), 0.75, 0.75, 0.75, true)
-      GameTooltip:AddLine(L["CONTACT_FAV_MANAGER_HINT"], 0.75, 0.75, 0.75, true)
     end
     GameTooltip:Show()
   end)
@@ -5240,7 +5239,7 @@ function ST.RefreshQueueStrip(panel)
           GameTooltip:AddLine(" ")
           GameTooltip:AddLine(L["QUEUE_TIP_TITLE"], 0.75, 0.75, 0.75)
           if entry.asks then GameTooltip:AddLine(L["QUEUE_STRIP_TIP_ASKS"], 1, 0.82, 0, true) end
-          GameTooltip:AddLine(L["QUEUE_STRIP_TIP_REMOVE"], 0.75, 0.75, 0.75, true)
+          GameTooltip:AddLine(L["QUEUE_STRIP_TIP_REMOVE"], 0.7, 0.7, 0.7, true)
           GameTooltip:Show()
         end)
         icon:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -5296,8 +5295,7 @@ local function BuildAttachmentArea(panel)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetText(L["LABEL_ATTACHMENTS"])
     GameTooltip:AddLine(L["ATTACH_TIP_HOW"], 1, 1, 1, true)
-    GameTooltip:AddLine(" ")
-    GameTooltip:AddLine(L["ATTACH_TIP_CLEAR"], 0.75, 0.75, 0.75, true)
+    GameTooltip:AddLine(L["ATTACH_TIP_CLEAR"], 0.7, 0.7, 0.7, true)
     GameTooltip:Show()
   end)
   panel.AttachHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -5367,9 +5365,14 @@ local function BuildAttachmentArea(panel)
     end
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine(L["QUEUE_TIP_HOW"], 0.75, 0.75, 0.75, true)
-    GameTooltip:AddLine(L["QUEUE_TIP_ASK"], 0.75, 0.75, 0.75, true)
-    GameTooltip:AddLine(" ")
-    GameTooltip:AddLine(L["QUEUE_TIP_CLEAR"], 0.75, 0.75, 0.75, true)
+    -- The questions to come are explained only when one will come.
+    for i = 1, #queue do
+      if queue[i].asks then
+        GameTooltip:AddLine(L["QUEUE_TIP_ASK"], 0.75, 0.75, 0.75, true)
+        break
+      end
+    end
+    GameTooltip:AddLine(L["QUEUE_TIP_CLEAR"], 0.7, 0.7, 0.7, true)
     GameTooltip:Show()
   end)
   queueButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
