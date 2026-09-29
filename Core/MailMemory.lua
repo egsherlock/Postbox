@@ -786,7 +786,8 @@ end
 -------------------------------------------------------------
 
 -- Kept as long as the player chose (Options, Mail tab: 7 days by default, up
--- to 30), and never more than HISTORY_CAP entries however busy the box: the
+-- to 30, or "Never", which records nothing and prunes everything away), and
+-- never more than HISTORY_CAP entries however busy the box: the
 -- record is saved per character, and a month of a busy auction goblin's mail
 -- must not become megabytes of saved variables.
 local HISTORY_CAP = 1000
@@ -839,8 +840,11 @@ local function HistoryList(create)
 end
 
 local function PruneHistory(list, now)
-  local cutoff = now - HistoryKeep()
+  local keep = HistoryKeep()
+  local cutoff = now - keep
   local drop = 0
+  -- "Never": History is off, and nothing it held stays.
+  if keep <= 0 then drop = #list end
   while list[drop + 1] and ((tonumber(list[drop + 1].t) or 0) < cutoff or #list - drop > HISTORY_CAP) do
     drop = drop + 1
   end
@@ -854,7 +858,8 @@ end
 -- otherwise pruned only when its own character reads or writes it, so an alt
 -- not played for months kept all it had -- and a lower "Keep History" never
 -- reached it. Once per login; each list is in date order, so this touches
--- only what goes. A list left empty is dropped.
+-- only what goes. A list left empty is dropped, so "Never" leaves no
+-- character's record behind.
 local function PruneAllHistory()
   local root = ns.Store and ns.Store.Get and ns.Store.Get("mailHistory")
   if type(root) ~= "table" then return end
@@ -905,7 +910,8 @@ end
 -- copper, or "item", a link and a count. The first take of a C.O.D. mail is
 -- the one that paid the price.
 function MM.HistoryTook(ctx, what, value, count)
-  if not ctx then return end
+  -- "Never": History is off, and nothing is recorded.
+  if not ctx or HistoryKeep() <= 0 then return end
   local list = HistoryList(true)
   if not list then return end
   local entry = ctx.entry

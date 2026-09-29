@@ -341,9 +341,10 @@ local function ApplyResetLive()
   ResetStep(UI.RefreshMemoryState)
   local panel, collect = CollectPanel(), ns.CollectTab
   if panel and collect then
-    -- Read mail back under its divider, unfolded, and History's days.
+    -- Read mail back under its divider, unfolded, and History's days --
+    -- its view back in the row, if it was off.
     ResetStep(collect.RefreshReadMode, panel)
-    ResetStep(collect.RequestRefresh, panel)
+    ResetStep(collect.RefreshHistoryDays, panel)
   end
   -- The window's size and place last, onto the floor the settings above
   -- have just decided.
@@ -664,8 +665,10 @@ function UI.SetReadMode(mode)
   if panel and collect and collect.RefreshReadMode then collect.RefreshReadMode(panel) end
 end
 
--- How many days History keeps: 7 by default, up to 30.
-local HISTORY_DAYS = { [7] = true, [14] = true, [21] = true, [30] = true }
+-- How many days History keeps: 7 by default, up to 30. 0 is "Never", which
+-- turns History off: nothing is recorded, the pruning keeps nothing, and its
+-- view leaves the Mail tab (Core/MailMemory.lua 2c, CT.RefreshHistoryDays).
+local HISTORY_DAYS = { [0] = true, [7] = true, [14] = true, [21] = true, [30] = true }
 function UI.GetHistoryDays()
   local stored = tonumber(ns.Store and ns.Store.Get and ns.Store.Get("profile.historyDays"))
   return (stored and HISTORY_DAYS[stored]) and stored or 7
@@ -676,7 +679,7 @@ function UI.SetHistoryDays(days)
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if profile then profile.historyDays = tostring(days) end
   local panel, collect = CollectPanel(), ns.CollectTab
-  if panel and collect and collect.RequestRefresh then collect.RequestRefresh(panel) end
+  if panel and collect and collect.RefreshHistoryDays then collect.RefreshHistoryDays(panel) end
 end
 
 -- Performance recording for the bug report (Postbox.lua, 5b): "off" (the

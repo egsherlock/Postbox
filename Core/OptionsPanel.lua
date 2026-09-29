@@ -2512,8 +2512,8 @@ function Pages.mail(col)
     get = function() return ns.MailboxUI.GetReadMode and ns.MailboxUI.GetReadMode() or "fold" end,
     set = function(id) if ns.MailboxUI.SetReadMode then ns.MailboxUI.SetReadMode(id) end end,
   })
-  -- How far back History goes.
-  local dayItems = {}
+  -- How far back History goes, or Never, which turns it off (stored as 0).
+  local dayItems = { { id = 0, name = L["OPT_HISTORY_NEVER"] } }
   for _, days in ipairs({ 7, 14, 21, 30 }) do
     dayItems[#dayItems + 1] = { id = days, name = ns.Plural("OPT_HISTORY_DAYS", days) }
   end

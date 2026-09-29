@@ -2475,6 +2475,13 @@ local function VisibleSegments(container, other)
   return shown
 end
 
+-- History is offered unless the player chose "Never" (Options, Mail tab),
+-- which turns it off.
+function RV.HistoryOn()
+  local UI = ns.MailboxUI
+  return not (UI and type(UI.GetHistoryDays) == "function") or UI.GetHistoryDays() > 0
+end
+
 local function LayoutViewToggle(panel)
   local container = panel.ViewToggle
   if not container or not container.buttons then return end
@@ -2502,11 +2509,13 @@ local function LayoutViewToggle(panel)
     seg:SetPoint("LEFT", container, "LEFT", (i - 1) * (per + gap), 0)
   end
   -- The history plate: square when it wears the icon, its caption's width
-  -- when it fell back to text.
+  -- when it fell back to text. Out of the row, which closes up without it,
+  -- while History is off.
   local hist = container.history
   if hist then
-    hist:SetShown(not other)
-    if not other then
+    local histShown = not other and RV.HistoryOn()
+    hist:SetShown(histShown)
+    if histShown then
       local width = hist.Icon and T.Metrics.segmentHeight + 6
         or ceil(T.TextWidth(hist)) + 2 * T.Metrics.tightGap + 8
       hist:SetSize(width, T.Metrics.segmentHeight)
@@ -2576,6 +2585,20 @@ function CT.RefreshReadMode(panel)
   end
   CT.UpdateTabCounts(panel)
   RequestRefresh(panel)
+end
+
+-- Frozen: Core/MailboxUI.lua calls this when History's days change. The
+-- row is laid out again, since at "Never" History's plate leaves it (and
+-- comes back after); a view that is not offered cannot be the one on
+-- screen, so History falls back to the inbox, which lists itself.
+function CT.RefreshHistoryDays(panel)
+  if not panel or not panel.ViewToggle then return end
+  LayoutViewToggle(panel)
+  if panel.viewMode == VIEW_HISTORY and not RV.HistoryOn() then
+    SetViewMode(panel, VIEW_COLLECT)
+  else
+    RequestRefresh(panel)
+  end
 end
 
 -------------------------------------------------------------
