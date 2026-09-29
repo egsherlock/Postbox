@@ -2358,7 +2358,7 @@ local function Build()
   if grip then
     -- The right-click cannot be discovered by looking, so the hint says both
     -- gestures, in the Postbox window's words. Built once, not on every hover.
-    local hint = { L["GRIP_TIP"] }
+    local hint = { L["GRIP_TIP_DRAG"], L["GRIP_TIP_RESET"] }
     grip:HookScript("OnEnter", function(self) Theme.ShowHint(self, hint) end)
     grip:HookScript("OnLeave", function() Theme.HideHint() end)
     -- Gone the moment the grip is pressed: a drag moves the window from under it.

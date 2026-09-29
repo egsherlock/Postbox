@@ -2616,7 +2616,7 @@ local function Build()
   end)
   if grip then
     -- Built once, not on every hover.
-    local gripHint = { L["GRIP_TIP"] }
+    local gripHint = { L["GRIP_TIP_DRAG"], L["GRIP_TIP_RESET"] }
     grip:HookScript("OnEnter", function(self)
       ns.Theme.ShowHint(self, gripHint)
     end)

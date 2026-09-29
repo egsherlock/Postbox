@@ -179,7 +179,8 @@ L["STATUS_PARTIAL"]            = "Stuck: %d"
 -- Shaped like the other status lines -- word, colon, number -- and deliberately
 -- number-invariant in every locale, so it needs no plural family.
 L["STATUS_STUCK"]              = "Stuck: %d"
-L["GRIP_TIP"]                  = "Drag to resize · Right-click to reset"
+L["GRIP_TIP_DRAG"]             = "Drag to resize"
+L["GRIP_TIP_RESET"]            = "Right-click to reset"
 L["GRID_TOGGLE_TITLE"]         = "Dock beside game windows"
 -- Every option description below leads with ONE short sentence saying what the
 -- option does, then a blank line, then the detail (ns.Summary, above). The
@@ -913,7 +914,8 @@ if GetLocale() == "frFR" then
   L["STATUS_INCOMPLETE"]         = "Incomplet: %d restant(s)"
   L["STATUS_PARTIAL"]            = "Bloques: %d"
   L["STATUS_STUCK"]              = "Bloques: %d"
-  L["GRIP_TIP"]                  = "Glisser pour redimensionner · Clic droit pour reinitialiser"
+  L["GRIP_TIP_DRAG"]             = "Glisser pour redimensionner"
+  L["GRIP_TIP_RESET"]            = "Clic droit pour reinitialiser"
 
   -- Noms de categorie : bouton groupe ET etiquette sur une ligne de courrier.
   L["CAT_ALL"]                   = "Tous les courriers"
@@ -1536,7 +1538,8 @@ if GetLocale() == "deDE" then
   L["STATUS_INCOMPLETE"]         = "Unvollstaendig: %d uebrig"
   L["STATUS_PARTIAL"]            = "Steckt fest: %d"
   L["STATUS_STUCK"]              = "Steckt fest: %d"
-  L["GRIP_TIP"]                  = "Ziehen zum Aendern der Groesse · Rechtsklick zum Zuruecksetzen"
+  L["GRIP_TIP_DRAG"]             = "Ziehen zum Aendern der Groesse"
+  L["GRIP_TIP_RESET"]            = "Rechtsklick zum Zuruecksetzen"
 
   -- Kategorienamen: Sammelknopf UND Etikett auf einer einzelnen Postzeile.
   L["CAT_ALL"]                   = "Alle Post"
@@ -2159,7 +2162,8 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["STATUS_INCOMPLETE"]         = "Incompleto: quedan %d"
   L["STATUS_PARTIAL"]            = "Atascados: %d"
   L["STATUS_STUCK"]              = "Atascados: %d"
-  L["GRIP_TIP"]                  = "Arrastra para redimensionar · Clic derecho para restablecer"
+  L["GRIP_TIP_DRAG"]             = "Arrastra para redimensionar"
+  L["GRIP_TIP_RESET"]            = "Clic derecho para restablecer"
 
   -- Nombres de categoria: boton en bloque Y etiqueta en la fila de un correo.
   L["CAT_ALL"]                   = "Todo el correo"
@@ -2783,7 +2787,8 @@ L["STATUS_STOPPED"]            = "Прервано: ящик закрылся"
 L["STATUS_INCOMPLETE"]         = "Не завершено: осталось %d"
 L["STATUS_PARTIAL"]            = "Застряло: %d"
 L["STATUS_STUCK"]              = "Застряло: %d"
-L["GRIP_TIP"]                  = "Перетаскивание — размер · ПКМ — сброс"
+L["GRIP_TIP_DRAG"]             = "Перетаскивание — размер"
+L["GRIP_TIP_RESET"]            = "ПКМ — сброс"
 
 -- Названия категорий: и кнопка массового сбора, и метка на строке письма.
 L["CAT_ALL"]                   = "Вся почта"
@@ -3435,7 +3440,8 @@ if GetLocale() == "zhCN" then
   L["STATUS_INCOMPLETE"]       = "未完成：剩余 %d"
   L["STATUS_PARTIAL"]          = "卡住：%d"
   L["STATUS_STUCK"]            = "卡住：%d"
-  L["GRIP_TIP"]                = "拖动调整大小 · 右键重置"
+  L["GRIP_TIP_DRAG"]           = "拖动调整大小"
+  L["GRIP_TIP_RESET"]          = "右键重置"
   L["GRID_TOGGLE_TITLE"]       = "停靠在游戏窗口旁"
   L["GRID_TOGGLE_DESC"]        = "Postbox 在游戏其他窗口旁有自己的位置，其他窗口会为它让出空间。\n\n拖走后，下次打开邮箱时它会回到那里。关闭后，它会停留在你放置的位置。"
   L["OPTIONS_TITLE"]           = "Postbox 选项"
@@ -4033,7 +4039,8 @@ if GetLocale() == "zhTW" then
   L["STATUS_INCOMPLETE"]       = "未完成：剩餘 %d"
   L["STATUS_PARTIAL"]          = "卡住：%d"
   L["STATUS_STUCK"]            = "卡住：%d"
-  L["GRIP_TIP"]                = "拖曳調整大小 · 右鍵重設"
+  L["GRIP_TIP_DRAG"]           = "拖曳調整大小"
+  L["GRIP_TIP_RESET"]          = "右鍵重設"
   L["GRID_TOGGLE_TITLE"]       = "停靠在遊戲視窗旁"
   L["GRID_TOGGLE_DESC"]        = "Postbox 在遊戲其他視窗旁有自己的位置，其他視窗會為它讓出空間。\n\n拖走後，下次開啟信箱時它會回到那裡。關閉後，它會停留在你放置的位置。"
   L["OPTIONS_TITLE"]           = "Postbox 選項"
