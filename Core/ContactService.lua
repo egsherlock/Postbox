@@ -1058,56 +1058,217 @@ end
 -- Public API
 -------------------------------------------------------------
 
--- Class token -> the client's colour for it. Two tables answer this and they
--- do not agree about which builds have them, so ask the modern one first and
--- keep RAID_CLASS_COLORS as the answer for anything it does not know.
+-- Class token -> the colour the player's UI gives it.
 --
 -- The one copy in the addon: the address book, the character groups, Mail
--- Memory's names and the mail rows all colour through here. Asked of the
--- client once per class: C_ClassColor hands back a new colour object on every
--- call, and a row bind asks once per row. Bounded by the class tokens there
--- are (false: the client has no colour for that token).
+-- Memory's names and the mail rows all colour through here. Where the player's
+-- UI keeps class colours of its own, those are the ones every other name on
+-- their screen wears, so a name here wears them too:
+--
+--   EllesmereUI  EllesmereUI.GetClassColor(token): the player's own class
+--                colours with its Class Color Darken already applied, the call
+--                its own name plates, friends list and meters colour names by.
+--                A plain {r, g, b}; a class it does not know answers its white
+--                sentinel (_COLOR_WHITE), which is no answer.
+--   CUSTOM_CLASS_COLORS  the shared table class colour addons publish
+--                (!ClassColors and its kind, and ElvUI's own custom class
+--                colours, which it publishes here rather than anywhere of its
+--                own). token -> {r, g, b, ...}.
+--   the client   C_ClassColor first, RAID_CLASS_COLORS for anything it does
+--                not know: the two do not agree about which builds have them.
+--
+-- Each class is asked once and kept (false: no colour for that token, which
+-- is also what keeps a stray token from being asked again); the client hands
+-- back a new colour object on every call, and a row bind asks once per row.
+-- Bounded by the class tokens there are. A kept entry is {r, g, b, wrap, hex}:
+-- `wrap` the client's colour object where the client answered (its own
+-- WrapTextInColorCode, so a name wrapped in a Blizzard colour reads exactly as
+-- it always has), `hex` the "|cffrrggbb" escape where a host did.
+--
+-- When a host's palette moves, the kept answers are read again, and only if
+-- one changed are the names on screen repainted -- once, on the next frame
+-- (see the palette watch below).
 local classColours = {}
+local ClassColour
 
-local function ClassColour(token)
-  if type(token) ~= "string" or token == "" then return nil end
-  local known = classColours[token]
-  if known ~= nil then return known or nil end
-  local colour
-  if C_ClassColor and type(C_ClassColor.GetClassColor) == "function" then
-    local ok, value = pcall(C_ClassColor.GetClassColor, token)
-    if ok and type(value) == "table" then colour = value end
+do
+  -- Font strings wearing a class colour, fs -> token: what a palette change
+  -- repaints. Weak, so a string nobody holds is never kept alive by it.
+  local classTexts = setmetatable({}, { __mode = "k" })
+  -- A host's palette signalled a change (or may have changed unseen) and the
+  -- kept answers have not been read again since.
+  local paletteStale = false
+  local revalidateQueued = false
+  -- A host answered some class: what the mailbox-open look-again checks.
+  local hostAnswered = false
+  local watched = false
+
+  local function Index(t, k) return t[k] end
+
+  -- token -> r, g, b from the player's UI, or nil where it keeps no colour of
+  -- its own for that class. Never builds anything: both hosts hand back tables
+  -- they keep.
+  local function HostColour(token)
+    local eui = _G.EllesmereUI
+    if type(eui) == "table" and type(eui.GetClassColor) == "function" then
+      local ok, c = pcall(eui.GetClassColor, token)
+      if ok and type(c) == "table" and c ~= eui._COLOR_WHITE then
+        local r, g, b = c.r, c.g, c.b
+        if type(r) == "number" and type(g) == "number" and type(b) == "number" then return r, g, b end
+      end
+    end
+    local custom = _G.CUSTOM_CLASS_COLORS
+    if type(custom) == "table" then
+      local ok, c = pcall(Index, custom, token)
+      if ok and type(c) == "table" then
+        local r, g, b = c.r, c.g, c.b
+        if type(r) == "number" and type(g) == "number" and type(b) == "number" then return r, g, b end
+      end
+    end
+    return nil
   end
-  if not colour and type(RAID_CLASS_COLORS) == "table" and type(RAID_CLASS_COLORS[token]) == "table" then
-    colour = RAID_CLASS_COLORS[token]
+
+  local function ClientColour(token)
+    if C_ClassColor and type(C_ClassColor.GetClassColor) == "function" then
+      local ok, value = pcall(C_ClassColor.GetClassColor, token)
+      if ok and type(value) == "table" then return value end
+    end
+    if type(RAID_CLASS_COLORS) == "table" and type(RAID_CLASS_COLORS[token]) == "table" then
+      return RAID_CLASS_COLORS[token]
+    end
+    return nil
   end
-  classColours[token] = colour or false
-  return colour
+
+  -- entry, token -> nil where nothing has a colour for the class, else whether
+  -- the colour moved. Written in place, so a look-again builds nothing unless
+  -- a host's colour actually changed (the new escape).
+  local function Fill(entry, token)
+    local r, g, b = HostColour(token)
+    local wrap = false
+    if r then
+      hostAnswered = true
+    else
+      local colour = ClientColour(token)
+      if not colour then return nil end
+      r, g, b = colour.r or 1, colour.g or 1, colour.b or 1
+      if type(colour.WrapTextInColorCode) == "function" then wrap = colour end
+    end
+    local moved = entry.r ~= r or entry.g ~= g or entry.b ~= b
+    entry.r, entry.g, entry.b, entry.wrap, entry.moved = r, g, b, wrap, moved
+    if not wrap and (moved or not entry.hex) then
+      -- Clamped: a byte out of range would break the escape, and with it the
+      -- rest of the line.
+      local floor, max, min = math.floor, math.max, math.min
+      entry.hex = string.format("|cff%02x%02x%02x", floor(max(0, min(1, r)) * 255 + 0.5),
+        floor(max(0, min(1, g)) * 255 + 0.5), floor(max(0, min(1, b)) * 255 + 0.5))
+    end
+    return moved
+  end
+
+  -- The kept answers read again; the strings wearing a class whose colour
+  -- moved repainted, and no others. One pass however many signals arrived
+  -- since the last.
+  local function Revalidate()
+    revalidateQueued = false
+    if not paletteStale then return end
+    paletteStale = false
+    local moved = false
+    for token, entry in pairs(classColours) do
+      if entry and Fill(entry, token) then moved = true end
+    end
+    if not moved then return end
+    local T = ns.Theme
+    if not (T and T.SetTextRGB) then return end
+    for fs, token in pairs(classTexts) do
+      local entry = classColours[token]
+      if entry and entry.moved then T.SetTextRGB(fs, entry.r, entry.g, entry.b) end
+    end
+  end
+
+  -- A host's palette moved. Called from inside the host's own code, so it only
+  -- raises a flag and, when a name on screen wears a class colour, asks for
+  -- the one look-again on the next frame (a colour picker being dragged
+  -- signals every tick). With nothing coloured, the next ask looks again.
+  local function PaletteMoved()
+    paletteStale = true
+    if revalidateQueued or next(classTexts) == nil then return end
+    revalidateQueued = true
+    local ok = C_Timer and type(C_Timer.After) == "function" and pcall(C_Timer.After, 0, Revalidate)
+    if not ok then revalidateQueued = false end
+  end
+
+  -- Hooked once, the first time a colour is asked for, by when every addon
+  -- has loaded. EllesmereUI.InvalidateColorCache is the one door its palette
+  -- changes go through (a swatch, a reset, Class Color Darken, a profile
+  -- switch); a post-hook on its own table, never a Blizzard one. The shared
+  -- table's providers call registered functions without a guard, and
+  -- PaletteMoved cannot throw.
+  local function Watch()
+    watched = true
+    local eui = _G.EllesmereUI
+    if type(eui) == "table" and type(eui.GetClassColor) == "function"
+      and type(eui.InvalidateColorCache) == "function" and type(hooksecurefunc) == "function" then
+      pcall(hooksecurefunc, eui, "InvalidateColorCache", PaletteMoved)
+    end
+    local custom = _G.CUSTOM_CLASS_COLORS
+    if type(custom) == "table" then
+      local ok, register = pcall(Index, custom, "RegisterCallback")
+      if ok and type(register) == "function" then pcall(register, custom, PaletteMoved) end
+    end
+  end
+
+  function ClassColour(token)
+    if type(token) ~= "string" or token == "" then return nil end
+    if not watched then Watch() end
+    if paletteStale then Revalidate() end
+    local known = classColours[token]
+    if known ~= nil then return known or nil end
+    local entry = {}
+    if Fill(entry, token) == nil then entry = false end
+    classColours[token] = entry
+    return entry or nil
+  end
+
+  -- fs, token -> the font string is wearing that class's colour now (nil: it
+  -- is not). The painter says so when the class it wears changes, never per
+  -- bind, and a palette change repaints what is here.
+  function CS.WearClass(fs, token)
+    if fs then classTexts[fs] = token or nil end
+  end
+
+  -- Every mailbox visit looks again where a host answered, for the change no
+  -- signal covers: ElvUI's profile switch does not call the shared table's
+  -- callbacks, and an EllesmereUI without InvalidateColorCache has no door to
+  -- hook. A read and a compare per class asked; nothing is built and nothing
+  -- is painted unless a colour moved.
+  local bus = ns.Events
+  if type(bus) == "table" and type(bus.Register) == "function" then
+    bus.Register("MAIL_SHOW", function()
+      if not hostAnswered then return end
+      paletteStale = true
+      Revalidate()
+    end)
+  end
 end
 
--- token -> r, g, b, or nil where the client has no colour for it. For a font
+-- token -> r, g, b, or nil where nothing has a colour for it. For a font
 -- string's SetTextColor, where the whole string is the name.
 function CS.ClassColour(token)
-  local colour = ClassColour(token)
-  if not colour then return nil end
-  return colour.r or 1, colour.g or 1, colour.b or 1
+  local entry = ClassColour(token)
+  if not entry then return nil end
+  return entry.r, entry.g, entry.b
 end
 
--- token, text -> the text in that class's colour. Colour objects carry their
--- own wrapper; the plain tables in RAID_CLASS_COLORS carry three floats and
--- nothing else, so the escape gets built by hand for those. Either way an
--- unknown class returns the text untouched rather than a default colour -- a
--- name drawn in the wrong class colour is a lie, a name drawn plain is merely
--- unhelpful.
+-- token, text -> the text in that class's colour. The client's colour objects
+-- carry their own wrapper; a host's colour wears the escape kept with it.
+-- Either way an unknown class returns the text untouched rather than a
+-- default colour -- a name drawn in the wrong class colour is a lie, a name
+-- drawn plain is merely unhelpful.
 function CS.WrapClass(token, text)
-  local colour = ClassColour(token)
-  if not colour then return text end
-  if type(colour.WrapTextInColorCode) == "function" then
-    return colour:WrapTextInColorCode(text)
-  end
-  local floor = math.floor
-  return string.format("|cff%02x%02x%02x%s|r", floor((colour.r or 1) * 255 + 0.5),
-    floor((colour.g or 1) * 255 + 0.5), floor((colour.b or 1) * 255 + 0.5), text)
+  local entry = ClassColour(token)
+  if not entry then return text end
+  if entry.wrap then return entry.wrap:WrapTextInColorCode(text) end
+  return entry.hex .. text .. "|r"
 end
 
 -- The census of the player's own characters was written: a character logged

@@ -314,56 +314,21 @@ end
 -- The character's class, in the player's language.
 --
 -- The class-coloured name only conveys a class to someone who knows the twelve
--- colours by sight, so the meta line spells it out. ContactService keeps its
--- class-token cache private and exposes only GetClassColoredName, so the class
--- is recovered from the colour code that function wraps the name in. The
--- reverse map is built from the client's own class colours using the same
--- formatting the colour code uses, which makes a hit an exact match rather
--- than a nearest-colour guess -- and a miss simply means no class is shown.
-local classByColor
-
-local function ClassColorKey(r, g, b)
-  if type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then return nil end
-  return string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-end
-
-local function ClassColorMap()
-  if classByColor then return classByColor end
-  classByColor = {}
-
-  if type(LOCALIZED_CLASS_NAMES_MALE) ~= "table" then return classByColor end
-
-  for token, localized in pairs(LOCALIZED_CLASS_NAMES_MALE) do
-    local r, g, b
-    if C_ClassColor and type(C_ClassColor.GetClassColor) == "function" then
-      local ok, color = pcall(C_ClassColor.GetClassColor, token)
-      if ok and type(color) == "table" then r, g, b = color.r, color.g, color.b end
-    end
-    if not r and type(RAID_CLASS_COLORS) == "table" and type(RAID_CLASS_COLORS[token]) == "table" then
-      local color = RAID_CLASS_COLORS[token]
-      r, g, b = color.r, color.g, color.b
-    end
-    local key = ClassColorKey(r, g, b)
-    if key then classByColor[key] = localized end
-  end
-
-  return classByColor
-end
-
--- nil when nothing has cached a class for this name -- an offline guild member
--- the roster has not returned yet, or a bare mail correspondent.
+-- colours by sight, so the meta line spells it out, from the class token
+-- ContactService knows the name by (ClassOf) -- whatever colour the player's
+-- UI gives that class.
+--
+-- nil when nothing has learned a class for this name -- an offline guild
+-- member the roster has not returned yet, or a bare mail correspondent.
 local function ClassName(display)
   local text = tostring(display or "")
-  local short = text:match("^([^%-]+)")
-  if not short or short == "" then return nil end
-  -- Identified by the full display string, coloured as the short half, for the
-  -- same reason as DecorateName: the cache is keyed on (name, realm).
-  local colored = ClassColored(text, short)
-  if colored == short then return nil end
-  -- "|caarrggbb": skip the two alpha digits, keep the six colour ones.
-  local key = colored:match("^|c%x%x(%x%x%x%x%x%x)")
-  if not key then return nil end
-  return ClassColorMap()[string.lower(key)]
+  if text == "" or type(LOCALIZED_CLASS_NAMES_MALE) ~= "table" then return nil end
+  local CS = ns.ContactService
+  if not (CS and type(CS.ClassOf) == "function") then return nil end
+  -- Identified by the full display string, for the same reason as
+  -- DecorateName: a class is kept against (name, realm).
+  local token = CS.ClassOf(text)
+  return token and LOCALIZED_CLASS_NAMES_MALE[token] or nil
 end
 
 -- Whether a level and a last-played time can EVER be known for this recipient.

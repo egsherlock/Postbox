@@ -1569,7 +1569,10 @@ end
 -- the one being played). The class the string wears is kept on it and the
 -- colour written only when that changes, so a pooled row bound to somebody
 -- else next never keeps the last one's colour, and an unknown sender costs
--- one lookup and no write.
+-- one lookup and no write. The colour is the player's UI's where it keeps
+-- class colours of its own (ContactService.ClassColour); when that palette
+-- changes, ContactService repaints the strings it was told wear one
+-- (CS.WearClass), so a bind with the same class still skips the write.
 function RV.PaintSender(fs, sender, realm, role)
   if not fs then return end
   local CS = ns.ContactService
@@ -1585,6 +1588,7 @@ function RV.PaintSender(fs, sender, realm, role)
     fs.__pbClass = nil
     T.SetColor(fs, (T.TextRoles[role or "label"] or T.TextRoles.label).color)
   end
+  if CS and CS.WearClass then CS.WearClass(fs, fs.__pbClass) end
 end
 
 -- What a graphic takes from the text area: the dot sits in the gap before
