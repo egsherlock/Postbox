@@ -79,7 +79,8 @@ longer play.
 - **Gold stands under gold.** Each figure keeps its own column down the
   list, in the Mail tab, History and Mail Memory, and a subject runs on only
   through columns its mail leaves empty. For the old close-packed rows, turn
-  off Line up columns (Options, Mail tab, or the arrange overview).
+  off Line up columns: in Options, Mail tab, or with the small switch in the
+  arrange header's corner, where the rows show the difference at once.
 - **Postbox follows EllesmereUI's look.** On Blizzard Style or Classic WoW UI
   it wears its own Blizzard look, to match your other windows.
 - **EllesmereUI profile, Dark Mode and accent changes** reach an open mailbox
