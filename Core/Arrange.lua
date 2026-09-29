@@ -321,6 +321,13 @@ local function EndGesture(released, putBack)
     driver:SetScript("OnUpdate", nil)
     driver:UnregisterEvent("GLOBAL_MOUSE_UP")
   end
+  -- A drag let go after an Escape was heard and before it is answered (the
+  -- client can end the press with the key) goes back where it began: the
+  -- Escape was the drag's (section 5).
+  if released and dragging and AR._escHeld then
+    putBack, released = true, false
+    AR._escDone = true
+  end
   if putBack then
     if dragging and handlers.cancel then handlers.cancel() end
   elseif released then
@@ -358,6 +365,8 @@ end
 
 function AR.Press(frame, handlers)
   EndGesture(false)
+  -- Escape is the mode's while anything is in the hand (section 5).
+  if AR.host then AR.GuardEscape() end
   if not driver then
     driver = CreateFrame("Frame")
     driver:SetScript("OnEvent", function(_, _, button)
@@ -898,10 +907,34 @@ end
 -- next Escape; the swap is undone on the way out, however the mode ends.
 -- An Escape that closes the character groups' window, which the grid's
 -- card opens, is that window's alone. No keyboard is taken for any of it.
+--
+-- The swap is made on every entry the client's own pass reads (all of
+-- them, as pairs finds them), and made again at every press and after
+-- every Escape, so a window's name added since the mode opened is taken
+-- too (AR.GuardEscape). An Escape heard while a column, a block or a
+-- button is in the hand is the drag's, however the press ends before the
+-- Escape is answered a frame later: a release in between puts the drag
+-- back rather than dropping it (EndGesture). A press still deciding
+-- whether it is a drag ends with the key, its click unmade. And a layer
+-- that fails still leaves the catcher listening.
 -------------------------------------------------------------
 
 AR.ESC_WINDOWS = { PostboxFrame = true, PostboxMailMemoryFrame = true }
 local ESC_NAME = "PostboxArrangeEscape"
+
+-- Every entry of UISpecialFrames that names a window of ours, swapped for
+-- the catcher and remembered, while the mode is open. Entries are only
+-- rewritten, never added.
+function AR.GuardEscape()
+  local list, taken = UISpecialFrames, AR._escTaken
+  if type(list) ~= "table" or not taken then return end
+  for i, name in pairs(list) do
+    if AR.ESC_WINDOWS[name] then
+      taken[i] = name
+      list[i] = ESC_NAME
+    end
+  end
+end
 
 function AR.CatchEscape(on)
   local list = UISpecialFrames
@@ -918,27 +951,24 @@ function AR.CatchEscape(on)
       self.armed = false
       -- Hidden by the client's close-windows pass on an Escape: answered a
       -- frame later, off that path, as the window's own close is
-      -- (COMBAT_TAINT.md).
+      -- (COMBAT_TAINT.md). Only our own state is read here: whether the
+      -- Escape found a drag in progress, which makes it the drag's.
       AR._escAt = GetTime()
+      AR._escHeld, AR._escDrag = true, AR.Dragging()
       C_Timer.After(0, AR.OnEscape)
     end)
     AR._esc = catcher
   end
   if on then
     local taken = {}
-    for i = 1, #list do
-      if AR.ESC_WINDOWS[list[i]] then
-        taken[i] = list[i]
-        list[i] = ESC_NAME
-      end
-    end
+    AR._escTaken = taken
+    AR.GuardEscape()
     -- No window of ours listed (its name registers on first open): the
     -- catcher still has to be heard.
     if not next(taken) then
       list[#list + 1] = ESC_NAME
       taken.appended = #list
     end
-    AR._escTaken = taken
     catcher.armed = true
     catcher:Show()
   else
@@ -970,24 +1000,40 @@ function AR.CatchEscape(on)
   end
 end
 
+-- The layer one Escape steps back: the drag (`drag`: one was in the hand
+-- when the key was heard, or is now), else the selection, else the mode.
+-- Answers whether the mode ended.
+local function EscapeLayer(drag)
+  if drag then
+    if AR.Dragging() then AR.CancelPress(true) end
+    return false
+  end
+  AR.CancelPress()
+  if AR.selKind then
+    AR.Select(nil)
+    return false
+  end
+  AR.Leave()
+  return true
+end
+
 -- One Escape, one layer. An Escape that also closed the character groups'
 -- window -- which the grid's card opens (a host's FollowBlockLink) -- was that
 -- window's: the mode keeps its layers and listens for the next.
 function AR.OnEscape()
+  local drag = AR._escDrag or AR._escDone or AR.Dragging()
+  AR._escHeld, AR._escDrag, AR._escDone = nil, nil, nil
   if not AR.host then return end
   local groups = ns.CharacterGroups
   if not (groups and AR._escAt ~= nil and groups._hiddenAt == AR._escAt) then
-    if AR.Dragging() then
-      AR.CancelPress(true)
-    elseif AR.selKind then
-      AR.Select(nil)
-    else
-      AR.Leave()
-      return
-    end
+    local ok, left = pcall(EscapeLayer, drag)
+    if not ok and type(geterrorhandler) == "function" then geterrorhandler()(left) end
+    if ok and left then return end
   end
+  if not AR.host then return end
   -- The mode stays open: the catcher, whose name still stands in the
   -- windows' places, listens for the next Escape.
+  AR.GuardEscape()
   local catcher = AR._esc
   if catcher and AR._escTaken then
     catcher.armed = true
@@ -2454,11 +2500,12 @@ end
 -- One card docked beside the window being arranged, 8 units out from its
 -- right edge (from its left one when the screen has no room on the right),
 -- its top level with the window's top row. Shown only while the mode is
--- open, and nothing of it covers the rows. It says one of three things:
+-- open, and nothing of it covers the rows. It says one of two things:
 --   nothing selected: how the mode works, Line up columns, the blocks
 --     under the list (each a line that selects it), what is hidden (each a
---     chip; a click shows it again), the reset, and that Escape finishes;
---   something in the hand: what is moving, and that Escape puts it back;
+--     chip; a click shows it again), the reset, and that Escape finishes --
+--     or, while something is in the hand, that Escape cancels, the one
+--     change a drag makes to it;
 --   a column, a block or a category button selected: its card -- what it
 --     is, its eye, its own choice, Move (the way to reorder without a
 --     drag), and, for a figure, what the rows do on a mail without it; for
@@ -2652,20 +2699,12 @@ function AR.NudgeColumn(id, step)
   if AR.host then AR.LayoutStrip(AR.host) end
 end
 
--- What is moving, while a drag lasts (section 2), or nil.
+-- What is moving, while a drag lasts (section 2), or nil. The inspector
+-- keeps what it shows; only its foot changes, to what Escape does now.
 function AR.Moving(name)
   if AR.moving == name then return end
   AR.moving = name
   AR.Inspect()
-end
-
--- The moving line: made once per name.
-local function MovingText(name)
-  if AR._movingName ~= name then
-    AR._movingName = name
-    AR._movingText = "|cffffffff" .. L()("ARRANGE_MOVING", name) .. "|r " .. L()["ARRANGE_MOVING_HOW"]
-  end
-  return AR._movingText
 end
 
 -------------------------------------------------------------
@@ -3676,19 +3715,23 @@ local function CountHidden()
   chipsN = chipsN + 1
 end
 
--- The foot: the reset on the left, the key cap and "to finish" on the right,
--- each centred on a row the key cap's height -- the right-hand pair on a
--- row of its own under the reset where the two do not fit side by side.
+-- The foot: the reset on the left, the key cap and "to finish" on the right
+-- -- "to cancel" while something is in the hand, the one change a drag makes
+-- to the inspector -- each centred on a row the key cap's height; the
+-- right-hand pair on a row of its own under the reset where the two do not
+-- fit side by side, whichever words it has, so a drag never reflows it.
 local function PutFoot(y)
   local insp, P = AR._insp, INSP
   y = y - P.FOOT_TOP
   PutRule(insp.FootRule, y)
   y = y - 1 - P.FOOT_PAD
   local link, key, finish = insp.Reset, insp.Key, insp.Finish
-  local resetText, keyText, finishText = L()["ARRANGE_RESET"], L()["ARRANGE_ESC_KEY"], L()["ARRANGE_ESC_FINISH"]
+  local resetText, keyText = L()["ARRANGE_RESET"], L()["ARRANGE_ESC_KEY"]
+  local finishText = L()[AR.moving and "ARRANGE_ESC_CANCEL" or "ARRANGE_ESC_FINISH"]
   local linkW = Measured(insp.MeasureSmall, resetText, false)
   local keyW = Measured(insp.MeasureSmall, keyText, false) + 2 * P.KEY_PAD
-  local finishW = Measured(insp.MeasureSmall, finishText, false)
+  local finishW = math.max(Measured(insp.MeasureSmall, L()["ARRANGE_ESC_FINISH"], false),
+    Measured(insp.MeasureSmall, L()["ARRANGE_ESC_CANCEL"], false))
   local lineH = Measured(insp.MeasureSmall, resetText, true)
   link.Label:SetText(resetText)
   link:SetSize(linkW, lineH + 2)
@@ -3712,15 +3755,13 @@ local function PutFoot(y)
   return rowY - P.KEY_H
 end
 
--- With nothing selected: how the mode works (or, while something is in the
--- hand, what is moving), Line up columns in a small group of its own --
--- it is every column's -- the blocks under the list -- each a line that
--- selects it, the way to a block that is hard to take in the window --
--- what is hidden, and the foot.
+-- With nothing selected: how the mode works, Line up columns in a small
+-- group of its own -- it is every column's -- the blocks under the list --
+-- each a line that selects it, the way to a block that is hard to take in
+-- the window -- what is hidden, and the foot.
 local function FillOverview(host, y)
   local insp, P = AR._insp, INSP
-  local lead = AR.moving and MovingText(AR.moving) or L()["ARRANGE_OVERVIEW"]
-  y = PutText(insp.Lead, lead, y)
+  y = PutText(insp.Lead, L()["ARRANGE_OVERVIEW"], y)
   y = PutKicker(L()["OPT_ROWS_HEADING"], y)
   PutLanes(y)
   y = y - P.SWITCH_H
@@ -3893,7 +3934,6 @@ function AR.Inspect()
     AR.UpdateFocus()
   end
   local kind, id = AR.selKind, AR.selId
-  if AR.moving then kind = nil end
   HideParts(insp)
   local title
   if kind == "column" then
