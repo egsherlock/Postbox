@@ -1081,6 +1081,7 @@ local HEAD = {
   ARROW_MIN = 12,   -- the shortest stretch arrow drawn
   SUBJECT_MIN = 40, -- the subject's heading never gives up more than this
   KEEP = 12,        -- nor does any other heading, for a peg beside it
+  SLACK = 4,        -- how far back the hand comes before a drag swaps back (section 7)
   -- A shown heading with no lane of its own.
   NARROW = { read = 14, icon = 22, sender = 44, subject = 60, time = 22, money = 22, slots = 22 },
   -- Every heading's width where the list publishes no lanes.
@@ -1735,9 +1736,17 @@ end
 --
 -- By its heading or by its column on any row (section 7a), one press at a
 -- time (section 2). The heading lifts and follows the cursor along the
--- header; past the middle of the heading beside it, the two change places
--- -- in the arrangement itself, so the rows re-lay under it and the header
--- stands on their new lanes, the heading's slot ringed. In the rows the
+-- header; when its leading edge crosses the middle of the heading beside it
+-- -- its left edge the one before it, its right edge the one after -- the
+-- two change places, in the arrangement itself, so the rows re-lay under it
+-- and the header stands on their new lanes, the heading's slot ringed. By
+-- its edges, not its middle: the hand stops at the header's ends, and a
+-- column wider than the one at the end it is dragged to could never bring
+-- its own middle past that one's. A change back the other way waits until
+-- the hand has come back HEAD.SLACK from where the last one happened, so a
+-- hand held still on the line -- or a heading whose width changes with its
+-- place, as the headings round the subject's do -- never flips the two
+-- back and forth. In the rows the
 -- column rides in a lifted lane of its own over the list (7a), drawn
 -- offset by as much as the heading is from its slot: each frame of the
 -- drag moves that lane and its cells, and nothing is bound again unless
@@ -1798,7 +1807,11 @@ function AR.LiftColumn(host, id, x0)
 end
 
 -- The heading follows the cursor along the header, and the column's lane
--- follows it over the rows.
+-- follows it over the rows. The heading stops at the header's ends; where
+-- it changes places is read from the hand -- where the cursor would have
+-- it -- so pushing on past an end takes it on to the last slot, and a
+-- heading whose width changes as it lands against an end is not pulled
+-- back by its own stop.
 function AR.DragColumn(host, cursorX)
   local drag, strip = AR.drag, host.strip
   if not (drag and strip) then return end
@@ -1806,7 +1819,8 @@ function AR.DragColumn(host, cursorX)
   local left = strip:GetLeft()
   if not left then return end
   local w = head._w or head:GetWidth() or 0
-  local x = math.min(math.max(cursorX - left - drag.grab, 0), math.max((strip:GetWidth() or 0) - w, 0))
+  local hand = cursorX - left - drag.grab
+  local x = math.min(math.max(hand, 0), math.max((strip:GetWidth() or 0) - w, 0))
   if x ~= drag.x then
     drag.x = x
     head:ClearAllPoints()
@@ -1820,12 +1834,21 @@ function AR.DragColumn(host, cursorX)
   local moved = false
   if k then
     local bx, bw = strip.bx, strip.bw
-    local centre = x + w / 2
     local prev, nxt = layout[k - 1], layout[k + 1]
+    -- Only the way the hand is from its slot: in a crowded header a run of
+    -- pegs may stand over the edge of the heading before it, its middle on
+    -- the wrong side of that heading's.
+    local last, at, home = drag.swapDir, drag.swapX or hand, bx[drag.id] or hand
     local target
-    if prev and bx[prev.id] and centre < bx[prev.id] + bw[prev.id] / 2 then target = k - 1 end
-    if not target and nxt and bx[nxt.id] and centre > bx[nxt.id] + bw[nxt.id] / 2 then target = k + 1 end
+    if prev and bx[prev.id] and hand < home and hand < bx[prev.id] + bw[prev.id] / 2
+        and (last ~= 1 or hand <= at - HEAD.SLACK) then
+      target = k - 1
+    elseif nxt and bx[nxt.id] and hand > home and hand + w > bx[nxt.id] + bw[nxt.id] / 2
+        and (last ~= -1 or hand >= at + HEAD.SLACK) then
+      target = k + 1
+    end
     if target then
+      drag.swapDir, drag.swapX = target - k, hand
       AR.MoveColumn(k, target)
       AR.RowsChanged(true)
       moved = true
