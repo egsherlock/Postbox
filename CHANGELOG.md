@@ -30,8 +30,8 @@ longer play.
   you arrange, so you can see what moves. Drag the category buttons into your
   order and hide the ones you never use (the list gets the room), or hide them
   all; their tray grows while you point at it, and its card opens Character
-  groups. The totals can be hidden too (Show totals, in the options).
-- **Character groups.** Put characters together (your bank alts, your
+  Groups. The totals can be hidden too (Show totals, in the options).
+- **Character Groups.** Put characters together (your bank alts, your
   crafters, a friend who sends you materials) and each group gets a button
   that collects everything they sent. Make them in Options, Mail tab, or
   right-click From alts. The groups window shows which groups have a button:
@@ -113,6 +113,9 @@ longer play.
   "Show counts" is Show mail counts, the minimap styles are Minimal letter and
   Minimal badge, and the Done view's button says Delete finished. Postbox's
   English is now spelled the American way throughout.
+- **Keep History for can be Never.** History is then off: nothing is
+  recorded, what it kept is cleared on every character, and its clock leaves
+  the Mail tab. Choose a number of days to start it again.
 - **The options open quicker:** your recipients are counted when you look at
   the Send tab, not every time the options open.
 - Also: the "Show on each mail" list moved from the options into the window,
