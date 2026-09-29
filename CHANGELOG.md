@@ -12,7 +12,7 @@ longer play.
 - **Arrange your mail rows.** The small layout mark beside the options cog
   opens arranging: a column header takes the top row's place, each heading
   right over its column, and you drag a column by its heading or straight
-  from any row. Hide the columns you don't need (a peg marks where one
+  from any row (point at one in a row and the whole column lights up). Hide the columns you don't need (a peg marks where one
   stands) and set gold and time left on the spot. The Mail tab, History and
   Mail Memory all follow it. One set of gestures for everything: drag to
   move, click for its options, right-click to hide or show; a crossed eye
