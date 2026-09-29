@@ -1071,7 +1071,7 @@ if GetLocale() == "frFR" then
   L["CONTACT_RECENT"]            = "Recents"
   L["CONTACT_FRIENDS"]           = "Amis"
   L["CONTACT_FAVORITES"]         = "Favoris"
-  L["CONTACT_FAV_HINT"]          = "Clic droit sur un nom, ou son etoile dans le gestionnaire de destinataires, pour l'ajouter aux favoris."
+  L["CONTACT_FAV_HINT"]          = "Clic droit sur un nom, ou sur son etoile dans le gestionnaire de destinataires, pour l'ajouter aux favoris."
   L["CONTACT_ROW_TIP"]           = "Clic droit pour ajouter ou retirer un favori · Maj-clic droit pour masquer (annulable dans le gestionnaire de destinataires)"
   L["CONTACT_FAV_COUNT"]         = "%d dans tes favoris."
   L["CONTACT_FAV_OPEN"]          = "Clique pour les afficher."
@@ -1691,7 +1691,7 @@ if GetLocale() == "deDE" then
   L["CONTACT_RECENT"]            = "Letzte"
   L["CONTACT_FRIENDS"]           = "Freunde"
   -- Both lines of the same tooltip, so it cannot come out half German.
-  L["CONTACT_FAV_HINT"]          = "Rechtsklick auf einen Namen, oder sein Stern in der Empfaengerverwaltung, macht ihn zum Favoriten."
+  L["CONTACT_FAV_HINT"]          = "Ein Rechtsklick auf einen Namen oder auf seinen Stern in der Empfaengerverwaltung macht ihn zum Favoriten."
   L["CONTACT_ROW_TIP"]           = "Rechtsklick fuer Favorit an oder aus · Umschalt-Rechtsklick zum Ausblenden (rueckgaengig in der Empfaengerverwaltung)"
   -- The Send tab's category bar says All in words, from the same key the
   -- recipient manager's filter row uses.
@@ -1993,7 +1993,7 @@ if GetLocale() == "deDE" then
   -- Ergaenzte Uebersetzungen
   L["FRAME_TITLE"]               = "Postbox"
   L["GRID_TOGGLE_TITLE"]         = "Andocken am Fensterraster"
-  L["GRID_TOGGLE_DESC"]          = "Postbox oeffnet an einem eigenen Platz neben den anderen Fenstern des Spiels, die ihm Raum lassen.\n\nVerschiebst du es, kehrt es beim naechsten Briefkasten dorthin zurueck. Aus, bleibt es, wo du es hinstellst."
+  L["GRID_TOGGLE_DESC"]          = "Postbox oeffnet sich an einem eigenen Platz neben den anderen Fenstern des Spiels, die ihm Raum lassen.\n\nVerschiebst du es, kehrt es beim naechsten Briefkasten dorthin zurueck. Aus, bleibt es, wo du es hinstellst."
   L["OPTIONS_TITLE"]             = "Postbox-Optionen"
   L["OPTIONS_COG_TOOLTIP"]       = "Klick oeffnet die Postbox-Optionen."
   L["OPT_BORDER_TITLE"]          = "Fensterrahmen"
@@ -2312,7 +2312,7 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["CONTACT_RECENT"]            = "Recientes"
   L["CONTACT_FRIENDS"]           = "Amigos"
   -- Both lines of the same tooltip, so it cannot come out half Spanish.
-  L["CONTACT_FAV_HINT"]          = "Clic derecho en un nombre, o su estrella en el gestor de destinatarios, para anadirlo a favoritos."
+  L["CONTACT_FAV_HINT"]          = "Clic derecho en un nombre, o en su estrella del gestor de destinatarios, para anadirlo a favoritos."
   L["CONTACT_ROW_TIP"]           = "Clic derecho para anadir o quitar un favorito · Mayus-clic derecho para ocultar (se deshace en el gestor de destinatarios)"
   -- The Send tab's category bar says All in words, from the same key the
   -- recipient manager's filter row uses.
@@ -2951,7 +2951,7 @@ L["CONTACT_ALTS"]              = "Альты"
 L["CONTACT_RECENT"]            = "Недавние"
 L["CONTACT_FRIENDS"]           = "Друзья"
 -- Both lines of the same tooltip, so it cannot come out half Russian.
-L["CONTACT_FAV_HINT"]          = "Правый клик по имени или его звёздочка в управлении получателями добавляет его в избранное."
+L["CONTACT_FAV_HINT"]          = "Правый клик по имени или по его звёздочке в управлении получателями добавляет его в избранное."
 L["CONTACT_ROW_TIP"]           = "ПКМ — добавить в избранное или убрать · Shift+ПКМ — скрыть (вернуть можно в управлении получателями)"
 -- The Send tab's category bar says All in words, from the same key the
 -- recipient manager's filter row uses.
