@@ -2089,7 +2089,7 @@ end
 --
 -- A few short lines, centred, on a small card of its own in the small font:
 -- for a control whose gestures want saying but not a full tooltip's weight
--- (the resize grips: "Drag: Resize", "Right-click: Reset"). It opens just
+-- (the resize grips: "Drag to resize · Right-click to reset"). It opens just
 -- under the cursor, where the eye already is, and its ground is a shade
 -- lighter than a popup's -- a note, not a window. Untagged, so no host skin
 -- repaints it: it is the one surface that is Postbox's own everywhere.
