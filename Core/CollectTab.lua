@@ -6803,6 +6803,10 @@ end
 -- itself wears no eye: its rim has no room for one beside the buttons,
 -- each of which has its own. Outside the mode the option works as it
 -- always has, and a hidden grid simply is not there.
+-- Opening the mode moves no block: the cards appear over the blocks where
+-- they stand. Only what the mode adds takes room -- a hidden block's
+-- placeholder, a hidden button shown dimmed in its cell -- and the list
+-- gives it up, so the blocks above that room step up by it.
 -- The cards are made the first time the mode opens, and the whole of it
 -- costs one comparison per layout while the mode is shut.
 -------------------------------------------------------------
@@ -7501,29 +7505,6 @@ function RV.StackRaise(panel, id, on)
   RV.LiftLevel(panel, cards and cards[id], base + 25)
 end
 
--- The mode opening: the blocks settle up into place top down, 90 ms apart,
--- the grid's buttons with their tray.
-function RV.RiseStack(panel)
-  local A, cards, s = ns.Arrange, panel._stackCards, panel._stack
-  if not (A and A.Rise and cards and s) then return end
-  local order, k = RV.StackOrder(), 0
-  for i = 1, #order do
-    local id = order[i]
-    local card = cards[id]
-    if id == "grid" and s.folded then card = cards.fold end
-    if id == "band" and s.bandFolded then card = cards.bandFold end
-    if s.y[id] and card and card:IsShown() then
-      A.Rise(card, k * 0.09)
-      if id == "grid" and panel._gridHandles then
-        for _, handle in pairs(panel._gridHandles) do
-          if handle:IsShown() then A.Rise(handle, k * 0.09) end
-        end
-      end
-      k = k + 1
-    end
-  end
-end
-
 -- The footer's height is the stack's: every block the view has, and the
 -- gaps between them.
 local function FooterHeight(panel)
@@ -8160,10 +8141,6 @@ function CT.ArrangeHost(panel)
   function host.Track() return panel.MailListScroll and panel.MailListScroll.SlimBar end
   function host.TwoLine()
     return not AV.Active(panel) and panel.viewMode ~= VIEW_HISTORY and not RowMetrics()
-  end
-  -- The blocks and the buttons settle into place as the mode opens.
-  function host.Rise()
-    RV.RiseStack(panel)
   end
   -- The inspector docks beside the Postbox window, level with this tab's
   -- top row -- the header, while it stands there -- and answers for the

@@ -653,31 +653,6 @@ function AR.PaintCard(card, state)
   end
 end
 
--- The mode opening: each card settles up from a unit below its place, once,
--- `delay` seconds after the first. One animation group per card, made on
--- its first rise: a step down at once, then the rise.
-function AR.Rise(card, delay)
-  if not card or type(card.CreateAnimationGroup) ~= "function" then return end
-  local group = card.RiseGroup
-  if not group then
-    group = card:CreateAnimationGroup()
-    local down = group:CreateAnimation("Translation")
-    down:SetOffset(0, -1)
-    down:SetDuration(0.001)
-    down:SetOrder(1)
-    local up = group:CreateAnimation("Translation")
-    up:SetOffset(0, 1)
-    up:SetDuration(0.38)
-    up:SetOrder(2)
-    if up.SetSmoothing then up:SetSmoothing("OUT") end
-    group.up = up
-    card.RiseGroup = group
-  end
-  group:Stop()
-  group.up:SetStartDelay(delay or 0)
-  group:Play()
-end
-
 -- The pointer over something that moves is the client's own move cross (the
 -- cursor its panels' drag bars show); anywhere else it is the pointer.
 function AR.MoveCursor(on)
@@ -4069,8 +4044,9 @@ end
 -- A host is the list being arranged: { owner = its frame, PlaceStrip(strip)
 -- (the header in the top row's place, its left edge the rows' own),
 -- OnEnter(strip) (the top row steps aside), OnLeave() (and comes back as it
--- was), Rise() (optional: its cards settle in, played once as the mode
--- opens), toggle = the key that opened it }. For the header and the rows it
+-- was), toggle = the key that opened it }. Opening the mode moves nothing
+-- the host already shows: its cards appear over its blocks where they stand,
+-- with no settling in. For the header and the rows it
 -- answers, for the list on screen: Spec() (its placement table, whose lanes
 -- RV.Place publishes), Pool() (its rows), Scroll() (its scroll frame),
 -- List() (the frame its rows stand in) and TwoLine() (whether its rows are
@@ -4117,8 +4093,6 @@ function AR.Enter(host)
   -- (AR.ListPlaced) -- and here, for a list that placed none.
   AR.RowsChanged(false)
   AR.LayoutStrip(host)
-  -- The host's cards settle into place, once (AR.Rise).
-  if host.Rise then host.Rise() end
   AR.ShowInspector(host)
 end
 
