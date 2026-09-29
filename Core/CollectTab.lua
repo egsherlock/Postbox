@@ -2243,8 +2243,9 @@ local function BuildViewToggle(panel)
   -- which the counts and the caption sizing walk -- it has neither.
   local hist = T.CreatePlate(container, "segment")
   hist.segId = VIEW_HISTORY
-  -- The clock glyph at the mockup's size, made once with the plate.
-  hist.Icon = T.Glyph and T.Glyph(hist, "clock", 11, "OVERLAY") or nil
+  -- The history glyph (a clock with a counter-clockwise arrow round it) at
+  -- the clock's height, made once with the plate.
+  hist.Icon = T.Glyph and T.Glyph(hist, "history", 11, "OVERLAY") or nil
   if hist.Icon then
     hist:SetText("")
     hist.Icon:SetPoint("CENTER")
