@@ -2248,7 +2248,9 @@ local function BuildSearchBox(panel)
   -- box on screen, and lists every character with mail to look at.
   local picker = T.CreatePlate(panel, "segment")
   picker:SetSize(M.segmentHeight, M.segmentHeight)
-  picker:SetPoint("RIGHT", wrap, "LEFT", -M.gap, 0)
+  -- One unit with the search it scopes, so the snug step of a switch's
+  -- segments, as Inbox and History are.
+  picker:SetPoint("RIGHT", wrap, "LEFT", -M.space.snug, 0)
   picker:SetText("")
   picker.Icon = picker:CreateTexture(nil, "OVERLAY")
   picker.Icon:SetSize(M.segmentHeight - 8, M.segmentHeight - 8)
@@ -2533,7 +2535,7 @@ local function LayoutViewToggle(panel)
   local M = T.Metrics
   local row = PanelWidth(panel) - 2 * M.inset
   local right = panel.SearchWrap and SEARCH_W or 0
-  if panel.Picker and panel.Picker:IsShown() then right = right + M.gap + M.segmentHeight end
+  if panel.Picker and panel.Picker:IsShown() then right = right + M.space.snug + M.segmentHeight end
   local least = right
   local alt = container.alt
   if alt and alt:IsShown() and alt.natW then
