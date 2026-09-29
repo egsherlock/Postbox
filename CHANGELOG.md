@@ -114,7 +114,7 @@ longer play.
   Minimal badge, and the Done view's button says Delete finished. Postbox's
   English is now spelled the American way throughout.
 - **Keep History for can be Never.** History is then off: nothing is
-  recorded, what it kept is cleared on every character, and its clock leaves
+  recorded, what it kept is cleared at once on every character, and its clock leaves
   the Mail tab. Choose a number of days to start it again.
 - **The options open quicker:** your recipients are counted when you look at
   the Send tab, not every time the options open.
