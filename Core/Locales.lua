@@ -180,7 +180,7 @@ L["STATUS_PARTIAL"]            = "Stuck: %d"
 -- number-invariant in every locale, so it needs no plural family.
 L["STATUS_STUCK"]              = "Stuck: %d"
 L["GRIP_TIP"]                  = "Drag to resize · Right-click to reset"
-L["GRID_TOGGLE_TITLE"]         = "Window grid docking"
+L["GRID_TOGGLE_TITLE"]         = "Dock beside game windows"
 -- Every option description below leads with ONE short sentence saying what the
 -- option does, then a blank line, then the detail (ns.Summary, above). The
 -- tooltip says the sentence; the options panel's side panel says it all. A
@@ -189,7 +189,7 @@ L["GRID_TOGGLE_DESC"]          = "Postbox opens in its own place beside the game
 -- Options menu (cog button)
 L["OPTIONS_TITLE"]             = "Postbox options"
 L["OPTIONS_COG_TOOLTIP"]       = "Click to open Postbox options."
-L["OPT_TAB_COUNTS_TITLE"]      = "Show counts"
+L["OPT_TAB_COUNTS_TITLE"]      = "Show mail counts"
 L["OPT_TAB_COUNTS_DESC"]       = "Numbers on Inbox and on each collect button.\n\nInbox counts every mail in the box, read ones included; a button counts what it would collect. Either way, the Mail tab wears a dot while there is mail to collect."
 L["OPT_READ_MAIL_TITLE"]       = "Read mail"
 L["OPT_READ_MAIL_DESC"]        = "Where a read mail with nothing left in it goes.\n\nBelow the inbox: after the mail still to collect, under a divider that waits at the foot of a long list, with Delete all; click the divider to fold them away. In a Done tab: a segment of their own beside Inbox. Delete when done: deleted once Postbox takes out the last gold or item, or you press Back after reading it; History keeps what it said. Read mail already in the box stays under the divider until you clear it."
@@ -405,9 +405,9 @@ L["OPT_MINIMAP_HEADING"]       = "Minimap"
 L["OPT_MINIMAP_TITLE"]         = "Minimap mail icon"
 L["OPT_MINIMAP_DESC"]          = "Postbox's own new-mail icon on the minimap edge, in place of the default one.\n\nShift-drag it to move it."
 L["OPT_MINIMAP_DESC_EUI"]      = "Restyles EllesmereUI's minimap mail icon with the look you choose below."
-L["OPT_MINIMAP_ICON_POSTBOX"]  = "Letter minimal"
+L["OPT_MINIMAP_ICON_POSTBOX"]  = "Minimal letter"
 L["OPT_MINIMAP_ICON_BLIZZARD"] = "Blizzard"
-L["OPT_MINIMAP_ICON_BADGE"]    = "Badge minimal"
+L["OPT_MINIMAP_ICON_BADGE"]    = "Minimal badge"
 L["OPT_MINIMAP_ICON_LETTER"]   = "Letter"
 L["OPT_MINIMAP_ICON_SEALED"]   = "Sealed letter 1"
 L["OPT_MINIMAP_ICON_PARCEL"]   = "Parcel"
@@ -605,7 +605,7 @@ L["COUNT_ITEMS_OTHER"]         = "%d items"
 -- view shows -- read, no money, no attachments -- so it is named for that view
 -- and not for the read flag, which would promise something it deliberately does
 -- not do.
-L["BTN_DELETE_ALL_DONE"]       = "Delete all done"
+L["BTN_DELETE_ALL_DONE"]       = "Delete finished"
 L["BTN_DELETE_ALL"]            = "Delete all"
 L["CONFIRM_DELETE_ALL_DONE"]   = "Delete %s? This cannot be undone."
 L["CONFIRM_DELETE_MAIL"]       = "Delete this mail? Anything still attached to it will be lost."
@@ -1168,7 +1168,7 @@ if GetLocale() == "frFR" then
   L["RM_OPT_BUTTON_DESC"]        = "Choisis les personnages que Postbox propose lors de l'envoi d'un courrier.\n\nMasque les alts a qui tu n'ecris jamais, et mets en favori ceux a qui tu ecris."
 
   -- Options
-  L["OPT_TAB_COUNTS_TITLE"]      = "Afficher les compteurs"
+  L["OPT_TAB_COUNTS_TITLE"]      = "Afficher le nombre de courriers"
   L["OPT_TAB_COUNTS_DESC"]       = "Des nombres sur Boite et sur chaque bouton de collecte.\n\nBoite compte tous les courriers de la boite, lus compris ; un bouton compte ce qu'il recupererait. Dans tous les cas, l'onglet Courrier porte un point tant qu'il reste du courrier a recuperer."
   L["OPT_READ_MAIL_TITLE"]       = "Courrier lu"
   L["OPT_READ_MAIL_DESC"]        = "Ou va un courrier lu qui ne contient plus rien.\n\nSous la boite : apres le courrier a recuperer, sous un separateur qui reste au bas d'une longue liste, avec Tout supprimer ; clique sur le separateur pour les replier. Dans un onglet Termine : un segment a part a cote de Boite. Supprimer une fois traite : supprime des que Postbox en retire le dernier or ou objet, ou que tu cliques sur Retour apres l'avoir lu ; l'historique garde son texte. Le courrier lu deja present reste sous le separateur jusqu'a ce que tu le supprimes."
@@ -1448,7 +1448,7 @@ if GetLocale() == "frFR" then
 
   -- Complement de traduction
   L["FRAME_TITLE"]               = "Postbox"
-  L["GRID_TOGGLE_TITLE"]         = "Ancrage a la grille des fenetres"
+  L["GRID_TOGGLE_TITLE"]         = "Ancrer a cote des fenetres du jeu"
   L["GRID_TOGGLE_DESC"]          = "Postbox s'ouvre a sa propre place parmi les autres fenetres du jeu, qui lui font de la place.\n\nDeplace-le et il y revient a la prochaine boite aux lettres ouverte. Desactive, il reste la ou tu le laisses."
   L["OPTIONS_TITLE"]             = "Options de Postbox"
   L["OPTIONS_COG_TOOLTIP"]       = "Clic pour ouvrir les options de Postbox."
@@ -1712,7 +1712,7 @@ if GetLocale() == "deDE" then
   L["RM_OPT_BUTTON_DESC"]        = "Waehle, welche Charaktere Postbox beim Adressieren einer Post anbietet.\n\nBlende die aus, denen du nie schreibst, und mach die zu Favoriten, denen du schreibst."
 
   -- Optionen
-  L["OPT_TAB_COUNTS_TITLE"]      = "Anzahlen anzeigen"
+  L["OPT_TAB_COUNTS_TITLE"]      = "Anzahl der Briefe anzeigen"
   L["OPT_TAB_COUNTS_DESC"]       = "Zahlen am Posteingang und an jedem Abhol-Button.\n\nPosteingang zaehlt jeden Brief im Postfach, gelesene eingeschlossen; ein Button zaehlt, was er abholen wuerde. In jedem Fall traegt der Post-Tab einen Punkt, solange Post abzuholen ist."
   L["OPT_READ_MAIL_TITLE"]       = "Gelesene Post"
   L["OPT_READ_MAIL_DESC"]        = "Wohin gelesene Post ohne Inhalt kommt.\n\nUnter dem Posteingang: nach der abzuholenden Post, unter einem Trenner, der am Fuss einer langen Liste stehen bleibt, mit Alle loeschen; ein Klick auf den Trenner klappt sie ein. Im Tab Erledigt: ein eigenes Segment neben Posteingang. Loeschen, wenn erledigt: geloescht, sobald Postbox das letzte Gold oder den letzten Gegenstand herausnimmt oder du nach dem Lesen auf Zurueck klickst; der Verlauf behaelt ihren Text. Bereits gelesene Post bleibt unter dem Trenner, bis du sie loeschst."
@@ -1992,7 +1992,7 @@ if GetLocale() == "deDE" then
 
   -- Ergaenzte Uebersetzungen
   L["FRAME_TITLE"]               = "Postbox"
-  L["GRID_TOGGLE_TITLE"]         = "Andocken am Fensterraster"
+  L["GRID_TOGGLE_TITLE"]         = "Neben Spielfenstern andocken"
   L["GRID_TOGGLE_DESC"]          = "Postbox oeffnet sich an einem eigenen Platz neben den anderen Fenstern des Spiels, die ihm Raum lassen.\n\nVerschiebst du es, kehrt es beim naechsten Briefkasten dorthin zurueck. Aus, bleibt es, wo du es hinstellst."
   L["OPTIONS_TITLE"]             = "Postbox-Optionen"
   L["OPTIONS_COG_TOOLTIP"]       = "Klick oeffnet die Postbox-Optionen."
@@ -2333,7 +2333,7 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["RM_OPT_BUTTON_DESC"]        = "Elige que personajes ofrece Postbox al dirigir un correo.\n\nOculta a los que nunca escribes y marca como favoritos a los que si."
 
   -- Opciones
-  L["OPT_TAB_COUNTS_TITLE"]      = "Mostrar los recuentos"
+  L["OPT_TAB_COUNTS_TITLE"]      = "Mostrar los recuentos de correo"
   L["OPT_TAB_COUNTS_DESC"]       = "Numeros en Buzon y en cada boton de recogida.\n\nBuzon cuenta todos los correos del buzon, leidos incluidos; un boton cuenta lo que recogeria. En cualquier caso, la pestana Correo lleva un punto mientras quede correo por recoger."
   L["OPT_READ_MAIL_TITLE"]       = "Correo leido"
   L["OPT_READ_MAIL_DESC"]        = "Adonde va un correo leido que ya no contiene nada.\n\nBajo el buzon: tras el correo por recoger, bajo un separador que se queda al pie de una lista larga, con Borrar todo; haz clic en el separador para plegarlos. En una pestana Hecho: un segmento propio junto a Buzon. Borrar al terminar: se borra en cuanto Postbox saca el ultimo oro u objeto, o pulsas Volver tras leerlo; el historial guarda su texto. El correo leido que ya estaba queda bajo el separador hasta que lo borres."
@@ -2613,7 +2613,7 @@ if esLocale == "esES" or esLocale == "esMX" then
 
   -- Traducciones anadidas
   L["FRAME_TITLE"]               = "Postbox"
-  L["GRID_TOGGLE_TITLE"]         = "Anclaje a la rejilla de ventanas"
+  L["GRID_TOGGLE_TITLE"]         = "Acoplar junto a las ventanas del juego"
   L["GRID_TOGGLE_DESC"]          = "Postbox se abre en su propio sitio junto a las demas ventanas del juego, que le dejan espacio.\n\nSi lo mueves, vuelve alli la proxima vez que abras un buzon. Desactivado, se queda donde lo dejes."
   L["OPTIONS_TITLE"]             = "Opciones de Postbox"
   L["OPTIONS_COG_TOOLTIP"]       = "Haz clic para abrir las opciones de Postbox."
@@ -2972,7 +2972,7 @@ L["RM_OPT_BUTTON"]             = "Управление получателями"
 L["RM_OPT_BUTTON_DESC"]        = "Выберите, каких персонажей Postbox предлагает при отправке письма.\n\nСкройте тех, кому вы никогда не пишете, и добавьте в избранное тех, кому пишете."
 
 -- Настройки
-L["OPT_TAB_COUNTS_TITLE"]      = "Показывать счётчики"
+L["OPT_TAB_COUNTS_TITLE"]      = "Показывать счётчики писем"
 L["OPT_TAB_COUNTS_DESC"]       = "Числа на «Входящих» и на каждой кнопке сбора.\n\n«Входящие» считают все письма в ящике, включая прочитанные; кнопка — то, что она заберёт. В любом случае вкладка «Почта» отмечена точкой, пока есть что забрать."
 L["OPT_READ_MAIL_TITLE"]       = "Прочитанные письма"
 L["OPT_READ_MAIL_DESC"]        = "Куда попадает прочитанное письмо, в котором ничего не осталось.\n\nПод входящими: после писем, которые нужно забрать, под разделителем, который остаётся внизу длинного списка, с кнопкой «Удалить все»; щелчок по разделителю сворачивает их. На вкладке «Готово»: отдельный сегмент рядом с «Входящими». Удалять после разбора: письмо удаляется, как только Postbox заберёт из него последнее золото или предмет или вы нажмёте «Назад» после чтения; история сохранит его текст. Уже прочитанные письма остаются под разделителем, пока вы их не удалите."
@@ -3262,7 +3262,7 @@ L["MINIMAP_TOGGLE_ON"]         = "Значок почты у миникарты:
 L["MINIMAP_TOGGLE_OFF"]        = "Значок почты у миникарты: выключен."
 
 -- Дополненные переводы
-L["GRID_TOGGLE_TITLE"]         = "Привязка к сетке окон"
+L["GRID_TOGGLE_TITLE"]         = "Пристыковка к окнам игры"
 L["GRID_TOGGLE_DESC"]          = "Postbox открывается на своём месте рядом с другими окнами игры, которые уступают ему место.\n\nЕсли его передвинуть, при следующем открытии ящика он вернётся туда. Выключено — остаётся там, где вы его оставили."
 L["OPTIONS_TITLE"]             = "Настройки Postbox"
 L["OPTIONS_COG_TOOLTIP"]       = "Клик открывает настройки Postbox."
@@ -3436,11 +3436,11 @@ if GetLocale() == "zhCN" then
   L["STATUS_PARTIAL"]          = "卡住：%d"
   L["STATUS_STUCK"]            = "卡住：%d"
   L["GRIP_TIP"]                = "拖动调整大小 · 右键重置"
-  L["GRID_TOGGLE_TITLE"]       = "窗口网格停靠"
+  L["GRID_TOGGLE_TITLE"]       = "停靠在游戏窗口旁"
   L["GRID_TOGGLE_DESC"]        = "Postbox 在游戏其他窗口旁有自己的位置，其他窗口会为它让出空间。\n\n拖走后，下次打开邮箱时它会回到那里。关闭后，它会停留在你放置的位置。"
   L["OPTIONS_TITLE"]           = "Postbox 选项"
   L["OPTIONS_COG_TOOLTIP"]     = "点击打开 Postbox 选项。"
-  L["OPT_TAB_COUNTS_TITLE"]    = "显示计数"
+  L["OPT_TAB_COUNTS_TITLE"]    = "显示邮件计数"
   L["OPT_TAB_COUNTS_DESC"]     = "在收件箱和每个收取按钮上显示数量。\n\n收件箱计算邮箱中的全部邮件（包括已读邮件）；按钮显示它将收取的数量。无论开关与否，有待收取邮件时收件分页都会显示一个圆点。"
   L["OPT_READ_MAIL_TITLE"]     = "已读邮件"
   L["OPT_READ_MAIL_DESC"]      = "已读且已无内容的邮件放在哪里。\n\n收件箱下方：排在待收取邮件之后，位于分隔线下；在长列表中分隔线停在底部，并带有全部删除按钮；点击分隔线可将其折叠。完成分页：在收件箱旁单独成为一个分段。处理后删除：Postbox 取走最后的金币或物品，或你读完点击返回后立即删除；历史会保留其内容。已在邮箱中的已读邮件会留在分隔线下，直到你删除。"
@@ -4034,11 +4034,11 @@ if GetLocale() == "zhTW" then
   L["STATUS_PARTIAL"]          = "卡住：%d"
   L["STATUS_STUCK"]            = "卡住：%d"
   L["GRIP_TIP"]                = "拖曳調整大小 · 右鍵重設"
-  L["GRID_TOGGLE_TITLE"]       = "視窗網格停靠"
+  L["GRID_TOGGLE_TITLE"]       = "停靠在遊戲視窗旁"
   L["GRID_TOGGLE_DESC"]        = "Postbox 在遊戲其他視窗旁有自己的位置，其他視窗會為它讓出空間。\n\n拖走後，下次開啟信箱時它會回到那裡。關閉後，它會停留在你放置的位置。"
   L["OPTIONS_TITLE"]           = "Postbox 選項"
   L["OPTIONS_COG_TOOLTIP"]     = "點擊開啟 Postbox 選項。"
-  L["OPT_TAB_COUNTS_TITLE"]    = "顯示計數"
+  L["OPT_TAB_COUNTS_TITLE"]    = "顯示郵件計數"
   L["OPT_TAB_COUNTS_DESC"]     = "在收件匣和每個領取按鈕上顯示數量。\n\n收件匣計算信箱中的全部郵件（包括已讀郵件）；按鈕顯示它將領取的數量。無論開關與否，有待領取郵件時收件分頁都會顯示一個圓點。"
   L["OPT_READ_MAIL_TITLE"]     = "已讀郵件"
   L["OPT_READ_MAIL_DESC"]      = "已讀且已無內容的郵件放在哪裡。\n\n收件匣下方：排在待領取郵件之後，位於分隔線下；在長清單中分隔線停在底部，並帶有全部刪除按鈕；點擊分隔線可將其摺疊。完成分頁：在收件匣旁單獨成為一個分段。處理後刪除：Postbox 取走最後的金幣或物品，或你讀完點擊返回後立即刪除；歷史會保留其內容。已在信箱中的已讀郵件會留在分隔線下，直到你刪除。"
