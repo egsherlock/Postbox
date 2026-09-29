@@ -73,7 +73,7 @@ longer play.
   then Collect shown to try them all again.
 - **Slot counts are a quiet grey**, like the time left, so money is a row's
   only coloured figure; the Slots card, while you arrange, can show just the
-  number.
+  number on one-line rows.
 - **Quality icons can go before the item's name**, with every name in the
   list still starting on one line.
 - **Gold stands under gold.** Each figure keeps its own column down the
