@@ -2490,11 +2490,13 @@ function MM.ArrangeHost(frame)
   if not (frame and frame.Card) then return nil end
   if frame._arrangeHost then return frame._arrangeHost end
   local host = { owner = frame }
-  -- The header's left edge is the rows' own (inside the card's edge), so a
-  -- lane's x is a heading's; its top is the top row's.
+  -- The header's left edge is the rows' own (a unit inside the card's
+  -- edge), so a lane's x is a heading's; its right edge is theirs while
+  -- nothing scrolls, a unit inside the card's other edge, whether the list
+  -- scrolls now or not; its top is the top row's.
   function host.PlaceStrip(strip)
     strip:SetPoint("TOPLEFT", frame, "TOPLEFT", 11, HEADER_Y)
-    strip:SetPoint("RIGHT", frame.Scroll, "RIGHT", 0, 0)
+    strip:SetPoint("RIGHT", frame.Card, "RIGHT", -1, 0)
   end
   function host.OnEnter()
     MM.ClosePicker()
@@ -2510,8 +2512,6 @@ function MM.ArrangeHost(frame)
   function host.Pool() return frame.Rows end
   function host.Scroll() return frame.Scroll end
   function host.List() return frame.ListChild end
-  -- The list's scroll bar: the header's corner stands over its column.
-  function host.Track() return frame.Scroll and frame.Scroll.SlimBar end
   function host.TwoLine() return false end
   -- The inspector docks beside this window, level with its top row -- the
   -- header, while it stands there.

@@ -8145,11 +8145,13 @@ function CT.ArrangeHost(panel)
   if panel._arrangeHost then return panel._arrangeHost end
   local host = { owner = panel }
   -- The header's left edge is the rows' own (the list's inset inside its
-  -- container), so a lane's x is a heading's; its top is the top row's.
+  -- container), so a lane's x is a heading's; its right edge is theirs
+  -- while nothing scrolls, the same inset in from the container's edge,
+  -- whether the list scrolls now or not; its top is the top row's.
   function host.PlaceStrip(strip)
     local M = Th().Metrics
     strip:SetPoint("TOPLEFT", panel.ViewToggle, "TOPLEFT", M.tightGap, 0)
-    strip:SetPoint("RIGHT", panel.MailListScroll, "RIGHT", 0, 0)
+    strip:SetPoint("RIGHT", panel.MailListArea, "RIGHT", -M.tightGap, 0)
   end
   function host.OnEnter()
     -- The reading view is over the list the header describes.
@@ -8180,8 +8182,6 @@ function CT.ArrangeHost(panel)
   end
   function host.Scroll() return panel.MailListScroll end
   function host.List() return panel.MailListChild end
-  -- The list's scroll bar: the header's corner stands over its column.
-  function host.Track() return panel.MailListScroll and panel.MailListScroll.SlimBar end
   function host.TwoLine()
     return not AV.Active(panel) and panel.viewMode ~= VIEW_HISTORY and not RowMetrics()
   end
