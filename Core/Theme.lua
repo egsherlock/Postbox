@@ -2232,7 +2232,9 @@ local function Chevron(parent, up)
     local side = (i == 1) and -1 or 1
     bar:SetPoint("CENTER", btn, "CENTER", side * 2, 0)
     -- The left bar rises to the right for an up chevron; mirrored for down.
-    bar:SetRotation(side * (up and 0.785 or -0.785))
+    -- SetRotation turns counter-clockwise, so rising to the right is the
+    -- positive angle.
+    bar:SetRotation(-side * (up and 0.785 or -0.785))
     bar:SetAlpha(0.35)
     bars[i] = bar
   end
