@@ -602,10 +602,10 @@ end
 -- Tooltips
 --
 -- Every control keeps a tooltip, as in every Postbox window: its name and
--- the summary of its description, the first line (Locales.lua, ns.Summary)
--- -- the inspector beside it says the whole. It stands beside the panel,
--- level with the control, on the side with room: over the panel it would
--- cover the inspector.
+-- the summary of its description, the paragraph before its first blank
+-- line (Locales.lua, ns.Summary) -- the inspector beside it says the
+-- whole. It stands beside the panel, level with the control, on the side
+-- with room: over the panel it would cover the inspector.
 -------------------------------------------------------------
 
 function Tip.Begin(owner, title, text)
@@ -668,19 +668,6 @@ end
 -- is shown.
 -------------------------------------------------------------
 do
-  -- A description says its summary, then its detail, each newline in it a
-  -- paragraph break: a line of air between, so the summary stands on its
-  -- own over the detail. Made once per text and kept, as the summary is.
-  local PARAGRAPHS = {}
-  local function Paragraphs(text)
-    local shown = PARAGRAPHS[text]
-    if not shown then
-      shown = (text:gsub("\n", "\n\n"))
-      PARAGRAPHS[text] = shown
-    end
-    return shown
-  end
-
   local function TextBlock(block)
     local T = ns.Theme
     local title = T.CreateText(block, "body")
@@ -704,7 +691,7 @@ do
     t:SetText(title or "")
     local h = TEXT_TOP + math.ceil(t:GetStringHeight() or 0)
     if text and text ~= "" then
-      d:SetText(Paragraphs(text))
+      d:SetText(text)
       d:Show()
       h = h + TEXT_GAP + math.ceil(d:GetStringHeight() or 0)
     else
@@ -811,8 +798,11 @@ do
     Insp.Show(entry or nil)
   end
 
-  -- The height an entry's text needs, `extraH` included.
+  -- The height an entry's text needs, `extraH` included. Its tooltip's
+  -- summary is cut here too, with the measuring, so no hover is the first
+  -- to cut one.
   function Insp.Need(entry, extraH)
+    ns.Summary(entry.text)
     return Lay(S.measure, entry.title, entry.text, extraH)
   end
 
@@ -2471,7 +2461,7 @@ function Pages.mail(col)
   S.arrangeCell, S.arrangeOn = arrange, arrange.entry
   -- Out of reach, why leads: it is the tooltip, and the inspector's first
   -- paragraph over what the button does.
-  S.arrangeOff = Entry(L["OPT_ARRANGE_BUTTON"], L["ERR_OPEN_MAILBOX_LOOT"] .. "\n" .. L["ARRANGE_TIP"], "arrange")
+  S.arrangeOff = Entry(L["OPT_ARRANGE_BUTTON"], L["ERR_OPEN_MAILBOX_LOOT"] .. "\n\n" .. L["ARRANGE_TIP"], "arrange")
 
   Rows.Group(col, L["OPT_MAILTAB_HEADING"])
   Rows.Check(col, {
