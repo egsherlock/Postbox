@@ -118,6 +118,13 @@ local function IndexOf(list, id)
   return nil
 end
 
+-- Line up columns (MailboxUI, lineUpColumns; unset is on): whether the rows
+-- stand in lanes, in the mode as out of it (CollectTab's RV.LinedUp).
+local function LinedUp()
+  local ui = UI()
+  return not (ui and ui.GetOption) or ui.GetOption("lineUpColumns")
+end
+
 function AR.MoveColumn(from, to)
   local list = CopyLayout()
   local entry = table.remove(list, from)
@@ -1000,7 +1007,11 @@ end
 -- for their marks begins, for the last), GAP between two, the lanes being
 -- the columns as RV.Place publishes them for the list (s.laneX, s.laneW,
 -- from the row's left edge, which is the header's; s.lead and s.laneEnd,
--- where the arrangement's room begins and ends). A heading's glyph stands
+-- where the arrangement's room begins and ends): each column's home, where
+-- a row with every figure has it, whether the rows line up or close up
+-- (Line up columns, which the rows follow in the mode as out of it; closed
+-- up, a row without a figure shows its others out from under their
+-- headings, which is what the switch does). A heading's glyph stands
 -- in the middle of its box, from line to line, whatever the lane under it
 -- draws; a name starts where its lane does. The narrow columns wear glyphs
 -- (the read dot, the icon, the clock, the coin, the slots), with their
@@ -1481,6 +1492,7 @@ function AR.LayoutStrip(host)
   local strip = host and host.strip
   local layout = AR.Layout()
   if not (strip and layout) then return end
+  AR.SyncLanes(strip)
   local width = strip:GetWidth() or 0
   if width < 60 then return end
   local n = #layout
@@ -1747,24 +1759,80 @@ end
 -- cover), from under the header to the list's foot, a few levels above the
 -- rows. It carries:
 --   the lane lines   one faint line down each boundary between two lanes,
---                    from the header through the rows;
+--                    from the header through the rows, while the rows line
+--                    up (closed up, no row stands in lanes);
 --   the press        on any row, the column whose lane is under the cursor
---                    (on a two-line row, whatever the row draws there) is
---                    taken as its heading would be, and a right-click hides
---                    it; pointed at, its heading lights. So a click on a
---                    row does nothing else while the mode is open: nothing
+--                    -- closed up, the one that row drew there, and on a
+--                    two-line row whatever it draws there -- is taken as
+--                    its heading would be, and a right-click hides it;
+--                    pointed at, its heading lights. So a click on a row
+--                    does nothing else while the mode is open: nothing
 --                    opens, nothing is collected;
---   the hand         while a column is dragged, its slot ringed down the
---                    list and the column riding offset in a lifted lane,
---                    its cells copied onto the lane from the rows.
+--   the hand         while a column is dragged, the column riding offset in
+--                    a lifted lane at its home, its cells copied onto the
+--                    lane from the rows -- closed up, gathered into it as a
+--                    lined-up row has them -- and, lined up, its slot
+--                    ringed down the list.
 -- The mouse wheel is not taken: the list still scrolls under it. Nothing
 -- here runs while the mode is closed; pointed at, a check a frame of which
 -- column is under the cursor, gone with the pointer.
 -------------------------------------------------------------
 
 -- Which column a press or the pointer on the list is over, or nil: by the
--- lanes where the rows have them, by what a two-line row draws otherwise.
+-- lanes where the rows line up, by what the row draws otherwise.
 local REGION_OF = { read = "Indicator", icon = "Icon", sender = "Sender", subject = "Subject" }
+
+-- Every column's region on a row, by id (History's gold is its Money).
+local ROW_REGION = {
+  read = "Indicator", icon = "Icon", sender = "Sender", subject = "Subject",
+  time = "ColTime", money = "ColMoney", slots = "ColSlots",
+}
+
+-- Where a column region stands on its row, from where RV.Place anchored it
+-- (RV.Anchor: by its left edge, or by its right one on a row `width`
+-- wide), and how wide it is: its left edge and width, in the row's units.
+function AR.RegionSpan(region, width)
+  local w = region:GetWidth() or 0
+  local left = region.__pbAtX or 0
+  if region.__pbAt == 2 then left = (width or 0) + left - w end
+  return left, w
+end
+
+-- Closed up, the column a press on a row takes is the one that row drew
+-- there, not a lane: each column where the row placed it, the subject with
+-- the room its quality mark keeps, and the nearest to the cursor wins, so a
+-- press between two goes to the nearer. Only inside the arrangement's room
+-- (the spec's lead and laneEnd, as the headings span it). Nothing is made.
+function AR.RowColumnAt(host, cx, cy)
+  local pool = host.Pool and host.Pool()
+  local spec = host.Spec and host.Spec()
+  local layout = AR.Layout()
+  if not (pool and spec and layout) then return nil end
+  for i = 1, #pool do
+    local row = pool[i]
+    if row:IsShown() then
+      local top, bottom, left = row:GetTop(), row:GetBottom(), row:GetLeft()
+      if top and bottom and left and cy <= top and cy >= bottom then
+        local x = cx - left
+        if x < (spec.lead or 0) or x > (spec.laneEnd or spec.width or x) then return nil end
+        local best, bestD
+        for k = 1, #layout do
+          local id = layout[k].id
+          local region = row[ROW_REGION[id]] or (id == "money" and row.Money) or nil
+          if region and region:IsShown() then
+            local l, w = AR.RegionSpan(region, spec.width)
+            if id == "subject" then l, w = l - (spec.markW or 0), w + (spec.markW or 0) end
+            local d = 0
+            if x < l then d = l - x elseif x > l + w then d = x - l - w end
+            if not bestD or d < bestD then best, bestD = id, d end
+          end
+        end
+        return best
+      end
+    end
+  end
+  return nil
+end
 
 function AR.RegionAt(host, cx, cy)
   local pool = host.Pool and host.Pool()
@@ -1795,6 +1863,7 @@ function AR.ColumnAt(host)
   local left = cover:GetLeft()
   if not left then return nil end
   local cx, cy = AR.Cursor(cover)
+  if strip.lanes and not strip.lined then return AR.RowColumnAt(host, cx, cy) end
   if strip.lanes then
     local x = cx - left
     local hx, hw, kind = strip.hx, strip.hw, strip.kind
@@ -1905,13 +1974,14 @@ local function NewLine(cover, i)
 end
 
 -- One line down each boundary between two lanes, where the heading before
--- it ends (AR.LayoutStrip). None without lanes.
+-- it ends (AR.LayoutStrip). None without lanes, nor while the rows close
+-- up: no row stands in them then.
 function AR.PlaceLines(host)
   local cover, strip = host.cover, host.strip
   if not (cover and strip) then return end
   local layout = AR.Layout()
   local count = 0
-  if strip.lanes and layout then
+  if strip.lanes and strip.lined and layout then
     local hx, hw, kind = strip.hx, strip.hw, strip.kind
     local prev
     for i = 1, #layout do
@@ -1936,8 +2006,10 @@ function AR.PlaceLines(host)
   for i = count + 1, #cover.Lines do cover.Lines[i]:Hide() end
 end
 
--- The dragged column's slot down the list, and its lane over it, offset by
--- as much as its heading is from the slot. Only where the rows have lanes.
+-- The dragged column's lane over the list, offset by as much as its heading
+-- is from its slot, and while the rows line up the slot ringed down the
+-- list; closed up no row has that slot, and the header's ring says where
+-- it lands. Only where the rows have lanes.
 function AR.PlaceHand(host)
   local cover, strip, drag = host.cover, host.strip, AR.drag
   local scroll = host.Scroll and host.Scroll()
@@ -1955,7 +2027,7 @@ function AR.PlaceHand(host)
   hand:SetPoint("TOPLEFT", scroll, "TOPLEFT", x - 1 + drag.dx, 3)
   hand:SetPoint("BOTTOMLEFT", scroll, "BOTTOMLEFT", x - 1 + drag.dx, 0)
   hand:SetWidth(w + 2)
-  ghost:Show()
+  ghost:SetShown(strip.lined and true or false)
   hand:Show()
 end
 
@@ -2018,7 +2090,7 @@ end
 -- RV.Place hands each row it places while the mode points at a column
 -- (AR.Focus: the one in the hand, else under the pointer in the header,
 -- else the selected one) to AR.MarkRow, with where the row's subject stands
--- and runs. On a one-line row, which has lanes:
+-- and runs. On a one-line row lined up, which stands in lanes:
 --   a column         its lane washed where the row draws it; for a figure,
 --                    hatched where the subject runs on through it, and
 --                    outlined where the mail has none and the subject
@@ -2027,12 +2099,17 @@ end
 --                    columns hatched, and a tick where it stops;
 --   in the hand      the row's cell leaves its lane and rides on the lifted
 --                    lane over the list (7a).
--- The accent while the column is selected or in the hand, white while it
--- is only pointed at. A two-line row keeps RV.Wash's wash around what it
--- draws of the column. Every mark is a texture of the row's own, made the
--- first time the row needs one and reused, as RV.Wash's is; a mark is
--- anchored again only where it moved. RV.Wash with nothing to point at
--- takes them all away (AR.UnmarkRow).
+-- Closed up, a row's columns are its own: a column washed where this row
+-- drew it, and nothing on a row without it (the subject has its room); the
+-- subject's room washed and a tick where it stops, which is where the
+-- mail's own figures begin; in the hand, a figure's cell rides on the
+-- lifted lane where a row with every figure has it, so the column in the
+-- hand reads as one. The accent while the column is selected or in the
+-- hand, white while it is only pointed at. A two-line row keeps RV.Wash's
+-- wash around what it draws of the column. Every mark is a texture of the
+-- row's own, made the first time the row needs one and reused, as
+-- RV.Wash's is; a mark is anchored again only where it moved. RV.Wash with
+-- nothing to point at takes them all away (AR.UnmarkRow).
 -------------------------------------------------------------
 
 local MARK = {
@@ -2218,8 +2295,11 @@ local function Uncarry(m)
 end
 
 -- The row's cell of the column in the hand, onto the lane: where the row
--- has it, moved by the drag's offset. The subject's is its own room.
-local function Carry(row, m, region, s, x, subjectW, dx)
+-- has it, moved by the drag's offset. The subject's is its own room. A
+-- figure named `home` (a closed-up row's) rides in its home lane instead,
+-- where a row with every figure has it, so the column in the hand reads as
+-- one down the list.
+local function Carry(row, m, region, s, x, subjectW, dx, home)
   local host = AR.host
   local cover = host and host.cover
   if not cover then return end
@@ -2228,10 +2308,11 @@ local function Carry(row, m, region, s, x, subjectW, dx)
     carry = NewCarry(cover)
     m.carry = carry
   end
-  local w = region:GetWidth() or 0
-  local left = region.__pbAtX or 0
-  if region.__pbAt == 2 then left = (s.width or 0) + left - w end
+  local left, w = AR.RegionSpan(region, s.width)
   if region == s.el.subject then w = math.max(math.min(w, x + subjectW - left), 1) end
+  local lx = home and s.laneX and s.laneX[home]
+  local lw = home and s.laneW and s.laneW[home]
+  if lx and lw and lw > 0 then left, w = lx, lw end
   local cur
   if region:GetObjectType() == "FontString" then
     cur = carry.Text
@@ -2277,8 +2358,9 @@ function AR.UnmarkRow(row)
 end
 
 -- RV.Place's last step for a row, while the mode points at a column: see
--- above. `lanes` is whether the row stands in lanes; `x`, `subjectW` the
--- subject's own room; `sx`, `run` where it starts and how far it runs.
+-- above. `lanes` is whether the row stands in lanes (lined up); `x`,
+-- `subjectW` the subject's own room; `sx`, `run` where it starts and how
+-- far it runs (a one-line row's; nil on a two-line row).
 function AR.MarkRow(row, s, target, lanes, x, subjectW, sx, run)
   local R = Rules()
   local focus = s.focus
@@ -2286,7 +2368,7 @@ function AR.MarkRow(row, s, target, lanes, x, subjectW, sx, run)
   -- The other window's rows, if it is up, keep the plain wash: the header,
   -- its lanes and the lane in the hand are this list's.
   local list = host and host.List and host.List()
-  if not (lanes and sx and list and row:GetParent() == list) then
+  if not (sx and list and row:GetParent() == list) then
     AR.UnmarkRow(row)
     if R and R.Wash then R.Wash(row, target) end
     return
@@ -2302,7 +2384,8 @@ function AR.MarkRow(row, s, target, lanes, x, subjectW, sx, run)
     HideTick(m)
     local region = s.el[focus]
     if region and region:IsShown() then
-      Carry(row, m, region, s, x, subjectW, drag.dx)
+      local spec = AR.COLUMNS[focus]
+      Carry(row, m, region, s, x, subjectW, drag.dx, (not lanes and spec and spec.figure) and focus or nil)
       region:Hide()
       -- The icon's quality mark goes with it (the row paints it again
       -- when it is next bound).
@@ -2328,6 +2411,19 @@ function AR.MarkRow(row, s, target, lanes, x, subjectW, sx, run)
     return
   end
   HideTick(m)
+  if not lanes then
+    -- Closed up: the column where this row drew it, and nothing on a row
+    -- without it, whose subject has that room.
+    local region = s.el[focus]
+    if region and region:IsShown() then
+      local l, w = AR.RegionSpan(region, s.width)
+      MarkBox(row, m, l - pad, w + 2 * pad, sel and "sel" or "hover")
+    else
+      HideBox(m)
+    end
+    HideHatch(m)
+    return
+  end
   local laneX, laneW = s.laneX, s.laneW
   local lx = laneX and laneX[focus]
   local lw = laneW and laneW[focus] or 0
@@ -2653,15 +2749,8 @@ end
 -- own switch (MailboxUI, lineUpColumns; unset is on), which decides how
 -- every column of every row stands, so it belongs to no one column's card.
 -- A box before its name, filled with the accent and checked while on; its
--- words and ring rise with it, and go white when pointed at. While
--- arranging the rows line up whatever it says, so a click places nothing
--- again: the rows follow it when the mode ends (AR.Leave), and the
--- subject's card says what it does meanwhile.
-local function LinedUp()
-  local ui = UI()
-  return not (ui and ui.GetOption) or ui.GetOption("lineUpColumns")
-end
-
+-- words and ring rise with it, and go white when pointed at. A click places
+-- every list again at once (AR.SetLinedUp), so the rows show what it does.
 local function PaintLanes(sw)
   local spec = PLATE.switch
   local on, hover = sw.on, sw.hover
@@ -2698,16 +2787,38 @@ local function LanesLeave(self)
   GameTooltip:Hide()
 end
 
-local function LanesClick(self)
+-- Line up columns switched from the mode: the option itself, the switch's
+-- sound, the options panel's switch where it is open, and every list placed
+-- again where it stands, so the rows show at once what it does; the header
+-- stays on its lanes, draws its lane lines only while lined up, and every
+-- switch in the mode is painted as it now is (AR.SyncLanes).
+function AR.SetLinedUp(on)
   local ui = UI()
   if not (AR.host and ui and ui.SetOption) then return end
-  local on = not LinedUp()
+  on = on and true or false
   ui.SetOption("lineUpColumns", on)
   PlayToggle(on)
-  -- The options panel, where it is open, shows the switch as it now is.
   local panel = ns.OptionsPanel
   if panel and type(panel.RefreshControls) == "function" then panel.RefreshControls() end
-  AR.Inspect()
+  AR.RowsChanged(false)
+  if AR.host then AR.LayoutStrip(AR.host) end
+end
+
+-- The mode's switches as the option now stands, wherever it was switched
+-- (here, or the options panel's own): the inspector filled again for it --
+-- its switch, and the notes that say what the rows do -- once per change.
+-- Called as the header is laid out, which every pass of the rows ends with.
+function AR.SyncLanes(strip)
+  local lined = LinedUp() and true or false
+  if strip.lined == lined then return end
+  strip.lined = lined
+  local insp = AR._insp
+  if insp and insp:IsShown() then AR.Inspect() end
+end
+
+local function LanesClick(self)
+  if not AR.host then return end
+  AR.SetLinedUp(not LinedUp())
   if GameTooltip:IsOwned(self) then LanesTip(self) end
 end
 
@@ -3679,16 +3790,24 @@ local function FillColumn(id, y)
   -- line up, say what a mail without it does; the subject's card says what
   -- Line up columns does, as it stands, and in one quiet line where the
   -- switch is. Where the subject runs on into a column, the note begins
-  -- with the hatch the rows draw there.
+  -- with the hatch the rows draw there: only while they line up, the rows
+  -- drawing no hatch closed up.
+  local lined = LinedUp()
   if spec.figure and layout then
     local at = IndexOf(layout, "subject") or 0
-    if k > at then
-      y = PutSwatchNote(L()[LinedUp() and "ARRANGE_NOTE_RIGHT" or "ARRANGE_NOTE_RIGHT_OFF"], y, false)
-    else
+    if k <= at then
       y = PutNote(L()["ARRANGE_NOTE_LEFT"], y)
+    elseif lined then
+      y = PutSwatchNote(L()["ARRANGE_NOTE_RIGHT"], y, false)
+    else
+      y = PutNote(L()["ARRANGE_NOTE_RIGHT_OFF"], y)
     end
   elseif spec.fixed then
-    y = PutSwatchNote(L()[LinedUp() and "ARRANGE_LANES_ON" or "ARRANGE_LANES_OFF"], y, true)
+    if lined then
+      y = PutSwatchNote(L()["ARRANGE_LANES_ON"], y, true)
+    else
+      y = PutNote(L()["ARRANGE_LANES_OFF"], y)
+    end
     y = PutText(insp.Where, L()["ARRANGE_LANES_WHERE"], y - P.ROW_WRAP)
   end
   return y
@@ -3861,9 +3980,9 @@ function AR.Enter(host)
   end
   AR.CatchEscape(true)
   if host.toggle then AR.PaintToggle(host.toggle) end
-  -- The rows line up while the mode is open: placed again, and the header
-  -- laid on their lanes as each pass ends (AR.ListPlaced) -- and here, for
-  -- a list that placed none.
+  -- The rows placed again for the mode, publishing the lanes the header
+  -- stands on, and the header laid on them as each pass ends
+  -- (AR.ListPlaced) -- and here, for a list that placed none.
   AR.RowsChanged(false)
   AR.LayoutStrip(host)
   -- The host's cards settle into place, once (AR.Rise).
@@ -3905,7 +4024,7 @@ function AR.Leave()
   if host.toggle then AR.PaintToggle(host.toggle) end
   -- A card that went with the mode may have had the pointer.
   AR.MoveCursor(false)
-  -- The rows as the switch has them again, and nothing marked on them.
+  -- The rows placed again with nothing marked on them.
   AR.RowsChanged(false)
 end
 

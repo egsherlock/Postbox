@@ -1192,12 +1192,11 @@ function RV.Focus()
 end
 
 -- Whether the figures stand in lanes (RV.Place): the "Line up columns"
--- option, unset meaning on, and always while the arrange mode is open over
--- either window -- the columns being arranged are the lanes. Read once per
--- row placed: a field, then the options' memo.
+-- option, unset meaning on -- in the arrange mode too, so what the switch
+-- does is seen while the columns are arranged (the header stands on each
+-- column's home lane either way: RV.HomeLanes). Read once per row placed:
+-- the options' memo.
 function RV.LinedUp()
-  local A = ns.Arrange
-  if A and A.host then return true end
   local UI = ns.MailboxUI
   if not (UI and UI.GetOption) then return true end
   return UI.GetOption("lineUpColumns")
@@ -1600,16 +1599,18 @@ end
 -- in their order, and the figures are written out in theirs on the second.
 -- It has no columns to line up, and is placed the same either way.
 --
--- While a one-line row is lined up -- and so always while arranging -- each
--- column's lane is published into the spec as it is placed, in units from
--- the row's left edge: s.laneX[id], s.laneW[id], for every column this list
--- has. The subject's is its own room, before it runs on; a column with no
--- room is 0 wide where it would stand. One row's lanes are its whole
--- list's, but for a row whose trailing marks take more room (a read mail's
--- delete mark, under the divider): a binder whose rows differ so sets
--- s.publish before each pass, and only the first row placed -- the top of
--- the list as it stands -- publishes. Closed up, nothing is published: a
--- row's figures are its own.
+-- While a one-line row is lined up, each column's lane is published into
+-- the spec as it is placed, in units from the row's left edge: s.laneX[id],
+-- s.laneW[id], for every column this list has. The subject's is its own
+-- room, before it runs on; a column with no room is 0 wide where it would
+-- stand. One row's lanes are its whole list's, but for a row whose trailing
+-- marks take more room (a read mail's delete mark, under the divider): a
+-- binder whose rows differ so sets s.publish before each pass, and only the
+-- first row placed -- the top of the list as it stands -- publishes. Closed
+-- up, a row's figures are its own and nothing is published, but for the
+-- arrange mode: while it is open the header still stands on each column's
+-- home lane, where a row with every figure has it, and the row publishes
+-- those instead (RV.HomeLanes), as a lined-up row would.
 --
 -- `s` (RV.NewSpec, reused):
 --   width, left, trail, gap   the row's width; where its first column may
@@ -1708,6 +1709,15 @@ function RV.Place(row, s)
         w[id] = width
         if width > 0 then used = used + width + gap end
       end
+    end
+  end
+  -- Closed up while the arrange mode is open: the home lanes, for the
+  -- header (above).
+  if not lanes and not two and s.publish ~= false then
+    local A = ns.Arrange
+    if A and A.host then
+      if s.publish then s.publish = false end
+      RV.HomeLanes(s, layout, at, textWidth, room)
     end
   end
 
@@ -1933,6 +1943,94 @@ function RV.Place(row, s)
   -- arrange mode's hand.
   local named = row.QualityName
   if named then named:SetShown(named.__pbOn == true and subject:IsShown()) end
+end
+
+-- Each column's home lane, published into `s` as RV.Place publishes a
+-- lined-up row's (s.laneX, s.laneW, s.laneEnd): where it stands on a row
+-- that has every figure, which a closed-up row places the same way. By the
+-- same arithmetic as RV.Place, from the room the row was given (`at` the
+-- subject's place in `layout`, `textWidth` and `room` its text area and the
+-- figures' share of it): a figure the arrangement shows is as wide as its
+-- column, out of the share, and a hidden one has no lane. Places nothing;
+-- the widths are written straight into s.laneW, so nothing is made.
+function RV.HomeLanes(s, layout, at, textWidth, room)
+  local el, cols, size, gap = s.el, s.cols, s.size, s.gap
+  local laneX, laneW = s.laneX, s.laneW
+  if not laneX then
+    laneX, laneW = {}, {}
+    s.laneX, s.laneW = laneX, laneW
+  end
+  s.laneEnd = s.width - (s.marks or 0)
+  local n = #layout
+  local least = RV.FIGURE_MIN
+  local used = 0
+  for pass = 1, 2 do
+    local from, to, step = n, at + 1, -1
+    if pass == 2 then from, to, step = 1, at - 1, 1 end
+    for i = from, to, step do
+      local id = layout[i].id
+      if RV.FIGURE[id] and el[id] then
+        local width = 0
+        if layout[i].shown then
+          width = min(cols and cols[id] or 0, room - used)
+          if width < least then width = 0 end
+        end
+        laneW[id] = width
+        if width > 0 then used = used + width + gap end
+      end
+    end
+  end
+  local lineWidth = max(textWidth - used, 40)
+  local senderShown = layout.shown.sender and el.sender ~= nil
+  local senderW = senderShown and min(s.senderCol or SENDER_MIN, floor(lineWidth / 2)) or 0
+  local x = s.left
+  for i = 1, at - 1 do
+    local id = layout[i].id
+    if el[id] then
+      local lx, lw = x, 0
+      if layout[i].shown then
+        if id == "read" then
+          lx, lw = RV.DotX(x, s.left, gap), ROW_INDICATOR - 1
+          x = x + ROW_INDICATOR + 2
+        elseif id == "icon" then
+          lw = size.icon or 0
+          x = x + lw + gap
+        elseif id == "sender" then
+          lw = senderW
+          x = x + senderW + gap
+        elseif (laneW[id] or 0) > 0 then
+          lw = laneW[id]
+          x = x + lw + gap
+        end
+      end
+      laneX[id], laneW[id] = lx, lw
+    end
+  end
+  local edge = s.trail
+  for i = n, at + 1, -1 do
+    local id = layout[i].id
+    if el[id] then
+      local from, lw = edge, 0
+      if layout[i].shown then
+        if id == "read" then
+          lw = ROW_INDICATOR - 1
+          edge = edge + lw + gap
+        elseif id == "icon" then
+          lw = size.icon or 0
+          edge = edge + lw + gap
+        elseif id == "sender" then
+          lw = senderW
+          edge = edge + senderW + gap
+        elseif (laneW[id] or 0) > 0 then
+          lw = laneW[id]
+          edge = edge + lw + gap
+        end
+      end
+      laneX[id], laneW[id] = s.width - from - lw, lw
+    end
+  end
+  laneX.subject = x
+  laneW.subject = max(lineWidth - (senderShown and (senderW + gap) or 0), 20)
 end
 
 -- layout, id -> where the arrangement has that column.
