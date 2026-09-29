@@ -109,6 +109,10 @@ longer play.
   short sentence, with the whole description in the options' side panel, and
   every gesture hint is one gray line in the same form ("Right-click to open
   without collecting · Shift-click to select a range").
+- **Clearer labels:** "Window grid docking" is now Dock beside game windows,
+  "Show counts" is Show mail counts, the minimap styles are Minimal letter and
+  Minimal badge, and the Done view's button says Delete finished. Postbox's
+  English is now spelled the American way throughout.
 - **The options open quicker:** your recipients are counted when you look at
   the Send tab, not every time the options open.
 - Also: the "Show on each mail" list moved from the options into the window,
