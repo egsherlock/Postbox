@@ -468,21 +468,10 @@ end
 
 -- Class colours for names: the census's class for the player's own
 -- characters, the contact cache's for anyone else, plain where neither knows.
-local function ClassColour(token)
-  if type(token) ~= "string" then return nil end
-  if C_ClassColor and type(C_ClassColor.GetClassColor) == "function" then
-    local ok, colour = pcall(C_ClassColor.GetClassColor, token)
-    if ok and colour then return colour end
-  end
-  return type(RAID_CLASS_COLORS) == "table" and RAID_CLASS_COLORS[token] or nil
-end
-
 local function Tint(text, token)
-  local colour = ClassColour(token)
-  if not colour then return text end
-  if type(colour.WrapTextInColorCode) == "function" then return colour:WrapTextInColorCode(text) end
-  return string.format("|cff%02x%02x%02x%s|r", math.floor((colour.r or 1) * 255 + 0.5),
-    math.floor((colour.g or 1) * 255 + 0.5), math.floor((colour.b or 1) * 255 + 0.5), text)
+  local CS = ns.ContactService
+  if type(token) ~= "string" or not (CS and CS.WrapClass) then return text end
+  return CS.WrapClass(token, text)
 end
 
 local function Quiet(text)

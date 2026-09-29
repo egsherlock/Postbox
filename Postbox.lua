@@ -152,7 +152,11 @@ local function RememberClass(realm, name, classToken)
     classes = {}
     byRealm[realm] = classes
   end
+  if classes[name] == classToken then return end
   classes[name] = classToken
+  -- The mail rows colour this character's name from the census.
+  local CS = ns.ContactService
+  if CS and type(CS.ClassesChanged) == "function" then CS.ClassesChanged() end
 end
 
 -- Both of these return EXACTLY ONE value, deliberately: UnitFactionGroup also

@@ -625,6 +625,15 @@ function Theme.SetColor(region, token)
   end
 end
 
+-- Tints a font string in a colour that is no palette token: a class colour.
+-- It comes off the accent registry, so an accent retune never paints over
+-- it; Theme.SetColor with a token puts the string back on.
+function Theme.SetTextRGB(region, r, g, b, a)
+  if not region or type(region.SetTextColor) ~= "function" then return end
+  accentTexts[region] = nil
+  region:SetTextColor(r, g, b, a or 1)
+end
+
 -- Re-tints every accent-toned font string from the LIVE accent.
 --
 -- Nothing to do on the default theme, where the accent is a constant; this

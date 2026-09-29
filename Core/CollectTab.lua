@@ -1559,6 +1559,34 @@ function RV.PaintDot(dot, read, stuck)
   end
 end
 
+-- The sender's colour for the mail a row (or the reading pane) is bound to:
+-- a player whose class Postbox knows -- one of the player's own characters,
+-- or a friend, guildmate or contact the address book has learned
+-- (ContactService.ClassOf) -- in that class's colour; anyone else, and an
+-- auction outcome, whose words carry their own tone, in the text's role
+-- colour (`role`, "label" by default) as ever. `sender` is the mail's own,
+-- nil where the column says something else; `realm` the box's realm (nil:
+-- the one being played). The class the string wears is kept on it and the
+-- colour written only when that changes, so a pooled row bound to somebody
+-- else next never keeps the last one's colour, and an unknown sender costs
+-- one lookup and no write.
+function RV.PaintSender(fs, sender, realm, role)
+  if not fs then return end
+  local CS = ns.ContactService
+  local token = (sender and CS and CS.ClassOf) and CS.ClassOf(sender, realm) or nil
+  if token == fs.__pbClass then return end
+  local r, g, b
+  if token and CS.ClassColour then r, g, b = CS.ClassColour(token) end
+  local T = Th()
+  if r then
+    fs.__pbClass = token
+    T.SetTextRGB(fs, r, g, b)
+  else
+    fs.__pbClass = nil
+    T.SetColor(fs, (T.TextRoles[role or "label"] or T.TextRoles.label).color)
+  end
+end
+
 -- What a graphic takes from the text area: the dot sits in the gap before
 -- its neighbour on the left of the subject, as a bullet does -- two in from
 -- the icon, as the dot has always stood -- and takes a gap like any other
@@ -2074,6 +2102,7 @@ CT.RowRules = {
   DOT = ROW_INDICATOR,
   RowOrder = RowOrder,
   OutcomeSender = OutcomeSender,
+  PaintSender = RV.PaintSender,
   EXPIRY_SOON_DAYS = EXPIRY_SOON_DAYS,
   ExpiryState = ExpiryState,
   META_SHARE = COMPACT_META_SHARE,
@@ -3076,6 +3105,9 @@ function AV.UpdateRows(panel)
   local now = time()
   local used = 0
   local onHeader = function(realm, name) AV.OpenHeader(panel, realm, name) end
+  -- The box each row is from, for its sender's class (MM.RowRealm).
+  local Memory = ns.MailMemory
+  local realm = Memory.RowRealm and Memory.RowRealm(rows, first, panel._avInfo) or nil
   for i = first, last do
     used = used + 1
     local row = AV.Row(panel, used)
@@ -3083,7 +3115,8 @@ function AV.UpdateRows(panel)
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
     row:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
-    ns.MailMemory.FillRow(row, rows[i], now, panel._avCols, i, onHeader)
+    if rows[i].header then realm = rows[i].realm end
+    Memory.FillRow(row, rows[i], now, panel._avCols, i, onHeader, realm)
   end
   local pool = panel._avPool
   for i = used + 1, #pool do pool[i]:Hide() end
@@ -3674,7 +3707,10 @@ local function BindRow(panel, row, index, position, compact, done)
   -- "Won", "Expired", "Cancelled", each in its own colour, with the item's
   -- name beside it. "Auction House" carried no information the outcome
   -- does not, and the outcome was the one thing the row did not say.
-  senderText = OutcomeSender(kind) or senderText
+  local outcome = OutcomeSender(kind)
+  senderText = outcome or senderText
+  -- A player the address book knows the class of, in its colour.
+  RV.PaintSender(row.Sender, not outcome and sender or nil)
   -- A hidden sender column is said by the tooltip instead.
   if not RowShows("sender") then row.senderTip = senderText end
 
@@ -3885,7 +3921,9 @@ function HV.BindHistoryRow(panel, row, entry, position, now)
   local spec = panel._histSpec
   local el, text = spec.el, spec.text
   el.icon, el.sender, el.subject, el.money = row.Icon, row.Sender, row.Subject, row.Money
-  text.sender = R.OutcomeSender(entry.k) or R.DisplaySender(named) or L()["SENDER_UNKNOWN"]
+  local outcome = R.OutcomeSender(entry.k)
+  text.sender = outcome or R.DisplaySender(named) or L()["SENDER_UNKNOWN"]
+  RV.PaintSender(row.Sender, not outcome and named or nil)
   text.subject = HV.HistoryWhat(entry)
   text.money = MoneyShown(kind) and HV.HistoryMoney(entry, true) or nil
   spec.size.icon = ROW_ICON_COMPACT
@@ -6154,6 +6192,7 @@ function PaintDetailContent(detail, index)
   local hasContent = (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0
 
   detail.Sender:SetText(sender or L()["SENDER_UNKNOWN"])
+  RV.PaintSender(detail.Sender, sender, nil, "heading")
   detail.Subject:SetText(Helpers().ShortSubject(subject or ""))
   detail.Info:SetText(DetailInfoText(detail, index, kind, hasCOD))
 

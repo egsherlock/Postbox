@@ -226,6 +226,12 @@ end
 
 local classCache = {}
 
+-- What a name's class is known by moved: a class learned or changed here, the
+-- cache dropped, or the census of the player's own characters written
+-- (CS.ClassesChanged). CS.ClassOf's answers are kept against it. `censusGen`
+-- is the census's part alone, which is all the own-character index reads.
+local classGen, censusGen = 1, 1
+
 -- Reverse map: lowercase localized class name -> class token.
 --
 -- Built from BOTH gendered tables. frFR, deDE, ruRU and esES return the female
@@ -261,7 +267,12 @@ local function CacheClass(name, classToken)
   if type(name) ~= "string" or name == "" then return end
   if type(classToken) ~= "string" or classToken == "" then return end
   local key = IdentityKey(name)
-  if key ~= "" then classCache[key] = classToken end
+  -- A rebuild writes back the class every entry already has; only a change
+  -- moves the generation.
+  if key ~= "" and classCache[key] ~= classToken then
+    classCache[key] = classToken
+    classGen = classGen + 1
+  end
 end
 
 -- Resolves a source row's class to a token: the file-name field when the source
@@ -1032,6 +1043,7 @@ do
 
     bus.Register("PLAYER_LEAVING_WORLD", function()
       MarkAllDirty()
+      if next(classCache) ~= nil then classGen = classGen + 1 end
       classCache = {}
       -- Correctness never needs this -- a fold is a pure function of its input
       -- -- but a character switch is the natural place to stop carrying every
@@ -1049,28 +1061,137 @@ end
 -- Class token -> the client's colour for it. Two tables answer this and they
 -- do not agree about which builds have them, so ask the modern one first and
 -- keep RAID_CLASS_COLORS as the answer for anything it does not know.
+--
+-- The one copy in the addon: the address book, the character groups, Mail
+-- Memory's names and the mail rows all colour through here. Asked of the
+-- client once per class: C_ClassColor hands back a new colour object on every
+-- call, and a row bind asks once per row. Bounded by the class tokens there
+-- are (false: the client has no colour for that token).
+local classColours = {}
+
 local function ClassColour(token)
+  if type(token) ~= "string" or token == "" then return nil end
+  local known = classColours[token]
+  if known ~= nil then return known or nil end
+  local colour
   if C_ClassColor and type(C_ClassColor.GetClassColor) == "function" then
-    local colour = C_ClassColor.GetClassColor(token)
-    if colour then return colour end
+    local ok, value = pcall(C_ClassColor.GetClassColor, token)
+    if ok and type(value) == "table" then colour = value end
   end
-  if type(RAID_CLASS_COLORS) == "table" then return RAID_CLASS_COLORS[token] end
-  return nil
+  if not colour and type(RAID_CLASS_COLORS) == "table" and type(RAID_CLASS_COLORS[token]) == "table" then
+    colour = RAID_CLASS_COLORS[token]
+  end
+  classColours[token] = colour or false
+  return colour
 end
 
--- Colour objects carry their own wrapper; the plain tables in
--- RAID_CLASS_COLORS carry three floats and nothing else, so the escape gets
--- built by hand for those. Either way an unknown class returns the text
--- untouched rather than a default colour -- a name drawn in the wrong class
--- colour is a lie, a name drawn plain is merely unhelpful.
-local function WrapInClassColour(token, text)
+-- token -> r, g, b, or nil where the client has no colour for it. For a font
+-- string's SetTextColor, where the whole string is the name.
+function CS.ClassColour(token)
+  local colour = ClassColour(token)
+  if not colour then return nil end
+  return colour.r or 1, colour.g or 1, colour.b or 1
+end
+
+-- token, text -> the text in that class's colour. Colour objects carry their
+-- own wrapper; the plain tables in RAID_CLASS_COLORS carry three floats and
+-- nothing else, so the escape gets built by hand for those. Either way an
+-- unknown class returns the text untouched rather than a default colour -- a
+-- name drawn in the wrong class colour is a lie, a name drawn plain is merely
+-- unhelpful.
+function CS.WrapClass(token, text)
   local colour = ClassColour(token)
   if not colour then return text end
   if type(colour.WrapTextInColorCode) == "function" then
     return colour:WrapTextInColorCode(text)
   end
-  local r, g, b = (colour.r or 1) * 255, (colour.g or 1) * 255, (colour.b or 1) * 255
-  return string.format("|cff%02x%02x%02x%s|r", r, g, b, text)
+  local floor = math.floor
+  return string.format("|cff%02x%02x%02x%s|r", floor((colour.r or 1) * 255 + 0.5),
+    floor((colour.g or 1) * 255 + 0.5), floor((colour.b or 1) * 255 + 0.5), text)
+end
+
+-- The census of the player's own characters was written: a character logged
+-- in, or one was removed from the address book. Postbox.lua and
+-- Core/Recipients.lua, the census's writers, call it.
+function CS.ClassesChanged()
+  censusGen = censusGen + 1
+  classGen = classGen + 1
+end
+
+-- The player's own characters on every realm, identity key -> class token,
+-- from the census (altClasses, keyed by the raw realm and the bare name).
+-- Rebuilt only when the census moved.
+local ownClasses, ownGen = {}, 0
+
+local function BuildOwnClasses()
+  for key in pairs(ownClasses) do ownClasses[key] = nil end
+  ownGen = censusGen
+  local classes = type(PostboxDB) == "table" and PostboxDB.altClasses or nil
+  if type(classes) ~= "table" then return end
+  for realm, byName in pairs(classes) do
+    if type(realm) == "string" and realm ~= "" and type(byName) == "table" then
+      for name, token in pairs(byName) do
+        if type(name) == "string" and name ~= "" and type(token) == "string" and token ~= "" then
+          local key = IdentityKey(name .. "-" .. realm)
+          if key ~= "" then ownClasses[key] = token end
+        end
+      end
+    end
+  end
+end
+
+-- CS.ClassOf's answers: realm context ("" for the realm being played) ->
+-- sender string, exactly as the mail gave it -> class token, or false for
+-- none known. A row bind is two lookups and builds no string. Dropped whole
+-- when the generation moves, and when it holds more senders than a mailbox
+-- session plausibly shows.
+local senderMemo, memoGen, memoCount = {}, 0, 0
+local SENDER_MEMO_MAX = 1024
+
+-- sender [, realm] -> the class token a mail's sender is known by, or nil.
+--
+-- `sender` is what the mail says: "Name" for a character on the box's own
+-- realm, "Name-Realm" for anyone else. `realm` is the realm the box belongs
+-- to, raw or normalised, for a box that is not the one being played (nil: the
+-- realm being played). Known means one of the player's own characters (the
+-- census, first: it is the player's own record) or a name the contact sources
+-- have learned the class of (friends, guild, Battle.net, the alts). Never
+-- collects anything: what the sources have not learned yet is simply unknown.
+-- An NPC's name holds a space before any realm, which no player's can, and is
+-- never looked up.
+function CS.ClassOf(sender, realm)
+  if type(sender) ~= "string" or sender == "" then return nil end
+  if memoGen ~= classGen then
+    senderMemo, memoCount, memoGen = {}, 0, classGen
+  end
+  local context = realm or ""
+  local byRealm = senderMemo[context]
+  if byRealm then
+    local known = byRealm[sender]
+    if known ~= nil then return known or nil end
+  end
+
+  local token = false
+  local dash = sender:find("-", 1, true)
+  local space = sender:find(" ", 1, true)
+  if not (space and (not dash or space < dash)) then
+    if ownGen ~= censusGen then BuildOwnClasses() end
+    local name = sender
+    if realm and realm ~= "" and not dash then name = sender .. "-" .. realm end
+    local key = IdentityKey(name)
+    if key ~= "" then token = ownClasses[key] or classCache[key] or false end
+  end
+
+  if memoCount >= SENDER_MEMO_MAX then
+    senderMemo, memoCount, byRealm = {}, 0, nil
+  end
+  if not byRealm then
+    byRealm = {}
+    senderMemo[context] = byRealm
+  end
+  byRealm[sender] = token
+  memoCount = memoCount + 1
+  return token or nil
 end
 
 -- `name` identifies the character and must be the full name the caller has,
@@ -1094,7 +1215,7 @@ function CS.GetClassColoredName(name, text)
 
   local classToken = classCache[IdentityKey(name)]
   if not classToken then return out end
-  return WrapInClassColour(classToken, out)
+  return CS.WrapClass(classToken, out)
 end
 
 -- Records a recipient the player has SUCCESSFULLY mailed, most-recent-first.

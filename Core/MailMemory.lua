@@ -984,30 +984,15 @@ local function ClassOf(realm, name)
   return type(byRealm) == "table" and byRealm[name] or nil
 end
 
-local function ClassColour(token)
-  if type(token) ~= "string" then return nil end
-  if C_ClassColor and type(C_ClassColor.GetClassColor) == "function" then
-    local ok, colour = pcall(C_ClassColor.GetClassColor, token)
-    if ok and colour then return colour end
-  end
-  return type(RAID_CLASS_COLORS) == "table" and RAID_CLASS_COLORS[token] or nil
-end
-
 -- realm, name [, noRealm] -> the name in its class colour (plain where the
 -- class is not known), and the realm after it, quieter, when it is not the
 -- one being played -- unless `noRealm`: where a box is already on screen,
 -- picked from a list that named the realm, the name alone says whose.
 function MM.ClassName(realm, name, noRealm)
   local text = tostring(name or "")
-  local colour = ClassColour(ClassOf(realm, name))
-  if colour then
-    if type(colour.WrapTextInColorCode) == "function" then
-      text = colour:WrapTextInColorCode(text)
-    else
-      text = string.format("|cff%02x%02x%02x%s|r", math.floor((colour.r or 1) * 255 + 0.5),
-        math.floor((colour.g or 1) * 255 + 0.5), math.floor((colour.b or 1) * 255 + 0.5), text)
-    end
-  end
+  local CS = ns.ContactService
+  local token = ClassOf(realm, name)
+  if token and CS and CS.WrapClass then text = CS.WrapClass(token, text) end
   if not noRealm and realm and realm ~= GetRealmName() then
     text = text .. " " .. ns.Theme.Colorize("textSecondary", "- " .. realm)
   end
@@ -1328,9 +1313,11 @@ function MM.PlaceSpec(list)
   return spec
 end
 
--- row, mail, now, cols, position [, onHeader] -> the row bound to the mail.
--- `onHeader(realm, name)` answers a click on a character's heading.
-function MM.FillRow(row, mail, now, cols, position, onHeader)
+-- row, mail, now, cols, position [, onHeader [, realm]] -> the row bound to
+-- the mail. `onHeader(realm, name)` answers a click on a character's
+-- heading; `realm` is the realm of the box the mail is in (nil: the one
+-- being played), which a sender without a realm of its own is on.
+function MM.FillRow(row, mail, now, cols, position, onHeader, realm)
   local R = Rules()
   local T = ns.Theme
   T.StyleMailRow(row, position, false)
@@ -1377,6 +1364,9 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
     end
     row.Sender:Show()
     row.Subject:Show()
+    -- The heading's name carries its own class colour: the string's own is
+    -- the role's, whatever mail the row showed before.
+    if R and R.PaintSender then R.PaintSender(row.Sender, nil) end
     T.FitText(row.Sender, width - 40, mail.label, nil)
     T.FitText(row.Subject, 1, "", nil)
     row.HeaderHit:SetShown(onHeader ~= nil)
@@ -1430,8 +1420,12 @@ function MM.FillRow(row, mail, now, cols, position, onHeader)
   local trail = 6
 
   local named = (mail.sender ~= "" and mail.sender) or nil
-  local senderText = (R and (R.OutcomeSender(mail.kind) or R.DisplaySender(named)))
+  local outcome = R and R.OutcomeSender(mail.kind) or nil
+  local senderText = (R and (outcome or R.DisplaySender(named)))
     or named or L["MEMORY_SENDER_UNKNOWN"]
+  -- A player the address book knows the class of, in its colour, as on the
+  -- Mail tab.
+  if R and R.PaintSender then R.PaintSender(row.Sender, not outcome and named or nil, realm) end
   local subject = (ns.Helpers and ns.Helpers.ShortSubject) and ns.Helpers.ShortSubject(mail.subject or "")
     or (mail.subject or "")
   -- The crafting quality mark: on the icon's corner, after the name, both,
@@ -2099,6 +2093,21 @@ function MM.RowsFor(realm, name, opts)
   return rows, info
 end
 
+-- rows, i, info -> the realm of the box row i of MM.RowsFor's list came
+-- from, MM.FillRow's `realm`: the box shown, or in a search of every box the
+-- box whose heading the row is under. A binder asks once, for the first row
+-- it binds, and takes each heading's realm as it passes it -- so the list
+-- carries nothing extra and a bind builds nothing.
+function MM.RowRealm(rows, i, info)
+  if info and info.onCharacters and rows then
+    for k = i, 1, -1 do
+      local row = rows[k]
+      if row and row.header then return row.realm end
+    end
+  end
+  return info and info.realm or nil
+end
+
 -- snapshot -> "Last seen 27 min ago." or the words for none / an empty box.
 function MM.SeenText(snapshot)
   if not snapshot then return L["MEMORY_EMPTY"] end
@@ -2331,8 +2340,10 @@ local function BindRows(frame)
   local arranging = A ~= nil and A.host ~= nil and A.host.owner == frame
   if arranging and A.ListPlacing then A.ListPlacing(frame) end
   local used = 0
+  local realm = MM.RowRealm(rows, first, frame._info)
   for i = first, last do
     used = used + 1
+    if rows[i].header then realm = rows[i].realm end
     local row = frame.Rows[used]
     if not row then
       row = MM.NewRow(frame.ListChild)
@@ -2342,7 +2353,7 @@ local function BindRows(frame)
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", frame.ListChild, "TOPLEFT", 0, y)
     row:SetPoint("TOPRIGHT", frame.ListChild, "TOPRIGHT", 0, y)
-    MM.FillRow(row, rows[i], now, frame._cols or {}, i, onHeader)
+    MM.FillRow(row, rows[i], now, frame._cols or {}, i, onHeader, realm)
   end
   for i = used + 1, #frame.Rows do frame.Rows[i]:Hide() end
   if arranging and A.ListPlaced then A.ListPlaced(frame) end
@@ -2403,6 +2414,7 @@ function Refresh(frame)
   frame.Card:SetShown(count > 0)
   if count > 0 and not frame.Rows[1] then frame.Rows[1] = MM.NewRow(frame.ListChild) end
   frame._list = rows
+  frame._info = info
   frame._now = now
   frame._cols = (count > 0) and MM.MeasureRows(frame, rows, now, frame.Rows[1]) or nil
   frame.ListChild:SetHeight(math.max(1, count * ROW_HEIGHT))

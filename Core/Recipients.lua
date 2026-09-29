@@ -825,6 +825,11 @@ function R.Delete(key)
     end
   end
 
+  if removed.altClasses then
+    local CS = ns.ContactService
+    if CS and type(CS.ClassesChanged) == "function" then CS.ClassesChanged() end
+  end
+
   removed.any = removed.state or removed.history > 0
     or removed.alts or removed.altClasses or removed.altMeta
   return removed
@@ -937,7 +942,11 @@ function R.RecordAlt(name, realm, level, class, faction)
   if type(class) == "string" and class ~= "" then
     local classes = ns.Store.EnsurePath("altClasses", {})
     classes[realmKey] = classes[realmKey] or {}
-    if classes[realmKey][short] == nil then classes[realmKey][short] = class end
+    if classes[realmKey][short] == nil then
+      classes[realmKey][short] = class
+      local CS = ns.ContactService
+      if CS and type(CS.ClassesChanged) == "function" then CS.ClassesChanged() end
+    end
   end
 
   return row
