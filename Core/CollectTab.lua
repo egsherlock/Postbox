@@ -1191,15 +1191,15 @@ function RV.Focus()
   return A and type(A.Focus) == "function" and A.Focus() or nil
 end
 
--- Whether the figures stand in lanes (RV.Place): the "Line up columns"
--- option, unset meaning on -- in the arrange mode too, so what the switch
--- does is seen while the columns are arranged (the header stands on each
--- column's home lane either way: RV.HomeLanes). Read once per row placed:
--- the options' memo.
+-- Whether the figures stand in lanes (RV.Place): the Row layout choice,
+-- Columns (the default) rather than Packed -- in the arrange mode too, so
+-- what the choice does is seen while the columns are arranged (the header
+-- stands on each column's home lane either way: RV.HomeLanes). Read once
+-- per row placed: the options' memo.
 function RV.LinedUp()
   local UI = ns.MailboxUI
-  if not (UI and UI.GetOption) then return true end
-  return UI.GetOption("lineUpColumns")
+  if not (UI and UI.GetRowPacking) then return true end
+  return UI.GetRowPacking() ~= "packed"
 end
 
 -- The money, in its shortest honest form ("52g 26s", "1309g", "12.3k"; the
@@ -1607,23 +1607,27 @@ end
 --
 -- The row is read in the arrangement's order and split at the subject --
 -- the one column with no width of its own, which takes what the others
--- leave. What stands before it packs from the left; what stands after it
--- packs from the right edge inward, so every row ends on the same edge.
--- Before the subject a figure keeps its column on every row, so the subject
--- still starts on one line down the list. After it, the player's choice
--- ("Line up columns", RV.LinedUp):
---   lined up   the same: a figure the arrangement shows keeps its column on
---              every row, so gold stands under gold. A lane this mail leaves
---              empty is kept and not drawn, and the subject runs on through
---              the empty lanes next to it, up to the first thing the mail
---              has. A figure with no lane in the list -- hidden by the
---              arrangement but shown on this row anyway (`force`), or left
---              no room by the lanes further out in a narrow list -- takes
---              the subject's room next to it on its own side, within the
---              row's share, and no lane moves for one row.
---   closed up  a figure this mail does not have takes NO room and the next
---              one in moves up to the edge, so the subject has all the room
---              the mail's own figures leave -- the rows before 1.50.
+-- leave. What stands before it stands from the left edge; what stands
+-- after it from the right edge inward, so every row ends on the same edge.
+-- Then the player's choice (Row layout, RV.LinedUp):
+--   Columns    a figure the arrangement shows keeps its column on every
+--              row, so gold stands under gold, and the subjects start on
+--              one line. A lane this mail leaves empty is kept and not
+--              drawn, and the subject runs on through the empty lanes after
+--              it, up to the first thing the mail has. A figure with no
+--              lane in the list -- hidden by the arrangement but shown on
+--              this row anyway (`force`), or left no room by the lanes
+--              further out in a narrow list -- takes the subject's room
+--              next to it on its own side, within the row's share, and no
+--              lane moves for one row.
+--   Packed     each row closes its gaps away from the subject: a figure
+--              this mail does not have takes NO room, and what stands
+--              beyond it moves up toward the edge on its side -- the right
+--              edge after the subject, the left edge before it -- so the
+--              subject has all the room the mail's own figures leave. One
+--              rule for any arrangement; the graphics and the sender close
+--              up with the figures, and the gaps between columns and at the
+--              edges are the same as in Columns.
 -- The figures together may claim at most `share` of the text area: the
 -- sender and the subject are what a mailbox is scanned by.
 --
@@ -1719,8 +1723,9 @@ function RV.Place(row, s)
   -- The figures' widths: those after the subject from the edge in, then
   -- those before it, out of one allowance. Lined up, a figure the
   -- arrangement shows has its width whether this mail has it or not, as
-  -- every figure before the subject does and History's reserve does; a
-  -- hidden one forced onto this row is left to the subject's room (below).
+  -- History's reserve does; a hidden one forced onto this row is left to
+  -- the subject's room (below). Packed, on either side, only what the mail
+  -- has.
   local room = s.share and floor(textWidth * s.share) or textWidth
   local used = 0
   -- The narrowest a figure's column may be drawn (RV.FIGURE_MIN).
@@ -1735,7 +1740,7 @@ function RV.Place(row, s)
       if RV.FIGURE[id] and el[id] then
         local width = 0
         if (layout[i].shown or (force == id and not lanes)) and not two then
-          local has = pass == 2 or s.reserve or lanes or text[id] ~= nil
+          local has = s.reserve or lanes or text[id] ~= nil
           width = min(cols[id] or 0, room - used)
           if not has or width < least then
             if lanes and width < least and (cols[id] or 0) >= least then laneless = true end
@@ -1747,8 +1752,8 @@ function RV.Place(row, s)
       end
     end
   end
-  -- Closed up while the arrange mode is open: the home lanes, for the
-  -- header (above).
+  -- Packed while the arrange mode is open: the home lanes, for the header
+  -- (above).
   if not lanes and not two and s.publish ~= false then
     local A = ns.Arrange
     if A and A.host then
@@ -1885,7 +1890,7 @@ function RV.Place(row, s)
       -- the lanes further out left no room -- stands in the subject's room,
       -- next to the subject on its own side and in its own order, so no lane
       -- moves for one row. The row's own figures still claim no more than
-      -- their share, as closed-up rows' do.
+      -- their share, as packed rows' do.
       for pass = 1, laneless and 2 or 0 do
         local from, to, step = n, at + 1, -1
         if pass == 2 then from, to, step = 1, at - 1, 1 end

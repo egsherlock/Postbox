@@ -132,15 +132,8 @@ local OPTION_DEFAULTS = {
   -- to the right edge a one-line row carries everything a list is scanned
   -- for, and half again as many mails fit. The two-line row is one click away.
   compactRows     = true,
-  -- A one-line mail row's figures -- time left, gold, slots -- each in its
-  -- own column on every row (CollectTab, RV.Place), in the Mail tab, History
-  -- and Mail Memory alike: a subject runs on through the columns its mail
-  -- leaves empty, up to the first figure the mail has. On: gold standing
-  -- under gold is what lets a list of figures be read down. Off is the rows
-  -- as they were before 1.50, a mail's figures closed up to the right edge
-  -- and its subject given every unit they leave. The arrange mode lines the
-  -- columns up whatever this says.
-  lineUpColumns   = true,
+  -- (How a one-line row's figures stand, in columns or packed, is a word,
+  -- not a switch: UI.GetRowPacking below. It was the lineUpColumns switch.)
   -- Swaps the two gestures on a to-collect row: on, a plain click OPENS the mail
   -- and shift/right-click collects it. Off, because the screen is a collect
   -- screen -- the common action is the one-click one -- and because a player who
@@ -211,6 +204,7 @@ local function ForgetSettings()
   for key in pairs(opt) do opt[key] = nil end
   memo.root, memo.profile = nil, nil
   memo.quality, memo.gold, memo.expiry, memo.layout, memo.slots = nil, nil, nil, nil, nil
+  memo.packing = nil
   memo.grid, memo.gridText = nil, nil
 end
 
@@ -645,6 +639,39 @@ function UI.SetSlotsStyle(style)
   if style ~= nil and style ~= "words" and style ~= "number" then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if profile then profile.slotsStyle = (style == "number") and "number" or nil end
+  ForgetSettings()
+end
+
+-- How a one-line row's figures stand (CollectTab, RV.Place), in the Mail
+-- tab, History and Mail Memory alike: "columns" (the default), every figure
+-- in its own column on every row, gold under gold, a subject running on
+-- through the columns its mail leaves empty; or "packed", each row closing
+-- its gaps away from the subject -- the columns after it toward the row's
+-- right edge, those before it toward its left -- and the subject given the
+-- room. Stored only when packed (profile.rowPacking), so nothing stored is
+-- columns. It was the lineUpColumns switch, false meaning packed: the first
+-- read of a profile that still has it carries it over and drops it.
+-- Remembered with the other row settings (ForgetSettings).
+function UI.GetRowPacking()
+  local memo = Settings()
+  if memo.packing then return memo.packing end
+  local store = ns.Store
+  local profile = store and store.Get and store.Get("profile")
+  if type(profile) == "table" and profile.lineUpColumns ~= nil then
+    if profile.lineUpColumns == false and profile.rowPacking == nil then profile.rowPacking = "packed" end
+    profile.lineUpColumns = nil
+  end
+  local stored = type(profile) == "table" and profile.rowPacking or nil
+  memo.packing = (stored == "packed") and "packed" or "columns"
+  return memo.packing
+end
+function UI.SetRowPacking(mode)
+  if mode ~= nil and mode ~= "columns" and mode ~= "packed" then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then
+    profile.rowPacking = (mode == "packed") and "packed" or nil
+    profile.lineUpColumns = nil
+  end
   ForgetSettings()
 end
 

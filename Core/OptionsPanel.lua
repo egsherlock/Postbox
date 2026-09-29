@@ -819,7 +819,7 @@ end
 --
 -- One per tab, built the first time its tab is shown and painted every
 -- time it is: the Mail tab's character groups tile and sample mail rows
--- that grow with Larger mail rows, line their gold up with Line up columns
+-- that grow with Larger mail rows, line their gold up as Row layout says
 -- and wear the quality mark where the setting puts it; the Send tab's
 -- recipients tile; the window over a bit of world, at the player's
 -- opacity and border; the minimap icon at a size you can judge, wearing
@@ -1052,8 +1052,8 @@ do
   -- A small drawing of the list, from the settings rather than from the
   -- list's own code. One-line rows: two mails, the sample item bought --
   -- its price and its slot -- and the same item sold, gold and no slot, so
-  -- Line up columns visibly moves the sale's gold: under the other gold
-  -- lined up, out at the edge under the slot closed up. Their figures stand
+  -- Row layout visibly moves the sale's gold: under the other gold in
+  -- Columns, out at the edge under the slot Packed. Their figures stand
   -- in the list's default order, gold then slots. Under Larger mail rows,
   -- the first mail alone on two lines with a larger icon, where it came from
   -- and how long it has left under its name: those rows have no columns.
@@ -1139,8 +1139,8 @@ do
     s.Name2:SetJustifyH("LEFT")
     s.Name2:SetWordWrap(false)
     s.Gold, s.Slots, s.Gold2 = SampleFigure(art), SampleFigure(art), SampleFigure(art)
-    -- Behind both golds while Line up columns is pointed at: the column the
-    -- switch moves, washed as the arrange mode washes one.
+    -- Behind both golds while Row layout is pointed at: the column the
+    -- choice moves, washed as the arrange mode washes one.
     s.Wash = art:CreateTexture(nil, "BACKGROUND", nil, 3)
     s.Wash2 = art:CreateTexture(nil, "BACKGROUND", nil, 3)
     s.Wash:Hide()
@@ -1148,8 +1148,8 @@ do
     return s
   end
 
-  -- The golds' wash, while the pointer is on Line up columns (its row or
-  -- its checkbox) and the sample has columns to show.
+  -- The golds' wash, while the pointer is on Row layout (its row or its
+  -- dropdown) and the sample has columns to show.
   function Ctx.PaintSampleWash(s)
     s = s or S.sample
     if not s then return end
@@ -1261,14 +1261,14 @@ do
       T.SetColor(s.Slots, "textSecondary")
       T.SetColor(s.Gold2, "positive")
       -- Each column as wide as its widest entry, gold then slots from the
-      -- edge in. Lined up, the sale's gold stands in the gold column; closed
-      -- up, at the edge, where the slot it does not have would be.
+      -- edge in. In Columns, the sale's gold stands in the gold column;
+      -- Packed, at the edge, where the slot it does not have would be.
       local goldW = math.max(TextW(s.Gold), TextW(s.Gold2))
       -- The number alone stands in a column as narrow as the list draws one.
       local slotsW = math.max(TextW(s.Slots), (R and R.FIGURE_MIN) or 0)
       local edge = CTX_W - 8
       local goldEdge = edge - slotsW - SAMPLE_GAP
-      local lined = not (UI and UI.GetOption) or UI.GetOption("lineUpColumns")
+      local lined = not (UI and UI.GetRowPacking) or UI.GetRowPacking() ~= "packed"
       local saleEdge = lined and goldEdge or edge
       local y1, y2 = -(1 + lineH / 2), -(1 + lineH + lineH / 2)
       PlaceFigure(s, s.Slots, edge, slotsW, y1)
@@ -2404,20 +2404,24 @@ function Pages.mail(col)
     after = Ctx.Repaint,
   })
 
-  -- Every figure in its own column on every row, or a mail's figures closed
-  -- up to the right edge with its subject given their room: in the Mail
-  -- tab, History and Mail Memory alike. Every list's rows are placed again
-  -- where they stand; the sample rows show the sale's gold move, and while
-  -- the switch is pointed at, where the gold stands.
-  local lanes = Rows.Check(col, {
-    title = L["OPT_LINE_UP_TITLE"], text = L["OPT_LINE_UP_DESC"],
-    get = function() return ns.MailboxUI.GetOption("lineUpColumns") end,
-    set = function(on)
-      ns.MailboxUI.SetOption("lineUpColumns", on)
+  -- Row layout: every figure in its own column on every row (Columns), or
+  -- each row closing its gaps away from the subject and giving it the room
+  -- (Packed), in the Mail tab, History and Mail Memory alike. Every list's
+  -- rows are placed again where they stand; the sample rows show the sale's
+  -- gold move, and while the choice is pointed at, where the gold stands.
+  local lanes = Rows.Dropdown(col, {
+    title = L["OPT_ROW_LAYOUT_TITLE"], text = L["OPT_ROW_LAYOUT_DESC"],
+    items = {
+      { id = "columns", name = L["OPT_ROW_LAYOUT_COLUMNS"] },
+      { id = "packed",  name = L["OPT_ROW_LAYOUT_PACKED"] },
+    },
+    get = function() return ns.MailboxUI.GetRowPacking and ns.MailboxUI.GetRowPacking() or "columns" end,
+    set = function(id)
+      if ns.MailboxUI.SetRowPacking then ns.MailboxUI.SetRowPacking(id) end
       local AR = ns.Arrange
       if AR and AR.RowsChanged then AR.RowsChanged(false) end
+      Ctx.Repaint()
     end,
-    after = Ctx.Repaint,
   })
   S.lanesCell = lanes
   local function PaintWash() Ctx.PaintSampleWash() end

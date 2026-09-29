@@ -118,11 +118,11 @@ local function IndexOf(list, id)
   return nil
 end
 
--- Line up columns (MailboxUI, lineUpColumns; unset is on): whether the rows
--- stand in lanes, in the mode as out of it (CollectTab's RV.LinedUp).
+-- Row layout (MailboxUI.GetRowPacking; Columns unless Packed): whether the
+-- rows stand in lanes, in the mode as out of it (CollectTab's RV.LinedUp).
 local function LinedUp()
   local ui = UI()
-  return not (ui and ui.GetOption) or ui.GetOption("lineUpColumns")
+  return not (ui and ui.GetRowPacking) or ui.GetRowPacking() ~= "packed"
 end
 
 function AR.MoveColumn(from, to)
@@ -1322,11 +1322,10 @@ end
 -- left edge, which is the header's; s.lead, where the arrangement's room
 -- begins, and s.width, where the row ends). One rule, whichever column
 -- stands where, and the same box outlines the column's cells on the rows
--- (AR.CellBox, section 7b): each column's home, where
--- a row with every figure has it, whether the rows line up or close up
--- (Line up columns, which the rows follow in the mode as out of it; closed
--- up, a row without a figure shows its others out from under their
--- headings, which is what the switch does). A heading's glyph stands
+-- (AR.CellBox, section 7b): each column's home, where a row with every
+-- figure has it in Columns, whichever Row layout the rows follow (in the
+-- mode as out of it; packed, a row without a figure shows its others out
+-- from under their headings, which is what Packed does). A heading's glyph stands
 -- in the middle of its box, from line to line, whatever the lane under it
 -- draws; a name starts where its lane does. The narrow columns wear glyphs
 -- (the read dot, the icon, the clock, the coin, the slots), with their
@@ -2274,7 +2273,7 @@ function AR.RegionSpan(region, width)
   return left, w
 end
 
--- Closed up, the column a press on a row takes is the one that row drew
+-- Packed, the column a press on a row takes is the one that row drew
 -- there, not a lane: each column where the row placed it, the subject with
 -- the room its quality mark keeps, and the nearest to the cursor wins, so a
 -- press between two goes to the nearer. Only inside the arrangement's room
@@ -2635,7 +2634,7 @@ end
 --                    columns hatched, and a tick where it stops;
 --   in the hand      the row's cell leaves its lane and rides on the lifted
 --                    lane over the list (7a).
--- Closed up, a row's columns are its own: a column's box between what this
+-- Packed, a row's columns are its own: a column's box between what this
 -- row draws either side of it, washed where the row drew it, and nothing on
 -- a row without it (the subject has its room); the subject's box washed and
 -- a tick where it stops, which is where the mail's own figures begin; in
@@ -3082,14 +3081,14 @@ end
 -- right edge (from its left one when the screen has no room on the right),
 -- its top level with the window's top row. Shown only while the mode is
 -- open, and nothing of it covers the rows. It says one of two things:
---   nothing selected: how the mode works, Line up columns, what is hidden
+--   nothing selected: how the mode works, Row layout, what is hidden
 --     (each a chip; a click shows it again), the reset, and that Escape
 --     finishes -- or, while something is in the hand, that Escape cancels,
 --     the one change a drag makes to it;
 --   a column, a block or a category button selected: its card -- what it
 --     is, its eye, its own choice, Move (the way to reorder without a
 --     drag), and, for a figure, what the rows do on a mail without it; for
---     the subject, what the rows show of its run, what Line up columns does
+--     the subject, what the rows show of its run, what Row layout does
 --     and where it is; for a block, the stack's order, each line the way to
 --     that block's card (the way to a block that is hard to take in the
 --     window), and for the grid the way to the character groups; for a
@@ -3132,6 +3131,10 @@ local INSP = {
   NUDGE_W = 22, NUDGE_H = 18, NUDGE_GAP = 4, MOVE_GAP = 8,
   KICK_TOP = 10, KICK_GAP = 4,
   RADIO_H = 19, RADIO_TEXT = 17,
+  -- Row layout's answers: the preview's size, its bars and the gap between
+  -- its two rows, its inset from the line's right end, and the room under
+  -- an answer's one line.
+  PREVIEW_W = 26, PREVIEW_H = 8, PREVIEW_BAR = 3, PREVIEW_GAP = 2, PREVIEW_PAD = 3, LAYOUT_TAIL = 4,
   -- A hidden chip, and the room it keeps above and below (the mockup's
   -- margin): a first row two under its kicker, the foot two further down.
   CHIP_H = 19, CHIP_GAP = 4, CHIP_LEAD = 6, CHIP_EYE = 12, CHIP_EYE_GAP = 5, CHIP_TAIL = 7, CHIP_EDGE = 2,
@@ -3411,74 +3414,85 @@ local function SwitchClick(self)
   AR.Inspect()
 end
 
--- Line up columns, in the overview under how the mode works: the options panel's
--- own switch (MailboxUI, lineUpColumns; unset is on), which decides how
--- every column of every row stands, so it belongs to no one column's card.
--- The Show switch's plate and manner: three columns side by side where the
--- eye stands, and the name; while on, the columns are the accent and the
--- words and the ring rise to white and a lighter grey, and pointed at all of
--- it goes white. A click places every list again at once (AR.SetLinedUp),
--- so the rows show what it does while the switch is still under the hand.
-local function PaintLanes(sw)
-  local spec = PLATE.switch
-  local on, hover = sw.on, sw.hover
-  TintPlate(sw, hover and 0.17 or spec.fill, hover and spec.hover or (on and spec.on or spec.ring))
+-- Row layout, in the overview under how the mode works: the options
+-- panel's own choice (MailboxUI.GetRowPacking), which decides how every
+-- column of every row stands, so it belongs to no one column's card. Its
+-- two answers in the manner of a column's own choices (PaintRadio): the
+-- chosen one's square in the accent and its name white, the other's a
+-- lighter grey, a wash while pointed at; each with its one line under its
+-- name and, at the name's right, a small preview drawn in code -- two rows
+-- of a subject and two figures, the second without the outer figure: in
+-- Columns its other figure stays under the one above; Packed, it moves out
+-- to the edge and the subject takes the room. The preview's figures are in
+-- the accent while chosen. A click places every list again at once
+-- (AR.SetRowPacking), so the rows show what it does while the choice is
+-- still under the hand.
+AR.ROW_LAYOUTS = { "columns", "packed" }
+AR.LAYOUT_TEXT = {
+  columns = { "OPT_ROW_LAYOUT_COLUMNS", "OPT_ROW_LAYOUT_COLUMNS_DESC" },
+  packed  = { "OPT_ROW_LAYOUT_PACKED", "OPT_ROW_LAYOUT_PACKED_DESC" },
+}
+-- The preview's bars, each a left edge and a width in its INSP.PREVIEW_W
+-- units: the subject, the inner figure and the outer one on the first row;
+-- the subject and the inner figure on the second.
+AR.LAYOUT_BARS = {
+  columns = { 0, 12, 14, 6, 22, 4, 0, 12, 14, 6 },
+  packed  = { 0, 12, 14, 6, 22, 4, 0, 18, 20, 6 },
+}
+
+local function PaintLayout(row)
+  local chosen, hover = row.chosen, row.hover
+  row.Hover:SetShown(hover and true or false)
   local r, g, b = 0.55, 0.55, 0.55
-  if on then
+  if chosen then
     r, g, b = Th().GetAccent()
+    row.Mark:SetVertexColor(r, g, b, 1)
   elseif hover then
     r, g, b = 1, 1, 1
   end
-  local bars = sw.Bars
-  for i = 1, #bars do bars[i]:SetVertexColor(r, g, b, 1) end
-  Grey(sw.Label, (on or hover) and 1 or 0.74)
+  row.Mark:SetShown(chosen and true or false)
+  row.MarkKey:SetShown(chosen and true or false)
+  Grey(row.Text, (chosen or hover) and 1 or 0.91)
+  local s = hover and 0.6 or 0.4
+  local bars = row.Bars
+  for k = 1, #bars do
+    if k == 1 or k == 4 then
+      bars[k]:SetVertexColor(s, s, s, 1)
+    else
+      bars[k]:SetVertexColor(r, g, b, 1)
+    end
+  end
 end
 
--- Its tooltip: the switch's name and its state, and what it does, in the
--- options panel's words.
-local function LanesTip(self)
-  local on = LinedUp()
-  local r, g, b = 0.6, 0.6, 0.6
-  if on then r, g, b = Th().GetAccent() end
-  AR.InspTip(self)
-  GameTooltip:AddDoubleLine(L()["OPT_LINE_UP_TITLE"], L()[on and "ARRANGE_STATE_ON" or "ARRANGE_STATE_OFF"],
-    1, 0.82, 0, r, g, b)
-  GameTooltip:AddLine(ns.Summary(L()["OPT_LINE_UP_DESC"]), 1, 1, 1, true)
-  GameTooltip:Show()
-end
-
-local function LanesEnter(self)
+local function LayoutEnter(self)
   self.hover = true
-  PaintLanes(self)
-  LanesTip(self)
+  PaintLayout(self)
 end
 
-local function LanesLeave(self)
+local function LayoutLeave(self)
   self.hover = false
-  PaintLanes(self)
-  GameTooltip:Hide()
+  PaintLayout(self)
 end
 
--- Line up columns switched from the mode: the option itself, the switch's
--- sound, the options panel's switch where it is open, and every list placed
--- again where it stands, so the rows show at once what it does; the header
--- stays on its lanes, draws its lane lines only while lined up, and every
--- switch in the mode is painted as it now is (AR.SyncLanes).
-function AR.SetLinedUp(on)
+-- Row layout chosen from the mode: the choice itself, the options panel's
+-- where it is open, and every list placed again where it stands, so the
+-- rows show at once what it does; the header stays on its lanes, draws its
+-- lane lines only in Columns, and the overview shows the choice as it now
+-- is (AR.SyncLanes).
+function AR.SetRowPacking(mode)
   local ui = UI()
-  if not (AR.host and ui and ui.SetOption) then return end
-  on = on and true or false
-  ui.SetOption("lineUpColumns", on)
-  PlayToggle(on)
+  if not (AR.host and ui and ui.SetRowPacking and ui.GetRowPacking) then return end
+  if ui.GetRowPacking() == mode then return end
+  ui.SetRowPacking(mode)
   local panel = ns.OptionsPanel
   if panel and type(panel.RefreshControls) == "function" then panel.RefreshControls() end
   AR.RowsChanged(false)
   if AR.host then AR.LayoutStrip(AR.host) end
 end
 
--- The mode's switch as the option now stands, wherever it was switched
--- (the overview or the options panel): the inspector filled again -- its
--- switch, and the notes that say what the rows do -- once per change.
+-- The mode's choice as the option now stands, wherever it was chosen (the
+-- overview or the options panel): the inspector filled again -- the
+-- choice, and the notes that say what the rows do -- once per change.
 -- Called as the header is laid out, which every pass of the rows ends with.
 function AR.SyncLanes(strip)
   local lined = LinedUp() and true or false
@@ -3488,10 +3502,9 @@ function AR.SyncLanes(strip)
   if insp and insp:IsShown() then AR.Inspect() end
 end
 
-local function LanesClick(self)
+local function LayoutClick(self)
   if not AR.host then return end
-  AR.SetLinedUp(not LinedUp())
-  if GameTooltip:IsOwned(self) then LanesTip(self) end
+  AR.SetRowPacking(self.mode)
 end
 
 -- Move, one step: an arrow on a plate, dimmed where the thing cannot go
@@ -3854,6 +3867,58 @@ local function Rule(art)
   return rule
 end
 
+-- One of Row layout's two answers (PaintLayout, above), made the first
+-- time the overview is filled: its square and name on a choice's line, its
+-- one line under them, the preview at the line's right.
+local function LayoutChoice(insp, i)
+  local P = INSP
+  local row = CreateFrame("Button", nil, insp)
+  row:SetWidth(P.INNER)
+  row.hover, row.chosen, row.mode = false, false, AR.ROW_LAYOUTS[i]
+  row.Hover = row:CreateTexture(nil, "BACKGROUND")
+  row.Hover:SetTexture(WHITE)
+  row.Hover:SetVertexColor(1, 1, 1, 0.06)
+  row.Hover:SetAllPoints()
+  row.Hover:Hide()
+  local mid = -P.RADIO_H / 2
+  row.MarkKey = row:CreateTexture(nil, "ARTWORK", nil, 0)
+  row.MarkKey:SetTexture(WHITE)
+  row.MarkKey:SetVertexColor(0, 0, 0, 1)
+  row.MarkKey:SetSize(7, 7)
+  row.MarkKey:SetPoint("LEFT", row, "TOPLEFT", 3, mid)
+  row.Mark = row:CreateTexture(nil, "ARTWORK", nil, 1)
+  row.Mark:SetTexture(WHITE)
+  row.Mark:SetSize(5, 5)
+  row.Mark:SetPoint("CENTER", row.MarkKey, "CENTER", 0, 0)
+  row.Text = Text(row, "bodySmall", "control")
+  row.Text:SetPoint("LEFT", row, "TOPLEFT", P.RADIO_TEXT, mid)
+  row.Text:SetJustifyH("LEFT")
+  row.Text:SetWordWrap(false)
+  row.Desc = Text(row, "secondary", "note")
+  row.Desc:SetWidth(P.INNER - P.RADIO_TEXT)
+  row.Desc:SetJustifyH("LEFT")
+  row.Desc:SetWordWrap(true)
+  if row.Desc.SetSpacing then row.Desc:SetSpacing(P.SPACING.note) end
+  row.Desc:SetPoint("TOPLEFT", row, "TOPLEFT", P.RADIO_TEXT, -P.RADIO_H)
+  Grey(row.Desc, 0.66)
+  row.Bars = {}
+  local at = AR.LAYOUT_BARS[row.mode]
+  local top = mid + math.floor(P.PREVIEW_H / 2)
+  for k = 1, 5 do
+    local bar = row:CreateTexture(nil, "ARTWORK")
+    bar:SetTexture(WHITE)
+    bar:SetSize(at[2 * k], P.PREVIEW_BAR)
+    local y = top - ((k > 3) and (P.PREVIEW_BAR + P.PREVIEW_GAP) or 0)
+    bar:SetPoint("TOPLEFT", row, "TOPRIGHT", at[2 * k - 1] - P.PREVIEW_W - P.PREVIEW_PAD, y)
+    row.Bars[k] = bar
+  end
+  row:SetScript("OnEnter", LayoutEnter)
+  row:SetScript("OnLeave", LayoutLeave)
+  row:SetScript("OnClick", LayoutClick)
+  insp.Layouts[i] = row
+  return row
+end
+
 function AR.BuildInspector()
   local T = Th()
   local P = INSP
@@ -3864,7 +3929,7 @@ function AR.BuildInspector()
   insp:SetClampedToScreen(true)
   insp:EnableMouse(true)
   insp:SetWidth(P.W)
-  insp.Radios, insp.Chips, insp.BlockRows, insp.Kickers = {}, {}, {}, {}
+  insp.Radios, insp.Chips, insp.BlockRows, insp.Kickers, insp.Layouts = {}, {}, {}, {}, {}
 
   -- Every text and rule is on this holder, never on the card itself.
   local art = CreateFrame("Frame", nil, insp)
@@ -3941,29 +4006,6 @@ function AR.BuildInspector()
   sw:SetScript("OnClick", SwitchClick)
   sw:Hide()
   insp.Switch = sw
-
-  -- Line up columns (above): the Show switch's plate, and where its eye
-  -- stands three columns side by side, drawn in code.
-  local lanes = InspPlate(insp, "Button", true)
-  lanes:SetHeight(P.SWITCH_H)
-  lanes.hover, lanes.on = false, false
-  lanes.Bars = {}
-  for i = 1, 3 do
-    local bar = lanes:CreateTexture(nil, "ARTWORK")
-    bar:SetTexture(WHITE)
-    bar:SetSize(1, 9)
-    bar:SetPoint("LEFT", lanes, "LEFT", 7 + 2 * i, 0)
-    lanes.Bars[i] = bar
-  end
-  lanes.Label = Text(lanes, "bodySmall", "control")
-  lanes.Label:SetPoint("LEFT", lanes, "LEFT", P.SWITCH_LEAD, 0)
-  lanes.Label:SetJustifyH("LEFT")
-  lanes.Label:SetWordWrap(false)
-  lanes:SetScript("OnEnter", LanesEnter)
-  lanes:SetScript("OnLeave", LanesLeave)
-  lanes:SetScript("OnClick", LanesClick)
-  lanes:Hide()
-  insp.Lanes = lanes
 
   for i = 1, 2 do
     local b = InspPlate(insp, "Button", true)
@@ -4232,20 +4274,27 @@ local function PutSwitch(on, y)
   return w
 end
 
--- Line up columns at the row's left, in the overview; answers its width. A
--- name too long for the card is cut, and whole in the tooltip.
-local function PutLanes(y)
+-- Row layout's kicker and its two answers, in the overview (LayoutChoice):
+-- each as tall as its line and its one line under it. A name too long
+-- for the room beside the preview is cut. Answers the y under them.
+local function PutLayout(y)
   local insp, P = AR._insp, INSP
-  local sw = insp.Lanes
-  local text = L()["OPT_LINE_UP_TITLE"]
-  local w = math.min(P.SWITCH_LEAD + Measured(insp.Measure.control, text, false) + P.SWITCH_TAIL, P.INNER)
-  sw.on = LinedUp() and true or false
-  Th().FitText(sw.Label, w - P.SWITCH_LEAD - P.SWITCH_TAIL + 1, text, sw)
-  sw:SetWidth(w)
-  At(sw, P.PAD, y)
-  PaintLanes(sw)
-  sw:Show()
-  return w
+  y = PutKicker(L()["OPT_ROW_LAYOUT_TITLE"], y)
+  local packed = not LinedUp()
+  for i = 1, #AR.ROW_LAYOUTS do
+    local row = insp.Layouts[i] or LayoutChoice(insp, i)
+    local text = AR.LAYOUT_TEXT[row.mode]
+    row.chosen = (row.mode == "packed") == packed
+    row.hover = row.hover and row:IsMouseOver() or false
+    Th().FitText(row.Text, P.INNER - P.RADIO_TEXT - P.PREVIEW_W - P.PREVIEW_PAD - P.MOVE_GAP, L()[text[1]], row)
+    local h = P.RADIO_H + Measured(row.Desc, L()[text[2]], true) + P.LAYOUT_TAIL
+    row:SetHeight(h)
+    At(row, P.PAD, y)
+    PaintLayout(row)
+    row:Show()
+    y = y - h
+  end
+  return y
 end
 
 -- Move and its two arrows at the row's right: left and right for a column,
@@ -4419,14 +4468,13 @@ local function PutFoot(y)
   return rowY - P.FOOT_H
 end
 
--- With nothing selected: how the mode works, Line up columns -- it is every
+-- With nothing selected: how the mode works, Row layout -- it is every
 -- column's, so it belongs to no one column's card -- what is hidden, and
 -- the foot.
 local function FillOverview(host, y)
   local insp, P = AR._insp, INSP
-  y = PutText(insp.Lead, L()["ARRANGE_OVERVIEW"], y) - P.ROW_GAP
-  PutLanes(y)
-  y = y - P.SWITCH_H
+  y = PutText(insp.Lead, L()["ARRANGE_OVERVIEW"], y)
+  y = PutLayout(y)
   -- What is hidden: the columns, then the host's own -- counted first, so
   -- the kicker says whether a click shows them.
   local layout = AR.Layout()
@@ -4478,30 +4526,30 @@ local function FillColumn(id, y)
       y = PutRadio(i, choices[i], choices[i].id == current, shown and true or false, y)
     end
   end
-  -- A figure's place beside the subject, and after it whether the columns
-  -- line up, say what a mail without it does; the subject's card says what
-  -- Line up columns does, as it stands, and in one quiet line where the
-  -- switch is. Where the subject runs on into a column, the note begins
-  -- with the hatch the rows draw there: only while they line up, the rows
-  -- drawing no hatch closed up.
+  -- What a mail without a figure does: in Columns by its place beside the
+  -- subject, and Packed the same on either side; the subject's card says
+  -- what the Row layout chosen does, and in one quiet line where the choice
+  -- is. Where the subject runs on into a column, the note begins with the
+  -- hatch the rows draw there: only in Columns, the rows drawing no hatch
+  -- packed.
   local lined = LinedUp()
   if spec.figure and layout then
     local at = IndexOf(layout, "subject") or 0
-    if k <= at then
+    if not lined then
+      y = PutNote(L()["ARRANGE_NOTE_PACKED"], y)
+    elseif k <= at then
       y = PutNote(L()["ARRANGE_NOTE_LEFT"], y)
-    elseif lined then
-      y = PutSwatchNote(L()["ARRANGE_NOTE_RIGHT"], y, false)
     else
-      y = PutNote(L()["ARRANGE_NOTE_RIGHT_OFF"], y)
+      y = PutSwatchNote(L()["ARRANGE_NOTE_RIGHT"], y, false)
     end
   elseif spec.fixed then
     if lined then
       y = PutSwatchNote(L()["ARRANGE_LANES_ON"], y, true)
     else
-      y = PutNote(L()["ARRANGE_LANES_OFF"], y)
+      y = PutNote(L()["OPT_ROW_LAYOUT_PACKED_DESC"], y)
     end
     -- Under the note as its own last line, ROW_WRAP from its words.
-    y = PutText(insp.Where, L()["ARRANGE_LANES_WHERE"], y + 2 * P.LEAD.note - P.ROW_WRAP, "note")
+    y = PutText(insp.Where, L()["ARRANGE_LAYOUT_WHERE"], y + 2 * P.LEAD.note - P.ROW_WRAP, "note")
   end
   return y
 end
@@ -4565,7 +4613,7 @@ local function HideParts(insp)
   insp.FootRule:Hide()
   insp.Finish:Hide()
   insp.Switch:Hide()
-  insp.Lanes:Hide()
+  for i = 1, #insp.Layouts do insp.Layouts[i]:Hide() end
   insp.NudgeA:Hide()
   insp.NudgeB:Hide()
   insp.Reset:Hide()
