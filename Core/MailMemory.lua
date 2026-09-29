@@ -1438,9 +1438,9 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm)
   local spec = R and R.Place and MM.PlaceSpec(list)
   if spec then
     -- The Mail tab's own placement, at this window's spacing: every column
-    -- where the arrangement puts it, the figures lined up or closed up by
-    -- the mail list's own rule (the "Line up columns" option), the subject
-    -- taking the rest.
+    -- where the arrangement puts it, the figures in columns or packed by
+    -- the mail list's own rule (the Row layout option), the subject taking
+    -- the rest. No mark keeps room at a row's end here (markEnd unset).
     local el, text = spec.el, spec.text
     el.read, el.icon, el.sender, el.subject = row.Indicator, row.Icon, row.Sender, row.Subject
     el.time, el.money, el.slots = row.ColTime, row.ColMoney, row.ColSlots

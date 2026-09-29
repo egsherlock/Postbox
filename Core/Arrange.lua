@@ -2883,29 +2883,22 @@ local function Carry(row, m, region, s, x, subjectW, dx, home)
   cur:Show()
 end
 
--- Where column `id` stands on a row, for its box: its lane where the row
--- lines up (`lined`) -- the list's, less `shift` for a column the row packs
--- from its right edge (below) -- or what the row drew of it closed up; the
--- subject's own room (`x`, `subjectW`) either way. Nil where it has none.
-function AR.CellSpan(s, id, lined, x, subjectW, shift)
+-- Where column `id` stands on a row, for its box: its lane where the rows
+-- stand in columns (`lined`) -- every row of a list on the same lanes, a
+-- read mail's delete mark drawing over the last one's end -- or where the
+-- row drew it, packed; the subject's own room (`x`, `subjectW`) either way.
+-- Nil where it has none.
+function AR.CellSpan(s, id, lined, x, subjectW)
   local region = s.el[id]
   if region == nil then return nil end
   if id == "subject" then return x, subjectW end
   if lined then
     local lx, lw = s.laneX and s.laneX[id], s.laneW and s.laneW[id]
     if not (lx and lw and lw > 0) then return nil end
-    return lx - shift, lw
+    return lx, lw
   end
   if not region:IsShown() then return nil end
   return AR.RegionSpan(region, s.width)
-end
-
--- How much further in than the list's lanes a row stands its columns after
--- the subject: by as much more room as its end keeps for its marks (a read
--- mail's delete mark) than the row the lanes are from.
-function AR.CellShift(s, lined)
-  if not lined then return 0 end
-  return (s.trail or 0) - (s.laneTrail or s.trail or 0)
 end
 
 -- Column `id`'s box on a row, as its left edge and width in the row's
@@ -2919,12 +2912,11 @@ end
 function AR.CellBox(s, id, lined, x, subjectW)
   local layout = AR.Layout()
   if not layout then return nil end
-  local shift = AR.CellShift(s, lined)
-  local after, seen = false, false
+  local seen = false
   local lo, w, prevEnd, nextStart
   for k = 1, #layout do
     local col = layout[k].id
-    local l, cw = AR.CellSpan(s, col, lined, x, subjectW, after and shift or 0)
+    local l, cw = AR.CellSpan(s, col, lined, x, subjectW)
     if col == id then
       seen, lo, w = true, l, cw
     elseif l then
@@ -2934,7 +2926,6 @@ function AR.CellBox(s, id, lined, x, subjectW)
         nextStart = l
       end
     end
-    if col == "subject" then after = true end
   end
   if not lo then return nil end
   local left = s.lead or 0
@@ -2947,7 +2938,7 @@ end
 -- Where the boxes the subject runs on through end, `runEnd` being where
 -- its text may run to on a lined-up row: at the line before the first lane
 -- after it, or at the row's end.
-function AR.RunLine(s, runEnd, shift)
+function AR.RunLine(s, runEnd)
   local layout = AR.Layout()
   local laneX, laneW = s.laneX, s.laneW
   local after = false
@@ -2955,7 +2946,7 @@ function AR.RunLine(s, runEnd, shift)
     for k = 1, #layout do
       local col = layout[k].id
       if after and s.el[col] ~= nil and (laneW[col] or 0) > 0 and laneX[col] then
-        local lx = laneX[col] - shift
+        local lx = laneX[col]
         if lx >= runEnd - 0.5 then return math.floor((runEnd + lx) / 2) end
       end
       if col == "subject" then after = true end
@@ -3026,7 +3017,7 @@ function AR.MarkRow(row, s, target, lanes, x, subjectW, sx, run)
     end
     if bx and runEnd > ownEnd + 0.5 then
       local from = bx + bw + HEAD.GAP
-      MarkHatch(row, m, from, AR.RunLine(s, runEnd, AR.CellShift(s, lanes)) - from, sel, true)
+      MarkHatch(row, m, from, AR.RunLine(s, runEnd) - from, sel, true)
     else
       HideHatch(m)
     end
@@ -3058,14 +3049,15 @@ function AR.MarkRow(row, s, target, lanes, x, subjectW, sx, run)
     return
   end
   local region = s.el[focus]
-  local layout = AR.Layout()
-  if layout and (IndexOf(layout, focus) or 0) > (IndexOf(layout, "subject") or 0) then
-    lx = lx - AR.CellShift(s, lanes)
-  end
+  -- A row carrying a delete mark stops its subject short of the mark
+  -- (RV.Place, s.markEnd): a lane the run reaches the mark through is lent
+  -- all the same.
+  local reach = runEnd
+  if s.markEnd and runEnd >= (s.width or 0) - s.markEnd - 0.5 then reach = s.width or runEnd end
   if region and region:IsShown() then
     MarkBox(row, m, bx, bw, sel and "sel" or "hover")
     HideHatch(m)
-  elseif AR.COLUMNS[focus] and AR.COLUMNS[focus].figure and lx >= ownEnd - 0.5 and lx + lw <= runEnd + 0.5 then
+  elseif AR.COLUMNS[focus] and AR.COLUMNS[focus].figure and lx >= ownEnd - 0.5 and lx + lw <= reach + 0.5 then
     MarkBox(row, m, bx, bw, "lent")
     MarkHatch(row, m, bx, bw, false, false)
   else

@@ -1139,8 +1139,10 @@ end
 -- its widest entry ANYWHERE in the list. Measured over the
 -- list rather than the rows on screen, so a column does not twitch as the list
 -- scrolls. A stuck mail's mark takes the read mark's place, so it needs no
--- room of its own; the delete mark's is kept on the read mails that carry
--- it, under their own divider (RV.MarkRoom).
+-- room of its own; in columns a read mail's delete mark draws over the end
+-- of the last column, which keeps room for it on every row only where the
+-- mark would cover what a marked row draws there (RV.MarkReserve), and a
+-- packed row closes up against its own mark.
 --
 -- Which columns a row shows, and in what order, is the player's arrangement
 -- (MailboxUI.GetRowLayout, arranged in the window by Core/Arrange.lua), and
@@ -1495,15 +1497,48 @@ function RV.Wash(row, target)
   wash:Show()
 end
 
--- The room a mail row keeps at its right end for its marks, inside its
--- trailing inset: the delete mark on a read mail, with the small gap before
--- it; on a one-line row (`compact`) the smaller one. The stuck mark takes
--- the read mark's place (RV.PaintDot) and needs none. Every other number
--- the rows read for it comes from here. It belongs to no column: in the
--- arrange mode the last column's box runs on to the row's edge under it.
+-- The room a mail row's marks take at its right end, inside its trailing
+-- inset: the delete mark on a read mail, with the small gap before it; on
+-- a one-line row (`compact`) the smaller one. The stuck mark takes the read
+-- mark's place (RV.PaintDot) and needs none. Every other number the rows
+-- read for it comes from here. A two-line row keeps it clear of its text,
+-- and so does a packed one-line row, whose figures close up against the
+-- mark as they close up against the edge: each packed row is its own. A
+-- one-line row in columns draws the mark over the end of its last column's
+-- box and stands its columns where every other row does (RV.MarkReserve).
 function RV.MarkRoom(compact, delete)
   if not delete then return 0 end
   return (compact and ROW_DELETE_COMPACT or ROW_DELETE) + Th().Metrics.tightGap
+end
+
+-- How much further in than its trailing inset every one-line row of the
+-- Mail tab's list stands its outermost column while the rows stand in
+-- columns, so that the delete mark a read mail draws over the end of the
+-- last column's box never covers what that column draws on a row that
+-- carries it: the mark's room where some row the list shows carries the
+-- mark (`any`) AND draws something in the outermost column with a lane
+-- after the subject, else none. A figure no mail listed has takes no lane;
+-- a graphic or the sender always draws; a figure only on a marked row that
+-- has it (`has[id]`, from the list's walk). One answer for the whole list,
+-- applied to every row alike, so a row with the mark keeps its lanes and
+-- its gold stands under the gold above it. The subject standing last needs
+-- none: a marked row's is only cut short of the mark (RV.Place, s.markEnd),
+-- where it starts unmoved. No other column reaches the mark: the one
+-- inside the last starts a gap and a lane (at least FIGURE_MIN) in, clear
+-- of it by as much as a row's text always was. `layout`: the arrangement;
+-- `cols`: the figures' list-wide widths. Nothing is made.
+function RV.MarkReserve(layout, cols, has, any, compact)
+  if not any then return 0 end
+  local least = RV.FIGURE_MIN
+  for i = #layout, 1, -1 do
+    local id = layout[i].id
+    if id == "subject" then break end
+    if layout[i].shown then
+      if not RV.FIGURE[id] then return RV.MarkRoom(compact, true) end
+      if (cols[id] or 0) >= least then return has[id] and RV.MarkRoom(compact, true) or 0 end
+    end
+  end
+  return 0
 end
 
 -- A placement table for RV.Place, one per list, reused for every row it binds;
@@ -1644,20 +1679,22 @@ end
 -- AR.CellBox), which gives the row's edge insets to the columns at its
 -- ends. The subject's is its own room, before it runs on; a column with no
 -- room is 0 wide where it would stand. One row's lanes are its whole
--- list's, but for a row whose trailing marks take more room (a read mail's
--- delete mark, under the divider), whose columns after the subject stand
--- that much further in: a binder whose rows differ so sets s.publish before
--- each pass, and only the first row placed -- the top of the list as it
--- stands -- publishes, with its trailing room (s.laneTrail). Closed
--- up, a row's figures are its own and nothing is published, but for the
--- arrange mode: while it is open the header still stands on each column's
--- home lane, where a row with every figure has it, and the row publishes
--- those instead (RV.HomeLanes), as a lined-up row would.
+-- list's -- every row of a list in columns has the same trailing room, a
+-- read mail's delete mark drawing over its last column (RV.MarkReserve) --
+-- so a binder may set s.publish before each pass, and only the first row
+-- placed publishes. Packed, a row's figures are its own and nothing is published,
+-- but for the arrange mode: while it is open the header still stands on
+-- each column's home lane, where a row with every figure has it in
+-- Columns, and the row publishes those instead (RV.HomeLanes).
 --
 -- `s` (RV.NewSpec, reused):
 --   width, left, trail, gap   the row's width; where its first column may
---                             start; what its trailing inset and marks
---                             (RV.MarkRoom) take; the step
+--                             start; what its trailing inset takes (with
+--                             its marks, RV.MarkRoom, but on a one-line
+--                             row in columns); the step
+--   markEnd                   a one-line row's delete mark: no text of the
+--                             row runs nearer its right edge than this
+--                             (nil: none)
 --   lead                      where the arrangement's room begins on the row
 --                             (nil: its left edge; History's age stands
 --                             before it)
@@ -1683,8 +1720,6 @@ end
 --   detailText                the second line
 --   focus                     the column the arrange mode points at
 --   laneX[id], laneW[id]      written here: each column's lane (above)
---   laneTrail                 written with them: the `trail` of the row
---                             they are from
 --   publish                   true: the next row placed publishes, the rest
 --                             of the pass not; nil: every row does
 function RV.Place(row, s)
@@ -1702,7 +1737,6 @@ function RV.Place(row, s)
       laneX, laneW = {}, {}
       s.laneX, s.laneW = laneX, laneW
     end
-    s.laneTrail = s.trail
   end
   local n = #layout
   local at = n
@@ -1885,6 +1919,12 @@ function RV.Place(row, s)
           end
         end
       end
+    end
+    -- A row carrying a delete mark: the subject stops short of it,
+    -- wherever it would have run (RV.MarkReserve keeps the columns clear).
+    local markEnd = s.markEnd
+    if markEnd and sx + run > s.width - markEnd then run = max(s.width - markEnd - sx, 20) end
+    if lanes then
       -- A figure with no lane in this list that this row has -- one the
       -- arrangement hides but the row shows anyway (a C.O.D. price), or one
       -- the lanes further out left no room -- stands in the subject's room,
@@ -1987,8 +2027,8 @@ function RV.Place(row, s)
 end
 
 -- Each column's home lane, published into `s` as RV.Place publishes a
--- lined-up row's (s.laneX, s.laneW, s.laneTrail): where it stands on a row
--- that has every figure, which a closed-up row places the same way. By the
+-- lined-up row's (s.laneX, s.laneW): where it stands on a row that has
+-- every figure, which a packed row places the same way. By the
 -- same arithmetic as RV.Place, from the room the row was given (`at` the
 -- subject's place in `layout`, `textWidth` and `room` its text area and the
 -- figures' share of it): a figure the arrangement shows is as wide as its
@@ -2001,7 +2041,6 @@ function RV.HomeLanes(s, layout, at, textWidth, room)
     laneX, laneW = {}, {}
     s.laneX, s.laneW = laneX, laneW
   end
-  s.laneTrail = s.trail
   local n = #layout
   local least = RV.FIGURE_MIN
   local used = 0
@@ -3627,10 +3666,13 @@ local function BindRow(panel, row, index, position, compact, done)
   row.iconSlot = iconSlot
 
   -- What the trailing controls take out of the row, stacking inwards from its
-  -- right edge. One number, read by both layouts: the standard row measures its
-  -- text area against it and the compact row anchors its meta strip to it, so
-  -- the two can never disagree about where the text has to stop.
-  local trailing = M.inset + RV.MarkRoom(compact, showDelete)
+  -- right edge: the inset and its marks (RV.MarkRoom) -- but on a one-line
+  -- row in columns the inset and what the list keeps for the delete mark
+  -- on every row (RV.MarkReserve, once per pass), the mark itself drawing
+  -- over the end of the last column's box, and its own text stopping short
+  -- of it (markEnd).
+  local markRoom = RV.MarkRoom(compact, showDelete)
+  local trailing = M.inset + ((compact and RV.LinedUp()) and (panel._markReserve or 0) or markRoom)
   local cols = panel._cols
 
   -- A partially collected auction stack must not keep advertising the quantity
@@ -3756,6 +3798,7 @@ local function BindRow(panel, row, index, position, compact, done)
   spec.size.icon = compact and ROW_ICON_COMPACT or ROW_ICON
   spec.width = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
   spec.left, spec.trail, spec.gap = M.inset, trailing, M.gap
+  spec.markEnd = (compact and showDelete) and (M.inset + markRoom) or nil
   spec.cols = cols
   spec.senderCol = ((cols.sender or 0) > 0) and cols.sender or SENDER_MIN
   spec.share, spec.reserve = COMPACT_META_SHARE, false
@@ -4182,9 +4225,12 @@ local function UpdateVisibleRows(panel)
   local used = 0
   local divider = panel.Divider
   if divider then divider:Hide() end
-  -- The list's lanes are its first row's (RV.Place): a read mail's delete
-  -- mark, further down, takes room of its own.
+  -- The list's lanes are its first row's (RV.Place): in columns every
+  -- one-line row keeps the same room for the delete mark a read mail draws
+  -- over its last column (RV.MarkReserve), from what the list's walk found.
   panel._rowSpec.publish = true
+  panel._markReserve = (compact and not historyView and not away and RV.LinedUp())
+    and RV.MarkReserve(RV.Layout(), panel._cols, panel._markHas, panel._markAny, true) or 0
   for i = first, last do
     if filtered[i] == DIVIDER then
       -- One compact row in either row size, at the FOOT of its slot: that is
@@ -4446,6 +4492,11 @@ function CT.RefreshMailList(panel)
   local measureExpiry = compact and measuring and RowShows("time")
   local slotsMost = 0
   local altKeys = Mail().OwnCharacterKeys()
+  -- The figures a finished mail -- a read mail, listed with its delete
+  -- mark -- draws on its row (RV.MarkReserve): its time left or a won
+  -- auction's price; it holds nothing, so never slots.
+  local markHas = panel._markHas
+  markHas.time, markHas.money, markHas.slots = false, false, false
 
   for index = 1, numItems do
     -- "Read" alone will not do: collecting marks every mail read as a side
@@ -4522,12 +4573,16 @@ function CT.RefreshMailList(panel)
           if moneyKind == "earned" then shown = showEarned elseif moneyKind == "spent" then shown = showSpent end
           if text and shown then
             cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, text))
+            if finished then markHas.money = true end
           end
         end
         if measureSlots then slotsMost = max(slotsMost, tonumber(itemCount) or 0) end
         if measureExpiry then
           local text = RowExpiryText(daysLeft, hasCOD)
-          if text then cols.time = max(cols.time, MeasureWith(panel, sample.ColTime, text)) end
+          if text then
+            cols.time = max(cols.time, MeasureWith(panel, sample.ColTime, text))
+            if finished then markHas.time = true end
+          end
         end
       end
     end
@@ -4544,6 +4599,10 @@ function CT.RefreshMailList(panel)
   -- no divider at all.
   panel._readCount = #tail
   panel._dividerAt = nil
+  -- Whether a row the list shows carries the delete mark: a finished mail
+  -- listed, and not folded away (RV.MarkReserve). By what is listed, never
+  -- by what is scrolled into view.
+  panel._markAny = #tail > 0 and (view == VIEW_DONE or (RV.Mode() ~= "tab" and not RV.Folded(panel)))
   if view == VIEW_DONE then
     Clear(filtered)
     Clear(filteredDone)
@@ -4569,9 +4628,9 @@ function CT.RefreshMailList(panel)
   if slotsMost > 0 then
     cols.slots = RV.SlotsWidth(panel, sample.ColSlots, slotsMost)
   end
-  -- No trailing reserve for the list: a stuck mail's mark stands in its read
-  -- mark's place, and only read mail carries the delete mark's room, under
-  -- its own divider.
+  -- A stuck mail's mark stands in its read mark's place and needs no room;
+  -- the room the rows keep for a read mail's delete mark is decided as they
+  -- are placed (RV.MarkReserve), from what this walk found.
 
   local _, _, stride = RowMetrics()
   local listed = #filtered
@@ -8364,6 +8423,9 @@ function CT.Build(parent)
   -- The list's column widths and reserve, measured by RefreshMailList for
   -- every row it binds (see "the columns").
   panel._cols = {}
+  -- Which figures a read mail listed with its delete mark draws, and
+  -- whether one is listed at all (RV.MarkReserve), from the same walk.
+  panel._markHas, panel._markAny = {}, false
   -- What each category button would collect right now, from the same walk.
   panel._catCounts = {}
   -- The inbox's finished mails, gathered by the walk to go after the divider.
