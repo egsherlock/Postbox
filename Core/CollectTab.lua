@@ -255,10 +255,12 @@ end
 -- row, mark -> a small copy of the mark over the bottom-right corner of the
 -- row's item icon -- the art an item button wears there, where the client
 -- has it -- or nothing. Created on first use: most rows never carry one.
-function RV.PaintQuality(row, mark)
+-- `layout` is the row's arrangement (History's has its own; nil: the mail
+-- rows').
+function RV.PaintQuality(row, mark, layout)
   local atlas = type(mark) == "string" and mark:match("|A:([^:|]+)") or nil
   -- Nothing to mark when the arrangement hides the icon.
-  if not (atlas and row.Icon and RV.MarkOnIcon() and RV.Layout().shown.icon) then
+  if not (atlas and row.Icon and RV.MarkOnIcon() and (layout or RV.Layout()).shown.icon) then
     if row.QualityHolder then row.QualityHolder:Hide() end
     return
   end
@@ -1146,9 +1148,10 @@ end
 --
 -- Which columns a row shows, and in what order, is the player's arrangement
 -- (MailboxUI.GetRowLayout, arranged in the window by Core/Arrange.lua), and
--- it is ONE arrangement for every list that draws mail rows. What a hidden
--- column would have said still reaches the row's tooltip, so no fact
--- becomes unreachable.
+-- it is one arrangement for every list that draws mail rows; History's rows
+-- have one of their own (MailboxUI.GetHistoryLayout), which RV.Place is
+-- handed in its spec. What a hidden column would have said still reaches
+-- the row's tooltip, so no fact becomes unreachable.
 -------------------------------------------------------------
 
 -- The row's columns as the player has arranged them: { {id=, shown=}, ...,
@@ -1166,8 +1169,9 @@ function RV.Layout()
   return RV.DEFAULT_LAYOUT
 end
 
--- The three figures: columns with a list-wide width of their own.
-RV.FIGURE = { time = true, money = true, slots = true }
+-- The figures: columns with a list-wide width of their own -- the mail
+-- rows' time left, money and slots, and History's age.
+RV.FIGURE = { time = true, money = true, slots = true, age = true }
 -- The narrowest a figure's column is drawn (RV.Place): squeezed below it
 -- by the others, a figure gives up its column. A column whose widest entry
 -- is narrower -- a slot count written as the number alone -- is measured
@@ -1234,10 +1238,10 @@ end
 -- Whether money of this kind stands on the row. Earned and spent go with the
 -- gold column and its choice of which; a C.O.D. price always shows, because
 -- it is the one sum nothing collects on its own -- Postbox never pays one
--- without asking.
-local function MoneyShown(kind)
+-- without asking. `layout` is the row's arrangement (nil: the mail rows').
+local function MoneyShown(kind, layout)
   if kind ~= "earned" and kind ~= "spent" then return true end
-  if not RowShows("money") then return false end
+  if not (layout or RV.Layout()).shown.money then return false end
   local UI = ns.MailboxUI
   local mode = UI and UI.GetGoldMode and UI.GetGoldMode() or "both"
   return mode == "both" or mode == kind
@@ -1638,7 +1642,8 @@ end
 
 -- THE placement of a mail row's columns, and the only one: the Mail tab's
 -- two row sizes, History's rows and Mail Memory's all come through here, so
--- a column the player moves moves in every list at once.
+-- a column the player moves moves in every list that follows the same
+-- arrangement at once (History follows its own: s.layout).
 --
 -- The row is read in the arrangement's order and split at the subject --
 -- the one column with no width of its own, which takes what the others
@@ -1695,9 +1700,9 @@ end
 --   markEnd                   a one-line row's delete mark: no text of the
 --                             row runs nearer its right edge than this
 --                             (nil: none)
---   lead                      where the arrangement's room begins on the row
---                             (nil: its left edge; History's age stands
---                             before it)
+--   layout                    the arrangement the row follows (nil: the
+--                             mail rows', RV.Layout; History's rows are
+--                             handed their own)
 --   el[id]                    the region drawing each column (nil: this list
 --                             has no such column); el.detail the second line;
 --                             el.stuck the warning triangle anchored to the
@@ -1723,7 +1728,7 @@ end
 --   publish                   true: the next row placed publishes, the rest
 --                             of the pass not; nil: every row does
 function RV.Place(row, s)
-  local layout = RV.Layout()
+  local layout = s.layout or RV.Layout()
   local T = Th()
   local el, text, cols, size, w = s.el, s.text, s.cols or {}, s.size, s.w
   local gap, two, force = s.gap, s.two, s.force
@@ -3836,12 +3841,72 @@ function HV.Days()
   return UI and type(UI.GetHistoryDays) == "function" and UI.GetHistoryDays() or 7
 end
 
-function HV.HistoryAge(seconds)
-  seconds = max(0, seconds)
-  if seconds < 3600 then return format(L()["HISTORY_AGE_M"], max(1, floor(seconds / 60))) end
-  if seconds < 86400 then return format(L()["MEMORY_LEFT_H"], floor(seconds / 3600)) end
-  return format(L()["MEMORY_LEFT_D"], floor(seconds / 86400))
+-- History's arrangement (MailboxUI.GetHistoryLayout), and how it writes a
+-- mail's age (GetHistoryAge: "short" or "long").
+function HV.Layout()
+  local UI = ns.MailboxUI
+  if UI and type(UI.GetHistoryLayout) == "function" then return UI.GetHistoryLayout() end
+  return HV.DEFAULT_LAYOUT
 end
+HV.DEFAULT_LAYOUT = { shown = {} }
+for _, id in ipairs({ "age", "icon", "sender", "subject", "money" }) do
+  HV.DEFAULT_LAYOUT[#HV.DEFAULT_LAYOUT + 1] = { id = id, shown = true }
+  HV.DEFAULT_LAYOUT.shown[id] = true
+end
+
+function HV.AgeStyle()
+  local UI = ns.MailboxUI
+  return UI and type(UI.GetHistoryAge) == "function" and UI.GetHistoryAge() or "short"
+end
+
+-- How long ago, as History writes it: in minutes under an hour, hours under
+-- a day, days after -- "3d ago" short, "3 days ago" long, each language in
+-- its own words and the long one in its plural forms. `unit` is 1, 2 or 3
+-- (minutes, hours, days). Each string is made once per value, unit and
+-- style and kept (HV.ages, a table per style keyed by unit and value), so a
+-- row bind and the list's measuring pass make nothing: a list holds a few
+-- dozen distinct ages. The locale is fixed for the session, so nothing goes
+-- stale; a table past AGE_MAX strings (days beyond History's month, which
+-- only a wrong clock gives) is emptied and filled again.
+HV.AGE_KEYS = {
+  short = { "HISTORY_AGO_M", "HISTORY_AGO_H", "HISTORY_AGO_D" },
+  long  = { "HISTORY_AGO_MINUTES", "HISTORY_AGO_HOURS", "HISTORY_AGO_DAYS" },
+}
+HV.ages = { short = {}, long = {} }
+HV.agesN = { short = 0, long = 0 }
+HV.AGE_MAX = 200
+
+function HV.AgeText(value, unit, style)
+  if style ~= "long" then style = "short" end
+  local cache = HV.ages[style]
+  local key = unit * 100000 + value
+  local text = cache[key]
+  if text then return text end
+  if HV.agesN[style] >= HV.AGE_MAX then
+    for k in pairs(cache) do cache[k] = nil end
+    HV.agesN[style] = 0
+  end
+  local name = HV.AGE_KEYS[style][unit] or HV.AGE_KEYS[style][3]
+  if style == "long" then
+    text = ns.Plural(name, value)
+  else
+    text = format(L()[name], value)
+  end
+  cache[key] = text
+  HV.agesN[style] = HV.agesN[style] + 1
+  return text
+end
+
+-- seconds [, style] -> the age as History writes it (above).
+function HV.HistoryAge(seconds, style)
+  seconds = max(0, seconds)
+  style = style or HV.AgeStyle()
+  if seconds < 3600 then return HV.AgeText(max(1, floor(seconds / 60)), 1, style) end
+  if seconds < 86400 then return HV.AgeText(floor(seconds / 3600), 2, style) end
+  return HV.AgeText(floor(seconds / 86400), 3, style)
+end
+-- For the arrange mode's age card, which shows each wording as it reads.
+CT.HistoryAgeText = HV.AgeText
 
 function HV.ItemName(link)
   local name = type(link) == "string" and link:match("%[(.-)%]") or nil
@@ -3883,16 +3948,17 @@ function HV.BuildHistoryRow(panel)
   local row = CreateFrame("Button", nil, panel.MailListChild)
   row:SetHeight(COMPACT_ROW_HEIGHT)
 
-  -- As wide as the widest age listed (BuildHistoryList measures it), and one
-  -- line always: "23 d" wrapped at a fixed 30px and pushed its row to two.
+  -- How long ago: a column as wide as the widest age listed
+  -- (BuildHistoryList measures it), and one line always: "23 d" wrapped at
+  -- a fixed 30px and pushed its row to two.
   row.Age = T.CreateText(row, "secondary")
   row.Age:SetPoint("LEFT", row, "LEFT", M.inset, 0)
   row.Age:SetWidth(30)
   row.Age:SetJustifyH("RIGHT")
   row.Age:SetWordWrap(false)
 
-  -- The rest follows the mail rows' arrangement, placed on bind (RV.Place):
-  -- the age is History's own column and leads, as the list is by time.
+  -- Every column follows History's arrangement, placed on bind (RV.Place):
+  -- the age leads by default, as the list is by time.
   row.Icon = row:CreateTexture(nil, "ARTWORK")
   row.Icon:SetSize(ROW_ICON_COMPACT, ROW_ICON_COMPACT)
   row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -3939,16 +4005,13 @@ function HV.BuildHistoryRow(panel)
   return row
 end
 
-function HV.BindHistoryRow(panel, row, entry, position, now)
+function HV.BindHistoryRow(panel, row, entry, position, now, style)
   local T = Th()
   local M = T.Metrics
   local R = CT.RowRules
+  local layout = HV.Layout()
   row.entry = entry
   T.StyleMailRow(row, position, false)
-
-  local ageWidth = panel._hcols.age or 30
-  row.Age:SetWidth(ageWidth)
-  row.Age:SetText(HV.HistoryAge(now - (tonumber(entry.t) or now)))
 
   local icon
   local first = entry.it and entry.it[1]
@@ -3962,30 +4025,31 @@ function HV.BindHistoryRow(panel, row, entry, position, now)
   -- The first item's quality mark on the icon's corner or before its name,
   -- as the list has it.
   local mark = first and RV.MarkOf(first.l) or nil
-  RV.PaintQuality(row, mark)
+  RV.PaintQuality(row, mark, layout)
   RV.PaintNameMark(row, mark)
 
-  -- The mail rows' arrangement after the age, with the columns History has:
-  -- the icon, the sender, what came out, and the money -- which keeps its
-  -- column on every row, so the list reads as a ledger, whether or not the
-  -- rows line up; lined up, what came out runs on into the money's column
-  -- on a row with none, as a mail row's subject does (RV.Place).
+  -- History's arrangement (HV.Layout), with the columns History has: the
+  -- age, the icon, the sender, what came out, and the money -- which keeps
+  -- its column on every row, so the list reads as a ledger, whether or not
+  -- the rows line up; lined up, what came out runs on into the money's
+  -- column on a row with none, as a mail row's subject does (RV.Place).
   local cols = panel._hcols
   local kind = HV.MoneyKind(entry)
   -- A system mail's sender is recorded as "": that is "unknown", not a name.
   local named = (entry.s ~= "" and entry.s) or nil
   local spec = panel._histSpec
   local el, text = spec.el, spec.text
-  el.icon, el.sender, el.subject, el.money = row.Icon, row.Sender, row.Subject, row.Money
+  el.age, el.icon, el.sender, el.subject, el.money = row.Age, row.Icon, row.Sender, row.Subject, row.Money
+  text.age = HV.HistoryAge(now - (tonumber(entry.t) or now), style)
   local outcome = R.OutcomeSender(entry.k)
   text.sender = outcome or R.DisplaySender(named) or L()["SENDER_UNKNOWN"]
   RV.PaintSender(row.Sender, not outcome and named or nil)
   text.subject = HV.HistoryWhat(entry)
-  text.money = MoneyShown(kind) and HV.HistoryMoney(entry, true) or nil
+  text.money = MoneyShown(kind, layout) and HV.HistoryMoney(entry, true) or nil
+  spec.layout = layout
   spec.size.icon = ROW_ICON_COMPACT
   spec.width = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
-  spec.left, spec.trail, spec.gap = M.inset + ageWidth + M.gap, M.inset, M.gap
-  spec.lead = spec.left - floor(M.gap / 2)
+  spec.left, spec.trail, spec.gap = M.inset, M.inset, M.gap
   spec.cols = cols
   spec.senderCol = cols.sender or SENDER_MIN
   spec.share, spec.reserve, spec.two = nil, true, false
@@ -4042,10 +4106,12 @@ function HV.BuildHistoryList(panel, query)
   local cap = SenderColumnWidth(panel, sample.Sender)
   local cols = panel._hcols
   cols.sender, cols.money, cols.age = 0, 0, 0
-  local showSender = RowShows("sender")
+  local layout = HV.Layout()
+  local showSender, showAge = layout.shown.sender, layout.shown.age
+  local style = HV.AgeStyle()
   -- Whether the gold column shows each kind, asked once for the list rather
   -- than once per entry: a month of History is a thousand of them.
-  local showEarned, showSpent = MoneyShown("earned"), MoneyShown("spent")
+  local showEarned, showSpent = MoneyShown("earned", layout), MoneyShown("spent", layout)
   local earned, spent = 0, 0
   local now = time()
   for i = #list, 1, -1 do
@@ -4067,8 +4133,12 @@ function HV.BuildHistoryList(panel, query)
       if kind == "earned" then shown = showEarned elseif kind == "spent" then shown = showSpent end
       local money = shown and HV.HistoryMoney(entry, true) or nil
       if money then cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, money)) end
-      local age = HV.HistoryAge(now - (tonumber(entry.t) or now))
-      cols.age = max(cols.age, MeasureWith(panel, sample.ColTime, age) + 2)
+      -- The age's column is as wide as the widest age listed, in the words
+      -- chosen: whatever the language and wording, no age is cut.
+      if showAge then
+        local age = HV.HistoryAge(now - (tonumber(entry.t) or now), style)
+        cols.age = max(cols.age, MeasureWith(panel, sample.ColTime, age) + 2)
+      end
     end
   end
   return earned, spent
@@ -4087,6 +4157,7 @@ function HV.UpdateHistoryRows(panel)
 
   local pool = panel._hrows
   local now = time()
+  local style = HV.AgeStyle()
   local used = 0
   for i = first, last do
     used = used + 1
@@ -4099,7 +4170,7 @@ function HV.UpdateHistoryRows(panel)
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
     row:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
-    HV.BindHistoryRow(panel, row, list[i], i, now)
+    HV.BindHistoryRow(panel, row, list[i], i, now, style)
   end
   for i = used + 1, #pool do
     pool[i].entry = nil
@@ -8253,6 +8324,17 @@ function CT.ArrangeHost(panel)
   function host.List() return panel.MailListChild end
   function host.TwoLine()
     return not AV.Active(panel) and panel.viewMode ~= VIEW_HISTORY and not RowMetrics()
+  end
+  -- Which arrangement the list on screen follows: History's own while
+  -- History shows, the mail rows' otherwise (another character's box
+  -- included). The mode arranges that one, and while this character's box
+  -- shows and History is kept, the inspector offers the other: the list is
+  -- switched under the mode, which follows it.
+  function host.History() return panel.viewMode == VIEW_HISTORY and not AV.Active(panel) end
+  function host.CanSwitch() return not AV.Active(panel) and RV.HistoryOn() end
+  function host.ShowHistory(on)
+    if host.History() == (on and true or false) then return end
+    SetViewMode(panel, on and VIEW_HISTORY or VIEW_COLLECT)
   end
   -- The inspector docks beside the Postbox window, level with this tab's
   -- top row -- the header, while it stands there -- and answers for the

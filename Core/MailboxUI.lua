@@ -205,6 +205,7 @@ local function ForgetSettings()
   memo.root, memo.profile = nil, nil
   memo.quality, memo.gold, memo.expiry, memo.layout, memo.slots = nil, nil, nil, nil, nil
   memo.packing = nil
+  memo.history, memo.age = nil, nil
   memo.grid, memo.gridText = nil, nil
 end
 
@@ -735,11 +736,12 @@ end
 
 -- A mail row's columns: which it shows, and in what order, left to right.
 -- One string on the profile -- "read,icon,sender,subject,time,money,slots",
--- a leading "-" on a column it hides -- and ONE arrangement for every list
--- that draws mail rows: the Mail tab in both row sizes, its History, and
--- Mail Memory in both windows. It is arranged in the window itself
--- (Core/Arrange.lua). The subject is the one column that cannot be hidden:
--- it takes whatever room the others leave.
+-- a leading "-" on a column it hides -- and one arrangement for every list
+-- that draws mail: the Mail tab in both row sizes and Mail Memory in both
+-- windows. History has one of its own (UI.GetHistoryLayout, below). Both
+-- are arranged in the window itself (Core/Arrange.lua). The subject is the
+-- one column that cannot be hidden: it takes whatever room the others
+-- leave.
 --
 -- A profile that has never been arranged reads exactly as it did under the
 -- three switches and the figure order it had before (rowGold, rowSlots,
@@ -761,23 +763,41 @@ local ROW_LAYOUT_DEFAULT = "read,icon,sender,subject,time,money,slots"
 -- The switch each figure had before it had a place in the arrangement.
 local LEGACY_SWITCH = { time = "rowExpiry", money = "rowGold", slots = "rowSlots" }
 
-local function ParseRowLayout(text)
+-- An arrangement's string read against the columns its list has (`known`,
+-- `count` of them: the mail rows' above, or History's below).
+local function ParseLayout(text, known, count)
   if type(text) ~= "string" then return nil end
   local out, seen = { shown = {} }, {}
   for token in text:gmatch("[^,]+") do
     local hidden = token:sub(1, 1) == "-"
     local id = hidden and token:sub(2) or token
-    if not ROW_COLUMN_KNOWN[id] or seen[id] then return nil end
+    if not known[id] or seen[id] then return nil end
     seen[id] = true
     local shown = (not hidden) or id == "subject"
     out[#out + 1] = { id = id, shown = shown }
     out.shown[id] = shown
   end
-  if #out ~= #ROW_COLUMNS then return nil end
+  if #out ~= count then return nil end
   return out
 end
 
-local function FormatRowLayout(layout)
+local function ParseRowLayout(text)
+  return ParseLayout(text, ROW_COLUMN_KNOWN, #ROW_COLUMNS)
+end
+
+-- History's columns (UI.GetHistoryLayout, below).
+local HISTORY_COLUMNS = { "age", "icon", "sender", "subject", "money" }
+local HISTORY_COLUMN_KNOWN = {}
+for i = 1, #HISTORY_COLUMNS do HISTORY_COLUMN_KNOWN[HISTORY_COLUMNS[i]] = true end
+local HISTORY_LAYOUT_DEFAULT = "age,icon,sender,subject,money"
+
+local function ParseHistoryLayout(text)
+  return ParseLayout(text, HISTORY_COLUMN_KNOWN, #HISTORY_COLUMNS)
+end
+
+-- An arrangement written as its string, or nil where it does not read back
+-- (`parse`: the list's own reader).
+local function FormatLayout(layout, parse)
   if type(layout) ~= "table" then return nil end
   local parts = {}
   for i = 1, #layout do
@@ -787,7 +807,11 @@ local function FormatRowLayout(layout)
     parts[#parts + 1] = ((entry.shown == false and id ~= "subject") and "-" or "") .. id
   end
   local text = table.concat(parts, ",")
-  return ParseRowLayout(text) and text or nil
+  return parse(text) and text or nil
+end
+
+local function FormatRowLayout(layout)
+  return FormatLayout(layout, ParseRowLayout)
 end
 
 -- What an unarranged profile's rows showed: the names, then the figures in
@@ -841,11 +865,17 @@ function UI.GetRowLayout()
 end
 
 -- layout: { {id=, shown=}, ... } in the new order, or nil for the default.
+-- History's rows follow this arrangement until History has one stored
+-- (UI.GetHistoryLayout): what they show is stored for them first, so
+-- arranging the mail rows never moves History's.
 function UI.SetRowLayout(layout)
   local text = (layout == nil) and ROW_LAYOUT_DEFAULT or FormatRowLayout(layout)
   if not text then return false end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if not profile then return false end
+  if profile.historyLayout == nil then
+    profile.historyLayout = FormatLayout(UI.GetHistoryLayout(), ParseHistoryLayout)
+  end
   profile.rowLayout = text
   ForgetSettings()
   return true
@@ -854,6 +884,84 @@ end
 -- Whether a mail row shows this column (an id from ROW_COLUMNS).
 function UI.RowColumnShown(id)
   return UI.GetRowLayout().shown[id] == true
+end
+
+-- History's columns: the age it was collected, first by default, then the
+-- mail rows' columns History has -- the icon, the sender, what came out
+-- (the subject) and the money; no read mark, no time left, no slots. Its
+-- own string, as the mail rows' is ("age,icon,sender,subject,money", a
+-- leading "-" on a hidden column), arranged when the arrange mode is
+-- opened over History.
+--
+-- Nothing stored reads as what History showed before it had one: the age
+-- first, then the mail rows' arrangement in its order and with its hidden
+-- columns, less the ones History has not -- on a profile that never
+-- arranged anything, the default. The first write to the mail rows'
+-- arrangement stores it (UI.SetRowLayout), so from then on History keeps
+-- its own.
+--
+-- The answer is shared and must not be written to, as the mail rows' is,
+-- and kept until the keys it was read from change.
+local historyLayoutMemo = {}
+
+-- Read through the settings memo (UI.GetHistoryLayout): after a write only.
+local function ReadHistoryLayout()
+  local store = ns.Store
+  local profile = store and store.Get and store.Get("profile")
+  local a = type(profile) == "table" and profile.historyLayout or nil
+  local rows = (a == nil) and UI.GetRowLayout() or nil
+  local memo = historyLayoutMemo
+  if memo.layout and memo.a == a and memo.rows == rows then return memo.layout end
+  memo.a, memo.rows = a, rows
+  local layout = ParseHistoryLayout(a)
+  if not layout and rows then
+    local parts = { "age" }
+    for i = 1, #rows do
+      local id = rows[i].id
+      if HISTORY_COLUMN_KNOWN[id] then parts[#parts + 1] = (rows[i].shown and "" or "-") .. id end
+    end
+    layout = ParseHistoryLayout(table.concat(parts, ","))
+  end
+  memo.layout = layout or ParseHistoryLayout(HISTORY_LAYOUT_DEFAULT)
+  return memo.layout
+end
+
+function UI.GetHistoryLayout()
+  local memo = Settings()
+  local layout = memo.history
+  if not layout then
+    layout = ReadHistoryLayout()
+    memo.history = layout
+  end
+  return layout
+end
+
+-- layout: { {id=, shown=}, ... } in the new order, or nil for the default.
+function UI.SetHistoryLayout(layout)
+  local text = (layout == nil) and HISTORY_LAYOUT_DEFAULT or FormatLayout(layout, ParseHistoryLayout)
+  if not text then return false end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if not profile then return false end
+  profile.historyLayout = text
+  ForgetSettings()
+  return true
+end
+
+-- How History writes how long ago a mail was collected: "short" ("3d
+-- ago", the default) or "long" ("3 days ago"). Stored only when long, so
+-- nothing stored is short. Remembered with the other row settings.
+function UI.GetHistoryAge()
+  local memo = Settings()
+  if memo.age then return memo.age end
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.historyAge")
+  memo.age = (stored == "long") and "long" or "short"
+  return memo.age
+end
+function UI.SetHistoryAge(style)
+  if style ~= nil and style ~= "short" and style ~= "long" then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.historyAge = (style == "long") and "long" or nil end
+  ForgetSettings()
 end
 
 -- The category buttons under the list: their order and which are hidden, as
@@ -3050,6 +3158,8 @@ function UI.DiagnoseOptions()
   Named("expiry", UI.GetExpiryWhen(), "3")
   Named("slots", UI.GetSlotsStyle(), "words")
   Named("rows", FormatRowLayout(UI.GetRowLayout()) or "?", ROW_LAYOUT_DEFAULT)
+  Named("historyRows", FormatLayout(UI.GetHistoryLayout(), ParseHistoryLayout) or "?", HISTORY_LAYOUT_DEFAULT)
+  Named("historyAge", UI.GetHistoryAge(), "short")
   -- The grid as stored: its group buttons are ids ("group:3"), never names.
   local grid = ns.Store and ns.Store.Get and ns.Store.Get("profile.gridLayout")
   Named("grid", (type(grid) == "string" and grid ~= "") and grid or "default", "default")

@@ -2146,7 +2146,7 @@ local function SearchQuery(frame)
 end
 
 -- A square control from the theme's segment plate, wearing an atlas: the
--- same control the Mail tab's History clock is.
+-- same control the Mail tab's History button is.
 local function IconPlate(parent, atlases, size)
   local T = ns.Theme
   local plate = T.CreatePlate(parent, "segment")

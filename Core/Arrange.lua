@@ -24,9 +24,12 @@ local _, ns = ...
 -- offers the reset. The key, lit as Done while the mode is open, Escape, or
 -- the window going away all end it, and the top row comes back as it was.
 --
--- One arrangement for every list that draws mail rows: it is stored by
--- MailboxUI.GetRowLayout / SetRowLayout, and drawn by CollectTab's RV.Place,
--- which the Mail tab, its History and Mail Memory all go through. This file
+-- Two arrangements: the mail rows' -- the Mail tab's and Mail Memory's,
+-- stored by MailboxUI.GetRowLayout / SetRowLayout -- and History's own,
+-- with its age and without the columns it has not (GetHistoryLayout /
+-- SetHistoryLayout). Both are drawn by CollectTab's RV.Place. The mode
+-- arranges the one the list it is opened over follows (AR.Layout), and
+-- follows the list when it is switched under it (AR.SyncList). This file
 -- owns only the mode: the header, the marks on the rows, the inspector, the
 -- drag, the key, Escape.
 --
@@ -54,15 +57,17 @@ local function UI() return ns.MailboxUI end
 -- its sign -- where the column is too narrow for a word; `fixed` is the
 -- subject, which takes whatever room the others leave and so cannot be
 -- hidden; `choice` is the column's own setting; `figure`, a figure a mail
--- may not have.
+-- may not have. The age is History's alone: how long ago a mail was
+-- collected, which every History row has.
 AR.COLUMNS = {
   read    = { title = "COL_READ",       desc = "COL_READ_DESC",       head = "dot" },
   icon    = { title = "COL_ICON",       desc = "COL_ICON_DESC",       head = "icon" },
   sender  = { title = "COL_SENDER",     desc = "COL_SENDER_DESC" },
   subject = { title = "COL_SUBJECT",    desc = "COL_SUBJECT_DESC",    fixed = true },
-  time    = { title = "OPT_ROW_EXPIRY", desc = "OPT_ROW_EXPIRY_DESC", choice = "expiry", figure = true, head = "clock" },
+  time    = { title = "OPT_ROW_EXPIRY", desc = "OPT_ROW_EXPIRY_DESC", choice = "expiry", figure = true, head = "hourglass" },
   money   = { title = "OPT_ROW_GOLD",   desc = "OPT_ROW_GOLD_DESC",   choice = "gold", figure = true, head = "coin" },
   slots   = { title = "OPT_ROW_SLOTS",  desc = "OPT_ROW_SLOTS_DESC", choice = "slots", figure = true, head = "slot" },
+  age     = { title = "COL_AGE",        desc = "COL_AGE_DESC",        choice = "age", head = "history" },
 }
 
 -- The cog key (section 4): the cog's size at rest; lit, a check and Done on
@@ -99,12 +104,38 @@ AR.moving = nil
 -- 1. The arrangement, read and written
 -------------------------------------------------------------
 
-function AR.Layout()
-  local ui = UI()
-  return ui and type(ui.GetRowLayout) == "function" and ui.GetRowLayout() or nil
+-- Whether the mode arranges History's own arrangement: the list it is open
+-- over follows it (the host's History()). Answered from the list as it is
+-- now, so a list switched under the mode is followed (AR.SyncList).
+function AR.EditsHistory()
+  local host = AR.host
+  return host ~= nil and host.History ~= nil and host.History() == true
 end
 
--- A copy the caller may change, for SetRowLayout.
+-- The arrangement the mode arranges (above): History's or the mail rows'.
+function AR.Layout()
+  local ui = UI()
+  if not ui then return nil end
+  if AR.EditsHistory() then
+    return type(ui.GetHistoryLayout) == "function" and ui.GetHistoryLayout() or nil
+  end
+  return type(ui.GetRowLayout) == "function" and ui.GetRowLayout() or nil
+end
+
+-- The arrangement written (a list as AR.Layout's, or nil for the default):
+-- the one the mode arranges, unless `history` says which.
+function AR.SetLayout(list, history)
+  local ui = UI()
+  if not ui then return end
+  if history == nil then history = AR.EditsHistory() end
+  if history then
+    if ui.SetHistoryLayout then ui.SetHistoryLayout(list) end
+  elseif ui.SetRowLayout then
+    ui.SetRowLayout(list)
+  end
+end
+
+-- A copy the caller may change, for AR.SetLayout.
 local function CopyLayout()
   local layout, out = AR.Layout() or {}, {}
   for i = 1, #layout do out[i] = { id = layout[i].id, shown = layout[i].shown } end
@@ -130,7 +161,7 @@ function AR.MoveColumn(from, to)
   local entry = table.remove(list, from)
   if not entry then return end
   table.insert(list, math.max(1, math.min(to, #list + 1)), entry)
-  UI().SetRowLayout(list)
+  AR.SetLayout(list)
 end
 
 function AR.SetColumnShown(id, on)
@@ -138,7 +169,7 @@ function AR.SetColumnShown(id, on)
   local i = IndexOf(list, id)
   if not i or AR.COLUMNS[id].fixed then return end
   list[i].shown = on and true or false
-  UI().SetRowLayout(list)
+  AR.SetLayout(list)
 end
 
 -- Both windows' lists, drawn again: `full` after the arrangement changed
@@ -175,22 +206,32 @@ function AR.GridChanged()
   if collect and panel and collect.RefreshCategoryButtons then collect.RefreshCategoryButtons(panel) end
 end
 
--- Right-click on the lit key: the rows, the blocks under the list and the
--- buttons as they come, with the gold's, the time left's and the slots' own
--- defaults.
-function AR.Reset()
+-- Right-click on the lit key, or the inspector's reset: what the mode
+-- arranges from the list it is open over, as it comes. From the mail rows:
+-- their columns, the blocks under the list and the buttons, with the
+-- gold's, the time left's and the slots' own defaults. From History: its
+-- columns and its age's wording, the blocks under the list and the gold's
+-- default (its money's card), and nothing History does not show -- not
+-- the mail rows' columns, not the buttons. `history` says which (nil: the
+-- list the mode is open over).
+function AR.Reset(history)
   local ui = UI()
   if not ui then return end
-  if ui.SetRowLayout then ui.SetRowLayout(nil) end
+  if history == nil then history = AR.EditsHistory() end
+  AR.SetLayout(nil, history)
   if ui.SetGoldMode then ui.SetGoldMode("both") end
-  if ui.SetExpiryWhen then ui.SetExpiryWhen("3") end
-  if ui.SetSlotsStyle then ui.SetSlotsStyle(nil) end
-  if ui.SetGridLayout then ui.SetGridLayout(nil) end
+  if history then
+    if ui.SetHistoryAge then ui.SetHistoryAge(nil) end
+  else
+    if ui.SetExpiryWhen then ui.SetExpiryWhen("3") end
+    if ui.SetSlotsStyle then ui.SetSlotsStyle(nil) end
+    if ui.SetGridLayout then ui.SetGridLayout(nil) end
+  end
   if ui.SetStackOrder then ui.SetStackOrder(nil) end
   -- The grid and the totals hidden in the mode are the "Show category
   -- buttons" and "Show totals" options, so they come back with the rest,
   -- and the window's floor with them.
-  local gridBack = ui.GetOption and ui.SetOption and not ui.GetOption("showCategoryButtons")
+  local gridBack = not history and ui.GetOption and ui.SetOption and not ui.GetOption("showCategoryButtons")
   if gridBack then ui.SetOption("showCategoryButtons", true) end
   local totalsBack = ui.GetOption and ui.SetOption and not ui.GetOption("showTotals")
   if totalsBack then ui.SetOption("showTotals", true) end
@@ -209,8 +250,10 @@ end
 -- and only where the client offers the popup at all -- no popup, no reset.
 -- Lifted over the windows it may open from (Theme.LiftPopup). The answer
 -- resets whether or not the mode is still open by then: the question was
--- about the arrangement, not the mode.
+-- about the arrangement, not the mode -- the one being arranged when it
+-- was asked (AR.resetHistory), whose own words it asks in.
 AR.POPUP_RESET = "POSTBOX_ARRANGE_RESET"
+AR.resetHistory = false
 
 function AR.AskReset()
   if type(StaticPopupDialogs) ~= "table" or type(StaticPopup_Show) ~= "function" then return end
@@ -219,13 +262,15 @@ function AR.AskReset()
       text = "%s",
       button1 = L()["BTN_RESET"],
       button2 = L()["COD_CONFIRM_CANCEL"],
-      OnAccept = function() AR.Reset() end,
+      OnAccept = function() AR.Reset(AR.resetHistory) end,
       timeout = 0,
       whileDead = true,
       hideOnEscape = true,
     }
   end
-  local dialog = StaticPopup_Show(AR.POPUP_RESET, L()["ARRANGE_RESET_CONFIRM"])
+  AR.resetHistory = AR.EditsHistory()
+  local dialog = StaticPopup_Show(AR.POPUP_RESET,
+    L()[AR.resetHistory and "ARRANGE_RESET_CONFIRM_HISTORY" or "ARRANGE_RESET_CONFIRM"])
   local T = Th()
   if dialog and T and T.LiftPopup then T.LiftPopup(dialog) end
 end
@@ -1319,28 +1364,26 @@ end
 -- delete mark) stands over the last column's box. A line stands in the
 -- middle of the gap between two lanes, the lanes being the columns' content
 -- as RV.Place publishes it for the list (s.laneX, s.laneW, from the row's
--- left edge, which is the header's; s.lead, where the arrangement's room
--- begins, and s.width, where the row ends). One rule, whichever column
--- stands where, and the same box outlines the column's cells on the rows
+-- left edge, which is the header's; s.width, where the row ends). One
+-- rule, whichever column stands where, and the same box outlines the
+-- column's cells on the rows
 -- (AR.CellBox, section 7b): each column's home, where a row with every
 -- figure has it in Columns, whichever Row layout the rows follow (in the
 -- mode as out of it; packed, a row without a figure shows its others out
 -- from under their headings, which is what Packed does). A heading's glyph stands
 -- in the middle of its box, from line to line, whatever the lane under it
 -- draws; a name starts where its lane does. The narrow columns wear glyphs
--- (the read dot, the icon, the clock, the coin, the slots), with their
--- names in the tooltip and the inspector; the subject's heading carries
--- the stretch arrow across the room it takes, after its name.
+-- (the read dot, the icon, the hourglass, the coin, the slots, History's
+-- age), with their names in the tooltip and the inspector; the subject's
+-- heading carries the stretch arrow across the room it takes, after its
+-- name.
 --
--- The header describes the list shown: a column the list has no such
--- column for at all (History has no read mark, no time left and no slots;
--- the spec's el names what a list draws) has no heading and no peg in it,
--- and a list that leads with a column of its own before the arrangement's
--- room (History's age, before s.lead) has a heading over it too: the
--- clock, from the row's edge to GAP before the first heading, which says
--- what it is and does nothing else, since it is not the arrangement's to
--- move or hide. A hidden column is a peg on the header where it stands, its
--- crossed eye and nothing else; a click on it, or a right-click, shows the
+-- The header describes the list shown and the arrangement it follows
+-- (AR.Layout): History's has its age and none of the columns History does
+-- not draw (the read mark, the time left, the slots), and a column the list
+-- has no such column for at all (the spec's el names what a list draws)
+-- has no heading and no peg in it. A hidden column is a peg on the header
+-- where it stands, its crossed eye and nothing else; a click on it, or a right-click, shows the
 -- column again, there. A shown one with no lane in this list -- no mail
 -- listed has it -- keeps a narrow dimmed heading in its place. Pegs and
 -- narrow headings take no room: they stand over the line between the two
@@ -1387,9 +1430,9 @@ local HEAD = {
   SUBJECT_MIN = 40, -- the subject's heading where the list has no lanes
   SLACK = 4,        -- how far back the hand comes before a drag swaps back (section 7)
   -- A shown heading with no lane of its own.
-  NARROW = { read = 14, icon = 22, sender = 44, subject = 60, time = 22, money = 22, slots = 22 },
+  NARROW = { read = 14, icon = 22, sender = 44, subject = 60, time = 22, money = 22, slots = 22, age = 22 },
   -- Every heading's width where the list publishes no lanes.
-  FALLBACK = { read = 14, icon = 24, sender = 72, time = 22, money = 40, slots = 42 },
+  FALLBACK = { read = 14, icon = 24, sender = 72, time = 22, money = 40, slots = 42, age = 36 },
 }
 AR.HEAD = HEAD
 
@@ -1452,7 +1495,7 @@ function AR.PaintHead(head)
   if glyph then
     if head.glyphKind == "dot" then
       T.SetColor(glyph, dim and "textDisabled" or "unread")
-    elseif head.glyphKind == "clock" or head.glyphKind == "slot" then
+    elseif head.glyphKind == "hourglass" or head.glyphKind == "history" or head.glyphKind == "slot" then
       glyph:SetVertexColor(grey, grey, grey, 1)
     else
       glyph:SetDesaturated(dim and true or false)
@@ -1575,8 +1618,10 @@ local function BuildHead(strip, id)
     key:SetVertexColor(0, 0, 0, 1)
     key:SetSize(13, 13)
     key:SetPoint("CENTER", glyph, "CENTER", 0, 0)
-  elseif kind == "clock" then
-    glyph = T.Glyph and T.Glyph(head, "clock", 11, "ARTWORK") or nil
+  elseif kind == "hourglass" or kind == "history" then
+    -- At the glyph's own height (the history mark a unit wider, for its
+    -- arrow's head).
+    glyph = T.Glyph and T.Glyph(head, kind, 11, "ARTWORK") or nil
   elseif kind == "slot" then
     glyph = T.Glyph and T.Glyph(head, "slot", nil, "ARTWORK") or nil
   elseif kind == "coin" then
@@ -1678,55 +1723,6 @@ local function BuildPeg(strip, id)
   return peg
 end
 
--- The heading over a list's own leading column (History's age, above): the
--- clock on a heading's plate, lighter while pointed at -- there, or the
--- column in the rows (section 7a, AR.LEAD) -- and a tooltip that says what
--- the column is. Not the arrangement's: nothing moves, selects or hides it,
--- and the pointer stays the pointer.
-AR.LEAD = "lead"
-
-local function PaintLead(lead)
-  local hover = lead.hover or AR.rowHover == AR.LEAD
-  AR.PaintCard(lead, hover and "hover" or "rest")
-  local glyph = lead.Glyph
-  if glyph then
-    local grey = hover and 1 or 0.9
-    glyph:SetVertexColor(grey, grey, grey, 1)
-  end
-end
-
-local function LeadEnter(self)
-  self.hover = true
-  PaintLead(self)
-  if AR.drag then return end
-  GameTooltip:SetOwner(self, "ANCHOR_TOP")
-  GameTooltip:SetText(L()["VIEW_HISTORY"])
-  GameTooltip:AddLine(L()["ARRANGE_HISTORY_AGE"], 1, 1, 1, true)
-  GameTooltip:Show()
-end
-
-local function LeadLeave(self)
-  self.hover = false
-  PaintLead(self)
-  GameTooltip:Hide()
-end
-
--- Made with the header, at its left edge; AR.LayoutStrip sizes and shows it.
-local function BuildLead(strip)
-  local T = Th()
-  local lead = AR.NewCard(strip, "head")
-  lead:SetHeight(T.Metrics.tileHeight)
-  lead:SetPoint("LEFT", strip, "LEFT", 0, 0)
-  lead:SetFrameLevel(strip:GetFrameLevel() + 1)
-  lead:EnableMouse(true)
-  lead.hover = false
-  lead.Glyph = T.Glyph and T.Glyph(lead, "clock", 11, "ARTWORK") or nil
-  if lead.Glyph then lead.Glyph:SetPoint("CENTER", lead, "CENTER", 0, 0) end
-  lead:SetScript("OnEnter", LeadEnter)
-  lead:SetScript("OnLeave", LeadLeave)
-  return lead
-end
-
 function AR.BuildStrip(host)
   local T = Th()
   local strip = CreateFrame("Frame", nil, host.owner)
@@ -1742,12 +1738,12 @@ function AR.BuildStrip(host)
   -- whether it stands over the line between two, and the columns with a
   -- place on the header, in order.
   strip.bx, strip.bw, strip.kind, strip.hx, strip.hw, strip.over = {}, {}, {}, {}, {}, {}
-  strip.order, strip.start = {}, 0
+  strip.order = {}
   for id in pairs(AR.COLUMNS) do
     strip.heads[id] = BuildHead(strip, id)
     strip.pegs[id] = BuildPeg(strip, id)
+    strip.kind[id] = "absent"
   end
-  strip.Lead = BuildLead(strip)
   strip.Ghost = AR.NewGhost(strip)
   strip.Ghost:SetFrameLevel(strip:GetFrameLevel() + 2)
   strip:SetScript("OnSizeChanged", function()
@@ -1775,13 +1771,11 @@ end
 -- it, centred on it, on top of their plates: no heading gives it any room,
 -- so every heading keeps its whole box and is one rectangle with its
 -- column's cells, wherever a column is hidden. Before the first heading a
--- run stands over the line after a list's own leading column (History's
--- age), or from the header's start over the first heading; after the last,
--- against the header's end over the last one's. The rows have no such
--- column: the run is the header's alone. `order` holds the `n` columns with
--- a place on the header; the arrangement's room runs from `start` (after a
--- leading column's heading, else 0) to `span`.
-function AR.PlaceRuns(order, n, strip, span, start)
+-- run stands from the header's start over the first heading; after the
+-- last, against the header's end over the last one's. The rows have no
+-- such column: the run is the header's alone. `order` holds the `n`
+-- columns with a place on the header, which runs from 0 to `span`.
+function AR.PlaceRuns(order, n, strip, span)
   local bx, bw, over = strip.bx, strip.bw, strip.over
   local i = 1
   while i <= n do
@@ -1794,7 +1788,7 @@ function AR.PlaceRuns(order, n, strip, span, start)
       local total = -HEAD.RUN_GAP
       for k = i, j - 1 do total = total + RunWidth(strip, order[k], beside) + HEAD.RUN_GAP end
       -- The line: in the middle of the gap after the heading before it.
-      local line = start
+      local line = 0
       if a then
         line = bx[a] + bw[a] + HEAD.GAP / 2
       elseif b then
@@ -1816,11 +1810,13 @@ function AR.PlaceRuns(order, n, strip, span, start)
 end
 
 -- The header laid out on the list's lanes (above), and put on screen: a
--- heading, or a peg, per column the list has, the list's own leading
--- column's heading before them, and the last one's plate carried on to the
--- header's end; the heading in the hand is left where the cursor holds it
--- and its slot takes the ghost. Anchored again only where a place, a width
--- or where its glyph and name stand changed.
+-- heading, or a peg, per column the list has in the arrangement it follows,
+-- and the last one's plate carried on to the header's end; the heading in
+-- the hand is left where the cursor holds it and its slot takes the ghost.
+-- A column the other arrangement has and this one has not (History's age
+-- over the mail rows, their read mark over History) has neither. Anchored
+-- again only where a place, a width or where its glyph and name stand
+-- changed.
 function AR.LayoutStrip(host)
   local strip = host and host.strip
   local layout = AR.Layout()
@@ -1839,9 +1835,14 @@ function AR.LayoutStrip(host)
   local bx, bw, kind, hx, hw, order = strip.bx, strip.bw, strip.kind, strip.hx, strip.hw, strip.order
   local span = width
   local count = 0
+  -- Every column the header could show starts with no place, the ones
+  -- this arrangement has not among them.
+  for id in pairs(kind) do
+    kind[id] = "absent"
+    bx[id], bw[id], hx[id], hw[id], strip.over[id] = nil, nil, nil, nil, nil
+  end
   for i = 1, n do
     local id = layout[i].id
-    bx[id], bw[id], hx[id], hw[id], strip.over[id] = nil, nil, nil, nil, nil
     if has and has[id] == nil then
       kind[id] = "absent"
     elseif not layout[i].shown and not AR.COLUMNS[id].fixed then
@@ -1859,17 +1860,13 @@ function AR.LayoutStrip(host)
     end
   end
   for i = count + 1, #order do order[i] = nil end
-  local start = 0
   if lanes then
     -- The columns tile the row (above): each lane's heading ends on the
     -- line between its lane and the next, in the middle of the gap between
     -- them, and the next starts GAP after that line; the first starts where
-    -- the arrangement's room does and the last ends where the row does (its
-    -- plate runs on, below). Before the arrangement's room, a list's own
-    -- leading column has its heading, ending GAP before the first.
-    local from = spec.lead or 0
-    span = math.max(math.min(spec.width or width, width), from + 60)
-    if from - HEAD.GAP >= HEAD.PEG then start = from end
+    -- the row does and the last ends where the row does (its plate runs on,
+    -- below).
+    span = math.max(math.min(spec.width or width, width), 60)
     local prev
     for i = 1, count do
       local id = order[i]
@@ -1879,7 +1876,7 @@ function AR.LayoutStrip(host)
           bw[prev] = math.max(line - bx[prev], 1)
           bx[id] = line + HEAD.GAP
         else
-          bx[id] = from
+          bx[id] = 0
         end
         prev = id
       end
@@ -1889,7 +1886,7 @@ function AR.LayoutStrip(host)
       local id = order[i]
       if kind[id] == "lane" then hx[id], hw[id] = bx[id], bw[id] end
     end
-    AR.PlaceRuns(order, count, strip, span, start)
+    AR.PlaceRuns(order, count, strip, span)
   else
     -- No lanes: the one-line order at the header's own widths, pegs among
     -- them, the subject taking what they leave.
@@ -1918,24 +1915,7 @@ function AR.LayoutStrip(host)
       x = x + w + HEAD.GAP
     end
   end
-  strip.lanes, strip.span, strip.start = lanes, span, start
-
-  local lead = strip.Lead
-  if lead then
-    if start > 0 then
-      local w = start - HEAD.GAP
-      if lead._w ~= w then
-        lead._w = w
-        lead:SetWidth(w)
-      end
-      if not lead:IsShown() then
-        lead:Show()
-        PaintLead(lead)
-      end
-    else
-      lead:Hide()
-    end
-  end
+  strip.lanes, strip.span = lanes, span
 
   -- The last on the header, whose plate runs on to its end: on lanes, the
   -- last column's heading, a run at the end standing over it.
@@ -1949,10 +1929,9 @@ function AR.LayoutStrip(host)
     end
   end
   local drag = AR.drag
-  for i = 1, n do
-    local id = layout[i].id
-    local head, peg = strip.heads[id], strip.pegs[id]
-    if head and peg then
+  for id, head in pairs(strip.heads) do
+    local peg = strip.pegs[id]
+    if peg then
       if kind[id] == "absent" then
         head:Hide()
         peg:Hide()
@@ -2042,8 +2021,8 @@ function columnPress.start(x0) AR.LiftColumn(pressed.host, pressed.id, x0) end
 function columnPress.move(x) AR.DragColumn(pressed.host, x) end
 function columnPress.drop() AR.DropColumn(pressed.host) end
 function columnPress.cancel()
-  local drag, ui = AR.drag, UI()
-  if drag and drag.before and ui and ui.SetRowLayout then ui.SetRowLayout(drag.before) end
+  local drag = AR.drag
+  if drag and drag.before then AR.SetLayout(drag.before, drag.history) end
   AR.DropColumn(pressed.host)
   AR.RowsChanged(true)
 end
@@ -2075,8 +2054,9 @@ function AR.LiftColumn(host, id, x0)
   AR.drag = {
     id = id, head = head, grab = x0 - (head:GetLeft() or x0), level = head:GetFrameLevel(),
     x = head._x or 0, dx = 0,
-    -- The arrangement as it was, for Escape to put back.
-    before = CopyLayout(),
+    -- The arrangement as it was, and which one, for Escape to put back;
+    -- and the rows whose cells ride in the hand (AR.LetGo).
+    before = CopyLayout(), history = AR.EditsHistory(), pool = host.Pool and host.Pool() or nil,
   }
   head:SetFrameLevel(strip:GetFrameLevel() + 20)
   -- Lifted a unit above and below its place.
@@ -2099,12 +2079,10 @@ function AR.DragColumn(host, cursorX)
   local left = strip:GetLeft()
   if not left then return end
   -- Its box decides where it changes places; its plate, which runs on to
-  -- the header's end in the last slot, where it stops; and it stops short
-  -- of a list's own leading column (section 6), which is not the
-  -- arrangement's.
+  -- the header's end in the last slot, where it stops.
   local w = head._w or head:GetWidth() or 0
   local hand = cursorX - left - drag.grab
-  local x = math.min(math.max(hand, strip.start), math.max((strip:GetWidth() or 0) - (head._pw or w), strip.start))
+  local x = math.min(math.max(hand, 0), math.max((strip:GetWidth() or 0) - (head._pw or w), 0))
   if x ~= drag.x then
     drag.x = x
     head:ClearAllPoints()
@@ -2209,7 +2187,7 @@ local REGION_OF = { read = "Indicator", icon = "Icon", sender = "Sender", subjec
 -- Every column's region on a row, by id (History's gold is its Money).
 local ROW_REGION = {
   read = "Indicator", icon = "Icon", sender = "Sender", subject = "Subject",
-  time = "ColTime", money = "ColMoney", slots = "ColSlots",
+  time = "ColTime", money = "ColMoney", slots = "ColSlots", age = "Age",
 }
 
 -- Where a column region stands on its row, from where RV.Place anchored it
@@ -2225,9 +2203,9 @@ end
 -- Packed, the column a press on a row takes is the one that row drew
 -- there, not a lane: each column where the row placed it, the subject with
 -- the room its quality mark keeps, and the nearest to the cursor wins, so a
--- press between two goes to the nearer. Only inside the arrangement's room
--- (from the spec's lead to the row's end, as the headings span it; a mark
--- the row keeps at its end stands over its last column). Nothing is made.
+-- press between two goes to the nearer. Only inside the row (as the
+-- headings span it; a mark the row keeps at its end stands over its last
+-- column). Nothing is made.
 function AR.RowColumnAt(host, cx, cy)
   local pool = host.Pool and host.Pool()
   local spec = host.Spec and host.Spec()
@@ -2239,7 +2217,7 @@ function AR.RowColumnAt(host, cx, cy)
       local top, bottom, left = row:GetTop(), row:GetBottom(), row:GetLeft()
       if top and bottom and left and cy <= top and cy >= bottom then
         local x = cx - left
-        if x < (spec.lead or 0) or x > (spec.width or x) then return nil end
+        if x < 0 or x > (spec.width or x) then return nil end
         local best, bestD
         for k = 1, #layout do
           local id = layout[k].id
@@ -2302,23 +2280,9 @@ function AR.ColumnAt(host)
   return nil
 end
 
--- What the pointer is over in the rows: a column (AR.ColumnAt), or the
--- list's own leading column (History's age: AR.LEAD), or nil.
-function AR.PointAt(host)
-  local id = AR.ColumnAt(host)
-  if id then return id end
-  local cover, strip = host.cover, host.strip
-  if not (cover and strip and strip.start > 0) then return nil end
-  local left = cover:GetLeft()
-  if not left then return nil end
-  local x = AR.Cursor(cover) - left
-  if x >= 0 and x < strip.start then return AR.LEAD end
-  return nil
-end
-
 -- The column the pointer is over in the rows, where that points at a
 -- column as its heading does: one with a heading on the header, not a
--- peg's (a hidden column a row shows anyway) nor the leading column's.
+-- peg's (a hidden column a row shows anyway).
 function AR.Pointed()
   local id = AR.rowHover
   local strip = AR.host and AR.host.strip
@@ -2330,10 +2294,10 @@ end
 
 -- What the pointer is over in the rows looks as its heading does pointed
 -- at: a column's heading lights and its cells are outlined (it is the
--- rows' focus, AR.UpdateFocus), with the move cross; a peg lights, and so
--- does the leading column's heading, with the pointer left as it is. No
--- tooltip: the header's are for the header, and a tip following the
--- pointer down the list would cover the rows it is about.
+-- rows' focus, AR.UpdateFocus), with the move cross; a peg lights, with
+-- the pointer left as it is. No tooltip: the header's are for the header,
+-- and a tip following the pointer down the list would cover the rows it is
+-- about.
 function AR.SetRowHover(id)
   local was = AR.rowHover
   AR.rowHover = id
@@ -2348,10 +2312,6 @@ end
 
 function AR.PaintPointed(strip, id)
   if not id then return end
-  if id == AR.LEAD then
-    if strip.Lead then PaintLead(strip.Lead) end
-    return
-  end
   local head, peg = strip.heads[id], strip.pegs[id]
   if head then AR.PaintHead(head) end
   if peg then PaintPeg(peg) end
@@ -2366,7 +2326,7 @@ local function CoverUpdate(self)
   local cx, cy = GetCursorPosition()
   if cx == self._cx and cy == self._cy then return end
   self._cx, self._cy = cx, cy
-  local id = AR.PointAt(host)
+  local id = AR.ColumnAt(host)
   if id ~= AR.rowHover then AR.SetRowHover(id) end
 end
 
@@ -2451,8 +2411,8 @@ local function NewLine(cover, i)
 end
 
 -- One line down each boundary between two lanes, where the heading before
--- it ends (AR.LayoutStrip), and after a list's own leading column. None
--- without lanes, nor while the rows close up: no row stands in them then.
+-- it ends (AR.LayoutStrip). None without lanes, nor while the rows close
+-- up: no row stands in them then.
 function AR.PlaceLines(host)
   local cover, strip = host.cover, host.strip
   if not (cover and strip) then return end
@@ -2460,7 +2420,7 @@ function AR.PlaceLines(host)
   local count = 0
   if strip.lanes and strip.lined and layout then
     local hx, hw, kind = strip.hx, strip.hw, strip.kind
-    local prev = strip.start > 0
+    local prev = false
     for i = 1, #layout do
       local id = layout[i].id
       if kind[id] == "lane" and hx[id] then
@@ -2546,6 +2506,7 @@ end
 function AR.ListPlacing(owner)
   local host = AR.host
   if not (host and host.owner == owner) then return end
+  AR.SyncList(host)
   local spec = host.Spec and host.Spec()
   local widths = spec and spec.laneW
   if widths then
@@ -2562,6 +2523,65 @@ function AR.ListPlaced(owner)
   AR.CoverLevel(host)
   AR.LayoutStrip(host)
   if AR.drag then AR.PlaceHand(host) end
+  -- A list switched under the mode: the inspector says what the one now
+  -- shown has, once its rows stand.
+  if AR.relisted then
+    AR.relisted = false
+    AR.Inspect()
+  end
+end
+
+-- A column in the hand let go where it is, nothing dropped: the heading
+-- back on the header and the rows' cells off the lane, the rows it was
+-- carried from among them (drag.pool) whether or not they still show.
+-- Nothing is placed again: the caller's pass does that.
+function AR.LetGo(host)
+  local drag = AR.drag
+  AR.drag = nil
+  if not drag then return end
+  drag.head:SetFrameLevel(drag.level)
+  drag.head:SetHeight(Th().Metrics.tileHeight)
+  drag.head._x = nil
+  local pool = drag.pool
+  if pool then
+    for i = 1, #pool do AR.UnmarkRow(pool[i]) end
+  end
+  if host then
+    AR.HideHand(host)
+    if host.strip then host.strip.Ghost:Hide() end
+  end
+end
+
+-- The list under the mode switched to one that follows the other
+-- arrangement (History, or back from it): the mode arranges that one now.
+-- Told as a pass of the list's rows begins (AR.ListPlacing), so every row
+-- of the pass is placed for it: a press or a drag is let go -- nothing is
+-- dropped into the other arrangement -- and a column the new one has not
+-- is let go of, pointed at or selected; the header is laid out on the new
+-- lanes as the pass ends (AR.ListPlaced), and the inspector filled again.
+-- Nothing binds rows here: the pass under way does.
+AR.editsHistory = false
+
+function AR.SyncList(host)
+  local history = AR.EditsHistory()
+  if AR.editsHistory == history then return end
+  AR.editsHistory = history
+  AR.CancelPress()
+  AR.LetGo(host)
+  if AR.moving then AR.moving = nil end
+  local layout = AR.Layout()
+  local strip = host.strip
+  if AR.hover and not (layout and IndexOf(layout, AR.hover)) then AR.hover = nil end
+  if AR.rowHover then
+    local was = AR.rowHover
+    AR.rowHover = nil
+    if strip then AR.PaintPointed(strip, was) end
+  end
+  if AR.selKind == "column" and not (layout and IndexOf(layout, AR.selId)) then
+    AR.selKind, AR.selId = nil, nil
+  end
+  AR.focus = AR.hover or (AR.selKind == "column" and AR.selId) or nil
+  AR.relisted = true
 end
 
 -------------------------------------------------------------
@@ -2854,12 +2874,12 @@ end
 -- units, or nil where the row has no place for it: from the line between
 -- it and what stands before it -- in the middle of the gap between the
 -- two, GAP after it -- to the line before what stands after it; the first
--- from where the arrangement's room begins (the row's left edge, or after
--- History's age), the last to the row's right edge. The header's rule
+-- from the row's left edge, the last to its right edge. The header's rule
 -- (AR.LayoutStrip), so on a row that stands where the list's lanes are it
--- is the heading's box. Nothing is made.
+-- is the heading's box. In the arrangement the row was placed by (s.layout,
+-- History's; else the one the mode arranges). Nothing is made.
 function AR.CellBox(s, id, lined, x, subjectW)
-  local layout = AR.Layout()
+  local layout = s.layout or AR.Layout()
   if not layout then return nil end
   local seen = false
   local lo, w, prevEnd, nextStart
@@ -2877,7 +2897,7 @@ function AR.CellBox(s, id, lined, x, subjectW)
     end
   end
   if not lo then return nil end
-  local left = s.lead or 0
+  local left = 0
   if prevEnd then left = math.floor((prevEnd + lo) / 2) + HEAD.GAP end
   local right = s.width or (lo + w)
   if nextStart then right = math.floor((lo + w + nextStart) / 2) end
@@ -2888,7 +2908,7 @@ end
 -- its text may run to on a lined-up row: at the line before the first lane
 -- after it, or at the row's end.
 function AR.RunLine(s, runEnd)
-  local layout = AR.Layout()
+  local layout = s.layout or AR.Layout()
   local laneX, laneW = s.laneX, s.laneW
   local after = false
   if layout and laneX and laneW then
@@ -3022,7 +3042,9 @@ end
 -- right edge (from its left one when the screen has no room on the right),
 -- its top level with the window's top row. Shown only while the mode is
 -- open, and nothing of it covers the rows. It says one of two things:
---   nothing selected: how the mode works, Row layout, what is hidden
+--   nothing selected: how the mode works, on the Mail tab which list's
+--     arrangement it arranges (the Inbox's or History's: a click switches
+--     the list), Row layout, what is hidden
 --     (each a chip; a click shows it again), the reset, and that Escape
 --     finishes -- or, while something is in the hand, that Escape cancels,
 --     the one change a drag makes to it;
@@ -3187,8 +3209,11 @@ local function PlayToggle(on)
   end
 end
 
--- The column's own choice: the gold's, the time left's and the slots'. The
--- lists are made once; what is chosen and how to choose are read each time.
+-- The column's own choice: the gold's, the time left's, the slots' and
+-- History's age's. The lists are made once; what is chosen and how to
+-- choose are read each time.
+AR.CHOICE_KINDS = { gold = true, expiry = true, slots = true, age = true }
+
 function AR.Choices(kind)
   local ui = UI()
   local lists = AR._choices
@@ -3196,10 +3221,20 @@ function AR.Choices(kind)
     lists = { none = {} }
     AR._choices = lists
   end
-  if not ui or (kind ~= "gold" and kind ~= "expiry" and kind ~= "slots") then return lists.none, nil, nil end
+  if not ui or not AR.CHOICE_KINDS[kind] then return lists.none, nil, nil end
   local list = lists[kind]
   if not list then
-    if kind == "gold" then
+    local collect = ns.CollectTab
+    local age = collect and collect.HistoryAgeText
+    if kind == "age" and not age then return lists.none, nil, nil end
+    if kind == "age" then
+      -- "3d ago" or "3 days ago": each wording as the rows write it, for
+      -- three days.
+      list = {
+        { id = "short", name = age(3, 3, "short") },
+        { id = "long",  name = age(3, 3, "long") },
+      }
+    elseif kind == "gold" then
       list = {
         { id = "both",   name = L()["OPT_GOLD_BOTH"] },
         { id = "earned", name = L()["OPT_GOLD_EARNED"] },
@@ -3223,6 +3258,7 @@ function AR.Choices(kind)
   end
   if kind == "gold" then return list, ui.GetGoldMode and ui.GetGoldMode(), ui.SetGoldMode end
   if kind == "slots" then return list, ui.GetSlotsStyle and ui.GetSlotsStyle(), ui.SetSlotsStyle end
+  if kind == "age" then return list, ui.GetHistoryAge and ui.GetHistoryAge(), ui.SetHistoryAge end
   return list, ui.GetExpiryWhen and ui.GetExpiryWhen(), ui.SetExpiryWhen
 end
 
@@ -3518,8 +3554,10 @@ end
 local function RadioClick(self)
   local insp = AR._insp
   if not (self.live and insp and insp.set) then return end
-  insp.set(self.choiceId)
-  AR.RowsChanged(true)
+  local set = insp.set
+  set(self.choiceId)
+  -- The list switched is placed by its own switch.
+  if set ~= AR.ShowList then AR.RowsChanged(true) end
   AR.Inspect()
 end
 
@@ -4409,12 +4447,43 @@ local function PutFoot(y)
   return rowY - P.FOOT_H
 end
 
--- With nothing selected: how the mode works, Row layout -- it is every
--- column's, so it belongs to no one column's card -- what is hidden, and
--- the foot.
+-- The list the mode arranges, where the host offers the other (the Mail
+-- tab on this character's box, History kept): the inbox's arrangement or
+-- History's, as a column's own choices are shown. A click switches the
+-- list under the mode (the host's ShowHistory), and the mode follows it
+-- (AR.SyncList).
+function AR.ShowList(id)
+  local host = AR.host
+  if host and host.ShowHistory then host.ShowHistory(id == "history") end
+end
+
+local function PutLists(host, y)
+  local insp = AR._insp
+  if not (host.CanSwitch and host.CanSwitch() and host.ShowHistory) then return y end
+  local lists = AR._lists
+  if not lists then
+    lists = {
+      { id = "inbox",   name = L()["VIEW_INBOX"] },
+      { id = "history", name = L()["VIEW_HISTORY"] },
+    }
+    AR._lists = lists
+  end
+  y = PutKicker(L()["ARRANGE_LIST"], y)
+  local current = AR.EditsHistory() and "history" or "inbox"
+  insp.set = AR.ShowList
+  for i = 1, #lists do
+    y = PutRadio(i, lists[i], lists[i].id == current, true, y)
+  end
+  return y
+end
+
+-- With nothing selected: how the mode works, the list it arranges, Row
+-- layout -- it is every column's, so it belongs to no one column's card --
+-- what is hidden, and the foot.
 local function FillOverview(host, y)
   local insp, P = AR._insp, INSP
   y = PutText(insp.Lead, L()["ARRANGE_OVERVIEW"], y)
+  y = PutLists(host, y)
   y = PutLayout(y)
   -- What is hidden: the columns, then the host's own -- counted first, so
   -- the kicker says whether a click shows them.
@@ -4641,7 +4710,11 @@ end
 -- answers, for the list on screen: Spec() (its placement table, whose lanes
 -- RV.Place publishes), Pool() (its rows), Scroll() (its scroll frame),
 -- List() (the frame its rows stand in) and TwoLine() (whether its rows are
--- the two-line ones, which have no lanes). It tells the
+-- the two-line ones, which have no lanes), and may answer History()
+-- (whether the list on screen follows History's arrangement, which the
+-- mode then arranges; the mail rows' otherwise), CanSwitch() and
+-- ShowHistory(on) (the overview's list choice: the list switched under
+-- the mode). It tells the
 -- mode when a pass of its rows begins and ends (AR.ListPlacing,
 -- AR.ListPlaced). The Mail
 -- tab's is CollectTab's CT.ArrangeHost; Mail Memory's is its own. One at a
@@ -4670,6 +4743,7 @@ function AR.Enter(host)
   AR.host = host
   AR.hover, AR.focus, AR.drag, AR.rowHover = nil, nil, nil, nil
   AR.selKind, AR.selId, AR.moving = nil, nil, nil
+  AR.editsHistory, AR.relisted = AR.EditsHistory(), false
   strip:Show()
   if host.OnEnter then host.OnEnter(strip) end
   if cover then
@@ -4708,10 +4782,6 @@ function AR.Leave()
     strip:Hide()
     for _, head in pairs(strip.heads) do head.hover = false end
     for _, peg in pairs(strip.pegs) do peg.hover = false end
-    if strip.Lead then
-      strip.Lead.hover = false
-      PaintLead(strip.Lead)
-    end
   end
   local cover = host.cover
   if cover then

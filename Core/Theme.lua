@@ -1722,7 +1722,6 @@ do
     check = { file = MEDIA .. "glyph-check.tga", w = 8, h = 8, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125 },
     eye = { file = MEDIA .. "glyph-eye.tga", w = 12, h = 8, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.53125 },
     ["eye-off"] = { file = MEDIA .. "glyph-eye-off.tga", w = 12, h = 8, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.53125 },
-    clock = { file = MEDIA .. "glyph-clock.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
     slot = { file = MEDIA .. "glyph-slot.tga", w = 12, h = 11, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.71875 },
     ["arrow-left"] = { file = MEDIA .. "glyph-arrow-left.tga", w = 6, h = 8, l = 0.0625, r = 0.8125, t = 0.03125, b = 0.53125 },
     ["arrow-right"] = { file = MEDIA .. "glyph-arrow-right.tga", w = 6, h = 8, l = 0.0625, r = 0.8125, t = 0.03125, b = 0.53125 },
