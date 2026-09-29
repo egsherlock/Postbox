@@ -628,8 +628,9 @@ function UI.SetExpiryWhen(when)
   ForgetSettings()
 end
 
--- How a row writes the slots a mail still holds: "words" ("4 slots", the
--- default) or "number" ("4"). The row's tooltip keeps the words either way.
+-- How a one-line row writes the slots a mail still holds in its column:
+-- "words" ("4 slots", the default) or "number" ("4"). A Larger row's second
+-- line and the row's tooltip keep the words either way.
 -- Stored only when it is the number, so nothing stored means the words.
 -- Remembered with the other row settings (ForgetSettings).
 function UI.GetSlotsStyle()

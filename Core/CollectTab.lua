@@ -1344,8 +1344,9 @@ function RV.SlotsNumber()
 end
 
 -- n, onRow -> the slot count as a row writes it: the number alone where the
--- player chose it and it stands on the row, the plural words otherwise --
--- a tooltip always says "4 slots".
+-- player chose it and it stands in a one-line row's column (`onRow`), the
+-- plural words otherwise -- a two-line row's second line and a tooltip
+-- always say "4 slots".
 function RV.SlotsText(n, onRow)
   if onRow and RV.SlotsNumber() then return tostring(n) end
   return ns.Plural("COUNT_SLOTS", n)
@@ -3474,8 +3475,10 @@ local function BindRow(panel, row, index, position, compact, done)
   local purchaseShown = (moneyKind == "spent")
   -- In the quiet tone the time left wears: a count, not a warning. The
   -- money is the row's one coloured figure. The number alone where the
-  -- player chose it; in the words when it goes to the tooltip (below).
-  local slots = (remaining > 0) and T.Colorize("textSecondary", RV.SlotsText(remaining, showSlots)) or nil
+  -- player chose it and the count stands in its column: a one-line row's.
+  -- The two-line row spells its figures out, with no column to say what a
+  -- bare "4" counts, and the tooltip always has the words (below).
+  local slots = (remaining > 0) and T.Colorize("textSecondary", RV.SlotsText(remaining, showSlots and compact)) or nil
 
   -- Time left is a warning, not a column: on the row only when it is short;
   -- always in the tooltip.
