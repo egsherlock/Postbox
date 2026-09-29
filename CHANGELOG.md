@@ -105,6 +105,10 @@ longer play.
   drawn pixel-sharp, and every Postbox window's resize corner is two thin
   lines that light up when you point at them. The read dot sits evenly before
   the item icon, with a soft shadow, and icons are centred in their column.
+- **Tooltips say less, and say it the same way.** An option's tooltip is one
+  short sentence, with the whole description in the options' side panel, and
+  every gesture hint is one grey line in the same form ("Right-click to open
+  without collecting · Shift-click to select a range").
 - **The options open quicker:** your recipients are counted when you look at
   the Send tab, not every time the options open.
 - Also: the "Show on each mail" list moved from the options into the window,
