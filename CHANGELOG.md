@@ -71,8 +71,8 @@ longer play.
   The collect buttons leave a stuck mail to a click on its row, so a run does
   not keep meeting the same one; click "Stuck: N" to show only those mails,
   then Collect shown to try them all again.
-- **Slot counts are a quiet grey**, like the time left, so money is a row's
-  only coloured figure; the Slots card, while you arrange, can show just the
+- **Slot counts are a quiet gray**, like the time left, so money is a row's
+  only colored figure; the Slots card, while you arrange, can show just the
   number on one-line rows.
 - **Quality icons can go before the item's name**, with every name in the
   list still starting on one line.
@@ -104,15 +104,15 @@ longer play.
   Mail Memory's sort arrow and the search box's every-character toggle are
   drawn pixel-sharp, and every Postbox window's resize corner is two thin
   lines that light up when you point at them. The read dot sits evenly before
-  the item icon, with a soft shadow, and icons are centred in their column.
+  the item icon, with a soft shadow, and icons are centered in their column.
 - **Tooltips say less, and say it the same way.** An option's tooltip is one
   short sentence, with the whole description in the options' side panel, and
-  every gesture hint is one grey line in the same form ("Right-click to open
+  every gesture hint is one gray line in the same form ("Right-click to open
   without collecting · Shift-click to select a range").
 - **The options open quicker:** your recipients are counted when you look at
   the Send tab, not every time the options open.
 - Also: the "Show on each mail" list moved from the options into the window,
-  Mail Memory rows show the read mark, "Flash on new mail" greys out while
+  Mail Memory rows show the read mark, "Flash on new mail" grays out while
   the minimap icon is off, and the window border no longer offers "Match
   EllesmereUI", which never drew a border.
 
@@ -131,13 +131,13 @@ longer play.
 - Collecting auction house mail no longer flashes a "Read, nothing left (1)"
   bar (or Done (1)) at the foot of the list, with Inbox one too high, for a
   mail the game was already deleting.
-- Greyed-out items in your bags no longer flash darker each time you attach
-  something: items that cannot be mailed keep one steady grey and their
-  padlock. In the default bags they also stay grey after you cast a spell.
+- Grayed-out items in your bags no longer flash darker each time you attach
+  something: items that cannot be mailed keep one steady gray and their
+  padlock. In the default bags they also stay gray after you cast a spell.
 - Baganator bags update when you switch between Mail and Send, so items that
-  cannot be mailed are greyed as they should be.
+  cannot be mailed are grayed as they should be.
 - EllesmereUI bags opened after switching to or from Send show the right
-  padlocks and greys.
+  padlocks and grays.
 - Large counts in long translations no longer run into each other: the
   window widens just enough while it needs to, then returns to your size.
 - **The mail list stops at its last mail.** In the Mail tab and in Mail
