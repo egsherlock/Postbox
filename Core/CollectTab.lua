@@ -3290,11 +3290,12 @@ local function BuildRow(panel)
     -- The gesture line is the one reason this tooltip is no longer conditional
     -- on something having been cut: shift-click and right-click cannot be
     -- discovered by looking. Which line it is follows the ACTIVE mapping -- the
-    -- alternate gesture teaches whichever verb the plain click is not -- because
-    -- a hint that describes the other setting is worse than no hint at all. A
-    -- finished mail still gets nothing: there every button opens the mail, so
-    -- there is no alternative to teach -- and that is read from the MAIL, so it
-    -- holds on the all view too.
+    -- alternate gesture teaches whichever verb the plain click is not, and the
+    -- selection gestures follow it in the same line -- because a hint that
+    -- describes the other setting is worse than no hint at all. A finished
+    -- mail still gets nothing: there every button opens the mail and nothing
+    -- can be picked, so there is no alternative to teach -- and that is read
+    -- from the MAIL, so it holds on the all view too.
     local teach = nil
     if not self.mailDone then
       teach = PreviewOnClick() and RawKey("HINT_ROW_COLLECT") or RawKey("HINT_ROW_PREVIEW")
@@ -3350,12 +3351,6 @@ local function BuildRow(panel)
       GameTooltip:AddLine(T2.Colorize("warning", StuckLine(stuck)), 1, 1, 1, true)
     end
     if teach then GameTooltip:AddLine(teach, 0.7, 0.7, 0.7, true) end
-    -- The selection gestures, on the same rows the teach line is about: a
-    -- finished mail cannot be picked, so it gets neither line.
-    if not self.mailDone then
-      local pick = RawKey("HINT_ROW_SELECT")
-      if pick then GameTooltip:AddLine(pick, 0.7, 0.7, 0.7, true) end
-    end
     GameTooltip:Show()
   end)
   row:SetScript("OnLeave", function(self)

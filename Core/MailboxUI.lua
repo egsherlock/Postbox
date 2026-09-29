@@ -2615,11 +2615,13 @@ local function BuildFrame()
     frame.ResizeButton = helpers.CreateResizeButton(frame, OnResizeStop,
       AdoptTransientHeight, DragMinHeight, OnResizeReset, OnResizeSnap)
     -- The right-click cannot be discovered by looking: a small hint of the
-    -- theme's own says both gestures, quieter than a full tooltip.
+    -- theme's own says both gestures, in one line of the house's gesture
+    -- form, quieter than a full tooltip. Built once, not on every hover.
     local grip = frame.ResizeButton
     if grip and ns.Theme and ns.Theme.ShowHint then
+      local gripHint = { L("GRIP_TIP") }
       grip:HookScript("OnEnter", function(self)
-        ns.Theme.ShowHint(self, { L("GRIP_TIP_DRAG"), L("GRIP_TIP_RESET") })
+        ns.Theme.ShowHint(self, gripHint)
       end)
       grip:HookScript("OnLeave", function() ns.Theme.HideHint() end)
       -- Gone the moment the grip is pressed: a drag moves the window from

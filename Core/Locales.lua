@@ -177,8 +177,7 @@ L["STATUS_PARTIAL"]            = "Stuck: %d"
 -- Shaped like the other status lines -- word, colon, number -- and deliberately
 -- number-invariant in every locale, so it needs no plural family.
 L["STATUS_STUCK"]              = "Stuck: %d"
-L["GRIP_TIP_DRAG"]             = "Drag: Resize"
-L["GRIP_TIP_RESET"]            = "Right-click: Reset"
+L["GRIP_TIP"]                  = "Drag to resize · Right-click to reset"
 L["GRID_TOGGLE_TITLE"]         = "Window grid docking"
 -- Every option description below leads with ONE short sentence saying what the
 -- option does, then a newline, then the detail (ns.Summary, above). The
@@ -343,6 +342,7 @@ L["GROUPS_TIP_EDIT"]           = "Right-click to edit the group."
 L["GROUPS_TIP_ALTS"]           = "Right-click to make your own groups of characters, each with a button like this one."
 L["GROUPS_NO_BUTTON"]          = "No button yet"
 L["GROUPS_HIDDEN_TIP"]         = "Its button is hidden in the Mail tab. Click to show it."
+L["GROUPS_DRAG_TIP"]           = "Drag to reorder"
 L["RM_HERO_COUNT_ONE"]         = "%d recipient"
 L["RM_HERO_COUNT_OTHER"]       = "%d recipients"
 -- The attachment queue: what the Send button says when one press posts more
@@ -530,11 +530,11 @@ L["CAT_OTHER_TIP"]             = "Mail that is not from the auction house or fro
 -- The caption sharing that row. It has to fit beside three segments, so it
 -- states the rule and stops.
 -- Taught on the mail row's hover tooltip -- whichever of the two describes the
--- gesture that is NOT the plain click. Keep each to one short line: it sits
--- under whatever text the row had to truncate.
-L["HINT_ROW_PREVIEW"]          = "Right-click: open without collecting"
-L["HINT_ROW_COLLECT"]          = "Right-click: collect this mail"
-L["HINT_ROW_SELECT"]           = "Shift-click: select a range. Ctrl-click: pick single rows."
+-- gesture that is NOT the plain click, then the selection gestures, in the
+-- arrange mode's gesture form (ARRANGE_GESTURE_*): one grey line under
+-- whatever text the row had to truncate.
+L["HINT_ROW_PREVIEW"]          = "Right-click to open without collecting · Shift-click to select a range · Ctrl-click to select one"
+L["HINT_ROW_COLLECT"]          = "Right-click to collect · Shift-click to select a range · Ctrl-click to select one"
 -- Under the client's own "Delete" on the per-row delete control's tooltip. It
 -- says the part the glyph cannot: that this is not a hide and not an archive.
 L["HINT_ROW_DELETE"]           = "Removes this mail from your mailbox for good."
@@ -916,8 +916,7 @@ if GetLocale() == "frFR" then
   L["STATUS_INCOMPLETE"]         = "Incomplet: %d restant(s)"
   L["STATUS_PARTIAL"]            = "Bloques: %d"
   L["STATUS_STUCK"]              = "Bloques: %d"
-  L["GRIP_TIP_DRAG"]             = "Glisser : redimensionner"
-  L["GRIP_TIP_RESET"]            = "Clic droit : reinitialiser"
+  L["GRIP_TIP"]                  = "Glisser pour redimensionner · Clic droit pour reinitialiser"
 
   -- Noms de categorie : bouton groupe ET etiquette sur une ligne de courrier.
   L["CAT_ALL"]                   = "Tous les courriers"
@@ -931,9 +930,8 @@ if GetLocale() == "frFR" then
   L["CAT_OTHER_TIP"]             = "Le courrier qui ne vient ni de l'hotel des ventes ni de tes propres personnages : lettres d'autres joueurs et courrier du jeu."
 
   -- Segments et liste
-  L["HINT_ROW_PREVIEW"]          = "Clic droit : ouvrir sans recuperer"
-  L["HINT_ROW_COLLECT"]          = "Clic droit : recuperer ce courrier"
-  L["HINT_ROW_SELECT"]           = "Maj-clic : selectionner une plage. Ctrl-clic : choisir des lignes."
+  L["HINT_ROW_PREVIEW"]          = "Clic droit pour ouvrir sans recuperer · Maj-clic pour selectionner une plage · Ctrl-clic pour en selectionner un"
+  L["HINT_ROW_COLLECT"]          = "Clic droit pour recuperer · Maj-clic pour selectionner une plage · Ctrl-clic pour en selectionner un"
   L["HINT_ROW_DELETE"]           = "Retire definitivement ce courrier de ta boite."
   L["EMPTY_LIST_ALL"]            = "Ta boite aux lettres est vide."
   L["EMPTY_LIST_DONE"]           = "Rien de termine."
@@ -1324,6 +1322,7 @@ if GetLocale() == "frFR" then
   L["GROUPS_TIP_ALTS"]           = "Clic droit pour creer tes propres groupes de personnages, chacun avec un bouton comme celui-ci."
   L["GROUPS_NO_BUTTON"]          = "Sans bouton"
   L["GROUPS_HIDDEN_TIP"]         = "Son bouton est masque dans l'onglet Courrier. Clique pour l'afficher."
+  L["GROUPS_DRAG_TIP"]           = "Glisser pour ordonner"
   L["RM_HERO_COUNT_ONE"]         = "%d destinataire"
   L["RM_HERO_COUNT_OTHER"]       = "%d destinataires"
   L["BTN_SEND_MAILS_ONE"]        = "Envoyer %d courrier"
@@ -1546,8 +1545,7 @@ if GetLocale() == "deDE" then
   L["STATUS_INCOMPLETE"]         = "Unvollstaendig: %d uebrig"
   L["STATUS_PARTIAL"]            = "Steckt fest: %d"
   L["STATUS_STUCK"]              = "Steckt fest: %d"
-  L["GRIP_TIP_DRAG"]             = "Ziehen: Groesse aendern"
-  L["GRIP_TIP_RESET"]            = "Rechtsklick: Zuruecksetzen"
+  L["GRIP_TIP"]                  = "Ziehen zum Aendern der Groesse · Rechtsklick zum Zuruecksetzen"
 
   -- Kategorienamen: Sammelknopf UND Etikett auf einer einzelnen Postzeile.
   L["CAT_ALL"]                   = "Alle Post"
@@ -1562,9 +1560,8 @@ if GetLocale() == "deDE" then
 
   -- Drei Segmente teilen sich die Zeile mit dem Nachnahme-Hinweis, also bleibt
   -- jedes bei einem kurzen Wort.
-  L["HINT_ROW_PREVIEW"]          = "Rechtsklick: oeffnen ohne Abholen"
-  L["HINT_ROW_COLLECT"]          = "Rechtsklick: diese Post abholen"
-  L["HINT_ROW_SELECT"]           = "Umschalt-Klick: Bereich waehlen. Strg-Klick: einzelne Zeilen."
+  L["HINT_ROW_PREVIEW"]          = "Rechtsklick zum Oeffnen ohne Abholen · Umschalt-Klick fuer einen Bereich · Strg-Klick fuer einzelne Briefe"
+  L["HINT_ROW_COLLECT"]          = "Rechtsklick zum Abholen · Umschalt-Klick fuer einen Bereich · Strg-Klick fuer einzelne Briefe"
   L["HINT_ROW_DELETE"]           = "Entfernt diese Post endgueltig aus dem Briefkasten."
   L["EMPTY_LIST_ALL"]            = "Dein Briefkasten ist leer."
   L["EMPTY_LIST_DONE"]           = "Noch nichts erledigt."
@@ -1874,6 +1871,7 @@ if GetLocale() == "deDE" then
   L["GROUPS_TIP_ALTS"]           = "Rechtsklick, um eigene Charaktergruppen anzulegen, jede mit einem Button wie diesem."
   L["GROUPS_NO_BUTTON"]          = "Kein Button"
   L["GROUPS_HIDDEN_TIP"]         = "Ihr Button ist im Post-Tab ausgeblendet. Klicken, um ihn zu zeigen."
+  L["GROUPS_DRAG_TIP"]           = "Ziehen zum Ordnen"
   L["RM_HERO_COUNT_ONE"]         = "%d Empfaenger"
   L["RM_HERO_COUNT_OTHER"]       = "%d Empfaenger"
   L["BTN_SEND_MAILS_ONE"]        = "%d Brief senden"
@@ -2176,8 +2174,7 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["STATUS_INCOMPLETE"]         = "Incompleto: quedan %d"
   L["STATUS_PARTIAL"]            = "Atascados: %d"
   L["STATUS_STUCK"]              = "Atascados: %d"
-  L["GRIP_TIP_DRAG"]             = "Arrastrar: redimensionar"
-  L["GRIP_TIP_RESET"]            = "Clic derecho: restablecer"
+  L["GRIP_TIP"]                  = "Arrastra para redimensionar · Clic derecho para restablecer"
 
   -- Nombres de categoria: boton en bloque Y etiqueta en la fila de un correo.
   L["CAT_ALL"]                   = "Todo el correo"
@@ -2190,9 +2187,8 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["CAT_ALTS_TIP"]              = "El correo de tus propios personajes: todos con los que te has conectado con Postbox instalado, en cualquier reino."
   L["CAT_OTHER_TIP"]             = "El correo que no viene de la casa de subastas ni de tus propios personajes: cartas de otros jugadores y correo del juego."
 
-  L["HINT_ROW_PREVIEW"]          = "Clic derecho: abrir sin recoger"
-  L["HINT_ROW_COLLECT"]          = "Clic derecho: recoger este correo"
-  L["HINT_ROW_SELECT"]           = "Mayus-clic: seleccionar un rango. Ctrl-clic: elegir filas sueltas."
+  L["HINT_ROW_PREVIEW"]          = "Clic derecho para abrir sin recoger · Mayus-clic para seleccionar un rango · Ctrl-clic para seleccionar uno"
+  L["HINT_ROW_COLLECT"]          = "Clic derecho para recoger · Mayus-clic para seleccionar un rango · Ctrl-clic para seleccionar uno"
   L["HINT_ROW_DELETE"]           = "Quita este correo de tu buzon para siempre."
   L["EMPTY_LIST_ALL"]            = "Tu buzon esta vacio."
   L["EMPTY_LIST_DONE"]           = "Nada vaciado todavia."
@@ -2502,6 +2498,7 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["GROUPS_TIP_ALTS"]           = "Clic derecho para crear tus propios grupos de personajes, cada uno con un boton como este."
   L["GROUPS_NO_BUTTON"]          = "Aun sin boton"
   L["GROUPS_HIDDEN_TIP"]         = "Su boton esta oculto en la pestana Correo. Haz clic para mostrarlo."
+  L["GROUPS_DRAG_TIP"]           = "Arrastra para ordenar"
   L["RM_HERO_COUNT_ONE"]         = "%d destinatario"
   L["RM_HERO_COUNT_OTHER"]       = "%d destinatarios"
   L["BTN_SEND_MAILS_ONE"]        = "Enviar %d correo"
@@ -2807,8 +2804,7 @@ L["STATUS_STOPPED"]            = "Прервано: ящик закрылся"
 L["STATUS_INCOMPLETE"]         = "Не завершено: осталось %d"
 L["STATUS_PARTIAL"]            = "Застряло: %d"
 L["STATUS_STUCK"]              = "Застряло: %d"
-L["GRIP_TIP_DRAG"]             = "Перетаскивание: размер"
-L["GRIP_TIP_RESET"]            = "ПКМ: сброс"
+L["GRIP_TIP"]                  = "Перетаскивание — размер · ПКМ — сброс"
 
 -- Названия категорий: и кнопка массового сбора, и метка на строке письма.
 L["CAT_ALL"]                   = "Вся почта"
@@ -2822,9 +2818,8 @@ L["CAT_ALTS_TIP"]              = "Почта от ваших собственн�
 L["CAT_OTHER_TIP"]             = "Почта не с аукциона и не от ваших собственных персонажей: письма других игроков и почта от самой игры."
 
 -- Сегменты и список
-L["HINT_ROW_PREVIEW"]          = "Правый клик: открыть без получения"
-L["HINT_ROW_COLLECT"]          = "Правый клик: получить письмо"
-L["HINT_ROW_SELECT"]           = "Shift-клик: выделить диапазон. Ctrl-клик: выбрать отдельные строки."
+L["HINT_ROW_PREVIEW"]          = "ПКМ — открыть без получения · Shift+щелчок — выделить диапазон · Ctrl+щелчок — выделить одно"
+L["HINT_ROW_COLLECT"]          = "ПКМ — получить · Shift+щелчок — выделить диапазон · Ctrl+щелчок — выделить одно"
 L["HINT_ROW_DELETE"]           = "Насовсем удаляет это письмо из почтового ящика."
 L["EMPTY_LIST_ALL"]            = "Почтовый ящик пуст."
 L["EMPTY_LIST_DONE"]           = "Пока ничего не разобрано."
@@ -3153,6 +3148,7 @@ L["GROUPS_TIP_EDIT"]           = "Правый щелчок — изменить
 L["GROUPS_TIP_ALTS"]           = "Правый щелчок — создать свои группы персонажей, у каждой будет такая же кнопка."
 L["GROUPS_NO_BUTTON"]          = "Без кнопки"
 L["GROUPS_HIDDEN_TIP"]         = "Её кнопка скрыта на вкладке «Почта». Щёлкните, чтобы показать её."
+L["GROUPS_DRAG_TIP"]           = "Перетаскивание — порядок"
 L["RM_HERO_COUNT_ONE"]         = "%d получатель"
 L["RM_HERO_COUNT_FEW"]         = "%d получателя"
 L["RM_HERO_COUNT_MANY"]        = "%d получателей"
@@ -3466,8 +3462,7 @@ if GetLocale() == "zhCN" then
   L["STATUS_INCOMPLETE"]       = "未完成：剩余 %d"
   L["STATUS_PARTIAL"]          = "卡住：%d"
   L["STATUS_STUCK"]            = "卡住：%d"
-  L["GRIP_TIP_DRAG"]           = "拖动：调整大小"
-  L["GRIP_TIP_RESET"]          = "右键：重置"
+  L["GRIP_TIP"]                = "拖动调整大小 · 右键重置"
   L["GRID_TOGGLE_TITLE"]       = "窗口网格停靠"
   L["GRID_TOGGLE_DESC"]        = "Postbox 在游戏其他窗口旁有自己的位置，其他窗口会为它让出空间。\n拖走后，下次打开邮箱时它会回到那里。关闭后，它会停留在你放置的位置。"
   L["OPTIONS_TITLE"]           = "Postbox 选项"
@@ -3622,6 +3617,7 @@ if GetLocale() == "zhCN" then
   L["GROUPS_TIP_ALTS"]         = "右键点击创建你自己的角色分组，每个分组都有一个这样的按钮。"
   L["GROUPS_NO_BUTTON"]        = "暂无按钮"
   L["GROUPS_HIDDEN_TIP"]       = "它的按钮已在邮件标签中隐藏。点击以显示。"
+  L["GROUPS_DRAG_TIP"]         = "拖动排序"
   L["RM_HERO_COUNT_ONE"]       = "%d 位收件人"
   L["RM_HERO_COUNT_OTHER"]     = "%d 位收件人"
   L["BTN_SEND_MAILS_ONE"]      = "发送 %d 封邮件"
@@ -3785,9 +3781,8 @@ if GetLocale() == "zhCN" then
   L["CAT_ALTS"]                = "来自小号"
   L["CAT_ALTS_TIP"]            = "来自你自己角色的邮件：所有在安装了 Postbox 时登录过的角色，任何服务器。"
   L["CAT_OTHER_TIP"]           = "不是来自拍卖行、也不是来自你自己角色的邮件：其他玩家的信件和游戏本身的邮件。"
-  L["HINT_ROW_PREVIEW"]        = "右键：打开但不收取"
-  L["HINT_ROW_COLLECT"]        = "右键：收取此邮件"
-  L["HINT_ROW_SELECT"]         = "Shift+点击：选择范围。Ctrl+点击：挑选单行。"
+  L["HINT_ROW_PREVIEW"]        = "右键打开但不收取 · Shift+点击选择范围 · Ctrl+点击单选"
+  L["HINT_ROW_COLLECT"]        = "右键收取 · Shift+点击选择范围 · Ctrl+点击单选"
   L["HINT_ROW_DELETE"]         = "将从此邮箱中永久删除该邮件。"
   L["EMPTY_LIST_ALL"]          = "你的邮箱是空的。"
   L["EMPTY_LIST_DONE"]         = "还没有处理完成的邮件。"
@@ -4071,8 +4066,7 @@ if GetLocale() == "zhTW" then
   L["STATUS_INCOMPLETE"]       = "未完成：剩餘 %d"
   L["STATUS_PARTIAL"]          = "卡住：%d"
   L["STATUS_STUCK"]            = "卡住：%d"
-  L["GRIP_TIP_DRAG"]           = "拖曳：調整大小"
-  L["GRIP_TIP_RESET"]          = "右鍵：重設"
+  L["GRIP_TIP"]                = "拖曳調整大小 · 右鍵重設"
   L["GRID_TOGGLE_TITLE"]       = "視窗網格停靠"
   L["GRID_TOGGLE_DESC"]        = "Postbox 在遊戲其他視窗旁有自己的位置，其他視窗會為它讓出空間。\n拖走後，下次開啟信箱時它會回到那裡。關閉後，它會停留在你放置的位置。"
   L["OPTIONS_TITLE"]           = "Postbox 選項"
@@ -4227,6 +4221,7 @@ if GetLocale() == "zhTW" then
   L["GROUPS_TIP_ALTS"]         = "右鍵點擊建立你自己的角色群組，每個群組都有一個這樣的按鈕。"
   L["GROUPS_NO_BUTTON"]        = "尚無按鈕"
   L["GROUPS_HIDDEN_TIP"]       = "它的按鈕已在郵件索引標籤中隱藏。點擊以顯示。"
+  L["GROUPS_DRAG_TIP"]         = "拖曳排序"
   L["RM_HERO_COUNT_ONE"]       = "%d 位收件者"
   L["RM_HERO_COUNT_OTHER"]     = "%d 位收件者"
   L["BTN_SEND_MAILS_ONE"]      = "寄出 %d 封郵件"
@@ -4390,9 +4385,8 @@ if GetLocale() == "zhTW" then
   L["CAT_ALTS"]                = "來自分身"
   L["CAT_ALTS_TIP"]            = "來自你自己角色的郵件：所有在安裝了 Postbox 時登入過的角色，任何伺服器。"
   L["CAT_OTHER_TIP"]           = "不是來自拍賣場、也不是來自你自己角色的郵件：其他玩家的信件和遊戲本身的郵件。"
-  L["HINT_ROW_PREVIEW"]        = "右鍵：開啟但不領取"
-  L["HINT_ROW_COLLECT"]        = "右鍵：領取此郵件"
-  L["HINT_ROW_SELECT"]         = "Shift+點擊：選取範圍。Ctrl+點擊：挑選單列。"
+  L["HINT_ROW_PREVIEW"]        = "右鍵開啟但不領取 · Shift+點擊選取範圍 · Ctrl+點擊單選"
+  L["HINT_ROW_COLLECT"]        = "右鍵領取 · Shift+點擊選取範圍 · Ctrl+點擊單選"
   L["HINT_ROW_DELETE"]         = "將從你的信箱永久刪除這封郵件。"
   L["EMPTY_LIST_ALL"]          = "你的信箱是空的。"
   L["EMPTY_LIST_DONE"]         = "還沒有處理完成的郵件。"
