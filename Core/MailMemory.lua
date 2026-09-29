@@ -1642,7 +1642,7 @@ local function PickerTip(row)
   else
     GameTooltip:SetText(MM.ClassName(row.realm, row.charName))
     if kind == "hidden" then
-      GameTooltip:AddLine(L["PICKER_SHOW_TIP"], 1, 1, 1, true)
+      GameTooltip:AddLine(L["PICKER_SHOW_TIP"], 0.7, 0.7, 0.7, true)
     else
       if row.reason then GameTooltip:AddLine(row.reason, 1, 1, 1, true) end
       if not row.isMe then GameTooltip:AddLine(L["PICKER_HIDE_HINT"], 0.7, 0.7, 0.7, true) end
@@ -2241,7 +2241,7 @@ local function BuildHeader(frame)
   local function SortTip(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
     GameTooltip:SetText(L[frame.sort == "expiry" and "SORT_EXPIRY_TITLE" or "SORT_NEWEST_TITLE"])
-    GameTooltip:AddLine(L["SORT_TIP"], 1, 1, 1, true)
+    GameTooltip:AddLine(L["SORT_TIP"], 0.7, 0.7, 0.7, true)
     GameTooltip:Show()
   end
   sort:SetScript("OnClick", function(self)

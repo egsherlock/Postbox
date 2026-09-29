@@ -1781,7 +1781,7 @@ end
 function Postbox_OnAddonCompartmentEnter(_, button)
   GameTooltip:SetOwner(button, "ANCHOR_LEFT")
   GameTooltip:SetText("Postbox")
-  GameTooltip:AddLine(ns.L["COMPARTMENT_TIP"], 1, 1, 1, true)
+  GameTooltip:AddLine(ns.L["COMPARTMENT_TIP"], 0.7, 0.7, 0.7, true)
   GameTooltip:Show()
 end
 

@@ -828,21 +828,37 @@ end
 -- 6. The button
 -------------------------------------------------------------
 
+-- The gestures, in one grey line of the arrange mode's form, as every
+-- Postbox tooltip says them; each part only while it is TRUE: Mail Memory
+-- goes when the option is off, the move goes while the position is locked,
+-- and the Alt-click always says which way it toggles. Composed once for each
+-- combination and kept (six at most), so a hover builds no string.
+MB._gestureLines = {}
+
+function MB.GestureLine(memory, hostMode, locked)
+  if hostMode then locked = false end
+  local k = (memory and 1 or 0) + (hostMode and 2 or 0) + (locked and 4 or 0)
+  local line = MB._gestureLines[k]
+  if not line then
+    local parts = {}
+    if memory then parts[#parts + 1] = L["MINIMAP_TIP_MEMORY"] end
+    parts[#parts + 1] = L["MINIMAP_TIP_OPTIONS"]
+    -- Moving and locking are Postbox's to offer only on Postbox's own icon.
+    if not hostMode then
+      if not locked then parts[#parts + 1] = L["MINIMAP_TIP_MOVE"] end
+      parts[#parts + 1] = L[locked and "MINIMAP_TIP_UNLOCK" or "MINIMAP_TIP_LOCK"]
+    end
+    line = table.concat(parts, " \194\183 ")
+    MB._gestureLines[k] = line
+  end
+  return line
+end
+
 -- `hostMode` is the EllesmereUI overlay: same description of the mailbox,
 -- but without the gestures Postbox does not own there (the icon's position
 -- is EllesmereUI's, so it offers no drag and no lock).
 ShowTooltip = function(button, hostMode)
   GameTooltip:SetOwner(button, "ANCHOR_BOTTOMLEFT")
-
-  -- One line per gesture, the gesture in gold and its effect in the hint
-  -- grey -- scannable, and each line exists only while it is TRUE: the
-  -- memory line goes when the option is off, the move line goes while the
-  -- position is locked, and the alt line always says which way it toggles.
-  local function ActionLine(actionKey, descKey)
-    GameTooltip:AddLine(
-      string.format("|cffffd100%s|r - %s", L[actionKey], L[descKey]),
-      0.6, 0.6, 0.6, true)
-  end
 
   -- Postbox describes the mailbox here, not the client. The default
   -- indicator's tooltip is "Unread mail from:" plus up to three bare names
@@ -941,18 +957,9 @@ ShowTooltip = function(button, hostMode)
   GameTooltip:AddLine(" ")
 
   local UIOpt = ns.MailboxUI
-  if UIOpt and type(UIOpt.GetOption) == "function" and UIOpt.GetOption("mailMemory") then
-    ActionLine("MINIMAP_TIP_ACT_CLICK", "MINIMAP_TIP_D_MEMORY")
-  end
-  ActionLine("MINIMAP_TIP_ACT_RIGHT", "MINIMAP_TIP_D_OPTIONS")
-  -- Moving and locking are Postbox's to offer only on Postbox's own icon.
-  if not hostMode then
-    local locked = Settings().lock
-    if not locked then
-      ActionLine("MINIMAP_TIP_ACT_DRAG", "MINIMAP_TIP_D_MOVE")
-    end
-    ActionLine("MINIMAP_TIP_ACT_ALT", locked and "MINIMAP_TIP_D_UNLOCK" or "MINIMAP_TIP_D_LOCK")
-  end
+  local memory = UIOpt and type(UIOpt.GetOption) == "function" and UIOpt.GetOption("mailMemory") and true or false
+  local locked = (not hostMode) and Settings().lock and true or false
+  GameTooltip:AddLine(MB.GestureLine(memory, hostMode and true or false, locked), 0.7, 0.7, 0.7, true)
   GameTooltip:Show()
 end
 
