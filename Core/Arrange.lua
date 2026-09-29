@@ -1000,11 +1000,12 @@ end
 -- for their marks begins, for the last), GAP between two, the lanes being
 -- the columns as RV.Place publishes them for the list (s.laneX, s.laneW,
 -- from the row's left edge, which is the header's; s.lead and s.laneEnd,
--- where the arrangement's room begins and ends). A heading's glyph or name
--- stands over its lane, not in the middle of its box. The narrow figures
--- wear glyphs -- the clock, the coin, the slots -- with their names in the
--- tooltip and the inspector; the subject's heading carries the stretch
--- arrow across the room it takes.
+-- where the arrangement's room begins and ends). A heading's glyph stands
+-- in the middle of its box, from line to line, whatever the lane under it
+-- draws; a name starts where its lane does. The narrow columns wear glyphs
+-- (the read dot, the icon, the clock, the coin, the slots), with their
+-- names in the tooltip and the inspector; the subject's heading carries
+-- the stretch arrow across the room it takes, after its name.
 --
 -- A hidden column is a peg on the header where it stands, its crossed eye
 -- and nothing else; a click on it, or a right-click, shows the column again,
@@ -1153,18 +1154,14 @@ function AR.FitHead(head)
   for k = 1, 3 do arrow[k]:SetShown(show) end
 end
 
--- Where a heading's glyph and name stand in its box (above): over its
--- column's lane where the list has one, else its glyph in the middle and
--- its name at the inset; a glyph is kept inside the box.
-function AR.HeadContent(head, lx, lw, w)
-  local cx, tx = w / 2, HEAD.TEXT
-  if lx and lw and lw > 0 then
-    cx = lx + lw / 2
-    tx = math.max(lx, HEAD.TEXT)
-  end
-  local half = head.glyphHalf or 0
-  cx = math.max(math.min(cx, w - half - 1), half + 1)
-  return cx, tx
+-- Where a heading's glyph and name stand in its box of width `w` (above):
+-- a glyph in the middle, however wide the box and wherever in it the lane
+-- lies; a name from its lane's start (`lx`, from the box's left) where the
+-- list has one, else at the inset.
+function AR.HeadContent(w, lx)
+  local tx = HEAD.TEXT
+  if lx then tx = math.max(lx, HEAD.TEXT) end
+  return w / 2, tx
 end
 
 local function HeadEnter(self)
@@ -1246,7 +1243,6 @@ local function BuildHead(strip, id)
   if glyph then
     glyph:SetPoint("CENTER", head, "CENTER", 0, 0)
     head.Glyph, head.glyphKind = glyph, kind
-    head.glyphHalf = (glyph:GetWidth() or 0) / 2 + ((kind == "icon") and 1 or 0)
   else
     -- A name, and where its glyph's art is missing, the name too.
     head.caption = L()[spec.title]
@@ -1580,9 +1576,9 @@ function AR.LayoutStrip(host)
         peg:Hide()
         local narrow = kind[id] == "narrow"
         local w = bw[id]
-        local lx, lw
-        if lanes and not narrow then lx, lw = laneX[id] - bx[id], laneW[id] end
-        local cx, tx = AR.HeadContent(head, lx, lw, w)
+        local lx
+        if lanes and not narrow then lx = laneX[id] - bx[id] end
+        local cx, tx = AR.HeadContent(w, lx)
         if head._w ~= w or head.narrow ~= narrow or head._cx ~= cx or head._tx ~= tx then
           head._w, head.narrow, head._cx, head._tx = w, narrow, cx, tx
           head:SetWidth(w)
