@@ -1727,6 +1727,7 @@ do
     resize = { file = MEDIA .. "glyph-resize.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
     ["arrow-back"] = { file = MEDIA .. "glyph-arrow-back.tga", w = 10, h = 9, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.59375 },
     ["dot-shadow"] = { file = MEDIA .. "glyph-dot-shadow.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
+    lanes = { file = MEDIA .. "glyph-lanes.tga", w = 2, h = 8, l = 0.125, r = 0.625, t = 0.03125, b = 0.53125 },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
   }
 

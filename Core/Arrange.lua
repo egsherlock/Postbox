@@ -565,8 +565,8 @@ local LIFT = {
 }
 AR.LIFT = LIFT
 
-function AR.NewCard(parent, kind)
-  local card = CreateFrame("Frame", nil, parent)
+function AR.NewCard(parent, kind, frameType)
+  local card = CreateFrame(frameType or "Frame", nil, parent)
   card.kind = LIFT[kind] and kind or "block"
   card.Fill = card:CreateTexture(nil, "BACKGROUND", nil, -7)
   card.Fill:SetTexture(WHITE)
@@ -1083,6 +1083,14 @@ end
 -- not: the header has little room, and its tooltip says the right-click;
 -- a hidden column's peg is the crossed eye.
 --
+-- Where the list has a scroll track (a host's Track()), the header ends
+-- where the rows do while the list scrolls, whether it does now or not,
+-- and its right corner, over the track, is Line up columns: a heading's
+-- plate as wide as the track, so the header reaches the list's edge, with
+-- the lanes mark in it -- grey while off, the accent while on. It is a
+-- control, not a column: a click switches it, as the overview's switch
+-- does, and nothing about it moves, selects or hides.
+--
 -- Built the first time the mode opens over a list, and laid out again after
 -- every pass of the list's rows (AR.ListPlaced): the lanes are the rows'.
 -- Every table the layout fills is made with the header.
@@ -1387,11 +1395,88 @@ local function BuildPeg(strip, id)
   return peg
 end
 
+-- Line up columns in the header's corner (above): a heading's plate at
+-- rest or pointed at, and the lanes mark in the accent while on, in
+-- textDisabled while off, white while off and pointed at.
+function AR.PaintCorner(corner)
+  local T = Th()
+  AR.PaintCard(corner, corner.hover and "hover" or "rest")
+  local mark = corner.Mark
+  if not mark then return end
+  if LinedUp() then
+    local r, g, b = T.GetAccent()
+    mark:SetVertexColor(r, g, b, 1)
+  else
+    T.SetColor(mark, corner.hover and "textPrimary" or "textDisabled")
+  end
+end
+
+-- Its tooltip: the switch's name and its state, and what it does.
+local function CornerTip(corner)
+  local on = LinedUp()
+  local r, g, b = 0.6, 0.6, 0.6
+  if on then r, g, b = Th().GetAccent() end
+  AR.TipOwner(corner, "ANCHOR_TOP")
+  GameTooltip:AddDoubleLine(L()["OPT_LINE_UP_TITLE"], L()[on and "ARRANGE_STATE_ON" or "ARRANGE_STATE_OFF"],
+    1, 0.82, 0, r, g, b)
+  GameTooltip:AddLine(ns.Summary(L()["OPT_LINE_UP_DESC"]), 1, 1, 1, true)
+  GameTooltip:Show()
+end
+
+local function CornerEnter(self)
+  self.hover = true
+  AR.PaintCorner(self)
+  CornerTip(self)
+end
+
+local function CornerLeave(self)
+  self.hover = false
+  AR.PaintCorner(self)
+  GameTooltip:Hide()
+end
+
+local function CornerClick(self)
+  if not AR.host then return end
+  AR.SetLinedUp(not LinedUp())
+  AR.PaintCorner(self)
+  if GameTooltip:IsOwned(self) then CornerTip(self) end
+end
+
+-- The corner itself, GAP after the header's right end and as wide as the
+-- track under it, the lanes mark in its middle (Theme.GLYPHS). A left
+-- click switches it; nothing else does anything.
+function AR.BuildCorner(strip, track)
+  local T = Th()
+  local corner = AR.NewCard(strip, "head", "Button")
+  local w = math.floor((track:GetWidth() or 0) + 0.5)
+  if w <= 0 then w = T.Metrics.scrollBarWidth or 6 end
+  corner:SetSize(w, T.Metrics.tileHeight)
+  corner:SetPoint("TOPLEFT", strip, "TOPRIGHT", HEAD.GAP, 0)
+  corner:SetFrameLevel(strip:GetFrameLevel() + 1)
+  corner.hover = false
+  corner.Mark = T.Glyph and T.Glyph(corner, "lanes", nil, "ARTWORK") or nil
+  if corner.Mark then corner.Mark:SetPoint("CENTER", corner, "CENTER", 0, 0) end
+  corner:RegisterForClicks("LeftButtonUp")
+  corner:SetScript("OnEnter", CornerEnter)
+  corner:SetScript("OnLeave", CornerLeave)
+  corner:SetScript("OnClick", CornerClick)
+  corner:Show()
+  AR.PaintCorner(corner)
+  return corner
+end
+
 function AR.BuildStrip(host)
   local T = Th()
   local strip = CreateFrame("Frame", nil, host.owner)
   strip:SetHeight(T.Metrics.tileHeight)
   host.PlaceStrip(strip)
+  -- Over a scroll track, the header ends GAP before it, where the rows end
+  -- while the list scrolls, and Line up columns takes the corner (above).
+  local track = host.Track and host.Track()
+  if track then
+    strip:SetPoint("RIGHT", track, "LEFT", -HEAD.GAP, 0)
+    strip.Corner = AR.BuildCorner(strip, track)
+  end
   strip:Hide()
   strip.heads, strip.pegs = {}, {}
   -- The layout's working tables, made once: each column's heading x and
@@ -1563,9 +1648,11 @@ function AR.LayoutStrip(host)
   if lanes then
     -- Each lane's heading is its column: it ends on the line between its
     -- lane and the next, which stands in the middle of the gap between
-    -- them, and the next starts GAP after that line.
+    -- them, and the next starts GAP after that line. The last ends where
+    -- the header does: a list that does not scroll runs its rows on
+    -- under the corner.
     local from = spec.lead or 0
-    span = math.max(spec.laneEnd or spec.width or width, from + 60)
+    span = math.max(math.min(spec.laneEnd or spec.width or width, width), from + 60)
     local prev
     for i = 1, n do
       local id = layout[i].id
@@ -2789,7 +2876,8 @@ end
 -- every column of every row stands, so it belongs to no one column's card.
 -- A box before its name, filled with the accent and checked while on; its
 -- words and ring rise with it, and go white when pointed at. A click places
--- every list again at once (AR.SetLinedUp), so the rows show what it does.
+-- every list again at once (AR.SetLinedUp), so the rows show what it does,
+-- as one on the header's corner does.
 local function PaintLanes(sw)
   local spec = PLATE.switch
   local on, hover = sw.on, sw.hover
@@ -2844,13 +2932,15 @@ function AR.SetLinedUp(on)
 end
 
 -- The mode's switches as the option now stands, wherever it was switched
--- (here, or the options panel's own): the inspector filled again for it --
--- its switch, and the notes that say what the rows do -- once per change.
--- Called as the header is laid out, which every pass of the rows ends with.
+-- (the overview, the header's corner, or the options panel): the corner
+-- painted, and the inspector filled again -- its switch, and the notes
+-- that say what the rows do -- once per change. Called as the header is
+-- laid out, which every pass of the rows ends with.
 function AR.SyncLanes(strip)
   local lined = LinedUp() and true or false
   if strip.lined == lined then return end
   strip.lined = lined
+  if strip.Corner then AR.PaintCorner(strip.Corner) end
   local insp = AR._insp
   if insp and insp:IsShown() then AR.Inspect() end
 end
@@ -3984,8 +4074,10 @@ end
 -- answers, for the list on screen: Spec() (its placement table, whose lanes
 -- RV.Place publishes), Pool() (its rows), Scroll() (its scroll frame),
 -- List() (the frame its rows stand in) and TwoLine() (whether its rows are
--- the two-line ones, which have no lanes). It tells the mode when a pass
--- of its rows begins and ends (AR.ListPlacing, AR.ListPlaced). The Mail
+-- the two-line ones, which have no lanes), and may answer Track() (its
+-- scroll bar, whose column the header's corner stands over). It tells the
+-- mode when a pass of its rows begins and ends (AR.ListPlacing,
+-- AR.ListPlaced). The Mail
 -- tab's is CollectTab's CT.ArrangeHost; Mail Memory's is its own. One at a
 -- time: opening one closes the other.
 --
@@ -4052,6 +4144,10 @@ function AR.Leave()
     strip:Hide()
     for _, head in pairs(strip.heads) do head.hover = false end
     for _, peg in pairs(strip.pegs) do peg.hover = false end
+    if strip.Corner then
+      strip.Corner.hover = false
+      AR.PaintCorner(strip.Corner)
+    end
   end
   local cover = host.cover
   if cover then

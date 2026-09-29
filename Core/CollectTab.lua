@@ -8156,6 +8156,8 @@ function CT.ArrangeHost(panel)
   end
   function host.Scroll() return panel.MailListScroll end
   function host.List() return panel.MailListChild end
+  -- The list's scroll bar: the header's corner stands over its column.
+  function host.Track() return panel.MailListScroll and panel.MailListScroll.SlimBar end
   function host.TwoLine()
     return not AV.Active(panel) and panel.viewMode ~= VIEW_HISTORY and not RowMetrics()
   end

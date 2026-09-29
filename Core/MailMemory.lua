@@ -2498,6 +2498,8 @@ function MM.ArrangeHost(frame)
   function host.Pool() return frame.Rows end
   function host.Scroll() return frame.Scroll end
   function host.List() return frame.ListChild end
+  -- The list's scroll bar: the header's corner stands over its column.
+  function host.Track() return frame.Scroll and frame.Scroll.SlimBar end
   function host.TwoLine() return false end
   -- The inspector docks beside this window, level with its top row -- the
   -- header, while it stands there.
