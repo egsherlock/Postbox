@@ -1343,11 +1343,11 @@ end
 -- crossed eye and nothing else; a click on it, or a right-click, shows the
 -- column again, there. A shown one with no lane in this list -- no mail
 -- listed has it -- keeps a narrow dimmed heading in its place. Pegs and
--- narrow headings take room of their own: out of the subject's heading
--- where they stand beside the subject, out of the headings either side of
--- them otherwise, and the heading beside them ends GAP before them. They
--- are the header's alone: the rows have no such column, so a column's box
--- on the rows keeps the room its heading gave one. With no
+-- narrow headings take no room: they stand over the line between the two
+-- headings either side of them, on top of those headings' plates (a peg
+-- above a narrow heading, both above the plates), so every heading keeps
+-- its whole box and is one rectangle with its column's cells. They are the
+-- header's alone: the rows have no such column. With no
 -- lanes at all -- an empty list, or Larger mail rows, whose figures are a
 -- line of text -- the header keeps the one-line order at widths of its own,
 -- pegs among them.
@@ -1363,9 +1363,10 @@ end
 -- The header spans what the list spans: from the rows' left edge to their
 -- right edge while nothing scrolls, the same inset on both sides (the
 -- host's PlaceStrip). While the list scrolls the rows end at the scroll
--- track, and so does the last column's box; whatever stands last on the
--- header -- a heading, a narrow heading or a peg -- carries its plate on
--- over the track's column to the header's end, the one place a heading's
+-- track, and so does the last column's box; the last column's heading
+-- carries its plate on over the track's column to the header's end (a peg
+-- or a narrow heading after it standing over its end; without lanes,
+-- whatever stands last carries it), the one place a heading's
 -- plate is wider than its box; what it shows is still placed on its box
 -- (its glyph in the box's middle, its name and the stretch arrow fitted to
 -- the box).
@@ -1383,8 +1384,7 @@ local HEAD = {
   TEXT = 4,         -- a name's inset from its heading's edges
   ARROW_GAP = 6,    -- the subject's name to its stretch arrow
   ARROW_MIN = 12,   -- the shortest stretch arrow drawn
-  SUBJECT_MIN = 40, -- the subject's heading never gives up more than this
-  KEEP = 12,        -- nor does any other heading, for a peg beside it
+  SUBJECT_MIN = 40, -- the subject's heading where the list has no lanes
   SLACK = 4,        -- how far back the hand comes before a drag swaps back (section 7)
   -- A shown heading with no lane of its own.
   NARROW = { read = 14, icon = 22, sender = 44, subject = 60, time = 22, money = 22, slots = 22 },
@@ -1738,9 +1738,9 @@ function AR.BuildStrip(host)
   strip.heads, strip.pegs = {}, {}
   -- The layout's working tables, made once: each column's heading x and
   -- width, its kind ("lane", "narrow", "peg", or "absent" where the list
-  -- has no such column), its lane's own heading before the subject gives
-  -- room away (where a row is hit), whether it stands over its neighbours'
-  -- edges, and the columns with a place on the header, in order.
+  -- has no such column), a lane's heading box (where a row is hit),
+  -- whether it stands over the line between two, and the columns with a
+  -- place on the header, in order.
   strip.bx, strip.bw, strip.kind, strip.hx, strip.hw, strip.over = {}, {}, {}, {}, {}, {}
   strip.order, strip.start = {}, 0
   for id in pairs(AR.COLUMNS) do
@@ -1760,8 +1760,8 @@ end
 
 -- A run -- pegs and narrow headings standing together between two lanes'
 -- headings -- and each one's width in it: a peg's; a narrow heading's own
--- beside the subject, where the subject gives the room, and a peg's width
--- elsewhere for one that wears a glyph.
+-- beside the subject, and a peg's width elsewhere for one that wears a
+-- glyph.
 local function RunWidth(strip, id, beside)
   if strip.kind[id] == "peg" then return HEAD.PEG end
   if not beside then
@@ -1771,41 +1771,17 @@ local function RunWidth(strip, id, beside)
   return HEAD.NARROW[id] or 22
 end
 
--- How much of its width a heading can give to a run beside it, and how
--- much of that lies outside its lane, a unit clear of it, on the run's side
--- (`after`: the run stands after it).
-local function Spare(strip, id)
-  if not id then return 0 end
-  local keep = (id == "subject") and HEAD.SUBJECT_MIN or HEAD.KEEP
-  return math.max((strip.bw[id] or 0) - keep, 0)
-end
-
-local function Free(strip, id, lx, lw, after)
-  if not (id and lx and lw) then return 0 end
-  local room
-  if after then
-    room = strip.bx[id] + strip.bw[id] - (lx + lw) - 1
-  else
-    room = lx - strip.bx[id] - 1
-  end
-  return math.min(math.max(room, 0), Spare(strip, id))
-end
-
--- Each run, with room of its own: the room between the headings either side
--- of it (at the header's start, the room before the first heading; at its
--- end, none), and what that leaves it short from the headings beside it --
--- first what they have outside their lanes, then the subject's where it
--- stands beside the subject, then a name's column before a glyph's (a
--- name moved along its column still names it; a glyph moved off its column
--- does not), and last half from each, one giving what the other cannot. No
--- heading gives up more than it keeps (Spare), and the one that gives ends
--- GAP before the run. A run with room to spare stands against its lane (at
--- the header's start, the one after it), else in the middle of its room.
--- Only where both neighbours are down to what they keep does a run stand
--- over their edges, a few levels up. `order` holds the `n` columns with a
--- place on the header; the header's start is `start` (after a leading
--- column's heading, else 0).
-function AR.PlaceRuns(order, n, strip, span, laneX, laneW, start)
+-- Each run stands over the line between the two headings either side of
+-- it, centred on it, on top of their plates: no heading gives it any room,
+-- so every heading keeps its whole box and is one rectangle with its
+-- column's cells, wherever a column is hidden. Before the first heading a
+-- run stands over the line after a list's own leading column (History's
+-- age), or from the header's start over the first heading; after the last,
+-- against the header's end over the last one's. The rows have no such
+-- column: the run is the header's alone. `order` holds the `n` columns with
+-- a place on the header; the arrangement's room runs from `start` (after a
+-- leading column's heading, else 0) to `span`.
+function AR.PlaceRuns(order, n, strip, span, start)
   local bx, bw, over = strip.bx, strip.bw, strip.over
   local i = 1
   while i <= n do
@@ -1817,56 +1793,19 @@ function AR.PlaceRuns(order, n, strip, span, laneX, laneW, start)
       local beside = a == "subject" or b == "subject"
       local total = -HEAD.RUN_GAP
       for k = i, j - 1 do total = total + RunWidth(strip, order[k], beside) + HEAD.RUN_GAP end
-      local left = a and (bx[a] + bw[a] + HEAD.GAP) or start
-      local right = b and (bx[b] - HEAD.GAP) or span
-      local need = total - (right - left)
-      if need > 0 then
-        local capA, capB = Spare(strip, a), Spare(strip, b)
-        local takeA = math.min(Free(strip, a, a and laneX[a], a and laneW[a], true), need)
-        local takeB = math.min(Free(strip, b, b and laneX[b], b and laneW[b], false), need - takeA)
-        local rest = need - takeA - takeB
-        if rest > 0 and a == "subject" then
-          local give = math.min(capA - takeA, rest)
-          takeA, rest = takeA + give, rest - give
-        elseif rest > 0 and b == "subject" then
-          local give = math.min(capB - takeB, rest)
-          takeB, rest = takeB + give, rest - give
-        end
-        if rest > 0 then
-          local glyphA = not a or strip.heads[a].Glyph ~= nil
-          local glyphB = not b or strip.heads[b].Glyph ~= nil
-          if glyphA and not glyphB then
-            local give = math.min(capB - takeB, rest)
-            takeB, rest = takeB + give, rest - give
-          elseif glyphB and not glyphA then
-            local give = math.min(capA - takeA, rest)
-            takeA, rest = takeA + give, rest - give
-          end
-        end
-        if rest > 0 then
-          local gb = math.min(capB - takeB, math.ceil(rest / 2))
-          local ga = math.min(capA - takeA, rest - gb)
-          gb = math.min(capB - takeB, rest - ga)
-          takeA, takeB = takeA + ga, takeB + gb
-        end
-        if a then bw[a] = bw[a] - takeA end
-        if b then bx[b], bw[b] = bx[b] + takeB, bw[b] - takeB end
-        left, right = left - takeA, right + takeB
+      -- The line: in the middle of the gap after the heading before it.
+      local line = start
+      if a then
+        line = bx[a] + bw[a] + HEAD.GAP / 2
+      elseif b then
+        line = bx[b] - HEAD.GAP / 2
       end
-      local x
-      if not a then
-        x = right - total
-      elseif not b then
-        x = left
-      else
-        x = math.floor((left + right - total) / 2 + 0.5)
-      end
-      x = math.max(start, math.min(x, span - total))
-      local short = right - left < total
+      local x = math.floor(line - total / 2 + 0.5)
+      x = math.max(0, math.min(x, span - total))
       for k = i, j - 1 do
         local id = order[k]
         local w = RunWidth(strip, id, beside)
-        bx[id], bw[id], over[id] = x, w, short or nil
+        bx[id], bw[id], over[id] = x, w, true
         x = x + w + HEAD.RUN_GAP
       end
       i = j
@@ -1950,7 +1889,7 @@ function AR.LayoutStrip(host)
       local id = order[i]
       if kind[id] == "lane" then hx[id], hw[id] = bx[id], bw[id] end
     end
-    AR.PlaceRuns(order, count, strip, span, laneX, laneW, start)
+    AR.PlaceRuns(order, count, strip, span, start)
   else
     -- No lanes: the one-line order at the header's own widths, pegs among
     -- them, the subject taking what they leave.
@@ -1998,8 +1937,17 @@ function AR.LayoutStrip(host)
     end
   end
 
-  -- The last on the header, whose plate runs on to its end.
+  -- The last on the header, whose plate runs on to its end: on lanes, the
+  -- last column's heading, a run at the end standing over it.
   local last = order[count]
+  if lanes then
+    for i = count, 1, -1 do
+      if kind[order[i]] == "lane" then
+        last = order[i]
+        break
+      end
+    end
+  end
   local drag = AR.drag
   for i = 1, n do
     local id = layout[i].id
@@ -2049,7 +1997,8 @@ function AR.LayoutStrip(host)
             head:SetPoint("LEFT", strip, "LEFT", bx[id], 0)
             head._x = bx[id]
           end
-          -- Over its neighbours' edges, a heading stands a few levels up.
+          -- Over the line between two, a narrow heading stands a few levels
+          -- up, under the pegs.
           local level = strip:GetFrameLevel() + (strip.over[id] and 5 or 1)
           if head:GetFrameLevel() ~= level then head:SetFrameLevel(level) end
         end
