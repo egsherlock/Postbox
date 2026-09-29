@@ -19,8 +19,8 @@ longer play.
   marks what is hidden. While you arrange, the mark is a lit Done;
   right-click it to go back to the default arrangement.
 - **An inspector beside the window while you arrange.** It explains the mode,
-  lists everything you have hidden (a click brings it back), and holds Line
-  up columns and Reset. Click a column, a block or a category button for its
+  lists everything you have hidden (a click brings it back), and holds Row
+  layout and Reset. Click a column, a block or a category button for its
   card: show or hide it, its own choices,
   and Move buttons if you would rather not drag. Select Subject to see why
   each subject stops where it does. Escape steps back one thing at a time
@@ -84,11 +84,14 @@ longer play.
   number on one-line rows.
 - **Quality icons can go before the item's name**, with every name in the
   list still starting on one line.
-- **Gold stands under gold.** Each figure keeps its own column down the
-  list, in the Mail tab, History and Mail Memory, and a subject runs on only
-  through columns its mail leaves empty. For the old close-packed rows, turn
-  off Line up columns: in Options, Mail tab, or in the arrange overview,
-  where the rows show the difference at once.
+- **Row layout: Columns or Packed.** In Columns, gold stands under gold:
+  each figure keeps its own column down the list, in the Mail tab, History
+  and Mail Memory, and a subject runs on only through columns its mail
+  leaves empty. Packed closes each row's gaps on both sides of the subject,
+  whatever your arrangement, and gives the subject the room. Choose in
+  Options, Mail tab, or in the arrange overview, where the rows show the
+  difference at once. Read mail's delete mark no longer pushes its row's
+  figures in.
 - **Postbox follows EllesmereUI's look.** On Blizzard Style or Classic WoW UI
   it wears its own Blizzard look, to match your other windows.
 - **EllesmereUI profile, Dark Mode and accent changes** reach an open mailbox
