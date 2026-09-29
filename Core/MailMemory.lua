@@ -857,9 +857,10 @@ end
 -- Every character's History, pruned to the days the player chose. A list is
 -- otherwise pruned only when its own character reads or writes it, so an alt
 -- not played for months kept all it had -- and a lower "Keep History" never
--- reached it. Once per login; each list is in date order, so this touches
--- only what goes. A list left empty is dropped, so "Never" leaves no
--- character's record behind.
+-- reached it. Once per login, and the moment "Never" is chosen (below);
+-- each list is in date order, so this touches only what goes. A list left
+-- empty is dropped, so "Never" leaves no character's record behind, and a
+-- record already empty costs one lookup and allocates nothing.
 local function PruneAllHistory()
   local root = ns.Store and ns.Store.Get and ns.Store.Get("mailHistory")
   if type(root) ~= "table" then return end
@@ -876,6 +877,11 @@ local function PruneAllHistory()
     end
   end
 end
+
+-- Frozen: Core/MailboxUI.lua calls this when History is set to "Never", so
+-- the saved record is emptied then, not at the next login. Safe at any
+-- time: it reads only the saved record and the stored choice.
+MM.PruneAllHistory = PruneAllHistory
 
 -- This character's record, oldest first, pruned to the week; empty when
 -- there is none.

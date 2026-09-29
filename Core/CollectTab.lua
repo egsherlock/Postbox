@@ -2589,11 +2589,14 @@ end
 
 -- Frozen: Core/MailboxUI.lua calls this when History's days change. The
 -- row is laid out again, since at "Never" History's plate leaves it (and
--- comes back after); a view that is not offered cannot be the one on
--- screen, so History falls back to the inbox, which lists itself.
+-- comes back after). Off, the view lets go of what it last listed, as the
+-- record it came from is gone; and a view that is not offered cannot be
+-- the one on screen, so History falls back to the inbox, which lists
+-- itself.
 function CT.RefreshHistoryDays(panel)
   if not panel or not panel.ViewToggle then return end
   LayoutViewToggle(panel)
+  if not RV.HistoryOn() and panel._history then Clear(panel._history) end
   if panel.viewMode == VIEW_HISTORY and not RV.HistoryOn() then
     SetViewMode(panel, VIEW_COLLECT)
   else

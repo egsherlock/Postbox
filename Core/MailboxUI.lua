@@ -666,8 +666,9 @@ function UI.SetReadMode(mode)
 end
 
 -- How many days History keeps: 7 by default, up to 30. 0 is "Never", which
--- turns History off: nothing is recorded, the pruning keeps nothing, and its
--- view leaves the Mail tab (Core/MailMemory.lua 2c, CT.RefreshHistoryDays).
+-- turns History off: nothing is recorded, every character's record is
+-- emptied the moment it is chosen, and its view leaves the Mail tab
+-- (Core/MailMemory.lua 2c, CT.RefreshHistoryDays).
 local HISTORY_DAYS = { [0] = true, [7] = true, [14] = true, [21] = true, [30] = true }
 function UI.GetHistoryDays()
   local stored = tonumber(ns.Store and ns.Store.Get and ns.Store.Get("profile.historyDays"))
@@ -678,6 +679,13 @@ function UI.SetHistoryDays(days)
   if not (days and HISTORY_DAYS[days]) then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if profile then profile.historyDays = tostring(days) end
+  -- "Never" keeps nothing from the moment it is chosen: every character's
+  -- record goes now, not at the next login. Once stored, so the pruning
+  -- reads 0 days; a record already empty makes this a lookup.
+  if days == 0 then
+    local memory = ns.MailMemory
+    if memory and type(memory.PruneAllHistory) == "function" then pcall(memory.PruneAllHistory) end
+  end
   local panel, collect = CollectPanel(), ns.CollectTab
   if panel and collect and collect.RefreshHistoryDays then collect.RefreshHistoryDays(panel) end
 end
