@@ -64,6 +64,8 @@ longer play.
   class color: in the mail list, History, Mail Memory and the reading pane.
   The colors are your own if your UI has them (EllesmereUI, ElvUI or a class
   color addon), and change as soon as you change them.
+- **History has an icon of its own**, a clock with a turning-back arrow, so
+  it no longer shares the time-left clock.
 - **The arrange header lines up with the list.** Its headings run edge to
   edge over the rows, and History's header shows History's own columns, the
   age first.
