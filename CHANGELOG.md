@@ -12,9 +12,12 @@ longer play.
 - **Arrange your mail rows.** The small layout mark beside the options cog
   opens arranging: a column header takes the top row's place, each heading
   right over its column, and you drag a column by its heading or straight
-  from any row (point at one in a row and the whole column lights up). Hide the columns you don't need (a peg marks where one
-  stands) and set gold and time left on the spot. The Mail tab, History and
-  Mail Memory all follow it. One set of gestures for everything: drag to
+  from any row (point at one in a row and the whole column lights up). Hide
+  the columns you don't need (a peg marks where one stands) and set gold and
+  time left on the spot. The Mail tab and Mail Memory share one arrangement;
+  History has its own, with the age a column you can move or hide, reading
+  "3d ago" or "3 days ago". Time left wears an hourglass, History a clock
+  with a turning-back arrow. One set of gestures for everything: drag to
   move, click for its options, right-click to hide or show; a crossed eye
   marks what is hidden. While you arrange, the mark is a lit Done;
   right-click it to go back to the default arrangement.
@@ -64,8 +67,6 @@ longer play.
   class color: in the mail list, History, Mail Memory and the reading pane.
   The colors are your own if your UI has them (EllesmereUI, ElvUI or a class
   color addon), and change as soon as you change them.
-- **History has an icon of its own**, a clock with a turning-back arrow, so
-  it no longer shares the time-left clock.
 - **The arrange header lines up with the list.** Its headings run edge to
   edge over the rows, and History's header shows History's own columns, the
   age first.
