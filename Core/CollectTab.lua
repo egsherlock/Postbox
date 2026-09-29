@@ -229,6 +229,29 @@ function RV.PaintNameMark(row, mark, parent, anchor)
   tex:Show()
 end
 
+-- atlas -> the art the icon's corner wears for a mark: the item button's
+-- small form of it where the client has it, the mark's own atlas
+-- otherwise. Found once per atlas name and kept, so a bind with a mark
+-- builds nothing; the answer is Theme.AtlasExists's, which is kept per name
+-- too, so it is the one every bind found before. The quality marks are a
+-- handful of names; past RV.SMALL_MAX the table is emptied and starts
+-- again, so it stays bounded whatever links come through.
+RV.small, RV.smallN, RV.SMALL_MAX = {}, 0, 32
+
+function RV.SmallAtlas(atlas)
+  local known = RV.small
+  local small = known[atlas]
+  if small then return small end
+  if RV.smallN >= RV.SMALL_MAX then
+    for key in pairs(known) do known[key] = nil end
+    RV.smallN = 0
+  end
+  small = Th().FirstAtlas({ (atlas:gsub("ChatIcon", "Icon")) .. "-Small", atlas }) or atlas
+  known[atlas] = small
+  RV.smallN = RV.smallN + 1
+  return small
+end
+
 -- row, mark -> a small copy of the mark over the bottom-right corner of the
 -- row's item icon -- the art an item button wears there, where the client
 -- has it -- or nothing. Created on first use: most rows never carry one.
@@ -251,9 +274,9 @@ function RV.PaintQuality(row, mark)
     row.Quality = holder:CreateTexture(nil, "OVERLAY")
     row.QualityHolder = holder
   end
-  local small = Th().FirstAtlas({ (atlas:gsub("ChatIcon", "Icon")) .. "-Small", atlas })
-  row.Quality:SetAtlas(small or atlas, false)
-  row.QualityShadow:SetAtlas(small or atlas, false)
+  local small = RV.SmallAtlas(atlas)
+  row.Quality:SetAtlas(small, false)
+  row.QualityShadow:SetAtlas(small, false)
   row.QualityShadow:SetVertexColor(0, 0, 0, 1)
   -- The icon's lower-right corner and out past it. The small compact icon
   -- takes a mark a little larger than itself (at its own size it was hard
