@@ -678,6 +678,8 @@ end
 -- to the thing under the pointer, the same words everywhere. `state` is
 -- "hide" for a shown thing a right-click hides, "show" for a hidden thing
 -- it shows, "fixed" for one that cannot be hidden (the subject, All mail).
+-- It is the form of every gesture line in Postbox: the mode's own Done and
+-- Back say theirs the same way, in the same grey.
 local GESTURE = { hide = "ARRANGE_GESTURE_HIDE", show = "ARRANGE_GESTURE_SHOW", fixed = "ARRANGE_GESTURE_FIXED" }
 
 function AR.GestureLine(state)
@@ -790,8 +792,7 @@ local function ToggleTip(button)
   if AR.host and AR.host.toggle == button then
     GameTooltip:SetText(L()["ARRANGE_DONE"])
     GameTooltip:AddLine(L()["ARRANGE_DONE_TIP"], 1, 1, 1, true)
-    GameTooltip:AddLine(L()["ARRANGE_TIP_ACTIVE"], 0.7, 0.7, 0.7, true)
-    GameTooltip:AddLine(L()["ARRANGE_TIP_RESET"], 0.7, 0.7, 0.7, true)
+    GameTooltip:AddLine(L()["ARRANGE_GESTURE_DONE"], 0.7, 0.7, 0.7, true)
   else
     GameTooltip:SetText(L()["ARRANGE_TITLE"])
     GameTooltip:AddLine(ns.Summary(L()["ARRANGE_TIP"]), 1, 1, 1, true)
@@ -1349,7 +1350,8 @@ local function PegEnter(self)
   PaintPeg(self)
   GameTooltip:SetOwner(self, "ANCHOR_TOP")
   GameTooltip:SetText(L()[AR.COLUMNS[self.colId].title])
-  GameTooltip:AddLine(L()["ARRANGE_PEG_TIP"], 1, 1, 1, true)
+  GameTooltip:AddLine(L()["ARRANGE_HIDDEN_STATE"], 1, 1, 1, true)
+  GameTooltip:AddLine(L()["ARRANGE_PEG_TIP"], 0.7, 0.7, 0.7, true)
   GameTooltip:Show()
 end
 
@@ -2938,11 +2940,11 @@ local function CloseTip(self)
   AR.InspTip(self)
   if AR.selKind then
     GameTooltip:SetText(L()["ARRANGE_BACK"])
-    GameTooltip:AddLine(L()["ARRANGE_BACK_TIP"], 1, 1, 1, true)
+    GameTooltip:AddLine(L()["ARRANGE_GESTURE_BACK"], 0.7, 0.7, 0.7, true)
   else
     GameTooltip:SetText(L()["ARRANGE_DONE"])
     GameTooltip:AddLine(L()["ARRANGE_DONE_TIP"], 1, 1, 1, true)
-    GameTooltip:AddLine(L()["ARRANGE_TIP_ACTIVE"], 0.7, 0.7, 0.7, true)
+    GameTooltip:AddLine(L()["ARRANGE_GESTURE_FINISH"], 0.7, 0.7, 0.7, true)
   end
   GameTooltip:Show()
 end
