@@ -2938,20 +2938,26 @@ end
 -- on child frames of its own: the card itself is tagged for the host skin
 -- (Theme.ApplyCard), and EllesmereUI fades a tagged frame's own textures.
 --
--- Its type is the mockup's, in the host's own faces: the title in the title
--- role; everything else -- the words, the switches' and the chips' names,
--- the choices and the notes -- the small text the mail rows are set in
--- (bodySmall and secondary), which in the host's faces reads as the
--- mockup's denser, smaller type does beside its rows; the kickers, the foot
--- and its key cap a size under it (INSP.SMALL, the client's text scale), the
--- kickers in capitals, so the foot stands on one line. The client has no
--- letter spacing: the capitals' smaller size carries the kickers.
+-- Its type is the mockup's, in the host's own faces, sized as the mockup
+-- sizes it against the mail rows (INSP.TYPE): the title in the title role,
+-- which stands to the rows as the mockup's does; the words, the chips, Move
+-- and the reset a size under the rows' text, the switches and the choices
+-- half a size under it, the notes and "to finish" a size and a half, the
+-- kickers and the key cap two, the kickers in capitals. The client has no
+-- letter spacing: the capitals carry the kickers. Each size is set on the
+-- string's own font (Sized), so what a text measures is what it draws: the
+-- client's text scale draws a string smaller but measures it at full size.
+--
+-- Its spacing is the mockup's margins between line boxes: every text keeps
+-- the half of its line box's leading above and below it (INSP.LEAD) that a
+-- font string, which is only as tall as its lines, does not have, and a
+-- paragraph's lines stand the mockup's line height apart (INSP.SPACING).
 -------------------------------------------------------------
 
 -- The inspector's measures, from the mockup (concept-c.html), in UI units.
 local INSP = {
   W = 208, PAD = 11, TOP = 10, BOTTOM = 11, DOCK = 8,
-  CLOSE = 18,                 -- the cross's square, in the top right corner
+  CLOSE = 18,                 -- the cross's square, beside the title's line
   HEAD_GAP = 6,               -- the title to what follows it
   ROW_GAP = 8,                -- a text to the switch and Move under it
   ROW_WRAP = 6,               -- the switch to Move, where one row is too narrow
@@ -2966,9 +2972,22 @@ local INSP = {
   NOTE_TOP = 8, NOTE_PAD = 7,
   UP_GAP = 4, UP_ARROW = 10,  -- the link up: its words to its arrow, and the arrow's room
   SWATCH_W = 14, SWATCH_H = 9, SWATCH_GAP = 5,  -- the hatch's sample before a note
-  FOOT_TOP = 10, FOOT_PAD = 7, FOOT_GAP = 8, KEY_PAD = 4, KEY_H = 15, KEY_GAP = 4,
-  SPACING = 2,
-  SMALL = 0.9,                -- the kickers', the foot's and its key cap's size, of the small text's
+  -- The foot: its rule, the row its words are centred on (the reset's line
+  -- box), the least room between the reset and the key cap, the cap.
+  FOOT_TOP = 10, FOOT_PAD = 7, FOOT_H = 18, FOOT_GAP = 8, KEY_PAD = 4, KEY_H = 15, KEY_GAP = 4,
+  -- The mockup's type against the rows' 13: each size as a share of the
+  -- small text the rows are set in (bodySmall and secondary).
+  TYPE = {
+    body = 12 / 13,           -- the words, the chips, Move, the blocks' lines, the reset and the link up
+    control = 12.5 / 13,      -- the switches' names and the choices
+    note = 11.5 / 13,         -- the notes and "to finish"
+    kicker = 10.5 / 13,       -- the kickers and the key cap
+  },
+  -- Half of each line box's leading, above and below the text: the
+  -- mockup's line height (1.32 for the words, 1.3 for the notes, 1.55 for
+  -- the title and the kickers) less the host face's line.
+  LEAD = { title = 4, body = 2, note = 2, kicker = 3 },
+  SPACING = { body = 4, note = 3 },  -- between a paragraph's lines
   MEMO_MAX = 96,
 }
 INSP.INNER = INSP.W - 2 * INSP.PAD
@@ -3034,6 +3053,21 @@ local function Upper(text)
     cache[text] = up
   end
   return up
+end
+
+-- A text at its size in the mockup (INSP.TYPE), a share of its role's own:
+-- set on the string's font, read once as it is made, so it measures what
+-- it draws.
+local function Sized(fs, share)
+  if not (fs and share and fs.GetFont and fs.SetFont) then return fs end
+  local path, size, flags = fs:GetFont()
+  if path and size and size > 0 then fs:SetFont(path, size * share, flags or "") end
+  return fs
+end
+
+-- A text of one of the inspector's sizes, in a role.
+local function Text(parent, role, size)
+  return Sized(Th().CreateText(parent, role), INSP.TYPE[size])
 end
 
 local function PlayToggle(on)
@@ -3217,7 +3251,7 @@ end
 -- eye stands, and the name; while on, the columns are the accent and the
 -- words and the ring rise to white and a lighter grey, and pointed at all of
 -- it goes white. A click places every list again at once (AR.SetLinedUp),
--- so the rows show what it does, as one on the header's corner does.
+-- so the rows show what it does while the switch is still under the hand.
 local function PaintLanes(sw)
   local spec = PLATE.switch
   local on, hover = sw.on, sw.hover
@@ -3233,8 +3267,8 @@ local function PaintLanes(sw)
   Grey(sw.Label, (on or hover) and 1 or 0.74)
 end
 
--- Its tooltip: the switch's name and its state, and what it does, as the
--- corner's says it.
+-- Its tooltip: the switch's name and its state, and what it does, in the
+-- options panel's words.
 local function LanesTip(self)
   local on = LinedUp()
   local r, g, b = 0.6, 0.6, 0.6
@@ -3387,7 +3421,7 @@ local function Radio(insp, i)
   row.Mark:SetTexture(WHITE)
   row.Mark:SetSize(5, 5)
   row.Mark:SetPoint("CENTER", row.MarkKey, "CENTER", 0, 0)
-  row.Text = T.CreateText(row, "bodySmall")
+  row.Text = Text(row, "bodySmall", "control")
   row.Text:SetPoint("LEFT", row, "LEFT", INSP.RADIO_TEXT, 0)
   row.Text:SetJustifyH("LEFT")
   row.Text:SetWordWrap(false)
@@ -3440,7 +3474,7 @@ local function HiddenChip(insp, i)
   chip.hover = false
   chip.Eye = T.Glyph and T.Glyph(chip, "eye-off", 8, "ARTWORK") or nil
   if chip.Eye then chip.Eye:SetPoint("CENTER", chip, "LEFT", INSP.CHIP_LEAD + INSP.CHIP_EYE / 2, 0) end
-  chip.Label = T.CreateText(chip, "bodySmall")
+  chip.Label = Text(chip, "bodySmall", "body")
   chip.Label:SetPoint("LEFT", chip, "LEFT", INSP.CHIP_LEAD + INSP.CHIP_EYE + INSP.CHIP_EYE_GAP, 0)
   chip.Label:SetJustifyH("LEFT")
   chip.Label:SetWordWrap(false)
@@ -3608,9 +3642,9 @@ local function BlockRow(insp, i)
   row.Hover:SetVertexColor(1, 1, 1, 0.06)
   row.Hover:SetAllPoints()
   row.Hover:Hide()
-  row.Num = T.CreateText(row, "bodySmall")
+  row.Num = Text(row, "bodySmall", "body")
   row.Num:SetPoint("LEFT", row, "LEFT", 3, 0)
-  row.Name = T.CreateText(row, "bodySmall")
+  row.Name = Text(row, "bodySmall", "body")
   row.Name:SetPoint("LEFT", row, "LEFT", INSP.LINE_NUM, 0)
   row.Name:SetJustifyH("LEFT")
   row.Name:SetWordWrap(false)
@@ -3623,29 +3657,24 @@ local function BlockRow(insp, i)
   return row
 end
 
--- A text of the inspector, wrapped across its width, in a role and a grey.
-local function Paragraph(art, role, grey)
-  local fs = Th().CreateText(art, role)
+-- A text of the inspector, wrapped across its width, in a role, one of its
+-- sizes and a grey; its lines stand the mockup's line height apart.
+local function Paragraph(art, role, size, grey)
+  local fs = Text(art, role, size)
   fs:SetWidth(INSP.INNER)
   fs:SetJustifyH("LEFT")
   fs:SetWordWrap(true)
-  if fs.SetSpacing then fs:SetSpacing(INSP.SPACING) end
+  if fs.SetSpacing then fs:SetSpacing(INSP.SPACING[size] or INSP.SPACING.body) end
   if grey then Grey(fs, grey) end
   fs:Hide()
   return fs
 end
 
-local function Line(art, role)
-  local fs = Th().CreateText(art, role)
+local function Line(art, role, size)
+  local fs = size and Text(art, role, size) or Th().CreateText(art, role)
   fs:SetJustifyH("LEFT")
   fs:SetWordWrap(false)
   fs:Hide()
-  return fs
-end
-
--- A text a size under its role's (INSP.SMALL), where the client scales text.
-local function Small(fs)
-  if fs and fs.SetTextScale then fs:SetTextScale(INSP.SMALL) end
   return fs
 end
 
@@ -3676,21 +3705,21 @@ function AR.BuildInspector()
   insp.Art = art
 
   insp.Title = Line(art, "title")
-  insp.Title:SetPoint("TOPLEFT", insp, "TOPLEFT", P.PAD, -P.TOP)
+  insp.Title:SetPoint("TOPLEFT", insp, "TOPLEFT", P.PAD, -(P.TOP + P.LEAD.title))
   T.SetColor(insp.Title, "accent")
   insp.Title:Show()
-  insp.Lead = Paragraph(art, "bodySmall", 0.81)
-  insp.Empty = Paragraph(art, "bodySmall", 0.55)
-  insp.Note = Paragraph(art, "secondary", 0.66)
+  insp.Lead = Paragraph(art, "bodySmall", "body", 0.81)
+  insp.Empty = Paragraph(art, "bodySmall", "body", 0.55)
+  insp.Note = Paragraph(art, "secondary", "note", 0.66)
   -- A card's kickers, one per section it has (PutKicker), made as needed.
   insp.kickN = 0
   -- The subject's card: how far each row's subject runs, in words, and
   -- where the switch that decides it is.
-  insp.Why = Paragraph(art, "bodySmall", 0.81)
-  insp.Where = Paragraph(art, "secondary", 0.55)
+  insp.Why = Paragraph(art, "bodySmall", "body", 0.81)
+  insp.Where = Paragraph(art, "secondary", "note", 0.55)
   -- A note that begins with the hatch the rows draw (PutSwatchNote): the
   -- sample where its first line begins, the words after it.
-  insp.SwatchNote = Paragraph(art, "secondary", 0.66)
+  insp.SwatchNote = Paragraph(art, "secondary", "note", 0.66)
   insp.Swatch = T.Glyph and T.Glyph(art, "hatch", nil, "ARTWORK") or nil
   if insp.Swatch then
     insp.Swatch:SetSize(P.SWATCH_W, P.SWATCH_H)
@@ -3700,21 +3729,20 @@ function AR.BuildInspector()
     insp.Swatch:Hide()
     AR.ShowEdges(insp.SwatchRing, false)
   end
-  insp.MoveLabel = Line(art, "bodySmall")
+  insp.MoveLabel = Line(art, "bodySmall", "body")
   Grey(insp.MoveLabel, 0.74)
   insp.NoteRule = Rule(art)
   insp.FootRule = Rule(art)
-  insp.Finish = Small(Line(art, "secondary"))
+  insp.Finish = Line(art, "secondary", "note")
   Grey(insp.Finish, 0.55)
-  -- One line of each role and size, never shown: where a single line is
-  -- measured whole, whatever width the one on show was fitted to.
-  insp.MeasureBody = Line(art, "bodySmall")
-  insp.MeasureSmall = Line(art, "secondary")
-  insp.MeasureFoot = Small(Line(art, "secondary"))
+  -- One line of each size, never shown: where a single line is measured
+  -- whole, whatever width the one on show was fitted to.
+  insp.Measure = {}
+  for size in pairs(P.TYPE) do insp.Measure[size] = Line(art, "bodySmall", size) end
 
   local close = CreateFrame("Button", nil, insp)
   close:SetSize(P.CLOSE, P.CLOSE)
-  close:SetPoint("TOPRIGHT", insp, "TOPRIGHT", -(P.PAD - 5), -(P.TOP - 3))
+  -- Placed beside the title's line as the card is filled (AR.Inspect).
   close.Text = T.CreateText(close, "title")
   close.Text:SetPoint("CENTER", close, "CENTER", 0, 1)
   close.Text:SetText("\195\151")
@@ -3738,7 +3766,7 @@ function AR.BuildInspector()
   sw.EyeOff = T.Glyph and T.Glyph(sw, "eye-off", 8, "ARTWORK") or nil
   if sw.Eye then sw.Eye:SetPoint("CENTER", sw, "LEFT", 12, 0) end
   if sw.EyeOff then sw.EyeOff:SetPoint("CENTER", sw, "LEFT", 12, 0) end
-  sw.Label = T.CreateText(sw, "bodySmall")
+  sw.Label = Text(sw, "bodySmall", "control")
   sw.Label:SetPoint("LEFT", sw, "LEFT", P.SWITCH_LEAD, 0)
   sw.Label:SetWordWrap(false)
   sw:SetScript("OnEnter", SwitchEnter)
@@ -3760,7 +3788,7 @@ function AR.BuildInspector()
     bar:SetPoint("LEFT", lanes, "LEFT", 7 + 2 * i, 0)
     lanes.Bars[i] = bar
   end
-  lanes.Label = T.CreateText(lanes, "bodySmall")
+  lanes.Label = Text(lanes, "bodySmall", "control")
   lanes.Label:SetPoint("LEFT", lanes, "LEFT", P.SWITCH_LEAD, 0)
   lanes.Label:SetJustifyH("LEFT")
   lanes.Label:SetWordWrap(false)
@@ -3788,7 +3816,7 @@ function AR.BuildInspector()
 
   local link = CreateFrame("Button", nil, insp)
   link.hover = false
-  link.Label = Small(T.CreateText(link, "secondary"))
+  link.Label = Text(link, "secondary", "body")
   link.Label:SetPoint("TOPLEFT", link, "TOPLEFT", 0, 0)
   link.Label:SetJustifyH("LEFT")
   link.Label:SetWordWrap(false)
@@ -3806,7 +3834,7 @@ function AR.BuildInspector()
   -- The link up from a button's card (PaintUp).
   local up = CreateFrame("Button", nil, insp)
   up.hover = false
-  up.Label = T.CreateText(up, "secondary")
+  up.Label = Text(up, "secondary", "body")
   up.Label:SetPoint("TOPLEFT", up, "TOPLEFT", 0, 0)
   up.Label:SetJustifyH("LEFT")
   up.Label:SetWordWrap(false)
@@ -3827,7 +3855,7 @@ function AR.BuildInspector()
   local act = InspPlate(insp, "Button", true)
   act:SetHeight(P.SWITCH_H)
   act.hover = false
-  act.Label = T.CreateText(act, "bodySmall")
+  act.Label = Text(act, "bodySmall", "control")
   act.Label:SetPoint("LEFT", act, "LEFT", P.SWITCH_TAIL, 0)
   act.Label:SetJustifyH("LEFT")
   act.Label:SetWordWrap(false)
@@ -3840,7 +3868,7 @@ function AR.BuildInspector()
   local key = InspPlate(insp, "Frame", false)
   TintPlate(key, PLATE.key.fill, PLATE.key.ring)
   key:SetHeight(P.KEY_H)
-  key.Label = Small(T.CreateText(key, "secondary"))
+  key.Label = Text(key, "secondary", "kicker")
   key.Label:SetPoint("CENTER", key, "CENTER", 0, 0)
   key.Label:SetWordWrap(false)
   Grey(key.Label, 0.87)
@@ -3931,10 +3959,13 @@ local function At(region, x, y)
   region:SetPoint("TOPLEFT", AR._insp, "TOPLEFT", x, y)
 end
 
-local function PutText(fs, text, y)
-  At(fs, INSP.PAD, y)
+-- A text and the leading of its line box above and below it (INSP.LEAD,
+-- the words' unless `lead` names another).
+local function PutText(fs, text, y, lead)
+  lead = INSP.LEAD[lead or "body"]
+  At(fs, INSP.PAD, y - lead)
   fs:Show()
-  return y - Measured(fs, text, true)
+  return y - lead - Measured(fs, text, true) - lead
 end
 
 -- A kicker in capitals, the next of the card's own; one that does not fit
@@ -3946,13 +3977,10 @@ local function PutKicker(text, y)
   insp.kickN = n
   local k = insp.Kickers[n]
   if not k then
-    k = Small(Paragraph(insp.Art, "secondary", 0.55))
+    k = Paragraph(insp.Art, "secondary", "kicker", 0.55)
     insp.Kickers[n] = k
   end
-  y = y - INSP.KICK_TOP
-  At(k, INSP.PAD, y)
-  k:Show()
-  return y - Measured(k, Upper(text), true) - INSP.KICK_GAP
+  return PutText(k, Upper(text), y - INSP.KICK_TOP, "kicker") - INSP.KICK_GAP
 end
 
 local function PutRule(rule, y)
@@ -3966,7 +3994,7 @@ local function PutNote(text, y)
   local insp = AR._insp
   y = y - INSP.NOTE_TOP
   PutRule(insp.NoteRule, y)
-  return PutText(insp.Note, text, y - 1 - INSP.NOTE_PAD)
+  return PutText(insp.Note, text, y - 1 - INSP.NOTE_PAD, "note")
 end
 
 -- A note's words led by as many spaces as the hatch's sample and its gap
@@ -4002,7 +4030,7 @@ local function PutSwatchNote(text, y, accent)
   if not swatch then return PutNote(text, y) end
   y = y - P.NOTE_TOP
   PutRule(insp.NoteRule, y)
-  y = y - 1 - P.NOTE_PAD
+  y = y - 1 - P.NOTE_PAD - P.LEAD.note
   if accent then
     local r, g, b = Th().GetAccent()
     swatch:SetVertexColor(r, g, b, 0.7)
@@ -4011,14 +4039,15 @@ local function PutSwatchNote(text, y, accent)
     swatch:SetVertexColor(1, 1, 1, 0.35)
     AR.TintEdges(insp.SwatchRing, 1, 1, 1, 0.3)
   end
+  local fs = insp.SwatchNote
+  local line = Measured(fs, "x", true)
   swatch:ClearAllPoints()
-  swatch:SetPoint("TOPLEFT", insp, "TOPLEFT", P.PAD, y - 2)
+  swatch:SetPoint("TOPLEFT", insp, "TOPLEFT", P.PAD, y - math.floor((line - P.SWATCH_H) / 2 + 0.5))
   swatch:Show()
   AR.ShowEdges(insp.SwatchRing, true)
-  local fs = insp.SwatchNote
   At(fs, P.PAD, y)
   fs:Show()
-  return y - math.max(Measured(fs, AfterSwatch(fs, text), true), P.SWATCH_H + 2)
+  return y - math.max(Measured(fs, AfterSwatch(fs, text), true), P.SWATCH_H) - P.LEAD.note
 end
 
 -- The eye switch at the row's left; answers its width.
@@ -4026,7 +4055,7 @@ local function PutSwitch(on, y)
   local insp, P = AR._insp, INSP
   local sw = insp.Switch
   local text = L()[on and "ARRANGE_SHOWN" or "ARRANGE_HIDDEN_STATE"]
-  local w = P.SWITCH_LEAD + Measured(insp.MeasureBody, text, false) + P.SWITCH_TAIL
+  local w = P.SWITCH_LEAD + Measured(insp.Measure.control, text, false) + P.SWITCH_TAIL
   sw.on = on and true or false
   sw.Label:SetText(text)
   sw:SetWidth(w)
@@ -4042,7 +4071,7 @@ local function PutLanes(y)
   local insp, P = AR._insp, INSP
   local sw = insp.Lanes
   local text = L()["OPT_LINE_UP_TITLE"]
-  local w = math.min(P.SWITCH_LEAD + Measured(insp.MeasureBody, text, false) + P.SWITCH_TAIL, P.INNER)
+  local w = math.min(P.SWITCH_LEAD + Measured(insp.Measure.control, text, false) + P.SWITCH_TAIL, P.INNER)
   sw.on = LinedUp() and true or false
   Th().FitText(sw.Label, w - P.SWITCH_LEAD - P.SWITCH_TAIL + 1, text, sw)
   sw:SetWidth(w)
@@ -4060,7 +4089,7 @@ end
 local function PutMove(y, vertical, back, forward, used)
   local insp, P = AR._insp, INSP
   local text = L()["ARRANGE_MOVE"]
-  local need = Measured(insp.MeasureBody, text, false) + P.MOVE_GAP + 2 * P.NUDGE_W + P.NUDGE_GAP
+  local need = Measured(insp.Measure.body, text, false) + P.MOVE_GAP + 2 * P.NUDGE_W + P.NUDGE_GAP
   local rowY = y
   if used > 0 and used + P.MOVE_GAP + need > P.INNER then rowY = y - P.SWITCH_H - P.ROW_WRAP end
   local a, b = insp.NudgeA, insp.NudgeB
@@ -4121,11 +4150,11 @@ local function PutUp(blockId, y)
   local text = L()[key]
   y = y - P.NOTE_TOP
   PutRule(insp.NoteRule, y)
-  y = y - 1 - P.NOTE_PAD
+  y = y - 1 - P.NOTE_PAD - P.LEAD.body
   local up = insp.Up
   local room = P.INNER - P.UP_ARROW
-  local w = math.min(Measured(insp.MeasureSmall, text, false), room)
-  local h = Measured(insp.MeasureSmall, text, true)
+  local w = math.min(Measured(insp.Measure.body, text, false), room)
+  local h = Measured(insp.Measure.body, text, true)
   Th().FitText(up.Label, w, text, up)
   up.blockId = blockId
   up.hover = up.hover and up:IsMouseOver() or false
@@ -4133,7 +4162,7 @@ local function PutUp(blockId, y)
   At(up, P.PAD, y)
   PaintUp(up)
   up:Show()
-  return y - h - 2
+  return y - h - 2 - P.LEAD.body
 end
 
 -- A block's own way elsewhere, on a plate at the row's left; answers the y
@@ -4141,7 +4170,7 @@ end
 local function PutAction(text, y)
   local insp, P = AR._insp, INSP
   local b = insp.Action
-  local w = math.min(2 * P.SWITCH_TAIL + Measured(insp.MeasureBody, text, false), P.INNER)
+  local w = math.min(2 * P.SWITCH_TAIL + Measured(insp.Measure.control, text, false), P.INNER)
   Th().FitText(b.Label, w - 2 * P.SWITCH_TAIL + 1, text, b)
   b:SetWidth(w)
   b.hover = b.hover and b:IsMouseOver() or false
@@ -4162,7 +4191,7 @@ local function PutHidden(kind, key, name)
   chip.kind, chip.key = kind, key
   chip.hover = chip:IsMouseOver() and true or false
   local lead = P.CHIP_LEAD + P.CHIP_EYE + P.CHIP_EYE_GAP
-  local w = math.min(lead + Measured(insp.MeasureBody, name, false) + P.CHIP_TAIL, P.INNER)
+  local w = math.min(lead + Measured(insp.Measure.body, name, false) + P.CHIP_TAIL, P.INNER)
   if chipsX > P.PAD and chipsX + w > P.PAD + P.INNER then
     chipsX = P.PAD
     chipsY = chipsY - P.CHIP_H - P.CHIP_GAP
@@ -4181,44 +4210,46 @@ end
 
 -- The foot, one line: the reset on the left, the key cap and "to finish" on
 -- the right -- "to cancel" while something is in the hand, the one change a
--- drag makes to the inspector -- each centred on a row the key cap's
--- height. Only where the two cannot stand side by side (a long German or
--- Russian pair) does the right-hand pair take a row of its own under the
--- reset, whichever words it has, so a drag never reflows it.
+-- drag makes to the inspector -- each centred on a row the reset's line box
+-- tall (FOOT_H). Each is measured in the size it is drawn in. Only where
+-- the two cannot stand side by side (a long German or Russian pair) does
+-- the right-hand pair take a row of its own under the reset, whichever
+-- words it has, so a drag never reflows it.
 local function PutFoot(y)
   local insp, P = AR._insp, INSP
+  local m = insp.Measure
   y = y - P.FOOT_TOP
   PutRule(insp.FootRule, y)
   y = y - 1 - P.FOOT_PAD
   local link, key, finish = insp.Reset, insp.Key, insp.Finish
   local resetText, keyText = L()["ARRANGE_RESET"], L()["ARRANGE_ESC_KEY"]
   local finishText = L()[AR.moving and "ARRANGE_ESC_CANCEL" or "ARRANGE_ESC_FINISH"]
-  local linkW = Measured(insp.MeasureFoot, resetText, false)
-  local keyW = Measured(insp.MeasureFoot, keyText, false) + 2 * P.KEY_PAD
-  local finishW = math.max(Measured(insp.MeasureFoot, L()["ARRANGE_ESC_FINISH"], false),
-    Measured(insp.MeasureFoot, L()["ARRANGE_ESC_CANCEL"], false))
-  local lineH = Measured(insp.MeasureFoot, resetText, true)
+  local linkW = Measured(m.body, resetText, false)
+  local keyW = Measured(m.kicker, keyText, false) + 2 * P.KEY_PAD
+  local finishW = math.max(Measured(m.note, L()["ARRANGE_ESC_FINISH"], false),
+    Measured(m.note, L()["ARRANGE_ESC_CANCEL"], false))
+  local lineH = Measured(m.body, resetText, true)
   link.Label:SetText(resetText)
   link:SetSize(linkW, lineH + 2)
   link:ClearAllPoints()
   -- Its words, not its underline, centred on the row.
-  link:SetPoint("LEFT", insp, "TOPLEFT", P.PAD, y - P.KEY_H / 2 - 1)
+  link:SetPoint("LEFT", insp, "TOPLEFT", P.PAD, y - P.FOOT_H / 2 - 1)
   PaintLink(link)
   link:Show()
   local rowY = y
   if linkW + P.FOOT_GAP + keyW + P.KEY_GAP + finishW > P.INNER then
-    rowY = y - P.KEY_H - P.KEY_GAP
+    rowY = y - P.FOOT_H
   end
   finish:SetText(finishText)
   finish:ClearAllPoints()
-  finish:SetPoint("RIGHT", insp, "TOPLEFT", P.PAD + P.INNER, rowY - P.KEY_H / 2)
+  finish:SetPoint("RIGHT", insp, "TOPLEFT", P.PAD + P.INNER, rowY - P.FOOT_H / 2)
   finish:Show()
   key.Label:SetText(keyText)
   key:SetWidth(keyW)
   key:ClearAllPoints()
   key:SetPoint("RIGHT", finish, "LEFT", -P.KEY_GAP, 0)
   key:Show()
-  return rowY - P.KEY_H
+  return rowY - P.FOOT_H
 end
 
 -- With nothing selected: how the mode works, Line up columns -- it is every
@@ -4302,7 +4333,8 @@ local function FillColumn(id, y)
     else
       y = PutNote(L()["ARRANGE_LANES_OFF"], y)
     end
-    y = PutText(insp.Where, L()["ARRANGE_LANES_WHERE"], y - P.ROW_WRAP)
+    -- Under the note as its own last line, ROW_WRAP from its words.
+    y = PutText(insp.Where, L()["ARRANGE_LANES_WHERE"], y + 2 * P.LEAD.note - P.ROW_WRAP, "note")
   end
   return y
 end
@@ -4409,7 +4441,16 @@ function AR.Inspect()
   insp.Close.Text:SetShown(not back)
   if insp.Close.Back then insp.Close.Back:SetShown(back) end
   T.FitText(insp.Title, P.INNER - P.CLOSE, title, nil)
-  local y = -P.TOP - math.max(Measured(insp.Title, title, true), P.CLOSE - 4) - P.HEAD_GAP
+  -- The title's line box, and the cross centred on its line.
+  local titleH = Measured(insp.Title, title, true)
+  local box = math.max(titleH + 2 * P.LEAD.title, P.CLOSE)
+  local closeY = -math.floor(P.TOP + P.LEAD.title + (titleH - P.CLOSE) / 2 + 0.5)
+  if insp.closeY ~= closeY then
+    insp.closeY = closeY
+    insp.Close:ClearAllPoints()
+    insp.Close:SetPoint("TOPRIGHT", insp, "TOPRIGHT", -(P.PAD - 5), closeY)
+  end
+  local y = -P.TOP - box - P.HEAD_GAP
   if kind == "column" then
     y = FillColumn(id, y)
   elseif kind == "block" then
