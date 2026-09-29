@@ -2608,6 +2608,15 @@ end
 -- is measured once per string and font (Measured). Everything it draws is
 -- on child frames of its own: the card itself is tagged for the host skin
 -- (Theme.ApplyCard), and EllesmereUI fades a tagged frame's own textures.
+--
+-- Its type is the mockup's, in the host's own faces: the title in the title
+-- role; everything else -- the words, the switches' and the chips' names,
+-- the choices and the notes -- the small text the mail rows are set in
+-- (bodySmall and secondary), which in the host's faces reads as the
+-- mockup's denser, smaller type does beside its rows; the kickers, the foot
+-- and its key cap a size under it (INSP.SMALL, the client's text scale), the
+-- kickers in capitals, so the foot stands on one line. The client has no
+-- letter spacing: the capitals' smaller size carries the kickers.
 -------------------------------------------------------------
 
 -- The inspector's measures, from the mockup (concept-c.html), in UI units.
@@ -2621,13 +2630,16 @@ local INSP = {
   NUDGE_W = 22, NUDGE_H = 18, NUDGE_GAP = 4, MOVE_GAP = 8,
   KICK_TOP = 10, KICK_GAP = 4,
   RADIO_H = 19, RADIO_TEXT = 17,
-  CHIP_H = 19, CHIP_GAP = 4, CHIP_LEAD = 6, CHIP_EYE = 12, CHIP_EYE_GAP = 5, CHIP_TAIL = 7,
-  LINE_H = 18, LINE_NUM = 14,  -- a line of the stack's order, and its number's column
+  -- A hidden chip, and the room it keeps above and below (the mockup's
+  -- margin): a first row two under its kicker, the foot two further down.
+  CHIP_H = 19, CHIP_GAP = 4, CHIP_LEAD = 6, CHIP_EYE = 12, CHIP_EYE_GAP = 5, CHIP_TAIL = 7, CHIP_EDGE = 2,
+  LINE_H = 18, LINE_NUM = 14,  -- a block's line in the stack's order, and where its name starts
   NOTE_TOP = 8, NOTE_PAD = 7,
   UP_GAP = 4, UP_ARROW = 10,  -- the link up: its words to its arrow, and the arrow's room
   SWATCH_W = 14, SWATCH_H = 9, SWATCH_GAP = 5,  -- the hatch's sample before a note
   FOOT_TOP = 10, FOOT_PAD = 7, FOOT_GAP = 8, KEY_PAD = 4, KEY_H = 15, KEY_GAP = 4,
   SPACING = 2,
+  SMALL = 0.9,                -- the kickers', the foot's and its key cap's size, of the small text's
   MEMO_MAX = 96,
 }
 INSP.INNER = INSP.W - 2 * INSP.PAD
@@ -2872,30 +2884,35 @@ end
 -- Line up columns, in the overview under how the mode works: the options panel's
 -- own switch (MailboxUI, lineUpColumns; unset is on), which decides how
 -- every column of every row stands, so it belongs to no one column's card.
--- A box before its name, filled with the accent and checked while on; its
--- words and ring rise with it, and go white when pointed at. A click places
--- every list again at once (AR.SetLinedUp), so the rows show what it does,
--- as one on the header's corner does.
+-- The Show switch's plate and manner: three columns side by side where the
+-- eye stands, and the name; while on, the columns are the accent and the
+-- words and the ring rise to white and a lighter grey, and pointed at all of
+-- it goes white. A click places every list again at once (AR.SetLinedUp),
+-- so the rows show what it does, as one on the header's corner does.
 local function PaintLanes(sw)
   local spec = PLATE.switch
   local on, hover = sw.on, sw.hover
   TintPlate(sw, hover and 0.17 or spec.fill, hover and spec.hover or (on and spec.on or spec.ring))
+  local r, g, b = 0.55, 0.55, 0.55
   if on then
-    local r, g, b = Th().GetAccent()
-    sw.Box:SetVertexColor(r, g, b, 1)
-  else
-    Grey(sw.Box, hover and 0.36 or 0.22)
+    r, g, b = Th().GetAccent()
+  elseif hover then
+    r, g, b = 1, 1, 1
   end
-  if sw.Check then
-    sw.Check:SetShown(on and true or false)
-    Grey(sw.Check, 0.06)
-  end
+  local bars = sw.Bars
+  for i = 1, #bars do bars[i]:SetVertexColor(r, g, b, 1) end
   Grey(sw.Label, (on or hover) and 1 or 0.74)
 end
 
+-- Its tooltip: the switch's name and its state, and what it does, as the
+-- corner's says it.
 local function LanesTip(self)
+  local on = LinedUp()
+  local r, g, b = 0.6, 0.6, 0.6
+  if on then r, g, b = Th().GetAccent() end
   AR.InspTip(self)
-  GameTooltip:SetText(L()["OPT_LINE_UP_TITLE"])
+  GameTooltip:AddDoubleLine(L()["OPT_LINE_UP_TITLE"], L()[on and "ARRANGE_STATE_ON" or "ARRANGE_STATE_OFF"],
+    1, 0.82, 0, r, g, b)
   GameTooltip:AddLine(ns.Summary(L()["OPT_LINE_UP_DESC"]), 1, 1, 1, true)
   GameTooltip:Show()
 end
@@ -3043,7 +3060,7 @@ local function Radio(insp, i)
   row.Mark:SetTexture(WHITE)
   row.Mark:SetSize(5, 5)
   row.Mark:SetPoint("CENTER", row.MarkKey, "CENTER", 0, 0)
-  row.Text = T.CreateText(row, "body")
+  row.Text = T.CreateText(row, "bodySmall")
   row.Text:SetPoint("LEFT", row, "LEFT", INSP.RADIO_TEXT, 0)
   row.Text:SetJustifyH("LEFT")
   row.Text:SetWordWrap(false)
@@ -3096,7 +3113,7 @@ local function HiddenChip(insp, i)
   chip.hover = false
   chip.Eye = T.Glyph and T.Glyph(chip, "eye-off", 8, "ARTWORK") or nil
   if chip.Eye then chip.Eye:SetPoint("CENTER", chip, "LEFT", INSP.CHIP_LEAD + INSP.CHIP_EYE / 2, 0) end
-  chip.Label = T.CreateText(chip, "body")
+  chip.Label = T.CreateText(chip, "bodySmall")
   chip.Label:SetPoint("LEFT", chip, "LEFT", INSP.CHIP_LEAD + INSP.CHIP_EYE + INSP.CHIP_EYE_GAP, 0)
   chip.Label:SetJustifyH("LEFT")
   chip.Label:SetWordWrap(false)
@@ -3213,19 +3230,24 @@ end
 
 -- A block card's line for a block under the list, in the stack's order:
 -- its place and its name. The block whose card this is stands in the
--- accent and does nothing; any other is a way to its card -- a click
--- selects it, and pointed at it lights, with an arrow after it. A hidden
--- block's line is a quieter grey, and is a way to its card all the same.
+-- accent over a faint accent wash, as a selected card does, and does
+-- nothing; any other is a way to its card -- a click selects it, and
+-- pointed at it lights, with an arrow after it. A hidden block's line is a
+-- quieter grey, and is a way to its card all the same.
 local function PaintBlockRow(row)
   local hover = row.hover and not row.current
-  row.Hover:SetShown(hover and true or false)
+  local wash = row.Hover
   if row.current then
     local r, g, b = Th().GetAccent()
+    wash:SetVertexColor(r, g, b, 0.1)
+    wash:Show()
     row.Name:SetTextColor(r, g, b, 1)
     row.Num:SetTextColor(r, g, b, 1)
   else
-    Grey(row.Name, hover and 1 or (row.hidden and 0.5 or 0.84))
-    Grey(row.Num, hover and 0.84 or (row.hidden and 0.4 or 0.6))
+    wash:SetVertexColor(1, 1, 1, 0.06)
+    wash:SetShown(hover and true or false)
+    Grey(row.Name, hover and 1 or (row.hidden and 0.45 or 0.74))
+    Grey(row.Num, hover and 0.84 or (row.hidden and 0.36 or 0.55))
   end
   if row.Arrow then
     row.Arrow:SetShown(hover and true or false)
@@ -3252,17 +3274,17 @@ end
 local function BlockRow(insp, i)
   local T = Th()
   local row = CreateFrame("Button", nil, insp)
-  row:SetSize(INSP.INNER, INSP.RADIO_H)
+  row:SetSize(INSP.INNER, INSP.LINE_H)
   row.hover, row.hidden, row.current = false, false, false
   row.Hover = row:CreateTexture(nil, "BACKGROUND")
   row.Hover:SetTexture(WHITE)
   row.Hover:SetVertexColor(1, 1, 1, 0.06)
   row.Hover:SetAllPoints()
   row.Hover:Hide()
-  row.Num = T.CreateText(row, "body")
+  row.Num = T.CreateText(row, "bodySmall")
   row.Num:SetPoint("LEFT", row, "LEFT", 3, 0)
-  row.Name = T.CreateText(row, "body")
-  row.Name:SetPoint("LEFT", row, "LEFT", INSP.RADIO_TEXT, 0)
+  row.Name = T.CreateText(row, "bodySmall")
+  row.Name:SetPoint("LEFT", row, "LEFT", INSP.LINE_NUM, 0)
   row.Name:SetJustifyH("LEFT")
   row.Name:SetWordWrap(false)
   row.Arrow = T.Glyph and T.Glyph(row, "arrow-right", 6, "ARTWORK") or nil
@@ -3291,6 +3313,12 @@ local function Line(art, role)
   fs:SetJustifyH("LEFT")
   fs:SetWordWrap(false)
   fs:Hide()
+  return fs
+end
+
+-- A text a size under its role's (INSP.SMALL), where the client scales text.
+local function Small(fs)
+  if fs and fs.SetTextScale then fs:SetTextScale(INSP.SMALL) end
   return fs
 end
 
@@ -3324,19 +3352,18 @@ function AR.BuildInspector()
   insp.Title:SetPoint("TOPLEFT", insp, "TOPLEFT", P.PAD, -P.TOP)
   T.SetColor(insp.Title, "accent")
   insp.Title:Show()
-  insp.Lead = Paragraph(art, "body", 0.81)
-  insp.Empty = Paragraph(art, "body", 0.55)
+  insp.Lead = Paragraph(art, "bodySmall", 0.81)
+  insp.Empty = Paragraph(art, "bodySmall", 0.55)
   insp.Note = Paragraph(art, "secondary", 0.66)
   -- A card's kickers, one per section it has (PutKicker), made as needed.
   insp.kickN = 0
   -- The subject's card: how far each row's subject runs, in words, and
   -- where the switch that decides it is.
-  insp.Why = Paragraph(art, "body", 0.81)
+  insp.Why = Paragraph(art, "bodySmall", 0.81)
   insp.Where = Paragraph(art, "secondary", 0.55)
   -- A note that begins with the hatch the rows draw (PutSwatchNote): the
-  -- sample at the note's left, the words beside it.
+  -- sample where its first line begins, the words after it.
   insp.SwatchNote = Paragraph(art, "secondary", 0.66)
-  insp.SwatchNote:SetWidth(P.INNER - P.SWATCH_W - P.SWATCH_GAP)
   insp.Swatch = T.Glyph and T.Glyph(art, "hatch", nil, "ARTWORK") or nil
   if insp.Swatch then
     insp.Swatch:SetSize(P.SWATCH_W, P.SWATCH_H)
@@ -3346,17 +3373,17 @@ function AR.BuildInspector()
     insp.Swatch:Hide()
     AR.ShowEdges(insp.SwatchRing, false)
   end
-  insp.MoveLabel = Line(art, "body")
+  insp.MoveLabel = Line(art, "bodySmall")
   Grey(insp.MoveLabel, 0.74)
   insp.NoteRule = Rule(art)
   insp.FootRule = Rule(art)
-  insp.Finish = Line(art, "secondary")
+  insp.Finish = Small(Line(art, "secondary"))
   Grey(insp.Finish, 0.55)
-  -- One line of each role, never shown: where a single line is measured
-  -- whole, whatever width the one on show was fitted to.
-  insp.MeasureBody = Line(art, "body")
-  insp.MeasureSegment = Line(art, "segment")
+  -- One line of each role and size, never shown: where a single line is
+  -- measured whole, whatever width the one on show was fitted to.
+  insp.MeasureBody = Line(art, "bodySmall")
   insp.MeasureSmall = Line(art, "secondary")
+  insp.MeasureFoot = Small(Line(art, "secondary"))
 
   local close = CreateFrame("Button", nil, insp)
   close:SetSize(P.CLOSE, P.CLOSE)
@@ -3384,7 +3411,7 @@ function AR.BuildInspector()
   sw.EyeOff = T.Glyph and T.Glyph(sw, "eye-off", 8, "ARTWORK") or nil
   if sw.Eye then sw.Eye:SetPoint("CENTER", sw, "LEFT", 12, 0) end
   if sw.EyeOff then sw.EyeOff:SetPoint("CENTER", sw, "LEFT", 12, 0) end
-  sw.Label = T.CreateText(sw, "segment")
+  sw.Label = T.CreateText(sw, "bodySmall")
   sw.Label:SetPoint("LEFT", sw, "LEFT", P.SWITCH_LEAD, 0)
   sw.Label:SetWordWrap(false)
   sw:SetScript("OnEnter", SwitchEnter)
@@ -3393,22 +3420,20 @@ function AR.BuildInspector()
   sw:Hide()
   insp.Switch = sw
 
-  -- Line up columns (above): a box in a black keyline, checked while on.
+  -- Line up columns (above): the Show switch's plate, and where its eye
+  -- stands three columns side by side, drawn in code.
   local lanes = InspPlate(insp, "Button", true)
   lanes:SetHeight(P.SWITCH_H)
   lanes.hover, lanes.on = false, false
-  lanes.BoxKey = lanes:CreateTexture(nil, "ARTWORK", nil, 0)
-  lanes.BoxKey:SetTexture(WHITE)
-  lanes.BoxKey:SetVertexColor(0, 0, 0, 1)
-  lanes.BoxKey:SetSize(10, 10)
-  lanes.BoxKey:SetPoint("CENTER", lanes, "LEFT", 12, 0)
-  lanes.Box = lanes:CreateTexture(nil, "ARTWORK", nil, 1)
-  lanes.Box:SetTexture(WHITE)
-  lanes.Box:SetSize(8, 8)
-  lanes.Box:SetPoint("CENTER", lanes.BoxKey, "CENTER", 0, 0)
-  lanes.Check = T.Glyph and T.Glyph(lanes, "check", 6, "OVERLAY") or nil
-  if lanes.Check then lanes.Check:SetPoint("CENTER", lanes.BoxKey, "CENTER", 0, 0) end
-  lanes.Label = T.CreateText(lanes, "segment")
+  lanes.Bars = {}
+  for i = 1, 3 do
+    local bar = lanes:CreateTexture(nil, "ARTWORK")
+    bar:SetTexture(WHITE)
+    bar:SetSize(1, 9)
+    bar:SetPoint("LEFT", lanes, "LEFT", 7 + 2 * i, 0)
+    lanes.Bars[i] = bar
+  end
+  lanes.Label = T.CreateText(lanes, "bodySmall")
   lanes.Label:SetPoint("LEFT", lanes, "LEFT", P.SWITCH_LEAD, 0)
   lanes.Label:SetJustifyH("LEFT")
   lanes.Label:SetWordWrap(false)
@@ -3436,8 +3461,9 @@ function AR.BuildInspector()
 
   local link = CreateFrame("Button", nil, insp)
   link.hover = false
-  link.Label = T.CreateText(link, "secondary")
+  link.Label = Small(T.CreateText(link, "secondary"))
   link.Label:SetPoint("TOPLEFT", link, "TOPLEFT", 0, 0)
+  link.Label:SetJustifyH("LEFT")
   link.Label:SetWordWrap(false)
   link.Line = link:CreateTexture(nil, "ARTWORK")
   link.Line:SetTexture(WHITE)
@@ -3455,6 +3481,7 @@ function AR.BuildInspector()
   up.hover = false
   up.Label = T.CreateText(up, "secondary")
   up.Label:SetPoint("TOPLEFT", up, "TOPLEFT", 0, 0)
+  up.Label:SetJustifyH("LEFT")
   up.Label:SetWordWrap(false)
   up.Line = up:CreateTexture(nil, "ARTWORK")
   up.Line:SetTexture(WHITE)
@@ -3473,7 +3500,7 @@ function AR.BuildInspector()
   local act = InspPlate(insp, "Button", true)
   act:SetHeight(P.SWITCH_H)
   act.hover = false
-  act.Label = T.CreateText(act, "segment")
+  act.Label = T.CreateText(act, "bodySmall")
   act.Label:SetPoint("LEFT", act, "LEFT", P.SWITCH_TAIL, 0)
   act.Label:SetJustifyH("LEFT")
   act.Label:SetWordWrap(false)
@@ -3486,7 +3513,7 @@ function AR.BuildInspector()
   local key = InspPlate(insp, "Frame", false)
   TintPlate(key, PLATE.key.fill, PLATE.key.ring)
   key:SetHeight(P.KEY_H)
-  key.Label = T.CreateText(key, "secondary")
+  key.Label = Small(T.CreateText(key, "secondary"))
   key.Label:SetPoint("CENTER", key, "CENTER", 0, 0)
   key.Label:SetWordWrap(false)
   Grey(key.Label, 0.87)
@@ -3592,7 +3619,7 @@ local function PutKicker(text, y)
   insp.kickN = n
   local k = insp.Kickers[n]
   if not k then
-    k = Paragraph(insp.Art, "secondary", 0.55)
+    k = Small(Paragraph(insp.Art, "secondary", 0.55))
     insp.Kickers[n] = k
   end
   y = y - INSP.KICK_TOP
@@ -3615,10 +3642,33 @@ local function PutNote(text, y)
   return PutText(insp.Note, text, y - 1 - INSP.NOTE_PAD)
 end
 
+-- A note's words led by as many spaces as the hatch's sample and its gap
+-- are wide in the note's own font: the first line starts after the sample
+-- and the next ones run back under it, as the mockup sets the sample inline
+-- (a font string has no inline art that tiles). Made once per string and
+-- per width of a space, the memo holding the few notes there are.
+local function AfterSwatch(fs, text)
+  local P = INSP
+  local space = Measured(fs, "x x", false) - Measured(fs, "xx", false)
+  local n = math.ceil((P.SWATCH_W + P.SWATCH_GAP) / math.max(space, 1))
+  local memo = AR._afterSwatch
+  if not memo or memo.n ~= n then
+    memo = { n = n, lead = string.rep(" ", n) }
+    AR._afterSwatch = memo
+  end
+  local out = memo[text]
+  if not out then
+    out = memo.lead .. text
+    memo[text] = out
+  end
+  return out
+end
+
 -- A note that speaks of the hatch the rows draw: the sample first, as the
 -- rows have it -- in the accent where it is the subject's borrowed room,
 -- grey where it is a figure's lane the subject runs through -- and the
--- words beside it. A plain note where the hatch's art is missing.
+-- words after it (AfterSwatch). A plain note where the hatch's art is
+-- missing.
 local function PutSwatchNote(text, y, accent)
   local insp, P = AR._insp, INSP
   local swatch = insp.Swatch
@@ -3639,9 +3689,9 @@ local function PutSwatchNote(text, y, accent)
   swatch:Show()
   AR.ShowEdges(insp.SwatchRing, true)
   local fs = insp.SwatchNote
-  At(fs, P.PAD + P.SWATCH_W + P.SWATCH_GAP, y)
+  At(fs, P.PAD, y)
   fs:Show()
-  return y - math.max(Measured(fs, text, true), P.SWATCH_H + 2)
+  return y - math.max(Measured(fs, AfterSwatch(fs, text), true), P.SWATCH_H + 2)
 end
 
 -- The eye switch at the row's left; answers its width.
@@ -3649,7 +3699,7 @@ local function PutSwitch(on, y)
   local insp, P = AR._insp, INSP
   local sw = insp.Switch
   local text = L()[on and "ARRANGE_SHOWN" or "ARRANGE_HIDDEN_STATE"]
-  local w = P.SWITCH_LEAD + Measured(insp.MeasureSegment, text, false) + P.SWITCH_TAIL
+  local w = P.SWITCH_LEAD + Measured(insp.MeasureBody, text, false) + P.SWITCH_TAIL
   sw.on = on and true or false
   sw.Label:SetText(text)
   sw:SetWidth(w)
@@ -3665,7 +3715,7 @@ local function PutLanes(y)
   local insp, P = AR._insp, INSP
   local sw = insp.Lanes
   local text = L()["OPT_LINE_UP_TITLE"]
-  local w = math.min(P.SWITCH_LEAD + Measured(insp.MeasureSegment, text, false) + P.SWITCH_TAIL, P.INNER)
+  local w = math.min(P.SWITCH_LEAD + Measured(insp.MeasureBody, text, false) + P.SWITCH_TAIL, P.INNER)
   sw.on = LinedUp() and true or false
   Th().FitText(sw.Label, w - P.SWITCH_LEAD - P.SWITCH_TAIL + 1, text, sw)
   sw:SetWidth(w)
@@ -3749,7 +3799,7 @@ local function PutUp(blockId, y)
   local room = P.INNER - P.UP_ARROW
   local w = math.min(Measured(insp.MeasureSmall, text, false), room)
   local h = Measured(insp.MeasureSmall, text, true)
-  Th().FitText(up.Label, room, text, up)
+  Th().FitText(up.Label, w, text, up)
   up.blockId = blockId
   up.hover = up.hover and up:IsMouseOver() or false
   up:SetSize(w + P.UP_ARROW, h + 2)
@@ -3764,7 +3814,7 @@ end
 local function PutAction(text, y)
   local insp, P = AR._insp, INSP
   local b = insp.Action
-  local w = math.min(2 * P.SWITCH_TAIL + Measured(insp.MeasureSegment, text, false), P.INNER)
+  local w = math.min(2 * P.SWITCH_TAIL + Measured(insp.MeasureBody, text, false), P.INNER)
   Th().FitText(b.Label, w - 2 * P.SWITCH_TAIL + 1, text, b)
   b:SetWidth(w)
   b.hover = b.hover and b:IsMouseOver() or false
@@ -3802,11 +3852,12 @@ local function CountHidden()
   chipsN = chipsN + 1
 end
 
--- The foot: the reset on the left, the key cap and "to finish" on the right
--- -- "to cancel" while something is in the hand, the one change a drag makes
--- to the inspector -- each centred on a row the key cap's height; the
--- right-hand pair on a row of its own under the reset where the two do not
--- fit side by side, whichever words it has, so a drag never reflows it.
+-- The foot, one line: the reset on the left, the key cap and "to finish" on
+-- the right -- "to cancel" while something is in the hand, the one change a
+-- drag makes to the inspector -- each centred on a row the key cap's
+-- height. Only where the two cannot stand side by side (a long German or
+-- Russian pair) does the right-hand pair take a row of its own under the
+-- reset, whichever words it has, so a drag never reflows it.
 local function PutFoot(y)
   local insp, P = AR._insp, INSP
   y = y - P.FOOT_TOP
@@ -3815,15 +3866,16 @@ local function PutFoot(y)
   local link, key, finish = insp.Reset, insp.Key, insp.Finish
   local resetText, keyText = L()["ARRANGE_RESET"], L()["ARRANGE_ESC_KEY"]
   local finishText = L()[AR.moving and "ARRANGE_ESC_CANCEL" or "ARRANGE_ESC_FINISH"]
-  local linkW = Measured(insp.MeasureSmall, resetText, false)
-  local keyW = Measured(insp.MeasureSmall, keyText, false) + 2 * P.KEY_PAD
-  local finishW = math.max(Measured(insp.MeasureSmall, L()["ARRANGE_ESC_FINISH"], false),
-    Measured(insp.MeasureSmall, L()["ARRANGE_ESC_CANCEL"], false))
-  local lineH = Measured(insp.MeasureSmall, resetText, true)
+  local linkW = Measured(insp.MeasureFoot, resetText, false)
+  local keyW = Measured(insp.MeasureFoot, keyText, false) + 2 * P.KEY_PAD
+  local finishW = math.max(Measured(insp.MeasureFoot, L()["ARRANGE_ESC_FINISH"], false),
+    Measured(insp.MeasureFoot, L()["ARRANGE_ESC_CANCEL"], false))
+  local lineH = Measured(insp.MeasureFoot, resetText, true)
   link.Label:SetText(resetText)
   link:SetSize(linkW, lineH + 2)
   link:ClearAllPoints()
-  link:SetPoint("LEFT", insp, "TOPLEFT", P.PAD, y - P.KEY_H / 2)
+  -- Its words, not its underline, centred on the row.
+  link:SetPoint("LEFT", insp, "TOPLEFT", P.PAD, y - P.KEY_H / 2 - 1)
   PaintLink(link)
   link:Show()
   local rowY = y
@@ -3863,7 +3915,7 @@ local function FillOverview(host, y)
   if host.ListHidden then host.ListHidden(CountHidden) end
   y = PutKicker(L()[chipsN > 0 and "ARRANGE_HIDDEN_CLICK" or "ARRANGE_HIDDEN"], y)
   if chipsN == 0 then return PutFoot(PutText(insp.Empty, L()["ARRANGE_HIDDEN_NONE"], y)) end
-  chipsN, chipsX, chipsY = 0, P.PAD, y
+  chipsN, chipsX, chipsY = 0, P.PAD, y - P.CHIP_EDGE
   if layout then
     for i = 1, #layout do
       local entry = layout[i]
@@ -3872,7 +3924,7 @@ local function FillOverview(host, y)
     end
   end
   if host.ListHidden then host.ListHidden(PutHidden) end
-  return PutFoot(chipsY - P.CHIP_H)
+  return PutFoot(chipsY - P.CHIP_H - P.CHIP_EDGE)
 end
 
 -- A column's card.
@@ -3929,9 +3981,10 @@ local function FillColumn(id, y)
 end
 
 -- A block's card: the host's words for it, its switch, Move up and down,
--- its own way elsewhere (the grid's: the character groups), and the stack's
--- order -- the blocks the view has, top down, each line the way to its own
--- card, this one's in the accent and a hidden one's greyed.
+-- its own way elsewhere (the grid's: the character groups), what hiding it
+-- does, beside the switch it is about, and last the stack's order -- the
+-- blocks the view has, top down, each line the way to its own card, this
+-- one's in the accent and a hidden one's greyed.
 local function FillBlock(host, id, y)
   local insp, P = AR._insp, INSP
   y = PutText(insp.Lead, host.BlockText(id), y) - P.ROW_GAP
@@ -3941,6 +3994,8 @@ local function FillBlock(host, id, y)
   y = PutMove(y, true, host.CanMoveBlock(id, -1), host.CanMoveBlock(id, 1), used)
   local link = host.BlockLink and host.BlockLink(id)
   if link then y = PutAction(link, y - P.ROW_WRAP) end
+  local note = host.BlockNote and host.BlockNote(id)
+  if note then y = PutNote(note, y) end
   y = PutKicker(L()["ARRANGE_UNDER_LIST"], y)
   local order, n = host.StackOrder(), 0
   for i = 1, #order do
@@ -3950,8 +4005,6 @@ local function FillBlock(host, id, y)
       y = PutBlockRow(n, other, host.BlockName(other), host.BlockShown and host.BlockShown(other) == false, other == id, y)
     end
   end
-  local note = host.BlockNote and host.BlockNote(id)
-  if note then y = PutNote(note, y) end
   return y
 end
 
