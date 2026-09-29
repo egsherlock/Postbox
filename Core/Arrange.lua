@@ -870,83 +870,362 @@ end
 -------------------------------------------------------------
 -- 5. Escape
 --
--- Escape works in layers, one per press, and never closes the window under
--- the mode -- nor the mailbox: a drag in progress is put back where it
--- began; else a selection is let go, and the inspector goes back to its
--- overview; else the mode ends. The inspector's cross does the same, less
--- the drag. The client closes windows on Escape by hiding every shown
--- frame named in UISpecialFrames; while the mode is open the Postbox
--- windows' names there are swapped IN PLACE for a small frame of ours, and
--- that frame hiding is what an Escape is heard by. In place, so no other
--- entry shifts. A layer short of the last shows the frame again for the
--- next Escape; the swap is undone on the way out, however the mode ends.
--- An Escape that closes the character groups' window, which the grid's
--- card opens, is that window's alone. No keyboard is taken for any of it.
+-- Escape works in layers, one per press, and while the mode is open it does
+-- nothing else: no window closes under the mode -- not the Postbox window,
+-- not the mailbox, not the bags, the character pane or anyone else's. A
+-- drag in progress is put back where it began; else the character groups'
+-- window, which the grid's card opens, closes (a layer of its own); else a
+-- selection is let go, and the inspector goes back to its overview; else
+-- the mode ends. The inspector's cross does the same, less the drag.
 --
--- The swap is made on every entry the client's own pass reads (all of
--- them, as pairs finds them), and made again at every press and after
--- every Escape, so a window's name added since the mode opened is taken
--- too (AR.GuardEscape). An Escape heard while a column, a block or a
--- button is in the hand is the drag's, however the press ends before the
--- Escape is answered a frame later: a release in between puts the drag
--- back rather than dropping it (EndGesture). A press still deciding
--- whether it is a drag ends with the key, its click unmade. And a layer
--- that fails still leaves the catcher listening.
+-- Why the key has to be heard first. The client answers the game-menu key
+-- with ToggleGameMenu, which asks its handlers in turn -- popups, menus, a
+-- cast, Blizzard's own overlays and the game menu, then addons' -- and,
+-- when none claims the key, closes every UI panel and every frame named in
+-- UISpecialFrames in one pass (CloseAllWindows). The mailbox's own frame is
+-- one of those panels, shown unseen under the Postbox window, so that pass
+-- closes the mailbox, and Postbox with it. Nothing listening inside the
+-- pass can make it close one thing. Blizzard's list of handlers
+-- (RegisterGameMenuEscHandler, 12.1) is not joined: an entry added from an
+-- addon taints the list, and every later Escape would run tainted.
+--
+-- Out of combat, then, a small frame of ours, over the host and shown only
+-- while the mode is open, takes the keyboard with every key passed on
+-- (propagation on, set before it is ever shown). The key bound to the game
+-- menu (TOGGLEGAMEMENU, with the modifiers held, matched as the client
+-- matches it: a rebound key included, a key another addon has taken with
+-- an override binding left to it) is kept from the bindings for that
+-- one press, and only when the mode is what the press would reach: a
+-- popup, an open menu or flyout, a spell being cast or aimed, a focused
+-- edit box, or one of Blizzard's windows that answer the key before any
+-- addon's (the game menu, the settings, the help or report window, the
+-- clock ...) take it first, exactly as stock (AR.EscapeIsOurs). The press
+-- is answered the next frame, when keys pass again: propagation is put
+-- back on then, at the key's release, whenever the frame hides or shows,
+-- and at PLAYER_REGEN_DISABLED, which comes before the lockdown. Every
+-- other key passes untouched, with nothing allocated for it.
+--
+-- In combat an addon may not call SetPropagateKeyboardInput (10.1.5 on),
+-- so the frame hides for the fight -- hiding our own frame is always
+-- allowed, and a hidden frame takes no keys -- and Escape reaches the
+-- client's pass as it would without Postbox. For that, and for any press
+-- the keyboard passed on that still reaches the pass (a controller's
+-- button, a legacy menu closing, which claims nothing), the mode also
+-- listens inside the pass for as long as it is open: the Postbox windows'
+-- names in UISpecialFrames are swapped IN PLACE for a small frame of ours
+-- (so no other entry shifts), and that frame hiding is the Escape. The
+-- mode keeps its layers and Mail Memory stays open, but everything else
+-- the pass closes still closes -- at a mailbox that is the mailbox, and
+-- the Mail tab with it. The swap is made again at every press and after
+-- every Escape, so a name added meanwhile is taken too (AR.GuardEscape),
+-- and undone however the mode ends. An Escape whose pass also closed the
+-- character groups' window was that window's.
+--
+-- Either way an Escape heard while a column, a block or a button is in the
+-- hand is the drag's, however the press ends before the Escape is answered
+-- a frame later: a release in between puts the drag back rather than
+-- dropping it (EndGesture). A press still deciding whether it is a drag
+-- ends with the key, its click unmade. A layer that fails still leaves the
+-- mode listening, and a check that fails passes the key on.
 -------------------------------------------------------------
 
 AR.ESC_WINDOWS = { PostboxFrame = true, PostboxMailMemoryFrame = true }
-local ESC_NAME = "PostboxArrangeEscape"
 
--- Every entry of UISpecialFrames that names a window of ours, swapped for
--- the catcher and remembered, while the mode is open. Entries are only
--- rewritten, never added.
-function AR.GuardEscape()
-  local list, taken = UISpecialFrames, AR._escTaken
-  if type(list) ~= "table" or not taken then return end
-  for i, name in pairs(list) do
-    if AR.ESC_WINDOWS[name] then
-      taken[i] = name
-      list[i] = ESC_NAME
+-- Blizzard's windows that answer the game-menu key before any addon's
+-- (GameMenuEscPriority up to Framework), by name, as most load on demand:
+-- while one is shown the key is theirs. The legacy menus are passed on too,
+-- to close as the client always has closed them. Blizzard's Edit Mode is
+-- left out on purpose: Postbox never reads it.
+AR.ESC_FIRST = {
+  "GameMenuFrame", "SettingsPanel", "OpacityFrame", "HelpFrame", "ReportFrame",
+  "TimeManagerFrame", "SpellFlyout", "HouseEditorFrame",
+  "HousingBlueprintExportFrame", "HousingBlueprintImportFrame",
+  "HousingBlueprintRenameFrame", "DropDownList1", "DropDownList2",
+}
+
+do
+  local ESC_NAME = "PostboxArrangeEscape"
+  local MODIFIERS = { ALT = true, CTRL = true, SHIFT = true, META = true }
+
+  -- The keys that can be the game-menu key, bare (a binding's modifiers
+  -- taken off): only a press of one of these is looked at further. Read
+  -- when the mode opens and whenever the bindings change.
+  local menuKeys = {}
+
+  local function AddMenuKeys(...)
+    for i = 1, select("#", ...) do
+      local key = select(i, ...)
+      if type(key) == "string" and key ~= "" then
+        local base = key
+        while true do
+          local mod, rest = base:match("^(%u+)%-(.+)$")
+          if not (mod and MODIFIERS[mod]) then break end
+          base = rest
+        end
+        menuKeys[base] = true
+      end
     end
   end
-end
 
-function AR.CatchEscape(on)
-  local list = UISpecialFrames
-  if type(list) ~= "table" then return end
-  local catcher = AR._esc
-  if not catcher then
-    catcher = CreateFrame("Frame", ESC_NAME, UIParent)
-    catcher:SetSize(1, 1)
-    catcher:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
-    catcher:EnableMouse(false)
-    catcher:Hide()
-    catcher:SetScript("OnHide", function(self)
-      if not self.armed then return end
-      self.armed = false
-      -- Hidden by the client's close-windows pass on an Escape: answered a
-      -- frame later, off that path, as the window's own close is
-      -- (COMBAT_TAINT.md). Only our own state is read here: whether the
-      -- Escape found a drag in progress, which makes it the drag's.
-      AR._escAt = GetTime()
-      AR._escHeld, AR._escDrag = true, AR.Dragging()
-      C_Timer.After(0, AR.OnEscape)
-    end)
-    AR._esc = catcher
+  local function ReadMenuKeys()
+    for k in pairs(menuKeys) do menuKeys[k] = nil end
+    menuKeys.ESCAPE = true
+    if type(GetBindingKey) == "function" then AddMenuKeys(GetBindingKey("TOGGLEGAMEMENU")) end
   end
-  if on then
-    local taken = {}
-    AR._escTaken = taken
+
+  -- A cast or channel of the player's own, which the client's Escape stops
+  -- first. A secret answer is a cast.
+  local function Casting(query)
+    if type(query) ~= "function" then return false end
+    local name = (query("player"))
+    if type(issecretvalue) == "function" and issecretvalue(name) then return true end
+    return name ~= nil
+  end
+
+  local function Held(query) return type(query) == "function" and query() or false end
+
+  -- What a press of `pressed` runs, as the client's dispatch finds it: the
+  -- chord with the modifiers held (in the client's order), an override
+  -- binding before the player's own, and a chord with nothing bound to it
+  -- falling back to the bare key. Only a candidate key gets here, so the
+  -- chord's string is built for the game-menu key alone.
+  local function BoundTo(pressed)
+    if type(GetBindingAction) ~= "function" then
+      return type(GetBindingFromClick) == "function" and GetBindingFromClick(pressed) or nil
+    end
+    local chord = pressed
+    if Held(IsModifierKeyDown) then
+      chord = (Held(IsAltKeyDown) and "ALT-" or "") .. (Held(IsControlKeyDown) and "CTRL-" or "")
+        .. (Held(IsShiftKeyDown) and "SHIFT-" or "") .. (Held(IsMetaKeyDown) and "META-" or "") .. pressed
+    end
+    local action = GetBindingAction(chord, true)
+    if (action == nil or action == "") and chord ~= pressed then action = GetBindingAction(pressed, true) end
+    return action
+  end
+
+  -- Whether this press is the mode's: the game-menu key as the client
+  -- would match it, with nothing up that the client asks before an addon's
+  -- window. Reads only.
+  function AR.EscapeIsOurs(pressed)
+    if not AR.host or not menuKeys[pressed] then return false end
+    if BoundTo(pressed) ~= "TOGGLEGAMEMENU" then return false end
+    if type(GetCurrentKeyBoardFocus) == "function" and GetCurrentKeyBoardFocus() then return false end
+    if type(StaticPopup_IsAnyDialogShown) == "function" and StaticPopup_IsAnyDialogShown() then return false end
+    local menu = type(Menu) == "table" and type(Menu.GetManager) == "function" and Menu.GetManager() or nil
+    if menu and menu.IsAnyMenuOpen and menu:IsAnyMenuOpen() then return false end
+    if type(SpellIsTargeting) == "function" and SpellIsTargeting() then return false end
+    if Casting(UnitCastingInfo) or Casting(UnitChannelInfo) then return false end
+    local dock = type(GENERAL_CHAT_DOCK) == "table" and GENERAL_CHAT_DOCK.overflowButton
+    local list = dock and dock.list
+    if list and list.IsShown and list:IsShown() then return false end
+    local first = AR.ESC_FIRST
+    for i = 1, #first do
+      local frame = _G[first[i]]
+      if type(frame) == "table" and frame.IsShown and frame:IsShown() then return false end
+    end
+    -- A controller's Escape, which hands the cursor over first.
+    if type(CanAutoSetGamePadCursorControl) == "function" and CanAutoSetGamePadCursorControl(true)
+      and not Held(IsModifierKeyDown) then
+      return false
+    end
+    return true
+  end
+
+  -- The layer one Escape steps back: the drag (`drag`: one was in the hand
+  -- when the key was heard, or is now), else the selection, else the mode.
+  -- Answers whether the mode ended.
+  local function EscapeLayer(drag)
+    if drag then
+      if AR.Dragging() then AR.CancelPress(true) end
+      return false
+    end
+    AR.CancelPress()
+    if AR.selKind then
+      AR.Select(nil)
+      return false
+    end
+    AR.Leave()
+    return true
+  end
+
+  -- One Escape, one layer. From the keyboard (`fromKey`), the character
+  -- groups' window -- which the grid's card opens (a host's FollowBlockLink)
+  -- -- is a layer of its own, after the drag. From the client's pass, the
+  -- same pass may have closed that window: then the press was that
+  -- window's, and the mode keeps its layers.
+  local function Answer(fromKey)
+    local drag = AR._escDrag or AR._escDone or AR.Dragging()
+    AR._escHeld, AR._escDrag, AR._escDone = nil, nil, nil
+    if not AR.host then return end
+    local groups = ns.CharacterGroups
+    local theirs = false
+    if fromKey then
+      if not drag and groups and type(groups.EditorShown) == "function" and groups.EditorShown() then
+        theirs = true
+        groups.CloseEditor()
+      end
+    else
+      theirs = groups ~= nil and AR._escAt ~= nil and groups._hiddenAt == AR._escAt
+    end
+    if not theirs then
+      local ok, left = pcall(EscapeLayer, drag)
+      if not ok and type(geterrorhandler) == "function" then geterrorhandler()(left) end
+      if ok and left then return end
+    end
+    if not AR.host then return end
+    -- The mode stays open. In the client's pass (combat), the catcher,
+    -- whose name still stands in the windows' places, listens again.
     AR.GuardEscape()
-    -- No window of ours listed (its name registers on first open): the
-    -- catcher still has to be heard.
-    if not next(taken) then
-      list[#list + 1] = ESC_NAME
-      taken.appended = #list
+    local catcher = AR._esc
+    if catcher and AR._escTaken then
+      catcher.armed = true
+      catcher:Show()
     end
-    catcher.armed = true
-    catcher:Show()
-  else
+  end
+
+  function AR.OnEscape() Answer(false) end
+  function AR.OnEscapeKey() Answer(true) end
+
+  -- Heard: the answer waits a frame, as the window's own close does
+  -- (COMBAT_TAINT.md), and only our own state is read now -- whether a drag
+  -- is in progress, which makes the Escape the drag's.
+  local function Heard()
+    AR._escAt = GetTime()
+    AR._escHeld, AR._escDrag = true, AR.Dragging()
+  end
+
+  ---------------------------------------------------------------
+  -- The keyboard (out of combat)
+  ---------------------------------------------------------------
+
+  -- Keys pass again. In combat propagation cannot be set, and the frame
+  -- hides instead: a hidden frame takes no keys at all.
+  local function PassKeys(self)
+    if self:GetPropagateKeyboardInput() then return end
+    if InCombatLockdown() then
+      self:Hide()
+    else
+      self:SetPropagateKeyboardInput(true)
+    end
+  end
+
+  -- The frame after a press was kept: keys pass, then the press is answered.
+  local function KeyAnswer(self)
+    self:SetScript("OnUpdate", nil)
+    self.pending = nil
+    PassKeys(self)
+    Answer(true)
+  end
+
+  local function OnKeyDown(self, pressed)
+    if InCombatLockdown() then
+      -- Shown in combat, which it is not meant to be: out of the way.
+      self:Hide()
+      return
+    end
+    local ok, ours = pcall(AR.EscapeIsOurs, pressed)
+    if not (ok and ours) then
+      -- Passed on. Set back only if a press this same frame had kept it.
+      if not self:GetPropagateKeyboardInput() then self:SetPropagateKeyboardInput(true) end
+      return
+    end
+    -- The way back is armed before the key is kept. A second press inside
+    -- the same frame is kept too, the first being answered already.
+    if not self.pending then
+      self.pending = true
+      self:SetScript("OnUpdate", KeyAnswer)
+      Heard()
+    end
+    if self:GetPropagateKeyboardInput() then self:SetPropagateKeyboardInput(false) end
+  end
+
+  local function KeyHidden(self)
+    self:SetScript("OnUpdate", nil)
+    PassKeys(self)
+    -- Hidden with a press unanswered (combat began, or the mode went): it
+    -- is answered a frame later all the same.
+    if self.pending then
+      self.pending = nil
+      C_Timer.After(0, AR.OnEscapeKey)
+    end
+  end
+
+  -- The keyboard frame, made on first use out of combat, propagation on
+  -- before it is ever shown. It stands in the host window's strata, just
+  -- over it, so a frame above the window that keeps keys of its own hears
+  -- them first. On UIParent rather than in the window: a host skin sweeps a
+  -- window's children for art. Answers whether it is taking keys; it never
+  -- does in combat.
+  local function KeyOn()
+    local host = AR.host
+    if not host or InCombatLockdown() then return false end
+    local key = AR._key
+    if not key then
+      if type(CreateFrame) ~= "function" then return false end
+      key = CreateFrame("Frame", nil, UIParent)
+      if type(key.EnableKeyboard) ~= "function" or type(key.SetPropagateKeyboardInput) ~= "function"
+        or type(key.GetPropagateKeyboardInput) ~= "function" then
+        return false
+      end
+      key:Hide()
+      key:SetPropagateKeyboardInput(true)
+      key:EnableKeyboard(true)
+      key:SetScript("OnKeyDown", OnKeyDown)
+      key:SetScript("OnKeyUp", PassKeys)
+      key:SetScript("OnShow", PassKeys)
+      key:SetScript("OnHide", KeyHidden)
+      AR._key = key
+    end
+    local owner = host.owner
+    if owner and owner.GetFrameStrata then
+      key:SetFrameStrata(owner:GetFrameStrata())
+      key:SetFrameLevel(math.min((owner:GetFrameLevel() or 0) + 1, 10000))
+    end
+    key:SetPropagateKeyboardInput(true)
+    key:Show()
+    return true
+  end
+
+  local function KeyOff()
+    local key = AR._key
+    if key then key:Hide() end
+  end
+
+  ---------------------------------------------------------------
+  -- The client's pass (combat)
+  ---------------------------------------------------------------
+
+  -- Every entry of UISpecialFrames that names a window of ours, swapped for
+  -- the catcher and remembered, while the swap stands. Entries are only
+  -- rewritten, never added.
+  function AR.GuardEscape()
+    local list, taken = UISpecialFrames, AR._escTaken
+    if type(list) ~= "table" or not taken then return end
+    for i, name in pairs(list) do
+      if AR.ESC_WINDOWS[name] then
+        taken[i] = name
+        list[i] = ESC_NAME
+      end
+    end
+  end
+
+  local function Swap(on)
+    local list, catcher = UISpecialFrames, AR._esc
+    if type(list) ~= "table" or not catcher then return end
+    if on then
+      local taken = {}
+      AR._escTaken = taken
+      AR.GuardEscape()
+      -- No window of ours listed (its name registers on first open): the
+      -- catcher still has to be heard.
+      if not next(taken) then
+        list[#list + 1] = ESC_NAME
+        taken.appended = #list
+      end
+      catcher.armed = true
+      catcher:Show()
+      return
+    end
     catcher.armed = false
     catcher:Hide()
     local taken = AR._escTaken
@@ -973,46 +1252,56 @@ function AR.CatchEscape(on)
       end
     end
   end
-end
 
--- The layer one Escape steps back: the drag (`drag`: one was in the hand
--- when the key was heard, or is now), else the selection, else the mode.
--- Answers whether the mode ended.
-local function EscapeLayer(drag)
-  if drag then
-    if AR.Dragging() then AR.CancelPress(true) end
-    return false
+  local function OnCatcherEvent(_, event)
+    if not AR.host then return end
+    if event == "PLAYER_REGEN_DISABLED" then
+      -- Before the lockdown: keys pass and the frame goes for the fight.
+      KeyOff()
+    elseif event == "PLAYER_REGEN_ENABLED" then
+      KeyOn()
+    elseif event == "UPDATE_BINDINGS" then
+      ReadMenuKeys()
+    end
   end
-  AR.CancelPress()
-  if AR.selKind then
-    AR.Select(nil)
-    return false
-  end
-  AR.Leave()
-  return true
-end
 
--- One Escape, one layer. An Escape that also closed the character groups'
--- window -- which the grid's card opens (a host's FollowBlockLink) -- was that
--- window's: the mode keeps its layers and listens for the next.
-function AR.OnEscape()
-  local drag = AR._escDrag or AR._escDone or AR.Dragging()
-  AR._escHeld, AR._escDrag, AR._escDone = nil, nil, nil
-  if not AR.host then return end
-  local groups = ns.CharacterGroups
-  if not (groups and AR._escAt ~= nil and groups._hiddenAt == AR._escAt) then
-    local ok, left = pcall(EscapeLayer, drag)
-    if not ok and type(geterrorhandler) == "function" then geterrorhandler()(left) end
-    if ok and left then return end
+  local function Catcher()
+    local catcher = AR._esc
+    if catcher then return catcher end
+    catcher = CreateFrame("Frame", ESC_NAME, UIParent)
+    catcher:SetSize(1, 1)
+    catcher:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+    catcher:EnableMouse(false)
+    catcher:Hide()
+    catcher:SetScript("OnHide", function(self)
+      if not self.armed then return end
+      self.armed = false
+      -- Hidden by the client's close-windows pass on an Escape.
+      Heard()
+      C_Timer.After(0, AR.OnEscape)
+    end)
+    catcher:SetScript("OnEvent", OnCatcherEvent)
+    AR._esc = catcher
+    return catcher
   end
-  if not AR.host then return end
-  -- The mode stays open: the catcher, whose name still stands in the
-  -- windows' places, listens for the next Escape.
-  AR.GuardEscape()
-  local catcher = AR._esc
-  if catcher and AR._escTaken then
-    catcher.armed = true
-    catcher:Show()
+
+  -- The mode opening (`on`) and ending: the client's pass listened to for
+  -- the whole mode, the keyboard out of combat, and the events that take
+  -- the keyboard away for a fight and give it back.
+  function AR.CatchEscape(on)
+    local catcher = Catcher()
+    if on then
+      ReadMenuKeys()
+      catcher:RegisterEvent("PLAYER_REGEN_DISABLED")
+      catcher:RegisterEvent("PLAYER_REGEN_ENABLED")
+      catcher:RegisterEvent("UPDATE_BINDINGS")
+      Swap(true)
+      KeyOn()
+    else
+      catcher:UnregisterAllEvents()
+      KeyOff()
+      Swap(false)
+    end
   end
 end
 

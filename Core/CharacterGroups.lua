@@ -1562,8 +1562,10 @@ local function Build()
     self.NameBox:ClearFocus()
     self.Search.Box:ClearFocus()
     GameTooltip:Hide()
-    -- When: an Escape that closed this window over the arrange mode is this
-    -- window's, not a layer of the mode's (Arrange.lua, AR.OnEscape).
+    -- When: an Escape whose close-windows pass closed this window over the
+    -- arrange mode (in combat, where the mode cannot hear the key first) is
+    -- this window's, not a layer of the mode's (Arrange.lua, section 5).
+    -- Otherwise the mode closes it itself, as a layer of its own.
     CG._hiddenAt = GetTime()
   end)
 
