@@ -62,6 +62,11 @@ longer play.
 - **Senders in their class color.** Mail from your own characters, and from
   friends and guildmates Postbox has seen, shows the sender's name in their
   class color: in the mail list, History, Mail Memory and the reading pane.
+  The colors are your own if your UI has them (EllesmereUI, ElvUI or a class
+  color addon), and change as soon as you change them.
+- **The arrange header lines up with the list.** Its headings run edge to
+  edge over the rows, and History's header shows History's own columns, the
+  age first.
 - **Full bags stop a collection cleanly.** The title says how many mails are
   left ("Bags full: 6 left"), nothing is marked stuck, and as soon as you free
   a slot the line clears and All mail counts those mails again. All mail's
@@ -82,8 +87,8 @@ longer play.
 - **Gold stands under gold.** Each figure keeps its own column down the
   list, in the Mail tab, History and Mail Memory, and a subject runs on only
   through columns its mail leaves empty. For the old close-packed rows, turn
-  off Line up columns: in Options, Mail tab, or with the small switch in the
-  arrange header's corner, where the rows show the difference at once.
+  off Line up columns: in Options, Mail tab, or in the arrange overview,
+  where the rows show the difference at once.
 - **Postbox follows EllesmereUI's look.** On Blizzard Style or Classic WoW UI
   it wears its own Blizzard look, to match your other windows.
 - **EllesmereUI profile, Dark Mode and accent changes** reach an open mailbox
@@ -129,6 +134,7 @@ longer play.
 
 ### Fixed
 
+- Scroll bar arrows point the right way: up at the top, down at the bottom.
 - Slot counts are never cut short ("4 slo…") in fonts whose digits differ
   in width.
 - Free space in the reagent bag no longer counts as room for everything
