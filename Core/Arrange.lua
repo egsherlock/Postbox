@@ -2563,18 +2563,18 @@ end
 -- right edge (from its left one when the screen has no room on the right),
 -- its top level with the window's top row. Shown only while the mode is
 -- open, and nothing of it covers the rows. It says one of two things:
---   nothing selected: how the mode works, Line up columns, the blocks
---     under the list (each a line that selects it), what is hidden (each a
---     chip; a click shows it again), the reset, and that Escape finishes --
---     or, while something is in the hand, that Escape cancels, the one
---     change a drag makes to it;
+--   nothing selected: how the mode works, Line up columns, what is hidden
+--     (each a chip; a click shows it again), the reset, and that Escape
+--     finishes -- or, while something is in the hand, that Escape cancels,
+--     the one change a drag makes to it;
 --   a column, a block or a category button selected: its card -- what it
 --     is, its eye, its own choice, Move (the way to reorder without a
 --     drag), and, for a figure, what the rows do on a mail without it; for
 --     the subject, what the rows show of its run, what Line up columns does
---     and where it is; for a block, the stack's order, and for the
---     grid the way to the character groups; for a button, the link up to
---     the grid's card.
+--     and where it is; for a block, the stack's order, each line the way to
+--     that block's card (the way to a block that is hard to take in the
+--     window), and for the grid the way to the character groups; for a
+--     button, the link up to the grid's card.
 -- A click on a heading, a column on a row, a block or a button selects it,
 -- a second click lets it go; the cross and Escape go back a layer (section
 -- 5).
@@ -2846,7 +2846,7 @@ local function SwitchClick(self)
   AR.Inspect()
 end
 
--- Line up columns, in the overview's Mail rows group: the options panel's
+-- Line up columns, in the overview under how the mode works: the options panel's
 -- own switch (MailboxUI, lineUpColumns; unset is on), which decides how
 -- every column of every row stands, so it belongs to no one column's card.
 -- A box before its name, filled with the accent and checked while on; its
@@ -3188,14 +3188,26 @@ local function ActionClick()
   if host and AR.selKind == "block" and host.FollowBlockLink then host.FollowBlockLink(AR.selId) end
 end
 
--- The overview's line for a block under the list: its place, its name --
--- a grey quieter while it is hidden -- and an arrow; a click selects it.
+-- A block card's line for a block under the list, in the stack's order:
+-- its place and its name. The block whose card this is stands in the
+-- accent and does nothing; any other is a way to its card -- a click
+-- selects it, and pointed at it lights, with an arrow after it. A hidden
+-- block's line is a quieter grey, and is a way to its card all the same.
 local function PaintBlockRow(row)
-  local hover = row.hover
+  local hover = row.hover and not row.current
   row.Hover:SetShown(hover and true or false)
-  Grey(row.Name, hover and 1 or (row.hidden and 0.55 or 0.91))
-  Grey(row.Num, hover and 0.84 or 0.6)
-  if row.Arrow then Grey(row.Arrow, hover and 1 or 0.5) end
+  if row.current then
+    local r, g, b = Th().GetAccent()
+    row.Name:SetTextColor(r, g, b, 1)
+    row.Num:SetTextColor(r, g, b, 1)
+  else
+    Grey(row.Name, hover and 1 or (row.hidden and 0.5 or 0.84))
+    Grey(row.Num, hover and 0.84 or (row.hidden and 0.4 or 0.6))
+  end
+  if row.Arrow then
+    row.Arrow:SetShown(hover and true or false)
+    Grey(row.Arrow, 1)
+  end
 end
 
 local function BlockRowEnter(self)
@@ -3209,6 +3221,8 @@ local function BlockRowLeave(self)
 end
 
 local function BlockRowClick(self)
+  if self.current then return end
+  self.hover = false
   if AR.host and self.blockId then AR.Select("block", self.blockId) end
 end
 
@@ -3216,7 +3230,7 @@ local function BlockRow(insp, i)
   local T = Th()
   local row = CreateFrame("Button", nil, insp)
   row:SetSize(INSP.INNER, INSP.RADIO_H)
-  row.hover, row.hidden = false, false
+  row.hover, row.hidden, row.current = false, false, false
   row.Hover = row:CreateTexture(nil, "BACKGROUND")
   row.Hover:SetTexture(WHITE)
   row.Hover:SetVertexColor(1, 1, 1, 0.06)
@@ -3276,7 +3290,7 @@ function AR.BuildInspector()
   insp:SetClampedToScreen(true)
   insp:EnableMouse(true)
   insp:SetWidth(P.W)
-  insp.Radios, insp.Chips, insp.OrderNum, insp.OrderName, insp.BlockRows = {}, {}, {}, {}, {}
+  insp.Radios, insp.Chips, insp.BlockRows, insp.Kickers = {}, {}, {}, {}
 
   -- Every text and rule is on this holder, never on the card itself.
   local art = CreateFrame("Frame", nil, insp)
@@ -3290,7 +3304,8 @@ function AR.BuildInspector()
   insp.Lead = Paragraph(art, "body", 0.81)
   insp.Empty = Paragraph(art, "body", 0.55)
   insp.Note = Paragraph(art, "secondary", 0.66)
-  insp.Kicker = Paragraph(art, "secondary", 0.55)
+  -- A card's kickers, one per section it has (PutKicker), made as needed.
+  insp.kickN = 0
   -- The subject's card: how far each row's subject runs, in words, and
   -- where the switch that decides it is.
   insp.Why = Paragraph(art, "body", 0.81)
@@ -3545,10 +3560,18 @@ local function PutText(fs, text, y)
   return y - Measured(fs, text, true)
 end
 
--- A kicker in capitals; one that does not fit the width (a long German one)
--- takes a second line rather than losing its end.
+-- A kicker in capitals, the next of the card's own; one that does not fit
+-- the width (a long German one) takes a second line rather than losing its
+-- end.
 local function PutKicker(text, y)
-  local k = AR._insp.Kicker
+  local insp = AR._insp
+  local n = insp.kickN + 1
+  insp.kickN = n
+  local k = insp.Kickers[n]
+  if not k then
+    k = Paragraph(insp.Art, "secondary", 0.55)
+    insp.Kickers[n] = k
+  end
   y = y - INSP.KICK_TOP
   At(k, INSP.PAD, y)
   k:Show()
@@ -3672,36 +3695,12 @@ local function PutRadio(i, choice, chosen, live, y)
   return y - INSP.RADIO_H
 end
 
--- A line of the stack's order: its place and its name, the selected block
--- in the accent.
-local function PutOrderLine(i, name, selected, y)
-  local insp, T = AR._insp, Th()
-  local num, text = insp.OrderNum[i], insp.OrderName[i]
-  if not num then
-    num, text = Line(insp.Art, "body"), Line(insp.Art, "body")
-    insp.OrderNum[i], insp.OrderName[i] = num, text
-  end
-  num:SetFormattedText("%d", i)
-  At(num, INSP.PAD, y)
-  At(text, INSP.PAD + INSP.LINE_NUM, y)
-  T.FitText(text, INSP.INNER - INSP.LINE_NUM, name, nil)
-  if selected then
-    T.SetColor(num, "accent")
-    T.SetColor(text, "accent")
-  else
-    T.SetColor(num, "textSecondary")
-    T.SetColor(text, "textSecondary")
-  end
-  num:Show()
-  text:Show()
-  return y - INSP.LINE_H
-end
-
--- The overview's line for a block (BlockRow), clickable.
-local function PutBlockRow(i, id, name, hidden, y)
+-- A block card's line for a block (BlockRow): `current` is the block the
+-- card is for.
+local function PutBlockRow(i, id, name, hidden, current, y)
   local insp = AR._insp
   local row = insp.BlockRows[i] or BlockRow(insp, i)
-  row.blockId, row.hidden = id, hidden and true or false
+  row.blockId, row.hidden, row.current = id, hidden and true or false, current and true or false
   row.hover = row.hover and row:IsMouseOver() or false
   row.Num:SetFormattedText("%d", i)
   Th().FitText(row.Name, INSP.INNER - INSP.RADIO_TEXT - INSP.UP_ARROW, name, row)
@@ -3820,27 +3819,14 @@ local function PutFoot(y)
   return rowY - P.KEY_H
 end
 
--- With nothing selected: how the mode works, Line up columns in a small
--- group of its own -- it is every column's -- the blocks under the list --
--- each a line that selects it, the way to a block that is hard to take in
--- the window -- what is hidden, and the foot.
+-- With nothing selected: how the mode works, Line up columns -- it is every
+-- column's, so it belongs to no one column's card -- what is hidden, and
+-- the foot.
 local function FillOverview(host, y)
   local insp, P = AR._insp, INSP
-  y = PutText(insp.Lead, L()["ARRANGE_OVERVIEW"], y)
-  y = PutKicker(L()["OPT_ROWS_HEADING"], y)
+  y = PutText(insp.Lead, L()["ARRANGE_OVERVIEW"], y) - P.ROW_GAP
   PutLanes(y)
   y = y - P.SWITCH_H
-  if host.StackOrder and host.BlockName then
-    y = PutKicker(L()["ARRANGE_UNDER_LIST"], y)
-    local order, n = host.StackOrder(), 0
-    for i = 1, #order do
-      local id = order[i]
-      if not host.BlockPresent or host.BlockPresent(id) then
-        n = n + 1
-        y = PutBlockRow(n, id, host.BlockName(id), host.BlockShown and host.BlockShown(id) == false, y)
-      end
-    end
-  end
   -- What is hidden: the columns, then the host's own -- counted first, so
   -- the kicker says whether a click shows them.
   local layout = AR.Layout()
@@ -3921,7 +3907,8 @@ end
 
 -- A block's card: the host's words for it, its switch, Move up and down,
 -- its own way elsewhere (the grid's: the character groups), and the stack's
--- order.
+-- order -- the blocks the view has, top down, each line the way to its own
+-- card, this one's in the accent and a hidden one's greyed.
 local function FillBlock(host, id, y)
   local insp, P = AR._insp, INSP
   y = PutText(insp.Lead, host.BlockText(id), y) - P.ROW_GAP
@@ -3932,8 +3919,14 @@ local function FillBlock(host, id, y)
   local link = host.BlockLink and host.BlockLink(id)
   if link then y = PutAction(link, y - P.ROW_WRAP) end
   y = PutKicker(L()["ARRANGE_UNDER_LIST"], y)
-  local order = host.StackOrder()
-  for i = 1, #order do y = PutOrderLine(i, host.BlockName(order[i]), order[i] == id, y) end
+  local order, n = host.StackOrder(), 0
+  for i = 1, #order do
+    local other = order[i]
+    if not host.BlockPresent or host.BlockPresent(other) then
+      n = n + 1
+      y = PutBlockRow(n, other, host.BlockName(other), host.BlockShown and host.BlockShown(other) == false, other == id, y)
+    end
+  end
   local note = host.BlockNote and host.BlockNote(id)
   if note then y = PutNote(note, y) end
   return y
@@ -3963,7 +3956,8 @@ local function HideParts(insp)
     insp.Swatch:Hide()
     AR.ShowEdges(insp.SwatchRing, false)
   end
-  insp.Kicker:Hide()
+  for i = 1, #insp.Kickers do insp.Kickers[i]:Hide() end
+  insp.kickN = 0
   insp.MoveLabel:Hide()
   insp.NoteRule:Hide()
   insp.FootRule:Hide()
@@ -3979,10 +3973,6 @@ local function HideParts(insp)
   for i = 1, #insp.Radios do insp.Radios[i]:Hide() end
   for i = 1, #insp.Chips do insp.Chips[i]:Hide() end
   for i = 1, #insp.BlockRows do insp.BlockRows[i]:Hide() end
-  for i = 1, #insp.OrderNum do
-    insp.OrderNum[i]:Hide()
-    insp.OrderName[i]:Hide()
-  end
 end
 
 -- The inspector filled again for what is selected now, if it is up. Called
