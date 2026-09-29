@@ -19,10 +19,9 @@ longer play.
   marks what is hidden. While you arrange, the mark is a lit Done;
   right-click it to go back to the default arrangement.
 - **An inspector beside the window while you arrange.** It explains the mode,
-  lists everything you have hidden (a click brings it back), holds Line up
-  columns and Reset, and lists the blocks under the list so you can pick one
-  without aiming. Click a column, a block or a category button for its card:
-  show or hide it, its own choices,
+  lists everything you have hidden (a click brings it back), and holds Line
+  up columns and Reset. Click a column, a block or a category button for its
+  card: show or hide it, its own choices,
   and Move buttons if you would rather not drag. Select Subject to see why
   each subject stops where it does. Escape steps back one thing at a time.
 - **Arrange what sits under the list too.** Drag the totals, All mail and the
