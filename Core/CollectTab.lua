@@ -6671,8 +6671,9 @@ end
 -- and a right-click hides or shows it (All mail cannot be hidden: its
 -- right-click does nothing). While the option hides the grid, or the
 -- totals, a folded placeholder stands in its slot, so it can still be
--- moved, or selected, or brought back with a right-click or a click on its
--- crossed eye; the totals' card, pointed at, shows its open eye. The tray
+-- moved, or selected, or brought back with a right-click. The placeholder
+-- wears the crossed eye, and the totals' card, pointed at, its open eye:
+-- signs of what a right-click does, never controls of their own. The tray
 -- itself wears no eye: its rim has no room for one beside the buttons,
 -- each of which has its own. Outside the mode the option works as it
 -- always has, and a hidden grid simply is not there.
@@ -6942,8 +6943,7 @@ function RV.NewStackCard(panel, key)
   card:SetScript("OnMouseDown", RV.StackCardDown)
   card:SetScript("OnMouseUp", RV.StackCardUp)
   if folds then
-    -- A crossed eye and the block's name, together in the middle; a click
-    -- on the eye shows the block (RV.StackCardDown).
+    -- A crossed eye and the block's name, together in the middle.
     card.Text = T.CreateText(card, "secondary", "OVERLAY")
     card.Text:SetWordWrap(false)
     card.Text:SetText(L()[folds == "grid" and "ARRANGE_BLOCK_GRID" or "ARRANGE_BLOCK_TOTALS"])
@@ -7060,12 +7060,9 @@ function RV.StackCardLeave(card)
   if A and A.MoveCursor then A.MoveCursor(false) end
 end
 
--- A press on a block's card takes the block; one on its eye hides or shows
--- it when let go without a drag.
 function RV.StackCardDown(card, mouse)
   if mouse ~= "LeftButton" then return end
-  local A = ns.Arrange
-  RV.StackPress(card.panel, card.stackId, card, card.Eye and A and A.OverEye and A.OverEye(card, card.Eye, 4))
+  RV.StackPress(card.panel, card.stackId, card)
 end
 
 -- A right-click let go over a block's card hides or shows the block
@@ -7082,11 +7079,11 @@ end
 -- pointer up and down the stack, over the others, its slot ringed where it
 -- will land; past the middle of the block above or below, the two change
 -- places -- in the stored order itself, so the rest of the stack steps
--- aside as it goes. A press let go where it began is a click: it selects
--- the block, or hides or shows it where it was on the block's eye (`eye`).
--- The handlers are one table per panel, made on the first press, and what
--- they act on is written into it: nothing is made per press.
-function RV.StackPress(panel, id, card, eye)
+-- aside as it goes. A press let go where it began is a click, wherever on
+-- the card it landed: it selects the block. The handlers are one table per
+-- panel, made on the first press, and what they act on is written into it:
+-- nothing is made per press.
+function RV.StackPress(panel, id, card)
   local A = ns.Arrange
   if not (A and A.Press) then return end
   local h = panel._stackPress
@@ -7096,12 +7093,10 @@ function RV.StackPress(panel, id, card, eye)
     function h.move(_, y) RV.StackDrag(h.panel, y) end
     function h.drop() RV.StackDrop(h.panel) end
     function h.cancel() RV.StackCancel(h.panel) end
-    function h.click()
-      if h.eye then RV.BlockToggle(h.panel, h.id) else RV.StackClick(h.panel, h.id) end
-    end
+    function h.click() RV.StackClick(h.panel, h.id) end
     panel._stackPress = h
   end
-  h.panel, h.id, h.name, h.eye = panel, id, RV.BlockName(panel, id), eye and true or false
+  h.panel, h.id, h.name = panel, id, RV.BlockName(panel, id)
   A.Press(card, h)
 end
 
@@ -7511,8 +7506,9 @@ function RV.GridHandle(panel, button)
   handle:EnableMouse(true)
   handle.button, handle.panel = button, panel
   -- Its eye: crossed while the button is hidden, always; open while it
-  -- shows only while it is pointed at. Either is the direct control: a
-  -- click on it hides or shows the button (Arrange.lua's AR.OverEye).
+  -- shows only while it is pointed at. Either is a sign of what a
+  -- right-click does, never a control of its own: a click anywhere on the
+  -- card, the eye included, selects the button.
   local T = Th()
   if T.Glyph then
     handle.Eye = T.Glyph(handle, "eye", 8, "OVERLAY")
@@ -7603,13 +7599,9 @@ function RV.HandleLeave(handle)
   if A and A.MoveCursor then A.MoveCursor(false) end
 end
 
--- A press on the sweep's card takes the sweep; one on its eye hides or
--- shows it when let go without a drag.
 function RV.HandleDown(handle, mouse)
   if mouse ~= "LeftButton" then return end
-  local A = ns.Arrange
-  local eye = handle.button.hiddenInGrid and handle.EyeOff or handle.Eye
-  RV.GridPress(handle.panel, handle.button, A and A.OverEye and A.OverEye(handle, eye, 4))
+  RV.GridPress(handle.panel, handle.button)
 end
 
 -- A right-click let go over a sweep hides it, or shows it again.
@@ -7832,10 +7824,10 @@ function RV.MoveSweep(panel, id, step)
 end
 
 -- A sweep taken by its card: a drag moves it (RV.GridStart, below), a
--- click selects it, or hides or shows it where the press was on its eye
--- (`eye`). The handlers are one table per panel, made on the first press,
--- and the button they act on is written into it: nothing is made per press.
-function RV.GridPress(panel, button, eye)
+-- click selects it. The handlers are one table per panel, made on the
+-- first press, and the button they act on is written into it: nothing is
+-- made per press.
+function RV.GridPress(panel, button)
   local A = ns.Arrange
   if not (A and A.Press) then return end
   local h = panel._gridPress
@@ -7849,16 +7841,10 @@ function RV.GridPress(panel, button, eye)
       if drag and drag.before then RV.StoreGrid(h.panel, drag.before) end
       RV.GridDrop(h.panel)
     end
-    function h.click()
-      if h.eye then
-        if h.panel._gridArranging then RV.SweepToggle(h.panel, h.button.gridId) end
-      else
-        RV.SweepClick(h.panel, h.button.gridId)
-      end
-    end
+    function h.click() RV.SweepClick(h.panel, h.button.gridId) end
     panel._gridPress = h
   end
-  h.panel, h.button, h.name, h.eye = panel, button, button.caption, eye and true or false
+  h.panel, h.button, h.name = panel, button, button.caption
   A.Press(button, h)
 end
 

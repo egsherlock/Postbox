@@ -686,22 +686,6 @@ function AR.GestureLine(state)
   return L()[GESTURE[state] or GESTURE.fixed]
 end
 
--- Eyes carry news, nothing else: a hidden thing wears the crossed eye,
--- always; a shown thing that can be hidden shows an open eye only while it
--- is pointed at. Either eye is itself the direct control: a click on it
--- hides or shows the thing, where a click anywhere else on it selects it.
--- No frame of its own -- a press is looked at where it lands: this answers
--- whether the pointer is on `eye`, a glyph drawn on `frame` and shown,
--- give or take `pad` units either side, over the whole height of `frame`.
-function AR.OverEye(frame, eye, pad)
-  if not (frame and eye and eye:IsShown()) then return false end
-  local l, r = eye:GetLeft(), eye:GetRight()
-  if not (l and r) then return false end
-  local x = AR.Cursor(frame)
-  pad = pad or 3
-  return x >= l - pad and x <= r + pad
-end
-
 -------------------------------------------------------------
 -- 4. The cog key
 --
@@ -1036,11 +1020,11 @@ end
 -- Headings are movable things (section 3b): at rest, pointed at, selected,
 -- in the hand. A press on one, or on its column in any row (section 7a), is
 -- the column's: a drag moves it, a click selects it for the inspector, a
--- right-click hides it (the subject's does nothing). Pointed at, a heading
--- that can be hidden shows its open eye at its right end, the click that
--- hides it (AR.OverEye) -- where the eye clears the heading's glyph or name
--- by EYE_GAP; a heading too narrow for one has none, and hides by its
--- right-click or its card.
+-- right-click hides it (the subject's does nothing), wherever on the
+-- heading the press lands. Pointed at, a heading that can be hidden shows
+-- its open eye at its right end, a sign that it can be hidden and not a
+-- control of its own -- where the eye clears the heading's glyph or name
+-- by EYE_GAP; a heading too narrow for one has none.
 --
 -- Built the first time the mode opens over a list, and laid out again after
 -- every pass of the list's rows (AR.ListPlaced): the lanes are the rows'.
@@ -1226,14 +1210,10 @@ local function HeadLeave(self)
   if not AR.drag then AR.MoveCursor(false) end
 end
 
--- A press on the heading takes the column; one on its open eye hides it
--- when let go without a drag.
 local function HeadDown(self, button)
   if button ~= "LeftButton" then return end
   local host = AR.host
-  if host and host.strip == self:GetParent() then
-    AR.PressColumn(host, self.colId, self, AR.OverEye(self, self.Eye, 2))
-  end
+  if host and host.strip == self:GetParent() then AR.PressColumn(host, self.colId, self) end
 end
 
 -- A right-click, let go over the heading: the column hidden (AR.ToggleColumn).
@@ -1696,18 +1676,11 @@ function columnPress.cancel()
   AR.RowsChanged(true)
 end
 function columnPress.click()
-  if AR.host ~= pressed.host then return end
-  if pressed.eye then
-    AR.ToggleColumn(pressed.id)
-  else
-    AR.Select("column", pressed.id)
-  end
+  if AR.host == pressed.host then AR.Select("column", pressed.id) end
 end
 
--- `eye`: the press landed on the heading's open eye, whose click hides the
--- column rather than selecting it.
-function AR.PressColumn(host, id, frame, eye)
-  pressed.host, pressed.id, pressed.eye = host, id, eye and true or false
+function AR.PressColumn(host, id, frame)
+  pressed.host, pressed.id = host, id
   columnPress.name = L()[AR.COLUMNS[id].title]
   AR.Press(frame, columnPress)
 end
