@@ -65,10 +65,17 @@ longer play.
   tooltip shows how many items it would collect against your free bag slots,
   in orange when they will not all fit.
 - **Stuck means one mail's own problem**, such as a unique item you already
-  carry. It counts mails, never items, and two identical mails count as two.
+  carry. A small warning triangle takes the mail's read dot's place, so no
+  row gives up room for it any more. It counts mails, never items, and two
+  identical mails count as two.
   The collect buttons leave a stuck mail to a click on its row, so a run does
   not keep meeting the same one; click "Stuck: N" to show only those mails,
   then Collect shown to try them all again.
+- **Slot counts are a quiet grey**, like the time left, so money is a row's
+  only coloured figure; the Slots card, while you arrange, can show just the
+  number.
+- **Quality icons can go before the item's name**, with every name in the
+  list still starting on one line.
 - **Gold stands under gold.** Each figure keeps its own column down the
   list, in the Mail tab, History and Mail Memory, and a subject runs on only
   through columns its mail leaves empty. For the old close-packed rows, turn
