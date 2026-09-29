@@ -23,7 +23,8 @@ longer play.
   up columns and Reset. Click a column, a block or a category button for its
   card: show or hide it, its own choices,
   and Move buttons if you would rather not drag. Select Subject to see why
-  each subject stops where it does. Escape steps back one thing at a time.
+  each subject stops where it does. Escape steps back one thing at a time
+  and leaves your other windows open (in combat it works as it always has).
 - **Arrange what sits under the list too.** Drag the totals, All mail and the
   category buttons into the order you like; each lifts off the window while
   you arrange, so you can see what moves. Drag the category buttons into your
@@ -58,6 +59,9 @@ longer play.
 
 ### Improved
 
+- **Senders in their class color.** Mail from your own characters, and from
+  friends and guildmates Postbox has seen, shows the sender's name in their
+  class color: in the mail list, History, Mail Memory and the reading pane.
 - **Full bags stop a collection cleanly.** The title says how many mails are
   left ("Bags full: 6 left"), nothing is marked stuck, and as soon as you free
   a slot the line clears and All mail counts those mails again. All mail's
