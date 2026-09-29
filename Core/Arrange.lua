@@ -169,13 +169,15 @@ function AR.GridChanged()
 end
 
 -- Right-click on the lit key: the rows, the blocks under the list and the
--- buttons as they come, with the gold's and the time left's own defaults.
+-- buttons as they come, with the gold's, the time left's and the slots' own
+-- defaults.
 function AR.Reset()
   local ui = UI()
   if not ui then return end
   if ui.SetRowLayout then ui.SetRowLayout(nil) end
   if ui.SetGoldMode then ui.SetGoldMode("both") end
   if ui.SetExpiryWhen then ui.SetExpiryWhen("3") end
+  if ui.SetSlotsStyle then ui.SetSlotsStyle(nil) end
   if ui.SetGridLayout then ui.SetGridLayout(nil) end
   if ui.SetStackOrder then ui.SetStackOrder(nil) end
   -- The grid and the totals hidden in the mode are the "Show category
