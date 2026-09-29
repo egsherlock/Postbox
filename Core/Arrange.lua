@@ -794,7 +794,7 @@ local function ToggleTip(button)
     GameTooltip:AddLine(L()["ARRANGE_TIP_RESET"], 0.7, 0.7, 0.7, true)
   else
     GameTooltip:SetText(L()["ARRANGE_TITLE"])
-    GameTooltip:AddLine(L()["ARRANGE_TIP"], 1, 1, 1, true)
+    GameTooltip:AddLine(ns.Summary(L()["ARRANGE_TIP"]), 1, 1, 1, true)
   end
   GameTooltip:Show()
 end
@@ -2744,7 +2744,7 @@ end
 local function LanesTip(self)
   AR.InspTip(self)
   GameTooltip:SetText(L()["OPT_LINE_UP_TITLE"])
-  GameTooltip:AddLine(L()["OPT_LINE_UP_DESC"], 1, 1, 1, true)
+  GameTooltip:AddLine(ns.Summary(L()["OPT_LINE_UP_DESC"]), 1, 1, 1, true)
   GameTooltip:Show()
 end
 

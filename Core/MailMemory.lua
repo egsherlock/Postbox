@@ -1638,7 +1638,7 @@ local function PickerTip(row)
   GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
   if kind == "foot" then
     GameTooltip:SetText(L["HIDDEN_TITLE"])
-    GameTooltip:AddLine(L["HIDDEN_DESC"], 1, 1, 1, true)
+    GameTooltip:AddLine(ns.Summary(L["HIDDEN_DESC"]), 1, 1, 1, true)
   else
     GameTooltip:SetText(MM.ClassName(row.realm, row.charName))
     if kind == "hidden" then

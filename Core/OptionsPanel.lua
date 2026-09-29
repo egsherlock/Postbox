@@ -601,10 +601,11 @@ end
 -------------------------------------------------------------
 -- Tooltips
 --
--- Every control keeps the tooltip it has always had, as in every Postbox
--- window. It stands beside the panel, level with the control, on the side
--- with room: over the panel it would cover the inspector, which is saying
--- the same thing.
+-- Every control keeps a tooltip, as in every Postbox window: its name and
+-- the summary of its description, the first line (Locales.lua, ns.Summary)
+-- -- the inspector beside it says the whole. It stands beside the panel,
+-- level with the control, on the side with room: over the panel it would
+-- cover the inspector.
 -------------------------------------------------------------
 
 function Tip.Begin(owner, title, text)
@@ -641,7 +642,7 @@ end
 
 function Tip.Entry(owner, entry)
   if not entry then return end
-  Tip.Begin(owner, entry.title, entry.text)
+  Tip.Begin(owner, entry.title, ns.Summary(entry.text))
   Tip.Show(owner)
 end
 
@@ -667,6 +668,19 @@ end
 -- is shown.
 -------------------------------------------------------------
 do
+  -- A description says its summary, then its detail, each newline in it a
+  -- paragraph break: a line of air between, so the summary stands on its
+  -- own over the detail. Made once per text and kept, as the summary is.
+  local PARAGRAPHS = {}
+  local function Paragraphs(text)
+    local shown = PARAGRAPHS[text]
+    if not shown then
+      shown = (text:gsub("\n", "\n\n"))
+      PARAGRAPHS[text] = shown
+    end
+    return shown
+  end
+
   local function TextBlock(block)
     local T = ns.Theme
     local title = T.CreateText(block, "body")
@@ -690,7 +704,7 @@ do
     t:SetText(title or "")
     local h = TEXT_TOP + math.ceil(t:GetStringHeight() or 0)
     if text and text ~= "" then
-      d:SetText(text)
+      d:SetText(Paragraphs(text))
       d:Show()
       h = h + TEXT_GAP + math.ceil(d:GetStringHeight() or 0)
     else
@@ -2455,7 +2469,9 @@ function Pages.mail(col)
   })
   arrange.entry.extra = "arrange"
   S.arrangeCell, S.arrangeOn = arrange, arrange.entry
-  S.arrangeOff = Entry(L["OPT_ARRANGE_BUTTON"], L["ARRANGE_TIP"] .. "\n\n" .. L["ERR_OPEN_MAILBOX_LOOT"], "arrange")
+  -- Out of reach, why leads: it is the tooltip, and the inspector's first
+  -- paragraph over what the button does.
+  S.arrangeOff = Entry(L["OPT_ARRANGE_BUTTON"], L["ERR_OPEN_MAILBOX_LOOT"] .. "\n" .. L["ARRANGE_TIP"], "arrange")
 
   Rows.Group(col, L["OPT_MAILTAB_HEADING"])
   Rows.Check(col, {
@@ -2859,7 +2875,7 @@ function Pages.memory(col)
   -- Its tooltip also lists every name the row may have cut.
   row:SetScript("OnEnter", function(self)
     Rows.Hover(self)
-    local tip = Tip.Begin(self, self.entry.title, self.entry.text)
+    local tip = Tip.Begin(self, self.entry.title, ns.Summary(self.entry.text))
     local lines = self.lines
     if #lines > 0 then
       tip:AddLine(" ")
