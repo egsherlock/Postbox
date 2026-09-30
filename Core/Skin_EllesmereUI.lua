@@ -99,6 +99,28 @@ local function ShimAccent()
   return c.r or 0.047, c.g or 0.824, c.b or 0.616
 end
 
+-- The accent as a mark -- the selected tab's underline, a tick -- through the
+-- contrast guard (Theme.GetAccentTone "mark": 3:1 on the plate it sits on),
+-- read live, as every accent mark of Postbox's own is. The accent itself
+-- where the theme cannot answer.
+local function ShimMark()
+  local T = ns.Theme
+  if T and type(T.GetAccentTone) == "function" then
+    local ok, r, g, b = pcall(T.GetAccentTone, "mark")
+    if ok and type(r) == "number" then return r, g, b end
+  end
+  return ShimAccent()
+end
+
+-- The ticks the shim tinted, repainted on every accent change
+-- (RepaintShimMarks). Weak: a discarded checkbox is not kept for this.
+local shimTicks = setmetatable({}, { __mode = "k" })
+
+local function RepaintShimMarks()
+  local r, g, b = ShimMark()
+  for tick in pairs(shimTicks) do tick:SetVertexColor(r, g, b, 1) end
+end
+
 -- Resolve the user's window style the way 8.6.7's GetThirdPartySkinStyle does:
 -- a majority vote across their per-window choices. Reading EllesmereUIDB is a
 -- shim-only concession -- 8.6.6 exposes no accessor -- and it is read-only.
@@ -280,8 +302,9 @@ local function BuildShim()
     fill:SetPoint("BOTTOMRIGHT", -4, 4)
     ShimBorder(cb, 0.25, 0.25, 0.25, 1)
     if checked then
-      local ar, ag, ab = ShimAccent()
+      local ar, ag, ab = ShimMark()
       checked:SetVertexColor(ar, ag, ab, 1)
+      shimTicks[checked] = true
     end
   end
 
@@ -314,7 +337,14 @@ local function BuildShim()
           tab.__pbShimLabel:SetText(tab.__pbShimBliz:GetText() or "")
         end
       end
-      if tab.__pbShimUnderline then tab.__pbShimUnderline:SetShown(sel) end
+      local underline = tab.__pbShimUnderline
+      if underline then
+        -- Every repaint takes the accent as it is now: the accent sweep
+        -- repaints a tab by re-issuing its selection, which lands here.
+        local ar, ag, ab = ShimMark()
+        underline:SetColorTexture(ar, ag, ab, 1)
+        underline:SetShown(sel)
+      end
       if tab.__pbShimActive then tab.__pbShimActive:SetShown(sel) end
       return
     end
@@ -372,8 +402,6 @@ local function BuildShim()
     underline:SetHeight(2)
     underline:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", 1, 1)
     underline:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -1, 1)
-    local ar, ag, ab = ShimAccent()
-    underline:SetColorTexture(ar, ag, ab, 1)
     underline:Hide()
     tab.__pbShimUnderline = underline
 
@@ -1393,6 +1421,9 @@ function Skin.OnHostLooksChanged(fromShow)
   if ns.Theme and type(ns.Theme.RepaintAccentText) == "function" then
     pcall(ns.Theme.RepaintAccentText)
   end
+  -- The compat shim's ticks; its tab underlines repaint through the plate
+  -- sweep below, which re-issues each tab's selection.
+  pcall(RepaintShimMarks)
   Skin.ForEachWindow(RepaintPlates)
 end
 
