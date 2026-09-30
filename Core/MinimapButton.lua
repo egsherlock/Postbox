@@ -60,6 +60,9 @@ local DEFAULTS = {
   -- mail (the default indicator's own rule, and the only one there was),
   -- "any" while Mail Memory knows mail waiting on any character, "always".
   show     = "new",
+  -- The number on the icon: "off", "me" (this character's box) or "all"
+  -- (every character's, the hidden ones aside).
+  count    = "off",
 }
 
 -- ONE dropdown, every placement, no second control to contradict it:
@@ -223,6 +226,7 @@ end
 --           (what still holds something or is unread, and what is known to
 --           have arrived since); `all` the same over every character the
 --           player has not hidden, this one included.
+--   count   the number the icon wears: `mine`, `all` or none (0).
 -------------------------------------------------------------
 
 local SHOW_MODES = { new = true, any = true, always = true }
@@ -233,6 +237,14 @@ local function ShowMode(prefs)
   return SHOW_MODES[mode] and mode or DEFAULTS.show
 end
 
+local COUNT_MODES = { off = true, me = true, all = true }
+MB.COUNT_MODES = { "off", "me", "all" }
+
+local function CountMode(prefs)
+  local mode = (prefs or Settings()).count
+  return COUNT_MODES[mode] and mode or DEFAULTS.count
+end
+
 -- Mail Memory's own switch: off, nothing it recorded is offered anywhere.
 local function MemoryOn()
   local UI = ns.MailboxUI
@@ -240,14 +252,16 @@ local function MemoryOn()
   return UI.GetOption("mailMemory") and true or false
 end
 
-local view = { lit = false, shown = false, mine = 0, all = 0 }
+local view = { lit = false, shown = false, mine = 0, all = 0, count = 0 }
 
 local function Evaluate()
   local prefs = Settings()
   local mode = ShowMode(prefs)
+  local countMode = CountMode(prefs)
   local mine, all = 0, 0
   local Memory = ns.MailMemory
-  if mode == "any" and MemoryOn() and Memory and type(Memory.Characters) == "function" then
+  if (mode == "any" or countMode ~= "off") and MemoryOn() and Memory
+    and type(Memory.Characters) == "function" then
     local list = Memory.Characters()
     for i = 1, #list do
       local st = list[i]
@@ -267,7 +281,59 @@ local function Evaluate()
   else
     view.shown = lit
   end
+  view.count = (countMode == "me" and mine) or (countMode == "all" and all) or 0
   return view
+end
+
+-- The count, drawn as the Mail tab draws an item's stack count (CollectTab,
+-- RV.PaintCount): the game's number font, outlined, white, at the icon's
+-- bottom-right corner, a hair out past it. Its size follows the icon's --
+-- 10 at the default 20 px, as on a mail row's icon -- and so does the hair.
+-- Hidden at zero. Whole up to three digits, then in thousands ("1.2k").
+-- The text is made only when the number changes, and the font only when
+-- the icon's size does.
+local function CountFontSize(size)
+  return math.max(9, math.floor(size * 0.4 + 2.5))
+end
+
+local function CountText(n)
+  if n < 1000 then return string.format("%d", n) end
+  local tenth = math.floor((n % 1000) / 100)
+  if n >= 10000 or tenth == 0 then return string.format("%dk", math.floor(n / 1000)) end
+  return string.format("%d.%dk", math.floor(n / 1000), tenth)
+end
+
+-- holder: the frame the count is drawn on; anchor: the icon texture; size:
+-- the icon's side.
+local function PaintCount(holder, anchor, size, n)
+  local fs = holder.__pbCount
+  if not n or n <= 0 then
+    if fs then fs:Hide() end
+    return
+  end
+  if not fs then
+    fs = holder:CreateFontString(nil, "OVERLAY")
+    fs:SetDrawLayer("OVERLAY", 7)
+    fs:SetJustifyH("RIGHT")
+    fs:SetWordWrap(false)
+    holder.__pbCount = fs
+  end
+  if fs.__pbSize ~= size or fs.__pbAnchor ~= anchor then
+    fs.__pbSize, fs.__pbAnchor = size, anchor
+    local T = ns.Theme
+    local object = T and T.FontObject and T.FontObject("numberSmall")
+    local path = object and object:GetFont()
+    fs:SetFont(path or STANDARD_TEXT_FONT, CountFontSize(size), "OUTLINE")
+    fs:SetTextColor(1, 1, 1, 1)
+    fs:ClearAllPoints()
+    fs:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT",
+      math.floor(size * 0.1 + 0.5), -math.floor(size * 0.05 + 0.5))
+  end
+  if fs.__pbN ~= n then
+    fs.__pbN = n
+    fs:SetText(CountText(n))
+  end
+  fs:Show()
 end
 
 -- The icon shown while nothing is new -- a launcher that is always there, or
@@ -688,6 +754,10 @@ local function ApplyEuiSkin()
   end
   btn.__pbMailAlert:SetSize(artW * 1.75, artH * 1.75)
 
+  -- The count on our overlay, which sits over their icon and any ring they
+  -- dress it in, and goes with the overlay when their button is handed back.
+  PaintCount(btn.__pbOverlay, icon, side, view.count)
+
   euiSkin.applied = true
   return true
 end
@@ -960,6 +1030,8 @@ local function ApplyLook(button)
   local shadow = button.shadow
   shadow:SetSize(size * 1.8, size * 1.8)
   shadow:SetShown(prefs.shadow == true)
+
+  PaintCount(button.art, icon, size, view.count)
 
   Reposition(button)
 end
@@ -1302,7 +1374,7 @@ local runtimeActive = false
 -- which moves when Mail Memory writes and, for its expiry warnings, with the
 -- clock.
 local function ReadsMemory(prefs)
-  return ShowMode(prefs) == "any"
+  return ShowMode(prefs) == "any" or CountMode(prefs) ~= "off"
 end
 
 -- Mail Memory wrote something its character list reads (MailMemory,
@@ -1455,12 +1527,12 @@ MB.Refresh = Refresh
 -- visibility depends on, captured at the moment the report is built.
 function MB.Diagnose()
   return string.format(
-    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s wants %s",
+    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s wants %s | count %s %d",
     tostring(runtimeActive), tostring(suppressing),
     tostring((EuiSkinCandidate())), tostring(euiSkin.applied),
     euiSkin.tries, tostring(euiSkin.fallback),
     (MB._button and MB._button:IsShown()) and "shown" or "hidden/none",
-    tostring((MailWaiting())), ShowMode(), tostring(view.shown))
+    tostring((MailWaiting())), ShowMode(), tostring(view.shown), CountMode(), view.count)
 end
 
 -- Called by Skin_EllesmereUI.RefreshAccents so an accent retune repaints a
@@ -1513,6 +1585,15 @@ function MB.GetShowWhen() return ShowMode() end
 function MB.SetShowWhen(mode)
   if not SHOW_MODES[mode] then return end
   Settings().show = mode
+  Refresh()
+end
+
+-- The number on the icon (MB.COUNT_MODES; DEFAULTS.count).
+function MB.GetCount() return CountMode() end
+
+function MB.SetCount(mode)
+  if not COUNT_MODES[mode] then return end
+  Settings().count = mode
   Refresh()
 end
 

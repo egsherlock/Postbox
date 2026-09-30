@@ -3852,6 +3852,21 @@ function Pages.minimap(col)
     })
   end
 
+  -- What the icon says beyond "mail": its count, then the two alerts drawn
+  -- on it. EllesmereUI's button carries them too.
+  local countNames = {
+    off = L["OPT_MINIMAP_COUNT_OFF"], me = L["OPT_MINIMAP_COUNT_ME"], all = L["OPT_MINIMAP_COUNT_ALL"],
+  }
+  local countItems = {}
+  for _, mode in ipairs((Icon and Icon.COUNT_MODES) or { "off" }) do
+    countItems[#countItems + 1] = { id = mode, name = countNames[mode] }
+  end
+  Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_COUNT_TITLE"], text = L["OPT_MINIMAP_COUNT_DESC"], items = countItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetCount() end,
+    set = function(id) if ns.MinimapButton then ns.MinimapButton.SetCount(id) end end,
+  })
+
   -- The flash is drawn on the icon, so with the icon off it has nothing to
   -- draw on: it greys with the rows above.
   Rows.Check(block, {
