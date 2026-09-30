@@ -166,6 +166,13 @@ longer play.
   over, and new installs without EllesmereUI or ElvUI start on it. Choose its
   font (your game font by default, Barlow Semi Condensed, the game's other
   fonts, or your EllesmereUI font) and text size.
+- **The Postbox style's colors are yours:** a Light mode (a paper-light
+  window with every color made to read on it), an accent (eight presets,
+  your class color, or any color), surface, tint, border color, row
+  stripes, a sheen, rounded corners, text outline and button text color.
+- **Dark accents stay readable everywhere:** an accent too dark or too pale
+  for the text it colors is lifted just enough, so a Shaman or Death Knight
+  accent under EllesmereUI or ElvUI now reads clearly.
 - **Window scale, 80% to 130%, in every style.**
 - **New window styles, with your mail list exactly as the Postbox style
   draws it** (Options, Window, Window style):
