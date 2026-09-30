@@ -573,6 +573,8 @@ local S = {
   pairs = {},     -- the rows of two checkboxes, which come apart to fit
   cols = {},      -- tab key -> its page's column (Rows.Column)
   pageH = {},     -- tab key -> its page's height
+  tabNeed = {},   -- each tab's measured need, and whether it is held to it
+  tabFixed = {},
   refresh = {},   -- run on every open and after a reset
   idle = {},      -- tab key -> what the inspector says at rest
   pages = {},     -- tab key -> its page of the list
@@ -2620,8 +2622,66 @@ do
     end
   end
 
+  -- Measured on every open. The strip is shared out evenly, the normal
+  -- case; only where a caption and its square need more than an even share
+  -- (a long translation) does that tab take what it needs, the rest
+  -- sharing what is left evenly -- and if even that cannot hold every
+  -- caption, the shares go back to even and a caption is cut, its tooltip
+  -- carrying it whole.
   function Tabs.Fit()
-    for i = 1, #TABS do FitOne(S.plates[TABS[i].key]) end
+    local T = ns.Theme
+    local n = #TABS
+    local strip = PANEL_W - 2 * EDGE
+    local edges = T.ColumnEdges(strip, n, TAB_GAP, S.tabEdges)
+    S.tabEdges = edges
+    local need, fixed = S.tabNeed, S.tabFixed
+    local even = (strip - (n - 1) * TAB_GAP) / n
+    local over = false
+    for i = 1, n do
+      local plate = S.plates[TABS[i].key]
+      local text, sq = plate.Text, plate.Square
+      text:SetText(plate.caption)
+      need[i] = TextW(text) + 12 + ((sq and sq:IsShown()) and 14 or 0)
+      fixed[i] = false
+      if need[i] > even then over = true end
+    end
+    if over then
+      -- Fix every tab whose need is over the share of the room still
+      -- unfixed, until none is; at most n passes.
+      local room, left = strip - (n - 1) * TAB_GAP, n
+      for _ = 1, n do
+        local share = room / left
+        local any = false
+        for i = 1, n do
+          if not fixed[i] and need[i] > share then
+            fixed[i], any = true, true
+            room, left = room - need[i], left - 1
+          end
+        end
+        if not any or left == 0 then break end
+      end
+      if room >= 0 and (left == 0 or room / left >= 1) then
+        -- What the unfixed share; with none, what is over goes to all.
+        local share = left > 0 and room / left or 0
+        local spare = left > 0 and 0 or room / n
+        local x = 0
+        for i = 1, n do
+          local w = (fixed[i] and need[i] or share) + spare
+          local e = edges[i]
+          e.left = math.floor(x + 0.5)
+          e.right = math.floor(x + w + 0.5)
+          e.width = e.right - e.left
+          x = x + w + TAB_GAP
+        end
+      end
+    end
+    for i = 1, n do
+      local plate, e = S.plates[TABS[i].key], edges[i]
+      plate:ClearAllPoints()
+      plate:SetPoint("TOPLEFT", plate:GetParent(), "TOPLEFT", EDGE + e.left, -TOP)
+      plate:SetWidth(e.width)
+      FitOne(plate)
+    end
   end
 
   -- state: "on", "off", or nil for no square at all.
