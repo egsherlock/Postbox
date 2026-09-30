@@ -164,6 +164,8 @@ longer play.
 - **ElvUI: Postbox uses your ElvUI accent** (value color), tabs included,
   and follows it live when you change it or switch profiles.
 - **Chinese clients: large gold amounts read in 万/亿 (萬/億).**
+- **French, German and Spanish are written with their own letters again:**
+  accents, umlauts, ß, ñ and ¿¡ throughout.
 - **Postbox Modern is now the Postbox style:** the clean dark look from our
   EllesmereUI skin, with no EllesmereUI needed. Your opacity and border carry
   over, and new installs without EllesmereUI or ElvUI start on it. Choose its
