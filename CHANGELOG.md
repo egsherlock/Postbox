@@ -47,8 +47,8 @@ your recipients, groups, Mail Memory and History are kept.*
 
 - **Senders in their class color**, your alts, friends and guildmates, in your
   UI's own class colors.
-- **Stack counts on item icons**, as your bags show them; hover the icon to
-  see everything in the mail.
+- **Stack counts and quality badges on item icons**, in the corners your bags
+  use; hover the icon to see everything in the mail.
 - **Take one item without opening the mail:** set Attachments on hover to Fan
   out and click the one you want. C.O.D. still asks first.
 - **Keep bag slots free** while collecting (1 to 12).
@@ -57,6 +57,7 @@ your recipients, groups, Mail Memory and History are kept.*
 - **Full bags stop a collection cleanly,** saying how many mails are left;
   make room and click to carry on. **Stuck** now means one mail's own
   problem, marked with a small triangle.
+- **The status line counts what you send too:** "Collected: 20 · Sent: 1".
 - **Time left shows on every mail**, the same way everywhere ("9h", "3d").
 - **Quality marks** are two plain settings: on the icon, and before or after
   the name.
@@ -85,6 +86,9 @@ your recipients, groups, Mail Memory and History are kept.*
 
 - **Options that show what they do:** a side panel explains and previews
   whatever you point at.
+- **Mail tab shows** the waiting dot after its name, before it, or not at all.
+- **Option lists stay put:** while one is open, the description beside it
+  stays on the setting you opened.
 - **What's new?** in game, the last three releases, from the options' footer
   or `/postbox whatsnew`.
 - **`/pb`** works like `/postbox`; either on its own opens the options, and
