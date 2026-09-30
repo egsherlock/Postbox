@@ -823,10 +823,13 @@ function Skin.ApplyBorder(frame)
   local key = Skin.GetBorderStyle()
 
   -- Match: the resolver's edge, where it is a line (compat); on the api
-  -- backend the shell's chrome is the edge and nothing is drawn here.
+  -- backend the shell's chrome is the edge and nothing is drawn here -- unless
+  -- the window wears the compat shell, built before the facade took over
+  -- mid-session (AdoptFacade), which has no chrome: it keeps its line.
   local edge = frame.__pbEuiEdge
   if key == BORDER_MATCH then
     local _, _, _, _, er, eg, eb, ea, px = Beside()
+    if px == 0 and frame.__pbShimShell then px = 1 end
     if px > 0 then
       PaintEdge(frame, er, eg, eb, ea, px)
     elseif edge then
