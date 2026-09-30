@@ -31,7 +31,7 @@ your recipients, groups, Mail Memory and History are kept.*
 
 - **The Postbox style** replaces Postbox Modern: the clean dark look, no
   EllesmereUI needed. Choose its accent (presets, your class color or any
-  color), surface, tint, border, row stripes, rounded corners, font and text
+  color), background color, tint, border, row stripes, rounded corners, font and text
   size, or switch it to **Light mode**. Your opacity and border carry over.
 - **Six window styles:** **Pillar Box** (its flag goes up when mail waits;
   pick the paint), **Faction** (Alliance or Horde, by character), **Post
@@ -88,6 +88,9 @@ your recipients, groups, Mail Memory and History are kept.*
   or `/postbox whatsnew`.
 - **`/pb`** works like `/postbox`; either on its own opens the options, and
   Postbox has a page under Settings, AddOns.
+- **Options in a clearer order:** what reshapes a page first, what the list
+  shows under "Under the list", and every count that heads a box counts the
+  whole box; rest on the Mail tab for what's left to collect.
 - **Reset settings** or **Reset everything**, each saying exactly what it
   clears.
 - **Clearer names:** Window grid docking is now Dock beside game windows, and
