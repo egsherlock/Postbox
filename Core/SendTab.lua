@@ -4838,61 +4838,28 @@ function Q.AttachAll(panel, bag, slot)
   local info = Q.ContainerInfo(bag, slot)
   local itemID = info and info.itemID
   if not itemID then return end
-  Q.AttachEvery(panel, itemID, info.hyperlink, bag, slot)
-end
-
--- Every stack of `itemID` in the bags, the one at bag/slot (when given)
--- first, the rest in bag order. Returns how many were added, and how many
--- stacks there were to add (unlocked: a stack already attached is locked in
--- the bags, and a queued one is refused as a duplicate, so neither is taken
--- twice).
-function Q.AttachEvery(panel, itemID, link, bag, slot)
   local limit = IsCODArmed(panel) and (K.SEND_SLOT_COUNT - AttachmentCount()) or nil
-  local added, seen = 0, 0
+  local added = 0
   local function Take(b, s)
     if limit and added >= limit then return end
     if Q.TryEnqueue(panel, b, s) then added = added + 1 end
   end
-  if bag then Take(bag, slot) end
+  -- The clicked stack first, then the rest in bag order.
+  Take(bag, slot)
   for b = 0, Q.LAST_BAG do
     local ok, count = pcall(C_Container.GetContainerNumSlots, b)
     for s = 1, (ok and tonumber(count)) or 0 do
       if b ~= bag or s ~= slot then
         local other = Q.ContainerInfo(b, s)
-        if other and other.itemID == itemID then
-          if not other.isLocked then seen = seen + 1 end
-          Take(b, s)
-          link = link or other.hyperlink
-        end
+        if other and other.itemID == itemID then Take(b, s) end
       end
     end
   end
-  if added == 0 then return 0, seen end
+  if added == 0 then return end
   Q.stats.all = (Q.stats.all or 0) + 1
   -- Into whatever slots are free now; the rest waits in the queue.
   TopUpFromQueue(panel)
-  ns.Print(ns.Plural("MSG_ATTACH_ALL", added, link or ""))
-  return added, seen
-end
-
--- Shift-click (or Alt+right-click, the bags' gesture for the same thing) on
--- an item already attached: the item's other stacks from the bags, into the
--- free slots and the queue behind them, by the same rules as Alt+right-click
--- in the bags -- under a C.O.D. only as many as the free slots hold. Not
--- while a send or a queue pass has the slots. The slot's own item is read
--- from the send frame (its id is GetSendMailItem's second return).
-function ST.AttachEveryStackOf(panel, slotIndex)
-  if not panel or pendingSend or Q.fillState then return end
-  if type(GetSendMailItem) ~= "function" then return end
-  local _, itemID = GetSendMailItem(slotIndex)
-  if type(itemID) ~= "number" then return end
-  local link = type(GetSendMailItemLink) == "function" and GetSendMailItemLink(slotIndex) or nil
-  -- Nothing to add at all is said; stacks that could not be added (a
-  -- C.O.D. with the slots full, an item that cannot be mailed) are not.
-  local added, seen = Q.AttachEvery(panel, itemID, link)
-  if added == 0 and seen == 0 then
-    ns.Print(L("MSG_ATTACH_ALL_NONE", link or "?"))
-  end
+  ns.Print(ns.Plural("MSG_ATTACH_ALL", added, info.hyperlink or ""))
 end
 
 function ST.OnGlobalMouseDown(button)
@@ -5442,7 +5409,6 @@ local function BuildAttachmentArea(panel)
     if not self.itemLink then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetHyperlink(self.itemLink)
-    GameTooltip:AddLine(L["ATTACH_SLOT_HINT"], 0.7, 0.7, 0.7, true)
     GameTooltip:Show()
   end
 
@@ -5457,17 +5423,6 @@ local function BuildAttachmentArea(panel)
   local function SlotClick(self, button)
     if type(ClickSendMailItemButton) ~= "function" then return end
     local hasCursorItem = (type(CursorHasItem) == "function" and CursorHasItem())
-
-    -- Shift-click on an attached item adds its other stacks
-    -- (ST.AttachEveryStackOf). Shift did nothing of its own here -- the client's own send
-    -- slots treat a shift-click as a plain one, and neither links -- and
-    -- Alt+right-click is the bags' gesture for the same thing, so it means
-    -- the same here rather than taking the item out.
-    if not hasCursorItem and self.itemLink
-       and ((button == "LeftButton" and IsShiftKeyDown()) or (button == "RightButton" and IsAltKeyDown())) then
-      ST.AttachEveryStackOf(panel, self.slotIndex)
-      return
-    end
 
     if button == "RightButton" and not hasCursorItem then
       -- Native behaviour: right-click with an empty cursor returns the attached
