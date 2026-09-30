@@ -339,6 +339,11 @@ function Dropdown.Create(parent, opts)
       thumb:SetScript("OnMouseUp", function(self)
         self:SetScript("OnUpdate", nil)
       end)
+      -- A list closed mid-drag never sees the mouse come up: the drag ends
+      -- with it, or it would resume following the cursor at the next open.
+      thumb:SetScript("OnHide", function(self)
+        self:SetScript("OnUpdate", nil)
+      end)
 
       rowParent = content
     end
