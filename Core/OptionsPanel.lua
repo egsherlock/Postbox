@@ -4114,7 +4114,6 @@ function Footer.Fit()
   x = math.floor(x + 0.5)
   f.bugText:ClearAllPoints()
   f.bugText:SetPoint("LEFT", f.band, "LEFT", x + mark, 0)
-  f.bugX, f.newsL, f.resetR = x, newsL, resetR
   S.footH = math.max(FOOT_BOTTOM,
     Footer.VERSION_GAP + math.ceil(f.version:GetStringHeight() or 0) + Footer.VERSION_FOOT)
 end
