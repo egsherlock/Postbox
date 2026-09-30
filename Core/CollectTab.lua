@@ -3973,7 +3973,10 @@ function AV.Build(panel, query)
   -- The arrange mode's Preview mail: the samples, as remembered mail.
   if panel._preview and Memory.PreviewRows then rows = Memory.PreviewRows() end
   panel._avRows, panel._avInfo = rows, info
+  -- The moment the columns are measured at is the one the rows are drawn
+  -- at (AV.UpdateRows), so an age measured as "9m" is not drawn as "10m".
   local now = time()
+  panel._avNow = now
   panel._avCols = (#rows > 0) and Memory.MeasureRows(panel, rows, now, AV.Row(panel, 1)) or {}
 
   local earned, spent = 0, 0
@@ -4012,7 +4015,7 @@ function AV.UpdateRows(panel)
   local first = max(1, floor(offset / stride) + 1)
   local last = first - 1
   if viewport > 0 then last = min(#rows, ceil((offset + viewport) / stride)) end
-  local now = time()
+  local now = panel._avNow or time()
   local used = 0
   -- A heading's click, made once per panel.
   local onHeader = panel._avOnHeader
@@ -5695,7 +5698,9 @@ function HV.BuildHistoryList(panel, query)
   -- than once per entry: a month of History is a thousand of them.
   local showEarned, showSpent = MoneyShown("earned", layout), MoneyShown("spent", layout)
   local earned, spent = 0, 0
+  -- The ages are drawn at the moment they are measured at (HV.UpdateHistoryRows).
   local now = time()
+  panel._hNow = now
   -- One walk, over this character's record or over each character's in
   -- turn: the next record is taken up when the one before runs out.
   local c, head, headed = 0, nil, false
@@ -5788,7 +5793,7 @@ function HV.UpdateHistoryRows(panel)
   if viewport > 0 then last = min(#list, ceil((offset + viewport) / stride)) end
 
   local pool = panel._hrows
-  local now = time()
+  local now = panel._hNow or time()
   local style = HV.AgeStyle()
   local used, heads = 0, 0
   for i = first, last do
