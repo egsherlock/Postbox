@@ -506,6 +506,16 @@ end
 -- so an older Postbox still finds the Modern it knew (see MigrateModern).
 local STYLE_CHOICES = { host = true, blizzard = true, postbox = true }
 
+-- The creative window styles (Core/Skin_Creative.lua) register their own keys.
+-- Asked at call time: a saved creative key on a client whose files have not
+-- loaded it (a /reload after an update, before the restart that finds a new
+-- file) is simply not a choice, and the look falls back as for any unknown key.
+local function IsStyleKey(style)
+  if STYLE_CHOICES[style] then return true end
+  local creative = ns.CreativeStyles
+  return (creative and type(creative.Has) == "function" and creative.Has(style)) and true or false
+end
+
 local function HostInstalled()
   return (_G.EllesmereUI or _G.ElvUI) and true or false
 end
@@ -528,14 +538,14 @@ function UI.GetStyleChoice()
     return "host"
   end
 
-  if STYLE_CHOICES[stored] then return stored end
+  if IsStyleKey(stored) then return stored end
   if HostInstalled() then return "host" end
   return (profile and profile.installStyle == "postbox") and "postbox" or "blizzard"
 end
 
 function UI.SetStyleChoice(style)
   if style == "modern" then style = "postbox" end
-  if not STYLE_CHOICES[style] then return end
+  if not IsStyleKey(style) then return end
   local store = ns.Store
   local profile = store and store.EnsurePath and store.EnsurePath("profile")
   if not profile then return end
@@ -2509,6 +2519,12 @@ local function UpdateCollectTabText()
   else
     tab:SetText(text)
   end
+
+  -- A creative window style shows the same state in its art (the post box's
+  -- flag, the tank by the title): told here, on the pass that already
+  -- follows the inbox, and nowhere else.
+  local skin = ns.Skin
+  if skin and type(skin.OnMailState) == "function" then skin.OnMailState(UI._state.mailboxOpen) end
 end
 
 -- What the shell does about an inbox update, once per frame however many

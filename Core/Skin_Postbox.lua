@@ -32,6 +32,9 @@ local _, ns = ...
 
 local Skin = {}
 Skin.IsPostboxStyle = true
+-- The creative window styles (Core/Skin_Creative.lua) are this skin with art
+-- laid round it, and claim it in its place when one of them is chosen.
+ns.PostboxSkin = Skin
 
 local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
 local FONT_DIR = "Interface\\AddOns\\Postbox\\Media\\Fonts\\"

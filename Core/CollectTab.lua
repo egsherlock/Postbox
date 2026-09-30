@@ -5975,6 +5975,10 @@ local function FitBanner(panel)
   local icons = ns.Core.Formatting.FormatMoneyIcons
   local strings = L()
   local up, down = "ff" .. T.Hex.positive, "ff" .. T.Hex.negative
+  -- A window style that lays the band on a light plate (the post box's white
+  -- enamel) inks the label and hands back the figures' dark twins.
+  local skin = ns.Skin
+  if skin and skin.BannerInk then up, down = skin.BannerInk(text, up, down) end
 
   local function Line(earnedKey, spentKey, parts, gap)
     return strings[earnedKey] .. icons(sums.earned, up, parts)
@@ -8695,6 +8699,9 @@ local function LayoutGrid(panel)
   local counts = panel._catCounts or {}
   local withCounts = ShowTabCounts()
   local picked = Selecting(panel)
+  -- A window style that dresses the sweeps by what they hold (the counter's
+  -- drawer and pigeonholes) is handed each button and its count here.
+  local dress = ns.Skin and ns.Skin.DressSweep
   do
     -- The primary also stays live while the server holds mail the client
     -- has not shown yet: its click fetches the next batch.
@@ -8703,6 +8710,7 @@ local function LayoutGrid(panel)
     if withCounts and n > 0 and not picked then caption = caption .. " (" .. FormatCount(n) .. ")" end
     primary:SetEnabled(picked or panel._moreOnServer or n > 0)
     T.FitText(primary:GetFontString(), primary:GetWidth() - M.gap, caption, primary)
+    if dress then dress(primary, n, true) end
   end
   for i = 1, #entries do
     local button = panel._gridById[entries[i].id]
@@ -8718,6 +8726,7 @@ local function LayoutGrid(panel)
         button:SetEnabled(n > 0)
       end
       T.FitText(button:GetFontString(), room, caption, button)
+      if dress then dress(button, n, false) end
     end
   end
   RV.PaintGridHandles(panel)

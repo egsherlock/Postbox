@@ -2729,6 +2729,12 @@ function Pages.window(col)
   if host then styleItems[#styleItems + 1] = { id = "host", name = host } end
   styleItems[#styleItems + 1] = { id = "blizzard", name = L["OPT_STYLE_BLIZZARD"] }
   styleItems[#styleItems + 1] = { id = "postbox",  name = L["OPT_STYLE_POSTBOX"] }
+  -- The creative styles (Core/Skin_Creative.lua), after Postbox's own.
+  local creative = ns.CreativeStyles
+  if creative and type(creative.Choices) == "function" then
+    local extra = creative.Choices()
+    for i = 1, #extra do styleItems[#styleItems + 1] = extra[i] end
+  end
   Rows.Dropdown(col, {
     title = L["OPT_STYLE_TITLE"], text = L["OPT_STYLE_DESC"], items = styleItems,
     get = function() return ns.MailboxUI.GetStyleChoice and ns.MailboxUI.GetStyleChoice() end,
@@ -2769,6 +2775,10 @@ function Pages.window(col)
   -- talking to. A style that publishes no such controls (Blizzard) simply
   -- contributes nothing here.
   if not Skin then return end
+  if Skin.IsCreativeStyle and Pages.windowCreative then
+    Pages.windowCreative(col, Skin)
+    return
+  end
   if own then
     Pages.windowPostbox(col, Skin)
     return
@@ -2867,6 +2877,60 @@ function Pages.windowPostbox(col, Skin)
     get = function() return Skin.GetBorderStyle() end,
     set = function(id)
       Skin.SetBorderStyle(id)
+      Ctx.Repaint()
+    end,
+  })
+
+  Rows.Group(col, L["OPT_GROUP_TEXT"])
+  local fontItems = {}
+  for _, choice in ipairs(Skin.GetFontChoices()) do
+    fontItems[#fontItems + 1] = { id = choice.key, name = choice.name }
+  end
+  Rows.Dropdown(col, {
+    title = L["OPT_FONT_TITLE"], text = L["OPT_FONT_DESC"], items = fontItems,
+    get = function() return Skin.GetFont() end,
+    set = function(id) Skin.SetFont(id) end,
+  })
+  local sizeItems = {}
+  for _, scale in ipairs(Skin.GetTextScaleChoices()) do
+    local pct = math.floor(scale * 100 + 0.5)
+    sizeItems[#sizeItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
+  end
+  Rows.Dropdown(col, {
+    title = L["OPT_TEXT_SIZE_TITLE"], text = L["OPT_TEXT_SIZE_DESC"], items = sizeItems,
+    get = function() return math.floor(Skin.GetTextScale() * 100 + 0.5) end,
+    set = function(id) Skin.SetTextScale((tonumber(id) or 100) / 100) end,
+  })
+end
+
+-- A creative window style's rows (Core/Skin_Creative.lua): its colour choice
+-- where it has one (the post box's paint), the opacity of the inside (its
+-- frame stays solid), and the font and text size, which it shares with the
+-- Postbox style. No border rows: the style's rim is the window's edge.
+function Pages.windowCreative(col, Skin)
+  local CS = ns.CreativeStyles
+  local def = CS and CS.Active and CS.Active()
+  Rows.Group(col, L["OPT_GROUP_COLORS"])
+  local variants = CS and CS.VariantChoices and CS.VariantChoices()
+  if def and variants then
+    Rows.Dropdown(col, {
+      title = L[def.variantTitleKey], text = L[def.variantDescKey], items = variants,
+      get = function() return CS.GetVariant() end,
+      set = function(id)
+        CS.SetVariant(id)
+        Ctx.Repaint()
+      end,
+    })
+  end
+  local opacityItems = {}
+  for _, pct in ipairs({ 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 25, 0 }) do
+    opacityItems[#opacityItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
+  end
+  Rows.Dropdown(col, {
+    title = L["OPT_BG_OPACITY_TITLE"], text = L["OPT_BG_OPACITY_DESC"], items = opacityItems,
+    get = function() return math.floor(Skin.GetBgOpacity() * 100 + 0.5) end,
+    set = function(id)
+      Skin.SetBgOpacity((tonumber(id) or 100) / 100)
       Ctx.Repaint()
     end,
   })
