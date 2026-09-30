@@ -1222,23 +1222,12 @@ do
     local mark = type(link) == "string" and (link:match("|A:Professions%-[^|]*|a")
       or link:match("|A:[^|]*[Qq]uality[^|]*|a")) or nil
     local atlas = mark and mark:match("|A:([^:|]+)") or nil
-    if atlas and onIcon then
-      local small = T.FirstAtlas({ (atlas:gsub("ChatIcon", "Icon")) .. "-Small", atlas })
-      s.Mark:SetAtlas(small or atlas, false)
-      s.MarkShadow:SetAtlas(small or atlas, false)
-      s.MarkShadow:SetVertexColor(0, 0, 0, 1)
-      -- At the icon's top-left, the list's size and place (RowRules).
-      local R0 = ns.CollectTab and ns.CollectTab.RowRules
-      local size = larger and (R0 and R0.MARK_SIZE_LARGE or 25.2) or (R0 and R0.MARK_SIZE or 21.6)
-      local inset = larger and (R0 and R0.MARK_IN_LARGE or 2.5) or (R0 and R0.MARK_IN or 2)
-      s.Mark:SetSize(size, size)
-      s.Mark:ClearAllPoints()
-      s.Mark:SetPoint("CENTER", s.Icon, "TOPLEFT", inset, -inset)
-      s.MarkShadow:SetSize(size + 2, size + 2)
-      s.MarkShadow:ClearAllPoints()
-      s.MarkShadow:SetPoint("CENTER", s.Mark, "CENTER", 0, -1)
-      s.Mark:Show()
-      s.MarkShadow:Show()
+    local R0 = ns.CollectTab and ns.CollectTab.RowRules
+    if atlas and onIcon and R0 and R0.ShowMark and R0.PlaceMark then
+      -- The list's own art, size and place (RowRules): the icon's top-left
+      -- corner, by the one rule every item icon follows.
+      R0.ShowMark(s.Mark, s.MarkShadow, atlas)
+      R0.PlaceMark(s.Mark, s.MarkShadow, s.Icon, iconSize)
     else
       s.Mark:Hide()
       s.MarkShadow:Hide()
