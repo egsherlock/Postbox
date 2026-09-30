@@ -6251,6 +6251,13 @@ function CT.RefreshMailList(panel)
   -- auction's price; it holds nothing, so never slots.
   local markHas = panel._markHas
   markHas.time, markHas.money, markHas.slots = false, false, false
+  -- Only the mails this view lists are measured: a finished mail folded
+  -- away under the divider (RV.Folded) or waiting in the Done tab widens no
+  -- column of the inbox's, and on the Done tab a mail still to collect
+  -- widens none of its. Both are known before the walk, as the split after
+  -- it reads them.
+  local measureOpen = measuring and view ~= VIEW_DONE
+  local measureDone = measuring and (view == VIEW_DONE or (RV.Mode() ~= "tab" and not RV.Folded(panel)))
 
   for index = 1, numItems do
     -- "Read" alone will not do: collecting marks every mail read as a side
@@ -6314,13 +6321,14 @@ function CT.RefreshMailList(panel)
       -- The sender column is as wide as the widest name it will show, up to
       -- the ceiling; an auction outcome shows its label, not "Auction House".
       -- (senderCap is zero while the arrangement hides the column.)
-      if measuring and cols.sender < senderCap then
+      local measured = finished and measureDone or (not finished and measureOpen)
+      if measured and cols.sender < senderCap then
         local label = AUCTION_OUTCOME[kind] and L()[AUCTION_OUTCOME[kind].key]
           or DisplaySender(sender or L()["SENDER_UNKNOWN"])
         cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), senderCap)
       end
 
-      if compact then
+      if compact and measured then
         if measureMoney then
           local text, moneyKind = RowMoneyText(index, hasCOD, tonumber(money) or 0, tonumber(cod) or 0, true)
           local shown = true
