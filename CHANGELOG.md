@@ -52,6 +52,11 @@ longer play.
   minimap icon at full size. Every dropdown now has a description, Sound on
   new mail moved to the Mail tab under Mail alerts, and Arrange columns and
   buttons opens arranging from either tab.
+- **`/pb` works like `/postbox`**, and either on its own opens the options,
+  anywhere. `/postbox help` lists the commands in your language, and
+  Postbox has a page under Settings, AddOns.
+- **Sending gold asks first**, "Send 500g to Name?", as the game's own mail
+  window does.
 - **Hide a character** from the character list with a right-click. Postbox
   still remembers its mail; Show brings it back.
 - **Another character's mailbox fits the top row.** Done and History step
@@ -59,11 +64,12 @@ longer play.
   kept (full name on hover).
 - **Right-click the character picker, or the other character's name,** to go
   back to your own mailbox, in the Mail tab and in the Mail Memory window.
-- **The Recipients window resizes like the Postbox window:** drag its corner,
+- **Manage Recipients resizes like the Postbox window:** drag its corner,
   or right-click the corner for the default size.
 - **Reset to defaults**, at the foot of the options, offers two resets.
-  Reset settings puts every option and window back and keeps your recipients,
-  groups, hidden characters, Mail Memory and History; Reset everything clears
+  Reset settings puts every option, window and arrangement back and keeps
+  your recipients, groups, hidden characters, Mail Memory and History;
+  Reset everything clears
   those too, keeps only the list of your characters, and asks twice.
 
 ### Improved
@@ -73,6 +79,14 @@ longer play.
   class color: in the mail list, History, Mail Memory and the reading pane.
   The colors are your own if your UI has them (EllesmereUI, ElvUI or a class
   color addon), and change as soon as you change them.
+- **Selected mail and category buttons agree:** with rows selected, "All
+  sold" takes only the selected sold mail, and each button counts what it
+  would take.
+- **Time left reads the same everywhere:** hours under a day ("9h"), then
+  whole days ("3d").
+- **Turning History off asks first**, and Never is the last choice.
+- **Every reset question says exactly what it puts back**, and the arrange
+  panel's reset is called Reset arrangement.
 - **Time left shows on every mail by default**, so the column never looks
   half empty. To see it only when a mail is about to go, choose Under 7, 3
   or 1 days on the Time left card while you arrange. If you picked a
