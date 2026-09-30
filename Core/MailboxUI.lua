@@ -1055,15 +1055,17 @@ local LEGACY_SWITCH = { time = "rowExpiry", money = "rowGold", slots = "rowSlots
 -- `count` of them: the mail rows' above, or History's below).
 local function ParseLayout(text, known, count)
   if type(text) ~= "string" then return nil end
-  local out, seen = { shown = {} }, {}
+  -- A column read twice is caught by its own entry in `shown`, which every
+  -- column read has, true or false.
+  local out = { shown = {} }
+  local shownOf = out.shown
   for token in text:gmatch("[^,]+") do
     local hidden = token:sub(1, 1) == "-"
     local id = hidden and token:sub(2) or token
-    if not known[id] or seen[id] then return nil end
-    seen[id] = true
+    if not known[id] or shownOf[id] ~= nil then return nil end
     local shown = (not hidden) or id == "subject"
     out[#out + 1] = { id = id, shown = shown }
-    out.shown[id] = shown
+    shownOf[id] = shown
   end
   if #out ~= count then return nil end
   return out
@@ -1083,23 +1085,43 @@ local function ParseHistoryLayout(text)
   return ParseLayout(text, HISTORY_COLUMN_KNOWN, #HISTORY_COLUMNS)
 end
 
--- An arrangement written as its string, or nil where it does not read back
--- (`parse`: the list's own reader).
-local function FormatLayout(layout, parse)
-  if type(layout) ~= "table" then return nil end
-  local parts = {}
-  for i = 1, #layout do
+-- An arrangement written as its string, or nil where it would not read back:
+-- each of the list's columns (`known`, `count` of them) once. Checked on
+-- the list itself rather than by reading the string back, and written
+-- through tables kept for it, so a drag's every change of place makes its
+-- string and nothing else. A hidden column's word is made once ("-money").
+local formatParts, formatSeen = {}, {}
+local HIDDEN_TOKEN = setmetatable({}, { __index = function(tokens, id)
+  local token = "-" .. id
+  tokens[id] = token
+  return token
+end })
+local function FormatLayout(layout, known, count)
+  if type(layout) ~= "table" or #layout ~= count then return nil end
+  local parts, seen = formatParts, formatSeen
+  local text
+  for i = 1, count do
     local entry = layout[i]
     local id = type(entry) == "table" and entry.id or nil
-    if not id then return nil end
-    parts[#parts + 1] = ((entry.shown == false and id ~= "subject") and "-" or "") .. id
+    if not (id and known[id]) or seen[id] then
+      count = i - 1
+      break
+    end
+    seen[id] = true
+    parts[i] = (entry.shown == false and id ~= "subject") and HIDDEN_TOKEN[id] or id
+    if i == count then text = table.concat(parts, ",", 1, count) end
   end
-  local text = table.concat(parts, ",")
-  return parse(text) and text or nil
+  for id in pairs(seen) do seen[id] = nil end
+  for i = 1, count do parts[i] = nil end
+  return text
 end
 
 local function FormatRowLayout(layout)
-  return FormatLayout(layout, ParseRowLayout)
+  return FormatLayout(layout, ROW_COLUMN_KNOWN, #ROW_COLUMNS)
+end
+
+local function FormatHistoryLayout(layout)
+  return FormatLayout(layout, HISTORY_COLUMN_KNOWN, #HISTORY_COLUMNS)
 end
 
 -- What an unarranged profile's rows showed: the names, then the figures in
@@ -1165,7 +1187,7 @@ function UI.SetRowLayout(layout)
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if not profile then return false end
   if profile.historyLayout == nil then
-    profile.historyLayout = FormatLayout(UI.GetHistoryLayout(), ParseHistoryLayout)
+    profile.historyLayout = FormatHistoryLayout(UI.GetHistoryLayout())
   end
   if profile.largeLayout == nil then
     profile.largeLayout = FormatRowLayout(UI.GetLargeLayout())
@@ -1312,7 +1334,7 @@ end
 
 -- layout: { {id=, shown=}, ... } in the new order, or nil for the default.
 function UI.SetHistoryLayout(layout)
-  local text = (layout == nil) and HISTORY_LAYOUT_DEFAULT or FormatLayout(layout, ParseHistoryLayout)
+  local text = (layout == nil) and HISTORY_LAYOUT_DEFAULT or FormatHistoryLayout(layout)
   if not text then return false end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if not profile then return false end
@@ -3825,7 +3847,7 @@ function UI.DiagnoseOptions()
   Named("historyGold", UI.GetGoldMode("history"), "both")
   Named("rows", FormatRowLayout(UI.GetRowLayout()) or "?", ROW_LAYOUT_DEFAULT)
   Named("largeRows", FormatRowLayout(UI.GetLargeLayout()) or "?", ROW_LAYOUT_DEFAULT)
-  Named("historyRows", FormatLayout(UI.GetHistoryLayout(), ParseHistoryLayout) or "?", HISTORY_LAYOUT_DEFAULT)
+  Named("historyRows", FormatHistoryLayout(UI.GetHistoryLayout()) or "?", HISTORY_LAYOUT_DEFAULT)
   Named("historyAge", UI.GetHistoryAge(), "short")
   do
     local other = ns.Store and ns.Store.Get and ns.Store.Get("profile.historyAgeOther")

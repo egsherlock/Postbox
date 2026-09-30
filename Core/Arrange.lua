@@ -159,12 +159,25 @@ function AR.SetLayout(list, kind)
   end
 end
 
--- A copy the caller may change, for AR.SetLayout.
-local function CopyLayout()
-  local layout, out = AR.Layout() or {}, {}
-  for i = 1, #layout do out[i] = { id = layout[i].id, shown = layout[i].shown } end
+-- A copy the caller may change, for AR.SetLayout: into `into`, whose
+-- entries are refilled rather than made again, or a new one. A move or a
+-- switch writes its change through one kept for it (AR.MoveColumn, below),
+-- which nothing holds past the write; a copy that is kept (a drag's order
+-- to put back) is a new one.
+local function CopyLayout(into)
+  local layout, out = AR.Layout() or {}, into or {}
+  for i = 1, #layout do
+    local entry = out[i]
+    if entry then
+      entry.id, entry.shown = layout[i].id, layout[i].shown
+    else
+      out[i] = { id = layout[i].id, shown = layout[i].shown }
+    end
+  end
+  for i = #out, #layout + 1, -1 do out[i] = nil end
   return out
 end
+local changeLayout = {}
 
 local function IndexOf(list, id)
   for i = 1, #list do
@@ -181,7 +194,7 @@ local function LinedUp()
 end
 
 function AR.MoveColumn(from, to)
-  local list = CopyLayout()
+  local list = CopyLayout(changeLayout)
   local entry = table.remove(list, from)
   if not entry then return end
   table.insert(list, math.max(1, math.min(to, #list + 1)), entry)
@@ -189,7 +202,7 @@ function AR.MoveColumn(from, to)
 end
 
 function AR.SetColumnShown(id, on)
-  local list = CopyLayout()
+  local list = CopyLayout(changeLayout)
   local i = IndexOf(list, id)
   if not i or AR.COLUMNS[id].fixed then return end
   list[i].shown = on and true or false
