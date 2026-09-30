@@ -113,8 +113,9 @@ longer play.
   icons, and a mark by the name, Before, After or Off. Your current choice
   carries over. A mark after a long name always shows; the name is
   shortened to make room.
-- **History's Collected column** reads "3d", "3d ago", "3 days ago", or the
-  date, "30 Sep" or "Sep 30"; choose on its card while you arrange.
+- **History's Collected column** shows time ago ("3d", "3d ago", "3 days
+  ago") or the date ("30 Sep", "Sep 30", "30/09", "09/30"): choose Time ago
+  or Date on its card while you arrange, then the format.
 - **Row layout: Columns or Packed.** In Columns, gold stands under gold:
   each figure keeps its own column down the list, in the Mail tab, History
   and Mail Memory, and a subject runs on only through columns its mail
