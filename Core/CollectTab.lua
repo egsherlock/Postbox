@@ -7427,6 +7427,32 @@ function RV.SettlePaidTake(detail, take, landed)
   return false
 end
 
+-- A modified click on a mail's item tile is the game's item rules, as on
+-- its own mail tiles: Shift links, Ctrl tries on (HandleModifiedItemClick),
+-- and whatever it leaves is nothing, never the plain click's take. The link
+-- where the body is not loaded yet is the item's own, by id. `slot` nil is
+-- the gold tile, which has no item to link. True when a modifier was held.
+function RV.ModifiedItemClick(index, slot)
+  local modified
+  if type(IsModifiedClick) == "function" then
+    modified = IsModifiedClick()
+  else
+    modified = IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown()
+  end
+  if not modified then return false end
+  if not slot or type(HandleModifiedItemClick) ~= "function" then return true end
+  local link = GetInboxItemLink(index, slot)
+  if not link then
+    local _, itemID = GetInboxItem(index, slot)
+    if itemID and C_Item and type(C_Item.GetItemInfo) == "function" then
+      local _, generic = C_Item.GetItemInfo(itemID)
+      link = generic
+    end
+  end
+  if link then HandleModifiedItemClick(link) end
+  return true
+end
+
 local function TakeOneAttachment(detail, slot)
   -- LiveIndex, not detail.mailIndex: a take is a command, and it may only be
   -- aimed at an index that still names the mail this overlay is showing.
@@ -7438,7 +7464,10 @@ local function TakeOneAttachment(detail, slot)
   -- firing a take the service would answer "collected" to and blanking a slot
   -- whose item never moved.
   local index, slotIndex = LiveIndex(detail), slot.slotIndex
-  if not index or not slotIndex or not slot.itemLink then return end
+  if not index or not slotIndex then return end
+  -- Shift- and Ctrl-click link and try on, as the fan's tiles do.
+  if RV.ModifiedItemClick(index, slotIndex) then return end
+  if not slot.itemLink then return end
 
   -- The FIRST take from a C.O.D. mail pays the whole amount, so the same
   -- confirmation the Collect button gets stands in front of a slot click too.
@@ -10838,25 +10867,7 @@ do
     local plate = Fan.plate
     local index = LiveIndex(plate)
     if not index then return end
-    local modified
-    if type(IsModifiedClick) == "function" then
-      modified = IsModifiedClick()
-    else
-      modified = IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown()
-    end
-    if modified then
-      if tile.gold or type(HandleModifiedItemClick) ~= "function" then return end
-      local link = GetInboxItemLink(index, tile.slot)
-      if not link then
-        local _, itemID = GetInboxItem(index, tile.slot)
-        if itemID and C_Item and type(C_Item.GetItemInfo) == "function" then
-          local _, generic = C_Item.GetItemInfo(itemID)
-          link = generic
-        end
-      end
-      if link then HandleModifiedItemClick(link) end
-      return
-    end
+    if RV.ModifiedItemClick(index, not tile.gold and tile.slot or nil) then return end
     if tile.gold then return Fan.TakeGold(plate, index) end
     if tile.why then return end
     Fan.TakeItem(plate, index, tile.slot)
