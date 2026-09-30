@@ -999,6 +999,17 @@ local function DoSendMail(panel, confirmedMails, confirmedGold)
     return
   end
 
+  -- C.O.D. is a price on the mail in the slots, and the queue's items go on
+  -- in further mails that carry no price of their own (Q.SendQueued). So a
+  -- press with both is not sent: the player lets go of one or the other.
+  -- (A C.O.D. ticked once the queue holds items; the queue itself takes
+  -- nothing while C.O.D. is ticked, Q.QueueOpen.)
+  local queued = panel._queue
+  if IsCODArmed(panel) and queued and #queued > 0 then
+    PopupNotice(L["ERR_COD_QUEUE"])
+    return
+  end
+
   -- More than one mail from this press: say what is about to happen, and
   -- ask once. The count is read again on accept -- the dialog is not modal,
   -- and a slot emptied or a queue forgotten while it stood changes the
@@ -4625,6 +4636,16 @@ ContinueQueue = function(panel, pending)
     -- The player emptied the queue in the meantime: the press is complete.
     if not panel._queue or #panel._queue == 0 then
       Settle()
+      return
+    end
+
+    -- C.O.D. ticked while the run was under way: the mails still to go would
+    -- carry no price. The run ends here, with the queue and the draft as
+    -- they stand, for the reason DoSendMail gives for the same press.
+    if IsCODArmed(panel) then
+      panel._run = nil
+      SetSendButtonBusy(panel, false)
+      PopupNotice(L["ERR_COD_QUEUE"])
       return
     end
 
