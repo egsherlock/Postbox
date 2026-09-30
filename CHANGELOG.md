@@ -27,6 +27,11 @@ longer play.
   before or after the subject or down onto the second line, and the figures
   along the second line. Any part of a row can be grabbed, a single figure
   included. Arranging one row size never moves the other.
+- **Preview mail while you arrange.** A switch in the arrange overview fills
+  the list with sample mail (gold earned and spent, a C.O.D., short and long
+  time left, every auction outcome, crafting quality) so you can see how
+  your columns and Row layout look. None of it can be collected, and your
+  own mail comes back when you switch it off or finish.
 - **An inspector beside the window while you arrange.** It explains the mode,
   lists everything you have hidden (a click brings it back), and holds Row
   layout and Reset. Click a column, a block or a category button for its
