@@ -41,6 +41,15 @@ A release players should notice -- a big one, or one that needs a full restart -
 may open with one or two plain sentences above the headings: what it is, and
 anything the player has to do. Nothing else goes above them.
 
+**A major release may group by what the player does (Elliott, 2026-09-30).**
+When New and Improved would run past twenty bullets, as 1.50.0 did, they are
+replaced by a few headings named for what a player does ("Arrange your window",
+"New looks", "At the mailbox", "Sending", "Fits your UI", ...), new and improved
+together, each bullet leading with its bold effect. `### Fixed` still comes last
+and keeps its plain sentences. `## 1.50.0` is the model for this shape; smaller
+releases keep New / Improved / Fixed. The in-game "What's new" is the same
+release, condensed and translated: update it with the changelog.
+
 **Concise, not necessarily one line (Elliott, 2026-09-27).** An entry explains
 itself in a short, clear form, and is never a wall of text. Most are one line; a
 larger feature that genuinely needs explaining may take a touch more (a second

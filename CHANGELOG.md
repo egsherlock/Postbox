@@ -111,29 +111,29 @@ work at the mailbox.
 
 ### Fixed
 
-- **A C.O.D. question always answers for the mail you asked about,** even if
+- A C.O.D. question always answers for the mail you asked about, even if
   you open another mail before answering.
-- **C.O.D. and the attachment queue:** Send asks you to clear the queue or
+- C.O.D. and the attachment queue: Send asks you to clear the queue or
   uncheck C.O.D. before it sends.
-- **Delete and Return act on the mail you chose,** even while another mail
+- Delete and Return act on the mail you chose, even while another mail
   addon is busy at the mailbox.
-- **Ctrl+Enter sends a mail once.**
-- **A letter holding only gold keeps its words in History** when you collect
+- Ctrl+Enter sends a mail once.
+- A letter holding only gold keeps its words in History when you collect
   it.
-- **Delete when done** removes every letter you empty, the first one after
+- Delete when done removes every letter you empty, the first one after
   login included.
-- **A C.O.D. mail with several items comes out whole** after you pay, and
+- A C.O.D. mail with several items comes out whole after you pay, and
   taking one item from it in the reading view keeps the mail open for the
   rest.
-- **Collecting auction mail** no longer flashes a "Read, nothing left (1)"
+- Collecting auction mail no longer flashes a "Read, nothing left (1)"
   bar at the foot of the list.
-- **Grayed-out items in your bags** keep one steady gray while you attach.
-- **Short gold figures never round up:** 12,960g reads 12.9k.
-- **A passing mail-server error** no longer marks a mail as stuck.
-- **The mail list stops at its last mail;** slot counts are never cut short.
-- **Questions asked from the options or other Postbox windows** no longer
+- Grayed-out items in your bags keep one steady gray while you attach.
+- Short gold figures never round up: 12,960g reads 12.9k.
+- A passing mail-server error no longer marks a mail as stuck.
+- The mail list stops at its last mail; slot counts are never cut short.
+- Questions asked from the options or other Postbox windows no longer
   open behind them.
-- **On EllesmereUI's round minimaps** the mail icon sits on the rim.
+- On EllesmereUI's round minimaps the mail icon sits on the rim.
 
 ## 1.40.1
 
