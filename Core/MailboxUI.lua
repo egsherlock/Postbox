@@ -1032,6 +1032,26 @@ function UI.SetPerfRecord(mode)
   if profile then profile.perfRecord = mode end
 end
 
+-- The order a list is shown in, from the sort beside its search: "mailbox",
+-- as the box holds them (the default), or "expiry", the least time left
+-- first. One for the Mail tab ("inbox": this character's box, another's
+-- picked from the list, every box's matches) and one for Mail Memory
+-- ("memory"), kept as profile.inboxSort and profile.memorySort and stored
+-- only when it is expiry, so nothing stored is the mailbox's. Read once per
+-- refresh through the store's cached path, so no memo.
+local LIST_SORT_KEY = { inbox = "inboxSort", memory = "memorySort" }
+function UI.GetListSort(list)
+  local key = LIST_SORT_KEY[list]
+  local profile = key and ns.Store and ns.Store.Get and ns.Store.Get("profile")
+  return (type(profile) == "table" and profile[key] == "expiry") and "expiry" or "mailbox"
+end
+function UI.SetListSort(list, order)
+  local key = LIST_SORT_KEY[list]
+  if not key or (order ~= "mailbox" and order ~= "expiry") then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile[key] = (order == "expiry") and "expiry" or nil end
+end
+
 -- A mail row's columns: which it shows, and in what order, left to right.
 -- One string on the profile -- "read,icon,sender,subject,time,money,slots",
 -- a leading "-" on a column it hides -- and one arrangement for every list

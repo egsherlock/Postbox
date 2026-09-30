@@ -2335,20 +2335,37 @@ local function Matches(mail, query)
 end
 MM.Fold = Fold
 
--- mails, sort, now -> the mails in the order asked for. "expiry": the
--- soonest to go first, and what has already gone last.
-local function Sorted(mails, sort, now)
-  if sort ~= "expiry" then return mails end
-  local out = {}
-  for i = 1, #mails do out[i] = mails[i] end
-  table.sort(out, function(a, b)
-    local ea, eb = tonumber(a.expires) or 0, tonumber(b.expires) or 0
-    local ga, gb = ea <= now, eb <= now
-    if ga ~= gb then return gb end
-    if ea ~= eb then return ea < eb end
-    return (a.subject or "") < (b.subject or "")
-  end)
-  return out
+-- The order "expiry": the soonest to go first, and what has already gone
+-- last. One comparator for every sort, made once; `Order.now` is the moment
+-- the order is taken at, set before each sort. The mails are sorted in
+-- `Order.list`, kept for it, and handed on from there, so a refresh makes no
+-- table and no function for its order ("mailbox" is the box's own, and
+-- sorts nothing).
+local Order = { now = 0, list = {} }
+function Order.ByExpiry(a, b)
+  local now = Order.now
+  local ea, eb = tonumber(a.expires) or 0, tonumber(b.expires) or 0
+  local ga, gb = ea <= now, eb <= now
+  if ga ~= gb then return gb end
+  if ea ~= eb then return ea < eb end
+  return (a.subject or "") < (b.subject or "")
+end
+
+-- Appends to `rows` the first `n` mails of Order.list, in the expiry order,
+-- each through `copy` where one is given, and empties the list for the next.
+function Order.Append(rows, n, now, copy)
+  local list = Order.list
+  -- Nothing past the n given: a sort that threw part-way left its mails.
+  for i = #list, n + 1, -1 do list[i] = nil end
+  if n > 1 then
+    Order.now = now
+    table.sort(list, Order.ByExpiry)
+  end
+  local at = #rows
+  for i = 1, n do
+    rows[at + i] = copy and copy(list[i]) or list[i]
+    list[i] = nil
+  end
 end
 
 -- A mail of this visit's look, as a list may keep it: the next capture fills
@@ -2394,25 +2411,35 @@ end
 -- Every character's matches, each under a heading with its name. A hidden
 -- character is not searched: the search of every box browses the other
 -- characters, and the player took that one out of them.
-local function SearchAll(query, now, sort, all)
+local function SearchAll(query, now, order, all)
   local rows, characters = {}, 0
   all = all or MM.Characters()
+  -- In the expiry order each box's matches are gathered in Order.list and
+  -- sorted there, under the box's heading.
+  local byExpiry, list = order == "expiry", Order.list
   for i = 1, #all do
     local st = all[i]
     local snap = (not st.hidden) and SnapshotOf(st.realm, st.name) or nil
-    local mails = Sorted(snap and snap.mails or {}, sort, now)
-    local found = nil
-    for j = 1, #mails do
-      if Matches(mails[j], query) then
-        if not found then
-          found = true
+    local mails = snap and snap.mails
+    local copy = (snap ~= nil and snap == live) and Frozen or nil
+    local found = 0
+    for j = 1, mails and #mails or 0 do
+      local mail = mails[j]
+      if Matches(mail, query) then
+        if found == 0 then
           characters = characters + 1
           rows[#rows + 1] = { header = true, realm = st.realm, name = st.name,
             label = MM.ClassName(st.realm, st.name) }
         end
-        rows[#rows + 1] = (snap == live) and Frozen(mails[j]) or mails[j]
+        found = found + 1
+        if byExpiry then
+          list[found] = mail
+        else
+          rows[#rows + 1] = copy and copy(mail) or mail
+        end
       end
     end
+    if byExpiry and found > 0 then Order.Append(rows, found, now, copy) end
   end
   return rows, characters
 end
@@ -2476,13 +2503,22 @@ function MM.RowsFor(realm, name, opts)
   -- would list those mails twice.
   local atBox = me and state and state.mailboxOpen
   local rows = atBox and {} or PendingRows(WatchFor(realm, name, false), arrived, from, snapshot)
-  local mails = Sorted(snapshot and snapshot.mails or {}, opts.sort, now)
-  for i = 1, #mails do rows[#rows + 1] = mails[i] end
+  -- The record after the arrivals: as the box has it, or sorted in
+  -- Order.list on its way (the arrivals stay first either way).
+  local mails = snapshot and snapshot.mails
+  local count = mails and #mails or 0
+  if opts.sort == "expiry" then
+    local list = Order.list
+    for i = 1, count do list[i] = mails[i] end
+    Order.Append(rows, count, now)
+  else
+    for i = 1, count do rows[#rows + 1] = mails[i] end
+  end
 
-  local info = { realm = realm, name = name, me = me, snapshot = snapshot, total = #mails }
-  info.hidden = snapshot and math.max(0, (tonumber(snapshot.total) or #mails) - #mails) or 0
+  local info = { realm = realm, name = name, me = me, snapshot = snapshot, total = count }
+  info.hidden = snapshot and math.max(0, (tonumber(snapshot.total) or count) - count) or 0
   -- The rows so far are the arrivals, then the record.
-  info.box = BoxTotal(snapshot, #rows - #mails, now)
+  info.box = BoxTotal(snapshot, #rows - count, now)
 
   local query = opts.query or ""
   if query ~= "" then
@@ -2526,36 +2562,49 @@ end
 -- The arrange mode's Preview mail (CollectTab.lua, "Preview mail") as rows
 -- of this kind: the Mail tab's sample set, each mail as a snapshot would
 -- have remembered it. Made once per set; read, never written, by the rows.
-function MM.PreviewRows()
+-- `order` "expiry": the same rows, the soonest to go first -- a second list,
+-- sorted once per set.
+function MM.PreviewRows(order)
   local CT = ns.CollectTab
   local mails = CT and CT.PreviewMails and CT.PreviewMails() or {}
   local gen = CT and CT.PreviewGen and CT.PreviewGen() or 0
   local kept = MM._previewRows
-  if kept and kept.gen == gen then return kept.rows end
-  local now = time()
-  local rows = {}
-  for i = 1, #mails do
-    local m = mails[i]
-    local first = m.items[1]
-    -- Its items as a capture lists them (section 1): id and count in turn.
-    local list, n = nil, 0
-    for k = 1, #m.items do
-      local item = m.items[k]
-      if item.id then
-        list = list or {}
-        list[n + 1], list[n + 2] = item.id, tonumber(item.count) or 1
-        n = n + 2
+  if not (kept and kept.gen == gen) then
+    local now = time()
+    local rows = {}
+    for i = 1, #mails do
+      local m = mails[i]
+      local first = m.items[1]
+      -- Its items as a capture lists them (section 1): id and count in turn.
+      local list, n = nil, 0
+      for k = 1, #m.items do
+        local item = m.items[k]
+        if item.id then
+          list = list or {}
+          list[n + 1], list[n + 2] = item.id, tonumber(item.count) or 1
+          n = n + 2
+        end
       end
+      rows[i] = {
+        sender = m.sender, subject = m.subject, money = m.money, cod = m.cod, paid = m.price,
+        items = #m.items, expires = now + math.floor(m.days * 86400), read = m.read,
+        kind = m.kind, icon = m.icon, link = first and first.link or nil, id = first and first.id or nil,
+        stuck = false, it = list,
+      }
     end
-    rows[i] = {
-      sender = m.sender, subject = m.subject, money = m.money, cod = m.cod, paid = m.price,
-      items = #m.items, expires = now + math.floor(m.days * 86400), read = m.read,
-      kind = m.kind, icon = m.icon, link = first and first.link or nil, id = first and first.id or nil,
-      stuck = false, it = list,
-    }
+    kept = { gen = gen, rows = rows }
+    MM._previewRows = kept
   end
-  MM._previewRows = { gen = gen, rows = rows }
-  return rows
+  if order ~= "expiry" then return kept.rows end
+  local sorted = kept.byExpiry
+  if not sorted then
+    sorted = {}
+    local list, rows = Order.list, kept.rows
+    for i = 1, #rows do list[i] = rows[i] end
+    Order.Append(sorted, #rows, time())
+    kept.byExpiry = sorted
+  end
+  return sorted
 end
 
 function MM.PreviewRelease()
@@ -2614,8 +2663,71 @@ local function IconPlate(parent, atlases, size)
   return plate
 end
 
+-- The order a list is shown in, from its sort (MailboxUI.GetListSort):
+-- "mailbox" or "expiry". `list` is "memory" for this window, "inbox" for
+-- the Mail tab's.
+function MM.SortOf(list)
+  local UI = ns.MailboxUI
+  return UI and type(UI.GetListSort) == "function" and UI.GetListSort(list) or "mailbox"
+end
+
+-- The sort, right of the search in both windows, this one's and the Mail
+-- tab's: the box's own order (newest first) or the soonest to expire
+-- first. A square plate wearing the sort glyph at its own size in the
+-- middle, one grey in every state (textSecondary, the token nearest the
+-- mockup's #cfcfcf for this plate's glyph). It does not turn with the
+-- order: the order shows in the plate's selection, and its tooltip says
+-- which it is and what a click does. `get()` answers the order on screen;
+-- `toggle()` changes it and shows the list in it. plate.Paint() paints the
+-- plate for get(), only when that changed.
+function MM.NewSortPlate(parent, size, get, toggle)
+  local T = ns.Theme
+  local sort = T.CreatePlate(parent, "segment")
+  sort:SetSize(size, size)
+  sort:SetText("")
+  sort.Icon = T.Glyph and T.Glyph(sort, "sort", nil, "OVERLAY") or nil
+  if sort.Icon then
+    sort.Icon:SetPoint("CENTER")
+    T.SetColor(sort.Icon, "textSecondary")
+  else
+    sort:SetText("v")
+  end
+  function sort.Paint()
+    local on = get() == "expiry"
+    if sort.isSelected ~= on then T.SetPlateSelected(sort, on) end
+  end
+  local function Tip(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText(L("SORT_CURRENT", L[get() == "expiry" and "SORT_EXPIRY_TITLE" or "SORT_NEWEST_TITLE"]))
+    GameTooltip:AddLine(L["SORT_TIP"], 0.7, 0.7, 0.7, true)
+    GameTooltip:Show()
+  end
+  sort:SetScript("OnClick", function(self)
+    toggle()
+    sort.Paint()
+    -- The tooltip names the order on screen: it changes with the click.
+    if GameTooltip:IsOwned(self) then Tip(self) end
+  end)
+  sort:HookScript("OnEnter", Tip)
+  sort:HookScript("OnLeave", function() GameTooltip:Hide() end)
+  T.SetPlateSelected(sort, get() == "expiry")
+  return sort
+end
+
 local function BuildSearch(frame)
   local T = ns.Theme
+  -- The sort at the row's right end, the search beside it (MM.NewSortPlate):
+  -- the order is remembered (MailboxUI.GetListSort, "memory").
+  local sort = MM.NewSortPlate(frame, HEADER_H, function() return MM.SortOf("memory") end, function()
+    local UI = ns.MailboxUI
+    if UI and type(UI.SetListSort) == "function" then
+      UI.SetListSort("memory", MM.SortOf("memory") == "expiry" and "mailbox" or "expiry")
+    end
+    if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
+    Refresh(frame)
+  end)
+  sort:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(PAD - 2), HEADER_Y)
+  frame.Sort = sort
   -- Theme's search box, as the Mail tab's is: the toggle inside its right end
   -- searches every character's box (Refresh shows it and places the clear
   -- button beside it).
@@ -2632,7 +2744,7 @@ local function BuildSearch(frame)
       tip:AddLine(L[frame.searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"], 1, 1, 1, true)
     end,
   })
-  search.Wrap:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(PAD - 2), HEADER_Y)
+  search.Wrap:SetPoint("RIGHT", sort, "LEFT", -4, 0)
   frame.Search = search
   frame.SearchWrap, frame.SearchBox, frame.SearchClear = search.Wrap, search.Box, search.Clear
   -- Repaints the toggle for frame.searchAll, wherever that is set from.
@@ -2670,7 +2782,8 @@ local function Back(frame)
   end
 end
 
--- The character picker and the sort, left of the search on the top row.
+-- The character picker, left of the search on the top row, and whose box
+-- left of that.
 local function BuildHeader(frame)
   local T = ns.Theme
   local picker = IconPlate(frame, CLASS_FALLBACK, HEADER_H)
@@ -2693,50 +2806,11 @@ local function BuildHeader(frame)
   picker:HookScript("OnLeave", function() GameTooltip:Hide() end)
   frame.Picker = picker
 
-  -- Newest first, as the box has them, or the soonest to expire first. The
-  -- same square plate as the picker's, wearing the sort glyph at its own
-  -- size in the middle. It does not turn with the order, as the atlas it
-  -- replaced did not: the order shows in the plate's selection (PaintSort).
-  -- One grey in every state: textSecondary, the token nearest the mockup's
-  -- #cfcfcf for this plate's glyph.
-  local sort = T.CreatePlate(frame, "segment")
-  sort:SetSize(HEADER_H, HEADER_H)
-  sort:SetText("")
-  sort.Icon = T.Glyph and T.Glyph(sort, "sort", nil, "OVERLAY") or nil
-  if sort.Icon then
-    sort.Icon:SetPoint("CENTER")
-    T.SetColor(sort.Icon, "textSecondary")
-  else
-    sort:SetText("v")
-  end
-  sort:SetPoint("RIGHT", picker, "LEFT", -4, 0)
-  local function PaintSort()
-    T.SetPlateSelected(sort, frame.sort == "expiry")
-  end
-  local function SortTip(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:SetText(L[frame.sort == "expiry" and "SORT_EXPIRY_TITLE" or "SORT_NEWEST_TITLE"])
-    GameTooltip:AddLine(L["SORT_TIP"], 0.7, 0.7, 0.7, true)
-    GameTooltip:Show()
-  end
-  sort:SetScript("OnClick", function(self)
-    frame.sort = (frame.sort ~= "expiry") and "expiry" or nil
-    PaintSort()
-    if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
-    Refresh(frame)
-    -- The tooltip names the order on screen: it changes with the click.
-    if GameTooltip:IsOwned(self) then SortTip(self) end
-  end)
-  sort:HookScript("OnEnter", SortTip)
-  sort:HookScript("OnLeave", function() GameTooltip:Hide() end)
-  frame.Sort = sort
-  PaintSort()
-
   -- Whose box, and how much is waiting in it: the name in its class colour,
   -- the count beside it, in the warning tone when the box needs a look.
   frame.Who = T.CreateText(frame, "label")
   frame.Who:SetPoint("LEFT", frame, "TOPLEFT", PAD, HEADER_Y - HEADER_H / 2)
-  frame.Who:SetPoint("RIGHT", sort, "LEFT", -8, 0)
+  frame.Who:SetPoint("RIGHT", picker, "LEFT", -8, 0)
   frame.Who:SetJustifyH("LEFT")
   frame.Who:SetWordWrap(false)
 
@@ -2833,10 +2907,20 @@ function Refresh(frame)
   -- One character list for the whole refresh: the search of every box and
   -- the picker's "anyone else?" both read it.
   local characters = MM.Characters()
-  local rows, info = MM.RowsFor(v and v.realm, v and v.name,
-    { query = query, all = frame.searchAll, sort = frame.sort, characters = characters })
+  -- In the order the sort keeps for this window, its plate painted for it.
+  local order = MM.SortOf("memory")
+  frame.Sort.Paint()
+  -- What is asked of the box, in a table kept for it.
+  local opts = frame._rowsOpts
+  if not opts then
+    opts = {}
+    frame._rowsOpts = opts
+  end
+  opts.query, opts.all, opts.sort, opts.characters = query, frame.searchAll, order, characters
+  local rows, info = MM.RowsFor(v and v.realm, v and v.name, opts)
+  opts.characters = nil
   -- The arrange mode's Preview mail: the samples in the box's place.
-  if frame._preview then rows = MM.PreviewRows() end
+  if frame._preview then rows = MM.PreviewRows(order) end
   local now = time()
   local count = #rows
 
@@ -2858,14 +2942,12 @@ function Refresh(frame)
   local others = MM.HasOthers(characters) or v ~= nil
   frame.Picker:SetShown(others)
   frame.Search.Place(others)
-  -- With no one else to show, the picker steps aside and the sort takes
-  -- its place beside the search, the name's room reaching to it: no gap
-  -- where the picker stood. It comes back, and the sort with it, as soon
-  -- as another box is known.
+  -- With no one else to show, the picker steps aside and the name's room
+  -- reaches to the search: no gap where the picker stood. It comes back as
+  -- soon as another box is known.
   if frame._pickerShown ~= others then
     frame._pickerShown = others
-    frame.Sort:ClearAllPoints()
-    frame.Sort:SetPoint("RIGHT", others and frame.Picker or frame.SearchWrap, "LEFT", -4, 0)
+    frame.Who:SetPoint("RIGHT", others and frame.Picker or frame.SearchWrap, "LEFT", -8, 0)
   end
   T.SetPlateSelected(frame.Picker, v ~= nil)
   -- The name is the way back while it is another character's (Back).
@@ -2917,13 +2999,13 @@ function Refresh(frame)
   frame:SetSize(width, wanted)
 end
 
--- The top row -- whose box, its sort, the character picker and the search --
+-- The top row -- whose box, the character picker, the search and its sort --
 -- steps aside while the arrange mode's column header stands in its place,
 -- and comes back as it was: each part as Refresh last left it, shown or
 -- not (Refresh, while the header stands, records what it lays out and
 -- hides it again). `set` is what Refresh shows or hides by itself; the rest
 -- is always there.
-MM.TOP_ROW = { "Who", "WhoHit", "Sort", "Picker", "SearchWrap", set = { WhoHit = true, Picker = true } }
+MM.TOP_ROW = { "Who", "WhoHit", "Picker", "SearchWrap", "Sort", set = { WhoHit = true, Picker = true } }
 
 function MM.HideTopRow(frame)
   local kept = frame._topKept
