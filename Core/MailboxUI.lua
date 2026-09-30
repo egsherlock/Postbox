@@ -293,6 +293,11 @@ local RESET_KEEP = {
   -- decided when it was first made. Reset to defaults returns a profile to
   -- its own default, so it stays.
   installStyle     = true,
+  -- How many days History keeps. A setting, but History is kept through a
+  -- reset (its dialog says so), and History is pruned to this: back on the
+  -- default 7, a longer choice would delete every entry older than a week
+  -- at the next read of it.
+  historyDays      = true,
 }
 
 -- One step of the re-apply below. Every step runs whatever the one before it
