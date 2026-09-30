@@ -621,18 +621,25 @@ end
 -- so switching styles is live with no reload. On the compat backend the chosen
 -- style is the window's only frame.
 --
--- There is no "match EllesmereUI" here, and there never really was one.
--- EllesmereUI has no border for windows in general: every module owns the
--- border of its own kind of frame -- each unit frame, each bar, the minimap,
--- the chat panel, each damage meter window, the tooltip and the popup menus --
--- and most of them default to none or to a 1px black line hugging a bar. The
--- old "Match" read EllesmereUIDB.windowBorderSize/Texture, keys that no version
--- of EllesmereUI has ever written at the root (the damage meter keeps its
--- window border in its own profile, default size 0), so it always resolved to
--- no border. That is kept as the default, exactly: an unset profile draws no
--- border, as every unset profile always has, and nothing needs migrating.
+-- "Match EllesmereUI", the default, is the edge the windows beside Postbox
+-- have (Beside), not a setting of EllesmereUI's: EllesmereUI has no border
+-- for windows in general -- every module owns the border of its own kind of
+-- frame, most of them none or a 1px black line hugging a bar, and the root
+-- windowBorderSize/Texture an old Match read have never existed. So Match is:
+--
+--   api    -- EllesmereUI's own shell chrome, which S.Shell lays down for
+--             every border but None (Apply's noBorder); nothing of Postbox's.
+--   compat -- a line one physical pixel wide on the window's outer edge, in
+--             the resolver's colour: atrocityEssentials' window edge where it
+--             paints the windows (its backdrop's EdgeFor line, on the same
+--             outermost pixel), a black one otherwise. Drawn by Postbox
+--             (EnsureEdge), at whatever scale the window is.
+--
+-- Unset is Match. An explicitly saved None stays None, and every other style
+-- is the shared engine's, drawn alone at its size step.
 local BORDER_NONE = "none"
-local DEFAULT_BORDER = BORDER_NONE
+local BORDER_MATCH = "match"
+local DEFAULT_BORDER = BORDER_MATCH
 local DEFAULT_BORDER_SIZE = 2
 local THICKNESS_STEP = { thin = 1, normal = 2, heavy = 3 }
 
@@ -657,17 +664,18 @@ function Skin.GetBorderStyle()
   return DEFAULT_BORDER
 end
 
+-- Unset, or Match written by hand: both are Match, the default.
 function Skin.IsBorderDefault()
-  return GetProfile().euiBorder == nil
+  local saved = GetProfile().euiBorder
+  return saved == nil or saved == BORDER_MATCH
 end
 
--- Read by the options panel: whether the border rows offer a "leave it alone"
--- entry. Neither this skin nor the Postbox style does: the Postbox style's
--- list names its own default (Thin), and here the only thing such an entry
--- could name is the None already listed.
--- Unset still reads as None, through GetBorderStyle above.
+-- Read by the options panel: whether the border row offers a "leave it alone"
+-- entry, named as the opacity row's is ("Match EllesmereUI"). Here it is Match,
+-- the edge of the windows beside Postbox, stored as unset. The Postbox style
+-- offers none: its list names its own default (Thin).
 function Skin.OffersBorderDefault()
-  return false
+  return true
 end
 
 function Skin.ResetBorder()
@@ -701,6 +709,7 @@ function Skin.GetBorderChoices()
 end
 
 function Skin.SetBorderStyle(key)
+  if key == BORDER_MATCH then return Skin.ResetBorder() end
   local p = GetProfile()
   p.euiBorder = key
   if EUI and EUI.GetBorderTextureDefaultThickness then
@@ -715,9 +724,110 @@ function Skin.SetBorderSize(step)
   Skin.ApplyBorder()
 end
 
+-- The edge of the windows beside Postbox (Beside): r, g, b, a, its thickness
+-- in physical pixels (0: the shell's chrome is the edge, on the api backend)
+-- and whose windows those are. Read by the options panel's drawing.
+function Skin.GetEdge()
+  local _, _, _, _, er, eg, eb, ea, px, source = Beside()
+  return er, eg, eb, ea, px, source
+end
+
+-- One physical pixel in `frame`'s own units, at the scale it draws at:
+-- atrocityEssentials' EdgeFor, and EllesmereUI's PP one-pixel. 768 UI units
+-- span the screen's height at scale 1, so a pixel is 768 / the physical height
+-- at scale 1, and that over the frame's effective scale here.
+local function OnePixel(frame)
+  local es = frame.GetEffectiveScale and frame:GetEffectiveScale()
+  if type(es) ~= "number" or es <= 0 then return 1 end
+  local ph
+  if type(GetPhysicalScreenSize) == "function" then
+    local _, h = GetPhysicalScreenSize()
+    ph = h
+  end
+  if type(ph) == "number" and ph > 0 then return 768 / ph / es end
+  if PixelUtil and type(PixelUtil.GetPixelToUIUnitFactor) == "function" then
+    local ok, factor = pcall(PixelUtil.GetPixelToUIUnitFactor)
+    if ok and type(factor) == "number" and factor > 0 then return factor / es end
+  end
+  return 1 / es
+end
+
+-- Match's line, on a frame of Postbox's own over the window: four strips,
+-- each `px` physical pixels thick, inside the window's rect with their outer
+-- side on its outer edge -- where atrocityEssentials' backdrop draws its edge
+-- (the backdrop is the window's own rect; BackdropTemplate lays its edge
+-- inside it) and where EllesmereUI's PP border sits. Pixel-grid snapping off,
+-- as both of theirs have it: a strip exactly one pixel thick then covers
+-- exactly one row of pixels wherever the window stands, where a snapped one
+-- can round to none. Above the window's contents, as every border style but
+-- Shadow is. Made the first time Match is drawn on the window.
+local function EnsureEdge(frame)
+  local edge = frame.__pbEuiEdge
+  if edge then return edge end
+  edge = CreateFrame("Frame", nil, frame)
+  edge:EnableMouse(false)
+  edge:SetAllPoints(frame)
+  for i = 1, 4 do
+    local strip = edge:CreateTexture(nil, "OVERLAY", nil, 7)
+    if strip.SetSnapToPixelGrid then
+      strip:SetSnapToPixelGrid(false)
+      strip:SetTexelSnappingBias(0)
+    end
+    edge[i] = strip
+  end
+  frame.__pbEuiEdge = edge
+  return edge
+end
+
+-- Lays the strips out again only when their thickness moved (a new window or
+-- UI scale), so an ordinary apply is the four colours and nothing else.
+local function PaintEdge(frame, r, g, b, a, px)
+  local edge = EnsureEdge(frame)
+  local w = px * OnePixel(frame)
+  if edge.width ~= w then
+    edge.width = w
+    local top, bottom, left, right = edge[1], edge[2], edge[3], edge[4]
+    top:ClearAllPoints()
+    top:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    top:SetHeight(w)
+    bottom:ClearAllPoints()
+    bottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    bottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    bottom:SetHeight(w)
+    left:ClearAllPoints()
+    left:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -w)
+    left:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, w)
+    left:SetWidth(w)
+    right:ClearAllPoints()
+    right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -w)
+    right:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, w)
+    right:SetWidth(w)
+  end
+  for i = 1, 4 do edge[i]:SetColorTexture(r, g, b, a) end
+  edge:SetFrameLevel((frame:GetFrameLevel() or 1) + 8)
+  edge:Show()
+end
+
 -- Re-draw the outer border from the saved style/size. Safe to call any time.
 function Skin.ApplyBorder(frame)
   if not frame then return Skin.ForEachWindow(Skin.ApplyBorder) end
+  local key = Skin.GetBorderStyle()
+
+  -- Match: the resolver's edge, where it is a line (compat); on the api
+  -- backend the shell's chrome is the edge and nothing is drawn here.
+  local edge = frame.__pbEuiEdge
+  if key == BORDER_MATCH then
+    local _, _, _, _, er, eg, eb, ea, px = Beside()
+    if px > 0 then
+      PaintEdge(frame, er, eg, eb, ea, px)
+    elseif edge then
+      edge:Hide()
+    end
+  elseif edge then
+    edge:Hide()
+  end
+
   if not (EUI and EUI.ApplyBorderStyle) then return end
 
   local host = frame.__pbEuiBorderHost
@@ -728,11 +838,10 @@ function Skin.ApplyBorder(frame)
     frame.__pbEuiBorderHost = host
   end
 
-  local key = Skin.GetBorderStyle()
-
   -- A chosen style is drawn alone: on the compat backend nothing else frames
-  -- the window (the shim lays down no chrome of its own).
-  if key == BORDER_NONE then
+  -- the window (the shim lays down no chrome of its own). None and Match draw
+  -- nothing from the shared engine.
+  if key == BORDER_NONE or key == BORDER_MATCH then
     pcall(EUI.ApplyBorderStyle, host, 0, 0, 0, 0, 0, "solid")
     host:Hide()
     return
@@ -1904,7 +2013,8 @@ function Skin.Diagnose()
     style       = hostLook and (style .. ", EllesmereUI look " .. hostLook) or style,
     look        = hostLook,
     borderStyle = Skin.GetBorderStyle(),
-    borderSize  = Skin.GetBorderSize(),
+    -- Match has no size step: its line's width in pixels (0: the shell's chrome).
+    borderSize  = (Skin.GetBorderStyle() == BORDER_MATCH) and px or Skin.GetBorderSize(),
     bgOpacity   = Skin.GetBgOpacity(),
     shellArt    = shellArt,
     windowBuilt = frame ~= nil,

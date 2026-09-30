@@ -1476,13 +1476,20 @@ do
     end
     win.Fill:SetColorTexture(r, g, b, alpha)
 
-    -- The border: none, or a line as thick as its size step. A skin with no
-    -- border of its own to choose (ElvUI) draws its one-unit edge; a stock
-    -- window wears Blizzard's frame.
+    -- The border: none, or a line as thick as its size step. Match is the
+    -- edge of the windows beside Postbox: one unit in their edge's colour, or
+    -- the one-unit light edge where that edge is the host's own frame. A skin
+    -- with no border of its own to choose (ElvUI) draws its one-unit edge; a
+    -- stock window wears Blizzard's frame.
     local size, a = 0, 0
+    local er, eg, eb = 1, 1, 1
     if skin then
       local style = type(skin.GetBorderStyle) == "function" and skin.GetBorderStyle() or "none"
-      if style ~= "none" then
+      if style == "match" and type(skin.GetEdge) == "function" then
+        local ok, cr, cg, cb, ca, px = pcall(skin.GetEdge)
+        size, a = 1, 0.6
+        if ok and type(px) == "number" and px > 0 then er, eg, eb, a = cr, cg, cb, ca end
+      elseif style ~= "none" then
         local step = type(skin.GetBorderSize) == "function" and tonumber((skin.GetBorderSize())) or 1
         size = math.max(1, math.min(4, step or 1))
         a = (style == "light") and 0.35 or 0.75
@@ -1495,7 +1502,7 @@ do
     local e = win.Edges
     for i = 1, 4 do
       e[i]:ClearAllPoints()
-      e[i]:SetColorTexture(1, 1, 1, a)
+      e[i]:SetColorTexture(er, eg, eb, a)
       e[i]:SetShown(size > 0)
     end
     if size > 0 then
@@ -3045,11 +3052,11 @@ function Pages.window(col)
   -- host it means match that UI, and under Postbox's own it means the
   -- value the skin was authored with.
   local autoName = HostSkinName() and L("OPT_APPEARANCE_MATCH", HostSkinName()) or L["OPT_APPEARANCE_DEFAULT"]
-  -- The border rows offer that entry only where it names something. Under
-  -- EllesmereUI it cannot: the suite has no window border to match (see
-  -- Core/Skin_EllesmereUI.lua), and "Match EllesmereUI" had always drawn
-  -- None. There an unset border simply shows as None and its size as the
-  -- step it would draw at.
+  -- The border row offers that entry where the skin has an edge to match:
+  -- under EllesmereUI, "Match EllesmereUI", the edge the windows beside
+  -- Postbox have (Core/Skin_EllesmereUI.lua), and an unset border is it. The
+  -- size row never does: a size is a step of the chosen style, and Match has
+  -- none of its own.
   local borderAuto = true
   if type(Skin.OffersBorderDefault) == "function" then
     borderAuto = Skin.OffersBorderDefault() and true or false
@@ -3061,7 +3068,9 @@ function Pages.window(col)
     borderItems[#borderItems + 1] = { id = choice.key, name = choice.name }
   end
   Rows.Dropdown(col, {
-    title = L["OPT_BORDER_TITLE"], text = L["OPT_BORDER_DESC"], items = borderItems,
+    title = L["OPT_BORDER_TITLE"],
+    text = (borderAuto and HostSkinName()) and L("OPT_BORDER_DESC_MATCH", HostSkinName()) or L["OPT_BORDER_DESC"],
+    items = borderItems,
     get = function()
       if borderAuto and Skin.IsBorderDefault and Skin.IsBorderDefault() then return "auto" end
       return Skin.GetBorderStyle()
@@ -3073,18 +3082,14 @@ function Pages.window(col)
   })
 
   local sizeItems = {}
-  if borderAuto then sizeItems[1] = { id = "auto", name = autoName } end
   for step = 1, 4 do
     sizeItems[#sizeItems + 1] = { id = step, name = string.format(L["OPT_BORDER_SIZE_STEP"], step) }
   end
   Rows.Dropdown(col, {
     title = L["OPT_BORDER_SIZE_TITLE"], text = L["OPT_BORDER_SIZE_DESC"], items = sizeItems,
-    get = function()
-      if borderAuto and Skin.IsBorderSizeDefault and Skin.IsBorderSizeDefault() then return "auto" end
-      return Skin.GetBorderSize()
-    end,
+    get = function() return Skin.GetBorderSize() end,
     set = function(id)
-      if id == "auto" then Skin.ResetBorderSize() else Skin.SetBorderSize(id) end
+      Skin.SetBorderSize(id)
       Ctx.Repaint()
     end,
   })
