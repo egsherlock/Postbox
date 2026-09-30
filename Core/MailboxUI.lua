@@ -2552,25 +2552,51 @@ end
 local TAB_ORDER = { "collect", "send" }
 local TAB_LABEL_KEY = { collect = "TAB_COLLECT", send = "TAB_SEND" }
 
+-- What the Mail tab wears while mail is waiting (profile.tabIndicator): the
+-- dot after its name, "Mail •" (the default, stored as nothing); the dot
+-- before it, "• Mail" ("before"); or the name alone ("none"). Its own
+-- setting, whatever Show mail counts says: the tab's one job is to say, from
+-- the Send tab, that mail is waiting, and the numbers are the list's.
+local TAB_DOT = "\226\128\162"
+local TAB_INDICATORS = { dot = true, before = true, none = true }
+
+function UI.GetTabIndicator()
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.tabIndicator")
+  return TAB_INDICATORS[stored] and stored or "dot"
+end
+
+-- The Mail tab's caption as `mode` has it: its name, and the dot where the
+-- mode puts it when `dot` is given -- a colour ("|cffrrggbb"), or true for
+-- the dot in the caption's own colour. The tab's caption and the options'
+-- pictures of it (Core/OptionsPanel.lua) come from the one name and the one
+-- dot, in every language.
+function UI.TabCaption(mode, dot)
+  local name = L("TAB_COLLECT")
+  if not dot or mode == "none" then return name end
+  local mark = (dot == true) and TAB_DOT or (dot .. TAB_DOT .. "|r")
+  if mode == "before" then return mark .. " " .. name end
+  return name .. " " .. mark
+end
+
 -- The Mail tab's caption while the mailbox is open: "Mail •", an accent dot
 -- while anything is still to collect, so the Send tab shows at a glance that
--- mail is waiting. No number, and nothing on hover: the Inbox segment right
--- under the tab counts the whole box and each button what it would collect,
--- and a copy of one of those on the tab read as a duplicate. (It once had a
--- dropdown of its own -- dot, count, none -- beside "Show counts"; a stored
--- tabCaption is ignored.)
+-- mail is waiting -- or where UI.GetTabIndicator puts it. No number, and
+-- nothing on hover: the Inbox segment right under the tab counts the whole
+-- box and each button what it would collect, and a copy of one of those on
+-- the tab read as a duplicate. (It once had a dropdown of its own -- dot,
+-- count, none -- beside "Show counts"; a stored tabCaption is ignored.)
 local function UpdateCollectTabText()
   local frame = UI._frame
   local tab = frame and frame.TabButtons and frame.TabButtons.collect
   if not tab then return end
 
-  local text = L("TAB_COLLECT")
+  local mode = UI.GetTabIndicator()
+  local dot
   local collect = ns.CollectTab
-  if UI._state.mailboxOpen and collect and type(collect.InboxCounts) == "function" then
+  if UI._state.mailboxOpen and mode ~= "none" and collect and type(collect.InboxCounts) == "function" then
     local toCollect = tonumber((collect.InboxCounts())) or 0
 
     local theme = ns.Theme
-    local suffix
     -- The lightest possible "you've got mail": one dot, gone the moment
     -- nothing is left to collect -- and it carries the STATE, not just the
     -- fact. Orange when the server refused something (the same orange the row
@@ -2589,13 +2615,13 @@ local function UpdateCollectTabText()
         r, g, b = theme.GetAccentTone("mark")
       end
       if r then
-        suffix = ("|cff%02x%02x%02x\226\128\162|r"):format(
+        dot = ("|cff%02x%02x%02x"):format(
           math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5),
           math.floor(b * 255 + 0.5))
       end
     end
-    if suffix then text = text .. " " .. suffix end
   end
+  local text = UI.TabCaption(mode, dot)
 
   -- Never a bare SetText: the skins hide or recolour this label, and SetText
   -- alone undoes that (see Theme.SetTabText).
@@ -2611,6 +2637,14 @@ local function UpdateCollectTabText()
   -- follows the inbox, and nowhere else.
   local skin = ns.Skin
   if skin and type(skin.OnMailState) == "function" then skin.OnMailState(UI._state.mailboxOpen) end
+end
+
+-- nil sets the default, the dot after the name.
+function UI.SetTabIndicator(mode)
+  if mode ~= nil and not TAB_INDICATORS[mode] then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.tabIndicator = (mode ~= nil and mode ~= "dot") and mode or nil end
+  UpdateCollectTabText()
 end
 
 -- What the shell does about an inbox update, once per frame however many
@@ -3889,6 +3923,7 @@ function UI.DiagnoseOptions()
   Named("qualityIcon", UI.GetQualityIcon() and "on" or "off", "on")
   Named("qualityName", UI.GetQualityName(), "off")
   Named("readMail", UI.GetReadMode(), "fold")
+  Named("tabIndicator", UI.GetTabIndicator(), "dot")
   Named("historyDays", UI.GetHistoryDays(), "7")
   Named("afterSend", UI.GetAfterSendKeep(), "nothing")
   Named("keepFree", UI.GetKeepFreeSlots(), "0")

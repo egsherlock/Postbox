@@ -3103,6 +3103,27 @@ function Pages.mail(col)
       if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
     end,
   })
+  -- What the window's Mail tab wears while mail is waiting, each choice a
+  -- picture of the caption itself, in the client's language: the dot after
+  -- the name (the default), before it, or the name alone. Its own setting,
+  -- beside the counts but not under them.
+  do
+    local UI = ns.MailboxUI
+    local function Caption(mode)
+      if UI.TabCaption then return UI.TabCaption(mode, true) end
+      return L["TAB_COLLECT"]
+    end
+    Rows.Dropdown(col, {
+      title = L["OPT_TAB_INDICATOR_TITLE"], text = L["OPT_TAB_INDICATOR_DESC"],
+      items = {
+        { id = "dot",    name = Caption("dot") },
+        { id = "before", name = Caption("before") },
+        { id = "none",   name = Caption("none") },
+      },
+      get = function() return UI.GetTabIndicator and UI.GetTabIndicator() or "dot" end,
+      set = function(id) if UI.SetTabIndicator then UI.SetTabIndicator(id) end end,
+    })
+  end
 
   Rows.Group(col, L["OPT_COLLECTING_HEADING"])
   -- Nothing to refresh: the mapping is read at the moment a row is clicked,
