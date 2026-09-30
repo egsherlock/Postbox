@@ -19,8 +19,8 @@ your recipients, groups, Mail Memory and History are kept.*
 - **Each list keeps its own layout:** one-line rows, Larger mail rows (on a
   two-line header that mirrors the row) and History, each with its own
   columns and choices.
-- **Preview mail** fills the list with sample mail while you arrange, so every
-  column has something to show. Arrange... in Options works away from a
+- **Test mail** fills the list with sample mail while you arrange, so every
+  column has something to show. Arrange Postbox in Options works away from a
   mailbox too.
 - **Row layout: Columns or Packed.** Gold stands under gold, or each row
   closes its gaps and the subject gets the room.
@@ -50,7 +50,7 @@ your recipients, groups, Mail Memory and History are kept.*
   see everything in the mail.
 - **Take one item without opening the mail:** set Attachments on hover to Fan
   out and click the one you want. C.O.D. still asks first.
-- **Keep bag slots free** while collecting (1 to 10).
+- **Keep bag slots free** while collecting (1 to 12).
 - **Selected mail and category buttons agree:** "All sold" with rows selected
   takes only the selected sold mail.
 - **Full bags stop a collection cleanly,** saying how many mails are left;
@@ -73,13 +73,16 @@ your recipients, groups, Mail Memory and History are kept.*
 - **Sending gold asks first**, as the game's own mail window does, and asks
   again if the name, the amount or C.O.D. changes before you answer.
 - **After sending, keep** nothing, the recipient, or the recipient and subject.
+- **Ctrl+Enter sends** is a setting, on by default, and the Send button shows
+  the keys.
 - **Shift-click an attached item** to link it, Ctrl-click to try it on.
 
 ### Options, commands and languages
 
 - **Options that show what they do:** a side panel explains and previews
   whatever you point at.
-- **What's new** in game, from the options' footer or `/postbox whatsnew`.
+- **What's new?** in game, the last three releases, from the options' footer
+  or `/postbox whatsnew`.
 - **`/pb`** works like `/postbox`; either on its own opens the options, and
   Postbox has a page under Settings, AddOns.
 - **Reset settings** or **Reset everything**, each saying exactly what it
@@ -140,6 +143,9 @@ your recipients, groups, Mail Memory and History are kept.*
 - A window border you choose under EllesmereUI (Solid, Glow, ...) is drawn
   on its own, with no shadowed frame inside the window, and stays sharp
   when you change the window scale.
+- Option names that were cut short in some languages (Stack counts on item
+  icons, and some tabs) show in full, and the section lines in the options
+  read clearly in every look.
 - On EllesmereUI's round minimaps the mail icon sits on the rim.
 
 ## 1.40.1
