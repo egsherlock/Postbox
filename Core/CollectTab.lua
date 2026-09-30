@@ -5826,8 +5826,11 @@ end
 
 -- Whether the read mail is folded away under its divider: the player's own
 -- click, remembered between visits. A search shows it regardless -- a match
--- must not hide behind a fold. Nothing else folds or opens it: not a scroll.
+-- must not hide behind a fold -- and so does Preview mail, whose read samples
+-- are there to show the columns a read mail's row has. Nothing else folds
+-- or opens it: not a scroll.
 function RV.Folded(panel)
+  if panel and panel._preview then return false end
   local UI = ns.MailboxUI
   local folded = UI and type(UI.GetOption) == "function" and UI.GetOption("readFolded") or false
   return folded and not Searching(panel)
