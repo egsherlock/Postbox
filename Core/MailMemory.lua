@@ -1246,45 +1246,142 @@ function MM.ItemFacts(row, k)
   return icon, name, quality, mark, link
 end
 
--- row, tile -> where what the row's mail held can be taken: at the mailbox
--- of the character whose box it is, named, or at a mailbox, for the one
--- being played. `tile`: a fan tile's line, which adds the link gesture.
-function MM.TakeHint(row, tile)
+-- row, tile, dress -> where what the row's mail held can be taken: at the
+-- mailbox of the character whose box it is, named, or at a mailbox, for the
+-- one being played. `tile`: a fan tile's line, which adds the link gesture,
+-- and the try-on where `dress` (an item there is something to try on).
+function MM.TakeHint(row, tile, dress)
   local myRealm, myName = Me()
   local realm, name = row.boxRealm or myRealm, row.boxName
-  if name and not (name == myName and realm == myRealm) then
-    return L(tile and "MEMORY_TILE_ON" or "MEMORY_TAKE_ON", MM.ClassName(realm, name, true))
+  local on = name and not (name == myName and realm == myRealm)
+  if tile then
+    if on then return L(dress and "MEMORY_TILE_ON_DRESS" or "MEMORY_TILE_ON", MM.ClassName(realm, name, true)) end
+    return L[dress and "MEMORY_TILE_HERE_DRESS" or "MEMORY_TILE_HERE"]
   end
-  return L[tile and "MEMORY_TILE_HERE" or "MEMORY_TAKE_HERE"]
+  if on then return L("MEMORY_TAKE_ON", MM.ClassName(realm, name, true)) end
+  return L["MEMORY_TAKE_HERE"]
+end
+
+-- R, row[, withRead] -> the State fact of a remembered mail (the rules'
+-- TipState): stuck as the snapshot recorded it, with the possibilities for
+-- a reason, as the Mail tab says it; and, for the row's own tooltip
+-- (`withRead`), read or unread while the read mark's column is hidden.
+local function TipState(R, row, withRead)
+  if not (R and R.TipState) then return end
+  local mail = row.mail
+  local unread
+  if withRead and R.Shows and not R.Shows("read") then unread = not (mail.read and not mail.pending) end
+  R.TipState(row.stuck and true or nil, unread)
 end
 
 -- owner, row -> the tooltip of the icon of a remembered mail that held
 -- several items, as the Mail tab's icon has one (RV.ItemsTooltip): how
 -- many, one line per item in the Mail tab's own words (the rules'
--- ItemLine), the gold or the C.O.D. price, and where it can be taken.
--- Whether there was a list to show.
+-- ItemLine), the gold and the C.O.D. price, why it is stuck, and where it
+-- can be taken. Whether there was a list to show.
 function MM.ItemsTooltip(owner, row)
   local R = Rules()
+  local T = ns.Theme
   local mail = row.mail
   if not (mail and row.itemList and R and R.ItemLine) then return false end
-  GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-  GameTooltip:ClearLines()
-  GameTooltip:SetText(ns.Plural("COUNT_ITEMS", row.iconItems), 1, 1, 1)
+  T.TipBegin(owner)
+  T.TipTitle(ns.Plural("COUNT_ITEMS", row.iconItems))
   local list = row.itemList
   for k = 1, row.iconItems do
     local icon, name, quality, mark = MM.ItemFacts(row, k)
     R.ItemLine(icon, name, quality, mark, list[2 * k])
   end
+  if R.MoneyFacts then R.MoneyFacts(tonumber(mail.money) or 0, tonumber(mail.cod) or 0) end
+  TipState(R, row)
+  T.TipHint(MM.TakeHint(row))
+  GameTooltip:Show()
+  return true
+end
+
+-- The Holds line's pieces, filled and joined once per hover.
+local tipHolds = {}
+
+-- row[, owner] -> the tooltip of a remembered mail's row, in the Mail tab
+-- rows' format (CollectTab's RV.RowTip): the subject; From, where the row
+-- shows less of the sender; Holds, what the snapshot says it held; the
+-- price a won auction cost, where the row does not show it; Time left,
+-- where the row does not; State; then where it can be collected. Read
+-- from the record on hover; a bind makes no string for it. Whether there
+-- was a mail to describe.
+function MM.RowTip(row, owner)
+  local mail = row.mail
+  local R = Rules()
+  if not (mail and R and R.TipItem) then return false end
+  local T = ns.Theme
+  T.TipBegin(owner or row)
+  local subject = mail.subject
+  local named = (mail.sender ~= "" and mail.sender) or nil
+  local title = (subject and subject ~= "") and subject or named or L["MEMORY_SENDER_UNKNOWN"]
+  T.TipTitle(title)
+
+  if named and (not R.Shows("sender") or row.tipShort or row.Sender.__pbOverflowText) then
+    T.TipFact(L["TIP_FROM"], R.TipSender(named, row.boxRealm))
+  end
+
+  -- Holds: the stacks the snapshot listed (the first item's own link and
+  -- the slot count, on a record saved before it kept a list), unless the
+  -- one stack is the one an auction's subject names; the gold unless the
+  -- row shows exactly that; the C.O.D. price.
+  local buf = tipHolds
+  for i = #buf, 1, -1 do buf[i] = nil end
+  local stacks = row.iconItems > 0 and row.iconItems or (tonumber(mail.items) or 0)
+  local first
+  if stacks == 1 and subject and R.IsAuction and R.IsAuction(mail.kind) then
+    local _, name = MM.ItemFacts(row, 1)
+    if not name and type(mail.link) == "string" then name = mail.link:match("|h%[(.-)%]|h") end
+    first = name and name:gsub("%s*|A:.-|a", "")
+  end
+  if stacks > 0 and not (first and subject:find(first, 1, true)) then
+    if row.iconItems > 0 then
+      local list = row.itemList
+      for k = 1, math.min(row.iconItems, R.TIP_ITEMS) do
+        local _, name, quality, mark = MM.ItemFacts(row, k)
+        R.TipItem(buf, name, quality, mark, list[2 * k])
+      end
+      R.TipMore(buf, row.iconItems - R.TIP_ITEMS)
+    elseif type(mail.link) == "string" then
+      local name = mail.link:match("|h%[(.-)%]|h")
+      name = name and name:gsub("%s*|A:.-|a", "")
+      local quality = C_Item and type(C_Item.GetItemQualityByID) == "function" and mail.id
+        and C_Item.GetItemQualityByID(mail.id) or nil
+      R.TipItem(buf, name, quality, R.QualityMark and R.QualityMark(mail.link) or nil, mail.count)
+      R.TipMore(buf, stacks - 1)
+    end
+  end
   local money, cod = tonumber(mail.money) or 0, tonumber(mail.cod) or 0
-  if (money > 0 or cod > 0) and R.MoneyText then
-    local text = R.MoneyText(cod > 0, money, cod, mail.paid, false)
-    if text then GameTooltip:AddLine(text, 1, 1, 1) end
+  local moneyOnRow = row.ColMoney:IsShown()
+  local goldShown
+  if money > 0 and moneyOnRow and R.MoneyShown("earned") then
+    goldShown = ns.Core.Formatting.FormatMoneyCompact(money, true)
   end
-  if row.stuck then
-    GameTooltip:AddLine(ns.Theme.Colorize("warning", L("STUCK_LINE", L["STUCK_GENERIC"])), 1, 1, 1, true)
+  R.TipMoney(buf, money, cod, goldShown)
+  if #buf > 0 then T.TipFact(L["TIP_HOLDS"], table.concat(buf)) end
+
+  -- What a won auction cost, where the row does not show it.
+  local paid = tonumber(mail.paid) or 0
+  if paid > 0 and money == 0 and cod == 0 and not (moneyOnRow and R.MoneyShown("spent")) then
+    T.TipFact(L["LABEL_PURCHASE"], T.TipTone("negative", ns.Helpers.FormatMoney(paid)))
   end
-  GameTooltip:AddLine(" ")
-  GameTooltip:AddLine(MM.TakeHint(row), 0.7, 0.7, 0.7, true)
+
+  -- Time left, where the row does not show it; past its date, "expired".
+  local expiry = row.expiryTip
+  if expiry and not row.ColTime:IsShown() then
+    local left = (tonumber(mail.expires) or 0) - time()
+    local warn = left <= 0
+    if not warn and R.ExpiryState then
+      local _, short = R.ExpiryState(left / 86400, cod > 0)
+      warn = short
+    end
+    T.TipFact(L["TIP_TIME_LEFT"], warn and T.TipTone("warning", expiry) or expiry)
+  end
+
+  TipState(R, row, true)
+  T.TipHint(MM.TakeHint(row))
   GameTooltip:Show()
   return true
 end
@@ -1331,14 +1428,15 @@ function MM.FanSource.Link(row, k)
 end
 
 -- row, k -> the tooltip being built for the k-th item's tile (nil: the
--- gold's): the item's own, by the link the snapshot kept or by its id, or
--- the gold's sum; the stuck line where the mail was refused; and where it
--- can be taken.
+-- gold's), after the fan's TipBegin: the item's own, by the link the
+-- snapshot kept or by its id, or the gold's sum; the stuck state where the
+-- mail was refused; and where it can be taken, with the tile's gestures.
 function MM.FanSource.TileTip(row, k)
+  local T = ns.Theme
   local mail = row.mail
   if not k then
-    GameTooltip:SetText(L["LABEL_GOLD"] .. ns.Helpers.FormatMoney(tonumber(mail.money) or 0), 1, 1, 1)
-    GameTooltip:AddLine(MM.TakeHint(row), 0.7, 0.7, 0.7, true)
+    T.TipTitle(L["LABEL_GOLD"] .. ns.Helpers.FormatMoney(tonumber(mail.money) or 0))
+    T.TipHint(MM.TakeHint(row))
     return
   end
   local own = (k == 1) and row.itemLink or nil
@@ -1348,10 +1446,9 @@ function MM.FanSource.TileTip(row, k)
   elseif id and type(GameTooltip.SetItemByID) == "function" then
     GameTooltip:SetItemByID(id)
   end
-  if row.stuck then
-    GameTooltip:AddLine(ns.Theme.Colorize("warning", L("STUCK_LINE", L["STUCK_GENERIC"])), 1, 1, 1, true)
-  end
-  GameTooltip:AddLine(MM.TakeHint(row, true), 0.7, 0.7, 0.7, true)
+  local R = Rules()
+  TipState(R, row)
+  T.TipHint(MM.TakeHint(row, true, R and R.Dressable and R.Dressable(id) or false))
 end
 
 -- parent -> a row for the pool; the caller places it.
@@ -1426,23 +1523,33 @@ function MM.NewRow(parent)
   -- The two anchors above are the fallback for a client without the row
   -- rules; with them, FillRow places everything.
 
-  -- The tooltip belongs to the ICON, not the whole row: a row-wide hit area
-  -- meant the tooltip followed the cursor across a list you were only
-  -- scanning. A mail that held several items lists them, as the Mail tab's
-  -- icon does (MM.ItemsTooltip); one item shows its own tooltip, where the
-  -- snapshot kept its link or id; anything else the full subject.
+  -- The row says what the mail was in the Mail tab rows' format (MM.RowTip),
+  -- as a hover target that takes motion and never clicks: this window is
+  -- dragged from anywhere on it, and on the Mail tab the list under it takes
+  -- the clicks. Lit under the pointer, as a Mail tab row is.
+  HoverOnly(row)
+  row:SetScript("OnEnter", function(self)
+    if not self.mail then return end
+    ns.Theme.StyleMailRow(self, self._rowIndex, true)
+    MM.RowTip(self)
+  end)
+  row:SetScript("OnLeave", function(self)
+    if self._rowIndex then ns.Theme.StyleMailRow(self, self._rowIndex, false) end
+    GameTooltip:Hide()
+  end)
+
+  -- The icon says what the mail held. A mail that held several items lists
+  -- them, as the Mail tab's icon does (MM.ItemsTooltip); one item shows its
+  -- own tooltip, where the snapshot kept its link or id; anything else the
+  -- row's own tooltip. Each ends where it can be collected.
   local hit = CreateFrame("Frame", nil, row)
   hit:SetPoint("TOPLEFT", row.Icon, "TOPLEFT", -2, 2)
   hit:SetPoint("BOTTOMRIGHT", row.Icon, "BOTTOMRIGHT", 2, -2)
   HoverOnly(hit)
-  -- A mail the server refused, as it was remembered, said last in every
-  -- form of the tooltip: its mark in the row is the read mark's, and the
-  -- arrangement may hide that.
-  local function StuckLine()
-    if not row.stuck then return end
-    GameTooltip:AddLine(ns.Theme.Colorize("warning", L("STUCK_LINE", L["STUCK_GENERIC"])), 1, 1, 1, true)
-  end
   hit:SetScript("OnEnter", function(self)
+    -- A child that takes the mouse ends the row's own hover: its light is
+    -- put back, as on a Mail tab row.
+    if row.mail then ns.Theme.StyleMailRow(row, row._rowIndex, true) end
     -- Where the player chose the fan and it may open here, it opens after a
     -- rest instead, and nothing shows before it (the fan's own rules).
     if row.iconItems > 1 then
@@ -1450,36 +1557,22 @@ function MM.NewRow(parent)
       if R and R.FanHover and R.FanHover(row) then return end
       if MM.ItemsTooltip(self, row) then return end
     end
-    if row.itemLink then
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetHyperlink(row.itemLink)
-      StuckLine()
-      GameTooltip:Show()
+    local T = ns.Theme
+    local item = row.itemLink or (row.itemID and type(GameTooltip.SetItemByID) == "function")
+    if not item then
+      MM.RowTip(row, self)
       return
     end
-    if row.itemID and type(GameTooltip.SetItemByID) == "function" then
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetItemByID(row.itemID)
-      StuckLine()
-      GameTooltip:Show()
-      return
-    end
-    if not row.fullSubject or row.fullSubject == "" then return end
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(row.fullSubject, 1, 1, 1, 1, true)
-    if row.fullSender and row.fullSender ~= "" then
-      GameTooltip:AddLine(row.fullSender, 0.7, 0.7, 0.7)
-    end
-    -- The figures an option keeps off the row, and the time left, which the
-    -- row shows only when it is short.
-    if row.factsTip then
-      for line in row.factsTip:gmatch("[^\n]+") do GameTooltip:AddLine(line, 1, 1, 1, true) end
-    end
-    if row.expiryTip then GameTooltip:AddLine(row.expiryTip, 0.75, 0.75, 0.75) end
-    StuckLine()
+    T.TipBegin(self)
+    if row.itemLink then GameTooltip:SetHyperlink(row.itemLink) else GameTooltip:SetItemByID(row.itemID) end
+    -- A mail the server refused, as it was remembered: its mark in the row
+    -- is the read mark's, and the arrangement may hide that.
+    TipState(Rules(), row)
+    T.TipHint(MM.TakeHint(row))
     GameTooltip:Show()
   end)
   hit:SetScript("OnLeave", function()
+    if row.mail and row._rowIndex then ns.Theme.StyleMailRow(row, row._rowIndex, false) end
     GameTooltip:Hide()
     -- A rest ends; an open fan's grace begins.
     local R = Rules()
@@ -1501,9 +1594,13 @@ function MM.NewRow(parent)
   end)
   row.HeaderHit:SetScript("OnEnter", function(self)
     local owner = self:GetParent()
-    ns.Theme.StyleMailRow(owner, owner._rowIndex, true)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["MEMORY_HEADER_TIP"], 1, 1, 1, 1, true)
+    local T = ns.Theme
+    T.StyleMailRow(owner, owner._rowIndex, true)
+    -- Whose matches these are, and what the heading does: nothing on it
+    -- looks like a button.
+    T.TipBegin(self)
+    T.TipTitle(MM.ClassName(owner.headerRealm, owner.headerName))
+    T.TipHint(L["MEMORY_HEADER_TIP"])
     GameTooltip:Show()
   end)
   row.HeaderHit:SetScript("OnLeave", function(self)
@@ -1545,18 +1642,12 @@ local function Figures(mail, now)
     if show then expiry = T.Colorize(warn and "warning" or "textSecondary", expiryText) end
   end
 
-  -- At most two lines, joined as they come: no list to build per row.
-  local facts
-  if R and money and not R.MoneyShown(moneyKind) then
-    facts = R.MoneyText(hasCOD, mail.money or 0, mail.cod or 0, mail.paid, false)
-    money = nil
-  end
-  if R and slots and not R.Shows("slots") then
-    facts = facts and (facts .. "\n" .. slots) or slots
-    slots = nil
-  end
+  -- A figure switched off leaves the row; the row's tooltip says it in full
+  -- (MM.RowTip), from the record, on hover.
+  if R and money and not R.MoneyShown(moneyKind) then money = nil end
+  if R and slots and not R.Shows("slots") then slots = nil end
   if R and not R.Shows("time") then expiry = nil end
-  return money, slots, expiry, facts, expiryText, expired, moneyKind == "cod" and money ~= nil
+  return money, slots, expiry, nil, expiryText, expired, moneyKind == "cod" and money ~= nil
 end
 
 -- The last figure the arrangement shows, left to right, or nil.
@@ -1570,7 +1661,7 @@ local function LastShownFigure(R)
   return nil
 end
 
--- One row's figure texts, keyed by column, plus what the tooltip carries.
+-- One row's figure texts, keyed by column, and the time left in words.
 -- A row known to have arrived but never opened says "New" where the row's
 -- last figure would stand, and nothing else.
 --
@@ -1693,8 +1784,8 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   row.onHeader = onHeader
   if mail.header then
     -- A search across characters: the name the matches below belong to.
-    row.fullSubject, row.fullSender, row.itemLink, row.itemID = nil, nil, nil, nil
-    row.factsTip, row.expiryTip, row.stuck = nil, nil, nil
+    row.itemLink, row.itemID = nil, nil
+    row.expiryTip, row.stuck = nil, nil
     row.mail, row.itemList, row.iconItems, row.fanSource = nil, nil, 0, nil
     row.headerRealm, row.headerName = mail.realm, mail.name
     -- SetAtlas sets the atlas's own coordinates; a SetTexCoord after it would
@@ -1753,8 +1844,6 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
     row.HeaderWash:Hide()
     row.HeaderRule:Hide()
   end
-  row.fullSubject = mail.subject
-  row.fullSender = mail.sender
   row.itemLink = mail.link
   -- What the mail held, for the icon's hover: the snapshot's list of its
   -- items (ids and counts), nil for a record saved before it kept one; and
@@ -1790,7 +1879,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   local texts = RowTexts(mail, now)
   local timeText, moneyText, slotsText = texts.time, texts.money, texts.slots
   local codShown, expired = texts.cod, texts.expired
-  row.factsTip = texts.facts
+  -- The time left in words, for the row's tooltip (MM.RowTip).
   row.expiryTip = texts.expiryText
 
   local list = row:GetParent()
@@ -1804,6 +1893,9 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   local outcome = R and R.OutcomeSender(mail.kind) or nil
   local senderText = (R and (outcome or R.DisplaySender(named)))
     or named or L["MEMORY_SENDER_UNKNOWN"]
+  -- Whether the row shows less of the name than the mail has, for the
+  -- tooltip, which then says it whole.
+  row.tipShort = named ~= nil and not outcome and senderText ~= named
   -- A player the address book knows the class of, in its colour, as on the
   -- Mail tab.
   if R and R.PaintSender then R.PaintSender(row.Sender, not outcome and named or nil, realm) end

@@ -3253,13 +3253,14 @@ do
       T.TipFact(L0["TIP_FROM"], RV.TipSender(sender))
     end
 
-    -- Holds: the stacks, unless the one stack is the one the subject names;
-    -- the gold unless the row shows exactly that; the C.O.D. price.
+    -- Holds: the stacks, unless the one stack is the one an auction's
+    -- subject names; the gold unless the row shows exactly that; the C.O.D.
+    -- price.
     local buf = holds
     Clear(buf)
     local stacks = row.iconItems or 0
     local named = false
-    if stacks == 1 and row.iconSlot and subject then
+    if stacks == 1 and row.iconSlot and subject and AUCTION_OUTCOME[row.tipKind] then
       local name = GetInboxItem(index, row.iconSlot)
       named = name ~= nil and subject:find(name, 1, true) ~= nil
     end
@@ -3337,6 +3338,9 @@ do
   local R = CT.RowRules
   R.TipSender, R.TipItem, R.TipMore, R.TipMoney = RV.TipSender, RV.TipItem, RV.TipMore, RV.TipMoney
   R.TipState, R.TipSubject, R.TIP_ITEMS = RV.TipState, RV.TipSubject, RV.TIP_ITEMS
+  R.MoneyFacts, R.Dressable = RV.MoneyFacts, RV.Dressable
+  -- kind -> whether it is an auction's mail (its row says the outcome).
+  function R.IsAuction(kind) return AUCTION_OUTCOME[kind] ~= nil end
 end
 
 -------------------------------------------------------------
@@ -5559,7 +5563,7 @@ local function BindRow(panel, row, index, position, compact, done)
   row.iconItems = stacks
   -- What the row's tooltip (RV.RowTip) needs from the bind: numbers and
   -- flags, never a string -- the tooltip is built on hover, not on a bind.
-  row.tipQuantity = quantity
+  row.tipQuantity, row.tipKind = quantity, kind
 
   -- What the trailing controls take out of the row, stacking inwards from its
   -- right edge: the inset and its marks (RV.MarkRoom) -- but on a one-line
