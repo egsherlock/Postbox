@@ -16,7 +16,7 @@ longer play.
   the columns you don't need (a peg marks where one stands) and set gold and
   time left on the spot. The Mail tab and Mail Memory share one arrangement;
   History has its own, with the age a column you can move or hide, reading
-  "3d ago" or "3 days ago". Time left wears an hourglass, History a clock
+  "3d ago", "3 days ago" or a date. Time left wears an hourglass, History a clock
   with a turning-back arrow. One set of gestures for everything: drag to
   move, click for its options, right-click to hide or show; a crossed eye
   marks what is hidden. While you arrange, the mark is a lit Done;
