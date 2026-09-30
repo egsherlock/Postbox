@@ -94,6 +94,59 @@ end
 H.FormatMoney = ns.Core.Formatting.FormatMoneyText
 
 -------------------------------------------------------------
+-- Time left
+--
+-- One way to write how long a mail has left, wherever it is written: the
+-- Mail tab's rows, their tooltip and the reading view, and Mail Memory's
+-- rows and warnings. Hours under a day ("9h", never less than 1h), whole
+-- days after, floored ("3d" from three days to just under four), so a
+-- figure never reads as more than is left and the amber that starts under
+-- three days (CollectTab's ExpiryState) always starts at "2d". Each text is
+-- made once per value and kept: a list holds a few dozen distinct values
+-- (hours 1-23 and days up to the mail's thirty), and a table past
+-- TIME_MAX (only a wrong clock gets there) is emptied and filled again.
+-------------------------------------------------------------
+local TIME_MAX = 120
+local timeShort, timeDetail = {}, {}
+local timeCount = 0
+
+-- days (a number, fractions welcome) -> the value's key: -hours under a
+-- day, whole days otherwise.
+local function TimeKey(days)
+  days = tonumber(days) or 0
+  if days < 1 then return -math.max(1, math.floor(days * 24)) end
+  return math.floor(days)
+end
+
+local function TimeText(key)
+  local text = timeShort[key]
+  if text then return text end
+  if timeCount >= TIME_MAX then
+    for k in pairs(timeShort) do timeShort[k] = nil end
+    for k in pairs(timeDetail) do timeDetail[k] = nil end
+    timeCount = 0
+  end
+  local L = ns.L
+  if key < 0 then text = L("HOURS_SHORT", -key) else text = L("DAYS_SHORT", key) end
+  timeShort[key] = text
+  timeDetail[key] = L("DETAIL_EXPIRES", text)
+  timeCount = timeCount + 1
+  return text
+end
+
+-- days -> "9h" / "3d".
+function H.TimeLeft(days)
+  return TimeText(TimeKey(days))
+end
+
+-- days -> "Expires in 9h" / "Expires in 3d".
+function H.ExpiresIn(days)
+  local key = TimeKey(days)
+  TimeText(key)
+  return timeDetail[key]
+end
+
+-------------------------------------------------------------
 -- Mail-subject matching
 --
 -- Answers: does this mail subject correspond to this Blizzard global format

@@ -1239,7 +1239,7 @@ do
     s.Name:SetPoint("LEFT", s.Icon, "RIGHT", 7 + room, 0)
     if R and R.PaintNameMark then R.PaintNameMark(s, name and mark or nil, s.Art, s.Name) end
     if not S.sampleMeta then
-      S.sampleMeta = L["ROW_AH_BOUGHT"] .. "  \194\183  " .. string.format(L["DAYS_SHORT"], SAMPLE_DAYS)
+      S.sampleMeta = L["ROW_AH_BOUGHT"] .. "  \194\183  " .. ns.Helpers.TimeLeft(SAMPLE_DAYS)
     end
     local nameX = 8 + iconSize + 7
     s.Stripe:SetShown(not larger)

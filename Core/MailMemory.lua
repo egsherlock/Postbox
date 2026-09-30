@@ -326,16 +326,16 @@ end
 -------------------------------------------------------------
 -- 2. Words for a snapshot's age
 --
--- The AGO family carries its own "ago" so every locale can put it where its
--- grammar wants it; time REMAINING uses bare units, a different family.
+-- As History writes its short form ("3d ago": CollectTab's HistoryAge, its
+-- strings kept there), and "just now" under a minute. Time REMAINING is
+-- the Mail tab's own (Helpers.TimeLeft).
 -------------------------------------------------------------
 
 local function AgeText(seenAt)
   local age = math.max(0, time() - (tonumber(seenAt) or 0))
-  if age < 90 then return L["MEMORY_AGO_NOW"] end
-  if age < 5400 then return string.format(L["MEMORY_AGO_M"], math.floor(age / 60 + 0.5)) end
-  if age < 129600 then return string.format(L["MEMORY_AGO_H"], math.floor(age / 3600 + 0.5)) end
-  return string.format(L["MEMORY_AGO_D"], math.floor(age / 86400 + 0.5))
+  local collect = ns.CollectTab
+  if age < 60 or not (collect and collect.HistoryAge) then return L["MEMORY_AGO_NOW"] end
+  return collect.HistoryAge(age, "short")
 end
 
 -- Mail that still HOLDS something -- items, gold or a C.O.D. -- grouped by
@@ -384,8 +384,7 @@ end
 local function ExpiryText(expires, now)
   local left = (tonumber(expires) or 0) - now
   if left <= 0 then return L["MEMORY_EXPIRED"], true end
-  if left < 86400 then return string.format(L["MEMORY_LEFT_H"], math.max(1, math.floor(left / 3600))), false end
-  return string.format(L["MEMORY_LEFT_D"], math.floor(left / 86400 + 0.5)), false
+  return ns.Helpers.TimeLeft(left / 86400), false
 end
 
 -------------------------------------------------------------

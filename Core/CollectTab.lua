@@ -1498,7 +1498,7 @@ local function RowExpiryText(daysLeft, hasCOD)
   if not daysLeft then return nil end
   local show, warn = ExpiryState(daysLeft, hasCOD)
   if not show then return nil end
-  return Th().Colorize(warn and "warning" or "textSecondary", format(L()["DAYS_SHORT"], daysLeft))
+  return Th().Colorize(warn and "warning" or "textSecondary", Helpers().TimeLeft(daysLeft))
 end
 
 -- The rendered width of `text` in `sample`'s font. One hidden string per
@@ -4153,7 +4153,7 @@ local function BindRow(panel, row, index, position, compact, done)
 
   -- Time left is a warning, not a column: on the row only when it is short;
   -- always in the tooltip.
-  row.expiryTip = daysLeft and format(L()["DETAIL_EXPIRES"], daysLeft) or nil
+  row.expiryTip = daysLeft and Helpers().ExpiresIn(daysLeft) or nil
   local expiry = RowExpiryText(daysLeft, hasCOD)
 
   -- A figure switched off leaves the row and goes to its tooltip, in full.
@@ -4460,8 +4460,10 @@ function HV.EntryAge(entry, now, style)
   return HV.HistoryAge(now - t, style)
 end
 
--- For the arrange mode's age card, which shows each wording as it reads.
+-- For the arrange mode's age card, which shows each wording as it reads,
+-- and for Mail Memory, whose ages read as History's short form.
 CT.HistoryAgeText = HV.AgeText
+CT.HistoryAge = HV.HistoryAge
 CT.HistoryDateText = HV.DateText
 
 function HV.ItemName(link)
@@ -6869,7 +6871,7 @@ local function DetailInfoText(detail, index, kind, hasCOD)
   if itemCount > 0 then parts[#parts + 1] = ns.Plural("COUNT_ITEMS", itemCount) end
   parts[#parts + 1] = wasRead and L()["STATUS_READ"] or L()["STATUS_UNREAD"]
   if wasReturned then parts[#parts + 1] = L()["STATUS_RETURNED"] end
-  if daysLeft then parts[#parts + 1] = format(L()["DETAIL_EXPIRES"], daysLeft) end
+  if daysLeft then parts[#parts + 1] = Helpers().ExpiresIn(daysLeft) end
 
   AppendInvoiceFigures(parts, index, true)
 
