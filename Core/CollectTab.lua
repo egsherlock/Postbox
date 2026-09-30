@@ -7717,19 +7717,19 @@ function RV.SettlePaidTake(detail, take, landed)
   return false
 end
 
+-- Whether the click being handled is a modified one.
+function RV.Modified()
+  if type(IsModifiedClick) == "function" then return IsModifiedClick() and true or false end
+  return (IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown()) and true or false
+end
+
 -- A modified click on a mail's item tile is the game's item rules, as on
 -- its own mail tiles: Shift links, Ctrl tries on (HandleModifiedItemClick),
 -- and whatever it leaves is nothing, never the plain click's take. The link
 -- where the body is not loaded yet is the item's own, by id. `slot` nil is
 -- the gold tile, which has no item to link. True when a modifier was held.
 function RV.ModifiedItemClick(index, slot)
-  local modified
-  if type(IsModifiedClick) == "function" then
-    modified = IsModifiedClick()
-  else
-    modified = IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown()
-  end
-  if not modified then return false end
+  if not RV.Modified() then return false end
   if not slot or type(HandleModifiedItemClick) ~= "function" then return true end
   local link = GetInboxItemLink(index, slot)
   if not link then
@@ -10702,6 +10702,14 @@ end
 -- or for a mail with one item (that keeps the item's own tooltip). After a
 -- take it follows its row in place, and closes once the mail holds nothing.
 --
+-- Mail Memory's rows open it too, in Mail Memory's window and over another
+-- character's box on this tab, from what a snapshot says a mail held: the
+-- row carries the source its tiles come from (`fanSource`, MM.FanSource).
+-- Read-only -- a record, often of another character's box, holds nothing
+-- to take: a plain click does nothing, Shift- and Ctrl-click link and try
+-- on, and each tile says where it can be taken. Each list keeps its own
+-- plate and tiles (Fan.Use), the fan standing in the list it opens over.
+--
 -- Nothing runs while it is shut. The plate and its tiles are made the first
 -- time one opens and reused after; the dwell and the grace are single
 -- C_Timer.After calls on shared functions, told apart by counters rather
@@ -10739,8 +10747,12 @@ do
   end
 
   -- row -> whether a fan may stand over it at all: a live mail of the inbox,
-  -- no run, no arranging, no reading view, no sample mail.
+  -- no run, no arranging, no reading view, no sample mail. A row of
+  -- remembered mail carries the source its tiles come from (`fanSource`,
+  -- Mail Memory's rows: MM.FanSource), which answers for itself.
   function Fan.Allowed(row)
+    local src = row.fanSource
+    if src then return src.Allowed(row) end
     local panel = row.panel
     if not panel or panel._preview or Run.active then return false end
     if RV.Arranging(panel) then return false end
@@ -10749,12 +10761,27 @@ do
     return true
   end
 
+  -- row -> the list it stands in: the fan opens there, and within it.
+  function Fan.ScrollOf(row)
+    local src = row.fanSource
+    if src then return src.Scroll(row) end
+    return row.panel.MailListScroll
+  end
+
+  -- row -> what tells the mail it shows from another: the inbox mail's
+  -- fingerprint, or the remembered mail itself.
+  function Fan.Identity(row)
+    if row.fanSource then return row.mail end
+    return row.fingerprint
+  end
+
   -- row -> whether one may open over it now: allowed, a mail of two items
   -- or more, and its icon wholly inside the visible list.
   function Fan.MayOpen(row)
     if (row.iconItems or 0) < 2 or not Fan.Allowed(row) or not row:IsVisible() then return false end
-    if not LiveIndex(row) then return false end
-    local scroll = row.panel.MailListScroll
+    if not row.fanSource and not LiveIndex(row) then return false end
+    local scroll = Fan.ScrollOf(row)
+    if not scroll then return false end
     local top, bottom = row.Icon:GetTop(), row.Icon:GetBottom()
     local sTop, sBottom = scroll:GetTop(), scroll:GetBottom()
     if not (top and bottom and sTop and sBottom) then return false end
@@ -10783,14 +10810,16 @@ do
     return text
   end
 
-  function Fan.Build(panel)
+  -- scroll, panel -> the plate for the list `scroll` scrolls, in the frame
+  -- that holds it; `panel` is the Mail tab's, for its list (nil elsewhere).
+  function Fan.Build(scroll, panel)
     local T = Th()
-    local plate = CreateFrame("Frame", nil, panel.MailListArea, "BackdropTemplate")
+    local plate = CreateFrame("Frame", nil, scroll:GetParent(), "BackdropTemplate")
     -- Over the rows, their quality marks and the divider's pinned copy
     -- (MailListChild + 8), under the reading view (the panel's + 20). Set
     -- before the card is painted: the popup floor's holder takes its level
     -- from it.
-    plate:SetFrameLevel(panel.MailListChild:GetFrameLevel() + 10)
+    plate:SetFrameLevel(scroll:GetScrollChild():GetFrameLevel() + 10)
     plate:EnableMouse(true)
     plate:Hide()
     plate.__pbPopupAlways = true
@@ -10818,9 +10847,31 @@ do
     plate:SetScript("OnEnter", Fan.Hold)
     plate:SetScript("OnLeave", Fan.Leaving)
     plate:SetScript("OnEvent", Fan.MouseDown)
-    Fan.plate = plate
     if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, plate) end
     return plate
+  end
+
+  -- scroll, panel -> the plate and tiles of that list in use (Fan.plate,
+  -- Fan.tiles), made the first time a fan opens there: a fan stands in the
+  -- list it opens over, and each list keeps its own -- the Mail tab's, and
+  -- Mail Memory's window. Called only while no fan is open; the last one
+  -- used is put away if it is another.
+  Fan.sets = {}
+  function Fan.Use(scroll, panel)
+    local set = Fan.sets[scroll]
+    if not set then
+      set = { plate = Fan.Build(scroll, panel), tiles = {} }
+      Fan.sets[scroll] = set
+    end
+    -- The Mail tab's list is also where another character's remembered box
+    -- is shown, whose rows name no panel: the plate keeps the tab's.
+    if panel then set.plate._panel = panel end
+    local last = Fan.plate
+    if last and last ~= set.plate and last:IsShown() then
+      last.Out:Stop()
+      last:Hide()
+    end
+    Fan.plate, Fan.tiles, Fan.scroll = set.plate, set.tiles, scroll
   end
 
   -- The i-th tile, made on first use: the reading view's slot, with the
@@ -10906,12 +10957,21 @@ do
     return true
   end
 
-  -- index -> the tiles for the mail as it is now, gold first; how many, and
-  -- whether anything differs from what they showed.
-  function Fan.Fill(index)
+  -- index[, row] -> the tiles for the mail as it is now, gold first; how
+  -- many, and whether anything differs from what they showed. With a source
+  -- open (Fan.src), the remembered mail `row` shows, as the source tells it
+  -- -- a tile's `slot` is then the item's place in the mail's list -- with
+  -- nothing refused and nothing held back by full bags: nothing is taken.
+  function Fan.Fill(index, row)
     local plate = Fan.plate
-    local _, _, _, _, money, cod = GetInboxHeaderInfo(index)
-    money, cod = tonumber(money) or 0, tonumber(cod) or 0
+    local src = Fan.src
+    local money, cod, items
+    if src then
+      money, cod, items = src.Totals(row)
+    else
+      local _, _, _, _, m, c = GetInboxHeaderInfo(index)
+      money, cod = tonumber(m) or 0, tonumber(c) or 0
+    end
     local n, changed = 0, false
     if money > 0 then
       n = 1
@@ -10920,20 +10980,33 @@ do
       tile.gold, tile.slot, tile.why = true, nil, nil
       if Fan.Paint(tile, Fan.COIN, Fan.MoneyText(false, money), nil, nil) then changed = true end
     end
-    local bags = Mail().BagsFull()
     local marks = RV.MarkOnIcon()
-    for slot = 1, Mail().MAX_ATTACHMENTS do
-      local _, _, texture, count = GetInboxItem(index, slot)
-      if texture then
-        n = n + 1
-        local tile = Fan.Tile(n)
-        if tile.gold or tile.slot ~= slot then changed = true end
-        tile.gold, tile.slot = false, slot
-        local link = GetInboxItemLink(index, slot)
-        local refused = link and Fan.refused[link] or nil
-        tile.why = refused or (bags and "bags") or nil
-        local mark = marks and RV.QualityMark(index, slot) or nil
-        if Fan.Paint(tile, texture, RV.CountText(count) or "", mark, tile.why) then changed = true end
+    if src then
+      for k = 1, items do
+        local texture, count, mark = src.Item(row, k)
+        if texture then
+          n = n + 1
+          local tile = Fan.Tile(n)
+          if tile.gold or tile.slot ~= k then changed = true end
+          tile.gold, tile.slot, tile.why = false, k, nil
+          if Fan.Paint(tile, texture, RV.CountText(count) or "", marks and mark or nil, nil) then changed = true end
+        end
+      end
+    else
+      local bags = Mail().BagsFull()
+      for slot = 1, Mail().MAX_ATTACHMENTS do
+        local _, _, texture, count = GetInboxItem(index, slot)
+        if texture then
+          n = n + 1
+          local tile = Fan.Tile(n)
+          if tile.gold or tile.slot ~= slot then changed = true end
+          tile.gold, tile.slot = false, slot
+          local link = GetInboxItemLink(index, slot)
+          local refused = link and Fan.refused[link] or nil
+          tile.why = refused or (bags and "bags") or nil
+          local mark = marks and RV.QualityMark(index, slot) or nil
+          if Fan.Paint(tile, texture, RV.CountText(count) or "", mark, tile.why) then changed = true end
+        end
       end
     end
     if n ~= Fan.n then changed = true end
@@ -10965,7 +11038,7 @@ do
   -- false where the geometry is not known yet.
   function Fan.Place(row, n, animate)
     local plate, P, G = Fan.plate, Fan.PAD, Fan.TILE_GAP
-    local scroll = row.panel.MailListScroll
+    local scroll = Fan.scroll
     local icon = row.Icon
     local sL, sR, sT, sB = scroll:GetLeft(), scroll:GetRight(), scroll:GetTop(), scroll:GetBottom()
     local iL, iR = icon:GetLeft(), icon:GetRight()
@@ -11034,22 +11107,36 @@ do
 
   function Fan.Open(row)
     local panel = row.panel
-    local index = LiveIndex(row)
-    if not index then return end
-    local plate = Fan.plate or Fan.Build(panel)
-    -- Another mail: the refusals and the History record were the last one's.
-    if Fan.fp ~= row.fingerprint or Fan.index ~= index then
-      for key in pairs(Fan.refused) do Fan.refused[key] = nil end
-      Fan.fp, Fan.index, Fan.history, Fan.bagsWhy = row.fingerprint, index, nil, nil
+    local src = row.fanSource
+    local index
+    if not src then
+      index = LiveIndex(row)
+      if not index then return end
     end
-    plate.mailIndex, plate.fingerprint, plate._paidTake = index, row.fingerprint, nil
-    if Fan.Fill(index) == 0 then return end
+    local scroll = Fan.ScrollOf(row)
+    if not scroll then return end
+    Fan.Use(scroll, panel)
+    local plate = Fan.plate
+    -- The remembered mail it shows, or none: the inbox's.
+    Fan.src, Fan.mail = src, src and row.mail or nil
+    if src then
+      -- Nothing here names an inbox mail: nothing can be taken from it.
+      plate.mailIndex, plate.fingerprint, plate._paidTake = nil, nil, nil
+    else
+      -- Another mail: the refusals and the History record were the last one's.
+      if Fan.fp ~= row.fingerprint or Fan.index ~= index then
+        for key in pairs(Fan.refused) do Fan.refused[key] = nil end
+        Fan.fp, Fan.index, Fan.history, Fan.bagsWhy = row.fingerprint, index, nil, nil
+      end
+      plate.mailIndex, plate.fingerprint, plate._paidTake = index, row.fingerprint, nil
+    end
+    if Fan.Fill(index, row) == 0 then return end
     plate.Out:Stop()
     plate.In:Stop()
     if not Fan.Place(row, Fan.n, true) then return end
     Fan.row = row
     Fan.open, RV.fanOpen, Fan.graceOn = true, true, false
-    Fan.offset = panel.MailListScroll:GetVerticalScroll()
+    Fan.offset = scroll:GetVerticalScroll()
     plate:SetAlpha(0)
     plate:Show()
     plate.In:Play()
@@ -11134,7 +11221,7 @@ do
     if Fan.fireN ~= Fan.armN then return end
     local row = Fan.armRow
     Fan.armRow = nil
-    if not row or Fan.open or row.fingerprint ~= Fan.armFp then return end
+    if not row or Fan.open or Fan.Identity(row) ~= Fan.armFp then return end
     if not row.IconHit:IsMouseOver() then return end
     if not (Fan.Wanted() and Fan.MayOpen(row)) then return end
     Fan.Open(row)
@@ -11154,6 +11241,16 @@ do
     Fan.Hold()
     if not Fan.open then return end
     local plate = Fan.plate
+    -- A remembered mail's tile: what its source says, and where it can be
+    -- taken.
+    if Fan.src then
+      GameTooltip:SetOwner(tile, "ANCHOR_NONE")
+      GameTooltip:ClearLines()
+      Fan.src.TileTip(Fan.row, not tile.gold and tile.slot or nil)
+      GameTooltip:Show()
+      Fan.PlaceTip(plate)
+      return
+    end
     local index = LiveIndex(plate)
     if not index then return end
     GameTooltip:SetOwner(tile, "ANCHOR_NONE")
@@ -11186,7 +11283,7 @@ do
   end
 
   function Fan.PlaceTip(plate)
-    local scroll = plate._panel.MailListScroll
+    local scroll = Fan.scroll
     local top, sTop = plate:GetTop(), scroll:GetTop()
     local ps, ts = plate:GetEffectiveScale(), GameTooltip:GetEffectiveScale()
     GameTooltip:ClearAllPoints()
@@ -11208,10 +11305,20 @@ do
 
   -- A click on a tile. Modified, the game's item rules, as on its own mail
   -- tiles (the link where the body is not loaded yet is the item's own, by
-  -- id); plain, the take, unless the tile says why not; right, nothing.
+  -- id); plain, the take, unless the tile says why not; right, nothing. On a
+  -- remembered mail's tile there is nothing to take: a plain click does
+  -- nothing, a modified one follows the game's item rules on the link its
+  -- source gives, and the gold tile swallows both.
   function Fan.TileClick(tile, button)
     if not Fan.open or button ~= "LeftButton" then return end
     local plate = Fan.plate
+    if Fan.src then
+      if not tile.gold and RV.Modified() and type(HandleModifiedItemClick) == "function" then
+        local link = Fan.src.Link(Fan.row, tile.slot)
+        if link then HandleModifiedItemClick(link) end
+      end
+      return
+    end
     local index = LiveIndex(plate)
     if not index then return end
     if RV.ModifiedItemClick(index, not tile.gold and tile.slot or nil) then return end
@@ -11328,7 +11435,7 @@ do
       Fan.Open(row)
       if Fan.open then return true end
     end
-    Fan.armRow, Fan.armFp = row, row.fingerprint
+    Fan.armRow, Fan.armFp = row, Fan.Identity(row)
     Fan.armN = Fan.armN + 1
     C_Timer.After(Fan.DWELL, Fan.Due)
     return true
@@ -11346,17 +11453,31 @@ do
 
   -- The list scrolled: the row under the fan holds other mail now.
   function RV.FanScrolled(scroll)
-    if not Fan.open or scroll ~= Fan.plate._panel.MailListScroll then return end
+    if not Fan.open or scroll ~= Fan.scroll then return end
     if scroll:GetVerticalScroll() ~= Fan.offset then Fan.Close(true) end
+  end
+
+  -- The list went away (its window hid): a fan standing in it goes with it.
+  function RV.FanGone(scroll)
+    if Fan.open and scroll == Fan.scroll then Fan.Close(true) end
   end
 
   -- After every row pass while a fan is open: its row still holding its
   -- mail (or that mail as its confirmed take paid it), it is drawn again as
   -- the mail now is, and placed again where anything changed; its row bound
   -- to other mail, the mail empty, or a state it cannot stand in, it closes.
+  -- Over remembered mail, which does not change, it stays while its row
+  -- still shows that mail and the fan may stand there, from any list's pass
+  -- (`panel` nil: Mail Memory's window).
   function RV.FanCheck(panel)
     if not Fan.open then return end
     local plate, row = Fan.plate, Fan.row
+    if Fan.src then
+      if not (row and row:IsShown() and row.mail == Fan.mail and Fan.Wanted() and Fan.Allowed(row)) then
+        Fan.Close(true)
+      end
+      return
+    end
     if plate._panel ~= panel then return end
     if not (row and row:IsShown() and row.mailIndex == plate.mailIndex) then return Fan.Close(true) end
     if row.fingerprint ~= plate.fingerprint and not RV.AwaitsPaidTake(plate) then return Fan.Close(true) end
@@ -11367,6 +11488,11 @@ do
     if n == 0 then return Fan.Close() end
     if changed then Fan.Place(row, n, false) end
   end
+
+  -- Mail Memory's rows open the fan over remembered mail too, read-only
+  -- (MailMemory.lua, MM.FanSource), through the row rules it draws with.
+  CT.RowRules.FanHover, CT.RowRules.FanLeave, CT.RowRules.FanCheck = RV.FanHover, RV.FanLeave, RV.FanCheck
+  CT.RowRules.FanScrolled, CT.RowRules.FanGone = RV.FanScrolled, RV.FanGone
 end
 
 local function LayoutPanel(panel)

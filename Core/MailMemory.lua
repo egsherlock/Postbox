@@ -1289,6 +1289,71 @@ function MM.ItemsTooltip(owner, row)
   return true
 end
 
+-- The fan over a remembered mail (CollectTab.lua, "The fan"), where the
+-- player chose it: the tiles of what the snapshot says the mail held, the
+-- gold first. Read-only: a record, often of another character's box, holds
+-- nothing to take. A plain click does nothing; Shift-click links and
+-- Ctrl-click tries on, as on any item (the fan's own TileClick); each
+-- tile's tooltip says where it can be taken. A row whose mail held a list
+-- carries this table as its `fanSource`: the fan asks it, never the inbox.
+MM.FanSource = {}
+
+-- row -> whether a fan may stand over it: not while the arrange mode is
+-- open, whose Preview mail these rows may be showing.
+function MM.FanSource.Allowed(row)
+  local A = ns.Arrange
+  return row.mail ~= nil and not (A and A.host)
+end
+
+-- row -> the list it stands in: its rows are children of the scroll
+-- frame's child, in this window and on the Mail tab alike.
+function MM.FanSource.Scroll(row)
+  local child = row:GetParent()
+  return child and child:GetParent() or nil
+end
+
+-- row -> the mail's gold, its C.O.D. price and how many items it held.
+function MM.FanSource.Totals(row)
+  local mail = row.mail
+  return tonumber(mail.money) or 0, tonumber(mail.cod) or 0, row.iconItems
+end
+
+-- row, k -> the k-th item's icon, count and crafting mark.
+function MM.FanSource.Item(row, k)
+  local icon, _, _, mark = MM.ItemFacts(row, k)
+  return icon, row.itemList[2 * k], mark
+end
+
+-- row, k -> a link for the k-th item, for a modified click.
+function MM.FanSource.Link(row, k)
+  local _, _, _, _, link = MM.ItemFacts(row, k)
+  return link
+end
+
+-- row, k -> the tooltip being built for the k-th item's tile (nil: the
+-- gold's): the item's own, by the link the snapshot kept or by its id, or
+-- the gold's sum; the stuck line where the mail was refused; and where it
+-- can be taken.
+function MM.FanSource.TileTip(row, k)
+  local mail = row.mail
+  if not k then
+    GameTooltip:SetText(L["LABEL_GOLD"] .. ns.Helpers.FormatMoney(tonumber(mail.money) or 0), 1, 1, 1)
+    GameTooltip:AddLine(MM.TakeHint(row), 0.7, 0.7, 0.7, true)
+    return
+  end
+  local own = (k == 1) and row.itemLink or nil
+  local id = row.itemList and row.itemList[2 * k - 1]
+  if own then
+    GameTooltip:SetHyperlink(own)
+  elseif id and type(GameTooltip.SetItemByID) == "function" then
+    GameTooltip:SetItemByID(id)
+  end
+  if row.stuck then
+    GameTooltip:AddLine(ns.Theme.Colorize("warning", L("STUCK_LINE", L["STUCK_GENERIC"])), 1, 1, 1, true)
+  end
+  GameTooltip:AddLine(MM.TakeHint(row, true), 0.7, 0.7, 0.7, true)
+end
+
 -- parent -> a row for the pool; the caller places it.
 function MM.NewRow(parent)
   local T = ns.Theme
@@ -1296,6 +1361,9 @@ function MM.NewRow(parent)
   row:SetHeight(ROW_HEIGHT)
   -- How many items the bound mail held, as the snapshot listed them (FillRow).
   row.iconItems = 0
+  -- A compact row, whose fan's tiles are the compact rows' (the fan's
+  -- Fan.TILE).
+  row._compact = true
 
   -- Every column is placed on fill, where the mail rows' arrangement puts
   -- it (the Mail tab's RV.Place, through the row rules): the read mark, the
@@ -1375,7 +1443,13 @@ function MM.NewRow(parent)
     GameTooltip:AddLine(ns.Theme.Colorize("warning", L("STUCK_LINE", L["STUCK_GENERIC"])), 1, 1, 1, true)
   end
   hit:SetScript("OnEnter", function(self)
-    if row.iconItems > 1 and MM.ItemsTooltip(self, row) then return end
+    -- Where the player chose the fan and it may open here, it opens after a
+    -- rest instead, and nothing shows before it (the fan's own rules).
+    if row.iconItems > 1 then
+      local R = Rules()
+      if R and R.FanHover and R.FanHover(row) then return end
+      if MM.ItemsTooltip(self, row) then return end
+    end
     if row.itemLink then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:SetHyperlink(row.itemLink)
@@ -1405,7 +1479,12 @@ function MM.NewRow(parent)
     StuckLine()
     GameTooltip:Show()
   end)
-  hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  hit:SetScript("OnLeave", function()
+    GameTooltip:Hide()
+    -- A rest ends; an open fan's grace begins.
+    local R = Rules()
+    if R and R.FanLeave then R.FanLeave(row) end
+  end)
   row.IconHit = hit
 
   -- A character's name heading its matches in a search of every box: a
@@ -1616,7 +1695,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
     -- A search across characters: the name the matches below belong to.
     row.fullSubject, row.fullSender, row.itemLink, row.itemID = nil, nil, nil, nil
     row.factsTip, row.expiryTip, row.stuck = nil, nil, nil
-    row.mail, row.itemList, row.iconItems = nil, nil, 0
+    row.mail, row.itemList, row.iconItems, row.fanSource = nil, nil, 0, nil
     row.headerRealm, row.headerName = mail.realm, mail.name
     -- SetAtlas sets the atlas's own coordinates; a SetTexCoord after it would
     -- show the whole sheet the crest lives on.
@@ -1684,6 +1763,8 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   if type(list) ~= "table" or #list < 2 then list = nil end
   row.mail, row.itemList = mail, list
   row.iconItems = list and math.floor(#list / 2) or 0
+  -- The fan's tiles come from the list, never the inbox (MM.FanSource).
+  row.fanSource = list and MM.FanSource or nil
   row.itemID = mail.id or (list and list[1]) or nil
   row.boxRealm, row.boxName = realm, name
 
@@ -2704,6 +2785,9 @@ local function BindRows(frame)
   end
   for i = used + 1, #frame.Rows do frame.Rows[i]:Hide() end
   if arranging and A.ListPlaced then A.ListPlaced(frame) end
+  -- An open fan stays only while its row still shows its mail.
+  local R = Rules()
+  if R and R.FanCheck then R.FanCheck() end
 end
 
 local function OnHeader(frame, realm, name)
@@ -2993,7 +3077,12 @@ local function Build()
     if (self:GetVerticalScroll() or 0) > most then self:SetVerticalScroll(most) end
     if frame:IsShown() then BindRows(frame) end
   end)
-  frame.Scroll:HookScript("OnVerticalScroll", function() BindRows(frame) end)
+  frame.Scroll:HookScript("OnVerticalScroll", function(self)
+    BindRows(frame)
+    -- Any scroll closes a fan standing in the list: its row holds other mail.
+    local R = Rules()
+    if R and R.FanScrolled then R.FanScrolled(self) end
+  end)
   -- The list ends where its rows end, as the Mail tab's does: a quality mark
   -- reaching past the last row's foot does not lengthen the scroll.
   frame.Scroll:HookScript("OnScrollRangeChanged", function(self)
@@ -3036,6 +3125,9 @@ local function Build()
   end
   frame:HookScript("OnHide", function()
     MM.ClosePicker()
+    -- A fan open over the window's rows goes with it.
+    local R = Rules()
+    if R and R.FanGone then R.FanGone(frame.Scroll) end
     -- The arrange mode ends with the window it was opened in.
     if ns.Arrange and ns.Arrange.LeaveIf then ns.Arrange.LeaveIf(frame) end
   end)
