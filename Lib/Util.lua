@@ -221,9 +221,27 @@ local COPPER_SUFFIX = _G.COPPER_AMOUNT_SYMBOL or "c"
 --
 -- `brief` keeps the largest coin alone ("1g", "33s"): the compact row has one
 -- narrow column for this and the silver on a gold sum is noise there.
+--
+-- On a Chinese client, which counts large numbers in ten thousands (万/萬) and
+-- hundred millions (亿/億) rather than thousands and millions, the amounts from
+-- ten thousand gold up are the client's own abbreviation of the gold,
+-- AbbreviateNumbers with the client's locale, which groups them that way in
+-- its characters; everything under ten thousand reads as above. Every other
+-- client keeps the letters, exactly. Decided once at load (the locale is fixed
+-- until the client restarts); a call is one C call, as the format it replaces
+-- is.
+local ABBREVIATE, ABBREVIATE_OPTIONS
+do
+  local locale = type(GetLocale) == "function" and GetLocale() or nil
+  if (locale == "zhCN" or locale == "zhTW") and type(AbbreviateNumbers) == "function" then
+    ABBREVIATE, ABBREVIATE_OPTIONS = AbbreviateNumbers, { locale = locale }
+  end
+end
+
 function Formatting.FormatMoneyCompact(copper, brief)
   local gold, _, _, total = Split(copper)
   if total == 0 then return "" end
+  if ABBREVIATE and gold >= 10000 then return ABBREVIATE(gold, ABBREVIATE_OPTIONS) end
   if gold >= 1000000 then return format("%.1fm", gold / 1000000) end
   if gold >= 100000 then return format("%dk", floor(gold / 1000)) end
   if gold >= 10000 then return format("%.1fk", gold / 1000) end
