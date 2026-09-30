@@ -4133,6 +4133,10 @@ function AR.OnFontsChanged()
     Sized(fs, fs.__arShare)
     fs.__arMemo = nil
   end
+  -- The rows are measured again in the new face while the mode is open over
+  -- them: their columns, and where each figure of a two-line row's second
+  -- line stands, which its marks and a press on it read.
+  if AR.host then AR.RowsChanged(true) end
   AR.Inspect()
 end
 

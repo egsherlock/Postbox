@@ -1769,7 +1769,11 @@ end
 -- re-fonts a row inside it. Anywhere else the font is read on every call, as
 -- it always was. The memo is one table per string, emptied for each pass
 -- rather than made anew.
-local function MeasureWith(panel, sample, text)
+--
+-- A width comes rounded up to the next unit, the room a column keeps;
+-- `exact` answers it as the client measured it, for a sum of widths that
+-- must land on a position within one string (RV.RecordTwo).
+local function MeasureWith(panel, sample, text, exact)
   text = text or ""
   local strings = panel._measureFor
   if not strings then
@@ -1795,7 +1799,9 @@ local function MeasureWith(panel, sample, text)
   end
   if pass == nil then
     fs:SetText(text)
-    return ceil(fs:GetStringWidth() or 0)
+    local width = fs:GetStringWidth() or 0
+    if exact then return width end
+    return ceil(width)
   end
   local memo = fs.__pbMemo
   if not memo then
@@ -1808,10 +1814,11 @@ local function MeasureWith(panel, sample, text)
   local width = memo[text]
   if not width then
     fs:SetText(text)
-    width = ceil(fs:GetStringWidth() or 0)
+    width = fs:GetStringWidth() or 0
     memo[text] = width
   end
-  return width
+  if exact then return width end
+  return ceil(width)
 end
 
 -- Whether a row writes its slot count as the number alone (MailboxUI's
@@ -2599,8 +2606,8 @@ end
 -- rec.t1, where the text between the graphics begins and ends; rec.sender,
 -- the line the sender stands on (0: the list has none); and the second
 -- line's segments, one per figure and the sender written into it, in the
--- order they are written, each measured once per text (MeasureWith's memo
--- for the pass) and cut where the line is cut. Made with the row the first
+-- order they are written, each where the line draws it (measured when the
+-- line or its font changes) and cut where the line is cut. Made with the row the first
 -- time it is placed so and refilled in place; the first row placed in a
 -- pass publishes its record (s.twoRec), or the first without a delete mark
 -- after it, which moves what stands at the row's right end.
@@ -2608,7 +2615,8 @@ function RV.RecordTwo(row, s, layout, x, edge, textWidth, subX, subW, second, be
   local rec = row.__pbTwo
   if not rec then
     rec = { on = false, x = {}, w = {}, room = {}, t0 = 0, t1 = 0, width = 0, sender = 0, marked = false,
-      segN = 0, segId = {}, segX = {}, segW = {} }
+      segN = 0, segId = {}, segX = {}, segW = {},
+      segText = false, segCount = 0, segPath = false, segSize = false, segFlags = false, segOff = {}, segLen = {} }
     row.__pbTwo = rec
   end
   local el, held = s.el, s.held
@@ -2644,19 +2652,49 @@ function RV.RecordTwo(row, s, layout, x, edge, textWidth, subX, subW, second, be
     end
   end
   rx.subject, rw.subject = subX, subW
+  -- Each piece of the second line where the line draws it. The line is one
+  -- string, and a string's measured width is more than the advance of its
+  -- letters: an outline (EllesmereUI's, and Slug's more so) pads each end,
+  -- so pieces measured one by one and added up ran a few units further
+  -- right with every piece, and each width came rounded up besides. So a
+  -- piece starts where the line up to its end measures, less the piece
+  -- itself, both unrounded and in the line's own font: whatever a string's
+  -- measure adds, it adds to both. Measured when the line or its font
+  -- changes, and kept on the record, so a pass over lines that did not
+  -- change measures nothing.
   local n = 0
-  local parts, ids, owner, detail = s.detailParts, s.detailIds, row.panel, el.detail
-  if parts and ids and owner and detail then
-    local join = MeasureWith(owner, detail, ROW_META_JOIN)
-    local cx, limit = x, x + textWidth
-    for k = 1, #parts do
-      local w = MeasureWith(owner, detail, parts[k])
-      local id = ids[k]
+  local parts, ids, owner, detail, line = s.detailParts, s.detailIds, row.panel, el.detail, s.detailText
+  if parts and ids and owner and detail and line then
+    local off, len = rec.segOff, rec.segLen
+    local path, size, flags = detail:GetFont()
+    local count = #parts
+    if rec.segText ~= line or rec.segCount ~= count or rec.segPath ~= path
+        or rec.segSize ~= size or rec.segFlags ~= flags then
+      rec.segText, rec.segCount, rec.segPath, rec.segSize, rec.segFlags = line, count, path, size, flags
+      local stop, joinLen = 0, #ROW_META_JOIN
+      for k = 1, count do
+        local part = parts[k]
+        stop = stop + #part
+        local w = MeasureWith(owner, detail, part, true)
+        if k == 1 then
+          off[k] = 0
+        else
+          off[k] = max(MeasureWith(owner, detail, line:sub(1, stop), true) - w, 0)
+        end
+        len[k] = w
+        -- A font the client has not laid out yet measures nothing: not
+        -- kept, so the next pass measures again.
+        if w <= 0 and part ~= "" then rec.segText = false end
+        stop = stop + joinLen
+      end
+    end
+    local limit = x + textWidth
+    for k = 1, count do
+      local id, cx = ids[k], x + off[k]
       if id and cx < limit then
         n = n + 1
-        rec.segId[n], rec.segX[n], rec.segW[n] = id, cx, min(w, limit - cx)
+        rec.segId[n], rec.segX[n], rec.segW[n] = id, cx, min(len[k], limit - cx)
       end
-      cx = cx + w + join
     end
   end
   rec.segN = n
