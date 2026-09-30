@@ -1063,8 +1063,7 @@ end
 local function BuildRow(parent)
   local row = CreateFrame("Button", nil, parent)
   row:SetHeight(ROW_H)
-  -- Left for Shift-click, "Mail this character" (see the row's OnClick).
-  row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  row:RegisterForClicks("RightButtonUp")
 
   -- The stripe texture is Theme.StyleMailRow's to create and to paint; FillRow
   -- calls it with the row's DISPLAYED position, so this list stripes with the
@@ -1223,19 +1222,8 @@ local function BuildRow(parent)
   end)
   row.Note:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-  -- Right-click is the favorite, as in the Send tab's lists. Shift-click
-  -- mails the character: the Send tab, at a mailbox, with the name in the
-  -- To: box (SendTab.MailTo). A plain left click still does nothing, so a
-  -- stray click in this curation window never rewrites a draft; away from a
-  -- mailbox Shift-click does nothing either, and the tooltip leaves its
-  -- hint out.
   row:SetScript("OnClick", function(_, button)
-    if button == "RightButton" then
-      ToggleFavorite(row._entry)
-    elseif IsShiftKeyDown() and row._entry then
-      local send = ns.SendTab
-      if send and type(send.MailTo) == "function" then send.MailTo(row._entry.display) end
-    end
+    if button == "RightButton" then ToggleFavorite(row._entry) end
   end)
   row:SetScript("OnEnter", function(self)
     local entry = row._entry
@@ -1259,10 +1247,6 @@ local function BuildRow(parent)
     if entry.stale then GameTooltip:AddLine(L["RM_TIP_STALE"], 1, 0.6, 0.25, true) end
     -- The same gesture, said the same way, as the Send tab's contact picker.
     GameTooltip:AddLine(L["RM_TIP_ROW_FAV"], 0.7, 0.7, 0.7, true)
-    local send = ns.SendTab
-    if send and type(send.CanMailTo) == "function" and send.CanMailTo() then
-      GameTooltip:AddLine(L["MAIL_THIS_HINT"], 0.7, 0.7, 0.7, true)
-    end
     GameTooltip:Show()
   end)
   row:SetScript("OnLeave", function() GameTooltip:Hide() end)
