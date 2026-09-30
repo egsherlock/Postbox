@@ -4098,9 +4098,42 @@ local function Sized(fs, share)
   return fs
 end
 
--- A text of one of the inspector's sizes, in a role.
+-- A text of one of the inspector's sizes, in a role. Kept with its role and
+-- share (AR._sized), so a move of the host UI's face sizes it again.
 local function Text(parent, role, size)
-  return Sized(Th().CreateText(parent, role), INSP.TYPE[size])
+  local share = INSP.TYPE[size]
+  local fs = Sized(Th().CreateText(parent, role), share)
+  if fs then
+    fs.__arRole, fs.__arShare = role, share
+    local sized = AR._sized
+    if not sized then
+      sized = {}
+      AR._sized = sized
+      AR._fontGen = Th().FontGeneration and Th().FontGeneration() or 0
+    end
+    sized[#sized + 1] = fs
+  end
+  return fs
+end
+
+-- The host UI's face moved (Theme.RefreshHostFonts). A sized text wears a
+-- font of its own, which does not follow the host's copies as the rest of
+-- the text does, so each takes its role's font again -- the host's face at
+-- the role's size -- and its share of that; the card is then filled again
+-- if it is up, which measures in the new face.
+function AR.OnFontsChanged()
+  local T = Th()
+  AR._fontGen = T and T.FontGeneration and T.FontGeneration() or 0
+  local sized = AR._sized
+  if not (T and sized) then return end
+  for i = 1, #sized do
+    local fs = sized[i]
+    local object = T.FontObject(fs.__arRole)
+    if object and fs.SetFontObject then fs:SetFontObject(object) end
+    Sized(fs, fs.__arShare)
+    fs.__arMemo = nil
+  end
+  AR.Inspect()
 end
 
 local function PlayToggle(on)
@@ -5893,6 +5926,11 @@ end
 -- Up beside the host's window, on the overview.
 function AR.ShowInspector(host)
   local insp = AR._insp or AR.BuildInspector()
+  -- A face move the live call missed (it is guarded) is caught at the open.
+  local T = Th()
+  if AR._sized and T.FontGeneration and AR._fontGen ~= T.FontGeneration() then
+    AR.OnFontsChanged()
+  end
   FitWidth(insp)
   insp.side = nil
   AR.Dock(insp, host)

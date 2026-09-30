@@ -201,6 +201,17 @@ function Theme.BindFont(fontString, spec)
   local minSize = max(MIN_FONT_SIZE, floor((options and tonumber(options.minSize) or MIN_FONT_SIZE) + 0.5))
 
   local current = type(fontString.GetFontObject) == "function" and fontString:GetFontObject() or nil
+  -- A host UI's face, where the addon's theme publishes one (Theme.HostFont
+  -- answers the object itself when there is none): sized from the host's copy
+  -- of the game object rather than from the game object.
+  local hostFont = Theme.HostFont
+  if current and not derivedInfo[current] and type(hostFont) == "function" then
+    local face = hostFont(current)
+    if face and face ~= current and type(fontString.SetFontObject) == "function" then
+      fontString:SetFontObject(face)
+      current = face
+    end
+  end
   local info = current and derivedInfo[current] or nil
 
   local source, path, baseSize, baseFlags

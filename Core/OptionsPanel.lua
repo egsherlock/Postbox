@@ -990,7 +990,7 @@ do
     glow:SetAlpha(0.30)
 
     local name = T.CreateText(holder, "label")
-    if _G.GameFontNormal then name:SetFontObject(_G.GameFontNormal) end
+    if _G.GameFontNormal then name:SetFontObject(T.HostFont(_G.GameFontNormal)) end
     T.SetColor(name, "accent")
     name:SetPoint("BOTTOMLEFT", tile, "LEFT", 48, 1)
     name:SetJustifyH("LEFT")
@@ -1908,7 +1908,7 @@ do
     Rows.Cell(col, row, ROW_W, spec.title, spec.text)
     if spec.master then
       -- A feature's switch reads a step up from the rows it governs.
-      if _G.GameFontNormal then row.Name:SetFontObject(_G.GameFontNormal) end
+      if _G.GameFontNormal then row.Name:SetFontObject(ns.Theme.HostFont(_G.GameFontNormal)) end
       ns.Theme.SetColor(row.Name, "accent")
     end
     if spec.entryTitle then row.entry.title = spec.entryTitle end

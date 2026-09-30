@@ -914,6 +914,26 @@ function Skin.GetAccent()
   return nil
 end
 
+-- EllesmereUI's font for all of Postbox's text: path, outline flags and
+-- whether a drop shadow goes with it, for Theme.HostFont. The face and flags
+-- are the facade's own answer (S.GetFont, "the user's UI font", the one its
+-- S.Font sets); the shadow follows its rule for its own strings -- a drop
+-- shadow only with no outline, and then only while the player's shadow toggle
+-- is on (WindowEngine's ResolveTheme). The outline is the player's EllesmereUI
+-- Outline Mode, applied as EllesmereUI applies it to its own window text.
+function Skin.GetFontFace()
+  if not (S and type(S.GetFont) == "function") then return nil end
+  local ok, path, flags = pcall(S.GetFont)
+  if not ok or type(path) ~= "string" or path == "" then return nil end
+  if type(flags) ~= "string" then flags = "" end
+  local shadow = (flags == "")
+  if shadow and EUI and type(EUI.GetFontUseShadow) == "function" then
+    local ok2, use = pcall(EUI.GetFontUseShadow, "blizzardSkin")
+    if ok2 then shadow = use and true or false end
+  end
+  return path, flags, shadow
+end
+
 -------------------------------------------------------------
 -- Element handlers (identical on both backends)
 -------------------------------------------------------------
@@ -996,6 +1016,19 @@ local function SkinLeaf(widget, fn)
   fn(widget)
 end
 
+-- A push button: the house primitive, and its fonts in EllesmereUI's face. The
+-- primitive leaves a label's font alone (its own buttons keep the game font);
+-- Postbox's text is all in the house face, and a label beside plates and rows
+-- set in it would be the one string in the game font. Its state fonts are what
+-- change, not the label's, because the button puts those back on the label at
+-- every enable and disable.
+local function SkinButton(btn)
+  S.Button(btn)
+  if ns.Theme and type(ns.Theme.HostFontButton) == "function" then
+    pcall(ns.Theme.HostFontButton, btn)
+  end
+end
+
 local function SkinTree(frame, depth)
   if not frame or depth > 8 then return end
   local kids = { frame:GetChildren() }
@@ -1019,7 +1052,7 @@ local function SkinTree(frame, depth)
           if c.__label then S.Font(c.__label) end
         end
       elseif c:IsObjectType("Button") then
-        if c.__postboxButton then SkinLeaf(c, S.Button) end
+        if c.__postboxButton then SkinLeaf(c, SkinButton) end
       end
     end
     SkinTree(c, depth + 1)
@@ -1246,6 +1279,12 @@ end
 
 function Skin.OnHostLooksChanged(fromShow)
   if not S then return end
+  -- The house font on Postbox's text (Theme.HostFont): moved only if the face
+  -- the facade answers is not the one the text wears, so on almost every pass
+  -- this is one read and a compare.
+  if ns.Theme and type(ns.Theme.RefreshHostFonts) == "function" then
+    pcall(ns.Theme.RefreshHostFonts)
+  end
   pcall(Skin.ApplyBgOpacity)          -- baseline fill colour + opacity
   pcall(Skin.ApplyBorder)             -- the user's configured window border
   pcall(Skin.RefreshAccents)          -- options cog, collect view toggle

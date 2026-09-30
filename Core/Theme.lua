@@ -563,25 +563,164 @@ local TEXT_ROLES = {
   secondary   = { font = "GameFontHighlightSmall", color = "textSecondary" },
   placeholder = { font = "GameFontHighlightSmall", color = "textPlaceholder" },
   disabled    = { font = "GameFontDisableSmall",   color = "textDisabled" },
-  number      = { font = "NumberFontNormal",       color = "textPrimary" },
-  numberSmall = { font = "NumberFontNormalSmall",  color = "textPrimary" },
+  -- `gameFace`: the count on an icon keeps the game's number font under a host
+  -- UI's face too, as the host's own item buttons do (see Theme.HostFont).
+  number      = { font = "NumberFontNormal",       color = "textPrimary", gameFace = true },
+  numberSmall = { font = "NumberFontNormalSmall",  color = "textPrimary", gameFace = true },
 }
 
 Theme.TextRoles = TEXT_ROLES
 
 local FONT_FALLBACK = { "GameFontHighlightSmall", "GameFontHighlight", "GameFontNormal" }
 
+-- A host UI's face on Postbox's text: EllesmereUI's font, set on every string
+-- Postbox makes, where the game's own font objects would otherwise leave rows,
+-- headings and buttons in the game font unless the player has EllesmereUI swap
+-- every game font ("Apply to All Game Text").
+--
+-- A copy of each game font object Postbox uses, in the host's face and outline
+-- and at the object's own size, so Postbox's size hierarchy is the game's as
+-- ever and only the face changes. Copies rather than a font set on each string:
+-- a string wears its copy for nothing at all per bind, a button's own state
+-- fonts can wear them (a button puts its state's object back on its label
+-- whenever it is enabled or disabled, which would undo a font set on the
+-- label), and when the host's face moves, re-dressing the handful of copies
+-- moves every string wearing one.
+--
+-- Only while a host skin publishes a face (ns.Skin.GetFontFace, the
+-- EllesmereUI skin): with none, every call below answers the game's own object,
+-- so Postbox's Blizzard and Modern looks and ElvUI (which re-fonts the game's
+-- objects itself) are untouched. Copies are made the first time a string asks,
+-- by when the host has finished its own login pass over the game's fonts.
+local HF = { copies = {}, bases = {}, isCopy = {}, failed = {}, n = 0, gen = 0 }
+
+-- path, flags, shadow of the host's face, or nil while no host publishes one.
+local function HostFace()
+  local skin = ns.Skin
+  local get = skin and skin.GetFontFace
+  if type(get) ~= "function" then return nil end
+  local ok, path, flags, shadow = pcall(get)
+  if not ok or type(path) ~= "string" or path == "" then return nil end
+  return path, (type(flags) == "string") and flags or "", shadow and true or false
+end
+
+-- The copy made again from its game object, in the face given: the object's
+-- colour, spacing and size, the host's face and outline, and the host's shadow
+-- (a drop shadow where it draws no outline, none where it does, as its own
+-- strings are primed). A shadow only renders when a font object carries it,
+-- which is the other reason these are objects.
+local function DressCopy(copy, base, path, flags, shadow)
+  if type(copy.CopyFontObject) == "function" then pcall(copy.CopyFontObject, copy, base) end
+  local _, size = base:GetFont()
+  if type(size) ~= "number" or size <= 0 then size = 12 end
+  if type(copy.SetShadowColor) == "function" then
+    if shadow then
+      copy:SetShadowColor(0, 0, 0, 1)
+      copy:SetShadowOffset(1, -1)
+    else
+      copy:SetShadowColor(0, 0, 0, 0)
+      copy:SetShadowOffset(0, 0)
+    end
+  end
+  return pcall(copy.SetFont, copy, path, size, flags) and true or false
+end
+
+-- A game font object -> the one to set on Postbox's text: its copy in the
+-- host's face while a host publishes one, else the object itself.
+function Theme.HostFont(base)
+  if base == nil then return base end
+  local copy = HF.copies[base]
+  if copy then return copy end
+  if HF.isCopy[base] or HF.failed[base] then return base end
+  local path, flags, shadow = HostFace()
+  if not path or type(base) ~= "table" or type(base.GetFont) ~= "function"
+     or type(CreateFont) ~= "function" then
+    return base
+  end
+  HF.n = HF.n + 1
+  copy = CreateFont("PostboxHostFont" .. HF.n)
+  -- A copy the client will not make or dress is asked for once, not per string.
+  if not copy or not DressCopy(copy, base, path, flags, shadow) then
+    HF.failed[base] = true
+    return base
+  end
+  HF.copies[base], HF.isCopy[copy] = copy, true
+  HF.bases[#HF.bases + 1] = base
+  HF.path, HF.flags, HF.shadow = path, flags, shadow
+  return copy
+end
+
+-- Moves every copy to the host's face as it is now, when it is not the face
+-- they wear. Called on each of the host's looks passes (the EllesmereUI skin's
+-- OnHostLooksChanged); a pass whose face did not move reads it and returns.
+-- Strings wearing a copy follow on their own; a string set to a size of its
+-- own (the arrange inspector's type) is told through Arrange.OnFontsChanged.
+function Theme.RefreshHostFonts()
+  if not HF.path then return false end
+  local path, flags, shadow = HostFace()
+  if not path or (path == HF.path and flags == HF.flags and shadow == HF.shadow) then return false end
+  HF.path, HF.flags, HF.shadow = path, flags, shadow
+  for i = 1, #HF.bases do
+    local base = HF.bases[i]
+    DressCopy(HF.copies[base], base, path, flags, shadow)
+  end
+  HF.gen = HF.gen + 1
+  Theme.ForgetFits()
+  local AR = ns.Arrange
+  if AR and type(AR.OnFontsChanged) == "function" then pcall(AR.OnFontsChanged) end
+  return true
+end
+
+-- Counts the host face's moves: what a string sized on its own compares.
+function Theme.FontGeneration()
+  return HF.gen
+end
+
+-- The foundation layer derives its sized fonts (the select control's captions
+-- and lists) from the object a string wears; it asks here first.
+if SharedTheme then SharedTheme.HostFont = Theme.HostFont end
+
 -- role -> a font object that exists on this client, or nil. The TOC declares two
 -- interface versions and the number fonts in particular are not guaranteed.
+-- In the host's face where one is published (Theme.HostFont).
 function Theme.FontObject(role)
   local spec = TEXT_ROLES[role] or TEXT_ROLES.bodySmall
   local object = _G[spec.font]
-  if object then return object, spec end
-  for i = 1, #FONT_FALLBACK do
-    object = _G[FONT_FALLBACK[i]]
-    if object then return object, spec end
+  if not object then
+    for i = 1, #FONT_FALLBACK do
+      object = _G[FONT_FALLBACK[i]]
+      if object then break end
+    end
   end
-  return nil, spec
+  if object and not spec.gameFace then object = Theme.HostFont(object) end
+  return object, spec
+end
+
+-- A button's own fonts -- the ones it puts on its label as it is enabled,
+-- disabled and pointed at -- and its label, in the host's face. For the host
+-- skin to call on Postbox's push buttons; a no-op without a host face.
+function Theme.HostFontButton(button)
+  if not button then return end
+  local pairs_ = HF.buttonPairs
+  if not pairs_ then
+    pairs_ = { "GetNormalFontObject", "SetNormalFontObject", "GetHighlightFontObject",
+               "SetHighlightFontObject", "GetDisabledFontObject", "SetDisabledFontObject" }
+    HF.buttonPairs = pairs_
+  end
+  for i = 1, #pairs_, 2 do
+    local get, set = button[pairs_[i]], button[pairs_[i + 1]]
+    if type(get) == "function" and type(set) == "function" then
+      local object = get(button)
+      local face = object and Theme.HostFont(object)
+      if face and face ~= object then set(button, face) end
+    end
+  end
+  local label = type(button.GetFontString) == "function" and button:GetFontString() or nil
+  if label and type(label.GetFontObject) == "function" then
+    local object = label:GetFontObject()
+    local face = object and Theme.HostFont(object)
+    if face and face ~= object then label:SetFontObject(face) end
+  end
 end
 
 -- Font strings currently wearing an accent token -> that token.
@@ -1576,7 +1715,13 @@ function Theme.CreatePlate(parent, variant, name)
   -- gets. SetFontString registers it as the button's own label, which is what
   -- SetText/GetText drive and what both skins look for when they mirror it.
   local role = spec.role
-  local label = plate:CreateFontString(nil, "OVERLAY", (TEXT_ROLES[role] or TEXT_ROLES.segment).font)
+  local font = (TEXT_ROLES[role] or TEXT_ROLES.segment).font
+  local label = plate:CreateFontString(nil, "OVERLAY", font)
+  -- In a host UI's face where one is published; the template's object is
+  -- the answer otherwise, and nothing is set.
+  local base = _G[font]
+  local face = base and Theme.HostFont(base)
+  if face and face ~= base then label:SetFontObject(face) end
   label:SetPoint("CENTER", plate, "CENTER", 0, 0)
   label:SetWordWrap(false)
   plate:SetFontString(label)
