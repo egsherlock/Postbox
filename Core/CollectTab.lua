@@ -287,9 +287,10 @@ end
 -- tile its plate's 3-unit pad), so the mark never rises past its row's top
 -- and the list's edge never cuts the first row's.
 --
--- RV.MARK_SCALE scales the whole rule, 1 being the bags' proportion; every
--- placement remembers the RV.markGen it was made at, so a change of scale
--- places each mark again where it is next shown. Sizes are not rounded: at UI
+-- RV.MARK_SCALE scales the whole rule, 1 being the bags' proportion. Only
+-- `/postbox debug badge` sets it, for the session (CT.TuneBadge); every
+-- placement remembers the RV.markGen it was made at, so a retune places
+-- each mark again where it is next shown. Sizes are not rounded: at UI
 -- scale 1 a unit is nearly two screen pixels, too coarse a step to tune a
 -- mark this small in.
 --
@@ -308,6 +309,39 @@ function RV.MarkGeometry(iconSize)
   local M = RV.MARK
   local k = (tonumber(iconSize) or 18) / M.BUTTON * RV.MARK_SCALE
   return M.W * k, M.H * k, -min(M.OUT_X, M.OUT_X * k), min(M.UP_MAX, M.OUT_Y * k)
+end
+
+-- `/postbox debug badge [percent]` (Postbox.lua): the rule's scale, for
+-- trying a size by eye in game. For this session only, never saved, and not
+-- in the help. A number sets it, 25 to 300, and every mark on screen is
+-- placed again: the lists draw again, and the open fan's and reading view's
+-- tiles are placed where they stand. Either way it says the scale in chat.
+function CT.TuneBadge(arg)
+  local pct = tonumber((tostring(arg or ""):match("^%s*(%d+%.?%d*)%s*%%?%s*$")))
+  if pct then
+    RV.MARK_SCALE = max(25, min(300, pct)) / 100
+    RV.markGen = RV.markGen + 1
+    local UI = ns.MailboxUI
+    if UI and type(UI.RefreshCollectRowLayout) == "function" then UI.RefreshCollectRowLayout() end
+    local Memory = ns.MailMemory
+    if Memory and type(Memory.Refresh) == "function" then Memory.Refresh() end
+    local Options = ns.OptionsPanel
+    if Options and type(Options.RefreshControls) == "function" then Options.RefreshControls() end
+    local Fan = RV.Fan
+    local tiles = Fan and Fan.tiles or {}
+    for i = 1, #tiles do RV.PlaceAgain(tiles[i].Mark, tiles[i].MarkShadow) end
+    local frame = UI and UI._frame
+    local detail = frame and frame.Tabs and frame.Tabs.collect and frame.Tabs.collect.Detail
+    local slots = detail and detail.Slots or {}
+    for i = 1, #slots do RV.PlaceAgain(slots[i].Mark, slots[i].MarkShadow) end
+  end
+  ns.Print(L()("DEBUG_BADGE", floor(RV.MARK_SCALE * 100 + 0.5)))
+end
+
+-- mark, shadow -> placed again where RV.PlaceMark last put it, by the rule
+-- as it stands now; nothing for a mark never placed.
+function RV.PlaceAgain(mark, shadow)
+  if mark and mark.__pbIcon then RV.PlaceMark(mark, shadow, mark.__pbIcon, mark.__pbIconSize) end
 end
 
 -- mark -> the atlas it draws, or nil.

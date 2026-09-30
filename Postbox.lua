@@ -1920,6 +1920,14 @@ SlashCmdList["POSTBOX"] = function(input)
   local word = string.lower(string.match(input or "", "^%s*(.-)%s*$"))
   -- One space between words, so "perf  on" is "perf on".
   word = string.gsub(word, "%s+", " ")
+  -- "debug badge", with a percent or without: the quality badge's size, to
+  -- try by eye (CollectTab, CT.TuneBadge). This session only; not in the help.
+  local badge = string.match(word, "^debug badge ?(.*)$")
+  if badge then
+    local collect = ns.CollectTab
+    if collect and type(collect.TuneBadge) == "function" then collect.TuneBadge(badge) end
+    return
+  end
   local handler = COMMANDS[word]
   if handler then
     handler()
