@@ -1003,6 +1003,8 @@ end
 -- come near the Send tab. Nothing typed waits on it: the login's answers are
 -- already in the client, so the first keystroke is served from those.
 function CS.RefreshForVisit()
+  local UI = ns.MailboxUI
+  if CS._ListenForVisit and UI and UI._state and UI._state.mailboxOpen then CS._ListenForVisit() end
   -- C_RecentAllies publishes no update event, so the moment its contents are
   -- about to be read is where it is refreshed.
   MarkDirty("grouped", true)
@@ -1015,13 +1017,47 @@ do
   if type(bus) == "table" and type(bus.Register) == "function" then
     -- Presence, not membership: each of these dirties exactly one source and
     -- waits out the coalescing window. See the invalidation policy above.
-    bus.Register("GUILD_ROSTER_UPDATE", function() MarkDirty("guild") end)
-    bus.Register("FRIENDLIST_UPDATE", function() MarkDirty("friends") end)
-    bus.Register("BN_FRIEND_INFO_CHANGED", function() MarkDirty("friends") end)
-    bus.Register("BN_DISCONNECTED", function() MarkDirty("friends") end)
-    -- The friends list has just become readable again; do not make the player
-    -- wait out a coalescing window for it.
-    bus.Register("BN_CONNECTED", function() MarkDirty("friends", true) end)
+    --
+    -- They are the chattiest events the game sends a guild player, and
+    -- nothing reads the sources away from a mailbox, so they are heard only
+    -- during a visit: registered at the open (and when the Send tab asks for
+    -- its visit's refresh, should the open have gone unheard), dropped at the
+    -- close. Whatever they would have said in between is covered by marking
+    -- both sources dirty at the open -- the same coalesced dirty an event
+    -- sets, and the time away is always past the coalescing window.
+    local presence = {
+      GUILD_ROSTER_UPDATE = function() MarkDirty("guild") end,
+      FRIENDLIST_UPDATE = function() MarkDirty("friends") end,
+      BN_FRIEND_INFO_CHANGED = function() MarkDirty("friends") end,
+      BN_DISCONNECTED = function() MarkDirty("friends") end,
+      -- The friends list has just become readable again; do not make the
+      -- player wait out a coalescing window for it.
+      BN_CONNECTED = function() MarkDirty("friends", true) end,
+    }
+    -- A frame of their own rather than the bus: the close is itself an
+    -- event being dispatched, and the bus defers dropping a registration
+    -- until its list is idle, which for these would be their next tick.
+    local listener = CreateFrame("Frame")
+    listener:SetScript("OnEvent", function(_, event) presence[event]() end)
+    local listening = false
+    CS._ListenForVisit = function()
+      if listening then return end
+      listening = true
+      MarkDirty("guild")
+      MarkDirty("friends")
+      for event in pairs(presence) do pcall(listener.RegisterEvent, listener, event) end
+    end
+    local function StopListening()
+      if not listening then return end
+      listening = false
+      listener:UnregisterAllEvents()
+    end
+    bus.Register("MAIL_SHOW", CS._ListenForVisit)
+    bus.Register("MAIL_CLOSED", StopListening)
+    bus.Register("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", function(_, kind)
+      local enum = type(Enum) == "table" and Enum.PlayerInteractionType or nil
+      if kind == 17 or (enum ~= nil and kind == enum.MailInfo) then StopListening() end
+    end)
 
     -- Membership. Joining or leaving a guild must show at once.
     bus.Register("PLAYER_GUILD_UPDATE", function()

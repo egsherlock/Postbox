@@ -254,15 +254,51 @@ end
 -- item still loading from the server -- is provisional, and still goes on
 -- BAG_UPDATE_DELAYED as every verdict used to: that is what corrects it once
 -- the data has arrived.
+--
+-- The bag events are heard only while there are verdicts to keep: from the
+-- first verdict of a mailbox visit until that mailbox closes. The close
+-- forgets every verdict -- nothing watched the bags in between, so none can
+-- be trusted on the next visit -- and drops the events with them, so bag
+-- traffic away from a mailbox (every loot) never reaches this file.
 local verdictCache = {}   -- guid -> verdict
 local provisional = {}    -- guid -> true: a verdict nothing decisive backed
 local judgedIn = {}       -- bag -> { guid = true }, the verdicts judged there
+local ArmWatcher          -- () -> nil: hear the bag events until the close
 
 do
+  local MAIL_INTERACTION = 17
   local watcher = CreateFrame("Frame")
-  watcher:RegisterEvent("BAG_UPDATE")
-  watcher:RegisterEvent("BAG_UPDATE_DELAYED")
+  local armed = false
+
+  ArmWatcher = function()
+    if armed then return end
+    armed = true
+    watcher:RegisterEvent("BAG_UPDATE")
+    watcher:RegisterEvent("BAG_UPDATE_DELAYED")
+    -- Both close signals, as the mailbox window hears them: neither
+    -- arrives on every close path.
+    watcher:RegisterEvent("MAIL_CLOSED")
+    watcher:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+  end
+
+  local function Disarm()
+    armed = false
+    watcher:UnregisterEvent("BAG_UPDATE")
+    watcher:UnregisterEvent("BAG_UPDATE_DELAYED")
+    watcher:UnregisterEvent("MAIL_CLOSED")
+    watcher:UnregisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+    wipe(verdictCache)
+    wipe(provisional)
+    wipe(judgedIn)
+  end
+
   watcher:SetScript("OnEvent", function(_, event, bag)
+    if event == "MAIL_CLOSED" then return Disarm() end
+    if event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
+      local enum = type(Enum) == "table" and Enum.PlayerInteractionType or nil
+      if bag == MAIL_INTERACTION or (enum ~= nil and bag == enum.MailInfo) then Disarm() end
+      return
+    end
     if event == "BAG_UPDATE" then
       local guids = judgedIn[bag]
       if not guids then return end
@@ -388,6 +424,7 @@ function M.ShouldLockForMail(bag, slot)
 
   local verdict, decided = Resolve(bag, slot, location, info)
   if guid then
+    ArmWatcher()
     verdictCache[guid] = verdict
     if not decided then provisional[guid] = true end
     local guids = judgedIn[bag]
