@@ -1930,12 +1930,24 @@ end
 -- the game. Nothing is destroyed. Under a host UI the tooltip is that UI's
 -- and is never touched. It stays dark in Light mode: its lines are the
 -- game's own white text.
+--
+-- Nothing is hooked and nothing is written onto the tooltip's table. A
+-- sensor -- a Postbox frame with no art, spread over the tooltip -- shows
+-- and hides with it, and its own scripts dress it for a Postbox owner on
+-- show (or when a resize finds a new owner) and undo that on hide. What was
+-- made and what was hidden sits in `tipState`, Postbox's own table.
 -------------------------------------------------------------
+
+local tipState = { dressed = false, owner = nil, fill = nil, edges = nil, nineShown = nil, sensor = nil }
+
+local function Forbidden(frame)
+  return frame.IsForbidden ~= nil and frame:IsForbidden() and true or false
+end
 
 local function IsOurs(owner)
   local frame = owner
   for _ = 1, 6 do
-    if type(frame) ~= "table" then return false end
+    if type(frame) ~= "table" or Forbidden(frame) then return false end
     if frame.__pbTooltipOwner then return true end
     local name = frame.GetName and frame:GetName()
     if type(name) == "string" and name:find("^Postbox") then return true end
@@ -1947,12 +1959,12 @@ end
 local function DressTooltip(tip, ours)
   if not tip then return end
   -- Only ever undo what this did.
-  local wasDressed = tip.__pbDressed
+  local st = tipState
+  local wasDressed = st.dressed
   if not ours and not wasDressed then return end
-  tip.__pbDressed = ours or nil
+  st.dressed = ours and true or false
 
-  if not tip.__pbPostboxTip then
-    tip.__pbPostboxTip = true
+  if not st.fill then
     local edge = Hairline(tip)
     local c = P.tooltip
     local fill = tip:CreateTexture(nil, "BACKGROUND", nil, -8)
@@ -1977,36 +1989,58 @@ local function DressTooltip(tip, ours)
       line:Hide()
       edges[i] = line
     end
-    tip.__pbFill = fill
-    tip.__pbEdges = edges
+    st.fill, st.edges = fill, edges
   end
 
-  tip.__pbFill:SetShown(ours)
-  for i = 1, #tip.__pbEdges do tip.__pbEdges[i]:SetShown(ours) end
-  if tip.NineSlice then
+  st.fill:SetShown(ours)
+  for i = 1, #st.edges do st.edges[i]:SetShown(ours) end
+  local nine = tip.NineSlice
+  if nine then
     if ours then
-      if not wasDressed then tip.__pbNineShown = tip.NineSlice:IsShown() end
-      tip.NineSlice:Hide()
+      if not wasDressed then st.nineShown = nine:IsShown() end
+      nine:Hide()
     else
-      tip.NineSlice:SetShown(tip.__pbNineShown ~= false)
+      nine:SetShown(st.nineShown ~= false)
     end
   end
 end
 
-local tooltipHooked = false
+-- The sensor's look at the tooltip: dress for a Postbox owner, undress for
+-- any other. A forbidden tooltip is left alone.
+local function SenseTooltip(tip, force)
+  if Forbidden(tip) then return end
+  local owner = tip.GetOwner and tip:GetOwner() or nil
+  if not force and owner == tipState.owner then return end
+  tipState.owner = owner
+  local ok, ours = pcall(IsOurs, owner)
+  DressTooltip(tip, ok and ours or false)
+end
+
+local function SensorShown(self) SenseTooltip(self:GetParent(), true) end
+local function SensorResized(self) SenseTooltip(self:GetParent(), false) end
+local function SensorHidden(self)
+  tipState.owner = nil
+  local tip = self:GetParent()
+  if Forbidden(tip) then return end
+  DressTooltip(tip, false)
+end
+
 local function HookTooltips()
-  if tooltipHooked or type(hooksecurefunc) ~= "function" then return end
+  if tipState.sensor or type(CreateFrame) ~= "function" then return end
   -- GameTooltip is shared, and a host UI skins it for the whole interface:
   -- choosing this style is a statement about Postbox's windows, not a licence
   -- to restyle a frame the rest of the interface also uses.
   if _G.EllesmereUI or _G.ElvUI then return end
-  tooltipHooked = true
-  hooksecurefunc(GameTooltip, "SetOwner", function(self, owner)
-    DressTooltip(self, IsOurs(owner))
-  end)
-  GameTooltip:HookScript("OnHide", function(self)
-    DressTooltip(self, false)
-  end)
+  local tip = GameTooltip
+  if type(tip) ~= "table" or Forbidden(tip) then return end
+  local sensor = CreateFrame("Frame", nil, tip)
+  sensor:SetAllPoints(tip)
+  sensor:SetScript("OnShow", SensorShown)
+  sensor:SetScript("OnHide", SensorHidden)
+  sensor:SetScript("OnSizeChanged", SensorResized)
+  tipState.sensor = sensor
+  -- Already up (a window built under the cursor): look now.
+  if tip:IsVisible() then SenseTooltip(tip, true) end
 end
 
 -------------------------------------------------------------
