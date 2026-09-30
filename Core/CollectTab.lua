@@ -8781,7 +8781,9 @@ local function LayoutGrid(panel)
   -- pushed the list a half-row off its whole-row floor.
   local extras = ShowCategoryButtons()
   if Selecting(panel) then
-    primary.caption = L()("CAT_SELECTED", SelectionCount(panel))
+    -- The picks it will take, by the run's own rules (RV.SelectionCounts):
+    -- not a C.O.D. one, nor one finished since it was picked.
+    primary.caption = L()("CAT_SELECTED", RV.SelectionCounts(panel).all or 0)
   elseif Searching(panel) or StuckOnly(panel) then
     primary.caption = L()["CAT_SHOWN"]
   else
@@ -8856,7 +8858,12 @@ local function LayoutGrid(panel)
     local n = counts.all or 0
     local caption = primary.caption
     if withCounts and n > 0 and not picked then caption = caption .. " (" .. FormatCount(n) .. ")" end
-    primary:SetEnabled(picked or panel._moreOnServer or n > 0)
+    -- Under a selection, live while it names any pick it will take.
+    if picked then
+      primary:SetEnabled((RV.SelectionCounts(panel).all or 0) > 0)
+    else
+      primary:SetEnabled(panel._moreOnServer or n > 0)
+    end
     T.FitText(primary:GetFontString(), primary:GetWidth() - M.gap, caption, primary)
     if dress then dress(primary, n, true) end
   end
