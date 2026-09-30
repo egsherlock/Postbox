@@ -1728,6 +1728,15 @@ do
     end
     local cap = R.SenderColumn(owner, sample.Sender)
     cols.sender = 0
+    -- The list's packed rows measure their own figures as its columns are
+    -- measured here (the rules' MeasureIn), and read what this pass measured
+    -- from the owner's memo: a window of its own keeps one too, emptied when
+    -- its drawing scale moves (the rules' MeasureScale); the Mail tab's
+    -- view of a box measures with the tab's own.
+    local spec = MM.PlaceSpec(sample:GetParent())
+    if spec and R.MeasureIn then R.MeasureIn(spec, owner, sample.ColTime, sample.ColMoney, sample.ColSlots, nil) end
+    if owner._measurePass == nil then owner._measurePass = 0 end
+    if R.MeasureScale then R.MeasureScale(owner) end
     local fsFor = owner._memFsFor
     if not fsFor then
       fsFor = {}
@@ -1938,7 +1947,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
     spec.width, spec.left, spec.trail, spec.gap = width, 6, trail, 6
     spec.cols = cols
     spec.senderCol = cols.sender or 92
-    spec.share, spec.reserve, spec.two = R.META_SHARE, false, false
+    spec.share, spec.two = R.META_SHARE, false
     -- A C.O.D. price shows with the gold column hidden, as on the Mail tab.
     spec.force = codShown and "money" or nil
     -- "Before the name": the mark's room before every row's subject.

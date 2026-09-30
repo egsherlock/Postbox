@@ -1765,9 +1765,9 @@ end
 
 -- Whether the figures stand in lanes (RV.Place): the Row layout choice,
 -- Columns (the default) rather than Packed -- in the arrange mode too, so
--- what the choice does is seen while the columns are arranged (the header
--- stands on each column's home lane either way: RV.HomeLanes). Read once
--- per row placed: the options' memo.
+-- what the choice does is seen while the columns are arranged (packed, the
+-- header is a strip of chips: Core/Arrange.lua). Read once per row placed:
+-- the options' memo.
 function RV.LinedUp()
   local UI = ns.MailboxUI
   if not (UI and UI.GetRowPacking) then return true end
@@ -2207,9 +2207,11 @@ end
 
 -- A placement table for RV.Place, one per list, reused for every row it binds;
 -- laneX and laneW are where RV.Place publishes the list's lanes; held and
--- roomX are the rooms it keeps while the arrange mode is open over the list.
+-- roomX are the rooms it keeps while the arrange mode is open over the list;
+-- owner and fonts where its packed rows measure their figures (RV.MeasureIn).
 function RV.NewSpec()
-  return { el = {}, size = {}, text = {}, w = {}, laneX = {}, laneW = {}, held = {}, roomX = {} }
+  return { el = {}, size = {}, text = {}, w = {}, laneX = {}, laneW = {}, held = {}, roomX = {},
+    fonts = {}, owner = false }
 end
 
 -- Where the read mark stands before the subject, `x` being where its column
@@ -2321,14 +2323,16 @@ end
 --              further out in a narrow list -- takes the subject's room
 --              next to it on its own side, within the row's share, and no
 --              lane moves for one row.
---   Packed     each row closes its gaps away from the subject: a figure
---              this mail does not have takes NO room, and what stands
---              beyond it moves up toward the edge on its side -- the right
---              edge after the subject, the left edge before it -- so the
---              subject has all the room the mail's own figures leave. One
---              rule for any arrangement; the graphics and the sender close
---              up with the figures, and the gaps between columns and at the
---              edges are the same as in Columns.
+--   Packed     each row is its own: a figure takes only the width of what
+--              this mail's own figure says (RV.OwnWidth), not its column's,
+--              and one this mail does not have takes NO room. What stands
+--              before the subject packs from the left edge and what stands
+--              after it from the right edge inward, each a gap from the
+--              next, so a mail's figures sit together at the edge on their
+--              side of the subject and the subject has all the room they
+--              leave. One rule for any arrangement; the graphics and the
+--              sender close up with the figures, and the gaps between
+--              columns and at the edges are the same as in Columns.
 -- The figures together may claim at most `share` of the text area: the
 -- sender and the subject are what a mailbox is scanned by.
 --
@@ -2353,21 +2357,21 @@ end
 -- list's -- every row of a list in columns has the same trailing room, a
 -- read mail's delete mark drawing over its last column (RV.MarkReserve) --
 -- so a binder may set s.publish before each pass, and only the first row
--- placed publishes. Packed, a row's figures are its own and nothing is published,
--- but for the arrange mode: while it is open the header still stands on
--- each column's home lane, where a row with every figure has it in
--- Columns, and the row publishes those instead (RV.HomeLanes).
+-- placed publishes. Packed, a row's figures are its own and nothing is
+-- published: the arrange mode's header is then a strip of chips that
+-- stands on no lanes (Core/Arrange.lua), and a row stands in the mode as it
+-- does out of it.
 --
--- While the arrange mode is open over the list a row stands in, whatever
--- its header shows has room in the row too: a hidden column (its peg) and
--- a shown figure with no lane in the list (its narrow heading) each keep an
+-- While the arrange mode is open over a list in columns, whatever its
+-- header shows has room in the row too: a hidden column (its peg) and a
+-- shown figure with no lane in the list (its narrow heading) each keep an
 -- empty lane where the arrangement puts them, as wide as makes the column's
 -- box the heading's own width (RV.RoomWidth), and the row's content steps
 -- aside by that room. So the headings beside it and their cells end at its
--- edges. The rooms are the list's (s.held, the
--- room's width by column), placed like any column in Columns and packed
--- with the others in Packed (s.roomX, where this row keeps each), and a
--- subject never runs on through one. Out of the mode no row keeps any.
+-- edges. The rooms are the list's (s.held, the room's width by column),
+-- placed like any column (s.roomX, where this row keeps each), and a
+-- subject never runs on through one. A packed row keeps none, and out of
+-- the mode no row keeps any.
 --
 -- `s` (RV.NewSpec, reused):
 --   width, left, trail, gap   the row's width; where its first column may
@@ -2394,9 +2398,11 @@ end
 --   cols[id], senderCol       the figures' list-wide widths; the sender's
 --   text[id]                  what each text column says (a figure nil: this
 --                             mail does not have it)
---   share, reserve            the figures' cap (nil: none); whether a figure
---                             keeps its room on a row without it (History)
---   force                     a hidden figure this row shows anyway (a C.O.D.
+--   share                     the figures' cap (nil: none)
+--   owner, fonts              packed: the frame the list's walk measured its
+--                             figures with, and the string each was measured
+--                             in, by id (RV.MeasureIn, RV.OwnWidth)
+--   force                    a hidden figure this row shows anyway (a C.O.D.
 --                             price always shows)
 --   two, top, bottom          the two-line row, and its lines' offsets
 --   detailText                the second line
@@ -2429,12 +2435,13 @@ function RV.Place(row, s)
   end
 
   -- While the arrange mode is open over the list this row stands in, the
-  -- rooms its header's pegs and narrow headings keep (above). A two-line
-  -- row keeps rooms only for what its header stands over: a hidden graphic,
-  -- the whole row's height, and a hidden sender on its first line (below).
+  -- rooms its header's pegs and narrow headings keep (above), lined up. A
+  -- two-line row keeps rooms only for what its header stands over: a hidden
+  -- graphic, the whole row's height, and a hidden sender on its first line
+  -- (below). A packed row keeps none: it stands as it does out of the mode.
   local held
   local Arr = ns.Arrange
-  if Arr and Arr.host and Arr.StandWidth and Arr.HEAD and s.held then
+  if (lanes or two) and Arr and Arr.host and Arr.StandWidth and Arr.HEAD and s.held then
     local list = Arr.host.List and Arr.host.List()
     if list and row:GetParent() == list then held = s.held end
   end
@@ -2460,19 +2467,17 @@ function RV.Place(row, s)
 
   -- The figures' widths: those after the subject from the edge in, then
   -- those before it, out of one allowance. Lined up, a figure the
-  -- arrangement shows has its width whether this mail has it or not, as
-  -- History's reserve does; a hidden one forced onto this row is left to
-  -- the subject's room (below). Packed, on either side, only what the mail
-  -- has.
+  -- arrangement shows has its column's width whether this mail has it or
+  -- not; a hidden one forced onto this row is left to the subject's room
+  -- (below). Packed, on either side, only what the mail has, as wide as its
+  -- own text is (RV.OwnWidth); cut short by the allowance, it gives up its
+  -- place only where that leaves it narrower than a column is ever drawn.
   local room = s.share and floor(textWidth * s.share) or textWidth
   local used = 0
   -- The narrowest a figure's column may be drawn (RV.FIGURE_MIN).
   local least = RV.FIGURE_MIN
   -- Lined up: whether a figure the row may show has no lane (below).
   local laneless = lanes and force ~= nil and not layout.shown[force]
-  -- While arranging, what the home lanes have taken (RV.HomeLanes): a
-  -- shown figure with none has a narrow heading, and its room.
-  local homeUsed = 0
   for pass = 1, 2 do
     local from, to, step = n, at + 1, -1
     if pass == 2 then from, to, step = 1, at - 1, 1 end
@@ -2481,39 +2486,28 @@ function RV.Place(row, s)
       if RV.FIGURE[id] and el[id] then
         local width = 0
         if (layout[i].shown or (force == id and not lanes)) and not two then
-          local has = s.reserve or lanes or text[id] ~= nil
-          width = min(cols[id] or 0, room - used)
-          if not has or width < least then
-            if lanes and width < least and (cols[id] or 0) >= least then laneless = true end
-            width = 0
+          if lanes then
+            width = min(cols[id] or 0, room - used)
+            if width < least then
+              if (cols[id] or 0) >= least then laneless = true end
+              width = 0
+            end
+          elseif text[id] ~= nil then
+            local own = RV.OwnWidth(s, id)
+            width = min(own, room - used)
+            if width < own and width < least then width = 0 end
           end
         end
         w[id] = width
         if width > 0 then used = used + width + gap end
-        if held and not two and layout[i].shown then
-          local home = width
-          if not lanes then
-            home = min(cols[id] or 0, room - homeUsed)
-            if home < least then home = 0 end
-          end
-          if home > 0 then
-            homeUsed = homeUsed + home + gap
-          else
-            local r = RV.RoomWidth(s, layout, i, at, Arr.StandWidth(id, false), Arr.HEAD.GAP)
-            held[id] = r
-            used, homeUsed = used + r + gap, homeUsed + r + gap
-          end
+        -- While arranging, lined up: a shown figure with no lane keeps the
+        -- room of its narrow heading.
+        if held and not two and layout[i].shown and width <= 0 then
+          local r = RV.RoomWidth(s, layout, i, at, Arr.StandWidth(id, false), Arr.HEAD.GAP)
+          held[id] = r
+          used = used + r + gap
         end
       end
-    end
-  end
-  -- Packed while the arrange mode is open: the home lanes, for the header
-  -- (above).
-  if not lanes and not two and s.publish ~= false then
-    local A = ns.Arrange
-    if A and A.host then
-      if s.publish then s.publish = false end
-      RV.HomeLanes(s, layout, at, textWidth, room, held)
     end
   end
 
@@ -2948,103 +2942,31 @@ function RV.RoomWidth(s, layout, i, at, stand, hgap)
   return max(stand + hgap + before - after, 1)
 end
 
--- Each column's home lane, published into `s` as RV.Place publishes a
--- lined-up row's (s.laneX, s.laneW): where it stands on a row that has
--- every figure, which a packed row places the same way. By the
--- same arithmetic as RV.Place, from the room the row was given (`at` the
--- subject's place in `layout`, `textWidth` and `room` its text area and the
--- figures' share of it): a figure the arrangement shows is as wide as its
--- column, out of the share, and a hidden one has no lane. While the mode
--- is open over the list (`held`, RV.Place's rooms), a peg's room and a
--- narrow heading's are lanes too, where the arrangement puts them. Places
--- nothing; the widths are written straight into s.laneW, so nothing is
--- made.
-function RV.HomeLanes(s, layout, at, textWidth, room, held)
-  local el, cols, size, gap = s.el, s.cols, s.size, s.gap
-  local laneX, laneW = s.laneX, s.laneW
-  if not laneX then
-    laneX, laneW = {}, {}
-    s.laneX, s.laneW = laneX, laneW
+-- A packed row's figure `id` (RV.Place): as wide as this mail's own text
+-- for it (s.text[id]), measured in the string the list's walk measured the
+-- column in and through that walk's frame (s.fonts, s.owner: RV.MeasureIn),
+-- whose memo already holds every text the walk saw, so placing a row reads
+-- a width rather than measuring one. Where the list named no such string,
+-- or its font is not laid out yet, the column's width. Nothing is made.
+function RV.OwnWidth(s, id)
+  local owner, fonts = s.owner, s.fonts
+  local font = fonts and fonts[id]
+  if owner and font then
+    local own = MeasureWith(owner, font, s.text[id])
+    if own > 0 then return own end
   end
-  local n = #layout
-  local least = RV.FIGURE_MIN
-  local used = 0
-  for pass = 1, 2 do
-    local from, to, step = n, at + 1, -1
-    if pass == 2 then from, to, step = 1, at - 1, 1 end
-    for i = from, to, step do
-      local id = layout[i].id
-      if RV.FIGURE[id] and el[id] then
-        local width = 0
-        if layout[i].shown then
-          width = min(cols and cols[id] or 0, room - used)
-          if width < least then width = 0 end
-        end
-        laneW[id] = width
-        if width > 0 then used = used + width + gap end
-        if held and layout[i].shown and held[id] then used = used + held[id] + gap end
-      end
-    end
-  end
-  local lineWidth = max(textWidth - used, 40)
-  local senderShown = layout.shown.sender and el.sender ~= nil
-  local senderW = senderShown and min(s.senderCol or SENDER_MIN, floor(lineWidth / 2)) or 0
-  local x = s.left
-  for i = 1, at - 1 do
-    local id = layout[i].id
-    if el[id] then
-      local lx, lw = x, 0
-      if layout[i].shown then
-        if id == "read" then
-          lx, lw = RV.DotX(x, s.left, gap), ROW_INDICATOR - 1
-          x = x + ROW_INDICATOR + 2
-        elseif id == "icon" then
-          lw = size.icon or 0
-          x = x + lw + gap
-        elseif id == "sender" then
-          lw = senderW
-          x = x + senderW + gap
-        elseif (laneW[id] or 0) > 0 then
-          lw = laneW[id]
-          x = x + lw + gap
-        end
-      end
-      if held and held[id] then
-        lx, lw = x, held[id]
-        x = x + lw + gap
-      end
-      laneX[id], laneW[id] = lx, lw
-    end
-  end
-  local edge = s.trail
-  for i = n, at + 1, -1 do
-    local id = layout[i].id
-    if el[id] then
-      local from, lw = edge, 0
-      if layout[i].shown then
-        if id == "read" then
-          lw = ROW_INDICATOR - 1
-          edge = edge + lw + gap
-        elseif id == "icon" then
-          lw = size.icon or 0
-          edge = edge + lw + gap
-        elseif id == "sender" then
-          lw = senderW
-          edge = edge + senderW + gap
-        elseif (laneW[id] or 0) > 0 then
-          lw = laneW[id]
-          edge = edge + lw + gap
-        end
-      end
-      if held and held[id] then
-        from, lw = edge, held[id]
-        edge = edge + lw + gap
-      end
-      laneX[id], laneW[id] = s.width - from - lw, lw
-    end
-  end
-  laneX.subject = x
-  laneW.subject = max(lineWidth - (senderShown and (senderW + gap) or 0), 20)
+  local cols = s.cols
+  return cols and cols[id] or 0
+end
+
+-- Where a list's packed rows measure their own figures (RV.OwnWidth), set
+-- by the walk that measures its columns, into the list's spec: `owner`, the
+-- frame it measures with, and the string each figure is measured in (the
+-- time left's for History's age). Nothing is made.
+function RV.MeasureIn(s, owner, time, money, slots, age)
+  s.owner = owner
+  local fonts = s.fonts
+  fonts.time, fonts.money, fonts.slots, fonts.age = time, money, slots, age
 end
 
 -- layout, id -> where the arrangement has that column.
@@ -3076,6 +2998,8 @@ CT.RowRules = {
   -- The one placement (RV.Place) and what it reads.
   Place = RV.Place,
   NewSpec = RV.NewSpec,
+  MeasureIn = RV.MeasureIn,
+  MeasureScale = RV.MeasureScale,
   Anchor = RV.Anchor,
   Wash = RV.Wash,
   ShadeDot = RV.ShadeDot,
@@ -5702,7 +5626,7 @@ local function BindRow(panel, row, index, position, compact, done)
   spec.markEnd = (compact and showDelete) and (M.inset + markRoom) or nil
   spec.cols = cols
   spec.senderCol = ((cols.sender or 0) > 0) and cols.sender or SENDER_MIN
-  spec.share, spec.reserve = COMPACT_META_SHARE, false
+  spec.share = COMPACT_META_SHARE
   -- A C.O.D. price stands on the row even with the gold column hidden.
   spec.force = (moneyKind == "cod" and money) and "money" or nil
   spec.two = not compact
@@ -6078,10 +6002,10 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   RV.PaintCount(row, firstCount, entry.it and #entry.it or 0, layout)
 
   -- History's arrangement (HV.Layout), with the columns History has: the
-  -- age, the icon, the sender, what came out, and the money -- which keeps
-  -- its column on every row, so the list reads as a ledger, whether or not
-  -- the rows line up; lined up, what came out runs on into the money's
-  -- column on a row with none, as a mail row's subject does (RV.Place).
+  -- age, the icon, the sender, what came out, and the money. Lined up, the
+  -- money keeps its column on every row, so the list reads as a ledger, and
+  -- what came out runs on into the money's column on a row with none, as a
+  -- mail row's subject does; packed, each row's own (RV.Place).
   local cols = panel._hcols
   local kind = HV.MoneyKind(entry)
   -- A system mail's sender is recorded as "": that is "unknown", not a name.
@@ -6108,7 +6032,7 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   spec.left, spec.trail, spec.gap = M.inset, M.inset, M.gap
   spec.cols = cols
   spec.senderCol = cols.sender or SENDER_MIN
-  spec.share, spec.reserve, spec.two = nil, true, false
+  spec.share, spec.two = nil, false
   spec.force = (kind == "cod") and "money" or nil
   spec.markW = RV.NameMarkRoom()
   spec.focus = RV.Focus()
@@ -6273,6 +6197,8 @@ function HV.BuildHistoryList(panel, query)
   local sample = AcquireRow(panel, 1)
   local cap = SenderColumnWidth(panel, sample.Sender)
   local cols = panel._hcols
+  -- A packed row measures its own figures as the columns are measured here.
+  RV.MeasureIn(panel._histSpec, panel, nil, sample.ColMoney, nil, sample.ColTime)
   cols.sender, cols.money, cols.age = 0, 0, 0
   local layout = HV.Layout()
   local showSender, showAge = layout.shown.sender, layout.shown.age
@@ -6835,6 +6761,9 @@ function CT.RefreshMailList(panel)
   RV.MeasureScale(panel)
   local compact = CompactRows()
   local sample = AcquireRow(panel, 1)
+  -- A packed row measures its own figures where this walk measures their
+  -- columns, from the memo it fills (RV.OwnWidth).
+  RV.MeasureIn(panel._rowSpec, panel, sample.ColTime, sample.ColMoney, sample.ColSlots, nil)
   -- The arrangement the inbox's rows follow at this size (BindRow).
   local rowLayout = compact and RV.Layout() or RV.LargeLayout()
   local senderCap = rowLayout.shown.sender and SenderColumnWidth(panel, sample.Sender) or 0
@@ -12001,8 +11930,8 @@ function CT.Build(parent)
   -- What RV.Place is handed for each mail row, and for each History row.
   panel._rowSpec = RV.NewSpec()
   panel._histSpec = RV.NewSpec()
-  -- The list's column widths and reserve, measured by RefreshMailList for
-  -- every row it binds (see "the columns").
+  -- The list's column widths, measured by RefreshMailList for every row it
+  -- binds (see "the columns").
   panel._cols = {}
   -- Which figures a read mail listed with its delete mark draws, and
   -- whether one is listed at all (RV.MarkReserve), from the same walk.
