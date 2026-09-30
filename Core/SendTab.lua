@@ -950,6 +950,11 @@ local function FinishSend(outcome)
     -- Mail to one of the player's own characters is mail that character has
     -- waiting, whether or not it is played again this month.
     if ns.MailMemory and ns.MailMemory.NoteSentTo then ns.MailMemory.NoteSentTo(pending.toName) end
+    -- The window's status line counts it, one per mail the server took, so
+    -- each mail of a press counts as its success arrives (MailboxUI,
+    -- UI.NoteSent).
+    local UI = ns.MailboxUI
+    if UI and type(UI.NoteSent) == "function" then UI.NoteSent() end
     -- Attachments still queued: the next mail goes out from here and the
     -- draft stands until the last one has. ContinueQueue settles it itself.
     if ContinueQueue(panel, pending) then return end

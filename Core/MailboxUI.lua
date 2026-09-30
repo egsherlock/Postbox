@@ -1671,6 +1671,9 @@ end
 -- was then overwritten by an unrelated event. An outcome the player needs to
 -- read now outlives every event that did not produce it.
 --
+-- Whichever of the three shows, the mails sent this visit follow it, and
+-- stand alone on an otherwise blank line (UI.NoteSent).
+--
 -- The summary layer used to state "N to collect / M total", under an option.
 -- The collect screen's segments now carry Collect / Done / All with those exact
 -- numbers on them, so the line was restating what was already on screen a
@@ -1696,6 +1699,10 @@ local status = {
   -- outcomeAfter is the line once it has; read only while outcomeKind is set.
   outcomeKind = nil, outcomeAfter = nil,
   summary  = nil,
+  -- The mails sent this visit (UI.NoteSent), and what the line says of
+  -- them: after whatever else it says (sentTail), or on its own
+  -- (sentAlone). Made once per send; nil before the first.
+  sent = 0, sentTail = nil, sentAlone = nil,
   rendered = "",              -- what we last put on the label
 }
 
@@ -1732,12 +1739,19 @@ local function RenderStatus()
   if UI._state.preview then
     -- The preview window (section 5c) has no mailbox to report on.
     text, tone = "", nil
-  elseif status.activity then
-    text, tone = status.activity, status.activityTone
-  elseif status.outcome then
-    text, tone = status.outcome, status.outcomeTone
   else
-    text, tone = status.summary or "", nil
+    if status.activity then
+      text, tone = status.activity, status.activityTone
+    elseif status.outcome then
+      text, tone = status.outcome, status.outcomeTone
+    else
+      text, tone = status.summary or "", nil
+    end
+    -- What was sent this visit stays on the line whatever else comes and
+    -- goes on it: after it, or alone.
+    if status.sentTail then
+      if text == "" then text = status.sentAlone else text = text .. status.sentTail end
+    end
   end
 
   label:SetText(text)
@@ -1787,9 +1801,29 @@ function UI.TagStatusOutcome(kind, after)
   if status.outcome then status.outcomeKind, status.outcomeAfter = kind, after end
 end
 
+-- The mailbox opening or closing: the visit's line starts again, what was
+-- sent in it included.
 function UI.ClearStatus()
   status.activity, status.activityTone = nil, nil
   status.outcome, status.outcomeTone, status.outcomeKind = nil, nil, nil
+  status.sent, status.sentTail, status.sentAlone = 0, nil, nil
+  RenderStatus()
+end
+
+-- The server took a mail Postbox sent (Core/SendTab.lua, on its
+-- MAIL_SEND_SUCCESS): one per mail, so a press that posts three counts
+-- three as each arrives. The line says so for the rest of the visit, after
+-- what it says of the run ("Collected: 20 · Sent: 1"), or alone ("Sent:
+-- 2"). In the positive tone Collected wears: a mail gone where it was
+-- meant to is the same kind of fact as one taken. The middle dot carries
+-- no colour, as the em dash inside a run's outcome carries none.
+function UI.NoteSent()
+  AdoptForeignText()
+  status.sent = status.sent + 1
+  local said = LF("STATUS_SENT", status.sent)
+  local theme = ns.Theme
+  if theme and theme.Colorize then said = theme.Colorize("positive", said) end
+  status.sentAlone, status.sentTail = said, " \194\183 " .. said
   RenderStatus()
 end
 
