@@ -587,15 +587,21 @@ end
 --   modernBorder none          -> pbBorder "none"
 --   modernBorder light/strong  -> pbBorder "thin", pbBorderTone gray / light
 --   modernBorderSize 2 or more -> pbBorder "thick" (unless the border was none)
--- An unset Modern value stays unset, so the Postbox default applies. The Modern
+-- An unset Modern value stays unset, so the Postbox default applies -- except
+-- the fill, whose defaults differ (Modern's 94%, Postbox's 90%): an unset one
+-- is carried as the 94% the player saw. And the Postbox style becomes this
+-- profile's own default look (installStyle), the one Reset to defaults
+-- returns to, as it is for a profile started on it. The Modern
 -- keys and `style = "modern"` are read, never removed, so a downgrade still
 -- finds them; pbFromModern marks the copy as made, so a Postbox value the
 -- player later resets is not copied over again.
+local MODERN_DEFAULT_OPACITY = 0.94  -- Skin_Modern's window fill, 1.40
 local function MigrateModern(profile)
   if type(profile) ~= "table" or profile.style ~= "modern" or profile.pbFromModern then return end
   profile.pbFromModern = true
-  local opacity = tonumber(profile.modernBgOpacity)
-  if opacity and profile.pbOpacity == nil then
+  if profile.installStyle == nil then profile.installStyle = "postbox" end
+  local opacity = tonumber(profile.modernBgOpacity) or MODERN_DEFAULT_OPACITY
+  if profile.pbOpacity == nil then
     profile.pbOpacity = math.max(0, math.min(1, opacity))
   end
   if profile.pbBorder == nil then
