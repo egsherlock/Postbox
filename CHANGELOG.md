@@ -64,10 +64,8 @@ longer play.
   anywhere. `/postbox help` lists the commands in your language, and
   Postbox has a page under Settings, AddOns.
 - **Send tab conveniences:** choose what stays after sending (nothing, the
-  recipient, or recipient and subject); Shift-click a name in Manage
-  Recipients or the character list to mail that character; a quiet "First
-  mail to Name." catches a mistyped name; Shift-click an attached item to
-  add every other stack of it.
+  recipient, or recipient and subject). Shift-click an attached item to link
+  it in chat, Ctrl-click to try it on.
 - **Keep bag slots free while collecting** (Options, Mail tab, 1 to 10):
   collecting stops before filling them and says so; gold still comes out.
 - **Sending gold asks first**, "Send 500g to Name?", as the game's own mail
@@ -139,7 +137,8 @@ longer play.
 - **Take one item without opening the mail:** set Attachments on hover to
   Fan out (Options, Mail tab, or the Icon card while you arrange) and a
   mail's items spread out beside its icon. Click one to take it, Shift-click
-  to link it; C.O.D. still asks first.
+  to link it, Ctrl-click to try it on, here or in an open mail; C.O.D.
+  still asks first.
 - **Quality marks are two plain settings:** a switch for the badge on item
   icons, and a mark by the name, Before, After or Off. Your current choice
   carries over. A mark after a long name always shows; the name is
