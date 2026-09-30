@@ -3311,9 +3311,17 @@ function Pages.windowCreative(col, Skin)
       end,
     })
   end
+  -- A style on a light ground holds its inside at the Light floor (85%), so
+  -- it offers only the steps it can show: a lower pick would snap back.
+  local minPct = 0
+  if type(Skin.GetMode) == "function" and Skin.GetMode() == "light" then
+    minPct = math.floor((tonumber(Skin.LIGHT_OPACITY_FLOOR) or 0) * 100 + 0.5)
+  end
   local opacityItems = {}
   for _, pct in ipairs({ 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 25, 0 }) do
-    opacityItems[#opacityItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
+    if pct >= minPct then
+      opacityItems[#opacityItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
+    end
   end
   Rows.Dropdown(col, {
     title = L["OPT_BG_OPACITY_TITLE"], text = L["OPT_BG_OPACITY_DESC"], items = opacityItems,
