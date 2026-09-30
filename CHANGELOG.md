@@ -52,6 +52,10 @@ your recipients, groups, Mail Memory and History are kept.*
 - **Take one item without opening the mail:** set Attachments on hover to Fan
   out and click the one you want. C.O.D. still asks first.
 - **Keep bag slots free** while collecting (1 to 12).
+- **Sort by time left:** the button right of the search switches the Mail
+  tab and Mail Memory between newest first and expiring first; mail to
+  collect and read mail each sort in their own group, and the choice is
+  remembered.
 - **Selected mail and category buttons agree:** "All sold" with rows selected
   takes only the selected sold mail.
 - **Full bags stop a collection cleanly,** saying how many mails are left;
