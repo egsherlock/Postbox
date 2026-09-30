@@ -24,14 +24,17 @@ local _, ns = ...
 -- offers the reset. The key, lit as Done while the mode is open, Escape, or
 -- the window going away all end it, and the top row comes back as it was.
 --
--- Two arrangements: the mail rows' -- the Mail tab's and Mail Memory's,
--- stored by MailboxUI.GetRowLayout / SetRowLayout -- and History's own,
--- with its age and without the columns it has not (GetHistoryLayout /
--- SetHistoryLayout). Both are drawn by CollectTab's RV.Place. The mode
--- arranges the one the list it is opened over follows (AR.Layout), and
--- follows the list when it is switched under it (AR.SyncList). This file
--- owns only the mode: the header, the marks on the rows, the inspector, the
--- drag, the key, Escape.
+-- Three arrangements: the one-line mail rows' -- the Mail tab's and Mail
+-- Memory's, stored by MailboxUI.GetRowLayout / SetRowLayout -- Larger mail
+-- rows' own, the Mail tab's two-line rows (GetLargeLayout /
+-- SetLargeLayout), and History's own, with its age and without the columns
+-- it has not (GetHistoryLayout / SetHistoryLayout). All are drawn by
+-- CollectTab's RV.Place. The mode arranges the one the list it is opened
+-- over follows (AR.Layout), and follows the list when it is switched under
+-- it (AR.SyncList). Over two-line rows the header is two lines, mirroring
+-- the row (section 6b), and a move writes only what such a row can show.
+-- This file owns only the mode: the header, the marks on the rows, the
+-- inspector, the drag, the key, Escape.
 --
 -- A drag is a gesture, not a state: its OnUpdate runs from the press to the
 -- release and clears itself, with GLOBAL_MOUSE_UP as the net for a release
@@ -104,32 +107,50 @@ AR.moving = nil
 -- 1. The arrangement, read and written
 -------------------------------------------------------------
 
--- Whether the mode arranges History's own arrangement: the list it is open
--- over follows it (the host's History()). Answered from the list as it is
--- now, so a list switched under the mode is followed (AR.SyncList).
-function AR.EditsHistory()
+-- Which arrangement the list the mode is open over follows: History's own
+-- ("history", the host's History()), Larger mail rows' own while its rows
+-- are the two-line ones ("large", the host's TwoLine()), or the one-line
+-- mail rows' ("rows"). Answered from the list as it is now, so a list
+-- switched under the mode is followed (AR.SyncList).
+function AR.ListKind()
   local host = AR.host
-  return host ~= nil and host.History ~= nil and host.History() == true
+  if not host then return "rows" end
+  if host.History and host.History() == true then return "history" end
+  if host.TwoLine and host.TwoLine() then return "large" end
+  return "rows"
 end
 
--- The arrangement the mode arranges (above): History's or the mail rows'.
+function AR.EditsHistory()
+  return AR.host ~= nil and AR.ListKind() == "history"
+end
+
+function AR.EditsLarge()
+  return AR.host ~= nil and AR.ListKind() == "large"
+end
+
+-- The arrangement the mode arranges (above).
 function AR.Layout()
   local ui = UI()
   if not ui then return nil end
-  if AR.EditsHistory() then
+  local kind = AR.ListKind()
+  if kind == "history" then
     return type(ui.GetHistoryLayout) == "function" and ui.GetHistoryLayout() or nil
+  elseif kind == "large" then
+    return type(ui.GetLargeLayout) == "function" and ui.GetLargeLayout() or nil
   end
   return type(ui.GetRowLayout) == "function" and ui.GetRowLayout() or nil
 end
 
 -- The arrangement written (a list as AR.Layout's, or nil for the default):
--- the one the mode arranges, unless `history` says which.
-function AR.SetLayout(list, history)
+-- the one the mode arranges, unless `kind` says which (AR.ListKind's).
+function AR.SetLayout(list, kind)
   local ui = UI()
   if not ui then return end
-  if history == nil then history = AR.EditsHistory() end
-  if history then
+  if kind == nil then kind = AR.ListKind() end
+  if kind == "history" then
     if ui.SetHistoryLayout then ui.SetHistoryLayout(list) end
+  elseif kind == "large" then
+    if ui.SetLargeLayout then ui.SetLargeLayout(list) end
   elseif ui.SetRowLayout then
     ui.SetRowLayout(list)
   end
@@ -209,19 +230,21 @@ end
 -- Right-click on the lit key, or the inspector's reset: what the mode
 -- arranges from the list it is open over, as it comes. From the mail rows:
 -- their columns, the blocks under the list and the buttons, with the
--- gold's, the time left's and the slots' own defaults. From History: only
--- what is History's own, its columns and how its age reads. What History
--- shares with the Inbox -- the gold's choice, the blocks under the list and
--- their order, the category buttons -- is reset from the Inbox alone, and
--- neither list's reset touches the other's columns. `history` says which
--- (nil: the list the mode is open over).
-function AR.Reset(history)
+-- gold's, the time left's and the slots' own defaults -- the one-line
+-- rows' columns, or Larger mail rows' while the Inbox's rows are the
+-- two-line ones. From History: only what is History's own, its columns and
+-- how its age reads. What History shares with the Inbox -- the gold's
+-- choice, the blocks under the list and their order, the category buttons
+-- -- is reset from the Inbox alone, and no list's reset touches another's
+-- columns. `kind` says which (AR.ListKind's; nil: the list the mode is
+-- open over).
+function AR.Reset(kind)
   local ui = UI()
   if not ui then return end
-  if history == nil then history = AR.EditsHistory() end
-  AR.SetLayout(nil, history)
+  if kind == nil then kind = AR.ListKind() end
+  AR.SetLayout(nil, kind)
   local gridBack, totalsBack = false, false
-  if history then
+  if kind == "history" then
     if ui.SetHistoryAge then ui.SetHistoryAge(nil) end
   else
     if ui.SetGoldMode then ui.SetGoldMode("both") end
@@ -253,9 +276,12 @@ end
 -- Lifted over the windows it may open from (Theme.LiftPopup). The answer
 -- resets whether or not the mode is still open by then: the question was
 -- about the arrangement, not the mode -- the one being arranged when it
--- was asked (AR.resetHistory), whose own words it asks in.
+-- was asked (AR.resetKind), whose own words it asks in.
 AR.POPUP_RESET = "POSTBOX_ARRANGE_RESET"
-AR.resetHistory = false
+AR.resetKind = "rows"
+AR.RESET_TEXT = {
+  rows = "ARRANGE_RESET_CONFIRM", large = "ARRANGE_RESET_CONFIRM_LARGER", history = "ARRANGE_RESET_CONFIRM_HISTORY",
+}
 
 function AR.AskReset()
   if type(StaticPopupDialogs) ~= "table" or type(StaticPopup_Show) ~= "function" then return end
@@ -264,15 +290,14 @@ function AR.AskReset()
       text = "%s",
       button1 = L()["BTN_RESET"],
       button2 = L()["COD_CONFIRM_CANCEL"],
-      OnAccept = function() AR.Reset(AR.resetHistory) end,
+      OnAccept = function() AR.Reset(AR.resetKind) end,
       timeout = 0,
       whileDead = true,
       hideOnEscape = true,
     }
   end
-  AR.resetHistory = AR.EditsHistory()
-  local dialog = StaticPopup_Show(AR.POPUP_RESET,
-    L()[AR.resetHistory and "ARRANGE_RESET_CONFIRM_HISTORY" or "ARRANGE_RESET_CONFIRM"])
+  AR.resetKind = AR.ListKind()
+  local dialog = StaticPopup_Show(AR.POPUP_RESET, L()[AR.RESET_TEXT[AR.resetKind]])
   local T = Th()
   if dialog and T and T.LiftPopup then T.LiftPopup(dialog) end
 end
@@ -1397,9 +1422,9 @@ end
 -- the row by the one rule, and nothing on the header stands over
 -- anything: the headings either side of one, and their cells, end at its
 -- edges. With no
--- lanes at all -- an empty list, or Larger mail rows, whose figures are a
--- line of text -- the header keeps the one-line order at widths of its own,
--- pegs among them.
+-- lanes at all -- an empty list -- the header keeps the one-line order at
+-- widths of its own, pegs among them. Over Larger mail rows, whose figures
+-- are a line of text, the header is two lines (section 6b).
 --
 -- Headings are movable things (section 3b): at rest, pointed at, selected,
 -- in the hand. A press on one, or on its column in any row (section 7a), is
@@ -1496,6 +1521,7 @@ function AR.PaintHead(head)
   local dim = head.narrow and not lit
   local grey = dim and 0.45 or (lit and 1 or 0.9)
   if head.Text then head.Text:SetTextColor(grey, grey, grey, 1) end
+  if head.ChipText then head.ChipText:SetTextColor(grey, grey, grey, 1) end
   local glyph = head.Glyph
   if glyph then
     if head.glyphKind == "dot" then
@@ -1669,6 +1695,18 @@ local function BuildHead(strip, id)
     glyph:SetPoint("CENTER", head, "CENTER", 0, 0)
     head.Glyph, head.glyphKind = glyph, kind
     head.glyphW = glyph:GetWidth() or 0
+    -- A figure's name beside its glyph, for its chip on the two-line
+    -- header (section 6b): made with the heading, so a host skin's pass
+    -- over the header fonts it as it fonts every other name there.
+    if spec.figure then
+      head.chipCaption = L()[spec.title]
+      head.ChipText = T.CreateText(head, "value", "OVERLAY")
+      head.ChipText:SetJustifyH("LEFT")
+      head.ChipText:SetWordWrap(false)
+      head.ChipText:Hide()
+      head.ChipMeasure = T.CreateText(head, "value", "OVERLAY")
+      head.ChipMeasure:Hide()
+    end
   else
     -- A name, and where its glyph's art is missing, the name too.
     head.caption = L()[spec.title]
@@ -1807,6 +1845,13 @@ function AR.BuildStrip(host)
   -- the columns with a place on the header, in order.
   strip.bx, strip.bw, strip.kind, strip.hx, strip.hw = {}, {}, {}, {}, {}
   strip.order = {}
+  -- And the two-line header's (section 6b): each part's top and height and
+  -- the line it stands on (0 for a graphic), the graphics and the first
+  -- line in order with their contents, and the arrangement as a two-line
+  -- row reads it.
+  strip.by, strip.bh, strip.line = {}, {}, {}
+  strip.gIds, strip.gX, strip.gW, strip.l1Ids, strip.l1X, strip.l1W = {}, {}, {}, {}, {}, {}
+  strip.nG, strip.n1, strip.m, strip.two = 0, 0, {}, false
   for id in pairs(AR.COLUMNS) do
     strip.heads[id] = BuildHead(strip, id)
     strip.pegs[id] = BuildPeg(strip, id)
@@ -1837,6 +1882,10 @@ function AR.LayoutStrip(host)
   AR.SyncLanes(strip)
   local width = strip:GetWidth() or 0
   if width < 60 then return end
+  -- Over two-line rows, the two-line header (section 6b).
+  local two = (host.TwoLine and host.TwoLine()) and true or false
+  if strip.two ~= two then AR.SetTwo(strip, two) end
+  if two then return AR.LayoutTwo(host, strip, layout, width) end
   local n = #layout
   local spec = host.Spec and host.Spec()
   local laneX, laneW = spec and spec.laneX, spec and spec.laneW
@@ -1999,6 +2048,753 @@ function AR.LayoutStrip(host)
 end
 
 -------------------------------------------------------------
+-- 6b. The two-line header
+--
+-- Over the Mail tab's two-line rows (Larger mail rows) the header is the
+-- row laid on top of the list, in the top row's place and HEAD.TWO_H tall
+-- -- the top row and most of the gap under it -- so the list does not
+-- move: a tall plate over each graphic (the read mark, the icon) on the
+-- side of the subject it stands; on the first line the sender's plate over
+-- its column and the subject's over the rest, in their order, or the
+-- subject's alone; on the second line a chip per figure -- its glyph and
+-- its name -- and the sender's where it stands there, in the order they
+-- are written, from where the second line's text begins. The plates stand
+-- on the rows' own positions (CollectTab's RV.RecordTwo, from the first
+-- row a pass placed) and tile the row by the one-line header's rule: a box
+-- runs from the line in the middle of the gap before its content to the
+-- line after it, the first from the row's left edge, the last to its right
+-- edge, and the last on the top line carries its plate on over the scroll
+-- track's column. A hidden graphic, or a hidden sender on the first line,
+-- is a peg where it stands, the rows keeping a room for it; a hidden
+-- figure, or a hidden sender on the second line, a peg among the chips.
+-- Where the chips' names do not fit the line, or their text stands taller
+-- than a line's plate (a large host font), every chip wears its glyph
+-- alone: measured, once per font, never guessed.
+--
+-- A move writes only what a two-line row can show (AR.WriteTwo), and a
+-- part goes only where the row can show it (AR.StepTwo): a graphic along
+-- the row's graphics, and across the text to the other side, landing next
+-- to the text; the sender across the subject -- before it, or at the end
+-- of the first line -- and down onto the second line among the figures,
+-- and back up; the subject across the sender; a figure along the second
+-- line. Each step is written as it happens, so the rows under the header
+-- show at once where the part lands, and the ghost on the header stands in
+-- its slot.
+-------------------------------------------------------------
+
+HEAD.TWO_H = 30       -- the two-line header: two lines and the gap between
+HEAD.LINE_H = 14      -- a line's plates
+HEAD.LINE2_Y = 16     -- the second line's top
+HEAD.CHIP_LEAD = 5    -- a chip's glyph from its left edge
+HEAD.CHIP_GAP = 4     -- its glyph to its name
+HEAD.CHIP_TAIL = 7    -- its name to its right edge
+HEAD.CHIP_GLYPH = 24  -- a chip wearing its glyph alone
+HEAD.LINE_SLACK = 2   -- how far past the line between the two lines the sender is carried before it changes line
+HEAD.SEG_REACH = 6    -- how far off a figure on a row's second line a press still takes it
+HEAD.SEG_PAD = 3      -- a figure's mark on the row, out from its text
+
+-- The scratch the rows' presses and marks lay a row out in (TileTwo), and
+-- the models they read the arrangement into: made once.
+AR._rowTile = { bx = {}, bw = {}, gIds = {}, gX = {}, gW = {}, l1Ids = {}, l1X = {}, l1W = {}, nG = 0, n1 = 0 }
+AR._rowModel = {}
+AR._nudgeModel = {}
+AR._gseq = {}
+
+do
+  local floor, ceil, max, min = math.floor, math.ceil, math.max, math.min
+
+  local function Clip(list, n)
+    for k = n + 1, #list do list[k] = nil end
+  end
+
+  local function Find(list, id)
+    for k = 1, #list do
+      if list[k] == id then return k end
+    end
+    return nil
+  end
+
+  -- `id` and `other` change places in `list`, where both stand.
+  local function SwapIn(list, id, other)
+    local a, b = Find(list, id), Find(list, other)
+    if not (a and b) then return false end
+    list[a], list[b] = other, id
+    return true
+  end
+
+  -- The arrangement as a two-line row reads it (CollectTab's RV.Place):
+  -- the graphics before the subject (m.left) and after it (m.right), each
+  -- in its order; the sender's line (m.sender: 1 or 2; 0 where the list
+  -- has none) and, on the first line, whether it stands before the subject
+  -- (m.before); the second line's parts in order, the figures and the
+  -- sender where it stands there (m.line2). Filled into `m`, whose lists
+  -- are reused.
+  function AR.TwoModel(layout, m)
+    m.left, m.right, m.line2 = m.left or {}, m.right or {}, m.line2 or {}
+    local nl, nr, n2 = 0, 0, 0
+    local at = IndexOf(layout, "subject") or #layout
+    local R = ns.CollectTab and ns.CollectTab.RowRules
+    local line = (R and R.SenderLine) and R.SenderLine(layout) or 1
+    m.sender, m.before = 0, false
+    for i = 1, #layout do
+      local id = layout[i].id
+      if id == "read" or id == "icon" then
+        if i < at then
+          nl = nl + 1
+          m.left[nl] = id
+        else
+          nr = nr + 1
+          m.right[nr] = id
+        end
+      elseif id == "sender" then
+        m.sender, m.before = line, i < at
+        if line == 2 then
+          n2 = n2 + 1
+          m.line2[n2] = id
+        end
+      elseif AR.COLUMNS[id] and AR.COLUMNS[id].figure then
+        n2 = n2 + 1
+        m.line2[n2] = id
+      end
+    end
+    Clip(m.left, nl)
+    Clip(m.right, nr)
+    Clip(m.line2, n2)
+    m.nl, m.nr, m.n2 = nl, nr, n2
+    return m
+  end
+
+  local function Put(out, layout, id)
+    out[#out + 1] = { id = id, shown = layout.shown[id] and true or false }
+  end
+
+  -- The model written back as Larger mail rows' arrangement, in the one
+  -- order that reads as it (RV.SenderLine): the graphics before the
+  -- subject, the sender before it on the first line, the subject, the
+  -- sender after it on the first line, the graphics after it, then the
+  -- second line's parts -- or those before the subject, where the sender
+  -- leads the second line, so that a figure stands between the two. Every
+  -- column keeps its shown or hidden.
+  function AR.WriteTwo(m)
+    local layout = AR.Layout()
+    if not layout then return end
+    local out = {}
+    local lead = m.sender == 2 and m.line2[1] == "sender"
+    for k = 1, m.nl do Put(out, layout, m.left[k]) end
+    if m.sender == 1 and m.before then Put(out, layout, "sender") end
+    if lead then
+      for k = 1, m.n2 do Put(out, layout, m.line2[k]) end
+    end
+    Put(out, layout, "subject")
+    if m.sender == 1 and not m.before then Put(out, layout, "sender") end
+    for k = 1, m.nr do Put(out, layout, m.right[k]) end
+    if not lead then
+      for k = 1, m.n2 do Put(out, layout, m.line2[k]) end
+    end
+    if #out == #layout then AR.SetLayout(out, "large") end
+  end
+
+  -- One step of `id` past `other`, its neighbour that way (`dir`), in the
+  -- model: a graphic past the text changes sides and stands next to it,
+  -- past the other graphic the two change places; the sender and the
+  -- subject change places on the first line; along the second line two
+  -- parts change places. Answers whether anything moved.
+  function AR.MoveTwo(m, id, other, dir)
+    if id == "read" or id == "icon" then
+      if other == "_text" then
+        local k = Find(m.left, id)
+        if k then
+          table.remove(m.left, k)
+          m.nl = m.nl - 1
+          table.insert(m.right, 1, id)
+          m.nr = m.nr + 1
+        else
+          k = Find(m.right, id)
+          if not k then return false end
+          table.remove(m.right, k)
+          m.nr = m.nr - 1
+          m.nl = m.nl + 1
+          m.left[m.nl] = id
+        end
+        return true
+      end
+      return SwapIn(m.left, id, other) or SwapIn(m.right, id, other)
+    end
+    if id == "subject" or (id == "sender" and m.sender == 1) then
+      if (id == "subject" and other == "sender") or (id == "sender" and other == "subject") then
+        m.before = not m.before
+        return true
+      end
+      return false
+    end
+    return SwapIn(m.line2, id, other)
+  end
+
+  -- What `id` would move past one step left (-1) or right (1) in the
+  -- model, as a drag steps it: the next graphic or the text for a graphic,
+  -- the other of the two on the first line, the next part along the second
+  -- line; nil where there is nowhere to go (Move's arrows, AR.NudgeColumn).
+  function AR.TwoNeighbour(m, id, step)
+    if id == "read" or id == "icon" then
+      local seq, n = AR._gseq, 0
+      for k = 1, m.nl do
+        n = n + 1
+        seq[n] = m.left[k]
+      end
+      n = n + 1
+      seq[n] = "_text"
+      for k = 1, m.nr do
+        n = n + 1
+        seq[n] = m.right[k]
+      end
+      Clip(seq, n)
+      local k = Find(seq, id)
+      return k and seq[k + step] or nil
+    end
+    if id == "subject" then
+      if m.sender ~= 1 then return nil end
+      if (step == -1) == m.before then return "sender" end
+      return nil
+    end
+    if id == "sender" and m.sender == 1 then
+      if (step == 1) == m.before then return "subject" end
+      return nil
+    end
+    local k = Find(m.line2, id)
+    return k and m.line2[k + step] or nil
+  end
+
+  -- Boxes for a sequence of contents (ids[k] at xs[k], ws[k] wide) between
+  -- `lo` and `hi`, by the header's rule (section 6).
+  local function Tile(ids, xs, ws, n, lo, hi, bx, bw)
+    for k = 1, n do
+      local id = ids[k]
+      if k == 1 then
+        bx[id] = lo
+      else
+        local prev = ids[k - 1]
+        local line = floor((xs[k - 1] + ws[k - 1] + xs[k]) / 2)
+        bw[prev] = max(line - bx[prev], 1)
+        bx[id] = line + HEAD.GAP
+      end
+    end
+    if n > 0 then bw[ids[n]] = max(hi - bx[ids[n]], 1) end
+  end
+
+  -- A two-line row's graphics and first line tiled (above), from a row's
+  -- record (RV.RecordTwo) and the model: into out.bx, out.bw, the graphics
+  -- in order with the text between them (out.gIds, "_text" the text's box,
+  -- out.nG), and the first line in order (out.l1Ids, out.n1); out.tb0 and
+  -- out.tb1 are the text's box. A column the list has no place for
+  -- (`kind`) has none. Nothing is made.
+  function AR.TileTwo(rec, m, kind, span, out)
+    local bx, bw = out.bx, out.bw
+    for id in pairs(bx) do bx[id], bw[id] = nil, nil end
+    local rx, rw = rec.x, rec.w
+    local gIds, gX, gW = out.gIds, out.gX, out.gW
+    local n = 0
+    for k = 1, m.nl do
+      local id = m.left[k]
+      if kind[id] and kind[id] ~= "absent" and rx[id] then
+        n = n + 1
+        gIds[n], gX[n], gW[n] = id, rx[id], rw[id]
+      end
+    end
+    n = n + 1
+    gIds[n], gX[n], gW[n] = "_text", rec.t0, max(rec.t1 - rec.t0, 1)
+    for k = 1, m.nr do
+      local id = m.right[k]
+      if kind[id] and kind[id] ~= "absent" and rx[id] then
+        n = n + 1
+        gIds[n], gX[n], gW[n] = id, rx[id], rw[id]
+      end
+    end
+    out.nG = n
+    Tile(gIds, gX, gW, n, 0, span, bx, bw)
+    local tb0 = bx._text
+    local tb1 = tb0 + bw._text
+    out.tb0, out.tb1 = tb0, tb1
+    local l1Ids, l1X, l1W = out.l1Ids, out.l1X, out.l1W
+    local n1 = 0
+    local sender = m.sender == 1 and kind.sender and kind.sender ~= "absent" and rx.sender ~= nil
+    if sender and m.before then
+      n1 = n1 + 1
+      l1Ids[n1], l1X[n1], l1W[n1] = "sender", rx.sender, rw.sender
+    end
+    n1 = n1 + 1
+    l1Ids[n1], l1X[n1], l1W[n1] = "subject", rx.subject or rec.t0, rw.subject or max(rec.t1 - rec.t0, 1)
+    if sender and not m.before then
+      n1 = n1 + 1
+      l1Ids[n1], l1X[n1], l1W[n1] = "sender", rx.sender, rw.sender
+    end
+    out.n1 = n1
+    Tile(l1Ids, l1X, l1W, n1, tb0, tb1, bx, bw)
+  end
+
+  -- Where the parts stand when the list has no two-line row to read them
+  -- from (an empty list): the row's own measures, as RV.Place would place
+  -- them on a row this wide. Kept in one table, filled again each time.
+  function AR.FakeTwo(m, kind, width)
+    local rec = AR._fakeRec
+    if not rec then
+      rec = { on = true, x = {}, w = {}, room = {}, t0 = 0, t1 = 0, width = 0, sender = 0, segN = 0 }
+      AR._fakeRec = rec
+    end
+    local M = Th().Metrics
+    local inset, gap = M.inset, M.gap
+    for id in pairs(rec.x) do rec.x[id], rec.w[id] = nil, nil end
+    local x = inset
+    for k = 1, m.nl do
+      local id = m.left[k]
+      local w = (kind[id] == "peg") and 6 or ((id == "read") and 7 or 28)
+      rec.x[id], rec.w[id] = x, w
+      x = x + w + ((id == "read" and kind[id] ~= "peg") and 3 or gap)
+    end
+    local edge = width - inset
+    for k = m.nr, 1, -1 do
+      local id = m.right[k]
+      local w = (kind[id] == "peg") and 6 or ((id == "read") and 7 or 28)
+      rec.x[id], rec.w[id] = edge - w, w
+      edge = edge - w - gap
+    end
+    rec.t0, rec.t1, rec.width, rec.sender = x, edge, width, m.sender
+    local sw = 0
+    if m.sender == 1 then
+      sw = (kind.sender == "peg") and 6 or min(HEAD.FALLBACK.sender, floor((edge - x) / 2))
+    end
+    if m.sender == 1 and m.before then
+      rec.x.sender, rec.w.sender = x, sw
+      rec.x.subject, rec.w.subject = x + sw + gap, max(edge - x - sw - gap, 1)
+    elseif m.sender == 1 then
+      rec.x.subject, rec.w.subject = x, max(edge - x - sw - gap, 1)
+      rec.x.sender, rec.w.sender = edge - sw, sw
+    else
+      rec.x.subject, rec.w.subject = x, max(edge - x, 1)
+    end
+    return rec
+  end
+
+  -- A figure chip's name (made with its heading, BuildHead): its width and
+  -- height on one line, measured again only when its font changes (a host
+  -- UI re-fonts after load).
+  function AR.ChipName(head)
+    local measure = head.ChipMeasure
+    if not measure then return 0, 0 end
+    local path, size = measure:GetFont()
+    if head._chipNameW and head._chipPath == path and head._chipSize == size then
+      return head._chipNameW, head._chipNameH
+    end
+    measure:SetText(head.chipCaption)
+    local w = ceil(measure:GetStringWidth() or 0)
+    local h = ceil(measure:GetStringHeight() or 0)
+    if w > 0 then head._chipPath, head._chipSize, head._chipNameW, head._chipNameH = path, size, w, h end
+    return w, h
+  end
+
+  -- A second-line chip's width: a figure's glyph and name (`words`), or its
+  -- glyph alone; the sender's name, cut to the narrow heading's width where
+  -- the chips wear glyphs.
+  function AR.ChipWidth(head, words)
+    if not head.Glyph then
+      local w = AR.StandWidth(head.colId, false)
+      if not words then w = min(w, HEAD.NARROW[head.colId] or 44) end
+      return w
+    end
+    if not words then return HEAD.CHIP_GLYPH end
+    return HEAD.CHIP_LEAD + ceil(head.glyphW or 0) + HEAD.CHIP_GAP + AR.ChipName(head) + HEAD.CHIP_TAIL
+  end
+
+  -- Whether the second line's chips wear their names: all of them, named,
+  -- fit the line's `room`, and no name stands taller than a line's plate.
+  function AR.ChipWords(strip, m, room)
+    local kind, heads = strip.kind, strip.heads
+    local total, count = 0, 0
+    for k = 1, m.n2 do
+      local id = m.line2[k]
+      local head = heads[id]
+      if kind[id] == "peg" then
+        total, count = total + HEAD.PEG, count + 1
+      elseif kind[id] == "lane" and head then
+        total, count = total + AR.ChipWidth(head, true), count + 1
+        if head.Glyph then
+          local _, h = AR.ChipName(head)
+          if (h or 0) > HEAD.LINE_H then return false end
+        end
+      end
+    end
+    return total + HEAD.GAP * max(count - 1, 0) <= room
+  end
+
+  -- A heading laid out on the two-line header: its plate `pw` wide over
+  -- its box `w` wide, `h` tall; a graphic's glyph in the middle; a first
+  -- line's name from where its content starts (`lx`, from the box's left);
+  -- a second-line chip's glyph and name, or its glyph alone (`words`).
+  -- Again only when something about it changed.
+  function AR.FitTwoHead(head, w, pw, h, line, lx, words, held)
+    local chip = 0
+    local gx, tx
+    if line == 2 then
+      chip = words and 1 or 2
+      if head.Glyph then
+        if words then
+          gx = HEAD.CHIP_LEAD
+          tx = HEAD.CHIP_LEAD + ceil(head.glyphW or 0) + HEAD.CHIP_GAP
+        else
+          gx = AR.GlyphX(pw, head.glyphW)
+        end
+      else
+        tx = HEAD.TEXT
+      end
+    else
+      gx, tx = AR.HeadContent(pw, lx, head.glyphW)
+    end
+    if not held and head._h ~= h then
+      head._h = h
+      head:SetHeight(h)
+    end
+    if head._w == w and head._pw == pw and head._gx == gx and head._tx == tx and head._chip == chip
+        and head.narrow == false then
+      return
+    end
+    head._w, head._pw, head._gx, head._tx, head._chip, head.narrow = w, pw, gx, tx, chip, false
+    head:SetWidth(pw)
+    if chip == 1 and head.Glyph then
+      head.Glyph:ClearAllPoints()
+      head.Glyph:SetPoint("LEFT", head, "LEFT", gx, 0)
+      AR.ChipName(head)
+      local fs = head.ChipText
+      fs:ClearAllPoints()
+      fs:SetPoint("LEFT", head, "LEFT", tx, 0)
+      Th().FitText(fs, max(w - tx - HEAD.CHIP_TAIL + 1, 1), head.chipCaption, head)
+      fs:Show()
+    else
+      if head.ChipText then head.ChipText:Hide() end
+      AR.FitHead(head)
+    end
+  end
+end
+
+-- The header going over to two lines or back: its height, and everything
+-- each heading and peg remembers of where and how it was laid out, so the
+-- next layout lays every one out afresh.
+function AR.SetTwo(strip, two)
+  strip.two = two
+  local tile = Th().Metrics.tileHeight
+  strip:SetHeight(two and HEAD.TWO_H or tile)
+  for id, head in pairs(strip.heads) do
+    head._w, head._pw, head._gx, head._tx, head._chip, head._x, head._y, head._h = nil, nil, nil, nil, nil, nil, nil, nil
+    head.narrow = nil
+    head:SetHeight(tile)
+    if head.ChipText then head.ChipText:Hide() end
+    local peg = strip.pegs[id]
+    if peg then
+      peg._pw, peg._x, peg._y, peg._h = nil, nil, nil, nil
+      peg:SetHeight(tile)
+    end
+  end
+end
+
+-- A heading's or a peg's height where it stands now: its line's, or the
+-- whole header's for a graphic, on two lines; a tile's on one.
+function AR.HeadH(strip, id)
+  if strip and strip.two and strip.bh[id] then return strip.bh[id] end
+  return Th().Metrics.tileHeight
+end
+
+-- The header laid out over two-line rows (above), and put on screen.
+function AR.LayoutTwo(host, strip, layout, width)
+  local spec = host.Spec and host.Spec()
+  local has = spec and spec.el
+  if has and has.subject == nil then has = nil end
+  local bx, bw, kind, hx, hw = strip.bx, strip.bw, strip.kind, strip.hx, strip.hw
+  local by, bh, line = strip.by, strip.bh, strip.line
+  for id in pairs(kind) do
+    kind[id] = "absent"
+    bx[id], bw[id], hx[id], hw[id], by[id], bh[id], line[id] = nil, nil, nil, nil, nil, nil, nil
+  end
+  for i = 1, #layout do
+    local id = layout[i].id
+    if has and has[id] == nil then
+      kind[id] = "absent"
+    elseif not layout[i].shown and not AR.COLUMNS[id].fixed then
+      kind[id] = "peg"
+    else
+      kind[id] = "lane"
+    end
+  end
+  local m = AR.TwoModel(layout, strip.m)
+  local rec = spec and spec.twoRec
+  if not (rec and rec.on) then rec = AR.FakeTwo(m, kind, math.min(spec and spec.width or width, width)) end
+  local span = math.max(math.min(rec.width or width, width), 60)
+  AR.TileTwo(rec, m, kind, span, strip)
+  local tb0, tb1 = strip.tb0, strip.tb1
+  local LINE_H, TWO_H = HEAD.LINE_H, HEAD.TWO_H
+  -- The graphics, the whole height.
+  for k = 1, strip.nG do
+    local id = strip.gIds[k]
+    if id ~= "_text" then by[id], bh[id], line[id] = 0, TWO_H, 0 end
+  end
+  -- The first line.
+  for k = 1, strip.n1 do
+    local id = strip.l1Ids[k]
+    by[id], bh[id], line[id] = 0, LINE_H, 1
+  end
+  -- The second line: a chip per part, from the text's box, in order.
+  local words = AR.ChipWords(strip, m, tb1 - tb0)
+  local x = tb0
+  for k = 1, m.n2 do
+    local id = m.line2[k]
+    local head = strip.heads[id]
+    if kind[id] ~= "absent" and head then
+      local w = (kind[id] == "peg") and HEAD.PEG or AR.ChipWidth(head, words)
+      bx[id], bw[id], by[id], bh[id], line[id] = x, w, HEAD.LINE2_Y, LINE_H, 2
+      x = x + w + HEAD.GAP
+    end
+  end
+  strip.lanes, strip.span, strip.words = false, span, words
+  local count = 0
+  for i = 1, #layout do
+    local id = layout[i].id
+    if bx[id] then
+      count = count + 1
+      strip.order[count] = id
+      hx[id], hw[id] = bx[id], bw[id]
+    end
+  end
+  for i = count + 1, #strip.order do strip.order[i] = nil end
+  -- What stands last on the top line carries its plate on to the header's
+  -- end: the last graphic after the text, else the first line's last.
+  local last = strip.gIds[strip.nG]
+  if last == "_text" then last = strip.l1Ids[strip.n1] end
+  local drag = AR.drag
+  local rx = rec.x
+  for id, head in pairs(strip.heads) do
+    local peg = strip.pegs[id]
+    if peg then
+      if kind[id] == "absent" or not bx[id] then
+        head:Hide()
+        peg:Hide()
+      else
+        local w, h = bw[id], bh[id]
+        local pw = (id == last) and math.max(width - bx[id], w) or w
+        local held = drag ~= nil and drag.id == id
+        local frame
+        if kind[id] == "peg" then
+          head:Hide()
+          peg._w = w
+          FitPeg(peg, pw)
+          if not held and peg._h ~= h then
+            peg._h = h
+            peg:SetHeight(h)
+          end
+          frame = peg
+        else
+          peg:Hide()
+          local lx
+          if line[id] == 1 and rx[id] then lx = rx[id] - bx[id] end
+          AR.FitTwoHead(head, w, pw, h, line[id], lx, words, held)
+          frame = head
+        end
+        if held then
+          local ghost = strip.Ghost
+          ghost:ClearAllPoints()
+          ghost:SetPoint("TOPLEFT", strip, "TOPLEFT", bx[id], -by[id])
+          ghost:SetSize(pw, h)
+          AR.PaintGhost(ghost)
+          ghost:Show()
+        elseif frame._x ~= bx[id] or frame._y ~= by[id] then
+          frame:ClearAllPoints()
+          frame:SetPoint("TOPLEFT", strip, "TOPLEFT", bx[id], -by[id])
+          frame._x, frame._y = bx[id], by[id]
+        end
+        if frame == head then
+          head:Show()
+          AR.PaintHead(head)
+        elseif not peg:IsShown() then
+          peg:Show()
+          PaintPeg(peg)
+        end
+      end
+    end
+  end
+  if not drag then strip.Ghost:Hide() end
+  AR.PlaceLines(host)
+end
+
+-- A frame of a drag on the two-line header: the heading follows the cursor
+-- along the header, on the line its part stands on now, lifted a unit, and
+-- stops at the header's ends; where it changes places is read from the
+-- hand (AR.StepTwo), each step written at once, so the rows re-lay under
+-- it and its slot takes the ghost.
+function AR.DragTwo(host, cx, cy)
+  local drag, strip = AR.drag, host.strip
+  if not (drag and strip) then return end
+  local head = drag.head
+  local left, top = strip:GetLeft(), strip:GetTop()
+  if not (left and top) then return end
+  local id = drag.id
+  local w = head._w or head:GetWidth() or 0
+  local pw = head._pw or w
+  local hand = cx - left - drag.grab
+  if AR.StepTwo(strip, id, hand, w, top - (cy or top) + (drag.dy0 or 0)) then AR.RowsChanged(true) end
+  local x = math.min(math.max(hand, 0), math.max((strip:GetWidth() or 0) - pw, 0))
+  local y = (strip.by[id] or 0) - 1
+  if x ~= drag.x or y ~= drag.y then
+    drag.x, drag.y = x, y
+    head:ClearAllPoints()
+    head:SetPoint("TOPLEFT", strip, "TOPLEFT", x, -y)
+    head._x, head._y = nil, nil
+  end
+end
+
+-- Where the part in the hand goes, as the hand moves (above): along its
+-- line by its edges, as a heading on the one-line header does (section 7,
+-- with the same slack), a graphic past the text to the other side; the
+-- sender, carried below the line between the two lines by HEAD.LINE_SLACK,
+-- onto the second line where the hand's middle falls among its parts, and
+-- carried back above it onto the first, on the subject's side the hand's
+-- middle is on. `yDown` is the cursor's depth from the header's top.
+-- Answers whether the arrangement changed.
+function AR.StepTwo(strip, id, hand, w, yDown)
+  local drag, m = AR.drag, strip.m
+  if not (drag and m and m.left) then return false end
+  local bx, bw = strip.bx, strip.bw
+  local home = bx[id] or hand
+  local line = strip.line[id]
+  if id == "sender" and m.sender > 0 then
+    local mid = HEAD.LINE_H + 1
+    local centre = hand + w / 2
+    if line == 1 and yDown > mid + HEAD.LINE_SLACK then
+      local at = 1
+      for k = 1, m.n2 do
+        local o = m.line2[k]
+        if bx[o] and bx[o] + bw[o] / 2 < centre then at = k + 1 end
+      end
+      table.insert(m.line2, at, "sender")
+      m.n2, m.sender = m.n2 + 1, 2
+      drag.swapDir, drag.swapX = nil, nil
+      AR.WriteTwo(m)
+      return true
+    elseif line == 2 and yDown < mid - HEAD.LINE_SLACK then
+      for k = 1, m.n2 do
+        if m.line2[k] == "sender" then
+          table.remove(m.line2, k)
+          break
+        end
+      end
+      m.n2, m.sender = m.n2 - 1, 1
+      local sub = bx.subject
+      m.before = sub == nil or centre < sub + (bw.subject or 0) / 2
+      drag.swapDir, drag.swapX = nil, nil
+      AR.WriteTwo(m)
+      return true
+    end
+  end
+  local list, n
+  if line == 0 then
+    list, n = strip.gIds, strip.nG
+  elseif line == 1 then
+    list, n = strip.l1Ids, strip.n1
+  elseif line == 2 then
+    list, n = m.line2, m.n2
+  else
+    return false
+  end
+  local k
+  for i = 1, n do
+    if list[i] == id then
+      k = i
+      break
+    end
+  end
+  if not k then return false end
+  local p, q = k - 1, k + 1
+  while p >= 1 and not bx[list[p]] do p = p - 1 end
+  while q <= n and not bx[list[q]] do q = q + 1 end
+  local prev, nxt = list[p], list[q]
+  local last, at = drag.swapDir, drag.swapX or hand
+  local dir
+  if prev and bx[prev] and hand < home and hand < bx[prev] + bw[prev] / 2
+      and (last ~= 1 or hand <= at - HEAD.SLACK) then
+    dir = -1
+  elseif nxt and bx[nxt] and hand > home and hand + w > bx[nxt] + bw[nxt] / 2
+      and (last ~= -1 or hand >= at + HEAD.SLACK) then
+    dir = 1
+  end
+  if not dir then return false end
+  if not AR.MoveTwo(m, id, (dir == -1) and prev or nxt, dir) then return false end
+  drag.swapDir, drag.swapX = dir, hand
+  AR.WriteTwo(m)
+  return true
+end
+
+-- Move, one step, on two-line rows: the step a drag would take (above).
+function AR.NudgeTwo(id, step)
+  local layout = AR.Layout()
+  if not layout then return end
+  local m = AR.TwoModel(layout, AR._nudgeModel)
+  local other = AR.TwoNeighbour(m, id, step)
+  if not (other and AR.MoveTwo(m, id, other, step)) then return end
+  AR.WriteTwo(m)
+  AR.RowsChanged(true)
+  if AR.host then AR.LayoutStrip(AR.host) end
+end
+
+-- Which part of a two-line row a press or the pointer at (cx, cy) is on:
+-- a graphic, the whole row's height; on the first line the sender or the
+-- subject, by the header's boxes laid on the row's own record; on the
+-- second line the figure (or the sender) written under the pointer, or the
+-- nearest within HEAD.SEG_REACH. A peg's room is the peg's to take on the
+-- header, and gives nothing. Nothing is made.
+function AR.TwoAt(host, cx, cy)
+  local pool = host.Pool and host.Pool()
+  local strip = host.strip
+  local layout = AR.Layout()
+  if not (pool and strip and layout) then return nil end
+  for i = 1, #pool do
+    local row = pool[i]
+    if row:IsShown() then
+      local top, bottom, left = row:GetTop(), row:GetBottom(), row:GetLeft()
+      if top and bottom and left and cy <= top and cy >= bottom then
+        local rec = row.__pbTwo
+        if not (rec and rec.on) then return nil end
+        local x, y = cx - left, top - cy
+        if x < 0 or x > rec.width then return nil end
+        local out = AR._rowTile
+        AR.TileTwo(rec, AR.TwoModel(layout, AR._rowModel), strip.kind, rec.width, out)
+        local bx, bw = out.bx, out.bw
+        for k = 1, out.nG do
+          local id = out.gIds[k]
+          if id ~= "_text" and x >= bx[id] and x < bx[id] + bw[id] then
+            if rec.room[id] then return nil end
+            return id
+          end
+        end
+        if y < (top - bottom) / 2 then
+          for k = 1, out.n1 do
+            local id = out.l1Ids[k]
+            if x >= bx[id] - 1 and x < bx[id] + bw[id] + 1 then
+              if rec.room[id] then return nil end
+              return id
+            end
+          end
+          return nil
+        end
+        local best, bestD
+        for k = 1, rec.segN do
+          local l, w = rec.segX[k], rec.segW[k]
+          local d = 0
+          if x < l then d = l - x elseif x > l + w then d = x - l - w end
+          if d <= HEAD.SEG_REACH and (not bestD or d < bestD) then best, bestD = rec.segId[k], d end
+        end
+        return best
+      end
+    end
+  end
+  return nil
+end
+
+-------------------------------------------------------------
 -- 7. Moving a column
 --
 -- By its heading or by its column on any row (section 7a), one press at a
@@ -2028,12 +2824,12 @@ end
 local pressed = {}
 local columnPress = {}
 
-function columnPress.start(x0) AR.LiftColumn(pressed.host, pressed.id, x0) end
-function columnPress.move(x) AR.DragColumn(pressed.host, x) end
+function columnPress.start(x0, y0) AR.LiftColumn(pressed.host, pressed.id, x0, y0) end
+function columnPress.move(x, y) AR.DragColumn(pressed.host, x, y) end
 function columnPress.drop() AR.DropColumn(pressed.host) end
 function columnPress.cancel()
   local drag = AR.drag
-  if drag and drag.before then AR.SetLayout(drag.before, drag.history) end
+  if drag and drag.before then AR.SetLayout(drag.before, drag.kind) end
   AR.DropColumn(pressed.host)
   AR.RowsChanged(true)
 end
@@ -2066,8 +2862,11 @@ local function RefocusRows()
 end
 
 -- What is lifted is what the header shows for the column: its heading,
--- or a hidden column's peg.
-function AR.LiftColumn(host, id, x0)
+-- or a hidden column's peg. On the two-line header the press's depth is
+-- kept as a depth on the part's own line (drag.dy0), so a part taken on a
+-- row far down the list changes line only as the hand moves up or down
+-- from where it was taken, as one taken on the header does.
+function AR.LiftColumn(host, id, x0, y0)
   if AR.host ~= host then return end
   local strip = host.strip
   local head = strip and (strip.kind[id] == "peg" and strip.pegs[id] or strip.heads[id])
@@ -2078,11 +2877,15 @@ function AR.LiftColumn(host, id, x0)
     x = head._x or 0, dx = 0,
     -- The arrangement as it was, and which one, for Escape to put back;
     -- and the rows whose cells ride in the hand (AR.LetGo).
-    before = CopyLayout(), history = AR.EditsHistory(), pool = host.Pool and host.Pool() or nil,
+    before = CopyLayout(), kind = AR.ListKind(), pool = host.Pool and host.Pool() or nil,
   }
+  if strip.two and y0 then
+    local top = strip:GetTop()
+    if top then AR.drag.dy0 = (strip.by[id] or 0) + (strip.bh[id] or 0) / 2 - (top - y0) end
+  end
   head:SetFrameLevel(strip:GetFrameLevel() + 20)
   -- Lifted a unit above and below its place.
-  head:SetHeight(Th().Metrics.tileHeight + 2)
+  head:SetHeight(AR.HeadH(strip, id) + 2)
   AR.LayoutStrip(host)
   if head == strip.pegs[id] then PaintPeg(head) end
   AR.ShowHand(host)
@@ -2095,9 +2898,10 @@ end
 -- it -- so pushing on past an end takes it on to the last slot, and a
 -- heading whose width changes as it lands against an end is not pulled
 -- back by its own stop.
-function AR.DragColumn(host, cursorX)
+function AR.DragColumn(host, cursorX, cursorY)
   local drag, strip = AR.drag, host.strip
   if not (drag and strip) then return end
+  if strip.two then return AR.DragTwo(host, cursorX, cursorY) end
   local head = drag.head
   local left = strip:GetLeft()
   if not left then return end
@@ -2157,8 +2961,9 @@ function AR.DropColumn(host)
   if not drag then return end
   local head = drag.head
   head:SetFrameLevel(drag.level)
-  head:SetHeight(Th().Metrics.tileHeight)
-  head._x = nil
+  local h = AR.HeadH(host and host.strip, head.colId)
+  head:SetHeight(h)
+  head._x, head._y, head._h = nil, nil, h
   AR.HideHand(host)
   -- What the pointer is over is looked at again (the list's, next frame).
   AR.rowHover = nil
@@ -2194,8 +2999,9 @@ end
 --                    up (closed up, no row stands in lanes);
 --   the press        on any row, the column whose box is under the cursor
 --                    -- closed up, the one that row drew there, and on a
---                    two-line row whatever it draws there -- is taken as
---                    its heading would be, and a right-click hides it;
+--                    two-line row the part under it, a figure on its
+--                    second line included (AR.TwoAt) -- is taken as its
+--                    heading would be, and a right-click hides it;
 --                    pointed at, it looks as its heading does pointed at
 --                    (AR.SetRowHover). So a click on a row does nothing
 --                    else while the mode is open: nothing opens, nothing
@@ -2213,8 +3019,8 @@ end
 -------------------------------------------------------------
 
 -- Which column a press or the pointer on the list is over, or nil: by the
--- lanes where the rows line up, by what the row draws otherwise.
-local REGION_OF = { read = "Indicator", icon = "Icon", sender = "Sender", subject = "Subject" }
+-- lanes where the rows line up, by what the row draws otherwise; on a
+-- two-line row, by its parts (AR.TwoAt, section 6b).
 
 -- Every column's region on a row, by id (History's gold is its Money).
 local ROW_REGION = {
@@ -2269,28 +3075,6 @@ function AR.RowColumnAt(host, cx, cy)
   return nil
 end
 
-function AR.RegionAt(host, cx, cy)
-  local pool = host.Pool and host.Pool()
-  if not pool then return nil end
-  for i = 1, #pool do
-    local row = pool[i]
-    if row:IsShown() then
-      local top, bottom = row:GetTop(), row:GetBottom()
-      if top and bottom and cy <= top and cy >= bottom then
-        for id, key in pairs(REGION_OF) do
-          local region = row[key]
-          if region and region:IsShown() then
-            local l, r = region:GetLeft(), region:GetRight()
-            if l and r and cx >= l - 3 and cx <= r + 3 then return id end
-          end
-        end
-        return nil
-      end
-    end
-  end
-  return nil
-end
-
 function AR.ColumnAt(host)
   local cover, strip = host.cover, host.strip
   local layout = AR.Layout()
@@ -2312,7 +3096,7 @@ function AR.ColumnAt(host)
     end
     return nil
   end
-  if host.TwoLine and host.TwoLine() then return AR.RegionAt(host, cx, cy) end
+  if host.TwoLine and host.TwoLine() then return AR.TwoAt(host, cx, cy) end
   return nil
 end
 
@@ -2549,6 +3333,7 @@ function AR.ListPlacing(owner)
   if widths then
     for id in pairs(widths) do widths[id] = nil end
   end
+  if spec then spec.twoRec, spec.twoMarked = nil, nil end
 end
 
 function AR.ListPlaced(owner)
@@ -2577,8 +3362,9 @@ function AR.LetGo(host)
   AR.drag = nil
   if not drag then return end
   drag.head:SetFrameLevel(drag.level)
-  drag.head:SetHeight(Th().Metrics.tileHeight)
-  drag.head._x = nil
+  local h = AR.HeadH(host and host.strip, drag.id)
+  drag.head:SetHeight(h)
+  drag.head._x, drag.head._y, drag.head._h = nil, nil, h
   if host and host.strip and host.strip.pegs[drag.id] == drag.head then PaintPeg(drag.head) end
   local pool = drag.pool
   if pool then
@@ -2590,20 +3376,22 @@ function AR.LetGo(host)
   end
 end
 
--- The list under the mode switched to one that follows the other
--- arrangement (History, or back from it): the mode arranges that one now.
+-- The list under the mode switched to one that follows another
+-- arrangement (History, or back from it; two-line rows or one-line ones --
+-- another character's box, or Larger mail rows switched in the options):
+-- the mode arranges that one now.
 -- Told as a pass of the list's rows begins (AR.ListPlacing), so every row
 -- of the pass is placed for it: a press or a drag is let go -- nothing is
 -- dropped into the other arrangement -- and a column the new one has not
 -- is let go of, pointed at or selected; the header is laid out on the new
 -- lanes as the pass ends (AR.ListPlaced), and the inspector filled again.
 -- Nothing binds rows here: the pass under way does.
-AR.editsHistory = false
+AR.listKind = "rows"
 
 function AR.SyncList(host)
-  local history = AR.EditsHistory()
-  if AR.editsHistory == history then return end
-  AR.editsHistory = history
+  local kind = AR.ListKind()
+  if AR.listKind == kind then return end
+  AR.listKind = kind
   AR.CancelPress()
   AR.LetGo(host)
   if AR.moving then AR.moving = nil end
@@ -2648,8 +3436,9 @@ end
 -- the hand, a figure's cell rides on the
 -- lifted lane where a row with every figure has it, so the column in the
 -- hand reads as one. The accent while the column is selected or in the
--- hand, white while it is only pointed at. A two-line row keeps RV.Wash's
--- wash around what it draws of the column. Every mark is a texture of the
+-- hand, white while it is only pointed at. A two-line row has its part's
+-- box marked (AR.MarkTwo): a graphic, the first line's sender or subject,
+-- or a figure where the second line writes it. Every mark is a texture of the
 -- row's own, made the first time the row needs one and reused, as
 -- RV.Wash's is; a mark is anchored again only where it moved. RV.Wash with
 -- nothing to point at takes them all away (AR.UnmarkRow).
@@ -2674,13 +3463,15 @@ end
 local BOX, HATCH, TICK, TICK_KEY = 1, 2, 3, 4
 
 -- Mark `i` (`tex`) from `x` for `w` units along the row, `inset` in from its
--- top and foot.
-local function Span(m, i, tex, row, x, w, inset)
-  if m.sx[i] ~= x or m.sw[i] ~= w or m.si[i] ~= inset then
-    m.sx[i], m.sw[i], m.si[i] = x, w, inset
+-- top and `foot` (`inset` unless given) up from its foot: a line of a
+-- two-line row is a mark from one edge to the row's middle.
+local function Span(m, i, tex, row, x, w, inset, foot)
+  foot = foot or inset
+  if m.sx[i] ~= x or m.sw[i] ~= w or m.si[i] ~= inset or m.sf[i] ~= foot then
+    m.sx[i], m.sw[i], m.si[i], m.sf[i] = x, w, inset, foot
     tex:ClearAllPoints()
     tex:SetPoint("TOPLEFT", row, "TOPLEFT", x, -inset)
-    tex:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", x, inset)
+    tex:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", x, foot)
     tex:SetWidth(math.max(w, 1))
   end
   tex:Show()
@@ -2690,7 +3481,7 @@ function AR.NewMarks(row)
   local T = Th()
   -- Every field the marks ever hold, set here: the table never grows.
   local m = {
-    sx = {}, sw = {}, si = {}, on = false, carry = false, flatHatch = false, tileW = 0, tileH = 0,
+    sx = {}, sw = {}, si = {}, sf = {}, on = false, carry = false, flatHatch = false, tileW = 0, tileH = 0,
     box = false, ring = false, hatch = false, hatchTop = false, hatchFoot = false, tickKey = false, tick = false,
   }
   m.box = row:CreateTexture(nil, "BACKGROUND", nil, 4)
@@ -2733,10 +3524,10 @@ function AR.NewMarks(row)
   return m
 end
 
-local function MarkBox(row, m, x, w, look)
+local function MarkBox(row, m, x, w, look, top, foot)
   local spec = MARK[look] or MARK.sel
   local ar, ag, ab = Th().GetAccent()
-  Span(m, BOX, m.box, row, x, w, 1)
+  Span(m, BOX, m.box, row, x, w, top or 1, foot or top or 1)
   if spec[1] == "accent" then
     m.box:SetVertexColor(ar, ag, ab, spec[2])
   else
@@ -2990,6 +3781,8 @@ function AR.MarkRow(row, s, target, lanes, x, subjectW, sx, run)
   -- The other window's rows, if it is up, keep the plain wash: the header,
   -- its lanes and the lane in the hand are this list's.
   local list = host and host.List and host.List()
+  local two = row.__pbTwo
+  if s.two and two and two.on and list and row:GetParent() == list then return AR.MarkTwo(row, s, focus) end
   if not (sx and list and row:GetParent() == list) then
     AR.UnmarkRow(row)
     if R and R.Wash then R.Wash(row, target) end
@@ -3078,6 +3871,55 @@ function AR.MarkRow(row, s, target, lanes, x, subjectW, sx, run)
     MarkBox(row, m, bx, bw, sel and "empty" or "emptyHover")
     HideHatch(m)
   end
+end
+
+-- A two-line row's marks, while the mode points at a part of it (the one
+-- in the hand, pointed at, or selected): the part's box on the row by the
+-- two-line header's rule (AR.TileTwo, on the row's own record), a graphic
+-- the whole row's height, the sender or the subject its first line, a
+-- figure -- or the sender written into the second line -- its words on
+-- the second line, a little out from them. The accent while it is selected
+-- or in the hand, where it lands; white while it is only pointed at.
+-- Nothing on a row that does not show it. Nothing is made.
+function AR.MarkTwo(row, s, focus)
+  local rec = row.__pbTwo
+  local strip = AR.host and AR.host.strip
+  local layout = s.layout or AR.Layout()
+  local wash = row.__pbWash
+  if wash then wash:Hide() end
+  local m = row.__pbMarks or AR.NewMarks(row)
+  m.on = true
+  HideHatch(m)
+  HideTick(m)
+  Uncarry(m)
+  if not (strip and layout and focus) then
+    HideBox(m)
+    return
+  end
+  local out = AR._rowTile
+  AR.TileTwo(rec, AR.TwoModel(layout, AR._rowModel), strip.kind, rec.width, out)
+  local hand = AR.drag ~= nil and AR.drag.id == focus
+  local look = (hand or AR.Selected("column", focus)) and "sel" or "hover"
+  local h = row:GetHeight() or 44
+  local mid = math.floor(h / 2)
+  local bx = out.bx[focus]
+  if bx and not rec.room[focus] then
+    if focus == "read" or focus == "icon" then
+      MarkBox(row, m, bx, out.bw[focus], look, 1, 1)
+      return
+    end
+    if focus == "subject" or (focus == "sender" and rec.sender == 1) then
+      MarkBox(row, m, bx, out.bw[focus], look, 1, h - mid + 1)
+      return
+    end
+  end
+  for k = 1, rec.segN do
+    if rec.segId[k] == focus then
+      MarkBox(row, m, rec.segX[k] - HEAD.SEG_PAD, rec.segW[k] + 2 * HEAD.SEG_PAD, look, mid + 1, 1)
+      return
+    end
+  end
+  HideBox(m)
 end
 
 -------------------------------------------------------------
@@ -3349,6 +4191,7 @@ end
 
 -- A column one place along the row, left (-1) or right (1).
 function AR.NudgeColumn(id, step)
+  if AR.EditsLarge() then return AR.NudgeTwo(id, step) end
   local layout = AR.Layout()
   local k = layout and IndexOf(layout, id)
   if not k then return end
@@ -3471,22 +4314,27 @@ AR.LAYOUT_BARS = {
 }
 
 local function PaintLayout(row)
-  local chosen, hover = row.chosen, row.hover
+  local chosen, live = row.chosen, row.live ~= false
+  local hover = row.hover and live
   row.Hover:SetShown(hover and true or false)
   local r, g, b = 0.55, 0.55, 0.55
-  if chosen then
+  if chosen and live then
     r, g, b = Th().GetAccent()
+    row.Mark:SetVertexColor(r, g, b, 1)
+  elseif chosen then
+    r, g, b = 0.44, 0.44, 0.44
     row.Mark:SetVertexColor(r, g, b, 1)
   elseif hover then
     r, g, b = 1, 1, 1
   end
   row.Mark:SetShown(chosen and true or false)
   row.MarkKey:SetShown(chosen and true or false)
-  Grey(row.Text, (chosen or hover) and 1 or 0.91)
-  local s = hover and 0.6 or 0.4
+  Grey(row.Text, live and ((chosen or hover) and 1 or 0.91) or 0.44)
+  Grey(row.Desc, live and 0.66 or 0.4)
+  local s = hover and 0.6 or (live and 0.4 or 0.3)
   local bars = row.Bars
   for k = 1, #bars do
-    if k == 1 or k == 4 then
+    if k == 1 or k == 4 or not live then
       bars[k]:SetVertexColor(s, s, s, 1)
     else
       bars[k]:SetVertexColor(r, g, b, 1)
@@ -3533,7 +4381,7 @@ function AR.SyncLanes(strip)
 end
 
 local function LayoutClick(self)
-  if not AR.host then return end
+  if not AR.host or self.live == false then return end
   AR.SetRowPacking(self.mode)
 end
 
@@ -3981,6 +4829,8 @@ function AR.BuildInspector()
   -- where the switch that decides it is.
   insp.Why = Paragraph(art, "bodySmall", "body", 0.81)
   insp.Where = Paragraph(art, "secondary", "note", 0.55)
+  -- Why Row layout is greyed over two-line rows (PutLayout).
+  insp.LayoutNote = Paragraph(art, "secondary", "note", 0.55)
   -- A note that begins with the hatch the rows draw (PutSwatchNote): the
   -- sample where its first line begins, the words after it.
   insp.SwatchNote = Paragraph(art, "secondary", "note", 0.66)
@@ -4308,14 +5158,19 @@ end
 
 -- Row layout's kicker and its two answers, in the overview (LayoutChoice):
 -- each as tall as its line and its one line under it. A name too long
--- for the room beside the preview is cut. Answers the y under them.
+-- for the room beside the preview is cut. Over two-line rows, which always
+-- close up their second line, both are greyed and take no click, and a
+-- quiet line under the kicker says why. Answers the y under them.
 local function PutLayout(y)
   local insp, P = AR._insp, INSP
   y = PutKicker(L()["OPT_ROW_LAYOUT_TITLE"], y)
+  local large = AR.EditsLarge()
+  if large then y = PutText(insp.LayoutNote, L()["ARRANGE_LAYOUT_LARGER"], y, "note") end
   local packed = not LinedUp()
   for i = 1, #AR.ROW_LAYOUTS do
     local row = insp.Layouts[i] or LayoutChoice(insp, i)
     local text = AR.LAYOUT_TEXT[row.mode]
+    row.live = not large
     row.chosen = (row.mode == "packed") == packed
     row.hover = row.hover and row:IsMouseOver() or false
     Th().FitText(row.Text, P.INNER - P.RADIO_TEXT - P.PREVIEW_W - P.PREVIEW_PAD - P.MOVE_GAP, L()[text[1]], row)
@@ -4563,21 +5418,35 @@ local function FillOverview(host, y)
   return PutFoot(chipsY - P.CHIP_H - P.CHIP_EDGE)
 end
 
--- A column's card.
+-- On two-line rows, what a part's card says of where it can go.
+AR.LARGE_NOTE = {
+  read = "ARRANGE_NOTE_LARGE_SIDE", icon = "ARRANGE_NOTE_LARGE_SIDE",
+  sender = "ARRANGE_NOTE_LARGE_SENDER", subject = "ARRANGE_NOTE_LARGE_SUBJECT",
+  time = "ARRANGE_NOTE_LARGE_FIGURE", money = "ARRANGE_NOTE_LARGE_FIGURE", slots = "ARRANGE_NOTE_LARGE_FIGURE",
+}
+
+-- A column's card. Over two-line rows Move steps it as a drag on the
+-- two-line header does, and its note says where the part can go there.
 local function FillColumn(id, y)
   local insp, P = AR._insp, INSP
   local spec = AR.COLUMNS[id]
   local layout = AR.Layout()
   local shown = layout and layout.shown[id] or false
   local k = layout and IndexOf(layout, id) or 1
+  local large = AR.EditsLarge() and layout ~= nil
   y = PutText(insp.Lead, L()[spec.desc], y) - P.ROW_GAP
   -- The subject cannot be hidden: no eye, and Move has the row.
   local used = 0
   if not spec.fixed then used = PutSwitch(shown, y) end
-  y = PutMove(y, false, k > 1, layout ~= nil and k < #layout, used)
+  local back, forward = k > 1, layout ~= nil and k < #layout
+  if large then
+    local m = AR.TwoModel(layout, AR._nudgeModel)
+    back, forward = AR.TwoNeighbour(m, id, -1) ~= nil, AR.TwoNeighbour(m, id, 1) ~= nil
+  end
+  y = PutMove(y, false, back, forward, used)
   -- The subject's card says what the rows show while it is selected: each
   -- row's run, and why it stops where it does.
-  if spec.fixed then
+  if spec.fixed and not large then
     y = PutKicker(L()["ARRANGE_SUBJECT_WHY"], y)
     y = PutText(insp.Why, L()["ARRANGE_SUBJECT_RUN"], y)
   end
@@ -4588,6 +5457,11 @@ local function FillColumn(id, y)
     for i = 1, #choices do
       y = PutRadio(i, choices[i], choices[i].id == current, shown and true or false, y)
     end
+  end
+  if large then
+    local note = AR.LARGE_NOTE[id]
+    if note then y = PutNote(L()[note], y) end
+    return y
   end
   -- What a mail without a figure does: in Columns by its place beside the
   -- subject, and Packed the same on either side; the subject's card says
@@ -4664,6 +5538,7 @@ local function HideParts(insp)
   insp.Note:Hide()
   insp.Why:Hide()
   insp.Where:Hide()
+  insp.LayoutNote:Hide()
   insp.SwatchNote:Hide()
   if insp.Swatch then
     insp.Swatch:Hide()
@@ -4763,7 +5638,8 @@ end
 -- answers, for the list on screen: Spec() (its placement table, whose lanes
 -- RV.Place publishes), Pool() (its rows), Scroll() (its scroll frame),
 -- List() (the frame its rows stand in) and TwoLine() (whether its rows are
--- the two-line ones, which have no lanes), and may answer History()
+-- the two-line ones, which have no lanes: the mode then arranges Larger
+-- mail rows' own arrangement on the two-line header), and may answer History()
 -- (whether the list on screen follows History's arrangement, which the
 -- mode then arranges; the mail rows' otherwise), CanSwitch() and
 -- ShowHistory(on) (the overview's list choice: the list switched under
@@ -4796,7 +5672,7 @@ function AR.Enter(host)
   AR.host = host
   AR.hover, AR.focus, AR.drag, AR.rowHover = nil, nil, nil, nil
   AR.selKind, AR.selId, AR.moving = nil, nil, nil
-  AR.editsHistory, AR.relisted = AR.EditsHistory(), false
+  AR.listKind, AR.relisted = AR.ListKind(), false
   strip:Show()
   if host.OnEnter then host.OnEnter(strip) end
   if cover then
@@ -4821,8 +5697,9 @@ function AR.Leave()
   AR.drag = nil
   if drag then
     drag.head:SetFrameLevel(drag.level)
-    drag.head:SetHeight(Th().Metrics.tileHeight)
-    drag.head._x = nil
+    local h = AR.HeadH(host.strip, drag.id)
+    drag.head:SetHeight(h)
+    drag.head._x, drag.head._y, drag.head._h = nil, nil, h
   end
   AR.selKind, AR.selId, AR.moving = nil, nil, nil
   AR.host = nil

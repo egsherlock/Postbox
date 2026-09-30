@@ -2255,6 +2255,18 @@ function State.Minimap()
   Ctx.Paint("minimap")
 end
 
+-- Row layout greys while Larger mail rows are on: two-line rows always
+-- close up their second line, so the choice has nothing to arrange there.
+-- Its inspector says so under what it does.
+function State.RowLayout()
+  local cell = S.lanesCell
+  if not cell then return end
+  local larger = not ns.MailboxUI.GetOption("compactRows")
+  Rows.SetEnabled(cell, not larger)
+  cell.entry = (larger and cell.largeEntry or cell.plainEntry) or cell.entry
+  if larger then ns.Core.UI.Dropdown.CloseAll() end
+end
+
 function State.Memory()
   local on = ns.MailboxUI.GetOption("mailMemory") and true or false
   Rows.SetBlock(S.memoryBlock, on)
@@ -2414,7 +2426,10 @@ function Pages.mail(col)
       ns.MailboxUI.SetOption("compactRows", not on)
       if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
     end,
-    after = Ctx.Repaint,
+    after = function()
+      State.RowLayout()
+      Ctx.Repaint()
+    end,
   })
 
   -- Row layout: every figure in its own column on every row (Columns), or
@@ -2437,6 +2452,10 @@ function Pages.mail(col)
     end,
   })
   S.lanesCell = lanes
+  -- While Larger mail rows are on, Row layout greys and its inspector says
+  -- why (State.RowLayout): a second entry, measured with the rest.
+  lanes.plainEntry = lanes.entry
+  lanes.largeEntry = Entry(L["OPT_ROW_LAYOUT_TITLE"], L["OPT_ROW_LAYOUT_DESC"] .. "\n\n" .. L["ARRANGE_LAYOUT_LARGER"])
   local function PaintWash() Ctx.PaintSampleWash() end
   lanes:HookScript("OnEnter", PaintWash)
   lanes:HookScript("OnLeave", PaintWash)
@@ -3326,6 +3345,7 @@ local function Build()
   S.refresh[#S.refresh + 1] = State.Inheritance
   S.refresh[#S.refresh + 1] = State.Minimap
   S.refresh[#S.refresh + 1] = State.Memory
+  S.refresh[#S.refresh + 1] = State.RowLayout
   S.refresh[#S.refresh + 1] = State.Hidden
   S.refresh[#S.refresh + 1] = State.Arrange
   S.refresh[#S.refresh + 1] = Ctx.PaintExtra
