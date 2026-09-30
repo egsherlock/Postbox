@@ -2035,7 +2035,10 @@ function MM.OpenPicker(anchor, current, onPick)
   PaintPicker(list)
   -- Hanging from the button's left edge and growing right, as a menu opens
   -- from what was clicked -- out past the window's edge where it must; it
-  -- is clamped to the screen, not the window.
+  -- is clamped to the screen, not the window. At the size of what it hangs
+  -- from: its button's scale against the screen's carries the window scale.
+  local scale = (anchor:GetEffectiveScale() or 1) / (UIParent:GetEffectiveScale() or 1)
+  if math.abs((list:GetScale() or 1) - scale) > 0.0005 then list:SetScale(scale) end
   list:ClearAllPoints()
   list:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
   list:Show()
