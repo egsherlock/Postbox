@@ -608,13 +608,14 @@ function UI.SetGoldMode(mode)
 end
 
 -- When a row shows the time left: "always", or under "7", "3" or "1" days.
--- Three by default -- the point at which a mail wants a look.
+-- Always by default: a column that fills in only for some mails reads as
+-- missing data to someone who never chose the threshold.
 local EXPIRY_WHEN = { always = true, ["7"] = true, ["3"] = true, ["1"] = true }
 function UI.GetExpiryWhen()
   local memo = Settings()
   if memo.expiry then return memo.expiry end
   local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.expiryWhen")
-  memo.expiry = EXPIRY_WHEN[stored] and stored or "3"
+  memo.expiry = EXPIRY_WHEN[stored] and stored or "always"
   return memo.expiry
 end
 function UI.SetExpiryWhen(when)
@@ -3155,7 +3156,7 @@ function UI.DiagnoseOptions()
   Named("readMail", UI.GetReadMode(), "fold")
   Named("historyDays", UI.GetHistoryDays(), "7")
   Named("gold", UI.GetGoldMode(), "both")
-  Named("expiry", UI.GetExpiryWhen(), "3")
+  Named("expiry", UI.GetExpiryWhen(), "always")
   Named("slots", UI.GetSlotsStyle(), "words")
   Named("rows", FormatRowLayout(UI.GetRowLayout()) or "?", ROW_LAYOUT_DEFAULT)
   Named("historyRows", FormatLayout(UI.GetHistoryLayout(), ParseHistoryLayout) or "?", HISTORY_LAYOUT_DEFAULT)

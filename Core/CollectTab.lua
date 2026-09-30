@@ -1283,12 +1283,12 @@ local function RowMoneyText(index, hasCOD, moneyValue, codValue, brief)
 end
 
 -- daysLeft, hasCOD -> whether the row shows the time left, and whether in
--- the warning tone. Shown under the player's threshold (three days by
--- default) or always; amber when it is genuinely short -- under three days,
+-- the warning tone. Shown always (the default) or under the player's
+-- threshold; amber when it is genuinely short -- under three days,
 -- or under one for a C.O.D. mail, which only lives three.
 local function ExpiryState(daysLeft, hasCOD)
   local UI = ns.MailboxUI
-  local when = UI and UI.GetExpiryWhen and UI.GetExpiryWhen() or "3"
+  local when = UI and UI.GetExpiryWhen and UI.GetExpiryWhen() or "always"
   local limit = (when ~= "always") and tonumber(when) or nil
   local show = (limit == nil) or daysLeft < limit
   local warn = daysLeft < (hasCOD and 1 or EXPIRY_SOON_DAYS)

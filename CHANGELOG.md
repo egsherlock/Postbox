@@ -67,6 +67,10 @@ longer play.
   class color: in the mail list, History, Mail Memory and the reading pane.
   The colors are your own if your UI has them (EllesmereUI, ElvUI or a class
   color addon), and change as soon as you change them.
+- **Time left shows on every mail by default**, so the column never looks
+  half empty. To see it only when a mail is about to go, choose Under 7, 3
+  or 1 days in Options, Mail tab, or on the Time left card while you
+  arrange. If you picked a setting before, it stays.
 - **The arrange header lines up with the list.** Its headings run edge to
   edge over the rows, and History's header shows History's own columns, the
   age first.
