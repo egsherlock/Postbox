@@ -2965,6 +2965,17 @@ function Pages.send(col)
     get = function() return ns.MailboxUI.GetAfterSendKeep and ns.MailboxUI.GetAfterSendKeep() or "nothing" end,
     set = function(id) if ns.MailboxUI.SetAfterSendKeep then ns.MailboxUI.SetAfterSendKeep(id) end end,
   })
+  -- Ctrl+Enter in the draft's fields, named in the client's own words for
+  -- the keys, as the Send button's hint names them (SendTab, 8b).
+  local keys = (ns.SendTab and ns.SendTab.SendKeys) and ns.SendTab.SendKeys() or "Ctrl+Enter"
+  Rows.Check(col, {
+    title = L("OPT_CTRL_ENTER_TITLE", keys), text = L("OPT_CTRL_ENTER_DESC", keys),
+    get = function() return ns.MailboxUI.GetOption("ctrlEnterSends") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("ctrlEnterSends", on)
+      if ns.SendTab and ns.SendTab.RefreshSendHint then ns.SendTab.RefreshSendHint() end
+    end,
+  })
 end
 
 -- The Window tab: where the window opens, then how it is painted. Under the

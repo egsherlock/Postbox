@@ -912,6 +912,7 @@ local function SetSendButtonBusy(panel, busy)
     if button.Enable then button:Enable() end
     button:SetText(SendButtonCaption(panel))
   end
+  ST.FitSendHint(panel)
 end
 
 -- Drop the in-flight bookkeeping WITHOUT touching the draft. Used by ST.Reset,
@@ -1105,6 +1106,89 @@ local function DoSendMail(panel, confirmed)
   end)
   -- Success stays quiet: a popup on the normal path is a popup people learn to
   -- dismiss without reading.
+end
+
+-------------------------------------------------------------
+-- 8b. Ctrl+Enter
+--
+-- The draft's three fields send on Ctrl+Enter while "Ctrl+Enter sends" is on
+-- (the options' Send tab page; MailboxUI, ctrlEnterSends, on by default).
+-- Off, Ctrl+Enter is the field's plain Enter. Every field asks ST.CtrlEnter,
+-- the one way in from the keyboard, and a send still goes through
+-- DoSendMail's guard: a press while a mail is with the server does nothing.
+--
+-- While it is on, the Send button says so at its right end, small and in the
+-- secondary grey, in the client's own words for the keys (ST.SendKeys).
+-- It stands only where the caption leaves room for it, measured
+-- at every change of the caption, the button's width or the option: the
+-- caption is never crowded, and a long translation or a narrow window drops
+-- the hint rather than the caption. Hidden while the button is disabled (a
+-- mail with the server), when the keys do nothing.
+-------------------------------------------------------------
+
+ST.HINT = { PAD = 8, GAP = 12 }
+
+function ST.CtrlEnterSends()
+  local UI = ns.MailboxUI
+  if not (UI and type(UI.GetOption) == "function") then return true end
+  return UI.GetOption("ctrlEnterSends")
+end
+
+-- A field's Enter: true when Ctrl+Enter sent (or was refused by the send
+-- itself), so the field's own Enter does not follow.
+function ST.CtrlEnter(panel)
+  if not (IsControlKeyDown() and ST.CtrlEnterSends()) then return false end
+  DoSendMail(panel)
+  return true
+end
+
+-- "Ctrl+Enter", made once from the client's names for the two keys: the
+-- modifier's (CTRL_KEY_TEXT), and Enter's as the key bindings list it
+-- (GetBindingText). An all-capitals Latin name (CTRL, STRG) is written as a
+-- key cap's word is, "Ctrl", "Strg"; any other is kept as the client has it.
+function ST.SendKeys()
+  local keys = ST._sendKeys
+  if keys then return keys end
+  local ctrl = (type(CTRL_KEY_TEXT) == "string" and CTRL_KEY_TEXT ~= "") and CTRL_KEY_TEXT or "Ctrl"
+  if ctrl:find("^%u%u+$") then ctrl = ctrl:sub(1, 1) .. ctrl:sub(2):lower() end
+  local enter = type(GetBindingText) == "function" and GetBindingText("ENTER") or nil
+  if type(enter) ~= "string" or enter == "" then enter = "Enter" end
+  keys = ctrl .. "+" .. enter
+  ST._sendKeys = keys
+  return keys
+end
+
+-- The hint on the Send button, made with it.
+function ST.BuildSendHint(button)
+  local hint = Theme.CreateText(button, "secondary")
+  if not hint then return end
+  hint:SetPoint("RIGHT", button, "RIGHT", -ST.HINT.PAD, 0)
+  hint:SetJustifyH("RIGHT")
+  hint:SetWordWrap(false)
+  hint:SetText(ST.SendKeys())
+  hint:Hide()
+  button.KeyHint = hint
+end
+
+-- Shown while the option is on, the button can send, and the room either side
+-- of the centred caption holds the hint with a clear gap before it.
+function ST.FitSendHint(panel)
+  local button = panel and panel.FillButton
+  local hint = button and button.KeyHint
+  if not hint then return end
+  local show = ST.CtrlEnterSends() and button:IsEnabled() and true or false
+  if show then
+    local caption = button:GetFontString()
+    local captionW = caption and caption:GetStringWidth() or 0
+    local room = (ResolvedWidth(button, panel, M.inset) - captionW) / 2
+    show = (hint:GetStringWidth() or 0) + ST.HINT.PAD + ST.HINT.GAP <= room
+  end
+  hint:SetShown(show)
+end
+
+-- The option changed, or a reset put it back.
+function ST.RefreshSendHint()
+  ST.FitSendHint(ActivePanel())
 end
 
 -------------------------------------------------------------
@@ -4211,6 +4295,7 @@ RefreshQueueLabel = function(panel)
   end
   if panel.FillButton and not pendingSend then
     panel.FillButton:SetText(SendButtonCaption(panel))
+    ST.FitSendHint(panel)
   end
   -- Postage is quoted for the whole press, so it moves with the queue.
   Invalidate(panel, "cost")
@@ -5628,6 +5713,8 @@ local function BuildSendControls(panel)
   if Theme.StyleButton then Theme.StyleButton(button, { fontRole = "normal" }) end
   button:SetScript("OnClick", function() DoSendMail(panel) end)
   panel.FillButton = button
+  -- Ctrl+Enter at its right end, while the option is on (8b).
+  ST.BuildSendHint(button)
 
   -- The guidance line, immediately above the button it is about. Anchored to the
   -- button rather than to the money row so it stays with the action even if the
@@ -5769,6 +5856,8 @@ local function InstallEvents(panel)
     -- frame needs its answer.
     ST.Timed("contacts", RefreshCategoryEmptiness, self)
     RefreshContactBar(self)
+    -- The Send button's keys, in the font and width the tab shows at now.
+    ST.FitSendHint(self)
     -- Whatever went stale while the tab was hidden, plus the bag pass.
     Invalidate(self, "bags")
   end)
@@ -5828,8 +5917,8 @@ function ST.Build(parent)
   -- Whatever the box holds -- typed, completed or taken by Tab -- is the
   -- answer; moving focus drops the selection and, after its grace, the popup.
   panel.ToBox:SetScript("OnEnterPressed", function()
-    -- Ctrl+Enter sends from any field of the draft.
-    if IsControlKeyDown() then DoSendMail(panel) return end
+    -- Ctrl+Enter sends from any field of the draft, while its option is on (8b).
+    if ST.CtrlEnter(panel) then return end
     -- The completion in the box is the answer, and Enter makes it the
     -- proper one: the row taken whole -- capitalised, realm and all -- so
     -- the name in the box is visibly the name the mail will carry.
@@ -5868,7 +5957,7 @@ function ST.Build(parent)
     if self:GetText() ~= "" then self:HighlightText() end
   end)
   panel.SubjectBox:SetScript("OnEnterPressed", function()
-    if IsControlKeyDown() then DoSendMail(panel) return end
+    if ST.CtrlEnter(panel) then return end
     if panel.BodyBox then panel.BodyBox:SetFocus() end
   end)
 
@@ -5885,10 +5974,11 @@ function ST.Build(parent)
   -- The server's body cap, same number as Blizzard's send frame.
   panel.BodyBox:SetMaxLetters(500)
   -- Plain Enter is a new line, as it should be in a message; Ctrl+Enter
-  -- sends, from here as from the other two fields. (The line break the
-  -- keypress adds is trimmed with the rest of the draft's edges on send.)
+  -- sends, from here as from the other two fields, while its option is on.
+  -- (The line break the keypress adds is trimmed with the rest of the draft's
+  -- edges on send.)
   panel.BodyBox:SetScript("OnEnterPressed", function()
-    if IsControlKeyDown() then DoSendMail(panel) end
+    ST.CtrlEnter(panel)
   end)
   -- The body's vertical anchors belong to one function, which is also where the
   -- message box's hard minimum is enforced.
@@ -5907,6 +5997,7 @@ function ST.Build(parent)
   panel:SetScript("OnSizeChanged", function(self)
     ST.ApplyBodyBounds(self)
     CloseListsForResize(self)
+    ST.FitSendHint(self)
   end)
   panel.BodyPlaceholder = AttachPlaceholder(panel.BodyWrap, panel.BodyBox,
                                             L["DEFAULT_BODY"], true)

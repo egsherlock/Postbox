@@ -186,6 +186,10 @@ local OPTION_DEFAULTS = {
   -- row; Core/Skin_Postbox.lua). On: the mockups' rows. Off, every row wears
   -- one even shade. The Blizzard look and the host skins stripe as ever.
   rowStripes      = true,
+  -- Ctrl+Enter in the Send tab's fields sends the draft, and the Send button
+  -- shows the keys (Core/SendTab.lua, 8b). On: it is how the tab has always
+  -- sent from the keyboard. Off, Ctrl+Enter is a plain Enter there.
+  ctrlEnterSends  = true,
 }
 -- What a mail row shows, and in what order, is no longer three switches here
 -- (rowGold, rowSlots, rowExpiry): it is the row's arrangement, UI.GetRowLayout
@@ -389,6 +393,9 @@ local function ApplyResetLive()
   if memory then ResetStep(memory.Refresh) end
   if icon then ResetStep(icon.Refresh) end
   if manager then ResetStep(manager.ResetWindow) end
+  -- The Send button's keys, with Ctrl+Enter sends back on.
+  local send = ns.SendTab
+  if send then ResetStep(send.RefreshSendHint) end
 end
 
 -- What stops a reset now: "collect" while Postbox is taking mail out of the
