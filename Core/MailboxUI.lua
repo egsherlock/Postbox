@@ -202,15 +202,20 @@ end
 -- the answers were read from (the client restoring saved variables, anything
 -- swapping the profile) forgets them as well. A new writer of any of these
 -- keys, anywhere, has to go through a setter or call ForgetSettings too.
-local settingsMemo = { opt = {} }
+-- The gold's and the time left's answers are one per arrangement, kept
+-- under each one's key (UI.GetGoldMode, UI.GetExpiryWhen).
+local settingsMemo = { opt = {}, gold = {}, expiry = {} }
 
 local function ForgetSettings()
   local memo = settingsMemo
   local opt = memo.opt
   for key in pairs(opt) do opt[key] = nil end
+  local gold, expiry = memo.gold, memo.expiry
+  for key in pairs(gold) do gold[key] = nil end
+  for key in pairs(expiry) do expiry[key] = nil end
   memo.root, memo.profile = nil, nil
   memo.qIcon, memo.qName = nil, nil
-  memo.gold, memo.expiry, memo.layout, memo.slots = nil, nil, nil, nil
+  memo.layout, memo.slots = nil, nil
   memo.packing = nil
   memo.history, memo.age, memo.large = nil, nil, nil
   memo.grid, memo.gridText = nil, nil
@@ -638,58 +643,105 @@ function UI.GetRowOrder()
   return { ROW_ORDER_DEFAULT[1], ROW_ORDER_DEFAULT[2], ROW_ORDER_DEFAULT[3] }
 end
 
--- Which gold a row shows while Gold is on: "both", "earned" or "spent".
-local GOLD_MODES = { both = true, earned = true, spent = true }
-function UI.GetGoldMode()
-  local memo = Settings()
-  if memo.gold then return memo.gold end
-  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.goldMode")
-  memo.gold = GOLD_MODES[stored] and stored or "both"
-  return memo.gold
-end
-function UI.SetGoldMode(mode)
-  if not GOLD_MODES[mode] then return end
-  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if profile then profile.goldMode = mode end
-  ForgetSettings()
-end
+-- A column's choices -- which gold a row shows, when it shows the time
+-- left, how it writes the slots -- belong to the arrangement the row
+-- follows, as its columns do, so each list keeps its own:
+--   rows     one-line rows: the Mail tab while Larger mail rows is off,
+--            another character's box and Mail Memory (UI.GetRowLayout)
+--   large    Larger mail rows (UI.GetLargeLayout)
+--   history  History (UI.GetHistoryLayout)
+-- The accessors take that word, as the arrange mode's AR.ListKind names
+-- the list and each arrangement's table carries it (`arrangement`, below);
+-- none is the one-line rows'.
+--
+-- Each is kept under its arrangement's own key, the layout's prefix and
+-- the choice: rowGoldMode, largeGoldMode, historyGoldMode; rowExpiryWhen,
+-- largeExpiryWhen; rowSlotsStyle. (rowGoldMode is not rowGold, the switch
+-- the gold column had before it was arranged.) They were one choice for
+-- every list, goldMode, expiryWhen and slotsStyle: an arrangement with
+-- nothing of its own stored reads that one, so a profile carries across
+-- unchanged, and a write to one arrangement never moves another's. The
+-- shared keys are only read, as the old row switches are, so a profile
+-- taken back to an older version still has them. A default is stored as
+-- nothing only while there is no shared value it would read instead.
+--
+-- History has no time left and no slots; a Larger row writes its slots in
+-- words, on its second line as in its tooltip, so the slots' choice is the
+-- one-line rows' alone.
+do
+  local GOLD_MODES = { both = true, earned = true, spent = true }
+  local GOLD_KEY = { rows = "rowGoldMode", large = "largeGoldMode", history = "historyGoldMode" }
+  -- "always", or under "7", "3" or "1" days. Always by default: a column
+  -- that fills in only for some mails reads as missing data to someone who
+  -- never chose the threshold.
+  local EXPIRY_WHEN = { always = true, ["7"] = true, ["3"] = true, ["1"] = true }
+  local EXPIRY_KEY = { rows = "rowExpiryWhen", large = "largeExpiryWhen" }
 
--- When a row shows the time left: "always", or under "7", "3" or "1" days.
--- Always by default: a column that fills in only for some mails reads as
--- missing data to someone who never chose the threshold.
-local EXPIRY_WHEN = { always = true, ["7"] = true, ["3"] = true, ["1"] = true }
-function UI.GetExpiryWhen()
-  local memo = Settings()
-  if memo.expiry then return memo.expiry end
-  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.expiryWhen")
-  memo.expiry = EXPIRY_WHEN[stored] and stored or "always"
-  return memo.expiry
-end
--- nil: the default, stored as nothing.
-function UI.SetExpiryWhen(when)
-  if when ~= nil and not EXPIRY_WHEN[when] then return end
-  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if profile then profile.expiryWhen = when end
-  ForgetSettings()
-end
+  -- The arrangement's own value, else the shared one it had before.
+  local function Stored(key, shared)
+    local store = ns.Store
+    local profile = store and store.Get and store.Get("profile")
+    if type(profile) ~= "table" then return nil end
+    local value = profile[key]
+    if value == nil then value = profile[shared] end
+    return value
+  end
 
--- How a one-line row writes the slots a mail still holds in its column:
--- "words" ("4 slots", the default) or "number" ("4"). A Larger row's second
--- line and the row's tooltip keep the words either way.
--- Stored only when it is the number, so nothing stored means the words.
--- Remembered with the other row settings (ForgetSettings).
-function UI.GetSlotsStyle()
-  local memo = Settings()
-  if memo.slots then return memo.slots end
-  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.slotsStyle")
-  memo.slots = (stored == "number") and "number" or "words"
-  return memo.slots
-end
-function UI.SetSlotsStyle(style)
-  if style ~= nil and style ~= "words" and style ~= "number" then return end
-  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if profile then profile.slotsStyle = (style == "number") and "number" or nil end
-  ForgetSettings()
+  local function Keep(key, shared, value, default)
+    local store = ns.Store
+    local profile = store and store.EnsurePath and store.EnsurePath("profile")
+    if profile then
+      if value == default and profile[shared] == nil then value = nil end
+      profile[key] = value
+    end
+    ForgetSettings()
+  end
+
+  -- Which gold the rows show while Gold is on: "both", "earned" or "spent".
+  function UI.GetGoldMode(arrangement)
+    local key = GOLD_KEY[arrangement] or GOLD_KEY.rows
+    local memo = Settings().gold
+    local mode = memo[key]
+    if mode then return mode end
+    mode = Stored(key, "goldMode")
+    if not GOLD_MODES[mode] then mode = "both" end
+    memo[key] = mode
+    return mode
+  end
+  function UI.SetGoldMode(mode, arrangement)
+    if not GOLD_MODES[mode] then return end
+    Keep(GOLD_KEY[arrangement] or GOLD_KEY.rows, "goldMode", mode, "both")
+  end
+
+  -- When the rows show the time left. nil sets the default.
+  function UI.GetExpiryWhen(arrangement)
+    local key = EXPIRY_KEY[arrangement] or EXPIRY_KEY.rows
+    local memo = Settings().expiry
+    local when = memo[key]
+    if when then return when end
+    when = Stored(key, "expiryWhen")
+    if not EXPIRY_WHEN[when] then when = "always" end
+    memo[key] = when
+    return when
+  end
+  function UI.SetExpiryWhen(when, arrangement)
+    if when ~= nil and not EXPIRY_WHEN[when] then return end
+    Keep(EXPIRY_KEY[arrangement] or EXPIRY_KEY.rows, "expiryWhen", when or "always", "always")
+  end
+
+  -- How a one-line row writes the slots a mail still holds in its column:
+  -- "words" ("4 slots", the default) or "number" ("4"). nil sets the
+  -- default. Remembered with the other row settings (ForgetSettings).
+  function UI.GetSlotsStyle()
+    local memo = Settings()
+    if memo.slots then return memo.slots end
+    memo.slots = (Stored("rowSlotsStyle", "slotsStyle") == "number") and "number" or "words"
+    return memo.slots
+  end
+  function UI.SetSlotsStyle(style)
+    if style ~= nil and style ~= "words" and style ~= "number" then return end
+    Keep("rowSlotsStyle", "slotsStyle", style or "words", "words")
+  end
 end
 
 -- How a one-line row's figures stand (CollectTab, RV.Place), in the Mail
@@ -802,7 +854,8 @@ end
 -- not half-repaired: the old keys decide, and failing those the default.
 --
 -- The answer is shared and must not be written to: { {id=, shown=}, ...,
--- shown = { [id] = bool } }. It is kept until one of the keys it was read
+-- shown = { [id] = bool }, arrangement = "rows" } -- "large" and "history"
+-- on the other two, so a row's choices go with its columns. It is kept until one of the keys it was read
 -- from changes, so the row binder can ask on every row for the price of a
 -- few field reads -- and a profile cleared from under it is noticed.
 local ROW_COLUMNS = { "read", "icon", "sender", "subject", "time", "money", "slots" }
@@ -900,6 +953,8 @@ local function ReadRowLayout()
   memo.a, memo.b, memo.c, memo.d, memo.e = a, b, c, d, e
   memo.layout = ParseRowLayout(a) or ParseRowLayout(LegacyRowLayout(profile))
     or ParseRowLayout(ROW_LAYOUT_DEFAULT)
+  -- Which arrangement it is, for the choices a row reads with it (UI.GetGoldMode).
+  memo.layout.arrangement = "rows"
   return memo.layout
 end
 
@@ -992,6 +1047,7 @@ do
     memo.a, memo.rows = a, rows
     memo.layout = ParseRowLayout(a) or (rows and ParseRowLayout(DeriveLarge(rows)))
       or ParseRowLayout(ROW_LAYOUT_DEFAULT)
+    memo.layout.arrangement = "large"
     return memo.layout
   end
 
@@ -1059,6 +1115,7 @@ local function ReadHistoryLayout()
     layout = ParseHistoryLayout(table.concat(parts, ","))
   end
   memo.layout = layout or ParseHistoryLayout(HISTORY_LAYOUT_DEFAULT)
+  memo.layout.arrangement = "history"
   return memo.layout
 end
 
@@ -3337,9 +3394,14 @@ function UI.DiagnoseOptions()
   Named("qualityName", UI.GetQualityName(), "off")
   Named("readMail", UI.GetReadMode(), "fold")
   Named("historyDays", UI.GetHistoryDays(), "7")
-  Named("gold", UI.GetGoldMode(), "both")
-  Named("expiry", UI.GetExpiryWhen(), "always")
+  -- Each arrangement's own choices: the one-line rows' under the names
+  -- they had while they were everyone's.
+  Named("gold", UI.GetGoldMode("rows"), "both")
+  Named("expiry", UI.GetExpiryWhen("rows"), "always")
   Named("slots", UI.GetSlotsStyle(), "words")
+  Named("largeGold", UI.GetGoldMode("large"), "both")
+  Named("largeExpiry", UI.GetExpiryWhen("large"), "always")
+  Named("historyGold", UI.GetGoldMode("history"), "both")
   Named("rows", FormatRowLayout(UI.GetRowLayout()) or "?", ROW_LAYOUT_DEFAULT)
   Named("largeRows", FormatRowLayout(UI.GetLargeLayout()) or "?", ROW_LAYOUT_DEFAULT)
   Named("historyRows", FormatLayout(UI.GetHistoryLayout(), ParseHistoryLayout) or "?", HISTORY_LAYOUT_DEFAULT)

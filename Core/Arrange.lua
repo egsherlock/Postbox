@@ -231,38 +231,34 @@ function AR.GridChanged()
 end
 
 -- Right-click on the lit key, or the inspector's reset: what the mode
--- arranges from the list it is open over, as it comes. From the mail rows:
--- their columns, the blocks under the list and the buttons, with the
--- gold's, the time left's and the slots' own defaults -- the one-line
--- rows' columns, or Larger mail rows' while the Inbox's rows are the
--- two-line ones. From History: only what is History's own, its columns and
--- how its age reads. What History shares with the Inbox -- the gold's
--- choice, the blocks under the list and their order, the category buttons
--- -- is reset from the Inbox alone, and no list's reset touches another's
--- columns. `kind` says which (AR.ListKind's; nil: the list the mode is
--- open over).
+-- arranges from the list it is open over, as it comes -- that list's
+-- arrangement, its columns and their choices (the one-line rows', Larger
+-- mail rows' while the Inbox's rows are the two-line ones, or History's),
+-- and the blocks under the list with the category buttons, which are the
+-- window's whatever the list and arranged in every one of them. No other
+-- arrangement is touched, and Row layout is an option of its own. `kind`
+-- says which (AR.ListKind's; nil: the list the mode is open over).
 function AR.Reset(kind)
   local ui = UI()
   if not ui then return end
   if kind == nil then kind = AR.ListKind() end
   AR.SetLayout(nil, kind)
-  local gridBack, totalsBack = false, false
+  if ui.SetGoldMode then ui.SetGoldMode("both", kind) end
   if kind == "history" then
     if ui.SetHistoryAge then ui.SetHistoryAge(nil) end
   else
-    if ui.SetGoldMode then ui.SetGoldMode("both") end
-    if ui.SetExpiryWhen then ui.SetExpiryWhen(nil) end
-    if ui.SetSlotsStyle then ui.SetSlotsStyle(nil) end
-    if ui.SetGridLayout then ui.SetGridLayout(nil) end
-    if ui.SetStackOrder then ui.SetStackOrder(nil) end
-    -- The grid and the totals hidden in the mode are the "Show category
-    -- buttons" and "Show totals" options, so they come back with the rest,
-    -- and the window's floor with them.
-    gridBack = ui.GetOption and ui.SetOption and not ui.GetOption("showCategoryButtons") or false
-    if gridBack then ui.SetOption("showCategoryButtons", true) end
-    totalsBack = ui.GetOption and ui.SetOption and not ui.GetOption("showTotals") or false
-    if totalsBack then ui.SetOption("showTotals", true) end
+    if ui.SetExpiryWhen then ui.SetExpiryWhen(nil, kind) end
+    if kind ~= "large" and ui.SetSlotsStyle then ui.SetSlotsStyle(nil) end
   end
+  if ui.SetGridLayout then ui.SetGridLayout(nil) end
+  if ui.SetStackOrder then ui.SetStackOrder(nil) end
+  -- The grid and the totals hidden in the mode are the "Show category
+  -- buttons" and "Show totals" options, so they come back with the rest,
+  -- and the window's floor with them.
+  local gridBack = ui.GetOption and ui.SetOption and not ui.GetOption("showCategoryButtons") or false
+  if gridBack then ui.SetOption("showCategoryButtons", true) end
+  local totalsBack = ui.GetOption and ui.SetOption and not ui.GetOption("showTotals") or false
+  if totalsBack then ui.SetOption("showTotals", true) end
   AR.RowsChanged(true)
   if AR.host then AR.LayoutStrip(AR.host) end
   if (gridBack or totalsBack) and ui.RefreshCollectCategoryButtons then
@@ -4114,8 +4110,8 @@ local function PlayToggle(on)
 end
 
 -- The column's own choice: the gold's, the time left's, the slots' and
--- History's age's. The lists are made once; what is chosen and how to
--- choose are read each time.
+-- History's age's, each the arrangement's being edited. The lists are
+-- made once; what is chosen and how to choose are read each time.
 AR.CHOICE_KINDS = { gold = true, expiry = true, slots = true, age = true }
 
 function AR.Choices(kind)
@@ -4156,9 +4152,29 @@ function AR.Choices(kind)
     end
     lists[kind] = list
   end
-  if kind == "gold" then return list, ui.GetGoldMode and ui.GetGoldMode(), ui.SetGoldMode end
-  if kind == "slots" then return list, ui.GetSlotsStyle and ui.GetSlotsStyle(), ui.SetSlotsStyle end
-  return list, ui.GetExpiryWhen and ui.GetExpiryWhen(), ui.SetExpiryWhen
+  -- What is chosen is the arrangement's being edited, as its columns are
+  -- (MailboxUI.GetGoldMode). Larger mail rows write the slots in words
+  -- whatever the one-line rows chose, so their Slots offers no choice.
+  local arrangement = AR.ListKind()
+  if kind == "gold" then
+    return list, ui.GetGoldMode and ui.GetGoldMode(arrangement), ui.SetGoldMode and AR.ChooseGold
+  end
+  if kind == "slots" then
+    if arrangement ~= "rows" then return lists.none, nil, nil end
+    return list, ui.GetSlotsStyle and ui.GetSlotsStyle(), ui.SetSlotsStyle
+  end
+  return list, ui.GetExpiryWhen and ui.GetExpiryWhen(arrangement), ui.SetExpiryWhen and AR.ChooseExpiry
+end
+
+-- A choice from the card, into the arrangement being edited.
+function AR.ChooseGold(id)
+  local ui = UI()
+  if ui and ui.SetGoldMode then ui.SetGoldMode(id, AR.ListKind()) end
+end
+
+function AR.ChooseExpiry(id)
+  local ui = UI()
+  if ui and ui.SetExpiryWhen then ui.SetExpiryWhen(id, AR.ListKind()) end
 end
 
 -- History's age is chosen in two steps: first its kind, how long ago or

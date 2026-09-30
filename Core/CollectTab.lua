@@ -1644,12 +1644,14 @@ end
 -- Whether money of this kind stands on the row. Earned and spent go with the
 -- gold column and its choice of which; a C.O.D. price always shows, because
 -- it is the one sum nothing collects on its own -- Postbox never pays one
--- without asking. `layout` is the row's arrangement (nil: the mail rows').
+-- without asking. `layout` is the row's arrangement (nil: the mail rows'),
+-- whose own choice of which gold it is.
 local function MoneyShown(kind, layout)
   if kind ~= "earned" and kind ~= "spent" then return true end
-  if not (layout or RV.Layout()).shown.money then return false end
+  layout = layout or RV.Layout()
+  if not layout.shown.money then return false end
   local UI = ns.MailboxUI
-  local mode = UI and UI.GetGoldMode and UI.GetGoldMode() or "both"
+  local mode = UI and UI.GetGoldMode and UI.GetGoldMode(layout.arrangement) or "both"
   return mode == "both" or mode == kind
 end
 
@@ -1732,19 +1734,20 @@ end
 -- daysLeft, hasCOD -> whether the row shows the time left, and whether in
 -- the warning tone. Shown always (the default) or under the player's
 -- threshold; amber when it is genuinely short -- under three days,
--- or under one for a C.O.D. mail, which only lives three.
-local function ExpiryState(daysLeft, hasCOD)
+-- or under one for a C.O.D. mail, which only lives three. The threshold
+-- is the row's arrangement's own (`layout`; nil: the one-line rows').
+local function ExpiryState(daysLeft, hasCOD, layout)
   local UI = ns.MailboxUI
-  local when = UI and UI.GetExpiryWhen and UI.GetExpiryWhen() or "always"
+  local when = UI and UI.GetExpiryWhen and UI.GetExpiryWhen(layout and layout.arrangement) or "always"
   local limit = (when ~= "always") and tonumber(when) or nil
   local show = (limit == nil) or daysLeft < limit
   local warn = daysLeft < (hasCOD and 1 or EXPIRY_SOON_DAYS)
   return show, warn
 end
 
-local function RowExpiryText(daysLeft, hasCOD)
+local function RowExpiryText(daysLeft, hasCOD, layout)
   if not daysLeft then return nil end
-  local show, warn = ExpiryState(daysLeft, hasCOD)
+  local show, warn = ExpiryState(daysLeft, hasCOD, layout)
   if not show then return nil end
   return Th().Colorize(warn and "warning" or "textSecondary", Helpers().TimeLeft(daysLeft))
 end
@@ -5016,7 +5019,7 @@ local function BindRow(panel, row, index, position, compact, done)
   -- Time left is a warning, not a column: on the row only when it is short;
   -- always in the tooltip.
   row.expiryTip = daysLeft and Helpers().ExpiresIn(daysLeft) or nil
-  local expiry = RowExpiryText(daysLeft, hasCOD)
+  local expiry = RowExpiryText(daysLeft, hasCOD, layout)
 
   -- A figure switched off leaves the row and goes to its tooltip, in full.
   if money and not MoneyShown(moneyKind, layout) then
@@ -5034,7 +5037,8 @@ local function BindRow(panel, row, index, position, compact, done)
   -- the invoice's figures -- except a won auction's price, which IS the money.
   -- The time left on a standard row is always there (quiet), and in the
   -- warning tone when short; a compact row carries only the warning.
-  -- Both layouts follow the same time-left rule (ExpiryState).
+  -- Both layouts follow the same time-left rule (ExpiryState), each
+  -- with its own arrangement's threshold.
   local timeText = nil
   if showExpiry then
     timeText = expiry
@@ -5162,7 +5166,7 @@ function HV.Layout()
   if UI and type(UI.GetHistoryLayout) == "function" then return UI.GetHistoryLayout() end
   return HV.DEFAULT_LAYOUT
 end
-HV.DEFAULT_LAYOUT = { shown = {} }
+HV.DEFAULT_LAYOUT = { shown = {}, arrangement = "history" }
 for _, id in ipairs({ "age", "icon", "sender", "subject", "money" }) do
   HV.DEFAULT_LAYOUT[#HV.DEFAULT_LAYOUT + 1] = { id = id, shown = true }
   HV.DEFAULT_LAYOUT.shown[id] = true
