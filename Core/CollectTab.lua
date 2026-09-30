@@ -5546,7 +5546,7 @@ function HV.BuildHistoryRow(panel)
   return row
 end
 
-function HV.BindHistoryRow(panel, row, entry, position, now, style)
+function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   local T = Th()
   local M = T.Metrics
   local R = CT.RowRules
@@ -5587,7 +5587,9 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style)
   text.age = HV.EntryAge(entry, now, style)
   local outcome = R.OutcomeSender(entry.k)
   text.sender = outcome or R.DisplaySender(named) or L()["SENDER_UNKNOWN"]
-  RV.PaintSender(row.Sender, not outcome and named or nil)
+  -- Coloured by the class it has on the realm its record is from (`realm`:
+  -- nil, this character's own).
+  RV.PaintSender(row.Sender, not outcome and named or nil, realm)
   text.subject = HV.HistoryWhat(entry, RV.SaysCount(firstCount, layout))
   text.money = MoneyShown(kind, layout) and HV.HistoryMoney(entry, true) or nil
   spec.layout = layout
@@ -5796,6 +5798,21 @@ function HV.UpdateHistoryRows(panel)
   local now = panel._hNow or time()
   local style = HV.AgeStyle()
   local used, heads = 0, 0
+  -- The realm of the record each entry is from, for its sender's class:
+  -- over every character's History, the heading's it stands under -- the
+  -- one above the first entry bound, then each heading passed -- as Mail
+  -- Memory's search of every box has it (MM.RowRealm); nil, this
+  -- character's own.
+  local realm
+  if panel._hchars then
+    for k = first, 1, -1 do
+      local e = list[k]
+      if e and e.header then
+        realm = e.realm
+        break
+      end
+    end
+  end
   for i = first, last do
     local entry = list[i]
     local y = -((i - 1) * stride)
@@ -5804,6 +5821,7 @@ function HV.UpdateHistoryRows(panel)
       -- A character's heading, over every character's History: not a
       -- button, since History has no view of another character's own.
       heads = heads + 1
+      realm = entry.realm
       row = HV.Head(panel, heads)
     else
       used = used + 1
@@ -5819,7 +5837,7 @@ function HV.UpdateHistoryRows(panel)
     if entry.header then
       ns.MailMemory.FillRow(row, entry, now, nil, i, nil, entry.realm)
     else
-      HV.BindHistoryRow(panel, row, entry, i, now, style)
+      HV.BindHistoryRow(panel, row, entry, i, now, style, realm)
     end
   end
   for i = used + 1, #pool do
