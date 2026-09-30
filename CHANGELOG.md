@@ -89,8 +89,12 @@ longer play.
 - **Slot counts are a quiet gray**, like the time left, so money is a row's
   only colored figure; the Slots card, while you arrange, can show just the
   number on one-line rows.
-- **Quality icons can go before the item's name**, with every name in the
-  list still starting on one line.
+- **Quality marks are two plain settings:** a switch for the badge on item
+  icons, and a mark by the name, Before, After or Off. Your current choice
+  carries over. A mark after a long name always shows; the name is
+  shortened to make room.
+- **History's Collected column** reads "3d", "3d ago", "3 days ago", or the
+  date, "30 Sep" or "Sep 30"; choose on its card while you arrange.
 - **Row layout: Columns or Packed.** In Columns, gold stands under gold:
   each figure keeps its own column down the list, in the Mail tab, History
   and Mail Memory, and a subject runs on only through columns its mail
