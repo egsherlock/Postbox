@@ -72,5 +72,6 @@ Core\Skin_Postbox.lua
 Core\Skin_Creative.lua
 Core\Style_PillarBox.lua
 Core\Style_Faction.lua
+Core\Style_Counter.lua
 Core\Skin_ElvUI.lua
 Core\Skin_EllesmereUI.lua
