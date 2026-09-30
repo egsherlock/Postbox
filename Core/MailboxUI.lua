@@ -2943,11 +2943,14 @@ local function BuildOptionsButton(frame, theme)
   button.icon = button:CreateTexture(nil, "ARTWORK")
   button.icon:SetAllPoints()
   button.icon:SetTexture("Interface\\Buttons\\UI-OptionsButton")
-  -- The live accent, resolved through the theme so a host UI's own accent wins.
-  -- Never cached: EllesmereUI re-tints this exact texture through
-  -- Skin.RefreshAccents when the user changes their colour.
-  if theme and theme.GetAccent then
-    button.icon:SetVertexColor(theme.GetAccent())
+  -- The live accent, resolved through the theme so a host UI's own accent wins,
+  -- in its text tone: the title strip is the darkest ground of a light
+  -- window, where the mark tone (made for the plates) falls short. Never
+  -- cached: EllesmereUI re-tints this exact texture through
+  -- Skin.RefreshAccents when the user changes their colour
+  -- (Theme.RepaintAccentIcons).
+  if theme and theme.GetAccentTone then
+    button.icon:SetVertexColor(theme.GetAccentTone("text"))
   end
 
   -- Highlight the gear shape itself rather than a square box around a round icon.

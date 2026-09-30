@@ -777,6 +777,7 @@ local function PaintSelection(row, on)
   if on then
     local r, g, b = ns.Theme.GetAccent()
     row.Wash:SetColorTexture(r, g, b, 0.14)
+    r, g, b = ns.Theme.GetAccentTone("mark")
     row.Bar:SetColorTexture(r, g, b, 0.9)
   end
   row.Wash:SetShown(on)

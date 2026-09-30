@@ -2580,6 +2580,7 @@ PaintTabMarker = function(panel)
         -- user's own colour is the accent.
         local r, g, b = Theme.GetAccent()
         btn.TabMarkWash:SetColorTexture(r, g, b, 0.10)
+        r, g, b = Theme.GetAccentTone("mark")
         btn.TabMarkBar:SetColorTexture(r, g, b, 0.9)
       end
       btn.TabMarkWash:SetShown(on)

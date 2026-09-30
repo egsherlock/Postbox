@@ -3306,13 +3306,16 @@ local function PaintRowSelection(panel, row)
     row._selBar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
     local r, g, b = T.GetAccent()
     row._selWash:SetColorTexture(r, g, b, 0.14)
+    r, g, b = T.GetAccentTone("mark")
     row._selBar:SetColorTexture(r, g, b, 0.9)
   end
   if row._selBar then
     if on then
       -- Re-tinted on every paint: the accent can change under a host skin.
+      -- The bar is a mark: the accent's mark tone, legible on a light list.
       local r, g, b = Th().GetAccent()
       row._selWash:SetColorTexture(r, g, b, 0.14)
+      r, g, b = Th().GetAccentTone("mark")
       row._selBar:SetColorTexture(r, g, b, 0.9)
     end
     row._selWash:SetShown(on)

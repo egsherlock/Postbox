@@ -463,11 +463,14 @@ function Dropdown.Create(parent, opts)
 
     -- Paint the selection markers for THIS open: selection may have changed
     -- since the last one, and the accent is resolved live (a host UI's own
-    -- colour wins when the addon theme is present).
+    -- colour wins when the addon theme is present) -- as a mark, in the
+    -- accent's mark tone, which the addon theme keeps legible on a light list.
     if list._rows then
       local r, g, b = 0.90, 0.78, 0.30
       local themed = ns.Theme
-      if themed and type(themed.GetAccent) == "function" then
+      if themed and type(themed.GetAccentTone) == "function" then
+        r, g, b = themed.GetAccentTone("mark")
+      elseif themed and type(themed.GetAccent) == "function" then
         r, g, b = themed.GetAccent()
       end
       for i = 1, #list._rows do

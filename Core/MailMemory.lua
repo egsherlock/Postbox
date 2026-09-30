@@ -1944,8 +1944,8 @@ local function PaintPicker(list)
       countW = math.max(countW, row.Count:GetStringWidth() or 0)
       current = (cur == nil and st.me) or (cur ~= nil and cur.realm == st.realm and cur.name == st.name)
     end
-    if current and T.GetAccent then
-      local r, g, b = T.GetAccent()
+    if current and T.GetAccentTone then
+      local r, g, b = T.GetAccentTone("mark")
       row.Bar:SetVertexColor(r, g, b, 0.9)
     end
     row.Bar:SetShown(current and true or false)

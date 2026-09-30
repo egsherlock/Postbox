@@ -1489,7 +1489,7 @@ function Theme.RepaintAccentIcons()
   local frame = ns.MailboxUI and ns.MailboxUI._frame
   if not frame then return end
   if frame.OptionsButton and frame.OptionsButton.icon then
-    frame.OptionsButton.icon:SetVertexColor(Theme.GetAccent())
+    frame.OptionsButton.icon:SetVertexColor(Theme.GetAccentTone("text"))
   end
   local collect = frame.Tabs and frame.Tabs.collect
   if collect and ns.CollectTab and type(ns.CollectTab.RepaintViewToggle) == "function" then
@@ -3120,9 +3120,14 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
 
   local clear = Theme.AddClearButton(wrap, box)
 
+  -- On is the accent as text: the figures are a glyph at text size, and the
+  -- text tone (4.5:1 on the selected plate, and on the sheet in a light
+  -- palette) always reads stronger than off's ink at 0.45 -- which a raw
+  -- accent (white on a light field) or the mark tone (a dark accent on a
+  -- dark one) does not.
   function search.PaintToggle(on)
-    if on and Theme.GetAccent then
-      all.icon:SetVertexColor(Theme.GetAccent())
+    if on and Theme.GetAccentTone then
+      all.icon:SetVertexColor(Theme.GetAccentTone("text"))
       all.icon:SetAlpha(1)
     else
       all.icon:SetVertexColor(Theme.InkFor(1, 1, 1))
