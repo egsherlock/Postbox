@@ -13,15 +13,17 @@ local ADDON_NAME, ns = ...
 --               use where it exists. Preferred: EllesmereUI owns every
 --               visual, so the skin tracks all their future tweaks for free.
 --
---   "compat" -- 8.6.7 and earlier have no such API. There we build the
---               same facade ourselves out of the public helpers 8.6.6
---               *does* export -- the border engine, accent colour, UI
---               font and the pixel-perfect border helper -- reproducing
---               the house window style. This is a bridge: when the user
---               updates, the "api" backend takes over automatically and
---               the shim stops being used. It is also where an
---               EllesmereUI that ships the stub but not its dispatcher
---               lands (see OnSilence at the bottom of the file).
+--   "compat" -- wherever that API cannot answer. We build the same facade
+--               ourselves out of the public helpers the parent addon has
+--               exported since 8.6.6 -- the border engine, accent colour,
+--               UI font and the pixel-perfect border helper -- reproducing
+--               the house window style. NOT a legacy bridge: the API's
+--               dispatcher lives in the Blizz UI Enhanced module
+--               (EllesmereUIBlizzardSkin), so every player who runs
+--               EllesmereUI with that module disabled lands here every
+--               session, whatever their version (see OnSilence at the
+--               bottom of the file). So does an EllesmereUI older than
+--               8.6.8, until it updates and "api" takes over by itself.
 --
 -- Either way the style follows the user's own EllesmereUI setup rather
 -- than anything hardcoded here, and the skinning body below is identical.
@@ -48,7 +50,7 @@ local S                -- primitive facade: EllesmereUI's, or our shim
 local BACKEND          -- "api" | "compat"
 
 -------------------------------------------------------------
--- Compatibility shim (EllesmereUI < 8.6.7)
+-- Compatibility shim (no skinning API: Blizz UI Enhanced off, or < 8.6.8)
 -------------------------------------------------------------
 -- Values below mirror EllesmereUIBlizzardSkin's own window engine so the
 -- result is visually identical to a natively-skinned Blizzard window.
@@ -1820,8 +1822,9 @@ local function OnSilence()
     return
   end
 
-  -- Everything else takes the shim, which is the pre-8.6.8 behaviour and runs
-  -- off helpers EllesmereUI has exported since 8.6.6. The two remaining causes
+  -- Everything else takes the shim, which runs off helpers EllesmereUI has
+  -- exported since 8.6.6. "nodispatcher" is the everyday case, not a rare
+  -- one: every player with Blizz UI Enhanced disabled. The two remaining causes
   -- share that answer but not their fix -- install or enable the sub-addon
   -- versus report a bug -- so they stay distinct in the diagnostic.
   silence = (DispatcherLoaded() == false) and "nodispatcher" or "silent"

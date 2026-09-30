@@ -74,9 +74,15 @@ Postbox ships two backends behind one skinning body, selected at `PLAYER_LOGIN`:
 | Backend | When | What it does |
 |---|---|---|
 | `api` | a facade actually arrives (8.6.8+) | Uses the official facade. EllesmereUI owns every visual. |
-| `compat` | 8.6.7 and earlier, or the dispatcher is missing/silent | Rebuilds the same facade from the public helpers 8.6.6 *does* export. |
+| `compat` | Blizz UI Enhanced (`EllesmereUIBlizzardSkin`) disabled or absent, any version; 8.6.7 and earlier; or the dispatcher silent | Rebuilds the same facade from the public helpers 8.6.6 *does* export. |
 
-The switch is automatic on update. `/postbox skin` prints which is live.
+The switch is automatic: updating EllesmereUI, or enabling Blizz UI Enhanced,
+brings the `api` backend at the next login. `/postbox skin` prints which is live.
+
+> **Do not retire `compat` as a legacy path.** It was removed once on exactly
+> that reading (the old-version row alone) and restored the same day: with Blizz
+> UI Enhanced off, the window fell to a stand-in with a different accent, fonts
+> and opacity, and a player's everyday EllesmereUI setup no longer matched.
 
 **Defer registration to `PLAYER_LOGIN`.** Do not decide at file-load time —
 `OptionalDeps` affects load order but a load-time guard bakes in a permanent
