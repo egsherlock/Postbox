@@ -2991,15 +2991,6 @@ function MM.Toggle()
   if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, frame) end
 end
 
--- Unread mail grouped by sender, for the minimap tooltip: a list of
--- { name = ..., count = ... }, biggest first, or nil when the snapshot has
--- nothing unread to describe. Same grouping the memory window's badge
--- tooltip uses, so the two can never disagree.
-function MM.UnreadSummary()
-  local state = MM.MailboxSummary()
-  return state and state.groups or nil
-end
-
 -- Everything the minimap tooltip needs to describe the mailbox in one read,
 -- or nil when there is nothing recorded to describe. Assembled here rather
 -- than in the icon so the tooltip and the memory window can never tell

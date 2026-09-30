@@ -56,10 +56,9 @@ local function EnsureStyleDialog()
     timeout = 0,
     whileDead = true,
     hideOnEscape = true,
-    -- Not what puts it above the options panel, which is FULLSCREEN_DIALOG
-    -- strata: 12.x's StaticPopup does not read this. Every show is lifted
-    -- (Theme.LiftPopup).
-    preferredIndex = 3,
+    -- No preferredIndex: 12.x's StaticPopup does not read it. What puts the
+    -- dialog above the options panel (FULLSCREEN_DIALOG strata) is the lift
+    -- on every show (Theme.LiftPopup).
   }
   return true
 end
@@ -3738,7 +3737,6 @@ function Footer.Build(frame, above)
           -- Its text describes both choices, so it takes the popup's wider
           -- width; so does the second, for the same length of text.
           wideText = true,
-          preferredIndex = 3,
         }
       end
       if not StaticPopupDialogs[POPUP_RESET_ALL] then
@@ -3752,7 +3750,6 @@ function Footer.Build(frame, above)
           hideOnEscape = true,
           showAlert = true,
           wideText = true,
-          preferredIndex = 3,
         }
       end
       return true

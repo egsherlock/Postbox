@@ -516,10 +516,6 @@ function Dropdown.Create(parent, opts)
   -- its children, so this covers the whole owning window going away too.
   container:HookScript("OnHide", CloseList)
 
-  function container:GetSelectedId()
-    return container._selectedId
-  end
-
   -- Sets the selection and the visible label together.
   function container:SetSelectedId(id)
     container._selectedId = id

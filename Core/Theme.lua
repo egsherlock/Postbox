@@ -611,7 +611,7 @@ function Theme.GetAccent()
 end
 
 -- The tones of the live accent, kept until the accent or the palette moves
--- (Theme.PaletteGeneration): the guard is a bisection, too dear to run per
+-- (paletteGen): the guard is a bisection, too dear to run per
 -- paint, and a paint asks for a tone per plate. Four slots of three, filled
 -- in place.
 --
@@ -868,7 +868,6 @@ local BASE = {}
 for token, color in pairs(C) do BASE[token] = { color[1], color[2], color[3], color[4] } end
 
 function Theme.IsLight() return lightPalette end
-function Theme.PaletteGeneration() return paletteGen end
 
 -- The palette for `mode` ("light" | anything else: dark), then `extra` (a
 -- style's own values, token -> colour, as OverridePalette takes) on top.
@@ -2493,14 +2492,6 @@ end
 function Theme.SetPlateHover(plate, hovered)
   if not plate then return end
   plate.__pbHover = hovered and true or false
-  PaintPlate(plate)
-end
-
--- "This plate carries something its glyph is too small to say on its own" --
--- the favourites star with favourites behind it. Selection still outranks it.
-function Theme.SetPlateFlagged(plate, flagged)
-  if not plate then return end
-  plate.__pbFlagged = flagged and true or false
   PaintPlate(plate)
 end
 

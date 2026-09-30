@@ -646,21 +646,6 @@ function UI.ApplyWindowScale()
   end
 end
 
--- The Mail tab's caption while the mailbox is open, from "Show counts":
---   on   "Mail (2)"   -- how many still hold something to collect: the same
---                       number the Inbox segment carries
---   off  "Mail •"     -- an accent dot while anything is uncollected
--- It had a dropdown of its own (dot / count / none) beside "Show counts", and
--- two switches over one number read as the count being broken when the
--- caption kept its dot. One switch now; a stored tabCaption is ignored.
---
--- Now the dot either way. The number moved off the window's tab: the Inbox
--- segment right under it counts the whole box and each button what it would
--- collect, and a second copy of one of those on the tab read as a duplicate.
-function UI.GetTabCaptionMode()
-  return "dot"
-end
-
 -- The crafting quality mark, two things a row may wear independently: the
 -- badge on the corner of the item's icon (GetQualityIcon: on unless the
 -- player turned it off, stored as profile.qualityIcon = false), and a mark
@@ -1244,11 +1229,6 @@ do
     ForgetSettings()
     return true
   end
-end
-
--- Whether a mail row shows this column (an id from ROW_COLUMNS).
-function UI.RowColumnShown(id)
-  return UI.GetRowLayout().shown[id] == true
 end
 
 -- History's columns: the age it was collected, first by default, then the
@@ -2477,57 +2457,46 @@ end
 local TAB_ORDER = { "collect", "send" }
 local TAB_LABEL_KEY = { collect = "TAB_COLLECT", send = "TAB_SEND" }
 
--- The collect tab's caption carries "(still to collect / total)" while the
--- mailbox is open, so the Send tab shows at a glance that mail is waiting.
--- Same numbers as the segment captions -- CT.InboxCounts, the one walk --
--- and the same option gates both. The suffix is composed in code, parens and
--- all, exactly as the segment captions compose theirs.
---
--- With nothing left to collect the whole suffix drops to the disabled grey:
--- a full-strength "(0/4)" glanced at from the Send tab reads as "you've got
--- mail" when the truthful reading is "four read mails are sitting there".
+-- The Mail tab's caption while the mailbox is open: "Mail •", an accent dot
+-- while anything is still to collect, so the Send tab shows at a glance that
+-- mail is waiting. No number: the Inbox segment right under the tab counts the
+-- whole box and each button what it would collect, and a copy of one of those
+-- on the tab read as a duplicate. (It once had a dropdown of its own -- dot,
+-- count, none -- beside "Show counts"; a stored tabCaption is ignored.)
 local function UpdateCollectTabText()
   local frame = UI._frame
   local tab = frame and frame.TabButtons and frame.TabButtons.collect
   if not tab then return end
 
   local text = L("TAB_COLLECT")
-  local mode = UI.GetTabCaptionMode()
   local collect = ns.CollectTab
-  if UI._state.mailboxOpen
-    and mode ~= "none"
-    and collect and type(collect.InboxCounts) == "function" then
-    local toCollect, _, total = collect.InboxCounts()
-    toCollect, total = tonumber(toCollect) or 0, tonumber(total) or 0
+  if UI._state.mailboxOpen and collect and type(collect.InboxCounts) == "function" then
+    local toCollect = tonumber((collect.InboxCounts())) or 0
 
     local theme = ns.Theme
     local suffix
-    if mode == "dot" then
-      -- The lightest possible "you've got mail": one dot, gone the moment
-      -- nothing is left to collect -- and it carries the STATE, not just
-      -- the fact. Orange when the server refused something (the same orange
-      -- the row marker and the status line wear), otherwise the live accent
-      -- -- under a host skin the user's own colour is the accent.
-      if toCollect > 0 and theme then
-        local r, g, b
-        local mailApi = ns.MailService
-        local stuck = (mailApi and type(mailApi.StuckCount) == "function"
-          and mailApi.StuckCount()) or 0
-        if stuck > 0 and theme.Colors and theme.Colors.warning then
-          local warn = theme.Colors.warning
-          r, g, b = warn[1], warn[2], warn[3]
-        elseif theme.GetAccentTone then
-          -- A mark: the accent's mark tone, 3:1 on the plate it sits on.
-          r, g, b = theme.GetAccentTone("mark")
-        end
-        if r then
-          suffix = ("|cff%02x%02x%02x\226\128\162|r"):format(
-            math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5),
-            math.floor(b * 255 + 0.5))
-        end
+    -- The lightest possible "you've got mail": one dot, gone the moment
+    -- nothing is left to collect -- and it carries the STATE, not just the
+    -- fact. Orange when the server refused something (the same orange the row
+    -- marker and the status line wear), otherwise the live accent -- under a
+    -- host skin the user's own colour is the accent.
+    if toCollect > 0 and theme then
+      local r, g, b
+      local mailApi = ns.MailService
+      local stuck = (mailApi and type(mailApi.StuckCount) == "function"
+        and mailApi.StuckCount()) or 0
+      if stuck > 0 and theme.Colors and theme.Colors.warning then
+        local warn = theme.Colors.warning
+        r, g, b = warn[1], warn[2], warn[3]
+      elseif theme.GetAccentTone then
+        -- A mark: the accent's mark tone, 3:1 on the plate it sits on.
+        r, g, b = theme.GetAccentTone("mark")
       end
-    elseif toCollect > 0 then
-      suffix = "(" .. toCollect .. ")"
+      if r then
+        suffix = ("|cff%02x%02x%02x\226\128\162|r"):format(
+          math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5),
+          math.floor(b * 255 + 0.5))
+      end
     end
     if suffix then text = text .. " " .. suffix end
   end

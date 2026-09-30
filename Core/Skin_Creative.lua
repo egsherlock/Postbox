@@ -233,15 +233,6 @@ function CS.LayNine(nine, target, l, t, r, b, size)
   end
 end
 
--- Every piece of a slice set, through `fn(tex, ...)`.
-function CS.Each(set, fn, ...)
-  for i = 1, 9 do
-    local tex = set[NINE_KEYS[i]]
-    if tex then fn(tex, ...) end
-  end
-  if set.m then fn(set.l3, ...) fn(set.m, ...) fn(set.r3, ...) end
-end
-
 -- A horizontal three-slice: ends `c` units wide, the middle between them.
 function CS.Three(parent, atlas, part, layer, sub)
   local c = part.c

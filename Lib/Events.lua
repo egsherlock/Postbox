@@ -135,30 +135,5 @@ function Events.NewBus(logFn)
     return found
   end
 
-  function bus.UnregisterAll(eventName)
-    if not handlers[eventName] then return false end
-    handlers[eventName] = nil
-    frame:UnregisterEvent(eventName)
-    return true
-  end
-
-  -- ADDON_LOADED fires once per addon in the session (dozens of times).
-  -- This runs the handler for one addon only and then stops listening, so no
-  -- consumer has to string-compare the payload or stay subscribed for the
-  -- rest of the session.
-  function bus.OnAddonLoaded(addonName, handler)
-    if type(addonName) ~= "string" or addonName == "" then return false end
-    if type(handler) ~= "function" then return false end
-
-    local wrapper
-    wrapper = function(_, loaded)
-      if loaded ~= addonName then return end
-      bus.Unregister("ADDON_LOADED", wrapper)
-      handler(addonName)
-    end
-
-    return bus.Register("ADDON_LOADED", wrapper)
-  end
-
   return bus
 end

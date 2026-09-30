@@ -283,11 +283,6 @@ local function DefaultName(root)
   return L("GROUPS_DEFAULT_NAME", first)
 end
 
-function CG.CanCreate()
-  local root = Data()
-  return root ~= nil and #root.list < MAX_GROUPS
-end
-
 -- [name] -> the new group's id, or nil at the cap.
 function CG.Create(name)
   local root = Data()
