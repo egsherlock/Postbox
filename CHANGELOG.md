@@ -30,6 +30,9 @@ longer play.
   before or after the subject or down onto the second line, and the figures
   along the second line. Any part of a row can be grabbed, a single figure
   included. Arranging one row size never moves the other.
+- **Arrange from anywhere:** in Options, Arrange... works away from a
+  mailbox too. The Postbox window opens as a preview with sample mail,
+  marked "Postbox · Preview", and closes when you finish.
 - **Preview mail while you arrange.** A switch in the arrange overview fills
   the list with sample mail (gold earned and spent, a C.O.D., short and long
   time left, every auction outcome, crafting quality) so you can see how
