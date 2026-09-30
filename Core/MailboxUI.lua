@@ -2496,8 +2496,9 @@ local function UpdateCollectTabText()
         if stuck > 0 and theme.Colors and theme.Colors.warning then
           local warn = theme.Colors.warning
           r, g, b = warn[1], warn[2], warn[3]
-        elseif theme.GetAccent then
-          r, g, b = theme.GetAccent()
+        elseif theme.GetAccentTone then
+          -- A mark: the accent's mark tone, 3:1 on the plate it sits on.
+          r, g, b = theme.GetAccentTone("mark")
         end
         if r then
           suffix = ("|cff%02x%02x%02x\226\128\162|r"):format(

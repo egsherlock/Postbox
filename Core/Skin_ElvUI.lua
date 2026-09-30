@@ -262,7 +262,7 @@ function Skin.Apply(frame)
           local line = t.__activeAccent
           if line then
             if selected and T and T.GetAccentTone then
-              local r, g, b = T.GetAccentTone("base")
+              local r, g, b = T.GetAccentTone("mark")
               line:SetColorTexture(r, g, b, 0.9)
             end
             line:SetShown(selected)

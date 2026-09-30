@@ -374,13 +374,171 @@ local function ToneMuted(r, g, b)
   return min(1, r * k), min(1, g * k), min(1, b * k)
 end
 
--- A floor, not a transform: an accent already bright enough to read as text is
--- returned untouched, so the brand gold is unchanged byte for byte.
-local function ToneText(r, g, b)
-  local peak = max(r, g, b)
-  if peak >= 0.80 then return r, g, b end
-  local k = (peak > 0.01) and (0.80 / peak) or 1
-  return min(1, r * k), min(1, g * k), min(1, b * k)
+-------------------------------------------------------------
+-- 1c. The contrast guard
+--
+-- WCAG 2 contrast, (L1 + 0.05) / (L2 + 0.05) on relative luminance, and the
+-- least move that reaches a target: the colour's OKLab lightness walked away
+-- from the ground (up on a dark one, down on a light one), its hue kept and
+-- its chroma cut only as far as sRGB requires, by bisection to the smallest
+-- step that passes. A colour already passing is returned untouched, so the
+-- brand gold is unchanged byte for byte. The rule and its table are in
+-- .dev/design/postbox-style (spec.md 3.3, colour.py).
+--
+-- It replaced a floor that scaled an accent until its brightest channel
+-- reached 0.80, which passed dark reds and blues that fail 4.5:1 (a Shaman
+-- accent read at 2.9:1, ElvUI's blue at 3.4:1). Two dozen float operations a
+-- step; run once per accent or palette change (the tone cache below), never
+-- per paint.
+-------------------------------------------------------------
+
+local function Lin(v)
+  if v <= 0.04045 then return v / 12.92 end
+  return ((v + 0.055) / 1.055) ^ 2.4
+end
+
+local function Delin(v)
+  if v <= 0 then return 0 end
+  if v <= 0.0031308 then return 12.92 * v end
+  return 1.055 * (v ^ (1 / 2.4)) - 0.055
+end
+
+local function Luminance(r, g, b)
+  return 0.2126 * Lin(r) + 0.7152 * Lin(g) + 0.0722 * Lin(b)
+end
+
+local function Contrast(r1, g1, b1, r2, g2, b2)
+  local a, b = Luminance(r1, g1, b1), Luminance(r2, g2, b2)
+  if a < b then a, b = b, a end
+  return (a + 0.05) / (b + 0.05)
+end
+
+local function Cbrt(x)
+  if x < 0 then return -((-x) ^ (1 / 3)) end
+  return x ^ (1 / 3)
+end
+
+-- sRGB -> OKLab (Ottosson).
+local function ToLab(r, g, b)
+  r, g, b = Lin(r), Lin(g), Lin(b)
+  local l = Cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
+  local m = Cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
+  local s = Cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+  return 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+         1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+         0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s
+end
+
+-- OKLab -> sRGB, unclamped, and whether it is inside the gamut.
+local function FromLab(L, a, b)
+  local l = L + 0.3963377774 * a + 0.2158037573 * b
+  local m = L - 0.1055613458 * a - 0.0638541728 * b
+  local s = L - 0.0894841775 * a - 1.2914855480 * b
+  l, m, s = l * l * l, m * m * m, s * s * s
+  local r = Delin(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s)
+  local g = Delin(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s)
+  local bb = Delin(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s)
+  local inside = r >= -0.0005 and r <= 1.0005 and g >= -0.0005 and g <= 1.0005
+    and bb >= -0.0005 and bb <= 1.0005
+  return r, g, bb, inside
+end
+
+local function Clamp01(v)
+  if v < 0 then return 0 end
+  if v > 1 then return 1 end
+  return v
+end
+
+-- The colour moved to OKLab lightness L with its hue, the chroma cut in
+-- tenths until it fits sRGB.
+local function AtLightness(a, b, L)
+  local k = 1
+  for _ = 1, 40 do
+    local r, g, bb, inside = FromLab(L, a * k, b * k)
+    if inside then return Clamp01(r), Clamp01(g), Clamp01(bb) end
+    k = k * 0.9
+  end
+  local r, g, bb = FromLab(L, 0, 0)
+  return Clamp01(r), Clamp01(g), Clamp01(bb)
+end
+
+-- r, g, b made to read at `target`:1 on the ground gr, gg, gb by the least
+-- lightness move; returns the colour and whether it moved. On a ground too
+-- close to the middle for any lightness to pass, the furthest it can go.
+local function Legible(r, g, b, gr, gg, gb, target)
+  if Contrast(r, g, b, gr, gg, gb) >= target then return r, g, b, false end
+  local L0, A, B = ToLab(r, g, b)
+  local up = Luminance(gr, gg, gb) < 0.18
+  local lo, hi
+  if up then lo, hi = L0, 1 else lo, hi = 0, L0 end
+  for _ = 1, 24 do
+    local mid = (lo + hi) / 2
+    local mr, mg, mb = AtLightness(A, B, mid)
+    local ok = Contrast(mr, mg, mb, gr, gg, gb) >= target
+    if ok == up then hi = mid else lo = mid end
+  end
+  local cr, cg, cb = AtLightness(A, B, up and hi or lo)
+  return cr, cg, cb, true
+end
+
+Theme.Contrast = Contrast
+Theme.Legible = Legible
+Theme.ToLab = ToLab
+Theme.FromLab = function(L, a, b)
+  local r, g, bb = FromLab(L, a, b)
+  return Clamp01(r), Clamp01(g), Clamp01(bb)
+end
+Theme.AtLightness = AtLightness
+
+-- A window surface held where every text colour keeps its contrast (spec
+-- 3.3, rule 5): on a dark palette no lighter than #1c1c1c in OKLab lightness,
+-- on a light one no darker than #e2e2df; in both, no more than 0.030 OKLCH
+-- chroma, so it stays nearly neutral. A surface inside the rule is returned
+-- exactly as it is.
+local SURF_C_MAX = 0.030
+local SURF_L_DARK = (ToLab(0x1c / 255, 0x1c / 255, 0x1c / 255))
+local SURF_L_LIGHT = (ToLab(0xe2 / 255, 0xe2 / 255, 0xdf / 255))
+
+function Theme.ClampSurface(r, g, b, light)
+  local L, A, B = ToLab(r, g, b)
+  local C = math.sqrt(A * A + B * B)
+  local moved = false
+  if C > SURF_C_MAX then
+    A, B = A * SURF_C_MAX / C, B * SURF_C_MAX / C
+    moved = true
+  end
+  if light then
+    if L < SURF_L_LIGHT then L, moved = SURF_L_LIGHT, true end
+  elseif L > SURF_L_DARK then
+    L, moved = SURF_L_DARK, true
+  end
+  if not moved then return r, g, b, false end
+  local cr, cg, cb = FromLab(L, A, B)
+  return Clamp01(cr), Clamp01(cg), Clamp01(cb), true
+end
+
+-- A surface with a whisper of a hue in it (the Postbox style's Tint): the
+-- surface's own lightness, a little of the hue's direction added to its
+-- chroma -- 0.022 on a dark palette, 0.016 on a light one, where the same
+-- amount reads stronger -- then held by the rule above. A hue with no chroma
+-- (white, a grey) tints nothing.
+function Theme.TintSurface(r, g, b, hr, hg, hb, light)
+  local L, A, B = ToLab(r, g, b)
+  local _, ha, hb2 = ToLab(hr, hg, hb)
+  local hc = math.sqrt(ha * ha + hb2 * hb2)
+  if hc < 0.02 then return r, g, b end
+  local k = (light and 0.016 or 0.022) / hc
+  local cr, cg, cb = FromLab(L, A + ha * k, B + hb2 * k)
+  cr, cg, cb = Theme.ClampSurface(Clamp01(cr), Clamp01(cg), Clamp01(cb), light)
+  return cr, cg, cb
+end
+
+-- Black or white, whichever reads better ON the colour: text or a glyph laid
+-- on a filled accent. The better of the two is at least 4.58:1 for every sRGB
+-- colour, so the accent never has to move for it.
+function Theme.InkOn(r, g, b)
+  if Contrast(r, g, b, 0, 0, 0) >= Contrast(r, g, b, 1, 1, 1) then return 0, 0, 0 end
+  return 1, 1, 1
 end
 
 local function StoreTone(color, r, g, b)
@@ -389,7 +547,8 @@ end
 
 StoreTone(C.accentBright, ToneBright(C.accent[1], C.accent[2], C.accent[3]))
 StoreTone(C.accentMuted,  ToneMuted(C.accent[1], C.accent[2], C.accent[3]))
-StoreTone(C.accentText,   ToneText(C.accent[1], C.accent[2], C.accent[3]))
+-- The brand gold reads at 5.3:1 on the selected plate: its text tone is itself.
+StoreTone(C.accentText,   C.accent[1], C.accent[2], C.accent[3])
 
 -- Colour-escape strings, derived from the palette so there is still only one
 -- source. Used where text has to be coloured inside a concatenated string
@@ -436,14 +595,83 @@ function Theme.GetAccent()
   return C.accent[1], C.accent[2], C.accent[3]
 end
 
--- The live accent in one of the tones described in section 1b:
--- "base" (default) | "text" | "bright" | "muted".
+-- The tones of the live accent, kept until the accent or the palette moves
+-- (Theme.PaletteGeneration): the guard is a bisection, too dear to run per
+-- paint, and a paint asks for a tone per plate. Four slots of three, filled
+-- in place.
+--
+--   text    the accent as text: 4.5:1 on the lightest ground accent text sits
+--           on in the dark palette, the selected plate with its wash (spec
+--           3.3, rule 1); in the light palette on the darker of that and the
+--           sheet (C.sheet), which is where headings stand.
+--   mark    the accent as a mark -- the selected underline, a tick, a solid
+--           accent fill: 3:1 on the selected plate (rule 2).
+--   bright  the selected caption of a control group: the pale, lit tone on a
+--           dark palette; on a light one the text tone, a pale caption being
+--           unreadable on a white plate.
+--   muted   the quiet member of a pair: a near-neutral bright grey on a dark
+--           palette, a near-neutral dark grey on a light one.
+local tones = { r = -1, g = -1, b = -1, gen = -1,
+  text = { 0, 0, 0 }, mark = { 0, 0, 0 }, bright = { 0, 0, 0 }, muted = { 0, 0, 0 } }
+local paletteGen = 0
+local lightPalette = false
+
+local function FillTones(r, g, b)
+  local plate, wash = C.plateSelected, C.accentWash[4] or 0.14
+  local gr = plate[1] + (r - plate[1]) * wash
+  local gg = plate[2] + (g - plate[2]) * wash
+  local gb = plate[3] + (b - plate[3]) * wash
+  local tr, tg, tb = Legible(r, g, b, gr, gg, gb, 4.5)
+  local sheet = C.sheet
+  if sheet and (sheet[4] or 0) > 0 then
+    tr, tg, tb = Legible(tr, tg, tb, sheet[1], sheet[2], sheet[3], 4.5)
+  end
+  StoreTone(tones.text, tr, tg, tb)
+  -- A mark sits on the selected plate, and on an idle one too (the Mail
+  -- tab's dot): on a dark palette the selected plate is the lighter, so the
+  -- stricter ground; on a light one the idle plate is the darker, so it is.
+  local mg = lightPalette and C.plateIdle or plate
+  StoreTone(tones.mark, Legible(r, g, b, mg[1], mg[2], mg[3], 3.0))
+  if lightPalette then
+    StoreTone(tones.bright, tr, tg, tb)
+    local mr, mg, mb = ToneMuted(r, g, b)
+    local k = 0.36 / 0.86
+    StoreTone(tones.muted, mr * k, mg * k, mb * k)
+  else
+    StoreTone(tones.bright, ToneBright(r, g, b))
+    StoreTone(tones.muted, ToneMuted(r, g, b))
+  end
+  tones.r, tones.g, tones.b, tones.gen = r, g, b, paletteGen
+end
+
+-- The live accent in one of the tones described above:
+-- "base" (default: the accent itself) | "text" | "mark" | "bright" | "muted".
 function Theme.GetAccentTone(tone)
   local r, g, b = Theme.GetAccent()
-  if tone == "bright" then return ToneBright(r, g, b) end
-  if tone == "muted"  then return ToneMuted(r, g, b) end
-  if tone == "text"   then return ToneText(r, g, b) end
-  return r, g, b
+  if tone ~= "text" and tone ~= "mark" and tone ~= "bright" and tone ~= "muted" then return r, g, b end
+  if tones.r ~= r or tones.g ~= g or tones.b ~= b or tones.gen ~= paletteGen then FillTones(r, g, b) end
+  local t = tones[tone]
+  return t[1], t[2], t[3]
+end
+
+-- Whether the accent's text or mark tone had to move from the accent itself,
+-- and the ratios they read at: for the options' accent row.
+function Theme.AccentReadout()
+  local r, g, b = Theme.GetAccent()
+  if tones.r ~= r or tones.g ~= g or tones.b ~= b or tones.gen ~= paletteGen then FillTones(r, g, b) end
+  local plate, wash = C.plateSelected, C.accentWash[4] or 0.14
+  local gr = plate[1] + (r - plate[1]) * wash
+  local gg = plate[2] + (g - plate[2]) * wash
+  local gb = plate[3] + (b - plate[3]) * wash
+  local t, m = tones.text, tones.mark
+  local ir, ig, ib = Theme.InkOn(m[1], m[2], m[3])
+  local ct = Contrast(t[1], t[2], t[3], gr, gg, gb)
+  local sheet = C.sheet
+  if sheet and (sheet[4] or 0) > 0 then ct = min(ct, Contrast(t[1], t[2], t[3], sheet[1], sheet[2], sheet[3])) end
+  local mg = lightPalette and C.plateIdle or plate
+  return ct, Contrast(m[1], m[2], m[3], mg[1], mg[2], mg[3]),
+    Contrast(ir, ig, ib, m[1], m[2], m[3]),
+    (t[1] ~= r or t[2] ~= g or t[3] ~= b or m[1] ~= r or m[2] ~= g or m[3] ~= b)
 end
 
 -- The accent-named palette tokens, and how each resolves against the LIVE
@@ -452,25 +680,32 @@ end
 -- and Theme.FillColor answer from here, which is what makes a caller that only
 -- knows the token name -- and there are several, in files that never see a
 -- colour -- follow the host accent for free.
+-- token -> its tone. The alpha is the palette entry's own, read live, so a
+-- palette (the Postbox style's light one) may carry its own wash and rule
+-- strengths.
 local ACCENT_TOKENS = {
-  accent       = { "base",   1.00 },
-  accentText   = { "text",   1.00 },
-  accentBright = { "bright", 1.00 },
-  accentMuted  = { "muted",  1.00 },
-  accentWash   = { "base",   C.accentWash[4] },
-  accentRule   = { "base",   C.accentRule[4] },
-  accentEdge   = { "base",   C.accentEdge[4] },
+  accent       = "base",
+  accentText   = "text",
+  accentBright = "bright",
+  accentMuted  = "muted",
+  accentWash   = "base",
+  accentRule   = "base",
+  accentEdge   = "base",
 }
 
--- Text wants the legible tone; a rule or a ring wants the accent as it is. Both
--- come from the one token so no caller has to know the difference.
+-- Text wants the legible tone, and a solid mark -- the accent token painted
+-- on a texture -- the mark tone; a wash, a rule or a ring at a fraction of an
+-- alpha wants the accent as it is. All come from the one token so no caller
+-- has to know the difference.
 local function ResolveAccentToken(token, asText)
-  local spec = ACCENT_TOKENS[token]
-  if not spec then return nil end
-  local tone = spec[1]
-  if asText and tone == "base" then tone = "text" end
+  local tone = ACCENT_TOKENS[token]
+  if not tone then return nil end
+  if tone == "base" then
+    if asText then tone = "text" elseif token == "accent" then tone = "mark" end
+  end
   local r, g, b = Theme.GetAccentTone(tone)
-  return r, g, b, spec[2]
+  return r, g, b, (token == "accent" or token == "accentText" or token == "accentBright"
+    or token == "accentMuted") and 1 or (C[token][4] or 1)
 end
 
 -------------------------------------------------------------
@@ -1698,7 +1933,8 @@ local function PaintPlate(plate)
   local underline = plate._accent
   if underline then
     if selected then
-      local r, g, b = Theme.GetAccentTone("base")
+      -- A mark: the accent's mark tone, 3:1 on the selected plate.
+      local r, g, b = Theme.GetAccentTone("mark")
       underline:SetColorTexture(r, g, b, 1)
     end
     underline:SetShown(selected)
