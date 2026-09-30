@@ -2259,9 +2259,10 @@ do
   end
 
   -- A push button on the right. spec: title, text, caption, onClick
-  -- [, onHover(cell)] [, mark]: `mark` puts the way into arranging's mark
-  -- before the caption, the two centred as one (Rows.Fit sizes the button
-  -- to both).
+  -- [, onHover(cell)] [, mark] [, minWidth]: `mark` puts the way into
+  -- arranging's mark before the caption, the two centred as one (Rows.Fit
+  -- sizes the button to both); `minWidth`, the least it is, however short
+  -- its caption.
   function Rows.Button(col, spec)
     local row = Rows.New(col, ROW_H)
     Rows.Cell(col, row, ROW_W, spec.title, spec.text)
@@ -2275,6 +2276,7 @@ do
     -- own textures.
     if spec.mark then btn.Mark = Ctx.Mark(ArtHolder(btn), 12) end
     row.kind, row.control, row.button, row.onHover = "button", btn, btn, spec.onHover
+    row.minW = spec.minWidth
     return row
   end
 
@@ -2344,20 +2346,23 @@ do
   end
 
   -- A push button sized to its caption, as its own font draws it now, and
-  -- to the mark before it where it has one, the two centred as one. The
-  -- caption keeps no width of its own: a button puts its state's font back
-  -- on it at every enable and disable, and a width frozen in one font cut
-  -- the caption short in another. Answers the button's width.
+  -- to the mark before it where it has one, the two centred as one; never
+  -- narrower than the row's minW, and wider wherever its caption needs it,
+  -- so no translation is cut short. The caption keeps no width of its own:
+  -- a button puts its state's font back on it at every enable and disable,
+  -- and a width frozen in one font cut the caption short in another.
+  -- Answers the button's width.
   local function FitButton(cell)
     local T = ns.Theme
     local btn = cell.control
     local width = T.SizeToText(btn, BUTTON_FIT)
     local mark = btn.Mark
+    local lead = mark and (mark.w + 6) or 0
+    local want = math.max(cell.minW or 0, width + lead)
+    if want ~= width then btn:SetWidth(want) end
+    width = want
     if not mark then return width end
     local fs = btn:GetFontString()
-    local lead = mark.w + 6
-    width = width + lead
-    btn:SetWidth(width)
     if fs then
       fs:ClearAllPoints()
       fs:SetPoint("CENTER", btn, "CENTER", lead / 2, 0)
@@ -2821,10 +2826,13 @@ function Pages.mail(col)
   -- mark beside the cog is, a row like the others with its button on the
   -- right. The inspector names what the row and its button do together,
   -- and that it works anywhere: away from a mailbox it opens the window's
-  -- preview over sample mail.
+  -- preview over sample mail. Arrange Postbox, since it arranges History
+  -- and Mail Memory's window too: as wide as the dropdowns above it, and
+  -- wider where a translation needs it.
   local arrange = Rows.Button(col, {
     title = L["OPT_ARRANGE_ROW"], text = L["ARRANGE_TIP"] .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"],
     caption = L["OPT_ARRANGE_CAPTION"], onClick = Panel.Arrange, onHover = State.Arrange, mark = true,
+    minWidth = DD_W,
   })
   arrange.entry.title, arrange.entry.extra = L["OPT_ARRANGE_BUTTON"], "arrange"
   S.arrangeCell = arrange
