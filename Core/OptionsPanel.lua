@@ -3035,6 +3035,8 @@ function Pages.mail(col)
     set = function(on)
       ns.MailboxUI.SetOption("showTabCounts", on)
       if ns.MailboxUI.RefreshCollectTabCounts then ns.MailboxUI.RefreshCollectTabCounts() end
+      -- Mail Memory's header counts its box under the same switch.
+      if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
     end,
   })
 

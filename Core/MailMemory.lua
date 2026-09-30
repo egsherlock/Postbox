@@ -1997,6 +1997,29 @@ function MM.CountFor(realm, name)
   return st.waiting + (st.pending or 0), st.warn, WarningText(st, time())
 end
 
+-- The whole box a list heads, as the Mail tab's Inbox counts its own: every
+-- mail in the record still in date, read or not, holding anything or not;
+-- the ones past the record's cap, as the server counted them; and `pending`,
+-- the mail known to have come since, which the list shows at its top. Only
+-- mail past its date is left out: the server has returned or deleted it.
+local function BoxTotal(snapshot, pending, now)
+  local n = pending or 0
+  local mails = snapshot and snapshot.mails
+  if not mails then return n end
+  for i = 1, #mails do
+    local expires = tonumber(mails[i].expires)
+    if not (expires and expires > 0 and expires <= now) then n = n + 1 end
+  end
+  return n + math.max(0, (tonumber(snapshot.total) or #mails) - #mails)
+end
+
+-- realm, name -> another character's whole box, for its plate on the Mail
+-- tab: the count MM.RowsFor gives that box as info.box.
+function MM.BoxCount(realm, name)
+  local now = time()
+  return BoxTotal(SnapshotFor(realm, name), LivePendingCount(WatchFor(realm, name, false), now), now)
+end
+
 -- The foot of the list, standing for the characters the player hid: one
 -- shared marker, told apart from a character by `foot`.
 local PICK_FOOT = { foot = true }
@@ -2432,7 +2455,8 @@ end
 -- search every character's box; opts.sort: "expiry" for the soonest first;
 -- opts.characters: an MM.Characters() list already built for this refresh.
 -- info: realm, name, me, snapshot, total (mails in the snapshot), hidden
--- (in the box but past the record's cap), matched, onCharacters.
+-- (in the box but past the record's cap), box (the whole box, BoxTotal,
+-- whatever the search), matched, onCharacters.
 function MM.RowsFor(realm, name, opts)
   opts = opts or {}
   local myRealm, myName = Me()
@@ -2457,6 +2481,8 @@ function MM.RowsFor(realm, name, opts)
 
   local info = { realm = realm, name = name, me = me, snapshot = snapshot, total = #mails }
   info.hidden = snapshot and math.max(0, (tonumber(snapshot.total) or #mails) - #mails) or 0
+  -- The rows so far are the arrivals, then the record.
+  info.box = BoxTotal(snapshot, #rows - #mails, now)
 
   local query = opts.query or ""
   if query ~= "" then
@@ -2814,11 +2840,17 @@ function Refresh(frame)
   local now = time()
   local count = #rows
 
-  -- The top row: whose box, and its count, where the Mail tab has Inbox.
-  local waiting, warn = MM.CountFor(info.realm, info.name)
-  local tally = ns.Plural("COUNT_MAILS", waiting)
-  frame.Who:SetText(MM.ClassName(info.realm, info.name, true) .. "  "
-    .. T.Colorize(warn and "warning" or "textSecondary", "(" .. tally .. ")"))
+  -- The top row: whose box, and its count, where the Mail tab has Inbox:
+  -- the whole box, as Inbox counts its own, while Show mail counts is on.
+  local who = MM.ClassName(info.realm, info.name, true)
+  local UI = ns.MailboxUI
+  if not UI or type(UI.GetOption) ~= "function" or UI.GetOption("showTabCounts") then
+    local _, warn = MM.CountFor(info.realm, info.name)
+    local tally = ns.Plural("COUNT_MAILS", info.box)
+    frame.Who:SetText(who .. "  " .. T.Colorize(warn and "warning" or "textSecondary", "(" .. tally .. ")"))
+  else
+    frame.Who:SetText(who)
+  end
   local crest = MM.ClassIcon(info.realm, info.name)
   if crest then frame.Picker.Icon:SetAtlas(crest, false) end
   -- The Mail tab's rule: a picker while there is another box with mail to

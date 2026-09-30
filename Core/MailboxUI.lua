@@ -2815,6 +2815,10 @@ function UI.RefreshCollectTabCounts()
   if panel and collect and collect.UpdateTabCounts then
     collect.UpdateTabCounts(panel)
   end
+  -- The divider's count and another character's plate follow it too.
+  if panel and collect and collect.RepaintBoxCounts then
+    collect.RepaintBoxCounts(panel)
+  end
   -- The category buttons carry the same switch's counts.
   if panel and collect and collect.RefreshCategoryButtons then
     collect.RefreshCategoryButtons(panel)

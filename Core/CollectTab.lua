@@ -3813,7 +3813,7 @@ function AV.MeasurePlate(panel, plate, Memory, who)
   local name = Memory.ClassName(who.realm, who.name, true)
   local count = ""
   if ShowTabCounts() then
-    count = " (" .. FormatCount((Memory.CountFor(who.realm, who.name))) .. ")"
+    count = " (" .. FormatCount((Memory.BoxCount(who.realm, who.name))) .. ")"
   end
   local fs = plate:GetFontString()
   plate.pad = 2 * M.tightGap + 12
@@ -3995,6 +3995,17 @@ function CT.RefreshOthers(panel, home)
   end
   AV.Paint(panel)
   RequestRefresh(panel)
+end
+
+-- Frozen: Core/MailboxUI.lua calls this when Show mail counts changes: the
+-- counts the segments and the buttons do not carry -- the read mail's
+-- divider, where it stands, and another character's plate -- painted again.
+function CT.RepaintBoxCounts(panel)
+  if not panel then return end
+  local divider, pin = panel.Divider, panel.DividerPin
+  if divider and divider:IsShown() then RV.PaintDivider(panel, divider) end
+  if pin and pin:IsShown() then RV.PaintDivider(panel, pin) end
+  if AV.Other(panel) then AV.Paint(panel) end
 end
 
 -- Frozen: Core/MailboxUI.lua calls this for every way into Mail Memory while
@@ -5983,9 +5994,14 @@ function RV.SetFolded(folded)
   if UI and type(UI.SetOption) == "function" then UI.SetOption("readFolded", folded and true or false) end
 end
 
--- The divider's words and fold mark, for the one in the list and its pinned copy.
+-- The divider's words and fold mark, for the one in the list and its pinned
+-- copy. Its count follows Show mail counts, as every box count does.
 function RV.PaintDivider(panel, divider)
-  divider.Label:SetText(L()("INBOX_READ_DIVIDER", panel._readCount or 0))
+  if ShowTabCounts() then
+    divider.Label:SetText(L()("INBOX_READ_DIVIDER", panel._readCount or 0))
+  else
+    divider.Label:SetText(L()["INBOX_READ_DIVIDER_PLAIN"])
+  end
   divider.Fold:SetTexture(RV.Folded(panel) and "Interface\\Buttons\\UI-PlusButton-Up"
     or "Interface\\Buttons\\UI-MinusButton-Up")
 end
