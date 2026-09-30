@@ -12,8 +12,8 @@ local _, ns = ...
 --
 -- The notice: when an update has put the settings back on their defaults
 -- (Postbox.lua, 4b, which names the release in PostboxDB.notice), a card
--- stands beside the mail window the first time it opens -- two sentences,
--- What's new and OK. Either button answers it for good; a mailbox closed
+-- stands beside the mail window the first time it opens -- what changed,
+-- what was kept, What's new and OK. Either button answers it for good; a mailbox closed
 -- without an answer shows it again at the next one. It stands outside the
 -- window, so nothing the player needs is under it, and it steps aside
 -- while the arrange mode's inspector stands beside the window (WN.Aside,
@@ -271,10 +271,13 @@ end
 -- scale, follows it when it is dragged and goes when it closes. Its fill
 -- has the popups' floor under it (__pbPopupAlways), so its words stay
 -- solid at any window opacity. As wide as W, or as its two buttons need,
--- and as tall as its words.
+-- and as tall as its words. Words that would run past LINES lines at that
+-- width widen it a STEP at a time, up to MAX_W, so a long translation makes
+-- a wider card rather than a column standing beside the window; only past
+-- MAX_W does it grow taller instead.
 -------------------------------------------------------------
 local CARD = {
-  W = 250, MAX_W = 330,
+  W = 250, MAX_W = 340, STEP = 10, LINES = 8,
   PAD = 12,
   TEXT_GAP = 5,            -- the title to the words
   BUTTONS_GAP = 12,        -- the words to the buttons
@@ -332,6 +335,15 @@ local function BuildCard(frame)
   return c
 end
 
+-- The lines a wrapped text takes at the width it has: the client's count,
+-- or its height over its font's.
+local function LineCount(fs)
+  local n = fs.GetNumLines and tonumber((fs:GetNumLines()))
+  if n and n > 0 then return n end
+  local _, size = fs:GetFont()
+  return ceil((fs:GetStringHeight() or 0) / max(1, tonumber(size) or 12))
+end
+
 -- Measured on every show: the skin's pass may have re-fonted it since.
 local function LayoutCard(c)
   local T = ns.Theme
@@ -339,19 +351,24 @@ local function LayoutCard(c)
   local news = T.SizeToText(c.News, P.FIT)
   local ok = T.SizeToText(c.OK, P.FIT)
   local width = max(P.W, min(P.MAX_W, news + P.BUTTON_GAP + ok + 2 * P.PAD))
+
+  local title, text = c.Title, c.Text
+  text:SetText(L[NOTICE.text])
+  text:SetWidth(width - 2 * P.PAD)
+  while width < P.MAX_W and LineCount(text) > P.LINES do
+    width = min(P.MAX_W, width + P.STEP)
+    text:SetWidth(width - 2 * P.PAD)
+  end
   local inner = width - 2 * P.PAD
   c:SetWidth(width)
 
-  local title, text = c.Title, c.Text
   title:SetText(L("WHATSNEW_RELEASE", NOTICE.key))
   title:ClearAllPoints()
   title:SetPoint("TOPLEFT", c, "TOPLEFT", P.PAD, -P.PAD)
   title:SetWidth(inner)
   local titleH = ceil(title:GetStringHeight() or 12)
-  text:SetText(L[NOTICE.text])
   text:ClearAllPoints()
   text:SetPoint("TOPLEFT", c, "TOPLEFT", P.PAD, -(P.PAD + titleH + P.TEXT_GAP))
-  text:SetWidth(inner)
   local textH = ceil(text:GetStringHeight() or 12)
 
   c.OK:ClearAllPoints()
