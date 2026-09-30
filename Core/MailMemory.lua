@@ -2826,6 +2826,15 @@ function Refresh(frame)
   local others = MM.HasOthers(characters) or v ~= nil
   frame.Picker:SetShown(others)
   frame.Search.Place(others)
+  -- With no one else to show, the picker steps aside and the sort takes
+  -- its place beside the search, the name's room reaching to it: no gap
+  -- where the picker stood. It comes back, and the sort with it, as soon
+  -- as another box is known.
+  if frame._pickerShown ~= others then
+    frame._pickerShown = others
+    frame.Sort:ClearAllPoints()
+    frame.Sort:SetPoint("RIGHT", others and frame.Picker or frame.SearchWrap, "LEFT", -4, 0)
+  end
   T.SetPlateSelected(frame.Picker, v ~= nil)
   -- The name is the way back while it is another character's (Back).
   frame.WhoHit:SetShown(v ~= nil)
