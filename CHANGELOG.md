@@ -66,12 +66,28 @@ your recipients, groups, Mail Memory and History are kept.*
 - **Quality marks** are two plain settings: on the icon, and before or after
   the name.
 
+### The minimap icon
+
+- **It can stay up:** When to show keeps it on the map while any of your
+  characters has mail, or always, as your way into Mail Memory and the
+  options; with nothing new it rests in gray. It works on EllesmereUI's
+  minimap too.
+- **A count on the icon:** the mail waiting on this character, or on all.
+- **It warns before mail expires:** an orange hourglass and glow, and the
+  tooltip says whose mail and when.
+- **Sizes from 16 to 40 px,** and a tidier tooltip with a line for each
+  character that has mail waiting.
+
 ### History and Mail Memory
 
 - **History has its own layout**; its Collected column shows time ago
   ("3h ago") or the date, your way round (30/09 or 09/30).
 - **Search follows what you're looking at:** on History it searches History,
   and **Search every character** looks through every character's.
+- **Tooltips read the same everywhere:** a mail's tooltip opens with its
+  subject and says who it's from, what it holds, the time left and whether
+  it's stuck (only what the row doesn't already show), then its clicks.
+  Mail Memory's rows have them too.
 - **Mail Memory shows what each mail holds:** the item's own icon, and on
   hover the list or the fan, to look at and link (you take it at that
   character's mailbox).
