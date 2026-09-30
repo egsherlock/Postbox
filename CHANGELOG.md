@@ -144,6 +144,9 @@ longer play.
 
 ### Fixed
 
+- **Delete when done removes every letter you empty**, including the first
+  one after you log in, which sometimes stayed under the divider instead. A
+  letter that can't be confirmed empty still stays, as before.
 - Scroll bar arrows point the right way: up at the top, down at the bottom.
 - Slot counts are never cut short ("4 slo…") in fonts whose digits differ
   in width.
