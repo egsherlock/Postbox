@@ -242,9 +242,12 @@ function Formatting.FormatMoneyCompact(copper, brief)
   local gold, _, _, total = Split(copper)
   if total == 0 then return "" end
   if ABBREVIATE and gold >= 10000 then return ABBREVIATE(gold, ABBREVIATE_OPTIONS) end
-  if gold >= 1000000 then return format("%.1fm", gold / 1000000) end
+  -- Cut down to the digit shown, never rounded up, as the thousands are: a
+  -- reading never says more than the mail holds (12,960g is "12.9k", and
+  -- 99,950g stays "99.9k" rather than "100.0k").
+  if gold >= 1000000 then return format("%.1fm", floor(gold / 100000) / 10) end
   if gold >= 100000 then return format("%dk", floor(gold / 1000)) end
-  if gold >= 10000 then return format("%.1fk", gold / 1000) end
+  if gold >= 10000 then return format("%.1fk", floor(gold / 100) / 10) end
   if gold >= 1000 then return format("%d%s", gold, GOLD_SUFFIX) end
   return Formatting.FormatMoneyText(copper, brief and 1 or 2)
 end
