@@ -3687,8 +3687,8 @@ function Pages.minimap(col)
     end,
   })
 
-  -- The two effects side by side, their two modifiers beneath (Accent
-  -- colours the glow, Pulse breathes it).
+  -- The glow and its pulse side by side, the one breathing the other; then
+  -- the accent's tint, on the glow and the icon, beside the shadow.
   local function Effect(titleKey, descKey, get, set)
     return {
       title = L[titleKey], text = L[descKey],
@@ -3699,10 +3699,10 @@ function Pages.minimap(col)
   end
   Rows.Pair(block,
     Effect("OPT_MINIMAP_GLOW_TITLE", "OPT_MINIMAP_GLOW_DESC", "GetGlow", "SetGlow"),
-    Effect("OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC", "GetShadow", "SetShadow"))
+    Effect("OPT_MINIMAP_PULSE_TITLE", "OPT_MINIMAP_PULSE_DESC", "GetPulse", "SetPulse"))
   Rows.Pair(block,
     Effect("OPT_MINIMAP_ACCENT_TITLE", "OPT_MINIMAP_ACCENT_DESC", "GetAccentTint", "SetAccentTint"),
-    Effect("OPT_MINIMAP_PULSE_TITLE", "OPT_MINIMAP_PULSE_DESC", "GetPulse", "SetPulse"))
+    Effect("OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC", "GetShadow", "SetShadow"))
 
   if hostStyled then
     -- One quiet line, not a paragraph: the whole of it is in the inspector.
@@ -3721,7 +3721,8 @@ function Pages.minimap(col)
     -- gave two controls authority over one fact, and they contradicted
     -- each other the moment shift-drag moved the icon. Blizzard default
     -- leads: it is where the stock indicator lives. A fresh install starts
-    -- in the top-right corner (MinimapButton's DEFAULTS.position).
+    -- in the top-right corner (MinimapButton's DEFAULTS.position), and
+    -- picking that corner again is the way back to it after a shift-drag.
     Rows.Dropdown(block, {
       title = L["OPT_MINIMAP_POS_TITLE"], text = L["OPT_MINIMAP_POS_DESC"],
       items = {
@@ -3740,16 +3741,6 @@ function Pages.minimap(col)
       title = L["OPT_MINIMAP_LOCK_TITLE"], text = L["OPT_MINIMAP_LOCK_DESC"],
       get = function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
       set = function(on) if ns.MinimapButton then ns.MinimapButton.SetLocked(on) end end,
-    })
-    Rows.Button(block, {
-      title = L["OPT_MINIMAP_RESET_POS"], text = L["OPT_MINIMAP_RESET_POS_DESC"], caption = L["BTN_RESET"],
-      onClick = function()
-        if ns.MinimapButton then ns.MinimapButton.ResetPosition() end
-        -- The reset just rewrote position AND detachment; the dropdown and
-        -- the checkbox above must say so immediately, not on the panel's
-        -- next open.
-        Panel.RefreshControls()
-      end,
     })
   end
 

@@ -1457,14 +1457,6 @@ function MB.SetLocked(on)
   Settings().lock = on == true
 end
 
-function MB.ResetPosition()
-  local prefs = Settings()
-  prefs.position = DEFAULTS.position
-  prefs.angle = DEFAULTS.angle
-  prefs.offsetX, prefs.offsetY = nil, nil
-  Refresh()
-end
-
 -------------------------------------------------------------
 -- 9. Init
 -------------------------------------------------------------
