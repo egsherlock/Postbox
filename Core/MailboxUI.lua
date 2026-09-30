@@ -3478,8 +3478,14 @@ local function BuildFrame()
   -- The refresh hook is installed unconditionally and guarded inside, so a skin
   -- that arrives after the window was built still gets its passes.
   if ns.Skin and ns.Skin.Apply then ns.Skin.Apply(frame) end
+  -- A skin that keeps a skin generation walks the window only when something
+  -- new was tagged since its last walk (RefreshWindow); one without, every
+  -- open, as before.
   frame:HookScript("OnShow", function(self)
-    if ns.Skin and ns.Skin.Refresh then ns.Skin.Refresh(self) end
+    local skin = ns.Skin
+    if not skin then return end
+    if skin.RefreshWindow then skin.RefreshWindow(self)
+    elseif skin.Refresh then skin.Refresh(self) end
   end)
 end
 

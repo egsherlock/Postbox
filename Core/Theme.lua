@@ -630,6 +630,8 @@ local tones = { r = -1, g = -1, b = -1, gen = -1,
   text = { 0, 0, 0 }, mark = { 0, 0, 0 }, bright = { 0, 0, 0 }, muted = { 0, 0, 0 } }
 local paletteGen = 0
 local lightPalette = false
+-- The skin generation's own half (Theme.SkinGeneration, beside RepaintPlates).
+local skinGen = 0
 
 local function FillTones(r, g, b)
   local plate, wash = C.plateSelected, C.accentWash[4] or 0.14
@@ -744,8 +746,8 @@ local function PushPalette()
     -- `list` and `card` are now the same surface. They stay as two names
     -- because the foundation layer's variant argument is a string, not because
     -- they differ.
-    for _, name in ipairs({ "list", "card" }) do
-      local scheme = palette[name]
+    for i = 1, 2 do
+      local scheme = palette[i == 1 and "list" or "card"]
       if type(scheme) == "table" then
         Recolor(scheme.bg, C.surface)
         Recolor(scheme.border, C.surfaceBorder)
@@ -874,24 +876,51 @@ function Theme.PaletteGeneration() return paletteGen end
 -- escapes (Theme.Hex) are derived again, the accent's tones forgotten, and
 -- the foundation theme repainted. What is already on screen is the caller's
 -- to repaint (Theme.RepaintTracked and the style's own pass).
-function Theme.ApplyPalette(mode, extra, extra2)
-  lightPalette = (mode == "light")
-  local light = Theme.PALETTE_LIGHT
-  for token, base in pairs(BASE) do
-    local dest = C[token]
-    if dest then Recolor(dest, lightPalette and light[token] or base) end
-  end
-  for _, map in ipairs({ extra or false, extra2 or false }) do
-    if map then
-      for token, color in pairs(map) do
-        local dest = C[token]
-        if type(dest) == "table" and type(color) == "table" and not ACCENT_TOKENS[token] then Recolor(dest, color) end
-      end
+--
+-- The generation (paletteGen) moves only when a colour actually changed: a
+-- style re-resolving its look for an accent or an opacity writes the same
+-- palette back, and what keys on the generation (the accent's tones, the
+-- plate sweep) has nothing new to do for it.
+do
+  -- token -> the colour it had when the generation last moved: one small
+  -- table per token, made once.
+  local shadow = {}
+
+  local function Overlay(map)
+    if not map then return end
+    for token, color in pairs(map) do
+      local dest = C[token]
+      if type(dest) == "table" and type(color) == "table" and not ACCENT_TOKENS[token] then Recolor(dest, color) end
     end
   end
-  for token, color in pairs(C) do Hex[token] = ToHex(color) end
-  paletteGen = paletteGen + 1
-  PushPalette()
+
+  function Theme.ApplyPalette(mode, extra, extra2)
+    local wasLight = lightPalette
+    lightPalette = (mode == "light")
+    local light = Theme.PALETTE_LIGHT
+    for token, base in pairs(BASE) do
+      local dest = C[token]
+      if dest then Recolor(dest, lightPalette and light[token] or base) end
+    end
+    Overlay(extra)
+    Overlay(extra2)
+    local changed = wasLight ~= lightPalette
+    for token, color in pairs(C) do
+      Hex[token] = ToHex(color)
+      local s = shadow[token]
+      if not s then
+        s = {}
+        shadow[token] = s
+        changed = true
+      end
+      if s[1] ~= color[1] or s[2] ~= color[2] or s[3] ~= color[3] or s[4] ~= color[4] then
+        s[1], s[2], s[3], s[4] = color[1], color[2], color[3], color[4]
+        changed = true
+      end
+    end
+    if changed then paletteGen = paletteGen + 1 end
+    PushPalette()
+  end
 end
 
 -- A grey level set for a dark ground -> the grey of the same rank on the
@@ -1381,21 +1410,80 @@ end
 --   * one Postbox still paints -- repainted from its own state.
 --
 -- Guarded per node: one uncooperative widget must not truncate the sweep.
-function Theme.RepaintPlates(frame, depth)
-  depth = depth or 0
-  if not frame or depth > 8 or type(frame.GetChildren) ~= "function" then return end
-  local kids = { frame:GetChildren() }
-  for i = 1, #kids do
-    local c = kids[i]
-    if c then
-      local override = c.__setSelectedOverride
-      if override then
-        pcall(override, c, c.isSelected and true or false)
-      elseif c.__pbPlateArt then
-        pcall(Theme.RepaintPlate, c)
-      end
-      Theme.RepaintPlates(c, depth + 1)
+--
+-- The walk keeps one stack for every sweep, filled in place (the same order
+-- as walking each node's children in turn), so a sweep -- once per frame
+-- while the accent picker is dragged -- makes no garbage. Under the Postbox
+-- style, where Postbox alone paints the plates, a window already swept in
+-- this accent and this palette is not swept again: its plates paint nothing
+-- new. Under a host UI every sweep runs, since the host's own looks (which
+-- no generation here sees) are what its selection override paints from.
+
+-- The skin generation: moves when a window's skin walk could find something
+-- new -- a control newly tagged for the skins, a palette change, or anything
+-- a skin reports through Theme.SkinChanged (a host UI's looks, a new look of
+-- Postbox's own). A window walked at the current generation needs no walk
+-- on its next open (the skins' RefreshWindow).
+function Theme.SkinChanged() skinGen = skinGen + 1 end
+function Theme.SkinGeneration() return skinGen + paletteGen end
+
+do
+  local stack, depths = {}, {}
+  local busy = false
+  -- frame -> the accent and palette its plates were last swept in.
+  local swept = setmetatable({}, { __mode = "k" })
+
+  local function Push(st, dp, n, d, ...)
+    for i = select("#", ...), 1, -1 do
+      n = n + 1
+      st[n], dp[n] = (select(i, ...)), d
     end
+    return n
+  end
+
+  local function Sweep(frame, depth, st, dp)
+    local n = Push(st, dp, 0, depth + 1, frame:GetChildren())
+    while n > 0 do
+      local c, d = st[n], dp[n]
+      st[n], dp[n] = nil, nil
+      n = n - 1
+      if c then
+        local override = c.__setSelectedOverride
+        if override then
+          pcall(override, c, c.isSelected and true or false)
+        elseif c.__pbPlateArt then
+          pcall(Theme.RepaintPlate, c)
+        end
+        if d <= 8 and type(c.GetChildren) == "function" then n = Push(st, dp, n, d + 1, c:GetChildren()) end
+      end
+    end
+  end
+
+  function Theme.RepaintPlates(frame, depth)
+    depth = depth or 0
+    if not frame or depth > 8 or type(frame.GetChildren) ~= "function" then return end
+    if depth == 0 and ns.Skin ~= nil and ns.Skin == ns.PostboxSkin then
+      local r, g, b = Theme.GetAccent()
+      local last = swept[frame]
+      if last and last.r == r and last.g == g and last.b == b and last.gen == paletteGen then return end
+      if not last then
+        last = {}
+        swept[frame] = last
+      end
+      last.r, last.g, last.b, last.gen = r, g, b, paletteGen
+    end
+    if busy then
+      -- A sweep started from inside a sweep (an override that repaints):
+      -- its own stack, so the outer one is left as it was.
+      Sweep(frame, depth, {}, {})
+      return
+    end
+    -- Every caller runs the sweep under pcall and moves on, so a failure
+    -- here ends it the same way; the stack is emptied either way.
+    busy = true
+    pcall(Sweep, frame, depth, stack, depths)
+    for i = #stack, 1, -1 do stack[i], depths[i] = nil, nil end
+    busy = false
   end
 end
 
@@ -1917,7 +2005,8 @@ local function PaintSurface(frame, variant, tag)
   if not frame then return end
 
   -- Set before delegating, so a delegation that fails still leaves the frame
-  -- findable by both skins.
+  -- findable by both skins. A newly tagged frame is news to the skins' walk.
+  if frame.__postboxPanel ~= tag then skinGen = skinGen + 1 end
   frame.__postboxPanel = tag
   if track then track.surface[frame] = variant end
 
@@ -2123,6 +2212,7 @@ end
 function Theme.StyleInput(frame, editBox)
   if not frame then return end
   Theme.ApplyCard(frame)
+  if not frame.__postboxInputWrap then skinGen = skinGen + 1 end
   frame.__postboxInputWrap = true
   if editBox then editBox.__postboxNoEditSkin = true end
 end

@@ -1030,33 +1030,66 @@ local function SkinButton(btn)
   end
 end
 
-local function SkinTree(frame, depth)
-  if not frame or depth > 8 then return end
-  local kids = { frame:GetChildren() }
-  for i = 1, #kids do
-    local c = kids[i]
-    if c and c.IsObjectType then
-      if c.__postboxPanel then
-        SkinPanel(c, c.__postboxPanel == "band" and {} or { inset = true })
-      elseif c.__postboxInputWrap then
-        SkinPanel(c, { inset = true })
-      elseif c:IsObjectType("EditBox") then
-        if not c.__postboxNoEditSkin then SkinLeaf(c, S.EditBox) end
-      elseif c:IsObjectType("ScrollFrame") then
-        SkinScroll(c)
-      elseif c.__postboxCheck then
-        -- Not through SkinLeaf: the caption is re-fonted whether or not the
-        -- host offers a checkbox primitive, so both live under the one key.
-        if not c.__pbEuiSkinned then
-          c.__pbEuiSkinned = true
-          if S.Checkbox then S.Checkbox(c) end
-          if c.__label then S.Font(c.__label) end
-        end
-      elseif c:IsObjectType("Button") then
-        if c.__postboxButton then SkinLeaf(c, SkinButton) end
+local function SkinOne(c)
+  if c.__postboxPanel then
+    SkinPanel(c, c.__postboxPanel == "band" and {} or { inset = true })
+  elseif c.__postboxInputWrap then
+    SkinPanel(c, { inset = true })
+  elseif c:IsObjectType("EditBox") then
+    if not c.__postboxNoEditSkin then SkinLeaf(c, S.EditBox) end
+  elseif c:IsObjectType("ScrollFrame") then
+    SkinScroll(c)
+  elseif c.__postboxCheck then
+    -- Not through SkinLeaf: the caption is re-fonted whether or not the
+    -- host offers a checkbox primitive, so both live under the one key.
+    if not c.__pbEuiSkinned then
+      c.__pbEuiSkinned = true
+      if S.Checkbox then S.Checkbox(c) end
+      if c.__label then S.Font(c.__label) end
+    end
+  elseif c:IsObjectType("Button") then
+    if c.__postboxButton then SkinLeaf(c, SkinButton) end
+  end
+end
+
+-- Depth-first, each node's children in turn, eight levels down, on one stack
+-- reused by every walk (filled in place: no garbage); a walk begun inside a
+-- walk takes its own.
+local SkinTree
+do
+  local stack, depths = {}, {}
+  local busy = false
+
+  local function Push(st, dp, n, d, ...)
+    for i = select("#", ...), 1, -1 do
+      n = n + 1
+      st[n], dp[n] = (select(i, ...)), d
+    end
+    return n
+  end
+
+  local function Walk(frame, st, dp)
+    local n = Push(st, dp, 0, 1, frame:GetChildren())
+    while n > 0 do
+      local c, d = st[n], dp[n]
+      st[n], dp[n] = nil, nil
+      n = n - 1
+      if c then
+        if c.IsObjectType then SkinOne(c) end
+        if d <= 8 then n = Push(st, dp, n, d + 1, c:GetChildren()) end
       end
     end
-    SkinTree(c, depth + 1)
+  end
+
+  SkinTree = function(frame, depth)
+    if not frame then return end
+    if busy then return Walk(frame, {}, {}) end
+    -- Every caller walks under pcall and moves on, so a failure here ends
+    -- the walk the same way; the stack is emptied either way.
+    busy = true
+    pcall(Walk, frame, stack, depths)
+    for i = #stack, 1, -1 do stack[i], depths[i] = nil, nil end
+    busy = false
   end
 end
 
@@ -1136,6 +1169,23 @@ function Skin.Refresh(frame)
   -- Cheap re-assert of colour and alpha: a host restrip pass can zero the
   -- backdrop's region alpha, and a profile switch moves the colour.
   pcall(Skin.ApplyBgOpacity)
+end
+
+-- The mailbox window's open: the walk only where something was tagged for
+-- the skins since this window's last one (Theme.SkinGeneration; every step
+-- of the walk skins a frame once), the colour and alpha re-assert always.
+local walkedAt = setmetatable({}, { __mode = "k" })
+
+function Skin.RefreshWindow(frame)
+  if not (S and frame) then return end
+  local T = ns.Theme
+  local gen = T and type(T.SkinGeneration) == "function" and T.SkinGeneration() or nil
+  if gen ~= nil and walkedAt[frame] == gen then
+    pcall(Skin.ApplyBgOpacity)
+    return
+  end
+  Skin.Refresh(frame)
+  walkedAt[frame] = T and type(T.SkinGeneration) == "function" and T.SkinGeneration() or nil
 end
 
 -- One-time skin of the main window. Each step is guarded separately so a

@@ -500,7 +500,11 @@ function Theme.BindAddon(target)
   -- icon-only buttons. Read by Core/Skin_ElvUI.lua and Core/Skin_EllesmereUI.lua.
   function target.CreateButton(name, parent)
     local button = Theme.CreateButton(name, parent)
-    if button then button.__postboxButton = true end
+    if button then
+      button.__postboxButton = true
+      -- News to the skins' window walk (Core/Theme.lua, SkinGeneration).
+      if type(target.SkinChanged) == "function" then target.SkinChanged() end
+    end
     return button
   end
 

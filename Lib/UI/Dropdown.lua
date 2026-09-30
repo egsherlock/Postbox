@@ -173,6 +173,8 @@ function Dropdown.Create(parent, opts)
   toggle.__postboxButton = true
   toggle.__postboxSelect = true
   container._toggle = toggle
+  -- News to the skins' window walk (Core/Theme.lua, SkinGeneration).
+  if ns.Theme and type(ns.Theme.SkinChanged) == "function" then ns.Theme.SkinChanged() end
 
   local function NameFor(id)
     for i = 1, #items do

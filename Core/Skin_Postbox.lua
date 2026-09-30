@@ -250,8 +250,9 @@ local function Hairline(frame)
   return 1
 end
 
+-- No defaults table: an empty one merged nothing, and was made per read.
 local function GetProfile()
-  return ns.Store.EnsurePath("profile", {})
+  return ns.Store.EnsurePath("profile")
 end
 
 -- A creative window style (Core/Skin_Creative.lua) wears this skin with its
@@ -1720,28 +1721,62 @@ end
 -- The pass over tagged content, the same shape as the host skins'
 -------------------------------------------------------------
 
-local function SkinTree(frame, depth, opaque)
-  if not frame or depth > 8 then return end
-  local kids = { frame:GetChildren() }
-  for i = 1, #kids do
-    local c = kids[i]
-    if c and c.IsObjectType then
-      if c.__postboxInputWrap then
-        FlatPanel(c, "input")
-      elseif c.__postboxPanel then
-        local tag = c.__postboxPanel
-        FlatPanel(c, tag == "band" and "band" or (opaque and "optCard") or "list")
-      elseif c:IsObjectType("EditBox") then
-        if not c.__postboxNoEditSkin then FlatEdit(c) end
-      elseif c:IsObjectType("ScrollFrame") then
-        FlatScroll(c)
-      elseif c.__postboxCheck then
-        FlatCheck(c)
-      elseif c:IsObjectType("Button") then
-        if c.__postboxButton then FlatButton(c) end
+local function SkinOne(c, opaque)
+  if c.__postboxInputWrap then
+    FlatPanel(c, "input")
+  elseif c.__postboxPanel then
+    local tag = c.__postboxPanel
+    FlatPanel(c, tag == "band" and "band" or (opaque and "optCard") or "list")
+  elseif c:IsObjectType("EditBox") then
+    if not c.__postboxNoEditSkin then FlatEdit(c) end
+  elseif c:IsObjectType("ScrollFrame") then
+    FlatScroll(c)
+  elseif c.__postboxCheck then
+    FlatCheck(c)
+  elseif c:IsObjectType("Button") then
+    if c.__postboxButton then FlatButton(c) end
+  end
+end
+
+-- Depth-first, each node's children in turn, as far as eight levels down --
+-- on one stack reused by every walk, filled in place, so a walk makes no
+-- garbage. A walk begun inside a walk (a paint that refreshes) takes a
+-- stack of its own.
+local SkinTree
+do
+  local stack, depths = {}, {}
+  local busy = false
+
+  local function Push(st, dp, n, d, ...)
+    for i = select("#", ...), 1, -1 do
+      n = n + 1
+      st[n], dp[n] = (select(i, ...)), d
+    end
+    return n
+  end
+
+  local function Walk(frame, opaque, st, dp)
+    local n = Push(st, dp, 0, 1, frame:GetChildren())
+    while n > 0 do
+      local c, d = st[n], dp[n]
+      st[n], dp[n] = nil, nil
+      n = n - 1
+      if c then
+        if c.IsObjectType then SkinOne(c, opaque) end
+        if d <= 8 then n = Push(st, dp, n, d + 1, c:GetChildren()) end
       end
     end
-    SkinTree(c, depth + 1, opaque)
+  end
+
+  SkinTree = function(frame, depth, opaque)
+    if not frame then return end
+    if busy then return Walk(frame, opaque, {}, {}) end
+    -- Every caller walks under pcall and moves on, so a failure here ends
+    -- the walk the same way; the stack is emptied either way.
+    busy = true
+    pcall(Walk, frame, opaque, stack, depths)
+    for i = #stack, 1, -1 do stack[i], depths[i] = nil, nil end
+    busy = false
   end
 end
 
@@ -1761,6 +1796,24 @@ function Skin.Refresh(frame)
   -- Popups built lazily (the bug report, the recipient dialogs) arrive after
   -- Apply and carry their own small close button.
   pcall(FlatClose, frame.CloseButton)
+end
+
+-- The mailbox window's open. Every step of the walk skins a frame once and
+-- never again, so a walk finds work only where something was made since the
+-- last one; the skin generation (Theme.SkinGeneration) moves whenever a frame
+-- is tagged for the skins or the palette changes. A window already walked at
+-- the current generation is left as it is.
+local walkedAt = setmetatable({}, { __mode = "k" })
+
+function Skin.RefreshWindow(frame)
+  if not frame then return end
+  local T = ns.Theme
+  local gen = T and type(T.SkinGeneration) == "function" and T.SkinGeneration() or nil
+  if gen ~= nil and walkedAt[frame] == gen then return end
+  -- Through the field, so a style that wraps the refresh (Skin_Creative) is
+  -- asked too.
+  Skin.Refresh(frame)
+  walkedAt[frame] = T and type(T.SkinGeneration) == "function" and T.SkinGeneration() or nil
 end
 
 -- The accent moved: the ticks, the select values, the plates and the
