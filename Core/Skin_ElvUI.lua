@@ -18,6 +18,28 @@ if not S then return end
 
 local Skin = {}
 
+-- Every Postbox window this skin has painted (weak): what an accent change
+-- sweeps for plates.
+Skin._windows = setmetatable({}, { __mode = "k" })
+
+-- ------------------------------------------------------------------
+-- Accent: ElvUI's value colour
+-- ------------------------------------------------------------------
+-- ElvUI's accent is its "value colour" (General > Media; blue by default,
+-- often the class colour), kept resolved as an r/g/b colour table in
+-- E.media.rgbvaluecolor. Theme.GetAccent asks here first, so every accent
+-- token Postbox paints with -- selected marks, headings, the tabs' underline
+-- -- is ElvUI's own, and there is one accent in the window rather than
+-- Postbox's gold beside a tab yellow.
+function Skin.GetAccent()
+  local media = E.media
+  local c = media and media.rgbvaluecolor
+  if type(c) ~= "table" then return nil end
+  local r, g, b = c.r, c.g, c.b
+  if type(r) == "number" and type(g) == "number" and type(b) == "number" then return r, g, b end
+  return nil
+end
+
 -- ------------------------------------------------------------------
 -- WindTools shadow (optional). Falls back to ElvUI's native shadow.
 -- ------------------------------------------------------------------
@@ -178,6 +200,7 @@ function Skin.Apply(frame)
   -- Claim() because claiming ns.Skin harms nothing; painting is the point of no
   -- return.
   ns.SkinAppliedBy = "elvui"
+  Skin._windows[frame] = true
 
   -- Hide Postbox's own golden marble/tint so ElvUI's backdrop shows through.
   for _, key in ipairs({ "pbWindowStone", "pbWindowTint" }) do
@@ -201,9 +224,12 @@ function Skin.Apply(frame)
   -- The tabs are flat plates the addon draws itself (Core/Theme.lua), not
   -- Blizzard panel tabs: there is no Left/Middle/Right art for ElvUI to strip
   -- and no PanelTemplates pushed text-shift to undo. All this has to do is
-  -- replace the selected-state visual with a flat gold underline accent + gold
-  -- text; the widget permanently retires its own plate art as soon as this
-  -- override is installed, so nothing here needs to strip it.
+  -- replace the selected-state visual with a flat underline and caption in the
+  -- accent (ElvUI's value colour, through Theme) and a neutral caption on the
+  -- others; the widget permanently retires its own plate art as soon as this
+  -- override is installed, so nothing here needs to strip it. Painted from the
+  -- live accent on every call, so an accent change repaints it by re-issuing
+  -- the selection (Theme.RepaintPlates).
   if frame.TabButtons then
     for _, tab in pairs(frame.TabButtons) do
       if tab and not tab.__postboxSkinned then
@@ -217,12 +243,12 @@ function Skin.Apply(frame)
           tab.__activeAccent:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", 2, 1)
           tab.__activeAccent:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -2, 1)
           tab.__activeAccent:SetHeight(2)
-          tab.__activeAccent:SetColorTexture(1.0, 0.82, 0.0, 0.9)
           tab.__activeAccent:Hide()
         end
 
         tab.__setSelectedOverride = function(t, selected)
           t:Enable()  -- belt and braces: the selected tab must stay clickable
+          local T = ns.Theme
           local fs = t.GetFontString and t:GetFontString()
           if fs then
             -- Redundant against the current widget, which already centres its
@@ -230,10 +256,17 @@ function Skin.Apply(frame)
             -- cannot be verified here.
             fs:ClearAllPoints()
             fs:SetPoint("CENTER", t, "CENTER", 0, 0)
-            fs:SetTextColor(selected and 1.00 or 0.95, selected and 0.88 or 0.80, selected and 0.28 or 0.20)
+            if T and T.SetColor then T.SetColor(fs, selected and "accentBright" or "plateCaption") end
           end
           if t.__activeBg then t.__activeBg:Hide() end
-          if t.__activeAccent then t.__activeAccent:SetShown(selected) end
+          local line = t.__activeAccent
+          if line then
+            if selected and T and T.GetAccentTone then
+              local r, g, b = T.GetAccentTone("base")
+              line:SetColorTexture(r, g, b, 0.9)
+            end
+            line:SetShown(selected)
+          end
         end
       end
     end
@@ -286,6 +319,57 @@ local function Claim()
     return
   end
   ns.Skin = Skin
+end
+
+-- ------------------------------------------------------------------
+-- Live: ElvUI's value-colour registry
+-- ------------------------------------------------------------------
+-- ElvUI calls every entry of E.valueColorUpdateFuncs from E:UpdateMedia, which
+-- runs when the value colour is edited and on every profile switch (after the
+-- profile's media and custom class colours are read), as (key, hex, r, g, b,
+-- a). Its own modules register the same way; the key is a string because the
+-- table drops function keys. Registered once, at load, so it also serves while
+-- EllesmereUI holds the window:
+--
+--   * class colours: the profile switch re-reads ElvUI's custom class colours
+--     without calling the shared table's callbacks, so ContactService is told
+--     here (a flag and at most one look-again next frame);
+--   * the accent, while this skin holds the window: the accent text, the
+--     plates (the tabs through their override), the options cog, the view
+--     toggle and the minimap icon repainted, once, on the next frame.
+--
+-- ElvUI runs the registry from a coroutine over its own list, so this entry
+-- must never throw into it.
+local accentPending = false
+
+local function RunAccentRefresh()
+  accentPending = false
+  if ns.Skin ~= Skin then return end
+  local T = ns.Theme
+  if not T then return end
+  if type(T.RepaintAccentIcons) == "function" then pcall(T.RepaintAccentIcons) end
+  if type(T.RepaintAccentText) == "function" then pcall(T.RepaintAccentText) end
+  if type(T.RepaintPlates) == "function" then
+    for frame in pairs(Skin._windows) do pcall(T.RepaintPlates, frame, 0) end
+  end
+end
+
+local function OnValueColor()
+  local CS = ns.ContactService
+  if CS and type(CS.PaletteMoved) == "function" then CS.PaletteMoved() end
+  if accentPending or ns.Skin ~= Skin then return end
+  accentPending = true
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, RunAccentRefresh)
+  else
+    RunAccentRefresh()
+  end
+end
+
+if type(E.valueColorUpdateFuncs) == "table" then
+  pcall(function()
+    E.valueColorUpdateFuncs.Postbox = function() pcall(OnValueColor) end
+  end)
 end
 
 local boot = CreateFrame("Frame")

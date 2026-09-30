@@ -1196,6 +1196,10 @@ do
     local ok = C_Timer and type(C_Timer.After) == "function" and pcall(C_Timer.After, 0, Revalidate)
     if not ok then revalidateQueued = false end
   end
+  -- For a host whose palette moves without the shared table's callbacks: the
+  -- ElvUI skin calls it from ElvUI's value-colour registry, which runs on every
+  -- ElvUI profile switch after its custom class colours are re-read.
+  CS.PaletteMoved = PaletteMoved
 
   -- Hooked once, the first time a colour is asked for, by when every addon
   -- has loaded. EllesmereUI.InvalidateColorCache is the one door its palette
@@ -1237,10 +1241,10 @@ do
   end
 
   -- Every mailbox visit looks again where a host answered, for the change no
-  -- signal covers: ElvUI's profile switch does not call the shared table's
-  -- callbacks, and an EllesmereUI without InvalidateColorCache has no door to
-  -- hook. A read and a compare per class asked; nothing is built and nothing
-  -- is painted unless a colour moved.
+  -- signal covers: an ElvUI profile switch reaches CS.PaletteMoved only through
+  -- the ElvUI skin's value-colour entry, and an EllesmereUI without
+  -- InvalidateColorCache has no door to hook. A read and a compare per class
+  -- asked; nothing is built and nothing is painted unless a colour moved.
   local bus = ns.Events
   if type(bus) == "table" and type(bus.Register) == "function" then
     bus.Register("MAIL_SHOW", function()
