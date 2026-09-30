@@ -126,6 +126,10 @@ longer play.
   card behind its icon, and hovering the icon lists everything in it.
   Auction mail no longer says its count twice. Switch: Stack counts on item
   icons, in Options, Mail tab.
+- **Take one item without opening the mail:** set Attachments on hover to
+  Fan out (Options, Mail tab, or the Icon card while you arrange) and a
+  mail's items spread out beside its icon. Click one to take it, Shift-click
+  to link it; C.O.D. still asks first.
 - **Quality marks are two plain settings:** a switch for the badge on item
   icons, and a mark by the name, Before, After or Off. Your current choice
   carries over. A mark after a long name always shows; the name is
