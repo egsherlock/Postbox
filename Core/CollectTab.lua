@@ -2837,11 +2837,17 @@ local function BuildSearchBox(panel)
   local M = T.Metrics
 
   -- Theme's search box, as Mail Memory's is: the toggle inside its right end
-  -- searches every character's box (AV.Paint shows it and places the clear
-  -- button beside it).
+  -- searches every character's box -- on History, every character's History
+  -- (AV.Paint shows it and places the clear button beside it).
   local search = T.CreateSearchBox(panel, SEARCH_W, M.segmentHeight, L()["SEARCH_PLACEHOLDER"], {
     onTextChanged = function(text)
       local searching = Trim(text) ~= ""
+      -- Emptied by a switch between Inbox and History (AV.ResetSearch),
+      -- which refreshes once itself.
+      if panel._searchQuiet then
+        panel._searchOn = searching
+        return
+      end
       -- The footer changes shape only when the search turns on or off, not
       -- on every keystroke inside one.
       if searching ~= (panel._searchOn == true) then
@@ -2860,7 +2866,11 @@ local function BuildSearchBox(panel)
     end,
     toggleTip = function(tip)
       tip:SetText(L()["MEMORY_SEARCH_ALL_TITLE"])
-      tip:AddLine(L()[panel._searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"], 1, 1, 1, true)
+      local key = panel._searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"
+      if AV.History(panel) then
+        key = panel._searchAll and "MEMORY_SEARCH_ALL_HISTORY_ON" or "MEMORY_SEARCH_ALL_HISTORY_OFF"
+      end
+      tip:AddLine(L()[key], 1, 1, 1, true)
     end,
   })
   local wrap = search.Wrap
@@ -2912,6 +2922,8 @@ function CT.ClearSearch(panel)
     panel._searchAll = false
     AV.Paint(panel)
     if ns.MailMemory and ns.MailMemory.ClosePicker then ns.MailMemory.ClosePicker() end
+    -- And the folded text History's search built: kept only while in use.
+    if RV.ForgetHistorySearch then RV.ForgetHistorySearch() end
   end
 end
 
@@ -3307,11 +3319,55 @@ function AV.Memory()
   return Memory
 end
 
--- Showing another box, or every box's matches for a search.
+-- Showing another box, or every box's matches for a search. On History the
+-- toggle widens the search to every character's History instead, which is
+-- History's own list (HV.BuildHistoryList), not the boxes'.
 function AV.Active(panel)
   if not panel or not AV.Memory() then return false end
   if panel._alt then return true end
-  return panel._searchAll == true and Searching(panel)
+  return panel._searchAll == true and Searching(panel) and panel.viewMode ~= VIEW_HISTORY
+end
+
+-- Whether the search box searches History: this character's History view on
+-- screen, not another character's box picked from it.
+function AV.History(panel)
+  return panel ~= nil and panel.viewMode == VIEW_HISTORY and panel._alt == nil
+end
+
+-- Inbox to History or back (SetViewMode): a search is a question about the
+-- list on screen, so the next one starts empty and on this character alone.
+-- Quiet: the caller refreshes the list once. Neither view is another box, so
+-- the row's layout stands and only the box itself is painted again.
+function AV.ResetSearch(panel)
+  panel._searchAll = false
+  local box = panel.SearchBox
+  if box and box:GetText() ~= "" then
+    panel._searchQuiet = true
+    box:SetText("")
+    panel._searchQuiet = nil
+  end
+  panel._searchOn = false
+  if panel.Search then AV.PaintSearch(panel, panel._searchOthers) end
+end
+
+-- The search box's part of the paint: the every-character toggle, shown
+-- while there is another box to search (`others`, as AV.Paint last found)
+-- -- on History, another character's History -- and its tint; and the
+-- placeholder, saying what the box searches.
+function AV.PaintSearch(panel, others)
+  panel._searchOthers = others
+  local history = AV.History(panel)
+  local toggle = others
+  if history then
+    local Memory = AV.Memory()
+    toggle = Memory ~= nil and Memory.HistoryOthers ~= nil and Memory.HistoryOthers()
+  end
+  panel.Search.PaintToggle(panel._searchAll)
+  panel.Search.Place(toggle)
+  if panel._searchHistory ~= history then
+    panel._searchHistory = history
+    panel.SearchPlaceholder:SetText(L()[history and "SEARCH_HISTORY_PLACEHOLDER" or "SEARCH_PLACEHOLDER"])
+  end
 end
 
 -- Showing another character's box -- one box, not every box's matches: the
@@ -3415,9 +3471,9 @@ function AV.Paint(panel)
   end
   T.SetPlateSelected(panel.Picker, who ~= nil)
 
-  -- The every-character toggle shows while there is another box to search.
-  panel.Search.PaintToggle(panel._searchAll)
-  panel.Search.Place(others)
+  -- The every-character toggle shows while there is another box to search,
+  -- and the box says what it searches.
+  AV.PaintSearch(panel, others)
 
   -- The other box's name and count, just left of the picker that chose it:
   -- the two read as one control. No realm -- the list the name was picked
@@ -3449,7 +3505,11 @@ end
 
 -- who: { realm, name } of another character, or nil for this one.
 function AV.Show(panel, who)
+  -- A box picked from History, or History back from one: the search was
+  -- asked of the other list (AV.ResetSearch). Refreshed below.
+  local history = AV.History(panel)
   panel._alt = who
+  if AV.History(panel) ~= history then AV.ResetSearch(panel) end
   ClearSelection(panel)
   if panel.Detail then panel.Detail:Hide() end
   if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
@@ -4296,6 +4356,10 @@ end
 -- two-hundred-local ceiling (see SendTab's history), so a section adds one.
 local HV = {}
 
+-- Nothing, for a record or a list there is none of: one table, not one per
+-- call.
+HV.NONE = {}
+
 -- How many days History keeps (Options, Mail tab): 7 unless the player chose more.
 function HV.Days()
   local UI = ns.MailboxUI
@@ -4652,36 +4716,73 @@ end
 
 -- entry -> the folded text a search looks in: sender, subject, the outcome
 -- label and every item's name. Built once per entry, not per keystroke per
--- entry (a month of History is up to a thousand of them). Weak keys, and
--- never a field on the entry, which is saved variables. Rebuilt when the
--- entry gains an item -- the reading view adds to its entry as it takes --
--- and all of it when the quality-mark option changes what a name carries.
-HV.searchText = setmetatable({}, { __mode = "k" })
-function HV.SearchText(entry)
+-- entry (a month of History is up to a thousand of them, and a search of
+-- every character's History walks each character's). Weak keys, and never a
+-- field on the entry, which is saved variables; the text and the item count
+-- it was built from are kept apart, so an entry costs no table of its own.
+-- Rebuilt when the entry gains an item -- the reading view adds to its entry
+-- as it takes -- and all of it when the quality-mark option changes what a
+-- name carries (HV.SearchFresh, asked once per list) or the mailbox closes
+-- (HV.ForgetSearch): what a visit's search built is not kept for the session.
+HV.WEAK_KEYS = { __mode = "k" }
+function HV.ForgetSearch()
+  -- Nothing built since the last time: nothing to let go of.
+  if HV.searchText and next(HV.searchText) == nil then return end
+  HV.searchText = setmetatable({}, HV.WEAK_KEYS)
+  HV.searchItems = setmetatable({}, HV.WEAK_KEYS)
+end
+HV.ForgetSearch()
+RV.ForgetHistorySearch = HV.ForgetSearch
+
+function HV.SearchFresh()
   local mode = RV.MarkOnName()
   if HV.searchMode ~= mode then
-    HV.searchText = setmetatable({}, { __mode = "k" })
+    HV.ForgetSearch()
     HV.searchMode = mode
   end
-  local items = entry.it or {}
-  local cached = HV.searchText[entry]
-  if cached and cached.n == #items then return cached.text end
+end
+
+-- The pieces, joined once: a string grown item by item left one string of
+-- garbage per item behind it, and an entry holds up to sixteen.
+HV.searchParts = {}
+function HV.SearchText(entry)
+  local items = entry.it or HV.NONE
+  local text = HV.searchText[entry]
+  if text and HV.searchItems[entry] == #items then return text end
   local outcome = AUCTION_OUTCOME[entry.k]
-  local hay = (entry.s or "") .. "\001" .. (entry.sub or "")
-    .. "\001" .. (outcome and L()[outcome.key] or "")
-  for j = 1, #items do hay = hay .. "\001" .. (HV.ItemName(items[j].l) or "") end
-  local text = Fold(hay)
-  HV.searchText[entry] = { text = text, n = #items }
+  local parts = HV.searchParts
+  parts[1], parts[2] = entry.s or "", entry.sub or ""
+  parts[3] = outcome and L()[outcome.key] or ""
+  for j = 1, #items do parts[3 + j] = HV.ItemName(items[j].l) or "" end
+  text = Fold(concat(parts, "\001", 1, 3 + #items))
+  HV.searchText[entry], HV.searchItems[entry] = text, #items
   return text
+end
+
+-- Whether History's list is every character's (HV.BuildHistoryList): the
+-- toggle on, something typed, and Mail Memory there to say who they are.
+function HV.SearchingAll(panel, query)
+  local Memory = AV.Memory()
+  return query ~= "" and panel._searchAll == true and panel._alt == nil
+    and Memory ~= nil and Memory.HistoryCharacters ~= nil
 end
 
 -- The history view's list, newest first, narrowed by the search; its totals
 -- for the banner; its columns, measured as the mail list measures its own.
+-- Searching every character's History (HV.SearchingAll), each character's
+-- matches follow a heading with its name, this character's first, as a
+-- search of every box lists them. The headings are Mail Memory's list of
+-- those characters, whose items are made to be drawn as headings, so a
+-- keystroke builds nothing; `_hmatched` and `_hchars` count what it found.
 function HV.BuildHistoryList(panel, query)
   local out = panel._history
   Clear(out)
   local Memory = ns.MailMemory
-  local list = Memory and Memory.History and Memory.History() or {}
+  local chars = HV.SearchingAll(panel, query) and Memory.HistoryCharacters() or nil
+  local found = 0
+  if query ~= "" then HV.SearchFresh() end
+  local list = HV.NONE
+  if not chars then list = Memory and Memory.History and Memory.History() or HV.NONE end
   local R = CT.RowRules
   local sample = AcquireRow(panel, 1)
   local cap = SenderColumnWidth(panel, sample.Sender)
@@ -4695,13 +4796,29 @@ function HV.BuildHistoryList(panel, query)
   local showEarned, showSpent = MoneyShown("earned", layout), MoneyShown("spent", layout)
   local earned, spent = 0, 0
   local now = time()
-  for i = #list, 1, -1 do
+  -- One walk, over this character's record or over each character's in
+  -- turn: the next record is taken up when the one before runs out.
+  local c, head, headed = 0, nil, false
+  local i = #list
+  while true do
+    while i < 1 and chars and c < #chars do
+      c = c + 1
+      head, headed = chars[c], false
+      list = Memory.HistoryOf(head) or HV.NONE
+      i = #list
+    end
+    if i < 1 then break end
     local entry = list[i]
     local keep = true
     if query ~= "" then
       keep = HV.SearchText(entry):find(query, 1, true) ~= nil
     end
     if keep then
+      if head and not headed then
+        headed = true
+        found = found + 1
+        out[#out + 1] = head
+      end
       out[#out + 1] = entry
       earned = earned + (entry.m or 0)
       spent = spent + (entry.c or 0) + (entry.p or 0)
@@ -4721,8 +4838,42 @@ function HV.BuildHistoryList(panel, query)
         cols.age = max(cols.age, MeasureWith(panel, sample.ColTime, age) + 2)
       end
     end
+    i = i - 1
   end
+  panel._hmatched = chars and (#out - found) or nil
+  panel._hchars = chars and found or nil
   return earned, spent
+end
+
+-- The note under History: the days it keeps; or, over every character's
+-- History, what the search found and on how many characters, as the note
+-- over a search of every box says (AV.Build).
+function HV.Note(panel)
+  local matched = panel._hmatched
+  if not matched then return ns.Plural("HISTORY_NOTE", HV.Days()) end
+  local note = ns.Plural("MEMORY_MATCHES", matched)
+  if (panel._hchars or 0) > 1 then
+    note = note .. "  " .. ns.Plural("MEMORY_ON_CHARACTERS", panel._hchars)
+  end
+  return note
+end
+
+-- The headings of a search of every character's History: Mail Memory's
+-- rows, as the search of every box has them, pooled by slot apart from
+-- History's own.
+function HV.Head(panel, slot)
+  local heads = panel._hheads
+  local row = heads[slot]
+  if row then return row end
+  row = ns.MailMemory.NewRow(panel.MailListChild)
+  row:SetHeight(COMPACT_ROW_HEIGHT)
+  heads[slot] = row
+  return row
+end
+
+function HV.HideHeads(panel, from)
+  local heads = panel._hheads
+  for i = from or 1, #heads do heads[i]:Hide() end
 end
 
 function HV.UpdateHistoryRows(panel)
@@ -4739,24 +4890,38 @@ function HV.UpdateHistoryRows(panel)
   local pool = panel._hrows
   local now = time()
   local style = HV.AgeStyle()
-  local used = 0
+  local used, heads = 0, 0
   for i = first, last do
-    used = used + 1
-    local row = pool[used]
-    if not row then
-      row = HV.BuildHistoryRow(panel)
-      pool[used] = row
-    end
+    local entry = list[i]
     local y = -((i - 1) * stride)
+    local row
+    if entry.header then
+      -- A character's heading, over every character's History: not a
+      -- button, since History has no view of another character's own.
+      heads = heads + 1
+      row = HV.Head(panel, heads)
+    else
+      used = used + 1
+      row = pool[used]
+      if not row then
+        row = HV.BuildHistoryRow(panel)
+        pool[used] = row
+      end
+    end
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
     row:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
-    HV.BindHistoryRow(panel, row, list[i], i, now, style)
+    if entry.header then
+      ns.MailMemory.FillRow(row, entry, now, nil, i, nil, entry.realm)
+    else
+      HV.BindHistoryRow(panel, row, entry, i, now, style)
+    end
   end
   for i = used + 1, #pool do
     pool[i].entry = nil
     pool[i]:Hide()
   end
+  HV.HideHeads(panel, heads + 1)
 end
 
 -- Whether the read mail is folded away under its divider: the player's own
@@ -4856,6 +5021,7 @@ local function UpdateVisibleRows(panel)
       panel._hrows[i].entry = nil
       panel._hrows[i]:Hide()
     end
+    HV.HideHeads(panel)
   end
   local compact, height, stride = RowMetrics()
   -- The stride this pass laid the list out at. Read by CT.ApplyRowLayout, which
@@ -5292,7 +5458,7 @@ function CT.RefreshMailList(panel)
     earned, spent = HV.BuildHistoryList(panel, query)
     stride = COMPACT_ROW_HEIGHT + ROW_GAP
     listed = #panel._history
-    panel.HistoryNote:SetText(ns.Plural("HISTORY_NOTE", HV.Days()))
+    panel.HistoryNote:SetText(HV.Note(panel))
   end
   -- Another character's box, or every box's matches: that list instead.
   local away = AV.Active(panel)
@@ -8890,11 +9056,15 @@ function SetViewMode(panel, id)
   -- built here.
   local perf = ns.Perf
   local perfAt = perf and perf.visit and perf.Mark()
+  local crossed = (panel.viewMode == VIEW_HISTORY) ~= (id == VIEW_HISTORY)
   panel.viewMode = id
   -- A selection was made over one view's rows; the next view lists others.
   ClearSelection(panel)
   -- The stuck filter is about the inbox.
   if id ~= VIEW_COLLECT then panel._stuckOnly = false end
+  -- The search finds mail on the inbox and entries on History: into History
+  -- or out of it, what was typed was asked of the other list.
+  if crossed then AV.ResetSearch(panel) end
 
   RV.ApplyFooter(panel)
 
@@ -9195,6 +9365,7 @@ function CT.Build(parent)
   -- The history view: its listed entries, row pool and columns.
   panel._history = {}
   panel._hrows = {}
+  panel._hheads = {}
   panel._hcols = {}
   -- Another character's box: its row pool (Mail Memory's rows).
   panel._avPool = {}
