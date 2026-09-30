@@ -13,7 +13,7 @@ but the paste.
 | | |
 |---|---|
 | Name | **Postbox — Modern Mailbox & Mail Manager** |
-| Slug | `postbox` |
+| Slug | `postboxmail` (NOT `postbox`: that is another author's addon, project 1680332) |
 | Category | **Mail** (secondaries: Map & Minimap, Auction & Economy) |
 | Licence | **GNU General Public License version 3 (GPLv3)** |
 | Game versions | Retail **12.0.7** and **12.1.x** only — no Classic flavours |
