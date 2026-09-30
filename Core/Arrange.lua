@@ -102,8 +102,8 @@ AR.rowHover = nil
 AR.selKind = nil
 AR.selId = nil
 AR.moving = nil
--- Whether the list shows sample mail (Preview mail, in the overview): off
--- whenever the mode opens, and switched off as it ends.
+-- Whether the list shows sample mail (Test mail, beside the overview's
+-- title): off whenever the mode opens, and switched off as it ends.
 AR.preview = false
 
 -------------------------------------------------------------
@@ -4010,7 +4010,12 @@ end
 local INSP = {
   W = 208, PAD = 11, TOP = 10, BOTTOM = 11, DOCK = 8,
   CLOSE = 18,                 -- the cross's square, beside the title's line
+  CLOSE_IN = 5,               -- how far the cross stands into the right pad
   HEAD_GAP = 6,               -- the title to what follows it
+  -- Test mail beside the overview's title: its height, the room its eye
+  -- takes before the words and the room after them, the gap to the cross,
+  -- and the least room kept between it and the title.
+  TEST_H = 18, TEST_LEAD = 20, TEST_TAIL = 7, TEST_GAP = 2, TEST_CLEAR = 8,
   ROW_GAP = 8,                -- a text to the switch and Move under it
   ROW_WRAP = 6,               -- the switch to Move, where one row is too narrow
   SWITCH_H = 20, SWITCH_LEAD = 24, SWITCH_TAIL = 8,
@@ -4379,16 +4384,12 @@ end
 
 -- The eye switch: open and "Shown", or crossed and "Hidden". Its words
 -- rise to white and its ring to a lighter grey while shown, and both go
--- white when pointed at. Held (`locked`: Preview mail in the preview
--- window, which has no mail of its own), it shows its state in the greys
--- the Icon card's switches take where they do not apply, and nothing
--- lights it.
+-- white when pointed at.
 local function PaintSwitch(sw)
   local spec = PLATE.switch
-  local on, locked = sw.on, sw.locked
-  local hover = sw.hover and not locked
-  TintPlate(sw, hover and 0.17 or spec.fill, locked and PLATE.nudge.off or (hover and spec.hover or (on and spec.on or spec.ring)))
-  local eye = locked and 0.4 or (hover and 1 or 0.84)
+  local on, hover = sw.on, sw.hover
+  TintPlate(sw, hover and 0.17 or spec.fill, hover and spec.hover or (on and spec.on or spec.ring))
+  local eye = hover and 1 or 0.84
   if sw.Eye then
     sw.Eye:SetShown(on and true or false)
     Grey(sw.Eye, eye)
@@ -4397,7 +4398,68 @@ local function PaintSwitch(sw)
     sw.EyeOff:SetShown(not on)
     Grey(sw.EyeOff, eye)
   end
-  Grey(sw.Label, locked and 0.44 or ((on or hover) and 1 or 0.74))
+  Grey(sw.Label, (on or hover) and 1 or 0.74)
+end
+
+-- Test mail, beside the overview's title: off, the switch's greys and its
+-- crossed eye; on, its eye open and its ring in the accent's mark tone and
+-- its words in the accent, so the lit state reads in colour and in shape
+-- alike; pointed at, a lighter fill. Held (`locked`: the preview window,
+-- which has no mail of its own), it is on in the greys the Icon card's
+-- switches take where they do not apply, and nothing lights it. On AR.Test,
+-- not as locals: the file's chunk keeps its names for what needs them.
+AR.Test = {}
+
+function AR.Test.Paint(b)
+  local spec, T = PLATE.switch, Th()
+  local on, locked = b.on, b.locked
+  local hover = b.hover and not locked
+  if on and not locked then
+    TintPlate(b, hover and 0.2 or 0.17, spec.on)
+    local r, g, bl = T.GetAccentTone("mark")
+    AR.TintEdges(b.Ring, r, g, bl, 1)
+    if b.Eye then b.Eye:SetVertexColor(r, g, bl, 1) end
+    T.SetColor(b.Label, "accent")
+  else
+    TintPlate(b, hover and 0.17 or spec.fill, locked and PLATE.nudge.off or (hover and spec.hover or spec.ring))
+    local eye = locked and 0.4 or (hover and 1 or 0.84)
+    if b.Eye then Grey(b.Eye, eye) end
+    if b.EyeOff then Grey(b.EyeOff, eye) end
+    Grey(b.Label, locked and 0.44 or (hover and 1 or 0.74))
+  end
+  if b.Eye then b.Eye:SetShown(on and true or false) end
+  if b.EyeOff then b.EyeOff:SetShown(not on) end
+end
+
+-- What it does, over the card as the cross's tooltip is: the sample mail
+-- in the list's place, none of it collectable; held, that there is no
+-- mailbox for it to be anything else.
+function AR.Test.Tip(b)
+  AR.InspTip(b)
+  GameTooltip:SetText(L()["ARRANGE_PREVIEW"])
+  GameTooltip:AddLine(L()[b.locked and "ARRANGE_PREVIEW_AWAY" or "ARRANGE_PREVIEW_NOTE"], 1, 1, 1, true)
+  GameTooltip:Show()
+end
+
+function AR.Test.Enter(self)
+  self.hover = true
+  AR.Test.Paint(self)
+  AR.Test.Tip(self)
+end
+
+function AR.Test.Leave(self)
+  self.hover = false
+  AR.Test.Paint(self)
+  GameTooltip:Hide()
+end
+
+function AR.Test.Click(self)
+  if self.locked or not AR.host then return end
+  local on = not AR.preview
+  AR.SetPreview(on)
+  PlayToggle(on)
+  AR.Inspect()
+  if GameTooltip:IsOwned(self) then AR.Test.Tip(self) end
 end
 
 local function SwitchEnter(self)
@@ -4414,11 +4476,7 @@ local function SwitchClick(self)
   local host = AR.host
   if not host then return end
   local on = not self.on
-  if AR.selKind == nil then
-    if self.locked then return end
-    AR.SetPreview(on)
-    PlayToggle(on)
-  elseif AR.selKind == "column" then
+  if AR.selKind == "column" then
     AR.ShowColumn(AR.selId, on)
     PlayToggle(on)
   elseif AR.selKind == "block" and host.SetBlockShown then
@@ -4528,7 +4586,7 @@ local function LayoutClick(self)
   AR.SetRowPacking(self.mode)
 end
 
--- Preview mail switched from the overview: the host lists its sample set
+-- Test mail switched from the overview: the host lists its sample set
 -- in the list's place, or the list as it was (host.Preview). Only where
 -- the host can.
 function AR.SetPreview(on)
@@ -5061,8 +5119,6 @@ function AR.BuildInspector()
   insp.Where = Paragraph(art, "secondary", "note", 0.55)
   -- Why Row layout is greyed over two-line rows (PutLayout).
   insp.LayoutNote = Paragraph(art, "secondary", "note", 0.55)
-  -- What the list is while Preview mail is on (PutPreview).
-  insp.PreviewNote = Paragraph(art, "secondary", "note", 0.55)
   -- A note that begins with the hatch the rows draw (PutSwatchNote): the
   -- sample where its first line begins, the words after it.
   insp.SwatchNote = Paragraph(art, "secondary", "note", 0.66)
@@ -5104,6 +5160,25 @@ function AR.BuildInspector()
   close:SetScript("OnLeave", CloseLeave)
   close:SetScript("OnClick", CloseClick)
   insp.Close = close
+
+  -- Test mail, on the title's line left of the cross, following it wherever
+  -- the card is filled (PutTest).
+  local test = InspPlate(insp, "Button", true)
+  test:SetHeight(P.TEST_H)
+  test:SetPoint("RIGHT", close, "LEFT", -P.TEST_GAP, 0)
+  test.hover, test.on = false, false
+  test.Eye = T.Glyph and T.Glyph(test, "eye", 8, "ARTWORK") or nil
+  test.EyeOff = T.Glyph and T.Glyph(test, "eye-off", 8, "ARTWORK") or nil
+  if test.Eye then test.Eye:SetPoint("CENTER", test, "LEFT", P.TEST_LEAD / 2, 0) end
+  if test.EyeOff then test.EyeOff:SetPoint("CENTER", test, "LEFT", P.TEST_LEAD / 2, 0) end
+  test.Label = Text(test, "bodySmall", "control")
+  test.Label:SetPoint("LEFT", test, "LEFT", P.TEST_LEAD, 0)
+  test.Label:SetWordWrap(false)
+  test:SetScript("OnEnter", AR.Test.Enter)
+  test:SetScript("OnLeave", AR.Test.Leave)
+  test:SetScript("OnClick", AR.Test.Click)
+  test:Hide()
+  insp.Test = test
 
   local sw = InspPlate(insp, "Button", true)
   sw:SetHeight(P.SWITCH_H)
@@ -5233,11 +5308,16 @@ local function FitWidth(insp)
   local key = Measured(m.kicker, L()["ARRANGE_ESC_KEY"], false)
   local finish = math.max(Measured(m.note, L()["ARRANGE_ESC_FINISH"], false),
     Measured(m.note, L()["ARRANGE_ESC_CANCEL"], false))
-  if reset > 0 and key > 0 and finish > 0 then
+  -- The overview's head: its title, Test mail and the cross on one line.
+  local title = Measured(insp.Title, L()["ARRANGE_TITLE"], false)
+  local test = Measured(m.control, L()["ARRANGE_PREVIEW"], false)
+  if reset > 0 and key > 0 and finish > 0 and title > 0 and test > 0 then
     fit.path, fit.size, fit.flags, fit.scale = path, size, flags, scale
   end
   local need = reset + P.FOOT_CLEAR + key + 2 * P.KEY_PAD + P.KEY_GAP + finish + 2 * P.PAD
-  local w = math.min(math.max(P.BASE_W, need), P.MAX_W)
+  local head = P.PAD + title + P.TEST_CLEAR + P.TEST_LEAD + test + P.TEST_TAIL + P.TEST_GAP
+    + P.CLOSE + P.PAD - P.CLOSE_IN
+  local w = math.min(math.max(P.BASE_W, need, head), P.MAX_W)
   if w == P.W then return false end
   P.W, P.INNER = w, w - 2 * P.PAD
   insp:SetWidth(w)
@@ -5430,7 +5510,6 @@ local function PutSwitch(on, y)
   local text = L()[on and "ARRANGE_SHOWN" or "ARRANGE_HIDDEN_STATE"]
   local w = P.SWITCH_LEAD + Measured(insp.Measure.control, text, false) + P.SWITCH_TAIL
   sw.on = on and true or false
-  sw.locked = nil
   sw.Label:SetText(text)
   sw:SetWidth(w)
   At(sw, P.PAD, y)
@@ -5467,34 +5546,28 @@ local function PutLayout(y)
   return y
 end
 
--- Preview mail, under Row layout in the overview, where the host can list
--- samples (host.Preview): the inspector's switch, its eye open while the
--- list shows sample mail, and then a quiet line under it saying so -- none
--- of it can be collected, and the player's own mail comes back. Where the
--- host has no mail of its own (host.PreviewLocked: the preview window, away
--- from a mailbox) the switch is held on, and the line says that instead.
--- Answers the y under it.
-local function PutPreview(host, y)
-  if not host.Preview then return y end
+-- Test mail, on the overview's title line left of the cross, where the
+-- host can list samples (host.Preview): a compact toggle (AR.Test.Paint),
+-- what it does in its tooltip (AR.Test.Tip). Where the host has no mail of its own
+-- (host.PreviewLocked: the preview window, away from a mailbox) it is held
+-- on. Answers the room its line leaves the title, from `room`, the room
+-- beside the cross alone.
+local function PutTest(host, room)
   local insp, P = AR._insp, INSP
-  local sw = insp.Switch
+  local test = insp.Test
+  if not (test and host.Preview) then return room end
   local text = L()["ARRANGE_PREVIEW"]
-  local locked = host.PreviewLocked and host.PreviewLocked() and true or nil
-  y = y - P.ROW_GAP
-  sw.on = AR.preview and true or false
-  sw.locked = locked
-  sw.hover = sw.hover and sw:IsMouseOver() or false
-  sw.Label:SetText(text)
-  sw:SetWidth(math.min(P.SWITCH_LEAD + Measured(insp.Measure.control, text, false) + P.SWITCH_TAIL, P.INNER))
-  At(sw, P.PAD, y)
-  PaintSwitch(sw)
-  sw:Show()
-  y = y - P.SWITCH_H
-  if AR.preview then
-    y = PutText(insp.PreviewNote, L()[locked and "ARRANGE_PREVIEW_AWAY" or "ARRANGE_PREVIEW_NOTE"],
-      y - P.ROW_WRAP + P.LEAD.note, "note")
-  end
-  return y
+  local w = P.TEST_LEAD + Measured(insp.Measure.control, text, false) + P.TEST_TAIL
+  test.on = AR.preview and true or false
+  test.locked = host.PreviewLocked and host.PreviewLocked() and true or nil
+  test.hover = test.hover and test:IsMouseOver() or false
+  test.Label:SetText(text)
+  test:SetWidth(w)
+  AR.Test.Paint(test)
+  test:Show()
+  -- `room` keeps CLOSE_IN clear before the cross; the toggle keeps its own
+  -- gap to the cross and TEST_CLEAR to the title.
+  return room + P.CLOSE_IN - P.TEST_GAP - w - P.TEST_CLEAR
 end
 
 -- Move and its two arrows at the row's right: left and right for a column,
@@ -5758,7 +5831,6 @@ local function FillOverview(host, y)
   y = PutLists(host, y)
   y = AR.PutRows(y, 3)
   y = PutLayout(y)
-  y = PutPreview(host, y)
   -- What is hidden: the columns, then the host's own -- counted first, so
   -- the kicker says whether a click shows them.
   local layout = AR.Layout()
@@ -6193,7 +6265,7 @@ local function HideParts(insp)
   insp.Why:Hide()
   insp.Where:Hide()
   insp.LayoutNote:Hide()
-  insp.PreviewNote:Hide()
+  insp.Test:Hide()
   insp.SwatchNote:Hide()
   if insp.Swatch then
     insp.Swatch:Hide()
@@ -6251,15 +6323,19 @@ function AR.Inspect()
   local back = AR.selKind ~= nil and insp.Close.Back ~= nil
   insp.Close.Text:SetShown(not back)
   if insp.Close.Back then insp.Close.Back:SetShown(back) end
-  T.FitText(insp.Title, P.INNER - P.CLOSE, title, nil)
-  -- The title's line box, and the cross centred on its line.
+  -- The title's line box, measured whole, and the title fitted to what the
+  -- cross, and on the overview Test mail, leave it.
   local titleH = Measured(insp.Title, title, true)
+  local room = P.INNER - P.CLOSE
+  if kind == nil then room = PutTest(host, room) end
+  T.FitText(insp.Title, room, title, nil)
+  -- The cross centred on the title's line.
   local box = math.max(titleH + 2 * P.LEAD.title, P.CLOSE)
   local closeY = -math.floor(P.TOP + P.LEAD.title + (titleH - P.CLOSE) / 2 + 0.5)
   if insp.closeY ~= closeY then
     insp.closeY = closeY
     insp.Close:ClearAllPoints()
-    insp.Close:SetPoint("TOPRIGHT", insp, "TOPRIGHT", -(P.PAD - 5), closeY)
+    insp.Close:SetPoint("TOPRIGHT", insp, "TOPRIGHT", -(P.PAD - P.CLOSE_IN), closeY)
   end
   local y = -P.TOP - box - P.HEAD_GAP
   if kind == "column" then
@@ -6330,8 +6406,8 @@ end
 -- ButtonBlock(id) (the block the button stands in, for the link up).
 --
 -- A host with no mail of its own to show (the Mail tab in the preview
--- window, away from a mailbox) answers PreviewLocked(): Preview mail is on
--- for the whole mode and its switch is held. A host may answer Left(): the
+-- window, away from a mailbox) answers PreviewLocked(): Test mail is on
+-- for the whole mode and its toggle is held. A host may answer Left(): the
 -- mode has ended, called after everything else, for a window that goes with
 -- the mode.
 -------------------------------------------------------------

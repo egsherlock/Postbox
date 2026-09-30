@@ -2862,8 +2862,9 @@ end
 -- function or anything protected, so it opens, arranges and closes in combat
 -- like the rest of the window (COMBAT_TAINT.md). Its close only hides it; there
 -- is no mailbox to close. It says what it is in words: the title
--- (FRAME_TITLE_PREVIEW), the overview's line under Preview mail held on
--- (Arrange.lua, PutPreview), the Send tab greyed with its reason. A mailbox
+-- (FRAME_TITLE_PREVIEW), Test mail held on beside the overview's title with
+-- its tooltip saying why (Arrange.lua, PutTest), the Send tab greyed with its
+-- reason. A mailbox
 -- opening meanwhile ends it first (OnMailShow), and the mailbox then opens as
 -- it always does.
 -------------------------------------------------------------
