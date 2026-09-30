@@ -5,9 +5,9 @@ local _, ns = ...
 -- ---------------------------------------------------------------------
 -- What an update brings with it, in two small pieces.
 --
--- What's new: a small window with each release's highlights -- the
--- changelog's own groups, a line to a highlight, in the player's language
--- -- opened from the notice below, from the options' footer (What's new,
+-- What's new?: a small window with the last three releases' highlights --
+-- the changelog's own groups, a line to a highlight, in the player's
+-- language -- opened from the notice below, from the options' footer (What's new,
 -- and the version beside it) and by /postbox whatsnew.
 --
 -- The notice: when an update has put the settings back on their defaults
@@ -36,17 +36,21 @@ local NOTICE = { key = "1.50", text = "NOTICE_150" }
 -------------------------------------------------------------
 -- 1. The releases
 --
--- Newest first: each release is its version and its groups, each group
--- the locale keys of its heading and of its lines (one string, a line to
--- each "\n"). The changelog's own groups, condensed to a line a highlight
--- (.dev/RELEASING.md: the in-game What's new is the same release,
--- condensed and translated). The next release adds its own at the top; an
--- older one stays, or goes when the page grows long. Made when the window
--- is first built, not at load.
+-- The newest KEEP releases, newest first: each is its version and its
+-- groups, each group the locale keys of its heading and of its lines (one
+-- string, a line to each "\n"). The changelog's own groups, condensed to a
+-- line a highlight (.dev/RELEASING.md: the in-game What's new is the same
+-- release, condensed and translated); a release with the plain shape shares
+-- the New, Improved and Fixed headings. The next release adds its own at
+-- the top, and the one that falls past KEEP goes, with its WHATSNEW_ keys:
+-- nothing shows them any more. Made when the window is first built, not at
+-- load.
 -------------------------------------------------------------
+local KEEP = 3
+
 local function Releases()
   return {
-    { version = "1.50", groups = {
+    { version = "1.50.0", groups = {
       { "WHATSNEW_150_ARRANGE", "WHATSNEW_150_ARRANGE_LINES" },
       { "WHATSNEW_150_LOOKS", "WHATSNEW_150_LOOKS_LINES" },
       { "WHATSNEW_150_MAILBOX", "WHATSNEW_150_MAILBOX_LINES" },
@@ -55,7 +59,16 @@ local function Releases()
       { "WHATSNEW_150_OPTIONS", "WHATSNEW_150_OPTIONS_LINES" },
       { "WHATSNEW_150_UI", "WHATSNEW_150_UI_LINES" },
       { "WHATSNEW_150_LIGHTER", "WHATSNEW_150_LIGHTER_LINES" },
-      { "WHATSNEW_150_FIXED", "WHATSNEW_150_FIXED_LINES" },
+      { "WHATSNEW_FIXED", "WHATSNEW_150_FIXED_LINES" },
+    } },
+    { version = "1.40.1", groups = {
+      { "WHATSNEW_IMPROVED", "WHATSNEW_1401_IMPROVED_LINES" },
+      { "WHATSNEW_FIXED", "WHATSNEW_1401_FIXED_LINES" },
+    } },
+    { version = "1.40.0", groups = {
+      { "WHATSNEW_NEW", "WHATSNEW_1400_NEW_LINES" },
+      { "WHATSNEW_IMPROVED", "WHATSNEW_1400_IMPROVED_LINES" },
+      { "WHATSNEW_FIXED", "WHATSNEW_1400_FIXED_LINES" },
     } },
   }
 end
@@ -139,7 +152,7 @@ local function BuildWindow()
   -- group's heading and its lines, each line a bullet and its words.
   local items = {}
   local releases = Releases()
-  for r = 1, #releases do
+  for r = 1, min(KEEP, #releases) do
     local release = releases[r]
     local title = T.CreateText(page, "title")
     title:SetJustifyH("LEFT")
