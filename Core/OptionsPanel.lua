@@ -570,6 +570,9 @@ local S = {
   cells = {},     -- every row, or half-row, the pointer can rest on
   entries = {},   -- every title and text the inspector can show
   groups = {},    -- the group headings, whose rules are measured
+  pairs = {},     -- the rows of two checkboxes, which come apart to fit
+  cols = {},      -- tab key -> its page's column (Rows.Column)
+  pageH = {},     -- tab key -> its page's height
   refresh = {},   -- run on every open and after a reset
   idle = {},      -- tab key -> what the inspector says at rest
   pages = {},     -- tab key -> its page of the list
@@ -2078,8 +2081,10 @@ do
     CheckSound(on)
   end
 
+  -- A column keeps what it stacks, in order (`items`: a frame and the height
+  -- it takes), so Rows.Reflow can stack it again when a row's height moves.
   function Rows.Column(parent)
-    return { frame = parent, y = -LIST_PAD, first = true, cells = {} }
+    return { frame = parent, y = -LIST_PAD, top = -LIST_PAD, first = true, cells = {}, items = {} }
   end
 
   -- A block of rows in `col` that greys as one: what a feature's switch
@@ -2088,12 +2093,16 @@ do
     local frame = CreateFrame("Frame", nil, col.frame)
     frame:SetPoint("TOPLEFT", col.frame, "TOPLEFT", 0, col.y)
     frame:SetPoint("TOPRIGHT", col.frame, "TOPRIGHT", 0, col.y)
-    return { frame = frame, y = 0, first = col.first, cells = {}, parent = col }
+    local block = { frame = frame, y = 0, top = 0, first = col.first, cells = {}, items = {}, parent = col }
+    block.item = { frame = frame, h = 0, block = block }
+    col.items[#col.items + 1] = block.item
+    return block
   end
 
   function Rows.EndBlock(block)
     local col = block.parent
     block.frame:SetHeight(math.max(1, -block.y))
+    block.item.h = -block.y
     col.y = col.y + block.y
     col.first = block.first
     return block
@@ -2113,9 +2122,34 @@ do
       line:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
       ns.Theme.FillChrome(line, HAIR_A)
     end
+    row.item = { frame = row, h = height }
+    col.items[#col.items + 1] = row.item
     col.y = col.y - height
     col.first = false
     return row
+  end
+
+  -- Stacks `col` again, top down, each frame at the height its item now
+  -- takes, a block from its own rows; a hidden row takes none, as the
+  -- border size's row stands aside (State.BorderSize). Answers the height
+  -- used. Run only on a page a pair has changed on (Rows.FitPairs), so a
+  -- page nothing moves on is never touched.
+  function Rows.Reflow(col)
+    local y = col.top
+    local items = col.items
+    for i = 1, #items do
+      local item = items[i]
+      local f = item.frame
+      if item.block then
+        item.h = Rows.Reflow(item.block)
+        f:SetHeight(math.max(1, item.h))
+      end
+      f:ClearAllPoints()
+      f:SetPoint("TOPLEFT", col.frame, "TOPLEFT", 0, y)
+      f:SetPoint("TOPRIGHT", col.frame, "TOPRIGHT", 0, y)
+      if f:IsShown() then y = y - item.h end
+    end
+    return col.top - y
   end
 
   -- Makes `cell` (a row, or half of one, `width` wide) a place the pointer
@@ -2188,10 +2222,13 @@ do
     return row
   end
 
-  -- Two checkboxes side by side, each a cell of its own.
+  -- Two checkboxes side by side, each a cell of its own -- or, where either
+  -- name will not fit its half (Rows.FitPairs), one under the other, each
+  -- a whole row, under a hairline of its own.
   function Rows.Pair(col, a, b)
     local row = Rows.New(col, ROW_H)
     local half = ROW_W / 2
+    local cells = {}
     for i = 1, 2 do
       local spec = (i == 1) and a or b
       local cell = CreateFrame("Frame", nil, row)
@@ -2199,13 +2236,81 @@ do
       cell:SetSize(half, ROW_H)
       Rows.Cell(col, cell, half, spec.title, spec.text)
       AddCheck(cell, spec)
+      cells[i] = cell
     end
     local mid = row:CreateTexture(nil, "BORDER")
     mid:SetWidth(1)
     mid:SetPoint("TOPLEFT", row, "TOPLEFT", half, 0)
     mid:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", half, 0)
     ns.Theme.FillChrome(mid, HAIR_A)
+    local line = cells[2]:CreateTexture(nil, "BORDER")
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT", cells[2], "TOPLEFT", 0, 0)
+    line:SetPoint("TOPRIGHT", cells[2], "TOPRIGHT", 0, 0)
+    ns.Theme.FillChrome(line, HAIR_A)
+    line:Hide()
+    row.pair = { cells[1], cells[2], mid, line }
+    row.unpaired = false
+    local page = col
+    while page.parent do page = page.parent end
+    row.page = page
+    S.pairs[#S.pairs + 1] = row
     return row
+  end
+
+  -- A pair side by side, or (`apart`) one under the other.
+  local function LayPair(row, apart)
+    local p = row.pair
+    local w = apart and ROW_W or ROW_W / 2
+    p[1]:SetSize(w, ROW_H)
+    p[1].w = w
+    p[2]:ClearAllPoints()
+    p[2]:SetPoint("TOPLEFT", row, "TOPLEFT", apart and 0 or w, apart and -ROW_H or 0)
+    p[2]:SetSize(w, ROW_H)
+    p[2].w = w
+    p[3]:SetShown(not apart)
+    p[4]:SetShown(apart)
+    local h = apart and 2 * ROW_H or ROW_H
+    row:SetHeight(h)
+    row.item.h = h
+    row.unpaired = apart
+  end
+
+  -- Measured on every open, before the names are fitted: a pair stays side
+  -- by side while both names fit their halves, the normal case, and comes
+  -- apart only where one will not -- a long translation, a wide host font --
+  -- and back together once both fit again. Its page is stacked again, and
+  -- the list's height follows (Layout). Answers whether anything moved.
+  function Rows.FitPairs()
+    local pairs_ = S.pairs
+    local room = ROW_W / 2 - NAME_X - CONTROL_R - CHECK_H - NAME_GAP
+    local moved
+    for i = 1, #pairs_ do
+      local row = pairs_[i]
+      local apart = false
+      for j = 1, 2 do
+        local cell = row.pair[j]
+        cell.Name:SetText(cell.nameText)
+        if TextW(cell.Name) > room then apart = true end
+      end
+      if apart ~= row.unpaired then
+        LayPair(row, apart)
+        moved = moved or {}
+        moved[row.page] = true
+      end
+    end
+    if not moved then return false end
+    local need = 0
+    for key, page in pairs(S.pages) do
+      local col = S.cols[key]
+      if moved[col] then
+        S.pageH[key] = Rows.Reflow(col) + 2 * LIST_PAD
+        page:SetHeight(S.pageH[key])
+      end
+      if S.pageH[key] + 2 > need then need = S.pageH[key] + 2 end
+    end
+    S.listNeed = need
+    return true
   end
 
   -- Reflects the stored value in the toggle's caption.
@@ -2315,6 +2420,7 @@ do
     text:SetPoint("BOTTOMLEFT", head, "BOTTOMLEFT", NAME_X, 5)
     text:SetWordWrap(false)
     text:SetText(title)
+    col.items[#col.items + 1] = { frame = head, h = GROUP_H }
     local rule = head:CreateTexture(nil, "ARTWORK")
     rule:SetHeight(1)
     rule:SetPoint("LEFT", text, "RIGHT", NAME_GAP, -1)
@@ -2374,11 +2480,13 @@ do
 
   -- Measured on every open, after the skins have had their say about
   -- fonts, and in whatever language the client speaks. The normal case
-  -- keeps its look: a name that would reach the dropdown beside it narrows
+  -- keeps its look: a pair whose name will not fit its half comes apart
+  -- (Rows.FitPairs); a name that would reach the dropdown beside it narrows
   -- that toggle, down to DD_MIN_W, and only past that is the name cut short
   -- -- the inspector's title still carries it whole.
   function Rows.Fit()
     local T = ns.Theme
+    Rows.FitPairs()
     local cells = S.cells
     for i = 1, #cells do
       local cell = cells[i]
@@ -4135,7 +4243,7 @@ local function Build()
     Pages[key](col)
     local h = -col.y + LIST_PAD
     page:SetHeight(h)
-    S.pages[key] = page
+    S.pages[key], S.cols[key], S.pageH[key] = page, col, h
     if h + 2 > need then need = h + 2 end
   end
   S.listNeed = need
