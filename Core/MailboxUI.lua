@@ -2563,7 +2563,9 @@ local function BuildOptionsButton(frame, theme)
     if not GameTooltip then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetText(L("OPTIONS_TITLE"))
-    GameTooltip:AddLine(L("OPTIONS_COG_TOOLTIP"), 1, 1, 1, true)
+    -- The gesture, in the grey the arrange mark's is: the title already
+    -- says what opens.
+    GameTooltip:AddLine(L("OPTIONS_COG_TOOLTIP"), 0.7, 0.7, 0.7, true)
     GameTooltip:Show()
   end)
   button:SetScript("OnLeave", function()

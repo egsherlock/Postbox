@@ -2258,13 +2258,14 @@ end
 -- Row layout greys while Larger mail rows are on: two-line rows always
 -- close up their second line, so the choice has nothing to arrange there.
 -- Its inspector says so under what it does.
+-- Row layout stays live with Larger mail rows on: History, Mail Memory and
+-- another character's box are one line whatever the Mail tab's rows are.
+-- Its inspector then says the Mail tab's own rows are not among them.
 function State.RowLayout()
   local cell = S.lanesCell
   if not cell then return end
   local larger = not ns.MailboxUI.GetOption("compactRows")
-  Rows.SetEnabled(cell, not larger)
   cell.entry = (larger and cell.largeEntry or cell.plainEntry) or cell.entry
-  if larger then ns.Core.UI.Dropdown.CloseAll() end
 end
 
 function State.Memory()
@@ -2452,10 +2453,11 @@ function Pages.mail(col)
     end,
   })
   S.lanesCell = lanes
-  -- While Larger mail rows are on, Row layout greys and its inspector says
-  -- why (State.RowLayout): a second entry, measured with the rest.
+  -- While Larger mail rows are on, Row layout's inspector says which lists
+  -- it still governs (State.RowLayout): a second entry, measured with the
+  -- rest.
   lanes.plainEntry = lanes.entry
-  lanes.largeEntry = Entry(L["OPT_ROW_LAYOUT_TITLE"], L["OPT_ROW_LAYOUT_DESC"] .. "\n\n" .. L["ARRANGE_LAYOUT_LARGER"])
+  lanes.largeEntry = Entry(L["OPT_ROW_LAYOUT_TITLE"], L["OPT_ROW_LAYOUT_DESC"] .. "\n\n" .. L["OPT_ROW_LAYOUT_LARGER"])
   local function PaintWash() Ctx.PaintSampleWash() end
   lanes:HookScript("OnEnter", PaintWash)
   lanes:HookScript("OnLeave", PaintWash)
@@ -2506,7 +2508,7 @@ function Pages.mail(col)
   S.arrangeCell, S.arrangeOn = arrange, arrange.entry
   -- Out of reach, why leads: it is the tooltip, and the inspector's first
   -- paragraph over what the button does.
-  S.arrangeOff = Entry(L["OPT_ARRANGE_BUTTON"], L["ERR_OPEN_MAILBOX_LOOT"] .. "\n\n" .. L["ARRANGE_TIP"], "arrange")
+  S.arrangeOff = Entry(L["OPT_ARRANGE_BUTTON"], L["OPT_ARRANGE_OFF"] .. "\n\n" .. L["ARRANGE_TIP"], "arrange")
 
   Rows.Group(col, L["OPT_MAILTAB_HEADING"])
   Rows.Check(col, {

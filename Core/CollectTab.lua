@@ -7881,6 +7881,16 @@ function RV.SlotName(panel)
   return Labels().all or "all"
 end
 
+-- What the primary's slot is in each view, for its card in the inspector:
+-- All mail in the inbox, History's note, Done's Delete, and the note under
+-- another character's box.
+function RV.SlotTextKey(panel)
+  if AV.Active(panel) then return "ARRANGE_BLOCK_ALT_DESC" end
+  if panel.viewMode == VIEW_HISTORY then return "ARRANGE_BLOCK_HISTORY_DESC" end
+  if panel.viewMode == VIEW_DONE then return "ARRANGE_BLOCK_DONE_DESC" end
+  return "ARRANGE_BLOCK_ALL_DESC"
+end
+
 -- A block's name, for its tooltip and its card in the inspector.
 function RV.BlockName(panel, id)
   if id == "band" then return L()["ARRANGE_BLOCK_TOTALS"] end
@@ -8910,7 +8920,10 @@ function CT.ArrangeHost(panel)
   function host.ShowHidden(kind, key) RV.ShowHidden(panel, kind, key) end
   function host.BlockPresent(id) return panel._stack ~= nil and panel._stack.y[id] ~= nil end
   function host.BlockName(id) return RV.BlockName(panel, id) end
-  function host.BlockText(id) return L()[RV.BLOCK_TEXT[id] or "ARRANGE_BLOCK_ALL_DESC"] end
+  function host.BlockText(id)
+    if id == "all" then return L()[RV.SlotTextKey(panel)] end
+    return L()[RV.BLOCK_TEXT[id] or "ARRANGE_BLOCK_ALL_DESC"]
+  end
   function host.BlockNote(id)
     if id == "grid" then return L()["ARRANGE_GRID_FOLD_NOTE"] end
     if id == "band" then return L()["ARRANGE_TOTALS_FOLD_NOTE"] end

@@ -843,6 +843,7 @@ local function ToggleTip(button)
   else
     GameTooltip:SetText(L()["ARRANGE_TITLE"])
     GameTooltip:AddLine(ns.Summary(L()["ARRANGE_TIP"]), 1, 1, 1, true)
+    GameTooltip:AddLine(L()["ARRANGE_GESTURE_OPEN"], 0.7, 0.7, 0.7, true)
   end
   GameTooltip:Show()
 end
