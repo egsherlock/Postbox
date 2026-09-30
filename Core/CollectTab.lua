@@ -5419,6 +5419,46 @@ function HV.FormatDate(ymd, style, year)
   return (L()[key]:gsub("{(%a+)}", parts))
 end
 
+-- t -> "YYYYMMDD", the day `t` fell on. Each day's bounds are kept once
+-- found -- its midnight and the next, from the client's own clock, so a day
+-- of 23 or 25 hours is its own length -- and any time between them reads as
+-- that day without asking the clock again: a month of History asked for
+-- its date once per entry on every refresh. The walk is in time order, so
+-- the day used last answers nearly every entry, and the few others are
+-- searched. Bounded: past HV.DAY_MAX days they are let go and found again.
+HV.dayLo, HV.dayHi, HV.dayYmd, HV.dayN, HV.dayAt = {}, {}, {}, 0, 0
+HV.DAY_MAX = 64
+HV.dayT = {}
+function HV.Ymd(t)
+  local lo, hi = HV.dayLo, HV.dayHi
+  local at = HV.dayAt
+  if at > 0 and t >= lo[at] and t < hi[at] then return HV.dayYmd[at] end
+  for i = 1, HV.dayN do
+    if t >= lo[i] and t < hi[i] then
+      HV.dayAt = i
+      return HV.dayYmd[i]
+    end
+  end
+  local ymd = date("%Y%m%d", t)
+  local n = tonumber(ymd)
+  if not n or type(time) ~= "function" then return ymd end
+  -- Midnight, and the next: the day's fields set whole before each ask, as
+  -- a client may write its answer back into them.
+  local day = HV.dayT
+  local y, m, d = floor(n / 10000), floor(n / 100) % 100, n % 100
+  day.year, day.month, day.day, day.hour, day.min, day.sec, day.isdst = y, m, d, 0, 0, 0, nil
+  local from = time(day)
+  day.year, day.month, day.day, day.hour, day.min, day.sec, day.isdst = y, m, d + 1, 0, 0, 0, nil
+  local to = time(day)
+  -- Kept only when it holds `t`, as a day must.
+  if not (from and to and from <= t and t < to) then return ymd end
+  if HV.dayN >= HV.DAY_MAX then HV.dayN = 0 end
+  at = HV.dayN + 1
+  HV.dayN, HV.dayAt = at, at
+  lo[at], hi[at], HV.dayYmd[at] = from, to, ymd
+  return ymd
+end
+
 -- t, style, now -> the day `t` fell on, as History writes it (above).
 function HV.DateText(t, style, now)
   if now ~= HV.dateNow then
@@ -5430,11 +5470,14 @@ function HV.DateText(t, style, now)
         for key in pairs(HV.ages[s]) do HV.ages[s][key] = nil end
         HV.agesN[s] = 0
       end
+      -- And the days found: a new year is as good a time as any to find
+      -- them again (a clock set to another zone is otherwise never noticed).
+      HV.dayN, HV.dayAt = 0, 0
     end
   end
   if not HV.DATE_KEYS[style] then style = "date_dm" end
   local cache = HV.ages[style]
-  local ymd = date("%Y%m%d", t)
+  local ymd = HV.Ymd(t)
   local text = cache[ymd]
   if text then return text end
   if HV.agesN[style] >= HV.AGE_MAX then
