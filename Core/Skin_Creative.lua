@@ -3,7 +3,8 @@ local _, ns = ...
 -- =====================================================================
 -- Postbox :: the creative window styles (the shared foundation)
 -- ---------------------------------------------------------------------
--- Pillar Box, Faction, Post Office Counter and Goblin Express: choices in
+-- Pillar Box, Faction, Post Office Counter, Goblin Express, and the two on a
+-- light ground, Letters and Daylight: choices in
 -- the Window style list beside Postbox, Blizzard and the host UI, each a
 -- small table in its own file (Core/Style_*.lua) registered here. The
 -- designs are .dev/design/creative-styles (round 1, notes.md) and its v2
@@ -13,8 +14,9 @@ local _, ns = ...
 -- claims the Postbox style's skin (ns.PostboxSkin) in that style's place and
 -- adds to it: its own palette values for the controls, its own accent, and
 -- an art holder behind every window the skin paints. Rows, text, figures and
--- every state wash stay the Postbox style's, code-drawn on the dark list, so
--- a refresh or a row bind costs exactly what it does there.
+-- every state wash stay the Postbox style's, code-drawn on the dark list (on
+-- the Light mode list, for a style on a light ground), so a refresh or a row
+-- bind costs exactly what it does there.
 --
 -- THE ART HOLDER. A child frame of each window, one level BELOW it, so every
 -- region of the window (its title) and every child (the controls, the cog,
@@ -74,8 +76,15 @@ local floor, max, min = math.floor, math.max, math.min
 --   rivets       { atlas, part, spacing, top, bottom, x, tint }
 --   titleBand    { r, g, b, a }: a band behind the title, faded with the
 --                ground; `bandInset` units from each side
+--   light        true for a light ground (Letters, Daylight): the Postbox
+--                style's Light mode underneath -- Theme.PALETTE_LIGHT with its
+--                light-ground twin of every figure colour, and the 85%
+--                opacity floor -- resolved at the claim, before any window.
+--                `palette.window` is then the sheet the contrast guard reads
+--                accent text and inked colours against
 --   palette      values for the Postbox style's palette (Skin.Palette)
---   plates       Theme palette tokens for the segments and tiles
+--   plates       Theme palette tokens for the segments and tiles (and, on a
+--                light ground, whatever else of the Theme's the style inks)
 --   tabs         Theme.SetPlateTokens tokens for the window tabs
 --   titleColor   the window titles' colour, where white does not read
 --   trim         the colour name (of `colors`) of the keyline a floating card
@@ -669,6 +678,17 @@ local function Activate(def, skin)
   end
   skin.DressSweep = def.DressSweep
   skin.BannerInk = def.BannerInk
+
+  -- A light ground: the Postbox style reads its Mode as Light (its palette,
+  -- the opacity floor, the text shadow), keeps what it paints for a palette
+  -- change as its own claim does, and resolves the palette now, before the
+  -- first window is built. The styles on a dark ground never come here.
+  if def.light then
+    skin.GetMode = function() return "light" end
+    local T = ns.Theme
+    if T and type(T.TrackPaint) == "function" then T.TrackPaint() end
+    if type(skin._ResolveLook) == "function" then skin._ResolveLook() end
+  end
 end
 
 local boot = CreateFrame("Frame")

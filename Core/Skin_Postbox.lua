@@ -706,7 +706,9 @@ local function ResolveLook()
   local r, g, b
   local surface = Skin.GetSurfaceKey()
   if light then
-    r, g, b = src.window[1], src.window[2], src.window[3]
+    -- The Light set's sheet, just copied into P above -- or a light-ground
+    -- creative style's own, which that copy kept.
+    r, g, b = P.window[1], P.window[2], P.window[3]
   else
     r, g, b = SurfaceFor(surface)
   end
