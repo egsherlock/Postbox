@@ -1055,8 +1055,7 @@ do
     bus.Register("MAIL_SHOW", CS._ListenForVisit)
     bus.Register("MAIL_CLOSED", StopListening)
     bus.Register("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", function(_, kind)
-      local enum = type(Enum) == "table" and Enum.PlayerInteractionType or nil
-      if kind == 17 or (enum ~= nil and kind == enum.MailInfo) then StopListening() end
+      if ns.Helpers.IsMailInteraction(kind) then StopListening() end
     end)
 
     -- Membership. Joining or leaving a guild must show at once.

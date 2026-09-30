@@ -266,7 +266,6 @@ local judgedIn = {}       -- bag -> { guid = true }, the verdicts judged there
 local ArmWatcher          -- () -> nil: hear the bag events until the close
 
 do
-  local MAIL_INTERACTION = 17
   local watcher = CreateFrame("Frame")
   local armed = false
 
@@ -295,8 +294,10 @@ do
   watcher:SetScript("OnEvent", function(_, event, bag)
     if event == "MAIL_CLOSED" then return Disarm() end
     if event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
-      local enum = type(Enum) == "table" and Enum.PlayerInteractionType or nil
-      if bag == MAIL_INTERACTION or (enum ~= nil and bag == enum.MailInfo) then Disarm() end
+      -- The payload is the interaction's kind (Core/Helpers.lua, which
+      -- loads after this file and is there by the time a mailbox closes).
+      local H = ns.Helpers
+      if H and H.IsMailInteraction(bag) then Disarm() end
       return
     end
     if event == "BAG_UPDATE" then
