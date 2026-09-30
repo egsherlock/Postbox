@@ -850,6 +850,8 @@ local function ShowTabCounts()
   local UI = ns.MailboxUI
   -- Default on when the option plumbing has not loaded yet.
   if not UI or type(UI.GetOption) ~= "function" then return true end
+  -- The preview window (MailboxUI, 5c) has no inbox to count.
+  if UI._state and UI._state.preview then return false end
   return UI.GetOption("showTabCounts") and true or false
 end
 
@@ -10167,6 +10169,9 @@ function CT.ArrangeHost(panel)
     panel._preview = nil
     panel._pvList, panel._pvDone, panel._pvTail = nil, nil, nil
     CT.PreviewRelease()
+    -- The preview window closes with the mode (MailboxUI, 5c): nothing on
+    -- screen needs the list again, and its next show draws it afresh.
+    if host.PreviewLocked() then return end
     CT.RefreshMailList(panel)
     local stride = panel._rowStride or 0
     local offset = 0
@@ -10183,6 +10188,16 @@ function CT.ArrangeHost(panel)
     scroll:SetVerticalScroll(min(offset, maxScroll))
     if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
     if panel:IsShown() then UpdateVisibleRows(panel) end
+  end
+  -- The preview window, away from a mailbox (MailboxUI, 5c): the samples are
+  -- the list for the whole mode, and the window goes with the mode.
+  function host.PreviewLocked()
+    local UI = ns.MailboxUI
+    return UI and UI.IsPreview and UI.IsPreview() or false
+  end
+  function host.Left()
+    local UI = ns.MailboxUI
+    if UI and UI.PreviewModeEnded then UI.PreviewModeEnded() end
   end
   -- Which arrangement the list on screen follows: History's own while
   -- History shows, the mail rows' otherwise (another character's box

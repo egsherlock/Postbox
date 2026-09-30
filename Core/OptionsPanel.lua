@@ -2609,36 +2609,26 @@ function State.Inheritance()
   Tabs.SetSquare("window", S.badgeGreen and "on" or "off")
 end
 
--- The window arranging opens over: the Postbox window at a mailbox, else
--- Mail Memory's window where that is open -- each has the mark in its
--- title bar. Nil when neither is on screen.
+-- The Postbox window's mark, where the window is on screen (at a mailbox,
+-- or already up as the preview); nil otherwise, and arranging then opens
+-- the window's preview (MailboxUI.OpenPreview).
 function State.ArrangeToggle()
   local UI = ns.MailboxUI
   local window = UI and UI._frame
   if window and window:IsShown() and window.ArrangeButton then return window.ArrangeButton end
-  local memory = ns.MailMemory
-  local mwindow = memory and memory._frame
-  if mwindow and mwindow:IsShown() and mwindow.ArrangeButton then return mwindow.ArrangeButton end
   return nil
 end
 
--- The arrange button: live only where there is a window to arrange, and
--- saying why when there is not. Read on every hover, since a mailbox can
--- close under the open panel.
+-- The arrange button is always live: at a mailbox it arranges the Postbox
+-- window, anywhere else that window's preview. Its mark takes the caption's
+-- colour, read on every refresh, since the palette can change under the
+-- open panel.
 function State.Arrange(cell)
   cell = cell or S.arrangeCell
   if not cell then return end
-  local can = State.ArrangeToggle() ~= nil
-  local memory = ns.MailboxUI.GetOption("mailMemory")
-  cell.entry = can and S.arrangeOn or (memory and S.arrangeOff or S.arrangeOffMailbox)
   local btn = cell.button
-  if btn:IsEnabled() ~= can then
-    btn:SetEnabled(can)
-    ns.Theme.SetColor(cell.Name, can and "accent" or "textDisabled")
-  end
   if btn.Mark then
-    local T = ns.Theme
-    local c = T.Colors[can and "textPrimary" or "textDisabled"]
+    local c = ns.Theme.Colors.textPrimary
     Ctx.TintMark(btn.Mark, c[1], c[2], c[3], 1)
   end
 end
@@ -2818,18 +2808,15 @@ function Pages.mail(col)
   -- left's own choices are arranged in the window itself, where the rows
   -- are (Core/Arrange.lua). This is the way in from here: the same one the
   -- mark beside the cog is, a row like the others with its button on the
-  -- right. The inspector names what the row and its button do together.
+  -- right. The inspector names what the row and its button do together,
+  -- and that it works anywhere: away from a mailbox it opens the window's
+  -- preview over sample mail.
   local arrange = Rows.Button(col, {
-    title = L["OPT_ARRANGE_ROW"], text = L["ARRANGE_TIP"], caption = L["OPT_ARRANGE_CAPTION"],
-    onClick = Panel.Arrange, onHover = State.Arrange, mark = true,
+    title = L["OPT_ARRANGE_ROW"], text = L["ARRANGE_TIP"] .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"],
+    caption = L["OPT_ARRANGE_CAPTION"], onClick = Panel.Arrange, onHover = State.Arrange, mark = true,
   })
   arrange.entry.title, arrange.entry.extra = L["OPT_ARRANGE_BUTTON"], "arrange"
-  S.arrangeCell, S.arrangeOn = arrange, arrange.entry
-  -- Out of reach, why leads: it is the tooltip, and the inspector's first
-  -- paragraph over what the button does. Mail Memory's window is a way in
-  -- only while Mail Memory is on.
-  S.arrangeOff = Entry(L["OPT_ARRANGE_BUTTON"], L["OPT_ARRANGE_OFF"] .. "\n\n" .. L["ARRANGE_TIP"], "arrange")
-  S.arrangeOffMailbox = Entry(L["OPT_ARRANGE_BUTTON"], L["OPT_ARRANGE_OFF_MAILBOX"] .. "\n\n" .. L["ARRANGE_TIP"], "arrange")
+  S.arrangeCell = arrange
 
   Rows.Group(col, L["OPT_COLLECTING_HEADING"])
   Rows.Check(col, {
@@ -4084,12 +4071,15 @@ end
 -- Arrange columns and buttons: the arrange mode on the Postbox window, the
 -- way its own mark beside the cog opens it -- which brings the Mail tab
 -- forward first when the Send tab is showing. Called through the mark
--- itself, at click time, so whatever that mark does, this does. The panel
--- steps out of the way of the rows being arranged.
+-- itself, at click time, so whatever that mark does, this does. Away from
+-- a mailbox, the window opens as its preview (MailboxUI.OpenPreview),
+-- already arranging. The panel steps out of the way of the rows being
+-- arranged.
 function Panel.Arrange()
   local toggle = State.ArrangeToggle()
   if not toggle then
-    State.Arrange()
+    local UI = ns.MailboxUI
+    if UI and type(UI.OpenPreview) == "function" and UI.OpenPreview() and S.frame then S.frame:Hide() end
     return
   end
   local AR = ns.Arrange

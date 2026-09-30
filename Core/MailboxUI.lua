@@ -34,6 +34,7 @@ UI._state = UI._state or {
   ready          = false,     -- Initialize has run
   visible        = false,     -- our window is up
   mailboxOpen    = false,     -- a mail session is live
+  preview        = false,     -- the window is up as the arrange preview (section 5c), no mailbox
   inboxSeen      = false,     -- a real MAIL_INBOX_UPDATE has landed this visit
   activeTab      = "collect",
   freeMoved      = false,     -- the user dragged the window this session (grid mode)
@@ -1687,7 +1688,10 @@ local function RenderStatus()
   if not label then return end
 
   local text, tone
-  if status.activity then
+  if UI._state.preview then
+    -- The preview window (section 5c) has no mailbox to report on.
+    text, tone = "", nil
+  elseif status.activity then
     text, tone = status.activity, status.activityTone
   elseif status.outcome then
     text, tone = status.outcome, status.outcomeTone
@@ -1813,7 +1817,7 @@ function UI.UpdateStatusSummary()
   -- title bar drags from under it like anywhere else.
   local frame = UI._frame
   local hover = frame and frame.StatusHover
-  if hover and hover.SetMouseClickEnabled then hover:SetMouseClickEnabled(stuck > 0) end
+  if hover and hover.SetMouseClickEnabled then hover:SetMouseClickEnabled(stuck > 0 and not UI._state.preview) end
 
   -- The saved record renders NOTHING of its own. Its stuck fingerprints were
   -- seeded into the live registry at mail open, so anything that still
@@ -2224,8 +2228,12 @@ local function DockToSlot()
   frame:SetPoint("TOPLEFT", MailFrame, "TOPLEFT", 0, 0)
 end
 
+-- Only inside a mail session: every caller is in one (the open's re-dock, the
+-- layout pass and its next-frame follow-up), and the follow-up must never
+-- anchor the preview window (section 5c) to MailFrame should it outlive the
+-- session that queued it.
 local function ShouldDock()
-  return UI.GetOption("gridDock") and not UI._state.freeMoved
+  return UI._state.mailboxOpen and UI.GetOption("gridDock") and not UI._state.freeMoved
 end
 
 function UI.ApplyWindowLayout()
@@ -2598,6 +2606,8 @@ end
 
 function UI.SelectTab(tabId)
   if not TAB_LABEL_KEY[tabId] then return end
+  -- The preview window has no mailbox to send from (section 5c).
+  if tabId == "send" and UI._state.preview then return end
 
   -- A switch, timed on the visit's record (Postbox.lua, 5b) with everything
   -- it sets off: the panels' own show and hide, and the bags' repaints. The
@@ -2632,8 +2642,10 @@ function UI.SelectTab(tabId)
   else
     -- Called AFTER the panel loop, because hiding the compose panel above ran
     -- its OnHide, which dropped the attach flag -- so an arming decision made
-    -- before this point would be undone by it either way.
-    ApplyMailTabAttach()
+    -- before this point would be undone by it either way. Never in the
+    -- preview window: with no mail session there is no send-mail state to
+    -- arm, and the bags are left as they are.
+    if not UI._state.preview then ApplyMailTabAttach() end
     -- The window's compose-only extra height belongs to the compose screen --
     -- both kinds of it. Dropping them here rather than trusting the screen to
     -- remember means the window can never be left tall on the collect tab,
@@ -2798,6 +2810,123 @@ function UI.RefreshCollectRowLayout()
   end
   -- The floor moved with the row pitch.
   FollowFloor()
+end
+
+-------------------------------------------------------------
+-- 5c. The preview window
+--
+-- Arranging from the options away from a mailbox (Core/OptionsPanel.lua, the
+-- "Arrange..." row): this same window, opened with no mail session, straight
+-- into the arrange mode over Preview mail's samples, and closed when the mode
+-- ends -- Done, Escape, its close button, or anything else that hides it.
+--
+-- It has its own flag and never sets mailboxOpen, so everything that asks
+-- whether a mailbox is open (collecting, Mail Memory's capture, the tab's
+-- counts, quick attach, the layout pass) still hears no. It stands where the
+-- player keeps it when free-floating and centred when docking, and is never
+-- docked: nothing on its path reads or writes MailFrame, calls a UI-panel
+-- function or anything protected, so it opens, arranges and closes in combat
+-- like the rest of the window (COMBAT_TAINT.md). Its close only hides it; there
+-- is no mailbox to close. It says what it is in words: the title
+-- (FRAME_TITLE_PREVIEW), the overview's line under Preview mail held on
+-- (Arrange.lua, PutPreview), the Send tab greyed with its reason. A mailbox
+-- opening meanwhile ends it first (OnMailShow), and the mailbox then opens as
+-- it always does.
+-------------------------------------------------------------
+
+-- What the preview put aside, given back when it ends: the tab the next
+-- mailbox opens on, and the per-session drag override (a drag of the preview
+-- window is not one).
+local previewKeep = { tab = nil, freeMoved = false }
+
+local function PreviewSendEnter(self)
+  if not UI._state.preview then return end
+  -- A tab that does nothing does not light up.
+  local theme = ns.Theme
+  if theme and theme.SetPlateHover and not self.__setSelectedOverride then
+    theme.SetPlateHover(self, false)
+    if theme.DimCaption then theme.DimCaption(self) end
+  end
+  if not GameTooltip then return end
+  GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+  GameTooltip:SetText(L("PREVIEW_SEND_OFF"), 1, 1, 1, 1, true)
+  GameTooltip:Show()
+end
+
+local function PreviewSendLeave(self)
+  if not UI._state.preview then return end
+  local theme = ns.Theme
+  if theme and theme.DimCaption and not self.__setSelectedOverride then theme.DimCaption(self) end
+  if GameTooltip then GameTooltip:Hide() end
+end
+
+-- The words that say the window is the preview, on (`on`) or off: the title,
+-- and the Send tab greyed in its caption and its alpha together. A skin that
+-- owns the tabs' look (a host UI's override) keeps its caption and the alpha
+-- alone greys it. Its tooltip hooks go on at the first preview, after every
+-- skin has dressed the tab.
+local function MarkPreview(frame, on)
+  local theme = ns.Theme
+  if frame.TitleText then
+    frame.TitleText:SetText(L(on and "FRAME_TITLE_PREVIEW" or "FRAME_TITLE"))
+    -- A creative style sizes art to the title (a nameplate, whether an
+    -- emblem fits beside it): laid out again for the new width.
+    local styles, art = ns.CreativeStyles, frame.__pbCreativeArt
+    if styles and type(styles.Layout) == "function" and art then pcall(styles.Layout, art) end
+  end
+  local tab = frame.TabButtons and frame.TabButtons.send
+  if not tab then return end
+  if on and not tab.__pbPreviewHooked then
+    tab.__pbPreviewHooked = true
+    tab:HookScript("OnEnter", PreviewSendEnter)
+    tab:HookScript("OnLeave", PreviewSendLeave)
+  end
+  tab:SetAlpha(on and 0.45 or 1)
+  if on then
+    if theme and theme.DimCaption and not tab.__setSelectedOverride then theme.DimCaption(tab) end
+  elseif theme and theme.SetTabSelected then
+    -- Its own look back, through whoever paints it.
+    theme.SetTabSelected(tab, tab.isSelected)
+  end
+end
+
+-- The preview ends: the mode first, while the window is still the preview
+-- (the samples go without the list being drawn again for a window about to
+-- close; its next show draws it), then the marks, then the window.
+-- Idempotent, and safe from inside the window's own OnHide and from the
+-- mode's own end, which comes back here.
+local previewEnding = false
+local function EndPreview()
+  local st = UI._state
+  if not st.preview or previewEnding then return end
+  previewEnding = true
+  local arrange, panel = ns.Arrange, CollectPanel()
+  local ok, err = true, nil
+  if arrange and arrange.LeaveIf and panel then ok, err = pcall(arrange.LeaveIf, panel) end
+  previewEnding = false
+  st.preview = false
+  if previewKeep.tab then st.activeTab = previewKeep.tab end
+  st.freeMoved = previewKeep.freeMoved and true or false
+  previewKeep.tab, previewKeep.freeMoved = nil, false
+  local frame = UI._frame
+  if frame then
+    MarkPreview(frame, false)
+    st.visible = false
+    if frame:IsShown() then frame:Hide() end
+  end
+  -- A failed leave is said where errors are read, once the preview is put
+  -- away regardless.
+  if not ok and type(geterrorhandler) == "function" then geterrorhandler()(err) end
+end
+
+function UI.IsPreview()
+  return UI._state.preview == true
+end
+
+-- The arrange mode ended (Core/Arrange.lua, through the Mail tab's host): the
+-- preview window goes with it.
+function UI.PreviewModeEnded()
+  if UI._state.preview then EndPreview() end
 end
 
 -------------------------------------------------------------
@@ -2975,6 +3104,12 @@ local function BuildFrame()
   -- normal close never schedules a redundant one.
   frame:HookScript("OnHide", function()
     UI._state.visible = false
+    -- The preview window (section 5c) ends however it is hidden, and has no
+    -- mailbox to close.
+    if UI._state.preview then
+      EndPreview()
+      return
+    end
     if not UI._state.mailboxOpen then return end
     if C_Timer and type(C_Timer.After) == "function" then
       C_Timer.After(0, function()
@@ -2996,9 +3131,16 @@ local function BuildFrame()
     end
   end
 
-  -- The close button ends the mail session rather than just hiding the overlay.
+  -- The close button ends the mail session rather than just hiding the overlay;
+  -- in the preview window (section 5c) it only closes the window.
   if frame.CloseButton then
-    frame.CloseButton:SetScript("OnClick", function() CloseMailbox() end)
+    frame.CloseButton:SetScript("OnClick", function()
+      if UI._state.preview then
+        EndPreview()
+        return
+      end
+      CloseMailbox()
+    end)
   end
 
   -- Status line: top-right of the title bar, left of the close button. Secondary
@@ -3361,6 +3503,11 @@ end
 local function OnMailShow()
   HideNativeMailFrame()
 
+  -- A mailbox opening under the preview window (section 5c): the preview ends
+  -- first -- its mode, its marks, the window -- and the open below runs from a
+  -- closed window, exactly as any other.
+  if UI._state.preview then EndPreview() end
+
   if UI._state.mailboxOpen then
     -- Re-dock only. This is the taint-free half of the layout; re-running the
     -- grid reservation would write MailFrame's protected attributes two or
@@ -3415,6 +3562,10 @@ end
 -- The mail session ended. MAIL_CLOSED and the interaction manager's hide event
 -- both fire for one close, so this is idempotent.
 local function OnMailClosed()
+  -- A close signal while the preview window is up closes no session: there is
+  -- none (section 5c), and the preview is not a mailbox to put away.
+  if UI._state.preview and not UI._state.mailboxOpen then return end
+
   -- The open's measuring window ends with the session (Postbox.lua, 5b). First,
   -- while the inbox can still be read, and a no-op on the second close signal.
   -- The close itself is timed too, in parts, on the same open's record: it
@@ -3500,13 +3651,75 @@ local function OnMailClosed()
   -- anyway, and a /reload restores it. COMBAT_TAINT.md 7 fix #3.
 end
 
+-- The preview window opens (section 5c), from the options' "Arrange..." away
+-- from a mailbox: the Mail tab forward, the window free of MailFrame, and the
+-- arrange mode entered through the window's own mark, as its click enters it.
+-- Answers whether the mode is open over it. At a mailbox the window is the
+-- real one and this does nothing.
+function UI.OpenPreview()
+  local st = UI._state
+  if st.mailboxOpen or not st.ready then return false end
+  local arrange = ns.Arrange
+  if not (arrange and arrange.Enter) then return false end
+  if st.preview then
+    -- Already up, and so already arranging: it closes with the mode.
+    if UI._frame then UI._frame:Raise() end
+    return true
+  end
+
+  st.preview = true
+  previewKeep.tab, previewKeep.freeMoved = st.activeTab, st.freeMoved
+  st.activeTab = "collect"
+  BuildFrame()
+  local frame = UI._frame
+  if not frame then
+    st.preview = false
+    st.activeTab = previewKeep.tab or st.activeTab
+    previewKeep.tab = nil
+    return false
+  end
+  UI.SelectTab("collect")
+
+  -- Where the player keeps the window when it floats free (the spot it was
+  -- last put away at); centred, where the default spot is, when it docks --
+  -- the preview never docks. Anchored to the screen either way, so no anchor
+  -- to MailFrame survives from the last visit.
+  local store = UI._windowStore
+  frame:ClearAllPoints()
+  if not UI.GetOption("gridDock") and store and type(store.x) == "number" and type(store.y) == "number" then
+    frame:SetPoint("CENTER", UIParent, "CENTER", store.x, store.y)
+  else
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 50)
+  end
+
+  st.visible = true
+  frame:SetAlpha(1)
+  frame:Show()
+  frame:Raise()
+  -- After the show: the skins' refresh pass on it repaints the tabs.
+  MarkPreview(frame, true)
+  UI.UpdateStatusSummary()
+
+  local toggle = frame.ArrangeButton
+  local click = toggle and toggle:GetScript("OnClick")
+  if click and not (arrange.host and arrange.host.toggle == toggle) then click(toggle, "LeftButton") end
+  if not (arrange.host and arrange.host.toggle == toggle) then
+    -- No mode to open (the arrange file failed to load): nothing to preview.
+    EndPreview()
+    return false
+  end
+  return true
+end
+
 -------------------------------------------------------------
 -- 8. Public API
 -------------------------------------------------------------
 
 function UI.Show(shouldShow)
   -- The window is only ever up while a mailbox is open; it is not a standalone
-  -- screen and there is nothing useful in it away from a mailbox.
+  -- screen and there is nothing useful in it away from a mailbox. (The one
+  -- exception, the arrange preview, is shown by UI.OpenPreview and never
+  -- through here.)
   local show = shouldShow == true and UI._state.mailboxOpen
   UI._state.visible = show and true or false
 
@@ -3667,7 +3880,7 @@ function UI.Diagnose()
   return string.format(
     "mailbox %s | window %s | tab %s | inbox %s | free-moved %s | layout deferred %s | %s | %s",
     state.mailboxOpen and "open" or "closed",
-    state.visible and "shown" or "hidden",
+    state.visible and (state.preview and "preview" or "shown") or "hidden",
     tostring(state.activeTab),
     inbox,
     tostring(state.freeMoved), tostring(state.layoutDeferred),

@@ -4347,20 +4347,25 @@ end
 
 -- The eye switch: open and "Shown", or crossed and "Hidden". Its words
 -- rise to white and its ring to a lighter grey while shown, and both go
--- white when pointed at.
+-- white when pointed at. Held (`locked`: Preview mail in the preview
+-- window, which has no mail of its own), it shows its state in the greys
+-- the Icon card's switches take where they do not apply, and nothing
+-- lights it.
 local function PaintSwitch(sw)
   local spec = PLATE.switch
-  local on, hover = sw.on, sw.hover
-  TintPlate(sw, hover and 0.17 or spec.fill, hover and spec.hover or (on and spec.on or spec.ring))
+  local on, locked = sw.on, sw.locked
+  local hover = sw.hover and not locked
+  TintPlate(sw, hover and 0.17 or spec.fill, locked and PLATE.nudge.off or (hover and spec.hover or (on and spec.on or spec.ring)))
+  local eye = locked and 0.4 or (hover and 1 or 0.84)
   if sw.Eye then
     sw.Eye:SetShown(on and true or false)
-    Grey(sw.Eye, hover and 1 or 0.84)
+    Grey(sw.Eye, eye)
   end
   if sw.EyeOff then
     sw.EyeOff:SetShown(not on)
-    Grey(sw.EyeOff, hover and 1 or 0.84)
+    Grey(sw.EyeOff, eye)
   end
-  Grey(sw.Label, (on or hover) and 1 or 0.74)
+  Grey(sw.Label, locked and 0.44 or ((on or hover) and 1 or 0.74))
 end
 
 local function SwitchEnter(self)
@@ -4378,6 +4383,7 @@ local function SwitchClick(self)
   if not host then return end
   local on = not self.on
   if AR.selKind == nil then
+    if self.locked then return end
     AR.SetPreview(on)
     PlayToggle(on)
   elseif AR.selKind == "column" then
@@ -5392,6 +5398,7 @@ local function PutSwitch(on, y)
   local text = L()[on and "ARRANGE_SHOWN" or "ARRANGE_HIDDEN_STATE"]
   local w = P.SWITCH_LEAD + Measured(insp.Measure.control, text, false) + P.SWITCH_TAIL
   sw.on = on and true or false
+  sw.locked = nil
   sw.Label:SetText(text)
   sw:SetWidth(w)
   At(sw, P.PAD, y)
@@ -5431,15 +5438,19 @@ end
 -- Preview mail, under Row layout in the overview, where the host can list
 -- samples (host.Preview): the inspector's switch, its eye open while the
 -- list shows sample mail, and then a quiet line under it saying so -- none
--- of it can be collected, and the player's own mail comes back. Answers
--- the y under it.
+-- of it can be collected, and the player's own mail comes back. Where the
+-- host has no mail of its own (host.PreviewLocked: the preview window, away
+-- from a mailbox) the switch is held on, and the line says that instead.
+-- Answers the y under it.
 local function PutPreview(host, y)
   if not host.Preview then return y end
   local insp, P = AR._insp, INSP
   local sw = insp.Switch
   local text = L()["ARRANGE_PREVIEW"]
+  local locked = host.PreviewLocked and host.PreviewLocked() and true or nil
   y = y - P.ROW_GAP
   sw.on = AR.preview and true or false
+  sw.locked = locked
   sw.hover = sw.hover and sw:IsMouseOver() or false
   sw.Label:SetText(text)
   sw:SetWidth(math.min(P.SWITCH_LEAD + Measured(insp.Measure.control, text, false) + P.SWITCH_TAIL, P.INNER))
@@ -5448,7 +5459,8 @@ local function PutPreview(host, y)
   sw:Show()
   y = y - P.SWITCH_H
   if AR.preview then
-    y = PutText(insp.PreviewNote, L()["ARRANGE_PREVIEW_NOTE"], y - P.ROW_WRAP + P.LEAD.note, "note")
+    y = PutText(insp.PreviewNote, L()[locked and "ARRANGE_PREVIEW_AWAY" or "ARRANGE_PREVIEW_NOTE"],
+      y - P.ROW_WRAP + P.LEAD.note, "note")
   end
   return y
 end
@@ -6284,6 +6296,12 @@ end
 -- the same way: ButtonPresent, ButtonName, ButtonText, ButtonShown,
 -- SetButtonShown, CanMoveButton(id, step), MoveButton(id, step) and
 -- ButtonBlock(id) (the block the button stands in, for the link up).
+--
+-- A host with no mail of its own to show (the Mail tab in the preview
+-- window, away from a mailbox) answers PreviewLocked(): Preview mail is on
+-- for the whole mode and its switch is held. A host may answer Left(): the
+-- mode has ended, called after everything else, for a window that goes with
+-- the mode.
 -------------------------------------------------------------
 
 function AR.Enter(host)
@@ -6305,6 +6323,8 @@ function AR.Enter(host)
     AR.CoverLevel(host)
     cover:Show()
   end
+  -- Sample mail for the whole mode, where the host has none of its own.
+  if host.PreviewLocked and host.PreviewLocked() then AR.SetPreview(true) end
   AR.CatchEscape(true)
   if host.toggle then AR.PaintToggle(host.toggle) end
   -- The rows placed again for the mode, publishing the lanes the header
@@ -6357,6 +6377,8 @@ function AR.Leave()
   AR.MoveCursor(false)
   -- The rows placed again with nothing marked on them.
   AR.RowsChanged(false)
+  -- Last: a window that goes with the mode (the preview window) goes now.
+  if host.Left then host.Left() end
 end
 
 -- The mode ends with the frame it was opened over.
