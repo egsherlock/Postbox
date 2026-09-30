@@ -1260,6 +1260,7 @@ function Theme.TrackPaint()
     chrome = setmetatable({}, weak),     -- texture -> alpha (FillChrome)
     vchrome = setmetatable({}, weak),    -- texture -> alpha (TintChrome)
     grey = setmetatable({}, weak),       -- region -> level (SetGrey)
+    surface = setmetatable({}, weak),    -- themed panel -> its variant (PaintSurface)
   }
 end
 
@@ -1444,6 +1445,12 @@ function Theme.RepaintTracked()
   local k = ink[4] or 1
   for texture, a in pairs(track.chrome) do texture:SetColorTexture(ink[1], ink[2], ink[3], InkAlpha(a, k)) end
   for texture, a in pairs(track.vchrome) do texture:SetVertexColor(ink[1], ink[2], ink[3], InkAlpha(a, k)) end
+  -- A themed panel no skin painted over (one built after the skin's pass,
+  -- as the options' tiles are) takes the palette's surface again; the
+  -- backdrop itself is kept (the foundation applies it once).
+  for frame, variant in pairs(track.surface) do
+    if not frame.__postboxSkinned then Theme._PaintSurface(frame, variant, frame.__postboxPanel) end
+  end
   for region, v in pairs(track.grey) do
     local g = lightPalette and Theme.Grey(v) or v
     if type(region.SetTextColor) == "function" then region:SetTextColor(g, g, g, 1)
@@ -1912,6 +1919,7 @@ local function PaintSurface(frame, variant, tag)
   -- Set before delegating, so a delegation that fails still leaves the frame
   -- findable by both skins.
   frame.__postboxPanel = tag
+  if track then track.surface[frame] = variant end
 
   if Helpers and Helpers.ApplyThemedBackdrop then
     Helpers.ApplyThemedBackdrop(frame, SharedTheme, variant, false, SURFACE_BACKDROP)
@@ -1926,6 +1934,8 @@ local function PaintSurface(frame, variant, tag)
     grain:SetVertexColor(tint[1], tint[2], tint[3], tint[4])
   end
 end
+-- For the palette repaint above (Theme.RepaintTracked), which stands earlier.
+Theme._PaintSurface = PaintSurface
 
 -------------------------------------------------------------
 -- THE POPUP OPACITY FLOOR
