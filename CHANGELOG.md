@@ -187,6 +187,10 @@ longer play.
     pigeonhole that shows how full it is.
   - **Goblin Express:** riveted steel and hazard stripes, with a tank by the
     title that fills as your inbox does.
+  - **Letters:** parchment and ink, the inbox on ledger paper, wax seals on
+    the open tab and All mail.
+  - **Daylight:** a warm, quiet paper window. Both light styles keep every
+    figure readable and never go below 85% opacity.
 - **Postbox follows EllesmereUI's look.** On Blizzard Style or Classic WoW UI
   it wears its own Blizzard look, to match your other windows.
 - **EllesmereUI profile, Dark Mode and accent changes** reach an open mailbox
