@@ -74,5 +74,6 @@ Core\Style_PillarBox.lua
 Core\Style_Faction.lua
 Core\Style_Counter.lua
 Core\Style_Goblin.lua
+Core\Style_Letters.lua
 Core\Skin_ElvUI.lua
 Core\Skin_EllesmereUI.lua
