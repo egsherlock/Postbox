@@ -849,7 +849,7 @@ do
     if key == "send" then return CTX_TOP + TILE_H + 10 end
     if key == "window" then
       local skin = GetSkin()
-      local h = (skin and skin.IsPostboxStyle) and MINI_H or SWATCH_H
+      local h = (skin and skin.IsPostboxStyle and not skin.IsCreativeStyle) and MINI_H or SWATCH_H
       return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + h + 10
     end
     if key == "minimap" then return CTX_TOP + 4 + STAGE + 10 end
@@ -1759,7 +1759,7 @@ do
       y = HOST_H + 8
     end
     local skin = GetSkin()
-    local mini = skin and skin.IsPostboxStyle and true or false
+    local mini = skin and skin.IsPostboxStyle and not skin.IsCreativeStyle and true or false
     local sw = mini and Ctx.Mini(f) or Ctx.Swatch(f)
     sw:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -y)
     f:SetSize(CTX_W, y + (mini and MINI_H or SWATCH_H))
@@ -3357,6 +3357,29 @@ function Pages.windowCreative(col, Skin)
     get = function() return math.floor(Skin.GetTextScale() * 100 + 0.5) end,
     set = function(id) Skin.SetTextScale((tonumber(id) or 100) / 100) end,
   })
+  -- The text outline and the row stripes apply here as under the Postbox
+  -- style: the text is its fonts', the rows its rows. The rest of its rows
+  -- (mode, accent, surface, tint, border colour, corners, sheen, button
+  -- text) are the Postbox style's own, and a creative style has its own
+  -- art, accent and captions in their place.
+  if Skin.GetOutlineChoices then
+    local outlineItems = {}
+    for _, choice in ipairs(Skin.GetOutlineChoices()) do
+      outlineItems[#outlineItems + 1] = { id = choice.key, name = choice.name }
+    end
+    Rows.Dropdown(col, {
+      title = L["OPT_OUTLINE_TITLE"], text = L["OPT_OUTLINE_DESC"], items = outlineItems,
+      get = function() return Skin.GetOutline() end,
+      set = function(id) Skin.SetOutline(id) Ctx.Repaint() end,
+    })
+  end
+  if Skin.GetRowStripes then
+    Rows.Check(col, {
+      title = L["OPT_STRIPES_TITLE"], text = L["OPT_STRIPES_DESC"],
+      get = function() return Skin.GetRowStripes() end,
+      set = function(on) Skin.SetRowStripes(on) Ctx.Repaint() end,
+    })
+  end
 end
 
 -- The Minimap tab (Core/MinimapButton.lua): the switch, then everything

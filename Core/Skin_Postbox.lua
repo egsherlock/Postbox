@@ -150,7 +150,10 @@ P.opacity     = 0.90
 P.stripHeight = 25
 P.titleSize   = 15
 P.checkBox    = 18
-P.inner       = { 0, 0, 0, 1 }   -- the keyline's inner line, as resolved
+-- The keyline's inner line, as resolved: the default gray until the settings
+-- are read (a creative style, which claims this skin in the Postbox style's
+-- place, never reads them).
+P.inner       = Copy(DARK.borderTone.gray)
 P.tooltip     = Hex("080809", 0.96)
 P.tooltipEdge = Hex("3a3a3a")
 Skin.Palette = P
@@ -249,6 +252,25 @@ end
 
 local function GetProfile()
   return ns.Store.EnsurePath("profile", {})
+end
+
+-- A creative window style (Core/Skin_Creative.lua) wears this skin with its
+-- own art, palette values and accent round it. The colours below are the
+-- Postbox style's own: under a creative style each reads as its default --
+-- Dark, the style's accent, no tint, square corners, no sheen, gold
+-- captions -- whatever is saved, and the saved choice waits for the Postbox
+-- style. Text outline and row stripes apply to both, as font and size do.
+local function Creative()
+  return Skin.IsCreativeStyle and true or false
+end
+
+-- The creative style's own palette values, by name, which the Postbox
+-- style's sets never write over.
+local function CreativePalette()
+  if not Creative() then return nil end
+  local CS = ns.CreativeStyles
+  local def = CS and type(CS.Active) == "function" and CS.Active() or nil
+  return def and def.palette or nil, def and def.plates or nil
 end
 
 -------------------------------------------------------------
@@ -361,6 +383,7 @@ function Skin.GetBorderToneChoices()
 end
 
 function Skin.GetBorderTone()
+  if Creative() then return DEFAULT_TONE end
   local saved = GetProfile().pbBorderTone
   if saved == "accent" then return saved end
   if saved == "custom" and FromHex(GetProfile().pbBorderHex) then return saved end
@@ -412,6 +435,7 @@ local MODE_NAME_KEY = { dark = "OPT_MODE_DARK", light = "OPT_MODE_LIGHT" }
 function Skin.GetModeChoices() return Choices(MODE_ORDER, MODE_NAME_KEY) end
 
 function Skin.GetMode()
+  if Creative() then return "dark" end
   return (GetProfile().pbMode == "light") and "light" or "dark"
 end
 
@@ -436,6 +460,7 @@ local ACCENT_NAME_KEY = {
 local DEFAULT_ACCENT = "gold"
 
 function Skin.GetAccentKey()
+  if Creative() then return DEFAULT_ACCENT end
   local profile = GetProfile()
   local saved = profile.pbAccent
   if saved == "custom" and FromHex(profile.pbAccentHex) then return saved end
@@ -504,6 +529,7 @@ local SURFACE_NAME_KEY = {
 local DEFAULT_SURFACE = "charcoal"
 
 function Skin.GetSurfaceKey()
+  if Creative() then return DEFAULT_SURFACE end
   local profile = GetProfile()
   local saved = profile.pbSurface
   if saved == "custom" and FromHex(profile.pbSurfaceHex) then return saved end
@@ -557,6 +583,7 @@ function Skin.GetTintChoices()
 end
 
 function Skin.GetTint()
+  if Creative() then return "none" end
   local saved = GetProfile().pbTint
   if saved == "accent" then return saved end
   if saved == "class" and ClassRGB() then return saved end
@@ -594,6 +621,7 @@ local BUTTON_NAME_KEY = { gold = "OPT_BUTTON_GOLD", accent = "OPT_COLOR_ACCENT",
 function Skin.GetButtonTextChoices() return Choices(BUTTON_ORDER, BUTTON_NAME_KEY) end
 
 function Skin.GetButtonText()
+  if Creative() then return "gold" end
   local saved = GetProfile().pbButtonText
   if BUTTON_NAME_KEY[saved] then return saved end
   return "gold"
@@ -613,6 +641,7 @@ local CORNER_NAME_KEY = { square = "OPT_CORNERS_SQUARE", rounded = "OPT_CORNERS_
 function Skin.GetCornerChoices() return Choices(CORNER_ORDER, CORNER_NAME_KEY) end
 
 function Skin.GetCorners()
+  if Creative() then return "square" end
   return (GetProfile().pbCorners == "rounded") and "rounded" or "square"
 end
 
@@ -623,6 +652,7 @@ function Skin.SetCorners(key)
 end
 
 function Skin.GetSheen()
+  if Creative() then return false end
   return GetProfile().pbSheen == true
 end
 
@@ -655,8 +685,11 @@ local function ResolveLook()
   local T = ns.Theme
   local light = Skin.GetMode() == "light"
   local src = light and LIGHT or DARK
+  local over, overPlates = CreativePalette()
   for key, value in pairs(src) do
-    if key == "borderTone" then
+    if over and over[key] ~= nil then
+      -- the creative style's own value stays
+    elseif key == "borderTone" then
       for tone, color in pairs(value) do Recolor(P.borderTone[tone], color) end
     else
       Recolor(P[key], value)
@@ -664,8 +697,10 @@ local function ResolveLook()
   end
   local tabs = light and TABS_LIGHT or TABS_DARK
   for key, value in pairs(tabs) do Recolor(TAB_TOKENS[key], value) end
-  local ar, ag, ab = AccentFor(Skin.GetAccentKey())
-  P.accent[1], P.accent[2], P.accent[3] = ar, ag, ab
+  if not (over and over.accent) then
+    local ar, ag, ab = AccentFor(Skin.GetAccentKey())
+    P.accent[1], P.accent[2], P.accent[3] = ar, ag, ab
+  end
 
   -- The fill: Dark mode's surface, Light mode's sheet; then the tint.
   local r, g, b
@@ -706,7 +741,9 @@ local function ResolveLook()
 
   if T and T.ApplyPalette then
     local stripes = Skin.GetRowStripes()
-    local extra = light and RINGS_LIGHT or RINGS_DARK
+    -- A creative style's plates in place of this style's rings, as its claim
+    -- laid them.
+    local extra = overPlates or (light and RINGS_LIGHT or RINGS_DARK)
     local s = sheetExtra.sheet
     if light then
       s[1], s[2], s[3], s[4] = r, g, b, 1
@@ -2017,9 +2054,13 @@ end
 Skin.ApplyWindow = Skin.Apply
 
 -- A plate drawn as a window tab (the options panel's tabs): the window tabs'
--- tokens, which a palette change rewrites in place.
+-- tokens, which a palette change rewrites in place (a creative style's own
+-- tab tokens, under one).
 function Skin.StyleTabPlate(plate)
-  if plate and ns.Theme and ns.Theme.SetPlateTokens then ns.Theme.SetPlateTokens(plate, TAB_TOKENS) end
+  if not (plate and ns.Theme and ns.Theme.SetPlateTokens) then return end
+  local CS = Creative() and ns.CreativeStyles
+  local def = CS and type(CS.Active) == "function" and CS.Active() or nil
+  ns.Theme.SetPlateTokens(plate, (def and def.tabs) or TAB_TOKENS)
 end
 
 -------------------------------------------------------------
