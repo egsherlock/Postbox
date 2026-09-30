@@ -175,6 +175,20 @@ local function CaptureNow()
       if (tonumber(itemCount) or 0) > 0 and type(GetInboxItemLink) == "function" then
         link = GetInboxItemLink(index, 1)
       end
+      -- The count of the item the mail's icon shows (the first slot that
+      -- holds one), for the count on the row's icon: nil for 1, as the row
+      -- writes nothing for it, and for a mail without items.
+      local stack
+      if (tonumber(itemCount) or 0) > 0 and type(GetInboxItem) == "function" then
+        for slot = 1, (ns.MailService and ns.MailService.MAX_ATTACHMENTS) or 16 do
+          local _, _, texture, n = GetInboxItem(index, slot)
+          if texture then
+            n = tonumber(n) or 1
+            if n > 1 then stack = n end
+            break
+          end
+        end
+      end
       -- Whether the server refused this mail's attachments on a previous
       -- attempt. Read from the domain's registry at capture time, because
       -- it is session state -- the record has to carry it or a reopened
@@ -205,7 +219,7 @@ local function CaptureNow()
       if not mail then
         -- Sized for all its fields at once; each is set just below.
         mail = { stuck = false, icon = false, sender = "", subject = "", money = 0, cod = 0, items = 0,
-          read = false, link = false, kind = false, paid = false, expires = 0 }
+          read = false, link = false, kind = false, paid = false, expires = 0, count = false }
         mails[count] = mail
       elseif mail.sender ~= sender or mail.subject ~= subject or mail.kind ~= kind then
         -- Another mail in this slot now: the text a search folded is not its.
@@ -220,6 +234,7 @@ local function CaptureNow()
       mail.items   = tonumber(itemCount) or 0
       mail.read    = wasRead and true or false
       mail.link    = link
+      mail.count   = stack
       mail.kind    = kind
       mail.paid    = paid
       -- Absolute, so "has this expired since I saw it" is answerable in a
@@ -1462,6 +1477,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm)
     local R0 = Rules()
     if R0 and R0.PaintQuality then R0.PaintQuality(row, nil) end
     if R0 and R0.PaintNameMark then R0.PaintNameMark(row, nil) end
+    if R0 and R0.PaintCount then R0.PaintCount(row, nil, nil) end
     row:SetAlpha(1)
     row:Show()
     return
@@ -1520,9 +1536,17 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm)
   -- The crafting quality mark: on the icon's corner, after the name, both,
   -- or before the name -- wherever the Mail tab puts it.
   local mark = (not mail.pending) and MailMark(mail) or nil
+  -- The first item's count on the icon, and the stack edge for more than
+  -- one item, as on the Mail tab. A single stack's count the icon writes is
+  -- not said again by an auction's subject; one the mail no longer holds
+  -- all of is (the counts differ).
+  if R and R.SaysCount and (mail.items or 0) <= 1 and R.SaysCount(mail.count) then
+    subject = R.DropCount(subject, mail.count)
+  end
   if R and R.WithMark and R.MarkOnName and R.MarkOnName() then subject = R.WithMark(subject, mark) end
   if R and R.PaintQuality then R.PaintQuality(row, mark) end
   if R and R.PaintNameMark then R.PaintNameMark(row, mark) end
+  if R and R.PaintCount then R.PaintCount(row, mail.count, mail.items) end
 
   local spec = R and R.Place and MM.PlaceSpec(list)
   if spec then
@@ -1603,7 +1627,8 @@ local function PendingRows(watch, arrived, from, snap)
     local p = pending[i]
     local subject = p.item or ""
     if (tonumber(p.n) or 1) > 1 then subject = subject .. " (" .. p.n .. ")" end
-    out[#out + 1] = { pending = true, kind = p.k, sender = "", subject = subject, icon = PendingIcon(p) }
+    out[#out + 1] = { pending = true, kind = p.k, sender = "", subject = subject, icon = PendingIcon(p),
+      count = tonumber(p.n) }
   end
   if arrived then
     local ah = L["MEMORY_FROM_AH"]

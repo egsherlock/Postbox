@@ -261,11 +261,12 @@ function RV.SmallAtlas(atlas)
   return small
 end
 
--- row, mark -> a small copy of the mark over the bottom-right corner of the
+-- row, mark -> a small copy of the mark over the top-left corner of the
 -- row's item icon -- the art an item button wears there, where the client
 -- has it -- or nothing. Created on first use: most rows never carry one.
 -- `layout` is the row's arrangement (History's has its own; nil: the mail
--- rows').
+-- rows'). The top-left, as every item button puts it: the bottom-right is
+-- the stack count's (RV.PaintCount), so the two never overlap.
 function RV.PaintQuality(row, mark, layout)
   local atlas = type(mark) == "string" and mark:match("|A:([^:|]+)") or nil
   -- Nothing to mark when the arrangement hides the icon.
@@ -274,8 +275,8 @@ function RV.PaintQuality(row, mark, layout)
     return
   end
   if not row.QualityHolder then
-    -- On a frame of its own, a level above the row: the mark reaches past
-    -- the row's foot, and the next row's ground must not paint over it.
+    -- On a frame of its own, a level above the row, so nothing the row
+    -- draws over its icon can cover it.
     local holder = CreateFrame("Frame", nil, row)
     holder:SetAllPoints(row)
     holder:SetFrameLevel(row:GetFrameLevel() + 2)
@@ -289,23 +290,223 @@ function RV.PaintQuality(row, mark, layout)
   row.Quality:SetAtlas(small, false)
   row.QualityShadow:SetAtlas(small, false)
   row.QualityShadow:SetVertexColor(0, 0, 0, 1)
-  -- The icon's lower-right corner and out past it. The small compact icon
-  -- takes a mark a little larger than itself (at its own size it was hard
-  -- to see); the two-line row's larger icon a little under its own. Sizes
-  -- are not rounded: at UI scale 1 a unit is nearly two screen pixels, too
-  -- coarse a step to tune a mark this small in. Its centre sits a fixed
-  -- distance inside the icon's corner, so a change of size never moves it.
-  local iconSize = row.Icon:GetWidth() or 18
-  local compactIcon = iconSize <= 20
-  local size = max(15, iconSize * (compactIcon and 1.2 or 0.9))
-  local bleed = size / 2 - (compactIcon and 2 or 2.5)
+  -- The icon's upper-left corner: 10 units on the compact icon, 13 on the
+  -- two-line row's larger one, its centre a fixed distance inside the
+  -- corner (RV.MARK_IN), so it stays on the item's art and clear of the
+  -- count in the opposite corner.
+  local compactIcon = (row.Icon:GetWidth() or 18) <= 20
+  local size = compactIcon and RV.MARK_SIZE or RV.MARK_SIZE_LARGE
+  local inset = compactIcon and RV.MARK_IN or RV.MARK_IN_LARGE
   row.Quality:SetSize(size, size)
   row.Quality:ClearAllPoints()
-  row.Quality:SetPoint("BOTTOMRIGHT", row.Icon, "BOTTOMRIGHT", bleed, -bleed)
+  row.Quality:SetPoint("CENTER", row.Icon, "TOPLEFT", inset, -inset)
   row.QualityShadow:SetSize(size + 2, size + 2)
   row.QualityShadow:ClearAllPoints()
   row.QualityShadow:SetPoint("CENTER", row.Quality, "CENTER", 0, -1)
   row.QualityHolder:Show()
+end
+
+-- The quality mark's size and how far its centre sits inside the icon's
+-- corner: compact icons (18), then the two-line row's (28).
+RV.MARK_SIZE, RV.MARK_IN = 10, 3.5
+RV.MARK_SIZE_LARGE, RV.MARK_IN_LARGE = 13, 5
+
+-------------------------------------------------------------
+-- The icon's stack count, and the edge of a second card behind it
+--
+-- As a bag shows it: the first item's count at the icon's bottom-right,
+-- white with a black outline, so it reads on the item's art (opaque at any
+-- window opacity) whatever the art is. A count of 1 is not written. On a
+-- mail holding two items or more, a second card's edge shows behind the
+-- icon, 2 up and 2 right: a shape, not a number, so it never reads as part
+-- of the count (the Slots figure says how many). Both stay inside the gap
+-- before the next column, so the icon's lane keeps its width and every
+-- other column stands where it did.
+--
+-- Nothing for a mail without items (gold alone, a letter), and nothing
+-- when the arrangement hides the icon or the player turned the counts off
+-- (MailboxUI option iconCounts). The count comes from the slot scan the
+-- bind already runs; its text is made once per number (RV.CountText), and
+-- the regions are made on first use and only shown or hidden after, so a
+-- bind makes nothing.
+-------------------------------------------------------------
+
+-- The count's size in the number font: compact icons, the larger icon.
+RV.COUNT_FONT, RV.COUNT_FONT_LARGE = 10, 12
+-- The stack edge's three layers, outside in: the black key, the grey ring
+-- (every other ring's grey, flattened over the fill so it holds at any
+-- opacity), the card's own dark face.
+RV.STACK_KEY, RV.STACK_RING, RV.STACK_FACE = 0, 0.5, 0.15
+
+function RV.CountOnIcon()
+  local UI = ns.MailboxUI
+  if not (UI and type(UI.GetOption) == "function") then return true end
+  return UI.GetOption("iconCounts") and true or false
+end
+
+-- layout -> whether the rows it arranges write counts on their icons.
+function RV.CountShown(layout)
+  return RV.CountOnIcon() and (layout or RV.Layout()).shown.icon and true or false
+end
+
+-- n, layout -> whether the icon writes `n` whole, so a text beside it need
+-- not say it again. A shortened count ("1.5k") is not the same number.
+function RV.SaysCount(n, layout)
+  n = tonumber(n) or 0
+  return n > 1 and n < 1000 and RV.CountShown(layout)
+end
+
+-- n -> the count as the icon writes it, or nil for none: whole up to three
+-- digits (what an 18-unit icon holds), then in thousands, "1k", "1.5k",
+-- "12k". Each number's text is made once and kept, bounded as RV.marked is.
+RV.counts, RV.countsN, RV.COUNTS_MAX = {}, 0, 256
+
+function RV.CountText(n)
+  n = tonumber(n)
+  if not n or n <= 1 then return nil end
+  local known = RV.counts
+  local text = known[n]
+  if text then return text end
+  if RV.countsN >= RV.COUNTS_MAX then
+    for key in pairs(known) do known[key] = nil end
+    RV.countsN = 0
+  end
+  if n < 1000 then
+    text = ("%d"):format(n)
+  else
+    local tenth = floor((n % 1000) / 100)
+    if n >= 10000 or tenth == 0 then
+      text = ("%dk"):format(floor(n / 1000))
+    else
+      text = ("%d.%dk"):format(floor(n / 1000), tenth)
+    end
+  end
+  known[n] = text
+  RV.countsN = RV.countsN + 1
+  return text
+end
+
+-- row, count, items[, layout] -> the count of the item on the row's icon
+-- and, for `items` of two or more, the stack edge behind it; or neither.
+-- `layout` is the row's arrangement (nil: the mail rows').
+function RV.PaintCount(row, count, items, layout)
+  local icon = row.Icon
+  local shown = icon ~= nil and RV.CountShown(layout)
+  local text = shown and RV.CountText(count) or nil
+  local fs = row.IconCount
+  if text then
+    if not fs then
+      fs = row:CreateFontString(nil, "OVERLAY")
+      fs:SetJustifyH("RIGHT")
+      fs:SetWordWrap(false)
+      fs.__pbOn = false
+      row.IconCount = fs
+    end
+    -- Sized and placed again only when the icon changes size (the row's
+    -- mode): at the corner and 2 out past it on the compact icon, inside
+    -- the art on the larger one, clear of the second line's figures.
+    local compact = (icon:GetWidth() or 18) <= 20
+    local size = compact and RV.COUNT_FONT or RV.COUNT_FONT_LARGE
+    if fs.__pbSize ~= size then
+      fs.__pbSize = size
+      local object = Th().FontObject("numberSmall")
+      local path = object and object:GetFont()
+      fs:SetFont(path or STANDARD_TEXT_FONT, size, "OUTLINE")
+      fs:SetTextColor(1, 1, 1, 1)
+      fs:ClearAllPoints()
+      if compact then
+        fs:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 2, -1)
+      else
+        fs:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", -2, 1)
+      end
+    end
+    if fs.__pbText ~= text then
+      fs.__pbText = text
+      fs:SetText(text)
+    end
+    if not fs.__pbOn then
+      fs.__pbOn = true
+      fs:Show()
+    end
+  elseif fs and fs.__pbOn then
+    fs.__pbOn = false
+    fs:Hide()
+  end
+
+  local stack = shown and (tonumber(items) or 0) >= 2
+  local face = row.StackFace
+  if stack then
+    if not face then
+      -- Under the icon (BORDER, below its ARTWORK), so only the edge that
+      -- stands out past it shows. Anchored to the icon at both corners, so
+      -- it follows the icon's size and place with no work per bind.
+      local key = row:CreateTexture(nil, "BORDER", nil, 1)
+      local ring = row:CreateTexture(nil, "BORDER", nil, 2)
+      face = row:CreateTexture(nil, "BORDER", nil, 3)
+      key:SetColorTexture(RV.STACK_KEY, RV.STACK_KEY, RV.STACK_KEY, 1)
+      ring:SetColorTexture(RV.STACK_RING, RV.STACK_RING, RV.STACK_RING, 1)
+      face:SetColorTexture(RV.STACK_FACE, RV.STACK_FACE, RV.STACK_FACE, 1)
+      key:SetPoint("TOPLEFT", icon, "TOPLEFT", 1, 3)
+      key:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 3, 1)
+      ring:SetPoint("TOPLEFT", icon, "TOPLEFT", 2, 2)
+      ring:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 2, 2)
+      face:SetPoint("TOPLEFT", icon, "TOPLEFT", 3, 1)
+      face:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 1, 3)
+      row.StackKey, row.StackRing, row.StackFace = key, ring, face
+      face.__pbOn = false
+    end
+    if not face.__pbOn then
+      face.__pbOn = true
+      row.StackKey:Show()
+      row.StackRing:Show()
+      face:Show()
+    end
+  elseif face and face.__pbOn then
+    face.__pbOn = false
+    row.StackKey:Hide()
+    row.StackRing:Hide()
+    face:Hide()
+  end
+end
+
+-- row -> its count and stack edge hidden, as a hidden icon's are, until the
+-- row is next painted (the arrange mode's drag lifts the icon out of it).
+function RV.HideCount(row)
+  local fs, face = row.IconCount, row.StackFace
+  if fs and fs.__pbOn then
+    fs.__pbOn = false
+    fs:Hide()
+  end
+  if face and face.__pbOn then
+    face.__pbOn = false
+    row.StackKey:Hide()
+    row.StackRing:Hide()
+    face:Hide()
+  end
+end
+
+-- text, n -> the text without its trailing "(n)", where it ends in exactly
+-- that count (an auction's subject, "Light's Potential (19)"); the text as
+-- it was otherwise. Each shortened text is made once and kept (RV.dropped,
+-- keyed by the text, which carries its count), so a bind makes nothing;
+-- bounded as RV.marked is.
+RV.dropped, RV.droppedN, RV.DROPPED_MAX = {}, 0, 256
+
+function RV.DropCount(text, n)
+  if type(text) ~= "string" then return text end
+  local said = text:match("%((%d+)%)%s*$")
+  if not said or tonumber(said) ~= tonumber(n) then return text end
+  local known = RV.dropped
+  local short = known[text]
+  if short then return short end
+  if RV.droppedN >= RV.DROPPED_MAX then
+    for key in pairs(known) do known[key] = nil end
+    RV.droppedN = 0
+  end
+  short = (text:gsub("%s*%(%d+%)%s*$", ""))
+  known[text] = short
+  RV.droppedN = RV.droppedN + 1
+  return short
 end
 
 -- text, mark -> the text with the mark after the item's name and before a
@@ -2613,6 +2814,12 @@ CT.RowRules = {
   WithMark = RV.WithMark,
   MarkOnName = RV.MarkOnName,
   PaintQuality = RV.PaintQuality,
+  PaintCount = RV.PaintCount,
+  HideCount = RV.HideCount,
+  SaysCount = RV.SaysCount,
+  DropCount = RV.DropCount,
+  MARK_SIZE = RV.MARK_SIZE, MARK_IN = RV.MARK_IN,
+  MARK_SIZE_LARGE = RV.MARK_SIZE_LARGE, MARK_IN_LARGE = RV.MARK_IN_LARGE,
   PaintNameMark = RV.PaintNameMark,
   NameMarkRoom = RV.NameMarkRoom,
   FitSubject = RV.FitSubject,
@@ -4132,22 +4339,26 @@ RV.LIVE.Invoice = AppendInvoiceFigures
 -- One scan of the attachment slots, not two, and none at all for a mail whose
 -- header says it has no attachments. This runs for every visible row on every
 -- refresh, and a run refreshes once per mail. Answers the attachments left,
--- their total count, and which slot the row's icon came from, so hovering it
+-- their total count, which slot the row's icon came from (so hovering it
 -- can raise that item's own tooltip: Mail().GetMailIcon returns the first
 -- slot bearing a texture, so this has to find the same one -- and after a
 -- partial take that is not necessarily slot 1.
 function RV.LIVE.Attachments(index, itemCount)
   local remaining, quantity = 0, 0
   local iconSlot = nil
+  local iconCount, stacks = 0, 0
   if (tonumber(itemCount) or 0) > 0 then
     for slot = 1, Mail().MAX_ATTACHMENTS do
       if GetInboxItemLink(index, slot) then remaining = remaining + 1 end
       local _, _, texture, count = GetInboxItem(index, slot)
-      if texture and not iconSlot then iconSlot = slot end
+      if texture then
+        stacks = stacks + 1
+        if not iconSlot then iconSlot, iconCount = slot, tonumber(count) or 0 end
+      end
       quantity = quantity + (tonumber(count) or 0)
     end
   end
-  return remaining, quantity, iconSlot
+  return remaining, quantity, iconSlot, iconCount, stacks
 end
 
 -------------------------------------------------------------
@@ -4521,8 +4732,8 @@ do
   end
   function RV.SAMPLE.Attachments(index)
     local m = At(index)
-    if not (m and #m.items > 0) then return 0, 0, nil end
-    return #m.items, m.quantity, 1
+    if not (m and #m.items > 0) then return 0, 0, nil, 0, 0 end
+    return #m.items, m.quantity, 1, m.items[1].count or 0, #m.items
   end
   function RV.SAMPLE.Mark(index)
     local m = At(index)
@@ -4692,10 +4903,13 @@ local function BindRow(panel, row, index, position, compact, done)
   -- The tooltip's reason line reads it.
   row.stuckReason = stuckReason
 
-  -- The attachments left, their total count, and the slot the row's icon
-  -- came from (RV.LIVE.Attachments).
-  local remaining, quantity, iconSlot = S.Attachments(index, itemCount)
+  -- The attachments left, their total count, the slot the row's icon came
+  -- from, that item's count and how many items the mail holds, for the
+  -- icon's corner (RV.PaintCount) and its tooltip (RV.LIVE.Attachments).
+  local remaining, quantity, iconSlot, iconCount, stacks = S.Attachments(index, itemCount)
+  iconCount, stacks = iconCount or 0, stacks or 0
   row.iconSlot = iconSlot
+  row.iconItems = stacks
 
   -- What the trailing controls take out of the row, stacking inwards from its
   -- right edge: the inset and its marks (RV.MarkRoom) -- but on a one-line
@@ -4718,6 +4932,12 @@ local function BindRow(panel, row, index, position, compact, done)
   local displaySubject = Helpers().ShortSubject(subject or "")
   if quantity > 0 then
     displaySubject = (displaySubject:gsub("%(%d+%)%s*$", "(" .. quantity .. ")"))
+    -- A single stack whose count the icon writes: the subject does not say
+    -- it again ("Light's Potential", the icon's 19). A hidden icon, or a
+    -- count it shortens, and the subject keeps it.
+    if stacks == 1 and RV.SaysCount(iconCount, layout) then
+      displaySubject = RV.DropCount(displaySubject, quantity)
+    end
   end
   -- The crafting quality mark, as the item's own link draws it: on the
   -- icon's corner, before or after the name, or both.
@@ -4725,6 +4945,7 @@ local function BindRow(panel, row, index, position, compact, done)
   if mark and RV.MarkOnName() then displaySubject = RV.WithMark(displaySubject, mark) end
   RV.PaintQuality(row, mark, layout)
   RV.PaintNameMark(row, mark)
+  RV.PaintCount(row, iconCount, stacks, layout)
 
   -- The meta line. `parts` is what the standard row draws under the name; the
   -- compact row draws the same figures in its columns and hands the rest --
@@ -5083,13 +5304,15 @@ function HV.ItemName(link)
   return name
 end
 
--- entry -> what came out of it, as one short line: the first item and its
--- count, "+N" for the rest, or the subject when only money came out.
-function HV.HistoryWhat(entry)
+-- entry[, iconSays] -> what came out of it, as one short line: the first
+-- item and its count, "+N" for the rest, or the subject when only money
+-- came out. The count is left to the icon when `iconSays` (it writes it:
+-- RV.SaysCount).
+function HV.HistoryWhat(entry, iconSays)
   local items = entry.it
   if items and items[1] then
     local text = HV.ItemName(items[1].l) or ""
-    if (items[1].n or 1) > 1 then text = text .. " x" .. items[1].n end
+    if (items[1].n or 1) > 1 and not iconSays then text = text .. " x" .. items[1].n end
     if #items > 1 then text = text .. "  +" .. (#items - 1) end
     return text
   end
@@ -5192,6 +5415,9 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style)
   local mark = first and RV.MarkOf(first.l) or nil
   RV.PaintQuality(row, mark, layout)
   RV.PaintNameMark(row, mark)
+  -- Its count on the icon, and the stack edge for more than one item.
+  local firstCount = first and first.n or 0
+  RV.PaintCount(row, firstCount, entry.it and #entry.it or 0, layout)
 
   -- History's arrangement (HV.Layout), with the columns History has: the
   -- age, the icon, the sender, what came out, and the money -- which keeps
@@ -5209,7 +5435,7 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style)
   local outcome = R.OutcomeSender(entry.k)
   text.sender = outcome or R.DisplaySender(named) or L()["SENDER_UNKNOWN"]
   RV.PaintSender(row.Sender, not outcome and named or nil)
-  text.subject = HV.HistoryWhat(entry)
+  text.subject = HV.HistoryWhat(entry, RV.SaysCount(firstCount, layout))
   text.money = MoneyShown(kind, layout) and HV.HistoryMoney(entry, true) or nil
   spec.layout = layout
   spec.size.icon = ROW_ICON_COMPACT

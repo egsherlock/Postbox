@@ -178,6 +178,12 @@ local OPTION_DEFAULTS = {
   -- the player posting a run of mails to one bank alt, for whom retyping the
   -- same name is the whole cost of the screen.
   keepRecipient   = false,
+  -- The stack count on a mail row's item icon, and the edge of a second card
+  -- behind it when the mail holds more than one item (CollectTab,
+  -- RV.PaintCount), in the Mail tab, History and Mail Memory. On: it is how
+  -- bags and the game's own inbox show a stack, and it lets an auction
+  -- mail's subject drop the count the icon already writes.
+  iconCounts      = true,
 }
 -- What a mail row shows, and in what order, is no longer three switches here
 -- (rowGold, rowSlots, rowExpiry): it is the row's arrangement, UI.GetRowLayout

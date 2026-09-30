@@ -3809,6 +3809,7 @@ function AR.MarkRow(row, s, target, lanes, x, subjectW, sx, run)
       -- The icon's quality mark goes with it (the row paints it again
       -- when it is next bound).
       if region == s.el.icon and row.QualityHolder then row.QualityHolder:Hide() end
+      if region == s.el.icon and R and R.HideCount then R.HideCount(row) end
     else
       Uncarry(m)
     end

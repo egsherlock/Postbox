@@ -833,6 +833,8 @@ do
   -- bought for SAMPLE_PRICE and, on the second row, sold for SAMPLE_SALE,
   -- the gold coming with a coin for its icon.
   local SAMPLE_ITEM = 191462
+  -- The stack it came in, on its icon (Stack counts on item icons).
+  local SAMPLE_COUNT = "20"
   local SAMPLE_DAYS = 29
   local SAMPLE_PRICE, SAMPLE_SALE = 522600, 13090000
   local SAMPLE_COIN = "Interface\\Icons\\INV_Misc_Coin_01"
@@ -1122,6 +1124,10 @@ do
     s.MarkShadow = over:CreateTexture(nil, "ARTWORK")
     s.MarkShadow:SetAlpha(0.6)
     s.Mark = over:CreateTexture(nil, "OVERLAY")
+    -- The stack's count in the opposite corner, as the list writes it.
+    s.Count = over:CreateFontString(nil, "OVERLAY")
+    s.Count:SetJustifyH("RIGHT")
+    s.Count:SetWordWrap(false)
     s.Name = T.CreateText(art, "value")
     s.Name:SetJustifyH("LEFT")
     s.Name:SetWordWrap(false)
@@ -1201,11 +1207,13 @@ do
       s.Mark:SetAtlas(small or atlas, false)
       s.MarkShadow:SetAtlas(small or atlas, false)
       s.MarkShadow:SetVertexColor(0, 0, 0, 1)
-      local size = math.max(15, iconSize * (larger and 0.9 or 1.2))
-      local bleed = size / 2 - (larger and 2.5 or 2)
+      -- At the icon's top-left, the list's size and place (RowRules).
+      local R0 = ns.CollectTab and ns.CollectTab.RowRules
+      local size = larger and (R0 and R0.MARK_SIZE_LARGE or 13) or (R0 and R0.MARK_SIZE or 10)
+      local inset = larger and (R0 and R0.MARK_IN_LARGE or 5) or (R0 and R0.MARK_IN or 3.5)
       s.Mark:SetSize(size, size)
       s.Mark:ClearAllPoints()
-      s.Mark:SetPoint("BOTTOMRIGHT", s.Icon, "BOTTOMRIGHT", bleed, -bleed)
+      s.Mark:SetPoint("CENTER", s.Icon, "TOPLEFT", inset, -inset)
       s.MarkShadow:SetSize(size + 2, size + 2)
       s.MarkShadow:ClearAllPoints()
       s.MarkShadow:SetPoint("CENTER", s.Mark, "CENTER", 0, -1)
@@ -1214,6 +1222,24 @@ do
     else
       s.Mark:Hide()
       s.MarkShadow:Hide()
+    end
+    -- The count, where Stack counts on item icons puts it: the list's font,
+    -- size and corner.
+    if UI and UI.GetOption("iconCounts") then
+      local object = T.FontObject("numberSmall")
+      local path = object and object:GetFont()
+      s.Count:SetFont(path or STANDARD_TEXT_FONT, larger and 12 or 10, "OUTLINE")
+      s.Count:SetTextColor(1, 1, 1, 1)
+      s.Count:ClearAllPoints()
+      if larger then
+        s.Count:SetPoint("BOTTOMRIGHT", s.Icon, "BOTTOMRIGHT", -2, 1)
+      else
+        s.Count:SetPoint("BOTTOMRIGHT", s.Icon, "BOTTOMRIGHT", 2, -1)
+      end
+      s.Count:SetText(SAMPLE_COUNT)
+      s.Count:Show()
+    else
+      s.Count:Hide()
     end
 
     local text = name or ""
@@ -2474,11 +2500,22 @@ function Pages.mail(col)
     if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
     Ctx.Repaint()
   end
-  Rows.Check(col, {
+  -- The badge shares its row with the stack count on the same icon (and the
+  -- stack edge behind it, and an auction subject's count taken off the row):
+  -- the Mail page is the panel's tallest, and a row of its own would make
+  -- the whole panel taller. Either redraws the rows the same way.
+  Rows.Pair(col, {
     title = L["OPT_QUALITY_ICON_TITLE"], text = L["OPT_QUALITY_ICON_DESC"],
     get = function() return not ns.MailboxUI.GetQualityIcon or ns.MailboxUI.GetQualityIcon() end,
     set = function(on)
       if ns.MailboxUI.SetQualityIcon then ns.MailboxUI.SetQualityIcon(on) end
+      QualityChanged()
+    end,
+  }, {
+    title = L["OPT_ICON_COUNTS_TITLE"], text = L["OPT_ICON_COUNTS_DESC"],
+    get = function() return ns.MailboxUI.GetOption("iconCounts") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("iconCounts", on)
       QualityChanged()
     end,
   })
