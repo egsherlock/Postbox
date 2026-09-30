@@ -102,6 +102,9 @@ AR.rowHover = nil
 AR.selKind = nil
 AR.selId = nil
 AR.moving = nil
+-- Whether the list shows sample mail (Preview mail, in the overview): off
+-- whenever the mode opens, and switched off as it ends.
+AR.preview = false
 
 -------------------------------------------------------------
 -- 1. The arrangement, read and written
@@ -4316,7 +4319,10 @@ local function SwitchClick(self)
   local host = AR.host
   if not host then return end
   local on = not self.on
-  if AR.selKind == "column" then
+  if AR.selKind == nil then
+    AR.SetPreview(on)
+    PlayToggle(on)
+  elseif AR.selKind == "column" then
     AR.ShowColumn(AR.selId, on)
     PlayToggle(on)
   elseif AR.selKind == "block" and host.SetBlockShown then
@@ -4424,6 +4430,17 @@ end
 local function LayoutClick(self)
   if not AR.host or self.live == false then return end
   AR.SetRowPacking(self.mode)
+end
+
+-- Preview mail switched from the overview: the host lists its sample set
+-- in the list's place, or the list as it was (host.Preview). Only where
+-- the host can.
+function AR.SetPreview(on)
+  local host = AR.host
+  on = on and true or false
+  if not (host and host.Preview) or AR.preview == on then return end
+  AR.preview = on
+  host.Preview(on)
 end
 
 -- Move, one step: an arrow on a plate, dimmed where the thing cannot go
@@ -4945,6 +4962,8 @@ function AR.BuildInspector()
   insp.Where = Paragraph(art, "secondary", "note", 0.55)
   -- Why Row layout is greyed over two-line rows (PutLayout).
   insp.LayoutNote = Paragraph(art, "secondary", "note", 0.55)
+  -- What the list is while Preview mail is on (PutPreview).
+  insp.PreviewNote = Paragraph(art, "secondary", "note", 0.55)
   -- A note that begins with the hatch the rows draw (PutSwatchNote): the
   -- sample where its first line begins, the words after it.
   insp.SwatchNote = Paragraph(art, "secondary", "note", 0.66)
@@ -5343,6 +5362,31 @@ local function PutLayout(y)
   return y
 end
 
+-- Preview mail, under Row layout in the overview, where the host can list
+-- samples (host.Preview): the inspector's switch, its eye open while the
+-- list shows sample mail, and then a quiet line under it saying so -- none
+-- of it can be collected, and the player's own mail comes back. Answers
+-- the y under it.
+local function PutPreview(host, y)
+  if not host.Preview then return y end
+  local insp, P = AR._insp, INSP
+  local sw = insp.Switch
+  local text = L()["ARRANGE_PREVIEW"]
+  y = y - P.ROW_GAP
+  sw.on = AR.preview and true or false
+  sw.hover = sw.hover and sw:IsMouseOver() or false
+  sw.Label:SetText(text)
+  sw:SetWidth(math.min(P.SWITCH_LEAD + Measured(insp.Measure.control, text, false) + P.SWITCH_TAIL, P.INNER))
+  At(sw, P.PAD, y)
+  PaintSwitch(sw)
+  sw:Show()
+  y = y - P.SWITCH_H
+  if AR.preview then
+    y = PutText(insp.PreviewNote, L()["ARRANGE_PREVIEW_NOTE"], y - P.ROW_WRAP + P.LEAD.note, "note")
+  end
+  return y
+end
+
 -- Move and its two arrows at the row's right: left and right for a column,
 -- up and down for a block, each live only where there is a place to go.
 -- `used` is the width the row's left already has (the switch); where the
@@ -5600,6 +5644,7 @@ local function FillOverview(host, y)
   y = PutText(insp.Lead, L()["ARRANGE_OVERVIEW"], y)
   y = PutLists(host, y)
   y = PutLayout(y)
+  y = PutPreview(host, y)
   -- What is hidden: the columns, then the host's own -- counted first, so
   -- the kicker says whether a click shows them.
   local layout = AR.Layout()
@@ -5748,6 +5793,7 @@ local function HideParts(insp)
   insp.Why:Hide()
   insp.Where:Hide()
   insp.LayoutNote:Hide()
+  insp.PreviewNote:Hide()
   insp.SwatchNote:Hide()
   if insp.Swatch then
     insp.Swatch:Hide()
@@ -5889,6 +5935,7 @@ function AR.Enter(host)
   AR.host = host
   AR.hover, AR.focus, AR.drag, AR.rowHover = nil, nil, nil, nil
   AR.selKind, AR.selId, AR.moving = nil, nil, nil
+  AR.preview = false
   AR.listKind, AR.relisted = AR.ListKind(), false
   strip:Show()
   if host.OnEnter then host.OnEnter(strip) end
@@ -5936,6 +5983,11 @@ function AR.Leave()
     cover.Hand:Hide()
     cover.Ghost:Hide()
     cover:Hide()
+  end
+  -- Sample mail goes with the mode: the list as it was.
+  if AR.preview then
+    AR.preview = false
+    if host.Preview then host.Preview(false) end
   end
   if host.OnLeave then host.OnLeave() end
   if host.toggle then AR.PaintToggle(host.toggle) end

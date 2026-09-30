@@ -2197,6 +2197,35 @@ function MM.RowRealm(rows, i, info)
   return info and info.realm or nil
 end
 
+-- The arrange mode's Preview mail (CollectTab.lua, "Preview mail") as rows
+-- of this kind: the Mail tab's sample set, each mail as a snapshot would
+-- have remembered it. Made once per set; read, never written, by the rows.
+function MM.PreviewRows()
+  local CT = ns.CollectTab
+  local mails = CT and CT.PreviewMails and CT.PreviewMails() or {}
+  local gen = CT and CT.PreviewGen and CT.PreviewGen() or 0
+  local kept = MM._previewRows
+  if kept and kept.gen == gen then return kept.rows end
+  local now = time()
+  local rows = {}
+  for i = 1, #mails do
+    local m = mails[i]
+    local first = m.items[1]
+    rows[i] = {
+      sender = m.sender, subject = m.subject, money = m.money, cod = m.cod, paid = m.price,
+      items = #m.items, expires = now + math.floor(m.days * 86400), read = m.read,
+      kind = m.kind, icon = m.icon, link = first and first.link or nil, id = first and first.id or nil,
+      stuck = false,
+    }
+  end
+  MM._previewRows = { gen = gen, rows = rows }
+  return rows
+end
+
+function MM.PreviewRelease()
+  MM._previewRows = nil
+end
+
 -- snapshot -> "Last seen 27 min ago." or the words for none / an empty box.
 function MM.SeenText(snapshot)
   if not snapshot then return L["MEMORY_EMPTY"] end
@@ -2467,6 +2496,8 @@ function Refresh(frame)
   local characters = MM.Characters()
   local rows, info = MM.RowsFor(v and v.realm, v and v.name,
     { query = query, all = frame.searchAll, sort = frame.sort, characters = characters })
+  -- The arrange mode's Preview mail: the samples in the box's place.
+  if frame._preview then rows = MM.PreviewRows() end
   local now = time()
   local count = #rows
 
@@ -2612,6 +2643,32 @@ function MM.ArrangeHost(frame)
   function host.Scroll() return frame.Scroll end
   function host.List() return frame.ListChild end
   function host.TwoLine() return false end
+  -- Preview mail, from the overview (Arrange.lua): a new sample set in the
+  -- box's place, from its top; switched off -- or the mode ending, which
+  -- switches it off -- the box as it was, at the place it was scrolled to.
+  -- The window sizes itself to its rows either way (Refresh), and so comes
+  -- back to the size it had.
+  function host.Preview(on)
+    on = on and true or false
+    if (frame._preview == true) == on then return end
+    local scroll = frame.Scroll
+    if on then
+      frame._previewOffset = scroll:GetVerticalScroll() or 0
+      local CT = ns.CollectTab
+      if CT and CT.PreviewBuild then CT.PreviewBuild() end
+      frame._preview = true
+      scroll:SetVerticalScroll(0)
+      Refresh(frame)
+      return
+    end
+    frame._preview = nil
+    local CT = ns.CollectTab
+    if CT and CT.PreviewRelease then CT.PreviewRelease() end
+    Refresh(frame)
+    local most = math.max(0, #(frame._list or {}) * ROW_HEIGHT - (scroll:GetHeight() or 0))
+    scroll:SetVerticalScroll(math.min(frame._previewOffset or 0, most))
+    BindRows(frame)
+  end
   -- The inspector docks beside this window, level with its top row -- the
   -- header, while it stands there.
   function host.Dock() return frame end

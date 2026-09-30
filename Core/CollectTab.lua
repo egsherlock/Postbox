@@ -1246,7 +1246,8 @@ local function AppendInvoiceFigures(parts, index, withSaleTotal)
   RV.InvoiceFigures(parts, invoiceType, bid, deposit, consignment, withSaleTotal)
 end
 
--- The same lines from an invoice's figures however they were read.
+-- The same lines from an invoice's figures however they were read: the
+-- inbox's, or a sample mail's in the arrange mode's preview (RV.SAMPLE).
 function RV.InvoiceFigures(parts, invoiceType, bid, deposit, consignment, withSaleTotal)
   local figures = INVOICE_FIGURES[invoiceType]
   if not figures then return end
@@ -3629,6 +3630,8 @@ function AV.Build(panel, query)
   local who = panel._alt
   local rows, info = Memory.RowsFor(who and who.realm, who and who.name,
     { query = query, all = panel._searchAll })
+  -- The arrange mode's Preview mail: the samples, as remembered mail.
+  if panel._preview and Memory.PreviewRows then rows = Memory.PreviewRows() end
   panel._avRows, panel._avInfo = rows, info
   local now = time()
   panel._avCols = (#rows > 0) and Memory.MeasureRows(panel, rows, now, AV.Row(panel, 1)) or {}
@@ -4107,13 +4110,16 @@ end
 --
 -- A row asks the same few things of every mail it is bound to -- its header,
 -- its kind, why it is stuck, its icon, its attachments, its crafting quality
--- mark, its money and its invoice's figures -- through a source. RV.LIVE is
--- the inbox. Each of its answers is the call the binder has always made,
--- made at call time, so whatever another addon has hooked onto the client's
--- functions is still what is asked.
+-- mark, its money and its invoice's figures -- through a source: RV.LIVE,
+-- the inbox, and RV.SAMPLE, the sample mail the arrange mode's Preview mail
+-- lists in its place (below). Each of RV.LIVE's answers is the call the
+-- binder has always made, made at call time, so whatever another addon has
+-- hooked onto the client's functions is still what is asked.
 -------------------------------------------------------------
 
 RV.LIVE = {}
+-- An empty list, for a walk that has nothing to walk.
+RV.NONE = {}
 
 function RV.LIVE.Header(index) return GetInboxHeaderInfo(index) end
 function RV.LIVE.Classify(index) return Mail().ClassifyMail(index) end
@@ -4145,6 +4151,482 @@ function RV.LIVE.Attachments(index, itemCount)
 end
 
 -------------------------------------------------------------
+-- Mail rows :: Preview mail
+--
+-- The arrange mode's Preview mail (Core/Arrange.lua, its overview) lists a
+-- set of sample mails in place of the list on screen, so that every column,
+-- and every state a row can be in, has something to show while it is being
+-- arranged: gold earned and spent, a C.O.D., a short time left and a long
+-- one, one slot and many, each auction outcome, a letter with nothing
+-- attached, a long item name, items with a crafting quality, read mail and
+-- unread, a read mail with nothing left in it (its delete mark), and a mail
+-- from one of the player's own characters (in the class colour). A mail
+-- without gold or slots sits among mails with both, so Row layout's Columns
+-- and Packed visibly differ.
+--
+-- The rows are this file's own, bound by BindRow through RV.SAMPLE, so a
+-- sample is drawn exactly as a real mail is. Nothing is asked of the
+-- mailbox for one: a sample row names no inbox index, so nothing can
+-- collect, open, delete or select it (and the arrange mode's cover takes
+-- every click over the list besides). The counts on the view switch and on
+-- the category buttons stay the inbox's, as they do under a search; the
+-- totals band totals what is listed, which is the samples.
+--
+-- The set is made each time the preview is switched on -- its amounts, its
+-- times and its items chosen afresh from a seed, and the same for as long as
+-- it stays on -- from items the client already has: the item cache, then
+-- the bags. The server is never asked for one. Mail Memory draws the same
+-- set as its own rows (MailMemory.lua, MM.PreviewRows), and History as the
+-- entries collecting it would have made (RV.PreviewHistory).
+-------------------------------------------------------------
+
+do
+  -- Sample items, by what each is for, as item IDs; the first the client
+  -- has cached is used, the bags stand in where none is. Tiered reagents
+  -- and crafted goods carry a crafting quality mark; the long names show a
+  -- subject cut short.
+  local ITEMS = {
+    quality = { 241326, 241289, 241308, 238202, 241288, 241309, 271887, 270898 },
+    long = { 243991, 273072, 44742, 35183, 35184, 40772 },
+    stack = { 6260, 3371, 30817, 2589, 238202 },
+    any = { 6948, 6256, 40772, 6260, 3371 },
+  }
+  -- What a letter and an auction's gold arrive under, as the client's own
+  -- stationery draws them.
+  local LETTER_ICON, COIN_ICON = 134327, 134939
+  -- The other senders' names.
+  local NAMES = { "Aldric", "Brynna", "Corwen", "Elowen", "Garrick", "Isolde", "Kaelan", "Maelis", "Oswin", "Tamsin" }
+  local GOLD = 10000
+
+  local pv = { mails = nil, history = nil, historyGen = nil, seed = 1, gen = 0 }
+  RV.pv = pv
+
+  -- The seed's next step (Park-Miller: exact in a double), 1..n.
+  local function Rand(n)
+    pv.seed = (pv.seed * 16807) % 2147483647
+    return (pv.seed % n) + 1
+  end
+
+  -- About `base` gold, a third either way, to the silver.
+  local function Gold(base)
+    return floor(base * (0.67 + (Rand(67) - 1) / 100) * 100) * (GOLD / 100)
+  end
+
+  -- A time left in days, from `lo` up to `hi`.
+  local function Days(lo, hi)
+    return lo + (hi - lo) * (Rand(100) - 1) / 100
+  end
+
+  -- The name an item's link carries, without the quality mark inside it.
+  local function Plain(name)
+    return (name:gsub("%s*|A:.-|a", ""))
+  end
+
+  -- An item the client has cached, or nil. Asked only once the client says
+  -- it has it, so the question never becomes a request to the server.
+  local function Cached(id)
+    if not (C_Item and type(C_Item.GetItemInfo) == "function") then return nil end
+    if type(C_Item.IsItemDataCachedByID) == "function" and not C_Item.IsItemDataCachedByID(id) then return nil end
+    local name, link, _, _, _, _, _, _, _, icon = C_Item.GetItemInfo(id)
+    if type(name) ~= "string" or name == "" then return nil end
+    if not icon and type(C_Item.GetItemInfoInstant) == "function" then
+      icon = select(5, C_Item.GetItemInfoInstant(id))
+    end
+    return { id = id, name = Plain(name), link = link, icon = icon }
+  end
+
+  -- The bags' items: the client always knows those. Read once per set, and
+  -- only when the lists above came up short.
+  local function Bags()
+    local out = pv.bags
+    if out then return out end
+    out = {}
+    pv.bags = out
+    if not (C_Container and type(C_Container.GetContainerNumSlots) == "function"
+        and type(C_Container.GetContainerItemInfo) == "function") then return out end
+    for bag = 0, 4 do
+      for slot = 1, tonumber((C_Container.GetContainerNumSlots(bag))) or 0 do
+        local info = C_Container.GetContainerItemInfo(bag, slot)
+        local link = type(info) == "table" and info.hyperlink or nil
+        local name = type(link) == "string" and link:match("|h%[(.-)%]|h") or nil
+        if name and name ~= "" then
+          out[#out + 1] = { id = info.itemID, name = Plain(name), link = link, icon = info.iconFileID }
+        end
+      end
+    end
+    return out
+  end
+
+  -- An item for `role`, not used yet in this set: for a long name the
+  -- longest the client has, for any other the first from a place the seed
+  -- picks.
+  local function Item(role, used)
+    local ids = ITEMS[role]
+    local start = Rand(#ids)
+    local longest
+    for k = 0, #ids - 1 do
+      local id = ids[((start + k - 1) % #ids) + 1]
+      if not used[id] then
+        local item = Cached(id)
+        if item and role ~= "long" then
+          used[id] = true
+          return item
+        end
+        if item and (not longest or #item.name > #longest.name) then longest = item end
+      end
+    end
+    if longest then
+      used[longest.id] = true
+      return longest
+    end
+    -- From the bags: for a quality, one that wears a mark; for a long
+    -- name, the longest; else the first not used yet.
+    local best
+    local bags = Bags()
+    for i = 1, #bags do
+      local item = bags[i]
+      local key = item.id or item.name
+      if not used[key] then
+        if role == "quality" then
+          if RV.MarkOf(item.link) then best = item break end
+        elseif role == "long" then
+          if not best or #item.name > #best.name then best = item end
+        elseif not best then
+          best = item
+        end
+      end
+    end
+    if not best and role == "quality" then return Item("any", used) end
+    if best then used[best.id or best.name] = true end
+    return best
+  end
+
+  -- One of the player's own characters, named as a mail from them names
+  -- them -- alone on this realm, Name-Realm on another -- and preferably one
+  -- whose class Postbox knows, so it wears the class colour. Nil when the
+  -- player has no other character.
+  local function Alt()
+    local Store = ns.Store
+    local alts = Store and Store.Get and Store.Get("alts")
+    if type(alts) ~= "table" then return nil end
+    local classes = Store.Get("altClasses")
+    local myRealm, me = GetRealmName(), UnitName("player")
+    local function Known(realm, name)
+      local byRealm = type(classes) == "table" and classes[realm] or nil
+      return type(byRealm) == "table" and byRealm[name] ~= nil
+    end
+    local mine = alts[myRealm]
+    if type(mine) == "table" and #mine > 0 then
+      local start = Rand(#mine)
+      for pass = 1, 2 do
+        for k = 0, #mine - 1 do
+          local name = mine[((start + k - 1) % #mine) + 1]
+          if name ~= me and (pass == 2 or Known(myRealm, name)) then return name end
+        end
+      end
+    end
+    for realm, names in pairs(alts) do
+      if realm ~= myRealm and type(names) == "table" then
+        for i = 1, #names do
+          if Known(realm, names[i]) then return names[i] .. "-" .. (realm:gsub("[%s%-]", "")) end
+        end
+      end
+    end
+    return nil
+  end
+
+  -- An auction mail's subject, in the client's own words for it.
+  local function AuctionSubject(template, item, count)
+    local name = item.name
+    if count and count > 1 then name = name .. " (" .. count .. ")" end
+    return type(template) == "string" and format(template, name) or name
+  end
+
+  -- A mail of the set: what BindRow, Mail Memory and History read of it.
+  local function Add(out, m)
+    m.money, m.cod = m.money or 0, m.cod or 0
+    m.items = m.items or {}
+    local quantity = 0
+    for i = 1, #m.items do quantity = quantity + (m.items[i].count or 1) end
+    m.quantity = quantity
+    local first = m.items[1]
+    m.icon = m.icon or (first and first.icon) or LETTER_ICON
+    m.mark = first and RV.MarkOf(first.link) or nil
+    -- How long ago it arrived, for the inbox's order: a C.O.D. lives three
+    -- days, every other mail thirty.
+    m.age = ((m.cod > 0) and 3 or 30) - m.days
+    out[#out + 1] = m
+  end
+
+  local function Slot(item, count)
+    return { id = item.id, name = item.name, link = item.link, icon = item.icon, count = count }
+  end
+
+  local function Newest(a, b) return a.age < b.age end
+
+  -- The set, made afresh: a new seed, the same set until the next.
+  function RV.PreviewBuild()
+    pv.seed = ((time and time() or 1) % 2147483646) + 1
+    pv.gen = pv.gen + 1
+    pv.bags = nil
+    local L0 = L()
+    local ah = L0["MEMORY_FROM_AH"]
+    local used = {}
+    local out = {}
+    local first = Rand(#NAMES)
+    local function Name(k) return NAMES[((first + k - 1) % #NAMES) + 1] end
+    local alt = Alt() or Name(3)
+
+    -- Sold, unread: the gold alone, and its invoice not fetched yet.
+    local item = Item("stack", used) or Item("any", used)
+    if item then
+      Add(out, { kind = "sold", sender = ah, subject = AuctionSubject(AUCTION_SOLD_MAIL_SUBJECT, item, Rand(3)),
+        money = Gold(1284), days = Days(29.3, 29.95), read = false, icon = COIN_ICON })
+    end
+    -- Sold, read: its invoice's deposit and the auction house's cut.
+    item = Item("any", used)
+    if item then
+      local bid = Gold(92)
+      local cut = floor(bid * 0.05 / 100) * 100
+      local deposit = Gold(3)
+      Add(out, { kind = "sold", sender = ah, subject = AuctionSubject(AUCTION_SOLD_MAIL_SUBJECT, item),
+        money = bid - cut + deposit, days = Days(26.5, 27.5), read = true, icon = COIN_ICON,
+        invoice = { type = "seller", bid = bid, deposit = deposit, consignment = cut } })
+    end
+    -- Won, read: what it cost, from its invoice, and a quality mark.
+    item = Item("quality", used)
+    if item then
+      local price = Gold(3420)
+      Add(out, { kind = "bought", sender = ah, subject = AuctionSubject(AUCTION_WON_MAIL_SUBJECT, item),
+        days = Days(29.0, 29.6), read = true, price = price, items = { Slot(item, 1) },
+        invoice = { type = "buyer", bid = price } })
+    end
+    -- Won, unread: no price until its invoice is fetched, as in the inbox.
+    item = Item("quality", used)
+    if item then
+      local n = 5 * Rand(4)
+      Add(out, { kind = "bought", sender = ah, subject = AuctionSubject(AUCTION_WON_MAIL_SUBJECT, item, n),
+        days = Days(27.8, 28.6), read = false, items = { Slot(item, n) } })
+    end
+    -- Expired: a long name coming back.
+    item = Item("long", used)
+    if item then
+      Add(out, { kind = "expired", sender = ah, subject = AuctionSubject(AUCTION_EXPIRED_MAIL_SUBJECT, item),
+        days = Days(29.7, 29.99), read = false, items = { Slot(item, 1) } })
+    end
+    -- Canceled, with little time left: the warning tone.
+    item = Item("stack", used)
+    if item then
+      local n = 10 + Rand(10)
+      Add(out, { kind = "canceled", sender = ah, subject = AuctionSubject(AUCTION_REMOVED_MAIL_SUBJECT, item, n),
+        days = Days(1.6, 2.6), read = false, items = { Slot(item, n) } })
+    end
+    -- A C.O.D. from another player, on its last day.
+    local a, b = Item("quality", used), Item("stack", used)
+    if a then
+      local slots = { Slot(a, 10 + Rand(10)) }
+      if b then slots[2] = Slot(b, Rand(5)) end
+      Add(out, { kind = "other", sender = Name(1), subject = a.name, cod = Gold(180),
+        days = Days(0.35, 0.85), read = false, items = slots })
+    end
+    -- From one of the player's own characters: gold, read but not taken.
+    Add(out, { kind = "other", sender = alt, subject = L0["PREVIEW_GIFT"], money = Gold(500),
+      days = Days(20.5, 22), read = true, icon = LETTER_ICON })
+    -- And their materials: many slots.
+    local pool = {}
+    for k = 1, 3 do
+      local it = Item(k == 2 and "quality" or "stack", used)
+      if it then pool[#pool + 1] = it end
+    end
+    if #pool > 0 then
+      local slots = {}
+      for k = 1, 8 do slots[k] = Slot(pool[((k - 1) % #pool) + 1], 20 * Rand(10)) end
+      Add(out, { kind = "other", sender = alt, subject = pool[1].name, days = Days(25.5, 27),
+        read = false, items = slots })
+    end
+    -- A letter with nothing attached: no gold, no slots.
+    Add(out, { kind = "other", sender = Name(2), subject = L0["PREVIEW_LETTER"], days = Days(11, 13.5),
+      read = false, icon = LETTER_ICON })
+    -- Read, with nothing left in it: the delete mark.
+    item = Item("any", used)
+    Add(out, { kind = "other", sender = Name(1), subject = item and item.name or L0["PREVIEW_LETTER"],
+      days = Days(17, 19), read = true, done = true, icon = LETTER_ICON })
+
+    table.sort(out, Newest)
+    pv.mails = out
+    pv.bags = nil
+    return out
+  end
+
+  function CT.PreviewMails()
+    return pv.mails or RV.PreviewBuild()
+  end
+
+  function CT.PreviewGen() return pv.gen end
+  CT.PreviewBuild = RV.PreviewBuild
+
+  -- The preview switched off: the set and everything made from it let go,
+  -- Mail Memory's rows of it too, so nothing of it outlives the preview.
+  function CT.PreviewRelease()
+    pv.mails, pv.history, pv.historyGen, pv.bags = nil, nil, nil, nil
+    local Memory = ns.MailMemory
+    if Memory and Memory.PreviewRelease then Memory.PreviewRelease() end
+  end
+
+  -- History as collecting the set would have left it, oldest first as
+  -- History keeps it: an entry per mail that held something, and the letter,
+  -- read. Made once per set.
+  function RV.PreviewHistory()
+    local mails = CT.PreviewMails()
+    if pv.history and pv.historyGen == pv.gen then return pv.history end
+    local out, now = {}, time()
+    for i = #mails, 1, -1 do
+      local m = mails[i]
+      if not m.done then
+        local entry = { t = now - i * i * 1500, s = m.sender, sub = m.subject,
+          k = (m.kind ~= "other") and m.kind or nil }
+        if m.money > 0 then entry.m = m.money end
+        if m.cod > 0 then entry.c = m.cod end
+        if m.price then entry.p = m.price end
+        for k = 1, #m.items do
+          local it = m.items[k]
+          if it.link then
+            entry.it = entry.it or {}
+            entry.it[#entry.it + 1] = { l = it.link, n = it.count or 1 }
+          end
+        end
+        out[#out + 1] = entry
+      end
+    end
+    pv.history, pv.historyGen = out, pv.gen
+    return out
+  end
+
+  -- The sample source: what BindRow asks, answered from the set.
+  local function At(index) return pv.mails and pv.mails[index] end
+  RV.SAMPLE = {}
+  function RV.SAMPLE.Header(index)
+    local m = At(index)
+    if not m then return nil end
+    return m.icon, nil, m.sender, m.subject, m.money, m.cod, m.days, #m.items, m.read
+  end
+  function RV.SAMPLE.Classify(index)
+    local m = At(index)
+    return m and m.kind or "other", m ~= nil and m.cod > 0
+  end
+  function RV.SAMPLE.Stuck() return nil end
+  function RV.SAMPLE.Icon(index)
+    local m = At(index)
+    return m and m.icon or LETTER_ICON
+  end
+  function RV.SAMPLE.Attachments(index)
+    local m = At(index)
+    if not (m and #m.items > 0) then return 0, 0, nil end
+    return #m.items, m.quantity, 1
+  end
+  function RV.SAMPLE.Mark(index)
+    local m = At(index)
+    return m and m.mark or nil
+  end
+  function RV.SAMPLE.Money(index, hasCOD, moneyValue, codValue, brief)
+    local m = At(index)
+    return MoneyText(hasCOD, moneyValue, codValue, m and m.price or nil, brief)
+  end
+  function RV.SAMPLE.Invoice(parts, index, withSaleTotal)
+    local m = At(index)
+    local inv = m and m.invoice
+    if inv then RV.InvoiceFigures(parts, inv.type, inv.bid, inv.deposit, inv.consignment, withSaleTotal) end
+  end
+
+  -- The list the rows show, its columns and its totals from the set instead
+  -- of the inbox, by the walk's own rules (CT.RefreshMailList): what is
+  -- finished goes under the divider, or into Done's own tab, and each
+  -- column is as wide as the widest it holds. The list is its own
+  -- (panel._pvList, which the virtualiser binds from while previewing): the
+  -- walk's panel._filtered stays the inbox's, for everything that counts or
+  -- sweeps what is listed -- the character groups' buttons among them.
+  -- `sample` is the row the walk measures in. Answers what the band totals.
+  function RV.PreviewList(panel, sample, compact, view)
+    local mails = CT.PreviewMails()
+    local filtered, filteredDone, tail = panel._pvList, panel._pvDone, panel._pvTail
+    if not filtered then
+      filtered, filteredDone, tail = {}, {}, {}
+      panel._pvList, panel._pvDone, panel._pvTail = filtered, filteredDone, tail
+    end
+    Clear(filtered)
+    Clear(filteredDone)
+    Clear(tail)
+    local cols, markHas = panel._cols, panel._markHas
+    local layout = compact and RV.Layout() or RV.LargeLayout()
+    local senderCap = layout.shown.sender and SenderColumnWidth(panel, sample.Sender) or 0
+    cols.sender, cols.money, cols.slots, cols.time = 0, 0, 0, 0
+    markHas.time, markHas.money, markHas.slots = false, false, false
+    local showEarned = compact and MoneyShown("earned")
+    local showSpent = compact and MoneyShown("spent")
+    local measureSlots = compact and RowShows("slots")
+    local measureExpiry = compact and RowShows("time")
+    local slotsMost, earned, spent = 0, 0, 0
+    for i = 1, #mails do
+      local m = mails[i]
+      local finished = m.done == true
+      if finished then
+        tail[#tail + 1] = i
+      else
+        filtered[#filtered + 1] = i
+        filteredDone[#filtered] = false
+      end
+      local hasCOD = m.cod > 0
+      if m.kind == "bought" then spent = spent + (m.price or m.money) else earned = earned + m.money end
+      if cols.sender < senderCap then
+        local label = AUCTION_OUTCOME[m.kind] and L()[AUCTION_OUTCOME[m.kind].key] or DisplaySender(m.sender)
+        cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), senderCap)
+      end
+      if compact then
+        local text, kind = MoneyText(hasCOD, m.money, m.cod, m.price, true)
+        local shown = true
+        if kind == "earned" then shown = showEarned elseif kind == "spent" then shown = showSpent end
+        if text and shown then
+          cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, text))
+          if finished then markHas.money = true end
+        end
+        if measureSlots then slotsMost = max(slotsMost, #m.items) end
+        if measureExpiry then
+          local expiry = RowExpiryText(m.days, hasCOD)
+          if expiry then
+            cols.time = max(cols.time, MeasureWith(panel, sample.ColTime, expiry))
+            if finished then markHas.time = true end
+          end
+        end
+      end
+    end
+    panel._readCount = #tail
+    panel._dividerAt = nil
+    panel._markAny = #tail > 0 and (view == VIEW_DONE or (RV.Mode() ~= "tab" and not RV.Folded(panel)))
+    if view == VIEW_DONE then
+      Clear(filtered)
+      Clear(filteredDone)
+      for i = 1, #tail do
+        filtered[i] = tail[i]
+        filteredDone[i] = true
+      end
+      earned, spent = 0, 0
+    elseif #tail > 0 and RV.Mode() ~= "tab" then
+      filtered[#filtered + 1] = DIVIDER
+      filteredDone[#filtered] = true
+      panel._dividerAt = #filtered
+      if not RV.Folded(panel) then
+        for i = 1, #tail do
+          filtered[#filtered + 1] = tail[i]
+          filteredDone[#filtered] = true
+        end
+      end
+    end
+    if slotsMost > 0 then cols.slots = RV.SlotsWidth(panel, sample.ColSlots, slotsMost) end
+    return earned, spent
+  end
+end
+
+-------------------------------------------------------------
 -- Mail rows :: the bind
 --
 -- `position` is the row's DISPLAYED position, not its inbox index. The list is
@@ -4162,8 +4644,10 @@ end
 local function BindRow(panel, row, index, position, compact, done)
   local T = Th()
   local M = T.Metrics
-  -- Where the mail's facts are read from (RV.LIVE).
-  local S = RV.LIVE
+  -- Where the mail's facts are read from: the inbox, or while the arrange
+  -- mode previews sample mail, the sample set (RV.SAMPLE) -- the same
+  -- questions, so both are drawn by everything below alike.
+  local S = panel._preview and RV.SAMPLE or RV.LIVE
 
   local _, _, sender, subject, money, cod, daysLeft, itemCount, wasRead = S.Header(index)
   local kind, hasCOD = S.Classify(index)
@@ -4176,7 +4660,8 @@ local function BindRow(panel, row, index, position, compact, done)
   -- an empty registry without touching the inbox.
   local stuckReason = S.Stuck(index)
 
-  row.mailIndex = index
+  -- A sample names no mail: nothing can act on it or ask the inbox about it.
+  row.mailIndex = (S == RV.LIVE) and index or nil
   row.mailDone = showDelete
   -- The arrangement this row follows: the one-line rows', or the two-line
   -- rows' own (RV.LargeLayout).
@@ -4184,7 +4669,7 @@ local function BindRow(panel, row, index, position, compact, done)
   -- Written from the header just read, so identity costs no extra API call. Read
   -- back by LiveIndex before anything acts on -- or describes -- this row's
   -- index; see the comment there for the window it closes.
-  row.fingerprint = FingerprintOf(sender, subject, cod)
+  row.fingerprint = (S == RV.LIVE) and FingerprintOf(sender, subject, cod) or nil
   -- StyleMailRow writes _rowIndex / _hovered, which the hover handlers repaint
   -- from. `position` is the DISPLAYED position, never the inbox index.
   T.StyleMailRow(row, position, false)
@@ -4817,7 +5302,11 @@ function HV.BuildHistoryList(panel, query)
   local found = 0
   if query ~= "" then HV.SearchFresh() end
   local list = HV.NONE
-  if not chars then list = Memory and Memory.History and Memory.History() or HV.NONE end
+  -- The arrange mode's Preview mail: History's samples (RV.PreviewHistory).
+  if not chars then
+    list = panel._preview and RV.PreviewHistory()
+      or (Memory and Memory.History and Memory.History() or HV.NONE)
+  end
   local R = CT.RowRules
   local sample = AcquireRow(panel, 1)
   local cap = SenderColumnWidth(panel, sample.Sender)
@@ -5063,7 +5552,9 @@ local function UpdateVisibleRows(panel)
   -- has to convert a scroll offset taken under one stride into the same place
   -- under the other; nothing else may write it.
   panel._rowStride = stride
-  local filtered = panel._filtered
+  local filtered, filteredDone = panel._filtered, panel._filteredDone
+  -- Preview mail's own list (RV.PreviewList), in the inbox's place.
+  if panel._preview and panel._pvList then filtered, filteredDone = panel._pvList, panel._pvDone end
   local scroll = panel.MailListScroll
   local viewport = scroll:GetHeight() or 0
   local offset = scroll:GetVerticalScroll() or 0
@@ -5111,7 +5602,7 @@ local function UpdateVisibleRows(panel)
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
     row:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
-    BindRow(panel, row, filtered[i], i, compact, panel._filteredDone[i])
+    BindRow(panel, row, filtered[i], i, compact, filteredDone[i])
     end
   end
 
@@ -5481,12 +5972,21 @@ function CT.RefreshMailList(panel)
   if slotsMost > 0 then
     cols.slots = RV.SlotsWidth(panel, sample.ColSlots, slotsMost)
   end
+  -- The arrange mode's Preview mail lists its samples in the inbox's place
+  -- (RV.PreviewList). The walk above has still run: the counts it recorded
+  -- stay the inbox's.
+  local previewed = nil
+  if panel._preview and view ~= VIEW_HISTORY and not AV.Active(panel) then
+    earned, spent = RV.PreviewList(panel, sample, compact, view)
+    previewed = panel._pvList
+  end
   -- A stuck mail's mark stands in its read mark's place and needs no room;
   -- the room the rows keep for a read mail's delete mark is decided as they
   -- are placed (RV.MarkReserve), from what this walk found.
 
   local _, _, stride = RowMetrics()
   local listed = #filtered
+  if previewed then listed = #previewed end
   -- The history view lists the record, not the inbox. The walk above still
   -- ran: the segment counts describe the inbox whichever view is showing.
   if view == VIEW_HISTORY then
@@ -5586,7 +6086,7 @@ function CT.ApplyRowLayout(panel)
 
   local stride = panel._rowStride or 0
   if stride <= 0 then return end
-  local listed = #panel._filtered
+  local listed = #((panel._preview and panel._pvList) or panel._filtered)
   if AV.Active(panel) then
     listed = #(panel._avRows or {})
   elseif panel.viewMode == VIEW_HISTORY then
@@ -5762,6 +6262,8 @@ end
 -------------------------------------------------------------
 
 local function DeleteAllDone(panel)
+  -- The list holds samples while the arrange mode previews them.
+  if panel._preview then return end
   if not MailboxOpen() then
     StatusMailboxClosed()
     return
@@ -6262,6 +6764,9 @@ end
 -- fit is the damaging part.
 local function StartCategoryRun(panel, category)
   if Run.active or Mail().IsBusy() then return end
+  -- While the arrange mode previews sample mail the list holds samples, not
+  -- inbox indices: nothing may be queued from it.
+  if panel._preview then return end
   if not MailboxOpen() then
     ns.Print(L()["ERR_OPEN_MAILBOX_LOOT"])
     return
@@ -7588,8 +8093,10 @@ function RV.AllMailRoom(panel, tooltip)
   if Selecting(panel) and panel._selected then
     for index in pairs(panel._selected) do items = items + RV.RoomItems(index, true) end
   else
-    -- Under the stuck filter the rows are retried as picks would be.
+    -- Under the stuck filter the rows are retried as picks would be. A list
+    -- of samples (Preview mail) holds no mail to ask about.
     local list, done, retry = panel._filtered, panel._filteredDone, StuckOnly(panel)
+    if panel._preview then list = RV.NONE end
     for i = 1, #list do
       if done[i] == false and type(list[i]) == "number" then items = items + RV.RoomItems(list[i], retry) end
     end
@@ -9202,6 +9709,46 @@ function CT.ArrangeHost(panel)
   function host.List() return panel.MailListChild end
   function host.TwoLine()
     return not AV.Active(panel) and panel.viewMode ~= VIEW_HISTORY and not RowMetrics()
+  end
+  -- Preview mail, from the overview (Arrange.lua): a new sample set in the
+  -- list's place, from its top; switched off -- or the mode ending, which
+  -- switches it off -- the list as it was, at the place it was scrolled to
+  -- when the list is still the one it was (the same view, the same box),
+  -- carried across a change of row size as CT.ApplyRowLayout carries it.
+  function host.Preview(on)
+    on = on and true or false
+    if (panel._preview == true) == on then return end
+    local scroll = panel.MailListScroll
+    local keep = panel._previewKeep or {}
+    panel._previewKeep = keep
+    if on then
+      keep.offset, keep.stride = scroll:GetVerticalScroll() or 0, panel._rowStride or 0
+      keep.view, keep.alt = panel.viewMode, panel._alt
+      RV.PreviewBuild()
+      panel._preview = true
+      scroll:SetVerticalScroll(0)
+      CT.RefreshMailList(panel)
+      return
+    end
+    panel._preview = nil
+    panel._pvList, panel._pvDone, panel._pvTail = nil, nil, nil
+    CT.PreviewRelease()
+    CT.RefreshMailList(panel)
+    local stride = panel._rowStride or 0
+    local offset = 0
+    if keep.view == panel.viewMode and keep.alt == panel._alt and stride > 0 and (keep.stride or 0) > 0 then
+      offset = (keep.stride == stride) and keep.offset or keep.offset / keep.stride * stride
+    end
+    local listed = #panel._filtered
+    if AV.Active(panel) then
+      listed = #(panel._avRows or {})
+    elseif panel.viewMode == VIEW_HISTORY then
+      listed = #panel._history
+    end
+    local maxScroll = max(0, RV.ListHeight(listed, stride) - (scroll:GetHeight() or 0))
+    scroll:SetVerticalScroll(min(offset, maxScroll))
+    if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
+    if panel:IsShown() then UpdateVisibleRows(panel) end
   end
   -- Which arrangement the list on screen follows: History's own while
   -- History shows, the mail rows' otherwise (another character's box
