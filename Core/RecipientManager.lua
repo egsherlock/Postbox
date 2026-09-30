@@ -280,7 +280,7 @@ local function FormatLastSeen(stamp)
   if days == 1 then return L["RM_LAST_YESTERDAY"] end
   if days < 60 then return L("RM_LAST_DAYS", days) end
   if days < 365 then return L("RM_LAST_MONTHS", math.floor(days / 30)) end
-  return L("RM_LAST_YEARS", math.floor(days / 365))
+  return ns.Plural("RM_LAST_YEARS", math.floor(days / 365))
 end
 
 -- `name` identifies the character (full address, realm half included); `text`,
