@@ -212,6 +212,99 @@ ns.EnsureDB = EnsureDB
 ns.RegisterCurrentAlt = RegisterCurrentAlt
 
 -------------------------------------------------------------
+-- 4b. Which release saved them, and the steps that run once
+--
+-- `savedBy`, at the root: the version of the Postbox that last loaded these
+-- saved variables, as the TOC gives it ("v1.50.0", "v1.50.0-beta.1", a dev
+-- build's "v1.50.0-dev67"), written at every load from 1.50 on. An
+-- unpackaged checkout's "dev" is not a version and is never written.
+--
+-- Before 1.50 nothing said so, and the saved variables' own shape does:
+-- every 1.50 build makes the charGroups and hiddenChars roots at load
+-- (SCHEMA, above), and no earlier release made either. Settings with neither
+-- root beside them were last saved by 1.40.x or earlier, the 1.40.2 beta
+-- included.
+--
+-- A release that has to do something once, for players coming to it from an
+-- older one, adds a step to UPGRADES. A step runs at the first load that
+-- finds saved variables older than its release, before any window is built
+-- or any skin has claimed; the stamp written after it keeps it from running
+-- again. Never on a first install: with nothing saved there is nothing to
+-- carry over. And only on a build at least as new as the step's release (an
+-- unpackaged checkout counts as the newest), so a build whose TOC names an
+-- older version can never run a step and then stamp that older version,
+-- which would run it again at every load.
+-------------------------------------------------------------
+
+local SAVED_BY = "savedBy"
+
+-- A version as one number to compare, "v1.50.0-beta.1" -> 1050000; nil for
+-- anything that is not a version.
+local function ReleaseNumber(version)
+  if type(version) ~= "string" then return nil end
+  local major, minor, patch = version:match("^v?(%d+)%.(%d+)%.?(%d*)")
+  if not major then return nil end
+  return tonumber(major) * 1000000 + tonumber(minor) * 1000 + (tonumber(patch) or 0)
+end
+
+-- 1.50.0, the first release to make those two roots.
+local RELEASE_150 = 1050000
+
+-- The release that saved `db`, read before this load writes to it: the
+-- stamp's; 1.50's for a 1.50 build's from before the stamp; 0 for an older
+-- release's, which nothing names; nil for nothing to go on -- no saved
+-- variables, a root that is not a table, or no settings in it.
+local function SavedByRelease(db)
+  if type(db) ~= "table" then return nil end
+  local stamped = ReleaseNumber(db[SAVED_BY])
+  if stamped then return stamped end
+  if type(db.charGroups) == "table" or type(db.hiddenChars) == "table" then return RELEASE_150 end
+  local profile = db.profile
+  if type(profile) == "table" and next(profile) ~= nil then return 0 end
+  return nil
+end
+
+-- 1.50.0: so many settings were renamed, moved or remade that a player
+-- coming from 1.40 starts on 1.50's defaults, by the options' own Reset
+-- settings (Core/MailboxUI.lua) and its keep list: recipients and recent
+-- recipients, character groups, hidden characters, Mail Memory, History and
+-- how long it keeps mail, whether the minimap icon is on, the characters.
+-- Run after Postbox Modern's settings have been carried onto the Postbox
+-- style (UI.Initialize), so a Modern player's reset lands on the Postbox
+-- style as that reset always does. The mail window says so the first time
+-- it opens, until the notice is answered (Core/WhatsNew.lua).
+local function ResetForRelease150()
+  local UI = ns.MailboxUI
+  if not (UI and type(UI.ResetSettings) == "function") then return end
+  UI.ResetSettings()
+  PostboxDB.notice = "1.50"
+end
+
+local UPGRADES = {
+  { before = RELEASE_150, run = ResetForRelease150 },
+}
+
+-- `savedBy`: SavedByRelease's answer for what the client restored. A step
+-- that fails is reported and the rest go on; the stamp is written either
+-- way, so a step can never repeat at every login.
+local function Upgrade(savedBy)
+  local own = ReleaseNumber(ns.VERSION)
+  if savedBy then
+    for i = 1, #UPGRADES do
+      local step = UPGRADES[i]
+      if savedBy < step.before and step.before <= (own or math.huge) then
+        local ok, err = pcall(step.run)
+        if not ok and type(geterrorhandler) == "function" then
+          local handler = geterrorhandler()
+          if type(handler) == "function" then handler(err) end
+        end
+      end
+    end
+  end
+  if own and type(PostboxDB) == "table" then PostboxDB[SAVED_BY] = ns.VERSION end
+end
+
+-------------------------------------------------------------
 -- 5. Error capture
 --
 -- A Lua error is announced once and then gone. By the time the player who
@@ -1872,6 +1965,9 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   -- No saved variables at all: a first install, whose profile starts on the
   -- Postbox style where no host UI is installed (Core/MailboxUI.lua, Initialize).
   ns.freshInstall = type(PostboxDB) ~= "table"
+  -- Which release saved what the client restored (section 4b), read before
+  -- the schema below adds 1.50's roots to it.
+  local savedBy = SavedByRelease(PostboxDB)
 
   -- Explicit rather than relying on RegisterCurrentAlt's own call: the schema
   -- has to exist before MailboxUI reads a setting out of it, and that must not
@@ -1888,6 +1984,10 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   if UI and type(UI.Initialize) == "function" then
     UI.Initialize()
   end
+
+  -- The steps that run once (section 4b): after Initialize has carried the
+  -- old settings over, before the minimap icon or any skin reads them.
+  Upgrade(savedBy)
 
   local MinimapIcon = ns.MinimapButton
   if MinimapIcon and type(MinimapIcon.Initialize) == "function" then

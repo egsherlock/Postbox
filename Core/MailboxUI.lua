@@ -450,6 +450,9 @@ local CENSUS_KEEP = {
   alts       = true,  -- realm -> the characters seen logging in
   altClasses = true,  -- realm -> name -> class
   altMeta    = true,  -- realm -> name -> level, faction, last seen
+  -- Not the census, but a fact like it: which release last saved all this
+  -- (Postbox.lua, 4b), which the next release's one-time steps go by.
+  savedBy    = true,
 }
 
 -- Clears everything but the census, tells the modules that remember what
