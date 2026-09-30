@@ -751,6 +751,15 @@ function Skin.ApplyBorder(frame)
         color.r or 1, color.g or 1, color.b or 1, 1, key)
 end
 
+-- The window scale moved (MailboxUI.ApplyWindowScale). A pixel line is sized
+-- in whole physical pixels at the scale it was drawn at -- EllesmereUI's Solid
+-- snaps its strips once, when it is applied -- so each window's border is
+-- drawn again at the new one. The UI scale and the screen are watched in
+-- HookHostRefreshes.
+function Skin.ApplyScale()
+  pcall(Skin.ApplyBorder)
+end
+
 
 -------------------------------------------------------------
 -- Background baseline: colour and opacity
@@ -1614,7 +1623,7 @@ end
 
 -- Registered once each, whichever backend activates first: EllesmereUI keeps
 -- its refreshers in plain lists, so a second registration would run twice.
-local hooked = { darkMode = false, accent = false, styles = false }
+local hooked = { darkMode = false, accent = false, styles = false, scale = false }
 
 local function HookHostRefreshes()
   if not EUI then return end
@@ -1641,6 +1650,21 @@ local function HookHostRefreshes()
       type = "callback",
       fn = function() pcall(RequestHostRefresh) end,
     })
+  end
+  -- The UI scale or the screen changed: a physical pixel is a different number
+  -- of UI units, so the window borders are drawn again (next frame, with
+  -- everything else). Two events that fire only on such a change; a window
+  -- opened later re-draws its border on its own. Compat only: that is where
+  -- Postbox draws a pixel line of its own (Match), EllesmereUI re-snaps its
+  -- own on this event, and on the api backend Match is the shell's chrome.
+  -- EllesmereUI's own UI-scale slider sets UIParent's scale directly and fires
+  -- neither: there the next window open does it.
+  if BACKEND == "compat" and not hooked.scale and type(CreateFrame) == "function" then
+    local watch = CreateFrame("Frame")
+    watch:RegisterEvent("UI_SCALE_CHANGED")
+    watch:RegisterEvent("DISPLAY_SIZE_CHANGED")
+    watch:SetScript("OnEvent", RequestHostRefresh)
+    hooked.scale = true
   end
 end
 
