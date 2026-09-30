@@ -17,6 +17,10 @@ the thing this checklist exists to prevent.
 - [ ] **`Postbox.toc`** `## Notes` — only if the one-line pitch changed. It is kept
       identical to the CurseForge summary on purpose.
 - [ ] **Locales** — every new user-facing string in all seven blocks.
+- [ ] **In-game What's new** -- the release's own `WHATSNEW_<ver>_*` section in
+      `Core/Locales.lua` (all seven blocks), condensed from its changelog, and
+      registered in `Core/WhatsNew.lua`. A one-time step for upgraders, if the
+      release needs one, goes in the list in `Postbox.lua` section 4b.
 - [ ] **Checkers** — all five in `.dev/tools/` clean. A bare run checks the whole
       addon.
 

@@ -5,7 +5,9 @@
 **Make Postbox yours.** Arrange every column and button right in the window,
 pick a look (or one of six new window styles), and let Postbox do more of the
 work at the mailbox.
-*After updating, restart the game once (a /reload is not enough).*
+*After updating, restart the game once (a /reload is not enough). Coming
+from 1.40? So much changed that your settings start fresh on 1.50's defaults;
+your recipients, groups, Mail Memory and History are kept.*
 
 ### Arrange your window
 
@@ -77,6 +79,7 @@ work at the mailbox.
 
 - **Options that show what they do:** a side panel explains and previews
   whatever you point at.
+- **What's new** in game, from the options' footer or `/postbox whatsnew`.
 - **`/pb`** works like `/postbox`; either on its own opens the options, and
   Postbox has a page under Settings, AddOns.
 - **Reset settings** or **Reset everything**, each saying exactly what it
