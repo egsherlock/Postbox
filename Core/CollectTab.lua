@@ -1526,14 +1526,13 @@ end
 -- SetInboxItem, not SetHyperlink: it is addressed by mail and slot and needs no
 -- item link, which matters because an unread mail's attachment links are not
 -- loaded until its body is fetched -- and not fetching the body is the entire
--- point of a preview.
+-- point of a preview. The caller adds its own lines (Theme's tooltip format:
+-- the item's tooltip is the title and the facts) and shows it.
 local function ShowAttachmentTooltip(owner, index, slot)
   if not (owner and index and slot) then return false end
   if type(GameTooltip.SetInboxItem) ~= "function" then return false end
-  GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-  GameTooltip:ClearLines()
+  Th().TipBegin(owner)
   GameTooltip:SetInboxItem(index, slot)
-  GameTooltip:Show()
   return true
 end
 
@@ -1872,28 +1871,50 @@ function RV.ItemLine(texture, name, quality, mark, count)
   end
 end
 
+-- money, cod -> the gold and the C.O.D. price as facts, exact, in their
+-- tones: the icon's tooltips and the fans' gold tiles say them so.
+function RV.MoneyFacts(money, cod)
+  local T, H, L0 = Th(), Helpers(), L()
+  if money > 0 then T.TipFact(L0["LABEL_GOLD"], T.TipTone("positive", H.FormatMoney(money))) end
+  if cod > 0 then T.TipFact(L0["LABEL_COD"], T.TipTone("warning", H.FormatMoney(cod))) end
+end
+
 -- owner, index, items -> the tooltip of the icon of a mail holding several
--- items: how many, then one line per item (RV.ItemLine), and the gold or
--- the C.O.D. price, if any; then how to take them one at a time, by the
--- gesture that opens a mail under the player's setting. Built on hover,
--- never on a bind.
+-- items: how many, then one line per item (RV.ItemLine), the gold and the
+-- C.O.D. price, if any, and why it is stuck; then how to take them one at a
+-- time, by the gesture that opens a mail under the player's setting. Built
+-- on hover, never on a bind.
 function RV.ItemsTooltip(owner, index, items)
-  GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-  GameTooltip:ClearLines()
-  GameTooltip:SetText(ns.Plural("COUNT_ITEMS", items), 1, 1, 1)
+  local T = Th()
+  T.TipBegin(owner)
+  T.TipTitle(ns.Plural("COUNT_ITEMS", items))
   for slot = 1, Mail().MAX_ATTACHMENTS do
     local name, _, texture, count, quality = GetInboxItem(index, slot)
     if texture then RV.ItemLine(texture, name, quality, RV.QualityMark(index, slot), count) end
   end
   local _, _, _, _, money, cod = GetInboxHeaderInfo(index)
-  money, cod = tonumber(money) or 0, tonumber(cod) or 0
-  if money > 0 or cod > 0 then
-    local text = RowMoneyText(index, cod > 0, money, cod, false)
-    if text then GameTooltip:AddLine(text, 1, 1, 1) end
-  end
-  GameTooltip:AddLine(" ")
-  GameTooltip:AddLine(L()[PreviewOnClick() and "HINT_ICON_TAKE_CLICK" or "HINT_ICON_TAKE_RIGHT"], 0.7, 0.7, 0.7, true)
+  RV.MoneyFacts(tonumber(money) or 0, tonumber(cod) or 0)
+  RV.TipState(Mail().StuckReason(index))
+  T.TipHint(L()[PreviewOnClick() and "HINT_ICON_TAKE_CLICK" or "HINT_ICON_TAKE_RIGHT"])
   GameTooltip:Show()
+end
+
+-- itemID -> whether it is something to try on (Ctrl-click's DRESSUP).
+function RV.Dressable(itemID)
+  local dressable = C_Item and C_Item.IsDressableItemByID
+  if not (itemID and type(dressable) == "function") then return false end
+  return dressable(itemID) and true or false
+end
+
+-- index, slot, refused -> the hint an item tile's tooltip ends with (the
+-- fan's and the reading view's): the take, the link, and the try-on for an
+-- item there is something to try on; a refused tile, whose click takes
+-- nothing, the link and the try-on alone.
+function RV.TileHint(index, slot, refused)
+  local _, itemID = GetInboxItem(index, slot)
+  local dress = RV.Dressable(itemID)
+  if refused then return L()[dress and "TILE_HINT_LINK_DRESS" or "TILE_HINT_LINK"] end
+  return L()[dress and "FAN_TILE_HINT_DRESS" or "FAN_TILE_HINT"]
 end
 
 -- daysLeft, hasCOD -> whether the row shows the time left, and whether in
@@ -4759,7 +4780,16 @@ local function BuildRow(panel)
       RV.ItemsTooltip(self, index, owner.iconItems)
       return
     end
-    ShowAttachmentTooltip(self, index, owner.iconSlot)
+    -- The item's own tooltip, then what the row's tooltip would have said
+    -- of it beyond that: why it is stuck, and the row's gestures (the icon
+    -- is part of the row, and clicks through to it).
+    if ShowAttachmentTooltip(self, index, owner.iconSlot) then
+      RV.TipState(Mail().StuckReason(index))
+      if not owner.mailDone then
+        Th().TipHint(PreviewOnClick() and RawKey("HINT_ROW_COLLECT") or RawKey("HINT_ROW_PREVIEW"))
+      end
+      GameTooltip:Show()
+    end
   end)
   row.IconHit:SetScript("OnLeave", function(self)
     local owner = self:GetParent()
@@ -8277,7 +8307,7 @@ local function BuildDetailSlot(detail, i)
     if not index then return end
     -- The hint line the fan's tiles carry: what the tile does beyond a click.
     if ShowAttachmentTooltip(self, index, self.slotIndex) then
-      GameTooltip:AddLine(L()["FAN_TILE_HINT"], 0.7, 0.7, 0.7)
+      Th().TipHint(RV.TileHint(index, self.slotIndex))
       GameTooltip:Show()
     end
   end)
@@ -8472,8 +8502,11 @@ local function BuildDetail(panel)
   moneyHighlight:SetBlendMode("ADD")
   T.ApplySlot(money)
   money:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L()["LABEL_GOLD"] .. Helpers().FormatMoney(detail._money or 0), 1, 1, 1)
+    -- As the fan's gold tile says it: the sum, and what a click does.
+    local T2 = Th()
+    T2.TipBegin(self)
+    T2.TipTitle(L()["LABEL_GOLD"] .. Helpers().FormatMoney(detail._money or 0))
+    T2.TipHint(L()["FAN_GOLD_HINT"])
     GameTooltip:Show()
   end)
   money:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -11636,9 +11669,9 @@ do
     local plate = Fan.plate
     -- A remembered mail's tile: what its source says, and where it can be
     -- taken.
+    local T = Th()
     if Fan.src then
-      GameTooltip:SetOwner(tile, "ANCHOR_NONE")
-      GameTooltip:ClearLines()
+      T.TipBegin(tile, "ANCHOR_NONE")
       Fan.src.TileTip(Fan.row, not tile.gold and tile.slot or nil)
       GameTooltip:Show()
       Fan.PlaceTip(plate)
@@ -11646,20 +11679,17 @@ do
     end
     local index = LiveIndex(plate)
     if not index then return end
-    GameTooltip:SetOwner(tile, "ANCHOR_NONE")
-    GameTooltip:ClearLines()
+    T.TipBegin(tile, "ANCHOR_NONE")
     if tile.gold then
       local _, _, _, _, money = GetInboxHeaderInfo(index)
-      GameTooltip:SetText(L()["LABEL_GOLD"] .. Helpers().FormatMoney(tonumber(money) or 0), 1, 1, 1)
-      GameTooltip:AddLine(L()["FAN_GOLD_HINT"], 0.7, 0.7, 0.7)
+      T.TipTitle(L()["LABEL_GOLD"] .. Helpers().FormatMoney(tonumber(money) or 0))
+      T.TipHint(L()["FAN_GOLD_HINT"])
     else
       if type(GameTooltip.SetInboxItem) == "function" then GameTooltip:SetInboxItem(index, tile.slot) end
-      if tile.why then
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(Th().Colorize("warning", Fan.Why(tile.why)), 1, 1, 1, true)
-      else
-        GameTooltip:AddLine(L()["FAN_TILE_HINT"], 0.7, 0.7, 0.7)
-      end
+      -- Why a dimmed tile takes nothing, as the item's last fact; then the
+      -- gestures it still has.
+      if tile.why then GameTooltip:AddLine(T.TipTone("warning", Fan.Why(tile.why)), 1, 1, 1, true) end
+      T.TipHint(RV.TileHint(index, tile.slot, tile.why ~= nil))
     end
     GameTooltip:Show()
     Fan.PlaceTip(plate)
