@@ -3630,9 +3630,9 @@ end
 -------------------------------------------------------------
 -- The footer
 --
--- What this build is, the one door out to a bug report, and Reset to
--- defaults at the band's left end. Unchanged in behaviour; it sits under
--- the list and the inspector.
+-- What this build is, the one door out to a bug report, What's new beside
+-- it, and Reset to defaults at the band's left end. It sits under the list
+-- and the inspector.
 -------------------------------------------------------------
 -- One of the theme's glyphs, white like the band's text beside it, or nil
 -- where the theme has none: the band then reads as words alone.
@@ -3657,22 +3657,70 @@ function Footer.Build(frame, above)
   -- nothing on it ever said so.
   statusText:SetText(L["OPT_REPORT_BUG"])
   statusText:SetAlpha(0.85)
-  -- Its mark before it, the pair centred as one.
+  -- Its mark before it.
   local bugArt = ArtHolder(statusBand)
   local bug = Footer.Glyph(bugArt, "bug", 12)
-  statusText:SetPoint("CENTER", statusBand, "CENTER", bug and 8 or 0, 0)
   if bug then
     bug:SetPoint("CENTER", statusText, "LEFT", -11, 0)
     bug:SetAlpha(0.85)
   end
 
+  -- What's new (Core/WhatsNew.lua), from here and from the version at the
+  -- band's right end: each a button of its own laid over the band, as
+  -- Reset to defaults is, so a click on it is never also the bug report's.
+  local function ToggleNews()
+    local News = ns.WhatsNew
+    if News and type(News.Toggle) == "function" then News.Toggle(frame, true) end
+  end
+
+  -- Beside Report a bug, as quiet as it, the mark and both captions centred
+  -- as one. Measured again on every open, as the reset is: a host skin can
+  -- re-font the band after the panel is built.
+  local news = CreateFrame("Button", nil, statusBand)
+  news:SetFrameLevel(statusBand:GetFrameLevel() + 2)
+  local newsText = ns.Theme.CreateText(news, "bodySmall")
+  newsText:SetPoint("LEFT", news, "LEFT", 0, 0)
+  newsText:SetWordWrap(false)
+  newsText:SetText(L["WHATSNEW_TITLE"])
+  newsText:SetAlpha(0.85)
+  local function FitCentre()
+    local mark = bug and 17 or 0   -- the mark and its gap before the words
+    local gap = 20                 -- Report a bug to What's new
+    local a = math.ceil(statusText:GetStringWidth() or 0)
+    local b = math.ceil(newsText:GetStringWidth() or 0)
+    local x = mark - (mark + a + gap + b) / 2
+    statusText:ClearAllPoints()
+    statusText:SetPoint("LEFT", statusBand, "CENTER", x, 0)
+    news:ClearAllPoints()
+    news:SetPoint("TOPLEFT", statusBand, "TOP", x + a + gap, 0)
+    news:SetPoint("BOTTOMLEFT", statusBand, "BOTTOM", x + a + gap, 0)
+    news:SetWidth(math.max(1, b))
+  end
+  FitCentre()
+  S.refresh[#S.refresh + 1] = FitCentre
+  news:SetScript("OnClick", ToggleNews)
+  news:SetScript("OnEnter", function() newsText:SetAlpha(1) end)
+  news:SetScript("OnLeave", function() newsText:SetAlpha(0.85) end)
+
   -- The packager stamps the release TAG into the TOC, which already carries
   -- its own "v" -- do not add another.
-  local versionText = ns.Theme.CreateText(statusBand, "bodySmall")
-  versionText:SetPoint("RIGHT", statusBand, "RIGHT", -8, 0)
+  local version = CreateFrame("Button", nil, statusBand)
+  version:SetFrameLevel(statusBand:GetFrameLevel() + 2)
+  version:SetPoint("TOPRIGHT", statusBand, "TOPRIGHT", -8, 0)
+  version:SetPoint("BOTTOMRIGHT", statusBand, "BOTTOMRIGHT", -8, 0)
+  local versionText = ns.Theme.CreateText(version, "bodySmall")
+  versionText:SetPoint("RIGHT", version, "RIGHT", 0, 0)
   versionText:SetJustifyH("RIGHT")
   versionText:SetText(tostring(ns.VERSION or ""))
   versionText:SetAlpha(0.55)
+  local function FitVersion()
+    version:SetWidth(math.max(1, math.ceil(versionText:GetStringWidth() or 0)))
+  end
+  FitVersion()
+  S.refresh[#S.refresh + 1] = FitVersion
+  version:SetScript("OnClick", ToggleNews)
+  version:SetScript("OnEnter", function() versionText:SetAlpha(1) end)
+  version:SetScript("OnLeave", function() versionText:SetAlpha(0.55) end)
 
   -- Reset to defaults, at the band's left end across from the version: the
   -- one control here that undoes the player's own choices, so it is as

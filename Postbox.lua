@@ -1515,8 +1515,8 @@ end
 -- The commands, in the player's language: the ones a player uses first,
 -- then the two that exist for a bug report. The words typed stay English.
 local HELP_LINES = {
-  "HELP_HEAD", "HELP_OPTIONS", "HELP_MAIL", "HELP_RECIPIENTS", "HELP_MINIMAP", "HELP_DEBUG",
-  "HELP_TROUBLE", "HELP_SKIN", "HELP_PERF",
+  "HELP_HEAD", "HELP_OPTIONS", "HELP_MAIL", "HELP_RECIPIENTS", "HELP_MINIMAP", "HELP_WHATSNEW",
+  "HELP_DEBUG", "HELP_TROUBLE", "HELP_SKIN", "HELP_PERF",
 }
 
 local function ReportHelp()
@@ -1835,6 +1835,12 @@ local function OpenMailMemory()
   if Memory and type(Memory.Toggle) == "function" then Memory.Toggle() end
 end
 
+-- What's new in this version (Core/WhatsNew.lua), open or closed.
+local function ToggleWhatsNew()
+  local News = ns.WhatsNew
+  if News and type(News.Toggle) == "function" then News.Toggle() end
+end
+
 -- /postbox perf: section 5b's recording, the same saved choice as the bug
 -- report's control. Bare, it steps Off -> On -> Detailed -> Off; with a word,
 -- it sets that. Said in chat, because nothing on screen changes.
@@ -1866,6 +1872,7 @@ local COMMANDS = {
   rm          = OpenRecipientManager,
   minimap     = ToggleMinimapIcon,
   debug       = OpenBugReport,
+  whatsnew    = ToggleWhatsNew,
   perf        = function() SetPerfRecording(nil) end,
   ["perf off"] = function() SetPerfRecording("off") end,
   ["perf on"] = function() SetPerfRecording("on") end,
