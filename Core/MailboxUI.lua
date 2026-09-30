@@ -3595,6 +3595,10 @@ local function OnMailShow()
   -- and positioned.
   UI.ApplyWindowLayout()
   if mark then perf.Stage("layout", mark, true) end
+  -- The update notice, beside the window where it now stands, when an update
+  -- has one waiting (Core/WhatsNew.lua); otherwise one read, and nothing built.
+  local news = ns.WhatsNew
+  if news and news.WindowShown then news.WindowShown(UI._frame) end
 end
 
 -- The mail session ended. MAIL_CLOSED and the interaction manager's hide event

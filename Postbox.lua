@@ -1835,10 +1835,17 @@ local function OpenMailMemory()
   if Memory and type(Memory.Toggle) == "function" then Memory.Toggle() end
 end
 
--- What's new in this version (Core/WhatsNew.lua), open or closed.
+-- What's new in this version (Core/WhatsNew.lua), open or closed. With
+-- "notice", the update notice beside the mail window, to try it in game
+-- without the reset that brings it; not in the help.
 local function ToggleWhatsNew()
   local News = ns.WhatsNew
   if News and type(News.Toggle) == "function" then News.Toggle() end
+end
+
+local function TryNotice()
+  local News = ns.WhatsNew
+  if News and type(News.TestNotice) == "function" then News.TestNotice() end
 end
 
 -- /postbox perf: section 5b's recording, the same saved choice as the bug
@@ -1873,6 +1880,7 @@ local COMMANDS = {
   minimap     = ToggleMinimapIcon,
   debug       = OpenBugReport,
   whatsnew    = ToggleWhatsNew,
+  ["whatsnew notice"] = TryNotice,
   perf        = function() SetPerfRecording(nil) end,
   ["perf off"] = function() SetPerfRecording("off") end,
   ["perf on"] = function() SetPerfRecording("on") end,

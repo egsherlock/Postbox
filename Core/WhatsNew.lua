@@ -3,19 +3,35 @@ local _, ns = ...
 -- =====================================================================
 -- Postbox :: what's new
 -- ---------------------------------------------------------------------
+-- What an update brings with it, in two small pieces.
+--
 -- What's new: a small window with each release's highlights -- the
 -- changelog's own groups, a line to a highlight, in the player's language
--- -- opened from the options' footer (What's new, and the version beside
--- it) and by /postbox whatsnew.
+-- -- opened from the notice below, from the options' footer (What's new,
+-- and the version beside it) and by /postbox whatsnew.
 --
--- Nothing here is built until it is shown.
+-- The notice: when an update has put the settings back on their defaults
+-- (Postbox.lua, 4b, which names the release in PostboxDB.notice), a card
+-- stands beside the mail window the first time it opens -- two sentences,
+-- What's new and OK. Either button answers it for good; a mailbox closed
+-- without an answer shows it again at the next one. It stands outside the
+-- window, so nothing the player needs is under it, and it steps aside
+-- while the arrange mode's inspector stands beside the window (WN.Aside,
+-- from Core/Arrange.lua).
+--
+-- Nothing here is built until it is shown. With no notice waiting, a
+-- mailbox open costs one read of the saved variables' root.
 -- =====================================================================
 
 ns.WhatsNew = ns.WhatsNew or {}
 local WN = ns.WhatsNew
 local L = ns.L
 
-local ceil, min = math.ceil, math.min
+local ceil, max, min = math.ceil, math.max, math.min
+
+-- The notice PostboxDB.notice can name: its release, which is its title,
+-- and its words.
+local NOTICE = { key = "1.50", text = "NOTICE_150" }
 
 -------------------------------------------------------------
 -- 1. The releases
@@ -242,4 +258,176 @@ function WN.Toggle(beside, foot)
     return
   end
   WN.Open(beside, foot)
+end
+
+-------------------------------------------------------------
+-- 3. The notice
+--
+-- A card of the house's (Theme.ApplyCard, which every skin paints as one of
+-- Postbox's cards), on the mail window, standing outside it: 8 units out
+-- from its right edge, or its left one where the screen has no room on the
+-- right, level with its top -- where the arrange inspector stands, so the
+-- two never show together. A child of the window, so it wears the window's
+-- scale, follows it when it is dragged and goes when it closes. Its fill
+-- has the popups' floor under it (__pbPopupAlways), so its words stay
+-- solid at any window opacity. As wide as W, or as its two buttons need,
+-- and as tall as its words.
+-------------------------------------------------------------
+local CARD = {
+  W = 250, MAX_W = 330,
+  PAD = 12,
+  TEXT_GAP = 5,            -- the title to the words
+  BUTTONS_GAP = 12,        -- the words to the buttons
+  BUTTON_H = 22, BUTTON_GAP = 6,
+  DOCK = 8,
+}
+-- A button's size, from its caption.
+CARD.FIT = { height = CARD.BUTTON_H, minWidth = 64 }
+local card
+
+-- A notice is waiting: the saved one, or /postbox whatsnew notice's.
+local function Waiting()
+  if WN._test then return true end
+  local db = PostboxDB
+  return type(db) == "table" and db.notice == NOTICE.key
+end
+
+-- Answered, by either button: gone for good, and What's new opened beside
+-- the mail window where it was asked for.
+local function Answer(openNews)
+  WN._test = nil
+  local db = PostboxDB
+  if type(db) == "table" and db.notice == NOTICE.key then db.notice = nil end
+  local frame = card and card:GetParent()
+  if card then card:Hide() end
+  if openNews then WN.Open(frame, false) end
+end
+
+local function BuildCard(frame)
+  local T = ns.Theme
+  local c = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+  -- Over the window's own tabs and cog, which stand ten levels up.
+  c:SetFrameLevel(frame:GetFrameLevel() + 20)
+  c:SetClampedToScreen(true)
+  c:EnableMouse(true)
+  c:Hide()
+  c.__pbPopupAlways = true
+  T.ApplyCard(c)
+
+  local title = T.CreateText(c, "heading")
+  title:SetJustifyH("LEFT")
+  title:SetWordWrap(false)
+  local text = T.CreateText(c, "bodySmall")
+  text:SetJustifyH("LEFT")
+  text:SetWordWrap(true)
+
+  local news = T.CreateButton(nil, c)
+  news:SetText(L["WHATSNEW_TITLE"])
+  news:SetScript("OnClick", function() Answer(true) end)
+  local ok = T.CreateButton(nil, c)
+  ok:SetText(L["NOTICE_OK"])
+  ok:SetScript("OnClick", function() Answer(false) end)
+
+  c.Title, c.Text, c.News, c.OK = title, text, news, ok
+  return c
+end
+
+-- Measured on every show: the skin's pass may have re-fonted it since.
+local function LayoutCard(c)
+  local T = ns.Theme
+  local P = CARD
+  local news = T.SizeToText(c.News, P.FIT)
+  local ok = T.SizeToText(c.OK, P.FIT)
+  local width = max(P.W, min(P.MAX_W, news + P.BUTTON_GAP + ok + 2 * P.PAD))
+  local inner = width - 2 * P.PAD
+  c:SetWidth(width)
+
+  local title, text = c.Title, c.Text
+  title:SetText(L("WHATSNEW_RELEASE", NOTICE.key))
+  title:ClearAllPoints()
+  title:SetPoint("TOPLEFT", c, "TOPLEFT", P.PAD, -P.PAD)
+  title:SetWidth(inner)
+  local titleH = ceil(title:GetStringHeight() or 12)
+  text:SetText(L[NOTICE.text])
+  text:ClearAllPoints()
+  text:SetPoint("TOPLEFT", c, "TOPLEFT", P.PAD, -(P.PAD + titleH + P.TEXT_GAP))
+  text:SetWidth(inner)
+  local textH = ceil(text:GetStringHeight() or 12)
+
+  c.OK:ClearAllPoints()
+  c.OK:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -P.PAD, P.PAD)
+  c.News:ClearAllPoints()
+  c.News:SetPoint("RIGHT", c.OK, "LEFT", -P.BUTTON_GAP, 0)
+  c:SetHeight(P.PAD + titleH + P.TEXT_GAP + textH + P.BUTTONS_GAP + P.BUTTON_H + P.PAD)
+end
+
+-- Beside the window, the arrange inspector's rule (Core/Arrange.lua,
+-- AR.Dock): right unless the screen has no room there and more on the left.
+local function DockCard(c, frame)
+  local left, right = frame:GetLeft(), frame:GetRight()
+  c:ClearAllPoints()
+  local side = 1
+  if left and right then
+    local scale = frame:GetEffectiveScale() or 1
+    local screen = (UIParent:GetRight() or 0) * (UIParent:GetEffectiveScale() or 1)
+    local need = (CARD.DOCK + (c:GetWidth() or CARD.W)) * scale
+    local roomRight, roomLeft = screen - right * scale, left * scale
+    if roomRight < need and roomRight < roomLeft then side = -1 end
+  end
+  if side == 1 then
+    c:SetPoint("TOPLEFT", frame, "TOPRIGHT", CARD.DOCK, 0)
+  else
+    c:SetPoint("TOPRIGHT", frame, "TOPLEFT", -CARD.DOCK, 0)
+  end
+end
+
+local function ShowCard(frame)
+  if not (frame and frame:IsShown()) then return end
+  if not card then
+    card = BuildCard(frame)
+    -- The window's skin, over what was just made: the same expression as
+    -- the window's own open (Core/MailboxUI.lua).
+    local skin = ns.Skin
+    if skin then
+      if skin.RefreshWindow then skin.RefreshWindow(frame)
+      elseif skin.Refresh then skin.Refresh(frame) end
+    end
+  end
+  -- Not while the arrange mode's inspector stands where this would.
+  local arrange = ns.Arrange
+  if arrange and arrange.host then
+    card:Hide()
+    return
+  end
+  LayoutCard(card)
+  DockCard(card, frame)
+  card:Show()
+end
+
+-- The mail window has opened, at a mailbox (Core/MailboxUI.lua, OnMailShow).
+function WN.WindowShown(frame)
+  if Waiting() then ShowCard(frame) end
+end
+
+-- The arrange mode opened (true) or closed (false) (Core/Arrange.lua): its
+-- inspector stands where the notice does, which waits for it to close.
+function WN.Aside(on)
+  local frame = card and card:GetParent()
+  if not frame then return end
+  if on then
+    card:Hide()
+  else
+    WN.WindowShown(frame)
+  end
+end
+
+-- /postbox whatsnew notice: the notice as a player coming from 1.40 sees
+-- it, without their reset, to try it in game -- beside the mail window now
+-- if it is open, else the next time it opens. Answered, it is gone for the
+-- session; nothing is written.
+function WN.TestNotice()
+  WN._test = true
+  local UI = ns.MailboxUI
+  local frame = UI and UI._frame
+  if frame and frame:IsShown() then ShowCard(frame) end
 end

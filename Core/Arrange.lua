@@ -6365,6 +6365,10 @@ function AR.Enter(host)
   AR.RowsChanged(false)
   AR.LayoutStrip(host)
   AR.ShowInspector(host)
+  -- The update notice stands where the inspector does (Core/WhatsNew.lua):
+  -- it waits for the mode to close.
+  local news = ns.WhatsNew
+  if news and news.Aside then news.Aside(true) end
 end
 
 function AR.Leave()
@@ -6413,6 +6417,9 @@ function AR.Leave()
   AR.RowsChanged(false)
   -- Last: a window that goes with the mode (the preview window) goes now.
   if host.Left then host.Left() end
+  -- And the update notice comes back, if one waits beside a window still up.
+  local news = ns.WhatsNew
+  if news and news.Aside then news.Aside(false) end
 end
 
 -- The mode ends with the frame it was opened over.
