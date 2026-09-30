@@ -834,6 +834,9 @@ local function HistoryList(create)
   if type(list) ~= "table" and create then
     list = {}
     byRealm[name] = list
+    -- A record made: the list of every character's (MM.HistoryCharacters)
+    -- has one more.
+    MM.HistoryChanged()
   end
   return list
 end
@@ -869,7 +872,10 @@ local function PruneAllHistory()
       for name, list in pairs(byRealm) do
         if type(list) == "table" then
           PruneHistory(list, now)
-          if #list == 0 then byRealm[name] = nil end
+          if #list == 0 then
+            byRealm[name] = nil
+            MM.HistoryChanged()
+          end
         end
       end
       if next(byRealm) == nil then root[realm] = nil end
@@ -889,6 +895,90 @@ function MM.History()
   if not list then return {} end
   PruneHistory(list, time())
   return list
+end
+
+-- Every character's History, for the Mail tab's search of all of them
+-- (CollectTab's HV.BuildHistoryList): this character first, then the others
+-- by name, a hidden character left out as the search of every box leaves it
+-- out. Each item is also the heading its matches list under -- `header`,
+-- `realm`, `name` and `label` are what MM.FillRow draws for one -- so a
+-- keystroke builds nothing. One list until the record's root is replaced, a
+-- character's record is made or dropped (MM.HistoryChanged), the hidden set
+-- changes (charactersGen) or another character is played.
+do
+  local memo = {}
+  local historyGen = 0
+
+  function MM.HistoryChanged() historyGen = historyGen + 1 end
+
+  local function MeFirst(a, b)
+    if a.me ~= b.me then return a.me end
+    if a.name ~= b.name then return a.name < b.name end
+    return a.realm < b.realm
+  end
+
+  function MM.HistoryCharacters()
+    local root = ns.Store and ns.Store.Get and ns.Store.Get("mailHistory")
+    local myRealm, myName = Me()
+    if memo.list and memo.root == root and memo.gen == historyGen and memo.chars == charactersGen
+      and memo.realm == myRealm and memo.name == myName then
+      return memo.list
+    end
+    local list = {}
+    if myRealm and myName then list[1] = { header = true, me = true, realm = myRealm, name = myName } end
+    if type(root) == "table" then
+      local hidden = HiddenSet(false)
+      for realm, byRealm in pairs(root) do
+        if type(byRealm) == "table" then
+          for name, entries in pairs(byRealm) do
+            if type(entries) == "table" and not (realm == myRealm and name == myName)
+              and not InHiddenSet(hidden, realm, name) then
+              list[#list + 1] = { header = true, me = false, realm = realm, name = name }
+            end
+          end
+        end
+      end
+    end
+    table.sort(list, MeFirst)
+    for i = 1, #list do list[i].label = MM.ClassName(list[i].realm, list[i].name) end
+    memo.list, memo.root, memo.gen, memo.chars = list, root, historyGen, charactersGen
+    memo.realm, memo.name = myRealm, myName
+    return list
+  end
+
+  -- An item of that list -> its character's record, oldest first, pruned to
+  -- the days kept as this character's is on every read; nil when it has
+  -- none.
+  function MM.HistoryOf(item)
+    if item.me then return MM.History() end
+    local root = ns.Store and ns.Store.Get and ns.Store.Get("mailHistory")
+    local byRealm = type(root) == "table" and root[item.realm] or nil
+    local list = type(byRealm) == "table" and byRealm[item.name] or nil
+    if type(list) ~= "table" then return nil end
+    PruneHistory(list, time())
+    return list
+  end
+
+  -- Whether another character (not hidden) has History to search: asked
+  -- whenever History comes on screen, so read straight off the record,
+  -- building nothing.
+  function MM.HistoryOthers()
+    local root = ns.Store and ns.Store.Get and ns.Store.Get("mailHistory")
+    if type(root) ~= "table" then return false end
+    local myRealm, myName = Me()
+    local hidden = HiddenSet(false)
+    for realm, byRealm in pairs(root) do
+      if type(byRealm) == "table" then
+        for name, entries in pairs(byRealm) do
+          if type(entries) == "table" and #entries > 0 and not (realm == myRealm and name == myName)
+            and not InHiddenSet(hidden, realm, name) then
+            return true
+          end
+        end
+      end
+    end
+    return false
+  end
 end
 
 -- index -> what is known about the mail before anything is taken from it,
@@ -2720,6 +2810,7 @@ end
 -- and stays. The caller repaints (MM.Refresh).
 function MM.DataCleared()
   CharactersChanged()
+  MM.HistoryChanged()
   MM.ClosePicker()
   local frame = MM._frame
   if not frame then return end
