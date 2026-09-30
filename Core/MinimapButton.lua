@@ -7,7 +7,9 @@ local _, ns = ...
 -- Behavioural spec: .dev/SPEC-MinimapIcon.md. The short version:
 --
 --   * Shows while HasNewMail() is true, hides when it is not -- the same
---     contract as MinimapCluster.IndicatorFrame.MailFrame, which this
+--     contract as MinimapCluster.IndicatorFrame.MailFrame -- unless the
+--     player chose to see it longer (while Mail Memory knows mail waiting on
+--     any character, or always; section 1b). It replaces that frame, which it
 --     suppresses while the feature is on by unregistering that frame's one
 --     event (UPDATE_PENDING_MAIL), so it never Shows and nothing that hooks
 --     its Show/Hide -- EllesmereUI relayouts on both -- is ever poked.
@@ -54,6 +56,10 @@ local DEFAULTS = {
   alertSound = false,
   alertFlash = false,
   lock     = false,  -- swallow shift-drag entirely: no accidental nudges
+  -- When the icon is on the map: "new" while the game says there is unread
+  -- mail (the default indicator's own rule, and the only one there was),
+  -- "any" while Mail Memory knows mail waiting on any character, "always".
+  show     = "new",
 }
 
 -- ONE dropdown, every placement, no second control to contradict it:
@@ -201,6 +207,80 @@ local function NotificationsRuledOut()
 end
 
 -------------------------------------------------------------
+-- 1b. What the icon says
+--
+-- One reading of everything the icon's visibility and look depend on, made
+-- by Evaluate into `view` and read by every painter below, so the own button,
+-- EllesmereUI's button and the tooltip can never disagree. Filled in place:
+-- a reading builds no table. Mail Memory's character list is remembered on
+-- its side (MailMemory, MM.Characters), so reading it here is a walk over a
+-- list that already exists.
+--
+--   lit     the game's unread-mail flag: the icon at full voice (its glow and
+--           pulse). Every mode shows the icon at least while this is true.
+--   shown   whether the icon is on the map at all.
+--   mine    mail waiting in this character's box, as Mail Memory counts it
+--           (what still holds something or is unread, and what is known to
+--           have arrived since); `all` the same over every character the
+--           player has not hidden, this one included.
+-------------------------------------------------------------
+
+local SHOW_MODES = { new = true, any = true, always = true }
+MB.SHOW_MODES = { "new", "any", "always" }
+
+local function ShowMode(prefs)
+  local mode = (prefs or Settings()).show
+  return SHOW_MODES[mode] and mode or DEFAULTS.show
+end
+
+-- Mail Memory's own switch: off, nothing it recorded is offered anywhere.
+local function MemoryOn()
+  local UI = ns.MailboxUI
+  if not (UI and type(UI.GetOption) == "function") then return false end
+  return UI.GetOption("mailMemory") and true or false
+end
+
+local view = { lit = false, shown = false, mine = 0, all = 0 }
+
+local function Evaluate()
+  local prefs = Settings()
+  local mode = ShowMode(prefs)
+  local mine, all = 0, 0
+  local Memory = ns.MailMemory
+  if mode == "any" and MemoryOn() and Memory and type(Memory.Characters) == "function" then
+    local list = Memory.Characters()
+    for i = 1, #list do
+      local st = list[i]
+      if not st.hidden then
+        local n = (tonumber(st.waiting) or 0) + (tonumber(st.pending) or 0)
+        if st.me then mine = n end
+        all = all + n
+      end
+    end
+  end
+  local lit = MailWaiting()
+  view.lit, view.mine, view.all = lit, mine, all
+  if mode == "always" then
+    view.shown = true
+  elseif mode == "any" then
+    view.shown = lit or all > 0
+  else
+    view.shown = lit
+  end
+  return view
+end
+
+-- The icon shown while nothing is new -- a launcher that is always there, or
+-- mail waiting on another character -- rests: its art in grey, a step back
+-- in alpha, and no glow. State rises in colour and alpha together, so the
+-- moment mail arrives is the moment it comes forward, glow or no glow.
+local REST_ALPHA = 0.65
+
+local function Resting()
+  return view.shown and not view.lit
+end
+
+-------------------------------------------------------------
 -- 2. The default indicator
 -------------------------------------------------------------
 
@@ -308,6 +388,13 @@ local function EuiSkinCandidate()
   return not mm or mm.enabled ~= false
 end
 
+-- Their own "hide mail" choice: their sync then keeps the button hidden
+-- whatever the mail, and Postbox shows it for no reason of its own either.
+local function EuiHidesMail()
+  local mm = EuiMinimapProfile()
+  return mm ~= nil and mm.hideMail == true
+end
+
 local RestoreEuiSkin -- forward: the finder restores an orphaned button on rebuild
 
 local function FindEuiMailButton()
@@ -325,7 +412,7 @@ local function FindEuiMailButton()
         -- verbatim -- it would otherwise keep our texture and its stood-down
         -- hover fields forever -- and drop the snapshot, which described the
         -- old frame, not this one.
-        RestoreEuiSkin()
+        RestoreEuiSkin(true)
         euiSkin.saved = nil
       end
       euiSkin.button = child
@@ -449,6 +536,22 @@ local function EnsureEuiOverlay(btn)
     if Memory and type(Memory.Toggle) == "function" then Memory.Toggle() end
   end)
 
+  -- Their layout passes (their settings, the crafting-order icon, their
+  -- first look after a loading screen) begin by setting the button's
+  -- visibility from the game's unread flag. Postbox only ever ADDS to that:
+  -- every "when to show" choice shows the icon at least while the flag is
+  -- up. So when a pass hides a button Postbox wants shown, it is shown again
+  -- right here, inside their pass -- before their placement runs, which then
+  -- places it like any shown icon. The overlay is ours, so this touches
+  -- nothing of theirs; with the flag up, or on "When new mail arrives", it
+  -- never fires at all. Their own hide-mail setting is theirs to keep.
+  overlay:SetScript("OnHide", function()
+    if euiSkin.applied and euiSkin.button == btn and view.shown and not btn:IsShown()
+      and not EuiHidesMail() then
+      btn:Show()
+    end
+  end)
+
   btn.__pbOverlay = overlay
   return overlay
 end
@@ -488,7 +591,8 @@ local function ApplyEuiSkin()
     -- The atlas fields alone cannot restore a button whose _upAtlas was nil,
     -- so the icon's actual art is snapshotted alongside them.
     euiSkin.saved = { up = btn._upAtlas, over = btn._overAtlas, w = w, h = h,
-                      atlas = icon:GetAtlas(), texture = icon:GetTexture() }
+                      atlas = icon:GetAtlas(), texture = icon:GetTexture(),
+                      alpha = icon:GetAlpha(), grey = icon.IsDesaturated and icon:IsDesaturated() or false }
   end
 
   local prefs = Settings()
@@ -523,6 +627,10 @@ local function ApplyEuiSkin()
       icon:SetVertexColor(1, 1, 1)
     end
   end
+  -- At rest (shown with nothing new), as Postbox's own button rests.
+  local resting = Resting()
+  icon:SetDesaturated(resting)
+  icon:SetAlpha(resting and REST_ALPHA or (euiSkin.saved.alpha or 1))
 
   local shadow = btn.__pbMailShadow
   if prefs.shadow == true then
@@ -541,7 +649,7 @@ local function ApplyEuiSkin()
   end
 
   local glow = btn.__pbMailGlow
-  if prefs.glow == true then
+  if prefs.glow == true and view.lit then
     if not glow then
       glow = btn:CreateTexture(nil, "BACKGROUND")
       glow:SetPoint("CENTER", icon, "CENTER")
@@ -584,7 +692,7 @@ local function ApplyEuiSkin()
   return true
 end
 
-RestoreEuiSkin = function()
+RestoreEuiSkin = function(orphaned)
   if not euiSkin.applied then return end
   euiSkin.applied = false
 
@@ -595,6 +703,10 @@ RestoreEuiSkin = function()
   -- Hand their button back its own input. Hidden rather than destroyed:
   -- frames cannot be, and the enable/disable cycle can run repeatedly.
   if btn.__pbOverlay then btn.__pbOverlay:Hide() end
+  -- And its visibility, by their own rule: whatever "when to show" kept up
+  -- is not left standing for their next layout pass to find. Not for a
+  -- button they have replaced, which is theirs to leave where it is.
+  if not orphaned then btn:SetShown(MailWaiting() and not EuiHidesMail()) end
 
   btn._upAtlas, btn._overAtlas = saved.up, saved.over
   local icon = btn._icon
@@ -604,6 +716,8 @@ RestoreEuiSkin = function()
     elseif saved.texture then icon:SetTexture(saved.texture) end
     icon:SetSize(saved.w, saved.h)
     icon:SetVertexColor(1, 1, 1)
+    icon:SetDesaturated(saved.grey and true or false)
+    icon:SetAlpha(saved.alpha or 1)
   end
   if btn.__pbMailGlow then
     btn.__pbMailPulse:Stop()
@@ -614,13 +728,16 @@ end
 
 -- Skin mode starves the Blizzard frame's UPDATE_PENDING_MAIL (see Refresh),
 -- which also starves the event-driven half of EllesmereUI's own visibility
--- sync -- so that half is performed here, with the exact call their sync
--- makes. Their periodic layout passes read HasNewMail() directly and agree.
+-- sync -- so that half is performed here. On "When new mail arrives" it is
+-- the exact call their sync makes, and their periodic layout passes, which
+-- read HasNewMail() directly, agree. The other choices only ever show MORE
+-- than the flag does, and the overlay's OnHide (EnsureEuiOverlay) keeps a
+-- layout pass of theirs from taking that back.
 local function SyncEuiButtonShown()
   local btn = euiSkin.button
   if not (btn and euiSkin.applied) then return end
 
-  local waiting = MailWaiting()
+  local waiting = view.shown and not EuiHidesMail()
   btn:SetShown(waiting)
 
   -- EllesmereUI anchors this button only inside its own layout pass, and
@@ -818,11 +935,15 @@ local function ApplyLook(button)
   else
     icon:SetVertexColor(1, 1, 1)
   end
+  local resting = Resting()
+  icon:SetDesaturated(resting)
+  icon:SetAlpha(resting and REST_ALPHA or 1)
 
+  -- The glow is the icon's voice for new mail: it rests with the icon.
   local glow = button.glow
   glow:SetSize(size * GLOW_SCALE, size * GLOW_SCALE)
   glow:SetVertexColor(r, g, b)
-  if prefs.glow == true then
+  if prefs.glow == true and view.lit then
     glow:Show()
     if prefs.pulse ~= false then
       if not button.pulse:IsPlaying() then button.pulse:Play() end
@@ -1177,6 +1298,59 @@ end
 
 local runtimeActive = false
 
+-- Whether anything the icon shows is read from Mail Memory's character list,
+-- which moves when Mail Memory writes and, for its expiry warnings, with the
+-- clock.
+local function ReadsMemory(prefs)
+  return ShowMode(prefs) == "any"
+end
+
+-- Mail Memory wrote something its character list reads (MailMemory,
+-- CharactersChanged): a box saved at a mailbox's close, an arrival noted, a
+-- character hidden. One write often comes with a second in the same breath,
+-- so the icon asks again once, on the next frame, rather than per write.
+local memoryQueued = false
+
+local function RunQueued()
+  memoryQueued = false
+  if runtimeActive then Refresh() end
+end
+
+local function QueueRefresh()
+  if memoryQueued or not runtimeActive then return end
+  memoryQueued = true
+  C_Timer.After(0, RunQueued)
+end
+
+function MB.MemoryChanged()
+  if not runtimeActive or not ReadsMemory(Settings()) then return end
+  QueueRefresh()
+end
+
+-- Mail Memory's warnings move with the clock, not with events: a mail
+-- crosses into its last days while nothing happens. So the icon also asks
+-- again at the moments a player is already between things -- a mailbox
+-- closed, a new zone -- and never on a timer of its own. Registered only
+-- while something shown reads the list.
+local timeWatch = false
+
+local function OnTimeEvent()
+  QueueRefresh()
+end
+
+local function SetTimeWatch(on)
+  on = on == true
+  if timeWatch == on then return end
+  timeWatch = on
+  if on then
+    ns.Events.Register("MAIL_CLOSED", OnTimeEvent)
+    ns.Events.Register("ZONE_CHANGED_NEW_AREA", OnTimeEvent)
+  else
+    ns.Events.Unregister("MAIL_CLOSED", OnTimeEvent)
+    ns.Events.Unregister("ZONE_CHANGED_NEW_AREA", OnTimeEvent)
+  end
+end
+
 local function SetRuntimeActive(on)
   on = on == true
   if runtimeActive == on then return end
@@ -1199,12 +1373,16 @@ local function SetRuntimeActive(on)
 
   ns.Events.Unregister("UPDATE_PENDING_MAIL", OnMailEvent)
   ns.Events.Unregister("PLAYER_ENTERING_WORLD", OnEnterWorld)
+  SetTimeWatch(false)
 end
 
 Refresh = function()
   local prefs = Settings()
 
   if prefs.enabled ~= true or NotificationsRuledOut() then
+    -- First, so nothing below (the default indicator's resync pokes
+    -- EllesmereUI's layout) can find the icon still wanted.
+    view.shown = false
     SetRuntimeActive(false)
     SetDefaultSuppressed(false)
     RestoreEuiSkin()
@@ -1215,10 +1393,14 @@ Refresh = function()
   end
 
   SetRuntimeActive(true)
+  SetTimeWatch(ReadsMemory(prefs))
+  Evaluate()
 
   -- One invariant while enabled: the default indicator is silenced, in BOTH
-  -- modes. Skin mode once left the Blizzard frame alive so EllesmereUI's
-  -- Show/Hide hooks on it could drive their icon -- but those hooks answer
+  -- modes and whatever "when to show" says -- it answers the game's unread
+  -- flag, which every choice already covers. Skin mode once left the
+  -- Blizzard frame alive so EllesmereUI's Show/Hide hooks on it could
+  -- drive their icon -- but those hooks answer
   -- every mail event with a full relayout that resets their mouseover-hidden
   -- button row to full alpha and re-hides it on a deferred timer, a visible
   -- flash per AH purchase. Constant suppression generates zero Show/Hide
@@ -1263,7 +1445,7 @@ Refresh = function()
   local size = IconSize()
   button.highlight:SetSize(size * GLOW_SCALE, size * GLOW_SCALE)
 
-  button:SetShown(MailWaiting())
+  button:SetShown(view.shown)
 end
 
 MB.Refresh = Refresh
@@ -1273,12 +1455,12 @@ MB.Refresh = Refresh
 -- visibility depends on, captured at the moment the report is built.
 function MB.Diagnose()
   return string.format(
-    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s",
+    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s wants %s",
     tostring(runtimeActive), tostring(suppressing),
     tostring((EuiSkinCandidate())), tostring(euiSkin.applied),
     euiSkin.tries, tostring(euiSkin.fallback),
     (MB._button and MB._button:IsShown()) and "shown" or "hidden/none",
-    tostring((MailWaiting())))
+    tostring((MailWaiting())), ShowMode(), tostring(view.shown))
 end
 
 -- Called by Skin_EllesmereUI.RefreshAccents so an accent retune repaints a
@@ -1322,6 +1504,15 @@ end
 function MB.SetIcon(id)
   if not ICONS[id] then return end
   Settings().icon = id
+  Refresh()
+end
+
+-- When the icon is on the map (MB.SHOW_MODES; DEFAULTS.show).
+function MB.GetShowWhen() return ShowMode() end
+
+function MB.SetShowWhen(mode)
+  if not SHOW_MODES[mode] then return end
+  Settings().show = mode
   Refresh()
 end
 

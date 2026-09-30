@@ -112,7 +112,13 @@ local scanned = {}
 -- writes mailMemory, mailWatch or hiddenChars, but for the options' Reset
 -- everything, which empties them and says so (MM.DataCleared).
 local charactersGen = 0
-local function CharactersChanged() charactersGen = charactersGen + 1 end
+local function CharactersChanged()
+  charactersGen = charactersGen + 1
+  -- The minimap icon reads the list too (Core/MinimapButton.lua, 1b); it
+  -- asks again once this write has settled, and only if it reads it at all.
+  local Icon = ns.MinimapButton
+  if Icon and Icon.MemoryChanged then Icon.MemoryChanged() end
+end
 
 -- Session timestamps for the arrival watch (section 5): the client fires
 -- UPDATE_PENDING_MAIL at login to establish state and churns it around a

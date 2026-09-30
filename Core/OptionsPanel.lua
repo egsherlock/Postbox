@@ -3725,6 +3725,22 @@ function Pages.minimap(col)
   local block = Rows.Block(col)
   S.minimapBlock = block
 
+  -- First after the switch: whether the icon is on the map at all. Under
+  -- EllesmereUI's minimap too -- Postbox keeps their button shown for as
+  -- long as this says (Core/MinimapButton.lua, SyncEuiButtonShown).
+  local showNames = {
+    new = L["OPT_MINIMAP_SHOW_NEW"], any = L["OPT_MINIMAP_SHOW_ANY"], always = L["OPT_MINIMAP_SHOW_ALWAYS"],
+  }
+  local showItems = {}
+  for _, mode in ipairs((Icon and Icon.SHOW_MODES) or { "new" }) do
+    showItems[#showItems + 1] = { id = mode, name = showNames[mode] }
+  end
+  Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_SHOW_TITLE"], text = L["OPT_MINIMAP_SHOW_DESC"], items = showItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetShowWhen() end,
+    set = function(id) if ns.MinimapButton then ns.MinimapButton.SetShowWhen(id) end end,
+  })
+
   -- Each "clean" restyle sits directly beneath its original, named as the
   -- original plus the localized clean suffix.
   local function CleanName(baseKey)
