@@ -972,8 +972,9 @@ local function FieldText(box)
 end
 
 -- `confirmedMails` is set only by the confirmation's own accept: the number
--- of mails the player said yes to.
-local function DoSendMail(panel, confirmedMails)
+-- of mails the player said yes to; `confirmedGold`, likewise, the copper a
+-- mail's gold question was answered for.
+local function DoSendMail(panel, confirmedMails, confirmedGold)
   local toName  = FieldText(panel.ToBox)
   local subject = FieldText(panel.SubjectBox)
   local body    = FieldText(panel.BodyBox)
@@ -1009,6 +1010,18 @@ local function DoSendMail(panel, confirmedMails)
 
   local totalCopper = ComposedCopper(panel)
   local attachments = AttachmentCount()
+
+  -- Gold that leaves with the mail is asked about first, as the game's own
+  -- send frame asks: the amount and who gets it. Read again on accept; an
+  -- amount changed while the question stood is asked again. A C.O.D. price
+  -- is not gold being sent (the recipient pays it), and a run of mails has
+  -- its own question above.
+  if mails <= 1 and not IsCODArmed(panel) and totalCopper > 0 and confirmedGold ~= totalCopper then
+    local amount = ns.Core.Formatting.FormatMoneyIcons(totalCopper)
+    PopupConfirm(L("SEND_GOLD_CONFIRM", amount, toName), L["SEND_RUN_ACCEPT"],
+      function() DoSendMail(panel, confirmedMails, totalCopper) end)
+    return
+  end
 
   -- Both C.O.D. and attached money are set explicitly on EVERY send: to the
   -- value in use, and to 0 for the one that is not. The send frame's money
