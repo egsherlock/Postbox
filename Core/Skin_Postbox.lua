@@ -2156,6 +2156,29 @@ end
 -- Claim: only when the style choice asks for it
 -------------------------------------------------------------
 
+-- The claim: at login when the style choice is "postbox", and when the style
+-- stands in for EllesmereUI's skin, whose API could not answer
+-- (Skin_EllesmereUI's StandIn, seconds after login). The ns.Skin guard is for
+-- the ordinary case of something else having claimed first.
+function ns.ClaimPostboxStyle()
+  if ns.Skin then return false end
+  ns.Skin = Skin
+  local T = ns.Theme
+  -- What is painted from a token, a grey or the chrome ink is kept from now
+  -- on, so a palette change can paint it again.
+  if T and type(T.TrackPaint) == "function" then T.TrackPaint() end
+  -- The palette the settings name, before the first window is built.
+  ResolveLook()
+  -- A stand-in can come after the mailbox was first opened: that window,
+  -- built bare, takes the style now and is painted from the palette.
+  local frame = ns.MailboxUI and ns.MailboxUI._frame
+  if frame and not frame.__postboxSkinned then
+    Skin.Apply(frame)
+    Skin.ApplyLook(true)
+  end
+  return true
+end
+
 local boot = CreateFrame("Frame")
 boot:RegisterEvent("PLAYER_LOGIN")
 boot:SetScript("OnEvent", function(self)
@@ -2166,14 +2189,6 @@ boot:SetScript("OnEvent", function(self)
   if UI.GetStyleChoice() ~= "postbox" then return end
 
   -- No race with the host skins: reaching here means the player chose this
-  -- style, and both consult UI.HostSkinAllowed() before claiming. The ns.Skin
-  -- guard stays for the ordinary case of something else having claimed first.
-  if ns.Skin then return end
-  ns.Skin = Skin
-  local T = ns.Theme
-  -- What is painted from a token, a grey or the chrome ink is kept from now
-  -- on, so a palette change can paint it again.
-  if T and type(T.TrackPaint) == "function" then T.TrackPaint() end
-  -- The palette the settings name, before the first window is built.
-  ResolveLook()
+  -- style, and both consult UI.HostSkinAllowed() before claiming.
+  ns.ClaimPostboxStyle()
 end)
