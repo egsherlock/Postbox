@@ -769,25 +769,31 @@ end
 -- taken back to an older version still has them. A default is stored as
 -- nothing only while there is no shared value it would read instead.
 --
+-- History's gold has no shared value to read: the shared goldMode was only
+-- ever the mail rows' (History showed both golds whatever it said), so
+-- History shows both until a choice is made for History itself.
+--
 -- History has no time left and no slots; a Larger row writes its slots in
 -- words, on its second line as in its tooltip, so the slots' choice is the
 -- one-line rows' alone.
 do
   local GOLD_MODES = { both = true, earned = true, spent = true }
   local GOLD_KEY = { rows = "rowGoldMode", large = "largeGoldMode", history = "historyGoldMode" }
+  local GOLD_SHARED = { rowGoldMode = "goldMode", largeGoldMode = "goldMode" }
   -- "always", or under "7", "3" or "1" days. Always by default: a column
   -- that fills in only for some mails reads as missing data to someone who
   -- never chose the threshold.
   local EXPIRY_WHEN = { always = true, ["7"] = true, ["3"] = true, ["1"] = true }
   local EXPIRY_KEY = { rows = "rowExpiryWhen", large = "largeExpiryWhen" }
 
-  -- The arrangement's own value, else the shared one it had before.
+  -- The arrangement's own value, else the shared one it had before (none:
+  -- it had none).
   local function Stored(key, shared)
     local store = ns.Store
     local profile = store and store.Get and store.Get("profile")
     if type(profile) ~= "table" then return nil end
     local value = profile[key]
-    if value == nil then value = profile[shared] end
+    if value == nil and shared then value = profile[shared] end
     return value
   end
 
@@ -795,7 +801,7 @@ do
     local store = ns.Store
     local profile = store and store.EnsurePath and store.EnsurePath("profile")
     if profile then
-      if value == default and profile[shared] == nil then value = nil end
+      if value == default and (not shared or profile[shared] == nil) then value = nil end
       profile[key] = value
     end
     ForgetSettings()
@@ -807,14 +813,15 @@ do
     local memo = Settings().gold
     local mode = memo[key]
     if mode then return mode end
-    mode = Stored(key, "goldMode")
+    mode = Stored(key, GOLD_SHARED[key])
     if not GOLD_MODES[mode] then mode = "both" end
     memo[key] = mode
     return mode
   end
   function UI.SetGoldMode(mode, arrangement)
     if not GOLD_MODES[mode] then return end
-    Keep(GOLD_KEY[arrangement] or GOLD_KEY.rows, "goldMode", mode, "both")
+    local key = GOLD_KEY[arrangement] or GOLD_KEY.rows
+    Keep(key, GOLD_SHARED[key], mode, "both")
   end
 
   -- When the rows show the time left. nil sets the default.
