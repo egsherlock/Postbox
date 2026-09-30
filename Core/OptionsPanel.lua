@@ -2870,11 +2870,29 @@ end
 -- it sits has changed.
 -------------------------------------------------------------
 
--- The Mail tab: how a row looks, how the tab behaves, and the sound when
--- mail arrives -- which a player looks for with the mail, not under the
--- minimap.
+-- The Mail tab: how a row looks, what stands under the list, how the tab
+-- collects, and the sound when mail arrives -- which a player looks for
+-- with the mail, not under the minimap.
 function Pages.mail(col)
   Rows.Group(col, L["OPT_ROWS_HEADING"])
+  -- Which columns a row shows, in what order, and the gold's and the time
+  -- left's own choices are arranged in the window itself, where the rows
+  -- are (Core/Arrange.lua). This is the way in from here: the same one the
+  -- mark beside the cog is, a row like the others with its button on the
+  -- right. The inspector names what the row and its button do together,
+  -- and that it works anywhere: away from a mailbox it opens the window's
+  -- preview over sample mail. Arrange Postbox, since it arranges History
+  -- and Mail Memory's window too: as wide as the dropdowns below it, and
+  -- wider where a translation needs it. First, since it is where most of
+  -- how a row looks is chosen.
+  local arrange = Rows.Button(col, {
+    title = L["OPT_ARRANGE_ROW"], text = L["ARRANGE_TIP"] .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"],
+    caption = L["OPT_ARRANGE_CAPTION"], onClick = Panel.Arrange, onHover = State.Arrange, mark = true,
+    minWidth = DD_W,
+  })
+  arrange.entry.title, arrange.entry.extra = L["OPT_ARRANGE_BUTTON"], "arrange"
+  S.arrangeCell = arrange
+
   -- Compact is the default, so the switch is the one a player turns ON to
   -- change it: larger, two-line rows. The stored option is still
   -- compactRows, read inverted, so nobody's choice moves.
@@ -2988,32 +3006,10 @@ function Pages.mail(col)
     end,
   })
 
-  -- Which columns a row shows, in what order, and the gold's and the time
-  -- left's own choices are arranged in the window itself, where the rows
-  -- are (Core/Arrange.lua). This is the way in from here: the same one the
-  -- mark beside the cog is, a row like the others with its button on the
-  -- right. The inspector names what the row and its button do together,
-  -- and that it works anywhere: away from a mailbox it opens the window's
-  -- preview over sample mail. Arrange Postbox, since it arranges History
-  -- and Mail Memory's window too: as wide as the dropdowns above it, and
-  -- wider where a translation needs it.
-  local arrange = Rows.Button(col, {
-    title = L["OPT_ARRANGE_ROW"], text = L["ARRANGE_TIP"] .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"],
-    caption = L["OPT_ARRANGE_CAPTION"], onClick = Panel.Arrange, onHover = State.Arrange, mark = true,
-    minWidth = DD_W,
-  })
-  arrange.entry.title, arrange.entry.extra = L["OPT_ARRANGE_BUTTON"], "arrange"
-  S.arrangeCell = arrange
-
-  Rows.Group(col, L["OPT_COLLECTING_HEADING"])
-  Rows.Check(col, {
-    title = L["OPT_TAB_COUNTS_TITLE"], text = L["OPT_TAB_COUNTS_DESC"],
-    get = function() return ns.MailboxUI.GetOption("showTabCounts") end,
-    set = function(on)
-      ns.MailboxUI.SetOption("showTabCounts", on)
-      if ns.MailboxUI.RefreshCollectTabCounts then ns.MailboxUI.RefreshCollectTabCounts() end
-    end,
-  })
+  -- What stands under the list: the category buttons and the totals, the
+  -- two blocks the tab's foot holds, and the counts on Inbox and on those
+  -- buttons.
+  Rows.Group(col, L["ARRANGE_UNDER_LIST"])
   -- The totals band is a block under the list as the buttons are: the same
   -- refresh stacks the blocks again and moves the window's floor. The two
   -- share a row, as the blocks they switch share the foot of the tab: the
@@ -3033,6 +3029,16 @@ function Pages.mail(col)
       if ns.MailboxUI.RefreshCollectCategoryButtons then ns.MailboxUI.RefreshCollectCategoryButtons() end
     end,
   })
+  Rows.Check(col, {
+    title = L["OPT_TAB_COUNTS_TITLE"], text = L["OPT_TAB_COUNTS_DESC"],
+    get = function() return ns.MailboxUI.GetOption("showTabCounts") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("showTabCounts", on)
+      if ns.MailboxUI.RefreshCollectTabCounts then ns.MailboxUI.RefreshCollectTabCounts() end
+    end,
+  })
+
+  Rows.Group(col, L["OPT_COLLECTING_HEADING"])
   -- Nothing to refresh: the mapping is read at the moment a row is clicked,
   -- and the row tooltip's hint line is composed on hover from the same
   -- reading. A list rebuild would repaint rows that are already correct.
@@ -3040,6 +3046,19 @@ function Pages.mail(col)
     title = L["OPT_PREVIEW_CLICK_TITLE"], text = L["OPT_PREVIEW_CLICK_DESC"],
     get = function() return ns.MailboxUI.GetOption("previewOnClick") end,
     set = function(on) ns.MailboxUI.SetOption("previewOnClick", on) end,
+  })
+  -- How many bag slots a collect run leaves free: None (runs go until the
+  -- bags are full) or 1 to 12, a mail's worth of items. Read at the start
+  -- of each run.
+  local freeItems = { { id = 0, name = L["OPT_KEEP_FREE_NONE"] } }
+  for n = 1, (ns.MailboxUI.KEEP_FREE_MAX or 12) do
+    freeItems[#freeItems + 1] = { id = n, name = ns.Plural("COUNT_SLOTS", n) }
+  end
+  Rows.Dropdown(col, {
+    title = L["OPT_KEEP_FREE_TITLE"], text = L["OPT_KEEP_FREE_DESC"],
+    items = freeItems,
+    get = function() return ns.MailboxUI.GetKeepFreeSlots and ns.MailboxUI.GetKeepFreeSlots() or 0 end,
+    set = function(id) if ns.MailboxUI.SetKeepFreeSlots then ns.MailboxUI.SetKeepFreeSlots(id) end end,
   })
   -- Read mail with nothing left: under a divider after the inbox, in a Done
   -- tab of its own, or deleted once finished with. One choice, three
@@ -3096,19 +3115,6 @@ function Pages.mail(col)
       end
       ns.Theme.LiftPopup(StaticPopup_Show(POPUP_HISTORY_OFF, L["MSG_HISTORY_OFF_CONFIRM"]))
     end,
-  })
-  -- How many bag slots a collect run leaves free: None (runs go until the
-  -- bags are full) or 1 to 12, a mail's worth of items. Read at the start
-  -- of each run.
-  local freeItems = { { id = 0, name = L["OPT_KEEP_FREE_NONE"] } }
-  for n = 1, (ns.MailboxUI.KEEP_FREE_MAX or 12) do
-    freeItems[#freeItems + 1] = { id = n, name = ns.Plural("COUNT_SLOTS", n) }
-  end
-  Rows.Dropdown(col, {
-    title = L["OPT_KEEP_FREE_TITLE"], text = L["OPT_KEEP_FREE_DESC"],
-    items = freeItems,
-    get = function() return ns.MailboxUI.GetKeepFreeSlots and ns.MailboxUI.GetKeepFreeSlots() or 0 end,
-    set = function(id) if ns.MailboxUI.SetKeepFreeSlots then ns.MailboxUI.SetKeepFreeSlots(id) end end,
   })
 
   -- The sound when mail arrives while you are out in the world. The flash
