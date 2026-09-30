@@ -1686,9 +1686,10 @@ function RV.MarkReserve(layout, cols, has, any, compact)
 end
 
 -- A placement table for RV.Place, one per list, reused for every row it binds;
--- laneX and laneW are where RV.Place publishes the list's lanes.
+-- laneX and laneW are where RV.Place publishes the list's lanes; held and
+-- roomX are the rooms it keeps while the arrange mode is open over the list.
 function RV.NewSpec()
-  return { el = {}, size = {}, text = {}, w = {}, laneX = {}, laneW = {} }
+  return { el = {}, size = {}, text = {}, w = {}, laneX = {}, laneW = {}, held = {}, roomX = {} }
 end
 
 -- Where the read mark stands before the subject, `x` being where its column
@@ -1832,6 +1833,17 @@ end
 -- each column's home lane, where a row with every figure has it in
 -- Columns, and the row publishes those instead (RV.HomeLanes).
 --
+-- While the arrange mode is open over the list a row stands in, whatever
+-- its header shows has room in the row too: a hidden column (its peg) and
+-- a shown figure with no lane in the list (its narrow heading) each keep an
+-- empty lane where the arrangement puts them, as wide as makes the column's
+-- box the heading's own width (RV.RoomWidth), and the row's content steps
+-- aside by that room. So the headings beside it and their cells end at its
+-- edges. The rooms are the list's (s.held, the
+-- room's width by column), placed like any column in Columns and packed
+-- with the others in Packed (s.roomX, where this row keeps each), and a
+-- subject never runs on through one. Out of the mode no row keeps any.
+--
 -- `s` (RV.NewSpec, reused):
 --   width, left, trail, gap   the row's width; where its first column may
 --                             start; what its trailing inset takes (with
@@ -1865,6 +1877,8 @@ end
 --   detailText                the second line
 --   focus                     the column the arrange mode points at
 --   laneX[id], laneW[id]      written here: each column's lane (above)
+--   held[id], roomX[id]       written here while arranging: each room's
+--                             width, and where this row keeps it (above)
 --   publish                   true: the next row placed publishes, the rest
 --                             of the pass not; nil: every row does
 function RV.Place(row, s)
@@ -1889,12 +1903,30 @@ function RV.Place(row, s)
     if layout[i].id == "subject" then at = i break end
   end
 
-  -- The graphics' footprint on both sides, and so the text area between.
+  -- While the arrange mode is open over the list this row stands in, the
+  -- rooms its header's pegs and narrow headings keep (above).
+  local held
+  local Arr = ns.Arrange
+  if not two and Arr and Arr.host and Arr.StandWidth and Arr.HEAD and s.held then
+    local list = Arr.host.List and Arr.host.List()
+    if list and row:GetParent() == list then held = s.held end
+  end
+
+  -- The graphics' footprint on both sides, and so the text area between;
+  -- the pegs' rooms come out of it as well.
   local fixed = 0
   for i = 1, n do
     local id = layout[i].id
     if layout[i].shown and el[id] and (id == "read" or id == "icon") then
       fixed = fixed + RV.Footprint(id, i < at, size, gap)
+    end
+    if held then
+      local r = nil
+      if el[id] and not layout[i].shown and id ~= "subject" then
+        r = RV.RoomWidth(s, layout, i, at, Arr.StandWidth(id, true), Arr.HEAD.GAP)
+      end
+      held[id] = r
+      if r then fixed = fixed + r + gap end
     end
   end
   local textWidth = max(s.width - s.left - s.trail - fixed, 60)
@@ -1911,6 +1943,9 @@ function RV.Place(row, s)
   local least = RV.FIGURE_MIN
   -- Lined up: whether a figure the row may show has no lane (below).
   local laneless = lanes and force ~= nil and not layout.shown[force]
+  -- While arranging, what the home lanes have taken (RV.HomeLanes): a
+  -- shown figure with none has a narrow heading, and its room.
+  local homeUsed = 0
   for pass = 1, 2 do
     local from, to, step = n, at + 1, -1
     if pass == 2 then from, to, step = 1, at - 1, 1 end
@@ -1928,6 +1963,20 @@ function RV.Place(row, s)
         end
         w[id] = width
         if width > 0 then used = used + width + gap end
+        if held and layout[i].shown then
+          local home = width
+          if not lanes then
+            home = min(cols[id] or 0, room - homeUsed)
+            if home < least then home = 0 end
+          end
+          if home > 0 then
+            homeUsed = homeUsed + home + gap
+          else
+            local r = RV.RoomWidth(s, layout, i, at, Arr.StandWidth(id, false), Arr.HEAD.GAP)
+            held[id] = r
+            used, homeUsed = used + r + gap, homeUsed + r + gap
+          end
+        end
       end
     end
   end
@@ -1937,7 +1986,7 @@ function RV.Place(row, s)
     local A = ns.Arrange
     if A and A.host then
       if s.publish then s.publish = false end
-      RV.HomeLanes(s, layout, at, textWidth, room)
+      RV.HomeLanes(s, layout, at, textWidth, room, held)
     end
   end
 
@@ -1987,6 +2036,12 @@ function RV.Place(row, s)
           x = x + w[id] + gap
         end
       end
+      local r = held and held[id]
+      if r then
+        lx, lw = x, r
+        x = x + r + gap
+        s.roomX[id] = lx
+      end
       if publish then laneX[id], laneW[id] = lx, lw end
       if placed ~= nil then
         region:SetShown(placed)
@@ -2032,6 +2087,12 @@ function RV.Place(row, s)
           edge = edge + w[id] + gap
         end
       end
+      local r = held and held[id]
+      if r then
+        from, lw = edge, r
+        edge = edge + r + gap
+        s.roomX[id] = s.width - from - r
+      end
       if publish then laneX[id], laneW[id] = s.width - from - lw, lw end
       if placed ~= nil then
         region:SetShown(placed)
@@ -2052,9 +2113,10 @@ function RV.Place(row, s)
     if lanes then
       -- The subject runs on through the lanes next to it that this mail
       -- leaves empty, up to the first thing it has; a lane with no room
-      -- takes none.
+      -- takes none, and a room the arrange mode keeps stops it.
       for i = at + 1, n do
         local id = layout[i].id
+        if held and held[id] then break end
         if el[id] and layout[i].shown then
           if not RV.FIGURE[id] then break end
           local width = w[id] or 0
@@ -2174,15 +2236,60 @@ function RV.Place(row, s)
   if tail then tail:SetShown(tail.__pbOn == true and subject:IsShown()) end
 end
 
+-- The room column layout[i] keeps in a row while the arrange mode is open
+-- (RV.Place), `at` being the subject's place: the lane that makes the
+-- column's box `stand` wide, `stand` being its peg's or narrow heading's
+-- width (Core/Arrange.lua, AR.StandWidth). A box runs from `hgap` past the
+-- line before its lane to the line after it, each line in the middle of the
+-- gap between two lanes (AR.CellBox). Between two columns that stand a
+-- step apart the lines are half a step out; before the subject, the read
+-- mark stands in the gap next to it as a bullet does (RV.DotX), so a line
+-- beside it is nearer and the room as much wider. Every column the row has
+-- stands in the arrangement's order while arranging, a room for each one
+-- hidden, so the neighbours are the arrangement's. At either end of the row
+-- the box takes in the row's inset as every end column's does, and the
+-- room is the one between two columns. Nothing is made.
+function RV.RoomWidth(s, layout, i, at, stand, hgap)
+  local gap, el = s.gap, s.el
+  -- The lines, from the room's start and from its end.
+  local before, after = -ceil(gap / 2), floor(gap / 2)
+  if i < at then
+    local prev, nxt
+    for k = i - 1, 1, -1 do
+      if el[layout[k].id] then prev = k break end
+    end
+    for k = i + 1, at do
+      if el[layout[k].id] then nxt = k break end
+    end
+    if prev and layout[prev].id == "read" and layout[prev].shown then
+      local lead = true
+      for k = prev - 1, 1, -1 do
+        if el[layout[k].id] then lead = false break end
+      end
+      -- The mark's lane ends this far from the room's start.
+      local dotEnd = -6
+      if lead then dotEnd = RV.DotX(s.left, s.left, gap) - s.left - 3 end
+      before = floor(dotEnd / 2)
+    end
+    if nxt and nxt < at and layout[nxt].id == "read" and layout[nxt].shown then
+      after = floor((gap - 3) / 2)
+    end
+  end
+  return max(stand + hgap + before - after, 1)
+end
+
 -- Each column's home lane, published into `s` as RV.Place publishes a
 -- lined-up row's (s.laneX, s.laneW): where it stands on a row that has
 -- every figure, which a packed row places the same way. By the
 -- same arithmetic as RV.Place, from the room the row was given (`at` the
 -- subject's place in `layout`, `textWidth` and `room` its text area and the
 -- figures' share of it): a figure the arrangement shows is as wide as its
--- column, out of the share, and a hidden one has no lane. Places nothing;
--- the widths are written straight into s.laneW, so nothing is made.
-function RV.HomeLanes(s, layout, at, textWidth, room)
+-- column, out of the share, and a hidden one has no lane. While the mode
+-- is open over the list (`held`, RV.Place's rooms), a peg's room and a
+-- narrow heading's are lanes too, where the arrangement puts them. Places
+-- nothing; the widths are written straight into s.laneW, so nothing is
+-- made.
+function RV.HomeLanes(s, layout, at, textWidth, room, held)
   local el, cols, size, gap = s.el, s.cols, s.size, s.gap
   local laneX, laneW = s.laneX, s.laneW
   if not laneX then
@@ -2205,6 +2312,7 @@ function RV.HomeLanes(s, layout, at, textWidth, room)
         end
         laneW[id] = width
         if width > 0 then used = used + width + gap end
+        if held and layout[i].shown and held[id] then used = used + held[id] + gap end
       end
     end
   end
@@ -2231,6 +2339,10 @@ function RV.HomeLanes(s, layout, at, textWidth, room)
           x = x + lw + gap
         end
       end
+      if held and held[id] then
+        lx, lw = x, held[id]
+        x = x + lw + gap
+      end
       laneX[id], laneW[id] = lx, lw
     end
   end
@@ -2253,6 +2365,10 @@ function RV.HomeLanes(s, layout, at, textWidth, room)
           lw = laneW[id]
           edge = edge + lw + gap
         end
+      end
+      if held and held[id] then
+        from, lw = edge, held[id]
+        edge = edge + lw + gap
       end
       laneX[id], laneW[id] = s.width - from - lw, lw
     end

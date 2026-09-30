@@ -1373,8 +1373,8 @@ end
 -- figure has it in Columns, whichever Row layout the rows follow (in the
 -- mode as out of it; packed, a row without a figure shows its others out
 -- from under their headings, which is what Packed does). A heading's glyph stands
--- in the middle of its box, from line to line, whatever the lane under it
--- draws; a name starts where its lane does. The narrow columns wear glyphs
+-- in the middle of the plate it draws, on whole units, whatever the lane
+-- under it draws; a name starts where its lane does. The narrow columns wear glyphs
 -- (the read dot, the icon, the hourglass, the coin, the slots, History's
 -- age), with their names in the tooltip and the inspector; the subject's
 -- heading carries the stretch arrow across the room it takes, after its
@@ -1385,14 +1385,18 @@ end
 -- not draw (the read mark, the time left, the slots), and a column the list
 -- has no such column for at all (the spec's el names what a list draws)
 -- has no heading and no peg in it. A hidden column is a peg on the header
--- where it stands, its crossed eye and nothing else; a click on it, or a right-click, shows the
--- column again, there. A shown one with no lane in this list -- no mail
--- listed has it -- keeps a narrow dimmed heading in its place. Pegs and
--- narrow headings take no room: they stand over the line between the two
--- headings either side of them, on top of those headings' plates (a peg
--- above a narrow heading, both above the plates), so every heading keeps
--- its whole box and is one rectangle with its column's cells. They are the
--- header's alone: the rows have no such column. With no
+-- where it stands, its crossed eye and nothing else; a click on it, or a
+-- right-click, shows the column again, there, and it is dragged along the
+-- header as a heading is (section 7), hidden still. A shown one with no
+-- lane in this list -- no mail listed has it -- keeps a narrow dimmed
+-- heading in its place. While the mode is open the rows keep room for both
+-- (RV.Place): an empty lane where the arrangement puts the column, as wide
+-- as makes its box the peg's or the narrow heading's own width
+-- (CollectTab's RV.RoomWidth), the rows' content stepping aside by just
+-- that. So a peg and a narrow heading are columns like any other, tiling
+-- the row by the one rule, and nothing on the header stands over
+-- anything: the headings either side of one, and their cells, end at its
+-- edges. With no
 -- lanes at all -- an empty list, or Larger mail rows, whose figures are a
 -- line of text -- the header keeps the one-line order at widths of its own,
 -- pegs among them.
@@ -1408,13 +1412,12 @@ end
 -- The header spans what the list spans: from the rows' left edge to their
 -- right edge while nothing scrolls, the same inset on both sides (the
 -- host's PlaceStrip). While the list scrolls the rows end at the scroll
--- track, and so does the last column's box; the last column's heading
--- carries its plate on over the track's column to the header's end (a peg
--- or a narrow heading after it standing over its end; without lanes,
--- whatever stands last carries it), the one place a heading's
--- plate is wider than its box; what it shows is still placed on its box
--- (its glyph in the box's middle, its name and the stretch arrow fitted to
--- the box).
+-- track, and so does the last column's box; whatever stands last on the
+-- header -- a heading, a narrow heading or a peg -- carries its plate on
+-- over the track's column to the header's end, the one place a heading's
+-- plate is wider than its box. Its name and the stretch arrow are still
+-- fitted to its box; a glyph, like every glyph on the header, stands in
+-- the middle of the plate it draws.
 --
 -- Built the first time the mode opens over a list, and laid out again after
 -- every pass of the list's rows (AR.ListPlaced): the lanes are the rows'.
@@ -1425,13 +1428,13 @@ local HEAD = {
   PAD = 3,          -- the tick where the subject stops stands this far past its text
   GAP = 2,          -- between two columns' boxes
   PEG = 12,         -- a hidden column's peg
-  RUN_GAP = 1,      -- between pegs and narrow headings standing together
   TEXT = 4,         -- a name's inset from its heading's edges
   ARROW_GAP = 6,    -- the subject's name to its stretch arrow
   ARROW_MIN = 12,   -- the shortest stretch arrow drawn
   SUBJECT_MIN = 40, -- the subject's heading where the list has no lanes
   SLACK = 4,        -- how far back the hand comes before a drag swaps back (section 7)
-  -- A shown heading with no lane of its own.
+  -- A shown heading with no lane of its own, where it wears a glyph (a name
+  -- is as wide as it measures: AR.StandWidth).
   NARROW = { read = 14, icon = 22, sender = 44, subject = 60, time = 22, money = 22, slots = 22, age = 22 },
   -- Every heading's width where the list publishes no lanes.
   FALLBACK = { read = 14, icon = 24, sender = 72, time = 22, money = 40, slots = 42, age = 36 },
@@ -1516,7 +1519,7 @@ function AR.PaintHead(head)
   end
 end
 
--- A heading's glyph or name where it stands (`_cx`, the glyph's middle,
+-- A heading's glyph or name where it stands (`_gx`, the glyph's left edge,
 -- and `_tx`, the name's start, both from the heading's left), and the name
 -- and the subject's arrow fitted to its box (`_w`, which the last heading's
 -- plate runs past): again only when one of them changes (AR.LayoutStrip).
@@ -1524,7 +1527,7 @@ function AR.FitHead(head)
   local glyph = head.Glyph
   if glyph then
     glyph:ClearAllPoints()
-    glyph:SetPoint("CENTER", head, "LEFT", head._cx or 0, 0)
+    glyph:SetPoint("LEFT", head, "LEFT", head._gx or 0, 0)
   end
   local text = head.Text
   if not text then return end
@@ -1546,14 +1549,42 @@ function AR.FitHead(head)
   for k = 1, 3 do arrow[k]:SetShown(show) end
 end
 
--- Where a heading's glyph and name stand in its box of width `w` (above):
--- a glyph in the middle, however wide the box and wherever in it the lane
--- lies; a name from its lane's start (`lx`, from the box's left) where the
--- list has one, else at the inset.
-function AR.HeadContent(w, lx)
+-- Where a glyph `gw` wide stands on a plate `pw` wide: its left edge, in
+-- the plate's middle and on a whole unit (the glyphs are drawn for whole
+-- pixels), the odd unit after it. One rule for every glyph the header
+-- draws: a heading's, the crossed eye on a peg, at rest, in the hand and
+-- where it lands, whatever stands beside it and whether the list scrolls.
+function AR.GlyphX(pw, gw)
+  return math.floor(((pw or 0) - (gw or 0)) / 2)
+end
+
+-- Where a heading's glyph and name stand (above): a glyph `gw` wide in the
+-- middle of the plate it draws (`pw`, which the last heading's runs on
+-- past its box), however wide and wherever in it the lane lies; a name
+-- from its lane's start (`lx`, from the box's left) where the list has
+-- one, else at the inset, fitted to its box.
+function AR.HeadContent(pw, lx, gw)
   local tx = HEAD.TEXT
   if lx then tx = math.max(lx, HEAD.TEXT) end
-  return w / 2, tx
+  return AR.GlyphX(pw, gw), tx
+end
+
+-- The width a peg or a narrow heading stands at (`peg`: a peg's): a peg's
+-- own, a glyph's narrow heading's own, and a name's as wide as it measures
+-- in its inset, measured once. The rows keep room for it (RV.RoomWidth).
+function AR.StandWidth(id, peg)
+  if peg then return HEAD.PEG end
+  local narrow = HEAD.NARROW[id] or 22
+  local strip = AR.host and AR.host.strip
+  local head = strip and strip.heads[id]
+  if not (head and head.Text and head.Measure) then return narrow end
+  if not head._standW then
+    head.Measure:SetText(head.caption)
+    local w = math.ceil(head.Measure:GetStringWidth() or 0)
+    if w <= 0 then return narrow end
+    head._standW = w + 2 * HEAD.TEXT
+  end
+  return head._standW
 end
 
 local function HeadEnter(self)
@@ -1637,6 +1668,7 @@ local function BuildHead(strip, id)
   if glyph then
     glyph:SetPoint("CENTER", head, "CENTER", 0, 0)
     head.Glyph, head.glyphKind = glyph, kind
+    head.glyphW = glyph:GetWidth() or 0
   else
     -- A name, and where its glyph's art is missing, the name too.
     head.caption = L()[spec.title]
@@ -1671,9 +1703,10 @@ local function BuildHead(strip, id)
 end
 
 -- A hidden column's peg: a dark plate with the crossed eye, lighter when
--- pointed at, there or where a row shows the column anyway (section 7a).
+-- pointed at, there or where a row shows the column anyway (section 7a),
+-- and in the hand.
 local function PaintPeg(peg)
-  local hover = peg.hover or AR.rowHover == peg.colId
+  local hover = peg.hover or AR.rowHover == peg.colId or (AR.drag ~= nil and AR.drag.id == peg.colId)
   local fill = hover and 0.12 or 0.063
   peg.Fill:SetVertexColor(fill, fill, fill, 0.95)
   local ring = hover and 0.62 or 0.353
@@ -1682,9 +1715,13 @@ local function PaintPeg(peg)
   if peg.Eye then peg.Eye:SetVertexColor(eye, eye, eye, 1) end
 end
 
+-- Pointed at, a peg lights and takes the move cross, as a heading does: it
+-- moves as one does. Its tooltip is not shown during a drag.
 local function PegEnter(self)
   self.hover = true
   PaintPeg(self)
+  AR.MoveCursor(true)
+  if AR.drag then return end
   GameTooltip:SetOwner(self, "ANCHOR_TOP")
   GameTooltip:SetText(L()[AR.COLUMNS[self.colId].title])
   GameTooltip:AddLine(L()["ARRANGE_HIDDEN_STATE"], 1, 1, 1, true)
@@ -1696,6 +1733,34 @@ local function PegLeave(self)
   self.hover = false
   PaintPeg(self)
   GameTooltip:Hide()
+  if not AR.drag then AR.MoveCursor(false) end
+end
+
+-- A press on a peg is its column's, as one on a heading is (section 7): a
+-- drag moves it, hidden still, and a click shows it there. A right-click
+-- shows it too, but not while something is in the hand.
+local function PegDown(self, button)
+  if button ~= "LeftButton" then return end
+  local host = AR.host
+  if host and host.strip == self:GetParent() then AR.PressColumn(host, self.colId, self) end
+end
+
+local function PegClick(self)
+  if AR.Dragging() then return end
+  AR.ShowPeg(self)
+end
+
+-- The crossed eye in the middle of the peg's plate, on whole units
+-- (AR.GlyphX): again only when the plate's width changed.
+local function FitPeg(peg, pw)
+  if peg._pw == pw then return end
+  peg._pw = pw
+  peg:SetWidth(pw)
+  local eye = peg.Eye
+  if eye then
+    eye:ClearAllPoints()
+    eye:SetPoint("LEFT", peg, "LEFT", AR.GlyphX(pw, peg.eyeW), 0)
+  end
 end
 
 local function BuildPeg(strip, id)
@@ -1712,14 +1777,16 @@ local function BuildPeg(strip, id)
   AR.TintEdges(peg.Key, 0, 0, 0, 1)
   peg.Ring = AR.NewEdges(peg, "BORDER", 1, 0, 1)
   peg.Eye = T.Glyph and T.Glyph(peg, "eye-off", 6, "ARTWORK") or nil
-  -- In the peg's own width, which the last peg's plate runs past.
-  if peg.Eye then peg.Eye:SetPoint("CENTER", peg, "LEFT", HEAD.PEG / 2, 0) end
+  peg.eyeW = peg.Eye and peg.Eye:GetWidth() or 0
+  peg._pw = nil
+  FitPeg(peg, HEAD.PEG)
   peg:SetScript("OnEnter", PegEnter)
   peg:SetScript("OnLeave", PegLeave)
-  -- The peg is its crossed eye: a click on it shows the column, and so does
-  -- a right-click, as it would on any hidden thing.
-  peg:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-  peg:SetScript("OnClick", AR.ShowPeg)
+  -- The peg is its crossed eye: a click on it shows the column (the press,
+  -- PegDown), and so does a right-click, as it would on any hidden thing.
+  peg:RegisterForClicks("RightButtonUp")
+  peg:SetScript("OnMouseDown", PegDown)
+  peg:SetScript("OnClick", PegClick)
   PaintPeg(peg)
   peg:Hide()
   return peg
@@ -1736,10 +1803,9 @@ function AR.BuildStrip(host)
   strip.heads, strip.pegs = {}, {}
   -- The layout's working tables, made once: each column's heading x and
   -- width, its kind ("lane", "narrow", "peg", or "absent" where the list
-  -- has no such column), a lane's heading box (where a row is hit),
-  -- whether it stands over the line between two, and the columns with a
-  -- place on the header, in order.
-  strip.bx, strip.bw, strip.kind, strip.hx, strip.hw, strip.over = {}, {}, {}, {}, {}, {}
+  -- has no such column), its box on the lanes (where a row is hit), and
+  -- the columns with a place on the header, in order.
+  strip.bx, strip.bw, strip.kind, strip.hx, strip.hw = {}, {}, {}, {}, {}
   strip.order = {}
   for id in pairs(AR.COLUMNS) do
     strip.heads[id] = BuildHead(strip, id)
@@ -1756,69 +1822,14 @@ function AR.BuildStrip(host)
   return strip
 end
 
--- A run -- pegs and narrow headings standing together between two lanes'
--- headings -- and each one's width in it: a peg's; a narrow heading's own
--- beside the subject, and a peg's width elsewhere for one that wears a
--- glyph.
-local function RunWidth(strip, id, beside)
-  if strip.kind[id] == "peg" then return HEAD.PEG end
-  if not beside then
-    local head = strip.heads[id]
-    if head and head.Glyph then return HEAD.PEG end
-  end
-  return HEAD.NARROW[id] or 22
-end
-
--- Each run stands over the line between the two headings either side of
--- it, centred on it, on top of their plates: no heading gives it any room,
--- so every heading keeps its whole box and is one rectangle with its
--- column's cells, wherever a column is hidden. Before the first heading a
--- run stands from the header's start over the first heading; after the
--- last, against the header's end over the last one's. The rows have no
--- such column: the run is the header's alone. `order` holds the `n`
--- columns with a place on the header, which runs from 0 to `span`.
-function AR.PlaceRuns(order, n, strip, span)
-  local bx, bw, over = strip.bx, strip.bw, strip.over
-  local i = 1
-  while i <= n do
-    if bx[order[i]] == nil then
-      local a = (i > 1) and order[i - 1] or nil
-      local j = i
-      while j <= n and bx[order[j]] == nil do j = j + 1 end
-      local b = (j <= n) and order[j] or nil
-      local beside = a == "subject" or b == "subject"
-      local total = -HEAD.RUN_GAP
-      for k = i, j - 1 do total = total + RunWidth(strip, order[k], beside) + HEAD.RUN_GAP end
-      -- The line: in the middle of the gap after the heading before it.
-      local line = 0
-      if a then
-        line = bx[a] + bw[a] + HEAD.GAP / 2
-      elseif b then
-        line = bx[b] - HEAD.GAP / 2
-      end
-      local x = math.floor(line - total / 2 + 0.5)
-      x = math.max(0, math.min(x, span - total))
-      for k = i, j - 1 do
-        local id = order[k]
-        local w = RunWidth(strip, id, beside)
-        bx[id], bw[id], over[id] = x, w, true
-        x = x + w + HEAD.RUN_GAP
-      end
-      i = j
-    else
-      i = i + 1
-    end
-  end
-end
-
 -- The header laid out on the list's lanes (above), and put on screen: a
 -- heading, or a peg, per column the list has in the arrangement it follows,
--- and the last one's plate carried on to the header's end; the heading in
--- the hand is left where the cursor holds it and its slot takes the ghost.
--- A column the other arrangement has and this one has not (History's age
--- over the mail rows, their read mark over History) has neither. Anchored
--- again only where a place, a width or where its glyph and name stand
--- changed.
+-- and the last one's plate carried on to the header's end; the heading or
+-- the peg in the hand is left where the cursor holds it and its slot takes
+-- the ghost. A column the other arrangement has and this one has not
+-- (History's age over the mail rows, their read mark over History) has
+-- neither. Anchored again only where a place, a width or where its glyph
+-- and name stand changed.
 function AR.LayoutStrip(host)
   local strip = host and host.strip
   local layout = AR.Layout()
@@ -1830,6 +1841,9 @@ function AR.LayoutStrip(host)
   local spec = host.Spec and host.Spec()
   local laneX, laneW = spec and spec.laneX, spec and spec.laneW
   local lanes = laneX ~= nil and laneW ~= nil and laneW.subject ~= nil and laneX.subject ~= nil
+  -- The rooms the rows keep for the pegs and the narrow headings
+  -- (RV.Place), by column.
+  local held = spec and spec.held
   -- What the list draws at all (the spec's regions, once a row has been
   -- placed): a column it has no such column for takes no place (above).
   local has = spec and spec.el
@@ -1841,7 +1855,7 @@ function AR.LayoutStrip(host)
   -- this arrangement has not among them.
   for id in pairs(kind) do
     kind[id] = "absent"
-    bx[id], bw[id], hx[id], hw[id], strip.over[id] = nil, nil, nil, nil, nil
+    bx[id], bw[id], hx[id], hw[id] = nil, nil, nil, nil
   end
   for i = 1, n do
     local id = layout[i].id
@@ -1849,12 +1863,17 @@ function AR.LayoutStrip(host)
       kind[id] = "absent"
     elseif not layout[i].shown and not AR.COLUMNS[id].fixed then
       kind[id] = "peg"
-    elseif not lanes then
-      kind[id] = "lane"
-    elseif laneX[id] ~= nil and (laneW[id] or 0) > 0 then
-      kind[id] = "lane"
-    else
+    elseif lanes and held and held[id] then
       kind[id] = "narrow"
+    else
+      kind[id] = "lane"
+    end
+    -- On lanes every column the header shows has one: its content's, or
+    -- the room the rows keep for its peg or narrow heading. One without
+    -- (rows placed before the mode opened over them) has no place until
+    -- the rows are placed again.
+    if lanes and kind[id] ~= "absent" and not (laneX[id] and (laneW[id] or 0) > 0) then
+      kind[id] = "absent"
     end
     if kind[id] ~= "absent" then
       count = count + 1
@@ -1863,32 +1882,30 @@ function AR.LayoutStrip(host)
   end
   for i = count + 1, #order do order[i] = nil end
   if lanes then
-    -- The columns tile the row (above): each lane's heading ends on the
+    -- The columns tile the row (above): each column's box ends on the
     -- line between its lane and the next, in the middle of the gap between
     -- them, and the next starts GAP after that line; the first starts where
     -- the row does and the last ends where the row does (its plate runs on,
-    -- below).
+    -- below). A peg and a narrow heading are columns like any other here,
+    -- on the rooms the rows keep for them.
     span = math.max(math.min(spec.width or width, width), 60)
     local prev
     for i = 1, count do
       local id = order[i]
-      if kind[id] == "lane" then
-        if prev then
-          local line = math.floor((laneX[prev] + laneW[prev] + laneX[id]) / 2)
-          bw[prev] = math.max(line - bx[prev], 1)
-          bx[id] = line + HEAD.GAP
-        else
-          bx[id] = 0
-        end
-        prev = id
+      if prev then
+        local line = math.floor((laneX[prev] + laneW[prev] + laneX[id]) / 2)
+        bw[prev] = math.max(line - bx[prev], 1)
+        bx[id] = line + HEAD.GAP
+      else
+        bx[id] = 0
       end
+      prev = id
     end
     if prev then bw[prev] = math.max(span - bx[prev], 1) end
     for i = 1, count do
       local id = order[i]
-      if kind[id] == "lane" then hx[id], hw[id] = bx[id], bw[id] end
+      hx[id], hw[id] = bx[id], bw[id]
     end
-    AR.PlaceRuns(order, count, strip, span)
   else
     -- No lanes: the one-line order at the header's own widths, pegs among
     -- them, the subject taking what they leave.
@@ -1919,72 +1936,61 @@ function AR.LayoutStrip(host)
   end
   strip.lanes, strip.span = lanes, span
 
-  -- The last on the header, whose plate runs on to its end: on lanes, the
-  -- last column's heading, a run at the end standing over it.
+  -- The last on the header, whose plate runs on to its end.
   local last = order[count]
-  if lanes then
-    for i = count, 1, -1 do
-      if kind[order[i]] == "lane" then
-        last = order[i]
-        break
-      end
-    end
-  end
   local drag = AR.drag
+  local tile = Th().Metrics.tileHeight
   for id, head in pairs(strip.heads) do
     local peg = strip.pegs[id]
     if peg then
+      local w = bw[id]
+      local pw = w
+      if w and id == last then pw = math.max(width - bx[id], w) end
+      local frame
       if kind[id] == "absent" then
         head:Hide()
         peg:Hide()
       elseif kind[id] == "peg" then
         head:Hide()
-        if peg._x ~= bx[id] then
-          peg:ClearAllPoints()
-          peg:SetPoint("LEFT", strip, "LEFT", bx[id], 0)
-          peg._x = bx[id]
-        end
-        local pw = HEAD.PEG
-        if id == last then pw = math.max(width - bx[id], pw) end
-        if peg._pw ~= pw then
-          peg._pw = pw
-          peg:SetWidth(pw)
-        end
-        peg:Show()
+        peg._w = w
+        FitPeg(peg, pw)
+        frame = peg
       else
         peg:Hide()
         local narrow = kind[id] == "narrow"
-        local w = bw[id]
-        local pw = w
-        if id == last then pw = math.max(width - bx[id], w) end
         local lx
         if lanes and not narrow then lx = laneX[id] - bx[id] end
-        local cx, tx = AR.HeadContent(w, lx)
-        if head._w ~= w or head._pw ~= pw or head.narrow ~= narrow or head._cx ~= cx or head._tx ~= tx then
-          head._w, head._pw, head.narrow, head._cx, head._tx = w, pw, narrow, cx, tx
+        local gx, tx = AR.HeadContent(pw, lx, head.glyphW)
+        if head._w ~= w or head._pw ~= pw or head.narrow ~= narrow or head._gx ~= gx or head._tx ~= tx then
+          head._w, head._pw, head.narrow, head._gx, head._tx = w, pw, narrow, gx, tx
           head:SetWidth(pw)
           AR.FitHead(head)
         end
+        frame = head
+      end
+      if frame then
         if drag and drag.id == id then
           local ghost = strip.Ghost
           ghost:ClearAllPoints()
           ghost:SetPoint("LEFT", strip, "LEFT", bx[id], 0)
-          ghost:SetSize(pw, Th().Metrics.tileHeight)
+          ghost:SetSize(pw, tile)
           AR.PaintGhost(ghost)
           ghost:Show()
-        else
-          if head._x ~= bx[id] then
-            head:ClearAllPoints()
-            head:SetPoint("LEFT", strip, "LEFT", bx[id], 0)
-            head._x = bx[id]
-          end
-          -- Over the line between two, a narrow heading stands a few levels
-          -- up, under the pegs.
-          local level = strip:GetFrameLevel() + (strip.over[id] and 5 or 1)
-          if head:GetFrameLevel() ~= level then head:SetFrameLevel(level) end
+        elseif frame._x ~= bx[id] then
+          frame:ClearAllPoints()
+          frame:SetPoint("LEFT", strip, "LEFT", bx[id], 0)
+          frame._x = bx[id]
         end
-        head:Show()
-        AR.PaintHead(head)
+        -- A peg is painted as it comes onto the header and wherever its
+        -- state changes (pointed at, lifted, let go); a heading's look also
+        -- follows the list's lanes.
+        if frame == head then
+          head:Show()
+          AR.PaintHead(head)
+        elseif not peg:IsShown() then
+          peg:Show()
+          PaintPeg(peg)
+        end
       end
     end
   end
@@ -2011,7 +2017,10 @@ end
 -- column rides in a lifted lane of its own over the list (7a), drawn
 -- offset by as much as the heading is from its slot: each frame of the
 -- drag moves that lane and its cells, and nothing is bound again unless
--- the order changed. A click selects the column.
+-- the order changed. A click selects the column. A hidden column's peg
+-- moves the same way, by the same edges and the same slack, hidden still:
+-- it lifts and follows the cursor, its slot takes the ghost, and its room
+-- in the rows rides in the lifted lane; a click on it shows the column.
 -------------------------------------------------------------
 
 -- The press in flight: one table of handlers for every column press, and
@@ -2029,11 +2038,20 @@ function columnPress.cancel()
   AR.RowsChanged(true)
 end
 function columnPress.click()
-  if AR.host == pressed.host then AR.Select("column", pressed.id) end
+  if AR.host ~= pressed.host then return end
+  if pressed.peg then
+    AR.ShowPeg(pressed.peg)
+  else
+    AR.Select("column", pressed.id)
+  end
 end
 
+-- `frame` is what was pressed: a heading, a peg (whose click shows its
+-- column) or the rows' cover.
 function AR.PressColumn(host, id, frame)
+  local strip = host and host.strip
   pressed.host, pressed.id = host, id
+  pressed.peg = (strip and strip.pegs[id] == frame) and frame or nil
   columnPress.name = L()[AR.COLUMNS[id].title]
   AR.Press(frame, columnPress)
 end
@@ -2047,10 +2065,12 @@ local function RefocusRows()
   if AR.focus == before then AR.RowsChanged(false) end
 end
 
+-- What is lifted is what the header shows for the column: its heading,
+-- or a hidden column's peg.
 function AR.LiftColumn(host, id, x0)
   if AR.host ~= host then return end
   local strip = host.strip
-  local head = strip and strip.heads[id]
+  local head = strip and (strip.kind[id] == "peg" and strip.pegs[id] or strip.heads[id])
   if not (head and head:IsShown()) then return end
   GameTooltip:Hide()
   AR.drag = {
@@ -2064,6 +2084,7 @@ function AR.LiftColumn(host, id, x0)
   -- Lifted a unit above and below its place.
   head:SetHeight(Th().Metrics.tileHeight + 2)
   AR.LayoutStrip(host)
+  if head == strip.pegs[id] then PaintPeg(head) end
   AR.ShowHand(host)
   RefocusRows()
 end
@@ -2104,9 +2125,9 @@ function AR.DragColumn(host, cursorX)
     while p >= 1 and bx[layout[p].id] == nil do p = p - 1 end
     while q <= #layout and bx[layout[q].id] == nil do q = q + 1 end
     local prev, nxt = layout[p], layout[q]
-    -- Only the way the hand is from its slot: in a crowded header a run of
-    -- pegs may stand over the edge of the heading before it, its middle on
-    -- the wrong side of that heading's.
+    -- Only the way the hand is from its slot: a wide column held against a
+    -- narrow neighbour (a peg's, a narrow heading's) may reach past that
+    -- one's middle on the side it came from.
     local last, at, home = drag.swapDir, drag.swapX or hand, bx[drag.id] or hand
     local target
     if prev and bx[prev.id] and hand < home and hand < bx[prev.id] + bw[prev.id] / 2
@@ -2147,6 +2168,15 @@ function AR.DropColumn(host)
     AR.LayoutStrip(host)
   end
   local over = head:IsMouseOver()
+  if host and host.strip and host.strip.pegs[head.colId] == head then
+    -- A peg, still hidden: pointed at as a peg is, not as a heading.
+    head.hover = over
+    AR.hover = nil
+    AR.MoveCursor(over)
+    RefocusRows()
+    AR.PaintPointed(host.strip, head.colId)
+    return
+  end
   AR.hover = over and head.colId or nil
   AR.MoveCursor(over)
   RefocusRows()
@@ -2270,11 +2300,15 @@ function AR.ColumnAt(host)
   local cx, cy = AR.Cursor(cover)
   if strip.lanes and not strip.lined then return AR.RowColumnAt(host, cx, cy) end
   if strip.lanes then
+    -- A heading's box, a narrow heading's among them; not a peg's room,
+    -- which is the peg's to take on the header.
     local x = cx - left
     local hx, hw, kind = strip.hx, strip.hw, strip.kind
     for i = 1, #layout do
       local id = layout[i].id
-      if kind[id] == "lane" and hx[id] and x >= hx[id] - 1 and x < hx[id] + hw[id] + 1 then return id end
+      if (kind[id] == "lane" or kind[id] == "narrow") and hx[id] and x >= hx[id] - 1 and x < hx[id] + hw[id] + 1 then
+        return id
+      end
     end
     return nil
   end
@@ -2412,20 +2446,21 @@ local function NewLine(cover, i)
   return line
 end
 
--- One line down each boundary between two lanes, where the heading before
--- it ends (AR.LayoutStrip). None without lanes, nor while the rows close
--- up: no row stands in them then.
+-- One line down each boundary between two columns' boxes, where the box
+-- before it ends (AR.LayoutStrip), a peg's and a narrow heading's among
+-- them. None without lanes, nor while the rows close up: no row stands in
+-- them then.
 function AR.PlaceLines(host)
   local cover, strip = host.cover, host.strip
   if not (cover and strip) then return end
   local layout = AR.Layout()
   local count = 0
   if strip.lanes and strip.lined and layout then
-    local hx, hw, kind = strip.hx, strip.hw, strip.kind
+    local hx, kind = strip.hx, strip.kind
     local prev = false
     for i = 1, #layout do
       local id = layout[i].id
-      if kind[id] == "lane" and hx[id] then
+      if kind[id] ~= "absent" and hx[id] then
         if prev then
           count = count + 1
           local line = cover.Lines[count] or NewLine(cover, count)
@@ -2544,6 +2579,7 @@ function AR.LetGo(host)
   drag.head:SetFrameLevel(drag.level)
   drag.head:SetHeight(Th().Metrics.tileHeight)
   drag.head._x = nil
+  if host and host.strip and host.strip.pegs[drag.id] == drag.head then PaintPeg(drag.head) end
   local pool = drag.pool
   if pool then
     for i = 1, #pool do AR.UnmarkRow(pool[i]) end
@@ -2858,7 +2894,9 @@ end
 -- stand in columns (`lined`) -- every row of a list on the same lanes, a
 -- read mail's delete mark drawing over the last one's end -- or where the
 -- row drew it, packed; the subject's own room (`x`, `subjectW`) either way.
--- Nil where it has none.
+-- A peg's or a narrow heading's is the room the row keeps for it (RV.Place:
+-- a lane lined up, where this row packed it otherwise). Nil where it has
+-- none.
 function AR.CellSpan(s, id, lined, x, subjectW)
   local region = s.el[id]
   if region == nil then return nil end
@@ -2868,7 +2906,12 @@ function AR.CellSpan(s, id, lined, x, subjectW)
     if not (lx and lw and lw > 0) then return nil end
     return lx, lw
   end
-  if not region:IsShown() then return nil end
+  if not region:IsShown() then
+    local room = s.held and s.held[id]
+    local rx = room and s.roomX and s.roomX[id]
+    if rx then return rx, room end
+    return nil
+  end
   return AR.RegionSpan(region, s.width)
 end
 
