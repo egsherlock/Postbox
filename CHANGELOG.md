@@ -22,6 +22,9 @@ longer play.
   right-click to hide or show; a crossed eye marks what is hidden. While you
   arrange, the mark is a lit Done; right-click it to go back to the default
   arrangement.
+- **Switch between one-line and Larger mail rows while you arrange** (Rows,
+  in the overview); the Icon and Subject cards also carry the quality and
+  stack count settings.
 - **Larger mail rows have their own arrangement**, on a two-line header that
   mirrors the row: move the icon or read mark to either end, the sender
   before or after the subject or down onto the second line, and the figures
