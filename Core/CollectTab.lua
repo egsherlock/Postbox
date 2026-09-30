@@ -1761,35 +1761,39 @@ local function RowMoneyText(index, hasCOD, moneyValue, codValue, brief)
   return MoneyText(hasCOD, moneyValue, codValue, nil, brief, index)
 end
 
+-- texture, name, quality, mark, count -> one item's line in the tooltip
+-- being built: its icon, its name in its quality's colour with the crafting
+-- mark its link carries, and its count beside it. Mail Memory's icons list
+-- what a remembered mail held with it too.
+function RV.ItemLine(texture, name, quality, mark, count)
+  local r, g, b = 1, 1, 1
+  local qualityColor = C_Item and C_Item.GetItemQualityColor
+  if quality and type(qualityColor) == "function" then
+    local qr, qg, qb = qualityColor(quality)
+    if qr then r, g, b = qr, qg, qb end
+  end
+  local line = "|T" .. tostring(texture) .. ":14:14:0:0:64:64:5:59:5:59|t "
+    .. (name or RETRIEVING_ITEM_INFO or "") .. (mark and (" " .. mark) or "")
+  count = tonumber(count) or 1
+  if count > 1 then
+    GameTooltip:AddDoubleLine(line, ("x%d"):format(count), r, g, b, 0.82, 0.82, 0.82)
+  else
+    GameTooltip:AddLine(line, r, g, b)
+  end
+end
+
 -- owner, index, items -> the tooltip of the icon of a mail holding several
--- items: how many, then one line per item -- its icon, its name in its
--- quality's colour with the crafting mark its link carries, its count --
--- and the gold or the C.O.D. price, if any; then how to take them one at a
--- time, by the gesture that opens a mail under the player's setting. Built
--- on hover, never on a bind.
+-- items: how many, then one line per item (RV.ItemLine), and the gold or
+-- the C.O.D. price, if any; then how to take them one at a time, by the
+-- gesture that opens a mail under the player's setting. Built on hover,
+-- never on a bind.
 function RV.ItemsTooltip(owner, index, items)
   GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
   GameTooltip:ClearLines()
   GameTooltip:SetText(ns.Plural("COUNT_ITEMS", items), 1, 1, 1)
-  local qualityColor = C_Item and C_Item.GetItemQualityColor
   for slot = 1, Mail().MAX_ATTACHMENTS do
     local name, _, texture, count, quality = GetInboxItem(index, slot)
-    if texture then
-      local r, g, b = 1, 1, 1
-      if quality and type(qualityColor) == "function" then
-        local qr, qg, qb = qualityColor(quality)
-        if qr then r, g, b = qr, qg, qb end
-      end
-      local mark = RV.QualityMark(index, slot)
-      local line = "|T" .. tostring(texture) .. ":14:14:0:0:64:64:5:59:5:59|t "
-        .. (name or RETRIEVING_ITEM_INFO or "") .. (mark and (" " .. mark) or "")
-      count = tonumber(count) or 1
-      if count > 1 then
-        GameTooltip:AddDoubleLine(line, ("x%d"):format(count), r, g, b, 0.82, 0.82, 0.82)
-      else
-        GameTooltip:AddLine(line, r, g, b)
-      end
-    end
+    if texture then RV.ItemLine(texture, name, quality, RV.QualityMark(index, slot), count) end
   end
   local _, _, _, _, money, cod = GetInboxHeaderInfo(index)
   money, cod = tonumber(money) or 0, tonumber(cod) or 0
@@ -2993,6 +2997,7 @@ CT.RowRules = {
   NameMarkRoom = RV.NameMarkRoom,
   FitSubject = RV.FitSubject,
   HoldRange = RV.HoldRange,
+  ItemLine = RV.ItemLine,
 }
 
 -------------------------------------------------------------
@@ -4092,9 +4097,11 @@ function AV.UpdateRows(panel)
     onHeader = function(realm, name) AV.OpenHeader(panel, realm, name) end
     panel._avOnHeader = onHeader
   end
-  -- The box each row is from, for its sender's class (MM.RowRealm).
+  -- The box each row is from, for its sender's class and for where its
+  -- items can be taken (MM.RowRealm).
   local Memory = ns.MailMemory
-  local realm = Memory.RowRealm and Memory.RowRealm(rows, first, panel._avInfo) or nil
+  local realm, name
+  if Memory.RowRealm then realm, name = Memory.RowRealm(rows, first, panel._avInfo) end
   for i = first, last do
     used = used + 1
     local row = AV.Row(panel, used)
@@ -4102,8 +4109,8 @@ function AV.UpdateRows(panel)
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
     row:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
-    if rows[i].header then realm = rows[i].realm end
-    Memory.FillRow(row, rows[i], now, panel._avCols, i, onHeader, realm)
+    if rows[i].header then realm, name = rows[i].realm, rows[i].name end
+    Memory.FillRow(row, rows[i], now, panel._avCols, i, onHeader, realm, name)
   end
   local pool = panel._avPool
   for i = used + 1, #pool do pool[i]:Hide() end

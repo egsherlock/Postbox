@@ -1220,11 +1220,82 @@ local function MailMark(mail)
   return mark
 end
 
+-- row, k -> what the row's mail held k-th, from the snapshot's list: its
+-- icon, its name, its quality, its crafting mark and a link for it -- the
+-- first item's own link where the snapshot kept it, the item's by id
+-- otherwise, so a tiered reagent still wears its tier. Its count is the
+-- list's. Asked on hover, never on a bind.
+function MM.ItemFacts(row, k)
+  local list = row.itemList
+  local id = list and list[2 * k - 1]
+  if not id then return nil end
+  local own = (k == 1) and row.itemLink or nil
+  local name, generic, quality
+  if C_Item and type(C_Item.GetItemInfo) == "function" then name, generic, quality = C_Item.GetItemInfo(id) end
+  local link = own or generic
+  if not name and type(link) == "string" then
+    name = link:match("|h%[(.-)%]|h")
+    if name then name = name:gsub("%s*|A:.-|a", "") end
+  end
+  if not quality and C_Item and type(C_Item.GetItemQualityByID) == "function" then
+    quality = C_Item.GetItemQualityByID(id)
+  end
+  local icon = (C_Item and type(C_Item.GetItemIconByID) == "function") and C_Item.GetItemIconByID(id) or nil
+  local R = Rules()
+  local mark = R and R.QualityMark and R.QualityMark(link) or nil
+  return icon, name, quality, mark, link
+end
+
+-- row, tile -> where what the row's mail held can be taken: at the mailbox
+-- of the character whose box it is, named, or at a mailbox, for the one
+-- being played. `tile`: a fan tile's line, which adds the link gesture.
+function MM.TakeHint(row, tile)
+  local myRealm, myName = Me()
+  local realm, name = row.boxRealm or myRealm, row.boxName
+  if name and not (name == myName and realm == myRealm) then
+    return L(tile and "MEMORY_TILE_ON" or "MEMORY_TAKE_ON", MM.ClassName(realm, name, true))
+  end
+  return L[tile and "MEMORY_TILE_HERE" or "MEMORY_TAKE_HERE"]
+end
+
+-- owner, row -> the tooltip of the icon of a remembered mail that held
+-- several items, as the Mail tab's icon has one (RV.ItemsTooltip): how
+-- many, one line per item in the Mail tab's own words (the rules'
+-- ItemLine), the gold or the C.O.D. price, and where it can be taken.
+-- Whether there was a list to show.
+function MM.ItemsTooltip(owner, row)
+  local R = Rules()
+  local mail = row.mail
+  if not (mail and row.itemList and R and R.ItemLine) then return false end
+  GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+  GameTooltip:ClearLines()
+  GameTooltip:SetText(ns.Plural("COUNT_ITEMS", row.iconItems), 1, 1, 1)
+  local list = row.itemList
+  for k = 1, row.iconItems do
+    local icon, name, quality, mark = MM.ItemFacts(row, k)
+    R.ItemLine(icon, name, quality, mark, list[2 * k])
+  end
+  local money, cod = tonumber(mail.money) or 0, tonumber(mail.cod) or 0
+  if (money > 0 or cod > 0) and R.MoneyText then
+    local text = R.MoneyText(cod > 0, money, cod, mail.paid, false)
+    if text then GameTooltip:AddLine(text, 1, 1, 1) end
+  end
+  if row.stuck then
+    GameTooltip:AddLine(ns.Theme.Colorize("warning", L("STUCK_LINE", L["STUCK_GENERIC"])), 1, 1, 1, true)
+  end
+  GameTooltip:AddLine(" ")
+  GameTooltip:AddLine(MM.TakeHint(row), 0.7, 0.7, 0.7, true)
+  GameTooltip:Show()
+  return true
+end
+
 -- parent -> a row for the pool; the caller places it.
 function MM.NewRow(parent)
   local T = ns.Theme
   local row = CreateFrame("Frame", nil, parent)
   row:SetHeight(ROW_HEIGHT)
+  -- How many items the bound mail held, as the snapshot listed them (FillRow).
+  row.iconItems = 0
 
   -- Every column is placed on fill, where the mail rows' arrangement puts
   -- it (the Mail tab's RV.Place, through the row rules): the read mark, the
@@ -1289,8 +1360,9 @@ function MM.NewRow(parent)
 
   -- The tooltip belongs to the ICON, not the whole row: a row-wide hit area
   -- meant the tooltip followed the cursor across a list you were only
-  -- scanning. The item's own tooltip where the snapshot kept its link or id,
-  -- the full subject otherwise.
+  -- scanning. A mail that held several items lists them, as the Mail tab's
+  -- icon does (MM.ItemsTooltip); one item shows its own tooltip, where the
+  -- snapshot kept its link or id; anything else the full subject.
   local hit = CreateFrame("Frame", nil, row)
   hit:SetPoint("TOPLEFT", row.Icon, "TOPLEFT", -2, 2)
   hit:SetPoint("BOTTOMRIGHT", row.Icon, "BOTTOMRIGHT", 2, -2)
@@ -1303,6 +1375,7 @@ function MM.NewRow(parent)
     GameTooltip:AddLine(ns.Theme.Colorize("warning", L("STUCK_LINE", L["STUCK_GENERIC"])), 1, 1, 1, true)
   end
   hit:SetScript("OnEnter", function(self)
+    if row.iconItems > 1 and MM.ItemsTooltip(self, row) then return end
     if row.itemLink then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:SetHyperlink(row.itemLink)
@@ -1528,11 +1601,13 @@ function MM.PlaceSpec(list)
   return spec
 end
 
--- row, mail, now, cols, position [, onHeader [, realm]] -> the row bound to
--- the mail. `onHeader(realm, name)` answers a click on a character's
--- heading; `realm` is the realm of the box the mail is in (nil: the one
--- being played), which a sender without a realm of its own is on.
-function MM.FillRow(row, mail, now, cols, position, onHeader, realm)
+-- row, mail, now, cols, position [, onHeader [, realm [, name]]] -> the row
+-- bound to the mail. `onHeader(realm, name)` answers a click on a
+-- character's heading; `realm` is the realm of the box the mail is in (nil:
+-- the one being played), which a sender without a realm of its own is on,
+-- and `name` whose box it is, which the icon's hover says its items can be
+-- taken at (nil: the one being played).
+function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   local R = Rules()
   local T = ns.Theme
   T.StyleMailRow(row, position, false)
@@ -1541,6 +1616,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm)
     -- A search across characters: the name the matches below belong to.
     row.fullSubject, row.fullSender, row.itemLink, row.itemID = nil, nil, nil, nil
     row.factsTip, row.expiryTip, row.stuck = nil, nil, nil
+    row.mail, row.itemList, row.iconItems = nil, nil, 0
     row.headerRealm, row.headerName = mail.realm, mail.name
     -- SetAtlas sets the atlas's own coordinates; a SetTexCoord after it would
     -- show the whole sheet the crest lives on.
@@ -1601,7 +1677,15 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm)
   row.fullSubject = mail.subject
   row.fullSender = mail.sender
   row.itemLink = mail.link
-  row.itemID = mail.id
+  -- What the mail held, for the icon's hover: the snapshot's list of its
+  -- items (ids and counts), nil for a record saved before it kept one; and
+  -- whose box it is. Fields, not closures: a bind makes nothing.
+  local list = mail.it
+  if type(list) ~= "table" or #list < 2 then list = nil end
+  row.mail, row.itemList = mail, list
+  row.iconItems = list and math.floor(#list / 2) or 0
+  row.itemID = mail.id or (list and list[1]) or nil
+  row.boxRealm, row.boxName = realm, name
 
   -- No icon of its own (a letter the snapshot kept none for): the column
   -- keeps its place, empty, so the names still start on one line.
@@ -2317,19 +2401,19 @@ function MM.RowsFor(realm, name, opts)
   return rows, info
 end
 
--- rows, i, info -> the realm of the box row i of MM.RowsFor's list came
--- from, MM.FillRow's `realm`: the box shown, or in a search of every box the
--- box whose heading the row is under. A binder asks once, for the first row
--- it binds, and takes each heading's realm as it passes it -- so the list
--- carries nothing extra and a bind builds nothing.
+-- rows, i, info -> the realm and name of the box row i of MM.RowsFor's list
+-- came from, MM.FillRow's `realm` and `name`: the box shown, or in a search
+-- of every box the box whose heading the row is under. A binder asks once,
+-- for the first row it binds, and takes each heading's as it passes it --
+-- so the list carries nothing extra and a bind builds nothing.
 function MM.RowRealm(rows, i, info)
   if info and info.onCharacters and rows then
     for k = i, 1, -1 do
       local row = rows[k]
-      if row and row.header then return row.realm end
+      if row and row.header then return row.realm, row.name end
     end
   end
-  return info and info.realm or nil
+  return info and info.realm or nil, info and info.name or nil
 end
 
 -- The arrange mode's Preview mail (CollectTab.lua, "Preview mail") as rows
@@ -2346,11 +2430,21 @@ function MM.PreviewRows()
   for i = 1, #mails do
     local m = mails[i]
     local first = m.items[1]
+    -- Its items as a capture lists them (section 1): id and count in turn.
+    local list, n = nil, 0
+    for k = 1, #m.items do
+      local item = m.items[k]
+      if item.id then
+        list = list or {}
+        list[n + 1], list[n + 2] = item.id, tonumber(item.count) or 1
+        n = n + 2
+      end
+    end
     rows[i] = {
       sender = m.sender, subject = m.subject, money = m.money, cod = m.cod, paid = m.price,
       items = #m.items, expires = now + math.floor(m.days * 86400), read = m.read,
       kind = m.kind, icon = m.icon, link = first and first.link or nil, id = first and first.id or nil,
-      stuck = false,
+      stuck = false, it = list,
     }
   end
   MM._previewRows = { gen = gen, rows = rows }
@@ -2593,10 +2687,10 @@ local function BindRows(frame)
   local arranging = A ~= nil and A.host ~= nil and A.host.owner == frame
   if arranging and A.ListPlacing then A.ListPlacing(frame) end
   local used = 0
-  local realm = MM.RowRealm(rows, first, frame._info)
+  local realm, name = MM.RowRealm(rows, first, frame._info)
   for i = first, last do
     used = used + 1
-    if rows[i].header then realm = rows[i].realm end
+    if rows[i].header then realm, name = rows[i].realm, rows[i].name end
     local row = frame.Rows[used]
     if not row then
       row = MM.NewRow(frame.ListChild)
@@ -2606,7 +2700,7 @@ local function BindRows(frame)
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", frame.ListChild, "TOPLEFT", 0, y)
     row:SetPoint("TOPRIGHT", frame.ListChild, "TOPRIGHT", 0, y)
-    MM.FillRow(row, rows[i], now, frame._cols or {}, i, onHeader, realm)
+    MM.FillRow(row, rows[i], now, frame._cols or {}, i, onHeader, realm, name)
   end
   for i = used + 1, #frame.Rows do frame.Rows[i]:Hide() end
   if arranging and A.ListPlaced then A.ListPlaced(frame) end
