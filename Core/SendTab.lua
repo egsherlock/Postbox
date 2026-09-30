@@ -4380,10 +4380,18 @@ function Q.LockUp()
   return type(lock) == "table" and type(lock.IsShown) == "function" and lock:IsShown() and true or false
 end
 
--- Ten times a second while a pass is parked on `pending`. True to keep
--- watching. The lock, seen here or announced by its event, means the
--- player has a question on screen and the pass waits as long as that
--- takes; the verdict is read from the slot once the lock has lifted.
+-- Ten times a second while a pass is parked on `pending` and the answer can
+-- only be looked for. True to keep watching. The lock, seen here or
+-- announced by its event, means the player has a question on screen and the
+-- pass waits as long as that takes; the verdict is read from the slot once
+-- the lock has lifted.
+--
+-- While the question stands, nothing is looked at: the client shows its
+-- dialog and its lock on MAIL_LOCK_SEND_ITEMS and takes both down on
+-- MAIL_UNLOCK_SEND_ITEMS (Blizzard_MailFrame), so once the lock's event has
+-- reached this file the unlock's will too, and that event starts the short
+-- watch that reads the verdict (ST.OnSendItemLock). A lock seen here with no
+-- event behind it keeps the watch running, as it always did.
 function Q.WatchPending(state, pending)
   if Q.fillState ~= state or state.pending ~= pending then return false end
   if Q.LockUp() then
@@ -4393,7 +4401,7 @@ function Q.WatchPending(state, pending)
       Invalidate(state.panel, "guidance")
     end
     pending.gone = 0
-    return true
+    return not pending.lockEvent
   end
   if pending.locked then
     -- The lock stood and has lifted. Two looks, so an accepted item that
@@ -4410,6 +4418,18 @@ function Q.WatchPending(state, pending)
   if pending.ticks < (pending.asks and 10 or 2) then return true end
   Q.Resume(state, SlotHasItem(pending.slotIndex) and "attached" or "refused")
   return false
+end
+
+-- The watch on a parked pass: a ticker that ends itself when WatchPending
+-- says there is nothing more to look for.
+function Q.Watch(state, pending)
+  local ticker
+  ticker = C_Timer.NewTicker(0.1, function()
+    if Q.WatchPending(state, pending) then return end
+    ticker:Cancel()
+    if pending.ticker == ticker then pending.ticker = nil end
+  end)
+  pending.ticker = ticker
 end
 
 function Q.RunFill(state)
@@ -4437,9 +4457,7 @@ function Q.RunFill(state)
       local pending = { entry = entry, slotIndex = state.slotIndex, asks = asks, ticks = 0, gone = 0 }
       state.pending = pending
       Q.fillState = state
-      pending.ticker = C_Timer.NewTicker(0.1, function(ticker)
-        if not Q.WatchPending(state, pending) then ticker:Cancel() end
-      end)
+      Q.Watch(state, pending)
       return
     end
   end
@@ -4481,13 +4499,21 @@ function ST.OnSendItemLock(event)
   if event == "MAIL_LOCK_SEND_ITEMS" then
     if not pending.locked then Q.stats.asked = (Q.stats.asked or 0) + 1 end
     pending.locked = true
+    pending.lockEvent = true
     pending.gone = 0
     Q.Trace("lock event")
     Invalidate(state.panel, "guidance")
+    -- The question is on screen for as long as the player takes: the
+    -- watch stands down until the unlock says it has been answered.
+    if pending.ticker then
+      pending.ticker:Cancel()
+      pending.ticker = nil
+    end
   elseif event == "MAIL_UNLOCK_SEND_ITEMS" then
     -- The answer is in. The watch reads the verdict from the slot two
     -- ticks on, once the client has finished moving the item.
     Q.Trace("unlock event")
+    if pending.locked and not pending.ticker then Q.Watch(state, pending) end
   elseif not pending.asks and not pending.locked and SlotHasItem(pending.slotIndex) then
     Q.Resume(state, "attached")
   end
