@@ -2078,15 +2078,38 @@ end
 -- A static popup opens at DIALOG strata, so one asked for from a window at
 -- FULLSCREEN_DIALOG -- the options panel, the groups window, the recipient
 -- manager -- opens BEHIND it. Pass it what StaticPopup_Show returned: it is
--- lifted to that strata for as long as it is up, and Blizzard's popup code
--- sets the strata afresh on its next show. Methods only: nothing is written
--- onto Blizzard's frame.
-function Theme.LiftPopup(dialog)
-  if dialog and dialog.SetFrameStrata then
+-- lifted to that strata for as long as it is up, and put back when it hides:
+-- the popup frames are pooled, and one left lifted would carry the next
+-- addon's or the game's own question over every window. The put-back is an
+-- OnHide on Postbox's own definition of the dialog (every key Postbox shows
+-- starts POSTBOX_), which Blizzard's popup code calls on hide -- no hook. What
+-- the frame was lifted from sits in Postbox's own weak table. Methods only:
+-- nothing is written onto Blizzard's frame.
+do
+  local liftedFrom = setmetatable({}, { __mode = "k" })
+
+  local function DropLift(dialog)
+    local strata = dialog and liftedFrom[dialog]
+    if not strata then return end
+    liftedFrom[dialog] = nil
+    if dialog.SetFrameStrata then dialog:SetFrameStrata(strata) end
+  end
+
+  function Theme.LiftPopup(dialog)
+    if not (dialog and dialog.SetFrameStrata) then return dialog end
+    local which = dialog.which
+    local defs = StaticPopupDialogs
+    local info = type(which) == "string" and which:find("^POSTBOX_") and type(defs) == "table" and defs[which] or nil
+    if type(info) == "table" then
+      if info.OnHide == nil then info.OnHide = DropLift end
+      if info.OnHide == DropLift and not liftedFrom[dialog] then
+        liftedFrom[dialog] = dialog.GetFrameStrata and dialog:GetFrameStrata() or "DIALOG"
+      end
+    end
     dialog:SetFrameStrata("FULLSCREEN_DIALOG")
     dialog:Raise()
+    return dialog
   end
-  return dialog
 end
 
 -- The totals banner, and nothing else. A divider, not a panel; the skins treat
