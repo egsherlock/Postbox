@@ -1874,11 +1874,12 @@ end
 -- takes -- "4 slots" is wider than "7 slots" in a font whose 4 is wider, and
 -- Russian's forms differ in length -- so no count is cut; the number alone
 -- where the player chose it (RV.SlotsText). The widest digit and each width
--- are kept per font (a host UI re-fonts after load), and measured again
--- only when the font under `sample` changes; the locale needs a reload to
--- change. A number-only width is kept under -most, so the two styles never
--- read each other's. A font not laid out yet measures nothing, and nothing
--- is kept from it.
+-- are kept per font (a host UI re-fonts after load) and per scale the text
+-- is drawn at (the measuring's generation, RV.MeasureScale), and measured
+-- again only when either changes; the locale needs a reload to change. A
+-- number-only width is kept under -most, so the two styles never read each
+-- other's. A font not laid out yet measures nothing, and nothing is kept
+-- from it.
 RV.DIGITS = { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" }
 
 function RV.SlotsWidth(panel, sample, most)
@@ -1888,8 +1889,9 @@ function RV.SlotsWidth(panel, sample, most)
     panel._slotsFit = fit
   end
   local path, size, flags = sample:GetFont()
-  if fit.path ~= path or fit.size ~= size or fit.flags ~= flags then
-    fit.path, fit.size, fit.flags, fit.digit = path, size, flags, nil
+  local gen = panel._measureGen or 0
+  if fit.path ~= path or fit.size ~= size or fit.flags ~= flags or fit.gen ~= gen then
+    fit.path, fit.size, fit.flags, fit.gen, fit.digit = path, size, flags, gen, nil
     for key in pairs(fit.w) do fit.w[key] = nil end
   end
   local number = RV.SlotsNumber()
