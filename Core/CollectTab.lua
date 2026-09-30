@@ -10965,11 +10965,18 @@ do
   -- C.O.D. confirmed first, the mail re-checked after the wait, the take
   -- that pays armed so the fan follows the paid mail, the body fetched
   -- first where it never was.
+  --
+  -- The take is aimed at the mail the tile was clicked on, by the index
+  -- and fingerprint read at the click. The question is not modal and the
+  -- plate is re-bound whenever the fan opens over another mail, so what
+  -- the plate names after the wait is not evidence of anything: the take
+  -- goes only while the plate still shows that same mail at that index,
+  -- and ConfirmCOD has checked the inbox itself.
   function Fan.TakeItem(plate, index, slot)
     local panel = plate._panel
+    local clicked = plate.fingerprint
     ConfirmCOD(index, function()
-      index = LiveIndex(plate)
-      if not index then return end
+      if plate.mailIndex ~= index or plate.fingerprint ~= clicked or LiveIndex(plate) ~= index then return end
       local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
       codBefore = tonumber(codBefore) or 0
       local paying = RV.ArmPaidTake(plate, index, codBefore)
