@@ -1128,49 +1128,21 @@ function Skin.ApplyWindow(frame)
   Skin.Refresh(frame)
 end
 
+-- The accent-tinted icons: the minimap mail icon (outside every window, so
+-- re-tinted whether or not the mailbox has ever been opened), the options cog
+-- and the view toggle. Core/Theme.lua holds them, for the ElvUI skin too.
 function Skin.RefreshAccents()
-  -- The minimap mail icon lives outside every window, so it re-tints here
-  -- regardless of whether the mailbox has ever been opened.
-  if ns.MinimapButton and type(ns.MinimapButton.RefreshLook) == "function" then
-    pcall(ns.MinimapButton.RefreshLook)
-  end
-
-  local frame = ns.MailboxUI and ns.MailboxUI._frame
-  if not frame then return end
-  local r, g, b = Skin.GetAccent()
-  if r and frame.OptionsButton and frame.OptionsButton.icon then
-    frame.OptionsButton.icon:SetVertexColor(r, g, b)
-  end
-  local collect = frame.Tabs and frame.Tabs.collect
-  if collect and ns.CollectTab and ns.CollectTab.RepaintViewToggle then
-    ns.CollectTab.RepaintViewToggle(collect)
+  if ns.Theme and type(ns.Theme.RepaintAccentIcons) == "function" then
+    ns.Theme.RepaintAccentIcons()
   end
 end
 
 -- Window tabs, view segments and category tiles sample the accent at paint
--- time (Core/Theme.lua's PaintPlate), so without this they keep the previous
--- accent until the next hover or selection change. Two kinds of plate:
---
---   * one this skin has taken over -- its art is retired and the host
---     primitive owns the look, so re-issuing the selection is the documented
---     way to repaint it (ELLESMEREUI_SKINNING.md section 6);
---   * one Postbox still paints -- repaint it from its own state.
---
--- Guarded per node: one uncooperative widget must not truncate the sweep.
-local function RepaintPlates(frame, depth)
-  if not frame or depth > 8 then return end
-  local kids = { frame:GetChildren() }
-  for i = 1, #kids do
-    local c = kids[i]
-    if c then
-      local override = c.__setSelectedOverride
-      if override then
-        pcall(override, c, c.isSelected and true or false)
-      elseif c.__pbPlateArt and ns.Theme and ns.Theme.RepaintPlate then
-        pcall(ns.Theme.RepaintPlate, c)
-      end
-      RepaintPlates(c, depth + 1)
-    end
+-- time; Theme.RepaintPlates sweeps a window for both kinds (the ones this
+-- skin's selection override owns, and Postbox's own).
+local function RepaintPlates(frame)
+  if ns.Theme and type(ns.Theme.RepaintPlates) == "function" then
+    ns.Theme.RepaintPlates(frame, 0)
   end
 end
 
@@ -1256,7 +1228,7 @@ function Skin.OnHostLooksChanged(fromShow)
   if ns.Theme and type(ns.Theme.RepaintAccentText) == "function" then
     pcall(ns.Theme.RepaintAccentText)
   end
-  Skin.ForEachWindow(function(f) RepaintPlates(f, 0) end)
+  Skin.ForEachWindow(RepaintPlates)
 end
 
 -- Every live "EllesmereUI's looks changed" signal lands here and is folded into

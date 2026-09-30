@@ -653,6 +653,53 @@ function Theme.RepaintAccentText()
   end
 end
 
+-- The accent-tinted icons outside the plates and the text: the minimap mail
+-- icon (outside every window, so repainted whether or not the mailbox has been
+-- opened), the options cog and the Mail tab's view toggle.
+function Theme.RepaintAccentIcons()
+  if ns.MinimapButton and type(ns.MinimapButton.RefreshLook) == "function" then
+    pcall(ns.MinimapButton.RefreshLook)
+  end
+  local frame = ns.MailboxUI and ns.MailboxUI._frame
+  if not frame then return end
+  if frame.OptionsButton and frame.OptionsButton.icon then
+    frame.OptionsButton.icon:SetVertexColor(Theme.GetAccent())
+  end
+  local collect = frame.Tabs and frame.Tabs.collect
+  if collect and ns.CollectTab and type(ns.CollectTab.RepaintViewToggle) == "function" then
+    ns.CollectTab.RepaintViewToggle(collect)
+  end
+end
+
+-- Window tabs, view segments and category tiles sample the accent at paint
+-- time (PaintPlate), so after an accent change they keep the old one until the
+-- next hover or selection change. This sweeps a window for both kinds of
+-- plate:
+--
+--   * one a host skin has taken over -- its art is retired and the skin's
+--     selection override owns the look, so re-issuing the selection is how it
+--     repaints (ELLESMEREUI_SKINNING.md section 6);
+--   * one Postbox still paints -- repainted from its own state.
+--
+-- Guarded per node: one uncooperative widget must not truncate the sweep.
+function Theme.RepaintPlates(frame, depth)
+  depth = depth or 0
+  if not frame or depth > 8 or type(frame.GetChildren) ~= "function" then return end
+  local kids = { frame:GetChildren() }
+  for i = 1, #kids do
+    local c = kids[i]
+    if c then
+      local override = c.__setSelectedOverride
+      if override then
+        pcall(override, c, c.isSelected and true or false)
+      elseif c.__pbPlateArt then
+        pcall(Theme.RepaintPlate, c)
+      end
+      Theme.RepaintPlates(c, depth + 1)
+    end
+  end
+end
+
 -- Paints a texture as a flat colour block.
 function Theme.FillColor(texture, token)
   if not texture or type(texture.SetColorTexture) ~= "function" then return end
