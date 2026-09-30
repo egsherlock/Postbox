@@ -1901,17 +1901,17 @@ function Mail.CollectMail(index, onDone, opts)
   -- a naive implementation report "collected 40 mails" while collecting none),
   -- and it marks the mail read so the server clears its "new mail" flag.
   --
-  -- A money-only mail needs neither: taking its money empties it and the server
-  -- deletes it, so there is nothing left to be unread. Skipping the fetch there
-  -- saves a full round trip per mail, and auction gold is the bulk case.
+  -- A money-only mail with no text of its own needs neither: taking its money
+  -- empties it and the server deletes it, so there is nothing left to be
+  -- unread. Skipping the fetch there saves a full round trip per mail, and
+  -- auction gold is the bulk case.
   local needFetch = not (opts and opts.skipFetch)
-  -- Except a READ letter from a person holding only gold: it keeps its text
-  -- once emptied, and the fetch is what hands that text to History -- the
-  -- only copy once the "delete" read-mail mode has removed the letter. It is
-  -- already read, so nothing about its state changes; auction mail has no
-  -- text to keep and stays on the fast path.
-  if itemCount == 0 and money > 0
-    and (not wasRead or Mail.ClassifyMail(index) ~= "other") then
+  -- A letter with words of its own (Mail.HasOwnText) is fetched however
+  -- little it holds, read or unread: it outlives its gold, the fetch is what
+  -- hands its words to History -- the only copy once the "delete" read-mail
+  -- mode has removed the letter -- and it marks the letter read, as taking
+  -- an item from one does, so an emptied letter reads finished.
+  if itemCount == 0 and money > 0 and not Mail.HasOwnText(index) then
     needFetch = false
   end
 
