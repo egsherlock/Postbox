@@ -1229,8 +1229,8 @@ do
       s.MarkShadow:SetVertexColor(0, 0, 0, 1)
       -- At the icon's top-left, the list's size and place (RowRules).
       local R0 = ns.CollectTab and ns.CollectTab.RowRules
-      local size = larger and (R0 and R0.MARK_SIZE_LARGE or 13) or (R0 and R0.MARK_SIZE or 10)
-      local inset = larger and (R0 and R0.MARK_IN_LARGE or 5) or (R0 and R0.MARK_IN or 3.5)
+      local size = larger and (R0 and R0.MARK_SIZE_LARGE or 25.2) or (R0 and R0.MARK_SIZE or 21.6)
+      local inset = larger and (R0 and R0.MARK_IN_LARGE or 2.5) or (R0 and R0.MARK_IN or 2)
       s.Mark:SetSize(size, size)
       s.Mark:ClearAllPoints()
       s.Mark:SetPoint("CENTER", s.Icon, "TOPLEFT", inset, -inset)
