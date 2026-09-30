@@ -238,7 +238,10 @@ end
 -- window's whatever the list and arranged in every one of them. No other
 -- arrangement is touched, and Row layout is an option of its own. `kind`
 -- says which (AR.ListKind's; nil: the list the mode is open over).
-function AR.Reset(kind)
+-- `blocks` false leaves the blocks and the category buttons alone: the
+-- window being arranged had none under its list (Mail Memory's), so they
+-- were not part of what was asked.
+function AR.Reset(kind, blocks)
   local ui = UI()
   if not ui then return end
   if kind == nil then kind = AR.ListKind() end
@@ -250,15 +253,18 @@ function AR.Reset(kind)
     if ui.SetExpiryWhen then ui.SetExpiryWhen(nil, kind) end
     if kind ~= "large" and ui.SetSlotsStyle then ui.SetSlotsStyle(nil) end
   end
-  if ui.SetGridLayout then ui.SetGridLayout(nil) end
-  if ui.SetStackOrder then ui.SetStackOrder(nil) end
-  -- The grid and the totals hidden in the mode are the "Show category
-  -- buttons" and "Show totals" options, so they come back with the rest,
-  -- and the window's floor with them.
-  local gridBack = ui.GetOption and ui.SetOption and not ui.GetOption("showCategoryButtons") or false
-  if gridBack then ui.SetOption("showCategoryButtons", true) end
-  local totalsBack = ui.GetOption and ui.SetOption and not ui.GetOption("showTotals") or false
-  if totalsBack then ui.SetOption("showTotals", true) end
+  local gridBack, totalsBack = false, false
+  if blocks ~= false then
+    if ui.SetGridLayout then ui.SetGridLayout(nil) end
+    if ui.SetStackOrder then ui.SetStackOrder(nil) end
+    -- The grid and the totals hidden in the mode are the "Show category
+    -- buttons" and "Show totals" options, so they come back with the rest,
+    -- and the window's floor with them.
+    gridBack = ui.GetOption and ui.SetOption and not ui.GetOption("showCategoryButtons") or false
+    if gridBack then ui.SetOption("showCategoryButtons", true) end
+    totalsBack = ui.GetOption and ui.SetOption and not ui.GetOption("showTotals") or false
+    if totalsBack then ui.SetOption("showTotals", true) end
+  end
   -- The options panel's two switches for them say so where it is open.
   local panel = ns.OptionsPanel
   if (gridBack or totalsBack) and panel and type(panel.RefreshControls) == "function" then panel.RefreshControls() end
@@ -266,7 +272,7 @@ function AR.Reset(kind)
   if AR.host then AR.LayoutStrip(AR.host) end
   if (gridBack or totalsBack) and ui.RefreshCollectCategoryButtons then
     ui.RefreshCollectCategoryButtons()
-  else
+  elseif blocks ~= false then
     AR.GridChanged()
   end
   -- The selection stays: the thing it names is still there, shown.
@@ -278,12 +284,17 @@ end
 -- Lifted over the windows it may open from (Theme.LiftPopup). The answer
 -- resets whether or not the mode is still open by then: the question was
 -- about the arrangement, not the mode -- the one being arranged when it
--- was asked (AR.resetKind), whose own words it asks in.
+-- was asked (AR.resetKind), whose own words it asks in -- and whether that
+-- window has the blocks under its list (AR.resetBlocks): Mail Memory's has
+-- none, so its question does not offer them and its answer leaves them be.
 AR.POPUP_RESET = "POSTBOX_ARRANGE_RESET"
 AR.resetKind = "rows"
+AR.resetBlocks = true
 AR.RESET_TEXT = {
   rows = "ARRANGE_RESET_CONFIRM", large = "ARRANGE_RESET_CONFIRM_LARGER", history = "ARRANGE_RESET_CONFIRM_HISTORY",
 }
+-- The same, from a window with no blocks under its list.
+AR.RESET_TEXT_ROWS_ONLY = { rows = "ARRANGE_RESET_CONFIRM_MEMORY" }
 
 function AR.AskReset()
   if type(StaticPopupDialogs) ~= "table" or type(StaticPopup_Show) ~= "function" then return end
@@ -292,14 +303,17 @@ function AR.AskReset()
       text = "%s",
       button1 = L()["BTN_RESET"],
       button2 = L()["COD_CONFIRM_CANCEL"],
-      OnAccept = function() AR.Reset(AR.resetKind) end,
+      OnAccept = function() AR.Reset(AR.resetKind, AR.resetBlocks) end,
       timeout = 0,
       whileDead = true,
       hideOnEscape = true,
     }
   end
   AR.resetKind = AR.ListKind()
-  local dialog = StaticPopup_Show(AR.POPUP_RESET, L()[AR.RESET_TEXT[AR.resetKind]])
+  local host = AR.host
+  AR.resetBlocks = not host or type(host.StackOrder) == "function"
+  local key = not AR.resetBlocks and AR.RESET_TEXT_ROWS_ONLY[AR.resetKind] or AR.RESET_TEXT[AR.resetKind]
+  local dialog = StaticPopup_Show(AR.POPUP_RESET, L()[key])
   local T = Th()
   if dialog and T and T.LiftPopup then T.LiftPopup(dialog) end
 end
