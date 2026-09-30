@@ -3,7 +3,9 @@
 Written while adding EllesmereUI support to Postbox (July 2026, WoW 12.0.7 → 12.1),
 updated on 2026-07-31 against the shipped skinning API in **EllesmereUI v8.6.8**,
 and again on 2026-09-27 against **EllesmereUI v9.2.9** (the looks of §1.3, the
-live signals of §1.4, the border survey of §4). Most of this was learned the hard
+live signals of §1.4, the border survey of §4), and on 2026-09-30 against
+**EllesmereUI v9.3.3** and **atrocityEssentials v4.0.724** (the windows Match
+EllesmereUI matches, §3, and its border, §4). Most of this was learned the hard
 way and is **not** in EllesmereUI's own developer guide. It should transfer
 directly to the MountsJournal EllesmereUI skin and any other addon in the suite's
 style.
@@ -345,9 +347,26 @@ colour (§2) on both.
   Postbox a touch more see-through than every window beside it.
 - **compat** (Blizz UI Enhanced off): EllesmereUI draws no Blizzard window at
   all, so there is none to match, and "opaque" left Postbox a solid slab beside
-  the see-through windows another skinner paints. It follows the **Dark Mode
-  fill's alpha** instead — 80% in an atrocityUI profile, the same grey at the
-  same 80% atrocityEssentials paints Blizzard's windows in (since 2026-09-30).
+  the see-through windows another skinner paints. Where that skinner is
+  **atrocityEssentials** with its Blizzard skinning on, Postbox takes the window
+  colours its player saved (fill colour and alpha, edge colour); otherwise the
+  **Dark Mode fill**, colour and alpha — 80% in an atrocityUI profile, the same
+  grey at the same 80% atrocityEssentials paints Blizzard's windows in.
+
+One resolver answers for all of it (`Beside` in `Core/Skin_EllesmereUI.lua`),
+re-read on every apply; `/postbox skin` prints which windows it is matching.
+atrocityEssentials keeps its namespace private, so Postbox reads its saved
+variable, read-only and pcall-guarded:
+
+| What | Where in `atrocityEssentialsDB` | Unset |
+|---|---|---|
+| This character's profile | `profileKeys["Name - Realm"]` (AceDB writes it at load and on every switch, including `global.UseGlobalProfile`/`GlobalProfile` and LibDualSpec's per-spec profile in `namespaces["LibDualSpec-1.0"].char[...]`, which Postbox also reads when the key is missing) | `"Default"` |
+| Blizzard skinning on | `profiles[p].BlizzardSkinning.Frames.Enabled` (its "Dark Theme"), and not stood down for a loaded ElvUI (`BlizzardSkinning.UseElvUI.Enabled ~= false`) | on |
+| Window fill | `profiles[p].BlizzardSkinning.BackdropColor` `{r, g, b, a}` | `{0.031, 0.031, 0.031, 0.80}` |
+| Window edge | `profiles[p].BlizzardSkinning.BorderColor` `{r, g, b, a}`, one physical pixel (its `EdgeFor`) | `{0, 0, 0, 1}` |
+
+A missing component reads as atrocityEssentials' own default (AceDB saves only
+what differs from it).
 
 Also note: **opacity ≠ darkness.** An additive black wash makes a window darker
 while leaving it just as see-through. Only the backdrop texture's own alpha
@@ -400,10 +419,36 @@ border of its own kind of frame:
 | Blizz UI Enhanced | account-wide `tooltipBorder*`, `popupMenuBorder*`, `popupMenuButtonBorder*` (Texture, Thickness none…strong, Color, ColorMode, Opacity, offsets, Behind) via `EllesmereUI._applyBlizzardConfiguredBorder(owner, prefix)` | tooltips, context menus, static popups, the game menu | Closest in spirit, but these are popups, not windows, and the module can be disabled. |
 | Blizz UI Enhanced windows | none — the fixed `AdventureMap_TopBorder` atlas that `S.Shell` lays down unless `opts.noBorder` | every skinned Blizzard window | This **is** the house window border, and `S.Shell` already draws it. |
 
-So Postbox offers no "match" for the border. An unset border is **None** —
-precisely what the broken "match" always drew — and the player can still pick any
-texture from the shared engine and a size for it. Nothing needed migrating:
-"match" was stored as *unset*, and unset now means the None it always rendered.
+So Postbox's **Match EllesmereUI** border (since 2026-09-30, the default: an
+unset border) matches no EllesmereUI setting. It matches the **windows beside
+Postbox**, as the opacity does (§3):
+
+- **api**: EllesmereUI's own shell chrome, the `AdventureMap_TopBorder` atlas
+  `S.Shell` lays down unless `opts.noBorder`. Postbox draws nothing of its own.
+- **compat**: a line exactly one physical pixel wide on the window's outer
+  edge, inside its rect — where atrocityEssentials' backdrop draws its edge,
+  and where `PP.CreateBorder` sits — in atrocityEssentials' border colour where
+  it paints the windows, black otherwise. Its width is `768 / physical height /
+  effective scale` (atrocityEssentials' `EdgeFor`, EllesmereUI's PP one-pixel),
+  with pixel-grid snapping off, so it is one pixel at any window or UI scale;
+  it is drawn again when either changes.
+
+An explicitly saved None stays None; every other style is the shared engine's,
+drawn **alone**. The compat shim used to lay the `AdventureMap_TopBorder` atlas
+over the whole window as well, and under a chosen style that read as a second,
+shadowed frame inside the window; with Blizz UI Enhanced off no window beside
+Postbox wears that chrome, so the shim no longer draws it. **Border size** is
+shown only for a style drawn at a size step (not None, not Match).
+
+What the engine's steps come to on screen: Solid is `PP` strips, exactly *step*
+physical pixels at the frame's own scale (so redraw it when that scale moves);
+a texture's edge is `EDGE_MAP[step]` (12/16/24/32) UI units, scaled with the
+frame, and its art is resampled across that edge by design (the backdrop
+samples 28 texels of each 32-texel cell), so a whole-pixel edge would not make
+it crisper. Glow and the Pixels styles centre on the frame's edge (`scaleOffset`,
+half their cell inside); Shadow is Glow's art in black, seated behind the frame
+(`GetBorderStyleSelectDefaults`' `behind`), so under a see-through window its
+inner half shows faintly through the fill.
 
 ---
 
@@ -523,7 +568,7 @@ print(sorted(called - defined))   # must be empty
 | UI font | `S.GetFont()` / `EllesmereUI.GetFontPath("blizzardSkin")` |
 | Pixel-perfect 1px border | `EllesmereUI.PP.CreateBorder(frame, r,g,b,a, 1, "OVERLAY", 7)` |
 | Glow / shadow / textured border | `EllesmereUI.ApplyBorderStyle(...)` |
-| User's configured window border | none exists — see §4 |
+| User's configured window border | none exists — match the windows beside yours instead (§3, §4) |
 | Live accent hook | `S.OnLooksChanged(fn)` (8.6.8+, Blizz UI Enhanced loaded); `EllesmereUI.RegAccent({type="callback", fn=fn})` otherwise |
 | Live palette + profile-switch hook | `EllesmereUI.RegisterDarkModeRefresh(fn)` |
 | Whole-UI look (9.2.5+) | `EllesmereUI.ProfileWindowSkinLook(GetActiveProfileData(), EllesmereUIDB.fonts)`, else `profiles[p].windowSkinLook`, else `EllesmereUIDB.fonts._styleSlots.active` (§1.3) |
