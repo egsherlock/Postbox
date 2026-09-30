@@ -979,6 +979,12 @@ end
 -- question named it -- how many mails, the gold leaving, the recipient --
 -- and whether C.O.D. was checked when it was asked.
 local function DoSendMail(panel, confirmed)
+  -- One mail with the server at a time. The Send button is disabled while
+  -- one is, but Ctrl+Enter reaches here from the draft's fields, and so does
+  -- the accept of a question asked before the send went out: neither may
+  -- post the draft a second time. Nothing is asked and nothing is said; the
+  -- button already reads as sending.
+  if pendingSend then return end
   local toName  = FieldText(panel.ToBox)
   local subject = FieldText(panel.SubjectBox)
   local body    = FieldText(panel.BodyBox)
