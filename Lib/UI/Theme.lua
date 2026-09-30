@@ -183,6 +183,28 @@ local function DeriveFont(source, path, baseSize, baseFlags, size, flags)
   return object
 end
 
+-- A sized font made again from its source's host face, for text sized before
+-- the addon theme had a face to give (its AdoptHostFace): the same size
+-- against the source's, the face's flags unless the bind chose its own. nil
+-- when `object` is not a sized font or its source has no face to move to.
+function Theme.HostDerived(object)
+  local info = object and derivedInfo[object]
+  local hostFont = Theme.HostFont
+  if not (info and info.source) or type(hostFont) ~= "function" then return nil end
+  local face = hostFont(info.source)
+  if not face or face == info.source or type(face.GetFont) ~= "function" then return nil end
+  local path, baseSize, baseFlags = face:GetFont()
+  if type(path) ~= "string" or path == "" then path = STANDARD_TEXT_FONT end
+  baseSize = tonumber(baseSize) or 12
+  local _, size, flags = object:GetFont()
+  size = tonumber(size) or baseSize
+  if flags == info.flags then flags = baseFlags end
+  if (tonumber(info.size) or 0) > 0 and baseSize ~= info.size then
+    size = floor(size * baseSize / info.size + 0.5)
+  end
+  return DeriveFont(face, path, baseSize, baseFlags, size, flags)
+end
+
 -- The sized fonts take their source's colour and shadow again: after the
 -- addon theme recoloured the objects they were made from (a palette change).
 -- A handful of objects; nothing per string.

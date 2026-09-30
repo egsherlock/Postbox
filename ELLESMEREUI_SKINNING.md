@@ -93,8 +93,9 @@ either way, and the API's own dispatcher explicitly supports late registration.
 
 Register, and your callback may simply never arrive. Answering that with "fall
 back to the shim" is wrong in one of the three cases, and it is the case where
-being wrong matters most. Postbox waits 5s and then asks two read-only,
-nil-guarded questions:
+being wrong matters most. Postbox asks two read-only, nil-guarded questions --
+at once, at login, when the dispatcher is not loaded (nothing could ever
+answer), and after a 5 s wait only when it is loaded and has not answered yet:
 
 | Cause | Detect | Answer |
 |---|---|---|
@@ -107,6 +108,16 @@ like EllesmereUI" with a hand-built imitation of EllesmereUI is not a fallback,
 it is ignoring the setting. Postbox therefore leaves `ns.Skin` unclaimed, renders
 its own theme, and records `standDown = "hostoptout"` in the same diagnostics
 `/postbox skin` reports.
+
+**Do not wait for a callback that cannot come.** Postbox used to wait the 5 s
+in every case, so with Blizz UI Enhanced off -- the everyday compat path -- a
+window, a font string or the minimap icon made in those seconds was made
+before any skin had claimed: in Postbox's own theme, in the game font, in
+Postbox's accent, and it kept that look for the session. With the dispatcher
+absent the answer is known at login, so that is when it is given. A claim that
+still lands late (the watchdog's, or skinning switched back on mid-session)
+skins every Postbox window already built, repaints the accent icons and moves
+text set before the face existed into it.
 
 **Do not poll to recover from the opt-out.** The registration stays in
 EllesmereUI's queue, and switching skinning back on dispatches live — so the

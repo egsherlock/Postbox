@@ -3442,10 +3442,12 @@ local function BuildFrame()
   UI.SelectTab(UI._state.activeTab)
 
   -- Optional host-UI skin; a no-op unless EllesmereUI or ElvUI is installed.
-  -- When both are, EllesmereUI has claimed ns.Skin by now (it registers at
-  -- PLAYER_LOGIN, and this window is built no earlier than the first mailbox).
-  -- The refresh hook is installed unconditionally and guarded inside, so a skin
-  -- that arrives after the window was built still gets its passes.
+  -- EllesmereUI decides at PLAYER_LOGIN on either backend, except when its
+  -- skinning dispatcher is loaded and has not answered: then its watchdog
+  -- decides five seconds on, and a mailbox opened sooner builds this window
+  -- before the claim. A claim that lands late skins every window already
+  -- built (Skin_EllesmereUI's Activate). The refresh hook is installed unconditionally and guarded inside, so a
+  -- skin that arrives after the window was built still gets its passes.
   if ns.Skin and ns.Skin.Apply then ns.Skin.Apply(frame) end
   -- A skin that keeps a skin generation walks the window only when something
   -- new was tagged since its last walk (RefreshWindow); one without, every

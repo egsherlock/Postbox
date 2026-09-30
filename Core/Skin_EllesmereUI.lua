@@ -1279,6 +1279,23 @@ function Skin.RefreshAccents()
   end
 end
 
+-- The screens that fit text to its width, measured again after the text's
+-- face moved: the Mail tab's columns and captions, Mail Memory's rows and the
+-- options panel's controls, as the Postbox style does after a font change
+-- (Skin_Postbox's RefitScreens). A screen not showing is measured when it
+-- next shows.
+local function RefitScreens()
+  local UI = ns.MailboxUI
+  if UI then
+    if type(UI.RefreshCollectRowLayout) == "function" then pcall(UI.RefreshCollectRowLayout) end
+    if type(UI.RefreshCollectTabCounts) == "function" then pcall(UI.RefreshCollectTabCounts) end
+  end
+  local MM = ns.MailMemory
+  if MM and type(MM.Refresh) == "function" then pcall(MM.Refresh) end
+  local panel = ns.OptionsPanel
+  if panel and type(panel.RefreshControls) == "function" then pcall(panel.RefreshControls) end
+end
+
 -- Window tabs, view segments and category tiles sample the accent at paint
 -- time; Theme.RepaintPlates sweeps a window for both kinds (the ones this
 -- skin's selection override owns, and Postbox's own).
@@ -1740,6 +1757,19 @@ local function Activate()
 
   local frame = ns.MailboxUI and ns.MailboxUI._frame
   if frame then Skin.Apply(frame) end
+
+  -- A claim that lands after windows were built -- the watchdog's, or
+  -- skinning switched back on mid-session -- skins each of them as its build
+  -- would have (each bails on its own key if it already wears the skin),
+  -- tints the accent icons, the minimap's among them, whether or not a
+  -- window exists, and moves text set before the face was published into it.
+  local T = ns.Theme
+  if T and type(T.ForEachWindow) == "function" then T.ForEachWindow(Skin.ApplyWindow) end
+  pcall(Skin.RefreshAccents)
+  if T and type(T.AdoptHostFace) == "function" then
+    local ok, moved = pcall(T.AdoptHostFace)
+    if ok and moved then RefitScreens() end
+  end
 end
 
 -- The compat facade, also the fallback whenever the official handshake cannot
@@ -1806,12 +1836,14 @@ local function AdoptFacade(facade)
   Activate()
 end
 
--- How long to wait for the callback before deciding it is not coming. The
--- dispatcher fires at PLAYER_LOGIN, in the same frame as our own registration,
--- so this is slack rather than a real budget.
+-- How long to wait for the callback before deciding it is not coming, when
+-- the dispatcher that would send it is loaded (with it absent, StartBackend
+-- decides at once). The dispatcher fires at PLAYER_LOGIN, in the same frame
+-- as our own registration, so this is slack rather than a real budget.
 local HANDSHAKE_WAIT = 5
 
--- Nothing arrived. Which silence is it?
+-- Nothing arrived. Which silence is it? Asked at once when the dispatcher is
+-- not loaded (nothing could ever arrive), and by the watchdog otherwise.
 --
 -- Answering "fall back to the shim" to all three was wrong in exactly one case,
 -- and it was the case where being wrong matters most: a user who has switched
@@ -1865,7 +1897,19 @@ local function StartBackend()
 
   if not ok then
     UseShim()
+  elseif S then
+    -- Answered inside the registration (the dispatcher calls a skin
+    -- registered after its own login straight away).
+    return
+  elseif DispatcherLoaded() == false then
+    -- Blizz UI Enhanced is off: its dispatcher is the only thing that could
+    -- ever answer, so there is nothing to wait for. Decided now, at login,
+    -- before any Postbox window or text is made -- the opt-out and the
+    -- stand-downs exactly as the watchdog would have decided them.
+    OnSilence()
   elseif C_Timer and C_Timer.After then
+    -- The dispatcher is loaded and has not answered yet: the watchdog, for
+    -- the one silence that can still end in a callback.
     C_Timer.After(HANDSHAKE_WAIT, OnSilence)
   else
     -- No timer to wait with, so no way to tell the three silences apart later.

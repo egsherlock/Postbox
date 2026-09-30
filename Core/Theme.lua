@@ -1076,7 +1076,9 @@ local FONT_FALLBACK = { "GameFontHighlightSmall", "GameFontHighlight", "GameFont
 -- game's font at the game's size, so the copies it asks for are the game's
 -- objects exactly, made so that a later change of font or size moves every
 -- string at once.
-local HF = { copies = {}, bases = {}, isCopy = {}, failed = {}, n = 0, gen = 0 }
+-- `pending`: the game objects asked for while no skin published a face, which
+-- the strings set in them are still wearing (Theme.AdoptHostFace).
+local HF = { copies = {}, bases = {}, isCopy = {}, failed = {}, pending = {}, n = 0, gen = 0 }
 
 -- path, flags, shadow, scale of the published face, or nil while no skin
 -- publishes one. A face with a file and flags keeps the rules the EllesmereUI
@@ -1148,6 +1150,9 @@ function Theme.HostFont(base)
   local path, flags, shadow, scale = HostFace()
   if path == nil or type(base) ~= "table" or type(base.GetFont) ~= "function"
      or type(CreateFont) ~= "function" then
+    -- No face yet: the string is set in the object itself, and a face
+    -- published later reaches it through this (Theme.AdoptHostFace).
+    if path == nil and type(base) == "table" then HF.pending[base] = true end
     return base
   end
   HF.n = HF.n + 1
@@ -1203,6 +1208,97 @@ end
 -- Counts the host face's moves: what a string sized on its own compares.
 function Theme.FontGeneration()
   return HF.gen
+end
+
+-- A face published after Postbox had already set text: a host skin that
+-- claims late (EllesmereUI's, when its handshake had to be waited out, or
+-- when its skinning is switched back on mid-session). Every string and edit
+-- box in Postbox's windows that was set in a game object while no face was
+-- published -- or in a size made from one (the foundation's HostDerived) --
+-- moves to the object's copy, as it would have been set had the face been
+-- there; one given a font of its own keeps it. Once per claim, never per
+-- bind; with nothing set before the face, nothing is walked.
+-- -> whether any text moved.
+do
+  local stack = {}
+
+  local function Push(n, ...)
+    for i = select("#", ...), 1, -1 do
+      n = n + 1
+      stack[n] = (select(i, ...))
+    end
+    return n
+  end
+
+  local function Adopt(fs)
+    local object = fs:GetFontObject()
+    if object == nil then return false end
+    local want
+    if HF.pending[object] then
+      want = Theme.HostFont(object)
+    elseif SharedTheme and type(SharedTheme.HostDerived) == "function" then
+      want = SharedTheme.HostDerived(object)
+    end
+    if not want or want == object then return false end
+    -- Only text wearing its object as it is.
+    local p1, s1, f1 = fs:GetFont()
+    local p2, s2, f2 = object:GetFont()
+    if p1 ~= p2 or s1 ~= s2 or f1 ~= f2 then return false end
+    local r, g, b, a = fs:GetTextColor()
+    fs:SetFontObject(want)
+    if type(r) == "number" then fs:SetTextColor(r, g, b, a) end
+    return true
+  end
+
+  local function Walk(root)
+    local moved = 0
+    local n = Push(0, root)
+    while n > 0 do
+      local w = stack[n]
+      stack[n] = nil
+      n = n - 1
+      if type(w) == "table" and type(w.IsObjectType) == "function" then
+        if (w:IsObjectType("FontString") or w:IsObjectType("EditBox"))
+           and type(w.GetFontObject) == "function" and type(w.SetFontObject) == "function" then
+          local ok, did = pcall(Adopt, w)
+          if ok and did then moved = moved + 1 end
+        end
+        if type(w.GetChildren) == "function" then
+          n = Push(n, w:GetRegions())
+          n = Push(n, w:GetChildren())
+        end
+      end
+    end
+    return moved
+  end
+
+  local roots = {}
+
+  function Theme.AdoptHostFace()
+    if next(HF.pending) == nil or HostFace() == nil then return false end
+    local n = 0
+    if type(Theme.ForEachWindow) == "function" then
+      Theme.ForEachWindow(function(frame) n = n + 1; roots[n] = frame end)
+    end
+    -- The two floating cards that belong to no window.
+    if Theme._hint then n = n + 1; roots[n] = Theme._hint end
+    local picker = ns.MailMemory and ns.MailMemory._picker
+    if picker then n = n + 1; roots[n] = picker end
+    local moved = 0
+    for i = 1, n do
+      local ok, m = pcall(Walk, roots[i])
+      if ok then moved = moved + m end
+      roots[i] = nil
+    end
+    for i = #stack, 1, -1 do stack[i] = nil end
+    for object in pairs(HF.pending) do HF.pending[object] = nil end
+    if moved == 0 then return false end
+    HF.gen = HF.gen + 1
+    Theme.ForgetFits()
+    local AR = ns.Arrange
+    if AR and type(AR.OnFontsChanged) == "function" then pcall(AR.OnFontsChanged) end
+    return true
+  end
 end
 
 -- The foundation layer derives its sized fonts (the select control's captions
@@ -3355,6 +3451,14 @@ do
     windows[frame] = true
     local s = WindowScale()
     if s ~= 1 and type(frame.SetScale) == "function" then frame:SetScale(s) end
+  end
+
+  -- Every Postbox window built so far (the ones made through ApplyFrameTheme):
+  -- for a host skin that claims after some were built.
+  function Theme.ForEachWindow(fn)
+    for frame in pairs(windows) do
+      if frame then pcall(fn, frame) end
+    end
   end
 
   -- Puts every window on the current scale, keeping it where it stands.
