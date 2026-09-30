@@ -2062,6 +2062,91 @@ function Theme.AddOverflowLine(owner, tooltip)
 end
 
 -------------------------------------------------------------
+-- 5b. Tooltips
+--
+-- One format for every Postbox tooltip: a title; a description where a
+-- control's name needs one; the facts, each a muted label and a bright
+-- value, in a fixed order; one blank line; the gestures, muted, in the
+-- house form ("Right-click to ... · Shift-click to ..."). A fact that is
+-- not true is left out, and one the row already shows in full is not said
+-- again.
+--
+-- The tooltip is the game's GameTooltip, which stays dark under every look
+-- (the Postbox style leaves it dark in Light mode; a host UI skins it dark),
+-- so its colours are the dark palette's, fixed: a palette switch never
+-- reaches a tooltip line. BASE holds them as written.
+--
+-- Nothing here makes a table. A label's muted prefix is made once and
+-- kept; the lines themselves are the only strings a hover makes.
+-------------------------------------------------------------
+
+local TIP_MUTED = 0.7
+Theme.TIP_MUTED = TIP_MUTED
+local tipTone = { muted = "b3b3b3" }
+for _, token in ipairs({ "positive", "negative", "warning", "info" }) do
+  tipTone[token] = ToHex(BASE[token])
+end
+-- label -> "|cffb3b3b3label|r", one per label (a dozen at most).
+local tipLabels = {}
+-- Whether the tooltip being built has had its blank line before the hints.
+local tipHinted = false
+
+-- owner [, anchor] -> GameTooltip, owned and cleared: the start of every
+-- Postbox tooltip, and what lets TipHint put its blank line in once.
+function Theme.TipBegin(owner, anchor)
+  tipHinted = false
+  GameTooltip:SetOwner(owner, anchor or "ANCHOR_RIGHT")
+  GameTooltip:ClearLines()
+  return GameTooltip
+end
+
+-- The title: white, wrapped, unless a colour is given (a name, an item).
+function Theme.TipTitle(text, r, g, b)
+  GameTooltip:SetText(text or "", r or 1, g or 1, b or 1, 1, true)
+end
+
+-- A bright wrapped line: what a control does, where its name does not say.
+function Theme.TipLine(text)
+  if text and text ~= "" then GameTooltip:AddLine(text, 1, 1, 1, true) end
+end
+
+-- token, text -> the text in a fixed tone: "positive" (gold arriving),
+-- "negative" (a price paid), "warning" (C.O.D., short time, stuck),
+-- "info", or "muted".
+function Theme.TipTone(token, text)
+  local hex = tipTone[token]
+  if not hex then return tostring(text or "") end
+  return "|cff" .. hex .. tostring(text or "") .. "|r"
+end
+
+-- label, value -> one fact: the label muted, as its locale key writes it
+-- (with its own colon and space), the value bright.
+function Theme.TipFact(label, value)
+  if not value or value == "" then return end
+  local prefix = tipLabels[label]
+  if not prefix then
+    prefix = "|cff" .. tipTone.muted .. tostring(label or "") .. "|r"
+    tipLabels[label] = prefix
+  end
+  GameTooltip:AddLine(prefix .. value, 1, 1, 1, true)
+end
+
+-- The blank line between what a thing is and what can be done with it,
+-- once per tooltip.
+function Theme.TipBlank()
+  if tipHinted then return end
+  tipHinted = true
+  GameTooltip:AddLine(" ")
+end
+
+-- One hint line, muted, after the blank line.
+function Theme.TipHint(text)
+  if not text or text == "" then return end
+  Theme.TipBlank()
+  GameTooltip:AddLine(text, TIP_MUTED, TIP_MUTED, TIP_MUTED, true)
+end
+
+-------------------------------------------------------------
 -- 6. Surfaces
 --
 -- There is one card / popup / list surface and one band. Every route to a

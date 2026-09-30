@@ -3092,6 +3092,233 @@ CT.RowRules = {
 }
 
 -------------------------------------------------------------
+-- Mail rows :: the tooltip
+--
+-- One format for every mail tooltip (Theme's "Tooltips"): the subject as
+-- the title; then the facts, each a muted label and a bright value, in one
+-- order -- From, Holds, the invoice's breakdown, Time left, State -- each
+-- left out when it is not true for this mail or when the row already shows
+-- it in full; then the gestures. Built on hover from the mail as it is now:
+-- a bind makes no string for it, and a hover makes no table.
+--
+-- The Holds line is shared with Mail Memory, whose rows say the same of a
+-- remembered mail (CT.RowRules: TipItem, TipMore, TipMoney, TipSender).
+-------------------------------------------------------------
+do
+  -- The Holds line's pieces, filled and joined once per hover.
+  local holds = {}
+  RV.tipHolds = holds
+  -- How many stacks the Holds line names before "+N more".
+  RV.TIP_ITEMS = 3
+  local DOT = " \194\183 "
+
+  -- sender[, realm] -> the whole name, in its class's colour where Postbox
+  -- knows it; plain otherwise, and the line is white.
+  function RV.TipSender(sender, realm)
+    local CS = ns.ContactService
+    local token = (sender and CS and CS.ClassOf) and CS.ClassOf(sender, realm) or nil
+    if token and CS.WrapClass then return CS.WrapClass(token, sender) end
+    return sender
+  end
+
+  -- buf, name, quality, mark, count -> one stack on the Holds line: its
+  -- name in its quality's colour, its crafting mark, and its count.
+  function RV.TipItem(buf, name, quality, mark, count)
+    local n = #buf
+    if n > 0 then
+      buf[n + 1] = ", "
+      n = n + 1
+    end
+    local hex
+    local qualityColor = C_Item and C_Item.GetItemQualityColor
+    if quality and type(qualityColor) == "function" then
+      local _, _, _, h = qualityColor(quality)
+      hex = h
+    end
+    if hex then
+      buf[n + 1], buf[n + 2] = "|c", hex
+      n = n + 2
+    end
+    buf[n + 1] = name or RETRIEVING_ITEM_INFO or "?"
+    n = n + 1
+    if hex then
+      buf[n + 1] = "|r"
+      n = n + 1
+    end
+    if mark then
+      buf[n + 1], buf[n + 2] = " ", mark
+      n = n + 2
+    end
+    count = tonumber(count) or 1
+    if count > 1 then buf[n + 1], buf[n + 2] = " x", count end
+  end
+
+  -- buf, n -> "+N more" after the named stacks.
+  function RV.TipMore(buf, n)
+    if n <= 0 then return end
+    buf[#buf + 1] = " "
+    buf[#buf + 1] = ns.Plural("TIP_MORE", n)
+  end
+
+  -- buf, money, cod, goldShown -> the gold (green, exact) unless the row
+  -- shows exactly that amount (`goldShown`, the row's own text for it),
+  -- then the C.O.D. price (warning), each after a dot.
+  function RV.TipMoney(buf, money, cod, goldShown)
+    local T, H = Th(), Helpers()
+    if money > 0 then
+      local full = H.FormatMoney(money)
+      if full ~= goldShown then
+        if #buf > 0 then buf[#buf + 1] = DOT end
+        buf[#buf + 1] = T.TipTone("positive", full)
+      end
+    end
+    if cod > 0 then
+      if #buf > 0 then buf[#buf + 1] = DOT end
+      buf[#buf + 1] = T.TipTone("warning", L()["LABEL_COD"] .. H.FormatMoney(cod))
+    end
+  end
+
+  -- reason, unread -> the State fact: a stuck mail's reason in the warning
+  -- tone (the game's words, or the possibilities where it gave none), after
+  -- "Unread" or "Read" when the read mark's column is hidden (`unread` nil
+  -- when it is shown).
+  function RV.TipState(reason, unread)
+    local T, L0 = Th(), L()
+    local read
+    if unread ~= nil then read = L0[unread and "STATUS_UNREAD" or "STATUS_READ"] end
+    if reason then
+      local words = (type(reason) == "string" and reason ~= "") and reason or L0["STUCK_GENERIC"]
+      local stuck = T.TipTone("warning", L0("TIP_STUCK", words))
+      T.TipFact(L0["TIP_STATE"], read and (read .. DOT .. stuck) or stuck)
+    elseif read then
+      T.TipFact(L0["TIP_STATE"], read)
+    end
+  end
+
+  -- subject, quantity -> the title: the mail's own subject, its trailing
+  -- count rewritten to what is left, as the row writes it.
+  function RV.TipSubject(subject, quantity)
+    if quantity and quantity > 0 and subject then
+      return (subject:gsub("%(%d+%)%s*$", "(" .. quantity .. ")"))
+    end
+    return subject
+  end
+
+  -- row -> the tooltip of a Mail tab row, on the live inbox. False where
+  -- the row no longer names a mail (a sample of Preview mail, or an index
+  -- that slid while a refresh was on its way: LiveIndex).
+  function RV.RowTip(row)
+    local index = LiveIndex(row)
+    if not index then return false end
+    local T, L0, H = Th(), L(), Helpers()
+    local _, _, sender, subject, money, cod, daysLeft, _, wasRead = GetInboxHeaderInfo(index)
+    money, cod = tonumber(money) or 0, tonumber(cod) or 0
+    local compact = row._compact
+    local layout = compact and RV.Layout() or RV.LargeLayout()
+    -- A two-line row's second line cut short says none of its figures in
+    -- full.
+    local lineCut = (not compact) and row.Detail.__pbOverflowText ~= nil
+
+    T.TipBegin(row)
+    local title = RV.TipSubject(subject, row.tipQuantity)
+    if not title or title == "" then title = sender or L0["SENDER_UNKNOWN"] end
+    T.TipTitle(title)
+
+    -- From: whole, where the row shows less of it -- shortened, cut, or its
+    -- column hidden. An auction mail's row says its outcome, and its title
+    -- says it too.
+    if sender and sender ~= "" and (not layout.shown.sender or row.tipShort
+        or row.Sender.__pbOverflowText) then
+      T.TipFact(L0["TIP_FROM"], RV.TipSender(sender))
+    end
+
+    -- Holds: the stacks, unless the one stack is the one the subject names;
+    -- the gold unless the row shows exactly that; the C.O.D. price.
+    local buf = holds
+    Clear(buf)
+    local stacks = row.iconItems or 0
+    local named = false
+    if stacks == 1 and row.iconSlot and subject then
+      local name = GetInboxItem(index, row.iconSlot)
+      named = name ~= nil and subject:find(name, 1, true) ~= nil
+    end
+    if stacks > 0 and not named then
+      local listed = 0
+      for slot = 1, Mail().MAX_ATTACHMENTS do
+        local name, _, texture, count, quality = GetInboxItem(index, slot)
+        if texture then
+          listed = listed + 1
+          if listed <= RV.TIP_ITEMS then RV.TipItem(buf, name, quality, RV.QualityMark(index, slot), count) end
+        end
+      end
+      RV.TipMore(buf, listed - RV.TIP_ITEMS)
+    end
+    local goldShown
+    if row.tipMoney == "earned" and money > 0 and not lineCut and (not compact or row.ColMoney:IsShown()) then
+      goldShown = ns.Core.Formatting.FormatMoneyCompact(money, compact)
+    end
+    RV.TipMoney(buf, money, cod, goldShown)
+    if #buf > 0 then T.TipFact(L0["TIP_HOLDS"], concat(buf)) end
+
+    -- The invoice's breakdown, where the row does not draw it: a one-line
+    -- row never does, a two-line row does on its second line. A won
+    -- auction's price is on the row wherever its money is.
+    local invoiceType, bid, deposit, consignment
+    if type(GetInboxInvoiceInfo) == "function" then
+      invoiceType, _, _, bid, _, deposit, consignment = GetInboxInvoiceInfo(index)
+    end
+    local figures = invoiceType and INVOICE_FIGURES[invoiceType]
+    if figures then
+      invoiceAmounts.bid = tonumber(bid) or 0
+      invoiceAmounts.deposit = tonumber(deposit) or 0
+      invoiceAmounts.consignment = tonumber(consignment) or 0
+      local priceShown = row.tipMoney == "spent" and not lineCut and (not compact or row.ColMoney:IsShown())
+      for i = 1, #figures do
+        local figure = figures[i]
+        local amount = invoiceAmounts[figure.field]
+        if amount > 0 and not figure.saleTotal then
+          local price = invoiceType == "buyer"
+          if (price and not priceShown) or (not price and (compact or lineCut)) then
+            local text = H.FormatMoney(amount)
+            T.TipFact(L0[figure.label], price and T.TipTone("negative", text) or text)
+          end
+        end
+      end
+    end
+
+    -- Time left, where the row does not show it: its column hidden, or the
+    -- time longer than the player asked to see.
+    if daysLeft then
+      local shown
+      if compact then shown = row.ColTime:IsShown() else shown = row.tipTime and not lineCut end
+      if not shown then
+        local _, warn = ExpiryState(daysLeft, cod > 0, layout)
+        local text = H.TimeLeft(daysLeft)
+        T.TipFact(L0["TIP_TIME_LEFT"], warn and T.TipTone("warning", text) or text)
+      end
+    end
+
+    -- State: stuck, always; read or unread while the mark's column is
+    -- hidden.
+    local unread
+    if not layout.shown.read then unread = not wasRead end
+    RV.TipState(Mail().StuckReason(index), unread)
+
+    -- The gestures beyond the plain click, as the active mapping has them;
+    -- a finished mail has none (every button opens it).
+    if not row.mailDone then
+      T.TipHint(PreviewOnClick() and RawKey("HINT_ROW_COLLECT") or RawKey("HINT_ROW_PREVIEW"))
+    end
+    GameTooltip:Show()
+    return true
+  end
+
+  local R = CT.RowRules
+  R.TipSender, R.TipItem, R.TipMore, R.TipMoney = RV.TipSender, RV.TipItem, RV.TipMore, RV.TipMoney
+  R.TipState, R.TipSubject, R.TIP_ITEMS = RV.TipState, RV.TipSubject, RV.TIP_ITEMS
+end
+
+-------------------------------------------------------------
 -- Widths
 --
 -- A container anchored to its parent's edges measures zero until the first
@@ -4667,84 +4894,11 @@ local function BuildRow(panel)
 
   row:SetScript("OnClick", function(self, button) ActivateRow(self, button) end)
 
+  -- The row's tooltip is built on hover, from the mail as it is now
+  -- (RV.RowTip, "Mail rows :: the tooltip").
   row:SetScript("OnEnter", function(self)
-    local T2 = Th()
-    T2.StyleMailRow(self, self._rowIndex, true)
-
-    -- A compact row draws a subset of the meta line, so it hands the WHOLE of
-    -- it to the tooltip -- category and invoice breakdown included -- and the
-    -- Detail string's own overflow is not asked about, because the full line
-    -- already contains it. `detailFull` is nil on a standard row, where the
-    -- line is on screen in full or was cut and is the overflow line's business.
-    local full = self.detailFull
-    local cut = self.Sender.__pbOverflowText or self.Subject.__pbOverflowText
-      or (not full and self.Detail.__pbOverflowText)
-
-    -- The gesture line is the one reason this tooltip is no longer conditional
-    -- on something having been cut: shift-click and right-click cannot be
-    -- discovered by looking. Which line it is follows the ACTIVE mapping -- the
-    -- alternate gesture teaches whichever verb the plain click is not, and the
-    -- selection gestures follow it in the same line -- because a hint that
-    -- describes the other setting is worse than no hint at all. A finished
-    -- mail still gets nothing: there every button opens the mail and nothing
-    -- can be picked, so there is no alternative to teach -- and that is read
-    -- from the MAIL, so it holds on the all view too.
-    local teach = nil
-    if not self.mailDone then
-      teach = PreviewOnClick() and RawKey("HINT_ROW_COLLECT") or RawKey("HINT_ROW_PREVIEW")
-    end
-    local stuck = self.stuckReason
-    local expiry = self.expiryTip
-    local facts = self.factsTip
-    local whole = self.senderTip
-    local unread = self.unreadTip
-    if not cut and not full and not teach and not stuck and not expiry and not facts and not whole
-      and not unread then return end
-
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:ClearLines()
-    -- The sender's whole name, realm and all, when the row shortened it; it
-    -- supersedes the overflow line, which would only repeat the short form.
-    if whole then
-      GameTooltip:AddLine(whole, 1, 1, 1, true)
-    else
-      T2.AddOverflowLine(self.Sender, GameTooltip)
-    end
-    T2.AddOverflowLine(self.Subject, GameTooltip)
-    if full then
-      -- One line per fact: the first is what the mail is, the rest are the
-      -- invoice's figures, in the quieter tone.
-      local first = true
-      for line in full:gmatch("[^\n]+") do
-        if first then
-          GameTooltip:AddLine(line, 1, 1, 1, true)
-        else
-          GameTooltip:AddLine(line, 0.75, 0.75, 0.75, true)
-        end
-        first = false
-      end
-    else
-      T2.AddOverflowLine(self.Detail, GameTooltip)
-    end
-    -- The figures an option took off the row, so switching one off never
-    -- makes it unreachable -- and the read mark's word, when its column is
-    -- hidden.
-    if facts then
-      for line in facts:gmatch("[^\n]+") do GameTooltip:AddLine(line, 1, 1, 1, true) end
-    end
-    if unread then GameTooltip:AddLine(unread, 0.75, 0.75, 0.75, true) end
-    -- How long the mail has left, always here and on the row only when short.
-    if expiry then GameTooltip:AddLine(expiry, 0.75, 0.75, 0.75, true) end
-    -- Air between what the mail is and what a click does with it.
-    if teach or stuck then GameTooltip:AddLine(" ") end
-    -- After the mail's own text, which identifies WHICH mail this is, and before
-    -- the generic gesture hint: this line is about this mail and it is the
-    -- reason the marker is there.
-    if stuck then
-      GameTooltip:AddLine(T2.Colorize("warning", StuckLine(stuck)), 1, 1, 1, true)
-    end
-    if teach then GameTooltip:AddLine(teach, 0.7, 0.7, 0.7, true) end
-    GameTooltip:Show()
+    Th().StyleMailRow(self, self._rowIndex, true)
+    RV.RowTip(self)
   end)
   row:SetScript("OnLeave", function(self)
     Th().StyleMailRow(self, self._rowIndex, false)
@@ -5356,8 +5510,6 @@ local function BindRow(panel, row, index, position, compact, done)
   -- The read mark, or on a stuck mail the warning triangle in its place
   -- (RV.PaintDot; RV.Place shows the triangle).
   RV.PaintDot(row.Indicator, wasRead, stuckReason ~= nil)
-  -- The mark's column hidden: the tooltip says what it would have.
-  row.unreadTip = (not wasRead and not layout.shown.read) and L()["STATUS_UNREAD"] or nil
   row.Icon:SetTexture(S.Icon(index))
   row.Delete:SetShown(showDelete)
   -- Back to the idle tint, for the same reason StyleMailRow above re-asserts the
@@ -5375,6 +5527,9 @@ local function BindRow(panel, row, index, position, compact, done)
   iconCount, stacks = iconCount or 0, stacks or 0
   row.iconSlot = iconSlot
   row.iconItems = stacks
+  -- What the row's tooltip (RV.RowTip) needs from the bind: numbers and
+  -- flags, never a string -- the tooltip is built on hover, not on a bind.
+  row.tipQuantity = quantity
 
   -- What the trailing controls take out of the row, stacking inwards from its
   -- right edge: the inset and its marks (RV.MarkRoom) -- but on a one-line
@@ -5413,13 +5568,11 @@ local function BindRow(panel, row, index, position, compact, done)
   RV.PaintCount(row, iconCount, stacks, layout)
 
   -- The meta line. `parts` is what the standard row draws under the name; the
-  -- compact row draws the same figures in its columns and hands the rest --
-  -- category and invoice breakdown, the two that describe rather than alert --
-  -- to its tooltip. Reused tables: this runs for every visible row on every
-  -- refresh, and a run refreshes once per mail.
-  local parts, facts = panel._rowParts, panel._rowFacts
+  -- compact row draws the same figures in its columns and leaves the rest --
+  -- the invoice's breakdown -- to its tooltip. A reused table: this runs for
+  -- every visible row on every refresh, and a run refreshes once per mail.
+  local parts = panel._rowParts
   Clear(parts)
-  Clear(facts)
 
   local showSlots, showExpiry = layout.shown.slots == true, layout.shown.time == true
   local money, moneyKind = S.Money(index, hasCOD, moneyValue, codValue, compact)
@@ -5432,20 +5585,14 @@ local function BindRow(panel, row, index, position, compact, done)
   local slots = (remaining > 0) and T.Colorize("textSecondary", RV.SlotsText(remaining, showSlots and compact)) or nil
 
   -- Time left is a warning, not a column: on the row only when it is short;
-  -- always in the tooltip.
-  row.expiryTip = daysLeft and Helpers().ExpiresIn(daysLeft) or nil
+  -- in the tooltip whenever the row does not say it.
   local expiry = RowExpiryText(daysLeft, hasCOD, layout)
 
-  -- A figure switched off leaves the row and goes to its tooltip, in full.
-  if money and not MoneyShown(moneyKind, layout) then
-    facts[#facts + 1] = S.Money(index, hasCOD, moneyValue, codValue, false)
-    money = nil
-  end
-  if slots and not showSlots then
-    facts[#facts + 1] = slots
-    slots = nil
-  end
-  row.factsTip = (#facts > 0) and concat(facts, "\n") or nil
+  -- A figure switched off leaves the row; the tooltip says it in full.
+  if money and not MoneyShown(moneyKind, layout) then money = nil end
+  if slots and not showSlots then slots = nil end
+  -- Which money the row shows ("earned", "cod", "spent"), for the tooltip.
+  row.tipMoney = money and moneyKind or nil
 
   -- The standard row reads left to right in full: money, slots, category, the
   -- time left (in the quiet tone, or the warning tone when it is short), then
@@ -5461,8 +5608,9 @@ local function BindRow(panel, row, index, position, compact, done)
     expiry = nil
   end
   local senderText = DisplaySender(sender) or L()["SENDER_UNKNOWN"]
-  -- The whole name, for the tooltip, when the row shows less of it.
-  row.senderTip = (sender and senderText ~= sender) and sender or nil
+  -- Whether the row shows less of the name than the mail has, for the
+  -- tooltip, which then says it whole.
+  row.tipShort = (sender ~= nil and senderText ~= sender)
   -- Auction mail says what happened where the sender would be: "Sold",
   -- "Won", "Expired", "Cancelled", each in its own colour, with the item's
   -- name beside it. "Auction House" carried no information the outcome
@@ -5471,8 +5619,6 @@ local function BindRow(panel, row, index, position, compact, done)
   senderText = outcome or senderText
   -- A player the address book knows the class of, in its colour.
   RV.PaintSender(row.Sender, not outcome and sender or nil)
-  -- A hidden sender column is said by the tooltip instead.
-  if not layout.shown.sender then row.senderTip = senderText end
 
   -- No category on the line: the sender column already says "AH Sold", and
   -- "Other" says nothing at all. Only the two-line row draws this line, the
@@ -5499,19 +5645,9 @@ local function BindRow(panel, row, index, position, compact, done)
     end
     if not purchaseShown then S.Invoice(parts, index, false) end
   end
-
-  if compact then
-    -- What the row does not draw goes to the tooltip, one fact per line: the
-    -- invoice figures. The money and the slot count are on the row already
-    -- and are not said twice, and nor is the kind of mail -- the sender
-    -- column says it.
-    local tip = panel._rowTip
-    Clear(tip)
-    if not purchaseShown then S.Invoice(tip, index, false) end
-    row.detailFull = (#tip > 0) and concat(tip, "\n") or nil
-  else
-    row.detailFull = nil
-  end
+  -- The two-line row's time left, on its line; the one-line row's is its
+  -- column's (RV.RowTip reads that from the column itself).
+  row.tipTime = (timeText ~= nil)
 
   -- Widths derived from the list's own width, so a caption is truncated with a
   -- tooltip rather than clipped, in any locale and at any window size. The
@@ -6378,11 +6514,7 @@ local function UpdateVisibleRows(panel)
     row.fingerprint = nil
     row.iconSlot = nil
     row.stuckReason = nil
-    row.detailFull = nil
-    row.expiryTip = nil
-    row.factsTip = nil
-    row.senderTip = nil
-    row.unreadTip = nil
+    row.tipMoney = nil
     row.Warning:Hide()
     row:Hide()
   end
@@ -11776,8 +11908,6 @@ function CT.Build(parent)
   panel._filteredDone = {}
   panel._rows = {}
   panel._rowParts = {}
-  -- The figures an option took off a row, for its tooltip.
-  panel._rowFacts = {}
   -- The two-line row's figure texts, in the arrangement's order.
   panel._rowTexts = {}
   -- Which part each piece of the two-line row's second line is.
@@ -11804,7 +11934,6 @@ function CT.Build(parent)
   -- Another character's box: its row pool (Mail Memory's rows).
   panel._avPool = {}
 
-  panel._rowTip = {}
   -- Top row: the view switch, the search box at the far right, and the hint
   -- between them.
   BuildViewToggle(panel)
