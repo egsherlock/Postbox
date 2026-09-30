@@ -7,17 +7,17 @@ local _, ns = ...
 --
 -- What's new?: a small window with the last three releases' highlights --
 -- the changelog's own groups, a line to a highlight, in the player's
--- language -- opened from the notice below, from the options' footer (What's new,
--- and the version beside it) and by /postbox whatsnew.
+-- language -- opened from the notice below, from the options' footer and
+-- by /postbox whatsnew.
 --
 -- The notice: when an update has put the settings back on their defaults
 -- (Postbox.lua, 4b, which names the release in PostboxDB.notice), a card
 -- stands beside the mail window the first time it opens -- what changed,
--- what was kept, What's new and OK. Either button answers it for good; a mailbox closed
--- without an answer shows it again at the next one. It stands outside the
--- window, so nothing the player needs is under it, and it steps aside
--- while the arrange mode's inspector stands beside the window (WN.Aside,
--- from Core/Arrange.lua).
+-- what was kept, What's new? and OK. Either button answers it for good; a
+-- mailbox closed without an answer shows it again at the next one. It
+-- stands outside the window, so nothing the player needs is under it, and
+-- it steps aside while the arrange mode's inspector stands beside the
+-- window (WN.Aside, from Core/Arrange.lua).
 --
 -- Nothing here is built until it is shown. With no notice waiting, a
 -- mailbox open costs one read of the saved variables' root.

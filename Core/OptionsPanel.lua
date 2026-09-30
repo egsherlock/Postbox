@@ -3641,10 +3641,17 @@ end
 -------------------------------------------------------------
 -- The footer
 --
--- What this build is, the one door out to a bug report, What's new beside
--- it, and Reset to defaults at the band's left end. It sits under the list
--- and the inspector.
+-- A band under the list and the inspector with three things on it, each
+-- where it reads evenly: Reset to defaults at its left end, the one door
+-- out to a bug report in its middle, What's new? at its right end. What
+-- this build is stands under the band's right end, small and dim, outside
+-- it: a fact about the build, not a control.
 -------------------------------------------------------------
+-- The band's width; Report a bug never nearer the item at either end than
+-- MID_GAP; the band to the version, and the version to the panel's foot.
+Footer.BAND_W = PANEL_W - 2 * EDGE
+Footer.MID_GAP, Footer.VERSION_GAP, Footer.VERSION_FOOT = 16, 3, 7
+
 -- One of the theme's glyphs, white like the band's text beside it, or nil
 -- where the theme has none: the band then reads as words alone.
 function Footer.Glyph(parent, name, size)
@@ -3655,14 +3662,15 @@ function Footer.Glyph(parent, name, size)
 end
 
 function Footer.Build(frame, above)
+  local T = ns.Theme
   local statusBand = CreateFrame("Button", nil, frame, "BackdropTemplate")
   statusBand:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -BODY_GAP)
   statusBand:SetPoint("RIGHT", frame, "RIGHT", -EDGE, 0)
   statusBand:SetHeight(BAND_H)
-  ns.Theme.ApplyBand(statusBand)
+  T.ApplyBand(statusBand)
 
-  local statusText = ns.Theme.CreateText(statusBand, "bodySmall")
-  statusText:SetJustifyH("CENTER")
+  local statusText = T.CreateText(statusBand, "bodySmall")
+  statusText:SetJustifyH("LEFT")
   statusText:SetWordWrap(false)
   -- Says what the click does. The band has always opened the bug report;
   -- nothing on it ever said so.
@@ -3676,66 +3684,50 @@ function Footer.Build(frame, above)
     bug:SetAlpha(0.85)
   end
 
-  -- What's new (Core/WhatsNew.lua), from here and from the version at the
-  -- band's right end: each a button of its own laid over the band, as
-  -- Reset to defaults is, so a click on it is never also the bug report's.
-  local function ToggleNews()
-    local News = ns.WhatsNew
-    if News and type(News.Toggle) == "function" then News.Toggle(frame, true) end
-  end
-
-  -- Beside Report a bug, as quiet as it, the mark and both captions centred
-  -- as one. Measured again on every open, as the reset is: a host skin can
-  -- re-font the band after the panel is built.
+  -- What's new? (Core/WhatsNew.lua), at the band's right end, as quiet as
+  -- Report a bug: a button of its own laid over the band, as Reset to
+  -- defaults is, so a click on it is never also the bug report's.
   local news = CreateFrame("Button", nil, statusBand)
   news:SetFrameLevel(statusBand:GetFrameLevel() + 2)
-  local newsText = ns.Theme.CreateText(news, "bodySmall")
-  newsText:SetPoint("LEFT", news, "LEFT", 0, 0)
+  news:SetPoint("TOPRIGHT", statusBand, "TOPRIGHT", -8, 0)
+  news:SetPoint("BOTTOMRIGHT", statusBand, "BOTTOMRIGHT", -8, 0)
+  local newsText = T.CreateText(news, "bodySmall")
+  newsText:SetPoint("RIGHT", news, "RIGHT", 0, 0)
+  newsText:SetJustifyH("RIGHT")
   newsText:SetWordWrap(false)
   newsText:SetText(L["WHATSNEW_TITLE"])
   newsText:SetAlpha(0.85)
-  local function FitCentre()
-    local mark = bug and 17 or 0   -- the mark and its gap before the words
-    local gap = 20                 -- Report a bug to What's new
-    local a = math.ceil(statusText:GetStringWidth() or 0)
-    local b = math.ceil(newsText:GetStringWidth() or 0)
-    local x = mark - (mark + a + gap + b) / 2
-    statusText:ClearAllPoints()
-    statusText:SetPoint("LEFT", statusBand, "CENTER", x, 0)
-    news:ClearAllPoints()
-    news:SetPoint("TOPLEFT", statusBand, "TOP", x + a + gap, 0)
-    news:SetPoint("BOTTOMLEFT", statusBand, "BOTTOM", x + a + gap, 0)
-    news:SetWidth(math.max(1, b))
-  end
-  FitCentre()
-  S.refresh[#S.refresh + 1] = FitCentre
-  news:SetScript("OnClick", ToggleNews)
+  news:SetScript("OnClick", function()
+    local News = ns.WhatsNew
+    if News and type(News.Toggle) == "function" then News.Toggle(frame, true) end
+  end)
   news:SetScript("OnEnter", function() newsText:SetAlpha(1) end)
   news:SetScript("OnLeave", function() newsText:SetAlpha(0.85) end)
 
-  -- The packager stamps the release TAG into the TOC, which already carries
-  -- its own "v" -- do not add another.
-  local version = CreateFrame("Button", nil, statusBand)
-  version:SetFrameLevel(statusBand:GetFrameLevel() + 2)
-  version:SetPoint("TOPRIGHT", statusBand, "TOPRIGHT", -8, 0)
-  version:SetPoint("BOTTOMRIGHT", statusBand, "BOTTOMRIGHT", -8, 0)
-  local versionText = ns.Theme.CreateText(version, "bodySmall")
-  versionText:SetPoint("RIGHT", version, "RIGHT", 0, 0)
+  -- The version, under the band's right end in the game's smallest face (in
+  -- the host's where it has one), dim. Only words: What's new? above it is
+  -- the door. The packager stamps the release TAG into the TOC, which
+  -- already carries its own "v" -- do not add another.
+  local versionText = T.CreateText(frame, "secondary")
+  local tiny = _G.GameFontWhiteTiny
+  if tiny then
+    versionText:SetFontObject(T.HostFont(tiny))
+    T.SetColor(versionText, "textSecondary")
+  end
+  versionText:SetPoint("TOPRIGHT", statusBand, "BOTTOMRIGHT", -8, -Footer.VERSION_GAP)
   versionText:SetJustifyH("RIGHT")
+  versionText:SetWordWrap(false)
   versionText:SetText(tostring(ns.VERSION or ""))
   versionText:SetAlpha(0.55)
-  local function FitVersion()
-    version:SetWidth(math.max(1, math.ceil(versionText:GetStringWidth() or 0)))
-  end
-  FitVersion()
-  S.refresh[#S.refresh + 1] = FitVersion
-  version:SetScript("OnClick", ToggleNews)
-  version:SetScript("OnEnter", function() versionText:SetAlpha(1) end)
-  version:SetScript("OnLeave", function() versionText:SetAlpha(0.55) end)
 
-  -- Reset to defaults, at the band's left end across from the version: the
-  -- one control here that undoes the player's own choices, so it is as
-  -- quiet as the version until pointed at, and it asks first -- the dialog
+  S.footer = {
+    band = statusBand, bugText = statusText, bugMark = bug and 17 or 0,
+    news = news, newsText = newsText, version = versionText,
+  }
+
+  -- Reset to defaults, at the band's left end across from What's new?: the
+  -- one control here that undoes the player's own choices, so it is quiet
+  -- until pointed at, and it asks first -- the dialog
   -- says what goes and what stays. A button of its own laid over the band,
   -- so a click on it is never also a click on the bug report.
   --
@@ -3870,13 +3862,13 @@ function Footer.Build(frame, above)
       if caret then caret:SetAlpha(a) end
     end
     Quiet(true)
-    -- As wide as what it says, re-measured on every open: a host skin can
-    -- re-font it after the panel is built.
-    local function FitReset()
-      reset:SetWidth(math.ceil(resetText:GetStringWidth() or 0) + (arrow and 21 or 4) + (caret and 18 or 4))
+    -- As wide as what it says, re-measured on every open (Footer.Fit): a
+    -- host skin can re-font it after the panel is built.
+    S.footer.FitReset = function()
+      local width = math.ceil(resetText:GetStringWidth() or 0) + (arrow and 21 or 4) + (caret and 18 or 4)
+      reset:SetWidth(width)
+      return width
     end
-    FitReset()
-    S.refresh[#S.refresh + 1] = FitReset
 
     reset:SetScript("OnClick", function()
       if Busy() then return end
@@ -3915,6 +3907,34 @@ function Footer.Build(frame, above)
     if bug then bug:SetAlpha(0.85) end
     GameTooltip:Hide()
   end)
+end
+
+-- Measured on every open, after the skins have had their say about fonts,
+-- and in whatever language the client speaks. The ends are held: Reset to
+-- defaults 4 in from the band's left, What's new? 8 in from its right.
+-- Report a bug, its mark and its words as one, stands in the band's middle;
+-- only where that would bring it nearer either end's item than MID_GAP (a
+-- long translation) does it move, to the middle of the room between them.
+-- The panel's foot is as tall as the version under the band needs.
+function Footer.Fit()
+  local f = S.footer
+  if not f then return end
+  local resetR = 4 + f.FitReset()
+  local newsW = math.max(1, math.ceil(TextW(f.newsText)))
+  f.news:SetWidth(newsW)
+  local newsL = Footer.BAND_W - 8 - newsW
+  local mark = f.bugMark
+  local unit = mark + math.ceil(TextW(f.bugText))
+  local x = (Footer.BAND_W - unit) / 2
+  if x < resetR + Footer.MID_GAP or x + unit > newsL - Footer.MID_GAP then
+    x = resetR + (newsL - resetR - unit) / 2
+  end
+  x = math.floor(x + 0.5)
+  f.bugText:ClearAllPoints()
+  f.bugText:SetPoint("LEFT", f.band, "LEFT", x + mark, 0)
+  f.bugX, f.newsL, f.resetR = x, newsL, resetR
+  S.footH = math.max(FOOT_BOTTOM,
+    Footer.VERSION_GAP + math.ceil(f.version:GetStringHeight() or 0) + Footer.VERSION_FOOT)
 end
 
 -------------------------------------------------------------
@@ -3985,12 +4005,13 @@ local function Layout()
     S.textNeed = text
   end
   local need = math.ceil(math.max(S.listNeed or 0, text))
-  if need ~= S.bodyH then
-    S.bodyH = need
+  local height = TOP + TAB_H + BODY_GAP + need + BODY_GAP + BAND_H + (S.footH or FOOT_BOTTOM)
+  if need ~= S.bodyH or height ~= S.frameH then
+    S.bodyH, S.frameH = need, height
     S.body:SetHeight(need)
     S.list:SetHeight(need)
     S.insp:SetHeight(need)
-    S.frame:SetHeight(TOP + TAB_H + BODY_GAP + need + BODY_GAP + BAND_H + FOOT_BOTTOM)
+    S.frame:SetHeight(height)
     -- Never taller than the screen, whatever the window scale.
     local T = ns.Theme
     if T and type(T.FitToScreen) == "function" then T.FitToScreen(S.frame) end
@@ -4166,6 +4187,7 @@ function Panel.RefreshControls()
   Refresh()
   Rows.Fit()
   Tabs.Fit()
+  Footer.Fit()
   Layout()
   Ctx.Paint(S.tab)
   Insp.Repaint()
@@ -4229,6 +4251,7 @@ function Panel.Toggle(anchor)
   -- Measured after the skin has re-fonted what it re-fonts.
   Rows.Fit()
   Tabs.Fit()
+  Footer.Fit()
   Layout()
   -- Fitted to the screen again (its size may have changed since), and put
   -- back where it opens if that moved its scale.
