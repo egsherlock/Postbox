@@ -261,55 +261,115 @@ function RV.SmallAtlas(atlas)
   return small
 end
 
+-------------------------------------------------------------
+-- The quality mark on an item's icon
+--
+-- One rule for every item icon Postbox draws -- a mail row's, History's,
+-- Mail Memory's, a fan tile, a reading-view tile -- so a mark reads the
+-- same on each by construction. Its size follows the icon's: a little over
+-- a compact row's small icon (at its own size it was hard to see), a little
+-- under a larger icon's own, never under 15 units. Its centre sits a fixed
+-- distance inside the icon's top-left corner, 2 units (2.5 on a larger
+-- icon), so it overhangs the corner by the rest. Those are the size and the
+-- overhang the mark had at the bottom-right before the stack count took
+-- that corner; the top-left mirrors them. Sizes are not rounded: at UI
+-- scale 1 a unit is nearly two screen pixels, too coarse a step to tune a
+-- mark this small in.
+--
+-- The mark stands on a frame over the icon's owner, with the stack count
+-- over it: where the two meet on a small icon, the count stays whole.
+-------------------------------------------------------------
+
+-- iconSize -> the mark's size, and how far its centre sits inside the
+-- icon's top-left corner.
+function RV.MarkGeometry(iconSize)
+  iconSize = tonumber(iconSize) or 18
+  local compact = iconSize <= 20
+  return max(15, iconSize * (compact and 1.2 or 0.9)), compact and 2 or 2.5
+end
+
+-- The rule at a compact row's icon (18), then a larger row's (28).
+RV.MARK_SIZE, RV.MARK_IN = RV.MarkGeometry(18)
+RV.MARK_SIZE_LARGE, RV.MARK_IN_LARGE = RV.MarkGeometry(28)
+
+-- mark -> the atlas it draws, or nil.
+function RV.AtlasOf(mark)
+  return type(mark) == "string" and mark:match("|A:([^:|]+)") or nil
+end
+
+-- holder -> a mark on that frame, hidden, and its shadow: a soft dark copy
+-- just behind it, so the mark reads on light item art.
+function RV.NewMark(holder)
+  local shadow = holder:CreateTexture(nil, "ARTWORK")
+  shadow:SetAlpha(0.6)
+  shadow:Hide()
+  local mark = holder:CreateTexture(nil, "OVERLAY")
+  mark:Hide()
+  return mark, shadow
+end
+
+-- mark, shadow, icon, iconSize -> both sized and placed on the icon's
+-- top-left corner by the rule.
+function RV.PlaceMark(mark, shadow, icon, iconSize)
+  local size, inset = RV.MarkGeometry(iconSize)
+  mark:SetSize(size, size)
+  mark:ClearAllPoints()
+  mark:SetPoint("CENTER", icon, "TOPLEFT", inset, -inset)
+  shadow:SetSize(size + 2, size + 2)
+  shadow:ClearAllPoints()
+  shadow:SetPoint("CENTER", mark, "CENTER", 0, -1)
+end
+
+-- mark, shadow, atlas -> both wearing the item button's small form of the
+-- atlas (RV.SmallAtlas) and shown; hidden for none.
+function RV.ShowMark(mark, shadow, atlas)
+  if not atlas then
+    mark:Hide()
+    shadow:Hide()
+    return
+  end
+  local small = RV.SmallAtlas(atlas)
+  mark:SetAtlas(small, false)
+  shadow:SetAtlas(small, false)
+  shadow:SetVertexColor(0, 0, 0, 1)
+  mark:Show()
+  shadow:Show()
+end
+
+-- row -> the frame its icon's mark and count stand on, made on first use
+-- and shown: a level above the row, so nothing the row draws over its icon
+-- covers them, and the mark's overhang above the row is not covered by the
+-- row before it.
+function RV.IconOverlay(row)
+  local holder = row.QualityHolder
+  if not holder then
+    holder = CreateFrame("Frame", nil, row)
+    holder:SetAllPoints(row)
+    holder:SetFrameLevel(row:GetFrameLevel() + 2)
+    row.QualityHolder = holder
+  end
+  if not holder:IsShown() then holder:Show() end
+  return holder
+end
+
 -- row, mark -> a small copy of the mark over the top-left corner of the
 -- row's item icon -- the art an item button wears there, where the client
 -- has it -- or nothing. Created on first use: most rows never carry one.
 -- `layout` is the row's arrangement (History's has its own; nil: the mail
 -- rows'). The top-left, as every item button puts it: the bottom-right is
--- the stack count's (RV.PaintCount), so the two never overlap.
+-- the stack count's (RV.PaintCount).
 function RV.PaintQuality(row, mark, layout)
-  local atlas = type(mark) == "string" and mark:match("|A:([^:|]+)") or nil
+  local atlas = RV.AtlasOf(mark)
   -- Nothing to mark when the arrangement hides the icon.
   if not (atlas and row.Icon and RV.MarkOnIcon() and (layout or RV.Layout()).shown.icon) then
-    if row.QualityHolder then row.QualityHolder:Hide() end
+    if row.Quality then RV.ShowMark(row.Quality, row.QualityShadow, nil) end
     return
   end
-  if not row.QualityHolder then
-    -- On a frame of its own, a level above the row, so nothing the row
-    -- draws over its icon can cover it.
-    local holder = CreateFrame("Frame", nil, row)
-    holder:SetAllPoints(row)
-    holder:SetFrameLevel(row:GetFrameLevel() + 2)
-    -- A soft dark copy just behind it, so the mark reads on light item art.
-    row.QualityShadow = holder:CreateTexture(nil, "ARTWORK")
-    row.QualityShadow:SetAlpha(0.6)
-    row.Quality = holder:CreateTexture(nil, "OVERLAY")
-    row.QualityHolder = holder
-  end
-  local small = RV.SmallAtlas(atlas)
-  row.Quality:SetAtlas(small, false)
-  row.QualityShadow:SetAtlas(small, false)
-  row.QualityShadow:SetVertexColor(0, 0, 0, 1)
-  -- The icon's upper-left corner: 10 units on the compact icon, 13 on the
-  -- two-line row's larger one, its centre a fixed distance inside the
-  -- corner (RV.MARK_IN), so it stays on the item's art and clear of the
-  -- count in the opposite corner.
-  local compactIcon = (row.Icon:GetWidth() or 18) <= 20
-  local size = compactIcon and RV.MARK_SIZE or RV.MARK_SIZE_LARGE
-  local inset = compactIcon and RV.MARK_IN or RV.MARK_IN_LARGE
-  row.Quality:SetSize(size, size)
-  row.Quality:ClearAllPoints()
-  row.Quality:SetPoint("CENTER", row.Icon, "TOPLEFT", inset, -inset)
-  row.QualityShadow:SetSize(size + 2, size + 2)
-  row.QualityShadow:ClearAllPoints()
-  row.QualityShadow:SetPoint("CENTER", row.Quality, "CENTER", 0, -1)
-  row.QualityHolder:Show()
+  local holder = RV.IconOverlay(row)
+  if not row.Quality then row.Quality, row.QualityShadow = RV.NewMark(holder) end
+  RV.ShowMark(row.Quality, row.QualityShadow, atlas)
+  RV.PlaceMark(row.Quality, row.QualityShadow, row.Icon, row.Icon:GetWidth() or 18)
 end
-
--- The quality mark's size and how far its centre sits inside the icon's
--- corner: compact icons (18), then the two-line row's (28).
-RV.MARK_SIZE, RV.MARK_IN = 10, 3.5
-RV.MARK_SIZE_LARGE, RV.MARK_IN_LARGE = 13, 5
 
 -------------------------------------------------------------
 -- The icon's stack count, and the edge of a second card behind it
@@ -395,8 +455,11 @@ function RV.PaintCount(row, count, items, layout)
   local text = shown and RV.CountText(count) or nil
   local fs = row.IconCount
   if text then
+    -- On the frame the quality mark stands on, over the mark (RV.IconOverlay).
+    local holder = RV.IconOverlay(row)
     if not fs then
-      fs = row:CreateFontString(nil, "OVERLAY")
+      fs = holder:CreateFontString(nil, "OVERLAY")
+      fs:SetDrawLayer("OVERLAY", 7)
       fs:SetJustifyH("RIGHT")
       fs:SetWordWrap(false)
       fs.__pbOn = false
@@ -7746,6 +7809,7 @@ local function TakeOneAttachment(detail, slot)
         local _, _, texture, count = GetInboxItem(index, slotIndex)
         if texture then slot.Icon:SetTexture(texture) end
         slot.Count:SetText((tonumber(count) or 0) > 1 and tostring(count) or "")
+        RV.ShowMark(slot.Mark, slot.MarkShadow, RV.MarkOnIcon() and RV.AtlasOf(RV.MarkOf(link)) or nil)
         slot.itemLink = link
       else
         slot.Icon:Hide()
@@ -7782,7 +7846,14 @@ local function BuildDetailSlot(detail, i)
   slot.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
   slot.Icon:Hide()
 
-  slot.Count = T.CreateText(slot, "numberSmall", "OVERLAY")
+  -- The item's quality mark, by the icons' one rule (RV.PlaceMark), and the
+  -- count over it, on a frame over the slot, as a fan tile has them.
+  local over = CreateFrame("Frame", nil, slot)
+  over:SetAllPoints(slot)
+  slot.Mark, slot.MarkShadow = RV.NewMark(over)
+  RV.PlaceMark(slot.Mark, slot.MarkShadow, slot.Icon, T.Metrics.slotSize)
+  slot.Count = T.CreateText(over, "numberSmall", "OVERLAY")
+  slot.Count:SetDrawLayer("OVERLAY", 7)
   slot.Count:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -2, 2)
 
   -- The client's own square slot highlight, additively blended -- the same one
@@ -8290,6 +8361,7 @@ function PaintDetailContent(detail, index)
   detail.Delete:SetShown(wasRead and not isCOD and canDelete)
 
   local shownSlots = 0
+  local marks = RV.MarkOnIcon()
   for i = 1, Mail().MAX_ATTACHMENTS do
     local slot = detail.Slots[i]
     local _, _, texture, count = GetInboxItem(index, i)
@@ -8298,6 +8370,7 @@ function PaintDetailContent(detail, index)
       slot.Icon:SetTexture(texture)
       slot.Icon:Show()
       slot.Count:SetText((tonumber(count) or 0) > 1 and tostring(count) or "")
+      RV.ShowMark(slot.Mark, slot.MarkShadow, marks and RV.AtlasOf(RV.QualityMark(index, i)) or nil)
       -- nil where no fetch has landed for this mail -- the channel was busy when
       -- the overlay opened. The slot still shows the item and still raises its
       -- tooltip (SetInboxItem needs no link); what the link decides is whether
@@ -10759,12 +10832,16 @@ do
     tile.Icon = tile:CreateTexture(nil, "ARTWORK")
     tile.Icon:SetAllPoints()
     tile.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    tile.Count = T.CreateText(tile, "numberSmall", "OVERLAY")
+    -- The quality mark, by the icons' one rule (RV.PlaceMark, from
+    -- Fan.Place at the tile's size), and the count over it, on a frame over
+    -- the tile: a level above every tile, as the mark overhangs its tile's
+    -- corner.
+    local over = CreateFrame("Frame", nil, tile)
+    over:SetAllPoints(tile)
+    tile.Mark, tile.MarkShadow = RV.NewMark(over)
+    tile.Count = T.CreateText(over, "numberSmall", "OVERLAY")
+    tile.Count:SetDrawLayer("OVERLAY", 7)
     tile.Count:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", -2, 2)
-    tile.Mark = tile:CreateTexture(nil, "OVERLAY")
-    tile.Mark:SetSize(RV.MARK_SIZE_LARGE, RV.MARK_SIZE_LARGE)
-    tile.Mark:SetPoint("CENTER", tile, "TOPLEFT", RV.MARK_IN_LARGE, -RV.MARK_IN_LARGE)
-    tile.Mark:Hide()
     local warning = ProbeAtlas(T.AtlasSets.warning)
     if warning then
       tile.Warn = tile:CreateTexture(nil, "OVERLAY", nil, 2)
@@ -10805,7 +10882,7 @@ do
   -- tile, texture, count text, mark, why -> the tile as it should read;
   -- whether anything about it changed. Only what changed is set.
   function Fan.Paint(tile, texture, text, mark, why)
-    local atlas = type(mark) == "string" and mark:match("|A:([^:|]+)") or nil
+    local atlas = RV.AtlasOf(mark)
     local dim = why ~= nil
     if tile.pbTex == texture and tile.pbText == text and tile.pbAtlas == atlas and tile.pbDim == dim then
       return false
@@ -10813,12 +10890,7 @@ do
     tile.pbTex, tile.pbText, tile.pbAtlas, tile.pbDim = texture, text, atlas, dim
     tile.Icon:SetTexture(texture)
     tile.Count:SetText(text)
-    if atlas then
-      tile.Mark:SetAtlas(RV.SmallAtlas(atlas), false)
-      tile.Mark:Show()
-    else
-      tile.Mark:Hide()
-    end
+    RV.ShowMark(tile.Mark, tile.MarkShadow, atlas)
     -- Dimmed in colour and alpha together, so it reads at any opacity.
     tile.Icon:SetDesaturated(dim)
     tile.Icon:SetVertexColor(dim and 0.6 or 1, dim and 0.6 or 1, dim and 0.6 or 1)
@@ -10928,6 +11000,11 @@ do
       local line, col = floor((k - 1) / per), (k - 1) % per
       if leftward then col = per - 1 - col end
       tile:SetSize(size, size)
+      -- The mark follows the tile's size (Larger mail rows' tiles are larger).
+      if tile.pbSize ~= size then
+        tile.pbSize = size
+        RV.PlaceMark(tile.Mark, tile.MarkShadow, tile.Icon, size)
+      end
       tile.fx, tile.fy = P + col * step, -(P + codH + line * step)
       tile.Slide:Stop()
       if animate then
