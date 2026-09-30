@@ -20,6 +20,13 @@ local _, ns = ...
 --
 -- Counted strings use neither form. They are families of keys read through
 -- ns.Plural, immediately below.
+--
+-- Every block is written in its own language's letters, saved as UTF-8:
+-- French, German and Spanish keep their accents, umlauts, eszett and
+-- opening question and exclamation marks, as the Russian and Chinese blocks
+-- keep theirs. The game draws its own text in these languages with the same
+-- fonts, and Postbox's Barlow carries every one of these letters too. Only the
+-- format tokens stay exactly as the English string has them.
 -------------------------------------------------------------
 
 local L = {}
