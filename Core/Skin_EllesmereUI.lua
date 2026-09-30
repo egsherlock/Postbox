@@ -578,9 +578,10 @@ end
 -- at the alpha EllesmereUI itself gives it -- opaque under the EllesmereUI
 -- style, the Modern backdrop's own colour and opacity (97% by default) under
 -- Modern -- so the Modern opacity control EllesmereUI players already know
--- governs Postbox too. (It used to follow the Dark Mode fill's alpha, which
--- EllesmereUI applies to unit and raid frames, not windows: 90% by default, a
--- touch more see-through than every EllesmereUI window beside it.)
+-- governs Postbox too. On the compat backend, where EllesmereUI draws no
+-- windows, it follows the Dark Mode fill's alpha (see HostWindowAlpha); on the
+-- api backend that fill is for unit and raid frames, 90% by default, a touch
+-- more see-through than every EllesmereUI window beside it.
 --
 -- Not an additive wash: EllesmereUI's shell art (media/modern_blizz.png) is a
 -- palette PNG with NO tRNS chunk -- every pixel is fully opaque -- so a solid
@@ -606,11 +607,22 @@ end
 -- whole job is to stay legible while the window behind it is adjusted).
 local OPAQUE_ALPHA = 0.97
 
--- How solid EllesmereUI draws its own windows: the Modern backdrop's opacity
--- under the Modern style, opaque under its own. The skinning API's style is the
--- one Postbox's shell wears (a majority vote of the player's per-window styles);
--- the compat shim reads the same vote from the saved variable.
+-- How solid the windows beside Postbox are. On the api backend EllesmereUI
+-- draws them: the Modern backdrop's opacity under the Modern style, opaque
+-- under its own (the skinning API's style is the one Postbox's shell wears, a
+-- majority vote of the player's per-window styles).
+--
+-- On the compat backend EllesmereUI draws no Blizzard window at all -- its Blizz
+-- UI Enhanced module is off -- so there is no EllesmereUI window to match, and
+-- "opaque" left Postbox a solid slab beside see-through ones. The Dark Mode
+-- fill is the figure the player's UI shares there, and the one a profile like
+-- atrocityUI writes to match the skinner that does draw their windows
+-- (atrocityEssentials paints them in the same grey at 80%).
 local function HostWindowAlpha()
+  if BACKEND == "compat" then
+    local _, _, _, a = HostBaseline()
+    return a
+  end
   local style
   if S and type(S.GetStyle) == "function" then
     local ok, v = pcall(S.GetStyle)
@@ -666,9 +678,10 @@ function Skin.ApplyBgOpacity(frame)
   -- (the backdrop where it owns it) takes EllesmereUI's window opacity, while
   -- the host's shell art is driven to 1 -- its region alpha, which multiplies
   -- the colour alpha the host gave it, so the Modern backdrop keeps its own 97%.
+  -- The compat shim has no host art, and its title strip takes the fill's alpha.
   local saved = tonumber((GetProfile().euiBgAlpha))
   local alpha = saved or HostWindowAlpha()
-  local hostAlpha = saved or 1
+  local hostAlpha = saved or (BACKEND == "compat" and alpha) or 1
 
   local function paint(f)
     if not f then return end
