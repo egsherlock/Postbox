@@ -858,6 +858,27 @@ function UI.SetAfterSendKeep(mode)
   profile.keepRecipient = nil
 end
 
+-- How many general bag slots a collect run leaves free: 0 (the default,
+-- runs go until the bags are full) to 10. A run stops before the take that
+-- would leave fewer (MailService, RunPlan). Stored only when it is not 0.
+-- Read once per run and per All mail tooltip, so no memo.
+UI.KEEP_FREE_MAX = 10
+function UI.GetKeepFreeSlots()
+  local n = tonumber(ns.Store and ns.Store.Get and ns.Store.Get("profile.keepFreeSlots"))
+  if not n then return 0 end
+  n = math.floor(n)
+  if n < 0 then return 0 end
+  if n > UI.KEEP_FREE_MAX then return UI.KEEP_FREE_MAX end
+  return n
+end
+function UI.SetKeepFreeSlots(n)
+  n = tonumber(n)
+  if not n then return end
+  n = math.max(0, math.min(UI.KEEP_FREE_MAX, math.floor(n)))
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.keepFreeSlots = (n > 0) and n or nil end
+end
+
 -- Performance recording for the bug report (Postbox.lua, 5b): "off" (the
 -- default), "on" or "detail". Saved, because the open a report is wanted for
 -- is often the first after a /reload. This pair only reads and stores: the
@@ -3434,6 +3455,7 @@ function UI.DiagnoseOptions()
   Named("readMail", UI.GetReadMode(), "fold")
   Named("historyDays", UI.GetHistoryDays(), "7")
   Named("afterSend", UI.GetAfterSendKeep(), "nothing")
+  Named("keepFree", UI.GetKeepFreeSlots(), "0")
   -- Each arrangement's own choices: the one-line rows' under the names
   -- they had while they were everyone's.
   Named("gold", UI.GetGoldMode("rows"), "both")

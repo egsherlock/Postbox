@@ -2651,6 +2651,18 @@ function Pages.mail(col)
       ns.Theme.LiftPopup(StaticPopup_Show(POPUP_HISTORY_OFF, L["MSG_HISTORY_OFF_CONFIRM"]))
     end,
   })
+  -- How many bag slots a collect run leaves free: None (runs go until the
+  -- bags are full) or 1 to 10. Read at the start of each run.
+  local freeItems = { { id = 0, name = L["OPT_KEEP_FREE_NONE"] } }
+  for n = 1, (ns.MailboxUI.KEEP_FREE_MAX or 10) do
+    freeItems[#freeItems + 1] = { id = n, name = ns.Plural("COUNT_SLOTS", n) }
+  end
+  Rows.Dropdown(col, {
+    title = L["OPT_KEEP_FREE_TITLE"], text = L["OPT_KEEP_FREE_DESC"],
+    items = freeItems,
+    get = function() return ns.MailboxUI.GetKeepFreeSlots and ns.MailboxUI.GetKeepFreeSlots() or 0 end,
+    set = function(id) if ns.MailboxUI.SetKeepFreeSlots then ns.MailboxUI.SetKeepFreeSlots(id) end end,
+  })
 
   -- The sound when mail arrives while you are out in the world. The flash
   -- stays with the minimap icon: it is drawn on the icon.

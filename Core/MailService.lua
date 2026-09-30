@@ -606,6 +606,20 @@ function Mail.FreeBagSlots()
   return free, reagent
 end
 
+-- keepFree -> true when a collect run keeping that many general bag slots
+-- free ("Keep bag slots free", UI.GetKeepFreeSlots) must not take another
+-- item: the next one could fill a slot, and there are no more free than
+-- that. Counted from the general bags only, as the option says: a reagent
+-- that would have gone into the reagent bag waits too, since which bag an
+-- item lands in is the client's to decide. 0 or nil keeps nothing free and
+-- is never reached -- runs then go until the bags are full, as they always
+-- have -- and bags that cannot be counted do not stop a run.
+function Mail.KeepFreeReached(keepFree)
+  if type(keepFree) ~= "number" or keepFree <= 0 then return false end
+  local free = Mail.FreeBagSlots()
+  return free ~= nil and free <= keepFree
+end
+
 -- Total attachment slots a queue needs.
 function Mail.QueueAttachmentSlots(queue)
   local needed = 0
@@ -1462,7 +1476,12 @@ end
 Mail.HistoryRecord = HistoryRecord
 Mail.HistoryNote = HistoryNote
 
-local function RunPlan(index, fingerprint, plan, done, record)
+-- `keepFree`, where a collect run passes it: the general bag slots the run
+-- leaves free ("Keep bag slots free", Mail.KeepFreeReached). An item take
+-- that would go below it is not issued; the plan ends there with `kept`
+-- (done's sixth value) and nothing recorded against the mail. Money takes
+-- need no room and still go.
+local function RunPlan(index, fingerprint, plan, done, record, keepFree)
   local cursor = 0
   local refused = 0
   local reason, reasonMixed = nil, false
@@ -1538,6 +1557,11 @@ local function RunPlan(index, fingerprint, plan, done, record)
 
     local before = measure()
     if before <= 0 then return step() end
+
+    if op.kind == "item" and Mail.KeepFreeReached(keepFree) then
+      done(false, refused, reason, fingerprint, false, true)
+      return
+    end
 
     -- What this take is about to move, read before it moves: the sum, or the
     -- item and its stack size.
@@ -1714,8 +1738,9 @@ end
 --   "closed"    the mailbox is not open; nothing was attempted.
 -- A "refused" answer carries a fourth value, `kind`: "bags" when the take was
 -- refused for want of bag room ("Bags full": nothing is recorded against the
--- mail, and a run stops), nil when the refusal is the mail's own (recorded in
--- the stuck registry).
+-- mail, and a run stops), "keep" when a run's opts.keepFree stopped it before
+-- an item take (nothing taken from that mail's items, nothing recorded), nil
+-- when the refusal is the mail's own (recorded in the stuck registry).
 -------------------------------------------------------------
 
 -- index, onDone [, opts] -> nothing. onDone(status, refusedCount, reason, kind).
@@ -1723,6 +1748,10 @@ end
 -- opts.skipFetch  the caller has already loaded this mail's body (the detail
 --                 overlay has), so the fetch would be a wasted round trip that
 --                 can also race a cached response.
+-- opts.keepFree   a collect run's "Keep bag slots free": the general bag slots
+--                 it leaves free (RunPlan). A mail with items met at that
+--                 point, with no gold to take, is left as it is -- not even
+--                 fetched, so it stays unread.
 function Mail.CollectMail(index, onDone, opts)
   local token = Claim()
   local finished = false
@@ -1759,6 +1788,14 @@ function Mail.CollectMail(index, onDone, opts)
   -- touch.
   if (tonumber(cod) or 0) > 0 and not (opts and opts.allowCOD) then
     return finish("refused", 0, nil)
+  end
+
+  -- The run keeps bag slots free and has reached them: a mail that holds
+  -- only items has nothing this run may take, and fetching it would only
+  -- mark it read. (One with gold goes on: the gold needs no room, and the
+  -- plan stops at its first item.)
+  if itemCount > 0 and money <= 0 and Mail.KeepFreeReached(opts and opts.keepFree) then
+    return finish("refused", 0, nil, "keep")
   end
 
   -- The body fetch does two jobs: it loads the attachment links (which are nil
@@ -1817,9 +1854,10 @@ function Mail.CollectMail(index, onDone, opts)
       return finish("collected")
     end
 
-    RunPlan(index, fingerprint, plan, function(timedOut, refusedCount, reason, current, full)
+    RunPlan(index, fingerprint, plan, function(timedOut, refusedCount, reason, current, full, kept)
       if timedOut then return finish("timeout", refusedCount, reason) end
       if full then return finish("refused", refusedCount, reason, "bags") end
+      if kept then return finish("refused", refusedCount, reason, "keep") end
       if refusedCount > 0 then return finish("refused", refusedCount, reason) end
       -- Verify rather than assume, independently of the per-operation
       -- measurements. Only meaningful while the index still names this mail:
@@ -1856,7 +1894,7 @@ function Mail.CollectMail(index, onDone, opts)
         if current ~= fingerprint then ForgetStuck(current) end
         finish("collected", 0, reason)
       end)
-    end, record)
+    end, record, opts and opts.keepFree)
   end
 
   WhenIdle(function()

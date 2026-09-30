@@ -6647,7 +6647,8 @@ end
 --   left > 0      the run was STOPPED and that many queued mails are still in
 --                 the mailbox. stopReason says which guard stopped it: the
 --                 connection ("timeout"), or bags with no room left ("bags",
---                 which is a state rather than a failure -- see FinishRun).
+--                 which is a state rather than a failure -- see FinishRun),
+--                 or the slots "Keep bag slots free" leaves free ("keep").
 --   refused > 0   the server would not hand over some attachments, for
 --                 reasons of those mails' own (Run.stuck counts the mails).
 --                 Nothing was at risk.
@@ -6679,6 +6680,8 @@ local Run = {
   spent = 0,
   reason = nil,
   reasonMixed = false,
+  -- Handed to every CollectMail of the run: { keepFree = N } (BeginRun).
+  opts = {},
 }
 
 function CT.IsRunning()
@@ -6874,6 +6877,7 @@ local function FinishRun(left, stopReason)
   local reason = Run.reason
   local earned, spent = Run.earned, Run.spent
   local panel = Run.panel
+  local keepFree = Run.opts.keepFree or 0
   ResetRun()
 
   -- A bad ending is written down for next visit; a clean one erases the note.
@@ -6920,7 +6924,7 @@ local function FinishRun(left, stopReason)
   local M = Mail()
   local waiting = (M.BagsFull and M.BagsFull() and M.BagsWaiting and M.BagsWaiting()) or 0
 
-  if left > 0 and stopReason ~= "bags" then
+  if left > 0 and stopReason ~= "bags" and stopReason ~= "keep" then
     StatusOutcome(WithCollected(
       Tinted("negative", format(L()["STATUS_INCOMPLETE"], left))))
     ns.Print(ns.Plural("MSG_COLLECT_INCOMPLETE", left))
@@ -6932,6 +6936,12 @@ local function FinishRun(left, stopReason)
     if waiting > 0 then
       local full = Tinted("warning", format(L()["STATUS_BAGS_FULL"], waiting))
       problem = problem and (problem .. JOIN .. full) or full
+    end
+    -- Stopped by "Keep bag slots free": the bags state's wording, for a
+    -- stop the player asked for. Not a state -- the next run goes as far.
+    if stopReason == "keep" then
+      local kept = Tinted("warning", ns.Plural("STATUS_KEPT_FREE", keepFree))
+      problem = problem and (problem .. JOIN .. kept) or kept
     end
     if problem then
       StatusOutcome(WithCollected(problem))
@@ -6959,6 +6969,8 @@ local function FinishRun(left, stopReason)
     end
     if stopReason == "bags" then
       ns.Print(ns.Plural("MSG_COLLECT_STOPPED_BAGS", left))
+    elseif stopReason == "keep" then
+      ns.Print(ns.Plural("MSG_COLLECT_STOPPED_KEEP", left, ns.Plural("COUNT_SLOTS", keepFree)))
     end
   end
 
@@ -7029,6 +7041,19 @@ local function RunStep()
       return
     end
 
+    -- The run keeps bag slots free and has reached them (Run.opts.keepFree):
+    -- it ends here, as a bags stop does, with this mail and the rest still
+    -- in the mailbox. Only the gold of a mail that had some came out -- a
+    -- mail holding only items was not touched -- so only then is it tallied.
+    if status == "refused" and refusal == "keep" then
+      if (tonumber(money) or 0) > 0 then
+        Run.earned = Run.earned + mailEarned
+        Run.spent = Run.spent + mailSpent
+      end
+      FinishRun(Remaining() + 1, "keep")
+      return
+    end
+
     -- Past the two statuses that mean "the take may not have happened", so the
     -- money did change hands -- including on a REFUSED take, where the server
     -- declines specific attachments and hands over the money and the rest
@@ -7066,13 +7091,17 @@ local function RunStep()
     else
       RunStep()
     end
-  end)
+  end, Run.opts)
 end
 
 local function BeginRun(panel, queue)
   ResetRun()
   Run.active = true
   Run.panel = panel
+  -- "Keep bag slots free", read once for the run: the service stops before
+  -- the item take that would go below it (MailService, RunPlan). One table
+  -- for every mail of every run, not one per mail.
+  Run.opts.keepFree = RV.KeepFreeSlots()
   for i = 1, #queue do Run.queue[i] = queue[i] end
   -- Indices shift under a run; an overlay addressed by index cannot survive it.
   if panel.Detail then panel.Detail:Hide() end
@@ -7164,11 +7193,27 @@ local function StartCategoryRun(panel, category)
   -- apart: only reagents go there (RV.ReagentExtra).
   local free, reagent = Mail().FreeBagSlots()
   if free ~= nil then
-    local room = free + (reagent or 0)
+    -- "Keep bag slots free": the run fills only the general slots above
+    -- that, so they are the room it has (0 keeps none, and this is exactly
+    -- the check it always was). Said as the slots it may fill, with the kept
+    -- ones after them: "you have 3 slots free (+2 kept free)".
+    local keep = RV.KeepFreeSlots()
+    local usable = math.max(0, free - keep)
+    local room = usable + (reagent or 0)
     local needed = Mail().QueueAttachmentSlots(queue)
     if needed > room then
       local fits = Mail().QueuePrefixThatFits(queue, room)
-      local need, have, extra = ns.Plural("COUNT_SLOTS", needed), ns.Plural("COUNT_SLOTS", free), RV.ReagentExtra(reagent)
+      local need, have = ns.Plural("COUNT_SLOTS", needed), ns.Plural("COUNT_SLOTS", usable)
+      local extra = RV.KeptExtra(free, keep) .. RV.ReagentExtra(reagent)
+      if fits <= 0 and usable < free then
+        -- Nothing fits above the slots kept free, and there are free slots:
+        -- no dialog about bag space the player can see is there, just the
+        -- run's own stop, before anything is marked read.
+        StatusOutcome(Th().Colorize("warning", ns.Plural("STATUS_KEPT_FREE", keep)))
+        ns.Print(ns.Plural("MSG_COLLECT_STOPPED_KEEP", #queue, ns.Plural("COUNT_SLOTS", keep)))
+        RequestRefresh(panel)
+        return
+      end
       if fits <= 0 then
         -- Nothing at all would fit. Refuse before anything is marked read.
         ShowNotice(L()("MSG_BAGS_FULL", need, have, extra))
@@ -8410,10 +8455,29 @@ function RV.ReagentExtra(reagent)
   return L()("BAGS_REAGENT_EXTRA", reagent)
 end
 
+-- "Keep bag slots free" (Options, Mail tab): the general bag slots a collect
+-- run leaves free, 0 when it leaves none.
+function RV.KeepFreeSlots()
+  local UI = ns.MailboxUI
+  local n = UI and type(UI.GetKeepFreeSlots) == "function" and UI.GetKeepFreeSlots() or 0
+  return tonumber(n) or 0
+end
+
+-- The general slots a run may fill: the free ones less those it keeps free.
+-- " (+2 kept free)", or "", for the messages that quote the room.
+function RV.KeptExtra(free, keep)
+  if keep <= 0 or (tonumber(free) or 0) <= 0 then return "" end
+  return L()("BAGS_KEPT_EXTRA", math.min(keep, free))
+end
+
 function RV.AllMailRoom(panel, tooltip)
   local M = Mail()
   local free, reagent = M.FreeBagSlots()
   if not free then return end
+  -- A run keeping slots free fills only the rest, so the warning compares
+  -- the items with those; the line under it says how many are kept.
+  local keep = RV.KeepFreeSlots()
+  local usable = math.max(0, free - keep)
   local items = 0
   if Selecting(panel) and panel._selected then
     for index in pairs(panel._selected) do items = items + RV.RoomItems(index, true) end
@@ -8428,12 +8492,13 @@ function RV.AllMailRoom(panel, tooltip)
   end
   local text = ns.Plural("ROOM_FREE", free)
   if items > 0 then text = ns.Plural("ROOM_ITEMS", items) .. " \194\183 " .. text end
-  local warn = items > free and Th().Colors and Th().Colors.warning
+  local warn = items > usable and Th().Colors and Th().Colors.warning
   if warn then
     tooltip:AddLine(text, warn[1], warn[2], warn[3], true)
   else
     tooltip:AddLine(text, 1, 1, 1, true)
   end
+  if keep > 0 then tooltip:AddLine(ns.Plural("ROOM_KEPT", keep), 0.7, 0.7, 0.7, true) end
   if (reagent or 0) > 0 then tooltip:AddLine(ns.Plural("ROOM_REAGENT", reagent), 0.7, 0.7, 0.7, true) end
   -- While the bags are full the mails with items wait, and the count above
   -- is only what needs no room: say why.
