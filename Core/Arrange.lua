@@ -225,7 +225,7 @@ function AR.Reset(history)
     if ui.SetHistoryAge then ui.SetHistoryAge(nil) end
   else
     if ui.SetGoldMode then ui.SetGoldMode("both") end
-    if ui.SetExpiryWhen then ui.SetExpiryWhen("3") end
+    if ui.SetExpiryWhen then ui.SetExpiryWhen(nil) end
     if ui.SetSlotsStyle then ui.SetSlotsStyle(nil) end
     if ui.SetGridLayout then ui.SetGridLayout(nil) end
     if ui.SetStackOrder then ui.SetStackOrder(nil) end

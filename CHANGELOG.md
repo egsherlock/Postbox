@@ -9,14 +9,14 @@ longer play.
 
 ### New
 
-- **Arrange your mail rows.** The small layout mark beside the options cog
+- **Arrange your mail rows.** The small arrange mark beside the options cog
   opens arranging: a column header takes the top row's place, each heading
   right over its column, and you drag a column by its heading or straight
   from any row (point at one in a row and the whole column lights up). Hide
   the columns you don't need (a peg marks where one stands, and you can
   still drag it) and set gold and time left on the spot. The Mail tab and
-  Mail Memory share one arrangement; History has its own, with the age a
-  column you can move or hide, reading "3d ago", "3 days ago" or a date.
+  Mail Memory share one arrangement; History has its own, with Collected a
+  column you can move or hide.
   Time left wears an hourglass, History a clock with a turning-back arrow.
   One set of gestures for everything: drag to move, click for its options,
   right-click to hide or show; a crossed eye marks what is hidden. While you
@@ -70,8 +70,8 @@ longer play.
   color addon), and change as soon as you change them.
 - **Time left shows on every mail by default**, so the column never looks
   half empty. To see it only when a mail is about to go, choose Under 7, 3
-  or 1 days in Options, Mail tab, or on the Time left card while you
-  arrange. If you picked a setting before, it stays.
+  or 1 days on the Time left card while you arrange. If you picked a
+  setting before, it stays.
 - **The arrange header lines up with the list.** Its headings run edge to
   edge over the rows, and History's header shows History's own columns, the
   age first.
