@@ -2233,7 +2233,12 @@ function RV.Place(row, s)
     RV.Anchor(row, subject, 1, sx + mw, 0)
     RV.FitSubject(row, subject, run - mw, text.subject)
     subject:Show()
-    if detail then detail:Hide() end
+    -- Not drawn, so nothing of it was cut: what a two-line bind cut of the
+    -- line last is not this row's tooltip's any more.
+    if detail then
+      detail:Hide()
+      detail.__pbOverflowText = nil
+    end
     -- The two-line row's figures live on its second line; this row's are
     -- columns, placed above.
     if row.__pbTwo then row.__pbTwo.on = false end
@@ -2271,9 +2276,10 @@ function RV.Place(row, s)
       sender:Show()
     else
       if sender then sender:Hide() end
-      -- Written into the second line, the name is that line's to cut: what
-      -- the first line cut of it last is not this row's any more.
-      if second and sender and senderShown then sender.__pbOverflowText = nil end
+      -- Written into the second line, or hidden, the name is not the first
+      -- line's to cut: what the first line cut of it last is not this row's
+      -- any more.
+      if sender then sender.__pbOverflowText = nil end
       subjectW = max(lineWidth - ((room > 0) and (room + gap) or 0), 20)
       if room > 0 and before then subX = x + room + gap end
       RV.Anchor(row, subject, 3, subX + mw, top)
@@ -2296,7 +2302,11 @@ function RV.Place(row, s)
     end
   end
   if focus == "subject" then target = subject end
-  if not senderShown and sender then sender:Hide() end
+  -- A hidden sender is fitted nowhere: nothing of it is cut on this row.
+  if not senderShown and sender then
+    sender:Hide()
+    sender.__pbOverflowText = nil
+  end
   -- While the arrange mode points at a column the rows show it
   -- (Core/Arrange.lua, AR.MarkRow): its lane, the subject's run, the column
   -- in the hand. Otherwise nothing is marked.
