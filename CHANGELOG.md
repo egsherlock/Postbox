@@ -22,8 +22,10 @@ your recipients, groups, Mail Memory and History are kept.*
 - **Test mail** fills the list with sample mail while you arrange, so every
   column has something to show. Arrange Postbox in Options works away from a
   mailbox too.
-- **Row layout: Columns or Packed.** Gold stands under gold, or each row
-  closes its gaps and the subject gets the room.
+- **Row layout: Columns or Packed.** Columns is a table, every figure under
+  its heading. Packed sits each mail's figures together at the edge, each
+  only as wide as it needs, and gives the subject the rest of the row, in
+  any order you arrange; Arrange shows packed rows exactly as they are.
 - **Character Groups:** put characters together (bank alts, crafters) and give
   each group its own collect button.
 
