@@ -975,10 +975,10 @@ local function FieldText(box)
   return Helpers().NormalizeText(box:GetText())
 end
 
--- `confirmedMails` is set only by the confirmation's own accept: the number
--- of mails the player said yes to; `confirmedGold`, likewise, the copper a
--- mail's gold question was answered for.
-local function DoSendMail(panel, confirmedMails, confirmedGold)
+-- `confirmed` is set only by a confirmation's own accept: the press as its
+-- question named it -- how many mails, the gold leaving, the recipient --
+-- and whether C.O.D. was checked when it was asked.
+local function DoSendMail(panel, confirmed)
   local toName  = FieldText(panel.ToBox)
   local subject = FieldText(panel.SubjectBox)
   local body    = FieldText(panel.BodyBox)
@@ -1010,31 +1010,46 @@ local function DoSendMail(panel, confirmedMails, confirmedGold)
     return
   end
 
-  -- More than one mail from this press: say what is about to happen, and
-  -- ask once. The count is read again on accept -- the dialog is not modal,
-  -- and a slot emptied or a queue forgotten while it stood changes the
-  -- answer; a changed answer is asked again rather than assumed.
   local mails = MailsInPress(panel)
-  if mails > 1 and confirmedMails ~= mails then
-    local items = AttachmentCount() + #(panel._queue or {})
-    local postage = ns.Core.Formatting.FormatMoneyIcons(RunPostage(panel))
-    PopupConfirm(L("SEND_RUN_CONFIRM", mails, toName, items, postage), L["SEND_RUN_ACCEPT"],
-      function() DoSendMail(panel, mails) end)
-    return
-  end
-
   local totalCopper = ComposedCopper(panel)
   local attachments = AttachmentCount()
+  local cod = IsCODArmed(panel)
+  -- The gold that leaves with the press. A C.O.D. price is not gold being
+  -- sent (the recipient pays it); a run's gold goes with its first mail.
+  local gold = cod and 0 or totalCopper
 
-  -- Gold that leaves with the mail is asked about first, as the game's own
-  -- send frame asks: the amount and who gets it. Read again on accept; an
-  -- amount changed while the question stood is asked again. A C.O.D. price
-  -- is not gold being sent (the recipient pays it), and a run of mails has
-  -- its own question above.
-  if mails <= 1 and not IsCODArmed(panel) and totalCopper > 0 and confirmedGold ~= totalCopper then
-    local amount = ns.Core.Formatting.FormatMoneyIcons(totalCopper)
-    PopupConfirm(L("SEND_GOLD_CONFIRM", amount, toName), L["SEND_RUN_ACCEPT"],
-      function() DoSendMail(panel, confirmedMails, totalCopper) end)
+  -- A press that posts more than one mail, or sends gold, is asked about
+  -- first, as the game's own send frame asks about gold: how many mails, the
+  -- gold and who gets it. The dialog is not modal, so the answer is for the
+  -- press as its question named it: read again on accept, a press that has
+  -- changed while the question stood -- another count, another amount,
+  -- another recipient, C.O.D. checked or unchecked -- is asked about again,
+  -- and one that no longer has a question of its own is not sent on an
+  -- answer to a different one.
+  if confirmed and (confirmed.mails ~= mails or confirmed.gold ~= gold
+      or confirmed.to ~= toName or confirmed.cod ~= cod) then
+    confirmed = nil
+    if mails <= 1 and gold <= 0 then
+      if ns.Print then ns.Print(L["MSG_SEND_FAILED"]) end
+      return
+    end
+  end
+  if not confirmed and (mails > 1 or gold > 0) then
+    local answer = { mails = mails, gold = gold, to = toName, cod = cod }
+    local fmt = ns.Core.Formatting.FormatMoneyIcons
+    local message
+    if mails > 1 then
+      local items = attachments + #(panel._queue or {})
+      local postage = fmt(RunPostage(panel))
+      if gold > 0 then
+        message = L("SEND_RUN_GOLD_CONFIRM", mails, toName, fmt(gold), items, postage)
+      else
+        message = L("SEND_RUN_CONFIRM", mails, toName, items, postage)
+      end
+    else
+      message = L("SEND_GOLD_CONFIRM", fmt(gold), toName)
+    end
+    PopupConfirm(message, L["SEND_RUN_ACCEPT"], function() DoSendMail(panel, answer) end)
     return
   end
 
@@ -1044,7 +1059,7 @@ local function DoSendMail(panel, confirmedMails, confirmedGold)
   -- never zeroed the value would let a previous mail's C.O.D. (or gold) ride
   -- along on this one. The unused field is zeroed first, which is the order
   -- Blizzard's own send frame uses.
-  if IsCODArmed(panel) then
+  if cod then
     if attachments <= 0 then
       PopupNotice(L["ERR_COD_NO_ATTACHMENT"])
       return
