@@ -3452,15 +3452,26 @@ end
 -- not a special case: everything below sizes and spaces what this returns.
 -- Done is this character's read mail, so it steps out while another box is
 -- on screen (`other`), and is back the moment this one is.
+-- The list is the container's own, filled again on every layout: a list
+-- refresh lays the row out, and nothing reads the list past the layout.
 local function VisibleSegments(container, other)
-  local shown = {}
+  local shown = container._shownSegs
+  if not shown then
+    shown = {}
+    container._shownSegs = shown
+  end
+  local n = 0
   local tab = RV.Mode() == "tab" and not other
   for i = 1, #container.buttons do
     local seg = container.buttons[i]
     local on = (seg.segId ~= VIEW_DONE) or tab
     seg:SetShown(on)
-    if on then shown[#shown + 1] = seg end
+    if on then
+      n = n + 1
+      shown[n] = seg
+    end
   end
+  for i = #shown, n + 1, -1 do shown[i] = nil end
   return shown
 end
 
@@ -3486,11 +3497,14 @@ local function LayoutViewToggle(panel)
   local other = AV.Other(panel)
   local shown = VisibleSegments(container, other)
 
-  local per, total = T.SizeRow(shown, {
-    height = T.Metrics.segmentHeight,
-    gap = gap,
-    minWidth = T.Metrics.buttonMinWidth,
-  })
+  -- The sizing's options, the container's own and set afresh each time.
+  local opts = container._sizeOpts
+  if not opts then
+    opts = {}
+    container._sizeOpts = opts
+  end
+  opts.height, opts.gap, opts.minWidth = T.Metrics.segmentHeight, gap, T.Metrics.buttonMinWidth
+  local per, total = T.SizeRow(shown, opts)
 
   for i = 1, #shown do
     local seg = shown[i]
