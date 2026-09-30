@@ -4214,10 +4214,11 @@ function AR.Choices(kind)
         { id = "spent",  name = L()["OPT_GOLD_SPENT"] },
       }
     elseif kind == "slots" then
-      -- "4 slots" or "4": how the rows write the count.
+      -- "4 slots" or "4": each choice is how the rows write the count, the
+      -- same count in both, in the client's own plural.
       list = {
-        { id = "words",  name = L()["OPT_SLOTS_WORDS"] },
-        { id = "number", name = L()["OPT_SLOTS_NUMBER"] },
+        { id = "words",  name = ns.Plural("COUNT_SLOTS", 4) },
+        { id = "number", name = tostring(4) },
       }
     else
       list = {
