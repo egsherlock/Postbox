@@ -141,6 +141,13 @@ longer play.
   Options, Mail tab, or in the arrange overview, where the rows show the
   difference at once. Read mail's delete mark no longer pushes its row's
   figures in.
+- **EllesmereUI: all of Postbox's text uses your EllesmereUI font and
+  outline**, "Match EllesmereUI" opacity matches EllesmereUI's own windows,
+  and changing a window style with the mailbox open no longer makes Postbox
+  solid.
+- **ElvUI: Postbox uses your ElvUI accent** (value color), tabs included,
+  and follows it live when you change it or switch profiles.
+- **Chinese clients: large gold amounts read in 万/亿 (萬/億).**
 - **Postbox follows EllesmereUI's look.** On Blizzard Style or Classic WoW UI
   it wears its own Blizzard look, to match your other windows.
 - **EllesmereUI profile, Dark Mode and accent changes** reach an open mailbox
