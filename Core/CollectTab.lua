@@ -238,27 +238,34 @@ function RV.PaintNameMark(row, mark, parent, anchor)
   tex:Show()
 end
 
--- atlas -> the art the icon's corner wears for a mark: the item button's
--- small form of it where the client has it, the mark's own atlas
--- otherwise. Found once per atlas name and kept, so a bind with a mark
--- builds nothing; the answer is Theme.AtlasExists's, which is kept per name
--- too, so it is the one every bind found before. The quality marks are a
--- handful of names; past RV.SMALL_MAX the table is emptied and starts
--- again, so it stays bounded whatever links come through.
-RV.small, RV.smallN, RV.SMALL_MAX = {}, 0, 32
+-- atlas -> the art the icon's corner wears for a mark, and whether that art
+-- is square. The item button's own art for the mark where the client has
+-- it: the "-Inv" form, the mark in the corner of a 33 x 28 piece with a
+-- soft shade of its own running into the icon, as the bags draw it. Else
+-- the mark's small form, else its own atlas, both square. Found once per
+-- atlas name and kept, so a bind with a mark builds nothing; the answer is
+-- Theme.AtlasExists's, which is kept per name too. The quality marks are a
+-- handful of names; past RV.ART_MAX both tables are emptied and start
+-- again, so they stay bounded whatever links come through.
+RV.art, RV.artSquare, RV.artN, RV.ART_MAX = {}, {}, 0, 32
 
-function RV.SmallAtlas(atlas)
-  local known = RV.small
-  local small = known[atlas]
-  if small then return small end
-  if RV.smallN >= RV.SMALL_MAX then
+function RV.MarkArt(atlas)
+  local known = RV.art
+  local art = known[atlas]
+  if art then return art, RV.artSquare[atlas] end
+  if RV.artN >= RV.ART_MAX then
     for key in pairs(known) do known[key] = nil end
-    RV.smallN = 0
+    for key in pairs(RV.artSquare) do RV.artSquare[key] = nil end
+    RV.artN = 0
   end
-  small = Th().FirstAtlas({ (atlas:gsub("ChatIcon", "Icon")) .. "-Small", atlas }) or atlas
-  known[atlas] = small
-  RV.smallN = RV.smallN + 1
-  return small
+  local T = Th()
+  local base = (atlas:gsub("ChatIcon", "Icon"))
+  art = base .. "-Inv"
+  local square = not T.AtlasExists(art)
+  if square then art = T.FirstAtlas({ base .. "-Small", atlas }) or atlas end
+  known[atlas], RV.artSquare[atlas] = art, square
+  RV.artN = RV.artN + 1
+  return art, square
 end
 
 -------------------------------------------------------------
@@ -266,13 +273,23 @@ end
 --
 -- One rule for every item icon Postbox draws -- a mail row's, History's,
 -- Mail Memory's, a fan tile, a reading-view tile -- so a mark reads the
--- same on each by construction. Its size follows the icon's: a little over
--- a compact row's small icon (at its own size it was hard to see), a little
--- under a larger icon's own, never under 15 units. Its centre sits a fixed
--- distance inside the icon's top-left corner, 2 units (2.5 on a larger
--- icon), so it overhangs the corner by the rest. Those are the size and the
--- overhang the mark had at the bottom-right before the stack count took
--- that corner; the top-left mirrors them. Sizes are not rounded: at UI
+-- same on each by construction. The rule is the game's own item buttons'
+-- (ItemButtonTemplate's ProfessionQualityOverlay): the mark's item-button
+-- art (RV.MarkArt) at its own size on a 37-unit button, 33 x 28, its
+-- top-left 3 out and 2 up from the button's. Here that is scaled to the
+-- icon, so on every icon the mark takes the share of the corner it takes
+-- in the bags: its gem about a third of the icon's width, in the corner,
+-- while the stack count keeps the opposite one.
+--
+-- It overhangs the icon by what the bags' does and never more than 2 units
+-- upward, whatever the size: every icon it is drawn on has that room above
+-- it inside what holds it (a compact row 4 units, a larger row 8, a fan
+-- tile its plate's 3-unit pad), so the mark never rises past its row's top
+-- and the list's edge never cuts the first row's.
+--
+-- RV.MARK_SCALE scales the whole rule, 1 being the bags' proportion; every
+-- placement remembers the RV.markGen it was made at, so a change of scale
+-- places each mark again where it is next shown. Sizes are not rounded: at UI
 -- scale 1 a unit is nearly two screen pixels, too coarse a step to tune a
 -- mark this small in.
 --
@@ -280,17 +297,18 @@ end
 -- over it: where the two meet on a small icon, the count stays whole.
 -------------------------------------------------------------
 
--- iconSize -> the mark's size, and how far its centre sits inside the
--- icon's top-left corner.
-function RV.MarkGeometry(iconSize)
-  iconSize = tonumber(iconSize) or 18
-  local compact = iconSize <= 20
-  return max(15, iconSize * (compact and 1.2 or 0.9)), compact and 2 or 2.5
-end
+-- The item button's art and where it stands (33 x 28, 3 out and 2 up, on a
+-- 37-unit button), and the most the mark ever rises above an icon.
+RV.MARK = { W = 33, H = 28, BUTTON = 37, OUT_X = 3, OUT_Y = 2, UP_MAX = 2 }
+RV.MARK_SCALE, RV.markGen = 1, 0
 
--- The rule at a compact row's icon (18), then a larger row's (28).
-RV.MARK_SIZE, RV.MARK_IN = RV.MarkGeometry(18)
-RV.MARK_SIZE_LARGE, RV.MARK_IN_LARGE = RV.MarkGeometry(28)
+-- iconSize -> the mark's width and height, and where its top-left stands
+-- against the icon's top-left (x right, y up).
+function RV.MarkGeometry(iconSize)
+  local M = RV.MARK
+  local k = (tonumber(iconSize) or 18) / M.BUTTON * RV.MARK_SCALE
+  return M.W * k, M.H * k, -min(M.OUT_X, M.OUT_X * k), min(M.UP_MAX, M.OUT_Y * k)
+end
 
 -- mark -> the atlas it draws, or nil.
 function RV.AtlasOf(mark)
@@ -309,31 +327,52 @@ function RV.NewMark(holder)
 end
 
 -- mark, shadow, icon, iconSize -> both sized and placed on the icon's
--- top-left corner by the rule.
+-- top-left corner by the rule, square where the mark's art is (RV.ShowMark
+-- says which). Placed again only when the icon, its size, the art's shape
+-- or the rule changed, so nearly every bind leaves the mark where it is;
+-- the icon and its size are kept with the mark for RV.ShowMark.
 function RV.PlaceMark(mark, shadow, icon, iconSize)
-  local size, inset = RV.MarkGeometry(iconSize)
-  mark:SetSize(size, size)
+  local square = mark.__pbSquare and true or false
+  if mark.__pbIcon == icon and mark.__pbIconSize == iconSize and mark.__pbGen == RV.markGen
+      and mark.__pbPlaced == square then
+    return
+  end
+  mark.__pbIcon, mark.__pbIconSize, mark.__pbGen, mark.__pbPlaced = icon, iconSize, RV.markGen, square
+  local w, h, x, y = RV.MarkGeometry(iconSize)
+  if square then w = h end
+  mark:SetSize(w, h)
   mark:ClearAllPoints()
-  mark:SetPoint("CENTER", icon, "TOPLEFT", inset, -inset)
-  shadow:SetSize(size + 2, size + 2)
+  mark:SetPoint("TOPLEFT", icon, "TOPLEFT", x, y)
+  shadow:SetSize(w + 2, h + 2)
   shadow:ClearAllPoints()
   shadow:SetPoint("CENTER", mark, "CENTER", 0, -1)
 end
 
--- mark, shadow, atlas -> both wearing the item button's small form of the
--- atlas (RV.SmallAtlas) and shown; hidden for none.
+-- mark, shadow, atlas -> the mark wearing its art (RV.MarkArt) and shown;
+-- both hidden for none. The item button's art brings its own shade into
+-- the icon, as it does in the bags; square art has the soft dark copy
+-- behind it instead, so it reads on light item art. A mark placed for the
+-- other shape, or before a retune, is placed again here.
 function RV.ShowMark(mark, shadow, atlas)
   if not atlas then
     mark:Hide()
     shadow:Hide()
     return
   end
-  local small = RV.SmallAtlas(atlas)
-  mark:SetAtlas(small, false)
-  shadow:SetAtlas(small, false)
-  shadow:SetVertexColor(0, 0, 0, 1)
+  local art, square = RV.MarkArt(atlas)
+  if mark.__pbArt ~= art then
+    mark.__pbArt = art
+    mark:SetAtlas(art, false)
+    shadow:SetAtlas(art, false)
+    shadow:SetVertexColor(0, 0, 0, 1)
+  end
+  mark.__pbSquare = square
+  local icon = mark.__pbIcon
+  if icon and (mark.__pbPlaced ~= square or mark.__pbGen ~= RV.markGen) then
+    RV.PlaceMark(mark, shadow, icon, mark.__pbIconSize)
+  end
   mark:Show()
-  shadow:Show()
+  if square then shadow:Show() else shadow:Hide() end
 end
 
 -- row -> the frame its icon's mark and count stand on, made on first use
@@ -352,9 +391,9 @@ function RV.IconOverlay(row)
   return holder
 end
 
--- row, mark -> a small copy of the mark over the top-left corner of the
--- row's item icon -- the art an item button wears there, where the client
--- has it -- or nothing. Created on first use: most rows never carry one.
+-- row, mark -> the mark on the top-left corner of the row's item icon, in
+-- the art an item button wears there where the client has it (RV.ShowMark),
+-- or nothing. Created on first use: most rows never carry one.
 -- `layout` is the row's arrangement (History's has its own; nil: the mail
 -- rows'). The top-left, as every item button puts it: the bottom-right is
 -- the stack count's (RV.PaintCount).
@@ -2991,8 +3030,9 @@ CT.RowRules = {
   HideCount = RV.HideCount,
   SaysCount = RV.SaysCount,
   DropCount = RV.DropCount,
-  MARK_SIZE = RV.MARK_SIZE, MARK_IN = RV.MARK_IN,
-  MARK_SIZE_LARGE = RV.MARK_SIZE_LARGE, MARK_IN_LARGE = RV.MARK_IN_LARGE,
+  -- The icon's mark by the list's own rule, for the options' sample rows.
+  ShowMark = RV.ShowMark,
+  PlaceMark = RV.PlaceMark,
   PaintNameMark = RV.PaintNameMark,
   NameMarkRoom = RV.NameMarkRoom,
   FitSubject = RV.FitSubject,
@@ -11096,11 +11136,9 @@ do
       local line, col = floor((k - 1) / per), (k - 1) % per
       if leftward then col = per - 1 - col end
       tile:SetSize(size, size)
-      -- The mark follows the tile's size (Larger mail rows' tiles are larger).
-      if tile.pbSize ~= size then
-        tile.pbSize = size
-        RV.PlaceMark(tile.Mark, tile.MarkShadow, tile.Icon, size)
-      end
+      -- The mark follows the tile's size (Larger mail rows' tiles are
+      -- larger), placed again only when that, or the mark's rule, changed.
+      RV.PlaceMark(tile.Mark, tile.MarkShadow, tile.Icon, size)
       tile.fx, tile.fy = P + col * step, -(P + codH + line * step)
       tile.Slide:Stop()
       if animate then
