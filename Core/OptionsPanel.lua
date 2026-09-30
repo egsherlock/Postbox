@@ -1735,7 +1735,7 @@ end
 --
 -- The list is built from a handful of row kinds, all read the same way: a
 -- checkbox, a dropdown, a push button, a pair of checkboxes side by side, a
--- quiet note, a full-width action. Each row, or half-row, is a cell: it
+-- quiet note. Each row, or half-row, is a cell: it
 -- washes while the pointer is on it and hands the inspector its entry. The
 -- scripts are shared -- a cell and its control carry what they need on
 -- themselves -- so a hover builds no closure and no table.
@@ -1984,7 +1984,10 @@ do
     return row
   end
 
-  -- A push button on the right. spec: title, text, caption, onClick.
+  -- A push button on the right. spec: title, text, caption, onClick
+  -- [, onHover(cell)] [, mark]: `mark` puts the way into arranging's mark
+  -- before the caption, the two centred as one (Rows.Fit sizes the button
+  -- to both).
   function Rows.Button(col, spec)
     local row = Rows.New(col, ROW_H)
     Rows.Cell(col, row, ROW_W, spec.title, spec.text)
@@ -1994,7 +1997,10 @@ do
     btn:SetText(spec.caption)
     btn:SetScript("OnClick", spec.onClick)
     Wire(btn, row, true)
-    row.kind, row.control = "button", btn
+    -- On a holder of its own: a skin's button repaint fades the button's
+    -- own textures.
+    if spec.mark then btn.Mark = Ctx.Mark(ArtHolder(btn), 12) end
+    row.kind, row.control, row.button, row.onHover = "button", btn, btn, spec.onHover
     return row
   end
 
@@ -2014,27 +2020,6 @@ do
     row.__pbCell = row
     row:SetScript("OnEnter", ControlEnter)
     row:SetScript("OnLeave", ControlLeave)
-    return row
-  end
-
-  -- A button across the row that does something rather than setting
-  -- something, its mark before its caption. spec: title, text, onClick,
-  -- onHover(cell), mark.
-  function Rows.Action(col, spec)
-    local row = Rows.New(col, ROW_H)
-    Rows.Cell(col, row, ROW_W, spec.title, spec.text)
-    row.Name:Hide()
-    local btn = ns.Theme.CreateButton(nil, row)
-    btn:SetHeight(BUTTON_H)
-    btn:SetPoint("LEFT", row, "LEFT", NAME_X, 0)
-    btn:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
-    btn:SetText(spec.title)
-    btn:SetScript("OnClick", spec.onClick)
-    Wire(btn, row, true)
-    -- On a holder of its own: a skin's button repaint fades the button's
-    -- own textures.
-    if spec.mark then btn.Mark = Ctx.Mark(ArtHolder(btn), 12) end
-    row.kind, row.control, row.button, row.onHover = "action", btn, btn, spec.onHover
     return row
   end
 
@@ -2079,23 +2064,28 @@ do
     if not on then ns.Core.UI.Dropdown.CloseAll() end
   end
 
-  -- The action's caption and mark, centred as one across its button.
-  local function FitAction(cell, inner)
+  -- A push button sized to its caption, as its own font draws it now, and
+  -- to the mark before it where it has one, the two centred as one. The
+  -- caption keeps no width of its own: a button puts its state's font back
+  -- on it at every enable and disable, and a width frozen in one font cut
+  -- the caption short in another. Answers the button's width.
+  local function FitButton(cell)
     local T = ns.Theme
-    local btn = cell.button
-    local fs = btn:GetFontString()
-    if not fs then return end
+    local btn = cell.control
+    local width = T.SizeToText(btn, BUTTON_FIT)
     local mark = btn.Mark
-    local lead = mark and (mark.w + 6) or 0
-    local room = inner - 24 - lead
-    T.FitText(fs, room, cell.nameText, cell)
-    fs:SetWidth(math.min(TextW(fs), room))
-    fs:ClearAllPoints()
-    fs:SetPoint("CENTER", btn, "CENTER", lead / 2, 0)
-    if mark then
+    if not mark then return width end
+    local fs = btn:GetFontString()
+    local lead = mark.w + 6
+    width = width + lead
+    btn:SetWidth(width)
+    if fs then
+      fs:ClearAllPoints()
+      fs:SetPoint("CENTER", btn, "CENTER", lead / 2, 0)
       mark:ClearAllPoints()
       mark:SetPoint("CENTER", fs, "LEFT", -(6 + mark.w / 2), 0)
     end
+    return width
   end
 
   -- Measured on every open, after the skins have had their say about
@@ -2110,9 +2100,7 @@ do
       local cell = cells[i]
       local kind = cell.kind
       local inner = cell.w - NAME_X - CONTROL_R
-      if kind == "action" then
-        FitAction(cell, inner)
-      elseif kind == "note" then
+      if kind == "note" then
         T.FitText(cell.Name, inner - NAME_X, cell.nameText, cell)
       elseif kind == "hidden" then
         State.FitHidden()
@@ -2131,7 +2119,7 @@ do
           end
           controlW = want
         elseif kind == "button" then
-          controlW = T.SizeToText(cell.control, BUTTON_FIT)
+          controlW = FitButton(cell)
         end
         T.FitText(cell.Name, inner - controlW - NAME_GAP, cell.nameText, cell)
       end
@@ -2281,9 +2269,6 @@ function State.Minimap()
   Ctx.Paint("minimap")
 end
 
--- Row layout greys while Larger mail rows are on: two-line rows always
--- close up their second line, so the choice has nothing to arrange there.
--- Its inspector says so under what it does.
 -- Row layout stays live with Larger mail rows on: History, Mail Memory and
 -- another character's box are one line whatever the Mail tab's rows are.
 -- Its inspector then says the Mail tab's own rows are not among them.
@@ -2372,7 +2357,8 @@ function State.Arrange(cell)
   cell = cell or S.arrangeCell
   if not cell then return end
   local can = State.ArrangeToggle() ~= nil
-  cell.entry = can and S.arrangeOn or S.arrangeOff
+  local memory = ns.MailboxUI.GetOption("mailMemory")
+  cell.entry = can and S.arrangeOn or (memory and S.arrangeOff or S.arrangeOffMailbox)
   local btn = cell.button
   if btn:IsEnabled() ~= can then
     btn:SetEnabled(can)
@@ -2559,18 +2545,21 @@ function Pages.mail(col)
   -- Which columns a row shows, in what order, and the gold's and the time
   -- left's own choices are arranged in the window itself, where the rows
   -- are (Core/Arrange.lua). This is the way in from here: the same one the
-  -- mark beside the cog is.
-  local arrange = Rows.Action(col, {
-    title = L["OPT_ARRANGE_BUTTON"], text = L["ARRANGE_TIP"],
+  -- mark beside the cog is, a row like the others with its button on the
+  -- right. The inspector names what the row and its button do together.
+  local arrange = Rows.Button(col, {
+    title = L["OPT_ARRANGE_ROW"], text = L["ARRANGE_TIP"], caption = L["OPT_ARRANGE_CAPTION"],
     onClick = Panel.Arrange, onHover = State.Arrange, mark = true,
   })
-  arrange.entry.extra = "arrange"
+  arrange.entry.title, arrange.entry.extra = L["OPT_ARRANGE_BUTTON"], "arrange"
   S.arrangeCell, S.arrangeOn = arrange, arrange.entry
   -- Out of reach, why leads: it is the tooltip, and the inspector's first
-  -- paragraph over what the button does.
+  -- paragraph over what the button does. Mail Memory's window is a way in
+  -- only while Mail Memory is on.
   S.arrangeOff = Entry(L["OPT_ARRANGE_BUTTON"], L["OPT_ARRANGE_OFF"] .. "\n\n" .. L["ARRANGE_TIP"], "arrange")
+  S.arrangeOffMailbox = Entry(L["OPT_ARRANGE_BUTTON"], L["OPT_ARRANGE_OFF_MAILBOX"] .. "\n\n" .. L["ARRANGE_TIP"], "arrange")
 
-  Rows.Group(col, L["OPT_MAILTAB_HEADING"])
+  Rows.Group(col, L["OPT_COLLECTING_HEADING"])
   Rows.Check(col, {
     title = L["OPT_TAB_COUNTS_TITLE"], text = L["OPT_TAB_COUNTS_DESC"],
     get = function() return ns.MailboxUI.GetOption("showTabCounts") end,
@@ -2913,8 +2902,8 @@ function Pages.minimap(col)
     -- Every placement in ONE list -- a mode checkbox beside a position list
     -- gave two controls authority over one fact, and they contradicted
     -- each other the moment shift-drag moved the icon. Blizzard default
-    -- leads: it is where the stock indicator lives and the fresh-install
-    -- default.
+    -- leads: it is where the stock indicator lives. A fresh install starts
+    -- in the top-right corner (MinimapButton's DEFAULTS.position).
     Rows.Dropdown(block, {
       title = L["OPT_MINIMAP_POS_TITLE"], text = L["OPT_MINIMAP_POS_DESC"],
       items = {

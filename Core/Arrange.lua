@@ -259,6 +259,9 @@ function AR.Reset(kind)
   if gridBack then ui.SetOption("showCategoryButtons", true) end
   local totalsBack = ui.GetOption and ui.SetOption and not ui.GetOption("showTotals") or false
   if totalsBack then ui.SetOption("showTotals", true) end
+  -- The options panel's two switches for them say so where it is open.
+  local panel = ns.OptionsPanel
+  if (gridBack or totalsBack) and panel and type(panel.RefreshControls) == "function" then panel.RefreshControls() end
   AR.RowsChanged(true)
   if AR.host then AR.LayoutStrip(AR.host) end
   if (gridBack or totalsBack) and ui.RefreshCollectCategoryButtons then

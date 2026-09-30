@@ -59,8 +59,9 @@ local DEFAULTS = {
 -- ONE dropdown, every placement, no second control to contradict it:
 --
 --   BLIZZARD     exactly where the default mail indicator sits -- restyle
---                without moving anything. The default for fresh installs.
---   corners      rim presets, as angles.
+--                without moving anything.
+--   corners      rim presets, as angles; the top-right one is the default
+--                for fresh installs (DEFAULTS.position).
 --   CUSTOM       wherever the user shift-dragged it ALONG the rim (`angle`).
 --   FREE         wherever the user shift-dragged it ON SCREEN (`offsetX` /
 --                `offsetY` from the minimap centre -- still anchored to the
