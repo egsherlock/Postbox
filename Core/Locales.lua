@@ -1051,9 +1051,8 @@ L["RM_BULK_NONE"]              = "Nothing in %s would change."
 L["RM_OPT_BUTTON"]             = "Manage Recipients"
 L["RM_OPT_BUTTON_DESC"]        = "Choose which characters Postbox offers when you address a mail.\n\nHide the alts you never write to, and favorite the ones you do."
 
--------------------------------------------------------------
--- French (frFR). Zero takes the singular here; see RuleFrench above.
--------------------------------------------------------------
+-- The rest of the English set: the bug report, mail alerts, Mail Memory's
+-- search and character picker, and the warnings about other characters' mail.
 L["OPT_REPORT_BUG"]            = "Report a bug"
 L["MEMORY_WAITING_HEAD"]       = "Waiting to collect: %d"
 L["MEMORY_WAITING_MORE"]       = "and %d more"
@@ -1095,6 +1094,10 @@ L["OPT_ALERT_OTHERS_TITLE"]    = "Warn about other characters' mail"
 L["OPT_ALERT_OTHERS_DESC"]     = "A line in chat at login when another character's mail is close to being lost.\n\nThat is under three days left, or mail known to be on the way (an auction, a purchase, something you sent it) with no mailbox opened for over three weeks. The minimap icon's tooltip lists them either way."
 L["BTN_RELOAD_NOW"]            = "Reload now"
 L["BTN_LATER"]                 = "Later"
+
+-------------------------------------------------------------
+-- French (frFR). Zero takes the singular here; see RuleFrench above.
+-------------------------------------------------------------
 if GetLocale() == "frFR" then
   -- Chat et dialogues
   L["ERR_OPEN_MAILBOX_LOOT"]     = "Approche-toi d'une boîte aux lettres et ouvre-la d'abord."
