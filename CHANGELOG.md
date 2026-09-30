@@ -162,6 +162,12 @@ longer play.
 - **ElvUI: Postbox uses your ElvUI accent** (value color), tabs included,
   and follows it live when you change it or switch profiles.
 - **Chinese clients: large gold amounts read in 万/亿 (萬/億).**
+- **Postbox Modern is now the Postbox style:** the clean dark look from our
+  EllesmereUI skin, with no EllesmereUI needed. Your opacity and border carry
+  over, and new installs without EllesmereUI or ElvUI start on it. Choose its
+  font (your game font by default, Barlow Semi Condensed, the game's other
+  fonts, or your EllesmereUI font) and text size.
+- **Window scale, 80% to 130%, in every style.**
 - **Postbox follows EllesmereUI's look.** On Blizzard Style or Classic WoW UI
   it wears its own Blizzard look, to match your other windows.
 - **EllesmereUI profile, Dark Mode and accent changes** reach an open mailbox
