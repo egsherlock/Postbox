@@ -679,15 +679,19 @@ local function Activate(def, skin)
   skin.BannerInk = def.BannerInk
 
   -- A light ground: the Postbox style reads its Mode as Light (its palette,
-  -- the opacity floor, the text shadow), keeps what it paints for a palette
-  -- change as its own claim does, and resolves the palette now, before the
-  -- first window is built. The styles on a dark ground never come here.
+  -- the opacity floor, the text shadow) and keeps what it paints for a
+  -- palette change as its own claim does. The styles on a dark ground never
+  -- come here.
   if def.light then
     skin.GetMode = function() return "light" end
     local T = ns.Theme
     if T and type(T.TrackPaint) == "function" then T.TrackPaint() end
-    if type(skin._ResolveLook) == "function" then skin._ResolveLook() end
   end
+  -- On any ground, the palette the settings name resolved now, before the
+  -- first window is built: the saved look (row stripes off, say) holds from
+  -- login, not only from its next change. The style's own values are kept
+  -- (the Postbox style's resolve leaves them be).
+  if type(skin._ResolveLook) == "function" then skin._ResolveLook() end
 end
 
 -- The chosen style's table is built here and no other's: every builder is
