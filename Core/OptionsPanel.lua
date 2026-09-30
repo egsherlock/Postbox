@@ -2559,16 +2559,47 @@ function Pages.mail(col)
     get = function() return ns.MailboxUI.GetReadMode and ns.MailboxUI.GetReadMode() or "fold" end,
     set = function(id) if ns.MailboxUI.SetReadMode then ns.MailboxUI.SetReadMode(id) end end,
   })
-  -- How far back History goes, or Never, which turns it off (stored as 0).
-  local dayItems = { { id = 0, name = L["OPT_HISTORY_NEVER"] } }
+  -- How far back History goes, or Never, which turns it off (stored as 0),
+  -- last: it clears what History kept on every character, so it is asked
+  -- first, and until the answer the choice shows what it was. Cancel leaves
+  -- it there. Where the client has no popup, it is set as it was before.
+  local dayItems = {}
   for _, days in ipairs({ 7, 14, 21, 30 }) do
     dayItems[#dayItems + 1] = { id = days, name = ns.Plural("OPT_HISTORY_DAYS", days) }
   end
-  Rows.Dropdown(col, {
+  dayItems[#dayItems + 1] = { id = 0, name = L["OPT_HISTORY_NEVER"] }
+  local POPUP_HISTORY_OFF = "POSTBOX_HISTORY_OFF"
+  local keep
+  keep = Rows.Dropdown(col, {
     title = L["OPT_HISTORY_KEEP_TITLE"], text = L["OPT_HISTORY_KEEP_DESC"],
     items = dayItems,
     get = function() return ns.MailboxUI.GetHistoryDays and ns.MailboxUI.GetHistoryDays() or 7 end,
-    set = function(id) if ns.MailboxUI.SetHistoryDays then ns.MailboxUI.SetHistoryDays(id) end end,
+    set = function(id)
+      local UI = ns.MailboxUI
+      if not UI.SetHistoryDays then return end
+      local asks = type(StaticPopupDialogs) == "table" and type(StaticPopup_Show) == "function"
+      if id ~= 0 or not asks or (UI.GetHistoryDays and UI.GetHistoryDays() == 0) then
+        UI.SetHistoryDays(id)
+        return
+      end
+      Rows.PaintDropdown(keep)
+      if not StaticPopupDialogs[POPUP_HISTORY_OFF] then
+        StaticPopupDialogs[POPUP_HISTORY_OFF] = {
+          text = "%s",
+          button1 = L["BTN_HISTORY_OFF"],
+          button2 = L["COD_CONFIRM_CANCEL"],
+          OnAccept = function()
+            if ns.MailboxUI.SetHistoryDays then ns.MailboxUI.SetHistoryDays(0) end
+            Panel.RefreshControls()
+          end,
+          timeout = 0,
+          whileDead = true,
+          hideOnEscape = true,
+          showAlert = true,
+        }
+      end
+      ns.Theme.LiftPopup(StaticPopup_Show(POPUP_HISTORY_OFF, L["MSG_HISTORY_OFF_CONFIRM"]))
+    end,
   })
 
   -- The sound when mail arrives while you are out in the world. The flash
