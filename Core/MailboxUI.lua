@@ -794,6 +794,25 @@ function UI.SetReadMode(mode)
   if panel and collect and collect.RefreshReadMode then collect.RefreshReadMode(panel) end
 end
 
+-- What resting the pointer on the item icon of a mail holding several items
+-- shows (CollectTab, the fan): "tooltip", the list of them (the default), or
+-- "fan", the items spread out beside the icon, each taken by a click. One
+-- behaviour for the Mail tab's rows, not a part of any arrangement. Stored
+-- only when it is the fan, so nothing stored is the tooltip. Read on hover,
+-- never on a bind, so it keeps no memo.
+function UI.GetAttachHover()
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.attachHover")
+  return (stored == "fan") and "fan" or "tooltip"
+end
+function UI.SetAttachHover(mode)
+  if mode ~= nil and mode ~= "tooltip" and mode ~= "fan" then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.attachHover = (mode == "fan") and "fan" or nil end
+  -- An open fan goes when the tooltip is chosen instead.
+  local collect = ns.CollectTab
+  if mode ~= "fan" and collect and collect.CloseFan then collect.CloseFan() end
+end
+
 -- How many days History keeps: 7 by default, up to 30. 0 is "Never", which
 -- turns History off: nothing is recorded, every character's record is
 -- emptied the moment it is chosen, and its view leaves the Mail tab

@@ -2532,6 +2532,20 @@ function Pages.mail(col)
       QualityChanged()
     end,
   })
+  -- What resting on the item icon of a mail with several items shows: the
+  -- list of them, or the fan, the items spread beside the icon to take one
+  -- at a time (CollectTab). Read on hover, so nothing is redrawn. The same
+  -- choice is on the Icon's card while arranging. Its row is the one the
+  -- category buttons and the totals gave up by sharing theirs, below.
+  Rows.Dropdown(col, {
+    title = L["OPT_ATTACH_HOVER_TITLE"], text = L["OPT_ATTACH_HOVER_DESC"],
+    items = {
+      { id = "tooltip", name = L["OPT_ATTACH_HOVER_TOOLTIP"] },
+      { id = "fan",     name = L["OPT_ATTACH_HOVER_FAN"] },
+    },
+    get = function() return ns.MailboxUI.GetAttachHover and ns.MailboxUI.GetAttachHover() or "tooltip" end,
+    set = function(id) if ns.MailboxUI.SetAttachHover then ns.MailboxUI.SetAttachHover(id) end end,
+  })
 
   -- Which columns a row shows, in what order, and the gold's and the time
   -- left's own choices are arranged in the window itself, where the rows
@@ -2556,17 +2570,18 @@ function Pages.mail(col)
       if ns.MailboxUI.RefreshCollectTabCounts then ns.MailboxUI.RefreshCollectTabCounts() end
     end,
   })
-  Rows.Check(col, {
+  -- The totals band is a block under the list as the buttons are: the same
+  -- refresh stacks the blocks again and moves the window's floor. The two
+  -- share a row, as the blocks they switch share the foot of the tab: the
+  -- Mail page is the panel's tallest, and Attachments on hover took the row.
+  Rows.Pair(col, {
     title = L["OPT_CATEGORY_BUTTONS_TITLE"], text = L["OPT_CATEGORY_BUTTONS_DESC"],
     get = function() return ns.MailboxUI.GetOption("showCategoryButtons") end,
     set = function(on)
       ns.MailboxUI.SetOption("showCategoryButtons", on)
       if ns.MailboxUI.RefreshCollectCategoryButtons then ns.MailboxUI.RefreshCollectCategoryButtons() end
     end,
-  })
-  -- The totals band is a block under the list as the buttons are: the same
-  -- refresh stacks the blocks again and moves the window's floor.
-  Rows.Check(col, {
+  }, {
     title = L["OPT_TOTALS_TITLE"], text = L["OPT_TOTALS_DESC"],
     get = function() return ns.MailboxUI.GetOption("showTotals") end,
     set = function(on)

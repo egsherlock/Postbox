@@ -5727,6 +5727,25 @@ AR.LARGE_NOTE = {
   time = "ARRANGE_NOTE_LARGE_FIGURE", money = "ARRANGE_NOTE_LARGE_FIGURE", slots = "ARRANGE_NOTE_LARGE_FIGURE",
 }
 
+-- The Icon card's own choice, over the Mail tab's mail rows alone (the
+-- host's AttachHover): what resting the pointer on the icon of a mail with
+-- several items shows, the tooltip or the fan (MailboxUI.GetAttachHover).
+-- A behaviour of the rows, one setting, not a part of any arrangement. The
+-- list is made once; nil where the list arranged is not the mail rows.
+function AR.AttachHover()
+  local host, ui = AR.host, UI()
+  if not (host and host.AttachHover and host.AttachHover() and ui and ui.GetAttachHover) then return nil end
+  local list = AR._hover
+  if not list then
+    list = {
+      { id = "tooltip", name = L()["OPT_ATTACH_HOVER_TOOLTIP"] },
+      { id = "fan",     name = L()["OPT_ATTACH_HOVER_FAN"] },
+    }
+    AR._hover = list
+  end
+  return list, ui.GetAttachHover(), ui.SetAttachHover
+end
+
 -- A column's card. Over two-line rows Move steps it as a drag on the
 -- two-line header does, and its note says where the part can go there.
 local function FillColumn(id, y)
@@ -5760,6 +5779,19 @@ local function FillColumn(id, y)
     if spec.choice == "age" then y = PutSegs(shown and true or false, y) end
     for i = 1, #choices do
       y = PutRadio(i, choices[i], choices[i].id == current, shown and true or false, y)
+    end
+  end
+
+  -- The icon's hover, in the manner of a column's own choices: grey while
+  -- the icon is hidden, since there is then nothing to rest on.
+  if id == "icon" then
+    local hover, now, setHover = AR.AttachHover()
+    if hover then
+      insp.set = setHover
+      y = PutKicker(L()["OPT_ATTACH_HOVER_TITLE"], y)
+      for i = 1, #hover do
+        y = PutRadio(i, hover[i], hover[i].id == now, shown and true or false, y)
+      end
     end
   end
   if large then

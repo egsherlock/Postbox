@@ -4122,7 +4122,10 @@ local function BuildRow(panel)
     local index = LiveIndex(owner)
     if not (index and owner.iconSlot) then return end
     -- A mail with several items lists them all; one item, its own tooltip.
+    -- Where the player chose the fan and it may open here, it opens after a
+    -- rest instead, and nothing shows before it (RV.FanHover).
     if (owner.iconItems or 0) > 1 then
+      if RV.FanHover(owner) then return end
       RV.ItemsTooltip(self, index, owner.iconItems)
       return
     end
@@ -4132,6 +4135,7 @@ local function BuildRow(panel)
     local owner = self:GetParent()
     Th().StyleMailRow(owner, owner._rowIndex, false)
     GameTooltip:Hide()
+    RV.FanLeave(owner)
   end)
 
   row.Sender = T.CreateText(row, "label")
@@ -5909,6 +5913,9 @@ local function UpdateVisibleRows(panel)
   -- no edit box -- so a newly grown pool entry needs no ns.Skin.Refresh pass.
   -- Adding one here would re-walk the whole panel on every scroll tick.
   if arranging and A.ListPlaced then A.ListPlaced(panel) end
+  -- An open fan follows its row: the same mail, drawn again as it now is;
+  -- anything else closes it. One comparison while none is open.
+  if RV.fanOpen then RV.FanCheck(panel) end
   if perfAt then perf.Rows(perfAt, used) end
 end
 
@@ -7031,6 +7038,7 @@ local function BeginRun(panel, queue)
   for i = 1, #queue do Run.queue[i] = queue[i] end
   -- Indices shift under a run; an overlay addressed by index cannot survive it.
   if panel.Detail then panel.Detail:Hide() end
+  RV.FanClose(true)
   CT.RefreshRunStatus()
   RunStep()
 end
@@ -7976,6 +7984,8 @@ function ShowDetail(panel, index)
 
   local fingerprint = Fingerprint(index)
   if not fingerprint then return end
+  -- The reading view covers the list, and the fan with it.
+  RV.FanClose(true)
 
   detail.mailIndex = index
   detail.fingerprint = fingerprint
@@ -9958,6 +9968,7 @@ function CT.ArrangeHost(panel)
   function host.OnEnter()
     -- The reading view is over the list the header describes.
     HideDetail(panel)
+    RV.FanClose(true)
     RV.HideTopRow(panel)
     if RV.ArrangeGrid then RV.ArrangeGrid(panel, true) end
   end
@@ -9984,6 +9995,11 @@ function CT.ArrangeHost(panel)
   end
   function host.Scroll() return panel.MailListScroll end
   function host.List() return panel.MailListChild end
+  -- Whether the list is the tab's own mail rows, whose icon's hover the
+  -- Icon card chooses (the fan); not History, not another character's box.
+  function host.AttachHover()
+    return not AV.Active(panel) and panel.viewMode ~= VIEW_HISTORY
+  end
   function host.TwoLine()
     return not AV.Active(panel) and panel.viewMode ~= VIEW_HISTORY and not RowMetrics()
   end
@@ -10179,6 +10195,696 @@ function RV.BuildDivider(panel, parent)
   end)
   divider:Hide()
   return divider
+end
+
+-------------------------------------------------------------
+-- The fan (Options, Mail tab: Attachments on hover, Fan out)
+--
+-- Where the player chose it, resting the pointer on the item icon of a mail
+-- holding two items or more (RV.FanHover, from the icon's own hover) opens,
+-- after Fan.DWELL, a plate beside the icon on the same row: the gold first,
+-- as the reading view has it, then one tile per item with its count. It is
+-- a tooltip the player can use -- its own ground at any window opacity
+-- (Theme's popup floor), over the rows and under the reading view -- and a
+-- click on a tile takes that item through the reading view's own path:
+-- ConfirmCOD first, RV.ArmPaidTake across the C.O.D. its take pays, and
+-- MailService's TakeAttachment, which fetches the body first where the
+-- mail was never opened (opts.fetch). Shift- and Ctrl-click do what they
+-- do on Blizzard's own mail tiles (HandleModifiedItemClick); right-click
+-- does nothing; the gold tile takes the gold. A tile the server refused,
+-- or every item's while the bags are full, is dimmed with the warning
+-- triangle, says why, and takes no click.
+--
+-- Placed by rule: past the icon's far edge, or before its near edge when
+-- the icon stands in the list's far half (the row's end); a second line
+-- past Fan.PER_LINE tiles, or where the room runs out; clamped inside the
+-- list. It closes on leaving the icon and the plate (Fan.GRACE for the
+-- step between them), a press anywhere else (GLOBAL_MOUSE_DOWN, registered
+-- only while it is open), any scroll, a row pass that binds its row to
+-- other mail (RV.FanCheck), a run, the reading view, the arrange mode and
+-- the tab hiding. It never opens during a run, while arranging, with the
+-- reading view up, over Preview mail's samples, on a row half scrolled out
+-- or for a mail with one item (that keeps the item's own tooltip). After a
+-- take it follows its row in place, and closes once the mail holds nothing.
+--
+-- Nothing runs while it is shut. The plate and its tiles are made the first
+-- time one opens and reused after; the dwell and the grace are single
+-- C_Timer.After calls on shared functions, told apart by counters rather
+-- than closures (timers of one length fire in the order they were set), so
+-- a rest, an open and a close allocate nothing once the texts are known.
+-- Motion is AnimationGroups alone: the plate fades in, the tiles slide out
+-- from under the icon, staggered, and the plate fades out on a close.
+-------------------------------------------------------------
+do
+  local Fan = {
+    DWELL = 0.25, GRACE = 0.1, QUICK = 0.5,
+    -- The plate stands GAP past the icon; PAD inside its edge, tiles TILE
+    -- (TILE_LARGE on Larger mail rows) square and TILE_GAP apart.
+    GAP = 3, PAD = 3, TILE = 28, TILE_LARGE = 32, TILE_GAP = 2, PER_LINE = 12,
+    -- A line of tiles is kept on a short row's room only while it holds at
+    -- least this many, or all of them; past that it takes the list's width.
+    MIN_LINE = 4,
+    FADE_IN = 0.08, SLIDE = 0.12, STAGGER = 0.012, LAND_BY = 0.2, FADE_OUT = 0.06,
+    COIN = "Interface\\Icons\\INV_Misc_Coin_02",
+    tiles = {}, n = 0,
+    -- Refusals met from this fan, by item link, for the mail `fp` names.
+    refused = {},
+    armN = 0, fireN = 0, graceN = 0, graceFireN = 0, graceOn = false,
+    open = false, closedAt = -1,
+    -- The gold tile's count and the C.O.D. line, one text per amount.
+    golds = {}, cods = {}, textsN = 0, TEXTS_MAX = 64,
+  }
+  RV.Fan = Fan
+  RV.fanOpen = false
+
+  -- Whether the player chose the fan (MailboxUI.GetAttachHover).
+  function Fan.Wanted()
+    local UI = ns.MailboxUI
+    return UI ~= nil and type(UI.GetAttachHover) == "function" and UI.GetAttachHover() == "fan"
+  end
+
+  -- row -> whether a fan may stand over it at all: a live mail of the inbox,
+  -- no run, no arranging, no reading view, no sample mail.
+  function Fan.Allowed(row)
+    local panel = row.panel
+    if not panel or panel._preview or Run.active then return false end
+    if RV.Arranging(panel) then return false end
+    local detail = panel.Detail
+    if detail and detail:IsShown() then return false end
+    return true
+  end
+
+  -- row -> whether one may open over it now: allowed, a mail of two items
+  -- or more, and its icon wholly inside the visible list.
+  function Fan.MayOpen(row)
+    if (row.iconItems or 0) < 2 or not Fan.Allowed(row) or not row:IsVisible() then return false end
+    if not LiveIndex(row) then return false end
+    local scroll = row.panel.MailListScroll
+    local top, bottom = row.Icon:GetTop(), row.Icon:GetBottom()
+    local sTop, sBottom = scroll:GetTop(), scroll:GetBottom()
+    if not (top and bottom and sTop and sBottom) then return false end
+    return top <= sTop + 0.5 and bottom >= sBottom - 0.5
+  end
+
+  -- cod, amount -> the C.O.D. line ("C.O.D.: 45g", in the warning tone) or
+  -- the gold tile's count ("250g"), each made once per amount and kept,
+  -- bounded as RV.counts is.
+  function Fan.MoneyText(cod, amount)
+    local memo = cod and Fan.cods or Fan.golds
+    local text = memo[amount]
+    if text then return text end
+    if Fan.textsN >= Fan.TEXTS_MAX then
+      for key in pairs(Fan.golds) do Fan.golds[key] = nil end
+      for key in pairs(Fan.cods) do Fan.cods[key] = nil end
+      Fan.textsN = 0
+    end
+    if cod then
+      text = MoneyText(true, 0, amount, nil, false) or ""
+    else
+      text = ns.Core.Formatting.FormatMoneyCompact(amount, true)
+    end
+    memo[amount] = text
+    Fan.textsN = Fan.textsN + 1
+    return text
+  end
+
+  function Fan.Build(panel)
+    local T = Th()
+    local plate = CreateFrame("Frame", nil, panel.MailListArea, "BackdropTemplate")
+    -- Over the rows, their quality marks and the divider's pinned copy
+    -- (MailListChild + 8), under the reading view (the panel's + 20). Set
+    -- before the card is painted: the popup floor's holder takes its level
+    -- from it.
+    plate:SetFrameLevel(panel.MailListChild:GetFrameLevel() + 10)
+    plate:EnableMouse(true)
+    plate:Hide()
+    plate.__pbPopupAlways = true
+    T.ApplyCard(plate)
+    plate._panel = panel
+    plate.Cod = T.CreateText(plate, "secondary")
+    plate.Cod:SetJustifyH("LEFT")
+    plate.Cod:SetWordWrap(false)
+    plate.Cod:SetPoint("TOPLEFT", plate, "TOPLEFT", Fan.PAD + 1, -Fan.PAD)
+    plate.Cod:Hide()
+    local fadeIn = plate:CreateAnimationGroup()
+    local alpha = fadeIn:CreateAnimation("Alpha")
+    alpha:SetFromAlpha(0)
+    alpha:SetToAlpha(1)
+    alpha:SetDuration(Fan.FADE_IN)
+    fadeIn:SetToFinalAlpha(true)
+    local fadeOut = plate:CreateAnimationGroup()
+    alpha = fadeOut:CreateAnimation("Alpha")
+    alpha:SetFromAlpha(1)
+    alpha:SetToAlpha(0)
+    alpha:SetDuration(Fan.FADE_OUT)
+    fadeOut:SetToFinalAlpha(true)
+    fadeOut:SetScript("OnFinished", Fan.FadedOut)
+    plate.In, plate.Out = fadeIn, fadeOut
+    plate:SetScript("OnEnter", Fan.Hold)
+    plate:SetScript("OnLeave", Fan.Leaving)
+    plate:SetScript("OnEvent", Fan.MouseDown)
+    Fan.plate = plate
+    if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, plate) end
+    return plate
+  end
+
+  -- The i-th tile, made on first use: the reading view's slot, with the
+  -- quality mark at its top-left and the warning triangle at its top-right,
+  -- and its slide.
+  function Fan.Tile(i)
+    local tile = Fan.tiles[i]
+    if tile then return tile end
+    local T = Th()
+    tile = CreateFrame("Button", nil, Fan.plate, "BackdropTemplate")
+    tile:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    local art = tile:CreateTexture(nil, "BACKGROUND")
+    art:SetAllPoints()
+    art:SetTexture(EMPTY_SLOT_ART)
+    art:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    tile.Icon = tile:CreateTexture(nil, "ARTWORK")
+    tile.Icon:SetAllPoints()
+    tile.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    tile.Count = T.CreateText(tile, "numberSmall", "OVERLAY")
+    tile.Count:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", -2, 2)
+    tile.Mark = tile:CreateTexture(nil, "OVERLAY")
+    tile.Mark:SetSize(RV.MARK_SIZE_LARGE, RV.MARK_SIZE_LARGE)
+    tile.Mark:SetPoint("CENTER", tile, "TOPLEFT", RV.MARK_IN_LARGE, -RV.MARK_IN_LARGE)
+    tile.Mark:Hide()
+    local warning = ProbeAtlas(T.AtlasSets.warning)
+    if warning then
+      tile.Warn = tile:CreateTexture(nil, "OVERLAY", nil, 2)
+      tile.Warn:SetAtlas(warning, false)
+      tile.Warn:SetSize(ROW_WARNING + 1, ROW_WARNING + 1)
+    else
+      tile.Warn = T.CreateText(tile, "value")
+      tile.Warn:SetText(WARNING_GLYPH)
+    end
+    tile.Warn:SetPoint("TOPRIGHT", tile, "TOPRIGHT", -1, -1)
+    T.SetColor(tile.Warn, "warning")
+    tile.Warn:Hide()
+    local highlight = tile:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints()
+    highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+    highlight:SetBlendMode("ADD")
+    T.ApplySlot(tile)
+    -- From under the icon to its place, fading in, eased out.
+    local slide = tile:CreateAnimationGroup()
+    local move = slide:CreateAnimation("Translation")
+    move:SetDuration(Fan.SLIDE)
+    move:SetSmoothing("OUT")
+    local fade = slide:CreateAnimation("Alpha")
+    fade:SetFromAlpha(0)
+    fade:SetToAlpha(1)
+    fade:SetDuration(Fan.SLIDE)
+    slide:SetToFinalAlpha(true)
+    slide:SetScript("OnFinished", Fan.Landed)
+    slide.tile = tile
+    tile.Slide, tile.Move, tile.Fade = slide, move, fade
+    tile:SetScript("OnEnter", Fan.TileEnter)
+    tile:SetScript("OnLeave", Fan.TileLeave)
+    tile:SetScript("OnClick", Fan.TileClick)
+    Fan.tiles[i] = tile
+    return tile
+  end
+
+  -- tile, texture, count text, mark, why -> the tile as it should read;
+  -- whether anything about it changed. Only what changed is set.
+  function Fan.Paint(tile, texture, text, mark, why)
+    local atlas = type(mark) == "string" and mark:match("|A:([^:|]+)") or nil
+    local dim = why ~= nil
+    if tile.pbTex == texture and tile.pbText == text and tile.pbAtlas == atlas and tile.pbDim == dim then
+      return false
+    end
+    tile.pbTex, tile.pbText, tile.pbAtlas, tile.pbDim = texture, text, atlas, dim
+    tile.Icon:SetTexture(texture)
+    tile.Count:SetText(text)
+    if atlas then
+      tile.Mark:SetAtlas(RV.SmallAtlas(atlas), false)
+      tile.Mark:Show()
+    else
+      tile.Mark:Hide()
+    end
+    -- Dimmed in colour and alpha together, so it reads at any opacity.
+    tile.Icon:SetDesaturated(dim)
+    tile.Icon:SetVertexColor(dim and 0.6 or 1, dim and 0.6 or 1, dim and 0.6 or 1)
+    tile.Icon:SetAlpha(dim and 0.6 or 1)
+    tile.Warn:SetShown(dim)
+    return true
+  end
+
+  -- index -> the tiles for the mail as it is now, gold first; how many, and
+  -- whether anything differs from what they showed.
+  function Fan.Fill(index)
+    local plate = Fan.plate
+    local _, _, _, _, money, cod = GetInboxHeaderInfo(index)
+    money, cod = tonumber(money) or 0, tonumber(cod) or 0
+    local n, changed = 0, false
+    if money > 0 then
+      n = 1
+      local tile = Fan.Tile(1)
+      if not tile.gold then changed = true end
+      tile.gold, tile.slot, tile.why = true, nil, nil
+      if Fan.Paint(tile, Fan.COIN, Fan.MoneyText(false, money), nil, nil) then changed = true end
+    end
+    local bags = Mail().BagsFull()
+    local marks = RV.MarkOnIcon()
+    for slot = 1, Mail().MAX_ATTACHMENTS do
+      local _, _, texture, count = GetInboxItem(index, slot)
+      if texture then
+        n = n + 1
+        local tile = Fan.Tile(n)
+        if tile.gold or tile.slot ~= slot then changed = true end
+        tile.gold, tile.slot = false, slot
+        local link = GetInboxItemLink(index, slot)
+        local refused = link and Fan.refused[link] or nil
+        tile.why = refused or (bags and "bags") or nil
+        local mark = marks and RV.QualityMark(index, slot) or nil
+        if Fan.Paint(tile, texture, RV.CountText(count) or "", mark, tile.why) then changed = true end
+      end
+    end
+    if n ~= Fan.n then changed = true end
+    for i = n + 1, #Fan.tiles do
+      local tile = Fan.tiles[i]
+      tile.gold, tile.slot, tile.why = false, nil, nil
+      tile:Hide()
+    end
+    local codShown = cod > 0
+    if codShown then plate.Cod:SetText(Fan.MoneyText(true, cod)) end
+    if codShown ~= plate.codShown then
+      changed = true
+      plate.codShown = codShown
+      plate.Cod:SetShown(codShown)
+    end
+    Fan.n = n
+    return n, changed
+  end
+
+  -- An animation group that ran, or one stopped: its tile at its place.
+  function Fan.Landed(slide)
+    local tile = slide.tile
+    tile:ClearAllPoints()
+    tile:SetPoint("TOPLEFT", Fan.plate, "TOPLEFT", tile.fx or 0, tile.fy or 0)
+    tile:SetAlpha(1)
+  end
+
+  -- row, n, animate -> the plate and its n tiles placed by the rules above;
+  -- false where the geometry is not known yet.
+  function Fan.Place(row, n, animate)
+    local plate, P, G = Fan.plate, Fan.PAD, Fan.TILE_GAP
+    local scroll = row.panel.MailListScroll
+    local icon = row.Icon
+    local sL, sR, sT, sB = scroll:GetLeft(), scroll:GetRight(), scroll:GetTop(), scroll:GetBottom()
+    local iL, iR = icon:GetLeft(), icon:GetRight()
+    local rT, rB = row:GetTop(), row:GetBottom()
+    if not (sL and sR and sT and sB and iL and iR and rT and rB) then return false end
+    local size = row._compact and Fan.TILE or Fan.TILE_LARGE
+    local step = size + G
+    -- The icon in the list's far half stands at the row's end: leftward.
+    local leftward = (iL + iR) > (sL + sR)
+    local room = leftward and (iL - Fan.GAP - sL) or (sR - iR - Fan.GAP)
+    local per = floor((room - 2 * P + G) / step)
+    if per < min(n, Fan.MIN_LINE) then per = floor((sR - sL - 2 * P + G) / step) end
+    per = max(1, min(Fan.PER_LINE, per, n))
+    local lines = ceil(n / per)
+    local codH, codW = 0, 0
+    if plate.codShown then
+      codH = ceil(plate.Cod:GetStringHeight() or 0) + 2
+      codW = Th().TextWidth(plate.Cod) + 2 * P + 2
+    end
+    local w = max(2 * P + per * size + (per - 1) * G, codW)
+    local h = 2 * P + lines * size + (lines - 1) * G + codH
+    local x = leftward and (iL - Fan.GAP - w - sL) or (iR + Fan.GAP - sL)
+    x = max(0, min(x, (sR - sL) - w))
+    -- The tiles centred on the row, the C.O.D. line above them.
+    local mid = (rT + rB) / 2
+    local y = max(0, min(sT - (mid + (h - codH) / 2 + codH), (sT - sB) - h))
+    plate:ClearAllPoints()
+    plate:SetPoint("TOPLEFT", scroll, "TOPLEFT", x, -y)
+    plate:SetSize(w, h)
+    -- The hit area reaches back over the gap to the icon, so the step from
+    -- one to the other crosses no dead strip.
+    if leftward then plate:SetHitRectInsets(0, -Fan.GAP, 0, 0) else plate:SetHitRectInsets(-Fan.GAP, 0, 0, 0) end
+    -- Where a tile starts its slide: under the icon, in the plate's terms.
+    local sx = (iL + iR) / 2 - size / 2 - (sL + x)
+    local sy = mid + size / 2 - (sT - y)
+    local most = Fan.LAND_BY - Fan.SLIDE
+    for k = 1, n do
+      local tile = Fan.tiles[k]
+      local line, col = floor((k - 1) / per), (k - 1) % per
+      if leftward then col = per - 1 - col end
+      tile:SetSize(size, size)
+      tile.fx, tile.fy = P + col * step, -(P + codH + line * step)
+      tile.Slide:Stop()
+      if animate then
+        tile:ClearAllPoints()
+        tile:SetPoint("TOPLEFT", plate, "TOPLEFT", sx, sy)
+        tile.Move:SetOffset(tile.fx - sx, tile.fy - sy)
+        local delay = min((k - 1) * Fan.STAGGER, most)
+        tile.Move:SetStartDelay(delay)
+        tile.Fade:SetStartDelay(delay)
+        tile:SetAlpha(0)
+        tile:Show()
+        tile.Slide:Play()
+      else
+        Fan.Landed(tile.Slide)
+        tile:Show()
+      end
+    end
+    return true
+  end
+
+  function Fan.Open(row)
+    local panel = row.panel
+    local index = LiveIndex(row)
+    if not index then return end
+    local plate = Fan.plate or Fan.Build(panel)
+    -- Another mail: the refusals and the History record were the last one's.
+    if Fan.fp ~= row.fingerprint or Fan.index ~= index then
+      for key in pairs(Fan.refused) do Fan.refused[key] = nil end
+      Fan.fp, Fan.index, Fan.history, Fan.bagsWhy = row.fingerprint, index, nil, nil
+    end
+    plate.mailIndex, plate.fingerprint, plate._paidTake = index, row.fingerprint, nil
+    if Fan.Fill(index) == 0 then return end
+    plate.Out:Stop()
+    plate.In:Stop()
+    if not Fan.Place(row, Fan.n, true) then return end
+    Fan.row = row
+    Fan.open, RV.fanOpen, Fan.graceOn = true, true, false
+    Fan.offset = panel.MailListScroll:GetVerticalScroll()
+    plate:SetAlpha(0)
+    plate:Show()
+    plate.In:Play()
+    plate:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    Th().StyleMailRow(row, row._rowIndex, true)
+  end
+
+  -- [instant] -> the fan closed: faded out, or at once where it is hidden
+  -- anyway or its row has gone (a scroll, the reading view, the tab). A
+  -- pending rest is dropped too.
+  function Fan.Close(instant)
+    Fan.armRow = nil
+    if not Fan.open then
+      -- Still fading out as the tab hides: gone now, or it would come back
+      -- with the tab (a stopped fade leaves the plate as it was).
+      local plate = Fan.plate
+      if instant and plate and plate:IsShown() then
+        plate.Out:Stop()
+        plate:Hide()
+      end
+      return
+    end
+    Fan.open, RV.fanOpen, Fan.graceOn = false, false, false
+    Fan.closedAt = GetTime()
+    local plate, row = Fan.plate, Fan.row
+    Fan.row = nil
+    plate:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+    for i = 1, Fan.n do
+      local tile = Fan.tiles[i]
+      tile.Slide:Stop()
+      Fan.Landed(tile.Slide)
+    end
+    local owner = GameTooltip.GetOwner and GameTooltip:GetOwner()
+    if owner and (owner == plate or owner:GetParent() == plate) then GameTooltip:Hide() end
+    if row and not row:IsMouseOver() then Th().StyleMailRow(row, row._rowIndex, false) end
+    plate.In:Stop()
+    if instant or not plate:IsVisible() then
+      plate.Out:Stop()
+      plate:Hide()
+    else
+      plate.Out:Play()
+    end
+  end
+
+  function Fan.FadedOut()
+    if not Fan.open then Fan.plate:Hide() end
+  end
+
+  -- The pointer is on the icon, the plate or a tile: no grace running, and
+  -- the row painted as hovered while its fan is out.
+  function Fan.Hold()
+    Fan.graceOn = false
+    local row = Fan.row
+    if row then Th().StyleMailRow(row, row._rowIndex, true) end
+  end
+
+  -- The pointer left one of them: closed after the grace unless it is on
+  -- another by then.
+  function Fan.Leaving()
+    if not Fan.open then return end
+    Fan.graceOn = true
+    Fan.graceN = Fan.graceN + 1
+    C_Timer.After(Fan.GRACE, Fan.GraceDue)
+  end
+
+  function Fan.GraceDue()
+    Fan.graceFireN = Fan.graceFireN + 1
+    if Fan.graceFireN ~= Fan.graceN or not (Fan.open and Fan.graceOn) then return end
+    local row = Fan.row
+    if Fan.plate:IsMouseOver() or (row and row.IconHit:IsMouseOver()) then
+      Fan.graceOn = false
+      return
+    end
+    Fan.Close()
+  end
+
+  -- The rest is over: the fan opens if the pointer is still on the icon of
+  -- the mail it rested on and nothing has come to stop it. Only the last
+  -- rest's timer counts.
+  function Fan.Due()
+    Fan.fireN = Fan.fireN + 1
+    if Fan.fireN ~= Fan.armN then return end
+    local row = Fan.armRow
+    Fan.armRow = nil
+    if not row or Fan.open or row.fingerprint ~= Fan.armFp then return end
+    if not row.IconHit:IsMouseOver() then return end
+    if not (Fan.Wanted() and Fan.MayOpen(row)) then return end
+    Fan.Open(row)
+  end
+
+  -- A press while it is open: anywhere but the plate closes it.
+  function Fan.MouseDown(plate, event)
+    if event ~= "GLOBAL_MOUSE_DOWN" or not Fan.open or plate:IsMouseOver() then return end
+    Fan.Close()
+  end
+
+  -- Hovering a tile: the item's own tooltip (SetInboxItem, by mail and
+  -- slot, the mail checked on every hover), or the gold's sum, and what a
+  -- click does -- or why it does nothing. Above the plate, or under it
+  -- where the list has no room above; never over the other tiles.
+  function Fan.TileEnter(tile)
+    Fan.Hold()
+    if not Fan.open then return end
+    local plate = Fan.plate
+    local index = LiveIndex(plate)
+    if not index then return end
+    GameTooltip:SetOwner(tile, "ANCHOR_NONE")
+    GameTooltip:ClearLines()
+    if tile.gold then
+      local _, _, _, _, money = GetInboxHeaderInfo(index)
+      GameTooltip:SetText(L()["LABEL_GOLD"] .. Helpers().FormatMoney(tonumber(money) or 0), 1, 1, 1)
+      GameTooltip:AddLine(L()["FAN_GOLD_HINT"], 0.7, 0.7, 0.7)
+    else
+      if type(GameTooltip.SetInboxItem) == "function" then GameTooltip:SetInboxItem(index, tile.slot) end
+      if tile.why then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(Th().Colorize("warning", Fan.Why(tile.why)), 1, 1, 1, true)
+      else
+        GameTooltip:AddLine(L()["FAN_TILE_HINT"], 0.7, 0.7, 0.7)
+      end
+    end
+    GameTooltip:Show()
+    Fan.PlaceTip(plate)
+  end
+
+  -- why -> the reason line: the game's words where it gave any.
+  function Fan.Why(why)
+    if why == "bags" then
+      local words = Fan.bagsWhy
+      if type(words) == "string" and words ~= "" then return StuckLine(words) end
+      return L()["FAN_TILE_BAGS"]
+    end
+    return StuckLine(why)
+  end
+
+  function Fan.PlaceTip(plate)
+    local scroll = plate._panel.MailListScroll
+    local top, sTop = plate:GetTop(), scroll:GetTop()
+    local ps, ts = plate:GetEffectiveScale(), GameTooltip:GetEffectiveScale()
+    GameTooltip:ClearAllPoints()
+    local below = false
+    if top and sTop and ps and ts and ps > 0 then
+      below = top + 2 + (GameTooltip:GetHeight() or 0) * ts / ps > sTop
+    end
+    if below then
+      GameTooltip:SetPoint("TOPLEFT", plate, "BOTTOMLEFT", 0, -2)
+    else
+      GameTooltip:SetPoint("BOTTOMLEFT", plate, "TOPLEFT", 0, 2)
+    end
+  end
+
+  function Fan.TileLeave()
+    GameTooltip:Hide()
+    Fan.Leaving()
+  end
+
+  -- A click on a tile. Modified, the game's item rules, as on its own mail
+  -- tiles (the link where the body is not loaded yet is the item's own, by
+  -- id); plain, the take, unless the tile says why not; right, nothing.
+  function Fan.TileClick(tile, button)
+    if not Fan.open or button ~= "LeftButton" then return end
+    local plate = Fan.plate
+    local index = LiveIndex(plate)
+    if not index then return end
+    local modified
+    if type(IsModifiedClick) == "function" then
+      modified = IsModifiedClick()
+    else
+      modified = IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown()
+    end
+    if modified then
+      if tile.gold or type(HandleModifiedItemClick) ~= "function" then return end
+      local link = GetInboxItemLink(index, tile.slot)
+      if not link then
+        local _, itemID = GetInboxItem(index, tile.slot)
+        if itemID and C_Item and type(C_Item.GetItemInfo) == "function" then
+          local _, generic = C_Item.GetItemInfo(itemID)
+          link = generic
+        end
+      end
+      if link then HandleModifiedItemClick(link) end
+      return
+    end
+    if tile.gold then return Fan.TakeGold(plate, index) end
+    if tile.why then return end
+    Fan.TakeItem(plate, index, tile.slot)
+  end
+
+  -- One History record for the fan's mail, however many takes follow.
+  function Fan.Record(index)
+    if not Fan.history and Mail().HistoryRecord then Fan.history = Mail().HistoryRecord(index) end
+    return Fan.history
+  end
+
+  -- The reading view's tile take (TakeOneAttachment), from the plate: the
+  -- C.O.D. confirmed first, the mail re-checked after the wait, the take
+  -- that pays armed so the fan follows the paid mail, the body fetched
+  -- first where it never was.
+  function Fan.TakeItem(plate, index, slot)
+    local panel = plate._panel
+    ConfirmCOD(index, function()
+      index = LiveIndex(plate)
+      if not index then return end
+      local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
+      codBefore = tonumber(codBefore) or 0
+      local paying = RV.ArmPaidTake(plate, index, codBefore)
+      Mail().TakeAttachment(index, slot, function(status, refused, reason, kind)
+        if RV.SettlePaidTake(plate, paying, status == "collected") then Fan.fp = plate.fingerprint end
+        if status == "busy" then return end
+        if status == "closed" then
+          StatusMailboxClosed()
+          return
+        end
+        if status == "timeout" then
+          ns.Print(L()["MSG_MAIL_TIMEOUT"])
+          return
+        end
+        if status == "refused" or (tonumber(refused) or 0) > 0 then
+          ns.Print(ItemRefusedMessage(reason))
+          -- Bags full dims every item (Mail.BagsFull); anything else, the
+          -- item refused, by its link, which the take has loaded.
+          if kind == "bags" then
+            Fan.bagsWhy = reason
+          else
+            local live = LiveIndex(plate)
+            local link = live and GetInboxItemLink(live, slot)
+            if link then Fan.refused[link] = reason or true end
+          end
+          RefreshIdleSummary()
+          RV.FanCheck(panel)
+          return
+        end
+        if codBefore > 0 then
+          ns.Print(L()("MSG_COD_PAID", Helpers().FormatMoney(codBefore)))
+        end
+        -- The row pass redraws the fan from the mailbox (RV.FanCheck): a take
+        -- can move the other items down a slot.
+        RequestRefresh(panel)
+      end, { allowCOD = true, history = Fan.Record(index), fetch = true })
+    end)
+  end
+
+  -- The reading view's coin tile, from the plate.
+  function Fan.TakeGold(plate, index)
+    local panel = plate._panel
+    Mail().TakeMoney(index, function(status)
+      if status == "busy" then return end
+      if status == "closed" then
+        StatusMailboxClosed()
+        return
+      end
+      if status == "timeout" then
+        ns.Print(L()["MSG_MAIL_TIMEOUT"])
+        return
+      end
+      RequestRefresh(panel)
+    end, Fan.Record(index))
+  end
+
+  -- row -> whether the fan answers the icon's hover: a rest begun, or the
+  -- fan already out over this row, or opened at once when one closed a
+  -- moment ago (as tooltips do). False, and the icon shows its tooltip.
+  function RV.FanHover(row)
+    if not (Fan.Wanted() and Fan.MayOpen(row)) then return false end
+    if Fan.open then
+      if Fan.row == row then
+        Fan.Hold()
+        return true
+      end
+      Fan.Close(true)
+    end
+    if GetTime() - Fan.closedAt < Fan.QUICK then
+      Fan.Open(row)
+      if Fan.open then return true end
+    end
+    Fan.armRow, Fan.armFp = row, row.fingerprint
+    Fan.armN = Fan.armN + 1
+    C_Timer.After(Fan.DWELL, Fan.Due)
+    return true
+  end
+
+  -- The pointer left a row's icon: its rest is over, and its fan's grace
+  -- begins.
+  function RV.FanLeave(row)
+    if Fan.armRow == row then Fan.armRow = nil end
+    if Fan.open and Fan.row == row then Fan.Leaving() end
+  end
+
+  RV.FanClose = Fan.Close
+  function CT.CloseFan() Fan.Close(true) end
+
+  -- The list scrolled: the row under the fan holds other mail now.
+  function RV.FanScrolled(scroll)
+    if not Fan.open or scroll ~= Fan.plate._panel.MailListScroll then return end
+    if scroll:GetVerticalScroll() ~= Fan.offset then Fan.Close(true) end
+  end
+
+  -- After every row pass while a fan is open: its row still holding its
+  -- mail (or that mail as its confirmed take paid it), it is drawn again as
+  -- the mail now is, and placed again where anything changed; its row bound
+  -- to other mail, the mail empty, or a state it cannot stand in, it closes.
+  function RV.FanCheck(panel)
+    if not Fan.open then return end
+    local plate, row = Fan.plate, Fan.row
+    if plate._panel ~= panel then return end
+    if not (row and row:IsShown() and row.mailIndex == plate.mailIndex) then return Fan.Close(true) end
+    if row.fingerprint ~= plate.fingerprint and not RV.AwaitsPaidTake(plate) then return Fan.Close(true) end
+    if not (Fan.Wanted() and Fan.Allowed(row)) then return Fan.Close(true) end
+    local index = LiveIndex(row)
+    if not index then return Fan.Close(true) end
+    local n, changed = Fan.Fill(index)
+    if n == 0 then return Fan.Close() end
+    if changed then Fan.Place(row, n, false) end
+  end
 end
 
 local function LayoutPanel(panel)
@@ -10415,6 +11121,8 @@ function CT.Build(parent)
     UpdateVisibleRows(panel)
   end)
   scroll:HookScript("OnVerticalScroll", function() UpdateVisibleRows(panel) end)
+  -- Any scroll closes the fan: its row is bound to other mail.
+  scroll:HookScript("OnVerticalScroll", RV.FanScrolled)
   -- After the template's own handler, which sets the bar from the client's
   -- measure of the list (RV.HoldRange).
   scroll:HookScript("OnScrollRangeChanged", RV.HoldRange)
@@ -10443,6 +11151,7 @@ function CT.Build(parent)
   end)
   panel:SetScript("OnHide", function(self)
     HideDetail(self)
+    RV.FanClose(true)
     if ns.MailMemory and ns.MailMemory.ClosePicker then ns.MailMemory.ClosePicker() end
     -- The arrange mode ends with the tab: the Send tab, the window closing,
     -- the mailbox going away.
