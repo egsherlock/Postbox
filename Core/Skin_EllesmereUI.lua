@@ -1986,7 +1986,7 @@ function Skin.Diagnose()
   if source == "aes" then
     besideText = string.format(
       "matching atrocityEssentials' windows (profile %s): fill %.3f/%.3f/%.3f @ %.2f, edge %d px %.2f/%.2f/%.2f @ %.2f",
-      tostring(BesideProfile() or "?"), fr, fg, fb, fa, px, er, eg, eb, ea)
+      (BesideProfile()) or "?", fr, fg, fb, fa, px, er, eg, eb, ea)
   elseif source == "eui" then
     besideText = string.format(
       "matching EllesmereUI's Dark Mode fill %.3f/%.3f/%.3f @ %.2f, edge %d px %.2f/%.2f/%.2f @ %.2f",
