@@ -6512,6 +6512,17 @@ function RV.AutoDelete(panel, index, before, record, andThen)
   -- "Letting the header catch up"); a mail that still does not read finished
   -- by then is left where it is, under the divider, never deleted on a guess.
   if RV.Identity(index) ~= before.id or not Mail().IsReadPersistent(index) then return Continue() end
+  -- Mail with no text of its own that Postbox has just emptied is already
+  -- on its way out: the client deletes it itself (MailService, "Mail on its
+  -- way out"), and a delete of ours would be a second command for a mail
+  -- the server is removing. A run waits for it to go, as it would have
+  -- waited for a delete of its own, so the next mail is taken and checked
+  -- against the inbox as it will stand (RV.AfterLeaving).
+  local leaving = Mail().Leaving(index)
+  if leaving then
+    if andThen then return RV.AfterLeaving(before, leaving, andThen) end
+    return
+  end
   -- The option's promise is that History keeps what a deleted letter said.
   -- With History at Never it keeps nothing, so a letter with words of its
   -- own stays, under the divider, for the player to clear; mail with no
@@ -6524,6 +6535,30 @@ function RV.AutoDelete(panel, index, before, record, andThen)
     RequestRefresh(panel)
     Continue()
   end, { [index] = Fingerprint(index) })
+end
+
+-- before, at, fn -> fn() once the mail just emptied, which the client is
+-- deleting, has gone: the inbox lists fewer mails than it did before the
+-- take (RV.Before). Or once its hold lapses (`at`, MailService.Leaving), or
+-- the mailbox closes, whichever comes first. Event-driven, registered only
+-- for the wait, one one-shot deadline.
+function RV.AfterLeaving(before, at, fn)
+  local bus = ns.Events
+  if not (bus and type(bus.Register) == "function") then return fn() end
+  local check
+  local function go()
+    if not check then return end
+    bus.Unregister("MAIL_INBOX_UPDATE", check)
+    bus.Unregister("MAIL_CLOSED", go)
+    check = nil
+    fn()
+  end
+  check = function()
+    if (tonumber((GetInboxNumItems())) or 0) < before.count or not MailboxOpen() then go() end
+  end
+  bus.Register("MAIL_INBOX_UPDATE", check)
+  bus.Register("MAIL_CLOSED", go)
+  C_Timer.After(max(0, at - GetTime()) + 0.1, go)
 end
 
 -- index -> sender and subject: the part of a mail's identity a take cannot
