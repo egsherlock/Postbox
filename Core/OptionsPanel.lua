@@ -2882,27 +2882,13 @@ function Pages.mail(col)
   arrange.entry.title, arrange.entry.extra = L["OPT_ARRANGE_BUTTON"], "arrange"
   S.arrangeCell = arrange
 
-  -- Compact is the default, so the switch is the one a player turns ON to
-  -- change it: larger, two-line rows. The stored option is still
-  -- compactRows, read inverted, so nobody's choice moves.
-  Rows.Check(col, {
-    title = L["OPT_LARGER_ROWS_TITLE"], text = L["OPT_LARGER_ROWS_DESC"],
-    get = function() return not ns.MailboxUI.GetOption("compactRows") end,
-    set = function(on)
-      ns.MailboxUI.SetOption("compactRows", not on)
-      if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
-    end,
-    after = function()
-      State.RowLayout()
-      Ctx.Repaint()
-    end,
-  })
-
   -- Row layout: every figure in its own column on every row (Columns), or
   -- each row closing its gaps away from the subject and giving it the room
   -- (Packed), in the Mail tab, History and Mail Memory alike. Every list's
   -- rows are placed again where they stand; the sample rows show the sale's
   -- gold move, and while the choice is pointed at, where the gold stands.
+  -- Under the way into arranging and over Larger mail rows: how a row's
+  -- figures stand, then how tall the row is.
   local lanes = Rows.Dropdown(col, {
     title = L["OPT_ROW_LAYOUT_TITLE"], text = L["OPT_ROW_LAYOUT_DESC"],
     items = {
@@ -2928,6 +2914,22 @@ function Pages.mail(col)
   lanes:HookScript("OnLeave", PaintWash)
   lanes.control:HookScript("OnEnter", PaintWash)
   lanes.control:HookScript("OnLeave", PaintWash)
+
+  -- Compact is the default, so the switch is the one a player turns ON to
+  -- change it: larger, two-line rows. The stored option is still
+  -- compactRows, read inverted, so nobody's choice moves.
+  Rows.Check(col, {
+    title = L["OPT_LARGER_ROWS_TITLE"], text = L["OPT_LARGER_ROWS_DESC"],
+    get = function() return not ns.MailboxUI.GetOption("compactRows") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("compactRows", not on)
+      if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
+    end,
+    after = function()
+      State.RowLayout()
+      Ctx.Repaint()
+    end,
+  })
 
   -- The crafting quality mark, in the list, History and the memory alike,
   -- is two things a player sets apart: the badge on the corner of the
