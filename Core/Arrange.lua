@@ -3995,6 +3995,9 @@ local INSP = {
   -- The foot: its rule, the row its words are centred on (the reset's line
   -- box), the least room between the reset and the key cap, the cap.
   FOOT_TOP = 10, FOOT_PAD = 7, FOOT_H = 18, FOOT_GAP = 8, KEY_PAD = 4, KEY_H = 15, KEY_GAP = 4,
+  -- The width the card widens to for its foot (FitWidth): room kept clear
+  -- between the reset and the key cap, and the widest it goes.
+  FOOT_CLEAR = 16, MAX_W = 280,
   -- The mockup's type against the rows' 13: each size as a share of the
   -- small text the rows are set in (bodySmall and secondary).
   TYPE = {
@@ -4010,6 +4013,8 @@ local INSP = {
   SPACING = { body = 4, note = 3 },  -- between a paragraph's lines
   MEMO_MAX = 96,
 }
+-- W and INNER are the card's width now (FitWidth); BASE_W the mockup's.
+INSP.BASE_W = INSP.W
 INSP.INNER = INSP.W - 2 * INSP.PAD
 AR.INSP = INSP
 
@@ -4722,6 +4727,13 @@ end
 local function Paragraph(art, role, size, grey)
   local fs = Text(art, role, size)
   fs:SetWidth(INSP.INNER)
+  -- Kept, to be widened with the card (FitWidth).
+  local paras = AR._paras
+  if not paras then
+    paras = {}
+    AR._paras = paras
+  end
+  paras[#paras + 1] = fs
   fs:SetJustifyH("LEFT")
   fs:SetWordWrap(true)
   if fs.SetSpacing then fs:SetSpacing(INSP.SPACING[size] or INSP.SPACING.body) end
@@ -4810,6 +4822,8 @@ function AR.BuildInspector()
   insp:EnableMouse(true)
   insp:SetWidth(P.W)
   insp.Radios, insp.Chips, insp.BlockRows, insp.Kickers, insp.Layouts = {}, {}, {}, {}, {}
+  -- The font FitWidth last measured the foot in.
+  insp._fit = {}
 
   -- Every text and rule is on this holder, never on the card itself.
   local art = CreateFrame("Frame", nil, insp)
@@ -4979,6 +4993,51 @@ function AR.BuildInspector()
   if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, insp) end
   AR._insp = insp
   return insp
+end
+
+-- The card's width: the mockup's (BASE_W) unless its foot needs more --
+-- the reset, FOOT_CLEAR, the key cap and the longer of "to finish" and
+-- "to cancel", each at the size it is drawn in -- and then just that, up to
+-- MAX_W. Past MAX_W the foot takes its second row (PutFoot). Measured again
+-- only when the font under the foot changes (a host UI re-fonts after
+-- load) or its scale does; a font the client has not laid out yet measures
+-- nothing, and is measured again next time. Everything made at the old
+-- width is set to the new one, and what was measured wrapped at it is
+-- measured again. Answers whether the width changed.
+local function FitWidth(insp)
+  local P, m = INSP, insp.Measure
+  local fs = m.body
+  local path, size, flags = fs:GetFont()
+  local scale = fs:GetEffectiveScale()
+  local fit = insp._fit
+  if fit.path == path and fit.size == size and fit.flags == flags and fit.scale == scale then return false end
+  local reset = Measured(m.body, L()["ARRANGE_RESET"], false)
+  local key = Measured(m.kicker, L()["ARRANGE_ESC_KEY"], false)
+  local finish = math.max(Measured(m.note, L()["ARRANGE_ESC_FINISH"], false),
+    Measured(m.note, L()["ARRANGE_ESC_CANCEL"], false))
+  if reset > 0 and key > 0 and finish > 0 then
+    fit.path, fit.size, fit.flags, fit.scale = path, size, flags, scale
+  end
+  local need = reset + P.FOOT_CLEAR + key + 2 * P.KEY_PAD + P.KEY_GAP + finish + 2 * P.PAD
+  local w = math.min(math.max(P.BASE_W, need), P.MAX_W)
+  if w == P.W then return false end
+  P.W, P.INNER = w, w - 2 * P.PAD
+  insp:SetWidth(w)
+  local paras = AR._paras or {}
+  for i = 1, #paras do
+    paras[i]:SetWidth(P.INNER)
+    paras[i].__arMemo = nil
+  end
+  for i = 1, #insp.Radios do insp.Radios[i]:SetWidth(P.INNER) end
+  for i = 1, #insp.BlockRows do insp.BlockRows[i]:SetWidth(P.INNER) end
+  for i = 1, #insp.Layouts do
+    local row = insp.Layouts[i]
+    row:SetWidth(P.INNER)
+    row.Desc:SetWidth(P.INNER - P.RADIO_TEXT)
+    row.Desc.__arMemo = nil
+  end
+  insp.side = nil
+  return true
 end
 
 -- Beside the host's window, its top level with the window's top row (the
@@ -5578,6 +5637,7 @@ function AR.Inspect()
   end
   local kind, id = AR.selKind, AR.selId
   HideParts(insp)
+  if FitWidth(insp) then AR.Dock(insp, host) end
   local title
   if kind == "column" then
     title = L()[AR.COLUMNS[id].title]
@@ -5619,6 +5679,7 @@ end
 -- Up beside the host's window, on the overview.
 function AR.ShowInspector(host)
   local insp = AR._insp or AR.BuildInspector()
+  FitWidth(insp)
   insp.side = nil
   AR.Dock(insp, host)
   insp:Show()

@@ -659,8 +659,9 @@ function UI.GetExpiryWhen()
   memo.expiry = EXPIRY_WHEN[stored] and stored or "always"
   return memo.expiry
 end
+-- nil: the default, stored as nothing.
 function UI.SetExpiryWhen(when)
-  if not EXPIRY_WHEN[when] then return end
+  if when ~= nil and not EXPIRY_WHEN[when] then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if profile then profile.expiryWhen = when end
   ForgetSettings()
