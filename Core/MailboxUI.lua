@@ -172,12 +172,9 @@ local OPTION_DEFAULTS = {
   -- under the list close up and the window's floor comes down with them
   -- (CollectTab, CT.MinPanelHeight). The arrange mode hides and shows it too.
   showTotals      = true,
-  -- After a successful send, leave the recipient in the To: box. Off: a
-  -- cleared form is the safe default -- a name left standing is a mail that
-  -- can go to the wrong person on the next Send -- and the option exists for
-  -- the player posting a run of mails to one bank alt, for whom retyping the
-  -- same name is the whole cost of the screen.
-  keepRecipient   = false,
+  -- (keepRecipient, "leave the recipient in the To: box after a send", is
+  -- now one of three answers: UI.GetAfterSendKeep, which reads it once to
+  -- carry an old profile over.)
   -- The stack count on a mail row's item icon, and the edge of a second card
   -- behind it when the mail holds more than one item (CollectTab,
   -- RV.PaintCount), in the Mail tab, History and Mail Memory. On: it is how
@@ -836,6 +833,29 @@ function UI.SetHistoryDays(days)
   end
   local panel, collect = CollectPanel(), ns.CollectTab
   if panel and collect and collect.RefreshHistoryDays then collect.RefreshHistoryDays(panel) end
+end
+
+-- What the Send tab keeps once a mail has gone: "nothing" (the default: a
+-- cleared form, so a name left standing cannot send the next mail to the
+-- wrong person), "recipient", or "subject" -- the recipient and the subject,
+-- for a run of mails to one bank alt. Stored only when it is not nothing.
+-- The old switch, profile.keepRecipient, read as "recipient" until a choice
+-- is made here, which is when it is dropped. Read once per send, so no memo.
+local AFTER_SEND_KEEP = { recipient = true, subject = true }
+function UI.GetAfterSendKeep()
+  local profile = ns.Store and ns.Store.Get and ns.Store.Get("profile")
+  if type(profile) ~= "table" then return "nothing" end
+  local stored = profile.afterSendKeep
+  if AFTER_SEND_KEEP[stored] then return stored end
+  if stored == nil and profile.keepRecipient == true then return "recipient" end
+  return "nothing"
+end
+function UI.SetAfterSendKeep(mode)
+  if mode ~= "nothing" and not AFTER_SEND_KEEP[mode] then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if not profile then return end
+  profile.afterSendKeep = AFTER_SEND_KEEP[mode] and mode or nil
+  profile.keepRecipient = nil
 end
 
 -- Performance recording for the bug report (Postbox.lua, 5b): "off" (the
@@ -3413,6 +3433,7 @@ function UI.DiagnoseOptions()
   Named("qualityName", UI.GetQualityName(), "off")
   Named("readMail", UI.GetReadMode(), "fold")
   Named("historyDays", UI.GetHistoryDays(), "7")
+  Named("afterSend", UI.GetAfterSendKeep(), "nothing")
   -- Each arrangement's own choices: the one-line rows' under the names
   -- they had while they were everyone's.
   Named("gold", UI.GetGoldMode("rows"), "both")

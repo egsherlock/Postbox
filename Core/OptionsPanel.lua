@@ -2662,7 +2662,7 @@ function Pages.mail(col)
   })
 end
 
--- The Send tab: the two switches about composing. The address book they
+-- The Send tab: the settings about composing. The address book they
 -- draw on is the tile at the top of the inspector; /postbox recipients is
 -- the other way in.
 function Pages.send(col)
@@ -2675,11 +2675,18 @@ function Pages.send(col)
       if ns.MailboxUI.RefreshMailTabAttach then ns.MailboxUI.RefreshMailTabAttach() end
     end,
   })
-  -- Nothing to refresh: the option is read at the moment a send succeeds.
-  Rows.Check(col, {
-    title = L["OPT_KEEP_RECIPIENT_TITLE"], text = L["OPT_KEEP_RECIPIENT_DESC"],
-    get = function() return ns.MailboxUI.GetOption("keepRecipient") end,
-    set = function(on) ns.MailboxUI.SetOption("keepRecipient", on) end,
+  -- What a sent mail leaves in the form: nothing, the recipient, or the
+  -- recipient and the subject. Nothing to refresh: it is read at the moment
+  -- a send succeeds.
+  Rows.Dropdown(col, {
+    title = L["OPT_AFTER_SEND_TITLE"], text = L["OPT_AFTER_SEND_DESC"],
+    items = {
+      { id = "nothing",   name = L["OPT_AFTER_SEND_NOTHING"] },
+      { id = "recipient", name = L["OPT_AFTER_SEND_RECIPIENT"] },
+      { id = "subject",   name = L["OPT_AFTER_SEND_SUBJECT"] },
+    },
+    get = function() return ns.MailboxUI.GetAfterSendKeep and ns.MailboxUI.GetAfterSendKeep() or "nothing" end,
+    set = function(id) if ns.MailboxUI.SetAfterSendKeep then ns.MailboxUI.SetAfterSendKeep(id) end end,
   })
 end
 

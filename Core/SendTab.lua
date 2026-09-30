@@ -465,18 +465,22 @@ end
 -- Blank every composed field. Shared by ST.Reset and by the post-send cleanup,
 -- which only runs once the send is KNOWN to have succeeded.
 --
--- `keepRecipient` leaves the To: box alone -- the post-send cleanup passes
--- the option of that name, so a player mailing a run of things to one bank
--- alt is not made to address every one. ST.Reset never passes it: a fresh
--- mailbox visit starts from nothing, whatever the option says.
-local function ClearDraftFields(panel, keepRecipient)
+-- `keep` is what the post-send cleanup leaves standing, from the "After
+-- sending, keep" option (UI.GetAfterSendKeep): "recipient" leaves the To: box
+-- alone, "subject" the To: box and the subject, so a player mailing a run of
+-- things to one bank alt is not made to address every one. nil clears it all.
+-- ST.Reset never passes it: a fresh mailbox visit starts from nothing,
+-- whatever the option says.
+local function ClearDraftFields(panel, keep)
   if not panel then return end
-  if not keepRecipient then
+  if keep ~= "recipient" and keep ~= "subject" then
     panel.ToBox:SetText("")
     panel.ToBox:SetCursorPosition(0)
     ResetInlineCompletion(panel, "")
   end
-  panel.SubjectBox:SetText("")
+  if keep ~= "subject" then
+    panel.SubjectBox:SetText("")
+  end
   panel.SubjectBox:SetCursorPosition(0)
   panel.BodyBox:SetText("")
   panel.BodyBox:SetCursorPosition(0)
@@ -486,7 +490,7 @@ local function ClearDraftFields(panel, keepRecipient)
   if panel.CODCheck then panel.CODCheck:SetChecked(false) end
   -- The placeholders answer to OnTextChanged, which SetText fires; this is only
   -- belt and braces for a field that was already empty.
-  if panel.SubjectPlaceholder then panel.SubjectPlaceholder:Show() end
+  if panel.SubjectPlaceholder and keep ~= "subject" then panel.SubjectPlaceholder:Show() end
   if panel.BodyPlaceholder then panel.BodyPlaceholder:Show() end
 end
 
@@ -919,11 +923,11 @@ local function AbandonPendingSend(panel)
   if panel then SetSendButtonBusy(panel, false) end
 end
 
--- The draft after the LAST mail of a press has gone: blanked, apart from the
--- recipient when the option says to keep it.
+-- The draft after the LAST mail of a press has gone: blanked, apart from
+-- what the "After sending, keep" option says to keep.
 local function SettleDraftAfterSuccess(panel)
   local UI = ns.MailboxUI
-  local keep = UI ~= nil and type(UI.GetOption) == "function" and UI.GetOption("keepRecipient")
+  local keep = UI ~= nil and type(UI.GetAfterSendKeep) == "function" and UI.GetAfterSendKeep() or nil
   panel._run = nil
   ClearDraftFields(panel, keep)
   ClearSendMailMoneyState()
