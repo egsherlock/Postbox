@@ -7529,11 +7529,14 @@ local function TakeOneAttachment(detail, slot)
   -- The FIRST take from a C.O.D. mail pays the whole amount, so the same
   -- confirmation the Collect button gets stands in front of a slot click too.
   -- For everything else ConfirmCOD calls straight through. Its accept
-  -- re-verifies the mail's identity; the index is re-derived after the wait
-  -- because the dialog is not modal and the overlay's mail can move under it.
+  -- re-verifies the mail's identity against the fingerprint read at the
+  -- click; the take is aimed at that index and goes only while the overlay
+  -- still shows that same mail there. The dialog is not modal, and the
+  -- overlay can be turned to another mail under it (Back, another row), so
+  -- what it shows after the wait is not the mail the player answered for.
+  local clicked = detail.fingerprint
   ConfirmCOD(index, function()
-    index = LiveIndex(detail)
-    if not index then return end
+    if not detail:IsShown() or detail.fingerprint ~= clicked or LiveIndex(detail) ~= index then return end
     local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
     codBefore = tonumber(codBefore) or 0
     local paying = RV.ArmPaidTake(detail, index, codBefore)
