@@ -212,15 +212,8 @@ function Dropdown.Create(parent, opts)
     local viewport = maxHeight - (LIST_PADDING * 2)
 
     list = CreateFrame("Frame", nil, toggle, "BackdropTemplate")
-    -- Under the toggle's right edge by default, growing leftwards: the
-    -- options panel's toggles sit at the right of their rows. opts.listLeft
-    -- is for a toggle at a window's LEFT edge, whose list would otherwise
-    -- hang off the window.
-    if opts.listLeft then
-      list:SetPoint("TOPLEFT", toggle, "BOTTOMLEFT", 0, -LIST_GAP)
-    else
-      list:SetPoint("TOPRIGHT", toggle, "BOTTOMRIGHT", 0, -LIST_GAP)
-    end
+    -- Placed on each open (PlaceList). Kept on the screen whatever else.
+    list:SetClampedToScreen(true)
     list:SetWidth(tonumber(opts.listWidth) or toggleWidth)
     list:SetHeight(scrolling and maxHeight or ((LIST_PADDING * 2) + contentHeight))
     list:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -433,6 +426,37 @@ function Dropdown.Create(parent, opts)
     return list
   end
 
+  -- Under the toggle's right edge by default, growing leftwards: the options
+  -- panel's toggles sit at the right of their rows. opts.listLeft is for a
+  -- toggle at a window's LEFT edge, whose list would otherwise hang off the
+  -- window. Above the toggle instead when the room under it is too short
+  -- for the list and the room over it is longer: a toggle near the foot of
+  -- the screen (a large window scale, a low window).
+  local function PlaceList()
+    local up = false
+    local bottom, top = toggle:GetBottom(), toggle:GetTop()
+    local height = list:GetHeight() or 0
+    if bottom and top and UIParent then
+      -- Both rooms in the toggle's own units, like the list's height.
+      local own = toggle:GetEffectiveScale() or 1
+      local screenTop = (UIParent:GetTop() or 0) * (UIParent:GetEffectiveScale() or 1) / own
+      local below, above = bottom - LIST_GAP, screenTop - top - LIST_GAP
+      up = below < height and above > below
+    end
+    list:ClearAllPoints()
+    if up then
+      if opts.listLeft then
+        list:SetPoint("BOTTOMLEFT", toggle, "TOPLEFT", 0, LIST_GAP)
+      else
+        list:SetPoint("BOTTOMRIGHT", toggle, "TOPRIGHT", 0, LIST_GAP)
+      end
+    elseif opts.listLeft then
+      list:SetPoint("TOPLEFT", toggle, "BOTTOMLEFT", 0, -LIST_GAP)
+    else
+      list:SetPoint("TOPRIGHT", toggle, "BOTTOMRIGHT", 0, -LIST_GAP)
+    end
+  end
+
   local function CloseList()
     if list and list:IsShown() then list:Hide() end
     -- Unconditional: hiding the owning window fires OnHide on its children too,
@@ -458,6 +482,7 @@ function Dropdown.Create(parent, opts)
 
     list:SetFrameLevel(level)
     ShowCatcher(level - 1)
+    PlaceList()
     list:Show()
     list:Raise()
 

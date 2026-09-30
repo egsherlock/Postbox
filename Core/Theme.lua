@@ -3446,9 +3446,20 @@ end
 -- offsets in the new units); one anchored to another frame -- the mail window
 -- in its panel slot, the options panel beside it -- keeps that anchor, which
 -- is already in the right place.
+--
+-- A window that must fit the screen (Theme.FitToScreen: the options panel,
+-- whose tallest tab is some 730 units) is held to the scale at which the
+-- tallest it has stood this session fits the screen's height, when the
+-- player's scale would put its foot below the screen's. Only that case
+-- changes; a window that fits keeps the player's scale exactly.
 -------------------------------------------------------------
 do
   local windows = setmetatable({}, { __mode = "k" })
+  -- frame -> the tallest it has stood this session, for a window fitted to
+  -- the screen.
+  local fitted = setmetatable({}, { __mode = "k" })
+  -- Screen units kept clear, top and bottom together.
+  local FIT_MARGIN = 16
   local paintFrame = Theme.ApplyFrameTheme
 
   local function WindowScale()
@@ -3458,12 +3469,54 @@ do
     return s
   end
 
+  -- The scale `frame` wears at the player's scale `s`.
+  local function ScaleFor(frame, s)
+    local tallest = fitted[frame]
+    if not tallest or tallest <= 0 then return s end
+    local screen = UIParent and UIParent:GetHeight()
+    if type(screen) ~= "number" or screen <= FIT_MARGIN then return s end
+    local most = (screen - FIT_MARGIN) / tallest
+    if most < s then return most end
+    return s
+  end
+
+  -- A scale as the client hands it back is not always the number it was
+  -- given: a difference this small is the same scale.
+  local function Differs(a, b)
+    return math.abs((a or 1) - (b or 1)) > 0.0005
+  end
+
+  -- On scale `s`, keeping the window where it stands.
+  local function Rescale(frame, s)
+    local before = frame:GetEffectiveScale() or 1
+    local left, top = frame:GetLeft(), frame:GetTop()
+    local _, relative = frame:GetPoint(1)
+    frame:SetScale(s)
+    if left and top and (relative == nil or relative == UIParent) then
+      local k = before / (frame:GetEffectiveScale() or 1)
+      frame:ClearAllPoints()
+      frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left * k, top * k)
+    end
+  end
+
   function Theme.ApplyFrameTheme(frame)
     if paintFrame then paintFrame(frame) end
     if not frame then return end
     windows[frame] = true
-    local s = WindowScale()
+    local s = ScaleFor(frame, WindowScale())
     if s ~= 1 and type(frame.SetScale) == "function" then frame:SetScale(s) end
+  end
+
+  -- `frame` never stands taller than the screen: called when its height may
+  -- have grown (and on each open, when the screen may have changed). The
+  -- tallest height is kept, so switching between its taller and shorter
+  -- pages does not change its size back and forth.
+  function Theme.FitToScreen(frame)
+    if not frame or type(frame.GetHeight) ~= "function" or not windows[frame] then return end
+    local h = frame:GetHeight() or 0
+    if h > (fitted[frame] or 0) then fitted[frame] = h end
+    local s = ScaleFor(frame, WindowScale())
+    if Differs(frame:GetScale(), s) then Rescale(frame, s) end
   end
 
   -- Every Postbox window built so far (the ones made through ApplyFrameTheme):
@@ -3477,20 +3530,13 @@ do
   -- Puts every window on the current scale, keeping it where it stands.
   -- Returns how many windows it moved to a new scale.
   function Theme.RescaleWindows()
-    local s = WindowScale()
+    local player = WindowScale()
     local moved = 0
     for frame in pairs(windows) do
-      if frame and (frame:GetScale() or 1) ~= s then
+      local s = frame and ScaleFor(frame, player)
+      if frame and Differs(frame:GetScale(), s) then
         moved = moved + 1
-        local before = frame:GetEffectiveScale() or 1
-        local left, top = frame:GetLeft(), frame:GetTop()
-        local _, relative = frame:GetPoint(1)
-        frame:SetScale(s)
-        if left and top and (relative == nil or relative == UIParent) then
-          local k = before / (frame:GetEffectiveScale() or 1)
-          frame:ClearAllPoints()
-          frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left * k, top * k)
-        end
+        Rescale(frame, s)
       end
     end
     return moved

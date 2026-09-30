@@ -3896,6 +3896,9 @@ local function Layout()
     S.list:SetHeight(need)
     S.insp:SetHeight(need)
     S.frame:SetHeight(TOP + TAB_H + BODY_GAP + need + BODY_GAP + BAND_H + FOOT_BOTTOM)
+    -- Never taller than the screen, whatever the window scale.
+    local T = ns.Theme
+    if T and type(T.FitToScreen) == "function" then T.FitToScreen(S.frame) end
   end
 end
 
@@ -4104,6 +4107,16 @@ function Panel.Open()
   Panel.Toggle(nil)
 end
 
+-- Where the panel opens: under `anchor` (the cog), else the screen's middle.
+local function PlacePanel(frame, anchor)
+  frame:ClearAllPoints()
+  if anchor then
+    frame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+  else
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+  end
+end
+
 function Panel.Toggle(anchor)
   local frame = Build()
   if frame:IsShown() then
@@ -4113,12 +4126,8 @@ function Panel.Toggle(anchor)
   -- Counted again when the Send tab is next shown.
   S.sendText = nil
   Refresh()
-  frame:ClearAllPoints()
-  if anchor then
-    frame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
-  else
-    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-  end
+  PlacePanel(frame, anchor)
+  local scale = frame:GetScale()
   frame:Show()
   frame:Raise()
   if ns.Skin and ns.Skin.Refresh then ns.Skin.Refresh(frame) end
@@ -4126,5 +4135,10 @@ function Panel.Toggle(anchor)
   Rows.Fit()
   Tabs.Fit()
   Layout()
+  -- Fitted to the screen again (its size may have changed since), and put
+  -- back where it opens if that moved its scale.
+  local T = ns.Theme
+  if T and type(T.FitToScreen) == "function" then T.FitToScreen(frame) end
+  if frame:GetScale() ~= scale then PlacePanel(frame, anchor) end
   Panel.SelectTab(S.tab)
 end
