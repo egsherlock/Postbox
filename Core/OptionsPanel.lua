@@ -2917,9 +2917,10 @@ function Pages.mail(col)
     end,
   })
   -- How many bag slots a collect run leaves free: None (runs go until the
-  -- bags are full) or 1 to 10. Read at the start of each run.
+  -- bags are full) or 1 to 12, a mail's worth of items. Read at the start
+  -- of each run.
   local freeItems = { { id = 0, name = L["OPT_KEEP_FREE_NONE"] } }
-  for n = 1, (ns.MailboxUI.KEEP_FREE_MAX or 10) do
+  for n = 1, (ns.MailboxUI.KEEP_FREE_MAX or 12) do
     freeItems[#freeItems + 1] = { id = n, name = ns.Plural("COUNT_SLOTS", n) }
   end
   Rows.Dropdown(col, {

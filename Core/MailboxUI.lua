@@ -995,10 +995,11 @@ function UI.SetAfterSendKeep(mode)
 end
 
 -- How many general bag slots a collect run leaves free: 0 (the default,
--- runs go until the bags are full) to 10. A run stops before the take that
--- would leave fewer (MailService, RunPlan). Stored only when it is not 0.
--- Read once per run and per All mail tooltip, so no memo.
-UI.KEEP_FREE_MAX = 10
+-- runs go until the bags are full) to 12, the most items one mail holds. A
+-- run stops before the take that would leave fewer (MailService, RunPlan).
+-- Stored only when it is not 0; a stored value past the most reads as the
+-- most. Read once per run and per All mail tooltip, so no memo.
+UI.KEEP_FREE_MAX = 12
 function UI.GetKeepFreeSlots()
   local n = tonumber(ns.Store and ns.Store.Get and ns.Store.Get("profile.keepFreeSlots"))
   if not n then return 0 end
