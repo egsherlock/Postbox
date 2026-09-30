@@ -287,9 +287,9 @@ do
     watcher:UnregisterEvent("BAG_UPDATE_DELAYED")
     watcher:UnregisterEvent("MAIL_CLOSED")
     watcher:UnregisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
-    wipe(verdictCache)
-    wipe(provisional)
-    wipe(judgedIn)
+    for guid in pairs(verdictCache) do verdictCache[guid] = nil end
+    for guid in pairs(provisional) do provisional[guid] = nil end
+    for bag in pairs(judgedIn) do judgedIn[bag] = nil end
   end
 
   watcher:SetScript("OnEvent", function(_, event, bag)
