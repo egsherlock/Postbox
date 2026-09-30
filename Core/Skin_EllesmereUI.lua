@@ -7,9 +7,11 @@ local ADDON_NAME, ns = ...
 --
 --   "api"    -- EllesmereUI 8.6.8+ ships a public third-party skinning
 --               API (EllesmereUI.RegisterSkin, see SKINNING_API.md at its
---               repo root; S.apiVersion is 1 and the surface is
---               additive-only). Preferred: EllesmereUI owns every visual,
---               so the skin tracks all their future tweaks for free.
+--               repo root). The surface is additive-only and versioned by
+--               S.apiVersion: 1 is the primitives this file has always used,
+--               2 (EllesmereUI 9.3) adds S.SetTabSelection, which the tabs
+--               use where it exists. Preferred: EllesmereUI owns every
+--               visual, so the skin tracks all their future tweaks for free.
 --
 --   "compat" -- 8.6.7 and earlier have no such API. There we build the
 --               same facade ourselves out of the public helpers 8.6.6
@@ -50,11 +52,7 @@ local BACKEND          -- "api" | "compat"
 -------------------------------------------------------------
 -- Values below mirror EllesmereUIBlizzardSkin's own window engine so the
 -- result is visually identical to a natively-skinned Blizzard window.
-local SHELL_TEX   = "Interface\\AddOns\\EllesmereUI\\media\\modern_blizz.png"
 local BORDER_ATLAS = "AdventureMap_TopBorder"
-local BG_ASPECT   = 561 / 433
-local BASE_L, BASE_R, BASE_T, BASE_B = 0.25, 1, 0, 0.75
-local BASE_U, BASE_V = BASE_R - BASE_L, BASE_B - BASE_T
 
 local function PP()
   if not EUI then return nil end
@@ -1020,8 +1018,17 @@ local function InstallTabs(frame)
         -- two never fight over the same tab.
         tab.__setSelectedOverride = function(t, selected)
           t:Enable()
+          -- Kept on the tab either way: the plate sweep re-issues it.
           t.isSelected = selected and true or false
-          S.Tab(t)
+          -- API v2's call for tabs an addon switches itself: the selection is
+          -- held in EllesmereUI's own state for the tab, ahead of anything it
+          -- would read off the tab or its parent, and the tab repaints. Before
+          -- v2, the flag above and a re-skin, which reads it.
+          if type(S.SetTabSelection) == "function" then
+            S.SetTabSelection(t, t.isSelected)
+          else
+            S.Tab(t)
+          end
           -- The primitive hid the original label behind its mirror ONCE, at
           -- skin time. A later Button:SetText (the Mail tab's live counts)
           -- re-applies the button's font colour and resurrects it under the
@@ -1094,11 +1101,11 @@ function Skin.Apply(frame)
 
   -- Re-resolve everything host-owned each time the window opens.
   --
-  -- Accent, Dark Mode and profile changes arrive live (RequestHostRefresh), so
-  -- this is the backstop for the one change with no signal at all: a window
-  -- style switch in Blizz UI Enhanced (eui <-> modern), whose RefreshStyles
-  -- repaints the host shell on our frame at full alpha and tells nobody. It
-  -- also catches anything a future EllesmereUI moves without saying so.
+  -- Accent, Dark Mode, profile and window-style changes arrive live
+  -- (RequestHostRefresh), so this is the backstop: for an EllesmereUI without
+  -- the style refresh to hook (whose RefreshStyles repaints the host shell on
+  -- our frame at full alpha and tells nobody), and for anything a future
+  -- EllesmereUI moves without saying so.
   pcall(function()
     frame:HookScript("OnShow", function() Skin.OnHostLooksChanged(true) end)
   end)
@@ -1232,7 +1239,9 @@ function Skin.OnHostLooksChanged(fromShow)
 end
 
 -- Every live "EllesmereUI's looks changed" signal lands here and is folded into
--- ONE pass of the handler above, on the next frame. Three sources:
+-- ONE pass of the handler above, on the next frame. Four sources (the fourth,
+-- EllesmereUI._WSkinRefreshStyles, the window-style repaint, is explained where
+-- it is hooked, in HookHostRefreshes):
 --
 --   S.OnLooksChanged (api backend). Rides EllesmereUI's accent registry, so it
 --     fires on the accent and on Blizz UI Enhanced's global look settings --
@@ -1275,12 +1284,24 @@ end
 
 -- Registered once each, whichever backend activates first: EllesmereUI keeps
 -- its refreshers in plain lists, so a second registration would run twice.
-local hooked = { darkMode = false, accent = false }
+local hooked = { darkMode = false, accent = false, styles = false }
 
 local function HookHostRefreshes()
   if not EUI then return end
   if not hooked.darkMode and type(EUI.RegisterDarkModeRefresh) == "function" then
     hooked.darkMode = pcall(EUI.RegisterDarkModeRefresh, function() RequestHostRefresh() end)
+  end
+  -- Window styles. Blizz UI Enhanced's style dropdowns and its Modern colour
+  -- swatch call EllesmereUI._WSkinRefreshStyles (WindowEngine's RefreshStyles,
+  -- published on EllesmereUI's own table for its options page), which repaints
+  -- every registered shell -- Postbox's among them, at region alpha 1 -- and
+  -- fires no looks callback. A post-hook on that table entry, never a Blizzard
+  -- one, sees every call; the refresh it asks for puts Postbox's opacity back
+  -- on the next frame. An underscore field: where it is missing, the window's
+  -- next open re-asserts, as it always has.
+  if not hooked.styles and type(EUI._WSkinRefreshStyles) == "function"
+     and type(hooksecurefunc) == "function" then
+    hooked.styles = pcall(hooksecurefunc, EUI, "_WSkinRefreshStyles", function() RequestHostRefresh() end)
   end
   -- The api facade already delivers accent changes through S.OnLooksChanged.
   -- RegAccent calls its entries without a pcall of its own, in the middle of
