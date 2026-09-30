@@ -3129,19 +3129,11 @@ function Pages.mail(col)
   })
 end
 
--- The Send tab: the settings about composing. The address book they
--- draw on is the tile at the top of the inspector; /postbox recipients is
--- the other way in.
+-- The Send tab: the settings about composing, the form's own first, then
+-- the one that reaches it from the Mail tab. The address book they draw on
+-- is the tile at the top of the inspector; /postbox recipients is the other
+-- way in.
 function Pages.send(col)
-  Rows.Check(col, {
-    title = L["OPT_ATTACH_MAIL_TITLE"], text = L["OPT_ATTACH_MAIL_DESC"],
-    get = function() return ns.MailboxUI.GetOption("attachFromMail") end,
-    set = function(on)
-      ns.MailboxUI.SetOption("attachFromMail", on)
-      -- Applies to the mailbox that is open right now, not the next one.
-      if ns.MailboxUI.RefreshMailTabAttach then ns.MailboxUI.RefreshMailTabAttach() end
-    end,
-  })
   -- What a sent mail leaves in the form: nothing, the recipient, or the
   -- recipient and the subject. Nothing to refresh: it is read at the moment
   -- a send succeeds.
@@ -3164,6 +3156,15 @@ function Pages.send(col)
     set = function(on)
       ns.MailboxUI.SetOption("ctrlEnterSends", on)
       if ns.SendTab and ns.SendTab.RefreshSendHint then ns.SendTab.RefreshSendHint() end
+    end,
+  })
+  Rows.Check(col, {
+    title = L["OPT_ATTACH_MAIL_TITLE"], text = L["OPT_ATTACH_MAIL_DESC"],
+    get = function() return ns.MailboxUI.GetOption("attachFromMail") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("attachFromMail", on)
+      -- Applies to the mailbox that is open right now, not the next one.
+      if ns.MailboxUI.RefreshMailTabAttach then ns.MailboxUI.RefreshMailTabAttach() end
     end,
   })
 end
