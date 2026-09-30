@@ -3409,6 +3409,11 @@ function AR.SyncList(host)
   local kind = AR.ListKind()
   if AR.listKind == kind then return end
   AR.listKind = kind
+  -- A column in the hand goes back where it began, in the arrangement it
+  -- was taken from, as Escape puts it back. Written only: the pass under
+  -- way binds the rows.
+  local drag = AR.drag
+  if drag and drag.before then AR.SetLayout(drag.before, drag.kind) end
   AR.CancelPress()
   AR.LetGo(host)
   if AR.moving then AR.moving = nil end
@@ -6352,7 +6357,9 @@ end
 function AR.Leave()
   local host = AR.host
   if not host then return end
-  AR.CancelPress()
+  -- A drag the mode ends under goes back where it began, as Escape puts
+  -- it back: it was never dropped.
+  AR.CancelPress(true)
   local drag = AR.drag
   AR.drag = nil
   if drag then

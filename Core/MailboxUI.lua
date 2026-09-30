@@ -334,8 +334,14 @@ local function ApplyResetLive()
 
   -- The arrange mode closes first: its strip, its card and the grid's
   -- handles were drawn from the arrangement just cleared.
+  -- A press still held is let go where it is, first: the mode putting a
+  -- drag back as it closes would write an arrangement into the settings
+  -- just cleared.
   local arrange = ns.Arrange
-  if arrange then ResetStep(arrange.Leave) end
+  if arrange then
+    ResetStep(arrange.CancelPress)
+    ResetStep(arrange.Leave)
+  end
 
   -- The performance record follows the saved choice, now its default: the
   -- one setting a reset would otherwise leave live until the next /reload.
