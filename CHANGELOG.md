@@ -118,6 +118,11 @@ longer play.
 - **Slot counts are a quiet gray**, like the time left, so money is a row's
   only colored figure; the Slots card, while you arrange, can show just the
   number on one-line rows.
+- **Item icons show their stack count**, bottom-right as bags do, with the
+  quality mark at the top-left; a mail holding several items shows a second
+  card behind its icon, and hovering the icon lists everything in it.
+  Auction mail no longer says its count twice. Switch: Stack counts on item
+  icons, in Options, Mail tab.
 - **Quality marks are two plain settings:** a switch for the badge on item
   icons, and a mark by the name, Before, After or Off. Your current choice
   carries over. A mark after a long name always shows; the name is

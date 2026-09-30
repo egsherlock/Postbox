@@ -4386,9 +4386,10 @@ RV.LIVE.Invoice = AppendInvoiceFigures
 -- header says it has no attachments. This runs for every visible row on every
 -- refresh, and a run refreshes once per mail. Answers the attachments left,
 -- their total count, which slot the row's icon came from (so hovering it
--- can raise that item's own tooltip: Mail().GetMailIcon returns the first
+-- can raise that item's own tooltip; Mail().GetMailIcon returns the first
 -- slot bearing a texture, so this has to find the same one -- and after a
--- partial take that is not necessarily slot 1.
+-- partial take that is not necessarily slot 1), that item's count and how
+-- many items the mail holds (RV.PaintCount).
 function RV.LIVE.Attachments(index, itemCount)
   local remaining, quantity = 0, 0
   local iconSlot = nil
