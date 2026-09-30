@@ -266,15 +266,58 @@ local function QueueCapture()
   end
 end
 
+-- -> hasNew, a, b, c, sendersKnown: the client's unread-mail indicators,
+-- read the one way every caller here reads them. The minimap tooltip asks
+-- for these anywhere, combat included, and a restricted context may hand
+-- insecure code a secret value, which throws the moment it is tested,
+-- compared or concatenated. So each read is protected and a secret counts
+-- as unknown: hasNew is true/false, or nil when the flag cannot be read;
+-- the senders are plain values, or all nil with sendersKnown false when
+-- any of them cannot be (a partial line would compare as a change).
+local function Plain(v)
+  if type(issecretvalue) == "function" and issecretvalue(v) then return nil, false end
+  return v, true
+end
+
+function MM.ReadMailFlags()
+  local hasNew
+  if type(HasNewMail) == "function" then
+    local ok, flag = pcall(HasNewMail)
+    local plain
+    if ok then flag, plain = Plain(flag) end
+    if ok and plain then hasNew = flag and true or false end
+  end
+  if type(GetLatestThreeSenders) ~= "function" then return hasNew, nil, nil, nil, false end
+  local ok, a, b, c = pcall(GetLatestThreeSenders)
+  if not ok then return hasNew, nil, nil, nil, false end
+  local pa, pb, pc
+  a, pa = Plain(a)
+  b, pb = Plain(b)
+  c, pc = Plain(c)
+  if not (pa and pb and pc) then return hasNew, nil, nil, nil, false end
+  return hasNew, a, b, c, true
+end
+
 -- The senders of the latest unread mails, as one comparable string. This is
 -- the arrival detector that needs no event: any mail landing -- even while
 -- logged out -- reshuffles this triple, and the snapshot remembers what it
--- was at close.
+-- was at close. nil when the line cannot be read.
 local function SenderTriple()
-  if type(GetLatestThreeSenders) ~= "function" then return nil end
-  local a, b, c = GetLatestThreeSenders()
+  local _, a, b, c, known = MM.ReadMailFlags()
+  if not known then return nil end
   if a == nil and b == nil and c == nil then return "" end
   return tostring(a) .. "\001" .. tostring(b) .. "\001" .. tostring(c)
+end
+
+-- The latest senders as a list for the badge's "from", or nil.
+local function SendersList()
+  local _, a, b, c = MM.ReadMailFlags()
+  if a == nil and b == nil and c == nil then return nil end
+  local from = {}
+  if a then from[#from + 1] = tostring(a) end
+  if b then from[#from + 1] = tostring(b) end
+  if c then from[#from + 1] = tostring(c) end
+  return from
 end
 
 local function PersistOnClose()
@@ -284,7 +327,9 @@ local function PersistOnClose()
 
   -- The arrival baseline, taken at the boundary the badge measures from:
   -- what the client's unread indicators said the moment the box closed.
-  snapshot.baseNew = type(HasNewMail) == "function" and HasNewMail() and true or false
+  -- Either can be unknown (nil) where the client will not say; each
+  -- detector below stands down on an unknown baseline rather than guess.
+  snapshot.baseNew = (MM.ReadMailFlags())
   snapshot.baseFrom = SenderTriple()
 
   local realm = GetRealmName()
@@ -2135,20 +2180,13 @@ local function ArrivedSince(snapshot)
   EnsureBaseline(snapshot)
   local state = MailboxState()
   local away = not (state and state.mailboxOpen)
-  local flagNow = away and type(HasNewMail) == "function" and HasNewMail() and true or false
+  local flagNow = away and MM.ReadMailFlags() == true
   local tripleNow = away and SenderTriple() or nil
   local arrived = snapshot.newSince == true
     or (flagNow and snapshot.baseNew == false)
     or (tripleNow ~= nil and snapshot.baseFrom ~= nil and tripleNow ~= snapshot.baseFrom)
   local from = snapshot.newFrom
-  if arrived and not from and type(GetLatestThreeSenders) == "function" then
-    local a, b, c = GetLatestThreeSenders()
-    from = {}
-    if a then from[#from + 1] = tostring(a) end
-    if b then from[#from + 1] = tostring(b) end
-    if c then from[#from + 1] = tostring(c) end
-    if #from == 0 then from = nil end
-  end
+  if arrived and not from then from = SendersList() end
   return arrived and true or false, from
 end
 
@@ -3056,13 +3094,11 @@ function MM.Diagnose()
   end
   parts[#parts + 1] = (#failed == 0) and "events ok"
     or ("events FAILED: " .. table.concat(failed, ","))
-  parts[#parts + 1] = "HasNewMail " ..
-    tostring(type(HasNewMail) == "function" and HasNewMail() and true or false)
+  local hasNew, a, b, c = MM.ReadMailFlags()
+  parts[#parts + 1] = "HasNewMail " .. tostring(hasNew)
   parts[#parts + 1] = string.format("login %s | closed %ds ago",
     loginAt and string.format("%ds ago", time() - loginAt) or "unseen",
     math.max(0, time() - closedAt))
-  local a, b, c
-  if type(GetLatestThreeSenders) == "function" then a, b, c = GetLatestThreeSenders() end
   parts[#parts + 1] = "senders " .. table.concat({ tostring(a), tostring(b), tostring(c) }, "/")
   return table.concat(parts, " | ")
 end
@@ -3095,7 +3131,7 @@ local function OnPendingMail()
   lastPendingVerdict = "close settle"
   if (time() - closedAt) < CLOSE_SETTLE then return end
   lastPendingVerdict = "flag false"
-  if not (type(HasNewMail) == "function" and HasNewMail()) then return end
+  if MM.ReadMailFlags() ~= true then return end
 
   -- An arrival. The minimap icon's sound and flash answer it whether or not
   -- Mail Memory is on to record it: they are alerts, not memory.
@@ -3113,14 +3149,8 @@ local function OnPendingMail()
   if not snap then return end
   lastPendingVerdict = "marked"
   snap.newSince = true
-  if type(GetLatestThreeSenders) == "function" then
-    local a, b, c = GetLatestThreeSenders()
-    local from = {}
-    if a then from[#from + 1] = tostring(a) end
-    if b then from[#from + 1] = tostring(b) end
-    if c then from[#from + 1] = tostring(c) end
-    if #from > 0 then snap.newFrom = from end
-  end
+  local from = SendersList()
+  if from then snap.newFrom = from end
 
   -- Mail can land while the window is on screen -- the exact moment the
   -- badge is worth something. One row-refill against the ≤50 cached mails,
@@ -3269,7 +3299,7 @@ if bus then
     C_Timer.After(LOGIN_SETTLE + 5, function()
       if not MemoryEnabled() then return end
       local snap = StoredSnapshot()
-      local flag = type(HasNewMail) == "function" and HasNewMail() and true or false
+      local flag = MM.ReadMailFlags() == true
       if flag and (not snap or snap.baseNew == false) then
         -- It landed some time since the last visit: dated from that visit,
         -- the earliest it could have, so a warning never comes late.
