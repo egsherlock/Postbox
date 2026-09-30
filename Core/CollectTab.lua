@@ -4304,7 +4304,7 @@ end
 
 -- History's arrangement (MailboxUI.GetHistoryLayout), and how it writes
 -- when a mail was collected (GetHistoryAge: "plain", "short", "long",
--- "date_dm" or "date_md").
+-- "date_dm", "date_md", "num_dm" or "num_md").
 function HV.Layout()
   local UI = ns.MailboxUI
   if UI and type(UI.GetHistoryLayout) == "function" then return UI.GetHistoryLayout() end
@@ -4335,8 +4335,8 @@ HV.AGE_KEYS = {
   short = { "HISTORY_AGO_M", "HISTORY_AGO_H", "HISTORY_AGO_D" },
   long  = { "HISTORY_AGO_MINUTES", "HISTORY_AGO_HOURS", "HISTORY_AGO_DAYS" },
 }
-HV.ages = { plain = {}, short = {}, long = {}, date_dm = {}, date_md = {} }
-HV.agesN = { plain = 0, short = 0, long = 0, date_dm = 0, date_md = 0 }
+HV.ages = { plain = {}, short = {}, long = {}, date_dm = {}, date_md = {}, num_dm = {}, num_md = {} }
+HV.agesN = { plain = 0, short = 0, long = 0, date_dm = 0, date_md = 0, num_dm = 0, num_md = 0 }
 HV.AGE_MAX = 200
 
 function HV.AgeText(value, unit, style)
@@ -4377,6 +4377,12 @@ end
 -- month stand together is each language's own (HISTORY_DATE_DM, _MD and
 -- their _YEAR forms: {d} the day, {m} the month's name, {n} its number, {y}
 -- the year): "30. Sep" in German, the month's number and day in Chinese.
+-- Or in numbers (num_dm and num_md, HISTORY_DATE_NUM_*): {dd} and {nn} the
+-- day and the month's number in two digits, {yy} the year's last two, in
+-- each language's own order and marks -- "30/09", "30.09." in German,
+-- "09-30" in Chinese. The year only for a mail from another year, as the
+-- words have it, and in two digits where the language allows, so the
+-- column stays narrow ("30/09/25").
 -- Each date is written once and kept, keyed by the day (HV.ages[style], as
 -- the ages are), so a bind makes nothing; the tables are written again
 -- when the year turns, which moves the year in or out.
@@ -4430,12 +4436,15 @@ end
 HV.DATE_KEYS = {
   date_dm = { "HISTORY_DATE_DM", "HISTORY_DATE_DM_YEAR" },
   date_md = { "HISTORY_DATE_MD", "HISTORY_DATE_MD_YEAR" },
+  num_dm  = { "HISTORY_DATE_NUM_DM", "HISTORY_DATE_NUM_DM_YEAR" },
+  num_md  = { "HISTORY_DATE_NUM_MD", "HISTORY_DATE_NUM_MD_YEAR" },
 }
 function HV.FormatDate(ymd, style, year)
   local y, m, d = ymd:sub(1, 4), tonumber((ymd:sub(5, 6))), tonumber((ymd:sub(7, 8)))
   local key = (HV.DATE_KEYS[style] or HV.DATE_KEYS.date_dm)[(y ~= year) and 2 or 1]
-  local parts = { d = tostring(d), m = HV.Months()[m] or tostring(m), n = tostring(m), y = y }
-  return (L()[key]:gsub("{(%a)}", parts))
+  local parts = { d = tostring(d), m = HV.Months()[m] or tostring(m), n = tostring(m), y = y,
+    dd = ymd:sub(7, 8), nn = ymd:sub(5, 6), yy = y:sub(3, 4) }
+  return (L()[key]:gsub("{(%a+)}", parts))
 end
 
 -- t, style, now -> the day `t` fell on, as History writes it (above).
@@ -4451,7 +4460,7 @@ function HV.DateText(t, style, now)
       end
     end
   end
-  if style ~= "date_md" then style = "date_dm" end
+  if not HV.DATE_KEYS[style] then style = "date_dm" end
   local cache = HV.ages[style]
   local ymd = date("%Y%m%d", t)
   local text = cache[ymd]
@@ -4470,7 +4479,7 @@ end
 -- long ago it was collected, or the day it was.
 function HV.EntryAge(entry, now, style)
   local t = tonumber(entry.t) or now
-  if style == "date_dm" or style == "date_md" then return HV.DateText(t, style, now) end
+  if HV.DATE_KEYS[style] then return HV.DateText(t, style, now) end
   return HV.HistoryAge(now - t, style)
 end
 

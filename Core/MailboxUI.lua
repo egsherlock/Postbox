@@ -1080,9 +1080,22 @@ end
 -- How History writes when a mail was collected: how long ago, "plain"
 -- ("3d"), "short" ("3d ago", the default) or "long" ("3 days ago"); or
 -- the day it was, "date_dm" ("30 Sep", the day first) or "date_md" ("Sep
--- 30", the month first). Stored as its word but for short, so nothing
--- stored is short. Remembered with the other row settings.
-local HISTORY_AGES = { plain = true, short = true, long = true, date_dm = true, date_md = true }
+-- 30", the month first), or in numbers, "num_dm" ("30/09") or "num_md"
+-- ("09/30"). Stored as its word but for short, so nothing stored is short.
+-- Remembered with the other row settings.
+--
+-- The two kinds, how long ago ("ago") and the day ("date"), each with its
+-- own formats, the first of each list its default. Switching kind brings
+-- back the format that kind last had: the one left behind is kept as
+-- profile.historyAgeOther, nothing while it is its kind's default, and
+-- cleared with the choice by a reset (SetHistoryAge(nil)).
+local HISTORY_AGES = { plain = "ago", short = "ago", long = "ago",
+  date_dm = "date", date_md = "date", num_dm = "date", num_md = "date" }
+UI.HISTORY_AGE_KINDS = {
+  ago  = { "plain", "short", "long" },
+  date = { "date_dm", "date_md", "num_dm", "num_md" },
+}
+local HISTORY_AGE_FIRST = { ago = "short", date = "date_dm" }
 function UI.GetHistoryAge()
   local memo = Settings()
   if memo.age then return memo.age end
@@ -1093,8 +1106,36 @@ end
 function UI.SetHistoryAge(style)
   if style ~= nil and not HISTORY_AGES[style] then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if profile then profile.historyAge = (style ~= "short") and style or nil end
+  if profile then
+    if style == nil then
+      profile.historyAgeOther = nil
+    else
+      local was = UI.GetHistoryAge()
+      local kind = HISTORY_AGES[was]
+      if kind ~= HISTORY_AGES[style] then
+        profile.historyAgeOther = (was ~= HISTORY_AGE_FIRST[kind]) and was or nil
+      end
+    end
+    profile.historyAge = (style ~= "short") and style or nil
+  end
   ForgetSettings()
+end
+-- The kind shown now, "ago" or "date".
+function UI.GetHistoryAgeKind()
+  return HISTORY_AGES[UI.GetHistoryAge()] or "ago"
+end
+-- The format a kind would show: the one on screen if it is that kind's,
+-- else the one it last had, else its first.
+function UI.HistoryAgeFor(kind)
+  local current = UI.GetHistoryAge()
+  if HISTORY_AGES[current] == kind then return current end
+  local kept = ns.Store and ns.Store.Get and ns.Store.Get("profile.historyAgeOther")
+  if HISTORY_AGES[kept] == kind then return kept end
+  return HISTORY_AGE_FIRST[kind]
+end
+function UI.SetHistoryAgeKind(kind)
+  if not HISTORY_AGE_FIRST[kind] or UI.GetHistoryAgeKind() == kind then return end
+  UI.SetHistoryAge(UI.HistoryAgeFor(kind))
 end
 
 -- The category buttons under the list: their order and which are hidden, as
@@ -3297,6 +3338,10 @@ function UI.DiagnoseOptions()
   Named("largeRows", FormatRowLayout(UI.GetLargeLayout()) or "?", ROW_LAYOUT_DEFAULT)
   Named("historyRows", FormatLayout(UI.GetHistoryLayout(), ParseHistoryLayout) or "?", HISTORY_LAYOUT_DEFAULT)
   Named("historyAge", UI.GetHistoryAge(), "short")
+  do
+    local other = ns.Store and ns.Store.Get and ns.Store.Get("profile.historyAgeOther")
+    if other ~= nil then Named("historyAgeOther", other, "") end
+  end
   -- The grid as stored: its group buttons are ids ("group:3"), never names.
   local grid = ns.Store and ns.Store.Get and ns.Store.Get("profile.gridLayout")
   Named("grid", (type(grid) == "string" and grid ~= "") and grid or "default", "default")

@@ -3982,6 +3982,10 @@ local INSP = {
   NUDGE_W = 22, NUDGE_H = 18, NUDGE_GAP = 4, MOVE_GAP = 8,
   KICK_TOP = 10, KICK_GAP = 4,
   RADIO_H = 19, RADIO_TEXT = 17,
+  -- A pair of segments (the mockup's .segs): their height, the gap between
+  -- them, the room a label keeps either side, the chosen one's underline,
+  -- and the room under them before the choices they lead to.
+  SEG_H = 20, SEG_GAP = 4, SEG_PAD = 8, SEG_LINE = 2, SEG_TAIL = 6,
   -- Row layout's answers: the preview's size, its bars and the gap between
   -- its two rows, its inset from the line's right end, and the room under
   -- an answer's one line.
@@ -4027,6 +4031,9 @@ local PLATE = {
   nudge  = { fill = 0.13, ring = 0.365, hover = 0.86, off = 0.22 },
   chip   = { fill = 0.057, ring = 0.28, hover = 0.62 },
   key    = { fill = 0.17, ring = 0.33 },
+  -- A segment: at rest, pointed at, and chosen (a lighter fill and ring,
+  -- and the accent's underline).
+  seg    = { fill = 0.082, ring = 0.243, hover = 0.62, on = 0.314, onRing = 0.424 },
 }
 
 -- A text's width on one line, or its height wrapped at the string's own
@@ -4115,27 +4122,15 @@ function AR.Choices(kind)
     AR._choices = lists
   end
   if not ui or not AR.CHOICE_KINDS[kind] then return lists.none, nil, nil end
+  if kind == "age" then
+    local ages = AR.AgeLists()
+    if not ages then return lists.none, nil, nil end
+    local k = ui.GetHistoryAgeKind and ui.GetHistoryAgeKind() or "ago"
+    return ages[k] or ages.ago, ui.GetHistoryAge and ui.GetHistoryAge(), ui.SetHistoryAge
+  end
   local list = lists[kind]
   if not list then
-    local collect = ns.CollectTab
-    local age = collect and collect.HistoryAgeText
-    if kind == "age" and not age then return lists.none, nil, nil end
-    if kind == "age" then
-      -- "3d", "3d ago" or "3 days ago", each wording as the rows write it
-      -- for three days; or the day, "30 Sep" or "Sep 30", as the rows write
-      -- today's.
-      local day = collect.HistoryDateText
-      local now = time()
-      list = {
-        { id = "plain", name = age(3, 3, "plain") },
-        { id = "short", name = age(3, 3, "short") },
-        { id = "long",  name = age(3, 3, "long") },
-      }
-      if day then
-        list[4] = { id = "date_dm", name = day(now, "date_dm", now) }
-        list[5] = { id = "date_md", name = day(now, "date_md", now) }
-      end
-    elseif kind == "gold" then
+    if kind == "gold" then
       list = {
         { id = "both",   name = L()["OPT_GOLD_BOTH"] },
         { id = "earned", name = L()["OPT_GOLD_EARNED"] },
@@ -4159,8 +4154,48 @@ function AR.Choices(kind)
   end
   if kind == "gold" then return list, ui.GetGoldMode and ui.GetGoldMode(), ui.SetGoldMode end
   if kind == "slots" then return list, ui.GetSlotsStyle and ui.GetSlotsStyle(), ui.SetSlotsStyle end
-  if kind == "age" then return list, ui.GetHistoryAge and ui.GetHistoryAge(), ui.SetHistoryAge end
   return list, ui.GetExpiryWhen and ui.GetExpiryWhen(), ui.SetExpiryWhen
+end
+
+-- History's age is chosen in two steps: first its kind, how long ago or
+-- the day (the card's two segments, AR.AgeKinds), then that kind's formats,
+-- each as the rows write it -- "3d", "3d ago" and "3 days ago" for three
+-- days; "30 Sep", "Sep 30", "30/09" and "09/30" for today. The lists are
+-- made once, from MailboxUI's HISTORY_AGE_KINDS; nil where CollectTab has
+-- not given the way to write them.
+function AR.AgeLists()
+  local lists = AR._choices
+  if not lists then
+    lists = { none = {} }
+    AR._choices = lists
+  end
+  local ages = lists.age
+  if ages then return ages end
+  local ui, collect = UI(), ns.CollectTab
+  local age = collect and collect.HistoryAgeText
+  local day = collect and collect.HistoryDateText
+  local kinds = ui and ui.HISTORY_AGE_KINDS
+  if not (age and day and kinds) then return nil end
+  local now = time()
+  ages = {
+    ago = {}, date = {},
+    kinds = {
+      { id = "ago",  name = L()["ARRANGE_AGE_AGO"] },
+      { id = "date", name = L()["ARRANGE_AGE_DATE"] },
+    },
+  }
+  for i, id in ipairs(kinds.ago) do ages.ago[i] = { id = id, name = age(3, 3, id) } end
+  for i, id in ipairs(kinds.date) do ages.date[i] = { id = id, name = day(now, id, now) } end
+  lists.age = ages
+  return ages
+end
+
+-- The two kinds, the one shown now, and how to switch: the kind switched
+-- brings back the format it last had (MailboxUI.SetHistoryAgeKind).
+function AR.AgeKinds()
+  local ui, ages = UI(), AR.AgeLists()
+  if not (ui and ages and ui.GetHistoryAgeKind and ui.SetHistoryAgeKind) then return nil end
+  return ages.kinds, ui.GetHistoryAgeKind(), ui.SetHistoryAgeKind
 end
 
 -- A column shown or hidden from the inspector: the rows and the header on
@@ -4498,6 +4533,69 @@ local function Radio(insp, i)
   return row
 end
 
+-- A segment of a pair that chooses what kind a column's choices are (the
+-- age: how long ago, or the day), the choices under it being that kind's.
+-- As the mockup draws them and the Mail tab's view switch stands: the
+-- chosen one lighter, its words white and the accent's underline along
+-- its foot; the other dark, its words a lighter grey; a lighter ring while
+-- pointed at; all of it grey, the underline too, while the column is
+-- hidden.
+local function PaintSeg(seg)
+  local spec = PLATE.seg
+  local live, chosen = seg.live, seg.chosen
+  local hover = seg.hover and live and not chosen
+  local fill = chosen and (live and spec.on or 0.2) or (hover and 0.12 or spec.fill)
+  TintPlate(seg, fill, hover and spec.hover or (chosen and live and spec.onRing or spec.ring))
+  if chosen and live then
+    local r, g, b = Th().GetAccent()
+    seg.Line:SetVertexColor(r, g, b, 1)
+  else
+    Grey(seg.Line, 0.44)
+  end
+  seg.Line:SetShown(chosen and true or false)
+  Grey(seg.Label, live and ((chosen or hover) and 1 or 0.81) or 0.44)
+end
+
+local function SegEnter(self)
+  self.hover = true
+  PaintSeg(self)
+end
+
+local function SegLeave(self)
+  self.hover = false
+  PaintSeg(self)
+end
+
+-- The kind switched: its choices, with the one it last had chosen, and the
+-- rows written in it.
+local function SegClick(self)
+  local insp = AR._insp
+  if not (self.live and not self.chosen and insp and insp.setKind) then return end
+  insp.setKind(self.kindId)
+  AR.RowsChanged(true)
+  AR.Inspect()
+end
+
+local function Seg(insp, i)
+  local seg = InspPlate(insp, "Button", false)
+  seg:SetHeight(INSP.SEG_H)
+  seg.hover, seg.live, seg.chosen = false, false, false
+  seg.Line = seg:CreateTexture(nil, "ARTWORK")
+  seg.Line:SetTexture(WHITE)
+  seg.Line:SetHeight(INSP.SEG_LINE)
+  seg.Line:SetPoint("BOTTOMLEFT", seg, "BOTTOMLEFT", 1, 1)
+  seg.Line:SetPoint("BOTTOMRIGHT", seg, "BOTTOMRIGHT", -1, 1)
+  seg.Label = Text(seg, "bodySmall", "body")
+  seg.Label:SetPoint("CENTER", seg, "CENTER", 0, 0)
+  seg.Label:SetJustifyH("CENTER")
+  seg.Label:SetWordWrap(false)
+  seg:SetScript("OnEnter", SegEnter)
+  seg:SetScript("OnLeave", SegLeave)
+  seg:SetScript("OnClick", SegClick)
+  insp.Segs[i] = seg
+  return seg
+end
+
 -- A hidden thing's chip: a crossed eye and its name on a dark plate; a
 -- click shows it again. Pointed at, its ring and its words lighten.
 local function PaintHiddenChip(chip)
@@ -4823,6 +4921,7 @@ function AR.BuildInspector()
   insp:EnableMouse(true)
   insp:SetWidth(P.W)
   insp.Radios, insp.Chips, insp.BlockRows, insp.Kickers, insp.Layouts = {}, {}, {}, {}, {}
+  insp.Segs = {}
   -- The font FitWidth last measured the foot in.
   insp._fit = {}
 
@@ -5287,6 +5386,54 @@ local function PutRadio(i, choice, chosen, live, y)
   return y - INSP.RADIO_H
 end
 
+-- The age's two kinds as a pair of segments across the card's width (Seg),
+-- `live` while the column shows. Each takes half, unless a label needs more
+-- than its half (a long German one): then each is as wide as its own label
+-- needs, measured in the size it is drawn in, and the room left over is
+-- shared alike; only where the two cannot both have what they need are
+-- their words cut. Answers the y under them.
+local function PutSegs(live, y)
+  local insp, P = AR._insp, INSP
+  local kinds, current, set = AR.AgeKinds()
+  if not kinds then return y end
+  insp.setKind = set
+  local n = #kinds
+  local room = P.INNER - (n - 1) * P.SEG_GAP
+  local share = math.floor(room / n)
+  local needs, wide = 0, false
+  for i = 1, n do
+    local need = Measured(insp.Measure.body, kinds[i].name, false) + 2 * P.SEG_PAD
+    needs = needs + need
+    if need > share then wide = true end
+  end
+  local x, left = P.PAD, room
+  for i = 1, n do
+    local kind = kinds[i]
+    local w = share
+    if wide then
+      local need = Measured(insp.Measure.body, kind.name, false) + 2 * P.SEG_PAD
+      if needs <= room then
+        w = need + math.floor((room - needs) / n)
+      else
+        w = math.floor(room * need / needs)
+      end
+    end
+    -- The last one ends at the card's inner edge, whatever was rounded.
+    if i == n then w = left end
+    left = left - w
+    local seg = insp.Segs[i] or Seg(insp, i)
+    seg.kindId, seg.chosen, seg.live = kind.id, kind.id == current, live
+    seg.hover = seg.hover and seg:IsMouseOver() or false
+    seg:SetWidth(w)
+    Th().FitText(seg.Label, w - 2 * P.SEG_PAD + 1, kind.name, seg)
+    At(seg, x, y)
+    PaintSeg(seg)
+    seg:Show()
+    x = x + w + P.SEG_GAP
+  end
+  return y - P.SEG_H - P.SEG_TAIL
+end
+
 -- A block card's line for a block (BlockRow): `current` is the block the
 -- card is for.
 local function PutBlockRow(i, id, name, hidden, current, y)
@@ -5514,6 +5661,8 @@ local function FillColumn(id, y)
   insp.set = set
   if #choices > 0 then
     y = PutKicker(L()["COL_SHOW"], y)
+    -- The age's kind first, then that kind's formats.
+    if spec.choice == "age" then y = PutSegs(shown and true or false, y) end
     for i = 1, #choices do
       y = PutRadio(i, choices[i], choices[i].id == current, shown and true or false, y)
     end
@@ -5619,6 +5768,7 @@ local function HideParts(insp)
   insp.Up:Hide()
   insp.Action:Hide()
   for i = 1, #insp.Radios do insp.Radios[i]:Hide() end
+  for i = 1, #insp.Segs do insp.Segs[i]:Hide() end
   for i = 1, #insp.Chips do insp.Chips[i]:Hide() end
   for i = 1, #insp.BlockRows do insp.BlockRows[i]:Hide() end
 end
