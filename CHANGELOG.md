@@ -79,6 +79,10 @@ longer play.
   class color: in the mail list, History, Mail Memory and the reading pane.
   The colors are your own if your UI has them (EllesmereUI, ElvUI or a class
   color addon), and change as soon as you change them.
+- **The search finds what History shows.** On History the box looks
+  through History (sender, subject, items), and the people button searches
+  every character's History, each under their name. Switching between Inbox
+  and History starts a fresh search.
 - **Selected mail and category buttons agree:** with rows selected, "All
   sold" takes only the selected sold mail, and each button counts what it
   would take.
