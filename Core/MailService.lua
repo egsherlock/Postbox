@@ -606,6 +606,81 @@ function Mail.FreeBagSlots()
   return free, reagent
 end
 
+-- Letting the bags catch up, for runs that keep bag slots free.
+--
+-- The bags' count can lag a take: the take's handshake clears, and the item
+-- reaches the bags (and the free count moves) a moment later. Read in that
+-- moment, the count still offers the slot the take has just used, so a run
+-- stopping at the slots it keeps went one item past them for every take
+-- that lagged. Counting the takes ourselves instead would stop short: an
+-- item that joins a stack in the bags uses no slot, and only the bags know.
+-- So an item take of such a run is not over until the bags have caught up
+-- with it -- their BAG_UPDATE_DELAYED, which usually comes before the
+-- handshake clears and costs no wait at all -- and the next take is decided
+-- from the count as it then stands. One take is watched at a time (a plan
+-- runs its takes one by one), so the update after it is its own. Bounded by
+-- one one-shot deadline; a take whose update never came counts as the slot
+-- it would have used until the bags next update. BAG_UPDATE_DELAYED is
+-- listened to only while a take is watched or so counted.
+local bagsCatch = { gen = 0, watching = false, unconfirmed = 0, fn = nil, frame = nil, DEADLINE = 2 }
+
+function bagsCatch.Listen(on)
+  if on then
+    if not bagsCatch.frame then
+      bagsCatch.frame = CreateFrame("Frame")
+      bagsCatch.frame:SetScript("OnEvent", bagsCatch.Updated)
+    end
+    bagsCatch.frame:RegisterEvent("BAG_UPDATE_DELAYED")
+  elseif bagsCatch.frame then
+    bagsCatch.frame:UnregisterEvent("BAG_UPDATE_DELAYED")
+  end
+end
+
+function bagsCatch.Updated()
+  bagsCatch.gen = bagsCatch.gen + 1
+  bagsCatch.unconfirmed = 0
+  local fn = bagsCatch.fn
+  bagsCatch.fn = nil
+  if not bagsCatch.watching then bagsCatch.Listen(false) end
+  if fn then fn() end
+end
+
+-- keepFree -> the bags' update count as an item take is issued, or nil
+-- where the run keeps nothing free and nothing is watched.
+function bagsCatch.Watch(keepFree)
+  if type(keepFree) ~= "number" or keepFree <= 0 then return nil end
+  bagsCatch.watching = true
+  bagsCatch.Listen(true)
+  return bagsCatch.gen
+end
+
+-- The watched take is over without anything reaching the bags (refused,
+-- or no answer at all).
+function bagsCatch.Drop(since)
+  if since == nil then return end
+  bagsCatch.watching = false
+  if bagsCatch.unconfirmed == 0 then bagsCatch.Listen(false) end
+end
+
+-- since, fn -> fn(), now if the bags have updated since the take went out
+-- (or nothing was watched), otherwise at their update or the deadline.
+function bagsCatch.After(since, fn)
+  if since == nil then return fn() end
+  local function caughtUp()
+    bagsCatch.Drop(since)
+    fn()
+  end
+  if bagsCatch.gen > since then return caughtUp() end
+  bagsCatch.fn = caughtUp
+  C_Timer.After(bagsCatch.DEADLINE, function()
+    if bagsCatch.fn ~= caughtUp then return end
+    bagsCatch.fn = nil
+    bagsCatch.watching = false
+    bagsCatch.unconfirmed = bagsCatch.unconfirmed + 1
+    fn()
+  end)
+end
+
 -- keepFree -> true when a collect run keeping that many general bag slots
 -- free ("Keep bag slots free", UI.GetKeepFreeSlots) must not take another
 -- item: the next one could fill a slot, and there are no more free than
@@ -614,10 +689,14 @@ end
 -- item lands in is the client's to decide. 0 or nil keeps nothing free and
 -- is never reached -- runs then go until the bags are full, as they always
 -- have -- and bags that cannot be counted do not stop a run.
+--
+-- Asked of the bags as they stand once they have caught up with the run's
+-- last take (bagsCatch, below); a take whose update never came counts as
+-- the slot it would have used.
 function Mail.KeepFreeReached(keepFree)
   if type(keepFree) ~= "number" or keepFree <= 0 then return false end
   local free = Mail.FreeBagSlots()
-  return free ~= nil and free <= keepFree
+  return free ~= nil and free - bagsCatch.unconfirmed <= keepFree
 end
 
 -- Total attachment slots a queue needs.
@@ -1587,22 +1666,27 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree)
     markSender, markSubject = LeavingMark(index)
     HoldLeaving(markSender, markSubject)
     ErrorWatch.Open()
+    -- A keep-free run's item take is over once the bags have caught up
+    -- with it (bagsCatch): the next take is decided from their count.
+    local watched = nil
     if op.kind == "money" then
       TakeInboxMoney(index)
     else
+      watched = bagsCatch.Watch(keepFree)
       TakeInboxItem(index, op.slot)
     end
 
     WaitForCommand(function(timedOut)
       if timedOut then
         ErrorWatch.Close()
+        bagsCatch.Drop(watched)
         done(true, refused, reason, fingerprint)
         return
       end
       if Fingerprint(index) ~= fingerprint or measure() < before then
         ErrorWatch.Close()
         Took(op, takes, takeCount)
-        step()
+        bagsCatch.After(watched, step)
         return
       end
       -- Looks refused: the handshake completed but the mail is unchanged. Two
@@ -1613,9 +1697,11 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree)
         local text = ErrorWatch.Close()
         if Fingerprint(index) ~= fingerprint or measure() < before then
           Took(op, takes, takeCount)
-          step()
+          bagsCatch.After(watched, step)
           return
         end
+        -- Nothing moved: nothing is on its way to the bags either.
+        bagsCatch.Drop(watched)
         -- The mailbox closed with this command in flight -- the player
         -- walked away mid-take. The unchanged mail proves NOTHING: the
         -- server refuses everything from out of range, and the client's
