@@ -3211,6 +3211,14 @@ function Theme.ShowHint(owner, lines, anchor)
       fs:SetWordWrap(false)
       hint.lines[i] = fs
     end
+    -- The card is dark on every palette, so its text is the dark palette's
+    -- ink and shadow on every palette too: a light palette's dark ink and
+    -- white shadow (Letters, Daylight, Light mode) would stand on the card at
+    -- barely 1.2:1. Off the palette's repaint (SetTextRGB), which would put
+    -- the light ink back.
+    local ink, sh = BASE.textPrimary, BASE.textShadow
+    Theme.SetTextRGB(fs, ink[1], ink[2], ink[3], 1)
+    if type(fs.SetShadowColor) == "function" then fs:SetShadowColor(sh[1], sh[2], sh[3], sh[4] or 1) end
     -- One anchor while measuring: a width left from the last layout would
     -- cap what the string reports.
     fs:ClearAllPoints()
