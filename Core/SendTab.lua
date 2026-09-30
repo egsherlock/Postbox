@@ -5409,6 +5409,11 @@ local function BuildAttachmentArea(panel)
     if not self.itemLink then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetHyperlink(self.itemLink)
+    -- The slot's gestures, in the Mail tab's hint form; the try-on only for
+    -- an item there is something to try on.
+    local dress = C_Item and type(C_Item.IsDressableItemByID) == "function"
+      and C_Item.IsDressableItemByID(self.itemLink)
+    GameTooltip:AddLine(L[dress and "ATTACH_SLOT_HINT_DRESS" or "ATTACH_SLOT_HINT"], 0.7, 0.7, 0.7, true)
     GameTooltip:Show()
   end
 
@@ -5423,6 +5428,23 @@ local function BuildAttachmentArea(panel)
   local function SlotClick(self, button)
     if type(ClickSendMailItemButton) ~= "function" then return end
     local hasCursorItem = (type(CursorHasItem) == "function" and CursorHasItem())
+
+    -- A modified left-click on an attached item is the game's item rules,
+    -- as on the Mail tab's item tiles and the game's own: Shift links it,
+    -- Ctrl tries it on (HandleModifiedItemClick), and a modified click is
+    -- never the plain one. With an item on the cursor it is the plain drop.
+    if button == "LeftButton" and not hasCursorItem and self.itemLink then
+      local modified
+      if type(IsModifiedClick) == "function" then
+        modified = IsModifiedClick()
+      else
+        modified = IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown()
+      end
+      if modified then
+        if type(HandleModifiedItemClick) == "function" then HandleModifiedItemClick(self.itemLink) end
+        return
+      end
+    end
 
     if button == "RightButton" and not hasCursorItem then
       -- Native behaviour: right-click with an empty cursor returns the attached
