@@ -66,6 +66,9 @@ your recipients, groups, Mail Memory and History are kept.*
   ("3h ago") or the date, your way round (30/09 or 09/30).
 - **Search follows what you're looking at:** on History it searches History,
   and **Search every character** looks through every character's.
+- **Mail Memory shows what each mail holds:** the item's own icon, and on
+  hover the list or the fan, to look at and link (you take it at that
+  character's mailbox).
 - **Keep History for: Never** turns History off, after asking.
 
 ### Sending
