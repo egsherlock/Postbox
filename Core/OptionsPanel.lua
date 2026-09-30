@@ -582,6 +582,8 @@ local S = {
   ctx = {},       -- tab key -> its drawing, once built
   tab = "mail",
   shown = false,  -- the entry the inspector's text zone shows (nil: at rest)
+  -- held: the row whose dropdown's list is open; heldAt and heldEnter, where
+  -- the pointer rests meanwhile (Rows.Hold)
   bodyH = 0,
   textGen = 0,    -- counts changes to a text the inspector can show
 }
@@ -667,7 +669,9 @@ end
 -- the inspector -- a group's heading, the hairline between two rows, on its
 -- way across to read a long description. It goes back to the tab's own
 -- when the pointer leaves them both, or the tab changes. Crossing the list
--- never flashes the tab's text between two rows.
+-- never flashes the tab's text between two rows. While a dropdown's list is
+-- open the text stays on that dropdown's row, wherever the pointer goes
+-- (Rows.Hold).
 --
 -- A hover allocates nothing: every text is a string its entry already
 -- holds and every region exists, so a hover sets text, a height and what
@@ -953,6 +957,7 @@ do
   -- The pointer on a drawing: the inspector says what it is, the tooltip
   -- too. Shared by every tile and badge, so a hover builds nothing.
   local function SpotEnter(self)
+    if Rows.Held(self, SpotEnter) then return end
     if self.Hover then
       self.Hover:Show()
       TintChevron(self, true)
@@ -967,6 +972,7 @@ do
       TintChevron(self, false)
     end
     GameTooltip:Hide()
+    if Rows.HeldLeave(self) then return end
     Rows.Unhover(self)
   end
 
@@ -1179,7 +1185,10 @@ do
     s = s or S.sample
     if not s then return end
     local cell = S.lanesCell
-    local on = s.Gold:IsShown() and cell ~= nil and cell:IsMouseOver() or false
+    -- Pointed at, or holding the panel with its list open (Rows.Hold).
+    local held = S.held
+    local on = s.Gold:IsShown() and cell ~= nil
+      and (held == cell or (held == nil and cell:IsMouseOver())) or false
     if on then
       local r, g, b = ns.Theme.GetAccent()
       for i = 1, 2 do
@@ -2033,12 +2042,72 @@ do
     if not (body and body:IsMouseOver()) then Insp.Show(nil) end
   end
 
-  local function CellEnter(self) Rows.Hover(self) end
-  local function CellLeave(self) Rows.Unhover(self) end
+  -- While a dropdown's list is open, its row holds the panel: its wash and
+  -- the inspector stay on it wherever the pointer goes -- over the list, the
+  -- rows around it, the inspector's tiles -- and nothing else lights or
+  -- shows a tooltip. Where the pointer comes to rest meanwhile is kept, with
+  -- the enter that would have run for it, and that enter runs when the list
+  -- closes (Rows.Release): the row under the pointer answers at once, the
+  -- pointer need not move. Checked by every enter and leave below, so
+  -- nothing runs while no list is open but a comparison.
+  --
+  -- Answers whether the hold took the pointer's arrival on `frame`.
+  function Rows.Held(frame, enter)
+    local held = S.held
+    if not held or frame == held or frame.__pbCell == held then return false end
+    S.heldAt, S.heldEnter = frame, enter
+    return true
+  end
+
+  -- The pointer left `frame` while a list holds the panel; the owner row
+  -- included, which keeps its wash and the inspector. Answers whether the
+  -- hold took it.
+  function Rows.HeldLeave(frame)
+    if not S.held then return false end
+    if S.heldAt == frame then S.heldAt, S.heldEnter = nil, nil end
+    return true
+  end
+
+  function Rows.Hold(cell)
+    S.held, S.heldAt, S.heldEnter = cell, nil, nil
+    Rows.Hover(cell)
+  end
+
+  function Rows.Release(cell)
+    if S.held ~= cell then return end
+    local at, enter = S.heldAt, S.heldEnter
+    S.held, S.heldAt, S.heldEnter = nil, nil, nil
+    if at and at:IsVisible() and at:IsMouseOver() then
+      enter(at)
+    else
+      -- On the list, the row itself, or out of the panel: the row's leave,
+      -- judged now; the client enters whatever the closed list uncovers.
+      Rows.Unhover(cell)
+    end
+    if cell == S.lanesCell then Ctx.PaintSampleWash() end
+  end
+
+  -- A dropdown's onList (Lib/UI/Dropdown.lua).
+  local function ListShown(dd, open)
+    local cell = dd.__pbCell
+    if not cell then return end
+    if open then Rows.Hold(cell) else Rows.Release(cell) end
+  end
+
+  local function CellEnter(self)
+    if Rows.Held(self, CellEnter) then return end
+    Rows.Hover(self)
+  end
+
+  local function CellLeave(self)
+    if Rows.HeldLeave(self) then return end
+    Rows.Unhover(self)
+  end
 
   -- A control: the inspector for its cell (or its own entry, where it has
   -- one), and its tooltip.
   local function ControlEnter(self)
+    if Rows.Held(self, ControlEnter) then return end
     local cell = self.__pbCell
     Rows.Hover(cell, self.__pbEntry)
     Tip.Entry(self, self.__pbEntry or cell.entry)
@@ -2046,6 +2115,7 @@ do
 
   local function ControlLeave(self)
     GameTooltip:Hide()
+    if Rows.HeldLeave(self) then return end
     Rows.Unhover(self.__pbCell)
   end
 
@@ -2054,6 +2124,7 @@ do
   -- A row with a tooltip of its own leaving: the tooltip goes with it.
   function Rows.LeaveRow(self)
     GameTooltip:Hide()
+    if Rows.HeldLeave(self) then return end
     Rows.Unhover(self)
   end
 
@@ -2342,7 +2413,9 @@ do
       height       = DD_H + 2,
       defaultId    = ok and current or nil,
       swatchFor    = spec.swatchFor,
+      onList       = ListShown,
     })
+    dd.__pbCell = row
     dd:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
     dd:SetWidth(DD_W)
     dd:SetChangeCallback(spec.set)
@@ -3797,7 +3870,8 @@ function Pages.memory(col)
   names:SetWordWrap(false)
   row.more, row.Names, row.lines = showAll, names, {}
   -- Its tooltip also lists every name the row may have cut.
-  row:SetScript("OnEnter", function(self)
+  local function HiddenEnter(self)
+    if Rows.Held(self, HiddenEnter) then return end
     Rows.Hover(self)
     local tip = Tip.Begin(self, self.entry.title, ns.Summary(self.entry.text))
     local lines = self.lines
@@ -3807,7 +3881,8 @@ function Pages.memory(col)
       if self.moreLine then tip:AddLine(self.moreLine, 0.6, 0.6, 0.63) end
     end
     Tip.Show(self)
-  end)
+  end
+  row:SetScript("OnEnter", HiddenEnter)
   row:SetScript("OnLeave", Rows.LeaveRow)
   S.hiddenRow = row
   Rows.EndBlock(block)
@@ -4192,9 +4267,10 @@ local function Layout()
   end
 end
 
--- The pointer left the list and the inspector from somewhere no row is.
+-- The pointer left the list and the inspector from somewhere no row is --
+-- held, like any leave, while a dropdown's list is open (Rows.Hold).
 local function BodyLeave(self)
-  if self:IsMouseOver() then return end
+  if self:IsMouseOver() or S.held then return end
   local washed = S.washed
   if washed and washed.Wash then washed.Wash:Hide() end
   S.washed = nil
@@ -4205,7 +4281,7 @@ end
 local function PanelHide()
   local washed = S.washed
   if washed and washed.Wash then washed.Wash:Hide() end
-  S.washed = nil
+  S.washed, S.held, S.heldAt, S.heldEnter = nil, nil, nil, nil
   Insp.Show(nil)
   for _, f in pairs(S.ctx) do
     if f.Stop then f.Stop() end

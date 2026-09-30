@@ -40,10 +40,21 @@ local LIST_LEVEL_OFFSET = 40
 -- pin its frames for the rest of the session.
 local lists = setmetatable({}, { __mode = "k" })
 
--- Full-screen click catcher. Without it a list only closes when its own toggle
--- is clicked again or another list opens; clicking anywhere else leaves it
--- hanging over the UI.
-local catcher
+-- A press anywhere but on an open list or the toggle it hangs from closes the
+-- list, heard as GLOBAL_MOUSE_DOWN -- and only while a list is open, so
+-- nothing listens while none is. The toggle is left to its own click, which
+-- closes the list it opened.
+--
+-- This was a full-screen frame behind the list, which kept the pointer off
+-- everything around the list only while it lay over the window the list opens
+-- from. Nothing held it there: the options panel is a toplevel window in the
+-- same strata, which the client raises when it is clicked, and the frame was
+-- not the panel's own. In game the rows around the list, and under the edge
+-- of the list, took the pointer as if no list were open. The list is the
+-- window's own descendant and rises with it, and it takes the pointer over
+-- all of itself (BuildList); a window whose own hover must hold while a list
+-- is open is told when it opens and closes (opts.onList).
+local watcher
 
 local function AnyListShown()
   for list in pairs(lists) do
@@ -52,22 +63,28 @@ local function AnyListShown()
   return false
 end
 
-local function UpdateCatcher()
-  if catcher and not AnyListShown() then catcher:Hide() end
+local function PressAnywhere()
+  for list in pairs(lists) do
+    if list:IsShown() and not list:IsMouseOver()
+        and not (list._toggle and list._toggle:IsMouseOver()) then
+      list:Hide()
+    end
+  end
 end
 
-local function ShowCatcher(level)
-  if not catcher then
-    catcher = CreateFrame("Frame", nil, UIParent)
-    catcher:SetAllPoints(UIParent)
-    catcher:SetFrameStrata("FULLSCREEN_DIALOG")
-    catcher:EnableMouse(true)
-    catcher:Hide()
-    catcher:SetScript("OnMouseDown", function() Dropdown.CloseAll() end)
+-- Listens while a list is open, and stops when the last one closes.
+local function Watch()
+  local open = AnyListShown()
+  if open and not watcher then
+    watcher = CreateFrame("Frame")
+    watcher:SetScript("OnEvent", PressAnywhere)
   end
-
-  catcher:SetFrameLevel(level)
-  catcher:Show()
+  if not watcher then return end
+  if open then
+    watcher:RegisterEvent("GLOBAL_MOUSE_DOWN")
+  else
+    watcher:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+  end
 end
 
 -- Closes every list this module created, except the one passed in. Called with
@@ -77,7 +94,7 @@ function Dropdown.CloseAll(except)
   for list in pairs(lists) do
     if list ~= except and list:IsShown() then list:Hide() end
   end
-  UpdateCatcher()
+  Watch()
 end
 
 -- A colour square: a one-unit edge in the theme's quiet grey and the colour
@@ -115,9 +132,12 @@ end
 
 -- opts.swatchFor(id) -> r, g, b (or nil): a list of colours shows each one,
 -- in a square before its name and on the toggle beside the one chosen.
+-- opts.onList(container, open): the list opened (true) or closed (false),
+-- once each way, however it closed.
 function Dropdown.Create(parent, opts)
   opts = type(opts) == "table" and opts or {}
   local swatchFor = type(opts.swatchFor) == "function" and opts.swatchFor or nil
+  local onList = type(opts.onList) == "function" and opts.onList or nil
 
   local Theme = Core.UI.Theme
   local items = type(opts.items) == "table" and opts.items or {}
@@ -200,6 +220,20 @@ function Dropdown.Create(parent, opts)
 
   local list  -- built on first open
 
+  -- The owner hears each change once, whichever of the ways a list closes
+  -- runs first.
+  local told = false
+  local function Tell(open)
+    if told == open then return end
+    told = open
+    if onList then onList(container, open) end
+  end
+
+  local function ListHidden()
+    Watch()
+    Tell(false)
+  end
+
   local function BuildList()
     if list then return list end
 
@@ -217,6 +251,11 @@ function Dropdown.Create(parent, opts)
     list:SetWidth(tonumber(opts.listWidth) or toggleWidth)
     list:SetHeight(scrolling and maxHeight or ((LIST_PADDING * 2) + contentHeight))
     list:SetFrameStrata("FULLSCREEN_DIALOG")
+    -- The whole card takes the pointer, not only its rows: its padding and
+    -- its edges let the pointer through to the row under them, which then
+    -- answered as if nothing covered it.
+    list:EnableMouse(true)
+    list._toggle = toggle
 
     -- The list is a popup, and the addon has one popup surface: the same card
     -- the contact picker and the type-ahead list wear. Going through the
@@ -421,7 +460,7 @@ function Dropdown.Create(parent, opts)
       end)
     end
 
-    list:SetScript("OnHide", UpdateCatcher)
+    list:SetScript("OnHide", ListHidden)
     lists[list] = true
     return list
   end
@@ -461,7 +500,8 @@ function Dropdown.Create(parent, opts)
     if list and list:IsShown() then list:Hide() end
     -- Unconditional: hiding the owning window fires OnHide on its children too,
     -- and the order of those is not guaranteed.
-    UpdateCatcher()
+    Watch()
+    Tell(false)
   end
 
   local function OpenList()
@@ -483,10 +523,11 @@ function Dropdown.Create(parent, opts)
     local level = base + LIST_LEVEL_OFFSET
 
     list:SetFrameLevel(level)
-    ShowCatcher(level - 1)
     PlaceList()
     list:Show()
     list:Raise()
+    Watch()
+    Tell(true)
 
     -- Paint the selection markers for THIS open: selection may have changed
     -- since the last one, and the accent is resolved live (a host UI's own
