@@ -87,7 +87,7 @@ local function HostSkinName()
     return nil
   end
 
-  if ns.Skin and not ns.Skin.IsPostboxStyle then
+  if ns.Skin then
     if _G.EllesmereUI then return "EllesmereUI" end
     if _G.ElvUI then return "ElvUI" end
   end

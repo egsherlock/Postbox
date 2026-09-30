@@ -3,21 +3,28 @@ local ADDON_NAME, ns = ...
 -- =====================================================================
 -- Postbox :: EllesmereUI skin (optional, auto-applied)
 -- ---------------------------------------------------------------------
--- Inert unless EllesmereUI is installed. It skins through EllesmereUI's public
--- third-party skinning API (EllesmereUI.RegisterSkin, 8.6.8 and later; see
--- SKINNING_API.md at its repo root). The surface is additive-only and
--- versioned by S.apiVersion: 1 is the primitives this file has always used,
--- 2 (EllesmereUI 9.3) adds S.SetTabSelection, which the tabs use where it
--- exists. EllesmereUI owns every visual, so the skin tracks all their future
--- tweaks for free, and the style follows the user's own EllesmereUI setup
--- rather than anything hardcoded here.
+-- Inert unless EllesmereUI is installed. Two backends, one skinning body:
 --
--- Where that API cannot answer -- an EllesmereUI older than 8.6.8, or one
--- whose Blizzard-skin module (it holds the dispatcher) is not loaded -- this
--- skin stands down and the Postbox style stands in: the same dark, flat
--- window, Postbox's own, needing nothing from EllesmereUI (StandIn, at the
--- bottom of the file). It used to rebuild an imitation of the house look
--- out of EllesmereUI's older helpers instead.
+--   "api"    -- EllesmereUI 8.6.8+ ships a public third-party skinning
+--               API (EllesmereUI.RegisterSkin, see SKINNING_API.md at its
+--               repo root). The surface is additive-only and versioned by
+--               S.apiVersion: 1 is the primitives this file has always used,
+--               2 (EllesmereUI 9.3) adds S.SetTabSelection, which the tabs
+--               use where it exists. Preferred: EllesmereUI owns every
+--               visual, so the skin tracks all their future tweaks for free.
+--
+--   "compat" -- 8.6.7 and earlier have no such API. There we build the
+--               same facade ourselves out of the public helpers 8.6.6
+--               *does* export -- the border engine, accent colour, UI
+--               font and the pixel-perfect border helper -- reproducing
+--               the house window style. This is a bridge: when the user
+--               updates, the "api" backend takes over automatically and
+--               the shim stops being used. It is also where an
+--               EllesmereUI that ships the stub but not its dispatcher
+--               lands (see OnSilence at the bottom of the file).
+--
+-- Either way the style follows the user's own EllesmereUI setup rather
+-- than anything hardcoded here, and the skinning body below is identical.
 --
 -- Precedence: when both ElvUI and EllesmereUI are installed this wins --
 -- it claims ns.Skin at PLAYER_LOGIN, before the window is ever built, and
@@ -37,20 +44,41 @@ local ADDON_NAME, ns = ...
 local EUI
 
 local Skin = {}
-local S                -- EllesmereUI's primitive facade, once it is handed over
-local BACKEND          -- "api" once it is; nil otherwise
+local S                -- primitive facade: EllesmereUI's, or our shim
+local BACKEND          -- "api" | "compat"
 
 -------------------------------------------------------------
--- Host values
+-- Compatibility shim (EllesmereUI < 8.6.7)
 -------------------------------------------------------------
+-- Values below mirror EllesmereUIBlizzardSkin's own window engine so the
+-- result is visually identical to a natively-skinned Blizzard window.
+local BORDER_ATLAS = "AdventureMap_TopBorder"
+
+local function PP()
+  if not EUI then return nil end
+  return EUI.PanelPP or EUI.PP
+end
+
+local function ShimFont()
+  local path, flag
+  if EUI and EUI.GetFontPath then
+    local ok, resolved = pcall(EUI.GetFontPath, "blizzardSkin")
+    if ok then path = resolved end
+  end
+  if EUI and EUI.GetFontOutlineFlag then
+    local ok, resolved = pcall(EUI.GetFontOutlineFlag, "blizzardSkin")
+    if ok then flag = resolved end
+  end
+  return path or STANDARD_TEXT_FONT, flag or ""
+end
 
 -- The suite-wide baseline: EllesmereUI's Dark Mode "fill" colour (and alpha),
 -- resolved per-profile (GetDarkModeFill -> active profile's darkMode table,
 -- falling back to DEFAULT_DARK_MODE). It is the colour of the fills Postbox
--- draws itself -- the floor under the host's shell, popup grounds -- and is
--- what a profile import like atrocityUI actually sets. Its alpha is Dark
--- Mode's for unit and raid frames, not the windows', so "Match EllesmereUI"
--- opacity follows HostWindowAlpha below.
+-- draws itself -- the compat shim's backdrop, the floor under the host's
+-- shell, popup grounds -- and is what a profile import like atrocityUI
+-- actually sets. Its alpha is Dark Mode's for unit and raid frames, not the
+-- windows', so "Match EllesmereUI" opacity follows HostWindowAlpha below.
 local function HostBaseline()
   if not EUI then return 0.067, 0.067, 0.067, 0.90 end
   if EUI.GetDarkModeFill then
@@ -64,6 +92,24 @@ local function HostBaseline()
   return 0.067, 0.067, 0.067, 0.90
 end
 
+local function ShimAccent()
+  local c = (EUI and EUI.ELLESMERE_GREEN) or {}
+  return c.r or 0.047, c.g or 0.824, c.b or 0.616
+end
+
+-- Resolve the user's window style the way 8.6.7's GetThirdPartySkinStyle does:
+-- a majority vote across their per-window choices. Reading EllesmereUIDB is a
+-- shim-only concession -- 8.6.6 exposes no accessor -- and it is read-only.
+local function ShimStyle()
+  local styles = EllesmereUIDB and EllesmereUIDB.blizzWindowSkinStyles
+  if type(styles) ~= "table" then return "eui" end
+  local eui, modern = 0, 0
+  for _, v in pairs(styles) do
+    if v == "modern" then modern = modern + 1 else eui = eui + 1 end
+  end
+  return (modern > eui) and "modern" or "eui"
+end
+
 -- EllesmereUI's one global Modern window backdrop (Blizz UI Enhanced > Modern
 -- colour and opacity, default #111111 at 97%). The facade has no getter for
 -- it, so it is read from the saved variable, read-only, with the engine's own
@@ -75,10 +121,314 @@ local function ModernBackdrop()
   return c.r, c.g or 0.067, c.b or 0.067, tonumber(c.a) or 0.97
 end
 
+local function ShimFadeRegions(frame, keep)
+  if not frame then return end
+  for i = 1, select("#", frame:GetRegions()) do
+    local r = select(i, frame:GetRegions())
+    if r and r.IsObjectType and r:IsObjectType("Texture") and not (keep and keep[r]) then
+      r:SetAlpha(0)
+    end
+  end
+end
+
+local NINESLICE_PIECES = {
+  "TopLeftCorner", "TopRightCorner", "BottomLeftCorner", "BottomRightCorner",
+  "TopEdge", "BottomEdge", "LeftEdge", "RightEdge", "Center",
+}
+local function ShimFadeNineSlice(nsl)
+  if not nsl then return end
+  ShimFadeRegions(nsl)
+  for _, k in ipairs(NINESLICE_PIECES) do
+    local p = nsl[k]
+    if p and p.SetAlpha then p:SetAlpha(0) end
+  end
+  if nsl.SetAlpha then nsl:SetAlpha(0) end
+end
+
+local function ShimBorder(frame, r, g, b, a)
+  local pp = PP()
+  if pp and pp.CreateBorder and not frame.__pbShimBorder then
+    frame.__pbShimBorder = true
+    pp.CreateBorder(frame, r or 0.2, g or 0.2, b or 0.2, a or 1, 1, "OVERLAY", 7)
+  end
+end
+
+local function ShimSolid(parent, layer, r, g, b, a, sub)
+  local t = parent:CreateTexture(nil, layer, nil, sub)
+  t:SetColorTexture(r, g, b, a)
+  return t
+end
+
+local function BuildShim()
+  local shim = {}
+
+  function shim.FadeRegions(frame, keep) ShimFadeRegions(frame, keep) end
+  function shim.FadeNineSlice(nsl) ShimFadeNineSlice(nsl) end
+
+  function shim.Shell(frame)
+    if not frame or frame.__pbShimShell then return end
+    frame.__pbShimShell = true
+    ShimFadeRegions(frame)
+    ShimFadeNineSlice(frame.NineSlice)
+
+    -- Flat fill in the host baseline colour. EllesmereUI's own window art
+    -- (modern_blizz.png) is a palette PNG with no tRNS chunk -- fully opaque,
+    -- and cropped per window aspect ratio, so it can neither be made
+    -- see-through nor matched consistently. The Dark Mode fill is the value
+    -- the rest of the user's UI actually shares, so we use that instead.
+    local br, bg_, bb = HostBaseline()
+    local fill = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+    fill:SetColorTexture(br, bg_, bb, 1)
+    fill:SetAllPoints(frame)
+    -- The one handle for "the window's backdrop fill", shared with the api
+    -- backend, so Skin.ApplyBgOpacity needs no backend-specific branch.
+    frame.__pbEuiShellArt = fill
+
+    -- Dark strip behind the window title.
+    local topBar = ShimSolid(frame, "BACKGROUND", 0, 0, 0, 0.5, -5)
+    frame.__pbShimTopBar = topBar
+    topBar:SetPoint("TOPLEFT")
+    topBar:SetPoint("TOPRIGHT")
+    topBar:SetHeight(25)
+
+    -- House window border: a complete window-frame atlas over the backdrop.
+    local ov = CreateFrame("Frame", nil, frame)
+    ov:SetAllPoints(frame)
+    ov:SetFrameLevel(frame:GetFrameLevel() + 6)
+    local tex = ov:CreateTexture(nil, "OVERLAY", nil, 7)
+    if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(BORDER_ATLAS) then
+      tex:SetAtlas(BORDER_ATLAS)
+      tex:SetAllPoints(ov)
+      -- Kept so the border option can hide the house chrome for "None".
+      frame.__pbShimBorderFrame = ov
+    else
+      ShimBorder(frame)
+    end
+  end
+
+  function shim.Panel(frame, opts)
+    if not frame or frame.__pbShimPanel then return end
+    frame.__pbShimPanel = true
+    opts = opts or {}
+    ShimFadeRegions(frame)
+    if not opts.noBg then
+      local r, g, b, a = 0.08, 0.08, 0.08, 0.92
+      if opts.inset then r, g, b, a = 0.04, 0.04, 0.04, 0.85 end
+      local bg = ShimSolid(frame, "BACKGROUND", r, g, b, a, -8)
+      bg:SetAllPoints(frame)
+      frame.__pbEuiShellArt = bg
+    end
+    if not opts.noBorder then ShimBorder(frame) end
+  end
+
+  function shim.Inset(inset)
+    if not inset then return end
+    ShimFadeRegions(inset)
+    if inset.Bg then inset.Bg:SetAlpha(0) end
+    ShimFadeNineSlice(inset.NineSlice)
+  end
+
+  function shim.Button(btn)
+    if not btn or btn.__pbShimBtn then return end
+    btn.__pbShimBtn = true
+    ShimFadeRegions(btn)
+    for _, getter in ipairs({ "GetNormalTexture", "GetPushedTexture",
+                             "GetDisabledTexture", "GetHighlightTexture" }) do
+      local fn = btn[getter]
+      local t = fn and fn(btn)
+      if t then t:SetAlpha(0) end
+    end
+    for _, k in ipairs({ "Left", "Middle", "Right" }) do
+      if btn[k] and btn[k].SetAlpha then btn[k]:SetAlpha(0) end
+    end
+    local fill = ShimSolid(btn, "BACKGROUND", 0.08, 0.08, 0.08, 0.92)
+    fill:SetAllPoints(btn)
+    ShimBorder(btn)
+    local hover = ShimSolid(btn, "HIGHLIGHT", 1, 1, 1, 0.1)
+    hover:SetAllPoints(btn)
+  end
+
+  function shim.EditBox(eb)
+    if not eb or eb.__pbShimEdit then return end
+    eb.__pbShimEdit = true
+    ShimFadeRegions(eb)
+    for _, k in ipairs({ "Left", "Right", "Middle", "Mid" }) do
+      if eb[k] and eb[k].SetAlpha then eb[k]:SetAlpha(0) end
+    end
+    local fill = ShimSolid(eb, "BACKGROUND", 0.02, 0.02, 0.02, 1)
+    fill:SetAllPoints(eb)
+    ShimBorder(eb)
+  end
+
+  function shim.Checkbox(cb)
+    if not cb or cb.__pbShimCheck then return end
+    cb.__pbShimCheck = true
+    if cb.SetNormalTexture then cb:SetNormalTexture("") end
+    if cb.SetPushedTexture then cb:SetPushedTexture("") end
+    if cb.SetHighlightTexture then cb:SetHighlightTexture("") end
+    local checked = cb.GetCheckedTexture and cb:GetCheckedTexture()
+    for i = 1, select("#", cb:GetRegions()) do
+      local r = select(i, cb:GetRegions())
+      if r and r ~= checked and r.IsObjectType and r:IsObjectType("Texture") then
+        r:SetAlpha(0)
+      end
+    end
+    local fill = ShimSolid(cb, "BACKGROUND", 0.02, 0.02, 0.02, 1)
+    fill:SetPoint("TOPLEFT", 4, -4)
+    fill:SetPoint("BOTTOMRIGHT", -4, 4)
+    ShimBorder(cb, 0.25, 0.25, 0.25, 1)
+    if checked then
+      local ar, ag, ab = ShimAccent()
+      checked:SetVertexColor(ar, ag, ab, 1)
+    end
+  end
+
+  function shim.CloseButton(btn)
+    if not btn or btn.__pbShimClose then return end
+    btn.__pbShimClose = true
+    if btn.SetNormalTexture then btn:SetNormalTexture("") end
+    if btn.SetPushedTexture then btn:SetPushedTexture("") end
+    if btn.SetHighlightTexture then btn:SetHighlightTexture("") end
+    if btn.SetDisabledTexture then btn:SetDisabledTexture("") end
+    ShimFadeRegions(btn)
+    local x = btn:CreateTexture(nil, "OVERLAY")
+    x:SetAtlas("uitools-icon-close")
+    x:SetSize(14, 14)
+    x:SetPoint("CENTER", -2, 0)
+    x:SetVertexColor(1, 1, 1, 0.75)
+    btn:HookScript("OnEnter", function() x:SetVertexColor(1, 1, 1, 1) end)
+    btn:HookScript("OnLeave", function() x:SetVertexColor(1, 1, 1, 0.75) end)
+  end
+
+  -- Flat plate, own label, accent underline on the active tab. Mirrors the
+  -- house tab exactly, including hiding Blizzard's own label behind ours.
+  function shim.Tab(tab)
+    if not tab then return end
+    if tab.__pbShimTab then
+      local sel = tab.isSelected and true or false
+      if tab.__pbShimLabel then
+        tab.__pbShimLabel:SetTextColor(1, 1, 1, sel and 1 or 0.5)
+        if tab.__pbShimBliz and tab.__pbShimBliz.GetText then
+          tab.__pbShimLabel:SetText(tab.__pbShimBliz:GetText() or "")
+        end
+      end
+      if tab.__pbShimUnderline then tab.__pbShimUnderline:SetShown(sel) end
+      if tab.__pbShimActive then tab.__pbShimActive:SetShown(sel) end
+      return
+    end
+    tab.__pbShimTab = true
+
+    for j = 1, select("#", tab:GetRegions()) do
+      local r = select(j, tab:GetRegions())
+      if r and r:IsObjectType("Texture") then
+        r:SetTexture("")
+        if r.SetAtlas then r:SetAtlas("") end
+      end
+    end
+    for _, k in ipairs({ "Left", "Middle", "Right",
+                         "LeftDisabled", "MiddleDisabled", "RightDisabled" }) do
+      if tab[k] and tab[k].SetTexture then tab[k]:SetTexture("") end
+    end
+    local hl = tab.GetHighlightTexture and tab:GetHighlightTexture()
+    if hl then hl:SetTexture("") end
+
+    local bg = ShimSolid(tab, "BACKGROUND", 0.068, 0.056, 0.052, 1)
+    bg:SetAllPoints()
+
+    -- The house border. Postbox's tabs are far wider than a Blizzard window's,
+    -- and an unbordered plate in almost exactly the Dark Mode fill colour is
+    -- invisible against the window behind it -- which left the tab bar reading
+    -- as two floating words rather than as a control.
+    ShimBorder(tab)
+
+    -- Selected wash. At 2% this was indistinguishable from the idle plate, so
+    -- the 1px underline was carrying the entire selected state on its own.
+    local active = tab:CreateTexture(nil, "ARTWORK", nil, -6)
+    active:SetAllPoints()
+    active:SetColorTexture(1, 1, 1, 0.07)
+    active:SetBlendMode("ADD")
+    active:Hide()
+    tab.__pbShimActive = active
+
+    local bliz = tab.Text or (tab.GetFontString and tab:GetFontString())
+    local text = (bliz and bliz.GetText and bliz:GetText()) or ""
+    if bliz and bliz.SetTextColor then bliz:SetTextColor(0, 0, 0, 0) end
+    if tab.SetPushedTextOffset then tab:SetPushedTextOffset(0, 0) end
+
+    local path, flag = ShimFont()
+    local label = tab:CreateFontString(nil, "OVERLAY")
+    -- 12, not 11: these are the window's primary navigation and were set
+    -- smaller than every other label in it.
+    label:SetFont(path, 12, flag)
+    label:SetPoint("CENTER", tab, "CENTER", 0, 0)
+    label:SetText(text)
+    tab.__pbShimLabel, tab.__pbShimBliz = label, bliz
+
+    -- Inset by the border's own pixel: the border sits a sublevel above this,
+    -- so a flush underline would have its bottom row painted over.
+    local underline = tab:CreateTexture(nil, "OVERLAY", nil, 6)
+    underline:SetHeight(2)
+    underline:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", 1, 1)
+    underline:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -1, 1)
+    local ar, ag, ab = ShimAccent()
+    underline:SetColorTexture(ar, ag, ab, 1)
+    underline:Hide()
+    tab.__pbShimUnderline = underline
+
+    shim.Tab(tab)
+  end
+
+  -- Modern MinimalScrollBar shape. Postbox's own lists are the legacy slider
+  -- (handled by SkinScrollBar), but nested Blizzard widgets can use this one.
+  function shim.ScrollBar(sb)
+    if not sb or sb.__pbShimBar then return end
+    sb.__pbShimBar = true
+    for _, k in ipairs({ "Back", "Forward" }) do
+      local b = sb[k]
+      if b then
+        ShimFadeRegions(b)
+        if b.Texture then b.Texture:SetAlpha(0) end
+      end
+    end
+    local track = sb.Track
+    if track then ShimFadeRegions(track) end
+    local thumb = (track and track.Thumb) or (sb.GetThumb and sb:GetThumb())
+    if thumb then
+      ShimFadeRegions(thumb)
+      thumb:SetAlpha(1)
+      local t = ShimSolid(thumb, "ARTWORK", 1, 1, 1, 0.35)
+      t:SetPoint("TOP", thumb, "TOP", 0, 0)
+      t:SetPoint("BOTTOM", thumb, "BOTTOM", 0, 0)
+      t:SetWidth(4)
+    end
+  end
+
+  function shim.Font(fs, r, g, b)
+    if not fs or not fs.GetFont then return end
+    local _, size = fs:GetFont()
+    local path, flag = ShimFont()
+    if EUI.PrimeFontShadow then pcall(EUI.PrimeFontShadow, fs, flag == "") end
+    fs:SetFont(path, size or 12, flag)
+    if r then fs:SetTextColor(r, g, b or r) end
+  end
+
+  function shim.GetStyle() return ShimStyle() end
+  function shim.GetAccentColor() return ShimAccent() end
+  function shim.GetPanelColor() return 0.08, 0.08, 0.08, 0.92 end
+  function shim.GetFont() return ShimFont() end
+  function shim.IsEnabled() return true end
+  -- No facade, no facade callback. The compat backend follows accent, Dark
+  -- Mode and profile changes live through the parent addon's own registries
+  -- instead (HookHostRefreshes), and every window open re-resolves regardless.
+  function shim.OnLooksChanged() end
+
+  return shim
+end
+
 -------------------------------------------------------------
 -- Optional outer window border (EllesmereUI's shared border engine)
 -------------------------------------------------------------
--- Present in 8.6.6 and later: the same
+-- Present in 8.6.6 and later, so this works on both backends: the same
 -- Glow/Shadow/texture picker the rest of the suite uses. Drawn outside the
 -- shell's own chrome, so switching styles is live with no reload.
 --
@@ -191,6 +541,13 @@ function Skin.ApplyBorder(frame)
 
   local key = Skin.GetBorderStyle()
 
+  -- "None" means no border at all, including EllesmereUI's own window chrome
+  -- (the atlas the shell lays down), which otherwise reads as a soft inner
+  -- border still being present.
+  if frame.__pbShimBorderFrame then
+    frame.__pbShimBorderFrame:SetShown(key ~= BORDER_NONE)
+  end
+
   if key == BORDER_NONE then
     pcall(EUI.ApplyBorderStyle, host, 0, 0, 0, 0, 0, "solid")
     host:Hide()
@@ -228,12 +585,15 @@ end
 -- plate *underneath* it is invisible and can never produce transparency (an
 -- earlier attempt did exactly that, which is why the setting appeared to do
 -- nothing). The only thing that makes a window see-through is lowering the
--- alpha of the backdrop textures themselves, which is what this drives.
--- EllesmereUI's facade draws its own shell. Its textures are not reachable
--- *through the facade*, but they are regions of a frame Postbox owns, so
--- ApplyShell records the ones S.Shell added and drives those. If the facade
--- drew nothing we can reach, Postbox's own fill (__pbEuiShellArt) carries the
--- backdrop instead.
+-- alpha of the backdrop textures themselves, which is what this drives, on
+-- both backends:
+--
+--   compat -- the shim draws the backdrop, so Postbox owns the texture.
+--   api    -- EllesmereUI's facade draws its own shell. Its textures are not
+--             reachable *through the facade*, but they are regions of a frame
+--             Postbox owns, so ApplyShell records the ones S.Shell added and
+--             drives those. If the facade drew nothing we can reach, Postbox's
+--             own fill (__pbEuiShellArt) carries the backdrop instead.
 --
 -- The fill COLOUR is re-resolved here on every call rather than being baked in
 -- at build time: GetDarkModeFill() is per-profile, so a mid-session profile
@@ -246,7 +606,8 @@ local OPAQUE_ALPHA = 0.97
 
 -- How solid EllesmereUI draws its own windows: the Modern backdrop's opacity
 -- under the Modern style, opaque under its own. The skinning API's style is the
--- one Postbox's shell wears (a majority vote of the player's per-window styles).
+-- one Postbox's shell wears (a majority vote of the player's per-window styles);
+-- the compat shim reads the same vote from the saved variable.
 local function HostWindowAlpha()
   local style
   if S and type(S.GetStyle) == "function" then
@@ -282,10 +643,10 @@ function Skin.SetBgOpacity(value)
   Skin.ApplyBgOpacity()
 end
 
--- True when Postbox's own fill is what the user sees behind the window: when
--- S.Shell laid down nothing we can reach. When EllesmereUI's own shell art IS
--- reachable it draws the backdrop and our fill only sits under it as the
--- opaque floor.
+-- True when Postbox's own fill is what the user sees behind the window: the
+-- compat shim always, and the api backend when S.Shell laid down nothing we
+-- can reach. When EllesmereUI's own shell art IS reachable it draws the
+-- backdrop and our fill only sits under it as the opaque floor.
 local function OwnsFill(f)
   local hostArt = f.__pbEuiHostArt
   return not (hostArt and #hostArt > 0)
@@ -370,14 +731,19 @@ function Skin.ApplyBgOpacity(frame)
         end
       end
     end
+
+    -- The shim's title strip stands for the host's, which the host leaves at
+    -- region alpha 1 over its colour's own 0.5.
+    if f.__pbShimTopBar then f.__pbShimTopBar:SetAlpha(ha) end
   end
 
   if frame then paint(frame) else Skin.ForEachWindow(paint) end
 end
 
 -- Postbox's own flat fill, in the host's Dark Mode colour, at the very bottom
--- of the window: the floor under EllesmereUI's shell, and the thing that makes
--- the always-opaque exemption possible there.
+-- of the window. On compat this is the whole backdrop; on api it is the floor
+-- under EllesmereUI's shell and the thing that makes the always-opaque
+-- exemption possible there.
 local function EnsureShellArt(frame)
   local art = frame.__pbEuiShellArt
   if art then return art end
@@ -389,13 +755,14 @@ local function EnsureShellArt(frame)
   return art
 end
 
--- Draws the window shell and records what the facade drew.
+-- Draws the window shell and, on the api backend, records what the facade drew.
 --
 -- S.Shell() paints EllesmereUI's own shell directly onto the frame, and the
 -- facade exposes no handle to those textures -- but they are regions of a frame
 -- Postbox owns, so the ones that appeared since we last looked are exactly the
 -- difference. Without this list the opacity setting, the per-profile baseline
--- alpha and the options panel's legibility exemption are all inert.
+-- alpha and the options panel's legibility exemption are all inert on the
+-- backend every user with 8.6.8 or later is on.
 --
 -- Two things the first version of this got wrong, both fixed below:
 --
@@ -518,16 +885,20 @@ function RescanHostArt(frame)
 end
 
 local function ApplyShell(frame, opts)
-  if not frame.__pbEuiPreShell then
+  local isApi = (BACKEND == "api")
+
+  if isApi and not frame.__pbEuiPreShell then
     frame.__pbEuiPreShell = Snapshot(frame, {})
   end
 
   local ok = pcall(S.Shell, frame, opts)
 
-  CaptureHostArt(frame)
-  -- Also on a failed Shell: then this fill is the entire backdrop, which is
-  -- a dark EllesmereUI-coloured window rather than Blizzard's stripped one.
-  EnsureShellArt(frame)
+  if isApi then
+    CaptureHostArt(frame)
+    -- Also on a failed Shell: then this fill is the entire backdrop, which is
+    -- a dark EllesmereUI-coloured window rather than Blizzard's stripped one.
+    EnsureShellArt(frame)
+  end
 
   return ok
 end
@@ -565,7 +936,7 @@ function Skin.GetFontFace()
 end
 
 -------------------------------------------------------------
--- Element handlers
+-- Element handlers (identical on both backends)
 -------------------------------------------------------------
 local function SkinPanel(panel, opts)
   if not panel or panel.__pbEuiSkinned then return end
@@ -629,10 +1000,17 @@ local function SkinScroll(sf)
   end
 end
 
--- Leaf widgets carry the same one-shot key the panels already do: every
--- primitive is idempotent and bails after a table lookup, and a widget created
--- later (a pooled row, a lazily built picker) has no key and is still skinned
--- on the next Refresh. Already skinned is already skinned.
+-- Leaf widgets carry the same one-shot key the panels already do.
+--
+-- While one backend is live this changes nothing: every primitive is idempotent
+-- and bails after a table lookup, and a widget created later (a pooled row, a
+-- lazily built picker) has no key and is still skinned on the next Refresh.
+-- What it prevents is the one moment two backends exist in the same session --
+-- the api facade replacing the shim when the user switches skinning back on
+-- (see AdoptFacade). The house primitives key their own idempotency off marks
+-- the shim never set, so without this they would run over shim art on the next
+-- Refresh and leave, say, two borders on one edit box. Already skinned is
+-- already skinned, whichever facade did it.
 local function SkinLeaf(widget, fn)
   if not widget or widget.__pbEuiSkinned then return end
   widget.__pbEuiSkinned = true
@@ -734,7 +1112,7 @@ local function InstallTabs(frame)
       -- up in the engine at call time and return quietly when it is missing --
       -- so a call that did nothing still comes back ok. The observable test is
       -- that S.Tab draws its own plate and its own mirrored label, i.e. new
-      -- regions on the tab. Nothing new, nothing took.
+      -- regions on the tab; the shim does the same. Nothing new, nothing took.
       local before = (tab.GetNumRegions and tab:GetNumRegions()) or 0
       local ok = pcall(S.Tab, tab)
       local after = (tab.GetNumRegions and tab:GetNumRegions()) or 0
@@ -987,18 +1365,22 @@ function Skin.OnHostLooksChanged(fromShow)
 end
 
 -- Every live "EllesmereUI's looks changed" signal lands here and is folded into
--- ONE pass of the handler above, on the next frame. Three sources (the third,
+-- ONE pass of the handler above, on the next frame. Four sources (the fourth,
 -- EllesmereUI._WSkinRefreshStyles, the window-style repaint, is explained where
 -- it is hooked, in HookHostRefreshes):
 --
---   S.OnLooksChanged. Rides EllesmereUI's accent registry, so it fires on the
---     accent and on Blizz UI Enhanced's global look settings -- once per tick
---     while a colour picker is being dragged. It does NOT fire on a
---     window-style switch or a profile switch, whatever its comment says.
---   EllesmereUI.RegisterDarkModeRefresh (the parent addon). Runs on every Dark
---     Mode palette edit AND on every profile switch, because the profile
---     repoint calls RefreshDarkMode. The palette is Postbox's baseline, colour
---     and alpha, so this is what makes a profile switch live at last.
+--   S.OnLooksChanged (api backend). Rides EllesmereUI's accent registry, so it
+--     fires on the accent and on Blizz UI Enhanced's global look settings --
+--     once per tick while a colour picker is being dragged. It does NOT fire on
+--     a window-style switch or a profile switch, whatever its comment says.
+--   EllesmereUI.RegisterDarkModeRefresh (both backends; the parent addon). Runs
+--     on every Dark Mode palette edit AND on every profile switch, because the
+--     profile repoint calls RefreshDarkMode. The palette is Postbox's baseline,
+--     colour and alpha, so this is what makes a profile switch live at last.
+--   EllesmereUI.RegAccent (compat backend only). The registry the api facade's
+--     own callback rides on. Compat is where every player with Blizz UI
+--     Enhanced disabled lands, and there an accent change used to wait for the
+--     next window open.
 --
 -- Next frame rather than in place: a profile switch refreshes the dark palette
 -- first and re-resolves the accent after it (RefreshAllAddons runs
@@ -1026,9 +1408,9 @@ local function RequestHostRefresh()
   end
 end
 
--- Registered once each: EllesmereUI keeps its refreshers in plain lists, so a
--- second registration would run twice.
-local hooked = { darkMode = false, styles = false }
+-- Registered once each, whichever backend activates first: EllesmereUI keeps
+-- its refreshers in plain lists, so a second registration would run twice.
+local hooked = { darkMode = false, accent = false, styles = false }
 
 local function HookHostRefreshes()
   if not EUI then return end
@@ -1047,6 +1429,15 @@ local function HookHostRefreshes()
      and type(hooksecurefunc) == "function" then
     hooked.styles = pcall(hooksecurefunc, EUI, "_WSkinRefreshStyles", function() RequestHostRefresh() end)
   end
+  -- The api facade already delivers accent changes through S.OnLooksChanged.
+  -- RegAccent calls its entries without a pcall of its own, in the middle of
+  -- EllesmereUI's accent pass, so this entry must never be able to throw.
+  if BACKEND == "compat" and not hooked.accent and type(EUI.RegAccent) == "function" then
+    hooked.accent = pcall(EUI.RegAccent, {
+      type = "callback",
+      fn = function() pcall(RequestHostRefresh) end,
+    })
+  end
 end
 
 -------------------------------------------------------------
@@ -1062,7 +1453,7 @@ end
 -- dispatcher that drains that queue lives in the EllesmereUIBlizzardSkin
 -- sub-addon, so with that sub-addon absent or disabled no callback can ever
 -- arrive, however long we wait. That is precisely the pre-8.6.8 situation, and
--- the Postbox style standing in is its answer.
+-- the compat shim is its right answer.
 local SKIN_SUBADDON = "EllesmereUIBlizzardSkin"
 
 local function DispatcherLoaded()
@@ -1093,29 +1484,25 @@ end
 --   "hostoptout"  the user switched third-party skinning off for Postbox, or
 --                 off entirely, in EllesmereUI's own options. That is an
 --                 explicit choice about how EllesmereUI treats other addons,
---                 and answering it with a look made to match the very skin
---                 they just switched off would be worse than no skin at all.
---                 So: no skin, Postbox renders its own theme. The
---                 registration stays in EllesmereUI's queue, so switching it
---                 back on dispatches live and AdoptFacade takes over without a
---                 reload.
+--                 and answering it with our compat shim -- a hand-built
+--                 imitation of the very skin they just switched off -- would
+--                 be worse than no skin at all. So: no shim, no skin, Postbox
+--                 renders its own theme. The registration stays in
+--                 EllesmereUI's queue, so switching it back on dispatches live
+--                 and AdoptFacade takes over without a reload.
 --   "stocklook"   EllesmereUI's whole UI is on one of its stock looks
 --                 (Blizzard Style or Classic WoW UI; see HostLook below), so
 --                 Postbox wears its own Blizzard look to match.
---   "standin"     EllesmereUI's skinning API cannot answer (older than 8.6.8,
---                 or its Blizzard-skin module is not loaded), so the Postbox
---                 style holds the window in this skin's place (StandIn).
 --
 -- Reported by Diagnose -- i.e. /postbox skin, which is this addon's only debug
 -- channel. A chat line at login would be noise about a situation nobody can act
 -- on from the chat frame.
-local standDown          -- nil | "elvui" | "hostoptout" | "stocklook" | "standin"
+local standDown          -- nil | "elvui" | "hostoptout" | "stocklook"
 
 local STAND_DOWN_TEXT = {
   elvui      = "stood down (ElvUI painted first)",
   hostoptout = "stood down (EllesmereUI skinning is switched off for Postbox)",
   stocklook  = "stood down (EllesmereUI is on a stock look; Postbox's own Blizzard look matches it)",
-  standin    = "stood down (EllesmereUI's skinning API is not available; the Postbox style stands in)",
 }
 
 -------------------------------------------------------------
@@ -1228,7 +1615,6 @@ function Skin.Diagnose()
     -- Not MISSING: nothing is drawn here because nothing is meant to be. The
     -- backend line above says which skin owns the window instead.
     shellArt = (standDown == "elvui") and "not this skin (ElvUI's)"
-               or (standDown == "standin") and "not this skin (the Postbox style's)"
                or "not this skin (Postbox's own theme)"
   elseif frame then
     local hostArt = frame.__pbEuiHostArt
@@ -1287,16 +1673,12 @@ local function Activate()
 
   -- The player can prefer Postbox's own look to their UI pack's. Checked here
   -- rather than at the boot handler because this file reaches Activate from
-  -- more than one path -- the official handshake on time, and a facade that
-  -- arrives late -- and every one of them must respect the choice.
+  -- several paths -- the official handshake, its watchdog, and the compat shim
+  -- -- and every one of them must respect the choice.
   local UI = ns.MailboxUI
   if UI and type(UI.HostSkinAllowed) == "function" and not UI.HostSkinAllowed() then
     return
   end
-
-  -- The Postbox style stood in (StandIn) and keeps the window this session: a
-  -- facade arriving after that would swap looks under a window already worn.
-  if standDown == "standin" then return end
 
   -- Handoff with Core/Skin_ElvUI.lua.
   --
@@ -1331,8 +1713,6 @@ local function Activate()
 
   ns.Skin = Skin      -- take precedence over the ElvUI skin, if one loaded
   ns.SkinAppliedBy = "ellesmereui"
-  -- The Postbox style it could have stood in with is not needed now.
-  if type(ns.ReleasePostboxStyle) == "function" then ns.ReleasePostboxStyle() end
 
   -- Everything host-derived, not just the two accent-tinted icons: an accent,
   -- profile or border change moves the fill colour, its alpha, the border and
@@ -1347,46 +1727,43 @@ local function Activate()
   if frame then Skin.Apply(frame) end
 end
 
--- EllesmereUI is here and the player's style is EllesmereUI's, but its skinning
--- API cannot answer: an EllesmereUI older than 8.6.8 (no RegisterSkin), a
--- registration that raised or handed back no facade, or no callback at all
--- (its Blizzard-skin module, which holds the dispatcher, not loaded). The
--- Postbox style stands in: the dark, flat look this skin gives the window,
--- Postbox's own, needing nothing from EllesmereUI -- and the same gates as
--- Activate first, so an explicit style choice, an ElvUI window and a stock
--- EllesmereUI look are each still honoured. Once for the session.
-local function StandIn()
-  if S or standDown == "standin" then return end
-  BACKEND = nil
-  local UI = ns.MailboxUI
-  if UI and type(UI.HostSkinAllowed) == "function" and not UI.HostSkinAllowed() then
-    return
-  end
-  if ns.SkinAppliedBy and ns.SkinAppliedBy ~= "ellesmereui" then
-    standDown = "elvui"
-    return
-  end
-  if HostLook() ~= "eui" then
-    standDown = "stocklook"
-    return
-  end
-  standDown = "standin"
-  if type(ns.ClaimPostboxStyle) == "function" then ns.ClaimPostboxStyle() end
+-- The compat facade, also the fallback whenever the official handshake cannot
+-- complete for a reason the user did not choose.
+local shimFacade
+
+local function UseShim()
+  if S then return end
+  BACKEND = "compat"
+  shimFacade = shimFacade or BuildShim()
+  S = shimFacade
+  Activate()
 end
 
--- Take the official facade, whether it arrives on time or late.
+-- Take the official facade, whether it arrives on time or long after the
+-- watchdog has already put the shim up.
 --
 -- Arriving late is a real path rather than a theoretical one: EllesmereUI
 -- dispatches live when third-party skinning is switched back ON (only switching
 -- it OFF is reload-bound), so a user who opts back in mid-session lands here
--- with a window Postbox's own theme has already drawn, and Activate takes it.
+-- with a window the shim has already painted.
+--
+-- The facade wins from this point on -- it is the real house look and it tracks
+-- every future EllesmereUI tweak -- but it cannot retroactively unpaint the
+-- shim, because a WoW texture can be faded and never destroyed. So the takeover
+-- is a clean swap rather than a repaint: every already-skinned frame bails on
+-- its own idempotency key (__pbEuiSkinned on the window and its widgets,
+-- __pbShimShell on the backdrop, __pbShimTab on the tabs), so nothing is drawn
+-- twice, and everything built from here on -- new windows, the options panel on
+-- its first open -- is house art. The swap does change one thing immediately:
+-- Activate re-runs and registers Skin.OnHostLooksChanged with the REAL
+-- S.OnLooksChanged, where the shim's was a documented no-op.
 local function AdoptFacade(facade)
   if S and S == facade then return end
 
   -- A facade that is nil, false or not a table would throw on the first
-  -- primitive lookup: the Postbox style stands in.
+  -- primitive lookup; the shim is a working answer, so use it.
   if type(facade) ~= "table" then
-    StandIn()
+    UseShim()
     return
   end
 
@@ -1397,7 +1774,7 @@ local function AdoptFacade(facade)
   -- annotation, and every primitive call below is pcall-guarded anyway.
   local declared = tonumber(facade.apiVersion) or 1
   if declared < 1 then
-    StandIn()
+    UseShim()
     return
   end
   apiVersion = declared
@@ -1421,11 +1798,11 @@ local HANDSHAKE_WAIT = 5
 
 -- Nothing arrived. Which silence is it?
 --
--- One answer to all three would be wrong in exactly one case, and it is the
--- case where being wrong matters most: a user who has switched Postbox off in
--- EllesmereUI's third-party options would get a look made to match EllesmereUI
--- instead of the nothing they asked for. Overriding an explicit opt-out is not
--- a fallback, it is ignoring the setting.
+-- Answering "fall back to the shim" to all three was wrong in exactly one case,
+-- and it was the case where being wrong matters most: a user who has switched
+-- Postbox off in EllesmereUI's third-party options gets our hand-built
+-- imitation of EllesmereUI instead of the nothing they asked for. Overriding an
+-- explicit opt-out is not a fallback, it is ignoring the setting.
 local function OnSilence()
   if S then return end                       -- the callback won the race
 
@@ -1443,23 +1820,25 @@ local function OnSilence()
     return
   end
 
-  -- Everything else: the Postbox style stands in. The two remaining causes
+  -- Everything else takes the shim, which is the pre-8.6.8 behaviour and runs
+  -- off helpers EllesmereUI has exported since 8.6.6. The two remaining causes
   -- share that answer but not their fix -- install or enable the sub-addon
   -- versus report a bug -- so they stay distinct in the diagnostic.
   silence = (DispatcherLoaded() == false) and "nodispatcher" or "silent"
-  StandIn()
+  UseShim()
 end
 
--- Feature detection, never version parsing -- but the feature being present
--- is not the same as the handshake succeeding. A future signature change (a
--- required version argument, a table descriptor, a name-collision rejection
--- that raises) must degrade to the Postbox style standing in, rather than
--- throwing out of the event handler and leaving the addon with no skin at all.
+-- Backend selection is feature detection, never version parsing -- but the
+-- feature being present is not the same as the handshake succeeding. A future
+-- signature change (a required version argument, a table descriptor, a
+-- name-collision rejection that raises) must degrade to the shim, which only
+-- uses 8.6.6-era helpers and therefore still works, rather than throwing out
+-- of the event handler and leaving the addon with no skin at all.
 local function StartBackend()
   if S or not EUI then return end
 
   if type(EUI.RegisterSkin) ~= "function" then
-    StandIn()
+    UseShim()
     return
   end
 
@@ -1469,13 +1848,13 @@ local function StartBackend()
   local ok = pcall(EUI.RegisterSkin, ADDON_NAME, AdoptFacade)
 
   if not ok then
-    StandIn()
+    UseShim()
   elseif C_Timer and C_Timer.After then
     C_Timer.After(HANDSHAKE_WAIT, OnSilence)
   else
     -- No timer to wait with, so no way to tell the three silences apart later.
-    -- The Postbox style standing in is the only answer still available.
-    StandIn()
+    -- The shim is the only answer still available.
+    UseShim()
   end
 end
 

@@ -39,10 +39,9 @@ local _, ns = ...
 -- BUILT ON DEMAND. Everything from here to the claim at the end of the file
 -- is one function's body, BuildSkin, run the first time the skin is asked for
 -- (ns.GetPostboxSkin): at login when the Postbox style or a creative style is
--- the choice, and when the style stands in for EllesmereUI's skin. Any other
--- look never makes its palettes, tables and functions, and the Blizzard look
--- lets go of the builder at login (as does a host UI's look, once no stand-in
--- can be needed). The body is not indented, so it reads as it always has.
+-- the choice. Any other look never makes its palettes, tables and functions:
+-- the Blizzard look and a host UI's look let go of the builder at login. The
+-- body is not indented, so it reads as it always has.
 -- =====================================================================
 
 local function BuildSkin()
@@ -2175,31 +2174,6 @@ function ns.GetPostboxSkin()
   return ns.PostboxSkin
 end
 
--- The claim: at login when the style choice is "postbox", and when the style
--- stands in for EllesmereUI's skin, whose API could not answer
--- (Skin_EllesmereUI's StandIn, seconds after login). The ns.Skin guard is for
--- the ordinary case of something else having claimed first.
-function ns.ClaimPostboxStyle()
-  if ns.Skin then return false end
-  local Skin = ns.GetPostboxSkin()
-  if not Skin then return false end
-  ns.Skin = Skin
-  local T = ns.Theme
-  -- What is painted from a token, a grey or the chrome ink is kept from now
-  -- on, so a palette change can paint it again.
-  if T and type(T.TrackPaint) == "function" then T.TrackPaint() end
-  -- The palette the settings name, before the first window is built.
-  Skin._ResolveLook()
-  -- A stand-in can come after the mailbox was first opened: that window,
-  -- built bare, takes the style now and is painted from the palette.
-  local frame = ns.MailboxUI and ns.MailboxUI._frame
-  if frame and not frame.__postboxSkinned then
-    Skin.Apply(frame)
-    Skin.ApplyLook(true)
-  end
-  return true
-end
-
 local boot = CreateFrame("Frame")
 boot:RegisterEvent("PLAYER_LOGIN")
 boot:SetScript("OnEvent", function(self)
@@ -2208,21 +2182,27 @@ boot:SetScript("OnEvent", function(self)
   local UI = ns.MailboxUI
   if not (UI and type(UI.GetStyleChoice) == "function") then return end
   local choice = UI.GetStyleChoice()
-  if choice == "postbox" then
-    -- No race with the host skins: reaching here means the player chose this
-    -- style, and both consult UI.HostSkinAllowed() before claiming.
-    ns.ClaimPostboxStyle()
-  elseif choice == "blizzard" or (choice == "host" and type(_G.EllesmereUI) ~= "table") then
+  if choice == "blizzard" or choice == "host" then
     -- A look that never wears this skin, whatever happens later this session
     -- (a style change is a reload): the builder goes, and its code with it.
-    -- EllesmereUI's look keeps it until its skin has the window (below), a
-    -- creative style for its claim.
+    -- A host UI's look is its own skin, or the Blizzard look when that skin
+    -- stands down; a creative style keeps the builder for its claim.
     BuildSkin = nil
+    return
   end
-end)
+  if choice ~= "postbox" then return end
 
--- EllesmereUI's own skin has the window: the stand-in the builder was kept for
--- is not coming this session.
-function ns.ReleasePostboxStyle()
-  if ns.Skin and ns.Skin ~= ns.PostboxSkin then BuildSkin = nil end
-end
+  -- No race with the host skins: reaching here means the player chose this
+  -- style, and both consult UI.HostSkinAllowed() before claiming. The ns.Skin
+  -- guard stays for the ordinary case of something else having claimed first.
+  if ns.Skin then return end
+  local Skin = ns.GetPostboxSkin()
+  if not Skin then return end
+  ns.Skin = Skin
+  local T = ns.Theme
+  -- What is painted from a token, a grey or the chrome ink is kept from now
+  -- on, so a palette change can paint it again.
+  if T and type(T.TrackPaint) == "function" then T.TrackPaint() end
+  -- The palette the settings name, before the first window is built.
+  Skin._ResolveLook()
+end)
