@@ -1331,6 +1331,8 @@ local function Activate()
 
   ns.Skin = Skin      -- take precedence over the ElvUI skin, if one loaded
   ns.SkinAppliedBy = "ellesmereui"
+  -- The Postbox style it could have stood in with is not needed now.
+  if type(ns.ReleasePostboxStyle) == "function" then ns.ReleasePostboxStyle() end
 
   -- Everything host-derived, not just the two accent-tinted icons: an accent,
   -- profile or border change moves the fill colour, its alpha, the border and

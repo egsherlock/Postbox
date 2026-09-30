@@ -35,7 +35,17 @@ local _, ns = ...
 --
 -- Claimed once, at PLAYER_LOGIN, when the style choice is "postbox"; changing
 -- the style asks for a /reload.
+--
+-- BUILT ON DEMAND. Everything from here to the claim at the end of the file
+-- is one function's body, BuildSkin, run the first time the skin is asked for
+-- (ns.GetPostboxSkin): at login when the Postbox style or a creative style is
+-- the choice, and when the style stands in for EllesmereUI's skin. Any other
+-- look never makes its palettes, tables and functions, and the Blizzard look
+-- lets go of the builder at login (as does a host UI's look, once no stand-in
+-- can be needed). The body is not indented, so it reads as it always has.
 -- =====================================================================
+
+local function BuildSkin()
 
 local Skin = {}
 Skin.IsPostboxStyle = true
@@ -2147,9 +2157,23 @@ function Skin.StyleTabPlate(plate)
   ns.Theme.SetPlateTokens(plate, (def and def.tabs) or TAB_TOKENS)
 end
 
+return Skin
+end
+
 -------------------------------------------------------------
 -- Claim: only when the style choice asks for it
 -------------------------------------------------------------
+
+-- The skin, built the first time it is asked for (a creative style's claim
+-- asks, Core/Skin_Creative.lua), and the builder let go once it has run. nil
+-- for a look whose login let the builder go unrun.
+function ns.GetPostboxSkin()
+  if not ns.PostboxSkin and BuildSkin then
+    BuildSkin()
+    BuildSkin = nil
+  end
+  return ns.PostboxSkin
+end
 
 -- The claim: at login when the style choice is "postbox", and when the style
 -- stands in for EllesmereUI's skin, whose API could not answer
@@ -2157,13 +2181,15 @@ end
 -- the ordinary case of something else having claimed first.
 function ns.ClaimPostboxStyle()
   if ns.Skin then return false end
+  local Skin = ns.GetPostboxSkin()
+  if not Skin then return false end
   ns.Skin = Skin
   local T = ns.Theme
   -- What is painted from a token, a grey or the chrome ink is kept from now
   -- on, so a palette change can paint it again.
   if T and type(T.TrackPaint) == "function" then T.TrackPaint() end
   -- The palette the settings name, before the first window is built.
-  ResolveLook()
+  Skin._ResolveLook()
   -- A stand-in can come after the mailbox was first opened: that window,
   -- built bare, takes the style now and is painted from the palette.
   local frame = ns.MailboxUI and ns.MailboxUI._frame
@@ -2181,9 +2207,22 @@ boot:SetScript("OnEvent", function(self)
 
   local UI = ns.MailboxUI
   if not (UI and type(UI.GetStyleChoice) == "function") then return end
-  if UI.GetStyleChoice() ~= "postbox" then return end
-
-  -- No race with the host skins: reaching here means the player chose this
-  -- style, and both consult UI.HostSkinAllowed() before claiming.
-  ns.ClaimPostboxStyle()
+  local choice = UI.GetStyleChoice()
+  if choice == "postbox" then
+    -- No race with the host skins: reaching here means the player chose this
+    -- style, and both consult UI.HostSkinAllowed() before claiming.
+    ns.ClaimPostboxStyle()
+  elseif choice == "blizzard" or (choice == "host" and type(_G.EllesmereUI) ~= "table") then
+    -- A look that never wears this skin, whatever happens later this session
+    -- (a style change is a reload): the builder goes, and its code with it.
+    -- EllesmereUI's look keeps it until its skin has the window (below), a
+    -- creative style for its claim.
+    BuildSkin = nil
+  end
 end)
+
+-- EllesmereUI's own skin has the window: the stand-in the builder was kept for
+-- is not coming this session.
+function ns.ReleasePostboxStyle()
+  if ns.Skin and ns.Skin ~= ns.PostboxSkin then BuildSkin = nil end
+end

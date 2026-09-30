@@ -6,7 +6,8 @@ local _, ns = ...
 -- Pillar Box, Faction, Post Office Counter, Goblin Express, and the two on a
 -- light ground, Letters and Daylight: choices in
 -- the Window style list beside Postbox, Blizzard and the host UI, each a
--- small table in its own file (Core/Style_*.lua) registered here. The
+-- small table in its own file (Core/Style_*.lua), registered here as the
+-- function that builds it, and built only when it is the chosen style. The
 -- designs are .dev/design/creative-styles (round 1, notes.md) and its v2
 -- fixes; the art is drawn by .dev/tools/gen-styles.py into Media/Styles.
 --
@@ -42,7 +43,9 @@ local _, ns = ...
 -- that inset, and anything seated on it later (Mail Memory's cog key)
 -- follows.
 --
--- COST. Textures load when the first window is dressed, and only the chosen
+-- COST. Only the chosen style's table is built, at login, and the other
+-- styles' builders are let go then: the Window style list needs their names
+-- alone. Textures load when the first window is dressed, and only the chosen
 -- style's. Nothing runs on a timer; the art is laid out on a size change.
 -- The flag and the tank change on the Mail tab caption's own pass
 -- (Skin.OnMailState, MailboxUI), the counter's pigeonholes when the category
@@ -67,7 +70,10 @@ local floor, max, min = math.floor, math.max, math.min
 -------------------------------------------------------------
 -- 1. The registry
 --
--- A style file calls CS.Register with its table:
+-- A style file calls CS.Register(key, nameKey, build): its saved key, its
+-- name's locale key, and a function that makes and returns its table. The
+-- names are all the Window style list reads; the table is built at login for
+-- the chosen style only (section 5), and holds:
 --   key          the saved style choice (profile.style)
 --   nameKey      its name in the Window style list (a locale key)
 --   inset        units from the window's edge to the cog and the close X
@@ -102,16 +108,18 @@ local floor, max, min = math.floor, math.max, math.min
 --   BannerInk(text, up, down)        the totals band's inks (see CollectTab)
 -------------------------------------------------------------
 
-local defs, order = {}, {}
+-- key -> name's locale key, and key -> builder until login lets them go.
+local names, builders, order = {}, {}, {}
 
-function CS.Register(def)
-  if type(def) ~= "table" or type(def.key) ~= "string" or defs[def.key] then return end
-  defs[def.key] = def
-  order[#order + 1] = def.key
+function CS.Register(key, nameKey, build)
+  if type(key) ~= "string" or type(build) ~= "function" or names[key] or not builders then return end
+  names[key] = nameKey or key
+  builders[key] = build
+  order[#order + 1] = key
 end
 
 function CS.Has(key)
-  return type(key) == "string" and defs[key] ~= nil
+  return type(key) == "string" and names[key] ~= nil
 end
 
 -- The Window style list's entries, in load order.
@@ -119,8 +127,8 @@ function CS.Choices()
   local out = {}
   local L = ns.L
   for i = 1, #order do
-    local def = defs[order[i]]
-    out[#out + 1] = { id = def.key, name = L and L[def.nameKey] or def.key }
+    local key = order[i]
+    out[#out + 1] = { id = key, name = L and L[names[key]] or key }
   end
   return out
 end
@@ -682,16 +690,27 @@ local function Activate(def, skin)
   end
 end
 
+-- The chosen style's table is built here and no other's: every builder is
+-- let go first, the chosen one after it has run. A style changes with a
+-- reload, which builds the new choice at its own login.
 local boot = CreateFrame("Frame")
 boot:RegisterEvent("PLAYER_LOGIN")
 boot:SetScript("OnEvent", function(self)
   self:UnregisterEvent("PLAYER_LOGIN")
+  local all = builders
+  builders = nil
   local UI = ns.MailboxUI
-  if not (UI and type(UI.GetStyleChoice) == "function") then return end
-  local def = defs[UI.GetStyleChoice()]
-  if not def then return end
-  local skin = ns.PostboxSkin
-  if not skin or ns.Skin then return end
+  if not (all and UI and type(UI.GetStyleChoice) == "function") then return end
+  local key = UI.GetStyleChoice()
+  local build = all[key]
+  if not build or ns.Skin then return end
+  local skin = type(ns.GetPostboxSkin) == "function" and ns.GetPostboxSkin() or nil
+  if not skin then return end
+  local ok, def = pcall(build)
+  if not (ok and type(def) == "table") then
+    Report(false, ok and ("style " .. key .. " built no table") or def)
+    return
+  end
   Activate(def, skin)
   ns.Skin = skin
 end)
