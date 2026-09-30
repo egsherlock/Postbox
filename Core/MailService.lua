@@ -1878,6 +1878,13 @@ end
 
 -- One attachment slot of a mail whose body is already loaded.
 -- onDone(status, refusedCount, reason, kind), as Mail.CollectMail's.
+--
+-- opts.fetch  the caller may be taking from a mail whose body was never
+--             fetched (the Mail tab's fan, which opens on a hover): the slot's
+--             link is nil until the fetch lands, so where it is, the body is
+--             fetched first, inside this take's own claim of the channel, as
+--             Mail.CollectMail fetches before it enumerates. The fetch marks
+--             the mail read, as taking anything from it would.
 function Mail.TakeAttachment(index, slot, onDone, opts)
   local token = Claim()
   local finished = false
@@ -1897,7 +1904,11 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
   if type(TakeInboxItem) ~= "function" then return finish("collected") end
 
   local fingerprint = Fingerprint(index)
-  if not fingerprint or not GetInboxItemLink(index, slot) then
+  -- Not loaded yet, and the caller asked for the fetch: the slot must at
+  -- least hold an item the header knows of.
+  local fetch = fingerprint ~= nil and opts ~= nil and opts.fetch and not GetInboxItemLink(index, slot)
+    and type(GetInboxText) == "function" and GetInboxItem(index, slot) ~= nil
+  if not fingerprint or not (fetch or GetInboxItemLink(index, slot)) then
     return finish("collected")
   end
 
@@ -1910,7 +1921,7 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
     return finish("refused", 0, nil)
   end
 
-  WhenIdle(function()
+  local function take()
     RunPlan(index, fingerprint, { { kind = "item", slot = slot } },
       function(timedOut, refusedCount, reason, current, full)
         if timedOut then return finish("timeout", refusedCount, reason) end
@@ -1926,6 +1937,23 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
           finish("collected", 0, reason)
         end)
       end, opts and opts.history)
+  end
+
+  WhenIdle(function()
+    if not fetch then return take() end
+    -- The body first, and the take only once it has landed, on the same
+    -- mail, with the slot's item now named by a link (Mail.CollectMail).
+    local body = GetInboxText(index)
+    local record = opts.history
+    if record and type(body) == "string" and body ~= "" and not record.body then record.body = body end
+    WaitForCommand(function(timedOut)
+      if timedOut then return finish("timeout") end
+      if not MailboxOpen() then return finish("closed") end
+      if Fingerprint(index) ~= fingerprint or not GetInboxItemLink(index, slot) then
+        return finish("collected")
+      end
+      take()
+    end)
   end, function() finish("timeout") end)
 end
 
