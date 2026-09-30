@@ -2298,6 +2298,11 @@ do
   end
 
   -- A group's heading: its name and a rule in the accent to the row's end.
+  -- The rule is the accent as a mark (Theme's "accent" on a texture): the
+  -- contrast guard's tone, 3:1 on the plates the list's own ground is
+  -- darker than (lighter, on a light palette), drawn solid, so it reads in
+  -- every look -- Light mode, a pale or dark host accent, EllesmereUI's
+  -- white -- where the accent at a third of its alpha all but vanished.
   function Rows.Group(col, title)
     local T = ns.Theme
     local head = CreateFrame("Frame", nil, col.frame)
@@ -2311,7 +2316,7 @@ do
     local rule = head:CreateTexture(nil, "ARTWORK")
     rule:SetHeight(1)
     rule:SetPoint("LEFT", text, "RIGHT", NAME_GAP, -1)
-    T.FillColor(rule, "accentRule")
+    T.FillColor(rule, "accent")
     head.Text, head.Rule = text, rule
     S.groups[#S.groups + 1] = head
     col.y = col.y - GROUP_H
@@ -2401,7 +2406,7 @@ do
     for i = 1, #S.groups do
       local head = S.groups[i]
       head.Rule:SetWidth(math.max(0, ROW_W - NAME_X - CONTROL_R - NAME_GAP - TextW(head.Text)))
-      T.FillColor(head.Rule, "accentRule")
+      T.FillColor(head.Rule, "accent")
     end
   end
 end
