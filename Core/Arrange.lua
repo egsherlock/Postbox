@@ -1413,21 +1413,20 @@ end
 -- While the mode is open, the list's top row steps aside (Inbox, History and
 -- the search on the Mail tab; the box, its sort, the picker and the search
 -- in Mail Memory) and a column header takes its place, so the list itself
--- does not move. The columns tile the row, and a heading is its column's
--- box: from the line between its lane and the one before it to the line
--- after it, the first from the row's left edge and the last to its right
--- edge, GAP between two. So the row's edge insets are room inside the
--- columns at its ends, and a mark a row keeps at its end (a read mail's
+-- does not move. While the rows stand in columns (Row layout), the columns
+-- tile the row, and a heading is its column's box: from the line between
+-- its lane and the one before it to the line after it, the first from the
+-- row's left edge and the last to its right edge, GAP between two. So the
+-- row's edge insets are room inside the columns at its ends, and a mark a
+-- row keeps at its end (a read mail's
 -- delete mark) stands over the last column's box. A line stands in the
 -- middle of the gap between two lanes, the lanes being the columns' content
 -- as RV.Place publishes it for the list (s.laneX, s.laneW, from the row's
 -- left edge, which is the header's; s.width, where the row ends). One
 -- rule, whichever column stands where, and the same box outlines the
--- column's cells on the rows
--- (AR.CellBox, section 7b): each column's home, where a row with every
--- figure has it in Columns, whichever Row layout the rows follow (in the
--- mode as out of it; packed, a row without a figure shows its others out
--- from under their headings, which is what Packed does). A heading's glyph stands
+-- column's cells on the rows (AR.CellBox, section 7b). Packed, no two rows
+-- need stand alike and nothing is published: the header is a strip of
+-- chips placed by the rows' own rule (section 6c). A heading's glyph stands
 -- in the middle of the plate it draws, on whole units, whatever the lane
 -- under it draws; a name starts where its lane does. The narrow columns wear glyphs
 -- (the read dot, the icon, the hourglass, the coin, the slots, History's
@@ -1444,9 +1443,9 @@ end
 -- right-click, shows the column again, there, and it is dragged along the
 -- header as a heading is (section 7), hidden still. A shown one with no
 -- lane in this list -- no mail listed has it -- keeps a narrow dimmed
--- heading in its place. While the mode is open the rows keep room for both
--- (RV.Place): an empty lane where the arrangement puts the column, as wide
--- as makes its box the peg's or the narrow heading's own width
+-- heading in its place. While the mode is open the rows in columns keep
+-- room for both (RV.Place): an empty lane where the arrangement puts the
+-- column, as wide as makes its box the peg's or the narrow heading's own width
 -- (CollectTab's RV.RoomWidth), the rows' content stepping aside by just
 -- that. So a peg and a narrow heading are columns like any other, tiling
 -- the row by the one rule, and nothing on the header stands over
@@ -1726,9 +1725,10 @@ local function BuildHead(strip, id)
     head.Glyph, head.glyphKind = glyph, kind
     head.glyphW = glyph:GetWidth() or 0
     -- A figure's name beside its glyph, for its chip on the two-line
-    -- header (section 6b): made with the heading, so a host skin's pass
-    -- over the header fonts it as it fonts every other name there.
-    if spec.figure then
+    -- header (section 6b) and the packed one (6c) -- History's age's too,
+    -- on the packed one: made with the heading, so a host skin's pass over
+    -- the header fonts it as it fonts every other name there.
+    if spec.figure or id == "age" then
       head.chipCaption = L()[spec.title]
       head.ChipText = T.CreateText(head, "value", "OVERLAY")
       head.ChipText:SetJustifyH("LEFT")
@@ -1882,6 +1882,8 @@ function AR.BuildStrip(host)
   strip.by, strip.bh, strip.line = {}, {}, {}
   strip.gIds, strip.gX, strip.gW, strip.l1Ids, strip.l1X, strip.l1W = {}, {}, {}, {}, {}, {}
   strip.nG, strip.n1, strip.m, strip.two = 0, 0, {}, false
+  -- Whether the header is the packed one's strip of chips (section 6c).
+  strip.chips = false
   for id in pairs(AR.COLUMNS) do
     strip.heads[id] = BuildHead(strip, id)
     strip.pegs[id] = BuildPeg(strip, id)
@@ -1912,10 +1914,18 @@ function AR.LayoutStrip(host)
   AR.SyncLanes(strip)
   local width = strip:GetWidth() or 0
   if width < 60 then return end
-  -- Over two-line rows, the two-line header (section 6b).
+  -- Over two-line rows, the two-line header (section 6b); over packed
+  -- one-line rows, the strip of chips (section 6c).
   local two = (host.TwoLine and host.TwoLine()) and true or false
-  if strip.two ~= two then AR.SetTwo(strip, two) end
+  local chips = not two and not LinedUp()
+  if strip.two ~= two then
+    AR.SetTwo(strip, two)
+  elseif strip.chips ~= chips then
+    AR.ForgetHeads(strip)
+  end
+  strip.chips = chips
   if two then return AR.LayoutTwo(host, strip, layout, width) end
+  if chips then return AR.LayoutChips(host, strip, layout, width) end
   local n = #layout
   local spec = host.Spec and host.Spec()
   local laneX, laneW = spec and spec.laneX, spec and spec.laneW
@@ -2505,12 +2515,19 @@ do
 end
 
 -- The header going over to two lines or back: its height, and everything
--- each heading and peg remembers of where and how it was laid out, so the
--- next layout lays every one out afresh.
+-- each heading and peg remembers of where and how it was laid out
+-- (AR.ForgetHeads).
 function AR.SetTwo(strip, two)
   strip.two = two
+  strip:SetHeight(two and HEAD.TWO_H or Th().Metrics.tileHeight)
+  AR.ForgetHeads(strip)
+end
+
+-- Everything each heading and peg remembers of where and how it was laid
+-- out, forgotten, so the next layout lays every one out afresh: the header
+-- going over to two lines or back, or between lanes and chips.
+function AR.ForgetHeads(strip)
   local tile = Th().Metrics.tileHeight
-  strip:SetHeight(two and HEAD.TWO_H or tile)
   for id, head in pairs(strip.heads) do
     head._w, head._pw, head._gx, head._tx, head._chip, head._x, head._y, head._h = nil, nil, nil, nil, nil, nil, nil, nil
     head.narrow = nil
@@ -2825,6 +2842,176 @@ function AR.TwoAt(host, cx, cy)
 end
 
 -------------------------------------------------------------
+-- 6c. The packed header
+--
+-- Packed (Row layout), a one-line row stands on no lanes: each is its own,
+-- its figures sitting together at the edge on their side of the subject
+-- (CollectTab's RV.Place), in the mode as out of it. So the header is a
+-- strip of chips placed by that same rule: the arrangement's headings in
+-- its order, each as wide as what it says -- a graphic its glyph, the
+-- sender its name, a figure its glyph and its name -- and a hidden
+-- column's peg where the arrangement puts it; those before the subject
+-- from the header's left edge, those after it from the right edge inward,
+-- GAP apart, and the subject's heading, its name and its stretch arrow,
+-- over the room between. Where the names do not all fit beside the
+-- subject's, every figure wears its glyph alone and the sender's name is
+-- cut to its narrow heading's width: measured, never guessed. No line runs
+-- down the rows and no row keeps a room: a column's cells are where each
+-- row drew it (section 7b). A chip is pressed, dragged, clicked and
+-- right-clicked as any heading is (section 7), and a press on a row takes
+-- what that row drew under the cursor (AR.RowColumnAt).
+-------------------------------------------------------------
+
+-- A chip's width (above): a peg's; a graphic's narrow heading (the read
+-- dot, the icon, and any glyph without a name to wear); a figure's glyph
+-- and name, or its glyph alone (`words`); a name's, cut to its narrow
+-- heading where the figures wear glyphs (AR.ChipWidth).
+function AR.ChipSize(strip, id, words)
+  if strip.kind[id] == "peg" then return HEAD.PEG end
+  local head = strip.heads[id]
+  if not head then return HEAD.NARROW[id] or HEAD.CHIP_GLYPH end
+  if head.Glyph and not head.ChipText then return HEAD.NARROW[id] or HEAD.CHIP_GLYPH end
+  return AR.ChipWidth(head, words)
+end
+
+-- Whether every chip can wear its name: all of them, named, and the
+-- subject's name beside them, GAP apart, fit the header's `span`.
+function AR.ChipsFit(strip, layout, span)
+  local total, count = 0, 0
+  for i = 1, #layout do
+    local id = layout[i].id
+    if strip.kind[id] ~= "absent" then
+      count = count + 1
+      if id == "subject" then
+        total = total + math.max(AR.StandWidth("subject", false), HEAD.SUBJECT_MIN)
+      else
+        total = total + AR.ChipSize(strip, id, true)
+      end
+    end
+  end
+  return total + HEAD.GAP * math.max(count - 1, 0) <= span
+end
+
+-- The packed header laid out (above), and put on screen: its boxes into
+-- strip.bx and strip.bw, as the other headers' are, so a drag reads its
+-- neighbours the same way; the heading or the peg in the hand left where
+-- the cursor holds it, its slot taking the ghost. The chips on the right
+-- end where the rows do, so while the list scrolls the track's column
+-- above the scroll bar stays clear. Anchored again only where a place or a
+-- width changed.
+function AR.LayoutChips(host, strip, layout, width)
+  local spec = host.Spec and host.Spec()
+  local has = spec and spec.el
+  if has and has.subject == nil then has = nil end
+  local bx, bw, kind, hx, hw, order = strip.bx, strip.bw, strip.kind, strip.hx, strip.hw, strip.order
+  for id in pairs(kind) do
+    kind[id] = "absent"
+    bx[id], bw[id], hx[id], hw[id] = nil, nil, nil, nil
+  end
+  local n = #layout
+  local at, count = n + 1, 0
+  for i = 1, n do
+    local id = layout[i].id
+    if id == "subject" then at = i end
+    if has and has[id] == nil then
+      kind[id] = "absent"
+    elseif not layout[i].shown and not AR.COLUMNS[id].fixed then
+      kind[id] = "peg"
+    else
+      kind[id] = "lane"
+    end
+    if kind[id] ~= "absent" then
+      count = count + 1
+      order[count] = id
+    end
+  end
+  for i = count + 1, #order do order[i] = nil end
+  local span = math.max(math.min(spec and spec.width or width, width), 60)
+  local words = AR.ChipsFit(strip, layout, span)
+  local x = 0
+  for i = 1, at - 1 do
+    local id = layout[i].id
+    if kind[id] ~= "absent" then
+      local w = AR.ChipSize(strip, id, words)
+      bx[id], bw[id] = x, w
+      x = x + w + HEAD.GAP
+    end
+  end
+  local edge = span
+  for i = n, at + 1, -1 do
+    local id = layout[i].id
+    if kind[id] ~= "absent" then
+      local w = AR.ChipSize(strip, id, words)
+      edge = edge - w
+      bx[id], bw[id] = edge, w
+      edge = edge - HEAD.GAP
+    end
+  end
+  if at <= n and kind.subject ~= "absent" then bx.subject, bw.subject = x, math.max(edge - x, 1) end
+  for i = 1, count do
+    local id = order[i]
+    hx[id], hw[id] = bx[id], bw[id]
+  end
+  strip.lanes, strip.span, strip.words = false, span, words
+
+  -- A chip keeps its own width wherever it stands; the subject's heading,
+  -- the room between, carries its plate on to the header's end where it
+  -- stands last, as the last heading on lanes does.
+  local last = order[count]
+  local drag = AR.drag
+  local tile = Th().Metrics.tileHeight
+  for id, head in pairs(strip.heads) do
+    local peg = strip.pegs[id]
+    if peg then
+      local w = bw[id]
+      if kind[id] == "absent" or not w then
+        head:Hide()
+        peg:Hide()
+      else
+        local pw = (id == last and id == "subject") and math.max(width - bx[id], w) or w
+        local held = drag ~= nil and drag.id == id
+        local frame
+        if kind[id] == "peg" then
+          head:Hide()
+          peg._w = w
+          FitPeg(peg, pw)
+          frame = peg
+        else
+          peg:Hide()
+          -- A name or a glyph and its name reads as the second line's chips
+          -- do; a glyph alone and the subject's name as a heading does.
+          local line = 2
+          if id == "subject" or (head.Glyph and not head.ChipText) then line = 1 end
+          AR.FitTwoHead(head, w, pw, tile, line, nil, words, held)
+          frame = head
+        end
+        if held then
+          local ghost = strip.Ghost
+          ghost:ClearAllPoints()
+          ghost:SetPoint("LEFT", strip, "LEFT", bx[id], 0)
+          ghost:SetSize(pw, tile)
+          AR.PaintGhost(ghost)
+          ghost:Show()
+        elseif frame._x ~= bx[id] then
+          frame:ClearAllPoints()
+          frame:SetPoint("LEFT", strip, "LEFT", bx[id], 0)
+          frame._x = bx[id]
+        end
+        if frame == head then
+          head:Show()
+          AR.PaintHead(head)
+        elseif not peg:IsShown() then
+          peg:Show()
+          PaintPeg(peg)
+        end
+      end
+    end
+  end
+  if not drag then strip.Ghost:Hide() end
+  AR.PlaceLines(host)
+end
+
+-------------------------------------------------------------
 -- 7. Moving a column
 --
 -- By its heading or by its column on any row (section 7a), one press at a
@@ -3026,9 +3213,9 @@ end
 -- rows. It carries:
 --   the lane lines   one faint line down each boundary between two lanes,
 --                    from the header through the rows, while the rows line
---                    up (closed up, no row stands in lanes);
+--                    up (packed, no row stands in lanes);
 --   the press        on any row, the column whose box is under the cursor
---                    -- closed up, the one that row drew there, and on a
+--                    -- packed, the one that row drew there, and on a
 --                    two-line row the part under it, a figure on its
 --                    second line included (AR.TwoAt) -- is taken as its
 --                    heading would be, and a right-click hides it;
@@ -3036,11 +3223,12 @@ end
 --                    (AR.SetRowHover). So a click on a row does nothing
 --                    else while the mode is open: nothing opens, nothing
 --                    is collected;
---   the hand         while a column is dragged, the column riding offset in
---                    a lifted lane at its home, its cells copied onto the
---                    lane from the rows -- closed up, gathered into it as a
---                    lined-up row has them -- and, lined up, its slot
---                    ringed down the list.
+--   the hand         while a column is dragged in columns, the column
+--                    riding offset in a lifted lane at its home, its cells
+--                    copied onto the lane from the rows, and its slot
+--                    ringed down the list (packed there is no lane to lift:
+--                    each row marks the column where it now draws it,
+--                    section 7b).
 -- The mouse wheel is not taken: the list still scrolls under it. Nothing
 -- here runs while the mode is closed; pointed at, a look a frame at where
 -- the cursor is, which goes on to which column only when the cursor moved
@@ -3112,7 +3300,7 @@ function AR.ColumnAt(host)
   local left = cover:GetLeft()
   if not left then return nil end
   local cx, cy = AR.Cursor(cover)
-  if strip.lanes and not strip.lined then return AR.RowColumnAt(host, cx, cy) end
+  if strip.chips then return AR.RowColumnAt(host, cx, cy) end
   if strip.lanes then
     -- A heading's box, a narrow heading's among them; not a peg's room,
     -- which is the peg's to take on the header.
@@ -3262,8 +3450,8 @@ end
 
 -- One line down each boundary between two columns' boxes, where the box
 -- before it ends (AR.LayoutStrip), a peg's and a narrow heading's among
--- them. None without lanes, nor while the rows close up: no row stands in
--- them then.
+-- them. None without lanes, nor while the rows are packed: no row stands
+-- in them then.
 function AR.PlaceLines(host)
   local cover, strip = host.cover, host.strip
   if not (cover and strip) then return end
@@ -3295,9 +3483,8 @@ function AR.PlaceLines(host)
 end
 
 -- The dragged column's lane over the list, offset by as much as its heading
--- is from its slot, and while the rows line up the slot ringed down the
--- list; closed up no row has that slot, and the header's ring says where
--- it lands. Only where the rows have lanes.
+-- is from its slot, and the slot ringed down the list. Only where the rows
+-- have lanes: packed, each row marks where it draws the column (7b).
 function AR.PlaceHand(host)
   local cover, strip, drag = host.cover, host.strip, AR.drag
   local scroll = host.Scroll and host.Scroll()
@@ -3464,17 +3651,17 @@ end
 --                    columns hatched, and a tick where it stops;
 --   in the hand      the row's cell leaves its lane and rides on the lifted
 --                    lane over the list (7a).
--- Packed, a row's columns are its own: a column's box between what this
--- row draws either side of it, washed where the row drew it, and nothing on
--- a row without it (the subject has its room); the subject's box washed and
--- a tick where it stops, which is where the mail's own figures begin; in
--- the hand, a figure's cell rides on the
--- lifted lane where a row with every figure has it, so the column in the
--- hand reads as one. The accent while the column is selected or in the
--- hand, white while it is only pointed at. A two-line row has its part's
--- box marked (AR.MarkTwo): a graphic, the first line's sender or subject,
--- or a figure where the second line writes it. Every mark is a texture of the
--- row's own, made the first time the row needs one and reused, as
+-- Packed, a row's columns are its own: a column's box is its own on the
+-- row, between what this row draws either side of it, washed where the row
+-- drew it, and nothing on a row without it (the subject has its room); the
+-- subject's box washed and a tick where it stops, which is where the
+-- mail's own figures begin; in the hand, the same box in the accent, so
+-- every row shows where the column lands as it moves. The accent while the
+-- column is selected or in the hand, white while it is only pointed at. A
+-- two-line row has its part's box marked (AR.MarkTwo): a graphic, the
+-- first line's sender or subject, or a figure where the second line writes
+-- it. Every mark is a texture of the row's own, made the first time the
+-- row needs one and reused, as
 -- RV.Wash's is; a mark is anchored again only where it moved. RV.Wash with
 -- nothing to point at takes them all away (AR.UnmarkRow).
 -------------------------------------------------------------
@@ -3664,11 +3851,8 @@ local function Uncarry(m)
 end
 
 -- The row's cell of the column in the hand, onto the lane: where the row
--- has it, moved by the drag's offset. The subject's is its own room. A
--- figure named `home` (a closed-up row's) rides in its home lane instead,
--- where a row with every figure has it, so the column in the hand reads as
--- one down the list.
-local function Carry(row, m, region, s, x, subjectW, dx, home)
+-- has it, moved by the drag's offset. The subject's is its own room.
+local function Carry(row, m, region, s, x, subjectW, dx)
   local host = AR.host
   local cover = host and host.cover
   if not cover then return end
@@ -3679,9 +3863,6 @@ local function Carry(row, m, region, s, x, subjectW, dx, home)
   end
   local left, w = AR.RegionSpan(region, s.width)
   if region == s.el.subject then w = math.max(math.min(w, x + subjectW - left), 1) end
-  local lx = home and s.laneX and s.laneX[home]
-  local lw = home and s.laneW and s.laneW[home]
-  if lx and lw and lw > 0 then left, w = lx, lw end
   local cur
   if region:GetObjectType() == "FontString" then
     cur = carry.Text
@@ -3718,11 +3899,10 @@ end
 
 -- Where column `id` stands on a row, for its box: its lane where the rows
 -- stand in columns (`lined`) -- every row of a list on the same lanes, a
--- read mail's delete mark drawing over the last one's end -- or where the
--- row drew it, packed; the subject's own room (`x`, `subjectW`) either way.
--- A peg's or a narrow heading's is the room the row keeps for it (RV.Place:
--- a lane lined up, where this row packed it otherwise). Nil where it has
--- none.
+-- read mail's delete mark drawing over the last one's end, and a peg's or
+-- a narrow heading's lane the room the row keeps for it (RV.Place) -- or
+-- where the row drew it, packed, which keeps no room for anything; the
+-- subject's own room (`x`, `subjectW`) either way. Nil where it has none.
 function AR.CellSpan(s, id, lined, x, subjectW)
   local region = s.el[id]
   if region == nil then return nil end
@@ -3732,12 +3912,7 @@ function AR.CellSpan(s, id, lined, x, subjectW)
     if not (lx and lw and lw > 0) then return nil end
     return lx, lw
   end
-  if not region:IsShown() then
-    local room = s.held and s.held[id]
-    local rx = room and s.roomX and s.roomX[id]
-    if rx then return rx, room end
-    return nil
-  end
+  if not region:IsShown() then return nil end
   return AR.RegionSpan(region, s.width)
 end
 
@@ -3828,14 +4003,16 @@ function AR.MarkRow(row, s, target, lanes, x, subjectW, sx, run)
   local m = row.__pbMarks or AR.NewMarks(row)
   m.on = true
   local drag = AR.drag
-  if drag and drag.id == focus then
+  local inHand = drag ~= nil and drag.id == focus
+  -- Lined up, the column in the hand rides the lifted lane (7a). Packed
+  -- there is none: the row marks it where it now draws it, as the hand's.
+  if inHand and lanes then
     HideBox(m)
     HideHatch(m)
     HideTick(m)
     local region = s.el[focus]
     if region and region:IsShown() then
-      local spec = AR.COLUMNS[focus]
-      Carry(row, m, region, s, x, subjectW, drag.dx, (not lanes and spec and spec.figure) and focus or nil)
+      Carry(row, m, region, s, x, subjectW, drag.dx)
       region:Hide()
       -- The icon's quality mark goes with it (the row paints it again
       -- when it is next bound).
@@ -3847,7 +4024,7 @@ function AR.MarkRow(row, s, target, lanes, x, subjectW, sx, run)
     return
   end
   Uncarry(m)
-  local sel = AR.Selected("column", focus)
+  local sel = inHand or AR.Selected("column", focus)
   -- The column's box on this row, by the header's rule.
   local bx, bw = AR.CellBox(s, focus, lanes, x, subjectW)
   local ownEnd = x + subjectW
@@ -3869,8 +4046,8 @@ function AR.MarkRow(row, s, target, lanes, x, subjectW, sx, run)
   end
   HideTick(m)
   if not lanes then
-    -- Closed up: the column where this row drew it, and nothing on a row
-    -- without it, whose subject has that room.
+    -- Packed: the column's own box, where this row drew it, and nothing on
+    -- a row without it, whose subject has that room.
     local region = s.el[focus]
     if bx and region and region:IsShown() then
       MarkBox(row, m, bx, bw, sel and "sel" or "hover")
@@ -4556,9 +4733,9 @@ end
 
 -- Row layout chosen from the mode: the choice itself, the options panel's
 -- where it is open, and every list placed again where it stands, so the
--- rows show at once what it does; the header stays on its lanes, draws its
--- lane lines only in Columns, and the overview shows the choice as it now
--- is (AR.SyncLanes).
+-- rows show at once what it does; the header goes over to its lanes and
+-- their lines in Columns, its chips in Packed (section 6c), and the
+-- overview shows the choice as it now is (AR.SyncLanes).
 function AR.SetRowPacking(mode)
   local ui = UI()
   if not (AR.host and ui and ui.SetRowPacking and ui.GetRowPacking) then return end
