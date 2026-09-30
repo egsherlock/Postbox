@@ -1991,11 +1991,13 @@ end
 -- Nothing is hooked and nothing is written onto the tooltip's table. A
 -- sensor -- a Postbox frame with no art, spread over the tooltip -- shows
 -- and hides with it, and its own scripts dress it for a Postbox owner on
--- show (or when a resize finds a new owner) and undo that on hide. What was
--- made and what was hidden sits in `tipState`, Postbox's own table.
+-- show (or when a resize finds a new owner) and undo that on hide -- only
+-- while a Postbox window is on screen (WatchTooltips): away from Postbox the
+-- sensor has no scripts at all. What was made and what was hidden sits in
+-- `tipState`, Postbox's own table.
 -------------------------------------------------------------
 
-local tipState = { dressed = false, owner = nil, fill = nil, edges = nil, nineShown = nil, sensor = nil }
+local tipState = { dressed = false, owner = nil, fill = nil, edges = nil, nineShown = nil, sensor = nil, watching = false }
 
 local function Forbidden(frame)
   return frame.IsForbidden ~= nil and frame:IsForbidden() and true or false
@@ -2082,6 +2084,40 @@ local function SensorHidden(self)
   DressTooltip(tip, false)
 end
 
+-- The sensor hears the tooltip only while a Postbox window is on screen: its
+-- scripts run on every game tooltip's show, hide and resize, and with no
+-- Postbox window up no tooltip can be Postbox's to dress. Attached when a
+-- window shows, detached -- the tooltip undressed if it was dressed -- when
+-- the last one hides.
+local function WatchTooltips(on)
+  local sensor = tipState.sensor
+  if not sensor or tipState.watching == on then return end
+  tipState.watching = on
+  local tip = sensor:GetParent()
+  if on then
+    sensor:SetScript("OnShow", SensorShown)
+    sensor:SetScript("OnHide", SensorHidden)
+    sensor:SetScript("OnSizeChanged", SensorResized)
+    -- Already up (a window shown under the cursor): look now.
+    if tip and tip:IsVisible() then SenseTooltip(tip, true) end
+  else
+    sensor:SetScript("OnShow", nil)
+    sensor:SetScript("OnHide", nil)
+    sensor:SetScript("OnSizeChanged", nil)
+    tipState.owner = nil
+    if tipState.dressed and tip and not Forbidden(tip) then DressTooltip(tip, false) end
+  end
+end
+
+local function WindowShown() WatchTooltips(true) end
+
+local function WindowHidden()
+  for frame in pairs(Skin._windows) do
+    if frame:IsShown() then return end
+  end
+  WatchTooltips(false)
+end
+
 local function HookTooltips()
   if tipState.sensor or type(CreateFrame) ~= "function" then return end
   -- GameTooltip is shared, and a host UI skins it for the whole interface:
@@ -2092,12 +2128,8 @@ local function HookTooltips()
   if type(tip) ~= "table" or Forbidden(tip) then return end
   local sensor = CreateFrame("Frame", nil, tip)
   sensor:SetAllPoints(tip)
-  sensor:SetScript("OnShow", SensorShown)
-  sensor:SetScript("OnHide", SensorHidden)
-  sensor:SetScript("OnSizeChanged", SensorResized)
   tipState.sensor = sensor
-  -- Already up (a window built under the cursor): look now.
-  if tip:IsVisible() then SenseTooltip(tip, true) end
+  tipState.watching = false
 end
 
 -------------------------------------------------------------
@@ -2126,6 +2158,11 @@ function Skin.Apply(frame)
   FlatClose(frame.CloseButton)
   frame.__pbTooltipOwner = true
   HookTooltips()
+  if tipState.sensor then
+    frame:HookScript("OnShow", WindowShown)
+    frame:HookScript("OnHide", WindowHidden)
+    if frame:IsShown() then WatchTooltips(true) end
+  end
 
   -- The window tabs: the mockups' plates, drawn by the Theme from tokens of
   -- their own (Theme.SetPlateTokens), so hover and selection still run
