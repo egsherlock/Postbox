@@ -22,6 +22,11 @@ longer play.
   right-click to hide or show; a crossed eye marks what is hidden. While you
   arrange, the mark is a lit Done; right-click it to go back to the default
   arrangement.
+- **Larger mail rows have their own arrangement**, on a two-line header that
+  mirrors the row: move the icon or read mark to either end, the sender
+  before or after the subject or down onto the second line, and the figures
+  along the second line. Any part of a row can be grabbed, a single figure
+  included. Arranging one row size never moves the other.
 - **An inspector beside the window while you arrange.** It explains the mode,
   lists everything you have hidden (a click brings it back), and holds Row
   layout and Reset. Click a column, a block or a category button for its
