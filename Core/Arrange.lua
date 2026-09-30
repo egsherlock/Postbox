@@ -209,32 +209,34 @@ end
 -- Right-click on the lit key, or the inspector's reset: what the mode
 -- arranges from the list it is open over, as it comes. From the mail rows:
 -- their columns, the blocks under the list and the buttons, with the
--- gold's, the time left's and the slots' own defaults. From History: its
--- columns and its age's wording, the blocks under the list and the gold's
--- default (its money's card), and nothing History does not show -- not
--- the mail rows' columns, not the buttons. `history` says which (nil: the
--- list the mode is open over).
+-- gold's, the time left's and the slots' own defaults. From History: only
+-- what is History's own, its columns and how its age reads. What History
+-- shares with the Inbox -- the gold's choice, the blocks under the list and
+-- their order, the category buttons -- is reset from the Inbox alone, and
+-- neither list's reset touches the other's columns. `history` says which
+-- (nil: the list the mode is open over).
 function AR.Reset(history)
   local ui = UI()
   if not ui then return end
   if history == nil then history = AR.EditsHistory() end
   AR.SetLayout(nil, history)
-  if ui.SetGoldMode then ui.SetGoldMode("both") end
+  local gridBack, totalsBack = false, false
   if history then
     if ui.SetHistoryAge then ui.SetHistoryAge(nil) end
   else
+    if ui.SetGoldMode then ui.SetGoldMode("both") end
     if ui.SetExpiryWhen then ui.SetExpiryWhen("3") end
     if ui.SetSlotsStyle then ui.SetSlotsStyle(nil) end
     if ui.SetGridLayout then ui.SetGridLayout(nil) end
+    if ui.SetStackOrder then ui.SetStackOrder(nil) end
+    -- The grid and the totals hidden in the mode are the "Show category
+    -- buttons" and "Show totals" options, so they come back with the rest,
+    -- and the window's floor with them.
+    gridBack = ui.GetOption and ui.SetOption and not ui.GetOption("showCategoryButtons") or false
+    if gridBack then ui.SetOption("showCategoryButtons", true) end
+    totalsBack = ui.GetOption and ui.SetOption and not ui.GetOption("showTotals") or false
+    if totalsBack then ui.SetOption("showTotals", true) end
   end
-  if ui.SetStackOrder then ui.SetStackOrder(nil) end
-  -- The grid and the totals hidden in the mode are the "Show category
-  -- buttons" and "Show totals" options, so they come back with the rest,
-  -- and the window's floor with them.
-  local gridBack = not history and ui.GetOption and ui.SetOption and not ui.GetOption("showCategoryButtons")
-  if gridBack then ui.SetOption("showCategoryButtons", true) end
-  local totalsBack = ui.GetOption and ui.SetOption and not ui.GetOption("showTotals")
-  if totalsBack then ui.SetOption("showTotals", true) end
   AR.RowsChanged(true)
   if AR.host then AR.LayoutStrip(AR.host) end
   if (gridBack or totalsBack) and ui.RefreshCollectCategoryButtons then
