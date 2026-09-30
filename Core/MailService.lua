@@ -691,7 +691,7 @@ end
 -- have -- and bags that cannot be counted do not stop a run.
 --
 -- Asked of the bags as they stand once they have caught up with the run's
--- last take (bagsCatch, below); a take whose update never came counts as
+-- last take (bagsCatch, above); a take whose update never came counts as
 -- the slot it would have used.
 function Mail.KeepFreeReached(keepFree)
   if type(keepFree) ~= "number" or keepFree <= 0 then return false end
