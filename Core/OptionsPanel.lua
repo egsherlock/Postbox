@@ -3426,6 +3426,17 @@ function Panel.Arrange()
   if S.frame then S.frame:Hide() end
 end
 
+-- Shown where it is closed, raised where it is open: /postbox, and the
+-- page under the game's Settings.
+function Panel.Open()
+  local frame = S.frame
+  if frame and frame:IsShown() then
+    frame:Raise()
+    return
+  end
+  Panel.Toggle(nil)
+end
+
 function Panel.Toggle(anchor)
   local frame = Build()
   if frame:IsShown() then

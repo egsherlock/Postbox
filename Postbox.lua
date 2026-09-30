@@ -1419,13 +1419,15 @@ local function ReportSkin()
     report.shellArt, report.windowBuilt and "yes" or "not yet — open a mailbox"))
 end
 
+-- The commands, in the player's language: the ones a player uses first,
+-- then the two that exist for a bug report. The words typed stay English.
+local HELP_LINES = {
+  "HELP_HEAD", "HELP_OPTIONS", "HELP_MAIL", "HELP_RECIPIENTS", "HELP_MINIMAP", "HELP_DEBUG",
+  "HELP_TROUBLE", "HELP_SKIN", "HELP_PERF",
+}
+
 local function ReportHelp()
-  ns.Print("Commands:  /postbox skin  — report skin status")
-  ns.Print("           /postbox minimap  — toggle the minimap mail icon")
-  ns.Print("           /postbox mail  — Mail Memory: every character's mailbox")
-  ns.Print("           /postbox debug  — open the bug-report window")
-  ns.Print("           /postbox perf [off|on|detail]  — time mailbox visits for the bug report (kept until turned off)")
-  ns.Print(ns.L["RM_SLASH_HELP"])
+  for i = 1, #HELP_LINES do ns.Print(ns.L[HELP_LINES[i]]) end
 end
 
 -------------------------------------------------------------
@@ -1714,6 +1716,13 @@ local function ToggleMinimapIcon()
   end
 end
 
+-- Postbox options, away from a mailbox as well: shown if hidden, raised if
+-- already up.
+local function OpenOptions()
+  local Panel = ns.OptionsPanel
+  if Panel and type(Panel.Open) == "function" then Panel.Open() end
+end
+
 local function OpenRecipientManager()
   -- The manager window arrives in a later load phase and is optional from this
   -- file's point of view; say so rather than erroring on a nil call.
@@ -1725,9 +1734,9 @@ local function OpenRecipientManager()
   end
 end
 
--- One word each, aliases included, and perf's own words after it.
--- Anything unrecognised -- the empty string most of all, since a bare
--- /postbox is how people go looking -- falls through to the help text.
+-- One word each, aliases included, and perf's own words after it. A bare
+-- /postbox (or /pb) opens the options; help, and anything unrecognised,
+-- prints the commands.
 local function OpenMailMemory()
   local Memory = ns.MailMemory
   if Memory and type(Memory.Toggle) == "function" then Memory.Toggle() end
@@ -1753,6 +1762,10 @@ local function SetPerfRecording(m)
 end
 
 local COMMANDS = {
+  [""]        = OpenOptions,
+  options     = OpenOptions,
+  config      = OpenOptions,
+  help        = ReportHelp,
   mail        = OpenMailMemory,
   memory      = OpenMailMemory,
   skin        = ReportSkin,
@@ -1794,6 +1807,7 @@ function Postbox_OnAddonCompartmentLeave()
 end
 
 SLASH_POSTBOX1 = "/postbox"
+SLASH_POSTBOX2 = "/pb"
 SlashCmdList["POSTBOX"] = function(input)
   local word = string.lower(string.match(input or "", "^%s*(.-)%s*$"))
   -- One space between words, so "perf  on" is "perf on".
@@ -1804,6 +1818,43 @@ SlashCmdList["POSTBOX"] = function(input)
   else
     ReportHelp()
   end
+end
+
+-- A page under the game's Settings > AddOns: a line saying where Postbox's
+-- options are, and a button that opens them. Registered once, through the
+-- Settings API's own calls (they cross into the game's code through its
+-- SettingsInbound, which is how an addon is meant to add a page), and only
+-- where the client offers them. The page is Postbox's own frame, which the
+-- game shows inside its window; the button opens the options window over it
+-- and touches nothing of the game's.
+local settingsPage = nil
+local function RegisterSettingsPage()
+  if settingsPage then return end
+  local S = Settings
+  if type(S) ~= "table" or type(S.RegisterCanvasLayoutCategory) ~= "function"
+      or type(S.RegisterAddOnCategory) ~= "function" then return end
+  local page = CreateFrame("Frame")
+  page:Hide()
+  local title = page:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+  title:SetPoint("TOPLEFT", page, "TOPLEFT", 16, -16)
+  title:SetText("Postbox")
+  local text = page:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  text:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -12)
+  text:SetPoint("RIGHT", page, "RIGHT", -16, 0)
+  text:SetJustifyH("LEFT")
+  text:SetText(ns.L["SETTINGS_PAGE_TEXT"])
+  local button = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
+  button:SetText(ns.L["SETTINGS_PAGE_OPEN"])
+  local label = button:GetFontString()
+  local w = label and label:GetStringWidth() or 0
+  button:SetSize(math.max(180, math.ceil(w) + 32), 24)
+  button:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -12)
+  button:SetScript("OnClick", OpenOptions)
+  local ok = pcall(function()
+    local category = S.RegisterCanvasLayoutCategory(page, "Postbox")
+    S.RegisterAddOnCategory(category)
+  end)
+  if ok then settingsPage = page end
 end
 
 -------------------------------------------------------------
@@ -1838,6 +1889,8 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   if MinimapIcon and type(MinimapIcon.Initialize) == "function" then
     MinimapIcon.Initialize()
   end
+
+  RegisterSettingsPage()
 end)
 
 -- Repeated at login because UnitLevel is not dependably populated as early as

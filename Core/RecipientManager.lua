@@ -1581,7 +1581,12 @@ function RM.ConfirmDelete(key, display)
     RM.DeleteRecipient(key, display)
     return
   end
-  Theme.LiftPopup(StaticPopup_Show(DELETE_POPUP, L("RM_DELETE_CONFIRM", display or key), nil,
+  -- One of the player's own characters leaves the census as well, which
+  -- From alts, the groups' character list and the Alts list read: said.
+  local name = display or key
+  local text = R.IsStoredAlt and R.IsStoredAlt(key) and L("RM_DELETE_CONFIRM_ALT", name, name)
+    or L("RM_DELETE_CONFIRM", name)
+  Theme.LiftPopup(StaticPopup_Show(DELETE_POPUP, text, nil,
                                    { key = key, display = display }))
 end
 

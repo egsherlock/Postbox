@@ -769,6 +769,15 @@ function R.CanDelete(key)
   return false, "RM_ERR_LIVE_ONLY"
 end
 
+-- key -> whether the name is one of the player's own characters, as the
+-- census has it (alts). Deleting such a name drops it from the census too,
+-- until that character logs in again.
+function R.IsStoredAlt(key)
+  local k, short, realm = R.Key(key)
+  if k == "" then return false end
+  return StoredAsAlt(short, realm)
+end
+
 -- Removes everything Postbox has stored for a recipient and reports what was
 -- actually removed, so the UI can say what happened instead of guessing:
 --
