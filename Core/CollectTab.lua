@@ -6041,29 +6041,7 @@ function HV.BuildHistoryRow(panel)
 
   row:SetScript("OnEnter", function(self)
     Th().StyleMailRow(self, self._rowIndex, true)
-    local entry = self.entry
-    if not entry then return end
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:ClearLines()
-    GameTooltip:SetText(entry.s ~= "" and entry.s or L()["SENDER_UNKNOWN"])
-    if entry.sub and entry.sub ~= "" then GameTooltip:AddLine(entry.sub, 0.75, 0.75, 0.75, true) end
-    if type(date) == "function" and entry.t then
-      GameTooltip:AddLine(date("%Y-%m-%d %H:%M", entry.t), 0.6, 0.6, 0.6)
-    end
-    local items = entry.it or {}
-    for i = 1, #items do
-      local line = items[i].l or ""
-      if (items[i].n or 1) > 1 then line = line .. " x" .. items[i].n end
-      GameTooltip:AddLine(line, 1, 1, 1)
-    end
-    local money = HV.HistoryMoney(entry, false)
-    if money then GameTooltip:AddLine(money, 1, 1, 1) end
-    -- What the letter said, kept because the mail itself may be gone.
-    if type(entry.b) == "string" and entry.b ~= "" then
-      GameTooltip:AddLine(" ")
-      GameTooltip:AddLine(entry.b, 1, 0.82, 0.55, true)
-    end
-    GameTooltip:Show()
+    HV.RowTip(self)
   end)
   row:SetScript("OnLeave", function(self)
     Th().StyleMailRow(self, self._rowIndex, false)
@@ -6118,6 +6096,11 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   RV.PaintSender(row.Sender, not outcome and named or nil, realm)
   text.subject = HV.HistoryWhat(entry, RV.SaysCount(firstCount, layout))
   text.money = MoneyShown(kind, layout) and HV.HistoryMoney(entry, true) or nil
+  -- For the tooltip (HV.RowTip): whether the row shows less of the sender
+  -- than the record has, the realm the record is from, and which money the
+  -- row shows.
+  row.tipShort = named ~= nil and not outcome and text.sender ~= named
+  row.tipRealm, row.tipMoney = realm, text.money and kind or nil
   spec.layout = layout
   spec.size.icon = ROW_ICON_COMPACT
   spec.width = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
@@ -6139,6 +6122,77 @@ function HV.MoneyKind(entry)
   if (entry.c or 0) > 0 then return "cod" end
   if (entry.p or 0) > 0 then return "spent" end
   return nil
+end
+
+-- row, kind, amount -> whether the row's money column shows this amount of
+-- this kind exactly (it shows one amount, in its short form).
+function HV.MoneyOnRow(row, kind, amount)
+  if row.tipMoney ~= kind or not row.Money:IsShown() then return false end
+  return ns.Core.Formatting.FormatMoneyCompact(amount, true) == Helpers().FormatMoney(amount)
+end
+
+-- row -> the tooltip of a History row, in the mail rows' format (RV.RowTip):
+-- the subject; From, where the row shows less of the sender; Held, what came
+-- out of it where the row does not say all of it -- the stacks past the
+-- first, or the first cut short -- and the gold; the C.O.D. paid and a won
+-- auction's price; each amount unless the row shows exactly that; Collected,
+-- the day and the time; then what the letter said, kept because the mail
+-- itself may be gone. A History row does nothing on a click: no hint.
+function HV.RowTip(row)
+  local entry = row.entry
+  if not entry then return false end
+  local T, L0, H = Th(), L(), Helpers()
+  local layout = HV.Layout()
+  local named = (entry.s ~= "" and entry.s) or nil
+  T.TipBegin(row)
+  T.TipTitle((entry.sub and entry.sub ~= "") and entry.sub or named or L0["SENDER_UNKNOWN"])
+  if named and (not layout.shown.sender or row.tipShort or row.Sender.__pbOverflowText) then
+    T.TipFact(L0["TIP_FROM"], RV.TipSender(named, row.tipRealm))
+  end
+
+  local buf = RV.tipHolds
+  Clear(buf)
+  local items = entry.it
+  local n = items and #items or 0
+  if n > 1 or (n == 1 and (not layout.shown.subject or row.Subject.__pbOverflowText)) then
+    local qualityOf = C_Item and C_Item.GetItemQualityByID
+    for i = 1, min(n, RV.TIP_ITEMS) do
+      local link = items[i].l
+      local name = type(link) == "string" and link:match("%[(.-)%]") or nil
+      local quality = (name and type(qualityOf) == "function") and qualityOf(link) or nil
+      RV.TipItem(buf, name, quality, nil, items[i].n)
+    end
+    RV.TipMore(buf, n - RV.TIP_ITEMS)
+  end
+  local m, c, p = entry.m or 0, entry.c or 0, entry.p or 0
+  if m > 0 and not HV.MoneyOnRow(row, "earned", m) then
+    if #buf > 0 then buf[#buf + 1] = " \194\183 " end
+    buf[#buf + 1] = T.TipTone("positive", H.FormatMoney(m))
+  end
+  if #buf > 0 then T.TipFact(L0["TIP_HELD"], concat(buf)) end
+  if c > 0 and not HV.MoneyOnRow(row, "cod", c) then
+    T.TipFact(L0["LABEL_COD"], T.TipTone("warning", H.FormatMoney(c)))
+  end
+  if p > 0 and not HV.MoneyOnRow(row, "spent", p) then
+    T.TipFact(L0["LABEL_PURCHASE"], T.TipTone("negative", H.FormatMoney(p)))
+  end
+
+  -- The day, as the player's own choice of date writes it (the day and
+  -- the month's name, in the language's order, where the row says an age),
+  -- and the time.
+  local t = tonumber(entry.t)
+  if t and type(date) == "function" then
+    local style = HV.AgeStyle()
+    if not HV.DATE_KEYS[style] then style = (GetLocale() == "enUS") and "date_md" or "date_dm" end
+    T.TipFact(L0["TIP_COLLECTED"], HV.DateText(t, style, time()) .. " " .. date("%H:%M", t))
+  end
+
+  if type(entry.b) == "string" and entry.b ~= "" then
+    T.TipBlank()
+    GameTooltip:AddLine(entry.b, T.TIP_MUTED, T.TIP_MUTED, T.TIP_MUTED, true)
+  end
+  GameTooltip:Show()
+  return true
 end
 
 -- entry -> the folded text a search looks in: sender, subject, the outcome
