@@ -31,8 +31,9 @@ your recipients, groups, Mail Memory and History are kept.*
 
 - **The Postbox style** replaces Postbox Modern: the clean dark look, no
   EllesmereUI needed. Choose its accent (presets, your class color or any
-  color), background color, tint, border, row stripes, rounded corners, font and text
-  size, or switch it to **Light mode**. Your opacity and border carry over.
+  color), background color, tint, border, row stripes, rounded corners,
+  font and text size, or switch it to **Light mode**. Your opacity and
+  border carry over.
 - **Six window styles:** **Pillar Box** (its flag goes up when mail waits;
   pick the paint), **Faction** (Alliance or Horde, by character), **Post
   Office Counter**, **Goblin Express**, **Letters** (parchment and wax seals)
