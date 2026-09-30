@@ -1392,9 +1392,12 @@ function Skin.OnHostLooksChanged(fromShow)
   if not S then return end
   -- The house font on Postbox's text (Theme.HostFont): moved only if the face
   -- the facade answers is not the one the text wears, so on almost every pass
-  -- this is one read and a compare.
+  -- this is one read and a compare. When it did move -- EllesmereUI's font or
+  -- its Outline Mode changed -- the widths fitted to the old face are
+  -- forgotten, and the screens that fit text are measured again.
   if ns.Theme and type(ns.Theme.RefreshHostFonts) == "function" then
-    pcall(ns.Theme.RefreshHostFonts)
+    local ok, moved = pcall(ns.Theme.RefreshHostFonts)
+    if ok and moved then RefitScreens() end
   end
   pcall(Skin.ApplyBgOpacity)          -- baseline fill colour + opacity
   pcall(Skin.ApplyBorder)             -- the user's configured window border
