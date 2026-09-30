@@ -1150,6 +1150,96 @@ local function Reevaluate()
   end
 end
 
+-- The tooltip's form is the one the addon's hover tooltips share: a title
+-- line; facts as a muted label with a bright value; a warning in the warning
+-- tone; the gestures last, muted, in their house order. Its content is the
+-- mailbox as Mail Memory knows it -- what arrived, what waits and what the
+-- server refused, each with who from; how old that knowledge is -- and, when
+-- another character has mail waiting or any has mail close to being lost,
+-- one line per character. Nothing here builds a table: the helpers are made
+-- once, and the lists read are Mail Memory's.
+local TIP = {
+  MUTED = 0.75,        -- a fact's label: (0.75, 0.75, 0.78), as the rows' quieter lines
+  HINT = 0.7,          -- the gesture line
+  MORE = 0.6,          -- "and N more"
+  SENDERS = 3,         -- senders listed under a fact before "and N more"
+  ARRIVALS = 5,        -- arrivals listed by item
+  CHARACTERS = 6,      -- characters listed before "and N more"
+  INDENT = "   ",
+  seen = {},           -- the one-field snapshot MailMemory.AgeText reads
+}
+
+function TIP.Fact(label, value, tone)
+  value = tostring(value)
+  if tone then
+    GameTooltip:AddDoubleLine(label, value, tone[1], tone[2], tone[3], tone[1], tone[2], tone[3])
+  else
+    GameTooltip:AddDoubleLine(label, value, TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03, 1, 1, 1)
+  end
+end
+
+function TIP.More(n, indent)
+  local text = string.format(L["MEMORY_WAITING_MORE"], n)
+  if indent then text = TIP.INDENT .. text end
+  GameTooltip:AddLine(text, TIP.MORE, TIP.MORE, TIP.MORE + 0.03)
+end
+
+-- Under a fact, who it is from: the biggest few, indented and muted.
+function TIP.Senders(groups)
+  if not groups then return end
+  local shown = math.min(#groups, TIP.SENDERS)
+  local m = TIP.MUTED
+  for i = 1, shown do
+    GameTooltip:AddDoubleLine(TIP.INDENT .. groups[i].name, "x" .. groups[i].count, m, m, m + 0.03, m, m, m + 0.03)
+  end
+  if #groups > shown then TIP.More(#groups - shown, true) end
+end
+
+-- One character's right-hand side: its count, bright, and while Mail
+-- Memory warns about it, the warning's own words (the soonest expiry, or
+-- how long mail on its way has gone unopened) in the warning tone.
+function TIP.CharacterValue(n, st)
+  local warning = st.warn and st.text
+  if not warning then return tostring(n) end
+  warning = ns.Theme.Colorize("warning", warning)
+  if n > 0 then return n .. " \194\183 " .. warning end
+  return warning
+end
+
+-- The characters, this one first, then the ones with something to say,
+-- warnings first -- MailMemory.Characters' own order. Shown when another
+-- character has mail waiting, or any character warns (the expiry alert must
+-- be able to say whose). The hidden ones say nothing.
+function TIP.Characters(Memory)
+  if not (Memory and type(Memory.Characters) == "function") then return end
+  local list = Memory.Characters()
+  local others, warns = false, false
+  for i = 1, #list do
+    local st = list[i]
+    if not st.hidden then
+      if st.warn then warns = true end
+      if not st.me and (st.waiting + (st.pending or 0)) > 0 then others = true end
+    end
+  end
+  if not (others or warns) then return end
+  GameTooltip:AddLine(" ")
+  GameTooltip:AddLine(L["PICKER_TITLE"], TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03)
+  local shown, extra = 0, 0
+  for i = 1, #list do
+    local st = list[i]
+    local n = st.waiting + (st.pending or 0)
+    if not st.hidden and (st.me or n > 0 or st.warn) then
+      if shown < TIP.CHARACTERS then
+        shown = shown + 1
+        GameTooltip:AddDoubleLine(Memory.ClassName(st.realm, st.name), TIP.CharacterValue(n, st), 1, 1, 1, 1, 1, 1)
+      else
+        extra = extra + 1
+      end
+    end
+  end
+  if extra > 0 then TIP.More(extra) end
+end
+
 -- `hostMode` is the EllesmereUI overlay: same description of the mailbox,
 -- but without the gestures Postbox does not own there (the icon's position
 -- is EllesmereUI's, so it offers no drag and no lock).
@@ -1162,10 +1252,10 @@ ShowTooltip = function(button, hostMode)
   -- Postbox describes the mailbox here, not the client. The default
   -- indicator's tooltip is "Unread mail from:" plus up to three bare names
   -- -- no counts, nothing about what is still waiting in a mail already
-  -- opened, and it duplicated the breakdown below it. What the snapshot
-  -- knows is strictly better, so it is the whole tooltip.
+  -- opened. What the snapshot knows is strictly better, so it leads.
   local Memory = ns.MailMemory
-  local state = Memory and type(Memory.MailboxSummary) == "function"
+  local memoryOn = MemoryOn()
+  local state = memoryOn and Memory and type(Memory.MailboxSummary) == "function"
     and Memory.MailboxSummary() or nil
 
   GameTooltip:SetText(L["FRAME_TITLE"])
@@ -1173,102 +1263,58 @@ ShowTooltip = function(button, hostMode)
   if state and state.arrived then
     -- Green: good news. The accent belongs to selection and the orange to
     -- refusals; an arrival is neither (see the badge in Core/MailMemory).
+    -- What the auction house said arrived, by item, each in its outcome's
+    -- tone; the client's latest senders otherwise, beside the label.
     local pos = ns.Theme.Colors.positive
-    GameTooltip:AddLine(L["MEMORY_NEW_SINCE"], pos[1], pos[2], pos[3])
-    -- What the auction house said arrived, by item, when it said; the
-    -- client's bare sender names otherwise.
     local pending = state.pending
+    local from = state.newFrom
     if type(pending) == "table" and #pending > 0 then
-      local shown = math.min(#pending, 5)
+      GameTooltip:AddLine(L["MEMORY_NEW_SINCE"], pos[1], pos[2], pos[3])
+      local shown = math.min(#pending, TIP.ARRIVALS)
       for i = 1, shown do
         GameTooltip:AddDoubleLine(pending[i].label, pending[i].item, 1, 1, 1, 1, 1, 1)
       end
-      if #pending > shown then
-        GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #pending - shown), 0.6, 0.6, 0.63)
+      if #pending > shown then TIP.More(#pending - shown) end
+    elseif type(from) == "table" and #from > 0 then
+      for i = 1, #from do
+        GameTooltip:AddDoubleLine(i == 1 and L["MEMORY_NEW_SINCE"] or " ", from[i], pos[1], pos[2], pos[3], 1, 1, 1)
       end
     else
-      local from = state.newFrom
-      if type(from) == "table" then
-        for i = 1, #from do GameTooltip:AddLine(from[i], 1, 1, 1) end
+      GameTooltip:AddLine(L["MEMORY_NEW_SINCE"], pos[1], pos[2], pos[3])
+    end
+  end
+
+  if state then
+    if state.groups or state.stuckGroups then
+      if state.groups then
+        TIP.Fact(L["MINIMAP_TIP_WAITING"], state.waiting)
+        TIP.Senders(state.groups)
       end
+      -- In the orange a refusal wears everywhere else in the addon, and
+      -- apart: listing these under "waiting to collect" and counting them
+      -- again read as twice the mail there actually was.
+      if state.stuckGroups then
+        TIP.Fact(L["MINIMAP_TIP_STUCK"], state.stuck, ns.Theme.Colors.warning)
+        TIP.Senders(state.stuckGroups)
+      end
+    elseif not state.arrived then
+      -- "Nothing waiting" only while nothing has arrived since: over new
+      -- mail it would be the snapshot's stale answer.
+      GameTooltip:AddLine(L["MEMORY_NOTHING_WAITING"], TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03)
     end
-  end
-
-  -- Each heading carries its own total, so the count is where the thing
-  -- being counted is rather than stranded on a separate line.
-  local function Breakdown(groups, heading, count, hr, hg, hb)
-    if not groups then return end
-    GameTooltip:AddLine(" ")
-    GameTooltip:AddLine(string.format(heading, count), hr, hg, hb)
-    local shown = math.min(#groups, 5)
-    for i = 1, shown do
-      GameTooltip:AddDoubleLine(groups[i].name, "x" .. groups[i].count,
-        1, 1, 1, 0.75, 0.75, 0.78)
-    end
-    if #groups > shown then
-      GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #groups - shown),
-        0.6, 0.6, 0.63)
-    end
-  end
-
-  if state and (state.groups or state.stuckGroups) then
-    Breakdown(state.groups, L["MEMORY_WAITING_HEAD"], state.waiting,
-      0.75, 0.75, 0.78)
-    -- Its own heading in the orange a refusal wears everywhere else in the
-    -- addon. Listing these under "waiting to collect" and then counting
-    -- them again below read as twice the mail there actually was.
-    local warn = ns.Theme.Colors.warning
-    Breakdown(state.stuckGroups, L["MEMORY_STUCK_HEAD"], state.stuck,
-      warn[1], warn[2], warn[3])
-  elseif state and not state.arrived then
-    -- "Nothing waiting" only while nothing has arrived since: over new mail
-    -- it would be the snapshot's stale answer, under the client's own
-    -- you-have-mail icon.
-    GameTooltip:AddLine(L["MEMORY_NOTHING_WAITING"], 0.75, 0.75, 0.78)
-  else
+    TIP.seen.seenAt = state.seenAt
+    TIP.Fact(L["MINIMAP_TIP_SEEN"], Memory.AgeText(TIP.seen))
+  elseif view.lit then
     -- No snapshot (memory off, or this character has never opened a
     -- mailbox with Postbox installed): say only what the client knows.
-    GameTooltip:AddLine(HAVE_MAIL or "", 0.75, 0.75, 0.78)
+    GameTooltip:AddLine(HAVE_MAIL or "", TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03)
   end
 
-  -- This character's own mail close to being lost, by the rule the alert
-  -- reads (MailMemory.Characters lists this character first).
-  if Memory and MemoryOn() and type(Memory.Characters) == "function" then
-    local me = Memory.Characters()[1]
-    if me and me.me and me.warn and me.text then
-      local warn = ns.Theme.Colors.warning
-      GameTooltip:AddLine(me.text, warn[1], warn[2], warn[3], true)
-    end
-  end
+  if memoryOn then TIP.Characters(Memory) end
 
-  -- The other characters with mail close to being lost (Core/MailMemory,
-  -- section 2b): a heading and one line each, only when there is one.
-  local others = Memory and type(Memory.OtherWarnings) == "function" and Memory.OtherWarnings() or nil
-  if others and #others > 0 then
-    local warn = ns.Theme.Colors.warning
-    GameTooltip:AddLine(" ")
-    GameTooltip:AddLine(L["OVERVIEW_HEAD"], 0.75, 0.75, 0.78)
-    local shown = math.min(#others, 4)
-    for i = 1, shown do
-      GameTooltip:AddDoubleLine(others[i].label, others[i].text, 1, 1, 1, warn[1], warn[2], warn[3])
-    end
-    if #others > shown then
-      GameTooltip:AddLine(string.format(L["MEMORY_WAITING_MORE"], #others - shown), 0.6, 0.6, 0.63)
-    end
-  end
-
-  if Memory and type(Memory.SummaryText) == "function" then
-    local summary = Memory.SummaryText()
-    if summary then
-      GameTooltip:AddLine(summary, 0.55, 0.55, 0.58, true)
-    end
-  end
   GameTooltip:AddLine(" ")
-
-  local UIOpt = ns.MailboxUI
-  local memory = UIOpt and type(UIOpt.GetOption) == "function" and UIOpt.GetOption("mailMemory") and true or false
   local locked = (not hostMode) and Settings().lock and true or false
-  GameTooltip:AddLine(MB.GestureLine(memory, hostMode and true or false, locked), 0.7, 0.7, 0.7, true)
+  GameTooltip:AddLine(MB.GestureLine(memoryOn, hostMode and true or false, locked), TIP.HINT, TIP.HINT, TIP.HINT, true)
   GameTooltip:Show()
 end
 
