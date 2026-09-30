@@ -1137,11 +1137,17 @@ local function RequestRefresh(panel)
   panel._refreshQueued = true
   -- The flag is a latch: nothing else ever clears it, so if the schedule failed
   -- the panel would never refresh again for the rest of the session. Unlatch and
-  -- rebuild inline instead -- slower, but the list stays truthful.
-  local ok = pcall(C_Timer.After, 0, function()
-    panel._refreshQueued = false
-    if panel._dirty then CT.RefreshMailList(panel) end
-  end)
+  -- rebuild inline instead -- slower, but the list stays truthful. The
+  -- callback is made once per panel, not per request.
+  local run = panel._refreshRun
+  if not run then
+    run = function()
+      panel._refreshQueued = false
+      if panel._dirty then CT.RefreshMailList(panel) end
+    end
+    panel._refreshRun = run
+  end
+  local ok = pcall(C_Timer.After, 0, run)
   if not ok then
     panel._refreshQueued = false
     CT.RefreshMailList(panel)
@@ -3989,7 +3995,12 @@ function AV.UpdateRows(panel)
   if viewport > 0 then last = min(#rows, ceil((offset + viewport) / stride)) end
   local now = time()
   local used = 0
-  local onHeader = function(realm, name) AV.OpenHeader(panel, realm, name) end
+  -- A heading's click, made once per panel.
+  local onHeader = panel._avOnHeader
+  if not onHeader then
+    onHeader = function(realm, name) AV.OpenHeader(panel, realm, name) end
+    panel._avOnHeader = onHeader
+  end
   -- The box each row is from, for its sender's class (MM.RowRealm).
   local Memory = ns.MailMemory
   local realm = Memory.RowRealm and Memory.RowRealm(rows, first, panel._avInfo) or nil
@@ -5993,71 +6004,94 @@ end
 -- and every coin, then without the copper, then the short labels, then the
 -- largest coin alone. The first that fits is the one shown. Runs again
 -- whenever the band's width changes, from the sums it last drew.
-local function FitBanner(panel)
-  local text = panel.BannerText
-  local sums = panel._bannerSums
-  if not (text and sums) then return end
-  local T = Th()
-  local icons = ns.Core.Formatting.FormatMoneyIcons
-  local strings = L()
-  local up, down = "ff" .. T.Hex.positive, "ff" .. T.Hex.negative
-  -- A window style that lays the band on a light plate (the post box's white
-  -- enamel) inks the label and hands back the figures' dark twins.
-  local skin = ns.Skin
-  if skin and skin.BannerInk then up, down = skin.BannerInk(text, up, down) end
+-- The helpers and the candidates' list are made once, here, rather than on
+-- every refresh.
+local FitBanner
+do
+  local candidates = {}
 
-  local function Line(earnedKey, spentKey, parts, gap)
-    return strings[earnedKey] .. icons(sums.earned, up, parts)
-        .. gap .. strings[spentKey] .. icons(sums.spent, down, parts)
+  local function Line(strings, icons, sums, up, down, parts)
+    return strings["BANNER_EARNED_SHORT"] .. icons(sums.earned, up, parts)
+        .. "   |   " .. strings["BANNER_SPENT_SHORT"] .. icons(sums.spent, down, parts)
   end
-  -- Two coins is the whole of it: "Earned 95g 57s". The copper on a total
-  -- of the whole inbox is noise, and "Total" said nothing the band's
-  -- position under the list did not. The single coin is for a narrow window.
-  local candidates = {
-    Line("BANNER_EARNED_SHORT", "BANNER_SPENT_SHORT", 2, "   |   "),
-    Line("BANNER_EARNED_SHORT", "BANNER_SPENT_SHORT", 1, "   |   "),
-  }
+
+  -- How many inline textures a line carries ("|T" escapes), counted in
+  -- place.
+  local function IconCount(s)
+    local n, at = 0, 1
+    while true do
+      local i = s:find("|T", at, true)
+      if not i then return n end
+      n, at = n + 1, i + 2
+    end
+  end
+
   -- The client's measurement leaves inline textures out -- the fullest
   -- line "fitted" and ran off the band by about the width of its coins --
   -- so each coin is added back at its declared size. Where a client does
   -- count them the line is judged a little wide, which at the worst costs
   -- a coin at a borderline width.
-  local iconSize = ns.Core.Formatting.MONEY_ICON_SIZE or 12
-  local function Width(candidate)
-    local _, icons = candidate:gsub("|T", "")
-    return (text:GetStringWidth() or 0) + icons * iconSize
+  local function Width(text, candidate, iconSize)
+    return (text:GetStringWidth() or 0) + IconCount(candidate) * iconSize
   end
 
-  -- The room is the band's, not the string's: asked for its own width, the
-  -- string answered with the width of whatever it was showing, so the
-  -- fullest line always "fit" and ran off the band regardless. The band's
-  -- width is a fact. No width yet (the first paint) means no verdict: the
-  -- fullest line stands, and the size change that follows the layout fits
-  -- it. The width is then SET on the string, so a line that still does not
-  -- fit is cut with an ellipsis rather than drawn past the edge -- and
-  -- whether it was cut is the verdict, textures and all, where the client
-  -- can say; the measured width is the fallback where it cannot.
-  local room = (panel.Banner:GetWidth() or 0) - (panel._bannerTextLeft or 0) - (panel._bannerTextRight or 0)
-  if room <= 0 then
-    text:SetText(candidates[1])
-    return
-  end
-  text:SetWidth(room)
-  local canAsk = type(text.IsTruncated) == "function"
-  for i = 1, #candidates do
-    text:SetText(candidates[i])
-    if i == #candidates then return end
-    -- Both tests, and a line passes only both: the cut flag knows about the
-    -- coin textures, the measured width does not depend on the wrap.
-    local cut = canAsk and text:IsTruncated()
-    local wide = Width(candidates[i]) > room
-    if not cut and not wide then return end
+  FitBanner = function(panel)
+    local text = panel.BannerText
+    local sums = panel._bannerSums
+    if not (text and sums) then return end
+    local T = Th()
+    local icons = ns.Core.Formatting.FormatMoneyIcons
+    local strings = L()
+    local up, down = "ff" .. T.Hex.positive, "ff" .. T.Hex.negative
+    -- A window style that lays the band on a light plate (the post box's white
+    -- enamel) inks the label and hands back the figures' dark twins.
+    local skin = ns.Skin
+    if skin and skin.BannerInk then up, down = skin.BannerInk(text, up, down) end
+
+    -- Two coins is the whole of it: "Earned 95g 57s". The copper on a total
+    -- of the whole inbox is noise, and "Total" said nothing the band's
+    -- position under the list did not. The single coin is for a narrow window.
+    candidates[1] = Line(strings, icons, sums, up, down, 2)
+    candidates[2] = Line(strings, icons, sums, up, down, 1)
+    local iconSize = ns.Core.Formatting.MONEY_ICON_SIZE or 12
+
+    -- The room is the band's, not the string's: asked for its own width, the
+    -- string answered with the width of whatever it was showing, so the
+    -- fullest line always "fit" and ran off the band regardless. The band's
+    -- width is a fact. No width yet (the first paint) means no verdict: the
+    -- fullest line stands, and the size change that follows the layout fits
+    -- it. The width is then SET on the string, so a line that still does not
+    -- fit is cut with an ellipsis rather than drawn past the edge -- and
+    -- whether it was cut is the verdict, textures and all, where the client
+    -- can say; the measured width is the fallback where it cannot.
+    local room = (panel.Banner:GetWidth() or 0) - (panel._bannerTextLeft or 0) - (panel._bannerTextRight or 0)
+    if room <= 0 then
+      text:SetText(candidates[1])
+      return
+    end
+    text:SetWidth(room)
+    local canAsk = type(text.IsTruncated) == "function"
+    for i = 1, #candidates do
+      text:SetText(candidates[i])
+      if i == #candidates then return end
+      -- Both tests, and a line passes only both: the cut flag knows about the
+      -- coin textures, the measured width does not depend on the wrap.
+      local cut = canAsk and text:IsTruncated()
+      local wide = Width(text, candidates[i], iconSize) > room
+      if not cut and not wide then return end
+    end
   end
 end
 
+-- The sums, kept in one table per panel, rewritten in place.
 local function UpdateBanner(panel, earned, spent)
   if not panel.Banner then return end
-  panel._bannerSums = { earned = tonumber(earned) or 0, spent = tonumber(spent) or 0 }
+  local sums = panel._bannerSums
+  if not sums then
+    sums = {}
+    panel._bannerSums = sums
+  end
+  sums.earned, sums.spent = tonumber(earned) or 0, tonumber(spent) or 0
   FitBanner(panel)
 end
 
