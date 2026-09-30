@@ -54,8 +54,6 @@ local BACKEND          -- "api" | "compat"
 -------------------------------------------------------------
 -- Values below mirror EllesmereUIBlizzardSkin's own window engine so the
 -- result is visually identical to a natively-skinned Blizzard window.
-local BORDER_ATLAS = "AdventureMap_TopBorder"
-
 local function PP()
   if not EUI then return nil end
   return EUI.PanelPP or EUI.PP
@@ -382,19 +380,12 @@ local function BuildShim()
     topBar:SetPoint("TOPRIGHT")
     topBar:SetHeight(25)
 
-    -- House window border: a complete window-frame atlas over the backdrop.
-    local ov = CreateFrame("Frame", nil, frame)
-    ov:SetAllPoints(frame)
-    ov:SetFrameLevel(frame:GetFrameLevel() + 6)
-    local tex = ov:CreateTexture(nil, "OVERLAY", nil, 7)
-    if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(BORDER_ATLAS) then
-      tex:SetAtlas(BORDER_ATLAS)
-      tex:SetAllPoints(ov)
-      -- Kept so the border option can hide the house chrome for "None".
-      frame.__pbShimBorderFrame = ov
-    else
-      ShimBorder(frame)
-    end
+    -- No frame of its own. The window's edge is the border option's, and
+    -- nothing else draws one: Blizz UI Enhanced's shell chrome (the
+    -- AdventureMap_TopBorder atlas stretched over the whole window) belongs to
+    -- the windows it skins, and with it off no window beside Postbox wears it.
+    -- Laid under a chosen border, it was a second, shadowed frame inside the
+    -- window.
   end
 
   function shim.Panel(frame, opts)
@@ -626,8 +617,9 @@ end
 -- Optional outer window border (EllesmereUI's shared border engine)
 -------------------------------------------------------------
 -- Present in 8.6.6 and later, so this works on both backends: the same
--- Glow/Shadow/texture picker the rest of the suite uses. Drawn outside the
--- shell's own chrome, so switching styles is live with no reload.
+-- Glow/Shadow/texture picker the rest of the suite uses, on a frame of its own,
+-- so switching styles is live with no reload. On the compat backend the chosen
+-- style is the window's only frame.
 --
 -- There is no "match EllesmereUI" here, and there never really was one.
 -- EllesmereUI has no border for windows in general: every module owns the
@@ -738,13 +730,8 @@ function Skin.ApplyBorder(frame)
 
   local key = Skin.GetBorderStyle()
 
-  -- "None" means no border at all, including EllesmereUI's own window chrome
-  -- (the atlas the shell lays down), which otherwise reads as a soft inner
-  -- border still being present.
-  if frame.__pbShimBorderFrame then
-    frame.__pbShimBorderFrame:SetShown(key ~= BORDER_NONE)
-  end
-
+  -- A chosen style is drawn alone: on the compat backend nothing else frames
+  -- the window (the shim lays down no chrome of its own).
   if key == BORDER_NONE then
     pcall(EUI.ApplyBorderStyle, host, 0, 0, 0, 0, 0, "solid")
     host:Hide()
