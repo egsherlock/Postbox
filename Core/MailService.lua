@@ -1425,6 +1425,18 @@ function Mail.Leaving(index)
   return at
 end
 
+-- index -> whether the mail has words of its own: a letter somebody wrote,
+-- whose text goes with it when it is deleted. The rule above, read the other
+-- way round: textCreated (sent with no text, or its text already taken as a
+-- letter) or an auction mail's category says there is nothing of its own to
+-- keep. False for a header that has not arrived.
+function Mail.HasOwnText(index)
+  local _, _, sender, subject, _, _, _, _, _, _, textCreated = GetInboxHeaderInfo(index)
+  if sender == nil and subject == nil then return false end
+  if textCreated then return false end
+  return Mail.ClassifyMail(index) == "other"
+end
+
 -------------------------------------------------------------
 -- Command layer :: per-mail take runner
 --

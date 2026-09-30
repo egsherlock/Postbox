@@ -6511,6 +6511,11 @@ function RV.AutoDelete(panel, index, before, record, andThen)
   -- "Letting the header catch up"); a mail that still does not read finished
   -- by then is left where it is, under the divider, never deleted on a guess.
   if RV.Identity(index) ~= before.id or not Mail().IsReadPersistent(index) then return Continue() end
+  -- The option's promise is that History keeps what a deleted letter said.
+  -- With History at Never it keeps nothing, so a letter with words of its
+  -- own stays, under the divider, for the player to clear; mail with no
+  -- text of its own still goes.
+  if not RV.HistoryOn() and Mail().HasOwnText(index) then return Continue() end
   if record and Mail().HistoryNote then Mail().HistoryNote(record, "read") end
   -- Through the sweep that re-checks the index immediately before its
   -- command: deleting is the irreversible one.
