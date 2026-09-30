@@ -3874,6 +3874,11 @@ function Pages.minimap(col)
     get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
     set = function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end,
   })
+  Rows.Check(block, {
+    title = L["OPT_MINIMAP_EXPIRY_TITLE"], text = L["OPT_MINIMAP_EXPIRY_DESC"],
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetExpiryAlert() end,
+    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetExpiryAlert(on) end end,
+  })
   Rows.EndBlock(block)
 end
 

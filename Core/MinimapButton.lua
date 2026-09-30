@@ -63,6 +63,11 @@ local DEFAULTS = {
   -- The number on the icon: "off", "me" (this character's box) or "all"
   -- (every character's, the hidden ones aside).
   count    = "off",
+  -- The warning look while mail on any character is close to being lost,
+  -- by Mail Memory's own rule (the one "Warn about other characters' mail"
+  -- says in chat). On by default: it is the one thing on the icon that
+  -- stands between a player and mail the server deletes.
+  expiryAlert = true,
 }
 
 -- ONE dropdown, every placement, no second control to contradict it:
@@ -227,6 +232,12 @@ end
 --           have arrived since); `all` the same over every character the
 --           player has not hidden, this one included.
 --   count   the number the icon wears: `mine`, `all` or none (0).
+--   alert   mail on some character is close to being lost: the list's own
+--           `warn`, the rule Mail Memory's chat warning and character list
+--           already use (under three days left, or mail known to be on its
+--           way unopened for over three weeks), this character included and
+--           the hidden ones left out, as its warnings leave them. The icon
+--           then wears the warning tone, and is shown whatever else says.
 -------------------------------------------------------------
 
 local SHOW_MODES = { new = true, any = true, always = true }
@@ -252,15 +263,16 @@ local function MemoryOn()
   return UI.GetOption("mailMemory") and true or false
 end
 
-local view = { lit = false, shown = false, mine = 0, all = 0, count = 0 }
+local view = { lit = false, shown = false, mine = 0, all = 0, count = 0, alert = false }
 
 local function Evaluate()
   local prefs = Settings()
   local mode = ShowMode(prefs)
   local countMode = CountMode(prefs)
-  local mine, all = 0, 0
+  local wantAlert = prefs.expiryAlert ~= false
+  local mine, all, warn = 0, 0, false
   local Memory = ns.MailMemory
-  if (mode == "any" or countMode ~= "off") and MemoryOn() and Memory
+  if (mode == "any" or countMode ~= "off" or wantAlert) and MemoryOn() and Memory
     and type(Memory.Characters) == "function" then
     local list = Memory.Characters()
     for i = 1, #list do
@@ -269,11 +281,13 @@ local function Evaluate()
         local n = (tonumber(st.waiting) or 0) + (tonumber(st.pending) or 0)
         if st.me then mine = n end
         all = all + n
+        if st.warn then warn = true end
       end
     end
   end
   local lit = MailWaiting()
   view.lit, view.mine, view.all = lit, mine, all
+  view.alert = wantAlert and warn
   if mode == "always" then
     view.shown = true
   elseif mode == "any" then
@@ -281,6 +295,9 @@ local function Evaluate()
   else
     view.shown = lit
   end
+  -- The alert brings the icon out on any choice: a warning nobody can see
+  -- warns nobody.
+  view.shown = view.shown or view.alert
   view.count = (countMode == "me" and mine) or (countMode == "all" and all) or 0
   return view
 end
@@ -342,8 +359,60 @@ end
 -- moment mail arrives is the moment it comes forward, glow or no glow.
 local REST_ALPHA = 0.65
 
+-- An alert is not rest: it is the icon asking to be looked at.
 local function Resting()
-  return view.shown and not view.lit
+  return view.shown and not view.lit and not view.alert
+end
+
+-- The glow's colour: the warning tone while the alert stands, whatever the
+-- accent (r, g, b) would have made it -- the glow is the part of the icon a
+-- player sees from across the screen.
+local function GlowTone(r, g, b)
+  if view.alert then
+    local w = ns.Theme.Colors.warning
+    return w[1], w[2], w[3]
+  end
+  return r, g, b
+end
+
+-- The alert's mark: the hourglass Postbox draws for a mail's time left
+-- (Theme.GLYPHS), in the warning tone, on a soft dark disc so it reads over
+-- any map, at the icon's top-right corner -- the corner the count leaves
+-- free. It says why the icon is warm; the tooltip says whose and when.
+local function PaintMark(holder, anchor, size, on)
+  local mark = holder.__pbMark
+  if not on then
+    if mark then
+      mark:Hide()
+      holder.__pbMarkBack:Hide()
+    end
+    return
+  end
+  if not mark then
+    local T = ns.Theme
+    mark = T and T.Glyph and T.Glyph(holder, "hourglass", 10, "OVERLAY")
+    if not mark then return end
+    mark:SetDrawLayer("OVERLAY", 6)
+    local back = holder:CreateTexture(nil, "OVERLAY", nil, 5)
+    back:SetTexture(MEDIA .. "minimap-glow.tga")
+    back:SetVertexColor(0, 0, 0)
+    back:SetAlpha(0.85)
+    back:SetPoint("CENTER", mark, "CENTER")
+    holder.__pbMark, holder.__pbMarkBack = mark, back
+  end
+  if mark.__pbSize ~= size or mark.__pbAnchor ~= anchor then
+    mark.__pbSize, mark.__pbAnchor = size, anchor
+    local side = math.max(8, math.floor(size * 0.45 + 0.5))
+    local tuck = math.floor(side * 0.2 + 0.5)
+    mark:SetSize(side, side)
+    holder.__pbMarkBack:SetSize(side * 1.7, side * 1.7)
+    mark:ClearAllPoints()
+    mark:SetPoint("CENTER", anchor, "TOPRIGHT", -tuck, -tuck)
+  end
+  local w = ns.Theme.Colors.warning
+  mark:SetVertexColor(w[1], w[2], w[3], 1)
+  mark:Show()
+  holder.__pbMarkBack:Show()
 end
 
 -------------------------------------------------------------
@@ -715,7 +784,7 @@ local function ApplyEuiSkin()
   end
 
   local glow = btn.__pbMailGlow
-  if prefs.glow == true and view.lit then
+  if prefs.glow == true and (view.lit or view.alert) then
     if not glow then
       glow = btn:CreateTexture(nil, "BACKGROUND")
       glow:SetPoint("CENTER", icon, "CENTER")
@@ -732,7 +801,7 @@ local function ApplyEuiSkin()
       btn.__pbMailPulse = pulse
     end
     glow:SetSize(artW * 1.6, artH * 1.6)
-    glow:SetVertexColor(r, g, b)
+    glow:SetVertexColor(GlowTone(r, g, b))
     glow:Show()
     if prefs.pulse ~= false then
       if not btn.__pbMailPulse:IsPlaying() then btn.__pbMailPulse:Play() end
@@ -754,9 +823,11 @@ local function ApplyEuiSkin()
   end
   btn.__pbMailAlert:SetSize(artW * 1.75, artH * 1.75)
 
-  -- The count on our overlay, which sits over their icon and any ring they
-  -- dress it in, and goes with the overlay when their button is handed back.
+  -- The count and the alert's mark on our overlay, which sits over their
+  -- icon and any ring they dress it in, and goes with the overlay when their
+  -- button is handed back.
   PaintCount(btn.__pbOverlay, icon, side, view.count)
+  PaintMark(btn.__pbOverlay, icon, side, view.alert)
 
   euiSkin.applied = true
   return true
@@ -1009,11 +1080,12 @@ local function ApplyLook(button)
   icon:SetDesaturated(resting)
   icon:SetAlpha(resting and REST_ALPHA or 1)
 
-  -- The glow is the icon's voice for new mail: it rests with the icon.
+  -- The glow is the icon's voice for new mail, and for the expiry alert in
+  -- the warning tone: it rests with the icon.
   local glow = button.glow
   glow:SetSize(size * GLOW_SCALE, size * GLOW_SCALE)
-  glow:SetVertexColor(r, g, b)
-  if prefs.glow == true and view.lit then
+  glow:SetVertexColor(GlowTone(r, g, b))
+  if prefs.glow == true and (view.lit or view.alert) then
     glow:Show()
     if prefs.pulse ~= false then
       if not button.pulse:IsPlaying() then button.pulse:Play() end
@@ -1032,6 +1104,7 @@ local function ApplyLook(button)
   shadow:SetShown(prefs.shadow == true)
 
   PaintCount(button.art, icon, size, view.count)
+  PaintMark(button.art, icon, size, view.alert)
 
   Reposition(button)
 end
@@ -1066,10 +1139,24 @@ function MB.GestureLine(memory, hostMode, locked)
   return line
 end
 
+-- A look at the tooltip is a look at the icon: Mail Memory's warnings move
+-- with the clock, so the reading is made again here, and the icon repainted
+-- only when something it shows has changed.
+local function Reevaluate()
+  local lit, shown, alert, count = view.lit, view.shown, view.alert, view.count
+  Evaluate()
+  if view.lit ~= lit or view.shown ~= shown or view.alert ~= alert or view.count ~= count then
+    MB.Refresh()
+  end
+end
+
 -- `hostMode` is the EllesmereUI overlay: same description of the mailbox,
 -- but without the gestures Postbox does not own there (the icon's position
 -- is EllesmereUI's, so it offers no drag and no lock).
 ShowTooltip = function(button, hostMode)
+  Reevaluate()
+  -- The reading may just have taken the icon away (an alert that ran out).
+  if not button:IsVisible() then return end
   GameTooltip:SetOwner(button, "ANCHOR_BOTTOMLEFT")
 
   -- Postbox describes the mailbox here, not the client. The default
@@ -1142,6 +1229,16 @@ ShowTooltip = function(button, hostMode)
     -- No snapshot (memory off, or this character has never opened a
     -- mailbox with Postbox installed): say only what the client knows.
     GameTooltip:AddLine(HAVE_MAIL or "", 0.75, 0.75, 0.78)
+  end
+
+  -- This character's own mail close to being lost, by the rule the alert
+  -- reads (MailMemory.Characters lists this character first).
+  if Memory and MemoryOn() and type(Memory.Characters) == "function" then
+    local me = Memory.Characters()[1]
+    if me and me.me and me.warn and me.text then
+      local warn = ns.Theme.Colors.warning
+      GameTooltip:AddLine(me.text, warn[1], warn[2], warn[3], true)
+    end
   end
 
   -- The other characters with mail close to being lost (Core/MailMemory,
@@ -1374,7 +1471,7 @@ local runtimeActive = false
 -- which moves when Mail Memory writes and, for its expiry warnings, with the
 -- clock.
 local function ReadsMemory(prefs)
-  return ShowMode(prefs) == "any" or CountMode(prefs) ~= "off"
+  return ShowMode(prefs) == "any" or CountMode(prefs) ~= "off" or prefs.expiryAlert ~= false
 end
 
 -- Mail Memory wrote something its character list reads (MailMemory,
@@ -1383,9 +1480,12 @@ end
 -- so the icon asks again once, on the next frame, rather than per write.
 local memoryQueued = false
 
+-- A read, and a repaint only when something the icon shows has changed
+-- (Reevaluate, section 6): a new zone with nothing new costs one walk over
+-- a list Mail Memory already holds.
 local function RunQueued()
   memoryQueued = false
-  if runtimeActive then Refresh() end
+  if runtimeActive then Reevaluate() end
 end
 
 local function QueueRefresh()
@@ -1527,12 +1627,13 @@ MB.Refresh = Refresh
 -- visibility depends on, captured at the moment the report is built.
 function MB.Diagnose()
   return string.format(
-    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s wants %s | count %s %d",
+    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s wants %s | count %s %d | expiry alert %s",
     tostring(runtimeActive), tostring(suppressing),
     tostring((EuiSkinCandidate())), tostring(euiSkin.applied),
     euiSkin.tries, tostring(euiSkin.fallback),
     (MB._button and MB._button:IsShown()) and "shown" or "hidden/none",
-    tostring((MailWaiting())), ShowMode(), tostring(view.shown), CountMode(), view.count)
+    tostring((MailWaiting())), ShowMode(), tostring(view.shown), CountMode(), view.count,
+    MB.GetExpiryAlert() and (view.alert and "RAISED" or "quiet") or "off")
 end
 
 -- Called by Skin_EllesmereUI.RefreshAccents so an accent retune repaints a
@@ -1594,6 +1695,14 @@ function MB.GetCount() return CountMode() end
 function MB.SetCount(mode)
   if not COUNT_MODES[mode] then return end
   Settings().count = mode
+  Refresh()
+end
+
+-- On unless switched off, as DEFAULTS has it.
+function MB.GetExpiryAlert() return Settings().expiryAlert ~= false end
+
+function MB.SetExpiryAlert(on)
+  Settings().expiryAlert = on == true
   Refresh()
 end
 
