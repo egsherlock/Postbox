@@ -2552,56 +2552,13 @@ end
 local TAB_ORDER = { "collect", "send" }
 local TAB_LABEL_KEY = { collect = "TAB_COLLECT", send = "TAB_SEND" }
 
--- The Mail tab's hover while the mailbox is open and Show mail counts is on:
--- "12 to collect · 27 in the box", what is not Done and the whole box, as
--- the Inbox segment counts them in its two modes. The words are made when a
--- count changes (the last pair and its text kept here, [1] [2] [3]) and the
--- tab holds them, so a hover sets a text it already has. Hooked the first
--- time there is something to say, after every skin has dressed the tab.
-local tabTip = { false, false, false }
-
-function tabTip.Enter(self)
-  local text = self.__pbCountTip
-  if not (text and GameTooltip) then return end
-  GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-  GameTooltip:SetText(text, 1, 1, 1, 1, true)
-  GameTooltip:Show()
-end
-
-function tabTip.Leave(self)
-  if GameTooltip and GameTooltip:IsOwned(self) then GameTooltip:Hide() end
-end
-
--- tab, the two counts or nil for none: the hover's words, and the tooltip
--- already up said again.
-function tabTip.Set(tab, toCollect, inBox)
-  local text = nil
-  if toCollect then
-    if tabTip[1] ~= toCollect or tabTip[2] ~= inBox then
-      tabTip[1], tabTip[2] = toCollect, inBox
-      tabTip[3] = ns.Plural("TAB_TIP_COLLECT", toCollect) .. " \194\183 " .. ns.Plural("TAB_TIP_BOX", inBox)
-    end
-    text = tabTip[3]
-    if not tab.__pbCountHooked then
-      tab.__pbCountHooked = true
-      tab:HookScript("OnEnter", tabTip.Enter)
-      tab:HookScript("OnLeave", tabTip.Leave)
-    end
-  end
-  if tab.__pbCountTip == text then return end
-  tab.__pbCountTip = text
-  if GameTooltip and GameTooltip:IsOwned(tab) then
-    if text then tabTip.Enter(tab) else GameTooltip:Hide() end
-  end
-end
-
 -- The Mail tab's caption while the mailbox is open: "Mail •", an accent dot
 -- while anything is still to collect, so the Send tab shows at a glance that
--- mail is waiting. No number: the Inbox segment right under the tab counts the
--- whole box and each button what it would collect, and a copy of one of those
--- on the tab read as a duplicate; the counts are its hover's (tabTip, above).
--- (It once had a dropdown of its own -- dot, count, none -- beside "Show
--- counts"; a stored tabCaption is ignored.)
+-- mail is waiting. No number, and nothing on hover: the Inbox segment right
+-- under the tab counts the whole box and each button what it would collect,
+-- and a copy of one of those on the tab read as a duplicate. (It once had a
+-- dropdown of its own -- dot, count, none -- beside "Show counts"; a stored
+-- tabCaption is ignored.)
 local function UpdateCollectTabText()
   local frame = UI._frame
   local tab = frame and frame.TabButtons and frame.TabButtons.collect
@@ -2609,15 +2566,8 @@ local function UpdateCollectTabText()
 
   local text = L("TAB_COLLECT")
   local collect = ns.CollectTab
-  local tipCollect, tipBox
   if UI._state.mailboxOpen and collect and type(collect.InboxCounts) == "function" then
-    local toCollect, _, listed, server = collect.InboxCounts()
-    toCollect = tonumber(toCollect) or 0
-    if UI.GetOption("showTabCounts") and not UI._state.preview then
-      server = tonumber(server) or 0
-      tipCollect = toCollect + math.max(0, server - (tonumber(listed) or 0))
-      tipBox = server
-    end
+    local toCollect = tonumber((collect.InboxCounts())) or 0
 
     local theme = ns.Theme
     local suffix
@@ -2646,7 +2596,6 @@ local function UpdateCollectTabText()
     end
     if suffix then text = text .. " " .. suffix end
   end
-  tabTip.Set(tab, tipCollect, tipBox)
 
   -- Never a bare SetText: the skins hide or recolour this label, and SetText
   -- alone undoes that (see Theme.SetTabText).
