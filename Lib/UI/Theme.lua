@@ -183,6 +183,23 @@ local function DeriveFont(source, path, baseSize, baseFlags, size, flags)
   return object
 end
 
+-- The sized fonts take their source's colour and shadow again: after the
+-- addon theme recoloured the objects they were made from (a palette change).
+-- A handful of objects; nothing per string.
+function Theme.RecolorDerived()
+  for object, info in pairs(derivedInfo) do
+    local source = info.source
+    if source and type(source.GetTextColor) == "function" then
+      local r, g, b, a = source:GetTextColor()
+      if type(r) == "number" then object:SetTextColor(r, g, b, a or 1) end
+    end
+    if source and type(source.GetShadowColor) == "function" and type(object.SetShadowColor) == "function" then
+      local r, g, b, a = source:GetShadowColor()
+      if type(r) == "number" then object:SetShadowColor(r, g, b, a or 1) end
+    end
+  end
+end
+
 -- Applies a size role (or an explicit options table) to a font string.
 --
 -- `spec` may be a role name ("small", "title", …) or a table with any of

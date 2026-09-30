@@ -80,8 +80,44 @@ function Dropdown.CloseAll(except)
   UpdateCatcher()
 end
 
+-- A colour square: a one-unit edge in the theme's quiet grey and the colour
+-- inside it, on a holder frame of its own (a skin's repaint of the button it
+-- sits on fades the button's own textures, never a child's). `size` square.
+local function NewSwatch(parent, size)
+  local holder = CreateFrame("Frame", nil, parent)
+  holder:SetSize(size, size)
+  holder:SetFrameLevel((parent:GetFrameLevel() or 1) + 2)
+  local edge = holder:CreateTexture(nil, "OVERLAY", nil, 0)
+  edge:SetAllPoints()
+  local fill = holder:CreateTexture(nil, "OVERLAY", nil, 1)
+  fill:SetPoint("TOPLEFT", holder, "TOPLEFT", 1, -1)
+  fill:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", -1, 1)
+  holder.Edge, holder.Fill = edge, fill
+  holder:Hide()
+  return holder
+end
+
+local function PaintSwatch(swatch, r, g, b)
+  if not swatch then return end
+  if type(r) ~= "number" then
+    swatch:Hide()
+    return
+  end
+  local themed = ns.Theme
+  if themed and type(themed.FillColor) == "function" then
+    themed.FillColor(swatch.Edge, "textDisabled")
+  else
+    swatch.Edge:SetColorTexture(0.56, 0.56, 0.56, 1)
+  end
+  swatch.Fill:SetColorTexture(r, g, b, 1)
+  swatch:Show()
+end
+
+-- opts.swatchFor(id) -> r, g, b (or nil): a list of colours shows each one,
+-- in a square before its name and on the toggle beside the one chosen.
 function Dropdown.Create(parent, opts)
   opts = type(opts) == "table" and opts or {}
+  local swatchFor = type(opts.swatchFor) == "function" and opts.swatchFor or nil
 
   local Theme = Core.UI.Theme
   local items = type(opts.items) == "table" and opts.items or {}
@@ -148,6 +184,17 @@ function Dropdown.Create(parent, opts)
   end
 
   toggle:SetText(NameFor(container._selectedId))
+
+  -- The chosen colour on the toggle, at its left, where the list has them.
+  local toggleSwatch
+  if swatchFor then
+    toggleSwatch = NewSwatch(toggle, 10)
+    toggleSwatch:SetPoint("LEFT", toggle, "LEFT", 7, 0)
+  end
+  local function PaintToggleSwatch()
+    if toggleSwatch then PaintSwatch(toggleSwatch, swatchFor(container._selectedId)) end
+  end
+  PaintToggleSwatch()
 
   local list  -- built on first open
 
@@ -233,7 +280,13 @@ function Dropdown.Create(parent, opts)
       trackHolder:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", -SCROLLBAR_INSET, LIST_PADDING)
       local track = trackHolder:CreateTexture(nil, "ARTWORK")
       track:SetAllPoints()
-      track:SetColorTexture(1, 1, 1, 0.08)
+      -- The chrome ink: white on a dark palette, dark on a light one.
+      local themed = ns.Theme
+      if themed and type(themed.FillChrome) == "function" then
+        themed.FillChrome(track, 0.08)
+      else
+        track:SetColorTexture(1, 1, 1, 0.08)
+      end
 
       local span = contentHeight - viewport
       local thumbHeight = math.max(20, viewport * viewport / contentHeight)
@@ -242,7 +295,11 @@ function Dropdown.Create(parent, opts)
       thumb:EnableMouse(true)
       local thumbArt = thumb:CreateTexture(nil, "OVERLAY")
       thumbArt:SetAllPoints()
-      thumbArt:SetColorTexture(1, 1, 1, 0.35)
+      if themed and type(themed.FillChrome) == "function" then
+        themed.FillChrome(thumbArt, 0.35)
+      else
+        thumbArt:SetColorTexture(1, 1, 1, 0.35)
+      end
 
       local function SetOffset(offset)
         offset = math.max(0, math.min(span, offset))
@@ -321,6 +378,12 @@ function Dropdown.Create(parent, opts)
           art:SetTexture(item.icon.texture)
         end
         textOffset = LIST_PADDING + MARK_GUTTER + size + 6
+      elseif swatchFor then
+        local size = rowHeight - 10
+        local sw = NewSwatch(row, size)
+        sw:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
+        row._swatch = sw
+        textOffset = LIST_PADDING + MARK_GUTTER + size + 6
       end
 
       local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -352,6 +415,7 @@ function Dropdown.Create(parent, opts)
       row:SetScript("OnClick", function()
         container._selectedId = item.id
         toggle:SetText(item.name)
+        PaintToggleSwatch()
         list:Hide()
         if container._onChange then container._onChange(item.id, item.name) end
       end)
@@ -401,6 +465,7 @@ function Dropdown.Create(parent, opts)
       end
       for i = 1, #list._rows do
         local row = list._rows[i]
+        if row._swatch then PaintSwatch(row._swatch, swatchFor(row._itemId)) end
         if row._selMark then
           if row._itemId == container._selectedId then
             row._selMark:SetColorTexture(r, g, b, 0.9)
@@ -452,6 +517,12 @@ function Dropdown.Create(parent, opts)
   function container:SetSelectedId(id)
     container._selectedId = id
     toggle:SetText(NameFor(id))
+    PaintToggleSwatch()
+  end
+
+  -- The toggle's colour square again, from swatchFor: the colours moved.
+  function container:PaintSwatch()
+    PaintToggleSwatch()
   end
 
   -- Sets the toggle's visible label only, without changing the selection: an

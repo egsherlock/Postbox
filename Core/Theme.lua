@@ -296,6 +296,21 @@ local C = {
   -- Unread / read dot on a mail row.
   unread = { 0.20, 0.80, 0.20, 1.00 },
   read   = { 0.40, 0.40, 0.40, 0.60 },
+
+  -- A drawing's own inset ground and its edge: the options panel's sample
+  -- rows, host badge and title-bar sketch, over a card.
+  inset      = { 0.00, 0.00, 0.00, 0.45 },
+  insetEdge  = { 0.17, 0.17, 0.17, 1 },
+  -- The ink of chrome drawn at a fraction of an alpha -- hairlines, hover
+  -- washes, a scroll track (Theme.FillChrome): white on a dark palette. Its
+  -- alpha is a strength factor on the caller's own alpha.
+  chromeInk  = { 1.00, 1.00, 1.00, 1.00 },
+  -- The drop shadow a text face carries where the style asks for one.
+  textShadow = { 0.00, 0.00, 0.00, 1.00 },
+  -- The window's own fill, as a ground accent text is also read on: unused
+  -- (alpha 0) on a dark palette, where the selected plate is the lighter
+  -- ground and so the stricter one.
+  sheet      = { 0.00, 0.00, 0.00, 0.00 },
 }
 
 Theme.Colors = C
@@ -781,6 +796,177 @@ function Theme.OverridePalette(map)
 end
 
 -------------------------------------------------------------
+-- 2b. The light palette, and switching palettes live
+--
+-- Every value above is set for a dark ground. PALETTE_LIGHT is the same
+-- tokens for a light one: paper greys, dark ink, and a light-ground twin of
+-- each semantic colour. A named table so any style drawing a light window
+-- can take it whole (the Postbox style's Light mode is the first; a paper
+-- style would be the next); tokens it does not name keep their dark values.
+--
+-- The semantic twins are the dark colours moved by the contrast guard
+-- (Theme.Legible, section 1c) to 4.5:1 on the light sheet (#ebebe8), hue
+-- kept; the unread dot, a mark, to 3:1 on the list (#fafaf8). Set at that
+-- exact ratio, they also read at 3.7:1 on the dark tooltip Postbox's own
+-- tooltip lines keep, where a warning or a price in them lands.
+-------------------------------------------------------------
+
+local function Hex4(h, a)
+  return { tonumber((h:sub(1, 2)), 16) / 255, tonumber((h:sub(3, 4)), 16) / 255,
+           tonumber((h:sub(5, 6)), 16) / 255, a or 1 }
+end
+
+Theme.PALETTE_LIGHT = {
+  textPrimary       = Hex4("1a1a1a"),
+  textSecondary     = Hex4("474747"),
+  textDisabled      = Hex4("6f6f6f"),
+  textPlaceholder   = Hex4("6a6a6a", 0.90),
+  positive          = Hex4("007c00"),
+  info              = Hex4("2a6bb8"),
+  negative          = Hex4("d60420"),
+  warning           = Hex4("b14c00"),
+  unread            = Hex4("00a900"),
+  read              = { 0.55, 0.55, 0.55, 0.70 },
+  surface           = Hex4("fafaf8"),
+  surfaceGrain      = { 0.96, 0.96, 0.95, 1.00 },
+  surfaceBorder     = { 0.00, 0.00, 0.00, 0.20 },
+  bandFill          = Hex4("efefec", 0.94),
+  bandBorder        = { 0.00, 0.00, 0.00, 0.18 },
+  slotShade         = { 1.00, 1.00, 1.00, 0.30 },
+  slotBorder        = { 0.00, 0.00, 0.00, 0.28 },
+  stripeOdd         = { 0.00, 0.00, 0.00, 0.025 },
+  stripeEven        = { 0.00, 0.00, 0.00, 0.050 },
+  stripeHover       = { 0.00, 0.00, 0.00, 0.090 },
+  plateIdle         = Hex4("e6e6e3", 0.94),
+  plateHover        = Hex4("efefec", 0.96),
+  plateSelected     = Hex4("ffffff", 0.99),
+  plateFlagged      = Hex4("ececea", 0.95),
+  plateEdge         = { 0.00, 0.00, 0.00, 0.16 },
+  plateEdgeHover    = { 0.00, 0.00, 0.00, 0.26 },
+  plateEdgeSelected = { 0.00, 0.00, 0.00, 0.40 },
+  plateBevel        = { 1.00, 1.00, 1.00, 0.70 },
+  plateHighlight    = { 0.00, 0.00, 0.00, 0.04 },
+  plateCaption      = Hex4("333333"),
+  tabCaption        = Hex4("595959"),
+  -- The brand's rgb, a light palette's strengths: a wash and a rule over
+  -- white need more of the hue to be seen at all.
+  accentWash        = { 0.8275, 0.6431, 0.2902, 0.16 },
+  accentRule        = { 0.8275, 0.6431, 0.2902, 0.50 },
+  accentEdge        = { 0.8275, 0.6431, 0.2902, 0.60 },
+  inset             = { 1.00, 1.00, 1.00, 0.55 },
+  insetEdge         = { 0.00, 0.00, 0.00, 0.16 },
+  chromeInk         = { 0.00, 0.00, 0.00, 1.25 },
+  textShadow        = { 1.00, 1.00, 1.00, 0.50 },
+  sheet             = Hex4("ebebe8"),
+}
+
+-- Every token as written above: what a switch back to the dark palette puts
+-- back. Taken once, here, before any style has overridden anything.
+local BASE = {}
+for token, color in pairs(C) do BASE[token] = { color[1], color[2], color[3], color[4] } end
+
+function Theme.IsLight() return lightPalette end
+function Theme.PaletteGeneration() return paletteGen end
+
+-- The palette for `mode` ("light" | anything else: dark), then `extra` (a
+-- style's own values, token -> colour, as OverridePalette takes) on top.
+-- Rewritten in place, so every table aliasing an entry follows; the colour
+-- escapes (Theme.Hex) are derived again, the accent's tones forgotten, and
+-- the foundation theme repainted. What is already on screen is the caller's
+-- to repaint (Theme.RepaintTracked and the style's own pass).
+function Theme.ApplyPalette(mode, extra, extra2)
+  lightPalette = (mode == "light")
+  local light = Theme.PALETTE_LIGHT
+  for token, base in pairs(BASE) do
+    local dest = C[token]
+    if dest then Recolor(dest, lightPalette and light[token] or base) end
+  end
+  for _, map in ipairs({ extra or false, extra2 or false }) do
+    if map then
+      for token, color in pairs(map) do
+        local dest = C[token]
+        if type(dest) == "table" and type(color) == "table" and not ACCENT_TOKENS[token] then Recolor(dest, color) end
+      end
+    end
+  end
+  for token, color in pairs(C) do Hex[token] = ToHex(color) end
+  paletteGen = paletteGen + 1
+  PushPalette()
+end
+
+-- A grey level set for a dark ground -> the grey of the same rank on the
+-- palette's ground. On a dark palette, itself. On a light one, read off
+-- anchors in OKLab lightness: white is the primary ink, the secondary and
+-- disabled greys their light twins, black the sheet itself, and levels
+-- between them in proportion, so a hierarchy of greys keeps its order.
+do
+  local anchors
+  -- level -> its light grey. The levels callers use are a few dozen
+  -- constants, so this stays that size.
+  local memo = {}
+  local function LOf(v) return (ToLab(v, v, v)) end
+  local Map
+  function Theme.Grey(v)
+    if not lightPalette then return v end
+    local known = memo[v]
+    if known then return known end
+    known = Map(v)
+    memo[v] = known
+    return known
+  end
+  function Map(v)
+    if not anchors then
+      local L = Theme.PALETTE_LIGHT
+      anchors = {
+        { LOf(1.00), LOf(L.textPrimary[1]) }, { LOf(0.82), LOf(L.textSecondary[1]) },
+        { LOf(0.56), LOf(L.textDisabled[1]) }, { LOf(0.30), LOf(0.64) }, { 0, LOf(L.sheet[1]) },
+      }
+    end
+    local x = LOf(max(0, min(1, v)))
+    for i = 1, #anchors - 1 do
+      local a, b = anchors[i], anchors[i + 1]
+      if x >= b[1] then
+        local t = (a[1] > b[1]) and (x - b[1]) / (a[1] - b[1]) or 0
+        local r = Theme.FromLab(b[2] + (a[2] - b[2]) * t, 0, 0)
+        return r
+      end
+    end
+    return Theme.FromLab(anchors[#anchors][2], 0, 0)
+  end
+end
+
+-- The semantic colour an accent sits too close to, if any: its mark tone
+-- within 0.065 OKLab of the palette's warning, profit, loss or info colour,
+-- where a stuck marker and a selection may look alike at 12 px (spec 3.3,
+-- rule 6). A note for the options, never a change. -> token, or nil.
+function Theme.NearSemantic()
+  local r, g, b = Theme.GetAccentTone("mark")
+  local L, A, B = ToLab(r, g, b)
+  local best, bestD
+  for _, token in ipairs({ "warning", "positive", "negative", "info" }) do
+    local c = C[token]
+    local l2, a2, b2 = ToLab(c[1], c[2], c[3])
+    local d = math.sqrt((L - l2) ^ 2 + (A - a2) ^ 2 + (B - b2) ^ 2)
+    if d < 0.065 and (not bestD or d < bestD) then best, bestD = token, d end
+  end
+  return best
+end
+
+-- A text colour chosen for a dark ground, made right for the palette's:
+-- itself on a dark palette; on a light one a grey takes its rank's grey
+-- (Theme.Grey) and a hue the guard's 4.5:1 on the sheet.
+function Theme.InkFor(r, g, b)
+  if not lightPalette then return r, g, b end
+  if max(r, g, b) - min(r, g, b) < 0.06 then
+    local v = Theme.Grey((r + g + b) / 3)
+    return v, v, v
+  end
+  local s = C.sheet
+  local lr, lg, lb = Legible(r, g, b, s[1], s[2], s[3], 4.5)
+  return lr, lg, lb
+end
+
+-------------------------------------------------------------
 -- 3. Text roles
 --
 -- A role says what the text *means*. The font object follows from that.
@@ -890,11 +1076,22 @@ end
 -- object's file, flags and size, the copy is left as copied.
 local function DressCopy(copy, base, path, flags, shadow, scale)
   if type(copy.CopyFontObject) == "function" then pcall(copy.CopyFontObject, copy, base) end
+  -- On a light palette the object's own colour, set for a dark ground, is
+  -- made right for a light one (Theme.InkFor): white text becomes the
+  -- primary ink, Blizzard's gold a gold that reads on paper.
+  if lightPalette and type(copy.SetTextColor) == "function" and type(base.GetTextColor) == "function" then
+    local r, g, b, a = base:GetTextColor()
+    if type(r) == "number" then
+      local ir, ig, ib = Theme.InkFor(r, g, b)
+      copy:SetTextColor(ir, ig, ib, a or 1)
+    end
+  end
   local basePath, size, baseFlags = base:GetFont()
   if type(size) ~= "number" or size <= 0 then size = 12 end
   if shadow ~= nil and type(copy.SetShadowColor) == "function" then
     if shadow then
-      copy:SetShadowColor(0, 0, 0, 1)
+      local sh = C.textShadow
+      copy:SetShadowColor(sh[1], sh[2], sh[3], sh[4])
       copy:SetShadowOffset(1, -1)
     else
       copy:SetShadowColor(0, 0, 0, 0)
@@ -942,12 +1139,22 @@ end
 -- changed; a pass whose face did not move reads it and returns. Strings
 -- wearing a copy follow on their own; a string set to a size of its own (the
 -- arrange inspector's type) is told through Arrange.OnFontsChanged.
-function Theme.RefreshHostFonts()
+function Theme.RefreshHostFonts(recolor)
   if not HF.made then return false end
   local path, flags, shadow, scale = HostFace()
-  if path == nil or (path == HF.path and flags == HF.flags and shadow == HF.shadow
-                     and scale == HF.scale) then
-    return false
+  if path == nil then return false end
+  local same = path == HF.path and flags == HF.flags and shadow == HF.shadow and scale == HF.scale
+  if same and not recolor then return false end
+  if same then
+    -- The face is where it was and only the palette moved (`recolor`): the
+    -- copies are dressed again for their colour and shadow, and the sized
+    -- fonts made from them take it too. No width changed.
+    for i = 1, #HF.bases do
+      local base = HF.bases[i]
+      DressCopy(HF.copies[base], base, path, flags, shadow, scale)
+    end
+    if SharedTheme and type(SharedTheme.RecolorDerived) == "function" then SharedTheme.RecolorDerived() end
+    return true
   end
   HF.path, HF.flags, HF.shadow, HF.scale = path, flags, shadow, scale
   for i = 1, #HF.bases do
@@ -956,6 +1163,7 @@ function Theme.RefreshHostFonts()
   end
   HF.gen = HF.gen + 1
   Theme.ForgetFits()
+  if SharedTheme and type(SharedTheme.RecolorDerived) == "function" then SharedTheme.RecolorDerived() end
   local AR = ns.Arrange
   if AR and type(AR.OnFontsChanged) == "function" then pcall(AR.OnFontsChanged) end
   return true
@@ -1035,12 +1243,33 @@ local accentTexts = setmetatable({}, { __mode = "k" })
 -- Textures answer to both SetVertexColor and SetColorTexture and they are not
 -- interchangeable -- tinting a texture with no art shows nothing at all -- so a
 -- solid fill has its own entry point below rather than being guessed at here.
+-- What was painted from what, for a style whose palette can change under a
+-- window already drawn (the Postbox style's colours and Light mode). Off --
+-- nil -- until such a style asks (Theme.TrackPaint), so every other look pays
+-- one comparison per paint and keeps nothing. Weak-keyed throughout; a
+-- region's entry is rewritten by each paint, so it always names the last.
+local track
+
+function Theme.TrackPaint()
+  if track then return end
+  local weak = { __mode = "k" }
+  track = {
+    tint = setmetatable({}, weak),       -- region -> token (SetColor)
+    fill = setmetatable({}, weak),       -- texture -> token (FillColor)
+    fillA = setmetatable({}, weak),      -- texture -> the alpha it was given, or nil
+    chrome = setmetatable({}, weak),     -- texture -> alpha (FillChrome)
+    vchrome = setmetatable({}, weak),    -- texture -> alpha (TintChrome)
+    grey = setmetatable({}, weak),       -- region -> level (SetGrey)
+  }
+end
+
 function Theme.SetColor(region, token)
   if not region then return end
 
   local isText = type(region.SetTextColor) == "function"
   local r, g, b, a = ResolveAccentToken(token, isText)
   if isText then accentTexts[region] = r and token or nil end
+  if track then track.tint[region] = token; track.grey[region] = nil end
   if not r then
     local color = C[token]
     if not color then return end
@@ -1060,7 +1289,47 @@ end
 function Theme.SetTextRGB(region, r, g, b, a)
   if not region or type(region.SetTextColor) ~= "function" then return end
   accentTexts[region] = nil
+  if track then track.tint[region] = nil; track.grey[region] = nil end
   region:SetTextColor(r, g, b, a or 1)
+end
+
+-- A grey at level `v` (as set for a dark ground) on a font string or a
+-- texture's vertex colour: exactly (v, v, v) on a dark palette, the grey of
+-- the same rank on a light one (Theme.Grey), and repainted with the palette.
+function Theme.SetGrey(region, v)
+  if not region then return end
+  if track then track.grey[region] = v; track.tint[region] = nil; accentTexts[region] = nil end
+  local g = lightPalette and Theme.Grey(v) or v
+  if type(region.SetTextColor) == "function" then
+    region:SetTextColor(g, g, g, 1)
+  elseif type(region.SetVertexColor) == "function" then
+    region:SetVertexColor(g, g, g, 1)
+  end
+end
+
+-- Chrome at a fraction of an alpha -- a hairline, a hover wash, a scroll
+-- track: the palette's chrome ink (white on a dark ground, black on a light
+-- one) at `a` times the ink's strength. FillChrome paints a solid texture,
+-- TintChrome the vertex colour of one with art. On a dark palette exactly
+-- SetColorTexture(1, 1, 1, a) and SetVertexColor(1, 1, 1, a).
+-- The ink's strength applied to an alpha: the alpha itself at strength 1.
+local function InkAlpha(a, k)
+  if k == 1 then return a end
+  return min(1, a * k)
+end
+
+function Theme.FillChrome(texture, a)
+  if not texture then return end
+  if track then track.chrome[texture] = a end
+  local ink = C.chromeInk
+  texture:SetColorTexture(ink[1], ink[2], ink[3], InkAlpha(a, ink[4] or 1))
+end
+
+function Theme.TintChrome(texture, a)
+  if not texture then return end
+  if track then track.vchrome[texture] = a end
+  local ink = C.chromeInk
+  texture:SetVertexColor(ink[1], ink[2], ink[3], InkAlpha(a, ink[4] or 1))
 end
 
 -- Re-tints every accent-toned font string from the LIVE accent.
@@ -1129,9 +1398,11 @@ function Theme.RepaintPlates(frame, depth)
   end
 end
 
--- Paints a texture as a flat colour block.
-function Theme.FillColor(texture, token)
+-- Paints a texture as a flat colour block. `alpha`, when given, replaces the
+-- token's own.
+function Theme.FillColor(texture, token, alpha)
   if not texture or type(texture.SetColorTexture) ~= "function" then return end
+  if track then track.fill[texture] = token; track.fillA[texture] = alpha; track.chrome[texture] = nil end
 
   local r, g, b, a = ResolveAccentToken(token, false)
   if not r then
@@ -1140,7 +1411,44 @@ function Theme.FillColor(texture, token)
     r, g, b, a = color[1], color[2], color[3], color[4] or 1
   end
 
-  texture:SetColorTexture(r, g, b, a)
+  texture:SetColorTexture(r, g, b, alpha or a)
+end
+
+-- Everything painted from a token, a grey level or the chrome ink since
+-- TrackPaint, painted again from the palette as it is now: the half of a
+-- palette change the windows cannot do for themselves. Iterates without
+-- writing (each region is painted directly), so the tables are safe to walk.
+function Theme.RepaintTracked()
+  if not track then return end
+  for region, token in pairs(track.tint) do
+    local isText = type(region.SetTextColor) == "function"
+    local r, g, b, a = ResolveAccentToken(token, isText)
+    if not r then
+      local color = C[token]
+      if color then r, g, b, a = color[1], color[2], color[3], color[4] or 1 end
+    end
+    if r then
+      if isText then region:SetTextColor(r, g, b, a)
+      elseif type(region.SetVertexColor) == "function" then region:SetVertexColor(r, g, b, a) end
+    end
+  end
+  for texture, token in pairs(track.fill) do
+    local r, g, b, a = ResolveAccentToken(token, false)
+    if not r then
+      local color = C[token]
+      if color then r, g, b, a = color[1], color[2], color[3], color[4] or 1 end
+    end
+    if r then texture:SetColorTexture(r, g, b, track.fillA[texture] or a) end
+  end
+  local ink = C.chromeInk
+  local k = ink[4] or 1
+  for texture, a in pairs(track.chrome) do texture:SetColorTexture(ink[1], ink[2], ink[3], InkAlpha(a, k)) end
+  for texture, a in pairs(track.vchrome) do texture:SetVertexColor(ink[1], ink[2], ink[3], InkAlpha(a, k)) end
+  for region, v in pairs(track.grey) do
+    local g = lightPalette and Theme.Grey(v) or v
+    if type(region.SetTextColor) == "function" then region:SetTextColor(g, g, g, 1)
+    elseif type(region.SetVertexColor) == "function" then region:SetVertexColor(g, g, g, 1) end
+  end
 end
 
 -- Applies a role's font object and colour to an existing font string.
@@ -2323,7 +2631,9 @@ function Theme.SetStarArt(texture, filled)
     else
       -- A cool near-white outline: unmistakably "not set" without reading as
       -- another shade of gold.
-      texture:SetVertexColor(STAR_EMPTY_TINT[1], STAR_EMPTY_TINT[2], STAR_EMPTY_TINT[3], 1)
+      -- On a light palette, its twin for paper (Theme.InkFor).
+      local r, g, b = Theme.InkFor(STAR_EMPTY_TINT[1], STAR_EMPTY_TINT[2], STAR_EMPTY_TINT[3])
+      texture:SetVertexColor(r, g, b, 1)
     end
     return
   end
@@ -2335,7 +2645,8 @@ function Theme.SetStarArt(texture, filled)
     texture:SetVertexColor(1, 1, 1, 1)
   else
     texture:SetDesaturated(true)
-    texture:SetVertexColor(STAR_EMPTY_TINT[1], STAR_EMPTY_TINT[2], STAR_EMPTY_TINT[3], 1)
+    local r, g, b = Theme.InkFor(STAR_EMPTY_TINT[1], STAR_EMPTY_TINT[2], STAR_EMPTY_TINT[3])
+    texture:SetVertexColor(r, g, b, 1)
   end
 end
 
@@ -2578,7 +2889,7 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
       all.icon:SetVertexColor(Theme.GetAccent())
       all.icon:SetAlpha(1)
     else
-      all.icon:SetVertexColor(1, 1, 1)
+      all.icon:SetVertexColor(Theme.InkFor(1, 1, 1))
       all.icon:SetAlpha(0.45)
     end
   end
@@ -2744,6 +3055,8 @@ local function Chevron(parent, up)
     -- positive angle.
     bar:SetRotation(-side * (up and 0.785 or -0.785))
     bar:SetAlpha(0.35)
+    -- The chrome ink, where a palette can change (a light one draws it dark).
+    if track then Theme.TintChrome(bar, 1) end
     bars[i] = bar
   end
   btn:SetScript("OnEnter", function() bars[1]:SetAlpha(0.8) bars[2]:SetAlpha(0.8) end)
@@ -2792,11 +3105,11 @@ function Theme.SlimScrollBar(scroll, container, padTop, padBottom)
 
   bar.Track = bar:CreateTexture(nil, "BACKGROUND")
   bar.Track:SetAllPoints()
-  bar.Track:SetColorTexture(1, 1, 1, 0.06)
+  Theme.FillChrome(bar.Track, 0.06)
 
   bar:SetThumbTexture(WHITE)
   local thumb = bar:GetThumbTexture()
-  thumb:SetColorTexture(1, 1, 1, 0.30)
+  Theme.FillChrome(thumb, 0.30)
   thumb:SetSize(SLIM_W, THUMB_MIN)
 
   bar.Up = Chevron(container, true)
@@ -2855,8 +3168,8 @@ function Theme.SlimScrollBar(scroll, container, padTop, padBottom)
   bar.Down:SetScript("OnClick", function() Step(SLIM_STEP) end)
 
   -- The thumb brightens under the cursor, like every other control's hover.
-  bar:SetScript("OnEnter", function() thumb:SetColorTexture(1, 1, 1, 0.55) end)
-  bar:SetScript("OnLeave", function() thumb:SetColorTexture(1, 1, 1, 0.30) end)
+  bar:SetScript("OnEnter", function() Theme.FillChrome(thumb, 0.55) end)
+  bar:SetScript("OnLeave", function() Theme.FillChrome(thumb, 0.30) end)
 
   -- Whatever the template has already decided before this bar existed.
   local low, high = stock:GetMinMaxValues()

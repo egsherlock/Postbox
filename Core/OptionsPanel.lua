@@ -542,6 +542,8 @@ local TEXT_W = INSP_W - 2 - 2 * TEXT_X
 -- the text does not jump as the pointer moves from setting to setting.
 local SAY_MIN = 150
 local TILE_H, HOST_H, SWATCH_H, STAGE, STAGE_ICON, SAMPLE_MAX, MOCK_H = 46, 32, 74, 104, 54, 50, 34
+-- The Postbox style's small window, and the accent row's reading under it.
+local MINI_H, READOUT_LINES = 128, 3
 local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
 local GLOW_TGA = "Interface\\AddOns\\Postbox\\Media\\minimap-glow.tga"
 local ROUND_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
@@ -715,7 +717,7 @@ do
     rule:SetHeight(1)
     rule:SetPoint("TOPLEFT", idle, "TOPLEFT", 0, 0)
     rule:SetPoint("TOPRIGHT", idle, "TOPRIGHT", 0, 0)
-    rule:SetColorTexture(1, 1, 1, HAIR_A)
+    T.FillChrome(rule, HAIR_A)
     idle.Rule = rule
     S.idleBlock = idle
 
@@ -845,7 +847,11 @@ do
   function Ctx.Height(key)
     if key == "mail" then return CTX_TOP + TILE_H + 8 + SAMPLE_MAX + 10 end
     if key == "send" then return CTX_TOP + TILE_H + 10 end
-    if key == "window" then return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + SWATCH_H + 10 end
+    if key == "window" then
+      local skin = GetSkin()
+      local h = (skin and skin.IsPostboxStyle) and MINI_H or SWATCH_H
+      return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + h + 10
+    end
     if key == "minimap" then return CTX_TOP + 4 + STAGE + 10 end
     return 0
   end
@@ -975,7 +981,7 @@ do
     local hover = holder:CreateTexture(nil, "BACKGROUND")
     hover:SetPoint("TOPLEFT", tile, "TOPLEFT", 1, -1)
     hover:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", -1, 1)
-    hover:SetColorTexture(1, 1, 1, WASH_A)
+    T.FillChrome(hover, WASH_A)
     hover:Hide()
 
     local mark = holder:CreateTexture(nil, "ARTWORK")
@@ -1065,6 +1071,16 @@ do
   -- the Slots choice writes it.
   ---------------------------------------------------------
 
+  -- A drawing's own inset ground and edge, from the palette (dark: black at
+  -- 45% edged #2b2b2b; the light palette's own on a light one).
+  local function PaintPlain(frame)
+    local C = ns.Theme.Colors
+    local f, e = C.inset, C.insetEdge
+    frame:SetBackdropColor(f[1], f[2], f[3], f[4])
+    frame:SetBackdropBorderColor(e[1], e[2], e[3], e[4])
+  end
+  Ctx.PaintPlain = PaintPlain
+
   -- A figure of the sample's, right-aligned in its column.
   local function SampleFigure(art)
     local fs = ns.Theme.CreateText(art, "secondary")
@@ -1105,8 +1121,7 @@ do
     local T = ns.Theme
     local s = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     s:SetBackdrop(PLAIN_BACKDROP)
-    s:SetBackdropColor(0, 0, 0, 0.45)
-    s:SetBackdropBorderColor(0.17, 0.17, 0.17, 1)
+    PaintPlain(s)
     s:SetWidth(CTX_W)
     local art = ArtHolder(s)
     -- For the mark before the name, made the first time it is drawn.
@@ -1137,7 +1152,7 @@ do
     -- The second mail: a stripe, as the list's rows alternate, its coin and
     -- its name; and the figures of both.
     s.Stripe = art:CreateTexture(nil, "BACKGROUND", nil, 1)
-    s.Stripe:SetColorTexture(1, 1, 1, 0.035)
+    T.FillChrome(s.Stripe, 0.035)
     s.Icon2 = art:CreateTexture(nil, "ARTWORK", nil, 1)
     s.Icon2:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     s.Icon2:SetTexture(SAMPLE_COIN)
@@ -1179,6 +1194,7 @@ do
     local T = ns.Theme
     local UI = ns.MailboxUI
     local larger = UI and not UI.GetOption("compactRows") or false
+    PaintPlain(s)
     local onIcon = not (UI and type(UI.GetQualityIcon) == "function") or UI.GetQualityIcon()
     local byName = UI and type(UI.GetQualityName) == "function" and UI.GetQualityName() or "off"
     local iconSize = larger and 24 or 18
@@ -1260,7 +1276,7 @@ do
     -- Before the name: the mark where the name began, and the room for it
     -- before both names (the list's own, RowRules.NameMarkRoom).
     local room = (byName == "before" and R and R.NameMarkRoom) and R.NameMarkRoom() or 0
-    s.Name:SetTextColor(r, g, b, 1)
+    T.SetTextRGB(s.Name, T.InkFor(r, g, b))
     s.Name:ClearAllPoints()
     s.Name:SetPoint("LEFT", s.Icon, "RIGHT", 7 + room, 0)
     if R and R.PaintNameMark then R.PaintNameMark(s, name and mark or nil, s.Art, s.Name) end
@@ -1501,6 +1517,217 @@ do
     win.Selected:SetColorTexture(ar, ag, ab, 0.22)
   end
 
+  ---------------------------------------------------------
+  -- The Postbox style's window, small
+  --
+  -- Under the Postbox style the Window tab's drawing is a window of that
+  -- style over the same bit of world, painted from its live palette: the
+  -- fill at the player's opacity, the tint and the strip, the keyline in its
+  -- weight and colour, the sheen, a lit tab over an idle one, a heading and
+  -- its rule, two striped rows with their figures, a button's caption and a
+  -- ticked box. Every row of the style's groups shows in it as it changes;
+  -- its text wears the style's own fonts, so face, size and outline do too.
+  ---------------------------------------------------------
+  local MINI_PAD_X, MINI_PAD_Y, MINI_STRIP, MINI_ROW = 12, 9, 12, 16
+
+  -- Four lines of the addon's white tile round `frame`, `inset` in.
+  local function MiniEdges(frame, layer, sub)
+    local e = {}
+    for i = 1, 4 do e[i] = frame:CreateTexture(nil, layer, nil, sub) end
+    return e
+  end
+
+  local function LayEdges(e, frame, inset, w)
+    for i = 1, 4 do e[i]:ClearAllPoints() end
+    e[1]:SetPoint("TOPLEFT", frame, "TOPLEFT", inset, -inset)
+    e[1]:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -inset, -inset)
+    e[1]:SetHeight(w)
+    e[2]:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", inset, inset)
+    e[2]:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
+    e[2]:SetHeight(w)
+    e[3]:SetPoint("TOPLEFT", frame, "TOPLEFT", inset, -inset)
+    e[3]:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", inset, inset)
+    e[3]:SetWidth(w)
+    e[4]:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -inset, -inset)
+    e[4]:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
+    e[4]:SetWidth(w)
+  end
+
+  local function TintEdges(e, c, shown)
+    for i = 1, 4 do
+      e[i]:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
+      e[i]:SetShown(shown ~= false)
+    end
+  end
+
+  -- A block: a fill and a one-unit edge.
+  local function MiniBlock(parent)
+    local b = CreateFrame("Frame", nil, parent)
+    b.Fill = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+    b.Fill:SetAllPoints()
+    b.Edges = MiniEdges(b, "BORDER", 1)
+    LayEdges(b.Edges, b, 0, 1)
+    return b
+  end
+
+  local function PaintBlock(b, fill, edge)
+    b.Fill:SetColorTexture(fill[1], fill[2], fill[3], fill[4] or 1)
+    TintEdges(b.Edges, edge)
+  end
+
+  function Ctx.Mini(parent)
+    local T = ns.Theme
+    local sw = Ctx.Swatch(parent)
+    sw:SetHeight(MINI_H)
+    -- The swatch's own little window gives way to the style's.
+    sw.Win:Hide()
+    local win = CreateFrame("Frame", nil, sw)
+    win:SetFrameLevel(sw.Win:GetFrameLevel())
+    win:SetPoint("TOPLEFT", sw, "TOPLEFT", MINI_PAD_X, -MINI_PAD_Y)
+    win:SetPoint("BOTTOMRIGHT", sw, "BOTTOMRIGHT", -MINI_PAD_X, MINI_PAD_Y)
+    win.Fill = win:CreateTexture(nil, "BACKGROUND", nil, -8)
+    win.Fill:SetAllPoints()
+    win.Strip = win:CreateTexture(nil, "BACKGROUND", nil, -7)
+    win.Strip:SetPoint("TOPLEFT", win, "TOPLEFT", 0, 0)
+    win.Strip:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, 0)
+    win.Strip:SetHeight(MINI_STRIP)
+    win.Sheen = win:CreateTexture(nil, "BACKGROUND", nil, -6)
+    win.Sheen:SetTexture(WHITE)
+    win.Sheen:SetPoint("TOPLEFT", win, "TOPLEFT", 0, 0)
+    win.Sheen:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, 0)
+    win.Sheen:SetHeight(40)
+    win.Outer = MiniEdges(win, "BORDER", 6)
+    win.Inner = MiniEdges(win, "BORDER", 7)
+    win.Title = T.CreateText(win, "bodySmall")
+    win.Title:SetPoint("CENTER", win.Strip, "CENTER", 0, 0)
+    win.Title:SetText(L["FRAME_TITLE"])
+
+    -- A lit tab and an idle one, the window's own plates.
+    win.Tabs = {}
+    for i = 1, 2 do
+      local plate = T.CreatePlate(win, "tab")
+      plate:SetHeight(16)
+      plate:SetWidth(62)
+      plate:SetPoint("TOPLEFT", win, "TOPLEFT", 6 + (i - 1) * 66, -(MINI_STRIP + 4))
+      plate:EnableMouse(false)
+      plate:SetText(L[i == 1 and "TAB_COLLECT" or "TAB_SEND"])
+      if plate.Text then plate.Text:SetFontObject(T.FontObject("bodySmall")) end
+      local skin = ns.Skin
+      if skin and skin.StyleTabPlate then skin.StyleTabPlate(plate) end
+      T.SetPlateSelected(plate, i == 1)
+      win.Tabs[i] = plate
+    end
+
+    win.Head = T.CreateText(win, "heading")
+    win.Head:SetPoint("TOPLEFT", win, "TOPLEFT", 7, -(MINI_STRIP + 25))
+    win.Head:SetText(L["OPT_GROUP_COLORS"])
+    win.Rule = win:CreateTexture(nil, "ARTWORK")
+    win.Rule:SetHeight(1)
+    win.Rule:SetPoint("LEFT", win.Head, "RIGHT", 6, 0)
+    win.Rule:SetPoint("RIGHT", win, "RIGHT", -7, 0)
+
+    -- The list and its two rows.
+    local list = MiniBlock(win)
+    list:SetPoint("TOPLEFT", win, "TOPLEFT", 6, -(MINI_STRIP + 40))
+    list:SetPoint("TOPRIGHT", win, "TOPRIGHT", -6, -(MINI_STRIP + 40))
+    list:SetHeight(2 * MINI_ROW + 2)
+    list.Rows = {}
+    for i = 1, 2 do
+      local row = list:CreateTexture(nil, "BACKGROUND", nil, 2)
+      row:SetPoint("TOPLEFT", list, "TOPLEFT", 1, -1 - (i - 1) * MINI_ROW)
+      row:SetPoint("TOPRIGHT", list, "TOPRIGHT", -1, -1 - (i - 1) * MINI_ROW)
+      row:SetHeight(MINI_ROW)
+      local name = T.CreateText(list, "bodySmall")
+      name:SetPoint("LEFT", row, "LEFT", 5, 0)
+      name:SetText(i == 1 and L["ROW_AH_BOUGHT"] or L["TAB_COLLECT"])
+      local fig = T.CreateText(list, "bodySmall")
+      fig:SetPoint("RIGHT", row, "RIGHT", -5, 0)
+      fig:SetText(i == 1 and "-52g" or "+1309g")
+      list.Rows[i] = { stripe = row, name = name, fig = fig }
+    end
+    win.List = list
+
+    local button = MiniBlock(win)
+    button:SetSize(70, 16)
+    button:SetPoint("TOPLEFT", list, "BOTTOMLEFT", 0, -6)
+    button.Text = T.CreateText(button, "bodySmall")
+    button.Text:SetPoint("CENTER", button, "CENTER", 0, 0)
+    button.Text:SetText(L["BTN_TAKE_ALL"])
+    win.Button = button
+
+    local box = MiniBlock(win)
+    box:SetSize(12, 12)
+    box:SetPoint("TOPRIGHT", list, "BOTTOMRIGHT", 0, -8)
+    box.Tick = T.Glyph and T.Glyph(box, "check", 8, "OVERLAY") or nil
+    if box.Tick then box.Tick:SetPoint("CENTER", box, "CENTER", 0, 0) end
+    win.Box = box
+
+    sw.Mini = win
+    return sw
+  end
+
+  function Ctx.PaintMini(sw)
+    local T = ns.Theme
+    local skin = GetSkin()
+    local win = sw.Mini
+    local P = skin and skin.Palette
+    if not (win and P) then return end
+    local C = T.Colors
+    local alpha = skin.GetBgOpacity()
+    local fill = P.window
+    win.Fill:SetColorTexture(fill[1], fill[2], fill[3], alpha)
+    local s = P.strip
+    win.Strip:SetColorTexture(s[1], s[2], s[3], s[4] * alpha)
+    local sheen = skin.GetSheen and skin.GetSheen()
+    local sc = P.sheen
+    if sheen and win.Sheen.SetGradient and type(CreateColor) == "function" then
+      if not win.SheenLo then win.SheenLo, win.SheenHi = CreateColor(0, 0, 0, 0), CreateColor(0, 0, 0, 0) end
+      win.SheenLo:SetRGBA(sc[1], sc[2], sc[3], 0)
+      win.SheenHi:SetRGBA(sc[1], sc[2], sc[3], sc[4])
+      win.Sheen:SetGradient("VERTICAL", win.SheenLo, win.SheenHi)
+    end
+    win.Sheen:SetShown(sheen and true or false)
+    local border = skin.GetBorderStyle()
+    local show = border ~= "none"
+    LayEdges(win.Outer, win, 0, 1)
+    LayEdges(win.Inner, win, 1, border == "thick" and 2 or 1)
+    TintEdges(win.Outer, P.keyOuter, show)
+    TintEdges(win.Inner, P.inner, show)
+    local t = P.title
+    win.Title:SetTextColor(t[1], t[2], t[3], t[4])
+    for i = 1, 2 do T.SetPlateSelected(win.Tabs[i], i == 1) end
+    T.FillColor(win.Rule, "accentRule")
+    PaintBlock(win.List, P.list, P.listEdge)
+    local stripes = { C.stripeOdd, C.stripeEven }
+    for i = 1, 2 do
+      local row = win.List.Rows[i]
+      local c = stripes[i]
+      row.stripe:SetColorTexture(c[1], c[2], c[3], c[4])
+      T.SetColor(row.fig, i == 1 and "negative" or "positive")
+    end
+    PaintBlock(win.Button, P.button, P.buttonEdge)
+    if skin.ButtonTextRGB then
+      T.SetTextRGB(win.Button.Text, skin.ButtonTextRGB())
+    end
+    PaintBlock(win.Box, P.check, P.checkEdge)
+    if win.Box.Tick then win.Box.Tick:SetVertexColor(T.GetAccentTone("mark")) end
+  end
+
+  -- The accent row's reading, under its description: the ratios the tones
+  -- read at, whether the guard moved them, and a semantic colour it sits
+  -- close to. One text, measured once at its longest.
+  local NEAR = { warning = "OPT_NEAR_WARNING", positive = "OPT_NEAR_POSITIVE", negative = "OPT_NEAR_NEGATIVE", info = "OPT_NEAR_INFO" }
+
+  function Ctx.AccentReadout()
+    local T = ns.Theme
+    local text, mark, ink, moved = T.AccentReadout()
+    local line = L("OPT_PB_READOUT", string.format("%.1f", text), string.format("%.1f", mark), string.format("%.1f", ink))
+    if moved then line = line .. "\n" .. L["OPT_PB_LIFTED"] end
+    local near = T.NearSemantic and T.NearSemantic()
+    if near and NEAR[near] then line = line .. "\n" .. L("OPT_PB_NEAR", L[NEAR[near]]) end
+    return line
+  end
+
   -- The Window tab: who the look comes from, and the window itself.
   function Ctx.window(card)
     local T = ns.Theme
@@ -1513,8 +1740,7 @@ do
       -- wearing your UI's look, or Postbox's?
       host = CreateFrame("Frame", nil, f, "BackdropTemplate")
       host:SetBackdrop(PLAIN_BACKDROP)
-      host:SetBackdropColor(0, 0, 0, 0.45)
-      host:SetBackdropBorderColor(0.17, 0.17, 0.17, 1)
+      PaintPlain(host)
       host:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
       host:SetSize(CTX_W, HOST_H)
       host.Dot = host:CreateTexture(nil, "OVERLAY")
@@ -1532,11 +1758,14 @@ do
       host:SetScript("OnLeave", SpotLeave)
       y = HOST_H + 8
     end
-    local sw = Ctx.Swatch(f)
+    local skin = GetSkin()
+    local mini = skin and skin.IsPostboxStyle and true or false
+    local sw = mini and Ctx.Mini(f) or Ctx.Swatch(f)
     sw:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -y)
-    f:SetSize(CTX_W, y + SWATCH_H)
+    f:SetSize(CTX_W, y + (mini and MINI_H or SWATCH_H))
     f.Paint = function()
       if host then
+        PaintPlain(host)
         if S.badgeGreen then
           host.Dot:SetColorTexture(0.38, 0.80, 0.44, 1)
         else
@@ -1546,7 +1775,7 @@ do
         end
         T.FitText(host.Text, CTX_W - 36, S.idle.window.title, host)
       end
-      Ctx.PaintSwatch(sw)
+      if mini then Ctx.PaintMini(sw) else Ctx.PaintSwatch(sw) end
     end
     return f
   end
@@ -1654,6 +1883,17 @@ do
 
   -- The drawing's height under the text, its gap included.
   function Ctx.ExtraHeight(kind)
+    if kind == "pbAccent" then
+      -- Room for its longest reading: the ratios, the lift and a near
+      -- colour, each a line or two in a long language.
+      local h = 8 + READOUT_LINES * Insp.TextHeight("0")
+      local extra = S.accentReadout
+      if extra then
+        extra.height = h
+        extra:SetHeight(h - 8)
+      end
+      return h
+    end
     if kind ~= "arrange" then return 0 end
     local h = 8 + Insp.TextHeight(L["OPT_ARRANGE_WHERE"]) + 6 + MOCK_H
     local extra = S.arrangeMock
@@ -1665,6 +1905,28 @@ do
   end
 
   function Ctx.Extra(kind)
+    if kind == "pbAccent" then
+      local extra = S.accentReadout
+      if not extra then
+        local say = S.say
+        extra = CreateFrame("Frame", nil, say)
+        extra:SetPoint("TOPLEFT", say.Text, "BOTTOMLEFT", 0, -8)
+        extra:SetWidth(TEXT_W)
+        local line = ns.Theme.CreateText(extra, "secondary")
+        line:SetPoint("TOPLEFT", extra, "TOPLEFT", 0, 0)
+        line:SetWidth(TEXT_W)
+        line:SetJustifyH("LEFT")
+        line:SetWordWrap(true)
+        if line.SetSpacing then line:SetSpacing(2) end
+        extra.Line = line
+        S.accentReadout = extra
+        Ctx.ExtraHeight(kind)
+        extra:Hide()
+      end
+      -- Read now: the accent moves while the row is pointed at.
+      extra.Line:SetText(Ctx.AccentReadout())
+      return extra
+    end
     if kind ~= "arrange" then return nil end
     local extra = S.arrangeMock
     if extra then return extra end
@@ -1685,8 +1947,6 @@ do
     bar:SetPoint("TOPLEFT", caption, "BOTTOMLEFT", 0, -6)
     bar:SetSize(TEXT_W, MOCK_H)
     bar:SetBackdrop(PLAIN_BACKDROP)
-    bar:SetBackdropColor(0.02, 0.02, 0.02, 1)
-    bar:SetBackdropBorderColor(0.17, 0.17, 0.17, 1)
     local art = ArtHolder(bar)
     local cog = art:CreateTexture(nil, "ARTWORK")
     cog:SetSize(14, 14)
@@ -1696,7 +1956,7 @@ do
     ring:SetPoint("LEFT", cog, "RIGHT", 4, 0)
     local hole = Disc(art, 17, 2)
     hole:SetPoint("CENTER", ring, "CENTER", 0, 0)
-    hole:SetVertexColor(0.02, 0.02, 0.02, 1)
+    T.SetGrey(hole, 0.02)
     local mark = Ctx.Mark(art, 12, "OVERLAY")
     if mark then
       mark:SetPoint("CENTER", ring, "CENTER", 0, 0)
@@ -1712,7 +1972,7 @@ do
     if closeAtlas then close:SetAtlas(closeAtlas, false) else close:Hide() end
     T.SetColor(close, "textSecondary")
 
-    extra.Cog, extra.Ring = cog, ring
+    extra.Cog, extra.Ring, extra.Bar = cog, ring, bar
     S.arrangeMock = extra
     Ctx.ExtraHeight(kind)
     Ctx.PaintExtra()
@@ -1724,9 +1984,15 @@ do
   function Ctx.PaintExtra()
     local extra = S.arrangeMock
     if not extra then return end
-    local r, g, b = ns.Theme.GetAccent()
+    local T = ns.Theme
+    local r, g, b = T.GetAccent()
     extra.Cog:SetVertexColor(r, g, b)
     extra.Ring:SetVertexColor(r, g, b, 1)
+    -- The title bar it sketches: near black, or its light twin.
+    local v = T.Grey(0.02)
+    local e = T.Colors.insetEdge
+    extra.Bar:SetBackdropColor(v, v, v, 1)
+    extra.Bar:SetBackdropBorderColor(e[1], e[2], e[3], e[4])
   end
 end
 
@@ -1839,7 +2105,7 @@ do
       line:SetHeight(1)
       line:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
       line:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
-      line:SetColorTexture(1, 1, 1, HAIR_A)
+      ns.Theme.FillChrome(line, HAIR_A)
     end
     col.y = col.y - height
     col.first = false
@@ -1853,7 +2119,7 @@ do
     local T = ns.Theme
     local wash = cell:CreateTexture(nil, "BACKGROUND")
     wash:SetAllPoints()
-    wash:SetColorTexture(1, 1, 1, WASH_A)
+    T.FillChrome(wash, WASH_A)
     wash:Hide()
     local name = T.CreateText(cell, role or "label")
     name:SetPoint("LEFT", cell, "LEFT", NAME_X, 0)
@@ -1932,7 +2198,7 @@ do
     mid:SetWidth(1)
     mid:SetPoint("TOPLEFT", row, "TOPLEFT", half, 0)
     mid:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", half, 0)
-    mid:SetColorTexture(1, 1, 1, HAIR_A)
+    ns.Theme.FillChrome(mid, HAIR_A)
     return row
   end
 
@@ -1946,6 +2212,7 @@ do
       if item.id == current then
         cell.dd._selectedId = current
         cell.dd:SetText(item.name)
+        if cell.dd.PaintSwatch then cell.dd:PaintSwatch() end
         return
       end
     end
@@ -1972,6 +2239,7 @@ do
       alignRight   = true,
       height       = DD_H + 2,
       defaultId    = ok and current or nil,
+      swatchFor    = spec.swatchFor,
     })
     dd:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
     dd:SetWidth(DD_W)
@@ -2849,58 +3117,188 @@ function Pages.window(col)
   })
 end
 
--- The Postbox style's own rows, in its groups. The colour rows (accent,
--- surface, border colour, row stripes) and the text outline join these
--- groups later; the style already paints from the palette they will write.
-function Pages.windowPostbox(col, Skin)
-  Rows.Group(col, L["OPT_GROUP_COLORS"])
-  local opacityItems = {}
-  for _, pct in ipairs({ 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 25, 0 }) do
-    opacityItems[#opacityItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
+-- The Postbox style's own rows, in its groups (spec section 3.1): Colors
+-- (Mode, the accent, the surface, opacity, the tint), Edges and rows (the
+-- border, its colour, the corners, row stripes and the sheen side by side),
+-- Text (font, size, outline, button captions). The drawing at the top of the
+-- inspector is the style's window, small, painted live from every one of
+-- them; the accent's row adds its measured contrast under its description.
+do
+  -- choices -> dropdown items.
+  local function Items(list)
+    local items = {}
+    for i = 1, #list do items[i] = { id = list[i].key, name = list[i].name } end
+    return items
   end
-  Rows.Dropdown(col, {
-    title = L["OPT_BG_OPACITY_TITLE"], text = L["OPT_BG_OPACITY_DESC"], items = opacityItems,
-    get = function() return math.floor(Skin.GetBgOpacity() * 100 + 0.5) end,
-    set = function(id)
-      Skin.SetBgOpacity((tonumber(id) or 100) / 100)
-      Ctx.Repaint()
-    end,
-  })
 
-  Rows.Group(col, L["OPT_GROUP_EDGES"])
-  local borderItems = {}
-  for _, choice in ipairs(Skin.GetBorderChoices()) do
-    borderItems[#borderItems + 1] = { id = choice.key, name = choice.name }
+  -- choices -> id -> the colour its square shows. Custom reads the colour
+  -- saved for it, at each paint.
+  local function Swatches(list, kind, Skin)
+    local map = {}
+    for i = 1, #list do
+      local c = list[i].swatch
+      if c then map[list[i].key] = c end
+    end
+    return function(id)
+      if id == "custom" then
+        if Skin.GetCustomColor then return Skin.GetCustomColor(kind) end
+        return nil
+      end
+      if id == "accent" and kind == "border" then return ns.Theme.GetAccentTone("mark") end
+      local c = map[id]
+      if c then return c[1], c[2], c[3] end
+      return nil
+    end
   end
-  Rows.Dropdown(col, {
-    title = L["OPT_BORDER_TITLE"], text = L["OPT_BORDER_DESC_POSTBOX"], items = borderItems,
-    get = function() return Skin.GetBorderStyle() end,
-    set = function(id)
-      Skin.SetBorderStyle(id)
-      Ctx.Repaint()
-    end,
-  })
 
-  Rows.Group(col, L["OPT_GROUP_TEXT"])
-  local fontItems = {}
-  for _, choice in ipairs(Skin.GetFontChoices()) do
-    fontItems[#fontItems + 1] = { id = choice.key, name = choice.name }
+  -- Custom is offered where the client has its colour picker.
+  local function WithoutCustom(list, Skin)
+    if Skin.CanPickColor and Skin.CanPickColor() then return list end
+    local out = {}
+    for i = 1, #list do if list[i].key ~= "custom" then out[#out + 1] = list[i] end end
+    return out
   end
-  Rows.Dropdown(col, {
-    title = L["OPT_FONT_TITLE"], text = L["OPT_FONT_DESC"], items = fontItems,
-    get = function() return Skin.GetFont() end,
-    set = function(id) Skin.SetFont(id) end,
-  })
-  local sizeItems = {}
-  for _, scale in ipairs(Skin.GetTextScaleChoices()) do
-    local pct = math.floor(scale * 100 + 0.5)
-    sizeItems[#sizeItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
+
+  local function Percent(values)
+    local items = {}
+    for i = 1, #values do items[i] = { id = values[i], name = string.format(L["OPT_BG_OPACITY_STEP"], values[i]) } end
+    return items
   end
-  Rows.Dropdown(col, {
-    title = L["OPT_TEXT_SIZE_TITLE"], text = L["OPT_TEXT_SIZE_DESC"], items = sizeItems,
-    get = function() return math.floor(Skin.GetTextScale() * 100 + 0.5) end,
-    set = function(id) Skin.SetTextScale((tonumber(id) or 100) / 100) end,
-  })
+
+  function Pages.windowPostbox(col, Skin)
+    Rows.Group(col, L["OPT_GROUP_COLORS"])
+    Rows.Dropdown(col, {
+      title = L["OPT_MODE_TITLE"], text = L["OPT_MODE_DESC"], items = Items(Skin.GetModeChoices()),
+      get = function() return Skin.GetMode() end,
+      set = function(id)
+        Skin.SetMode(id)
+        State.Postbox()
+        Ctx.Repaint()
+      end,
+    })
+    local accents = WithoutCustom(Skin.GetAccentChoices(), Skin)
+    local accentRow = Rows.Dropdown(col, {
+      title = L["OPT_ACCENT_TITLE"], text = L["OPT_ACCENT_DESC"], items = Items(accents),
+      swatchFor = Swatches(accents, "accent", Skin),
+      get = function() return Skin.GetAccentKey() end,
+      set = function(id)
+        if id == "custom" then Skin.PickColor("accent") else Skin.SetAccent(id) end
+        Ctx.Repaint()
+      end,
+    })
+    accentRow.entry.extra = "pbAccent"
+    local surfaces = WithoutCustom(Skin.GetSurfaceChoices(), Skin)
+    S.pbSurfaceCell = Rows.Dropdown(col, {
+      title = L["OPT_SURFACE_TITLE"], text = L["OPT_SURFACE_DESC"], items = Items(surfaces),
+      swatchFor = Swatches(surfaces, "surface", Skin),
+      get = function() return Skin.GetSurfaceKey() end,
+      set = function(id)
+        if id == "custom" then Skin.PickColor("surface") else Skin.SetSurface(id) end
+        Ctx.Repaint()
+      end,
+    })
+    Rows.Dropdown(col, {
+      title = L["OPT_BG_OPACITY_TITLE"], text = L["OPT_BG_OPACITY_DESC_POSTBOX"],
+      items = Percent({ 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 25, 0 }),
+      get = function() return math.floor(Skin.GetBgOpacity() * 100 + 0.5) end,
+      set = function(id)
+        Skin.SetBgOpacity((tonumber(id) or 100) / 100)
+        Rows.PaintDropdown(S.pbOpacityCell)
+        Ctx.Repaint()
+      end,
+    })
+    S.pbOpacityCell = S.cells[#S.cells]
+    Rows.Dropdown(col, {
+      title = L["OPT_TINT_TITLE"], text = L["OPT_TINT_DESC"], items = Items(Skin.GetTintChoices()),
+      get = function() return Skin.GetTint() end,
+      set = function(id)
+        Skin.SetTint(id)
+        Ctx.Repaint()
+      end,
+    })
+
+    Rows.Group(col, L["OPT_GROUP_EDGES"])
+    Rows.Dropdown(col, {
+      title = L["OPT_BORDER_TITLE"], text = L["OPT_BORDER_DESC_POSTBOX"], items = Items(Skin.GetBorderChoices()),
+      get = function() return Skin.GetBorderStyle() end,
+      set = function(id)
+        Skin.SetBorderStyle(id)
+        Ctx.Repaint()
+      end,
+    })
+    local tones = WithoutCustom(Skin.GetBorderToneChoices(), Skin)
+    Rows.Dropdown(col, {
+      title = L["OPT_BORDER_COLOR_TITLE"], text = L["OPT_BORDER_COLOR_DESC"], items = Items(tones),
+      -- The greys' squares are the palette's own, read at each paint: a
+      -- light window's gray is lighter.
+      swatchFor = function(id)
+        if id == "custom" then return Skin.GetCustomColor("border") end
+        if id == "accent" then return ns.Theme.GetAccentTone("mark") end
+        local c = Skin.Palette.borderTone[id]
+        if c then return c[1], c[2], c[3] end
+        return nil
+      end,
+      get = function() return Skin.GetBorderTone() end,
+      set = function(id)
+        if id == "custom" then Skin.PickColor("border") else Skin.SetBorderTone(id) end
+        Ctx.Repaint()
+      end,
+    })
+    Rows.Dropdown(col, {
+      title = L["OPT_CORNERS_TITLE"], text = L["OPT_CORNERS_DESC"], items = Items(Skin.GetCornerChoices()),
+      get = function() return Skin.GetCorners() end,
+      set = function(id)
+        Skin.SetCorners(id)
+        Ctx.Repaint()
+      end,
+    })
+    Rows.Pair(col, {
+      title = L["OPT_STRIPES_TITLE"], text = L["OPT_STRIPES_DESC"],
+      get = function() return Skin.GetRowStripes() end,
+      set = function(on) Skin.SetRowStripes(on) Ctx.Repaint() end,
+    }, {
+      title = L["OPT_SHEEN_TITLE"], text = L["OPT_SHEEN_DESC"],
+      get = function() return Skin.GetSheen() end,
+      set = function(on) Skin.SetSheen(on) Ctx.Repaint() end,
+    })
+
+    Rows.Group(col, L["OPT_GROUP_TEXT"])
+    Rows.Dropdown(col, {
+      title = L["OPT_FONT_TITLE"], text = L["OPT_FONT_DESC"], items = Items(Skin.GetFontChoices()),
+      get = function() return Skin.GetFont() end,
+      set = function(id) Skin.SetFont(id) end,
+    })
+    local sizeItems = {}
+    for _, scale in ipairs(Skin.GetTextScaleChoices()) do
+      local pct = math.floor(scale * 100 + 0.5)
+      sizeItems[#sizeItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
+    end
+    Rows.Dropdown(col, {
+      title = L["OPT_TEXT_SIZE_TITLE"], text = L["OPT_TEXT_SIZE_DESC"], items = sizeItems,
+      get = function() return math.floor(Skin.GetTextScale() * 100 + 0.5) end,
+      set = function(id) Skin.SetTextScale((tonumber(id) or 100) / 100) end,
+    })
+    Rows.Dropdown(col, {
+      title = L["OPT_OUTLINE_TITLE"], text = L["OPT_OUTLINE_DESC"], items = Items(Skin.GetOutlineChoices()),
+      get = function() return Skin.GetOutline() end,
+      set = function(id) Skin.SetOutline(id) Ctx.Repaint() end,
+    })
+    Rows.Dropdown(col, {
+      title = L["OPT_BUTTON_TEXT_TITLE"], text = L["OPT_BUTTON_TEXT_DESC"], items = Items(Skin.GetButtonTextChoices()),
+      get = function() return Skin.GetButtonText() end,
+      set = function(id) Skin.SetButtonText(id) Ctx.Repaint() end,
+    })
+  end
+end
+
+-- Under the Postbox style: the surface is Dark mode's, so its row greys in
+-- Light; the opacity row shows the value in force (Light keeps 85% or more).
+function State.Postbox()
+  local cell = S.pbSurfaceCell
+  local skin = GetSkin()
+  if not (cell and skin and skin.GetMode) then return end
+  Rows.SetEnabled(cell, skin.GetMode() ~= "light")
+  if S.pbOpacityCell then Rows.PaintDropdown(S.pbOpacityCell) end
 end
 
 -- A creative window style's rows (Core/Skin_Creative.lua): its colour choice
@@ -3597,6 +3995,7 @@ local function Build()
   S.refresh[#S.refresh + 1] = State.Hidden
   S.refresh[#S.refresh + 1] = State.Arrange
   S.refresh[#S.refresh + 1] = Ctx.PaintExtra
+  S.refresh[#S.refresh + 1] = State.Postbox
 
   Footer.Build(frame, list)
   frame:HookScript("OnHide", PanelHide)

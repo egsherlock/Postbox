@@ -181,6 +181,10 @@ local OPTION_DEFAULTS = {
   -- bags and the game's own inbox show a stack, and it lets an auction
   -- mail's subject drop the count the icon already writes.
   iconCounts      = true,
+  -- Alternate rows a shade apart, under the Postbox style (its Row stripes
+  -- row; Core/Skin_Postbox.lua). On: the mockups' rows. Off, every row wears
+  -- one even shade. The Blizzard look and the host skins stripe as ever.
+  rowStripes      = true,
 }
 -- What a mail row shows, and in what order, is no longer three switches here
 -- (rowGold, rowSlots, rowExpiry): it is the row's arrangement, UI.GetRowLayout
@@ -337,6 +341,9 @@ local function ApplyResetLive()
     ResetStep(skin.ResetBgOpacity)
     -- The Postbox style's font and text size, back on the game's own.
     ResetStep(skin.ApplyFonts)
+    -- And its colours, mode, edges and text colours: the palette resolved
+    -- from the cleared settings and everything painted again.
+    ResetStep(skin.ApplyLook, true)
   end
   -- The window scale, in every style: every window back to 100%.
   ResetStep(UI.ApplyWindowScale)
