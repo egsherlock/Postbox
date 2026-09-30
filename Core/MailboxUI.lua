@@ -203,7 +203,8 @@ local function ForgetSettings()
   local opt = memo.opt
   for key in pairs(opt) do opt[key] = nil end
   memo.root, memo.profile = nil, nil
-  memo.quality, memo.gold, memo.expiry, memo.layout, memo.slots = nil, nil, nil, nil, nil
+  memo.qIcon, memo.qName = nil, nil
+  memo.gold, memo.expiry, memo.layout, memo.slots = nil, nil, nil, nil
   memo.packing = nil
   memo.history, memo.age = nil, nil
   memo.grid, memo.gridText = nil, nil
@@ -539,30 +540,70 @@ function UI.GetTabCaptionMode()
   return "dot"
 end
 
--- What a quality mark is drawn on: "icon" (the corner of the row's item
--- icon, the default), "name" (after the item's name, as a chat link has it),
--- "both" (the icon and after the name), "before" (before the name, with the
--- room for it kept on every row so the names stay in line) or "off". Before
--- this was a choice it was the rowQuality switch, and a player who had
--- switched that off keeps it off.
-local QUALITY_MARKS = { icon = true, name = true, both = true, before = true, off = true }
-function UI.GetQualityMark()
-  local memo = Settings()
-  if memo.quality then return memo.quality end
-  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.qualityMark")
-  local mode = "icon"
-  if QUALITY_MARKS[stored] then
-    mode = stored
-  elseif ns.Store and ns.Store.Get and ns.Store.Get("profile.rowQuality") == false then
-    mode = "off"
+-- The crafting quality mark, two things a row may wear independently: the
+-- badge on the corner of the item's icon (GetQualityIcon: on unless the
+-- player turned it off, stored as profile.qualityIcon = false), and a mark
+-- beside the item's name (GetQualityName: "before" it, with the room for it
+-- kept on every row so the names stay in line; "after" it, as a chat link
+-- has it; or "off", the default, stored as nothing).
+--
+-- They were one choice, profile.qualityMark ("icon", "name" after the name,
+-- "both" the icon and after the name, "before", "off"), and before that the
+-- rowQuality switch. A profile still holding either is carried over the
+-- first time the mark is asked about, to exactly what it drew, and the old
+-- keys are dropped: this is the one read here that writes, and only onto a
+-- profile that already holds the old key.
+local QUALITY_NAMES = { before = true, after = true, off = true }
+-- old choice -> the icon's badge, the name's mark
+local QUALITY_OLD = {
+  icon   = { true,  "off" },
+  name   = { false, "after" },
+  both   = { true,  "after" },
+  before = { false, "before" },
+  off    = { false, "off" },
+}
+
+local function ReadQuality(memo)
+  local profile = memo.profile
+  if type(profile) == "table" and (profile.qualityMark ~= nil or profile.rowQuality ~= nil) then
+    local old = QUALITY_OLD[profile.qualityMark]
+      or (profile.rowQuality == false and QUALITY_OLD.off) or nil
+    if old and profile.qualityIcon == nil and profile.qualityName == nil then
+      if not old[1] then profile.qualityIcon = false end
+      if old[2] ~= "off" then profile.qualityName = old[2] end
+    end
+    profile.qualityMark, profile.rowQuality = nil, nil
   end
-  memo.quality = mode
-  return mode
+  local icon, name
+  if type(profile) == "table" then icon, name = profile.qualityIcon, profile.qualityName end
+  memo.qIcon = icon ~= false
+  memo.qName = (QUALITY_NAMES[name] and name) or "off"
 end
-function UI.SetQualityMark(mode)
-  if not QUALITY_MARKS[mode] then return end
+
+function UI.GetQualityIcon()
+  local memo = Settings()
+  if memo.qName == nil then ReadQuality(memo) end
+  return memo.qIcon
+end
+function UI.SetQualityIcon(on)
+  UI.GetQualityIcon()
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if profile then profile.qualityMark = mode end
+  if profile then
+    if on then profile.qualityIcon = nil else profile.qualityIcon = false end
+  end
+  ForgetSettings()
+end
+
+function UI.GetQualityName()
+  local memo = Settings()
+  if memo.qName == nil then ReadQuality(memo) end
+  return memo.qName
+end
+function UI.SetQualityName(mode)
+  if not QUALITY_NAMES[mode] then return end
+  UI.GetQualityName()
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.qualityName = (mode ~= "off") and mode or nil end
   ForgetSettings()
 end
 
@@ -3152,7 +3193,8 @@ function UI.DiagnoseOptions()
       if report.standDown then parts[#parts + 1] = "standdown=" .. tostring(report.standDown) end
     end
   end
-  Named("quality", UI.GetQualityMark(), "icon")
+  Named("qualityIcon", UI.GetQualityIcon() and "on" or "off", "on")
+  Named("qualityName", UI.GetQualityName(), "off")
   Named("readMail", UI.GetReadMode(), "fold")
   Named("historyDays", UI.GetHistoryDays(), "7")
   Named("gold", UI.GetGoldMode(), "both")

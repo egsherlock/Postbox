@@ -158,26 +158,32 @@ function RV.QualityMark(index, slot)
   return RV.MarkOf(link)
 end
 
--- Where a quality mark goes (MailboxUI.GetQualityMark): "icon", "name",
--- "both" (the icon and after the name), "before" (before the name) or
--- "off".
-function RV.QualityMode()
+-- Where a quality mark goes: on the corner of the item's icon or not
+-- (MailboxUI.GetQualityIcon), and beside the item's name "before" it,
+-- "after" it or "off" (MailboxUI.GetQualityName) -- two settings, either
+-- without the other.
+function RV.MarkOnIcon()
   local UI = ns.MailboxUI
-  return UI and type(UI.GetQualityMark) == "function" and UI.GetQualityMark() or "icon"
+  if not (UI and type(UI.GetQualityIcon) == "function") then return true end
+  return UI.GetQualityIcon()
+end
+
+function RV.NameMark()
+  local UI = ns.MailboxUI
+  return UI and type(UI.GetQualityName) == "function" and UI.GetQualityName() or "off"
 end
 
 function RV.MarkOnName()
-  local mode = RV.QualityMode()
-  return mode == "name" or mode == "both"
-end
-
-function RV.MarkOnIcon()
-  local mode = RV.QualityMode()
-  return mode == "icon" or mode == "both"
+  return RV.NameMark() == "after"
 end
 
 function RV.MarkBefore()
-  return RV.QualityMode() == "before"
+  return RV.NameMark() == "before"
+end
+
+-- Whether a row wears the mark anywhere, so whether it is worth finding.
+function RV.MarkAny()
+  return RV.MarkOnIcon() or RV.NameMark() ~= "off"
 end
 
 -- "Before the name": the mark drawn as the item's link draws it inline --
@@ -202,6 +208,9 @@ end
 -- most rows never carry one. The atlas and its size are set again only
 -- when the mark changes.
 function RV.PaintNameMark(row, mark, parent, anchor)
+  -- A row with no mark wears no mark after its name either: a row bound
+  -- to no mail at all (Mail Memory's heading) is never placed to say so.
+  if not mark then RV.HideTail(row) end
   local atlas = (type(mark) == "string" and RV.MarkBefore()) and mark:match("|A:([^:|]+)") or nil
   local tex = row.QualityName
   if not atlas then
@@ -300,13 +309,144 @@ function RV.PaintQuality(row, mark, layout)
 end
 
 -- text, mark -> the text with the mark after the item's name and before a
--- trailing "(20)" count, where a chat link draws it.
+-- trailing "(20)" count, where a chat link draws it. Each marked subject is
+-- made once and kept (RV.marked, a table per mark keyed by the text), so a
+-- row bind makes nothing: the replacement the pattern needs was a new string
+-- every call. A list shows a few dozen marked subjects; past RV.MARKED_MAX
+-- every one is dropped and the table fills again, so it stays bounded
+-- whatever mail comes through.
+RV.marked, RV.markedN, RV.MARKED_MAX = {}, 0, 256
+
 function RV.WithMark(text, mark)
   if not mark or type(text) ~= "string" then return text end
+  local byMark = RV.marked[mark]
+  local marked = byMark and byMark[text]
+  if marked then return marked end
+  if RV.markedN >= RV.MARKED_MAX then
+    for key in pairs(RV.marked) do RV.marked[key] = nil end
+    RV.markedN, byMark = 0, nil
+  end
+  if not byMark then
+    byMark = {}
+    RV.marked[mark] = byMark
+  end
   local safe = mark:gsub("%%", "%%%%")
-  local marked, n = text:gsub("%s*(%(%d+%))%s*$", " " .. safe .. " %1", 1)
-  if n > 0 then return marked end
-  return text .. " " .. mark
+  local n
+  marked, n = text:gsub("%s*(%(%d+%))%s*$", " " .. safe .. " %1", 1)
+  if n == 0 then marked = text .. " " .. mark end
+  byMark[text] = marked
+  RV.markedN = RV.markedN + 1
+  return marked
+end
+
+-- "After the name": the mark always shows whole. A subject that carries it
+-- and fits is drawn as it is, one string, as the item's link has it. One
+-- that does not fit is drawn in two: the name, shortened with the ellipsis,
+-- and after it, on a string of the row's own (row.QualityTail, made on
+-- first use), the mark and whatever followed it (a "(20)" count, History's
+-- "x5  +2") in full. Only the row that needs it changes; no room is kept on
+-- a row whose item has no mark, or on one that fits.
+--
+-- text -> { name, tail } where the text carries a quality mark after a
+-- name, or false. Found once per marked text and kept (RV.cuts), bounded as
+-- RV.marked is; only texts with an atlas in them are ever looked up.
+RV.cuts, RV.cutsN, RV.CUT_MAX = {}, 0, 256
+
+function RV.Cut(text)
+  local cuts = RV.cuts
+  local cut = cuts[text]
+  if cut ~= nil then return cut end
+  if RV.cutsN >= RV.CUT_MAX then
+    for key in pairs(cuts) do cuts[key] = nil end
+    RV.cutsN = 0
+  end
+  local at = text:find("|A:Professions%-[^|]*|a") or text:find("|A:[^|]*[Qq]uality[^|]*|a")
+  cut = false
+  -- A whole link or a coloured text (a Mail Memory row can name its item
+  -- by its link) is not cut: one half would carry an escape the other
+  -- closes. It is drawn as before.
+  if at and at > 1 and not text:find("|H", 1, true) and not text:find("|c", 1, true) then
+    local name = text:sub(1, at - 1):match("^(.-)%s*$")
+    if name ~= "" then cut = { name = name, tail = text:sub(#name + 1) } end
+  end
+  cuts[text] = cut
+  RV.cutsN = RV.cutsN + 1
+  return cut
+end
+
+-- row -> its tail string hidden, if it has one showing.
+function RV.HideTail(row)
+  local tail = row.QualityTail
+  if tail and tail.__pbOn then
+    tail.__pbOn = false
+    tail:Hide()
+  end
+end
+
+-- row, fs, tailText[, parent] -> the row's tail string, made on `parent`
+-- the first time, in the subject's own look (whatever a skin or the row's
+-- state gave it) and saying `tailText`; and its width.
+function RV.Tail(row, fs, tailText, parent)
+  local tail = row.QualityTail
+  if not tail then
+    tail = (parent or row):CreateFontString(nil, "ARTWORK")
+    tail:SetWordWrap(false)
+    tail:SetJustifyH("LEFT")
+    tail.__pbOn = false
+    tail:Hide()
+    row.QualityTail = tail
+  end
+  local path, size, flags = fs:GetFont()
+  if path and (tail.__pbPath ~= path or tail.__pbSize ~= size or tail.__pbFlags ~= flags) then
+    tail:SetFont(path, size, flags or "")
+    tail.__pbPath, tail.__pbSize, tail.__pbFlags = path, size, flags
+  end
+  tail:SetTextColor(fs:GetTextColor())
+  if fs.GetShadowOffset and tail.SetShadowOffset then
+    tail:SetShadowOffset(fs:GetShadowOffset())
+    tail:SetShadowColor(fs:GetShadowColor())
+  end
+  if tail:GetText() ~= tailText then tail:SetText(tailText) end
+  return tail, Th().TextWidth(tail)
+end
+
+-- row, fs, width, text[, parent] -> fits `text` into the row's subject
+-- string `fs` as Theme.FitText does, the string its own tooltip owner, and
+-- answers whether it was cut -- with the rule above for a mark after the
+-- name. A row drawn in two remembers it for its text and width, and binding
+-- it again goes straight to the two strings, each fitted as it was, unless
+-- the tail no longer measures what it did (a re-font, a new scale): then
+-- the whole text is tried again. A row that fits costs one fit, as before.
+function RV.FitSubject(row, fs, width, text, parent)
+  local T = Th()
+  local cut = RV.MarkOnName() and type(text) == "string" and text:find("|A:", 1, true)
+    and RV.Cut(text) or nil
+  if not cut then
+    RV.HideTail(row)
+    return T.FitText(fs, width, text, fs)
+  end
+  local tail, tailW
+  if row.__pbCutText == text and row.__pbCutW == width then
+    tail, tailW = RV.Tail(row, fs, cut.tail, parent)
+    if tailW ~= row.__pbCutTail then tail = nil end
+  end
+  if not tail then
+    row.__pbCutText = nil
+    if not T.FitText(fs, width, text, fs) then
+      RV.HideTail(row)
+      return false
+    end
+    tail, tailW = RV.Tail(row, fs, cut.tail, parent)
+    row.__pbCutText, row.__pbCutW, row.__pbCutTail = text, width, tailW
+  end
+  local room = max(width - tailW, 1)
+  local short = T.FitText(fs, room, cut.name, nil)
+  fs.__pbOverflowText = short and text or nil
+  tail:ClearAllPoints()
+  tail:SetPoint("LEFT", fs, "LEFT", min(T.TextWidth(fs), room), 0)
+  tail.__pbOn = true
+  tail:Show()
+  return true
 end
 
 -- The category vocabulary is the domain's; the order is presentation. "all"
@@ -1963,7 +2103,7 @@ function RV.Place(row, s)
       end
     end
     RV.Anchor(row, subject, 1, sx + mw, 0)
-    T.FitText(subject, run - mw, text.subject, subject)
+    RV.FitSubject(row, subject, run - mw, text.subject)
     subject:Show()
     if detail then detail:Hide() end
     -- The two-line row's figures live on its second line; this row's are
@@ -1990,7 +2130,7 @@ function RV.Place(row, s)
       if sender then sender:Hide() end
       RV.Anchor(row, subject, 3, x + mw, top)
     end
-    T.FitText(subject, subjectW - mw, text.subject, subject)
+    RV.FitSubject(row, subject, subjectW - mw, text.subject)
     subject:Show()
     if detail then
       RV.Anchor(row, detail, 5, x, s.bottom or 0)
@@ -2029,6 +2169,9 @@ function RV.Place(row, s)
   -- arrange mode's hand.
   local named = row.QualityName
   if named then named:SetShown(named.__pbOn == true and subject:IsShown()) end
+  -- And the mark after a shortened name (RV.FitSubject) the same way.
+  local tail = row.QualityTail
+  if tail then tail:SetShown(tail.__pbOn == true and subject:IsShown()) end
 end
 
 -- Each column's home lane, published into `s` as RV.Place publishes a
@@ -2170,6 +2313,7 @@ CT.RowRules = {
   PaintQuality = RV.PaintQuality,
   PaintNameMark = RV.PaintNameMark,
   NameMarkRoom = RV.NameMarkRoom,
+  FitSubject = RV.FitSubject,
   HoldRange = RV.HoldRange,
 }
 
@@ -3693,8 +3837,8 @@ local function BindRow(panel, row, index, position, compact, done)
     displaySubject = (displaySubject:gsub("%(%d+%)%s*$", "(" .. quantity .. ")"))
   end
   -- The crafting quality mark, as the item's own link draws it: on the
-  -- icon's corner, after the name, both, or before the name.
-  local mark = (iconSlot and RV.QualityMode() ~= "off") and RV.QualityMark(index, iconSlot) or nil
+  -- icon's corner, before or after the name, or both.
+  local mark = (iconSlot and RV.MarkAny()) and RV.QualityMark(index, iconSlot) or nil
   if mark and RV.MarkOnName() then displaySubject = RV.WithMark(displaySubject, mark) end
   RV.PaintQuality(row, mark)
   RV.PaintNameMark(row, mark)

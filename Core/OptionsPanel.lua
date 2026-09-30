@@ -1057,10 +1057,10 @@ do
   -- in the list's default order, gold then slots. Under Larger mail rows,
   -- the first mail alone on two lines with a larger icon, where it came from
   -- and how long it has left under its name: those rows have no columns.
-  -- The quality mark on the icon's corner, after the name, both, before the
-  -- name -- where both names then start after its room, as every row of
-  -- the list keeps it -- or neither. The slot as the Slots choice writes
-  -- it.
+  -- The quality mark on the icon's corner or not, and beside the name:
+  -- before it -- where both names then start after its room, as every row
+  -- of the list keeps it -- after it, always whole, or neither. The slot as
+  -- the Slots choice writes it.
   ---------------------------------------------------------
 
   -- A figure of the sample's, right-aligned in its column.
@@ -1173,7 +1173,8 @@ do
     local T = ns.Theme
     local UI = ns.MailboxUI
     local larger = UI and not UI.GetOption("compactRows") or false
-    local mode = UI and type(UI.GetQualityMark) == "function" and UI.GetQualityMark() or "icon"
+    local onIcon = not (UI and type(UI.GetQualityIcon) == "function") or UI.GetQualityIcon()
+    local byName = UI and type(UI.GetQualityName) == "function" and UI.GetQualityName() or "off"
     local iconSize = larger and 24 or 18
     local lineH = larger and 30 or 24
     s:SetHeight(larger and (lineH + 16 + 2) or (2 * lineH + 2))
@@ -1195,7 +1196,7 @@ do
     local mark = type(link) == "string" and (link:match("|A:Professions%-[^|]*|a")
       or link:match("|A:[^|]*[Qq]uality[^|]*|a")) or nil
     local atlas = mark and mark:match("|A:([^:|]+)") or nil
-    if atlas and (mode == "icon" or mode == "both") then
+    if atlas and onIcon then
       local small = T.FirstAtlas({ (atlas:gsub("ChatIcon", "Icon")) .. "-Small", atlas })
       s.Mark:SetAtlas(small or atlas, false)
       s.MarkShadow:SetAtlas(small or atlas, false)
@@ -1216,11 +1217,23 @@ do
     end
 
     local text = name or ""
-    if mark and name and (mode == "name" or mode == "both") then text = name .. " " .. mark end
+    -- After the name: the list's own marked name (RowRules.WithMark), fitted
+    -- by the list's own rule, the mark whole and the name shortened before
+    -- it where they do not both fit (RowRules.FitSubject).
+    local R = ns.CollectTab and ns.CollectTab.RowRules
+    if mark and name and byName == "after" then
+      text = (R and R.WithMark) and R.WithMark(name, mark) or (name .. " " .. mark)
+    end
+    local function FitName(width)
+      if R and R.FitSubject then
+        R.FitSubject(s, s.Name, width, text, s.Art)
+      else
+        T.FitText(s.Name, width, text)
+      end
+    end
     -- Before the name: the mark where the name began, and the room for it
     -- before both names (the list's own, RowRules.NameMarkRoom).
-    local R = ns.CollectTab and ns.CollectTab.RowRules
-    local room = (mode == "before" and R and R.NameMarkRoom) and R.NameMarkRoom() or 0
+    local room = (byName == "before" and R and R.NameMarkRoom) and R.NameMarkRoom() or 0
     s.Name:SetTextColor(r, g, b, 1)
     s.Name:ClearAllPoints()
     s.Name:SetPoint("LEFT", s.Icon, "RIGHT", 7 + room, 0)
@@ -1240,7 +1253,7 @@ do
       s.Line2:SetPoint("TOPLEFT", s, "TOPLEFT", nameX, -(1 + lineH - 3))
       T.FitText(s.Line2, CTX_W - nameX - 8, S.sampleMeta)
       s.Line2:Show()
-      T.FitText(s.Name, CTX_W - nameX - 8 - room, text)
+      FitName(CTX_W - nameX - 8 - room)
     else
       s.Line2:Hide()
       -- The figures, made once: the price, the slot, the sale's gold.
@@ -1274,7 +1287,7 @@ do
       PlaceFigure(s, s.Slots, edge, slotsW, y1)
       PlaceFigure(s, s.Gold, goldEdge, goldW, y1)
       PlaceFigure(s, s.Gold2, saleEdge, goldW, y2)
-      T.FitText(s.Name, math.max(40, goldEdge - goldW - SAMPLE_GAP - nameX - room), text)
+      FitName(math.max(40, goldEdge - goldW - SAMPLE_GAP - nameX - room))
 
       s.Stripe:ClearAllPoints()
       s.Stripe:SetPoint("TOPLEFT", s, "TOPLEFT", 1, -(1 + lineH))
@@ -2430,26 +2443,35 @@ function Pages.mail(col)
   lanes.control:HookScript("OnEnter", PaintWash)
   lanes.control:HookScript("OnLeave", PaintWash)
 
-  -- Where the crafting quality mark goes, in the list, History and the
-  -- memory alike: on the corner of the item's icon (the default), after its
-  -- name as a chat link has it, both, before its name with the names kept
-  -- in line, or nowhere. "Both" stays the icon and after the name, beside
-  -- the two it joins.
+  -- The crafting quality mark, in the list, History and the memory alike,
+  -- is two things a player sets apart: the badge on the corner of the
+  -- item's icon (on by default), and a mark beside the name -- before it,
+  -- with the names kept in line, after it as a chat link has it, or none
+  -- (the default). Every list's rows are drawn again, and the sample's.
+  local function QualityChanged()
+    if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
+    if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
+    Ctx.Repaint()
+  end
+  Rows.Check(col, {
+    title = L["OPT_QUALITY_ICON_TITLE"], text = L["OPT_QUALITY_ICON_DESC"],
+    get = function() return not ns.MailboxUI.GetQualityIcon or ns.MailboxUI.GetQualityIcon() end,
+    set = function(on)
+      if ns.MailboxUI.SetQualityIcon then ns.MailboxUI.SetQualityIcon(on) end
+      QualityChanged()
+    end,
+  })
   Rows.Dropdown(col, {
-    title = L["OPT_QUALITY_TITLE"], text = L["OPT_QUALITY_DESC"],
+    title = L["OPT_QUALITY_NAME_TITLE"], text = L["OPT_QUALITY_NAME_DESC"],
     items = {
-      { id = "icon",   name = L["OPT_QUALITY_ICON"] },
-      { id = "name",   name = L["OPT_QUALITY_NAME"] },
-      { id = "both",   name = L["OPT_QUALITY_BOTH"] },
-      { id = "before", name = L["OPT_QUALITY_BEFORE"] },
+      { id = "before", name = L["OPT_QUALITY_NAME_BEFORE"] },
+      { id = "after",  name = L["OPT_QUALITY_NAME_AFTER"] },
       { id = "off",    name = L["OPT_QUALITY_OFF"] },
     },
-    get = function() return ns.MailboxUI.GetQualityMark and ns.MailboxUI.GetQualityMark() or "icon" end,
+    get = function() return ns.MailboxUI.GetQualityName and ns.MailboxUI.GetQualityName() or "off" end,
     set = function(id)
-      if ns.MailboxUI.SetQualityMark then ns.MailboxUI.SetQualityMark(id) end
-      if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
-      if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
-      Ctx.Repaint()
+      if ns.MailboxUI.SetQualityName then ns.MailboxUI.SetQualityName(id) end
+      QualityChanged()
     end,
   })
 
