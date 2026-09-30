@@ -1937,15 +1937,6 @@ local function SenderColumnWidth(panel, sample)
   return min(max(widest + 2, SENDER_MIN), SENDER_MAX)
 end
 
--- The figures' order, left to right, shown or not: the arrangement's.
-local function RowOrder()
-  local layout, out = RV.Layout(), {}
-  for i = 1, #layout do
-    if RV.FIGURE[layout[i].id] then out[#out + 1] = layout[i].id end
-  end
-  return out
-end
-
 -- The spots an anchor can take, by number: a row re-bound where it already
 -- stands -- nearly every bind -- is then left alone without comparing a
 -- string or re-anchoring anything.
@@ -2919,7 +2910,6 @@ CT.RowRules = {
   SenderLine = RV.SenderLine,
   FIGURE_MIN = RV.FIGURE_MIN,
   DOT = ROW_INDICATOR,
-  RowOrder = RowOrder,
   OutcomeSender = OutcomeSender,
   PaintSender = RV.PaintSender,
   EXPIRY_SOON_DAYS = EXPIRY_SOON_DAYS,
