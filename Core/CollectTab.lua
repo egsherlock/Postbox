@@ -3260,9 +3260,13 @@ end
 -- The selection is a set of inbox INDICES, which is the one thing a collect
 -- run needs and the one thing an inbox reindex invalidates. So it lives
 -- exactly as long as the inbox it was made in: the moment the mail count
--- changes -- a collect, a delete, a return, new mail landing -- it is
--- dropped rather than allowed to name different mails. A run started from it
--- takes the selected indices through the same queue the sweeps use.
+-- changes -- a collect, a delete, a return, new mail landing -- or any pick
+-- stops naming the mail it was made on (a mail going and another arriving
+-- in one update reindexes with the count unchanged), it is dropped rather
+-- than allowed to name different mails. Each pick keeps the fingerprint its
+-- mail had, and every list refresh checks them (RV.SelectionHolds). A run
+-- started from it takes the selected indices through the same queue the
+-- sweeps use.
 --
 -- While anything is selected the footer behaves as it does under a search:
 -- the category sweeps withdraw and the one button reads "Collect N
@@ -3330,6 +3334,7 @@ end
 local function ClearSelection(panel)
   if not panel or not Selecting(panel) then return end
   panel._selected, panel._selectedCount = nil, 0
+  panel._selectedFp = nil
   panel._selectAnchor = nil
   -- The selection's generation, which its counts are kept against
   -- (RV.SelectionCounts).
@@ -3337,19 +3342,38 @@ local function ClearSelection(panel)
   AfterSelectionChange(panel)
 end
 
-local function SetSelected(panel, index, on)
+-- `fingerprint`: the picked mail's, as its row showed it -- what the pick is
+-- checked against on every refresh (RV.SelectionHolds).
+local function SetSelected(panel, index, on, fingerprint)
   local set = Selection(panel)
   if (set[index] == true) == on then return end
   set[index] = on or nil
+  local prints = panel._selectedFp
+  if not prints then
+    prints = {}
+    panel._selectedFp = prints
+  end
+  prints[index] = on and fingerprint or nil
   panel._selectedCount = SelectionCount(panel) + (on and 1 or -1)
   panel._selGen = (panel._selGen or 0) + 1
+end
+
+-- Whether every pick still names the mail it was made on. One header read
+-- per pick, and a pick that still matches builds no new string: its
+-- fingerprint is the one already made, and Lua hands the same one back.
+function RV.SelectionHolds(panel)
+  local prints = panel._selectedFp
+  for index in pairs(panel._selected or RV.NONE) do
+    if not prints or prints[index] == nil or Fingerprint(index) ~= prints[index] then return false end
+  end
+  return true
 end
 
 local function SelectToggle(panel, row)
   local index = row.mailIndex
   if not index then return end
   local set = Selection(panel)
-  SetSelected(panel, index, not set[index])
+  SetSelected(panel, index, not set[index], row.fingerprint)
   -- The row just picked is where the next shift-click measures from,
   -- picked or unpicked: that is the file manager's rule too.
   panel._selectAnchor = row._rowIndex
@@ -3374,7 +3398,7 @@ local function SelectRange(panel, row)
   local filtered, done = panel._filtered, panel._filteredDone
   for position = from, to do
     local at = filtered[position]
-    if at and not done[position] then SetSelected(panel, at, true) end
+    if at and not done[position] then SetSelected(panel, at, true, Fingerprint(at)) end
   end
   panel._selectAnchor = row._rowIndex
   AfterSelectionChange(panel)
@@ -6152,10 +6176,13 @@ function CT.RefreshMailList(panel)
   end
 
   -- A selection names inbox indices, and a changed count means those indices
-  -- name different mails now. Dropped before the list is rebuilt, so no row
-  -- is ever painted as picked for a mail nobody picked.
+  -- name different mails now -- as does a pick whose index no longer holds
+  -- the mail it was made on (RV.SelectionHolds). Dropped before the list is
+  -- rebuilt, so no row is ever painted as picked for a mail nobody picked.
   if panel._lastNumItems ~= numItems then
     panel._lastNumItems = numItems
+    ClearSelection(panel)
+  elseif Selecting(panel) and not RV.SelectionHolds(panel) then
     ClearSelection(panel)
   end
 
