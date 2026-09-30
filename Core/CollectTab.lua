@@ -3000,6 +3000,9 @@ local function ClearSelection(panel)
   if not panel or not Selecting(panel) then return end
   panel._selected, panel._selectedCount = nil, 0
   panel._selectAnchor = nil
+  -- The selection's generation, which its counts are kept against
+  -- (RV.SelectionCounts).
+  panel._selGen = (panel._selGen or 0) + 1
   AfterSelectionChange(panel)
 end
 
@@ -3008,6 +3011,7 @@ local function SetSelected(panel, index, on)
   if (set[index] == true) == on then return end
   set[index] = on or nil
   panel._selectedCount = SelectionCount(panel) + (on and 1 or -1)
+  panel._selGen = (panel._selGen or 0) + 1
 end
 
 local function SelectToggle(panel, row)
@@ -6059,11 +6063,17 @@ local function StartCategoryRun(panel, category)
   -- in that state.
   local queue, info
   if Selecting(panel) then
-    -- The picked rows, and only those. The selection is spent by the run
-    -- whatever comes of it: a refused run leaves ordinary uncollected mail,
-    -- which the next press picks up as such. Picked one by one, they are
-    -- tried as a click on each row would be, stuck or not.
-    queue, info = Mail().BuildQueueFor(SelectionIndices(panel), nil, true)
+    -- The picked rows, and of those only the ones the button names: the
+    -- primary takes them all, a category button the picked mail of its
+    -- kind, a group's button the picked mail from its characters (never a
+    -- C.O.D.). The selection is the narrowing that counts, over a search as
+    -- well: the primary under a selection takes every pick, so a button
+    -- takes its kind of every pick. The selection is spent by the run
+    -- whatever comes of it: collecting moves the inbox's indices, and a
+    -- refused run leaves ordinary uncollected mail, which the next press
+    -- picks up as such. Picked one by one, they are tried as a click on
+    -- each row would be, stuck or not.
+    queue, info = Mail().BuildQueueFor(SelectionIndices(panel), category, true)
     ClearSelection(panel)
   elseif Searching(panel) or StuckOnly(panel) then
     -- The rows on screen, narrowed again by the sweep's own category. The
@@ -7238,9 +7248,59 @@ function RV.FloorGridRows()
   return rows
 end
 
+-- While rows are picked, what each button would collect of them: the rules
+-- a run over the picks applies (MailService's BuildQueueFor, picked) --
+-- nothing finished, no C.O.D., stuck or not -- counted by kind, as the list
+-- walk counts (From alts and Other split what is not auction mail), and by
+-- sender, for the groups. One pass over the picks, into tables kept on the
+-- panel, again only when the selection or the list has changed since.
+function RV.SelectionCounts(panel)
+  local sc = panel._selCounts
+  if not sc then
+    sc = { senders = {} }
+    panel._selCounts = sc
+  end
+  if sc.gen == panel._selGen and sc.pass == panel._measurePass then return sc end
+  local senders = sc.senders
+  for key in pairs(senders) do senders[key] = nil end
+  for key in pairs(sc) do
+    if key ~= "senders" then sc[key] = nil end
+  end
+  local M = Mail()
+  local altKeys = M.OwnCharacterKeys()
+  for index in pairs(panel._selected or senders) do
+    if M.HeaderLoaded(index) and not M.IsReadPersistent(index) then
+      local kind, hasCOD = M.ClassifyMail(index)
+      if not hasCOD then
+        sc.all = (sc.all or 0) + 1
+        if M.FromOwnCharacter(index, altKeys) then
+          sc.alts = (sc.alts or 0) + 1
+          if kind ~= "other" then sc[kind] = (sc[kind] or 0) + 1 end
+        else
+          sc[kind] = (sc[kind] or 0) + 1
+        end
+        local key = M.SenderKey(index)
+        if key then senders[key] = (senders[key] or 0) + 1 end
+      end
+    end
+  end
+  sc.gen, sc.pass = panel._selGen, panel._measurePass
+  return sc
+end
+
 -- What a sweep would collect: the walk's own count for a built-in, the
--- group's answer for a group's button.
+-- group's answer for a group's button -- and while rows are picked, what
+-- it would collect of them (RV.SelectionCounts): a button with none of
+-- them greys as an empty one does.
 function RV.GridCount(panel, id)
+  if Selecting(panel) then
+    local sc = RV.SelectionCounts(panel)
+    local set = Mail().SenderSet(id)
+    if not set then return sc[id] or 0 end
+    local n = 0
+    for key in pairs(set) do n = n + (sc.senders[key] or 0) end
+    return n
+  end
   local spec = panel._gridSpecs[id]
   if spec then
     if type(spec.count) ~= "function" then return 0 end
