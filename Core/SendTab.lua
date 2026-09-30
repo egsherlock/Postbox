@@ -1443,10 +1443,7 @@ end
 -- (a hollow outline instead of a filled star), not a fainter version of the
 -- same glyph. It is also the only member of the bar without a caption, which is
 -- why this reaches for `Text` alone -- every other tile now wears a word.
-local function TintEmptyCaption(b)
-  if not b or b._isStar or not b._empty or b._active then return end
-  Theme.DimCaption(b)
-end
+local TintEmptyCaption = Theme.DimEmptyTile
 
 local function StyleBarButton(b)
   if not b then return end

@@ -813,10 +813,13 @@ end
 -- tooltip lines keep, where a warning or a price in them lands.
 -------------------------------------------------------------
 
+-- "rrggbb" [, alpha] -> { r, g, b, a }: the colour table every palette here
+-- is written in, and the Postbox style's and the creative styles' as well.
 local function Hex4(h, a)
   return { tonumber((h:sub(1, 2)), 16) / 255, tonumber((h:sub(3, 4)), 16) / 255,
            tonumber((h:sub(5, 6)), 16) / 255, a or 1 }
 end
+Theme.HexColor = Hex4
 
 Theme.PALETTE_LIGHT = {
   textPrimary       = Hex4("1a1a1a"),
@@ -2804,6 +2807,15 @@ function Theme.DimCaption(plate)
   if plate and plate.Text then Theme.SetColor(plate.Text, "textDisabled") end
 end
 
+-- The empty-category rule both tile bars share, the Send tab's and Manage
+-- Recipients': a tile whose category has nothing behind it has its caption
+-- dimmed, unless it is the one whose list is open. The Send tab's star is
+-- exempt (_isStar): its empty state is its own artwork, a hollow outline. Run
+-- after every repaint the plate makes, hovers included.
+function Theme.DimEmptyTile(tile)
+  if tile and tile._empty and not tile._active and not tile._isStar then Theme.DimCaption(tile) end
+end
+
 -- The count beside a tile's glyph. nil means "show no number at all", which is
 -- the empty state: a bare "0" would be one more thing to read where the hollow
 -- star has already said it.
@@ -2822,7 +2834,21 @@ function Theme.CreateTab(name, parent)
 end
 
 Theme.StyleTab = Theme.StylePlate
-Theme.SetTabSelected = Theme.SetPlateSelected
+
+-- Postbox's own listeners for a window tab's selection -- a creative style's
+-- lamp or seal (Core/Style_Goblin.lua, Style_Letters.lua) -- each called with
+-- the tab and its state once the tab is painted. Registered by the style the
+-- session wears; none at all for every other look.
+local tabSelectedCallbacks = {}
+
+function Theme.OnTabSelected(fn)
+  if type(fn) == "function" then tabSelectedCallbacks[#tabSelectedCallbacks + 1] = fn end
+end
+
+function Theme.SetTabSelected(tab, selected)
+  Theme.SetPlateSelected(tab, selected)
+  for i = 1, #tabSelectedCallbacks do tabSelectedCallbacks[i](tab, selected) end
+end
 
 -- Dynamic tab captions (the Mail tab's inbox counts) go through here, never
 -- through a bare Button:SetText. SetText re-applies the button's font-object

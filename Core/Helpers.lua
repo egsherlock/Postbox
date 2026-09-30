@@ -93,6 +93,16 @@ end
 -- copper -> compact plain text ("12g 30s"), "" for zero.
 H.FormatMoney = ns.Core.Formatting.FormatMoneyText
 
+-- Whether a PLAYER_INTERACTION_MANAGER_FRAME_SHOW/HIDE payload is the mailbox:
+-- Enum.PlayerInteractionType.MailInfo, or its number (17) on a client that
+-- does not publish the enum.
+local MAIL_INTERACTION = 17
+function H.IsMailInteraction(kind)
+  if kind == MAIL_INTERACTION then return true end
+  local enum = type(Enum) == "table" and Enum.PlayerInteractionType or nil
+  return enum ~= nil and kind == enum.MailInfo
+end
+
 -------------------------------------------------------------
 -- Time left
 --

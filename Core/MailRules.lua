@@ -233,11 +233,7 @@ local function Recipients()
   return nil
 end
 
-local function Lower(value)
-  local h = ns.Helpers
-  if type(h) == "table" and type(h.Lower) == "function" then return h.Lower(value) end
-  return tostring(value or ""):lower()
-end
+local function Lower(value) return ns.Helpers.Lower(value) end
 
 -- Connected-realm group, as a set of lowercased normalised realm names.
 --

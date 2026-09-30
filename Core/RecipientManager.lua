@@ -251,15 +251,8 @@ local SORT_DIRECTION_KEY = {
 
 local function Recipients() return ns.Recipients end
 
-local function Lower(text)
-  if ns.Helpers and ns.Helpers.Lower then return ns.Helpers.Lower(text) end
-  return string.lower(tostring(text or ""))
-end
-
-local function Trim(text)
-  if ns.Helpers and ns.Helpers.NormalizeText then return ns.Helpers.NormalizeText(text) end
-  return (tostring(text or ""):gsub("^%s*(.-)%s*$", "%1"))
-end
+local function Lower(text) return ns.Helpers.Lower(text) end
+local function Trim(text) return ns.Helpers.NormalizeText(text) end
 
 -- Guarded like the rest of the addon guards Blizzard globals: a missing time()
 -- degrades to "no relative timestamp" rather than erroring in a refresh.
@@ -496,13 +489,10 @@ end
 -- it cannot know is that a category is EMPTY -- a property of the data, not of
 -- the control -- so that caption is re-tinted after every repaint the factory
 -- makes, including the hover repaints it installs itself.
-local function TintEmptyCaption(tile)
-  if tile and tile._empty and not tile._active then
-    -- Nothing in this category. Still clickable: the empty state it lands on
-    -- explains the category better than a disabled button would.
-    Theme.DimCaption(tile)
-  end
-end
+-- Nothing in this category: still clickable, since the empty state it lands on
+-- explains the category better than a disabled button would (Theme.DimEmptyTile,
+-- the Send tab's bar's rule too).
+local TintEmptyCaption = Theme.DimEmptyTile
 
 local function StyleTile(tile)
   if not tile then return end

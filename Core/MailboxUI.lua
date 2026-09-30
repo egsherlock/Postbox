@@ -3871,13 +3871,6 @@ end
 -- 10. Event plumbing
 -------------------------------------------------------------
 
--- MAIL_INTERACTION is declared in section 2, where the close path uses it too.
-local function IsMailInteraction(kind)
-  if kind == MAIL_INTERACTION then return true end
-  local enum = type(Enum) == "table" and Enum.PlayerInteractionType or nil
-  return enum ~= nil and kind == enum.MailInfo
-end
-
 function UI.Initialize()
   if UI._state.ready then return end
   UI._state.ready = true
@@ -3920,13 +3913,13 @@ function UI.Initialize()
   bus.Register("MAIL_SEND_INFO_UPDATE", OnSendAttachmentsChanged)
 
   bus.Register("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", function(_, kind)
-    if not IsMailInteraction(kind) then return end
+    if not ns.Helpers.IsMailInteraction(kind) then return end
     HideNativeMailFrame()
     OnMailShow()
   end)
 
   bus.Register("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", function(_, kind)
-    if IsMailInteraction(kind) then OnMailClosed() end
+    if ns.Helpers.IsMailInteraction(kind) then OnMailClosed() end
   end)
 
   bus.Register("MAIL_INBOX_UPDATE", function()

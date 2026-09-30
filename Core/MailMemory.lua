@@ -2054,11 +2054,7 @@ end
 -- as the box has them (newest first) or with the soonest to expire first.
 -------------------------------------------------------------
 
-local function Fold(text)
-  local H = ns.Helpers
-  if H and H.Lower then return H.Lower(tostring(text or "")) end
-  return string.lower(tostring(text or ""))
-end
+local function Fold(text) return ns.Helpers.Lower(text) end
 
 -- One matcher for every list a search narrows: the sender as written, the
 -- sender as the row shows it (an auction outcome, "AH Sold"), and the
@@ -3184,12 +3180,6 @@ end
 -- Same dual close coverage as Core/MailboxUI.lua, for the same reason: the
 -- two close signals do not both arrive on every close path, and a session
 -- whose end this module misses strands `live` (see the heal in Refresh).
-local MAIL_INTERACTION = 17
-local function IsMailInteraction(kind)
-  if kind == MAIL_INTERACTION then return true end
-  local enum = type(Enum) == "table" and Enum.PlayerInteractionType or nil
-  return enum ~= nil and kind == enum.MailInfo
-end
 
 local function OnMailboxClosed()
   closedAt = time()
@@ -3218,11 +3208,11 @@ if bus then
   registered.inbox = bus.Register("MAIL_INBOX_UPDATE", QueueCapture)
   registered.closed = bus.Register("MAIL_CLOSED", OnMailboxClosed)
   registered.interaction = bus.Register("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", function(_, kind)
-    if IsMailInteraction(kind) then OnMailboxClosed() end
+    if ns.Helpers.IsMailInteraction(kind) then OnMailboxClosed() end
   end)
   registered.show = bus.Register("MAIL_SHOW", OnMailboxOpened)
   registered.showInteraction = bus.Register("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", function(_, kind)
-    if IsMailInteraction(kind) then OnMailboxOpened() end
+    if ns.Helpers.IsMailInteraction(kind) then OnMailboxOpened() end
   end)
   registered.pending = bus.Register("UPDATE_PENDING_MAIL", OnPendingMail)
   -- Item purchases and commodity purchases announce themselves on different

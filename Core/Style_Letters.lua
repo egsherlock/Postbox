@@ -51,10 +51,7 @@ local RULE = DIR .. "letters-rule.tga"   -- 4 x 32 units; the rule at its foot
 local ROW_GAP = 2
 local LINE_STRIDE = 28
 
-local function Hex(h, a)
-  return { tonumber((h:sub(1, 2)), 16) / 255, tonumber((h:sub(3, 4)), 16) / 255,
-           tonumber((h:sub(5, 6)), 16) / 255, a or 1 }
-end
+local Hex = ns.Theme.HexColor
 
 local colors = {
   paper  = Hex("f3e6c7"),
@@ -185,12 +182,9 @@ end
 
 function def.Setup()
   -- A tab's selection is painted through Theme.SetTabSelected (MailboxUI,
-  -- UI.SelectTab); the seal follows it there. Postbox's own function, and
-  -- only while this style is chosen.
+  -- UI.SelectTab); the seal follows it there, only while this style is chosen.
   local T = ns.Theme
-  if T and type(T.SetTabSelected) == "function" and type(hooksecurefunc) == "function" then
-    hooksecurefunc(T, "SetTabSelected", PaintSeal)
-  end
+  if T and type(T.OnTabSelected) == "function" then T.OnTabSelected(PaintSeal) end
 end
 
 -- All mail sealed: the seal just left of its caption, following it.

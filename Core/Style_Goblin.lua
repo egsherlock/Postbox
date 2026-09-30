@@ -159,12 +159,9 @@ end
 
 function def.Setup()
   -- A tab's selection is painted through Theme.SetTabSelected (MailboxUI,
-  -- UI.SelectTab); the lamp follows it there. Postbox's own function, and
-  -- only while this style is chosen.
+  -- UI.SelectTab); the lamp follows it there, only while this style is chosen.
   local T = ns.Theme
-  if T and type(T.SetTabSelected) == "function" and type(hooksecurefunc) == "function" then
-    hooksecurefunc(T, "SetTabSelected", PaintLamp)
-  end
+  if T and type(T.OnTabSelected) == "function" then T.OnTabSelected(PaintLamp) end
 end
 
 -------------------------------------------------------------

@@ -48,12 +48,7 @@ local FONT_DIR = "Interface\\AddOns\\Postbox\\Media\\Fonts\\"
 
 local floor, max, min = math.floor, math.max, math.min
 
-local function Hex(h, a)
-  local r = tonumber((h:sub(1, 2)), 16) / 255
-  local g = tonumber((h:sub(3, 4)), 16) / 255
-  local b = tonumber((h:sub(5, 6)), 16) / 255
-  return { r, g, b, a or 1 }
-end
+local Hex = ns.Theme.HexColor
 
 local function Recolor(dest, src)
   dest[1], dest[2], dest[3], dest[4] = src[1], src[2], src[3], src[4] or 1

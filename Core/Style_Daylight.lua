@@ -33,10 +33,7 @@ local PART = {
 }
 local SHADOW = 5
 
-local function Hex(h, a)
-  return { tonumber((h:sub(1, 2)), 16) / 255, tonumber((h:sub(3, 4)), 16) / 255,
-           tonumber((h:sub(5, 6)), 16) / 255, a or 1 }
-end
+local Hex = ns.Theme.HexColor
 
 local colors = {
   paper    = Hex("f8f4ec"),

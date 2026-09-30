@@ -3134,11 +3134,7 @@ end
 
 local SEARCH_W = 150
 
-local function Trim(text)
-  local H = ns.Helpers
-  if H and H.NormalizeText then return H.NormalizeText(text) end
-  return (tostring(text or ""):match("^%s*(.-)%s*$"))
-end
+local function Trim(text) return ns.Helpers.NormalizeText(text) end
 
 -- The query as typed, trimmed; "" when the box is empty or not built.
 local function SearchQuery(panel)
@@ -3153,11 +3149,7 @@ end
 
 -- The case fold the address book uses (Cyrillic-aware, see Lib/Util.lua),
 -- so a Russian player searching in lowercase finds a capitalised sender.
-local function Fold(text)
-  local H = ns.Helpers
-  if H and H.Lower then return H.Lower(text) end
-  return string.lower(tostring(text or ""))
-end
+local function Fold(text) return ns.Helpers.Lower(text) end
 
 local function BuildSearchBox(panel)
   local T = Th()

@@ -69,17 +69,8 @@ local EMPTY = {}
 
 local function Helpers() return ns.Helpers end
 
-local function Lower(text)
-  local H = Helpers()
-  if H and H.Lower then return H.Lower(text) end
-  return tostring(text or "")
-end
-
-local function Trim(text)
-  local H = Helpers()
-  if H and H.NormalizeText then return H.NormalizeText(text) end
-  return (tostring(text or ""):match("^%s*(.-)%s*$"))
-end
+local function Lower(text) return ns.Helpers.Lower(text) end
+local function Trim(text) return ns.Helpers.NormalizeText(text) end
 
 -- member or name -> its recipient key, or nil.
 local function KeyOf(text)
