@@ -3799,8 +3799,9 @@ function Pages.minimap(col)
     -- One quiet line, not a paragraph: the whole of it is in the inspector.
     Rows.Note(block, L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_STYLED"])
   else
+    -- 16 to 40 in steps of four, from the module, which also refuses any other.
     local sizeItems = {}
-    for _, px in ipairs({ 16, 20, 24, 28 }) do
+    for _, px in ipairs((Icon and Icon.ICON_SIZES) or { 16, 20, 24, 28 }) do
       sizeItems[#sizeItems + 1] = { id = px, name = string.format(L["OPT_MINIMAP_SIZE_STEP"], px) }
     end
     Rows.Dropdown(block, {

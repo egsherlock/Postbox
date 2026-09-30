@@ -142,8 +142,26 @@ local ICONS = {
 
 local GLOW_SCALE = 2.2
 
+-- The sizes the options offer, 16 to 40 in steps of four. The first four are
+-- the sizes there always were, and a stored one means what it always meant.
+-- Everything drawn on the icon -- glow, shadow, the arrival halo, the hover
+-- wash, and the hit rect, which is the button itself -- is sized from this
+-- one number, so a bigger icon is the same icon bigger.
+local SIZE_MIN, SIZE_MAX, SIZE_STEP = 16, 40, 4
+MB.ICON_SIZES = {}
+for px = SIZE_MIN, SIZE_MAX, SIZE_STEP do MB.ICON_SIZES[#MB.ICON_SIZES + 1] = px end
+
 local function Settings()
   return ns.Store.EnsurePath("profile.minimap", DEFAULTS)
+end
+
+-- The icon's side. A stored number outside the range (a hand edit, a
+-- version that allowed more) is held to it rather than drawn at any size.
+local function IconSize()
+  local px = Settings().size
+  px = tonumber(px)
+  if not px then return DEFAULTS.size end
+  return math.max(SIZE_MIN, math.min(SIZE_MAX, px))
 end
 
 -------------------------------------------------------------
@@ -709,7 +727,7 @@ local function RimOffset(minimap)
     reach = math.min(across, up)
   end
 
-  local size = tonumber(Settings().size) or DEFAULTS.size
+  local size = IconSize()
   reach = math.max(0, reach - (size / 2 + 2))
   return cos * reach, sin * reach
 end
@@ -772,7 +790,7 @@ end
 
 local function ApplyLook(button)
   local prefs = Settings()
-  local size = tonumber(prefs.size) or DEFAULTS.size
+  local size = IconSize()
   button:SetSize(size, size)
   -- The art holder tracks the button's size; the textures inside it are
   -- sized from the same number below, so all three stay in step.
@@ -1242,7 +1260,7 @@ Refresh = function()
 
   -- Update the highlight to the configured size too; it is anchored art, not
   -- a child, so ApplyLook's SetSize does not reach it.
-  local size = tonumber(prefs.size) or DEFAULTS.size
+  local size = IconSize()
   button.highlight:SetSize(size * GLOW_SCALE, size * GLOW_SCALE)
 
   button:SetShown(MailWaiting())
@@ -1308,12 +1326,13 @@ function MB.SetIcon(id)
 end
 
 function MB.GetIconSize()
-  return tonumber(Settings().size) or DEFAULTS.size
+  return IconSize()
 end
 
+-- Only the sizes the options offer (MB.ICON_SIZES).
 function MB.SetIconSize(px)
   px = tonumber(px)
-  if not px then return end
+  if not px or px < SIZE_MIN or px > SIZE_MAX or (px - SIZE_MIN) % SIZE_STEP ~= 0 then return end
   Settings().size = px
   Refresh()
 end
@@ -1409,7 +1428,7 @@ function MB.NotifyArrival()
         -- change between sessions cannot leave the halo out of proportion.
         -- Generous to start with: the animation scales it DOWN to 0.8 for
         -- the first beat, so the swell begins tucked behind the icon.
-        local size = tonumber(Settings().size) or DEFAULTS.size
+        local size = IconSize()
         local reach = size * GLOW_SCALE * 1.10
         halo:SetSize(reach, reach)
         sized = true
