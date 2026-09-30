@@ -13,14 +13,15 @@ longer play.
   opens arranging: a column header takes the top row's place, each heading
   right over its column, and you drag a column by its heading or straight
   from any row (point at one in a row and the whole column lights up). Hide
-  the columns you don't need (a peg marks where one stands) and set gold and
-  time left on the spot. The Mail tab and Mail Memory share one arrangement;
-  History has its own, with the age a column you can move or hide, reading
-  "3d ago", "3 days ago" or a date. Time left wears an hourglass, History a clock
-  with a turning-back arrow. One set of gestures for everything: drag to
-  move, click for its options, right-click to hide or show; a crossed eye
-  marks what is hidden. While you arrange, the mark is a lit Done;
-  right-click it to go back to the default arrangement.
+  the columns you don't need (a peg marks where one stands, and you can
+  still drag it) and set gold and time left on the spot. The Mail tab and
+  Mail Memory share one arrangement; History has its own, with the age a
+  column you can move or hide, reading "3d ago", "3 days ago" or a date.
+  Time left wears an hourglass, History a clock with a turning-back arrow.
+  One set of gestures for everything: drag to move, click for its options,
+  right-click to hide or show; a crossed eye marks what is hidden. While you
+  arrange, the mark is a lit Done; right-click it to go back to the default
+  arrangement.
 - **An inspector beside the window while you arrange.** It explains the mode,
   lists everything you have hidden (a click brings it back), and holds Row
   layout and Reset. Click a column, a block or a category button for its
