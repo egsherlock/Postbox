@@ -1688,6 +1688,47 @@ local function RowMoneyText(index, hasCOD, moneyValue, codValue, brief)
   return MoneyText(hasCOD, moneyValue, codValue, nil, brief, index)
 end
 
+-- owner, index, items -> the tooltip of the icon of a mail holding several
+-- items: how many, then one line per item -- its icon, its name in its
+-- quality's colour with the crafting mark its link carries, its count --
+-- and the gold or the C.O.D. price, if any; then how to take them one at a
+-- time, by the gesture that opens a mail under the player's setting. Built
+-- on hover, never on a bind.
+function RV.ItemsTooltip(owner, index, items)
+  GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+  GameTooltip:ClearLines()
+  GameTooltip:SetText(ns.Plural("COUNT_ITEMS", items), 1, 1, 1)
+  local qualityColor = C_Item and C_Item.GetItemQualityColor
+  for slot = 1, Mail().MAX_ATTACHMENTS do
+    local name, _, texture, count, quality = GetInboxItem(index, slot)
+    if texture then
+      local r, g, b = 1, 1, 1
+      if quality and type(qualityColor) == "function" then
+        local qr, qg, qb = qualityColor(quality)
+        if qr then r, g, b = qr, qg, qb end
+      end
+      local mark = RV.QualityMark(index, slot)
+      local line = "|T" .. tostring(texture) .. ":14:14:0:0:64:64:5:59:5:59|t "
+        .. (name or RETRIEVING_ITEM_INFO or "") .. (mark and (" " .. mark) or "")
+      count = tonumber(count) or 1
+      if count > 1 then
+        GameTooltip:AddDoubleLine(line, ("x%d"):format(count), r, g, b, 0.82, 0.82, 0.82)
+      else
+        GameTooltip:AddLine(line, r, g, b)
+      end
+    end
+  end
+  local _, _, _, _, money, cod = GetInboxHeaderInfo(index)
+  money, cod = tonumber(money) or 0, tonumber(cod) or 0
+  if money > 0 or cod > 0 then
+    local text = RowMoneyText(index, cod > 0, money, cod, false)
+    if text then GameTooltip:AddLine(text, 1, 1, 1) end
+  end
+  GameTooltip:AddLine(" ")
+  GameTooltip:AddLine(L()[PreviewOnClick() and "HINT_ICON_TAKE_CLICK" or "HINT_ICON_TAKE_RIGHT"], 0.7, 0.7, 0.7, true)
+  GameTooltip:Show()
+end
+
 -- daysLeft, hasCOD -> whether the row shows the time left, and whether in
 -- the warning tone. Shown always (the default) or under the player's
 -- threshold; amber when it is genuinely short -- under three days,
@@ -4077,6 +4118,11 @@ local function BuildRow(panel)
     Th().StyleMailRow(owner, owner._rowIndex, true)
     local index = LiveIndex(owner)
     if not (index and owner.iconSlot) then return end
+    -- A mail with several items lists them all; one item, its own tooltip.
+    if (owner.iconItems or 0) > 1 then
+      RV.ItemsTooltip(self, index, owner.iconItems)
+      return
+    end
     ShowAttachmentTooltip(self, index, owner.iconSlot)
   end)
   row.IconHit:SetScript("OnLeave", function(self)
