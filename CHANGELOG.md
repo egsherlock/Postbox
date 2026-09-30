@@ -93,10 +93,11 @@ work at the mailbox.
 ### Fits your UI
 
 - **EllesmereUI:** all of Postbox's text in your EllesmereUI font from the
-  moment you log in, "Match EllesmereUI" opacity matching the windows beside
-  Postbox (with Blizz UI Enhanced on or off), and style changes no longer
-  making the window solid. EllesmereUI's Blizzard Style and Classic WoW UI
-  put Postbox in its Blizzard look to match.
+  moment you log in, and **"Match EllesmereUI" opacity and border** (the new
+  default border) matching the windows beside Postbox: EllesmereUI's own, or
+  atrocityEssentials' where it draws them, down to their one-pixel edge.
+  Style changes no longer make the window solid, and EllesmereUI's Blizzard
+  Style and Classic WoW UI put Postbox in its Blizzard look to match.
 - **ElvUI:** your ElvUI accent everywhere, live.
 - **Baganator and EllesmereUI bags** gray out unmailable items correctly when
   you switch to Send.
@@ -133,6 +134,9 @@ work at the mailbox.
 - The mail list stops at its last mail; slot counts are never cut short.
 - Questions asked from the options or other Postbox windows no longer
   open behind them.
+- A window border you choose under EllesmereUI (Solid, Glow, ...) is drawn
+  on its own, with no shadowed frame inside the window, and stays sharp
+  when you change the window scale.
 - On EllesmereUI's round minimaps the mail icon sits on the rim.
 
 ## 1.40.1
