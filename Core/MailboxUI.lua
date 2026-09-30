@@ -2201,8 +2201,14 @@ local function ApplyResizeBounds()
   end
 end
 
+-- Whether this session has put a width on MailFrame's panel slot. Only then
+-- is there an override for docking-off to drop: clearing one that was never
+-- set is still a write to MailFrame, on every layout pass.
+local gridWidthReserved = false
+
 local function ReserveGridWidth(width)
   if not MailFrame then return end
+  if width == nil and not gridWidthReserved then return end
 
   if InCombat() then
     -- The window still opens and still docks; only the panel-grid reservation
@@ -2218,6 +2224,7 @@ local function ReserveGridWidth(width)
   if type(UpdateUIPanelPositions) == "function" then
     pcall(UpdateUIPanelPositions, MailFrame)
   end
+  gridWidthReserved = width ~= nil
 end
 
 -- Taint-free: this reads MailFrame's position and writes only our own anchor.
@@ -2278,11 +2285,9 @@ function UI.ApplyWindowLayout()
   else
     -- Free-floating: drop the size override (MailFrame keeps its own
     -- reservation) and hold the window's current screen position.
-    -- NOTE: this is still an insecure SetUIPanelAttribute write on MailFrame,
-    -- so switching gridDock off does not shrink the taint surface -- and if
-    -- the SetAlpha taint in HideNativeMailFrame is ever removed
-    -- (COMBAT_TAINT.md 7, #5/#6), this line must be revisited or it will
-    -- quietly keep re-tainting MailFrame on every layout pass.
+    -- The drop is an insecure SetUIPanelAttribute write on MailFrame, so it
+    -- happens only when this session reserved a width to drop (docking was
+    -- on, then turned off); a session that never docked never writes here.
     ReserveGridWidth(nil)
     local helpers = WindowHelpers()
     if helpers and helpers.PinFrameTopLeft then helpers.PinFrameTopLeft(frame) end
