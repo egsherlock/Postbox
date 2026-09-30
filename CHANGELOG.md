@@ -94,8 +94,11 @@ longer play.
 - **Time left reads the same everywhere:** hours under a day ("9h"), then
   whole days ("3d").
 - **Turning History off asks first**, and Never is the last choice.
-- **Every reset question says exactly what it puts back**, and the arrange
-  panel's reset is called Reset arrangement.
+- **Each row size and History keep their own column choices.** Gold and
+  Time left are set separately for one-line rows, Larger mail rows and
+  History, as their columns already were. Reset arrangement resets only the
+  list you are arranging, plus the blocks under the list, and says so in
+  one short question.
 - **Time left shows on every mail by default**, so the column never looks
   half empty. To see it only when a mail is about to go, choose Under 7, 3
   or 1 days on the Time left card while you arrange. If you picked a
