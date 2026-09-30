@@ -568,25 +568,21 @@ function CG.FillTooltip(tooltip, id)
   local text = table.concat(names, ", ")
   local more = #group.members - TIP_NAMES
   if more > 0 then text = text .. " " .. ns.Plural("GROUPS_TIP_MORE", more) end
-  tooltip:SetText(CG.DisplayName(group))
-  tooltip:AddLine(L("GROUPS_TIP_FROM", text), 1, 1, 1, true)
+  -- The house tooltip (Theme's Tooltips): the name, what it collects, and
+  -- the gesture it has beyond its click. The grid began it (TipBegin).
   local T = ns.Theme
-  local r, g, b = 0.6, 0.6, 0.6
-  local grey = T and T.Colors and T.Colors.textSecondary
-  if type(grey) == "table" then r, g, b = grey[1], grey[2], grey[3] end
-  tooltip:AddLine(L["GROUPS_TIP_EDIT"], r, g, b, true)
+  T.TipTitle(CG.DisplayName(group))
+  T.TipLine(L("GROUPS_TIP_FROM", text))
+  T.TipHint(L["GROUPS_TIP_EDIT"])
 end
 
 -- The line From alts' tooltip carries, so the player who already uses it
--- learns that it can be split up. For the grid to add under its own text.
+-- learns that it can be split up. For the grid to add under its own text,
+-- as the tooltip's gesture line.
 function CG.AltsTooltip(tooltip)
   tooltip = tooltip or GameTooltip
   if not tooltip then return end
-  local T = ns.Theme
-  local r, g, b = 0.6, 0.6, 0.6
-  local grey = T and T.Colors and T.Colors.textSecondary
-  if type(grey) == "table" then r, g, b = grey[1], grey[2], grey[3] end
-  tooltip:AddLine(L["GROUPS_TIP_ALTS"], r, g, b, true)
+  ns.Theme.TipHint(L["GROUPS_TIP_ALTS"])
 end
 
 -- Specs are kept per group so the grid's closures are made once, not on

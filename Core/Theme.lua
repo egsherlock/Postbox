@@ -3190,7 +3190,7 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
   all.icon:SetPoint("CENTER")
   local function Tip(self)
     if not opts.toggleTip then return end
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    Theme.TipBegin(self, "ANCHOR_TOPRIGHT")
     opts.toggleTip(GameTooltip)
     GameTooltip:Show()
   end

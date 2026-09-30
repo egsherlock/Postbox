@@ -2146,17 +2146,20 @@ local function PickerTip(row)
     GameTooltip:Hide()
     return
   end
-  GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+  local T = ns.Theme
+  T.TipBegin(row)
   if kind == "foot" then
-    GameTooltip:SetText(L["HIDDEN_TITLE"])
-    GameTooltip:AddLine(ns.Summary(L["HIDDEN_DESC"]), 1, 1, 1, true)
+    T.TipTitle(L["HIDDEN_TITLE"])
+    T.TipLine(ns.Summary(L["HIDDEN_DESC"]))
   else
-    GameTooltip:SetText(MM.ClassName(row.realm, row.charName))
+    T.TipTitle(MM.ClassName(row.realm, row.charName))
     if kind == "hidden" then
-      GameTooltip:AddLine(L["PICKER_SHOW_TIP"], 0.7, 0.7, 0.7, true)
+      T.TipHint(L["PICKER_SHOW_TIP"])
     else
-      if row.reason then GameTooltip:AddLine(row.reason, 1, 1, 1, true) end
-      if not row.isMe then GameTooltip:AddLine(L["PICKER_HIDE_HINT"], 0.7, 0.7, 0.7, true) end
+      -- The reason the character is listed is a warning: mail about to
+      -- expire, or unseen too long.
+      if row.reason then T.TipLine(T.TipTone("warning", row.reason)) end
+      if not row.isMe then T.TipHint(L["PICKER_HIDE_HINT"]) end
     end
   end
   GameTooltip:Show()
@@ -2831,9 +2834,9 @@ local function BuildSearch(frame)
       search.PaintToggle(frame.searchAll)
       Refresh(frame)
     end,
-    toggleTip = function(tip)
-      tip:SetText(L["MEMORY_SEARCH_ALL_TITLE"])
-      tip:AddLine(L[frame.searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"], 1, 1, 1, true)
+    toggleTip = function()
+      T.TipTitle(L["MEMORY_SEARCH_ALL_TITLE"])
+      T.TipLine(L[frame.searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"])
     end,
   })
   search.Wrap:SetPoint("RIGHT", sort, "LEFT", -4, 0)
@@ -2846,10 +2849,11 @@ end
 
 -- The picker's tooltip; the way back only while there is one to take.
 local function PickerButtonTip(frame)
-  GameTooltip:SetOwner(frame.Picker, "ANCHOR_TOPRIGHT")
-  GameTooltip:SetText(L["PICKER_TITLE"])
-  GameTooltip:AddLine(L["PICKER_TIP"], 1, 1, 1, true)
-  if frame.viewing then GameTooltip:AddLine(L["PICKER_BACK_HINT"], 0.7, 0.7, 0.7, true) end
+  local T = ns.Theme
+  T.TipBegin(frame.Picker, "ANCHOR_TOPRIGHT")
+  T.TipTitle(L["PICKER_TITLE"])
+  T.TipLine(L["PICKER_TIP"])
+  if frame.viewing then T.TipHint(L["PICKER_BACK_HINT"]) end
   GameTooltip:Show()
 end
 
@@ -2928,9 +2932,10 @@ local function BuildHeader(frame)
   whoHit:SetScript("OnEnter", function(self)
     local v = frame.viewing
     if not v then return end
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:SetText(MM.ClassName(v.realm, v.name))
-    GameTooltip:AddLine(L["PICKER_BACK_HINT"], 0.7, 0.7, 0.7, true)
+    local T = ns.Theme
+    T.TipBegin(self, "ANCHOR_TOPRIGHT")
+    T.TipTitle(MM.ClassName(v.realm, v.name))
+    T.TipHint(L["PICKER_BACK_HINT"])
     GameTooltip:Show()
   end)
   whoHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3248,8 +3253,8 @@ local function Build()
   HoverOnly(frame.StatusHit)
   frame.StatusHit:SetScript("OnEnter", function(self)
     if not (frame.Status.IsTruncated and frame.Status:IsTruncated()) then return end
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(frame.Status:GetText(), 1, 1, 1, 1, true)
+    ns.Theme.TipBegin(self)
+    ns.Theme.TipTitle(frame.Status:GetText())
     GameTooltip:Show()
   end)
   frame.StatusHit:SetScript("OnLeave", function() GameTooltip:Hide() end)

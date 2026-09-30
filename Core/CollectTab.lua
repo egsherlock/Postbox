@@ -3480,9 +3480,10 @@ local function BuildViewToggle(panel)
   hist:HookScript("OnEnter", function(self)
     local UI = ns.MailboxUI
     local days = UI and type(UI.GetHistoryDays) == "function" and UI.GetHistoryDays() or 7
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L()["VIEW_HISTORY"])
-    GameTooltip:AddLine(ns.Plural("HISTORY_TIP", days), 1, 1, 1, true)
+    local T2 = Th()
+    T2.TipBegin(self)
+    T2.TipTitle(L()["VIEW_HISTORY"])
+    T2.TipLine(ns.Plural("HISTORY_TIP", days))
     GameTooltip:Show()
   end)
   hist:HookScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3508,9 +3509,10 @@ local function BuildViewToggle(panel)
   -- and the way back, which the plate cannot show by itself.
   alt:HookScript("OnEnter", function(self)
     if not (self.fullName and AV.Other(panel)) then return end
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:SetText(self.fullName)
-    GameTooltip:AddLine(L()["PICKER_BACK_HINT"], 0.7, 0.7, 0.7, true)
+    local T2 = Th()
+    T2.TipBegin(self, "ANCHOR_TOPRIGHT")
+    T2.TipTitle(self.fullName)
+    T2.TipHint(L()["PICKER_BACK_HINT"])
     GameTooltip:Show()
   end)
   alt:HookScript("OnLeave", function(self)
@@ -3586,13 +3588,14 @@ local function BuildSearchBox(panel)
       AV.Paint(panel)
       CT.RefreshMailList(panel)
     end,
-    toggleTip = function(tip)
-      tip:SetText(L()["MEMORY_SEARCH_ALL_TITLE"])
+    toggleTip = function()
+      local T2 = Th()
+      T2.TipTitle(L()["MEMORY_SEARCH_ALL_TITLE"])
       local key = panel._searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"
       if AV.History(panel) then
         key = panel._searchAll and "MEMORY_SEARCH_ALL_HISTORY_ON" or "MEMORY_SEARCH_ALL_HISTORY_OFF"
       end
-      tip:AddLine(L()[key], 1, 1, 1, true)
+      T2.TipLine(L()[key])
     end,
   })
   local wrap = search.Wrap
@@ -4434,10 +4437,11 @@ end
 
 -- The picker's tooltip; the way back only while there is one to take.
 function AV.PickerTip(picker, panel)
-  GameTooltip:SetOwner(picker, "ANCHOR_TOPRIGHT")
-  GameTooltip:SetText(L()["PICKER_TITLE"])
-  GameTooltip:AddLine(L()["PICKER_TIP"], 1, 1, 1, true)
-  if AV.Other(panel) then GameTooltip:AddLine(L()["PICKER_BACK_HINT"], 0.7, 0.7, 0.7, true) end
+  local T = Th()
+  T.TipBegin(picker, "ANCHOR_TOPRIGHT")
+  T.TipTitle(L()["PICKER_TITLE"])
+  T.TipLine(L()["PICKER_TIP"])
+  if AV.Other(panel) then T.TipHint(L()["PICKER_BACK_HINT"]) end
   GameTooltip:Show()
 end
 
@@ -4866,14 +4870,11 @@ local function BuildRow(panel)
     local T2 = Th()
     T2.StyleMailRow(owner, owner._rowIndex, true)
     T2.SetColor(self.Glyph, "negative")
-    -- The same shape every other tooltip in this file uses: own the tooltip,
-    -- clear it, title, then a wrapped line under it. SetText alone gave a
-    -- one-word tooltip that said no more than the glyph already does.
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:ClearLines()
-    GameTooltip:SetText(DeleteLabel())
-    local hint = RawKey("HINT_ROW_DELETE")
-    if hint then GameTooltip:AddLine(hint, 1, 1, 1, true) end
+    -- The house tooltip: the title, then what the click does, which the
+    -- glyph alone cannot say.
+    T2.TipBegin(self)
+    T2.TipTitle(DeleteLabel())
+    T2.TipLine(RawKey("HINT_ROW_DELETE"))
     GameTooltip:Show()
   end)
   row.Delete:SetScript("OnLeave", function(self)
@@ -9320,17 +9321,14 @@ function RV.AllMailRoom(panel, tooltip)
   end
   local text = ns.Plural("ROOM_FREE", free)
   if items > 0 then text = ns.Plural("ROOM_ITEMS", items) .. " \194\183 " .. text end
-  local warn = items > usable and Th().Colors and Th().Colors.warning
-  if warn then
-    tooltip:AddLine(text, warn[1], warn[2], warn[3], true)
-  else
-    tooltip:AddLine(text, 1, 1, 1, true)
-  end
-  if keep > 0 then tooltip:AddLine(ns.Plural("ROOM_KEPT", keep), 0.7, 0.7, 0.7, true) end
-  if (reagent or 0) > 0 then tooltip:AddLine(ns.Plural("ROOM_REAGENT", reagent), 0.7, 0.7, 0.7, true) end
+  local T = Th()
+  local muted = T.TIP_MUTED or 0.7
+  T.TipLine(items > usable and T.TipTone("warning", text) or text)
+  if keep > 0 then tooltip:AddLine(ns.Plural("ROOM_KEPT", keep), muted, muted, muted, true) end
+  if (reagent or 0) > 0 then tooltip:AddLine(ns.Plural("ROOM_REAGENT", reagent), muted, muted, muted, true) end
   -- While the bags are full the mails with items wait, and the count above
   -- is only what needs no room: say why.
-  if M.BagsFull and M.BagsFull() then tooltip:AddLine(L()["BAGS_FULL_TIP"], 0.7, 0.7, 0.7, true) end
+  if M.BagsFull and M.BagsFull() then tooltip:AddLine(L()["BAGS_FULL_TIP"], muted, muted, muted, true) end
 end
 
 -- The tooltip a sweep says: a group's own, the two sweeps whose names do
@@ -9344,23 +9342,22 @@ function RV.GridTip(panel, button)
   local plain = not (spec and type(spec.tooltip) == "function") and not button.tip
     and button.gridId ~= "all"
   if plain and not button.__pbOverflowText then return end
-  GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
-  GameTooltip:ClearLines()
+  local T = Th()
+  T.TipBegin(button)
   if spec and type(spec.tooltip) == "function" then
     local ok = pcall(spec.tooltip, GameTooltip)
-    if not ok then GameTooltip:SetText(button.caption or "") end
+    if not ok then T.TipTitle(button.caption or "") end
   elseif button.tip then
-    GameTooltip:SetText(button.caption)
-    GameTooltip:AddLine(button.tip, 1, 1, 1, true)
+    T.TipTitle(button.caption)
+    T.TipLine(button.tip)
     -- From alts says it can be split into the player's own groups.
     local groups = ns.CharacterGroups
     if button.gridId == "alts" and groups and type(groups.AltsTooltip) == "function" then
       pcall(groups.AltsTooltip, GameTooltip)
     end
-  elseif button.__pbOverflowText then
-    Th().AddOverflowLine(button, GameTooltip)
   else
-    GameTooltip:SetText(button.caption or "")
+    -- The whole caption, where the button cut it.
+    T.TipTitle(button.__pbOverflowText or button.caption or "")
   end
   if button.gridId == "all" then RV.AllMailRoom(panel, GameTooltip) end
   GameTooltip:Show()
@@ -11141,9 +11138,10 @@ function RV.BuildDivider(panel, parent)
   end)
   divider.Delete:SetScript("OnEnter", function(self)
     Th().SetColor(self.Text, "negative")
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L()["BTN_DELETE_ALL"])
-    GameTooltip:AddLine(RawKey("HINT_DELETE_READ") or "", 1, 1, 1, true)
+    local T2 = Th()
+    T2.TipBegin(self)
+    T2.TipTitle(L()["BTN_DELETE_ALL"])
+    T2.TipLine(RawKey("HINT_DELETE_READ"))
     GameTooltip:Show()
   end)
   divider.Delete:SetScript("OnLeave", function(self)
@@ -12066,9 +12064,10 @@ function CT.Build(parent)
   panel.DoneFooter:SetText(L()["BTN_DELETE_ALL_DONE"])
   panel.DoneFooter:SetScript("OnClick", function() DeleteAllDone(panel) end)
   panel.DoneFooter:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L()["BTN_DELETE_ALL_DONE"])
-    GameTooltip:AddLine(RawKey("HINT_DELETE_READ") or "", 1, 1, 1, true)
+    local T2 = Th()
+    T2.TipBegin(self)
+    T2.TipTitle(L()["BTN_DELETE_ALL_DONE"])
+    T2.TipLine(RawKey("HINT_DELETE_READ"))
     GameTooltip:Show()
   end)
   panel.DoneFooter:SetScript("OnLeave", function() GameTooltip:Hide() end)
