@@ -432,6 +432,28 @@ end
 
 -- The count's size in the number font: compact icons, the larger icon.
 RV.COUNT_FONT, RV.COUNT_FONT_LARGE = 10, 12
+
+-- iconSize -> the count's font size, and where its bottom-right stands
+-- against the icon's (x right, y up): at the corner and 2 out past it on a
+-- compact icon, whose art a count drawn inside would mostly cover; inside
+-- the art on a larger one, as a bag's is. One rule for every item icon: a
+-- mail row's, History's, Mail Memory's, a fan tile, a reading-view tile.
+function RV.CountGeometry(iconSize)
+  if (tonumber(iconSize) or 18) <= 20 then return RV.COUNT_FONT, 2, -1 end
+  return RV.COUNT_FONT_LARGE, -2, 1
+end
+
+-- fs, icon, iconSize -> the count's string placed by the rule and
+-- right-justified, as a bag's count is: its right edge stands on the same
+-- line for one digit, two or three, never centred in a box a longer
+-- number once made.
+function RV.PlaceCount(fs, icon, iconSize)
+  local _, x, y = RV.CountGeometry(iconSize)
+  fs:SetJustifyH("RIGHT")
+  fs:ClearAllPoints()
+  fs:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", x, y)
+end
+
 -- The stack edge's three layers, outside in: the black key, the grey ring
 -- (every other ring's grey, flattened over the fill so it holds at any
 -- opacity), the card's own dark face.
@@ -505,22 +527,17 @@ function RV.PaintCount(row, count, items, layout)
       row.IconCount = fs
     end
     -- Sized and placed again only when the icon changes size (the row's
-    -- mode): at the corner and 2 out past it on the compact icon, inside
-    -- the art on the larger one, clear of the second line's figures.
-    local compact = (icon:GetWidth() or 18) <= 20
-    local size = compact and RV.COUNT_FONT or RV.COUNT_FONT_LARGE
+    -- mode), by the icons' one rule (RV.PlaceCount): on the larger icon
+    -- inside the art, clear of the second line's figures.
+    local iconSize = icon:GetWidth() or 18
+    local size = RV.CountGeometry(iconSize)
     if fs.__pbSize ~= size then
       fs.__pbSize = size
       local object = Th().FontObject("numberSmall")
       local path = object and object:GetFont()
       fs:SetFont(path or STANDARD_TEXT_FONT, size, "OUTLINE")
       fs:SetTextColor(1, 1, 1, 1)
-      fs:ClearAllPoints()
-      if compact then
-        fs:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 2, -1)
-      else
-        fs:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", -2, 1)
-      end
+      RV.PlaceCount(fs, icon, iconSize)
     end
     if fs.__pbText ~= text then
       fs.__pbText = text
@@ -7909,15 +7926,16 @@ local function BuildDetailSlot(detail, i)
   slot.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
   slot.Icon:Hide()
 
-  -- The item's quality mark, by the icons' one rule (RV.PlaceMark), and the
-  -- count over it, on a frame over the slot, as a fan tile has them.
+  -- The item's quality mark and the count over it, by the icons' rules
+  -- (RV.PlaceMark, RV.PlaceCount), on a frame over the slot, as a fan tile
+  -- has them.
   local over = CreateFrame("Frame", nil, slot)
   over:SetAllPoints(slot)
   slot.Mark, slot.MarkShadow = RV.NewMark(over)
   RV.PlaceMark(slot.Mark, slot.MarkShadow, slot.Icon, T.Metrics.slotSize)
   slot.Count = T.CreateText(over, "numberSmall", "OVERLAY")
   slot.Count:SetDrawLayer("OVERLAY", 7)
-  slot.Count:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -2, 2)
+  RV.PlaceCount(slot.Count, slot.Icon, T.Metrics.slotSize)
 
   -- The client's own square slot highlight, additively blended -- the same one
   -- the compose screen's attachment slots use, so the two grids of item slots
@@ -8131,7 +8149,9 @@ local function BuildDetail(panel)
   money.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
   money.Icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_02")
   money.Count = T.CreateText(money, "numberSmall", "OVERLAY")
-  money.Count:SetPoint("BOTTOMRIGHT", money, "BOTTOMRIGHT", -2, 2)
+  -- Where an item tile's count stands (RV.PlaceCount), as the fan's gold
+  -- tile has it.
+  RV.PlaceCount(money.Count, money.Icon, M.slotSize)
   local moneyHighlight = money:CreateTexture(nil, "HIGHLIGHT")
   moneyHighlight:SetAllPoints()
   moneyHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
@@ -10946,16 +10966,15 @@ do
     tile.Icon = tile:CreateTexture(nil, "ARTWORK")
     tile.Icon:SetAllPoints()
     tile.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    -- The quality mark, by the icons' one rule (RV.PlaceMark, from
-    -- Fan.Place at the tile's size), and the count over it, on a frame over
-    -- the tile: a level above every tile, as the mark overhangs its tile's
-    -- corner.
+    -- The quality mark and the count over it, by the icons' rules
+    -- (RV.PlaceMark, RV.PlaceCount, from Fan.Place at the tile's size), on
+    -- a frame over the tile: a level above every tile, as the mark
+    -- overhangs its tile's corner.
     local over = CreateFrame("Frame", nil, tile)
     over:SetAllPoints(tile)
     tile.Mark, tile.MarkShadow = RV.NewMark(over)
     tile.Count = T.CreateText(over, "numberSmall", "OVERLAY")
     tile.Count:SetDrawLayer("OVERLAY", 7)
-    tile.Count:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", -2, 2)
     local warning = ProbeAtlas(T.AtlasSets.warning)
     if warning then
       tile.Warn = tile:CreateTexture(nil, "OVERLAY", nil, 2)
@@ -11136,9 +11155,14 @@ do
       local line, col = floor((k - 1) / per), (k - 1) % per
       if leftward then col = per - 1 - col end
       tile:SetSize(size, size)
-      -- The mark follows the tile's size (Larger mail rows' tiles are
-      -- larger), placed again only when that, or the mark's rule, changed.
+      -- The mark and the count follow the tile's size (Larger mail rows'
+      -- tiles are larger), each placed again only when that, or the mark's
+      -- rule, changed.
       RV.PlaceMark(tile.Mark, tile.MarkShadow, tile.Icon, size)
+      if tile.pbSize ~= size then
+        tile.pbSize = size
+        RV.PlaceCount(tile.Count, tile.Icon, size)
+      end
       tile.fx, tile.fy = P + col * step, -(P + codH + line * step)
       tile.Slide:Stop()
       if animate then
