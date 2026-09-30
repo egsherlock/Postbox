@@ -100,6 +100,11 @@ local captureQueued = false
 -- puts another mail into one of this visit's tables drops that table's text.
 local searchText = setmetatable({}, { __mode = "k" })
 
+-- One mail's items as the capture's slot scan reads them, id and count in
+-- turn, before they are copied into that mail's own list (`it`). One table
+-- for every mail of every capture.
+local scanned = {}
+
 -- MM.Characters is memoised (section 2b); this generation says its list is
 -- stale. Everything in this file that writes what the list reads -- a
 -- snapshot saved, an arrival or auction noted, a watch settled, a character
@@ -168,24 +173,36 @@ local function CaptureNow()
     -- A header that has not arrived yet answers all-nil; recording it would
     -- save a blank row for a mail the next look would fill in properly.
     if sender ~= nil or subject ~= nil then
-      -- The first attachment's link, when the client has it (links exist
-      -- only for mail whose body has been fetched, i.e. read mail). It
-      -- buys the row a real item tooltip later, at the cost of one string.
-      local link
-      if (tonumber(itemCount) or 0) > 0 and type(GetInboxItemLink) == "function" then
-        link = GetInboxItemLink(index, 1)
-      end
-      -- The count of the item the mail's icon shows (the first slot that
-      -- holds one), for the count on the row's icon: nil for 1, as the row
-      -- writes nothing for it, and for a mail without items.
-      local stack
-      if (tonumber(itemCount) or 0) > 0 and type(GetInboxItem) == "function" then
+      -- What the mail holds, from one scan of its slots. The first item is
+      -- the one the Mail tab's row shows (Mail.GetMailIcon): its own icon --
+      -- the header's package icon is a generic crate for a mail of several
+      -- items -- its link, when the client has it, which buys the row the
+      -- item's real tooltip, and its count for the row's icon (nil for 1,
+      -- as the row writes nothing for it). Then every item's id and count,
+      -- in slot order, for what the icon's hover lists (section 3): numbers,
+      -- not links, so a mail of sixteen stacks costs thirty-two of them.
+      -- The scan stops at the header's count of items: a mail of one item
+      -- in its first slot costs one read, as it did before the list.
+      local itemIcon, link, stack
+      local held, found = 0, 0
+      local attached = tonumber(itemCount) or 0
+      if attached > 0 and type(GetInboxItem) == "function" then
         for slot = 1, (ns.MailService and ns.MailService.MAX_ATTACHMENTS) or 16 do
-          local _, _, texture, n = GetInboxItem(index, slot)
+          local _, itemID, texture, n = GetInboxItem(index, slot)
           if texture then
             n = tonumber(n) or 1
-            if n > 1 then stack = n end
-            break
+            if not itemIcon then
+              itemIcon = texture
+              if n > 1 then stack = n end
+              if type(GetInboxItemLink) == "function" then link = GetInboxItemLink(index, slot) end
+            end
+            itemID = tonumber(itemID)
+            if itemID then
+              scanned[held + 1], scanned[held + 2] = itemID, n
+              held = held + 2
+            end
+            found = found + 1
+            if found >= attached then break end
           end
         end
       end
@@ -219,14 +236,27 @@ local function CaptureNow()
       if not mail then
         -- Sized for all its fields at once; each is set just below.
         mail = { stuck = false, icon = false, sender = "", subject = "", money = 0, cod = 0, items = 0,
-          read = false, link = false, kind = false, paid = false, expires = 0, count = false }
+          read = false, link = false, kind = false, paid = false, expires = 0, count = false, it = false }
         mails[count] = mail
       elseif mail.sender ~= sender or mail.subject ~= subject or mail.kind ~= kind then
         -- Another mail in this slot now: the text a search folded is not its.
         searchText[mail] = nil
       end
+      -- The items, into the list this slot's mail kept from the last look;
+      -- none is no list at all, so a letter or gold alone saves nothing.
+      local list = mail.it
+      if held > 0 then
+        if type(list) ~= "table" then
+          list = {}
+          mail.it = list
+        end
+        for k = 1, held do list[k] = scanned[k] end
+        for k = #list, held + 1, -1 do list[k] = nil end
+      else
+        mail.it = nil
+      end
       mail.stuck   = stuck
-      mail.icon    = packageIcon or stationeryIcon
+      mail.icon    = itemIcon or packageIcon or stationeryIcon
       mail.sender  = sender
       mail.subject = subject
       mail.money   = tonumber(money) or 0
@@ -1164,6 +1194,19 @@ function MM.ClassIcon(realm, name)
   return T.FirstAtlas(CLASS_FALLBACK)
 end
 
+-- mail -> the icon its row shows: the first item's own, as the Mail tab's
+-- row has it. A record saved before the capture kept that icon (it has no
+-- `it`, its list of items) holds the header's package icon, which for a mail
+-- of several items is a generic crate; where it kept the item's link, the
+-- icon is the item's, by that link. A number either way: nothing is made.
+function MM.MailIcon(mail)
+  if mail.it == nil and mail.link and C_Item and type(C_Item.GetItemIconByID) == "function" then
+    local icon = C_Item.GetItemIconByID(mail.link)
+    if icon then return icon end
+  end
+  return mail.icon
+end
+
 -- The crafting quality mark for a remembered mail's item: its own link where
 -- the snapshot kept one, the item's generic link by id otherwise.
 local function MailMark(mail)
@@ -1563,7 +1606,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm)
   -- No icon of its own (a letter the snapshot kept none for): the column
   -- keeps its place, empty, so the names still start on one line.
   row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-  row.Icon:SetTexture(mail.icon)
+  row.Icon:SetTexture(MM.MailIcon(mail))
 
   -- The read mark, as the Mail tab has it: mail known to have arrived and
   -- not yet opened is unread by definition. On a mail remembered as stuck,
@@ -2126,6 +2169,13 @@ end
 local function Frozen(mail)
   local copy = {}
   for key, value in pairs(mail) do copy[key] = value end
+  -- Its list of items is refilled in place too.
+  local items = mail.it
+  if type(items) == "table" then
+    local list = {}
+    for k = 1, #items do list[k] = items[k] end
+    copy.it = list
+  end
   return copy
 end
 
