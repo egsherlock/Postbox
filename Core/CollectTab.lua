@@ -71,7 +71,7 @@ local AUCTION_OUTCOME = {
 -- track between it and the content. And hidden when there is nothing to
 -- scroll -- the template's own scrollBarHideable flag, honoured by its
 -- OnScrollRangeChanged, so no handler of ours is involved. Both host skins
--- and Postbox Modern flatten the bar's art; this only decides where it is.
+-- and the Postbox style flatten the bar's art; this only decides where it is.
 local function PinScrollBar(scroll, container)
   if not scroll then return end
   scroll.scrollBarHideable = 1

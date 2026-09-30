@@ -473,8 +473,9 @@ function Skin.IsBorderDefault()
 end
 
 -- Read by the options panel: whether the border rows offer a "leave it alone"
--- entry. Postbox Modern does (its authored hairline); this skin does not,
--- because the only thing such an entry could name is the None already listed.
+-- entry. Neither this skin nor the Postbox style does: the Postbox style's
+-- list names its own default (Thin), and here the only thing such an entry
+-- could name is the None already listed.
 -- Unset still reads as None, through GetBorderStyle above.
 function Skin.OffersBorderDefault()
   return false

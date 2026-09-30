@@ -2848,7 +2848,7 @@ local function Build()
   local arrange = ns.Arrange
   if arrange and arrange.BuildToggle then
     frame.ArrangeButton = arrange.BuildToggle(frame, function(button)
-      -- Postbox Modern centres its bar's children on the strip it draws;
+      -- The Postbox style centres its bar's children on the strip it draws;
       -- the other looks keep the template's bar, where the cog's own
       -- offsets are right.
       local strip = frame.__pbModernStrip

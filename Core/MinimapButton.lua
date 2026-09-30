@@ -999,7 +999,7 @@ local function Build()
   local button = CreateFrame("Button", nil, minimap)
   -- Unnamed, and parented to the MINIMAP rather than to anything of ours,
   -- so a skin looking for a Postbox ancestor would never find one. Said
-  -- outright instead (Core/Skin_Modern.lua, IsOurs).
+  -- outright instead (Core/Skin_Postbox.lua, IsOurs).
   button.__pbTooltipOwner = true
   button:Hide()
   button:RegisterForClicks("LeftButtonUp", "RightButtonUp")

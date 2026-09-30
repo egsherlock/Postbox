@@ -5236,6 +5236,11 @@ function AR.Dock(insp, host)
   if rowTop then dy = math.floor(rowTop - top + 0.5) end
   local ds = dock:GetEffectiveScale() or 1
   local us = UIParent:GetEffectiveScale() or 1
+  -- The inspector stands on UIParent, so it takes the window's own scale
+  -- (Postbox's window scale) against UIParent's, and reads as a part of the
+  -- window beside it. At 100% the two are one and nothing is set.
+  local want = (us > 0) and ds / us or 1
+  if math.abs((insp:GetScale() or 1) - want) > 0.001 then insp:SetScale(want) end
   local screen = (UIParent:GetRight() or 0) * us
   local need = (P.DOCK + P.W) * (insp:GetEffectiveScale() or 1)
   local roomRight, roomLeft = screen - right * ds, left * ds

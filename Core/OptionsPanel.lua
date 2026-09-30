@@ -80,9 +80,9 @@ local function HostSkinName()
   -- The style choice has to be consulted FIRST. This used to read "ns.Skin is
   -- set and a host global exists, therefore the host is painting", which was
   -- sound only while a host skin was the only thing that could claim with one
-  -- installed. Postbox Modern can now claim over a host, and on that session
+  -- installed. The Postbox style can claim over a host, and on that session
   -- the old test named the host as the painter -- so the panel would have
-  -- reported inheriting, in green, while Modern was on screen.
+  -- reported inheriting, in green, while the Postbox style was on screen.
   local UI = ns.MailboxUI
   if UI and type(UI.HostSkinAllowed) == "function" and not UI.HostSkinAllowed() then
     return nil
@@ -2468,6 +2468,10 @@ do
       plate:HookScript("OnEnter", TabEnter)
       plate:HookScript("OnLeave", TabLeave)
       if spec.square then AddSquare(plate) end
+      -- Under the Postbox style, the window tabs' plates (the options
+      -- mockup's tabs): dark idle, a lit plate selected, a ring each.
+      local skin = ns.Skin
+      if skin and type(skin.StyleTabPlate) == "function" then skin.StyleTabPlate(plate) end
       S.plates[spec.key] = plate
     end
   end
