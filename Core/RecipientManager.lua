@@ -1657,8 +1657,8 @@ function RM.Bulk(hide)
   -- Snapshot: the search box and the category bar are both still usable while
   -- the dialog is up, so the action must apply to the set the dialog described
   -- rather than to whatever is listed when OK is pressed.
-  local msg = hide and L("RM_BULK_HIDE_CONFIRM", #keys, scope)
-                    or L("RM_BULK_SHOW_CONFIRM", #keys, scope)
+  local msg = hide and ns.Plural("RM_BULK_HIDE_CONFIRM", #keys, scope)
+                    or ns.Plural("RM_BULK_SHOW_CONFIRM", #keys, scope)
   Theme.LiftPopup(StaticPopup_Show(BULK_POPUP, msg, nil, { hide = hide, keys = keys }))
 end
 
@@ -2217,7 +2217,7 @@ local function Build()
     button:SetScript("OnEnter", function(self)
       GameTooltip:SetOwner(self, "ANCHOR_TOP")
       GameTooltip:SetText(self.caption)
-      GameTooltip:AddLine(L("RM_TIP_BULK", #(RM._filtered or {}), ScopePhrase()), 1, 1, 1, true)
+      GameTooltip:AddLine(ns.Plural("RM_TIP_BULK", #(RM._filtered or {}), ScopePhrase()), 1, 1, 1, true)
       GameTooltip:Show()
     end)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)

@@ -1091,8 +1091,8 @@ local function ItemRefusedMessage(reason)
 end
 
 local function MailPartialMessage(refused, reason)
-  if reason and reason ~= "" then return L()("MSG_MAIL_PARTIAL_REASON", refused, reason) end
-  return L()("MSG_MAIL_PARTIAL", refused)
+  if reason and reason ~= "" then return ns.Plural("MSG_MAIL_PARTIAL_REASON", refused, reason) end
+  return ns.Plural("MSG_MAIL_PARTIAL", refused)
 end
 
 -- The one line a stuck mail gets, wherever it is shown -- the row's tooltip and
@@ -5559,10 +5559,7 @@ local function DeleteAllDone(panel)
   end
   if #queue == 0 then return end
 
-  local counted = ns.Plural("COUNT_MAILS", #queue)
-  local template = RawKey("CONFIRM_DELETE_ALL_DONE")
-  local message = template and format(template, counted)
-    or (L()["BTN_DELETE_ALL_DONE"] .. "\n" .. counted)
+  local message = ns.Plural("CONFIRM_DELETE_ALL_DONE", #queue)
 
   -- What each queued index NAMES right now. Deleting is the irreversible one,
   -- and the inbox can reindex both while the dialog waits and between the
@@ -5881,7 +5878,7 @@ local function FinishRun(left, stopReason)
   if left > 0 and stopReason ~= "bags" then
     StatusOutcome(WithCollected(
       Tinted("negative", format(L()["STATUS_INCOMPLETE"], left))))
-    ns.Print(format(L()["MSG_COLLECT_INCOMPLETE"], left))
+    ns.Print(ns.Plural("MSG_COLLECT_INCOMPLETE", left))
   else
     -- What stayed behind, by mail: the stuck ones, then the ones waiting for
     -- room. Either, both, or neither.
@@ -5907,14 +5904,16 @@ local function FinishRun(left, stopReason)
     -- The chat keeps the items: which of a mail's attachments stayed is what
     -- the game's words are about.
     if refused > 0 then
+      local stayed
       if reason and reason ~= "" then
-        ns.Print(L()("MSG_COLLECT_PARTIAL_REASON", collected, refused, reason))
+        stayed = ns.Plural("MSG_ITEMS_REFUSED_REASON", refused, reason)
       else
-        ns.Print(L()("MSG_COLLECT_PARTIAL", collected, refused))
+        stayed = ns.Plural("MSG_ITEMS_REFUSED", refused)
       end
+      ns.Print(L()("MSG_COLLECT_PARTIAL", ns.Plural("COUNT_MAILS", collected), stayed))
     end
     if stopReason == "bags" then
-      ns.Print(format(L()["MSG_COLLECT_STOPPED_BAGS"], left))
+      ns.Print(ns.Plural("MSG_COLLECT_STOPPED_BAGS", left))
     end
   end
 
@@ -6105,16 +6104,19 @@ local function StartCategoryRun(panel, category)
 
   -- The general bags and the reagent bag together, as this check has always
   -- counted: reagent mail may well fit there, and a run that meets full bags
-  -- anyway stops cleanly as a bags stop.
+  -- anyway stops cleanly as a bags stop. What it says is the general bags'
+  -- number, as All mail's tooltip does, with the reagent bag's room said
+  -- apart: only reagents go there (RV.ReagentExtra).
   local free, reagent = Mail().FreeBagSlots()
   if free ~= nil then
-    free = free + (reagent or 0)
+    local room = free + (reagent or 0)
     local needed = Mail().QueueAttachmentSlots(queue)
-    if needed > free then
-      local fits = Mail().QueuePrefixThatFits(queue, free)
+    if needed > room then
+      local fits = Mail().QueuePrefixThatFits(queue, room)
+      local need, have, extra = ns.Plural("COUNT_SLOTS", needed), ns.Plural("COUNT_SLOTS", free), RV.ReagentExtra(reagent)
       if fits <= 0 then
         -- Nothing at all would fit. Refuse before anything is marked read.
-        ShowNotice(L()("MSG_BAGS_FULL", needed, free))
+        ShowNotice(L()("MSG_BAGS_FULL", need, have, extra))
         return
       end
       -- Snapshot what the dialog is about to describe, in queue order (highest
@@ -6127,7 +6129,7 @@ local function StartCategoryRun(panel, category)
         prints[i] = Fingerprint(queue[i])
       end
       Confirm(POPUP_BAGSPACE, L()["BAGSPACE_CONFIRM_ACCEPT"], L()["COD_CONFIRM_CANCEL"],
-        L()("MSG_BAGSPACE_PARTIAL", #queue, needed, free, fits),
+        ns.Plural("MSG_BAGSPACE_PARTIAL", fits, ns.Plural("COUNT_MAILS", #queue), need, have, extra),
         function()
           -- The dialog is not modal: rows can be clicked and the inbox can
           -- reindex while it waits, and then these indices name different
@@ -7294,6 +7296,13 @@ end
 -- the general bags' (MailService.FreeBagSlots: backpack and bag slots), the
 -- room every attachment can use; a reagent bag with room says so on a line
 -- of its own, since only reagents can go there.
+-- The reagent bag's room as the bags-full messages add it after the
+-- general slots: " (+10 in the reagent bag, for reagents only)", or "".
+function RV.ReagentExtra(reagent)
+  if (tonumber(reagent) or 0) <= 0 then return "" end
+  return L()("BAGS_REAGENT_EXTRA", reagent)
+end
+
 function RV.AllMailRoom(panel, tooltip)
   local M = Mail()
   local free, reagent = M.FreeBagSlots()
@@ -9041,7 +9050,7 @@ function RV.BuildDivider(panel, parent)
   divider.Delete:SetScript("OnEnter", function(self)
     Th().SetColor(self.Text, "negative")
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L()["BTN_DELETE_ALL_DONE"])
+    GameTooltip:SetText(L()["BTN_DELETE_ALL"])
     GameTooltip:AddLine(RawKey("HINT_DELETE_READ") or "", 1, 1, 1, true)
     GameTooltip:Show()
   end)
