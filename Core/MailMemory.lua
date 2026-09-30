@@ -2792,9 +2792,9 @@ function MM.NewSortPlate(parent, size, get, toggle)
     if sort.isSelected ~= on then T.SetPlateSelected(sort, on) end
   end
   local function Tip(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:SetText(L("SORT_CURRENT", L[get() == "expiry" and "SORT_EXPIRY_TITLE" or "SORT_NEWEST_TITLE"]))
-    GameTooltip:AddLine(L["SORT_TIP"], 0.7, 0.7, 0.7, true)
+    T.TipBegin(self, "ANCHOR_TOPRIGHT")
+    T.TipTitle(L("SORT_CURRENT", L[get() == "expiry" and "SORT_EXPIRY_TITLE" or "SORT_NEWEST_TITLE"]))
+    T.TipHint(L["SORT_TIP"])
     GameTooltip:Show()
   end
   sort:SetScript("OnClick", function(self)
