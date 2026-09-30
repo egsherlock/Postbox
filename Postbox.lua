@@ -1869,6 +1869,10 @@ ns.Events = ns.Core.Events.NewBus(LogLine)
 ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   if loadedAddon ~= ADDON_NAME then return end
 
+  -- No saved variables at all: a first install, whose profile starts on the
+  -- Postbox style where no host UI is installed (Core/MailboxUI.lua, Initialize).
+  ns.freshInstall = type(PostboxDB) ~= "table"
+
   -- Explicit rather than relying on RegisterCurrentAlt's own call: the schema
   -- has to exist before MailboxUI reads a setting out of it, and that must not
   -- depend on whether the census found a usable name.

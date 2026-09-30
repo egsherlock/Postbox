@@ -131,8 +131,11 @@ function Dropdown.Create(parent, opts)
     toggle:SetPoint("LEFT", container, "LEFT", 0, 0)
   end
 
-  -- Tagged so a host-UI skin treats it like the addon's other push buttons.
+  -- Tagged so a host-UI skin treats it like the addon's other push buttons,
+  -- and as a select where a style draws those differently (the Postbox style's
+  -- caret and accent value).
   toggle.__postboxButton = true
+  toggle.__postboxSelect = true
   container._toggle = toggle
 
   local function NameFor(id)

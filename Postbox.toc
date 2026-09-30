@@ -60,10 +60,11 @@ Core\CharacterGroups.lua
 Core\OptionsPanel.lua
 Core\RecipientManager.lua
 
-# Skins. Skin_Modern is first-party (claims only on the plain UI when the
-# style option asks for it); the host-UI files are inert unless their host is
-# installed. EllesmereUI loads last and wins when both hosts are present (see
-# Skin_EllesmereUI.lua).
-Core\Skin_Modern.lua
+# Skins. Skin_Postbox is first-party (claims only when the style option asks
+# for it); the host-UI files are inert unless their host is installed.
+# EllesmereUI loads last and wins when both hosts are present (see
+# Skin_EllesmereUI.lua). A file added or renamed here is found only after a
+# full client restart, not a /reload.
+Core\Skin_Postbox.lua
 Core\Skin_ElvUI.lua
 Core\Skin_EllesmereUI.lua

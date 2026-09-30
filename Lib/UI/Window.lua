@@ -115,6 +115,17 @@ function Helpers.SaveFramePosition(frame, store)
   local ux, uy = UIParent:GetCenter()
   if not ux or not uy then return false end
 
+  -- The offset is read back in the frame's own units (its CENTER against
+  -- UIParent's), and UIParent's centre is in UIParent's: under a window scale
+  -- the two differ, so the screen's centre is put into the frame's units
+  -- first. At the same scale the factor is exactly 1 and nothing moves.
+  local own = type(frame.GetEffectiveScale) == "function" and frame:GetEffectiveScale() or nil
+  local parent = UIParent:GetEffectiveScale()
+  if type(own) == "number" and own > 0 and type(parent) == "number" and parent > 0 and own ~= parent then
+    local k = parent / own
+    ux, uy = ux * k, uy * k
+  end
+
   store.x = Round(cx - ux)
   store.y = Round(cy - uy)
   return true

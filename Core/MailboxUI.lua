@@ -284,6 +284,10 @@ end
 -- do -- and so must any table-valued setting added after them.
 local RESET_KEEP = {
   recipientHistory = true,  -- the Send tab's recent recipients (ContactService)
+  -- Not a setting: which style this profile's default is (UI.GetStyleChoice),
+  -- decided when it was first made. Reset to defaults returns a profile to
+  -- its own default, so it stays.
+  installStyle     = true,
 }
 
 -- One step of the re-apply below. Every step runs whatever the one before it
@@ -331,7 +335,11 @@ local function ApplyResetLive()
     ResetStep(skin.ResetBorder)
     ResetStep(skin.ResetBorderSize)
     ResetStep(skin.ResetBgOpacity)
+    -- The Postbox style's font and text size, back on the game's own.
+    ResetStep(skin.ApplyFonts)
   end
+  -- The window scale, in every style: every window back to 100%.
+  ResetStep(UI.ApplyWindowScale)
 
   -- The mail window's content, through the entry points the options use.
   -- The rows re-lay on the default arrangement wherever it applies: the
@@ -438,6 +446,8 @@ function UI.ResetEverything()
         -- minimap icon's switch as well. Its own tables stay, emptied:
         -- they are the ones memoised and held (see RESET TO DEFAULTS).
         ClearProfile(value, nil)
+        -- And the default style is a first install's.
+        value.installStyle = "postbox"
       elseif type(value) == "table" then
         for inner in pairs(value) do value[inner] = nil end
       else
@@ -478,7 +488,8 @@ end
 -- never repaint anything themselves.
 --   host      the installed host UI's skin (EllesmereUI, or ElvUI)
 --   blizzard  the built-in warm-stone Blizzard-native look
---   modern    the first-party flat skin (Core/Skin_Modern.lua)
+--   postbox   Postbox's own flat look (Core/Skin_Postbox.lua), the look the
+--             EllesmereUI skin wears, with no EllesmereUI needed
 --
 -- This setting now OUTRANKS a host UI. It did not always: the host skin used to
 -- win structurally and this value was inert under one. A player who prefers
@@ -486,8 +497,14 @@ end
 -- is the whole reason for the change.
 --
 -- "host" is the default wherever a host is installed, so nothing changes for
--- anyone who does not go looking for this.
-local STYLE_CHOICES = { host = true, blizzard = true, modern = true }
+-- anyone who does not go looking for this. With none, a profile started since
+-- the Postbox style arrived opens on it (profile.installStyle, written once at
+-- a first install and kept by Reset to defaults); every older profile keeps
+-- the Blizzard look it has always had.
+--
+-- "modern", Postbox Modern's key, reads as "postbox" and is never rewritten,
+-- so an older Postbox still finds the Modern it knew (see MigrateModern).
+local STYLE_CHOICES = { host = true, blizzard = true, postbox = true }
 
 local function HostInstalled()
   return (_G.EllesmereUI or _G.ElvUI) and true or false
@@ -498,6 +515,7 @@ function UI.GetStyleChoice()
   local store = ns.Store
   local profile = store and store.Get and store.Get("profile")
   local stored = profile and profile.style
+  if stored == "modern" then stored = "postbox" end
 
   -- MIGRATION, and the reason this is not just a nil check. Before the setting
   -- could override a host UI it was inert under one, so an existing profile's
@@ -511,10 +529,12 @@ function UI.GetStyleChoice()
   end
 
   if STYLE_CHOICES[stored] then return stored end
-  return HostInstalled() and "host" or "blizzard"
+  if HostInstalled() then return "host" end
+  return (profile and profile.installStyle == "postbox") and "postbox" or "blizzard"
 end
 
 function UI.SetStyleChoice(style)
+  if style == "modern" then style = "postbox" end
   if not STYLE_CHOICES[style] then return end
   local store = ns.Store
   local profile = store and store.EnsurePath and store.EnsurePath("profile")
@@ -531,6 +551,81 @@ end
 -- agree on is whether the player asked for them at all.
 function UI.HostSkinAllowed()
   return UI.GetStyleChoice() == "host"
+end
+
+-- POSTBOX MODERN -> POSTBOX, once per profile, at load (UI.Initialize), before
+-- any skin claims. A profile on Modern takes the Postbox style at its own
+-- defaults, carrying over what the player chose on Modern and nothing else:
+--   modernBgOpacity            -> pbOpacity (the same thing: the window's fill)
+--   modernBorder none          -> pbBorder "none"
+--   modernBorder light/strong  -> pbBorder "thin", pbBorderTone gray / light
+--   modernBorderSize 2 or more -> pbBorder "thick" (unless the border was none)
+-- An unset Modern value stays unset, so the Postbox default applies. The Modern
+-- keys and `style = "modern"` are read, never removed, so a downgrade still
+-- finds them; pbFromModern marks the copy as made, so a Postbox value the
+-- player later resets is not copied over again.
+local function MigrateModern(profile)
+  if type(profile) ~= "table" or profile.style ~= "modern" or profile.pbFromModern then return end
+  profile.pbFromModern = true
+  local opacity = tonumber(profile.modernBgOpacity)
+  if opacity and profile.pbOpacity == nil then
+    profile.pbOpacity = math.max(0, math.min(1, opacity))
+  end
+  if profile.pbBorder == nil then
+    local border, size = profile.modernBorder, tonumber(profile.modernBorderSize)
+    if border == "none" then
+      profile.pbBorder = "none"
+    elseif border == "light" or border == "strong" or (size and size >= 2) then
+      profile.pbBorder = (size and size >= 2) and "thick" or "thin"
+      if border == "strong" and profile.pbBorderTone == nil then
+        profile.pbBorderTone = "light"
+      end
+    end
+  end
+end
+UI._MigrateModern = MigrateModern
+
+-- The window scale, in every style: a factor, 0.8 to 1.3 in steps of 0.05,
+-- nil = 1. Read by Core/Theme.lua as each window is painted; a change is put
+-- on every window at once, each kept where it stands, and the mail window's
+-- place in the panel grid is reserved again at its new width.
+local WINDOW_SCALE_MIN, WINDOW_SCALE_MAX = 0.8, 1.3
+
+function UI.GetWindowScale()
+  local store = ns.Store
+  local profile = store and store.Get and store.Get("profile")
+  local saved = profile and tonumber(profile.windowScale)
+  if not saved then return 1 end
+  return max(WINDOW_SCALE_MIN, min(WINDOW_SCALE_MAX, saved))
+end
+
+function UI.SetWindowScale(value)
+  local store = ns.Store
+  local profile = store and store.EnsurePath and store.EnsurePath("profile")
+  if not profile then return end
+  value = tonumber(value)
+  if value then value = max(WINDOW_SCALE_MIN, min(WINDOW_SCALE_MAX, value)) end
+  if value == 1 then value = nil end
+  profile.windowScale = value
+  UI.ApplyWindowScale()
+end
+
+-- Every window onto the scale as it stands now (also the reset's re-apply,
+-- which finds nothing to do when the scale was already 100%).
+function UI.ApplyWindowScale()
+  local theme = ns.Theme
+  local moved = theme and type(theme.RescaleWindows) == "function" and theme.RescaleWindows() or 0
+  if moved == 0 then return end
+  -- A style drawing one-pixel lines sizes them to the new scale.
+  local skin = ns.Skin
+  if skin and type(skin.ApplyScale) == "function" then pcall(skin.ApplyScale) end
+  local frame = UI._frame
+  if not frame then return end
+  UI.ApplyWindowLayout()
+  local helpers = WindowHelpers()
+  if helpers and helpers.SaveFramePosition and UI._windowStore and not (UI.GetOption("gridDock") and not UI._state.freeMoved) then
+    helpers.SaveFramePosition(frame, UI._windowStore)
+  end
 end
 
 -- The Mail tab's caption while the mailbox is open, from "Show counts":
@@ -2132,7 +2227,18 @@ function UI.ApplyWindowLayout()
   if not UI._state.mailboxOpen then return end
 
   if UI.GetOption("gridDock") then
-    ReserveGridWidth(frame:GetWidth())
+    -- The panel grid measures in MailFrame's units; under a window scale the
+    -- window's own width is in its own. At 100% the width goes through as it
+    -- always has.
+    local width = frame:GetWidth()
+    if UI.GetWindowScale() ~= 1 then
+      local own = frame:GetEffectiveScale()
+      local slot = MailFrame and MailFrame.GetEffectiveScale and MailFrame:GetEffectiveScale()
+      if type(own) == "number" and type(slot) == "number" and slot > 0 and own ~= slot then
+        width = width * own / slot
+      end
+    end
+    ReserveGridWidth(width)
     if not UI._state.freeMoved then
       DockToSlot()
       -- One deferred pass, in addition to the synchronous one above, purely to
@@ -2698,9 +2804,9 @@ local function BuildOptionsButton(frame, theme)
   -- keeps its own TitleText higher and -4 reads a couple of pixels low
   -- beside it.
   --
-  -- The test is the host UI, not ns.Skin: Postbox Modern claims ns.Skin too
-  -- but repaints the template's OWN bar rather than rebuilding one, so it
-  -- belongs with the stock case -- reading ns.Skin alone dropped Modern's
+  -- The test is the host UI, not ns.Skin: the Postbox style claims ns.Skin
+  -- too and seats the cog on its own title strip (Core/Skin_Postbox.lua), so
+  -- it belongs with the stock case -- reading ns.Skin alone dropped the
   -- cog two pixels. Host globals are settled at login, well before a
   -- mailbox can build this frame.
   local hostBar = (ns.Skin and (_G.EllesmereUI or _G.ElvUI)) and true or false
@@ -3440,7 +3546,10 @@ function UI.DiagnoseOptions()
     value = tostring(value)
     parts[#parts + 1] = string.format("%s=%s%s", key, value, (value ~= default) and "*" or "")
   end
-  Named("style", (UI.GetStyleChoice()), HostInstalled() and "host" or "blizzard")
+  local profile = ns.Store and ns.Store.Get and ns.Store.Get("profile")
+  Named("style", (UI.GetStyleChoice()), HostInstalled() and "host"
+    or (profile and profile.installStyle == "postbox") and "postbox" or "blizzard")
+  Named("windowScale", UI.GetWindowScale(), "1")
   -- EllesmereUI's own look, and the skin standing down, where its skin says.
   local eui = ns.SkinEllesmere
   if eui and type(eui.Diagnose) == "function" then
@@ -3555,6 +3664,16 @@ end
 function UI.Initialize()
   if UI._state.ready then return end
   UI._state.ready = true
+
+  -- Before PLAYER_LOGIN, where the skins read the style: a first install's
+  -- default style (Postbox.lua saw no saved variables at all), and Postbox
+  -- Modern's settings carried onto the Postbox style.
+  local store = ns.Store
+  local profile = store and store.EnsurePath and store.EnsurePath("profile")
+  if profile then
+    if ns.freshInstall and profile.installStyle == nil then profile.installStyle = "postbox" end
+    MigrateModern(profile)
+  end
 
   local bus = ns.Events
   if not bus then return end

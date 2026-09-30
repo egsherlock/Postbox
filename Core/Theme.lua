@@ -288,6 +288,10 @@ local C = {
   -- The SELECTED caption is the accent's bright tone and stays that way: which
   -- member of a group is open is exactly the kind of fact the accent is for.
   plateCaption   = { 0.86, 0.86, 0.86, 1.00 },
+  -- The idle caption of a WINDOW tab in the Postbox style (#a5a5a5), whose
+  -- tabs are the mockups' darker plates (Core/Skin_Postbox.lua, TAB_TOKENS).
+  -- No other look paints with it.
+  tabCaption     = { 0.647, 0.647, 0.647, 1.00 },
 
   -- Unread / read dot on a mail row.
   unread = { 0.20, 0.80, 0.20, 1.00 },
@@ -483,7 +487,8 @@ local function Recolor(dest, src)
   dest[1], dest[2], dest[3], dest[4] = src[1], src[2], src[3], src[4]
 end
 
-if SharedTheme then
+local function PushPalette()
+  if not SharedTheme then return end
   local palette = SharedTheme.Palette
   if type(palette) == "table" then
     -- `list` and `card` are now the same surface. They stay as two names
@@ -519,6 +524,25 @@ if SharedTheme then
     Recolor(menu.border, C.surfaceBorder)
     Recolor(menu.hover, C.stripeHover)
   end
+end
+
+PushPalette()
+
+-- A window style's own values for palette tokens: `map` is token -> { r, g,
+-- b, a }, written into the palette in place (so every table aliasing an entry
+-- follows) and pushed into the foundation theme again. For the Postbox style,
+-- which claims once at login; the accent tokens are not in here, because the
+-- accent is answered live by Theme.GetAccent. Nothing else calls it, so the
+-- palette above is exactly the values written in it for every other look.
+function Theme.OverridePalette(map)
+  if type(map) ~= "table" then return end
+  for token, color in pairs(map) do
+    local dest = C[token]
+    if type(dest) == "table" and type(color) == "table" and not ACCENT_TOKENS[token] then
+      Recolor(dest, color)
+    end
+  end
+  PushPalette()
 end
 
 -------------------------------------------------------------
@@ -587,33 +611,53 @@ local FONT_FALLBACK = { "GameFontHighlightSmall", "GameFontHighlight", "GameFont
 -- label), and when the host's face moves, re-dressing the handful of copies
 -- moves every string wearing one.
 --
--- Only while a host skin publishes a face (ns.Skin.GetFontFace, the
--- EllesmereUI skin): with none, every call below answers the game's own object,
--- so Postbox's Blizzard and Modern looks and ElvUI (which re-fonts the game's
--- objects itself) are untouched. Copies are made the first time a string asks,
--- by when the host has finished its own login pass over the game's fonts.
+-- Only while a skin publishes a face (ns.Skin.GetFontFace: the EllesmereUI
+-- skin, and the Postbox style's font and text size): with none, every call
+-- below answers the game's own object, so Postbox's Blizzard look and ElvUI
+-- (which re-fonts the game's objects itself) are untouched. Copies are made the
+-- first time a string asks, by when the host has finished its own login pass
+-- over the game's fonts.
+--
+-- A face is four values: the font file, the outline flags, the shadow and a
+-- size factor. The Postbox style may answer `false` for the file and the flags
+-- and nil for the shadow, meaning "the game object's own": its default is the
+-- game's font at the game's size, so the copies it asks for are the game's
+-- objects exactly, made so that a later change of font or size moves every
+-- string at once.
 local HF = { copies = {}, bases = {}, isCopy = {}, failed = {}, n = 0, gen = 0 }
 
--- path, flags, shadow of the host's face, or nil while no host publishes one.
+-- path, flags, shadow, scale of the published face, or nil while no skin
+-- publishes one. A face with a file and flags keeps the rules the EllesmereUI
+-- skin was built on (flags a string, the shadow a boolean); one that keeps the
+-- object's file or flags keeps whatever of the object's own it was not given.
 local function HostFace()
   local skin = ns.Skin
   local get = skin and skin.GetFontFace
   if type(get) ~= "function" then return nil end
-  local ok, path, flags, shadow = pcall(get)
-  if not ok or type(path) ~= "string" or path == "" then return nil end
-  return path, (type(flags) == "string") and flags or "", shadow and true or false
+  local ok, path, flags, shadow, scale = pcall(get)
+  if not ok then return nil end
+  scale = tonumber(scale) or 1
+  if scale <= 0 then scale = 1 end
+  if path ~= false and (type(path) ~= "string" or path == "") then return nil end
+  if path == false or flags == false then
+    if flags ~= false and type(flags) ~= "string" then flags = false end
+    if shadow ~= nil then shadow = shadow and true or false end
+    return path, flags, shadow, scale
+  end
+  return path, (type(flags) == "string") and flags or "", shadow and true or false, scale
 end
 
 -- The copy made again from its game object, in the face given: the object's
 -- colour, spacing and size, the host's face and outline, and the host's shadow
 -- (a drop shadow where it draws no outline, none where it does, as its own
 -- strings are primed). A shadow only renders when a font object carries it,
--- which is the other reason these are objects.
-local function DressCopy(copy, base, path, flags, shadow)
+-- which is the other reason these are objects. Where the face keeps the game
+-- object's file, flags and size, the copy is left as copied.
+local function DressCopy(copy, base, path, flags, shadow, scale)
   if type(copy.CopyFontObject) == "function" then pcall(copy.CopyFontObject, copy, base) end
-  local _, size = base:GetFont()
+  local basePath, size, baseFlags = base:GetFont()
   if type(size) ~= "number" or size <= 0 then size = 12 end
-  if type(copy.SetShadowColor) == "function" then
+  if shadow ~= nil and type(copy.SetShadowColor) == "function" then
     if shadow then
       copy:SetShadowColor(0, 0, 0, 1)
       copy:SetShadowOffset(1, -1)
@@ -622,6 +666,12 @@ local function DressCopy(copy, base, path, flags, shadow)
       copy:SetShadowOffset(0, 0)
     end
   end
+  scale = scale or 1
+  if path == false and flags == false and scale == 1 then return true end
+  if path == false then path = basePath end
+  if type(path) ~= "string" or path == "" then path = STANDARD_TEXT_FONT end
+  if flags == false then flags = baseFlags or "" end
+  if scale ~= 1 then size = size * scale end
   return pcall(copy.SetFont, copy, path, size, flags) and true or false
 end
 
@@ -632,37 +682,42 @@ function Theme.HostFont(base)
   local copy = HF.copies[base]
   if copy then return copy end
   if HF.isCopy[base] or HF.failed[base] then return base end
-  local path, flags, shadow = HostFace()
-  if not path or type(base) ~= "table" or type(base.GetFont) ~= "function"
+  local path, flags, shadow, scale = HostFace()
+  if path == nil or type(base) ~= "table" or type(base.GetFont) ~= "function"
      or type(CreateFont) ~= "function" then
     return base
   end
   HF.n = HF.n + 1
   copy = CreateFont("PostboxHostFont" .. HF.n)
   -- A copy the client will not make or dress is asked for once, not per string.
-  if not copy or not DressCopy(copy, base, path, flags, shadow) then
+  if not copy or not DressCopy(copy, base, path, flags, shadow, scale) then
     HF.failed[base] = true
     return base
   end
   HF.copies[base], HF.isCopy[copy] = copy, true
   HF.bases[#HF.bases + 1] = base
-  HF.path, HF.flags, HF.shadow = path, flags, shadow
+  HF.made = true
+  HF.path, HF.flags, HF.shadow, HF.scale = path, flags, shadow, scale
   return copy
 end
 
 -- Moves every copy to the host's face as it is now, when it is not the face
 -- they wear. Called on each of the host's looks passes (the EllesmereUI skin's
--- OnHostLooksChanged); a pass whose face did not move reads it and returns.
--- Strings wearing a copy follow on their own; a string set to a size of its
--- own (the arrange inspector's type) is told through Arrange.OnFontsChanged.
+-- OnHostLooksChanged) and when the Postbox style's font or text size is
+-- changed; a pass whose face did not move reads it and returns. Strings
+-- wearing a copy follow on their own; a string set to a size of its own (the
+-- arrange inspector's type) is told through Arrange.OnFontsChanged.
 function Theme.RefreshHostFonts()
-  if not HF.path then return false end
-  local path, flags, shadow = HostFace()
-  if not path or (path == HF.path and flags == HF.flags and shadow == HF.shadow) then return false end
-  HF.path, HF.flags, HF.shadow = path, flags, shadow
+  if not HF.made then return false end
+  local path, flags, shadow, scale = HostFace()
+  if path == nil or (path == HF.path and flags == HF.flags and shadow == HF.shadow
+                     and scale == HF.scale) then
+    return false
+  end
+  HF.path, HF.flags, HF.shadow, HF.scale = path, flags, shadow, scale
   for i = 1, #HF.bases do
     local base = HF.bases[i]
-    DressCopy(HF.copies[base], base, path, flags, shadow)
+    DressCopy(HF.copies[base], base, path, flags, shadow, scale)
   end
   HF.gen = HF.gen + 1
   Theme.ForgetFits()
@@ -1599,11 +1654,14 @@ local function PaintPlate(plate)
   local selected = plate.isSelected and true or false
   local hovered  = plate.__pbHover and true or false
   local flagged  = plate.__pbFlagged and true or false
+  -- A plate given tokens of its own (Theme.SetPlateTokens: the Postbox style's
+  -- window tabs) paints from those; every other plate from the palette.
+  local T = plate.__pbTokens or C
 
-  local fill = C.plateIdle
-  if selected then fill = C.plateSelected
-  elseif hovered then fill = C.plateHover
-  elseif flagged then fill = C.plateFlagged end
+  local fill = T.plateIdle
+  if selected then fill = T.plateSelected
+  elseif hovered then fill = T.plateHover
+  elseif flagged then fill = T.plateFlagged end
   PaintTexture(plate._fill, fill)
 
   -- The ring: one white at three alphas, plus the single exception.
@@ -1618,21 +1676,21 @@ local function PaintPlate(plate)
   -- the selected ring: "this is the filter the list is under" is the more
   -- urgent of the two, and the count beside the star says the rest.
   if selected then
-    PaintTexture(plate._edge, C.plateEdgeSelected)
+    PaintTexture(plate._edge, T.plateEdgeSelected)
   elseif flagged then
     -- Through FillColor, so the flag ring follows a host UI's accent.
     Theme.FillColor(plate._edge, "accentEdge")
   elseif hovered then
-    PaintTexture(plate._edge, C.plateEdgeHover)
+    PaintTexture(plate._edge, T.plateEdgeHover)
   else
-    PaintTexture(plate._edge, C.plateEdge)
+    PaintTexture(plate._edge, T.plateEdge)
   end
 
   local activeBg = plate.__activeBg
   if activeBg then
     if selected then
       local r, g, b = Theme.GetAccentTone("base")
-      activeBg:SetColorTexture(r, g, b, C.accentWash[4])
+      activeBg:SetColorTexture(r, g, b, T.accentWash[4])
     end
     activeBg:SetShown(selected)
   end
@@ -1647,11 +1705,28 @@ local function PaintPlate(plate)
   end
 
   if plate.Text then
-    Theme.SetColor(plate.Text, selected and "accentBright" or "plateCaption")
+    Theme.SetColor(plate.Text, selected and "accentBright" or T.captionToken or "plateCaption")
   end
 end
 
 Theme.RepaintPlate = PaintPlate
+
+-- Gives one plate tokens of its own in place of the palette's: a table with
+-- the palette's plate keys (plateIdle, plateHover, plateSelected, plateFlagged,
+-- plateEdge, plateEdgeHover, plateEdgeSelected, plateBevel, plateHighlight,
+-- accentWash) and, optionally, `captionToken`, the palette token its idle
+-- caption takes. nil hands the plate back to the palette. The Postbox style
+-- draws its window tabs this way; nothing else asks.
+function Theme.SetPlateTokens(plate, tokens)
+  if not plate then return end
+  plate.__pbTokens = tokens
+  local T = tokens or C
+  if plate.__pbPlateArt then
+    PaintTexture(plate._bevel, T.plateBevel)
+    PaintTexture(plate.__pbHighlight, T.plateHighlight)
+  end
+  PaintPlate(plate)
+end
 
 local function HidePlateArt(plate)
   local art = plate.__pbPlateArt
@@ -1733,6 +1808,7 @@ function Theme.CreatePlate(parent, variant, name)
   -- adopting this factory is a deletion rather than a rewrite.
   plate._bg = fill
   plate._bevel = bevel
+  plate.__pbHighlight = highlight
   plate.__activeBg = activeBg
   plate.__pbPlateArt = art
 
@@ -2404,7 +2480,7 @@ end
 -- equal, so the wheel, a drag on the thumb, a click on the track and a
 -- chevron press all move the same number. Hidden while the content fits.
 --
--- Both host skins and Postbox Modern identify the template's bar by the
+-- Both host skins and the Postbox style identify the template's bar by the
 -- flags set here and leave it alone; nothing in their tree walks acts on a
 -- plain Slider, so this bar is painted here and nowhere else.
 -------------------------------------------------------------
@@ -2555,4 +2631,62 @@ function Theme.SlimScrollBar(scroll, container, padTop, padBottom)
 
   scroll.SlimBar = bar
   return bar
+end
+
+-------------------------------------------------------------
+-- 10. Window scale
+--
+-- Every Postbox window (the mail window, Mail Memory, the options panel, the
+-- groups and recipients windows, the bug report) is painted by
+-- ApplyFrameTheme right after it is made, before any saved place is put back,
+-- so that is where each one takes the player's window scale
+-- (MailboxUI.GetWindowScale, in every style) and is remembered for a later
+-- change. At 100% nothing is set at all.
+--
+-- A change keeps each window where it stands: one anchored to the screen has
+-- its corner put back at the same place on it (a scale re-reads its anchor's
+-- offsets in the new units); one anchored to another frame -- the mail window
+-- in its panel slot, the options panel beside it -- keeps that anchor, which
+-- is already in the right place.
+-------------------------------------------------------------
+do
+  local windows = setmetatable({}, { __mode = "k" })
+  local paintFrame = Theme.ApplyFrameTheme
+
+  local function WindowScale()
+    local UI = ns.MailboxUI
+    local s = UI and type(UI.GetWindowScale) == "function" and tonumber((UI.GetWindowScale())) or 1
+    if not s or s <= 0 then s = 1 end
+    return s
+  end
+
+  function Theme.ApplyFrameTheme(frame)
+    if paintFrame then paintFrame(frame) end
+    if not frame then return end
+    windows[frame] = true
+    local s = WindowScale()
+    if s ~= 1 and type(frame.SetScale) == "function" then frame:SetScale(s) end
+  end
+
+  -- Puts every window on the current scale, keeping it where it stands.
+  -- Returns how many windows it moved to a new scale.
+  function Theme.RescaleWindows()
+    local s = WindowScale()
+    local moved = 0
+    for frame in pairs(windows) do
+      if frame and (frame:GetScale() or 1) ~= s then
+        moved = moved + 1
+        local before = frame:GetEffectiveScale() or 1
+        local left, top = frame:GetLeft(), frame:GetTop()
+        local _, relative = frame:GetPoint(1)
+        frame:SetScale(s)
+        if left and top and (relative == nil or relative == UIParent) then
+          local k = before / (frame:GetEffectiveScale() or 1)
+          frame:ClearAllPoints()
+          frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left * k, top * k)
+        end
+      end
+    end
+    return moved
+  end
 end

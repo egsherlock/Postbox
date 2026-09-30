@@ -73,7 +73,7 @@ local function HostSkinName()
   local by = ns.SkinAppliedBy
   if by == "ellesmereui" then return "EllesmereUI" end
   if by == "elvui" then return "ElvUI" end
-  if by == "modern" then return nil end
+  if by == "postbox" then return nil end
 
   -- Nothing has been painted yet, so fall back to who holds the skin slot.
   --
@@ -2702,8 +2702,15 @@ function Pages.send(col)
   })
 end
 
--- The Window tab: where the window opens, then how it is painted.
+-- The Window tab: where the window opens, then how it is painted. Under the
+-- Postbox style the rows stand in the style's groups (Window, Colors, Edges
+-- and rows, Text: .dev/design/postbox-style, spec section 3.1); under a host
+-- or the Blizzard look they are the one list they always were, the window
+-- scale joining it.
 function Pages.window(col)
+  local Skin = GetSkin()
+  local own = Skin and Skin.IsPostboxStyle and true or false
+  if own then Rows.Group(col, L["OPT_WINDOW_HEADING"]) end
   Rows.Check(col, {
     title = L["GRID_TOGGLE_TITLE"], text = L["GRID_TOGGLE_DESC"],
     get = function() return ns.MailboxUI.GetOption("gridDock") end,
@@ -2721,7 +2728,7 @@ function Pages.window(col)
   local styleItems = {}
   if host then styleItems[#styleItems + 1] = { id = "host", name = host } end
   styleItems[#styleItems + 1] = { id = "blizzard", name = L["OPT_STYLE_BLIZZARD"] }
-  styleItems[#styleItems + 1] = { id = "modern",   name = L["OPT_STYLE_MODERN"] }
+  styleItems[#styleItems + 1] = { id = "postbox",  name = L["OPT_STYLE_POSTBOX"] }
   Rows.Dropdown(col, {
     title = L["OPT_STYLE_TITLE"], text = L["OPT_STYLE_DESC"], items = styleItems,
     get = function() return ns.MailboxUI.GetStyleChoice and ns.MailboxUI.GetStyleChoice() end,
@@ -2739,12 +2746,33 @@ function Pages.window(col)
     end,
   })
 
+  -- The window scale, in every style: every Postbox window, live, each kept
+  -- where it stands (MailboxUI.SetWindowScale).
+  local scaleItems = {}
+  for pct = 80, 130, 5 do
+    scaleItems[#scaleItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
+  end
+  Rows.Dropdown(col, {
+    title = L["OPT_SCALE_TITLE"], text = L["OPT_SCALE_DESC"], items = scaleItems,
+    get = function()
+      local s = ns.MailboxUI.GetWindowScale and ns.MailboxUI.GetWindowScale() or 1
+      return math.floor(s * 20 + 0.5) * 5
+    end,
+    set = function(id)
+      if ns.MailboxUI.SetWindowScale then ns.MailboxUI.SetWindowScale((tonumber(id) or 100) / 100) end
+      Ctx.Repaint()
+    end,
+  })
+
   -- The chosen style's own controls. Whichever skin claimed the window
   -- answers these; the panel does not know or care which one it is
   -- talking to. A style that publishes no such controls (Blizzard) simply
   -- contributes nothing here.
-  local Skin = GetSkin()
   if not Skin then return end
+  if own then
+    Pages.windowPostbox(col, Skin)
+    return
+  end
   -- "Leave it alone" means different things to different styles: under a
   -- host it means match that UI, and under Postbox's own it means the
   -- value the skin was authored with.
@@ -2808,6 +2836,60 @@ function Pages.window(col)
       else Skin.SetBgOpacity((tonumber(id) or 100) / 100) end
       Ctx.Repaint()
     end,
+  })
+end
+
+-- The Postbox style's own rows, in its groups. The colour rows (accent,
+-- surface, border colour, row stripes) and the text outline join these
+-- groups later; the style already paints from the palette they will write.
+function Pages.windowPostbox(col, Skin)
+  Rows.Group(col, L["OPT_GROUP_COLORS"])
+  local opacityItems = {}
+  for _, pct in ipairs({ 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 25, 0 }) do
+    opacityItems[#opacityItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
+  end
+  Rows.Dropdown(col, {
+    title = L["OPT_BG_OPACITY_TITLE"], text = L["OPT_BG_OPACITY_DESC"], items = opacityItems,
+    get = function() return math.floor(Skin.GetBgOpacity() * 100 + 0.5) end,
+    set = function(id)
+      Skin.SetBgOpacity((tonumber(id) or 100) / 100)
+      Ctx.Repaint()
+    end,
+  })
+
+  Rows.Group(col, L["OPT_GROUP_EDGES"])
+  local borderItems = {}
+  for _, choice in ipairs(Skin.GetBorderChoices()) do
+    borderItems[#borderItems + 1] = { id = choice.key, name = choice.name }
+  end
+  Rows.Dropdown(col, {
+    title = L["OPT_BORDER_TITLE"], text = L["OPT_BORDER_DESC_POSTBOX"], items = borderItems,
+    get = function() return Skin.GetBorderStyle() end,
+    set = function(id)
+      Skin.SetBorderStyle(id)
+      Ctx.Repaint()
+    end,
+  })
+
+  Rows.Group(col, L["OPT_GROUP_TEXT"])
+  local fontItems = {}
+  for _, choice in ipairs(Skin.GetFontChoices()) do
+    fontItems[#fontItems + 1] = { id = choice.key, name = choice.name }
+  end
+  Rows.Dropdown(col, {
+    title = L["OPT_FONT_TITLE"], text = L["OPT_FONT_DESC"], items = fontItems,
+    get = function() return Skin.GetFont() end,
+    set = function(id) Skin.SetFont(id) end,
+  })
+  local sizeItems = {}
+  for _, scale in ipairs(Skin.GetTextScaleChoices()) do
+    local pct = math.floor(scale * 100 + 0.5)
+    sizeItems[#sizeItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
+  end
+  Rows.Dropdown(col, {
+    title = L["OPT_TEXT_SIZE_TITLE"], text = L["OPT_TEXT_SIZE_DESC"], items = sizeItems,
+    get = function() return math.floor(Skin.GetTextScale() * 100 + 0.5) end,
+    set = function(id) Skin.SetTextScale((tonumber(id) or 100) / 100) end,
   })
 end
 
