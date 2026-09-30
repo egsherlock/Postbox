@@ -1243,6 +1243,11 @@ local function AppendInvoiceFigures(parts, index, withSaleTotal)
   if type(GetInboxInvoiceInfo) ~= "function" then return end
 
   local invoiceType, _, _, bid, _, deposit, consignment = GetInboxInvoiceInfo(index)
+  RV.InvoiceFigures(parts, invoiceType, bid, deposit, consignment, withSaleTotal)
+end
+
+-- The same lines from an invoice's figures however they were read.
+function RV.InvoiceFigures(parts, invoiceType, bid, deposit, consignment, withSaleTotal)
   local figures = INVOICE_FIGURES[invoiceType]
   if not figures then return end
 
@@ -4098,6 +4103,48 @@ local function AcquireRow(panel, slot)
 end
 
 -------------------------------------------------------------
+-- Mail rows :: where a row's facts come from
+--
+-- A row asks the same few things of every mail it is bound to -- its header,
+-- its kind, why it is stuck, its icon, its attachments, its crafting quality
+-- mark, its money and its invoice's figures -- through a source. RV.LIVE is
+-- the inbox. Each of its answers is the call the binder has always made,
+-- made at call time, so whatever another addon has hooked onto the client's
+-- functions is still what is asked.
+-------------------------------------------------------------
+
+RV.LIVE = {}
+
+function RV.LIVE.Header(index) return GetInboxHeaderInfo(index) end
+function RV.LIVE.Classify(index) return Mail().ClassifyMail(index) end
+function RV.LIVE.Stuck(index) return Mail().StuckReason(index) end
+function RV.LIVE.Icon(index) return Mail().GetMailIcon(index) end
+function RV.LIVE.Mark(index, slot) return RV.QualityMark(index, slot) end
+RV.LIVE.Money = RowMoneyText
+RV.LIVE.Invoice = AppendInvoiceFigures
+
+-- One scan of the attachment slots, not two, and none at all for a mail whose
+-- header says it has no attachments. This runs for every visible row on every
+-- refresh, and a run refreshes once per mail. Answers the attachments left,
+-- their total count, and which slot the row's icon came from, so hovering it
+-- can raise that item's own tooltip: Mail().GetMailIcon returns the first
+-- slot bearing a texture, so this has to find the same one -- and after a
+-- partial take that is not necessarily slot 1.
+function RV.LIVE.Attachments(index, itemCount)
+  local remaining, quantity = 0, 0
+  local iconSlot = nil
+  if (tonumber(itemCount) or 0) > 0 then
+    for slot = 1, Mail().MAX_ATTACHMENTS do
+      if GetInboxItemLink(index, slot) then remaining = remaining + 1 end
+      local _, _, texture, count = GetInboxItem(index, slot)
+      if texture and not iconSlot then iconSlot = slot end
+      quantity = quantity + (tonumber(count) or 0)
+    end
+  end
+  return remaining, quantity, iconSlot
+end
+
+-------------------------------------------------------------
 -- Mail rows :: the bind
 --
 -- `position` is the row's DISPLAYED position, not its inbox index. The list is
@@ -4115,9 +4162,11 @@ end
 local function BindRow(panel, row, index, position, compact, done)
   local T = Th()
   local M = T.Metrics
+  -- Where the mail's facts are read from (RV.LIVE).
+  local S = RV.LIVE
 
-  local _, _, sender, subject, money, cod, daysLeft, itemCount, wasRead = GetInboxHeaderInfo(index)
-  local kind, hasCOD = Mail().ClassifyMail(index)
+  local _, _, sender, subject, money, cod, daysLeft, itemCount, wasRead = S.Header(index)
+  local kind, hasCOD = S.Classify(index)
   local moneyValue = tonumber(money) or 0
   local codValue = tonumber(cod) or 0
   -- A finished mail is the only thing there is to delete from here, and it
@@ -4125,7 +4174,7 @@ local function BindRow(panel, row, index, position, compact, done)
   local showDelete = (done == true)
   -- Free when nothing has been refused this visit -- the domain answers from
   -- an empty registry without touching the inbox.
-  local stuckReason = Mail().StuckReason(index)
+  local stuckReason = S.Stuck(index)
 
   row.mailIndex = index
   row.mailDone = showDelete
@@ -4148,7 +4197,7 @@ local function BindRow(panel, row, index, position, compact, done)
   RV.PaintDot(row.Indicator, wasRead, stuckReason ~= nil)
   -- The mark's column hidden: the tooltip says what it would have.
   row.unreadTip = (not wasRead and not layout.shown.read) and L()["STATUS_UNREAD"] or nil
-  row.Icon:SetTexture(Mail().GetMailIcon(index))
+  row.Icon:SetTexture(S.Icon(index))
   row.Delete:SetShown(showDelete)
   -- Back to the idle tint, for the same reason StyleMailRow above re-asserts the
   -- unhovered row: this row is being bound to a different mail, so whatever
@@ -4158,23 +4207,9 @@ local function BindRow(panel, row, index, position, compact, done)
   -- The tooltip's reason line reads it.
   row.stuckReason = stuckReason
 
-  -- One scan of the attachment slots, not two, and none at all for a mail whose
-  -- header says it has no attachments. This runs for every visible row on every
-  -- refresh, and a run refreshes once per mail.
-  local remaining, quantity = 0, 0
-  -- Which slot the row's icon came from, so hovering it can raise that item's
-  -- own tooltip. Mail().GetMailIcon returns the first slot bearing a texture, so
-  -- this has to find the same one -- and after a partial take that is not
-  -- necessarily slot 1.
-  local iconSlot = nil
-  if (tonumber(itemCount) or 0) > 0 then
-    for slot = 1, Mail().MAX_ATTACHMENTS do
-      if GetInboxItemLink(index, slot) then remaining = remaining + 1 end
-      local _, _, texture, count = GetInboxItem(index, slot)
-      if texture and not iconSlot then iconSlot = slot end
-      quantity = quantity + (tonumber(count) or 0)
-    end
-  end
+  -- The attachments left, their total count, and the slot the row's icon
+  -- came from (RV.LIVE.Attachments).
+  local remaining, quantity, iconSlot = S.Attachments(index, itemCount)
   row.iconSlot = iconSlot
 
   -- What the trailing controls take out of the row, stacking inwards from its
@@ -4201,7 +4236,7 @@ local function BindRow(panel, row, index, position, compact, done)
   end
   -- The crafting quality mark, as the item's own link draws it: on the
   -- icon's corner, before or after the name, or both.
-  local mark = (iconSlot and RV.MarkAny()) and RV.QualityMark(index, iconSlot) or nil
+  local mark = (iconSlot and RV.MarkAny()) and S.Mark(index, iconSlot) or nil
   if mark and RV.MarkOnName() then displaySubject = RV.WithMark(displaySubject, mark) end
   RV.PaintQuality(row, mark, layout)
   RV.PaintNameMark(row, mark)
@@ -4216,7 +4251,7 @@ local function BindRow(panel, row, index, position, compact, done)
   Clear(facts)
 
   local showSlots, showExpiry = layout.shown.slots == true, layout.shown.time == true
-  local money, moneyKind = RowMoneyText(index, hasCOD, moneyValue, codValue, compact)
+  local money, moneyKind = S.Money(index, hasCOD, moneyValue, codValue, compact)
   local purchaseShown = (moneyKind == "spent")
   -- In the quiet tone the time left wears: a count, not a warning. The
   -- money is the row's one coloured figure. The number alone where the
@@ -4232,7 +4267,7 @@ local function BindRow(panel, row, index, position, compact, done)
 
   -- A figure switched off leaves the row and goes to its tooltip, in full.
   if money and not MoneyShown(moneyKind, layout) then
-    facts[#facts + 1] = RowMoneyText(index, hasCOD, moneyValue, codValue, false)
+    facts[#facts + 1] = S.Money(index, hasCOD, moneyValue, codValue, false)
     money = nil
   end
   if slots and not showSlots then
@@ -4290,7 +4325,7 @@ local function BindRow(panel, row, index, position, compact, done)
         ids[#parts] = id
       end
     end
-    if not purchaseShown then AppendInvoiceFigures(parts, index, false) end
+    if not purchaseShown then S.Invoice(parts, index, false) end
   end
 
   if compact then
@@ -4300,7 +4335,7 @@ local function BindRow(panel, row, index, position, compact, done)
     -- column says it.
     local tip = panel._rowTip
     Clear(tip)
-    if not purchaseShown then AppendInvoiceFigures(tip, index, false) end
+    if not purchaseShown then S.Invoice(tip, index, false) end
     row.detailFull = (#tip > 0) and concat(tip, "\n") or nil
   else
     row.detailFull = nil
