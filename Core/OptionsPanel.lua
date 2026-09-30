@@ -3340,11 +3340,12 @@ function State.BorderSize()
 end
 
 -- The Postbox style's own rows, in its groups (spec section 3.1): Colors
--- (Mode, the accent, the surface, opacity, the tint), Edges and rows (the
--- border, its colour, the corners, row stripes and the sheen side by side),
--- Text (font, size, outline, button captions). The drawing at the top of the
--- inspector is the style's window, small, painted live from every one of
--- them; the accent's row adds its measured contrast under its description.
+-- (Mode, the accent, the background colour, opacity, the tint), Edges and
+-- rows (the border, its colour, the corners, row stripes and the sheen side
+-- by side), Text (font, size, outline, button captions). The drawing at the
+-- top of the inspector is the style's window, small, painted live from every
+-- one of them; the accent's row adds its measured contrast under its
+-- description.
 do
   -- choices -> dropdown items.
   local function Items(list)
@@ -3513,8 +3514,9 @@ do
   end
 end
 
--- Under the Postbox style: the surface is Dark mode's, so its row greys in
--- Light; the opacity row shows the value in force (Light keeps 85% or more).
+-- Under the Postbox style: the background colour is Dark mode's, so its row
+-- greys in Light; the opacity row shows the value in force (Light keeps 85%
+-- or more).
 function State.Postbox()
   local cell = S.pbSurfaceCell
   local skin = GetSkin()
@@ -3594,9 +3596,10 @@ function Pages.windowCreative(col, Skin)
     set = function(id) Skin.SetTextScale((tonumber(id) or 100) / 100) end,
   })
   -- The text outline applies here as under the Postbox style: the text is
-  -- its fonts'. The rest of its rows (mode, accent, surface, tint, border
-  -- colour, corners, sheen, button text) are the Postbox style's own, and a
-  -- creative style has its own art, accent and captions in their place.
+  -- its fonts'. The rest of its rows (mode, accent, background colour,
+  -- tint, border colour, corners, sheen, button text) are the Postbox
+  -- style's own, and a creative style has its own art, accent and captions
+  -- in their place.
   if Skin.GetOutlineChoices then
     local outlineItems = {}
     for _, choice in ipairs(Skin.GetOutlineChoices()) do
