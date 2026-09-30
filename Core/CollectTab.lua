@@ -3344,10 +3344,19 @@ local function BuildSearchBox(panel)
     end,
   })
   local wrap = search.Wrap
-  wrap:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -M.inset, -M.inset)
   panel.Search = search
   panel.SearchWrap, panel.SearchBox, panel.SearchPlaceholder = wrap, search.Box, search.Placeholder
   panel.SearchAll, panel.SearchClear = search.All, search.Clear
+
+  -- The sort, at the row's right end with the search beside it: Mail
+  -- Memory's own plate (MM.NewSortPlate), keeping this list's order
+  -- (RV.Sort). Placed, and the search with it, by RV.PlaceSort.
+  local Memory = ns.MailMemory
+  if Memory and type(Memory.NewSortPlate) == "function" then
+    panel.Sort = Memory.NewSortPlate(panel, M.segmentHeight, RV.Sort, function() RV.ToggleSort(panel) end)
+    panel.Sort:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -M.inset, -M.inset)
+  end
+  RV.PlaceSort(panel, true)
 
   -- The character picker, left of the search box: it wears the crest of the
   -- box on screen, and lists every character with mail to look at.
@@ -3370,6 +3379,105 @@ local function BuildSearchBox(panel)
   picker:HookScript("OnLeave", function() GameTooltip:Hide() end)
   picker:Hide()
   panel.Picker = picker
+end
+
+-------------------------------------------------------------
+-- Sort
+--
+-- The order the list is shown in, from the plate right of the search:
+-- "mailbox", as the box holds them (newest first), or "expiry", the least
+-- time left first. Display only: each group is sorted within itself -- the
+-- mail to collect, and the read mail under its divider or in the Done tab
+-- -- and everything that acts on mail still finds it by index and
+-- fingerprint. A selection's range runs down the rows as shown (the list
+-- is sorted in place), and a collect run takes its mails highest index
+-- first whatever the order (MailService.BuildQueueFor). Another
+-- character's box, every box's matches and Preview mail sort by the same
+-- choice; History keeps the newest collected first and has no sort.
+-------------------------------------------------------------
+
+function RV.Sort()
+  local UI = ns.MailboxUI
+  return UI and type(UI.GetListSort) == "function" and UI.GetListSort("inbox") or "mailbox"
+end
+
+do
+  -- index -> days left, written by the list's walk for each mail it lists
+  -- while the order is expiry (and by Preview mail's, for its samples), and
+  -- read by the one comparator, made once: the walk sorts in place.
+  local left = {}
+  RV.LEFT = left
+  -- The least time left first; mails with the same time left keep the
+  -- box's order between them.
+  function RV.ByLeft(a, b)
+    local la, lb = left[a] or 0, left[b] or 0
+    if la ~= lb then return la < lb end
+    return a < b
+  end
+end
+
+-- The room the sort takes at the row's right end, beside the search: the
+-- plate and the snug step to it. The search and the sort together are
+-- SEARCH_W and this wide; on History, where there is no sort, the search
+-- has all of it.
+function RV.SortRoom(panel)
+  if not panel.Sort then return 0 end
+  local M = Th().Metrics
+  return M.space.snug + M.segmentHeight
+end
+
+-- The sort shown or not (AV.PaintSearch: not on History), and the search
+-- placed beside it or widened into its room. Moved only when that changes.
+function RV.PlaceSort(panel, shown)
+  local sort, wrap = panel.Sort, panel.SearchWrap
+  if not wrap then return end
+  shown = sort ~= nil and shown and true or false
+  if sort then sort:SetShown(shown and not panel._topHidden) end
+  if panel._sortPlaced == shown then return end
+  panel._sortPlaced = shown
+  local M = Th().Metrics
+  wrap:ClearAllPoints()
+  if shown then
+    wrap:SetPoint("TOPRIGHT", sort, "TOPLEFT", -M.space.snug, 0)
+  else
+    wrap:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -M.inset, -M.inset)
+  end
+  RV.SizeSearch(panel, panel._searchGiven or 0)
+end
+
+-- The search's width: its share of the row's end, less what it gave back to
+-- a row short of room (`given`, from LayoutViewToggle, never more than the
+-- sort's room -- so the search is never narrower than SEARCH_W was before
+-- there was a sort). Set only when it changes.
+function RV.SizeSearch(panel, given)
+  panel._searchGiven = given
+  local width = SEARCH_W + (panel._sortPlaced and 0 or RV.SortRoom(panel)) - given
+  if panel._searchW ~= width then
+    panel._searchW = width
+    panel.SearchWrap:SetWidth(width)
+  end
+end
+
+-- The plate clicked: the other order, remembered, and the list shown in it
+-- from its top. The shift-click anchor is a place in the list, so it goes
+-- with its mail to that mail's new place.
+function RV.ToggleSort(panel)
+  local UI = ns.MailboxUI
+  if not (UI and type(UI.SetListSort) == "function") then return end
+  UI.SetListSort("inbox", RV.Sort() == "expiry" and "mailbox" or "expiry")
+  local filtered, anchor = panel._filtered, panel._selectAnchor
+  local at = anchor and filtered and filtered[anchor]
+  if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
+  CT.RefreshMailList(panel)
+  if at and at ~= DIVIDER then
+    panel._selectAnchor = nil
+    for i = 1, #filtered do
+      if filtered[i] == at then
+        panel._selectAnchor = i
+        break
+      end
+    end
+  end
 end
 
 -- The auction outcome a row shows where its sender would be ("AH Sold"), so
@@ -3680,17 +3788,28 @@ local function LayoutViewToggle(panel)
   end
   container:SetWidth(max(total, 1))
 
-  -- The right-hand end of the row, which gives way to nothing: the search box,
-  -- the picker left of it, and the other box's name left of that -- which is
-  -- given the room the rest of the row leaves it (AV.FitPlate). `least` is the
-  -- same end with the name at its narrowest.
+  -- The right-hand end of the row: the search box and the sort right of it
+  -- (or the search alone, as wide, on History), the picker left of them, and
+  -- the other box's name left of that -- which is given the room the rest of
+  -- the row leaves it (AV.FitPlate). A row short of room has the search give
+  -- back the room the sort took (RV.SortRoom) before the name is cut, and
+  -- only that: `least`, the same end with the search and the name at their
+  -- narrowest, is what the row needed before there was a sort.
   local M = T.Metrics
   local row = PanelWidth(panel) - 2 * M.inset
-  local right = panel.SearchWrap and SEARCH_W or 0
+  local give = panel.SearchWrap and RV.SortRoom(panel) or 0
+  local right = panel.SearchWrap and SEARCH_W + give or 0
   if panel.Picker and panel.Picker:IsShown() then right = right + M.space.snug + M.segmentHeight end
-  local least = right
   local alt = container.alt
-  if alt and alt:IsShown() and alt.natW then
+  local named = alt and alt:IsShown() and alt.natW
+  if panel.SearchWrap then
+    local want = right + (named and M.space.snug + min(alt.natW, AV.PLATE_MAX) or 0)
+    local given = min(give, max(0, ceil(want - (row - total - M.gap))))
+    RV.SizeSearch(panel, given)
+    right = right - given
+  end
+  local least = right - (give - (panel._searchGiven or 0))
+  if named then
     right = right + M.space.snug + AV.FitPlate(panel, row - total - M.gap - right - M.space.snug)
     least = least + M.space.snug + alt.minW
   end
@@ -3863,8 +3982,9 @@ end
 
 -- The search box's part of the paint: the every-character toggle, shown
 -- while there is another box to search (`others`, as AV.Paint last found)
--- -- on History, another character's History -- and its tint; and the
--- placeholder, saying what the box searches.
+-- -- on History, another character's History -- and its tint; the
+-- placeholder, saying what the box searches; and the sort beside it, which
+-- History has none of (RV.PlaceSort).
 function AV.PaintSearch(panel, others)
   panel._searchOthers = others
   local history = AV.History(panel)
@@ -3875,6 +3995,7 @@ function AV.PaintSearch(panel, others)
   end
   panel.Search.PaintToggle(panel._searchAll)
   panel.Search.Place(toggle)
+  RV.PlaceSort(panel, not history)
   if panel._searchHistory ~= history then
     panel._searchHistory = history
     panel.SearchPlaceholder:SetText(L()[history and "SEARCH_HISTORY_PLACEHOLDER" or "SEARCH_PLACEHOLDER"])
@@ -4144,10 +4265,17 @@ end
 function AV.Build(panel, query)
   local Memory = AV.Memory()
   local who = panel._alt
-  local rows, info = Memory.RowsFor(who and who.realm, who and who.name,
-    { query = query, all = panel._searchAll })
+  local order = RV.Sort()
+  -- What is asked of the box, in a table kept for it.
+  local opts = panel._avOpts
+  if not opts then
+    opts = {}
+    panel._avOpts = opts
+  end
+  opts.query, opts.all, opts.sort = query, panel._searchAll, order
+  local rows, info = Memory.RowsFor(who and who.realm, who and who.name, opts)
   -- The arrange mode's Preview mail: the samples, as remembered mail.
-  if panel._preview and Memory.PreviewRows then rows = Memory.PreviewRows() end
+  if panel._preview and Memory.PreviewRows then rows = Memory.PreviewRows(order) end
   panel._avRows, panel._avInfo = rows, info
   -- The moment the columns are measured at is the one the rows are drawn
   -- at (AV.UpdateRows), so an age measured as "9m" is not drawn as "10m".
@@ -5107,9 +5235,12 @@ do
     local measureSlots = compact and RowShows("slots")
     local measureExpiry = compact and RowShows("time")
     local slotsMost, earned, spent = 0, 0, 0
+    -- In the sort's order, as the inbox's list would be (RV.ByLeft).
+    local left = RV.Sort() == "expiry" and RV.LEFT or nil
     for i = 1, #mails do
       local m = mails[i]
       local finished = m.done == true
+      if left then left[i] = m.days end
       if finished then
         tail[#tail + 1] = i
       else
@@ -5143,6 +5274,10 @@ do
     panel._readCount = #tail
     panel._dividerAt = nil
     panel._markAny = #tail > 0 and (view == VIEW_DONE or (RV.Mode() ~= "tab" and not RV.Folded(panel)))
+    if left then
+      if view ~= VIEW_DONE then table.sort(filtered, RV.ByLeft) end
+      if panel._markAny then table.sort(tail, RV.ByLeft) end
+    end
     if view == VIEW_DONE then
       Clear(filtered)
       Clear(filteredDone)
@@ -6510,6 +6645,12 @@ function CT.RefreshMailList(panel)
   -- it reads them.
   local measureOpen = measuring and view ~= VIEW_DONE
   local measureDone = measuring and (view == VIEW_DONE or (RV.Mode() ~= "tab" and not RV.Folded(panel)))
+  -- The order the sort keeps (RV.Sort), its plate painted for it: in the
+  -- expiry order the walk writes each listed mail's days left where the
+  -- comparator reads them (RV.LEFT), and only while the inbox's rows are
+  -- the ones on screen.
+  if panel.Sort then panel.Sort.Paint() end
+  local left = (measuring and not panel._preview and RV.Sort() == "expiry") and RV.LEFT or nil
 
   for index = 1, numItems do
     -- "Read" alone will not do: collecting marks every mail read as a side
@@ -6539,6 +6680,7 @@ function CT.RefreshMailList(panel)
       end
     end
     if listed then
+      if left then left[index] = tonumber(daysLeft) or 0 end
       -- The verdict travels with the index, so the row binder never repeats the
       -- sixteen-slot scan this walk has already paid for.
       if finished then
@@ -6617,6 +6759,12 @@ function CT.RefreshMailList(panel)
   -- listed, and not folded away (RV.MarkReserve). By what is listed, never
   -- by what is scrolled into view.
   panel._markAny = #tail > 0 and (view == VIEW_DONE or (RV.Mode() ~= "tab" and not RV.Folded(panel)))
+  -- Each group in the sort's order, in place: the mail to collect unless
+  -- the Done tab is on screen, and the read mail where it is listed.
+  if left then
+    if view ~= VIEW_DONE then table.sort(filtered, RV.ByLeft) end
+    if panel._markAny then table.sort(tail, RV.ByLeft) end
+  end
   if view == VIEW_DONE then
     Clear(filtered)
     Clear(filteredDone)
@@ -10495,6 +10643,7 @@ function RV.HideTopRow(panel)
   -- The keyboard never stays with a box nobody can see.
   if panel.SearchBox and panel.SearchBox.ClearFocus then panel.SearchBox:ClearFocus() end
   if panel.SearchWrap then panel.SearchWrap:Hide() end
+  if panel.Sort then panel.Sort:Hide() end
 end
 
 function RV.ShowTopRow(panel)
