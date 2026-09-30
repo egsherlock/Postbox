@@ -1154,6 +1154,31 @@ function ST.PrepareReply(recipient, subject)
   ST.UpdateSendGuidance(panel)
 end
 
+-- "Mail this character", from the lists that name characters outside this
+-- screen: Manage Recipients and the character picker (Shift-click on a name).
+-- Only at a mailbox -- there is no Send tab anywhere else -- which is what
+-- ST.CanMailTo answers, so a list can leave the gesture and its hint out
+-- away from one. The name goes in through ST.SetRecipient like any pick; the
+-- rest of the draft is left as it stands, and the subject takes the focus,
+-- as the next thing to write. True when the Send tab now holds the name.
+function ST.CanMailTo()
+  local UI = ns.MailboxUI
+  return UI ~= nil and type(UI.IsMailboxOpen) == "function" and UI.IsMailboxOpen()
+    and type(UI.SelectTab) == "function" and ActivePanel() ~= nil
+end
+
+function ST.MailTo(name)
+  if type(name) ~= "string" or name == "" or not ST.CanMailTo() then return false end
+  ns.MailboxUI.SelectTab("send")
+  local panel = ActivePanel()
+  if not panel then return false end
+  ST.SetRecipient(panel, name)
+  if panel.SuggestFrame then panel.SuggestFrame:Hide() end
+  if panel.SubjectBox then panel.SubjectBox:SetFocus() end
+  ST.UpdateSendGuidance(panel)
+  return true
+end
+
 -- Two lists this addon owns must never be on screen at once: the type-ahead
 -- popup and the contact picker appear under the same field, within a second of
 -- each other, and overlapping them makes both unreadable.

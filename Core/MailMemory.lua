@@ -1765,7 +1765,13 @@ local function PickerTip(row)
       GameTooltip:AddLine(L["PICKER_SHOW_TIP"], 0.7, 0.7, 0.7, true)
     else
       if row.reason then GameTooltip:AddLine(row.reason, 1, 1, 1, true) end
-      if not row.isMe then GameTooltip:AddLine(L["PICKER_HIDE_HINT"], 0.7, 0.7, 0.7, true) end
+      if not row.isMe then
+        GameTooltip:AddLine(L["PICKER_HIDE_HINT"], 0.7, 0.7, 0.7, true)
+        local send = ns.SendTab
+        if send and type(send.CanMailTo) == "function" and send.CanMailTo() then
+          GameTooltip:AddLine(L["MAIL_THIS_HINT"], 0.7, 0.7, 0.7, true)
+        end
+      end
     end
   end
   GameTooltip:Show()
@@ -1823,8 +1829,19 @@ local function PaintPicker(list)
       -- drops under the foot, unfolded, so where it went is on screen and so
       -- is the way back. A click on the foot folds or unfolds it; one on a
       -- hidden character shows it again. The list stays up for all three.
+      -- Shift-click on another character, at a mailbox, mails it: the Send
+      -- tab with its name in the To: box (SendTab.MailTo), and the list
+      -- closes as a pick closes it. Away from a mailbox Shift is ignored and
+      -- the click picks, as it always has.
       row:SetScript("OnClick", function(self, button)
         local kind = self.kind
+        local send = ns.SendTab
+        if kind == "character" and button == "LeftButton" and not self.isMe and IsShiftKeyDown()
+           and send and type(send.CanMailTo) == "function" and send.CanMailTo() then
+          list:Hide()
+          send.MailTo(self.charName .. "-" .. self.realm)
+          return
+        end
         if kind == "character" and button ~= "RightButton" then
           local pick = list.onPick
           list:Hide()
