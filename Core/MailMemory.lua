@@ -2872,6 +2872,14 @@ local function Build()
     -- The arrange mode ends with the window it was opened in.
     if ns.Arrange and ns.Arrange.LeaveIf then ns.Arrange.LeaveIf(frame) end
   end)
+  -- Shown while the arrange mode is open over the Postbox window: this
+  -- window's Escape entry, added as it was built, is taken by the mode as
+  -- the ones it found when it began were, so an Escape in combat steps the
+  -- mode back rather than closing this window (Arrange.lua, section 5).
+  frame:HookScript("OnShow", function()
+    local arrange = ns.Arrange
+    if arrange and arrange.host and arrange.GuardEscape then arrange.GuardEscape() end
+  end)
 
   -- Same expression as the options panel and the recipient manager: let an
   -- active host-UI skin restyle the shell, whichever entry point it offers.
