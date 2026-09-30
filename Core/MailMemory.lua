@@ -1401,23 +1401,17 @@ end
 -- The list's column widths, measured over every row in it: the mail list's
 -- "widest entry anywhere" rule, so nothing twitches as the list scrolls.
 -- `owner` is a frame to measure with; `sample` a built row, for its fonts.
-function MM.MeasureRows(owner, rows, now, sample)
-  local R = Rules()
-  local cols = owner._memCols or {}
-  owner._memCols = cols
-  cols.money, cols.slots, cols.time = 0, 0, 0
-  if not R then
-    cols.sender = 92
-    return cols
-  end
-  local cap = R.SenderColumn(owner, sample.Sender)
-  cols.sender = 0
-  local fsFor = { time = sample.ColTime, money = sample.ColMoney, slots = sample.ColSlots }
-  -- Each distinct text measured once per pass: a list of every box's matches
-  -- repeats "AH Sold", "2 slots" and "29 d" hundreds of times, and each
-  -- measure is a SetText and a width read.
-  local widths = {}
-  local function Width(fs, text)
+do
+  -- The figure columns, in the order they are measured.
+  local FIGURES = { "time", "money", "slots" }
+
+  -- Each distinct text measured once per pass: a list of every box's
+  -- matches repeats "AH Sold", "2 slots" and "29 d" hundreds of times, and
+  -- each measure is a SetText and a width read. The widths are kept on the
+  -- owner, one table per font string, and emptied as each pass begins (a
+  -- font or a scale can change between passes); the tables stay, so a
+  -- pass over texts already seen makes nothing.
+  local function Width(widths, owner, R, fs, text)
     local byFont = widths[fs]
     if not byFont then
       byFont = {}
@@ -1430,23 +1424,52 @@ function MM.MeasureRows(owner, rows, now, sample)
     end
     return width
   end
-  -- The sender column is measured only while the arrangement shows it.
-  if not R.Shows("sender") then cap = 0 end
-  for i = 1, #rows do
-    local mail = rows[i]
-    if not mail.header and cols.sender < cap then
-      local label = R.OutcomeSender(mail.kind) or R.DisplaySender(mail.sender) or ""
-      cols.sender = math.min(math.max(cols.sender, Width(sample.Sender, label) + 2), cap)
+
+  function MM.MeasureRows(owner, rows, now, sample)
+    local R = Rules()
+    local cols = owner._memCols or {}
+    owner._memCols = cols
+    cols.money, cols.slots, cols.time = 0, 0, 0
+    if not R then
+      cols.sender = 92
+      return cols
     end
-    local texts = RowTexts(mail, now)
-    for id, fs in pairs(fsFor) do
-      if texts[id] then cols[id] = math.max(cols[id], Width(fs, texts[id])) end
+    local cap = R.SenderColumn(owner, sample.Sender)
+    cols.sender = 0
+    local fsFor = owner._memFsFor
+    if not fsFor then
+      fsFor = {}
+      owner._memFsFor = fsFor
     end
+    fsFor.time, fsFor.money, fsFor.slots = sample.ColTime, sample.ColMoney, sample.ColSlots
+    local widths = owner._memWidths
+    if not widths then
+      widths = {}
+      owner._memWidths = widths
+    end
+    for _, byFont in pairs(widths) do
+      for text in pairs(byFont) do byFont[text] = nil end
+    end
+    -- The sender column is measured only while the arrangement shows it.
+    if not R.Shows("sender") then cap = 0 end
+    for i = 1, #rows do
+      local mail = rows[i]
+      if not mail.header and cols.sender < cap then
+        local label = R.OutcomeSender(mail.kind) or R.DisplaySender(mail.sender) or ""
+        cols.sender = math.min(math.max(cols.sender, Width(widths, owner, R, sample.Sender, label) + 2), cap)
+      end
+      local texts = RowTexts(mail, now)
+      for k = 1, #FIGURES do
+        local id = FIGURES[k]
+        local text = texts[id]
+        if text then cols[id] = math.max(cols[id], Width(widths, owner, R, fsFor[id], text)) end
+      end
+    end
+    -- Slot counts written as the number alone can measure narrower than any
+    -- column is drawn: the column stands at the narrowest, as the Mail tab's.
+    if cols.slots > 0 then cols.slots = math.max(cols.slots, R.FIGURE_MIN or 12) end
+    return cols
   end
-  -- Slot counts written as the number alone can measure narrower than any
-  -- column is drawn: the column stands at the narrowest, as the Mail tab's.
-  if cols.slots > 0 then cols.slots = math.max(cols.slots, R.FIGURE_MIN or 12) end
-  return cols
 end
 
 -- list -> the placement table (the rules' NewSpec) for one list of these
