@@ -167,6 +167,16 @@ longer play.
   font (your game font by default, Barlow Semi Condensed, the game's other
   fonts, or your EllesmereUI font) and text size.
 - **Window scale, 80% to 130%, in every style.**
+- **New window styles, with your mail list exactly as the Postbox style
+  draws it** (Options, Window, Window style):
+  - **Pillar Box:** a painted post box whose flag stands up while you have
+    mail to collect. Paint it red, green, blue, black or gold.
+  - **Faction:** Alliance navy and gold or Horde leather and iron, by your
+    character, with the game's own faction emblem.
+  - **Post Office Counter:** All mail in a drawer, each category in a
+    pigeonhole that shows how full it is.
+  - **Goblin Express:** riveted steel and hazard stripes, with a tank by the
+    title that fills as your inbox does.
 - **Postbox follows EllesmereUI's look.** On Blizzard Style or Classic WoW UI
   it wears its own Blizzard look, to match your other windows.
 - **EllesmereUI profile, Dark Mode and accent changes** reach an open mailbox
