@@ -331,6 +331,24 @@ user's UI, and has no crop problem.
 textured atlas shell, so a flat-fill addon window matches their unit frames rather
 than their Blizzard windows. Consider offering both as an option.
 
+### "Match EllesmereUI": which windows it matches
+
+Postbox's opacity setting defaults to matching the windows beside it, and which
+windows those are depends on the backend (`HostWindowAlpha` in
+`Core/Skin_EllesmereUI.lua`). Postbox's own fill is in the Dark Mode fill's
+colour (§2) on both.
+
+- **api** (Blizz UI Enhanced on): EllesmereUI draws Blizzard's windows, so
+  Postbox matches them — opaque under the EllesmereUI window style, the Modern
+  backdrop's own opacity (97% by default) under Modern. The Dark Mode fill's
+  alpha is for unit and raid frames (90% by default); following it here made
+  Postbox a touch more see-through than every window beside it.
+- **compat** (Blizz UI Enhanced off): EllesmereUI draws no Blizzard window at
+  all, so there is none to match, and "opaque" left Postbox a solid slab beside
+  the see-through windows another skinner paints. It follows the **Dark Mode
+  fill's alpha** instead — 80% in an atrocityUI profile, the same grey at the
+  same 80% atrocityEssentials paints Blizzard's windows in (since 2026-09-30).
+
 Also note: **opacity ≠ darkness.** An additive black wash makes a window darker
 while leaving it just as see-through. Only the backdrop texture's own alpha
 produces transparency.

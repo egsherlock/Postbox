@@ -96,6 +96,25 @@ This isolates the cause precisely:
 Crucially, in this combat-only test the **grid space-reservation was NOT involved**
 — it is deferred while in combat (see §4). The hide alone reproduced it.
 
+> **Run it without other addons that write to `MailFrame`.** A combat-open taint
+> test is a test of Postbox only on a client where nothing else touches the mail
+> frames. **atrocityEssentials** (part of the atrocityUI setup) does, at login,
+> before any mailbox is opened (read 2026-09-30):
+> * `QoL/MoveFrames.lua:112-119` lists `MailFrame` with `SendMailFrame`,
+>   `MailFrameInset` and `OpenMailFrame` as movable frames, and `:537-543` calls
+>   `SetMovable`, `SetClampedToScreen` and `EnableMouse` on each and hooks their
+>   `OnMouseDown` / `OnMouseUp` scripts (`SecureHookScript`, i.e. `HookScript`).
+> * `Skinning/Frames/Mail.lua:53-56` skins `MailFrame` itself (`S.Frame`, a strip
+>   and backdrop), `:100-108` strips `SendMailFrame` and post-hooks
+>   `SendMailFrame_Update`, `OpenMail_Update` and `InboxFrame_Update`, and `:176`
+>   registers all of it to run early (`S:RegisterEarly`).
+>
+> Every one of those is an insecure write to the frames §3.1 says a write taints
+> for the session. So on a machine with atrocityEssentials loaded,
+> `ADDON_ACTION_BLOCKED` on an in-combat open says nothing about Postbox either
+> way — the blame lands on whichever addon's taint reached the blocked call.
+> Disable it (and any other mail skin or frame mover) for the test.
+
 ---
 
 ## 3. Background a fixer needs: WoW taint + the 12.0 mail rework
