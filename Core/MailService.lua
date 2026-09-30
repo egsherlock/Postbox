@@ -1005,7 +1005,9 @@ end
 -- And one refusal is not about the mail at all: no room in the bags. That is
 -- a state of the character -- every mail with an item in it would be refused
 -- the same way, and all of them come out the moment a slot is free -- so it
--- is kept as one (see "Bags full" below) and never recorded here. What is
+-- is kept as one (see "Bags full" below) and never recorded here. Nor is a
+-- refusal in the words of the server's own passing trouble (the mail
+-- database's error): the next try takes the mail. What is
 -- recorded is what stays true of THIS mail until it is taken: "you can't carry
 -- any more of those", a unique the player already holds, or a refusal with no
 -- words attributable to it while the bags had room.
@@ -1072,6 +1074,25 @@ local function IsBagsWords(text)
   return bagWords[text] == true
 end
 
+-- The game's words for trouble of the server's own -- its mail database
+-- answering with an error -- which say nothing about the mail: the same take
+-- goes through a moment later. Like the bags' words they are never recorded,
+-- and a saved record carrying them is not revived (NoteStuck, SeedStuck).
+-- Only words known to mean that are here; a refusal in any other words, or
+-- in none, is still recorded as the mail's own.
+local passingWords = nil
+
+local function IsPassingWords(text)
+  if type(text) ~= "string" or text == "" then return false end
+  if not passingWords then
+    passingWords = {}
+    if type(ERR_MAIL_DATABASE_ERROR) == "string" and ERR_MAIL_DATABASE_ERROR ~= "" then
+      passingWords[ERR_MAIL_DATABASE_ERROR] = true
+    end
+  end
+  return passingWords[text] == true
+end
+
 -- fingerprint -> its sender and subject as Fingerprint wrote them.
 local function MarkOf(fingerprint)
   return fingerprint:match("^([^\001]*)\001(.*)\001[^\001]*$")
@@ -1096,11 +1117,12 @@ local function Mark(fingerprint, delta)
 end
 
 -- The one way in. `fingerprint` is the mail's, `reason` the game's words or
--- nil; words that are about the bags are never recorded (see above).
+-- nil; words that are about the bags, or about the server's own passing
+-- trouble, are never recorded (see above).
 local function NoteStuck(fingerprint, reason)
   if not fingerprint then return end
   local text = (type(reason) == "string" and reason ~= "") and reason or nil
-  if text and IsBagsWords(text) then return end
+  if text and (IsBagsWords(text) or IsPassingWords(text)) then return end
 
   local prior = stuck[fingerprint]
   if prior == nil then
@@ -1270,12 +1292,15 @@ end
 --
 -- An entry in the game's words for full bags is dropped, not revived: records
 -- saved before bags full became a state of its own carry them, and full bags
--- were never a fact about the mail (see WHAT GETS RECORDED).
+-- were never a fact about the mail (see WHAT GETS RECORDED). So is one in the
+-- words of the server's own passing trouble, which records saved before
+-- those were set apart can carry.
 function Mail.SeedStuck(entries)
   if type(entries) ~= "table" then return end
   for fingerprint, entry in pairs(entries) do
     if type(fingerprint) == "string" and stuck[fingerprint] == nil
-      and (entry == true or (type(entry) == "string" and not IsBagsWords(entry))) then
+      and (entry == true or (type(entry) == "string" and not IsBagsWords(entry)
+        and not IsPassingWords(entry))) then
       stuckEntries = stuckEntries + 1
       stuck[fingerprint] = entry
       Mark(fingerprint, 1)
