@@ -11006,6 +11006,10 @@ do
       local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
       codBefore = tonumber(codBefore) or 0
       local paying = RV.ArmPaidTake(plate, index, codBefore)
+      local record = Fan.Record(index)
+      -- What Delete when done checks the mail against once the take is done,
+      -- as a row click's collect does (RV.AutoDelete).
+      local before = RV.Before(index)
       Mail().TakeAttachment(index, slot, function(status, refused, reason, kind)
         if RV.SettlePaidTake(plate, paying, status == "collected") then Fan.fp = plate.fingerprint end
         if status == "busy" then return end
@@ -11037,16 +11041,22 @@ do
         if codBefore > 0 and RV.CODPaid(index, clicked) then
           ns.Print(L()("MSG_COD_PAID", Helpers().FormatMoney(codBefore)))
         end
+        -- The last tile of a letter emptied tile by tile: in the "delete"
+        -- read-mail mode it goes now, as a collected mail does. Only a mail
+        -- that reads finished is touched (RV.AutoDelete).
+        RV.AutoDelete(panel, index, before, record)
         -- The row pass redraws the fan from the mailbox (RV.FanCheck): a take
         -- can move the other items down a slot.
         RequestRefresh(panel)
-      end, { allowCOD = true, history = Fan.Record(index), fetch = true })
+      end, { allowCOD = true, history = record, fetch = true })
     end)
   end
 
   -- The reading view's coin tile, from the plate.
   function Fan.TakeGold(plate, index)
     local panel = plate._panel
+    local record = Fan.Record(index)
+    local before = RV.Before(index)
     Mail().TakeMoney(index, function(status)
       if status == "busy" then return end
       if status == "closed" then
@@ -11057,8 +11067,10 @@ do
         ns.Print(L()["MSG_MAIL_TIMEOUT"])
         return
       end
+      -- The gold the last thing left in it: Delete when done, as above.
+      if status == "done" then RV.AutoDelete(panel, index, before, record) end
       RequestRefresh(panel)
-    end, Fan.Record(index))
+    end, record)
   end
 
   -- row -> whether the fan answers the icon's hover: a rest begun, or the
