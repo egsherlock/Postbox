@@ -1618,6 +1618,89 @@ local function RunPlan(index, fingerprint, plan, done, record)
 end
 
 -------------------------------------------------------------
+-- Command layer :: letting the header catch up
+--
+-- A mail's attachments are read two ways, and for a moment after a take the
+-- two can disagree: the slot links, which the take's own result clears, and
+-- the header's item count, which comes with the inbox update that follows.
+-- That update and the command's handshake race. When the handshake is read
+-- first, the links say empty while the header still counts the item, and
+-- everything that asks whether a mail is finished (Mail.IsReadPersistent,
+-- and through it the "delete" read-mail mode) needs both to agree -- so it
+-- answered "not yet" and the question was never asked again.
+--
+-- So a take that has left the links empty while the header still counts is
+-- not over until the header agrees: the sequence keeps the channel and waits
+-- for MAIL_INBOX_UPDATE. Event-driven, registered only for the wait, and
+-- bounded by one one-shot deadline in case no update comes. Whatever ends
+-- the wait, the caller then reads the mail as it stands; a header that never
+-- caught up still reads "not finished", and nothing is deleted on the link
+-- scan alone. Only the sequence that owns the channel waits, so there is
+-- never more than one wait at a time.
+-------------------------------------------------------------
+
+local SETTLE_DEADLINE = 3
+
+local settle = { fn = nil, index = nil, fingerprint = nil, gen = 0 }
+
+-- index, fingerprint -> true while the mail is still this one, holds no
+-- money and no linked attachment, and its header still counts an item. The
+-- header's count first: zero is the answer after almost every take, and it
+-- costs one call.
+local function HeaderBehind(index, fingerprint)
+  local _, _, _, _, money, _, _, itemCount = GetInboxHeaderInfo(index)
+  if (tonumber(itemCount) or 0) <= 0 then return false end
+  if (tonumber(money) or 0) > 0 then return false end
+  if Mail.AttachmentsLeft(index) > 0 then return false end
+  return Fingerprint(index) == fingerprint
+end
+
+local OnSettleEvent
+
+local function EndSettle()
+  local fn = settle.fn
+  if not fn then return end
+  settle.fn, settle.index, settle.fingerprint = nil, nil, nil
+  settle.gen = settle.gen + 1
+  local bus = ns.Events
+  if bus and type(bus.Unregister) == "function" then
+    bus.Unregister("MAIL_INBOX_UPDATE", OnSettleEvent)
+    bus.Unregister("MAIL_CLOSED", OnSettleEvent)
+  end
+  fn()
+end
+
+-- An inbox update ends the wait once the header agrees, or once the mail it
+-- was waiting on is no longer the one at the index; a closing mailbox ends it
+-- outright (the caller's own look then finds the mailbox closed).
+function OnSettleEvent(event)
+  if not settle.fn then return end
+  if event == "MAIL_INBOX_UPDATE" and MailboxOpen()
+    and HeaderBehind(settle.index, settle.fingerprint) then
+    return
+  end
+  EndSettle()
+end
+
+-- index, fingerprint, fn -> fn(), now or once the header agrees.
+local function AfterHeaderSettles(index, fingerprint, fn)
+  if not HeaderBehind(index, fingerprint) or not MailboxOpen() then return fn() end
+  local bus = ns.Events
+  if not (bus and type(bus.Register) == "function") or type(C_Timer) ~= "table" then
+    return fn()
+  end
+  EndSettle()
+  settle.fn, settle.index, settle.fingerprint = fn, index, fingerprint
+  settle.gen = settle.gen + 1
+  local gen = settle.gen
+  bus.Register("MAIL_INBOX_UPDATE", OnSettleEvent)
+  bus.Register("MAIL_CLOSED", OnSettleEvent)
+  C_Timer.After(SETTLE_DEADLINE, function()
+    if settle.gen == gen then EndSettle() end
+  end)
+end
+
+-------------------------------------------------------------
 -- Command layer :: public entry points
 --
 -- Collection statuses, shared by CollectMail and TakeAttachment:
@@ -1750,21 +1833,29 @@ function Mail.CollectMail(index, onDone, opts)
       -- Checked against the mail as the plan last knew it: a C.O.D. it paid
       -- reads 0 now, and the mail it names is still this one.
       current = current or fingerprint
-      if Fingerprint(index) == current and Mail.HasContent(index) then
-        -- Every handshake completed and the mail is still not empty. Nothing
-        -- attributable to one take -- so where items stayed while no general
-        -- slot was free, that is the bags (see "Bags full"); otherwise the
-        -- mail is stuck all the same.
-        if Mail.AttachmentsLeft(index) > 0 and Mail.FreeBagSlots() == 0 then
-          SetBagsFull()
-          return finish("refused", 1, reason, "bags")
+      -- Once the header agrees with the links ("Letting the header catch
+      -- up"): a caller told "collected" goes on to ask whether the mail is
+      -- finished, and that answer reads the header.
+      AfterHeaderSettles(index, current, function()
+        if not MailboxOpen() then
+          return finish("closed", refusedCount, reason)
         end
-        NoteStuck(current, reason)
-        return finish("refused", 1, reason)
-      end
-      ForgetStuck(fingerprint)
-      if current ~= fingerprint then ForgetStuck(current) end
-      finish("collected", 0, reason)
+        if Fingerprint(index) == current and Mail.HasContent(index) then
+          -- Every handshake completed and the mail is still not empty. Nothing
+          -- attributable to one take -- so where items stayed while no general
+          -- slot was free, that is the bags (see "Bags full"); otherwise the
+          -- mail is stuck all the same.
+          if Mail.AttachmentsLeft(index) > 0 and Mail.FreeBagSlots() == 0 then
+            SetBagsFull()
+            return finish("refused", 1, reason, "bags")
+          end
+          NoteStuck(current, reason)
+          return finish("refused", 1, reason)
+        end
+        ForgetStuck(fingerprint)
+        if current ~= fingerprint then ForgetStuck(current) end
+        finish("collected", 0, reason)
+      end)
     end, record)
   end
 
@@ -1821,7 +1912,7 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
 
   WhenIdle(function()
     RunPlan(index, fingerprint, { { kind = "item", slot = slot } },
-      function(timedOut, refusedCount, reason, _, full)
+      function(timedOut, refusedCount, reason, current, full)
         if timedOut then return finish("timeout", refusedCount, reason) end
         if full then return finish("refused", refusedCount, reason, "bags") end
         if refusedCount > 0 then return finish("refused", refusedCount, reason) end
@@ -1829,7 +1920,11 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
         -- made room, or dropped the unique they already had. If the next slot
         -- is refused anyway, RunPlan records it again immediately.
         ForgetStuck(fingerprint)
-        finish("collected", 0, reason)
+        -- The last tile of a mail is over once the header agrees, as a whole
+        -- collect is: the reading view's Back asks whether it is finished.
+        AfterHeaderSettles(index, current or fingerprint, function()
+          finish("collected", 0, reason)
+        end)
       end, opts and opts.history)
   end, function() finish("timeout") end)
 end

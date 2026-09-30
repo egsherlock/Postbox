@@ -4846,6 +4846,10 @@ function RV.AutoDelete(panel, index, before, record, andThen)
   if RV.Mode() ~= "delete" or not index or type(before) ~= "table" then return Continue() end
   if not MailboxOpen() or Mail().IsBusy() then return Continue() end
   if (tonumber((GetInboxNumItems())) or 0) ~= before.count then return Continue() end
+  -- Emptiness is the client's word, header and links both. A collect hands
+  -- over its mail once the header has caught up with the take (MailService,
+  -- "Letting the header catch up"); a mail that still does not read finished
+  -- by then is left where it is, under the divider, never deleted on a guess.
   if RV.Identity(index) ~= before.id or not Mail().IsReadPersistent(index) then return Continue() end
   if record and Mail().HistoryNote then Mail().HistoryNote(record, "read") end
   -- Through the sweep that re-checks the index immediately before its
