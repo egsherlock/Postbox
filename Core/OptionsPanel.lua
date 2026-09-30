@@ -3077,15 +3077,21 @@ function Pages.window(col)
     end,
     set = function(id)
       if id == "auto" then Skin.ResetBorder() else Skin.SetBorderStyle(id) end
+      -- A pick sets the style's own size: the size row shows it, if it shows.
+      State.BorderSize()
+      Rows.PaintDropdown(S.borderSize.row)
       Ctx.Repaint()
     end,
   })
 
+  -- Border size stands aside while the border has no size (None, Match): the
+  -- row hides and the one under it moves up into its place (State.BorderSize).
   local sizeItems = {}
   for step = 1, 4 do
     sizeItems[#sizeItems + 1] = { id = step, name = string.format(L["OPT_BORDER_SIZE_STEP"], step) }
   end
-  Rows.Dropdown(col, {
+  local sizeY = col.y
+  local sizeRow = Rows.Dropdown(col, {
     title = L["OPT_BORDER_SIZE_TITLE"], text = L["OPT_BORDER_SIZE_DESC"], items = sizeItems,
     get = function() return Skin.GetBorderSize() end,
     set = function(id)
@@ -3098,7 +3104,9 @@ function Pages.window(col)
   for _, pct in ipairs({ 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 25, 0 }) do
     opacityItems[#opacityItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
   end
-  Rows.Dropdown(col, {
+  S.borderSize = { row = sizeRow, y = sizeY, parent = col.frame }
+  S.refresh[#S.refresh + 1] = State.BorderSize
+  S.borderSize.after = Rows.Dropdown(col, {
     title = L["OPT_BG_OPACITY_TITLE"], text = L["OPT_BG_OPACITY_DESC"], items = opacityItems,
     get = function()
       if Skin.IsBgOpacityDefault and Skin.IsBgOpacityDefault() then return "auto" end
@@ -3110,6 +3118,29 @@ function Pages.window(col)
       Ctx.Repaint()
     end,
   })
+end
+
+-- Border size shown only while the chosen border has a size (the skin's
+-- BorderHasSize; a skin without that answer keeps the row). Hidden, the row
+-- under it moves up into its place, so no gap is left; the page keeps its
+-- height, as every page does, the tallest page setting the list's. Run on
+-- every open and after a border pick, so it is live.
+function State.BorderSize()
+  local b = S.borderSize
+  if not b then return end
+  local skin = GetSkin()
+  local sized = true
+  if skin and type(skin.BorderHasSize) == "function" then
+    sized = skin.BorderHasSize() and true or false
+  end
+  if b.shown == sized then return end
+  b.shown = sized
+  b.row:SetShown(sized)
+  local y = sized and (b.y - ROW_H) or b.y
+  local after = b.after
+  after:ClearAllPoints()
+  after:SetPoint("TOPLEFT", b.parent, "TOPLEFT", 0, y)
+  after:SetPoint("TOPRIGHT", b.parent, "TOPRIGHT", 0, y)
 end
 
 -- The Postbox style's own rows, in its groups (spec section 3.1): Colors

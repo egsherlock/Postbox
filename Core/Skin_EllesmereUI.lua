@@ -678,6 +678,14 @@ function Skin.OffersBorderDefault()
   return true
 end
 
+-- True when the chosen border is drawn at a size step, so the Border size row
+-- means something: not for None, and not for Match, whose edge is the
+-- windows' own.
+function Skin.BorderHasSize()
+  local key = Skin.GetBorderStyle()
+  return key ~= BORDER_NONE and key ~= BORDER_MATCH
+end
+
 function Skin.ResetBorder()
   local p = GetProfile()
   p.euiBorder, p.euiBorderSize = nil, nil
