@@ -6546,6 +6546,16 @@ function RV.Before(index)
   return { id = id, count = tonumber((GetInboxNumItems())) or 0 }
 end
 
+-- index, unpaid -> whether the C.O.D. the player confirmed has changed hands:
+-- the mail at the index no longer reads as `unpaid`, its fingerprint before
+-- the take. The first take pays, and a paid mail reads nothing owed from
+-- then on; one it emptied has gone. A take that moved nothing -- refused,
+-- or answered "collected" with no link loaded to take by -- leaves the mail
+-- reading exactly as it did, and nothing is said.
+function RV.CODPaid(index, unpaid)
+  return unpaid ~= nil and Fingerprint(index) ~= unpaid
+end
+
 -- Whether the mail held gold or items, from its header (an unread mail's
 -- attachment links are not loaded yet, so the header is the one reading).
 function RV.HeldSomething(index)
@@ -6565,28 +6575,22 @@ function CollectSingleMail(panel, index, opts)
     confirmed.allowCOD = true
     local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
     codBefore = tonumber(codBefore) or 0
+    local unpaid = codBefore > 0 and Fingerprint(index) or nil
     -- Only a mail that held something is finished by a collect: an unread
     -- letter "collected" was read by the fetch, not by the player.
     local before = RV.HeldSomething(index) and RV.Before(index) or nil
     Mail().CollectMail(index, function(status, refused, reason)
+      -- A confirmed C.O.D. that actually changed hands is reported in chat,
+      -- with the amount, once the mail no longer reads as owing it
+      -- (RV.CODPaid): emptied, or partly taken with its C.O.D. reading zero.
+      -- Read before anything else can touch the mail.
+      if codBefore > 0 and (status == "collected" or status == "refused")
+        and RV.CODPaid(index, unpaid) then
+        ns.Print(L()("MSG_COD_PAID", Helpers().FormatMoney(codBefore)))
+      end
       -- Emptied: in the "delete" read-mail mode it goes now, not later.
       if status == "collected" then
         RV.AutoDelete(panel, index, before, confirmed.history)
-      end
-      -- A confirmed C.O.D. that actually changed hands is reported in chat,
-      -- with the amount: "collected" means the mail emptied (the first take
-      -- pays), and a partial refusal has paid exactly when the mail's own
-      -- C.O.D. field reads zero afterwards -- the mail is still at this index
-      -- in that case, since only an emptied mail is deleted out from under it.
-      if codBefore > 0 then
-        local paid = status == "collected"
-        if not paid and status == "refused" then
-          local _, _, _, _, _, codNow = GetInboxHeaderInfo(index)
-          paid = (tonumber(codNow) or 0) == 0
-        end
-        if paid then
-          ns.Print(L()("MSG_COD_PAID", Helpers().FormatMoney(codBefore)))
-        end
       end
       -- "busy" is a Postbox sequence already owning the channel; that run is
       -- writing its own status and must not be talked over.
@@ -7579,9 +7583,11 @@ local function TakeOneAttachment(detail, slot)
         return
       end
 
-      -- The take landed, so a confirmed C.O.D. was just paid: say so in the
-      -- game's chat, in gold, where the player can check it against the bill.
-      if codBefore > 0 then
+      -- A confirmed C.O.D. that was just paid: say so in the game's chat, in
+      -- gold, where the player can check it against the bill -- once the
+      -- mail no longer reads as owing it (RV.CODPaid), since "collected" is
+      -- also the answer for a take that found nothing to take.
+      if codBefore > 0 and RV.CODPaid(index, clicked) then
         ns.Print(L()("MSG_COD_PAID", Helpers().FormatMoney(codBefore)))
       end
 
@@ -11026,7 +11032,9 @@ do
           RV.FanCheck(panel)
           return
         end
-        if codBefore > 0 then
+        -- Paid only once the mail no longer reads as owing it (RV.CODPaid):
+        -- a take that found no link loaded answers "collected" too.
+        if codBefore > 0 and RV.CODPaid(index, clicked) then
           ns.Print(L()("MSG_COD_PAID", Helpers().FormatMoney(codBefore)))
         end
         -- The row pass redraws the fan from the mailbox (RV.FanCheck): a take
