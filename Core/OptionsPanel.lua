@@ -560,7 +560,7 @@ local BUTTON_FIT = { height = BUTTON_H, padding = 28, minWidth = 64 }
 local TABS = {
   { key = "mail",    caption = "OPT_MAILTAB_HEADING" },
   { key = "send",    caption = "OPT_SENDTAB_HEADING" },
-  { key = "window",  caption = "OPT_WINDOW_HEADING",  square = true },
+  { key = "window",  caption = "OPT_WINDOW_HEADING" },
   { key = "minimap", caption = "OPT_MINIMAP_HEADING", square = true },
   { key = "memory",  caption = "OPT_MEMORY_TITLE",    square = true },
 }
@@ -2410,9 +2410,11 @@ end
 -- Tabs
 --
 -- Five house plates, like the window's own segments: the selected one in
--- the accent, the others neutral. Window, Minimap and Mail Memory carry a
--- small square beside their name, the Window badge's dot lifted onto the
--- tab: green for inheriting or on, a grey ring for overriding or off.
+-- the accent, the others neutral. The two tabs a feature's switch leads,
+-- Minimap and Mail Memory, carry a small square beside their name that
+-- says whether the feature is on: green on, a grey ring off. Window has
+-- none: no one switch is what that tab is about (whose look the window
+-- wears is the dot on its inspector's host badge).
 -------------------------------------------------------------
 do
   local function TabClick(self)
@@ -2583,7 +2585,6 @@ function State.Inheritance()
       entry.title, entry.text = title, text
       S.textGen = S.textGen + 1
     end
-    Tabs.SetSquare("window", nil)
     return
   end
   -- EllesmereUI on one of its stock looks, with the style left on
@@ -2612,7 +2613,6 @@ function State.Inheritance()
     entry.title, entry.text = title, text
     S.textGen = S.textGen + 1
   end
-  Tabs.SetSquare("window", S.badgeGreen and "on" or "off")
 end
 
 -- The Postbox window's mark, where the window is on screen (at a mailbox,
