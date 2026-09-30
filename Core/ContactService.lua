@@ -1153,6 +1153,14 @@ do
       r, g, b = colour.r or 1, colour.g or 1, colour.b or 1
       if type(colour.WrapTextInColorCode) == "function" then wrap = colour end
     end
+    -- On a light palette (the Postbox style's Light mode) a class colour made
+    -- for a dark ground is moved to read on a light one (Theme.InkFor: the
+    -- contrast guard at 4.5:1), and written as an escape of its own.
+    local T = ns.Theme
+    if T and type(T.IsLight) == "function" and T.IsLight() and type(T.InkFor) == "function" then
+      local lr, lg, lb = T.InkFor(r, g, b)
+      if lr ~= r or lg ~= g or lb ~= b then r, g, b, wrap = lr, lg, lb, false end
+    end
     local moved = entry.r ~= r or entry.g ~= g or entry.b ~= b
     entry.r, entry.g, entry.b, entry.wrap, entry.moved = r, g, b, wrap, moved
     if not wrap and (moved or not entry.hex) then

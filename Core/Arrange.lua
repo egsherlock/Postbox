@@ -814,7 +814,7 @@ function AR.PaintToggle(button)
     return
   end
   button:SetWidth(KEY_SIZE)
-  button.Fill:SetVertexColor(1, 1, 1, 0.07)
+  Th().TintChrome(button.Fill, 0.07)
   button.Fill:SetShown(hover)
   AR.TintEdges(button.Ring, 0.365, 0.365, 0.365, 1)
   AR.ShowEdges(button.Ring, hover)
@@ -3228,7 +3228,7 @@ local function NewLine(cover, i)
   local line = cover:CreateTexture(nil, "ARTWORK")
   line:SetTexture(WHITE)
   line:SetWidth(1)
-  line:SetVertexColor(1, 1, 1, 0.13)
+  Th().TintChrome(line, 0.13)
   cover.Lines[i] = line
   return line
 end
@@ -4331,17 +4331,18 @@ local function InspPlate(parent, frameType, keyline)
   return plate
 end
 
+-- The greys below are set for a dark ground; Theme.Grey gives each its twin
+-- of the same rank on a light palette (the Postbox style's Light mode), and
+-- is the grey itself on every other.
 local function TintPlate(plate, fill, ring)
+  local G = Th().Grey
+  fill, ring = G(fill), G(ring)
   plate.Fill:SetVertexColor(fill, fill, fill, 0.95)
   AR.TintEdges(plate.Ring, ring, ring, ring, 1)
 end
 
 local function Grey(region, v)
-  if region.SetTextColor then
-    region:SetTextColor(v, v, v, 1)
-  else
-    region:SetVertexColor(v, v, v, 1)
-  end
+  Th().SetGrey(region, v)
 end
 
 -- The eye switch: open and "Shown", or crossed and "Hidden". Its words
@@ -4587,7 +4588,7 @@ local function Radio(insp, i)
   row.hover, row.live, row.chosen, row.set = false, false, false, false
   row.Hover = row:CreateTexture(nil, "BACKGROUND")
   row.Hover:SetTexture(WHITE)
-  row.Hover:SetVertexColor(1, 1, 1, 0.06)
+  Th().TintChrome(row.Hover, 0.06)
   row.Hover:SetAllPoints()
   row.Hover:Hide()
   row.MarkKey = row:CreateTexture(nil, "ARTWORK", nil, 0)
@@ -4846,7 +4847,7 @@ local function PaintBlockRow(row)
     row.Name:SetTextColor(r, g, b, 1)
     row.Num:SetTextColor(r, g, b, 1)
   else
-    wash:SetVertexColor(1, 1, 1, 0.06)
+    Th().TintChrome(wash, 0.06)
     wash:SetShown(hover and true or false)
     Grey(row.Name, hover and 1 or (row.hidden and 0.45 or 0.74))
     Grey(row.Num, hover and 0.84 or (row.hidden and 0.36 or 0.55))
@@ -4880,7 +4881,7 @@ local function BlockRow(insp, i)
   row.hover, row.hidden, row.current = false, false, false
   row.Hover = row:CreateTexture(nil, "BACKGROUND")
   row.Hover:SetTexture(WHITE)
-  row.Hover:SetVertexColor(1, 1, 1, 0.06)
+  Th().TintChrome(row.Hover, 0.06)
   row.Hover:SetAllPoints()
   row.Hover:Hide()
   row.Num = Text(row, "bodySmall", "body")
@@ -4945,7 +4946,7 @@ local function LayoutChoice(insp, i)
   row.hover, row.chosen, row.mode = false, false, AR.ROW_LAYOUTS[i]
   row.Hover = row:CreateTexture(nil, "BACKGROUND")
   row.Hover:SetTexture(WHITE)
-  row.Hover:SetVertexColor(1, 1, 1, 0.06)
+  Th().TintChrome(row.Hover, 0.06)
   row.Hover:SetAllPoints()
   row.Hover:Hide()
   local mid = -P.RADIO_H / 2

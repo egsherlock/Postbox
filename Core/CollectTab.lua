@@ -10293,7 +10293,7 @@ function RV.BuildDivider(panel, parent)
   -- the rows read through it).
   divider.Fill = divider:CreateTexture(nil, "BACKGROUND")
   divider.Fill:SetAllPoints()
-  divider.Fill:SetColorTexture(0.05, 0.05, 0.06, 0.95)
+  Th().FillColor(divider.Fill, "surface", 0.95)
   divider.Rule = divider:CreateTexture(nil, "ARTWORK")
   divider.Rule:SetHeight(1)
   -- Edge to edge, as wide as the rows it separates.
@@ -11233,7 +11233,7 @@ function CT.Build(parent)
   foot:SetHeight(max(1, M.tightGap - 1))
   foot.Fill = foot:CreateTexture(nil, "BACKGROUND")
   foot.Fill:SetAllPoints()
-  foot.Fill:SetColorTexture(0.05, 0.05, 0.06, 0.95)
+  Th().FillColor(foot.Fill, "surface", 0.95)
   foot:Hide()
   pin.Foot = foot
 
