@@ -165,6 +165,9 @@ Notes:
   confirmed to still *work* visually in 12.0 (other panels do reserve space), so it
   is a real feature, not dead weight. This is now the **only** protected write left,
   and it is the only reason `InCombatLockdown()` is still consulted anywhere.
+  With docking off, the clearing write (`ReserveGridWidth(nil)`) runs only when this
+  session actually reserved a width (docking was on, then turned off), and then once:
+  a session that never docks never writes the panel attributes at all (1.50 review).
 - Every close — close button, ESC, walking away — goes through `CloseMail()` (a
   plain C API that touches no frame), never the `HideUIPanel` path that reads the
   tainted `MailFrame`. Combat no longer changes the close path in any way.
@@ -180,6 +183,21 @@ were removed** — they tainted `SendMailFrame`/`MailFrame` and were purely cosm
 `SetSendMailShowing(true)` (a non-frame C API, taint-free). Removing them also fixed
 a "needed two ESC presses on the Send tab" bug (the native send name editbox was
 auto-focusing on `SendMailFrame:Show()` and eating the first ESC).
+
+`Core/Arrange.lua`, the arrange mode's Escape: **reviewed, correct** (1.50 final
+review, 2026-09-30). Out of combat a keyboard frame of Postbox's own, on UIParent and
+shown only while the mode is open, hears keys with propagation on (set before it is
+ever shown) and keeps only the game-menu key, for one press, when the mode is what that
+press would reach; propagation goes back on the next frame, at the key's release, on
+show and hide, and at `PLAYER_REGEN_DISABLED`, before the lockdown. In combat, where
+`SetPropagateKeyboardInput` is refused to addons, the frame hides for the fight (hiding
+our own frame is always allowed) and never calls it. The combat net is the
+`UISpecialFrames` swap: the entries naming Postbox's own windows are rewritten in place
+to a small frame of ours (no entry shifts, none of Blizzard's is touched) and put back
+however the mode ends. `UISpecialFrames` is a plain list that `CloseAllWindows` reads
+by name; writing Postbox's own names in it is what every addon registering a window
+does. No binding, no `SetOverrideBinding`, no `RegisterGameMenuEscHandler` (which would
+taint Blizzard's handler list), and nothing of `MailFrame` or the panel layout.
 
 `Postbox.lua`: the error trap calls `seterrorhandler`. **Not a taint source.** The
 error handler is a plain global function reference, not a frame and not a secure
