@@ -70,5 +70,6 @@ Core\RecipientManager.lua
 # full client restart, not a /reload.
 Core\Skin_Postbox.lua
 Core\Skin_Creative.lua
+Core\Style_PillarBox.lua
 Core\Skin_ElvUI.lua
 Core\Skin_EllesmereUI.lua
