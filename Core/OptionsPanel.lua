@@ -2494,11 +2494,17 @@ function Pages.mail(col)
   -- is two things a player sets apart: the badge on the corner of the
   -- item's icon (on by default), and a mark beside the name -- before it,
   -- with the names kept in line, after it as a chat link has it, or none
-  -- (the default). Every list's rows are drawn again, and the sample's.
+  -- (the default). Every list's rows are drawn again, and the sample's,
+  -- and the arrange mode's card where it shows the same choice.
+  local function ArrangeFollows()
+    local AR = ns.Arrange
+    if AR and AR.ListWideChanged then AR.ListWideChanged() end
+  end
   local function QualityChanged()
     if ns.MailboxUI.RefreshCollectRowLayout then ns.MailboxUI.RefreshCollectRowLayout() end
     if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
     Ctx.Repaint()
+    ArrangeFollows()
   end
   -- The badge shares its row with the stack count on the same icon (and the
   -- stack edge behind it, and an auction subject's count taken off the row):
@@ -2544,7 +2550,10 @@ function Pages.mail(col)
       { id = "fan",     name = L["OPT_ATTACH_HOVER_FAN"] },
     },
     get = function() return ns.MailboxUI.GetAttachHover and ns.MailboxUI.GetAttachHover() or "tooltip" end,
-    set = function(id) if ns.MailboxUI.SetAttachHover then ns.MailboxUI.SetAttachHover(id) end end,
+    set = function(id)
+      if ns.MailboxUI.SetAttachHover then ns.MailboxUI.SetAttachHover(id) end
+      ArrangeFollows()
+    end,
   })
 
   -- Which columns a row shows, in what order, and the gold's and the time

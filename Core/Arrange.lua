@@ -4564,13 +4564,16 @@ local function RadioLeave(self)
   PaintRadio(self)
 end
 
+-- Each answer keeps the setter of the choice it was put for (PutRadio), so
+-- a card or the overview can carry more than one choice.
 local function RadioClick(self)
   local insp = AR._insp
-  if not (self.live and insp and insp.set) then return end
-  local set = insp.set
+  local set = self.set or (insp and insp.set)
+  if not (self.live and insp and set) then return end
   set(self.choiceId)
-  -- The list switched is placed by its own switch.
-  if set ~= AR.ShowList then AR.RowsChanged(true) end
+  -- The list switched, and a list-wide setting, are placed by their own
+  -- switch (AR.SELF_PLACED).
+  if not AR.SELF_PLACED[set] then AR.RowsChanged(true) end
   AR.Inspect()
 end
 
@@ -4578,7 +4581,7 @@ local function Radio(insp, i)
   local T = Th()
   local row = CreateFrame("Button", nil, insp)
   row:SetSize(INSP.INNER, INSP.RADIO_H)
-  row.hover, row.live, row.chosen = false, false, false
+  row.hover, row.live, row.chosen, row.set = false, false, false, false
   row.Hover = row:CreateTexture(nil, "BACKGROUND")
   row.Hover:SetTexture(WHITE)
   row.Hover:SetVertexColor(1, 1, 1, 0.06)
@@ -4992,7 +4995,7 @@ function AR.BuildInspector()
   insp:EnableMouse(true)
   insp:SetWidth(P.W)
   insp.Radios, insp.Chips, insp.BlockRows, insp.Kickers, insp.Layouts = {}, {}, {}, {}, {}
-  insp.Segs = {}
+  insp.Segs, insp.Toggles = {}, {}
   -- The font FitWidth last measured the foot in.
   insp._fit = {}
 
@@ -5475,7 +5478,7 @@ end
 local function PutRadio(i, choice, chosen, live, y)
   local insp = AR._insp
   local row = insp.Radios[i] or Radio(insp, i)
-  row.choiceId, row.chosen, row.live = choice.id, chosen, live
+  row.choiceId, row.chosen, row.live, row.set = choice.id, chosen, live, insp.set
   row.hover = row.hover and row:IsMouseOver() or false
   Th().FitText(row.Text, INSP.INNER - INSP.RADIO_TEXT, choice.name, row)
   At(row, INSP.PAD, y)
@@ -5670,6 +5673,9 @@ function AR.ShowList(id)
   if host and host.ShowHistory then host.ShowHistory(id == "history") end
 end
 
+-- The setters an answer (RadioClick) leaves to place the rows themselves.
+AR.SELF_PLACED = { [AR.ShowList] = true }
+
 local function PutLists(host, y)
   local insp = AR._insp
   if not (host.CanSwitch and host.CanSwitch() and host.ShowHistory) then return y end
@@ -5697,6 +5703,7 @@ local function FillOverview(host, y)
   local insp, P = AR._insp, INSP
   y = PutText(insp.Lead, L()["ARRANGE_OVERVIEW"], y)
   y = PutLists(host, y)
+  y = AR.PutRows(y, 3)
   y = PutLayout(y)
   y = PutPreview(host, y)
   -- What is hidden: the columns, then the host's own -- counted first, so
@@ -5747,7 +5754,257 @@ function AR.AttachHover()
     }
     AR._hover = list
   end
-  return list, ui.GetAttachHover(), ui.SetAttachHover
+  return list, AR.AttachHoverNow(), AR.SetAttachHover
+end
+
+-------------------------------------------------------------
+-- 8c. The list-wide settings the cards carry
+--
+-- Options holds what is the same in every list; a list-wide setting whose
+-- effect shows while arranging is also on the card where it shows, the
+-- same value in the same words: the item icon's quality badge and stack
+-- count on the Icon card, with what resting on it shows; the quality mark
+-- by the name on the Subject card; and in the overview, over the Mail
+-- tab's own rows, their size -- one line or Larger mail rows -- which
+-- switches the list under the mode as List does. A change on either side
+-- is shown on the other: from here the options panel reads its controls
+-- again where it is open, and from there the card is filled again
+-- (Arrange.ListWideChanged).
+-------------------------------------------------------------
+do
+  -- The Mail tab's own mail rows are what the mode is over: not History,
+  -- not another character's box, not Mail Memory (the host's AttachHover).
+  function AR.OwnRows()
+    local host = AR.host
+    return host ~= nil and host.AttachHover ~= nil and host.AttachHover() == true
+  end
+
+  local function PanelFollows()
+    local panel = ns.OptionsPanel
+    if panel and type(panel.RefreshControls) == "function" then panel.RefreshControls() end
+  end
+
+  -- Every list drawn again for a setting of the rows' looks, as the options
+  -- panel draws them (its QualityChanged), and the panel's own controls.
+  local function Redrawn()
+    local ui, memory = UI(), ns.MailMemory
+    if ui and ui.RefreshCollectRowLayout then ui.RefreshCollectRowLayout() end
+    if memory and memory.Refresh then memory.Refresh() end
+    PanelFollows()
+  end
+
+  function AR.AttachHoverNow()
+    local ui = UI()
+    return ui and ui.GetAttachHover and ui.GetAttachHover() or "tooltip"
+  end
+
+  -- Read on hover, so nothing is redrawn.
+  function AR.SetAttachHover(id)
+    local ui = UI()
+    if not (ui and ui.SetAttachHover) then return end
+    ui.SetAttachHover(id)
+    PanelFollows()
+  end
+
+  function AR.SetQualityName(id)
+    local ui = UI()
+    if not (ui and ui.SetQualityName) then return end
+    ui.SetQualityName(id)
+    Redrawn()
+  end
+
+  -- The rows' size, from the overview: the option itself (compactRows, read
+  -- inverted as the options panel's switch reads it), the Mail tab's rows
+  -- laid out again, and the mode following the list (AR.SyncList), as it
+  -- does when the switch is flipped in the options.
+  function AR.SetRowSize(id)
+    local ui = UI()
+    if not (AR.host and ui and ui.GetOption and ui.SetOption) then return end
+    local compact = id ~= "larger"
+    if (ui.GetOption("compactRows") and true or false) == compact then return end
+    ui.SetOption("compactRows", compact)
+    if ui.RefreshCollectRowLayout then ui.RefreshCollectRowLayout() end
+    PanelFollows()
+  end
+
+  AR.SELF_PLACED[AR.SetAttachHover] = true
+  AR.SELF_PLACED[AR.SetQualityName] = true
+  AR.SELF_PLACED[AR.SetRowSize] = true
+
+  -- The options panel changed one of these (or Larger mail rows): the card
+  -- or the overview shows it at once.
+  function AR.ListWideChanged()
+    if AR.host then AR.Inspect() end
+  end
+
+  local LISTS = {}
+
+  -- The answers, made once each.
+  local function List(key)
+    local list = LISTS[key]
+    if list then return list end
+    if key == "rows" then
+      list = {
+        { id = "one",    name = L()["ARRANGE_ROW_SIZE_LINE"] },
+        { id = "larger", name = L()["ARRANGE_ROW_SIZE_LARGER"] },
+      }
+    else
+      list = {
+        { id = "before", name = L()["OPT_QUALITY_NAME_BEFORE"] },
+        { id = "after",  name = L()["OPT_QUALITY_NAME_AFTER"] },
+        { id = "off",    name = L()["OPT_QUALITY_OFF"] },
+      }
+    end
+    LISTS[key] = list
+    return list
+  end
+
+  -- Rows, in the overview over the Mail tab's own rows: One line or Larger,
+  -- as the list's choice is shown. Its answers follow List's (`first`).
+  -- Answers the y under them.
+  function AR.PutRows(y, first)
+    if not AR.OwnRows() then return y end
+    local insp = AR._insp
+    local list = List("rows")
+    local current = AR.EditsLarge() and "larger" or "one"
+    y = PutKicker(L()["ARRANGE_ROW_SIZE"], y)
+    insp.set = AR.SetRowSize
+    for i = 1, #list do
+      y = PutRadio(first + i - 1, list[i], list[i].id == current, true, y)
+    end
+    return y
+  end
+
+  -- Quality by the name, on the Subject card: the options' three answers.
+  function AR.PutQualityName(y)
+    local ui = UI()
+    if not (ui and ui.GetQualityName and ui.SetQualityName) then return y end
+    local insp = AR._insp
+    local list = List("quality")
+    local current = ui.GetQualityName() or "off"
+    y = PutKicker(L()["OPT_QUALITY_NAME_TITLE"], y)
+    insp.set = AR.SetQualityName
+    for i = 1, #list do
+      y = PutRadio(i, list[i], list[i].id == current, true, y)
+    end
+    return y
+  end
+
+  -- A list-wide switch on a card, named as the options name it: a plate
+  -- with the eye open while it is on and crossed while it is off, and its
+  -- name, lit as the column's own switch is when pointed at; greyed, and
+  -- taking no click, while the icon it draws on is hidden. Its tooltip is
+  -- the options' description. `get` and `set` are the option's own.
+  local TOGGLES = {
+    { title = "OPT_QUALITY_ICON_TITLE", desc = "OPT_QUALITY_ICON_DESC",
+      get = function()
+        local ui = UI()
+        return not (ui and ui.GetQualityIcon) or ui.GetQualityIcon() and true or false
+      end,
+      set = function(on)
+        local ui = UI()
+        if ui and ui.SetQualityIcon then ui.SetQualityIcon(on) end
+      end },
+    { title = "OPT_ICON_COUNTS_TITLE", desc = "OPT_ICON_COUNTS_DESC",
+      get = function()
+        local ui = UI()
+        return ui and ui.GetOption and ui.GetOption("iconCounts") and true or false
+      end,
+      set = function(on)
+        local ui = UI()
+        if ui and ui.SetOption then ui.SetOption("iconCounts", on) end
+      end },
+  }
+  AR.TOGGLES = TOGGLES
+
+  local function PaintToggle(t)
+    if t.live then
+      PaintSwitch(t)
+      return
+    end
+    TintPlate(t, PLATE.switch.fill, PLATE.nudge.off)
+    if t.Eye then
+      t.Eye:SetShown(t.on and true or false)
+      Grey(t.Eye, 0.4)
+    end
+    if t.EyeOff then
+      t.EyeOff:SetShown(not t.on)
+      Grey(t.EyeOff, 0.4)
+    end
+    Grey(t.Label, 0.44)
+  end
+
+  local function ToggleEnter(self)
+    self.hover = true
+    PaintToggle(self)
+    local spec = TOGGLES[self.index]
+    if spec then
+      AR.InspTip(self)
+      GameTooltip:SetText(L()[spec.title])
+      GameTooltip:AddLine(L()[spec.desc], 1, 1, 1, true)
+      GameTooltip:Show()
+    end
+  end
+
+  local function ToggleLeave(self)
+    self.hover = false
+    PaintToggle(self)
+    GameTooltip:Hide()
+  end
+
+  local function ToggleClick(self)
+    local spec = TOGGLES[self.index]
+    if not (self.live and spec and AR.host) then return end
+    local on = not spec.get()
+    spec.set(on)
+    PlayToggle(on)
+    Redrawn()
+    AR.Inspect()
+    if self:IsMouseOver() then ToggleEnter(self) end
+  end
+
+  local function Toggle(insp, i)
+    local T, P = Th(), INSP
+    local t = InspPlate(insp, "Button", true)
+    t:SetHeight(P.SWITCH_H)
+    t.hover, t.on, t.live, t.index = false, false, false, i
+    t.Eye = T.Glyph and T.Glyph(t, "eye", 8, "ARTWORK") or nil
+    t.EyeOff = T.Glyph and T.Glyph(t, "eye-off", 8, "ARTWORK") or nil
+    if t.Eye then t.Eye:SetPoint("CENTER", t, "LEFT", 12, 0) end
+    if t.EyeOff then t.EyeOff:SetPoint("CENTER", t, "LEFT", 12, 0) end
+    t.Label = Text(t, "bodySmall", "control")
+    t.Label:SetPoint("LEFT", t, "LEFT", P.SWITCH_LEAD, 0)
+    t.Label:SetJustifyH("LEFT")
+    t.Label:SetWordWrap(false)
+    t:SetScript("OnEnter", ToggleEnter)
+    t:SetScript("OnLeave", ToggleLeave)
+    t:SetScript("OnClick", ToggleClick)
+    t:Hide()
+    insp.Toggles[i] = t
+    return t
+  end
+
+  -- The Icon card's switches, one to a line under its Move row, `live`
+  -- while the icon shows. Answers the y under them.
+  function AR.PutToggles(y, live)
+    local insp, P = AR._insp, INSP
+    for i = 1, #TOGGLES do
+      local spec = TOGGLES[i]
+      local t = insp.Toggles[i] or Toggle(insp, i)
+      local text = L()[spec.title]
+      local w = math.min(P.SWITCH_LEAD + Measured(insp.Measure.control, text, false) + P.SWITCH_TAIL, P.INNER)
+      t.on, t.live = spec.get() and true or false, live and true or false
+      t.hover = t.hover and t:IsMouseOver() or false
+      t:SetWidth(w)
+      Th().FitText(t.Label, w - P.SWITCH_LEAD - P.SWITCH_TAIL + 1, text, t)
+      y = y - P.ROW_WRAP
+      At(t, P.PAD, y)
+      PaintToggle(t)
+      t:Show()
+      y = y - P.SWITCH_H
+    end
+    return y
+  end
 end
 
 -- A column's card. Over two-line rows Move steps it as a drag on the
@@ -5786,9 +6043,13 @@ local function FillColumn(id, y)
     end
   end
 
-  -- The icon's hover, in the manner of a column's own choices: grey while
-  -- the icon is hidden, since there is then nothing to rest on.
+  -- The subject's list-wide choice: the quality mark by the name.
+  if spec.fixed then y = AR.PutQualityName(y) end
+  -- The icon's list-wide switches, its badge and its count, and its hover
+  -- in the manner of a column's own choices: grey while the icon is
+  -- hidden, since there is then nothing to draw on or to rest on.
   if id == "icon" then
+    y = AR.PutToggles(y, shown)
     local hover, now, setHover = AR.AttachHover()
     if hover then
       insp.set = setHover
@@ -5903,6 +6164,7 @@ local function HideParts(insp)
   for i = 1, #insp.Segs do insp.Segs[i]:Hide() end
   for i = 1, #insp.Chips do insp.Chips[i]:Hide() end
   for i = 1, #insp.BlockRows do insp.BlockRows[i]:Hide() end
+  for i = 1, #insp.Toggles do insp.Toggles[i]:Hide() end
 end
 
 -- The inspector filled again for what is selected now, if it is up. Called
