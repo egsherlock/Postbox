@@ -5844,7 +5844,9 @@ end
 -- (the header in the top row's place, from the rows' left edge to their
 -- right edge while nothing scrolls),
 -- OnEnter(strip) (the top row steps aside), OnLeave() (and comes back as it
--- was), toggle = the key that opened it }. Opening the mode moves nothing
+-- was), toggle = the key that opened it }, and may answer Prepare() (its
+-- list readied before the mode reads it: the Mail tab and Mail Memory
+-- clear their search, the Mail tab lets a selection go). Opening the mode moves nothing
 -- the host already shows: its cards appear over its blocks where they stand,
 -- with no settling in. For the header and the rows it
 -- answers, for the list on screen: Spec() (its placement table, whose lanes
@@ -5879,6 +5881,9 @@ end
 function AR.Enter(host)
   if not host or AR.host == host then return end
   if AR.host then AR.Leave() end
+  -- The host readies its list first (its search cleared, a selection let
+  -- go), so the list the mode reads below is the one it arranges.
+  if host.Prepare then host.Prepare() end
   local strip = host.strip or AR.BuildStrip(host)
   local cover = host.cover or AR.BuildCover(host)
   AR.host = host

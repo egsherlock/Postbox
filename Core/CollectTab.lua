@@ -8952,6 +8952,20 @@ function CT.ArrangeHost(panel)
     strip:SetPoint("TOPLEFT", panel.ViewToggle, "TOPLEFT", M.tightGap, 0)
     strip:SetPoint("RIGHT", panel.MailListArea, "RIGHT", -M.tightGap, 0)
   end
+  -- Before the mode takes the list: the search is cleared, as its clear
+  -- button clears it, so the rows the header arranges are the whole list
+  -- (and a search of every box ends with its query); and the selection is
+  -- let go, since a click on a row now takes a column, not a mail, and a
+  -- collect button under the mode is a card. Neither comes back when the
+  -- mode ends.
+  function host.Prepare()
+    ClearSelection(panel)
+    local box = panel.SearchBox
+    if box then
+      if box:GetText() ~= "" then box:SetText("") end
+      if box.ClearFocus then box:ClearFocus() end
+    end
+  end
   function host.OnEnter()
     -- The reading view is over the list the header describes.
     HideDetail(panel)

@@ -2497,6 +2497,16 @@ function MM.ArrangeHost(frame)
     strip:SetPoint("TOPLEFT", frame, "TOPLEFT", 11, HEADER_Y)
     strip:SetPoint("RIGHT", frame.Card, "RIGHT", -1, 0)
   end
+  -- Before the mode takes the list: the search is cleared, as its clear
+  -- button clears it, so the rows the header arranges are the whole box.
+  -- It does not come back when the mode ends.
+  function host.Prepare()
+    local box = frame.SearchBox
+    if box then
+      if box:GetText() ~= "" then box:SetText("") end
+      if box.ClearFocus then box:ClearFocus() end
+    end
+  end
   function host.OnEnter()
     MM.ClosePicker()
     MM.HideTopRow(frame)
