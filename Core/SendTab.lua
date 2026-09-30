@@ -1818,12 +1818,19 @@ local PopulateContactPicker
 -- Row scripts are installed ONCE, at creation, and read the row's identity from
 -- a field re-bound on each acquire. Installing them per populate is a closure
 -- per row per refresh, and WoW cannot free either.
+-- The house tooltip (Theme's Tooltips): the whole address in its class's
+-- colour as the title, then the gestures under a blank line. The type-ahead's
+-- rows say the same.
+function ST.RecipientTip(owner, address)
+  Theme.TipBegin(owner)
+  Theme.TipTitle(Contacts().GetClassColoredName(address or ""))
+  Theme.TipHint(RowHintText())
+  GameTooltip:Show()
+end
+
 local function RowEnter(self)
   Theme.StyleMailRow(self, self._position or 0, true)
-  GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-  GameTooltip:SetText(self.address or "", 1, 1, 1)
-  GameTooltip:AddLine(RowHintText(), 0.7, 0.7, 0.7, true)
-  GameTooltip:Show()
+  ST.RecipientTip(self, self.address)
 end
 
 local function RowLeave(self)
@@ -2941,10 +2948,7 @@ end
 -- instead.
 local function SuggestionEnter(self)
   if not self.value then return end
-  GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-  GameTooltip:SetText(self.value, 1, 1, 1)
-  GameTooltip:AddLine(RowHintText(), 0.7, 0.7, 0.7, true)
-  GameTooltip:Show()
+  ST.RecipientTip(self, self.value)
 end
 
 local function SuggestionLeave()
