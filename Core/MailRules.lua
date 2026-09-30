@@ -68,6 +68,16 @@ local MR = ns.MailRules
 --     Blizzard's own send frame refuses anything above it.
 --  6. A character cannot mail itself (ERR_MAIL_TO_SELF).
 --
+-- And one fact that is not a rule of the game but of the player's own lists:
+--
+--  7. A first mail to a name. When the recipient is in none of the lists the
+--     player keeps -- Recent, Alts, Friends, Guild, and anything kept in
+--     Manage Recipients (ContactService.IsKnownContact) -- the line says so,
+--     as a fact: a mistyped name is the common way a mail goes to a stranger,
+--     and it reads exactly like this. Never while the lists have not all
+--     answered (a cold guild roster), never for the player's own characters,
+--     and never above a rule the mail will actually meet.
+--
 -- DELIBERATELY NOT ENCODED, because the research behind this module could not
 -- establish them and a wrong warning costs more than a missing one:
 --
@@ -129,6 +139,9 @@ local DEFAULT_COD_LIMIT_GOLD = 10000
 --                     false, the amount demanded when it is true
 --   cod               the C.O.D. box is ticked
 --   codLimitGold      MAX_COD_AMOUNT, in gold
+--   knownContact      the recipient is in one of the player's lists (rule 7):
+--                     true, false, or nil for "could not tell" -- only FALSE
+--                     says anything
 --
 -- Returns nil for an empty/unusable recipient, so the caller can simply hide the
 -- guidance line. Otherwise:
@@ -205,6 +218,11 @@ function MR.Assess(ctx)
       -- this still reads as true and harmless.
       out.guidance = { key = "SEND_RULE_XREALM_STRANGER", severity = MR.WARN }
     end
+  elseif ctx.knownContact == false and not out.knownOwnCharacter then
+    -- Rule 7. Above the delivery estimate: which person the mail goes to
+    -- matters more than when it gets there, and once it has gone the name
+    -- is in Recent and the estimate is back.
+    out.guidance = { key = "SEND_RULE_FIRST_MAIL", severity = MR.INFO, value = ctx.name }
   elseif out.delivery == MR.DELIVERY_INSTANT then
     out.guidance = { key = "SEND_RULE_DELIVERY_OWN", severity = MR.INFO }
   elseif out.delivery == MR.DELIVERY_DELAYED then
@@ -414,6 +432,15 @@ function MR.Context(recipient, send)
 
   local own = KnownOwnCharacters()
   ctx.knownOwnCharacter = (own ~= nil and own[key] == true)
+
+  -- Rule 7's question, only where its answer could be said: the player's own
+  -- characters and the player are never a first mail.
+  if not ctx.knownOwnCharacter and not ctx.isSelf then
+    local CS = ns.ContactService
+    if type(CS) == "table" and type(CS.IsKnownContact) == "function" then
+      ctx.knownContact = CS.IsKnownContact(key)
+    end
+  end
 
   return ctx
 end

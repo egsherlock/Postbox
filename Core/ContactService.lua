@@ -915,6 +915,28 @@ local function FriendsReady()
   return true
 end
 
+-- key -> true when the player has met this recipient before: mailed them
+-- (Recent), plays them (Alts), has them as a friend or a guildmate, or has
+-- kept anything about them in Manage Recipients (a favorite, a name added by
+-- hand, a note, a hide). false when none of those knows them, and nil while the
+-- guild roster or the friends list has not answered yet -- "not in my guild"
+-- cannot be said before the roster is in. People grouped with recently do
+-- not count: a name met once in a dungeon is not one the player has written
+-- to. Asked on every To: box keystroke (MailRules, the first-mail line), so
+-- it is lookups only: the sources' own key sets and one stored-row read.
+local KNOWN_SOURCES = { "recent", "alts", "friends", "guild" }
+function CS.IsKnownContact(key)
+  if type(key) ~= "string" or key == "" then return nil end
+  EnsureSources()
+  for i = 1, #KNOWN_SOURCES do
+    if sources[KNOWN_SOURCES[i]].seen[key] then return true end
+  end
+  local R = ns.Recipients
+  if type(R) == "table" and type(R.Get) == "function" and R.Get(key) ~= nil then return true end
+  if not (GuildReady() and FriendsReady()) then return nil end
+  return false
+end
+
 function CS.SourcesReady(id)
   EnsureSources()
 
