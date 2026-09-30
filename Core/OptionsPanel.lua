@@ -3160,24 +3160,15 @@ function Pages.send(col)
   })
 end
 
--- The Window tab: where the window opens, then how it is painted. Under the
--- Postbox style the rows stand in the style's groups (Window, Colors, Edges
--- and rows, Text: .dev/design/postbox-style, spec section 3.1); under a host
--- or the Blizzard look they are the one list they always were, the window
--- scale joining it.
+-- The Window tab: the style first, since every row under it is that style's,
+-- then the window's scale and where it opens -- under no heading, in every
+-- style: the tab's name says what they are about. Then the style's own rows:
+-- under the Postbox style in its groups (Colors, Edges and rows, Text:
+-- .dev/design/postbox-style, spec section 3.1), under a creative style in
+-- its two, under a host the opacity and the border.
 function Pages.window(col)
   local Skin = GetSkin()
   local own = Skin and Skin.IsPostboxStyle and true or false
-  if own then Rows.Group(col, L["OPT_WINDOW_HEADING"]) end
-  Rows.Check(col, {
-    title = L["GRID_TOGGLE_TITLE"], text = L["GRID_TOGGLE_DESC"],
-    get = function() return ns.MailboxUI.GetOption("gridDock") end,
-    set = function(on)
-      ns.MailboxUI.SetOption("gridDock", on)
-      if on and ns.MailboxUI._state then ns.MailboxUI._state.freeMoved = false end
-      if ns.MailboxUI.ApplyWindowLayout then ns.MailboxUI.ApplyWindowLayout() end
-    end,
-  })
 
   -- The style choice. A host UI is offered first and is the default
   -- wherever one is installed, so the familiar answer is the one already
@@ -3228,6 +3219,16 @@ function Pages.window(col)
     end,
   })
 
+  Rows.Check(col, {
+    title = L["GRID_TOGGLE_TITLE"], text = L["GRID_TOGGLE_DESC"],
+    get = function() return ns.MailboxUI.GetOption("gridDock") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("gridDock", on)
+      if on and ns.MailboxUI._state then ns.MailboxUI._state.freeMoved = false end
+      if ns.MailboxUI.ApplyWindowLayout then ns.MailboxUI.ApplyWindowLayout() end
+    end,
+  })
+
   -- The chosen style's own controls. Whichever skin claimed the window
   -- answers these; the panel does not know or care which one it is
   -- talking to. A style that publishes no such controls (Blizzard) simply
@@ -3245,6 +3246,25 @@ function Pages.window(col)
   -- host it means match that UI, and under Postbox's own it means the
   -- value the skin was authored with.
   local autoName = HostSkinName() and L("OPT_APPEARANCE_MATCH", HostSkinName()) or L["OPT_APPEARANCE_DEFAULT"]
+  -- The opacity, the border, and the border's size last: the one row that
+  -- stands aside (State.BorderSize) moves nothing when it does.
+  local opacityItems = { { id = "auto", name = autoName } }
+  for _, pct in ipairs({ 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 25, 0 }) do
+    opacityItems[#opacityItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
+  end
+  Rows.Dropdown(col, {
+    title = L["OPT_BG_OPACITY_TITLE"], text = L["OPT_BG_OPACITY_DESC"], items = opacityItems,
+    get = function()
+      if Skin.IsBgOpacityDefault and Skin.IsBgOpacityDefault() then return "auto" end
+      return math.floor(Skin.GetBgOpacity() * 100 + 0.5)
+    end,
+    set = function(id)
+      if id == "auto" then Skin.ResetBgOpacity()
+      else Skin.SetBgOpacity((tonumber(id) or 100) / 100) end
+      Ctx.Repaint()
+    end,
+  })
+
   -- The border row offers that entry where the skin has an edge to match:
   -- under EllesmereUI, "Match EllesmereUI", the edge the windows beside
   -- Postbox have (Core/Skin_EllesmereUI.lua), and an unset border is it. The
@@ -3277,47 +3297,29 @@ function Pages.window(col)
     end,
   })
 
-  -- Border size stands aside while the border has no size (None, Match): the
-  -- row hides and the one under it moves up into its place (State.BorderSize).
+  -- Border size stands aside while the border has no size (None, Match).
   local sizeItems = {}
   for step = 1, 4 do
     sizeItems[#sizeItems + 1] = { id = step, name = string.format(L["OPT_BORDER_SIZE_STEP"], step) }
   end
-  local sizeY = col.y
-  local sizeRow = Rows.Dropdown(col, {
-    title = L["OPT_BORDER_SIZE_TITLE"], text = L["OPT_BORDER_SIZE_DESC"], items = sizeItems,
-    get = function() return Skin.GetBorderSize() end,
-    set = function(id)
-      Skin.SetBorderSize(id)
-      Ctx.Repaint()
-    end,
-  })
-
-  local opacityItems = { { id = "auto", name = autoName } }
-  for _, pct in ipairs({ 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 25, 0 }) do
-    opacityItems[#opacityItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
-  end
-  S.borderSize = { row = sizeRow, y = sizeY, parent = col.frame }
+  S.borderSize = {
+    row = Rows.Dropdown(col, {
+      title = L["OPT_BORDER_SIZE_TITLE"], text = L["OPT_BORDER_SIZE_DESC"], items = sizeItems,
+      get = function() return Skin.GetBorderSize() end,
+      set = function(id)
+        Skin.SetBorderSize(id)
+        Ctx.Repaint()
+      end,
+    }),
+  }
   S.refresh[#S.refresh + 1] = State.BorderSize
-  S.borderSize.after = Rows.Dropdown(col, {
-    title = L["OPT_BG_OPACITY_TITLE"], text = L["OPT_BG_OPACITY_DESC"], items = opacityItems,
-    get = function()
-      if Skin.IsBgOpacityDefault and Skin.IsBgOpacityDefault() then return "auto" end
-      return math.floor(Skin.GetBgOpacity() * 100 + 0.5)
-    end,
-    set = function(id)
-      if id == "auto" then Skin.ResetBgOpacity()
-      else Skin.SetBgOpacity((tonumber(id) or 100) / 100) end
-      Ctx.Repaint()
-    end,
-  })
 end
 
 -- Border size shown only while the chosen border has a size (the skin's
--- BorderHasSize; a skin without that answer keeps the row). Hidden, the row
--- under it moves up into its place, so no gap is left; the page keeps its
--- height, as every page does, the tallest page setting the list's. Run on
--- every open and after a border pick, so it is live.
+-- BorderHasSize; a skin without that answer keeps the row). It is the page's
+-- last row, so hiding it moves nothing; the page keeps its height, as every
+-- page does, the tallest page setting the list's. Run on every open and
+-- after a border pick, so it is live.
 function State.BorderSize()
   local b = S.borderSize
   if not b then return end
@@ -3329,11 +3331,6 @@ function State.BorderSize()
   if b.shown == sized then return end
   b.shown = sized
   b.row:SetShown(sized)
-  local y = sized and (b.y - ROW_H) or b.y
-  local after = b.after
-  after:ClearAllPoints()
-  after:SetPoint("TOPLEFT", b.parent, "TOPLEFT", 0, y)
-  after:SetPoint("TOPRIGHT", b.parent, "TOPRIGHT", 0, y)
 end
 
 -- The Postbox style's own rows, in its groups (spec section 3.1): Colors
@@ -3522,8 +3519,9 @@ end
 
 -- A creative window style's rows (Core/Skin_Creative.lua): its colour choice
 -- where it has one (the post box's paint), the opacity of the inside (its
--- frame stays solid), and the font and text size, which it shares with the
--- Postbox style. No border rows: the style's rim is the window's edge.
+-- frame stays solid) and the row stripes, then the font, text size and
+-- outline, which it shares with the Postbox style. No border rows: the
+-- style's rim is the window's edge.
 function Pages.windowCreative(col, Skin)
   local CS = ns.CreativeStyles
   local def = CS and CS.Active and CS.Active()
@@ -3559,6 +3557,15 @@ function Pages.windowCreative(col, Skin)
       Ctx.Repaint()
     end,
   })
+  -- The row stripes apply here as under the Postbox style: its rows, a
+  -- shade apart, with the window's other colours.
+  if Skin.GetRowStripes then
+    Rows.Check(col, {
+      title = L["OPT_STRIPES_TITLE"], text = L["OPT_STRIPES_DESC"],
+      get = function() return Skin.GetRowStripes() end,
+      set = function(on) Skin.SetRowStripes(on) Ctx.Repaint() end,
+    })
+  end
 
   Rows.Group(col, L["OPT_GROUP_TEXT"])
   local fontItems = {}
@@ -3580,11 +3587,10 @@ function Pages.windowCreative(col, Skin)
     get = function() return math.floor(Skin.GetTextScale() * 100 + 0.5) end,
     set = function(id) Skin.SetTextScale((tonumber(id) or 100) / 100) end,
   })
-  -- The text outline and the row stripes apply here as under the Postbox
-  -- style: the text is its fonts', the rows its rows. The rest of its rows
-  -- (mode, accent, surface, tint, border colour, corners, sheen, button
-  -- text) are the Postbox style's own, and a creative style has its own
-  -- art, accent and captions in their place.
+  -- The text outline applies here as under the Postbox style: the text is
+  -- its fonts'. The rest of its rows (mode, accent, surface, tint, border
+  -- colour, corners, sheen, button text) are the Postbox style's own, and a
+  -- creative style has its own art, accent and captions in their place.
   if Skin.GetOutlineChoices then
     local outlineItems = {}
     for _, choice in ipairs(Skin.GetOutlineChoices()) do
@@ -3594,13 +3600,6 @@ function Pages.windowCreative(col, Skin)
       title = L["OPT_OUTLINE_TITLE"], text = L["OPT_OUTLINE_DESC"], items = outlineItems,
       get = function() return Skin.GetOutline() end,
       set = function(id) Skin.SetOutline(id) Ctx.Repaint() end,
-    })
-  end
-  if Skin.GetRowStripes then
-    Rows.Check(col, {
-      title = L["OPT_STRIPES_TITLE"], text = L["OPT_STRIPES_DESC"],
-      get = function() return Skin.GetRowStripes() end,
-      set = function(on) Skin.SetRowStripes(on) Ctx.Repaint() end,
     })
   end
 end
