@@ -670,6 +670,12 @@ local function Activate(def, skin)
     baseRefresh(frame)
     if frame and frame.__pbPopupAlways and not frame.__pbCreativeTrim then Report(pcall(CS.Trim, frame)) end
   end
+  -- A card handed over by its owner rather than refreshed itself: a
+  -- dropdown's list, which the owner refreshes from its container (the skin
+  -- walks a frame's children) and then passes here.
+  skin.DressPopup = function(card)
+    if card and card.__pbPopupAlways and not card.__pbCreativeTrim then Report(pcall(CS.Trim, card)) end
+  end
 
   skin.OnMailState = function(open)
     local art = CS.mainArt

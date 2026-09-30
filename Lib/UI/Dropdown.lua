@@ -474,6 +474,8 @@ function Dropdown.Create(parent, opts)
     -- skins walk a frame's CHILDREN, and the list is a child of the toggle.
     if built and ns.Skin and ns.Skin.Refresh then
       pcall(ns.Skin.Refresh, container)
+      -- And the list itself, to a style that dresses popups of its own.
+      if type(ns.Skin.DressPopup) == "function" then pcall(ns.Skin.DressPopup, list) end
     end
 
     local owner = container:GetParent()
