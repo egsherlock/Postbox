@@ -5016,15 +5016,12 @@ local function UpdateHint(panel, numItems, totalItems)
   if StuckOnly(panel) then
     hint:SetText(Th().Colorize("warning", L()["HINT_STUCK_ONLY"]))
   elseif truncated then
-    local template = RawKey("MSG_INBOX_TRUNCATED")
-    -- Until the locale pass adds the key, a bare ratio: no language at all, so
-    -- it cannot read wrongly in any of the five.
-    local text = template and format(template, numItems, totalItems)
-      or format("%d / %d", numItems, totalItems)
-    hint:SetText(text)
+    -- The top row has room for the numbers alone ("50 of 72 shown"); the
+    -- chat says why, once.
+    hint:SetText(L()("HINT_INBOX_TRUNCATED", numItems, totalItems))
     if not panel._truncationTold then
       panel._truncationTold = true
-      ns.Print(text)
+      ns.Print(L()("MSG_INBOX_TRUNCATED", numItems, totalItems))
     end
   else
     -- Nothing to say. This line used to carry "C.O.D. mail is never taken
