@@ -1309,6 +1309,65 @@ function RV.Layout()
   return RV.DEFAULT_LAYOUT
 end
 
+-- The Mail tab's two-line rows keep an arrangement of their own
+-- (MailboxUI.GetLargeLayout): the one-line rows' until it is first stored.
+function RV.LargeLayout()
+  local UI = ns.MailboxUI
+  if UI and type(UI.GetLargeLayout) == "function" then return UI.GetLargeLayout() end
+  return RV.Layout()
+end
+
+-- Where a two-line row draws the sender in `layout`: on its second line,
+-- among the figures and in their order (2), where a figure stands between
+-- the sender and the subject in the arrangement; on the first line
+-- otherwise (1), before the subject or at the line's end, by its side.
+-- Hidden figures count, so hiding one never moves the sender. Answered
+-- once per arrangement: the tables are shared and kept until they change.
+function RV.SenderLine(layout)
+  if RV._senderFor == layout then return RV._senderLine end
+  local s, d = 0, 0
+  for i = 1, #layout do
+    local id = layout[i].id
+    if id == "subject" then s = i elseif id == "sender" then d = i end
+  end
+  local line = 1
+  if s > 0 and d > 0 then
+    for i = min(s, d) + 1, max(s, d) - 1 do
+      if RV.FIGURE[layout[i].id] then
+        line = 2
+        break
+      end
+    end
+  end
+  RV._senderFor, RV._senderLine = layout, line
+  return line
+end
+
+-- The sender written into a two-line row's second line: in its class's
+-- colour where Postbox knows it (RV.PaintSender), else in the name's own
+-- role colour, the live accent where that is the accent. An auction
+-- outcome carries its own colour and is passed as it is. The string is the
+-- same each time for the same name and colour, so a bind makes nothing new.
+function RV.InlineSender(sender, text)
+  local T = Th()
+  local CS = ns.ContactService
+  local token = (sender and CS and CS.ClassOf) and CS.ClassOf(sender) or nil
+  local r, g, b
+  if token and CS.ClassColour then r, g, b = CS.ClassColour(token) end
+  if not r then
+    local role = T.TextRoles and T.TextRoles.label
+    local color = role and role.color or "accent"
+    if color == "accent" then
+      r, g, b = T.GetAccent()
+    else
+      local c = T.Colors and T.Colors[color]
+      if not c then return text end
+      r, g, b = c[1], c[2], c[3]
+    end
+  end
+  return format("|cff%02x%02x%02x%s|r", floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5), text or "")
+end
+
 -- The figures: columns with a list-wide width of their own -- the mail
 -- rows' time left, money and slots, and History's age.
 RV.FIGURE = { time = true, money = true, slots = true, age = true }
@@ -1611,8 +1670,8 @@ function RV.Anchor(row, region, point, x, y)
   region:SetPoint(name, row, name, x, y)
 end
 
--- The arrange mode's pointer on a row with no lanes to mark (Larger mail
--- rows, or a figure standing in the subject's room): a soft accent wash
+-- The arrange mode's pointer on a row with no lanes to mark (the other
+-- window's rows, or a figure standing in the subject's room): a soft accent wash
 -- around what the row draws of the column being moved or chosen, so the
 -- column its heading stands for is found in the list at a glance. On a
 -- texture of the row's own, made on first use; nil takes it away, and with
@@ -1812,10 +1871,15 @@ end
 -- The figures together may claim at most `share` of the text area: the
 -- sender and the subject are what a mailbox is scanned by.
 --
--- The two-line row keeps the arrangement's order on each line: the icon and
--- the dot keep their side, the sender and the subject share the first line
--- in their order, and the figures are written out in theirs on the second.
--- It has no columns to line up, and is placed the same either way.
+-- The two-line row -- the Mail tab's Larger mail rows, which follow an
+-- arrangement of their own (RV.LargeLayout) -- keeps the arrangement's
+-- order on each line: the icon and the dot keep their side, the sender and
+-- the subject share the first line in their order, or the sender is written
+-- into the second line among the figures where a figure stands between the
+-- two (RV.SenderLine), and the figures are written out in theirs on the
+-- second. It has no columns to line up, and is placed the same either way.
+-- While the arrange mode is open over it, it records where each part
+-- stands (RV.RecordTwo) and keeps rooms for its header's pegs.
 --
 -- While a one-line row is lined up, each column's lane is published into
 -- the spec as it is placed, in units from the row's left edge: s.laneX[id],
@@ -1904,10 +1968,12 @@ function RV.Place(row, s)
   end
 
   -- While the arrange mode is open over the list this row stands in, the
-  -- rooms its header's pegs and narrow headings keep (above).
+  -- rooms its header's pegs and narrow headings keep (above). A two-line
+  -- row keeps rooms only for what its header stands over: a hidden graphic,
+  -- the whole row's height, and a hidden sender on its first line (below).
   local held
   local Arr = ns.Arrange
-  if not two and Arr and Arr.host and Arr.StandWidth and Arr.HEAD and s.held then
+  if Arr and Arr.host and Arr.StandWidth and Arr.HEAD and s.held then
     local list = Arr.host.List and Arr.host.List()
     if list and row:GetParent() == list then held = s.held end
   end
@@ -1922,7 +1988,7 @@ function RV.Place(row, s)
     end
     if held then
       local r = nil
-      if el[id] and not layout[i].shown and id ~= "subject" then
+      if el[id] and not layout[i].shown and id ~= "subject" and (not two or id == "read" or id == "icon") then
         r = RV.RoomWidth(s, layout, i, at, Arr.StandWidth(id, true), Arr.HEAD.GAP)
       end
       held[id] = r
@@ -1963,7 +2029,7 @@ function RV.Place(row, s)
         end
         w[id] = width
         if width > 0 then used = used + width + gap end
-        if held and layout[i].shown then
+        if held and not two and layout[i].shown then
           local home = width
           if not lanes then
             home = min(cols[id] or 0, room - homeUsed)
@@ -2170,6 +2236,7 @@ function RV.Place(row, s)
     if detail then detail:Hide() end
     -- The two-line row's figures live on its second line; this row's are
     -- columns, placed above.
+    if row.__pbTwo then row.__pbTwo.on = false end
   else
     -- The names share the first line in their order; the figures are the
     -- second line's, in theirs. A figure's column region stands down.
@@ -2177,11 +2244,25 @@ function RV.Place(row, s)
       if el[id] then el[id]:Hide() end
     end
     local top = s.top or 0
-    if senderShown then
-      if layout.shown.sender and RV.IndexOf(layout, "sender") < at then
+    -- The sender stands on the first line, before the subject or at its
+    -- end, or on the second line (RV.SenderLine), written into it among
+    -- the figures by the binder, the subject then having the first line
+    -- to itself. Hidden on the first line while the arrange mode is open
+    -- over the list, it keeps a room there for its peg (Core/Arrange.lua),
+    -- and the subject steps aside by just that room.
+    local second = el.sender ~= nil and RV.SenderLine(layout) == 2
+    local before = RV.IndexOf(layout, "sender") < at
+    local room = 0
+    if held and el.sender and not layout.shown.sender and not second then
+      room = max(Arr.StandWidth("sender", true) + Arr.HEAD.GAP - gap, 1)
+    end
+    local subX = x
+    if senderShown and not second then
+      if before then
         RV.Anchor(row, sender, 3, x, top)
         T.FitText(sender, senderW, text.sender, sender)
-        RV.Anchor(row, subject, 3, x + senderW + gap + mw, top)
+        subX = x + senderW + gap
+        RV.Anchor(row, subject, 3, subX + mw, top)
       else
         RV.Anchor(row, subject, 3, x + mw, top)
         RV.Anchor(row, sender, 4, -edge, top)
@@ -2190,7 +2271,12 @@ function RV.Place(row, s)
       sender:Show()
     else
       if sender then sender:Hide() end
-      RV.Anchor(row, subject, 3, x + mw, top)
+      -- Written into the second line, the name is that line's to cut: what
+      -- the first line cut of it last is not this row's any more.
+      if second and sender and senderShown then sender.__pbOverflowText = nil end
+      subjectW = max(lineWidth - ((room > 0) and (room + gap) or 0), 20)
+      if room > 0 and before then subX = x + room + gap end
+      RV.Anchor(row, subject, 3, subX + mw, top)
     end
     RV.FitSubject(row, subject, subjectW - mw, text.subject)
     subject:Show()
@@ -2199,8 +2285,15 @@ function RV.Place(row, s)
       T.FitText(detail, textWidth, s.detailText or "", detail)
       detail:Show()
     end
-    if focus == "sender" and senderShown then target = sender end
+    if focus == "sender" and senderShown then target = second and detail or sender end
     if RV.FIGURE[focus] and layout.shown[focus] then target = detail end
+    -- While the arrange mode is open over the list, where each part stands
+    -- on this row, for its header and its marks.
+    if held then
+      RV.RecordTwo(row, s, layout, x, edge, textWidth, subX, subjectW, second, before, room, senderW)
+    elseif row.__pbTwo then
+      row.__pbTwo.on = false
+    end
   end
   if focus == "subject" then target = subject end
   if not senderShown and sender then sender:Hide() end
@@ -2234,6 +2327,81 @@ function RV.Place(row, s)
   -- And the mark after a shortened name (RV.FitSubject) the same way.
   local tail = row.QualityTail
   if tail then tail:SetShown(tail.__pbOn == true and subject:IsShown()) end
+end
+
+-- Where each part of a two-line row stands, recorded by RV.Place while the
+-- arrange mode is open over the list (Core/Arrange.lua reads it for the
+-- two-line header, the row's marks and what a press on the row takes), in
+-- units from the row's left edge: rec.x[id], rec.w[id] for a graphic (its
+-- art, or the room it keeps hidden, rec.room[id]), the sender on the first
+-- line (its column, or its room) and the subject (its own room); rec.t0 and
+-- rec.t1, where the text between the graphics begins and ends; rec.sender,
+-- the line the sender stands on (0: the list has none); and the second
+-- line's segments, one per figure and the sender written into it, in the
+-- order they are written, each measured once per text (MeasureWith's memo
+-- for the pass) and cut where the line is cut. Made with the row the first
+-- time it is placed so and refilled in place; the first row placed in a
+-- pass publishes its record (s.twoRec), or the first without a delete mark
+-- after it, which moves what stands at the row's right end.
+function RV.RecordTwo(row, s, layout, x, edge, textWidth, subX, subW, second, before, room, senderW)
+  local rec = row.__pbTwo
+  if not rec then
+    rec = { on = false, x = {}, w = {}, room = {}, t0 = 0, t1 = 0, width = 0, sender = 0, marked = false,
+      segN = 0, segId = {}, segX = {}, segW = {} }
+    row.__pbTwo = rec
+  end
+  local el, held = s.el, s.held
+  local rx, rw, rroom = rec.x, rec.w, rec.room
+  rec.on, rec.width, rec.t0, rec.t1 = true, s.width, x, s.width - edge
+  rec.marked = (s.trail or 0) > (s.left or 0) + 0.5
+  for i = 1, #layout do
+    local id = layout[i].id
+    rx[id], rw[id], rroom[id] = nil, nil, nil
+    local region = el[id]
+    if region and (id == "read" or id == "icon") then
+      local r = held and held[id]
+      if r then
+        rx[id], rw[id], rroom[id] = s.roomX[id], r, true
+      elseif region:IsShown() then
+        local w = region:GetWidth() or 0
+        local left = region.__pbAtX or 0
+        if region.__pbAt == 2 then left = s.width + left - w end
+        rx[id], rw[id] = left, w
+      end
+    end
+  end
+  rec.sender = 0
+  if el.sender then
+    if second then
+      rec.sender = 2
+    elseif layout.shown.sender then
+      rec.sender = 1
+      rx.sender, rw.sender = before and x or (s.width - edge - senderW), senderW
+    elseif room > 0 then
+      rec.sender = 1
+      rx.sender, rw.sender, rroom.sender = before and x or (s.width - edge - room), room, true
+    end
+  end
+  rx.subject, rw.subject = subX, subW
+  local n = 0
+  local parts, ids, owner, detail = s.detailParts, s.detailIds, row.panel, el.detail
+  if parts and ids and owner and detail then
+    local join = MeasureWith(owner, detail, ROW_META_JOIN)
+    local cx, limit = x, x + textWidth
+    for k = 1, #parts do
+      local w = MeasureWith(owner, detail, parts[k])
+      local id = ids[k]
+      if id and cx < limit then
+        n = n + 1
+        rec.segId[n], rec.segX[n], rec.segW[n] = id, cx, min(w, limit - cx)
+      end
+      cx = cx + w + join
+    end
+  end
+  rec.segN = n
+  if s.publish ~= false or s.twoMarked then
+    s.twoRec, s.publish, s.twoMarked = rec, false, rec.marked
+  end
 end
 
 -- The room column layout[i] keeps in a row while the arrange mode is open
@@ -2414,6 +2582,8 @@ CT.RowRules = {
   Layout = RV.Layout,
   Focus = RV.Focus,
   IsFigure = function(id) return RV.FIGURE[id] == true end,
+  -- Where a two-line row draws the sender in an arrangement.
+  SenderLine = RV.SenderLine,
   FIGURE_MIN = RV.FIGURE_MIN,
   DOT = ROW_INDICATOR,
   RowOrder = RowOrder,
@@ -3885,6 +4055,9 @@ local function BindRow(panel, row, index, position, compact, done)
 
   row.mailIndex = index
   row.mailDone = showDelete
+  -- The arrangement this row follows: the one-line rows', or the two-line
+  -- rows' own (RV.LargeLayout).
+  local layout = compact and RV.Layout() or RV.LargeLayout()
   -- Written from the header just read, so identity costs no extra API call. Read
   -- back by LiveIndex before anything acts on -- or describes -- this row's
   -- index; see the comment there for the window it closes.
@@ -3900,7 +4073,7 @@ local function BindRow(panel, row, index, position, compact, done)
   -- (RV.PaintDot; RV.Place shows the triangle).
   RV.PaintDot(row.Indicator, wasRead, stuckReason ~= nil)
   -- The mark's column hidden: the tooltip says what it would have.
-  row.unreadTip = (not wasRead and not RowShows("read")) and L()["STATUS_UNREAD"] or nil
+  row.unreadTip = (not wasRead and not layout.shown.read) and L()["STATUS_UNREAD"] or nil
   row.Icon:SetTexture(Mail().GetMailIcon(index))
   row.Delete:SetShown(showDelete)
   -- Back to the idle tint, for the same reason StyleMailRow above re-asserts the
@@ -3956,7 +4129,7 @@ local function BindRow(panel, row, index, position, compact, done)
   -- icon's corner, before or after the name, or both.
   local mark = (iconSlot and RV.MarkAny()) and RV.QualityMark(index, iconSlot) or nil
   if mark and RV.MarkOnName() then displaySubject = RV.WithMark(displaySubject, mark) end
-  RV.PaintQuality(row, mark)
+  RV.PaintQuality(row, mark, layout)
   RV.PaintNameMark(row, mark)
 
   -- The meta line. `parts` is what the standard row draws under the name; the
@@ -3968,7 +4141,7 @@ local function BindRow(panel, row, index, position, compact, done)
   Clear(parts)
   Clear(facts)
 
-  local showSlots, showExpiry = RowShows("slots"), RowShows("time")
+  local showSlots, showExpiry = layout.shown.slots == true, layout.shown.time == true
   local money, moneyKind = RowMoneyText(index, hasCOD, moneyValue, codValue, compact)
   local purchaseShown = (moneyKind == "spent")
   -- In the quiet tone the time left wears: a count, not a warning. The
@@ -3984,7 +4157,7 @@ local function BindRow(panel, row, index, position, compact, done)
   local expiry = RowExpiryText(daysLeft, hasCOD)
 
   -- A figure switched off leaves the row and goes to its tooltip, in full.
-  if money and not MoneyShown(moneyKind) then
+  if money and not MoneyShown(moneyKind, layout) then
     facts[#facts + 1] = RowMoneyText(index, hasCOD, moneyValue, codValue, false)
     money = nil
   end
@@ -4006,21 +4179,6 @@ local function BindRow(panel, row, index, position, compact, done)
   else
     expiry = nil
   end
-  -- No category on the line: the sender column already says "AH Sold", and
-  -- "Other" says nothing at all. Only the two-line row draws this line, the
-  -- figures in the arrangement's order; the compact row gives each its own
-  -- column (RV.Place).
-  if not compact then
-    local texts = panel._rowTexts
-    texts.time, texts.money, texts.slots = timeText, money, slots
-    local layout = RV.Layout()
-    for i = 1, #layout do
-      local text = texts[layout[i].id]
-      if RV.FIGURE[layout[i].id] and text then parts[#parts + 1] = text end
-    end
-    if not purchaseShown then AppendInvoiceFigures(parts, index, false) end
-  end
-
   local senderText = DisplaySender(sender) or L()["SENDER_UNKNOWN"]
   -- The whole name, for the tooltip, when the row shows less of it.
   row.senderTip = (sender and senderText ~= sender) and sender or nil
@@ -4033,7 +4191,33 @@ local function BindRow(panel, row, index, position, compact, done)
   -- A player the address book knows the class of, in its colour.
   RV.PaintSender(row.Sender, not outcome and sender or nil)
   -- A hidden sender column is said by the tooltip instead.
-  if not RowShows("sender") then row.senderTip = senderText end
+  if not layout.shown.sender then row.senderTip = senderText end
+
+  -- No category on the line: the sender column already says "AH Sold", and
+  -- "Other" says nothing at all. Only the two-line row draws this line, the
+  -- figures in the arrangement's order, and the sender among them where
+  -- that arrangement puts it on this line (RV.SenderLine); the compact row
+  -- gives each figure its own column (RV.Place). Which part each piece is,
+  -- for the arrange mode's segments (RV.RecordTwo).
+  local ids = panel._rowPartIds
+  Clear(ids)
+  if not compact then
+    local texts = panel._rowTexts
+    texts.time, texts.money, texts.slots = timeText, money, slots
+    texts.sender = nil
+    if layout.shown.sender and RV.SenderLine(layout) == 2 then
+      texts.sender = outcome or RV.InlineSender(sender, senderText)
+    end
+    for i = 1, #layout do
+      local id = layout[i].id
+      local text = texts[id]
+      if text and (RV.FIGURE[id] or id == "sender") then
+        parts[#parts + 1] = text
+        ids[#parts] = id
+      end
+    end
+    if not purchaseShown then AppendInvoiceFigures(parts, index, false) end
+  end
 
   if compact then
     -- What the row does not draw goes to the tooltip, one fact per line: the
@@ -4074,6 +4258,9 @@ local function BindRow(panel, row, index, position, compact, done)
   local lines = ((row:GetHeight() or 0) - ROW_ICON) / 2 - 2
   spec.top, spec.bottom = -lines, lines
   spec.detailText = (not compact) and concat(parts, ROW_META_JOIN) or nil
+  spec.layout = (not compact) and layout or nil
+  spec.detailParts = (not compact) and parts or nil
+  spec.detailIds = (not compact) and ids or nil
   spec.focus = RV.Focus()
   RV.Place(row, spec)
   -- The icon's hover area goes with the icon.
@@ -4916,7 +5103,9 @@ function CT.RefreshMailList(panel)
   panel._measureWalk = panel._measurePass
   local compact = CompactRows()
   local sample = AcquireRow(panel, 1)
-  local senderCap = RowShows("sender") and SenderColumnWidth(panel, sample.Sender) or 0
+  -- The arrangement the inbox's rows follow at this size (BindRow).
+  local rowLayout = compact and RV.Layout() or RV.LargeLayout()
+  local senderCap = rowLayout.shown.sender and SenderColumnWidth(panel, sample.Sender) or 0
   cols.sender = 0
   cols.money, cols.slots, cols.time = 0, 0, 0
   -- The inbox's own columns are measured only while its rows are what is on
@@ -8873,6 +9062,8 @@ function CT.Build(parent)
   panel._rowFacts = {}
   -- The two-line row's figure texts, in the arrangement's order.
   panel._rowTexts = {}
+  -- Which part each piece of the two-line row's second line is.
+  panel._rowPartIds = {}
   -- What RV.Place is handed for each mail row, and for each History row.
   panel._rowSpec = RV.NewSpec()
   panel._histSpec = RV.NewSpec()

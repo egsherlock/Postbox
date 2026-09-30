@@ -206,7 +206,7 @@ local function ForgetSettings()
   memo.qIcon, memo.qName = nil, nil
   memo.gold, memo.expiry, memo.layout, memo.slots = nil, nil, nil, nil
   memo.packing = nil
-  memo.history, memo.age = nil, nil
+  memo.history, memo.age, memo.large = nil, nil, nil
   memo.grid, memo.gridText = nil, nil
 end
 
@@ -907,9 +907,10 @@ function UI.GetRowLayout()
 end
 
 -- layout: { {id=, shown=}, ... } in the new order, or nil for the default.
--- History's rows follow this arrangement until History has one stored
--- (UI.GetHistoryLayout): what they show is stored for them first, so
--- arranging the mail rows never moves History's.
+-- History's rows and Larger mail rows follow this arrangement until each
+-- has one stored (UI.GetHistoryLayout, UI.GetLargeLayout): what they show
+-- is stored for them first, so arranging the one-line rows never moves
+-- theirs.
 function UI.SetRowLayout(layout)
   local text = (layout == nil) and ROW_LAYOUT_DEFAULT or FormatRowLayout(layout)
   if not text then return false end
@@ -918,9 +919,95 @@ function UI.SetRowLayout(layout)
   if profile.historyLayout == nil then
     profile.historyLayout = FormatLayout(UI.GetHistoryLayout(), ParseHistoryLayout)
   end
+  if profile.largeLayout == nil then
+    profile.largeLayout = FormatRowLayout(UI.GetLargeLayout())
+  end
   profile.rowLayout = text
   ForgetSettings()
   return true
+end
+
+-- Larger mail rows' columns: an arrangement of their own, in the one-line
+-- rows' string ("read,icon,sender,subject,time,money,slots", a leading "-"
+-- on a hidden column), arranged when the arrange mode is opened over the
+-- Mail tab while its rows are the two-line ones. A two-line row reads from
+-- it only what it can show (CollectTab's RV.Place): which side of the
+-- subject the read mark and the icon stand on, and their order there; the
+-- sender before the subject, at the end of the first line, or -- where a
+-- figure stands between the two in the order -- on the second line among
+-- the figures; the figures' order along the second line; what is hidden.
+--
+-- Nothing stored reads as the two-line rows drew the one-line rows'
+-- arrangement until now: the same order, with a sender that stood beyond a
+-- figure moved beside the subject on its own side, which is where those
+-- rows drew it. The first change to the one-line rows' arrangement stores
+-- it (UI.SetRowLayout), so from then on each size keeps its own. Shared and
+-- read-only, and kept until the keys it was read from change, as the
+-- others are.
+do
+  local largeLayoutMemo = {}
+
+  -- The one-line rows' arrangement as a two-line row drew it (above).
+  local function DeriveLarge(rows)
+    local s, d = nil, nil
+    for i = 1, #rows do
+      if rows[i].id == "subject" then s = i elseif rows[i].id == "sender" then d = i end
+    end
+    local between = false
+    if s and d then
+      for i = math.min(s, d) + 1, math.max(s, d) - 1 do
+        if ROW_FIGURES[rows[i].id] then between = true end
+      end
+    end
+    local parts = {}
+    local senderToken = d and ((rows[d].shown and "" or "-") .. "sender") or nil
+    for i = 1, #rows do
+      local id = rows[i].id
+      local token = (rows[i].shown and "" or "-") .. id
+      if between and id == "subject" then
+        if d < s then parts[#parts + 1] = senderToken end
+        parts[#parts + 1] = token
+        if d > s then parts[#parts + 1] = senderToken end
+      elseif not (between and id == "sender") then
+        parts[#parts + 1] = token
+      end
+    end
+    return table.concat(parts, ",")
+  end
+
+  local function ReadLargeLayout()
+    local store = ns.Store
+    local profile = store and store.Get and store.Get("profile")
+    local a = type(profile) == "table" and profile.largeLayout or nil
+    local rows = (a == nil) and UI.GetRowLayout() or nil
+    local memo = largeLayoutMemo
+    if memo.layout and memo.a == a and memo.rows == rows then return memo.layout end
+    memo.a, memo.rows = a, rows
+    memo.layout = ParseRowLayout(a) or (rows and ParseRowLayout(DeriveLarge(rows)))
+      or ParseRowLayout(ROW_LAYOUT_DEFAULT)
+    return memo.layout
+  end
+
+  function UI.GetLargeLayout()
+    local memo = Settings()
+    local layout = memo.large
+    if not layout then
+      layout = ReadLargeLayout()
+      memo.large = layout
+    end
+    return layout
+  end
+
+  -- layout: { {id=, shown=}, ... } in the new order, or nil for the default.
+  function UI.SetLargeLayout(layout)
+    local text = (layout == nil) and ROW_LAYOUT_DEFAULT or FormatRowLayout(layout)
+    if not text then return false end
+    local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+    if not profile then return false end
+    profile.largeLayout = text
+    ForgetSettings()
+    return true
+  end
 end
 
 -- Whether a mail row shows this column (an id from ROW_COLUMNS).
@@ -3204,6 +3291,7 @@ function UI.DiagnoseOptions()
   Named("expiry", UI.GetExpiryWhen(), "always")
   Named("slots", UI.GetSlotsStyle(), "words")
   Named("rows", FormatRowLayout(UI.GetRowLayout()) or "?", ROW_LAYOUT_DEFAULT)
+  Named("largeRows", FormatRowLayout(UI.GetLargeLayout()) or "?", ROW_LAYOUT_DEFAULT)
   Named("historyRows", FormatLayout(UI.GetHistoryLayout(), ParseHistoryLayout) or "?", HISTORY_LAYOUT_DEFAULT)
   Named("historyAge", UI.GetHistoryAge(), "short")
   -- The grid as stored: its group buttons are ids ("group:3"), never names.
