@@ -78,9 +78,10 @@ end
 -- resolved per-profile (GetDarkModeFill -> active profile's darkMode table,
 -- falling back to DEFAULT_DARK_MODE). It is the colour of the fills Postbox
 -- draws itself -- the compat shim's backdrop, the floor under the host's
--- shell, popup grounds -- and is what a profile import like atrocityUI
--- actually sets. Its alpha is Dark Mode's for unit and raid frames, not the
--- windows', so "Match EllesmereUI" opacity follows HostWindowAlpha below.
+-- shell, popup grounds -- wherever no other skinner paints the windows beside
+-- Postbox, and is what a profile import like atrocityUI actually sets. Its
+-- alpha is Dark Mode's for unit and raid frames, not the windows', so what the
+-- window takes is decided by Beside below.
 local function HostBaseline()
   if not EUI then return 0.067, 0.067, 0.067, 0.90 end
   if EUI.GetDarkModeFill then
@@ -145,6 +146,172 @@ local function ModernBackdrop()
   return c.r, c.g or 0.067, c.b or 0.067, tonumber(c.a) or 0.97
 end
 
+-------------------------------------------------------------
+-- The windows beside Postbox
+-------------------------------------------------------------
+-- "Match EllesmereUI" means: look like the windows the player sees beside
+-- Postbox. Which windows those are, and who paints them, depends on the
+-- setup, so this is one answer, read by the opacity, the fill colour and the
+-- Match border alike, and re-read on every apply (never cached, never per
+-- frame):
+--
+--   "api" -- Blizz UI Enhanced paints Blizzard's windows: EllesmereUI's own
+--            window look. The Dark Mode fill's colour; opaque under the
+--            EllesmereUI window style, the Modern backdrop's own opacity under
+--            Modern (the skinning API's style is the one Postbox's shell
+--            wears); and for the edge the shell's own chrome, which S.Shell
+--            lays down, so no line of Postbox's (edgePx 0).
+--   "aes" -- compat, and atrocityEssentials skins Blizzard's windows (its Dark
+--            Theme): the window colours its player saved, the backdrop's fill
+--            and its edge, and an edge one physical pixel wide (its
+--            SkinningAPI's EdgeFor).
+--   "eui" -- compat otherwise: EllesmereUI draws no Blizzard window at all, so
+--            the Dark Mode fill, colour and alpha -- the figure the player's UI
+--            shares -- with a one-pixel black edge, EllesmereUI's own pixel
+--            border convention (PP.CreateBorder, as its unit frames wear it).
+--
+-- Beside() returns r, g, b, a (the fill), er, eg, eb, ea (the edge), edgePx
+-- (the edge's thickness in physical pixels; 0 = the shell's chrome is the
+-- edge) and the source.
+--
+-- atrocityEssentials keeps its namespace private, so its saved variable is
+-- read instead, read-only and pcall-guarded, as ModernBackdrop reads
+-- EllesmereUI's.
+local Beside, BesideProfile
+do
+  -- Its designed look (Core/Defaults.lua): what an unsaved colour reads as, or
+  -- a component missing from a saved one (AceDB keeps only what differs).
+  local AES_FILL = { 0.031, 0.031, 0.031, 0.80 }
+  local AES_EDGE = { 0, 0, 0, 1 }
+  local AES_ADDON = "atrocityEssentials"
+  local LDS = "LibDualSpec-1.0"
+  local charKey
+
+  local function Loaded(name)
+    local probe = (C_AddOns and C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
+    if type(probe) ~= "function" then return nil end
+    local ok, loaded = pcall(probe, name)
+    if not ok then return nil end
+    return loaded and true or false
+  end
+
+  -- AceDB's key for this character, "Name - Realm". Made once: it cannot
+  -- change without a relog.
+  local function CharKey()
+    if charKey then return charKey end
+    local name = type(UnitName) == "function" and UnitName("player") or nil
+    local realm = type(GetRealmName) == "function" and GetRealmName() or nil
+    if type(name) ~= "string" or type(realm) ~= "string" or name == "" then return nil end
+    charKey = name .. " - " .. realm
+    return charKey
+  end
+
+  -- The profile atrocityEssentials is using on this character. AceDB writes
+  -- it into profileKeys when it loads and on every switch -- the account-wide
+  -- profile atrocityEssentials applies at load (UseGlobalProfile), and
+  -- LibDualSpec's per-spec profile at login and on every spec change -- so
+  -- the live entry is the answer. The rest repeats that order, for a table
+  -- AceDB has not loaded yet.
+  local function ProfileName(db)
+    local key = CharKey()
+    local keys = db.profileKeys
+    local name = (key and type(keys) == "table") and keys[key] or nil
+    if type(name) == "string" then return name end
+    name = "Default"
+    local global = db.global
+    if type(global) == "table" and global.UseGlobalProfile then
+      name = type(global.GlobalProfile) == "string" and global.GlobalProfile or "Default"
+    end
+    local spaces = db.namespaces
+    local lds = type(spaces) == "table" and spaces[LDS] or nil
+    local chars = type(lds) == "table" and lds.char or nil
+    local mine = (key and type(chars) == "table") and chars[key] or nil
+    if type(mine) == "table" and mine.enabled and type(GetSpecialization) == "function" then
+      local ok, spec = pcall(GetSpecialization)
+      local pick = (ok and type(spec) == "number") and mine[spec] or nil
+      if type(pick) == "string" then name = pick end
+    end
+    return name
+  end
+
+  -- Its Blizzard skinning is painting the windows: the Dark Theme switch
+  -- (BlizzardSkinning.Frames.Enabled, on unless saved off; reload-bound in
+  -- atrocityEssentials itself), and not stood down for ElvUI, which it does
+  -- whenever ElvUI is loaded and its UseElvUI gate is not switched off
+  -- (AE:ShouldNotLoadModule).
+  local function SkinningOn(bs)
+    local on
+    local frames = type(bs) == "table" and bs.Frames or nil
+    if type(frames) == "table" then on = frames.Enabled end
+    if on == nil then on = true end
+    if on ~= true then return false end
+    if Loaded("ElvUI") then
+      local gate = type(bs) == "table" and bs.UseElvUI or nil
+      if not (type(gate) == "table" and gate.Enabled == false) then return false end
+    end
+    return true
+  end
+
+  -- One component of a saved colour, over the default.
+  local function Part(saved, i, default)
+    local v = type(saved) == "table" and tonumber(saved[i]) or nil
+    return v or default[i]
+  end
+
+  -- The profile's BlizzardSkinning table, or false while atrocityEssentials
+  -- is not loaded (no saved variable either way).
+  local function Settings()
+    if Loaded(AES_ADDON) == false then return false end
+    local db = _G.atrocityEssentialsDB
+    if type(db) ~= "table" then return false end
+    local profiles = db.profiles
+    local prof = type(profiles) == "table" and profiles[ProfileName(db)] or nil
+    return type(prof) == "table" and prof.BlizzardSkinning or nil, db
+  end
+
+  -- Its window colours, or nil while it is not painting the windows.
+  local function AESLook()
+    local bs = Settings()
+    if bs == false or not SkinningOn(bs) then return nil end
+    local fill = type(bs) == "table" and bs.BackdropColor or nil
+    local edge = type(bs) == "table" and bs.BorderColor or nil
+    return Part(fill, 1, AES_FILL), Part(fill, 2, AES_FILL), Part(fill, 3, AES_FILL), Part(fill, 4, AES_FILL),
+           Part(edge, 1, AES_EDGE), Part(edge, 2, AES_EDGE), Part(edge, 3, AES_EDGE), Part(edge, 4, AES_EDGE)
+  end
+
+  -- How solid EllesmereUI's own windows are (the api backend).
+  local function ApiWindowAlpha()
+    local style
+    if S and type(S.GetStyle) == "function" then
+      local ok, v = pcall(S.GetStyle)
+      if ok then style = v end
+    end
+    if style == "modern" then
+      local _, _, _, a = ModernBackdrop()
+      return a
+    end
+    return 1
+  end
+
+  Beside = function()
+    local r, g, b, a = HostBaseline()
+    if BACKEND ~= "compat" then
+      return r, g, b, ApiWindowAlpha(), 0, 0, 0, 1, 0, "api"
+    end
+    local ok, fr, fg, fb, fa, er, eg, eb, ea = pcall(AESLook)
+    if ok and fr then return fr, fg, fb, fa, er, eg, eb, ea, 1, "aes" end
+    return r, g, b, a, 0, 0, 0, 1, 1, "eui"
+  end
+
+  -- The atrocityEssentials profile being read, for the diagnostic; nil while
+  -- it is not loaded.
+  BesideProfile = function()
+    local ok, bs, db = pcall(Settings)
+    if not ok or bs == false or type(db) ~= "table" then return nil end
+    return ProfileName(db)
+  end
+end
+
 local function ShimFadeRegions(frame, keep)
   if not frame then return end
   for i = 1, select("#", frame:GetRegions()) do
@@ -195,12 +362,12 @@ local function BuildShim()
     ShimFadeRegions(frame)
     ShimFadeNineSlice(frame.NineSlice)
 
-    -- Flat fill in the host baseline colour. EllesmereUI's own window art
-    -- (modern_blizz.png) is a palette PNG with no tRNS chunk -- fully opaque,
-    -- and cropped per window aspect ratio, so it can neither be made
-    -- see-through nor matched consistently. The Dark Mode fill is the value
-    -- the rest of the user's UI actually shares, so we use that instead.
-    local br, bg_, bb = HostBaseline()
+    -- Flat fill in the colour of the windows beside Postbox. EllesmereUI's own
+    -- window art (modern_blizz.png) is a palette PNG with no tRNS chunk --
+    -- fully opaque, and cropped per window aspect ratio, so it can neither be
+    -- made see-through nor matched consistently. A flat fill can, in the
+    -- colour those windows share (Beside).
+    local br, bg_, bb = Beside()
     local fill = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
     fill:SetColorTexture(br, bg_, bb, 1)
     fill:SetAllPoints(frame)
@@ -607,9 +774,9 @@ end
 -- style, the Modern backdrop's own colour and opacity (97% by default) under
 -- Modern -- so the Modern opacity control EllesmereUI players already know
 -- governs Postbox too. On the compat backend, where EllesmereUI draws no
--- windows, it follows the Dark Mode fill's alpha (see HostWindowAlpha); on the
--- api backend that fill is for unit and raid frames, 90% by default, a touch
--- more see-through than every EllesmereUI window beside it.
+-- windows, it follows the windows that are there (see Beside); on the api
+-- backend the Dark Mode fill's alpha is for unit and raid frames, 90% by
+-- default, a touch more see-through than every EllesmereUI window beside it.
 --
 -- Not an additive wash: EllesmereUI's shell art (media/modern_blizz.png) is a
 -- palette PNG with NO tRNS chunk -- every pixel is fully opaque -- so a solid
@@ -630,44 +797,22 @@ end
 -- at build time: GetDarkModeFill() is per-profile, so a mid-session profile
 -- swap changes it, and a window still wearing the old grey next to one wearing
 -- the new one is the exact symptom this avoids.
+--
+-- Unset, both are the windows beside Postbox's (Beside, above): EllesmereUI's
+-- own on the api backend; on compat, where EllesmereUI draws no Blizzard window
+-- and "opaque" left Postbox a solid slab beside see-through ones,
+-- atrocityEssentials' where it paints them and the Dark Mode fill otherwise.
 
 -- The options panel is deliberately exempt from the user's transparency (its
 -- whole job is to stay legible while the window behind it is adjusted).
 local OPAQUE_ALPHA = 0.97
 
--- How solid the windows beside Postbox are. On the api backend EllesmereUI
--- draws them: the Modern backdrop's opacity under the Modern style, opaque
--- under its own (the skinning API's style is the one Postbox's shell wears, a
--- majority vote of the player's per-window styles).
---
--- On the compat backend EllesmereUI draws no Blizzard window at all -- its Blizz
--- UI Enhanced module is off -- so there is no EllesmereUI window to match, and
--- "opaque" left Postbox a solid slab beside see-through ones. The Dark Mode
--- fill is the figure the player's UI shares there, and the one a profile like
--- atrocityUI writes to match the skinner that does draw their windows
--- (atrocityEssentials paints them in the same grey at 80%).
-local function HostWindowAlpha()
-  if BACKEND == "compat" then
-    local _, _, _, a = HostBaseline()
-    return a
-  end
-  local style
-  if S and type(S.GetStyle) == "function" then
-    local ok, v = pcall(S.GetStyle)
-    if ok then style = v end
-  end
-  if style == "modern" then
-    local _, _, _, a = ModernBackdrop()
-    return a
-  end
-  return 1
-end
-
--- The window's opacity: the user's own, or EllesmereUI's windows' (see above).
+-- The window's opacity: the user's own, or the windows' beside it (see above).
 function Skin.GetBgOpacity()
   local saved = tonumber(GetProfile().euiBgAlpha)
   if saved then return saved end
-  return HostWindowAlpha()
+  local _, _, _, a = Beside()
+  return a
 end
 
 -- True when opacity is following EllesmereUI rather than a manual override.
@@ -708,7 +853,8 @@ function Skin.ApplyBgOpacity(frame)
   -- the colour alpha the host gave it, so the Modern backdrop keeps its own 97%.
   -- The compat shim has no host art, and its title strip takes the fill's alpha.
   local saved = tonumber((GetProfile().euiBgAlpha))
-  local alpha = saved or HostWindowAlpha()
+  local _, _, _, besideAlpha = Beside()
+  local alpha = saved or besideAlpha
   local hostAlpha = saved or (BACKEND == "compat" and alpha) or 1
 
   local function paint(f)
@@ -719,7 +865,7 @@ function Skin.ApplyBgOpacity(frame)
     local opaque = f.__pbEuiAlwaysOpaque and true or false
     local a = opaque and OPAQUE_ALPHA or alpha
     local ha = opaque and OPAQUE_ALPHA or hostAlpha
-    local r, g, b = HostBaseline()
+    local r, g, b = Beside()
 
     local art = f.__pbEuiShellArt
     if art then
@@ -783,16 +929,16 @@ function Skin.ApplyBgOpacity(frame)
   if frame then paint(frame) else Skin.ForEachWindow(paint) end
 end
 
--- Postbox's own flat fill, in the host's Dark Mode colour, at the very bottom
--- of the window. On compat this is the whole backdrop; on api it is the floor
--- under EllesmereUI's shell and the thing that makes the always-opaque
+-- Postbox's own flat fill, in the colour of the windows beside it, at the very
+-- bottom of the window. On compat this is the whole backdrop; on api it is the
+-- floor under EllesmereUI's shell and the thing that makes the always-opaque
 -- exemption possible there.
 local function EnsureShellArt(frame)
   local art = frame.__pbEuiShellArt
   if art then return art end
   art = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
   art:SetAllPoints(frame)
-  local r, g, b = HostBaseline()
+  local r, g, b = Beside()
   art:SetColorTexture(r, g, b, 1)
   frame.__pbEuiShellArt = art
   return art
@@ -949,7 +1095,12 @@ end
 -------------------------------------------------------------
 -- Accent pass-through for Postbox's own painted elements
 -------------------------------------------------------------
-Skin.GetHostBaseline = HostBaseline
+-- The window fill's colour and alpha, for the grounds Postbox lays under its
+-- popups and detail panels: the windows beside Postbox's (Beside).
+function Skin.GetHostBaseline()
+  local r, g, b, a = Beside()
+  return r, g, b, a
+end
 
 function Skin.GetAccent()
   if not (S and S.GetAccentColor) then return nil end
@@ -1688,13 +1839,31 @@ function Skin.Diagnose()
       shellArt = string.format("EllesmereUI shell (%d regions, alpha %.2f)",
                                #hostArt, Skin.GetBgOpacity())
     elseif frame.__pbEuiShellArt then
-      local r, g, b = HostBaseline()
+      local r, g, b = Beside()
       shellArt = string.format("Postbox fill %.3f/%.3f/%.3f @ %.2f",
                                r, g, b, Skin.GetBgOpacity())
     else
       shellArt = "MISSING"
     end
   end
+
+  -- Which windows "Match EllesmereUI" is matching, and what it reads off them.
+  -- Printed after the shell art by /postbox skin: the one line that says why
+  -- the fill, the opacity and the Match border are what they are.
+  local fr, fg, fb, fa, er, eg, eb, ea, px, source = Beside()
+  local besideText
+  if source == "aes" then
+    besideText = string.format(
+      "matching atrocityEssentials' windows (profile %s): fill %.3f/%.3f/%.3f @ %.2f, edge %d px %.2f/%.2f/%.2f @ %.2f",
+      tostring(BesideProfile() or "?"), fr, fg, fb, fa, px, er, eg, eb, ea)
+  elseif source == "eui" then
+    besideText = string.format(
+      "matching EllesmereUI's Dark Mode fill %.3f/%.3f/%.3f @ %.2f, edge %d px %.2f/%.2f/%.2f @ %.2f",
+      fr, fg, fb, fa, px, er, eg, eb, ea)
+  else
+    besideText = string.format("matching EllesmereUI's own windows @ %.2f, edge: its shell's frame", fa)
+  end
+  if not standDown then shellArt = shellArt .. " | " .. besideText end
   -- The host's live view of its own toggles. Worth reporting on its own,
   -- because switching third-party skinning OFF mid-session is reload-bound at
   -- EllesmereUI's end: this goes false while the window stays skinned, which
@@ -1728,6 +1897,9 @@ function Skin.Diagnose()
     bgOpacity   = Skin.GetBgOpacity(),
     shellArt    = shellArt,
     windowBuilt = frame ~= nil,
+    -- "api" | "aes" | "eui": whose windows the defaults match (Beside).
+    beside      = source,
+    besideText  = besideText,
   }
 end
 
