@@ -240,10 +240,15 @@ function Skin.GetHostBaseline()
   return P.window[1], P.window[2], P.window[3]
 end
 
--- One physical pixel at this frame's scale, not one UI unit: at a UI scale
--- that is not a whole ratio of the screen, a "1" edge lands on a fraction of a
--- pixel and each side rounds on its own, so one border renders 1 px on one
--- side and 2 on the other. Snapped, every edge is the same weight.
+-- One UI unit at this frame's scale, snapped to whole physical pixels (at
+-- least one): at a UI scale that is not a whole ratio of the screen, a "1"
+-- edge lands on a fraction of a pixel and each side rounds on its own, so one
+-- border renders 1 px on one side and 2 on the other. Snapped, every edge is
+-- the same weight. It follows the UI scale on purpose, as text does: 1 px at a
+-- pixel-perfect scale, 2 or 3 px on a high-DPI screen at scale 1.0, where a
+-- single pixel would all but vanish. (The EllesmereUI skin's Match edge is the
+-- one line that is always exactly one pixel, because the windows it matches
+-- draw theirs that way.)
 local function Hairline(frame)
   local scale = (frame and frame.GetEffectiveScale and frame:GetEffectiveScale()) or 1
   if PixelUtil and PixelUtil.GetNearestPixelSize then
