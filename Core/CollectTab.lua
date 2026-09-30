@@ -7641,7 +7641,11 @@ local function BuildDetailSlot(detail, i)
   slot:SetScript("OnEnter", function(self)
     local index = LiveIndex(detail)
     if not index then return end
-    ShowAttachmentTooltip(self, index, self.slotIndex)
+    -- The hint line the fan's tiles carry: what the tile does beyond a click.
+    if ShowAttachmentTooltip(self, index, self.slotIndex) then
+      GameTooltip:AddLine(L()["FAN_TILE_HINT"], 0.7, 0.7, 0.7)
+      GameTooltip:Show()
+    end
   end)
   slot:SetScript("OnLeave", function() GameTooltip:Hide() end)
   slot:SetScript("OnClick", function(self) TakeOneAttachment(detail, self) end)
@@ -7840,6 +7844,9 @@ local function BuildDetail(panel)
   money:SetScript("OnClick", function()
     local index = LiveIndex(detail)
     if not index then return end
+    -- A modified click is never the plain click's take, as on the item tiles
+    -- beside it and the fan's coin; with no item to link, it does nothing.
+    if RV.ModifiedItemClick(index, nil) then return end
     Mail().TakeMoney(index, function(status)
       if status == "busy" then return end
       if status == "closed" then
