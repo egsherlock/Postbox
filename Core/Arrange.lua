@@ -3228,12 +3228,20 @@ function AR.Choices(kind)
     local age = collect and collect.HistoryAgeText
     if kind == "age" and not age then return lists.none, nil, nil end
     if kind == "age" then
-      -- "3d ago" or "3 days ago": each wording as the rows write it, for
-      -- three days.
+      -- "3d", "3d ago" or "3 days ago", each wording as the rows write it
+      -- for three days; or the day, "30 Sep" or "Sep 30", as the rows write
+      -- today's.
+      local day = collect.HistoryDateText
+      local now = time()
       list = {
+        { id = "plain", name = age(3, 3, "plain") },
         { id = "short", name = age(3, 3, "short") },
         { id = "long",  name = age(3, 3, "long") },
       }
+      if day then
+        list[4] = { id = "date_dm", name = day(now, "date_dm", now) }
+        list[5] = { id = "date_md", name = day(now, "date_md", now) }
+      end
     elseif kind == "gold" then
       list = {
         { id = "both",   name = L()["OPT_GOLD_BOTH"] },

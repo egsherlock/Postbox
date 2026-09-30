@@ -989,20 +989,23 @@ function UI.SetHistoryLayout(layout)
   return true
 end
 
--- How History writes how long ago a mail was collected: "short" ("3d
--- ago", the default) or "long" ("3 days ago"). Stored only when long, so
--- nothing stored is short. Remembered with the other row settings.
+-- How History writes when a mail was collected: how long ago, "plain"
+-- ("3d"), "short" ("3d ago", the default) or "long" ("3 days ago"); or
+-- the day it was, "date_dm" ("30 Sep", the day first) or "date_md" ("Sep
+-- 30", the month first). Stored as its word but for short, so nothing
+-- stored is short. Remembered with the other row settings.
+local HISTORY_AGES = { plain = true, short = true, long = true, date_dm = true, date_md = true }
 function UI.GetHistoryAge()
   local memo = Settings()
   if memo.age then return memo.age end
   local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.historyAge")
-  memo.age = (stored == "long") and "long" or "short"
+  memo.age = (HISTORY_AGES[stored] and stored) or "short"
   return memo.age
 end
 function UI.SetHistoryAge(style)
-  if style ~= nil and style ~= "short" and style ~= "long" then return end
+  if style ~= nil and not HISTORY_AGES[style] then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if profile then profile.historyAge = (style == "long") and "long" or nil end
+  if profile then profile.historyAge = (style ~= "short") and style or nil end
   ForgetSettings()
 end
 

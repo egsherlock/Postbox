@@ -3985,8 +3985,9 @@ function HV.Days()
   return UI and type(UI.GetHistoryDays) == "function" and UI.GetHistoryDays() or 7
 end
 
--- History's arrangement (MailboxUI.GetHistoryLayout), and how it writes a
--- mail's age (GetHistoryAge: "short" or "long").
+-- History's arrangement (MailboxUI.GetHistoryLayout), and how it writes
+-- when a mail was collected (GetHistoryAge: "plain", "short", "long",
+-- "date_dm" or "date_md").
 function HV.Layout()
   local UI = ns.MailboxUI
   if UI and type(UI.GetHistoryLayout) == "function" then return UI.GetHistoryLayout() end
@@ -4004,24 +4005,25 @@ function HV.AgeStyle()
 end
 
 -- How long ago, as History writes it: in minutes under an hour, hours under
--- a day, days after -- "3d ago" short, "3 days ago" long, each language in
--- its own words and the long one in its plural forms. `unit` is 1, 2 or 3
--- (minutes, hours, days). Each string is made once per value, unit and
--- style and kept (HV.ages, a table per style keyed by unit and value), so a
--- row bind and the list's measuring pass make nothing: a list holds a few
--- dozen distinct ages. The locale is fixed for the session, so nothing goes
--- stale; a table past AGE_MAX strings (days beyond History's month, which
--- only a wrong clock gives) is emptied and filled again.
+-- a day, days after -- "3d" plain, "3d ago" short, "3 days ago" long, each
+-- language in its own words and the long one in its plural forms. `unit` is
+-- 1, 2 or 3 (minutes, hours, days). Each string is made once per value,
+-- unit and style and kept (HV.ages, a table per style keyed by unit and
+-- value), so a row bind and the list's measuring pass make nothing: a list
+-- holds a few dozen distinct ages. The locale is fixed for the session, so
+-- nothing goes stale; a table past AGE_MAX strings (days beyond History's
+-- month, which only a wrong clock gives) is emptied and filled again.
 HV.AGE_KEYS = {
+  plain = { "HISTORY_AGE_M", "HISTORY_AGE_H", "HISTORY_AGE_D" },
   short = { "HISTORY_AGO_M", "HISTORY_AGO_H", "HISTORY_AGO_D" },
   long  = { "HISTORY_AGO_MINUTES", "HISTORY_AGO_HOURS", "HISTORY_AGO_DAYS" },
 }
-HV.ages = { short = {}, long = {} }
-HV.agesN = { short = 0, long = 0 }
+HV.ages = { plain = {}, short = {}, long = {}, date_dm = {}, date_md = {} }
+HV.agesN = { plain = 0, short = 0, long = 0, date_dm = 0, date_md = 0 }
 HV.AGE_MAX = 200
 
 function HV.AgeText(value, unit, style)
-  if style ~= "long" then style = "short" end
+  if not HV.AGE_KEYS[style] then style = "short" end
   local cache = HV.ages[style]
   local key = unit * 100000 + value
   local text = cache[key]
@@ -4049,8 +4051,115 @@ function HV.HistoryAge(seconds, style)
   if seconds < 86400 then return HV.AgeText(floor(seconds / 3600), 2, style) end
   return HV.AgeText(floor(seconds / 86400), 3, style)
 end
+-- The day instead: "30 Sep" (date_dm, the day first) or "Sep 30" (date_md,
+-- the month first), and the year after only for a mail from another year.
+-- The month is a word, never a number, so neither order can be read as the
+-- other: the client's own name for it (the full date's form, which some
+-- languages decline), shortened to its first three letters, and lengthened
+-- where another month begins the same way (juin, juil). How a day and a
+-- month stand together is each language's own (HISTORY_DATE_DM, _MD and
+-- their _YEAR forms: {d} the day, {m} the month's name, {n} its number, {y}
+-- the year): "30. Sep" in German, the month's number and day in Chinese.
+-- Each date is written once and kept, keyed by the day (HV.ages[style], as
+-- the ages are), so a bind makes nothing; the tables are written again
+-- when the year turns, which moves the year in or out.
+HV.MONTH_KEYS = { "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY",
+  "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER" }
+HV.MONTH_EN = { "January", "February", "March", "April", "May", "June", "July",
+  "August", "September", "October", "November", "December" }
+
+-- The twelve short names, found once.
+function HV.Months()
+  if HV.months then return HV.months end
+  local chars, n = {}, {}
+  for i = 1, 12 do
+    local key = HV.MONTH_KEYS[i]
+    local name = _G["FULLDATE_MONTH_" .. key]
+    if type(name) ~= "string" or name == "" then name = _G["MONTH_" .. key] end
+    if type(name) ~= "string" or name == "" then name = HV.MONTH_EN[i] end
+    local list = {}
+    for ch in name:gmatch("[%z\1-\127\194-\244][\128-\191]*") do list[#list + 1] = ch end
+    chars[i] = list
+    n[i] = min(#list, 3)
+  end
+  -- A short name another month's name also begins with could be either:
+  -- it is lengthened by a letter until no other month's does (juin and
+  -- juillet: "juin", "juil"), or it is the whole name.
+  local short = {}
+  for i = 1, 12 do
+    local mine = chars[i]
+    local ambiguous = true
+    while ambiguous and n[i] < #mine do
+      ambiguous = false
+      for j = 1, 12 do
+        local other = chars[j]
+        if j ~= i and #other >= n[i] then
+          local same = true
+          for k = 1, n[i] do
+            if other[k] ~= mine[k] then same = false break end
+          end
+          if same then ambiguous = true break end
+        end
+      end
+      if ambiguous then n[i] = n[i] + 1 end
+    end
+    short[i] = table.concat(mine, "", 1, n[i])
+  end
+  HV.months = short
+  return short
+end
+
+-- ymd ("20260930"), style, year now -> the date as History writes it.
+HV.DATE_KEYS = {
+  date_dm = { "HISTORY_DATE_DM", "HISTORY_DATE_DM_YEAR" },
+  date_md = { "HISTORY_DATE_MD", "HISTORY_DATE_MD_YEAR" },
+}
+function HV.FormatDate(ymd, style, year)
+  local y, m, d = ymd:sub(1, 4), tonumber((ymd:sub(5, 6))), tonumber((ymd:sub(7, 8)))
+  local key = (HV.DATE_KEYS[style] or HV.DATE_KEYS.date_dm)[(y ~= year) and 2 or 1]
+  local parts = { d = tostring(d), m = HV.Months()[m] or tostring(m), n = tostring(m), y = y }
+  return (L()[key]:gsub("{(%a)}", parts))
+end
+
+-- t, style, now -> the day `t` fell on, as History writes it (above).
+function HV.DateText(t, style, now)
+  if now ~= HV.dateNow then
+    HV.dateNow = now
+    local year = date("%Y", now)
+    if year ~= HV.dateYear then
+      HV.dateYear = year
+      for s in pairs(HV.DATE_KEYS) do
+        for key in pairs(HV.ages[s]) do HV.ages[s][key] = nil end
+        HV.agesN[s] = 0
+      end
+    end
+  end
+  if style ~= "date_md" then style = "date_dm" end
+  local cache = HV.ages[style]
+  local ymd = date("%Y%m%d", t)
+  local text = cache[ymd]
+  if text then return text end
+  if HV.agesN[style] >= HV.AGE_MAX then
+    for key in pairs(cache) do cache[key] = nil end
+    HV.agesN[style] = 0
+  end
+  text = HV.FormatDate(ymd, style, HV.dateYear)
+  cache[ymd] = text
+  HV.agesN[style] = HV.agesN[style] + 1
+  return text
+end
+
+-- entry, now, style -> what the age column says for a History entry: how
+-- long ago it was collected, or the day it was.
+function HV.EntryAge(entry, now, style)
+  local t = tonumber(entry.t) or now
+  if style == "date_dm" or style == "date_md" then return HV.DateText(t, style, now) end
+  return HV.HistoryAge(now - t, style)
+end
+
 -- For the arrange mode's age card, which shows each wording as it reads.
 CT.HistoryAgeText = HV.AgeText
+CT.HistoryDateText = HV.DateText
 
 function HV.ItemName(link)
   local name = type(link) == "string" and link:match("%[(.-)%]") or nil
@@ -4184,7 +4293,7 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style)
   local spec = panel._histSpec
   local el, text = spec.el, spec.text
   el.age, el.icon, el.sender, el.subject, el.money = row.Age, row.Icon, row.Sender, row.Subject, row.Money
-  text.age = HV.HistoryAge(now - (tonumber(entry.t) or now), style)
+  text.age = HV.EntryAge(entry, now, style)
   local outcome = R.OutcomeSender(entry.k)
   text.sender = outcome or R.DisplaySender(named) or L()["SENDER_UNKNOWN"]
   RV.PaintSender(row.Sender, not outcome and named or nil)
@@ -4280,7 +4389,7 @@ function HV.BuildHistoryList(panel, query)
       -- The age's column is as wide as the widest age listed, in the words
       -- chosen: whatever the language and wording, no age is cut.
       if showAge then
-        local age = HV.HistoryAge(now - (tonumber(entry.t) or now), style)
+        local age = HV.EntryAge(entry, now, style)
         cols.age = max(cols.age, MeasureWith(panel, sample.ColTime, age) + 2)
       end
     end
