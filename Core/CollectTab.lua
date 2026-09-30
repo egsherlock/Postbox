@@ -1762,19 +1762,34 @@ end
 -- font changes: a walk alternates between two or three samples, and one
 -- shared string was re-fonted on nearly every call. Where the owner counts
 -- passes (`_measurePass`, the Mail tab's list), each distinct text is also
--- measured once per pass -- "AH Sold" forty times is one measure. Per pass
--- and never longer, so a width read before a font had finished loading is
--- put right by the next refresh, as it always was.
+-- measured once -- "AH Sold" forty times is one measure -- and kept until
+-- the font or the drawing scale changes (see the memo below). A font still
+-- loading measures zero, which is never kept, so the next refresh measures
+-- again, as it always did.
 --
 -- While the list's own walk measures (`_measureWalk` is its pass), each
 -- sample's font is read once: the walk runs to its end in one go and nothing
 -- re-fonts a row inside it. Anywhere else the font is read on every call, as
--- it always was. The memo is one table per string, emptied for each pass
+-- it always was. The memo is one table per string, emptied when it must be
 -- rather than made anew.
 --
 -- A width comes rounded up to the next unit, the room a column keeps;
 -- `exact` answers it as the client measured it, for a sum of widths that
 -- must land on a position within one string (RV.RecordTwo).
+RV.MEMO_MAX = 512
+
+-- At the start of the list's walk: a new measuring generation when the scale
+-- the list is drawn at has moved (the window's scale, the game's UI scale),
+-- since a string's width in its own units can move with the pixels it lands
+-- on. One read and a compare per walk.
+function RV.MeasureScale(panel)
+  local scale = panel:GetEffectiveScale()
+  if scale ~= panel._measureScale then
+    panel._measureScale = scale
+    panel._measureGen = (panel._measureGen or 0) + 1
+  end
+end
+
 local function MeasureWith(panel, sample, text, exact)
   text = text or ""
   local strings = panel._measureFor
@@ -1805,19 +1820,28 @@ local function MeasureWith(panel, sample, text, exact)
     if exact then return width end
     return ceil(width)
   end
+  -- The memo outlives the pass: a width changes only with the font (the
+  -- re-font above empties it) or the scale the string is drawn at (the walk
+  -- moves `_measureGen`, RV.MeasureScale). A zero -- a font not laid out
+  -- yet -- is never kept, and the memo is emptied at RV.MEMO_MAX texts, so
+  -- a session of distinct amounts cannot grow it without bound.
+  local gen = panel._measureGen or 0
   local memo = fs.__pbMemo
   if not memo then
     memo = {}
-    fs.__pbMemo, fs.__pbMemoPass = memo, pass
-  elseif fs.__pbMemoPass ~= pass then
+    fs.__pbMemo, fs.__pbMemoPass, fs.__pbMemoN = memo, gen, 0
+  elseif fs.__pbMemoPass ~= gen or fs.__pbMemoN >= RV.MEMO_MAX then
     for key in pairs(memo) do memo[key] = nil end
-    fs.__pbMemoPass = pass
+    fs.__pbMemoPass, fs.__pbMemoN = gen, 0
   end
   local width = memo[text]
   if not width then
     fs:SetText(text)
     width = fs:GetStringWidth() or 0
-    memo[text] = width
+    if width > 0 then
+      memo[text] = width
+      fs.__pbMemoN = fs.__pbMemoN + 1
+    end
   end
   if exact then return width end
   return ceil(width)
@@ -6143,6 +6167,7 @@ function CT.RefreshMailList(panel)
   -- reads each sample's font once (MeasureWith).
   panel._measurePass = (panel._measurePass or 0) + 1
   panel._measureWalk = panel._measurePass
+  RV.MeasureScale(panel)
   local compact = CompactRows()
   local sample = AcquireRow(panel, 1)
   -- The arrangement the inbox's rows follow at this size (BindRow).
