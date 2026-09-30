@@ -72,12 +72,13 @@ local function ShimFont()
   return path or STANDARD_TEXT_FONT, flag or ""
 end
 
--- The suite-wide baseline: EllesmereUI's Dark Mode "fill" colour AND alpha,
+-- The suite-wide baseline: EllesmereUI's Dark Mode "fill" colour (and alpha),
 -- resolved per-profile (GetDarkModeFill -> active profile's darkMode table,
--- falling back to DEFAULT_DARK_MODE). This is the one value that is genuinely
--- shared across the user's whole UI -- unit frames, bars, panels -- and is what
--- a profile import like atrocityUI actually sets, so it is the right thing for
--- Postbox to inherit rather than the window shell's fixed, opaque art.
+-- falling back to DEFAULT_DARK_MODE). It is the colour of the fills Postbox
+-- draws itself -- the compat shim's backdrop, the floor under the host's
+-- shell, popup grounds -- and is what a profile import like atrocityUI
+-- actually sets. Its alpha is Dark Mode's for unit and raid frames, not the
+-- windows', so "Match EllesmereUI" opacity follows HostWindowAlpha below.
 local function HostBaseline()
   if not EUI then return 0.067, 0.067, 0.067, 0.90 end
   if EUI.GetDarkModeFill then
@@ -109,10 +110,15 @@ local function ShimStyle()
   return (modern > eui) and "modern" or "eui"
 end
 
-local function ShimModernBG()
-  local c = EllesmereUIDB and EllesmereUIDB.blizzWindowModernDefault
-  if not (c and c.r) then return 0.067, 0.067, 0.067, 0.97 end
-  return c.r, c.g, c.b, c.a or 0.97
+-- EllesmereUI's one global Modern window backdrop (Blizz UI Enhanced > Modern
+-- colour and opacity, default #111111 at 97%). The facade has no getter for
+-- it, so it is read from the saved variable, read-only, with the engine's own
+-- fallback (WindowEngine's GetModernBG).
+local function ModernBackdrop()
+  local db = _G.EllesmereUIDB
+  local c = type(db) == "table" and db.blizzWindowModernDefault or nil
+  if not (type(c) == "table" and type(c.r) == "number") then return 0.067, 0.067, 0.067, 0.97 end
+  return c.r, c.g or 0.067, c.b or 0.067, tonumber(c.a) or 0.97
 end
 
 local function ShimFadeRegions(frame, keep)
@@ -564,9 +570,14 @@ end
 -------------------------------------------------------------
 -- Background baseline: colour and opacity
 -------------------------------------------------------------
--- One absolute alpha for the window backdrop, defaulting to the alpha
--- EllesmereUI's own Dark Mode fill carries, so "auto" means "exactly as
--- transparent as the rest of the user's UI".
+-- One absolute alpha for the window backdrop. Unset ("Match EllesmereUI"), the
+-- window is exactly as solid as EllesmereUI's own windows: its shell art is left
+-- at the alpha EllesmereUI itself gives it -- opaque under the EllesmereUI
+-- style, the Modern backdrop's own colour and opacity (97% by default) under
+-- Modern -- so the Modern opacity control EllesmereUI players already know
+-- governs Postbox too. (It used to follow the Dark Mode fill's alpha, which
+-- EllesmereUI applies to unit and raid frames, not windows: 90% by default, a
+-- touch more see-through than every EllesmereUI window beside it.)
 --
 -- Not an additive wash: EllesmereUI's shell art (media/modern_blizz.png) is a
 -- palette PNG with NO tRNS chunk -- every pixel is fully opaque -- so a solid
@@ -592,12 +603,28 @@ end
 -- whole job is to stay legible while the window behind it is adjusted).
 local OPAQUE_ALPHA = 0.97
 
--- Baseline alpha unless the user has explicitly overridden it.
+-- How solid EllesmereUI draws its own windows: the Modern backdrop's opacity
+-- under the Modern style, opaque under its own. The skinning API's style is the
+-- one Postbox's shell wears (a majority vote of the player's per-window styles);
+-- the compat shim reads the same vote from the saved variable.
+local function HostWindowAlpha()
+  local style
+  if S and type(S.GetStyle) == "function" then
+    local ok, v = pcall(S.GetStyle)
+    if ok then style = v end
+  end
+  if style == "modern" then
+    local _, _, _, a = ModernBackdrop()
+    return a
+  end
+  return 1
+end
+
+-- The window's opacity: the user's own, or EllesmereUI's windows' (see above).
 function Skin.GetBgOpacity()
   local saved = tonumber(GetProfile().euiBgAlpha)
   if saved then return saved end
-  local _, _, _, a = HostBaseline()
-  return a or 0.90
+  return HostWindowAlpha()
 end
 
 -- True when opacity is following EllesmereUI rather than a manual override.
@@ -632,7 +659,13 @@ local RescanHostArt
 -- Re-resolves the baseline colour AND applies the current opacity. Both, every
 -- time: they come from the same live accessor and must never disagree.
 function Skin.ApplyBgOpacity(frame)
-  local alpha = Skin.GetBgOpacity()
+  -- Two alphas, equal whenever the user has set one. Unset, Postbox's own fill
+  -- (the backdrop where it owns it) takes EllesmereUI's window opacity, while
+  -- the host's shell art is driven to 1 -- its region alpha, which multiplies
+  -- the colour alpha the host gave it, so the Modern backdrop keeps its own 97%.
+  local saved = tonumber((GetProfile().euiBgAlpha))
+  local alpha = saved or HostWindowAlpha()
+  local hostAlpha = saved or 1
 
   local function paint(f)
     if not f then return end
@@ -641,6 +674,7 @@ function Skin.ApplyBgOpacity(frame)
     if RescanHostArt then pcall(RescanHostArt, f) end
     local opaque = f.__pbEuiAlwaysOpaque and true or false
     local a = opaque and OPAQUE_ALPHA or alpha
+    local ha = opaque and OPAQUE_ALPHA or hostAlpha
     local r, g, b = HostBaseline()
 
     local art = f.__pbEuiShellArt
@@ -690,14 +724,16 @@ function Skin.ApplyBgOpacity(frame)
                  and math.abs(now - last) > 0.01) then
             shown[region] = not (type(now) == "number" and now <= 0.01)
           end
-          local target = shown[region] and a or 0
+          local target = shown[region] and ha or 0
           region:SetAlpha(target)
           wrote[region] = target
         end
       end
     end
 
-    if f.__pbShimTopBar then f.__pbShimTopBar:SetAlpha(a) end
+    -- The shim's title strip stands for the host's, which the host leaves at
+    -- region alpha 1 over its colour's own 0.5.
+    if f.__pbShimTopBar then f.__pbShimTopBar:SetAlpha(ha) end
   end
 
   if frame then paint(frame) else Skin.ForEachWindow(paint) end
