@@ -9,11 +9,11 @@ work at the mailbox.
 
 ### Arrange your window
 
-- **Arrange mode.** Click the arrange mark beside the cog: drag any column by
-  its heading or straight from a row, right-click to hide it, click it for its
-  options. The totals, All mail and the category buttons move and hide too.
-  A panel beside the window explains everything; Escape steps back one thing
-  at a time.
+- **Arrange.** Click the arrange mark beside the cog: drag any column by its
+  heading or straight from a row, right-click to hide it, click it for its
+  options. The totals, All mail and the category buttons move too, and the
+  totals and category buttons can hide. A panel beside the window explains
+  everything; Escape steps back one thing at a time.
 - **Each list keeps its own layout:** one-line rows, Larger mail rows (on a
   two-line header that mirrors the row) and History, each with its own
   columns and choices.
@@ -35,7 +35,8 @@ work at the mailbox.
   pick the paint), **Faction** (Alliance or Horde, by character), **Post
   Office Counter**, **Goblin Express**, **Letters** (parchment and wax seals)
   and **Daylight**. Your mail list stays as clear as ever in every one.
-- **Window scale** from 80% to 130%, in every style.
+- **Window scale** from 80% to 130%, in every style. The options window
+  always fits your screen.
 - **Colors stay readable:** an accent too dark or too pale for its text is
   lifted just enough, under EllesmereUI and ElvUI too.
 
@@ -50,26 +51,27 @@ work at the mailbox.
 - **Keep bag slots free** while collecting (1 to 10).
 - **Selected mail and category buttons agree:** "All sold" with rows selected
   takes only the selected sold mail.
-- **Full bags stop a collection cleanly** and it carries on when you make
-  room; **stuck** now means one mail's own problem, marked with a small
-  triangle.
+- **Full bags stop a collection cleanly,** saying how many mails are left;
+  make room and click to carry on. **Stuck** now means one mail's own
+  problem, marked with a small triangle.
 - **Time left shows on every mail**, the same way everywhere ("9h", "3d").
 - **Quality marks** are two plain settings: on the icon, and before or after
   the name.
 
 ### History and Mail Memory
 
-- **History has its own layout**; its Collected column shows time ago or the
-  date, your way round (30/09 or 09/30).
+- **History has its own layout**; its Collected column shows time ago
+  ("3h ago") or the date, your way round (30/09 or 09/30).
 - **Search follows what you're looking at:** on History it searches History,
-  and the people button searches every character's.
+  and **Search every character** looks through every character's.
 - **Keep History for: Never** turns History off, after asking.
 
 ### Sending
 
-- **Sending gold asks first**, as the game's own mail window does.
+- **Sending gold asks first**, as the game's own mail window does, and asks
+  again if the name, the amount or C.O.D. changes before you answer.
 - **After sending, keep** nothing, the recipient, or the recipient and subject.
-- Shift-click an attached item to link it, Ctrl-click to try it on.
+- **Shift-click an attached item** to link it, Ctrl-click to try it on.
 
 ### Options, commands and languages
 
@@ -79,36 +81,59 @@ work at the mailbox.
   Postbox has a page under Settings, AddOns.
 - **Reset settings** or **Reset everything**, each saying exactly what it
   clears.
-- French, German and Spanish are written with their own letters again, and
+- **Clearer names:** Window grid docking is now Dock beside game windows, and
+  Show counts is Show mail counts. Show on each mail lives in Arrange, and
+  Sound on new mail sits on the Mail tab.
+- **Also:** hide a character from your lists, right-click the character
+  picker to go back to your own mailbox, resize Manage Recipients, a Report a
+  bug window, and `/postbox perf` to time mailbox visits for a bug report.
+- **French, German and Spanish** are written with their proper accents, and
   Chinese gold amounts use 万/亿.
 
 ### Fits your UI
 
-- **EllesmereUI:** all of Postbox's text in your EllesmereUI font, "Match
-  EllesmereUI" opacity matching its windows, and style changes no longer
-  making the window solid.
+- **EllesmereUI:** all of Postbox's text in your EllesmereUI font from the
+  moment you log in, "Match EllesmereUI" opacity matching the windows beside
+  Postbox (with Blizz UI Enhanced on or off), and style changes no longer
+  making the window solid. EllesmereUI's Blizzard Style and Classic WoW UI
+  put Postbox in its Blizzard look to match.
 - **ElvUI:** your ElvUI accent everywhere, live.
 - **Baganator and EllesmereUI bags** gray out unmailable items correctly when
   you switch to Send.
 
 ### Lighter
 
-- The mail list, History, Mail Memory and the Send tab leave a fraction of the
-  memory garbage they used to (a 50-mail refresh: 35 KB before, under 2 KB
-  now), switching Mail/Send redraws your bags once instead of three times, and
-  away from a mailbox Postbox does nothing at all.
+- **A fraction of the memory garbage:** the mail list, History, Mail Memory
+  and the Send tab leave far less behind (a 50-mail refresh: 35 KB before,
+  under 2 KB now), switching Mail/Send redraws your bags once instead of three
+  times, and away from a mailbox Postbox runs nothing on a timer or every
+  frame.
 
 ### Fixed
 
-- Delete when done removes every letter you empty, the first one after login
-  included.
-- A C.O.D. mail with several items comes out whole after you pay.
-- The mail list stops at its last mail, and a list that fits shows no scroll
-  bar.
-- Scroll arrows point the right way; slot counts are never cut short.
-- Questions asked from the options or other Postbox windows no longer open
-  behind them.
-- On EllesmereUI's round minimaps the mail icon sits on the rim.
+- **A C.O.D. question always answers for the mail you asked about,** even if
+  you open another mail before answering.
+- **C.O.D. and the attachment queue:** Send asks you to clear the queue or
+  uncheck C.O.D. before it sends.
+- **Delete and Return act on the mail you chose,** even while another mail
+  addon is busy at the mailbox.
+- **Ctrl+Enter sends a mail once.**
+- **A letter holding only gold keeps its words in History** when you collect
+  it.
+- **Delete when done** removes every letter you empty, the first one after
+  login included.
+- **A C.O.D. mail with several items comes out whole** after you pay, and
+  taking one item from it in the reading view keeps the mail open for the
+  rest.
+- **Collecting auction mail** no longer flashes a "Read, nothing left (1)"
+  bar at the foot of the list.
+- **Grayed-out items in your bags** keep one steady gray while you attach.
+- **Short gold figures never round up:** 12,960g reads 12.9k.
+- **A passing mail-server error** no longer marks a mail as stuck.
+- **The mail list stops at its last mail;** slot counts are never cut short.
+- **Questions asked from the options or other Postbox windows** no longer
+  open behind them.
+- **On EllesmereUI's round minimaps** the mail icon sits on the rim.
 
 ## 1.40.1
 
