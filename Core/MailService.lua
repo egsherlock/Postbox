@@ -2010,12 +2010,19 @@ end
 -------------------------------------------------------------
 -- Command layer :: single irreversible commands
 --
--- Statuses: "done" | "timeout" | "busy" | "closed" | "unavailable".
+-- Statuses: "done" | "timeout" | "busy" | "closed" | "unavailable" | "moved".
 -- Both reindex the inbox, so a caller batching them must work downwards.
 -- Neither asks for confirmation -- that is the UI's job, and the UI must do it.
+--
+-- `expected` (optional): the fingerprint of the mail the caller means, read
+-- when the player acted. The command waits for an idle channel, and another
+-- addon's command landing in that wait can reindex the inbox, so the index
+-- is re-checked immediately before the command goes, as Mail.DeleteMails
+-- does: a mail that has moved is left alone and the answer is "moved", with
+-- nothing sent.
 -------------------------------------------------------------
 
-local function SingleCommand(issue, onDone)
+local function SingleCommand(issue, onDone, index, expected)
   local token = Claim()
   if not token then
     if onDone then onDone("busy") end
@@ -2033,6 +2040,8 @@ local function SingleCommand(issue, onDone)
   if not MailboxOpen() then return finish("closed") end
 
   WhenIdle(function()
+    -- The last look before the command (see `expected` above).
+    if expected and Fingerprint(index) ~= expected then return finish("moved") end
     issue()
     WaitForCommand(function(timedOut)
       finish(timedOut and "timeout" or "done")
@@ -2040,12 +2049,12 @@ local function SingleCommand(issue, onDone)
   end, function() finish("timeout") end)
 end
 
-function Mail.DeleteMail(index, onDone)
+function Mail.DeleteMail(index, onDone, expected)
   if type(DeleteInboxItem) ~= "function" then
     if onDone then onDone("unavailable") end
     return
   end
-  SingleCommand(function() DeleteInboxItem(index) end, onDone)
+  SingleCommand(function() DeleteInboxItem(index) end, onDone, index, expected)
 end
 
 -- The money alone, for the reading view's coin tile. Same channel rules as
@@ -2080,12 +2089,12 @@ function Mail.TakeMoney(index, onDone, history)
   end)
 end
 
-function Mail.ReturnMail(index, onDone)
+function Mail.ReturnMail(index, onDone, expected)
   if type(ReturnInboxItem) ~= "function" then
     if onDone then onDone("unavailable") end
     return
   end
-  SingleCommand(function() ReturnInboxItem(index) end, onDone)
+  SingleCommand(function() ReturnInboxItem(index) end, onDone, index, expected)
 end
 
 -- Deletes a list of mails, one command at a time, stopping at the first

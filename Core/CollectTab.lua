@@ -4291,8 +4291,9 @@ local function BuildRow(panel)
     -- Nor delete one, while the columns are being arranged.
     if RV.Arranging(parent.panel) then return end
     -- Verified, not assumed: deleting is irreversible, so it may only ever act
-    -- on an index that still names the mail this row is showing.
-    DeleteOneMail(parent.panel, LiveIndex(parent))
+    -- on an index that still names the mail this row is showing -- now, and
+    -- again right before the command goes (DeleteOneMail).
+    DeleteOneMail(parent.panel, LiveIndex(parent), parent.fingerprint)
   end)
 
   -- The stuck marker: this mail's attachments were refused by the server
@@ -6619,8 +6620,13 @@ end
 -- attachments -- so deleting it loses nothing and needs no confirmation. The
 -- detail view's Delete can reach a mail that still holds something, and that
 -- one confirms; see BuildDetail.
-function DeleteOneMail(panel, index)
-  if not index then return end
+--
+-- `fingerprint` is the mail's as the player saw it when they chose to delete
+-- it. The service checks it against the index immediately before the
+-- command, after any wait for the channel, and leaves a mail that has moved
+-- alone ("moved": the refresh shows the list as it now is).
+function DeleteOneMail(panel, index, fingerprint)
+  if not index or not fingerprint then return end
   Mail().DeleteMail(index, function(status)
     if status == "closed" then
       StatusMailboxClosed()
@@ -6628,7 +6634,7 @@ function DeleteOneMail(panel, index)
       ns.Print(L()["MSG_MAIL_TIMEOUT"])
     end
     RequestRefresh(panel)
-  end)
+  end, fingerprint)
 end
 
 -------------------------------------------------------------
@@ -7935,7 +7941,9 @@ local function BuildDetail(panel)
     -- may only ever be aimed at an index that still names this mail.
     local index = LiveIndex(detail)
     if not index then return end
+    local fingerprint = detail.fingerprint
     detail:Hide()
+    -- Checked again right before the command goes (Mail.ReturnMail).
     Mail().ReturnMail(index, function(status)
       if status == "closed" then
         StatusMailboxClosed()
@@ -7943,12 +7951,13 @@ local function BuildDetail(panel)
         ns.Print(L()["MSG_MAIL_TIMEOUT"])
       end
       RequestRefresh(panel)
-    end)
+    end, fingerprint)
   end)
 
   detail.Delete:SetScript("OnClick", function()
     local index = LiveIndex(detail)
     if not index then return end
+    local fingerprint = detail.fingerprint
     -- Delete is offered on read mail, and a read mail can still hold items when
     -- the bags filled mid-run. Deleting that loses them, so it confirms -- in
     -- the client's own words where it has them.
@@ -7961,16 +7970,19 @@ local function BuildDetail(panel)
         or DeleteLabel()
       Confirm(POPUP_DELETE_ONE, DeleteLabel(), L()["COD_CONFIRM_CANCEL"],
         message, function()
-          detail:Hide()
-          -- Re-verified on the way out of the dialog: the inbox can reindex
-          -- between the question and the answer, and this is the irreversible
-          -- one.
-          DeleteOneMail(panel, LiveIndex(detail))
+          -- The mail the question was about, by the index and fingerprint
+          -- read at the click, never whatever the overlay shows now: it can
+          -- be turned to another mail while the dialog stands. The inbox can
+          -- reindex between the question and the answer too, and this is the
+          -- irreversible one, so the service checks the index once more
+          -- right before the command (DeleteOneMail).
+          if detail.mailIndex == index and detail.fingerprint == fingerprint then detail:Hide() end
+          DeleteOneMail(panel, index, fingerprint)
         end)
       return
     end
     detail:Hide()
-    DeleteOneMail(panel, index)
+    DeleteOneMail(panel, index, fingerprint)
   end)
 
   -- Header: sender, subject, then the metadata line, flush with the panel's
