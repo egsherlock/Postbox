@@ -63,6 +63,13 @@ longer play.
 - **`/pb` works like `/postbox`**, and either on its own opens the options,
   anywhere. `/postbox help` lists the commands in your language, and
   Postbox has a page under Settings, AddOns.
+- **Send tab conveniences:** choose what stays after sending (nothing, the
+  recipient, or recipient and subject); Shift-click a name in Manage
+  Recipients or the character list to mail that character; a quiet "First
+  mail to Name." catches a mistyped name; Shift-click an attached item to
+  add every other stack of it.
+- **Keep bag slots free while collecting** (Options, Mail tab, 1 to 10):
+  collecting stops before filling them and says so; gold still comes out.
 - **Sending gold asks first**, "Send 500g to Name?", as the game's own mail
   window does.
 - **Hide a character** from the character list with a right-click. Postbox
