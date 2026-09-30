@@ -337,6 +337,10 @@ local function ApplyResetLive()
   local arrange = ns.Arrange
   if arrange then ResetStep(arrange.Leave) end
 
+  -- The performance record follows the saved choice, now its default: the
+  -- one setting a reset would otherwise leave live until the next /reload.
+  ResetStep(ns.SetPerfRecording)
+
   -- The chosen look's border, border size and opacity. Each Reset re-reads
   -- its value -- absent now, so the default -- and repaints every window the
   -- skin has painted. A style with none of the three has none to repaint.
