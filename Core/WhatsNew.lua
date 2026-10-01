@@ -13,8 +13,10 @@ local _, ns = ...
 -- The notice: when an update has put the settings back on their defaults
 -- (Postbox.lua, 4b, which names the release in PostboxDB.notice), a card
 -- stands beside the mail window the first time it opens -- what changed,
--- what was kept, What's new? and OK. Either button answers it for good; a
--- mailbox closed without an answer shows it again at the next one. It
+-- what was kept, What's new? and OK. Either button answers it for good, and
+-- so does Escape, as OK; a mailbox closed without an answer shows it again
+-- at the next one. Escape closes the window or the notice alone, leaving
+-- the mail window up (section 4). It
 -- stands outside the window, so nothing the player needs is under it, and
 -- it steps aside while the arrange mode's inspector stands beside the
 -- window (WN.Aside, from Core/Arrange.lua).
@@ -32,6 +34,10 @@ local ceil, max, min = math.ceil, math.max, math.min
 -- The notice PostboxDB.notice can name: its release, which is its title,
 -- and its words.
 local NOTICE = { key = "1.50", text = "NOTICE_150" }
+
+-- Escape's own small parts (section 4), named here so the window and the
+-- notice can reach them.
+local ESC = {}
 
 -------------------------------------------------------------
 -- 1. The releases
@@ -130,7 +136,11 @@ local function BuildWindow()
     f.TitleText:SetText(L["WHATSNEW_TITLE"])
   end
   T.ApplyFrameTheme(f)
+  -- Escape closes it alone (section 4); the client's own pass, by this
+  -- name, is the net for a press in combat.
   ns.Core.UI.Helpers.RegisterEscClose(f)
+  f:HookScript("OnShow", ESC.Sync)
+  f:HookScript("OnHide", ESC.Sync)
 
   -- The pages on the list surface the bug report's report stands on.
   local card = CreateFrame("Frame", nil, f, "BackdropTemplate")
@@ -330,6 +340,9 @@ local function BuildCard(frame)
   c:Hide()
   c.__pbPopupAlways = true
   T.ApplyCard(c)
+  -- Escape answers it as OK does, and closes nothing else (section 4).
+  c:SetScript("OnShow", ESC.Sync)
+  c:SetScript("OnHide", ESC.Sync)
 
   local title = T.CreateText(c, "heading")
   title:SetJustifyH("LEFT")
@@ -449,6 +462,168 @@ function WN.Aside(on)
     card:Hide()
   else
     WN.WindowShown(frame)
+  end
+end
+
+-------------------------------------------------------------
+-- 4. Escape
+--
+-- Escape closes the window, or answers the notice (as OK does), and only
+-- that: the mail window and everything else stay up for the next press.
+--
+-- The client cannot be asked for that through UISpecialFrames alone. Its
+-- answer to the game-menu key, when nothing before the addons claims it,
+-- is one pass that hides every UI panel and every frame named in
+-- UISpecialFrames (CloseAllWindows) -- and at a mailbox the mail frame is
+-- one of those panels, shown unseen under the Postbox window, so the pass
+-- closes the mailbox with What's new (Core/Arrange.lua, section 5, which
+-- meets the same pass the same way).
+--
+-- So, out of combat, while the window or the notice is up, a small frame
+-- of ours hears the keyboard with every key passed on (propagation on, set
+-- before it is ever shown). The game-menu key is kept from the bindings for
+-- that one press, and only when the client would reach the addons' windows
+-- with it (AR.EscapeReachesAddOns: no popup, menu, cast, focused edit box or
+-- Blizzard window that answers first); the next frame keys pass again and
+-- the press is answered. Every other key passes untouched. In combat an
+-- addon may not set propagation, so the frame hides for the fight
+-- (PLAYER_REGEN_DISABLED comes before the lockdown) and Escape is the
+-- client's pass as before: the window's name stays in UISpecialFrames for
+-- it. Nothing of Blizzard's is touched, and the frame and its two events
+-- exist only while there is something of ours to close.
+-------------------------------------------------------------
+
+-- The topmost thing of ours up: the window (over the mail window's strata),
+-- then the notice. Hides it; answers whether there was one.
+function ESC.Close()
+  if win and win:IsVisible() then
+    win:Hide()
+    return true
+  end
+  if card and card:IsVisible() then
+    Answer(false)
+    return true
+  end
+  return false
+end
+
+-- Keys pass again. In combat propagation cannot be set, and the frame
+-- hides instead: a hidden frame takes no keys at all.
+function ESC.Pass(self)
+  if self:GetPropagateKeyboardInput() then return end
+  if InCombatLockdown() then
+    self:Hide()
+  else
+    self:SetPropagateKeyboardInput(true)
+  end
+end
+
+-- The frame after a press was kept: keys pass, then the press is answered.
+function ESC.KeyAnswer(self)
+  self:SetScript("OnUpdate", nil)
+  self.pending = nil
+  ESC.Pass(self)
+  ESC.Close()
+end
+
+function ESC.KeyDown(self, pressed)
+  if InCombatLockdown() then
+    self:Hide()
+    return
+  end
+  local AR = ns.Arrange
+  local ours = false
+  if AR and type(AR.EscapeReachesAddOns) == "function" then
+    local ok, yes = pcall(AR.EscapeReachesAddOns, pressed)
+    ours = ok and yes
+  end
+  if not ours then
+    if not self:GetPropagateKeyboardInput() then self:SetPropagateKeyboardInput(true) end
+    return
+  end
+  if not self.pending then
+    self.pending = true
+    self:SetScript("OnUpdate", ESC.KeyAnswer)
+  end
+  if self:GetPropagateKeyboardInput() then self:SetPropagateKeyboardInput(false) end
+end
+
+-- Hidden with a press unanswered (combat began, or what it would close went
+-- another way): answered a frame later all the same.
+function ESC.KeyHidden(self)
+  self:SetScript("OnUpdate", nil)
+  ESC.Pass(self)
+  if self.pending then
+    self.pending = nil
+    C_Timer.After(0, ESC.Close)
+  end
+end
+
+function ESC.OnEvent(self, event)
+  if event == "PLAYER_REGEN_DISABLED" then
+    -- Before the lockdown: keys pass and the frame goes for the fight.
+    self:Hide()
+  else
+    ESC.Sync()
+  end
+end
+
+-- Made on first use. On UIParent in the window's strata, over the mail
+-- window and the arrange mode's own key frame, so it hears a key first.
+function ESC.Frame()
+  local key = ESC.key
+  if key then return key end
+  key = CreateFrame("Frame", nil, UIParent)
+  key:Hide()
+  key:SetFrameStrata("FULLSCREEN_DIALOG")
+  key:SetScript("OnEvent", ESC.OnEvent)
+  ESC.key = key
+  return key
+end
+
+-- Given the keyboard once, out of combat, propagation on before it is ever
+-- shown. Answers whether it hears keys (never on a client without these).
+function ESC.Arm(key)
+  if key.armed then return true end
+  if type(key.EnableKeyboard) ~= "function" or type(key.SetPropagateKeyboardInput) ~= "function"
+    or type(key.GetPropagateKeyboardInput) ~= "function" then
+    return false
+  end
+  key:SetPropagateKeyboardInput(true)
+  key:EnableKeyboard(true)
+  key:SetScript("OnKeyDown", ESC.KeyDown)
+  key:SetScript("OnKeyUp", ESC.Pass)
+  key:SetScript("OnShow", ESC.Pass)
+  key:SetScript("OnHide", ESC.KeyHidden)
+  key.armed = true
+  return true
+end
+
+-- The window or the notice shown or hidden, or a fight ended: the frame
+-- up while either is up out of combat, and listening for combat while
+-- either is up at all.
+function ESC.Sync()
+  local up = (win and win:IsVisible()) or (card and card:IsVisible())
+  local key = ESC.key
+  if not up then
+    if key then
+      key:UnregisterEvent("PLAYER_REGEN_DISABLED")
+      key:UnregisterEvent("PLAYER_REGEN_ENABLED")
+      key:Hide()
+    end
+    return
+  end
+  key = key or ESC.Frame()
+  key:RegisterEvent("PLAYER_REGEN_DISABLED")
+  key:RegisterEvent("PLAYER_REGEN_ENABLED")
+  if InCombatLockdown() or not ESC.Arm(key) then
+    key:Hide()
+    return
+  end
+  if not key:IsShown() then
+    local AR = ns.Arrange
+    if AR and type(AR.ReadMenuKeys) == "function" then AR.ReadMenuKeys() end
+    key:Show()
   end
 end
 

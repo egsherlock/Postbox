@@ -1109,7 +1109,17 @@ do
   -- would match it, with nothing up that the client asks before an addon's
   -- window. Reads only.
   function AR.EscapeIsOurs(pressed)
-    if not AR.host or not menuKeys[pressed] then return false end
+    if not AR.host then return false end
+    return AR.EscapeReachesAddOns(pressed)
+  end
+
+  -- The same question without the mode: whether the press is the game-menu
+  -- key and the client would reach the addons' windows with it. What's new
+  -- asks it too (Core/WhatsNew.lua, section 4), after AR.ReadMenuKeys.
+  AR.ReadMenuKeys = ReadMenuKeys
+
+  function AR.EscapeReachesAddOns(pressed)
+    if not menuKeys[pressed] then return false end
     if BoundTo(pressed) ~= "TOGGLEGAMEMENU" then return false end
     if type(GetCurrentKeyBoardFocus) == "function" and GetCurrentKeyBoardFocus() then return false end
     if type(StaticPopup_IsAnyDialogShown) == "function" and StaticPopup_IsAnyDialogShown() then return false end
