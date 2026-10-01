@@ -1820,6 +1820,24 @@ function Theme.TextWidth(widget)
   return (type(width) == "number" and width > 0) and width or 0
 end
 
+-- One screen pixel in a frame's (or region's) own units, at the scale it
+-- draws at: 768 units span the screen's height at scale 1, so a pixel is
+-- 768 / the physical height, over the effective scale. The hairline a
+-- frame of Postbox's own draws, so it is one pixel at any UI scale (at
+-- EllesmereUI's pixel-perfect scale that is one unit). As the EllesmereUI
+-- skin measures its border's pixel; 1 where nothing is known.
+function Theme.OnePixel(frame)
+  local scale = frame and type(frame.GetEffectiveScale) == "function" and frame:GetEffectiveScale()
+  if type(scale) ~= "number" or scale <= 0 then return 1 end
+  local height
+  if type(GetPhysicalScreenSize) == "function" then
+    local _, h = GetPhysicalScreenSize()
+    height = h
+  end
+  if type(height) == "number" and height > 0 then return 768 / height / scale end
+  return 1 / scale
+end
+
 local function Bounds(opts)
   opts = type(opts) == "table" and opts or nil
   local padding  = (opts and tonumber(opts.padding))  or M.buttonPadding
