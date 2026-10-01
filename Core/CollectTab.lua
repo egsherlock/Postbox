@@ -287,8 +287,12 @@ end
 -- tile its plate's 3-unit pad), so the mark never rises past its row's top
 -- and the list's edge never cuts the first row's.
 --
--- RV.MARK_SCALE scales the whole rule, 1 being the bags' proportion. Only
--- `/postbox debug badge` sets it, for the session (CT.TuneBadge); every
+-- RV.MARK_SCALE scales the whole rule, 1 being the bags' proportion. It is
+-- 1.5 by default: at the bags' proportion a mail row's 18-unit icon gets a
+-- gem of about six units, too small to read at a glance, so every icon's
+-- mark is half again as big (the gem about half the icon's width), still
+-- in the corner and still never more than 2 units above the icon. Only
+-- `/postbox debug badge` changes it, for the session (CT.TuneBadge); every
 -- placement remembers the RV.markGen it was made at, so a retune places
 -- each mark again where it is next shown. Sizes are not rounded: at UI
 -- scale 1 a unit is nearly two screen pixels, too coarse a step to tune a
@@ -301,7 +305,7 @@ end
 -- The item button's art and where it stands (33 x 28, 3 out and 2 up, on a
 -- 37-unit button), and the most the mark ever rises above an icon.
 RV.MARK = { W = 33, H = 28, BUTTON = 37, OUT_X = 3, OUT_Y = 2, UP_MAX = 2 }
-RV.MARK_SCALE, RV.markGen = 1, 0
+RV.MARK_SCALE, RV.markGen = 1.5, 0
 
 -- iconSize -> the mark's width and height, and where its top-left stands
 -- against the icon's top-left (x right, y up).
