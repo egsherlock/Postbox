@@ -39,6 +39,15 @@ CS.Register("faction", "OPT_STYLE_FACTION", function()
   }
   local STITCH = DIR .. "faction-stitch.tga"   -- 8 x 2 units, repeats along x
 
+  -- The rims' numbers, which the title bar is seated by (Seat, below).
+  -- Alliance: the outer and inner gold lines, units in from the edge, and the
+  -- inner one's weight. Horde and the neutral leather: the seam, units in
+  -- from the edge, and its width. The title band is 25 units, down to the
+  -- rule under it.
+  local GOLD_OUTER, GOLD_INNER, GOLD_INNER_W = 3, 6, 0.8
+  local SEAM_AT, SEAM_W = 5, 2
+  local BAND_H = 25
+
   local EMBLEMS = {
     Alliance = {
       { atlas = "glues-characterselect-icon-faction-alliance-selected-2x", w = 16, h = 21 },
@@ -116,6 +125,9 @@ CS.Register("faction", "OPT_STYLE_FACTION", function()
     def.side = side
     local look = LOOKS[side]
     def.inset = look.inset
+    -- How deep the rim reaches into the title band: the far edge of its
+    -- innermost line along the top.
+    def.rimTop = (side == "alliance") and (GOLD_INNER + GOLD_INNER_W) or (SEAM_AT + SEAM_W)
     def.ground = {
       file = DIR .. ((side == "alliance") and "faction-lacquer.tga" or "faction-leather.tga"),
       unit = 64, inset = 1, tint = "ground",
@@ -195,16 +207,16 @@ CS.Register("faction", "OPT_STYLE_FACTION", function()
     CS.LayFrame4(edge, art, 0, 1)
     CS.TintAll(edge, colors.edge)
     local outer = CS.Frame4(art, "BORDER", 1)
-    CS.LayFrame4(outer, art, 3, 1.2)
+    CS.LayFrame4(outer, art, GOLD_OUTER, 1.2)
     local inner = CS.Frame4(art, "BORDER", 1)
-    CS.LayFrame4(inner, art, 6, 0.8)
+    CS.LayFrame4(inner, art, GOLD_INNER, GOLD_INNER_W)
     for i = 1, 4 do
       CS.Tinted(art, outer[i], "trim")
       CS.Tinted(art, inner[i], "trim")
     end
     local rule = CS.Line(art, "BORDER", 1)
-    rule:SetPoint("TOPLEFT", art, "TOPLEFT", 6, -25)
-    rule:SetPoint("TOPRIGHT", art, "TOPRIGHT", -6, -25)
+    rule:SetPoint("TOPLEFT", art, "TOPLEFT", GOLD_INNER, -BAND_H)
+    rule:SetPoint("TOPRIGHT", art, "TOPRIGHT", -GOLD_INNER, -BAND_H)
     rule:SetHeight(0.8)
     CS.Tinted(art, rule, "trim")
     Corners(art, PART.filigree, 28, 0, "trim")
@@ -228,7 +240,7 @@ CS.Register("faction", "OPT_STYLE_FACTION", function()
       seams[i] = CS.Tex(art, "BORDER", 2, STITCH, "REPEAT")
       CS.Tinted(art, seams[i], "thread")
     end
-    local s, w = 5, 2
+    local s, w = SEAM_AT, SEAM_W
     seams[1]:SetPoint("TOPLEFT", art, "TOPLEFT", s, -s)
     seams[1]:SetPoint("TOPRIGHT", art, "TOPRIGHT", -s, -s)
     seams[1]:SetHeight(w)
@@ -243,20 +255,25 @@ CS.Register("faction", "OPT_STYLE_FACTION", function()
     seams[4]:SetWidth(w)
     art.seams = seams
     local rule = CS.Line(art, "BORDER", 3)
-    rule:SetPoint("TOPLEFT", art, "TOPLEFT", 3, -25)
-    rule:SetPoint("TOPRIGHT", art, "TOPRIGHT", -3, -25)
+    rule:SetPoint("TOPLEFT", art, "TOPLEFT", 3, -BAND_H)
+    rule:SetPoint("TOPRIGHT", art, "TOPRIGHT", -3, -BAND_H)
     rule:SetHeight(1)
     CS.Tinted(art, rule, "trim")
     rule:SetAlpha(0.7)
     Corners(art, PART.cap, 14, 0, "trim")
   end
 
+  -- The emblem at its drawn size where the rim leaves it the room, and
+  -- otherwise as tall as that room -- between the rim's innermost line and
+  -- the rule under the title -- its width in proportion: it never reaches
+  -- the rim.
   local function BuildEmblem(art)
     local e = def.emblem
     if not e then return end
     local tex = art:CreateTexture(nil, "OVERLAY", nil, 1)
     tex:SetAtlas(e.atlas, false)
-    tex:SetSize(e.w, e.h)
+    local h = math.min(e.h, math.floor(BAND_H - (def.rimTop or 0)))
+    tex:SetSize(e.w * h / e.h, h)
     local title = art.frame.TitleText
     if title then
       tex:SetPoint("RIGHT", title, "LEFT", -6, 0)
@@ -271,7 +288,44 @@ CS.Register("faction", "OPT_STYLE_FACTION", function()
     BuildEmblem(art)
   end
 
+  -- The title bar inside the rim. The title, the cog, the arrange key and
+  -- the close X stand on the middle of the strip the creative styles seat
+  -- them on (Skin_Creative, SeatControls: the title band, from the window's
+  -- top), and this rim reaches down into that band -- the gold lines to 6.8
+  -- units, the seam to 7 -- where the controls' tops ran into it. So the
+  -- strip moves down by half the rim's depth, keeping its height and its
+  -- sides, and the title with it: their middle is then the middle of the
+  -- room between the rim's innermost line and the rule. Measured from the
+  -- rim's own numbers, so a deeper rim seats its bar lower by itself. Once
+  -- per window, at its first layout, after its controls were seated.
+  local function Seat(art)
+    if art.seated then return end
+    local frame = art.frame
+    local shell = frame and frame.__pbShell
+    local strip = shell and shell.strip
+    if not strip then return end
+    art.seated = true
+    local drop = (def.rimTop or 0) / 2
+    if drop <= 0 then return end
+    local n = strip:GetNumPoints() or 0
+    local points = {}
+    for i = 1, n do points[i] = { strip:GetPoint(i) } end
+    strip:ClearAllPoints()
+    for i = 1, n do
+      local p = points[i]
+      strip:SetPoint(p[1], p[2], p[3], p[4] or 0, (p[5] or 0) - drop)
+    end
+    -- Centred on the window, as SeatControls centres it, at the strip's new
+    -- middle.
+    local title = frame.TitleText
+    if title then
+      title:ClearAllPoints()
+      title:SetPoint("CENTER", frame, "TOP", 0, -((strip:GetHeight() or BAND_H) / 2 + drop))
+    end
+  end
+
   function def.Layout(art, w, h)
+    Seat(art)
     local seams = art.seams
     if seams then
       local run = w - 10
@@ -290,7 +344,7 @@ CS.Register("faction", "OPT_STYLE_FACTION", function()
       local title = art.frame.TitleText
       local tw = title and title.GetStringWidth and title:GetStringWidth() or 0
       local room = w / 2 - tw / 2 - 6 - (def.inset + 60)
-      emblem:SetShown(room >= def.emblem.w)
+      emblem:SetShown(room >= (emblem:GetWidth() or def.emblem.w))
     end
   end
 
