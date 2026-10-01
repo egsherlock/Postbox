@@ -1116,7 +1116,8 @@ end
 -------------------------------------------------------------
 -- 8b. Ctrl+Enter
 --
--- The draft's three fields send on Ctrl+Enter while "Ctrl+Enter sends" is on
+-- The draft's fields (To:, Subject, the message and the gold, silver and
+-- copper boxes) send on Ctrl+Enter while "Ctrl+Enter sends" is on
 -- (the options' Send tab page; MailboxUI, ctrlEnterSends, on by default).
 -- Off, Ctrl+Enter is the field's plain Enter. Every field asks ST.CtrlEnter,
 -- the one way in from the keyboard, and a send still goes through
@@ -5676,9 +5677,14 @@ local function BuildMoneyRow(panel)
   panel.CopperBox:SetScript("OnTabPressed", function() panel.GoldBox:SetFocus() end)
 
   -- The boxes are numeric-only, so any change is a real change.
+  -- Ctrl+Enter sends from the amount as from the draft's other fields (8b),
+  -- through the same ST.CtrlEnter and so the same questions; a plain Enter
+  -- here does what it always did, nothing.
+  local function MoneyEnter() ST.CtrlEnter(panel) end
   local moneyBoxes = { panel.GoldBox, panel.SilverBox, panel.CopperBox }
   for i = 1, #moneyBoxes do
     moneyBoxes[i]:HookScript("OnTextChanged", function() Invalidate(panel, "guidance") end)
+    moneyBoxes[i]:SetScript("OnEnterPressed", MoneyEnter)
   end
 
   -- C.O.D. toggle. Both skin tags are required: __postboxCheck is how the skins
