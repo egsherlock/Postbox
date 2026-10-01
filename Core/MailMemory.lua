@@ -3544,18 +3544,6 @@ function MM.MailboxSummary()
   }
 end
 
--- The minimap tooltip's memory line: the same sentence the window leads
--- with -- one truth, one phrasing -- or nil when there is nothing to say.
--- Just the age. The mail count moved up into the breakdown headings, where
--- the numbers describe the lists they sit above instead of repeating a
--- total the reader has to reconcile with them.
-function MM.SummaryText()
-  if not MemoryEnabled() then return nil end
-  local snap = live or StoredSnapshot()
-  if not snap then return nil end
-  return string.format(L["MEMORY_LASTSEEN"], AgeText(snap.seenAt))
-end
-
 -- One line for /postbox debug: everything needed to see why a badge did or
 -- did not show, without asking for a reproduction.
 function MM.Diagnose()

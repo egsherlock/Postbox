@@ -1195,15 +1195,15 @@ function TIP.Senders(groups)
   if #groups > shown then TIP.More(#groups - shown, true) end
 end
 
--- One character's right-hand side: its count, bright, and while Mail
--- Memory warns about it, the warning's own words (the soonest expiry, or
--- how long mail on its way has gone unopened) in the warning tone.
-function TIP.CharacterValue(n, st)
+-- One character's left-hand side: its name, and while Mail Memory warns
+-- about it, the warning's own words (the soonest expiry, or how long mail
+-- on its way has gone unopened) after it in the warning tone. The count is
+-- the right-hand side on every row, so the counts stand in one column.
+function TIP.CharacterName(Memory, st)
+  local name = Memory.ClassName(st.realm, st.name)
   local warning = st.warn and st.text
-  if not warning then return tostring(n) end
-  warning = ns.Theme.Colorize("warning", warning)
-  if n > 0 then return n .. " \194\183 " .. warning end
-  return warning
+  if not warning then return name end
+  return name .. "  " .. ns.Theme.Colorize("warning", warning)
 end
 
 -- The characters, this one first, then the ones with something to say,
@@ -1231,7 +1231,7 @@ function TIP.Characters(Memory)
     if not st.hidden and (st.me or n > 0 or st.warn) then
       if shown < TIP.CHARACTERS then
         shown = shown + 1
-        GameTooltip:AddDoubleLine(Memory.ClassName(st.realm, st.name), TIP.CharacterValue(n, st), 1, 1, 1, 1, 1, 1)
+        GameTooltip:AddDoubleLine(TIP.CharacterName(Memory, st), tostring(n), 1, 1, 1, 1, 1, 1)
       else
         extra = extra + 1
       end
@@ -1491,8 +1491,8 @@ end
 -- footprint is nothing at all: no frames, no event registrations, no touch
 -- on the default indicator. The runtime below is brought up on enable and
 -- torn back down on disable, so the only trace an enable-then-disable can
--- leave is the two hooks WoW provides no way to remove -- both of which are
--- guarded to dead code while inactive.
+-- leave is the one hook WoW provides no way to remove (Minimap:SetSize,
+-- below), guarded to dead code while inactive.
 -------------------------------------------------------------
 
 local Refresh -- forward: the event handlers below re-enter it
