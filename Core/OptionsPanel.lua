@@ -3023,19 +3023,22 @@ function Pages.mail(col)
   -- The badge shares its row with the stack count on the same icon (and the
   -- stack edge behind it, and an auction subject's count taken off the row):
   -- the Mail page is the panel's tallest, and a row of its own would make
-  -- the whole panel taller. Either redraws the rows the same way.
+  -- the whole panel taller. Either redraws the rows the same way. The count
+  -- comes first, so the badge stands next to Quality by the name below it:
+  -- the two quality choices together, side by side or, where the pair comes
+  -- apart, one above the other.
   Rows.Pair(col, {
-    title = L["OPT_QUALITY_ICON_TITLE"], text = L["OPT_QUALITY_ICON_DESC"],
-    get = function() return not ns.MailboxUI.GetQualityIcon or ns.MailboxUI.GetQualityIcon() end,
-    set = function(on)
-      if ns.MailboxUI.SetQualityIcon then ns.MailboxUI.SetQualityIcon(on) end
-      QualityChanged()
-    end,
-  }, {
     title = L["OPT_ICON_COUNTS_TITLE"], text = L["OPT_ICON_COUNTS_DESC"],
     get = function() return ns.MailboxUI.GetOption("iconCounts") end,
     set = function(on)
       ns.MailboxUI.SetOption("iconCounts", on)
+      QualityChanged()
+    end,
+  }, {
+    title = L["OPT_QUALITY_ICON_TITLE"], text = L["OPT_QUALITY_ICON_DESC"],
+    get = function() return not ns.MailboxUI.GetQualityIcon or ns.MailboxUI.GetQualityIcon() end,
+    set = function(on)
+      if ns.MailboxUI.SetQualityIcon then ns.MailboxUI.SetQualityIcon(on) end
       QualityChanged()
     end,
   })
