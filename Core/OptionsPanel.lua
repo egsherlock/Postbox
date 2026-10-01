@@ -1245,17 +1245,10 @@ do
     -- The count, where Stack counts on item icons puts it: the list's font,
     -- size and corner.
     if UI and UI.GetOption("iconCounts") then
-      local object = T.FontObject("numberSmall")
-      local path = object and object:GetFont()
-      s.Count:SetFont(path or STANDARD_TEXT_FONT, larger and 12 or 10, "OUTLINE")
-      s.Count:SetTextColor(1, 1, 1, 1)
-      s.Count:ClearAllPoints()
-      if larger then
-        s.Count:SetPoint("BOTTOMRIGHT", s.Icon, "BOTTOMRIGHT", -2, 1)
-      else
-        s.Count:SetPoint("BOTTOMRIGHT", s.Icon, "BOTTOMRIGHT", 2, -1)
-      end
       s.Count:SetText(SAMPLE_COUNT)
+      if R0 and R0.StyleCount then
+        R0.StyleCount(s.Count, s.Icon, iconSize)
+      end
       s.Count:Show()
     else
       s.Count:Hide()
