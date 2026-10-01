@@ -578,6 +578,7 @@ local S = {
   refresh = {},   -- run on every open and after a reset
   idle = {},      -- tab key -> what the inspector says at rest
   pages = {},     -- tab key -> its page of the list
+  tabCells = {},  -- tab key -> { first, last }: its rows' place in `cells`
   plates = {},    -- tab key -> its tab
   ctx = {},       -- tab key -> its drawing, once built
   tab = "mail",
@@ -3281,7 +3282,7 @@ function Pages.window(col)
     local extra = creative.Choices()
     for i = 1, #extra do styleItems[#styleItems + 1] = extra[i] end
   end
-  Rows.Dropdown(col, {
+  S.styleCell = Rows.Dropdown(col, {
     title = L["OPT_STYLE_TITLE"], text = L["OPT_STYLE_DESC"], items = styleItems,
     get = function() return ns.MailboxUI.GetStyleChoice and ns.MailboxUI.GetStyleChoice() end,
     set = function(id)
@@ -3950,6 +3951,199 @@ function Pages.memory(col)
 end
 
 -------------------------------------------------------------
+-- Reset this tab: which settings are the tab's
+--
+-- The footer's narrowest reset puts back the settings on the tab the player
+-- is looking at. Which saved values those are is written down nowhere: it
+-- is read off the tab's own rows when the reset is answered, so a row added
+-- next month is in it without anyone having to remember. A value is the
+-- tab's when it moves what one of the tab's rows shows, found by asking the
+-- rows with the profile set two ways for every value: everything at its
+-- default but that one value, and everything as it is but that one value.
+-- Either moving a row claims it -- the first finds an old key a getter
+-- still carries over when the new one is unset, the second a value that
+-- counts only beside another (a custom colour's hex beside its choice). A
+-- table's entries are judged one by one: the minimap icon's settings share
+-- one table, and its alert sound is a Mail tab row.
+--
+-- A look's own values are named for it: pb (the Postbox style, and the
+-- creative styles drawn on it), eui (the EllesmereUI skin), modern (the
+-- retired Postbox Modern), style (which look). Only the look being worn has
+-- rows, so the tab the Style row stands on takes all of them: a look reset
+-- there is not found wearing its old settings when it is next chosen.
+--
+-- The asking writes the profile directly, and it is put back exactly as it
+-- was before anything is cleared: the clearing is MailboxUI's
+-- (UI.ResetSettingKeys), with what the other resets keep kept. One run, on
+-- the answer; a few hundred reads, and nothing on screen moves meanwhile.
+-------------------------------------------------------------
+local TabReset = {}
+do
+  local LOOK_FAMILIES = { "pb", "eui", "modern", "style" }
+  -- What a row answered when it answered nothing, or failed to answer.
+  local NONE, FAILED = {}, {}
+
+  local function Copy(v)
+    if type(v) ~= "table" then return v end
+    local out = {}
+    for k, x in pairs(v) do out[k] = Copy(x) end
+    return out
+  end
+
+  -- A look's own value: a family's name, then nothing or a capital.
+  local function LookKey(key)
+    if type(key) ~= "string" then return false end
+    for i = 1, #LOOK_FAMILIES do
+      local f = LOOK_FAMILIES[i]
+      if key:sub(1, #f) == f then
+        local after = key:sub(#f + 1, #f + 1)
+        if after == "" or after:match("^%u$") then return true end
+      end
+    end
+    return false
+  end
+
+  -- Every value the profile holds that a reset may clear, as { key } or
+  -- { key, sub }: a table's entries one by one.
+  local function UnitsOf(snap, keeps)
+    local units = {}
+    for key, value in pairs(snap) do
+      if type(value) == "table" then
+        for sub in pairs(value) do
+          if not keeps(key, sub) then units[#units + 1] = { key, sub } end
+        end
+      elseif not keeps(key) then
+        units[#units + 1] = { key }
+      end
+    end
+    return units
+  end
+
+  -- The profile as `snap` has it, but with every unit cleared that `on`
+  -- leaves out: `alone`, all but `only`; otherwise all but everything except
+  -- `only`. What a row's getter wrote while it was asked (a default seeded,
+  -- an old key carried over) goes first, so every reading starts on the
+  -- same ground. A table is never taken away, only emptied: the store and
+  -- the modules hold theirs.
+  local function Put(profile, snap, units, keeps, alone, only)
+    for key, value in pairs(profile) do
+      local was = snap[key]
+      if was == nil then
+        if not keeps(key) then
+          if type(value) == "table" then
+            for inner in pairs(value) do value[inner] = nil end
+          else
+            profile[key] = nil
+          end
+        end
+      elseif type(value) == "table" and type(was) == "table" then
+        for inner in pairs(value) do
+          if was[inner] == nil then value[inner] = nil end
+        end
+      end
+    end
+    for i = 1, #units do
+      local unit = units[i]
+      local on
+      if alone then on = (unit == only) else on = (unit ~= only) end
+      local key, sub = unit[1], unit[2]
+      if sub == nil then
+        if on then profile[key] = Copy(snap[key]) else profile[key] = nil end
+      else
+        local t = profile[key]
+        if type(t) ~= "table" then
+          t = {}
+          profile[key] = t
+        end
+        if on then t[sub] = Copy(snap[key][sub]) else t[sub] = nil end
+      end
+    end
+  end
+
+  -- What each row shows now, into `out`.
+  local function Read(gets, out)
+    local UI = ns.MailboxUI
+    if UI and type(UI.ForgetSettings) == "function" then UI.ForgetSettings() end
+    for i = 1, #gets do
+      local ok, v = pcall(gets[i])
+      if not ok then v = FAILED elseif v == nil then v = NONE end
+      out[i] = v
+    end
+  end
+
+  local function Differs(a, b, n)
+    for i = 1, n do
+      if a[i] ~= b[i] then return true end
+    end
+    return false
+  end
+
+  local function Probe(profile, snap, units, keeps, gets, looks, owned)
+    local n = #gets
+    local base, full, now = {}, {}, {}
+    Put(profile, snap, units, keeps, true, nil)
+    Read(gets, base)
+    Put(profile, snap, units, keeps, false, nil)
+    Read(gets, full)
+    for i = 1, #units do
+      local unit = units[i]
+      local mine = looks and LookKey(unit[1])
+      if not mine and n > 0 then
+        Put(profile, snap, units, keeps, true, unit)
+        Read(gets, now)
+        mine = Differs(now, base, n)
+        if not mine then
+          Put(profile, snap, units, keeps, false, unit)
+          Read(gets, now)
+          mine = Differs(now, full, n)
+        end
+      end
+      if mine then owned[#owned + 1] = unit end
+    end
+  end
+
+  -- The settings on tab `key`, as UI.ResetSettingKeys takes them, or nil
+  -- where they cannot be worked out (nothing is then reset).
+  function TabReset.Units(key)
+    local UI, store = ns.MailboxUI, ns.Store
+    local profile = store and store.Get and store.Get("profile")
+    local range = S.tabCells[key]
+    if type(profile) ~= "table" or not range or not (UI and type(UI.ResetKeeps) == "function") then
+      return nil
+    end
+    local keeps = UI.ResetKeeps
+    local gets, looks = {}, false
+    for i = range[1], range[2] do
+      local cell = S.cells[i]
+      if (cell.kind == "check" or cell.kind == "dropdown") and type(cell.get) == "function" then
+        gets[#gets + 1] = cell.get
+      end
+      if cell == S.styleCell then looks = true end
+    end
+    local snap = Copy(profile)
+    local units = UnitsOf(snap, keeps)
+    local owned = {}
+    local ok, err = pcall(Probe, profile, snap, units, keeps, gets, looks, owned)
+    -- Back as it was, whatever happened above.
+    Put(profile, snap, units, keeps, false, nil)
+    if type(UI.ForgetSettings) == "function" then UI.ForgetSettings() end
+    if not ok then
+      if type(geterrorhandler) == "function" then geterrorhandler()(err) end
+      return nil
+    end
+    return owned
+  end
+
+  -- The tab's name, as its tab says it.
+  function TabReset.Name(key)
+    for i = 1, #TABS do
+      if TABS[i].key == key then return L[TABS[i].caption] end
+    end
+    return key
+  end
+end
+
+-------------------------------------------------------------
 -- The footer
 --
 -- A band under the list and the inspector with three things on it, each
@@ -4042,14 +4236,16 @@ function Footer.Build(frame, above)
   -- says what goes and what stays. A button of its own laid over the band,
   -- so a click on it is never also a click on the bug report.
   --
-  -- Two resets, offered side by side: the settings alone, or everything
-  -- Postbox keeps but the list of the player's characters. The second
-  -- clears what the player built -- recipients, groups, Mail Memory,
-  -- History -- so it is the dialog's last button, kept apart from the first
-  -- by Cancel, and it only asks again: nothing is cleared until a second
-  -- dialog, which says it cannot be undone, is answered. Enter answers
-  -- neither dialog (no enterClicksFirstButton); Escape and Cancel close
-  -- both without a change.
+  -- Three resets, offered side by side, narrowest first: the settings on
+  -- the tab the panel is showing (TabReset), every setting, or everything
+  -- Postbox keeps but the list of the player's characters. The last clears
+  -- what the player built -- recipients, groups, Mail Memory, History -- so
+  -- it is the dialog's last button, kept apart from the others by Cancel,
+  -- and it only asks again: nothing is cleared until a second dialog, which
+  -- says it cannot be undone, is answered. Enter answers no dialog (no
+  -- enterClicksFirstButton); Escape and Cancel close both without a change.
+  -- The tab is the one the dialog was opened on and names, whichever tab
+  -- the panel has moved to by the answer.
   do
     local POPUP_RESET = "POSTBOX_RESET_SETTINGS"
     local POPUP_RESET_ALL = "POSTBOX_RESET_EVERYTHING"
@@ -4091,6 +4287,19 @@ function Footer.Build(frame, above)
       if not refused then AfterReset(styleChanged) end
     end
 
+    local function ResetTabNow()
+      local UI = ns.MailboxUI
+      if Busy() or not (UI and type(UI.ResetSettingKeys) == "function") then return end
+      local units = TabReset.Units(S.resetTab)
+      if not units then return end
+      local styleChanged, refused = UI.ResetSettingKeys(units)
+      if not refused then AfterReset(styleChanged) end
+    end
+
+    -- Cancel. With each button's answer read by its place, a button with
+    -- none would leave the dialog standing.
+    local function Nothing() end
+
     local function ResetEverythingNow()
       local UI = ns.MailboxUI
       if Busy() or not (UI and type(UI.ResetEverything) == "function") then return end
@@ -4123,11 +4332,18 @@ function Footer.Build(frame, above)
       if not StaticPopupDialogs[POPUP_RESET] then
         StaticPopupDialogs[POPUP_RESET] = {
           text = "%s",
-          button1 = L["BTN_RESET_SETTINGS"],
-          button2 = L["COD_CONFIRM_CANCEL"],
-          button3 = L["BTN_RESET_EVERYTHING"],
-          OnAccept = ResetSettingsNow,
-          OnAlt = AskEverything,
+          button1 = L["OPTX_RESET_TAB"],
+          button2 = L["BTN_RESET_SETTINGS"],
+          button3 = L["COD_CONFIRM_CANCEL"],
+          button4 = L["BTN_RESET_EVERYTHING"],
+          -- Each button's answer by its place (StaticPopup_OnClick), so the
+          -- four stand in the order they read: Cancel third, before the one
+          -- that clears what the player made.
+          selectCallbackByIndex = true,
+          OnButton1 = ResetTabNow,
+          OnButton2 = ResetSettingsNow,
+          OnButton3 = Nothing,
+          OnButton4 = AskEverything,
           timeout = 0,
           whileDead = true,
           hideOnEscape = true,
@@ -4184,7 +4400,9 @@ function Footer.Build(frame, above)
     reset:SetScript("OnClick", function()
       if Busy() then return end
       if EnsureResetDialog() then
-        ns.Theme.LiftPopup(StaticPopup_Show(POPUP_RESET, L["MSG_RESET_CONFIRM"]))
+        S.resetTab = S.tab
+        local tab = L("OPTX_RESET_TAB_CONFIRM", TabReset.Name(S.tab))
+        ns.Theme.LiftPopup(StaticPopup_Show(POPUP_RESET, L("MSG_RESET_CONFIRM", tab)))
       end
     end)
     reset:SetScript("OnEnter", function(self)
@@ -4429,7 +4647,9 @@ local function Build()
     page:SetPoint("TOPRIGHT", list, "TOPRIGHT", -1, -1)
     page:Hide()
     local col = Rows.Column(page)
+    local first = #S.cells + 1
     Pages[key](col)
+    S.tabCells[key] = { first, #S.cells }
     local h = -col.y + LIST_PAD
     page:SetHeight(h)
     S.pages[key], S.cols[key], S.pageH[key] = page, col, h

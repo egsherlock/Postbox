@@ -332,8 +332,12 @@ local function ClearProfile(profile, keep)
 end
 
 -- What is on screen, put onto the settings as they now stand: the second
--- half of both resets, once the first has cleared what it clears.
-local function ApplyResetLive()
+-- half of every reset, once the first has cleared what it clears. `partial`:
+-- the narrowest reset's (UI.ResetSettingKeys), which cleared only some
+-- settings -- every repaint below still runs, reading them as they stand, but
+-- nothing here clears a value of its own, and the windows' size and place,
+-- which no tab of the options holds, stay where they are.
+local function ApplyResetLive(partial)
   ForgetSettings()
 
   -- The arrange mode closes first: its strip, its card and the grid's
@@ -356,9 +360,17 @@ local function ApplyResetLive()
   -- skin has painted. A style with none of the three has none to repaint.
   local skin = ns.Skin
   if skin then
-    ResetStep(skin.ResetBorder)
-    ResetStep(skin.ResetBorderSize)
-    ResetStep(skin.ResetBgOpacity)
+    if partial then
+      -- The same repaints without the clearing: the three Resets write the
+      -- border and the opacity as well as painting them.
+      ResetStep(skin.ApplyBorder)
+      ResetStep(skin.ApplyBgOpacity)
+      ResetStep(skin.ApplyAppearance)
+    else
+      ResetStep(skin.ResetBorder)
+      ResetStep(skin.ResetBorderSize)
+      ResetStep(skin.ResetBgOpacity)
+    end
     -- The Postbox style's font and text size, back on the game's own.
     ResetStep(skin.ApplyFonts)
     -- And its colours, mode, edges and text colours: the palette resolved
@@ -387,12 +399,12 @@ local function ApplyResetLive()
   end
   -- The window's size and place last, onto the floor the settings above
   -- have just decided.
-  ResetStep(UI.ResetWindowGeometry)
+  if not partial then ResetStep(UI.ResetWindowGeometry) end
 
   local memory, icon, manager = ns.MailMemory, ns.MinimapButton, ns.RecipientManager
   if memory then ResetStep(memory.Refresh) end
   if icon then ResetStep(icon.Refresh) end
-  if manager then ResetStep(manager.ResetWindow) end
+  if manager and not partial then ResetStep(manager.ResetWindow) end
   -- The Send button's keys, with Ctrl+Enter sends back on.
   local send = ns.SendTab
   if send then ResetStep(send.RefreshSendHint) end
@@ -434,6 +446,64 @@ function UI.ResetSettings()
   ClearProfile(profile, RESET_KEEP)
   if iconOn ~= nil and type(minimap) == "table" then minimap.enabled = iconOn end
   ApplyResetLive()
+
+  return UI.GetStyleChoice() ~= styleBefore
+end
+
+-- Whether Reset to defaults keeps `key` -- with `sub`, the one entry `sub` of
+-- the table at `key`: the player's own data under profile (RESET_KEEP), and
+-- whether the minimap icon is on (UI.ResetSettings). The narrowest reset
+-- keeps what this one keeps.
+function UI.ResetKeeps(key, sub)
+  if RESET_KEEP[key] then return true end
+  return key == "minimap" and sub == "enabled"
+end
+
+-- The settings read from memory are read again from the profile. For the
+-- options panel, which works out which settings each tab's rows read by
+-- writing the profile directly and asking the rows (OptionsPanel, TabReset).
+UI.ForgetSettings = ForgetSettings
+
+-- RESET THIS TAB (the footer's narrowest choice): the settings `units`
+-- names, and nothing else. The options panel works out which those are from
+-- the rows of the tab the player is looking at (OptionsPanel, TabReset) and
+-- hands them over as a list: { key } for a value of its own under profile,
+-- { key, sub } for one entry of the table at `key` (the minimap icon's
+-- settings share one). Each is cleared as the other resets clear -- a table
+-- never replaced -- except what UI.ResetKeeps keeps; then what is on screen
+-- is put onto the settings as they now stand, the windows left where they
+-- are. Returns true when the window style changed, and is refused, as
+-- UI.ResetSettings is.
+function UI.ResetSettingKeys(units)
+  if UI.ResetBlockedBy() then return false, true end
+  local store = ns.Store
+  local profile = store and store.Get and store.Get("profile")
+  if type(profile) ~= "table" or type(units) ~= "table" then return false end
+
+  local styleBefore = UI.GetStyleChoice()
+  local docking = false
+  for i = 1, #units do
+    local unit = units[i]
+    local key, sub = unit[1], unit[2]
+    if key ~= nil and not UI.ResetKeeps(key, sub) then
+      local value = profile[key]
+      if sub ~= nil then
+        if type(value) == "table" then value[sub] = nil end
+      elseif type(value) == "table" then
+        for inner in pairs(value) do value[inner] = nil end
+      else
+        profile[key] = nil
+      end
+      if key == "gridDock" then docking = true end
+    end
+  end
+  ApplyResetLive(true)
+  -- Docking back on, as its switch turns it on: a window moved off the grid
+  -- this session goes back into its slot.
+  if docking and UI.GetOption("gridDock") then
+    UI._state.freeMoved = false
+    ResetStep(UI.ApplyWindowLayout)
+  end
 
   return UI.GetStyleChoice() ~= styleBefore
 end
