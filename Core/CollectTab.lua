@@ -471,25 +471,98 @@ end
 -- The count's size in the number font: compact icons, the larger icon.
 RV.COUNT_FONT, RV.COUNT_FONT_LARGE = 10, 12
 
--- iconSize -> the count's font size, and where its bottom-right stands
--- against the icon's (x right, y up): at the corner and 2 out past it on a
--- compact icon, whose art a count drawn inside would mostly cover; inside
--- the art on a larger one, as a bag's is. One rule for every item icon: a
--- mail row's, History's, Mail Memory's, a fan tile, a reading-view tile.
+-- iconSize -> the count's font size, where its last digit's right edge
+-- stands against the icon's right edge (x, right), and where its string's
+-- bottom stands against the icon's bottom (y, up): on a compact icon, whose
+-- art a count drawn inside would mostly cover, the digits end 1 past the
+-- corner, hanging just outside it; on a larger one they end 2 inside the
+-- art, as a bag's do. One rule for every item icon: a mail row's,
+-- History's, Mail Memory's, a fan tile, a reading-view tile.
 function RV.CountGeometry(iconSize)
-  if (tonumber(iconSize) or 18) <= 20 then return RV.COUNT_FONT, 2, -1 end
+  if (tonumber(iconSize) or 18) <= 20 then return RV.COUNT_FONT, 1, -1 end
   return RV.COUNT_FONT_LARGE, -2, 1
 end
 
--- fs, icon, iconSize -> the count's string placed by the rule and
--- right-justified, as a bag's count is: its right edge stands on the same
--- line for one digit, two or three, never centred in a box a longer
--- number once made.
-function RV.PlaceCount(fs, icon, iconSize)
-  local _, x, y = RV.CountGeometry(iconSize)
+-- Where the digits end is not where their string ends. A string's box is
+-- wider than the advance of its letters: the outline (the client's text
+-- renderer draws it outside the letters) is given room at each end, and at
+-- the count's sizes that room is several units. Anchored by its box, a
+-- right-justified count ended that far short of the corner -- 4 units at
+-- 10 on a compact icon, more on the fan's 12 -- whatever the rule said.
+-- So the rule places the digits, and the box is moved out by the room the
+-- font gives each end, measured from the font itself: "0" measures one
+-- digit and two ends, "00" two digits and two ends, so one end is
+-- "0" less half of "00". Measured once per size and kept (two sizes;
+-- emptied if the number font's file changes), on the string being placed,
+-- so it is the room of the font and scale the count is drawn in.
+RV.countPads, RV.countPadPath = {}, nil
+
+-- fs, path, size -> the room past each end of a count's digits in that
+-- font, or nil where the client has not laid the font out yet (it measures
+-- nothing): placed by its box this time, and measured on the next.
+-- Leaves fs's text changed; RV.StyleCount puts it back.
+function RV.CountPad(fs, path, size)
+  local pads = RV.countPads
+  if RV.countPadPath ~= path then
+    for key in pairs(pads) do pads[key] = nil end
+    RV.countPadPath = path
+  end
+  local pad = pads[size]
+  if pad then return pad end
+  fs:SetText("0")
+  local one = fs:GetStringWidth() or 0
+  fs:SetText("00")
+  local two = fs:GetStringWidth() or 0
+  if one <= 0 or two <= one then return nil end
+  pad = max(0, one - two / 2)
+  pads[size] = pad
+  return pad
+end
+
+-- holder -> a count's string on it, hidden: over everything else on the
+-- holder, in the number font until RV.StyleCount sizes it, white with no
+-- palette tint (it is drawn on the item's art, so it reads the same in
+-- every look and in Light mode), right-justified on one line.
+function RV.NewCount(holder)
+  local fs = holder:CreateFontString(nil, "OVERLAY")
+  fs:SetDrawLayer("OVERLAY", 7)
+  local object = Th().FontObject("numberSmall")
+  if object then fs:SetFontObject(object) else fs:SetFont(STANDARD_TEXT_FONT, RV.COUNT_FONT, "OUTLINE") end
+  fs:SetTextColor(1, 1, 1, 1)
   fs:SetJustifyH("RIGHT")
+  fs:SetWordWrap(false)
+  fs:Hide()
+  return fs
+end
+
+-- fs, icon, iconSize -> the count's string in the count's font for that
+-- icon (the number font's face, RV.CountGeometry's size, outlined, white)
+-- and placed by the rule: its digits' right edge where the rule says, for
+-- one digit, two or three alike, never centred in a box a longer number
+-- once made. Its text is kept. -> whether the font's room was measured
+-- (false: placed by its box, to be placed again; RV.EnsureCount).
+function RV.StyleCount(fs, icon, iconSize)
+  local size, x, y = RV.CountGeometry(iconSize)
+  local object = Th().FontObject("numberSmall")
+  local path = object and object:GetFont() or nil
+  if type(path) ~= "string" or path == "" then path = STANDARD_TEXT_FONT end
+  local text = fs:GetText()
+  fs:SetFont(path, size, "OUTLINE")
+  fs:SetTextColor(1, 1, 1, 1)
+  fs:SetJustifyH("RIGHT")
+  local pad = RV.CountPad(fs, path, size)
+  fs:SetText(text)
   fs:ClearAllPoints()
-  fs:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", x, y)
+  fs:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", x + (pad or 0), y)
+  return pad ~= nil
+end
+
+-- fs, icon, iconSize -> RV.StyleCount when the icon's size is not the one
+-- the count was last placed for, or its font's room was not measured yet;
+-- one compare otherwise, so a bind or a paint can call it every time.
+function RV.EnsureCount(fs, icon, iconSize)
+  if fs.__pbCountSize == iconSize then return end
+  fs.__pbCountSize = RV.StyleCount(fs, icon, iconSize) and iconSize or nil
 end
 
 -- The stack edge's three layers, outside in: the black key, the grey ring
@@ -557,26 +630,14 @@ function RV.PaintCount(row, count, items, layout)
     -- On the frame the quality mark stands on, over the mark (RV.IconOverlay).
     local holder = RV.IconOverlay(row)
     if not fs then
-      fs = holder:CreateFontString(nil, "OVERLAY")
-      fs:SetDrawLayer("OVERLAY", 7)
-      fs:SetJustifyH("RIGHT")
-      fs:SetWordWrap(false)
+      fs = RV.NewCount(holder)
       fs.__pbOn = false
       row.IconCount = fs
     end
     -- Sized and placed again only when the icon changes size (the row's
-    -- mode), by the icons' one rule (RV.PlaceCount): on the larger icon
+    -- mode), by the icons' one rule (RV.EnsureCount): on the larger icon
     -- inside the art, clear of the second line's figures.
-    local iconSize = icon:GetWidth() or 18
-    local size = RV.CountGeometry(iconSize)
-    if fs.__pbSize ~= size then
-      fs.__pbSize = size
-      local object = Th().FontObject("numberSmall")
-      local path = object and object:GetFont()
-      fs:SetFont(path or STANDARD_TEXT_FONT, size, "OUTLINE")
-      fs:SetTextColor(1, 1, 1, 1)
-      RV.PlaceCount(fs, icon, iconSize)
-    end
+    RV.EnsureCount(fs, icon, icon:GetWidth() or 18)
     if fs.__pbText ~= text then
       fs.__pbText = text
       fs:SetText(text)
@@ -3033,6 +3094,8 @@ CT.RowRules = {
   -- The icon's mark by the list's own rule, for the options' sample rows.
   ShowMark = RV.ShowMark,
   PlaceMark = RV.PlaceMark,
+  -- The icon's count by the same rule: font, size and where its digits end.
+  StyleCount = RV.StyleCount,
   PaintNameMark = RV.PaintNameMark,
   NameMarkRoom = RV.NameMarkRoom,
   FitSubject = RV.FitSubject,
@@ -8263,15 +8326,15 @@ local function BuildDetailSlot(detail, i)
   slot.Icon:Hide()
 
   -- The item's quality mark and the count over it, by the icons' rules
-  -- (RV.PlaceMark, RV.PlaceCount), on a frame over the slot, as a fan tile
-  -- has them.
+  -- (RV.PlaceMark, RV.EnsureCount), on a frame over the slot, as a fan
+  -- tile has them.
   local over = CreateFrame("Frame", nil, slot)
   over:SetAllPoints(slot)
   slot.Mark, slot.MarkShadow = RV.NewMark(over)
   RV.PlaceMark(slot.Mark, slot.MarkShadow, slot.Icon, T.Metrics.slotSize)
-  slot.Count = T.CreateText(over, "numberSmall", "OVERLAY")
-  slot.Count:SetDrawLayer("OVERLAY", 7)
-  RV.PlaceCount(slot.Count, slot.Icon, T.Metrics.slotSize)
+  slot.Count = RV.NewCount(over)
+  slot.Count:Show()
+  RV.EnsureCount(slot.Count, slot.Icon, T.Metrics.slotSize)
 
   -- The client's own square slot highlight, additively blended -- the same one
   -- the compose screen's attachment slots use, so the two grids of item slots
@@ -8484,10 +8547,11 @@ local function BuildDetail(panel)
   money.Icon:SetAllPoints()
   money.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
   money.Icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_02")
-  money.Count = T.CreateText(money, "numberSmall", "OVERLAY")
-  -- Where an item tile's count stands (RV.PlaceCount), as the fan's gold
+  money.Count = RV.NewCount(money)
+  money.Count:Show()
+  -- Where an item tile's count stands (RV.EnsureCount), as the fan's gold
   -- tile has it.
-  RV.PlaceCount(money.Count, money.Icon, M.slotSize)
+  RV.EnsureCount(money.Count, money.Icon, M.slotSize)
   local moneyHighlight = money:CreateTexture(nil, "HIGHLIGHT")
   moneyHighlight:SetAllPoints()
   moneyHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
@@ -8791,6 +8855,7 @@ function PaintDetailContent(detail, index)
       shownSlots = i
       slot.Icon:SetTexture(texture)
       slot.Icon:Show()
+      RV.EnsureCount(slot.Count, slot.Icon, Th().Metrics.slotSize)
       slot.Count:SetText((tonumber(count) or 0) > 1 and tostring(count) or "")
       RV.ShowMark(slot.Mark, slot.MarkShadow, marks and RV.AtlasOf(RV.QualityMark(index, i)) or nil)
       -- nil where no fetch has landed for this mail -- the channel was busy when
@@ -8815,6 +8880,7 @@ function PaintDetailContent(detail, index)
   if detail.MoneySlot then
     if moneyValue > 0 then
       local text = Helpers().FormatMoney(moneyValue)
+      RV.EnsureCount(detail.MoneySlot.Count, detail.MoneySlot.Icon, Th().Metrics.slotSize)
       detail.MoneySlot.Count:SetText(text:match("^%S+") or text)
       detail.MoneySlot:Show()
     else
@@ -11304,14 +11370,14 @@ do
     tile.Icon:SetAllPoints()
     tile.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     -- The quality mark and the count over it, by the icons' rules
-    -- (RV.PlaceMark, RV.PlaceCount, from Fan.Place at the tile's size), on
-    -- a frame over the tile: a level above every tile, as the mark
+    -- (RV.PlaceMark, RV.EnsureCount, from Fan.Place at the tile's size),
+    -- on a frame over the tile: a level above every tile, as the mark
     -- overhangs its tile's corner.
     local over = CreateFrame("Frame", nil, tile)
     over:SetAllPoints(tile)
     tile.Mark, tile.MarkShadow = RV.NewMark(over)
-    tile.Count = T.CreateText(over, "numberSmall", "OVERLAY")
-    tile.Count:SetDrawLayer("OVERLAY", 7)
+    tile.Count = RV.NewCount(over)
+    tile.Count:Show()
     local warning = ProbeAtlas(T.AtlasSets.warning)
     if warning then
       tile.Warn = tile:CreateTexture(nil, "OVERLAY", nil, 2)
@@ -11496,10 +11562,7 @@ do
       -- tiles are larger), each placed again only when that, or the mark's
       -- rule, changed.
       RV.PlaceMark(tile.Mark, tile.MarkShadow, tile.Icon, size)
-      if tile.pbSize ~= size then
-        tile.pbSize = size
-        RV.PlaceCount(tile.Count, tile.Icon, size)
-      end
+      RV.EnsureCount(tile.Count, tile.Icon, size)
       tile.fx, tile.fy = P + col * step, -(P + codH + line * step)
       tile.Slide:Stop()
       if animate then
