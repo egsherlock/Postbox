@@ -49,6 +49,8 @@ CS.Register("daylight", "OPT_STYLE_DAYLIGHT", function()
     nameKey = "OPT_STYLE_DAYLIGHT",
     light = true,
     ground = { file = DIR .. "daylight-paper.tga", unit = 64, inset = 1, tint = "paper" },
+    -- The tile's grey range (gen-styles.py: daylight-paper), for the grounds.
+    grain = { 0.93, 1.04 },
     -- The deeper paper behind the title, faded with the ground.
     titleBand = Hex("ece4d4", 0.90),
     bandInset = 1,

@@ -3,7 +3,7 @@ local _, ns = ...
 -- =====================================================================
 -- Postbox :: the creative window styles (the shared foundation)
 -- ---------------------------------------------------------------------
--- Pillar Box, Faction, Post Office Counter, Goblin Express, and the two on a
+-- London Postbox, Faction, Post Office Counter, Goblin Express, and the two on a
 -- light ground, Letters and Daylight: choices in
 -- the Window style list beside Postbox, Blizzard and the host UI, each a
 -- small table in its own file (Core/Style_*.lua), registered here as the
@@ -33,7 +33,7 @@ local _, ns = ...
 --   lip      the title bar, a three-slice drawn the same way.
 --   rivets   placed by code at an even spacing that fits the length, so
 --            none is ever cut in half, laid out again on a resize.
---   extras   whatever the style adds (the flag, the emblem, the tank).
+--   extras   whatever the style adds (the enamel, the emblem, the tank).
 -- Paint is authored greyscale and tinted with SetVertexColor, so a colour
 -- choice costs one colour.
 --
@@ -47,7 +47,7 @@ local _, ns = ...
 -- styles' builders are let go then: the Window style list needs their names
 -- alone. Textures load when the first window is dressed, and only the chosen
 -- style's. Nothing runs on a timer; the art is laid out on a size change.
--- The flag and the tank change on the Mail tab caption's own pass
+-- The tank changes on the Mail tab caption's own pass
 -- (Skin.OnMailState, MailboxUI), the counter's pigeonholes when the category
 -- buttons are laid out (Skin.DressSweep, CollectTab), each only when what
 -- they show has changed.
@@ -79,6 +79,11 @@ local floor, max, min = math.floor, math.max, math.min
 --   inset        units from the window's edge to the cog and the close X
 --   ground       { file, unit, inset, tint }: the tile, its size in units,
 --                how far it keeps from the edge (under the rim), its tint
+--   grain        { lo, hi }: the tile's grey range (gen-styles.py), which
+--                the tint multiplies: the art's darkest and lightest, read
+--                as the ground the window's own text stands on
+--   grounds      name -> { darkest, lightest }: grounds of the style's own
+--                (the post box's enamel), for Theme.SetGround
 --   rivets       { atlas, part, spacing, top, bottom, x, tint }
 --   titleBand    { r, g, b, a }: a band behind the title, faded with the
 --                ground; `bandInset` units from each side
@@ -375,6 +380,13 @@ function CS.SetVariant(key)
   Profile()[def.variantKey] = (key ~= def.variants[1].key) and key or nil
   if def.RefreshColors then def.RefreshColors() end
   CS.Repaint()
+  -- The paint is the ground the window's own text stands on: its inks and
+  -- plates follow it.
+  local skin = CS.skin
+  if skin and type(skin._ResolveLook) == "function" and skin._ResolveLook()
+     and type(skin._RepaintTexts) == "function" then
+    skin._RepaintTexts()
+  end
 end
 
 -- The rows the options draw for it: { id, name }, or nil for a style
@@ -685,13 +697,18 @@ local function Activate(def, skin)
   skin.BannerInk = def.BannerInk
 
   -- A light ground: the Postbox style reads its Mode as Light (its palette,
-  -- the opacity floor, the text shadow) and keeps what it paints for a
-  -- palette change as its own claim does. The styles on a dark ground never
-  -- come here.
+  -- the opacity floor, the text shadow).
   if def.light then
     skin.GetMode = function() return "light" end
+  end
+  -- On any ground, what it paints is kept for a change of the paint, the
+  -- opacity or the palette, as the Postbox style's own claim does, and every
+  -- text's ink is worked out from what it stands on -- the art too, over its
+  -- grain (def.grain), and a ground of the style's own (def.grounds).
+  do
     local T = ns.Theme
     if T and type(T.TrackPaint) == "function" then T.TrackPaint() end
+    if T and type(T.UseGrounds) == "function" then T.UseGrounds(true) end
   end
   -- On any ground, the palette the settings name resolved now, before the
   -- first window is built: the saved look (row stripes off, say) holds from

@@ -54,6 +54,8 @@ CS.Register("goblin", "OPT_STYLE_GOBLIN", function()
     nameKey = "OPT_STYLE_GOBLIN",
     inset = 13,
     ground = { file = DIR .. "goblin-steel.tga", unit = 64, inset = 2, tint = "steel" },
+    -- The tile's grey range (gen-styles.py: goblin-steel), for the grounds.
+    grain = { 0.62, 0.84 },
     rivets = { atlas = ATLAS, part = PART.rivet, spacing = 64, top = 42, bottom = 16, x = 4.5, tint = "rivet" },
     trim = "rim",
     titleBand = { 0.02, 0.03, 0.01, 0.35 },

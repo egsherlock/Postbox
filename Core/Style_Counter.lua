@@ -52,6 +52,8 @@ CS.Register("counter", "OPT_STYLE_COUNTER", function()
     nameKey = "OPT_STYLE_COUNTER",
     inset = 20,
     ground = { file = WOOD, unit = 64, inset = 2, tint = "wood" },
+    -- The tile's grey range (gen-styles.py: counter-walnut), for the grounds.
+    grain = { 0.46, 1.0 },
     colors = colors,
     trim = "brass",
     -- Engraved: dark lettering on the brass nameplate.

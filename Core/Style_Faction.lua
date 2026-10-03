@@ -132,6 +132,9 @@ CS.Register("faction", "OPT_STYLE_FACTION", function()
       file = DIR .. ((side == "alliance") and "faction-lacquer.tga" or "faction-leather.tga"),
       unit = 64, inset = 1, tint = "ground",
     }
+    -- The tile's grey range (gen-styles.py: faction-lacquer, faction-leather),
+    -- for the grounds.
+    def.grain = (side == "alliance") and { 0.78, 0.96 } or { 0.64, 0.94 }
     colors.ground, colors.trim, colors.edge, colors.thread = look.ground, look.trim, look.edge, look.thread
     def.palette = {
       accent      = look.accent,

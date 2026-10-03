@@ -1,16 +1,16 @@
 local _, ns = ...
 
 -- =====================================================================
--- Postbox :: creative window style "Pillar Box"
+-- Postbox :: creative window style "London Postbox" (saved as "pillar")
 -- ---------------------------------------------------------------------
 -- The window is a painted post box: a rolled lip for the title bar, a
--- steel rim with rivets down the sides, a black plinth, the totals on a
--- white enamel plate, and a flag at the top-right corner that stands up
--- while there is mail to collect and lies down along the side otherwise.
--- The paint is a choice (red, green, blue, black, gold): the art is grey and
--- takes the paint as a tint, so each colour is one colour. Round 1 of
+-- steel rim with rivets down the sides, a black plinth, and the totals on a
+-- white enamel plate. Nothing of it stands outside the window. The paint is
+-- a choice (red, green, blue, black, gold): the art is grey and takes the
+-- paint as a tint, so each colour is one colour. Round 1 of
 -- .dev/design/creative-styles is the design; the foundation is
--- Core/Skin_Creative.lua; the art is .dev/tools/gen-styles.py's.
+-- Core/Skin_Creative.lua; the art is .dev/tools/gen-styles.py's (the flag
+-- it still draws into the atlas is no longer laid).
 -- =====================================================================
 
 local CS = ns.CreativeStyles
@@ -28,8 +28,6 @@ CS.Register("pillar", "OPT_STYLE_PILLAR", function()
     enamel   = { x = 69,  y = 1,  w = 16, h = 16, c = 6 },
     rivet    = { x = 87,  y = 1,  w = 6,  h = 6 },
     screw    = { x = 95,  y = 1,  w = 6,  h = 6 },
-    flagUp   = { x = 103, y = 1,  w = 20, h = 34 },
-    flagDown = { x = 35,  y = 29, w = 20, h = 34 },
   }
 
   -- The paints, the first the default. Each was checked for the white title
@@ -48,16 +46,21 @@ CS.Register("pillar", "OPT_STYLE_PILLAR", function()
     screw = { 0.86, 0.86, 0.86 },
   }
 
-  -- The totals on enamel: the label in ink, the sums in the dark twins of the
-  -- list's green and red (5.6:1 and 5.7:1 on the enamel).
-  local INK = { 0.11, 0.10, 0.09 }
-  local EARNED_DARK, SPENT_DARK = "ff176b28", "ffb21d1d"
+  local Hex = ns.Theme.HexColor
 
   local def = {
     key = "pillar",
     nameKey = "OPT_STYLE_PILLAR",
     inset = 11,
     ground = { file = DIR .. "pillar-ground.tga", unit = 64, inset = 3, tint = "paint" },
+    -- The tile's grey range (gen-styles.py: pillar-ground), which the paint
+    -- multiplies: the art's darkest and lightest, for the grounds.
+    grain = { 0.74, 0.90 },
+    -- The totals' white enamel, a light ground on a dark style: its foot and
+    -- its middle, as the atlas draws them. The label and the sums take their
+    -- inks from it (the light palette's ink, its green and red, made to
+    -- read on the foot), and the face without a host's outline.
+    grounds = { enamel = { Hex("ddd7ca"), Hex("efebe2") } },
     rivets = { atlas = ATLAS, part = PART.rivet, spacing = 72, top = 50, bottom = 22, x = 3.5, tint = "paint" },
     colors = colors,
     trim = "paint",
@@ -109,22 +112,6 @@ CS.Register("pillar", "OPT_STYLE_PILLAR", function()
     end
   end
 
-  -- The flag: up, the pole's foot at the corner and the flag above the window;
-  -- down, the pole along the right side and the flag hanging outside it.
-  local function BuildFlag(art)
-    local up = CS.Tex(art, "OVERLAY", 2)
-    CS.Part(up, ATLAS, PART.flagUp)
-    up:SetSize(PART.flagUp.w, PART.flagUp.h)
-    up:SetPoint("BOTTOMLEFT", art, "TOPRIGHT", -7, -15)
-    local down = CS.Tex(art, "OVERLAY", 2)
-    CS.Part(down, ATLAS, PART.flagDown)
-    down:SetSize(PART.flagDown.w, PART.flagDown.h)
-    down:SetPoint("TOPLEFT", art, "TOPRIGHT", -7, -12)
-    up:Hide()
-    art.flagUp, art.flagDown = up, down
-    art.flagState = false
-  end
-
   -- The totals band on white enamel, with a screw at each end. On the band
   -- itself (Postbox's own frame, not a panel a host skin repaints): above its
   -- fill, under its text.
@@ -143,9 +130,10 @@ CS.Register("pillar", "OPT_STYLE_PILLAR", function()
       CS.Tinted(art, screw, "screw")
     end
     band.__pbEnamel = plate
-    -- The band may have been fitted already, in the inks it had then.
+    -- The label on the enamel: its ink and its face from that ground. The
+    -- band may have been fitted already, in the inks it had then.
     local text = panel.BannerText
-    if text then text:SetTextColor(INK[1], INK[2], INK[3], 1) end
+    if text and ns.Theme.SetGround then ns.Theme.SetGround(text, "enamel") end
   end
 
   function def.Build(art)
@@ -170,32 +158,17 @@ CS.Register("pillar", "OPT_STYLE_PILLAR", function()
     edge:SetHeight(1)
 
     if art.main then
-      BuildFlag(art)
       BuildEnamel(art)
     end
   end
 
-  -- Up while there is mail to collect: the Mail tab's dot says the same.
-  function def.OnMailState(art, open)
-    if not art.flagUp then return end
-    local up = false
-    if open then
-      local collect = ns.CollectTab
-      local toCollect = collect and type(collect.InboxCounts) == "function" and collect.InboxCounts() or 0
-      up = (tonumber(toCollect) or 0) > 0
-    end
-    if up == art.flagState then return end
-    art.flagState = up
-    art.flagUp:SetShown(up)
-    art.flagDown:SetShown(not up)
-  end
-
-  -- The totals band's inks while it stands on the enamel; untouched elsewhere.
+  -- The totals band's figures while it stands on the enamel, in the inks of
+  -- that ground; untouched elsewhere.
   function def.BannerInk(text, up, down)
     local band = text and text.GetParent and text:GetParent()
     if not (band and band.__pbEnamel) then return up, down end
-    text:SetTextColor(INK[1], INK[2], INK[3], 1)
-    return EARNED_DARK, SPENT_DARK
+    local T = ns.Theme
+    return "ff" .. T.InkHex("positive", "enamel"), "ff" .. T.InkHex("negative", "enamel")
   end
 
   return def

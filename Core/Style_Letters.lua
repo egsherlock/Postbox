@@ -72,6 +72,8 @@ CS.Register("letters", "OPT_STYLE_LETTERS", function()
     light = true,
     inset = 8,
     ground = { file = DIR .. "letters-paper.tga", unit = 64, inset = 1, tint = "paper" },
+    -- The tile's grey range (gen-styles.py: letters-paper), for the grounds.
+    grain = { 0.82, 1.08 },
     colors = colors,
     trim = "edge",
     titleColor = INK,
