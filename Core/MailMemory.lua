@@ -104,6 +104,12 @@ local searchText = setmetatable({}, { __mode = "k" })
 -- turn, before they are copied into that mail's own list (`it`). One table
 -- for every mail of every capture.
 local scanned = {}
+-- Lists of items a capture let go -- a table of this visit's look now holds
+-- a mail with none -- emptied and kept for the next that has some. A collect
+-- run moves every mail's index as it empties them, so the tables' mails
+-- change from one look to the next, and a list made for each change was
+-- garbage at every inbox update. Never more than a look holds.
+local spareLists = {}
 
 -- MM.Characters is memoised (section 2b); this generation says its list is
 -- stale. Everything in this file that writes what the list reads -- a
@@ -253,12 +259,17 @@ local function CaptureNow()
       local list = mail.it
       if held > 0 then
         if type(list) ~= "table" then
-          list = {}
+          list = spareLists[#spareLists] or {}
+          spareLists[#spareLists] = nil
           mail.it = list
         end
         for k = 1, held do list[k] = scanned[k] end
         for k = #list, held + 1, -1 do list[k] = nil end
       else
+        if type(list) == "table" and #spareLists < MAX_MAILS then
+          for k = #list, 1, -1 do list[k] = nil end
+          spareLists[#spareLists + 1] = list
+        end
         mail.it = nil
       end
       mail.stuck   = stuck
