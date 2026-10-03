@@ -1515,15 +1515,20 @@ end
 --
 -- `lists`, the snapshot's second value, revives what the character held
 -- beside the entries saved with it (held.Seed). A record saved before it
--- existed has none, and its entries come back as they were: lifted by a
--- take, never by what the character holds.
+-- existed has none, and its entries in the game's words come back as they
+-- were: lifted by a take, never by what the character holds. An entry with
+-- no words (`true`) comes back only with its counts: one saved without them
+-- was recorded under the old rule, on a single take that did not land, and
+-- may never have been refused at all. Left out, the worst it costs is one
+-- refused take, which records it again by the rule that holds now.
 function Mail.SeedStuck(entries, lists)
   if type(entries) ~= "table" then return end
   if type(lists) ~= "table" then lists = nil end
   for fingerprint, entry in pairs(entries) do
     if type(fingerprint) == "string" and stuck[fingerprint] == nil
-      and (entry == true or (type(entry) == "string" and not IsBagsWords(entry)
-        and not IsPassingWords(entry))) then
+      and ((entry == true and lists ~= nil and type(lists[fingerprint]) == "table")
+        or (type(entry) == "string" and not IsBagsWords(entry)
+          and not IsPassingWords(entry))) then
       stuckEntries = stuckEntries + 1
       stuck[fingerprint] = entry
       Mark(fingerprint, 1)
