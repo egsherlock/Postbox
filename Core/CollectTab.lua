@@ -7928,11 +7928,15 @@ local function RunStep()
       -- A fact about those items, not about the run: record them and keep
       -- going, because one item the player cannot hold must not block every
       -- other mail in the queue. Counted by mail for the outcome, by item for
-      -- the chat line.
+      -- the chat line. A count of 0 is a mail left as it was with nothing
+      -- recorded (a take that never landed, unexplained): it is neither, and
+      -- its words, if any, are not the refusals' the chat line quotes.
       local n = tonumber(refused) or 0
       Run.refused = Run.refused + n
-      if n > 0 then Run.stuck = Run.stuck + 1 end
-      NoteReason(reason)
+      if n > 0 then
+        Run.stuck = Run.stuck + 1
+        NoteReason(reason)
+      end
     else
       Run.collected = Run.collected + 1
     end

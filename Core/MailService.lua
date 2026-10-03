@@ -994,11 +994,16 @@ end
 -- mail slid down into the slot -- exactly the bug LiveIndex exists to prevent,
 -- reintroduced in a table.
 --
--- WHAT GETS RECORDED. Only a hard per-item refusal: the take was issued, the
--- server acknowledged the command, the grace period passed, and the mail is
--- verifiably unchanged. That is the one outcome that says something about this
--- mail rather than about the connection. The transient stops are deliberately
--- excluded and each would be a lie in a different way:
+-- WHAT GETS RECORDED. Only a hard per-item refusal, with evidence that it is
+-- about the mail: the take was issued, the server acknowledged the command,
+-- the grace period passed, the mail is verifiably unchanged, AND either the
+-- game said why in words of its own, or the same take, tried once more after
+-- a settle (RunPlan), was refused again with no words at all. A take that
+-- simply did not land is not evidence: a command can go unanswered for
+-- reasons that are the moment's, and one recorded on that alone was held out
+-- of every sweep while a click took it at once. Such a mail is left as it
+-- is, recorded nowhere. The transient stops are deliberately excluded and
+-- each would be a lie in a different way:
 --   timeout  the command may still be in flight; the take may yet land.
 --   busy     nothing was sent at all -- another sequence owned the channel.
 --   closed   nothing was sent at all -- the player walked away.
@@ -1007,10 +1012,12 @@ end
 -- the same way, and all of them come out the moment a slot is free -- so it
 -- is kept as one (see "Bags full" below) and never recorded here. Nor is a
 -- refusal in the words of the server's own passing trouble (the mail
--- database's error): the next try takes the mail. What is
--- recorded is what stays true of THIS mail until it is taken: "you can't carry
--- any more of those", a unique the player already holds, or a refusal with no
--- words attributable to it while the bags had room.
+-- database's error): the next try takes the mail. Nor does a collect whose
+-- every take landed record anything for what is left in the mail: no take
+-- was refused. What is recorded is what stays true of THIS mail until it is
+-- taken: "you can't carry any more of those", a unique the player already
+-- holds, or the same take refused twice without a word while the bags had
+-- room.
 --
 -- COUNTED BY MAIL. Every read below is per inbox index: two identical mails
 -- that share a fingerprint are two stuck mails, and both are counted and
@@ -1023,10 +1030,11 @@ end
 -- reopening to find every warning gone made the one mail that would not come
 -- out look exactly like the ones that would). A refusal is a fact established
 -- by a command WE issued; the rules below keep it honest between visits:
---   * recorded when a take is refused, with the game's own words where the
---     error watch could attribute them to this mail and `true` where it could
---     not (two refusals with different words collapse to `true` as well: quoting
---     one would misdescribe the other);
+--   * recorded when a take is refused (WHAT GETS RECORDED), with the game's
+--     own words where the error watch could attribute them to this mail and
+--     `true` where the take was refused twice with none (two refusals with
+--     different words collapse to `true` as well: quoting one would
+--     misdescribe the other);
 --   * cleared for a mail whose attachments are subsequently taken -- a take that
 --     lands is proof the condition has gone, and it is the reason a player who
 --     empties a bag and retries does not keep the marker;
@@ -1774,16 +1782,39 @@ end
 --     everything else. Unless the refusal was for want of room ("Bags full"):
 --     then every further take would be refused too, and the plan ends there.
 --
--- `plan` entries are { kind = "money" } or { kind = "item", slot = n }. The plan
--- is a snapshot and each entry fires at most once, so a refused attachment is
--- never retried within a run and the runner cannot loop.
+-- What a refusal says depends on its words. The game's own, other than the
+-- server's passing trouble, say why, and are taken at once: recorded against
+-- the mail (the stuck registry), or the bags-full state. A take that did not
+-- land with no words -- or words that could not be told apart from another
+-- message, or the passing trouble's -- says nothing about the mail: a command
+-- can go unanswered for reasons that are the moment's, and a mail recorded
+-- on that alone was held out of every sweep for a take a click then made at
+-- once. So that take is tried once more, after RETRY_SETTLE and an idle
+-- channel, and only if the mail is still the one the plan was given, still
+-- holds the item and owes no C.O.D. (a try never pays). Landing late, or on
+-- the second try, it is taken; refused again with words, they decide; refused
+-- twice with no words at all, that is the evidence, and it is recorded (or,
+-- with no general slot free, it is the bags); anything else leaves the mail
+-- as it is -- counted in `missed`, recorded nowhere, taken by the next sweep.
 --
--- Calls done(timedOut, refusedCount, reason, fingerprint, bags) exactly once,
--- where `fingerprint` is the mail's as the plan last knew it: the one it was
--- given, or its paid form once a take has paid the mail's C.O.D.
--- (PaidFingerprint), and `bags` is true when a take was refused for want of
--- room and the plan stopped there.
+-- `plan` entries are { kind = "money" } or { kind = "item", slot = n }. The plan
+-- is a snapshot and each entry fires at most twice -- once, and the one more
+-- try above -- so the runner cannot loop.
+--
+-- Calls done(timedOut, refusedCount, reason, fingerprint, bags, kept, missed)
+-- exactly once, where `fingerprint` is the mail's as the plan last knew it:
+-- the one it was given, or its paid form once a take has paid the mail's
+-- C.O.D. (PaidFingerprint), `bags` is true when a take was refused for want
+-- of room and the plan stopped there, and `missed` counts the takes that did
+-- not land and were not recorded. `refusedCount` counts only the refusals
+-- that were (bags included); `reason` is their words, or the missed takes'
+-- where there were no others.
 -------------------------------------------------------------
+
+-- How long a take that did not land, unexplained, waits before its one more
+-- try: room for an inbox update that is merely late, words that are, and
+-- whatever the server was busy with.
+local RETRY_SETTLE = 1
 
 -- The history (Core/MailMemory.lua, 2c): what is known of a mail before its
 -- first take, and each CONFIRMED take after it. One record is one History
@@ -1821,15 +1852,21 @@ Mail.HistoryNote = HistoryNote
 -- of one slot passes none, and its refusal joins the list there is.
 local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt)
   local cursor = 0
-  local refused = 0
+  local refused, missed = 0, 0
   local reason, reasonMixed = nil, false
+  -- The words of the takes that were not recorded, said only when no
+  -- recorded refusal has words of its own to say.
+  local missedText = nil
+  -- The take being tried once more (its place in the plan), and what its
+  -- first try said: the words, or false for none.
+  local again, firstWords = nil, nil
   -- A C.O.D. mail's fingerprint once paid, and whether an item take of ours
   -- has landed on it -- the first one is the payment. Until one has, the
   -- paid form names some other mail, not this one.
   local paidFingerprint, tookItem = PaidFingerprint(fingerprint), false
 
   local function over(timedOut, full, kept)
-    done(timedOut, refused, reason, fingerprint, full, kept)
+    done(timedOut, refused, reason or (refused == 0 and missedText) or nil, fingerprint, full, kept, missed)
   end
 
   -- A refusal held against the mail, with what the character holds of the
@@ -1953,6 +1990,10 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
       TakeInboxItem(index, op.slot)
     end
 
+    -- This try is the one more try of a take that did not land.
+    local retried = again == cursor
+    again = nil
+
     WaitForCommand(function(timedOut)
       if timedOut then
         ErrorWatch.Close()
@@ -1990,24 +2031,72 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
           over(false)
           return
         end
-        refused = refused + 1
-        noteReason(text)
-        -- Which refusal this was decides everything after it. No room in the
-        -- bags -- the game's words say so, or it said nothing we could
-        -- attribute while no general slot was free -- is the character's
-        -- state: nothing is recorded against the mail, and the plan stops,
-        -- since every further take would meet the same want of room.
-        if op.kind == "item"
-          and (IsBagsWords(text) or (text == nil and Mail.FreeBagSlots() == 0)) then
-          SetBagsFull()
-          over(false, true)
-          return
+
+        -- Which refusal this was decides everything after it (see the
+        -- header). The game's words, other than its passing trouble: no room
+        -- in the bags is the character's state -- nothing is recorded
+        -- against the mail, and the plan stops, since every further take
+        -- would meet the same want of room -- and any other words are the
+        -- mail's own, recorded here. This, and the second try below, are
+        -- the only places a refusal is established; no timeout, busy or
+        -- closed path can reach them, and a close DURING flight is caught
+        -- just above.
+        if text and not IsPassingWords(text) then
+          if op.kind == "item" and IsBagsWords(text) then
+            refused = refused + 1
+            noteReason(text)
+            SetBagsFull()
+            over(false, true)
+            return
+          end
+          if Record(text, takeItem) then
+            refused = refused + 1
+            noteReason(text)
+          else
+            missed = missed + 1
+            missedText = missedText or text
+          end
+          return step()
         end
-        -- The one place a hard per-item refusal is established. Everything the
-        -- registry holds comes through here or through CollectMail's closing
-        -- verification; no timeout, busy or closed path can reach it -- and
-        -- a close DURING flight is caught just above.
-        Record(text, takeItem)
+
+        -- No words, or none that are the mail's: tried once more, if the
+        -- mail is one a try may touch. Never a C.O.D. the mail still owes.
+        if not retried then
+          local _, _, _, _, _, cod = GetInboxHeaderInfo(index)
+          if (tonumber(cod) or 0) <= 0 then
+            again, firstWords = cursor, text or false
+            C_Timer.After(RETRY_SETTLE, function()
+              if not MailboxOpen() then return over(false) end
+              -- The take landed after all; the inbox said so late.
+              if Fingerprint(index) ~= fingerprint or measure() < before then
+                again = nil
+                Took(op, takes, takeCount)
+                return step()
+              end
+              -- The same take again, through every check step makes before
+              -- any take: the mail, the slot, the room kept free.
+              cursor = cursor - 1
+              WhenIdle(step, function() over(true) end)
+            end)
+            return
+          end
+        elseif text == nil and firstWords == false then
+          -- Twice, and not a word either time: the evidence the first try
+          -- lacked. With no general slot free that is the bags, as ever.
+          if op.kind == "item" and Mail.FreeBagSlots() == 0 then
+            refused = refused + 1
+            SetBagsFull()
+            over(false, true)
+            return
+          end
+          if Record(nil, takeItem) then
+            refused = refused + 1
+            return step()
+          end
+        end
+        -- Not recorded: the mail stays as it was, for the next sweep.
+        missed = missed + 1
+        missedText = missedText or text or firstWords or nil
         step()
       end)
     end)
@@ -2115,7 +2204,10 @@ end
 -- refused for want of bag room ("Bags full": nothing is recorded against the
 -- mail, and a run stops), "keep" when a run's opts.keepFree stopped it before
 -- an item take (nothing taken from that mail's items, nothing recorded), nil
--- when the refusal is the mail's own (recorded in the stuck registry).
+-- when the refusal is the mail's own (recorded in the stuck registry). A
+-- "refused" with a count of 0 and no kind is a mail left as it was with
+-- nothing recorded: a take that did not land and was never explained
+-- (RunPlan), links that never loaded, or a C.O.D. the caller may not pay.
 -------------------------------------------------------------
 
 -- index, onDone [, opts] -> nothing. onDone(status, refusedCount, reason, kind).
@@ -2202,6 +2294,9 @@ function Mail.CollectMail(index, onDone, opts)
 
   if type(GetInboxText) ~= "function" then needFetch = false end
 
+  -- Whether the plan below has already waited once for links that had not
+  -- loaded.
+  local relooked = false
   local function execute()
     -- Enumerate only now: before the fetch landed, every link is nil.
     local plan = {}
@@ -2220,6 +2315,26 @@ function Mail.CollectMail(index, onDone, opts)
     end
 
     if #plan == 0 then
+      -- The header still counts items that no link shows: they have not
+      -- loaded (the fetch above finds every link nil until it lands, and an
+      -- item the client has not described yet can trail it). Looked at once
+      -- more after RETRY_SETTLE, as a take that did not land is tried once
+      -- more (RunPlan) -- never for a mail that owes a C.O.D., whose first
+      -- take pays: that waits for the player's next click. Still nothing,
+      -- and the mail is left as it is -- nothing was taken and nothing is
+      -- known, so it is not called collected and nothing is recorded.
+      local _, _, _, _, _, codNow, _, itemsNow = GetInboxHeaderInfo(index)
+      if (tonumber(itemsNow) or 0) > 0 and Fingerprint(index) == fingerprint then
+        if relooked or (tonumber(codNow) or 0) > 0 or type(C_Timer) ~= "table" then
+          return finish("refused", 0, nil)
+        end
+        relooked = true
+        C_Timer.After(RETRY_SETTLE, function()
+          if not MailboxOpen() then return finish("closed") end
+          WhenIdle(execute, function() finish("timeout") end)
+        end)
+        return
+      end
       -- Nothing left to take: the mail is empty, so whatever was refused before
       -- is no longer true of it.
       ForgetStuck(fingerprint)
@@ -2229,11 +2344,16 @@ function Mail.CollectMail(index, onDone, opts)
       return finish("collected")
     end
 
-    RunPlan(index, fingerprint, plan, function(timedOut, refusedCount, reason, current, full, kept)
+    RunPlan(index, fingerprint, plan, function(timedOut, refusedCount, reason, current, full, kept, missed)
       if timedOut then return finish("timeout", refusedCount, reason) end
       if full then return finish("refused", refusedCount, reason, "bags") end
       if kept then return finish("refused", refusedCount, reason, "keep") end
       if refusedCount > 0 then return finish("refused", refusedCount, reason) end
+      -- A take that did not land, unexplained even on its one more try
+      -- (RunPlan): the mail is left as it is, with nothing recorded, for the
+      -- next sweep or a click. No count -- nothing was refused for a reason
+      -- of the mail's own.
+      if (missed or 0) > 0 then return finish("refused", 0, reason) end
       -- Verify rather than assume, independently of the per-operation
       -- measurements. Only meaningful while the index still names this mail:
       -- once it is emptied the server deletes it and a different mail slides in.
@@ -2256,14 +2376,15 @@ function Mail.CollectMail(index, onDone, opts)
         if Fingerprint(index) == current and Mail.HasContent(index) then
           -- Every handshake completed and the mail is still not empty. Nothing
           -- attributable to one take -- so where items stayed while no general
-          -- slot was free, that is the bags (see "Bags full"); otherwise the
-          -- mail is stuck all the same.
+          -- slot was free, that is the bags (see "Bags full"). Otherwise
+          -- nothing is recorded: no take was refused, so there is nothing to
+          -- hold against the mail (WHAT GETS RECORDED), and it is left as it
+          -- is for the next sweep or a click.
           if Mail.AttachmentsLeft(index) > 0 and Mail.FreeBagSlots() == 0 then
             SetBagsFull()
             return finish("refused", 1, reason, "bags")
           end
-          NoteStuck(current, reason)
-          return finish("refused", 1, reason)
+          return finish("refused", 0, reason)
         end
         ForgetStuck(fingerprint)
         if current ~= fingerprint then ForgetStuck(current) end
@@ -2336,10 +2457,13 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
 
   local function take()
     RunPlan(index, fingerprint, { { kind = "item", slot = slot } },
-      function(timedOut, refusedCount, reason, current, full)
+      function(timedOut, refusedCount, reason, current, full, _, missed)
         if timedOut then return finish("timeout", refusedCount, reason) end
         if full then return finish("refused", refusedCount, reason, "bags") end
         if refusedCount > 0 then return finish("refused", refusedCount, reason) end
+        -- Did not land, unexplained even on its one more try: nothing taken,
+        -- nothing recorded, and nothing the registry holds is forgotten.
+        if (missed or 0) > 0 then return finish("refused", 0, reason) end
         -- A take that landed is proof the refusal no longer holds -- the player
         -- made room, or dropped the unique they already had. If the next slot
         -- is refused anyway, RunPlan records it again immediately. (Under the
