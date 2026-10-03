@@ -1173,8 +1173,11 @@ end
 -- they wear. Called on each of the host's looks passes (the EllesmereUI skin's
 -- OnHostLooksChanged) and when the Postbox style's font or text size is
 -- changed; a pass whose face did not move reads it and returns. Strings
--- wearing a copy follow on their own; a string set to a size of its own (the
--- arrange inspector's type) is told through Arrange.OnFontsChanged.
+-- wearing a copy take the new face, and are laid out in it again
+-- (Theme.RelayoutText): a copy is changed in place, and a string sized to
+-- its text would keep the width it measured in the old face. A string set to
+-- a size of its own (the arrange inspector's type) is told through
+-- Arrange.OnFontsChanged.
 function Theme.RefreshHostFonts(recolor)
   if not HF.made then return false end
   local path, flags, shadow, scale = HostFace()
@@ -1199,6 +1202,7 @@ function Theme.RefreshHostFonts(recolor)
   end
   HF.gen = HF.gen + 1
   Theme.ForgetFits()
+  Theme.RelayoutText()
   if SharedTheme and type(SharedTheme.RecolorDerived) == "function" then SharedTheme.RecolorDerived() end
   local AR = ns.Arrange
   if AR and type(AR.OnFontsChanged) == "function" then pcall(AR.OnFontsChanged) end
@@ -1272,29 +1276,95 @@ do
     return moved
   end
 
-  local roots = {}
-
-  function Theme.AdoptHostFace()
-    if next(HF.pending) == nil or HostFace() == nil then return false end
-    local n = 0
-    if type(Theme.ForEachWindow) == "function" then
-      Theme.ForEachWindow(function(frame) n = n + 1; roots[n] = frame end)
+  -- A text laid out again where it stands: set to nothing, measured, then
+  -- set to itself. The client sizes a string with no width of its own to its
+  -- text when the text is set, and a font object changed in place under it
+  -- does not size it again: a caption that grew with an outline or a shadow
+  -- then wraps its last letter, or is cut short, in the width it measured
+  -- before. The same text set again need not be news to the client, so it is
+  -- set to nothing first; the measure in between makes the empty text one the
+  -- client has laid out, so its own text is a change from it whether the
+  -- client lays text out when it is set or when it is next drawn. A secret
+  -- text (12.0) cannot be read back as a string and is left as it is. What
+  -- is what is read off its methods, which costs no call into the client: a
+  -- frame has children, a font string a text and a width of its own, a
+  -- texture neither. -> how many texts.
+  local function Relay(root)
+    local secret = type(issecretvalue) == "function" and issecretvalue or nil
+    local count = 0
+    local n = Push(0, root)
+    while n > 0 do
+      local w = stack[n]
+      stack[n] = nil
+      n = n - 1
+      if type(w) == "table" then
+        if w.GetChildren then
+          n = Push(n, w:GetRegions())
+          n = Push(n, w:GetChildren())
+        elseif w.GetStringWidth and w.SetText then
+          local text = w:GetText()
+          if not (secret and secret(text)) and text and text ~= "" then
+            w:SetText("")
+            w:GetStringWidth()
+            w:SetText(text)
+            count = count + 1
+          end
+        end
+      end
     end
-    -- The two floating cards that belong to no window.
-    if Theme._hint then n = n + 1; roots[n] = Theme._hint end
+    return count
+  end
+
+  local roots, nRoots = {}, 0
+  local function AddRoot(frame) nRoots = nRoots + 1; roots[nRoots] = frame end
+
+  -- Every Postbox window, and the two floating cards that belong to no
+  -- window, into `roots`. -> how many.
+  local function CollectRoots()
+    nRoots = 0
+    if type(Theme.ForEachWindow) == "function" then Theme.ForEachWindow(AddRoot) end
+    if Theme._hint then AddRoot(Theme._hint) end
     local picker = ns.MailMemory and ns.MailMemory._picker
-    if picker then n = n + 1; roots[n] = picker end
-    local moved = 0
+    if picker then AddRoot(picker) end
+    return nRoots
+  end
+
+  -- `walk` over the first `n` roots, its counts summed; the roots and the
+  -- stack let go after, however a walk ended.
+  local function WalkRoots(walk, n)
+    local sum = 0
     for i = 1, n do
-      local ok, m = pcall(Walk, roots[i])
-      if ok then moved = moved + m end
+      local ok, m = pcall(walk, roots[i])
+      if ok then sum = sum + m end
       roots[i] = nil
     end
     for i = #stack, 1, -1 do stack[i] = nil end
+    return sum
+  end
+
+  -- Every text in Postbox's windows laid out again in the face it wears now
+  -- (Relay): after the face the host-font copies wear moved in place
+  -- (RefreshHostFonts, AdoptHostFace). The cards Theme.AdoptHostFace walks,
+  -- and the arrange inspector, a card of its own; an open dropdown list is
+  -- its toggle's child, so its window's walk reaches it. Hidden text too, so
+  -- it is laid out when it shows. Only on a deliberate settings change or a
+  -- host's claim, never on a mailbox visit: one pass over the strings that
+  -- exist, nothing made. -> how many texts.
+  function Theme.RelayoutText()
+    CollectRoots()
+    local AR = ns.Arrange
+    if AR and AR._insp then AddRoot(AR._insp) end
+    return WalkRoots(Relay, nRoots)
+  end
+
+  function Theme.AdoptHostFace()
+    if next(HF.pending) == nil or HostFace() == nil then return false end
+    local moved = WalkRoots(Walk, CollectRoots())
     for object in pairs(HF.pending) do HF.pending[object] = nil end
     if moved == 0 then return false end
     HF.gen = HF.gen + 1
     Theme.ForgetFits()
+    Theme.RelayoutText()
     local AR = ns.Arrange
     if AR and type(AR.OnFontsChanged) == "function" then pcall(AR.OnFontsChanged) end
     return true
