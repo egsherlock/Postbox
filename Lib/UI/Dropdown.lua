@@ -682,5 +682,24 @@ function Dropdown.Create(parent, opts)
     container._onChange = fn
   end
 
+  -- Another list of items, live: the options' Background color, whose
+  -- choices are the Mode's. An open list closes; the next open shows the new
+  -- items. The list built for each item table is kept beside it (built on
+  -- its first open, as ever), so going back to a list builds nothing again
+  -- -- the select holds as many lists as it was given tables, never one per
+  -- change. The selection is the caller's to set (SetSelectedId), and the
+  -- value is fitted again in its box, from the new items.
+  local built
+  function container:SetItems(newItems)
+    if type(newItems) ~= "table" or newItems == items then return end
+    CloseList()
+    built = built or {}
+    if list then built[items] = list end
+    items = newItems
+    list = built[newItems]
+    Caption(NameFor(container._selectedId))
+    PaintToggleSwatch()
+  end
+
   return container
 end

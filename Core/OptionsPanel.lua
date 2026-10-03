@@ -1714,8 +1714,10 @@ do
     local show = border ~= "none"
     LayEdges(win.Outer, win, 0, 1)
     LayEdges(win.Inner, win, 1, border == "thick" and 2 or 1)
-    TintEdges(win.Outer, P.keyOuter, show)
-    TintEdges(win.Inner, P.inner, show)
+    -- Edge: the inner line's colour alone, on the outer line's place.
+    local edge = border == "edge"
+    TintEdges(win.Outer, edge and P.inner or P.keyOuter, show)
+    TintEdges(win.Inner, P.inner, show and not edge)
     local t = P.title
     win.Title:SetTextColor(t[1], t[2], t[3], t[4])
     for i = 1, 2 do T.SetPlateSelected(win.Tabs[i], i == 1) end
@@ -2470,7 +2472,6 @@ do
     row.Name:ClearAllPoints()
     row.Name:SetPoint("CENTER", row, "CENTER", 0, 0)
     row.Name:SetJustifyH("CENTER")
-    row.Name:SetAlpha(0.78)
     row.Name:SetText(text)
     row.nameText = text
     row.kind = "note"
@@ -2522,9 +2523,10 @@ do
     end
   end
 
+  -- Its rows' names and controls in their disabled colours, at full
+  -- strength: a text dimmed by its alpha is read on whatever it lets through.
   function Rows.SetBlock(block, on)
     if not block then return end
-    block.frame:SetAlpha(on and 1 or 0.4)
     for i = 1, #block.cells do Rows.SetEnabled(block.cells[i], on) end
     if not on then ns.Core.UI.Dropdown.CloseAll() end
   end
@@ -3445,9 +3447,11 @@ function State.BorderSize()
 end
 
 -- The Postbox style's own rows, in its groups (spec section 3.1): Colors
--- (Mode, the accent, the background colour, opacity, the tint), Edges and
--- rows (the border, its colour, the corners, row stripes and the sheen side
--- by side), Text (font, size, outline, button captions). The drawing at the
+-- (Mode, the accent, the background colour -- the Mode's own list, a tint
+-- among it -- and opacity), Edges and rows (the border, its colour, the
+-- corners, row stripes and the sheen side by side), Text (font, size,
+-- outline; every text's colour is worked out from what it stands on, so
+-- there is none to pick). The drawing at the
 -- top of the inspector is the style's window, small, painted live from every
 -- one of them; the accent's row adds its measured contrast under its
 -- description.
@@ -3515,10 +3519,22 @@ do
       end,
     })
     accentRow.entry.extra = "pbAccent"
-    local surfaces = WithoutCustom(Skin.GetSurfaceChoices(), Skin)
+    -- The background colour: the Mode's own list, each item kept for its
+    -- Mode (State.Postbox hands the select the list of the Mode in force).
+    -- Each square is the colour as it paints, read at each paint: a tint
+    -- follows the accent and the class colour.
+    S.pbSurfaceItems = {
+      dark = Items(WithoutCustom(Skin.GetSurfaceChoices("dark"), Skin)),
+      light = Items(WithoutCustom(Skin.GetSurfaceChoices("light"), Skin)),
+    }
     S.pbSurfaceCell = Rows.Dropdown(col, {
-      title = L["OPT_SURFACE_TITLE"], text = L["OPT_SURFACE_DESC"], items = Items(surfaces),
-      swatchFor = Swatches(surfaces, "surface", Skin),
+      title = L["OPT_SURFACE_TITLE"], text = L["OPT_SURFACE_DESC"],
+      items = S.pbSurfaceItems[Skin.GetMode()] or S.pbSurfaceItems.dark,
+      swatchFor = function(id)
+        if id == "custom" then return Skin.GetCustomColor("surface") end
+        if Skin.SurfaceColor then return Skin.SurfaceColor(id) end
+        return nil
+      end,
       get = function() return Skin.GetSurfaceKey() end,
       set = function(id)
         if id == "custom" then Skin.PickColor("surface") else Skin.SetSurface(id) end
@@ -3536,14 +3552,6 @@ do
       end,
     })
     S.pbOpacityCell = S.cells[#S.cells]
-    Rows.Dropdown(col, {
-      title = L["OPT_TINT_TITLE"], text = L["OPT_TINT_DESC"], items = Items(Skin.GetTintChoices()),
-      get = function() return Skin.GetTint() end,
-      set = function(id)
-        Skin.SetTint(id)
-        Ctx.Repaint()
-      end,
-    })
 
     Rows.Group(col, L["OPT_GROUP_EDGES"])
     Rows.Dropdown(col, {
@@ -3611,22 +3619,22 @@ do
       get = function() return Skin.GetOutline() end,
       set = function(id) Skin.SetOutline(id) Ctx.Repaint() end,
     })
-    Rows.Dropdown(col, {
-      title = L["OPT_BUTTON_TEXT_TITLE"], text = L["OPT_BUTTON_TEXT_DESC"], items = Items(Skin.GetButtonTextChoices()),
-      get = function() return Skin.GetButtonText() end,
-      set = function(id) Skin.SetButtonText(id) Ctx.Repaint() end,
-    })
   end
 end
 
--- Under the Postbox style: the background colour is Dark mode's, so its row
--- greys in Light; the opacity row shows the value in force (Light keeps 85%
--- or more).
+-- Under the Postbox style: the background colour's list is the Mode's, and
+-- shows the Mode's own pick (a flip of the Mode changes the list live); the
+-- opacity row shows the value in force (Light keeps 85% or more).
 function State.Postbox()
   local cell = S.pbSurfaceCell
   local skin = GetSkin()
   if not (cell and skin and skin.GetMode) then return end
-  Rows.SetEnabled(cell, skin.GetMode() ~= "light")
+  local items = S.pbSurfaceItems and S.pbSurfaceItems[skin.GetMode()]
+  if items and cell.items ~= items then
+    cell.items = items
+    if cell.dd.SetItems then cell.dd:SetItems(items) end
+  end
+  Rows.PaintDropdown(cell)
   if S.pbOpacityCell then Rows.PaintDropdown(S.pbOpacityCell) end
 end
 
@@ -4187,19 +4195,20 @@ function Footer.Build(frame, above)
   statusBand:SetHeight(BAND_H)
   T.ApplyBand(statusBand)
 
-  local statusText = T.CreateText(statusBand, "bodySmall")
+  -- Quiet until pointed at, in the quiet text colour and its mark with it,
+  -- at full strength: a colour of the band's own, never a dimmed one.
+  local statusText = T.CreateText(statusBand, "secondary")
   statusText:SetJustifyH("LEFT")
   statusText:SetWordWrap(false)
   -- Says what the click does. The band has always opened the bug report;
   -- nothing on it ever said so.
   statusText:SetText(L["OPT_REPORT_BUG"])
-  statusText:SetAlpha(0.85)
   -- Its mark before it.
   local bugArt = ArtHolder(statusBand)
   local bug = Footer.Glyph(bugArt, "bug", 12)
   if bug then
     bug:SetPoint("CENTER", statusText, "LEFT", -11, 0)
-    bug:SetAlpha(0.85)
+    T.SetColor(bug, "textSecondary")
   end
 
   -- What's new? (Core/WhatsNew.lua), at the band's right end, as quiet as
@@ -4209,34 +4218,33 @@ function Footer.Build(frame, above)
   news:SetFrameLevel(statusBand:GetFrameLevel() + 2)
   news:SetPoint("TOPRIGHT", statusBand, "TOPRIGHT", -8, 0)
   news:SetPoint("BOTTOMRIGHT", statusBand, "BOTTOMRIGHT", -8, 0)
-  local newsText = T.CreateText(news, "bodySmall")
+  local newsText = T.CreateText(news, "secondary")
   newsText:SetPoint("RIGHT", news, "RIGHT", 0, 0)
   newsText:SetJustifyH("RIGHT")
   newsText:SetWordWrap(false)
   newsText:SetText(L["WHATSNEW_TITLE"])
-  newsText:SetAlpha(0.85)
   news:SetScript("OnClick", function()
     local News = ns.WhatsNew
     if News and type(News.Toggle) == "function" then News.Toggle(frame, true) end
   end)
-  news:SetScript("OnEnter", function() newsText:SetAlpha(1) end)
-  news:SetScript("OnLeave", function() newsText:SetAlpha(0.85) end)
+  news:SetScript("OnEnter", function() T.SetColor(newsText, "textPrimary") end)
+  news:SetScript("OnLeave", function() T.SetColor(newsText, "textSecondary") end)
 
   -- The version, under the band's right end in the game's smallest face (in
-  -- the host's where it has one), dim. Only words: What's new? above it is
-  -- the door. The packager stamps the release TAG into the TOC, which
-  -- already carries its own "v" -- do not add another.
+  -- the host's where it has one), quiet: the disabled grey, at full
+  -- strength. Only words: What's new? above it is the door. It stands on
+  -- the window itself, so it has a plate of its own where the window cannot
+  -- carry it (Theme.OnWindow). The packager stamps the release TAG into the
+  -- TOC, which already carries its own "v" -- do not add another.
   local versionText = T.CreateText(frame, "secondary")
   local tiny = _G.GameFontWhiteTiny
-  if tiny then
-    versionText:SetFontObject(T.HostFont(tiny))
-    T.SetColor(versionText, "textSecondary")
-  end
+  if tiny then versionText:SetFontObject(T.HostFont(tiny)) end
+  T.SetColor(versionText, "textDisabled")
   versionText:SetPoint("TOPRIGHT", statusBand, "BOTTOMRIGHT", -8, -Footer.VERSION_GAP)
   versionText:SetJustifyH("RIGHT")
   versionText:SetWordWrap(false)
   versionText:SetText(tostring(ns.VERSION or ""))
-  versionText:SetAlpha(0.55)
+  if T.OnWindow then T.OnWindow(versionText, "solid") end
 
   S.footer = {
     band = statusBand, bugText = statusText, bugMark = bug and 17 or 0,
@@ -4395,11 +4403,13 @@ function Footer.Build(frame, above)
     resetText:SetText(L["OPT_RESET_DEFAULTS"])
     if arrow then arrow:SetPoint("CENTER", reset, "LEFT", 10, 0) end
     if caret then caret:SetPoint("CENTER", resetText, "RIGHT", 9, 0) end
+    -- At rest the quietest grey the band carries, at full strength; the
+    -- text colour when pointed at.
     local function Quiet(on)
-      local a = on and 0.55 or 1
-      resetText:SetAlpha(a)
-      if arrow then arrow:SetAlpha(a) end
-      if caret then caret:SetAlpha(a) end
+      local token = on and "textDisabled" or "textPrimary"
+      ns.Theme.SetColor(resetText, token)
+      if arrow then ns.Theme.SetColor(arrow, token) end
+      if caret then ns.Theme.SetColor(caret, token) end
     end
     Quiet(true)
     -- As wide as what it says, re-measured on every open (Footer.Fit): a
@@ -4439,14 +4449,14 @@ function Footer.Build(frame, above)
 
   statusBand:SetScript("OnClick", ToggleBugReport)
   statusBand:SetScript("OnEnter", function(self)
-    statusText:SetAlpha(1)
-    if bug then bug:SetAlpha(1) end
+    T.SetColor(statusText, "textPrimary")
+    if bug then T.SetColor(bug, "textPrimary") end
     Tip.Begin(self, L["OPT_BUG_TIP_TITLE"], L["OPT_BUG_TIP_DESC"])
     Tip.Show(self)
   end)
   statusBand:SetScript("OnLeave", function()
-    statusText:SetAlpha(0.85)
-    if bug then bug:SetAlpha(0.85) end
+    T.SetColor(statusText, "textSecondary")
+    if bug then T.SetColor(bug, "textSecondary") end
     GameTooltip:Hide()
   end)
 end

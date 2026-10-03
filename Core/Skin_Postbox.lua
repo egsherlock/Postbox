@@ -291,13 +291,18 @@ end
 -- reads nil as the default, so Reset to defaults (which clears the profile)
 -- needs nothing here but the repaint. Saved under profile: pbBorder,
 -- pbBorderTone, pbBorderHex, pbOpacity, pbFont, pbTextScale, pbMode,
--- pbAccent, pbAccentHex, pbSurface, pbSurfaceHex, pbTint, pbOutline,
--- pbButtonText, pbCorners, pbSheen; and rowStripes, a boolean option
--- (MailboxUI OPTION_DEFAULTS).
+-- pbAccent, pbAccentHex, pbSurface and pbSurfaceHex (Dark's background),
+-- pbSurfaceLight and pbSurfaceLightHex (Light's), pbOutline, pbCorners,
+-- pbSheen; and rowStripes, a boolean option (MailboxUI OPTION_DEFAULTS).
+-- Read and never written: pbTint, the Tint a background colour now carries
+-- (GetSurfaceKey). Ignored: pbButtonText, from when a button's caption had
+-- a colour of its own choosing; it is worked out from the button now.
 -------------------------------------------------------------
 
-local BORDER_ORDER = { "none", "thin", "thick" }
-local BORDER_NAME_KEY = { none = "OPT_BORDER_NONE", thin = "OPT_BORDER_THIN", thick = "OPT_BORDER_THICK" }
+-- Edge: the inner line alone, one pixel on the window's outer edge, as the
+-- windows of a pixel-perfect UI draw theirs.
+local BORDER_ORDER = { "none", "edge", "thin", "thick" }
+local BORDER_NAME_KEY = { none = "OPT_BORDER_NONE", edge = "OPT_BORDER_EDGE", thin = "OPT_BORDER_THIN", thick = "OPT_BORDER_THICK" }
 local DEFAULT_BORDER = "thin"
 local DEFAULT_TONE = "gray"
 
@@ -520,89 +525,139 @@ function Skin.SetAccent(key, hex)
   Skin.ApplyLook(false)
 end
 
--- Surface ----------------------------------------------------------------
+-- Background color ---------------------------------------------------------
 
--- The window's colour in Dark mode, each held by the rule (spec 3.3, rule 5):
--- no lighter than #1c1c1c and nearly neutral, so every grey and text colour
--- keeps its contrast. Slate and Umber are written as their unclamped hues and
--- land where the rule puts them. Light mode has its own paper sheet.
-local SURFACE_ORDER = { "charcoal", "black", "graphite", "midnight", "slate", "umber", "custom" }
-local SURFACE_HEX = {
-  charcoal = "0a0b0b", black = "000000", graphite = "17181a", midnight = "0e0e11",
-  slate = "1b2230", umber = "2a1c12",
+-- The window's colour, a list for each Mode, and a pick for each, so a flip
+-- of the Mode and back loses neither: Dark's near-blacks, each held by the
+-- dark rule (spec 3.3, rule 5: no lighter than #1c1c1c and nearly neutral,
+-- so every grey and text colour keeps its contrast; Slate and Umber are
+-- written as their unclamped hues and land where the rule puts them), and
+-- Light's papers, inside the light rule (no darker than #e2e2df) as written,
+-- Paper first and the Light set's own sheet. Then, in both, Accent tint and
+-- Class tint -- the Mode's first colour with a whisper of the accent's or
+-- the class colour's hue, which also tints the title strip -- and a colour
+-- of the player's own, held by the Mode's rule. Light's starts on Paper the
+-- first time it is chosen; nothing Dark keeps is touched by it.
+local SURFACES = {
+  dark = {
+    order = { "charcoal", "black", "graphite", "midnight", "slate", "umber", "accent", "class", "custom" },
+    hex = { charcoal = "0a0b0b", black = "000000", graphite = "17181a", midnight = "0e0e11",
+            slate = "1b2230", umber = "2a1c12" },
+    default = "charcoal", key = "pbSurface", hexKey = "pbSurfaceHex",
+  },
+  light = {
+    order = { "paper", "white", "ivory", "linen", "mist", "sage", "blush", "accent", "class", "custom" },
+    hex = { paper = "ebebe8", white = "f7f7f5", ivory = "f3efe4", linen = "efe8dc", mist = "e8ebee",
+            sage = "e6eae2", blush = "f1e9e7" },
+    default = "paper", key = "pbSurfaceLight", hexKey = "pbSurfaceLightHex",
+    light = true,
+  },
 }
 local SURFACE_NAME_KEY = {
   charcoal = "OPT_SURFACE_CHARCOAL", black = "OPT_SURFACE_BLACK", graphite = "OPT_SURFACE_GRAPHITE",
   midnight = "OPT_SURFACE_MIDNIGHT", slate = "OPT_SURFACE_SLATE", umber = "OPT_SURFACE_UMBER",
-  custom = "OPT_COLOR_CUSTOM",
+  paper = "OPT_SURFACE_PAPER", white = "OPT_SURFACE_WHITE", ivory = "OPT_SURFACE_IVORY",
+  linen = "OPT_SURFACE_LINEN", mist = "OPT_SURFACE_MIST", sage = "OPT_SURFACE_SAGE", blush = "OPT_SURFACE_BLUSH",
+  accent = "OPT_SURFACE_ACCENT_TINT", class = "OPT_SURFACE_CLASS_TINT", custom = "OPT_COLOR_CUSTOM",
 }
 local DEFAULT_SURFACE = "charcoal"
 
-function Skin.GetSurfaceKey()
-  if Creative() then return DEFAULT_SURFACE end
-  local profile = GetProfile()
-  local saved = profile.pbSurface
-  if saved == "custom" and FromHex(profile.pbSurfaceHex) then return saved end
-  if SURFACE_HEX[saved] then return saved end
-  return DEFAULT_SURFACE
+-- A Mode's list ("dark" | "light"), the Mode in force by default.
+local function SurfaceSet(mode)
+  return SURFACES[mode or Skin.GetMode()] or SURFACES.dark
 end
 
--- The surface for a key, held by the rule.
-local function SurfaceFor(key)
-  local r, g, b
-  if key == "custom" then r, g, b = FromHex(GetProfile().pbSurfaceHex) end
-  if not r then r, g, b = FromHex(SURFACE_HEX[key] or SURFACE_HEX[DEFAULT_SURFACE]) end
+-- The pick for `mode` (the Mode in force by default). Unset, the retired
+-- Tint is read once more as the pick it now is (Accent tint, Class tint),
+-- and the Mode's first colour otherwise.
+function Skin.GetSurfaceKey(mode)
+  if Creative() then return DEFAULT_SURFACE end
+  local S = SurfaceSet(mode)
+  local profile = GetProfile()
+  local saved = profile[S.key]
+  if saved == nil then saved = profile.pbTint end
+  if saved == "custom" and FromHex(profile[S.hexKey]) then return saved end
+  if saved == "class" and ClassRGB() then return saved end
+  if saved == "accent" or S.hex[saved] then return saved end
+  return S.default
+end
+
+-- The colour for a key of `mode`'s list, held by its rule; and whether it is
+-- a tint (which also tints the strip).
+local function SurfaceFor(key, mode)
+  local S = SurfaceSet(mode)
+  local light = S.light and true or false
   local T = ns.Theme
-  if T and T.ClampSurface then r, g, b = T.ClampSurface(r, g, b, false) end
+  local r, g, b
+  if key == "accent" or key == "class" then
+    r, g, b = FromHex(S.hex[S.default])
+    local hr, hg, hb
+    if key == "accent" then hr, hg, hb = Accent() else hr, hg, hb = ClassRGB() end
+    if hr and T and T.TintSurface then
+      r, g, b = T.TintSurface(r, g, b, hr, hg, hb, light)
+      return r, g, b, true
+    end
+    return r, g, b, false
+  end
+  if key == "custom" then r, g, b = FromHex(GetProfile()[S.hexKey]) end
+  if not r then r, g, b = FromHex(S.hex[key] or S.hex[S.default]) end
+  if T and T.ClampSurface then r, g, b = T.ClampSurface(r, g, b, light) end
+  return r, g, b, false
+end
+
+-- The Mode in force's list, each colour's square as it paints: a tint
+-- reads the accent and the class colour live. Class tint stays out where
+-- the client has no class colour.
+function Skin.GetSurfaceChoices(mode)
+  local S = SurfaceSet(mode)
+  local out = Choices(S.order, SURFACE_NAME_KEY)
+  local kept = {}
+  for i = 1, #out do
+    local item = out[i]
+    if not (item.key == "class" and not ClassRGB()) then
+      if item.key ~= "custom" then
+        local r, g, b = SurfaceFor(item.key, mode)
+        item.swatch = { r, g, b, 1 }
+      end
+      kept[#kept + 1] = item
+    end
+  end
+  return kept
+end
+
+-- The colour a key of `mode`'s list paints (the Mode in force's by
+-- default), or nil for a key it does not have: the options' squares.
+function Skin.SurfaceColor(key, mode)
+  if key == "custom" then return Skin.GetCustomColor("surface") end
+  local S = SurfaceSet(mode)
+  if key ~= "accent" and key ~= "class" and not S.hex[key] then return nil end
+  local r, g, b = SurfaceFor(key, mode)
   return r, g, b
 end
 
-function Skin.GetSurfaceChoices()
-  local out = Choices(SURFACE_ORDER, SURFACE_NAME_KEY)
-  for i = 1, #out do
-    if out[i].key ~= "custom" then
-      local r, g, b = SurfaceFor(out[i].key)
-      out[i].swatch = { r, g, b, 1 }
-    end
-  end
-  return out
-end
-
+-- A pick for the Mode in force; the other Mode's stays as it is. The
+-- retired Tint is let go the first time: the Mode not being set keeps what
+-- it read as (GetSurfaceKey), written as its own pick.
 function Skin.SetSurface(key, hex)
   if not SURFACE_NAME_KEY[key] then return end
+  local mode = Skin.GetMode()
+  local S = SurfaceSet(mode)
+  if key ~= "accent" and key ~= "class" and key ~= "custom" and not S.hex[key] then return end
   local profile = GetProfile()
   if key == "custom" then
     if not FromHex(hex) then return end
-    profile.pbSurfaceHex = hex
+    profile[S.hexKey] = hex
   end
-  profile.pbSurface = (key ~= DEFAULT_SURFACE) and key or nil
-  Skin.ApplyLook(false)
-end
-
--- Tint -------------------------------------------------------------------
-
--- A whisper of a hue in the window's fill and title strip only: none, the
--- accent's, or the class colour's. Text is never tinted.
-local TINT_ORDER = { "none", "accent", "class" }
-local TINT_NAME_KEY = { none = "OPT_TINT_NONE", accent = "OPT_COLOR_ACCENT", class = "OPT_COLOR_CLASS" }
-
-function Skin.GetTintChoices()
-  local out = Choices(TINT_ORDER, TINT_NAME_KEY)
-  if not ClassRGB() then out[3] = nil end
-  return out
-end
-
-function Skin.GetTint()
-  if Creative() then return "none" end
-  local saved = GetProfile().pbTint
-  if saved == "accent" then return saved end
-  if saved == "class" and ClassRGB() then return saved end
-  return "none"
-end
-
-function Skin.SetTint(key)
-  if not TINT_NAME_KEY[key] then return end
-  GetProfile().pbTint = (key ~= "none") and key or nil
+  if profile.pbTint ~= nil then
+    local other = (mode == "light") and "dark" or "light"
+    local O = SurfaceSet(other)
+    if profile[O.key] == nil then
+      local kept = Skin.GetSurfaceKey(other)
+      profile[O.key] = (kept ~= O.default) and kept or nil
+    end
+    profile.pbTint = nil
+  end
+  profile[S.key] = (key ~= S.default) and key or nil
   Skin.ApplyLook(false)
 end
 
@@ -618,29 +673,6 @@ function Skin.SetRowStripes(on)
   local UI = ns.MailboxUI
   if UI and type(UI.SetOption) == "function" then UI.SetOption("rowStripes", on and true or false) end
   Skin.ApplyLook(true)
-end
-
--- Button text --------------------------------------------------------------
-
--- The caption of a push button: Blizzard's gold (the default, as EllesmereUI
--- keeps it), the accent's text tone, or the window's own text colour (white,
--- and the dark ink in Light mode).
-local BUTTON_ORDER = { "gold", "accent", "white" }
-local BUTTON_NAME_KEY = { gold = "OPT_BUTTON_GOLD", accent = "OPT_COLOR_ACCENT", white = "OPT_BUTTON_WHITE" }
-
-function Skin.GetButtonTextChoices() return Choices(BUTTON_ORDER, BUTTON_NAME_KEY) end
-
-function Skin.GetButtonText()
-  if Creative() then return "gold" end
-  local saved = GetProfile().pbButtonText
-  if BUTTON_NAME_KEY[saved] then return saved end
-  return "gold"
-end
-
-function Skin.SetButtonText(key)
-  if not BUTTON_NAME_KEY[key] then return end
-  GetProfile().pbButtonText = (key ~= "gold") and key or nil
-  Skin.ApplyLook(false)
 end
 
 -- Corners and sheen --------------------------------------------------------
@@ -674,19 +706,145 @@ end
 -------------------------------------------------------------
 -- Resolving the look
 --
--- P from the settings: the Mode's set, the surface (held by the rule), the
--- tint mixed into the fill and the strip, the keyline's inner colour; then
--- the Theme's palette -- Mode's, with this style's plate rings, the row
--- stripes and the sheet accent text is read on -- which also makes the
--- accent's tones again. A dozen colour sums and one bisection per changed
--- accent; only on a settings change.
+-- P from the settings: the Mode's set, the background colour (held by its
+-- Mode's rule, a tint mixed into the fill and the strip), the keyline's
+-- inner colour; then the Theme's palette -- Mode's, with this style's plate
+-- rings, the row stripes and the sheet accent text is read on -- which also
+-- makes the accent's tones again; then the grounds every text is read on
+-- (Skin._Grounds), from which the Theme works out each ink. A few dozen
+-- colour sums and a bisection per ink that moved; only on a settings change.
 -------------------------------------------------------------
 
-local function TintOf(light)
-  local tint = Skin.GetTint()
-  if tint == "accent" then return Accent() end
-  if tint == "class" then return ClassRGB() end
-  return nil
+-- The grounds (Theme section 2c): what each surface text stands on shows at
+-- its darkest and its lightest, worked out from the colours and alphas this
+-- style paints it in, laid over what is under it -- the window at the
+-- opacity in force (Light's floor included), over a black world and a white
+-- one; a creative style's art over its tile's grain (def.grain), darkest
+-- over black, lightest over white. Every number is P's, the palette's or
+-- the style's; nothing is guessed. A few dozen sums, written in place.
+do
+  local W, S, ST = {}, {}, {}
+  local R, R2 = {}, {}
+  local HINT = { 0.05, 0.05, 0.06, 0.82 }
+  local ACC = { 1, 1, 1 }
+
+  -- c at alpha a over the range `under` (6 numbers), into `dest`.
+  local function Over(dest, c, a, under)
+    for e = 0, 3, 3 do
+      dest[e + 1] = c[1] * a + under[e + 1] * (1 - a)
+      dest[e + 2] = c[2] * a + under[e + 2] * (1 - a)
+      dest[e + 3] = c[3] * a + under[e + 3] * (1 - a)
+    end
+    return dest
+  end
+
+  -- c at alpha a over the world itself.
+  local WORLD = { 0, 0, 0, 1, 1, 1 }
+
+  local function Set(name, t)
+    ns.Theme.SetGroundRange(name, t[1], t[2], t[3], t[4], t[5], t[6])
+  end
+
+  -- dest widened to take in t too: its darker darkest, its lighter lightest.
+  local function Widen(dest, t)
+    local L = ns.Theme.Luminance
+    if L(t[1], t[2], t[3]) < L(dest[1], dest[2], dest[3]) then dest[1], dest[2], dest[3] = t[1], t[2], t[3] end
+    if L(t[4], t[5], t[6]) > L(dest[4], dest[5], dest[6]) then dest[4], dest[5], dest[6] = t[4], t[5], t[6] end
+  end
+
+  -- The window's fill as it shows at alpha a, into dest: the style's art
+  -- where a creative style lays one (its tint times the tile's grain), its
+  -- colour otherwise.
+  local function Fill(dest, color, a)
+    local CS = Creative() and ns.CreativeStyles
+    local def = CS and type(CS.Active) == "function" and CS.Active() or nil
+    local tint = def and def.ground and def.colors and def.colors[def.ground.tint]
+    if tint and def.grain then
+      local lo, hi = def.grain[1], def.grain[2]
+      for i = 1, 3 do
+        dest[i] = tint[i] * lo * a
+        dest[i + 3] = min(1, tint[i] * hi) * a + (1 - a)
+      end
+    else
+      for i = 1, 3 do
+        dest[i] = color[i] * a
+        dest[i + 3] = color[i] * a + (1 - a)
+      end
+    end
+    return dest
+  end
+
+  -- "window", "solid" and "strip": the main window at the player's
+  -- opacity, the always-solid windows at theirs, the title strip over the
+  -- window (a creative style's title band, where it lays one). -> the
+  -- window's range, its darkest first.
+  function Skin._WindowGrounds()
+    local T = ns.Theme
+    if not (T and T.SetGroundRange) then return W end
+    local o = Skin.GetBgOpacity()
+    Fill(W, P.window, o)
+    Fill(S, P.opaque, P.opaque[4] or 0.97)
+    Set("window", W)
+    Set("solid", S)
+    local band
+    if Creative() then
+      local CS = ns.CreativeStyles
+      local def = CS and type(CS.Active) == "function" and CS.Active() or nil
+      band = def and def.titleBand
+      if band then Over(ST, band, (band[4] or 1) * o, W) else Over(ST, P.strip, 0, W) end
+    else
+      Over(ST, P.strip, (P.strip[4] or 0) * o, W)
+    end
+    Set("strip", ST)
+    return W
+  end
+
+  -- The controls and lists over the window, the cards over the solid
+  -- windows, the plates in the palette's own (a creative style's), the
+  -- tooltip and the hint card over the world, and a style's own grounds
+  -- (def.grounds: the post box's enamel). -> whether any ground moved.
+  function Skin._ControlGrounds()
+    local T = ns.Theme
+    if not (T and T.SetGroundRange and T.Colors) then return false end
+    local C = T.Colors
+    -- A list under its rows' stripes: the even stripe is under every other
+    -- row, all the time.
+    Over(R, P.list, P.list[4] or 1, W)
+    Widen(R, Over(R2, C.stripeEven, C.stripeEven[4] or 0, R))
+    Set("list", R)
+    Set("band", Over(R, P.band, P.band[4] or 1, W))
+    Set("button", Over(R, P.button, P.button[4] or 1, W))
+    Set("select", Over(R, P.select, P.select[4] or 1, W))
+    Set("field", Over(R, P.field, P.field[4] or 1, W))
+    Set("card", Over(R, P.optCard, P.optCard[4] or 1, S))
+    -- A plate at rest and pointed at.
+    Over(R, C.plateIdle, C.plateIdle[4] or 1, W)
+    Widen(R, Over(R2, C.plateHover, C.plateHover[4] or 1, W))
+    Set("plate", R)
+    -- The selected plate under its wash of the accent.
+    Over(R, C.plateSelected, C.plateSelected[4] or 1, W)
+    local ar, ag, ab = Accent()
+    ACC[1], ACC[2], ACC[3] = ar, ag, ab
+    Set("plateSelected", Over(R, ACC, C.accentWash[4] or 0, R))
+    -- The window tabs, in their own tokens (a creative style's).
+    local CS = Creative() and ns.CreativeStyles
+    local def = CS and type(CS.Active) == "function" and CS.Active() or nil
+    local tabs = (def and def.tabs) or TAB_TOKENS
+    Over(R, tabs.plateIdle, tabs.plateIdle[4] or 1, W)
+    Widen(R, Over(R2, tabs.plateHover, tabs.plateHover[4] or 1, W))
+    Set("tab", R)
+    Over(R, tabs.plateSelected, tabs.plateSelected[4] or 1, W)
+    Set("tabSelected", Over(R, ACC, (tabs.accentWash and tabs.accentWash[4]) or 0, R))
+    Set("tooltip", Over(R, P.tooltip, P.tooltip[4] or 1, WORLD))
+    Set("hint", Over(R, HINT, HINT[4], WORLD))
+    if def and def.grounds then
+      for name, range in pairs(def.grounds) do
+        local lo, hi = range[1], range[2]
+        T.SetGroundRange(name, lo[1], lo[2], lo[3], hi[1], hi[2], hi[3])
+      end
+    end
+    return T.GroundsChanged()
+  end
 end
 
 local sheetExtra = { sheet = { 0, 0, 0, 0 } }
@@ -712,21 +870,14 @@ local function ResolveLook()
     P.accent[1], P.accent[2], P.accent[3] = ar, ag, ab
   end
 
-  -- The fill: Dark mode's surface, Light mode's sheet; then the tint.
-  local r, g, b
+  -- The fill: the Mode's background colour (a tint is one), or a creative
+  -- style's own sheet, which the copy above kept.
+  local r, g, b, tinted
   local surface = Skin.GetSurfaceKey()
-  if light then
-    -- The Light set's sheet, just copied into P above -- or a light-ground
-    -- creative style's own, which that copy kept.
-    r, g, b = P.window[1], P.window[2], P.window[3]
+  if over and over.window then
+    r, g, b, tinted = P.window[1], P.window[2], P.window[3], false
   else
-    r, g, b = SurfaceFor(surface)
-  end
-  local hr, hg, hb = TintOf(light)
-  local tinted = false
-  if hr and T and T.TintSurface then
-    r, g, b = T.TintSurface(r, g, b, hr, hg, hb, light)
-    tinted = true
+    r, g, b, tinted = SurfaceFor(surface, light and "light" or "dark")
   end
   P.window[1], P.window[2], P.window[3] = r, g, b
   -- The always-solid windows wear the same colour, but for the default
@@ -751,14 +902,21 @@ local function ResolveLook()
     Recolor(P.inner, P.borderTone[tone] or P.borderTone.gray)
   end
 
+  -- The window as it shows (its fill or art at its opacity, over a black
+  -- world and a white one): the first of the grounds, and the sheet.
+  local W = Skin._WindowGrounds()
+
   if T and T.ApplyPalette then
     local stripes = Skin.GetRowStripes()
     -- A creative style's plates in place of this style's rings, as its claim
     -- laid them.
     local extra = overPlates or (light and RINGS_LIGHT or RINGS_DARK)
+    -- The sheet accent text and inked colours are read on, on a light
+    -- palette: the window at its darkest -- its opacity floor over a dark
+    -- scene -- not as if it were solid, which it is only at 100.
     local s = sheetExtra.sheet
     if light then
-      s[1], s[2], s[3], s[4] = r, g, b, 1
+      s[1], s[2], s[3], s[4] = W[1], W[2], W[3], 1
     else
       s[1], s[2], s[3], s[4] = 0, 0, 0, 0
     end
@@ -770,11 +928,16 @@ local function ResolveLook()
     end
     T.ApplyPalette(light and "light" or "dark", extra, map2)
   end
-  -- The accent border reads the mark tone, which the palette just made.
+  -- The rest of the grounds, over the window and with the palette's plates.
+  -- -> whether any ground moved (the texts' inks are then due again).
+  local moved = Skin._ControlGrounds()
+  -- The accent border reads the mark tone, which the palette and the
+  -- grounds just made.
   if tone == "accent" then
     local ar, ag, ab = AccentMark()
     P.inner[1], P.inner[2], P.inner[3], P.inner[4] = ar, ag, ab, 1
   end
+  return moved
 end
 Skin._ResolveLook = ResolveLook
 
@@ -799,8 +962,9 @@ Skin._ResolveLook = ResolveLook
 -- faces have no Cyrillic (the game's Russian client has Cyrillic cuts of
 -- them), and none of them has Chinese or Korean.
 --
--- Text outline: Shadow (each object's own drop shadow; a light one under dark
--- ink in Light mode), Outline (the client's thin outline, no shadow) or None.
+-- Text outline: Shadow (a drop shadow, no outline; a light one under dark ink
+-- in Light mode), Outline (the client's thin outline, no shadow; none on a
+-- light ground) or None.
 -------------------------------------------------------------
 
 local SCRIPT
@@ -899,19 +1063,19 @@ function Skin.SetOutline(key)
 end
 
 -- The face Theme.HostFont dresses its copies in: the file (false: each game
--- object's own), the flags and the shadow (false and nil: the object's own),
--- and the size factor. Shadow in Dark mode is exactly the game objects' own;
--- in Light mode the shadow is asked for, and the Theme lays it in its light
--- palette's shadow colour.
+-- object's own), the flags, the shadow and the size factor. Shadow is a drop
+-- shadow and no outline, whatever a font pack or a host UI set on the game's
+-- own fonts (one that outlines every game font would otherwise draw its
+-- outline under "Shadow"); Outline the client's thin outline, no shadow;
+-- None neither. On a light ground the Theme drops the outline and lays the
+-- shadow in its light palette's colour (the halo follows the ground).
 function Skin.GetFontFace()
   local outline = Skin.GetOutline()
-  local flags, shadow = false, nil
+  local flags, shadow = "", true
   if outline == "outline" then
     flags, shadow = "OUTLINE", false
   elseif outline == "none" then
     shadow = false
-  elseif Skin.GetMode() == "light" then
-    shadow = true
   end
   return FontPath(Skin.GetFont()), flags, shadow, Skin.GetTextScale()
 end
@@ -925,18 +1089,25 @@ local function DressTitle(fs)
   if not base then return end
   local path = FontPath(Skin.GetFont()) or base.path
   local outline = Skin.GetOutline()
-  local flags = (outline == "outline") and "OUTLINE" or (base.flags or "")
+  local light = Skin.GetMode() == "light"
+  -- As the copies (Skin.GetFontFace): Shadow a shadow and no outline, an
+  -- outline only on a dark ground.
+  local flags = (outline == "outline" and not light) and "OUTLINE" or ""
   pcall(fs.SetFont, fs, path, P.titleSize * Skin.GetTextScale(), flags)
   if fs.SetShadowOffset and fs.SetShadowColor then
     if outline ~= "shadow" then
       fs:SetShadowOffset(0, 0)
-    elseif Skin.GetMode() == "light" then
+    elseif light then
       local sh = ns.Theme and ns.Theme.Colors and ns.Theme.Colors.textShadow
       fs:SetShadowOffset(1, -1)
       if sh then fs:SetShadowColor(sh[1], sh[2], sh[3], sh[4]) end
-    elseif base.sx then
+    elseif base.sx and base.sx ~= 0 and (base.sa or 0) > 0 then
+      -- The title's own drop shadow, where it has one that shows.
       fs:SetShadowOffset(base.sx, base.sy)
       fs:SetShadowColor(base.sr, base.sg, base.sb, base.sa)
+    else
+      fs:SetShadowOffset(1, -1)
+      fs:SetShadowColor(0, 0, 0, 1)
     end
   end
   local c = P.title
@@ -1319,6 +1490,15 @@ local function PaintWindow(frame)
   local show = border ~= "none"
   local tone = P.inner
   local o = P.keyOuter
+  -- Edge: the inner line's colour alone, on the outer line's place -- the
+  -- window's true edge -- and exactly one screen pixel wide (Theme.OnePixel),
+  -- as a pixel-perfect UI draws its windows' edges. Thin and Thick are the
+  -- keyline as they always were.
+  local edge = border == "edge"
+  if edge then
+    local px = ns.Theme and ns.Theme.OnePixel and ns.Theme.OnePixel(frame) or unit
+    unit, o = px, tone
+  end
   local inner = (border == "thick") and 2 * unit or unit
   local trim = RoundCorners(frame, shell, unit, inner, show, alpha, color)
   LayKeyline(frame, shell.outer, 0, unit, trim)
@@ -1328,18 +1508,64 @@ local function PaintWindow(frame)
     shell.outer[i]:SetColorTexture(o[1], o[2], o[3], o[4])
     shell.inner[i]:SetColorTexture(tone[1], tone[2], tone[3], tone[4])
     shell.outer[i]:SetShown(show)
-    shell.inner[i]:SetShown(show)
+    shell.inner[i]:SetShown(show and not edge)
+  end
+  local round = shell.round
+  if edge and round and Skin.GetCorners() == "rounded" then
+    for i = 1, 4 do
+      round.outer[i]:SetVertexColor(tone[1], tone[2], tone[3], tone[4])
+      round.inner[i]:Hide()
+    end
   end
   PaintSheen(frame, shell, trim)
 end
 
 function Skin.ApplyAppearance()
   -- The accent border and the tint read the resolved palette.
-  ResolveLook()
+  local grounds = ResolveLook()
   for frame in pairs(Skin._windows) do
     if frame then pcall(PaintWindow, frame) end
   end
+  -- The opacity moves the window every text is read on: where that moved a
+  -- ground, the inks and the window texts' plates are worked out again
+  -- (a border, corners or the sheen move none, and repaint nothing here).
+  if grounds then Skin._RepaintTexts() end
   if Skin._OnLookChanged then pcall(Skin._OnLookChanged) end
+end
+
+-- Every text this style painted, in the inks of the grounds as they are now:
+-- the tracked texts and their plates, the style's fonts, the plates'
+-- captions, and the class colours (which ContactService inks).
+function Skin._RepaintTexts()
+  local T = ns.Theme
+  if not T then return end
+  -- The copies' own colours (a button's caption) first: a handful of
+  -- objects. Then the texts, where an ink moved (Theme.InksMoved).
+  if T.RefreshHostFonts then T.RefreshHostFonts(true) end
+  if not T.InksMoved or T.InksMoved() then
+    if T.RepaintTracked then T.RepaintTracked() end
+    Skin._PaintFonts()
+    if T.RepaintAccentText then T.RepaintAccentText() end
+    if T.RepaintPlates then
+      for frame in pairs(Skin._windows) do pcall(T.RepaintPlates, frame, 0) end
+    end
+  end
+  local CS = ns.ContactService
+  if CS and type(CS.PaletteMoved) == "function" then pcall(CS.PaletteMoved) end
+  -- And what is coloured inside a line, written again where its inks moved.
+  if Skin._EscapesMoved() then RefitScreens() end
+end
+
+-- Whether the inks written inside lines (a row's figures, the status line's
+-- tones: Theme.EscapeInkSignature) moved since this was last asked -- most
+-- changes of the opacity or the accent move none of them, and those lines
+-- are then left as they are rather than written again.
+function Skin._EscapesMoved()
+  local T = ns.Theme
+  local sig = T and type(T.EscapeInkSignature) == "function" and T.EscapeInkSignature() or false
+  if sig == Skin._escapeSig then return false end
+  Skin._escapeSig = sig
+  return true
 end
 
 -- The window scale moved: every one-pixel edge is a pixel of the new scale,
@@ -1364,6 +1590,10 @@ local function SeatTitleBar(frame)
     frame.TitleText:ClearAllPoints()
     frame.TitleText:SetPoint("CENTER", strip, "CENTER", 0, 0)
     AdoptTitle(frame.TitleText)
+    -- On the strip, which fades with the window: a plate of its own where
+    -- the strip cannot carry it (Theme.OnWindow). A creative style's title
+    -- stands on its own art (a lip, a nameplate, a band), not on the strip.
+    if not Creative() and ns.Theme and ns.Theme.OnWindow then ns.Theme.OnWindow(frame.TitleText, "strip", "CENTER") end
   end
   if frame.CloseButton then
     frame.CloseButton:ClearAllPoints()
@@ -1445,26 +1675,14 @@ local function FlatPanel(panel, kind)
   end
 end
 
--- The style's own font objects. The value of a select, in the accent's text
--- tone: a copy of the game's button font, recoloured. And a push button's
--- caption where Button text asks for Accent or White: a copy of the font the
--- button was made with (its size kept), recoloured, one per such font -- a
--- handful. Gold, the default, is the button's own font, as it always was.
--- The host-font copies dress each in the chosen face. A button puts its
--- state's font back on its label at every enable and disable, so the colour
--- lives on the object.
+-- The style's own font object: the value of a select, in the accent's text
+-- tone on the select's own ground (Theme.Ink): a copy of the game's button
+-- font, recoloured, which the host-font copies dress in the chosen face. A
+-- push button's caption is the button's own font, Blizzard's gold, as
+-- EllesmereUI keeps it -- on a light palette the copy's colour made right
+-- for the button (Theme DressCopy). A button puts its state's font back on
+-- its label at every enable and disable, so the colour lives on the object.
 local selectFont
-local buttonFonts = {}   -- the button's own font -> its recoloured copy
-local buttons = setmetatable({}, { __mode = "k" })   -- push button -> its own font
-
--- r, g, b of a push button's caption under Accent or White.
-local function ButtonTextRGB()
-  local T = ns.Theme
-  if Skin.GetButtonText() == "accent" and T and T.GetAccentTone then return T.GetAccentTone("text") end
-  local c = T and T.Colors and T.Colors.textPrimary
-  if c then return c[1], c[2], c[3] end
-  return 1, 1, 1
-end
 
 local function Recoloured(font, r, g, b)
   if not font or type(font.SetTextColor) ~= "function" then return end
@@ -1474,17 +1692,21 @@ local function Recoloured(font, r, g, b)
   if copy and copy ~= font then copy:SetTextColor(r, g, b) end
 end
 
--- The objects and their dressed copies in their colours: after a palette
--- change, or a re-dress of the copies (which puts the copied colour back).
-function Skin._PaintFonts()
+-- The select's value colour: the accent as text on the select.
+local function SelectInk()
   local T = ns.Theme
+  if T and T.Ink then return T.Ink("accentText", "select") end
+  if T and T.GetAccentTone then return T.GetAccentTone("text") end
+  return 1, 0.82, 0
+end
+
+-- The object and its dressed copy in their colour: after a palette change,
+-- or a re-dress of the copies (which puts the copied colour back).
+function Skin._PaintFonts()
   if selectFont then
-    local r, g, b = 1, 0.82, 0
-    if T and T.GetAccentTone then r, g, b = T.GetAccentTone("text") end
+    local r, g, b = SelectInk()
     Recoloured(selectFont, r, g, b)
   end
-  local r, g, b = ButtonTextRGB()
-  for _, font in pairs(buttonFonts) do Recoloured(font, r, g, b) end
 end
 
 local function SelectFont()
@@ -1494,42 +1716,10 @@ local function SelectFont()
   local font = CreateFont("PostboxSelectValue")
   if not font then selectFont = false return nil end
   if type(font.CopyFontObject) == "function" then pcall(font.CopyFontObject, font, base) end
-  local r, g, b = 1, 0.82, 0
-  if ns.Theme and ns.Theme.GetAccentTone then r, g, b = ns.Theme.GetAccentTone("text") end
+  local r, g, b = SelectInk()
   if type(font.SetTextColor) == "function" then font:SetTextColor(r, g, b) end
   selectFont = font
   return font
-end
-
-local buttonFontN = 0
-local function ButtonFontFor(own)
-  local font = buttonFonts[own]
-  if font then return font end
-  if type(CreateFont) ~= "function" then return nil end
-  buttonFontN = buttonFontN + 1
-  font = CreateFont("PostboxButtonText" .. buttonFontN)
-  if not font then return nil end
-  if type(font.CopyFontObject) == "function" then pcall(font.CopyFontObject, font, own) end
-  font:SetTextColor(ButtonTextRGB())
-  buttonFonts[own] = font
-  return font
-end
-
--- A push button's normal font from Button text: its own (Gold), or its
--- recoloured copy; in the chosen face either way.
-local function PaintButtonFont(button)
-  local own = buttons[button]
-  if not own then return end
-  local T = ns.Theme
-  local want = own
-  if Skin.GetButtonText() ~= "gold" then want = ButtonFontFor(own) or own end
-  local face = (T and T.HostFont and T.HostFont(want)) or want
-  if want ~= own and face and face.SetTextColor then face:SetTextColor(ButtonTextRGB()) end
-  if button:GetNormalFontObject() ~= face then
-    button:SetNormalFontObject(face)
-    local label = button.GetFontString and button:GetFontString()
-    if label and label.SetFontObject and button:IsEnabled() then label:SetFontObject(face) end
-  end
 end
 
 -- Push buttons' hover washes and selects' carets, kept for a repaint.
@@ -1581,20 +1771,15 @@ local function FlatButton(button)
       button.__pbCaret = caret
       carets[caret] = true
     end
-  elseif button.GetNormalFontObject then
-    -- The font the button was made with, before the host-font pass below.
-    buttons[button] = button:GetNormalFontObject() or false
   end
   -- The button's own state fonts in the chosen face (Theme.HostFontButton).
   if T and type(T.HostFontButton) == "function" then pcall(T.HostFontButton, button) end
-  if not select and buttons[button] then pcall(PaintButtonFont, button) end
 end
 
--- A push button's caption colour as it shows: Gold is the game's button
--- font's own (its light twin in Light mode), the others as above. For the
--- options' drawing of the window.
+-- A push button's caption colour as it shows: the game's button font's own
+-- gold, made right for the button it stands on (on a light palette, the
+-- gold that reads on paper). For the options' drawing of the window.
 function Skin.ButtonTextRGB()
-  if Skin.GetButtonText() ~= "gold" then return ButtonTextRGB() end
   local r, g, b = 1, 0.82, 0
   local base = _G.GameFontNormal
   if base and type(base.GetTextColor) == "function" then
@@ -1602,7 +1787,7 @@ function Skin.ButtonTextRGB()
     if type(br) == "number" then r, g, b = br, bg, bb end
   end
   local T = ns.Theme
-  if T and T.InkFor then return T.InkFor(r, g, b) end
+  if T and T.InkFor then return T.InkFor(r, g, b, "button") end
   return r, g, b
 end
 
@@ -1613,8 +1798,10 @@ function Skin.GetCustomColor(kind)
   if kind == "accent" then return FromHex(profile.pbAccentHex) end
   if kind == "border" then return FromHex(profile.pbBorderHex) end
   if kind == "surface" then
-    local r, g, b = FromHex(profile.pbSurfaceHex)
-    if r and ns.Theme and ns.Theme.ClampSurface then r, g, b = ns.Theme.ClampSurface(r, g, b, false) end
+    -- The Mode in force's own, held by its rule.
+    local S = SurfaceSet()
+    local r, g, b = FromHex(profile[S.hexKey])
+    if r and ns.Theme and ns.Theme.ClampSurface then r, g, b = ns.Theme.ClampSurface(r, g, b, S.light and true or false) end
     return r, g, b
   end
   return nil
@@ -1850,7 +2037,7 @@ end
 function Skin.ApplyLook(full)
   local T = ns.Theme
   local wasLight = T and T.IsLight and T.IsLight() or false
-  ResolveLook()
+  local grounds = ResolveLook()
   local nowLight = T and T.IsLight and T.IsLight() or false
   if T then
     -- The copies take the palette's colours and shadow (and a new shadow
@@ -1870,13 +2057,21 @@ function Skin.ApplyLook(full)
   for caret in pairs(carets) do caret:SetVertexColor(c[1], c[2], c[3], 1) end
   for button in pairs(closes) do pcall(TintClose, button, nil) end
   for fs in pairs(titles) do pcall(DressTitle, fs) end
-  for button in pairs(buttons) do pcall(PaintButtonFont, button) end
   Skin.RefreshAccents()
-  if full or wasLight ~= nowLight then
+  -- A ground moved (the background colour, the opacity) and with it an ink
+  -- written inside a line (a figure, a tone on the status line): those
+  -- lines are written again in the new inks, as a change of Mode writes
+  -- them; and a name's class colour is asked for again.
+  local escapes = Skin._EscapesMoved()
+  if full or wasLight ~= nowLight or (grounds and escapes) then
     local CS = ns.ContactService
     if CS and type(CS.PaletteMoved) == "function" then pcall(CS.PaletteMoved) end
     RefitScreens()
   else
+    -- The class colours look again where a ground moved: each compares
+    -- its own ink and repaints only if it moved.
+    local CS = grounds and ns.ContactService
+    if CS and type(CS.PaletteMoved) == "function" then pcall(CS.PaletteMoved) end
     local panel = ns.OptionsPanel
     if panel and type(panel.RefreshControls) == "function" then pcall(panel.RefreshControls) end
   end
@@ -1935,10 +2130,18 @@ function Skin.PickColor(kind)
     set = function(hex) Skin.SetAccent("custom", hex) end
     restore = function() profile.pbAccent, profile.pbAccentHex = was, wasHex; Skin.ApplyLook(false) end
   elseif kind == "surface" then
-    r, g, b = SurfaceFor(Skin.GetSurfaceKey())
-    local was, wasHex = profile.pbSurface, profile.pbSurfaceHex
+    -- The Mode in force's colour and its own keys: the other Mode's pick is
+    -- never touched.
+    local S = SurfaceSet()
+    r, g, b = SurfaceFor(Skin.GetSurfaceKey(), Skin.GetMode())
+    local was, wasHex, wasTint = profile[S.key], profile[S.hexKey], profile.pbTint
+    local O = SurfaceSet((Skin.GetMode() == "light") and "dark" or "light")
+    local wasOther = profile[O.key]
     set = function(hex) Skin.SetSurface("custom", hex) end
-    restore = function() profile.pbSurface, profile.pbSurfaceHex = was, wasHex; Skin.ApplyLook(false) end
+    restore = function()
+      profile[S.key], profile[S.hexKey], profile.pbTint, profile[O.key] = was, wasHex, wasTint, wasOther
+      Skin.ApplyLook(false)
+    end
   elseif kind == "border" then
     r, g, b = P.inner[1], P.inner[2], P.inner[3]
     local was, wasHex = profile.pbBorderTone, profile.pbBorderHex
@@ -2182,6 +2385,10 @@ function Skin.Apply(frame)
   end
 
   Skin.Refresh(frame)
+  -- The plates under the window's own text (Theme.OnWindow) stand on the
+  -- window, whose own textures QuietTemplateArt has just faded: shown again
+  -- where their window needs them.
+  if ns.Theme and ns.Theme.RepaintTextPlates then ns.Theme.RepaintTextPlates() end
 end
 
 -- Postbox's secondary windows (options, Mail Memory, groups, recipients, the
@@ -2243,8 +2450,10 @@ boot:SetScript("OnEvent", function(self)
   ns.Skin = Skin
   local T = ns.Theme
   -- What is painted from a token, a grey or the chrome ink is kept from now
-  -- on, so a palette change can paint it again.
+  -- on, so a palette change can paint it again; and every text's ink is
+  -- worked out from the ground it stands on (Theme section 2c).
   if T and type(T.TrackPaint) == "function" then T.TrackPaint() end
+  if T and type(T.UseGrounds) == "function" then T.UseGrounds(true) end
   -- The palette the settings name, before the first window is built.
   Skin._ResolveLook()
 end)
