@@ -1188,11 +1188,13 @@ do
       r, g, b = colour.r or 1, colour.g or 1, colour.b or 1
       if type(colour.WrapTextInColorCode) == "function" then wrap = colour end
     end
-    -- On a light palette (the Postbox style's Light mode) a class colour made
-    -- for a dark ground is moved to read on a light one (Theme.InkFor: the
-    -- contrast guard at 4.5:1), and written as an escape of its own.
+    -- Where the look works its inks out from their grounds (the Postbox style
+    -- and the creative styles: Theme.InkFor), a class colour is made to read
+    -- on the lists it stands on -- a dark one lifted on a dark list, any on a
+    -- paper one darkened -- at 4.5:1, and written as an escape of its own.
+    -- Every other look keeps the colour as the game gives it.
     local T = ns.Theme
-    if T and type(T.IsLight) == "function" and T.IsLight() and type(T.InkFor) == "function" then
+    if T and type(T.InkFor) == "function" then
       local lr, lg, lb = T.InkFor(r, g, b)
       if lr ~= r or lg ~= g or lb ~= b then r, g, b, wrap = lr, lg, lb, false end
     end

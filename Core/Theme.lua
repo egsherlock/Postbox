@@ -480,10 +480,13 @@ end
 -- r, g, b made to read at `target`:1 on the ground gr, gg, gb by the least
 -- lightness move; returns the colour and whether it moved. On a ground too
 -- close to the middle for any lightness to pass, the furthest it can go.
-local function Legible(r, g, b, gr, gg, gb, target)
+-- `up`, optional: the way to move (true: lighter), where the caller has
+-- decided it from more than this one ground (a ground's range, section 2c);
+-- by default, away from the ground.
+local function Legible(r, g, b, gr, gg, gb, target, up)
   if Contrast(r, g, b, gr, gg, gb) >= target then return r, g, b, false end
   local L0, A, B = ToLab(r, g, b)
-  local up = Luminance(gr, gg, gb) < 0.18
+  if up == nil then up = Luminance(gr, gg, gb) < 0.18 end
   local lo, hi
   if up then lo, hi = L0, 1 else lo, hi = 0, L0 end
   for _ = 1, 24 do
@@ -497,6 +500,7 @@ local function Legible(r, g, b, gr, gg, gb, target)
 end
 
 Theme.Contrast = Contrast
+Theme.Luminance = Luminance
 Theme.Legible = Legible
 Theme.ToLab = ToLab
 Theme.FromLab = function(L, a, b)
@@ -586,10 +590,16 @@ for token, color in pairs(C) do
   Hex[token] = ToHex(color)
 end
 
+-- The ink of a token on a ground (section 2c), once a style derives its text
+-- colours from the grounds they stand on; nil while none does.
+local InkOf
+
 -- "|cffd3a44atext|r". An unknown token returns the text unchanged rather than
--- rendering a broken escape.
-function Theme.Colorize(token, text)
-  local hex = Hex[token]
+-- rendering a broken escape. `ground`, optional: the surface the text is
+-- read on (section 2c), where a style derives its inks from it.
+function Theme.Colorize(token, text, ground)
+  local ink = InkOf and InkOf(token, ground)
+  local hex = ink and ink.hex or Hex[token]
   if not hex then return tostring(text or "") end
   return "|cff" .. hex .. tostring(text or "") .. "|r"
 end
@@ -633,6 +643,52 @@ local lightPalette = false
 -- The skin generation's own half (Theme.SkinGeneration, beside RepaintPlates).
 local skinGen = 0
 
+-- The generation the tones were made at: the palette's; where a style
+-- derives its inks from their grounds (section 2c), the grounds' too, since
+-- a mark's ground moves with the opacity.
+local function ToneGeneration()
+  local GR = Theme._Grounds
+  if GR and GR.on and Theme.GroundGeneration then return Theme.GroundGeneration() end
+  return paletteGen
+end
+
+-- The plates a mark sits on (an underline, a tick, the Mail tab's dot), the
+-- one it reads worst on, as it shows: r, g, b. On a dark palette the
+-- lightest, on a light one the darkest. Where a style derives its inks from
+-- their grounds, every plate's ground (selected or not, a window tab's
+-- tokens or the palette's) at the opacity in force; otherwise the selected
+-- plate on a dark palette and the idle one, laid over the sheet, on a light
+-- one. `gr, gg, gb`: the selected plate under its wash.
+local MARK_GROUNDS = { "plateSelected", "tabSelected", "plate", "tab" }
+local function MarkGround(gr, gg, gb)
+  local GR = Theme._Grounds
+  if GR and GR.on and GR.Range then
+    local best, mr, mgg, mb
+    local e = lightPalette and 0 or 3
+    for i = 1, #MARK_GROUNDS do
+      local t = GR.Range(MARK_GROUNDS[i])
+      if t then
+        local l = Luminance(t[e + 1], t[e + 2], t[e + 3])
+        if not best or (lightPalette and l < best) or (not lightPalette and l > best) then
+          best, mr, mgg, mb = l, t[e + 1], t[e + 2], t[e + 3]
+        end
+      end
+    end
+    if mr then return mr, mgg, mb end
+  end
+  if not lightPalette then
+    local plate = C.plateSelected
+    return plate[1], plate[2], plate[3]
+  end
+  local mg, sheet = C.plateIdle, C.sheet
+  local mr, mgg, mb = mg[1], mg[2], mg[3]
+  if sheet and (sheet[4] or 0) > 0 then
+    local k = mg[4] or 1
+    mr, mgg, mb = sheet[1] + (mr - sheet[1]) * k, sheet[2] + (mgg - sheet[2]) * k, sheet[3] + (mb - sheet[3]) * k
+  end
+  return mr, mgg, mb
+end
+
 local function FillTones(r, g, b)
   local plate, wash = C.plateSelected, C.accentWash[4] or 0.14
   local gr = plate[1] + (r - plate[1]) * wash
@@ -645,10 +701,9 @@ local function FillTones(r, g, b)
   end
   StoreTone(tones.text, tr, tg, tb)
   -- A mark sits on the selected plate, and on an idle one too (the Mail
-  -- tab's dot): on a dark palette the selected plate is the lighter, so the
-  -- stricter ground; on a light one the idle plate is the darker, so it is.
-  local mg = lightPalette and C.plateIdle or plate
-  StoreTone(tones.mark, Legible(r, g, b, mg[1], mg[2], mg[3], 3.0))
+  -- tab's dot): 3:1 on the one it reads worst on (MarkGround).
+  local mr, mgg, mb = MarkGround(gr, gg, gb)
+  StoreTone(tones.mark, Legible(r, g, b, mr, mgg, mb, 3.0))
   if lightPalette then
     StoreTone(tones.bright, tr, tg, tb)
     local mr, mg, mb = ToneMuted(r, g, b)
@@ -658,7 +713,7 @@ local function FillTones(r, g, b)
     StoreTone(tones.bright, ToneBright(r, g, b))
     StoreTone(tones.muted, ToneMuted(r, g, b))
   end
-  tones.r, tones.g, tones.b, tones.gen = r, g, b, paletteGen
+  tones.r, tones.g, tones.b, tones.gen = r, g, b, ToneGeneration()
 end
 
 -- The live accent in one of the tones described above:
@@ -666,7 +721,7 @@ end
 function Theme.GetAccentTone(tone)
   local r, g, b = Theme.GetAccent()
   if tone ~= "text" and tone ~= "mark" and tone ~= "bright" and tone ~= "muted" then return r, g, b end
-  if tones.r ~= r or tones.g ~= g or tones.b ~= b or tones.gen ~= paletteGen then FillTones(r, g, b) end
+  if tones.r ~= r or tones.g ~= g or tones.b ~= b or tones.gen ~= ToneGeneration() then FillTones(r, g, b) end
   local t = tones[tone]
   return t[1], t[2], t[3]
 end
@@ -675,7 +730,7 @@ end
 -- and the ratios they read at: for the options' accent row.
 function Theme.AccentReadout()
   local r, g, b = Theme.GetAccent()
-  if tones.r ~= r or tones.g ~= g or tones.b ~= b or tones.gen ~= paletteGen then FillTones(r, g, b) end
+  if tones.r ~= r or tones.g ~= g or tones.b ~= b or tones.gen ~= ToneGeneration() then FillTones(r, g, b) end
   local plate, wash = C.plateSelected, C.accentWash[4] or 0.14
   local gr = plate[1] + (r - plate[1]) * wash
   local gg = plate[2] + (g - plate[2]) * wash
@@ -685,8 +740,8 @@ function Theme.AccentReadout()
   local ct = Contrast(t[1], t[2], t[3], gr, gg, gb)
   local sheet = C.sheet
   if sheet and (sheet[4] or 0) > 0 then ct = min(ct, Contrast(t[1], t[2], t[3], sheet[1], sheet[2], sheet[3])) end
-  local mg = lightPalette and C.plateIdle or plate
-  return ct, Contrast(m[1], m[2], m[3], mg[1], mg[2], mg[3]),
+  local mr, mgg, mb = MarkGround(gr, gg, gb)
+  return ct, Contrast(m[1], m[2], m[3], mr, mgg, mb),
     Contrast(ir, ig, ib, m[1], m[2], m[3]),
     (t[1] ~= r or t[2] ~= g or t[3] ~= b or m[1] ~= r or m[2] ~= g or m[3] ~= b)
 end
@@ -932,6 +987,9 @@ end
 -- between them in proportion, so a hierarchy of greys keeps its order.
 do
   local anchors
+  -- The palette the anchors and the memo were made for: the sheet moves
+  -- with the light paper and the opacity (Theme.ApplyPalette's generation).
+  local anchoredAt = -1
   -- level -> its light grey. The levels callers use are a few dozen
   -- constants, so this stays that size.
   local memo = {}
@@ -939,6 +997,11 @@ do
   local Map
   function Theme.Grey(v)
     if not lightPalette then return v end
+    if anchoredAt ~= paletteGen then
+      anchoredAt = paletteGen
+      anchors = nil
+      for k in pairs(memo) do memo[k] = nil end
+    end
     local known = memo[v]
     if known then return known end
     known = Map(v)
@@ -948,9 +1011,13 @@ do
   function Map(v)
     if not anchors then
       local L = Theme.PALETTE_LIGHT
+      -- Black is the sheet the greys are read on: the window as it shows,
+      -- at its opacity floor (C.sheet), where a style has one.
+      local s = C.sheet
+      local sheetL = ((s[4] or 0) > 0) and (ToLab(s[1], s[2], s[3])) or LOf(L.sheet[1])
       anchors = {
         { LOf(1.00), LOf(L.textPrimary[1]) }, { LOf(0.82), LOf(L.textSecondary[1]) },
-        { LOf(0.56), LOf(L.textDisabled[1]) }, { LOf(0.30), LOf(0.64) }, { 0, LOf(L.sheet[1]) },
+        { LOf(0.56), LOf(L.textDisabled[1]) }, { LOf(0.30), LOf(0.64) }, { 0, sheetL },
       }
     end
     local x = LOf(max(0, min(1, v)))
@@ -985,8 +1052,17 @@ end
 
 -- A text colour chosen for a dark ground, made right for the palette's:
 -- itself on a dark palette; on a light one a grey takes its rank's grey
--- (Theme.Grey) and a hue the guard's 4.5:1 on the sheet.
-function Theme.InkFor(r, g, b)
+-- (Theme.Grey) and a hue the guard's 4.5:1 on the sheet. Where a style
+-- derives its inks from their grounds (section 2c), the colour is made right
+-- for `ground` instead (the controls and lists, "content", by default): a
+-- class colour too dark for a dark list is lifted as one too light for a
+-- paper one is darkened.
+local InkRGB
+function Theme.InkFor(r, g, b, ground)
+  if InkRGB then
+    local ir, ig, ib = InkRGB(r, g, b, ground)
+    if ir then return ir, ig, ib end
+  end
   if not lightPalette then return r, g, b end
   if max(r, g, b) - min(r, g, b) < 0.06 then
     local v = Theme.Grey((r + g + b) / 3)
@@ -995,6 +1071,446 @@ function Theme.InkFor(r, g, b)
   local s = C.sheet
   local lr, lg, lb = Legible(r, g, b, s[1], s[2], s[3], 4.5)
   return lr, lg, lb
+end
+
+-------------------------------------------------------------
+-- 2c. Grounds, and the ink each text takes from its own
+--
+-- A text colour is right or wrong only against what is behind it, so every
+-- text names the ground it stands on and its ink is worked out from that
+-- ground, not chosen beside it. A ground is a name -- "list", "band",
+-- "button", "plate", "window" ... -- and two colours: the darkest and the
+-- lightest it can show, its own fill laid over whatever is under it at the
+-- opacity the settings allow, over a black world and over a white one (a
+-- creative style's art, over its grain's darkest and lightest). The style
+-- that paints the grounds says what they are (Theme.SetGroundRange, the
+-- Postbox style's ResolveLook); nothing here guesses.
+--
+-- The ink of a token on a ground: its own colour where it already reads at
+-- 4.5:1 on both ends -- byte for byte, so a look that passed keeps its
+-- colours -- else the least lightness move that makes it (Legible, hue
+-- kept). Its polarity is the ground's, never the palette's: a light ink on a
+-- dark ground, a dark one on a light ground, a token made for the other
+-- polarity taking its twin first (the dark palette's colour on a dark
+-- ground, the light palette's on a paper one), so the light palette's
+-- figures read in the dark tooltip and the dark palette's on the post box's
+-- white enamel.
+--
+-- A ground that shows both darker and lighter than any ink could read on --
+-- the bare window at a low opacity over a bright world -- carries no text by
+-- itself: text on it is given a plate of its own (Theme.OnWindow), whose
+-- opacity is the least that makes every ink of the window read, and none at
+-- all where the window already carries them. That is a rule, not a colour.
+--
+-- Worked out once per change of the palette or the grounds and kept, a
+-- small table per (ground, token) rewritten in place: painting a text is a
+-- table lookup, as it always was, and nothing is made per row or per paint.
+-- Off -- every call answers nil, and every look paints exactly as it did --
+-- until a style turns it on (Theme.UseGrounds): the Postbox style and the
+-- creative styles. A host UI's look and the Blizzard look never do.
+-------------------------------------------------------------
+-- region -> the ground it was told it stands on (Theme.SetGround).
+local regionGround = setmetatable({}, { __mode = "k" })
+-- font string -> the plate laid under it (Theme.OnWindow).
+local textPlates = setmetatable({}, { __mode = "k" })
+local Grounds = { on = false }
+Theme._Grounds = Grounds
+-- The ground a region was told it stands on, or nil: for the debug report
+-- and the contrast checker.
+function Grounds.Of(region) return regionGround[region] end
+
+do
+  -- name -> { darkest r, g, b, lightest r, g, b }, as the style sets them.
+  local ranges = {}
+  -- The ranges as they were when the generation last moved.
+  local snap = {}
+  -- union name -> its member grounds; its range is their widest.
+  local UNIONS = {
+    content = { "list", "band", "button", "select", "field", "card", "plate" },
+  }
+  local unions = {}
+  -- The ground a token's text stands on unless told: the controls and the
+  -- lists for body text; a plate's own caption on the plate.
+  local HOME = { plateCaption = "plate", tabCaption = "tab", accentBright = "plateSelected" }
+  -- Grounds text may stand on bare, given a plate where they cannot carry
+  -- it: the window, the always-solid windows, the window's title strip.
+  local PLATED = { window = true, solid = true, strip = true }
+  -- The inks the window's own texts take, for which its plate is made:
+  -- the status line's and the hints' greys and tones, the captions' accent;
+  -- on the always-solid windows the quiet notes' disabled grey too. An ink
+  -- not among them is worked out on the plated ground like any other.
+  local PLATE_TOKENS = {
+    window = { "textPrimary", "textSecondary", "accentText", "positive", "warning" },
+    strip = { "textPrimary", "textSecondary", "accentText", "positive", "warning" },
+    solid = { "textPrimary", "textSecondary", "textDisabled", "accentText", "positive", "warning" },
+  }
+  -- ground -> token -> { r, g, b, a, hex = ..., gen = ..., ... }
+  local inks = {}
+  -- ground -> { alpha, gen }
+  local plates = {}
+  local gen = 0
+  local NEED = 4.5
+
+  Grounds.HOME, Grounds.PLATED, Grounds.UNIONS = HOME, PLATED, UNIONS
+
+  function Theme.UseGrounds(on)
+    Grounds.on = on and true or false
+  end
+
+  -- The ground `name` shows from `lr, lg, lb` (its darkest) to `hr, hg, hb`
+  -- (its lightest). Written in place; Theme.GroundsChanged says when a set
+  -- of them is complete.
+  function Theme.SetGroundRange(name, lr, lg, lb, hr, hg, hb)
+    local t = ranges[name]
+    if not t then
+      t = {}
+      ranges[name] = t
+    end
+    t[1], t[2], t[3], t[4], t[5], t[6] = lr, lg, lb, hr or lr, hg or lg, hb or lb
+  end
+
+  -- The ranges are all set: the inks are worked out again where any moved.
+  -- -> whether one did (a repaint is then due).
+  function Theme.GroundsChanged()
+    local moved = false
+    for name, t in pairs(ranges) do
+      local s = snap[name]
+      if not s then
+        s = {}
+        snap[name] = s
+        moved = true
+      end
+      for i = 1, 6 do
+        if s[i] ~= t[i] then s[i] = t[i]; moved = true end
+      end
+    end
+    if moved then gen = gen + 1 end
+    return moved
+  end
+
+  function Theme.GroundGeneration() return gen + paletteGen end
+
+  local function Range(ground)
+    local members = UNIONS[ground]
+    if not members then return ranges[ground] end
+    local u = unions[ground]
+    if not u then
+      u = { gen = -1, pgen = -1 }
+      unions[ground] = u
+    end
+    if u.gen == gen and u.pgen == paletteGen and u[1] then return u end
+    local lo, hi, any = math.huge, -1, false
+    for i = 1, #members do
+      local t = ranges[members[i]]
+      if t then
+        any = true
+        local l = Luminance(t[1], t[2], t[3])
+        if l < lo then lo = l; u[1], u[2], u[3] = t[1], t[2], t[3] end
+        local h = Luminance(t[4], t[5], t[6])
+        if h > hi then hi = h; u[4], u[5], u[6] = t[4], t[5], t[6] end
+      end
+    end
+    if not any then return nil end
+    u.gen, u.pgen = gen, paletteGen
+    return u
+  end
+  Grounds.Range = Range
+
+  -- Whether text on `ground` is dark ink on a light ground.
+  function Grounds.IsLight(ground)
+    local t = Range(ground)
+    if not t then return lightPalette end
+    return Luminance(t[1], t[2], t[3]) >= 0.18
+  end
+
+  -- r, g, b made to read at `need` on gr, gg, gb when laid on it at alpha a
+  -- (the placeholder's 0.9), moving lighter (`up`) or darker: the guard,
+  -- then raised until the laid colour passes too.
+  local function LegibleA(r, g, b, a, gr, gg, gb, need, up)
+    r, g, b = Legible(r, g, b, gr, gg, gb, need, up)
+    if a >= 1 then return r, g, b end
+    local want = need
+    for _ = 1, 8 do
+      local cr, cg, cb = r * a + gr * (1 - a), g * a + gg * (1 - a), b * a + gb * (1 - a)
+      if Contrast(cr, cg, cb, gr, gg, gb) >= need then return r, g, b end
+      want = want + 0.35
+      r, g, b = Legible(r, g, b, gr, gg, gb, want, up)
+    end
+    return r, g, b
+  end
+
+  -- Which way an ink must go on range t: "light", "dark", or nil where no
+  -- ink reads on both of its ends. `room`: how much better than `need` the
+  -- extreme ink (white, black) must read for the ground to carry inks of
+  -- its own -- the bare window's, where a ground that only white or black
+  -- can read on would leave every grey and the accent the same white; it
+  -- gets a plate under its text instead (section 3a), and the greys keep
+  -- their order.
+  local function Polarity(t, need, room)
+    room = room or 1
+    local lumLo, lumHi = Luminance(t[1], t[2], t[3]), Luminance(t[4], t[5], t[6])
+    local canLight = (1.05) / (lumHi + 0.05) >= need * room
+    local canDark = (lumLo + 0.05) / 0.05 >= need * room
+    local preferLight = (lumLo + lumHi) / 2 < 0.18
+    if preferLight then
+      if canLight then return "light" end
+      if canDark then return "dark" end
+    else
+      if canDark then return "dark" end
+      if canLight then return "light" end
+    end
+    return nil
+  end
+
+  -- The ink r, g, b on range t: its twin where it was made for the other
+  -- polarity, then the guard against the stricter end. -> r, g, b, moved.
+  local function OnRange(r, g, b, a, t, need, twinOf, room)
+    local way = Polarity(t, need, room)
+    if not way then return r, g, b, false end
+    local lum = Luminance(r, g, b)
+    local e = 0
+    if way == "light" then
+      e = 3
+      if lum < 0.18 and twinOf then
+        local tw = BASE[twinOf]
+        if tw then r, g, b = tw[1], tw[2], tw[3] end
+      end
+    elseif lum >= 0.18 and twinOf then
+      local tw = Theme.PALETTE_LIGHT[twinOf]
+      if tw then r, g, b = tw[1], tw[2], tw[3] end
+    end
+    local r0, g0, b0 = r, g, b
+    r, g, b = LegibleA(r, g, b, a, t[e + 1], t[e + 2], t[e + 3], need, way == "light")
+    -- A moved ink is held to the 8 bits a channel the screen and a colour
+    -- escape show it in, rounded away from the ground, so the colour shown
+    -- still reads at the ratio it was worked out for.
+    if r ~= r0 or g ~= g0 or b ~= b0 then
+      if way == "light" then
+        r, g, b = min(1, ceil(r * 255 - 1e-6) / 255), min(1, ceil(g * 255 - 1e-6) / 255), min(1, ceil(b * 255 - 1e-6) / 255)
+      else
+        r, g, b = floor(r * 255 + 1e-6) / 255, floor(g * 255 + 1e-6) / 255, floor(b * 255 + 1e-6) / 255
+      end
+    end
+    return r, g, b, true
+  end
+  -- The bare window's margin (Polarity's `room`): white or black must read at
+  -- 1.25 times the need on it, about 5.6:1, for its inks to be worked out on
+  -- it rather than a plate laid under them.
+  local ROOM = 1.25
+
+  local function BaseOf(token)
+    local r, g, b, a = ResolveAccentToken(token, true)
+    if r then return r, g, b, a end
+    local c = C[token]
+    if not c then return nil end
+    return c[1], c[2], c[3], c[4] or 1
+  end
+
+  -- Whether r, g, b (at alpha a) reads on both ends of range t with a plate
+  -- of the palette's surface at alpha p laid over it.
+  local function PassesPlated(r, g, b, a, t, p)
+    local s = C.surface
+    for e = 0, 3, 3 do
+      local gr = s[1] * p + t[e + 1] * (1 - p)
+      local gg = s[2] * p + t[e + 2] * (1 - p)
+      local gb = s[3] * p + t[e + 3] * (1 - p)
+      if Contrast(r * a + gr * (1 - a), g * a + gg * (1 - a), b * a + gb * (1 - a), gr, gg, gb) < NEED then return false end
+    end
+    return true
+  end
+
+  -- The least alpha a plate of the palette's surface needs under every
+  -- window ink for each to read on range t, as its own colour: 0 where the
+  -- range carries them by itself.
+  local function PlateAlpha(t, tokens)
+    local worst = 0
+    for i = 1, #tokens do
+      local r, g, b, a = BaseOf(tokens[i])
+      if r and not PassesPlated(r, g, b, a or 1, t, worst) then
+        local lo, hi = worst, 1
+        if PassesPlated(r, g, b, a or 1, t, 1) then
+          for _ = 1, 14 do
+            local mid = (lo + hi) / 2
+            if PassesPlated(r, g, b, a or 1, t, mid) then hi = mid else lo = mid end
+          end
+        end
+        worst = hi
+      end
+    end
+    return worst
+  end
+
+  -- The alpha of the plate under text on `ground` (0: none).
+  function Grounds.PlateAlpha(ground)
+    if not (Grounds.on and PLATED[ground]) then return 0 end
+    local p = plates[ground]
+    if not p then
+      p = { 0, gen = -1, pgen = -1 }
+      plates[ground] = p
+    end
+    if p.gen ~= gen or p.pgen ~= paletteGen then
+      p.gen, p.pgen = gen, paletteGen
+      local t = Range(ground)
+      p[1] = (t and not Polarity(t, NEED, ROOM)) and PlateAlpha(t, PLATE_TOKENS[ground]) or 0
+    end
+    return p[1]
+  end
+
+  -- The plated range of a ground, into `out` (6 numbers).
+  local platedOut = {}
+  local function Plated(ground, t)
+    local p = Grounds.PlateAlpha(ground)
+    if p <= 0 then return t end
+    local s = C.surface
+    for e = 0, 3, 3 do
+      platedOut[e + 1] = s[1] * p + t[e + 1] * (1 - p)
+      platedOut[e + 2] = s[2] * p + t[e + 2] * (1 - p)
+      platedOut[e + 3] = s[3] * p + t[e + 3] * (1 - p)
+    end
+    return platedOut
+  end
+
+  InkOf = function(token, ground)
+    if not Grounds.on then return nil end
+    ground = ground or HOME[token] or "content"
+    local byGround = inks[ground]
+    if not byGround then
+      byGround = {}
+      inks[ground] = byGround
+    end
+    local e = byGround[token]
+    local accent = ACCENT_TOKENS[token]
+    if e and e.gen == gen and e.pgen == paletteGen then
+      if not accent then return e end
+      local r, g, b = Theme.GetAccent()
+      if e.ar == r and e.ag == g and e.ab == b then return e end
+    end
+    local r, g, b, a = BaseOf(token)
+    if not r then return nil end
+    if not e then
+      e = { 0, 0, 0, 1 }
+      byGround[token] = e
+    end
+    local t = Range(ground)
+    if t then
+      local room
+      if PLATED[ground] then t, room = Plated(ground, t), ROOM end
+      r, g, b = OnRange(r, g, b, a, t, NEED, (not accent) and token or nil, room)
+    end
+    e[1], e[2], e[3], e[4] = r, g, b, a
+    e.gen, e.pgen = gen, paletteGen
+    if accent then e.ar, e.ag, e.ab = Theme.GetAccent() end
+    e.hex = ToHex(e)
+    return e
+  end
+  Grounds.InkOf = InkOf
+
+  -- After the grounds moved: whether any ink worked out so far, or a window
+  -- plate's opacity, came out different -- every one of them worked out
+  -- again in place. Most changes of the opacity move none (each ink already
+  -- read on its ground and kept its colour), and the texts are then left as
+  -- they are painted rather than all painted again. Only on a settings
+  -- change.
+  local plateWas = {}
+  function Theme.InksMoved()
+    local moved = false
+    for ground, byGround in pairs(inks) do
+      for token, e in pairs(byGround) do
+        local was = e.hex
+        local now = InkOf(token, ground)
+        if not now or now.hex ~= was then moved = true end
+      end
+    end
+    for ground in pairs(PLATED) do
+      local p = Grounds.PlateAlpha(ground)
+      if plateWas[ground] ~= p then
+        plateWas[ground] = p
+        moved = true
+      end
+    end
+    return moved
+  end
+
+  -- A colour that is no token (a class colour, a button font's gold) on a
+  -- ground: the same rule, kept for the few such colours there are -- a ring
+  -- of answers filled in place.
+  local ring, ringN, ringAt, RING = {}, 0, 0, 24
+  InkRGB = function(r, g, b, ground)
+    if not Grounds.on or type(r) ~= "number" then return nil end
+    ground = ground or "content"
+    for i = 1, ringN do
+      local m = ring[i]
+      if m.r == r and m.g == g and m.b == b and m.ground == ground and m.gen == gen and m.pgen == paletteGen then
+        return m[1], m[2], m[3]
+      end
+    end
+    local t = Range(ground)
+    if not t then return nil end
+    local room
+    if PLATED[ground] then t, room = Plated(ground, t), ROOM end
+    local ir, ig, ib = r, g, b
+    -- A grey keeps its rank on a light palette, as before.
+    if lightPalette and max(r, g, b) - min(r, g, b) < 0.06 then
+      local v = Theme.Grey((r + g + b) / 3)
+      ir, ig, ib = v, v, v
+    end
+    ir, ig, ib = OnRange(ir, ig, ib, 1, t, NEED, nil, room)
+    -- Overwrites the oldest once full: the ring wraps.
+    ringAt = (ringAt % RING) + 1
+    if ringAt > ringN then ringN = ringAt end
+    local m = ring[ringAt]
+    if not m then
+      m = {}
+      ring[ringAt] = m
+    end
+    m.r, m.g, m.b, m.ground, m.gen, m.pgen = r, g, b, ground, gen, paletteGen
+    m[1], m[2], m[3] = ir, ig, ib
+    return ir, ig, ib
+  end
+end
+
+-- The inks the lines that colour words inside them are written in -- a row's
+-- figures and tones, the status line's, the totals' -- as one string:
+-- what a style compares across a change of its grounds, to write those
+-- lines again only when one of these inks moved. Only on a settings change.
+do
+  -- ground, token: the pairs those lines are written in.
+  local PAIRS = {
+    "content", "positive", "content", "negative", "content", "warning", "content", "info",
+    "content", "textSecondary", "content", "textDisabled", "content", "accentText", "content", "accent",
+    "band", "positive", "band", "negative",
+    "strip", "positive", "strip", "warning", "strip", "accent",
+    "window", "warning", "solid", "warning", "solid", "textSecondary",
+  }
+  local parts = {}
+  function Theme.EscapeInkSignature()
+    local n = 0
+    for i = 1, #PAIRS, 2 do
+      n = n + 1
+      local ink = InkOf and InkOf(PAIRS[i + 1], PAIRS[i])
+      parts[n] = ink and ink.hex or "-"
+    end
+    return table.concat(parts, "", 1, n)
+  end
+end
+
+-- The escape colour of a token on a ground ("rrggbb"): its ink where a
+-- style derives them, the palette's otherwise.
+function Theme.InkHex(token, ground)
+  local ink = InkOf and InkOf(token, ground)
+  return ink and ink.hex or Hex[token]
+end
+
+-- r, g, b, a of a token as text on a ground: its ink where a style derives
+-- them, its own colour (an accent token's text tone) otherwise.
+function Theme.Ink(token, ground)
+  local ink = InkOf and InkOf(token, ground)
+  if ink then return ink[1], ink[2], ink[3], ink[4] end
+  local r, g, b, a = ResolveAccentToken(token, true)
+  if r then return r, g, b, a end
+  local c = C[token]
+  if c then return c[1], c[2], c[3], c[4] or 1 end
+  return 1, 1, 1, 1
 end
 
 -------------------------------------------------------------
@@ -1078,7 +1594,11 @@ local FONT_FALLBACK = { "GameFontHighlightSmall", "GameFontHighlight", "GameFont
 -- string at once.
 -- `pending`: the game objects asked for while no skin published a face, which
 -- the strings set in them are still wearing (Theme.AdoptHostFace).
-local HF = { copies = {}, bases = {}, isCopy = {}, failed = {}, pending = {}, n = 0, gen = 0 }
+-- `light`: the copies made for light grounds while the palette is dark (the
+-- post box's white enamel), each beside its base in `lightCopies`; `baseOf`
+-- answers the game object a copy of either kind was made from.
+local HF = { copies = {}, bases = {}, isCopy = {}, failed = {}, pending = {}, n = 0, gen = 0,
+  lightCopies = {}, lightBases = {}, baseOf = {} }
 
 -- path, flags, shadow, scale of the published face, or nil while no skin
 -- publishes one. A face with a file and flags keeps the rules the EllesmereUI
@@ -1107,15 +1627,35 @@ end
 -- strings are primed). A shadow only renders when a font object carries it,
 -- which is the other reason these are objects. Where the face keeps the game
 -- object's file, flags and size, the copy is left as copied.
-local function DressCopy(copy, base, path, flags, shadow, scale)
+--
+-- `light`: the copy is for a light ground -- the light palette's text, or a
+-- light ground in a dark one. Its halo follows the ground (the contrast
+-- audit's C2): an outline is always black, a halo round light text on a dark
+-- ground and a clog in every stroke of dark text on a light one, so a light
+-- copy draws none, whatever the host set on the game's fonts (an outlining
+-- font pack, ElvUI, EllesmereUI); its drop shadow, where one is asked for,
+-- is the light palette's own pale one.
+local function DressCopy(copy, base, path, flags, shadow, scale, light)
   if type(copy.CopyFontObject) == "function" then pcall(copy.CopyFontObject, copy, base) end
-  -- On a light palette the object's own colour, set for a dark ground, is
-  -- made right for a light one (Theme.InkFor): white text becomes the
-  -- primary ink, Blizzard's gold a gold that reads on paper.
-  if lightPalette and type(copy.SetTextColor) == "function" and type(base.GetTextColor) == "function" then
+  -- On a light ground the object's own colour, set for a dark one, is made
+  -- right for it (Theme.InkFor): white text becomes the primary ink,
+  -- Blizzard's gold a gold that reads on paper. A copy for a light ground in
+  -- a dark palette takes the light palette's ink: the strings wearing one
+  -- set their own colour on it.
+  -- Where a style derives its inks (section 2c) the copy's colour is made
+  -- right for the button it is the caption of, on either palette -- the
+  -- strings that are not a button's set their own -- so a disabled button's
+  -- grey reads on the button at any opacity.
+  if (light or Grounds.on) and type(copy.SetTextColor) == "function" and type(base.GetTextColor) == "function" then
     local r, g, b, a = base:GetTextColor()
     if type(r) == "number" then
-      local ir, ig, ib = Theme.InkFor(r, g, b)
+      local ir, ig, ib
+      if lightPalette or not light then
+        ir, ig, ib = Theme.InkFor(r, g, b, "button")
+      else
+        local ink = Theme.PALETTE_LIGHT.textPrimary
+        ir, ig, ib = ink[1], ink[2], ink[3]
+      end
       copy:SetTextColor(ir, ig, ib, a or 1)
     end
   end
@@ -1123,7 +1663,7 @@ local function DressCopy(copy, base, path, flags, shadow, scale)
   if type(size) ~= "number" or size <= 0 then size = 12 end
   if shadow ~= nil and type(copy.SetShadowColor) == "function" then
     if shadow then
-      local sh = C.textShadow
+      local sh = light and Theme.PALETTE_LIGHT.textShadow or BASE.textShadow
       copy:SetShadowColor(sh[1], sh[2], sh[3], sh[4])
       copy:SetShadowOffset(1, -1)
     else
@@ -1132,6 +1672,7 @@ local function DressCopy(copy, base, path, flags, shadow, scale)
     end
   end
   scale = scale or 1
+  if light then flags = "" end
   if path == false and flags == false and scale == 1 then return true end
   if path == false then path = basePath end
   if type(path) ~= "string" or path == "" then path = STANDARD_TEXT_FONT end
@@ -1140,10 +1681,35 @@ local function DressCopy(copy, base, path, flags, shadow, scale)
   return pcall(copy.SetFont, copy, path, size, flags) and true or false
 end
 
+-- A copy for a light ground in a dark palette (`polarity` "light" below):
+-- made the first time one is asked for, dressed beside the other copies.
+local function LightCopy(base)
+  local copy = HF.lightCopies[base]
+  if copy then return copy end
+  local path, flags, shadow, scale = HostFace()
+  if path == nil or type(base) ~= "table" or type(base.GetFont) ~= "function"
+     or type(CreateFont) ~= "function" then
+    return nil
+  end
+  HF.n = HF.n + 1
+  copy = CreateFont("PostboxHostFont" .. HF.n)
+  if not copy or not DressCopy(copy, base, path, flags, shadow, scale, true) then return nil end
+  HF.lightCopies[base], HF.isCopy[copy], HF.baseOf[copy] = copy, true, base
+  HF.lightBases[#HF.lightBases + 1] = base
+  return copy
+end
+
 -- A game font object -> the one to set on Postbox's text: its copy in the
 -- host's face while a host publishes one, else the object itself.
-function Theme.HostFont(base)
+-- `polarity` "light", where a string stands on a light ground in a dark
+-- palette (Theme.SetGround): the copy dressed for one, without the host's
+-- outline.
+function Theme.HostFont(base, polarity)
   if base == nil then return base end
+  if HF.baseOf[base] then base = HF.baseOf[base] end
+  if polarity == "light" and not lightPalette then
+    return LightCopy(base) or Theme.HostFont(base)
+  end
   local copy = HF.copies[base]
   if copy then return copy end
   if HF.isCopy[base] or HF.failed[base] then return base end
@@ -1158,14 +1724,14 @@ function Theme.HostFont(base)
   HF.n = HF.n + 1
   copy = CreateFont("PostboxHostFont" .. HF.n)
   -- A copy the client will not make or dress is asked for once, not per string.
-  if not copy or not DressCopy(copy, base, path, flags, shadow, scale) then
+  if not copy or not DressCopy(copy, base, path, flags, shadow, scale, lightPalette) then
     HF.failed[base] = true
     return base
   end
-  HF.copies[base], HF.isCopy[copy] = copy, true
+  HF.copies[base], HF.isCopy[copy], HF.baseOf[copy] = copy, true, base
   HF.bases[#HF.bases + 1] = base
   HF.made = true
-  HF.path, HF.flags, HF.shadow, HF.scale = path, flags, shadow, scale
+  HF.path, HF.flags, HF.shadow, HF.scale, HF.light = path, flags, shadow, scale, lightPalette
   return copy
 end
 
@@ -1182,7 +1748,10 @@ function Theme.RefreshHostFonts(recolor)
   if not HF.made then return false end
   local path, flags, shadow, scale = HostFace()
   if path == nil then return false end
+  -- A palette of the other polarity is another face too: its copies lose
+  -- or take the host's outline (DressCopy).
   local same = path == HF.path and flags == HF.flags and shadow == HF.shadow and scale == HF.scale
+    and HF.light == lightPalette
   if same and not recolor then return false end
   if same then
     -- The face is where it was and only the palette moved (`recolor`): the
@@ -1190,15 +1759,23 @@ function Theme.RefreshHostFonts(recolor)
     -- fonts made from them take it too. No width changed.
     for i = 1, #HF.bases do
       local base = HF.bases[i]
-      DressCopy(HF.copies[base], base, path, flags, shadow, scale)
+      DressCopy(HF.copies[base], base, path, flags, shadow, scale, lightPalette)
+    end
+    for i = 1, #HF.lightBases do
+      local base = HF.lightBases[i]
+      DressCopy(HF.lightCopies[base], base, path, flags, shadow, scale, true)
     end
     if SharedTheme and type(SharedTheme.RecolorDerived) == "function" then SharedTheme.RecolorDerived() end
     return true
   end
-  HF.path, HF.flags, HF.shadow, HF.scale = path, flags, shadow, scale
+  HF.path, HF.flags, HF.shadow, HF.scale, HF.light = path, flags, shadow, scale, lightPalette
   for i = 1, #HF.bases do
     local base = HF.bases[i]
-    DressCopy(HF.copies[base], base, path, flags, shadow, scale)
+    DressCopy(HF.copies[base], base, path, flags, shadow, scale, lightPalette)
+  end
+  for i = 1, #HF.lightBases do
+    local base = HF.lightBases[i]
+    DressCopy(HF.lightCopies[base], base, path, flags, shadow, scale, true)
   end
   HF.gen = HF.gen + 1
   Theme.ForgetFits()
@@ -1461,10 +2038,23 @@ function Theme.TrackPaint()
   }
 end
 
-function Theme.SetColor(region, token)
+-- `ground`, optional: the ground a text stands on (section 2c), remembered
+-- for its repaints; without one, the ground it was last told, else its
+-- token's own.
+function Theme.SetColor(region, token, ground)
   if not region then return end
 
   local isText = type(region.SetTextColor) == "function"
+  if isText and Grounds.on then
+    if ground then regionGround[region] = ground else ground = regionGround[region] end
+    local ink = InkOf(token, ground)
+    if ink then
+      accentTexts[region] = ACCENT_TOKENS[token] and token or nil
+      if track then track.tint[region] = token; track.grey[region] = nil end
+      region:SetTextColor(ink[1], ink[2], ink[3], ink[4])
+      return
+    end
+  end
   local r, g, b, a = ResolveAccentToken(token, isText)
   if isText then accentTexts[region] = r and token or nil end
   if track then track.tint[region] = token; track.grey[region] = nil end
@@ -1541,10 +2131,16 @@ end
 -- Iterating without mutating: SetTextColor is called directly rather than
 -- through Theme.SetColor, so the registry cannot be rewritten mid-traversal.
 function Theme.RepaintAccentText()
+  local inks = Grounds.on
   for region, token in pairs(accentTexts) do
-    local r, g, b, a = ResolveAccentToken(token, true)
-    if r and type(region.SetTextColor) == "function" then
-      region:SetTextColor(r, g, b, a)
+    local ink = inks and InkOf(token, regionGround[region])
+    if ink then
+      region:SetTextColor(ink[1], ink[2], ink[3], ink[4])
+    else
+      local r, g, b, a = ResolveAccentToken(token, true)
+      if r and type(region.SetTextColor) == "function" then
+        region:SetTextColor(r, g, b, a)
+      end
     end
   end
 end
@@ -1633,12 +2229,15 @@ do
     if depth == 0 and ns.Skin ~= nil and ns.Skin == ns.PostboxSkin then
       local r, g, b = Theme.GetAccent()
       local last = swept[frame]
-      if last and last.r == r and last.g == g and last.b == b and last.gen == paletteGen then return end
+      -- The grounds' generation holds the palette's: a plate's caption takes
+      -- its ink from its plate's ground.
+      local now = Theme.GroundGeneration()
+      if last and last.r == r and last.g == g and last.b == b and last.gen == now then return end
       if not last then
         last = {}
         swept[frame] = last
       end
-      last.r, last.g, last.b, last.gen = r, g, b, paletteGen
+      last.r, last.g, last.b, last.gen = r, g, b, now
     end
     if busy then
       -- A sweep started from inside a sweep (an override that repaints):
@@ -1677,9 +2276,16 @@ end
 -- writing (each region is painted directly), so the tables are safe to walk.
 function Theme.RepaintTracked()
   if not track then return end
+  local inks = Grounds.on
   for region, token in pairs(track.tint) do
     local isText = type(region.SetTextColor) == "function"
-    local r, g, b, a = ResolveAccentToken(token, isText)
+    local ink = isText and inks and InkOf(token, regionGround[region])
+    local r, g, b, a
+    if ink then
+      r, g, b, a = ink[1], ink[2], ink[3], ink[4]
+    else
+      r, g, b, a = ResolveAccentToken(token, isText)
+    end
     if not r then
       local color = C[token]
       if color then r, g, b, a = color[1], color[2], color[3], color[4] or 1 end
@@ -1712,6 +2318,7 @@ function Theme.RepaintTracked()
     if type(region.SetTextColor) == "function" then region:SetTextColor(g, g, g, 1)
     elseif type(region.SetVertexColor) == "function" then region:SetVertexColor(g, g, g, 1) end
   end
+  Theme.RepaintTextPlates()
 end
 
 -- Applies a role's font object and colour to an existing font string.
@@ -1734,6 +2341,146 @@ function Theme.CreateText(parent, role, layer)
   if not fontString then return nil end
   Theme.ApplyTextRole(fontString, role)
   return fontString
+end
+
+-------------------------------------------------------------
+-- 3a. Text that stands on a ground of its own naming
+--
+-- Most text stands on a control or a list and takes its ink from there
+-- (section 2c's "content", a plate's own caption). Text that stands
+-- anywhere else says where:
+--
+--   Theme.SetGround(text, ground)  a named ground ("enamel", "tooltip" ...):
+--     its ink, and on a light ground in a dark palette the face without the
+--     host's outline (the halo follows the ground).
+--   Theme.OnWindow(text, ground, hug)  the bare window ("window"), an
+--     always-solid window's ("solid") or the title strip ("strip"). The
+--     window is the player's to make nearly clear, and a bright world shows
+--     through it, so this text gets a plate of its own under it: the
+--     palette's surface at the least opacity that makes every window ink
+--     read (section 2c), and no plate at all wherever the window carries its
+--     text by itself -- the normal case, which keeps its look. `hug`
+--     ("LEFT" | "RIGHT" | "CENTER") lays the plate round the words rather
+--     than round the string's box, on the side it is justified to, measured
+--     when its text is set and only while the plate shows.
+--
+-- Both are inert in a look that does not derive its inks (Theme.UseGrounds):
+-- the ground is remembered, nothing is painted.
+-------------------------------------------------------------
+do
+  local PAD_X, PAD_Y = 4, 2
+  local FOLLOWED = { "SetText", "SetFormattedText", "Show", "Hide", "SetShown" }
+
+  -- The face for `object` on `ground`: the light copy on a light ground in a
+  -- dark palette, the usual copy otherwise.
+  function Theme.FontFor(object, ground)
+    if not object then return object end
+    if Grounds.on and ground and Grounds.IsLight(ground) and not lightPalette then
+      return Theme.HostFont(object, "light")
+    end
+    return Theme.HostFont(object)
+  end
+
+  function Theme.SetGround(region, ground)
+    if not region then return end
+    regionGround[region] = ground
+    if not Grounds.on then return end
+    if type(region.GetFontObject) == "function" and type(region.SetFontObject) == "function" then
+      local object = region:GetFontObject()
+      local want = object and Theme.FontFor(object, ground)
+      if want and want ~= object then region:SetFontObject(want) end
+    end
+    local token = track and track.tint[region]
+    if token then Theme.SetColor(region, token, ground) end
+  end
+
+  -- The plate round the words, on the side the text is justified to.
+  local function Hug(fs, plate)
+    if not plate.__pbHug then return end
+    local w = fs:GetStringWidth() or 0
+    local box = fs:GetWidth() or 0
+    if box > 0 and w > box then w = box end
+    plate:SetWidth(w + 2 * PAD_X)
+  end
+
+  local function Lay(fs, plate)
+    plate:ClearAllPoints()
+    local side = plate.__pbHug
+    if side == "RIGHT" then
+      plate:SetPoint("TOPRIGHT", fs, "TOPRIGHT", PAD_X, PAD_Y)
+      plate:SetPoint("BOTTOMRIGHT", fs, "BOTTOMRIGHT", PAD_X, -PAD_Y)
+    elseif side == "LEFT" then
+      plate:SetPoint("TOPLEFT", fs, "TOPLEFT", -PAD_X, PAD_Y)
+      plate:SetPoint("BOTTOMLEFT", fs, "BOTTOMLEFT", -PAD_X, -PAD_Y)
+    elseif side == "CENTER" then
+      plate:SetPoint("TOP", fs, "TOP", 0, PAD_Y)
+      plate:SetPoint("BOTTOM", fs, "BOTTOM", 0, -PAD_Y)
+    else
+      plate:SetPoint("TOPLEFT", fs, "TOPLEFT", -PAD_X, PAD_Y)
+      plate:SetPoint("BOTTOMRIGHT", fs, "BOTTOMRIGHT", PAD_X, -PAD_Y)
+    end
+  end
+
+  -- Shown only under words that show: the plate is the text's parent's, so
+  -- it does not hide with the text by itself.
+  local function PaintTextPlate(fs, plate)
+    local p = Grounds.PlateAlpha(regionGround[fs])
+    local text = (p > 0.004) and fs:IsShown() and fs:GetText() or nil
+    if not text or text == "" then
+      if plate:IsShown() then plate:Hide() end
+      return
+    end
+    local s = C.surface
+    plate:SetColorTexture(s[1], s[2], s[3], p)
+    -- Region alpha and colour alpha multiply: a skin's pass that faded the
+    -- window's own textures (the Postbox style's, at its claim) would
+    -- otherwise outlive the repaint.
+    plate:SetAlpha(1)
+    plate:Show()
+    Hug(fs, plate)
+  end
+
+  -- The text was set, shown or hidden: its plate follows. One function for
+  -- every plated text, hooked on its own methods; a lookup and a comparison
+  -- while the window carries its text (the plate's alpha is 0).
+  local function Follow(fs)
+    local plate = textPlates[fs]
+    if plate and Grounds.on then PaintTextPlate(fs, plate) end
+  end
+
+  function Theme.OnWindow(fs, ground, hug)
+    if not fs or type(fs.GetParent) ~= "function" then return nil end
+    ground = ground or "window"
+    regionGround[fs] = ground
+    local plate = textPlates[fs]
+    if not plate then
+      local parent = fs:GetParent()
+      if not parent or type(parent.CreateTexture) ~= "function" then return nil end
+      -- Under its text, over the window's own fill and strip.
+      plate = parent:CreateTexture(nil, "BACKGROUND", nil, 7)
+      plate:Hide()
+      plate.__pbTextPlate = true
+      plate.__pbHug = hug
+      textPlates[fs] = plate
+      Lay(fs, plate)
+      if type(hooksecurefunc) == "function" then
+        for _, method in ipairs(FOLLOWED) do
+          if type(fs[method]) == "function" then hooksecurefunc(fs, method, Follow) end
+        end
+      end
+    end
+    if Grounds.on then
+      local token = track and track.tint[fs]
+      if token then Theme.SetColor(fs, token, ground) end
+      PaintTextPlate(fs, plate)
+    end
+    return plate
+  end
+
+  function Theme.RepaintTextPlates()
+    if not Grounds.on then return end
+    for fs, plate in pairs(textPlates) do PaintTextPlate(fs, plate) end
+  end
 end
 
 -------------------------------------------------------------
@@ -2643,7 +3390,11 @@ local function PaintPlate(plate)
   end
 
   if plate.Text then
-    Theme.SetColor(plate.Text, selected and "accentBright" or T.captionToken or "plateCaption")
+    -- On its own fill: a window tab's (tokens of its own) or a plate's.
+    local ground
+    if plate.__pbTokens then ground = selected and "tabSelected" or "tab"
+    else ground = selected and "plateSelected" or "plate" end
+    Theme.SetColor(plate.Text, selected and "accentBright" or T.captionToken or "plateCaption", ground)
   end
 end
 

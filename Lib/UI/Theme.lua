@@ -207,7 +207,10 @@ end
 
 -- The sized fonts take their source's colour and shadow again: after the
 -- addon theme recoloured the objects they were made from (a palette change).
--- A handful of objects; nothing per string.
+-- And its face and outline, where the source was dressed in another since
+-- (a font, an outline or a palette of the other polarity, which drops a
+-- host's outline): the same size against the source's, the source's flags
+-- unless the bind chose its own. A handful of objects; nothing per string.
 function Theme.RecolorDerived()
   for object, info in pairs(derivedInfo) do
     local source = info.source
@@ -218,6 +221,22 @@ function Theme.RecolorDerived()
     if source and type(source.GetShadowColor) == "function" and type(object.SetShadowColor) == "function" then
       local r, g, b, a = source:GetShadowColor()
       if type(r) == "number" then object:SetShadowColor(r, g, b, a or 1) end
+      if type(source.GetShadowOffset) == "function" and type(object.SetShadowOffset) == "function" then
+        local x, y = source:GetShadowOffset()
+        if type(x) == "number" then object:SetShadowOffset(x, y or -x) end
+      end
+    end
+    if source and type(source.GetFont) == "function" then
+      local path, size, flags = source:GetFont()
+      if type(path) == "string" and path ~= "" and (path ~= info.path or size ~= info.size or flags ~= info.flags) then
+        local _, own, ownFlags = object:GetFont()
+        own = tonumber(own) or tonumber(size) or 12
+        if ownFlags == info.flags then ownFlags = flags end
+        if (tonumber(info.size) or 0) > 0 and tonumber(size) then own = floor(own * size / info.size + 0.5) end
+        if pcall(object.SetFont, object, path, max(MIN_FONT_SIZE, own), ownFlags or "") then
+          info.path, info.size, info.flags = path, size, flags
+        end
+      end
     end
   end
 end
