@@ -375,44 +375,81 @@ local function GlowTone(r, g, b)
   return r, g, b
 end
 
--- The alert's mark: the hourglass Postbox draws for a mail's time left
--- (Theme.GLYPHS), in the warning tone, on a soft dark disc so it reads over
--- any map, at the icon's top-right corner -- the corner the count leaves
--- free. It says why the icon is warm; the tooltip says whose and when.
+-- The alert's mark: a small solid dot in the warning tone at the icon's
+-- top-right corner, the corner the count leaves free. It is the Mail tab's
+-- dot (MailboxUI, UpdateCollectTabText), which wears this same tone when
+-- mail needs attention: round, flat, one colour at full strength, nothing
+-- drawn inside it. It says why the icon is warm; the tooltip says whose and
+-- when.
+--
+-- Two discs from Media/minimap-dot.tga: the dot, and under it a dark one a
+-- screen pixel wider all round, the edge that holds it over snow and over a
+-- cave alike. A disc this small is crisp only at the size it was drawn for,
+-- so the file holds one for every diameter from 4 to 21 screen pixels
+-- (.dev/tools/gen-minimap-assets.js), and the dot is sized in whole screen
+-- pixels: a quarter of the icon, rounded, and never under 4, the least that
+-- still reads as a round dot on a 16 px icon. Each disc is cut from the
+-- strip at its own diameter and snapped to the pixel grid, the fill's top
+-- right on the icon's corner and the edge a pixel past it. Past 21 pixels (a
+-- large icon on a high-density screen at full scale) the 21 is stretched,
+-- which is soft by under a pixel at that size.
+local DOT_FILE = MEDIA .. "minimap-dot.tga"
+local DOT_MIN, DOT_CELL_MAX = 4, 21
+local DOT_EDGE_ALPHA = 0.9
+
+-- The strip's cell for a disc `d` pixels across, on its 512 x 64 file: it
+-- starts at d*d + d - 20 (the cells for 4 to d-1, each 2d + 2 texels wide,
+-- before it), and its disc is 2d texels square, one texel in.
+local function DotCoords(tex, d)
+  if d > DOT_CELL_MAX then d = DOT_CELL_MAX end
+  local x0 = d * d + d - 20
+  tex:SetTexCoord((x0 + 1) / 512, (x0 + 1 + 2 * d) / 512, 1 / 64, (1 + 2 * d) / 64)
+end
+
+local function NewDisc(holder, sublevel)
+  local tex = holder:CreateTexture(nil, "OVERLAY", nil, sublevel)
+  tex:SetTexture(DOT_FILE)
+  if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(true) end
+  if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
+  return tex
+end
+
+-- holder: the frame the dot is drawn on; anchor: the icon texture; size:
+-- the icon's side. Built once; sized again only when the icon's size, its
+-- anchor or the screen pixel (UI scale, the map's scale) has changed.
 local function PaintMark(holder, anchor, size, on)
-  local mark = holder.__pbMark
+  local dot = holder.__pbMark
   if not on then
-    if mark then
-      mark:Hide()
-      holder.__pbMarkBack:Hide()
+    if dot then
+      dot:Hide()
+      holder.__pbMarkEdge:Hide()
     end
     return
   end
-  if not mark then
-    local T = ns.Theme
-    mark = T and T.Glyph and T.Glyph(holder, "hourglass", 10, "OVERLAY")
-    if not mark then return end
-    mark:SetDrawLayer("OVERLAY", 6)
-    local back = holder:CreateTexture(nil, "OVERLAY", nil, 5)
-    back:SetTexture(MEDIA .. "minimap-glow.tga")
-    back:SetVertexColor(0, 0, 0)
-    back:SetAlpha(0.85)
-    back:SetPoint("CENTER", mark, "CENTER")
-    holder.__pbMark, holder.__pbMarkBack = mark, back
+  local edge = holder.__pbMarkEdge
+  if not dot then
+    edge = NewDisc(holder, 5)
+    edge:SetVertexColor(0, 0, 0, DOT_EDGE_ALPHA)
+    dot = NewDisc(holder, 6)
+    dot:SetPoint("CENTER", edge, "CENTER")
+    holder.__pbMark, holder.__pbMarkEdge = dot, edge
   end
-  if mark.__pbSize ~= size or mark.__pbAnchor ~= anchor then
-    mark.__pbSize, mark.__pbAnchor = size, anchor
-    local side = math.max(8, math.floor(size * 0.45 + 0.5))
-    local tuck = math.floor(side * 0.2 + 0.5)
-    mark:SetSize(side, side)
-    holder.__pbMarkBack:SetSize(side * 1.7, side * 1.7)
-    mark:ClearAllPoints()
-    mark:SetPoint("CENTER", anchor, "TOPRIGHT", -tuck, -tuck)
+  local T = ns.Theme
+  local px = T and T.OnePixel and T.OnePixel(holder) or 1
+  if dot.__pbSize ~= size or dot.__pbAnchor ~= anchor or dot.__pbPx ~= px then
+    dot.__pbSize, dot.__pbAnchor, dot.__pbPx = size, anchor, px
+    local d = math.max(DOT_MIN, math.floor(size / px / 4 + 0.5))
+    dot:SetSize(d * px, d * px)
+    edge:SetSize((d + 2) * px, (d + 2) * px)
+    DotCoords(dot, d)
+    DotCoords(edge, d + 2)
+    edge:ClearAllPoints()
+    edge:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", px, px)
   end
   local w = ns.Theme.Colors.warning
-  mark:SetVertexColor(w[1], w[2], w[3], 1)
-  mark:Show()
-  holder.__pbMarkBack:Show()
+  dot:SetVertexColor(w[1], w[2], w[3], 1)
+  dot:Show()
+  edge:Show()
 end
 
 -------------------------------------------------------------
