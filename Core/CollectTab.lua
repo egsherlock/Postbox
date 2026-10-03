@@ -7645,6 +7645,10 @@ local function SaveLastRunRecord(collected, refused, left, reason, stopReason)
   local byName, name = LastRunStore(true)
   if not byName then return end
   local M = Mail()
+  -- The registry's fingerprints, and what the character held of the items
+  -- refused (the service's second value; nil for entries without).
+  local stuck, held
+  if M and M.StuckSnapshot then stuck, held = M.StuckSnapshot() end
   byName[name] = {
     at         = (type(time) == "function" and time()) or 0,
     collected  = collected,
@@ -7656,8 +7660,10 @@ local function SaveLastRunRecord(collected, refused, left, reason, stopReason)
     stopReason = stopReason,
     -- The stuck registry's fingerprints ride along (capped in the service),
     -- so the next session can revive the per-mail markers, not just the
-    -- sentence. See SeedStuckFromRecord below.
-    stuck      = M and M.StuckSnapshot and M.StuckSnapshot() or nil,
+    -- sentence, and with them what the character held, so a revived marker
+    -- still comes down when that drops. See SeedStuckFromRecord below.
+    stuck      = stuck,
+    held       = held,
   }
 end
 
@@ -7674,7 +7680,9 @@ function CT.SeedStuckFromRecord()
   local record = CT.GetLastRunRecord()
   local M = Mail()
   if record and type(record.stuck) == "table" and M and M.SeedStuck then
-    M.SeedStuck(record.stuck)
+    -- `held` is absent from records saved before it was kept; the service
+    -- seeds their entries without it.
+    M.SeedStuck(record.stuck, record.held)
   end
 end
 
@@ -7691,12 +7699,13 @@ end
 -- at read.
 function CT.SyncStuckRecord()
   local M = Mail()
-  local snap = M and type(M.StuckSnapshot) == "function" and M.StuckSnapshot() or nil
+  local snap, held
+  if M and type(M.StuckSnapshot) == "function" then snap, held = M.StuckSnapshot() end
   local record = CT.GetLastRunRecord()
   if snap then
     if record then
       -- The stored table itself: writing through updates SavedVariables.
-      record.stuck = snap
+      record.stuck, record.held = snap, held
     else
       -- No run wrote a record this visit (walk-away, or a single take's
       -- refusal). The counts claim nothing -- the fingerprints are the
@@ -7704,7 +7713,7 @@ function CT.SyncStuckRecord()
       SaveLastRunRecord(0, 0, 0, nil, nil)
     end
   elseif record then
-    record.stuck = nil
+    record.stuck, record.held = nil, nil
   end
 end
 
@@ -7789,6 +7798,13 @@ local function FinishRun(left, stopReason)
       if waiting > 0 and UI and type(UI.TagStatusOutcome) == "function" then
         UI.TagStatusOutcome("bags", stuck > 0
           and WithCollected(Tinted("warning", format(L()["STATUS_PARTIAL"], stuck)))
+          or Tinted("positive", format(L()["STATUS_COLLECTED"], got)))
+      elseif stuck > 0 and UI and type(UI.TagStatusOutcome) == "function" then
+        -- And the stuck part comes down the same way once no mail is stuck
+        -- any more -- what the character held of it dropped
+        -- (MailboxUI.OnStuckLifted) -- leaving the rest of the line.
+        UI.TagStatusOutcome("stuck", stopReason == "keep"
+          and WithCollected(Tinted("warning", ns.Plural("STATUS_KEPT_FREE", keepFree)))
           or Tinted("positive", format(L()["STATUS_COLLECTED"], got)))
       end
     else

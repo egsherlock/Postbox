@@ -1785,7 +1785,9 @@ local status = {
   outcome  = nil, outcomeTone  = nil,
   -- What the outcome reports, where it is something that can stop being true
   -- by itself: "bags" for a run's "Bags full: N left", which comes down when
-  -- the bags have room (UI.OnBagsFullChanged). nil for an ordinary outcome.
+  -- the bags have room (UI.OnBagsFullChanged), "stuck" for its "Stuck: N",
+  -- which comes down when no mail is stuck any more (UI.OnStuckLifted). nil
+  -- for an ordinary outcome.
   -- outcomeAfter is the line once it has; read only while outcomeKind is set.
   outcomeKind = nil, outcomeAfter = nil,
   summary  = nil,
@@ -2777,6 +2779,23 @@ local function QueueInboxPass()
   if not ok then InboxPass() end
 end
 
+-- The domain's stuck registry let refusals go by itself (Core/MailService.lua:
+-- the character now holds fewer of what was refused, so the mail may come out).
+-- A run's "Stuck: N" comes down once no mail is stuck any more, as its "Bags
+-- full" does when there is room (status.outcomeKind), and the rest of its
+-- line stays. Then the repaint an inbox update brings, through the same two
+-- coalesced paths: the list's rows, marks and button counts, then the pass's
+-- status line and the Mail tab's dot.
+function UI.OnStuckLifted()
+  local mail = ns.MailService
+  if status.outcomeKind == "stuck" and mail and type(mail.StuckCount) == "function"
+    and mail.StuckCount() == 0 then
+    status.outcome, status.outcomeTone, status.outcomeKind = status.outcomeAfter, nil, nil
+  end
+  QueueCollectRefresh()
+  QueueInboxPass()
+end
+
 -- The Mail tab's half of right-click-to-attach, in one place because two
 -- callers need the same decision: the tab switch below, and the option itself
 -- being changed with the mailbox already open.
@@ -3757,6 +3776,11 @@ local function OnMailShow()
   if collectTab and type(collectTab.SeedStuckFromRecord) == "function" then
     collectTab.SeedStuckFromRecord()
   end
+  -- Then what was refused for what the character held, weighed against what
+  -- it holds now (MailService, the stuck registry's LIFETIME): a refusal
+  -- that may no longer hold is let go before any row is drawn.
+  local service = ns.MailService
+  if service and type(service.StuckVisit) == "function" then service.StuckVisit() end
   if mark then mark = perf.Stage("seed", mark) end
   RefreshCollectPanel()
   UI.UpdateStatusSummary()

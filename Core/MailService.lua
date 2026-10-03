@@ -1030,6 +1030,24 @@ end
 --   * cleared for a mail whose attachments are subsequently taken -- a take that
 --     lands is proof the condition has gone, and it is the reason a player who
 --     empties a bag and retries does not keep the marker;
+--   * cleared, too, once what the character held may have changed enough:
+--     a limit refusal (too many of an item, a unique already held) is a fact
+--     about the character's holdings, so each recorded item refusal writes
+--     beside the entry how many of that item the character holds -- in the
+--     bags, and everywhere the game counts (`held`). Holding fewer of any of
+--     them later than at the refusal, or than at any look since, forgets the
+--     entry, and the sweeps take the mail again. No limit is ever needed --
+--     some items allow 1, some 20, some 100, and Postbox cannot know which --
+--     because a drop that was not enough costs one refused take, which
+--     records the counts afresh, so the mail is not tried again until they
+--     drop again. Looked at when the mailbox opens and at each bag update
+--     while it is open (listened to only then, only while an entry has
+--     counts); zero cost while none has. An entry with no counts -- a gold
+--     refusal, an item whose id or counts could not be read, a record saved
+--     before counts were kept -- is cleared only by a take. A limit shared
+--     with other items (one limit category over several item ids) cannot be
+--     seen this way: getting rid of the OTHER item lifts nothing, and a click
+--     on the row is still the way to try again;
 --   * ignored -- neither shown nor counted -- while no mail currently in the
 --     inbox matches the fingerprint, or while the mail it matches is empty. That
 --     is what stops ghosts of collected, deleted and returned mail inflating the
@@ -1042,7 +1060,8 @@ end
 --     the next visit cannot re-match, the marker is phrased as history in the
 --     game's own words rather than a claim about the present, and one retry
 --     re-establishes the truth. Run memory saves a capped snapshot at each
---     close (Core/CollectTab.lua) and seeds it back after a relog.
+--     close (Core/CollectTab.lua), the counts with it, and seeds it back
+--     after a relog.
 -------------------------------------------------------------
 
 -- fingerprint -> the game's error text, or `true` for "refused, no attributable
@@ -1057,6 +1076,14 @@ local stuckSeen = {}
 -- almost every mail, on every list walk and row bind -- costs two lookups
 -- and no fingerprint. Kept in step by the three writers below.
 local stuckMarks = {}
+
+-- What the character held of each refused item, beside the entries that
+-- have it (LIFETIME, "what the character held"). by: fingerprint -> a flat
+-- list { itemID, in the bags, everywhere, itemID, ... }, one triple per item
+-- refused, written per refusal and only updated in place after; n: how many
+-- entries have one. An entry with no list is lifted only by a take. The
+-- bags are listened to (frame) only while the mailbox is open and n > 0.
+local held = { by = {}, n = 0, on = false, frame = nil }
 
 -- The game's words for "no room in your bags", in the client's own language:
 -- its global strings, compared as they are (the error watch hands over the
@@ -1118,26 +1145,144 @@ end
 
 -- The one way in. `fingerprint` is the mail's, `reason` the game's words or
 -- nil; words that are about the bags, or about the server's own passing
--- trouble, are never recorded (see above).
+-- trouble, are never recorded (see above). -> whether it was recorded, and
+-- whether the entry is new: the caller writes what the character holds of
+-- the refused item beside it (held.Note).
 local function NoteStuck(fingerprint, reason)
-  if not fingerprint then return end
+  if not fingerprint then return false end
   local text = (type(reason) == "string" and reason ~= "") and reason or nil
-  if text and (IsBagsWords(text) or IsPassingWords(text)) then return end
+  if text and (IsBagsWords(text) or IsPassingWords(text)) then return false end
 
   local prior = stuck[fingerprint]
   if prior == nil then
     stuckEntries = stuckEntries + 1
     stuck[fingerprint] = text or true
     Mark(fingerprint, 1)
-    return
+    return true, true
   end
   -- A refusal with no attributable text leaves what we already have alone; one
   -- that contradicts it drops the quotation entirely. Same rule as RunPlan's
   -- noteReason, for the same reason.
   if text and prior ~= text then stuck[fingerprint] = true end
+  return true, false
 end
 
--- One mail forgets its refusal -- the only clear path the registry has; the
+-- One count as the client gave it, or nil where there is none an addon may
+-- read: not a number, or a secret value (restricted contexts, 12.0+).
+function held.Read(v)
+  if type(issecretvalue) == "function" and issecretvalue(v) then return nil end
+  return type(v) == "number" and v or nil
+end
+
+-- itemID -> how many of it the character holds: in the bags, and
+-- everywhere the game counts (C_Item.GetItemCount with the bank, the
+-- reagent bank and the warband bank). nil when either cannot be read.
+function held.Counts(itemID)
+  local count = type(C_Item) == "table" and C_Item.GetItemCount or nil
+  if type(count) ~= "function" or type(itemID) ~= "number" or itemID <= 0 then return nil end
+  local bags = held.Read(count(itemID))
+  local all = held.Read(count(itemID, true, false, true, true))
+  if not (bags and all) then return nil end
+  return bags, all
+end
+
+-- The bags are listened to while the mailbox is open and an entry has
+-- something to compare; the mailbox closing ends it, by either signal.
+function held.Listen(on)
+  if held.on == on then return end
+  held.on = on
+  local f = held.frame
+  if on then
+    if not f then
+      f = CreateFrame("Frame")
+      f:SetScript("OnEvent", held.OnEvent)
+      held.frame = f
+    end
+    f:RegisterEvent("BAG_UPDATE_DELAYED")
+    f:RegisterEvent("MAIL_CLOSED")
+    f:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+  elseif f then
+    f:UnregisterEvent("BAG_UPDATE_DELAYED")
+    f:UnregisterEvent("MAIL_CLOSED")
+    f:UnregisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+  end
+end
+
+function held.Arm()
+  if held.n > 0 and MailboxOpen() then held.Listen(true) end
+end
+
+-- The entry's list goes: the entry is forgotten, or a refusal with nothing
+-- to count joined it.
+function held.Drop(fingerprint)
+  if held.by[fingerprint] == nil then return end
+  held.by[fingerprint] = nil
+  held.n = held.n - 1
+  if held.n == 0 then held.Listen(false) end
+end
+
+-- A refusal of `itemID` from the mail `fingerprint` has just been recorded:
+-- what the character holds of it now goes beside the entry. `start`: this
+-- refusal begins the entry's list (a new entry, or the first refusal of an
+-- attempt on the whole mail, which is the whole truth about it); otherwise
+-- the item joins the list, or updates its own counts there. A refusal with
+-- nothing to count -- the gold, an item whose id or counts cannot be read --
+-- leaves the entry with no list, and an entry with none gains one only
+-- from a new start.
+function held.Note(fingerprint, itemID, start)
+  local list = held.by[fingerprint]
+  local bags, all = held.Counts(itemID)
+  if not bags then return held.Drop(fingerprint) end
+  if list and start then
+    for i = #list, 1, -1 do list[i] = nil end
+  elseif not list then
+    if not start then return end
+    list = {}
+    held.by[fingerprint] = list
+    held.n = held.n + 1
+  end
+  local at = #list + 1
+  for i = 1, #list, 3 do
+    if list[i] == itemID then at = i break end
+  end
+  list[at], list[at + 1], list[at + 2] = itemID, bags, all
+  held.Arm()
+end
+
+-- A paid C.O.D. mail's entry, carried to its paid fingerprint (RunPlan): the
+-- list goes with it, as a copy, since the unpaid fingerprint can still name
+-- an identical mail.
+function held.Copy(from, to)
+  local src = held.by[from]
+  if not src or held.by[to] then return end
+  local list = {}
+  for i = 1, #src do list[i] = src[i] end
+  held.by[to] = list
+  held.n = held.n + 1
+end
+
+-- A saved list, checked and copied as it is revived (Mail.SeedStuck). The
+-- everywhere counts are taken again at the first look rather than trusted
+-- (-1, "not known yet"): what the client reports of the banks just after a
+-- login is not certain to be complete, and a count that only seems to have
+-- dropped would lift the entry for nothing. The bags are always known.
+function held.Seed(fingerprint, saved)
+  if type(saved) ~= "table" or held.by[fingerprint] then return end
+  local n = #saved
+  if n == 0 or n % 3 ~= 0 or n > MAX_ATTACHMENTS * 3 then return end
+  for i = 1, n, 3 do
+    if type(saved[i]) ~= "number" or saved[i] <= 0 or type(saved[i + 1]) ~= "number" then return end
+  end
+  local list = {}
+  for i = 1, n, 3 do
+    list[i], list[i + 1], list[i + 2] = saved[i], saved[i + 1], -1
+  end
+  held.by[fingerprint] = list
+  held.n = held.n + 1
+end
+
+-- One mail forgets its refusal -- a take of it landed, its mail has gone, or
+-- what the character held of what was refused has dropped (held.Check); the
 -- whole-registry wipe that once lived alongside it went with the close-time
 -- lifetime (see LIFETIME above).
 local function ForgetStuck(fingerprint)
@@ -1145,6 +1290,61 @@ local function ForgetStuck(fingerprint)
   stuck[fingerprint] = nil
   stuckEntries = stuckEntries - 1
   Mark(fingerprint, -1)
+  held.Drop(fingerprint)
+end
+
+-- -> true when an entry was let go: the character holds fewer of one of the
+-- items refused from its mail, in the bags or everywhere, than at the
+-- refusal or at any look since (the most it has held since is kept, as the
+-- bags-full state keeps the fewest free slots). Never asks for a limit: the
+-- mail is tried again, and a refusal records the counts afresh, so a drop
+-- that was not enough costs one refused take and no more. Allocates nothing.
+function held.Check()
+  if held.n == 0 then return false end
+  local lifted = false
+  for fingerprint, list in pairs(held.by) do
+    for i = 1, #list, 3 do
+      local bags, all = held.Counts(list[i])
+      if bags then
+        local wasAll = list[i + 2]
+        if bags < list[i + 1] or (wasAll >= 0 and all < wasAll) then
+          ForgetStuck(fingerprint)
+          lifted = true
+          break
+        end
+        if bags > list[i + 1] then list[i + 1] = bags end
+        if all > wasAll then list[i + 2] = all end
+      end
+    end
+  end
+  return lifted
+end
+
+function held.OnEvent(_, event, kind)
+  if event == "MAIL_CLOSED" then return held.Listen(false) end
+  if event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
+    local enum = type(Enum) == "table" and Enum.PlayerInteractionType or nil
+    if enum and kind == enum.MailInfo then held.Listen(false) end
+    return
+  end
+  if not MailboxOpen() then return held.Listen(false) end
+  if held.Check() then
+    -- The rows, the buttons, the status line and the Mail tab's dot follow.
+    local UI = ns.MailboxUI
+    if UI and type(UI.OnStuckLifted) == "function" then pcall(UI.OnStuckLifted) end
+  end
+end
+
+-- The mailbox opened (Core/MailboxUI.lua: after run memory's seed, before the
+-- first list build, so nothing lifted is ever drawn). The character may have
+-- got rid of what was refused while away: each entry with a list is weighed
+-- once here, and the bags are listened to for the rest of the visit while
+-- any is left. Quiet -- the open paints everything after it. One comparison
+-- while no entry has a list.
+function Mail.StuckVisit()
+  if held.n == 0 then return end
+  held.Check()
+  held.Arm()
 end
 
 -- index -> entry, fingerprint. The single reading of "is the mail at this index
@@ -1267,19 +1467,28 @@ end
 
 -- The registry flattened for run memory's saved layer (fingerprint -> reason,
 -- `true` where nothing was quotable), capped so a pathological session cannot
--- bloat SavedVariables. nil when there is nothing worth saving.
+-- bloat SavedVariables. nil when there is nothing worth saving. The second
+-- value is what the character held, for the saved entries that have it
+-- (fingerprint -> { itemID, bags, everywhere, ... }, copies), or nil.
 local STUCK_SNAPSHOT_CAP = 25
 
 function Mail.StuckSnapshot()
   if stuckEntries == 0 then return nil end
-  local out, n = {}, 0
+  local out, n, lists = {}, 0, nil
   for fingerprint, entry in pairs(stuck) do
     n = n + 1
     if n > STUCK_SNAPSHOT_CAP then break end
     out[fingerprint] = entry
+    local list = held.by[fingerprint]
+    if list then
+      local copy = {}
+      for i = 1, #list do copy[i] = list[i] end
+      lists = lists or {}
+      lists[fingerprint] = copy
+    end
   end
   if next(out) == nil then return nil end
-  return out
+  return out, lists
 end
 
 -- The inverse, at the next session's first mailbox visit: revive a saved
@@ -1295,8 +1504,14 @@ end
 -- were never a fact about the mail (see WHAT GETS RECORDED). So is one in the
 -- words of the server's own passing trouble, which records saved before
 -- those were set apart can carry.
-function Mail.SeedStuck(entries)
+--
+-- `lists`, the snapshot's second value, revives what the character held
+-- beside the entries saved with it (held.Seed). A record saved before it
+-- existed has none, and its entries come back as they were: lifted by a
+-- take, never by what the character holds.
+function Mail.SeedStuck(entries, lists)
   if type(entries) ~= "table" then return end
+  if type(lists) ~= "table" then lists = nil end
   for fingerprint, entry in pairs(entries) do
     if type(fingerprint) == "string" and stuck[fingerprint] == nil
       and (entry == true or (type(entry) == "string" and not IsBagsWords(entry)
@@ -1304,6 +1519,7 @@ function Mail.SeedStuck(entries)
       stuckEntries = stuckEntries + 1
       stuck[fingerprint] = entry
       Mark(fingerprint, 1)
+      if lists then held.Seed(fingerprint, lists[fingerprint]) end
     end
   end
 end
@@ -1597,7 +1813,13 @@ Mail.HistoryNote = HistoryNote
 -- that would go below it is not issued; the plan ends there with `kept`
 -- (done's sixth value) and nothing recorded against the mail. Money takes
 -- need no room and still go.
-local function RunPlan(index, fingerprint, plan, done, record, keepFree)
+--
+-- `attempt`, where the caller is taking the whole mail (Mail.CollectMail): a
+-- table of its own, { noted = false }, so the first refusal recorded in it
+-- starts the entry's list of what the character held afresh (held.Note) --
+-- an attempt on everything in the mail is the whole truth about it. A take
+-- of one slot passes none, and its refusal joins the list there is.
+local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt)
   local cursor = 0
   local refused = 0
   local reason, reasonMixed = nil, false
@@ -1605,6 +1827,22 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree)
   -- has landed on it -- the first one is the payment. Until one has, the
   -- paid form names some other mail, not this one.
   local paidFingerprint, tookItem = PaidFingerprint(fingerprint), false
+
+  local function over(timedOut, full, kept)
+    done(timedOut, refused, reason, fingerprint, full, kept)
+  end
+
+  -- A refusal held against the mail, with what the character holds of the
+  -- item beside it. The first in an attempt on the whole mail starts its
+  -- list afresh. -> whether it was recorded.
+  local function Record(text, itemID)
+    local recorded, new = NoteStuck(fingerprint, text)
+    if not recorded then return false end
+    local fresh = attempt ~= nil and not attempt.noted
+    if attempt then attempt.noted = true end
+    held.Note(fingerprint, itemID, new or fresh)
+    return true
+  end
 
   -- Each take is recorded once it is CONFIRMED, from the two places below
   -- that establish it.
@@ -1630,11 +1868,29 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree)
     end
   end
 
+  -- The mail as it reads once a take of ours has paid its C.O.D. (`now`, its
+  -- paid fingerprint) becomes the plan's. A refusal recorded against it as
+  -- it read before the payment is still this mail's -- an item refused ahead
+  -- of the take that paid -- and goes with it, with what the character held.
+  local function Adopt(now)
+    local entry = stuck[fingerprint]
+    if entry ~= nil then
+      local recorded, new = NoteStuck(now, entry ~= true and entry or nil)
+      if recorded and new then held.Copy(fingerprint, now) end
+    end
+    fingerprint, paidFingerprint = now, nil
+  end
+
   local function step()
     cursor = cursor + 1
     local op = plan[cursor]
     if not op then
-      done(false, refused, reason, fingerprint)
+      -- The take that paid can be the plan's last, with a refusal ahead of
+      -- it: the mail still holds that item, under its paid fingerprint.
+      if tookItem and paidFingerprint and Fingerprint(index) == paidFingerprint then
+        Adopt(paidFingerprint)
+      end
+      over(false)
       return
     end
 
@@ -1650,14 +1906,10 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree)
       -- from then on a mail that still owes a C.O.D. never matches, so
       -- nothing is paid twice and nothing is paid unasked.
       if not (tookItem and paidFingerprint and now == paidFingerprint) then
-        done(false, refused, reason, fingerprint)
+        over(false)
         return
       end
-      -- A refusal recorded against the mail as it read before the payment
-      -- is still this mail's: an item refused ahead of the take that paid.
-      local entry = stuck[fingerprint]
-      if entry ~= nil then NoteStuck(now, entry ~= true and entry or nil) end
-      fingerprint, paidFingerprint = now, nil
+      Adopt(now)
     end
 
     local function measure()
@@ -1675,17 +1927,17 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree)
     if before <= 0 then return step() end
 
     if op.kind == "item" and Mail.KeepFreeReached(keepFree) then
-      done(false, refused, reason, fingerprint, false, true)
+      over(false, false, true)
       return
     end
 
     -- What this take is about to move, read before it moves: the sum, or the
-    -- item and its stack size.
-    local takes, takeCount = before, nil
+    -- item, its id and its stack size.
+    local takes, takeCount, takeItem = before, nil, nil
     if op.kind == "item" then
       takes = GetInboxItemLink(index, op.slot)
-      local _, _, _, count = GetInboxItem(index, op.slot)
-      takeCount = tonumber(count) or 1
+      local _, id, _, count = GetInboxItem(index, op.slot)
+      takeCount, takeItem = tonumber(count) or 1, id
     end
 
     markSender, markSubject = LeavingMark(index)
@@ -1705,7 +1957,7 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree)
       if timedOut then
         ErrorWatch.Close()
         bagsCatch.Drop(watched)
-        done(true, refused, reason, fingerprint)
+        over(true)
         return
       end
       if Fingerprint(index) ~= fingerprint or measure() < before then
@@ -1735,7 +1987,7 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree)
         -- perfectly collectable mail (and, via the fingerprint, onto every
         -- identical sibling). End the plan; record nothing.
         if not MailboxOpen() then
-          done(false, refused, reason, fingerprint)
+          over(false)
           return
         end
         refused = refused + 1
@@ -1748,14 +2000,14 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree)
         if op.kind == "item"
           and (IsBagsWords(text) or (text == nil and Mail.FreeBagSlots() == 0)) then
           SetBagsFull()
-          done(false, refused, reason, fingerprint, true)
+          over(false, true)
           return
         end
         -- The one place a hard per-item refusal is established. Everything the
         -- registry holds comes through here or through CollectMail's closing
         -- verification; no timeout, busy or closed path can reach it -- and
         -- a close DURING flight is caught just above.
-        NoteStuck(fingerprint, text)
+        Record(text, takeItem)
         step()
       end)
     end)
@@ -2017,7 +2269,7 @@ function Mail.CollectMail(index, onDone, opts)
         if current ~= fingerprint then ForgetStuck(current) end
         finish("collected", 0, reason)
       end)
-    end, record, opts and opts.keepFree)
+    end, record, opts and opts.keepFree, { noted = false })
   end
 
   WhenIdle(function()
@@ -2090,8 +2342,10 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
         if refusedCount > 0 then return finish("refused", refusedCount, reason) end
         -- A take that landed is proof the refusal no longer holds -- the player
         -- made room, or dropped the unique they already had. If the next slot
-        -- is refused anyway, RunPlan records it again immediately.
+        -- is refused anyway, RunPlan records it again immediately. (Under the
+        -- paid fingerprint too, where the take paid a C.O.D.)
         ForgetStuck(fingerprint)
+        if current and current ~= fingerprint then ForgetStuck(current) end
         -- The last tile of a mail is over once the header agrees, as a whole
         -- collect is: the reading view's Back asks whether it is finished.
         AfterHeaderSettles(index, current or fingerprint, function()
