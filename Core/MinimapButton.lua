@@ -1240,7 +1240,9 @@ function TIP.CharacterName(Memory, st)
   local name = Memory.ClassName(st.realm, st.name)
   local warning = st.warn and st.text
   if not warning then return name end
-  return name .. "  " .. ns.Theme.Colorize("warning", warning)
+  -- Inked on the tooltip it is read on: in Light mode the warning's own
+  -- tone is the light paper's, and the tooltip stays dark.
+  return name .. "  " .. ns.Theme.Colorize("warning", warning, "tooltip")
 end
 
 -- The characters, this one first, then the ones with something to say,

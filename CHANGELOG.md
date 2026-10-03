@@ -33,17 +33,21 @@ your recipients, groups, Mail Memory and History are kept.*
 
 - **The Postbox style** replaces Postbox Modern: the clean dark look, no
   EllesmereUI needed. Choose its accent (presets, your class color or any
-  color), background color, tint, border, row stripes, rounded corners,
-  font and text size, or switch it to **Light mode**. Your opacity and
-  border carry over.
-- **Six window styles:** **Pillar Box** (its flag goes up when mail waits;
-  pick the paint), **Faction** (Alliance or Horde, by character), **Post
-  Office Counter**, **Goblin Express**, **Letters** (parchment and wax seals)
-  and **Daylight**. Your mail list stays as clear as ever in every one.
+  color), background color (or an accent or class tint), border (Edge is one
+  pixel on the window's very edge), row stripes, rounded corners, font and
+  text size, or switch it to **Light mode**, with paper backgrounds of its
+  own. Each mode keeps its own background, and your opacity and border carry
+  over.
+- **Six window styles:** **London Postbox** (pick the paint), **Faction**
+  (Alliance or Horde, by character), **Post Office Counter**, **Goblin
+  Express**, **Letters** (parchment and wax seals) and **Daylight**. Your
+  mail list stays as clear as ever in every one.
 - **Window scale** from 80% to 130%, in every style. The options window
   always fits your screen.
-- **Colors stay readable:** an accent too dark or too pale for its text is
-  lifted just enough, under EllesmereUI and ElvUI too.
+- **Text stays readable in every look:** its color is worked out from what
+  it sits on, light or dark, at any opacity, and dark text never wears a
+  black outline. An accent too dark or too pale for its text is lifted just
+  enough, under EllesmereUI and ElvUI too.
 
 ### At the mailbox
 
