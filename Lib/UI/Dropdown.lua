@@ -28,6 +28,14 @@ local LIST_PADDING = 4
 -- The gutter the selection dot lives in, reserved on every row so a chosen
 -- and an unchosen caption start at the same x.
 local MARK_GUTTER = 8
+-- The toggle's colour square: its left edge in from the toggle's, its size,
+-- and the room kept between it and the value.
+local SWATCH_X, SWATCH_SIZE, SWATCH_GAP = 7, 10, 4
+-- The room kept clear at each end of the toggle for what is drawn there: the
+-- Postbox style's caret (5 wide, centred 9 in from the right edge, so out to
+-- 11.5) and the stock button's end caps (12). Only a value that already ran
+-- into the caret is too long for the box this leaves.
+local CAPTION_GUTTER = 12
 local LIST_GAP = 2
 -- Twelve rows of the default height plus padding. A list taller than this
 -- scrolls instead of growing (opts.maxListHeight overrides).
@@ -112,6 +120,34 @@ local function NewSwatch(parent, size)
   holder.Edge, holder.Fill = edge, fill
   holder:Hide()
   return holder
+end
+
+-- A value cut short in its caption box says the whole of it on hover, as the
+-- addon's other fitted captions do (Theme.FitText leaves it on the toggle).
+-- An owner that puts a tooltip of its own over the toggle (the options
+-- panel) builds over this one and adds the value itself; this one stands
+-- where nothing else does (the recipient manager's sort).
+local function ToggleEnter(self)
+  -- Fitted again first: the box is the same, but the font the value wears
+  -- may not be (a skin's pass after the value was set); unchanged, the
+  -- fitter answers from its memo.
+  if self.__pbRefit then self.__pbRefit() end
+  local text = self.__pbOverflowText
+  local tip = GameTooltip
+  if not text or not tip then return end
+  tip:SetOwner(self, "ANCHOR_TOP")
+  local themed = ns.Theme
+  if themed and type(themed.AddOverflowLine) == "function" then
+    themed.AddOverflowLine(self, tip)
+  else
+    tip:AddLine(text, 1, 1, 1, true)
+  end
+  tip:Show()
+end
+
+local function ToggleLeave(self)
+  local tip = GameTooltip
+  if tip and tip:IsOwned(self) then tip:Hide() end
 end
 
 local function PaintSwatch(swatch, r, g, b)
@@ -205,13 +241,50 @@ function Dropdown.Create(parent, opts)
     return (items[1] and items[1].name) or ""
   end
 
+  -- The value's caption box: the toggle less a gutter at each end, the same
+  -- at both, so a value that fits stands centred on the toggle exactly where
+  -- it always stood -- clear of the colour square at the left and of a
+  -- style's caret at the right. One line, never wrapped. A value too long
+  -- for its box (a long translation, a large text size) is cut short by the
+  -- house fitter (Theme.FitText) and says the whole of it on hover
+  -- (ToggleEnter). A box of its own rather than a string sized to its text:
+  -- that width is measured when the text is set and kept when a font object
+  -- is changed under it, which wrapped a value's last letter onto a second
+  -- line.
+  local inset = CAPTION_GUTTER
+  if swatchFor then inset = math.max(inset, SWATCH_X + SWATCH_SIZE + SWATCH_GAP) end
+  local caption = ""   -- the value as given, whatever its box shows of it
+  local function Caption(text)
+    caption = text or ""
+    local label = toggle:GetFontString()
+    local fit = ns.Theme and ns.Theme.FitText
+    if not label or type(fit) ~= "function" then
+      toggle:SetText(caption)
+      return
+    end
+    fit(label, math.max(1, (toggle:GetWidth() or 0) - 2 * inset), caption, toggle)
+  end
+
   toggle:SetText(NameFor(container._selectedId))
+  local label = toggle:GetFontString()
+  if label then
+    if label.SetWordWrap then label:SetWordWrap(false) end
+    if label.SetMaxLines then label:SetMaxLines(1) end
+  end
+  Caption(NameFor(container._selectedId))
+  -- A toggle given another width (the options panel narrows one beside a
+  -- long name) fits its value to the new box.
+  local function Refit() Caption(caption) end
+  toggle.__pbRefit = Refit
+  toggle:HookScript("OnSizeChanged", Refit)
+  toggle:HookScript("OnEnter", ToggleEnter)
+  toggle:HookScript("OnLeave", ToggleLeave)
 
   -- The chosen colour on the toggle, at its left, where the list has them.
   local toggleSwatch
   if swatchFor then
-    toggleSwatch = NewSwatch(toggle, 10)
-    toggleSwatch:SetPoint("LEFT", toggle, "LEFT", 7, 0)
+    toggleSwatch = NewSwatch(toggle, SWATCH_SIZE)
+    toggleSwatch:SetPoint("LEFT", toggle, "LEFT", SWATCH_X, 0)
   end
   local function PaintToggleSwatch()
     if toggleSwatch then PaintSwatch(toggleSwatch, swatchFor(container._selectedId)) end
@@ -453,7 +526,7 @@ function Dropdown.Create(parent, opts)
       end)
       row:SetScript("OnClick", function()
         container._selectedId = item.id
-        toggle:SetText(item.name)
+        Caption(item.name)
         PaintToggleSwatch()
         list:Hide()
         if container._onChange then container._onChange(item.id, item.name) end
@@ -590,7 +663,7 @@ function Dropdown.Create(parent, opts)
   -- Sets the selection and the visible label together.
   function container:SetSelectedId(id)
     container._selectedId = id
-    toggle:SetText(NameFor(id))
+    Caption(NameFor(id))
     PaintToggleSwatch()
   end
 
@@ -602,7 +675,7 @@ function Dropdown.Create(parent, opts)
   -- Sets the toggle's visible label only, without changing the selection: an
   -- external source of truth re-syncing itself into the widget.
   function container:SetText(text)
-    toggle:SetText(text or "")
+    Caption(text)
   end
 
   function container:SetChangeCallback(fn)

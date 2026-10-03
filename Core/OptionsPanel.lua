@@ -651,7 +651,10 @@ end
 
 function Tip.Entry(owner, entry)
   if not entry then return end
-  Tip.Begin(owner, entry.title, ns.Summary(entry.text))
+  local tip = Tip.Begin(owner, entry.title, ns.Summary(entry.text))
+  -- A dropdown's value cut short in its box (Lib/UI/Dropdown.lua) is said
+  -- whole under what the setting does.
+  if owner.__postboxSelect and owner.__pbOverflowText then ns.Theme.AddOverflowLine(owner, tip) end
   Tip.Show(owner)
 end
 
