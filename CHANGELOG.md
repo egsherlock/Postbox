@@ -59,6 +59,12 @@ your recipients, groups, Mail Memory and History are kept.*
 - **Take one item without opening the mail:** set Attachments on hover to Fan
   out and click the one you want. C.O.D. still asks first.
 - **Keep bag slots free** while collecting (1 to 12).
+- **Collecting follows your list:** All mail, the category and group
+  buttons, a search and your selected rows take mail in the order the list
+  shows it, so when your bags fill, what's left is the bottom of the list.
+- **The most you can carry:** a mail holding several stacks of an item you
+  can only carry so many of gives you the largest first, with one "can't
+  carry any more" instead of one for every stack.
 - **Sort by time left:** the button right of the search switches the Mail
   tab and Mail Memory between newest first and expiring first; mail to
   collect and read mail each sort in their own group, and the choice is
