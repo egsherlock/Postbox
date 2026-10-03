@@ -1539,6 +1539,18 @@ do
   ---------------------------------------------------------
   local MINI_PAD_X, MINI_PAD_Y, MINI_STRIP, MINI_ROW = 12, 9, 12, 16
 
+  -- A caption on one of the drawing's controls, `width` wide (its tab or
+  -- its button), in a box of its own: the control less 3 at each end, one
+  -- line, centred where it always stood. One too long for it (a long
+  -- translation, a large text size) is cut short by the house fitter rather
+  -- than spilling out of its control; a box is never measured from the text,
+  -- so a font changed under the caption cannot wrap it either.
+  local function MiniCaption(fs, width, text)
+    if not fs then return end
+    if fs.SetMaxLines then fs:SetMaxLines(1) end
+    ns.Theme.FitText(fs, width - 6, text)
+  end
+
   -- Four lines of the addon's white tile round `frame`, `inset` in.
   local function MiniEdges(frame, layer, sub)
     local e = {}
@@ -1615,15 +1627,17 @@ do
     win.Tabs = {}
     for i = 1, 2 do
       local plate = T.CreatePlate(win, "tab")
+      local caption = L[i == 1 and "TAB_COLLECT" or "TAB_SEND"]
       plate:SetHeight(16)
       plate:SetWidth(62)
       plate:SetPoint("TOPLEFT", win, "TOPLEFT", 6 + (i - 1) * 66, -(MINI_STRIP + 4))
       plate:EnableMouse(false)
-      plate:SetText(L[i == 1 and "TAB_COLLECT" or "TAB_SEND"])
+      plate:SetText(caption)
       if plate.Text then plate.Text:SetFontObject(T.FontObject("bodySmall")) end
       local skin = ns.Skin
       if skin and skin.StyleTabPlate then skin.StyleTabPlate(plate) end
       T.SetPlateSelected(plate, i == 1)
+      MiniCaption(plate.Text, 62, caption)
       win.Tabs[i] = plate
     end
 
@@ -1661,7 +1675,7 @@ do
     button:SetPoint("TOPLEFT", list, "BOTTOMLEFT", 0, -6)
     button.Text = T.CreateText(button, "bodySmall")
     button.Text:SetPoint("CENTER", button, "CENTER", 0, 0)
-    button.Text:SetText(L["BTN_TAKE_ALL"])
+    MiniCaption(button.Text, 70, L["BTN_TAKE_ALL"])
     win.Button = button
 
     local box = MiniBlock(win)
