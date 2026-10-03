@@ -1857,9 +1857,21 @@ end
 -- with no general slot free, it is the bags); anything else leaves the mail
 -- as it is -- counted in `missed`, recorded nowhere, taken by the next sweep.
 --
--- `plan` entries are { kind = "money" } or { kind = "item", slot = n }. The plan
--- is a snapshot and each entry fires at most twice -- once, and the one more
--- try above -- so the runner cannot loop.
+-- `plan` entries are { kind = "money" } or { kind = "item", slot = n [, id =
+-- itemID, count = stack] }. The plan is a snapshot and each entry fires at
+-- most twice -- once, and the one more try above -- so the runner cannot loop.
+-- An entry naming its item and stack is taken from whichever slot holds that
+-- stack as the take goes out (PlanSlot); one naming only a slot -- a tile the
+-- player picked -- from that slot.
+--
+-- A refusal in the game's words of one stack of an item is a limit of the
+-- character's: what it holds only grows while a plan runs, so the plan's
+-- other stacks of that item as large or larger would be refused alike, and
+-- are not tried. A smaller one may fit, and is. That is one refusal of the
+-- item, however many stacks it leaves in the mail, and the entry recorded
+-- for it carries what the character holds of it (held.Note), so holding
+-- fewer later lifts it as for any limit. With the largest stacks first
+-- (PlanOrder), a mail takes the most that fits for the fewest refusals.
 --
 -- Calls done(timedOut, refusedCount, reason, fingerprint, bags, kept, missed,
 -- moved) exactly once, where `fingerprint` is the mail's as the plan last
@@ -1900,6 +1912,39 @@ end
 Mail.HistoryRecord = HistoryRecord
 Mail.HistoryNote = HistoryNote
 
+-- The order of a whole mail's takes: the gold first, then the largest stack
+-- first, so each item's largest stack is tried before its smaller ones --
+-- against a limit, the most that fits is taken before any refusal (stacks
+-- of 100 and 14 against a limit of 100: the 100, not the 14). Equal stacks
+-- go highest slot first, as every take once did.
+local function PlanOrder(a, b)
+  if a.kind ~= b.kind then return a.kind == "money" end
+  if a.count ~= b.count then return a.count > b.count end
+  return a.slot > b.slot
+end
+
+-- index, op -> the slot that holds the plan entry's stack now, or nil once
+-- none does. Its own slot while that still holds the same item and stack;
+-- else any slot that does: attachments can compact into the gaps a take
+-- leaves, or a late update move them, and a take aimed by slot number alone
+-- would then go to another stack. An entry naming no item -- a tile the
+-- player picked -- is its slot.
+local function PlanSlot(index, op)
+  local slot = op.slot
+  if op.id == nil then return GetInboxItemLink(index, slot) and slot or nil end
+  local _, id, _, count = GetInboxItem(index, slot)
+  if id == op.id and (tonumber(count) or 1) == op.count and GetInboxItemLink(index, slot) then return slot end
+  for other = 1, MAX_ATTACHMENTS do
+    if other ~= slot then
+      _, id, _, count = GetInboxItem(index, other)
+      if id == op.id and (tonumber(count) or 1) == op.count and GetInboxItemLink(index, other) then
+        return other
+      end
+    end
+  end
+  return nil
+end
+
 -- `keepFree`, where a collect run passes it: the general bag slots the run
 -- leaves free ("Keep bag slots free", Mail.KeepFreeReached). An item take
 -- that would go below it is not issued; the plan ends there with `kept`
@@ -1910,7 +1955,10 @@ Mail.HistoryNote = HistoryNote
 -- table of its own, { noted = false }, so the first refusal recorded in it
 -- starts the entry's list of what the character held afresh (held.Note) --
 -- an attempt on everything in the mail is the whole truth about it. A take
--- of one slot passes none, and its refusal joins the list there is.
+-- of one slot passes none, and its refusal joins the list there is. The
+-- attempt also keeps the item limits its refusals have shown (`limits`,
+-- itemID -> the smallest stack refused in the game's words), made at the
+-- first.
 local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt)
   local cursor = 0
   local refused, missed = 0, 0
@@ -2021,10 +2069,17 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
       return Mail.AttachmentsLeft(index)
     end
 
-    if op.kind == "item" and not GetInboxItemLink(index, op.slot) then
-      -- Slot already empty: an earlier take emptied the mail, or the remaining
-      -- attachments compacted downwards. Nothing was refused here.
-      return step()
+    local slot = nil
+    if op.kind == "item" then
+      -- A stack of an item refused in this plan at its size or smaller:
+      -- refused alike, so not tried, and nothing more said (see above).
+      local limits = attempt and attempt.limits
+      local most = limits and op.id ~= nil and limits[op.id]
+      if most and op.count >= most then return step() end
+      slot = PlanSlot(index, op)
+      -- The stack is no longer in the mail: an earlier take emptied the
+      -- mail, or took it. Nothing was refused here.
+      if not slot then return step() end
     end
 
     local before = measure()
@@ -2039,8 +2094,8 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
     -- item, its id and its stack size.
     local takes, takeCount, takeItem = before, nil, nil
     if op.kind == "item" then
-      takes = GetInboxItemLink(index, op.slot)
-      local _, id, _, count = GetInboxItem(index, op.slot)
+      takes = GetInboxItemLink(index, slot)
+      local _, id, _, count = GetInboxItem(index, slot)
       takeCount, takeItem = tonumber(count) or 1, id
     end
 
@@ -2055,7 +2110,7 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
       TakeInboxMoney(index)
     else
       watched = bagsCatch.Watch(keepFree)
-      TakeInboxItem(index, op.slot)
+      TakeInboxItem(index, slot)
     end
 
     -- This try is the one more try of a take that did not land.
@@ -2120,6 +2175,12 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
           if Record(text, takeItem) then
             refused = refused + 1
             noteReason(text)
+            -- The item's limit, for the stacks of it still to come.
+            if attempt and op.kind == "item" and takeItem ~= nil then
+              local limits = attempt.limits or {}
+              attempt.limits = limits
+              if not limits[takeItem] or takeCount < limits[takeItem] then limits[takeItem] = takeCount end
+            end
           else
             missed = missed + 1
             missedText = missedText or text
@@ -2395,14 +2456,15 @@ function Mail.CollectMail(index, onDone, opts)
       plan[#plan + 1] = { kind = "money" }
     end
     if type(TakeInboxItem) == "function" then
-      -- Highest slot first. The plan is a snapshot of slot numbers, so working
-      -- downwards keeps every queued number valid even if the remaining
-      -- attachments compact into the gaps.
+      -- Each stack by its item and size, found again as it is taken
+      -- (PlanSlot), and the largest first (PlanOrder).
       for slot = MAX_ATTACHMENTS, 1, -1 do
         if GetInboxItemLink(index, slot) then
-          plan[#plan + 1] = { kind = "item", slot = slot }
+          local _, id, _, count = GetInboxItem(index, slot)
+          plan[#plan + 1] = { kind = "item", slot = slot, id = id, count = tonumber(count) or 1 }
         end
       end
+      if #plan > 1 then table.sort(plan, PlanOrder) end
     end
 
     if #plan == 0 then
