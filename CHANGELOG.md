@@ -50,7 +50,8 @@ your recipients, groups, Mail Memory and History are kept.*
 - **Senders in their class color**, your alts, friends and guildmates, in your
   UI's own class colors.
 - **Stack counts and quality badges on item icons**, in the corners your bags
-  use; hover the icon to see everything in the mail.
+  use, with a thin edge so each icon stands clear of its row; hover the icon
+  to see everything in the mail.
 - **Take one item without opening the mail:** set Attachments on hover to Fan
   out and click the one you want. C.O.D. still asks first.
 - **Keep bag slots free** while collecting (1 to 12).
@@ -100,8 +101,8 @@ your recipients, groups, Mail Memory and History are kept.*
 - **Sending gold asks first**, as the game's own mail window does, and asks
   again if the name, the amount or C.O.D. changes before you answer.
 - **After sending, keep** nothing, the recipient, or the recipient and subject.
-- **Ctrl+Enter sends** is a setting, on by default, and the Send button shows
-  the keys.
+- **Ctrl+Enter sends** from any box, the gold included. It's a setting, on by
+  default, and the Send button shows the keys.
 - **Shift-click an attached item** to link it, Ctrl-click to try it on.
 
 ### Options, commands and languages
@@ -112,14 +113,14 @@ your recipients, groups, Mail Memory and History are kept.*
 - **Option lists stay put:** while one is open, the description beside it
   stays on the setting you opened.
 - **What's new?** in game, the last three releases, from the options' footer
-  or `/postbox whatsnew`.
+  or `/postbox whatsnew`. Escape closes it and leaves the mailbox open.
 - **`/pb`** works like `/postbox`; either on its own opens the options, and
   Postbox has a page under Settings, AddOns.
 - **Options in a clearer order:** what reshapes a page first, what the list
   shows under "Under the list", and every count that heads a box counts the
   whole box; rest on the Mail tab for what's left to collect.
-- **Reset settings** or **Reset everything**, each saying exactly what it
-  clears.
+- **Reset this tab**, **Reset settings** or **Reset everything**, each saying
+  exactly what it clears.
 - **Clearer names:** Window grid docking is now Dock beside game windows, and
   Show counts is Show mail counts. Show on each mail lives in Arrange, and
   Sound on new mail sits on the Mail tab.
@@ -169,7 +170,11 @@ your recipients, groups, Mail Memory and History are kept.*
   bar at the foot of the list.
 - Grayed-out items in your bags keep one steady gray while you attach.
 - Short gold figures never round up: 12,960g reads 12.9k.
-- A passing mail-server error no longer marks a mail as stuck.
+- A mail is marked stuck only when the game refuses it for a reason; a
+  passing server error or a slow reply just gets one more try, and All mail
+  goes on to the rest.
+- A mail held back because you couldn't carry any more of its item is
+  collected by All mail again as soon as you hold fewer.
 - The mail list stops at its last mail; slot counts are never cut short.
 - Questions asked from the options or other Postbox windows no longer
   open behind them.
