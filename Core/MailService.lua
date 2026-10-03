@@ -286,19 +286,23 @@ function Mail.IsReadPersistent(index)
 end
 
 -------------------------------------------------------------
--- Queue construction -- the critical ordering invariant
+-- Queue construction -- the order, and the critical identity invariant
 -------------------------------------------------------------
 
--- category -> queue, info
+-- category [, order] -> queue, info
 --
--- `queue` is an array of inbox indices, STRICTLY DESCENDING, and it must be
--- consumed in that order. When a mail's last attachment and last copper are
--- taken the server deletes it and every higher inbox index shifts down by one.
--- Processing high-to-low means a deletion only invalidates indices ABOVE the
--- cursor, which are already done. Processing low-to-high means every deletion
--- corrupts every remaining entry, and the run loots the wrong mails -- including
--- the C.O.D. mails that were deliberately excluded. This is the single most
--- dangerous thing in the addon to get wrong.
+-- `queue` is an array of inbox indices in the order a run takes them: the
+-- order the player sees them in (`order`, the collect screen's list as it is
+-- drawn), or without one the box's own, newest first. An index names its
+-- mail only as the queue is built. When a mail's last attachment and last
+-- copper are taken the server deletes it and every higher index shifts down
+-- by one; new mail arriving shifts every index up. A run that took queued
+-- indices as they stand would loot the wrong mails -- including the C.O.D.
+-- mails that were deliberately excluded. So a run keeps each queued mail's
+-- identity and finds the mail again before each take ("A queued mail, found
+-- again", below), and every take checks once more, immediately before its
+-- command, that its index still names that mail (Mail.CollectMail, RunPlan).
+-- This is the single most dangerous thing in the addon to get wrong.
 --
 -- `info` reports what the queue does NOT contain, so the caller can say so
 -- instead of reporting a clean run over a truncated list:
@@ -435,7 +439,25 @@ local function Consider(index, category, queue, info)
   end
 end
 
-function Mail.BuildQueue(category)
+-- Each index once, however often a list names it: scratch for the two
+-- builders below, emptied after each use.
+local queueSeen = {}
+
+-- indices, category, queue, info -> each inbox index of `indices` that is
+-- one, in their order, considered once. Entries that name no mail -- the
+-- collect list's divider -- are passed over.
+local function ConsiderEach(indices, category, queue, info)
+  local numItems = info.numItems
+  for i = 1, #indices do
+    local index = tonumber(indices[i])
+    if index and index >= 1 and index <= numItems and not queueSeen[index] then
+      queueSeen[index] = true
+      Consider(index, category, queue, info)
+    end
+  end
+end
+
+function Mail.BuildQueue(category, order)
   local numItems, totalItems = GetInboxNumItems()
   numItems = tonumber(numItems) or 0
   totalItems = tonumber(totalItems) or numItems
@@ -456,9 +478,14 @@ function Mail.BuildQueue(category)
   -- GetInboxNumItems returns 0 between MAIL_SHOW and the first
   -- MAIL_INBOX_UPDATE, so an empty result here means "nothing to do OR nothing
   -- known yet" and the caller is told which by info.totalItems.
-  for index = numItems, 1, -1 do
-    Consider(index, category, queue, info)
+  -- The mails in the order given, then any it does not name -- a list folded
+  -- under its divider, or drawn before the last inbox update -- in the box's
+  -- own order, so the whole inbox is still considered.
+  if type(order) == "table" then ConsiderEach(order, category, queue, info) end
+  for index = 1, numItems do
+    if not queueSeen[index] then Consider(index, category, queue, info) end
   end
+  for index in pairs(queueSeen) do queueSeen[index] = nil end
 
   return queue, info
 end
@@ -467,7 +494,8 @@ end
 -- inbox: what the collect screen's search hands over, so that "Collect" under
 -- a filtered list takes the mails on screen and nothing else. Every rule
 -- BuildQueue applies -- unloaded headers, finished mail, C.O.D., held back --
--- applies here too, and the queue comes out descending for the same reason.
+-- applies here too, and the queue comes out in the order the indices are
+-- given: the caller's, which is the order the player sees.
 -- `picked`: these are rows the player picked one by one, which are tried as a
 -- click on each row would be -- stuck or not, bags full or not (C.O.D. is
 -- still never swept).
@@ -488,19 +516,44 @@ function Mail.BuildQueueFor(indices, category, picked)
     picked = picked and true or nil,
   }
 
-  local sorted = {}
-  for i = 1, #indices do
-    local index = tonumber(indices[i])
-    if index and index >= 1 and index <= numItems then sorted[#sorted + 1] = index end
-  end
-  table.sort(sorted, function(a, b) return a > b end)
   if category == "alts" or category == "other" then info.altKeys = Mail.OwnCharacterKeys() end
   info.senders = Mail.SenderSet(category)
-  for i = 1, #sorted do
-    Consider(sorted[i], category, queue, info)
-  end
+  ConsiderEach(indices, category, queue, info)
+  for index in pairs(queueSeen) do queueSeen[index] = nil end
 
   return queue, info
+end
+
+-------------------------------------------------------------
+-- A queued mail, found again
+--
+-- A collect run keeps what each queued mail IS, not where it was: it takes
+-- mail in the order the player sees, so the mails it empties and the server
+-- deletes are as often above the next one as below it, each moving its
+-- index, and new mail arriving moves every index. What it keeps is
+-- Fingerprint's fields -- sender, subject, C.O.D. -- compared as the header
+-- hands them over, so finding a mail builds no string. Two mails alike in
+-- all three are interchangeable here, as they are to the stuck registry.
+-------------------------------------------------------------
+
+-- index -> sender, subject, C.O.D. (a number): what a run keeps of a mail.
+function Mail.QueuedIdentity(index)
+  local _, _, sender, subject, _, cod = GetInboxHeaderInfo(index)
+  return sender, subject, tonumber(cod) or 0
+end
+
+-- index, sender, subject, cod -> whether the mail at this index is that
+-- queued mail (or its twin) and still has something to collect: the same
+-- three fields, and not finished (Mail.IsReadPersistent's tests, on the one
+-- header read). A letter emptied and kept, or a mail emptied on its way out,
+-- is not it; nor is a mail that owes a C.O.D. it was not queued with -- no
+-- queued mail owes one (Consider).
+function Mail.QueuedAt(index, sender, subject, cod)
+  local _, _, s, j, money, c, _, itemCount, wasRead = GetInboxHeaderInfo(index)
+  if s ~= sender or j ~= subject or (s == nil and j == nil) then return false end
+  if (tonumber(c) or 0) ~= cod then return false end
+  if not wasRead or (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0 then return true end
+  return Mail.AttachmentsLeft(index) > 0
 end
 
 -- indices [, done] -> sender key -> how many of those mails a sweep by sender
@@ -540,7 +593,8 @@ function Mail.SenderTally(indices, done)
 end
 
 -- Mails that "delete all read" may remove: read, no money, no attachments.
--- Descending, for the same reason BuildQueue is.
+-- Descending: each delete moves every index above it down, so working
+-- downwards leaves the indices still to go naming their mails.
 function Mail.BuildDeleteQueue()
   local numItems = tonumber((GetInboxNumItems())) or 0
   local queue = {}
@@ -709,8 +763,9 @@ function Mail.QueueAttachmentSlots(queue)
 end
 
 -- How many mails from the FRONT of the queue fit in `free` slots, and how many
--- slots that uses. The prefix, not an arbitrary subset: the queue is descending
--- and only a prefix of it can be collected without invalidating the rest.
+-- slots that uses. The prefix, not an arbitrary subset: a run takes the queue
+-- in its order, the order the player sees, so what fits is the first mails of
+-- it and what waits is the rest.
 function Mail.QueuePrefixThatFits(queue, free)
   local used, fits = 0, 0
   for i = 1, #queue do
@@ -1806,14 +1861,15 @@ end
 -- is a snapshot and each entry fires at most twice -- once, and the one more
 -- try above -- so the runner cannot loop.
 --
--- Calls done(timedOut, refusedCount, reason, fingerprint, bags, kept, missed)
--- exactly once, where `fingerprint` is the mail's as the plan last knew it:
--- the one it was given, or its paid form once a take has paid the mail's
--- C.O.D. (PaidFingerprint), `bags` is true when a take was refused for want
--- of room and the plan stopped there, and `missed` counts the takes that did
--- not land and were not recorded. `refusedCount` counts only the refusals
--- that were (bags included); `reason` is their words, or the missed takes'
--- where there were no others.
+-- Calls done(timedOut, refusedCount, reason, fingerprint, bags, kept, missed,
+-- moved) exactly once, where `fingerprint` is the mail's as the plan last
+-- knew it: the one it was given, or its paid form once a take has paid the
+-- mail's C.O.D. (PaidFingerprint), `bags` is true when a take was refused for
+-- want of room and the plan stopped there, `missed` counts the takes that did
+-- not land and were not recorded, and `moved` is true when the plan stopped
+-- because, with a take of it still to come, the index named another mail.
+-- `refusedCount` counts only the refusals that were (bags included); `reason`
+-- is their words, or the missed takes' where there were no others.
 -------------------------------------------------------------
 
 -- How long a take that did not land, unexplained, waits before its one more
@@ -1870,8 +1926,8 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
   -- paid form names some other mail, not this one.
   local paidFingerprint, tookItem = PaidFingerprint(fingerprint), false
 
-  local function over(timedOut, full, kept)
-    done(timedOut, refused, reason or (refused == 0 and missedText) or nil, fingerprint, full, kept, missed)
+  local function over(timedOut, full, kept, moved)
+    done(timedOut, refused, reason or (refused == 0 and missedText) or nil, fingerprint, full, kept, missed, moved)
   end
 
   -- A refusal held against the mail, with what the character holds of the
@@ -1948,13 +2004,19 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
       -- from then on a mail that still owes a C.O.D. never matches, so
       -- nothing is paid twice and nothing is paid unasked.
       if not (tookItem and paidFingerprint and now == paidFingerprint) then
-        over(false)
+        over(false, false, false, true)
         return
       end
       Adopt(now)
     end
 
+    -- How many mails the inbox listed as the take went out. Fewer after it,
+    -- and the mail, emptied, has gone: nothing is left of it, whatever now
+    -- sits at its index -- a twin of it, items and all, reads exactly as it
+    -- did before the take.
+    local listedAt = nil
     local function measure()
+      if listedAt and (tonumber((GetInboxNumItems())) or 0) < listedAt then return -1 end
       if op.kind == "money" then return Mail.MoneyLeft(index) end
       return Mail.AttachmentsLeft(index)
     end
@@ -1988,6 +2050,7 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
     -- A keep-free run's item take is over once the bags have caught up
     -- with it (bagsCatch): the next take is decided from their count.
     local watched = nil
+    listedAt = tonumber((GetInboxNumItems())) or 0
     if op.kind == "money" then
       TakeInboxMoney(index)
     else
@@ -2205,6 +2268,10 @@ end
 --               issue another one.
 --   "busy"      another Postbox command sequence owns the channel.
 --   "closed"    the mailbox is not open; nothing was attempted.
+--   "moved"     only for a caller passing opts.moves: before the mail was
+--               emptied, its index came to name another mail (new mail came
+--               in at the top of the box, or one above it went) and nothing
+--               more was taken. The caller finds the mail again.
 -- A "refused" answer carries a fourth value, `kind`: "bags" when the take was
 -- refused for want of bag room ("Bags full": nothing is recorded against the
 -- mail, and a run stops), "keep" when a run's opts.keepFree stopped it before
@@ -2224,6 +2291,10 @@ end
 --                 it leaves free (RunPlan). A mail with items met at that
 --                 point, with no gold to take, is left as it is -- not even
 --                 fetched, so it stays unread.
+-- opts.moves      a collect run, which keeps what each mail is and finds it
+--                 again: a mail its index stops naming before it is emptied
+--                 is answered "moved", not "collected" (the index's mail is
+--                 no longer the one asked for, and it was not emptied).
 function Mail.CollectMail(index, onDone, opts)
   local token = Claim()
   local finished = false
@@ -2247,6 +2318,9 @@ function Mail.CollectMail(index, onDone, opts)
   local _, _, _, _, money, cod, _, itemCount, wasRead = GetInboxHeaderInfo(index)
   money = tonumber(money) or 0
   itemCount = tonumber(itemCount) or 0
+  -- How many mails the inbox lists before anything is taken: fewer once
+  -- every take has landed, and the emptied mail has gone (see below).
+  local listed = tonumber((GetInboxNumItems())) or 0
   -- Taken before anything moves: the entry names the mail as it arrived.
   local record = HistoryRecord(index, opts and opts.history)
 
@@ -2302,7 +2376,19 @@ function Mail.CollectMail(index, onDone, opts)
   -- Whether the plan below has already waited once for links that had not
   -- loaded.
   local relooked = false
+  -- For a run (opts.moves), whether the index has stopped naming the mail
+  -- since it was asked for is looked at before the fetch and before the plan
+  -- is made, as RunPlan looks before each take: the run finds it again.
   local function execute()
+    if opts and opts.moves and Fingerprint(index) ~= fingerprint then
+      -- A letter that held nothing was all read by the fetch, which went to
+      -- it before anything moved: it is done.
+      if money <= 0 and itemCount <= 0 and needFetch then
+        if not wasRead then HistoryNote(record, "read") end
+        return finish("collected")
+      end
+      return finish("moved")
+    end
     -- Enumerate only now: before the fetch landed, every link is nil.
     local plan = {}
     if Mail.MoneyLeft(index) > 0 and type(TakeInboxMoney) == "function" then
@@ -2349,11 +2435,14 @@ function Mail.CollectMail(index, onDone, opts)
       return finish("collected")
     end
 
-    RunPlan(index, fingerprint, plan, function(timedOut, refusedCount, reason, current, full, kept, missed)
+    RunPlan(index, fingerprint, plan, function(timedOut, refusedCount, reason, current, full, kept, missed, shifted)
       if timedOut then return finish("timeout", refusedCount, reason) end
       if full then return finish("refused", refusedCount, reason, "bags") end
       if kept then return finish("refused", refusedCount, reason, "keep") end
       if refusedCount > 0 then return finish("refused", refusedCount, reason) end
+      -- The index came to name another mail with a take of this one's still
+      -- to come: for a run, which finds it again, it is not collected.
+      if shifted and opts and opts.moves then return finish("moved", 0, reason) end
       -- A take that did not land, unexplained even on its one more try
       -- (RunPlan): the mail is left as it is, with nothing recorded, for the
       -- next sweep or a click. No count -- nothing was refused for a reason
@@ -2371,6 +2460,16 @@ function Mail.CollectMail(index, onDone, opts)
       -- Checked against the mail as the plan last knew it: a C.O.D. it paid
       -- reads 0 now, and the mail it names is still this one.
       current = current or fingerprint
+      -- Every take landed and the inbox lists fewer mails than before them:
+      -- the mail, emptied, has gone (the client deletes a mail with no
+      -- text of its own), and what is at its index now -- the next mail, a
+      -- twin of it with its own items still to load -- is not its to wait
+      -- for or to look at.
+      if (tonumber((GetInboxNumItems())) or 0) < listed then
+        ForgetStuck(fingerprint)
+        if current ~= fingerprint then ForgetStuck(current) end
+        return finish("collected", 0, reason)
+      end
       -- Once the header agrees with the links ("Letting the header catch
       -- up"): a caller told "collected" goes on to ask whether the mail is
       -- finished, and that answer reads the header.
@@ -2400,6 +2499,7 @@ function Mail.CollectMail(index, onDone, opts)
 
   WhenIdle(function()
     if not needFetch then return execute() end
+    if opts and opts.moves and Fingerprint(index) ~= fingerprint then return finish("moved") end
     -- The body comes back with the fetch: History keeps a letter's words
     -- (the mail may be deleted once it is finished with).
     local body = GetInboxText(index)

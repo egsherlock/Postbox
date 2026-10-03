@@ -21,9 +21,9 @@ local _, ns = ...
 -- Two rules govern the whole file.
 --
 --   NO MAIL COMMANDS. Every mail command is a round trip and the server handles
---   one at a time; ns.MailService owns the handshake, the descending-index
---   invariant, take verification and the timeout that stops a run instead of
---   advancing past it. Nothing here calls TakeInboxItem, TakeInboxMoney,
+--   one at a time; ns.MailService owns the handshake, what a queued mail is and
+--   how it is found again, take verification and the timeout that stops a run
+--   instead of advancing past it. Nothing here calls TakeInboxItem, TakeInboxMoney,
 --   DeleteInboxItem, ReturnInboxItem, AutoLootMailItem or CheckInbox. What
 --   stays here is what a status code cannot carry: which words the player sees,
 --   which confirmation to raise, and the bookkeeping a run needs to report
@@ -3712,8 +3712,8 @@ end
 -- mail to collect, and the read mail under its divider or in the Done tab
 -- -- and everything that acts on mail still finds it by index and
 -- fingerprint. A selection's range runs down the rows as shown (the list
--- is sorted in place), and a collect run takes its mails highest index
--- first whatever the order (MailService.BuildQueueFor). Another
+-- is sorted in place), and a collect run takes its mails in the order shown
+-- (RV.RunOrder), finding each again by what it is before its take. Another
 -- character's box, every box's matches and Preview mail sort by the same
 -- choice; History keeps the newest collected first and has no sort.
 -------------------------------------------------------------
@@ -3736,6 +3736,37 @@ do
     if la ~= lb then return la < lb end
     return a < b
   end
+end
+
+-- The order a collect run takes mail in: the inbox list's own, as drawn --
+-- the sort, the read-mail mode's grouping (mail to collect above the
+-- divider; the Done tab's mail is finished and never collected), a search
+-- or the stuck filter. It is the very list the rows are bound from
+-- (panel._filtered), so the run and the screen can never disagree; a
+-- refresh still waiting for the next frame is drawn first. nil while the
+-- list on screen is not the inbox's -- the Done tab, History, another
+-- character's box -- where no button starts a run: one started there all
+-- the same takes the order the inbox's list would show (RV.SortAsListed).
+function RV.RunOrder(panel)
+  if panel.viewMode ~= VIEW_COLLECT or AV.Active(panel) or panel._preview then return nil end
+  if panel._dirty and panel:IsShown() then CT.RefreshMailList(panel) end
+  return panel._filtered
+end
+
+-- A queue put in the order the inbox's list keeps (RV.Sort), by the list's
+-- own rule: the box's order, newest first, or the least time left first by
+-- the list's own comparator (RV.ByLeft) over the same days left.
+function RV.SortAsListed(queue)
+  if RV.Sort() ~= "expiry" then
+    table.sort(queue)
+    return
+  end
+  local left = RV.LEFT
+  for i = 1, #queue do
+    local _, _, _, _, _, _, daysLeft = GetInboxHeaderInfo(queue[i])
+    left[queue[i]] = tonumber(daysLeft) or 0
+  end
+  table.sort(queue, RV.ByLeft)
 end
 
 -- The room the sort takes at the row's right end, beside the search: the
@@ -3988,12 +4019,21 @@ local function SelectRange(panel, row)
   AfterSelectionChange(panel)
 end
 
--- The selected indices, highest first: the order a collect run wants them
--- in, so that taking one never shifts the ones still to come.
-local function SelectionIndices(panel)
-  local out = {}
-  for index in pairs(panel._selected or {}) do out[#out + 1] = index end
-  table.sort(out, function(a, b) return a > b end)
+-- The selected indices in the order the list draws them (`order`,
+-- RV.RunOrder): the order a collect run takes them in. A pick the list does
+-- not name -- none, while the list is the one on screen -- follows in the
+-- box's own order; the queue builder takes each index once.
+local function SelectionIndices(panel, order)
+  local set, out = panel._selected or RV.NONE, {}
+  if order then
+    for i = 1, #order do
+      if set[order[i]] then out[#out + 1] = order[i] end
+    end
+  end
+  local rest = {}
+  for index in pairs(set) do rest[#rest + 1] = index end
+  table.sort(rest)
+  for i = 1, #rest do out[#out + 1] = rest[i] end
   return out
 end
 
@@ -7234,7 +7274,8 @@ end
 -- own has moved on, and whatever slid into its index is not this call's to
 -- delete. `record` is the mail's
 -- History record, so a deleted letter stays listed there with what it said.
--- `andThen` runs whatever happened.
+-- `andThen` runs whatever happened, told true when a delete of ours went
+-- out (a run waits for the inbox to show it gone: Run.Next).
 function RV.AutoDelete(panel, index, before, record, andThen)
   local function Continue() if andThen then andThen() end end
   if RV.Mode() ~= "delete" or not index or type(before) ~= "table" then return Continue() end
@@ -7264,9 +7305,9 @@ function RV.AutoDelete(panel, index, before, record, andThen)
   if record and Mail().HistoryNote then Mail().HistoryNote(record, "read") end
   -- Through the sweep that re-checks the index immediately before its
   -- command: deleting is the irreversible one.
-  Mail().DeleteMails({ index }, function()
+  Mail().DeleteMails({ index }, function(deleted)
     RequestRefresh(panel)
-    Continue()
+    if andThen then andThen((tonumber(deleted) or 0) > 0) end
   end, { [index] = Fingerprint(index) })
 end
 
@@ -7508,7 +7549,39 @@ end
 local Run = {
   active = false,
   panel = nil,
+  -- The queued mails, in the order the run takes them (the order the list
+  -- shows): each one's inbox index as the queue was built, and what it is --
+  -- sender, subject and C.O.D. (MailService, "A queued mail, found again"),
+  -- in parallel arrays kept between runs. `at` is where each is now as far
+  -- as the run knows: moved as the inbox moves, nil once the mail has left.
+  -- Each mail is looked for there first, and checked (Run.Find).
   queue = {},
+  sender = {},
+  subject = {},
+  cod = {},
+  at = {},
+  -- How many mails the inbox listed when the places in `at` were last
+  -- right: more now, and new mail has come in at the top of the box.
+  listed = 0,
+  -- The mail being taken: its index, the inbox's count as its step began,
+  -- and whether it came out empty.
+  last = nil,
+  before = 0,
+  emptied = false,
+  -- How many times each place in the queue has been found again after its
+  -- take met another mail at its index ("moved", Run.Moved).
+  again = {},
+  -- Waiting for a mail the run emptied to leave the inbox (Run.Await): until
+  -- when, from how many listed, where it is and whether it was one the
+  -- client deletes by itself. `stays`: kind of mail (MailService's
+  -- categories) -> true where one of those stayed after all, and the run
+  -- waits for no more of that kind.
+  waiting = false,
+  waitUntil = 0,
+  waitFrom = 0,
+  waitWhere = 0,
+  waitLeaving = false,
+  stays = {},
   cursor = 0,
   current = nil,
   collected = 0,
@@ -7520,12 +7593,107 @@ local Run = {
   spent = 0,
   reason = nil,
   reasonMixed = false,
-  -- Handed to every CollectMail of the run: { keepFree = N } (BeginRun).
+  -- Handed to every CollectMail of the run: { keepFree = N, moves = true }
+  -- (BeginRun).
   opts = {},
 }
 
 function CT.IsRunning()
   return Run.active and true or false
+end
+
+-- The queue, from the indices a builder handed over in the order the run
+-- takes them, and what each mail is: read now, or as `ids` recorded it when
+-- a question about them went up (the bag-space dialog), so the run takes
+-- what the question described.
+function Run.Load(queue, ids)
+  local M = Mail()
+  for i = 1, #queue do
+    local index = queue[i]
+    Run.queue[i], Run.at[i] = index, index
+    if ids then
+      Run.sender[i], Run.subject[i], Run.cod[i] = ids.sender[i], ids.subject[i], ids.cod[i]
+    else
+      Run.sender[i], Run.subject[i], Run.cod[i] = M.QueuedIdentity(index)
+    end
+  end
+  Run.listed = tonumber((GetInboxNumItems())) or 0
+end
+
+-- Every mail the run knows a place for at `from` or above moves by `delta`.
+function Run.Shift(from, delta)
+  local at = Run.at
+  for i = 1, #Run.queue do
+    if at[i] and at[i] >= from then at[i] = at[i] + delta end
+  end
+end
+
+-- Whether the mail at `index` reads as the queued mail at place `i`: its
+-- sender and subject, what a take leaves as they were.
+function Run.Reads(index, i)
+  local _, _, sender, subject = GetInboxHeaderInfo(index)
+  return (sender ~= nil or subject ~= nil) and sender == Run.sender[i] and subject == Run.subject[i]
+end
+
+-- Whether a mail the run has already handled, and left in the inbox (stuck,
+-- or a letter that stays), is at `index`: a twin of it there is not the
+-- next mail's to take. Only while it still reads as that mail there: a
+-- place gone stale claims nothing.
+function Run.Claimed(index)
+  local at = Run.at
+  for i = 1, Run.cursor - 1 do
+    if at[i] == index and Run.Reads(index, i) then return true end
+  end
+  return false
+end
+
+-- The queued mail at place `i`, found in the inbox as it stands now: where
+-- the run expects it, checked against what it is with no string built, and
+-- failing that the nearest mail that reads as it (twins are one another's).
+-- nil when nothing does any more -- taken elsewhere, returned, expired: the
+-- run passes over it rather than mistake another mail for it.
+function Run.Find(i)
+  local M = Mail()
+  local listed = tonumber((GetInboxNumItems())) or 0
+  -- More mail than the places were counted against: new mail comes in at
+  -- the top of the box and moves every index up. Checked like any other
+  -- guess, and a wrong one (mail added at the foot of a box too big to
+  -- list whole) is put right by the search below.
+  if listed > Run.listed then Run.Shift(1, listed - Run.listed) end
+  Run.listed = listed
+  local sender, subject, cod, guess = Run.sender[i], Run.subject[i], Run.cod[i], Run.at[i]
+  if guess >= 1 and guess <= listed and not Run.Claimed(guess)
+    and M.QueuedAt(guess, sender, subject, cod) then
+    return guess
+  end
+  local best, gap = nil, nil
+  for index = 1, listed do
+    if not Run.Claimed(index) and M.QueuedAt(index, sender, subject, cod) then
+      local d = math.abs(index - guess)
+      if not best or d < gap then best, gap = index, d end
+    end
+  end
+  if not best then
+    Run.at[i] = nil
+    return nil
+  end
+  -- Whatever moved it moved the mails above it with it.
+  Run.Shift(guess, best - guess)
+  Run.at[i] = best
+  return best
+end
+
+-- Whether any of the queued mails can still be found, before a run starts on
+-- what a question described.
+function Run.AnyHere()
+  local M = Mail()
+  local listed = tonumber((GetInboxNumItems())) or 0
+  for i = 1, #Run.queue do
+    for index = 1, listed do
+      if M.QueuedAt(index, Run.sender[i], Run.subject[i], Run.cod[i]) then return true end
+    end
+  end
+  return false
 end
 
 local function Remaining()
@@ -7555,7 +7723,18 @@ local function ResetRun()
   Run.active = false
   Run.current = nil
   Run.cursor = 0
+  -- A wait for a mail to leave ends with the run, and continues nothing.
+  if Run.waiting then Run.EndAwait(true) end
+  -- By pairs: a mail from the game itself has no sender, so the identity
+  -- arrays can have holes that a length would stop at.
+  for i in pairs(Run.sender) do Run.sender[i] = nil end
+  for i in pairs(Run.subject) do Run.subject[i] = nil end
+  Clear(Run.cod)
+  for i in pairs(Run.at) do Run.at[i] = nil end
+  for i in pairs(Run.again) do Run.again[i] = nil end
   Clear(Run.queue)
+  Run.last, Run.emptied = nil, false
+  for kind in pairs(Run.stays) do Run.stays[kind] = nil end
   Run.collected = 0
   Run.refused = 0
   Run.stuck = 0
@@ -7858,12 +8037,18 @@ local function RunStep()
     return
   end
 
-  Run.cursor = Run.cursor + 1
-  local index = Run.queue[Run.cursor]
-  if not index then
-    FinishRun(0)
-    return
-  end
+  -- The next queued mail, in the order the list shows, found where it is
+  -- now (Run.Find). One no longer in the inbox is passed over, never
+  -- mistaken for another mail.
+  local index
+  repeat
+    Run.cursor = Run.cursor + 1
+    if Run.cursor > #Run.queue then
+      FinishRun(0)
+      return
+    end
+    index = Run.Find(Run.cursor)
+  until index
 
   Run.current = index
   CT.RefreshRunStatus()
@@ -7876,6 +8061,9 @@ local function RunStep()
   local kind = Mail().ClassifyMail(index)
   local mailEarned, mailSpent = MailEconomy(index, kind, money)
   local before = RV.HeldSomething(index) and RV.Before(index) or nil
+  -- Where the mail is, and how many the inbox lists, as its step begins: what
+  -- the run's places are put right against once it is over (Run.Settled).
+  Run.last, Run.before = index, tonumber((GetInboxNumItems())) or 0
 
   Mail().CollectMail(index, function(status, refused, reason, refusal)
     Run.current = nil
@@ -7887,6 +8075,10 @@ local function RunStep()
       StopRun()
       return
     end
+
+    -- The take met another mail at the index and left it alone, before this
+    -- one was emptied: nothing is counted, and the mail is found again.
+    if status == "moved" then return Run.Moved() end
 
     if status == "busy" or status == "timeout" then
       -- Something is wrong with the run itself: the server stopped
@@ -7944,25 +8136,186 @@ local function RunStep()
     end
 
     -- An emptied letter goes before the next mail, in the "delete" read-mail
-    -- mode. The run works downwards, so deleting this index moves none of the
-    -- indices still queued.
+    -- mode; then the run's places follow what the inbox did (Run.Next).
+    Run.emptied = status == "collected"
     if status == "collected" then
-      RV.AutoDelete(Run.panel, index, before, nil, RunStep)
+      RV.AutoDelete(Run.panel, index, before, nil, Run.Next)
     else
-      RunStep()
+      Run.Next()
     end
   end, Run.opts)
 end
 
-local function BeginRun(panel, queue)
+-------------------------------------------------------------
+-- The run, between two mails
+--
+-- A mail the run has emptied may be leaving the inbox: one with no text of
+-- its own, which the client deletes (MailService, "Mail on its way out"), or
+-- a letter the "delete" read-mail mode has just deleted. Its going moves
+-- every mail above it down one, and the run takes mail in the order the
+-- list shows, so the next one is often above it; and the next take judges
+-- whether it landed partly by the inbox listing one mail fewer (RunPlan,
+-- where a twin can slide into an emptied mail's place). So before the next
+-- mail is found and taken, the run waits for the one on its way out to go:
+-- its inbox update, or at most Run.GONE_WAIT. Each take's own look at the
+-- mail its index names, as its command goes out, still keeps every take on
+-- its mail (Mail.CollectMail, opts.moves). Should a mail the client was to
+-- delete stay after all, the run waits for no more of that kind (Run.stays).
+-- Event-driven, registered only for the wait, one one-shot deadline; no
+-- table and no closure per wait.
+-------------------------------------------------------------
+
+-- The longest a mail on its way out is waited for.
+Run.GONE_WAIT = 2
+
+-- How many times one queued mail is found again after its take met another
+-- mail at its index, before the run leaves it for the next press.
+Run.AGAIN = 2
+
+-- The mail just taken, followed: -> where it is now, or nil where it no
+-- longer reads as itself. New mail that came in during its step moved it,
+-- and every mail the run knows a place for, up by as many as came in: found
+-- that much further on, those places move with it.
+function Run.Follow()
+  local i, index = Run.cursor, Run.last
+  local listed = tonumber((GetInboxNumItems())) or 0
+  for k = 0, max(0, listed - Run.before) do
+    if Run.Reads(index + k, i) then
+      if k > 0 then
+        Run.Shift(1, k)
+        Run.last, Run.before, Run.listed = index + k, Run.before + k, Run.listed + k
+      end
+      return index + k
+    end
+  end
+  return nil
+end
+
+-- The take met another mail at its index before the mail was emptied
+-- ("moved"): new mail came in at the top of the box, or a mail above it went,
+-- while the take was on its way. Nothing was counted; the mail is found
+-- again from where it was (Run.Find, which follows new mail) and taken, up
+-- to Run.AGAIN times. Past that it is left as it is, for the next press.
+function Run.Moved()
+  local i = Run.cursor
+  local tries = (Run.again[i] or 0) + 1
+  Run.again[i] = tries
+  Run.at[i] = Run.last
+  if tries <= Run.AGAIN then Run.cursor = i - 1 end
+  RunStep()
+end
+
+-- `deleted`: the "delete" read-mail mode has just deleted the mail
+-- (RV.AutoDelete).
+function Run.Next(deleted)
+  if not Run.active then return end
+  if Run.emptied and Run.last then
+    local where = Run.Follow()
+    local listed = tonumber((GetInboxNumItems())) or 0
+    if where and listed >= Run.before and Run.cursor < #Run.queue then
+      local at
+      if deleted then
+        at = GetTime() + Run.GONE_WAIT
+      elseif not Run.stays[(Mail().ClassifyMail(where))] then
+        at = Mail().Leaving(where)
+      end
+      if at then return Run.Await(min(at, GetTime() + Run.GONE_WAIT), listed, where, not deleted) end
+    end
+  end
+  Run.Settled()
+end
+
+-- `from`: how many mails the inbox lists as the wait begins; one fewer, and
+-- the mail at `where` has gone. `leaving`: it is one the client deletes by
+-- itself, rather than one of ours.
+function Run.Await(at, from, where, leaving)
+  local bus = ns.Events
+  if not (bus and type(bus.Register) == "function") then return Run.Settled() end
+  Run.waitUntil, Run.waitFrom, Run.waitWhere, Run.waitLeaving = at, from, where, leaving
+  if not Run.waiting then
+    Run.waiting = true
+    bus.Register("MAIL_INBOX_UPDATE", Run.OnAwait)
+    bus.Register("MAIL_CLOSED", Run.OnAwait)
+  end
+  C_Timer.After(max(0, at - GetTime()) + 0.1, Run.AwaitLapsed)
+end
+
+-- The mail has gone (the inbox lists fewer than as the wait began), or the
+-- mailbox closed: the run goes on, and finds the mailbox closed if it did.
+function Run.OnAwait(event)
+  if not Run.waiting then return end
+  if event == "MAIL_CLOSED" or not MailboxOpen()
+    or (tonumber((GetInboxNumItems())) or 0) < Run.waitFrom then
+    Run.EndAwait()
+  end
+end
+
+-- One deadline per wait. A timer left from an earlier wait finds this one's
+-- deadline still ahead of it and does nothing. A mail the client was to
+-- delete that is still there at the deadline stayed: no more waits for its
+-- kind of mail.
+function Run.AwaitLapsed()
+  if not (Run.waiting and GetTime() >= Run.waitUntil) then return end
+  if Run.waitLeaving and Run.Reads(Run.waitWhere, Run.cursor) then
+    Run.stays[(Mail().ClassifyMail(Run.waitWhere))] = true
+  end
+  Run.EndAwait()
+end
+
+-- `quiet`: the run itself is over, and nothing goes on.
+function Run.EndAwait(quiet)
+  if not Run.waiting then return end
+  Run.waiting = false
+  local bus = ns.Events
+  if bus and type(bus.Unregister) == "function" then
+    bus.Unregister("MAIL_INBOX_UPDATE", Run.OnAwait)
+    bus.Unregister("MAIL_CLOSED", Run.OnAwait)
+  end
+  if not quiet then Run.Settled() end
+end
+
+-- The run's places put right for what the step did, then the next mail. A
+-- mail emptied that the inbox now lists one fewer of has gone, and every
+-- mail above it moved down one. One that stays (refused, stuck, a letter
+-- kept) keeps its place, followed if new mail moved it, and no twin of it
+-- may then take that place (Run.Claimed). One that no longer reads as
+-- itself where it was is looked for, to know its place.
+function Run.Settled()
+  if not Run.active then return end
+  local i = Run.cursor
+  local where = Run.Follow()
+  local listed = tonumber((GetInboxNumItems())) or 0
+  if Run.emptied and listed < Run.before then
+    Run.at[i] = nil
+    Run.Shift(Run.last + 1, -1)
+    Run.listed = Run.before - 1
+  elseif where then
+    Run.at[i] = where
+    Run.listed = listed
+  else
+    Run.at[i] = Run.last
+    Run.Find(i)
+  end
+  RunStep()
+end
+
+local function BeginRun(panel, queue, ids)
   ResetRun()
+  Run.Load(queue, ids)
+  -- What a question described has all gone while it waited: nothing to run.
+  if ids and not Run.AnyHere() then
+    ResetRun()
+    RequestRefresh(panel)
+    return
+  end
   Run.active = true
   Run.panel = panel
   -- "Keep bag slots free", read once for the run: the service stops before
   -- the item take that would go below it (MailService, RunPlan). One table
-  -- for every mail of every run, not one per mail.
+  -- for every mail of every run, not one per mail. And a take that meets
+  -- another mail at its index answers "moved": the run finds it again.
   Run.opts.keepFree = RV.KeepFreeSlots()
-  for i = 1, #queue do Run.queue[i] = queue[i] end
+  Run.opts.moves = true
   -- Indices shift under a run; an overlay addressed by index cannot survive it.
   if panel.Detail then panel.Detail:Hide() end
   RV.FanClose(true)
@@ -7987,7 +8340,9 @@ local function StartCategoryRun(panel, category)
   -- Under a search the primary takes the mails on screen -- the list this
   -- panel last built -- and nothing else. The category buttons are withdrawn
   -- while a search is on, so `all` is the only category that can arrive here
-  -- in that state.
+  -- in that state. Whichever mails a run takes, it takes them in the order
+  -- the list draws them (RV.RunOrder).
+  local order = RV.RunOrder(panel)
   local queue, info
   if Selecting(panel) then
     -- The picked rows, and of those only the ones the button names: the
@@ -8000,7 +8355,7 @@ local function StartCategoryRun(panel, category)
     -- refused run leaves ordinary uncollected mail, which the next press
     -- picks up as such. Picked one by one, they are tried as a click on
     -- each row would be, stuck or not.
-    queue, info = Mail().BuildQueueFor(SelectionIndices(panel), category, true)
+    queue, info = Mail().BuildQueueFor(SelectionIndices(panel, order), category, true)
     ClearSelection(panel)
   elseif Searching(panel) or StuckOnly(panel) then
     -- The rows on screen, narrowed again by the sweep's own category. The
@@ -8008,11 +8363,12 @@ local function StartCategoryRun(panel, category)
     -- shows, so they take what it shows. Its rows are the stuck mails the
     -- player asked to see, so the primary ("Shown") retries them as it
     -- would a selection; the category sweeps still leave them be.
-    queue, info = Mail().BuildQueueFor(panel._filtered, category,
+    queue, info = Mail().BuildQueueFor(order or panel._filtered, category,
       StuckOnly(panel) and category == "all")
   else
-    queue, info = Mail().BuildQueue(category)
+    queue, info = Mail().BuildQueue(category, order)
   end
+  if not order then RV.SortAsListed(queue) end
 
   -- The inbox is still arriving: GetInboxNumItems reports 0 between MAIL_SHOW
   -- and the first MAIL_INBOX_UPDATE, and an index whose header has not landed
@@ -8079,35 +8435,28 @@ local function StartCategoryRun(panel, category)
         ShowNotice(L()("MSG_BAGS_FULL", need, have, extra))
         return
       end
-      -- Snapshot what the dialog is about to describe, in queue order (highest
-      -- inbox index first, so the remaining indices stay valid). The player can
-      -- click a different category before answering, and this run must collect
-      -- what the dialog said it would.
-      local planned, prints = {}, {}
+      -- Snapshot what the dialog is about to describe, in queue order (the
+      -- order the list shows, so what fits is its first mails), and what each
+      -- mail is. The player can click a different category before answering,
+      -- and this run must collect what the dialog said it would.
+      local planned = {}
+      local ids = { sender = {}, subject = {}, cod = {} }
       for i = 1, fits do
         planned[i] = queue[i]
-        prints[i] = Fingerprint(queue[i])
+        ids.sender[i], ids.subject[i], ids.cod[i] = Mail().QueuedIdentity(queue[i])
       end
       Confirm(POPUP_BAGSPACE, L()["BAGSPACE_CONFIRM_ACCEPT"], L()["COD_CONFIRM_CANCEL"],
         ns.Plural("MSG_BAGSPACE_PARTIAL", fits, ns.Plural("COUNT_MAILS", #queue), need, have, extra),
         function()
           -- The dialog is not modal: rows can be clicked and the inbox can
-          -- reindex while it waits, and then these indices name different
-          -- mails -- including, possibly, C.O.D. mail the queue was built to
-          -- exclude. Only the entries that still name the mail the dialog
-          -- described are run; the dropped ones are ordinary uncollected mail
-          -- the next run picks up at their new indices.
-          local verified = {}
-          for i = 1, #planned do
-            if prints[i] and Fingerprint(planned[i]) == prints[i] then
-              verified[#verified + 1] = planned[i]
-            end
-          end
-          if #verified == 0 then
-            RequestRefresh(panel)
-            return
-          end
-          BeginRun(panel, verified)
+          -- reindex while it waits, so these indices may name different
+          -- mails by now -- including, possibly, C.O.D. mail the queue was
+          -- built to exclude. The run takes the mails the dialog described,
+          -- found again by what they are (Run.Find), and nothing else: a mail
+          -- that has gone is passed over. Another run or take started in the
+          -- meantime keeps the channel; the answer then starts nothing.
+          if Run.active or Mail().IsBusy() then return end
+          BeginRun(panel, planned, ids)
         end)
       return
     end
