@@ -2285,13 +2285,14 @@ local function PaintPicker(list)
       row.Crest:Show()
       row.Name:SetPoint("LEFT", row.Crest, "RIGHT", 6, 0)
       if st.hidden then
-        -- Greyed in colour AND alpha together: no class colour, a crest
-        -- without its hue, both a step back -- and Show beside it at full
-        -- strength, the one thing on the row to do.
+        -- A step back: no class colour, the name in the disabled grey (at
+        -- full strength: a text dimmed by its alpha reads on whatever it
+        -- lets through), a crest without its hue and faded -- and Show
+        -- beside it at full strength, the one thing on the row to do.
         row.Crest:SetDesaturated(true)
         row.Crest:SetAlpha(0.5)
         T.SetColor(row.Name, "textDisabled")
-        row.Name:SetAlpha(0.8)
+        row.Name:SetAlpha(1)
         row.Name:SetText(st.label)
         row.Count:SetText(L["PICKER_SHOW"])
       else
@@ -2924,6 +2925,9 @@ local function BuildHeader(frame)
   frame.Who:SetPoint("RIGHT", picker, "LEFT", -8, 0)
   frame.Who:SetJustifyH("LEFT")
   frame.Who:SetWordWrap(false)
+  -- On the window itself: its inks from it, and a plate under its words
+  -- where the window cannot carry them (Theme.OnWindow).
+  if T.OnWindow then T.OnWindow(frame.Who, "solid", "LEFT") end
 
   -- The name is a way back as well while it is another character's: a
   -- right-click on it goes back as the picker's does (Back), and its tooltip
@@ -3043,7 +3047,7 @@ function Refresh(frame)
   if not UI or type(UI.GetOption) ~= "function" or UI.GetOption("showTabCounts") then
     local _, warn = MM.CountFor(info.realm, info.name)
     local tally = ns.Plural("COUNT_MAILS", info.box)
-    frame.Who:SetText(who .. "  " .. T.Colorize(warn and "warning" or "textSecondary", "(" .. tally .. ")"))
+    frame.Who:SetText(who .. "  " .. T.Colorize(warn and "warning" or "textSecondary", "(" .. tally .. ")", "solid"))
   else
     frame.Who:SetText(who)
   end
@@ -3263,6 +3267,7 @@ local function Build()
   frame.Status:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -26, 8)
   frame.Status:SetJustifyH("LEFT")
   frame.Status:SetWordWrap(false)
+  if ns.Theme.OnWindow then ns.Theme.OnWindow(frame.Status, "solid", "LEFT") end
   frame.StatusHit = CreateFrame("Frame", nil, frame)
   frame.StatusHit:SetAllPoints(frame.Status)
   HoverOnly(frame.StatusHit)

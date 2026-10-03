@@ -1398,6 +1398,9 @@ local function Build()
   local nameCaption = T.CreateText(frame, "label")
   nameCaption:SetPoint("TOPLEFT", frame, "TOPLEFT", left, -TOP)
   nameCaption:SetText(L["GROUPS_NAME"])
+  -- The captions and notes stand on the window itself: their inks from it,
+  -- and a plate under them where it cannot carry them (Theme.OnWindow).
+  if T.OnWindow then T.OnWindow(nameCaption, "solid") end
   parts[#parts + 1] = nameCaption
 
   local paneW = EDITOR_W - left - PAD
@@ -1442,6 +1445,7 @@ local function Build()
   local membersCaption = T.CreateText(frame, "label")
   membersCaption:SetPoint("TOPLEFT", nameWrap, "BOTTOMLEFT", 0, -M.sectionGap)
   membersCaption:SetText(L["GROUPS_MEMBERS"])
+  if T.OnWindow then T.OnWindow(membersCaption, "solid") end
   parts[#parts + 1] = membersCaption
 
   local search = T.CreateSearchBox(frame, paneW, M.controlHeight, L["GROUPS_SEARCH"], {
@@ -1463,6 +1467,7 @@ local function Build()
   count:SetPoint("BOTTOMRIGHT", search.Wrap, "TOPRIGHT", 0, M.labelGap + 2)
   count:SetJustifyH("RIGHT")
   count:SetWordWrap(false)
+  if T.OnWindow then T.OnWindow(count, "solid") end
   frame.Count = count
   parts[#parts + 1] = count
 
@@ -1512,6 +1517,7 @@ local function Build()
   T.SetColor(off, "textDisabled")
   off:SetText(L["GROUPS_BUTTONS_OFF"])
   off:Hide()
+  if T.OnWindow then T.OnWindow(off, "solid") end
   frame.ButtonsOff = off
 
   -- No groups yet: what they are, in one sentence, and the one way to start.
@@ -1524,6 +1530,7 @@ local function Build()
   explain:SetJustifyH("CENTER")
   explain:SetWordWrap(true)
   explain:SetText(L["GROUPS_EMPTY"])
+  if T.OnWindow then T.OnWindow(explain, "solid") end
   local start = T.CreateButton(nil, emptyState)
   start:SetText(L["GROUPS_NEW"])
   T.SizeToText(start, { minWidth = LIST_W, height = BUTTON_H })

@@ -2135,6 +2135,9 @@ local function Build()
   frame.Summary:SetJustifyH("LEFT")
   frame.Summary:SetWordWrap(false)
   frame.Summary:SetText("")
+  -- On the window itself: a plate under its words where the window cannot
+  -- carry them (Theme.OnWindow).
+  if Theme.OnWindow then Theme.OnWindow(frame.Summary, "window", "LEFT") end
 
   -----------------------------------------------------------
   -- Bottom action bar

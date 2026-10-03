@@ -6739,7 +6739,9 @@ do
     local T = Th()
     local icons = ns.Core.Formatting.FormatMoneyIcons
     local strings = L()
-    local up, down = "ff" .. T.Hex.positive, "ff" .. T.Hex.negative
+    -- The sums' inks on the band they stand on (Theme.InkHex: the palette's
+    -- own where a look keeps its colours).
+    local up, down = "ff" .. T.InkHex("positive", "band"), "ff" .. T.InkHex("negative", "band")
     -- A window style that lays the band on a light plate (the post box's white
     -- enamel) inks the label and hands back the figures' dark twins.
     local skin = ns.Skin
@@ -6812,7 +6814,7 @@ local function UpdateHint(panel, numItems, totalItems)
 
   local truncated = totalItems > numItems
   if StuckOnly(panel) then
-    hint:SetText(Th().Colorize("warning", L()["HINT_STUCK_ONLY"]))
+    hint:SetText(Th().Colorize("warning", L()["HINT_STUCK_ONLY"], "window"))
   elseif truncated then
     -- The top row has room for the numbers alone ("50 of 72 shown"); the
     -- chat says why, once.
@@ -7746,7 +7748,7 @@ local function FinishRun(left, stopReason)
   -- its own, so it renders in the label's default -- a neutral divider.
   local theme = ns.Theme
   local function Tinted(token, text)
-    if theme and theme.Colorize then return theme.Colorize(token, text) end
+    if theme and theme.Colorize then return theme.Colorize(token, text, "strip") end
     return text
   end
   local got = tonumber(collected) or 0
@@ -8067,7 +8069,7 @@ local function StartCategoryRun(panel, category)
         -- Nothing fits above the slots kept free, and there are free slots:
         -- no dialog about bag space the player can see is there, just the
         -- run's own stop, before anything is marked read.
-        StatusOutcome(Th().Colorize("warning", ns.Plural("STATUS_KEPT_FREE", keep)))
+        StatusOutcome(Th().Colorize("warning", ns.Plural("STATUS_KEPT_FREE", keep), "strip"))
         ns.Print(ns.Plural("MSG_COLLECT_STOPPED_KEEP", #queue, ns.Plural("COUNT_SLOTS", keep)))
         RequestRefresh(panel)
         return
@@ -12125,6 +12127,9 @@ function CT.Build(parent)
   panel.Hint:SetJustifyH("RIGHT")
   panel.Hint:SetWordWrap(false)
   panel.Hint:SetText("")
+  -- On the window itself: a plate under its words where the window cannot
+  -- carry them (Theme.OnWindow).
+  if T.OnWindow then T.OnWindow(panel.Hint, "window", "RIGHT") end
 
   -- Bottom: one footer holding the blocks under the list -- the totals band,
   -- the primary's slot and the category grid, in the player's order (RV,
@@ -12146,6 +12151,7 @@ function CT.Build(parent)
   panel.HistoryNote:SetWordWrap(false)
   panel.HistoryNote:SetText(ns.Plural("HISTORY_NOTE", HV.Days()))
   panel.HistoryNote:Hide()
+  if T.OnWindow then T.OnWindow(panel.HistoryNote, "window", "CENTER") end
 
   -- The Done view's footer: its one action, full width, where the inbox has
   -- its primary.
@@ -12173,6 +12179,7 @@ function CT.Build(parent)
   panel.AltNote:SetJustifyH("CENTER")
   panel.AltNote:SetWordWrap(false)
   panel.AltNote:Hide()
+  if T.OnWindow then T.OnWindow(panel.AltNote, "window", "CENTER") end
 
 
   -- The totals banner: a divider, not a panel, aligned to the same inset as the

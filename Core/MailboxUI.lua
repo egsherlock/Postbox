@@ -1914,7 +1914,7 @@ function UI.NoteSent()
   status.sent = status.sent + 1
   local said = LF("STATUS_SENT", status.sent)
   local theme = ns.Theme
-  if theme and theme.Colorize then said = theme.Colorize("positive", said) end
+  if theme and theme.Colorize then said = theme.Colorize("positive", said, "strip") end
   status.sentAlone, status.sentTail = said, " \194\183 " .. said
   RenderStatus()
 end
@@ -1966,7 +1966,7 @@ function UI.UpdateStatusSummary()
   local colorize = theme and theme.Colorize
   if waiting > 0 then
     local text = LF("STATUS_BAGS_FULL", waiting)
-    if colorize then text = colorize("warning", text) end
+    if colorize then text = colorize("warning", text, "strip") end
     status.summary = text
   end
   if stuck > 0 then
@@ -1975,7 +1975,7 @@ function UI.UpdateStatusSummary()
     -- a warning, for as long as the list shows only these.
     local panel = CollectPanel()
     local filtering = ns.CollectTab and ns.CollectTab.StuckFilterOn and ns.CollectTab.StuckFilterOn(panel)
-    if colorize then text = colorize(filtering and "accent" or "warning", text) end
+    if colorize then text = colorize(filtering and "accent" or "warning", text, "strip") end
     -- After the bags, em dash between: the bags line is the one a player acts
     -- on first, and it clears by itself.
     status.summary = status.summary and (status.summary .. " \226\128\148 " .. text) or text
@@ -3389,6 +3389,10 @@ local function BuildFrame()
       frame.Status:SetPoint("LEFT", frame, "CENTER", 30, 0)
     end
     frame.Status:SetText("")
+    -- It stands on the title strip, which the window's opacity can make
+    -- nearly clear: a plate of its own under its words where the strip
+    -- cannot carry it (Theme.OnWindow), none where it can.
+    if theme.OnWindow then theme.OnWindow(frame.Status, "strip", "RIGHT") end
 
     -- The truncated tail is the most informative part (the game's own refusal
     -- text), so a hover region over the label offers the full line. Inert

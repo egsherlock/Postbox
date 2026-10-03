@@ -3630,6 +3630,9 @@ local function CreateFieldLabel(parent, anchor, relative, offsetX, offsetY, text
   -- width constraint, which is also what stops a long translation clipping.
   fs:SetHeight(LabelHeight())
   fs:SetText(text)
+  -- On the window itself: its ink from it, and a plate under it where the
+  -- window cannot carry it (Theme.OnWindow).
+  if Theme.OnWindow then Theme.OnWindow(fs, "window") end
   return fs
 end
 
@@ -5462,6 +5465,7 @@ local function BuildAttachmentArea(panel)
   label:SetPoint("TOPLEFT", area, "TOPLEFT", M.inset, -M.tightGap)
   label:SetHeight(LabelHeight())
   label:SetText(L["LABEL_ATTACHMENTS"])
+  if Theme.OnWindow then Theme.OnWindow(label, "window") end
   -- The slot refresh writes "Attachments 3/12" onto it.
   panel.AttachLabel = label
   -- Hovering the caption teaches the ways in, one of which -- Alt+right-click,
@@ -5650,6 +5654,7 @@ local function BuildMoneyRow(panel)
   local label = Theme.CreateText(row, "label")
   label:SetPoint("LEFT", row, "LEFT", M.inset, 0)
   label:SetText(L["LABEL_GOLD_SEND"])
+  if Theme.OnWindow then Theme.OnWindow(label, "window") end
 
   local function CoinIcon(anchor, texture)
     local icon = row:CreateTexture(nil, "OVERLAY")
@@ -5696,6 +5701,7 @@ local function BuildMoneyRow(panel)
   cod.text = Theme.CreateText(cod, "label")
   cod.text:SetPoint("LEFT", cod, "RIGHT", 2, 0)
   cod.text:SetText(L["LABEL_COD_SHORT"])
+  if Theme.OnWindow then Theme.OnWindow(cod.text, "window") end
   cod.__postboxCheck = true
   cod.__label = cod.text
   cod:SetScript("OnEnter", function(self)
@@ -5716,6 +5722,7 @@ local function BuildMoneyRow(panel)
   panel.SendCostLabel = Theme.CreateText(row, "secondary")
   panel.SendCostLabel:SetPoint("RIGHT", row, "RIGHT", -M.tightGap, 0)
   panel.SendCostLabel:SetText("")
+  if Theme.OnWindow then Theme.OnWindow(panel.SendCostLabel, "window") end
 end
 
 local function BuildSendControls(panel)
@@ -5746,6 +5753,7 @@ local function BuildSendControls(panel)
   guidance:SetJustifyV("MIDDLE")
   guidance:SetWordWrap(true)
   guidance:SetText("")
+  if Theme.OnWindow then Theme.OnWindow(guidance, "window") end
   panel.GuidanceLabel = guidance
 end
 
