@@ -1151,7 +1151,10 @@ do
     s.MarkShadow:SetAlpha(0.6)
     s.Mark = over:CreateTexture(nil, "OVERLAY")
     -- The stack's count in the opposite corner, as the list writes it.
+    -- A font from the start, so no paint can write to it bare; the paint
+    -- gives it the list's (RowRules.StyleCount).
     s.Count = over:CreateFontString(nil, "OVERLAY")
+    s.Count:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
     s.Count:SetJustifyH("RIGHT")
     s.Count:SetWordWrap(false)
     s.Name = T.CreateText(art, "value")
@@ -1245,10 +1248,10 @@ do
     -- The count, where Stack counts on item icons puts it: the list's font,
     -- size and corner.
     if UI and UI.GetOption("iconCounts") then
-      s.Count:SetText(SAMPLE_COUNT)
       if R0 and R0.StyleCount then
         R0.StyleCount(s.Count, s.Icon, iconSize)
       end
+      s.Count:SetText(SAMPLE_COUNT)
       s.Count:Show()
     else
       s.Count:Hide()
