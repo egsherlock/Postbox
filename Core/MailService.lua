@@ -3231,6 +3231,9 @@ local function PlanOnHandshake(timedOut)
   if timedOut then
     ErrorWatch.Close()
     bagsCatch.Drop(p.watched)
+    -- The take that was to pay, unanswered: the character's money says
+    -- whether it paid, and what it says is reported.
+    if p.paying then PlanMoneySaysPaid() end
     PlanOver(true)
     return
   end
