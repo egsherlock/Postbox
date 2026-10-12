@@ -8832,6 +8832,12 @@ end
 -- list underneath the thing just opened -- the overlay closes only when its
 -- mail has actually gone, or when a run is shifting indices wholesale. A tile
 -- take paying the mail's C.O.D. is waited for (RV.AwaitsPaidTake).
+--
+-- An overlay that stays keeps its line about why the mail is still here: the
+-- stuck registry can let a refusal go while nothing else about the mail moves
+-- (the character now holds fewer of what was refused, MailService held.Check),
+-- and its lift repaints through this refresh. The line is written again only
+-- when the registry's verdict differs from the one it shows (detail._stuck).
 function CloseDetailIfStale(panel)
   local detail = panel.Detail
   if not detail or not detail:IsShown() then return end
@@ -8839,7 +8845,15 @@ function CloseDetailIfStale(panel)
     detail:Hide()
     return
   end
-  if not LiveIndex(detail) and not RV.AwaitsPaidTake(detail) then detail:Hide() end
+  local index = LiveIndex(detail)
+  if not index then
+    if not RV.AwaitsPaidTake(detail) then detail:Hide() end
+    return
+  end
+  if Mail().StuckReason(index) ~= detail._stuck then
+    PaintDetailContent(detail, index)
+    LayoutDetail(detail)
+  end
 end
 
 -------------------------------------------------------------
@@ -9258,6 +9272,9 @@ local function DetailInfoText(detail, index, kind, hasCOD)
   if stuckReason then
     parts[#parts + 1] = T.Colorize("warning", StuckLine(stuckReason))
   end
+  -- What the line says of it, for the refresh that keeps it so
+  -- (CloseDetailIfStale).
+  detail._stuck = stuckReason
 
   return concat(parts, "  |  ")
 end
