@@ -1974,8 +1974,10 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
   -- paid form names some other mail, not this one.
   local paidFingerprint, tookItem = PaidFingerprint(fingerprint), false
 
-  local function over(timedOut, full, kept, moved)
-    done(timedOut, refused, reason or (refused == 0 and missedText) or nil, fingerprint, full, kept, missed, moved)
+  -- `closed`: the mailbox closed with a take of the plan's in flight or
+  -- waiting for its one more try, and what that take did is not known.
+  local function over(timedOut, full, kept, moved, closed)
+    done(timedOut, refused, reason or (refused == 0 and missedText) or nil, fingerprint, full, kept, missed, moved, closed)
   end
 
   -- A refusal held against the mail, with what the character holds of the
@@ -2149,9 +2151,9 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
         -- inbox cache keeps answering with the old headers for a beat, so
         -- without this test the walk-away paints a phantom refusal onto a
         -- perfectly collectable mail (and, via the fingerprint, onto every
-        -- identical sibling). End the plan; record nothing.
+        -- identical sibling). End the plan as closed; record nothing.
         if not MailboxOpen() then
-          over(false)
+          over(false, false, false, false, true)
           return
         end
 
@@ -2195,7 +2197,7 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
           if (tonumber(cod) or 0) <= 0 then
             again, firstWords = cursor, text or false
             C_Timer.After(RETRY_SETTLE, function()
-              if not MailboxOpen() then return over(false) end
+              if not MailboxOpen() then return over(false, false, false, false, true) end
               -- The take landed after all; the inbox said so late.
               if Fingerprint(index) ~= fingerprint or measure() < before then
                 again = nil
@@ -2624,8 +2626,12 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
 
   local function take()
     RunPlan(index, fingerprint, { { kind = "item", slot = slot } },
-      function(timedOut, refusedCount, reason, current, full, _, missed)
+      function(timedOut, refusedCount, reason, current, full, _, missed, _, closed)
         if timedOut then return finish("timeout", refusedCount, reason) end
+        -- The mailbox closed before the take was seen to land: nothing is
+        -- known to have been taken, and nothing the registry holds is
+        -- forgotten.
+        if closed then return finish("closed", refusedCount, reason) end
         if full then return finish("refused", refusedCount, reason, "bags") end
         if refusedCount > 0 then return finish("refused", refusedCount, reason) end
         -- Did not land, unexplained even on its one more try: nothing taken,
