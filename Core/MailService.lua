@@ -1035,6 +1035,69 @@ local function PaidFingerprint(fingerprint)
   return head .. "0"
 end
 
+-- How many mails the inbox lists now.
+local function Listed()
+  return tonumber((GetInboxNumItems())) or 0
+end
+
+-------------------------------------------------------------
+-- Command layer :: the C.O.D. the player confirmed
+--
+-- The first take from a C.O.D. mail pays it, so a C.O.D. is paid only for
+-- the mail the player clicked and confirmed, and for nothing that merely
+-- reads like it. Sender, subject and amount do not tell two C.O.D.s from one
+-- trader apart, and an index names a mail only while nothing has moved under
+-- it: a mail below it leaving moves it down one, and its twin above slides
+-- into the index reading exactly as it did. So what was clicked is kept
+-- whole -- its fingerprint, how many mails the inbox listed, and the mail's
+-- time left with when it was read -- and every command on that mail, from the
+-- question's answer to the plan's last take, goes only while the index still
+-- reads as that mail with the inbox listing as many mails. Anything else is
+-- answered "moved", with nothing more sent.
+--
+-- The time left (GetInboxHeaderInfo's daysLeft) is fractional and two mails
+-- sent apart differ in it; whether the client counts it down between inbox
+-- updates is not known, so it matches either way: as it was, or as it was
+-- less the time since (CLICK_DAYS_SLACK, about a minute, either side).
+-------------------------------------------------------------
+
+local CLICK_DAYS_SLACK = 0.0007
+
+-- index -> what was clicked, for a mail that owes a C.O.D.: { fingerprint,
+-- listed, days, at }. nil for a header that has not arrived.
+function Mail.Clicked(index)
+  local _, _, sender, subject, _, _, days = GetInboxHeaderInfo(index)
+  if sender == nil and subject == nil then return nil end
+  return {
+    fingerprint = Fingerprint(index),
+    listed = Listed(),
+    days = tonumber(days),
+    at = type(GetTime) == "function" and GetTime() or 0,
+  }
+end
+
+-- index, clicked [, paid] -> whether the mail at `index` is still the one
+-- clicked: the inbox lists as many mails, the index reads as its fingerprint
+-- (or as `paid`, its paid form, once a take of the plan's has paid it), and
+-- its time left is where it was, or where it has run down to since.
+function Mail.StillClicked(index, clicked, paid)
+  if type(clicked) ~= "table" then return false end
+  if Listed() ~= clicked.listed then return false end
+  local now = Fingerprint(index)
+  if now ~= clicked.fingerprint and (paid == nil or now ~= paid) then return false end
+  if clicked.days == nil then return true end
+  local _, _, _, _, _, _, days = GetInboxHeaderInfo(index)
+  days = tonumber(days)
+  if days == nil then return false end
+  local drift = days - clicked.days
+  if drift < 0 then drift = -drift end
+  if drift <= CLICK_DAYS_SLACK then return true end
+  local elapsed = ((type(GetTime) == "function" and GetTime() or 0) - (clicked.at or 0)) / 86400
+  local down = days - clicked.days + elapsed
+  if down < 0 then down = -down end
+  return down <= CLICK_DAYS_SLACK
+end
+
 -------------------------------------------------------------
 -- The stuck registry
 --
@@ -1874,14 +1937,18 @@ end
 -- (PlanOrder), a mail takes the most that fits for the fewest refusals.
 --
 -- Calls done(timedOut, refusedCount, reason, fingerprint, bags, kept, missed,
--- moved) exactly once, where `fingerprint` is the mail's as the plan last
--- knew it: the one it was given, or its paid form once a take has paid the
--- mail's C.O.D. (PaidFingerprint), `bags` is true when a take was refused for
--- want of room and the plan stopped there, `missed` counts the takes that did
--- not land and were not recorded, and `moved` is true when the plan stopped
--- because, with a take of it still to come, the index named another mail.
--- `refusedCount` counts only the refusals that were (bags included); `reason`
--- is their words, or the missed takes' where there were no others.
+-- moved, closed, paid) exactly once, where `fingerprint` is the mail's as the
+-- plan last knew it: the one it was given, or its paid form once a take has
+-- paid the mail's C.O.D. (PaidFingerprint), `bags` is true when a take was
+-- refused for want of room and the plan stopped there, `missed` counts the
+-- takes that did not land and were not recorded, `moved` is true when the
+-- plan stopped because, with a take of it still to come, the index named
+-- another mail, and `paid` is the C.O.D. a take of the plan's paid, in copper,
+-- or nil: known only from the plan's own evidence (a take seen to land on the
+-- mail while it owed, or, where the inbox moved under the take, the
+-- character's money down by exactly the amount). `refusedCount` counts only
+-- the refusals that were (bags included); `reason` is their words, or the
+-- missed takes' where there were no others.
 -------------------------------------------------------------
 
 -- How long a take that did not land, unexplained, waits before its one more
@@ -1959,7 +2026,16 @@ end
 -- attempt also keeps the item limits its refusals have shown (`limits`,
 -- itemID -> the smallest stack refused in the game's words), made at the
 -- first.
-local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt)
+--
+-- `clicked`, where the mail owes a C.O.D. the player has confirmed
+-- (Mail.Clicked, "The C.O.D. the player confirmed"): every take of the plan
+-- goes only while the inbox lists as many mails as it did at the click, and
+-- the first, which pays, only while the index still reads as what was
+-- clicked. A take of such a mail is judged only there too -- by the mail
+-- reading as its paid form or holding less -- and never by the inbox listing
+-- fewer: with the count moved, the index may name a twin, and the plan
+-- stops, "moved" (done's eighth value), with nothing more sent.
+local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt, clicked)
   local cursor = 0
   local refused, missed = 0, 0
   local reason, reasonMixed = nil, false
@@ -1973,11 +2049,19 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
   -- has landed on it -- the first one is the payment. Until one has, the
   -- paid form names some other mail, not this one.
   local paidFingerprint, tookItem = PaidFingerprint(fingerprint), false
+  -- A C.O.D. mail's plan: how many mails the inbox listed at the click, the
+  -- one count every take of it is made and judged at.
+  local codListed = paidFingerprint and type(clicked) == "table" and clicked.listed or nil
+  if paidFingerprint and not codListed then codListed = Listed() end
+  -- The C.O.D. the take about to pay owes, the character's money as it goes
+  -- out, and what was paid once a take is seen to have paid it.
+  local owed, moneyBefore, paidAmount = 0, nil, nil
 
   -- `closed`: the mailbox closed with a take of the plan's in flight or
   -- waiting for its one more try, and what that take did is not known.
   local function over(timedOut, full, kept, moved, closed)
-    done(timedOut, refused, reason or (refused == 0 and missedText) or nil, fingerprint, full, kept, missed, moved, closed)
+    done(timedOut, refused, reason or (refused == 0 and missedText) or nil, fingerprint, full, kept, missed, moved,
+      closed, paidAmount)
   end
 
   -- A refusal held against the mail, with what the character holds of the
@@ -2000,9 +2084,23 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
   -- mail may already be gone and the index somebody else's.
   local markSender, markSubject
   local function Took(op, value, count)
-    if op.kind == "item" then tookItem = true end
+    if op.kind == "item" then
+      -- The first item take of a C.O.D. mail that lands is the one that paid.
+      if not tookItem and codListed and owed > 0 then paidAmount = owed end
+      tookItem = true
+    end
     HoldLeaving(markSender, markSubject)
     HistoryNote(record, op.kind, value, count)
+  end
+
+  -- The take that was to pay went out and the inbox moved under it, so the
+  -- index cannot say what it did: the character's money can. Down by exactly
+  -- what the mail owed, and it landed (the C.O.D. is charged as the item is
+  -- handed over); anything else, and nothing is claimed.
+  local function MoneySaysPaid(op, value, count)
+    if op.kind ~= "item" or tookItem or not codListed or owed <= 0 or not moneyBefore then return end
+    if type(GetMoney) ~= "function" or GetMoney() ~= moneyBefore - owed then return end
+    Took(op, value, count)
   end
 
   local function noteReason(text)
@@ -2042,6 +2140,15 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
       return
     end
 
+    -- A C.O.D. mail is taken from only while the inbox lists what it did at
+    -- the click, and the take that pays only while the index reads as what
+    -- was clicked (see `clicked` above).
+    if codListed and (Listed() ~= codListed
+        or (not tookItem and clicked and not Mail.StillClicked(index, clicked))) then
+      over(false, false, false, true)
+      return
+    end
+
     -- The mail went away (emptied and deleted, or the inbox reindexed). Whatever
     -- is at this index now is not ours to take from.
     local now = Fingerprint(index)
@@ -2066,7 +2173,7 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
     -- did before the take.
     local listedAt = nil
     local function measure()
-      if listedAt and (tonumber((GetInboxNumItems())) or 0) < listedAt then return -1 end
+      if listedAt and not codListed and (tonumber((GetInboxNumItems())) or 0) < listedAt then return -1 end
       if op.kind == "money" then return Mail.MoneyLeft(index) end
       return Mail.AttachmentsLeft(index)
     end
@@ -2101,6 +2208,13 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
       takeCount, takeItem = tonumber(count) or 1, id
     end
 
+    -- The take that pays: what it owes, and the money before it.
+    if codListed and not tookItem and op.kind == "item" then
+      local _, _, _, _, _, codNow = GetInboxHeaderInfo(index)
+      owed = tonumber(codNow) or 0
+      moneyBefore = type(GetMoney) == "function" and GetMoney() or nil
+    end
+
     markSender, markSubject = LeavingMark(index)
     HoldLeaving(markSender, markSubject)
     ErrorWatch.Open()
@@ -2126,6 +2240,16 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
         over(true)
         return
       end
+      -- A C.O.D. mail's take with the inbox listing another count: the index
+      -- may name a twin now, so nothing is judged from it and nothing more
+      -- is sent.
+      if codListed and Listed() ~= codListed then
+        ErrorWatch.Close()
+        bagsCatch.Drop(watched)
+        MoneySaysPaid(op, takes, takeCount)
+        over(false, false, false, true)
+        return
+      end
       if Fingerprint(index) ~= fingerprint or measure() < before then
         ErrorWatch.Close()
         Took(op, takes, takeCount)
@@ -2138,6 +2262,12 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
       -- catches the reason and avoids calling a slow update a refusal.
       C_Timer.After(ERROR_WATCH_GRACE, function()
         local text = ErrorWatch.Close()
+        if codListed and Listed() ~= codListed then
+          bagsCatch.Drop(watched)
+          MoneySaysPaid(op, takes, takeCount)
+          over(false, false, false, true)
+          return
+        end
         if Fingerprint(index) ~= fingerprint or measure() < before then
           Took(op, takes, takeCount)
           bagsCatch.After(watched, step)
@@ -2198,6 +2328,7 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
             again, firstWords = cursor, text or false
             C_Timer.After(RETRY_SETTLE, function()
               if not MailboxOpen() then return over(false, false, false, false, true) end
+              if codListed and Listed() ~= codListed then return over(false, false, false, true) end
               -- The take landed after all; the inbox said so late.
               if Fingerprint(index) ~= fingerprint or measure() < before then
                 again = nil
@@ -2331,10 +2462,13 @@ end
 --               issue another one.
 --   "busy"      another Postbox command sequence owns the channel.
 --   "closed"    the mailbox is not open; nothing was attempted.
---   "moved"     only for a caller passing opts.moves: before the mail was
---               emptied, its index came to name another mail (new mail came
---               in at the top of the box, or one above it went) and nothing
---               more was taken. The caller finds the mail again.
+--   "moved"     before the mail was emptied, its index came to name another
+--               mail (new mail came in at the top of the box, or one above it
+--               went) and nothing more was taken: a run finds it again, a
+--               click is answered with nothing. For a C.O.D. the player
+--               confirmed (opts.clicked), also when the inbox stopped listing
+--               as many mails before or between its takes ("The C.O.D. the
+--               player confirmed").
 -- A "refused" answer carries a fourth value, `kind`: "bags" when the take was
 -- refused for want of bag room ("Bags full": nothing is recorded against the
 -- mail, and a run stops), "keep" when a run's opts.keepFree stopped it before
@@ -2345,7 +2479,9 @@ end
 -- (RunPlan), links that never loaded, or a C.O.D. the caller may not pay.
 -------------------------------------------------------------
 
--- index, onDone [, opts] -> nothing. onDone(status, refusedCount, reason, kind).
+-- index, onDone [, opts] -> nothing. onDone(status, refusedCount, reason, kind,
+-- paid): `paid` is the C.O.D. a take paid, in copper, from the plan's own
+-- evidence (RunPlan), or nil -- whatever the status, "moved" included.
 --
 -- opts.skipFetch  the caller has already loaded this mail's body (the detail
 --                 overlay has), so the fetch would be a wasted round trip that
@@ -2355,18 +2491,22 @@ end
 --                 point, with no gold to take, is left as it is -- not even
 --                 fetched, so it stays unread.
 -- opts.moves      a collect run, which keeps what each mail is and finds it
---                 again: a mail its index stops naming before it is emptied
---                 is answered "moved", not "collected" (the index's mail is
---                 no longer the one asked for, and it was not emptied).
+--                 again when it is answered "moved".
+-- opts.allowCOD   the caller has just had the player confirm this mail's
+--                 C.O.D., and opts.clicked is what was clicked (Mail.Clicked):
+--                 the only way a take that pays is ever sent.
 function Mail.CollectMail(index, onDone, opts)
   local token = Claim()
   local finished = false
+  -- The C.O.D. a take of the plan paid (RunPlan's evidence), told with
+  -- whatever the answer is.
+  local paid = nil
 
   local function finish(status, refusedCount, reason, kind)
     if finished then return end
     finished = true
     Release(token)
-    if onDone then onDone(status, tonumber(refusedCount) or 0, reason, kind) end
+    if onDone then onDone(status, tonumber(refusedCount) or 0, reason, kind, paid) end
   end
 
   if not token then
@@ -2397,6 +2537,15 @@ function Mail.CollectMail(index, onDone, opts)
   -- touch.
   if (tonumber(cod) or 0) > 0 and not (opts and opts.allowCOD) then
     return finish("refused", 0, nil)
+  end
+  -- The C.O.D. the player confirmed: every command on it goes only while the
+  -- index still reads as what was clicked, with the inbox listing as many
+  -- mails ("The C.O.D. the player confirmed"), from here to the plan's last
+  -- take.
+  local clicked = nil
+  if (tonumber(cod) or 0) > 0 then
+    clicked = opts.clicked or Mail.Clicked(index)
+    if not Mail.StillClicked(index, clicked) then return finish("moved") end
   end
 
   -- The run keeps bag slots free and has reached them: a mail that holds
@@ -2439,11 +2588,13 @@ function Mail.CollectMail(index, onDone, opts)
   -- Whether the plan below has already waited once for links that had not
   -- loaded.
   local relooked = false
-  -- For a run (opts.moves), whether the index has stopped naming the mail
-  -- since it was asked for is looked at before the fetch and before the plan
-  -- is made, as RunPlan looks before each take: the run finds it again.
+  -- Whether the index has stopped naming the mail since it was asked for is
+  -- looked at before the fetch and before the plan is made, as RunPlan looks
+  -- before each take, for every caller: a run finds it again, and a click
+  -- is told nothing more was taken.
   local function execute()
-    if opts and opts.moves and Fingerprint(index) ~= fingerprint then
+    if clicked and not Mail.StillClicked(index, clicked) then return finish("moved") end
+    if Fingerprint(index) ~= fingerprint then
       -- A letter that held nothing was all read by the fetch, which went to
       -- it before anything moved: it is done.
       if money <= 0 and itemCount <= 0 and needFetch then
@@ -2499,14 +2650,17 @@ function Mail.CollectMail(index, onDone, opts)
       return finish("collected")
     end
 
-    RunPlan(index, fingerprint, plan, function(timedOut, refusedCount, reason, current, full, kept, missed, shifted)
+    RunPlan(index, fingerprint, plan, function(timedOut, refusedCount, reason, current, full, kept, missed, shifted,
+        _, paidNow)
+      paid = paidNow
       if timedOut then return finish("timeout", refusedCount, reason) end
       if full then return finish("refused", refusedCount, reason, "bags") end
       if kept then return finish("refused", refusedCount, reason, "keep") end
       if refusedCount > 0 then return finish("refused", refusedCount, reason) end
       -- The index came to name another mail with a take of this one's still
-      -- to come: for a run, which finds it again, it is not collected.
-      if shifted and opts and opts.moves then return finish("moved", 0, reason) end
+      -- to come: it is not collected. A run finds it again; a click is told
+      -- that nothing more was sent.
+      if shifted then return finish("moved", 0, reason) end
       -- A take that did not land, unexplained even on its one more try
       -- (RunPlan): the mail is left as it is, with nothing recorded, for the
       -- next sweep or a click. No count -- nothing was refused for a reason
@@ -2528,8 +2682,15 @@ function Mail.CollectMail(index, onDone, opts)
       -- the mail, emptied, has gone (the client deletes a mail with no
       -- text of its own), and what is at its index now -- the next mail, a
       -- twin of it with its own items still to load -- is not its to wait
-      -- for or to look at.
-      if (tonumber((GetInboxNumItems())) or 0) < listed then
+      -- for or to look at. A C.O.D. mail's takes were each judged at the
+      -- count of the click (RunPlan): every one landed, whatever the count
+      -- says now.
+      if clicked and Listed() ~= clicked.listed then
+        ForgetStuck(fingerprint)
+        if current ~= fingerprint then ForgetStuck(current) end
+        return finish("collected", 0, reason)
+      end
+      if not clicked and (tonumber((GetInboxNumItems())) or 0) < listed then
         ForgetStuck(fingerprint)
         if current ~= fingerprint then ForgetStuck(current) end
         return finish("collected", 0, reason)
@@ -2541,7 +2702,8 @@ function Mail.CollectMail(index, onDone, opts)
         if not MailboxOpen() then
           return finish("closed", refusedCount, reason)
         end
-        if Fingerprint(index) == current and Mail.HasContent(index) then
+        if (not clicked or Listed() == clicked.listed)
+          and Fingerprint(index) == current and Mail.HasContent(index) then
           -- Every handshake completed and the mail is still not empty. Nothing
           -- attributable to one take -- so where items stayed while no general
           -- slot was free, that is the bags (see "Bags full"). Otherwise
@@ -2558,12 +2720,13 @@ function Mail.CollectMail(index, onDone, opts)
         if current ~= fingerprint then ForgetStuck(current) end
         finish("collected", 0, reason)
       end)
-    end, record, opts and opts.keepFree, { noted = false })
+    end, record, opts and opts.keepFree, { noted = false }, clicked)
   end
 
   WhenIdle(function()
     if not needFetch then return execute() end
-    if opts and opts.moves and Fingerprint(index) ~= fingerprint then return finish("moved") end
+    if clicked and not Mail.StillClicked(index, clicked) then return finish("moved") end
+    if Fingerprint(index) ~= fingerprint then return finish("moved") end
     -- The body comes back with the fetch: History keeps a letter's words
     -- (the mail may be deleted once it is finished with).
     local body = GetInboxText(index)
@@ -2588,15 +2751,20 @@ end
 --             fetched first, inside this take's own claim of the channel, as
 --             Mail.CollectMail fetches before it enumerates. The fetch marks
 --             the mail read, as taking anything from it would.
+-- opts.allowCOD, opts.clicked  as Mail.CollectMail's: a tile of a C.O.D. mail
+--             is taken, and paid for, only while the index still reads as what
+--             the player clicked, with the inbox listing as many mails.
 function Mail.TakeAttachment(index, slot, onDone, opts)
   local token = Claim()
   local finished = false
+  -- As Mail.CollectMail's: the C.O.D. the take paid, from RunPlan's evidence.
+  local paid = nil
 
   local function finish(status, refusedCount, reason, kind)
     if finished then return end
     finished = true
     Release(token)
-    if onDone then onDone(status, tonumber(refusedCount) or 0, reason, kind) end
+    if onDone then onDone(status, tonumber(refusedCount) or 0, reason, kind, paid) end
   end
 
   if not token then
@@ -2623,10 +2791,18 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
   if (tonumber(codNow) or 0) > 0 and not (opts and opts.allowCOD) then
     return finish("refused", 0, nil)
   end
+  -- The C.O.D. the player confirmed, kept whole from the click to the take
+  -- ("The C.O.D. the player confirmed").
+  local clicked = nil
+  if (tonumber(codNow) or 0) > 0 then
+    clicked = opts.clicked or Mail.Clicked(index)
+    if not Mail.StillClicked(index, clicked) then return finish("moved") end
+  end
 
   local function take()
     RunPlan(index, fingerprint, { { kind = "item", slot = slot } },
-      function(timedOut, refusedCount, reason, current, full, _, missed, _, closed)
+      function(timedOut, refusedCount, reason, current, full, _, missed, moved, closed, paidNow)
+        paid = paidNow
         if timedOut then return finish("timeout", refusedCount, reason) end
         -- The mailbox closed before the take was seen to land: nothing is
         -- known to have been taken, and nothing the registry holds is
@@ -2634,6 +2810,10 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
         if closed then return finish("closed", refusedCount, reason) end
         if full then return finish("refused", refusedCount, reason, "bags") end
         if refusedCount > 0 then return finish("refused", refusedCount, reason) end
+        -- The index stopped naming the mail before the take went, or, for a
+        -- C.O.D., the inbox stopped listing as many mails: nothing more was
+        -- sent, and nothing the registry holds is forgotten.
+        if moved then return finish("moved", 0, reason) end
         -- Did not land, unexplained even on its one more try: nothing taken,
         -- nothing recorded, and nothing the registry holds is forgotten.
         if (missed or 0) > 0 then return finish("refused", 0, reason) end
@@ -2648,10 +2828,11 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
         AfterHeaderSettles(index, current or fingerprint, function()
           finish("collected", 0, reason)
         end)
-      end, opts and opts.history)
+      end, opts and opts.history, nil, nil, clicked)
   end
 
   WhenIdle(function()
+    if clicked and not Mail.StillClicked(index, clicked) then return finish("moved") end
     if not fetch then return take() end
     -- The body first, and the take only once it has landed, on the same
     -- mail, with the slot's item now named by a link (Mail.CollectMail).
@@ -2661,6 +2842,7 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
     WaitForCommand(function(timedOut)
       if timedOut then return finish("timeout") end
       if not MailboxOpen() then return finish("closed") end
+      if clicked and not Mail.StillClicked(index, clicked) then return finish("moved") end
       if Fingerprint(index) ~= fingerprint or not GetInboxItemLink(index, slot) then
         return finish("collected")
       end

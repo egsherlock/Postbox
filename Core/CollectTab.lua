@@ -1551,22 +1551,33 @@ end
 -- spontaneous inbox update), and the quoted amount must never be paid for
 -- whatever mail slid onto the index since. Forward declaration -- Fingerprint
 -- lives with the mail-identity block below.
+--
+-- What was clicked is the whole of it (MailService, "The C.O.D. the player
+-- confirmed"): the fingerprint, how many mails the inbox listed and the
+-- mail's time left. A twin of the mail sliding into its index reads as it
+-- does, so the count is what tells them apart. `listed` is how many the
+-- inbox listed when the row, tile or reading view clicked was bound to its
+-- index: a click on a binding the inbox has moved under since names an
+-- index that may hold another mail, and asks nothing. onConfirm(clicked)
+-- hands it on, for the service to hold every command to.
 local Fingerprint
 
-local function ConfirmCOD(index, onConfirm)
+local function ConfirmCOD(index, onConfirm, listed)
   local _, _, _, _, _, cod = GetInboxHeaderInfo(index)
   local amount = tonumber(cod) or 0
   if amount <= 0 then
     onConfirm()
     return
   end
-  local expected = Fingerprint(index)
+  if listed and listed ~= (tonumber((GetInboxNumItems())) or 0) then return end
+  local clicked = Mail().Clicked(index)
+  if not clicked then return end
   Confirm(POPUP_COD, L()["COD_CONFIRM_ACCEPT"], L()["COD_CONFIRM_CANCEL"],
     L()("COD_CONFIRM_MSG", Helpers().FormatMoney(amount)), function()
       -- Silently stand down on a mismatch, like every LiveIndex caller: the
       -- coalesced refresh has already re-bound the rows the player sees.
-      if Fingerprint(index) ~= expected then return end
-      onConfirm()
+      if not Mail().StillClicked(index, clicked) then return end
+      onConfirm(clicked)
     end)
 end
 
@@ -4776,7 +4787,8 @@ local function ActivateRow(row, button)
   end
 
   if not PreviewGesture(row, button) then
-    CollectSingleMail(panel, index)
+    -- Bound when the list was last built, at that count of mails.
+    CollectSingleMail(panel, index, nil, panel._lastNumItems)
     return
   end
 
@@ -7356,14 +7368,13 @@ function RV.Before(index)
   return { id = id, count = tonumber((GetInboxNumItems())) or 0 }
 end
 
--- index, unpaid -> whether the C.O.D. the player confirmed has changed hands:
--- the mail at the index no longer reads as `unpaid`, its fingerprint before
--- the take. The first take pays, and a paid mail reads nothing owed from
--- then on; one it emptied has gone. A take that moved nothing -- refused,
--- or answered "collected" with no link loaded to take by -- leaves the mail
--- reading exactly as it did, and nothing is said.
-function RV.CODPaid(index, unpaid)
-  return unpaid ~= nil and Fingerprint(index) ~= unpaid
+-- paid -> the C.O.D. a confirmed take paid, said in chat with its amount
+-- where the player can check it against the bill. `paid` is the service's
+-- own evidence (MailService, RunPlan): a take of its seen to land on the mail
+-- while it owed, or the character's money down by exactly the amount. Never
+-- read off the index, which can name another mail by the time it is asked.
+function RV.SayCODPaid(paid)
+  if (tonumber(paid) or 0) > 0 then ns.Print(L()("MSG_COD_PAID", Helpers().FormatMoney(paid))) end
 end
 
 -- Whether the mail held gold or items, from its header (an unread mail's
@@ -7373,31 +7384,27 @@ function RV.HeldSomething(index)
   return (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0
 end
 
-function CollectSingleMail(panel, index, opts)
-  ConfirmCOD(index, function()
+-- `listed`: how many mails the inbox listed when what was clicked was bound
+-- to `index` (ConfirmCOD).
+function CollectSingleMail(panel, index, opts, listed)
+  ConfirmCOD(index, function(clicked)
     -- The one path allowed to pay a C.O.D. -- the player just confirmed this
     -- exact mail's amount (or it has none). The service refuses everywhere
-    -- else, whatever mail an index turns out to name (see Mail.CollectMail).
+    -- else, whatever mail an index turns out to name (see Mail.CollectMail),
+    -- and pays only while the index still names what was clicked.
     local confirmed = {}
     if type(opts) == "table" then
       for k, v in pairs(opts) do confirmed[k] = v end
     end
     confirmed.allowCOD = true
-    local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
-    codBefore = tonumber(codBefore) or 0
-    local unpaid = codBefore > 0 and Fingerprint(index) or nil
+    confirmed.clicked = clicked
     -- Only a mail that held something is finished by a collect: an unread
     -- letter "collected" was read by the fetch, not by the player.
     local before = RV.HeldSomething(index) and RV.Before(index) or nil
-    Mail().CollectMail(index, function(status, refused, reason)
-      -- A confirmed C.O.D. that actually changed hands is reported in chat,
-      -- with the amount, once the mail no longer reads as owing it
-      -- (RV.CODPaid): emptied, or partly taken with its C.O.D. reading zero.
-      -- Read before anything else can touch the mail.
-      if codBefore > 0 and (status == "collected" or status == "refused")
-        and RV.CODPaid(index, unpaid) then
-        ns.Print(L()("MSG_COD_PAID", Helpers().FormatMoney(codBefore)))
-      end
+    Mail().CollectMail(index, function(status, refused, reason, _, paid)
+      -- A confirmed C.O.D. that changed hands is reported in chat, with the
+      -- amount, from the service's own evidence, whatever else is said.
+      RV.SayCODPaid(paid)
       -- Emptied: in the "delete" read-mail mode it goes now, not later.
       if status == "collected" then
         RV.AutoDelete(panel, index, before, confirmed.history)
@@ -7407,6 +7414,12 @@ function CollectSingleMail(panel, index, opts)
       if status == "busy" then return end
       if status == "closed" then
         StatusMailboxClosed()
+        return
+      end
+      -- The index stopped naming what was clicked before a command went:
+      -- nothing more was sent. The list shows the box as it now is.
+      if status == "moved" then
+        RequestRefresh(panel)
         return
       end
       if status == "timeout" then
@@ -7427,7 +7440,7 @@ function CollectSingleMail(panel, index, opts)
       end
       RequestRefresh(panel)
     end, confirmed)
-  end)
+  end, listed)
 end
 
 -- A row in the read view is finished by definition -- read, no money, no
@@ -8690,19 +8703,27 @@ local function TakeOneAttachment(detail, slot)
   -- overlay can be turned to another mail under it (Back, another row), so
   -- what it shows after the wait is not the mail the player answered for.
   local clicked = detail.fingerprint
-  ConfirmCOD(index, function()
+  ConfirmCOD(index, function(what)
     if not detail:IsShown() or detail.fingerprint ~= clicked or LiveIndex(detail) ~= index then return end
     local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
     codBefore = tonumber(codBefore) or 0
     local paying = RV.ArmPaidTake(detail, index, codBefore)
 
-    Mail().TakeAttachment(index, slotIndex, function(status, refused, reason)
+    Mail().TakeAttachment(index, slotIndex, function(status, refused, reason, _, paid)
       local followed = RV.SettlePaidTake(detail, paying, status == "collected")
+      -- A confirmed C.O.D. that was just paid, from the service's evidence.
+      RV.SayCODPaid(paid)
       -- The slot is cleared only once the item has actually left the mailbox.
       -- Blanking it on a timeout, or on a take the server refused, would tell
       -- the player it was collected while it is still sitting there. It stays
       -- clickable, so a retry is their decision rather than an automatic one.
       if status == "busy" then return end
+      -- The index stopped naming the mail before the take went: nothing was
+      -- sent, and the refresh closes the view if its mail has gone.
+      if status == "moved" then
+        RequestRefresh(detail._panel)
+        return
+      end
       if status == "closed" then
         StatusMailboxClosed()
         return
@@ -8721,14 +8742,6 @@ local function TakeOneAttachment(detail, slot)
         LayoutDetail(detail)
         RefreshIdleSummary()
         return
-      end
-
-      -- A confirmed C.O.D. that was just paid: say so in the game's chat, in
-      -- gold, where the player can check it against the bill -- once the
-      -- mail no longer reads as owing it (RV.CODPaid), since "collected" is
-      -- also the answer for a take that found nothing to take.
-      if codBefore > 0 and RV.CODPaid(index, clicked) then
-        ns.Print(L()("MSG_COD_PAID", Helpers().FormatMoney(codBefore)))
       end
 
       -- Taking one attachment can compact the others downwards, so never
@@ -8752,8 +8765,8 @@ local function TakeOneAttachment(detail, slot)
         LayoutDetail(detail)
       end
       RequestRefresh(detail._panel)
-    end, { allowCOD = true, history = detail._history })
-  end)
+    end, { allowCOD = true, history = detail._history, clicked = what })
+  end, detail._listed)
 end
 
 local function BuildDetailSlot(detail, i)
@@ -8849,6 +8862,14 @@ function CloseDetailIfStale(panel)
   local index = LiveIndex(detail)
   if not index then
     if not RV.AwaitsPaidTake(detail) then detail:Hide() end
+    return
+  end
+  -- A mail that owes a C.O.D., under an inbox that has moved since the view
+  -- was bound: its index may name a twin now, reading exactly as it, and the
+  -- view cannot tell which it shows. It closes; a click opens it again.
+  local _, _, _, _, _, cod = GetInboxHeaderInfo(index)
+  if (tonumber(cod) or 0) > 0 and detail._listed ~= (tonumber((GetInboxNumItems())) or 0) then
+    detail:Hide()
     return
   end
   if Mail().StuckReason(index) ~= detail._stuck then
@@ -9097,7 +9118,7 @@ local function BuildDetail(panel)
     CollectSingleMail(panel, index, {
       skipFetch = detail._bodyFetched and true or false,
       history = detail._history,
-    })
+    }, detail._listed)
   end)
 
   detail.Reply:SetScript("OnClick", function()
@@ -9367,6 +9388,9 @@ function ShowDetail(panel, index)
 
   detail.mailIndex = index
   detail.fingerprint = fingerprint
+  -- How many mails the inbox listed as the view was bound to the index: a
+  -- C.O.D. is confirmed from here only while it still does (ConfirmCOD).
+  detail._listed = tonumber((GetInboxNumItems())) or 0
 
   -- Read BEFORE the fetch, because the fetch is what changes it, and it is the
   -- one thing that decides whether the list underneath needs rebuilding at all.
@@ -12289,7 +12313,8 @@ do
   function Fan.TakeItem(plate, index, slot)
     local panel = plate._panel
     local clicked = plate.fingerprint
-    ConfirmCOD(index, function()
+    -- The plate follows its row, which the list bound at its last build.
+    ConfirmCOD(index, function(what)
       if plate.mailIndex ~= index or plate.fingerprint ~= clicked or LiveIndex(plate) ~= index then return end
       local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
       codBefore = tonumber(codBefore) or 0
@@ -12298,9 +12323,16 @@ do
       -- What Delete when done checks the mail against once the take is done,
       -- as a row click's collect does (RV.AutoDelete).
       local before = RV.Before(index)
-      Mail().TakeAttachment(index, slot, function(status, refused, reason, kind)
+      Mail().TakeAttachment(index, slot, function(status, refused, reason, kind, paid)
         if RV.SettlePaidTake(plate, paying, status == "collected") then Fan.fp = plate.fingerprint end
+        -- A confirmed C.O.D. that was just paid, from the service's evidence.
+        RV.SayCODPaid(paid)
         if status == "busy" then return end
+        -- Nothing was sent: the row pass redraws the fan from the mailbox.
+        if status == "moved" then
+          RequestRefresh(panel)
+          return
+        end
         if status == "closed" then
           StatusMailboxClosed()
           return
@@ -12324,11 +12356,6 @@ do
           RV.FanCheck(panel)
           return
         end
-        -- Paid only once the mail no longer reads as owing it (RV.CODPaid):
-        -- a take that found no link loaded answers "collected" too.
-        if codBefore > 0 and RV.CODPaid(index, clicked) then
-          ns.Print(L()("MSG_COD_PAID", Helpers().FormatMoney(codBefore)))
-        end
         -- The last tile of a letter emptied tile by tile: in the "delete"
         -- read-mail mode it goes now, as a collected mail does. Only a mail
         -- that reads finished is touched (RV.AutoDelete).
@@ -12336,8 +12363,8 @@ do
         -- The row pass redraws the fan from the mailbox (RV.FanCheck): a take
         -- can move the other items down a slot.
         RequestRefresh(panel)
-      end, { allowCOD = true, history = record, fetch = true })
-    end)
+      end, { allowCOD = true, history = record, fetch = true, clicked = what })
+    end, panel and panel._lastNumItems)
   end
 
   -- The reading view's coin tile, from the plate.
