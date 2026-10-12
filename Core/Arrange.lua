@@ -5128,6 +5128,8 @@ local function PaintBlockRow(row)
     local r, g, b = Th().GetAccent()
     wash:SetVertexColor(r, g, b, 0.1)
     wash:Show()
+    -- The words in the accent's text tone, made to read where they stand.
+    r, g, b = Th().Ink("accentText")
     row.Name:SetTextColor(r, g, b, 1)
     row.Num:SetTextColor(r, g, b, 1)
   else

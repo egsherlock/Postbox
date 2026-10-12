@@ -1853,7 +1853,8 @@ end
 
 -- The sender written into a two-line row's second line: in its class's
 -- colour where Postbox knows it (RV.PaintSender), else in the name's own
--- role colour, the live accent where that is the accent. An auction
+-- role colour as text on the list (Theme.Ink: the accent's text tone where
+-- that is the accent, made to read on the row's ground). An auction
 -- outcome carries its own colour and is passed as it is. The string is the
 -- same each time for the same name and colour, so a bind makes nothing new.
 function RV.InlineSender(sender, text)
@@ -1865,13 +1866,9 @@ function RV.InlineSender(sender, text)
   if not r then
     local role = T.TextRoles and T.TextRoles.label
     local color = role and role.color or "accent"
-    if color == "accent" then
-      r, g, b = T.GetAccent()
-    else
-      local c = T.Colors and T.Colors[color]
-      if not c then return text end
-      r, g, b = c[1], c[2], c[3]
-    end
+    if color == "accent" then color = "accentText" end
+    if not (T.Colors and T.Colors[color]) then return text end
+    r, g, b = T.Ink(color)
   end
   return format("|cff%02x%02x%02x%s|r", floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5), text or "")
 end
