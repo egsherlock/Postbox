@@ -1556,21 +1556,22 @@ end
 -- confirmed"): the index with a stamp of the inbox as it stood, the
 -- fingerprint and the mail's time left. A twin of the mail sliding into its
 -- index reads as it does, so where the mail went is followed, not read off
--- the index. `listed` is how many the inbox listed when the row, tile or
--- reading view clicked was bound to its index: a click on a binding the
--- inbox has moved under since names an index that may hold another mail, and
--- asks nothing. onConfirm(clicked, at) hands it on, with where the mail is as
+-- the index. `bound` is the inbox's mark (Mail.InboxGen) when the row, tile
+-- or reading view clicked was bound to its index: a click on a binding any
+-- inbox update has come since names an index that may hold another mail --
+-- with the count as it was, too -- and asks nothing; the next frame binds
+-- it again. onConfirm(clicked, at) hands it on, with where the mail is as
 -- the answer comes, for the service to hold every command to.
 local Fingerprint
 
-local function ConfirmCOD(index, onConfirm, listed)
+local function ConfirmCOD(index, onConfirm, bound)
   local _, _, _, _, _, cod = GetInboxHeaderInfo(index)
   local amount = tonumber(cod) or 0
   if amount <= 0 then
     onConfirm()
     return
   end
-  if listed and listed ~= (tonumber((GetInboxNumItems())) or 0) then return end
+  if bound and bound ~= Mail().InboxGen() then return end
   local clicked = Mail().Clicked(index)
   if not clicked then return end
   Confirm(POPUP_COD, L()["COD_CONFIRM_ACCEPT"], L()["COD_CONFIRM_CANCEL"],
@@ -4793,8 +4794,8 @@ local function ActivateRow(row, button)
     -- during a take: a click's collect is no part of it, and taking the
     -- channel from it would stop it. Ignored, as the preview below is.
     if CT.IsRunning() then return end
-    -- Bound when the list was last built, at that count of mails.
-    CollectSingleMail(panel, index, nil, panel._lastNumItems)
+    -- Bound when the list was last built, at that mark of the inbox.
+    CollectSingleMail(panel, index, nil, panel._bindGen)
     return
   end
 
@@ -6926,6 +6927,8 @@ function CT.RefreshMailList(panel)
   elseif Selecting(panel) and not RV.SelectionHolds(panel) then
     ClearSelection(panel)
   end
+  -- The inbox's mark the rows are bound at (ConfirmCOD).
+  panel._bindGen = Mail().InboxGen()
 
   local filtered, filteredDone = panel._filtered, panel._filteredDone
   Clear(filtered)
@@ -7371,9 +7374,9 @@ function RV.HeldSomething(index)
   return (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0
 end
 
--- `listed`: how many mails the inbox listed when what was clicked was bound
--- to `index` (ConfirmCOD).
-function CollectSingleMail(panel, index, opts, listed)
+-- `bound`: the inbox's mark when what was clicked was bound to `index`
+-- (ConfirmCOD).
+function CollectSingleMail(panel, index, opts, bound)
   ConfirmCOD(index, function(clicked, at)
     -- Where the mail clicked is now, for a C.O.D. the answer waited on.
     index = at or index
@@ -7429,7 +7432,7 @@ function CollectSingleMail(panel, index, opts, listed)
       end
       RequestRefresh(panel)
     end, confirmed)
-  end, listed)
+  end, bound)
 end
 
 -- A row in the read view is finished by definition -- read, no money, no
@@ -8721,7 +8724,7 @@ local function TakeOneAttachment(detail, slot)
       end
       RequestRefresh(detail._panel)
     end, { allowCOD = true, history = detail._history, clicked = what })
-  end, detail._listed)
+  end, detail._gen)
 end
 
 local function BuildDetailSlot(detail, i)
@@ -8798,9 +8801,11 @@ end
 -- The detail is addressed by inbox index, and an index stops naming its mail
 -- the moment the mail is emptied. Rather than closing on every refresh -- which
 -- used to need a timer, because reading a mail marks it read and refreshes the
--- list underneath the thing just opened -- the overlay closes only when its
--- mail has actually gone, or when a run is shifting indices wholesale. A tile
--- take paying the mail's C.O.D. is waited for (RV.AwaitsPaidTake).
+-- list underneath the thing just opened -- the overlay follows its mail to
+-- where it is on every refresh and closes only when its mail has actually
+-- gone (or cannot be told from another), or when a run is shifting indices
+-- wholesale. A tile take paying the mail's C.O.D. is waited for
+-- (RV.AwaitsPaidTake).
 --
 -- An overlay that stays keeps its line about why the mail is still here: the
 -- stuck registry can let a refusal go while nothing else about the mail moves
@@ -8814,23 +8819,22 @@ function CloseDetailIfStale(panel)
     detail:Hide()
     return
   end
-  -- The inbox has moved since the view was bound: it follows its mail to
-  -- where it is now (MailService, "the inbox, followed"), and closes when
-  -- the mail has gone or cannot be told from another -- a twin of it
-  -- sliding into its index reads exactly as it does.
-  local count = tonumber((GetInboxNumItems())) or 0
-  if detail._listed ~= count then
-    local was = detail.mailIndex
-    local at = Mail().Rebase(was, detail._stamp)
-    if type(at) ~= "number" then
-      detail:Hide()
-      return
-    end
-    detail.mailIndex = at
-    local take = detail._paidTake
-    if take and take.index == was then take.index = at end
-    detail._stamp, detail._listed = Mail().Stamp(), count
+  -- The view follows its mail to where it is now (MailService, "the inbox,
+  -- followed"), whatever the count says -- two updates can move it and
+  -- leave the count as it was -- and closes when the mail has gone or
+  -- cannot be told from another: a twin of it sliding into its index reads
+  -- exactly as it does. `_gen` is the inbox's mark it is bound at
+  -- (ConfirmCOD).
+  local was = detail.mailIndex
+  local at = Mail().Rebase(was, detail._stamp)
+  if type(at) ~= "number" then
+    detail:Hide()
+    return
   end
+  detail.mailIndex = at
+  local take = detail._paidTake
+  if take and take.index == was then take.index = at end
+  detail._stamp, detail._gen = Mail().Stamp(), Mail().InboxGen()
   local index = LiveIndex(detail)
   if not index then
     if not RV.AwaitsPaidTake(detail) then detail:Hide() end
@@ -9082,7 +9086,7 @@ local function BuildDetail(panel)
     CollectSingleMail(panel, index, {
       skipFetch = detail._bodyFetched and true or false,
       history = detail._history,
-    }, detail._listed)
+    }, detail._gen)
   end)
 
   detail.Reply:SetScript("OnClick", function()
@@ -9140,7 +9144,9 @@ local function BuildDetail(panel)
           -- this is the irreversible one, so the service follows the mail
           -- from the click and checks it once more right before the command
           -- (DeleteOneMail).
-          if detail.mailIndex == index and detail.fingerprint == fingerprint then detail:Hide() end
+          if detail.fingerprint == fingerprint and Mail().Rebase(index, stamp) == detail.mailIndex then
+            detail:Hide()
+          end
           DeleteOneMail(panel, index, fingerprint, stamp)
         end)
       return
@@ -9356,12 +9362,11 @@ function ShowDetail(panel, index)
 
   detail.mailIndex = index
   detail.fingerprint = fingerprint
-  -- How many mails the inbox listed as the view was bound to the index, and
-  -- a stamp of it: the view follows its mail from here (CloseDetailIfStale),
-  -- and a C.O.D. is confirmed from it only while it is up to date
-  -- (ConfirmCOD).
-  detail._listed = tonumber((GetInboxNumItems())) or 0
+  -- A stamp of the inbox as the view was bound to the index, and its mark:
+  -- the view follows its mail from here (CloseDetailIfStale), and a C.O.D.
+  -- is confirmed from it only while nothing has moved since (ConfirmCOD).
   detail._stamp = Mail().Stamp()
+  detail._gen = Mail().InboxGen()
 
   -- Read BEFORE the fetch, because the fetch is what changes it, and it is the
   -- one thing that decides whether the list underneath needs rebuilding at all.
@@ -12337,7 +12342,7 @@ do
         -- can move the other items down a slot.
         RequestRefresh(panel)
       end, { allowCOD = true, history = record, fetch = true, clicked = what })
-    end, panel and panel._lastNumItems)
+    end, panel and panel._bindGen)
   end
 
   -- The reading view's coin tile, from the plate.

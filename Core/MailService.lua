@@ -1608,11 +1608,16 @@ local function TrackSync()
   t.n = now
 end
 
+-- Inbox updates seen this session, counted whether the inbox is followed or
+-- not (Mail.InboxGen).
+local inboxGen = 0
+
 -- An inbox update: read before anything else is told of it. Postbox's
 -- event bus calls this first of all its handlers (registered as this file
 -- loads, below), so nothing asks where a mail is from a reading the update
 -- has made stale.
 local function TrackOnUpdate()
+  inboxGen = inboxGen + 1
   local t = track
   if not t.on then return end
   t.dirty = true
@@ -1664,6 +1669,14 @@ do
   if bus and type(bus.Register) == "function" and bus.Register("MAIL_INBOX_UPDATE", TrackOnUpdate) then
     track.viaBus = true
   end
+end
+
+-- -> how many inbox updates have arrived this session: a mark of the inbox
+-- that costs nothing to take and follows nothing. Whatever was bound to an
+-- index at one mark is bound to the same mail at the same mark; once the
+-- mark has moved it may not be (the collect screen's rows, ConfirmCOD).
+function Mail.InboxGen()
+  return inboxGen
 end
 
 -- -> the log as it stands: a stamp for Mail.Rebase. Followed from here on.
