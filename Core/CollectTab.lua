@@ -9025,6 +9025,8 @@ local function BuildDetail(panel)
     -- A modified click is never the plain click's take, as on the item tiles
     -- beside it and the fan's coin; with no item to link, it does nothing.
     if RV.ModifiedItemClick(index, nil) then return end
+    -- The mail the view is bound to: its fingerprint and the stamp its index
+    -- was read at, held to until the command goes (Mail.TakeMoney).
     Mail().TakeMoney(index, function(status)
       if status == "busy" then return end
       if status == "closed" then
@@ -9042,7 +9044,7 @@ local function BuildDetail(panel)
         LayoutDetail(detail)
       end
       RequestRefresh(panel)
-    end, detail._history)
+    end, detail._history, detail.fingerprint, detail._stamp)
   end)
   money:Hide()
   detail.MoneySlot = money
@@ -12345,9 +12347,13 @@ do
     end, panel and panel._bindGen)
   end
 
-  -- The reading view's coin tile, from the plate.
+  -- The reading view's coin tile, from the plate: only while the row it
+  -- follows is bound as the inbox now stands (as ConfirmCOD asks), and from
+  -- the mail the plate shows (its fingerprint, held to until the command
+  -- goes).
   function Fan.TakeGold(plate, index)
     local panel = plate._panel
+    if panel and panel._bindGen ~= Mail().InboxGen() then return end
     local record = Fan.Record(index)
     local before = RV.Before(index)
     Mail().TakeMoney(index, function(status)
@@ -12363,7 +12369,7 @@ do
       -- The gold the last thing left in it: Delete when done, as above.
       if status == "done" then RV.AutoDelete(panel, index, before, record) end
       RequestRefresh(panel)
-    end, record)
+    end, record, plate.fingerprint)
   end
 
   -- row -> whether the fan answers the icon's hover: a rest begun, or the

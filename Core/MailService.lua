@@ -4114,10 +4114,25 @@ end
 -- The money alone, for the reading view's coin tile. Same channel rules as
 -- everything else: one command at a time, settled by the inbox update.
 -- `history` is the reading view's record for this mail, so the coin and the
--- items taken after it land in one History entry.
-function Mail.TakeMoney(index, onDone, history)
+-- items taken after it land in one History entry. `expected` and `stamp`,
+-- as the single commands': the fingerprint of the mail clicked, and the
+-- stamp its index was read at; the gold goes only from that mail, followed
+-- to where it is ("moved", with nothing sent, otherwise).
+function Mail.TakeMoney(index, onDone, history, expected, stamp)
   if type(TakeInboxMoney) ~= "function" then
     if onDone then onDone("unavailable") end
+    return
+  end
+  if type(stamp) == "number" then
+    local now = Mail.Rebase(index, stamp)
+    if type(now) ~= "number" then
+      if onDone then onDone("moved") end
+      return
+    end
+    index = now
+  end
+  if expected and Fingerprint(index) ~= expected then
+    if onDone then onDone("moved") end
     return
   end
   -- The coin tile's take is recorded like a run's (Core/MailMemory.lua, 2c),
@@ -4137,7 +4152,7 @@ function Mail.TakeMoney(index, onDone, history)
     local leaves = Mail.AttachmentsLeft(at) == 0 and not Mail.HasOwnText(at)
     TakeInboxMoney(at)
     return leaves
-  end, onDone, index, nil, function(where)
+  end, onDone, index, expected, function(where)
     -- Landed: the sum has left the mail where it is, or the mail, emptied
     -- by it, has gone.
     if amount > 0 and (where == nil
