@@ -1144,13 +1144,15 @@ end
 --
 -- So the inbox is followed. From Postbox's first command or run at a mailbox
 -- until it closes, the mails' headers are kept as last read -- sender,
--- subject, money, C.O.D. and items -- and whenever the inbox lists another
--- count, it is read again and lined up against them, mail by mail. What
+-- subject, money, C.O.D. and items -- and whenever an inbox update arrives,
+-- it is read again and lined up against them, mail by mail. What
 -- Postbox expects is tried first: the emptied mails it is waiting on to
 -- leave, and the mail its command may be emptying (`target`, compared by
 -- sender and subject alone, since its own take changes the rest). Failing
 -- that, one other mail leaving, new mail at the top (1 to 3), or more listed
--- at the foot (1 to 3), in that order. What moved is written to a short log
+-- at the foot (1 to 3), in that order. An update that leaves the count as it
+-- was can still have moved every mail ("Same count", below). What moved is
+-- written to a short log
 -- -- this mail went, so many came in at the top -- and anything that holds an
 -- index keeps a stamp (Mail.Stamp: the log as it read the index) and asks
 -- Mail.Rebase where that mail is now: an index; nil, the mail went (one
@@ -1166,9 +1168,20 @@ end
 -- unless every mail it could be is one emptied and on its way out, and then
 -- which is which changes nothing.
 --
--- Cost: one count per inbox update; a change of count reads each header once
--- and lines them up. No table is made after the first time. Nothing is read
--- away from a mailbox, or before Postbox has acted at it.
+-- Same count. A list refresh can bring new mail in at the top while the last
+-- listed drops off the foot (a box listing all it can), or take one mail
+-- away while another comes in, and the count reads as it did with every
+-- index moved. So each update is read, whatever the count says, and lined
+-- up: every mail where it was (the target by sender and subject), or `k` new
+-- at the top with the last `k` dropped off the foot, or every mail where it
+-- was with one changed in place (another addon took its gold). The server's
+-- count growing at the same count is new mail: then a box that reads the same
+-- either way cannot say whether the window moved, and nothing is vouched
+-- for. Anything else lines nothing up.
+--
+-- Cost: one count per inbox update, and each header read once; lining up
+-- reads nothing more. No table is made after the first time. Nothing is
+-- read away from a mailbox, or before Postbox has acted at it.
 -------------------------------------------------------------
 
 -- At most this many may have gone in one change of count, and one log holds
@@ -1181,7 +1194,10 @@ local TRACK_LEAVE = 10
 local T_AMB, T_DEL, T_INS, T_LOST = 1, 2, 3, 4
 
 local track = {
-  on = false, frame = nil,
+  -- `viaBus`: the updates come through the event bus (TrackOnUpdate).
+  on = false, frame = nil, viaBus = false,
+  -- An inbox update has arrived since the inbox was last read.
+  dirty = false,
   -- What the server says it holds, as last read (GetInboxNumItems' second).
   total = 0,
   -- The mails as last read (`n` of them): sender, subject, money, C.O.D.,
@@ -1354,6 +1370,7 @@ local function TrackAll()
   local n, total = GetInboxNumItems()
   t.n = tonumber(n) or 0
   t.total = tonumber(total) or t.n
+  t.dirty = false
   t.leaving = 0
   for x = 1, t.n do
     TrackRead(x, t.s, t.j, t.m, t.c, t.i)
@@ -1362,18 +1379,125 @@ local function TrackAll()
   for x = t.n + 1, #t.left do t.left[x], t.busy[x] = nil, nil end
 end
 
+-- Same count ("Same count", above): every mail read now where it was last
+-- read, as TrackSame weighs it (the target by sender and subject).
+local function TrackInPlace()
+  local t = track
+  for x = 1, t.n do
+    if not TrackSame(x, x) then return false end
+  end
+  return true
+end
+
+-- `k` new at the top and the last `k` dropped off the foot: every mail read
+-- now below the new ones is the one `k` above it.
+local function TrackShifted(k)
+  for y = k + 1, track.n do
+    if not TrackSame(y - k, y) then return false end
+  end
+  return true
+end
+
+-- Every mail where it was by sender and subject, and one at most, other than
+-- the target, holding something else now: a mail changed where it is.
+local function TrackOneChanged()
+  local t = track
+  local changed = false
+  for x = 1, t.n do
+    if t.s[x] ~= t.cs[x] or t.j[x] ~= t.cj[x] then return false end
+    if x ~= t.target and not (t.m[x] == t.cm[x] and t.c[x] == t.cc[x] and t.i[x] == t.ci[x]) then
+      if changed then return false end
+      changed = true
+    end
+  end
+  return true
+end
+
+-- The same count, read again, `total` the server's now -> 0, nothing moved;
+-- `k`, k new at the top and the last k dropped off the foot; or false,
+-- nothing lines up, or two ways do.
+local function TrackSameCount(total)
+  local t = track
+  local arrived = total > t.total
+  local inPlace = TrackInPlace()
+  local shift = 0
+  if not inPlace or arrived then
+    local most = t.n - 1
+    if most > TRACK_BAND then most = TRACK_BAND end
+    for k = 1, most do
+      if TrackShifted(k) then
+        if shift ~= 0 then return false end
+        shift = k
+      end
+    end
+  end
+  if inPlace then
+    -- New mail, and the box reads the same moved or not.
+    if arrived and shift ~= 0 then return false end
+    return 0
+  end
+  if shift ~= 0 then return shift end
+  if not arrived and TrackOneChanged() then return 0 end
+  return false
+end
+
+-- The same count read again (Track*, above) and lined up: the log told,
+-- the target and the marks of what is on its way out followed, and the
+-- reading kept.
+local function TrackKeepSame(total)
+  local t = track
+  local n = t.n
+  local how = TrackSameCount(total)
+  t.total = total
+  if how == false then
+    -- Nothing lines up: every index held is unknown from here on.
+    TrackLog(T_LOST)
+    if t.target ~= nil then t.target = false end
+    for x = 1, n do
+      if t.left[x] then TrackPerf(x, false) end
+      t.left[x], t.busy[x] = false, false
+    end
+    t.leaving = 0
+  elseif how > 0 then
+    -- The last `how` are no longer listed: where they are, nothing says.
+    TrackLog(T_AMB, n - how + 1, n)
+    TrackLog(T_INS, how)
+    for x = n - how + 1, n do if t.left[x] then TrackPerf(x, false) end end
+    if type(t.target) == "number" then
+      if t.target > n - how then t.target = false else t.target = t.target + how end
+    end
+    local cleft, cbusy = t.cleft, t.cbusy
+    for y = 1, how do cleft[y], cbusy[y] = false, false end
+    t.leaving = 0
+    for x = 1, n - how do
+      cleft[x + how], cbusy[x + how] = t.left[x], t.busy[x]
+      if t.left[x] then t.leaving = t.leaving + 1 end
+    end
+    t.left, t.cleft = t.cleft, t.left
+    t.busy, t.cbusy = t.cbusy, t.busy
+  end
+  t.s, t.cs = t.cs, t.s
+  t.j, t.cj = t.cj, t.j
+  t.m, t.cm = t.cm, t.m
+  t.c, t.cc = t.cc, t.c
+  t.i, t.ci = t.ci, t.i
+end
+
 -- The inbox as it reads now, lined up against the mails last read: the log
--- told what moved, the target followed, and the reading kept.
+-- told what moved, the target followed, and the reading kept. Read again on
+-- every update (`dirty`) and on any change of either count.
 local function TrackSync()
   local t = track
   if not t.on then return end
   local now, total = GetInboxNumItems()
   now = tonumber(now) or 0
   total = tonumber(total) or now
-  if now == t.n then return end
+  if now == t.n and total == t.total and not t.dirty then return end
   if not MailboxOpen() then return end
+  t.dirty = false
   TrackLapse()
   for y = 1, now do TrackRead(y, t.cs, t.cj, t.cm, t.cc, t.ci) end
+  if now == t.n then return TrackKeepSame(total) end
   -- Expected first; then one other gone; then new mail at the top, or more
   -- listed at the foot -- the server's count grows with new mail and not
   -- with more of it listed, so that says which to try first -- with as many
@@ -1484,11 +1608,20 @@ local function TrackSync()
   t.n = now
 end
 
+-- An inbox update: read before anything else is told of it. Postbox's
+-- event bus calls this first of all its handlers (registered as this file
+-- loads, below), so nothing asks where a mail is from a reading the update
+-- has made stale.
+local function TrackOnUpdate()
+  local t = track
+  if not t.on then return end
+  t.dirty = true
+  if ns.Perf and t.leaving > 0 and CommandPending() then TrackBusy() end
+  TrackSync()
+end
+
 local function TrackOnEvent(_, event, kind)
-  if event == "MAIL_INBOX_UPDATE" then
-    if ns.Perf and track.leaving > 0 and CommandPending() then TrackBusy() end
-    return TrackSync()
-  end
+  if event == "MAIL_INBOX_UPDATE" then return TrackOnUpdate() end
   if event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
     local enum = type(Enum) == "table" and Enum.PlayerInteractionType or nil
     if not (enum and kind == enum.MailInfo) then return end
@@ -1516,12 +1649,21 @@ local function TrackArm()
     t.frame:SetScript("OnEvent", TrackOnEvent)
   end
   t.on = true
-  t.frame:RegisterEvent("MAIL_INBOX_UPDATE")
+  if not t.viaBus then t.frame:RegisterEvent("MAIL_INBOX_UPDATE") end
   t.frame:RegisterEvent("MAIL_CLOSED")
   t.frame:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
   TrackAll()
   -- A stamp from before is from another reading altogether.
   TrackLog(T_LOST)
+end
+
+-- The inbox's updates come through the event bus, first of its handlers;
+-- without a bus, through the journal's own frame while it is armed.
+do
+  local bus = ns.Events
+  if bus and type(bus.Register) == "function" and bus.Register("MAIL_INBOX_UPDATE", TrackOnUpdate) then
+    track.viaBus = true
+  end
 end
 
 -- -> the log as it stands: a stamp for Mail.Rebase. Followed from here on.
@@ -1624,6 +1766,12 @@ end
 -- sent apart differ in it; whether the client counts it down between inbox
 -- updates is not known, so it matches either way: as it was, or as it was
 -- less the time since (CLICK_DAYS_SLACK, about a minute, either side).
+--
+-- And one confirmation pays once. The take that is to pay goes once for
+-- what was clicked (`spent` from then on): seen to pay, the plan goes on
+-- with the paid mail; not seen to -- refused, or the mail not where the
+-- journal says -- the plan ends there, and only the character's money says
+-- whether it paid. Anything more is the player's next click.
 -------------------------------------------------------------
 
 local CLICK_DAYS_SLACK = 0.0007
@@ -1654,9 +1802,9 @@ end
 -- clicked: it is where the mail clicked is known to be now, it reads as its
 -- fingerprint (or as `paid`, its paid form, once a take of the plan's has
 -- paid it), and its time left is where it was, or where it has run down to
--- since.
+-- since. False once the take that pays has gone for it (`spent`).
 function Mail.StillClicked(index, clicked, paid)
-  if type(clicked) ~= "table" then return false end
+  if type(clicked) ~= "table" or clicked.spent then return false end
   if Mail.ClickedAt(clicked) ~= index then return false end
   local now = Fingerprint(index)
   if now ~= clicked.fingerprint and (paid == nil or now ~= paid) then return false end
@@ -2628,7 +2776,8 @@ local plan = {
   whole = false, noted = false, limits = {},
   cursor = 0, refused = 0, missed = 0, reason = nil, reasonMixed = false, missedText = nil,
   again = nil, firstWords = nil, paidFingerprint = nil, tookItem = false, codPlan = false,
-  owed = 0, moneyBefore = nil, paidAmount = nil, tookMoney = 0,
+  -- `paying`: the take under way is the one that pays the mail's C.O.D.
+  owed = 0, moneyBefore = nil, paidAmount = nil, tookMoney = 0, paying = false,
   markSender = nil, markSubject = nil,
   -- The take under way.
   op = nil, slot = nil, before = 0, takes = nil, takeCount = nil, takeItem = nil,
@@ -2791,6 +2940,39 @@ local function PlanOnRetry()
   WhenIdle(PlanStep, PlanRetryTimeout)
 end
 
+-- The take that was to pay a C.O.D. went and was not seen to land where the
+-- mail is (`seen`, "same" or "lost"; `text`, the game's words): nothing more
+-- goes on this confirmation. The character's money says whether it paid --
+-- the take and the payment are then reported, whichever mail the server
+-- took it from -- and otherwise the game's words say why it was refused, as
+-- for any take.
+local function PlanPayingOver(seen, text)
+  local p = plan
+  PlanMoneySaysPaid()
+  if not MailboxOpen() then return PlanOver(false, false, false, false, true) end
+  if p.tookItem then return PlanOver(false, false, false, true) end
+  if text and not IsPassingWords(text) then
+    if IsBagsWords(text) then
+      p.refused = p.refused + 1
+      PlanNoteReason(text)
+      SetBagsFull()
+      return PlanOver(false, true)
+    end
+    if PlanRecord(text, p.takeItem) then
+      p.refused = p.refused + 1
+      PlanNoteReason(text)
+    else
+      p.missed = p.missed + 1
+      p.missedText = p.missedText or text
+    end
+    return PlanOver(false)
+  end
+  if seen == "lost" then return PlanOver(false, false, false, true) end
+  p.missed = p.missed + 1
+  p.missedText = p.missedText or text or nil
+  PlanOver(false)
+end
+
 -- The grace after a handshake that left the mail as it was.
 local function PlanOnGrace()
   local p = plan
@@ -2807,6 +2989,9 @@ local function PlanOnGrace()
   -- Nothing moved: nothing is on its way to the bags either. (The take may
   -- still land, late: until the plan decides, its mail may still go by it.)
   bagsCatch.Drop(p.watched)
+  -- The take that was to pay a C.O.D., not seen to: the plan ends here
+  -- ("The C.O.D. the player confirmed").
+  if p.paying then return PlanPayingOver(seen, text) end
   -- The mailbox closed with this command in flight -- the player walked
   -- away mid-take. The unchanged mail proves NOTHING: the server refuses
   -- everything from out of range, and the client's inbox cache keeps
@@ -3005,11 +3190,14 @@ function PlanStep()
     p.takeCount, p.takeItem = tonumber(count) or 1, id
   end
 
-  -- The take that pays: what it owes, and the money before it.
-  if p.codPlan and not p.tookItem and op.kind == "item" then
+  -- The take that pays: what it owes, and the money before it. It goes once
+  -- for what was clicked ("The C.O.D. the player confirmed").
+  p.paying = p.codPlan and not p.tookItem and op.kind == "item"
+  if p.paying then
     local _, _, _, _, _, codNow = GetInboxHeaderInfo(index)
     p.owed = tonumber(codNow) or 0
     p.moneyBefore = type(GetMoney) == "function" and GetMoney() or nil
+    if p.clicked then p.clicked.spent = true end
   end
   -- The character's purse and bags as the take goes, the last witnesses of
   -- what it did (PlanCharacterSays).
@@ -3085,7 +3273,7 @@ local function RunPlan(index, fingerprint, list, done, record, keepFree, whole, 
   p.again, p.firstWords = nil, nil
   p.paidFingerprint, p.tookItem = PaidFingerprint(fingerprint), false
   p.codPlan = p.paidFingerprint ~= nil
-  p.owed, p.moneyBefore, p.paidAmount, p.tookMoney = 0, nil, nil, 0
+  p.owed, p.moneyBefore, p.paidAmount, p.tookMoney, p.paying = 0, nil, nil, 0, false
   p.markSender, p.markSubject = nil, nil
   p.op, p.pending = nil, nil
   p.record = HistoryRecord(index, record)
