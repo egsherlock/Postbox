@@ -2979,11 +2979,16 @@ end
 -- what it did: the character's money can. Down by exactly what the mail
 -- owed, and it landed (the C.O.D. is charged as the item is handed over);
 -- anything else, and nothing is claimed.
+local function PlanPurseSaysPaid()
+  local p = plan
+  return p.owed > 0 and p.moneyBefore ~= nil and type(GetMoney) == "function"
+    and GetMoney() == p.moneyBefore - p.owed
+end
+
 local function PlanMoneySaysPaid()
   local p = plan
   local op = p.op
-  if op.kind ~= "item" or p.tookItem or not p.codPlan or p.owed <= 0 or not p.moneyBefore then return end
-  if type(GetMoney) ~= "function" or GetMoney() ~= p.moneyBefore - p.owed then return end
+  if op.kind ~= "item" or p.tookItem or not p.codPlan or not PlanPurseSaysPaid() then return end
   PlanTook(op, p.takes, p.takeCount)
 end
 
@@ -3126,19 +3131,95 @@ local function PlanPayingOver(seen, text)
   PlanOver(false)
 end
 
+-- Waiting for the character's word. Where the inbox alone cannot say what a
+-- take did -- its mail lined up as gone while a twin of it stands where it
+-- would be had the take been refused (TrackStayed), a mail that cannot be
+-- followed at all, or the take that pays a C.O.D. not seen to land -- and
+-- the game gave no words to settle it, only the character's purse and bags
+-- can (PlanCharacterSays, PlanPurseSaysPaid). They can trail the inbox
+-- update by more than the grace. So the take waits for them: their own
+-- events, PLAYER_MONEY and BAG_UPDATE_DELAYED, each looked at as it comes,
+-- for WAIT seconds at most; the mailbox closing ends the wait at once.
+-- Listened to only while a take waits, one at a time (the plan's), and the
+-- deadline told from a later one's by counters, not a closure.
+local evidence = { WAIT = 1.5, frame = nil, armN = 0, fireN = 0 }
+
+local PlanDecide
+
+-- Whether what the character says now settles the take as landed: the
+-- purse for the take that pays, else the purse or the bags.
+function evidence.Says()
+  if plan.paying then return PlanPurseSaysPaid() end
+  return PlanCharacterSays()
+end
+
+-- seen, text -> whether the take is to wait for the character's word: no
+-- words of the game's that are the take's own, the mail lost (or the take
+-- the one that pays), and nothing said yet.
+function evidence.Wanted(seen, text)
+  if text and not IsPassingWords(text) then return false end
+  if not (plan.paying or seen == "lost") or not MailboxOpen() then return false end
+  return not evidence.Says()
+end
+
+function evidence.Over()
+  local p = plan
+  if p.pending ~= "evidence" then return end
+  p.pending = nil
+  local f = evidence.frame
+  f:UnregisterEvent("PLAYER_MONEY")
+  f:UnregisterEvent("BAG_UPDATE_DELAYED")
+  f:UnregisterEvent("MAIL_CLOSED")
+  PlanDecide(true)
+end
+
+function evidence.OnEvent(_, event)
+  if plan.pending ~= "evidence" then return end
+  if event == "MAIL_CLOSED" or evidence.Says() then evidence.Over() end
+end
+
+function evidence.Due()
+  evidence.fireN = evidence.fireN + 1
+  if evidence.fireN == evidence.armN then evidence.Over() end
+end
+
+function evidence.Await()
+  plan.pending = "evidence"
+  local f = evidence.frame
+  if not f then
+    f = CreateFrame("Frame")
+    f:SetScript("OnEvent", evidence.OnEvent)
+    evidence.frame = f
+  end
+  f:RegisterEvent("PLAYER_MONEY")
+  f:RegisterEvent("BAG_UPDATE_DELAYED")
+  f:RegisterEvent("MAIL_CLOSED")
+  evidence.armN = evidence.armN + 1
+  C_Timer.After(evidence.WAIT, evidence.Due)
+end
+
 -- The grace after a handshake that left the mail as it was.
 local function PlanOnGrace()
   local p = plan
   if p.pending ~= "grace" then return end
   p.pending = nil
-  local op = p.op
-  local text = ErrorWatch.Close()
+  p.text = ErrorWatch.Close()
+  PlanDecide(false)
+end
+
+-- What the take did, decided from the inbox, the game's words (`text`, read
+-- at the grace's end) and, where they cannot say, the character's word,
+-- waited for once (`waited`).
+function PlanDecide(waited)
+  local p = plan
+  local op, text = p.op, p.text
   local seen = PlanLook()
   if seen == "took" then
     PlanLanded()
     bagsCatch.After(p.watched, PlanStep)
     return
   end
+  if not waited and evidence.Wanted(seen, text) then return evidence.Await() end
   -- Nothing moved: nothing is on its way to the bags either. (The take may
   -- still land, late: until the plan decides, its mail may still go by it.)
   bagsCatch.Drop(p.watched)
