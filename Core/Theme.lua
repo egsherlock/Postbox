@@ -2479,8 +2479,15 @@ do
     return plate
   end
 
-  function Theme.RepaintTextPlates()
+  -- Every text's plate, or `only` that text's: a text whose face was set
+  -- on the string itself (a window title) after it was laid out.
+  function Theme.RepaintTextPlates(only)
     if not Grounds.on then return end
+    if only then
+      local plate = textPlates[only]
+      if plate then PaintTextPlate(only, plate) end
+      return
+    end
     for fs, plate in pairs(textPlates) do PaintTextPlate(fs, plate) end
   end
 end

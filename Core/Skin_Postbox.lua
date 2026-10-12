@@ -1112,6 +1112,12 @@ local function DressTitle(fs)
   end
   local c = P.title
   fs:SetTextColor(c[1], c[2], c[3], c[4])
+  -- The plate under it on the strip (Theme.OnWindow) round the words as
+  -- they measure in the face just set: the title is dressed after the
+  -- windows' text is laid out again, and its plate would keep the width of
+  -- the face before.
+  local T = ns.Theme
+  if T and type(T.RepaintTextPlates) == "function" then T.RepaintTextPlates(fs) end
 end
 
 local function AdoptTitle(fs)
