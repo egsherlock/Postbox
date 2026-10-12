@@ -7332,11 +7332,25 @@ function RV.AutoDelete(panel, index, before, record, andThen)
   if not RV.HistoryOn() and Mail().HasOwnText(index) then return RV.Continue(andThen) end
   if record and Mail().HistoryNote then Mail().HistoryNote(record, "read") end
   -- Through the sweep that re-checks the index immediately before its
-  -- command: deleting is the irreversible one.
-  Mail().DeleteMails({ index }, function(deleted)
-    RequestRefresh(panel)
-    if andThen then andThen((tonumber(deleted) or 0) > 0) end
-  end, { [index] = Fingerprint(index) })
+  -- command: deleting is the irreversible one. The one-mail list, what it
+  -- names and the answer are kept on RV, not made per letter: one delete of
+  -- this kind at a time, since the sweep owns the channel (and this asked
+  -- that it be free, above).
+  local list, expected = RV.adList, RV.adExpected
+  for key in pairs(expected) do expected[key] = nil end
+  list[1], expected[index] = index, Fingerprint(index)
+  RV.adPanel, RV.adThen = panel, andThen
+  Mail().DeleteMails(list, RV.AutoDeleted, expected)
+end
+
+-- RV.AutoDelete's one-mail list and what it names, and its answer.
+RV.adList, RV.adExpected = {}, {}
+
+function RV.AutoDeleted(deleted)
+  local panel, andThen = RV.adPanel, RV.adThen
+  RV.adPanel, RV.adThen = nil, nil
+  RequestRefresh(panel)
+  if andThen then andThen((tonumber(deleted) or 0) > 0) end
 end
 
 -- index -> what RV.AutoDelete checks the mail against once the take is done:

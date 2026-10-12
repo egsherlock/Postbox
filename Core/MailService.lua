@@ -4201,6 +4201,70 @@ end
 -- goes (Mail.IsReadPersistent, asked again right before each command): read,
 -- with no gold and nothing attached, so a sweep never deletes a mail that
 -- still holds something or has not been read.
+--
+-- The sweep under way: one at a time (it owns the channel), so its state is
+-- this one table, kept, and its steps the functions below it, not closures
+-- made per sweep or per delete. `pending` names the handshake it waits on.
+local sweep = {
+  token = nil, onDone = nil, expected = nil, stamp = 0,
+  list = {}, n = 0, cursor = 0, deleted = 0, pending = nil,
+}
+
+local function SweepOrder(a, b) return a > b end
+
+local function SweepFinish(status)
+  local s = sweep
+  if not s.token then return end
+  local token, onDone, deleted = s.token, s.onDone, s.deleted
+  s.token, s.onDone, s.expected, s.pending = nil, nil, nil, nil
+  TrackEnd()
+  Release(token)
+  if onDone then onDone(deleted, status) end
+end
+
+local function SweepTimeout()
+  SweepFinish("timeout")
+end
+
+local SweepStep
+
+local function SweepOnHandshake(timedOut)
+  local s = sweep
+  if s.pending ~= "delete" then return end
+  s.pending = nil
+  if timedOut then return SweepFinish("timeout") end
+  TrackSettled(true)
+  TrackEnd()
+  s.deleted = s.deleted + 1
+  SweepStep()
+end
+
+function SweepStep()
+  local s = sweep
+  s.cursor = s.cursor + 1
+  if s.cursor > s.n then return SweepFinish("done") end
+  local index = s.list[s.cursor]
+  if not MailboxOpen() then return SweepFinish("closed") end
+
+  -- The last look before the irreversible command (see the contract above).
+  -- A mail that cannot be followed, or reads as another, is skipped, not
+  -- chased: fingerprints are not unique across identical auction mails, so
+  -- relocating by fingerprint could delete a sibling the caller never
+  -- listed.
+  local at = Mail.Rebase(index, s.stamp)
+  if at == false and not track.on then at = index end
+  if type(at) ~= "number" or (s.expected and Fingerprint(at) ~= s.expected[index])
+     or not Mail.IsReadPersistent(at) then
+    return SweepStep()
+  end
+
+  TrackBegin(at)
+  TrackMayEmpty(true)
+  DeleteInboxItem(at)
+  s.pending = "delete"
+  WaitForCommand(SweepOnHandshake)
+end
+
 function Mail.DeleteMails(indices, onDone, expected, stamp)
   if type(DeleteInboxItem) ~= "function" then
     if onDone then onDone(0, "unavailable") end
@@ -4208,14 +4272,11 @@ function Mail.DeleteMails(indices, onDone, expected, stamp)
   end
   if type(stamp) ~= "number" then stamp = Mail.Stamp() end
 
-  local list = {}
+  local any = false
   for i = 1, #indices do
-    local index = tonumber(indices[i])
-    if index then list[#list + 1] = index end
+    if tonumber(indices[i]) then any = true break end
   end
-  table.sort(list, function(a, b) return a > b end)
-
-  if #list == 0 then
+  if not any then
     if onDone then onDone(0, "done") end
     return
   end
@@ -4226,50 +4287,24 @@ function Mail.DeleteMails(indices, onDone, expected, stamp)
     return
   end
 
-  local finished = false
-  local deleted = 0
-  local function finish(status)
-    if finished then return end
-    finished = true
-    TrackEnd()
-    Release(token)
-    if onDone then onDone(deleted, status) end
-  end
-
-  if not MailboxOpen() then return finish("closed") end
-
-  local cursor = 0
-  local function step()
-    cursor = cursor + 1
-    local index = list[cursor]
-    if not index then return finish("done") end
-    if not MailboxOpen() then return finish("closed") end
-
-    -- The last look before the irreversible command (see the contract above).
-    -- A mail that cannot be followed, or reads as another, is skipped, not
-    -- chased: fingerprints are not unique across identical auction mails, so
-    -- relocating by fingerprint could delete a sibling the caller never
-    -- listed.
-    local at = Mail.Rebase(index, stamp)
-    if at == false and not track.on then at = index end
-    if type(at) ~= "number" or (expected and Fingerprint(at) ~= expected[index])
-       or not Mail.IsReadPersistent(at) then
-      return step()
+  -- The list, highest index first, into the sweep's own.
+  local s = sweep
+  local list, n = s.list, 0
+  for i = 1, #indices do
+    local index = tonumber(indices[i])
+    if index then
+      n = n + 1
+      list[n] = index
     end
-
-    TrackBegin(at)
-    TrackMayEmpty(true)
-    DeleteInboxItem(at)
-    WaitForCommand(function(timedOut)
-      if timedOut then return finish("timeout") end
-      TrackSettled(true)
-      TrackEnd()
-      deleted = deleted + 1
-      step()
-    end)
   end
+  for k = #list, n + 1, -1 do list[k] = nil end
+  if n > 1 then table.sort(list, SweepOrder) end
+  s.token, s.onDone, s.expected, s.stamp = token, onDone, expected, stamp
+  s.n, s.cursor, s.deleted, s.pending = n, 0, 0, nil
 
-  WhenIdle(step, function() finish("timeout") end)
+  if not MailboxOpen() then return SweepFinish("closed") end
+
+  WhenIdle(SweepStep, SweepTimeout)
 end
 
 -------------------------------------------------------------
