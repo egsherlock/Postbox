@@ -1180,17 +1180,20 @@ local function ClassOf(realm, name)
   return type(byRealm) == "table" and byRealm[name] or nil
 end
 
--- realm, name [, noRealm] -> the name in its class colour (plain where the
--- class is not known), and the realm after it, quieter, when it is not the
--- one being played -- unless `noRealm`: where a box is already on screen,
--- picked from a list that named the realm, the name alone says whose.
-function MM.ClassName(realm, name, noRealm)
+-- realm, name [, noRealm [, ground]] -> the name in its class colour (plain
+-- where the class is not known), and the realm after it, quieter, when it is
+-- not the one being played -- unless `noRealm`: where a box is already on
+-- screen, picked from a list that named the realm, the name alone says
+-- whose. `ground`: where the name is read when not on the lists -- "tooltip"
+-- for a tooltip, which stays dark in Light mode: both colours are inked for
+-- it (Theme section 2c).
+function MM.ClassName(realm, name, noRealm, ground)
   local text = tostring(name or "")
   local CS = ns.ContactService
   local token = ClassOf(realm, name)
-  if token and CS and CS.WrapClass then text = CS.WrapClass(token, text) end
+  if token and CS and CS.WrapClass then text = CS.WrapClass(token, text, ground) end
   if not noRealm and realm and realm ~= GetRealmName() then
-    text = text .. " " .. ns.Theme.Colorize("textSecondary", "- " .. realm)
+    text = text .. " " .. ns.Theme.Colorize("textSecondary", "- " .. realm, ground)
   end
   return text
 end
@@ -1266,16 +1269,17 @@ end
 -- row, tile, dress -> where what the row's mail held can be taken: at the
 -- mailbox of the character whose box it is, named, or at a mailbox, for the
 -- one being played. `tile`: a fan tile's line, which adds the link gesture,
--- and the try-on where `dress` (an item there is something to try on).
+-- and the try-on where `dress` (an item there is something to try on). A
+-- tooltip's hint: the name inked for the tooltip.
 function MM.TakeHint(row, tile, dress)
   local myRealm, myName = Me()
   local realm, name = row.boxRealm or myRealm, row.boxName
   local on = name and not (name == myName and realm == myRealm)
   if tile then
-    if on then return L(dress and "MEMORY_TILE_ON_DRESS" or "MEMORY_TILE_ON", MM.ClassName(realm, name, true)) end
+    if on then return L(dress and "MEMORY_TILE_ON_DRESS" or "MEMORY_TILE_ON", MM.ClassName(realm, name, true, "tooltip")) end
     return L[dress and "MEMORY_TILE_HERE_DRESS" or "MEMORY_TILE_HERE"]
   end
-  if on then return L("MEMORY_TAKE_ON", MM.ClassName(realm, name, true)) end
+  if on then return L("MEMORY_TAKE_ON", MM.ClassName(realm, name, true, "tooltip")) end
   return L["MEMORY_TAKE_HERE"]
 end
 
@@ -1616,7 +1620,7 @@ function MM.NewRow(parent)
     -- Whose matches these are, and what the heading does: nothing on it
     -- looks like a button.
     T.TipBegin(self)
-    T.TipTitle(MM.ClassName(owner.headerRealm, owner.headerName))
+    T.TipTitle(MM.ClassName(owner.headerRealm, owner.headerName, nil, "tooltip"))
     T.TipHint(L["MEMORY_HEADER_TIP"])
     GameTooltip:Show()
   end)
@@ -2047,7 +2051,8 @@ local function PendingRows(watch, arrived, from, snap)
 end
 
 -- For the minimap tooltip's "arrived" section: what the notifications named,
--- newest first, as { label = outcome in its tone, item = name }.
+-- newest first, as { label = outcome in its tone, item = name }; the tone
+-- inked for the tooltip, which stays dark in Light mode.
 function MM.PendingSummary()
   local realm, name = Me()
   local watch = WatchFor(realm, name, false)
@@ -2058,7 +2063,7 @@ function MM.PendingSummary()
     local p = pending[i]
     local item = p.item or ""
     if (tonumber(p.n) or 1) > 1 then item = item .. " (" .. p.n .. ")" end
-    out[#out + 1] = { label = (R and R.OutcomeSender(p.k)) or L["MEMORY_FROM_AH"], item = item }
+    out[#out + 1] = { label = (R and R.OutcomeSender(p.k, "tooltip")) or L["MEMORY_FROM_AH"], item = item }
   end
   return out
 end
@@ -2178,7 +2183,7 @@ local function PickerTip(row)
     T.TipTitle(L["HIDDEN_TITLE"])
     T.TipLine(ns.Summary(L["HIDDEN_DESC"]))
   else
-    T.TipTitle(MM.ClassName(row.realm, row.charName))
+    T.TipTitle(MM.ClassName(row.realm, row.charName, nil, "tooltip"))
     if kind == "hidden" then
       T.TipHint(L["PICKER_SHOW_TIP"])
     else
@@ -2964,7 +2969,7 @@ local function BuildHeader(frame)
     if not v then return end
     local T = ns.Theme
     T.TipBegin(self, "ANCHOR_TOPRIGHT")
-    T.TipTitle(MM.ClassName(v.realm, v.name))
+    T.TipTitle(MM.ClassName(v.realm, v.name, nil, "tooltip"))
     T.TipHint(L["PICKER_BACK_HINT"])
     GameTooltip:Show()
   end)

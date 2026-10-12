@@ -1208,10 +1208,13 @@ local TIP = {
   seen = {},           -- the one-field snapshot MailMemory.AgeText reads
 }
 
+-- `tone`: a palette token for the whole line ("warning"), inked for the
+-- tooltip, which stays dark in Light mode.
 function TIP.Fact(label, value, tone)
   value = tostring(value)
   if tone then
-    GameTooltip:AddDoubleLine(label, value, tone[1], tone[2], tone[3], tone[1], tone[2], tone[3])
+    local r, g, b = ns.Theme.Ink(tone, "tooltip")
+    GameTooltip:AddDoubleLine(label, value, r, g, b, r, g, b)
   else
     GameTooltip:AddDoubleLine(label, value, TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03, 1, 1, 1)
   end
@@ -1239,11 +1242,12 @@ end
 -- on its way has gone unopened) after it in the warning tone. The count is
 -- the right-hand side on every row, so the counts stand in one column.
 function TIP.CharacterName(Memory, st)
-  local name = Memory.ClassName(st.realm, st.name)
+  -- Inked on the tooltip it is read on, the name's class colour and realm
+  -- as the warning: in Light mode the palette's tones are the light
+  -- paper's, and the tooltip stays dark.
+  local name = Memory.ClassName(st.realm, st.name, nil, "tooltip")
   local warning = st.warn and st.text
   if not warning then return name end
-  -- Inked on the tooltip it is read on: in Light mode the warning's own
-  -- tone is the light paper's, and the tooltip stays dark.
   return name .. "  " .. ns.Theme.Colorize("warning", warning, "tooltip")
 end
 
@@ -1305,12 +1309,13 @@ ShowTooltip = function(button, hostMode)
     -- Green: good news. The accent belongs to selection and the orange to
     -- refusals; an arrival is neither (see the badge in Core/MailMemory).
     -- What the auction house said arrived, by item, each in its outcome's
-    -- tone; the client's latest senders otherwise, beside the label.
-    local pos = ns.Theme.Colors.positive
+    -- tone; the client's latest senders otherwise, beside the label. The
+    -- green inked for the tooltip, which stays dark in Light mode.
+    local pr, pg, pb = ns.Theme.Ink("positive", "tooltip")
     local pending = state.pending
     local from = state.newFrom
     if type(pending) == "table" and #pending > 0 then
-      GameTooltip:AddLine(L["MEMORY_NEW_SINCE"], pos[1], pos[2], pos[3])
+      GameTooltip:AddLine(L["MEMORY_NEW_SINCE"], pr, pg, pb)
       local shown = math.min(#pending, TIP.ARRIVALS)
       for i = 1, shown do
         GameTooltip:AddDoubleLine(pending[i].label, pending[i].item, 1, 1, 1, 1, 1, 1)
@@ -1318,10 +1323,10 @@ ShowTooltip = function(button, hostMode)
       if #pending > shown then TIP.More(#pending - shown) end
     elseif type(from) == "table" and #from > 0 then
       for i = 1, #from do
-        GameTooltip:AddDoubleLine(i == 1 and L["MEMORY_NEW_SINCE"] or " ", from[i], pos[1], pos[2], pos[3], 1, 1, 1)
+        GameTooltip:AddDoubleLine(i == 1 and L["MEMORY_NEW_SINCE"] or " ", from[i], pr, pg, pb, 1, 1, 1)
       end
     else
-      GameTooltip:AddLine(L["MEMORY_NEW_SINCE"], pos[1], pos[2], pos[3])
+      GameTooltip:AddLine(L["MEMORY_NEW_SINCE"], pr, pg, pb)
     end
   end
 
@@ -1335,7 +1340,7 @@ ShowTooltip = function(button, hostMode)
       -- apart: listing these under "waiting to collect" and counting them
       -- again read as twice the mail there actually was.
       if state.stuckGroups then
-        TIP.Fact(L["MINIMAP_TIP_STUCK"], state.stuck, ns.Theme.Colors.warning)
+        TIP.Fact(L["MINIMAP_TIP_STUCK"], state.stuck, "warning")
         TIP.Senders(state.stuckGroups)
       end
     elseif not state.arrived then

@@ -3116,11 +3116,12 @@ function RV.IndexOf(layout, id)
 end
 
 -- What an auction mail says where its sender would be, in its own tone, or
--- nil for any other kind of mail.
-local function OutcomeSender(kind)
+-- nil for any other kind of mail. `ground`: where it is read, when not on
+-- the lists ("tooltip": the minimap tooltip's arrivals).
+local function OutcomeSender(kind, ground)
   local outcome = AUCTION_OUTCOME[kind]
   if not outcome then return nil end
-  return Th().Colorize(outcome.role, L()[outcome.key])
+  return Th().Colorize(outcome.role, L()[outcome.key], ground)
 end
 
 -- Published for the mailbox memory, which draws its rows by these same rules
@@ -4389,7 +4390,7 @@ function AV.MeasurePlate(panel, plate, Memory, who)
   local fs = plate:GetFontString()
   plate.pad = 2 * M.tightGap + 12
   plate.caption, plate.nameText = name .. count, name
-  plate.fullName = Memory.ClassName(who.realm, who.name)
+  plate.fullName = Memory.ClassName(who.realm, who.name, nil, "tooltip")
   plate.Count:SetText(count)
   plate.natW = MeasureWith(panel, fs, plate.caption) + plate.pad
   plate.nameW = MeasureWith(panel, fs, name)
