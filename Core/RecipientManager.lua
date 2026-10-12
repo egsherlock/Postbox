@@ -91,7 +91,9 @@ local ACTION_GAP    = 6
 -- Theme.CreateButton and both are this tall, written once here so the pair
 -- cannot drift apart -- the direction half used to be a flat plate at
 -- M.tileHeight beside a push button, which on a stock UI is a bevelled button
--- two pixels from a flat fill: two controls, not one.
+-- two pixels from a flat fill: two controls, not one. The toggle is
+-- SORT_TOGGLE_W wide, and wider only where its longest caption needs it
+-- (FitSortControl), the group with it.
 local SORT_TOGGLE_H = 22
 local SORT_TOGGLE_W = 150
 local SORT_DIR_W    = SORT_TOGGLE_H
@@ -1870,13 +1872,17 @@ local function Build()
   sortGroup:SetSize(SORT_GROUP_W, CTRL_H)
   sortGroup:SetPoint("TOPRIGHT", band, "TOPRIGHT", -BAND_PAD - 1, -BAND_PAD)
 
-  local sortItems = {}
+  -- The list names each field; the toggle says "Sort: <field>", every one of
+  -- which it measures for its width (FitSortControl).
+  local sortItems, sortCaptions = {}, {}
   for index, sort in ipairs(SORTS) do
     sortItems[index] = { id = sort.id, name = L[sort.nameKey] }
+    sortCaptions[index] = L("RM_SORT_TOGGLE", L[sort.nameKey])
   end
 
   local sortDrop = ns.Core.UI.Dropdown.Create(sortGroup, {
     items        = sortItems,
+    captions     = sortCaptions,
     toggleWidth  = SORT_TOGGLE_W,
     toggleHeight = SORT_TOGGLE_H,
     height       = CTRL_H,
@@ -1945,6 +1951,21 @@ local function Build()
     -- for Theme.RepaintAccentText to find, so re-asserting it here is what keeps
     -- it on the LIVE accent after an EllesmereUI user retunes theirs.
     Theme.SetColor(sortDir.Arrow, "accentBright")
+  end
+
+  -- The toggle SORT_TOGGLE_W wide unless its longest caption will not fit
+  -- that (a German or Russian "Sort: Last played"); then as wide as that
+  -- caption needs (the select's FitWidth), the direction square keeping its
+  -- place against it and the search box beside the group giving up the
+  -- difference. Run once the window's fonts are on it (RM.Show) and when
+  -- they move (RM.RefitText); a width that has not changed is not set.
+  function frame.FitSortControl()
+    local width = sortDrop:FitWidth()
+    local toggle = sortDrop._toggle
+    if toggle:GetWidth() == width then return end
+    sortDrop:SetWidth(width)
+    toggle:SetWidth(width)
+    sortGroup:SetWidth(width + M.space.hair + SORT_DIR_W)
   end
 
   sortDrop:SetChangeCallback(function(id)
@@ -2368,7 +2389,8 @@ function RM.Show()
   frame:Raise()
   if ns.Skin and ns.Skin.Refresh then ns.Skin.Refresh(frame) end
   -- Last: the summary line has its text and the skin its fonts, so both are
-  -- measured as they will be seen.
+  -- measured as they will be seen; the sort's captions too.
+  frame.FitSortControl()
   ApplyBounds(frame)
   -- With no size stored yet (a first open, or after Reset to defaults), the
   -- default is whole rows, which only a measured chrome can say.
@@ -2378,6 +2400,14 @@ end
 
 function RM.Hide()
   if RM._frame then RM._frame:Hide() end
+end
+
+-- The face the window's text wears moved (a skin's RefitScreens, after the
+-- text was laid out again): the sort's captions measured again. A hidden
+-- window is measured when it next shows (RM.Show).
+function RM.RefitText()
+  local frame = RM._frame
+  if frame and frame:IsShown() then frame.FitSortControl() end
 end
 
 function RM.IsShown()

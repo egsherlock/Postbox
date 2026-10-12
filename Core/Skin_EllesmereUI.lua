@@ -1575,8 +1575,9 @@ function Skin.RefreshAccents()
 end
 
 -- The screens that fit text to its width, measured again after the text's
--- face moved: the Mail tab's columns and captions, Mail Memory's rows and the
--- options panel's controls, as the Postbox style does after a font change
+-- face moved: the Mail tab's columns and captions, Mail Memory's rows, the
+-- options panel's controls and the recipient manager's sort, as the Postbox
+-- style does after a font change
 -- (Skin_Postbox's RefitScreens). A screen not showing is measured when it
 -- next shows.
 local function RefitScreens()
@@ -1589,6 +1590,8 @@ local function RefitScreens()
   if MM and type(MM.Refresh) == "function" then pcall(MM.Refresh) end
   local panel = ns.OptionsPanel
   if panel and type(panel.RefreshControls) == "function" then pcall(panel.RefreshControls) end
+  local RM = ns.RecipientManager
+  if RM and type(RM.RefitText) == "function" then pcall(RM.RefitText) end
 end
 
 -- Window tabs, view segments and category tiles sample the accent at paint

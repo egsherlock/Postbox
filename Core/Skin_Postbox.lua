@@ -1155,6 +1155,8 @@ local function RefitScreens()
   if MM and type(MM.Refresh) == "function" then pcall(MM.Refresh) end
   local panel = ns.OptionsPanel
   if panel and type(panel.RefreshControls) == "function" then pcall(panel.RefreshControls) end
+  local RM = ns.RecipientManager
+  if RM and type(RM.RefitText) == "function" then pcall(RM.RefitText) end
 end
 
 -- A change of font, text size or outline: the copies re-dressed (which
