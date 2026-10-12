@@ -1217,6 +1217,9 @@ local track = {
   -- cannot be said. `leaves`: the command under way may empty it and see it
   -- go, and `sentAt` when that command was sent (GetTime).
   target = nil, leaves = false, sentAt = 0,
+  -- Where the target would be had its take been refused while a twin of it
+  -- went, when the last reading could not say which (TrackStayed), or nil.
+  stay = nil,
   -- The log: `seq` entries so far, the last TRACK_LOG of them kept.
   seq = 0, kind = {}, a = {}, b = {},
 }
@@ -1318,6 +1321,35 @@ local function TrackFate(x)
   if now ~= 0 then return now end
   if TrackMayGo(x) then return nil end
   return false
+end
+
+-- The target lined up as gone as its command emptied it, while the reading
+-- kept of it still holds what that command was to take -- its landing was
+-- never seen -- and a mail read now where it would be had it stayed reads
+-- exactly as it did (a + y, `y` from x less as many as went, to x). The
+-- take may have been refused and that twin of it have gone instead: the
+-- two cannot be told apart by the log (`amb`, between the target and the
+-- mail lined up there), and `stay` keeps where the target would be, for the
+-- command's own evidence to decide (PlanLook). Only until the next reading.
+local function TrackStayed(a, D, m, gl, gr, amb)
+  local t = track
+  local x = t.target
+  if type(x) ~= "number" or not t.leaves or t.lo[x] ~= 0 or amb[x] then return end
+  if t.m[x] <= 0 and t.i[x] <= 0 then return end
+  for y = x - D, x do
+    local z = a + y
+    if y >= 1 and y <= m and t.cs[z] == t.s[x] and t.cj[z] == t.j[x] and t.cm[z] == t.m[x]
+       and t.cc[z] == t.c[x] and t.ci[z] == t.i[x] then
+      local first, last = x, x
+      if gl[y] < first then first = gl[y] end
+      if gr[y] < first then first = gr[y] end
+      if gl[y] > last then last = gl[y] end
+      if gr[y] > last then last = gr[y] end
+      for k = first, last do amb[k] = true end
+      t.stay = z
+      return
+    end
+  end
 end
 
 -- For the removals line of /postbox debug (Postbox.lua, Perf.Removal), only
@@ -1494,7 +1526,7 @@ local function TrackSync()
   total = tonumber(total) or now
   if now == t.n and total == t.total and not t.dirty then return end
   if not MailboxOpen() then return end
-  t.dirty = false
+  t.dirty, t.stay = false, nil
   TrackLapse()
   for y = 1, now do TrackRead(y, t.cs, t.cj, t.cm, t.cc, t.ci) end
   if now == t.n then return TrackKeepSame(total) end
@@ -1548,6 +1580,7 @@ local function TrackSync()
         end
       end
     end
+    TrackStayed(a, D, m, gl, gr, amb)
     -- The log: the spans that cannot be told apart, each mail gone (from
     -- the last, so each names the numbering before it), then the new.
     local x = 1
@@ -1641,7 +1674,7 @@ local function TrackOnEvent(_, event, kind)
     t.frame:UnregisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
   end
   for x = 1, t.n do if t.left[x] then TrackPerf(x, false) end end
-  t.n, t.leaving, t.target, t.leaves = 0, 0, nil, false
+  t.n, t.leaving, t.target, t.leaves, t.stay = 0, 0, nil, false, nil
   TrackLog(T_LOST)
 end
 
@@ -1718,7 +1751,7 @@ local function TrackBegin(index)
   TrackArm()
   TrackSync()
   local t = track
-  t.target, t.leaves = t.on and index or nil, false
+  t.target, t.leaves, t.stay = t.on and index or nil, false, nil
 end
 
 -- -> the target's index now, nil (it went as its command emptied it), or
@@ -1756,7 +1789,23 @@ local function TrackSettled(gone)
 end
 
 local function TrackEnd()
-  track.target, track.leaves = nil, false
+  track.target, track.leaves, track.stay = nil, false, nil
+end
+
+-- -> whether the target is not known only because the last reading could
+-- not say whether it went as its command emptied it or stayed while a twin
+-- went (TrackStayed). TrackWent settles it as gone, on the command's own
+-- evidence.
+local function TrackMaybeWent()
+  return track.target == false and track.stay ~= nil
+end
+
+local function TrackWent()
+  local t = track
+  t.target, t.stay = nil, nil
+  t.gone = t.gone + 1
+  local perf = ns.Perf
+  if perf and perf.Removal then perf.Removal(((GetTime() or 0) - t.sentAt) * 1000, false) end
 end
 
 -------------------------------------------------------------
@@ -2906,10 +2955,17 @@ end
 
 -- What the take did, read where the mail is now: "took", "same" (it reads
 -- as it did), or "lost" (it cannot be found to say; for a C.O.D., also when
--- it went, which is never taken for a landing).
+-- it went, which is never taken for a landing). A mail lined up as gone
+-- while a twin of it, reading as it did before the take, stands where it
+-- would be had the take been refused, is gone only when the purse or the
+-- bags say the take landed (TrackStayed).
 local function PlanLook()
   local p = plan
   local at = TrackWhere(p.index)
+  if at == false and TrackMaybeWent() and PlanCharacterSays() then
+    TrackWent()
+    at = nil
+  end
   if at == nil then return p.codPlan and "lost" or "took" end
   if at == false then return "lost" end
   p.index = at
