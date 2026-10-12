@@ -1936,11 +1936,11 @@ end
 -- it: a mail below it leaving moves it down one, and its twin above slides
 -- into the index reading exactly as it did. So what was clicked is kept
 -- whole -- its index with a stamp of the inbox as it stood ("the inbox,
--- followed"), its fingerprint, and the mail's time left with when it was
--- read -- and every command on that mail, from the question's answer to the
--- plan's last take, goes only to where that mail is known to be now, while
--- it still reads as it did. Anything else is answered "moved", with nothing
--- more sent.
+-- followed"), its fingerprint, the first item it holds, and the mail's time
+-- left with when it was read -- and every command on that mail, from the
+-- question's answer to the plan's last take, goes only to where that mail
+-- is known to be now, while it still reads as it did. Anything else is
+-- answered "moved", with nothing more sent.
 --
 -- The time left (GetInboxHeaderInfo's daysLeft) is fractional and two mails
 -- sent apart differ in it; whether the client counts it down between inbox
@@ -1956,8 +1956,22 @@ end
 
 local CLICK_DAYS_SLACK = 0.0007
 
+-- index -> the item in the mail's first slot that holds one, by its item ID
+-- (GetInboxItem, which the header brings without the body), or nil. Two
+-- C.O.D.s from one trader with one subject and one price can hold different
+-- things: what the mail holds is part of what was clicked, and nothing is
+-- taken out of a mail before the take that pays.
+local function FirstItem(index)
+  for slot = 1, MAX_ATTACHMENTS do
+    local _, id = GetInboxItem(index, slot)
+    if id ~= nil then return id end
+  end
+  return nil
+end
+Mail.FirstItem = FirstItem
+
 -- index -> what was clicked, for a mail that owes a C.O.D.: { index, stamp,
--- fingerprint, days, at }. nil for a header that has not arrived.
+-- fingerprint, days, at, item }. nil for a header that has not arrived.
 function Mail.Clicked(index)
   local _, _, sender, subject, _, _, days = GetInboxHeaderInfo(index)
   if sender == nil and subject == nil then return nil end
@@ -1967,6 +1981,7 @@ function Mail.Clicked(index)
     fingerprint = Fingerprint(index),
     days = tonumber(days),
     at = type(GetTime) == "function" and GetTime() or 0,
+    item = FirstItem(index),
   }
 end
 
@@ -1981,13 +1996,15 @@ end
 -- index, clicked [, paid] -> whether the mail at `index` is still the one
 -- clicked: it is where the mail clicked is known to be now, it reads as its
 -- fingerprint (or as `paid`, its paid form, once a take of the plan's has
--- paid it), and its time left is where it was, or where it has run down to
--- since. False once the take that pays has gone for it (`spent`).
+-- paid it), it holds the item it held first (FirstItem), and its time left
+-- is where it was, or where it has run down to since. False once the take
+-- that pays has gone for it (`spent`).
 function Mail.StillClicked(index, clicked, paid)
   if type(clicked) ~= "table" or clicked.spent then return false end
   if Mail.ClickedAt(clicked) ~= index then return false end
   local now = Fingerprint(index)
   if now ~= clicked.fingerprint and (paid == nil or now ~= paid) then return false end
+  if clicked.item ~= nil and FirstItem(index) ~= clicked.item then return false end
   if clicked.days == nil then return true end
   local _, _, _, _, _, _, days = GetInboxHeaderInfo(index)
   days = tonumber(days)
@@ -4178,13 +4195,17 @@ end
 -- a question stands between the click and the command. The mail is followed
 -- from then, not from the answer: a twin of it sliding into the index while
 -- the question waits reads exactly as it did.
+--
+-- `item` (optional): the first item the mail held as the question asked
+-- (Mail.FirstItem). Twins can share sender, subject and C.O.D. and hold
+-- different things; the command goes only to a mail still holding it.
 -------------------------------------------------------------
 
 -- issue(at) sends the command to the mail at `at` and answers whether it may
 -- empty the mail and see it go; judge(where), where given, reads what it did
 -- once its handshake clears, with the mail's index then (or nil, gone, or
 -- false, not known), and answers whether the mail is now on its way out.
-local function SingleCommand(issue, onDone, index, expected, judge, stamp)
+local function SingleCommand(issue, onDone, index, expected, judge, stamp, item)
   local token = Claim()
   if not token then
     if onDone then onDone("busy") end
@@ -4214,6 +4235,7 @@ local function SingleCommand(issue, onDone, index, expected, judge, stamp)
     local at = TrackWhere(index)
     if type(at) ~= "number" then return finish("moved") end
     if expected and Fingerprint(at) ~= expected then return finish("moved") end
+    if item ~= nil and FirstItem(at) ~= item then return finish("moved") end
     local leaves = issue(at)
     TrackMayEmpty(leaves)
     WaitForCommand(function(timedOut)
@@ -4228,7 +4250,7 @@ local function SingleCommand(issue, onDone, index, expected, judge, stamp)
   end, function() finish("timeout") end)
 end
 
-function Mail.DeleteMail(index, onDone, expected, stamp)
+function Mail.DeleteMail(index, onDone, expected, stamp, item)
   if type(DeleteInboxItem) ~= "function" then
     if onDone then onDone("unavailable") end
     return
@@ -4236,7 +4258,7 @@ function Mail.DeleteMail(index, onDone, expected, stamp)
   SingleCommand(function(at)
     DeleteInboxItem(at)
     return true
-  end, onDone, index, expected, nil, stamp)
+  end, onDone, index, expected, nil, stamp, item)
 end
 
 -- The money alone, for the reading view's coin tile. Same channel rules as
@@ -4294,7 +4316,7 @@ function Mail.TakeMoney(index, onDone, history, expected, stamp)
   end)
 end
 
-function Mail.ReturnMail(index, onDone, expected, stamp)
+function Mail.ReturnMail(index, onDone, expected, stamp, item)
   if type(ReturnInboxItem) ~= "function" then
     if onDone then onDone("unavailable") end
     return
@@ -4302,7 +4324,7 @@ function Mail.ReturnMail(index, onDone, expected, stamp)
   SingleCommand(function(at)
     ReturnInboxItem(at)
     return true
-  end, onDone, index, expected, nil, stamp)
+  end, onDone, index, expected, nil, stamp, item)
 end
 
 -- Deletes a list of mails, one command at a time, stopping at the first

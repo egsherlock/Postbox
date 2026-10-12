@@ -7531,7 +7531,9 @@ end
 -- it is not: a mail that reads like it and still holds something, or has
 -- not been read, is never deleted without a question. The reading view's
 -- Delete of a mail that still holds something asks first; see BuildDetail.
--- Its answer (`held`) deletes the mail the question was about as it is.
+-- Its answer (`held`) deletes the mail the question was about as it is,
+-- still holding the first item it held as asked (`item`, Mail.FirstItem):
+-- a twin that reads like it and holds something else is not it.
 --
 -- `fingerprint` is the mail's as the player saw it when they chose to delete
 -- it, and `stamp` the inbox as `index` was read (Mail.Stamp; now where not
@@ -7539,10 +7541,10 @@ end
 -- there immediately before the command, after any question and any wait
 -- for the channel, and leaves a mail that has moved alone ("moved": the
 -- refresh shows the list as it now is).
-function DeleteOneMail(panel, index, fingerprint, stamp, held)
+function DeleteOneMail(panel, index, fingerprint, stamp, held, item)
   if not index or not fingerprint then return end
   if held then
-    Mail().DeleteMail(index, function(status) RV.Deleted(panel, status) end, fingerprint, stamp)
+    Mail().DeleteMail(index, function(status) RV.Deleted(panel, status) end, fingerprint, stamp, item)
     return
   end
   Mail().DeleteMails({ index }, function(_, status) RV.Deleted(panel, status) end,
@@ -9234,9 +9236,10 @@ local function BuildDetail(panel)
     local index = RV.Acting(detail)
     if not index then return end
     local fingerprint, stamp = detail.fingerprint, detail._stamp
+    local item = Mail().FirstItem(index)
     detail:Hide()
     -- Followed from the view's binding, and checked again right before the
-    -- command goes (Mail.ReturnMail).
+    -- command goes (Mail.ReturnMail): the same mail, holding what it held.
     Mail().ReturnMail(index, function(status)
       if status == "closed" then
         StatusMailboxClosed()
@@ -9244,7 +9247,7 @@ local function BuildDetail(panel)
         ns.Print(L()["MSG_MAIL_TIMEOUT"])
       end
       RequestRefresh(panel)
-    end, fingerprint, stamp)
+    end, fingerprint, stamp, item)
   end)
 
   detail.Delete:SetScript("OnClick", function()
@@ -9261,6 +9264,9 @@ local function BuildDetail(panel)
     -- the delete goes only to a mail still finished right before the command
     -- (DeleteOneMail).
     if Mail().HasContent(index) or not Mail().IsReadPersistent(index) then
+      -- What the mail holds as the question asks, for the answer to delete
+      -- only that mail (DeleteOneMail).
+      local item = Mail().FirstItem(index)
       -- The client's own wording where it has one -- it is already translated
       -- for every locale and says exactly the right thing.
       local native = _G["DELETE_MAIL_CONFIRMATION"]
@@ -9279,7 +9285,7 @@ local function BuildDetail(panel)
           if detail.fingerprint == fingerprint and Mail().Rebase(index, stamp) == detail.mailIndex then
             detail:Hide()
           end
-          DeleteOneMail(panel, index, fingerprint, stamp, true)
+          DeleteOneMail(panel, index, fingerprint, stamp, true, item)
         end)
       return
     end
