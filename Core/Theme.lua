@@ -1779,8 +1779,10 @@ function Theme.RefreshHostFonts(recolor)
   end
   HF.gen = HF.gen + 1
   Theme.ForgetFits()
-  Theme.RelayoutText()
+  -- The sized fonts made from the copies take the new face first, so the
+  -- strings wearing them are laid out again in it, not in the one before.
   if SharedTheme and type(SharedTheme.RecolorDerived) == "function" then SharedTheme.RecolorDerived() end
+  Theme.RelayoutText()
   local AR = ns.Arrange
   if AR and type(AR.OnFontsChanged) == "function" then pcall(AR.OnFontsChanged) end
   return true
