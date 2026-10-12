@@ -1785,8 +1785,8 @@ local status = {
   outcome  = nil, outcomeTone  = nil,
   -- What the outcome reports, where it is something that can stop being true
   -- by itself: "bags" for a run's "Bags full: N left", which comes down when
-  -- the bags have room (UI.OnBagsFullChanged), "stuck" for its "Stuck: N",
-  -- which comes down when no mail is stuck any more (UI.OnStuckLifted). nil
+  -- no mail waits for room any more, "stuck" for its "Stuck: N", which comes
+  -- down when no mail is stuck any more (both UI.UpdateStatusSummary). nil
   -- for an ordinary outcome.
   -- outcomeAfter is the line once it has; read only while outcomeKind is set.
   -- A line can report both: outcomeKind2 is the second, outcomeAfter2 the
@@ -1946,13 +1946,10 @@ end
 -- The domain's bags-full state (Core/MailService.lua, "Bags full") was set,
 -- or has cleared because the bags have room. The buttons count again -- the
 -- mails with items leave their counts while it holds and return when it
--- clears -- and the status line follows: a run's "Bags full: N left" comes
--- down with the state, since what it said is no longer so, and the rest of
--- the outcome stays ("Collected: 41"), as it would read after a clean run.
+-- clears -- and the status line follows (UI.UpdateStatusSummary): a run's
+-- "Bags full: N left" comes down with the state, since what it said is no
+-- longer so, and the rest of the outcome stays ("Collected: 41").
 function UI.OnBagsFullChanged()
-  local mail = ns.MailService
-  local full = mail and type(mail.BagsFull) == "function" and mail.BagsFull()
-  if not full then OutcomePartDown("bags") end
   local collect = ns.CollectTab
   if collect and type(collect.RequestRefresh) == "function" then collect.RequestRefresh(CollectPanel()) end
   UI.UpdateStatusSummary()
@@ -1960,7 +1957,8 @@ end
 
 -- Recomputes the idle line and repaints. Safe to call from anywhere at any time:
 -- it only ever touches the lowest-priority layer, so it cannot overwrite a run's
--- activity or its outcome.
+-- activity or its outcome -- but for taking down a part of the outcome that is
+-- no longer so (below).
 --
 -- Says two things, each only when it is true: the bags are full and mail with
 -- items is waiting for room ("Bags full: 6 left"), and some mail in this inbox
@@ -1981,6 +1979,13 @@ function UI.UpdateStatusSummary()
   local stuck = (mail and type(mail.StuckCount) == "function" and mail.StuckCount()) or 0
   local waiting = (mail and type(mail.BagsFull) == "function" and mail.BagsFull()
     and type(mail.BagsWaiting) == "function" and mail.BagsWaiting()) or 0
+  -- A run's outcome names the stuck mail and the mail waiting for room only
+  -- while there is some (status.outcomeKind): however the last of it came
+  -- free -- the bags have room, the character holds fewer of what was
+  -- refused, a click took it, its mail went -- that part of the line comes
+  -- down here, and the rest of it stays.
+  if stuck == 0 then OutcomePartDown("stuck") end
+  if waiting == 0 then OutcomePartDown("bags") end
   -- Inline escapes rather than a tone: RenderStatus paints the whole label
   -- one colour from the layer that won, and this layer has no tone of its own
   -- to pass. Colouring the text itself keeps the warning with the warning.
@@ -2803,17 +2808,11 @@ end
 
 -- The domain's stuck registry let refusals go by itself (Core/MailService.lua:
 -- the character now holds fewer of what was refused, so the mail may come out).
--- A run's "Stuck: N" comes down once no mail is stuck any more, as its "Bags
--- full" does when there is room (status.outcomeKind), and the rest of its
--- line stays. Then the repaint an inbox update brings, through the same two
--- coalesced paths: the list's rows, marks and button counts, then the pass's
--- status line and the Mail tab's dot.
+-- The repaint an inbox update brings, through the same two coalesced paths:
+-- the list's rows, marks and button counts, then the pass's status line --
+-- where a run's "Stuck: N" comes down once no mail is stuck any more
+-- (UI.UpdateStatusSummary) -- and the Mail tab's dot.
 function UI.OnStuckLifted()
-  local mail = ns.MailService
-  if (status.outcomeKind == "stuck" or (status.outcomeKind and status.outcomeKind2 == "stuck"))
-    and mail and type(mail.StuckCount) == "function" and mail.StuckCount() == 0 then
-    OutcomePartDown("stuck")
-  end
   QueueCollectRefresh()
   QueueInboxPass()
 end
