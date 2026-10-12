@@ -150,6 +150,14 @@ local function ToggleLeave(self)
   if tip and tip:IsOwned(self) then tip:Hide() end
 end
 
+-- A caption's width with nothing holding it in: its box (Caption) bounds
+-- the string, and a value is measured against that box, not by it.
+local function TextWidth(label)
+  local w
+  if label.GetUnboundedStringWidth then w = label:GetUnboundedStringWidth() else w = label:GetStringWidth() end
+  return tonumber(w) or 0
+end
+
 local function PaintSwatch(swatch, r, g, b)
   if not swatch then return end
   if type(r) ~= "number" then
@@ -170,15 +178,20 @@ end
 -- in a square before its name and on the toggle beside the one chosen.
 -- opts.onList(container, open): the list opened (true) or closed (false),
 -- once each way, however it closed.
+-- opts.captions: every text the toggle can show, where the owner puts its
+-- own there rather than an item's name (the recipient manager's "Sort:
+-- Name"); measured in the names' place (container:FitWidth).
 function Dropdown.Create(parent, opts)
   opts = type(opts) == "table" and opts or {}
   local swatchFor = type(opts.swatchFor) == "function" and opts.swatchFor or nil
   local onList = type(opts.onList) == "function" and opts.onList or nil
+  local captions = type(opts.captions) == "table" and opts.captions or nil
 
   local Theme = Core.UI.Theme
   local items = type(opts.items) == "table" and opts.items or {}
   local rowHeight = tonumber(opts.rowHeight) or DEFAULT_ROW_HEIGHT
   local toggleWidth = tonumber(opts.toggleWidth) or DEFAULT_TOGGLE_WIDTH
+  local listWidth = tonumber(opts.listWidth) or toggleWidth
 
   local container = CreateFrame("Frame", nil, parent)
   container:SetHeight(tonumber(opts.height) or DEFAULT_HEIGHT)
@@ -245,12 +258,13 @@ function Dropdown.Create(parent, opts)
   -- at both, so a value that fits stands centred on the toggle exactly where
   -- it always stood -- clear of the colour square at the left and of a
   -- style's caret at the right. One line, never wrapped. A value too long
-  -- for its box (a long translation, a large text size) is cut short by the
-  -- house fitter (Theme.FitText) and says the whole of it on hover
-  -- (ToggleEnter). A box of its own rather than a string sized to its text:
-  -- that width is measured when the text is set and kept when a font object
-  -- is changed under it, which wrapped a value's last letter onto a second
-  -- line.
+  -- for its box (a long translation, a large text size) widens the toggle
+  -- where its owner has the room (FitWidth); only one that still does not
+  -- fit is cut short by the house fitter (Theme.FitText) and says the whole
+  -- of it on hover (ToggleEnter). A box of its own rather than a string
+  -- sized to its text: that width is measured when the text is set and kept
+  -- when a font object is changed under it, which wrapped a value's last
+  -- letter onto a second line.
   local inset = CAPTION_GUTTER
   if swatchFor then inset = math.max(inset, SWATCH_X + SWATCH_SIZE + SWATCH_GAP) end
   local caption = ""   -- the value as given, whatever its box shows of it
@@ -279,6 +293,49 @@ function Dropdown.Create(parent, opts)
   toggle:HookScript("OnSizeChanged", Refit)
   toggle:HookScript("OnEnter", ToggleEnter)
   toggle:HookScript("OnLeave", ToggleLeave)
+
+  -- The toggle's width that shows every value whole: the width the owner
+  -- asked for (opts.toggleWidth), the normal case, unless a value -- each
+  -- measured on the toggle's own caption, in the face, size and outline it
+  -- wears now -- runs past that width's box; then the widest one's width
+  -- and the box's gutters, so that one select alone is wider. The owner
+  -- sets it, beside whatever else its layout holds (the options' rows,
+  -- Rows.Fit; the recipient manager's sort), when the face is known and
+  -- again when it moves; what cannot be given room is still cut short and
+  -- said whole on hover (Caption). Measuring sets each value on the caption
+  -- and puts back what it showed, so the answer is kept until the face or
+  -- the scale moves or the select is given other items (SetItems: a list is
+  -- kept per items table the same way); a font still loading measures
+  -- nothing and is not kept.
+  local fitW, fitValues, fitPath, fitSize, fitFlags, fitShadow, fitScale
+  function container:FitWidth()
+    local label = toggle:GetFontString()
+    if not label or type(label.GetFont) ~= "function" then return toggleWidth end
+    local values = captions or items
+    local path, size, flags = label:GetFont()
+    local shadow = label.GetShadowOffset and label:GetShadowOffset() or 0
+    local scale = label:GetEffectiveScale()
+    if fitW and fitValues == values and fitPath == path and fitSize == size and fitFlags == flags
+        and fitShadow == shadow and fitScale == scale then
+      return fitW
+    end
+    local shown = label:GetText()
+    local widest = 0
+    for i = 1, #values do
+      local value = values[i]
+      if type(value) == "table" then value = value.name end
+      label:SetText(value or "")
+      local w = TextWidth(label)
+      if w > widest then widest = w end
+    end
+    label:SetText(shown)
+    local width = toggleWidth
+    if widest > width - 2 * inset then width = math.ceil(widest) + 2 * inset end
+    if widest > 0 then
+      fitW, fitValues, fitPath, fitSize, fitFlags, fitShadow, fitScale = width, values, path, size, flags, shadow, scale
+    end
+    return width
+  end
 
   -- The chosen colour on the toggle, at its left, where the list has them.
   local toggleSwatch
@@ -321,7 +378,7 @@ function Dropdown.Create(parent, opts)
     list = CreateFrame("Frame", nil, toggle, "BackdropTemplate")
     -- Placed on each open (PlaceList). Kept on the screen whatever else.
     list:SetClampedToScreen(true)
-    list:SetWidth(tonumber(opts.listWidth) or toggleWidth)
+    list:SetWidth(listWidth)
     list:SetHeight(scrolling and maxHeight or ((LIST_PADDING * 2) + contentHeight))
     list:SetFrameStrata("FULLSCREEN_DIALOG")
     -- The whole card takes the pointer, not only its rows: its padding and
@@ -595,6 +652,10 @@ function Dropdown.Create(parent, opts)
     local base = (owner and owner:GetFrameLevel()) or 0
     local level = base + LIST_LEVEL_OFFSET
 
+    -- Never narrower than the toggle it hangs from: a toggle widened for its
+    -- widest value (FitWidth) takes its list with it.
+    local width = math.max(listWidth, toggle:GetWidth() or 0)
+    if list:GetWidth() ~= width then list:SetWidth(width) end
     list:SetFrameLevel(level)
     PlaceList()
     list:Show()

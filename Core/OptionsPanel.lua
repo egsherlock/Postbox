@@ -527,8 +527,9 @@ local ROW_H, MASTER_H, GROUP_H = 28, 30, 26
 -- from its right, and the two keep at least NAME_GAP apart.
 local NAME_X, CONTROL_R, NAME_GAP = 12, 10, 8
 local CHECK_H, BUTTON_H = 22, 22
--- A dropdown's toggle, and the narrowest a long translated name may squeeze
--- it to before the name itself is cut short.
+-- A dropdown's toggle (wider only where its widest value needs it,
+-- Rows.Fit), and the narrowest a long translated name may squeeze it to
+-- before the name itself is cut short.
 local DD_W, DD_H, DD_MIN_W = 165, 22, 120
 local BAND_H, FOOT_BOTTOM = 24, 14
 -- The inspector: its drawings stand CTX_X in (its edge and ten), and its
@@ -2559,11 +2560,14 @@ do
   end
 
   -- Measured on every open, after the skins have had their say about
-  -- fonts, and in whatever language the client speaks. The normal case
-  -- keeps its look: a pair whose name will not fit its half comes apart
-  -- (Rows.FitPairs); a name that would reach the dropdown beside it narrows
-  -- that toggle, down to DD_MIN_W, and only past that is the name cut short
-  -- -- the inspector's title still carries it whole.
+  -- fonts, and in whatever language the client speaks, and again after a
+  -- font change (the skins' RefitScreens). The normal case keeps its look:
+  -- a pair whose name will not fit its half comes apart (Rows.FitPairs); a
+  -- dropdown is DD_W wide unless its widest value will not fit that, and
+  -- then as wide as that value needs (the select's FitWidth), it alone; a
+  -- name that would reach the dropdown beside it narrows that toggle, down
+  -- to DD_MIN_W, and only past that is the name cut short -- the
+  -- inspector's title still carries it whole.
   function Rows.Fit()
     local T = ns.Theme
     Rows.FitPairs()
@@ -2579,9 +2583,10 @@ do
       else
         local controlW = cell.controlW or 0
         if kind == "dropdown" then
-          local want = DD_W
+          local full = cell.dd.FitWidth and cell.dd:FitWidth() or DD_W
+          local want = full
           local nameW = TextW(cell.Name)
-          if nameW + NAME_GAP + DD_W > inner then
+          if nameW + NAME_GAP + full > inner then
             want = math.max(DD_MIN_W, inner - nameW - NAME_GAP)
           end
           if cell.controlW ~= want then
