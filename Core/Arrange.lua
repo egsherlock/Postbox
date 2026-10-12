@@ -6340,10 +6340,12 @@ local function FillColumn(id, y)
   end
   y = PutMove(y, false, back, forward, used)
   -- The subject's card says what the rows show while it is selected: each
-  -- row's run, and why it stops where it does.
+  -- row's run, and why it stops where it does. Lined up it can run on into
+  -- the columns its mail leaves empty; packed its room is the rest of the
+  -- row, and nothing is borrowed (AR.MarkRow).
   if spec.fixed and not large then
     y = PutKicker(L()["ARRANGE_SUBJECT_WHY"], y)
-    y = PutText(insp.Why, L()["ARRANGE_SUBJECT_RUN"], y)
+    y = PutText(insp.Why, L()[LinedUp() and "ARRANGE_SUBJECT_RUN" or "ARRANGE_SUBJECT_RUN_PACKED"], y)
   end
   local choices, current, set = AR.Choices(spec.choice)
   insp.set = set
