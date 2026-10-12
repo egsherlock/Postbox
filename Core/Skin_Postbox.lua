@@ -1093,7 +1093,14 @@ local function DressTitle(fs)
   -- As the copies (Skin.GetFontFace): Shadow a shadow and no outline, an
   -- outline only on a dark ground.
   local flags = (outline == "outline" and not light) and "OUTLINE" or ""
-  pcall(fs.SetFont, fs, path, P.titleSize * Skin.GetTextScale(), flags)
+  local size = P.titleSize * Skin.GetTextScale()
+  -- Set only where it moved: a change of the accent or the background
+  -- colour dresses the titles again for their colour, and a font set again
+  -- is a title laid out again for nothing.
+  local p0, s0, f0 = fs:GetFont()
+  if p0 ~= path or s0 ~= size or (f0 or "") ~= flags then
+    pcall(fs.SetFont, fs, path, size, flags)
+  end
   if fs.SetShadowOffset and fs.SetShadowColor then
     if outline ~= "shadow" then
       fs:SetShadowOffset(0, 0)
@@ -1549,9 +1556,10 @@ function Skin._RepaintTexts()
   -- objects. Then the texts, where an ink moved (Theme.InksMoved).
   if T.RefreshHostFonts then T.RefreshHostFonts(true) end
   if not T.InksMoved or T.InksMoved() then
-    if T.RepaintTracked then T.RepaintTracked() end
+    -- The texts whose ink moved, and no others; the accent-toned ones are
+    -- among them (Theme.RepaintAccentText would paint them twice).
+    if T.RepaintTracked then T.RepaintTracked(true) end
     Skin._PaintFonts()
-    if T.RepaintAccentText then T.RepaintAccentText() end
     if T.RepaintPlates then
       for frame in pairs(Skin._windows) do pcall(T.RepaintPlates, frame, 0) end
     end
@@ -2019,13 +2027,14 @@ function Skin.RefreshWindow(frame)
 end
 
 -- The accent moved: the ticks, the select values, the plates and the
--- accent-toned text and icons.
-function Skin.RefreshAccents()
+-- accent-toned text and icons. `painted`: the accent-toned texts were just
+-- painted with every tracked one (Theme.RepaintTracked), and are not again.
+function Skin.RefreshAccents(painted)
   for cb in pairs(checks) do pcall(PaintTick, cb) end
   Skin._PaintFonts()
   local T = ns.Theme
   if T then
-    if T.RepaintAccentText then T.RepaintAccentText() end
+    if T.RepaintAccentText and not painted then T.RepaintAccentText() end
     if T.RepaintAccentIcons then T.RepaintAccentIcons() end
     if T.RepaintPlates then
       for frame in pairs(Skin._windows) do pcall(T.RepaintPlates, frame, 0) end
@@ -2045,11 +2054,22 @@ function Skin.ApplyLook(full)
   local wasLight = T and T.IsLight and T.IsLight() or false
   local grounds = ResolveLook()
   local nowLight = T and T.IsLight and T.IsLight() or false
+  local painted = false
   if T then
     -- The copies take the palette's colours and shadow (and a new shadow
     -- setting is a new face, re-dressed and re-measured).
     if T.RefreshHostFonts then T.RefreshHostFonts(true) end
-    if T.RepaintTracked then T.RepaintTracked() end
+    -- What the Theme tracked, painted again: its texts where their ink
+    -- moved (Theme.InksMoved), the rest -- fills, chrome, greys -- all.
+    local onlyMoved = false
+    if T.InksMoved then
+      T.InksMoved()
+      onlyMoved = true
+    end
+    if T.RepaintTracked then
+      T.RepaintTracked(onlyMoved)
+      painted = true
+    end
   end
   for frame in pairs(Skin._windows) do
     if frame then pcall(PaintWindow, frame) end
@@ -2063,7 +2083,7 @@ function Skin.ApplyLook(full)
   for caret in pairs(carets) do caret:SetVertexColor(c[1], c[2], c[3], 1) end
   for button in pairs(closes) do pcall(TintClose, button, nil) end
   for fs in pairs(titles) do pcall(DressTitle, fs) end
-  Skin.RefreshAccents()
+  Skin.RefreshAccents(painted)
   -- A ground moved (the background colour, the opacity) and with it an ink
   -- written inside a line (a figure, a tone on the status line): those
   -- lines are written again in the new inks, as a change of Mode writes

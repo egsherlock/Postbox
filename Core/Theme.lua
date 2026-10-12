@@ -1400,7 +1400,8 @@ do
     end
     local r, g, b, a = BaseOf(token)
     if not r then return nil end
-    if not e then
+    local new = not e
+    if new then
       e = { 0, 0, 0, 1 }
       byGround[token] = e
     end
@@ -1414,24 +1415,45 @@ do
     e.gen, e.pgen = gen, paletteGen
     if accent then e.ar, e.ag, e.ab = Theme.GetAccent() end
     e.hex = ToHex(e)
+    -- The ink the texts in it were painted in, as Theme.InksMoved last saw
+    -- it: a text painted now is painted in this one.
+    if new then e.seen = e.hex end
     return e
   end
   Grounds.InkOf = InkOf
 
   -- After the grounds moved: whether any ink worked out so far, or a window
-  -- plate's opacity, came out different -- every one of them worked out
-  -- again in place. Most changes of the opacity move none (each ink already
-  -- read on its ground and kept its colour), and the texts are then left as
-  -- they are painted rather than all painted again. Only on a settings
+  -- plate's opacity, came out different from the one its texts were last
+  -- painted in -- every one of them worked out again in place. Most changes
+  -- of the opacity move none (each ink already read on its ground and kept
+  -- its colour), and the texts are then left as they are painted rather
+  -- than all painted again; most changes of the accent move only the
+  -- accent's own and those on its wash, and the inks that moved are kept for
+  -- the repaint to paint those alone (Grounds.Moved). Only on a settings
   -- change.
   local plateWas = {}
+  -- ground -> token -> true: the inks the last look found moved. The inner
+  -- tables are kept and emptied.
+  local movedInks = {}
   function Theme.InksMoved()
     local moved = false
+    for _, set in pairs(movedInks) do
+      for token in pairs(set) do set[token] = nil end
+    end
     for ground, byGround in pairs(inks) do
       for token, e in pairs(byGround) do
-        local was = e.hex
         local now = InkOf(token, ground)
-        if not now or now.hex ~= was then moved = true end
+        local hex = now and now.hex or nil
+        if hex == nil or hex ~= e.seen then
+          moved = true
+          local set = movedInks[ground]
+          if not set then
+            set = {}
+            movedInks[ground] = set
+          end
+          set[token] = true
+        end
+        e.seen = hex
       end
     end
     for ground in pairs(PLATED) do
@@ -1442,6 +1464,17 @@ do
       end
     end
     return moved
+  end
+
+  -- Whether a text painted in `token` on `ground` (as Theme.SetColor was
+  -- told it, nil for its token's own) is due a repaint after the last
+  -- Theme.InksMoved: its ink moved, or none was worked out for it.
+  function Grounds.Moved(token, ground)
+    ground = ground or HOME[token] or "content"
+    local set = movedInks[ground]
+    if set and set[token] then return true end
+    local byGround = inks[ground]
+    return not (byGround and byGround[token])
   end
 
   -- A colour that is no token (a class colour, a button font's gold) on a
@@ -1638,6 +1671,26 @@ local function HostFace()
   return path, (type(flags) == "string") and flags or "", shadow and true or false, scale
 end
 
+-- The colour a copy wears, from its game object's r, g, b, a, where it takes
+-- one of its own (a light ground, or a style that derives its inks: see
+-- DressCopy). On a light ground the object's own colour, set for a dark one,
+-- is made right for it (Theme.InkFor): white text becomes the primary ink,
+-- Blizzard's gold a gold that reads on paper. A copy for a light ground in
+-- a dark palette takes the light palette's ink: the strings wearing one
+-- set their own colour on it.
+-- Where a style derives its inks (section 2c) the copy's colour is made
+-- right for the button it is the caption of, on either palette -- the
+-- strings that are not a button's set their own -- so a disabled button's
+-- grey reads on the button at any opacity.
+local function CopyInk(r, g, b, a, light)
+  if lightPalette or not light then
+    local ir, ig, ib = Theme.InkFor(r, g, b, "button")
+    return ir, ig, ib, a or 1
+  end
+  local ink = Theme.PALETTE_LIGHT.textPrimary
+  return ink[1], ink[2], ink[3], a or 1
+end
+
 -- The copy made again from its game object, in the face given: the object's
 -- colour, spacing and size, the host's face and outline, and the host's shadow
 -- (a drop shadow where it draws no outline, none where it does, as its own
@@ -1654,27 +1707,10 @@ end
 -- is the light palette's own pale one.
 local function DressCopy(copy, base, path, flags, shadow, scale, light)
   if type(copy.CopyFontObject) == "function" then pcall(copy.CopyFontObject, copy, base) end
-  -- On a light ground the object's own colour, set for a dark one, is made
-  -- right for it (Theme.InkFor): white text becomes the primary ink,
-  -- Blizzard's gold a gold that reads on paper. A copy for a light ground in
-  -- a dark palette takes the light palette's ink: the strings wearing one
-  -- set their own colour on it.
-  -- Where a style derives its inks (section 2c) the copy's colour is made
-  -- right for the button it is the caption of, on either palette -- the
-  -- strings that are not a button's set their own -- so a disabled button's
-  -- grey reads on the button at any opacity.
+  -- Its colour of its own, where it takes one (CopyInk).
   if (light or Grounds.on) and type(copy.SetTextColor) == "function" and type(base.GetTextColor) == "function" then
     local r, g, b, a = base:GetTextColor()
-    if type(r) == "number" then
-      local ir, ig, ib
-      if lightPalette or not light then
-        ir, ig, ib = Theme.InkFor(r, g, b, "button")
-      else
-        local ink = Theme.PALETTE_LIGHT.textPrimary
-        ir, ig, ib = ink[1], ink[2], ink[3]
-      end
-      copy:SetTextColor(ir, ig, ib, a or 1)
-    end
+    if type(r) == "number" then copy:SetTextColor(CopyInk(r, g, b, a, light)) end
   end
   local basePath, size, baseFlags = base:GetFont()
   if type(size) ~= "number" or size <= 0 then size = 12 end
@@ -1696,6 +1732,33 @@ local function DressCopy(copy, base, path, flags, shadow, scale, light)
   if flags == false then flags = baseFlags or "" end
   if scale ~= 1 then size = size * scale end
   return pcall(copy.SetFont, copy, path, size, flags) and true or false
+end
+
+-- A copy dressed already, its face unchanged, given the colour DressCopy
+-- would leave on it now -- its own (CopyInk), or else its object's, which
+-- the copy took -- where that is not the colour it wears, within half a step
+-- of 8 bits a channel, as the client keeps a colour in floats. -> whether it
+-- took one.
+local function RecolorCopy(copy, base, light)
+  if not copy or type(copy.SetTextColor) ~= "function" or type(copy.GetTextColor) ~= "function"
+     or type(base.GetTextColor) ~= "function" then
+    return false
+  end
+  local r, g, b, a = base:GetTextColor()
+  if type(r) ~= "number" then return false end
+  if light or Grounds.on then
+    r, g, b, a = CopyInk(r, g, b, a, light)
+  else
+    a = a or 1
+  end
+  local cr, cg, cb, ca = copy:GetTextColor()
+  local abs = math.abs
+  if type(cr) == "number" and abs(cr - r) < 0.002 and abs(cg - g) < 0.002 and abs(cb - b) < 0.002
+     and abs((ca or 1) - a) < 0.002 then
+    return false
+  end
+  copy:SetTextColor(r, g, b, a)
+  return true
 end
 
 -- A copy for a light ground in a dark palette (`polarity` "light" below):
@@ -1771,16 +1834,20 @@ function Theme.RefreshHostFonts(recolor)
     and HF.light == lightPalette
   if same and not recolor then return false end
   if same then
-    -- The face is where it was and only the palette moved (`recolor`): the
-    -- copies are dressed again for their colour and shadow, and the sized
-    -- fonts made from them take it too. No width changed.
+    -- The face is where it was and only the palette or the grounds moved
+    -- (`recolor`): each copy takes its colour again, and only where that
+    -- moved (RecolorCopy) -- its face, size and shadow are the face's, and
+    -- the face did not move -- then the sized fonts made from them take
+    -- theirs. No width changed, and nothing is dressed again: a pick of the
+    -- accent or the opacity, or a frame of the colour picker's drag, sets a
+    -- colour on the few copies whose ink it moved and no font at all.
     for i = 1, #HF.bases do
       local base = HF.bases[i]
-      DressCopy(HF.copies[base], base, path, flags, shadow, scale, lightPalette)
+      RecolorCopy(HF.copies[base], base, lightPalette)
     end
     for i = 1, #HF.lightBases do
       local base = HF.lightBases[i]
-      DressCopy(HF.lightCopies[base], base, path, flags, shadow, scale, true)
+      RecolorCopy(HF.lightCopies[base], base, true)
     end
     if SharedTheme and type(SharedTheme.RecolorDerived) == "function" then SharedTheme.RecolorDerived() end
     return true
@@ -2149,6 +2216,9 @@ end
 --
 -- Iterating without mutating: SetTextColor is called directly rather than
 -- through Theme.SetColor, so the registry cannot be rewritten mid-traversal.
+--
+-- Where paint is tracked (Theme.TrackPaint) every text listed here is a
+-- tracked one too, and Theme.RepaintTracked paints it.
 function Theme.RepaintAccentText()
   local inks = Grounds.on
   for region, token in pairs(accentTexts) do
@@ -2293,25 +2363,31 @@ end
 -- TrackPaint, painted again from the palette as it is now: the half of a
 -- palette change the windows cannot do for themselves. Iterates without
 -- writing (each region is painted directly), so the tables are safe to walk.
-function Theme.RepaintTracked()
+-- `onlyMoved`: right after Theme.InksMoved, a text whose ink did not move is
+-- left as it is painted (Grounds.Moved); everything else is painted again
+-- all the same.
+function Theme.RepaintTracked(onlyMoved)
   if not track then return end
   local inks = Grounds.on
+  local skip = onlyMoved and inks
   for region, token in pairs(track.tint) do
     local isText = type(region.SetTextColor) == "function"
-    local ink = isText and inks and InkOf(token, regionGround[region])
-    local r, g, b, a
-    if ink then
-      r, g, b, a = ink[1], ink[2], ink[3], ink[4]
-    else
-      r, g, b, a = ResolveAccentToken(token, isText)
-    end
-    if not r then
-      local color = C[token]
-      if color then r, g, b, a = color[1], color[2], color[3], color[4] or 1 end
-    end
-    if r then
-      if isText then region:SetTextColor(r, g, b, a)
-      elseif type(region.SetVertexColor) == "function" then region:SetVertexColor(r, g, b, a) end
+    if not (skip and isText and not Grounds.Moved(token, regionGround[region])) then
+      local ink = isText and inks and InkOf(token, regionGround[region])
+      local r, g, b, a
+      if ink then
+        r, g, b, a = ink[1], ink[2], ink[3], ink[4]
+      else
+        r, g, b, a = ResolveAccentToken(token, isText)
+      end
+      if not r then
+        local color = C[token]
+        if color then r, g, b, a = color[1], color[2], color[3], color[4] or 1 end
+      end
+      if r then
+        if isText then region:SetTextColor(r, g, b, a)
+        elseif type(region.SetVertexColor) == "function" then region:SetVertexColor(r, g, b, a) end
+      end
     end
   end
   for texture, token in pairs(track.fill) do
