@@ -1443,8 +1443,9 @@ do
 
   -- A colour that is no token (a class colour, a button font's gold) on a
   -- ground: the same rule, kept for the few such colours there are -- a ring
-  -- of answers filled in place.
-  local ring, ringN, ringAt, RING = {}, 0, 0, 24
+  -- of answers filled in place, room for the classes on the lists and in the
+  -- tooltip and the buttons' fonts.
+  local ring, ringN, ringAt, RING = {}, 0, 0, 32
   InkRGB = function(r, g, b, ground)
     if not Grounds.on or type(r) ~= "number" then return nil end
     ground = ground or "content"
@@ -1459,8 +1460,11 @@ do
     local room
     if PLATED[ground] then t, room = Plated(ground, t), ROOM end
     local ir, ig, ib = r, g, b
-    -- A grey keeps its rank on a light palette, as before.
-    if lightPalette and max(r, g, b) - min(r, g, b) < 0.06 then
+    -- A grey keeps its rank on a light palette, as before -- on a ground
+    -- that takes dark ink. On one that takes light ink in a light palette
+    -- (the game's tooltip, dark in Light mode) a grey is the light ink it
+    -- was given as: a Priest's white stays white there.
+    if lightPalette and max(r, g, b) - min(r, g, b) < 0.06 and Polarity(t, NEED, room) ~= "light" then
       local v = Theme.Grey((r + g + b) / 3)
       ir, ig, ib = v, v, v
     end

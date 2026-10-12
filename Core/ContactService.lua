@@ -1188,6 +1188,8 @@ do
       r, g, b = colour.r or 1, colour.g or 1, colour.b or 1
       if type(colour.WrapTextInColorCode) == "function" then wrap = colour end
     end
+    -- The colour as the UI gives it, for a ground of its own (ByGround).
+    entry.sr, entry.sg, entry.sb = r, g, b
     -- Where the look works its inks out from their grounds (the Postbox style
     -- and the creative styles: Theme.InkFor), a class colour is made to read
     -- on the lists it stands on -- a dark one lifted on a dark list, any on a
@@ -1308,14 +1310,54 @@ function CS.ClassColour(token)
   return entry.r, entry.g, entry.b
 end
 
--- token, text -> the text in that class's colour. The client's colour objects
--- carry their own wrapper; a host's colour wears the escape kept with it.
--- Either way an unknown class returns the text untouched rather than a
--- default colour -- a name drawn in the wrong class colour is a lie, a name
--- drawn plain is merely unhelpful.
-function CS.WrapClass(token, text)
+-- entry, ground -> the escape of the class's colour as text on `ground` (the
+-- Theme's grounds: "tooltip", the game's tooltip, which stays dark in Light
+-- mode), or false where the lists' own escape is that colour already (every
+-- look that does not work its inks out from their grounds). Kept with the
+-- entry, one per ground, and made again only when the grounds or the
+-- class's colour moved.
+local function ByGround(entry, ground)
+  local T = ns.Theme
+  if not (T and type(T.InkFor) == "function" and entry.sr) then return false end
+  local at = entry.at
+  if not at then
+    at = {}
+    entry.at = at
+  end
+  local rec = at[ground]
+  local gen = type(T.GroundGeneration) == "function" and T.GroundGeneration() or 0
+  if rec and rec.gen == gen and rec.sr == entry.sr and rec.sg == entry.sg and rec.sb == entry.sb then
+    return rec.hex
+  end
+  if not rec then
+    rec = {}
+    at[ground] = rec
+  end
+  rec.gen, rec.sr, rec.sg, rec.sb = gen, entry.sr, entry.sg, entry.sb
+  local r, g, b = T.InkFor(entry.sr, entry.sg, entry.sb, ground)
+  if r == entry.r and g == entry.g and b == entry.b then
+    rec.hex = false
+  else
+    local floor, max, min = math.floor, math.max, math.min
+    rec.hex = string.format("|cff%02x%02x%02x", floor(max(0, min(1, r)) * 255 + 0.5),
+      floor(max(0, min(1, g)) * 255 + 0.5), floor(max(0, min(1, b)) * 255 + 0.5))
+  end
+  return rec.hex
+end
+
+-- token, text [, ground] -> the text in that class's colour. The client's
+-- colour objects carry their own wrapper; a host's colour wears the escape
+-- kept with it. Either way an unknown class returns the text untouched
+-- rather than a default colour -- a name drawn in the wrong class colour is
+-- a lie, a name drawn plain is merely unhelpful. `ground`: where the name is
+-- read, when not on the lists (ByGround) -- "tooltip" in a tooltip.
+function CS.WrapClass(token, text, ground)
   local entry = ClassColour(token)
   if not entry then return text end
+  if ground then
+    local hex = ByGround(entry, ground)
+    if hex then return hex .. text .. "|r" end
+  end
   if entry.wrap then return entry.wrap:WrapTextInColorCode(text) end
   return entry.hex .. text .. "|r"
 end
@@ -1419,7 +1461,10 @@ end
 -- grey) but must still identify the right character to colour it as. Passing
 -- only the short half instead would resolve against the player's own realm and
 -- mis-colour anyone off-realm.
-function CS.GetClassColoredName(name, text)
+--
+-- `ground`, optional: where the name is read, when not on the lists
+-- (CS.WrapClass) -- "tooltip" for a tooltip's title.
+function CS.GetClassColoredName(name, text, ground)
   local out = (type(text) == "string" and text ~= "") and text or name
   if type(name) ~= "string" or name == "" then return out end
 
@@ -1432,7 +1477,7 @@ function CS.GetClassColoredName(name, text)
 
   local classToken = classCache[IdentityKey(name)]
   if not classToken then return out end
-  return CS.WrapClass(classToken, out)
+  return CS.WrapClass(classToken, out, ground)
 end
 
 -- Records a recipient the player has SUCCESSFULLY mailed, most-recent-first.
