@@ -2907,13 +2907,19 @@ function State.Hidden()
   local Memory = ns.MailMemory
   local list = (Memory and type(Memory.HiddenCharacters) == "function") and Memory.HiddenCharacters() or {}
   local names, lines = {}, row.lines
+  local named = Memory and Memory.ClassName
   for i = 1, #list do
     local who = list[i]
-    names[i] = (Memory and Memory.ClassName) and Memory.ClassName(who.realm, who.name) or who.name
+    names[i] = named and Memory.ClassName(who.realm, who.name) or who.name
   end
   for i = #lines, 1, -1 do lines[i] = nil end
   local shown = math.min(#names, 12)
-  for i = 1, shown do lines[i] = names[i] end
+  -- The tooltip's lines inked for the tooltip, which stays dark in Light
+  -- mode; the row's for the row.
+  for i = 1, shown do
+    local who = list[i]
+    lines[i] = named and Memory.ClassName(who.realm, who.name, nil, "tooltip") or who.name
+  end
   row.moreLine = #names > shown and string.format(L["MEMORY_WAITING_MORE"], #names - shown) or nil
   row.any = #names > 0
   row.namesText = row.any and table.concat(names, ", ") or L["OPT_HIDDEN_NONE"]
