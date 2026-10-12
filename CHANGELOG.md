@@ -3,7 +3,7 @@
 ## 1.50.0
 
 **Make Postbox yours.** Arrange every column and button right in the window,
-pick a look (or one of six new window styles), and let Postbox do more of the
+try the new Postbox style in dark or light, and let Postbox do more of the
 work at the mailbox.
 *After updating, restart the game once (a /reload is not enough). Coming
 from 1.40? So much changed that your settings start fresh on 1.50's defaults;
@@ -38,10 +38,6 @@ your recipients, groups, Mail Memory and History are kept.*
   text size, or switch it to **Light mode**, with paper backgrounds of its
   own. Each mode keeps its own background, and your opacity and border carry
   over.
-- **Six window styles:** **London Postbox** (pick the paint), **Faction**
-  (Alliance or Horde, by character), **Post Office Counter**, **Goblin
-  Express**, **Letters** (parchment and wax seals) and **Daylight**. Your
-  mail list stays as clear as ever in every one.
 - **Window scale** from 80% to 130%, in every style. The options window
   always fits your screen.
 - **Text stays readable in every look:** its color is worked out from what
@@ -185,6 +181,8 @@ your recipients, groups, Mail Memory and History are kept.*
   goes on to the rest.
 - A mail held back because you couldn't carry any more of its item is
   collected by All mail again as soon as you hold fewer.
+- Once stuck mail can come out, "Stuck" leaves the status line and "Not
+  collected" leaves the open mail, however it came free.
 - The mail list stops at its last mail; slot counts are never cut short.
 - Questions asked from the options or other Postbox windows no longer
   open behind them.
