@@ -160,9 +160,11 @@ your recipients, groups, Mail Memory and History are kept.*
 
 - A C.O.D. question always answers for the mail you asked about, even if
   you open another mail before answering.
-- Collecting stays with the exact mail you chose (a C.O.D. you confirm,
-  your selected rows, a search) even when the mailbox shifts while it works,
-  and "C.O.D. paid" appears only once the payment is seen.
+- Everything Postbox does stays with the exact mail you chose, even when
+  the mailbox reorders itself while it works: a C.O.D. you confirm (it pays
+  once, and "C.O.D. paid" appears only once the payment is seen), your
+  selected rows or a search, Delete all done, the reading view's Delete, and
+  the gold tiles.
 - C.O.D. and the attachment queue: Send asks you to clear the queue or
   uncheck C.O.D. before it sends.
 - Delete and Return act on the mail you chose, even while another mail
