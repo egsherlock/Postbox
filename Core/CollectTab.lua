@@ -4382,7 +4382,9 @@ AV.PLATE_LETTERS = 3
 -- itself may be, which is what the row reports as its need.
 function AV.MeasurePlate(panel, plate, Memory, who)
   local M = Th().Metrics
-  local name = Memory.ClassName(who.realm, who.name, true)
+  -- The name inked for the plate it stands on, selected while the box is
+  -- on screen (PaintViewToggle).
+  local name = Memory.ClassName(who.realm, who.name, true, "plateSelected")
   local count = ""
   if ShowTabCounts() then
     count = " (" .. FormatCount((Memory.BoxCount(who.realm, who.name))) .. ")"
