@@ -195,8 +195,9 @@ your recipients, groups, Mail Memory and History are kept.*
   on its own, with no shadowed frame inside the window, and stays sharp
   when you change the window scale.
 - Option names that were cut short in some languages (Stack counts on item
-  icons, and some tabs) show in full, and the section lines in the options
-  read clearly in every look.
+  icons, and some tabs) show in full, a dropdown whose longest choice didn't
+  fit is a little wider (the rest keep their width), and the section lines in
+  the options read clearly in every look.
 - On EllesmereUI's round minimaps the mail icon sits on the rim.
 
 ## 1.40.1
