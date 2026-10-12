@@ -7286,6 +7286,11 @@ end
 -- Single-mail actions
 -------------------------------------------------------------
 
+-- andThen -> it run, where there is one: RV.AutoDelete's way on, made once.
+function RV.Continue(andThen)
+  if andThen then andThen() end
+end
+
 -- Read-mail mode "delete": a mail Postbox has just emptied of gold or items,
 -- or a letter the reading view's Back has just closed on, goes the moment it
 -- is finished with -- read, and nothing left in it. Checked against what
@@ -7294,31 +7299,34 @@ end
 -- delete. `record` is the mail's
 -- History record, so a deleted letter stays listed there with what it said.
 -- `andThen` runs whatever happened, told true when a delete of ours went
--- out (a run waits for the inbox to show it gone: Run.Next).
+-- out (the run goes on to its next mail: Run.Next).
 function RV.AutoDelete(panel, index, before, record, andThen)
-  local function Continue() if andThen then andThen() end end
-  if RV.Mode() ~= "delete" or not index or type(before) ~= "table" then return Continue() end
-  if not MailboxOpen() or Mail().IsBusy() then return Continue() end
+  if RV.Mode() ~= "delete" or not index or type(before) ~= "table" then return RV.Continue(andThen) end
+  if not MailboxOpen() or Mail().IsBusy() then return RV.Continue(andThen) end
   -- Where the mail is now: gone (the client deleted it), or not to be told
   -- from another, and there is nothing to delete.
   index = Mail().Rebase(before.index, before.stamp)
-  if type(index) ~= "number" then return Continue() end
+  if type(index) ~= "number" then return RV.Continue(andThen) end
   -- Emptiness is the client's word, header and links both. A collect hands
   -- over its mail once the header has caught up with the take (MailService,
   -- "Letting the header catch up"); a mail that still does not read finished
   -- by then is left where it is, under the divider, never deleted on a guess.
-  if RV.Identity(index) ~= before.id or not Mail().IsReadPersistent(index) then return Continue() end
+  local _, _, sender, subject = GetInboxHeaderInfo(index)
+  if (sender == nil and subject == nil) or sender ~= before.sender or subject ~= before.subject
+    or not Mail().IsReadPersistent(index) then
+    return RV.Continue(andThen)
+  end
   -- Mail with no text of its own that Postbox has just emptied is already
   -- on its way out: the client deletes it itself (MailService, "Mail on its
   -- way out"), and a delete of ours would be a second command for a mail
   -- the server is removing. Nothing waits for it to go: where everything
   -- else then is, is followed.
-  if Mail().Leaving(index) then return Continue() end
+  if Mail().Leaving(index) then return RV.Continue(andThen) end
   -- The option's promise is that History keeps what a deleted letter said.
   -- With History at Never it keeps nothing, so a letter with words of its
   -- own stays, under the divider, for the player to clear; mail with no
   -- text of its own still goes.
-  if not RV.HistoryOn() and Mail().HasOwnText(index) then return Continue() end
+  if not RV.HistoryOn() and Mail().HasOwnText(index) then return RV.Continue(andThen) end
   if record and Mail().HistoryNote then Mail().HistoryNote(record, "read") end
   -- Through the sweep that re-checks the index immediately before its
   -- command: deleting is the irreversible one.
@@ -7328,25 +7336,23 @@ function RV.AutoDelete(panel, index, before, record, andThen)
   end, { [index] = Fingerprint(index) })
 end
 
--- index -> sender and subject: the part of a mail's identity a take cannot
--- change (a paid C.O.D. reads 0 afterwards, which the full fingerprint counts).
-function RV.Identity(index)
+-- index -> what RV.AutoDelete checks the mail against once the take is done:
+-- its sender and subject, its index and a stamp of the inbox as it stood.
+-- Sender and subject alone are not enough: a mail emptied of everything and
+-- with no text is deleted by the server, the one above it slides into its
+-- index, and two mails from one alt with one subject read alike. So the mail
+-- is followed to where it is (MailService, "the inbox, followed"), and one
+-- that cannot be is not deleted on a guess.
+-- `into`: a table to write it into, kept by a caller that asks once per
+-- mail (the collect run), rather than a new one.
+function RV.Before(index, into)
   local _, _, sender, subject = GetInboxHeaderInfo(index)
   if sender == nil and subject == nil then return nil end
-  return tostring(sender) .. "\001" .. tostring(subject)
-end
-
--- index -> what RV.AutoDelete checks the mail against once the take is done:
--- its identity, its index and a stamp of the inbox as it stood. Sender and
--- subject alone are not enough: a mail emptied of everything and with no
--- text is deleted by the server, the one above it slides into its index, and
--- two mails from one alt with one subject read alike. So the mail is
--- followed to where it is (MailService, "the inbox, followed"), and one that
--- cannot be is not deleted on a guess.
-function RV.Before(index)
-  local id = RV.Identity(index)
-  if not id then return nil end
-  return { id = id, index = index, stamp = Mail().Stamp() }
+  if into then
+    into.sender, into.subject, into.index, into.stamp = sender, subject, index, Mail().Stamp()
+    return into
+  end
+  return { sender = sender, subject = subject, index = index, stamp = Mail().Stamp() }
 end
 
 -- paid -> the C.O.D. a confirmed take paid, said in chat with its amount
@@ -7568,6 +7574,9 @@ local Run = {
   -- Places given up on with their mail still in the box (Run.Moved,
   -- Run.Find): counted as left when the run ends, never as collected.
   dropped = 0,
+  -- The mail being taken: its place, its index, and what Delete when done
+  -- checks it against (RV.Before, written into `beforeT`).
+  step = 0, stepIndex = nil, stepBefore = nil, beforeT = {},
   -- Each place's money, read before its first take (MailEconomy): what it
   -- earns and what it cost, added to the run's once (`tallied`) -- when it
   -- is done with, or, where the run ends or gives it up first, once gold
@@ -8106,86 +8115,94 @@ local function RunStep()
   Run.opts.history = Run.record[i]
   -- Taken from before and read since: its body came with that take's fetch.
   Run.opts.skipFetch = (Run.record[i] ~= nil and wasRead) and true or nil
-  local before = RV.HeldSomething(index) and RV.Before(index) or nil
+  -- The mail being taken, for its answer (Run.OnCollected): its place, its
+  -- index and what Delete when done checks it against, kept on the run
+  -- rather than in a closure per mail.
+  Run.step, Run.stepIndex = i, index
+  Run.stepBefore = RV.HeldSomething(index) and RV.Before(index, Run.beforeT) or nil
 
-  Mail().CollectMail(index, function(status, refused, reason, refusal, _, took, record)
-    Run.current = nil
-    RequestRefresh(Run.panel)
+  Mail().CollectMail(index, Run.OnCollected, Run.opts)
+end
 
-    if not Run.active then return end
-    Run.record[i] = record
-    if (tonumber(took) or 0) > 0 then Run.took[i] = true end
+-- The answer for the mail being taken (RunStep).
+function Run.OnCollected(status, refused, reason, refusal, _, took, record)
+  local i, index, before = Run.step, Run.stepIndex, Run.stepBefore
+  Run.current = nil
+  RequestRefresh(Run.panel)
 
-    if status == "closed" then
-      if Run.took[i] then Run.Tally(i) end
-      StopRun()
-      return
+  if not Run.active then return end
+  Run.record[i] = record
+  if (tonumber(took) or 0) > 0 then Run.took[i] = true end
+
+  if status == "closed" then
+    if Run.took[i] then Run.Tally(i) end
+    StopRun()
+    return
+  end
+
+  -- The take met another mail at the index and left it alone, before this
+  -- one was emptied: nothing is counted, and the mail is found again.
+  if status == "moved" then return Run.Moved() end
+
+  if status == "busy" or status == "timeout" then
+    -- Something is wrong with the run itself: the server stopped
+    -- acknowledging commands, or the command channel was not ours to use at
+    -- all. Either way the next command could be silently discarded. Stop, and
+    -- count this mail plus everything still queued as left behind.
+    if Run.took[i] then Run.Tally(i) end
+    FinishRun(Remaining() + 1 + Run.dropped, "timeout")
+    return
+  end
+
+  -- The run keeps bag slots free and has reached them (Run.opts.keepFree):
+  -- it ends here, as a bags stop does, with this mail and the rest still
+  -- in the mailbox. Only the gold of a mail that had some came out -- a
+  -- mail holding only items was not touched -- so only then is it tallied.
+  if status == "refused" and refusal == "keep" then
+    if Run.took[i] then Run.Tally(i) end
+    FinishRun(Remaining() + 1 + Run.dropped, "keep")
+    return
+  end
+
+  -- Past the two statuses that mean "the take may not have happened", so the
+  -- money did change hands -- including on a REFUSED take, where the server
+  -- declines specific attachments and hands over the money and the rest
+  -- regardless. Tallied before the bag-space guard below, which can end the
+  -- run on this very mail.
+  Run.Tally(i)
+
+  if status == "refused" and refusal == "bags" then
+    -- The one refusal that stops the run: the bags are full (the service
+    -- has set its bags-full state and marked nothing on the mail). Every
+    -- further take would be refused too, and each mail walked past would be
+    -- marked read for nothing. The mail just refused still holds its items,
+    -- so it counts as left alongside everything still queued.
+    FinishRun(Remaining() + 1 + Run.dropped, "bags")
+    return
+  elseif status == "refused" then
+    -- A fact about those items, not about the run: record them and keep
+    -- going, because one item the player cannot hold must not block every
+    -- other mail in the queue. Counted by mail for the outcome, by item for
+    -- the chat line. A count of 0 is a mail left as it was with nothing
+    -- recorded (a take that never landed, unexplained): it is neither, and
+    -- its words, if any, are not the refusals' the chat line quotes.
+    local n = tonumber(refused) or 0
+    Run.refused = Run.refused + n
+    if n > 0 then
+      Run.stuck = Run.stuck + 1
+      NoteReason(reason)
     end
+  else
+    Run.collected = Run.collected + 1
+  end
 
-    -- The take met another mail at the index and left it alone, before this
-    -- one was emptied: nothing is counted, and the mail is found again.
-    if status == "moved" then return Run.Moved() end
-
-    if status == "busy" or status == "timeout" then
-      -- Something is wrong with the run itself: the server stopped
-      -- acknowledging commands, or the command channel was not ours to use at
-      -- all. Either way the next command could be silently discarded. Stop, and
-      -- count this mail plus everything still queued as left behind.
-      if Run.took[i] then Run.Tally(i) end
-      FinishRun(Remaining() + 1 + Run.dropped, "timeout")
-      return
-    end
-
-    -- The run keeps bag slots free and has reached them (Run.opts.keepFree):
-    -- it ends here, as a bags stop does, with this mail and the rest still
-    -- in the mailbox. Only the gold of a mail that had some came out -- a
-    -- mail holding only items was not touched -- so only then is it tallied.
-    if status == "refused" and refusal == "keep" then
-      if Run.took[i] then Run.Tally(i) end
-      FinishRun(Remaining() + 1 + Run.dropped, "keep")
-      return
-    end
-
-    -- Past the two statuses that mean "the take may not have happened", so the
-    -- money did change hands -- including on a REFUSED take, where the server
-    -- declines specific attachments and hands over the money and the rest
-    -- regardless. Tallied before the bag-space guard below, which can end the
-    -- run on this very mail.
-    Run.Tally(i)
-
-    if status == "refused" and refusal == "bags" then
-      -- The one refusal that stops the run: the bags are full (the service
-      -- has set its bags-full state and marked nothing on the mail). Every
-      -- further take would be refused too, and each mail walked past would be
-      -- marked read for nothing. The mail just refused still holds its items,
-      -- so it counts as left alongside everything still queued.
-      FinishRun(Remaining() + 1 + Run.dropped, "bags")
-      return
-    elseif status == "refused" then
-      -- A fact about those items, not about the run: record them and keep
-      -- going, because one item the player cannot hold must not block every
-      -- other mail in the queue. Counted by mail for the outcome, by item for
-      -- the chat line. A count of 0 is a mail left as it was with nothing
-      -- recorded (a take that never landed, unexplained): it is neither, and
-      -- its words, if any, are not the refusals' the chat line quotes.
-      local n = tonumber(refused) or 0
-      Run.refused = Run.refused + n
-      if n > 0 then
-        Run.stuck = Run.stuck + 1
-        NoteReason(reason)
-      end
-    else
-      Run.collected = Run.collected + 1
-    end
-
-    -- An emptied letter goes before the next mail, in the "delete" read-mail
-    -- mode; then the next mail (Run.Next).
-    if status == "collected" then
-      RV.AutoDelete(Run.panel, index, before, nil, Run.Next)
-    else
-      Run.Next()
-    end
-  end, Run.opts)
+  -- An emptied letter goes before the next mail, in the "delete" read-mail
+  -- mode; then the next mail (Run.Next).
+  if status == "collected" then
+    RV.AutoDelete(Run.panel, index, before, nil, Run.Next)
+  else
+    Run.Next()
+  end
 end
 
 -------------------------------------------------------------
