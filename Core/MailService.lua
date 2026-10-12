@@ -1169,12 +1169,14 @@ end
 -- which is which changes nothing.
 --
 -- Same count. A list refresh can bring new mail in at the top while the last
--- listed drops off the foot (a box listing all it can), or take one mail
--- away while another comes in, and the count reads as it did with every
--- index moved. So each update is read, whatever the count says, and lined
--- up: every mail where it was (the target by sender and subject); `k` new at
--- the top with the last `k` dropped off the foot, only where the server's
--- count rose; or every mail where it was with one holding less (another
+-- listed drops off the foot (a box listing all it can), take mail away while
+-- as many more are listed at the foot, or take one mail away while another
+-- comes in, and the count reads as it did with every index moved. So each
+-- update is read, whatever the count says, and lined up: every mail where it
+-- was (the target by sender and subject); `k` new at the top with the last
+-- `k` dropped off the foot, only where the server's count rose; `d` gone
+-- with `d` more listed at the foot, only where it fell, lined up as a change
+-- of count is; or every mail where it was with one holding less (another
 -- addon took its gold). A box that reads the same more than one of those
 -- ways cannot say which happened, and nothing is vouched for. Anything else
 -- lines nothing up.
@@ -1449,18 +1451,22 @@ local function TrackOneChanged()
 end
 
 -- The same count, read again, `total` the server's now -> 0, nothing moved;
--- `k`, k new at the top and the last k dropped off the foot; or false,
--- nothing lines up, or two ways do.
+-- `k`, k new at the top and the last k dropped off the foot; nil and `d`,
+-- `u`, d gone and d more listed at the foot (u of them not expected to go:
+-- TrackFits); or false, nothing lines up, or two ways do.
 --
--- New mail at the top pushes the last off the foot of a full list only with
--- new mail on the server: so that is tried only where the server's count
--- rose. The box may then also read as it did -- the new mail kept back --
--- and when it reads both ways nothing is vouched for.
+-- Which ways are tried follows the server's count. New mail at the top
+-- pushes the last off the foot of a full list only with new mail on the
+-- server: tried only where its count rose. Mail gone with as many more
+-- listed at the foot, only with less on it: tried where its count fell, by
+-- at least as many. Either way the box may also read as it did -- the new
+-- mail kept back, or mail gone that was never listed -- and when it reads
+-- two ways nothing is vouched for.
 local function TrackSameCount(total)
   local t = track
-  local arrived = total > t.total
+  local arrived, fell = total > t.total, total < t.total
   local inPlace = TrackInPlace()
-  local shift = 0
+  local shift, refill, ru = 0, 0, 0
   if arrived then
     local most = t.n - 1
     if most > TRACK_BAND then most = TRACK_BAND end
@@ -1470,23 +1476,41 @@ local function TrackSameCount(total)
         shift = k
       end
     end
+  elseif fell then
+    local most = t.total - total
+    if most > TRACK_BAND then most = TRACK_BAND end
+    if most > t.n then most = t.n end
+    for d = 1, most do
+      if TrackFits(0, d, 0) then
+        if refill ~= 0 then return false end
+        refill = d
+      end
+    end
+    -- Or one other mail gone unexplained, with one more at the foot: as
+    -- one other may go where the count falls (TrackSync).
+    if refill == 0 and most >= 1 and TrackFits(0, 1, 1) then refill, ru = 1, 1 end
   end
   if inPlace then
-    if shift ~= 0 then return false end
+    if shift ~= 0 or refill ~= 0 then return false end
     return 0
   end
   if shift ~= 0 then return shift end
-  if not arrived and TrackOneChanged() then return 0 end
+  local changed = not arrived and TrackOneChanged()
+  if refill ~= 0 then
+    if changed then return false end
+    return nil, refill, ru
+  end
+  if changed then return 0 end
   return false
 end
 
--- The same count read again (Track*, above) and lined up: the log told,
--- the target and the marks of what is on its way out followed, and the
--- reading kept.
-local function TrackKeepSame(total)
+-- The same count read again (Track*, above) and lined up as nothing moved,
+-- new mail at the top, or nothing at all (`how`, TrackSameCount's): the
+-- log told, the target and the marks of what is on its way out followed,
+-- and the reading kept.
+local function TrackKeepSame(total, how)
   local t = track
   local n = t.n
-  local how = TrackSameCount(total)
   t.total = total
   if how == false then
     -- Nothing lines up: every index held is unknown from here on.
@@ -1536,27 +1560,37 @@ local function TrackSync()
   t.dirty, t.stay = false, nil
   TrackLapse()
   for y = 1, now do TrackRead(y, t.cs, t.cj, t.cm, t.cc, t.ci) end
-  if now == t.n then return TrackKeepSame(total) end
-  -- Expected first; then one other gone; then new mail at the top, or more
-  -- listed at the foot -- the server's count grows with new mail and not
-  -- with more of it listed, so that says which to try first -- with as many
-  -- as the count says, and each as many more as may have gone.
   local a, f, u = 0, 0, 0
-  local fits, D, W, U = TrackFits(0, 0, 0)
-  if not fits then u = 1; fits, D, W, U = TrackFits(0, 0, 1) end
-  local topFirst = total > t.total
-  for d = 0, TRACK_BAND do
-    if fits then break end
-    local k = now - t.n + d
-    if k >= 1 then
-      for pass = 1, 2 do
-        if not fits then
-          if (pass == 1) == topFirst then
-            a, f, u = k, 0, 0
-          else
-            a, f, u = 0, k, 0
+  local fits, D, W, U
+  if now == t.n then
+    -- The same count ("Same count", above): mail gone with as many more at
+    -- the foot is lined up below, as a change of count is; the rest is
+    -- TrackKeepSame's.
+    local how, d, du = TrackSameCount(total)
+    if how ~= nil then return TrackKeepSame(total, how) end
+    f, u = d, du
+    fits, D, W, U = TrackFits(0, f, u)
+  else
+    -- Expected first; then one other gone; then new mail at the top, or more
+    -- listed at the foot -- the server's count grows with new mail and not
+    -- with more of it listed, so that says which to try first -- with as many
+    -- as the count says, and each as many more as may have gone.
+    fits, D, W, U = TrackFits(0, 0, 0)
+    if not fits then u = 1; fits, D, W, U = TrackFits(0, 0, 1) end
+    local topFirst = total > t.total
+    for d = 0, TRACK_BAND do
+      if fits then break end
+      local k = now - t.n + d
+      if k >= 1 then
+        for pass = 1, 2 do
+          if not fits then
+            if (pass == 1) == topFirst then
+              a, f, u = k, 0, 0
+            else
+              a, f, u = 0, k, 0
+            end
+            fits, D, W, U = TrackFits(a, f, 0)
           end
-          fits, D, W, U = TrackFits(a, f, 0)
         end
       end
     end
