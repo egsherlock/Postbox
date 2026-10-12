@@ -4787,6 +4787,10 @@ local function ActivateRow(row, button)
   end
 
   if not PreviewGesture(row, button) then
+    -- A run owns the inbox until it ends, between its mails as much as
+    -- during a take: a click's collect is no part of it, and taking the
+    -- channel from it would stop it. Ignored, as the preview below is.
+    if CT.IsRunning() then return end
     -- Bound when the list was last built, at that count of mails.
     CollectSingleMail(panel, index, nil, panel._lastNumItems)
     return
