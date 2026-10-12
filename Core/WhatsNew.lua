@@ -341,8 +341,10 @@ local function BuildCard(frame)
   c.__pbPopupAlways = true
   T.ApplyCard(c)
   -- Escape answers it as OK does, and closes nothing else (section 4).
-  c:SetScript("OnShow", ESC.Sync)
-  c:SetScript("OnHide", ESC.Sync)
+  -- Hooked, as the window's are: ApplyCard has hooked the show already, to
+  -- paint the card's floor in the look of the moment.
+  c:HookScript("OnShow", ESC.Sync)
+  c:HookScript("OnHide", ESC.Sync)
 
   local title = T.CreateText(c, "heading")
   title:SetJustifyH("LEFT")
