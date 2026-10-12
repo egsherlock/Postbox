@@ -277,12 +277,13 @@ local function FormatLastSeen(stamp)
 end
 
 -- `name` identifies the character (full address, realm half included); `text`,
--- when given, is what gets wrapped in the colour code. See
+-- when given, is what gets wrapped in the colour code; `ground`, where it is
+-- read when not on the list ("tooltip"). See
 -- ContactService.GetClassColoredName.
-local function ClassColored(name, text)
+local function ClassColored(name, text, ground)
   local CS = ns.ContactService
   if CS and type(CS.GetClassColoredName) == "function" then
-    local ok, colored = pcall(CS.GetClassColoredName, name, text)
+    local ok, colored = pcall(CS.GetClassColoredName, name, text, ground)
     if ok and type(colored) == "string" and colored ~= "" then return colored end
   end
   return text or name
@@ -295,13 +296,16 @@ end
 -- ContactService keys its cache on (name, realm), so looking up "Bob" alone
 -- would ask about Bob on the player's own realm and colour a different person's
 -- class onto this row.
-local function DecorateName(display)
+--
+-- `ground`: where the name is read when not on the list -- "tooltip" for the
+-- row's tooltip, which stays dark in Light mode: both colours inked for it.
+local function DecorateName(display, ground)
   local text = tostring(display or "")
   local short, realm = text:match("^([^%-]+)%-(.+)$")
   if short then
-    return ClassColored(text, short) .. Theme.Colorize("textSecondary", "-" .. realm)
+    return ClassColored(text, short, ground) .. Theme.Colorize("textSecondary", "-" .. realm, ground)
   end
-  return ClassColored(text)
+  return ClassColored(text, nil, ground)
 end
 
 -- The character's class, in the player's language.
@@ -1219,7 +1223,7 @@ local function BuildRow(parent)
     local entry = row._entry
     if not entry then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(DecorateName(entry.display))
+    GameTooltip:SetText(DecorateName(entry.display, "tooltip"))
     local head = entry.category or L["RM_CAT_SAVED"]
     local class = ClassName(entry.display)
     if class then head = head .. SEPARATOR .. class end
