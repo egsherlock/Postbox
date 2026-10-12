@@ -7568,6 +7568,12 @@ local Run = {
   -- Places given up on with their mail still in the box (Run.Moved,
   -- Run.Find): counted as left when the run ends, never as collected.
   dropped = 0,
+  -- Each place's money, read before its first take (MailEconomy): what it
+  -- earns and what it cost, added to the run's once (`tallied`) -- when it
+  -- is done with, or, where the run ends or gives it up first, once gold
+  -- was seen to come out of it (`took`). And its History record, handed to
+  -- each take of it, so a mail taken again after "moved" stays one entry.
+  econE = {}, econS = {}, tallied = {}, took = {}, record = {},
   -- The run takes mails the player picked or searched for, not a whole
   -- kind: a mail it cannot place is taken only when nothing else reads as
   -- it (Run.Find).
@@ -7671,7 +7677,7 @@ end
 -- reads as it and is no other place's (twins are one another's). A run of
 -- picked or searched mail takes that mail only when every mail that reads
 -- as it is one of its own lost places; otherwise the place is given up,
--- its mail left as it is and counted as left.
+-- its mail left as it is and counted as left (nil, "dropped").
 function Run.Find(i)
   local M = Mail()
   Run.Follow()
@@ -7695,7 +7701,8 @@ function Run.Find(i)
   if Run.subset and found > Run.LostLike(i) then
     Run.dropped = Run.dropped + 1
     Run.lost[i] = true
-    return nil
+    if Run.took[i] then Run.Tally(i) end
+    return nil, "dropped"
   end
   Run.at[i], Run.lost[i] = best, false
   return best
@@ -7751,6 +7758,11 @@ local function ResetRun()
   for i in pairs(Run.again) do Run.again[i] = nil end
   Clear(Run.queue)
   Run.dropped, Run.subset = 0, false
+  for i in pairs(Run.econE) do Run.econE[i], Run.econS[i] = nil, nil end
+  for i in pairs(Run.tallied) do Run.tallied[i] = nil end
+  for i in pairs(Run.took) do Run.took[i] = nil end
+  for i in pairs(Run.record) do Run.record[i] = nil end
+  Run.opts.history, Run.opts.skipFetch = nil, nil
   Run.collected = 0
   Run.refused = 0
   Run.stuck = 0
@@ -8066,28 +8078,46 @@ local function RunStep()
       FinishRun(Run.dropped)
       return
     end
-    index = Run.Find(Run.cursor)
+    local why
+    index, why = Run.Find(Run.cursor)
+    -- A mail the run had begun on (its take answered "moved") that has gone
+    -- since, or holds nothing now: its takes emptied it, as far as anything
+    -- shows, and what came out of it is counted.
+    if not index and why ~= "dropped" and Run.record[Run.cursor] then
+      Run.collected = Run.collected + 1
+      Run.Tally(Run.cursor)
+    end
   until index
 
   Run.current = index
   CT.RefreshRunStatus()
   RequestRefresh(Run.panel)
 
-  -- Read BEFORE the take, because the take is what removes the evidence: a mail
-  -- emptied of its money reports zero, and one emptied completely is deleted by
-  -- the server and its index names a different mail entirely.
-  local _, _, _, _, money = GetInboxHeaderInfo(index)
-  local kind = Mail().ClassifyMail(index)
-  local mailEarned, mailSpent = MailEconomy(index, kind, money)
+  -- Read BEFORE the mail's first take, because the take is what removes the
+  -- evidence: a mail emptied of its money reports zero, and one emptied
+  -- completely is deleted by the server and its index names a different mail
+  -- entirely. A mail taken again after "moved" keeps what was read then, and
+  -- its History record.
+  local i = Run.cursor
+  local _, _, _, _, money, _, _, _, wasRead = GetInboxHeaderInfo(index)
+  if Run.econE[i] == nil then
+    Run.econE[i], Run.econS[i] = MailEconomy(index, Mail().ClassifyMail(index), money)
+  end
+  Run.opts.history = Run.record[i]
+  -- Taken from before and read since: its body came with that take's fetch.
+  Run.opts.skipFetch = (Run.record[i] ~= nil and wasRead) and true or nil
   local before = RV.HeldSomething(index) and RV.Before(index) or nil
 
-  Mail().CollectMail(index, function(status, refused, reason, refusal)
+  Mail().CollectMail(index, function(status, refused, reason, refusal, _, took, record)
     Run.current = nil
     RequestRefresh(Run.panel)
 
     if not Run.active then return end
+    Run.record[i] = record
+    if (tonumber(took) or 0) > 0 then Run.took[i] = true end
 
     if status == "closed" then
+      if Run.took[i] then Run.Tally(i) end
       StopRun()
       return
     end
@@ -8101,6 +8131,7 @@ local function RunStep()
       -- acknowledging commands, or the command channel was not ours to use at
       -- all. Either way the next command could be silently discarded. Stop, and
       -- count this mail plus everything still queued as left behind.
+      if Run.took[i] then Run.Tally(i) end
       FinishRun(Remaining() + 1 + Run.dropped, "timeout")
       return
     end
@@ -8110,10 +8141,7 @@ local function RunStep()
     -- in the mailbox. Only the gold of a mail that had some came out -- a
     -- mail holding only items was not touched -- so only then is it tallied.
     if status == "refused" and refusal == "keep" then
-      if (tonumber(money) or 0) > 0 then
-        Run.earned = Run.earned + mailEarned
-        Run.spent = Run.spent + mailSpent
-      end
+      if Run.took[i] then Run.Tally(i) end
       FinishRun(Remaining() + 1 + Run.dropped, "keep")
       return
     end
@@ -8123,8 +8151,7 @@ local function RunStep()
     -- declines specific attachments and hands over the money and the rest
     -- regardless. Tallied before the bag-space guard below, which can end the
     -- run on this very mail.
-    Run.earned = Run.earned + mailEarned
-    Run.spent = Run.spent + mailSpent
+    Run.Tally(i)
 
     if status == "refused" and refusal == "bags" then
       -- The one refusal that stops the run: the bags are full (the service
@@ -8191,8 +8218,18 @@ function Run.Moved()
     Run.cursor = i - 1
   else
     Run.dropped = Run.dropped + 1
+    -- Given up with gold already out of it: that gold came through.
+    if Run.took[i] then Run.Tally(i) end
   end
   RunStep()
+end
+
+-- Place `i`'s money into the run's, once.
+function Run.Tally(i)
+  if Run.tallied[i] or Run.econE[i] == nil then return end
+  Run.tallied[i] = true
+  Run.earned = Run.earned + Run.econE[i]
+  Run.spent = Run.spent + Run.econS[i]
 end
 
 -- The next mail, once this one is done with (and, in the "delete" read-mail

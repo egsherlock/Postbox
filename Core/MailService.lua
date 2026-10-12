@@ -2442,12 +2442,13 @@ end
 -- refused for want of room and the plan stopped there, `missed` counts the
 -- takes that did not land and were not recorded, `moved` is true when the
 -- plan stopped because, with a take of it still to come, the index named
--- another mail, and `paid` is the C.O.D. a take of the plan's paid, in copper,
+-- another mail, `paid` is the C.O.D. a take of the plan's paid, in copper,
 -- or nil: known only from the plan's own evidence (a take seen to land on the
 -- mail while it owed, or, where the inbox moved under the take, the
--- character's money down by exactly the amount). `refusedCount` counts only
--- the refusals that were (bags included); `reason` is their words, or the
--- missed takes' where there were no others.
+-- character's money down by exactly the amount), and `money` is the gold its
+-- takes were seen to take, in copper. `refusedCount` counts only the
+-- refusals that were (bags included); `reason` is their words, or the missed
+-- takes' where there were no others.
 -------------------------------------------------------------
 
 -- How long a take that did not land, unexplained, waits before its one more
@@ -2557,12 +2558,14 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
   -- The C.O.D. the take about to pay owes, the character's money as it goes
   -- out, and what was paid once a take is seen to have paid it.
   local owed, moneyBefore, paidAmount = 0, nil, nil
+  -- The gold the plan's takes were seen to take.
+  local tookMoney = 0
 
   -- `closed`: the mailbox closed with a take of the plan's in flight or
   -- waiting for its one more try, and what that take did is not known.
   local function over(timedOut, full, kept, moved, closed)
     done(timedOut, refused, reason or (refused == 0 and missedText) or nil, fingerprint, full, kept, missed, moved,
-      closed, paidAmount)
+      closed, paidAmount, tookMoney)
   end
 
   -- A refusal held against the mail, with what the character holds of the
@@ -2589,6 +2592,8 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
       -- The first item take of a C.O.D. mail that lands is the one that paid.
       if not tookItem and codPlan and owed > 0 then paidAmount = owed end
       tookItem = true
+    else
+      tookMoney = tookMoney + (tonumber(value) or 0)
     end
     HoldLeaving(markSender, markSubject)
     HistoryNote(record, op.kind, value, count)
@@ -2602,6 +2607,22 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
     if op.kind ~= "item" or tookItem or not codPlan or owed <= 0 or not moneyBefore then return end
     if type(GetMoney) ~= "function" or GetMoney() ~= moneyBefore - owed then return end
     Took(op, value, count)
+  end
+
+  -- Any other take whose mail cannot be found to say what it did: the
+  -- character can. A sum of gold is in the purse to the copper (`purse`,
+  -- read as the take went), and an item in the bags as many more as the
+  -- stack held (`inBags`); bags that have not caught up say nothing, and
+  -- nothing is claimed. -> whether it landed.
+  local function TheCharacterSays(op, value, count, itemID, purse, inBags)
+    if op.kind == "money" then
+      return purse ~= nil and type(GetMoney) == "function" and GetMoney() == purse + (tonumber(value) or 0)
+    end
+    if inBags == nil or itemID == nil or type(C_Item) ~= "table" or type(C_Item.GetItemCount) ~= "function" then
+      return false
+    end
+    local now = held.Read(C_Item.GetItemCount(itemID))
+    return now ~= nil and now >= inBags + (tonumber(count) or 1)
   end
 
   local function noteReason(text)
@@ -2718,6 +2739,13 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
       local _, _, _, _, _, codNow = GetInboxHeaderInfo(index)
       owed = tonumber(codNow) or 0
       moneyBefore = type(GetMoney) == "function" and GetMoney() or nil
+    end
+    -- The character's purse and bags as the take goes, the last witnesses
+    -- of what it did (TheCharacterSays).
+    local purse = type(GetMoney) == "function" and GetMoney() or nil
+    local inBags = nil
+    if takeItem ~= nil and type(C_Item) == "table" and type(C_Item.GetItemCount) == "function" then
+      inBags = held.Read(C_Item.GetItemCount(takeItem))
     end
 
     -- Whether this take empties the mail and the client then deletes it:
@@ -2845,9 +2873,14 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
         end
 
         -- No words, and the mail cannot be found to say what the take did:
-        -- nothing more goes. Only the money can say a C.O.D. was paid.
+        -- nothing more goes. Only the money can say a C.O.D. was paid, and
+        -- only the purse or the bags that any other take landed.
         if seen == "lost" then
-          MoneySaysPaid(op, takes, takeCount)
+          if op.kind == "item" and codPlan and not tookItem then
+            MoneySaysPaid(op, takes, takeCount)
+          elseif TheCharacterSays(op, takes, takeCount, takeItem, purse, inBags) then
+            landed()
+          end
           over(false, false, false, true)
           return
         end
@@ -3020,8 +3053,14 @@ end
 -------------------------------------------------------------
 
 -- index, onDone [, opts] -> nothing. onDone(status, refusedCount, reason, kind,
--- paid): `paid` is the C.O.D. a take paid, in copper, from the plan's own
--- evidence (RunPlan), or nil -- whatever the status, "moved" included.
+-- paid, money, record): `paid` is the C.O.D. a take paid, in copper, from the
+-- plan's own evidence (RunPlan), or nil, and `money` the gold its takes were
+-- seen to take -- whatever the status, "moved" included; `record` is the
+-- History record the takes went to (opts.history, or one begun here), for a
+-- caller that comes back to the same mail to hand on.
+-- opts.history    the History record of this mail's earlier takes, so the
+--                 mail stays one History entry however many times it is
+--                 taken from.
 --
 -- opts.skipFetch  the caller has already loaded this mail's body (the detail
 --                 overlay has), so the fetch would be a wasted round trip that
@@ -3040,14 +3079,14 @@ function Mail.CollectMail(index, onDone, opts)
   local finished = false
   -- The C.O.D. a take of the plan paid (RunPlan's evidence), told with
   -- whatever the answer is.
-  local paid = nil
+  local paid, tookMoney, record = nil, 0, nil
 
   local function finish(status, refusedCount, reason, kind)
     if finished then return end
     finished = true
     TrackEnd()
     Release(token)
-    if onDone then onDone(status, tonumber(refusedCount) or 0, reason, kind, paid) end
+    if onDone then onDone(status, tonumber(refusedCount) or 0, reason, kind, paid, tookMoney, record) end
   end
 
   if not token then
@@ -3066,7 +3105,7 @@ function Mail.CollectMail(index, onDone, opts)
   money = tonumber(money) or 0
   itemCount = tonumber(itemCount) or 0
   -- Taken before anything moves: the entry names the mail as it arrived.
-  local record = HistoryRecord(index, opts and opts.history)
+  record = HistoryRecord(index, opts and opts.history)
 
   -- TakeInboxItem on a C.O.D. mail PAYS it, and only the single-mail path --
   -- which just showed the player this exact mail's amount -- may do that
@@ -3212,8 +3251,8 @@ function Mail.CollectMail(index, onDone, opts)
     end
 
     RunPlan(index, fingerprint, plan, function(timedOut, refusedCount, reason, current, full, kept, missed, shifted,
-        _, paidNow)
-      paid = paidNow
+        _, paidNow, moneyNow)
+      paid, tookMoney = paidNow, moneyNow or 0
       if timedOut then return finish("timeout", refusedCount, reason) end
       if full then return finish("refused", refusedCount, reason, "bags") end
       if kept then return finish("refused", refusedCount, reason, "keep") end
