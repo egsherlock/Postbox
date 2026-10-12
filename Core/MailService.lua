@@ -1139,8 +1139,8 @@ local track = {
   -- The mail a command of Postbox's is working on, in the numbering above:
   -- an index, nil once it went as its command emptied it, or false when it
   -- cannot be said. `leaves`: the command under way may empty it and see it
-  -- go.
-  target = nil, leaves = false,
+  -- go, and `sentAt` when that command was sent (GetTime).
+  target = nil, leaves = false, sentAt = 0,
   -- The log: `seq` entries so far, the last TRACK_LOG of them kept.
   seq = 0, kind = {}, a = {}, b = {},
 }
@@ -1244,6 +1244,10 @@ local function TrackFate(x)
   return false
 end
 
+-- For the removals line of /postbox debug (Postbox.lua, Perf.Removal), only
+-- while recording is on: mail `x`, on its way out, went (`gone`) -- the time
+-- since the take that emptied it was sent, and whether the channel was held
+-- by another command meanwhile -- or was not seen to go.
 local function TrackPerf(x, gone)
   local perf = ns.Perf
   if not (perf and perf.Removal) then return end
@@ -1381,8 +1385,18 @@ local function TrackSync()
       end
     end
     if a > 0 then TrackLog(T_INS, a) end
-    -- The target, and the marks of what is on its way out, follow.
-    if type(t.target) == "number" then t.target = TrackFate(t.target) end
+    -- The target, and the marks of what is on its way out, follow. A target
+    -- gone as its command emptied it is a removal the removals line counts,
+    -- from the command's sending.
+    if type(t.target) == "number" then
+      local x = t.target
+      t.target = TrackFate(x)
+      if t.target == nil and t.leaves and lo[x] == 0 then
+        t.gone = t.gone + 1
+        local perf = ns.Perf
+        if perf and perf.Removal then perf.Removal(((GetTime() or 0) - t.sentAt) * 1000, false) end
+      end
+    end
     local cleft, cbusy = t.cleft, t.cbusy
     for y = 1, now do cleft[y], cbusy[y] = false, false end
     t.leaving = 0
@@ -1504,6 +1518,7 @@ end
 -- The command about to go may empty the target and see it deleted.
 local function TrackMayEmpty(leaves)
   track.leaves = leaves and true or false
+  if leaves then track.sentAt = GetTime() or 0 end
 end
 
 -- The command's answer is read: the target as it now stands is the reading
@@ -1519,7 +1534,8 @@ local function TrackSettled(gone)
   if type(x) ~= "number" or x > t.n then return end
   TrackRead(x, t.s, t.j, t.m, t.c, t.i)
   if gone and not t.left[x] then
-    t.left[x], t.busy[x] = GetTime() or 0, false
+    -- Waited on from the moment the command that emptied it was sent.
+    t.left[x], t.busy[x] = t.sentAt or GetTime() or 0, false
     t.leaving = t.leaving + 1
   end
 end

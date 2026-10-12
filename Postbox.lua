@@ -476,6 +476,20 @@ end
 --   * Numbers only, and nothing saved but the choice itself: no character,
 --     sender or item name is recorded, and a /reload starts the record afresh
 --     (as the profiler itself does).
+--   * The visit also counts how the client deletes the mails Postbox empties
+--     (MailService, "the inbox, followed", calls Perf.Removal): how long from
+--     the take that emptied a mail to the inbox update that dropped it, and
+--     whether the command channel was held by a command not Postbox's in
+--     between -- whether the client's delete is a command of its own. Those
+--     two decide how a collect run is paced, and no client source says them.
+--     Off, the service reads ns.Perf, finds nil, and does nothing more.
+--   * The visit also counts how the client deletes the mails Postbox empties
+--     (MailService, "the inbox, followed", calls Perf.Removal): how long from
+--     the take that emptied a mail to the inbox update that dropped it, and
+--     whether the command channel was held by a command not Postbox's in
+--     between -- whether the client's delete is a command of its own. Those
+--     two decide how a collect run is paced, and no client source says them.
+--     Off, the service reads ns.Perf, finds nil, and does nothing more.
 -------------------------------------------------------------
 
 -- Perf.cur is the open being counted, or nil, Perf.visit the open whose
@@ -784,6 +798,16 @@ do
       longest = 0, longestKind = false,
       prof = false, profEnd = false, profClose = false, ended = false, span = 0,
       closing = false, verdicts = 0, detail = detail,
+      -- Perf.Removal: emptied mails seen to go, their ms in all and the
+      -- longest, how many with the channel held by another command in the
+      -- gap, and how many were not seen to go (still listed after the
+      -- service stopped waiting, or at the close).
+      rmN = 0, rmMs = 0, rmMax = 0, rmBusy = 0, rmStayed = 0,
+      -- Perf.Removal: emptied mails seen to go, their ms in all and the
+      -- longest, how many with the channel held by another command in the
+      -- gap, and how many were not seen to go (still listed after the
+      -- service stopped waiting, or at the close).
+      rmN = 0, rmMs = 0, rmMax = 0, rmBusy = 0, rmStayed = 0,
     }
     rec.openShown, rec.openTotal = InboxCount()
     rec.prof = SlowInto(rec, SLOW_OPEN)
@@ -905,6 +929,44 @@ do
     end
     if kind ~= "verdict" then Note(rec, ms, kind) end
     return ms
+  end
+
+  -- A mail Postbox emptied has left the inbox: `ms` from the take that
+  -- emptied it to the inbox update that dropped it, and `busy`, whether the
+  -- command channel was seen held in between by a command not Postbox's.
+  function Perf.Removal(ms, busy)
+    local rec = Perf.visit
+    if not rec then return end
+    ms = tonumber(ms) or 0
+    rec.rmN = rec.rmN + 1
+    rec.rmMs = rec.rmMs + ms
+    if ms > rec.rmMax then rec.rmMax = ms end
+    if busy then rec.rmBusy = rec.rmBusy + 1 end
+  end
+
+  -- An emptied mail the service stopped waiting on before it was seen to go.
+  function Perf.RemovalStayed()
+    local rec = Perf.visit
+    if rec then rec.rmStayed = rec.rmStayed + 1 end
+  end
+
+  -- A mail Postbox emptied has left the inbox: `ms` from the take that
+  -- emptied it to the inbox update that dropped it, and `busy`, whether the
+  -- command channel was seen held in between by a command not Postbox's.
+  function Perf.Removal(ms, busy)
+    local rec = Perf.visit
+    if not rec then return end
+    ms = tonumber(ms) or 0
+    rec.rmN = rec.rmN + 1
+    rec.rmMs = rec.rmMs + ms
+    if ms > rec.rmMax then rec.rmMax = ms end
+    if busy then rec.rmBusy = rec.rmBusy + 1 end
+  end
+
+  -- An emptied mail the service stopped waiting on before it was seen to go.
+  function Perf.RemovalStayed()
+    local rec = Perf.visit
+    if rec then rec.rmStayed = rec.rmStayed + 1 end
   end
 
   -- The close, from the first of the handlers that answer it (Mail Memory's
@@ -1187,6 +1249,19 @@ do
     end
     if #parts > 0 then
       out[#out + 1] = format("    bags %sms: %s", Ms(rec[BAG_MS]), concat(parts, ", "))
+    end
+
+    -- How the client deleted the mails Postbox emptied (Perf.Removal).
+    if (rec.rmN or 0) + (rec.rmStayed or 0) > 0 then
+      local text
+      if rec.rmN > 0 then
+        text = format("    removals: %d emptied mail(s) left the inbox %sms after the take that emptied them (avg), longest %sms; command channel held by another command meanwhile for %d of %d",
+          rec.rmN, Ms(rec.rmMs / rec.rmN), Ms(rec.rmMax), rec.rmBusy, rec.rmN)
+      else
+        text = "    removals: none seen to go"
+      end
+      if rec.rmStayed > 0 then text = text .. format("; %d not seen to go", rec.rmStayed) end
+      out[#out + 1] = text
     end
 
     parts = {}
