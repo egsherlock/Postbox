@@ -7438,10 +7438,12 @@ end
 -- one confirms; see BuildDetail.
 --
 -- `fingerprint` is the mail's as the player saw it when they chose to delete
--- it. The service checks it against the index immediately before the
--- command, after any wait for the channel, and leaves a mail that has moved
--- alone ("moved": the refresh shows the list as it now is).
-function DeleteOneMail(panel, index, fingerprint)
+-- it, and `stamp` the inbox as `index` was read (Mail.Stamp). The service
+-- follows the mail from then to where it is, checks it there immediately
+-- before the command, after any question and any wait for the channel, and
+-- leaves a mail that has moved alone ("moved": the refresh shows the list
+-- as it now is).
+function DeleteOneMail(panel, index, fingerprint, stamp)
   if not index or not fingerprint then return end
   Mail().DeleteMail(index, function(status)
     if status == "closed" then
@@ -7450,7 +7452,7 @@ function DeleteOneMail(panel, index, fingerprint)
       ns.Print(L()["MSG_MAIL_TIMEOUT"])
     end
     RequestRefresh(panel)
-  end, fingerprint)
+  end, fingerprint, stamp)
 end
 
 -------------------------------------------------------------
@@ -7490,12 +7492,14 @@ local function DeleteAllDone(panel)
 
   local message = ns.Plural("CONFIRM_DELETE_ALL_DONE", #queue)
 
-  -- What each queued index NAMES right now. Deleting is the irreversible one,
-  -- and the inbox can reindex both while the dialog waits and between the
-  -- sweep's own commands -- so the sweep verifies each index against this
+  -- What each queued index NAMES right now, and a stamp of the inbox as it
+  -- stands. Deleting is the irreversible one, and the inbox can reindex both
+  -- while the dialog waits and between the sweep's own commands -- so the
+  -- sweep follows each from here to where it is, verifies it against this
   -- snapshot immediately before its command and skips any that moved.
   local expected = {}
   for i = 1, #queue do expected[queue[i]] = Fingerprint(queue[i]) end
+  local stamp = Mail().Stamp()
 
   Confirm(POPUP_DELETE_ALL, DeleteLabel(), L()["COD_CONFIRM_CANCEL"],
     message, function()
@@ -7515,7 +7519,7 @@ local function DeleteAllDone(panel)
           ns.Print(L()("MSG_DELETED_COUNT", ns.Plural("COUNT_MAILS", deleted)))
         end
         RequestRefresh(panel)
-      end, expected)
+      end, expected, stamp)
     end)
 end
 
@@ -9097,9 +9101,10 @@ local function BuildDetail(panel)
     -- may only ever be aimed at an index that still names this mail.
     local index = LiveIndex(detail)
     if not index then return end
-    local fingerprint = detail.fingerprint
+    local fingerprint, stamp = detail.fingerprint, detail._stamp
     detail:Hide()
-    -- Checked again right before the command goes (Mail.ReturnMail).
+    -- Followed from the view's binding, and checked again right before the
+    -- command goes (Mail.ReturnMail).
     Mail().ReturnMail(index, function(status)
       if status == "closed" then
         StatusMailboxClosed()
@@ -9107,13 +9112,15 @@ local function BuildDetail(panel)
         ns.Print(L()["MSG_MAIL_TIMEOUT"])
       end
       RequestRefresh(panel)
-    end, fingerprint)
+    end, fingerprint, stamp)
   end)
 
   detail.Delete:SetScript("OnClick", function()
     local index = LiveIndex(detail)
     if not index then return end
-    local fingerprint = detail.fingerprint
+    -- The mail as the view is bound to it: its index, fingerprint and the
+    -- stamp of the inbox they were read at, carried through the question.
+    local fingerprint, stamp = detail.fingerprint, detail._stamp
     -- Delete is offered on read mail, and a read mail can still hold items when
     -- the bags filled mid-run. Deleting that loses them, so it confirms -- in
     -- the client's own words where it has them.
@@ -9126,19 +9133,20 @@ local function BuildDetail(panel)
         or DeleteLabel()
       Confirm(POPUP_DELETE_ONE, DeleteLabel(), L()["COD_CONFIRM_CANCEL"],
         message, function()
-          -- The mail the question was about, by the index and fingerprint
-          -- read at the click, never whatever the overlay shows now: it can
-          -- be turned to another mail while the dialog stands. The inbox can
-          -- reindex between the question and the answer too, and this is the
-          -- irreversible one, so the service checks the index once more
-          -- right before the command (DeleteOneMail).
+          -- The mail the question was about, by the index, fingerprint and
+          -- stamp read at the click, never whatever the overlay shows now:
+          -- it can be turned to another mail while the dialog stands. The
+          -- inbox can reindex between the question and the answer too, and
+          -- this is the irreversible one, so the service follows the mail
+          -- from the click and checks it once more right before the command
+          -- (DeleteOneMail).
           if detail.mailIndex == index and detail.fingerprint == fingerprint then detail:Hide() end
-          DeleteOneMail(panel, index, fingerprint)
+          DeleteOneMail(panel, index, fingerprint, stamp)
         end)
       return
     end
     detail:Hide()
-    DeleteOneMail(panel, index, fingerprint)
+    DeleteOneMail(panel, index, fingerprint, stamp)
   end)
 
   -- Header: sender, subject, then the metadata line, flush with the panel's

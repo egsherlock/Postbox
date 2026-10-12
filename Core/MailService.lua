@@ -3901,13 +3901,18 @@ end
 -- command goes, as Mail.DeleteMails does: a mail that has moved where it
 -- cannot be followed, or reads as another, is left alone and the answer is
 -- "moved", with nothing sent.
+--
+-- `stamp` (optional): Mail.Stamp as `index` was read -- at the click, where
+-- a question stands between the click and the command. The mail is followed
+-- from then, not from the answer: a twin of it sliding into the index while
+-- the question waits reads exactly as it did.
 -------------------------------------------------------------
 
 -- issue(at) sends the command to the mail at `at` and answers whether it may
 -- empty the mail and see it go; judge(where), where given, reads what it did
 -- once its handshake clears, with the mail's index then (or nil, gone, or
 -- false, not known), and answers whether the mail is now on its way out.
-local function SingleCommand(issue, onDone, index, expected, judge)
+local function SingleCommand(issue, onDone, index, expected, judge, stamp)
   local token = Claim()
   if not token then
     if onDone then onDone("busy") end
@@ -3924,6 +3929,12 @@ local function SingleCommand(issue, onDone, index, expected, judge)
   end
 
   if not MailboxOpen() then return finish("closed") end
+  -- Where the mail read at `stamp` is now (see `stamp` above).
+  if type(stamp) == "number" then
+    local now = Mail.Rebase(index, stamp)
+    if type(now) ~= "number" then return finish("moved") end
+    index = now
+  end
   TrackBegin(index)
 
   WhenIdle(function()
@@ -3945,7 +3956,7 @@ local function SingleCommand(issue, onDone, index, expected, judge)
   end, function() finish("timeout") end)
 end
 
-function Mail.DeleteMail(index, onDone, expected)
+function Mail.DeleteMail(index, onDone, expected, stamp)
   if type(DeleteInboxItem) ~= "function" then
     if onDone then onDone("unavailable") end
     return
@@ -3953,7 +3964,7 @@ function Mail.DeleteMail(index, onDone, expected)
   SingleCommand(function(at)
     DeleteInboxItem(at)
     return true
-  end, onDone, index, expected)
+  end, onDone, index, expected, nil, stamp)
 end
 
 -- The money alone, for the reading view's coin tile. Same channel rules as
@@ -3996,7 +4007,7 @@ function Mail.TakeMoney(index, onDone, history)
   end)
 end
 
-function Mail.ReturnMail(index, onDone, expected)
+function Mail.ReturnMail(index, onDone, expected, stamp)
   if type(ReturnInboxItem) ~= "function" then
     if onDone then onDone("unavailable") end
     return
@@ -4004,7 +4015,7 @@ function Mail.ReturnMail(index, onDone, expected)
   SingleCommand(function(at)
     ReturnInboxItem(at)
     return true
-  end, onDone, index, expected)
+  end, onDone, index, expected, nil, stamp)
 end
 
 -- Deletes a list of mails, one command at a time, stopping at the first
@@ -4024,7 +4035,10 @@ end
 -- mid-sweep shifts every index), and a skipped mail costs one more click
 -- where a wrong delete costs the mail. Each is followed from `stamp`
 -- (Mail.Stamp, taken as the indices were read; now when not given) to where
--- it is ("the inbox, followed"), and checked there.
+-- it is ("the inbox, followed"), and checked there. And only finished mail
+-- goes (Mail.IsReadPersistent, asked again right before each command): read,
+-- with no gold and nothing attached, so a sweep never deletes a mail that
+-- still holds something or has not been read.
 function Mail.DeleteMails(indices, onDone, expected, stamp)
   if type(DeleteInboxItem) ~= "function" then
     if onDone then onDone(0, "unavailable") end
@@ -4076,7 +4090,8 @@ function Mail.DeleteMails(indices, onDone, expected, stamp)
     -- listed.
     local at = Mail.Rebase(index, stamp)
     if at == false and not track.on then at = index end
-    if type(at) ~= "number" or (expected and Fingerprint(at) ~= expected[index]) then
+    if type(at) ~= "number" or (expected and Fingerprint(at) ~= expected[index])
+       or not Mail.IsReadPersistent(at) then
       return step()
     end
 
