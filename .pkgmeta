@@ -21,6 +21,17 @@ ignore:
   - COMBAT_TAINT.md
   - ELLESMEREUI_SKINNING.md
   - docs
+  # The creative window styles, held back from 1.50.0: Postbox.toc does not
+  # load them, so their code and their art (Media/Styles, about 1 MB) stay in
+  # the repository and out of the zip until they come back.
+  - Core/Skin_Creative.lua
+  - Core/Style_PillarBox.lua
+  - Core/Style_Faction.lua
+  - Core/Style_Counter.lua
+  - Core/Style_Goblin.lua
+  - Core/Style_Letters.lua
+  - Core/Style_Daylight.lua
+  - Media/Styles
 
 # The changelog CurseForge, Wago and the GitHub release show: the newest five
 # versions and a link to the full CHANGELOG.md on GitHub. The release workflow
