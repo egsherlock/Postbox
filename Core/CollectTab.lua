@@ -4662,7 +4662,8 @@ function AV.Build(panel, query)
       note = note .. "  " .. ns.Plural("MEMORY_ON_CHARACTERS", info.onCharacters)
     end
   elseif who and info.snapshot then
-    note = L()("ALT_NOTE", Memory.AgeText(info.snapshot), Memory.ClassName(who.realm, who.name, true))
+    -- The name inked for the window the note stands on (Theme.OnWindow).
+    note = L()("ALT_NOTE", Memory.AgeText(info.snapshot), Memory.ClassName(who.realm, who.name, true, "window"))
   else
     note = Memory.SeenText(info.snapshot)
   end
