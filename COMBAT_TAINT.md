@@ -218,6 +218,24 @@ by name; writing Postbox's own names in it is what every addon registering a win
 does. No binding, no `SetOverrideBinding`, no `RegisterGameMenuEscHandler` (which would
 taint Blizzard's handler list), and nothing of `MailFrame` or the panel layout.
 
+`Core/WhatsNew.lua`, the Escape of the What's new window and of the update notice
+(e16628e): **the arrange mode's pattern, reviewed** (1.50 UI review, 2026-10-12). Out of
+combat, while the window or the notice is up, a keyboard frame of Postbox's own, on
+UIParent at the window's strata, hears keys with propagation on (set before it is ever
+shown) and keeps only the game-menu key, for one press, when the arrange mode's own test
+(`AR.EscapeReachesAddOns`: no popup, menu, cast, focused edit box or Blizzard window that
+answers first) says that press would reach the addons' windows; the press closes the
+window, or answers the notice as OK does, and nothing else. Propagation goes back on the
+next frame, at the key's release, on show and hide, and at `PLAYER_REGEN_DISABLED`,
+before the lockdown. In combat, where `SetPropagateKeyboardInput` is refused to addons,
+the frame hides for the fight (hiding our own frame is always allowed) and never calls
+it; Escape is then the client's pass as before, with the window's own name in
+`UISpecialFrames` as its net (registered once, as every addon's window is; the notice
+is a card on the mail window and goes with it). The frame listens for the two combat
+events only while there is something of ours to close. No binding, no
+`SetOverrideBinding`, no `RegisterGameMenuEscHandler`, and nothing of `MailFrame` or the
+panel layout.
+
 `Postbox.lua`: the error trap calls `seterrorhandler`. **Not a taint source.** The
 error handler is a plain global function reference, not a frame and not a secure
 capability: replacing it does not touch anything protected, and it is what every
