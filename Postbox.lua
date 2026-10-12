@@ -490,6 +490,13 @@ end
 --     between -- whether the client's delete is a command of its own. Those
 --     two decide how a collect run is paced, and no client source says them.
 --     Off, the service reads ns.Perf, finds nil, and does nothing more.
+--   * And two things the inbox's reading leans on (MailService, "look",
+--     calls Perf.Days and Perf.Window): whether a mail's time left runs down
+--     between inbox updates or only changes with one -- the first mail
+--     listed, read at an update and again at the next, or at a command of
+--     Postbox's with no update since -- and whether new mail arriving at an
+--     unchanged count moves the list's first and last mail. Counts, seconds
+--     and days only.
 -------------------------------------------------------------
 
 -- Perf.cur is the open being counted, or nil, Perf.visit the open whose
@@ -808,6 +815,18 @@ do
       -- gap, and how many were not seen to go (still listed after the
       -- service stopped waiting, or at the close).
       rmN = 0, rmMs = 0, rmMax = 0, rmBusy = 0, rmStayed = 0,
+      -- Perf.Days: a mail's time left read twice, with no inbox update
+      -- between (db*) or across one (da*): how many readings, the longest
+      -- time apart, and how many found it the same, run down by the time
+      -- between, or anything else.
+      dbN = 0, dbMax = 0, dbSame = 0, dbDown = 0, dbOther = 0,
+      daN = 0, daMax = 0, daSame = 0, daDown = 0, daOther = 0,
+      -- Perf.Window: new mail at an unchanged count -- how many times, how
+      -- often the first and the last mail listed changed with it, and the
+      -- last time's count, server counts before and after and the two
+      -- ends' time left before and after.
+      wN = 0, wTop = 0, wFoot = 0, wAt = 0, wT0 = 0, wT1 = 0,
+      wD1 = false, wD1n = false, wDn = false, wDnn = false,
     }
     rec.openShown, rec.openTotal = InboxCount()
     rec.prof = SlowInto(rec, SLOW_OPEN)
@@ -967,6 +986,43 @@ do
   function Perf.RemovalStayed()
     local rec = Perf.visit
     if rec then rec.rmStayed = rec.rmStayed + 1 end
+  end
+
+  -- A mail's time left read twice (MailService, "look"): it ran down `drift`
+  -- seconds over `wall` seconds; `between`, with no inbox update between
+  -- the two readings. The same within half a second, or down by the time
+  -- between within a second (or a twentieth of it), or neither.
+  function Perf.Days(drift, wall, between)
+    local rec = Perf.visit
+    if not rec then return end
+    drift, wall = tonumber(drift) or 0, tonumber(wall) or 0
+    local off = drift - wall
+    if off < 0 then off = -off end
+    local same = drift > -0.5 and drift < 0.5
+    local down = not same and off <= math.max(1, wall * 0.05)
+    if between then
+      rec.dbN = rec.dbN + 1
+      if wall > rec.dbMax then rec.dbMax = wall end
+      if same then rec.dbSame = rec.dbSame + 1 elseif down then rec.dbDown = rec.dbDown + 1 else rec.dbOther = rec.dbOther + 1 end
+    else
+      rec.daN = rec.daN + 1
+      if wall > rec.daMax then rec.daMax = wall end
+      if same then rec.daSame = rec.daSame + 1 elseif down then rec.daDown = rec.daDown + 1 else rec.daOther = rec.daOther + 1 end
+    end
+  end
+
+  -- New mail at an unchanged count (`n` listed, the server's count from
+  -- `t0` to `t1`): whether the first and the last mail listed changed, and
+  -- their time left before and after (nil where unread).
+  function Perf.Window(n, t0, t1, topMoved, footMoved, d1, d1n, dn, dnn)
+    local rec = Perf.visit
+    if not rec then return end
+    rec.wN = rec.wN + 1
+    if topMoved then rec.wTop = rec.wTop + 1 end
+    if footMoved then rec.wFoot = rec.wFoot + 1 end
+    rec.wAt, rec.wT0, rec.wT1 = tonumber(n) or 0, tonumber(t0) or 0, tonumber(t1) or 0
+    rec.wD1, rec.wD1n, rec.wDn, rec.wDnn = tonumber(d1) or false, tonumber(d1n) or false,
+      tonumber(dn) or false, tonumber(dnn) or false
   end
 
   -- The close, from the first of the handlers that answer it (Mail Memory's
@@ -1262,6 +1318,19 @@ do
       end
       if rec.rmStayed > 0 then text = text .. format("; %d not seen to go", rec.rmStayed) end
       out[#out + 1] = text
+    end
+    -- What the client does with a mail's time left (Perf.Days) and with a
+    -- full list when new mail comes (Perf.Window).
+    if (rec.dbN or 0) + (rec.daN or 0) > 0 then
+      out[#out + 1] = format("    daysLeft: with no update between, %d reading(s) up to %ss apart: same %d, ran down %d, other %d; across an update, %d up to %ss apart: same %d, ran down %d, other %d",
+        rec.dbN, Ms(rec.dbMax), rec.dbSame, rec.dbDown, rec.dbOther,
+        rec.daN, Ms(rec.daMax), rec.daSame, rec.daDown, rec.daOther)
+    end
+    if (rec.wN or 0) > 0 then
+      local function Days(d) return d and format("%.5f", d) or "?" end
+      out[#out + 1] = format("    new mail at an unchanged count: %d time(s), the first mail listed changed in %d, the last in %d; the last time %d listed, %d->%d on the server, first %s->%s days, last %s->%s days",
+        rec.wN, rec.wTop, rec.wFoot, rec.wAt, rec.wT0, rec.wT1,
+        Days(rec.wD1), Days(rec.wD1n), Days(rec.wDn), Days(rec.wDnn))
     end
 
     parts = {}

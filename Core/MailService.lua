@@ -1645,12 +1645,84 @@ end
 -- not (Mail.InboxGen).
 local inboxGen = 0
 
+-- For /postbox debug's Performance block, only while recording is on
+-- (Postbox.lua, Perf.Days and Perf.Window): two things about the client
+-- that no source says and two rules here lean on. Does a mail's time left
+-- (daysLeft) run down between inbox updates, or only change with one (the
+-- C.O.D. click's CLICK_DAYS_SLACK)? And does new mail arriving at a list of
+-- fifty move the list -- new at the top, the last off the foot -- with the
+-- count the same ("Same count", above)? So at each update the first and the
+-- last mail listed are read and kept, with the count, the server's count
+-- and the time; the next update compares, and so does the start of any
+-- command of Postbox's with no update since. Numbers and "the same mail or
+-- not" only: no name is kept beyond the next reading. Off, the update reads
+-- ns.Perf, finds nil, and none of this runs.
+local look = {
+  visit = nil, gen = -1, at = 0, n = 0, total = 0,
+  s1 = nil, j1 = nil, m1 = 0, c1 = 0, d1 = nil,
+  sn = nil, jn = nil, mn = 0, cn = 0, dn = nil,
+}
+
+local function LookRead(x)
+  local _, _, sender, subject, money, cod, days = GetInboxHeaderInfo(x)
+  return sender, subject, tonumber(money) or 0, tonumber(cod) or 0, tonumber(days)
+end
+
+-- The first mail as read now against the kept reading: the same mail, by
+-- what it holds and who sent it.
+local function LookSameTop(s, j, m, c)
+  local L = look
+  return (s ~= nil or j ~= nil) and s == L.s1 and j == L.j1 and m == L.m1 and c == L.c1
+end
+
+-- An update (TrackOnUpdate): the two ends read again and weighed against
+-- the last update's reading, then kept.
+local function LookUpdate(perf)
+  local L = look
+  local n, total = GetInboxNumItems()
+  n = tonumber(n) or 0
+  total = tonumber(total) or n
+  local now = GetTime() or 0
+  local s1, j1, m1, c1, d1, sn, jn, mn, cn, dn
+  if n >= 1 then
+    s1, j1, m1, c1, d1 = LookRead(1)
+    sn, jn, mn, cn, dn = LookRead(n)
+  end
+  if L.visit == perf.visit and L.gen >= 0 and n >= 1 then
+    if perf.Days and LookSameTop(s1, j1, m1, c1) and d1 and L.d1 and now - L.at >= 1 then
+      perf.Days((L.d1 - d1) * 86400, now - L.at, false)
+    end
+    if perf.Window and n == L.n and total > L.total then
+      local footSame = (sn ~= nil or jn ~= nil) and sn == L.sn and jn == L.jn and mn == L.mn and cn == L.cn
+      perf.Window(n, L.total, total, not LookSameTop(s1, j1, m1, c1), not footSame, L.d1, d1, L.dn, dn)
+    end
+  end
+  L.visit, L.gen, L.at, L.n, L.total = perf.visit, inboxGen, now, n, total
+  L.s1, L.j1, L.m1, L.c1, L.d1 = s1, j1, m1, c1, d1
+  L.sn, L.jn, L.mn, L.cn, L.dn = sn, jn, mn, cn, dn
+end
+
+-- A command of Postbox's starting (TrackBegin) with no update since the
+-- last: the first mail's time left now against that update's reading.
+local function LookBetween()
+  local perf = ns.Perf
+  local L = look
+  if not (perf and perf.Days) or L.visit ~= perf.visit or L.gen ~= inboxGen or L.n < 1 then return end
+  local s1, j1, m1, c1, d1 = LookRead(1)
+  local now = GetTime() or 0
+  if LookSameTop(s1, j1, m1, c1) and d1 and L.d1 and now - L.at >= 1 then
+    perf.Days((L.d1 - d1) * 86400, now - L.at, true)
+  end
+end
+
 -- An inbox update: read before anything else is told of it. Postbox's
 -- event bus calls this first of all its handlers (registered as this file
 -- loads, below), so nothing asks where a mail is from a reading the update
 -- has made stale.
 local function TrackOnUpdate()
   inboxGen = inboxGen + 1
+  local perf = ns.Perf
+  if perf then LookUpdate(perf) end
   local t = track
   if not t.on then return end
   t.dirty = true
@@ -1714,6 +1786,7 @@ end
 
 -- -> the log as it stands: a stamp for Mail.Rebase. Followed from here on.
 function Mail.Stamp()
+  if ns.Perf then LookBetween() end
   TrackArm()
   TrackSync()
   return track.seq
@@ -1748,6 +1821,7 @@ end
 -- Mail.TakeAttachment, the single commands): begun at `index`, then asked
 -- where it is before each command and after each answer.
 local function TrackBegin(index)
+  if ns.Perf then LookBetween() end
   TrackArm()
   TrackSync()
   local t = track
