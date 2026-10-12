@@ -1820,11 +1820,11 @@ local PopulateContactPicker
 -- a field re-bound on each acquire. Installing them per populate is a closure
 -- per row per refresh, and WoW cannot free either.
 -- The house tooltip (Theme's Tooltips): the whole address in its class's
--- colour as the title, then the gestures under a blank line. The type-ahead's
--- rows say the same.
+-- colour as the title, inked for the tooltip (dark in Light mode too), then
+-- the gestures under a blank line. The type-ahead's rows say the same.
 function ST.RecipientTip(owner, address)
   Theme.TipBegin(owner)
-  Theme.TipTitle(Contacts().GetClassColoredName(address or ""))
+  Theme.TipTitle(Contacts().GetClassColoredName(address or "", nil, "tooltip"))
   Theme.TipHint(RowHintText())
   GameTooltip:Show()
 end
