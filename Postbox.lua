@@ -137,6 +137,9 @@ local function RememberName(realm, name)
     if names[i] == name then return end
   end
   names[#names + 1] = name
+  -- The census was written (CS.ClassesChanged moves its generation).
+  local CS = ns.ContactService
+  if CS and type(CS.ClassesChanged) == "function" then CS.ClassesChanged() end
 end
 
 -- The class token is kept beside the name so contact lists can tint an alt in

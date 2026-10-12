@@ -1328,6 +1328,13 @@ function CS.ClassesChanged()
   classGen = classGen + 1
 end
 
+-- The census's generation, which moves with every write to it: what a
+-- reader building from the census keeps its build against
+-- (CharacterGroups' list of the player's characters).
+function CS.CensusGen()
+  return censusGen
+end
+
 -- The player's own characters on every realm, identity key -> class token,
 -- from the census (altClasses, keyed by the raw realm and the bare name).
 -- Rebuilt only when the census moved.

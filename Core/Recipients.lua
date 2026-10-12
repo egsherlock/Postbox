@@ -834,7 +834,7 @@ function R.Delete(key)
     end
   end
 
-  if removed.altClasses then
+  if removed.alts or removed.altClasses then
     local CS = ns.ContactService
     if CS and type(CS.ClassesChanged) == "function" then CS.ClassesChanged() end
   end

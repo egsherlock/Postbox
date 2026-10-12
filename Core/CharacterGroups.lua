@@ -466,10 +466,18 @@ local function Quiet(text)
   return text
 end
 
--- The census: every character Postbox has seen log in, account-wide.
+-- The census as last built, and what it was built from: the census's
+-- generation (ContactService, CS.CensusGen, which every write to the
+-- characters or their classes moves) and the realm being played. A button's
+-- tooltip and the editor's list read it on every hover and every keystroke;
+-- while neither has moved they read the same lists, read-only. byKey is
+-- CensusByKey's map of it, made at the first ask.
+local censusMemo = { list = nil, byKey = nil, gen = nil, home = nil }
+
+-- The census, built: every character Postbox has seen log in, account-wide.
 -- { name, realm (raw), key, member, class, home }, the realm being played
--- first, then by realm, then by name.
-local function Census()
+-- (`home`) first, then by realm, then by name.
+local function BuildCensus(home)
   local out = {}
   local Store = ns.Store
   local alts = Store and Store.Get and Store.Get("alts")
@@ -478,7 +486,6 @@ local function Census()
   realmSpelling = spelling
   if type(alts) ~= "table" then return out end
   local R = ns.Recipients
-  local home = type(GetRealmName) == "function" and GetRealmName() or nil
   local seen = {}
   for realm, names in pairs(alts) do
     if type(realm) == "string" and type(names) == "table" then
@@ -511,6 +518,25 @@ local function Census()
   return out
 end
 
+-- The census, built again only when what it is built from has moved
+-- (censusMemo). Read-only to every caller.
+local function Census()
+  local CS = ns.ContactService
+  local gen = CS and type(CS.CensusGen) == "function" and CS.CensusGen() or nil
+  local home = type(GetRealmName) == "function" and GetRealmName() or nil
+  local memo = censusMemo
+  if memo.list and gen ~= nil and memo.gen == gen and memo.home == home then return memo.list end
+  local out = BuildCensus(home)
+  -- Kept only where a later write will be seen, and while names can be
+  -- read at all: an empty answer then would stand for the session.
+  if gen ~= nil and ns.Recipients then
+    memo.list, memo.byKey, memo.gen, memo.home = out, nil, gen, home
+  else
+    memo.list, memo.byKey = nil, nil
+  end
+  return out
+end
+
 -- One of the player's characters, as the address book writes it: the name in
 -- its class colour, and the realm after it, quieter, when it is not the one
 -- being played.
@@ -538,10 +564,14 @@ local function OtherLabel(member)
   return name
 end
 
--- key -> census entry, for labelling a group's members.
+-- key -> census entry, for labelling a group's members. The kept census's
+-- map is kept with it.
 local function CensusByKey(census)
+  local memo = censusMemo
+  if census == memo.list and memo.byKey then return memo.byKey end
   local map = {}
   for i = 1, #census do map[census[i].key] = census[i] end
+  if census == memo.list then memo.byKey = map end
   return map
 end
 
@@ -553,19 +583,20 @@ local function MemberLabel(member, byKey)
 end
 
 -- Who a group's button collects from, for its tooltip: a dozen names, then
--- how many more.
+-- how many more. The labels go into one list, reused by every hover.
 local TIP_NAMES = 12
+local tipNames = {}
 
 function CG.FillTooltip(tooltip, id)
   tooltip = tooltip or GameTooltip
   local group = Find(id)
   if not (tooltip and group) then return end
   local byKey = CensusByKey(Census())
-  local names = {}
-  for i = 1, math.min(#group.members, TIP_NAMES) do
-    names[i] = MemberLabel(group.members[i], byKey)
+  local shown = math.min(#group.members, TIP_NAMES)
+  for i = 1, shown do
+    tipNames[i] = MemberLabel(group.members[i], byKey)
   end
-  local text = table.concat(names, ", ")
+  local text = table.concat(tipNames, ", ", 1, shown)
   local more = #group.members - TIP_NAMES
   if more > 0 then text = text .. " " .. ns.Plural("GROUPS_TIP_MORE", more) end
   -- The house tooltip (Theme's Tooltips): the name, what it collects, and
