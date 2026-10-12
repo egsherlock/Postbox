@@ -366,21 +366,23 @@ end
 
 -- The glow's colour: the warning tone while the alert stands, whatever the
 -- accent (r, g, b) would have made it -- the glow is the part of the icon a
--- player sees from across the screen.
+-- player sees from across the screen. On the map, not in a window: the
+-- dark palette's tone in either Mode (Theme.DarkColor), as the dot's.
 local function GlowTone(r, g, b)
   if view.alert then
-    local w = ns.Theme.Colors.warning
-    return w[1], w[2], w[3]
+    local wr, wg, wb = ns.Theme.DarkColor("warning")
+    return wr, wg, wb
   end
   return r, g, b
 end
 
 -- The alert's mark: a small solid dot in the warning tone at the icon's
 -- top-right corner, the corner the count leaves free. It is the Mail tab's
--- dot (MailboxUI, UpdateCollectTabText), which wears this same tone when
--- mail needs attention: round, flat, one colour at full strength, nothing
--- drawn inside it. It says why the icon is warm; the tooltip says whose and
--- when.
+-- dot (MailboxUI, UpdateCollectTabText), which wears the warning tone too
+-- when mail needs attention: round, flat, one colour at full strength,
+-- nothing drawn inside it. It says why the icon is warm; the tooltip says
+-- whose and when. On the map, not on a window's paper, its tone is the dark
+-- palette's in either Mode (Theme.DarkColor).
 --
 -- Two discs from Media/minimap-dot.tga: the dot, and under it a dark one a
 -- screen pixel wider all round, the edge that holds it over snow and over a
@@ -446,8 +448,8 @@ local function PaintMark(holder, anchor, size, on)
     edge:ClearAllPoints()
     edge:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", px, px)
   end
-  local w = ns.Theme.Colors.warning
-  dot:SetVertexColor(w[1], w[2], w[3], 1)
+  local wr, wg, wb = ns.Theme.DarkColor("warning")
+  dot:SetVertexColor(wr, wg, wb, 1)
   dot:Show()
   edge:Show()
 end
@@ -1903,8 +1905,9 @@ function MB.NotifyArrival()
 
     -- An animation on a frame nobody can see is a promise nobody sees.
     if halo and flash and sized then
-      local pos = ns.Theme.Colors.positive
-      halo:SetVertexColor(pos[1], pos[2], pos[3])
+      -- The dark palette's green in either Mode: it swells over the map.
+      local pr, pg, pb = ns.Theme.DarkColor("positive")
+      halo:SetVertexColor(pr, pg, pb)
       -- Restarting mid-swell would jump from wherever it is to the first
       -- phase's start; the stop settles it first.
       if flash:IsPlaying() then flash:Stop() end

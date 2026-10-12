@@ -925,6 +925,16 @@ Theme.PALETTE_LIGHT = {
 local BASE = {}
 for token, color in pairs(C) do BASE[token] = { color[1], color[2], color[3], color[4] } end
 
+-- A token as the dark palette writes it, whatever palette is in force:
+-- r, g, b, a (nil for no such token). For a mark that stands on the world
+-- rather than in a window (the minimap icon's dot, glow and halo), where a
+-- paper palette's twin of it would not belong.
+function Theme.DarkColor(token)
+  local c = BASE[token]
+  if not c then return nil end
+  return c[1], c[2], c[3], c[4] or 1
+end
+
 function Theme.IsLight() return lightPalette end
 
 -- The palette for `mode` ("light" | anything else: dark), then `extra` (a
