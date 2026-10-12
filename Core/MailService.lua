@@ -4375,9 +4375,9 @@ function SweepStep()
   -- A mail that cannot be followed, or reads as another, is skipped, not
   -- chased: fingerprints are not unique across identical auction mails, so
   -- relocating by fingerprint could delete a sibling the caller never
-  -- listed.
+  -- listed. Never by the index alone: the inbox is followed from the sweep's
+  -- start (Mail.DeleteMails arms it), and where it cannot be, nothing goes.
   local at = Mail.Rebase(index, s.stamp)
-  if at == false and not track.on then at = index end
   if type(at) ~= "number" or (s.expected and Fingerprint(at) ~= s.expected[index])
      or not Mail.IsReadPersistent(at) then
     return SweepStep()
@@ -4395,6 +4395,11 @@ function Mail.DeleteMails(indices, onDone, expected, stamp)
     if onDone then onDone(0, "unavailable") end
     return
   end
+  -- Followed from here, if it was not already. A question answered after
+  -- the mailbox closed and opened again carries a stamp from a reading that
+  -- ended with the close: arming the inbox again says so (the stamp follows
+  -- nothing), and the sweep deletes nothing by index alone.
+  TrackArm()
   if type(stamp) ~= "number" then stamp = Mail.Stamp() end
 
   local any = false

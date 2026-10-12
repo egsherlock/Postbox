@@ -1542,6 +1542,31 @@ local function ShowNotice(message)
   ns.Print(message)
 end
 
+-- Postbox's questions go with the mailbox. A StaticPopup has no timeout and
+-- does not close with the mailbox, and an answer given after it -- or after
+-- the mailbox opened again on an inbox that has moved -- would be about mail
+-- the question no longer names. So every question is taken down on the
+-- close; the service still checks everything again before a command.
+do
+  local function HideQuestions()
+    if type(StaticPopup_Hide) ~= "function" then return end
+    StaticPopup_Hide(POPUP_COD)
+    StaticPopup_Hide(POPUP_BAGSPACE)
+    StaticPopup_Hide(POPUP_DELETE_ALL)
+    StaticPopup_Hide(POPUP_DELETE_ONE)
+  end
+  local bus = ns.Events
+  if bus and type(bus.Register) == "function" then
+    bus.Register("MAIL_CLOSED", HideQuestions)
+    bus.Register("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", function(_, kind)
+      local helpers = ns.Helpers
+      if helpers and type(helpers.IsMailInteraction) == "function" and helpers.IsMailInteraction(kind) then
+        HideQuestions()
+      end
+    end)
+  end
+end
+
 -- Before collecting a single mail the player clicked. Bulk runs never include
 -- C.O.D. mail -- the domain excludes it -- so this is the only path that can
 -- spend the player's money.
