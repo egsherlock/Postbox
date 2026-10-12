@@ -1165,6 +1165,9 @@ do
 
   function Theme.UseGrounds(on)
     Grounds.on = on and true or false
+    -- Texts already told they stand on the window (Theme.OnWindow) get the
+    -- plates they waited without.
+    if Grounds.on and Theme._PlateWaiting then Theme._PlateWaiting() end
   end
 
   -- The ground `name` shows from `lr, lg, lb` (its darkest) to `hr, hg, hb`
@@ -2464,10 +2467,22 @@ do
     if plate and Grounds.on then PaintTextPlate(fs, plate) end
   end
 
+  -- Texts told while no look derives its inks: font string -> its hug (or
+  -- false). Only the Postbox style's grounds ever lay a plate, and a look is
+  -- claimed once, at login (a style change is a reload), so under every
+  -- other look this is all a text costs: no plate made and none of its
+  -- methods hooked. Should the grounds come on later all the same, the
+  -- texts waiting here get theirs then (Theme.UseGrounds).
+  local waiting = setmetatable({}, { __mode = "k" })
+
   function Theme.OnWindow(fs, ground, hug)
     if not fs or type(fs.GetParent) ~= "function" then return nil end
     ground = ground or "window"
     regionGround[fs] = ground
+    if not Grounds.on then
+      waiting[fs] = hug or false
+      return nil
+    end
     local plate = textPlates[fs]
     if not plate then
       local parent = fs:GetParent()
@@ -2485,12 +2500,18 @@ do
         end
       end
     end
-    if Grounds.on then
-      local token = track and track.tint[fs]
-      if token then Theme.SetColor(fs, token, ground) end
-      PaintTextPlate(fs, plate)
-    end
+    local token = track and track.tint[fs]
+    if token then Theme.SetColor(fs, token, ground) end
+    PaintTextPlate(fs, plate)
     return plate
+  end
+
+  -- The grounds came on: the texts told before get their plates.
+  function Theme._PlateWaiting()
+    for fs, hug in pairs(waiting) do
+      waiting[fs] = nil
+      Theme.OnWindow(fs, regionGround[fs], hug or nil)
+    end
   end
 
   -- Every text's plate, or `only` that text's: a text whose face was set
