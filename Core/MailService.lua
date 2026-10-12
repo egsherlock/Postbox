@@ -857,22 +857,31 @@ end
 -- keeping a second copy that can drift from this one.
 Mail.IsMailboxOpen = MailboxOpen
 
+-- Whether a command of Postbox's own is waiting for its answer (`on`), and
+-- what the inbox's follower ("the inbox, followed") does on seeing the
+-- channel held by a command that is not: `busy`, set there.
+local flight = { on = false, busy = nil }
+
 -- Polls until the server is ready, then calls callback(timedOut). The callback
 -- always runs, but `timedOut` true means we gave up waiting: the command may
 -- still be in flight, so the caller must NOT treat it as success and must not
--- issue another command on the back of it.
-local function WaitForCommand(callback)
+-- issue another command on the back of it. `idle`: the wait is for a command
+-- that is not Postbox's, before one of its own goes (WhenIdle).
+local function WaitForCommand(callback, idle)
   local attempts = 0
+  if not idle then flight.on = true end
   local function poll()
     attempts = attempts + 1
     if CommandPending() then
       if attempts >= COMMAND_MAX_ATTEMPTS then
+        flight.on = false
         callback(true)
         return
       end
       C_Timer.After(COMMAND_POLL_INTERVAL, poll)
       return
     end
+    flight.on = false
     callback(false)
   end
   C_Timer.After(COMMAND_POLL_INTERVAL, poll)
@@ -884,13 +893,16 @@ local function WhenIdle(fn, onTimeout)
     fn()
     return
   end
+  -- Held by a command that is not Postbox's, as one of its own is about to
+  -- go: the client's own, perhaps deleting a mail Postbox emptied.
+  if flight.busy then flight.busy() end
   WaitForCommand(function(timedOut)
     if timedOut then
       onTimeout()
       return
     end
     fn()
-  end)
+  end, true)
 end
 
 -------------------------------------------------------------
@@ -1041,6 +1053,433 @@ local function Listed()
 end
 
 -------------------------------------------------------------
+-- Command layer :: the inbox, followed
+--
+-- An index names a mail only while nothing moves under it, and a good deal
+-- moves under a collect. A mail Postbox has emptied that has no text of its
+-- own is deleted by the client a moment later ("Mail on its way out"), new
+-- mail comes in at the top of the box, a box too big to list whole lists
+-- more at its foot, and a mail can expire or be returned. Judging from the
+-- count alone ("one mail fewer, so the take landed") takes an unrelated mail
+-- leaving for a take, and waiting for each emptied mail to go before the next
+-- take costs a removal's time per mail.
+--
+-- So the inbox is followed. From Postbox's first command or run at a mailbox
+-- until it closes, the mails' headers are kept as last read -- sender,
+-- subject, money, C.O.D. and items -- and whenever the inbox lists another
+-- count, it is read again and lined up against them, mail by mail. What
+-- Postbox expects is tried first: the emptied mails it is waiting on to
+-- leave, and the mail its command may be emptying (`target`, compared by
+-- sender and subject alone, since its own take changes the rest). Failing
+-- that, one other mail leaving, new mail at the top (1 to 3), or more listed
+-- at the foot (1 to 3), in that order. What moved is written to a short log
+-- -- this mail went, so many came in at the top -- and anything that holds an
+-- index keeps a stamp (Mail.Stamp: the log as it read the index) and asks
+-- Mail.Rebase where that mail is now: an index; nil, the mail went (one
+-- Postbox emptied, deleted by the client, or one that left by itself); or
+-- false, when the log cannot say -- two mails alike could each be the one
+-- that went, or nothing lined up at all. False is never guessed past: a take
+-- stops as "moved" and a run looks for the mail again by what it is.
+--
+-- Lining up is a narrow band: only as many mails as are fewer can have gone,
+-- so each mail is weighed against a few places, and the two extreme ways of
+-- lining them up (each mail as early as it can be, and as late) are compared.
+-- A mail placed the same by both is known; one placed differently is not,
+-- unless every mail it could be is one emptied and on its way out, and then
+-- which is which changes nothing.
+--
+-- Cost: one count per inbox update; a change of count reads each header once
+-- and lines them up. No table is made after the first time. Nothing is read
+-- away from a mailbox, or before Postbox has acted at it.
+-------------------------------------------------------------
+
+-- At most this many may have gone in one change of count, and one log holds
+-- this many changes: a stamp older than that answers false.
+local TRACK_BAND, TRACK_LOG = 8, 64
+-- An emptied mail not gone within this many seconds is taken to stay.
+local TRACK_LEAVE = 10
+-- Log entries: a span whose mails cannot be told apart, a mail gone, mail
+-- in at the top, and everything at once.
+local T_AMB, T_DEL, T_INS, T_LOST = 1, 2, 3, 4
+
+local track = {
+  on = false, frame = nil,
+  -- The mails as last read (`n` of them): sender, subject, money, C.O.D.,
+  -- items; `left`, when Postbox emptied the mail and expects the client to
+  -- delete it (GetTime, or false); `busy`, whether the command channel was
+  -- seen held by a command not Postbox's while it waited to go.
+  n = 0, s = {}, j = {}, m = {}, c = {}, i = {}, left = {}, busy = {},
+  -- The mails as read now, lined up against them, and the scratch the
+  -- lining up writes (swapped in as the new reading).
+  cs = {}, cj = {}, cm = {}, ci = {}, cc = {}, cleft = {}, cbusy = {},
+  ok = {}, lo = {}, hi = {}, gl = {}, gr = {}, amb = {},
+  -- How many of the mails are waiting to leave.
+  leaving = 0,
+  -- The mail a command of Postbox's is working on, in the numbering above:
+  -- an index, nil once it went as its command emptied it, or false when it
+  -- cannot be said. `leaves`: the command under way may empty it and see it
+  -- go.
+  target = nil, leaves = false,
+  -- The log: `seq` entries so far, the last TRACK_LOG of them kept.
+  seq = 0, kind = {}, a = {}, b = {},
+}
+
+local function TrackLog(kind, a, b)
+  track.seq = track.seq + 1
+  local k = (track.seq - 1) % TRACK_LOG + 1
+  track.kind[k], track.a[k], track.b[k] = kind, a or 0, b or 0
+end
+
+-- Row `x` of the inbox into the arrays given.
+local function TrackRead(x, S, J, M, C, I)
+  local _, _, sender, subject, money, cod, _, items = GetInboxHeaderInfo(x)
+  S[x], J[x] = (sender == nil) and false or sender, (subject == nil) and false or subject
+  M[x], C[x], I[x] = tonumber(money) or 0, tonumber(cod) or 0, tonumber(items) or 0
+end
+
+-- The mail last read at `x` against the one read now at `y`: sender and
+-- subject, and its contents unless it is the command's target.
+local function TrackSame(x, y)
+  local t = track
+  if t.s[x] ~= t.cs[y] or t.j[x] ~= t.cj[y] then return false end
+  if x == t.target then return true end
+  return t.m[x] == t.cm[y] and t.c[x] == t.cc[y] and t.i[x] == t.ci[y]
+end
+
+-- Whether the mail last read at `x` may go unexplained: Postbox emptied it,
+-- or the command under way may.
+local function TrackMayGo(x)
+  local t = track
+  return t.left[x] or (x == t.target and t.leaves)
+end
+
+-- One way of lining up: the `a` mails read first are new at the top, the
+-- `f` read last are new at the foot, and between them the mails last read,
+-- in order, less those gone -- each that may go freely (TrackMayGo), and at
+-- most `u` others. Fills `ok` from the end (whether the rest can be lined
+-- up from mail x with the band at d, u others still allowed) and answers
+-- whether all of it can.
+local function TrackFits(a, f, u)
+  local t = track
+  local n, m = t.n, Listed() - a - f
+  local D = n - m
+  if m < 0 or D < 0 or D > TRACK_BAND then return false end
+  local ok, U = t.ok, u + 1
+  local W = (D + 1) * U
+  for x = n + 1, 1, -1 do
+    for d = 0, D do
+      local y = x - d
+      for v = 0, u do
+        local yes
+        if x > n then
+          yes = (d == D)
+        elseif y < 1 then
+          yes = false
+        else
+          yes = (y <= m and TrackSame(x, a + y) and ok[x * W + d * U + v + 1 + W])
+            or (d < D and TrackMayGo(x) and ok[x * W + (d + 1) * U + v + 1 + W])
+            or (v > 0 and d < D and ok[x * W + (d + 1) * U + v + W])
+        end
+        ok[(x - 1) * W + d * U + v + 1 + W] = yes and true or false
+      end
+    end
+  end
+  return ok[0 * W + 0 * U + u + 1 + W] == true, D, W, U
+end
+
+-- One walk over a lining up that fits: `late` lines each mail up as late as
+-- it can (each that may go, goes first), else as early. Writes where each
+-- mail last read is now into `into` (0: gone) and, for each mail read now,
+-- which mail it is into `at`.
+local function TrackWalk(a, u, D, W, U, late, into, at)
+  local t = track
+  local ok, n = t.ok, t.n
+  local m = n - D
+  local d, v = 0, u
+  for x = 1, n do
+    local y = x - d
+    local match = y >= 1 and y <= m and TrackSame(x, a + y) and ok[x * W + d * U + v + 1 + W]
+    local free = d < D and TrackMayGo(x) and ok[x * W + (d + 1) * U + v + 1 + W]
+    local other = v > 0 and d < D and ok[x * W + (d + 1) * U + v + W]
+    if match and not (late and (free or other)) then
+      into[x], at[y] = a + y, x
+    elseif free then
+      into[x], d = 0, d + 1
+    else
+      into[x], d, v = 0, d + 1, v - 1
+    end
+  end
+end
+
+-- What became of mail `x` (last read), as an index now, nil (gone), or
+-- false, from the walks' answer. Gone is nil only for a mail that may go
+-- (TrackMayGo); any other gone is a mail the log cannot vouch for.
+local function TrackFate(x)
+  local t = track
+  if t.amb[x] then return false end
+  local now = t.lo[x]
+  if now ~= 0 then return now end
+  if TrackMayGo(x) then return nil end
+  return false
+end
+
+local function TrackPerf(x, gone)
+  local perf = ns.Perf
+  if not (perf and perf.Removal) then return end
+  if gone then
+    perf.Removal(((GetTime() or 0) - track.left[x]) * 1000, track.busy[x] and true or false)
+  elseif perf.RemovalStayed then
+    perf.RemovalStayed()
+  end
+end
+
+-- The channel is held by a command that is not Postbox's while mails it
+-- emptied wait to go: noted against each, for the removals line.
+local function TrackBusy()
+  local t = track
+  if t.leaving == 0 or flight.on or not ns.Perf then return end
+  for x = 1, t.n do if t.left[x] then t.busy[x] = true end end
+end
+flight.busy = TrackBusy
+
+-- Emptied mails still listed after TRACK_LEAVE are taken to stay.
+local function TrackLapse()
+  local t = track
+  if t.leaving == 0 then return end
+  local now = GetTime() or 0
+  for x = 1, t.n do
+    if t.left[x] and now - t.left[x] > TRACK_LEAVE then
+      TrackPerf(x, false)
+      t.left[x], t.busy[x] = false, false
+      t.leaving = t.leaving - 1
+    end
+  end
+end
+
+local function TrackAll()
+  local t = track
+  t.n = Listed()
+  t.leaving = 0
+  for x = 1, t.n do
+    TrackRead(x, t.s, t.j, t.m, t.c, t.i)
+    t.left[x], t.busy[x] = false, false
+  end
+  for x = t.n + 1, #t.left do t.left[x], t.busy[x] = nil, nil end
+end
+
+-- The inbox as it reads now, lined up against the mails last read: the log
+-- told what moved, the target followed, and the reading kept.
+local function TrackSync()
+  local t = track
+  if not t.on then return end
+  local now = Listed()
+  if now == t.n then return end
+  if not MailboxOpen() then return end
+  TrackLapse()
+  for y = 1, now do TrackRead(y, t.cs, t.cj, t.cm, t.cc, t.ci) end
+  -- Expected first; then one other gone; new at the top; more at the foot.
+  local a, f, u = 0, 0, 0
+  local fits, D, W, U = TrackFits(0, 0, 0)
+  if not fits then u = 1; fits, D, W, U = TrackFits(0, 0, 1) end
+  for k = 1, 3 do
+    if fits then break end
+    a, f, u = k, 0, 0
+    fits, D, W, U = TrackFits(k, 0, 0)
+    if not fits then
+      a, f = 0, k
+      fits, D, W, U = TrackFits(0, k, 0)
+    end
+  end
+  local n = t.n
+  if not fits then
+    -- Nothing lines up: every index held is unknown from here on.
+    TrackLog(T_LOST)
+    if t.target ~= nil then t.target = false end
+    for x = 1, n do if t.left[x] then TrackPerf(x, false) end end
+  else
+    local lo, hi, gl, gr, amb = t.lo, t.hi, t.gl, t.gr, t.amb
+    TrackWalk(a, u, D, W, U, false, lo, gl)
+    TrackWalk(a, u, D, W, U, true, hi, gr)
+    for x = 1, n do amb[x] = false end
+    -- A mail read now that the two walks put on different mails: every
+    -- mail between could be it, unless each is one on its way out and the
+    -- mail read now is empty -- any of them, and nothing else moves.
+    local m = now - a - f
+    for y = 1, m do
+      local x1, x2 = gl[y], gr[y]
+      if x1 < x2 then
+        local same = t.cm[a + y] == 0 and t.ci[a + y] == 0
+        for x = x1, x2 do if not TrackMayGo(x) then same = false end end
+        if not same then
+          for x = x1, x2 do amb[x] = true end
+        end
+      end
+    end
+    -- The log: the spans that cannot be told apart, each mail gone (from
+    -- the last, so each names the numbering before it), then the new.
+    local x = 1
+    while x <= n do
+      if amb[x] then
+        local first = x
+        while x < n and amb[x + 1] do x = x + 1 end
+        TrackLog(T_AMB, first, x)
+      end
+      x = x + 1
+    end
+    for x2 = n, 1, -1 do
+      if lo[x2] == 0 then
+        TrackLog(T_DEL, x2)
+        if t.left[x2] and not amb[x2] then TrackPerf(x2, true) end
+      end
+    end
+    if a > 0 then TrackLog(T_INS, a) end
+    -- The target, and the marks of what is on its way out, follow.
+    if type(t.target) == "number" then t.target = TrackFate(t.target) end
+    local cleft, cbusy = t.cleft, t.cbusy
+    for y = 1, now do cleft[y], cbusy[y] = false, false end
+    t.leaving = 0
+    for x3 = 1, n do
+      local y = lo[x3]
+      if y > 0 and t.left[x3] and not amb[x3] then
+        cleft[y], cbusy[y] = t.left[x3], t.busy[x3]
+        t.leaving = t.leaving + 1
+      end
+    end
+  end
+  -- The reading now becomes the one kept.
+  t.s, t.cs = t.cs, t.s
+  t.j, t.cj = t.cj, t.j
+  t.m, t.cm = t.cm, t.m
+  t.c, t.cc = t.cc, t.c
+  t.i, t.ci = t.ci, t.i
+  if fits then
+    t.left, t.cleft = t.cleft, t.left
+    t.busy, t.cbusy = t.cbusy, t.busy
+  else
+    for y = 1, now do t.left[y], t.busy[y] = false, false end
+    t.leaving = 0
+  end
+  t.n = now
+end
+
+local function TrackOnEvent(_, event, kind)
+  if event == "MAIL_INBOX_UPDATE" then
+    if ns.Perf and track.leaving > 0 and CommandPending() then TrackBusy() end
+    return TrackSync()
+  end
+  if event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
+    local enum = type(Enum) == "table" and Enum.PlayerInteractionType or nil
+    if not (enum and kind == enum.MailInfo) then return end
+  end
+  -- The mailbox closed: nothing held survives it.
+  local t = track
+  t.on = false
+  if t.frame then
+    t.frame:UnregisterEvent("MAIL_INBOX_UPDATE")
+    t.frame:UnregisterEvent("MAIL_CLOSED")
+    t.frame:UnregisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+  end
+  for x = 1, t.n do if t.left[x] then TrackPerf(x, false) end end
+  t.n, t.leaving, t.target, t.leaves = 0, 0, nil, false
+  TrackLog(T_LOST)
+end
+
+-- Followed from now, at an open mailbox, if it is not already.
+local function TrackArm()
+  local t = track
+  if t.on or not MailboxOpen() or type(CreateFrame) ~= "function" then return end
+  if not t.frame then
+    t.frame = CreateFrame("Frame")
+    t.frame:SetScript("OnEvent", TrackOnEvent)
+  end
+  t.on = true
+  t.frame:RegisterEvent("MAIL_INBOX_UPDATE")
+  t.frame:RegisterEvent("MAIL_CLOSED")
+  t.frame:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+  TrackAll()
+  -- A stamp from before is from another reading altogether.
+  TrackLog(T_LOST)
+end
+
+-- -> the log as it stands: a stamp for Mail.Rebase. Followed from here on.
+function Mail.Stamp()
+  TrackArm()
+  TrackSync()
+  return track.seq
+end
+
+-- index, stamp -> where the mail that was at `index` when `stamp` was taken
+-- is now: an index; nil, it went; false, the log cannot say (see above).
+function Mail.Rebase(index, stamp)
+  local t = track
+  if not t.on or type(index) ~= "number" or type(stamp) ~= "number" then return false end
+  TrackSync()
+  local seq = t.seq
+  if stamp > seq or seq - stamp >= TRACK_LOG then return false end
+  for e = stamp + 1, seq do
+    local k = (e - 1) % TRACK_LOG + 1
+    local kind = t.kind[k]
+    if kind == T_LOST then return false end
+    if kind == T_AMB then
+      if index >= t.a[k] and index <= t.b[k] then return false end
+    elseif kind == T_DEL then
+      local r = t.a[k]
+      if index == r then return nil end
+      if index > r then index = index - 1 end
+    elseif kind == T_INS then
+      index = index + t.a[k]
+    end
+  end
+  return index
+end
+
+-- A command sequence's mail, followed while it works (Mail.CollectMail,
+-- Mail.TakeAttachment, the single commands): begun at `index`, then asked
+-- where it is before each command and after each answer.
+local function TrackBegin(index)
+  TrackArm()
+  TrackSync()
+  local t = track
+  t.target, t.leaves = t.on and index or nil, false
+end
+
+-- -> the target's index now, nil (it went as its command emptied it), or
+-- false (not known); its index as begun when nothing is followed.
+local function TrackWhere(index)
+  local t = track
+  if not t.on then return index end
+  TrackSync()
+  return t.target
+end
+
+-- The command about to go may empty the target and see it deleted.
+local function TrackMayEmpty(leaves)
+  track.leaves = leaves and true or false
+end
+
+-- The command's answer is read: the target as it now stands is the reading
+-- kept of it, and, emptied with no text of its own (`gone`), it is on its
+-- way out.
+local function TrackSettled(gone)
+  local t = track
+  t.leaves = false
+  local x = t.target
+  if not t.on or type(x) ~= "number" then return end
+  TrackSync()
+  x = t.target
+  if type(x) ~= "number" or x > t.n then return end
+  TrackRead(x, t.s, t.j, t.m, t.c, t.i)
+  if gone and not t.left[x] then
+    t.left[x], t.busy[x] = GetTime() or 0, false
+    t.leaving = t.leaving + 1
+  end
+end
+
+local function TrackEnd()
+  track.target, track.leaves = nil, false
+end
+
+-------------------------------------------------------------
 -- Command layer :: the C.O.D. the player confirmed
 --
 -- The first take from a C.O.D. mail pays it, so a C.O.D. is paid only for
@@ -1049,11 +1488,12 @@ end
 -- trader apart, and an index names a mail only while nothing has moved under
 -- it: a mail below it leaving moves it down one, and its twin above slides
 -- into the index reading exactly as it did. So what was clicked is kept
--- whole -- its fingerprint, how many mails the inbox listed, and the mail's
--- time left with when it was read -- and every command on that mail, from the
--- question's answer to the plan's last take, goes only while the index still
--- reads as that mail with the inbox listing as many mails. Anything else is
--- answered "moved", with nothing more sent.
+-- whole -- its index with a stamp of the inbox as it stood ("the inbox,
+-- followed"), its fingerprint, and the mail's time left with when it was
+-- read -- and every command on that mail, from the question's answer to the
+-- plan's last take, goes only to where that mail is known to be now, while
+-- it still reads as it did. Anything else is answered "moved", with nothing
+-- more sent.
 --
 -- The time left (GetInboxHeaderInfo's daysLeft) is fractional and two mails
 -- sent apart differ in it; whether the client counts it down between inbox
@@ -1063,26 +1503,36 @@ end
 
 local CLICK_DAYS_SLACK = 0.0007
 
--- index -> what was clicked, for a mail that owes a C.O.D.: { fingerprint,
--- listed, days, at }. nil for a header that has not arrived.
+-- index -> what was clicked, for a mail that owes a C.O.D.: { index, stamp,
+-- fingerprint, days, at }. nil for a header that has not arrived.
 function Mail.Clicked(index)
   local _, _, sender, subject, _, _, days = GetInboxHeaderInfo(index)
   if sender == nil and subject == nil then return nil end
   return {
+    index = index,
+    stamp = Mail.Stamp(),
     fingerprint = Fingerprint(index),
-    listed = Listed(),
     days = tonumber(days),
     at = type(GetTime) == "function" and GetTime() or 0,
   }
 end
 
+-- clicked -> where the mail clicked is now (Mail.Rebase), or nil when that
+-- is not known.
+function Mail.ClickedAt(clicked)
+  if type(clicked) ~= "table" then return nil end
+  local at = Mail.Rebase(clicked.index, clicked.stamp)
+  return type(at) == "number" and at or nil
+end
+
 -- index, clicked [, paid] -> whether the mail at `index` is still the one
--- clicked: the inbox lists as many mails, the index reads as its fingerprint
--- (or as `paid`, its paid form, once a take of the plan's has paid it), and
--- its time left is where it was, or where it has run down to since.
+-- clicked: it is where the mail clicked is known to be now, it reads as its
+-- fingerprint (or as `paid`, its paid form, once a take of the plan's has
+-- paid it), and its time left is where it was, or where it has run down to
+-- since.
 function Mail.StillClicked(index, clicked, paid)
   if type(clicked) ~= "table" then return false end
-  if Listed() ~= clicked.listed then return false end
+  if Mail.ClickedAt(clicked) ~= index then return false end
   local now = Fingerprint(index)
   if now ~= clicked.fingerprint and (paid == nil or now ~= paid) then return false end
   if clicked.days == nil then return true end
@@ -2027,14 +2477,17 @@ end
 -- itemID -> the smallest stack refused in the game's words), made at the
 -- first.
 --
+-- Each take goes to the mail where it is now, and is judged there ("the
+-- inbox, followed"): a mail that cannot be found ends the plan, "moved"
+-- (done's eighth value), with nothing more sent.
+--
 -- `clicked`, where the mail owes a C.O.D. the player has confirmed
--- (Mail.Clicked, "The C.O.D. the player confirmed"): every take of the plan
--- goes only while the inbox lists as many mails as it did at the click, and
--- the first, which pays, only while the index still reads as what was
--- clicked. A take of such a mail is judged only there too -- by the mail
--- reading as its paid form or holding less -- and never by the inbox listing
--- fewer: with the count moved, the index may name a twin, and the plan
--- stops, "moved" (done's eighth value), with nothing more sent.
+-- (Mail.Clicked, "The C.O.D. the player confirmed"): the take that pays goes
+-- only while the mail is where the one clicked is known to be and reads as
+-- it did. A take of such a mail is judged only where the mail is known --
+-- by its reading as its paid form or holding less -- and never by its having
+-- gone: a C.O.D. mail that cannot be read stops the plan, and only the
+-- character's money can then say the take paid.
 local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt, clicked)
   local cursor = 0
   local refused, missed = 0, 0
@@ -2049,10 +2502,9 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
   -- has landed on it -- the first one is the payment. Until one has, the
   -- paid form names some other mail, not this one.
   local paidFingerprint, tookItem = PaidFingerprint(fingerprint), false
-  -- A C.O.D. mail's plan: how many mails the inbox listed at the click, the
-  -- one count every take of it is made and judged at.
-  local codListed = paidFingerprint and type(clicked) == "table" and clicked.listed or nil
-  if paidFingerprint and not codListed then codListed = Listed() end
+  -- Whether the mail owed a C.O.D. as the plan began: such a plan is judged
+  -- only where the mail is known, and never by its having gone.
+  local codPlan = paidFingerprint ~= nil
   -- The C.O.D. the take about to pay owes, the character's money as it goes
   -- out, and what was paid once a take is seen to have paid it.
   local owed, moneyBefore, paidAmount = 0, nil, nil
@@ -2076,8 +2528,8 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
     return true
   end
 
-  -- Each take is recorded once it is CONFIRMED, from the two places below
-  -- that establish it.
+  -- Each take is recorded once it is CONFIRMED, from the places below that
+  -- establish it.
   record = HistoryRecord(index, record)
   -- The mail's mark for "Mail on its way out", read before each take while
   -- the index still names it: by the time a take is confirmed, an emptied
@@ -2086,19 +2538,19 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
   local function Took(op, value, count)
     if op.kind == "item" then
       -- The first item take of a C.O.D. mail that lands is the one that paid.
-      if not tookItem and codListed and owed > 0 then paidAmount = owed end
+      if not tookItem and codPlan and owed > 0 then paidAmount = owed end
       tookItem = true
     end
     HoldLeaving(markSender, markSubject)
     HistoryNote(record, op.kind, value, count)
   end
 
-  -- The take that was to pay went out and the inbox moved under it, so the
-  -- index cannot say what it did: the character's money can. Down by exactly
-  -- what the mail owed, and it landed (the C.O.D. is charged as the item is
-  -- handed over); anything else, and nothing is claimed.
+  -- The take that was to pay went out and the mail cannot be found to say
+  -- what it did: the character's money can. Down by exactly what the mail
+  -- owed, and it landed (the C.O.D. is charged as the item is handed over);
+  -- anything else, and nothing is claimed.
   local function MoneySaysPaid(op, value, count)
-    if op.kind ~= "item" or tookItem or not codListed or owed <= 0 or not moneyBefore then return end
+    if op.kind ~= "item" or tookItem or not codPlan or owed <= 0 or not moneyBefore then return end
     if type(GetMoney) ~= "function" or GetMoney() ~= moneyBefore - owed then return end
     Took(op, value, count)
   end
@@ -2130,27 +2582,37 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
   local function step()
     cursor = cursor + 1
     local op = plan[cursor]
+    -- The take before this one is decided: its mail is no longer expected
+    -- to go by it.
+    TrackMayEmpty(false)
+    -- Where the mail is now ("the inbox, followed"): gone, as a take of the
+    -- plan's emptied it, and there is nothing left to take; not known, and
+    -- nothing more goes.
+    local where = TrackWhere(index)
+    if where == false then
+      over(false, false, false, true)
+      return
+    end
+    if where == nil then op = nil else index = where end
     if not op then
       -- The take that paid can be the plan's last, with a refusal ahead of
       -- it: the mail still holds that item, under its paid fingerprint.
-      if tookItem and paidFingerprint and Fingerprint(index) == paidFingerprint then
+      if where and tookItem and paidFingerprint and Fingerprint(index) == paidFingerprint then
         Adopt(paidFingerprint)
       end
       over(false)
       return
     end
 
-    -- A C.O.D. mail is taken from only while the inbox lists what it did at
-    -- the click, and the take that pays only while the index reads as what
-    -- was clicked (see `clicked` above).
-    if codListed and (Listed() ~= codListed
-        or (not tookItem and clicked and not Mail.StillClicked(index, clicked))) then
+    -- The take that pays a C.O.D. goes only while the index still reads as
+    -- what was clicked (see `clicked` above).
+    if codPlan and not tookItem and clicked and not Mail.StillClicked(index, clicked) then
       over(false, false, false, true)
       return
     end
 
-    -- The mail went away (emptied and deleted, or the inbox reindexed). Whatever
-    -- is at this index now is not ours to take from.
+    -- The index came to name another mail. Whatever is at this index now is
+    -- not ours to take from.
     local now = Fingerprint(index)
     if now ~= fingerprint then
       -- Except the one change our own take makes to a mail that stays: the
@@ -2167,13 +2629,7 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
       Adopt(now)
     end
 
-    -- How many mails the inbox listed as the take went out. Fewer after it,
-    -- and the mail, emptied, has gone: nothing is left of it, whatever now
-    -- sits at its index -- a twin of it, items and all, reads exactly as it
-    -- did before the take.
-    local listedAt = nil
     local function measure()
-      if listedAt and not codListed and (tonumber((GetInboxNumItems())) or 0) < listedAt then return -1 end
       if op.kind == "money" then return Mail.MoneyLeft(index) end
       return Mail.AttachmentsLeft(index)
     end
@@ -2209,11 +2665,22 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
     end
 
     -- The take that pays: what it owes, and the money before it.
-    if codListed and not tookItem and op.kind == "item" then
+    if codPlan and not tookItem and op.kind == "item" then
       local _, _, _, _, _, codNow = GetInboxHeaderInfo(index)
       owed = tonumber(codNow) or 0
       moneyBefore = type(GetMoney) == "function" and GetMoney() or nil
     end
+
+    -- Whether this take empties the mail and the client then deletes it:
+    -- the last of its contents, from a mail with no text of its own. Its
+    -- going is then expected, not a mail moving under the take.
+    local empties
+    if op.kind == "money" then
+      empties = Mail.AttachmentsLeft(index) == 0
+    else
+      empties = Mail.MoneyLeft(index) <= 0 and Mail.AttachmentsLeft(index) <= 1
+    end
+    TrackMayEmpty(empties and not Mail.HasOwnText(index))
 
     markSender, markSubject = LeavingMark(index)
     HoldLeaving(markSender, markSubject)
@@ -2221,7 +2688,6 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
     -- A keep-free run's item take is over once the bags have caught up
     -- with it (bagsCatch): the next take is decided from their count.
     local watched = nil
-    listedAt = tonumber((GetInboxNumItems())) or 0
     if op.kind == "money" then
       TakeInboxMoney(index)
     else
@@ -2233,6 +2699,26 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
     local retried = again == cursor
     again = nil
 
+    -- What the take did, read where the mail is now: "took", "same" (it
+    -- reads as it did), or "lost" (it cannot be found to say; for a C.O.D.,
+    -- also when it went, which is never taken for a landing).
+    local function look()
+      local at = TrackWhere(index)
+      if at == nil then return codPlan and "lost" or "took" end
+      if at == false then return "lost" end
+      index = at
+      if Fingerprint(index) ~= fingerprint or measure() < before then return "took" end
+      return "same"
+    end
+    -- It landed: recorded, and the mail as it now stands is the reading
+    -- kept of it -- on its way out once it is empty with no text of its own.
+    local function landed()
+      Took(op, takes, takeCount)
+      local at = TrackWhere(index)
+      TrackSettled(type(at) == "number" and Mail.MoneyLeft(at) <= 0 and Mail.AttachmentsLeft(at) == 0
+        and not Mail.HasOwnText(at))
+    end
+
     WaitForCommand(function(timedOut)
       if timedOut then
         ErrorWatch.Close()
@@ -2240,40 +2726,28 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
         over(true)
         return
       end
-      -- A C.O.D. mail's take with the inbox listing another count: the index
-      -- may name a twin now, so nothing is judged from it and nothing more
-      -- is sent.
-      if codListed and Listed() ~= codListed then
+      if look() == "took" then
         ErrorWatch.Close()
-        bagsCatch.Drop(watched)
-        MoneySaysPaid(op, takes, takeCount)
-        over(false, false, false, true)
-        return
-      end
-      if Fingerprint(index) ~= fingerprint or measure() < before then
-        ErrorWatch.Close()
-        Took(op, takes, takeCount)
+        landed()
         bagsCatch.After(watched, step)
         return
       end
-      -- Looks refused: the handshake completed but the mail is unchanged. Two
-      -- things race the acknowledgement -- the server's error text, and the
-      -- inbox update that would show the take did land -- so this grace both
-      -- catches the reason and avoids calling a slow update a refusal.
+      -- Looks refused, or cannot be read: the handshake completed but the
+      -- mail is unchanged where it is. Two things race the acknowledgement
+      -- -- the server's error text, and the inbox update that would show the
+      -- take did land -- so this grace both catches the reason and avoids
+      -- calling a slow update a refusal.
       C_Timer.After(ERROR_WATCH_GRACE, function()
         local text = ErrorWatch.Close()
-        if codListed and Listed() ~= codListed then
-          bagsCatch.Drop(watched)
-          MoneySaysPaid(op, takes, takeCount)
-          over(false, false, false, true)
-          return
-        end
-        if Fingerprint(index) ~= fingerprint or measure() < before then
-          Took(op, takes, takeCount)
+        local seen = look()
+        if seen == "took" then
+          landed()
           bagsCatch.After(watched, step)
           return
         end
-        -- Nothing moved: nothing is on its way to the bags either.
+        -- Nothing moved: nothing is on its way to the bags either. (The
+        -- take may still land, late: until the plan decides, its mail may
+        -- still go by it.)
         bagsCatch.Drop(watched)
         -- The mailbox closed with this command in flight -- the player
         -- walked away mid-take. The unchanged mail proves NOTHING: the
@@ -2292,10 +2766,10 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
         -- in the bags is the character's state -- nothing is recorded
         -- against the mail, and the plan stops, since every further take
         -- would meet the same want of room -- and any other words are the
-        -- mail's own, recorded here. This, and the second try below, are
-        -- the only places a refusal is established; no timeout, busy or
-        -- closed path can reach them, and a close DURING flight is caught
-        -- just above.
+        -- mail's own, recorded here, by what the mail is and wherever it now
+        -- stands. This, and the second try below, are the only places a
+        -- refusal is established; no timeout, busy or closed path can reach
+        -- them, and a close DURING flight is caught just above.
         if text and not IsPassingWords(text) then
           if op.kind == "item" and IsBagsWords(text) then
             refused = refused + 1
@@ -2320,6 +2794,14 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
           return step()
         end
 
+        -- No words, and the mail cannot be found to say what the take did:
+        -- nothing more goes. Only the money can say a C.O.D. was paid.
+        if seen == "lost" then
+          MoneySaysPaid(op, takes, takeCount)
+          over(false, false, false, true)
+          return
+        end
+
         -- No words, or none that are the mail's: tried once more, if the
         -- mail is one a try may touch. Never a C.O.D. the mail still owes.
         if not retried then
@@ -2328,13 +2810,14 @@ local function RunPlan(index, fingerprint, plan, done, record, keepFree, attempt
             again, firstWords = cursor, text or false
             C_Timer.After(RETRY_SETTLE, function()
               if not MailboxOpen() then return over(false, false, false, false, true) end
-              if codListed and Listed() ~= codListed then return over(false, false, false, true) end
               -- The take landed after all; the inbox said so late.
-              if Fingerprint(index) ~= fingerprint or measure() < before then
+              local late = look()
+              if late == "took" then
                 again = nil
-                Took(op, takes, takeCount)
+                landed()
                 return step()
               end
+              if late == "lost" then return over(false, false, false, true) end
               -- The same take again, through every check step makes before
               -- any take: the mail, the slot, the room kept free.
               cursor = cursor - 1
@@ -2425,9 +2908,14 @@ end
 -- outright (the caller's own look then finds the mailbox closed).
 function OnSettleEvent(event)
   if not settle.fn then return end
-  if event == "MAIL_INBOX_UPDATE" and MailboxOpen()
-    and HeaderBehind(settle.index, settle.fingerprint) then
-    return
+  if event == "MAIL_INBOX_UPDATE" and MailboxOpen() then
+    -- Where the mail is now ("the inbox, followed"); one that cannot be
+    -- followed is not waited for.
+    local at = TrackWhere(settle.index)
+    if type(at) == "number" then
+      settle.index = at
+      if HeaderBehind(at, settle.fingerprint) then return end
+    end
   end
   EndSettle()
 end
@@ -2505,6 +2993,7 @@ function Mail.CollectMail(index, onDone, opts)
   local function finish(status, refusedCount, reason, kind)
     if finished then return end
     finished = true
+    TrackEnd()
     Release(token)
     if onDone then onDone(status, tonumber(refusedCount) or 0, reason, kind, paid) end
   end
@@ -2517,13 +3006,13 @@ function Mail.CollectMail(index, onDone, opts)
 
   local fingerprint = Fingerprint(index)
   if not fingerprint then return finish("collected") end
+  -- Followed from here ("the inbox, followed"): each command goes to the
+  -- mail where it is, and is judged there.
+  TrackBegin(index)
 
   local _, _, _, _, money, cod, _, itemCount, wasRead = GetInboxHeaderInfo(index)
   money = tonumber(money) or 0
   itemCount = tonumber(itemCount) or 0
-  -- How many mails the inbox lists before anything is taken: fewer once
-  -- every take has landed, and the emptied mail has gone (see below).
-  local listed = tonumber((GetInboxNumItems())) or 0
   -- Taken before anything moves: the entry names the mail as it arrived.
   local record = HistoryRecord(index, opts and opts.history)
 
@@ -2588,11 +3077,14 @@ function Mail.CollectMail(index, onDone, opts)
   -- Whether the plan below has already waited once for links that had not
   -- loaded.
   local relooked = false
-  -- Whether the index has stopped naming the mail since it was asked for is
-  -- looked at before the fetch and before the plan is made, as RunPlan looks
-  -- before each take, for every caller: a run finds it again, and a click
-  -- is told nothing more was taken.
+  -- Where the mail is, and whether it is still the one asked for, is looked
+  -- at before the fetch and before the plan is made, as RunPlan looks before
+  -- each take, for every caller: a run finds it again, and a click is told
+  -- nothing more was taken.
   local function execute()
+    local at = TrackWhere(index)
+    if type(at) ~= "number" then return finish("moved") end
+    index = at
     if clicked and not Mail.StillClicked(index, clicked) then return finish("moved") end
     if Fingerprint(index) ~= fingerprint then
       -- A letter that held nothing was all read by the fetch, which went to
@@ -2678,23 +3170,16 @@ function Mail.CollectMail(index, onDone, opts)
       -- Checked against the mail as the plan last knew it: a C.O.D. it paid
       -- reads 0 now, and the mail it names is still this one.
       current = current or fingerprint
-      -- Every take landed and the inbox lists fewer mails than before them:
-      -- the mail, emptied, has gone (the client deletes a mail with no
-      -- text of its own), and what is at its index now -- the next mail, a
-      -- twin of it with its own items still to load -- is not its to wait
-      -- for or to look at. A C.O.D. mail's takes were each judged at the
-      -- count of the click (RunPlan): every one landed, whatever the count
-      -- says now.
-      if clicked and Listed() ~= clicked.listed then
+      -- Every take landed and the mail, emptied, has gone (the client
+      -- deletes a mail with no text of its own), or cannot be found to look
+      -- at: there is nothing of it to wait for or to look at.
+      local at = TrackWhere(index)
+      if type(at) ~= "number" then
         ForgetStuck(fingerprint)
         if current ~= fingerprint then ForgetStuck(current) end
         return finish("collected", 0, reason)
       end
-      if not clicked and (tonumber((GetInboxNumItems())) or 0) < listed then
-        ForgetStuck(fingerprint)
-        if current ~= fingerprint then ForgetStuck(current) end
-        return finish("collected", 0, reason)
-      end
+      index = at
       -- Once the header agrees with the links ("Letting the header catch
       -- up"): a caller told "collected" goes on to ask whether the mail is
       -- finished, and that answer reads the header.
@@ -2702,8 +3187,9 @@ function Mail.CollectMail(index, onDone, opts)
         if not MailboxOpen() then
           return finish("closed", refusedCount, reason)
         end
-        if (not clicked or Listed() == clicked.listed)
-          and Fingerprint(index) == current and Mail.HasContent(index) then
+        local now = TrackWhere(index)
+        if type(now) == "number" then index = now end
+        if type(now) == "number" and Fingerprint(index) == current and Mail.HasContent(index) then
           -- Every handshake completed and the mail is still not empty. Nothing
           -- attributable to one take -- so where items stayed while no general
           -- slot was free, that is the bags (see "Bags full"). Otherwise
@@ -2725,6 +3211,9 @@ function Mail.CollectMail(index, onDone, opts)
 
   WhenIdle(function()
     if not needFetch then return execute() end
+    local at = TrackWhere(index)
+    if type(at) ~= "number" then return finish("moved") end
+    index = at
     if clicked and not Mail.StillClicked(index, clicked) then return finish("moved") end
     if Fingerprint(index) ~= fingerprint then return finish("moved") end
     -- The body comes back with the fetch: History keeps a letter's words
@@ -2763,6 +3252,7 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
   local function finish(status, refusedCount, reason, kind)
     if finished then return end
     finished = true
+    TrackEnd()
     Release(token)
     if onDone then onDone(status, tonumber(refusedCount) or 0, reason, kind, paid) end
   end
@@ -2775,6 +3265,8 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
   if type(TakeInboxItem) ~= "function" then return finish("collected") end
 
   local fingerprint = Fingerprint(index)
+  -- Followed from here, as Mail.CollectMail's mail is.
+  if fingerprint then TrackBegin(index) end
   -- Not loaded yet, and the caller asked for the fetch: the slot must at
   -- least hold an item the header knows of.
   local fetch = fingerprint ~= nil and opts ~= nil and opts.fetch and not GetInboxItemLink(index, slot)
@@ -2825,6 +3317,9 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
         if current and current ~= fingerprint then ForgetStuck(current) end
         -- The last tile of a mail is over once the header agrees, as a whole
         -- collect is: the reading view's Back asks whether it is finished.
+        local at = TrackWhere(index)
+        if type(at) ~= "number" then return finish("collected", 0, reason) end
+        index = at
         AfterHeaderSettles(index, current or fingerprint, function()
           finish("collected", 0, reason)
         end)
@@ -2832,6 +3327,9 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
   end
 
   WhenIdle(function()
+    local at = TrackWhere(index)
+    if type(at) ~= "number" then return finish("moved") end
+    index = at
     if clicked and not Mail.StillClicked(index, clicked) then return finish("moved") end
     if not fetch then return take() end
     -- The body first, and the take only once it has landed, on the same
@@ -2842,10 +3340,12 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
     WaitForCommand(function(timedOut)
       if timedOut then return finish("timeout") end
       if not MailboxOpen() then return finish("closed") end
+      local now = TrackWhere(index)
+      if type(now) ~= "number" then return finish("moved") end
+      index = now
       if clicked and not Mail.StillClicked(index, clicked) then return finish("moved") end
-      if Fingerprint(index) ~= fingerprint or not GetInboxItemLink(index, slot) then
-        return finish("collected")
-      end
+      if Fingerprint(index) ~= fingerprint then return finish("moved") end
+      if not GetInboxItemLink(index, slot) then return finish("collected") end
       take()
     end)
   end, function() finish("timeout") end)
@@ -2860,13 +3360,18 @@ end
 --
 -- `expected` (optional): the fingerprint of the mail the caller means, read
 -- when the player acted. The command waits for an idle channel, and another
--- addon's command landing in that wait can reindex the inbox, so the index
--- is re-checked immediately before the command goes, as Mail.DeleteMails
--- does: a mail that has moved is left alone and the answer is "moved", with
--- nothing sent.
+-- addon's command landing in that wait can reindex the inbox, so the mail is
+-- followed there ("the inbox, followed") and checked immediately before the
+-- command goes, as Mail.DeleteMails does: a mail that has moved where it
+-- cannot be followed, or reads as another, is left alone and the answer is
+-- "moved", with nothing sent.
 -------------------------------------------------------------
 
-local function SingleCommand(issue, onDone, index, expected)
+-- issue(at) sends the command to the mail at `at` and answers whether it may
+-- empty the mail and see it go; judge(where), where given, reads what it did
+-- once its handshake clears, with the mail's index then (or nil, gone, or
+-- false, not known), and answers whether the mail is now on its way out.
+local function SingleCommand(issue, onDone, index, expected, judge)
   local token = Claim()
   if not token then
     if onDone then onDone("busy") end
@@ -2877,17 +3382,28 @@ local function SingleCommand(issue, onDone, index, expected)
   local function finish(status)
     if finished then return end
     finished = true
+    TrackEnd()
     Release(token)
     if onDone then onDone(status) end
   end
 
   if not MailboxOpen() then return finish("closed") end
+  TrackBegin(index)
 
   WhenIdle(function()
     -- The last look before the command (see `expected` above).
-    if expected and Fingerprint(index) ~= expected then return finish("moved") end
-    issue()
+    local at = TrackWhere(index)
+    if type(at) ~= "number" then return finish("moved") end
+    if expected and Fingerprint(at) ~= expected then return finish("moved") end
+    local leaves = issue(at)
+    TrackMayEmpty(leaves)
     WaitForCommand(function(timedOut)
+      if not timedOut then
+        local where = TrackWhere(at)
+        local going
+        if judge then going = judge(where) else going = leaves end
+        TrackSettled(going and true or false)
+      end
       finish(timedOut and "timeout" or "done")
     end)
   end, function() finish("timeout") end)
@@ -2898,7 +3414,10 @@ function Mail.DeleteMail(index, onDone, expected)
     if onDone then onDone("unavailable") end
     return
   end
-  SingleCommand(function() DeleteInboxItem(index) end, onDone, index, expected)
+  SingleCommand(function(at)
+    DeleteInboxItem(at)
+    return true
+  end, onDone, index, expected)
 end
 
 -- The money alone, for the reading view's coin tile. Same channel rules as
@@ -2919,17 +3438,25 @@ function Mail.TakeMoney(index, onDone, history)
   -- Held as a run's take is ("Mail on its way out"): a gold-only mail with
   -- no text goes with its gold.
   local markSender, markSubject
-  SingleCommand(function()
-    markSender, markSubject = LeavingMark(index)
+  SingleCommand(function(at)
+    markSender, markSubject = LeavingMark(at)
     HoldLeaving(markSender, markSubject)
-    TakeInboxMoney(index)
-  end, function(status)
-    if status == "done" and amount > 0
-      and (Fingerprint(index) ~= fingerprint or Mail.MoneyLeft(index) < amount) then
+    -- Gold the last of what the mail holds, with no text of its own: it goes
+    -- with its gold.
+    local leaves = Mail.AttachmentsLeft(at) == 0 and not Mail.HasOwnText(at)
+    TakeInboxMoney(at)
+    return leaves
+  end, onDone, index, nil, function(where)
+    -- Landed: the sum has left the mail where it is, or the mail, emptied
+    -- by it, has gone.
+    if amount > 0 and (where == nil
+        or (type(where) == "number" and (Fingerprint(where) ~= fingerprint or Mail.MoneyLeft(where) < amount))) then
       HoldLeaving(markSender, markSubject)
       HistoryNote(record, "money", amount)
+      return type(where) == "number" and Mail.MoneyLeft(where) <= 0 and Mail.AttachmentsLeft(where) == 0
+        and not Mail.HasOwnText(where)
     end
-    if onDone then onDone(status) end
+    return false
   end)
 end
 
@@ -2938,7 +3465,10 @@ function Mail.ReturnMail(index, onDone, expected)
     if onDone then onDone("unavailable") end
     return
   end
-  SingleCommand(function() ReturnInboxItem(index) end, onDone, index, expected)
+  SingleCommand(function(at)
+    ReturnInboxItem(at)
+    return true
+  end, onDone, index, expected)
 end
 
 -- Deletes a list of mails, one command at a time, stopping at the first
@@ -2956,12 +3486,15 @@ end
 -- its DeleteInboxItem and skipped on a mismatch: the inbox can reindex while
 -- a dialog waits AND between the sweep's own commands (a mail arriving
 -- mid-sweep shifts every index), and a skipped mail costs one more click
--- where a wrong delete costs the mail.
-function Mail.DeleteMails(indices, onDone, expected)
+-- where a wrong delete costs the mail. Each is followed from `stamp`
+-- (Mail.Stamp, taken as the indices were read; now when not given) to where
+-- it is ("the inbox, followed"), and checked there.
+function Mail.DeleteMails(indices, onDone, expected, stamp)
   if type(DeleteInboxItem) ~= "function" then
     if onDone then onDone(0, "unavailable") end
     return
   end
+  if type(stamp) ~= "number" then stamp = Mail.Stamp() end
 
   local list = {}
   for i = 1, #indices do
@@ -2986,6 +3519,7 @@ function Mail.DeleteMails(indices, onDone, expected)
   local function finish(status)
     if finished then return end
     finished = true
+    TrackEnd()
     Release(token)
     if onDone then onDone(deleted, status) end
   end
@@ -3000,16 +3534,23 @@ function Mail.DeleteMails(indices, onDone, expected)
     if not MailboxOpen() then return finish("closed") end
 
     -- The last look before the irreversible command (see the contract above).
-    -- A moved mail is skipped, not chased: fingerprints are not unique across
-    -- identical auction mails, so relocating by fingerprint could delete a
-    -- sibling the caller never listed.
-    if expected and Fingerprint(index) ~= expected[index] then
+    -- A mail that cannot be followed, or reads as another, is skipped, not
+    -- chased: fingerprints are not unique across identical auction mails, so
+    -- relocating by fingerprint could delete a sibling the caller never
+    -- listed.
+    local at = Mail.Rebase(index, stamp)
+    if at == false and not track.on then at = index end
+    if type(at) ~= "number" or (expected and Fingerprint(at) ~= expected[index]) then
       return step()
     end
 
-    DeleteInboxItem(index)
+    TrackBegin(at)
+    TrackMayEmpty(true)
+    DeleteInboxItem(at)
     WaitForCommand(function(timedOut)
       if timedOut then return finish("timeout") end
+      TrackSettled(true)
+      TrackEnd()
       deleted = deleted + 1
       step()
     end)

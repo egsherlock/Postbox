@@ -1553,13 +1553,14 @@ end
 -- lives with the mail-identity block below.
 --
 -- What was clicked is the whole of it (MailService, "The C.O.D. the player
--- confirmed"): the fingerprint, how many mails the inbox listed and the
--- mail's time left. A twin of the mail sliding into its index reads as it
--- does, so the count is what tells them apart. `listed` is how many the
--- inbox listed when the row, tile or reading view clicked was bound to its
--- index: a click on a binding the inbox has moved under since names an
--- index that may hold another mail, and asks nothing. onConfirm(clicked)
--- hands it on, for the service to hold every command to.
+-- confirmed"): the index with a stamp of the inbox as it stood, the
+-- fingerprint and the mail's time left. A twin of the mail sliding into its
+-- index reads as it does, so where the mail went is followed, not read off
+-- the index. `listed` is how many the inbox listed when the row, tile or
+-- reading view clicked was bound to its index: a click on a binding the
+-- inbox has moved under since names an index that may hold another mail, and
+-- asks nothing. onConfirm(clicked, at) hands it on, with where the mail is as
+-- the answer comes, for the service to hold every command to.
 local Fingerprint
 
 local function ConfirmCOD(index, onConfirm, listed)
@@ -1576,8 +1577,9 @@ local function ConfirmCOD(index, onConfirm, listed)
     L()("COD_CONFIRM_MSG", Helpers().FormatMoney(amount)), function()
       -- Silently stand down on a mismatch, like every LiveIndex caller: the
       -- coalesced refresh has already re-bound the rows the player sees.
-      if not Mail().StillClicked(index, clicked) then return end
-      onConfirm(clicked)
+      local at = Mail().ClickedAt(clicked)
+      if not at or not Mail().StillClicked(at, clicked) then return end
+      onConfirm(clicked, at)
     end)
 end
 
@@ -7297,7 +7299,10 @@ function RV.AutoDelete(panel, index, before, record, andThen)
   local function Continue() if andThen then andThen() end end
   if RV.Mode() ~= "delete" or not index or type(before) ~= "table" then return Continue() end
   if not MailboxOpen() or Mail().IsBusy() then return Continue() end
-  if (tonumber((GetInboxNumItems())) or 0) ~= before.count then return Continue() end
+  -- Where the mail is now: gone (the client deleted it), or not to be told
+  -- from another, and there is nothing to delete.
+  index = Mail().Rebase(before.index, before.stamp)
+  if type(index) ~= "number" then return Continue() end
   -- Emptiness is the client's word, header and links both. A collect hands
   -- over its mail once the header has caught up with the take (MailService,
   -- "Letting the header catch up"); a mail that still does not read finished
@@ -7306,14 +7311,9 @@ function RV.AutoDelete(panel, index, before, record, andThen)
   -- Mail with no text of its own that Postbox has just emptied is already
   -- on its way out: the client deletes it itself (MailService, "Mail on its
   -- way out"), and a delete of ours would be a second command for a mail
-  -- the server is removing. A run waits for it to go, as it would have
-  -- waited for a delete of its own, so the next mail is taken and checked
-  -- against the inbox as it will stand (RV.AfterLeaving).
-  local leaving = Mail().Leaving(index)
-  if leaving then
-    if andThen then return RV.AfterLeaving(before, leaving, andThen) end
-    return
-  end
+  -- the server is removing. Nothing waits for it to go: where everything
+  -- else then is, is followed.
+  if Mail().Leaving(index) then return Continue() end
   -- The option's promise is that History keeps what a deleted letter said.
   -- With History at Never it keeps nothing, so a letter with words of its
   -- own stays, under the divider, for the player to clear; mail with no
@@ -7328,30 +7328,6 @@ function RV.AutoDelete(panel, index, before, record, andThen)
   end, { [index] = Fingerprint(index) })
 end
 
--- before, at, fn -> fn() once the mail just emptied, which the client is
--- deleting, has gone: the inbox lists fewer mails than it did before the
--- take (RV.Before). Or once its hold lapses (`at`, MailService.Leaving), or
--- the mailbox closes, whichever comes first. Event-driven, registered only
--- for the wait, one one-shot deadline.
-function RV.AfterLeaving(before, at, fn)
-  local bus = ns.Events
-  if not (bus and type(bus.Register) == "function") then return fn() end
-  local check
-  local function go()
-    if not check then return end
-    bus.Unregister("MAIL_INBOX_UPDATE", check)
-    bus.Unregister("MAIL_CLOSED", go)
-    check = nil
-    fn()
-  end
-  check = function()
-    if (tonumber((GetInboxNumItems())) or 0) < before.count or not MailboxOpen() then go() end
-  end
-  bus.Register("MAIL_INBOX_UPDATE", check)
-  bus.Register("MAIL_CLOSED", go)
-  C_Timer.After(max(0, at - GetTime()) + 0.1, go)
-end
-
 -- index -> sender and subject: the part of a mail's identity a take cannot
 -- change (a paid C.O.D. reads 0 afterwards, which the full fingerprint counts).
 function RV.Identity(index)
@@ -7361,15 +7337,16 @@ function RV.Identity(index)
 end
 
 -- index -> what RV.AutoDelete checks the mail against once the take is done:
--- its identity, and how many mails the client lists. Sender and subject alone
--- are not enough: a mail emptied of everything and with no text is deleted
--- by the server, the one above it slides into its index, and two mails from
--- one alt with one subject read alike. A count that moved means the listing
--- changed under the take, and nothing is deleted on a guess.
+-- its identity, its index and a stamp of the inbox as it stood. Sender and
+-- subject alone are not enough: a mail emptied of everything and with no
+-- text is deleted by the server, the one above it slides into its index, and
+-- two mails from one alt with one subject read alike. So the mail is
+-- followed to where it is (MailService, "the inbox, followed"), and one that
+-- cannot be is not deleted on a guess.
 function RV.Before(index)
   local id = RV.Identity(index)
   if not id then return nil end
-  return { id = id, count = tonumber((GetInboxNumItems())) or 0 }
+  return { id = id, index = index, stamp = Mail().Stamp() }
 end
 
 -- paid -> the C.O.D. a confirmed take paid, said in chat with its amount
@@ -7391,7 +7368,9 @@ end
 -- `listed`: how many mails the inbox listed when what was clicked was bound
 -- to `index` (ConfirmCOD).
 function CollectSingleMail(panel, index, opts, listed)
-  ConfirmCOD(index, function(clicked)
+  ConfirmCOD(index, function(clicked, at)
+    -- Where the mail clicked is now, for a C.O.D. the answer waited on.
+    index = at or index
     -- The one path allowed to pay a C.O.D. -- the player just confirmed this
     -- exact mail's amount (or it has none). The service refuses everywhere
     -- else, whatever mail an index turns out to name (see Mail.CollectMail),
@@ -8707,7 +8686,9 @@ local function TakeOneAttachment(detail, slot)
   -- overlay can be turned to another mail under it (Back, another row), so
   -- what it shows after the wait is not the mail the player answered for.
   local clicked = detail.fingerprint
-  ConfirmCOD(index, function(what)
+  ConfirmCOD(index, function(what, at)
+    -- Where the mail is as the answer comes: the view follows it there.
+    index = at or index
     if not detail:IsShown() or detail.fingerprint ~= clicked or LiveIndex(detail) ~= index then return end
     local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
     codBefore = tonumber(codBefore) or 0
@@ -8863,17 +8844,26 @@ function CloseDetailIfStale(panel)
     detail:Hide()
     return
   end
+  -- The inbox has moved since the view was bound: it follows its mail to
+  -- where it is now (MailService, "the inbox, followed"), and closes when
+  -- the mail has gone or cannot be told from another -- a twin of it
+  -- sliding into its index reads exactly as it does.
+  local count = tonumber((GetInboxNumItems())) or 0
+  if detail._listed ~= count then
+    local was = detail.mailIndex
+    local at = Mail().Rebase(was, detail._stamp)
+    if type(at) ~= "number" then
+      detail:Hide()
+      return
+    end
+    detail.mailIndex = at
+    local take = detail._paidTake
+    if take and take.index == was then take.index = at end
+    detail._stamp, detail._listed = Mail().Stamp(), count
+  end
   local index = LiveIndex(detail)
   if not index then
     if not RV.AwaitsPaidTake(detail) then detail:Hide() end
-    return
-  end
-  -- A mail that owes a C.O.D., under an inbox that has moved since the view
-  -- was bound: its index may name a twin now, reading exactly as it, and the
-  -- view cannot tell which it shows. It closes; a click opens it again.
-  local _, _, _, _, _, cod = GetInboxHeaderInfo(index)
-  if (tonumber(cod) or 0) > 0 and detail._listed ~= (tonumber((GetInboxNumItems())) or 0) then
-    detail:Hide()
     return
   end
   if Mail().StuckReason(index) ~= detail._stuck then
@@ -9392,9 +9382,12 @@ function ShowDetail(panel, index)
 
   detail.mailIndex = index
   detail.fingerprint = fingerprint
-  -- How many mails the inbox listed as the view was bound to the index: a
-  -- C.O.D. is confirmed from here only while it still does (ConfirmCOD).
+  -- How many mails the inbox listed as the view was bound to the index, and
+  -- a stamp of it: the view follows its mail from here (CloseDetailIfStale),
+  -- and a C.O.D. is confirmed from it only while it is up to date
+  -- (ConfirmCOD).
   detail._listed = tonumber((GetInboxNumItems())) or 0
+  detail._stamp = Mail().Stamp()
 
   -- Read BEFORE the fetch, because the fetch is what changes it, and it is the
   -- one thing that decides whether the list underneath needs rebuilding at all.
@@ -12318,7 +12311,9 @@ do
     local panel = plate._panel
     local clicked = plate.fingerprint
     -- The plate follows its row, which the list bound at its last build.
-    ConfirmCOD(index, function(what)
+    ConfirmCOD(index, function(what, at)
+      -- The row pass re-binds the plate to where the mail is now.
+      index = at or index
       if plate.mailIndex ~= index or plate.fingerprint ~= clicked or LiveIndex(plate) ~= index then return end
       local _, _, _, _, _, codBefore = GetInboxHeaderInfo(index)
       codBefore = tonumber(codBefore) or 0
