@@ -7958,38 +7958,40 @@ local function FinishRun(left, stopReason)
     ns.Print(ns.Plural("MSG_COLLECT_INCOMPLETE", left))
   else
     -- What stayed behind, by mail: the stuck ones, then the ones waiting for
-    -- room. Either, both, or neither.
-    local problem
-    if stuck > 0 then problem = Tinted("warning", format(L()["STATUS_PARTIAL"], stuck)) end
-    if waiting > 0 then
-      local full = Tinted("warning", format(L()["STATUS_BAGS_FULL"], waiting))
-      problem = problem and (problem .. JOIN .. full) or full
-    end
-    -- Stopped by "Keep bag slots free": the bags state's wording, for a
-    -- stop the player asked for. Not a state -- the next run goes as far.
-    if stopReason == "keep" then
-      local kept = Tinted("warning", ns.Plural("STATUS_KEPT_FREE", keepFree))
-      problem = problem and (problem .. JOIN .. kept) or kept
-    end
-    if problem then
-      StatusOutcome(WithCollected(problem))
-      -- When room appears only the bags part comes down: the line then reads
-      -- as it would have after a clean run, with any stuck mail still named.
-      local UI = ns.MailboxUI
-      if waiting > 0 and UI and type(UI.TagStatusOutcome) == "function" then
-        UI.TagStatusOutcome("bags", stuck > 0
-          and WithCollected(Tinted("warning", format(L()["STATUS_PARTIAL"], stuck)))
-          or Tinted("positive", format(L()["STATUS_COLLECTED"], got)))
-      elseif stuck > 0 and UI and type(UI.TagStatusOutcome) == "function" then
-        -- And the stuck part comes down the same way once no mail is stuck
-        -- any more -- what the character held of it dropped
-        -- (MailboxUI.OnStuckLifted) -- leaving the rest of the line.
-        UI.TagStatusOutcome("stuck", stopReason == "keep"
-          and WithCollected(Tinted("warning", ns.Plural("STATUS_KEPT_FREE", keepFree)))
-          or Tinted("positive", format(L()["STATUS_COLLECTED"], got)))
+    -- room, then a stop to keep slots free. Any of them, or none. `stuckPart`
+    -- and `bagsPart` say whether the line still names those two: each can
+    -- stop being true by itself, and the line is then written again without
+    -- it, the rest as it was.
+    local function Line(stuckPart, bagsPart)
+      local problem
+      if stuckPart and stuck > 0 then problem = Tinted("warning", format(L()["STATUS_PARTIAL"], stuck)) end
+      if bagsPart and waiting > 0 then
+        local full = Tinted("warning", format(L()["STATUS_BAGS_FULL"], waiting))
+        problem = problem and (problem .. JOIN .. full) or full
       end
-    else
-      StatusOutcome(Tinted("positive", format(L()["STATUS_COLLECTED"], got)))
+      -- Stopped by "Keep bag slots free": the bags state's wording, for a
+      -- stop the player asked for. Not a state -- the next run goes as far.
+      if stopReason == "keep" then
+        local kept = Tinted("warning", ns.Plural("STATUS_KEPT_FREE", keepFree))
+        problem = problem and (problem .. JOIN .. kept) or kept
+      end
+      if problem then return WithCollected(problem) end
+      return Tinted("positive", format(L()["STATUS_COLLECTED"], got))
+    end
+    StatusOutcome(Line(true, true))
+    -- When room appears the bags part comes down (MailboxUI.OnBagsFullChanged),
+    -- and once no mail is stuck any more -- what the character held of it
+    -- dropped (MailboxUI.OnStuckLifted) -- the stuck part does: each by itself,
+    -- in whichever order, leaving what the line still has to say.
+    local UI = ns.MailboxUI
+    if UI and type(UI.TagStatusOutcome) == "function" then
+      if waiting > 0 and stuck > 0 then
+        UI.TagStatusOutcome("bags", Line(true, false), "stuck", Line(false, true), Line(false, false))
+      elseif waiting > 0 then
+        UI.TagStatusOutcome("bags", Line(false, false))
+      elseif stuck > 0 then
+        UI.TagStatusOutcome("stuck", Line(false, false))
+      end
     end
     -- The chat keeps the items: which of a mail's attachments stayed is what
     -- the game's words are about.

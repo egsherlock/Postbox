@@ -1789,7 +1789,11 @@ local status = {
   -- which comes down when no mail is stuck any more (UI.OnStuckLifted). nil
   -- for an ordinary outcome.
   -- outcomeAfter is the line once it has; read only while outcomeKind is set.
+  -- A line can report both: outcomeKind2 is the second, outcomeAfter2 the
+  -- line once only it has stopped, outcomeAfterBoth the line once both
+  -- have. Read only while outcomeKind is set (UI.TagStatusOutcome).
   outcomeKind = nil, outcomeAfter = nil,
+  outcomeKind2 = nil, outcomeAfter2 = nil, outcomeAfterBoth = nil,
   summary  = nil,
   -- The mails sent this visit (UI.NoteSent), and what the line says of
   -- them: after whatever else it says (sentTail), or on its own
@@ -1887,10 +1891,30 @@ end
 -- Says what the outcome just set reports, where it can stop being true by
 -- itself ("bags": see status.outcomeKind), and what the line reads once it
 -- has (`after`: the same outcome without that part, or nil for nothing).
--- Called right after SetStatusOutcome; a later outcome, activity or clear
--- forgets it.
-function UI.TagStatusOutcome(kind, after)
-  if status.outcome then status.outcomeKind, status.outcomeAfter = kind, after end
+-- A line reporting two such things names the second as well: `kind2`, the
+-- line without its part (`after2`), and the line without either (`both`).
+-- Each part then comes down by itself, in whichever order. Called right
+-- after SetStatusOutcome; a later outcome, activity or clear forgets it.
+function UI.TagStatusOutcome(kind, after, kind2, after2, both)
+  if not status.outcome then return end
+  status.outcomeKind, status.outcomeAfter = kind, after
+  status.outcomeKind2, status.outcomeAfter2, status.outcomeAfterBoth = kind2, after2, both
+end
+
+-- What the outcome reports as `kind` is no longer so: its part comes down,
+-- and a part the line still reports stays, tagged as before.
+local function OutcomePartDown(kind)
+  if status.outcomeKind == nil then return end
+  if status.outcomeKind == kind then
+    status.outcome = status.outcomeAfter
+    status.outcomeKind, status.outcomeAfter = status.outcomeKind2, status.outcomeAfterBoth
+  elseif status.outcomeKind2 == kind then
+    status.outcome, status.outcomeAfter = status.outcomeAfter2, status.outcomeAfterBoth
+  else
+    return
+  end
+  status.outcomeTone = nil
+  status.outcomeKind2, status.outcomeAfter2, status.outcomeAfterBoth = nil, nil, nil
 end
 
 -- The mailbox opening or closing: the visit's line starts again, what was
@@ -1928,9 +1952,7 @@ end
 function UI.OnBagsFullChanged()
   local mail = ns.MailService
   local full = mail and type(mail.BagsFull) == "function" and mail.BagsFull()
-  if not full and status.outcomeKind == "bags" then
-    status.outcome, status.outcomeTone, status.outcomeKind = status.outcomeAfter, nil, nil
-  end
+  if not full then OutcomePartDown("bags") end
   local collect = ns.CollectTab
   if collect and type(collect.RequestRefresh) == "function" then collect.RequestRefresh(CollectPanel()) end
   UI.UpdateStatusSummary()
@@ -2788,9 +2810,9 @@ end
 -- status line and the Mail tab's dot.
 function UI.OnStuckLifted()
   local mail = ns.MailService
-  if status.outcomeKind == "stuck" and mail and type(mail.StuckCount) == "function"
-    and mail.StuckCount() == 0 then
-    status.outcome, status.outcomeTone, status.outcomeKind = status.outcomeAfter, nil, nil
+  if (status.outcomeKind == "stuck" or (status.outcomeKind and status.outcomeKind2 == "stuck"))
+    and mail and type(mail.StuckCount) == "function" and mail.StuckCount() == 0 then
+    OutcomePartDown("stuck")
   end
   QueueCollectRefresh()
   QueueInboxPass()
