@@ -487,9 +487,11 @@ end
 --     calls Perf.Days and Perf.Window): whether a mail's time left runs down
 --     between inbox updates or only changes with one -- the first mail
 --     listed, read at an update and again at the next, or at a command of
---     Postbox's with no update since -- and whether new mail arriving at an
---     unchanged count moves the list's first and last mail. Counts, seconds
---     and days only.
+--     Postbox's with no update since -- whether new mail arriving at an
+--     unchanged count moves the list's first and last mail, and whether a
+--     mail leaving a full list (the server holding more than it lists) has
+--     one more listed at the foot in the same update, the count unchanged,
+--     or the count falls. Counts, seconds and days only.
 -------------------------------------------------------------
 
 -- Perf.cur is the open being counted, or nil, Perf.visit the open whose
@@ -815,6 +817,12 @@ do
       -- ends' time left before and after.
       wN = 0, wTop = 0, wFoot = 0, wAt = 0, wT0 = 0, wT1 = 0,
       wD1 = false, wD1n = false, wDn = false, wDnn = false,
+      -- And mail gone from a full list (the server's count down, more held
+      -- than listed): how many times one more was listed at the foot in the
+      -- same update, the count unchanged (and how often the last mail listed
+      -- changed with it), how many times the count fell instead, and the
+      -- last time's counts.
+      gSame = 0, gFoot = 0, gFell = 0, gAt = 0, gN = 0, gT0 = 0, gT1 = 0,
     }
     rec.openShown, rec.openTotal = InboxCount()
     rec.prof = SlowInto(rec, SLOW_OPEN)
@@ -982,14 +990,29 @@ do
 
   -- New mail at an unchanged count (`n` listed, the server's count from
   -- `t0` to `t1`): whether the first and the last mail listed changed, and
-  -- their time left before and after (nil where unread).
-  function Perf.Window(n, t0, t1, topMoved, footMoved, d1, d1n, dn, dnn)
+  -- their time left before and after (nil where unread). With `t1` below
+  -- `t0`, mail gone from a full list instead: `n0` listed before, `n` now
+  -- -- as many, with the last mail listed changed or not (`footMoved`), or
+  -- fewer.
+  function Perf.Window(n, t0, t1, topMoved, footMoved, d1, d1n, dn, dnn, n0)
     local rec = Perf.visit
     if not rec then return end
+    n, t0, t1 = tonumber(n) or 0, tonumber(t0) or 0, tonumber(t1) or 0
+    if t1 < t0 then
+      n0 = tonumber(n0) or n
+      if n >= n0 then
+        rec.gSame = rec.gSame + 1
+        if footMoved then rec.gFoot = rec.gFoot + 1 end
+      else
+        rec.gFell = rec.gFell + 1
+      end
+      rec.gAt, rec.gN, rec.gT0, rec.gT1 = n0, n, t0, t1
+      return
+    end
     rec.wN = rec.wN + 1
     if topMoved then rec.wTop = rec.wTop + 1 end
     if footMoved then rec.wFoot = rec.wFoot + 1 end
-    rec.wAt, rec.wT0, rec.wT1 = tonumber(n) or 0, tonumber(t0) or 0, tonumber(t1) or 0
+    rec.wAt, rec.wT0, rec.wT1 = n, t0, t1
     rec.wD1, rec.wD1n, rec.wDn, rec.wDnn = tonumber(d1) or false, tonumber(d1n) or false,
       tonumber(dn) or false, tonumber(dnn) or false
   end
@@ -1300,6 +1323,12 @@ do
       out[#out + 1] = format("    new mail at an unchanged count: %d time(s), the first mail listed changed in %d, the last in %d; the last time %d listed, %d->%d on the server, first %s->%s days, last %s->%s days",
         rec.wN, rec.wTop, rec.wFoot, rec.wAt, rec.wT0, rec.wT1,
         Days(rec.wD1), Days(rec.wD1n), Days(rec.wDn), Days(rec.wDnn))
+    end
+    -- And what a full list does when mail leaves it (Perf.Window): one more
+    -- at the foot in the same update, or the count falling.
+    if (rec.gSame or 0) + (rec.gFell or 0) > 0 then
+      out[#out + 1] = format("    mail gone from a full list: %d time(s) the count stayed, one more listed at the foot in the same update (the last mail listed changed in %d); %d time(s) the count fell; the last time %d->%d listed, %d->%d on the server",
+        rec.gSame, rec.gFoot, rec.gFell, rec.gAt, rec.gN, rec.gT0, rec.gT1)
     end
 
     parts = {}

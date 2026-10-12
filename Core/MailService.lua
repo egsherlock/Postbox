@@ -1172,12 +1172,12 @@ end
 -- listed drops off the foot (a box listing all it can), or take one mail
 -- away while another comes in, and the count reads as it did with every
 -- index moved. So each update is read, whatever the count says, and lined
--- up: every mail where it was (the target by sender and subject), or `k` new
--- at the top with the last `k` dropped off the foot, or every mail where it
--- was with one changed in place (another addon took its gold). The server's
--- count growing at the same count is new mail: then a box that reads the same
--- either way cannot say whether the window moved, and nothing is vouched
--- for. Anything else lines nothing up.
+-- up: every mail where it was (the target by sender and subject); `k` new at
+-- the top with the last `k` dropped off the foot, only where the server's
+-- count rose; or every mail where it was with one holding less (another
+-- addon took its gold). A box that reads the same more than one of those
+-- ways cannot say which happened, and nothing is vouched for. Anything else
+-- lines nothing up.
 --
 -- Cost: one count per inbox update, and each header read once; lining up
 -- reads nothing more. No table is made after the first time. Nothing is
@@ -1431,14 +1431,17 @@ local function TrackShifted(k)
 end
 
 -- Every mail where it was by sender and subject, and one at most, other than
--- the target, holding something else now: a mail changed where it is.
+-- the target, holding something else now: a mail changed where it is. Only
+-- by holding less -- what another addon's take leaves -- and never one on
+-- its way out (`left`): a mail does not fill up where it stands, and an
+-- emptied one "full again" is one gone with another in its place.
 local function TrackOneChanged()
   local t = track
   local changed = false
   for x = 1, t.n do
     if t.s[x] ~= t.cs[x] or t.j[x] ~= t.cj[x] then return false end
     if x ~= t.target and not (t.m[x] == t.cm[x] and t.c[x] == t.cc[x] and t.i[x] == t.ci[x]) then
-      if changed then return false end
+      if changed or t.left[x] or t.cm[x] > t.m[x] or t.cc[x] > t.c[x] or t.ci[x] > t.i[x] then return false end
       changed = true
     end
   end
@@ -1448,12 +1451,17 @@ end
 -- The same count, read again, `total` the server's now -> 0, nothing moved;
 -- `k`, k new at the top and the last k dropped off the foot; or false,
 -- nothing lines up, or two ways do.
+--
+-- New mail at the top pushes the last off the foot of a full list only with
+-- new mail on the server: so that is tried only where the server's count
+-- rose. The box may then also read as it did -- the new mail kept back --
+-- and when it reads both ways nothing is vouched for.
 local function TrackSameCount(total)
   local t = track
   local arrived = total > t.total
   local inPlace = TrackInPlace()
   local shift = 0
-  if not inPlace or arrived then
+  if arrived then
     local most = t.n - 1
     if most > TRACK_BAND then most = TRACK_BAND end
     for k = 1, most do
@@ -1464,8 +1472,7 @@ local function TrackSameCount(total)
     end
   end
   if inPlace then
-    -- New mail, and the box reads the same moved or not.
-    if arrived and shift ~= 0 then return false end
+    if shift ~= 0 then return false end
     return 0
   end
   if shift ~= 0 then return shift end
@@ -1651,12 +1658,13 @@ local inboxGen = 0
 -- (daysLeft) run down between inbox updates, or only change with one (the
 -- C.O.D. click's CLICK_DAYS_SLACK)? And does new mail arriving at a list of
 -- fifty move the list -- new at the top, the last off the foot -- with the
--- count the same ("Same count", above)? So at each update the first and the
--- last mail listed are read and kept, with the count, the server's count
--- and the time; the next update compares, and so does the start of any
--- command of Postbox's with no update since. Numbers and "the same mail or
--- not" only: no name is kept beyond the next reading. Off, the update reads
--- ns.Perf, finds nil, and none of this runs.
+-- count the same ("Same count", above), and does a mail leaving such a list
+-- bring one more in at its foot in the same update? So at each update the
+-- first and the last mail listed are read and kept, with the count, the
+-- server's count and the time; the next update compares, and so does the
+-- start of any command of Postbox's with no update since. Numbers and "the
+-- same mail or not" only: no name is kept beyond the next reading. Off, the
+-- update reads ns.Perf, finds nil, and none of this runs.
 local look = {
   visit = nil, gen = -1, at = 0, n = 0, total = 0,
   s1 = nil, j1 = nil, m1 = 0, c1 = 0, d1 = nil,
@@ -1692,9 +1700,11 @@ local function LookUpdate(perf)
     if perf.Days and LookSameTop(s1, j1, m1, c1) and d1 and L.d1 and now - L.at >= 1 then
       perf.Days((L.d1 - d1) * 86400, now - L.at, false)
     end
-    if perf.Window and n == L.n and total > L.total then
+    -- New mail at an unchanged count; or mail gone from a full list (more
+    -- on the server than it listed), the count unchanged or not.
+    if perf.Window and ((n == L.n and total > L.total) or (total < L.total and L.total > L.n and n <= L.n)) then
       local footSame = (sn ~= nil or jn ~= nil) and sn == L.sn and jn == L.jn and mn == L.mn and cn == L.cn
-      perf.Window(n, L.total, total, not LookSameTop(s1, j1, m1, c1), not footSame, L.d1, d1, L.dn, dn)
+      perf.Window(n, L.total, total, not LookSameTop(s1, j1, m1, c1), not footSame, L.d1, d1, L.dn, dn, L.n)
     end
   end
   L.visit, L.gen, L.at, L.n, L.total = perf.visit, inboxGen, now, n, total
