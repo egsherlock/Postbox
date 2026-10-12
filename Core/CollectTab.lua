@@ -1556,22 +1556,19 @@ end
 -- confirmed"): the index with a stamp of the inbox as it stood, the
 -- fingerprint and the mail's time left. A twin of the mail sliding into its
 -- index reads as it does, so where the mail went is followed, not read off
--- the index. `bound` is the inbox's mark (Mail.InboxGen) when the row, tile
--- or reading view clicked was bound to its index: a click on a binding any
--- inbox update has come since names an index that may hold another mail --
--- with the count as it was, too -- and asks nothing; the next frame binds
--- it again. onConfirm(clicked, at) hands it on, with where the mail is as
+-- the index. `index` is one the row, tile or reading view clicked is bound
+-- to as the inbox now stands: every caller has asked the binding rule first
+-- (RV.Acting). onConfirm(clicked, at) hands it on, with where the mail is as
 -- the answer comes, for the service to hold every command to.
 local Fingerprint
 
-local function ConfirmCOD(index, onConfirm, bound)
+local function ConfirmCOD(index, onConfirm)
   local _, _, _, _, _, cod = GetInboxHeaderInfo(index)
   local amount = tonumber(cod) or 0
   if amount <= 0 then
     onConfirm()
     return
   end
-  if bound and bound ~= Mail().InboxGen() then return end
   local clicked = Mail().Clicked(index)
   if not clicked then return end
   Confirm(POPUP_COD, L()["COD_CONFIRM_ACCEPT"], L()["COD_CONFIRM_CANCEL"],
@@ -1674,6 +1671,34 @@ local function LiveIndex(widget)
   if not index or not widget.fingerprint then return nil end
   if Fingerprint(index) ~= widget.fingerprint then return nil end
   return index
+end
+
+-- The binding rule. A row, the fan's plate and the reading view are each
+-- bound to an inbox index, and an index names its mail only until the next
+-- inbox update: a mail above it leaving moves it down one, and a twin of it
+-- slides into its place reading exactly as it did -- the fingerprint cannot
+-- tell. So each binding keeps the inbox's mark it was bound at (`_gen`,
+-- Mail.InboxGen; a row's is the list's), and an action from it -- a click
+-- on a row or its delete mark, a fan tile, any of the reading view's
+-- buttons and tiles, Delete all done -- goes only while that mark is the
+-- inbox's now. Every one of them comes through here first. A binding an
+-- update has come since does nothing this frame, and the list, the fan and
+-- the view are bound again on the next (RequestRefresh), so the next click
+-- acts on the mail as the inbox now stands.
+--
+-- panel, mark -> whether a binding at that mark is current.
+function RV.Current(panel, mark)
+  if mark ~= nil and mark == Mail().InboxGen() then return true end
+  RequestRefresh(panel)
+  return false
+end
+
+-- widget -> the index an action on it goes to: its mail's, while it is
+-- current and still reads as its mail (LiveIndex); else nil, and true when
+-- it is only behind the inbox (it does nothing this frame).
+function RV.Acting(widget)
+  if not RV.Current(widget.panel or widget._panel, widget._gen) then return nil, true end
+  return LiveIndex(widget), false
 end
 
 -- The real item tooltip for an attachment still sitting in the mailbox.
@@ -4774,8 +4799,10 @@ end
 
 local function ActivateRow(row, button)
   local panel = row.panel
-  local index = LiveIndex(row)
-  if not (panel and index) then return end
+  if not panel then return end
+  -- Only while the row is bound as the inbox now stands (RV.Acting).
+  local index = RV.Acting(row)
+  if not index then return end
   -- While the columns are being arranged a press on a row takes the column
   -- under it (Core/Arrange.lua lays a cover of its own over the list), and
   -- nothing that reaches a row may collect or open a mail.
@@ -4794,8 +4821,7 @@ local function ActivateRow(row, button)
     -- during a take: a click's collect is no part of it, and taking the
     -- channel from it would stop it. Ignored, as the preview below is.
     if CT.IsRunning() then return end
-    -- Bound when the list was last built, at that mark of the inbox.
-    CollectSingleMail(panel, index, nil, panel._bindGen)
+    CollectSingleMail(panel, index, nil)
     return
   end
 
@@ -5016,9 +5042,13 @@ local function BuildRow(panel)
     -- Nor delete one, while the columns are being arranged.
     if RV.Arranging(parent.panel) then return end
     -- Verified, not assumed: deleting is irreversible, so it may only ever act
-    -- on an index that still names the mail this row is showing -- now, and
-    -- again right before the command goes (DeleteOneMail).
-    DeleteOneMail(parent.panel, LiveIndex(parent), parent.fingerprint)
+    -- on the mail this row is bound to as the inbox now stands (RV.Acting),
+    -- and goes only while that mail is still finished right before the
+    -- command (DeleteOneMail, through the sweep). It asks nothing: a finished
+    -- mail loses nothing.
+    local index = RV.Acting(parent)
+    if not index then return end
+    DeleteOneMail(parent.panel, index, parent.fingerprint)
   end)
 
   -- The stuck marker: this mail's attachments were refused by the server
@@ -5655,6 +5685,8 @@ local function BindRow(panel, row, index, position, compact, done)
   -- A sample names no mail: nothing can act on it or ask the inbox about it.
   row.mailIndex = (S == RV.LIVE) and index or nil
   row.mailDone = showDelete
+  -- The inbox's mark the list this row comes from was built at (RV.Acting).
+  row._gen = panel._bindGen
   -- The arrangement this row follows: the one-line rows', or the two-line
   -- rows' own (RV.LargeLayout).
   local layout = compact and RV.Layout() or RV.LargeLayout()
@@ -6927,7 +6959,7 @@ function CT.RefreshMailList(panel)
   elseif Selecting(panel) and not RV.SelectionHolds(panel) then
     ClearSelection(panel)
   end
-  -- The inbox's mark the rows are bound at (ConfirmCOD).
+  -- The inbox's mark the rows are bound at (RV.Acting).
   panel._bindGen = Mail().InboxGen()
 
   local filtered, filteredDone = panel._filtered, panel._filteredDone
@@ -7319,6 +7351,13 @@ function RV.AutoDelete(panel, index, before, record, andThen)
     or not Mail().IsReadPersistent(index) then
     return RV.Continue(andThen)
   end
+  -- And the History record is this mail's own: one that says which mail it
+  -- was begun for (`at` and `stamp`, the reading view's and the fan's,
+  -- RV.RecordFor) is followed there, and must be here. A letter deleted
+  -- under another mail's record would leave History without its words.
+  if record and record.stamp and Mail().Rebase(record.at, record.stamp) ~= index then
+    return RV.Continue(andThen)
+  end
   -- Mail with no text of its own that Postbox has just emptied is already
   -- on its way out: the client deletes it itself (MailService, "Mail on its
   -- way out"), and a delete of ours would be a second command for a mail
@@ -7372,6 +7411,16 @@ function RV.Before(index, into)
   return { sender = sender, subject = subject, index = index, stamp = Mail().Stamp() }
 end
 
+-- index -> a History record begun for the mail at `index` as the inbox now
+-- stands (the reading view's, the fan's), with where that mail was (`at`, and
+-- `stamp`, Mail.Stamp): RV.AutoDelete follows it there before it deletes a
+-- mail its takes went to. nil where History begins none.
+function RV.RecordFor(index)
+  local record = Mail().HistoryRecord and Mail().HistoryRecord(index) or nil
+  if record then record.at, record.stamp = index, Mail().Stamp() end
+  return record
+end
+
 -- paid -> the C.O.D. a confirmed take paid, said in chat with its amount
 -- where the player can check it against the bill. `paid` is the service's
 -- own evidence (MailService, RunPlan): a take of its seen to land on the mail
@@ -7388,9 +7437,9 @@ function RV.HeldSomething(index)
   return (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0
 end
 
--- `bound`: the inbox's mark when what was clicked was bound to `index`
--- (ConfirmCOD).
-function CollectSingleMail(panel, index, opts, bound)
+-- `index`: the one the row or reading view clicked is bound to as the inbox
+-- now stands (RV.Acting).
+function CollectSingleMail(panel, index, opts)
   ConfirmCOD(index, function(clicked, at)
     -- Where the mail clicked is now, for a C.O.D. the answer waited on.
     index = at or index
@@ -7446,30 +7495,44 @@ function CollectSingleMail(panel, index, opts, bound)
       end
       RequestRefresh(panel)
     end, confirmed)
-  end, bound)
+  end)
 end
 
 -- A row in the read view is finished by definition -- read, no money, no
--- attachments -- so deleting it loses nothing and needs no confirmation. The
--- detail view's Delete can reach a mail that still holds something, and that
--- one confirms; see BuildDetail.
+-- attachments -- so deleting it loses nothing and needs no confirmation, and
+-- the reading view's Delete of a finished mail asks nothing either. Both go
+-- through the sweep (Mail.DeleteMails), which asks again right before the
+-- command whether the mail is still finished, and leaves it as it is when
+-- it is not: a mail that reads like it and still holds something, or has
+-- not been read, is never deleted without a question. The reading view's
+-- Delete of a mail that still holds something asks first; see BuildDetail.
+-- Its answer (`held`) deletes the mail the question was about as it is.
 --
 -- `fingerprint` is the mail's as the player saw it when they chose to delete
--- it, and `stamp` the inbox as `index` was read (Mail.Stamp). The service
--- follows the mail from then to where it is, checks it there immediately
--- before the command, after any question and any wait for the channel, and
--- leaves a mail that has moved alone ("moved": the refresh shows the list
--- as it now is).
-function DeleteOneMail(panel, index, fingerprint, stamp)
+-- it, and `stamp` the inbox as `index` was read (Mail.Stamp; now where not
+-- given). The service follows the mail from then to where it is, checks it
+-- there immediately before the command, after any question and any wait
+-- for the channel, and leaves a mail that has moved alone ("moved": the
+-- refresh shows the list as it now is).
+function DeleteOneMail(panel, index, fingerprint, stamp, held)
   if not index or not fingerprint then return end
-  Mail().DeleteMail(index, function(status)
-    if status == "closed" then
-      StatusMailboxClosed()
-    elseif status == "timeout" then
-      ns.Print(L()["MSG_MAIL_TIMEOUT"])
-    end
-    RequestRefresh(panel)
-  end, fingerprint, stamp)
+  if held then
+    Mail().DeleteMail(index, function(status) RV.Deleted(panel, status) end, fingerprint, stamp)
+    return
+  end
+  Mail().DeleteMails({ index }, function(_, status) RV.Deleted(panel, status) end,
+    { [index] = fingerprint }, stamp)
+end
+
+-- A single delete's answer: said where it went wrong, and the list as the
+-- inbox now is.
+function RV.Deleted(panel, status)
+  if status == "closed" then
+    StatusMailboxClosed()
+  elseif status == "timeout" then
+    ns.Print(L()["MSG_MAIL_TIMEOUT"])
+  end
+  RequestRefresh(panel)
 end
 
 -------------------------------------------------------------
@@ -7493,6 +7556,10 @@ local function DeleteAllDone(panel)
     StatusMailboxClosed()
     return
   end
+  -- The divider names the finished mail the list was built with, and a
+  -- search narrows the question to the indices it listed (`_tail`): only
+  -- while the list is bound as the inbox now stands (RV.Current).
+  if not RV.Current(panel, panel._bindGen) then return end
   local queue = Mail().BuildDeleteQueue()
   -- Under a search the divider counts the read mail it lists, so Delete
   -- takes exactly those: the dialog must name the number the divider did.
@@ -8649,8 +8716,9 @@ function RV.ModifiedItemClick(index, slot)
 end
 
 local function TakeOneAttachment(detail, slot)
-  -- LiveIndex, not detail.mailIndex: a take is a command, and it may only be
-  -- aimed at an index that still names the mail this overlay is showing.
+  -- RV.Acting, not detail.mailIndex: a take is a command, and it may only be
+  -- aimed at an index the overlay is bound to as the inbox now stands, that
+  -- still names the mail it is showing.
   --
   -- The itemLink guard carries the case where no fetch landed. A mail's links
   -- are not loaded until its body is fetched, and the fetch declines while
@@ -8658,7 +8726,7 @@ local function TakeOneAttachment(detail, slot)
   -- moment the slots show what the client knows and stay inert, rather than
   -- firing a take the service would answer "collected" to and blanking a slot
   -- whose item never moved.
-  local index, slotIndex = LiveIndex(detail), slot.slotIndex
+  local index, slotIndex = RV.Acting(detail), slot.slotIndex
   if not index or not slotIndex then return end
   -- Shift- and Ctrl-click link and try on, as the fan's tiles do.
   if RV.ModifiedItemClick(index, slotIndex) then return end
@@ -8682,6 +8750,12 @@ local function TakeOneAttachment(detail, slot)
     local paying = RV.ArmPaidTake(detail, index, codBefore)
 
     Mail().TakeAttachment(index, slotIndex, function(status, refused, reason, _, paid)
+      local panel = detail._panel
+      -- The view bound again to where its mail is now, before anything is
+      -- painted: an inbox update while the take held the channel can have
+      -- moved it, and the index the take went to may name another mail by
+      -- now. Everything below paints from the view's own binding.
+      if status ~= "busy" and status ~= "closed" then CloseDetailIfStale(panel) end
       local followed = RV.SettlePaidTake(detail, paying, status == "collected")
       -- A confirmed C.O.D. that was just paid, from the service's evidence.
       RV.SayCODPaid(paid)
@@ -8690,37 +8764,41 @@ local function TakeOneAttachment(detail, slot)
       -- the player it was collected while it is still sitting there. It stays
       -- clickable, so a retry is their decision rather than an automatic one.
       if status == "busy" then return end
-      -- The index stopped naming the mail before the take went: nothing was
-      -- sent, and the refresh closes the view if its mail has gone.
-      if status == "moved" then
-        RequestRefresh(detail._panel)
-        return
-      end
       if status == "closed" then
         StatusMailboxClosed()
         return
       end
+      -- Every other answer binds the list, the fan and the view again on the
+      -- next frame, so no click on them is left behind an update this take
+      -- held the channel through. The index stopped naming the mail before
+      -- the take went ("moved"): nothing was sent, and the refresh closes the
+      -- view if its mail has gone.
+      RequestRefresh(panel)
+      if status == "moved" then return end
       if status == "timeout" then
         ns.Print(L()["MSG_MAIL_TIMEOUT"])
         return
       end
+      local live = LiveIndex(detail)
       if status == "refused" or (tonumber(refused) or 0) > 0 then
         ns.Print(ItemRefusedMessage(reason))
         -- The domain has just recorded this mail as stuck, and the overlay is
         -- still the screen the player is looking at. Repainting puts the
         -- reason in the metadata line where the click was, instead of only in
         -- a chat message and on a row hidden behind this frame.
-        PaintDetailContent(detail, index)
-        LayoutDetail(detail)
+        if live then
+          PaintDetailContent(detail, live)
+          LayoutDetail(detail)
+        end
         RefreshIdleSummary()
         return
       end
 
       -- Taking one attachment can compact the others downwards, so never
-      -- assume the slot is now empty: re-read it.
-      local link = GetInboxItemLink(index, slotIndex)
+      -- assume the slot is now empty: re-read it, where the mail is now.
+      local link = live and GetInboxItemLink(live, slotIndex)
       if link then
-        local _, _, texture, count = GetInboxItem(index, slotIndex)
+        local _, _, texture, count = GetInboxItem(live, slotIndex)
         if texture then slot.Icon:SetTexture(texture) end
         slot.Count:SetText((tonumber(count) or 0) > 1 and tostring(count) or "")
         RV.ShowMark(slot.Mark, slot.MarkShadow, RV.MarkOnIcon() and RV.AtlasOf(RV.MarkOf(link)) or nil)
@@ -8732,13 +8810,12 @@ local function TakeOneAttachment(detail, slot)
         slot:Hide()
       end
       -- The same mail, paid: repainted as it reads now, with nothing owed.
-      if followed then
-        PaintDetailContent(detail, index)
+      if followed and live then
+        PaintDetailContent(detail, live)
         LayoutDetail(detail)
       end
-      RequestRefresh(detail._panel)
     end, { allowCOD = true, history = detail._history, clicked = what })
-  end, detail._gen)
+  end)
 end
 
 local function BuildDetailSlot(detail, i)
@@ -8838,7 +8915,7 @@ function CloseDetailIfStale(panel)
   -- leave the count as it was -- and closes when the mail has gone or
   -- cannot be told from another: a twin of it sliding into its index reads
   -- exactly as it does. `_gen` is the inbox's mark it is bound at
-  -- (ConfirmCOD).
+  -- (RV.Acting), and its History record follows with it (RV.RecordFor).
   local was = detail.mailIndex
   local at = Mail().Rebase(was, detail._stamp)
   if type(at) ~= "number" then
@@ -8849,6 +8926,8 @@ function CloseDetailIfStale(panel)
   local take = detail._paidTake
   if take and take.index == was then take.index = at end
   detail._stamp, detail._gen = Mail().Stamp(), Mail().InboxGen()
+  local record = detail._history
+  if record and record.stamp then record.at, record.stamp = at, detail._stamp end
   local index = LiveIndex(detail)
   if not index then
     if not RV.AwaitsPaidTake(detail) then detail:Hide() end
@@ -9034,7 +9113,7 @@ local function BuildDetail(panel)
   end)
   money:SetScript("OnLeave", function() GameTooltip:Hide() end)
   money:SetScript("OnClick", function()
-    local index = LiveIndex(detail)
+    local index = RV.Acting(detail)
     if not index then return end
     -- A modified click is never the plain click's take, as on the item tiles
     -- beside it and the fan's coin; with no item to link, it does nothing.
@@ -9049,9 +9128,12 @@ local function BuildDetail(panel)
       end
       if status == "timeout" then
         ns.Print(L()["MSG_MAIL_TIMEOUT"])
+        RequestRefresh(panel)
         return
       end
-      -- Re-read rather than assumed: the header says whether the gold went.
+      -- Re-read rather than assumed: the header says whether the gold went,
+      -- where the view's mail is now.
+      CloseDetailIfStale(panel)
       local live = LiveIndex(detail)
       if live then
         PaintDetailContent(detail, live)
@@ -9080,8 +9162,13 @@ local function BuildDetail(panel)
   -- emptied here -- which is also what makes "History keeps what it said"
   -- true. An old letter opened again stays under the divider until the
   -- player clears it, as the option's description promises.
+  --
+  -- Every button below acts on the mail the view is bound to as the inbox
+  -- now stands (RV.Acting): behind an update, a click does nothing, and the
+  -- view is bound again for the next.
   detail.Back:SetScript("OnClick", function()
-    local index = LiveIndex(detail)
+    local index, behind = RV.Acting(detail)
+    if behind then return end
     detail:Hide()
     local record = detail._history
     if index and record and record.entry then
@@ -9090,7 +9177,7 @@ local function BuildDetail(panel)
   end)
 
   detail.Collect:SetScript("OnClick", function()
-    local index = LiveIndex(detail)
+    local index = RV.Acting(detail)
     if not index then return end
     detail:Hide()
     -- skipFetch is a claim that this mail's attachment links are already loaded,
@@ -9102,14 +9189,14 @@ local function BuildDetail(panel)
     CollectSingleMail(panel, index, {
       skipFetch = detail._bodyFetched and true or false,
       history = detail._history,
-    }, detail._gen)
+    })
   end)
 
   detail.Reply:SetScript("OnClick", function()
     -- Verified like the rest: this reads a sender off an index, and addressing a
     -- reply to whoever slid into that slot is the one way this button can be
     -- quietly wrong.
-    local index = LiveIndex(detail)
+    local index = RV.Acting(detail)
     if not index then return end
     local _, _, sender = GetInboxHeaderInfo(index)
     detail:Hide()
@@ -9119,7 +9206,7 @@ local function BuildDetail(panel)
   detail.Return:SetScript("OnClick", function()
     -- Verified: returning a mail is irreversible and reindexes the inbox, so it
     -- may only ever be aimed at an index that still names this mail.
-    local index = LiveIndex(detail)
+    local index = RV.Acting(detail)
     if not index then return end
     local fingerprint, stamp = detail.fingerprint, detail._stamp
     detail:Hide()
@@ -9136,15 +9223,19 @@ local function BuildDetail(panel)
   end)
 
   detail.Delete:SetScript("OnClick", function()
-    local index = LiveIndex(detail)
+    local index = RV.Acting(detail)
     if not index then return end
     -- The mail as the view is bound to it: its index, fingerprint and the
     -- stamp of the inbox they were read at, carried through the question.
     local fingerprint, stamp = detail.fingerprint, detail._stamp
     -- Delete is offered on read mail, and a read mail can still hold items when
     -- the bags filled mid-run. Deleting that loses them, so it confirms -- in
-    -- the client's own words where it has them.
-    if Mail().HasContent(index) then
+    -- the client's own words where it has them. Anything not finished asks:
+    -- the links (HasContent) are nil for an item whose body never loaded, and
+    -- the header can count one the links no longer show; without a question
+    -- the delete goes only to a mail still finished right before the command
+    -- (DeleteOneMail).
+    if Mail().HasContent(index) or not Mail().IsReadPersistent(index) then
       -- The client's own wording where it has one -- it is already translated
       -- for every locale and says exactly the right thing.
       local native = _G["DELETE_MAIL_CONFIRMATION"]
@@ -9163,7 +9254,7 @@ local function BuildDetail(panel)
           if detail.fingerprint == fingerprint and Mail().Rebase(index, stamp) == detail.mailIndex then
             detail:Hide()
           end
-          DeleteOneMail(panel, index, fingerprint, stamp)
+          DeleteOneMail(panel, index, fingerprint, stamp, true)
         end)
       return
     end
@@ -9379,8 +9470,9 @@ function ShowDetail(panel, index)
   detail.mailIndex = index
   detail.fingerprint = fingerprint
   -- A stamp of the inbox as the view was bound to the index, and its mark:
-  -- the view follows its mail from here (CloseDetailIfStale), and a C.O.D.
-  -- is confirmed from it only while nothing has moved since (ConfirmCOD).
+  -- the view follows its mail from here (CloseDetailIfStale), and acts only
+  -- while nothing has moved since it was last bound (RV.Acting). `index` is
+  -- the clicked row's, bound as the inbox now stands.
   detail._stamp = Mail().Stamp()
   detail._gen = Mail().InboxGen()
 
@@ -9399,7 +9491,7 @@ function ShowDetail(panel, index)
   -- One History record for this mail, however many separate takes follow
   -- from here: the coin, each tile, Take all. Taken before the fetch, while
   -- the header still says what arrived.
-  detail._history = Mail().HistoryRecord and Mail().HistoryRecord(index) or nil
+  detail._history = RV.RecordFor(index)
   local body = (not Run.active) and Mail().FetchMailBody(index) or nil
   if detail._history and type(body) == "string" and body ~= "" then detail._history.body = body end
   ShowBody(detail, body)
@@ -12091,6 +12183,8 @@ do
       end
       plate.mailIndex, plate.fingerprint, plate._paidTake = index, row.fingerprint, nil
     end
+    -- Bound as its row is (RV.Acting), and again at each row pass (RV.FanCheck).
+    plate._gen = row._gen
     if Fan.Fill(index, row) == 0 then return end
     plate.Out:Stop()
     plate.In:Stop()
@@ -12277,7 +12371,8 @@ do
       end
       return
     end
-    local index = LiveIndex(plate)
+    -- Only while the plate is bound as the inbox now stands (RV.Acting).
+    local index = RV.Acting(plate)
     if not index then return end
     if RV.ModifiedItemClick(index, not tile.gold and tile.slot or nil) then return end
     if tile.gold then return Fan.TakeGold(plate, index) end
@@ -12287,7 +12382,7 @@ do
 
   -- One History record for the fan's mail, however many takes follow.
   function Fan.Record(index)
-    if not Fan.history and Mail().HistoryRecord then Fan.history = Mail().HistoryRecord(index) end
+    if not Fan.history then Fan.history = RV.RecordFor(index) end
     return Fan.history
   end
 
@@ -12322,15 +12417,16 @@ do
         -- A confirmed C.O.D. that was just paid, from the service's evidence.
         RV.SayCODPaid(paid)
         if status == "busy" then return end
-        -- Nothing was sent: the row pass redraws the fan from the mailbox.
-        if status == "moved" then
-          RequestRefresh(panel)
-          return
-        end
         if status == "closed" then
           StatusMailboxClosed()
           return
         end
+        -- Every other answer binds the list and the fan again on the next
+        -- frame (RV.Acting): an update this take held the channel through
+        -- leaves no tile or row behind it. "moved": nothing was sent, and the
+        -- row pass redraws the fan from the mailbox.
+        RequestRefresh(panel)
+        if status == "moved" then return end
         if status == "timeout" then
           ns.Print(L()["MSG_MAIL_TIMEOUT"])
           return
@@ -12338,11 +12434,12 @@ do
         if status == "refused" or (tonumber(refused) or 0) > 0 then
           ns.Print(ItemRefusedMessage(reason))
           -- Bags full dims every item (Mail.BagsFull); anything else, the
-          -- item refused, by its link, which the take has loaded.
+          -- item refused, by its link, which the take has loaded -- read
+          -- only while the plate is bound as the inbox now stands.
           if kind == "bags" then
             Fan.bagsWhy = reason
           else
-            local live = LiveIndex(plate)
+            local live = RV.Acting(plate)
             local link = live and GetInboxItemLink(live, slot)
             if link then Fan.refused[link] = reason or true end
           end
@@ -12352,22 +12449,20 @@ do
         end
         -- The last tile of a letter emptied tile by tile: in the "delete"
         -- read-mail mode it goes now, as a collected mail does. Only a mail
-        -- that reads finished is touched (RV.AutoDelete).
+        -- that reads finished is touched (RV.AutoDelete). The row pass
+        -- redraws the fan from the mailbox (RV.FanCheck): a take can move
+        -- the other items down a slot.
         RV.AutoDelete(panel, index, before, record)
-        -- The row pass redraws the fan from the mailbox (RV.FanCheck): a take
-        -- can move the other items down a slot.
-        RequestRefresh(panel)
       end, { allowCOD = true, history = record, fetch = true, clicked = what })
-    end, panel and panel._bindGen)
+    end)
   end
 
-  -- The reading view's coin tile, from the plate: only while the row it
-  -- follows is bound as the inbox now stands (as ConfirmCOD asks), and from
+  -- The reading view's coin tile, from the plate, which the tile's click
+  -- has found bound as the inbox now stands (RV.Acting): the gold goes from
   -- the mail the plate shows (its fingerprint, held to until the command
   -- goes).
   function Fan.TakeGold(plate, index)
     local panel = plate._panel
-    if panel and panel._bindGen ~= Mail().InboxGen() then return end
     local record = Fan.Record(index)
     local before = RV.Before(index)
     Mail().TakeMoney(index, function(status)
@@ -12378,6 +12473,7 @@ do
       end
       if status == "timeout" then
         ns.Print(L()["MSG_MAIL_TIMEOUT"])
+        RequestRefresh(panel)
         return
       end
       -- The gold the last thing left in it: Delete when done, as above.
@@ -12451,6 +12547,7 @@ do
     if not (Fan.Wanted() and Fan.Allowed(row)) then return Fan.Close(true) end
     local index = LiveIndex(row)
     if not index then return Fan.Close(true) end
+    plate._gen = row._gen
     local n, changed = Fan.Fill(index)
     if n == 0 then return Fan.Close() end
     if changed then Fan.Place(row, n, false) end

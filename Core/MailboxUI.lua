@@ -2044,19 +2044,6 @@ function UI.UpdateStatusSummary()
   RenderStatus()
 end
 
--- Is a collection run under way? Two independent sources, because either one
--- alone has a blind spot: the activity layer knows what the collect screen has
--- told us, and the domain's channel owner knows about a command sequence the
--- screen never announced (a single mail clicked in the list, say).
-local function RunInProgress()
-  if status.activity then return true end
-  local mail = ns.MailService
-  if mail and type(mail.IsBusy) == "function" then
-    return mail.IsBusy() and true or false
-  end
-  return false
-end
-
 -------------------------------------------------------------
 -- 4. Position, docking and size
 --
@@ -4229,8 +4216,11 @@ function UI.Initialize()
     if UI._state.mailboxOpen then UI._state.inboxSeen = true end
 
     -- A run refreshes the list itself as it goes; refreshing again from here
-    -- would be a second pass per mail over the same data.
-    if UI._state.visible and not RunInProgress() then
+    -- would be a second pass per mail over the same data. Anything else --
+    -- a single take, the gold, a delete holding the channel included -- is
+    -- refreshed, so no row, fan tile or reading view stays bound to an index
+    -- the update moved (the collect screen's binding rule, RV.Acting).
+    if UI._state.visible and not (collect and type(collect.IsRunning) == "function" and collect.IsRunning()) then
       QueueCollectRefresh()
     end
     -- The stuck prune, the status summary and the tab caption (InboxPass,
