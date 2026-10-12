@@ -3049,13 +3049,13 @@ local function PlanOnGrace()
   end
 
   -- No words, and the mail cannot be found to say what the take did:
-  -- nothing more goes. Only the money can say a C.O.D. was paid, and only the
-  -- purse or the bags that any other take landed.
+  -- nothing more goes. Only the purse or the bags can say the take landed;
+  -- then the plan is over as after any take that landed -- "moved" only
+  -- while a take of it is still to come (PlanStep).
   if seen == "lost" then
-    if op.kind == "item" and p.codPlan and not p.tookItem then
-      PlanMoneySaysPaid()
-    elseif PlanCharacterSays() then
+    if PlanCharacterSays() then
       PlanLanded()
+      return PlanStep()
     end
     PlanOver(false, false, false, true)
     return
@@ -3128,13 +3128,14 @@ function PlanStep()
   TrackMayEmpty(false)
   -- Where the mail is now ("the inbox, followed"): gone, as a take of the
   -- plan's emptied it, and there is nothing left to take; not known, and
-  -- nothing more goes.
+  -- nothing more goes -- "moved" only while a take of the plan's is still to
+  -- come: after its last, the plan is over wherever the mail is.
   local where = TrackWhere(p.index)
-  if where == false then
+  if where == false and op then
     PlanOver(false, false, false, true)
     return
   end
-  if where == nil then op = nil else p.index = where end
+  if type(where) == "number" then p.index = where else op = nil end
   if not op then
     -- The take that paid can be the plan's last, with a refusal ahead of
     -- it: the mail still holds that item, under its paid fingerprint.
