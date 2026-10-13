@@ -1800,6 +1800,7 @@ local status = {
   -- (sentAlone). Made once per send; nil before the first.
   sent = 0, sentTail = nil, sentAlone = nil,
   rendered = "",              -- what we last put on the label
+  full = "",                  -- the whole line it stands for (section 3a: rendered can say less)
 }
 
 local function StatusLabel()
@@ -1827,6 +1828,201 @@ local function AdoptForeignText()
   status.outcomeKind = nil
 end
 
+-------------------------------------------------------------
+-- 3a. The line at the width it has
+--
+-- The line has what the title bar leaves between the title and the close
+-- button: what the window's width (480 to 750), the face and its size, and
+-- the locale make of it. It shows its whole text whenever that fits -- the
+-- normal case, exactly as before. When it does not, it gives way a whole
+-- piece at a time, each candidate measured on the label itself, in the face
+-- it is drawn in, and never cut inside a part:
+--
+--   1. A part that says "word: what" -- a count ("Bags full: 1 left",
+--      "Stuck: 2", "Collected: 21"), or what happened ("Cut short: the
+--      mailbox closed") -- keeps its word and drops the rest, the line's
+--      last part first: "Collected: 21 — Bags full", then "Collected —
+--      Bags full".
+--   2. Still too long: whole parts go -- what was sent, the line's tail,
+--      first, then from the line's start -- so what it ends on, what stayed
+--      behind and why, is what stays.
+--   3. One part left with no word to keep and wider than the room: the
+--      client cuts it at its end, as before. Measured in seven locales, the
+--      one that can be is "Stopped to keep N bag slots free", near the
+--      narrowest width in French and German (and in English and Spanish at
+--      the larger text sizes).
+--
+-- The parts are the line's own, joined by " — " (a run's outcome) and
+-- " · " (what was sent); a part's colour is kept on its word. The tooltip
+-- says the whole line whenever the label says less (section 3's hover).
+--
+-- Nothing here runs per frame: the line is fitted when it is written, when
+-- its room changes (the window resized: the hover frame over the label
+-- hears its size) and when the face moves (UI.RefreshCollectTabCounts, which
+-- both skins call after one). The shorter candidates are made only for a
+-- line that does not fit, once per line; each one's width is kept for the
+-- face it was measured in, so a resize measures nothing again.
+-------------------------------------------------------------
+local StatusFit = {
+  text = nil,        -- the line the candidates are of
+  n = 0,             -- how many candidates are made (1: only the line itself)
+  built = false,     -- whether the shorter ones are made
+  cands = {},        -- the candidates, longest first
+  widths = {},       -- each one's measured width, in the face below
+  path = false, size = false, flags = false,
+  -- The line in parts, the join before each, each part's word and the parts
+  -- as a candidate has them: m of each, kept from the last line built.
+  parts = {}, seps = {}, words = {}, cur = {}, buf = {}, m = 0,
+}
+
+do
+  local SF = StatusFit
+  local JOIN, DOT = " \226\128\148 ", " \194\183 "
+  local COLON, WIDE_COLON = ": ", "\239\188\154"
+
+  -- "word: what" (or the CJK "word：what") -> the part with only its word,
+  -- in the part's colour; nil for a part with no word to keep, or nothing
+  -- after it to drop.
+  local function Word(part)
+    local at, len = part:find(COLON, 1, true), #COLON
+    local wide = part:find(WIDE_COLON, 1, true)
+    if wide and (not at or wide < at) then at, len = wide, #WIDE_COLON end
+    if not at then return nil end
+    local rest = part:sub(at + len):gsub("|r", "")
+    if rest:find("^%s*$") then return nil end
+    local head = part:sub(1, at - 1):match("^(.-)%s*$")
+    local open = head:match("^|c%x%x%x%x%x%x%x%x") or ""
+    if head:sub(#open + 1) == "" then return nil end
+    if open ~= "" and part:sub(-2) == "|r" then head = head .. "|r" end
+    return head
+  end
+
+  -- The parts `first`..`last` as they stand now, with their joins.
+  local function Join(first, last)
+    local buf, n = SF.buf, 0
+    for i = first, last do
+      if i > first then
+        n = n + 1
+        buf[n] = SF.seps[i]
+      end
+      n = n + 1
+      buf[n] = SF.cur[i]
+    end
+    local s = table.concat(buf, "", 1, n)
+    for i = n, 1, -1 do buf[i] = nil end
+    return s
+  end
+
+  local function Add(s)
+    if s ~= SF.cands[SF.n] then
+      SF.n = SF.n + 1
+      SF.cands[SF.n] = s
+    end
+  end
+
+  -- The shorter candidates of SF.text, in the order the line gives way.
+  local function Build()
+    SF.built = true
+    local text, parts, seps = SF.text, SF.parts, SF.seps
+    local count, pos = 0, 1
+    while true do
+      local j = text:find(JOIN, pos, true)
+      local d = text:find(DOT, pos, true)
+      local at, sep = j, JOIN
+      if d and (not j or d < j) then at, sep = d, DOT end
+      count = count + 1
+      parts[count] = text:sub(pos, (at or 0) - 1)
+      if not at then break end
+      seps[count + 1] = sep
+      pos = at + #sep
+    end
+    for i = 1, count do
+      SF.words[i] = Word(parts[i])
+      SF.cur[i] = parts[i]
+    end
+    -- 1. Words, from the line's end.
+    for i = count, 1, -1 do
+      if SF.words[i] then
+        SF.cur[i] = SF.words[i]
+        Add(Join(1, count))
+      end
+    end
+    -- 2. Whole parts: the sent tail, then from the start.
+    local first, last = 1, count
+    if count > 1 and seps[count] == DOT then
+      last = count - 1
+      Add(Join(first, last))
+    end
+    while first < last do
+      first = first + 1
+      Add(Join(first, last))
+    end
+    for i = count + 1, SF.m do parts[i], seps[i], SF.words[i], SF.cur[i] = nil, nil, nil, nil end
+    SF.m = count
+  end
+
+  -- A new line: the old one's candidates and widths let go.
+  local function Reset(text)
+    for i = SF.n, 1, -1 do SF.cands[i], SF.widths[i] = nil, nil end
+    SF.text, SF.built = text, false
+    SF.n = 1
+    SF.cands[1] = text
+  end
+
+  -- The width of candidate k on the label, measured once per face.
+  local function Width(label, k)
+    local w = SF.widths[k]
+    if w then return w end
+    label:SetText(SF.cands[k])
+    w = tonumber((label:GetStringWidth())) or 0
+    -- Nothing measured is a face still loading, not an answer: kept for
+    -- nothing, asked again next time.
+    if w > 0 then SF.widths[k] = w end
+    return w
+  end
+
+  -- Puts `text` on `label` as much of it as fits in `room` (0: not known
+  -- yet, and the whole text goes on); -> what it shows.
+  function SF.Fit(label, text, room)
+    text = text or ""
+    if text ~= SF.text then Reset(text) end
+    -- The face the widths were measured in: another one, and every width
+    -- is measured again, the label first laid out afresh (an object
+    -- changed in place under it is not news to the client by itself).
+    local path, size, flags = label:GetFont()
+    if path ~= SF.path or size ~= SF.size or flags ~= SF.flags then
+      SF.path, SF.size, SF.flags = path, size, flags
+      for i = SF.n, 1, -1 do SF.widths[i] = nil end
+      label:SetText("")
+      label:GetStringWidth()
+    end
+    local pick = 1
+    room = tonumber(room) or 0
+    if text ~= "" and room > 0 then
+      local w = Width(label, 1)
+      if w > room then
+        if not SF.built then Build() end
+        for k = 2, SF.n do
+          pick = k
+          if Width(label, k) <= room then break end
+        end
+      end
+    end
+    local shown = SF.cands[pick] or text
+    if label:GetText() ~= shown then label:SetText(shown) end
+    return shown
+  end
+
+  -- The room the line has: the width its anchors give it, read off the
+  -- hover frame laid over it (section 6), whose size is also what calls
+  -- for a fit when it changes.
+  function SF.Room()
+    local frame = UI._frame
+    local hover = frame and frame.StatusHover
+    return hover and tonumber((hover:GetWidth())) or 0
+  end
+end
+
 local function RenderStatus()
   local label = StatusLabel()
   if not label then return end
@@ -1850,13 +2046,25 @@ local function RenderStatus()
     end
   end
 
-  label:SetText(text)
-  status.rendered = text
+  -- As much of it as fits (section 3a); the whole line is kept for the
+  -- tooltip and for the next fit.
+  status.full = text
+  status.rendered = StatusFit.Fit(label, text, StatusFit.Room())
 
   local theme = ns.Theme
   if theme and theme.SetColor then
     theme.SetColor(label, tone or STATUS_DEFAULT_TONE)
   end
+end
+
+-- The line fitted again to the room it has now: the window was resized, or
+-- the face moved. Not over a line someone else wrote since (AdoptForeignText
+-- takes that over at the next write).
+function UI.RefitStatus()
+  local label = StatusLabel()
+  if not label or status.full == "" then return end
+  if (label:GetText() or "") ~= status.rendered then return end
+  status.rendered = StatusFit.Fit(label, status.full, StatusFit.Room())
 end
 
 -- What a run is doing right now. `tone` is an optional palette token. Passing
@@ -2958,6 +3166,9 @@ function UI.RefreshCollectTabCounts()
     collect.RefreshCategoryButtons(panel)
   end
   UpdateCollectTabText()
+  -- Both skins call this after the face moved (their RefitScreens): the
+  -- title bar's status line is measured text too (section 3a).
+  UI.RefitStatus()
 end
 
 -- Frozen: Core/OptionsPanel.lua calls this when the category-buttons option
@@ -3390,7 +3601,7 @@ local function BuildFrame()
     -- Bounded on the left as well: an unconstrained string cannot clip, but
     -- it CAN run leftward under the centred window title -- which the
     -- last-visit summary, the longest line this label ever carries, did.
-    -- Bounded, it end-truncates with an ellipsis instead.
+    -- Bounded, it says as much of itself as fits (section 3a).
     if frame.TitleText then
       frame.Status:SetPoint("LEFT", frame.TitleText, "RIGHT", 10, 0)
     else
@@ -3402,11 +3613,14 @@ local function BuildFrame()
     -- cannot carry it (Theme.OnWindow), none where it can.
     if theme.OnWindow then theme.OnWindow(frame.Status, "strip", "RIGHT") end
 
-    -- The truncated tail is the most informative part (the game's own refusal
-    -- text), so a hover region over the label offers the full line. Inert
-    -- whenever the text fits.
+    -- What the line leaves out where it is short is still worth reading, so
+    -- a hover region over the label offers the full line. Inert whenever
+    -- the text fits.
     local statusHover = CreateFrame("Frame", nil, frame)
     statusHover:SetAllPoints(frame.Status)
+    -- The label's room moves with the window's width (and the title's):
+    -- the frame laid over it hears that, and the line is fitted again.
+    statusHover:SetScript("OnSizeChanged", function() UI.RefitStatus() end)
 
     -- Motion only, and NEVER EnableMouse: this frame lies across the right
     -- half of the title bar, and the window is dragged from the title bar.
@@ -3432,17 +3646,21 @@ local function BuildFrame()
       local label = frame.Status
       local text = label and label:GetText() or ""
       if text == "" then return end
+      -- The whole line where the label says less of it (section 3a).
+      local short = text == status.rendered and status.full ~= text
+      if short then text = status.full end
 
-      -- Three things worth a tooltip: a truncated line (the full text), full
-      -- bags (what waits for room, and what brings it back), and a stuck
-      -- count (WHICH mails, one line each, in the same words the row
-      -- tooltips use). The details come from the registry's validated read,
-      -- so this list and the row triangles can never disagree.
+      -- Three things worth a tooltip: a line said in part or cut (the whole
+      -- text), full bags (what waits for room, and what brings it back),
+      -- and a stuck count (WHICH mails, one line each, in the same words
+      -- the row tooltips use). The details come from the registry's
+      -- validated read, so this list and the row triangles can never
+      -- disagree.
       local mail = ns.MailService
       local details = mail and type(mail.StuckDetails) == "function"
         and mail.StuckDetails() or nil
       local full = mail and type(mail.BagsFull) == "function" and mail.BagsFull()
-      local truncated = label.IsTruncated and label:IsTruncated()
+      local truncated = short or (label.IsTruncated and label:IsTruncated())
       if not details and not full and not truncated then return end
 
       GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
