@@ -163,8 +163,11 @@ your recipients, groups, Mail Memory and History are kept.*
 - Everything Postbox does stays with the exact mail you chose, even when
   the mailbox reorders itself while it works: a C.O.D. you confirm (it pays
   once, and "C.O.D. paid" appears only once the payment is seen), your
-  selected rows or a search, Delete all done, the reading view's Delete, and
-  the gold tiles.
+  selected rows or a search, a row's delete mark, Delete all done, the
+  reading view's Delete, and the gold tiles. A click as the mailbox updates
+  waits for the list to catch up, the reading view asks before deleting
+  anything that still holds something, and Postbox's questions close with
+  the mailbox.
 - C.O.D. and the attachment queue: Send asks you to clear the queue or
   uncheck C.O.D. before it sends.
 - Delete and Return act on the mail you chose, even while another mail
@@ -183,7 +186,8 @@ your recipients, groups, Mail Memory and History are kept.*
 - Short gold figures never round up: 12,960g reads 12.9k.
 - A mail is marked stuck only when the game refuses it for a reason; a
   passing server error or a slow reply just gets one more try, and All mail
-  goes on to the rest.
+  goes on to the rest. "Stuck" says only what the game said, and when it
+  gave no reason, says so.
 - A mail held back because you couldn't carry any more of its item is
   collected by All mail again as soon as you hold fewer.
 - Once stuck mail can come out, "Stuck" leaves the status line and "Not
