@@ -1915,24 +1915,18 @@ function RV.SenderLine(layout)
 end
 
 -- The sender written into a two-line row's second line: in its class's
--- colour where Postbox knows it (RV.PaintSender), else in the name's own
--- role colour as text on the list (Theme.Ink: the accent's text tone where
--- that is the accent, made to read on the row's ground). An auction
+-- colour where Postbox knows it (RV.PaintSender), else as it is, in the
+-- line's own colour like the figures beside it -- the sender's colours are
+-- the classes' and the auction outcomes', so a name with no class known
+-- wears none (never the accent, which would read as one). An auction
 -- outcome carries its own colour and is passed as it is. The string is the
 -- same each time for the same name and colour, so a bind makes nothing new.
 function RV.InlineSender(sender, text)
-  local T = Th()
   local CS = ns.ContactService
   local token = (sender and CS and CS.ClassOf) and CS.ClassOf(sender) or nil
   local r, g, b
   if token and CS.ClassColour then r, g, b = CS.ClassColour(token) end
-  if not r then
-    local role = T.TextRoles and T.TextRoles.label
-    local color = role and role.color or "accent"
-    if color == "accent" then color = "accentText" end
-    if not (T.Colors and T.Colors[color]) then return text end
-    r, g, b = T.Ink(color)
-  end
+  if not r then return text end
   return format("|cff%02x%02x%02x%s|r", floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5), text or "")
 end
 
@@ -2466,21 +2460,24 @@ end
 -- The sender's colour for the mail a row (or the reading pane) is bound to:
 -- a player whose class Postbox knows -- one of the player's own characters,
 -- or a friend, guildmate or contact the address book has learned
--- (ContactService.ClassOf) -- in that class's colour; anyone else, and an
--- auction outcome, whose words carry their own tone, in the text's role
--- colour (`role`, "label" by default) as ever. `sender` is the mail's own,
--- nil where the column says something else; `realm` the box's realm (nil:
--- the one being played). The class the string wears is kept on it and the
--- colour written only when that changes, so a pooled row bound to somebody
--- else next never keeps the last one's colour, and an unknown sender costs
--- one lookup and no write. The colour is the player's UI's where it keeps
--- class colours of its own (ContactService.ClassColour); when that palette
+-- (ContactService.ClassOf) -- in that class's colour; anyone else (an NPC,
+-- a stranger), and an auction outcome, whose words carry their own tone, in
+-- the plain text colour the subject beside it wears (the "value" role's).
+-- The sender's colours are the classes' and the outcomes', so a name with
+-- no class known wears none: never the accent, which would read as one.
+-- `sender` is the mail's own, nil where the column says something else;
+-- `realm` the box's realm (nil: the one being played). The class the string
+-- wears is kept on it (false: plain) and the colour written only when that
+-- changes, so a pooled row bound to somebody else next never keeps the last
+-- one's colour, and an unknown sender costs one lookup and no write after
+-- the string's first. The colour is the player's UI's where it keeps class
+-- colours of its own (ContactService.ClassColour); when that palette
 -- changes, ContactService repaints the strings it was told wear one
 -- (CS.WearClass), so a bind with the same class still skips the write.
-function RV.PaintSender(fs, sender, realm, role)
+function RV.PaintSender(fs, sender, realm)
   if not fs then return end
   local CS = ns.ContactService
-  local token = (sender and CS and CS.ClassOf) and CS.ClassOf(sender, realm) or nil
+  local token = (sender and CS and CS.ClassOf) and CS.ClassOf(sender, realm) or false
   if token == fs.__pbClass then return end
   local r, g, b
   if token and CS.ClassColour then r, g, b = CS.ClassColour(token) end
@@ -2489,10 +2486,10 @@ function RV.PaintSender(fs, sender, realm, role)
     fs.__pbClass = token
     T.SetTextRGB(fs, r, g, b)
   else
-    fs.__pbClass = nil
-    T.SetColor(fs, (T.TextRoles[role or "label"] or T.TextRoles.label).color)
+    fs.__pbClass = false
+    T.SetColor(fs, T.TextRoles.value.color)
   end
-  if CS and CS.WearClass then CS.WearClass(fs, fs.__pbClass) end
+  if CS and CS.WearClass then CS.WearClass(fs, fs.__pbClass or nil) end
 end
 
 -- What a graphic takes from the text area: the dot sits in the gap before
@@ -9426,7 +9423,7 @@ function PaintDetailContent(detail, index)
   local hasContent = (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0
 
   detail.Sender:SetText(sender or L()["SENDER_UNKNOWN"])
-  RV.PaintSender(detail.Sender, sender, nil, "heading")
+  RV.PaintSender(detail.Sender, sender, nil)
   detail.Subject:SetText(Helpers().ShortSubject(subject or ""))
   detail.Info:SetText(DetailInfoText(detail, index, kind, hasCOD))
 
