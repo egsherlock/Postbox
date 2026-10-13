@@ -4188,9 +4188,9 @@ end
 -- and the reset a size under the rows' text, the switches and the choices
 -- half a size under it, the notes and "to finish" a size and a half, the
 -- kickers and the key cap two, the kickers in capitals. The client has no
--- letter spacing: the capitals carry the kickers. Each size is set on the
--- string's own font (Sized), so what a text measures is what it draws: the
--- client's text scale draws a string smaller but measures it at full size.
+-- letter spacing: the capitals carry the kickers. Each size is a font of its
+-- own (Sized), so what a text measures is what it draws: the client's text
+-- scale draws a string smaller but measures it at full size.
 --
 -- Its spacing is the mockup's margins between line boxes: every text keeps
 -- the half of its line box's leading above and below it (INSP.LEAD) that a
@@ -4320,21 +4320,64 @@ local function Upper(text)
   return up
 end
 
--- A text at its size in the mockup (INSP.TYPE), a share of its role's own:
--- set on the string's font, read once as it is made, so it measures what
--- it draws.
-local function Sized(fs, share)
-  if not (fs and share and fs.GetFont and fs.SetFont) then return fs end
-  local path, size, flags = fs:GetFont()
-  if path and size and size > 0 then fs:SetFont(path, size * share, flags or "") end
-  return fs
+-- The inspector's sizes (INSP.TYPE) are font objects of its own, one per
+-- role and share (AR._sizedFonts), each made from its role's object
+-- (Theme.FontObject: the host's copy, where a face is published) at that
+-- share of its size, in the role's face, outline and shadow, and dressed
+-- again in place when the face moves (AR.OnFontsChanged), as the host's
+-- copies are. A text wears one and never a font of its own: the client keeps
+-- a font set on a string (SetFont) through a SetFontObject of the object it
+-- already wears, and the string stops following that object, so a share
+-- taken of the string's size at each move of the face shrank the type by
+-- that share each time, and it kept the outline and shadow it was made in.
+function AR.DressSized(font, role, share)
+  local source = Th().FontObject(role)
+  if not (font and share and source and source.GetFont) then return end
+  if font.CopyFontObject then pcall(font.CopyFontObject, font, source) end
+  local path, size, flags = source:GetFont()
+  if path and size and size > 0 then pcall(font.SetFont, font, path, size * share, flags or "") end
+end
+
+-- role, share -> its font object, made the first time it is asked for; nil
+-- where the client makes none, and the text keeps its role's own size.
+local function Sized(role, share)
+  if not share then return nil end
+  local fonts = AR._sizedFonts
+  if not fonts then
+    fonts = {}
+    AR._sizedFonts = fonts
+  end
+  local byRole = fonts[role]
+  if not byRole then
+    byRole = {}
+    fonts[role] = byRole
+  end
+  local font = byRole[share]
+  if font == nil then
+    font = false
+    if type(CreateFont) == "function" then
+      AR._sizedN = (AR._sizedN or 0) + 1
+      font = CreateFont("PostboxArrangeType" .. AR._sizedN) or false
+      if font then AR.DressSized(font, role, share) end
+    end
+    byRole[share] = font
+  end
+  return font or nil
 end
 
 -- A text of one of the inspector's sizes, in a role. Kept with its role and
--- share (AR._sized), so a move of the host UI's face sizes it again.
+-- share (AR._sized), so a move of the host UI's face lays it out again.
 local function Text(parent, role, size)
   local share = INSP.TYPE[size]
-  local fs = Sized(Th().CreateText(parent, role), share)
+  local fs = Th().CreateText(parent, role)
+  local font = fs and Sized(role, share)
+  if font then
+    -- The colour its role gave it stays: an object set on a string brings
+    -- its own.
+    local r, g, b, a = fs:GetTextColor()
+    fs:SetFontObject(font)
+    if type(r) == "number" then fs:SetTextColor(r, g, b, a) end
+  end
   if fs then
     fs.__arRole, fs.__arShare = role, share
     local sized = AR._sized
@@ -4348,21 +4391,34 @@ local function Text(parent, role, size)
   return fs
 end
 
--- The host UI's face moved (Theme.RefreshHostFonts). A sized text wears a
--- font of its own, which does not follow the host's copies as the rest of
--- the text does, so each takes its role's font again -- the host's face at
--- the role's size -- and its share of that; the card is then filled again
--- if it is up, which measures in the new face.
+-- The host UI's face moved (Theme.RefreshHostFonts). The inspector's own
+-- font objects, made from the host's copies, take their role's face again
+-- in place (AR.DressSized), and every sized text follows; an object changed
+-- in place lays out none of the text wearing it, so each is laid out again
+-- in it, as Theme.RelayoutText lays out the windows' text: set to nothing,
+-- measured, and set to itself. The card is then filled again if it is up,
+-- which measures in the new face.
 function AR.OnFontsChanged()
   local T = Th()
   AR._fontGen = T and T.FontGeneration and T.FontGeneration() or 0
   local sized = AR._sized
   if not (T and sized) then return end
+  local fonts = AR._sizedFonts
+  if fonts then
+    for role, byRole in pairs(fonts) do
+      for share, font in pairs(byRole) do
+        if font then AR.DressSized(font, role, share) end
+      end
+    end
+  end
   for i = 1, #sized do
     local fs = sized[i]
-    local object = T.FontObject(fs.__arRole)
-    if object and fs.SetFontObject then fs:SetFontObject(object) end
-    Sized(fs, fs.__arShare)
+    local text = fs:GetText()
+    if text and text ~= "" then
+      fs:SetText("")
+      fs:GetStringWidth()
+      fs:SetText(text)
+    end
     fs.__arMemo = nil
   end
   -- The rows are measured again in the new face while the mode is open over
