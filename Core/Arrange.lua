@@ -2431,18 +2431,27 @@ do
 
   -- A figure chip's name (made with its heading, BuildHead): its width and
   -- height on one line, measured again only when its font changes (a host
-  -- UI re-fonts after load).
+  -- UI re-fonts after load, or the player's font, size, outline or shadow),
+  -- laid out in the new one first: its object changed in place lays out
+  -- nothing.
   function AR.ChipName(head)
     local measure = head.ChipMeasure
     if not measure then return 0, 0 end
-    local path, size = measure:GetFont()
-    if head._chipNameW and head._chipPath == path and head._chipSize == size then
+    local path, size, flags = measure:GetFont()
+    local shadow = measure.GetShadowOffset and measure:GetShadowOffset() or 0
+    if head._chipNameW and head._chipPath == path and head._chipSize == size
+        and head._chipFlags == flags and head._chipShadow == shadow then
       return head._chipNameW, head._chipNameH
     end
+    measure:SetText("")
+    measure:GetStringWidth()
     measure:SetText(head.chipCaption)
     local w = ceil(measure:GetStringWidth() or 0)
     local h = ceil(measure:GetStringHeight() or 0)
-    if w > 0 then head._chipPath, head._chipSize, head._chipNameW, head._chipNameH = path, size, w, h end
+    if w > 0 then
+      head._chipPath, head._chipSize, head._chipFlags, head._chipShadow = path, size, flags, shadow
+      head._chipNameW, head._chipNameH = w, h
+    end
     return w, h
   end
 

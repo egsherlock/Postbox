@@ -2135,7 +2135,8 @@ end
 
 -- The rendered width of `text` in `sample`'s font. One hidden string per
 -- panel, re-fonted from the sample on every call, so the measurement is taken
--- in exactly the face and size the row draws in -- whatever skin set it.
+-- in exactly the face, size, outline and shadow the row draws in --
+-- whatever skin set it.
 --
 -- One hidden measuring string per sample, re-fonted only when the sample's
 -- font changes: a walk alternates between two or three samples, and one
@@ -2184,12 +2185,39 @@ local function MeasureWith(panel, sample, text, exact)
   end
   local pass = panel._measurePass
   if pass == nil or panel._measureWalk ~= pass or fs.__pbFontPass ~= pass then
+    -- Dressed as the sample is: its face, size and outline, and its drop
+    -- shadow, which reaches a unit past the words and so needs that room in
+    -- a column. A shadow is drawn only where a font object carries it, so
+    -- where the sample wears its object as it is, this string wears it too,
+    -- and follows it when it is changed in place; a sample with a font of
+    -- its own has it set here. The shadow is in the key with the font, so a
+    -- change of it alone is measured again.
     local path, size, flags = sample:GetFont()
-    if path and (fs.__pbPath ~= path or fs.__pbSize ~= size or fs.__pbFlags ~= flags) then
-      fs:SetFont(path, size, flags or "")
-      fs.__pbPath, fs.__pbSize, fs.__pbFlags = path, size, flags
+    local object = sample.GetFontObject and sample:GetFontObject() or nil
+    local shadow = sample.GetShadowOffset and sample:GetShadowOffset() or 0
+    local moved = fs.__pbPath ~= path or fs.__pbSize ~= size or fs.__pbFlags ~= flags or fs.__pbShadow ~= shadow
+    if path and (moved or fs.__pbObject ~= object) then
+      local wears = false
+      if object and not fs.__pbOwn then
+        local p, s, f = object:GetFont()
+        wears = p == path and s == size and f == flags
+      end
+      if wears then
+        if fs.__pbObject ~= object then
+          fs:SetFontObject(object)
+        elseif moved then
+          -- Its object changed in place, which lays out nothing: laid out
+          -- again.
+          fs:SetText("")
+          fs:GetStringWidth()
+        end
+      elseif moved or not fs.__pbOwn then
+        fs:SetFont(path, size, flags or "")
+        fs.__pbOwn = true
+      end
+      fs.__pbPath, fs.__pbSize, fs.__pbFlags, fs.__pbShadow, fs.__pbObject = path, size, flags, shadow, object
       -- Widths taken in the old font: emptied on the next memo read.
-      fs.__pbMemoPass = nil
+      if moved then fs.__pbMemoPass = nil end
     end
     fs.__pbFontPass = pass
   end
@@ -2262,9 +2290,11 @@ function RV.SlotsWidth(panel, sample, most)
     panel._slotsFit = fit
   end
   local path, size, flags = sample:GetFont()
+  -- The drop shadow too, which MeasureWith measures with.
+  local shadow = sample.GetShadowOffset and sample:GetShadowOffset() or 0
   local gen = panel._measureGen or 0
-  if fit.path ~= path or fit.size ~= size or fit.flags ~= flags or fit.gen ~= gen then
-    fit.path, fit.size, fit.flags, fit.gen, fit.digit = path, size, flags, gen, nil
+  if fit.path ~= path or fit.size ~= size or fit.flags ~= flags or fit.shadow ~= shadow or fit.gen ~= gen then
+    fit.path, fit.size, fit.flags, fit.shadow, fit.gen, fit.digit = path, size, flags, shadow, gen, nil
     for key in pairs(fit.w) do fit.w[key] = nil end
   end
   local number = RV.SlotsNumber()
