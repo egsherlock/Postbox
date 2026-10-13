@@ -1869,7 +1869,7 @@ local StatusFit = {
   built = false,     -- whether the shorter ones are made
   cands = {},        -- the candidates, longest first
   widths = {},       -- each one's measured width, in the face below
-  path = false, size = false, flags = false,
+  path = false, size = false, flags = false, shadow = false,
   -- The line in parts, the join before each, each part's word and the parts
   -- as a candidate has them: m of each, kept from the last line built.
   parts = {}, seps = {}, words = {}, cur = {}, buf = {}, m = 0,
@@ -1988,10 +1988,13 @@ do
     if text ~= SF.text then Reset(text) end
     -- The face the widths were measured in: another one, and every width
     -- is measured again, the label first laid out afresh (an object
-    -- changed in place under it is not news to the client by itself).
+    -- changed in place under it is not news to the client by itself). Its
+    -- drop shadow is part of it: the shadow takes a unit of room past the
+    -- words, and Text outline moves it alone.
     local path, size, flags = label:GetFont()
-    if path ~= SF.path or size ~= SF.size or flags ~= SF.flags then
-      SF.path, SF.size, SF.flags = path, size, flags
+    local shadow = label.GetShadowOffset and label:GetShadowOffset() or 0
+    if path ~= SF.path or size ~= SF.size or flags ~= SF.flags or shadow ~= SF.shadow then
+      SF.path, SF.size, SF.flags, SF.shadow = path, size, flags, shadow
       for i = SF.n, 1, -1 do SF.widths[i] = nil end
       label:SetText("")
       label:GetStringWidth()
