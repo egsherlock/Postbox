@@ -863,16 +863,19 @@ function AR.PaintToggle(button)
   end
 end
 
+-- The mode's tooltips are the house's (Theme section 5b): the title white,
+-- what it does bright, the gestures muted after the blank line.
 local function ToggleTip(button)
-  GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+  local T = Th()
+  T.TipBegin(button, "ANCHOR_RIGHT")
   if AR.host and AR.host.toggle == button then
-    GameTooltip:SetText(L()["ARRANGE_DONE"])
-    GameTooltip:AddLine(L()["ARRANGE_DONE_TIP"], 1, 1, 1, true)
-    GameTooltip:AddLine(L()["ARRANGE_GESTURE_DONE"], 0.7, 0.7, 0.7, true)
+    T.TipTitle(L()["ARRANGE_DONE"])
+    T.TipLine(L()["ARRANGE_DONE_TIP"])
+    T.TipHint(L()["ARRANGE_GESTURE_DONE"])
   else
-    GameTooltip:SetText(L()["ARRANGE_TITLE"])
-    GameTooltip:AddLine(ns.Summary(L()["ARRANGE_TIP"]), 1, 1, 1, true)
-    GameTooltip:AddLine(L()["ARRANGE_GESTURE_OPEN"], 0.7, 0.7, 0.7, true)
+    T.TipTitle(L()["ARRANGE_TITLE"])
+    T.TipLine(ns.Summary(L()["ARRANGE_TIP"]))
+    T.TipHint(L()["ARRANGE_GESTURE_OPEN"])
   end
   GameTooltip:Show()
 end
@@ -1527,11 +1530,12 @@ local function HeadTip(head)
   if AR.drag then return end
   if AR.Selected("column", head.colId) then return end
   local spec = AR.COLUMNS[head.colId]
-  GameTooltip:SetOwner(head, "ANCHOR_TOP")
-  GameTooltip:SetText(L()[spec.title])
-  if head.colId == "read" then GameTooltip:AddLine(L()["COL_READ_STUCK"], 1, 1, 1, true) end
-  if head.narrow then GameTooltip:AddLine(L()["ARRANGE_HEADING_EMPTY"], 1, 1, 1, true) end
-  GameTooltip:AddLine(AR.GestureLine(spec.fixed and "fixed" or "hide"), 0.7, 0.7, 0.7, true)
+  local T = Th()
+  T.TipBegin(head, "ANCHOR_TOP")
+  T.TipTitle(L()[spec.title])
+  if head.colId == "read" then T.TipLine(L()["COL_READ_STUCK"]) end
+  if head.narrow then T.TipLine(L()["ARRANGE_HEADING_EMPTY"]) end
+  T.TipHint(AR.GestureLine(spec.fixed and "fixed" or "hide"))
   GameTooltip:Show()
 end
 
@@ -1800,10 +1804,11 @@ local function PegEnter(self)
   PaintPeg(self)
   AR.MoveCursor(true)
   if AR.drag then return end
-  GameTooltip:SetOwner(self, "ANCHOR_TOP")
-  GameTooltip:SetText(L()[AR.COLUMNS[self.colId].title])
-  GameTooltip:AddLine(L()["ARRANGE_HIDDEN_STATE"], 1, 1, 1, true)
-  GameTooltip:AddLine(L()["ARRANGE_PEG_TIP"], 0.7, 0.7, 0.7, true)
+  local T = Th()
+  T.TipBegin(self, "ANCHOR_TOP")
+  T.TipTitle(L()[AR.COLUMNS[self.colId].title])
+  T.TipLine(L()["ARRANGE_HIDDEN_STATE"])
+  T.TipHint(L()["ARRANGE_PEG_TIP"])
   GameTooltip:Show()
 end
 
@@ -4624,8 +4629,9 @@ end
 -- mailbox for it to be anything else.
 function AR.Test.Tip(b)
   AR.InspTip(b)
-  GameTooltip:SetText(L()["ARRANGE_PREVIEW"])
-  GameTooltip:AddLine(L()[b.locked and "ARRANGE_PREVIEW_AWAY" or "ARRANGE_PREVIEW_NOTE"], 1, 1, 1, true)
+  local T = Th()
+  T.TipTitle(L()["ARRANGE_PREVIEW"])
+  T.TipLine(L()[b.locked and "ARRANGE_PREVIEW_AWAY" or "ARRANGE_PREVIEW_NOTE"])
   GameTooltip:Show()
 end
 
@@ -5016,13 +5022,14 @@ end
 -- less the drag.
 local function CloseTip(self)
   AR.InspTip(self)
+  local T = Th()
   if AR.selKind then
-    GameTooltip:SetText(L()["ARRANGE_BACK"])
-    GameTooltip:AddLine(L()["ARRANGE_GESTURE_BACK"], 0.7, 0.7, 0.7, true)
+    T.TipTitle(L()["ARRANGE_BACK"])
+    T.TipHint(L()["ARRANGE_GESTURE_BACK"])
   else
-    GameTooltip:SetText(L()["ARRANGE_DONE"])
-    GameTooltip:AddLine(L()["ARRANGE_DONE_TIP"], 1, 1, 1, true)
-    GameTooltip:AddLine(L()["ARRANGE_GESTURE_FINISH"], 0.7, 0.7, 0.7, true)
+    T.TipTitle(L()["ARRANGE_DONE"])
+    T.TipLine(L()["ARRANGE_DONE_TIP"])
+    T.TipHint(L()["ARRANGE_GESTURE_FINISH"])
   end
   GameTooltip:Show()
 end
@@ -5569,19 +5576,20 @@ end
 -- window, and the inspector stands outside it); anywhere else, or with no
 -- inspector, the tooltip goes where `anchor` puts it. The headings' own
 -- open above them, over the inspector's top edge, and keep ANCHOR_TOP.
+-- Begun as the house's (Theme.TipBegin), so the house's lines follow.
 function AR.TipOwner(owner, anchor)
   local insp = AR._insp
   if AR.host and insp and insp.side and insp:IsShown() then
     anchor = (insp.side == 1) and "ANCHOR_TOPRIGHT" or "ANCHOR_TOPLEFT"
   end
-  GameTooltip:SetOwner(owner, anchor)
+  Th().TipBegin(owner, anchor)
 end
 
 -- The inspector's own controls open their tooltips above the inspector,
 -- off it, on its edge away from the window.
 function AR.InspTip(owner)
   local insp = AR._insp
-  GameTooltip:SetOwner(owner, "ANCHOR_NONE")
+  Th().TipBegin(owner, "ANCHOR_NONE")
   GameTooltip:ClearAllPoints()
   if insp.side == -1 then
     GameTooltip:SetPoint("BOTTOMLEFT", insp, "TOPLEFT", 0, 4)
@@ -6255,8 +6263,8 @@ do
     local spec = TOGGLES[self.index]
     if spec then
       AR.InspTip(self)
-      GameTooltip:SetText(L()[spec.title])
-      GameTooltip:AddLine(L()[spec.desc], 1, 1, 1, true)
+      Th().TipTitle(L()[spec.title])
+      Th().TipLine(L()[spec.desc])
       GameTooltip:Show()
     end
   end

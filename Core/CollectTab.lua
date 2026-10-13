@@ -10534,10 +10534,10 @@ end
 function RV.StackTip(panel, card)
   local id = card.stackId
   -- Clear of the arrange mode's inspector beside the window.
-  local A = ns.Arrange
-  if A and A.TipOwner then A.TipOwner(card, "ANCHOR_CURSOR") else GameTooltip:SetOwner(card, "ANCHOR_CURSOR") end
-  GameTooltip:SetText(RV.BlockName(panel, id))
-  if A and A.GestureLine then GameTooltip:AddLine(A.GestureLine(RV.BlockGesture(panel, id)), 0.7, 0.7, 0.7, true) end
+  local A, T = ns.Arrange, Th()
+  if A and A.TipOwner then A.TipOwner(card, "ANCHOR_CURSOR") else T.TipBegin(card, "ANCHOR_CURSOR") end
+  T.TipTitle(RV.BlockName(panel, id))
+  if A and A.GestureLine then T.TipHint(A.GestureLine(RV.BlockGesture(panel, id))) end
   GameTooltip:Show()
 end
 
@@ -11061,13 +11061,11 @@ end
 -- the name does not say, and the mode's gestures -- clear of the inspector
 -- beside the window.
 function RV.HandleTip(panel, button)
-  local A = ns.Arrange
-  if A and A.TipOwner then A.TipOwner(button, "ANCHOR_RIGHT") else GameTooltip:SetOwner(button, "ANCHOR_RIGHT") end
-  GameTooltip:SetText(button.caption or "")
-  if button.tip then GameTooltip:AddLine(button.tip, 1, 1, 1, true) end
-  if A and A.GestureLine then
-    GameTooltip:AddLine(A.GestureLine(button.hiddenInGrid and "show" or "hide"), 0.7, 0.7, 0.7, true)
-  end
+  local A, T = ns.Arrange, Th()
+  if A and A.TipOwner then A.TipOwner(button, "ANCHOR_RIGHT") else T.TipBegin(button, "ANCHOR_RIGHT") end
+  T.TipTitle(button.caption or "")
+  if button.tip then T.TipLine(button.tip) end
+  if A and A.GestureLine then T.TipHint(A.GestureLine(button.hiddenInGrid and "show" or "hide")) end
   GameTooltip:Show()
 end
 
