@@ -175,9 +175,10 @@ do
 
   local function Tip(owner, title, desc)
     owner:HookScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(type(title) == "function" and title(self) or title)
-      GameTooltip:AddLine(type(desc) == "function" and desc(self) or desc, 1, 1, 1, true)
+      local T = ns.Theme
+      T.TipBegin(self, "ANCHOR_RIGHT")
+      T.TipTitle(type(title) == "function" and title(self) or title)
+      T.TipLine(type(desc) == "function" and desc(self) or desc)
       GameTooltip:Show()
     end)
     owner:HookScript("OnLeave", function() GameTooltip:Hide() end)
@@ -618,11 +619,13 @@ end
 -- with room: over the panel it would cover the inspector.
 -------------------------------------------------------------
 
+-- Begun as the house's (Theme section 5b): the title white, what the
+-- control does bright under it.
 function Tip.Begin(owner, title, text)
-  local tip = GameTooltip
-  tip:SetOwner(owner, "ANCHOR_NONE")
-  tip:SetText(title or "")
-  if text and text ~= "" then tip:AddLine(text, 1, 1, 1, true) end
+  local T = ns.Theme
+  local tip = T.TipBegin(owner, "ANCHOR_NONE")
+  T.TipTitle(title or "")
+  T.TipLine(text)
   return tip
 end
 
@@ -2627,8 +2630,9 @@ do
   -- Only a caption cut short has anything to add.
   local function TabEnter(self)
     if self.__pbOverflowText then
-      GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-      GameTooltip:SetText(self.__pbOverflowText)
+      local T = ns.Theme
+      T.TipBegin(self, "ANCHOR_BOTTOM")
+      T.TipTitle(self.__pbOverflowText)
       GameTooltip:Show()
     end
   end
@@ -3968,11 +3972,13 @@ function Pages.memory(col)
     if Rows.Held(self, HiddenEnter) then return end
     Rows.Hover(self)
     local tip = Tip.Begin(self, self.entry.title, ns.Summary(self.entry.text))
+    -- The names are its facts, under what it does; the rest counted, muted.
+    -- No blank line: the house keeps that for the hints.
     local lines = self.lines
-    if #lines > 0 then
-      tip:AddLine(" ")
-      for i = 1, #lines do tip:AddLine(lines[i], 1, 1, 1) end
-      if self.moreLine then tip:AddLine(self.moreLine, 0.6, 0.6, 0.63) end
+    for i = 1, #lines do tip:AddLine(lines[i], 1, 1, 1) end
+    if self.moreLine then
+      local muted = ns.Theme.TIP_MUTED
+      tip:AddLine(self.moreLine, muted, muted, muted)
     end
     Tip.Show(self)
   end

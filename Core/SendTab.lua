@@ -5167,9 +5167,9 @@ local function BuildRecipientField(panel)
   panel.ToBox:SetTextInsets(0, 26, 0, 0)
   manage:SetScript("OnEnter", function(self)
     Theme.FillChrome(hoverWash, 0.07)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["RM_OPT_BUTTON"])
-    GameTooltip:AddLine(ns.Summary(L["RM_OPT_BUTTON_DESC"]), 1, 1, 1, true)
+    Theme.TipBegin(self, "ANCHOR_RIGHT")
+    Theme.TipTitle(L["RM_OPT_BUTTON"])
+    Theme.TipLine(ns.Summary(L["RM_OPT_BUTTON_DESC"]))
     GameTooltip:Show()
   end)
   manage:SetScript("OnLeave", function()
@@ -5241,8 +5241,8 @@ local function BuildContactBar(panel)
       TintEmptyCaption(self)
       local title = tooltip or self.__pbOverflowText
       if title then
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(title)
+        Theme.TipBegin(self, "ANCHOR_RIGHT")
+        Theme.TipTitle(title)
         GameTooltip:Show()
         self._tipShown = true
       end
@@ -5328,18 +5328,18 @@ local function BuildContactBar(panel)
 
   star:SetScript("OnEnter", function(self)
     Theme.SetPlateHover(self, true)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["CONTACT_FAVORITES"])
+    Theme.TipBegin(self, "ANCHOR_RIGHT")
+    Theme.TipTitle(L["CONTACT_FAVORITES"])
     local count = self._favoriteCount or 0
     if count > 0 then
-      GameTooltip:AddLine(L("CONTACT_FAV_COUNT", count), 1, 1, 1)
-      GameTooltip:AddLine(L["CONTACT_FAV_OPEN"], 0.75, 0.75, 0.75, true)
+      Theme.TipLine(L("CONTACT_FAV_COUNT", count))
+      Theme.TipHint(L["CONTACT_FAV_OPEN"])
     else
       -- Says what the empty state is, then how to leave it -- both ways, the
       -- name's right-click and the manager's star, in one line. Both are
       -- needed: "no favourites" alone is a dead end.
-      GameTooltip:AddLine(L["CONTACT_FAV_NONE"], 1, 1, 1)
-      GameTooltip:AddLine(FavHintText(), 0.75, 0.75, 0.75, true)
+      Theme.TipLine(L["CONTACT_FAV_NONE"])
+      Theme.TipHint(FavHintText())
     end
     GameTooltip:Show()
   end)
@@ -5415,12 +5415,15 @@ function ST.RefreshQueueStrip(panel)
         icon:SetScript("OnEnter", function(self)
           local entry = panel._queue and panel._queue[self.index]
           if not entry then return end
-          GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-          if entry.link then GameTooltip:SetHyperlink(entry.link) else GameTooltip:SetText("?") end
-          GameTooltip:AddLine(" ")
-          GameTooltip:AddLine(L["QUEUE_TIP_TITLE"], 0.75, 0.75, 0.75)
-          if entry.asks then GameTooltip:AddLine(L["QUEUE_STRIP_TIP_ASKS"], 1, 0.82, 0, true) end
-          GameTooltip:AddLine(L["QUEUE_STRIP_TIP_REMOVE"], 0.7, 0.7, 0.7, true)
+          -- The house's (Theme section 5b), as a slot's: the item's own
+          -- tooltip, where it waits muted and the question to come in the
+          -- warning tone, then the gesture after the blank line.
+          local muted = Theme.TIP_MUTED
+          Theme.TipBegin(self, "ANCHOR_RIGHT")
+          if entry.link then GameTooltip:SetHyperlink(entry.link) else Theme.TipTitle("?") end
+          GameTooltip:AddLine(L["QUEUE_TIP_TITLE"], muted, muted, muted)
+          if entry.asks then Theme.TipLine(Theme.TipTone("warning", L["QUEUE_STRIP_TIP_ASKS"])) end
+          Theme.TipHint(L["QUEUE_STRIP_TIP_REMOVE"])
           GameTooltip:Show()
         end)
         icon:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -5474,10 +5477,10 @@ local function BuildAttachmentArea(panel)
   panel.AttachHit:SetAllPoints(label)
   panel.AttachHit:EnableMouse(true)
   panel.AttachHit:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["LABEL_ATTACHMENTS"])
-    GameTooltip:AddLine(L["ATTACH_TIP_HOW"], 1, 1, 1, true)
-    GameTooltip:AddLine(L["ATTACH_TIP_CLEAR"], 0.7, 0.7, 0.7, true)
+    Theme.TipBegin(self, "ANCHOR_RIGHT")
+    Theme.TipTitle(L["LABEL_ATTACHMENTS"])
+    Theme.TipLine(L["ATTACH_TIP_HOW"])
+    Theme.TipHint(L["ATTACH_TIP_CLEAR"])
     GameTooltip:Show()
   end)
   panel.AttachHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -5530,8 +5533,11 @@ local function BuildAttachmentArea(panel)
   queueButton:SetScript("OnEnter", function(self)
     local queue = panel._queue
     if not queue or #queue == 0 then return end
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["QUEUE_TIP_TITLE"], 1, 1, 1)
+    -- The house's (Theme section 5b): what waits, then how the queue works
+    -- and the gesture, muted after the blank line.
+    local muted = Theme.TIP_MUTED
+    Theme.TipBegin(self, "ANCHOR_RIGHT")
+    Theme.TipTitle(L["QUEUE_TIP_TITLE"])
     local shown = math.min(#queue, K.SEND_SLOT_COUNT)
     for i = 1, shown do
       local entry = queue[i]
@@ -5543,18 +5549,17 @@ local function BuildAttachmentArea(panel)
       GameTooltip:AddLine(line, 1, 1, 1)
     end
     if #queue > shown then
-      GameTooltip:AddLine(L("MEMORY_WAITING_MORE", #queue - shown), 0.75, 0.75, 0.75)
+      GameTooltip:AddLine(L("MEMORY_WAITING_MORE", #queue - shown), muted, muted, muted)
     end
-    GameTooltip:AddLine(" ")
-    GameTooltip:AddLine(L["QUEUE_TIP_HOW"], 0.75, 0.75, 0.75, true)
+    Theme.TipHint(L["QUEUE_TIP_HOW"])
     -- The questions to come are explained only when one will come.
     for i = 1, #queue do
       if queue[i].asks then
-        GameTooltip:AddLine(L["QUEUE_TIP_ASK"], 0.75, 0.75, 0.75, true)
+        Theme.TipHint(L["QUEUE_TIP_ASK"])
         break
       end
     end
-    GameTooltip:AddLine(L["QUEUE_TIP_CLEAR"], 0.7, 0.7, 0.7, true)
+    Theme.TipHint(L["QUEUE_TIP_CLEAR"])
     GameTooltip:Show()
   end)
   queueButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -5572,13 +5577,14 @@ local function BuildAttachmentArea(panel)
 
   local function SlotEnter(self)
     if not self.itemLink then return end
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    Theme.TipBegin(self, "ANCHOR_RIGHT")
     GameTooltip:SetHyperlink(self.itemLink)
-    -- The slot's gestures, in the Mail tab's hint form; the try-on only for
-    -- an item there is something to try on.
+    -- The slot's gestures, in the Mail tab's hint form after its blank
+    -- line, as a fan tile's; the try-on only for an item there is
+    -- something to try on.
     local dress = C_Item and type(C_Item.IsDressableItemByID) == "function"
       and C_Item.IsDressableItemByID(self.itemLink)
-    GameTooltip:AddLine(L[dress and "ATTACH_SLOT_HINT_DRESS" or "ATTACH_SLOT_HINT"], 0.7, 0.7, 0.7, true)
+    Theme.TipHint(L[dress and "ATTACH_SLOT_HINT_DRESS" or "ATTACH_SLOT_HINT"])
     GameTooltip:Show()
   end
 
@@ -5705,9 +5711,9 @@ local function BuildMoneyRow(panel)
   cod.__postboxCheck = true
   cod.__label = cod.text
   cod:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["TOOLTIP_COD_TITLE"])
-    GameTooltip:AddLine(L["TOOLTIP_COD_DESC"], 1, 1, 1, true)
+    Theme.TipBegin(self, "ANCHOR_RIGHT")
+    Theme.TipTitle(L["TOOLTIP_COD_TITLE"])
+    Theme.TipLine(L["TOOLTIP_COD_DESC"])
     GameTooltip:Show()
   end)
   cod:SetScript("OnLeave", function() GameTooltip:Hide() end)

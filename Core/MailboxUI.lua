@@ -3284,9 +3284,9 @@ local function PreviewSendEnter(self)
     theme.SetPlateHover(self, false)
     if theme.DimCaption then theme.DimCaption(self) end
   end
-  if not GameTooltip then return end
-  GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-  GameTooltip:SetText(L("PREVIEW_SEND_OFF"), 1, 1, 1, 1, true)
+  if not (GameTooltip and theme) then return end
+  theme.TipBegin(self, "ANCHOR_BOTTOM")
+  theme.TipTitle(L("PREVIEW_SEND_OFF"))
   GameTooltip:Show()
 end
 
@@ -3423,12 +3423,13 @@ local function BuildOptionsButton(frame, theme)
 
   button:SetScript("OnClick", function(self) OpenOptions(self) end)
   button:SetScript("OnEnter", function(self)
-    if not GameTooltip then return end
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L("OPTIONS_TITLE"))
-    -- The gesture, in the grey the arrange mark's is: the title already
-    -- says what opens.
-    GameTooltip:AddLine(L("OPTIONS_COG_TOOLTIP"), 0.7, 0.7, 0.7, true)
+    local T = ns.Theme
+    if not (GameTooltip and T) then return end
+    T.TipBegin(self, "ANCHOR_RIGHT")
+    T.TipTitle(L("OPTIONS_TITLE"))
+    -- The gesture, muted after the blank line as the arrange mark's is: the
+    -- title already says what opens.
+    T.TipHint(L("OPTIONS_COG_TOOLTIP"))
     GameTooltip:Show()
   end)
   button:SetScript("OnLeave", function()
@@ -3663,10 +3664,14 @@ local function BuildFrame()
       local truncated = short or (label.IsTruncated and label:IsTruncated())
       if not details and not full and not truncated then return end
 
-      GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
-      GameTooltip:SetText(text, 1, 1, 1, 1, true)
+      -- The house's (Theme section 5b): what waits for room muted, as All
+      -- mail's tooltip says it; each stuck mail's reason in the warning
+      -- tone, as its row's says it; the click muted after the blank line.
+      theme.TipBegin(self, "ANCHOR_BOTTOMRIGHT")
+      theme.TipTitle(text)
       if full then
-        GameTooltip:AddLine(L("BAGS_FULL_TIP"), 0.75, 0.75, 0.75, true)
+        local muted = theme.TIP_MUTED
+        GameTooltip:AddLine(L("BAGS_FULL_TIP"), muted, muted, muted, true)
       end
       if details then
         for i = 1, #details do
@@ -3674,15 +3679,14 @@ local function BuildFrame()
           local line = d.subject
           if line == "" then line = d.sender
           elseif d.sender ~= "" then line = d.sender .. " - " .. d.subject end
-          GameTooltip:AddLine(line, 1, 1, 1, true)
+          theme.TipLine(line)
           if d.reason then
-            GameTooltip:AddLine(LF("STUCK_LINE", d.reason), 0.75, 0.75, 0.75, true)
+            theme.TipLine(theme.TipTone("warning", LF("STUCK_LINE", d.reason)))
           end
         end
         local collect = ns.CollectTab
         local on = collect and collect.StuckFilterOn and collect.StuckFilterOn(CollectPanel())
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(L(on and "STUCK_FILTER_OFF_TIP" or "STUCK_FILTER_ON_TIP"), 0.6, 0.6, 0.6, true)
+        theme.TipHint(L(on and "STUCK_FILTER_OFF_TIP" or "STUCK_FILTER_ON_TIP"))
       end
       GameTooltip:Show()
     end)

@@ -1150,12 +1150,13 @@ local function BuildRow(parent)
   row.Fav:SetScript("OnClick", function()
     ToggleFavorite(row._entry)
   end)
+  -- The controls' tooltips are the house's (Theme section 5b): the title
+  -- white, what it does bright, a refusal in the warning tone.
   row.Fav:SetScript("OnEnter", function(self)
     local entry = row._entry
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["CONTACT_FAVORITES"])
-    GameTooltip:AddLine(entry and entry.fav and L["RM_TIP_FAV_ON"] or L["RM_TIP_FAV_OFF"],
-                        1, 1, 1, true)
+    Theme.TipBegin(self, "ANCHOR_RIGHT")
+    Theme.TipTitle(L["CONTACT_FAVORITES"])
+    Theme.TipLine(entry and entry.fav and L["RM_TIP_FAV_ON"] or L["RM_TIP_FAV_OFF"])
     GameTooltip:Show()
   end)
   row.Fav:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1178,9 +1179,9 @@ local function BuildRow(parent)
     RM.SoftRefresh()
   end)
   row.HideCheck:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["RM_COL_HIDE"])
-    GameTooltip:AddLine(L["RM_TIP_HIDE"], 1, 1, 1, true)
+    Theme.TipBegin(self, "ANCHOR_RIGHT")
+    Theme.TipTitle(L["RM_COL_HIDE"])
+    Theme.TipLine(L["RM_TIP_HIDE"])
     GameTooltip:Show()
   end)
   row.HideCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1191,12 +1192,12 @@ local function BuildRow(parent)
   end)
   row.Delete:SetScript("OnEnter", function(self)
     local entry = row._entry
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["RM_BTN_DELETE"])
+    Theme.TipBegin(self, "ANCHOR_RIGHT")
+    Theme.TipTitle(L["RM_BTN_DELETE"])
     if entry and entry.deleteReason then
-      GameTooltip:AddLine(L[entry.deleteReason], 1, 0.5, 0.4, true)
+      Theme.TipLine(Theme.TipTone("warning", L[entry.deleteReason]))
     else
-      GameTooltip:AddLine(L["RM_TIP_DELETE"], 1, 1, 1, true)
+      Theme.TipLine(L["RM_TIP_DELETE"])
     end
     GameTooltip:Show()
   end)
@@ -1208,9 +1209,9 @@ local function BuildRow(parent)
   end)
   row.Note:SetScript("OnEnter", function(self)
     local entry = row._entry
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["RM_BTN_NOTE"])
-    GameTooltip:AddLine(L["RM_TIP_NOTE"], 1, 1, 1, true)
+    Theme.TipBegin(self, "ANCHOR_RIGHT")
+    Theme.TipTitle(L["RM_BTN_NOTE"])
+    Theme.TipLine(L["RM_TIP_NOTE"])
     if entry and entry.note then
       GameTooltip:AddLine("\"" .. entry.note .. "\"", 0.83, 0.64, 0.29, true)
     end
@@ -1224,8 +1225,8 @@ local function BuildRow(parent)
   row:SetScript("OnEnter", function(self)
     local entry = row._entry
     if not entry then return end
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(DecorateName(entry.display, "tooltip"))
+    Theme.TipBegin(self, "ANCHOR_RIGHT")
+    Theme.TipTitle(DecorateName(entry.display, "tooltip"))
     local head = entry.category or L["RM_CAT_SAVED"]
     local class = ClassName(entry.display)
     if class then head = head .. SEPARATOR .. class end
@@ -1240,9 +1241,10 @@ local function BuildRow(parent)
       GameTooltip:AddLine(L["RM_TIP_ALT_UNRECORDED"], 0.7, 0.7, 0.7, true)
     end
     if entry.note then GameTooltip:AddLine("\"" .. entry.note .. "\"", 0.83, 0.64, 0.29, true) end
-    if entry.stale then GameTooltip:AddLine(L["RM_TIP_STALE"], 1, 0.6, 0.25, true) end
-    -- The same gesture, said the same way, as the Send tab's contact picker.
-    GameTooltip:AddLine(L["RM_TIP_ROW_FAV"], 0.7, 0.7, 0.7, true)
+    if entry.stale then Theme.TipLine(Theme.TipTone("warning", L["RM_TIP_STALE"])) end
+    -- The same gesture, said the same way, as the Send tab's contact picker:
+    -- muted, after the blank line.
+    Theme.TipHint(L["RM_TIP_ROW_FAV"])
     GameTooltip:Show()
   end)
   row:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1976,10 +1978,10 @@ local function Build()
   -- now, and it has no plate art to repaint on hover -- the template's own
   -- highlight does that.
   sortDir:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(L["RM_SORT_LABEL"])
-    GameTooltip:AddLine(SortDirectionText(), 1, 1, 1, true)
-    GameTooltip:AddLine(L["RM_SORT_DIR_TIP"], 0.7, 0.7, 0.7, true)
+    Theme.TipBegin(self, "ANCHOR_RIGHT")
+    Theme.TipTitle(L["RM_SORT_LABEL"])
+    Theme.TipLine(SortDirectionText())
+    Theme.TipHint(L["RM_SORT_DIR_TIP"])
     GameTooltip:Show()
   end)
   sortDir:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2110,22 +2112,25 @@ local function Build()
     tile._onEnter = function(self)
       local counts = RM._catCounts or {}
       local count = counts[category.id] or 0
-      GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+      -- The house's (Theme section 5b): the name white, what the tile does
+      -- bright, then how many it holds.
+      Theme.TipBegin(self, "ANCHOR_BOTTOM")
       -- The star tile has no label on screen, so the title is the only place
       -- its name is ever said.
-      GameTooltip:SetText(L[category.labelKey])
-      GameTooltip:AddLine(L("RM_CAT_TIP_COUNT", count, #(RM._entries or {})), 1, 1, 1)
-      GameTooltip:AddLine(L["RM_CAT_TIP_HINT"], 0.7, 0.7, 0.7, true)
-      -- Empty is not a dead end: say how to fill it.
-      if category.star and count == 0 then
-        GameTooltip:AddLine(L["RM_CAT_TIP_FAV_EMPTY"], 0.7, 0.7, 0.7, true)
-      end
+      Theme.TipTitle(L[category.labelKey])
+      Theme.TipLine(L["RM_CAT_TIP_HINT"])
+      Theme.TipLine(L("RM_CAT_TIP_COUNT", count, #(RM._entries or {})))
       -- An empty source category says why here too, not only once you have
       -- clicked it and are looking at a blank list.
       if count == 0 and category.source then
         local reason = SourceEmptyReason(category.source)
-        if reason then GameTooltip:AddLine(L[reason], 0.7, 0.7, 0.7, true) end
+        if reason then
+          local muted = Theme.TIP_MUTED
+          GameTooltip:AddLine(L[reason], muted, muted, muted, true)
+        end
       end
+      -- Empty is not a dead end: say how to fill it, after the blank line.
+      if category.star and count == 0 then Theme.TipHint(L["RM_CAT_TIP_FAV_EMPTY"]) end
       GameTooltip:Show()
     end
     tile:SetScript("OnClick", function(self)
@@ -2238,9 +2243,9 @@ local function Build()
   -- rather than GetText, which may have been ellipsized to fit.
   for _, button in ipairs({ hideAll, showAll }) do
     button:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_TOP")
-      GameTooltip:SetText(self.caption)
-      GameTooltip:AddLine(ns.Plural("RM_TIP_BULK", #(RM._filtered or {}), ScopePhrase()), 1, 1, 1, true)
+      Theme.TipBegin(self, "ANCHOR_TOP")
+      Theme.TipTitle(self.caption)
+      Theme.TipLine(ns.Plural("RM_TIP_BULK", #(RM._filtered or {}), ScopePhrase()))
       GameTooltip:Show()
     end)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)

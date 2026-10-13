@@ -1303,7 +1303,8 @@ ShowTooltip = function(button, hostMode)
   local state = memoryOn and Memory and type(Memory.MailboxSummary) == "function"
     and Memory.MailboxSummary() or nil
 
-  GameTooltip:SetText(L["FRAME_TITLE"])
+  -- White, as every Postbox tooltip's title: the game's default is yellow.
+  GameTooltip:SetText(L["FRAME_TITLE"], 1, 1, 1)
 
   if state and state.arrived then
     -- Green: good news. The accent belongs to selection and the orange to

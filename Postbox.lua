@@ -2048,10 +2048,14 @@ function Postbox_OnAddonCompartmentClick(_, mouseButton)
   if Memory and Memory.Toggle then Memory.Toggle() end
 end
 
+-- The house's tooltip (Theme section 5b): the name white, the gestures
+-- muted after the blank line.
 function Postbox_OnAddonCompartmentEnter(_, button)
-  GameTooltip:SetOwner(button, "ANCHOR_LEFT")
-  GameTooltip:SetText("Postbox")
-  GameTooltip:AddLine(ns.L["COMPARTMENT_TIP"], 0.7, 0.7, 0.7, true)
+  local T = ns.Theme
+  if not T then return end
+  T.TipBegin(button, "ANCHOR_LEFT")
+  T.TipTitle("Postbox")
+  T.TipHint(ns.L["COMPARTMENT_TIP"])
   GameTooltip:Show()
 end
 
