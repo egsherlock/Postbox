@@ -2206,10 +2206,18 @@ local function NoteStuck(fingerprint, reason)
     Mark(fingerprint, 1)
     return true, true
   end
-  -- A refusal with no attributable text leaves what we already have alone; one
-  -- that contradicts it drops the quotation entirely. Same rule as RunPlan's
-  -- noteReason, for the same reason.
-  if text and prior ~= text then stuck[fingerprint] = true end
+  -- A refusal with no attributable text leaves what we already have alone.
+  -- Words where there were none (`true`: refused twice without a word) say
+  -- what the silence did not, and replace it; words that differ from those
+  -- kept are kept beside them, once, as the game gave both -- as RunPlan's
+  -- PlanNoteReason says them. So `true` means only the game's silence.
+  if text and prior ~= text then
+    if prior == true then
+      stuck[fingerprint] = text
+    elseif not prior:find(" / ", 1, true) then
+      stuck[fingerprint] = prior .. " / " .. text
+    end
+  end
   return true, false
 end
 
@@ -3067,8 +3075,8 @@ local function PlanNoteReason(text)
     p.reason = text
   elseif p.reason ~= text then
     -- Two attachments refused for different reasons; quoting one would
-    -- misdescribe the other.
-    p.reason, p.reasonMixed = nil, true
+    -- misdescribe the other, so both are said, as the game gave them.
+    p.reason, p.reasonMixed = p.reason .. " / " .. text, true
   end
 end
 

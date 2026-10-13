@@ -1622,8 +1622,8 @@ end
 -------------------------------------------------------------
 
 -- When we captured the game's own error text we quote it, because it names the
--- actual cause. Without it we can only list the usual ones, so the fallback
--- offers them as possibilities rather than asserting a cause.
+-- actual cause (two different ones as the game gave them). Without it the line
+-- says the game gave none: Postbox never guesses a cause.
 local function ItemRefusedMessage(reason)
   if reason and reason ~= "" then return L()("MSG_ITEM_REFUSED_REASON", reason) end
   return L()["MSG_ITEM_REFUSED"]
@@ -1639,10 +1639,9 @@ end
 -- different things about the same mail.
 --
 -- `reason` is what ns.MailService recorded: the game's own error text, or `true`
--- where it refused with nothing we could attribute to this mail. The generic
--- half is phrased as possibilities, never as a cause: the addon does not know
--- which of them it was, and guessing out loud is how a player ends up emptying a
--- bag over a unique item they already owned.
+-- where the game refused the take twice without a word. That is what the line
+-- then says (STUCK_GENERIC), never a guessed cause: guessing out loud is how a
+-- player ends up emptying a bag over a unique item they already owned.
 local function StuckLine(reason)
   local words = (type(reason) == "string" and reason ~= "") and reason
     or L()["STUCK_GENERIC"]
@@ -3329,7 +3328,7 @@ do
   end
 
   -- reason, unread -> the State fact: a stuck mail's reason in the warning
-  -- tone (the game's words, or the possibilities where it gave none), after
+  -- tone (the game's words, or that it refused twice without any), after
   -- "Unread" or "Read" when the read mark's column is hidden (`unread` nil
   -- when it is shown).
   function RV.TipState(reason, unread)
@@ -7856,15 +7855,16 @@ function CT.RefreshRunStatus()
   StatusActivity(format(L()["STATUS_REMAINING"], Remaining()))
 end
 
--- One refusal reason for a whole run. Two attachments can be refused for
--- different reasons, and quoting one would misdescribe the other, so a second
--- different reason falls back to the generic wording.
+-- The refusal reasons of a whole run, as the game gave them. Two attachments
+-- can be refused for different reasons, and quoting one would misdescribe the
+-- other, so a second different reason is said beside the first (and any more
+-- after that are left to each mail's own line).
 local function NoteReason(reason)
   if not reason or reason == "" or Run.reasonMixed then return end
   if Run.reason == nil then
     Run.reason = reason
   elseif Run.reason ~= reason then
-    Run.reason, Run.reasonMixed = nil, true
+    Run.reason, Run.reasonMixed = Run.reason .. " / " .. reason, true
   end
 end
 
