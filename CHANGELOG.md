@@ -96,7 +96,9 @@ your recipients, groups, Mail Memory and History are kept.*
 - **Tooltips read the same everywhere:** a mail's tooltip opens with its
   subject and says who it's from, what it holds, the time left and whether
   it's stuck (only what the row doesn't already show), then its clicks.
-  Mail Memory's rows have them too.
+  Mail Memory's rows have them too, and every other tooltip, from the
+  options to Manage Recipients, has the same white title with its clicks at
+  the foot.
 - **Mail Memory shows what each mail holds:** the item's own icon, and on
   hover the list or the fan, to look at and link (you take it at that
   character's mailbox).
