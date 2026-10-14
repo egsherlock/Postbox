@@ -660,7 +660,8 @@ end
 --           strip too, at its darkest and its lightest as the opacity in
 --           force shows it -- the strip is darker than any plate the mark
 --           tone was made for.
-local tones = { r = -1, g = -1, b = -1, gen = -1,
+-- `grey`: whether the accent is a grey (IsGrey).
+local tones = { r = -1, g = -1, b = -1, gen = -1, grey = false,
   text = { 0, 0, 0 }, mark = { 0, 0, 0 }, bright = { 0, 0, 0 }, muted = { 0, 0, 0 }, icon = { 0, 0, 0 } }
 local paletteGen = 0
 local lightPalette = false
@@ -756,6 +757,7 @@ local function FillTones(r, g, b)
     StoreTone(tones.bright, ToneBright(r, g, b))
     StoreTone(tones.muted, ToneMuted(r, g, b))
   end
+  tones.grey = IsGrey(r, g, b)
   tones.r, tones.g, tones.b, tones.gen = r, g, b, ToneGeneration()
 end
 
@@ -814,13 +816,21 @@ local ACCENT_TOKENS = {
 
 -- Text wants the legible tone, and a solid mark -- the accent token painted
 -- on a texture -- the mark tone; a wash, a rule or a ring at a fraction of an
--- alpha wants the accent as it is. All come from the one token so no caller
--- has to know the difference.
+-- alpha wants the accent as it is -- but for a grey accent on a light
+-- palette, whose marks are the ink (FillTones): a white rule or ring at half
+-- its alpha on paper is no rule at all. All come from the one token so no
+-- caller has to know the difference.
 local function ResolveAccentToken(token, asText)
   local tone = ACCENT_TOKENS[token]
   if not tone then return nil end
   if tone == "base" then
-    if asText then tone = "text" elseif token == "accent" then tone = "mark" end
+    if asText then tone = "text"
+    elseif token == "accent" then tone = "mark"
+    elseif lightPalette then
+      local r, g, b = Theme.GetAccent()
+      if tones.r ~= r or tones.g ~= g or tones.b ~= b or tones.gen ~= ToneGeneration() then FillTones(r, g, b) end
+      if tones.grey then tone = "mark" end
+    end
   end
   local r, g, b = Theme.GetAccentTone(tone)
   return r, g, b, (token == "accent" or token == "accentText" or token == "accentBright"
