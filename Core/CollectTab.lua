@@ -3623,7 +3623,9 @@ local function BuildViewToggle(panel)
   if hist.Icon then
     hist:SetText("")
     hist.Icon:SetPoint("CENTER")
-    -- Chrome stays neutral: a grey glyph, like the captions beside it.
+    -- Chrome stays neutral: a grey glyph, like the captions beside it --
+    -- white on a dark palette, the ink on a light one (Theme.SetGrey).
+    T.SetGrey(hist.Icon, 1)
     hist.Icon:SetAlpha(0.85)
   else
     hist:SetText(L()["VIEW_HISTORY"])

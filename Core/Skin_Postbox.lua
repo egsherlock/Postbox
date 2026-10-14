@@ -26,8 +26,9 @@ local _, ns = ...
 -- (0.92), tooltips (0.96) and the options panel (0.97) keep their own ground,
 -- so a control stays legible at any opacity. The accent's text and marks go
 -- through the Theme's contrast guard, so a dark accent is lightened where it
--- is painted (a light one darkened, in Light mode) and the colour picked
--- stays what is saved.
+-- is painted and the colour picked stays what is saved. In Light mode text
+-- never wears the accent: it is ink on paper, and the accent is in the marks
+-- (darkened where they need it) and the selected tint.
 --
 -- Every setting applies live, on change, and only then: the palette below is
 -- rewritten in place and each window, control and tracked text painted
@@ -181,6 +182,7 @@ local RINGS_LIGHT = {
 -- The window tabs: the mockups' plates, which are EllesmereUI's in game --
 -- dark idle, a lighter plate selected, a ring each, no bevel, no wash, the
 -- 2-pixel accent underline -- and a dimmer idle caption than a segment's.
+-- In Light their rings are the plates' own neutral greys.
 -- TAB_TOKENS is the table the tabs hold, rewritten in place from a set.
 local TABS_DARK = {
   plateIdle         = { 18 / 255, 13 / 255, 11 / 255, 0.92 },
@@ -199,9 +201,9 @@ local TABS_LIGHT = {
   plateHover        = Hex("ecebe8", 0.94),
   plateSelected     = Hex("ffffff", 0.95),
   plateFlagged      = Hex("e6e6e3", 0.92),
-  plateEdge         = Hex("c7c3bf"),
-  plateEdgeHover    = Hex("b8b4b0"),
-  plateEdgeSelected = Hex("a6a29e"),
+  plateEdge         = RINGS_LIGHT.plateEdge,
+  plateEdgeHover    = RINGS_LIGHT.plateEdgeHover,
+  plateEdgeSelected = RINGS_LIGHT.plateEdgeSelected,
   plateBevel        = { 1, 1, 1, 0 },
   plateHighlight    = { 0, 0, 0, 0.03 },
   accentWash        = { 0, 0, 0, 0 },
@@ -1695,8 +1697,9 @@ end
 -- tone on the select's own ground (Theme.Ink): a copy of the game's button
 -- font, recoloured, which the host-font copies dress in the chosen face. A
 -- push button's caption is the button's own font, Blizzard's gold, as
--- EllesmereUI keeps it -- on a light palette the copy's colour made right
--- for the button (Theme DressCopy). A button puts its state's font back on
+-- EllesmereUI keeps it -- on a light palette the ink, made right for the
+-- button (Theme CopyInk); the select's value is the ink there too, the
+-- accent's text tone being the ink. A button puts its state's font back on
 -- its label at every enable and disable, so the colour lives on the object.
 local selectFont
 
@@ -1793,8 +1796,9 @@ local function FlatButton(button)
 end
 
 -- A push button's caption colour as it shows: the game's button font's own
--- gold, made right for the button it stands on (on a light palette, the
--- gold that reads on paper). For the options' drawing of the window.
+-- gold, made right for the button it stands on -- on a light palette the
+-- ink, as its copy wears it (Theme.ButtonInk). For the options' drawing of
+-- the window.
 function Skin.ButtonTextRGB()
   local r, g, b = 1, 0.82, 0
   local base = _G.GameFontNormal
@@ -1803,7 +1807,7 @@ function Skin.ButtonTextRGB()
     if type(br) == "number" then r, g, b = br, bg, bb end
   end
   local T = ns.Theme
-  if T and T.InkFor then return T.InkFor(r, g, b, "button") end
+  if T and T.ButtonInk then return T.ButtonInk(r, g, b) end
   return r, g, b
 end
 

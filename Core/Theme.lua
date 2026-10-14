@@ -509,6 +509,22 @@ Theme.FromLab = function(L, a, b)
 end
 Theme.AtLightness = AtLightness
 
+-- What text is held to on a light palette: 5:1, not 4.5. Small text on paper
+-- draws lighter than its colour, its strokes being thin (measured in game:
+-- #474747 renders as #565656, #6f6f6f as #818181), so an ink set at exactly
+-- 4.5:1 reads below it. A dark palette keeps 4.5, value for value.
+local LIGHT_NEED = 5.0
+
+-- An accent with less OKLCH chroma than this is a grey (White, or a host's
+-- grey). On a light palette a grey has no hue to mark or tint with: its marks
+-- are the ink (FillTones) and the selected plate takes no wash of it
+-- (Theme.ApplyPalette).
+local GREY_CHROMA = 0.035
+local function IsGrey(r, g, b)
+  local _, A, B = ToLab(r, g, b)
+  return A * A + B * B < GREY_CHROMA * GREY_CHROMA
+end
+
 -- A window surface held where every text colour keeps its contrast (spec
 -- 3.3, rule 5): on a dark palette no lighter than #1c1c1c in OKLab lightness,
 -- on a light one no darker than #e2e2df; in both, no more than 0.030 OKLCH
@@ -627,15 +643,20 @@ end
 --
 --   text    the accent as text: 4.5:1 on the lightest ground accent text sits
 --           on in the dark palette, the selected plate with its wash (spec
---           3.3, rule 1); in the light palette on the darker of that and the
---           sheet (C.sheet), which is where headings stand.
+--           3.3, rule 1). In the light palette text never wears the accent:
+--           this is the palette's ink, so every label, heading, value and
+--           selected caption painted from an accent token is ink on paper,
+--           and the accent lives in the marks and the selected plate's wash.
 --   mark    the accent as a mark -- the selected underline, a tick, a solid
---           accent fill: 3:1 on the selected plate (rule 2).
+--           accent fill: 3:1 on the selected plate (rule 2). A grey accent
+--           marks in the ink on a light palette (IsGrey).
 --   bright  the selected caption of a control group: the pale, lit tone on a
---           dark palette; on a light one the text tone, a pale caption being
---           unreadable on a white plate.
+--           dark palette; on a light one the ink, as text.
 --   muted   the quiet member of a pair: a near-neutral bright grey on a dark
 --           palette, a near-neutral dark grey on a light one.
+--   icon    (asked for, not kept) the accent on an icon in the chrome, the
+--           options cog: the text tone on a dark palette, the mark tone on a
+--           light one, where the text tone is the ink.
 local tones = { r = -1, g = -1, b = -1, gen = -1,
   text = { 0, 0, 0 }, mark = { 0, 0, 0 }, bright = { 0, 0, 0 }, muted = { 0, 0, 0 } }
 local paletteGen = 0
@@ -694,22 +715,31 @@ local function FillTones(r, g, b)
   local gr = plate[1] + (r - plate[1]) * wash
   local gg = plate[2] + (g - plate[2]) * wash
   local gb = plate[3] + (b - plate[3]) * wash
-  local tr, tg, tb = Legible(r, g, b, gr, gg, gb, 4.5)
-  local sheet = C.sheet
-  if sheet and (sheet[4] or 0) > 0 then
-    tr, tg, tb = Legible(tr, tg, tb, sheet[1], sheet[2], sheet[3], 4.5)
-  end
-  StoreTone(tones.text, tr, tg, tb)
   -- A mark sits on the selected plate, and on an idle one too (the Mail
   -- tab's dot): 3:1 on the one it reads worst on (MarkGround).
   local mr, mgg, mb = MarkGround(gr, gg, gb)
-  StoreTone(tones.mark, Legible(r, g, b, mr, mgg, mb, 3.0))
   if lightPalette then
-    StoreTone(tones.bright, tr, tg, tb)
-    local mr, mg, mb = ToneMuted(r, g, b)
+    -- Text is the ink, and the accent its marks: a grey accent's marks are
+    -- the ink too, having no hue to mark with (the tones above).
+    local ink = C.textPrimary
+    StoreTone(tones.text, ink[1], ink[2], ink[3])
+    StoreTone(tones.bright, ink[1], ink[2], ink[3])
+    if IsGrey(r, g, b) then
+      StoreTone(tones.mark, ink[1], ink[2], ink[3])
+    else
+      StoreTone(tones.mark, Legible(r, g, b, mr, mgg, mb, 3.0))
+    end
+    local qr, qg, qb = ToneMuted(r, g, b)
     local k = 0.36 / 0.86
-    StoreTone(tones.muted, mr * k, mg * k, mb * k)
+    StoreTone(tones.muted, qr * k, qg * k, qb * k)
   else
+    local tr, tg, tb = Legible(r, g, b, gr, gg, gb, 4.5)
+    local sheet = C.sheet
+    if sheet and (sheet[4] or 0) > 0 then
+      tr, tg, tb = Legible(tr, tg, tb, sheet[1], sheet[2], sheet[3], 4.5)
+    end
+    StoreTone(tones.text, tr, tg, tb)
+    StoreTone(tones.mark, Legible(r, g, b, mr, mgg, mb, 3.0))
     StoreTone(tones.bright, ToneBright(r, g, b))
     StoreTone(tones.muted, ToneMuted(r, g, b))
   end
@@ -717,9 +747,11 @@ local function FillTones(r, g, b)
 end
 
 -- The live accent in one of the tones described above:
--- "base" (default: the accent itself) | "text" | "mark" | "bright" | "muted".
+-- "base" (default: the accent itself) | "text" | "mark" | "bright" | "muted"
+-- | "icon".
 function Theme.GetAccentTone(tone)
   local r, g, b = Theme.GetAccent()
+  if tone == "icon" then tone = lightPalette and "mark" or "text" end
   if tone ~= "text" and tone ~= "mark" and tone ~= "bright" and tone ~= "muted" then return r, g, b end
   if tones.r ~= r or tones.g ~= g or tones.b ~= b or tones.gen ~= ToneGeneration() then FillTones(r, g, b) end
   local t = tones[tone]
@@ -727,7 +759,9 @@ function Theme.GetAccentTone(tone)
 end
 
 -- Whether the accent's text or mark tone had to move from the accent itself,
--- and the ratios they read at: for the options' accent row.
+-- and the ratios they read at: for the options' accent row. On a light
+-- palette the text is the ink rather than the accent moved, so only the mark
+-- answers whether the accent was.
 function Theme.AccentReadout()
   local r, g, b = Theme.GetAccent()
   if tones.r ~= r or tones.g ~= g or tones.b ~= b or tones.gen ~= ToneGeneration() then FillTones(r, g, b) end
@@ -741,9 +775,10 @@ function Theme.AccentReadout()
   local sheet = C.sheet
   if sheet and (sheet[4] or 0) > 0 then ct = min(ct, Contrast(t[1], t[2], t[3], sheet[1], sheet[2], sheet[3])) end
   local mr, mgg, mb = MarkGround(gr, gg, gb)
+  local moved = m[1] ~= r or m[2] ~= g or m[3] ~= b
+  if not lightPalette then moved = moved or t[1] ~= r or t[2] ~= g or t[3] ~= b end
   return ct, Contrast(m[1], m[2], m[3], mr, mgg, mb),
-    Contrast(ir, ig, ib, m[1], m[2], m[3]),
-    (t[1] ~= r or t[2] ~= g or t[3] ~= b or m[1] ~= r or m[2] ~= g or m[3] ~= b)
+    Contrast(ir, ig, ib, m[1], m[2], m[3]), moved
 end
 
 -- The accent-named palette tokens, and how each resolves against the LIVE
@@ -865,7 +900,15 @@ end
 -- (Theme.Legible, section 1c) to 4.5:1 on the light sheet (#ebebe8), hue
 -- kept; the unread dot, a mark, to 3:1 on the list (#fafaf8). Set at that
 -- exact ratio, they also read at 3.7:1 on the dark tooltip Postbox's own
--- tooltip lines keep, where a warning or a price in them lands.
+-- tooltip lines keep, where a warning or a price in them lands. Painted,
+-- each is the ink worked out on its ground, which a light palette holds at
+-- 5:1 (LIGHT_NEED; section 2c).
+--
+-- Ink and marks: on a light palette text never wears the accent. Every text
+-- painted from an accent token is the ink (the accent's tones, section 1b),
+-- and so is a game font's gold (CopyInk); the accent stays in the marks --
+-- an underline, a tick, a rule, the Mail tab's dot, the cog -- and in the
+-- selected plate's wash.
 -------------------------------------------------------------
 
 -- "rrggbb" [, alpha] -> { r, g, b, a }: the colour table every palette here
@@ -971,6 +1014,10 @@ do
     end
     Overlay(extra)
     Overlay(extra2)
+    -- A light palette lays no wash of a grey accent under a selected plate:
+    -- a grey on white has no hue to tint with, only a smudge to lay (IsGrey).
+    -- The accent in force, which is the one a style applies its palette for.
+    if lightPalette and IsGrey(Theme.GetAccent()) then C.accentWash[4] = 0 end
     local changed = wasLight ~= lightPalette
     for token, color in pairs(C) do
       Hex[token] = ToHex(color)
@@ -1062,9 +1109,9 @@ end
 
 -- A text colour chosen for a dark ground, made right for the palette's:
 -- itself on a dark palette; on a light one a grey takes its rank's grey
--- (Theme.Grey) and a hue the guard's 4.5:1 on the sheet. Where a style
--- derives its inks from their grounds (section 2c), the colour is made right
--- for `ground` instead (the controls and lists, "content", by default): a
+-- (Theme.Grey) and a hue the guard's 5:1 on the sheet (LIGHT_NEED). Where a
+-- style derives its inks from their grounds (section 2c), the colour is made
+-- right for `ground` instead (the controls and lists, "content", by default): a
 -- class colour too dark for a dark list is lifted as one too light for a
 -- paper one is darkened.
 local InkRGB
@@ -1079,7 +1126,7 @@ function Theme.InkFor(r, g, b, ground)
     return v, v, v
   end
   local s = C.sheet
-  local lr, lg, lb = Legible(r, g, b, s[1], s[2], s[3], 4.5)
+  local lr, lg, lb = Legible(r, g, b, s[1], s[2], s[3], LIGHT_NEED)
   return lr, lg, lb
 end
 
@@ -1097,8 +1144,9 @@ end
 -- Postbox style's ResolveLook); nothing here guesses.
 --
 -- The ink of a token on a ground: its own colour where it already reads at
--- 4.5:1 on both ends -- byte for byte, so a look that passed keeps its
--- colours -- else the least lightness move that makes it (Legible, hue
+-- 4.5:1 on both ends (5:1 while the palette is light: LIGHT_NEED, section
+-- 1c) -- byte for byte, so a look that passed keeps its colours -- else
+-- the least lightness move that makes it (Legible, hue
 -- kept). Its polarity is the ground's, never the palette's: a light ink on a
 -- dark ground, a dark one on a light ground, a token made for the other
 -- polarity taking its twin first (the dark palette's colour on a dark
@@ -1159,7 +1207,10 @@ do
   -- ground -> { alpha, gen }
   local plates = {}
   local gen = 0
-  local NEED = 4.5
+  -- What a text must read at on its ground: 4.5:1, and 5:1 while the
+  -- palette is light (LIGHT_NEED). The palette's generation moves with it,
+  -- so every ink and plate kept here is worked out again at the other.
+  local function Need() return lightPalette and LIGHT_NEED or 4.5 end
 
   Grounds.HOME, Grounds.PLATED, Grounds.UNIONS = HOME, PLATED, UNIONS
 
@@ -1307,8 +1358,8 @@ do
     return r, g, b, true
   end
   -- The bare window's margin (Polarity's `room`): white or black must read at
-  -- 1.25 times the need on it, about 5.6:1, for its inks to be worked out on
-  -- it rather than a plate laid under them.
+  -- 1.25 times the need on it, about 5.6:1 (6.25:1 on a light palette), for
+  -- its inks to be worked out on it rather than a plate laid under them.
   local ROOM = 1.25
 
   local function BaseOf(token)
@@ -1327,7 +1378,7 @@ do
       local gr = s[1] * p + t[e + 1] * (1 - p)
       local gg = s[2] * p + t[e + 2] * (1 - p)
       local gb = s[3] * p + t[e + 3] * (1 - p)
-      if Contrast(r * a + gr * (1 - a), g * a + gg * (1 - a), b * a + gb * (1 - a), gr, gg, gb) < NEED then return false end
+      if Contrast(r * a + gr * (1 - a), g * a + gg * (1 - a), b * a + gb * (1 - a), gr, gg, gb) < Need() then return false end
     end
     return true
   end
@@ -1364,7 +1415,7 @@ do
     if p.gen ~= gen or p.pgen ~= paletteGen then
       p.gen, p.pgen = gen, paletteGen
       local t = Range(ground)
-      p[1] = (t and not Polarity(t, NEED, ROOM)) and PlateAlpha(t, PLATE_TOKENS[ground]) or 0
+      p[1] = (t and not Polarity(t, Need(), ROOM)) and PlateAlpha(t, PLATE_TOKENS[ground]) or 0
     end
     return p[1]
   end
@@ -1409,7 +1460,7 @@ do
     if t then
       local room
       if PLATED[ground] then t, room = Plated(ground, t), ROOM end
-      r, g, b = OnRange(r, g, b, a, t, NEED, (not accent) and token or nil, room)
+      r, g, b = OnRange(r, g, b, a, t, Need(), (not accent) and token or nil, room)
     end
     e[1], e[2], e[3], e[4] = r, g, b, a
     e.gen, e.pgen = gen, paletteGen
@@ -1500,11 +1551,11 @@ do
     -- that takes dark ink. On one that takes light ink in a light palette
     -- (the game's tooltip, dark in Light mode) a grey is the light ink it
     -- was given as: a Priest's white stays white there.
-    if lightPalette and max(r, g, b) - min(r, g, b) < 0.06 and Polarity(t, NEED, room) ~= "light" then
+    if lightPalette and max(r, g, b) - min(r, g, b) < 0.06 and Polarity(t, Need(), room) ~= "light" then
       local v = Theme.Grey((r + g + b) / 3)
       ir, ig, ib = v, v, v
     end
-    ir, ig, ib = OnRange(ir, ig, ib, 1, t, NEED, nil, room)
+    ir, ig, ib = OnRange(ir, ig, ib, 1, t, Need(), nil, room)
     -- Overwrites the oldest once full: the ring wraps.
     ringAt = (ringAt % RING) + 1
     if ringAt > ringN then ringN = ringAt end
@@ -1520,9 +1571,10 @@ do
 end
 
 -- The inks the lines that colour words inside them are written in -- a row's
--- figures and tones, the status line's, the totals' -- as one string:
--- what a style compares across a change of its grounds, to write those
--- lines again only when one of these inks moved. Only on a settings change.
+-- figures and tones, the status line's, the totals', the Mail tab's dot --
+-- as one string: what a style compares across a change of its grounds, to
+-- write those lines again only when one of these inks moved. Only on a
+-- settings change.
 do
   -- ground, token: the pairs those lines are written in.
   local PAIRS = {
@@ -1540,6 +1592,12 @@ do
       local ink = InkOf and InkOf(PAIRS[i + 1], PAIRS[i])
       parts[n] = ink and ink.hex or "-"
     end
+    -- And the accent's mark tone, the Mail tab's dot: on a light palette
+    -- every accent's text is the one ink, and the mark is all that moves
+    -- with the accent.
+    n = n + 1
+    local r, g, b = Theme.GetAccentTone("mark")
+    parts[n] = ("%02x%02x%02x"):format(floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5))
     return table.concat(parts, "", 1, n)
   end
 end
@@ -1673,22 +1731,36 @@ end
 
 -- The colour a copy wears, from its game object's r, g, b, a, where it takes
 -- one of its own (a light ground, or a style that derives its inks: see
--- DressCopy). On a light ground the object's own colour, set for a dark one,
--- is made right for it (Theme.InkFor): white text becomes the primary ink,
--- Blizzard's gold a gold that reads on paper. A copy for a light ground in
--- a dark palette takes the light palette's ink: the strings wearing one
--- set their own colour on it.
+-- DressCopy). On a light palette the object's own colour, set for a dark
+-- ground, is made right for it (Theme.InkFor): white text becomes the
+-- primary ink and a grey its rank's grey; a colour of its own -- Blizzard's
+-- gold, the Blizzard look's accent -- is the ink as well, text never wearing
+-- an accent there (section 2b). A copy for a light ground in a dark palette
+-- takes the light palette's ink: the strings wearing one set their own
+-- colour on it.
 -- Where a style derives its inks (section 2c) the copy's colour is made
 -- right for the button it is the caption of, on either palette -- the
 -- strings that are not a button's set their own -- so a disabled button's
 -- grey reads on the button at any opacity.
 local function CopyInk(r, g, b, a, light)
+  if lightPalette and max(r, g, b) - min(r, g, b) >= 0.06 then
+    local ir, ig, ib = Theme.Ink("textPrimary", "button")
+    return ir, ig, ib, a or 1
+  end
   if lightPalette or not light then
     local ir, ig, ib = Theme.InkFor(r, g, b, "button")
     return ir, ig, ib, a or 1
   end
   local ink = Theme.PALETTE_LIGHT.textPrimary
   return ink[1], ink[2], ink[3], a or 1
+end
+
+-- A game button font's colour (r, g, b, as its object has it) as a copy of
+-- it is painted (CopyInk): for a drawing of a button's caption, the options'
+-- drawing of the window.
+function Theme.ButtonInk(r, g, b)
+  local ir, ig, ib = CopyInk(r, g, b, 1, lightPalette)
+  return ir, ig, ib
 end
 
 -- The copy made again from its game object, in the face given: the object's
@@ -2244,7 +2316,7 @@ function Theme.RepaintAccentIcons()
   local frame = ns.MailboxUI and ns.MailboxUI._frame
   if not frame then return end
   if frame.OptionsButton and frame.OptionsButton.icon then
-    frame.OptionsButton.icon:SetVertexColor(Theme.GetAccentTone("text"))
+    frame.OptionsButton.icon:SetVertexColor(Theme.GetAccentTone("icon"))
   end
   local collect = frame.Tabs and frame.Tabs.collect
   if collect and ns.CollectTab and type(ns.CollectTab.RepaintViewToggle) == "function" then
