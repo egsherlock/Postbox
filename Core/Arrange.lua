@@ -666,6 +666,25 @@ local LIFT = {
 }
 AR.LIFT = LIFT
 
+-- The headings on a light palette (the Postbox style's Light mode), where a
+-- white wash and a light ring vanish into the paper: a shade of black for
+-- the wash, the plates' own rings (a palette token's name, read at each
+-- paint), the accent's mark tone where the ring is the accent's, a white
+-- card in the hand, and no black keyline round any of them -- the header is
+-- light, and a black line round each heading drew a grid over it.
+-- `key = false`: the card's keyline hidden.
+local LIFT_LIGHT = {
+  head = {
+    rest     = { wash = { 0, 0.03 }, ring = "plateEdge", key = false, drop = 0 },
+    hover    = { wash = { 0, 0.06 }, ring = "plateEdgeHover", key = false, drop = 0 },
+    sel      = { accent = 0.10, key = false, drop = 0 },
+    selHover = { accent = 0.15, key = false, drop = 0 },
+    hand     = { fill = { 1, 0.97 }, accent = 0.10, ringW = 2, key = false, drop = 9, dropA = 0.6 },
+    dim      = { wash = { 0, 0.01 }, ring = "plateEdge", key = false, drop = 0 },
+    dimHover = { wash = { 0, 0.05 }, ring = "plateEdgeHover", key = false, drop = 0 },
+  },
+}
+
 function AR.NewCard(parent, kind, frameType)
   local card = CreateFrame(frameType or "Frame", nil, parent)
   card.kind = LIFT[kind] and kind or "block"
@@ -696,10 +715,12 @@ function AR.NewCard(parent, kind, frameType)
 end
 
 function AR.PaintCard(card, state)
-  local set = LIFT[card.kind] or LIFT.block
+  local T = Th()
+  local light = T.IsLight and T.IsLight() and LIFT_LIGHT[card.kind] or nil
+  local set = light or LIFT[card.kind] or LIFT.block
   local s = set[state] or set.rest
   card.state = state
-  local ar, ag, ab = Th().GetAccent()
+  local ar, ag, ab = T.GetAccent()
   local fill = s.fill
   if fill then
     card.Fill:SetVertexColor(fill[1], fill[1], fill[1], fill[2])
@@ -722,10 +743,22 @@ function AR.PaintCard(card, state)
     AR.PlaceEdges(card.Ring, card, 0, w)
     card.ringW = w
   end
-  if s.ring then
-    AR.TintEdges(card.Ring, s.ring, s.ring, s.ring, 1)
+  local ring = s.ring
+  if type(ring) == "string" then
+    local c = T.Colors[ring]
+    AR.TintEdges(card.Ring, c[1], c[2], c[3], 1)
+  elseif ring then
+    AR.TintEdges(card.Ring, ring, ring, ring, 1)
+  elseif light then
+    local mr, mg, mb = T.GetAccentTone("mark")
+    AR.TintEdges(card.Ring, mr, mg, mb, 1)
   else
     AR.TintEdges(card.Ring, ar, ag, ab, 1)
+  end
+  local keyOff = light and s.key == false or false
+  if (card.keyOff or false) ~= keyOff then
+    AR.ShowEdges(card.Key, not keyOff)
+    card.keyOff = keyOff
   end
   local top = s.top or 0
   if top > 0 then
@@ -1541,8 +1574,10 @@ end
 
 -- Every look a heading has, from its state: the lift's (section 3b), then
 -- its name or glyph -- white while it is pointed at, selected or in the
--- hand, a lighter grey at rest, dimmed while it has no lane -- and the
--- subject's arrow, in the accent while selected.
+-- hand, a lighter grey at rest, dimmed while it has no lane, each the grey
+-- of its rank on a light palette (Theme.Grey: the ink, a dark grey) -- and
+-- the subject's arrow, in the accent while selected (its mark tone on a
+-- light palette).
 function AR.PaintHead(head)
   local T = Th()
   local id = head.colId
@@ -1562,7 +1597,7 @@ function AR.PaintHead(head)
   AR.PaintCard(head, state)
   local lit = hand or sel or hover
   local dim = head.narrow and not lit
-  local grey = dim and 0.45 or (lit and 1 or 0.9)
+  local grey = T.Grey(dim and 0.45 or (lit and 1 or 0.9))
   if head.Text then head.Text:SetTextColor(grey, grey, grey, 1) end
   if head.ChipText then head.ChipText:SetTextColor(grey, grey, grey, 1) end
   local glyph = head.Glyph
@@ -1578,11 +1613,14 @@ function AR.PaintHead(head)
   end
   local arrow = head.Stretch
   if arrow then
-    local r, g, b = 0.6, 0.6, 0.6
-    if hand or sel then
+    local r, g, b
+    if (hand or sel) and T.IsLight() then
+      r, g, b = T.GetAccentTone("mark")
+    elseif hand or sel then
       r, g, b = T.GetAccent()
-    elseif hover then
-      r, g, b = 0.8, 0.8, 0.8
+    else
+      r = T.Grey(hover and 0.8 or 0.6)
+      g, b = r, r
     end
     for k = 1, 3 do arrow[k]:SetVertexColor(r, g, b, 1) end
   end
