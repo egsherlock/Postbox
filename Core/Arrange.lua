@@ -856,6 +856,10 @@ function AR.PaintToggle(button)
     local r, g, b = T.GetAccentTone("base")
     button.Wash:SetVertexColor(r, g, b, C.accentWash[4])
     button.Wash:Show()
+    -- The underline is a mark: on a light palette the accent's mark tone,
+    -- 3:1 on the plate, as a selected tab's is (the accent itself on white
+    -- can fall far short).
+    if T.IsLight and T.IsLight() then r, g, b = T.GetAccentTone("mark") end
     button.Base:SetVertexColor(r, g, b, 1)
     button.Base:Show()
     button.Bevel:SetVertexColor(bevel[1], bevel[2], bevel[3], bevel[4])
