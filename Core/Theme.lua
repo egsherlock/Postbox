@@ -655,11 +655,10 @@ end
 --   muted   the quiet member of a pair: a near-neutral bright grey on a dark
 --           palette, a near-neutral dark grey on a light one.
 --   icon    the accent on an icon in the chrome, the options cog on the
---           title strip: the text tone on a dark palette; on a light one,
---           where the text tone is the ink, the mark tone held at 3:1 on the
---           strip too, at its darkest and its lightest as the opacity in
---           force shows it -- the strip is darker than any plate the mark
---           tone was made for.
+--           title strip: the text tone on a dark palette, the mark tone on a
+--           light one (where the text tone is the ink), either held at 3:1 on
+--           the strip at its darkest and its lightest as the opacity in force
+--           shows it (HoldOnStrip): a control stays legible at any opacity.
 -- `grey`: whether the accent is a grey (IsGrey).
 local tones = { r = -1, g = -1, b = -1, gen = -1, grey = false,
   text = { 0, 0, 0 }, mark = { 0, 0, 0 }, bright = { 0, 0, 0 }, muted = { 0, 0, 0 }, icon = { 0, 0, 0 } }
@@ -714,6 +713,71 @@ local function MarkGround(gr, gg, gb)
   return mr, mgg, mb
 end
 
+-- r, g, b moved in OKLab lightness, its hue kept (AtLightness, as the
+-- guard moves a colour), the least that brings its luminance to at least
+-- `y` (`up`) or at most `y`.
+local function ToLuminance(r, g, b, y, up)
+  local L0, A, B = ToLab(r, g, b)
+  local lo, hi = 0, 1
+  if up then lo = L0 else hi = L0 end
+  for _ = 1, 24 do
+    local mid = (lo + hi) / 2
+    local lum = Luminance(AtLightness(A, B, mid))
+    if up then
+      if lum >= y then hi = mid else lo = mid end
+    elseif lum <= y then
+      lo = mid
+    else
+      hi = mid
+    end
+  end
+  return AtLightness(A, B, up and hi or lo)
+end
+
+-- r, g, b held at 3:1 on the title strip (the ground "strip") at its
+-- darkest and its lightest as the opacity in force shows it: returned
+-- untouched where it already reads so at both ends, else moved the least
+-- that makes it. On a light palette the icon is darker than both ends and
+-- is darkened as far as the darker end needs (Legible). On a dark one the
+-- strip's ends part as the opacity falls -- near black over a dark scene,
+-- a grey or the scene itself over a bright one -- and an icon can read at
+-- both by being lighter than both, between them or darker than both: it
+-- takes the nearest of those that reads 3:1 at both ends, and where none
+-- can at this opacity, the luminance between them that reads best at both.
+-- Where a style lays no strip ground, as it is.
+local function HoldOnStrip(r, g, b)
+  local GR = Theme._Grounds
+  local t = GR and GR.on and GR.Range and GR.Range("strip")
+  if not t then return r, g, b end
+  if lightPalette then
+    r, g, b = Legible(r, g, b, t[1], t[2], t[3], 3.0, false)
+    return Legible(r, g, b, t[4], t[5], t[6], 3.0, false)
+  end
+  local need = 3.0
+  if Contrast(r, g, b, t[1], t[2], t[3]) >= need and Contrast(r, g, b, t[4], t[5], t[6]) >= need then
+    return r, g, b
+  end
+  local Y = Luminance(r, g, b)
+  local Yd, Yl = Luminance(t[1], t[2], t[3]), Luminance(t[4], t[5], t[6])
+  -- The luminance bands that read `need` at both ends, and how far each is.
+  local above = need * (Yl + 0.05) - 0.05
+  local midLo, midHi = need * (Yd + 0.05) - 0.05, (Yl + 0.05) / need - 0.05
+  local below = (Yd + 0.05) / need - 0.05
+  local dist, target, up
+  if above <= 1 and (not dist or above - Y < dist) then dist, target, up = max(0, above - Y), above, true end
+  if midLo <= midHi then
+    local d, ty, u = 0, Y, true
+    if Y < midLo then d, ty, u = midLo - Y, midLo, true elseif Y > midHi then d, ty, u = Y - midHi, midHi, false end
+    if not dist or d < dist then dist, target, up = d, ty, u end
+  end
+  if below >= 0 and (not dist or Y - below < dist) then dist, target, up = max(0, Y - below), below, false end
+  if not target then
+    target = math.sqrt((Yd + 0.05) * (Yl + 0.05)) - 0.05
+    up = target > Y
+  end
+  return ToLuminance(r, g, b, target, up)
+end
+
 local function FillTones(r, g, b)
   local plate, wash = C.plateSelected, C.accentWash[4] or 0.14
   local gr = plate[1] + (r - plate[1]) * wash
@@ -733,15 +797,7 @@ local function FillTones(r, g, b)
     else
       StoreTone(tones.mark, Legible(r, g, b, mr, mgg, mb, 3.0))
     end
-    -- The cog: the mark, darkened where the strip needs it (both ends).
-    local ir, ig, ib = tones.mark[1], tones.mark[2], tones.mark[3]
-    local GR = Theme._Grounds
-    local strip = GR and GR.on and GR.Range and GR.Range("strip")
-    if strip then
-      ir, ig, ib = Legible(ir, ig, ib, strip[1], strip[2], strip[3], 3.0, false)
-      ir, ig, ib = Legible(ir, ig, ib, strip[4], strip[5], strip[6], 3.0, false)
-    end
-    StoreTone(tones.icon, ir, ig, ib)
+    StoreTone(tones.icon, HoldOnStrip(tones.mark[1], tones.mark[2], tones.mark[3]))
     local qr, qg, qb = ToneMuted(r, g, b)
     local k = 0.36 / 0.86
     StoreTone(tones.muted, qr * k, qg * k, qb * k)
@@ -752,7 +808,7 @@ local function FillTones(r, g, b)
       tr, tg, tb = Legible(tr, tg, tb, sheet[1], sheet[2], sheet[3], 4.5)
     end
     StoreTone(tones.text, tr, tg, tb)
-    StoreTone(tones.icon, tr, tg, tb)
+    StoreTone(tones.icon, HoldOnStrip(tr, tg, tb))
     StoreTone(tones.mark, Legible(r, g, b, mr, mgg, mb, 3.0))
     StoreTone(tones.bright, ToneBright(r, g, b))
     StoreTone(tones.muted, ToneMuted(r, g, b))
