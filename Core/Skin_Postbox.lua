@@ -964,9 +964,10 @@ Skin._ResolveLook = ResolveLook
 -- faces have no Cyrillic (the game's Russian client has Cyrillic cuts of
 -- them), and none of them has Chinese or Korean.
 --
--- Text outline: Shadow (a drop shadow, no outline; a light one under dark ink
--- in Light mode), Outline (the client's thin outline, no shadow; none on a
--- light ground) or None.
+-- Text outline: Shadow (a drop shadow, no outline), Outline (the client's
+-- thin outline, no shadow) or None, in Dark mode. Light mode's text is always
+-- drawn clean, with neither (Theme DressCopy): the setting is Dark's, kept
+-- as it was through a turn in Light.
 -------------------------------------------------------------
 
 local SCRIPT
@@ -1069,8 +1070,8 @@ end
 -- shadow and no outline, whatever a font pack or a host UI set on the game's
 -- own fonts (one that outlines every game font would otherwise draw its
 -- outline under "Shadow"); Outline the client's thin outline, no shadow;
--- None neither. On a light ground the Theme drops the outline and lays the
--- shadow in its light palette's colour (the halo follows the ground).
+-- None neither. On a light ground the Theme draws the text clean, with
+-- neither (the halo follows the ground).
 function Skin.GetFontFace()
   local outline = Skin.GetOutline()
   local flags, shadow = "", true
@@ -1092,8 +1093,8 @@ local function DressTitle(fs)
   local path = FontPath(Skin.GetFont()) or base.path
   local outline = Skin.GetOutline()
   local light = Skin.GetMode() == "light"
-  -- As the copies (Skin.GetFontFace): Shadow a shadow and no outline, an
-  -- outline only on a dark ground.
+  -- As the copies (Skin.GetFontFace): Shadow a shadow and no outline,
+  -- Outline an outline; on a light ground, neither.
   local flags = (outline == "outline" and not light) and "OUTLINE" or ""
   local size = P.titleSize * Skin.GetTextScale()
   -- Set only where it moved: a change of the accent or the background
@@ -1104,12 +1105,8 @@ local function DressTitle(fs)
     pcall(fs.SetFont, fs, path, size, flags)
   end
   if fs.SetShadowOffset and fs.SetShadowColor then
-    if outline ~= "shadow" then
+    if outline ~= "shadow" or light then
       fs:SetShadowOffset(0, 0)
-    elseif light then
-      local sh = ns.Theme and ns.Theme.Colors and ns.Theme.Colors.textShadow
-      fs:SetShadowOffset(1, -1)
-      if sh then fs:SetShadowColor(sh[1], sh[2], sh[3], sh[4]) end
     elseif base.sx and base.sx ~= 0 and (base.sa or 0) > 0 then
       -- The title's own drop shadow, where it has one that shows.
       fs:SetShadowOffset(base.sx, base.sy)

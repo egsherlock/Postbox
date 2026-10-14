@@ -959,7 +959,8 @@ Theme.PALETTE_LIGHT = {
   inset             = { 1.00, 1.00, 1.00, 0.55 },
   insetEdge         = { 0.00, 0.00, 0.00, 0.16 },
   chromeInk         = { 0.00, 0.00, 0.00, 1.25 },
-  textShadow        = { 1.00, 1.00, 1.00, 0.50 },
+  -- No textShadow: dark ink on paper is drawn clean, with no shadow or
+  -- outline under it (DressCopy).
   sheet             = Hex4("ebebe8"),
 }
 
@@ -1775,8 +1776,10 @@ end
 -- audit's C2): an outline is always black, a halo round light text on a dark
 -- ground and a clog in every stroke of dark text on a light one, so a light
 -- copy draws none, whatever the host set on the game's fonts (an outlining
--- font pack, ElvUI, EllesmereUI); its drop shadow, where one is asked for,
--- is the light palette's own pale one.
+-- font pack, ElvUI, EllesmereUI); and no drop shadow, whatever the face asks
+-- or the object carries: dark ink on paper is drawn clean, a pale shadow
+-- under it only thickening its strokes. The Postbox style's Text outline is
+-- therefore Dark mode's alone.
 local function DressCopy(copy, base, path, flags, shadow, scale, light)
   if type(copy.CopyFontObject) == "function" then pcall(copy.CopyFontObject, copy, base) end
   -- Its colour of its own, where it takes one (CopyInk).
@@ -1786,9 +1789,9 @@ local function DressCopy(copy, base, path, flags, shadow, scale, light)
   end
   local basePath, size, baseFlags = base:GetFont()
   if type(size) ~= "number" or size <= 0 then size = 12 end
-  if shadow ~= nil and type(copy.SetShadowColor) == "function" then
-    if shadow then
-      local sh = light and Theme.PALETTE_LIGHT.textShadow or BASE.textShadow
+  if (shadow ~= nil or light) and type(copy.SetShadowColor) == "function" then
+    if shadow and not light then
+      local sh = BASE.textShadow
       copy:SetShadowColor(sh[1], sh[2], sh[3], sh[4])
       copy:SetShadowOffset(1, -1)
     else

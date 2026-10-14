@@ -3629,17 +3629,20 @@ do
       get = function() return math.floor(Skin.GetTextScale() * 100 + 0.5) end,
       set = function(id) Skin.SetTextScale((tonumber(id) or 100) / 100) end,
     })
-    Rows.Dropdown(col, {
+    S.pbOutlineCell = Rows.Dropdown(col, {
       title = L["OPT_OUTLINE_TITLE"], text = L["OPT_OUTLINE_DESC"], items = Items(Skin.GetOutlineChoices()),
       get = function() return Skin.GetOutline() end,
       set = function(id) Skin.SetOutline(id) Ctx.Repaint() end,
     })
+    S.pbOutlineOn = true
   end
 end
 
 -- Under the Postbox style: the background colour's list is the Mode's, and
 -- shows the Mode's own pick (a flip of the Mode changes the list live); the
--- opacity row shows the value in force (Light keeps 85% or more).
+-- opacity row shows the value in force (Light keeps 85% or more); and Text
+-- outline is greyed while the Mode is Light, whose text is always drawn
+-- clean, showing Dark's choice, which it keeps.
 function State.Postbox()
   local cell = S.pbSurfaceCell
   local skin = GetSkin()
@@ -3651,6 +3654,12 @@ function State.Postbox()
   end
   Rows.PaintDropdown(cell)
   if S.pbOpacityCell then Rows.PaintDropdown(S.pbOpacityCell) end
+  local outline = S.pbOutlineCell
+  local on = skin.GetMode() ~= "light"
+  if outline and S.pbOutlineOn ~= on then
+    S.pbOutlineOn = on
+    Rows.SetEnabled(outline, on)
+  end
 end
 
 -- A creative window style's rows (Core/Skin_Creative.lua): its colour choice
