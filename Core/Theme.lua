@@ -3585,11 +3585,15 @@ local function PaintPlate(plate)
   end
 
   if plate.Text then
-    -- On its own fill: a window tab's (tokens of its own) or a plate's.
+    -- On its own fill: a window tab's (tokens of its own) or a plate's. A
+    -- tile with nothing behind it keeps its dimmed caption through every
+    -- repaint (Theme.DimEmptyTile's rule).
     local ground
     if plate.__pbTokens then ground = selected and "tabSelected" or "tab"
     else ground = selected and "plateSelected" or "plate" end
-    Theme.SetColor(plate.Text, selected and "accentBright" or T.captionToken or "plateCaption", ground)
+    local token = T.captionToken or "plateCaption"
+    if selected then token = "accentBright" elseif Theme.EmptyTile(plate) then token = "textDisabled" end
+    Theme.SetColor(plate.Text, token, ground)
   end
 end
 
@@ -4025,10 +4029,17 @@ end
 -- The empty-category rule both tile bars share, the Send tab's and Manage
 -- Recipients': a tile whose category has nothing behind it has its caption
 -- dimmed, unless it is the one whose list is open. The Send tab's star is
--- exempt (_isStar): its empty state is its own artwork, a hollow outline. Run
--- after every repaint the plate makes, hovers included.
+-- exempt (_isStar): its empty state is its own artwork, a hollow outline.
+-- The plate's own paint (PaintPlate) asks this, so the dim survives every
+-- repaint -- a hover, a selection, the sweep after a change of look -- in
+-- every look; the bars still call DimEmptyTile after theirs, which repaints
+-- nothing new.
+function Theme.EmptyTile(tile)
+  return (tile and tile._empty and not tile._active and not tile._isStar) and true or false
+end
+
 function Theme.DimEmptyTile(tile)
-  if tile and tile._empty and not tile._active and not tile._isStar then Theme.DimCaption(tile) end
+  if Theme.EmptyTile(tile) then Theme.DimCaption(tile) end
 end
 
 -- The count beside a tile's glyph. nil means "show no number at all", which is
