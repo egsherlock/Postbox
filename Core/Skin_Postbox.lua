@@ -1105,7 +1105,11 @@ local function DressTitle(fs)
     pcall(fs.SetFont, fs, path, size, flags)
   end
   if fs.SetShadowOffset and fs.SetShadowColor then
-    if outline ~= "shadow" or light then
+    if light then
+      -- Clean, as the copies are on a light ground: no shadow at all.
+      fs:SetShadowOffset(0, 0)
+      fs:SetShadowColor(0, 0, 0, 0)
+    elseif outline ~= "shadow" then
       fs:SetShadowOffset(0, 0)
     elseif base.sx and base.sx ~= 0 and (base.sa or 0) > 0 then
       -- The title's own drop shadow, where it has one that shows.
