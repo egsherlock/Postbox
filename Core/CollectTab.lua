@@ -880,7 +880,12 @@ end
 
 -- row, fs, tailText[, parent] -> the row's tail string, made on `parent`
 -- the first time, in the subject's own look (whatever a skin or the row's
--- state gave it) and saying `tailText`; and its width.
+-- state gave it) and saying `tailText`; and its width. It wears the
+-- subject's font object, so its face, size, outline and shadow are the
+-- name's in every look and Text outline and follow the object when it is
+-- dressed again: a shadow only renders when a font object carries it, and
+-- one set on the string itself may not. Only a subject that wears no object
+-- as it is (a font of its own) is copied, as it was.
 function RV.Tail(row, fs, tailText, parent)
   local tail = row.QualityTail
   if not tail then
@@ -891,16 +896,29 @@ function RV.Tail(row, fs, tailText, parent)
     tail:Hide()
     row.QualityTail = tail
   end
+  local object = fs.GetFontObject and fs:GetFontObject()
   local path, size, flags = fs:GetFont()
-  if path and (tail.__pbPath ~= path or tail.__pbSize ~= size or tail.__pbFlags ~= flags) then
-    tail:SetFont(path, size, flags or "")
-    tail.__pbPath, tail.__pbSize, tail.__pbFlags = path, size, flags
+  if object then
+    local p2, s2, f2 = object:GetFont()
+    if p2 ~= path or s2 ~= size or (f2 or "") ~= (flags or "") then object = nil end
+  end
+  if object then
+    if tail.__pbObject ~= object or tail:GetFontObject() ~= object then
+      tail:SetFontObject(object)
+      tail.__pbObject, tail.__pbPath = object, nil
+    end
+  else
+    tail.__pbObject = nil
+    if path and (tail.__pbPath ~= path or tail.__pbSize ~= size or tail.__pbFlags ~= flags) then
+      tail:SetFont(path, size, flags or "")
+      tail.__pbPath, tail.__pbSize, tail.__pbFlags = path, size, flags
+    end
+    if fs.GetShadowOffset and tail.SetShadowOffset then
+      tail:SetShadowOffset(fs:GetShadowOffset())
+      tail:SetShadowColor(fs:GetShadowColor())
+    end
   end
   tail:SetTextColor(fs:GetTextColor())
-  if fs.GetShadowOffset and tail.SetShadowOffset then
-    tail:SetShadowOffset(fs:GetShadowOffset())
-    tail:SetShadowColor(fs:GetShadowColor())
-  end
   if tail:GetText() ~= tailText then tail:SetText(tailText) end
   return tail, Th().TextWidth(tail)
 end
