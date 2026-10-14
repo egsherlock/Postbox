@@ -535,6 +535,7 @@ end
 function AR.PaintGhost(ghost)
   local r, g, b = Th().GetAccent()
   ghost:SetBackdropColor(r, g, b, 0.12)
+  r, g, b = AR.MarkRGB()
   ghost:SetBackdropBorderColor(r, g, b, 0.9)
 end
 
@@ -666,14 +667,47 @@ local LIFT = {
 }
 AR.LIFT = LIFT
 
--- The headings on a light palette (the Postbox style's Light mode), where a
--- white wash and a light ring vanish into the paper: a shade of black for
--- the wash, the plates' own rings (a palette token's name, read at each
--- paint), the accent's mark tone where the ring is the accent's, a white
--- card in the hand, and no black keyline round any of them -- the header is
--- light, and a black line round each heading drew a grid over it.
--- `key = false`: the card's keyline hidden.
+-- Every card on a light palette (the Postbox style's Light mode), where a
+-- white wash, a lit top edge and a near-black fill are made for the dark:
+-- a shade of black for the wash, the plates' own fills and rings (a palette
+-- token's name, read at each paint), the accent's mark tone where the ring
+-- is the accent's, a white card in the hand, and no black keyline round any
+-- of them -- on paper a black line round each card drew a grid over the
+-- window. `key = false`: the card's keyline hidden. The shadows are the
+-- dark's: a card is lifted off paper as off glass.
 local LIFT_LIGHT = {
+  block = {
+    rest     = { wash = { 0, 0.05 }, ring = "plateEdge", key = false, drop = 4, dropA = 0.45 },
+    hover    = { wash = { 0, 0.08 }, ring = "plateEdgeHover", key = false, drop = 6, dropA = 0.55 },
+    sel      = { accent = 0.12, key = false, drop = 4, dropA = 0.45 },
+    selHover = { accent = 0.18, key = false, drop = 6, dropA = 0.55 },
+    hand     = { accent = 0.16, ringW = 2, key = false, drop = 10, dropA = 0.6 },
+  },
+  small = {
+    rest           = { wash = { 0, 0.04 }, ring = "plateEdge", key = false, drop = 2, dropA = 0.45 },
+    hover          = { wash = { 0, 0.07 }, ring = "plateEdgeHover", key = false, drop = 3, dropA = 0.55 },
+    hand           = { accent = 0.16, ringW = 2, key = false, drop = 8, dropA = 0.6 },
+    hidden         = { wash = { 0, 0.10 }, ring = "plateEdge", key = false, drop = 2, dropA = 0.35 },
+    hiddenHover    = { wash = { 0, 0.06 }, ring = "plateEdgeHover", key = false, drop = 3, dropA = 0.45 },
+    sel            = { accent = 0.12, key = false, drop = 2, dropA = 0.45 },
+    selHover       = { accent = 0.18, key = false, drop = 3, dropA = 0.55 },
+    hiddenSel      = { wash = { 0, 0.10 }, key = false, drop = 2, dropA = 0.35 },
+    hiddenSelHover = { wash = { 0, 0.06 }, key = false, drop = 3, dropA = 0.45 },
+  },
+  tray = {
+    rest     = { fill = "plateIdle", ring = "plateEdge", key = false, drop = 4, dropA = 0.42 },
+    hover    = { fill = "plateHover", ring = "plateEdgeHover", key = false, drop = 6, dropA = 0.5 },
+    sel      = { fill = "plateIdle", accent = 0.08, key = false, drop = 4, dropA = 0.42 },
+    selHover = { fill = "plateHover", accent = 0.12, key = false, drop = 6, dropA = 0.5 },
+    hand     = { fill = { 1, 0.97 }, accent = 0.14, ringW = 2, key = false, drop = 10, dropA = 0.6 },
+  },
+  fold = {
+    rest     = { fill = "plateIdle", ring = "plateEdge", key = false, drop = 2, dropA = 0.35 },
+    hover    = { fill = "plateHover", ring = "plateEdgeHover", key = false, drop = 3, dropA = 0.45 },
+    sel      = { fill = "plateIdle", accent = 0.12, key = false, drop = 2, dropA = 0.35 },
+    selHover = { fill = "plateHover", accent = 0.16, key = false, drop = 3, dropA = 0.45 },
+    hand     = { fill = { 1, 0.97 }, accent = 0.14, ringW = 2, key = false, drop = 10, dropA = 0.6 },
+  },
   head = {
     rest     = { wash = { 0, 0.03 }, ring = "plateEdge", key = false, drop = 0 },
     hover    = { wash = { 0, 0.06 }, ring = "plateEdgeHover", key = false, drop = 0 },
@@ -683,7 +717,48 @@ local LIFT_LIGHT = {
     dim      = { wash = { 0, 0.01 }, ring = "plateEdge", key = false, drop = 0 },
     dimHover = { wash = { 0, 0.05 }, ring = "plateEdgeHover", key = false, drop = 0 },
   },
+  lane = {
+    hand     = { fill = { 1, 0.97 }, accent = 0.10, ringW = 2, key = false, drop = 10, dropA = 0.6 },
+  },
 }
+
+-- Whether the palette is light (the Postbox style's Light mode): the mode's
+-- own parts then take the plates' colours, the chrome's ink and the
+-- accent's mark tone; on a dark palette every value is the one written here.
+function AR.Light()
+  local T = Th()
+  return (T.IsLight and T.IsLight()) and true or false
+end
+
+-- The accent on one of the mode's marks -- a ring, an arrow, a tick, a
+-- chosen square, an underline: the accent itself on a dark palette, its
+-- mark tone (3:1 on the plates) on a light one, where the accent itself may
+-- not read at all.
+function AR.MarkRGB()
+  local T = Th()
+  if T.IsLight and T.IsLight() then return T.GetAccentTone("mark") end
+  return T.GetAccent()
+end
+
+-- A white made for the dark at alpha `a` (a wash, a hairline, a hatch), as
+-- the palette's chrome ink: exactly white at `a` on a dark palette, black on
+-- a light one (Theme's chromeInk). Not Theme.TintChrome, which keeps the
+-- texture to paint again with the palette: these textures take other
+-- colours too (the accent), and are painted again by their own paints.
+function AR.Chrome(tex, a)
+  local ink = Th().Colors.chromeInk
+  tex:SetVertexColor(ink[1], ink[2], ink[3], math.min(1, a * (ink[4] or 1)))
+end
+
+-- A part's black keyline, `off` on a light palette: hidden or shown again
+-- only where that changes, so a dark palette never touches it.
+function AR.KeyOff(owner, edges, off)
+  off = off and true or false
+  if (owner.keyOff or false) ~= off then
+    AR.ShowEdges(edges, not off)
+    owner.keyOff = off
+  end
+end
 
 function AR.NewCard(parent, kind, frameType)
   local card = CreateFrame(frameType or "Frame", nil, parent)
@@ -722,7 +797,11 @@ function AR.PaintCard(card, state)
   card.state = state
   local ar, ag, ab = T.GetAccent()
   local fill = s.fill
-  if fill then
+  if type(fill) == "string" then
+    local c = T.Colors[fill]
+    card.Fill:SetVertexColor(c[1], c[2], c[3], c[4] or 1)
+    card.Fill:Show()
+  elseif fill then
     card.Fill:SetVertexColor(fill[1], fill[1], fill[1], fill[2])
     card.Fill:Show()
   else
@@ -749,17 +828,11 @@ function AR.PaintCard(card, state)
     AR.TintEdges(card.Ring, c[1], c[2], c[3], 1)
   elseif ring then
     AR.TintEdges(card.Ring, ring, ring, ring, 1)
-  elseif light then
-    local mr, mg, mb = T.GetAccentTone("mark")
-    AR.TintEdges(card.Ring, mr, mg, mb, 1)
   else
-    AR.TintEdges(card.Ring, ar, ag, ab, 1)
+    local mr, mg, mb = AR.MarkRGB()
+    AR.TintEdges(card.Ring, mr, mg, mb, 1)
   end
-  local keyOff = light and s.key == false or false
-  if (card.keyOff or false) ~= keyOff then
-    AR.ShowEdges(card.Key, not keyOff)
-    card.keyOff = keyOff
-  end
+  AR.KeyOff(card, card.Key, light and s.key == false)
   local top = s.top or 0
   if top > 0 then
     card.Top:ClearAllPoints()
@@ -837,12 +910,14 @@ end
 -- edge and the accent's underline, the check and Done in the accent's
 -- selected-caption tone, in a black keyline that holds it over a bright
 -- scene. Pointed at while lit, the plate's hover wash lifts it, as it lifts
--- a selected tab.
+-- a selected tab. On a light palette: no black keyline, the plates' hover
+-- ring when pointed at, and the underline in the accent's mark tone.
 function AR.PaintToggle(button)
   if not button then return end
   local T = Th()
   local lit = AR.host ~= nil and AR.host.toggle == button
   local hover = button.hover and true or false
+  local light = AR.Light()
   local mark, check, label = button.Mark, button.Check, button.Label
   if lit then
     local C = T.Colors
@@ -852,14 +927,14 @@ function AR.PaintToggle(button)
     AR.TintEdges(button.Ring, ring[1], ring[2], ring[3], ring[4])
     AR.ShowEdges(button.Ring, true)
     AR.TintEdges(button.Key, 0, 0, 0, 1)
-    AR.ShowEdges(button.Key, true)
+    AR.ShowEdges(button.Key, not light)
     local r, g, b = T.GetAccentTone("base")
     button.Wash:SetVertexColor(r, g, b, C.accentWash[4])
     button.Wash:Show()
     -- The underline is a mark: on a light palette the accent's mark tone,
     -- 3:1 on the plate, as a selected tab's is (the accent itself on white
     -- can fall far short).
-    if T.IsLight and T.IsLight() then r, g, b = T.GetAccentTone("mark") end
+    r, g, b = AR.MarkRGB()
     button.Base:SetVertexColor(r, g, b, 1)
     button.Base:Show()
     button.Bevel:SetVertexColor(bevel[1], bevel[2], bevel[3], bevel[4])
@@ -878,12 +953,17 @@ function AR.PaintToggle(button)
     return
   end
   button:SetWidth(KEY_SIZE)
-  Th().TintChrome(button.Fill, 0.07)
+  AR.Chrome(button.Fill, 0.07)
   button.Fill:SetShown(hover)
-  AR.TintEdges(button.Ring, 0.365, 0.365, 0.365, 1)
+  if light then
+    local ring = T.Colors.plateEdgeHover
+    AR.TintEdges(button.Ring, ring[1], ring[2], ring[3], 1)
+  else
+    AR.TintEdges(button.Ring, 0.365, 0.365, 0.365, 1)
+  end
   AR.ShowEdges(button.Ring, hover)
   AR.TintEdges(button.Key, 0, 0, 0, 0.8)
-  AR.ShowEdges(button.Key, hover)
+  AR.ShowEdges(button.Key, hover and not light)
   button.Wash:Hide()
   button.Base:Hide()
   button.Bevel:Hide()
@@ -1618,10 +1698,8 @@ function AR.PaintHead(head)
   local arrow = head.Stretch
   if arrow then
     local r, g, b
-    if (hand or sel) and T.IsLight() then
-      r, g, b = T.GetAccentTone("mark")
-    elseif hand or sel then
-      r, g, b = T.GetAccent()
+    if hand or sel then
+      r, g, b = AR.MarkRGB()
     else
       r = T.Grey(hover and 0.8 or 0.6)
       g, b = r, r
@@ -1828,15 +1906,45 @@ end
 
 -- A hidden column's peg: a dark plate with the crossed eye, lighter when
 -- pointed at, there or where a row shows the column anyway (section 7a),
--- and in the hand.
+-- and in the hand. On a light palette the plates' own fill and ring, no
+-- black keyline, and the eye in its rank's grey (Theme.Grey).
 local function PaintPeg(peg)
   local hover = peg.hover or AR.rowHover == peg.colId or (AR.drag ~= nil and AR.drag.id == peg.colId)
-  local fill = hover and 0.12 or 0.063
-  peg.Fill:SetVertexColor(fill, fill, fill, 0.95)
-  local ring = hover and 0.62 or 0.353
-  AR.TintEdges(peg.Ring, ring, ring, ring, 1)
-  local eye = hover and 1 or 0.6
+  local light = AR.Light()
+  if light then
+    local C = Th().Colors
+    local f, r = C[hover and "plateHover" or "plateIdle"], C[hover and "plateEdgeHover" or "plateEdge"]
+    peg.Fill:SetVertexColor(f[1], f[2], f[3], f[4] or 1)
+    AR.TintEdges(peg.Ring, r[1], r[2], r[3], 1)
+  else
+    local fill = hover and 0.12 or 0.063
+    peg.Fill:SetVertexColor(fill, fill, fill, 0.95)
+    local ring = hover and 0.62 or 0.353
+    AR.TintEdges(peg.Ring, ring, ring, ring, 1)
+  end
+  AR.KeyOff(peg, peg.Key, light)
+  local eye = Th().Grey(hover and 1 or 0.6)
   if peg.Eye then peg.Eye:SetVertexColor(eye, eye, eye, 1) end
+end
+
+-- A change of look while the mode is open -- the Mode, the accent, a host
+-- UI's colours (Theme.RepaintAccentIcons, after the palette's own repaint):
+-- the mode's own parts painted again from their state, as entering it
+-- afresh would paint them: the key, the headings and pegs, the cards, the
+-- rows' marks and the card beside the window. Nothing while it is closed.
+function AR.RepaintLook()
+  local host = AR.host
+  if not host then return end
+  if host.toggle then AR.PaintToggle(host.toggle) end
+  local strip = host.strip
+  if strip then
+    for _, head in pairs(strip.heads) do AR.PaintHead(head) end
+    for _, peg in pairs(strip.pegs) do PaintPeg(peg) end
+  end
+  if host.PaintBlocks then host.PaintBlocks() end
+  AR.RowsChanged(false)
+  local insp = AR._insp
+  if insp and insp:IsShown() then AR.Inspect() end
 end
 
 -- Pointed at, a peg lights and takes the move cross, as a heading does: it
@@ -3733,7 +3841,7 @@ end
 -------------------------------------------------------------
 
 local MARK = {
-  -- look -> { fill grey or "accent", fill alpha, ring grey or "accent", ring alpha }
+  -- look -> { fill 1 (the chrome's ink) or "accent", fill alpha, ring 1 or "accent", ring alpha }
   sel        = { "accent", 0.11, "accent", 0.45 },
   hover      = { 1, 0.10, 1, 0.45 },
   lent       = { 1, 0, 1, 0.18 },
@@ -3812,6 +3920,9 @@ function AR.NewMarks(row)
   return m
 end
 
+-- The box's fill is the accent as a wash; its ring the accent as a mark
+-- (AR.MarkRGB); a white (MARK's 1) the chrome's ink (AR.Chrome), black on
+-- a light palette.
 local function MarkBox(row, m, x, w, look, top, foot)
   local spec = MARK[look] or MARK.sel
   local ar, ag, ab = Th().GetAccent()
@@ -3819,12 +3930,13 @@ local function MarkBox(row, m, x, w, look, top, foot)
   if spec[1] == "accent" then
     m.box:SetVertexColor(ar, ag, ab, spec[2])
   else
-    m.box:SetVertexColor(spec[1], spec[1], spec[1], spec[2])
+    AR.Chrome(m.box, spec[2])
   end
   if spec[3] == "accent" then
-    AR.TintEdges(m.ring, ar, ag, ab, spec[4])
+    local mr, mg, mb = AR.MarkRGB()
+    AR.TintEdges(m.ring, mr, mg, mb, spec[4])
   else
-    AR.TintEdges(m.ring, spec[3], spec[3], spec[3], spec[4])
+    for i = 1, 4 do AR.Chrome(m.ring[i], spec[4]) end
   end
   AR.ShowEdges(m.ring, true)
 end
@@ -3844,19 +3956,26 @@ local function MarkHatch(row, m, x, w, accent, edged)
     m.tileW, m.tileH = w, h
     hatch:SetTexCoord(0, w / 8, 0, h / 8)
   end
-  local r, g, b, a = 1, 1, 1, edged and 0.3 or 0.2
+  -- In the accent as a mark (AR.MarkRGB), or the chrome's ink (AR.Chrome).
+  local a = edged and 0.3 or 0.2
+  local r, g, b
   if accent then
-    r, g, b = Th().GetAccent()
+    r, g, b = AR.MarkRGB()
     a = 0.4
   end
   if m.flatHatch then a = a * 0.3 end
-  hatch:SetVertexColor(r, g, b, a)
+  if r then hatch:SetVertexColor(r, g, b, a) else AR.Chrome(hatch, a) end
   m.hatchTop:SetShown(edged and true or false)
   m.hatchFoot:SetShown(edged and true or false)
   if edged then
     local la = accent and 0.45 or 0.35
-    m.hatchTop:SetVertexColor(r, g, b, la)
-    m.hatchFoot:SetVertexColor(r, g, b, la)
+    if r then
+      m.hatchTop:SetVertexColor(r, g, b, la)
+      m.hatchFoot:SetVertexColor(r, g, b, la)
+    else
+      AR.Chrome(m.hatchTop, la)
+      AR.Chrome(m.hatchFoot, la)
+    end
   end
 end
 
@@ -3867,15 +3986,17 @@ local function HideHatch(m)
 end
 
 -- The tick where the subject stops: two units wide, centred on `x`, in a
--- black keyline.
+-- black keyline -- on a light palette a dark tick with none.
 local function MarkTick(row, m, x, accent)
   Span(m, TICK_KEY, m.tickKey, row, x - 2, 4, 2)
   Span(m, TICK, m.tick, row, x - 1, 2, 3)
+  if AR.Light() then m.tickKey:Hide() end
   if accent then
-    local r, g, b = Th().GetAccent()
+    local r, g, b = AR.MarkRGB()
     m.tick:SetVertexColor(r, g, b, 1)
   else
-    m.tick:SetVertexColor(0.85, 0.85, 0.85, 1)
+    local v = Th().Grey(0.85)
+    m.tick:SetVertexColor(v, v, v, 1)
   end
 end
 
@@ -4317,6 +4438,15 @@ local PLATE = {
   -- A segment: at rest, pointed at, and chosen (a lighter fill and ring,
   -- and the accent's underline).
   seg    = { fill = 0.082, ring = 0.243, hover = 0.62, on = 0.314, onRing = 0.424 },
+  -- On a light palette, by the plate's state, the house plates' fill and
+  -- ring (the palette's tokens) and no black keyline: at rest, pointed at,
+  -- on (shown, chosen, lit) and off (cannot be used; its words grey).
+  LIGHT = {
+    rest  = { "plateIdle", "plateEdge" },
+    hover = { "plateHover", "plateEdgeHover" },
+    on    = { "plateSelected", "plateEdgeSelected" },
+    off   = { "plateIdle", "plateEdge" },
+  },
 }
 
 -- A text's width on one line, or its height wrapped at the string's own
@@ -4668,12 +4798,23 @@ local function InspPlate(parent, frameType, keyline)
   return plate
 end
 
--- The greys below are set for a dark ground; Theme.Grey gives each its twin
--- of the same rank on a light palette (the Postbox style's Light mode), and
--- is the grey itself on every other.
-local function TintPlate(plate, fill, ring)
-  local G = Th().Grey
-  fill, ring = G(fill), G(ring)
+-- The greys below are set for a dark ground. On a light palette (the
+-- Postbox style's Light mode) a plate is the house plate of its `state`
+-- instead -- "rest" (the default), "hover", "on" or "off" (PLATE.LIGHT) --
+-- without its black keyline: a mid-grey plate made by ranking the dark
+-- fills put the captions on it under 4:1. The texts on it keep their
+-- greys' ranks (Theme.Grey, through Grey below).
+local function TintPlate(plate, fill, ring, state)
+  local T = Th()
+  local light = AR.Light()
+  if plate.Key then AR.KeyOff(plate, plate.Key, light) end
+  if light then
+    local s = PLATE.LIGHT[state or "rest"] or PLATE.LIGHT.rest
+    local f, r = T.Colors[s[1]], T.Colors[s[2]]
+    plate.Fill:SetVertexColor(f[1], f[2], f[3], f[4] or 1)
+    AR.TintEdges(plate.Ring, r[1], r[2], r[3], 1)
+    return
+  end
   plate.Fill:SetVertexColor(fill, fill, fill, 0.95)
   AR.TintEdges(plate.Ring, ring, ring, ring, 1)
 end
@@ -4688,7 +4829,8 @@ end
 local function PaintSwitch(sw)
   local spec = PLATE.switch
   local on, hover = sw.on, sw.hover
-  TintPlate(sw, hover and 0.17 or spec.fill, hover and spec.hover or (on and spec.on or spec.ring))
+  TintPlate(sw, hover and 0.17 or spec.fill, hover and spec.hover or (on and spec.on or spec.ring),
+    hover and "hover" or (on and "on" or "rest"))
   local eye = hover and 1 or 0.84
   if sw.Eye then
     sw.Eye:SetShown(on and true or false)
@@ -4715,13 +4857,14 @@ function AR.Test.Paint(b)
   local on, locked = b.on, b.locked
   local hover = b.hover and not locked
   if on and not locked then
-    TintPlate(b, hover and 0.2 or 0.17, spec.on)
+    TintPlate(b, hover and 0.2 or 0.17, spec.on, hover and "hover" or "on")
     local r, g, bl = T.GetAccentTone("mark")
     AR.TintEdges(b.Ring, r, g, bl, 1)
     if b.Eye then b.Eye:SetVertexColor(r, g, bl, 1) end
     T.SetColor(b.Label, "accent")
   else
-    TintPlate(b, hover and 0.17 or spec.fill, locked and PLATE.nudge.off or (hover and spec.hover or spec.ring))
+    TintPlate(b, hover and 0.17 or spec.fill, locked and PLATE.nudge.off or (hover and spec.hover or spec.ring),
+      locked and "off" or (hover and "hover" or "rest"))
     local eye = locked and 0.4 or (hover and 1 or 0.84)
     if b.Eye then Grey(b.Eye, eye) end
     if b.EyeOff then Grey(b.EyeOff, eye) end
@@ -4815,25 +4958,29 @@ AR.LAYOUT_BARS = {
   packed  = { 0, 12, 14, 6, 22, 4, 0, 18, 20, 6 },
 }
 
+-- Its greys are each their rank's on a light palette (Theme.Grey), the
+-- accent its mark tone (AR.MarkRGB), and the square has no black keyline.
 local function PaintLayout(row)
+  local G = Th().Grey
   local chosen, live = row.chosen, row.live ~= false
   local hover = row.hover and live
   row.Hover:SetShown(hover and true or false)
-  local r, g, b = 0.55, 0.55, 0.55
+  local r, g, b = G(0.55), nil, nil
   if chosen and live then
-    r, g, b = Th().GetAccent()
+    r, g, b = AR.MarkRGB()
     row.Mark:SetVertexColor(r, g, b, 1)
   elseif chosen then
-    r, g, b = 0.44, 0.44, 0.44
-    row.Mark:SetVertexColor(r, g, b, 1)
+    r = G(0.44)
+    row.Mark:SetVertexColor(r, r, r, 1)
   elseif hover then
-    r, g, b = 1, 1, 1
+    r = G(1)
   end
+  g, b = g or r, b or r
   row.Mark:SetShown(chosen and true or false)
-  row.MarkKey:SetShown(chosen and true or false)
+  row.MarkKey:SetShown((chosen and not AR.Light()) and true or false)
   Grey(row.Text, live and ((chosen or hover) and 1 or 0.91) or 0.44)
   Grey(row.Desc, live and 0.66 or 0.4)
-  local s = hover and 0.6 or (live and 0.4 or 0.3)
+  local s = G(hover and 0.6 or (live and 0.4 or 0.3))
   local bars = row.Bars
   for k = 1, #bars do
     if k == 1 or k == 4 or not live then
@@ -4903,7 +5050,8 @@ end
 local function PaintNudge(b)
   local spec = PLATE.nudge
   local live, hover = b.live, b.hover and b.live
-  TintPlate(b, hover and 0.17 or spec.fill, live and (hover and spec.hover or spec.ring) or spec.off)
+  TintPlate(b, hover and 0.17 or spec.fill, live and (hover and spec.hover or spec.ring) or spec.off,
+    live and (hover and "hover" or "rest") or "off")
   local glyph = b.vertical and b.V or b.H
   local other = b.vertical and b.H or b.V
   if other then other:Hide() end
@@ -4938,20 +5086,21 @@ end
 
 -- The chosen one of a column's own choices: a small accent square in a
 -- black keyline before its name, the name white; the others a lighter
--- grey; all of it grey while the column is hidden.
+-- grey; all of it grey while the column is hidden. On a light palette the
+-- square is the accent's mark tone, with no keyline.
 local function PaintRadio(row)
   local live, chosen, hover = row.live, row.chosen, row.hover and row.live
   row.Hover:SetShown(hover and true or false)
   if chosen then
     if live then
-      local r, g, b = Th().GetAccent()
+      local r, g, b = AR.MarkRGB()
       row.Mark:SetVertexColor(r, g, b, 1)
     else
       Grey(row.Mark, 0.44)
     end
   end
   row.Mark:SetShown(chosen and true or false)
-  row.MarkKey:SetShown(chosen and true or false)
+  row.MarkKey:SetShown((chosen and not AR.Light()) and true or false)
   Grey(row.Text, live and ((chosen or hover) and 1 or 0.91) or 0.44)
 end
 
@@ -5020,9 +5169,10 @@ local function PaintSeg(seg)
   local live, chosen = seg.live, seg.chosen
   local hover = seg.hover and live and not chosen
   local fill = chosen and (live and spec.on or 0.2) or (hover and 0.12 or spec.fill)
-  TintPlate(seg, fill, hover and spec.hover or (chosen and live and spec.onRing or spec.ring))
+  TintPlate(seg, fill, hover and spec.hover or (chosen and live and spec.onRing or spec.ring),
+    chosen and (live and "on" or "off") or (hover and "hover" or "rest"))
   if chosen and live then
-    local r, g, b = Th().GetAccent()
+    local r, g, b = AR.MarkRGB()
     seg.Line:SetVertexColor(r, g, b, 1)
   else
     Grey(seg.Line, 0.44)
@@ -5076,7 +5226,7 @@ end
 local function PaintHiddenChip(chip)
   local spec = PLATE.chip
   local hover = chip.hover
-  TintPlate(chip, hover and 0.12 or spec.fill, hover and spec.hover or spec.ring)
+  TintPlate(chip, hover and 0.12 or spec.fill, hover and spec.hover or spec.ring, hover and "hover" or "rest")
   local v = hover and 1 or 0.6
   Grey(chip.Label, v)
   if chip.Eye then Grey(chip.Eye, v) end
@@ -5210,7 +5360,7 @@ end
 local function PaintAction(b)
   local spec = PLATE.switch
   local hover = b.hover
-  TintPlate(b, hover and 0.17 or spec.fill, hover and spec.hover or spec.ring)
+  TintPlate(b, hover and 0.17 or spec.fill, hover and spec.hover or spec.ring, hover and "hover" or "rest")
   Grey(b.Label, hover and 1 or 0.84)
 end
 
@@ -5247,7 +5397,7 @@ local function PaintBlockRow(row)
     row.Name:SetTextColor(r, g, b, 1)
     row.Num:SetTextColor(r, g, b, 1)
   else
-    Th().TintChrome(wash, 0.06)
+    AR.Chrome(wash, 0.06)
     wash:SetShown(hover and true or false)
     Grey(row.Name, hover and 1 or (row.hidden and 0.45 or 0.74))
     Grey(row.Num, hover and 0.84 or (row.hidden and 0.36 or 0.55))
@@ -5281,7 +5431,9 @@ local function BlockRow(insp, i)
   row.hover, row.hidden, row.current = false, false, false
   row.Hover = row:CreateTexture(nil, "BACKGROUND")
   row.Hover:SetTexture(WHITE)
-  Th().TintChrome(row.Hover, 0.06)
+  -- Not kept for the palette's repaint: the current block's line wears the
+  -- accent here (PaintBlockRow paints it again).
+  AR.Chrome(row.Hover, 0.06)
   row.Hover:SetAllPoints()
   row.Hover:Hide()
   row.Num = Text(row, "bodySmall", "body")
@@ -5789,13 +5941,14 @@ local function PutSwatchNote(text, y, accent)
   y = y - P.NOTE_TOP
   PutRule(insp.NoteRule, y)
   y = y - 1 - P.NOTE_PAD - P.LEAD.note
+  -- As the rows draw it (MarkHatch): the accent as a mark, or the chrome's ink.
   if accent then
-    local r, g, b = Th().GetAccent()
+    local r, g, b = AR.MarkRGB()
     swatch:SetVertexColor(r, g, b, 0.7)
     AR.TintEdges(insp.SwatchRing, r, g, b, 0.6)
   else
-    swatch:SetVertexColor(1, 1, 1, 0.35)
-    AR.TintEdges(insp.SwatchRing, 1, 1, 1, 0.3)
+    AR.Chrome(swatch, 0.35)
+    for i = 1, 4 do AR.Chrome(insp.SwatchRing[i], 0.3) end
   end
   local fs = insp.SwatchNote
   local line = Measured(fs, "x", true)
@@ -6090,6 +6243,8 @@ local function PutFoot(y)
   key:SetWidth(keyW)
   key:ClearAllPoints()
   key:SetPoint("RIGHT", finish, "LEFT", -P.KEY_GAP, 0)
+  -- Painted at each fill: the palette may have changed since it was made.
+  TintPlate(key, PLATE.key.fill, PLATE.key.ring, "rest")
   key:Show()
   return rowY - P.FOOT_H
 end
@@ -6352,7 +6507,7 @@ do
       PaintSwitch(t)
       return
     end
-    TintPlate(t, PLATE.switch.fill, PLATE.nudge.off)
+    TintPlate(t, PLATE.switch.fill, PLATE.nudge.off, "off")
     if t.Eye then
       t.Eye:SetShown(t.on and true or false)
       Grey(t.Eye, 0.4)

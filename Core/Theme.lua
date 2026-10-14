@@ -2347,11 +2347,14 @@ end
 
 -- The accent-tinted icons outside the plates and the text: the minimap mail
 -- icon (outside every window, so repainted whether or not the mailbox has been
--- opened), the options cog and the Mail tab's view toggle.
+-- opened), the options cog and the Mail tab's view toggle; and the arrange
+-- mode's own parts while it is open (Arrange.RepaintLook).
 function Theme.RepaintAccentIcons()
   if ns.MinimapButton and type(ns.MinimapButton.RefreshLook) == "function" then
     pcall(ns.MinimapButton.RefreshLook)
   end
+  local AR = ns.Arrange
+  if AR and type(AR.RepaintLook) == "function" then pcall(AR.RepaintLook) end
   local frame = ns.MailboxUI and ns.MailboxUI._frame
   if not frame then return end
   Theme.RepaintCog()
