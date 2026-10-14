@@ -35,9 +35,10 @@ your recipients, groups, Mail Memory and History are kept.*
   EllesmereUI needed. Choose its accent (presets, your class color or any
   color), background color (or an accent or class tint), border (Edge is one
   pixel on the window's very edge), row stripes, rounded corners, font and
-  text size, or switch it to **Light mode**, with paper backgrounds of its
-  own. Each mode keeps its own background, and your opacity and border carry
-  over.
+  text size, or switch it to **Light mode**: crisp dark text on paper
+  backgrounds of its own, with your accent in the underlines, ticks and
+  rules. Each mode keeps its own background, and your opacity and border
+  carry over.
 - **Window scale** from 80% to 130%, in every style. The options window
   always fits your screen.
 - **Text stays readable in every look:** its color is worked out from what
