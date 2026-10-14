@@ -3410,10 +3410,11 @@ local function BuildOptionsButton(frame, theme)
   button.icon:SetAllPoints()
   button.icon:SetTexture("Interface\\Buttons\\UI-OptionsButton")
   -- The live accent, resolved through the theme so a host UI's own accent wins,
-  -- in its icon tone: the text tone on a dark window, the mark tone on a
-  -- light one, where text is the ink. Never cached: EllesmereUI re-tints this
-  -- exact texture through Skin.RefreshAccents when the user changes their
-  -- colour (Theme.RepaintAccentIcons).
+  -- in its icon tone: the text tone on a dark window, the mark tone held at
+  -- 3:1 on the title strip on a light one, where text is the ink. Never
+  -- cached: EllesmereUI re-tints this exact texture through
+  -- Skin.RefreshAccents when the user changes their colour
+  -- (Theme.RepaintAccentIcons), and the Postbox style when the strip moves.
   if theme and theme.GetAccentTone then
     button.icon:SetVertexColor(theme.GetAccentTone("icon"))
   end

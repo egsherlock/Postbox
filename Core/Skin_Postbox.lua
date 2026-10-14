@@ -1571,6 +1571,8 @@ function Skin._RepaintTexts()
   end
   local CS = ns.ContactService
   if CS and type(CS.PaletteMoved) == "function" then pcall(CS.PaletteMoved) end
+  -- The cog, held to the strip it stands on (Theme's icon tone).
+  if T.RepaintCog then T.RepaintCog() end
   -- And what is coloured inside a line, written again where its inks moved.
   if Skin._EscapesMoved() then RefitScreens() end
 end

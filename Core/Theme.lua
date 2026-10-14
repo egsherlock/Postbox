@@ -654,11 +654,14 @@ end
 --           dark palette; on a light one the ink, as text.
 --   muted   the quiet member of a pair: a near-neutral bright grey on a dark
 --           palette, a near-neutral dark grey on a light one.
---   icon    (asked for, not kept) the accent on an icon in the chrome, the
---           options cog: the text tone on a dark palette, the mark tone on a
---           light one, where the text tone is the ink.
+--   icon    the accent on an icon in the chrome, the options cog on the
+--           title strip: the text tone on a dark palette; on a light one,
+--           where the text tone is the ink, the mark tone held at 3:1 on the
+--           strip too, at its darkest and its lightest as the opacity in
+--           force shows it -- the strip is darker than any plate the mark
+--           tone was made for.
 local tones = { r = -1, g = -1, b = -1, gen = -1,
-  text = { 0, 0, 0 }, mark = { 0, 0, 0 }, bright = { 0, 0, 0 }, muted = { 0, 0, 0 } }
+  text = { 0, 0, 0 }, mark = { 0, 0, 0 }, bright = { 0, 0, 0 }, muted = { 0, 0, 0 }, icon = { 0, 0, 0 } }
 local paletteGen = 0
 local lightPalette = false
 -- The skin generation's own half (Theme.SkinGeneration, beside RepaintPlates).
@@ -729,6 +732,15 @@ local function FillTones(r, g, b)
     else
       StoreTone(tones.mark, Legible(r, g, b, mr, mgg, mb, 3.0))
     end
+    -- The cog: the mark, darkened where the strip needs it (both ends).
+    local ir, ig, ib = tones.mark[1], tones.mark[2], tones.mark[3]
+    local GR = Theme._Grounds
+    local strip = GR and GR.on and GR.Range and GR.Range("strip")
+    if strip then
+      ir, ig, ib = Legible(ir, ig, ib, strip[1], strip[2], strip[3], 3.0, false)
+      ir, ig, ib = Legible(ir, ig, ib, strip[4], strip[5], strip[6], 3.0, false)
+    end
+    StoreTone(tones.icon, ir, ig, ib)
     local qr, qg, qb = ToneMuted(r, g, b)
     local k = 0.36 / 0.86
     StoreTone(tones.muted, qr * k, qg * k, qb * k)
@@ -739,6 +751,7 @@ local function FillTones(r, g, b)
       tr, tg, tb = Legible(tr, tg, tb, sheet[1], sheet[2], sheet[3], 4.5)
     end
     StoreTone(tones.text, tr, tg, tb)
+    StoreTone(tones.icon, tr, tg, tb)
     StoreTone(tones.mark, Legible(r, g, b, mr, mgg, mb, 3.0))
     StoreTone(tones.bright, ToneBright(r, g, b))
     StoreTone(tones.muted, ToneMuted(r, g, b))
@@ -751,8 +764,7 @@ end
 -- | "icon".
 function Theme.GetAccentTone(tone)
   local r, g, b = Theme.GetAccent()
-  if tone == "icon" then tone = lightPalette and "mark" or "text" end
-  if tone ~= "text" and tone ~= "mark" and tone ~= "bright" and tone ~= "muted" then return r, g, b end
+  if tone ~= "text" and tone ~= "mark" and tone ~= "bright" and tone ~= "muted" and tone ~= "icon" then return r, g, b end
   if tones.r ~= r or tones.g ~= g or tones.b ~= b or tones.gen ~= ToneGeneration() then FillTones(r, g, b) end
   local t = tones[tone]
   return t[1], t[2], t[3]
@@ -2324,6 +2336,15 @@ function Theme.RepaintAccentText()
   end
 end
 
+-- The options cog in its icon tone: after the accent moved, and after the
+-- strip it stands on did (the opacity, the background colour), which a light
+-- palette's icon tone is held to.
+function Theme.RepaintCog()
+  local frame = ns.MailboxUI and ns.MailboxUI._frame
+  local icon = frame and frame.OptionsButton and frame.OptionsButton.icon
+  if icon then icon:SetVertexColor(Theme.GetAccentTone("icon")) end
+end
+
 -- The accent-tinted icons outside the plates and the text: the minimap mail
 -- icon (outside every window, so repainted whether or not the mailbox has been
 -- opened), the options cog and the Mail tab's view toggle.
@@ -2333,9 +2354,7 @@ function Theme.RepaintAccentIcons()
   end
   local frame = ns.MailboxUI and ns.MailboxUI._frame
   if not frame then return end
-  if frame.OptionsButton and frame.OptionsButton.icon then
-    frame.OptionsButton.icon:SetVertexColor(Theme.GetAccentTone("icon"))
-  end
+  Theme.RepaintCog()
   local collect = frame.Tabs and frame.Tabs.collect
   if collect and ns.CollectTab and type(ns.CollectTab.RepaintViewToggle) == "function" then
     ns.CollectTab.RepaintViewToggle(collect)
