@@ -1734,6 +1734,9 @@ local function SelectFont()
   if type(font.CopyFontObject) == "function" then pcall(font.CopyFontObject, font, base) end
   local r, g, b = SelectInk()
   if type(font.SetTextColor) == "function" then font:SetTextColor(r, g, b) end
+  -- Its colour is the ink already: its copy wears it as it is.
+  local T = ns.Theme
+  if T and T.KeepInk then T.KeepInk(font) end
   selectFont = font
   return font
 end

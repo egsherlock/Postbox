@@ -1706,8 +1706,19 @@ local FONT_FALLBACK = { "GameFontHighlightSmall", "GameFontHighlight", "GameFont
 -- `light`: the copies made for light grounds while the palette is dark (the
 -- post box's white enamel), each beside its base in `lightCopies`; `baseOf`
 -- answers the game object a copy of either kind was made from.
+-- `ownInk`: Postbox's own font objects whose colour is already the ink for
+-- the palette in force (Theme.KeepInk), which their copies wear as it is.
 local HF = { copies = {}, bases = {}, isCopy = {}, failed = {}, pending = {}, n = 0, gen = 0,
-  lightCopies = {}, lightBases = {}, baseOf = {} }
+  lightCopies = {}, lightBases = {}, baseOf = {}, ownInk = setmetatable({}, { __mode = "k" }) }
+
+-- A font object of Postbox's own whose colour is set for the palette in
+-- force, not for a dark ground as a game font's is (the Postbox style's
+-- select value, in the ink worked out on the select): its copy wears that
+-- colour as it is (CopyInk). Made right for a ground again, a light
+-- palette's ink would read as a dark ground's grey and be lightened.
+function Theme.KeepInk(object)
+  if object then HF.ownInk[object] = true end
+end
 
 -- path, flags, shadow, scale of the published face, or nil while no skin
 -- publishes one. A face with a file and flags keeps the rules the EllesmereUI
@@ -1742,8 +1753,12 @@ end
 -- Where a style derives its inks (section 2c) the copy's colour is made
 -- right for the button it is the caption of, on either palette -- the
 -- strings that are not a button's set their own -- so a disabled button's
--- grey reads on the button at any opacity.
-local function CopyInk(r, g, b, a, light)
+-- grey reads on the button at any opacity. `base`, optional: the object the
+-- colour is read from; one of Postbox's own that keeps its ink
+-- (Theme.KeepInk) gives its copy for the palette's own ground that colour as
+-- it is.
+local function CopyInk(r, g, b, a, light, base)
+  if base and HF.ownInk[base] and (lightPalette or not light) then return r, g, b, a or 1 end
   if lightPalette and max(r, g, b) - min(r, g, b) >= 0.06 then
     local ir, ig, ib = Theme.Ink("textPrimary", "button")
     return ir, ig, ib, a or 1
@@ -1785,7 +1800,7 @@ local function DressCopy(copy, base, path, flags, shadow, scale, light)
   -- Its colour of its own, where it takes one (CopyInk).
   if (light or Grounds.on) and type(copy.SetTextColor) == "function" and type(base.GetTextColor) == "function" then
     local r, g, b, a = base:GetTextColor()
-    if type(r) == "number" then copy:SetTextColor(CopyInk(r, g, b, a, light)) end
+    if type(r) == "number" then copy:SetTextColor(CopyInk(r, g, b, a, light, base)) end
   end
   local basePath, size, baseFlags = base:GetFont()
   if type(size) ~= "number" or size <= 0 then size = 12 end
@@ -1822,7 +1837,7 @@ local function RecolorCopy(copy, base, light)
   local r, g, b, a = base:GetTextColor()
   if type(r) ~= "number" then return false end
   if light or Grounds.on then
-    r, g, b, a = CopyInk(r, g, b, a, light)
+    r, g, b, a = CopyInk(r, g, b, a, light, base)
   else
     a = a or 1
   end
