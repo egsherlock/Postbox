@@ -160,6 +160,7 @@ your recipients, groups, Mail Memory and History are kept.*
 
 ### Fixed
 
+- Updated for patch 12.1.5.
 - A C.O.D. question always answers for the mail you asked about, even if
   you open another mail before answering.
 - Everything Postbox does stays with the exact mail you chose, even when
