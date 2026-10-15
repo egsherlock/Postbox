@@ -4558,6 +4558,8 @@ local function Text(parent, role, size)
     local r, g, b, a = fs:GetTextColor()
     fs:SetFontObject(font)
     if type(r) == "number" then fs:SetTextColor(r, g, b, a) end
+    -- Its halo kept from here on (Theme section 3b).
+    if Th().KeepHalo then Th().KeepHalo(fs, "took") end
   end
   if fs then
     fs.__arRole, fs.__arShare = role, share
@@ -4594,6 +4596,9 @@ function AR.OnFontsChanged()
   end
   for i = 1, #sized do
     local fs = sized[i]
+    -- Its object, dressed again in place, taken again: the halo is drawn
+    -- from the object as the string took it (Theme section 3b).
+    if T.KeepHalo then T.KeepHalo(fs, "now") end
     local text = fs:GetText()
     if text and text ~= "" then
       fs:SetText("")

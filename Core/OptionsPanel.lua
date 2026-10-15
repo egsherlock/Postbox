@@ -1036,6 +1036,9 @@ do
 
   function Ctx.PaintTile(tile, fact)
     local T = ns.Theme
+    -- Their halo as their objects have it now (Theme section 3b).
+    T.KeepHalo(tile.Title)
+    T.KeepHalo(tile.Sub)
     tile.Glow:SetVertexColor(T.GetAccent())
     local room = CTX_W - 48 - 28
     T.FitText(tile.Title, room, tile.titleText, tile)

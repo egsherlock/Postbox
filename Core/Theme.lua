@@ -1786,7 +1786,9 @@ local FONT_FALLBACK = { "GameFontHighlightSmall", "GameFontHighlight", "GameFont
 -- answers the game object a copy of either kind was made from.
 -- `ownInk`: Postbox's own font objects whose colour is already the ink for
 -- the palette in force (Theme.KeepInk), which their copies wear as it is.
-local HF = { copies = {}, bases = {}, isCopy = {}, failed = {}, pending = {}, n = 0, gen = 0,
+-- `halo`: counts the copies dressed anew in place (section 3b): a text that
+-- took its object before the last count may still draw the halo it had.
+local HF = { copies = {}, bases = {}, isCopy = {}, failed = {}, pending = {}, n = 0, gen = 0, halo = 0,
   lightCopies = {}, lightBases = {}, baseOf = {}, ownInk = setmetatable({}, { __mode = "k" }) }
 
 -- A font object of Postbox's own whose colour is set for the palette in
@@ -2030,11 +2032,13 @@ function Theme.RefreshHostFonts(recolor)
     DressCopy(HF.lightCopies[base], base, path, flags, shadow, scale, true)
   end
   HF.gen = HF.gen + 1
+  HF.halo = HF.halo + 1
   Theme.ForgetFits()
   -- The sized fonts made from the copies take the new face first, so the
-  -- strings wearing them are laid out again in it, not in the one before.
+  -- strings wearing them are laid out again in it, not in the one before;
+  -- and every string takes its object again (section 3b), its halo with it.
   if SharedTheme and type(SharedTheme.RecolorDerived) == "function" then SharedTheme.RecolorDerived() end
-  Theme.RelayoutText()
+  Theme.RelayoutText(true)
   local AR = ns.Arrange
   if AR and type(AR.OnFontsChanged) == "function" then pcall(AR.OnFontsChanged) end
   return true
@@ -2043,6 +2047,93 @@ end
 -- Counts the host face's moves: what a string sized on its own compares.
 function Theme.FontGeneration()
   return HF.gen
+end
+
+-------------------------------------------------------------
+-- 3b. The halo: a text's shadow comes from its font object, as it took it
+--
+-- In the 12.x client a string's drop shadow is drawn from its font object
+-- alone: SetShadowOffset and SetShadowColor on the string itself change no
+-- pixel (EllesmereUI and atrocityEssentials record the same, and prime a
+-- string with a font object for that reason). And a string does not
+-- reliably draw its object as the object is now: in Light mode a plate's
+-- caption -- the one label Postbox gives a button with SetFontString, on a
+-- button with no state fonts -- drew the game font's black drop shadow under
+-- its ink after its button's SetText, while the copy it was given was clean;
+-- and an object changed in place need not reach the strings wearing it. So
+-- a string whose halo moved takes its object again, a plate's caption takes
+-- it again after its words change and is its button's normal font, and a
+-- text Postbox keeps the halo of (a plate's caption, the arrange inspector's
+-- words, the options' tiles) has the object's shadow colour set on itself
+-- too, for a client that does draw a string's own. Only under a look that
+-- derives its inks (the Postbox style, whose Mode and Text outline move the
+-- halo while the game runs); every other look is left exactly as it was.
+-- /postbox debug text says what the game reports of these texts.
+-------------------------------------------------------------
+
+-- `fs` takes `object` (by default the one it wears) again, as the object is
+-- now. Set through a font object of Postbox's own first, so no client can
+-- read it as the same object set again; the string's justification and line
+-- spacing are put back as they were, for a client that takes those from the
+-- object too. -> whether it did.
+function Theme.Retake(fs, object)
+  if not fs or type(fs.SetFontObject) ~= "function" or type(fs.GetFontObject) ~= "function" then return false end
+  object = object or fs:GetFontObject()
+  local primer = HF.primer
+  if primer == nil then
+    primer = type(CreateFont) == "function" and CreateFont("PostboxRetakeFont") or false
+    if primer and _G.GameFontNormal and type(primer.CopyFontObject) == "function" then
+      pcall(primer.CopyFontObject, primer, _G.GameFontNormal)
+    end
+    HF.primer = primer
+  end
+  if not (object and primer) or object == primer then return false end
+  local h = type(fs.GetJustifyH) == "function" and fs:GetJustifyH() or nil
+  local v = type(fs.GetJustifyV) == "function" and fs:GetJustifyV() or nil
+  local spacing = type(fs.GetSpacing) == "function" and fs:GetSpacing() or nil
+  fs:SetFontObject(primer)
+  fs:SetFontObject(object)
+  if h then fs:SetJustifyH(h) end
+  if v then fs:SetJustifyV(v) end
+  if spacing and type(fs.SetSpacing) == "function" then fs:SetSpacing(spacing) end
+  return true
+end
+
+-- The count the halo is at: a text kept by Theme.KeepHalo compares it.
+function Theme.HaloGeneration() return HF.halo end
+
+-- The shadow colour of the object `fs` wears, set on `fs` itself, and the
+-- halo's count it was set at.
+local function HaloColor(fs, object)
+  if object and type(object.GetShadowColor) == "function" and type(fs.SetShadowColor) == "function" then
+    local r, g, b, a = object:GetShadowColor()
+    if type(r) == "number" then fs:SetShadowColor(r, g, b, a or 1) end
+  end
+  fs.__pbHalo = HF.halo
+end
+
+-- A text whose halo Postbox keeps, at each paint of it: the object it is
+-- meant to wear (the copy, where it wears a game object a copy was made
+-- from) is taken again where the halo moved since it last took it, where it
+-- wears another, or -- `mode` "text" -- where its words changed since (a
+-- button's SetText may put an object back on its label); `mode` "now" takes
+-- it again whatever, and "took" not at all (the string has just taken it).
+-- Then the object's shadow colour on the string itself. Nothing is made;
+-- while nothing moved, four calls. -> the object it wears, or nil.
+function Theme.KeepHalo(fs, mode)
+  if not (fs and Grounds.on) or type(fs.GetFontObject) ~= "function" then return nil end
+  local wears = fs:GetFontObject()
+  if not wears then return nil end
+  local want = HF.copies[wears] or wears
+  if mode ~= "took" then
+    local text = (mode == "text") and fs:GetText() or nil
+    if mode == "now" or want ~= wears or fs.__pbHalo ~= HF.halo or (text and fs.__pbHaloText ~= text) then
+      Theme.Retake(fs, want)
+    end
+    if text then fs.__pbHaloText = text end
+  end
+  HaloColor(fs, want)
+  return want
 end
 
 -- A face published after Postbox had already set text: a host skin that
@@ -2120,7 +2211,22 @@ do
   -- is what is read off its methods, which costs no call into the client: a
   -- frame has children, a font string a text and a width of its own, a
   -- texture neither. -> how many texts.
-  local function Relay(root)
+  --
+  -- `retake`: the copies' halo was dressed anew in place (section 3b), and
+  -- under a look that derives its inks each string and edit box wearing its
+  -- object as it is takes it again first; one with a font of its own keeps
+  -- it, and a text whose halo Postbox keeps has its shadow colour set again.
+  local function Retaken(w)
+    local object = w:GetFontObject()
+    if not object then return end
+    local p1, s1, f1 = w:GetFont()
+    local p2, s2, f2 = object:GetFont()
+    if p1 ~= p2 or s1 ~= s2 or f1 ~= f2 then return end
+    Theme.Retake(w, object)
+    if w.__pbHalo ~= nil then HaloColor(w, object) end
+  end
+
+  local function Relay(root, retake)
     local secret = type(issecretvalue) == "function" and issecretvalue or nil
     local count = 0
     local n = Push(0, root)
@@ -2130,9 +2236,12 @@ do
       n = n - 1
       if type(w) == "table" then
         if w.GetChildren then
+          -- An edit box: a frame with a font of its own.
+          if retake and w.GetFontObject and w.GetCursorPosition then pcall(Retaken, w) end
           n = Push(n, w:GetRegions())
           n = Push(n, w:GetChildren())
         elseif w.GetStringWidth and w.SetText then
+          if retake and w.GetFontObject then pcall(Retaken, w) end
           local text = w:GetText()
           if not (secret and secret(text)) and text and text ~= "" then
             w:SetText("")
@@ -2160,12 +2269,12 @@ do
     return nRoots
   end
 
-  -- `walk` over the first `n` roots, its counts summed; the roots and the
-  -- stack let go after, however a walk ended.
-  local function WalkRoots(walk, n)
+  -- `walk` over the first `n` roots (with `arg`), its counts summed; the
+  -- roots and the stack let go after, however a walk ended.
+  local function WalkRoots(walk, n, arg)
     local sum = 0
     for i = 1, n do
-      local ok, m = pcall(walk, roots[i])
+      local ok, m = pcall(walk, roots[i], arg)
       if ok then sum = sum + m end
       roots[i] = nil
     end
@@ -2180,12 +2289,13 @@ do
   -- its toggle's child, so its window's walk reaches it. Hidden text too, so
   -- it is laid out when it shows. Only on a deliberate settings change or a
   -- host's claim, never on a mailbox visit: one pass over the strings that
-  -- exist, nothing made. -> how many texts.
-  function Theme.RelayoutText()
+  -- exist, nothing made. `retake`: each takes its object again first, where
+  -- the copies' halo moved (Relay). -> how many texts.
+  function Theme.RelayoutText(retake)
     CollectRoots()
     local AR = ns.Arrange
     if AR and AR._insp then AddRoot(AR._insp) end
-    return WalkRoots(Relay, nRoots)
+    return WalkRoots(Relay, nRoots, (retake and Grounds.on) and true or false)
   end
 
   function Theme.AdoptHostFace()
@@ -3688,6 +3798,15 @@ local function PaintPlate(plate)
   end
 
   if plate.Text then
+    -- Its halo as its object has it now, taken again where the halo moved
+    -- or a SetText may have put another object on it (section 3b), and that
+    -- object the button's own, so whatever the button puts back on its
+    -- label is it (the house's other buttons, which carry their state
+    -- fonts, never lost their halo); then its colour, last.
+    local want = Theme.KeepHalo(plate.Text, "text")
+    if want and plate.GetNormalFontObject and plate:GetNormalFontObject() ~= want then
+      plate:SetNormalFontObject(want)
+    end
     -- On its own fill: a window tab's (tokens of its own) or a plate's. A
     -- tile with nothing behind it keeps its dimmed caption through every
     -- repaint (Theme.DimEmptyTile's rule).
@@ -3724,6 +3843,17 @@ local function HidePlateArt(plate)
   if not art then return end
   plate.__pbPlateArt = nil
   for i = 1, #art do art[i]:SetAlpha(0) end
+end
+
+-- A plate's SetText under a look that derives its inks: the button's own,
+-- then the plate painted again. The client's Button:SetText puts an object
+-- back on the label it was given (SetTabText's note), and with it a halo and
+-- a colour that are not the caption's; painted at once, a caption set by any
+-- caller -- the Mail tab's counts, the options' tabs -- shows its own halo
+-- and ink, not those until the next hover.
+local function PlateSetText(plate, text)
+  HF.buttonSetText(plate, text)
+  if plate.__pbPlateArt then PaintPlate(plate) end
 end
 
 -- Builds one plate. `variant` is a key of PLATE_VARIANTS; `name` is optional and
@@ -3793,6 +3923,12 @@ function Theme.CreatePlate(parent, variant, name)
   plate:SetFontString(label)
   plate.Text = label
   plate.__pbTextRole = role
+  -- Under a look that derives its inks, its SetText paints it again
+  -- (PlateSetText); every other look keeps the button's own.
+  if Grounds.on then
+    if not HF.buttonSetText then HF.buttonSetText = plate.SetText end
+    plate.SetText = PlateSetText
+  end
 
   plate._edge, plate._fill, plate._accent = edge, fill, underline
   -- The same texture under the name the hand-rolled category bars gave it, so

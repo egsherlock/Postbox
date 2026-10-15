@@ -1097,6 +1097,16 @@ local function DressTitle(fs)
   -- Outline an outline; on a light ground, neither.
   local flags = (outline == "outline" and not light) and "OUTLINE" or ""
   local size = P.titleSize * Skin.GetTextScale()
+  -- Where the copies' halo moved since it was last dressed, the title takes
+  -- its object again first: a shadow is drawn from the object as the string
+  -- took it, never from the string's own (Theme section 3b); its own face is
+  -- then set again below.
+  local T0 = ns.Theme
+  local halo = T0 and T0.HaloGeneration and T0.HaloGeneration()
+  if halo and base.halo ~= halo then
+    base.halo = halo
+    if T0.Retake then T0.Retake(fs) end
+  end
   -- Set only where it moved: a change of the accent or the background
   -- colour dresses the titles again for their colour, and a font set again
   -- is a title laid out again for nothing.
