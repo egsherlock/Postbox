@@ -1796,6 +1796,20 @@ local FONT_FALLBACK = { "GameFontHighlightSmall", "GameFontHighlight", "GameFont
 local HF = { copies = {}, bases = {}, isCopy = {}, failed = {}, pending = {}, n = 0, gen = 0, halo = 0,
   lightCopies = {}, lightBases = {}, baseOf = {}, ownInk = setmetatable({}, { __mode = "k" }) }
 
+-- `object` where it is a font object with a name -- the game's, a host's,
+-- Postbox's own (CreateFont("Postbox...")) -- else nil. An unnamed font read
+-- off a widget is the widget's own font instance: an edit box answers its own
+-- from GetFontObject always, a font string once it was given a face of its
+-- own (SetFont). Set back on that widget, or a font copied from it set there,
+-- and the widget's font inherits from itself: the client recurses in C until
+-- the process dies (STACK_OVERFLOW, 12.1.5), which no pcall can stop. So
+-- Postbox sets, copies from and takes again only named fonts.
+local function NamedFont(object)
+  if type(object) == "table" and type(object.GetName) == "function" and object:GetName() then return object end
+  return nil
+end
+Theme.NamedFont = NamedFont
+
 -- A font object of Postbox's own whose colour is set for the palette in
 -- force, not for a dark ground as a game font's is (the Postbox style's
 -- select value, in the ink worked out on the select): its copy wears that
@@ -1961,6 +1975,11 @@ end
 -- outline.
 function Theme.HostFont(base, polarity)
   if base == nil then return base end
+  -- A widget's own font instance is never copied (NamedFont): the copy, set
+  -- back on that widget, would make its font inherit from itself. It stays
+  -- as it is, and every caller sets nothing where the answer is what it
+  -- asked with.
+  if not NamedFont(base) then return base end
   if HF.baseOf[base] then base = HF.baseOf[base] end
   if polarity == "light" and not lightPalette then
     return LightCopy(base) or Theme.HostFont(base)
@@ -2133,7 +2152,10 @@ end
 -- while nothing moved, four calls. -> the object it wears, or nil.
 function Theme.KeepHalo(fs, mode)
   if not (fs and Grounds.on) or type(fs.GetFontObject) ~= "function" then return nil end
-  local wears = fs:GetFontObject()
+  -- A text with a face of its own answers its own font instance: it keeps
+  -- that face, and nothing is taken again or handed back to set (a plate
+  -- made that its button's normal font would put it back on its label).
+  local wears = NamedFont(fs:GetFontObject())
   if not wears then return nil end
   local want = HF.copies[wears] or wears
   if mode ~= "took" then

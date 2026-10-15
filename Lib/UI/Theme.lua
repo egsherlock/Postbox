@@ -154,7 +154,17 @@ local function ScaleFor(spec)
   return 1.0
 end
 
+-- `object` where it is a font object with a name, else nil. An unnamed font
+-- read off a font string or an edit box is the widget's own font instance; a
+-- font copied from it and set back on the widget makes its font inherit from
+-- itself, and the client recurses until it crashes. Never a source.
+local function Named(object)
+  if type(object) == "table" and type(object.GetName) == "function" and object:GetName() then return object end
+  return nil
+end
+
 local function DeriveFont(source, path, baseSize, baseFlags, size, flags)
+  source = Named(source)
   -- Back to the size and flags it started with: hand back the original object
   -- rather than minting a duplicate of it.
   if source and size == baseSize and flags == baseFlags then return source end
@@ -258,7 +268,9 @@ function Theme.BindFont(fontString, spec)
   local scale = ScaleFor(spec)
   local minSize = max(MIN_FONT_SIZE, floor((options and tonumber(options.minSize) or MIN_FONT_SIZE) + 0.5))
 
-  local current = type(fontString.GetFontObject) == "function" and fontString:GetFontObject() or nil
+  -- A string with a face of its own answers its own font instance (Named):
+  -- sized from its face, as one with no object is.
+  local current = type(fontString.GetFontObject) == "function" and Named(fontString:GetFontObject()) or nil
   -- A host UI's face, where the addon's theme publishes one (Theme.HostFont
   -- answers the object itself when there is none): sized from the host's copy
   -- of the game object rather than from the game object.
