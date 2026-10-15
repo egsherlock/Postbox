@@ -2261,40 +2261,65 @@ do
     return "?"
   end
 
-  -- -> one line, or nil for a text that does not show.
+  -- -> one line, or nil for a text that does not show. A text Postbox gave
+  -- a named font to keep (a plate's caption, an edit box: `__pbFont`) says
+  -- which, where it is not the one it answers it wears.
   function Theme.DescribeText(fs, where)
     if not (fs and fs.IsVisible and fs:IsVisible() and fs.GetText) then return nil end
     local text = fs:GetText()
     if type(text) ~= "string" or text == "" then return nil end
-    text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|[TA].-|[ta]", "*")
+    text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|[TA].-|[ta]", "*"):gsub("\n", " ")
     local object = fs.GetFontObject and fs:GetFontObject()
     local name = object and object.GetName and object:GetName() or (object and "(unnamed)") or "-"
     local path, size, flags = fs:GetFont()
     path = type(path) == "string" and (path:match("[^\\/]+$") or path) or "?"
     local r, g, b, a = fs:GetTextColor()
-    return format("%s \"%s\" | %s %s %s '%s' | text %s | shadow %s | object's %s | on %s",
+    local kept = fs.__pbFont
+    kept = (kept and kept ~= object and kept.GetName) and (" | kept " .. tostring((kept:GetName()))) or ""
+    return format("%s \"%s\" | %s %s %s '%s' | text %s | shadow %s | object's %s%s | on %s",
       where or "?", text:sub(1, 20), name, path, type(size) == "number" and format("%.1f", size) or "?",
-      tostring(flags or ""), Hex(r, g, b, a), Shadow(fs), object and Shadow(object) or "-", Ground(fs))
+      tostring(flags or ""), Hex(r, g, b, a), Shadow(fs), object and Shadow(object) or "-", kept, Ground(fs))
   end
 
   -- Every visible text under `root` whose parent passes `keep` (all, when
-  -- nil), described into `lines`, depth-first. -> lines.
-  function Theme.DescribeTexts(root, where, lines, keep)
+  -- nil), described into `lines`, depth-first. `group`: one line for each
+  -- look -- the same font, colours, shadow and ground -- its first text
+  -- standing for the rest, and how many wear it ("x12"); edit boxes holding
+  -- text are read too. -> lines.
+  function Theme.DescribeTexts(root, where, lines, keep, group)
     if not root then return lines end
+    local seen = group and {} or nil
+    local function Add(r)
+      local line = Theme.DescribeText(r, where)
+      if not line then return end
+      if seen then
+        local look = line:match('^.-" | (.*)$') or line
+        local at = seen[look]
+        if at then
+          at.n = at.n + 1
+          return
+        end
+        seen[look] = { i = #lines + 1, n = 1 }
+      end
+      lines[#lines + 1] = line
+    end
     local stack = { root }
     while #stack > 0 do
       local w = table.remove(stack)
       if w.GetChildren then
+        if group and w.GetObjectType and w:GetObjectType() == "EditBox" then Add(w) end
         local regions = { w:GetRegions() }
         for i = 1, #regions do
           local r = regions[i]
-          if r.GetStringWidth and r.SetText and (not keep or keep(w, r)) then
-            local line = Theme.DescribeText(r, where)
-            if line then lines[#lines + 1] = line end
-          end
+          if r.GetStringWidth and r.SetText and (not keep or keep(w, r)) then Add(r) end
         end
         local kids = { w:GetChildren() }
         for i = #kids, 1, -1 do stack[#stack + 1] = kids[i] end
+      end
+    end
+    if seen then
+      for _, at in pairs(seen) do
+        if at.n > 1 then lines[at.i] = lines[at.i] .. format(" | x%d", at.n) end
       end
     end
     return lines

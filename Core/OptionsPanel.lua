@@ -4792,9 +4792,12 @@ function Panel.ToggleBugReport()
 end
 
 -- /postbox debug text: what the game itself reports of the texts whose look
--- the headless checks cannot see -- the main window's tabs and view plates,
--- the options' tabs, footer and tiles, and the arrange inspector while it is
--- up -- one line each (Theme.DescribeText), in the bug report's box to copy.
+-- the headless checks cannot see, in every Postbox window that is shown --
+-- one line each (Theme.DescribeText), in the bug report's box to copy. Each
+-- caption of a control (a window or options tab, a view plate, a Send tab or
+-- Manage Recipients tile, a button) has a line of its own, and so do the
+-- options' footer and tiles and the arrange inspector's words; every other
+-- text has one line for each look it is drawn in, with how many share it.
 -- Built on demand; nothing is kept.
 function Panel.ShowTextReport()
   local frame = Build()
@@ -4812,36 +4815,67 @@ function Panel.ShowTextReport()
     tostring(ns.VERSION), tostring(ns.SkinAppliedBy or "own"), Ask("GetMode"), Ask("GetAccentKey"), Ask("GetFont"),
     Ask("GetTextScale"), Ask("GetOutline"), tostring(T.HaloGeneration and T.HaloGeneration() or "?"),
     UIParent and UIParent:GetEffectiveScale() or 0)
-  -- A plate's caption: its own text, and no other the plate holds.
-  local function Caption(parent, region) return parent.Text == region end
+  -- The texts given a line of their own, left out of the looks after.
+  local listed = {}
+  local function One(fs, where)
+    if not fs then return end
+    listed[fs] = true
+    local line = T.DescribeText(fs, where)
+    if line then lines[#lines + 1] = line end
+  end
+  -- A control's caption: its own text, and no other the control holds.
+  local function Caption(parent, region)
+    if parent.Text ~= region or listed[region] then return false end
+    listed[region] = true
+    return true
+  end
+  local function Rest(_, region) return not listed[region] end
+  -- A window: its captions one by one, then its other texts by look.
+  local function Window(root, where)
+    T.DescribeTexts(root, where, lines, Caption)
+    T.DescribeTexts(root, where .. " text", lines, Rest, true)
+  end
+
   local main = ns.MailboxUI and ns.MailboxUI._frame
   if main and main:IsVisible() then
-    T.DescribeTexts(main, "main", lines, Caption)
+    local state = ns.MailboxUI._state
+    local tab = state and state.activeTab
+    Window(main, (tab == "send") and "main send" or "main")
   else
     lines[#lines + 1] = "main: not shown"
   end
   if frame:IsVisible() then
-    for key, plate in pairs(S.plates) do
-      local line = plate.Text and T.DescribeText(plate.Text, "options tab " .. tostring(key))
-      if line then lines[#lines + 1] = line end
-    end
+    for key, plate in pairs(S.plates) do One(plate.Text, "options tab " .. tostring(key)) end
     local f = S.footer
     if f then
       local foot = { f.resetText, f.bugText, f.newsText, f.version }
-      for i = 1, #foot do
-        local line = foot[i] and T.DescribeText(foot[i], "options footer")
-        if line then lines[#lines + 1] = line end
-      end
+      for i = 1, #foot do One(foot[i], "options footer") end
     end
     for i = 1, #S.tiles do
       local tile = S.tiles[i]
-      for _, fs in ipairs({ tile.Title, tile.Sub }) do
-        local line = T.DescribeText(fs, "options tile")
-        if line then lines[#lines + 1] = line end
-      end
+      One(tile.Title, "options tile")
+      One(tile.Sub, "options tile")
     end
+    Window(frame, "options")
   else
     lines[#lines + 1] = "options: not shown"
+  end
+  -- Postbox's other windows, each where it is shown: Mail Memory, Manage
+  -- Recipients, Character Groups and What's new (the bug report window is
+  -- where this is written).
+  local others = {
+    { _G.PostboxMailMemoryFrame, "memory" },
+    { _G.PostboxRecipientManagerFrame, "recipients" },
+    { _G.PostboxCharacterGroupsFrame, "groups" },
+    { _G.PostboxWhatsNewFrame, "news" },
+  }
+  for i = 1, #others do
+    local win, where = others[i][1], others[i][2]
+    if win and win.IsVisible and win:IsVisible() then
+      Window(win, where)
+    else
+      lines[#lines + 1] = where .. ": not shown"
+    end
   end
   local insp = ns.Arrange and ns.Arrange._insp
   if insp and insp:IsVisible() then

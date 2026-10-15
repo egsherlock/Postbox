@@ -1947,8 +1947,8 @@ local function OpenBugReport()
   end
 end
 
--- /postbox debug text: the window's, the options' and the arrange
--- inspector's texts as the game reports them, to copy (OptionsPanel).
+-- /postbox debug text: the texts of every Postbox window that is shown and
+-- of the arrange inspector as the game reports them, to copy (OptionsPanel).
 local function TextReport()
   local Panel = ns.OptionsPanel
   if Panel and type(Panel.ShowTextReport) == "function" then Panel.ShowTextReport() end
