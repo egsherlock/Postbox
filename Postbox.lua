@@ -1947,6 +1947,13 @@ local function OpenBugReport()
   end
 end
 
+-- /postbox debug text: the window's, the options' and the arrange
+-- inspector's texts as the game reports them, to copy (OptionsPanel).
+local function TextReport()
+  local Panel = ns.OptionsPanel
+  if Panel and type(Panel.ShowTextReport) == "function" then Panel.ShowTextReport() end
+end
+
 local function ToggleMinimapIcon()
   local Icon = ns.MinimapButton
   if Icon and type(Icon.Toggle) == "function" then
@@ -2024,6 +2031,7 @@ local COMMANDS = {
   rm          = OpenRecipientManager,
   minimap     = ToggleMinimapIcon,
   debug       = OpenBugReport,
+  ["debug text"] = TextReport,
   whatsnew    = ToggleWhatsNew,
   ["whatsnew notice"] = TryNotice,
   perf        = function() SetPerfRecording(nil) end,

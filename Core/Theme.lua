@@ -2141,6 +2141,100 @@ function Theme.KeepHalo(fs, mode)
   return want
 end
 
+-- /postbox debug text: one text as the client reports it, for the times the
+-- game and the headless model disagree. Its first 20 characters; its font
+-- object, face, size and flags; its colour, its shadow's colour and offset
+-- as the string answers them and as its object does; and the ground behind
+-- it, the first plate or card up its parents: the colour Postbox painted
+-- there, and a card's tiled grain where one shows. Made on demand only.
+do
+  local format = string.format
+
+  local function Hex(r, g, b, a)
+    if type(r) ~= "number" then return "?" end
+    local f = math.floor
+    return format("%02x%02x%02x@%.2f", f(r * 255 + 0.5), f((g or 0) * 255 + 0.5), f((b or 0) * 255 + 0.5), a or 1)
+  end
+
+  local function Shadow(object)
+    if not (object and object.GetShadowColor and object.GetShadowOffset) then return "?" end
+    local r, g, b, a = object:GetShadowColor()
+    local x, y = object:GetShadowOffset()
+    return format("%s (%s,%s)", Hex(r, g, b, a), tostring(x), tostring(y))
+  end
+
+  local function Ground(fs)
+    local f = fs.GetParent and fs:GetParent()
+    for _ = 1, 12 do
+      if not f then break end
+      if f.__pbPlateArt then
+        local T = f.__pbTokens or C
+        local c = T.plateIdle
+        if f.isSelected then c = T.plateSelected elseif f.__pbHover then c = T.plateHover elseif f.__pbFlagged then c = T.plateFlagged end
+        local a = f._fill and f._fill.GetAlpha and f._fill:GetAlpha() or 1
+        return format("plate %s x%.2f", Hex(c[1], c[2], c[3], c[4]), a or 1)
+      end
+      if f.__pbPlateArt == nil and f.isSelected ~= nil and f.Text then
+        return "plate (painted by the skin)"
+      end
+      if f.__postboxPanel and f.GetBackdropColor then
+        local br, bg, bb, ba = f:GetBackdropColor()
+        local out = "card " .. Hex(br, bg, bb, ba)
+        local grain = f.pbSurfaceTexture
+        if grain and grain:IsShown() then
+          local r, g, b, va = grain:GetVertexColor()
+          out = out .. format(" | grain %s x%.2f", Hex(r, g, b, va), grain:GetAlpha() or 1)
+        end
+        if f.__pbPopupFloor then out = out .. " | floor" end
+        if f.__postboxSkinned then out = out .. " | skinned" end
+        return out
+      end
+      if f.__pbShell then return "window" end
+      f = f.GetParent and f:GetParent()
+    end
+    return "?"
+  end
+
+  -- -> one line, or nil for a text that does not show.
+  function Theme.DescribeText(fs, where)
+    if not (fs and fs.IsVisible and fs:IsVisible() and fs.GetText) then return nil end
+    local text = fs:GetText()
+    if type(text) ~= "string" or text == "" then return nil end
+    text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|[TA].-|[ta]", "*")
+    local object = fs.GetFontObject and fs:GetFontObject()
+    local name = object and object.GetName and object:GetName() or (object and "(unnamed)") or "-"
+    local path, size, flags = fs:GetFont()
+    path = type(path) == "string" and (path:match("[^\\/]+$") or path) or "?"
+    local r, g, b, a = fs:GetTextColor()
+    return format("%s \"%s\" | %s %s %s '%s' | text %s | shadow %s | object's %s | on %s",
+      where or "?", text:sub(1, 20), name, path, type(size) == "number" and format("%.1f", size) or "?",
+      tostring(flags or ""), Hex(r, g, b, a), Shadow(fs), object and Shadow(object) or "-", Ground(fs))
+  end
+
+  -- Every visible text under `root` whose parent passes `keep` (all, when
+  -- nil), described into `lines`, depth-first. -> lines.
+  function Theme.DescribeTexts(root, where, lines, keep)
+    if not root then return lines end
+    local stack = { root }
+    while #stack > 0 do
+      local w = table.remove(stack)
+      if w.GetChildren then
+        local regions = { w:GetRegions() }
+        for i = 1, #regions do
+          local r = regions[i]
+          if r.GetStringWidth and r.SetText and (not keep or keep(w, r)) then
+            local line = Theme.DescribeText(r, where)
+            if line then lines[#lines + 1] = line end
+          end
+        end
+        local kids = { w:GetChildren() }
+        for i = #kids, 1, -1 do stack[#stack + 1] = kids[i] end
+      end
+    end
+    return lines
+  end
+end
+
 -- A face published after Postbox had already set text: a host skin that
 -- claims late (EllesmereUI's, when its handshake had to be waited out, or
 -- when its skinning is switched back on mid-session). Every string and edit

@@ -417,7 +417,12 @@ do
   local function Fill(f)
     local build = ns.BuildDiagnosticReport
     local ok, text = false, nil
-    if type(build) == "function" then ok, text = pcall(build) end
+    -- A report given to it (/postbox debug text) stands while it is open.
+    if f._given then
+      ok, text = true, f._given
+    elseif type(build) == "function" then
+      ok, text = pcall(build)
+    end
     if not ok or type(text) ~= "string" then text = "" end
     local box = f.Report
     box._value = text
@@ -449,18 +454,7 @@ do
 
   -- `panel`: the options panel, which takes this window with it when it
   -- closes.
-  function BugReport.Toggle(panel)
-    if not win then
-      win = Build()
-      if panel then panel:HookScript("OnHide", function() win:Hide() end) end
-      -- The same expression as the options panel and the groups editor.
-      local applyWindow = ns.Skin and (ns.Skin.ApplyWindow or ns.Skin.Apply)
-      if applyWindow then applyWindow(win) end
-    end
-    if win:IsShown() then
-      win:Hide()
-      return
-    end
+  local function Open(panel)
     win.Url._value = BUG_URL
     win.Url:SetText(BUG_URL)
     win.Url:SetCursorPosition(0)
@@ -473,6 +467,38 @@ do
     if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, win) end
     -- The address arrives focused and selected: Ctrl+C is all it needs.
     win.Url:SetFocus()
+  end
+
+  local function Ensure(panel)
+    if win then return end
+    win = Build()
+    if panel then panel:HookScript("OnHide", function() win:Hide() end) end
+    -- A report given to it lasts until it closes.
+    win:HookScript("OnHide", function(self) self._given = nil end)
+    -- The same expression as the options panel and the groups editor.
+    local applyWindow = ns.Skin and (ns.Skin.ApplyWindow or ns.Skin.Apply)
+    if applyWindow then applyWindow(win) end
+  end
+
+  function BugReport.Toggle(panel)
+    Ensure(panel)
+    if win:IsShown() then
+      win:Hide()
+      return
+    end
+    Open(panel)
+  end
+
+  -- The window with `text` in the report's place (/postbox debug text),
+  -- opened, or filled again where it is open.
+  function BugReport.ShowText(panel, text)
+    Ensure(panel)
+    win._given = text or ""
+    if win:IsShown() then
+      Fill(win)
+    else
+      Open(panel)
+    end
   end
 
   -- Copy report: everything selected, the keyboard in the box.
@@ -583,6 +609,7 @@ local S = {
   tabCells = {},  -- tab key -> { first, last }: its rows' place in `cells`
   plates = {},    -- tab key -> its tab
   ctx = {},       -- tab key -> its drawing, once built
+  tiles = {},     -- the drawings' tiles (Character Groups, Manage Recipients)
   tab = "mail",
   shown = false,  -- the entry the inspector's text zone shows (nil: at rest)
   -- held: the row whose dropdown's list is open; heldAt and heldEnter, where
@@ -1026,6 +1053,7 @@ do
 
     tile.Chevron = Chevron(holder, tile)
     tile.Hover, tile.Glow, tile.Title, tile.Sub = hover, glow, name, sub
+    S.tiles[#S.tiles + 1] = tile
     tile.titleText, tile.entry = title, entry
     TintChevron(tile, false)
     tile:SetScript("OnEnter", SpotEnter)
@@ -4407,6 +4435,7 @@ function Footer.Build(frame, above)
     resetText:SetPoint("LEFT", reset, "LEFT", arrow and 21 or 4, 0)
     resetText:SetWordWrap(false)
     resetText:SetText(L["OPT_RESET_DEFAULTS"])
+    S.footer.resetText = resetText
     if arrow then arrow:SetPoint("CENTER", reset, "LEFT", 10, 0) end
     if caret then caret:SetPoint("CENTER", resetText, "RIGHT", 9, 0) end
     -- At rest the quietest grey the band carries, at full strength; the
@@ -4753,6 +4782,67 @@ end
 function Panel.ToggleBugReport()
   Build()
   if Panel._toggleBugReport then Panel._toggleBugReport() end
+end
+
+-- /postbox debug text: what the game itself reports of the texts whose look
+-- the headless checks cannot see -- the main window's tabs and view plates,
+-- the options' tabs, footer and tiles, and the arrange inspector while it is
+-- up -- one line each (Theme.DescribeText), in the bug report's box to copy.
+-- Built on demand; nothing is kept.
+function Panel.ShowTextReport()
+  local frame = Build()
+  local T = ns.Theme
+  if not (T and T.DescribeText) then return end
+  local lines = {}
+  local skin = ns.Skin
+  local function Ask(fn)
+    local f = skin and skin[fn]
+    if type(f) ~= "function" then return "-" end
+    local ok, v = pcall(f)
+    return ok and tostring(v) or "?"
+  end
+  lines[1] = string.format("Postbox %s | style %s | Mode %s | accent %s | font %s %s | outline %s | halo %s | UI scale %.3f",
+    tostring(ns.VERSION), tostring(ns.SkinAppliedBy or "own"), Ask("GetMode"), Ask("GetAccentKey"), Ask("GetFont"),
+    Ask("GetTextScale"), Ask("GetOutline"), tostring(T.HaloGeneration and T.HaloGeneration() or "?"),
+    UIParent and UIParent:GetEffectiveScale() or 0)
+  -- A plate's caption: its own text, and no other the plate holds.
+  local function Caption(parent, region) return parent.Text == region end
+  local main = ns.MailboxUI and ns.MailboxUI._frame
+  if main and main:IsVisible() then
+    T.DescribeTexts(main, "main", lines, Caption)
+  else
+    lines[#lines + 1] = "main: not shown"
+  end
+  if frame:IsVisible() then
+    for key, plate in pairs(S.plates) do
+      local line = plate.Text and T.DescribeText(plate.Text, "options tab " .. tostring(key))
+      if line then lines[#lines + 1] = line end
+    end
+    local f = S.footer
+    if f then
+      local foot = { f.resetText, f.bugText, f.newsText, f.version }
+      for i = 1, #foot do
+        local line = foot[i] and T.DescribeText(foot[i], "options footer")
+        if line then lines[#lines + 1] = line end
+      end
+    end
+    for i = 1, #S.tiles do
+      local tile = S.tiles[i]
+      for _, fs in ipairs({ tile.Title, tile.Sub }) do
+        local line = T.DescribeText(fs, "options tile")
+        if line then lines[#lines + 1] = line end
+      end
+    end
+  else
+    lines[#lines + 1] = "options: not shown"
+  end
+  local insp = ns.Arrange and ns.Arrange._insp
+  if insp and insp:IsVisible() then
+    T.DescribeTexts(insp, "inspector", lines)
+  else
+    lines[#lines + 1] = "inspector: not shown"
+  end
+  BugReport.ShowText(frame, table.concat(lines, "\n"))
 end
 
 -- The tab the panel shows; kept for the session, so the panel reopens where
