@@ -2083,10 +2083,14 @@ end
 -- reliably draw its object as the object is now: in Light mode a plate's
 -- caption -- the one label Postbox gives a button with SetFontString, on a
 -- button with no state fonts -- drew the game font's black drop shadow under
--- its ink after its button's SetText, while the copy it was given was clean;
--- and an object changed in place need not reach the strings wearing it. So
--- a string whose halo moved takes its object again, a plate's caption takes
--- it again after its words change and is its button's normal font, and a
+-- its ink, while the copy it was given was clean: a button with no normal
+-- font leaves its label on no font object at all, in the values of the game
+-- font it was made from, when the label is registered (SetFontString) and at
+-- its SetText (/postbox debug text, dev94: GetFontObject nil); and an object
+-- changed in place need not reach the strings wearing it. So a string whose
+-- halo moved takes its object again, a plate's caption keeps the named font
+-- it was given and takes it again after its words change, and that font is
+-- its button's normal font, and a
 -- text Postbox keeps the halo of (a plate's caption, the arrange inspector's
 -- words, the options' tiles) has the object's shadow colour set on itself
 -- too, for a client that does draw a string's own. Only under a look that
@@ -2173,9 +2177,22 @@ function Theme.KeepHalo(fs, mode)
   -- A text with a face of its own answers its own font instance: it keeps
   -- that face, and nothing is taken again or handed back to set (a plate
   -- made that its button's normal font would put it back on its label).
+  -- A plate's caption is the exception, by the named font Postbox gave it
+  -- (`__pbFont`, CreatePlate): a button with no normal font leaves its
+  -- label on no font object at all (at SetFontString, and at each SetText),
+  -- drawing the game font's values and its black drop shadow, and the
+  -- caption takes the font it was given again. A named one it is seen
+  -- wearing is the one kept from then on.
   local wears = NamedFont(fs:GetFontObject())
-  if not wears then return nil end
-  local want = HF.copies[wears] or wears
+  local want
+  if wears then
+    want = HF.copies[wears] or wears
+    if fs.__pbFont then fs.__pbFont = wears end
+  else
+    want = fs.__pbFont
+    if not want then return nil end
+    want = HF.copies[want] or want
+  end
   if mode ~= "took" then
     local text = (mode == "text") and fs:GetText() or nil
     if mode == "now" or want ~= wears or fs.__pbHalo ~= HF.halo or (text and fs.__pbHaloText ~= text) then
@@ -2303,7 +2320,8 @@ do
 
   local function Adopt(fs)
     -- An edit box by the font Postbox gave it (Theme.SetBoxFont), never by
-    -- what its GetFontObject answers: its own instance.
+    -- what its GetFontObject answers: its own instance. A plate's caption
+    -- too (CreatePlate), which its button may have left on none.
     local box = fs.__pbFont
     local object = box or fs:GetFontObject()
     if object == nil then return false end
@@ -4082,10 +4100,15 @@ function Theme.CreatePlate(parent, variant, name)
   plate.Text = label
   plate.__pbTextRole = role
   -- Under a look that derives its inks, its SetText paints it again
-  -- (PlateSetText); every other look keeps the button's own.
+  -- (PlateSetText); every other look keeps the button's own. And the label
+  -- keeps the named font it was given (`__pbFont`): the button, which has
+  -- no normal font yet, has just left it on none (SetFontString), so the
+  -- paint below has it take that font again, and the button wears it as its
+  -- normal font from then on (Theme.KeepHalo).
   if Grounds.on then
     if not HF.buttonSetText then HF.buttonSetText = plate.SetText end
     plate.SetText = PlateSetText
+    label.__pbFont = NamedFont(face or base)
   end
 
   plate._edge, plate._fill, plate._accent = edge, fill, underline
