@@ -3644,8 +3644,10 @@ end
 -- Under the Postbox style: the background colour's list is the Mode's, and
 -- shows the Mode's own pick (a flip of the Mode changes the list live); the
 -- opacity row shows the value in force (Light keeps 85% or more); and Text
--- outline is greyed while the Mode is Light, whose text is always drawn
--- clean, showing Dark's choice, which it keeps.
+-- outline stands aside while the Mode is Light, whose text is always drawn
+-- clean, and comes back with Dark showing Dark's choice, which it keeps. It
+-- is the page's last row, so hiding it moves nothing (State.BorderSize's
+-- rule).
 function State.Postbox()
   local cell = S.pbSurfaceCell
   local skin = GetSkin()
@@ -3661,7 +3663,7 @@ function State.Postbox()
   local on = skin.GetMode() ~= "light"
   if outline and S.pbOutlineOn ~= on then
     S.pbOutlineOn = on
-    Rows.SetEnabled(outline, on)
+    outline:SetShown(on)
   end
 end
 
