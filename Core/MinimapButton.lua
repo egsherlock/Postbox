@@ -1152,30 +1152,29 @@ end
 -- 6. The button
 -------------------------------------------------------------
 
--- The gestures, in one grey line of the arrange mode's form, as every
--- Postbox tooltip says them; each part only while it is TRUE: Mail Memory
--- goes when the option is off, the move goes while the position is locked,
--- and the Alt-click always says which way it toggles. Composed once for each
--- combination and kept (six at most), so a hover builds no string.
+-- The gestures, in their house order, each on a line of its own, grey;
+-- each only while it is TRUE: Mail Memory goes when the option is off, the
+-- move goes while the position is locked, and the Alt-click always says
+-- which way it toggles. Listed once for each combination and kept (six at
+-- most), so a hover builds nothing.
 MB._gestureLines = {}
 
-function MB.GestureLine(memory, hostMode, locked)
+function MB.GestureLines(memory, hostMode, locked)
   if hostMode then locked = false end
   local k = (memory and 1 or 0) + (hostMode and 2 or 0) + (locked and 4 or 0)
-  local line = MB._gestureLines[k]
-  if not line then
-    local parts = {}
-    if memory then parts[#parts + 1] = L["MINIMAP_TIP_MEMORY"] end
-    parts[#parts + 1] = L["MINIMAP_TIP_OPTIONS"]
+  local lines = MB._gestureLines[k]
+  if not lines then
+    lines = {}
+    if memory then lines[#lines + 1] = L["MINIMAP_TIP_MEMORY"] end
+    lines[#lines + 1] = L["MINIMAP_TIP_OPTIONS"]
     -- Moving and locking are Postbox's to offer only on Postbox's own icon.
     if not hostMode then
-      if not locked then parts[#parts + 1] = L["MINIMAP_TIP_MOVE"] end
-      parts[#parts + 1] = L[locked and "MINIMAP_TIP_UNLOCK" or "MINIMAP_TIP_LOCK"]
+      if not locked then lines[#lines + 1] = L["MINIMAP_TIP_MOVE"] end
+      lines[#lines + 1] = L[locked and "MINIMAP_TIP_UNLOCK" or "MINIMAP_TIP_LOCK"]
     end
-    line = table.concat(parts, " \194\183 ")
-    MB._gestureLines[k] = line
+    MB._gestureLines[k] = lines
   end
-  return line
+  return lines
 end
 
 -- A look at the tooltip is a look at the icon: Mail Memory's warnings move
@@ -1191,12 +1190,13 @@ end
 
 -- The tooltip's form is the one the addon's hover tooltips share: a title
 -- line; facts as a muted label with a bright value; a warning in the warning
--- tone; the gestures last, muted, in their house order. Its content is the
--- mailbox as Mail Memory knows it -- what arrived, what waits and what the
--- server refused, each with who from; how old that knowledge is -- and, when
--- another character has mail waiting or any has mail close to being lost,
--- one line per character. Nothing here builds a table: the helpers are made
--- once, and the lists read are Mail Memory's.
+-- tone; the gestures last, muted, in their house order, one to a line. Its
+-- content is this character's mailbox as Mail Memory knows it, under a
+-- line naming whose it is -- what arrived, what waits and what the server
+-- refused, each with who from; this character's own warning; how old that
+-- knowledge is -- and, when another character has mail waiting or close to
+-- being lost, one line for each of those characters. Nothing here builds a
+-- table: the helpers are made once, and the lists read are Mail Memory's.
 local TIP = {
   MUTED = 0.75,        -- a fact's label: (0.75, 0.75, 0.78), as the rows' quieter lines
   HINT = 0.7,          -- the gesture line
@@ -1218,6 +1218,14 @@ function TIP.Fact(label, value, tone)
   else
     GameTooltip:AddDoubleLine(label, value, TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03, 1, 1, 1)
   end
+end
+
+-- A warning's own words on a line of their own, in the warning tone; nothing
+-- for none.
+function TIP.Warning(text)
+  if not text then return end
+  local r, g, b = ns.Theme.Ink("warning", "tooltip")
+  GameTooltip:AddLine(text, r, g, b, true)
 end
 
 function TIP.More(n, indent)
@@ -1251,29 +1259,57 @@ function TIP.CharacterName(Memory, st)
   return name .. "  " .. ns.Theme.Colorize("warning", warning, "tooltip")
 end
 
--- The characters, this one first, then the ones with something to say,
--- warnings first -- MailMemory.Characters' own order. Shown when another
--- character has mail waiting, or any character warns (the expiry alert must
--- be able to say whose). The hidden ones say nothing.
+-- Memory -> this character's own line of MailMemory.Characters (its name,
+-- realm, warning), or nil.
+function TIP.Me(Memory)
+  if not (Memory and type(Memory.Characters) == "function") then return nil end
+  local list = Memory.Characters()
+  for i = 1, #list do
+    if list[i].me then return list[i] end
+  end
+  return nil
+end
+
+-- Memory, me -> the line that says whose mailbox the facts under it are:
+-- "Avara's mailbox", muted as a heading, the name in its class colour.
+-- The name is Mail Memory's own for this character where it has one.
+function TIP.Heading(Memory, me)
+  local realm, name = me and me.realm, me and me.name
+  if not name then
+    realm = GetRealmName()
+    name = UnitName("player")
+    if IsSecret(name) or IsSecret(realm) then name = nil end
+  end
+  if not name then return end
+  local who = (Memory and type(Memory.ClassName) == "function") and Memory.ClassName(realm, name, true, "tooltip")
+    or tostring(name)
+  GameTooltip:AddLine(string.format(L["MINIMAP_TIP_MAILBOX"], who), TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03)
+end
+
+-- The other characters with something to say, warnings first --
+-- MailMemory.Characters' own order: shown when another character has mail
+-- waiting or a warning (the expiry alert must be able to say whose). This
+-- character is the heading above, never a line here; the hidden ones say
+-- nothing.
 function TIP.Characters(Memory)
   if not (Memory and type(Memory.Characters) == "function") then return end
   local list = Memory.Characters()
-  local others, warns = false, false
+  local others = false
   for i = 1, #list do
     local st = list[i]
-    if not st.hidden then
-      if st.warn then warns = true end
-      if not st.me and (st.waiting + (st.pending or 0)) > 0 then others = true end
+    if not (st.me or st.hidden) and (st.warn or (st.waiting + (st.pending or 0)) > 0) then
+      others = true
+      break
     end
   end
-  if not (others or warns) then return end
+  if not others then return end
   GameTooltip:AddLine(" ")
   GameTooltip:AddLine(L["PICKER_TITLE"], TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03)
   local shown, extra = 0, 0
   for i = 1, #list do
     local st = list[i]
     local n = st.waiting + (st.pending or 0)
-    if not st.hidden and (st.me or n > 0 or st.warn) then
+    if not (st.me or st.hidden) and (n > 0 or st.warn) then
       if shown < TIP.CHARACTERS then
         shown = shown + 1
         GameTooltip:AddDoubleLine(TIP.CharacterName(Memory, st), tostring(n), 1, 1, 1, 1, 1, 1)
@@ -1305,6 +1341,14 @@ ShowTooltip = function(button, hostMode)
 
   -- White, as every Postbox tooltip's title: the game's default is yellow.
   GameTooltip:SetText(L["FRAME_TITLE"], 1, 1, 1)
+
+  -- Whose mailbox the facts below describe: this character's, named, over
+  -- anything there is to say about it. Its own warning (mail close to being
+  -- lost, or on its way unopened) is said here, after the counts, in the
+  -- warning tone; the Characters list below is the other characters'.
+  local me = memoryOn and TIP.Me(Memory) or nil
+  local myWarning = me and me.warn and me.text or nil
+  if state or view.lit or myWarning then TIP.Heading(Memory, me) end
 
   if state and state.arrived then
     -- Green: good news. The accent belongs to selection and the orange to
@@ -1349,19 +1393,24 @@ ShowTooltip = function(button, hostMode)
       -- mail it would be the snapshot's stale answer.
       GameTooltip:AddLine(L["MEMORY_NOTHING_WAITING"], TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03)
     end
+    TIP.Warning(myWarning)
     TIP.seen.seenAt = state.seenAt
     TIP.Fact(L["MINIMAP_TIP_SEEN"], Memory.AgeText(TIP.seen))
-  elseif view.lit then
+  else
     -- No snapshot (memory off, or this character has never opened a
     -- mailbox with Postbox installed): say only what the client knows.
-    GameTooltip:AddLine(HAVE_MAIL or "", TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03)
+    if view.lit then GameTooltip:AddLine(HAVE_MAIL or "", TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03) end
+    TIP.Warning(myWarning)
   end
 
   if memoryOn then TIP.Characters(Memory) end
 
   GameTooltip:AddLine(" ")
   local locked = (not hostMode) and Settings().lock and true or false
-  GameTooltip:AddLine(MB.GestureLine(memoryOn, hostMode and true or false, locked), TIP.HINT, TIP.HINT, TIP.HINT, true)
+  local hints = MB.GestureLines(memoryOn, hostMode and true or false, locked)
+  for i = 1, #hints do
+    GameTooltip:AddLine(hints[i], TIP.HINT, TIP.HINT, TIP.HINT, true)
+  end
   GameTooltip:Show()
 end
 
