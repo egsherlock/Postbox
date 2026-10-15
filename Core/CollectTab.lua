@@ -272,47 +272,103 @@ end
 -- The quality mark on an item's icon
 --
 -- One rule for every item icon Postbox draws -- a mail row's, History's,
--- Mail Memory's, a fan tile, a reading-view tile -- so a mark reads the
--- same on each by construction. The rule is the game's own item buttons'
--- (ItemButtonTemplate's ProfessionQualityOverlay): the mark's item-button
--- art (RV.MarkArt) at its own size on a 37-unit button, 33 x 28, its
--- top-left 3 out and 2 up from the button's. Here that is scaled to the
--- icon, so on every icon the mark takes the share of the corner it takes
--- in the bags: its gem about a third of the icon's width, in the corner,
+-- Mail Memory's, a fan tile, a reading-view tile, the options' sample row --
+-- so a mark reads the same on each by construction. The art is the game's
+-- own item buttons' (ItemButtonTemplate's ProfessionQualityOverlay): the
+-- mark's item-button art (RV.MarkArt), 33 x 28 at its own size on a
+-- 37-unit button, the gem in its top-left corner and a soft shade of its
+-- own running down and right into the icon. Here that is scaled to the
+-- icon, so on every icon the mark takes the same share of the corner,
 -- while the stack count keeps the opposite one.
 --
--- It overhangs the icon by what the bags' does and never more than 2 units
--- upward, whatever the size: every icon it is drawn on has that room above
--- it inside what holds it (a compact row 4 units, a larger row 8, a fan
--- tile its plate's 3-unit pad), so the mark never rises past its row's top
--- and the list's edge never cuts the first row's.
+-- Where it stands is measured, not the art's box. Each mark's gem sits at
+-- its own place in its art: a single diamond 2.6 texels in from the left,
+-- the two-gem mark 0.9, the 12.0 gold pentagon right on the art's top
+-- edge. Placed by its box, as the bags place it, one mark stood out past
+-- the icon's corner while another sat inside it. So the rule places what
+-- is seen: the visible mark's top-left (RV.MARK.INK, measured from the
+-- client's own textures) stands RV.MARK.OVER units out past the icon's
+-- top and left edges, the same for every mark at every size: on the icon's
+-- corner and just over its edges, about a screen pixel and a half at a UI
+-- scale where a unit is a pixel. Every icon it is drawn on has more room
+-- than that above and beside it inside what holds it (a compact row 4
+-- units above, a larger row 8, a fan tile its plate's 3-unit pad), so the
+-- mark never rises past its row's top and the list's edge never cuts the
+-- first row's; only the art's clear margin reaches past, and nothing of it
+-- shows.
 --
--- RV.MARK_SCALE scales the whole rule, 1 being the bags' proportion. It is
--- 1.5 by default: at the bags' proportion a mail row's 18-unit icon gets a
--- gem of about six units, too small to read at a glance, so every icon's
--- mark is half again as big (the gem about half the icon's width), still
--- in the corner and still never more than 2 units above the icon. Only
--- `/postbox debug badge` changes it, for the session (CT.TuneBadge); every
--- placement remembers the RV.markGen it was made at, so a retune places
--- each mark again where it is next shown. Sizes are not rounded: at UI
--- scale 1 a unit is nearly two screen pixels, too coarse a step to tune a
--- mark this small in.
+-- RV.MARK_SCALE scales the art, 1 being the bags' proportion. It is 1.65
+-- by default: at the bags' proportion a mail row's 18-unit icon gets a gem
+-- of about six units, too small to read at a glance, so every icon's mark
+-- is two thirds again as big (on that icon the single diamond 8 units
+-- across, the three gems 13). Only `/postbox debug badge` changes it, for
+-- the session (CT.TuneBadge); every placement remembers the RV.markGen it
+-- was made at, so a retune places each mark again where it is next shown.
+-- Sizes are not rounded: at UI scale 1 a unit is nearly two screen pixels,
+-- too coarse a step to tune a mark this small in.
 --
 -- The mark stands on a frame over the icon's owner, with the stack count
 -- over it: where the two meet on a small icon, the count stays whole.
 -------------------------------------------------------------
 
--- The item button's art and where it stands (33 x 28, 3 out and 2 up, on a
--- 37-unit button), and the most the mark ever rises above an icon.
-RV.MARK = { W = 33, H = 28, BUTTON = 37, OUT_X = 3, OUT_Y = 2, UP_MAX = 2 }
-RV.MARK_SCALE, RV.markGen = 1.5, 0
+-- The item button's art (33 x 28 on a 37-unit button), and how far the
+-- visible mark stands out past the icon's top and left edges.
+--
+-- INK: where each art's visible mark begins, its left and top in the art's
+-- own texels (of 33 x 28), keyed by the art's name in lower case. Measured
+-- from the client's textures (build 12.1.5): the line where the art's
+-- alpha crosses one half, between texel centres as the art is sampled,
+-- the least over every row and column, to a tenth. The shade runs right
+-- and down from the gem, so it never moves these two edges. An "-Inv" art
+-- not listed takes INK_INV, the median of the measured ones; a square art
+-- (a mark with no item-button art: RV.MarkArt) is its own box, INK_BOX.
+-- `ink` keeps each art's entry once it is found (RV.MarkInk), bounded as
+-- RV.art is.
+RV.MARK = {
+  W = 33, H = 28, BUTTON = 37, OVER = 1.5,
+  INK = {
+    ["professions-icon-quality-tier1-inv"] = { 2.6, 1.7 },
+    ["professions-icon-quality-tier2-inv"] = { 0.9, 2.2 },
+    ["professions-icon-quality-tier3-inv"] = { 1.7, 1.8 },
+    ["professions-icon-quality-tier4-inv"] = { 2.5, 1.0 },
+    ["professions-icon-quality-tier5-inv"] = { 3.0, 2.3 },
+    ["professions-icon-quality-mixed-inv"] = { 2.7, 1.8 },
+    ["professions-icon-quality-12-tier1-inv"] = { 1.9, 1.9 },
+    ["professions-icon-quality-12-tier2-inv"] = { 1.0, 0 },
+    ["professions-icon-quality-12-mixed-inv"] = { 1.9, 0 },
+  },
+  INK_INV = { 1.9, 1.8 },
+  INK_BOX = { 0, 0 },
+  ink = {}, inkN = 0,
+}
+RV.MARK_SCALE, RV.markGen = 1.65, 0
 
--- iconSize -> the mark's width and height, and where its top-left stands
--- against the icon's top-left (x right, y up).
-function RV.MarkGeometry(iconSize)
+-- iconSize, inkX, inkY -> the mark's width and height, and where its
+-- top-left stands against the icon's top-left (x right, y up), for an art
+-- whose visible mark begins inkX, inkY texels in from its top-left: that
+-- point RV.MARK.OVER out past the icon's top-left corner, both ways.
+function RV.MarkGeometry(iconSize, inkX, inkY)
   local M = RV.MARK
   local k = (tonumber(iconSize) or 18) / M.BUTTON * RV.MARK_SCALE
-  return M.W * k, M.H * k, -min(M.OUT_X, M.OUT_X * k), min(M.UP_MAX, M.OUT_Y * k)
+  return M.W * k, M.H * k, -M.OVER - (inkX or 0) * k, M.OVER + (inkY or 0) * k
+end
+
+-- art, square -> where that art's visible mark begins ({ left, top } in its
+-- texels: RV.MARK.INK), found once per art and kept, so a bind with a mark
+-- builds nothing.
+function RV.MarkInk(art, square)
+  local M = RV.MARK
+  if not art then return M.INK_BOX end
+  local ink = M.ink[art]
+  if ink then return ink end
+  if M.inkN >= RV.ART_MAX then
+    for key in pairs(M.ink) do M.ink[key] = nil end
+    M.inkN = 0
+  end
+  ink = M.INK[art:lower()] or (square and M.INK_BOX) or M.INK_INV
+  M.ink[art] = ink
+  M.inkN = M.inkN + 1
+  return ink
 end
 
 -- `/postbox debug badge [percent]` (Postbox.lua): the rule's scale, for
@@ -365,18 +421,21 @@ function RV.NewMark(holder)
 end
 
 -- mark, shadow, icon, iconSize -> both sized and placed on the icon's
--- top-left corner by the rule, square where the mark's art is (RV.ShowMark
--- says which). Placed again only when the icon, its size, the art's shape
--- or the rule changed, so nearly every bind leaves the mark where it is;
--- the icon and its size are kept with the mark for RV.ShowMark.
+-- top-left corner by the rule, for the art the mark wears (RV.ShowMark
+-- sets it; square where that art is): its visible mark where the rule puts
+-- it (RV.MarkInk). Placed again only when the icon, its size, the art or
+-- the rule changed, so nearly every bind leaves the mark where it is; the
+-- icon and its size are kept with the mark for RV.ShowMark.
 function RV.PlaceMark(mark, shadow, icon, iconSize)
-  local square = mark.__pbSquare and true or false
+  local art = mark.__pbArt
   if mark.__pbIcon == icon and mark.__pbIconSize == iconSize and mark.__pbGen == RV.markGen
-      and mark.__pbPlaced == square then
+      and mark.__pbPlaced == art then
     return
   end
-  mark.__pbIcon, mark.__pbIconSize, mark.__pbGen, mark.__pbPlaced = icon, iconSize, RV.markGen, square
-  local w, h, x, y = RV.MarkGeometry(iconSize)
+  mark.__pbIcon, mark.__pbIconSize, mark.__pbGen, mark.__pbPlaced = icon, iconSize, RV.markGen, art
+  local square = mark.__pbSquare and true or false
+  local ink = RV.MarkInk(art, square)
+  local w, h, x, y = RV.MarkGeometry(iconSize, ink[1], ink[2])
   if square then w = h end
   mark:SetSize(w, h)
   mark:ClearAllPoints()
@@ -389,8 +448,9 @@ end
 -- mark, shadow, atlas -> the mark wearing its art (RV.MarkArt) and shown;
 -- both hidden for none. The item button's art brings its own shade into
 -- the icon, as it does in the bags; square art has the soft dark copy
--- behind it instead, so it reads on light item art. A mark placed for the
--- other shape, or before a retune, is placed again here.
+-- behind it instead, so it reads on light item art. A mark placed for
+-- another art (each stands by its own measure), or before a retune, is
+-- placed again here.
 function RV.ShowMark(mark, shadow, atlas)
   if not atlas then
     mark:Hide()
@@ -406,7 +466,7 @@ function RV.ShowMark(mark, shadow, atlas)
   end
   mark.__pbSquare = square
   local icon = mark.__pbIcon
-  if icon and (mark.__pbPlaced ~= square or mark.__pbGen ~= RV.markGen) then
+  if icon and (mark.__pbPlaced ~= art or mark.__pbGen ~= RV.markGen) then
     RV.PlaceMark(mark, shadow, icon, mark.__pbIconSize)
   end
   mark:Show()
