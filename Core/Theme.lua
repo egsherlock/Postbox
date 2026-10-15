@@ -1009,7 +1009,12 @@ Theme.PALETTE_LIGHT = {
   unread            = Hex4("00a900"),
   read              = { 0.55, 0.55, 0.55, 0.70 },
   surface           = Hex4("fafaf8"),
-  surfaceGrain      = { 0.96, 0.96, 0.95, 1.00 },
+  -- No grain: paper is a flat sheet. The tiled stone art under the grain is
+  -- grey (flat grey in a texture pack), and a tint can only darken it: over
+  -- a card's fill it stood grey under ink worked out for the fill, on every
+  -- card no skin painted over (the arrange inspector, the options' tiles).
+  -- At no alpha the card is its fill.
+  surfaceGrain      = { 0.96, 0.96, 0.95, 0.00 },
   surfaceBorder     = { 0.00, 0.00, 0.00, 0.20 },
   bandFill          = Hex4("efefec", 0.94),
   bandBorder        = { 0.00, 0.00, 0.00, 0.18 },
