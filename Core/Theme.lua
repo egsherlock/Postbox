@@ -1033,7 +1033,10 @@ Theme.PALETTE_LIGHT = {
   plateBevel        = { 1.00, 1.00, 1.00, 0.70 },
   plateHighlight    = { 0.00, 0.00, 0.00, 0.04 },
   plateCaption      = Hex4("333333"),
-  tabCaption        = Hex4("595959"),
+  -- An idle window tab's or options tab's caption: the plates' own dark
+  -- grey, which reads as text on the idle tab's grey; the open tab says
+  -- itself by its white plate, its ink and the accent's underline.
+  tabCaption        = Hex4("333333"),
   -- The brand's rgb, a light palette's strengths: a wash and a rule over
   -- white need more of the hue to be seen at all.
   accentWash        = { 0.8275, 0.6431, 0.2902, 0.16 },
