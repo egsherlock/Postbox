@@ -2083,7 +2083,13 @@ end
 -- object too. -> whether it did.
 function Theme.Retake(fs, object)
   if not fs or type(fs.SetFontObject) ~= "function" or type(fs.GetFontObject) ~= "function" then return false end
+  -- Font strings only. An edit box's GetFontObject is its own font
+  -- instance: setting that back on it makes the font inherit from itself,
+  -- and the client recurses until it crashes (STACK_OVERFLOW, 12.1.5). So
+  -- the object must also be a named font, never a widget's own instance.
+  if type(fs.GetObjectType) ~= "function" or fs:GetObjectType() ~= "FontString" then return false end
   object = object or fs:GetFontObject()
+  if not object or type(object.GetName) ~= "function" or not object:GetName() then return false end
   local primer = HF.primer
   if primer == nil then
     primer = type(CreateFont) == "function" and CreateFont("PostboxRetakeFont") or false
@@ -2335,8 +2341,6 @@ do
       n = n - 1
       if type(w) == "table" then
         if w.GetChildren then
-          -- An edit box: a frame with a font of its own.
-          if retake and w.GetFontObject and w.GetCursorPosition then pcall(Retaken, w) end
           n = Push(n, w:GetRegions())
           n = Push(n, w:GetChildren())
         elseif w.GetStringWidth and w.SetText then
