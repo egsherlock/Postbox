@@ -1175,11 +1175,11 @@ do
     local art = ArtHolder(s)
     -- For the mark before the name, made the first time it is drawn.
     s.Art = art
-    s.IconEdge = art:CreateTexture(nil, "ARTWORK", nil, 0)
     s.Icon = art:CreateTexture(nil, "ARTWORK", nil, 1)
     s.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    s.IconEdge:SetPoint("TOPLEFT", s.Icon, "TOPLEFT", -1, 1)
-    s.IconEdge:SetPoint("BOTTOMRIGHT", s.Icon, "BOTTOMRIGHT", 1, -1)
+    -- The holder answers for the icon to the rows' rule, which draws the
+    -- icon's edge on it, over the art (RowRules.PaintCount).
+    art.Icon = s.Icon
     -- The mark over the icon's corner, a level above, with a soft dark copy
     -- behind it so it reads on light item art.
     local over = CreateFrame("Frame", nil, s)
@@ -1267,7 +1267,14 @@ do
       local qr, qg, qb = C_Item.GetItemQualityColor(quality)
       if qr then r, g, b = qr, qg, qb end
     end
-    s.IconEdge:SetColorTexture(r * 0.6, g * 0.6, b * 0.6, 1)
+    -- The icon's edge as every mail row's: the rows' one gray line inside
+    -- the icon (RowRules.PaintCount; one item, no count of its own there:
+    -- the sample writes its count below, as the list does).
+    local R1 = ns.CollectTab and ns.CollectTab.RowRules
+    if R1 and type(R1.PaintCount) == "function" then
+      S.sampleLayout = S.sampleLayout or { shown = { icon = true } }
+      R1.PaintCount(s.Art, 0, 1, S.sampleLayout)
+    end
 
     -- The mark the link carries, as the list reads it.
     local mark = type(link) == "string" and (link:match("|A:Professions%-[^|]*|a")
