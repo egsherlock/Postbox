@@ -1944,7 +1944,9 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   if R and R.WithMark and R.MarkOnName and R.MarkOnName() then subject = R.WithMark(subject, mark) end
   if R and R.PaintQuality then R.PaintQuality(row, mark) end
   if R and R.PaintNameMark then R.PaintNameMark(row, mark) end
-  if R and R.PaintCount then R.PaintCount(row, mail.count, mail.items) end
+  -- A number for every mail, so its icon wears the rows' edge whatever it
+  -- holds (a heading passes none).
+  if R and R.PaintCount then R.PaintCount(row, mail.count, mail.items or 0) end
 
   local spec = R and R.Place and MM.PlaceSpec(list)
   if spec then

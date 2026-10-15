@@ -635,27 +635,30 @@ end
 RV.STACK_KEY, RV.STACK_RING, RV.STACK_FACE = 0, 0.5, 0.15
 
 -------------------------------------------------------------
--- The item icon's edge
+-- The mail icon's edge
 --
--- A line one screen pixel thick round the inside of a mail's item icon, in
--- a neutral dark grey, so the icon's edge reads against the row and against
--- the second card behind it, whatever the item's art: lighter than black
--- art and the dark rows, darker than bright art and Light mode's paper. It
--- is the line EllesmereUI's bags draw inside an item slot (one pixel,
--- 0.25 grey: RV.IconRule.EDGE). Inside the icon's own rect, so the icon keeps its size and
--- every column stands where it did; over the art and under the quality
--- mark and the count, which stand on the frame above the row.
+-- A line one screen pixel thick round the inside of a mail's icon, in a
+-- neutral dark grey, so the icon's edge reads against the row and against
+-- the second card behind it, whatever the art: lighter than black art and
+-- the dark rows, darker than bright art and Light mode's paper. It is the
+-- line EllesmereUI's bags draw inside an item slot (one pixel, 0.25 grey:
+-- RV.IconRule.EDGE). Inside the icon's own rect, so the icon keeps its
+-- size and every column stands where it did; over the art and under the
+-- quality mark and the count, which stand on the frame above the row.
 --
--- On a mail row's item icon (the Mail tab, History, Mail Memory) wherever
--- the row's arrangement shows the icon; not on a letter's or a coin's, and
--- not on Mail Memory's character crests. Four strips made once per row,
--- anchored to the icon's sides, so they follow its size and place with no
--- work per bind; their thickness is set again only when the scale the row
--- draws at changes (Theme.OnePixel), one compare per bind.
+-- On every mail row's icon (the Mail tab, History, Mail Memory) wherever
+-- the row's arrangement shows the icon: an item's, and the letter, scroll,
+-- page, crate or coin a mail with no item wears in its place, so every
+-- icon down a list has the same edge. Not on Mail Memory's character
+-- crests, which are not a mail's, and not where a remembered letter kept
+-- no icon at all. Four strips made once per row, anchored to the icon's
+-- sides, so they follow its size and place with no work per bind; their
+-- thickness is set again only when the scale the row draws at changes
+-- (Theme.OnePixel), one compare per bind.
 -------------------------------------------------------------
 
 -- row, on -> the edge round the row's icon shown or hidden; made on first
--- use, for a row that ever shows an item.
+-- use.
 function RV.IconRule.PaintEdge(row, on)
   local edge = row.ItemEdge
   if not on then
@@ -751,12 +754,14 @@ end
 
 -- row, count, items[, layout] -> the count of the item on the row's icon
 -- and, for `items` of two or more, the stack edge behind it; or neither.
--- And, for `items` of one or more, the icon's own edge (RV.IconRule.PaintEdge).
+-- And the icon's own edge (RV.IconRule.PaintEdge) on a mail's icon with
+-- art, whatever it holds: `items` is a number for every mail, nil for a
+-- row that is not one (Mail Memory's character headings).
 -- `layout` is the row's arrangement (nil: the mail rows').
 function RV.PaintCount(row, count, items, layout)
   local icon = row.Icon
   local iconShown = icon ~= nil and (layout or RV.Layout()).shown.icon and true or false
-  RV.IconRule.PaintEdge(row, iconShown and (tonumber(items) or 0) >= 1)
+  RV.IconRule.PaintEdge(row, iconShown and items ~= nil and icon:GetTexture() and true or false)
   local shown = iconShown and RV.CountOnIcon()
   local text = shown and RV.CountText(count) or nil
   local fs = row.IconCount
