@@ -4284,21 +4284,19 @@ function Footer.Build(frame, above)
 
   -- Reset to defaults, at the band's left end across from What's new?: the
   -- one control here that undoes the player's own choices, so it is quiet
-  -- until pointed at, and it asks first -- the dialog
-  -- says what goes and what stays. A button of its own laid over the band,
-  -- so a click on it is never also a click on the bug report.
+  -- until pointed at. A button of its own laid over the band, so a click on
+  -- it is never also a click on the bug report.
   --
-  -- Three resets, offered side by side, narrowest first: the settings on
-  -- the tab the panel is showing (TabReset), every setting, or everything
-  -- Postbox keeps but the list of the player's characters. The last clears
-  -- what the player built -- recipients, groups, Mail Memory, History -- so
-  -- it is the dialog's last button, kept apart from the others by Cancel,
-  -- and it only asks again: nothing is cleared until a second dialog, which
-  -- says it cannot be undone, is answered. Enter answers no dialog (no
-  -- enterClicksFirstButton); Escape and Cancel close both without a change.
-  -- The tab is the one the dialog was opened on and names, whichever tab
-  -- the panel has moved to by the answer.
+  -- A click opens a small menu of the three resets, narrowest first: the
+  -- settings on the tab the panel is showing (TabReset), every setting, or
+  -- everything Postbox keeps but the list of the player's characters. Each
+  -- says in its tooltip what it clears and what it keeps, and choosing one
+  -- asks that reset's own question, which says it in full; nothing changes
+  -- until it is answered. Cancel and Escape change nothing, and Enter answers
+  -- no question (no enterClicksFirstButton). The tab is the one the menu was
+  -- opened on and names, whichever tab the panel has moved to by the answer.
   do
+    local POPUP_RESET_TAB = "POSTBOX_RESET_TAB"
     local POPUP_RESET = "POSTBOX_RESET_SETTINGS"
     local POPUP_RESET_ALL = "POSTBOX_RESET_EVERYTHING"
 
@@ -4320,10 +4318,10 @@ function Footer.Build(frame, above)
       end
     end
 
-    -- Neither reset runs while Postbox is collecting or sending (MailboxUI,
+    -- No reset runs while Postbox is collecting or sending (MailboxUI,
     -- UI.ResetBlockedBy): true, and a line in chat saying what to wait for.
-    -- Asked at the footer's click and again at every answer, since a run can
-    -- start while a dialog stands; a refused answer closes its dialog.
+    -- Asked at the footer's click, at the menu's pick and again at every
+    -- answer, since a run can start while a question stands.
     local function Busy()
       local UI = ns.MailboxUI
       local by = UI and type(UI.ResetBlockedBy) == "function" and UI.ResetBlockedBy() or nil
@@ -4348,10 +4346,6 @@ function Footer.Build(frame, above)
       if not refused then AfterReset(styleChanged) end
     end
 
-    -- Cancel. With each button's answer read by its place, a button with
-    -- none would leave the dialog standing.
-    local function Nothing() end
-
     local function ResetEverythingNow()
       local UI = ns.MailboxUI
       if Busy() or not (UI and type(UI.ResetEverything) == "function") then return end
@@ -4361,64 +4355,45 @@ function Footer.Build(frame, above)
       ns.Print(L["MSG_RESET_ALL_DONE"])
     end
 
-    -- The second question, a frame after the first dialog has closed, so it
-    -- opens where the first one was rather than stacked under it.
-    local function AskEverything()
-      if Busy() then return end
-      local function Show()
-        ns.Theme.LiftPopup(StaticPopup_Show(POPUP_RESET_ALL, L["MSG_RESET_ALL_CONFIRM"]))
-      end
-      if type(C_Timer) == "table" and type(C_Timer.After) == "function" then
-        C_Timer.After(0, Show)
-      else
-        Show()
-      end
+    -- One question per reset, its answer the reset or nothing.
+    local function Question(onAccept)
+      return {
+        text = "%s",
+        button1 = L["BTN_RESET"],
+        button2 = L["COD_CONFIRM_CANCEL"],
+        OnAccept = onAccept,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        showAlert = true,
+        -- Its text says what goes and what stays: the popup's wider width.
+        wideText = true,
+      }
     end
 
     -- Registered on first use, like the reload offer. No popup, no reset:
     -- this never happens without the question being asked.
-    local function EnsureResetDialog()
+    local function EnsureResetDialogs()
       if type(StaticPopupDialogs) ~= "table" or type(StaticPopup_Show) ~= "function" then
         return false
       end
-      if not StaticPopupDialogs[POPUP_RESET] then
-        StaticPopupDialogs[POPUP_RESET] = {
-          text = "%s",
-          button1 = L["OPTX_RESET_TAB"],
-          button2 = L["BTN_RESET_SETTINGS"],
-          button3 = L["COD_CONFIRM_CANCEL"],
-          button4 = L["BTN_RESET_EVERYTHING"],
-          -- Each button's answer by its place (StaticPopup_OnClick), so the
-          -- four stand in the order they read: Cancel third, before the one
-          -- that clears what the player made.
-          selectCallbackByIndex = true,
-          OnButton1 = ResetTabNow,
-          OnButton2 = ResetSettingsNow,
-          OnButton3 = Nothing,
-          OnButton4 = AskEverything,
-          timeout = 0,
-          whileDead = true,
-          hideOnEscape = true,
-          showAlert = true,
-          -- Its text describes both choices, so it takes the popup's wider
-          -- width; so does the second, for the same length of text.
-          wideText = true,
-        }
-      end
-      if not StaticPopupDialogs[POPUP_RESET_ALL] then
-        StaticPopupDialogs[POPUP_RESET_ALL] = {
-          text = "%s",
-          button1 = L["BTN_RESET"],
-          button2 = L["COD_CONFIRM_CANCEL"],
-          OnAccept = ResetEverythingNow,
-          timeout = 0,
-          whileDead = true,
-          hideOnEscape = true,
-          showAlert = true,
-          wideText = true,
-        }
-      end
+      if not StaticPopupDialogs[POPUP_RESET_TAB] then StaticPopupDialogs[POPUP_RESET_TAB] = Question(ResetTabNow) end
+      if not StaticPopupDialogs[POPUP_RESET] then StaticPopupDialogs[POPUP_RESET] = Question(ResetSettingsNow) end
+      if not StaticPopupDialogs[POPUP_RESET_ALL] then StaticPopupDialogs[POPUP_RESET_ALL] = Question(ResetEverythingNow) end
       return true
+    end
+
+    -- A pick from the menu: its own question, with what it says filled in.
+    local function Ask(id)
+      if Busy() or not EnsureResetDialogs() then return end
+      if id == "tab" then
+        S.resetTab = S.tab
+        ns.Theme.LiftPopup(StaticPopup_Show(POPUP_RESET_TAB, L("OPTX_RESET_TAB_CONFIRM", TabReset.Name(S.tab))))
+      elseif id == "settings" then
+        ns.Theme.LiftPopup(StaticPopup_Show(POPUP_RESET, L["MSG_RESET_SETTINGS_CONFIRM"]))
+      elseif id == "everything" then
+        ns.Theme.LiftPopup(StaticPopup_Show(POPUP_RESET_ALL, L["MSG_RESET_ALL_CONFIRM"]))
+      end
     end
 
     local reset = CreateFrame("Button", nil, statusBand)
@@ -4435,8 +4410,10 @@ function Footer.Build(frame, above)
     if arrow then arrow:SetPoint("CENTER", reset, "LEFT", 10, 0) end
     if caret then caret:SetPoint("CENTER", resetText, "RIGHT", 9, 0) end
     -- At rest the quietest grey the band carries, at full strength; the
-    -- text colour when pointed at.
+    -- text colour when pointed at, and while its menu is open.
+    local menu
     local function Quiet(on)
+      if on and menu and menu:IsShown() then on = false end
       local token = on and "textDisabled" or "textPrimary"
       ns.Theme.SetColor(resetText, token)
       if arrow then ns.Theme.SetColor(arrow, token) end
@@ -4451,16 +4428,48 @@ function Footer.Build(frame, above)
       return width
     end
 
-    reset:SetScript("OnClick", function()
-      if Busy() then return end
-      if EnsureResetDialog() then
-        S.resetTab = S.tab
-        local tab = L("OPTX_RESET_TAB_CONFIRM", TabReset.Name(S.tab))
-        ns.Theme.LiftPopup(StaticPopup_Show(POPUP_RESET, L("MSG_RESET_CONFIRM", tab)))
+    -- The menu's three, each with a tooltip of what it clears and keeps:
+    -- the tab's names the tab the panel shows.
+    local RESETS = {
+      { id = "tab", name = L["OPTX_RESET_TAB"] },
+      { id = "settings", name = L["BTN_RESET_SETTINGS"] },
+      { id = "everything", name = L["BTN_RESET_EVERYTHING"] },
+    }
+    local function ResetTip(row, item)
+      local text
+      if item.id == "tab" then
+        text = L("OPT_RESET_TAB_TIP", TabReset.Name(S.tab))
+      elseif item.id == "settings" then
+        text = L["OPT_RESET_SETTINGS_TIP"]
+      else
+        text = L["OPT_RESET_EVERYTHING_TIP"]
       end
+      Tip.Begin(row, item.name, text)
+      Tip.Show(row)
+    end
+    local function ResetUntip() GameTooltip:Hide() end
+
+    reset:SetScript("OnClick", function(self)
+      GameTooltip:Hide()
+      if not menu then
+        local Drop = ns.Core.UI.Dropdown
+        if not (Drop and type(Drop.Menu) == "function") then return end
+        menu = Drop.Menu(self, RESETS, {
+          onPick = Ask,
+          onEnter = ResetTip,
+          onLeave = ResetUntip,
+          -- However it closed: quiet again unless the pointer is on it.
+          onClose = function() Quiet(not reset:IsMouseOver()) end,
+          minWidth = math.max(120, self:GetWidth() or 0),
+        })
+      end
+      if not menu:IsShown() and Busy() then return end
+      menu:Toggle()
+      Quiet(false)
     end)
     reset:SetScript("OnEnter", function(self)
       Quiet(false)
+      if menu and menu:IsShown() then return end
       Tip.Begin(self, L["OPT_RESET_DEFAULTS"], L["OPT_RESET_DEFAULTS_DESC"])
       Tip.Show(self)
     end)

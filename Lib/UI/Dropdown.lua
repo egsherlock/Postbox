@@ -764,3 +764,131 @@ function Dropdown.Create(parent, opts)
 
   return container
 end
+
+-- A menu of actions that opens from a button of the owner's (the options'
+-- Reset to defaults): the select's list without a value -- the same card,
+-- rows, wash and type, no selection dot -- that closes on a pick, on a press
+-- anywhere else, or with its window. items: { id, name } each; opts:
+-- onPick(id), onEnter(row, item) and onLeave(row, item) for a row's tooltip,
+-- onClose() however it closed, minWidth. Built on first open; each open fits
+-- it to its captions as they
+-- measure now and puts it over the button where there is room, else under
+-- it. -> the menu: :Toggle(), :Close(), :IsShown().
+function Dropdown.Menu(owner, items, opts)
+  opts = type(opts) == "table" and opts or {}
+  items = type(items) == "table" and items or {}
+  local menu = {}
+  local list, rows
+
+  local function Build()
+    local Theme = Core.UI.Theme
+    local colors = (Theme and Theme.MenuColors) or nil
+    local hover = colors and colors.hover or { 0.90, 0.78, 0.30, 0.18 }
+    list = CreateFrame("Frame", nil, owner, "BackdropTemplate")
+    list:SetClampedToScreen(true)
+    list:SetFrameStrata("FULLSCREEN_DIALOG")
+    list:EnableMouse(true)
+    list._toggle = owner
+    list.__pbPopupAlways = true
+    local surface = ns.Theme and ns.Theme.ApplyCard
+    if type(surface) == "function" then
+      surface(list)
+    else
+      local fill = colors and colors.fill or { 0.05, 0.05, 0.06, 1 }
+      local border = colors and colors.border or { 0.46, 0.36, 0.24, 0.55 }
+      list:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+      list:SetBackdropColor(fill[1], fill[2], fill[3], fill[4])
+      list:SetBackdropBorderColor(border[1], border[2], border[3], border[4])
+      list.__postboxPanel = "card"
+    end
+    list:SetHeight(LIST_PADDING * 2 + #items * DEFAULT_ROW_HEIGHT)
+    list:Hide()
+    rows = {}
+    for i = 1, #items do
+      local item = items[i]
+      local row = CreateFrame("Button", nil, list)
+      row:SetHeight(DEFAULT_ROW_HEIGHT)
+      row:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -LIST_PADDING - (i - 1) * DEFAULT_ROW_HEIGHT)
+      row:SetPoint("RIGHT", list, "RIGHT", -LIST_PADDING, 0)
+      local bg = row:CreateTexture(nil, "BACKGROUND")
+      bg:SetAllPoints()
+      bg:SetColorTexture(0, 0, 0, 0)
+      local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+      text:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
+      text:SetWordWrap(false)
+      text:SetText(item.name)
+      if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
+      row.Text, row.item = text, item
+      row:SetScript("OnEnter", function(self)
+        bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4])
+        if opts.onEnter then opts.onEnter(self, self.item) end
+      end)
+      row:SetScript("OnLeave", function(self)
+        bg:SetColorTexture(0, 0, 0, 0)
+        if opts.onLeave then opts.onLeave(self, self.item) end
+      end)
+      row:SetScript("OnClick", function(self)
+        list:Hide()
+        if opts.onPick then opts.onPick(self.item.id) end
+      end)
+      rows[i] = row
+    end
+    list:SetScript("OnHide", function()
+      Watch()
+      if opts.onClose then opts.onClose() end
+    end)
+    lists[list] = true
+    -- The skins' pass, from the owner: they walk a frame's children.
+    if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, owner) end
+  end
+
+  -- As wide as its widest caption in the face it wears now, and over the
+  -- button, left edges lined up, where the screen has the room.
+  local function Place()
+    local widest = 0
+    for i = 1, #rows do
+      local w = TextWidth(rows[i].Text)
+      if w > widest then widest = w end
+    end
+    local width = math.max(tonumber(opts.minWidth) or 0, math.ceil(widest) + 2 * (LIST_PADDING + MARK_GUTTER))
+    list:SetWidth(width)
+    local height = list:GetHeight() or 0
+    local bottom, top = owner:GetBottom(), owner:GetTop()
+    local up = true
+    if bottom and top and UIParent then
+      local own = owner:GetEffectiveScale() or 1
+      local screenTop = (UIParent:GetTop() or 0) * (UIParent:GetEffectiveScale() or 1) / own
+      local above, below = screenTop - top - LIST_GAP, bottom - LIST_GAP
+      up = above >= height or above > below
+    end
+    list:ClearAllPoints()
+    if up then
+      list:SetPoint("BOTTOMLEFT", owner, "TOPLEFT", 0, LIST_GAP)
+    else
+      list:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -LIST_GAP)
+    end
+    list:SetFrameLevel(((owner:GetFrameLevel()) or 0) + LIST_LEVEL_OFFSET)
+  end
+
+  function menu:IsShown() return list ~= nil and list:IsShown() end
+
+  function menu:Close()
+    if list and list:IsShown() then list:Hide() end
+    Watch()
+  end
+
+  function menu:Toggle()
+    if list and list:IsShown() then
+      menu:Close()
+      return
+    end
+    if not list then Build() end
+    Dropdown.CloseAll(list)
+    Place()
+    list:Show()
+    list:Raise()
+    Watch()
+  end
+
+  return menu
+end
