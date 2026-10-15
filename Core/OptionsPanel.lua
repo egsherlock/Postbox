@@ -158,7 +158,7 @@ do
     local T = ns.Theme
     box:SetAutoFocus(false)
     box.__postboxNoEditSkin = true
-    box:SetFontObject(T.FontObject("bodySmall") or GameFontHighlightSmall)
+    T.SetBoxFont(box, T.FontObject("bodySmall") or GameFontHighlightSmall)
     T.SetColor(box, "textPrimary")
     box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
     box:SetScript("OnEditFocusLost", function(self) self:HighlightText(0, 0) end)

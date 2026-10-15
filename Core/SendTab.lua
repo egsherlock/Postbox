@@ -3120,7 +3120,7 @@ end
 
 local function PrepareEditBox(box, role)
   local font = Theme.FontObject(role or "bodySmall")
-  if font then box:SetFontObject(font) end
+  if font then Theme.SetBoxFont(box, font) end
   Theme.SetColor(box, "textPrimary")
   box:SetAutoFocus(false)
   box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)

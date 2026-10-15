@@ -2005,7 +2005,7 @@ local function Build()
   local searchBox = CreateFrame("EditBox", nil, searchWrap)
   searchBox:SetAutoFocus(false)
   local searchFont = Theme.FontObject("bodySmall")
-  if searchFont then searchBox:SetFontObject(searchFont) end
+  if searchFont then Theme.SetBoxFont(searchBox, searchFont) end
   Theme.SetColor(searchBox, "textPrimary")
   searchBox:SetPoint("TOPLEFT", searchWrap, "TOPLEFT", 8, -4)
   searchBox:SetPoint("BOTTOMRIGHT", searchWrap, "BOTTOMRIGHT", -6, 4)

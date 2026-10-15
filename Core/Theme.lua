@@ -2102,13 +2102,21 @@ end
 -- object too. -> whether it did.
 function Theme.Retake(fs, object)
   if not fs or type(fs.SetFontObject) ~= "function" or type(fs.GetFontObject) ~= "function" then return false end
-  -- Font strings only. An edit box's GetFontObject is its own font
-  -- instance: setting that back on it makes the font inherit from itself,
-  -- and the client recurses until it crashes (STACK_OVERFLOW, 12.1.5). So
-  -- the object must also be a named font, never a widget's own instance.
-  if type(fs.GetObjectType) ~= "function" or fs:GetObjectType() ~= "FontString" then return false end
-  object = object or fs:GetFontObject()
-  if not object or type(object.GetName) ~= "function" or not object:GetName() then return false end
+  -- A font string, or an edit box Postbox gave its font (Theme.SetBoxFont),
+  -- which takes that one: what an edit box answers from GetFontObject is its
+  -- own font instance, and setting that back on it makes the font inherit
+  -- from itself, and the client recurses until it crashes (STACK_OVERFLOW,
+  -- 12.1.5). So the object must also be a named font, never a widget's own
+  -- instance.
+  local kind = type(fs.GetObjectType) == "function" and fs:GetObjectType()
+  if kind == "EditBox" then
+    object = fs.__pbFont
+    if not object then return false end
+  elseif kind ~= "FontString" then
+    return false
+  end
+  object = NamedFont(object or fs:GetFontObject())
+  if not object then return false end
   local primer = HF.primer
   if primer == nil then
     primer = type(CreateFont) == "function" and CreateFont("PostboxRetakeFont") or false
@@ -2127,6 +2135,16 @@ function Theme.Retake(fs, object)
   if v then fs:SetJustifyV(v) end
   if spacing and type(fs.SetSpacing) == "function" then fs:SetSpacing(spacing) end
   return true
+end
+
+-- An edit box's font, set and kept on the box (`__pbFont`): the one it takes
+-- again when the halo moves (Theme.Retake, Theme.RelayoutText) and the one
+-- that moves to a host's face published late (Theme.AdoptHostFace). Never
+-- read back with GetFontObject, which answers the box's own instance.
+function Theme.SetBoxFont(box, object)
+  if not (box and object) then return end
+  box:SetFontObject(object)
+  box.__pbFont = NamedFont(object)
 end
 
 -- The count the halo is at: a text kept by Theme.KeepHalo compares it.
@@ -2284,7 +2302,10 @@ do
   end
 
   local function Adopt(fs)
-    local object = fs:GetFontObject()
+    -- An edit box by the font Postbox gave it (Theme.SetBoxFont), never by
+    -- what its GetFontObject answers: its own instance.
+    local box = fs.__pbFont
+    local object = box or fs:GetFontObject()
     if object == nil then return false end
     local want
     if HF.pending[object] then
@@ -2299,6 +2320,7 @@ do
     if p1 ~= p2 or s1 ~= s2 or f1 ~= f2 then return false end
     local r, g, b, a = fs:GetTextColor()
     fs:SetFontObject(want)
+    if box then fs.__pbFont = NamedFont(want) end
     if type(r) == "number" then fs:SetTextColor(r, g, b, a) end
     return true
   end
@@ -2353,6 +2375,16 @@ do
     if w.__pbHalo ~= nil then HaloColor(w, object) end
   end
 
+  -- An edit box Postbox gave its font (Theme.SetBoxFont) and wearing it as
+  -- it is takes that font again: by the font it was given, never by what
+  -- its GetFontObject answers, its own instance.
+  local function RetakenBox(w)
+    local p1, s1, f1 = w:GetFont()
+    local p2, s2, f2 = w.__pbFont:GetFont()
+    if p1 ~= p2 or s1 ~= s2 or f1 ~= f2 then return end
+    Theme.Retake(w)
+  end
+
   local function Relay(root, retake)
     local secret = type(issecretvalue) == "function" and issecretvalue or nil
     local count = 0
@@ -2363,6 +2395,7 @@ do
       n = n - 1
       if type(w) == "table" then
         if w.GetChildren then
+          if retake and w.__pbFont then pcall(RetakenBox, w) end
           n = Push(n, w:GetRegions())
           n = Push(n, w:GetChildren())
         elseif w.GetStringWidth and w.SetText then
@@ -4562,7 +4595,7 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
   local box = CreateFrame("EditBox", nil, wrap)
   box:SetAutoFocus(false)
   local font = Theme.FontObject and Theme.FontObject("bodySmall")
-  if font then box:SetFontObject(font) end
+  if font then Theme.SetBoxFont(box, font) end
   Theme.SetColor(box, "textPrimary")
   box:SetPoint("TOPLEFT", wrap, "TOPLEFT", SEARCH_TEXT_INSET, -2)
   box.__postboxNoEditSkin = true

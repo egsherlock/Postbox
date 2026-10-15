@@ -1442,7 +1442,7 @@ local function Build()
   T.StyleInput(nameWrap, nameBox)
   nameBox:SetAutoFocus(false)
   local font = T.FontObject and T.FontObject("bodySmall")
-  if font then nameBox:SetFontObject(font) end
+  if font then T.SetBoxFont(nameBox, font) end
   T.SetColor(nameBox, "textPrimary")
   nameBox:SetPoint("TOPLEFT", nameWrap, "TOPLEFT", 8, -2)
   nameBox:SetPoint("BOTTOMRIGHT", nameWrap, "BOTTOMRIGHT", -8, 2)
