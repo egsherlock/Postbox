@@ -1105,7 +1105,12 @@ local function DressTitle(fs)
   local halo = T0 and T0.HaloGeneration and T0.HaloGeneration()
   if halo and base.halo ~= halo then
     base.halo = halo
-    if T0.Retake then T0.Retake(fs) end
+    -- The named font it wears, else the last one it was seen wearing: a
+    -- title given a face of its own below (a size its object does not
+    -- carry) may answer its own font instance, never set back on it.
+    local object = T0.NamedFont and T0.NamedFont(fs:GetFontObject())
+    if object then base.object = object else object = base.object end
+    if T0.Retake and object then T0.Retake(fs, object) end
   end
   -- Set only where it moved: a change of the accent or the background
   -- colour dresses the titles again for their colour, and a font set again
@@ -1145,6 +1150,9 @@ local function AdoptTitle(fs)
   local path, _, flags = fs:GetFont()
   if type(path) ~= "string" or path == "" then path = STANDARD_TEXT_FONT end
   local base = { path = path, flags = flags }
+  -- The font it wears before any face of its own: what it takes again.
+  local T0 = ns.Theme
+  base.object = T0 and T0.NamedFont and T0.NamedFont(fs:GetFontObject()) or nil
   -- The title's own shadow, put back when Shadow is chosen again.
   if type(fs.GetShadowOffset) == "function" and type(fs.GetShadowColor) == "function" then
     local sx, sy = fs:GetShadowOffset()
