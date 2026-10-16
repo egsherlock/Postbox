@@ -4159,7 +4159,6 @@ function Pages.minimap(col)
     { id = "goldclean",    name = CleanName("OPT_MINIMAP_ICON_GOLD") },
     { id = "blizzard",     name = L["OPT_MINIMAP_ICON_BLIZZARD"] },
     { id = "postbox",      name = L["OPT_MINIMAP_ICON_POSTBOX"] },
-    { id = "badge",        name = L["OPT_MINIMAP_ICON_BADGE"] },
   }
   -- Every item carries its art, so the open list shows the icons themselves
   -- -- the only way to browse them without pending mail.
