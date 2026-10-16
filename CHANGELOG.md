@@ -29,8 +29,9 @@ Options, Window). Your recipients, Mail Memory and History are kept.*
   game's own UI: Dark or **Light mode** (crisp dark text on paper, your
   accent in the underlines and ticks), with your accent (Gold, White, your
   class color or any color), background, border, corners, row stripes,
-  font and text size. In Dark, tabs are a clean neutral gray whose words
-  brighten when you point at them.
+  font and text size. In Dark, the tabs, Inbox and History and the other
+  buttons like them are a clean neutral gray whose words brighten when you
+  point at them; under EllesmereUI the Mail and Send tabs match the options.
 - **Window scale** from 80% to 130%, in every style.
 - **Text stays readable** at any opacity: in the Postbox style its color
   follows what it sits on, and an accent too dark to read is lifted, under
@@ -107,8 +108,9 @@ Options, Window). Your recipients, Mail Memory and History are kept.*
 
 - **Five tabs**, and a panel beside them that explains and previews
   whatever you point at, in a sentence or two.
-- **The Window tab's preview is the Mail window, small:** its tabs, three
-  mail rows, the totals band and All mail, wearing every setting live.
+- **The Window and Mail tabs preview the Mail window, small:** its tabs,
+  mail rows, the totals band, the category buttons and All mail, wearing
+  each tab's settings live.
 - **Reset to defaults** opens a menu: Reset this tab, Reset settings or
   Reset everything, each saying what it clears before it asks.
 - **What's new?** in game, from the options or `/postbox whatsnew`.
