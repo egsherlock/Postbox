@@ -1993,7 +1993,7 @@ do
     fig.Shadow:SetShown(shadowOn and not alone)
     glow:SetSize(size * 2.2, size * 2.2)
     if glowOn and not (rest or alone) then
-      if look == "dot" then glow:SetVertexColor(ns.Theme.DarkColor("warning")) else glow:SetVertexColor(r, g, b) end
+      glow:SetVertexColor(Icon.GlowRGB(Icon.GetGlowColor()))
       glow:Show()
       -- A switched-off icon does not keep moving.
       if on and pulseOn then
@@ -3043,7 +3043,9 @@ end
 -- With the icon on, the rows that say how something looks grey while that
 -- something is not there: Marker and Marker corner while Expiring mail is
 -- Off, Larger when alone unless it is Always (the one choice that puts the
--- marker on its own). With the icon off the block has them grey already.
+-- marker on its own), Glow color while Glow is off, Accent tint while the
+-- style has no art it tints. With the icon off the block has them grey
+-- already.
 function State.MinimapRows()
   local Icon, rows = ns.MinimapButton, S.mmRows
   if not (Icon and rows and Icon.GetEnabled and Icon.GetEnabled()) then return end
@@ -3052,6 +3054,9 @@ function State.MinimapRows()
   if rows.marker then Rows.SetEnabled(rows.marker, marking) end
   if rows.corner then Rows.SetEnabled(rows.corner, marking) end
   if rows.large then Rows.SetEnabled(rows.large, expiry == "always") end
+  if rows.glow then Rows.SetEnabled(rows.glow, Icon.GetGlow() and true or false) end
+  local spec = Icon.GetIconSpec and Icon.GetIconSpec()
+  if rows.tint then Rows.SetEnabled(rows.tint, spec and spec.tintable and true or false) end
 end
 
 -- Row layout stays live with Larger mail rows on: History, Mail Memory and
@@ -4112,9 +4117,9 @@ function Pages.minimap(col)
   })
 
   -- On the icon: its art, its size, its count, then its glow and its pulse
-  -- side by side, the one breathing the other, and the accent's tint, on
-  -- the glow and the icon, beside the shadow. EllesmereUI's button wears
-  -- all of it but the size.
+  -- side by side, the one breathing the other, the glow's colour, and the
+  -- accent's tint on the minimal icons beside the shadow. EllesmereUI's
+  -- button wears all of it but the size.
   Rows.Group(block, L["OPT_MINIMAP_GROUP_ICON"])
 
   -- Each "clean" restyle sits directly beneath its original, named as the
@@ -4166,6 +4171,7 @@ function Pages.minimap(col)
     get = function() return ns.MinimapButton and ns.MinimapButton.GetIcon() end,
     set = function(id)
       if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end
+      State.MinimapRows()
       Ctx.Repaint()
     end,
   })
@@ -4200,20 +4206,49 @@ function Pages.minimap(col)
     set = function(id) if ns.MinimapButton then ns.MinimapButton.SetCount(id) end end,
   })
 
-  local function Effect(titleKey, descKey, get, set)
+  local function Effect(titleKey, descKey, get, set, after)
     return {
       title = L[titleKey], text = L[descKey],
       get = function() return ns.MinimapButton and ns.MinimapButton[get]() end,
       set = function(on) if ns.MinimapButton then ns.MinimapButton[set](on) end end,
-      after = Ctx.Repaint,
+      after = after or Ctx.Repaint,
     }
   end
   Rows.Pair(block,
-    Effect("OPT_MINIMAP_GLOW_TITLE", "OPT_MINIMAP_GLOW_DESC", "GetGlow", "SetGlow"),
+    Effect("OPT_MINIMAP_GLOW_TITLE", "OPT_MINIMAP_GLOW_DESC", "GetGlow", "SetGlow", function()
+      State.MinimapRows()
+      Ctx.Repaint()
+    end),
     Effect("OPT_MINIMAP_PULSE_TITLE", "OPT_MINIMAP_PULSE_DESC", "GetPulse", "SetPulse"))
-  Rows.Pair(block,
+  -- What the glow, its pulse and the arrival halo wear; grey while Glow is
+  -- off (State.MinimapRows). Each choice carries its colour in the list.
+  local glowNames = {
+    gold = L["OPT_MINIMAP_GLOWCOLOR_GOLD"], accent = L["OPT_MINIMAP_GLOWCOLOR_ACCENT"],
+    white = L["OPT_MINIMAP_GLOWCOLOR_WHITE"],
+  }
+  local glowItems = {}
+  for _, id in ipairs((Icon and Icon.GLOW_COLORS) or { "white" }) do
+    glowItems[#glowItems + 1] = { id = id, name = glowNames[id] }
+  end
+  local glowRow = Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_GLOWCOLOR_TITLE"], text = L["OPT_MINIMAP_GLOWCOLOR_DESC"], items = glowItems,
+    swatchFor = function(id)
+      local I = ns.MinimapButton
+      if I and I.GlowRGB then return I.GlowRGB(id) end
+      return nil
+    end,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetGlowColor() end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetGlowColor(id) end
+      Ctx.Repaint()
+    end,
+  })
+  S.mmRows.glow = glowRow
+  -- Accent tint greys where the style has no art it can tint.
+  local tintRow = Rows.Pair(block,
     Effect("OPT_MINIMAP_ACCENT_TITLE", "OPT_MINIMAP_ACCENT_DESC", "GetAccentTint", "SetAccentTint"),
     Effect("OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC", "GetShadow", "SetShadow"))
+  S.mmRows.tint = tintRow.pair[1]
 
   -- Place: where it sits on the map, and the lock on moving it. Under
   -- EllesmereUI's minimap that, and the size, are EllesmereUI's, and one

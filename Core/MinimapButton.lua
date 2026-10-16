@@ -72,7 +72,8 @@ local DEFAULTS = {
   markerLarge  = false,
   -- Expiring mail (`expiry`, section 1b) is deliberately not seeded here: an
   -- unset one is read from the checkbox it replaced, which a seeded default
-  -- would hide.
+  -- would hide. Nor is Glow color (`glowColor`), read from Accent tint while
+  -- it was never chosen (section 1b).
 }
 
 -- ONE dropdown, every placement, no second control to contradict it:
@@ -243,7 +244,8 @@ end
 --           or mail known to be on its way unopened for over three weeks),
 --           this character included and the hidden ones left out, as its
 --           warnings leave them -- and Expiring mail puts the marker where
---           the icon is now. On the icon it brings the warning tone with it.
+--           the icon is now. On the icon it brings the icon forward and its
+--           glow up, in Glow color: the marker alone says why.
 --   alone   the marker stands on its own, on the corner it has on the icon:
 --           Expiring mail is Always and When to show has the icon down. The
 --           button is on the map for the marker's sake, its art hidden: the
@@ -322,6 +324,40 @@ end
 local function MarkerLarge(prefs)
   return (prefs or Settings()).markerLarge == true
 end
+
+-- Glow color (`glowColor`): what the glow, its pulse and the arrival halo
+-- wear -- "gold" (Postbox's gold), "accent" (the accent the window style or
+-- the host UI gives) or "white". Nothing else colours them: the marker alone
+-- says mail is expiring. Before this the glow was white, or the accent with
+-- Accent tint on, so a glow never chosen reads that: Accent tint on is
+-- Accent, off is White. Choosing one stores it; so does a change to Accent
+-- tint while it was never chosen (MB.SetAccentTint), so the glow keeps the
+-- colour it has.
+local GLOW_COLORS = { gold = true, accent = true, white = true }
+MB.GLOW_COLORS = { "gold", "accent", "white" }
+
+local function GlowColorMode(prefs)
+  prefs = prefs or Settings()
+  local mode = prefs.glowColor
+  if GLOW_COLORS[mode] then return mode end
+  return prefs.accent == true and "accent" or "white"
+end
+
+-- r, g, b of a glow colour. On the map, not in a window: Postbox's gold is
+-- the dark palette's in either Mode (Theme.DarkColor); the accent is the live
+-- one (Theme.GetAccent), the host UI's under a host skin.
+local function GlowRGB(mode)
+  local T = ns.Theme
+  if mode == "gold" then
+    local r, g, b = T.DarkColor("accent")
+    return r, g, b
+  elseif mode == "accent" then
+    local r, g, b = T.GetAccent()
+    return r, g, b
+  end
+  return 1, 1, 1
+end
+MB.GlowRGB = GlowRGB
 
 -- Mail Memory's own switch: off, nothing it recorded is offered anywhere.
 local function MemoryOn()
@@ -438,21 +474,9 @@ local function Resting()
   return view.shown and not view.lit and not view.alert
 end
 
--- The glow's colour: the warning tone while the dot is on the icon, whatever
--- the accent (r, g, b) would have made it -- the glow is the part of the
--- icon a player sees from across the screen. On the map, not in a window:
--- the dark palette's tone in either Mode (Theme.DarkColor), as the dot's.
--- A dot on its own has no glow at all (Glowing).
-local function GlowTone(r, g, b)
-  if view.alert then
-    local wr, wg, wb = ns.Theme.DarkColor("warning")
-    return wr, wg, wb
-  end
-  return r, g, b
-end
-
--- Whether the glow is lit: new mail, or the dot on the icon -- never for a
--- dot on its own, which has no icon to glow behind.
+-- Whether the glow is lit: new mail, or the marker on the icon -- never for
+-- a marker on its own, which has no icon to glow behind. It wears Glow color
+-- either way (GlowRGB): the marker alone says mail is expiring.
 local function Glowing(prefs)
   return prefs.glow == true and (view.lit or view.alert) and not view.alone
 end
@@ -1081,7 +1105,7 @@ local function ApplyEuiSkin()
       btn.__pbMailPulse = pulse
     end
     glow:SetSize(artW * 1.6, artH * 1.6)
-    glow:SetVertexColor(GlowTone(r, g, b))
+    glow:SetVertexColor(GlowRGB(GlowColorMode(prefs)))
     glow:Show()
     if prefs.pulse ~= false then
       if not btn.__pbMailPulse:IsPlaying() then btn.__pbMailPulse:Play() end
@@ -1345,10 +1369,10 @@ local function ApplyLook(button)
     icon:SetTexture(spec.texture)
   end
 
-  -- One accent switch for the whole element: the glyph (where the art is
-  -- tintable) and the glow follow ns.Theme.GetAccent() together -- the
-  -- EllesmereUI accent when that skin is active, Postbox's own otherwise.
-  -- Untintable art keeps its colours and only the glow carries the accent.
+  -- Accent tint: the glyph, where the art is tintable (the minimal glyphs),
+  -- in ns.Theme.GetAccent() -- the EllesmereUI accent when that skin is
+  -- active, the window style's otherwise. Painted art keeps its colours.
+  -- The glow wears Glow color (below).
   local r, g, b = 1, 1, 1
   if prefs.accent == true then
     r, g, b = ns.Theme.GetAccent()
@@ -1365,12 +1389,12 @@ local function ApplyLook(button)
   -- button keeps its size, so the hover and the clicks are the icon's own.
   icon:SetShown(not view.alone)
 
-  -- The glow is the icon's voice for new mail, and for the dot on the icon
-  -- in the warning tone: it rests with the icon, and a dot on its own has
-  -- none.
+  -- The glow is the icon's voice for new mail, and for the marker on the
+  -- icon, in Glow color either way: it rests with the icon, and a marker on
+  -- its own has none.
   local glow = button.glow
   glow:SetSize(size * GLOW_SCALE, size * GLOW_SCALE)
-  glow:SetVertexColor(GlowTone(r, g, b))
+  glow:SetVertexColor(GlowRGB(GlowColorMode(prefs)))
   if Glowing(prefs) then
     glow:Show()
     if prefs.pulse ~= false then
@@ -2027,14 +2051,14 @@ MB.Refresh = Refresh
 -- visibility depends on, captured at the moment the report is built.
 function MB.Diagnose()
   return string.format(
-    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s wants %s | count %s %d | expiring %s %s | marker %s %s%s",
+    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s wants %s | count %s %d | expiring %s %s | marker %s %s%s | glow %s",
     tostring(runtimeActive), tostring(suppressing),
     tostring((EuiSkinCandidate())), tostring(euiSkin.applied),
     euiSkin.tries, tostring(euiSkin.fallback),
     (MB._button and MB._button:IsShown()) and "shown" or "hidden/none",
     tostring((MailWaiting())), ShowMode(), tostring(view.shown and not view.alone), CountMode(), view.count,
     ExpiryMode(), (view.alone and "DOT ALONE") or (view.alert and "DOT ON ICON") or "quiet",
-    MarkerShape(), MarkerCorner(), MarkerLarge() and " large" or "")
+    MarkerShape(), MarkerCorner(), MarkerLarge() and " large" or "", GlowColorMode())
 end
 
 -- Called by Skin_EllesmereUI.RefreshAccents so an accent retune repaints a
@@ -2137,6 +2161,16 @@ function MB.SetMarkerLarge(on)
   Refresh()
 end
 
+-- What the glow, its pulse and the arrival halo wear (MB.GLOW_COLORS;
+-- section 1b).
+function MB.GetGlowColor() return GlowColorMode() end
+
+function MB.SetGlowColor(mode)
+  if not GLOW_COLORS[mode] then return end
+  Settings().glowColor = mode
+  Refresh()
+end
+
 function MB.GetIconSize()
   return IconSize()
 end
@@ -2160,11 +2194,19 @@ function MB.SetIconSize(px)
   Refresh()
 end
 
--- Off unless switched on, as DEFAULTS has it.
+-- Off unless switched on, as DEFAULTS has it. It tints the art that takes
+-- a tint; the glow is Glow color's. A glow whose colour was never chosen
+-- still reads this (section 1b), so before this changes it keeps the colour
+-- it wears now.
 function MB.GetAccentTint() return Settings().accent == true end
 
 function MB.SetAccentTint(on)
-  Settings().accent = on == true
+  local prefs = Settings()
+  on = on == true
+  if (prefs.accent == true) ~= on and not GLOW_COLORS[prefs.glowColor] then
+    prefs.glowColor = GlowColorMode(prefs)
+  end
+  prefs.accent = on
   Refresh()
 end
 
@@ -2261,9 +2303,8 @@ local function PlayFlash(prefs)
 
   -- An animation on a frame nobody can see is a promise nobody sees.
   if not (halo and flash and sized) then return false end
-  -- The dark palette's green in either Mode: it swells over the map.
-  local pr, pg, pb = ns.Theme.DarkColor("positive")
-  halo:SetVertexColor(pr, pg, pb)
+  -- In Glow color, as the glow it swells out of.
+  halo:SetVertexColor(GlowRGB(GlowColorMode(prefs)))
   -- Restarting mid-swell would jump from wherever it is to the first
   -- phase's start; the stop settles it first.
   if flash:IsPlaying() then flash:Stop() end
