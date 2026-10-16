@@ -642,9 +642,13 @@ local BORDER_MATCH = "match"
 local DEFAULT_BORDER = BORDER_MATCH
 local DEFAULT_BORDER_SIZE = 2
 local THICKNESS_STEP = { thin = 1, normal = 2, heavy = 3 }
+-- A style's colour where EllesmereUI names none: white. Only ever read.
+local BORDER_WHITE = { r = 1, g = 1, b = 1 }
 
+-- No defaults table: an empty one merged nothing, and was made per read (a
+-- window open and the options' drawing read the border and the opacity).
 local function GetProfile()
-  return ns.Store.EnsurePath("profile", {})
+  return ns.Store.EnsurePath("profile")
 end
 
 -- Every Postbox window we have skinned. Appearance settings apply to all of
@@ -858,7 +862,7 @@ function Skin.ApplyBorder(frame)
     return
   end
 
-  local color, behind = { r = 1, g = 1, b = 1 }, false
+  local color, behind = BORDER_WHITE, false
   if EUI.GetBorderStyleSelectDefaults then
     local ok, c, b = pcall(EUI.GetBorderStyleSelectDefaults, key)
     if ok and c then color, behind = c, b and true or false end
