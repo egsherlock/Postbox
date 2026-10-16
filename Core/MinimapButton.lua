@@ -666,11 +666,11 @@ end
 --   Triangle     from Media/minimap-triangle.tga, drawn the same way for
 --                the same sizes, in two forms by its anchor:
 --                  in a corner, a right triangle that fills the corner: its
---                  right angle in the corner, its legs 1.4 d (rounded, at
+--                  right angle in the corner, its legs 1.2 d (rounded, at
 --                  least 5) along the icon's two edges, its long side
 --                  facing in;
 --                  at a side, a triangle pointing out from the icon: its
---                  base 1.5 d (rounded, at least 5) lying along that edge,
+--                  base 1.3 d (rounded, at least 5) lying along that edge,
 --                  its height three quarters of the base (rounded, at
 --                  least 3). It stands outside the icon, its base flush
 --                  with the edge, and its dark edge a pixel past the base,
@@ -715,12 +715,16 @@ end
 -- side triangles, their edges -- each a row of cells, d = 4 .. 21 from the
 -- left, each one transparent texel and then its shape at 2 texels a pixel,
 -- one texel down. The corner form is drawn in the top right corner, the
--- side form pointing up.
+-- side form pointing up. Its legs 1.2 d and its base 1.3 d, each rounded
+-- half up in whole numbers (12 d + 5 over 10: a half is never left to a
+-- float), as the generator draws them: 1.4 d and 1.5 d until 2026-10-16,
+-- a pixel smaller at a 20 px icon since (legs 6, base 7), and as much
+-- smaller at every size.
 local Tri = { W = 1024, H = 256, BAND = 64, x = { {}, {}, {}, {} } }
 do
-  local function Corner(d) return math.max(5, math.floor(d * 1.4 + 0.5)) end
+  local function Corner(d) return math.max(5, math.floor((d * 12 + 5) / 10)) end
   local function Side(d)
-    local base = math.max(5, math.floor(d * 1.5 + 0.5))
+    local base = math.max(5, math.floor((d * 13 + 5) / 10))
     return base, math.max(3, math.floor(base * 0.75 + 0.5))
   end
   Tri.Corner, Tri.Side = Corner, Side
