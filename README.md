@@ -175,12 +175,13 @@ icon steps aside.
   corner you choose when mail on any character is close to being lost. On
   **Always** it stays on the map when this character has no mail, the same
   size and in the same place; **Larger when alone** makes it bigger there.
-- **Count on icon** (this character or all), **Flash on new mail**, glow,
-  pulse and shadow, with a **Glow color** of gold, your accent or white.
-  **Accent tint** colors the Minimal letter.
-- **The Minimap tab's preview** draws the icon large beside a copy at its
-  real size, wearing every setting; settings with choices show them side by
-  side.
+- **Count on icon** (this character or all), shadow, glow, pulse and
+  **Flash on new mail**, with a **Glow color** of gold, your accent, white
+  or any color you pick.
+- **The Minimap tab** reads in five groups (When it shows, Icon, Glow,
+  Expiring mail, Place). Its preview draws the icon large beside a copy at
+  its real size, wearing every setting; settings with choices show them
+  side by side, and a grayed-out setting says what turns it on.
 - Two dozen hand-painted styles from 16 to 40 px, on the minimap's rim or
   anywhere on screen (Shift-drag; Alt-click locks it).
 - **Its tooltip** shows your own mailbox first, then each of your other

@@ -72,8 +72,8 @@ open a mailbox.
   bar or "!") on the corner you choose when mail is about to expire. It
   stays put even when the icon is hidden, or grows bigger if you like.
 - Two dozen hand-painted icon styles, 16 to 40 px, with glow (gold, your
-  accent or white), pulse and shadow. Its tooltip shows your own mailbox,
-  then each of your other characters with mail.
+  accent, white or any color), pulse and shadow. Its tooltip shows your own
+  mailbox, then each of your other characters with mail.
 
 ![The Send tab](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/send.png)
 

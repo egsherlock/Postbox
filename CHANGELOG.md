@@ -65,10 +65,12 @@ Options, Window). Your recipients, Mail Memory and History are kept.*
   corner you choose when mail on any character is close to being lost. On
   **Always** it stays on the map when this character has no mail, the same
   size and in the same place; **Larger when alone** makes it bigger there.
-- **Glow color:** gold, your accent or white, for the glow, its pulse and
-  the new-mail flash. Accent tint now colors only the Minimal letter.
-- **A big live preview** on the Minimap tab, beside the icon at its real
-  size, and settings with choices show them side by side.
+- **Glow color:** gold, your accent, white or any color you pick, for the
+  glow, its pulse and the new-mail flash. It replaces Accent tint.
+- **A tidier Minimap tab** in five groups (When it shows, Icon, Glow,
+  Expiring mail, Place), with a big live preview beside the icon at its
+  real size. Settings with choices show them side by side, and a
+  grayed-out setting says what turns it on.
 - **Count on icon**, and sizes from 16 to 40 px.
 - **A tidier tooltip:** your own mailbox first, then each of your other
   characters with mail.
