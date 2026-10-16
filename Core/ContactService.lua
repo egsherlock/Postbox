@@ -1475,8 +1475,17 @@ function CS.GetClassColoredName(name, text, ground)
   -- cost a rebuild here.
   if next(classCache) == nil then EnsureSources() end
 
-  local classToken = classCache[IdentityKey(name)]
-  if not classToken then return out end
+  local key = IdentityKey(name)
+  local classToken = classCache[key]
+  if not classToken then
+    -- The player's own characters, on every realm. The sources learn the
+    -- class of the alts on the realm being played only, so an alt anywhere
+    -- else -- a recent recipient, a group's member -- is known by the census
+    -- alone, as it is to CS.ClassOf.
+    if ownGen ~= censusGen then BuildOwnClasses() end
+    classToken = ownClasses[key]
+    if not classToken then return out end
+  end
   return CS.WrapClass(classToken, out, ground)
 end
 
