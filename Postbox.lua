@@ -1860,11 +1860,10 @@ local function BuildDiagnosticReport()
 
   local Icon = ns.MinimapButton
   if Icon and type(Icon.GetEnabled) == "function" then
-    add(string.format("Minimap icon: %s | host-styled %s | %s | accent %s glow %s shadow %s",
+    add(string.format("Minimap icon: %s | host-styled %s | %s | glow %s shadow %s",
       Icon.GetEnabled() and "on" or "off",
       (Icon.IsHostStyled and Icon.IsHostStyled()) and "yes" or "no",
       tostring(Icon.GetIcon and Icon.GetIcon() or "?"),
-      (Icon.GetAccentTint and Icon.GetAccentTint()) and "on" or "off",
       (Icon.GetGlow and Icon.GetGlow()) and "on" or "off",
       (Icon.GetShadow and Icon.GetShadow()) and "on" or "off"))
     if type(Icon.Diagnose) == "function" then

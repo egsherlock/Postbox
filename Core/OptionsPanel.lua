@@ -850,10 +850,25 @@ do
 
   -- The height an entry's text needs, `extraH` included. Its tooltip's
   -- summary is cut here too, with the measuring, so no hover is the first
-  -- to cut one.
+  -- to cut one. A row that greys says why in a text of its own (Rows.Why):
+  -- each of its texts is measured, and the tallest is its need.
   function Insp.Need(entry, extraH)
     ns.Summary(entry.text)
-    return Lay(S.measure, entry.title, entry.text, extraH)
+    local h = Lay(S.measure, entry.title, entry.text, extraH)
+    local plain, off, blocked = entry.onText, entry.offText, entry.blockText
+    if plain and plain ~= entry.text then
+      ns.Summary(plain)
+      h = math.max(h, Lay(S.measure, entry.title, plain, extraH))
+    end
+    if off and off ~= entry.text then
+      ns.Summary(off)
+      h = math.max(h, Lay(S.measure, entry.title, off, extraH))
+    end
+    if blocked and blocked ~= entry.text then
+      ns.Summary(blocked)
+      h = math.max(h, Lay(S.measure, entry.title, blocked, extraH))
+    end
+    return h
   end
 
   -- The height a text of the secondary role takes across the text zone.
@@ -1862,19 +1877,20 @@ do
   -- large enough to judge (G.BIG, 48), and beside it a copy at its own size (Icon
   -- size, or EllesmereUI's button under their minimap: MinimapButton's
   -- GetDrawnSize), captioned Actual size. Both WEAR the live settings: icon
-  -- style, accent tint, glow in Glow color (with its pulse), shadow, a
-  -- sample number while Count on icon is on, and while Expiring mail is not
-  -- Off the marker, in its shape, on its corner. Faded, and still, while the
-  -- icon is off.
+  -- style, glow in Glow color (with its pulse), shadow, a sample number
+  -- while Count on icon is on, and while Show marker is not Off the marker,
+  -- in its shape, on its corner. Faded, and still, while the icon is off.
   --
   -- A setting with choices answers with its choices while it is pointed at
   -- (Ctx.MinimapMode; its text then stands under the drawing, Layout), each
   -- the icon as set with that one setting changed, at G.CHOICE, side by side
   -- under their names, the current one marked as the arrange inspector marks
-  -- a chosen segment, its words bright and the accent under them: Expiring
-  -- mail (the plain icon, the icon with the marker, the marker alone as
-  -- Always draws it while the icon is down), Marker (its five shapes, in two
-  -- rows), Marker corner and Glow color. When to show answers with a grid: a
+  -- a chosen segment, its words bright and the accent under them: Show
+  -- marker (the plain icon, the icon with the marker, the marker alone as
+  -- Always draws it while the icon is down), Shape (its five shapes, in two
+  -- rows), Corner, Larger when alone, and Glow color (its four colours, two
+  -- rows of two; Custom's the colour picked, or, with none yet, the colour
+  -- the picker opens on). When to show answers with a grid: a
   -- column for each choice, a strip of ground for each situation that tells
   -- them apart -- no mail anywhere, mail on another character, new mail
   -- here -- and in each cell what the map shows then: nothing, the icon
@@ -1894,7 +1910,7 @@ do
     -- gap.
     CAP_GAP = 5, MARK_GAP = 2, MARK_H = 2,
     -- The grid: a situation's name, the gap under it, its strip of ground,
-    -- the gap to the next; and the gap between the marker choices' rows.
+    -- the gap to the next; and the gap between two rows of choices.
     LABEL_GAP = 2, STRIP_H = 30, STRIP_GAP = 4, ROW_GAP = 6 }
   -- The number the icon wears here while Count on icon is on.
   local MM = { COUNT = { me = 3, all = 12 } }
@@ -1904,16 +1920,20 @@ do
     expiry = { "off", "icon", "always" },
     marker = { "dot", "ring", "square", "bar", "exclamation" },
     corner = { "TOPRIGHT", "TOPLEFT", "BOTTOMLEFT" },
-    glow = { "gold", "accent", "white" },
+    glow = { "gold", "accent", "white", "custom" },
     large = { "off", "on" },
   }
+  -- Choices drawn in two rows, and how many stand in the first: Shape's
+  -- five, three then two between them; Glow color's four, two and two.
+  MM.SPLIT = { marker = 3, glow = 2 }
   MM.CAPS = {
     show = { "OPT_MINIMAP_SHOW_NEW", "OPT_MINIMAP_SHOW_ANY", "OPT_MINIMAP_SHOW_ALWAYS" },
     expiry = { "OPT_MINIMAP_EXPIRY_OFF", "OPT_MINIMAP_EXPIRY_ICON", "OPT_MINIMAP_EXPIRY_ALWAYS" },
     marker = { "OPT_MINIMAP_MARKER_DOT", "OPT_MINIMAP_MARKER_RING", "OPT_MINIMAP_MARKER_SQUARE",
       "OPT_MINIMAP_MARKER_BAR", "OPT_MINIMAP_MARKER_EXCLAMATION" },
     corner = { "OPT_MINIMAP_CORNER_TR", "OPT_MINIMAP_CORNER_TL", "OPT_MINIMAP_CORNER_BL" },
-    glow = { "OPT_MINIMAP_GLOWCOLOR_GOLD", "OPT_MINIMAP_GLOWCOLOR_ACCENT", "OPT_MINIMAP_GLOWCOLOR_WHITE" },
+    glow = { "OPT_MINIMAP_GLOWCOLOR_GOLD", "OPT_MINIMAP_GLOWCOLOR_ACCENT", "OPT_MINIMAP_GLOWCOLOR_WHITE",
+      "OPT_MINIMAP_GLOWCOLOR_CUSTOM" },
     large = { "OPT_MINIMAP_LARGE_OFF", "OPT_MINIMAP_LARGE_ON" },
     set = { "OPT_MINIMAP_PREVIEW_ACTUAL" },
   }
@@ -2025,10 +2045,10 @@ do
   end
 
   -- What a figure wears, filled in place before each figure is painted: the
-  -- art, the switch, the accent tint, glow, pulse and shadow, the glow's
-  -- colour, the marker (on the icon or not, its shape and corner, larger
-  -- when alone or not) and the count.
-  local FIG = { spec = false, on = false, tint = false, tr = 1, tg = 1, tb = 1, glowOn = false, pulseOn = false,
+  -- art, the switch, glow, pulse and shadow, the glow's colour, the marker
+  -- (on the icon or not, its shape and corner, larger when alone or not)
+  -- and the count.
+  local FIG = { spec = false, on = false, glowOn = false, pulseOn = false,
     shadowOn = false, gr = 1, gg = 1, gb = 1, mark = false, shape = "dot", corner = "TOPRIGHT", large = false,
     count = 0 }
 
@@ -2045,7 +2065,7 @@ do
     fig:SetSize(size, size)
     if spec.atlas then icon:SetAtlas(spec.atlas) else icon:SetTexture(spec.texture) end
     icon:SetSize(size, size * (spec.aspect or 1))
-    if spec.tintable and P.tint then icon:SetVertexColor(P.tr, P.tg, P.tb) else icon:SetVertexColor(1, 1, 1) end
+    icon:SetVertexColor(1, 1, 1)
     icon:SetDesaturated(rest or not P.on)
     icon:SetAlpha(rest and (Icon.REST_ALPHA or 0.65) or 1)
     icon:SetShown(not alone)
@@ -2199,9 +2219,6 @@ do
     f.PaintFigures = function(Icon, spec, on, mode, stageH, capRoom)
       local P = FIG
       P.spec, P.on = spec, on
-      P.tint = Icon.GetAccentTint() and true or false
-      P.tr, P.tg, P.tb = 1, 1, 1
-      if P.tint then P.tr, P.tg, P.tb = T.GetAccent() end
       P.glowOn, P.pulseOn, P.shadowOn = Icon.GetGlow() and true or false, Icon.GetPulse() and true or false,
         Icon.GetShadow() and true or false
       local glowId = Icon.GetGlowColor and Icon.GetGlowColor() or "gold"
@@ -2260,26 +2277,35 @@ do
           PaintFigure(strip.figs[c], Icon, "alone", G.CHOICE, x)
           PaintCaption(f, caps[c], x, capY, keys[c], ids[c] == current, on)
         end
-      elseif mode == "marker" then
-        -- Five, in two rows: three, then two between them.
-        P.mark = true
+      elseif mode == "marker" or (mode == "glow" and S.mmGlowCustom) then
+        -- Two rows: Shape's five, three then two between them; Glow
+        -- color's four, two and two. Glow color's in their colours whether
+        -- or not Glow is on: what each would be.
+        local split = MM.SPLIT[mode]
+        if mode == "marker" then P.mark = true else P.glowOn = true end
         local rowH = math.floor((stageH + capRoom - G.ROW_GAP) / 2) - capRoom
         for r = 1, 2 do
           local strip = strips[r]
           local top = -4 - (r - 1) * (rowH + capRoom + G.ROW_GAP)
           PlaceStrip(f, strip, top, rowH)
-          local first, at = (r == 1) and 1 or 4, (r == 1) and MM.THIRDS or MM.HALVES
+          local first = (r == 1) and 1 or split + 1
+          local at = (r == 1 and split == 3) and MM.THIRDS or MM.HALVES
           for c = 1, #at do
             local i = first + c - 1
             local x = math.floor(at[c] * CTX_W + 0.5)
-            P.shape = ids[i]
+            if mode == "marker" then
+              P.shape = ids[i]
+            elseif Icon.GlowRGB then
+              P.gr, P.gg, P.gb = Icon.GlowRGB(ids[i])
+            end
             PaintFigure(strip.figs[c], Icon, "lit", G.CHOICE, x)
             PaintCaption(f, caps[i], x, top - rowH - G.CAP_GAP, keys[i], ids[i] == current, on,
-              r == 2 and (math.floor(CTX_W / 2) - 4) or nil)
+              at == MM.HALVES and (math.floor(CTX_W / 2) - 4) or nil)
           end
         end
       else
-        -- Three: Expiring mail's, Marker corner's or Glow color's.
+        -- Three: Show marker's, Corner's, or Glow color's where the client
+        -- has no colour picker to offer Custom with.
         local strip = strips[1]
         PlaceStrip(f, strip, -4, stageH)
         for c = 1, 3 do
@@ -2583,12 +2609,14 @@ do
 
   -- A block of rows in `col` that greys as one, its group headings with
   -- them: what a feature's switch governs. Rows.EndBlock closes it and
-  -- moves `col` past it.
-  function Rows.Block(col)
+  -- moves `col` past it. `why`, a locale key: what each of its rows says
+  -- while the block is grey -- what turns it on (Rows.Why).
+  function Rows.Block(col, why)
     local frame = CreateFrame("Frame", nil, col.frame)
     frame:SetPoint("TOPLEFT", col.frame, "TOPLEFT", 0, col.y)
     frame:SetPoint("TOPRIGHT", col.frame, "TOPRIGHT", 0, col.y)
-    local block = { frame = frame, y = 0, top = 0, first = col.first, cells = {}, items = {}, heads = {}, parent = col }
+    local block = { frame = frame, y = 0, top = 0, first = col.first, cells = {}, items = {}, heads = {}, parent = col,
+      why = why }
     block.item = { frame = frame, h = 0, block = block }
     col.items[#col.items + 1] = block.item
     return block
@@ -2600,7 +2628,30 @@ do
     block.item.h = -block.y
     col.y = col.y + block.y
     col.first = block.first
+    -- Each setting in it says what turns the block on while it is grey; a
+    -- note is not a setting, and says only what it says.
+    local why = block.why and L[block.why]
+    if why then
+      for i = 1, #block.cells do
+        local cell = block.cells[i]
+        local entry = cell.entry
+        if cell.kind ~= "note" and entry then
+          entry.onText = entry.onText or entry.text
+          entry.blockText = entry.onText .. "\n\n" .. why
+        end
+      end
+    end
     return block
+  end
+
+  -- A grey row says why: under its description, one line saying what
+  -- turns it on (`key`, a locale key), while another setting has it grey
+  -- (Rows.SetEnabled). Written here, once, and measured with every text
+  -- (Insp.Need): greying a row builds no string.
+  function Rows.Why(cell, key)
+    local entry = cell.entry
+    entry.onText = entry.onText or entry.text
+    entry.offText = entry.onText .. "\n\n" .. L[key]
   end
 
   -- A row `height` tall at the column's cursor, under a hairline unless it
@@ -2938,6 +2989,9 @@ do
 
   -- Greyed in colour and alpha together, and not clickable; its motion
   -- scripts stay, so the inspector and the tooltip still say what it does.
+  -- Where it can say why it is grey (Rows.Why, Rows.Block), its text says
+  -- it: what turns its block on while the block is grey, else what turns
+  -- the row on. The inspector says it again where it is showing it.
   function Rows.SetEnabled(cell, on)
     local control = cell.control
     if control and control.SetEnabled then control:SetEnabled(on) end
@@ -2946,13 +3000,30 @@ do
     if cell.kind ~= "note" and cell.Name then
       ns.Theme.SetColor(cell.Name, on and "accent" or "textDisabled")
     end
+    local entry = cell.entry
+    local text = entry and entry.onText
+    if not text then return end
+    if not on then
+      if cell.blockOff then text = entry.blockText or text else text = entry.offText or text end
+    end
+    if entry.text ~= text then
+      entry.text = text
+      if S.shown == entry then
+        S.shown = false
+        Insp.Show(entry)
+      end
+    end
   end
 
   -- Its rows' names and controls in their disabled colours, at full
   -- strength: a text dimmed by its alpha is read on whatever it lets through.
   function Rows.SetBlock(block, on)
     if not block then return end
-    for i = 1, #block.cells do Rows.SetEnabled(block.cells[i], on) end
+    for i = 1, #block.cells do
+      local cell = block.cells[i]
+      cell.blockOff = not on
+      Rows.SetEnabled(cell, on)
+    end
     local heads = block.heads
     for i = 1, #heads do
       heads[i].off = not on
@@ -3242,22 +3313,23 @@ function State.Minimap()
 end
 
 -- With the icon on, the rows that say how something looks grey while that
--- something is not there: Marker and Marker corner while Expiring mail is
--- Off, Larger when alone unless it is Always (the one choice that puts the
--- marker on its own), Glow color while Glow is off, Accent tint while the
--- style has no art it tints. With the icon off the block has them grey
--- already.
+-- something is not there, each saying what turns it on (Rows.Why): Pulse
+-- while Glow is off; Glow color while neither Glow nor Flash on new mail,
+-- the two things that wear it, is on; Shape and Corner while Show marker
+-- is Off; Larger when alone unless Show marker is Always (the one choice
+-- that puts the marker on its own). With the icon off the block has them
+-- grey already, saying to turn the icon on.
 function State.MinimapRows()
   local Icon, rows = ns.MinimapButton, S.mmRows
   if not (Icon and rows and Icon.GetEnabled and Icon.GetEnabled()) then return end
   local expiry = Icon.GetExpiry()
   local marking = expiry ~= "off"
+  local glow = Icon.GetGlow() and true or false
   if rows.marker then Rows.SetEnabled(rows.marker, marking) end
   if rows.corner then Rows.SetEnabled(rows.corner, marking) end
   if rows.large then Rows.SetEnabled(rows.large, expiry == "always") end
-  if rows.glow then Rows.SetEnabled(rows.glow, Icon.GetGlow() and true or false) end
-  local spec = Icon.GetIconSpec and Icon.GetIconSpec()
-  if rows.tint then Rows.SetEnabled(rows.tint, spec and spec.tintable and true or false) end
+  if rows.pulse then Rows.SetEnabled(rows.pulse, glow) end
+  if rows.glow then Rows.SetEnabled(rows.glow, glow or (Icon.GetAlertFlash() and true or false)) end
 end
 
 -- Row layout stays live with Larger mail rows on: History, Mail Memory and
@@ -4198,10 +4270,12 @@ function Pages.windowCreative(col, Skin)
   end
 end
 
--- The Minimap tab (Core/MinimapButton.lua): the switch, then three groups --
--- when the icon shows (and what stands in for it while it does not), what
--- it wears, and where it sits. Resolved at click time like every other
--- binding, so the page stays honest if the module is absent.
+-- The Minimap tab (Core/MinimapButton.lua): the switch, then five groups --
+-- when the icon shows, the icon itself, its glow, the marker for expiring
+-- mail, and where it sits. Resolved at click time like every other
+-- binding, so the page stays honest if the module is absent. A row grey
+-- because another setting is off says what turns it on (Rows.Why); with
+-- the switch off, every row says to turn the icon on.
 function Pages.minimap(col)
   local Icon = ns.MinimapButton
   -- With EllesmereUI's minimap module running, Postbox restyles its own
@@ -4219,15 +4293,27 @@ function Pages.minimap(col)
     after = State.Minimap,
   })
 
-  local block = Rows.Block(col)
+  local block = Rows.Block(col, "OPT_MINIMAP_WHY_SWITCH")
   S.minimapBlock = block
+  -- The settings with choices the drawing answers while pointed at
+  -- (Ctx.MinimapMode), their text standing under it (Layout); and the rows
+  -- that grey with another setting (State.MinimapRows).
+  local modes, rows = {}, {}
+  S.mmModes, S.mmRows = modes, rows
 
-  -- When it shows: whether the icon is on the map at all, the dot that
-  -- stands where it would be, and how new mail announces itself on it.
+  local function Effect(titleKey, descKey, get, set, after)
+    return {
+      title = L[titleKey], text = L[descKey],
+      get = function() return ns.MinimapButton and ns.MinimapButton[get]() end,
+      set = function(on) if ns.MinimapButton then ns.MinimapButton[set](on) end end,
+      after = after or Ctx.Repaint,
+    }
+  end
+
+  -- When it shows: whether the icon is on the map at all. Under
+  -- EllesmereUI's minimap too -- Postbox keeps their button shown for as
+  -- long as this says (Core/MinimapButton.lua, SyncEuiButtonShown).
   Rows.Group(block, L["OPT_MINIMAP_GROUP_SHOWS"])
-
-  -- Under EllesmereUI's minimap too -- Postbox keeps their button shown for
-  -- as long as this says (Core/MinimapButton.lua, SyncEuiButtonShown).
   local showNames = {
     new = L["OPT_MINIMAP_SHOW_NEW"], any = L["OPT_MINIMAP_SHOW_ANY"], always = L["OPT_MINIMAP_SHOW_ALWAYS"],
   }
@@ -4243,86 +4329,9 @@ function Pages.minimap(col)
       Ctx.Repaint()
     end,
   })
+  modes[showRow.entry] = "show"
 
-  -- Where the marker for mail close to being lost goes: nowhere, on the
-  -- icon while When to show has it up, or also on its own where the icon
-  -- sits. It never brings the icon up itself.
-  local expiryNames = {
-    off = L["OPT_MINIMAP_EXPIRY_OFF"], icon = L["OPT_MINIMAP_EXPIRY_ICON"], always = L["OPT_MINIMAP_EXPIRY_ALWAYS"],
-  }
-  local expiryItems = {}
-  for _, mode in ipairs((Icon and Icon.EXPIRY_MODES) or { "always" }) do
-    expiryItems[#expiryItems + 1] = { id = mode, name = expiryNames[mode] }
-  end
-  local expiryRow = Rows.Dropdown(block, {
-    title = L["OPT_MINIMAP_EXPIRY_TITLE"], text = L["OPT_MINIMAP_EXPIRY_DESC"], items = expiryItems,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetExpiry() end,
-    set = function(id)
-      if ns.MinimapButton then ns.MinimapButton.SetExpiry(id) end
-      State.MinimapRows()
-      Ctx.Repaint()
-    end,
-  })
-
-  -- The marker's shape, and the icon's corner it sits on (the bottom right
-  -- is the count's). Grey while Expiring mail is Off (State.MinimapRows).
-  local markerNames = {
-    dot = L["OPT_MINIMAP_MARKER_DOT"], ring = L["OPT_MINIMAP_MARKER_RING"], square = L["OPT_MINIMAP_MARKER_SQUARE"],
-    bar = L["OPT_MINIMAP_MARKER_BAR"], exclamation = L["OPT_MINIMAP_MARKER_EXCLAMATION"],
-  }
-  local markerItems = {}
-  for _, id in ipairs((Icon and Icon.MARKER_SHAPES) or { "dot" }) do
-    markerItems[#markerItems + 1] = { id = id, name = markerNames[id] }
-  end
-  local markerRow = Rows.Dropdown(block, {
-    title = L["OPT_MINIMAP_MARKER_TITLE"], text = L["OPT_MINIMAP_MARKER_DESC"], items = markerItems,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarker() end,
-    set = function(id)
-      if ns.MinimapButton then ns.MinimapButton.SetMarker(id) end
-      Ctx.Repaint()
-    end,
-  })
-  local cornerNames = {
-    TOPRIGHT = L["OPT_MINIMAP_CORNER_TR"], TOPLEFT = L["OPT_MINIMAP_CORNER_TL"], BOTTOMLEFT = L["OPT_MINIMAP_CORNER_BL"],
-  }
-  local cornerItems = {}
-  for _, id in ipairs((Icon and Icon.MARKER_CORNERS) or { "TOPRIGHT" }) do
-    cornerItems[#cornerItems + 1] = { id = id, name = cornerNames[id] }
-  end
-  local cornerRow = Rows.Dropdown(block, {
-    title = L["OPT_MINIMAP_CORNER_TITLE"], text = L["OPT_MINIMAP_CORNER_DESC"], items = cornerItems,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerCorner() end,
-    set = function(id)
-      if ns.MinimapButton then ns.MinimapButton.SetMarkerCorner(id) end
-      Ctx.Repaint()
-    end,
-  })
-  -- The marker on its own, larger, in the icon's spot. Only Always puts the
-  -- marker on its own, so it greys on any other choice (State.MinimapRows).
-  local largeRow = Rows.Check(block, {
-    title = L["OPT_MINIMAP_LARGE_TITLE"], text = L["OPT_MINIMAP_LARGE_DESC"],
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerLarge() end,
-    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetMarkerLarge(on) end end,
-    after = Ctx.Repaint,
-  })
-
-  -- Each is answered by the drawing while pointed at (Ctx.MinimapMode),
-  -- their text standing under it (Layout); Glow color, below, too.
-  S.mmModes = { [showRow.entry] = "show", [expiryRow.entry] = "expiry", [markerRow.entry] = "marker",
-    [cornerRow.entry] = "corner", [largeRow.entry] = "large" }
-  S.mmRows = { marker = markerRow, corner = cornerRow, large = largeRow }
-
-  -- The flash is drawn on the icon, so with the icon off it has nothing to
-  -- draw on: it greys with the rows around it.
-  Rows.Check(block, {
-    title = L["OPT_ALERT_FLASH_TITLE"], text = L["OPT_ALERT_FLASH_DESC"],
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
-    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end,
-  })
-
-  -- On the icon: its art, its size, its count, then its glow and its pulse
-  -- side by side, the one breathing the other, the glow's colour, and the
-  -- accent's tint on the minimal icons beside the shadow. EllesmereUI's
+  -- Icon: its art, its size, its count and its shadow. EllesmereUI's
   -- button wears all of it but the size.
   Rows.Group(block, L["OPT_MINIMAP_GROUP_ICON"])
 
@@ -4374,7 +4383,6 @@ function Pages.minimap(col)
     get = function() return ns.MinimapButton and ns.MinimapButton.GetIcon() end,
     set = function(id)
       if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end
-      State.MinimapRows()
       Ctx.Repaint()
     end,
   })
@@ -4411,52 +4419,155 @@ function Pages.minimap(col)
       Ctx.Repaint()
     end,
   })
+  Rows.Check(block, Effect("OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC", "GetShadow", "SetShadow"))
 
-  local function Effect(titleKey, descKey, get, set, after)
-    return {
-      title = L[titleKey], text = L[descKey],
-      get = function() return ns.MinimapButton and ns.MinimapButton[get]() end,
-      set = function(on) if ns.MinimapButton then ns.MinimapButton[set](on) end end,
-      after = after or Ctx.Repaint,
-    }
-  end
-  Rows.Pair(block,
+  -- Glow: the glow and its pulse side by side, the one breathing the
+  -- other; the colour it wears; and the flash when mail arrives, in that
+  -- colour too. Pulse greys while Glow is off, Glow color while neither
+  -- Glow nor the flash is on (State.MinimapRows).
+  Rows.Group(block, L["OPT_MINIMAP_GROUP_GLOW"])
+  local glowPair = Rows.Pair(block,
     Effect("OPT_MINIMAP_GLOW_TITLE", "OPT_MINIMAP_GLOW_DESC", "GetGlow", "SetGlow", function()
       State.MinimapRows()
       Ctx.Repaint()
     end),
     Effect("OPT_MINIMAP_PULSE_TITLE", "OPT_MINIMAP_PULSE_DESC", "GetPulse", "SetPulse"))
-  -- What the glow, its pulse and the arrival halo wear; grey while Glow is
-  -- off (State.MinimapRows). Each choice carries its colour in the list.
+  rows.pulse = glowPair.pair[2]
+  Rows.Why(rows.pulse, "OPT_MINIMAP_WHY_GLOW")
+
+  -- Each choice carries its colour in the list; Custom, offered where the
+  -- client has its colour picker, carries the colour picked, and choosing
+  -- it opens the picker (MinimapButton.PickGlowColor): each colour picked
+  -- is worn at once, and Cancel puts back the choice before.
   local glowNames = {
     gold = L["OPT_MINIMAP_GLOWCOLOR_GOLD"], accent = L["OPT_MINIMAP_GLOWCOLOR_ACCENT"],
-    white = L["OPT_MINIMAP_GLOWCOLOR_WHITE"],
+    white = L["OPT_MINIMAP_GLOWCOLOR_WHITE"], custom = L["OPT_MINIMAP_GLOWCOLOR_CUSTOM"],
   }
+  local T = ns.Theme
+  S.mmGlowCustom = T.CanPickColor and T.CanPickColor() and true or false
   local glowItems = {}
   for _, id in ipairs((Icon and Icon.GLOW_COLORS) or { "gold" }) do
-    glowItems[#glowItems + 1] = { id = id, name = glowNames[id] }
+    if id ~= "custom" or S.mmGlowCustom then glowItems[#glowItems + 1] = { id = id, name = glowNames[id] } end
   end
-  local glowRow = Rows.Dropdown(block, {
+  local glowRow
+  -- What the picker changed, in the list and the drawing.
+  local function GlowPicked()
+    Rows.PaintDropdown(glowRow)
+    Ctx.Repaint()
+  end
+  glowRow = Rows.Dropdown(block, {
     title = L["OPT_MINIMAP_GLOWCOLOR_TITLE"], text = L["OPT_MINIMAP_GLOWCOLOR_DESC"], items = glowItems,
     swatchFor = function(id)
       local I = ns.MinimapButton
-      if I and I.GlowRGB then return I.GlowRGB(id) end
+      if not I then return nil end
+      if id == "custom" then
+        if I.GetGlowCustom then return I.GetGlowCustom() end
+        return nil
+      end
+      if I.GlowRGB then return I.GlowRGB(id) end
       return nil
     end,
     get = function() return ns.MinimapButton and ns.MinimapButton.GetGlowColor() end,
     set = function(id)
-      if ns.MinimapButton then ns.MinimapButton.SetGlowColor(id) end
+      local I = ns.MinimapButton
+      if not I then return end
+      if id == "custom" then
+        -- No picker: the list shows the choice that stands.
+        if not (I.PickGlowColor and I.PickGlowColor(GlowPicked)) then Rows.PaintDropdown(glowRow) end
+      else
+        I.SetGlowColor(id)
+      end
       Ctx.Repaint()
     end,
   })
-  S.mmModes[glowRow.entry] = "glow"
-  S.mmRows.glow = glowRow
-  for entry in pairs(S.mmModes) do entry.stage = "minimap" end
-  -- Accent tint greys where the style has no art it can tint.
-  local tintRow = Rows.Pair(block,
-    Effect("OPT_MINIMAP_ACCENT_TITLE", "OPT_MINIMAP_ACCENT_DESC", "GetAccentTint", "SetAccentTint"),
-    Effect("OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC", "GetShadow", "SetShadow"))
-  S.mmRows.tint = tintRow.pair[1]
+  modes[glowRow.entry] = "glow"
+  rows.glow = glowRow
+  Rows.Why(glowRow, "OPT_MINIMAP_WHY_GLOWCOLOR")
+
+  -- The flash is drawn on the icon, so with the icon off it has nothing to
+  -- draw on: it greys with the rows around it. It wears Glow color, which
+  -- stays live while it is on (State.MinimapRows).
+  Rows.Check(block, {
+    title = L["OPT_ALERT_FLASH_TITLE"], text = L["OPT_ALERT_FLASH_DESC"],
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
+    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end,
+    after = State.MinimapRows,
+  })
+
+  -- Expiring mail: the marker for mail close to being lost -- where it
+  -- shows (nowhere, on the icon while When to show has it up, or also on
+  -- its own where the icon sits; it never brings the icon up itself), its
+  -- shape, the icon's corner it sits on (the bottom right is the count's),
+  -- and whether, on its own, it grows into the icon's spot.
+  Rows.Group(block, L["OPT_MINIMAP_GROUP_EXPIRY"])
+  local expiryNames = {
+    off = L["OPT_MINIMAP_EXPIRY_OFF"], icon = L["OPT_MINIMAP_EXPIRY_ICON"], always = L["OPT_MINIMAP_EXPIRY_ALWAYS"],
+  }
+  local expiryItems = {}
+  for _, mode in ipairs((Icon and Icon.EXPIRY_MODES) or { "always" }) do
+    expiryItems[#expiryItems + 1] = { id = mode, name = expiryNames[mode] }
+  end
+  local expiryRow = Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_EXPIRY_TITLE"], text = L["OPT_MINIMAP_EXPIRY_DESC"], items = expiryItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetExpiry() end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetExpiry(id) end
+      State.MinimapRows()
+      Ctx.Repaint()
+    end,
+  })
+  modes[expiryRow.entry] = "expiry"
+
+  -- Shape and Corner grey while Show marker is Off; Larger when alone
+  -- unless it is Always, the only choice that puts the marker on its own
+  -- (State.MinimapRows).
+  local markerNames = {
+    dot = L["OPT_MINIMAP_MARKER_DOT"], ring = L["OPT_MINIMAP_MARKER_RING"], square = L["OPT_MINIMAP_MARKER_SQUARE"],
+    bar = L["OPT_MINIMAP_MARKER_BAR"], exclamation = L["OPT_MINIMAP_MARKER_EXCLAMATION"],
+  }
+  local markerItems = {}
+  for _, id in ipairs((Icon and Icon.MARKER_SHAPES) or { "dot" }) do
+    markerItems[#markerItems + 1] = { id = id, name = markerNames[id] }
+  end
+  local markerRow = Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_MARKER_TITLE"], text = L["OPT_MINIMAP_MARKER_DESC"], items = markerItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarker() end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetMarker(id) end
+      Ctx.Repaint()
+    end,
+  })
+  modes[markerRow.entry] = "marker"
+  rows.marker = markerRow
+  Rows.Why(markerRow, "OPT_MINIMAP_WHY_MARKER")
+  local cornerNames = {
+    TOPRIGHT = L["OPT_MINIMAP_CORNER_TR"], TOPLEFT = L["OPT_MINIMAP_CORNER_TL"], BOTTOMLEFT = L["OPT_MINIMAP_CORNER_BL"],
+  }
+  local cornerItems = {}
+  for _, id in ipairs((Icon and Icon.MARKER_CORNERS) or { "TOPRIGHT" }) do
+    cornerItems[#cornerItems + 1] = { id = id, name = cornerNames[id] }
+  end
+  local cornerRow = Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_CORNER_TITLE"], text = L["OPT_MINIMAP_CORNER_DESC"], items = cornerItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerCorner() end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetMarkerCorner(id) end
+      Ctx.Repaint()
+    end,
+  })
+  modes[cornerRow.entry] = "corner"
+  rows.corner = cornerRow
+  Rows.Why(cornerRow, "OPT_MINIMAP_WHY_MARKER")
+  local largeRow = Rows.Check(block, {
+    title = L["OPT_MINIMAP_LARGE_TITLE"], text = L["OPT_MINIMAP_LARGE_DESC"],
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerLarge() end,
+    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetMarkerLarge(on) end end,
+    after = Ctx.Repaint,
+  })
+  modes[largeRow.entry] = "large"
+  rows.large = largeRow
+  Rows.Why(largeRow, "OPT_MINIMAP_WHY_ALONE")
+  for entry in pairs(modes) do entry.stage = "minimap" end
 
   -- Place: where it sits on the map, and the lock on moving it. Under
   -- EllesmereUI's minimap that, and the size, are EllesmereUI's, and one
