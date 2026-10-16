@@ -273,6 +273,12 @@ function UI.SetOption(key, value)
   ForgetSettings()
 end
 
+-- A switch's default, for a reset of one part (the arrange mode's, which
+-- puts the blocks' two switches back) that must not carry a copy of it.
+function UI.GetOptionDefault(key)
+  return OPTION_DEFAULTS[key] == true
+end
+
 -- RESET TO DEFAULTS (the options panel's footer).
 --
 -- Everything under `profile` is a setting except the keys named in

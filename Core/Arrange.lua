@@ -243,6 +243,16 @@ function AR.GridChanged()
   if collect and panel and collect.RefreshCategoryButtons then collect.RefreshCategoryButtons(panel) end
 end
 
+-- One block's switch ("Show category buttons", "Show totals") put back to
+-- its default, read from the options' own table: true when that changed it.
+function AR.ResetBlockShown(ui, key)
+  if not (ui.GetOption and ui.SetOption and ui.GetOptionDefault) then return false end
+  local default = ui.GetOptionDefault(key)
+  if ui.GetOption(key) == default then return false end
+  ui.SetOption(key, default)
+  return true
+end
+
 -- Right-click on the lit key, or the inspector's reset: what the mode
 -- arranges from the list it is open over, as it comes -- that list's
 -- arrangement, its columns and their choices (the one-line rows', Larger
@@ -266,29 +276,30 @@ function AR.Reset(kind, blocks)
     if ui.SetExpiryWhen then ui.SetExpiryWhen(nil, kind) end
     if kind ~= "large" and ui.SetSlotsStyle then ui.SetSlotsStyle(nil) end
   end
-  local gridBack, totalsBack = false, false
+  local switched = false
   if blocks ~= false then
     if ui.SetGridLayout then ui.SetGridLayout(nil) end
     if ui.SetStackOrder then ui.SetStackOrder(nil) end
-    -- The grid and the totals hidden in the mode are the "Show category
-    -- buttons" and "Show totals" options, so they come back with the rest,
-    -- and the window's floor with them.
-    gridBack = ui.GetOption and ui.SetOption and not ui.GetOption("showCategoryButtons") or false
-    if gridBack then ui.SetOption("showCategoryButtons", true) end
-    totalsBack = ui.GetOption and ui.SetOption and not ui.GetOption("showTotals") or false
-    if totalsBack then ui.SetOption("showTotals", true) end
+    -- The grid and the totals the mode hides and shows are the "Show
+    -- category buttons" and "Show totals" options, so they go back to their
+    -- defaults with the rest -- the grid hidden, the totals shown -- and the
+    -- window's floor with them. In the mode a hidden block stands as its
+    -- folded placeholder, as it does whenever its option is off.
+    switched = AR.ResetBlockShown(ui, "showCategoryButtons")
+    switched = AR.ResetBlockShown(ui, "showTotals") or switched
   end
   -- The options panel's two switches for them say so where it is open.
   local panel = ns.OptionsPanel
-  if (gridBack or totalsBack) and panel and type(panel.RefreshControls) == "function" then panel.RefreshControls() end
+  if switched and panel and type(panel.RefreshControls) == "function" then panel.RefreshControls() end
   AR.RowsChanged(true)
   if AR.host then AR.LayoutStrip(AR.host) end
-  if (gridBack or totalsBack) and ui.RefreshCollectCategoryButtons then
+  if switched and ui.RefreshCollectCategoryButtons then
     ui.RefreshCollectCategoryButtons()
   elseif blocks ~= false then
     AR.GridChanged()
   end
-  -- The selection stays: the thing it names is still there, shown.
+  -- The selection stays where the thing it names is still there; a button
+  -- of a grid now folded away is let go (AR.Inspect).
   AR.Inspect()
 end
 
