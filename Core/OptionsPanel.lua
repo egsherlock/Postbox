@@ -2132,9 +2132,11 @@ do
   -- new mail here -- and in each cell what the map shows then: nothing, the
   -- icon resting in gray, or the icon lit. Every marker is the map's own
   -- (MinimapButton.PaintMark) and so is the count (PaintCount): the same
-  -- shapes and sizes, in whole screen pixels. A figure whose marker reaches
-  -- past its top or its foot (a Triangle at the top or the bottom) stands
-  -- with the two centred as one (MinimapButton.MarkSpill).
+  -- shapes and sizes, in whole screen pixels, on the same art's box. A
+  -- figure whose marker reaches past its top or its foot (half off the
+  -- art's top or bottom edge, on a style whose art comes near the square's;
+  -- a Triangle at the top or the bottom) stands with the two centred as one
+  -- (MinimapButton.MarkSpill).
   --
   -- Built once: a paint sets what shows, its size and its colours, and
   -- makes nothing. The pulses play only while the drawing is shown
@@ -2323,10 +2325,10 @@ do
     local rest, alone = look == "rest", look == "alone"
     local large = alone and P.large
     -- A marker that reaches past the icon's top or foot: the two centred
-    -- as one.
+    -- as one. Both by the art's box (`spec.box`), as on the map.
     local spill = 0
     if (alone or P.mark) and Icon.MarkSpill then
-      spill = Icon.MarkSpill(P.shape, P.corner, size, ns.Theme.OnePixel(fig), large)
+      spill = Icon.MarkSpill(P.shape, P.corner, size, ns.Theme.OnePixel(fig), large, spec)
     end
     fig:ClearAllPoints()
     fig:SetPoint("CENTER", fig:GetParent(), "LEFT", x, (y or 0) - spill / 2)
@@ -2355,7 +2357,7 @@ do
     end
     if Icon.PaintCount then Icon.PaintCount(fig, icon, size, (not alone) and P.count or 0) end
     if Icon.PaintMark then
-      Icon.PaintMark(fig, icon, size, alone or P.mark, P.shape, P.corner, large, P.ox, P.oy, P.color)
+      Icon.PaintMark(fig, icon, size, alone or P.mark, P.shape, P.corner, large, P.ox, P.oy, P.color, spec.box)
     end
     fig.used = true
     fig:Show()

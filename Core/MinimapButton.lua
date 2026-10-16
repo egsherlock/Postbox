@@ -172,6 +172,54 @@ local ICONS = {
   goldclean    = { texture = MEDIA .. "minimap-goldclean.tga" },
 }
 
+-- Where each style's art is: its visible box inside the rect it is drawn in,
+-- measured once from the art itself, offline, by one rule for every style
+-- (.dev/tools/measure-minimap-art.js reads every ICONS entry's texture, and
+-- the client's own atlas for Blizzard). The expiring-mail marker stands on
+-- this box, not on the icon's square (PaintMark): the art sits inset in its
+-- square, Letter most of all (a wide envelope with room above and below
+-- it), so a marker on the square's corner floated above or below the art's.
+-- Each style's spec carries its box (`spec.box`), fixed at load, so a paint
+-- reads it and works nothing out.
+do
+  -- BEGIN GENERATED art boxes (.dev/tools/measure-minimap-art.js; do not edit by hand)
+  -- Each style's visible box, as insets from the drawn rect's left, right,
+  -- top and bottom: every texel at alpha 64 of 255 (25%) or more, faint glow
+  -- left out, in texels over the art's size. The client's atlas from its -2x
+  -- member (39 x 30, the 19.5 : 15 slot).
+  local ART_BOX = {
+    postbox      = { l = 7 / 64, r = 7 / 64, t = 15 / 64, b = 15 / 64 },
+    blizzard     = { l = 1 / 39, r = 1 / 39, t = 1 / 30, b = 1 / 30 },
+    letter       = { l = 2 / 64, r = 2 / 64, t = 12 / 64, b = 11 / 64 },
+    sealed       = { l = 2 / 64, r = 2 / 64, t = 13 / 64, b = 12 / 64 },
+    parcel       = { l = 2 / 64, r = 2 / 64, t = 6 / 64, b = 6 / 64 },
+    seal         = { l = 2 / 64, r = 2 / 64, t = 7 / 64, b = 7 / 64 },
+    open         = { l = 2 / 64, r = 2 / 64, t = 4 / 64, b = 4 / 64 },
+    scroll       = { l = 2 / 64, r = 2 / 64, t = 20 / 64, b = 20 / 64 },
+    mailbag      = { l = 3 / 64, r = 3 / 64, t = 2 / 64, b = 2 / 64 },
+    quill        = { l = 6 / 64, r = 6 / 64, t = 2 / 64, b = 2 / 64 },
+    stamped      = { l = 2 / 64, r = 2 / 64, t = 7 / 64, b = 7 / 64 },
+    weathered    = { l = 2 / 64, r = 2 / 64, t = 7 / 64, b = 7 / 64 },
+    bundle       = { l = 2 / 64, r = 2 / 64, t = 7 / 64, b = 7 / 64 },
+    satchel      = { l = 2 / 64, r = 2 / 64, t = 4 / 64, b = 4 / 64 },
+    pillar       = { l = 9 / 64, r = 9 / 64, t = 2 / 64, b = 2 / 64 },
+    stone        = { l = 2 / 64, r = 2 / 64, t = 3 / 64, b = 3 / 64 },
+    wood         = { l = 2 / 64, r = 2 / 64, t = 3 / 64, b = 3 / 64 },
+    gold         = { l = 2 / 64, r = 2 / 64, t = 3 / 64, b = 3 / 64 },
+    letterclean  = { l = 2 / 64, r = 2 / 64, t = 9 / 64, b = 9 / 64 },
+    stampedclean = { l = 2 / 64, r = 2 / 64, t = 8 / 64, b = 7 / 64 },
+    parcelclean  = { l = 2 / 64, r = 2 / 64, t = 6 / 64, b = 5 / 64 },
+    bundleclean  = { l = 2 / 64, r = 2 / 64, t = 8 / 64, b = 8 / 64 },
+    pillarclean  = { l = 8 / 64, r = 8 / 64, t = 2 / 64, b = 2 / 64 },
+    stoneclean   = { l = 2 / 64, r = 2 / 64, t = 3 / 64, b = 3 / 64 },
+    woodclean    = { l = 2 / 64, r = 2 / 64, t = 3 / 64, b = 3 / 64 },
+    goldclean    = { l = 2 / 64, r = 2 / 64, t = 3 / 64, b = 3 / 64 },
+  }
+  -- END GENERATED art boxes
+  local NONE = { l = 0, r = 0, t = 0, b = 0 }
+  for id, spec in pairs(ICONS) do spec.box = ART_BOX[id] or NONE end
+end
+
 -- A stored id as the style it is drawn in. One retired style has a nearest
 -- one still offered: Minimal badge (`badge`), an envelope with a dot of its
 -- own that the expiring-mail marker would sit beside, reads as Minimal
@@ -620,7 +668,7 @@ local function Glowing(prefs)
   return prefs.glow == true and (view.lit or view.alert) and not view.alone
 end
 
--- The alert's mark, the marker: a small flat shape at the icon's corner, at
+-- The alert's mark, the marker: a small flat shape at the art's corner, at
 -- the middle of one of its sides or at its centre (Anchor; the top right
 -- unless chosen),
 -- moved from there by Offset X and Offset Y, its fill in Color (MarkerRGB;
@@ -636,15 +684,19 @@ end
 -- (black at 0.9, whatever the fill's colour), the edge that holds it over
 -- snow and over a cave alike, and every one is sized in whole screen pixels
 -- from one number, `d`: a quarter of the icon, rounded, and never under 4,
--- the least that still reads as a round dot on a 16 px icon. At the middle
--- of a side the fill is flush with that edge, centred along it, and the
--- edge a pixel past; at the centre the two are centred on the icon's. In a
--- corner they stand further out, diagonally, by CornerOut(d) pixels more
--- (1, or 2 from d = 8): the painted art sits inset in its square, and a
--- marker flush with the square's corner read as sitting on the art rather
--- than on its corner. Both are snapped to the pixel grid, so each is crisp
--- at every icon size and UI scale, and the offset moves them by whole
--- screen pixels.
+-- the least that still reads as a round dot on a 16 px icon.
+--
+-- Where it stands is the art's, not the square's: each style's visible box
+-- (`spec.box`, measured from its art) over the rect the icon is drawn in.
+-- The marker's middle stands on the box's point for its anchor: in a
+-- corner on the box's corner, half over the art and half off it both ways;
+-- at a side on the middle of that edge, half over the art and half
+-- outside; at the centre on the box's centre. The "!" counts as a whole.
+-- Its place is worked out in whole screen pixels from the icon's own point
+-- for the anchor, so it is snapped to the pixel grid as the icon is, crisp
+-- at every icon size and UI scale; a half pixel goes outward, away from
+-- the art at the anchor's side, and right and up along a middle. The
+-- offset moves it by whole screen pixels from there.
 --
 --   Dot          a disc d across, from Media/minimap-dot.tga, which holds
 --                one for every diameter from 4 to 21 screen pixels (a disc
@@ -663,23 +715,22 @@ end
 --   Exclamation  "!", 1.3 d tall (at least 5): a stem and a square point
 --                a fifth of that wide (at least 1), an eighth of it apart
 --                (at least 1), each with its own edge, which meet in a gap
---                of one pixel. At a side or the centre the "!" as a whole
---                is centred on it; at the bottom its point's edge is the
---                one a pixel past.
+--                of one pixel. Centred as a whole on its point.
 --   Triangle     from Media/minimap-triangle.tga, drawn the same way for
---                the same sizes, in two forms by its anchor:
---                  in a corner, a right triangle that fills the corner: its
---                  right angle in the corner, its legs 1.2 d (rounded, at
---                  least 5) along the icon's two edges, its long side
---                  facing in;
---                  at a side, a triangle pointing out from the icon: its
---                  base 1.3 d (rounded, at least 5) lying along that edge,
---                  its height three quarters of the base (rounded, at
---                  least 3). It stands outside the icon, its base flush
---                  with the edge, and its dark edge a pixel past the base,
---                  into the icon;
+--                the same sizes, in two forms by its anchor, and placed by
+--                the art's box as the others are, keeping its own meaning:
+--                  in a corner, a right triangle that fills the art's
+--                  corner: its right angle on the box's corner, its legs
+--                  1.2 d (rounded, at least 5) along the box's two edges,
+--                  its long side facing in;
+--                  at a side, a triangle pointing out from the art: its
+--                  base 1.3 d (rounded, at least 5) lying on that edge of
+--                  the box, centred along it, its height three quarters of
+--                  the base (rounded, at least 3). It stands outside the
+--                  art, its base flush with the edge, and its dark edge a
+--                  pixel past the base, onto the art;
 --                  at the centre, the side form pointing up, centred on
---                  the icon (a warning sign's own shape).
+--                  the box (a warning sign's own shape).
 --                One drawing of each, turned by its texture coordinates
 --                (Tri.Coords): mirrored for the other corners and for the
 --                bottom, a quarter turn for the left and the right.
@@ -783,10 +834,6 @@ local function NewDisc(holder, sublevel)
   return tex
 end
 
--- The side of a spot facing away from it: a triangle at the middle of a
--- side stands on that side from outside.
-local OPPOSITE = { TOP = "BOTTOM", BOTTOM = "TOP", LEFT = "RIGHT", RIGHT = "LEFT" }
-
 -- The shape's fill, w x h pixels, from its `d` (and, for the Triangle, its
 -- anchor: the side form turned a quarter at the left and the right, and
 -- pointing up at the centre); for the Exclamation also its stem's height
@@ -832,47 +879,92 @@ end
 -- 2026-10-16). Past 21 the strips' largest cells are drawn up to it.
 local DOT_ALONE_MIN = 6
 
--- How much further out than flush a marker in a corner stands, diagonally,
--- in screen pixels: a fifth of `d`, rounded, and 1 or 2 -- 1 up to d = 7
--- (an icon of 28 at one unit a pixel), 2 from d = 8. The painted icons sit
--- inset in their square by about a fifth of it at the corners, so a marker
--- whose fill met the square's corner covered the art's corner; 1 pixel out
--- sets it on the corner at the small sizes, and 2 at the large ones, where
--- 1 still read as on the art and 2 at the small ones floated off it
--- (rendered at 20, 28 and 40, at 0.533 and 1.0 on 1440p). Never the larger
--- lone marker, which stands centred; never a side or the centre.
-local function CornerOut(d)
-  local n = math.floor(d / 5 + 0.5)
-  if n < 1 then return 1 end
-  if n > 2 then return 2 end
-  return n
+-- A place in screen pixels made whole: the nearest, and a half outward --
+-- toward `dir`'s side (-1 left or down, 1 right or up), and right or up
+-- where the spot is in the middle (0). A hair of slack takes a half that
+-- the division left a float's breadth short of one.
+local function Whole(v, dir)
+  if dir < 0 then return math.ceil(v - 0.5 - 1e-6) end
+  return math.floor(v + 0.5 + 1e-6)
 end
 
--- How far the marker reaches past the icon's top (positive) or bottom
--- (negative), in the units of a frame whose screen pixel is `px`, the
--- offset aside: only the Triangle at the top or the bottom does, by its
--- height and its edge. The options' drawing centres a figure with its
--- marker by it.
-function MB.MarkSpill(shape, corner, size, px, large)
-  if shape ~= "triangle" or large or ANCHOR_X[corner] ~= 0 then return 0 end
-  local ay = ANCHOR_Y[corner] or 0
-  if ay == 0 or not px or px <= 0 then return 0 end
+-- Where the marker stands on the art (PaintMark): its dark edge's top left
+-- corner (the stem's, for the "!"), in whole screen pixels from the icon's
+-- own point for the anchor (`corner`; +x right, +y up), for a fill `w` x `h`
+-- pixels (the "!" as a whole) on an icon drawn `iw` x `ih` pixels whose art
+-- is `box`. Also the edge's height, the "!" as a whole. The rule:
+--   every shape  its middle on the box's point for the anchor: a corner, the
+--                middle of an edge, or the centre;
+--   Triangle     in a corner, its right angle on the box's corner and its
+--                legs along the box's edges, filling the art's corner (the
+--                edge a pixel past, off the art); at a side, its base on the
+--                box's edge from outside, centred along it, the edge a pixel
+--                past the base onto the art; at the centre as every shape.
+local function MarkPlace(shape, corner, w, h, iw, ih, box)
+  local ax, ay = ANCHOR_X[corner], ANCHOR_Y[corner]
+  local ew, eh = w + 2, h + 2
+  -- The art's point from the icon's, in pixels.
+  local ix, iy
+  if ax < 0 then ix = box.l * iw elseif ax > 0 then ix = -box.r * iw else ix = (box.l - box.r) * iw / 2 end
+  if ay > 0 then iy = -box.t * ih elseif ay < 0 then iy = box.b * ih else iy = (box.b - box.t) * ih / 2 end
+  if shape == "triangle" and (ax ~= 0 or ay ~= 0) then
+    -- The right angle, or the base, on the box's edge (made whole, a half
+    -- outward); the dark edge a pixel past it, `s`: off the art in a
+    -- corner (1), onto it at a side (-1). Each edge line found is the dark
+    -- edge's left or right, top or bottom, by which way it stepped.
+    local s = (ax ~= 0 and ay ~= 0) and 1 or -1
+    local x, y
+    if ax ~= 0 then
+      x = Whole(ix, ax) + s * ax
+      if ax * s > 0 then x = x - ew end
+    else
+      x = Whole(ix - ew / 2, 0)
+    end
+    if ay ~= 0 then
+      y = Whole(iy, ay) + s * ay
+      if ay * s < 0 then y = y + eh end
+    else
+      y = Whole(iy + eh / 2, 0)
+    end
+    return x, y, eh
+  end
+  return Whole(ix - ew / 2, ax), Whole(iy + eh / 2, ay), eh
+end
+
+-- How far the marker reaches past the icon's top (positive) or below its
+-- foot (negative), in the units of a frame whose screen pixel is `px`, on
+-- art `spec` drawn `size` wide, the offset aside; 0 where it stays within
+-- them, at a middle spot and when larger. The options' drawing centres a
+-- figure with its marker by it.
+function MB.MarkSpill(shape, corner, size, px, large, spec)
+  local ay = ANCHOR_Y[corner]
+  if large or not ay or ay == 0 or not px or px <= 0 then return 0 end
+  if not MARKER_SHAPES[shape] then shape = "dot" end
   local d = math.max(DOT_MIN, math.floor(size / px / 4 + 0.5))
-  local _, tall = Tri.Side(d)
-  return ay * (tall + 1) * px
+  local w, h = MarkGeometry(shape, d, corner)
+  local iw = size / px
+  local ih = iw * (spec and spec.aspect or 1)
+  local _, y, eh = MarkPlace(shape, corner, w, h, iw, ih, spec and spec.box or ICONS[DEFAULTS.icon].box)
+  if ay > 0 then return math.max(0, y) * px end
+  return math.min(0, y - eh) * px
 end
 
 -- holder: the frame the marker is drawn on; anchor: the icon texture; size:
 -- the icon's side; shape and corner: Shape and Anchor (nil: the Dot, top
 -- right); large: the marker on its own, larger (centred, its `d` half the
 -- icon); ox, oy: Offset X and Offset Y, in screen pixels (nil: none; never
--- for the larger one); color: a Color choice (nil: the one chosen). Built
--- once (the Exclamation's point, two more regions, the first time it is
--- chosen); sized and placed again only when the icon's size, its anchor,
--- the screen pixel (UI scale, the map's scale), its shape, its spot, its
--- largeness or its offset has changed. Under every shape but the
--- Exclamation it is two regions, __pbMark over __pbMarkEdge.
-local function PaintMark(holder, anchor, size, on, shape, corner, large, ox, oy, color)
+-- for the larger one); color: a Color choice (nil: the one chosen); box:
+-- the art's visible box in the icon's rect, the style's `spec.box` (nil:
+-- the rect itself). The rect is the icon texture's as drawn (its width and
+-- height: the stock envelope is wider than tall). Built once (the
+-- Exclamation's point, two more regions, the first time it is chosen);
+-- sized and placed again only when the icon's size or drawn rect, its
+-- anchor, the screen pixel (UI scale, the map's scale), its shape, its
+-- spot, its largeness, its offset or the art has changed. Under every
+-- shape but the Exclamation it is two regions, __pbMark over __pbMarkEdge.
+local MARK_NO_BOX = { l = 0, r = 0, t = 0, b = 0 }
+
+local function PaintMark(holder, anchor, size, on, shape, corner, large, ox, oy, color, box)
   local dot = holder.__pbMark
   local point, pointEdge = holder.__pbMark2, holder.__pbMarkEdge2
   if not on then
@@ -928,10 +1020,15 @@ local function PaintMark(holder, anchor, size, on, shape, corner, large, ox, oy,
   end
   local T = ns.Theme
   local px = T and T.OnePixel and T.OnePixel(holder) or 1
+  box = box or MARK_NO_BOX
+  local aw, ah = anchor:GetSize()
+  if type(aw) ~= "number" or aw <= 0 then aw = size end
+  if type(ah) ~= "number" or ah <= 0 then ah = size end
   if dot.__pbSize ~= size or dot.__pbAnchor ~= anchor or dot.__pbPx ~= px or dot.__pbCorner ~= corner
-    or dot.__pbLarge ~= large or dot.__pbX ~= ox or dot.__pbY ~= oy then
+    or dot.__pbLarge ~= large or dot.__pbX ~= ox or dot.__pbY ~= oy or dot.__pbBox ~= box
+    or dot.__pbW ~= aw or dot.__pbH ~= ah then
     dot.__pbSize, dot.__pbAnchor, dot.__pbPx, dot.__pbCorner, dot.__pbLarge = size, anchor, px, corner, large
-    dot.__pbX, dot.__pbY = ox, oy
+    dot.__pbX, dot.__pbY, dot.__pbBox, dot.__pbW, dot.__pbH = ox, oy, box, aw, ah
     local d
     if large then
       d = math.max(DOT_ALONE_MIN, math.floor(size / px / 2 + 0.5))
@@ -939,6 +1036,12 @@ local function PaintMark(holder, anchor, size, on, shape, corner, large, ox, oy,
       d = math.max(DOT_MIN, math.floor(size / px / 4 + 0.5))
     end
     local w, h, stem, gap = MarkGeometry(shape, d, corner)
+    -- Where it stands on the art, the "!" as a whole (MarkPlace).
+    local x, y = 0, 0
+    if not large then
+      x, y = MarkPlace(shape, corner, w, h, aw / px, ah / px, box)
+      x, y = (x + ox) * px, (y + oy) * px
+    end
     if bang then h = stem end
     dot:SetSize(w * px, h * px)
     edge:SetSize((w + 2) * px, (h + 2) * px)
@@ -953,13 +1056,6 @@ local function PaintMark(holder, anchor, size, on, shape, corner, large, ox, oy,
       Tri.Coords(edge, d, true, corner)
     end
     edge:ClearAllPoints()
-    local ax, ay = ANCHOR_X[corner], ANCHOR_Y[corner]
-    local x, y = ox * px, oy * px
-    -- The edge's step past the icon at its spot: a pixel at a side, and in
-    -- a corner CornerOut(d) more, diagonally; nothing at the centre.
-    local out = 1
-    if ax ~= 0 and ay ~= 0 then out = 1 + CornerOut(d) end
-    local sx, sy = ax * out * px, ay * out * px
     if bang then
       -- The stem's edge stands where the whole "!" puts it; the point's edge
       -- a gap under it, the two edges meeting where the gap is one pixel.
@@ -967,32 +1063,14 @@ local function PaintMark(holder, anchor, size, on, shape, corner, large, ox, oy,
       pointEdge:SetSize((w + 2) * px, (w + 2) * px)
       pointEdge:ClearAllPoints()
       pointEdge:SetPoint("TOP", edge, "BOTTOM", 0, (2 - gap) * px)
-      local half = math.floor((stem + gap + w + 2) / 2) * px
-      if large then
-        -- Centred as a whole: the stem's edge top half the "!" above the middle.
-        edge:SetPoint("TOP", anchor, "CENTER", 0, half)
-      elseif ay < 0 then
-        -- At the bottom: the point's edge the one a pixel past the icon (in
-        -- a corner, further out with the rest).
-        edge:SetPoint(corner, anchor, corner, sx + x, (w + gap) * px + sy + y)
-      elseif ay == 0 and ax == 0 then
-        -- At the centre: the "!" as a whole centred on it.
-        edge:SetPoint("TOP", anchor, "CENTER", x, half + y)
-      elseif ay == 0 then
-        -- At a side: the "!" as a whole centred on it.
-        local top = (ax < 0) and "TOPLEFT" or "TOPRIGHT"
-        edge:SetPoint(top, anchor, corner, sx + x, half + y)
-      else
-        edge:SetPoint(corner, anchor, corner, sx + x, sy + y)
-      end
+    end
+    if large and bang then
+      -- Centred as a whole: the stem's edge top half the "!" above the middle.
+      edge:SetPoint("TOP", anchor, "CENTER", 0, math.floor((stem + gap + w + 2) / 2) * px)
     elseif large then
       edge:SetPoint("CENTER", anchor, "CENTER")
-    elseif shape == "triangle" and OPPOSITE[corner] then
-      -- At a side, outside the icon: its base on the edge, and its dark
-      -- edge a pixel past the base, into the icon.
-      edge:SetPoint(OPPOSITE[corner], anchor, corner, -ax * px + x, -ay * px + y)
     else
-      edge:SetPoint(corner, anchor, corner, sx + x, sy + y)
+      edge:SetPoint("TOPLEFT", anchor, corner, x, y)
     end
   end
   local r, g, b = MarkerRGB(color)
@@ -1428,10 +1506,12 @@ local function ApplyEuiSkin()
   -- The count and the alert's mark on our overlay, which sits over their
   -- icon and any ring they dress it in, and goes with the overlay when their
   -- button is handed back. The dot on its own wears no count: there is no
-  -- icon for the number to belong to.
+  -- icon for the number to belong to. The marker stands on the art drawn
+  -- there, by its box: the style's, and on Blizzard their own stock art,
+  -- which is the same atlas at the same 19.5 : 15 (their indicator's ratio).
   PaintCount(btn.__pbOverlay, icon, side, (not view.alone) and view.count or 0)
   PaintMark(btn.__pbOverlay, icon, side, view.alert, MarkerShape(prefs), MarkerCorner(prefs),
-    view.alone and MarkerLarge(prefs), prefs.markerX, prefs.markerY, MarkerColorMode(prefs))
+    view.alone and MarkerLarge(prefs), prefs.markerX, prefs.markerY, MarkerColorMode(prefs), spec.box)
 
   euiSkin.applied = true
   return true
@@ -1704,7 +1784,7 @@ local function ApplyLook(button)
   -- Nor a count: there is no icon for the number to belong to.
   PaintCount(button.art, icon, size, (not view.alone) and view.count or 0)
   PaintMark(button.art, icon, size, view.alert, MarkerShape(prefs), MarkerCorner(prefs),
-    view.alone and MarkerLarge(prefs), prefs.markerX, prefs.markerY, MarkerColorMode(prefs))
+    view.alone and MarkerLarge(prefs), prefs.markerX, prefs.markerY, MarkerColorMode(prefs), spec.box)
 
   Reposition(button)
 end
