@@ -24,6 +24,9 @@ end
 --
 --   PostboxDB.recipients          -- sparse map, key -> state row
 --   PostboxDB.altMeta             -- realm -> character -> { level, lastSeen, faction }
+--   PostboxDB.historyQualified    -- true once the recent recipients an earlier
+--                                    build saved bare carry their realm (see
+--                                    "Recent recipients carry their realm")
 --
 -- The state map is deliberately SPARSE: a row exists only while it carries
 -- non-default state. That is what makes "a recipient nobody has touched is
@@ -35,10 +38,13 @@ end
 -- Migration is additive-only and carries no version field: older saved
 -- variables simply lack these tables, so every reader must tolerate nil.
 --
--- The one exception to "reads never write" is the legacy-key migration (see
+-- Two exceptions to "reads never write". The legacy-key migration (see
 -- "Legacy key migration"): a read that finds a recipient filed under a
--- superseded key re-files it. That only ever rewrites a table that already
--- exists, so it still cannot materialise saved variables out of nothing.
+-- superseded key re-files it. And the recent recipients' realms (see "Recent
+-- recipients carry their realm"): the first read of the list qualifies the
+-- bare names an earlier build saved, once. Both only ever rewrite a table
+-- that already exists, so neither can materialise saved variables out of
+-- nothing.
 -------------------------------------------------------------
 
 -- Notes are a one-line label in a list row, not a journal.
@@ -142,8 +148,10 @@ local function StateMapRW()
 end
 
 -- profile.recipientHistory is owned by ContactService.SaveRecipient; this
--- module only ever removes entries from it (via R.Delete).
+-- module only ever removes entries from it (via R.Delete), and carries an
+-- earlier build's bare names over to their realms (R.QualifyHistory, first).
 local function HistoryList()
+  R.QualifyHistory()
   local db = DB()
   local profile = db and db.profile
   local list = profile and profile.recipientHistory
@@ -435,6 +443,134 @@ function R.Address(name)
   local k, short, realm = R.Key(name)
   if k == "" then return "" end
   return FormatAddress(short, realm)
+end
+
+-- name -> "Name-Realm" on every realm, the player's own included, or "" for a
+-- bare name before the client knows the player's realm.
+--
+-- The form for a name that is SAVED. The To: box is read on the realm being
+-- played, which is why R.Address drops that realm; a saved list is read on
+-- every realm the account plays, and on all but one of them a bare name is
+-- somebody else. Read it back through R.Address (or R.Display), and a name on
+-- the realm being played still draws bare.
+function R.Qualify(name)
+  local k, short, realm = R.Key(name)
+  if k == "" or realm == "" then return "" end
+  return short .. "-" .. realm
+end
+
+-------------------------------------------------------------
+-- Recent recipients carry their realm
+--
+-- profile.recipientHistory is account-wide, so it is read on every realm the
+-- account plays. It is saved qualified (R.Qualify, from
+-- ContactService.SaveRecipient) and read back through R.Address. An earlier
+-- build saved it the To: box's way, bare for a character on the sender's own
+-- realm; such a name is carried over here, once, where its realm is certain,
+-- and dropped where it is not:
+--
+--   1. It is the name of exactly one of the player's own characters, on any
+--      realm (the census: alts and altClasses): that character's realm.
+--   2. Otherwise every character the census knows is on one realm: that
+--      realm, the only one it can have been saved on.
+--   3. Otherwise no realm can be known, and the name goes. A guessed realm is
+--      as likely a wrong address as a right one, and this list is only a
+--      convenience: guild, friends and the alts still offer the name from
+--      their own sources.
+--
+-- The realm being played plays no part, so the answer does not depend on
+-- which character runs it, nor on the pre-login window. An empty census
+-- (nothing registered yet) is left for a later call rather than taken to
+-- mean that no realm can be known. PostboxDB.historyQualified marks it done.
+-- A list with no bare name in it comes through unchanged anyway.
+--
+-- Called by every reader and writer of the list before it looks
+-- (ContactService's Recent source and SaveRecipient, R.CanDelete, R.Delete),
+-- so it runs at the first of them, long after the saved variables and the
+-- census are in.
+-------------------------------------------------------------
+
+local historyQualified = false
+
+function R.QualifyHistory()
+  if historyQualified then return end
+  local db = DB()
+  if not db then return end
+  if db.historyQualified then
+    historyQualified = true
+    return
+  end
+
+  local profile = db.profile
+  local list = type(profile) == "table" and profile.recipientHistory or nil
+  if type(list) == "table" and #list > 0 then
+    local H = Helpers()
+    local lower = H.Lower
+
+    -- The census: lowercased name -> its one character { name, realm, lr },
+    -- or false where two realms each hold one of that name; and how many
+    -- realms it spans. alts[realm] is an array of names, altClasses[realm]
+    -- a map keyed by them.
+    local byName, seenRealms, realmCount, onlyRealm = {}, {}, 0, nil
+    for pass = 1, 2 do
+      local container = db[pass == 1 and "alts" or "altClasses"]
+      if type(container) == "table" then
+        for realmKey, bucket in pairs(container) do
+          local realm = type(realmKey) == "string" and NormalizeRealm(realmKey) or ""
+          if realm ~= "" and type(bucket) == "table" then
+            local lr = lower(realm)
+            for k, v in pairs(bucket) do
+              local name = (pass == 1) and v or k
+              if type(name) == "string" and name ~= "" then
+                if not seenRealms[lr] then
+                  seenRealms[lr] = true
+                  realmCount = realmCount + 1
+                  onlyRealm = realm
+                end
+                local ln = lower(name)
+                local had = byName[ln]
+                if had == nil then
+                  byName[ln] = { name = name, realm = realm, lr = lr }
+                elseif had and had.lr ~= lr then
+                  byName[ln] = false
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+    if realmCount == 0 then return end
+
+    -- Rebuilt in its own order, a name that two entries now resolve to kept
+    -- once, at its most recent place. In place: the store keeps the table it
+    -- resolved for this path.
+    local out, kept = {}, {}
+    for i = 1, #list do
+      local text = type(list[i]) == "string" and H.NormalizeText(list[i]) or ""
+      local full = nil
+      if text:find("-", 1, true) then
+        full = text
+      elseif text ~= "" then
+        local mine = byName[lower(text)]
+        if mine then
+          full = mine.name .. "-" .. mine.realm
+        elseif realmCount == 1 then
+          full = text .. "-" .. onlyRealm
+        end
+      end
+      local key = full and (R.Key(full)) or ""
+      if key ~= "" and not kept[key] then
+        kept[key] = true
+        out[#out + 1] = full
+      end
+    end
+    for i = #list, 1, -1 do list[i] = nil end
+    for i = 1, #out do list[i] = out[i] end
+  end
+
+  db.historyQualified = true
+  historyQualified = true
 end
 
 -------------------------------------------------------------

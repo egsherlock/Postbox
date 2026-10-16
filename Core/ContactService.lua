@@ -676,7 +676,12 @@ local function SortEntries(list)
   end)
 end
 
+-- Each entry is saved with its realm (CS.SaveRecipient) and becomes an address
+-- in Resolve like every other source's, bare only on its own realm. A bare
+-- name an earlier build saved is qualified first (Recipients.QualifyHistory).
 local function CollectRecent(out)
+  local R = ns.Recipients
+  if type(R) == "table" and type(R.QualifyHistory) == "function" then R.QualifyHistory() end
   local db = ns.EnsureDB()
   local history = type(db) == "table" and db.recipientHistory or nil
   if type(history) ~= "table" then return end
@@ -1491,10 +1496,14 @@ end
 
 -- Records a recipient the player has SUCCESSFULLY mailed, most-recent-first.
 --
--- History stores the ADDRESS, not the raw text typed, and dedupes on identity.
+-- History stores the name with its realm ("Arsol-Kazzak", Recipients.Qualify),
+-- whatever realm that is, not the raw text typed, and dedupes on identity.
 -- Typing "Arsol" one day and "Arsol-Kazzak" the next is one correspondent, and
 -- letting both sit in the list is how the same character ends up in the Recent
--- bucket twice -- and how real entries get evicted to stay under the cap.
+-- bucket twice -- and how real entries get evicted to stay under the cap. The
+-- realm is kept even on the player's own realm because the list is
+-- account-wide: it is read on every realm the account plays, and the Recent
+-- source draws it bare again on its own (CollectRecent).
 --
 -- This is the only thing that appends to profile.recipientHistory;
 -- ns.Recipients.Delete is the only thing that removes from it. The removal loop
@@ -1502,7 +1511,12 @@ end
 local HISTORY_MAX = 50
 
 function CS.SaveRecipient(name)
-  local text = Address(name)
+  local R = ns.Recipients
+  if type(R) ~= "table" or type(R.Qualify) ~= "function" then return end
+  if type(R.QualifyHistory) == "function" then R.QualifyHistory() end
+  -- "" only before the client knows the player's realm, where no realm can
+  -- be written down; a bare name would be read as somebody else elsewhere.
+  local text = R.Qualify(name)
   if text == "" then return end
   local key = IdentityKey(text)
 
