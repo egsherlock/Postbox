@@ -7,7 +7,7 @@ once or just what sold, see what every alt has waiting from anywhere, and
 arrange the window the way you like it. Nothing to set up: install it and
 open a mailbox.
 
-![The Mail tab](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/mail.png)
+![All mail, one click](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/collect.gif)
 
 ## Collect without thinking about it
 
@@ -27,7 +27,7 @@ open a mailbox.
 - **History** keeps what you collected for a week (or up to a month): who,
   what, how much, even the letter's text.
 
-![Arrange your window](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/arrange.png)
+![Arrange your window](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/arrange.gif)
 
 ## Make it yours
 
@@ -63,6 +63,8 @@ open a mailbox.
 - **It warns you before mail is lost,** with a line in chat at login and a
   marker on the minimap icon.
 
+![The minimap icon and Mail Memory](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/minimap.gif)
+
 ## A minimap icon that tells you more
 
 - Show it for **New mail**, for **Mail on any character**, or **Always**.
@@ -72,6 +74,8 @@ open a mailbox.
 - Two dozen hand-painted icon styles, 16 to 40 px, with glow (gold, your
   accent or white), pulse and shadow. Its tooltip shows your own mailbox,
   then each of your other characters with mail.
+
+![The Send tab](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/send.png)
 
 ## Sending made easy
 

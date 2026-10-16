@@ -68,7 +68,13 @@ deleted the moment Postbox empties it (**Delete when done**).
 
 <br clear="all" />
 
+<p align="center">
+  <img src="docs/screenshots/collect.gif" alt="All mail collecting a whole inbox, one mail at a time" />
+</p>
+
 ### History
+
+<img src="docs/screenshots/history.png" width="420" align="right" alt="History searched across every character" />
 
 The clock beside Inbox lists what Postbox collected on this character, newest
 first: when, from whom, what came out and what it was worth, with the
@@ -77,6 +83,8 @@ letter's text kept after the mail is gone. **Keep History for** 7, 14, 21 or
 entries per character. History has its own layout, shows when you collected
 ("3d ago" or the date, either way round), and **Search every character**
 looks through all of them.
+
+<br clear="all" />
 
 ## Arrange it your way
 
@@ -126,6 +134,8 @@ a mail to see what it holds. A character you no longer play can be hidden
 
 ## Sending
 
+<img src="docs/screenshots/send.png" width="420" align="right" alt="The Send tab: a name completing, more than twelve items queued" />
+
 - **Names complete in place** from your favorites, recent contacts, alts,
   guild and friends (Battle.net included). Tab and Shift+Tab walk the
   suggestions, Enter takes the whole name, and the realm is added only when
@@ -147,6 +157,8 @@ a mail to see what it holds. A character you no longer play can be hidden
 
 **Manage Recipients** (`/postbox rm`, works anywhere) searches, sorts,
 favorites, hides and annotates every name Postbox can suggest.
+
+<br clear="all" />
 
 ## The minimap icon
 
