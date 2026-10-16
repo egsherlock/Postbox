@@ -5302,12 +5302,13 @@ function Footer.Build(frame, above)
     S.footer.resetText = resetText
     if arrow then arrow:SetPoint("CENTER", reset, "LEFT", 10, 0) end
     if caret then caret:SetPoint("CENTER", resetText, "RIGHT", 9, 0) end
-    -- At rest the quietest grey the band carries, at full strength; the
-    -- text colour when pointed at, and while its menu is open.
+    -- At rest the band's quiet text colour, as Report a bug and What's new?
+    -- are, at full strength; the text colour when pointed at, and while its
+    -- menu is open.
     local menu
     local function Quiet(on)
       if on and menu and menu:IsShown() then on = false end
-      local token = on and "textDisabled" or "textPrimary"
+      local token = on and "textSecondary" or "textPrimary"
       ns.Theme.SetColor(resetText, token)
       if arrow then ns.Theme.SetColor(arrow, token) end
       if caret then ns.Theme.SetColor(caret, token) end
