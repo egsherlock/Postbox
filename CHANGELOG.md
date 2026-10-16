@@ -6,8 +6,9 @@
 try the new Postbox style in dark or light, and let Postbox do more of the
 work at the mailbox.
 *After updating, restart the game once (a /reload is not enough). Coming
-from 1.40? So much changed that your settings start fresh on 1.50's defaults;
-your recipients, groups, Mail Memory and History are kept.*
+from 1.40? So much changed that your settings start fresh on 1.50's defaults
+(on the default UI that's the new Postbox style; the Blizzard look is under
+Options, Window); your recipients, groups, Mail Memory and History are kept.*
 
 ### Arrange your window
 
