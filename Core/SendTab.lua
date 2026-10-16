@@ -417,7 +417,7 @@ end
 
 -- The name of the first attached item, or nil with nothing attached. A mail
 -- sent with no subject is titled after it, as the client's own send frame
--- titles one -- "Void-Touched Drums" over "Mail" -- and the subject's ghost
+-- titles one -- "Void-Touched Drums" over "No subject" -- and the subject's ghost
 -- text shows that title while the box is empty, so nothing is a surprise.
 local function FirstAttachmentName()
   if type(GetSendMailItem) ~= "function" then return nil end
@@ -686,9 +686,10 @@ function ST.RefreshAttachmentSlots(panel)
   -- Before the read below, so the slots are drawn as they now stand.
   if TopUpFromQueue then TopUpFromQueue(panel) end
   if RefreshQueueLabel then RefreshQueueLabel(panel) end
-  -- The subject an empty box will send under (see FirstAttachmentName).
+  -- The subject an empty box will send under (see FirstAttachmentName), in
+  -- the words the send uses (DoSendMail).
   if panel.SubjectPlaceholder then
-    panel.SubjectPlaceholder:SetText(FirstAttachmentName() or L["DEFAULT_SUBJECT"])
+    panel.SubjectPlaceholder:SetText(FirstAttachmentName() or L["DEFAULT_NO_SUBJECT"])
   end
 
   local highest, filled = 0, 0
@@ -5978,7 +5979,7 @@ function ST.Build(parent)
   -- with nothing but a generic error to explain it.
   panel.SubjectBox:SetMaxLetters(64)
   panel.SubjectPlaceholder = AttachPlaceholder(panel.SubjectWrap, panel.SubjectBox,
-                                               L["DEFAULT_SUBJECT"], false)
+                                               L["DEFAULT_NO_SUBJECT"], false)
   panel.SubjectBox:SetScript("OnTextChanged", function(self)
     self._placeholder:SetShown(self:GetText() == "")
   end)
