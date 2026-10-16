@@ -70,10 +70,12 @@ local DEFAULTS = {
   markerCorner = "TOPRIGHT",
   -- Larger when alone: the marker on its own grows into the icon's spot.
   markerLarge  = false,
+  -- What the glow, its pulse and the arrival halo wear: "gold", "accent" or
+  -- "white" (section 1b).
+  glowColor    = "gold",
   -- Expiring mail (`expiry`, section 1b) is deliberately not seeded here: an
   -- unset one is read from the checkbox it replaced, which a seeded default
-  -- would hide. Nor is Glow color (`glowColor`), read from Accent tint while
-  -- it was never chosen (section 1b).
+  -- would hide.
 }
 
 -- ONE dropdown, every placement, no second control to contradict it:
@@ -338,21 +340,16 @@ local function MarkerLarge(prefs)
 end
 
 -- Glow color (`glowColor`): what the glow, its pulse and the arrival halo
--- wear -- "gold" (Postbox's gold), "accent" (the accent the window style or
--- the host UI gives) or "white". Nothing else colours them: the marker alone
--- says mail is expiring. Before this the glow was white, or the accent with
--- Accent tint on, so a glow never chosen reads that: Accent tint on is
--- Accent, off is White. Choosing one stores it; so does a change to Accent
--- tint while it was never chosen (MB.SetAccentTint), so the glow keeps the
--- colour it has.
+-- wear -- "gold" (Postbox's gold, the default), "accent" (the accent the
+-- window style or the host UI gives) or "white". Nothing else colours them:
+-- Accent tint is the Minimal letter's alone, and the marker alone says mail
+-- is expiring.
 local GLOW_COLORS = { gold = true, accent = true, white = true }
 MB.GLOW_COLORS = { "gold", "accent", "white" }
 
 local function GlowColorMode(prefs)
-  prefs = prefs or Settings()
-  local mode = prefs.glowColor
-  if GLOW_COLORS[mode] then return mode end
-  return prefs.accent == true and "accent" or "white"
+  local mode = (prefs or Settings()).glowColor
+  return GLOW_COLORS[mode] and mode or DEFAULTS.glowColor
 end
 
 -- r, g, b of a glow colour. On the map, not in a window: Postbox's gold is
@@ -2173,7 +2170,7 @@ function MB.SetMarkerLarge(on)
 end
 
 -- What the glow, its pulse and the arrival halo wear (MB.GLOW_COLORS;
--- section 1b).
+-- DEFAULTS.glowColor).
 function MB.GetGlowColor() return GlowColorMode() end
 
 function MB.SetGlowColor(mode)
@@ -2209,18 +2206,11 @@ function MB.SetIconSize(px)
 end
 
 -- Off unless switched on, as DEFAULTS has it. It tints the art that takes
--- a tint; the glow is Glow color's. A glow whose colour was never chosen
--- still reads this (section 1b), so before this changes it keeps the colour
--- it wears now.
+-- a tint (the Minimal letter); the glow is Glow color's.
 function MB.GetAccentTint() return Settings().accent == true end
 
 function MB.SetAccentTint(on)
-  local prefs = Settings()
-  on = on == true
-  if (prefs.accent == true) ~= on and not GLOW_COLORS[prefs.glowColor] then
-    prefs.glowColor = GlowColorMode(prefs)
-  end
-  prefs.accent = on
+  Settings().accent = on == true
   Refresh()
 end
 

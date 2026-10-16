@@ -2204,7 +2204,7 @@ do
       if P.tint then P.tr, P.tg, P.tb = T.GetAccent() end
       P.glowOn, P.pulseOn, P.shadowOn = Icon.GetGlow() and true or false, Icon.GetPulse() and true or false,
         Icon.GetShadow() and true or false
-      local glowId = Icon.GetGlowColor and Icon.GetGlowColor() or "white"
+      local glowId = Icon.GetGlowColor and Icon.GetGlowColor() or "gold"
       if Icon.GlowRGB then P.gr, P.gg, P.gb = Icon.GlowRGB(glowId) end
       local expiry = Icon.GetExpiry and Icon.GetExpiry() or "off"
       P.mark = expiry ~= "off"
@@ -4433,7 +4433,7 @@ function Pages.minimap(col)
     white = L["OPT_MINIMAP_GLOWCOLOR_WHITE"],
   }
   local glowItems = {}
-  for _, id in ipairs((Icon and Icon.GLOW_COLORS) or { "white" }) do
+  for _, id in ipairs((Icon and Icon.GLOW_COLORS) or { "gold" }) do
     glowItems[#glowItems + 1] = { id = id, name = glowNames[id] }
   end
   local glowRow = Rows.Dropdown(block, {
