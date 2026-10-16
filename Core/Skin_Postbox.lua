@@ -483,10 +483,11 @@ local ACCENT_NAME_KEY = {
   ice = "OPT_ACCENT_ICE", violet = "OPT_ACCENT_VIOLET", pink = "OPT_ACCENT_PINK",
   class = "OPT_COLOR_CLASS", custom = "OPT_COLOR_CUSTOM",
 }
--- White since 1.50 (Elliott): a neutral accent that suits the clean look in
--- Dark and in Light (where a grey accent marks in ink). The creative styles,
--- held back from 1.50, keep the gold their art was drawn for.
-local DEFAULT_ACCENT = "white"
+-- Gold (Elliott, 2026-10-16, after a day on White): it gives the style its
+-- character and matches the pictures players see first. White stays first in
+-- the list, the neutral pick a click away. The creative styles, held back
+-- from 1.50, keep the gold their art was drawn for.
+local DEFAULT_ACCENT = "gold"
 local CREATIVE_ACCENT = "gold"
 
 function Skin.GetAccentKey()
