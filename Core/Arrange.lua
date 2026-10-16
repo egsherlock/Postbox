@@ -5243,7 +5243,9 @@ local function PaintHiddenChip(chip)
   local spec = PLATE.chip
   local hover = chip.hover
   TintPlate(chip, hover and 0.12 or spec.fill, hover and spec.hover or spec.ring, hover and "hover" or "rest")
-  local v = hover and 1 or 0.6
+  -- At rest the inspector's quiet grey (its descriptions' 0.66): 5.2:1 on
+  -- the chip in Light, where 0.6 read at 4.48.
+  local v = hover and 1 or 0.66
   Grey(chip.Label, v)
   if chip.Eye then Grey(chip.Eye, v) end
 end
