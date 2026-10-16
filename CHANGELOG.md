@@ -27,7 +27,7 @@ Options, Window). Your recipients, Mail Memory and History are kept.*
 
 - **The Postbox style** replaces Postbox Modern and is the default on the
   game's own UI: Dark or **Light mode** (crisp dark text on paper, your
-  accent in the underlines and ticks), with your accent (White, Gold, your
+  accent in the underlines and ticks), with your accent (Gold, White, your
   class color or any color), background, border, corners, row stripes,
   font and text size. In Dark, tabs are a clean neutral gray whose words
   brighten when you point at them.

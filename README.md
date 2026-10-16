@@ -223,11 +223,11 @@ new?** in the footer shows the last three releases.
   Blizzard Style or Classic WoW UI, Postbox wears its Blizzard look to match.
 - **ElvUI:** its accent (value color) and class colors, live.
 - **The Postbox style** (the default on the game's own UI): **Dark** or
-  **Light** mode, accent (White by default, presets, your class color or any
-  color), background color, opacity, border (None, Edge, Thin or Thick) and
-  its color, corners, row stripes, sheen, font and text size. In Light mode
-  text is crisp dark ink and your accent stays in the marks; each mode keeps
-  its own background.
+  **Light** mode, accent (Gold by default, White and other presets, your
+  class color or any color), background color, opacity, border (None, Edge,
+  Thin or Thick) and its color, corners, row stripes, sheen, font and text
+  size. In Light mode text is crisp dark ink and your accent stays in the
+  marks; each mode keeps its own background.
 - **Blizzard**, to match the default UI with the game's own art (texture
   packs restyle it).
 - **Window scale** from 80% to 130% in every look.
