@@ -2349,7 +2349,10 @@ do
     local h = MW.h
     local rowH, size, gap = fit.rowH, two and h.iconL or h.iconC, MW.MGAP
     T.StyleMailRow(row, k, false)
-    row:SetAlpha(done and 0.6 or 1)
+    -- The read mail is told by its dot and its delete mark. The window
+    -- also steps its row back with the row's alpha; the drawing does not:
+    -- the options are read at full contrast, and faded, a friend's class
+    -- color reads under 4.5:1 on the list.
     row:SetSize(win.rowW, rowH)
     MW.At(row, "TOPLEFT", win.Clip, 0, -(k - 1) * (rowH + h.rowGap))
     if R and R.PaintDot then R.PaintDot(row.Indicator, m.read, false)
