@@ -45,11 +45,13 @@ local DEFAULTS = {
                      -- and kept in step with the corner presets otherwise
   -- (`accent`, Accent tint until 2026-10-16, is read by nothing: the
   -- Minimal letter is drawn white, and Glow color carries the accent.)
-  -- Glow, pulse and shadow all on: the styled icon should look its best the
-  -- moment the feature is switched on -- the switch-on IS the opt-in, and
-  -- each piece has its own checkbox for anyone who wants it quieter.
+  -- Glow and pulse on: the styled icon should look its best the moment the
+  -- feature is switched on -- the switch-on IS the opt-in, and each piece
+  -- has its own checkbox for anyone who wants it quieter. The shadow starts
+  -- off (Elliott, 2026-10-16): the painted icons carry their own depth, and
+  -- it is one tick away for a busy map.
   glow     = true,
-  shadow   = true,
+  shadow   = false,
   pulse    = true,   -- the glow's slow breathe; shadows never pulse
   -- Arrival notification. Both off by default: a sound and a moving icon
   -- are the two things an addon can do that a player cannot ignore, so
