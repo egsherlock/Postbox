@@ -9075,6 +9075,12 @@ function CloseDetailIfStale(panel)
   if Mail().StuckReason(index) ~= detail._stuck then
     PaintDetailContent(detail, index)
     LayoutDetail(detail)
+  elseif RV.HeldSomething(index) ~= (detail.Collect:IsShown() and true or false) then
+    -- The mail emptied (or filled) under the open view -- the last tile or
+    -- the coin taken here, or a take from anywhere else: Collect follows
+    -- PaintDetailContent's rule, and only the bar is laid out again.
+    detail.Collect:SetShown(not detail.Collect:IsShown())
+    LayoutDetailActions(detail)
   end
 end
 
@@ -9554,6 +9560,12 @@ function PaintDetailContent(detail, index)
     local ok, answer = pcall(InboxItemCanDelete, index)
     if ok then canDelete = answer and true or false end
   end
+  -- Collect stands only while the mail holds something it would take: gold,
+  -- or items, a C.O.D. mail's included (its click still asks first). A
+  -- letter with nothing in it reads with Back and Delete alone, and the bar
+  -- closes up (LayoutDetailActions lays out the shown buttons). The view's
+  -- refresh keeps it so as the mail is emptied under it (CloseDetailIfStale).
+  detail.Collect:SetShown(hasContent)
   detail.Reply:SetShown(isCOD and hasContent)
   detail.Return:SetShown(hasContent and (isCOD or not canDelete))
   detail.Delete:SetShown(wasRead and not isCOD and canDelete)
