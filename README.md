@@ -183,9 +183,9 @@ icon steps aside.
   mail on any character is close to being lost. Choose its shape (dot, ring,
   square, bar, "!" or a triangle that fits its spot), put it on any corner,
   side or the center of the icon, and nudge it a pixel at a time with
-  **Offset X** and **Offset Y**. On **Always** it stays on the map when this
-  character has no mail, the same size and in the same place; **Larger when
-  alone** makes it bigger there.
+  **Offset X** and **Offset Y**. On **Always** it stays on the map while the
+  icon is hidden, the same size and in the same place; **Larger when alone**
+  makes it bigger there.
 - **Count on icon** (this character or all), shadow, glow, pulse and
   **Flash on new mail**, with a **Glow color** of gold, your accent, your
   class color, white or any color you pick.
@@ -245,9 +245,9 @@ new?** in the footer shows the last three releases.
   calls the mail API directly; its arranging is its own, never Blizzard's Edit
   Mode. The one known combat case is documented in
   [COMBAT_TAINT.md](COMBAT_TAINT.md).
-- **Idle means idle.** Away from a mailbox nothing runs on a repeating timer
-  or every frame; at one, per-frame work belongs to what you are doing and
-  stops when it ends.
+- **Idle means idle.** Nothing runs on a repeating timer away from a
+  mailbox, and per-frame work runs only while you drag, resize or arrange
+  something, stopping when you let go.
 - **Measured, not assumed.** A 50-mail list refresh leaves under 2 KB of
   garbage (35 KB in 1.40), a collect run about a third of what it did, and a
   Mail/Send switch redraws your bags once instead of three times.

@@ -34,7 +34,8 @@ open a mailbox.
 ## Make it yours
 
 - **Arrange the window right where you use it:** drag any column or button,
-  hide what you don't need, and choose what each one shows. One-line rows,
+  hide what you don't need, and choose what the gold, time-left and slot
+  figures show. One-line rows,
   larger two-line rows and History each keep their own layout.
 - **Columns or Packed:** figures lined up like a table, or packed together so
   subjects get the room.
@@ -62,17 +63,19 @@ open a mailbox.
 - **Mail Memory** remembers each character's mailbox at your last visit: what
   is waiting, what each mail holds, and how long it has left. Search one
   character or all of them.
-- **It warns you before mail is lost,** with a line in chat at login and a
-  marker on the minimap icon.
+- **It warns you before mail is lost,** with a line in chat at login about
+  your other characters, and a marker on the minimap icon.
 
 ![The minimap icon and Mail Memory](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/minimap.gif)
 
 ## A minimap icon that tells you more
 
+- Off until you turn it on (Options, Minimap); while it's on, the game's own
+  mail icon steps aside.
 - Show it for **New mail**, for **Mail on any character**, or **Always**.
 - A **count** of what's waiting, and a small red **marker** when mail is
-  about to expire: pick its shape (a triangle can fill your minimap's
-  corner), its color and its spot, and nudge it into place. It stays put
+  about to expire: pick its shape (a triangle fits the icon's corner), its
+  color and its spot, and nudge it into place. It stays put
   even when the icon is hidden, or grows bigger if you like.
 - Two dozen hand-painted icon styles, 16 to 40 px, with glow (gold, your
   accent, your class color, white or any color), pulse and shadow. Its
@@ -98,7 +101,8 @@ open a mailbox.
   for the mail you chose.
 - Deleting in bulk only ever removes finished mail you chose, and a mail
   that still holds something asks before it goes.
-- When something can't be collected, Postbox says so in the game's own words.
+- When something can't be collected, Postbox says so, in the game's own
+  words where it gives them.
 
 ## Light on your game
 

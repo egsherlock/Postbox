@@ -70,9 +70,9 @@ Options, Window). Your recipients, Mail Memory and History are kept.*
   mail on any character is close to being lost. Choose its shape (dot, ring,
   square, bar, "!" or a triangle that fits its spot), put it on any corner,
   side or the center of the icon, and nudge it a pixel at a time with
-  **Offset X** and **Offset Y**. On **Always** it stays on the map when this
-  character has no mail, the same size and in the same place; **Larger when
-  alone** makes it bigger there.
+  **Offset X** and **Offset Y**. On **Always** it stays on the map while the
+  icon is hidden, the same size and in the same place; **Larger when alone**
+  makes it bigger there.
 - **Glow color:** gold, your accent, your class color, white or any color you
   pick, for the glow, its pulse and the new-mail flash. It replaces Accent
   tint.
