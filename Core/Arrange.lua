@@ -916,13 +916,15 @@ end
 
 -- Every look the key has, from its state: at rest the mark alone; pointed
 -- at, white on a plate (a 7% white fill, a grey ring, a black keyline);
--- lit, the house's selected plate (Theme's PaintPlate, from the same
--- palette): a dark fill with the accent's wash, the selected ring, a lit top
--- edge and the accent's underline, the check and Done in the accent's
--- selected-caption tone, in a black keyline that holds it over a bright
--- scene. Pointed at while lit, the plate's hover wash lifts it, as it lifts
--- a selected tab. On a light palette: no black keyline, the plates' hover
--- ring when pointed at, and the underline in the accent's mark tone.
+-- lit, the selected plate the window's segments wear (Theme's PaintPlate,
+-- from the same tokens or palette): a dark fill with the accent's wash, the
+-- selected ring, a lit top edge and the accent's underline, the check and
+-- Done in the accent's selected-caption tone, in a black keyline that holds
+-- it over a bright scene. Pointed at while lit, the plate's hover wash lifts
+-- it, as it lifts a selected segment. In the Postbox style's Dark the
+-- segments' tokens leave out the wash, the lit edge and the lift. On a light
+-- palette: no black keyline, the plates' hover ring when pointed at, and the
+-- underline in the accent's mark tone.
 function AR.PaintToggle(button)
   if not button then return end
   local T = Th()
@@ -931,7 +933,13 @@ function AR.PaintToggle(button)
   local light = AR.Light()
   local mark, check, label = button.Mark, button.Check, button.Label
   if lit then
-    local C = T.Colors
+    -- The selected plate the window's segments wear: their style's tokens
+    -- where it gives them (the Postbox style's Dark: the neutral gray of a
+    -- selected tab, no wash, no lit edge, nothing more under the pointer),
+    -- the palette's otherwise. The words are inked for that plate.
+    local tok = T.VariantTokens and T.VariantTokens("segment") or nil
+    local C = tok or T.Colors
+    local ground = tok and "tabSelected" or "plateSelected"
     local fill, ring, bevel, lift = C.plateSelected, C.plateEdgeSelected, C.plateBevel, C.plateHighlight
     button.Fill:SetVertexColor(fill[1], fill[2], fill[3], fill[4])
     button.Fill:Show()
@@ -955,10 +963,10 @@ function AR.PaintToggle(button)
     if mark then mark:Hide() end
     if button.grip then button.grip:Hide() end
     if check then
-      T.SetColor(check, "accentBright")
+      T.SetColor(check, "accentBright", ground)
       check:Show()
     end
-    T.SetColor(label, "accentBright")
+    T.SetColor(label, "accentBright", ground)
     label:Show()
     button:SetWidth(KEY_LEAD + KEY_CHECK + KEY_GAP + math.ceil(T.TextWidth(label)) + KEY_TAIL)
     return

@@ -4122,6 +4122,14 @@ function Theme.SetVariantTokens(variant, tokens)
   if spec then spec.tokens = tokens end
 end
 
+-- The tokens a style gave `variant`, or nil (the palette's plates): for a
+-- control drawn as that variant's plate without being one (the arrange
+-- mode's lit Done key).
+function Theme.VariantTokens(variant)
+  local spec = PLATE_VARIANTS[variant]
+  return spec and spec.tokens or nil
+end
+
 -- Names a plate's glyph as its caption -- an icon in place of words: the
 -- Mail tab's History, the sort -- with `paint(glyph)`, its own colour, which
 -- it wears now. Under tokens that name a caption for the pointer the plate
