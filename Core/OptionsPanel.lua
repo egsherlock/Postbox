@@ -2005,7 +2005,10 @@ do
       pulse:Stop()
       glow:Hide()
     end
-    if Icon.PaintMark then Icon.PaintMark(fig, icon, size, look == "dot" or alone, alone) end
+    if Icon.PaintMark then
+      Icon.PaintMark(fig, icon, size, look == "dot" or alone, Icon.GetMarker and Icon.GetMarker(),
+        Icon.GetMarkerCorner and Icon.GetMarkerCorner(), alone and Icon.GetMarkerLarge and Icon.GetMarkerLarge())
+    end
     fig:Show()
   end
 
@@ -3032,8 +3035,23 @@ function State.Minimap()
   local Icon = ns.MinimapButton
   local on = Icon and Icon.GetEnabled and Icon.GetEnabled() and true or false
   Rows.SetBlock(S.minimapBlock, on)
+  State.MinimapRows()
   Tabs.SetSquare("minimap", on and "on" or "off")
   Ctx.Paint("minimap")
+end
+
+-- With the icon on, the rows that say how something looks grey while that
+-- something is not there: Marker and Marker corner while Expiring mail is
+-- Off, Larger when alone unless it is Always (the one choice that puts the
+-- marker on its own). With the icon off the block has them grey already.
+function State.MinimapRows()
+  local Icon, rows = ns.MinimapButton, S.mmRows
+  if not (Icon and rows and Icon.GetEnabled and Icon.GetEnabled()) then return end
+  local expiry = Icon.GetExpiry()
+  local marking = expiry ~= "off"
+  if rows.marker then Rows.SetEnabled(rows.marker, marking) end
+  if rows.corner then Rows.SetEnabled(rows.corner, marking) end
+  if rows.large then Rows.SetEnabled(rows.large, expiry == "always") end
 end
 
 -- Row layout stays live with Larger mail rows on: History, Mail Memory and
@@ -4017,7 +4035,7 @@ function Pages.minimap(col)
     set = function(id) if ns.MinimapButton then ns.MinimapButton.SetShowWhen(id) end end,
   })
 
-  -- Where the orange dot for mail close to being lost goes: nowhere, on the
+  -- Where the marker for mail close to being lost goes: nowhere, on the
   -- icon while When to show has it up, or also on its own where the icon
   -- sits. It never brings the icon up itself.
   local expiryNames = {
@@ -4032,14 +4050,58 @@ function Pages.minimap(col)
     get = function() return ns.MinimapButton and ns.MinimapButton.GetExpiry() end,
     set = function(id)
       if ns.MinimapButton then ns.MinimapButton.SetExpiry(id) end
+      State.MinimapRows()
       Ctx.Repaint()
     end,
+  })
+
+  -- The marker's shape, and the icon's corner it sits on (the bottom right
+  -- is the count's). Grey while Expiring mail is Off (State.MinimapRows).
+  local markerNames = {
+    dot = L["OPT_MINIMAP_MARKER_DOT"], ring = L["OPT_MINIMAP_MARKER_RING"], square = L["OPT_MINIMAP_MARKER_SQUARE"],
+    bar = L["OPT_MINIMAP_MARKER_BAR"], exclamation = L["OPT_MINIMAP_MARKER_EXCLAMATION"],
+  }
+  local markerItems = {}
+  for _, id in ipairs((Icon and Icon.MARKER_SHAPES) or { "dot" }) do
+    markerItems[#markerItems + 1] = { id = id, name = markerNames[id] }
+  end
+  local markerRow = Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_MARKER_TITLE"], text = L["OPT_MINIMAP_MARKER_DESC"], items = markerItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarker() end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetMarker(id) end
+      Ctx.Repaint()
+    end,
+  })
+  local cornerNames = {
+    TOPRIGHT = L["OPT_MINIMAP_CORNER_TR"], TOPLEFT = L["OPT_MINIMAP_CORNER_TL"], BOTTOMLEFT = L["OPT_MINIMAP_CORNER_BL"],
+  }
+  local cornerItems = {}
+  for _, id in ipairs((Icon and Icon.MARKER_CORNERS) or { "TOPRIGHT" }) do
+    cornerItems[#cornerItems + 1] = { id = id, name = cornerNames[id] }
+  end
+  local cornerRow = Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_CORNER_TITLE"], text = L["OPT_MINIMAP_CORNER_DESC"], items = cornerItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerCorner() end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetMarkerCorner(id) end
+      Ctx.Repaint()
+    end,
+  })
+  -- The marker on its own, larger, in the icon's spot. Only Always puts the
+  -- marker on its own, so it greys on any other choice (State.MinimapRows).
+  local largeRow = Rows.Check(block, {
+    title = L["OPT_MINIMAP_LARGE_TITLE"], text = L["OPT_MINIMAP_LARGE_DESC"],
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerLarge() end,
+    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetMarkerLarge(on) end end,
+    after = Ctx.Repaint,
   })
 
   -- Both are answered by the drawing while pointed at (Ctx.MinimapMode),
   -- their text standing under it (Layout).
   S.mmShow, S.mmExpiry = showRow.entry, expiryRow.entry
   showRow.entry.stage, expiryRow.entry.stage = "minimap", "minimap"
+  S.mmRows = { marker = markerRow, corner = cornerRow, large = largeRow }
 
   -- The flash is drawn on the icon, so with the icon off it has nothing to
   -- draw on: it greys with the rows around it.

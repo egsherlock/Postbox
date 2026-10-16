@@ -63,6 +63,13 @@ local DEFAULTS = {
   -- The number on the icon: "off", "me" (this character's box) or "all"
   -- (every character's, the hidden ones aside).
   count    = "off",
+  -- The expiring-mail marker: its shape ("dot", "ring", "square", "bar",
+  -- "exclamation") and the icon's corner it sits on ("TOPRIGHT", "TOPLEFT",
+  -- "BOTTOMLEFT"; the bottom right is the count's). Section 1b.
+  marker       = "dot",
+  markerCorner = "TOPRIGHT",
+  -- Larger when alone: the marker on its own grows into the icon's spot.
+  markerLarge  = false,
   -- Expiring mail (`expiry`, section 1b) is deliberately not seeded here: an
   -- unset one is read from the checkbox it replaced, which a seeded default
   -- would hide.
@@ -235,12 +242,13 @@ end
 --           warning and character list already use (under three days left,
 --           or mail known to be on its way unopened for over three weeks),
 --           this character included and the hidden ones left out, as its
---           warnings leave them -- and Expiring mail puts the dot where the
---           icon is now. On the icon it brings the warning tone with it.
---   alone   the dot stands on its own where the icon sits: Expiring mail is
---           Always and When to show has the icon down. The button is on the
---           map for the dot's sake, its art hidden: the same hit area, the
---           same tooltip and clicks, and no glow, shadow or count.
+--           warnings leave them -- and Expiring mail puts the marker where
+--           the icon is now. On the icon it brings the warning tone with it.
+--   alone   the marker stands on its own, on the corner it has on the icon:
+--           Expiring mail is Always and When to show has the icon down. The
+--           button is on the map for the marker's sake, its art hidden: the
+--           same hit area, the same tooltip and clicks, and no glow, shadow
+--           or count.
 --
 -- Expiring mail never brings the icon itself up: When to show alone says
 -- when the icon is on the map, and means exactly what it says.
@@ -262,8 +270,8 @@ local function CountMode(prefs)
   return COUNT_MODES[mode] and mode or DEFAULTS.count
 end
 
--- Expiring mail (`expiry`): where the orange dot goes while mail on some
--- character is close to being lost.
+-- Expiring mail (`expiry`): where the marker (the orange dot, or the shape
+-- Marker chose) goes while mail on some character is close to being lost.
 --   off     nowhere.
 --   icon    on the icon, while When to show has it up ("With the icon").
 --   always  on the icon while it is up, and on its own where the icon sits
@@ -286,6 +294,33 @@ local function ExpiryMode(prefs)
   local mode = prefs.expiry
   if EXPIRY_MODES[mode] then return mode end
   return ExpiryCarried(prefs)
+end
+
+-- Marker (`marker`): the shape Expiring mail puts on the icon, or where the
+-- icon sits -- Dot (the default, and the only one before), Ring, Square, Bar
+-- or Exclamation. Marker corner (`markerCorner`): the icon's corner it sits
+-- on; the bottom right is the count's, so the two never meet. Drawn by
+-- PaintMark (below).
+local MARKER_SHAPES = { dot = true, ring = true, square = true, bar = true, exclamation = true }
+MB.MARKER_SHAPES = { "dot", "ring", "square", "bar", "exclamation" }
+local MARKER_CORNERS = { TOPRIGHT = true, TOPLEFT = true, BOTTOMLEFT = true }
+MB.MARKER_CORNERS = { "TOPRIGHT", "TOPLEFT", "BOTTOMLEFT" }
+
+local function MarkerShape(prefs)
+  local shape = (prefs or Settings()).marker
+  return MARKER_SHAPES[shape] and shape or DEFAULTS.marker
+end
+
+local function MarkerCorner(prefs)
+  local corner = (prefs or Settings()).markerCorner
+  return MARKER_CORNERS[corner] and corner or DEFAULTS.markerCorner
+end
+
+-- Larger when alone (`markerLarge`, off unless switched on): the marker on
+-- its own (Expiring mail on Always, the icon down) grows into the icon's
+-- spot instead of keeping its size and corner (PaintMark).
+local function MarkerLarge(prefs)
+  return (prefs or Settings()).markerLarge == true
 end
 
 -- Mail Memory's own switch: off, nothing it recorded is offered anywhere.
@@ -422,26 +457,49 @@ local function Glowing(prefs)
   return prefs.glow == true and (view.lit or view.alert) and not view.alone
 end
 
--- The alert's mark: a small solid dot in the warning tone at the icon's
--- top-right corner, the corner the count leaves free. It is the Mail tab's
--- dot (MailboxUI, UpdateCollectTabText), which wears the warning tone too
--- when mail needs attention: round, flat, one colour at full strength,
--- nothing drawn inside it. It says why the icon is warm; the tooltip says
--- whose and when. On the map, not on a window's paper, its tone is the dark
--- palette's in either Mode (Theme.DarkColor).
+-- The alert's mark, the marker: a small flat shape in the warning tone at
+-- the icon's corner (Marker corner; top right unless chosen, and never the
+-- bottom right, which is the count's). The Dot, the default, is the Mail
+-- tab's dot (MailboxUI, UpdateCollectTabText), which wears the warning tone
+-- too when mail needs attention: round, flat, one colour at full strength,
+-- nothing drawn inside it. The others are as plain: a Ring (a hollow
+-- circle), a Square, a Bar (short and flat) and an Exclamation ("!"). Each
+-- says why the icon is warm; the tooltip says whose and when. On the map,
+-- not on a window's paper, its tone is the dark palette's in either Mode
+-- (Theme.DarkColor).
 --
--- Two discs from Media/minimap-dot.tga: the dot, and under it a dark one a
--- screen pixel wider all round, the edge that holds it over snow and over a
--- cave alike. A disc this small is crisp only at the size it was drawn for,
--- so the file holds one for every diameter from 4 to 21 screen pixels
--- (.dev/tools/gen-minimap-assets.js), and the dot is sized in whole screen
--- pixels: a quarter of the icon, rounded, and never under 4, the least that
--- still reads as a round dot on a 16 px icon. Each disc is cut from the
--- strip at its own diameter and snapped to the pixel grid, the fill's top
--- right on the icon's corner and the edge a pixel past it. Past 21 pixels (a
--- large icon on a high-density screen at full scale) the 21 is stretched,
--- which is soft by under a pixel at that size.
+-- Every shape is a fill over a dark edge a screen pixel wider all round
+-- (black at 0.9), the edge that holds it over snow and over a cave alike,
+-- and every one is sized in whole screen pixels from one number, `d`: a
+-- quarter of the icon, rounded, and never under 4, the least that still
+-- reads as a round dot on a 16 px icon. The fill's corner is on the icon's
+-- corner and the edge a pixel past it; both are snapped to the pixel grid,
+-- so each is crisp at every icon size and UI scale.
+--
+--   Dot          a disc d across, from Media/minimap-dot.tga, which holds
+--                one for every diameter from 4 to 21 screen pixels (a disc
+--                this small is crisp only at the size it was drawn for):
+--                each cut from the strip at its own diameter. Past 21
+--                pixels (a large icon on a high-density screen at full
+--                scale) the 21 is stretched, soft by under a pixel there.
+--   Ring         a ring d across, its stroke max(1, d/6 rounded), and its
+--                edge a pixel past it outside and in, from
+--                Media/minimap-ring.tga, drawn the same way for the same
+--                diameters (.dev/tools/gen-minimap-assets.js).
+--   Square       a square nine tenths of d (rounded, at least 3): a square
+--                as wide as a disc reads heavier.
+--   Bar          a third of d tall (rounded, at least 2) and half as wide
+--                again as d (at least twice its height).
+--   Exclamation  "!", 1.3 d tall (at least 5): a stem and a square point
+--                a fifth of that wide (at least 1), an eighth of it apart
+--                (at least 1), each with its own edge, which meet in a gap
+--                of one pixel.
+--
+-- Square, Bar and Exclamation are rectangles of the white tile, so they are
+-- crisp at any size; no art is drawn for them.
 local DOT_FILE = MEDIA .. "minimap-dot.tga"
+local RING_FILE = MEDIA .. "minimap-ring.tga"
+local TILE_FILE = MEDIA .. "white8x8.tga"
 local DOT_MIN, DOT_CELL_MAX = 4, 21
 local DOT_EDGE_ALPHA = 0.9
 
@@ -454,6 +512,16 @@ local function DotCoords(tex, d)
   tex:SetTexCoord((x0 + 1) / 512, (x0 + 1 + 2 * d) / 512, 1 / 64, (1 + 2 * d) / 64)
 end
 
+-- The ring file's cells (1024 x 64), one texel in, 2 texels a pixel: the
+-- ring `d` across from x = d*d - 16, and its edge, d + 2 across, from
+-- x = d*d + 4d + 436 (after the rings: cells 2k + 1 and 2k + 5 wide).
+local function RingCoords(tex, d, edge)
+  if d > DOT_CELL_MAX then d = DOT_CELL_MAX end
+  local x0, side = d * d - 16, d
+  if edge then x0, side = d * d + 4 * d + 436, d + 2 end
+  tex:SetTexCoord((x0 + 1) / 1024, (x0 + 1 + 2 * side) / 1024, 1 / 64, (1 + 2 * side) / 64)
+end
+
 local function NewDisc(holder, sublevel)
   local tex = holder:CreateTexture(nil, "OVERLAY", nil, sublevel)
   tex:SetTexture(DOT_FILE)
@@ -462,28 +530,68 @@ local function NewDisc(holder, sublevel)
   return tex
 end
 
--- The dot on its own (Expiring mail on Always, the icon down): the same two
--- discs, centred where the icon sits, at half the icon's side in whole
--- screen pixels and never under 6 -- 8 at 16 px, 10 at the default 20, 20
--- at 40, each with its pixel of dark edge: a blip the size of the map's own
--- markers, deliberate at every icon size and still smaller than the icon it
--- stands in for. Past 21 the strip's largest disc is drawn down to it.
+-- Each corner's side of the icon, for the edge's pixel past it.
+local CORNER_X = { TOPRIGHT = 1, TOPLEFT = -1, BOTTOMLEFT = -1 }
+local CORNER_Y = { TOPRIGHT = 1, TOPLEFT = 1, BOTTOMLEFT = -1 }
+
+-- The shape's fill, w x h pixels, from its `d`; for the Exclamation also
+-- its stem's height and the gap under it.
+local function MarkGeometry(shape, d)
+  if shape == "square" then
+    local s = math.max(3, math.floor(d * 0.9 + 0.5))
+    return s, s
+  elseif shape == "bar" then
+    local h = math.max(2, math.floor(d / 3 + 0.5))
+    return math.max(2 * h, math.floor(d * 1.5 + 0.5)), h
+  elseif shape == "exclamation" then
+    local h = math.max(5, math.floor(d * 1.3 + 0.5))
+    local w = math.max(1, math.floor(h / 5 + 0.5))
+    local gap = math.max(1, math.floor(h / 8 + 0.5))
+    return w, h, h - gap - w, gap
+  end
+  return d, d
+end
+
+-- The marker on its own (Expiring mail on Always, the icon down) is the
+-- same marker, the same size, on the same corner, in the same place on
+-- screen: only the icon's art is hidden around it (ApplyLook,
+-- ApplyEuiSkin), and the button keeps the icon's whole area for the hover,
+-- the tooltip and the clicks. It reads as the small mark it is, not as an
+-- icon of its own.
+--
+-- Larger when alone (MarkerLarge) draws it, in its shape, centred in the
+-- icon's spot instead, its `d` half the icon's side in whole screen pixels
+-- and never under 6 -- 8 at 16 px, 10 at the default 20, 20 at 40 -- with
+-- its pixel of dark edge: a blip the size of the map's own markers, still
+-- smaller than the icon it stands in for (the lone dot's only look until
+-- 2026-10-16). Past 21 the strips' largest cells are drawn up to it.
 local DOT_ALONE_MIN = 6
 
--- holder: the frame the dot is drawn on; anchor: the icon texture; size:
--- the icon's side; alone: the dot stands in for the icon (centred, larger).
--- Built once; sized again only when the icon's size, its anchor, the screen
--- pixel (UI scale, the map's scale) or where the dot stands has changed.
-local function PaintMark(holder, anchor, size, on, alone)
+-- holder: the frame the marker is drawn on; anchor: the icon texture; size:
+-- the icon's side; shape and corner: Marker and Marker corner (nil: the
+-- Dot, top right); large: the marker on its own, larger (centred, its `d`
+-- half the icon). Built once (the Exclamation's point, two more regions,
+-- the first time it is chosen); sized again only when the icon's size, its
+-- anchor, the screen pixel (UI scale, the map's scale), its shape, its
+-- corner or its largeness has changed. Under every shape but the
+-- Exclamation it is two regions, __pbMark over __pbMarkEdge.
+local function PaintMark(holder, anchor, size, on, shape, corner, large)
   local dot = holder.__pbMark
+  local point, pointEdge = holder.__pbMark2, holder.__pbMarkEdge2
   if not on then
     if dot then
       dot:Hide()
       holder.__pbMarkEdge:Hide()
     end
+    if point then
+      point:Hide()
+      pointEdge:Hide()
+    end
     return
   end
-  alone = alone and true or false
+  large = large and true or false
+  if not MARKER_SHAPES[shape] then shape = "dot" end
+  if not MARKER_CORNERS[corner] then corner = "TOPRIGHT" end
   local edge = holder.__pbMarkEdge
   if not dot then
     edge = NewDisc(holder, 5)
@@ -491,35 +599,90 @@ local function PaintMark(holder, anchor, size, on, alone)
     dot = NewDisc(holder, 6)
     dot:SetPoint("CENTER", edge, "CENTER")
     holder.__pbMark, holder.__pbMarkEdge = dot, edge
+    dot.__pbShape = "dot"
+  end
+  local bang = shape == "exclamation"
+  if bang and not point then
+    pointEdge = NewDisc(holder, 5)
+    pointEdge:SetTexture(TILE_FILE)
+    pointEdge:SetVertexColor(0, 0, 0, DOT_EDGE_ALPHA)
+    point = NewDisc(holder, 6)
+    point:SetTexture(TILE_FILE)
+    point:SetPoint("CENTER", pointEdge, "CENTER")
+    holder.__pbMark2, holder.__pbMarkEdge2 = point, pointEdge
+  end
+  if dot.__pbShape ~= shape then
+    dot.__pbShape = shape
+    local file = (shape == "dot" and DOT_FILE) or (shape == "ring" and RING_FILE) or TILE_FILE
+    dot:SetTexture(file)
+    edge:SetTexture(file)
+    if file == TILE_FILE then
+      dot:SetTexCoord(0, 1, 0, 1)
+      edge:SetTexCoord(0, 1, 0, 1)
+    end
+    edge:SetVertexColor(0, 0, 0, DOT_EDGE_ALPHA)
+    dot.__pbSize = nil
   end
   local T = ns.Theme
   local px = T and T.OnePixel and T.OnePixel(holder) or 1
-  if dot.__pbSize ~= size or dot.__pbAnchor ~= anchor or dot.__pbPx ~= px or dot.__pbAlone ~= alone then
-    dot.__pbSize, dot.__pbAnchor, dot.__pbPx, dot.__pbAlone = size, anchor, px, alone
+  if dot.__pbSize ~= size or dot.__pbAnchor ~= anchor or dot.__pbPx ~= px or dot.__pbCorner ~= corner
+    or dot.__pbLarge ~= large then
+    dot.__pbSize, dot.__pbAnchor, dot.__pbPx, dot.__pbCorner, dot.__pbLarge = size, anchor, px, corner, large
     local d
-    if alone then
+    if large then
       d = math.max(DOT_ALONE_MIN, math.floor(size / px / 2 + 0.5))
     else
       d = math.max(DOT_MIN, math.floor(size / px / 4 + 0.5))
     end
-    dot:SetSize(d * px, d * px)
-    edge:SetSize((d + 2) * px, (d + 2) * px)
-    DotCoords(dot, d)
-    DotCoords(edge, d + 2)
+    local w, h, stem, gap = MarkGeometry(shape, d)
+    if bang then h = stem end
+    dot:SetSize(w * px, h * px)
+    edge:SetSize((w + 2) * px, (h + 2) * px)
+    if shape == "dot" then
+      DotCoords(dot, d)
+      DotCoords(edge, d + 2)
+    elseif shape == "ring" then
+      RingCoords(dot, d, false)
+      RingCoords(edge, d, true)
+    end
     edge:ClearAllPoints()
-    if alone then
+    if bang then
+      -- The stem's edge stands where the whole "!" puts it; the point's edge
+      -- a gap under it, the two edges meeting where the gap is one pixel.
+      point:SetSize(w * px, w * px)
+      pointEdge:SetSize((w + 2) * px, (w + 2) * px)
+      pointEdge:ClearAllPoints()
+      pointEdge:SetPoint("TOP", edge, "BOTTOM", 0, (2 - gap) * px)
+      if large then
+        -- Centred as a whole: the stem's edge top half the "!" above the middle.
+        edge:SetPoint("TOP", anchor, "CENTER", 0, math.floor((stem + gap + w + 2) / 2) * px)
+      elseif corner == "BOTTOMLEFT" then
+        edge:SetPoint("BOTTOMLEFT", anchor, "BOTTOMLEFT", -px, (w + gap - 1) * px)
+      else
+        edge:SetPoint(corner, anchor, corner, CORNER_X[corner] * px, px)
+      end
+    elseif large then
       edge:SetPoint("CENTER", anchor, "CENTER")
     else
-      edge:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", px, px)
+      edge:SetPoint(corner, anchor, corner, CORNER_X[corner] * px, CORNER_Y[corner] * px)
     end
   end
-  local wr, wg, wb = ns.Theme.DarkColor("warning")
+  local wr, wg, wb = T.DarkColor("warning")
   dot:SetVertexColor(wr, wg, wb, 1)
   dot:Show()
   edge:Show()
+  if bang then
+    point:SetVertexColor(wr, wg, wb, 1)
+    point:Show()
+    pointEdge:Show()
+  elseif point then
+    point:Hide()
+    pointEdge:Hide()
+  end
 end
--- The options' preview draws its dots with this, so the dot it shows is the
--- map's own: the same discs, sizes and place, in the preview's screen pixels.
+-- The options' preview draws its markers with this, so the marker it shows
+-- is the map's own: the same shapes, sizes and place, in the preview's
+-- screen pixels.
 MB.PaintMark = PaintMark
 
 -------------------------------------------------------------
@@ -871,11 +1034,11 @@ local function ApplyEuiSkin()
     end
   end
   -- At rest (shown with nothing new), as Postbox's own button rests. For
-  -- the expiry dot on its own the art is drawn at zero alpha: the button
-  -- stays where they placed it, the dot on our overlay stands in its middle
-  -- and the overlay keeps the hover and the clicks. Their own chrome around
-  -- it (the dark box behind their row's buttons, the Classic ring) is
-  -- theirs and stays: their layout pass sets it on every pass.
+  -- the marker on its own the art is drawn at zero alpha: the button stays
+  -- where they placed it, the marker on our overlay keeps its corner of
+  -- their icon, and the overlay keeps the hover and the clicks. Their own
+  -- chrome around it (the dark box behind their row's buttons, the Classic
+  -- ring) is theirs and stays: their layout pass sets it on every pass.
   local resting = Resting()
   icon:SetDesaturated(resting)
   if view.alone then
@@ -945,7 +1108,8 @@ local function ApplyEuiSkin()
   -- button is handed back. The dot on its own wears no count: there is no
   -- icon for the number to belong to.
   PaintCount(btn.__pbOverlay, icon, side, (not view.alone) and view.count or 0)
-  PaintMark(btn.__pbOverlay, icon, side, view.alert, view.alone)
+  PaintMark(btn.__pbOverlay, icon, side, view.alert, MarkerShape(prefs), MarkerCorner(prefs),
+    view.alone and MarkerLarge(prefs))
 
   euiSkin.applied = true
   return true
@@ -1197,9 +1361,8 @@ local function ApplyLook(button)
   local resting = Resting()
   icon:SetDesaturated(resting)
   icon:SetAlpha(resting and REST_ALPHA or 1)
-  -- The expiry dot on its own: no icon art, only the dot where the icon
-  -- sits; the button keeps its size, so the hover and the clicks are the
-  -- icon's own.
+  -- The marker on its own: no icon art, only the marker on its corner; the
+  -- button keeps its size, so the hover and the clicks are the icon's own.
   icon:SetShown(not view.alone)
 
   -- The glow is the icon's voice for new mail, and for the dot on the icon
@@ -1228,7 +1391,8 @@ local function ApplyLook(button)
 
   -- Nor a count: there is no icon for the number to belong to.
   PaintCount(button.art, icon, size, (not view.alone) and view.count or 0)
-  PaintMark(button.art, icon, size, view.alert, view.alone)
+  PaintMark(button.art, icon, size, view.alert, MarkerShape(prefs), MarkerCorner(prefs),
+    view.alone and MarkerLarge(prefs))
 
   Reposition(button)
 end
@@ -1863,13 +2027,14 @@ MB.Refresh = Refresh
 -- visibility depends on, captured at the moment the report is built.
 function MB.Diagnose()
   return string.format(
-    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s wants %s | count %s %d | expiring %s %s",
+    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s wants %s | count %s %d | expiring %s %s | marker %s %s%s",
     tostring(runtimeActive), tostring(suppressing),
     tostring((EuiSkinCandidate())), tostring(euiSkin.applied),
     euiSkin.tries, tostring(euiSkin.fallback),
     (MB._button and MB._button:IsShown()) and "shown" or "hidden/none",
     tostring((MailWaiting())), ShowMode(), tostring(view.shown and not view.alone), CountMode(), view.count,
-    ExpiryMode(), (view.alone and "DOT ALONE") or (view.alert and "DOT ON ICON") or "quiet")
+    ExpiryMode(), (view.alone and "DOT ALONE") or (view.alert and "DOT ON ICON") or "quiet",
+    MarkerShape(), MarkerCorner(), MarkerLarge() and " large" or "")
 end
 
 -- Called by Skin_EllesmereUI.RefreshAccents so an accent retune repaints a
@@ -1943,6 +2108,32 @@ function MB.SetExpiry(mode)
   if not EXPIRY_MODES[mode] then return end
   local prefs = Settings()
   if mode == ExpiryCarried(prefs) then prefs.expiry = nil else prefs.expiry = mode end
+  Refresh()
+end
+
+-- The marker's shape and corner (MB.MARKER_SHAPES, MB.MARKER_CORNERS;
+-- DEFAULTS.marker, DEFAULTS.markerCorner).
+function MB.GetMarker() return MarkerShape() end
+
+function MB.SetMarker(shape)
+  if not MARKER_SHAPES[shape] then return end
+  Settings().marker = shape
+  Refresh()
+end
+
+function MB.GetMarkerCorner() return MarkerCorner() end
+
+function MB.SetMarkerCorner(corner)
+  if not MARKER_CORNERS[corner] then return end
+  Settings().markerCorner = corner
+  Refresh()
+end
+
+-- Larger when alone (DEFAULTS.markerLarge).
+function MB.GetMarkerLarge() return MarkerLarge() end
+
+function MB.SetMarkerLarge(on)
+  Settings().markerLarge = on == true
   Refresh()
 end
 
