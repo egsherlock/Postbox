@@ -148,6 +148,9 @@ Options, Window). Your recipients, Mail Memory and History are kept.*
   shows a shadowed frame inside the window, and the icon sits right on
   round minimaps and the Classic ring.
 - Flash on new mail plays for the mail that brings the minimap icon up.
+- Recent recipients remember their realm: a name you mailed on one realm is
+  offered with its realm on every other, and your characters on other realms
+  wear their class color in the Send tab, Manage Recipients and the groups.
 
 ## 1.40.1
 
