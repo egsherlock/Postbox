@@ -1679,8 +1679,16 @@ end
 
 local Refresh -- forward: the event handlers below re-enter it
 
+-- Forward (section 8): plays the flash an arrival asked for while the icon
+-- was not up yet.
+local FlushFlash
+
+-- Mail Memory hears this event first and announces the arrival
+-- (MB.NotifyArrival) before this brings the icon up for it; the flash that
+-- arrival asked for plays here, once the icon is on the map.
 local function OnMailEvent()
   Refresh()
+  FlushFlash()
 end
 
 -- Re-derives everything on zone-in: both host UIs rebuild and resize the
@@ -2020,56 +2028,92 @@ end
 -- One arrival, one alert. An auction purchase is announced the moment it
 -- completes, and its mail landing seconds later raises the unread flag and
 -- announces it again: the same mail, sound and flash twice. A repeat inside
--- ALERT_REPEAT seconds is that echo, and is let pass quietly.
+-- ALERT_REPEAT seconds is that echo, and is let pass quietly -- the sound
+-- from the last one heard, the flash from the last one seen.
+--
+-- The flash needs the icon on the map, and the arrival that brings the icon
+-- up is announced (Mail Memory hears UPDATE_PENDING_MAIL first) before the
+-- icon's own handler shows it. Such a flash is kept (flashWantedAt) and
+-- played by that handler once the icon is up (FlushFlash, OnMailEvent);
+-- one kept for longer than ALERT_REPEAT is let go. No timer: it is only
+-- ever looked at by the next mail event.
 local ALERT_REPEAT = 20
-local lastAlertAt = nil
+local lastAlertAt, lastFlashAt, flashWantedAt = nil, nil, nil
+
+local function Now()
+  return type(GetTime) == "function" and GetTime() or nil
+end
+
+-- The arrival halo on whichever button is on screen, in Glow color; false
+-- when none is.
+local function PlayFlash(prefs)
+  -- Whichever button is actually on screen. In EllesmereUI's skin mode
+  -- that is THEIR button wearing our art; everywhere else it is ours.
+  local halo, flash, sized
+  if MB.IsHostStyled() and euiSkin.applied and euiSkin.button then
+    halo, flash = euiSkin.button.__pbMailAlert, euiSkin.button.__pbMailFlash
+    sized = euiSkin.button:IsVisible()
+  else
+    local button = MB._button
+    if button and button:IsShown() then
+      halo, flash = button.alert, button.flash
+      -- Sized from the icon each time rather than at build, so a size
+      -- change between sessions cannot leave the halo out of proportion.
+      -- Generous to start with: the animation scales it DOWN to 0.8 for
+      -- the first beat, so the swell begins tucked behind the icon.
+      local size = IconSize()
+      local reach = size * GLOW_SCALE * 1.10
+      halo:SetSize(reach, reach)
+      sized = true
+    end
+  end
+
+  -- An animation on a frame nobody can see is a promise nobody sees.
+  if not (halo and flash and sized) then return false end
+  -- The dark palette's green in either Mode: it swells over the map.
+  local pr, pg, pb = ns.Theme.DarkColor("positive")
+  halo:SetVertexColor(pr, pg, pb)
+  -- Restarting mid-swell would jump from wherever it is to the first
+  -- phase's start; the stop settles it first.
+  if flash:IsPlaying() then flash:Stop() end
+  flash:Play()
+  return true
+end
+
 function MB.NotifyArrival()
-  local now = type(GetTime) == "function" and GetTime() or nil
-  if now and lastAlertAt and now - lastAlertAt < ALERT_REPEAT then return end
-  lastAlertAt = now
+  local now = Now()
   local prefs = Settings()
 
-  if prefs.alertSound and type(PlaySound) == "function" and type(SOUNDKIT) == "table" then
-    -- The client's own new-mail sound where it has one, its message chime
-    -- otherwise; never a file of ours, so it obeys the player's sound
-    -- settings like every other UI sound.
-    local id = SOUNDKIT.UI_MAIL_ARRIVED or SOUNDKIT.TELL_MESSAGE
-    if id then pcall(PlaySound, id) end
+  if not (now and lastAlertAt and now - lastAlertAt < ALERT_REPEAT) then
+    lastAlertAt = now
+    if prefs.alertSound and type(PlaySound) == "function" and type(SOUNDKIT) == "table" then
+      -- The client's own new-mail sound where it has one, its message chime
+      -- otherwise; never a file of ours, so it obeys the player's sound
+      -- settings like every other UI sound.
+      local id = SOUNDKIT.UI_MAIL_ARRIVED or SOUNDKIT.TELL_MESSAGE
+      if id then pcall(PlaySound, id) end
+    end
   end
 
-  if prefs.alertFlash then
-    -- Whichever button is actually on screen. In EllesmereUI's skin mode
-    -- that is THEIR button wearing our art; everywhere else it is ours.
-    local halo, flash, sized
-    if MB.IsHostStyled() and euiSkin.applied and euiSkin.button then
-      halo, flash = euiSkin.button.__pbMailAlert, euiSkin.button.__pbMailFlash
-      sized = euiSkin.button:IsVisible()
+  if prefs.alertFlash and not (now and lastFlashAt and now - lastFlashAt < ALERT_REPEAT) then
+    if PlayFlash(prefs) then
+      lastFlashAt, flashWantedAt = now, nil
     else
-      local button = MB._button
-      if button and button:IsShown() then
-        halo, flash = button.alert, button.flash
-        -- Sized from the icon each time rather than at build, so a size
-        -- change between sessions cannot leave the halo out of proportion.
-        -- Generous to start with: the animation scales it DOWN to 0.8 for
-        -- the first beat, so the swell begins tucked behind the icon.
-        local size = IconSize()
-        local reach = size * GLOW_SCALE * 1.10
-        halo:SetSize(reach, reach)
-        sized = true
-      end
-    end
-
-    -- An animation on a frame nobody can see is a promise nobody sees.
-    if halo and flash and sized then
-      -- The dark palette's green in either Mode: it swells over the map.
-      local pr, pg, pb = ns.Theme.DarkColor("positive")
-      halo:SetVertexColor(pr, pg, pb)
-      -- Restarting mid-swell would jump from wherever it is to the first
-      -- phase's start; the stop settles it first.
-      if flash:IsPlaying() then flash:Stop() end
-      flash:Play()
+      flashWantedAt = now
     end
   end
+end
+
+FlushFlash = function()
+  local at = flashWantedAt
+  if not at then return end
+  local now = Now()
+  local prefs = Settings()
+  if not prefs.alertFlash or (now and now - at > ALERT_REPEAT) then
+    flashWantedAt = nil
+    return
+  end
+  if PlayFlash(prefs) then lastFlashAt, flashWantedAt = now, nil end
 end
 
 function MB.GetAlertSound()
