@@ -4015,9 +4015,15 @@ local function PaintPlate(plate)
     underline:SetShown(selected)
   end
 
-  -- Tokens of its own change with the style's Mode: the client's wash under
-  -- the pointer is theirs too.
-  if plate.__pbTokens and T.plateHighlight then PaintTexture(plate.__pbHighlight, T.plateHighlight) end
+  -- Tokens of its own change with the style's Mode, as the palette does
+  -- under a look that changes it live (one that derives its inks): the lit
+  -- top edge and the client's wash under the pointer are painted with the
+  -- rest, from whichever is in force, so a change of Mode leaves neither as
+  -- the other Mode drew it.
+  if plate.__pbTokens or Grounds.on then
+    if T.plateBevel then PaintTexture(plate._bevel, T.plateBevel) end
+    if T.plateHighlight then PaintTexture(plate.__pbHighlight, T.plateHighlight) end
+  end
 
   if plate.Text then
     -- Its halo as its object has it now, taken again where the halo moved
