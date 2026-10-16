@@ -5120,3 +5120,83 @@ do
     return moved
   end
 end
+
+-------------------------------------------------------------
+-- 11. A colour of the player's own: the game's colour picker
+--
+-- ColorPickerFrame:SetupColorPickerAndShow, the client's own call for this
+-- (addons and Blizzard's settings alike use it); no field of the picker is
+-- written here and none of its code is hooked. It opens at the options
+-- panel's strata, so it is not behind the panel, and returns to its own when
+-- it closes. Dragging applies the colour live, coalesced to once a frame;
+-- Cancel (or a click elsewhere, which the picker treats as one) puts back
+-- what was there. Every Custom colour opens it: the Postbox style's accent,
+-- background and border (Skin_Postbox, Skin.PickColor), and the minimap
+-- icon's Glow color (MinimapButton, MB.PickGlowColor), in any style.
+-------------------------------------------------------------
+do
+  local picking
+
+  local function PickerApply()
+    local job = picking
+    if not job then return end
+    job.queued = false
+    local picker = _G.ColorPickerFrame
+    if job.r then job.set(job.r, job.g, job.b) end
+    if picker and not picker:IsShown() then
+      if job.strata and picker.SetFrameStrata then picker:SetFrameStrata(job.strata) end
+      picking = nil
+    end
+  end
+
+  local function PickerQueue()
+    local job = picking
+    if not job or job.queued then return end
+    job.queued = true
+    if C_Timer and type(C_Timer.After) == "function" then C_Timer.After(0, PickerApply) else PickerApply() end
+  end
+
+  -- Whether the client has the picker call this needs.
+  function Theme.CanPickColor()
+    local picker = _G.ColorPickerFrame
+    return type(picker) == "table" and type(picker.SetupColorPickerAndShow) == "function"
+  end
+
+  -- Opens the picker on r, g, b. set(r, g, b) runs with each colour picked,
+  -- at most once a frame, and once at the start with r, g, b themselves, so
+  -- the choice is saved as Custom at once; restore() runs on Cancel. Answers
+  -- whether the picker opened.
+  function Theme.PickColor(r, g, b, set, restore)
+    if not Theme.CanPickColor() then return false end
+    local picker = _G.ColorPickerFrame
+    local job = { set = set, strata = picker.GetFrameStrata and picker:GetFrameStrata() or nil }
+    picking = job
+    local ok = pcall(picker.SetupColorPickerAndShow, picker, {
+      r = r, g = g, b = b, hasOpacity = false,
+      swatchFunc = function()
+        if picking ~= job then return end
+        local pr, pg, pb = picker:GetColorRGB()
+        if type(pr) == "number" then job.r, job.g, job.b = pr, pg, pb end
+        PickerQueue()
+      end,
+      cancelFunc = function()
+        if picking ~= job then return end
+        job.r = nil
+        restore()
+        if job.strata and picker.SetFrameStrata then picker:SetFrameStrata(job.strata) end
+        picking = nil
+      end,
+    })
+    if not ok then
+      picking = nil
+      return false
+    end
+    if picker.SetFrameStrata then picker:SetFrameStrata("FULLSCREEN_DIALOG") end
+    if picker.Raise then picker:Raise() end
+    -- Saved as Custom at once, so the options show it; the first swatch call
+    -- (a drag, or OK) writes the colour.
+    job.r, job.g, job.b = r, g, b
+    PickerQueue()
+    return true
+  end
+end

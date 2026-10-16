@@ -2141,47 +2141,21 @@ end
 -------------------------------------------------------------
 -- A colour of the player's own: Blizzard's colour picker
 --
--- ColorPickerFrame:SetupColorPickerAndShow, the client's own call for this
--- (addons and Blizzard's settings alike use it); no field of the picker is
--- written here and none of its code is hooked. It opens at the options
--- panel's strata, so it is not behind the panel, and returns to its own when
--- it closes. Dragging applies the colour live, coalesced to once a frame;
--- Cancel (or a click elsewhere, which the picker treats as one) puts back
--- what was there.
+-- The game's colour picker, opened through Theme.PickColor (Theme section
+-- 11), which the minimap icon's Glow color opens too: live while dragging,
+-- once a frame; Cancel (or a click elsewhere, which the picker treats as
+-- one) puts back what was there.
 -------------------------------------------------------------
-
-local picking
-
-local function PickerApply()
-  local job = picking
-  if not job then return end
-  job.queued = false
-  local picker = _G.ColorPickerFrame
-  if job.hex then job.set(job.hex) end
-  if picker and not picker:IsShown() then
-    if job.strata and picker.SetFrameStrata then picker:SetFrameStrata(job.strata) end
-    picking = nil
-  end
-end
-
-local function PickerQueue()
-  local job = picking
-  if not job or job.queued then return end
-  job.queued = true
-  if C_Timer and type(C_Timer.After) == "function" then C_Timer.After(0, PickerApply) else PickerApply() end
-end
 
 -- Whether the client has the picker call this needs.
 function Skin.CanPickColor()
-  local picker = _G.ColorPickerFrame
-  return type(picker) == "table" and type(picker.SetupColorPickerAndShow) == "function"
+  return ns.Theme.CanPickColor()
 end
 
 -- kind: "accent" | "surface" | "border". Opens the picker on the colour in
 -- use; the choice is saved as that kind's Custom.
 function Skin.PickColor(kind)
   if not Skin.CanPickColor() then return false end
-  local picker = _G.ColorPickerFrame
   local r, g, b, set, restore
   local profile = GetProfile()
   if kind == "accent" then
@@ -2214,35 +2188,8 @@ function Skin.PickColor(kind)
   else
     return false
   end
-  local job = { set = set, strata = picker.GetFrameStrata and picker:GetFrameStrata() or nil }
-  picking = job
-  local ok = pcall(picker.SetupColorPickerAndShow, picker, {
-    r = r, g = g, b = b, hasOpacity = false,
-    swatchFunc = function()
-      if picking ~= job then return end
-      local pr, pg, pb = picker:GetColorRGB()
-      if type(pr) == "number" then job.hex = ToHex(pr, pg, pb) end
-      PickerQueue()
-    end,
-    cancelFunc = function()
-      if picking ~= job then return end
-      job.hex = nil
-      restore()
-      if job.strata and picker.SetFrameStrata then picker:SetFrameStrata(job.strata) end
-      picking = nil
-    end,
-  })
-  if not ok then
-    picking = nil
-    return false
-  end
-  if picker.SetFrameStrata then picker:SetFrameStrata("FULLSCREEN_DIALOG") end
-  if picker.Raise then picker:Raise() end
-  -- Saved as Custom at once, so the options show it; the first swatch call
-  -- (a drag, or OK) writes the colour.
-  job.hex = ToHex(r, g, b)
-  PickerQueue()
-  return true
+  -- Saved as "rrggbb", as this style keeps its colours.
+  return ns.Theme.PickColor(r, g, b, function(pr, pg, pb) set(ToHex(pr, pg, pb)) end, restore)
 end
 
 -------------------------------------------------------------
