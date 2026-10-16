@@ -464,7 +464,7 @@ end
 
 -- Accent -----------------------------------------------------------------
 
-local ACCENT_ORDER = { "gold", "eui", "white", "elvui", "ice", "violet", "pink", "class", "custom" }
+local ACCENT_ORDER = { "white", "gold", "eui", "elvui", "ice", "violet", "pink", "class", "custom" }
 local ACCENT_HEX = {
   gold = "d3a44a", eui = "0cd29d", white = "f2f2f2", elvui = "1785d1",
   ice = "86d6ff", violet = "a77bff", pink = "ff7ac8",
@@ -474,10 +474,14 @@ local ACCENT_NAME_KEY = {
   ice = "OPT_ACCENT_ICE", violet = "OPT_ACCENT_VIOLET", pink = "OPT_ACCENT_PINK",
   class = "OPT_COLOR_CLASS", custom = "OPT_COLOR_CUSTOM",
 }
-local DEFAULT_ACCENT = "gold"
+-- White since 1.50 (Elliott): a neutral accent that suits the clean look in
+-- Dark and in Light (where a grey accent marks in ink). The creative styles,
+-- held back from 1.50, keep the gold their art was drawn for.
+local DEFAULT_ACCENT = "white"
+local CREATIVE_ACCENT = "gold"
 
 function Skin.GetAccentKey()
-  if Creative() then return DEFAULT_ACCENT end
+  if Creative() then return CREATIVE_ACCENT end
   local profile = GetProfile()
   local saved = profile.pbAccent
   if saved == "custom" and FromHex(profile.pbAccentHex) then return saved end
