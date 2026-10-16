@@ -107,6 +107,8 @@ Options, Window). Your recipients, Mail Memory and History are kept.*
 
 - **Five tabs**, and a panel beside them that explains and previews
   whatever you point at, in a sentence or two.
+- **The Window tab's preview is the Mail window, small:** its tabs, three
+  mail rows, the totals band and All mail, wearing every setting live.
 - **Reset to defaults** opens a menu: Reset this tab, Reset settings or
   Reset everything, each saying what it clears before it asks.
 - **What's new?** in game, from the options or `/postbox whatsnew`.
