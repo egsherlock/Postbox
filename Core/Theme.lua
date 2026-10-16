@@ -810,7 +810,20 @@ local function FillTones(r, g, b)
     end
     StoreTone(tones.text, tr, tg, tb)
     StoreTone(tones.icon, HoldOnStrip(tr, tg, tb))
-    StoreTone(tones.mark, Legible(r, g, b, mr, mgg, mb, 3.0))
+    -- A mark moved to its need, where a style derives its inks from their
+    -- grounds, is held to the 8 bits a channel the screen and the Mail tab's
+    -- dot escape show it in, rounded away from its ground, as a moved ink is
+    -- (section 2c): the mark shown still reads 3:1, not a rounding under it.
+    local kr, kg, kb, moved = Legible(r, g, b, mr, mgg, mb, 3.0)
+    local GR = Theme._Grounds
+    if moved and GR and GR.on then
+      if Luminance(kr, kg, kb) >= Luminance(mr, mgg, mb) then
+        kr, kg, kb = min(1, ceil(kr * 255 - 1e-6) / 255), min(1, ceil(kg * 255 - 1e-6) / 255), min(1, ceil(kb * 255 - 1e-6) / 255)
+      else
+        kr, kg, kb = floor(kr * 255 + 1e-6) / 255, floor(kg * 255 + 1e-6) / 255, floor(kb * 255 + 1e-6) / 255
+      end
+    end
+    StoreTone(tones.mark, kr, kg, kb)
     StoreTone(tones.bright, ToneBright(r, g, b))
     StoreTone(tones.muted, ToneMuted(r, g, b))
   end
