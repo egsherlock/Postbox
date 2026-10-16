@@ -83,8 +83,10 @@ your recipients, groups, Mail Memory and History are kept.*
   options; with nothing new it rests in gray. It works on EllesmereUI's
   minimap too.
 - **A count on the icon:** the mail waiting on this character, or on all.
-- **It warns before mail expires:** an orange dot and glow, and the
-  tooltip says whose mail and when.
+- **It warns before mail expires:** an orange dot, and the tooltip says
+  whose mail and when. **Expiring mail** sets it: Off, With the icon, or
+  Always, where the dot stands on its own in the icon's place when this
+  character has no mail. The icon itself shows only when When to show says.
 - **Sizes from 16 to 40 px,** and a tidier tooltip: your own mailbox at
   the top, then a line for each of your other characters with mail waiting.
 
