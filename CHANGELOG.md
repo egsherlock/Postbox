@@ -53,6 +53,9 @@ Options, Window). Your recipients, Mail Memory and History are kept.*
 - **Tooltips read the same everywhere**, with only what the row doesn't
   already show.
 - **The status line counts what you send too:** "Collected: 20 · Sent: 1".
+- **An opened letter shows only the buttons it needs:** nothing to collect,
+  no Collect button, and emptying a mail while it's open leaves exactly the
+  buttons reopening it would show.
 - **Category buttons are off by default**, so All mail and the list get the
   room. **Show category buttons** (Options, Mail tab) brings back the sweeps
   by kind and your groups' buttons.
