@@ -8,10 +8,11 @@ local ADDON_NAME, ns = ...
 --   "api"    -- EllesmereUI 8.6.8+ ships a public third-party skinning
 --               API (EllesmereUI.RegisterSkin, see SKINNING_API.md at its
 --               repo root). The surface is additive-only and versioned by
---               S.apiVersion: 1 is the primitives this file has always used,
---               2 (EllesmereUI 9.3) adds S.SetTabSelection, which the tabs
---               use where it exists. Preferred: EllesmereUI owns every
---               visual, so the skin tracks all their future tweaks for free.
+--               S.apiVersion: 1 is the primitives this file uses (2, from
+--               EllesmereUI 9.3, adds S.SetTabSelection, which nothing here
+--               needs: the window's tabs are Postbox's own plates).
+--               Preferred: EllesmereUI owns the shell and the controls it
+--               skins, so the skin tracks all their future tweaks for free.
 --
 --   "compat" -- wherever that API cannot answer. We build the same facade
 --               ourselves out of the public helpers the parent addon has
@@ -481,89 +482,6 @@ local function BuildShim()
     x:SetVertexColor(1, 1, 1, 0.75)
     btn:HookScript("OnEnter", function() x:SetVertexColor(1, 1, 1, 1) end)
     btn:HookScript("OnLeave", function() x:SetVertexColor(1, 1, 1, 0.75) end)
-  end
-
-  -- Flat plate, own label, accent underline on the active tab. Mirrors the
-  -- house tab exactly, including hiding Blizzard's own label behind ours.
-  function shim.Tab(tab)
-    if not tab then return end
-    if tab.__pbShimTab then
-      local sel = tab.isSelected and true or false
-      if tab.__pbShimLabel then
-        tab.__pbShimLabel:SetTextColor(1, 1, 1, sel and 1 or 0.5)
-        if tab.__pbShimBliz and tab.__pbShimBliz.GetText then
-          tab.__pbShimLabel:SetText(tab.__pbShimBliz:GetText() or "")
-        end
-      end
-      local underline = tab.__pbShimUnderline
-      if underline then
-        -- Every repaint takes the accent as it is now: the accent sweep
-        -- repaints a tab by re-issuing its selection, which lands here.
-        local ar, ag, ab = ShimMark()
-        underline:SetColorTexture(ar, ag, ab, 1)
-        underline:SetShown(sel)
-      end
-      if tab.__pbShimActive then tab.__pbShimActive:SetShown(sel) end
-      return
-    end
-    tab.__pbShimTab = true
-
-    for j = 1, select("#", tab:GetRegions()) do
-      local r = select(j, tab:GetRegions())
-      if r and r:IsObjectType("Texture") then
-        r:SetTexture("")
-        if r.SetAtlas then r:SetAtlas("") end
-      end
-    end
-    for _, k in ipairs({ "Left", "Middle", "Right",
-                         "LeftDisabled", "MiddleDisabled", "RightDisabled" }) do
-      if tab[k] and tab[k].SetTexture then tab[k]:SetTexture("") end
-    end
-    local hl = tab.GetHighlightTexture and tab:GetHighlightTexture()
-    if hl then hl:SetTexture("") end
-
-    local bg = ShimSolid(tab, "BACKGROUND", 0.068, 0.056, 0.052, 1)
-    bg:SetAllPoints()
-
-    -- The house border. Postbox's tabs are far wider than a Blizzard window's,
-    -- and an unbordered plate in almost exactly the Dark Mode fill colour is
-    -- invisible against the window behind it -- which left the tab bar reading
-    -- as two floating words rather than as a control.
-    ShimBorder(tab)
-
-    -- Selected wash. At 2% this was indistinguishable from the idle plate, so
-    -- the 1px underline was carrying the entire selected state on its own.
-    local active = tab:CreateTexture(nil, "ARTWORK", nil, -6)
-    active:SetAllPoints()
-    active:SetColorTexture(1, 1, 1, 0.07)
-    active:SetBlendMode("ADD")
-    active:Hide()
-    tab.__pbShimActive = active
-
-    local bliz = tab.Text or (tab.GetFontString and tab:GetFontString())
-    local text = (bliz and bliz.GetText and bliz:GetText()) or ""
-    if bliz and bliz.SetTextColor then bliz:SetTextColor(0, 0, 0, 0) end
-    if tab.SetPushedTextOffset then tab:SetPushedTextOffset(0, 0) end
-
-    local path, flag = ShimFont()
-    local label = tab:CreateFontString(nil, "OVERLAY")
-    -- 12, not 11: these are the window's primary navigation and were set
-    -- smaller than every other label in it.
-    label:SetFont(path, 12, flag)
-    label:SetPoint("CENTER", tab, "CENTER", 0, 0)
-    label:SetText(text)
-    tab.__pbShimLabel, tab.__pbShimBliz = label, bliz
-
-    -- Inset by the border's own pixel: the border sits a sublevel above this,
-    -- so a flush underline would have its bottom row painted over.
-    local underline = tab:CreateTexture(nil, "OVERLAY", nil, 6)
-    underline:SetHeight(2)
-    underline:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", 1, 1)
-    underline:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -1, 1)
-    underline:Hide()
-    tab.__pbShimUnderline = underline
-
-    shim.Tab(tab)
   end
 
   -- Modern MinimalScrollBar shape. Postbox's own lists are the legacy slider
@@ -1407,73 +1325,6 @@ do
   end
 end
 
-local function InstallTabs(frame)
-  if not frame.TabButtons then return end
-  for _, tab in pairs(frame.TabButtons) do
-    if tab and not tab.__pbEuiSkinned then
-      tab.__pbEuiSkinned = true
-      tab.isSelected = false
-      if tab.__activeBg then tab.__activeBg:SetAlpha(0) end
-      -- Guarded per tab, and the override is installed only if the primitive
-      -- actually painted. The tabs are Postbox's own plates rather than
-      -- Blizzard panel tabs, so a host primitive that bails on the panel-tab
-      -- fields it expects would otherwise leave both tabs with no visual at
-      -- all: no house art (nothing was drawn) and no Postbox art (the override
-      -- retires it on the first selection change).
-      --
-      -- pcall success is not that test on the api backend. EllesmereUI's
-      -- facade entries are late-bound pass-throughs -- they look the primitive
-      -- up in the engine at call time and return quietly when it is missing --
-      -- so a call that did nothing still comes back ok. The observable test is
-      -- that S.Tab draws its own plate and its own mirrored label, i.e. new
-      -- regions on the tab; the shim does the same. Nothing new, nothing took.
-      local before = (tab.GetNumRegions and tab:GetNumRegions()) or 0
-      local ok = pcall(S.Tab, tab)
-      local after = (tab.GetNumRegions and tab:GetNumRegions()) or 0
-      if ok and after > before then
-        -- Theme.SetTabSelected honours this and skips its own painting, so the
-        -- two never fight over the same tab.
-        tab.__setSelectedOverride = function(t, selected)
-          t:Enable()
-          -- Kept on the tab either way: the plate sweep re-issues it.
-          t.isSelected = selected and true or false
-          -- API v2's call for tabs an addon switches itself: the selection is
-          -- held in EllesmereUI's own state for the tab, ahead of anything it
-          -- would read off the tab or its parent, and the tab repaints. Before
-          -- v2, the flag above and a re-skin, which reads it.
-          if type(S.SetTabSelection) == "function" then
-            S.SetTabSelection(t, t.isSelected)
-          else
-            S.Tab(t)
-          end
-          -- The primitive hid the original label behind its mirror ONCE, at
-          -- skin time. A later Button:SetText (the Mail tab's live counts)
-          -- re-applies the button's font colour and resurrects it under the
-          -- mirror; the primitive's refresh re-syncs the mirror's text but
-          -- never re-hides the original -- so that is re-asserted here, on
-          -- every repaint. Theme.SetTabText routes every caption change
-          -- through this override for exactly that reason.
-          local bliz = t.Text or (t.GetFontString and t:GetFontString())
-          if bliz and bliz.SetTextColor then bliz:SetTextColor(0, 0, 0, 0) end
-        end
-      elseif tab.__activeBg then
-        -- Hand the tab back to Postbox's own painting intact, undoing the
-        -- pre-emptive fade above.
-        tab.__activeBg:SetAlpha(1)
-      end
-    end
-  end
-
-  local active = ns.MailboxUI and ns.MailboxUI._state and ns.MailboxUI._state.activeTab
-  if active then
-    for _, tab in pairs(frame.TabButtons) do
-      if ns.Theme and ns.Theme.SetTabSelected then
-        ns.Theme.SetTabSelected(tab, tab.tabId == active)
-      end
-    end
-  end
-end
-
 -------------------------------------------------------------
 -- Public entry points (called from Core/MailboxUI.lua)
 -------------------------------------------------------------
@@ -1529,7 +1380,10 @@ function Skin.Apply(frame)
     end
   end)
   pcall(function() if frame.Status then S.Font(frame.Status) end end)
-  pcall(function() InstallTabs(frame) end)
+  -- The window's tabs stay Postbox's own plates, as the options panel's
+  -- tabs and the segments under them are: the host's tab (S.Tab, and the
+  -- shim's copy of it) is a fixed warm plate of its own, which put the
+  -- window's two tabs in another colour beside every other control.
   pcall(function() Skin.ApplyBorder(frame) end)
   pcall(function() Skin.RefreshAccents() end)
 
@@ -1599,8 +1453,7 @@ local function RefitScreens()
 end
 
 -- Window tabs, view segments and category tiles sample the accent at paint
--- time; Theme.RepaintPlates sweeps a window for both kinds (the ones this
--- skin's selection override owns, and Postbox's own).
+-- time; Theme.RepaintPlates sweeps a window's plates, all Postbox's own.
 local function RepaintPlates(frame)
   if ns.Theme and type(ns.Theme.RepaintPlates) == "function" then
     ns.Theme.RepaintPlates(frame, 0)
@@ -2142,7 +1995,7 @@ end
 -- shim, because a WoW texture can be faded and never destroyed. So the takeover
 -- is a clean swap rather than a repaint: every already-skinned frame bails on
 -- its own idempotency key (__pbEuiSkinned on the window and its widgets,
--- __pbShimShell on the backdrop, __pbShimTab on the tabs), so nothing is drawn
+-- __pbShimShell on the backdrop), so nothing is drawn
 -- twice, and everything built from here on -- new windows, the options panel on
 -- its first open -- is house art. The swap does change one thing immediately:
 -- Activate re-runs and registers Skin.OnHostLooksChanged with the REAL

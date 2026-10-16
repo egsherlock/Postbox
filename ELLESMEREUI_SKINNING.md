@@ -132,7 +132,7 @@ anything twice, because a WoW texture can be faded and never destroyed — so
 there is no way to un-shim a window that is already painted. In Postbox the
 swap is: replace `S`, set the backend to `api`, re-run activation. Every
 already-skinned frame bails on its own idempotency key
-(`__pbEuiSkinned`, `__pbShimShell`, `__pbShimTab`), so nothing double-paints,
+(`__pbEuiSkinned`, `__pbShimShell`), so nothing double-paints,
 and every frame built afterwards is house art. The swap's one immediate effect
 is that activation now registers the live-looks callback with the **real**
 `S.OnLooksChanged` instead of the shim's documented no-op.
@@ -508,9 +508,10 @@ mutually exclusive on open.
   late-bound pass-throughs — they resolve the engine function at call time and
   return quietly if it is missing — so a call that painted nothing still reports
   success. This bites where you *retire your own art in favour of the house
-  art*: Postbox's tabs install a selection override that hands the entire visual
-  to `S.Tab`, and a `S.Tab` that silently did nothing would have left the tabs
-  with no art from either side. The observable test is that the primitive draws
+  art*: a selection override that hands the entire visual to `S.Tab` (Postbox's
+  window tabs had one, until they became Postbox's own plates like the rest of
+  its controls) meets a `S.Tab` that silently did nothing, and the tabs are
+  left with no art from either side. The observable test is that the primitive draws
   its own plate and its own mirrored label, i.e. **new regions on the frame** —
   count before and after, and if nothing appeared, hand the widget back to your
   own painting intact.
