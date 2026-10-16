@@ -611,8 +611,9 @@ end
 -- a first install and kept by Reset to defaults); every older profile keeps
 -- the Blizzard look it has always had.
 --
--- "modern", Postbox Modern's key, reads as "postbox" and is never rewritten,
--- so an older Postbox still finds the Modern it knew (see MigrateModern).
+-- "modern", Postbox Modern's key, reads as "postbox" and is never rewritten
+-- here; a profile coming from 1.40 has it cleared by the 1.50 reset (see
+-- MigrateModern).
 local STYLE_CHOICES = { host = true, blizzard = true, postbox = true }
 
 -- The creative window styles (Core/Skin_Creative.lua) register their own keys.
@@ -683,10 +684,16 @@ end
 -- the fill, whose defaults differ (Modern's 94%, Postbox's 90%): an unset one
 -- is carried as the 94% the player saw. And the Postbox style becomes this
 -- profile's own default look (installStyle), the one Reset to defaults
--- returns to, as it is for a profile started on it. The Modern
--- keys and `style = "modern"` are read, never removed, so a downgrade still
--- finds them; pbFromModern marks the copy as made, so a Postbox value the
--- player later resets is not copied over again.
+-- returns to, as it is for a profile started on it. This copy only reads
+-- the Modern keys and `style = "modern"`; it removes nothing. A profile
+-- coming from 1.40 loses them a moment later all the same: the 1.50 reset
+-- runs after this (Postbox.lua, section 4b) and clears every setting but
+-- its keep list -- the Modern keys, `style`, the values carried from them
+-- and pbFromModern among them -- leaving installStyle, so that profile
+-- starts on 1.50's defaults in the Postbox style. What is carried over here
+-- lasts only where no reset follows: a profile already on 1.50 that an
+-- older Postbox has since put on Modern. pbFromModern marks the copy as
+-- made, so a Postbox value the player later resets is not copied over again.
 local MODERN_DEFAULT_OPACITY = 0.94  -- Skin_Modern's window fill, 1.40
 local function MigrateModern(profile)
   if type(profile) ~= "table" or profile.style ~= "modern" or profile.pbFromModern then return end
