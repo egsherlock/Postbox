@@ -2248,7 +2248,7 @@ do
     for _ = 1, 12 do
       if not f then break end
       if f.__pbPlateArt then
-        local T = f.__pbTokens or C
+        local T = Theme.PlateTokens(f) or C
         local c = T.plateIdle
         if f.isSelected then c = T.plateSelected elseif f.__pbHover then c = T.plateHover elseif f.__pbFlagged then c = T.plateFlagged end
         local a = f._fill and f._fill.GetAlpha and f._fill:GetAlpha() or 1
@@ -3942,6 +3942,8 @@ local function PaintTexture(texture, color)
   texture:SetColorTexture(color[1], color[2], color[3], color[4] or 1)
 end
 
+-- A variant may also carry `tokens` (Theme.SetVariantTokens): every plate of
+-- it without tokens of its own then paints from those, not the palette.
 local PLATE_VARIANTS = {
   tab     = { height = M.tabHeight,     role = "tab",     underline = true },
   segment = { height = M.segmentHeight, role = "segment", underline = true },
@@ -3949,6 +3951,25 @@ local PLATE_VARIANTS = {
 }
 
 Theme.PlateVariants = PLATE_VARIANTS
+
+-- The tokens a plate paints from in place of the palette's: its own
+-- (Theme.SetPlateTokens), else its variant's (Theme.SetVariantTokens), else
+-- nil. A plate painted from tokens stands on the window tabs' grounds ("tab",
+-- "tabSelected"), which the style works out from the tabs' tokens: a style
+-- gives a variant the tabs' tokens, or none.
+function Theme.PlateTokens(plate)
+  local own = plate.__pbTokens
+  if own then return own end
+  local spec = plate.__pbVariant
+  return spec and spec.tokens or nil
+end
+
+-- The ground a plate's caption stands on, selected or not, as PaintPlate
+-- inks it: for a text beside a plate that wears its caption's colour.
+function Theme.PlateGround(plate, selected)
+  if plate and Theme.PlateTokens(plate) then return selected and "tabSelected" or "tab" end
+  return selected and "plateSelected" or "plate"
+end
 
 -- Repaints a plate from its own state. A no-op once a skin has taken it over
 -- (HidePlateArt drops __pbPlateArt), so hover scripts still attached to a
@@ -3965,8 +3986,10 @@ local function PaintPlate(plate)
   local hovered  = plate.__pbHover and true or false
   local flagged  = plate.__pbFlagged and true or false
   -- A plate given tokens of its own (Theme.SetPlateTokens: the Postbox style's
-  -- window tabs) paints from those; every other plate from the palette.
-  local T = plate.__pbTokens or C
+  -- window tabs) or of its variant (Theme.SetVariantTokens: its segments, in
+  -- Dark) paints from those; every other plate from the palette.
+  local own = Theme.PlateTokens(plate)
+  local T = own or C
 
   local fill = T.plateIdle
   if selected then fill = T.plateSelected
@@ -4015,14 +4038,32 @@ local function PaintPlate(plate)
     underline:SetShown(selected)
   end
 
-  -- Tokens of its own change with the style's Mode, as the palette does
-  -- under a look that changes it live (one that derives its inks): the lit
-  -- top edge and the client's wash under the pointer are painted with the
-  -- rest, from whichever is in force, so a change of Mode leaves neither as
-  -- the other Mode drew it.
-  if plate.__pbTokens or Grounds.on then
+  -- Tokens change with the style's Mode, and a variant's come and go with
+  -- it, as the palette does under a look that changes it live (one that
+  -- derives its inks): the lit top edge and the client's wash under the
+  -- pointer are painted with the rest, from whichever is in force, so a
+  -- change of Mode leaves neither as the other Mode drew it.
+  if own or Grounds.on then
     if T.plateBevel then PaintTexture(plate._bevel, T.plateBevel) end
     if T.plateHighlight then PaintTexture(plate.__pbHighlight, T.plateHighlight) end
+  end
+
+  -- A plate whose caption is a glyph (Theme.SetPlateGlyph: History, the
+  -- sort). Under tokens that name a caption for the pointer the glyph is
+  -- painted as their caption is -- the idle caption's colour, the pointer's
+  -- while it is on the plate unselected; otherwise, and again once those
+  -- tokens are lifted, it wears its own paint.
+  local glyph = plate.__pbGlyph
+  if glyph then
+    local point = own and own.captionHoverToken
+    if point then
+      plate.__pbGlyphLit = true
+      glyph:SetAlpha(1)
+      Theme.SetColor(glyph, (hovered and not selected) and point or own.captionToken or "plateCaption")
+    elseif plate.__pbGlyphLit then
+      plate.__pbGlyphLit = nil
+      plate.__pbGlyphPaint(glyph)
+    end
   end
 
   if plate.Text then
@@ -4035,13 +4076,13 @@ local function PaintPlate(plate)
     if want and plate.GetNormalFontObject and plate:GetNormalFontObject() ~= want then
       plate:SetNormalFontObject(want)
     end
-    -- On its own fill: a window tab's (tokens of its own) or a plate's. A
-    -- tile with nothing behind it keeps its dimmed caption through every
-    -- repaint (Theme.DimEmptyTile's rule). Tokens that name a caption for
-    -- the pointer (captionHoverToken) brighten an unselected caption under
-    -- it; the selected one is the accent's either way.
+    -- On its own fill: a window tab's (tokens, its own or its variant's) or
+    -- a plate's. A tile with nothing behind it keeps its dimmed caption
+    -- through every repaint (Theme.DimEmptyTile's rule). Tokens that name a
+    -- caption for the pointer (captionHoverToken) brighten an unselected
+    -- caption under it; the selected one is the accent's either way.
     local ground
-    if plate.__pbTokens then ground = selected and "tabSelected" or "tab"
+    if own then ground = selected and "tabSelected" or "tab"
     else ground = selected and "plateSelected" or "plate" end
     local token = T.captionToken or "plateCaption"
     if selected then token = "accentBright"
@@ -4068,6 +4109,28 @@ function Theme.SetPlateTokens(plate, tokens)
     PaintTexture(plate._bevel, T.plateBevel)
     PaintTexture(plate.__pbHighlight, T.plateHighlight)
   end
+  PaintPlate(plate)
+end
+
+-- Gives every plate of `variant` (a PLATE_VARIANTS key) that has no tokens of
+-- its own the tokens `tokens`, the keys SetPlateTokens takes; nil hands them
+-- back to the palette. Each plate takes them at its next paint: the caller
+-- sweeps its windows (Theme.RepaintPlates), as a change of Mode does. The
+-- Postbox style gives its segments the window tabs' tokens in Dark.
+function Theme.SetVariantTokens(variant, tokens)
+  local spec = PLATE_VARIANTS[variant]
+  if spec then spec.tokens = tokens end
+end
+
+-- Names a plate's glyph as its caption -- an icon in place of words: the
+-- Mail tab's History, the sort -- with `paint(glyph)`, its own colour, which
+-- it wears now. Under tokens that name a caption for the pointer the plate
+-- paints the glyph as it does a caption (PaintPlate); otherwise it keeps its
+-- own. `paint` is made once, with the plate.
+function Theme.SetPlateGlyph(plate, glyph, paint)
+  if not (plate and glyph and paint) then return end
+  plate.__pbGlyph, plate.__pbGlyphPaint = glyph, paint
+  paint(glyph)
   PaintPlate(plate)
 end
 
@@ -4169,6 +4232,9 @@ function Theme.CreatePlate(parent, variant, name)
   end
 
   plate._edge, plate._fill, plate._accent = edge, fill, underline
+  -- Its variant, whose tokens it paints from where a style gives them
+  -- (Theme.SetVariantTokens).
+  plate.__pbVariant = spec
   -- The same texture under the name the hand-rolled category bars gave it, so
   -- adopting this factory is a deletion rather than a rewrite.
   plate._bg = fill

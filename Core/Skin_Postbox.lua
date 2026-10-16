@@ -164,10 +164,11 @@ P.tooltipEdge = Hex("3a3a3a")
 Skin.Palette = P
 Skin.PaletteDark, Skin.PaletteLight = DARK, LIGHT
 
--- The segments and tiles: Postbox's plates as in every look, their ring
--- from the mockups (concept C) -- solid greys rising with state instead of
--- a white at three alphas. The fills and the accent wash stay the Theme's
--- ladder (its light palette's, in Light mode).
+-- The tiles, and the segments in Light: Postbox's plates as in every look,
+-- their ring from the mockups (concept C) -- solid greys rising with state
+-- instead of a white at three alphas. The fills and the accent wash stay the
+-- Theme's ladder (its light palette's, in Light mode). In Dark the segments
+-- are drawn as the tabs are (TABS_DARK, ResolveLook).
 local RINGS_DARK = {
   plateEdge         = Hex("3e3e3e"),
   plateEdgeHover    = Hex("555555"),
@@ -882,6 +883,18 @@ local function ResolveLook()
   local tabs = light and TABS_LIGHT or TABS_DARK
   for key, value in pairs(tabs) do
     if type(value) == "table" then Recolor(TAB_TOKENS[key], value) else TAB_TOKENS[key] = value end
+  end
+  -- The segments -- the Mail tab's Inbox, Done and History, the sort and
+  -- the character pickers, the recipient manager's categories, the bug
+  -- report's switch -- in Dark wear the tabs' tokens, so the two read as one
+  -- system: the footer's gray at rest, their words brightening under the
+  -- pointer with nothing else moving, the open one a gray lighter under its
+  -- accent caption and underline, and no wash of the accent. In Light they
+  -- are the palette's plates, as they were; a creative style's are its own.
+  -- On a change of Mode the grounds move, and the sweep that follows paints
+  -- every segment from the set now in force (Theme.RepaintPlates).
+  if T and T.SetVariantTokens then
+    T.SetVariantTokens("segment", (not light and not Creative()) and TAB_TOKENS or nil)
   end
   if not (over and over.accent) then
     local ar, ag, ab = AccentFor(Skin.GetAccentKey())

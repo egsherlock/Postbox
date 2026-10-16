@@ -3651,8 +3651,10 @@ local function PaintViewToggle(panel)
   if alt then
     T.SetPlateSelected(alt, away and panel._alt ~= nil)
     -- The count beside a cut name wears the caption's colour, as it does
-    -- inside the whole caption.
-    T.SetColor(alt.Count, alt.isSelected and "accentBright" or "plateCaption")
+    -- inside the whole caption, inked for the plate's own ground.
+    local tokens, selected = T.PlateTokens(alt), alt.isSelected
+    T.SetColor(alt.Count, selected and "accentBright" or (tokens and tokens.captionToken) or "plateCaption",
+      T.PlateGround(alt, selected))
   end
 end
 
@@ -3707,9 +3709,13 @@ local function BuildViewToggle(panel)
     hist:SetText("")
     hist.Icon:SetPoint("CENTER")
     -- Chrome stays neutral: a grey glyph, like the captions beside it --
-    -- white on a dark palette, the ink on a light one (Theme.SetGrey).
-    T.SetGrey(hist.Icon, 1)
-    hist.Icon:SetAlpha(0.85)
+    -- white on a dark palette, the ink on a light one (Theme.SetGrey). It is
+    -- the plate's caption: where the plate is drawn as a tab is, it brightens
+    -- under the pointer as their words do (Theme.SetPlateGlyph).
+    T.SetPlateGlyph(hist, hist.Icon, function(icon)
+      T.SetGrey(icon, 1)
+      icon:SetAlpha(0.85)
+    end)
   else
     hist:SetText(L()["VIEW_HISTORY"])
   end
@@ -4559,7 +4565,7 @@ function AV.MeasurePlate(panel, plate, Memory, who)
   local M = Th().Metrics
   -- The name inked for the plate it stands on, selected while the box is
   -- on screen (PaintViewToggle).
-  local name = Memory.ClassName(who.realm, who.name, true, "plateSelected")
+  local name = Memory.ClassName(who.realm, who.name, true, Th().PlateGround(plate, true))
   local count = ""
   if ShowTabCounts() then
     count = " (" .. FormatCount((Memory.BoxCount(who.realm, who.name))) .. ")"

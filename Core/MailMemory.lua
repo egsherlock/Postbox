@@ -2804,7 +2804,8 @@ end
 -- tab's: the box's own order (newest first) or the soonest to expire
 -- first. A square plate wearing the sort glyph at its own size in the
 -- middle, one grey in every state (textSecondary, the token nearest the
--- mockup's #cfcfcf for this plate's glyph). It does not turn with the
+-- mockup's #cfcfcf for this plate's glyph) -- the text colour under the
+-- pointer, where the plate is drawn as a tab is. It does not turn with the
 -- order: the order shows in the plate's selection, and its tooltip says
 -- which it is and what a click does. `get()` answers the order on screen;
 -- `toggle()` changes it and shows the list in it. plate.Paint() paints the
@@ -2817,7 +2818,9 @@ function MM.NewSortPlate(parent, size, get, toggle)
   sort.Icon = T.Glyph and T.Glyph(sort, "sort", nil, "OVERLAY") or nil
   if sort.Icon then
     sort.Icon:SetPoint("CENTER")
-    T.SetColor(sort.Icon, "textSecondary")
+    -- The plate's caption: where the plate is drawn as a tab is, it
+    -- brightens under the pointer as their words do (Theme.SetPlateGlyph).
+    T.SetPlateGlyph(sort, sort.Icon, function(icon) T.SetColor(icon, "textSecondary") end)
   else
     sort:SetText("v")
   end
