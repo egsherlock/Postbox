@@ -568,7 +568,8 @@ local TEXT_W = INSP_W - 2 - 2 * TEXT_X
 -- The text zone is never shorter than this: most descriptions fit it, so
 -- the text does not jump as the pointer moves from setting to setting.
 local SAY_MIN = 150
-local TILE_H, HOST_H, SWATCH_H, STAGE, SAMPLE_MAX, MOCK_H = 46, 32, 74, 88, 50, 34
+-- STAGE: the Minimap drawing's ground at its least (Ctx.MinimapStage).
+local TILE_H, HOST_H, SWATCH_H, STAGE, SAMPLE_MAX, MOCK_H = 46, 32, 74, 120, 50, 34
 -- The Postbox style's small window, and the accent row's reading under it.
 local MINI_H, READOUT_LINES = 128, 3
 local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
@@ -871,9 +872,9 @@ end
 -- that grow with Larger mail rows, line their gold up as Row layout says
 -- and wear the quality mark where the setting puts it; the Send tab's
 -- recipients tile; the window over a bit of world, at the player's
--- opacity and border; the minimap icon at its own size, wearing its glow,
--- shadow, accent and expiry dot, and the answers of When to show and
--- Expiring mail while they are pointed at. Drawn here, from the settings,
+-- opacity and border; the minimap icon large and at its own size, wearing
+-- everything its settings put on it, and the answers of each setting with
+-- choices while it is pointed at. Drawn here, from the settings,
 -- rather than borrowed from the windows they describe: those windows' own
 -- code is not the panel's to reach into.
 -------------------------------------------------------------
@@ -900,7 +901,7 @@ do
       local h = (skin and skin.IsPostboxStyle and not skin.IsCreativeStyle) and MINI_H or SWATCH_H
       return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + h + 10
     end
-    if key == "minimap" then return CTX_TOP + 4 + STAGE + Ctx.MinimapCaptionRoom() + 10 end
+    if key == "minimap" then return CTX_TOP + 4 + Ctx.MinimapStage() + Ctx.MinimapCaptionRoom() + 10 end
     return 0
   end
 
@@ -1856,40 +1857,71 @@ do
   -- The minimap icon as the map shows it
   --
   -- On a quiet ground roughly a minimap's own average value, so both glow
-  -- and shadow read the way they will in the world, at its own size (Icon
+  -- and shadow read the way they will in the world. At rest, and while the
+  -- pointer is on a setting with no drawing of its own: the icon as set,
+  -- large enough to judge (G.BIG, 48), and beside it a copy at its own size (Icon
   -- size, or EllesmereUI's button under their minimap: MinimapButton's
-  -- GetDrawnSize), WEARING the live settings: accent tint, glow (with its
-  -- pulse) and shadow as they render on the map, and while Expiring mail is
-  -- not Off the orange dot on its corner, the glow then in the warning tone.
-  -- Faded, and still, while the icon is off.
+  -- GetDrawnSize), captioned Actual size. Both WEAR the live settings: icon
+  -- style, accent tint, glow in Glow color (with its pulse), shadow, a
+  -- sample number while Count on icon is on, and while Expiring mail is not
+  -- Off the marker, in its shape, on its corner. Faded, and still, while the
+  -- icon is off.
   --
-  -- Two settings it answers with figures of their own while one of them is
-  -- pointed at (Ctx.MinimapMode; its text then stands under the drawing,
-  -- Layout), side by side, each captioned under the ground: When to show,
-  -- the resting gray icon beside the lit one; Expiring mail, its three
-  -- choices -- the plain icon, the icon with the dot, and the dot alone as
-  -- Always draws it while the icon is down -- the chosen one marked as the
-  -- arrange inspector marks a chosen segment, its words bright and the
-  -- accent under them. Every dot is the map's own (MinimapButton.PaintMark):
-  -- a quarter of the icon on its corner, alone half of it and never under
-  -- 6, in whole screen pixels, with its pixel of dark edge.
+  -- A setting with choices answers with its choices while it is pointed at
+  -- (Ctx.MinimapMode; its text then stands under the drawing, Layout), each
+  -- the icon as set with that one setting changed, at G.CHOICE, side by side
+  -- under their names, the current one marked as the arrange inspector marks
+  -- a chosen segment, its words bright and the accent under them: Expiring
+  -- mail (the plain icon, the icon with the marker, the marker alone as
+  -- Always draws it while the icon is down), Marker (its five shapes, in two
+  -- rows), Marker corner and Glow color. When to show answers with a grid: a
+  -- column for each choice, a strip of ground for each situation that tells
+  -- them apart -- no mail anywhere, mail on another character, new mail
+  -- here -- and in each cell what the map shows then: nothing, the icon
+  -- resting in gray, or the icon lit. Every marker is the map's own
+  -- (MinimapButton.PaintMark) and so is the count (PaintCount): the same
+  -- shapes and sizes, in whole screen pixels.
   --
   -- Built once: a paint sets what shows, its size and its colours, and
-  -- makes nothing.
+  -- makes nothing. The pulses play only while the drawing is shown
+  -- (f.Stop, Ctx.Show, the panel's hide).
   ---------------------------------------------------------
-  -- Each drawing's figures, in order: what each draws ("set": the icon as
-  -- set) and where it stands, as a share of the ground's width; and their
-  -- captions. Expiring mail's are its choices' own names, in MinimapButton's
-  -- order (EXPIRY_MODES), which MM_IDS follows.
-  local MM_LOOKS = { set = { "set" }, show = { "rest", "lit" }, expiry = { "lit", "dot", "alone" } }
-  local MM_AT = { set = { 0.5 }, show = { 0.25, 0.75 }, expiry = { 1 / 6, 0.5, 5 / 6 } }
-  local MM_CAPS = {
-    show = { "OPT_MINIMAP_PREVIEW_REST", "OPT_MINIMAP_PREVIEW_LIT" },
-    expiry = { "OPT_MINIMAP_EXPIRY_OFF", "OPT_MINIMAP_EXPIRY_ICON", "OPT_MINIMAP_EXPIRY_ALWAYS" },
+  -- The drawing's sizes: the icon as set (and its copy at its own size
+  -- beside it, `at` as a share of the ground's width); the choices; the
+  -- grid's icons.
+  local G = { BIG = 48, CHOICE = 36, CELL = 20, AT_BIG = 0.37, AT_ACTUAL = 0.81,
+    -- The ground to the captions; the chosen caption's underline, and its
+    -- gap.
+    CAP_GAP = 5, MARK_GAP = 2, MARK_H = 2,
+    -- The grid: a situation's name, the gap under it, its strip of ground,
+    -- the gap to the next; and the gap between the marker choices' rows.
+    LABEL_GAP = 2, STRIP_H = 30, STRIP_GAP = 4, ROW_GAP = 6 }
+  -- The number the icon wears here while Count on icon is on.
+  local MM = { COUNT = { me = 3, all = 12 } }
+  -- Each answer's choices, in MinimapButton's order, and their names.
+  MM.IDS = {
+    show = { "new", "any", "always" },
+    expiry = { "off", "icon", "always" },
+    marker = { "dot", "ring", "square", "bar", "exclamation" },
+    corner = { "TOPRIGHT", "TOPLEFT", "BOTTOMLEFT" },
+    glow = { "gold", "accent", "white" },
+    large = { "off", "on" },
   }
-  local MM_IDS = { "off", "icon", "always" }
-  -- The ground to the captions; the chosen caption's underline, and its gap.
-  local CAP_GAP, MARK_GAP, MARK_H = 5, 2, 2
+  MM.CAPS = {
+    show = { "OPT_MINIMAP_SHOW_NEW", "OPT_MINIMAP_SHOW_ANY", "OPT_MINIMAP_SHOW_ALWAYS" },
+    expiry = { "OPT_MINIMAP_EXPIRY_OFF", "OPT_MINIMAP_EXPIRY_ICON", "OPT_MINIMAP_EXPIRY_ALWAYS" },
+    marker = { "OPT_MINIMAP_MARKER_DOT", "OPT_MINIMAP_MARKER_RING", "OPT_MINIMAP_MARKER_SQUARE",
+      "OPT_MINIMAP_MARKER_BAR", "OPT_MINIMAP_MARKER_EXCLAMATION" },
+    corner = { "OPT_MINIMAP_CORNER_TR", "OPT_MINIMAP_CORNER_TL", "OPT_MINIMAP_CORNER_BL" },
+    glow = { "OPT_MINIMAP_GLOWCOLOR_GOLD", "OPT_MINIMAP_GLOWCOLOR_ACCENT", "OPT_MINIMAP_GLOWCOLOR_WHITE" },
+    large = { "OPT_MINIMAP_LARGE_OFF", "OPT_MINIMAP_LARGE_ON" },
+    set = { "OPT_MINIMAP_PREVIEW_ACTUAL" },
+  }
+  -- The grid's situations, top down.
+  MM.ROWS = { "OPT_MINIMAP_GRID_NONE", "OPT_MINIMAP_GRID_OTHER", "OPT_MINIMAP_GRID_HERE" }
+  -- Each answer's current choice.
+  MM.GET = { show = "GetShowWhen", expiry = "GetExpiry", marker = "GetMarker", corner = "GetMarkerCorner",
+    glow = "GetGlowColor", large = "GetMarkerLarge" }
 
   -- A caption under a figure: centred, two lines at most.
   function Ctx.Caption(parent)
@@ -1902,25 +1934,37 @@ do
     return cap
   end
 
-  -- A caption's width when `n` figures share the ground.
-  function Ctx.MinimapColumn(n)
-    return math.floor(CTX_W / n) - 4
+  -- A caption's width: a third of the ground, every drawing alike.
+  function Ctx.MinimapColumn()
+    return math.floor(CTX_W / 3) - 4
   end
 
   -- The room under the ground: the gap, the captions, their underline.
   function Ctx.MinimapCaptionRoom()
-    return CAP_GAP + (S.mmCapH or 12) + MARK_GAP + MARK_H
+    return G.CAP_GAP + (S.mmCapH or 12) + G.MARK_GAP + G.MARK_H
   end
 
-  -- The captions' height: the tallest any of them takes at its width, in
-  -- the font as it is now -- one line in English, two where a translation
-  -- needs them. Run where Layout measures every text.
+  -- The grid's height: three situations, each its name and its strip.
+  local function GridHeight()
+    return 3 * ((S.mmLabelH or 12) + G.LABEL_GAP + G.STRIP_H) + 2 * G.STRIP_GAP
+  end
+
+  -- The ground's height: what the large icon needs, or the grid, if that
+  -- needs more (a situation's name on two lines).
+  function Ctx.MinimapStage()
+    return math.max(STAGE, GridHeight())
+  end
+
+  -- The captions' height, the tallest any of them takes at its width, and
+  -- the situations' names' across the ground, in the font as it is now --
+  -- one line in English, two where a translation needs them. Run where
+  -- Layout measures every text.
   function Ctx.MeasureCaptions()
     local cap = S.measure and S.measure.Cap
     if not cap then return end
     local h = 0
-    for _, keys in pairs(MM_CAPS) do
-      cap:SetWidth(Ctx.MinimapColumn(#keys))
+    cap:SetWidth(Ctx.MinimapColumn())
+    for _, keys in pairs(MM.CAPS) do
       for i = 1, #keys do
         cap:SetText(L[keys[i]])
         local th = math.ceil(cap:GetStringHeight() or 0)
@@ -1928,15 +1972,21 @@ do
       end
     end
     S.mmCapH = h
+    h = 0
+    cap:SetWidth(CTX_W)
+    for i = 1, #MM.ROWS do
+      cap:SetText(L[MM.ROWS[i]])
+      local th = math.ceil(cap:GetStringHeight() or 0)
+      if th > h then h = th end
+    end
+    S.mmLabelH = h
   end
 
   -- What the stage draws: the answers of the setting pointed at, where it
-  -- has them, else the icon as set.
+  -- has them (S.mmModes, Pages.minimap), else the icon as set.
   function Ctx.MinimapMode()
     local shown = S.shown
-    if shown and shown == S.mmExpiry then return "expiry" end
-    if shown and shown == S.mmShow then return "show" end
-    return "set"
+    return shown and S.mmModes and S.mmModes[shown] or "set"
   end
 
   -- The inspector moved to another setting (Insp.Show): the stage follows
@@ -1946,8 +1996,8 @@ do
     if f and f.mode and f.mode ~= Ctx.MinimapMode() and f:IsVisible() then f.Paint() end
   end
 
-  -- One figure: the shadow, the glow and its pulse, the icon, and the dot,
-  -- which PaintMark puts on the figure itself.
+  -- One figure: the shadow, the glow and its pulse, the icon; the count and
+  -- the marker go on the figure itself (PaintCount, PaintMark).
   local function Figure(parent)
     local fig = CreateFrame("Frame", nil, parent)
     fig:SetSize(1, 1)
@@ -1974,29 +2024,39 @@ do
     return fig
   end
 
-  -- `look`: "lit" (new mail: full colour, the glow), "dot" (the same with
-  -- the dot on its corner, the glow in the warning tone), "rest" (nothing
-  -- new: gray, a step back, no glow), or "alone" (the dot where the icon
-  -- sits, and nothing else). The icon's own parts as MinimapButton draws
-  -- them (ApplyLook): glow 2.2 times the icon, shadow 1.8 and a unit down.
-  local function PaintFigure(fig, Icon, look, spec, size, on, tint, r, g, b, glowOn, pulseOn, shadowOn)
-    local icon, glow, pulse = fig.Icon, fig.Glow, fig.Pulse
+  -- What a figure wears, filled in place before each figure is painted: the
+  -- art, the switch, the accent tint, glow, pulse and shadow, the glow's
+  -- colour, the marker (on the icon or not, its shape and corner, larger
+  -- when alone or not) and the count.
+  local FIG = { spec = false, on = false, tint = false, tr = 1, tg = 1, tb = 1, glowOn = false, pulseOn = false,
+    shadowOn = false, gr = 1, gg = 1, gb = 1, mark = false, shape = "dot", corner = "TOPRIGHT", large = false,
+    count = 0 }
+
+  -- `look`: "lit" (new mail: full colour, the glow), "rest" (nothing new:
+  -- gray, a step back, no glow) or "alone" (the marker on its corner, the
+  -- icon's art hidden). The icon's own parts as MinimapButton draws them
+  -- (ApplyLook): glow 2.2 times the icon, shadow 1.8 and a unit down.
+  local function PaintFigure(fig, Icon, look, size, x)
+    local P = FIG
+    local spec, icon, glow, pulse = P.spec, fig.Icon, fig.Glow, fig.Pulse
     local rest, alone = look == "rest", look == "alone"
+    fig:ClearAllPoints()
+    fig:SetPoint("CENTER", fig:GetParent(), "LEFT", x, 0)
     fig:SetSize(size, size)
     if spec.atlas then icon:SetAtlas(spec.atlas) else icon:SetTexture(spec.texture) end
     icon:SetSize(size, size * (spec.aspect or 1))
-    if spec.tintable and tint then icon:SetVertexColor(r, g, b) else icon:SetVertexColor(1, 1, 1) end
-    icon:SetDesaturated(rest or not on)
+    if spec.tintable and P.tint then icon:SetVertexColor(P.tr, P.tg, P.tb) else icon:SetVertexColor(1, 1, 1) end
+    icon:SetDesaturated(rest or not P.on)
     icon:SetAlpha(rest and (Icon.REST_ALPHA or 0.65) or 1)
     icon:SetShown(not alone)
     fig.Shadow:SetSize(size * 1.8, size * 1.8)
-    fig.Shadow:SetShown(shadowOn and not alone)
+    fig.Shadow:SetShown(P.shadowOn and not alone)
     glow:SetSize(size * 2.2, size * 2.2)
-    if glowOn and not (rest or alone) then
-      glow:SetVertexColor(Icon.GlowRGB(Icon.GetGlowColor()))
+    if P.glowOn and not (rest or alone) then
+      glow:SetVertexColor(P.gr, P.gg, P.gb)
       glow:Show()
       -- A switched-off icon does not keep moving.
-      if on and pulseOn then
+      if P.on and P.pulseOn then
         if not pulse:IsPlaying() then pulse:Play() end
       else
         pulse:Stop()
@@ -2005,97 +2065,238 @@ do
       pulse:Stop()
       glow:Hide()
     end
-    if Icon.PaintMark then
-      Icon.PaintMark(fig, icon, size, look == "dot" or alone, Icon.GetMarker and Icon.GetMarker(),
-        Icon.GetMarkerCorner and Icon.GetMarkerCorner(), alone and Icon.GetMarkerLarge and Icon.GetMarkerLarge())
-    end
+    if Icon.PaintCount then Icon.PaintCount(fig, icon, size, (not alone) and P.count or 0) end
+    if Icon.PaintMark then Icon.PaintMark(fig, icon, size, alone or P.mark, P.shape, P.corner, alone and P.large) end
+    fig.used = true
     fig:Show()
   end
+
+  local function HideFigure(fig)
+    fig.Pulse:Stop()
+    fig:Hide()
+  end
+
+  -- What the grid shows for situation `row` (1 no mail anywhere, 2 mail on
+  -- another character, 3 new mail here) under When to show `id`: nil for
+  -- nothing, else the look -- MinimapButton's own rule (Evaluate).
+  local function GridLook(row, id)
+    if row == 3 then return "lit" end
+    if id == "always" or (row == 2 and id == "any") then return "rest" end
+    return nil
+  end
+
+  -- A strip of ground, clipped, with three figures on it.
+  local function Strip(parent)
+    local strip = CreateFrame("Frame", nil, parent)
+    strip:SetWidth(CTX_W)
+    -- Clipped, with its art on a holder inside it: the glow reaches past
+    -- the strip's edge.
+    if strip.SetClipsChildren then strip:SetClipsChildren(true) end
+    local art = ArtHolder(strip)
+    local ground = art:CreateTexture(nil, "BACKGROUND", nil, -7)
+    ground:SetAllPoints()
+    ground:SetColorTexture(0.40, 0.41, 0.38, 1)
+    strip.figs = { Figure(art), Figure(art), Figure(art) }
+    strip:Hide()
+    return strip
+  end
+
+  -- `strip` at `y` under the drawing's top, `h` tall.
+  local function PlaceStrip(f, strip, y, h)
+    strip:ClearAllPoints()
+    strip:SetPoint("TOPLEFT", f, "TOPLEFT", 0, y)
+    strip:SetHeight(h)
+    strip.used = true
+    strip:Show()
+  end
+
+  -- Caption `cap` centred at `x` with its top at `y`, the name `key`, marked
+  -- when chosen; `w` wide (a third of the ground unless given).
+  local function PaintCaption(f, cap, x, y, key, chosen, on, w)
+    local T = ns.Theme
+    local colW = w or Ctx.MinimapColumn()
+    cap:ClearAllPoints()
+    cap:SetPoint("TOP", f, "TOPLEFT", x, y)
+    cap:SetWidth(colW)
+    cap:SetText(L[key])
+    T.SetColor(cap, (not on and "textDisabled") or (chosen and "textPrimary") or "textSecondary")
+    if chosen then
+      cap.Mark:SetWidth(math.min(TextW(cap), colW))
+      T.FillColor(cap.Mark, on and "accent" or "textDisabled")
+    end
+    cap.Mark:SetShown(chosen)
+    cap:Show()
+  end
+
+  local function HideCaption(cap)
+    cap:Hide()
+    cap.Mark:Hide()
+  end
+
+  -- The share of the ground's width a choice stands at: three to a row, a
+  -- row of two between them.
+  MM.THIRDS, MM.HALVES = { 1 / 6, 1 / 2, 5 / 6 }, { 1 / 3, 2 / 3 }
 
   function Ctx.minimap(card)
     local T = ns.Theme
     local f = CreateFrame("Frame", nil, card)
     f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
     f:SetSize(CTX_W, 4 + STAGE)
-    local stage = CreateFrame("Frame", nil, f)
-    stage:SetSize(CTX_W, STAGE)
-    stage:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -4)
-    -- Clipped, with its art on a holder inside it: the glow reaches past
-    -- the stage's edge.
-    if stage.SetClipsChildren then stage:SetClipsChildren(true) end
-    local art = ArtHolder(stage)
-    local ground = art:CreateTexture(nil, "BACKGROUND", nil, -7)
-    ground:SetAllPoints()
-    ground:SetColorTexture(0.40, 0.41, 0.38, 1)
-    -- The figures, and the captions under the ground, on the inspector's
-    -- own ground and in its inks.
-    local figs, caps = {}, {}
-    for i = 1, 3 do
-      figs[i] = Figure(art)
+    local strips = { Strip(f), Strip(f), Strip(f) }
+    -- The captions under the ground (two rows' worth) and the grid's
+    -- situations, on the inspector's own ground and in its inks.
+    local caps, labels = {}, {}
+    for i = 1, 6 do
       local cap = Ctx.Caption(f)
       cap.Mark = f:CreateTexture(nil, "ARTWORK")
-      cap.Mark:SetHeight(MARK_H)
-      cap.Mark:SetPoint("TOP", cap, "BOTTOM", 0, -MARK_GAP)
+      cap.Mark:SetHeight(G.MARK_H)
+      cap.Mark:SetPoint("TOP", cap, "BOTTOM", 0, -G.MARK_GAP)
       cap.Mark:Hide()
       cap:Hide()
       caps[i] = cap
     end
+    for i = 1, 3 do
+      local label = T.CreateText(f, "secondary")
+      label:SetJustifyH("LEFT")
+      label:SetWordWrap(true)
+      if label.SetMaxLines then label:SetMaxLines(2) end
+      label:SetWidth(CTX_W)
+      label:Hide()
+      labels[i] = label
+    end
 
     f.Stop = function()
-      for i = 1, #figs do figs[i].Pulse:Stop() end
+      for s = 1, #strips do
+        local figs = strips[s].figs
+        for i = 1, #figs do figs[i].Pulse:Stop() end
+      end
     end
     f.Paint = function()
       local Icon = ns.MinimapButton
       local on = Icon and Icon.GetEnabled and Icon.GetEnabled() and true or false
       local mode = Ctx.MinimapMode()
       f.mode = mode
-      f:SetHeight(4 + STAGE + Ctx.MinimapCaptionRoom())
-      stage:SetAlpha(on and 1 or 0.4)
+      local stageH, capRoom = Ctx.MinimapStage(), Ctx.MinimapCaptionRoom()
+      f:SetHeight(4 + stageH + capRoom)
       local spec = Icon and Icon.GetIconSpec and Icon.GetIconSpec()
-      local looks, at = MM_LOOKS[mode], MM_AT[mode]
-      local n = spec and #looks or 0
-      local expiry = "off"
-      if n > 0 then
-        expiry = Icon.GetExpiry and Icon.GetExpiry() or "off"
-        local size = (Icon.GetDrawnSize or Icon.GetIconSize)()
-        local r, g, b = 1, 1, 1
-        local tint = Icon.GetAccentTint() and true or false
-        if tint then r, g, b = T.GetAccent() end
-        local glowOn, pulseOn, shadowOn = Icon.GetGlow(), Icon.GetPulse(), Icon.GetShadow()
-        for i = 1, n do
-          local look = looks[i]
-          if look == "set" then look = (expiry ~= "off") and "dot" or "lit" end
-          local fig = figs[i]
-          fig:ClearAllPoints()
-          fig:SetPoint("CENTER", stage, "LEFT", math.floor(at[i] * CTX_W + 0.5), 0)
-          PaintFigure(fig, Icon, look, spec, size, on, tint, r, g, b, glowOn, pulseOn, shadowOn)
+      for s = 1, #strips do strips[s]:SetAlpha(on and 1 or 0.4) end
+      -- The words off, then what this drawing shows on; a figure or a strip
+      -- it leaves out goes after, so a pulse that goes on is not started
+      -- again.
+      for i = 1, #caps do HideCaption(caps[i]) end
+      for i = 1, #labels do labels[i]:Hide() end
+      if spec then f.PaintFigures(Icon, spec, on, mode, stageH, capRoom) end
+      for s = 1, #strips do
+        local strip = strips[s]
+        local figs = strip.figs
+        for i = 1, #figs do
+          if figs[i].used then figs[i].used = false else HideFigure(figs[i]) end
         end
+        if strip.used then strip.used = false else strip:Hide() end
       end
-      for i = n + 1, #figs do
-        figs[i].Pulse:Stop()
-        figs[i]:Hide()
-      end
-      -- The captions; on Expiring mail the chosen one marked.
-      local keys = MM_CAPS[mode]
-      local colW = Ctx.MinimapColumn(#at)
-      for i = 1, #caps do
-        local cap = caps[i]
-        if keys and i <= n then
-          local chosen = mode == "expiry" and MM_IDS[i] == expiry
-          cap:ClearAllPoints()
-          cap:SetPoint("TOP", f, "TOPLEFT", math.floor(at[i] * CTX_W + 0.5), -(4 + STAGE + CAP_GAP))
-          cap:SetWidth(colW)
-          cap:SetText(L[keys[i]])
-          T.SetColor(cap, (not on and "textDisabled") or (chosen and "textPrimary") or "textSecondary")
-          if chosen then
-            cap.Mark:SetWidth(math.min(TextW(cap), colW))
-            T.FillColor(cap.Mark, on and "accent" or "textDisabled")
+    end
+    -- What `mode` draws, from the icon as set.
+    f.PaintFigures = function(Icon, spec, on, mode, stageH, capRoom)
+      local P = FIG
+      P.spec, P.on = spec, on
+      P.tint = Icon.GetAccentTint() and true or false
+      P.tr, P.tg, P.tb = 1, 1, 1
+      if P.tint then P.tr, P.tg, P.tb = T.GetAccent() end
+      P.glowOn, P.pulseOn, P.shadowOn = Icon.GetGlow() and true or false, Icon.GetPulse() and true or false,
+        Icon.GetShadow() and true or false
+      local glowId = Icon.GetGlowColor and Icon.GetGlowColor() or "white"
+      if Icon.GlowRGB then P.gr, P.gg, P.gb = Icon.GlowRGB(glowId) end
+      local expiry = Icon.GetExpiry and Icon.GetExpiry() or "off"
+      P.mark = expiry ~= "off"
+      P.shape = Icon.GetMarker and Icon.GetMarker() or "dot"
+      P.corner = Icon.GetMarkerCorner and Icon.GetMarkerCorner() or "TOPRIGHT"
+      P.large = Icon.GetMarkerLarge and Icon.GetMarkerLarge() and true or false
+      P.count = MM.COUNT[Icon.GetCount and Icon.GetCount() or "off"] or 0
+      local getter = MM.GET[mode]
+      local current = getter and Icon[getter] and Icon[getter]()
+      if mode == "large" then current = current and "on" or "off" end
+      local ids, keys = MM.IDS[mode], MM.CAPS[mode]
+      local capY = -(4 + stageH + G.CAP_GAP)
+
+      if mode == "set" then
+        local strip = strips[1]
+        PlaceStrip(f, strip, -4, stageH)
+        PaintFigure(strip.figs[1], Icon, "lit", G.BIG, math.floor(G.AT_BIG * CTX_W + 0.5))
+        local x = math.floor(G.AT_ACTUAL * CTX_W + 0.5)
+        PaintFigure(strip.figs[2], Icon, "lit", (Icon.GetDrawnSize or Icon.GetIconSize)(), x)
+        PaintCaption(f, caps[1], x, capY, keys[1], false, on)
+      elseif mode == "show" then
+        -- The grid, its foot on the captions; plain icons, the count and
+        -- the marker left to the drawings that are about them.
+        P.mark, P.count = false, 0
+        local labelH = S.mmLabelH or 12
+        local y = -4 - (stageH - GridHeight())
+        for r = 1, 3 do
+          local label = labels[r]
+          label:ClearAllPoints()
+          label:SetPoint("TOPLEFT", f, "TOPLEFT", 0, y)
+          label:SetText(L[MM.ROWS[r]])
+          T.SetColor(label, on and "textSecondary" or "textDisabled")
+          label:Show()
+          y = y - labelH - G.LABEL_GAP
+          local strip = strips[r]
+          PlaceStrip(f, strip, y, G.STRIP_H)
+          for c = 1, 3 do
+            local look = GridLook(r, ids[c])
+            if look then PaintFigure(strip.figs[c], Icon, look, G.CELL, math.floor(MM.THIRDS[c] * CTX_W + 0.5)) end
           end
-          cap.Mark:SetShown(chosen)
-          cap:Show()
-        else
-          cap:Hide()
-          cap.Mark:Hide()
+          y = y - G.STRIP_H - G.STRIP_GAP
+        end
+        for c = 1, 3 do
+          PaintCaption(f, caps[c], math.floor(MM.THIRDS[c] * CTX_W + 0.5), capY, keys[c], ids[c] == current, on)
+        end
+      elseif mode == "large" then
+        -- The marker on its own, as on the icon and larger, side by side.
+        local strip = strips[1]
+        PlaceStrip(f, strip, -4, stageH)
+        for c = 1, 2 do
+          local x = math.floor(MM.HALVES[c] * CTX_W + 0.5)
+          P.large = c == 2
+          PaintFigure(strip.figs[c], Icon, "alone", G.CHOICE, x)
+          PaintCaption(f, caps[c], x, capY, keys[c], ids[c] == current, on)
+        end
+      elseif mode == "marker" then
+        -- Five, in two rows: three, then two between them.
+        P.mark = true
+        local rowH = math.floor((stageH + capRoom - G.ROW_GAP) / 2) - capRoom
+        for r = 1, 2 do
+          local strip = strips[r]
+          local top = -4 - (r - 1) * (rowH + capRoom + G.ROW_GAP)
+          PlaceStrip(f, strip, top, rowH)
+          local first, at = (r == 1) and 1 or 4, (r == 1) and MM.THIRDS or MM.HALVES
+          for c = 1, #at do
+            local i = first + c - 1
+            local x = math.floor(at[c] * CTX_W + 0.5)
+            P.shape = ids[i]
+            PaintFigure(strip.figs[c], Icon, "lit", G.CHOICE, x)
+            PaintCaption(f, caps[i], x, top - rowH - G.CAP_GAP, keys[i], ids[i] == current, on,
+              r == 2 and (math.floor(CTX_W / 2) - 4) or nil)
+          end
+        end
+      else
+        -- Three: Expiring mail's, Marker corner's or Glow color's.
+        local strip = strips[1]
+        PlaceStrip(f, strip, -4, stageH)
+        for c = 1, 3 do
+          local x = math.floor(MM.THIRDS[c] * CTX_W + 0.5)
+          local look = "lit"
+          if mode == "expiry" then
+            P.mark = c == 2
+            if c == 3 then look = "alone" end
+          elseif mode == "corner" then
+            P.mark, P.corner = true, ids[c]
+          elseif mode == "glow" then
+            -- Its colours whether or not Glow is on: what each would be.
+            P.glowOn = true
+            if Icon.GlowRGB then P.gr, P.gg, P.gb = Icon.GlowRGB(ids[c]) end
+          end
+          PaintFigure(strip.figs[c], Icon, look, G.CHOICE, x)
+          PaintCaption(f, caps[c], x, capY, keys[c], ids[c] == current, on)
         end
       end
     end
@@ -4037,7 +4238,10 @@ function Pages.minimap(col)
   local showRow = Rows.Dropdown(block, {
     title = L["OPT_MINIMAP_SHOW_TITLE"], text = L["OPT_MINIMAP_SHOW_DESC"], items = showItems,
     get = function() return ns.MinimapButton and ns.MinimapButton.GetShowWhen() end,
-    set = function(id) if ns.MinimapButton then ns.MinimapButton.SetShowWhen(id) end end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetShowWhen(id) end
+      Ctx.Repaint()
+    end,
   })
 
   -- Where the marker for mail close to being lost goes: nowhere, on the
@@ -4102,10 +4306,10 @@ function Pages.minimap(col)
     after = Ctx.Repaint,
   })
 
-  -- Both are answered by the drawing while pointed at (Ctx.MinimapMode),
-  -- their text standing under it (Layout).
-  S.mmShow, S.mmExpiry = showRow.entry, expiryRow.entry
-  showRow.entry.stage, expiryRow.entry.stage = "minimap", "minimap"
+  -- Each is answered by the drawing while pointed at (Ctx.MinimapMode),
+  -- their text standing under it (Layout); Glow color, below, too.
+  S.mmModes = { [showRow.entry] = "show", [expiryRow.entry] = "expiry", [markerRow.entry] = "marker",
+    [cornerRow.entry] = "corner", [largeRow.entry] = "large" }
   S.mmRows = { marker = markerRow, corner = cornerRow, large = largeRow }
 
   -- The flash is drawn on the icon, so with the icon off it has nothing to
@@ -4202,7 +4406,10 @@ function Pages.minimap(col)
   Rows.Dropdown(block, {
     title = L["OPT_MINIMAP_COUNT_TITLE"], text = L["OPT_MINIMAP_COUNT_DESC"], items = countItems,
     get = function() return ns.MinimapButton and ns.MinimapButton.GetCount() end,
-    set = function(id) if ns.MinimapButton then ns.MinimapButton.SetCount(id) end end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetCount(id) end
+      Ctx.Repaint()
+    end,
   })
 
   local function Effect(titleKey, descKey, get, set, after)
@@ -4242,7 +4449,9 @@ function Pages.minimap(col)
       Ctx.Repaint()
     end,
   })
+  S.mmModes[glowRow.entry] = "glow"
   S.mmRows.glow = glowRow
+  for entry in pairs(S.mmModes) do entry.stage = "minimap" end
   -- Accent tint greys where the style has no art it can tint.
   local tintRow = Rows.Pair(block,
     Effect("OPT_MINIMAP_ACCENT_TITLE", "OPT_MINIMAP_ACCENT_DESC", "GetAccentTint", "SetAccentTint"),

@@ -2182,6 +2182,9 @@ function MB.SetGlowColor(mode)
   Refresh()
 end
 
+-- The count as the map draws it, for the options' preview's sample number.
+MB.PaintCount = PaintCount
+
 function MB.GetIconSize()
   return IconSize()
 end
