@@ -96,7 +96,8 @@ open a mailbox.
 
 - C.O.D. mail is never paid without asking, and one confirmation pays once,
   for the mail you chose.
-- Deleting only ever removes finished mail you chose, and asks first.
+- Deleting in bulk only ever removes finished mail you chose, and a mail
+  that still holds something asks before it goes.
 - When something can't be collected, Postbox says so in the game's own words.
 
 ## Light on your game

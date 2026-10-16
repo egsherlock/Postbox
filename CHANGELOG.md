@@ -47,8 +47,8 @@ Options, Window). Your recipients, Mail Memory and History are kept.*
   own words, cleared as soon as the mail can come out.
 - **Sort by time left:** newest first or expiring first, on the Mail tab
   and in Mail Memory, remembered.
-- **Senders in their class color**, **stack counts and quality marks on item
-  icons**, and **time left on every mail** ("9h", "3d").
+- **Senders in their class color**, **stack counts and larger quality marks
+  on item icons**, and **time left on every mail** ("9h", "3d").
 - **Take one item without opening the mail:** set Attachments on hover to
   Fan out and click the one you want. C.O.D. still asks first.
 - **Tooltips read the same everywhere**, with only what the row doesn't
@@ -136,8 +136,8 @@ Options, Window). Your recipients, Mail Memory and History are kept.*
 - Updated for patch 12.1.5.
 - Everything Postbox does stays with the exact mail you chose, even when the
   mailbox reorders itself while it works: a C.O.D. you confirm pays once,
-  and "C.O.D. paid" appears only once the payment is seen; deleting only
-  ever removes finished mail you chose.
+  and "C.O.D. paid" appears only once the payment is seen; deleting in bulk
+  only ever removes finished mail you chose.
 - Send refuses C.O.D. with queued attachments instead of sending, and
   Ctrl+Enter sends a mail once.
 - A C.O.D. mail with several items comes out whole after you pay.

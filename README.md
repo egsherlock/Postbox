@@ -254,8 +254,10 @@ new?** in the footer shows the last three releases.
   `/postbox perf` records each mailbox visit for a bug report, with the game's
   own profiler split into Postbox, other addons and the game.
 - **Safe by design.** One C.O.D. confirmation pays once, for the mail you
-  chose; deletes only ever remove finished mail you chose and are re-checked
-  right before they happen; every take follows its mail as the inbox moves.
+  chose; deleting in bulk only ever removes finished mail you chose, a mail
+  that still holds something asks before it goes, and every delete is
+  re-checked right before it happens; every take follows its mail as the
+  inbox moves.
 - **One skin contract.** A look claims the window at login and answers
   `Apply`/`Refresh`; see [ELLESMEREUI_SKINNING.md](ELLESMEREUI_SKINNING.md).
 
