@@ -394,6 +394,8 @@ end
 -- in alpha, and no glow. State rises in colour and alpha together, so the
 -- moment mail arrives is the moment it comes forward, glow or no glow.
 local REST_ALPHA = 0.65
+-- The options' preview draws the resting icon by the same number.
+MB.REST_ALPHA = REST_ALPHA
 
 -- An alert is not rest: it is the icon asking to be looked at. (A dot on
 -- its own has no icon to rest; its art is hidden.)
@@ -516,6 +518,9 @@ local function PaintMark(holder, anchor, size, on, alone)
   dot:Show()
   edge:Show()
 end
+-- The options' preview draws its dots with this, so the dot it shows is the
+-- map's own: the same discs, sizes and place, in the preview's screen pixels.
+MB.PaintMark = PaintMark
 
 -------------------------------------------------------------
 -- 2. The default indicator
@@ -1934,6 +1939,17 @@ function MB.SetExpiry(mode)
 end
 
 function MB.GetIconSize()
+  return IconSize()
+end
+
+-- The icon's side as the map draws it now, for the options' preview: under
+-- EllesmereUI's minimap their button's (section 3: they size it, and the
+-- art takes its measure from it), else Icon size. Reads only what is there;
+-- builds and finds nothing.
+function MB.GetDrawnSize()
+  local btn = euiSkin.applied and euiSkin.button
+  local icon = btn and btn._icon
+  if icon then return (EuiArtSize(btn, icon)) end
   return IconSize()
 end
 

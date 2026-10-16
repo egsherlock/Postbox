@@ -568,7 +568,7 @@ local TEXT_W = INSP_W - 2 - 2 * TEXT_X
 -- The text zone is never shorter than this: most descriptions fit it, so
 -- the text does not jump as the pointer moves from setting to setting.
 local SAY_MIN = 150
-local TILE_H, HOST_H, SWATCH_H, STAGE, STAGE_ICON, SAMPLE_MAX, MOCK_H = 46, 32, 74, 104, 54, 50, 34
+local TILE_H, HOST_H, SWATCH_H, STAGE, SAMPLE_MAX, MOCK_H = 46, 32, 74, 88, 50, 34
 -- The Postbox style's small window, and the accent row's reading under it.
 local MINI_H, READOUT_LINES = 128, 3
 local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
@@ -783,6 +783,8 @@ do
     measure:SetPoint("TOPLEFT", card, "TOPLEFT", 0, 0)
     measure:SetSize(INSP_W, 10)
     TextBlock(measure)
+    -- And a drawing's caption, at the width it is given (Ctx.MeasureCaptions).
+    measure.Cap = Ctx.Caption(measure)
     measure:Hide()
     S.measure = measure
   end
@@ -791,6 +793,8 @@ do
   function Insp.Show(entry)
     if entry == S.shown then return end
     S.shown = entry
+    -- A drawing that answers the setting pointed at follows it.
+    Ctx.Follow()
     local say, idle = S.say, S.idleBlock
     if not say then return end
     if not entry then
@@ -867,10 +871,11 @@ end
 -- that grow with Larger mail rows, line their gold up as Row layout says
 -- and wear the quality mark where the setting puts it; the Send tab's
 -- recipients tile; the window over a bit of world, at the player's
--- opacity and border; the minimap icon at a size you can judge, wearing
--- its glow, shadow and accent. Drawn here, from the settings, rather than
--- borrowed from the windows they describe: those windows' own code is not
--- the panel's to reach into.
+-- opacity and border; the minimap icon at its own size, wearing its glow,
+-- shadow, accent and expiry dot, and the answers of When to show and
+-- Expiring mail while they are pointed at. Drawn here, from the settings,
+-- rather than borrowed from the windows they describe: those windows' own
+-- code is not the panel's to reach into.
 -------------------------------------------------------------
 do
   local CTX_TOP = 11
@@ -895,7 +900,7 @@ do
       local h = (skin and skin.IsPostboxStyle and not skin.IsCreativeStyle) and MINI_H or SWATCH_H
       return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + h + 10
     end
-    if key == "minimap" then return CTX_TOP + 4 + STAGE + 10 end
+    if key == "minimap" then return CTX_TOP + 4 + STAGE + Ctx.MinimapCaptionRoom() + 10 end
     return 0
   end
 
@@ -1848,38 +1853,113 @@ do
   end
 
   ---------------------------------------------------------
-  -- The minimap icon at a size you can judge
+  -- The minimap icon as the map shows it
   --
   -- On a quiet ground roughly a minimap's own average value, so both glow
-  -- and shadow read the way they will in the world, WEARING the live
-  -- settings: accent tint, glow (with its pulse) and shadow render here as
-  -- they will on the minimap. Faded, and still, while the icon is off.
+  -- and shadow read the way they will in the world, at its own size (Icon
+  -- size, or EllesmereUI's button under their minimap: MinimapButton's
+  -- GetDrawnSize), WEARING the live settings: accent tint, glow (with its
+  -- pulse) and shadow as they render on the map, and while Expiring mail is
+  -- not Off the orange dot on its corner, the glow then in the warning tone.
+  -- Faded, and still, while the icon is off.
+  --
+  -- Two settings it answers with figures of their own while one of them is
+  -- pointed at (Ctx.MinimapMode; its text then stands under the drawing,
+  -- Layout), side by side, each captioned under the ground: When to show,
+  -- the resting gray icon beside the lit one; Expiring mail, its three
+  -- choices -- the plain icon, the icon with the dot, and the dot alone as
+  -- Always draws it while the icon is down -- the chosen one marked as the
+  -- arrange inspector marks a chosen segment, its words bright and the
+  -- accent under them. Every dot is the map's own (MinimapButton.PaintMark):
+  -- a quarter of the icon on its corner, alone half of it and never under
+  -- 6, in whole screen pixels, with its pixel of dark edge.
+  --
+  -- Built once: a paint sets what shows, its size and its colours, and
+  -- makes nothing.
   ---------------------------------------------------------
-  function Ctx.minimap(card)
-    local f = CreateFrame("Frame", nil, card)
-    f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
-    f:SetSize(CTX_W, 4 + STAGE)
-    local stage = CreateFrame("Frame", nil, f)
-    stage:SetSize(STAGE, STAGE)
-    stage:SetPoint("TOP", f, "TOP", 0, -4)
-    -- Clipped, with its art on a holder inside it: the glow reaches past
-    -- the stage's edge.
-    if stage.SetClipsChildren then stage:SetClipsChildren(true) end
-    local art = ArtHolder(stage)
-    local ground = art:CreateTexture(nil, "BACKGROUND", nil, -7)
-    ground:SetAllPoints()
-    ground:SetColorTexture(0.40, 0.41, 0.38, 1)
-    local shadow = art:CreateTexture(nil, "BACKGROUND", nil, -1)
-    shadow:SetPoint("CENTER", stage, "CENTER", 0, -1)
+  -- Each drawing's figures, in order: what each draws ("set": the icon as
+  -- set) and where it stands, as a share of the ground's width; and their
+  -- captions. Expiring mail's are its choices' own names, in MinimapButton's
+  -- order (EXPIRY_MODES), which MM_IDS follows.
+  local MM_LOOKS = { set = { "set" }, show = { "rest", "lit" }, expiry = { "lit", "dot", "alone" } }
+  local MM_AT = { set = { 0.5 }, show = { 0.25, 0.75 }, expiry = { 1 / 6, 0.5, 5 / 6 } }
+  local MM_CAPS = {
+    show = { "OPT_MINIMAP_PREVIEW_REST", "OPT_MINIMAP_PREVIEW_LIT" },
+    expiry = { "OPT_MINIMAP_EXPIRY_OFF", "OPT_MINIMAP_EXPIRY_ICON", "OPT_MINIMAP_EXPIRY_ALWAYS" },
+  }
+  local MM_IDS = { "off", "icon", "always" }
+  -- The ground to the captions; the chosen caption's underline, and its gap.
+  local CAP_GAP, MARK_GAP, MARK_H = 5, 2, 2
+
+  -- A caption under a figure: centred, two lines at most.
+  function Ctx.Caption(parent)
+    local cap = ns.Theme.CreateText(parent, "secondary")
+    cap:SetJustifyH("CENTER")
+    if cap.SetJustifyV then cap:SetJustifyV("TOP") end
+    cap:SetWordWrap(true)
+    if cap.SetMaxLines then cap:SetMaxLines(2) end
+    if cap.SetSpacing then cap:SetSpacing(2) end
+    return cap
+  end
+
+  -- A caption's width when `n` figures share the ground.
+  function Ctx.MinimapColumn(n)
+    return math.floor(CTX_W / n) - 4
+  end
+
+  -- The room under the ground: the gap, the captions, their underline.
+  function Ctx.MinimapCaptionRoom()
+    return CAP_GAP + (S.mmCapH or 12) + MARK_GAP + MARK_H
+  end
+
+  -- The captions' height: the tallest any of them takes at its width, in
+  -- the font as it is now -- one line in English, two where a translation
+  -- needs them. Run where Layout measures every text.
+  function Ctx.MeasureCaptions()
+    local cap = S.measure and S.measure.Cap
+    if not cap then return end
+    local h = 0
+    for _, keys in pairs(MM_CAPS) do
+      cap:SetWidth(Ctx.MinimapColumn(#keys))
+      for i = 1, #keys do
+        cap:SetText(L[keys[i]])
+        local th = math.ceil(cap:GetStringHeight() or 0)
+        if th > h then h = th end
+      end
+    end
+    S.mmCapH = h
+  end
+
+  -- What the stage draws: the answers of the setting pointed at, where it
+  -- has them, else the icon as set.
+  function Ctx.MinimapMode()
+    local shown = S.shown
+    if shown and shown == S.mmExpiry then return "expiry" end
+    if shown and shown == S.mmShow then return "show" end
+    return "set"
+  end
+
+  -- The inspector moved to another setting (Insp.Show): the stage follows
+  -- where that changes what it draws.
+  function Ctx.Follow()
+    local f = S.ctx.minimap
+    if f and f.mode and f.mode ~= Ctx.MinimapMode() and f:IsVisible() then f.Paint() end
+  end
+
+  -- One figure: the shadow, the glow and its pulse, the icon, and the dot,
+  -- which PaintMark puts on the figure itself.
+  local function Figure(parent)
+    local fig = CreateFrame("Frame", nil, parent)
+    fig:SetSize(1, 1)
+    local shadow = fig:CreateTexture(nil, "BACKGROUND", nil, -1)
+    shadow:SetPoint("CENTER", fig, "CENTER", 0, -1)
     shadow:SetTexture(GLOW_TGA)
     shadow:SetVertexColor(0, 0, 0)
     shadow:SetAlpha(0.9)
-    shadow:SetSize(STAGE_ICON * 1.8, STAGE_ICON * 1.8)
-    local glow = art:CreateTexture(nil, "BACKGROUND", nil, 0)
-    glow:SetPoint("CENTER", stage, "CENTER", 0, 0)
+    local glow = fig:CreateTexture(nil, "BACKGROUND", nil, 0)
+    glow:SetPoint("CENTER", fig, "CENTER", 0, 0)
     glow:SetTexture(GLOW_TGA)
     glow:SetBlendMode("ADD")
-    glow:SetSize(STAGE_ICON * 2.2, STAGE_ICON * 2.2)
     local pulse = glow:CreateAnimationGroup()
     pulse:SetLooping("BOUNCE")
     local fade = pulse:CreateAnimation("Alpha")
@@ -1887,44 +1967,134 @@ do
     fade:SetToAlpha(0.55)
     fade:SetDuration(1.6)
     fade:SetSmoothing("IN_OUT")
-    local icon = art:CreateTexture(nil, "ARTWORK")
-    icon:SetPoint("CENTER", stage, "CENTER", 0, 0)
+    local icon = fig:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("CENTER", fig, "CENTER", 0, 0)
+    fig.Shadow, fig.Glow, fig.Pulse, fig.Icon = shadow, glow, pulse, icon
+    fig:Hide()
+    return fig
+  end
 
-    f.Stop = function() pulse:Stop() end
+  -- `look`: "lit" (new mail: full colour, the glow), "dot" (the same with
+  -- the dot on its corner, the glow in the warning tone), "rest" (nothing
+  -- new: gray, a step back, no glow), or "alone" (the dot where the icon
+  -- sits, and nothing else). The icon's own parts as MinimapButton draws
+  -- them (ApplyLook): glow 2.2 times the icon, shadow 1.8 and a unit down.
+  local function PaintFigure(fig, Icon, look, spec, size, on, tint, r, g, b, glowOn, pulseOn, shadowOn)
+    local icon, glow, pulse = fig.Icon, fig.Glow, fig.Pulse
+    local rest, alone = look == "rest", look == "alone"
+    fig:SetSize(size, size)
+    if spec.atlas then icon:SetAtlas(spec.atlas) else icon:SetTexture(spec.texture) end
+    icon:SetSize(size, size * (spec.aspect or 1))
+    if spec.tintable and tint then icon:SetVertexColor(r, g, b) else icon:SetVertexColor(1, 1, 1) end
+    icon:SetDesaturated(rest or not on)
+    icon:SetAlpha(rest and (Icon.REST_ALPHA or 0.65) or 1)
+    icon:SetShown(not alone)
+    fig.Shadow:SetSize(size * 1.8, size * 1.8)
+    fig.Shadow:SetShown(shadowOn and not alone)
+    glow:SetSize(size * 2.2, size * 2.2)
+    if glowOn and not (rest or alone) then
+      if look == "dot" then glow:SetVertexColor(ns.Theme.DarkColor("warning")) else glow:SetVertexColor(r, g, b) end
+      glow:Show()
+      -- A switched-off icon does not keep moving.
+      if on and pulseOn then
+        if not pulse:IsPlaying() then pulse:Play() end
+      else
+        pulse:Stop()
+      end
+    else
+      pulse:Stop()
+      glow:Hide()
+    end
+    if Icon.PaintMark then Icon.PaintMark(fig, icon, size, look == "dot" or alone, alone) end
+    fig:Show()
+  end
+
+  function Ctx.minimap(card)
+    local T = ns.Theme
+    local f = CreateFrame("Frame", nil, card)
+    f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
+    f:SetSize(CTX_W, 4 + STAGE)
+    local stage = CreateFrame("Frame", nil, f)
+    stage:SetSize(CTX_W, STAGE)
+    stage:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -4)
+    -- Clipped, with its art on a holder inside it: the glow reaches past
+    -- the stage's edge.
+    if stage.SetClipsChildren then stage:SetClipsChildren(true) end
+    local art = ArtHolder(stage)
+    local ground = art:CreateTexture(nil, "BACKGROUND", nil, -7)
+    ground:SetAllPoints()
+    ground:SetColorTexture(0.40, 0.41, 0.38, 1)
+    -- The figures, and the captions under the ground, on the inspector's
+    -- own ground and in its inks.
+    local figs, caps = {}, {}
+    for i = 1, 3 do
+      figs[i] = Figure(art)
+      local cap = Ctx.Caption(f)
+      cap.Mark = f:CreateTexture(nil, "ARTWORK")
+      cap.Mark:SetHeight(MARK_H)
+      cap.Mark:SetPoint("TOP", cap, "BOTTOM", 0, -MARK_GAP)
+      cap.Mark:Hide()
+      cap:Hide()
+      caps[i] = cap
+    end
+
+    f.Stop = function()
+      for i = 1, #figs do figs[i].Pulse:Stop() end
+    end
     f.Paint = function()
       local Icon = ns.MinimapButton
       local on = Icon and Icon.GetEnabled and Icon.GetEnabled() and true or false
+      local mode = Ctx.MinimapMode()
+      f.mode = mode
+      f:SetHeight(4 + STAGE + Ctx.MinimapCaptionRoom())
       stage:SetAlpha(on and 1 or 0.4)
       local spec = Icon and Icon.GetIconSpec and Icon.GetIconSpec()
-      if not spec then
-        icon:Hide()
-        glow:Hide()
-        shadow:Hide()
-        pulse:Stop()
-        return
-      end
-      icon:Show()
-      if spec.atlas then icon:SetAtlas(spec.atlas) else icon:SetTexture(spec.texture) end
-      icon:SetSize(STAGE_ICON, STAGE_ICON * (spec.aspect or 1))
-      icon:SetDesaturated(not on)
-      local r, g, b = 1, 1, 1
-      local accentOn = Icon.GetAccentTint and Icon.GetAccentTint()
-      if accentOn then r, g, b = ns.Theme.GetAccent() end
-      if spec.tintable and accentOn then icon:SetVertexColor(r, g, b) else icon:SetVertexColor(1, 1, 1) end
-      glow:SetVertexColor(r, g, b)
-      if Icon.GetGlow and Icon.GetGlow() then
-        glow:Show()
-        -- A switched-off icon does not keep moving.
-        if on and (not Icon.GetPulse or Icon.GetPulse()) then
-          if not pulse:IsPlaying() then pulse:Play() end
-        else
-          pulse:Stop()
+      local looks, at = MM_LOOKS[mode], MM_AT[mode]
+      local n = spec and #looks or 0
+      local expiry = "off"
+      if n > 0 then
+        expiry = Icon.GetExpiry and Icon.GetExpiry() or "off"
+        local size = (Icon.GetDrawnSize or Icon.GetIconSize)()
+        local r, g, b = 1, 1, 1
+        local tint = Icon.GetAccentTint() and true or false
+        if tint then r, g, b = T.GetAccent() end
+        local glowOn, pulseOn, shadowOn = Icon.GetGlow(), Icon.GetPulse(), Icon.GetShadow()
+        for i = 1, n do
+          local look = looks[i]
+          if look == "set" then look = (expiry ~= "off") and "dot" or "lit" end
+          local fig = figs[i]
+          fig:ClearAllPoints()
+          fig:SetPoint("CENTER", stage, "LEFT", math.floor(at[i] * CTX_W + 0.5), 0)
+          PaintFigure(fig, Icon, look, spec, size, on, tint, r, g, b, glowOn, pulseOn, shadowOn)
         end
-      else
-        pulse:Stop()
-        glow:Hide()
       end
-      shadow:SetShown(Icon.GetShadow and Icon.GetShadow() or false)
+      for i = n + 1, #figs do
+        figs[i].Pulse:Stop()
+        figs[i]:Hide()
+      end
+      -- The captions; on Expiring mail the chosen one marked.
+      local keys = MM_CAPS[mode]
+      local colW = Ctx.MinimapColumn(#at)
+      for i = 1, #caps do
+        local cap = caps[i]
+        if keys and i <= n then
+          local chosen = mode == "expiry" and MM_IDS[i] == expiry
+          cap:ClearAllPoints()
+          cap:SetPoint("TOP", f, "TOPLEFT", math.floor(at[i] * CTX_W + 0.5), -(4 + STAGE + CAP_GAP))
+          cap:SetWidth(colW)
+          cap:SetText(L[keys[i]])
+          T.SetColor(cap, (not on and "textDisabled") or (chosen and "textPrimary") or "textSecondary")
+          if chosen then
+            cap.Mark:SetWidth(math.min(TextW(cap), colW))
+            T.FillColor(cap.Mark, on and "accent" or "textDisabled")
+          end
+          cap.Mark:SetShown(chosen)
+          cap:Show()
+        else
+          cap:Hide()
+          cap.Mark:Hide()
+        end
+      end
     end
     return f
   end
@@ -2207,13 +2377,14 @@ do
     return { frame = parent, y = -LIST_PAD, top = -LIST_PAD, first = true, cells = {}, items = {} }
   end
 
-  -- A block of rows in `col` that greys as one: what a feature's switch
-  -- governs. Rows.EndBlock closes it and moves `col` past it.
+  -- A block of rows in `col` that greys as one, its group headings with
+  -- them: what a feature's switch governs. Rows.EndBlock closes it and
+  -- moves `col` past it.
   function Rows.Block(col)
     local frame = CreateFrame("Frame", nil, col.frame)
     frame:SetPoint("TOPLEFT", col.frame, "TOPLEFT", 0, col.y)
     frame:SetPoint("TOPRIGHT", col.frame, "TOPRIGHT", 0, col.y)
-    local block = { frame = frame, y = 0, top = 0, first = col.first, cells = {}, items = {}, parent = col }
+    local block = { frame = frame, y = 0, top = 0, first = col.first, cells = {}, items = {}, heads = {}, parent = col }
     block.item = { frame = frame, h = 0, block = block }
     col.items[#col.items + 1] = block.item
     return block
@@ -2548,9 +2719,17 @@ do
     T.FillColor(rule, "accent")
     head.Text, head.Rule = text, rule
     S.groups[#S.groups + 1] = head
+    if col.heads then col.heads[#col.heads + 1] = head end
     col.y = col.y - GROUP_H
     col.first = true
     return head
+  end
+
+  -- A heading in the accent, or grey with its block's rows (head.off).
+  function Rows.PaintGroup(head)
+    local T = ns.Theme
+    T.SetColor(head.Text, head.off and "textDisabled" or "accent")
+    T.FillColor(head.Rule, head.off and "textDisabled" or "accent")
   end
 
   -- Greyed in colour and alpha together, and not clickable; its motion
@@ -2570,6 +2749,11 @@ do
   function Rows.SetBlock(block, on)
     if not block then return end
     for i = 1, #block.cells do Rows.SetEnabled(block.cells[i], on) end
+    local heads = block.heads
+    for i = 1, #heads do
+      heads[i].off = not on
+      Rows.PaintGroup(heads[i])
+    end
     if not on then ns.Core.UI.Dropdown.CloseAll() end
   end
 
@@ -2645,7 +2829,7 @@ do
     for i = 1, #S.groups do
       local head = S.groups[i]
       head.Rule:SetWidth(math.max(0, ROW_W - NAME_X - CONTROL_R - NAME_GAP - TextW(head.Text)))
-      T.FillColor(head.Rule, "accent")
+      T.FillColor(head.Rule, head.off and "textDisabled" or "accent")
     end
   end
 end
@@ -3790,10 +3974,10 @@ function Pages.windowCreative(col, Skin)
   end
 end
 
--- The Minimap tab (Core/MinimapButton.lua): the switch, then everything
--- about the icon, then the flash that is drawn on it. Resolved at click
--- time like every other binding, so the page stays honest if the module is
--- absent.
+-- The Minimap tab (Core/MinimapButton.lua): the switch, then three groups --
+-- when the icon shows (and what stands in for it while it does not), what
+-- it wears, and where it sits. Resolved at click time like every other
+-- binding, so the page stays honest if the module is absent.
 function Pages.minimap(col)
   local Icon = ns.MinimapButton
   -- With EllesmereUI's minimap module running, Postbox restyles its own
@@ -3814,9 +3998,12 @@ function Pages.minimap(col)
   local block = Rows.Block(col)
   S.minimapBlock = block
 
-  -- First after the switch: whether the icon is on the map at all. Under
-  -- EllesmereUI's minimap too -- Postbox keeps their button shown for as
-  -- long as this says (Core/MinimapButton.lua, SyncEuiButtonShown).
+  -- When it shows: whether the icon is on the map at all, the dot that
+  -- stands where it would be, and how new mail announces itself on it.
+  Rows.Group(block, L["OPT_MINIMAP_GROUP_SHOWS"])
+
+  -- Under EllesmereUI's minimap too -- Postbox keeps their button shown for
+  -- as long as this says (Core/MinimapButton.lua, SyncEuiButtonShown).
   local showNames = {
     new = L["OPT_MINIMAP_SHOW_NEW"], any = L["OPT_MINIMAP_SHOW_ANY"], always = L["OPT_MINIMAP_SHOW_ALWAYS"],
   }
@@ -3824,11 +4011,49 @@ function Pages.minimap(col)
   for _, mode in ipairs((Icon and Icon.SHOW_MODES) or { "new" }) do
     showItems[#showItems + 1] = { id = mode, name = showNames[mode] }
   end
-  Rows.Dropdown(block, {
+  local showRow = Rows.Dropdown(block, {
     title = L["OPT_MINIMAP_SHOW_TITLE"], text = L["OPT_MINIMAP_SHOW_DESC"], items = showItems,
     get = function() return ns.MinimapButton and ns.MinimapButton.GetShowWhen() end,
     set = function(id) if ns.MinimapButton then ns.MinimapButton.SetShowWhen(id) end end,
   })
+
+  -- Where the orange dot for mail close to being lost goes: nowhere, on the
+  -- icon while When to show has it up, or also on its own where the icon
+  -- sits. It never brings the icon up itself.
+  local expiryNames = {
+    off = L["OPT_MINIMAP_EXPIRY_OFF"], icon = L["OPT_MINIMAP_EXPIRY_ICON"], always = L["OPT_MINIMAP_EXPIRY_ALWAYS"],
+  }
+  local expiryItems = {}
+  for _, mode in ipairs((Icon and Icon.EXPIRY_MODES) or { "always" }) do
+    expiryItems[#expiryItems + 1] = { id = mode, name = expiryNames[mode] }
+  end
+  local expiryRow = Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_EXPIRY_TITLE"], text = L["OPT_MINIMAP_EXPIRY_DESC"], items = expiryItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetExpiry() end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetExpiry(id) end
+      Ctx.Repaint()
+    end,
+  })
+
+  -- Both are answered by the drawing while pointed at (Ctx.MinimapMode),
+  -- their text standing under it (Layout).
+  S.mmShow, S.mmExpiry = showRow.entry, expiryRow.entry
+  showRow.entry.stage, expiryRow.entry.stage = "minimap", "minimap"
+
+  -- The flash is drawn on the icon, so with the icon off it has nothing to
+  -- draw on: it greys with the rows around it.
+  Rows.Check(block, {
+    title = L["OPT_ALERT_FLASH_TITLE"], text = L["OPT_ALERT_FLASH_DESC"],
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
+    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end,
+  })
+
+  -- On the icon: its art, its size, its count, then its glow and its pulse
+  -- side by side, the one breathing the other, and the accent's tint, on
+  -- the glow and the icon, beside the shadow. EllesmereUI's button wears
+  -- all of it but the size.
+  Rows.Group(block, L["OPT_MINIMAP_GROUP_ICON"])
 
   -- Each "clean" restyle sits directly beneath its original, named as the
   -- original plus the localized clean suffix.
@@ -3883,8 +4108,36 @@ function Pages.minimap(col)
     end,
   })
 
-  -- The glow and its pulse side by side, the one breathing the other; then
-  -- the accent's tint, on the glow and the icon, beside the shadow.
+  if not hostStyled then
+    -- 16 to 40 in steps of four, from the module, which also refuses any other.
+    local sizeItems = {}
+    for _, px in ipairs((Icon and Icon.ICON_SIZES) or { 16, 20, 24, 28 }) do
+      sizeItems[#sizeItems + 1] = { id = px, name = string.format(L["OPT_MINIMAP_SIZE_STEP"], px) }
+    end
+    Rows.Dropdown(block, {
+      title = L["OPT_MINIMAP_SIZE_TITLE"], text = L["OPT_MINIMAP_SIZE_DESC"], items = sizeItems,
+      get = function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
+      set = function(id)
+        if ns.MinimapButton then ns.MinimapButton.SetIconSize(id) end
+        Ctx.Repaint()
+      end,
+    })
+  end
+
+  -- The number on it. EllesmereUI's button carries it too.
+  local countNames = {
+    off = L["OPT_MINIMAP_COUNT_OFF"], me = L["OPT_MINIMAP_COUNT_ME"], all = L["OPT_MINIMAP_COUNT_ALL"],
+  }
+  local countItems = {}
+  for _, mode in ipairs((Icon and Icon.COUNT_MODES) or { "off" }) do
+    countItems[#countItems + 1] = { id = mode, name = countNames[mode] }
+  end
+  Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_COUNT_TITLE"], text = L["OPT_MINIMAP_COUNT_DESC"], items = countItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetCount() end,
+    set = function(id) if ns.MinimapButton then ns.MinimapButton.SetCount(id) end end,
+  })
+
   local function Effect(titleKey, descKey, get, set)
     return {
       title = L[titleKey], text = L[descKey],
@@ -3900,20 +4153,14 @@ function Pages.minimap(col)
     Effect("OPT_MINIMAP_ACCENT_TITLE", "OPT_MINIMAP_ACCENT_DESC", "GetAccentTint", "SetAccentTint"),
     Effect("OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC", "GetShadow", "SetShadow"))
 
+  -- Place: where it sits on the map, and the lock on moving it. Under
+  -- EllesmereUI's minimap that, and the size, are EllesmereUI's, and one
+  -- quiet line says so in their place.
+  Rows.Group(block, L["OPT_MINIMAP_GROUP_PLACE"])
   if hostStyled then
     -- One quiet line, not a paragraph: the whole of it is in the inspector.
     Rows.Note(block, L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_STYLED"])
   else
-    -- 16 to 40 in steps of four, from the module, which also refuses any other.
-    local sizeItems = {}
-    for _, px in ipairs((Icon and Icon.ICON_SIZES) or { 16, 20, 24, 28 }) do
-      sizeItems[#sizeItems + 1] = { id = px, name = string.format(L["OPT_MINIMAP_SIZE_STEP"], px) }
-    end
-    Rows.Dropdown(block, {
-      title = L["OPT_MINIMAP_SIZE_TITLE"], text = L["OPT_MINIMAP_SIZE_DESC"], items = sizeItems,
-      get = function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
-      set = function(id) if ns.MinimapButton then ns.MinimapButton.SetIconSize(id) end end,
-    })
     -- Every placement in ONE list -- a mode checkbox beside a position list
     -- gave two controls authority over one fact, and they contradicted
     -- each other the moment shift-drag moved the icon. Blizzard default
@@ -3940,44 +4187,6 @@ function Pages.minimap(col)
       set = function(on) if ns.MinimapButton then ns.MinimapButton.SetLocked(on) end end,
     })
   end
-
-  -- What the icon says beyond "mail": its count, then the two alerts drawn
-  -- on it. EllesmereUI's button carries them too.
-  local countNames = {
-    off = L["OPT_MINIMAP_COUNT_OFF"], me = L["OPT_MINIMAP_COUNT_ME"], all = L["OPT_MINIMAP_COUNT_ALL"],
-  }
-  local countItems = {}
-  for _, mode in ipairs((Icon and Icon.COUNT_MODES) or { "off" }) do
-    countItems[#countItems + 1] = { id = mode, name = countNames[mode] }
-  end
-  Rows.Dropdown(block, {
-    title = L["OPT_MINIMAP_COUNT_TITLE"], text = L["OPT_MINIMAP_COUNT_DESC"], items = countItems,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetCount() end,
-    set = function(id) if ns.MinimapButton then ns.MinimapButton.SetCount(id) end end,
-  })
-
-  -- The flash is drawn on the icon, so with the icon off it has nothing to
-  -- draw on: it greys with the rows above.
-  Rows.Check(block, {
-    title = L["OPT_ALERT_FLASH_TITLE"], text = L["OPT_ALERT_FLASH_DESC"],
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
-    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end,
-  })
-  -- Where the orange dot for mail close to being lost goes: nowhere, on the
-  -- icon while When to show has it up, or also on its own where the icon
-  -- sits. It never brings the icon up itself.
-  local expiryNames = {
-    off = L["OPT_MINIMAP_EXPIRY_OFF"], icon = L["OPT_MINIMAP_EXPIRY_ICON"], always = L["OPT_MINIMAP_EXPIRY_ALWAYS"],
-  }
-  local expiryItems = {}
-  for _, mode in ipairs((Icon and Icon.EXPIRY_MODES) or { "always" }) do
-    expiryItems[#expiryItems + 1] = { id = mode, name = expiryNames[mode] }
-  end
-  Rows.Dropdown(block, {
-    title = L["OPT_MINIMAP_EXPIRY_TITLE"], text = L["OPT_MINIMAP_EXPIRY_DESC"], items = expiryItems,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetExpiry() end,
-    set = function(id) if ns.MinimapButton then ns.MinimapButton.SetExpiry(id) end end,
-  })
   Rows.EndBlock(block)
 end
 
@@ -4623,10 +4832,15 @@ local function Layout()
   local text = S.textNeed
   if not (MeasuredAlready() and text) then
     text = 0
+    -- The Minimap drawing's captions first: its height counts them.
+    Ctx.MeasureCaptions()
     local entries = S.entries
     for i = 1, #entries do
       local entry = entries[i]
       local h = Insp.Need(entry, entry.extra and Ctx.ExtraHeight(entry.extra) or 0)
+      -- A setting its tab's drawing answers (`stage`: that tab) has its text
+      -- under the drawing, never over it.
+      if entry.stage then h = Ctx.Height(entry.stage) + math.max(h, SAY_MIN) end
       if h > text then text = h end
     end
     for i = 1, #TABS do
