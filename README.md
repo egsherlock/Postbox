@@ -72,6 +72,10 @@ deleted the moment Postbox empties it (**Delete when done**).
   <img src="docs/screenshots/collect.gif" alt="All mail collecting a whole inbox, one mail at a time" />
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/groups.png" width="640" alt="A Character Group and its button among the category buttons" />
+</p>
+
 ### History
 
 <img src="docs/screenshots/history.png" width="420" align="right" alt="History searched across every character" />
@@ -157,6 +161,10 @@ a mail to see what it holds. A character you no longer play can be hidden
 
 **Manage Recipients** (`/postbox rm`, works anywhere) searches, sorts,
 favorites, hides and annotates every name Postbox can suggest.
+
+<p align="center">
+  <img src="docs/screenshots/recipients.png" width="560" alt="Manage Recipients: favorites, notes, hidden names and class colors" />
+</p>
 
 <br clear="all" />
 

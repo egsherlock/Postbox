@@ -27,6 +27,8 @@ open a mailbox.
 - **History** keeps what you collected for a week (or up to a month): who,
   what, how much, even the letter's text.
 
+![Character Groups](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/groups.png)
+
 ![Arrange your window](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/arrange.gif)
 
 ## Make it yours
@@ -87,6 +89,8 @@ open a mailbox.
   items go out in one press.
 - Gold always asks first, and Ctrl+Enter sends.
 - **Manage Recipients** keeps your favorites, notes and hidden names tidy.
+
+![Manage Recipients](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/recipients.png)
 
 ## Safe by design
 
