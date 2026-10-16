@@ -1315,6 +1315,16 @@ function CS.ClassColour(token)
   return entry.r, entry.g, entry.b
 end
 
+-- token -> r, g, b as the player's UI gives the class, before any lift for
+-- a list's ground (the same answer the lists start from), or nil. For a
+-- mark that stands on the world rather than in a window: the minimap
+-- icon's glow and marker.
+function CS.UIClassColour(token)
+  local entry = ClassColour(token)
+  if not (entry and entry.sr) then return nil end
+  return entry.sr, entry.sg, entry.sb
+end
+
 -- entry, ground -> the escape of the class's colour as text on `ground` (the
 -- Theme's grounds: "tooltip", the game's tooltip, which stays dark in Light
 -- mode), or false where the lists' own escape is that colour already (every

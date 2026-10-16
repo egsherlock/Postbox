@@ -65,14 +65,22 @@ local DEFAULTS = {
   -- (every character's, the hidden ones aside).
   count    = "off",
   -- The expiring-mail marker: its shape ("dot", "ring", "square", "bar",
-  -- "exclamation") and the icon's corner it sits on ("TOPRIGHT", "TOPLEFT",
-  -- "BOTTOMLEFT"; the bottom right is the count's). Section 1b.
+  -- "exclamation", "triangle"), its colour ("red", "gold", "accent",
+  -- "class", "white" or "custom", the colour in `markerHex`), the spot on
+  -- the icon it is anchored to (Anchor: a corner or the middle of a side,
+  -- "TOPRIGHT" .. "BOTTOM"; the key kept its old name, from when only three
+  -- corners were offered), and how far it is moved from there, in whole
+  -- screen pixels (Offset X and Offset Y, -20 to 20; +x right, +y up).
+  -- Section 1b.
   marker       = "dot",
+  markerColor  = "red",
   markerCorner = "TOPRIGHT",
+  markerX      = 0,
+  markerY      = 0,
   -- Larger when alone: the marker on its own grows into the icon's spot.
   markerLarge  = false,
   -- What the glow, its pulse and the arrival halo wear: "gold", "accent",
-  -- "white" or "custom", the colour in `glowHex` (section 1b).
+  -- "class", "white" or "custom", the colour in `glowHex` (section 1b).
   glowColor    = "gold",
   -- Show marker (`expiry`, section 1b) is deliberately not seeded here: an
   -- unset one is read from the checkbox it replaced, which a seeded default
@@ -261,7 +269,7 @@ end
 --           warnings leave them -- and Show marker puts the marker where
 --           the icon is now. On the icon it brings the icon forward and its
 --           glow up, in Glow color: the marker alone says why.
---   alone   the marker stands on its own, on the corner it has on the icon:
+--   alone   the marker stands on its own, where it stands on the icon:
 --           Show marker is Always and When to show has the icon down. The
 --           button is on the map for the marker's sake, its art hidden: the
 --           same hit area, the same tooltip and clicks, and no glow, shadow
@@ -287,9 +295,9 @@ local function CountMode(prefs)
   return COUNT_MODES[mode] and mode or DEFAULTS.count
 end
 
--- Show marker (`expiry`, under Expiring mail): where the marker (the orange
--- dot, or the shape Shape chose) goes while mail on some character is close
--- to being lost.
+-- Show marker (`expiry`, under Expiring mail): where the marker (the dot,
+-- or the shape Shape chose) goes while mail on some character is close to
+-- being lost.
 --   off     nowhere.
 --   icon    on the icon, while When to show has it up ("With the icon").
 --   always  on the icon while it is up, and on its own where the icon sits
@@ -315,14 +323,21 @@ local function ExpiryMode(prefs)
 end
 
 -- Shape (`marker`): the marker's shape, on the icon or where the icon
--- sits -- Dot (the default, and the only one before), Ring, Square, Bar or
--- Exclamation. Corner (`markerCorner`): the icon's corner it sits
--- on; the bottom right is the count's, so the two never meet. Drawn by
+-- sits -- Dot (the default, and the only one before), Ring, Square, Bar,
+-- Exclamation or Triangle, which turns to fit its anchor. Drawn by
 -- PaintMark (below).
-local MARKER_SHAPES = { dot = true, ring = true, square = true, bar = true, exclamation = true }
-MB.MARKER_SHAPES = { "dot", "ring", "square", "bar", "exclamation" }
-local MARKER_CORNERS = { TOPRIGHT = true, TOPLEFT = true, BOTTOMLEFT = true }
-MB.MARKER_CORNERS = { "TOPRIGHT", "TOPLEFT", "BOTTOMLEFT" }
+local MARKER_SHAPES = { dot = true, ring = true, square = true, bar = true, exclamation = true, triangle = true }
+MB.MARKER_SHAPES = { "dot", "ring", "square", "bar", "exclamation", "triangle" }
+
+-- Anchor (`markerCorner`, the name it had when only three corners were
+-- offered): the spot on the icon the marker is anchored to, one of the
+-- eight a frame is anchored by -- a corner, or the middle of a side. The
+-- bottom right is where the count sits; it is offered all the same. Each
+-- spot's side of the icon: x -1 the left, 1 the right, 0 the middle; y 1
+-- the top, -1 the bottom, 0 the middle. Listed in reading order.
+local ANCHOR_X = { TOPLEFT = -1, TOP = 0, TOPRIGHT = 1, LEFT = -1, RIGHT = 1, BOTTOMLEFT = -1, BOTTOM = 0, BOTTOMRIGHT = 1 }
+local ANCHOR_Y = { TOPLEFT = 1, TOP = 1, TOPRIGHT = 1, LEFT = 0, RIGHT = 0, BOTTOMLEFT = -1, BOTTOM = -1, BOTTOMRIGHT = -1 }
+MB.MARKER_CORNERS = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
 
 local function MarkerShape(prefs)
   local shape = (prefs or Settings()).marker
@@ -331,35 +346,63 @@ end
 
 local function MarkerCorner(prefs)
   local corner = (prefs or Settings()).markerCorner
-  return MARKER_CORNERS[corner] and corner or DEFAULTS.markerCorner
+  return ANCHOR_X[corner] and corner or DEFAULTS.markerCorner
+end
+
+-- Offset X and Offset Y (`markerX`, `markerY`): how far the marker is moved
+-- from its anchor, in whole screen pixels, so it stays as crisp as it is
+-- anywhere else; +x is right, +y is up. On the icon and on its own alike,
+-- so the lone marker still stands where it stood on the icon; never the
+-- larger one, which stands in the middle of the icon's spot. A stored value
+-- outside the range (a hand edit) is held to it.
+local OFFSET_MAX = 20
+MB.MARKER_OFFSET_MIN, MB.MARKER_OFFSET_MAX = -OFFSET_MAX, OFFSET_MAX
+
+local function MarkerOffset(v)
+  v = tonumber(v)
+  if not v or v ~= v then return 0 end
+  v = math.floor(v + 0.5)
+  if v > OFFSET_MAX then return OFFSET_MAX end
+  if v < -OFFSET_MAX then return -OFFSET_MAX end
+  return v
 end
 
 -- Larger when alone (`markerLarge`, off unless switched on): the marker on
 -- its own (Show marker on Always, the icon down) grows into the icon's
--- spot instead of keeping its size and corner (PaintMark).
+-- spot instead of keeping its size and anchor (PaintMark).
 local function MarkerLarge(prefs)
   return (prefs or Settings()).markerLarge == true
 end
 
--- Glow color (`glowColor`): what the glow, its pulse and the arrival halo
--- wear -- "gold" (Postbox's gold, the default), "accent" (the accent the
--- window style or the host UI gives), "white" or "custom", a colour of the
--- player's own from the game's colour picker (MB.PickGlowColor), saved
--- beside it as "rrggbb" (`glowHex`), as the Postbox style saves its own
--- Custom colours. Custom with no colour saved reads as Gold. Nothing else
--- colours them: the icon's art is drawn as it is, and the marker alone
--- says mail is expiring.
-local GLOW_COLORS = { gold = true, accent = true, white = true, custom = true }
-MB.GLOW_COLORS = { "gold", "accent", "white", "custom" }
+-- Two settings choose a colour, from much the same list:
+--
+--   Glow color (`glowColor`): what the glow, its pulse and the arrival
+--     halo wear -- "gold" (Postbox's gold, the default), "accent", "class",
+--     "white" or "custom". Nothing else colours them: the icon's art is
+--     drawn as it is, and the marker alone says mail is expiring.
+--   Color (`markerColor`): the marker's fill -- "red" (the default: it
+--     warns that mail is about to be lost), "gold", "accent", "class",
+--     "white" or "custom". Its dark edge stays black whatever the fill.
+--
+-- Accent is the accent the window style or the host UI gives; Class color
+-- the player's class colour as the UI gives it (ClassRGB). Custom is a
+-- colour of the player's own from the game's colour picker (PickColorFor),
+-- saved beside the choice as "rrggbb" (`glowHex`, `markerHex`), as the
+-- Postbox style saves its own Custom colours; Custom with no colour saved
+-- reads as the setting's default.
+local GLOW_COLORS = { gold = true, accent = true, class = true, white = true, custom = true }
+MB.GLOW_COLORS = { "gold", "accent", "class", "white", "custom" }
+local MARKER_COLORS = { red = true, gold = true, accent = true, class = true, white = true, custom = true }
+MB.MARKER_COLORS = { "red", "gold", "accent", "class", "white", "custom" }
 
--- Custom's colour, read from `glowHex` only when that changes: a paint
+-- Each Custom's colour, read from its key only when that changes: a paint
 -- builds no string. `hex` false until the first read.
-local GLOW_CUSTOM = { hex = false, r = 1, g = 1, b = 1 }
+local CUSTOM = { glowHex = { hex = false, r = 1, g = 1, b = 1 }, markerHex = { hex = false, r = 1, g = 1, b = 1 } }
 
--- r, g, b of the saved Custom colour, or nil where none is saved.
-local function GlowCustom(prefs)
-  local h = (prefs or Settings()).glowHex
-  local c = GLOW_CUSTOM
+-- r, g, b of the colour saved under `key`, or nil where none is.
+local function CustomRGB(key, prefs)
+  local h = (prefs or Settings())[key]
+  local c = CUSTOM[key]
   if h ~= c.hex then
     c.hex = h
     c.ok = type(h) == "string" and h:match("^%x%x%x%x%x%x$") ~= nil
@@ -373,28 +416,36 @@ local function GlowCustom(prefs)
   return c.r, c.g, c.b
 end
 
-local function GlowColorMode(prefs)
-  prefs = prefs or Settings()
-  local mode = prefs.glowColor
-  if mode == "custom" and not GlowCustom(prefs) then return DEFAULTS.glowColor end
-  return GLOW_COLORS[mode] and mode or DEFAULTS.glowColor
+-- The player's class colour as the UI gives it, the one every name of the
+-- player's own wears in Postbox (ContactService: EllesmereUI's class
+-- colours, else the shared table ElvUI and the class colour addons
+-- publish, else the client's), as it is: on the map, not lifted for a
+-- window's ground. nil where nothing has one.
+local function ClassRGB()
+  local CS = ns.ContactService
+  if not (CS and type(CS.UIClassColour) == "function" and type(UnitClass) == "function") then return nil end
+  local _, token = UnitClass("player")
+  if type(token) ~= "string" or IsSecret(token) then return nil end
+  return CS.UIClassColour(token)
 end
 
--- r, g, b of a glow colour. On the map, not in a window: Postbox's gold is
--- the dark palette's in either Mode (Theme.DarkColor); the accent is the live
--- one (Theme.GetAccent), the host UI's under a host skin. Custom is the
--- colour saved for it; with none saved yet, the colour the glow wears now,
--- which is where the picker opens (the options' preview, "what each would
--- be").
-local function GlowRGB(mode)
+-- r, g, b of a colour on either list but Custom. On the map, not in a
+-- window: Postbox's gold and red are the dark palette's in either Mode
+-- (Theme.DarkColor; red is the house's error red, `negative`); the accent
+-- is the live one (Theme.GetAccent), the host UI's under a host skin. A
+-- class colour nothing has reads as `fallback`.
+local function ListRGB(mode, fallback)
   local T = ns.Theme
-  if mode == "custom" then
-    local r, g, b = GlowCustom()
+  if mode == "class" then
+    local r, g, b = ClassRGB()
     if r then return r, g, b end
-    mode = GlowColorMode()
+    mode = fallback
   end
   if mode == "gold" then
     local r, g, b = T.DarkColor("accent")
+    return r, g, b
+  elseif mode == "red" then
+    local r, g, b = T.DarkColor("negative")
     return r, g, b
   elseif mode == "accent" then
     local r, g, b = T.GetAccent()
@@ -402,7 +453,45 @@ local function GlowRGB(mode)
   end
   return 1, 1, 1
 end
+
+local function GlowColorMode(prefs)
+  prefs = prefs or Settings()
+  local mode = prefs.glowColor
+  if mode == "custom" and not CustomRGB("glowHex", prefs) then return DEFAULTS.glowColor end
+  return GLOW_COLORS[mode] and mode or DEFAULTS.glowColor
+end
+
+local function MarkerColorMode(prefs)
+  prefs = prefs or Settings()
+  local mode = prefs.markerColor
+  if mode == "custom" and not CustomRGB("markerHex", prefs) then return DEFAULTS.markerColor end
+  return MARKER_COLORS[mode] and mode or DEFAULTS.markerColor
+end
+
+-- r, g, b of a glow colour. Custom is the colour saved for it; with none
+-- saved yet, the colour the glow wears now, which is where the picker opens
+-- (the options' preview, "what each would be").
+local function GlowRGB(mode)
+  if mode == "custom" then
+    local r, g, b = CustomRGB("glowHex")
+    if r then return r, g, b end
+    mode = GlowColorMode()
+  end
+  return ListRGB(mode, DEFAULTS.glowColor)
+end
 MB.GlowRGB = GlowRGB
+
+-- r, g, b of a marker colour, by the same rule; nil is the one chosen.
+local function MarkerRGB(mode)
+  if mode == nil then mode = MarkerColorMode() end
+  if mode == "custom" then
+    local r, g, b = CustomRGB("markerHex")
+    if r then return r, g, b end
+    mode = MarkerColorMode()
+  end
+  return ListRGB(mode, DEFAULTS.markerColor)
+end
+MB.MarkerRGB = MarkerRGB
 
 -- Mail Memory's own switch: off, nothing it recorded is offered anywhere.
 local function MemoryOn()
@@ -526,24 +615,26 @@ local function Glowing(prefs)
   return prefs.glow == true and (view.lit or view.alert) and not view.alone
 end
 
--- The alert's mark, the marker: a small flat shape in the warning tone at
--- the icon's corner (Corner; top right unless chosen, and never the
--- bottom right, which is the count's). The Dot, the default, is the Mail
--- tab's dot (MailboxUI, UpdateCollectTabText), which wears the warning tone
--- too when mail needs attention: round, flat, one colour at full strength,
--- nothing drawn inside it. The others are as plain: a Ring (a hollow
--- circle), a Square, a Bar (short and flat) and an Exclamation ("!"). Each
--- says why the icon is warm; the tooltip says whose and when. On the map,
--- not on a window's paper, its tone is the dark palette's in either Mode
--- (Theme.DarkColor).
+-- The alert's mark, the marker: a small flat shape at the icon's corner or
+-- at the middle of one of its sides (Anchor; the top right unless chosen),
+-- moved from there by Offset X and Offset Y, its fill in Color (MarkerRGB;
+-- red unless chosen, since it warns that mail is about to be lost). The
+-- Dot, the default, is shaped as the Mail tab's dot (MailboxUI,
+-- UpdateCollectTabText): round, flat, one colour at full strength, nothing
+-- drawn inside it. The others are as plain: a Ring (a hollow circle), a
+-- Square, a Bar (short and flat), an Exclamation ("!") and a Triangle,
+-- which turns to fit its anchor. Each says why the icon is warm; the
+-- tooltip says whose and when.
 --
 -- Every shape is a fill over a dark edge a screen pixel wider all round
--- (black at 0.9), the edge that holds it over snow and over a cave alike,
--- and every one is sized in whole screen pixels from one number, `d`: a
--- quarter of the icon, rounded, and never under 4, the least that still
--- reads as a round dot on a 16 px icon. The fill's corner is on the icon's
--- corner and the edge a pixel past it; both are snapped to the pixel grid,
--- so each is crisp at every icon size and UI scale.
+-- (black at 0.9, whatever the fill's colour), the edge that holds it over
+-- snow and over a cave alike, and every one is sized in whole screen pixels
+-- from one number, `d`: a quarter of the icon, rounded, and never under 4,
+-- the least that still reads as a round dot on a 16 px icon. At its anchor
+-- the fill is flush with the icon's edges -- in the corner, or centred
+-- along the side -- and the edge a pixel past them; both are snapped to the
+-- pixel grid, so each is crisp at every icon size and UI scale, and the
+-- offset moves them by whole screen pixels.
 --
 --   Dot          a disc d across, from Media/minimap-dot.tga, which holds
 --                one for every diameter from 4 to 21 screen pixels (a disc
@@ -562,12 +653,29 @@ end
 --   Exclamation  "!", 1.3 d tall (at least 5): a stem and a square point
 --                a fifth of that wide (at least 1), an eighth of it apart
 --                (at least 1), each with its own edge, which meet in a gap
---                of one pixel.
+--                of one pixel. At a side the "!" as a whole is centred on
+--                it; at the bottom its point's edge is the one a pixel past.
+--   Triangle     from Media/minimap-triangle.tga, drawn the same way for
+--                the same sizes, in two forms by its anchor:
+--                  in a corner, a right triangle that fills the corner: its
+--                  right angle in the corner, its legs 1.4 d (rounded, at
+--                  least 5) along the icon's two edges, its long side
+--                  facing in;
+--                  at a side, a triangle pointing out from the icon: its
+--                  base 1.5 d (rounded, at least 5) lying along that edge,
+--                  its height three quarters of the base (rounded, at
+--                  least 3). It stands outside the icon, its base flush
+--                  with the edge, and its dark edge a pixel past the base,
+--                  into the icon.
+--                One drawing of each, turned by its texture coordinates
+--                (Tri.Coords): mirrored for the other corners and for the
+--                bottom, a quarter turn for the left and the right.
 --
 -- Square, Bar and Exclamation are rectangles of the white tile, so they are
 -- crisp at any size; no art is drawn for them.
 local DOT_FILE = MEDIA .. "minimap-dot.tga"
 local RING_FILE = MEDIA .. "minimap-ring.tga"
+local TRI_FILE = MEDIA .. "minimap-triangle.tga"
 local TILE_FILE = MEDIA .. "white8x8.tga"
 local DOT_MIN, DOT_CELL_MAX = 4, 21
 local DOT_EDGE_ALPHA = 0.9
@@ -591,6 +699,65 @@ local function RingCoords(tex, d, edge)
   tex:SetTexCoord((x0 + 1) / 1024, (x0 + 1 + 2 * side) / 1024, 1 / 64, (1 + 2 * side) / 64)
 end
 
+-- The Triangle: its two forms' sizes from `d`, and where each size's cells
+-- are on its file (1024 x 256), worked out once here as the generator lays
+-- them out: four bands of 64 rows -- the corner triangles, their edges, the
+-- side triangles, their edges -- each a row of cells, d = 4 .. 21 from the
+-- left, each one transparent texel and then its shape at 2 texels a pixel,
+-- one texel down. The corner form is drawn in the top right corner, the
+-- side form pointing up.
+local Tri = { W = 1024, H = 256, BAND = 64, x = { {}, {}, {}, {} } }
+do
+  local function Corner(d) return math.max(5, math.floor(d * 1.4 + 0.5)) end
+  local function Side(d)
+    local base = math.max(5, math.floor(d * 1.5 + 0.5))
+    return base, math.max(3, math.floor(base * 0.75 + 0.5))
+  end
+  Tri.Corner, Tri.Side = Corner, Side
+  local x = Tri.x
+  local at1, at2, at3, at4 = 0, 0, 0, 0
+  for d = DOT_MIN, DOT_CELL_MAX do
+    local legs, base = Corner(d), (Side(d))
+    x[1][d], x[2][d], x[3][d], x[4][d] = at1, at2, at3, at4
+    at1, at2 = at1 + 2 * legs + 1, at2 + 2 * (legs + 2) + 1
+    at3, at4 = at3 + 2 * base + 1, at4 + 2 * (base + 2) + 1
+  end
+end
+
+-- The cell for `d` (past 21 the 21, drawn larger), its edge's if `edge`,
+-- turned to face `corner`: the corner form mirrored from the top right
+-- across, down or both; the side form as drawn at the top, mirrored down
+-- at the bottom, a quarter turn clockwise at the right and back at the
+-- left. A whole cell turned or mirrored is its texels moved whole, so each
+-- screen pixel still lands in its own 2 x 2 block.
+function Tri.Coords(tex, d, edge, corner)
+  if d > DOT_CELL_MAX then d = DOT_CELL_MAX end
+  local ax, ay = ANCHOR_X[corner], ANCHOR_Y[corner]
+  local band, w, h
+  if ax ~= 0 and ay ~= 0 then
+    band, w = 1, Tri.Corner(d)
+    h = w
+  else
+    band, w, h = 3, Tri.Side(d)
+  end
+  if edge then band, w, h = band + 1, w + 2, h + 2 end
+  local x0, y0 = Tri.x[band][d], (band - 1) * Tri.BAND
+  local l, r = (x0 + 1) / Tri.W, (x0 + 1 + 2 * w) / Tri.W
+  local t, b = (y0 + 1) / Tri.H, (y0 + 1 + 2 * h) / Tri.H
+  -- Corner by corner: top left, bottom left, top right, bottom right.
+  if ay == 0 then
+    if ax > 0 then
+      tex:SetTexCoord(l, b, r, b, l, t, r, t)
+    else
+      tex:SetTexCoord(r, t, l, t, r, b, l, b)
+    end
+    return
+  end
+  if ax < 0 then l, r = r, l end
+  if ay < 0 then t, b = b, t end
+  tex:SetTexCoord(l, t, l, b, r, t, r, b)
+end
+
 local function NewDisc(holder, sublevel)
   local tex = holder:CreateTexture(nil, "OVERLAY", nil, sublevel)
   tex:SetTexture(DOT_FILE)
@@ -599,13 +766,14 @@ local function NewDisc(holder, sublevel)
   return tex
 end
 
--- Each corner's side of the icon, for the edge's pixel past it.
-local CORNER_X = { TOPRIGHT = 1, TOPLEFT = -1, BOTTOMLEFT = -1 }
-local CORNER_Y = { TOPRIGHT = 1, TOPLEFT = 1, BOTTOMLEFT = -1 }
+-- The side of a spot facing away from it: a triangle at the middle of a
+-- side stands on that side from outside.
+local OPPOSITE = { TOP = "BOTTOM", BOTTOM = "TOP", LEFT = "RIGHT", RIGHT = "LEFT" }
 
--- The shape's fill, w x h pixels, from its `d`; for the Exclamation also
--- its stem's height and the gap under it.
-local function MarkGeometry(shape, d)
+-- The shape's fill, w x h pixels, from its `d` (and, for the Triangle, its
+-- anchor: the side form turned a quarter at the left and the right); for
+-- the Exclamation also its stem's height and the gap under it.
+local function MarkGeometry(shape, d, corner)
   if shape == "square" then
     local s = math.max(3, math.floor(d * 0.9 + 0.5))
     return s, s
@@ -617,34 +785,60 @@ local function MarkGeometry(shape, d)
     local w = math.max(1, math.floor(h / 5 + 0.5))
     local gap = math.max(1, math.floor(h / 8 + 0.5))
     return w, h, h - gap - w, gap
+  elseif shape == "triangle" then
+    local ax, ay = ANCHOR_X[corner] or 1, ANCHOR_Y[corner] or 1
+    if ax ~= 0 and ay ~= 0 then
+      local legs = Tri.Corner(d)
+      return legs, legs
+    end
+    local base, tall = Tri.Side(d)
+    if ay == 0 then return tall, base end
+    return base, tall
   end
   return d, d
 end
 
 -- The marker on its own (Show marker on Always, the icon down) is the
--- same marker, the same size, on the same corner, in the same place on
--- screen: only the icon's art is hidden around it (ApplyLook,
+-- same marker, the same size, at the same anchor and offset, in the same
+-- place on screen: only the icon's art is hidden around it (ApplyLook,
 -- ApplyEuiSkin), and the button keeps the icon's whole area for the hover,
 -- the tooltip and the clicks. It reads as the small mark it is, not as an
 -- icon of its own.
 --
--- Larger when alone (MarkerLarge) draws it, in its shape, centred in the
--- icon's spot instead, its `d` half the icon's side in whole screen pixels
--- and never under 6 -- 8 at 16 px, 10 at the default 20, 20 at 40 -- with
--- its pixel of dark edge: a blip the size of the map's own markers, still
--- smaller than the icon it stands in for (the lone dot's only look until
+-- Larger when alone (MarkerLarge) draws it, in its shape (the Triangle in
+-- the form its anchor gives it), centred in the icon's spot instead, with
+-- no offset, its `d` half the icon's side in whole screen pixels and never
+-- under 6 -- 8 at 16 px, 10 at the default 20, 20 at 40 -- with its pixel
+-- of dark edge: a blip the size of the map's own markers, still smaller
+-- than the icon it stands in for (the lone dot's only look until
 -- 2026-10-16). Past 21 the strips' largest cells are drawn up to it.
 local DOT_ALONE_MIN = 6
 
+-- How far the marker reaches past the icon's top (positive) or bottom
+-- (negative), in the units of a frame whose screen pixel is `px`, the
+-- offset aside: only the Triangle at the top or the bottom does, by its
+-- height and its edge. The options' drawing centres a figure with its
+-- marker by it.
+function MB.MarkSpill(shape, corner, size, px, large)
+  if shape ~= "triangle" or large or ANCHOR_X[corner] ~= 0 then return 0 end
+  local ay = ANCHOR_Y[corner] or 0
+  if ay == 0 or not px or px <= 0 then return 0 end
+  local d = math.max(DOT_MIN, math.floor(size / px / 4 + 0.5))
+  local _, tall = Tri.Side(d)
+  return ay * (tall + 1) * px
+end
+
 -- holder: the frame the marker is drawn on; anchor: the icon texture; size:
--- the icon's side; shape and corner: Shape and Corner (nil: the
--- Dot, top right); large: the marker on its own, larger (centred, its `d`
--- half the icon). Built once (the Exclamation's point, two more regions,
--- the first time it is chosen); sized again only when the icon's size, its
--- anchor, the screen pixel (UI scale, the map's scale), its shape, its
--- corner or its largeness has changed. Under every shape but the
+-- the icon's side; shape and corner: Shape and Anchor (nil: the Dot, top
+-- right); large: the marker on its own, larger (centred, its `d` half the
+-- icon); ox, oy: Offset X and Offset Y, in screen pixels (nil: none; never
+-- for the larger one); color: a Color choice (nil: the one chosen). Built
+-- once (the Exclamation's point, two more regions, the first time it is
+-- chosen); sized and placed again only when the icon's size, its anchor,
+-- the screen pixel (UI scale, the map's scale), its shape, its spot, its
+-- largeness or its offset has changed. Under every shape but the
 -- Exclamation it is two regions, __pbMark over __pbMarkEdge.
-local function PaintMark(holder, anchor, size, on, shape, corner, large)
+local function PaintMark(holder, anchor, size, on, shape, corner, large, ox, oy, color)
   local dot = holder.__pbMark
   local point, pointEdge = holder.__pbMark2, holder.__pbMarkEdge2
   if not on then
@@ -660,7 +854,12 @@ local function PaintMark(holder, anchor, size, on, shape, corner, large)
   end
   large = large and true or false
   if not MARKER_SHAPES[shape] then shape = "dot" end
-  if not MARKER_CORNERS[corner] then corner = "TOPRIGHT" end
+  if not ANCHOR_X[corner] then corner = "TOPRIGHT" end
+  if large then
+    ox, oy = 0, 0
+  else
+    ox, oy = MarkerOffset(ox), MarkerOffset(oy)
+  end
   local edge = holder.__pbMarkEdge
   if not dot then
     edge = NewDisc(holder, 5)
@@ -682,7 +881,8 @@ local function PaintMark(holder, anchor, size, on, shape, corner, large)
   end
   if dot.__pbShape ~= shape then
     dot.__pbShape = shape
-    local file = (shape == "dot" and DOT_FILE) or (shape == "ring" and RING_FILE) or TILE_FILE
+    local file = (shape == "dot" and DOT_FILE) or (shape == "ring" and RING_FILE)
+      or (shape == "triangle" and TRI_FILE) or TILE_FILE
     dot:SetTexture(file)
     edge:SetTexture(file)
     if file == TILE_FILE then
@@ -695,15 +895,16 @@ local function PaintMark(holder, anchor, size, on, shape, corner, large)
   local T = ns.Theme
   local px = T and T.OnePixel and T.OnePixel(holder) or 1
   if dot.__pbSize ~= size or dot.__pbAnchor ~= anchor or dot.__pbPx ~= px or dot.__pbCorner ~= corner
-    or dot.__pbLarge ~= large then
+    or dot.__pbLarge ~= large or dot.__pbX ~= ox or dot.__pbY ~= oy then
     dot.__pbSize, dot.__pbAnchor, dot.__pbPx, dot.__pbCorner, dot.__pbLarge = size, anchor, px, corner, large
+    dot.__pbX, dot.__pbY = ox, oy
     local d
     if large then
       d = math.max(DOT_ALONE_MIN, math.floor(size / px / 2 + 0.5))
     else
       d = math.max(DOT_MIN, math.floor(size / px / 4 + 0.5))
     end
-    local w, h, stem, gap = MarkGeometry(shape, d)
+    local w, h, stem, gap = MarkGeometry(shape, d, corner)
     if bang then h = stem end
     dot:SetSize(w * px, h * px)
     edge:SetSize((w + 2) * px, (h + 2) * px)
@@ -713,8 +914,13 @@ local function PaintMark(holder, anchor, size, on, shape, corner, large)
     elseif shape == "ring" then
       RingCoords(dot, d, false)
       RingCoords(edge, d, true)
+    elseif shape == "triangle" then
+      Tri.Coords(dot, d, false, corner)
+      Tri.Coords(edge, d, true, corner)
     end
     edge:ClearAllPoints()
+    local ax, ay = ANCHOR_X[corner], ANCHOR_Y[corner]
+    local x, y = ox * px, oy * px
     if bang then
       -- The stem's edge stands where the whole "!" puts it; the point's edge
       -- a gap under it, the two edges meeting where the gap is one pixel.
@@ -722,26 +928,36 @@ local function PaintMark(holder, anchor, size, on, shape, corner, large)
       pointEdge:SetSize((w + 2) * px, (w + 2) * px)
       pointEdge:ClearAllPoints()
       pointEdge:SetPoint("TOP", edge, "BOTTOM", 0, (2 - gap) * px)
+      local half = math.floor((stem + gap + w + 2) / 2) * px
       if large then
         -- Centred as a whole: the stem's edge top half the "!" above the middle.
-        edge:SetPoint("TOP", anchor, "CENTER", 0, math.floor((stem + gap + w + 2) / 2) * px)
-      elseif corner == "BOTTOMLEFT" then
-        edge:SetPoint("BOTTOMLEFT", anchor, "BOTTOMLEFT", -px, (w + gap - 1) * px)
+        edge:SetPoint("TOP", anchor, "CENTER", 0, half)
+      elseif ay < 0 then
+        -- At the bottom: the point's edge the one a pixel past the icon.
+        edge:SetPoint(corner, anchor, corner, ax * px + x, (w + gap - 1) * px + y)
+      elseif ay == 0 then
+        -- At a side: the "!" as a whole centred on it.
+        local top = (ax < 0) and "TOPLEFT" or "TOPRIGHT"
+        edge:SetPoint(top, anchor, corner, ax * px + x, half + y)
       else
-        edge:SetPoint(corner, anchor, corner, CORNER_X[corner] * px, px)
+        edge:SetPoint(corner, anchor, corner, ax * px + x, px + y)
       end
     elseif large then
       edge:SetPoint("CENTER", anchor, "CENTER")
+    elseif shape == "triangle" and (ax == 0 or ay == 0) then
+      -- At a side, outside the icon: its base on the edge, and its dark
+      -- edge a pixel past the base, into the icon.
+      edge:SetPoint(OPPOSITE[corner], anchor, corner, -ax * px + x, -ay * px + y)
     else
-      edge:SetPoint(corner, anchor, corner, CORNER_X[corner] * px, CORNER_Y[corner] * px)
+      edge:SetPoint(corner, anchor, corner, ax * px + x, ay * px + y)
     end
   end
-  local wr, wg, wb = T.DarkColor("warning")
-  dot:SetVertexColor(wr, wg, wb, 1)
+  local r, g, b = MarkerRGB(color)
+  dot:SetVertexColor(r, g, b, 1)
   dot:Show()
   edge:Show()
   if bang then
-    point:SetVertexColor(wr, wg, wb, 1)
+    point:SetVertexColor(r, g, b, 1)
     point:Show()
     pointEdge:Show()
   elseif point then
@@ -1098,7 +1314,7 @@ local function ApplyEuiSkin()
   end
   -- At rest (shown with nothing new), as Postbox's own button rests. For
   -- the marker on its own the art is drawn at zero alpha: the button stays
-  -- where they placed it, the marker on our overlay keeps its corner of
+  -- where they placed it, the marker on our overlay keeps its place on
   -- their icon, and the overlay keeps the hover and the clicks. Their own
   -- chrome around it (the dark box behind their row's buttons, the Classic
   -- ring) is theirs and stays: their layout pass sets it on every pass.
@@ -1172,7 +1388,7 @@ local function ApplyEuiSkin()
   -- icon for the number to belong to.
   PaintCount(btn.__pbOverlay, icon, side, (not view.alone) and view.count or 0)
   PaintMark(btn.__pbOverlay, icon, side, view.alert, MarkerShape(prefs), MarkerCorner(prefs),
-    view.alone and MarkerLarge(prefs))
+    view.alone and MarkerLarge(prefs), prefs.markerX, prefs.markerY, MarkerColorMode(prefs))
 
   euiSkin.applied = true
   return true
@@ -1414,7 +1630,7 @@ local function ApplyLook(button)
   local resting = Resting()
   icon:SetDesaturated(resting)
   icon:SetAlpha(resting and REST_ALPHA or 1)
-  -- The marker on its own: no icon art, only the marker on its corner; the
+  -- The marker on its own: no icon art, only the marker in its place; the
   -- button keeps its size, so the hover and the clicks are the icon's own.
   icon:SetShown(not view.alone)
 
@@ -1445,7 +1661,7 @@ local function ApplyLook(button)
   -- Nor a count: there is no icon for the number to belong to.
   PaintCount(button.art, icon, size, (not view.alone) and view.count or 0)
   PaintMark(button.art, icon, size, view.alert, MarkerShape(prefs), MarkerCorner(prefs),
-    view.alone and MarkerLarge(prefs))
+    view.alone and MarkerLarge(prefs), prefs.markerX, prefs.markerY, MarkerColorMode(prefs))
 
   Reposition(button)
 end
@@ -2080,14 +2296,15 @@ MB.Refresh = Refresh
 -- visibility depends on, captured at the moment the report is built.
 function MB.Diagnose()
   return string.format(
-    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s wants %s | count %s %d | expiring %s %s | marker %s %s%s | glow %s",
+    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s wants %s | count %s %d | expiring %s %s | marker %s %s %s %+d,%+d%s | glow %s",
     tostring(runtimeActive), tostring(suppressing),
     tostring((EuiSkinCandidate())), tostring(euiSkin.applied),
     euiSkin.tries, tostring(euiSkin.fallback),
     (MB._button and MB._button:IsShown()) and "shown" or "hidden/none",
     tostring((MailWaiting())), ShowMode(), tostring(view.shown and not view.alone), CountMode(), view.count,
     ExpiryMode(), (view.alone and "DOT ALONE") or (view.alert and "DOT ON ICON") or "quiet",
-    MarkerShape(), MarkerCorner(), MarkerLarge() and " large" or "", GlowColorMode())
+    MarkerShape(), MarkerColorMode(), MarkerCorner(), MarkerOffset(Settings().markerX), MarkerOffset(Settings().markerY),
+    MarkerLarge() and " large" or "", GlowColorMode())
 end
 
 -- Called by Skin_EllesmereUI.RefreshAccents so an accent retune repaints a
@@ -2164,8 +2381,9 @@ function MB.SetExpiry(mode)
   Refresh()
 end
 
--- The marker's shape and corner (MB.MARKER_SHAPES, MB.MARKER_CORNERS;
--- DEFAULTS.marker, DEFAULTS.markerCorner).
+-- The marker's shape, anchor and colour (MB.MARKER_SHAPES,
+-- MB.MARKER_CORNERS, MB.MARKER_COLORS; DEFAULTS.marker, .markerCorner,
+-- .markerColor).
 function MB.GetMarker() return MarkerShape() end
 
 function MB.SetMarker(shape)
@@ -2177,8 +2395,25 @@ end
 function MB.GetMarkerCorner() return MarkerCorner() end
 
 function MB.SetMarkerCorner(corner)
-  if not MARKER_CORNERS[corner] then return end
+  if not ANCHOR_X[corner] then return end
   Settings().markerCorner = corner
+  Refresh()
+end
+
+-- Offset X and Offset Y, whole screen pixels from -20 to 20 (DEFAULTS
+-- .markerX, .markerY: 0). A number outside is held to the range.
+function MB.GetMarkerX() return MarkerOffset(Settings().markerX) end
+function MB.GetMarkerY() return MarkerOffset(Settings().markerY) end
+
+function MB.SetMarkerX(v)
+  if tonumber(v) == nil then return end
+  Settings().markerX = MarkerOffset(v)
+  Refresh()
+end
+
+function MB.SetMarkerY(v)
+  if tonumber(v) == nil then return end
+  Settings().markerY = MarkerOffset(v)
   Refresh()
 end
 
@@ -2191,8 +2426,9 @@ function MB.SetMarkerLarge(on)
 end
 
 -- What the glow, its pulse and the arrival halo wear (MB.GLOW_COLORS;
--- DEFAULTS.glowColor). Custom is chosen through the picker
--- (MB.PickGlowColor), which saves its colour with it.
+-- DEFAULTS.glowColor), and the marker's colour (MB.MARKER_COLORS;
+-- DEFAULTS.markerColor). Each Custom is chosen through the picker
+-- (MB.PickGlowColor, MB.PickMarkerColor), which saves its colour with it.
 function MB.GetGlowColor() return GlowColorMode() end
 
 function MB.SetGlowColor(mode)
@@ -2201,33 +2437,51 @@ function MB.SetGlowColor(mode)
   Refresh()
 end
 
--- The Custom colour saved, as r, g, b, or nil (the options' swatch).
-function MB.GetGlowCustom() return GlowCustom() end
+function MB.GetMarkerColor() return MarkerColorMode() end
+
+function MB.SetMarkerColor(mode)
+  if not MARKER_COLORS[mode] or mode == "custom" then return end
+  Settings().markerColor = mode
+  Refresh()
+end
+
+-- Each Custom colour saved, as r, g, b, or nil (the options' swatches).
+function MB.GetGlowCustom() return CustomRGB("glowHex") end
+function MB.GetMarkerCustom() return CustomRGB("markerHex") end
 
 -- Custom: the game's colour picker (Theme.PickColor), open on the colour
--- the glow wears now. Each colour picked is saved as Custom at once and
--- worn live; Cancel puts back the choice and the colour there were before.
--- `after` runs after each, for the options to repaint. Answers whether the
--- picker opened.
-function MB.PickGlowColor(after)
+-- worn now (`r`, `g`, `b`). Each colour picked is saved under `hexKey` and
+-- the choice (`modeKey`) is Custom at once, worn live; Cancel puts back
+-- the choice and the colour there were before. `after` runs after each,
+-- for the options to repaint. Answers whether the picker opened.
+local function PickColorFor(modeKey, hexKey, r, g, b, after)
   local T = ns.Theme
   if not (T and type(T.PickColor) == "function") then return false end
   local prefs = Settings()
-  local wasMode, wasHex = prefs.glowColor, prefs.glowHex
-  local r, g, b = GlowRGB(GlowColorMode(prefs))
+  local wasMode, wasHex = prefs[modeKey], prefs[hexKey]
   return T.PickColor(r, g, b, function(pr, pg, pb)
     local p = Settings()
-    p.glowHex = string.format("%02x%02x%02x", math.floor(math.max(0, math.min(1, pr)) * 255 + 0.5),
+    p[hexKey] = string.format("%02x%02x%02x", math.floor(math.max(0, math.min(1, pr)) * 255 + 0.5),
       math.floor(math.max(0, math.min(1, pg)) * 255 + 0.5), math.floor(math.max(0, math.min(1, pb)) * 255 + 0.5))
-    p.glowColor = "custom"
+    p[modeKey] = "custom"
     Refresh()
     if after then after() end
   end, function()
     local p = Settings()
-    p.glowColor, p.glowHex = wasMode, wasHex
+    p[modeKey], p[hexKey] = wasMode, wasHex
     Refresh()
     if after then after() end
   end)
+end
+
+function MB.PickGlowColor(after)
+  local r, g, b = GlowRGB(GlowColorMode())
+  return PickColorFor("glowColor", "glowHex", r, g, b, after)
+end
+
+function MB.PickMarkerColor(after)
+  local r, g, b = MarkerRGB(MarkerColorMode())
+  return PickColorFor("markerColor", "markerHex", r, g, b, after)
 end
 
 -- The count as the map draws it, for the options' preview's sample number.

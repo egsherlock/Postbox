@@ -916,7 +916,7 @@ do
       local h = (skin and skin.IsPostboxStyle and not skin.IsCreativeStyle) and MINI_H or SWATCH_H
       return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + h + 10
     end
-    if key == "minimap" then return CTX_TOP + 4 + Ctx.MinimapStage() + Ctx.MinimapCaptionRoom() + 10 end
+    if key == "minimap" then return CTX_TOP + 4 + Ctx.MinimapHeight() + 10 end
     return 0
   end
 
@@ -1879,7 +1879,9 @@ do
   -- GetDrawnSize), captioned Actual size. Both WEAR the live settings: icon
   -- style, glow in Glow color (with its pulse), shadow, a sample number
   -- while Count on icon is on, and while Show marker is not Off the marker,
-  -- in its shape, on its corner. Faded, and still, while the icon is off.
+  -- in its shape and colour, at its anchor and offset (the Offset rows,
+  -- which have no answers of their own, are seen here as they move). Faded,
+  -- and still, while the icon is off.
   --
   -- A setting with choices answers with its choices while it is pointed at
   -- (Ctx.MinimapMode; its text then stands under the drawing, Layout), each
@@ -1887,16 +1889,21 @@ do
   -- under their names, the current one marked as the arrange inspector marks
   -- a chosen segment, its words bright and the accent under them: Show
   -- marker (the plain icon, the icon with the marker, the marker alone as
-  -- Always draws it while the icon is down), Shape (its five shapes, in two
-  -- rows), Corner, Larger when alone, and Glow color (its four colours, two
-  -- rows of two; Custom's the colour picked, or, with none yet, the colour
-  -- the picker opens on). When to show answers with a grid: a
-  -- column for each choice, a strip of ground for each situation that tells
-  -- them apart -- no mail anywhere, mail on another character, new mail
-  -- here -- and in each cell what the map shows then: nothing, the icon
-  -- resting in gray, or the icon lit. Every marker is the map's own
+  -- Always draws it while the icon is down), Shape (its six shapes, two
+  -- rows of three), Color (its six colours on the shape chosen, two rows of
+  -- three), Larger when alone, and Glow color (its five colours, three over
+  -- two; Custom's, in either, the colour picked, or, with none yet, the
+  -- colour the picker opens on). Anchor answers with the icon at G.ANCHOR
+  -- in a three by three grid, the marker at each of its eight spots and the
+  -- middle left empty, each row's names under it. When to show answers with
+  -- a grid: a column for each choice, a strip of ground for each situation
+  -- that tells them apart -- no mail anywhere, mail on another character,
+  -- new mail here -- and in each cell what the map shows then: nothing, the
+  -- icon resting in gray, or the icon lit. Every marker is the map's own
   -- (MinimapButton.PaintMark) and so is the count (PaintCount): the same
-  -- shapes and sizes, in whole screen pixels.
+  -- shapes and sizes, in whole screen pixels. A figure whose marker reaches
+  -- past its top or its foot (a Triangle at the top or the bottom) stands
+  -- with the two centred as one (MinimapButton.MarkSpill).
   --
   -- Built once: a paint sets what shows, its size and its colours, and
   -- makes nothing. The pulses play only while the drawing is shown
@@ -1904,8 +1911,8 @@ do
   ---------------------------------------------------------
   -- The drawing's sizes: the icon as set (and its copy at its own size
   -- beside it, `at` as a share of the ground's width); the choices; the
-  -- grid's icons.
-  local G = { BIG = 48, CHOICE = 36, CELL = 20, AT_BIG = 0.37, AT_ACTUAL = 0.81,
+  -- grid's icons; Anchor's icons and their strips.
+  local G = { BIG = 48, CHOICE = 36, CELL = 20, AT_BIG = 0.37, AT_ACTUAL = 0.81, ANCHOR = 24, ANCHOR_STRIP = 42,
     -- The ground to the captions; the chosen caption's underline, and its
     -- gap.
     CAP_GAP = 5, MARK_GAP = 2, MARK_H = 2,
@@ -1915,25 +1922,27 @@ do
   -- The number the icon wears here while Count on icon is on.
   local MM = { COUNT = { me = 3, all = 12 } }
   -- Each answer's choices, in MinimapButton's order, and their names.
+  -- Anchor's in reading order, as its grid stands, the middle left out.
   MM.IDS = {
     show = { "new", "any", "always" },
     expiry = { "off", "icon", "always" },
-    marker = { "dot", "ring", "square", "bar", "exclamation" },
-    corner = { "TOPRIGHT", "TOPLEFT", "BOTTOMLEFT" },
-    glow = { "gold", "accent", "white", "custom" },
+    marker = { "dot", "ring", "square", "bar", "exclamation", "triangle" },
+    corner = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" },
+    color = { "red", "gold", "accent", "class", "white", "custom" },
+    glow = { "gold", "accent", "class", "white", "custom" },
     large = { "off", "on" },
   }
-  -- Choices drawn in two rows, and how many stand in the first: Shape's
-  -- five, three then two between them; Glow color's four, two and two.
-  MM.SPLIT = { marker = 3, glow = 2 }
   MM.CAPS = {
     show = { "OPT_MINIMAP_SHOW_NEW", "OPT_MINIMAP_SHOW_ANY", "OPT_MINIMAP_SHOW_ALWAYS" },
     expiry = { "OPT_MINIMAP_EXPIRY_OFF", "OPT_MINIMAP_EXPIRY_ICON", "OPT_MINIMAP_EXPIRY_ALWAYS" },
     marker = { "OPT_MINIMAP_MARKER_DOT", "OPT_MINIMAP_MARKER_RING", "OPT_MINIMAP_MARKER_SQUARE",
-      "OPT_MINIMAP_MARKER_BAR", "OPT_MINIMAP_MARKER_EXCLAMATION" },
-    corner = { "OPT_MINIMAP_CORNER_TR", "OPT_MINIMAP_CORNER_TL", "OPT_MINIMAP_CORNER_BL" },
-    glow = { "OPT_MINIMAP_GLOWCOLOR_GOLD", "OPT_MINIMAP_GLOWCOLOR_ACCENT", "OPT_MINIMAP_GLOWCOLOR_WHITE",
-      "OPT_MINIMAP_GLOWCOLOR_CUSTOM" },
+      "OPT_MINIMAP_MARKER_BAR", "OPT_MINIMAP_MARKER_EXCLAMATION", "OPT_MINIMAP_MARKER_TRIANGLE" },
+    corner = { "OPT_MINIMAP_ANCHOR_TL", "OPT_MINIMAP_ANCHOR_T", "OPT_MINIMAP_ANCHOR_TR", "OPT_MINIMAP_ANCHOR_L",
+      "OPT_MINIMAP_ANCHOR_R", "OPT_MINIMAP_ANCHOR_BL", "OPT_MINIMAP_ANCHOR_B", "OPT_MINIMAP_ANCHOR_BR" },
+    color = { "OPT_MINIMAP_MARKERCOLOR_RED", "OPT_MINIMAP_GLOWCOLOR_GOLD", "OPT_MINIMAP_GLOWCOLOR_ACCENT",
+      "OPT_COLOR_CLASS", "OPT_MINIMAP_GLOWCOLOR_WHITE", "OPT_MINIMAP_GLOWCOLOR_CUSTOM" },
+    glow = { "OPT_MINIMAP_GLOWCOLOR_GOLD", "OPT_MINIMAP_GLOWCOLOR_ACCENT", "OPT_COLOR_CLASS",
+      "OPT_MINIMAP_GLOWCOLOR_WHITE", "OPT_MINIMAP_GLOWCOLOR_CUSTOM" },
     large = { "OPT_MINIMAP_LARGE_OFF", "OPT_MINIMAP_LARGE_ON" },
     set = { "OPT_MINIMAP_PREVIEW_ACTUAL" },
   }
@@ -1941,7 +1950,15 @@ do
   MM.ROWS = { "OPT_MINIMAP_GRID_NONE", "OPT_MINIMAP_GRID_OTHER", "OPT_MINIMAP_GRID_HERE" }
   -- Each answer's current choice.
   MM.GET = { show = "GetShowWhen", expiry = "GetExpiry", marker = "GetMarker", corner = "GetMarkerCorner",
-    glow = "GetGlowColor", large = "GetMarkerLarge" }
+    color = "GetMarkerColor", glow = "GetGlowColor", large = "GetMarkerLarge" }
+  -- The answers drawn in two rows (three, or as many as are offered, over
+  -- the rest), and Custom's: offered only where the client has the colour
+  -- picker (S.mmGlowCustom), and drawn only where it is offered.
+  MM.ROWS2 = { marker = true, color = true, glow = true }
+  MM.PICKED = { color = true, glow = true }
+  -- Anchor's grid: each row's choices, by their place in MM.IDS.corner,
+  -- and the column each stands in (the middle row's two at the sides).
+  MM.GRID = { { 1, 2, 3 }, { 4, 0, 5 }, { 6, 7, 8 } }
 
   -- A caption under a figure: centred, two lines at most.
   function Ctx.Caption(parent)
@@ -1973,6 +1990,17 @@ do
   -- needs more (a situation's name on two lines).
   function Ctx.MinimapStage()
     return math.max(STAGE, GridHeight())
+  end
+
+  -- Anchor's grid: three strips, each with its names under it.
+  function Ctx.MinimapAnchorHeight()
+    return 3 * (G.ANCHOR_STRIP + Ctx.MinimapCaptionRoom()) + 2 * G.ROW_GAP
+  end
+
+  -- The drawing's height under its top gap: the ground and its captions,
+  -- or Anchor's grid, which needs more.
+  function Ctx.MinimapHeight()
+    return math.max(Ctx.MinimapStage() + Ctx.MinimapCaptionRoom(), Ctx.MinimapAnchorHeight())
   end
 
   -- The captions' height, the tallest any of them takes at its width, and
@@ -2046,22 +2074,30 @@ do
 
   -- What a figure wears, filled in place before each figure is painted: the
   -- art, the switch, glow, pulse and shadow, the glow's colour, the marker
-  -- (on the icon or not, its shape and corner, larger when alone or not)
-  -- and the count.
+  -- (on the icon or not, its shape, colour, anchor and offset, larger when
+  -- alone or not) and the count.
   local FIG = { spec = false, on = false, glowOn = false, pulseOn = false,
     shadowOn = false, gr = 1, gg = 1, gb = 1, mark = false, shape = "dot", corner = "TOPRIGHT", large = false,
-    count = 0 }
+    ox = 0, oy = 0, color = "red", count = 0 }
 
   -- `look`: "lit" (new mail: full colour, the glow), "rest" (nothing new:
-  -- gray, a step back, no glow) or "alone" (the marker on its corner, the
+  -- gray, a step back, no glow) or "alone" (the marker in its place, the
   -- icon's art hidden). The icon's own parts as MinimapButton draws them
-  -- (ApplyLook): glow 2.2 times the icon, shadow 1.8 and a unit down.
-  local function PaintFigure(fig, Icon, look, size, x)
+  -- (ApplyLook): glow 2.2 times the icon, shadow 1.8 and a unit down. `y`,
+  -- the figure's middle above the strip's (0 unless given).
+  local function PaintFigure(fig, Icon, look, size, x, y)
     local P = FIG
     local spec, icon, glow, pulse = P.spec, fig.Icon, fig.Glow, fig.Pulse
     local rest, alone = look == "rest", look == "alone"
+    local large = alone and P.large
+    -- A marker that reaches past the icon's top or foot: the two centred
+    -- as one.
+    local spill = 0
+    if (alone or P.mark) and Icon.MarkSpill then
+      spill = Icon.MarkSpill(P.shape, P.corner, size, ns.Theme.OnePixel(fig), large)
+    end
     fig:ClearAllPoints()
-    fig:SetPoint("CENTER", fig:GetParent(), "LEFT", x, 0)
+    fig:SetPoint("CENTER", fig:GetParent(), "LEFT", x, (y or 0) - spill / 2)
     fig:SetSize(size, size)
     if spec.atlas then icon:SetAtlas(spec.atlas) else icon:SetTexture(spec.texture) end
     icon:SetSize(size, size * (spec.aspect or 1))
@@ -2086,7 +2122,9 @@ do
       glow:Hide()
     end
     if Icon.PaintCount then Icon.PaintCount(fig, icon, size, (not alone) and P.count or 0) end
-    if Icon.PaintMark then Icon.PaintMark(fig, icon, size, alone or P.mark, P.shape, P.corner, alone and P.large) end
+    if Icon.PaintMark then
+      Icon.PaintMark(fig, icon, size, alone or P.mark, P.shape, P.corner, large, P.ox, P.oy, P.color)
+    end
     fig.used = true
     fig:Show()
   end
@@ -2163,10 +2201,10 @@ do
     f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
     f:SetSize(CTX_W, 4 + STAGE)
     local strips = { Strip(f), Strip(f), Strip(f) }
-    -- The captions under the ground (two rows' worth) and the grid's
-    -- situations, on the inspector's own ground and in its inks.
+    -- The captions under the ground (Anchor's eight at the most) and the
+    -- grid's situations, on the inspector's own ground and in its inks.
     local caps, labels = {}, {}
-    for i = 1, 6 do
+    for i = 1, 8 do
       local cap = Ctx.Caption(f)
       cap.Mark = f:CreateTexture(nil, "ARTWORK")
       cap.Mark:SetHeight(G.MARK_H)
@@ -2197,7 +2235,7 @@ do
       local mode = Ctx.MinimapMode()
       f.mode = mode
       local stageH, capRoom = Ctx.MinimapStage(), Ctx.MinimapCaptionRoom()
-      f:SetHeight(4 + stageH + capRoom)
+      f:SetHeight(4 + ((mode == "corner") and Ctx.MinimapAnchorHeight() or (stageH + capRoom)))
       local spec = Icon and Icon.GetIconSpec and Icon.GetIconSpec()
       for s = 1, #strips do strips[s]:SetAlpha(on and 1 or 0.4) end
       -- The words off, then what this drawing shows on; a figure or a strip
@@ -2228,6 +2266,9 @@ do
       P.shape = Icon.GetMarker and Icon.GetMarker() or "dot"
       P.corner = Icon.GetMarkerCorner and Icon.GetMarkerCorner() or "TOPRIGHT"
       P.large = Icon.GetMarkerLarge and Icon.GetMarkerLarge() and true or false
+      P.ox = Icon.GetMarkerX and Icon.GetMarkerX() or 0
+      P.oy = Icon.GetMarkerY and Icon.GetMarkerY() or 0
+      P.color = Icon.GetMarkerColor and Icon.GetMarkerColor() or "red"
       P.count = MM.COUNT[Icon.GetCount and Icon.GetCount() or "off"] or 0
       local getter = MM.GET[mode]
       local current = getter and Icon[getter] and Icon[getter]()
@@ -2277,24 +2318,50 @@ do
           PaintFigure(strip.figs[c], Icon, "alone", G.CHOICE, x)
           PaintCaption(f, caps[c], x, capY, keys[c], ids[c] == current, on)
         end
-      elseif mode == "marker" or (mode == "glow" and S.mmGlowCustom) then
-        -- Two rows: Shape's five, three then two between them; Glow
-        -- color's four, two and two. Glow color's in their colours whether
-        -- or not Glow is on: what each would be.
-        local split = MM.SPLIT[mode]
-        if mode == "marker" then P.mark = true else P.glowOn = true end
+      elseif mode == "corner" then
+        -- Anchor: the icon in a three by three grid, the marker at each
+        -- spot, the middle empty; each row's names under its strip.
+        P.mark = true
+        local top = -4
+        for r = 1, 3 do
+          local strip = strips[r]
+          PlaceStrip(f, strip, top, G.ANCHOR_STRIP)
+          local row = MM.GRID[r]
+          for c = 1, 3 do
+            local i = row[c]
+            if i > 0 then
+              local x = math.floor(MM.THIRDS[c] * CTX_W + 0.5)
+              P.corner = ids[i]
+              PaintFigure(strip.figs[c], Icon, "lit", G.ANCHOR, x)
+              PaintCaption(f, caps[i], x, top - G.ANCHOR_STRIP - G.CAP_GAP, keys[i], ids[i] == current, on)
+            end
+          end
+          top = top - G.ANCHOR_STRIP - capRoom - G.ROW_GAP
+        end
+      elseif MM.ROWS2[mode] then
+        -- Two rows: three over three (Shape, Color), three over two (Glow
+        -- color), or as many as there are with no picker to offer Custom
+        -- (two over two, three over two). Colours whether or not Glow or
+        -- the marker is on: what each would be.
+        local n = #ids
+        if MM.PICKED[mode] and not S.mmGlowCustom then n = n - 1 end
+        local split = (n == 4) and 2 or 3
+        if mode == "marker" or mode == "color" then P.mark = true else P.glowOn = true end
         local rowH = math.floor((stageH + capRoom - G.ROW_GAP) / 2) - capRoom
         for r = 1, 2 do
           local strip = strips[r]
           local top = -4 - (r - 1) * (rowH + capRoom + G.ROW_GAP)
           PlaceStrip(f, strip, top, rowH)
           local first = (r == 1) and 1 or split + 1
-          local at = (r == 1 and split == 3) and MM.THIRDS or MM.HALVES
-          for c = 1, #at do
+          local count = (r == 1) and split or (n - split)
+          local at = (count == 3) and MM.THIRDS or MM.HALVES
+          for c = 1, count do
             local i = first + c - 1
             local x = math.floor(at[c] * CTX_W + 0.5)
             if mode == "marker" then
               P.shape = ids[i]
+            elseif mode == "color" then
+              P.color = ids[i]
             elseif Icon.GlowRGB then
               P.gr, P.gg, P.gb = Icon.GlowRGB(ids[i])
             end
@@ -2304,23 +2371,14 @@ do
           end
         end
       else
-        -- Three: Show marker's, Corner's, or Glow color's where the client
-        -- has no colour picker to offer Custom with.
+        -- Three: Show marker's.
         local strip = strips[1]
         PlaceStrip(f, strip, -4, stageH)
         for c = 1, 3 do
           local x = math.floor(MM.THIRDS[c] * CTX_W + 0.5)
           local look = "lit"
-          if mode == "expiry" then
-            P.mark = c == 2
-            if c == 3 then look = "alone" end
-          elseif mode == "corner" then
-            P.mark, P.corner = true, ids[c]
-          elseif mode == "glow" then
-            -- Its colours whether or not Glow is on: what each would be.
-            P.glowOn = true
-            if Icon.GlowRGB then P.gr, P.gg, P.gb = Icon.GlowRGB(ids[c]) end
-          end
+          P.mark = c == 2
+          if c == 3 then look = "alone" end
           PaintFigure(strip.figs[c], Icon, look, G.CHOICE, x)
           PaintCaption(f, caps[c], x, capY, keys[c], ids[c] == current, on)
         end
@@ -2911,6 +2969,114 @@ do
     return row
   end
 
+  -- A slider: a whole number from spec.min to spec.max, as wide as a
+  -- dropdown and where one stands. The game's own Slider does the dragging
+  -- and the click on the track (nothing runs between two changes); Postbox
+  -- draws it: a chrome track with a tick at zero, the thumb in the accent
+  -- (the value chosen, as a chosen segment wears it), and the value beside
+  -- it, signed ("+2", "-1", "0"). Grey, the thumb and the value take the
+  -- disabled grey. While the thumb is held its row holds the panel, as a
+  -- dropdown's open list does (Rows.Hold), so the inspector and the drawing
+  -- stay on it wherever the pointer drifts. Each value's words are made
+  -- once, when the row is built: a drag builds no string.
+  -- spec: title, text, min, max, get, set(v) [, after(v)].
+  local SLIDER = { VALUE_W = 28, GAP = 6, H = 16, THUMB_W = 6, THUMB_H = 14, TRACK_H = 2, TICK_H = 8 }
+  local signed = {}
+  local function Signed(v)
+    local s = signed[v]
+    if not s then
+      s = (v > 0) and ("+" .. v) or tostring(v)
+      signed[v] = s
+    end
+    return s
+  end
+
+  local function SliderLook(cell, on)
+    local T = ns.Theme
+    T.FillColor(cell.thumb, on and "accent" or "textDisabled")
+    T.SetColor(cell.Value, on and "textPrimary" or "textDisabled")
+    if on then cell.slider:Enable() else cell.slider:Disable() end
+  end
+
+  local function SliderChanged(self, value)
+    local cell = self.__pbCell
+    local v = math.floor((tonumber(value) or 0) + 0.5)
+    if v == cell.value then return end
+    cell.value = v
+    cell.Value:SetText(Signed(v))
+    if cell.painting then return end
+    cell.set(v)
+    if cell.after then cell.after(v) end
+  end
+
+  local function SliderDown(self)
+    if self:IsEnabled() then Rows.Hold(self.__pbCell) end
+  end
+
+  local function SliderUp(self)
+    Rows.Release(self.__pbCell)
+  end
+
+  -- Reflects the stored value in the slider and its words.
+  function Rows.PaintSlider(cell)
+    local ok, v = pcall(cell.get)
+    if not ok then return end
+    v = math.floor((tonumber(v) or 0) + 0.5)
+    cell.painting = true
+    cell.slider:SetValue(v)
+    cell.painting = false
+    if cell.value ~= v then
+      cell.value = v
+      cell.Value:SetText(Signed(v))
+    end
+  end
+
+  function Rows.Slider(col, spec)
+    local T = ns.Theme
+    local row = Rows.New(col, ROW_H)
+    Rows.Cell(col, row, ROW_W, spec.title, spec.text)
+    local lo, hi = spec.min, spec.max
+    for v = lo, hi do Signed(v) end
+    local value = T.CreateText(row, "label")
+    value:SetJustifyH("RIGHT")
+    value:SetWordWrap(false)
+    value:SetWidth(SLIDER.VALUE_W)
+    value:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
+    local w = DD_W - SLIDER.VALUE_W - SLIDER.GAP
+    local s = CreateFrame("Slider", nil, row)
+    s:SetSize(w, SLIDER.H)
+    s:SetPoint("RIGHT", value, "LEFT", -SLIDER.GAP, 0)
+    s:SetOrientation("HORIZONTAL")
+    s:SetMinMaxValues(lo, hi)
+    s:SetValueStep(1)
+    if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
+    local half = SLIDER.THUMB_W / 2
+    local track = s:CreateTexture(nil, "BACKGROUND")
+    track:SetHeight(SLIDER.TRACK_H)
+    track:SetPoint("LEFT", s, "LEFT", half, 0)
+    track:SetPoint("RIGHT", s, "RIGHT", -half, 0)
+    T.FillChrome(track, 0.25)
+    local tick = s:CreateTexture(nil, "BORDER")
+    tick:SetSize(1, SLIDER.TICK_H)
+    tick:SetPoint("CENTER", s, "LEFT", half + (w - SLIDER.THUMB_W) * (0 - lo) / (hi - lo), 0)
+    T.FillChrome(tick, 0.5)
+    -- The thumb as the house's scroll bar makes its own (Theme.SlimScrollBar).
+    s:SetThumbTexture(WHITE)
+    local thumb = s:GetThumbTexture()
+    thumb:SetDrawLayer("OVERLAY")
+    thumb:SetSize(SLIDER.THUMB_W, SLIDER.THUMB_H)
+    Wire(s, row)
+    s:SetScript("OnValueChanged", SliderChanged)
+    s:SetScript("OnMouseDown", SliderDown)
+    s:SetScript("OnMouseUp", SliderUp)
+    s:SetScript("OnHide", SliderUp)
+    row.kind, row.control, row.slider, row.thumb, row.Value = "slider", s, s, thumb, value
+    row.get, row.set, row.after, row.controlW = spec.get, spec.set, spec.after, DD_W
+    SliderLook(row, true)
+    Rows.PaintSlider(row)
+    return row
+  end
+
   -- A push button on the right. spec: title, text, caption, onClick
   -- [, onHover(cell)] [, mark] [, minWidth]: `mark` puts the way into
   -- arranging's mark before the caption, the two centred as one (Rows.Fit
@@ -2994,7 +3160,11 @@ do
   -- the row on. The inspector says it again where it is showing it.
   function Rows.SetEnabled(cell, on)
     local control = cell.control
-    if control and control.SetEnabled then control:SetEnabled(on) end
+    if cell.kind == "slider" then
+      SliderLook(cell, on)
+    elseif control and control.SetEnabled then
+      control:SetEnabled(on)
+    end
     local more = cell.more
     if more and more.SetEnabled then more:SetEnabled(on) end
     if cell.kind ~= "note" and cell.Name then
@@ -3315,10 +3485,10 @@ end
 -- With the icon on, the rows that say how something looks grey while that
 -- something is not there, each saying what turns it on (Rows.Why): Pulse
 -- while Glow is off; Glow color while neither Glow nor Flash on new mail,
--- the two things that wear it, is on; Shape and Corner while Show marker
--- is Off; Larger when alone unless Show marker is Always (the one choice
--- that puts the marker on its own). With the icon off the block has them
--- grey already, saying to turn the icon on.
+-- the two things that wear it, is on; Shape, Color, Anchor, Offset X and
+-- Offset Y while Show marker is Off; Larger when alone unless Show marker
+-- is Always (the one choice that puts the marker on its own). With the
+-- icon off the block has them grey already, saying to turn the icon on.
 function State.MinimapRows()
   local Icon, rows = ns.MinimapButton, S.mmRows
   if not (Icon and rows and Icon.GetEnabled and Icon.GetEnabled()) then return end
@@ -3326,7 +3496,10 @@ function State.MinimapRows()
   local marking = expiry ~= "off"
   local glow = Icon.GetGlow() and true or false
   if rows.marker then Rows.SetEnabled(rows.marker, marking) end
+  if rows.color then Rows.SetEnabled(rows.color, marking) end
   if rows.corner then Rows.SetEnabled(rows.corner, marking) end
+  if rows.offx then Rows.SetEnabled(rows.offx, marking) end
+  if rows.offy then Rows.SetEnabled(rows.offy, marking) end
   if rows.large then Rows.SetEnabled(rows.large, expiry == "always") end
   if rows.pulse then Rows.SetEnabled(rows.pulse, glow) end
   if rows.glow then Rows.SetEnabled(rows.glow, glow or (Icon.GetAlertFlash() and true or false)) end
@@ -4435,50 +4608,64 @@ function Pages.minimap(col)
   rows.pulse = glowPair.pair[2]
   Rows.Why(rows.pulse, "OPT_MINIMAP_WHY_GLOW")
 
-  -- Each choice carries its colour in the list; Custom, offered where the
-  -- client has its colour picker, carries the colour picked, and choosing
-  -- it opens the picker (MinimapButton.PickGlowColor): each colour picked
-  -- is worn at once, and Cancel puts back the choice before.
-  local glowNames = {
-    gold = L["OPT_MINIMAP_GLOWCOLOR_GOLD"], accent = L["OPT_MINIMAP_GLOWCOLOR_ACCENT"],
-    white = L["OPT_MINIMAP_GLOWCOLOR_WHITE"], custom = L["OPT_MINIMAP_GLOWCOLOR_CUSTOM"],
-  }
+  -- A colour's list, Glow color's and the marker's Color alike: each choice
+  -- carries its colour in the list; Custom, offered where the client has
+  -- its colour picker, carries the colour picked, and choosing it opens the
+  -- picker (MinimapButton.PickGlowColor, PickMarkerColor): each colour
+  -- picked is worn at once, and Cancel puts back the choice before. `c`:
+  -- title, text, ids (MinimapButton's list), names, get, set, pick, custom
+  -- (the colour saved, or nil), rgb (a choice's colour); Get, Set, Pick,
+  -- Custom and RGB name MinimapButton's functions, resolved at call time.
   local T = ns.Theme
   S.mmGlowCustom = T.CanPickColor and T.CanPickColor() and true or false
-  local glowItems = {}
-  for _, id in ipairs((Icon and Icon.GLOW_COLORS) or { "gold" }) do
-    if id ~= "custom" or S.mmGlowCustom then glowItems[#glowItems + 1] = { id = id, name = glowNames[id] } end
-  end
-  local glowRow
-  -- What the picker changed, in the list and the drawing.
-  local function GlowPicked()
-    Rows.PaintDropdown(glowRow)
-    Ctx.Repaint()
-  end
-  glowRow = Rows.Dropdown(block, {
-    title = L["OPT_MINIMAP_GLOWCOLOR_TITLE"], text = L["OPT_MINIMAP_GLOWCOLOR_DESC"], items = glowItems,
-    swatchFor = function(id)
-      local I = ns.MinimapButton
-      if not I then return nil end
-      if id == "custom" then
-        if I.GetGlowCustom then return I.GetGlowCustom() end
-        return nil
-      end
-      if I.GlowRGB then return I.GlowRGB(id) end
-      return nil
-    end,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetGlowColor() end,
-    set = function(id)
-      local I = ns.MinimapButton
-      if not I then return end
-      if id == "custom" then
-        -- No picker: the list shows the choice that stands.
-        if not (I.PickGlowColor and I.PickGlowColor(GlowPicked)) then Rows.PaintDropdown(glowRow) end
-      else
-        I.SetGlowColor(id)
-      end
+  local function ColorRow(c)
+    local items = {}
+    for _, id in ipairs(c.ids) do
+      if id ~= "custom" or S.mmGlowCustom then items[#items + 1] = { id = id, name = c.names[id] } end
+    end
+    local row
+    -- What the picker changed, in the list and the drawing.
+    local function Picked()
+      Rows.PaintDropdown(row)
       Ctx.Repaint()
-    end,
+    end
+    row = Rows.Dropdown(block, {
+      title = c.title, text = c.text, items = items,
+      swatchFor = function(id)
+        local I = ns.MinimapButton
+        if not I then return nil end
+        if id == "custom" then
+          if I[c.custom] then return I[c.custom]() end
+          return nil
+        end
+        if I[c.rgb] then return I[c.rgb](id) end
+        return nil
+      end,
+      get = function() return ns.MinimapButton and ns.MinimapButton[c.get]() end,
+      set = function(id)
+        local I = ns.MinimapButton
+        if not I then return end
+        if id == "custom" then
+          -- No picker: the list shows the choice that stands.
+          if not (I[c.pick] and I[c.pick](Picked)) then Rows.PaintDropdown(row) end
+        else
+          I[c.set](id)
+        end
+        Ctx.Repaint()
+      end,
+    })
+    return row
+  end
+
+  local colorNames = {
+    red = L["OPT_MINIMAP_MARKERCOLOR_RED"], gold = L["OPT_MINIMAP_GLOWCOLOR_GOLD"],
+    accent = L["OPT_MINIMAP_GLOWCOLOR_ACCENT"], class = L["OPT_COLOR_CLASS"], white = L["OPT_MINIMAP_GLOWCOLOR_WHITE"],
+    custom = L["OPT_MINIMAP_GLOWCOLOR_CUSTOM"],
+  }
+  local glowRow = ColorRow({
+    title = L["OPT_MINIMAP_GLOWCOLOR_TITLE"], text = L["OPT_MINIMAP_GLOWCOLOR_DESC"],
+    ids = (Icon and Icon.GLOW_COLORS) or { "gold" }, names = colorNames,
+    get = "GetGlowColor", set = "SetGlowColor", pick = "PickGlowColor", custom = "GetGlowCustom", rgb = "GlowRGB",
   })
   modes[glowRow.entry] = "glow"
   rows.glow = glowRow
@@ -4497,8 +4684,9 @@ function Pages.minimap(col)
   -- Expiring mail: the marker for mail close to being lost -- where it
   -- shows (nowhere, on the icon while When to show has it up, or also on
   -- its own where the icon sits; it never brings the icon up itself), its
-  -- shape, the icon's corner it sits on (the bottom right is the count's),
-  -- and whether, on its own, it grows into the icon's spot.
+  -- shape, its colour, the spot on the icon it is anchored to and how far
+  -- it is moved from there, and whether, on its own, it grows into the
+  -- icon's spot.
   Rows.Group(block, L["OPT_MINIMAP_GROUP_EXPIRY"])
   local expiryNames = {
     off = L["OPT_MINIMAP_EXPIRY_OFF"], icon = L["OPT_MINIMAP_EXPIRY_ICON"], always = L["OPT_MINIMAP_EXPIRY_ALWAYS"],
@@ -4518,12 +4706,13 @@ function Pages.minimap(col)
   })
   modes[expiryRow.entry] = "expiry"
 
-  -- Shape and Corner grey while Show marker is Off; Larger when alone
-  -- unless it is Always, the only choice that puts the marker on its own
-  -- (State.MinimapRows).
+  -- Shape, Color, Anchor, Offset X and Offset Y grey while Show marker is
+  -- Off; Larger when alone unless it is Always, the only choice that puts
+  -- the marker on its own (State.MinimapRows).
   local markerNames = {
     dot = L["OPT_MINIMAP_MARKER_DOT"], ring = L["OPT_MINIMAP_MARKER_RING"], square = L["OPT_MINIMAP_MARKER_SQUARE"],
     bar = L["OPT_MINIMAP_MARKER_BAR"], exclamation = L["OPT_MINIMAP_MARKER_EXCLAMATION"],
+    triangle = L["OPT_MINIMAP_MARKER_TRIANGLE"],
   }
   local markerItems = {}
   for _, id in ipairs((Icon and Icon.MARKER_SHAPES) or { "dot" }) do
@@ -4540,15 +4729,27 @@ function Pages.minimap(col)
   modes[markerRow.entry] = "marker"
   rows.marker = markerRow
   Rows.Why(markerRow, "OPT_MINIMAP_WHY_MARKER")
-  local cornerNames = {
-    TOPRIGHT = L["OPT_MINIMAP_CORNER_TR"], TOPLEFT = L["OPT_MINIMAP_CORNER_TL"], BOTTOMLEFT = L["OPT_MINIMAP_CORNER_BL"],
+  local colorRow = ColorRow({
+    title = L["OPT_MINIMAP_MARKERCOLOR_TITLE"], text = L["OPT_MINIMAP_MARKERCOLOR_DESC"],
+    ids = (Icon and Icon.MARKER_COLORS) or { "red" }, names = colorNames,
+    get = "GetMarkerColor", set = "SetMarkerColor", pick = "PickMarkerColor", custom = "GetMarkerCustom", rgb = "MarkerRGB",
+  })
+  modes[colorRow.entry] = "color"
+  rows.color = colorRow
+  Rows.Why(colorRow, "OPT_MINIMAP_WHY_MARKER")
+  -- Anchor: the eight spots, in reading order; its drawing is the grid of
+  -- them.
+  local anchorNames = {
+    TOPLEFT = L["OPT_MINIMAP_ANCHOR_TL"], TOP = L["OPT_MINIMAP_ANCHOR_T"], TOPRIGHT = L["OPT_MINIMAP_ANCHOR_TR"],
+    LEFT = L["OPT_MINIMAP_ANCHOR_L"], RIGHT = L["OPT_MINIMAP_ANCHOR_R"], BOTTOMLEFT = L["OPT_MINIMAP_ANCHOR_BL"],
+    BOTTOM = L["OPT_MINIMAP_ANCHOR_B"], BOTTOMRIGHT = L["OPT_MINIMAP_ANCHOR_BR"],
   }
   local cornerItems = {}
   for _, id in ipairs((Icon and Icon.MARKER_CORNERS) or { "TOPRIGHT" }) do
-    cornerItems[#cornerItems + 1] = { id = id, name = cornerNames[id] }
+    cornerItems[#cornerItems + 1] = { id = id, name = anchorNames[id] }
   end
   local cornerRow = Rows.Dropdown(block, {
-    title = L["OPT_MINIMAP_CORNER_TITLE"], text = L["OPT_MINIMAP_CORNER_DESC"], items = cornerItems,
+    title = L["OPT_MINIMAP_ANCHOR_TITLE"], text = L["OPT_MINIMAP_ANCHOR_DESC"], items = cornerItems,
     get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerCorner() end,
     set = function(id)
       if ns.MinimapButton then ns.MinimapButton.SetMarkerCorner(id) end
@@ -4558,6 +4759,25 @@ function Pages.minimap(col)
   modes[cornerRow.entry] = "corner"
   rows.corner = cornerRow
   Rows.Why(cornerRow, "OPT_MINIMAP_WHY_MARKER")
+  -- Offset X and Offset Y: whole screen pixels from the anchor. No answers
+  -- of their own: the drawing shows the icon as set, the marker moving with
+  -- the slider, and their text stands under it.
+  local lo = (Icon and Icon.MARKER_OFFSET_MIN) or -20
+  local hi = (Icon and Icon.MARKER_OFFSET_MAX) or 20
+  rows.offx = Rows.Slider(block, {
+    title = L["OPT_MINIMAP_OFFSETX_TITLE"], text = L["OPT_MINIMAP_OFFSETX_DESC"], min = lo, max = hi,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerX() end,
+    set = function(v) if ns.MinimapButton then ns.MinimapButton.SetMarkerX(v) end end,
+    after = Ctx.Repaint,
+  })
+  Rows.Why(rows.offx, "OPT_MINIMAP_WHY_MARKER")
+  rows.offy = Rows.Slider(block, {
+    title = L["OPT_MINIMAP_OFFSETY_TITLE"], text = L["OPT_MINIMAP_OFFSETY_DESC"], min = lo, max = hi,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerY() end,
+    set = function(v) if ns.MinimapButton then ns.MinimapButton.SetMarkerY(v) end end,
+    after = Ctx.Repaint,
+  })
+  Rows.Why(rows.offy, "OPT_MINIMAP_WHY_MARKER")
   local largeRow = Rows.Check(block, {
     title = L["OPT_MINIMAP_LARGE_TITLE"], text = L["OPT_MINIMAP_LARGE_DESC"],
     get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerLarge() end,
@@ -4568,6 +4788,7 @@ function Pages.minimap(col)
   rows.large = largeRow
   Rows.Why(largeRow, "OPT_MINIMAP_WHY_ALONE")
   for entry in pairs(modes) do entry.stage = "minimap" end
+  rows.offx.entry.stage, rows.offy.entry.stage = "minimap", "minimap"
 
   -- Place: where it sits on the map, and the lock on moving it. Under
   -- EllesmereUI's minimap that, and the size, are EllesmereUI's, and one
@@ -4837,7 +5058,7 @@ do
     local gets, looks = {}, false
     for i = range[1], range[2] do
       local cell = S.cells[i]
-      if (cell.kind == "check" or cell.kind == "dropdown") and type(cell.get) == "function" then
+      if (cell.kind == "check" or cell.kind == "dropdown" or cell.kind == "slider") and type(cell.get) == "function" then
         gets[#gets + 1] = cell.get
       end
       if cell == S.styleCell then looks = true end
@@ -5213,6 +5434,8 @@ local function Refresh()
       cell.control:SetChecked(ok and on and true or false)
     elseif cell.kind == "dropdown" then
       Rows.PaintDropdown(cell)
+    elseif cell.kind == "slider" then
+      Rows.PaintSlider(cell)
     end
   end
   for i = 1, #S.refresh do pcall(S.refresh[i]) end
