@@ -63,11 +63,9 @@ local DEFAULTS = {
   -- The number on the icon: "off", "me" (this character's box) or "all"
   -- (every character's, the hidden ones aside).
   count    = "off",
-  -- The warning look while mail on any character is close to being lost,
-  -- by Mail Memory's own rule (the one "Warn about other characters' mail"
-  -- says in chat). On by default: it is the one thing on the icon that
-  -- stands between a player and mail the server deletes.
-  expiryAlert = true,
+  -- Expiring mail (`expiry`, section 1b) is deliberately not seeded here: an
+  -- unset one is read from the checkbox it replaced, which a seeded default
+  -- would hide.
 }
 
 -- ONE dropdown, every placement, no second control to contradict it:
@@ -232,12 +230,20 @@ end
 --           have arrived since); `all` the same over every character the
 --           player has not hidden, this one included.
 --   count   the number the icon wears: `mine`, `all` or none (0).
---   alert   mail on some character is close to being lost: the list's own
---           `warn`, the rule Mail Memory's chat warning and character list
---           already use (under three days left, or mail known to be on its
---           way unopened for over three weeks), this character included and
---           the hidden ones left out, as its warnings leave them. The icon
---           then wears the warning tone, and is shown whatever else says.
+--   alert   the expiry dot is drawn: mail on some character is close to
+--           being lost -- the list's own `warn`, the rule Mail Memory's chat
+--           warning and character list already use (under three days left,
+--           or mail known to be on its way unopened for over three weeks),
+--           this character included and the hidden ones left out, as its
+--           warnings leave them -- and Expiring mail puts the dot where the
+--           icon is now. On the icon it brings the warning tone with it.
+--   alone   the dot stands on its own where the icon sits: Expiring mail is
+--           Always and When to show has the icon down. The button is on the
+--           map for the dot's sake, its art hidden: the same hit area, the
+--           same tooltip and clicks, and no glow, shadow or count.
+--
+-- Expiring mail never brings the icon itself up: When to show alone says
+-- when the icon is on the map, and means exactly what it says.
 -------------------------------------------------------------
 
 local SHOW_MODES = { new = true, any = true, always = true }
@@ -256,6 +262,32 @@ local function CountMode(prefs)
   return COUNT_MODES[mode] and mode or DEFAULTS.count
 end
 
+-- Expiring mail (`expiry`): where the orange dot goes while mail on some
+-- character is close to being lost.
+--   off     nowhere.
+--   icon    on the icon, while When to show has it up ("With the icon").
+--   always  on the icon while it is up, and on its own where the icon sits
+--           while it is not (the default).
+-- It replaced a checkbox, `expiryAlert` (on unless false), which showed the
+-- icon for the alert whatever When to show said. A profile that never chose
+-- reads that: false is Off, true or unset is Always. The old key is only
+-- read, never written or removed, so a profile taken back to an older
+-- version still has it.
+local EXPIRY_MODES = { off = true, icon = true, always = true }
+MB.EXPIRY_MODES = { "off", "icon", "always" }
+local EXPIRY_DEFAULT = "always"
+
+local function ExpiryCarried(prefs)
+  return prefs.expiryAlert == false and "off" or EXPIRY_DEFAULT
+end
+
+local function ExpiryMode(prefs)
+  prefs = prefs or Settings()
+  local mode = prefs.expiry
+  if EXPIRY_MODES[mode] then return mode end
+  return ExpiryCarried(prefs)
+end
+
 -- Mail Memory's own switch: off, nothing it recorded is offered anywhere.
 local function MemoryOn()
   local UI = ns.MailboxUI
@@ -263,16 +295,16 @@ local function MemoryOn()
   return UI.GetOption("mailMemory") and true or false
 end
 
-local view = { lit = false, shown = false, mine = 0, all = 0, count = 0, alert = false }
+local view = { lit = false, shown = false, mine = 0, all = 0, count = 0, alert = false, alone = false }
 
 local function Evaluate()
   local prefs = Settings()
   local mode = ShowMode(prefs)
   local countMode = CountMode(prefs)
-  local wantAlert = prefs.expiryAlert ~= false
+  local expiry = ExpiryMode(prefs)
   local mine, all, warn = 0, 0, false
   local Memory = ns.MailMemory
-  if (mode == "any" or countMode ~= "off" or wantAlert) and MemoryOn() and Memory
+  if (mode == "any" or countMode ~= "off" or expiry ~= "off") and MemoryOn() and Memory
     and type(Memory.Characters) == "function" then
     local list = Memory.Characters()
     for i = 1, #list do
@@ -287,17 +319,21 @@ local function Evaluate()
   end
   local lit = MailWaiting()
   view.lit, view.mine, view.all = lit, mine, all
-  view.alert = wantAlert and warn
+  -- When to show, and nothing else, puts the icon on the map.
+  local up
   if mode == "always" then
-    view.shown = true
+    up = true
   elseif mode == "any" then
-    view.shown = lit or all > 0
+    up = lit or all > 0
   else
-    view.shown = lit
+    up = lit
   end
-  -- The alert brings the icon out on any choice: a warning nobody can see
-  -- warns nobody.
-  view.shown = view.shown or view.alert
+  -- The dot goes on the icon while it is up; on Always, also on its own
+  -- where the icon would be while it is not.
+  local alert = warn and expiry ~= "off" and (up or expiry == "always")
+  view.alert = alert
+  view.alone = alert and not up
+  view.shown = up or view.alone
   view.count = (countMode == "me" and mine) or (countMode == "all" and all) or 0
   return view
 end
@@ -359,21 +395,29 @@ end
 -- moment mail arrives is the moment it comes forward, glow or no glow.
 local REST_ALPHA = 0.65
 
--- An alert is not rest: it is the icon asking to be looked at.
+-- An alert is not rest: it is the icon asking to be looked at. (A dot on
+-- its own has no icon to rest; its art is hidden.)
 local function Resting()
   return view.shown and not view.lit and not view.alert
 end
 
--- The glow's colour: the warning tone while the alert stands, whatever the
--- accent (r, g, b) would have made it -- the glow is the part of the icon a
--- player sees from across the screen. On the map, not in a window: the
--- dark palette's tone in either Mode (Theme.DarkColor), as the dot's.
+-- The glow's colour: the warning tone while the dot is on the icon, whatever
+-- the accent (r, g, b) would have made it -- the glow is the part of the
+-- icon a player sees from across the screen. On the map, not in a window:
+-- the dark palette's tone in either Mode (Theme.DarkColor), as the dot's.
+-- A dot on its own has no glow at all (Glowing).
 local function GlowTone(r, g, b)
   if view.alert then
     local wr, wg, wb = ns.Theme.DarkColor("warning")
     return wr, wg, wb
   end
   return r, g, b
+end
+
+-- Whether the glow is lit: new mail, or the dot on the icon -- never for a
+-- dot on its own, which has no icon to glow behind.
+local function Glowing(prefs)
+  return prefs.glow == true and (view.lit or view.alert) and not view.alone
 end
 
 -- The alert's mark: a small solid dot in the warning tone at the icon's
@@ -416,10 +460,19 @@ local function NewDisc(holder, sublevel)
   return tex
 end
 
+-- The dot on its own (Expiring mail on Always, the icon down): the same two
+-- discs, centred where the icon sits, at half the icon's side in whole
+-- screen pixels and never under 6 -- 8 at 16 px, 10 at the default 20, 20
+-- at 40, each with its pixel of dark edge: a blip the size of the map's own
+-- markers, deliberate at every icon size and still smaller than the icon it
+-- stands in for. Past 21 the strip's largest disc is drawn down to it.
+local DOT_ALONE_MIN = 6
+
 -- holder: the frame the dot is drawn on; anchor: the icon texture; size:
--- the icon's side. Built once; sized again only when the icon's size, its
--- anchor or the screen pixel (UI scale, the map's scale) has changed.
-local function PaintMark(holder, anchor, size, on)
+-- the icon's side; alone: the dot stands in for the icon (centred, larger).
+-- Built once; sized again only when the icon's size, its anchor, the screen
+-- pixel (UI scale, the map's scale) or where the dot stands has changed.
+local function PaintMark(holder, anchor, size, on, alone)
   local dot = holder.__pbMark
   if not on then
     if dot then
@@ -428,6 +481,7 @@ local function PaintMark(holder, anchor, size, on)
     end
     return
   end
+  alone = alone and true or false
   local edge = holder.__pbMarkEdge
   if not dot then
     edge = NewDisc(holder, 5)
@@ -438,15 +492,24 @@ local function PaintMark(holder, anchor, size, on)
   end
   local T = ns.Theme
   local px = T and T.OnePixel and T.OnePixel(holder) or 1
-  if dot.__pbSize ~= size or dot.__pbAnchor ~= anchor or dot.__pbPx ~= px then
-    dot.__pbSize, dot.__pbAnchor, dot.__pbPx = size, anchor, px
-    local d = math.max(DOT_MIN, math.floor(size / px / 4 + 0.5))
+  if dot.__pbSize ~= size or dot.__pbAnchor ~= anchor or dot.__pbPx ~= px or dot.__pbAlone ~= alone then
+    dot.__pbSize, dot.__pbAnchor, dot.__pbPx, dot.__pbAlone = size, anchor, px, alone
+    local d
+    if alone then
+      d = math.max(DOT_ALONE_MIN, math.floor(size / px / 2 + 0.5))
+    else
+      d = math.max(DOT_MIN, math.floor(size / px / 4 + 0.5))
+    end
     dot:SetSize(d * px, d * px)
     edge:SetSize((d + 2) * px, (d + 2) * px)
     DotCoords(dot, d)
     DotCoords(edge, d + 2)
     edge:ClearAllPoints()
-    edge:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", px, px)
+    if alone then
+      edge:SetPoint("CENTER", anchor, "CENTER")
+    else
+      edge:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", px, px)
+    end
   end
   local wr, wg, wb = ns.Theme.DarkColor("warning")
   dot:SetVertexColor(wr, wg, wb, 1)
@@ -714,7 +777,8 @@ local function EnsureEuiOverlay(btn)
   -- first look after a loading screen) begin by setting the button's
   -- visibility from the game's unread flag. Postbox only ever ADDS to that:
   -- every "when to show" choice shows the icon at least while the flag is
-  -- up. So when a pass hides a button Postbox wants shown, it is shown again
+  -- up, and the expiry dot on its own needs the button for its place. So
+  -- when a pass hides a button Postbox wants shown, it is shown again
   -- right here, inside their pass -- before their placement runs, which then
   -- places it like any shown icon. The overlay is ours, so this touches
   -- nothing of theirs; with the flag up, or on "When new mail arrives", it
@@ -801,13 +865,22 @@ local function ApplyEuiSkin()
       icon:SetVertexColor(1, 1, 1)
     end
   end
-  -- At rest (shown with nothing new), as Postbox's own button rests.
+  -- At rest (shown with nothing new), as Postbox's own button rests. For
+  -- the expiry dot on its own the art is drawn at zero alpha: the button
+  -- stays where they placed it, the dot on our overlay stands in its middle
+  -- and the overlay keeps the hover and the clicks. Their own chrome around
+  -- it (the dark box behind their row's buttons, the Classic ring) is
+  -- theirs and stays: their layout pass sets it on every pass.
   local resting = Resting()
   icon:SetDesaturated(resting)
-  icon:SetAlpha(resting and REST_ALPHA or (euiSkin.saved.alpha or 1))
+  if view.alone then
+    icon:SetAlpha(0)
+  else
+    icon:SetAlpha(resting and REST_ALPHA or (euiSkin.saved.alpha or 1))
+  end
 
   local shadow = btn.__pbMailShadow
-  if prefs.shadow == true then
+  if prefs.shadow == true and not view.alone then
     if not shadow then
       shadow = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
       shadow:SetPoint("CENTER", icon, "CENTER", 0, -1)
@@ -823,7 +896,7 @@ local function ApplyEuiSkin()
   end
 
   local glow = btn.__pbMailGlow
-  if prefs.glow == true and (view.lit or view.alert) then
+  if Glowing(prefs) then
     if not glow then
       glow = btn:CreateTexture(nil, "BACKGROUND")
       glow:SetPoint("CENTER", icon, "CENTER")
@@ -864,9 +937,10 @@ local function ApplyEuiSkin()
 
   -- The count and the alert's mark on our overlay, which sits over their
   -- icon and any ring they dress it in, and goes with the overlay when their
-  -- button is handed back.
-  PaintCount(btn.__pbOverlay, icon, side, view.count)
-  PaintMark(btn.__pbOverlay, icon, side, view.alert)
+  -- button is handed back. The dot on its own wears no count: there is no
+  -- icon for the number to belong to.
+  PaintCount(btn.__pbOverlay, icon, side, (not view.alone) and view.count or 0)
+  PaintMark(btn.__pbOverlay, icon, side, view.alert, view.alone)
 
   euiSkin.applied = true
   return true
@@ -1118,13 +1192,18 @@ local function ApplyLook(button)
   local resting = Resting()
   icon:SetDesaturated(resting)
   icon:SetAlpha(resting and REST_ALPHA or 1)
+  -- The expiry dot on its own: no icon art, only the dot where the icon
+  -- sits; the button keeps its size, so the hover and the clicks are the
+  -- icon's own.
+  icon:SetShown(not view.alone)
 
-  -- The glow is the icon's voice for new mail, and for the expiry alert in
-  -- the warning tone: it rests with the icon.
+  -- The glow is the icon's voice for new mail, and for the dot on the icon
+  -- in the warning tone: it rests with the icon, and a dot on its own has
+  -- none.
   local glow = button.glow
   glow:SetSize(size * GLOW_SCALE, size * GLOW_SCALE)
   glow:SetVertexColor(GlowTone(r, g, b))
-  if prefs.glow == true and (view.lit or view.alert) then
+  if Glowing(prefs) then
     glow:Show()
     if prefs.pulse ~= false then
       if not button.pulse:IsPlaying() then button.pulse:Play() end
@@ -1140,10 +1219,11 @@ local function ApplyLook(button)
   -- and nudged down -- grounding rather than radiance. No pulse.
   local shadow = button.shadow
   shadow:SetSize(size * 1.8, size * 1.8)
-  shadow:SetShown(prefs.shadow == true)
+  shadow:SetShown(prefs.shadow == true and not view.alone)
 
-  PaintCount(button.art, icon, size, view.count)
-  PaintMark(button.art, icon, size, view.alert)
+  -- Nor a count: there is no icon for the number to belong to.
+  PaintCount(button.art, icon, size, (not view.alone) and view.count or 0)
+  PaintMark(button.art, icon, size, view.alert, view.alone)
 
   Reposition(button)
 end
@@ -1181,9 +1261,10 @@ end
 -- with the clock, so the reading is made again here, and the icon repainted
 -- only when something it shows has changed.
 local function Reevaluate()
-  local lit, shown, alert, count = view.lit, view.shown, view.alert, view.count
+  local lit, shown, alert, count, alone = view.lit, view.shown, view.alert, view.count, view.alone
   Evaluate()
-  if view.lit ~= lit or view.shown ~= shown or view.alert ~= alert or view.count ~= count then
+  if view.lit ~= lit or view.shown ~= shown or view.alert ~= alert or view.count ~= count
+    or view.alone ~= alone then
     MB.Refresh()
   end
 end
@@ -1613,7 +1694,7 @@ local runtimeActive = false
 -- which moves when Mail Memory writes and, for its expiry warnings, with the
 -- clock.
 local function ReadsMemory(prefs)
-  return ShowMode(prefs) == "any" or CountMode(prefs) ~= "off" or prefs.expiryAlert ~= false
+  return ShowMode(prefs) == "any" or CountMode(prefs) ~= "off" or ExpiryMode(prefs) ~= "off"
 end
 
 -- Mail Memory wrote something its character list reads (MailMemory,
@@ -1769,13 +1850,13 @@ MB.Refresh = Refresh
 -- visibility depends on, captured at the moment the report is built.
 function MB.Diagnose()
   return string.format(
-    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s wants %s | count %s %d | expiry alert %s",
+    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s wants %s | count %s %d | expiring %s %s",
     tostring(runtimeActive), tostring(suppressing),
     tostring((EuiSkinCandidate())), tostring(euiSkin.applied),
     euiSkin.tries, tostring(euiSkin.fallback),
     (MB._button and MB._button:IsShown()) and "shown" or "hidden/none",
-    tostring((MailWaiting())), ShowMode(), tostring(view.shown), CountMode(), view.count,
-    MB.GetExpiryAlert() and (view.alert and "RAISED" or "quiet") or "off")
+    tostring((MailWaiting())), ShowMode(), tostring(view.shown and not view.alone), CountMode(), view.count,
+    ExpiryMode(), (view.alone and "DOT ALONE") or (view.alert and "DOT ON ICON") or "quiet")
 end
 
 -- Called by Skin_EllesmereUI.RefreshAccents so an accent retune repaints a
@@ -1840,11 +1921,15 @@ function MB.SetCount(mode)
   Refresh()
 end
 
--- On unless switched off, as DEFAULTS has it.
-function MB.GetExpiryAlert() return Settings().expiryAlert ~= false end
+-- Where the expiry dot goes (MB.EXPIRY_MODES; section 1b). Stored as nothing
+-- while the old checkbox would read the same, so a profile carries across
+-- without a write and Reset to defaults gives Always.
+function MB.GetExpiry() return ExpiryMode() end
 
-function MB.SetExpiryAlert(on)
-  Settings().expiryAlert = on == true
+function MB.SetExpiry(mode)
+  if not EXPIRY_MODES[mode] then return end
+  local prefs = Settings()
+  if mode == ExpiryCarried(prefs) then prefs.expiry = nil else prefs.expiry = mode end
   Refresh()
 end
 

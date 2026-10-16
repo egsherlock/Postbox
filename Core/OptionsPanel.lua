@@ -3963,10 +3963,20 @@ function Pages.minimap(col)
     get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
     set = function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end,
   })
-  Rows.Check(block, {
-    title = L["OPT_MINIMAP_EXPIRY_TITLE"], text = L["OPT_MINIMAP_EXPIRY_DESC"],
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetExpiryAlert() end,
-    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetExpiryAlert(on) end end,
+  -- Where the orange dot for mail close to being lost goes: nowhere, on the
+  -- icon while When to show has it up, or also on its own where the icon
+  -- sits. It never brings the icon up itself.
+  local expiryNames = {
+    off = L["OPT_MINIMAP_EXPIRY_OFF"], icon = L["OPT_MINIMAP_EXPIRY_ICON"], always = L["OPT_MINIMAP_EXPIRY_ALWAYS"],
+  }
+  local expiryItems = {}
+  for _, mode in ipairs((Icon and Icon.EXPIRY_MODES) or { "always" }) do
+    expiryItems[#expiryItems + 1] = { id = mode, name = expiryNames[mode] }
+  end
+  Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_EXPIRY_TITLE"], text = L["OPT_MINIMAP_EXPIRY_DESC"], items = expiryItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetExpiry() end,
+    set = function(id) if ns.MinimapButton then ns.MinimapButton.SetExpiry(id) end end,
   })
   Rows.EndBlock(block)
 end
