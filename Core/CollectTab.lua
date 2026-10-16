@@ -9795,6 +9795,8 @@ function RV.ReconcileGrid(stored, available, known, keep)
   end
   return out, stale
 end
+-- The options' drawing of the Mail tab lays its buttons out by this rule.
+CT.ReconcileGrid = RV.ReconcileGrid
 
 -- The grid's entries now: the built-ins, the groups' buttons, and the
 -- player's arrangement of them. Kept on the panel for the layout passes a

@@ -569,7 +569,7 @@ local TEXT_W = INSP_W - 2 - 2 * TEXT_X
 -- the text does not jump as the pointer moves from setting to setting.
 local SAY_MIN = 150
 -- STAGE: the Minimap drawing's ground at its least (Ctx.MinimapStage).
-local TILE_H, HOST_H, STAGE, SAMPLE_MAX, MOCK_H = 46, 32, 120, 50, 34
+local TILE_H, HOST_H, STAGE, MOCK_H = 46, 32, 120, 34
 -- The accent row's reading under its description: its lines.
 local READOUT_LINES = 3
 local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
@@ -813,9 +813,17 @@ do
     idle:Hide()
     local h = Lay(say, entry.title, entry.text, extra and extra.height or 0)
     if extra then extra:Show() end
-    if h < SAY_MIN then h = SAY_MIN end
+    local least = Insp.Least(S.tab)
+    if h < least then h = least end
     if S.bodyH > 0 and h > S.bodyH then h = S.bodyH end
     say:SetHeight(h)
+  end
+
+  -- The text zone's least height on `key`'s tab: on the Mail tab, all the
+  -- room under its window (Layout), so the text starts right under it.
+  function Insp.Least(key)
+    if key == "mail" and (S.mailText or 0) > SAY_MIN then return S.mailText end
+    return SAY_MIN
   end
 
   -- The tab's own text, laid under its drawing -- or over the whole card,
@@ -829,7 +837,8 @@ do
       h = math.max(h, S.bodyH - 2)
     else
       idle.Rule:Show()
-      if h < SAY_MIN then h = SAY_MIN end
+      local least = Insp.Least(key)
+      if h < least then h = least end
     end
     idle:SetHeight(h)
   end
@@ -883,33 +892,29 @@ end
 -- The inspector's drawings (Ctx)
 --
 -- One per tab, built the first time its tab is shown and painted every
--- time it is: the Mail tab's character groups tile and sample mail rows
--- that grow with Larger mail rows, line their gold up as Row layout says
--- and wear the quality mark where the setting puts it; the Send tab's
--- recipients tile; the window over a bit of world, at the player's
--- opacity and border; the minimap icon large and at its own size, wearing
--- everything its settings put on it, and the answers of each setting with
--- choices while it is pointed at. Drawn here, from the settings,
--- rather than borrowed from the windows they describe: those windows' own
--- code is not the panel's to reach into.
+-- time it is: on the Mail tab the character groups tile and, under it, the
+-- Mail window small, wearing the Mail tab's settings; the Send tab's
+-- recipients tile; on the Window tab the same window over a bit of world,
+-- at the player's opacity and border; the minimap icon large and at its
+-- own size, wearing everything its settings put on it, and the answers of
+-- each setting with choices while it is pointed at. Drawn here, from the
+-- settings, by the windows' own painting rules (the style's shell, the
+-- mail rows' rules), rather than borrowed from the windows they describe:
+-- those windows' own frames are not the panel's to reach into.
 -------------------------------------------------------------
 do
   local CTX_TOP = 11
   -- Sample mail: a tiered reagent, whose link carries a quality mark --
-  -- bought for SAMPLE_PRICE and, on the second row, sold for SAMPLE_SALE,
-  -- the gold coming with a coin for its icon.
+  -- bought for SAMPLE_PRICE and sold for SAMPLE_SALE, the gold coming
+  -- with a coin for its icon.
   local SAMPLE_ITEM = 191462
-  -- The stack it came in, on its icon (Stack counts on item icons).
-  local SAMPLE_COUNT = "20"
-  local SAMPLE_DAYS = 29
   local SAMPLE_PRICE, SAMPLE_SALE = 522600, 13090000
   local SAMPLE_COIN = "Interface\\Icons\\INV_Misc_Coin_01"
-  -- The step between the sample's figure columns, as Mail Memory's rows.
-  local SAMPLE_GAP = 6
 
-  -- The fixed height of each tab's drawing, and the gap under it.
+  -- The height of each tab's drawing, and the gap under it.
   function Ctx.Height(key)
-    if key == "mail" then return CTX_TOP + TILE_H + 8 + SAMPLE_MAX + 10 end
+    -- The window takes the room between the tile and the text (Layout).
+    if key == "mail" then return CTX_TOP + TILE_H + 8 + Ctx.MailMiniHeight() + 10 end
     if key == "send" then return CTX_TOP + TILE_H + 10 end
     if key == "window" then
       -- The drawing grows with the text size (Ctx.MiniHeight).
@@ -1101,6 +1106,13 @@ do
     watched[window] = key
     window:HookScript("OnHide", function(self)
       if watched[self] == "send" then S.sendText = nil end
+      -- The groups may have changed: the drawing's buttons are read again,
+      -- and the panel laid out again for the rows of them it now has.
+      if watched[self] == "mail" then
+        S.gridStale = true
+        if Panel.RefreshControls then Panel.RefreshControls() end
+        return
+      end
       local panel = S.frame
       if panel and panel:IsShown() then Ctx.Paint(watched[self]) end
     end)
@@ -1123,23 +1135,6 @@ do
     end
   end
 
-  ---------------------------------------------------------
-  -- The sample mail rows
-  --
-  -- A small drawing of the list, from the settings rather than from the
-  -- list's own code. One-line rows: two mails, the sample item bought --
-  -- its price and its slot -- and the same item sold, gold and no slot, so
-  -- Row layout visibly moves the sale's gold: under the other gold in
-  -- Columns, out at the edge under the slot Packed. Their figures stand
-  -- in the list's default order, gold then slots. Under Larger mail rows,
-  -- the first mail alone on two lines with a larger icon, where it came from
-  -- and how long it has left under its name: those rows have no columns.
-  -- The quality mark on the icon's corner or not, and beside the name:
-  -- before it -- where both names then start after its room, as every row
-  -- of the list keeps it -- after it, always whole, or neither. The slot as
-  -- the Slots choice writes it.
-  ---------------------------------------------------------
-
   -- A drawing's own inset ground and edge, from the palette (dark: black at
   -- 45% edged #2b2b2b; the light palette's own on a light one).
   local function PaintPlain(frame)
@@ -1150,25 +1145,9 @@ do
   end
   Ctx.PaintPlain = PaintPlain
 
-  -- A figure of the sample's, right-aligned in its column.
-  local function SampleFigure(art)
-    local fs = ns.Theme.CreateText(art, "secondary")
-    fs:SetJustifyH("RIGHT")
-    fs:SetWordWrap(false)
-    return fs
-  end
-
-  -- fs, its column's right edge and width, and the row's middle.
-  local function PlaceFigure(s, fs, right, width, y)
-    fs:ClearAllPoints()
-    fs:SetPoint("RIGHT", s, "TOPLEFT", right, y)
-    fs:SetWidth(width)
-    fs:Show()
-  end
-
   -- The sample item's name, link and quality, asked for once if the client
   -- has not loaded it yet; the drawing on show repaints when it arrives (the
-  -- Mail tab's sample row, or the Window tab's mail rows, which name it too).
+  -- mail rows of the Mail tab's window and of the Window tab's name it).
   local function SampleItem()
     local info = C_Item and C_Item.GetItemInfo
     local name, link, quality
@@ -1187,246 +1166,33 @@ do
     return name, link, quality
   end
 
-  function Ctx.Sample(parent)
-    local T = ns.Theme
-    local s = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    s:SetBackdrop(PLAIN_BACKDROP)
-    PaintPlain(s)
-    s:SetWidth(CTX_W)
-    local art = ArtHolder(s)
-    -- For the mark before the name, made the first time it is drawn.
-    s.Art = art
-    s.Icon = art:CreateTexture(nil, "ARTWORK", nil, 1)
-    s.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    -- The holder answers for the icon to the rows' rule, which draws the
-    -- icon's edge on it, over the art (RowRules.PaintCount).
-    art.Icon = s.Icon
-    -- The mark over the icon's corner, a level above, with a soft dark copy
-    -- behind it so it reads on light item art.
-    local over = CreateFrame("Frame", nil, s)
-    over:SetAllPoints(s)
-    over:SetFrameLevel(art:GetFrameLevel() + 1)
-    s.MarkShadow = over:CreateTexture(nil, "ARTWORK")
-    s.MarkShadow:SetAlpha(0.6)
-    s.Mark = over:CreateTexture(nil, "OVERLAY")
-    -- The stack's count in the opposite corner, as the list writes it.
-    -- A font from the start, so no paint can write to it bare; the paint
-    -- gives it the list's (RowRules.StyleCount).
-    s.Count = over:CreateFontString(nil, "OVERLAY")
-    s.Count:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-    s.Count:SetJustifyH("RIGHT")
-    s.Count:SetWordWrap(false)
-    s.Name = T.CreateText(art, "value")
-    s.Name:SetJustifyH("LEFT")
-    s.Name:SetWordWrap(false)
-    s.Line2 = T.CreateText(art, "secondary")
-    s.Line2:SetJustifyH("LEFT")
-    s.Line2:SetWordWrap(false)
-    -- The second mail: a stripe, as the list's rows alternate, its coin and
-    -- its name; and the figures of both.
-    s.Stripe = art:CreateTexture(nil, "BACKGROUND", nil, 1)
-    T.FillChrome(s.Stripe, 0.035)
-    s.Icon2 = art:CreateTexture(nil, "ARTWORK", nil, 1)
-    s.Icon2:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    s.Icon2:SetTexture(SAMPLE_COIN)
-    s.Name2 = T.CreateText(art, "value")
-    s.Name2:SetJustifyH("LEFT")
-    s.Name2:SetWordWrap(false)
-    s.Gold, s.Slots, s.Gold2 = SampleFigure(art), SampleFigure(art), SampleFigure(art)
-    -- Behind both golds while Row layout is pointed at: the column the
-    -- choice moves, washed as the arrange mode washes one.
-    s.Wash = art:CreateTexture(nil, "BACKGROUND", nil, 3)
-    s.Wash2 = art:CreateTexture(nil, "BACKGROUND", nil, 3)
-    s.Wash:Hide()
-    s.Wash2:Hide()
-    return s
-  end
-
-  -- The golds' wash, while the pointer is on Row layout (its row or its
-  -- dropdown) and the sample has columns to show.
-  function Ctx.PaintSampleWash(s)
-    s = s or S.sample
-    if not s then return end
-    local cell = S.lanesCell
-    -- Pointed at, or holding the panel with its list open (Rows.Hold).
-    local held = S.held
-    local on = s.Gold:IsShown() and cell ~= nil
-      and (held == cell or (held == nil and cell:IsMouseOver())) or false
-    if on then
-      local r, g, b = ns.Theme.GetAccent()
-      for i = 1, 2 do
-        local wash, fs = (i == 1) and s.Wash or s.Wash2, (i == 1) and s.Gold or s.Gold2
-        wash:SetColorTexture(r, g, b, 0.22)
-        wash:ClearAllPoints()
-        wash:SetPoint("TOPLEFT", fs, "TOPLEFT", -3, 2)
-        wash:SetPoint("BOTTOMRIGHT", fs, "BOTTOMRIGHT", 3, -2)
-      end
-    end
-    s.Wash:SetShown(on)
-    s.Wash2:SetShown(on)
-  end
-
-  function Ctx.PaintSample(s)
-    local T = ns.Theme
-    local UI = ns.MailboxUI
-    local larger = UI and not UI.GetOption("compactRows") or false
-    PaintPlain(s)
-    local onIcon = not (UI and type(UI.GetQualityIcon) == "function") or UI.GetQualityIcon()
-    local byName = UI and type(UI.GetQualityName) == "function" and UI.GetQualityName() or "off"
-    local iconSize = larger and 24 or 18
-    local lineH = larger and 30 or 24
-    s:SetHeight(larger and (lineH + 16 + 2) or (2 * lineH + 2))
-
-    local name, link, quality = SampleItem()
-    local icon = C_Item and type(C_Item.GetItemIconByID) == "function" and C_Item.GetItemIconByID(SAMPLE_ITEM) or nil
-    s.Icon:SetTexture(icon or 134400)
-    s.Icon:SetSize(iconSize, iconSize)
-    s.Icon:ClearAllPoints()
-    s.Icon:SetPoint("CENTER", s, "TOPLEFT", 8 + iconSize / 2, -(1 + lineH / 2))
-    local r, g, b = 1, 1, 1
-    if quality and C_Item and type(C_Item.GetItemQualityColor) == "function" then
-      local qr, qg, qb = C_Item.GetItemQualityColor(quality)
-      if qr then r, g, b = qr, qg, qb end
-    end
-    -- The icon's edge as every mail row's: the rows' one gray line inside
-    -- the icon (RowRules.PaintCount; one item, no count of its own there:
-    -- the sample writes its count below, as the list does).
-    local R1 = ns.CollectTab and ns.CollectTab.RowRules
-    if R1 and type(R1.PaintCount) == "function" then
-      S.sampleLayout = S.sampleLayout or { shown = { icon = true } }
-      R1.PaintCount(s.Art, 0, 1, S.sampleLayout)
-    end
-
-    -- The mark the link carries, as the list reads it.
-    local mark = type(link) == "string" and (link:match("|A:Professions%-[^|]*|a")
-      or link:match("|A:[^|]*[Qq]uality[^|]*|a")) or nil
-    local atlas = mark and mark:match("|A:([^:|]+)") or nil
-    local R0 = ns.CollectTab and ns.CollectTab.RowRules
-    if atlas and onIcon and R0 and R0.ShowMark and R0.PlaceMark then
-      -- The list's own art, size and place (RowRules): the icon's top-left
-      -- corner, by the one rule every item icon follows.
-      R0.ShowMark(s.Mark, s.MarkShadow, atlas)
-      R0.PlaceMark(s.Mark, s.MarkShadow, s.Icon, iconSize)
-    else
-      s.Mark:Hide()
-      s.MarkShadow:Hide()
-    end
-    -- The count, where Stack counts on item icons puts it: the list's font,
-    -- size and corner.
-    if UI and UI.GetOption("iconCounts") then
-      if R0 and R0.StyleCount then
-        R0.StyleCount(s.Count, s.Icon, iconSize)
-      end
-      s.Count:SetText(SAMPLE_COUNT)
-      s.Count:Show()
-    else
-      s.Count:Hide()
-    end
-
-    local text = name or ""
-    -- After the name: the list's own marked name (RowRules.WithMark), fitted
-    -- by the list's own rule, the mark whole and the name shortened before
-    -- it where they do not both fit (RowRules.FitSubject).
-    local R = ns.CollectTab and ns.CollectTab.RowRules
-    if mark and name and byName == "after" then
-      text = (R and R.WithMark) and R.WithMark(name, mark) or (name .. " " .. mark)
-    end
-    local function FitName(width)
-      if R and R.FitSubject then
-        R.FitSubject(s, s.Name, width, text, s.Art)
-      else
-        T.FitText(s.Name, width, text)
-      end
-    end
-    -- Before the name: the mark where the name began, and the room for it
-    -- before both names (the list's own, RowRules.NameMarkRoom).
-    local room = (byName == "before" and R and R.NameMarkRoom) and R.NameMarkRoom() or 0
-    T.SetTextRGB(s.Name, T.InkFor(r, g, b))
-    s.Name:ClearAllPoints()
-    s.Name:SetPoint("LEFT", s.Icon, "RIGHT", 7 + room, 0)
-    if R and R.PaintNameMark then R.PaintNameMark(s, name and mark or nil, s.Art, s.Name) end
-    if not S.sampleMeta then
-      S.sampleMeta = L["ROW_AH_BOUGHT"] .. "  \194\183  " .. ns.Helpers.TimeLeft(SAMPLE_DAYS)
-    end
-    local nameX = 8 + iconSize + 7
-    s.Stripe:SetShown(not larger)
-    s.Icon2:SetShown(not larger)
-    s.Name2:SetShown(not larger)
-    if larger then
-      s.Gold:Hide()
-      s.Slots:Hide()
-      s.Gold2:Hide()
-      s.Line2:ClearAllPoints()
-      s.Line2:SetPoint("TOPLEFT", s, "TOPLEFT", nameX, -(1 + lineH - 3))
-      T.FitText(s.Line2, CTX_W - nameX - 8, S.sampleMeta)
-      s.Line2:Show()
-      FitName(CTX_W - nameX - 8 - room)
-    else
-      s.Line2:Hide()
-      -- The figures, made once: the price, the slot, the sale's gold.
-      local fig = S.sampleFigures
-      if not fig then
-        local F = ns.Core and ns.Core.Formatting
-        local money = F and F.FormatMoneyCompact
-        fig = { money and money(SAMPLE_PRICE, true) or "52g", ns.Plural("COUNT_SLOTS", 1),
-          money and money(SAMPLE_SALE, true) or "1309g" }
-        S.sampleFigures = fig
-      end
-      s.Gold:SetText(fig[1])
-      -- The slot as the Slots column's choice writes it: "1 slot", or "1".
-      local number = UI and type(UI.GetSlotsStyle) == "function" and UI.GetSlotsStyle() == "number"
-      s.Slots:SetText(number and "1" or fig[2])
-      s.Gold2:SetText(fig[3])
-      T.SetColor(s.Gold, "negative")
-      T.SetColor(s.Slots, "textSecondary")
-      T.SetColor(s.Gold2, "positive")
-      -- Each column as wide as its widest entry, gold then slots from the
-      -- edge in. In Columns, the sale's gold stands in the gold column;
-      -- Packed, at the edge, where the slot it does not have would be.
-      local goldW = math.max(TextW(s.Gold), TextW(s.Gold2))
-      -- The number alone stands in a column as narrow as the list draws one.
-      local slotsW = math.max(TextW(s.Slots), (R and R.FIGURE_MIN) or 0)
-      local edge = CTX_W - 8
-      local goldEdge = edge - slotsW - SAMPLE_GAP
-      local lined = not (UI and UI.GetRowPacking) or UI.GetRowPacking() ~= "packed"
-      local saleEdge = lined and goldEdge or edge
-      local y1, y2 = -(1 + lineH / 2), -(1 + lineH + lineH / 2)
-      PlaceFigure(s, s.Slots, edge, slotsW, y1)
-      PlaceFigure(s, s.Gold, goldEdge, goldW, y1)
-      PlaceFigure(s, s.Gold2, saleEdge, goldW, y2)
-      FitName(math.max(40, goldEdge - goldW - SAMPLE_GAP - nameX - room))
-
-      s.Stripe:ClearAllPoints()
-      s.Stripe:SetPoint("TOPLEFT", s, "TOPLEFT", 1, -(1 + lineH))
-      s.Stripe:SetPoint("BOTTOMRIGHT", s, "BOTTOMRIGHT", -1, 1)
-      s.Icon2:SetSize(iconSize, iconSize)
-      s.Icon2:ClearAllPoints()
-      s.Icon2:SetPoint("CENTER", s, "TOPLEFT", 8 + iconSize / 2, y2)
-      s.Name2:ClearAllPoints()
-      s.Name2:SetPoint("LEFT", s.Icon2, "RIGHT", 7 + room, 0)
-      T.FitText(s.Name2, math.max(40, saleEdge - goldW - SAMPLE_GAP - nameX - room), name or "")
-    end
-    Ctx.PaintSampleWash(s)
-  end
-
-  -- The Mail tab: the character groups tile and the sample row.
+  -- The Mail tab: the character groups tile, and under it the Mail window,
+  -- small, wearing the Mail tab's settings (Ctx.Mini, the Mail tab's
+  -- window), as tall as the room between the tile and the text (Layout).
   function Ctx.mail(card)
     local f = CreateFrame("Frame", nil, card)
     f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
-    f:SetSize(CTX_W, TILE_H + 8 + SAMPLE_MAX)
+    f:SetSize(CTX_W, TILE_H + 8 + Ctx.MailMiniHeight())
     local tile = Ctx.Tile(f, "Interface\\AddOns\\Postbox\\Media\\minimap-mailbag.tga",
       L["GROUPS_TITLE"], S.idle.mail, Ctx.OpenGroups)
     tile:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-    local sample = Ctx.Sample(f)
-    sample:SetPoint("TOPLEFT", tile, "BOTTOMLEFT", 0, -8)
-    S.sample = sample
+    local sw = Ctx.Mini(f, true)
+    sw:SetPoint("TOPLEFT", tile, "BOTTOMLEFT", 0, -8)
+    S.mailMini = sw
     f.Paint = function()
-      -- How many groups there are; none reads as the tile's way in.
+      -- How many groups there are; none reads as the tile's way in. The
+      -- words are made when the number changes.
       local CG = ns.CharacterGroups
       local list = CG and type(CG.List) == "function" and CG.List() or nil
       local n = type(list) == "table" and #list or 0
-      Ctx.PaintTile(tile, n > 0 and ns.Plural("OPT_GROUPS_COUNT", n) or L["GROUPS_NEW"])
-      Ctx.PaintSample(sample)
+      if S.tileGroups ~= n or not S.tileFact then
+        S.tileGroups = n
+        S.tileFact = n > 0 and ns.Plural("OPT_GROUPS_COUNT", n) or L["GROUPS_NEW"]
+      end
+      Ctx.PaintTile(tile, S.tileFact)
+      local h = Ctx.MailMiniHeight()
+      f:SetHeight(TILE_H + 8 + h)
+      Ctx.PaintMini(sw, h)
     end
     return f
   end
@@ -1485,6 +1251,10 @@ do
   -- no caption or sender in it is cut; only an item's name too long for the
   -- subject's room is shortened, as the list shortens it. Built once; a
   -- paint lays out again only when a height moved, and makes nothing.
+  --
+  -- One window, two drawings: the Window tab's, as above, and the Mail
+  -- tab's, the same frame, tabs, list, band and button wearing the Mail
+  -- tab's settings as well (below, "The Mail tab's window").
   ---------------------------------------------------------
   local MW = {
     -- The window stands this far in from the world's edges.
@@ -1686,16 +1456,29 @@ do
     return sw
   end
 
-  function Ctx.Mini(parent)
+  -- The drawing: the Window tab's, over its bit of world; or with `mail`
+  -- the Mail tab's, across the inspector's whole width with no world round
+  -- it -- its look's opacity is the Window tab's to show, and its rows need
+  -- the room -- whose list, segments and category buttons are its own
+  -- (MW.BuildMail).
+  function Ctx.Mini(parent, mail)
     local T = ns.Theme
     local skin = ns.Skin
     local own = MW.Own()
-    local sw = Ctx.Swatch(parent)
+    local sw
+    if mail then
+      sw = CreateFrame("Frame", nil, parent)
+      sw:SetSize(CTX_W, 1)
+      sw.World = sw
+    else
+      sw = Ctx.Swatch(parent)
+    end
     local win = CreateFrame("Frame", nil, sw, (not own) and "BackdropTemplate" or nil)
     win:SetFrameLevel(sw.World:GetFrameLevel() + 2)
-    win:SetPoint("TOPLEFT", sw, "TOPLEFT", MW.PAD_X, -MW.PAD_Y)
-    win:SetPoint("BOTTOMRIGHT", sw, "BOTTOMRIGHT", -MW.PAD_X, MW.PAD_Y)
-    win.own = own
+    local px, py = mail and 0 or MW.PAD_X, mail and 0 or MW.PAD_Y
+    win:SetPoint("TOPLEFT", sw, "TOPLEFT", px, -py)
+    win:SetPoint("BOTTOMRIGHT", sw, "BOTTOMRIGHT", -px, py)
+    win.own, win.mail = own, mail and true or false
     if not own then
       -- A host's or Blizzard's window: its fill at the opacity and an edge
       -- standing for its frame (MW.PaintHost); under ElvUI, ElvUI's own
@@ -1728,23 +1511,10 @@ do
       list = CreateFrame("Frame", nil, win, "BackdropTemplate")
       T.ApplyList(list)
     end
-    local R = ns.CollectTab and ns.CollectTab.RowRules
     list.Rows = {}
-    for i = 1, #MW.SAMPLES do
+    for i = 1, mail and 0 or #MW.SAMPLES do
       local row = CreateFrame("Frame", nil, list)
-      -- The read mark: the list's flat round dot and its soft shadow.
-      local dot = row:CreateTexture(nil, "ARTWORK")
-      dot:SetTexture(WHITE)
-      dot:SetSize(MW.DOT, MW.DOT)
-      dot:SetPoint("CENTER", row, "LEFT", MW.DOT_X, 0)
-      if type(row.CreateMaskTexture) == "function" then
-        local mask = row:CreateMaskTexture()
-        mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        mask:SetAllPoints(dot)
-        dot:AddMaskTexture(mask)
-      end
-      row.Indicator = dot
-      if R and R.ShadeDot then R.ShadeDot(row) end
+      MW.Dot(row):SetPoint("CENTER", row, "LEFT", MW.DOT_X, 0)
       row.Sender = T.CreateText(row, "label")
       row.Sender:SetPoint("LEFT", row, "LEFT", MW.SENDER_X, 0)
       row.Subject = T.CreateText(row, "value")
@@ -1787,11 +1557,28 @@ do
       button:SetText(L["CAT_ALL"])
     end
     win.Button = button
+    if mail then MW.BuildMail(win) end
 
     -- A host's parts by its own pass, as the window's are.
     if not own and skin and type(skin.Refresh) == "function" then pcall(skin.Refresh, win) end
     sw.Mini = win
     return sw
+  end
+
+  -- The Mail and Send tabs, two equal halves of the content's width `inner`
+  -- under the strip; -> where the content under them begins.
+  function MW.LayTabs(win, inner)
+    local h = MW.h
+    local y = h.strip + h.titleGap
+    local cols = ns.Theme.ColumnEdges(inner, 2, MW.Scaled(ns.Theme.Metrics.gap), MW.cols)
+    for i = 1, 2 do
+      local plate, col = win.Tabs[i], cols[i]
+      plate:ClearAllPoints()
+      plate:SetPoint("TOPLEFT", win, "TOPLEFT", h.side + col.left, -y)
+      plate:SetSize(col.width, h.tab)
+      plate.w = col.width
+    end
+    return y + h.tab + h.underTabs
   end
 
   -- Lays the drawing out at the heights in force, only where one moved.
@@ -1803,16 +1590,7 @@ do
     if win.laid == key then return end
     win.laid = key
     local inner = CTX_W - 2 * MW.PAD_X - 2 * h.side
-    local y = h.strip + h.titleGap
-    local cols = ns.Theme.ColumnEdges(inner, 2, MW.Scaled(ns.Theme.Metrics.gap), MW.cols)
-    for i = 1, 2 do
-      local plate, col = win.Tabs[i], cols[i]
-      plate:ClearAllPoints()
-      plate:SetPoint("TOPLEFT", win, "TOPLEFT", h.side + col.left, -y)
-      plate:SetSize(col.width, h.tab)
-      plate.w = col.width
-    end
-    y = y + h.tab + h.underTabs
+    local y = MW.LayTabs(win, inner)
     -- The list, the band and the button, one under the other, each across
     -- the content's width.
     MW.ACROSS[1], MW.ACROSS[2], MW.ACROSS[3] = win.List, win.Band, win.Button
@@ -2005,8 +1783,8 @@ do
   -- FitBanner): the two labels and the gold of each, in their tones on the
   -- band; where that is wider than the band, the two sums alone. The coins
   -- are inline textures, which a string's measure leaves out, so each is
-  -- counted at its own size.
-  function MW.PaintBand(win)
+  -- counted at its own size. `gained` and `paid`: the sums, in copper.
+  function MW.PaintBand(win, gained, paid)
     local T = ns.Theme
     local F = ns.Core and ns.Core.Formatting
     local fs = win.Band.Text
@@ -2014,8 +1792,8 @@ do
     if not (F and F.FormatMoneyIcons) then fs:SetText("") return end
     local up = "ff" .. (T.InkHex("positive", "band") or "40d55a")
     local down = "ff" .. (T.InkHex("negative", "band") or "ff4444")
-    local earned = F.FormatMoneyIcons(SAMPLE_SALE + MW.GIFT, up, 1)
-    local spent = F.FormatMoneyIcons(SAMPLE_PRICE, down, 1)
+    local earned = F.FormatMoneyIcons(gained, up, 1)
+    local spent = F.FormatMoneyIcons(paid, down, 1)
     fs:SetWidth(room)
     fs:SetText(L["BANNER_EARNED_SHORT"] .. earned .. "   |   " .. L["BANNER_SPENT_SHORT"] .. spent)
     if T.TextWidth(fs) + 2 * (F.MONEY_ICON_SIZE or 12) > room then
@@ -2023,15 +1801,907 @@ do
     end
   end
 
-  function Ctx.PaintMini(sw)
+  -- `height`: the Mail tab's window's, which takes the room it is given.
+  function Ctx.PaintMini(sw, height)
     local win = sw and sw.Mini
     if not win then return end
+    if win.mail then return MW.PaintMail(sw, win, height) end
     MW.Lay(sw, win)
     if win.own then MW.PaintOwn(win) else MW.PaintHost(win) end
     MW.PaintTabs(win)
     MW.PaintRows(win)
-    MW.PaintBand(win)
+    MW.PaintBand(win, SAMPLE_SALE + MW.GIFT, SAMPLE_PRICE)
   end
+
+  ---------------------------------------------------------
+  -- The Mail tab's window
+  --
+  -- The same window -- its frame, its tabs, its list, the band and All
+  -- mail, painted as above -- wearing the Mail tab's settings as well, live:
+  -- under the tabs the Inbox segment, and Done beside it while read mail has
+  -- a tab of its own, each with its count while Show mail counts is on; the
+  -- list, its rows one line or two (Larger mail rows), their gold and slots
+  -- in columns or packed (Row layout), the stack count and the quality mark
+  -- on the icons and the mark by the names where those settings put them;
+  -- the read mail's divider, and the read mail under it, while read mail
+  -- stays below the inbox (its fold as the window's divider was last left);
+  -- and under the list, in the order the blocks are arranged in, the totals
+  -- band (Show totals), All mail and the category buttons (Show category
+  -- buttons): the window's own set in its arrangement, a character group's
+  -- among them, each greyed where it would collect nothing.
+  --
+  -- The mail is a sample box (MW.BOX), always the same: auction outcomes in
+  -- their tones, gold from you in your class colour, and the read letter
+  -- from a friend in hers. Everything that counts counts the box -- the
+  -- segments, the divider, the buttons, the band -- so a setting that hides
+  -- a block moves no number, as in the window. Every part is painted by the
+  -- rows' own rules (the dot, the stripe, the sender, the icon's edge, its
+  -- count and mark, the name's mark and the money's tones); where each
+  -- stands is the drawing's, in proportion, the columns in their default
+  -- order without the time left, which leaves the names some room at a
+  -- third of the window's width.
+  --
+  -- The window is as tall as the room between the tile and the text
+  -- (Layout), whatever is switched on or off. The list is its one elastic
+  -- part, as in the window: it shows the rows that fit, from the top, the
+  -- last one cut by the list's foot, and while read mail is below the inbox
+  -- and its divider's place is further down, the divider stands pinned at
+  -- the list's foot, as the window's does. A paint makes nothing: what counts
+  -- the box is written once, and again only when the buttons change.
+  ---------------------------------------------------------
+
+  -- The sample box, newest first. `kind`: the auction outcome (nil: a
+  -- letter); `me`: from you; `money`: the gold it holds; `price`: what a won
+  -- auction cost; `n`: the first stack, on the icon; `items`: the stacks it
+  -- holds, `total` the item's count in all of them.
+  MW.BOX = {
+    { kind = "sold", money = SAMPLE_SALE },
+    { kind = "bought", price = SAMPLE_PRICE, n = 20, items = 1, total = 20 },
+    { me = true, money = MW.GIFT, read = true, subject = "PREVIEW_GIFT" },
+    { kind = "sold", money = 864000 },
+    { kind = "expired", n = 5, items = 1, total = 5 },
+    { kind = "bought", price = 271300, n = 10, items = 1, total = 10, read = true },
+    { kind = "sold", money = 4120000, read = true },
+    { kind = "canceled", n = 12, items = 1, total = 12 },
+    { kind = "sold", money = 10500000 },
+    { kind = "bought", price = 1564000, n = 20, items = 2, total = 40 },
+    { kind = "sold", money = 640000, read = true },
+    { kind = "sold", money = 2210000 },
+    { kind = "bought", price = 89900, n = 5, items = 1, total = 5 },
+    { kind = "sold", money = 1560000, read = true },
+  }
+  -- Read, with nothing left in it: a letter from a friend whose class is
+  -- known.
+  MW.READ = { from = "Brynna", class = "DRUID", subject = "PREVIEW_LETTER", read = true, done = true }
+  -- The arrangement the drawing's rows wear: every column it draws shown.
+  MW.LAYOUT = { shown = { read = true, icon = true, sender = true, subject = true, money = true, slots = true } }
+  -- The rows' icons: a coin for gold, a letter, the item's own.
+  MW.COIN, MW.LETTER = SAMPLE_COIN, 134327
+  -- A row: its icon's least size (one line) and that of a two-line row,
+  -- where it stands, where the dot's centre stands, and the gap between a
+  -- two-line row's lines; a category button's real height; a segment's
+  -- caption room each side; the read mail's delete mark; the divider's
+  -- fold mark; the outline's step out from what it rings.
+  MW.ICON, MW.ICON_L, MW.ICON_X, MW.MDOT_X, MW.LINES_GAP = 14, 22, 10, 5, 2
+  MW.SWEEP, MW.SEG_PAD, MW.DELETE, MW.FOLD, MW.RING = 26, 6, 9, 10, 2
+  -- The category buttons, three to a row; the built-in ones in the
+  -- window's order.
+  MW.GRID_COLUMNS = 3
+  MW.BUILTIN = { "bought", "sold", "canceled", "expired", "other", "alts" }
+  -- The atlases the read mail's delete mark is drawn from.
+  MW.DELETE_ART = { "uitools-icon-close", "transmog-icon-remove", "common-icon-redx" }
+
+  -- The read mark: the list's flat round dot and its soft shadow.
+  function MW.Dot(row)
+    local dot = row:CreateTexture(nil, "ARTWORK")
+    dot:SetTexture(WHITE)
+    dot:SetSize(MW.DOT, MW.DOT)
+    if type(row.CreateMaskTexture) == "function" then
+      local mask = row:CreateMaskTexture()
+      mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+      mask:SetAllPoints(dot)
+      dot:AddMaskTexture(mask)
+    end
+    row.Indicator = dot
+    local R = ns.CollectTab and ns.CollectTab.RowRules
+    if R and R.ShadeDot then R.ShadeDot(row) end
+    return dot
+  end
+
+  -- A text of one line, never wrapped.
+  function MW.Text(parent, role, justify)
+    local fs = ns.Theme.CreateText(parent, role)
+    fs:SetJustifyH(justify or "LEFT")
+    fs:SetWordWrap(false)
+    if fs.SetMaxLines then fs:SetMaxLines(1) end
+    return fs
+  end
+
+  -- `region` at `point` of `rel`, set again only when that moved.
+  function MW.At(region, point, rel, x, y)
+    if region.__mwP == point and region.__mwR == rel and region.__mwX == x and region.__mwY == y then return end
+    region.__mwP, region.__mwR, region.__mwX, region.__mwY = point, rel, x, y
+    region:ClearAllPoints()
+    region:SetPoint(point, rel, point, x, y)
+  end
+
+  -- A mail row: the dot, the icon, the sender, the subject, the second line
+  -- of a two-line row, the gold and the slots, and the delete mark the read
+  -- mail carries.
+  function MW.NewRow(parent)
+    local T = ns.Theme
+    local row = CreateFrame("Frame", nil, parent)
+    MW.Dot(row):SetPoint("CENTER", row, "LEFT", MW.MDOT_X, 0)
+    row.Icon = row:CreateTexture(nil, "ARTWORK")
+    row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    row.Icon:SetPoint("LEFT", row, "LEFT", MW.ICON_X, 0)
+    row.Sender = MW.Text(row, "label")
+    row.Subject = MW.Text(row, "value")
+    row.Detail = MW.Text(row, "secondary")
+    row.Money = MW.Text(row, "secondary", "RIGHT")
+    row.Slots = MW.Text(row, "secondary", "RIGHT")
+    local art = T.FirstAtlas and T.FirstAtlas(MW.DELETE_ART)
+    if art then
+      row.Delete = row:CreateTexture(nil, "ARTWORK")
+      row.Delete:SetAtlas(art, false)
+      row.Delete:SetSize(MW.DELETE, MW.DELETE)
+    else
+      row.Delete = MW.Text(row, "value")
+      row.Delete:SetText("\195\151")
+    end
+    T.SetColor(row.Delete, "textSecondary")
+    row.Delete:SetPoint("RIGHT", row, "RIGHT", -MW.ROW_END, 0)
+    row.Delete:Hide()
+    row:Hide()
+    return row
+  end
+
+  -- The read mail's divider: its ground and rule, the fold mark, its words,
+  -- and Delete all at its right; once in the list, once pinned at its foot.
+  function MW.NewDivider(parent)
+    local T = ns.Theme
+    local d = CreateFrame("Frame", nil, parent)
+    d.Fill = d:CreateTexture(nil, "BACKGROUND")
+    d.Fill:SetAllPoints()
+    d.Rule = d:CreateTexture(nil, "ARTWORK")
+    d.Rule:SetHeight(1)
+    d.Rule:SetPoint("TOPLEFT", d, "TOPLEFT", 0, -1)
+    d.Rule:SetPoint("TOPRIGHT", d, "TOPRIGHT", 0, -1)
+    d.Rule:SetTexture(WHITE)
+    d.Fold = d:CreateTexture(nil, "ARTWORK")
+    d.Fold:SetSize(MW.FOLD, MW.FOLD)
+    d.Fold:SetDesaturated(true)
+    d.Fold:SetAlpha(0.7)
+    d.Label = MW.Text(d, "secondary")
+    d.Label:SetPoint("LEFT", d.Fold, "RIGHT", 4, 0)
+    d.Delete = MW.Text(d, "secondary", "RIGHT")
+    d.Delete:SetPoint("RIGHT", d, "RIGHT", -MW.ROW_END, 0)
+    d:Hide()
+    return d
+  end
+
+  -- A category button: the Postbox style's block and caption, or under any
+  -- other look the real button, which that look's skin paints.
+  function MW.NewSweep(win)
+    local T = ns.Theme
+    local button
+    if win.own then
+      button = MW.Block(win)
+      button.Text = T.CreateText(button, "bodySmall")
+      button.Text:SetPoint("CENTER", button, "CENTER", 0, 0)
+    else
+      button = T.CreateButton(nil, win)
+      button:EnableMouse(false)
+      button:SetText(" ")
+      button.Text = button:GetFontString()
+    end
+    button:Hide()
+    return button
+  end
+
+  -- The Mail tab's parts of the window: the segments, the rows and the
+  -- dividers in a frame that ends where the list's padding begins (a row the
+  -- list's foot cuts is cut there, as the window's scroll cuts it), the
+  -- category buttons -- the built-in six now, a group's when it first
+  -- appears (MW.Sweeps) -- and the outline.
+  function MW.BuildMail(win)
+    local T = ns.Theme
+    win.Segs = {}
+    for i = 1, 2 do
+      local plate = T.CreatePlate(win, "segment")
+      plate:EnableMouse(false)
+      if plate.Text then plate.Text:SetFontObject(T.FontObject("bodySmall")) end
+      win.Segs[i] = plate
+    end
+    local clip = CreateFrame("Frame", nil, win.List)
+    if clip.SetClipsChildren then clip:SetClipsChildren(true) end
+    win.Clip = clip
+    win.Rows = {}
+    for i = 1, #MW.BOX + 1 do win.Rows[i] = MW.NewRow(clip) end
+    win.Divider, win.Pin = MW.NewDivider(clip), MW.NewDivider(clip)
+    win.Grid = CreateFrame("Frame", nil, win)
+    win.Sweeps, win.gridCols = {}, {}
+    for i = 1, #MW.BUILTIN do win.Sweeps[MW.BUILTIN[i]] = MW.NewSweep(win) end
+    local ring = CreateFrame("Frame", nil, win)
+    ring:SetFrameLevel(win:GetFrameLevel() + 30)
+    ring.Edges = MW.Edges(ring, "OVERLAY", 7)
+    MW.LayEdges(ring.Edges, ring, 1)
+    ring:Hide()
+    win.Ring = ring
+  end
+
+  -- What the box counts, made once: the sums the band shows, what each
+  -- built-in button would collect, and the texts that count it -- the
+  -- segments' in each read-mail mode, Done's, All mail's and the
+  -- divider's, with their numbers and without.
+  function MW.Counts()
+    local c = S.boxCounts
+    if c then return c end
+    c = { gained = 0, paid = 0, all = 0 }
+    for i = 1, #MW.BOX do
+      local m = MW.BOX[i]
+      c.gained = c.gained + (m.money or 0)
+      c.paid = c.paid + (m.price or 0)
+      -- Every one of them is still to collect: no C.O.D. among them, and
+      -- the read ones hold gold.
+      c.all = c.all + 1
+      local id = m.kind or (m.me and "alts") or "other"
+      c[id] = (c[id] or 0) + 1
+    end
+    local n = #MW.BOX
+    local inbox = L["VIEW_INBOX"]
+    -- Inbox counts the whole box, the read mail under its divider with it,
+    -- unless Done has the read mail.
+    c.inbox = { fold = inbox .. " (" .. (n + 1) .. ")", tab = inbox .. " (" .. n .. ")", delete = inbox .. " (" .. n .. ")" }
+    c.done = L["VIEW_DONE"] .. " (1)"
+    c.allText = L["CAT_ALL"] .. " (" .. c.all .. ")"
+    c.divider = L("INBOX_READ_DIVIDER", 1)
+    S.boxCounts = c
+    return c
+  end
+
+  -- The category buttons the window shows, in its order: the built-in six
+  -- and a character group's with members, as the player arranged them
+  -- (CollectTab.ReconcileGrid, the window's own rule), the hidden ones left
+  -- out; each with its caption, with and without its count, and what it
+  -- would collect of the box -- a group's, the mail its members sent. Read
+  -- again when the panel opens and when the groups' window closes, and only
+  -- then if the arrangement or the groups moved; nothing is made otherwise.
+  function MW.Grid()
+    local g = S.mailGrid
+    if not g then
+      g = { ids = {}, plain = {}, counted = {}, counts = {}, available = {}, n = 0 }
+      S.mailGrid = g
+    end
+    local UI = ns.MailboxUI
+    local CT = ns.CollectTab
+    local CG = ns.CharacterGroups
+    -- The arrangement as it is saved (MailboxUI.SetGridLayout): one string,
+    -- read without making anything. Its table is asked for only when that
+    -- or the groups moved.
+    local Store = ns.Store
+    local text = Store and type(Store.Get) == "function" and Store.Get("profile.gridLayout") or nil
+    local list = CG and type(CG.List) == "function" and CG.List() or nil
+    local groups = type(list) == "table" and #list or 0
+    if g.built and not S.gridStale and g.text == text and g.list == list and g.groups == groups then return g end
+    S.gridStale = false
+    g.built, g.text, g.list, g.groups = true, text, list, groups
+    local stored = UI and type(UI.GetGridLayout) == "function" and UI.GetGridLayout() or nil
+    local c = MW.Counts()
+    local available, labels = g.available, ns.CATEGORY_LABELS or {}
+    for i = #available, 1, -1 do available[i] = nil end
+    for i = 1, #MW.BUILTIN do available[i] = MW.BUILTIN[i] end
+    -- A group's button counts the mail its members sent: here, yours.
+    local me = type(UnitName) == "function" and UnitName("player") or nil
+    local RC = ns.Recipients
+    local key = me and RC and type(RC.Key) == "function" and RC.Key(me) or nil
+    local names = {}
+    for i = 1, groups do
+      local group = list[i]
+      if type(group) == "table" and type(group.members) == "table" and #group.members > 0 then
+        local id = "group:" .. tostring(group.id)
+        available[#available + 1] = id
+        names[id] = CG.DisplayName and CG.DisplayName(group) or tostring(group.name or "")
+        local set = CG.KeySet and CG.KeySet(group.id)
+        c[id] = (key and type(set) == "table" and set[key]) and 1 or 0
+      end
+    end
+    local entries
+    if CT and type(CT.ReconcileGrid) == "function" then
+      entries = CT.ReconcileGrid(stored, available, CG ~= nil, CG and CG.Exists or nil)
+    end
+    local n = 0
+    for i = 1, #available do
+      local entry = entries and entries[i]
+      local id = entries and entry and entry.id or available[i]
+      if not entries or (entry and entry.shown) then
+        n = n + 1
+        local label = names[id] or labels[id] or id
+        local count = c[id] or 0
+        g.ids[n], g.counts[n], g.plain[n] = id, count, label
+        g.counted[n] = count > 0 and (label .. " (" .. count .. ")") or label
+      end
+    end
+    for i = #g.ids, n + 1, -1 do g.ids[i], g.counts[i], g.plain[i], g.counted[i] = nil, nil, nil, nil end
+    g.n = n
+    return g
+  end
+
+  -- Rows of category buttons, `n` of them three to a row.
+  function MW.GridRows(n)
+    return math.ceil((n or 0) / MW.GRID_COLUMNS)
+  end
+
+  -- The Mail tab's window's heights beyond the window's own (MW.Heights),
+  -- into MW.h: the segments and the gap under them; a one-line row as tall
+  -- as its icon needs, a two-line row as its two lines; a category button,
+  -- in its look's own font; the grid; and everything over the list.
+  function MW.MailHeights()
+    local h, TM, S_ = MW.h, ns.Theme.Metrics, MW.Scaled
+    MW.Heights()
+    local caption = MW.Line("bodySmall")
+    local line = math.max(MW.Line("label"), MW.Line("value"))
+    h.seg = math.max(S_(TM.segmentHeight), caption + MW.CONTROL_AIR)
+    h.segGap = S_(TM.gap)
+    h.iconC = math.max(MW.ICON, line + 2)
+    h.rowC = math.max(h.row, h.iconC + 2)
+    h.text2 = line + MW.LINES_GAP + MW.Line("secondary")
+    h.iconL = math.max(MW.ICON_L, h.text2)
+    h.rowL = math.max(S_(TM.rowHeight), h.iconL + 4)
+    h.sweep = math.max(S_(MW.SWEEP), (MW.Own() and caption or MW.Line("tab")) + MW.CONTROL_AIR)
+    local rows = MW.GridRows(MW.Grid().n)
+    h.grid = rows > 0 and (rows * h.sweep + (rows - 1) * h.gap) or 0
+    h.over = h.strip + h.titleGap + h.tab + h.underTabs + h.seg + h.segGap
+  end
+
+  -- The least the Mail tab's window can be: everything over the list, the
+  -- list showing two two-line rows and the pinned divider, and every block
+  -- under it shown. No world round it (Ctx.Mini).
+  function MW.MailMin()
+    local h = MW.h
+    MW.MailHeights()
+    local list = 2 * h.pad + 3 * h.rowL + 2 * h.rowGap
+    local stack = h.band + h.gap + h.button + ((h.grid > 0) and (h.gap + h.grid) or 0)
+    return h.over + list + h.gap + stack + h.bottom
+  end
+
+  -- For Ctx.Height and the tab's drawing: the height Layout gave the
+  -- window, never less than its least.
+  function Ctx.MailMiniHeight()
+    local least = MW.MailMin()
+    local given = S.mailMiniH or 0
+    return given > least and given or least
+  end
+
+  -- What the Mail tab needs of the inspector: the tile, the window at its
+  -- least and the text zone `textH` under it (Layout).
+  function Ctx.MailNeed(textH)
+    return CTX_TOP + TILE_H + 8 + MW.MailMin() + 10 + (textH or SAY_MIN)
+  end
+
+  -- The window's height in an inspector `bodyH` tall: all the room between
+  -- the tile and the text zone.
+  function Ctx.MailFill(bodyH, textH)
+    S.mailMiniH = math.floor(bodyH - (CTX_TOP + TILE_H + 8) - 10 - (textH or SAY_MIN))
+  end
+
+  -- The settings the window shows, read once per paint.
+  function MW.Read(st)
+    local UI = ns.MailboxUI
+    local get = UI and UI.GetOption
+    st.compact = not get or get("compactRows") and true or false
+    st.totals = not get or get("showTotals") and true or false
+    st.grid = get and get("showCategoryButtons") and true or false
+    st.counts = not get or get("showTabCounts") and true or false
+    st.folded = get and get("readFolded") and true or false
+    st.mode = UI and type(UI.GetReadMode) == "function" and UI.GetReadMode() or "fold"
+    st.packed = UI and type(UI.GetRowPacking) == "function" and UI.GetRowPacking() == "packed" or false
+    local order = UI and type(UI.GetStackOrder) == "function" and UI.GetStackOrder() or nil
+    st.order = type(order) == "table" and order or MW.STACK
+    return st
+  end
+  MW.STACK = { "band", "all", "grid" }
+  MW.st = {}
+
+  -- The segments, the list, and the blocks under it in their order, the
+  -- window `height` tall; -> the list's inner height.
+  function MW.MailLay(sw, win, height, st)
+    local h = MW.h
+    sw:SetHeight(height)
+    local inner = CTX_W - 2 * h.side
+    win.inner = inner
+    local y = MW.LayTabs(win, inner)
+    -- The segments: Inbox, and Done while read mail has a tab of its own,
+    -- each as wide as the wider caption needs, from the left.
+    local segs = win.Segs
+    local two = st.mode == "tab"
+    local c = MW.Counts()
+    segs[1].caption = st.counts and c.inbox[st.mode] or L["VIEW_INBOX"]
+    segs[2].caption = st.counts and c.done or L["VIEW_DONE"]
+    local width, snug = 0, MW.Scaled(ns.Theme.Metrics.space.snug)
+    for i = 1, two and 2 or 1 do
+      local fs = segs[i].Text
+      fs:SetText(segs[i].caption)
+      width = math.max(width, TextW(fs))
+    end
+    width = math.min(width + 2 * MW.SEG_PAD, math.floor((inner - snug) / 2))
+    for i = 1, 2 do
+      local plate = segs[i]
+      plate:SetShown(i == 1 or two)
+      MW.At(plate, "TOPLEFT", win, h.side + (i - 1) * (width + snug), -y)
+      plate:SetSize(width, h.seg)
+      plate.w = width
+    end
+    y = y + h.seg + h.segGap
+    -- The blocks under the list: All mail, and what each setting shows of
+    -- the others.
+    local showGrid = st.grid and h.grid > 0
+    local stack = h.button
+    if st.totals then stack = stack + h.gap + h.band end
+    if showGrid then stack = stack + h.gap + h.grid end
+    local listH = height - y - h.gap - stack - h.bottom
+    local list = win.List
+    MW.At(list, "TOPLEFT", win, h.side, -y)
+    list:SetPoint("TOPRIGHT", win, "TOPRIGHT", -h.side, -y)
+    list:SetHeight(listH)
+    local clip = win.Clip
+    clip:ClearAllPoints()
+    clip:SetPoint("TOPLEFT", list, "TOPLEFT", h.pad, -h.pad)
+    clip:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", -h.pad, h.pad)
+    y = y + listH + h.gap
+    win.Band:SetShown(st.totals)
+    win.Grid:SetShown(showGrid)
+    local order = st.order
+    for i = 1, #order do
+      local id = order[i]
+      local frame, tall = nil, 0
+      if id == "band" and st.totals then
+        frame, tall = win.Band, h.band
+      elseif id == "all" then
+        frame, tall = win.Button, h.button
+      elseif id == "grid" and showGrid then
+        frame, tall = win.Grid, h.grid
+      end
+      if frame then
+        MW.At(frame, "TOPLEFT", win, h.side, -y)
+        frame:SetPoint("TOPRIGHT", win, "TOPRIGHT", -h.side, -y)
+        frame:SetHeight(tall)
+        y = y + tall + h.gap
+      end
+    end
+    win.rowW = inner - 2 * h.pad
+    return listH - 2 * h.pad
+  end
+
+  -- A sender in a class's colour: a friend whose class is known.
+  function MW.PaintClass(fs, token)
+    local CS = ns.ContactService
+    local r, g, b
+    if token and CS and type(CS.ClassColour) == "function" then r, g, b = CS.ClassColour(token) end
+    if r then ns.Theme.SetTextRGB(fs, r, g, b) end
+  end
+
+  -- A row's words and figures for mail `m`, by the rows' rules, and their
+  -- widths, which the list's columns are measured from: the sender (an
+  -- auction outcome in its tone, you or a friend in a class colour), the
+  -- gold in its tone and the slots, briefly on a one-line row.
+  function MW.RowTexts(row, m, two)
+    local T = ns.Theme
+    local R = ns.CollectTab and ns.CollectTab.RowRules
+    local fs = row.Sender
+    if m.kind then
+      fs:SetText(R and R.OutcomeSender and R.OutcomeSender(m.kind) or "")
+      if R and R.PaintSender then R.PaintSender(fs, nil) end
+    elseif m.me then
+      MW.PaintMe(fs)
+    else
+      fs:SetText(m.from)
+      if R and R.PaintSender then R.PaintSender(fs, m.from) end
+      MW.PaintClass(fs, m.class)
+    end
+    row.senderText, row.senderW = fs:GetText() or "", TextW(fs)
+    local money, kind
+    if R and R.MoneyText then money, kind = R.MoneyText(false, m.money or 0, 0, m.price, not two) end
+    if money and R.MoneyShown and not R.MoneyShown(kind, MW.LAYOUT) then money = nil end
+    local slots
+    if (m.items or 0) > 0 then
+      slots = T.Colorize("textSecondary", (R and R.SlotsText) and R.SlotsText(m.items, not two)
+        or ns.Plural("COUNT_SLOTS", m.items))
+    end
+    row.moneyText, row.slotsText, row.moneyW, row.slotsW = money, slots, 0, 0
+    if money then
+      row.Money:SetText(money)
+      row.moneyW = TextW(row.Money)
+    end
+    if slots then
+      row.Slots:SetText(slots)
+      row.slotsW = TextW(row.Slots)
+    end
+  end
+
+  -- The item's name with its count, as an auction's subject has it, for
+  -- each mail of the box that holds the item: made when the name is first
+  -- known, and kept.
+  function MW.Subjects(name)
+    local t = S.boxSubjects
+    if t and t.name == name then return t end
+    t = { name = name }
+    for i = 1, #MW.BOX do
+      local total = MW.BOX[i].total or 0
+      -- No count before the name: the item is still loading.
+      t[i] = (total > 1 and name ~= "") and (name .. " (" .. total .. ")") or name
+    end
+    S.boxSubjects = t
+    return t
+  end
+
+  -- Where a row stands and what it shows, by the list's columns in `fit`:
+  -- the icon (the item's, a coin, a letter) with its count and its mark,
+  -- the name's mark, the sender in its column, the subject in the room
+  -- left; on a one-line row the gold and the slots each in its column
+  -- (Columns) or closed up to the row's end (Packed), the subject running
+  -- on through a column its mail leaves empty, as the window's rows do; on
+  -- a two-line row the figures on the second line. `k`: its place in the
+  -- list; `done`, the read mail, which carries the delete mark.
+  function MW.PlaceRow(win, row, m, k, two, fit, done)
+    local T = ns.Theme
+    local R = ns.CollectTab and ns.CollectTab.RowRules
+    local h = MW.h
+    local rowH, size, gap = fit.rowH, two and h.iconL or h.iconC, MW.MGAP
+    T.StyleMailRow(row, k, false)
+    row:SetAlpha(done and 0.6 or 1)
+    row:SetSize(win.rowW, rowH)
+    MW.At(row, "TOPLEFT", win.Clip, 0, -(k - 1) * (rowH + h.rowGap))
+    if R and R.PaintDot then R.PaintDot(row.Indicator, m.read, false)
+    else T.SetColor(row.Indicator, m.read and "read" or "unread") end
+    if row.iconSize ~= size then
+      row.iconSize = size
+      row.Icon:SetSize(size, size)
+    end
+    local item = (m.items or 0) > 0
+    row.Icon:SetTexture(item and fit.icon or (m.kind and MW.COIN) or MW.LETTER)
+    local mark = item and fit.mark or nil
+    local subject
+    if m.subject then
+      subject = L[m.subject]
+    else
+      subject = fit.subjects[k] or ""
+      if item and m.items <= 1 and R and R.SaysCount and R.SaysCount(m.n, MW.LAYOUT) then
+        subject = R.DropCount(subject, m.total)
+      end
+      if mark and R and R.MarkOnName and R.MarkOnName() then subject = R.WithMark(subject, mark) end
+    end
+    if R then
+      if R.PaintQuality then R.PaintQuality(row, mark, MW.LAYOUT) end
+      if R.PaintNameMark then R.PaintNameMark(row, mark, row, row.Subject) end
+      if R.PaintCount then R.PaintCount(row, m.n or 0, m.items or 0, MW.LAYOUT) end
+    end
+    row.Delete:SetShown(done and true or false)
+    local x0 = MW.ICON_X + size + gap
+    local subX = x0 + fit.senderW + gap + fit.markW
+    local edge = MW.ROW_END + (done and (MW.DELETE + gap) or 0)
+    local top = two and -math.floor((rowH - h.text2) / 2) or 0
+    MW.At(row.Sender, two and "TOPLEFT" or "LEFT", row, x0, top)
+    T.FitText(row.Sender, fit.senderW, row.senderText)
+    MW.At(row.Subject, two and "TOPLEFT" or "LEFT", row, subX, top)
+    local money, slots = row.Money, row.Slots
+    if two then
+      money:Hide()
+      slots:Hide()
+      local a, b = row.moneyText, row.slotsText
+      local line = (a and b) and (a .. MW.JOIN .. b) or a or b or ""
+      MW.At(row.Detail, "BOTTOMLEFT", row, x0, -top)
+      T.FitText(row.Detail, win.rowW - edge - x0, line)
+      row.Detail:SetShown(line ~= "")
+    else
+      row.Detail:Hide()
+      local off = MW.ROW_END
+      if done then
+        money:Hide()
+        slots:Hide()
+      elseif fit.packed then
+        -- Each row its own: what it has, closed up to its end.
+        if row.slotsText then
+          MW.At(slots, "RIGHT", row, -off, 0)
+          T.FitText(slots, row.slotsW, row.slotsText)
+          off = off + row.slotsW + gap
+        end
+        if row.moneyText then
+          MW.At(money, "RIGHT", row, -off, 0)
+          T.FitText(money, row.moneyW, row.moneyText)
+          off = off + row.moneyW + gap
+        end
+        edge = off
+      else
+        -- Every figure in its column; the subject runs on through the
+        -- columns this mail leaves empty, up to the first it has.
+        local slotsOff = off
+        local moneyOff = off + ((fit.slotsW > 0) and (fit.slotsW + gap) or 0)
+        if row.slotsText then
+          MW.At(slots, "RIGHT", row, -slotsOff, 0)
+          T.FitText(slots, fit.slotsW, row.slotsText)
+          edge = slotsOff + fit.slotsW + gap
+        end
+        if row.moneyText then
+          MW.At(money, "RIGHT", row, -moneyOff, 0)
+          T.FitText(money, fit.moneyW, row.moneyText)
+          edge = moneyOff + fit.moneyW + gap
+        end
+      end
+      money:SetShown(row.moneyText ~= nil and not done)
+      slots:SetShown(row.slotsText ~= nil and not done)
+    end
+    -- Where the figures begin, and the subject's room, for the outlines.
+    if not done and edge > fit.figures then fit.figures = edge end
+    local run = math.max(1, win.rowW - edge - subX)
+    row.run = run
+    if R and R.FitSubject then
+      R.FitSubject(row, row.Subject, run, subject, row)
+    else
+      T.FitText(row.Subject, run, subject)
+    end
+    row:Show()
+  end
+  -- The second line's figures, apart as the window's two-line row has them;
+  -- the gap between a row's columns; the least room the subject keeps.
+  MW.JOIN, MW.MGAP, MW.SUBJECT = "  |  ", 4, 16
+
+  -- The read mail's divider at `k` in the list, or pinned at its foot: its
+  -- ground and rule, the fold mark as the window's divider was left, its
+  -- words with the count while Show mail counts is on, and Delete all.
+  function MW.PaintDivider(win, d, st, rowH, k)
+    local T = ns.Theme
+    local h = MW.h
+    d:SetSize(win.rowW, rowH)
+    if k then
+      MW.At(d, "TOPLEFT", win.Clip, 0, -(k - 1) * (rowH + h.rowGap))
+    else
+      MW.At(d, "BOTTOMLEFT", win.Clip, 0, 0)
+    end
+    d:SetFrameLevel(win.Clip:GetFrameLevel() + (k and 1 or 5))
+    T.FillColor(d.Fill, "surface", 0.95)
+    T.SetColor(d.Rule, "textSecondary")
+    d.Rule:SetAlpha(0.25)
+    d.Fold:SetTexture(st.folded and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+    local x = MW.Scaled(ns.Theme.Metrics.inset)
+    MW.At(d.Fold, "LEFT", d, x, 0)
+    local words = L["BTN_DELETE_ALL"]
+    d.Delete:SetText(words)
+    local del = TextW(d.Delete)
+    T.FitText(d.Delete, del, words)
+    T.SetColor(d.Delete, "textSecondary")
+    T.SetColor(d.Label, "textSecondary")
+    local room = win.rowW - x - MW.FOLD - 4 - del - MW.MGAP - MW.ROW_END
+    T.FitText(d.Label, math.max(1, room), st.counts and MW.Counts().divider or L["INBOX_READ_DIVIDER_PLAIN"])
+    d:Show()
+  end
+
+  -- The list: the rows that fit, from the top (the last cut by the list's
+  -- foot), and while read mail stays below the inbox its divider and the
+  -- read mail under it -- or, where the divider's place is below the rows
+  -- that fit, the divider pinned at the list's foot, over them. The list's
+  -- columns -- the sender's, the gold's, the slots' -- are as wide as the
+  -- widest of the rows shown, as the window's are over its whole list.
+  MW.fit = { subjects = false, icon = false, mark = false }
+  function MW.PaintList(win, st, inner)
+    local h = MW.h
+    local fit = MW.fit
+    local two = not st.compact
+    local rowH = two and h.rowL or h.rowC
+    local stride = rowH + h.rowGap
+    local slots = math.ceil((inner + h.rowGap) / stride)
+    local whole = math.floor((inner + h.rowGap) / stride)
+    local n = #MW.BOX
+    local fold = st.mode == "fold"
+    local below = fold and (st.folded and 1 or 2) or 0
+    local pinned = fold and n + below > whole
+    local shown = math.min(n, slots)
+    local letter = fold and not pinned and not st.folded
+    local R = ns.CollectTab and ns.CollectTab.RowRules
+    local name, link = SampleItem()
+    fit.subjects = MW.Subjects(name or "")
+    fit.icon = C_Item and type(C_Item.GetItemIconByID) == "function" and C_Item.GetItemIconByID(SAMPLE_ITEM) or 134400
+    fit.mark = R and R.QualityMark and R.QualityMark(link) or nil
+    fit.markW = (R and R.NameMarkRoom) and R.NameMarkRoom() or 0
+    fit.rowH, fit.packed, fit.figures = rowH, st.packed, 0
+    -- The columns, from the rows drawn.
+    local rows = win.Rows
+    local senderW, moneyW, slotsW = 0, 0, 0
+    for k = 1, shown + (letter and 1 or 0) do
+      local row = (k <= shown) and rows[k] or rows[n + 1]
+      local m = (k <= shown) and MW.BOX[k] or MW.READ
+      MW.RowTexts(row, m, two)
+      senderW = math.max(senderW, row.senderW)
+      if k <= shown then
+        moneyW = math.max(moneyW, row.moneyW)
+        slotsW = math.max(slotsW, row.slotsW)
+      end
+    end
+    fit.moneyW, fit.slotsW = math.ceil(moneyW), math.ceil(slotsW)
+    -- The sender's column is as wide as the widest sender, unless that
+    -- leaves the subject less than MW.SUBJECT, the room for a letter or
+    -- two and the cut: the senders -- the auction outcomes in their tones,
+    -- the class colours -- are what the drawing shows of a row, and the
+    -- subject, one item's name over and over, gives way to them first. The
+    -- mark before the name takes its room from the subject's, as in the
+    -- window: the sender's column stays where it is.
+    local line = win.rowW - MW.ICON_X - (two and h.iconL or h.iconC) - MW.MGAP - MW.ROW_END
+    if not two then
+      if fit.moneyW > 0 then line = line - fit.moneyW - MW.MGAP end
+      if fit.slotsW > 0 then line = line - fit.slotsW - MW.MGAP end
+    end
+    fit.senderW = math.max(1, math.min(math.ceil(senderW) + 2, line - MW.MGAP - MW.SUBJECT))
+    for k = 1, n do
+      if k <= shown then MW.PlaceRow(win, rows[k], MW.BOX[k], k, two, fit, false) else rows[k]:Hide() end
+    end
+    -- The last row the list shows whole, for the outlines.
+    fit.last = math.min(shown, whole - (pinned and 1 or 0))
+    if fold and not pinned then
+      MW.PaintDivider(win, win.Divider, st, rowH, n + 1)
+    else
+      win.Divider:Hide()
+    end
+    if pinned then MW.PaintDivider(win, win.Pin, st, rowH, nil) else win.Pin:Hide() end
+    if letter then MW.PlaceRow(win, rows[n + 1], MW.READ, n + 2, two, fit, true) else rows[n + 1]:Hide() end
+    fit.letter = letter
+  end
+
+  -- A category button's caption colour under the Postbox style: the
+  -- window's buttons' own, or the game's grey where it would collect
+  -- nothing, made right for the button it stands on.
+  function MW.ButtonRGB(off)
+    local skin = ns.Skin
+    if not off and skin and skin.ButtonTextRGB then return skin.ButtonTextRGB() end
+    local base = _G.GameFontDisable
+    local r, g, b = 0.5, 0.5, 0.5
+    if base and type(base.GetTextColor) == "function" then
+      local br, bg, bb = base:GetTextColor()
+      if type(br) == "number" then r, g, b = br, bg, bb end
+    end
+    local T = ns.Theme
+    if T.ButtonInk then return T.ButtonInk(r, g, b) end
+    return r, g, b
+  end
+
+  -- The category buttons, three to a row across the grid, in the window's
+  -- order, each greyed where it would collect nothing of the box.
+  function MW.PaintGrid(win, st)
+    local sweeps = win.Sweeps
+    for _, b in pairs(sweeps) do b.used = false end
+    if win.Grid:IsShown() then
+      local T = ns.Theme
+      local h = MW.h
+      local g = MW.Grid()
+      local P = win.own and ns.Skin and ns.Skin.Palette
+      local cols = T.ColumnEdges(win.inner, MW.GRID_COLUMNS, h.gap, win.gridCols)
+      for k = 1, g.n do
+        local id = g.ids[k]
+        local b = sweeps[id]
+        if not b then
+          b = MW.NewSweep(win)
+          sweeps[id] = b
+          local skin = ns.Skin
+          if not win.own and skin and type(skin.Refresh) == "function" then pcall(skin.Refresh, win) end
+        end
+        local line = math.floor((k - 1) / MW.GRID_COLUMNS)
+        local col = cols[k - line * MW.GRID_COLUMNS]
+        MW.At(b, "TOPLEFT", win.Grid, col.left, -line * (h.sweep + h.gap))
+        b:SetSize(col.width, h.sweep)
+        local on = g.counts[k] > 0
+        if P then
+          MW.PaintBlock(b, P.button, P.buttonEdge)
+          T.SetTextRGB(b.Text, MW.ButtonRGB(not on))
+        else
+          b:SetEnabled(on)
+        end
+        if b.Text then MW.Caption(b.Text, col.width, st.counts and g.counted[k] or g.plain[k]) end
+        b.used = true
+        b:Show()
+      end
+    end
+    for _, b in pairs(sweeps) do
+      if not b.used then b:Hide() end
+    end
+  end
+
+  -- What the setting pointed at changes in the window, ringed in the
+  -- accent: the Mail tab, the segments, the rows, the gold and slots'
+  -- columns, the icons, the first item's icon or its name, the read mail
+  -- (its divider and itself, or Done), the band or the buttons. Nothing
+  -- where the setting changes nothing shown (Row layout on two-line rows,
+  -- a block switched off). Pointed at from the rows (Pages.mail, `part`).
+  MW.ringAt = {}
+  function MW.RingTarget(win, part, st)
+    local t = MW.ringAt
+    local fit = MW.fit
+    local rows = win.Rows
+    local r = MW.RING
+    t.a, t.b, t.ax, t.ay, t.bx, t.by, t.ap, t.bp = nil, nil, -r, r, r, -r, "TOPLEFT", "BOTTOMRIGHT"
+    if part == "tab" then
+      t.a, t.b = win.Tabs[1], win.Tabs[1]
+    elseif part == "segs" then
+      t.a, t.b = win.Segs[1], (st.mode == "tab") and win.Segs[2] or win.Segs[1]
+    elseif part == "read" then
+      if st.mode == "tab" then
+        t.a, t.b = win.Segs[2], win.Segs[2]
+      elseif st.mode == "fold" then
+        local d = win.Divider:IsShown() and win.Divider or win.Pin
+        t.a, t.b = d, fit.letter and rows[#MW.BOX + 1] or d
+      end
+    elseif part == "rows" then
+      t.a, t.b = win.List, win.List
+    elseif part == "figures" then
+      if st.compact and (fit.last or 0) > 0 then
+        t.a, t.b, t.ap, t.ax = rows[1], rows[fit.last], "TOPRIGHT", -(fit.figures - MW.MGAP) - r
+        t.bx = -MW.ROW_END + r
+      end
+    elseif part == "icons" then
+      if (fit.last or 0) > 0 then t.a, t.b = rows[1].Icon, rows[fit.last].Icon end
+    elseif part == "mark" or part == "name" then
+      -- The first mail holding the item: the box's second.
+      local row = rows[2]
+      if (fit.last or 0) >= 2 then
+        if part == "mark" then
+          t.a, t.b = row.Icon, row.Icon
+        else
+          -- The name and its marks: the mark before it, and the room it
+          -- runs in, the mark after it at its end.
+          t.a, t.b, t.ax, t.bp, t.bx = row.Subject, row.Subject, -fit.markW - r, "BOTTOMLEFT", (row.run or 0) + r
+        end
+      end
+    elseif part == "band" then
+      if win.Band:IsShown() then t.a, t.b = win.Band, win.Band end
+    elseif part == "grid" then
+      if win.Grid:IsShown() then t.a, t.b = win.Grid, win.Grid end
+    end
+    return t
+  end
+
+  function MW.PaintRing(win, st)
+    local ring = win.Ring
+    if not ring then return end
+    local entry = S.shown
+    local t = MW.RingTarget(win, entry and entry.part or nil, st or MW.st)
+    if not t.a then
+      ring:Hide()
+      return
+    end
+    local r, g, b = ns.Theme.GetAccent()
+    local e = ring.Edges
+    for i = 1, 4 do e[i]:SetColorTexture(r, g, b, 0.9) end
+    ring:ClearAllPoints()
+    ring:SetPoint("TOPLEFT", t.a, t.ap, t.ax, t.ay)
+    ring:SetPoint("BOTTOMRIGHT", t.b, t.bp, t.bx, t.by)
+    ring:Show()
+  end
+
+  -- The Mail tab's window, `height` tall (never less than its least).
+  function MW.PaintMail(sw, win, height)
+    MW.MailHeights()
+    local least = MW.MailMin()
+    if not height or height < least then height = least end
+    local st = MW.Read(MW.st)
+    local inner = MW.MailLay(sw, win, height, st)
+    if win.own then MW.PaintOwn(win) else MW.PaintHost(win) end
+    MW.PaintTabs(win)
+    local T = ns.Theme
+    for i = 1, 2 do
+      local plate = win.Segs[i]
+      if plate:IsShown() then
+        MW.Caption(plate.Text, plate.w, plate.caption)
+        T.SetPlateSelected(plate, i == 1)
+      end
+    end
+    MW.PaintList(win, st, inner)
+    local c = MW.Counts()
+    MW.PaintBand(win, c.gained, c.paid)
+    local all = st.counts and c.allText or L["CAT_ALL"]
+    local fs = win.Button.Text or win.Button:GetFontString()
+    if fs then MW.Caption(fs, win.inner, all) end
+    MW.PaintGrid(win, st)
+    MW.PaintRing(win, st)
+  end
+
 
   -- The accent row's reading, under its description: the ratios the tones
   -- read at, whether the guard moved them, and a semantic colour it sits
@@ -2276,6 +2946,9 @@ do
   function Ctx.Follow()
     local f = S.ctx.minimap
     if f and f.mode and f.mode ~= Ctx.MinimapMode() and f:IsVisible() then f.Paint() end
+    -- The Mail tab's window rings what the setting pointed at changes.
+    local sw = S.mailMini
+    if sw and sw:IsVisible() then MW.PaintRing(sw.Mini) end
   end
 
   -- One figure: the shadow, the glow and its pulse, the icon; the count and
@@ -2834,7 +3507,6 @@ do
       -- judged now; the client enters whatever the closed list uncovers.
       Rows.Unhover(cell)
     end
-    if cell == S.lanesCell then Ctx.PaintSampleWash() end
   end
 
   -- A dropdown's onList (Lib/UI/Dropdown.lua).
@@ -3892,6 +4564,12 @@ end
 -- collects, and the sound when mail arrives -- which a player looks for
 -- with the mail, not under the minimap.
 function Pages.mail(col)
+  -- A setting the drawing of the window shows: its text stands under the
+  -- drawing, never over it (Layout), and while it is pointed at the drawing
+  -- rings `part`, what it changes (MW.RingTarget).
+  local function Shown(entry, part)
+    entry.stage, entry.part = "mail", part
+  end
   Rows.Group(col, L["OPT_ROWS_HEADING"])
   -- Which columns a row shows, in what order, and the gold's and the time
   -- left's own choices are arranged in the window itself, where the rows
@@ -3914,10 +4592,10 @@ function Pages.mail(col)
   -- Row layout: every figure in its own column on every row (Columns), or
   -- each row closing its gaps away from the subject and giving it the room
   -- (Packed), in the Mail tab, History and Mail Memory alike. Every list's
-  -- rows are placed again where they stand; the sample rows show the sale's
-  -- gold move, and while the choice is pointed at, where the gold stands.
-  -- Under the way into arranging and over Larger mail rows: how a row's
-  -- figures stand, then how tall the row is.
+  -- rows are placed again where they stand; the drawing's rows show the
+  -- sales' gold move, and while the choice is pointed at, the drawing rings
+  -- the gold and the slots. Under the way into arranging and over Larger
+  -- mail rows: how a row's figures stand, then how tall the row is.
   local lanes = Rows.Dropdown(col, {
     title = L["OPT_ROW_LAYOUT_TITLE"], text = L["OPT_ROW_LAYOUT_DESC"],
     items = {
@@ -3938,16 +4616,13 @@ function Pages.mail(col)
   -- rest.
   lanes.plainEntry = lanes.entry
   lanes.largeEntry = Entry(L["OPT_ROW_LAYOUT_TITLE"], L["OPT_ROW_LAYOUT_DESC"] .. "\n\n" .. L["OPT_ROW_LAYOUT_LARGER"])
-  local function PaintWash() Ctx.PaintSampleWash() end
-  lanes:HookScript("OnEnter", PaintWash)
-  lanes:HookScript("OnLeave", PaintWash)
-  lanes.control:HookScript("OnEnter", PaintWash)
-  lanes.control:HookScript("OnLeave", PaintWash)
+  Shown(lanes.plainEntry, "figures")
+  Shown(lanes.largeEntry, "figures")
 
   -- Compact is the default, so the switch is the one a player turns ON to
   -- change it: larger, two-line rows. The stored option is still
   -- compactRows, read inverted, so nobody's choice moves.
-  Rows.Check(col, {
+  local larger = Rows.Check(col, {
     title = L["OPT_LARGER_ROWS_TITLE"], text = L["OPT_LARGER_ROWS_DESC"],
     get = function() return not ns.MailboxUI.GetOption("compactRows") end,
     set = function(on)
@@ -3959,12 +4634,13 @@ function Pages.mail(col)
       Ctx.Repaint()
     end,
   })
+  Shown(larger.entry, "rows")
 
   -- The crafting quality mark, in the list, History and the memory alike,
   -- is two things a player sets apart: the badge on the corner of the
   -- item's icon (on by default), and a mark beside the name -- before it,
   -- with the names kept in line, after it as a chat link has it, or none
-  -- (the default). Every list's rows are drawn again, and the sample's,
+  -- (the default). Every list's rows are drawn again, and the drawing's,
   -- and the arrange mode's card where it shows the same choice.
   local function ArrangeFollows()
     local AR = ns.Arrange
@@ -3983,7 +4659,7 @@ function Pages.mail(col)
   -- comes first, so the badge stands next to Quality by the name below it:
   -- the two quality choices together, side by side or, where the pair comes
   -- apart, one above the other.
-  Rows.Pair(col, {
+  local marks = Rows.Pair(col, {
     title = L["OPT_ICON_COUNTS_TITLE"], text = L["OPT_ICON_COUNTS_DESC"],
     get = function() return ns.MailboxUI.GetOption("iconCounts") end,
     set = function(on)
@@ -3998,7 +4674,9 @@ function Pages.mail(col)
       QualityChanged()
     end,
   })
-  Rows.Dropdown(col, {
+  Shown(marks.pair[1].entry, "icons")
+  Shown(marks.pair[2].entry, "mark")
+  local byName = Rows.Dropdown(col, {
     title = L["OPT_QUALITY_NAME_TITLE"], text = L["OPT_QUALITY_NAME_DESC"],
     items = {
       { id = "before", name = L["OPT_QUALITY_NAME_BEFORE"] },
@@ -4011,6 +4689,7 @@ function Pages.mail(col)
       QualityChanged()
     end,
   })
+  Shown(byName.entry, "name")
   -- What resting on the item icon of a mail with several items shows: the
   -- list of them, or the fan, the items spread beside the icon to take one
   -- at a time (CollectTab). Read on hover, so nothing is redrawn. The same
@@ -4037,12 +4716,13 @@ function Pages.mail(col)
   -- refresh stacks the blocks again and moves the window's floor. The two
   -- share a row, as the blocks they switch share the foot of the tab: the
   -- Mail page is the panel's tallest, and Attachments on hover took the row.
-  Rows.Pair(col, {
+  local blocks = Rows.Pair(col, {
     title = L["OPT_CATEGORY_BUTTONS_TITLE"], text = L["OPT_CATEGORY_BUTTONS_DESC"],
     get = function() return ns.MailboxUI.GetOption("showCategoryButtons") end,
     set = function(on)
       ns.MailboxUI.SetOption("showCategoryButtons", on)
       if ns.MailboxUI.RefreshCollectCategoryButtons then ns.MailboxUI.RefreshCollectCategoryButtons() end
+      Ctx.Repaint()
     end,
   }, {
     title = L["OPT_TOTALS_TITLE"], text = L["OPT_TOTALS_DESC"],
@@ -4050,9 +4730,12 @@ function Pages.mail(col)
     set = function(on)
       ns.MailboxUI.SetOption("showTotals", on)
       if ns.MailboxUI.RefreshCollectCategoryButtons then ns.MailboxUI.RefreshCollectCategoryButtons() end
+      Ctx.Repaint()
     end,
   })
-  Rows.Check(col, {
+  Shown(blocks.pair[1].entry, "grid")
+  Shown(blocks.pair[2].entry, "band")
+  local counts = Rows.Check(col, {
     title = L["OPT_TAB_COUNTS_TITLE"], text = L["OPT_TAB_COUNTS_DESC"],
     get = function() return ns.MailboxUI.GetOption("showTabCounts") end,
     set = function(on)
@@ -4060,8 +4743,10 @@ function Pages.mail(col)
       if ns.MailboxUI.RefreshCollectTabCounts then ns.MailboxUI.RefreshCollectTabCounts() end
       -- Mail Memory's header counts its box under the same switch.
       if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
+      Ctx.Repaint()
     end,
   })
+  Shown(counts.entry, "segs")
   -- What the window's Mail tab wears while mail is waiting, each choice a
   -- picture of the caption itself, in the client's language: the dot after
   -- the name (the default), before it, or the name alone. Its own setting,
@@ -4072,7 +4757,7 @@ function Pages.mail(col)
       if UI.TabCaption then return UI.TabCaption(mode, true) end
       return L["TAB_COLLECT"]
     end
-    Rows.Dropdown(col, {
+    local tab = Rows.Dropdown(col, {
       title = L["OPT_TAB_INDICATOR_TITLE"], text = L["OPT_TAB_INDICATOR_DESC"],
       items = {
         { id = "dot",    name = Caption("dot") },
@@ -4080,8 +4765,12 @@ function Pages.mail(col)
         { id = "none",   name = Caption("none") },
       },
       get = function() return UI.GetTabIndicator and UI.GetTabIndicator() or "dot" end,
-      set = function(id) if UI.SetTabIndicator then UI.SetTabIndicator(id) end end,
+      set = function(id)
+        if UI.SetTabIndicator then UI.SetTabIndicator(id) end
+        Ctx.Repaint()
+      end,
     })
+    Shown(tab.entry, "tab")
   end
 
   Rows.Group(col, L["OPT_COLLECTING_HEADING"])
@@ -4110,7 +4799,7 @@ function Pages.mail(col)
   -- tab of its own, or deleted once finished with. One choice, three
   -- answers -- a switch for the tab and another for deleting would have
   -- been two controls over one fact.
-  Rows.Dropdown(col, {
+  local read = Rows.Dropdown(col, {
     title = L["OPT_READ_MAIL_TITLE"], text = L["OPT_READ_MAIL_DESC"],
     items = {
       { id = "fold",   name = L["OPT_READ_FOLD"] },
@@ -4118,8 +4807,12 @@ function Pages.mail(col)
       { id = "delete", name = L["OPT_READ_DELETE"] },
     },
     get = function() return ns.MailboxUI.GetReadMode and ns.MailboxUI.GetReadMode() or "fold" end,
-    set = function(id) if ns.MailboxUI.SetReadMode then ns.MailboxUI.SetReadMode(id) end end,
+    set = function(id)
+      if ns.MailboxUI.SetReadMode then ns.MailboxUI.SetReadMode(id) end
+      Ctx.Repaint()
+    end,
   })
+  Shown(read.entry, "read")
   -- How far back History goes, or Never, which turns it off (stored as 0),
   -- last: it clears what History kept on every character, so it is asked
   -- first, and until the answer the choice shows what it was. Cancel leaves
@@ -5708,27 +6401,43 @@ local function Layout()
     text = 0
     -- The Minimap drawing's captions first: its height counts them.
     Ctx.MeasureCaptions()
+    -- The Mail tab's text zone, under its window: the tab's own text and
+    -- every setting's the window shows, the tallest of them.
+    local mailText = SAY_MIN
     local entries = S.entries
     for i = 1, #entries do
       local entry = entries[i]
       local h = Insp.Need(entry, entry.extra and Ctx.ExtraHeight(entry.extra) or 0)
       -- A setting its tab's drawing answers (`stage`: that tab) has its text
       -- under the drawing, never over it.
-      if entry.stage then h = Ctx.Height(entry.stage) + math.max(h, SAY_MIN) end
-      if h > text then text = h end
+      if entry.stage == "mail" then
+        if h > mailText then mailText = h end
+      else
+        if entry.stage then h = Ctx.Height(entry.stage) + math.max(h, SAY_MIN) end
+        if h > text then text = h end
+      end
     end
     for i = 1, #TABS do
       local key = TABS[i].key
-      local ctxH = Ctx.Height(key)
       local entry = S.idle[key]
-      if entry and ctxH > 0 then
-        local h = Insp.Need(entry, 0)
-        if h < SAY_MIN then h = SAY_MIN end
-        if ctxH + h > text then text = ctxH + h end
+      if key == "mail" then
+        if entry then mailText = math.max(mailText, Insp.Need(entry, 0)) end
+      else
+        local ctxH = Ctx.Height(key)
+        if entry and ctxH > 0 then
+          local h = Insp.Need(entry, 0)
+          if h < SAY_MIN then h = SAY_MIN end
+          if ctxH + h > text then text = ctxH + h end
+        end
       end
     end
+    S.mailText = math.ceil(mailText)
     S.textNeed = text
   end
+  -- The Mail tab: its window at its least over its text zone. The window
+  -- then takes whatever room the panel has between the two (Ctx.MailFill),
+  -- so it never makes the panel taller unless even its least needs it.
+  text = math.max(text, Ctx.MailNeed(S.mailText))
   local need = math.ceil(math.max(S.listNeed or 0, text))
   local height = TOP + TAB_H + BODY_GAP + need + BODY_GAP + BAND_H + (S.footH or FOOT_BOTTOM)
   if need ~= S.bodyH or height ~= S.frameH then
@@ -5741,6 +6450,7 @@ local function Layout()
     local T = ns.Theme
     if T and type(T.FitToScreen) == "function" then T.FitToScreen(S.frame) end
   end
+  Ctx.MailFill(need, S.mailText)
 end
 
 -- The pointer left the list and the inspector from somewhere no row is --
@@ -5862,6 +6572,9 @@ local function Build()
   S.refresh[#S.refresh + 1] = State.Arrange
   S.refresh[#S.refresh + 1] = Ctx.PaintExtra
   S.refresh[#S.refresh + 1] = State.Postbox
+  -- The Mail tab's window reads the category buttons again on every open:
+  -- a group may have been made or renamed meanwhile.
+  S.refresh[#S.refresh + 1] = function() S.gridStale = true end
 
   Footer.Build(frame, list)
   frame:HookScript("OnHide", PanelHide)
