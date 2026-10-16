@@ -29,7 +29,8 @@ Options, Window). Your recipients, Mail Memory and History are kept.*
   game's own UI: Dark or **Light mode** (crisp dark text on paper, your
   accent in the underlines and ticks), with your accent (White, Gold, your
   class color or any color), background, border, corners, row stripes,
-  font and text size.
+  font and text size. In Dark, tabs are a clean neutral gray whose words
+  brighten when you point at them.
 - **Window scale** from 80% to 130%, in every style.
 - **Text stays readable** at any opacity: in the Postbox style its color
   follows what it sits on, and an accent too dark to read is lifted, under
