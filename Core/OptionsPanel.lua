@@ -569,9 +569,9 @@ local TEXT_W = INSP_W - 2 - 2 * TEXT_X
 -- the text does not jump as the pointer moves from setting to setting.
 local SAY_MIN = 150
 -- STAGE: the Minimap drawing's ground at its least (Ctx.MinimapStage).
-local TILE_H, HOST_H, SWATCH_H, STAGE, SAMPLE_MAX, MOCK_H = 46, 32, 74, 120, 50, 34
--- The Postbox style's small window, and the accent row's reading under it.
-local MINI_H, READOUT_LINES = 128, 3
+local TILE_H, HOST_H, STAGE, SAMPLE_MAX, MOCK_H = 46, 32, 120, 50, 34
+-- The accent row's reading under its description: its lines.
+local READOUT_LINES = 3
 local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
 local GLOW_TGA = "Interface\\AddOns\\Postbox\\Media\\minimap-glow.tga"
 local ROUND_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
@@ -912,9 +912,8 @@ do
     if key == "mail" then return CTX_TOP + TILE_H + 8 + SAMPLE_MAX + 10 end
     if key == "send" then return CTX_TOP + TILE_H + 10 end
     if key == "window" then
-      local skin = GetSkin()
-      local h = (skin and skin.IsPostboxStyle and not skin.IsCreativeStyle) and MINI_H or SWATCH_H
-      return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + h + 10
+      -- The drawing grows with the text size (Ctx.MiniHeight).
+      return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + Ctx.MiniHeight() + 10
     end
     if key == "minimap" then return CTX_TOP + 4 + Ctx.MinimapHeight() + 10 end
     return 0
@@ -1168,7 +1167,8 @@ do
   end
 
   -- The sample item's name, link and quality, asked for once if the client
-  -- has not loaded it yet; the row repaints when it arrives.
+  -- has not loaded it yet; the drawing on show repaints when it arrives (the
+  -- Mail tab's sample row, or the Window tab's mail rows, which name it too).
   local function SampleItem()
     local info = C_Item and C_Item.GetItemInfo
     local name, link, quality
@@ -1179,7 +1179,7 @@ do
         and Item:CreateFromItemID(SAMPLE_ITEM) or nil
       if item and item.ContinueOnItemLoad then
         item:ContinueOnItemLoad(function()
-          local f = S.ctx.mail
+          local f = S.ctx[S.tab]
           if f and f:IsVisible() and f.Paint then f.Paint() end
         end)
       end
@@ -1453,17 +1453,202 @@ do
   end
 
   ---------------------------------------------------------
-  -- The window over a bit of world
+  -- The Mail window, small, over a bit of world
   --
-  -- Its fill in the host's colour at the player's opacity, its border at
-  -- the chosen weight, and what it holds, which stays solid at every
-  -- opacity: the rule the real window keeps.
+  -- The Window tab's drawing: the Mail window as the look in force draws
+  -- it, standing over a bit of world so its opacity shows, and nothing the
+  -- window does not draw. Its frame: the fill at the player's opacity, the
+  -- border, the corners and the sheen; under the Postbox style the title
+  -- strip too, slim and without the title, since its colour and its fade
+  -- are the settings' (a tint, the opacity, Light's shadow of the sheet).
+  -- Inside: the Mail and Send tabs, two equal halves of the content's
+  -- width, each caption centred, the Mail tab lit; three mail rows on the
+  -- list's stripes -- the read dot, the sender in an auction outcome's tone
+  -- or a character's class colour, the subject, the gold; the totals band;
+  -- and the All mail button.
+  --
+  -- Every part is painted by the code that paints the window: the Postbox
+  -- style's shell by its own painter (Skin.PaintShell: fill, strip,
+  -- keyline, corners, sheen), its blocks from its palette, its tabs on the
+  -- window tabs' tokens; a host UI's list, band and button by that UI's own
+  -- skin pass, its edge by its own border (EllesmereUI) or its own template
+  -- (ElvUI); the stripes, dots, senders and figures by the Mail tab's own
+  -- rules (Theme.StyleMailRow, CollectTab.RowRules). Its text wears
+  -- Postbox's fonts, so the face, the size and the outline show as they
+  -- change.
+  --
+  -- In proportion to the real window, 480 units wide: its insets, gaps,
+  -- strip and sheen scaled to the drawing's width. The text is at the size
+  -- it is set, so a tab, a row, the band and the button are each as tall as
+  -- their line needs and never less than their scaled height: the drawing
+  -- grows with the text size (Ctx.Height measures it from the fonts), and
+  -- no caption or sender in it is cut; only an item's name too long for the
+  -- subject's room is shortened, as the list shortens it. Built once; a
+  -- paint lays out again only when a height moved, and makes nothing.
   ---------------------------------------------------------
+  local MW = {
+    -- The window stands this far in from the world's edges.
+    PAD_X = 10, PAD_Y = 9,
+    -- The real window's width, and the heights of its parts the drawing
+    -- scales: the Postbox style's title strip and sheen (Skin_Postbox), a
+    -- compact mail row and the All mail button (CollectTab).
+    REAL_W = 480, STRIP = 25, SHEEN = 90, ROW = 26, BUTTON = 28,
+    -- What a line of text is given over its font's height: on a tab or a
+    -- button, and on a row or the band.
+    CONTROL_AIR = 5, LINE_AIR = 4,
+    -- A row: the read dot (the list's, RowRules.DOT less one) and where its
+    -- centre stands, where the sender begins, the gap between two columns,
+    -- and the room kept at the row's right end.
+    DOT = 7, DOT_X = 6, SENDER_X = 13, COL_GAP = 5, ROW_END = 4,
+    -- The band's text stands this far in from its ends.
+    BAND_PAD = 4,
+    -- The gold one of your characters sent, the third row's.
+    GIFT = 2500000,
+    -- The rows, top down: an auction sale and an auction win, unread, and
+    -- gold from one of your characters, read. `kind` is the auction
+    -- outcome (none: the character), `fig` the figure's place in the
+    -- figures (MW.Figures), `tone` its colour.
+    SAMPLES = {
+      { kind = "sold", read = false, fig = 1, tone = "positive" },
+      { kind = "bought", read = false, fig = 2, tone = "negative" },
+      { read = true, fig = 3, tone = "positive" },
+    },
+    -- The heights in force (MW.Heights), the tabs' columns
+    -- (Theme.ColumnEdges), and the blocks stacked under the tabs with their
+    -- heights (MW.Lay): filled in place.
+    h = {}, cols = {}, ACROSS = {}, TALL = {},
+  }
+
+  -- The drawing's width over the real window's.
+  function MW.K()
+    return (CTX_W - 2 * MW.PAD_X) / MW.REAL_W
+  end
+
+  -- A length of the real window at the drawing's scale, at least one unit.
+  function MW.Scaled(v)
+    return math.max(1, math.floor(v * MW.K() + 0.5))
+  end
+
+  -- The Postbox style's own look, whose palette the drawing paints from (a
+  -- creative style lays art of its own, and is drawn as a host's look is).
+  function MW.Own()
+    local skin = ns.Skin
+    return (skin and skin.IsPostboxStyle and not skin.IsCreativeStyle and skin.Palette) and true or false
+  end
+
+  -- The height of a text role's line, from its font as it is now: the
+  -- face and the text size move it.
+  function MW.Line(role)
+    local object = ns.Theme.FontObject(role)
+    local size
+    if object and type(object.GetFont) == "function" then
+      local _, h = object:GetFont()
+      size = tonumber(h)
+    end
+    return math.ceil(size or 12)
+  end
+
+  -- Every height of the drawing, into MW.h, from the fonts in force; ->
+  -- the drawing's whole height. A host's button is the real one, in its own
+  -- font (the tab role's); the strip is the Postbox style's alone.
+  function MW.Heights()
+    local h, TM, S_ = MW.h, ns.Theme.Metrics, MW.Scaled
+    local own = MW.Own()
+    local caption = MW.Line("bodySmall")
+    local line = math.max(MW.Line("label"), MW.Line("value"), MW.Line("secondary"))
+    h.strip = own and S_(MW.STRIP) or 0
+    h.titleGap = S_(TM.inset)
+    h.tab = math.max(S_(TM.tabHeight), caption + MW.CONTROL_AIR)
+    h.underTabs = S_(TM.space.snug + TM.inset)
+    h.pad = S_(TM.tightGap)
+    h.row = math.max(S_(MW.ROW), line + MW.LINE_AIR)
+    h.rowGap = 1
+    h.gap = S_(TM.gap)
+    h.band = math.max(S_(TM.controlHeight), MW.Line("value") + MW.LINE_AIR)
+    h.button = math.max(S_(MW.BUTTON), (own and caption or MW.Line("tab")) + MW.CONTROL_AIR)
+    h.bottom = S_(2 * TM.inset)
+    h.side = S_(2 * TM.inset)
+    h.list = 2 * h.pad + #MW.SAMPLES * h.row + (#MW.SAMPLES - 1) * h.rowGap
+    h.win = h.strip + h.titleGap + h.tab + h.underTabs + h.list + h.gap + h.band + h.gap + h.button + h.bottom
+    h.total = h.win + 2 * MW.PAD_Y
+    return h.total
+  end
+
+  -- For Ctx.Height, which stands before this section.
+  function Ctx.MiniHeight()
+    return MW.Heights()
+  end
+
+  -- A caption on one of the drawing's controls, `width` wide (its tab or
+  -- its button), in a box of its own: the control less 3 at each end, one
+  -- line, centred. Every caption in every language fits its control at
+  -- every text size; one that ever did not would be cut short by the house
+  -- fitter rather than spill out of its control.
+  function MW.Caption(fs, width, text)
+    if not fs then return end
+    if fs.SetMaxLines then fs:SetMaxLines(1) end
+    ns.Theme.FitText(fs, width - 6, text)
+  end
+
+  -- Four lines of the addon's white tile round `frame`.
+  function MW.Edges(frame, layer, sub)
+    local e = {}
+    for i = 1, 4 do e[i] = frame:CreateTexture(nil, layer, nil, sub) end
+    return e
+  end
+
+  function MW.LayEdges(e, frame, w)
+    for i = 1, 4 do e[i]:ClearAllPoints() end
+    e[1]:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    e[1]:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    e[1]:SetHeight(w)
+    e[2]:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    e[2]:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    e[2]:SetHeight(w)
+    e[3]:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -w)
+    e[3]:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, w)
+    e[3]:SetWidth(w)
+    e[4]:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -w)
+    e[4]:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, w)
+    e[4]:SetWidth(w)
+  end
+
+  -- A block of the Postbox style (the list, the band, the button): a fill
+  -- and a one-unit edge, in the palette's colours for it at each paint.
+  function MW.Block(parent)
+    local b = CreateFrame("Frame", nil, parent)
+    b.Fill = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+    b.Fill:SetAllPoints()
+    b.Edges = MW.Edges(b, "BORDER", 1)
+    MW.LayEdges(b.Edges, b, 1)
+    return b
+  end
+
+  function MW.PaintBlock(b, fill, edge)
+    b.Fill:SetColorTexture(fill[1], fill[2], fill[3], fill[4] or 1)
+    local e = b.Edges
+    for i = 1, 4 do e[i]:SetColorTexture(edge[1], edge[2], edge[3], edge[4] or 1) end
+  end
+
+  -- The rows' figures, made once: the sale, the price, the gold sent.
+  function MW.Figures()
+    local fig = S.miniFigures
+    if not fig then
+      local F = ns.Core and ns.Core.Formatting
+      local money = F and F.FormatMoneyCompact
+      fig = { money and money(SAMPLE_SALE, true) or "1309g", money and money(SAMPLE_PRICE, true) or "52g",
+        money and money(MW.GIFT, true) or "250g" }
+      S.miniFigures = fig
+    end
+    return fig
+  end
+
+  -- The world: a ground and two soft patches of light, which the window
+  -- lets through at its opacity. The world is drawn on a frame of its own
+  -- inside the swatch, which clips it: the patches reach past its edge.
   function Ctx.Swatch(parent)
     local sw = CreateFrame("Frame", nil, parent)
-    sw:SetSize(CTX_W, SWATCH_H)
-    -- The world is drawn on a frame of its own inside the swatch, which
-    -- clips it: the patches of light reach past the swatch's edge.
+    sw:SetSize(CTX_W, Ctx.MiniHeight())
     if sw.SetClipsChildren then sw:SetClipsChildren(true) end
     local world = CreateFrame("Frame", nil, sw)
     world:SetAllPoints(sw)
@@ -1497,33 +1682,185 @@ do
     edge:SetFrameLevel(world:GetFrameLevel() + 1)
     edge:SetBackdrop({ edgeFile = WHITE, edgeSize = 1 })
     edge:SetBackdropBorderColor(0.17, 0.17, 0.17, 1)
-
-    local win = CreateFrame("Frame", nil, sw)
-    win:SetFrameLevel(world:GetFrameLevel() + 1)
-    win:SetPoint("TOPLEFT", sw, "TOPLEFT", 34, -10)
-    win:SetPoint("BOTTOMRIGHT", sw, "BOTTOMRIGHT", -34, 10)
-    win.Fill = win:CreateTexture(nil, "BACKGROUND")
-    win.Fill:SetAllPoints()
-    win.Edges = {}
-    for i = 1, 4 do win.Edges[i] = win:CreateTexture(nil, "BORDER") end
-    local title = win:CreateTexture(nil, "ARTWORK")
-    title:SetSize(69, 5)
-    title:SetPoint("TOP", win, "TOP", 0, -6)
-    title:SetColorTexture(0.91, 0.91, 0.91, 0.8)
-    for i = 1, 3 do
-      local row = win:CreateTexture(nil, "ARTWORK")
-      row:SetHeight(7)
-      row:SetPoint("TOPLEFT", win, "TOPLEFT", 7, -(17 + (i - 1) * 12))
-      row:SetPoint("TOPRIGHT", win, "TOPRIGHT", -7, -(17 + (i - 1) * 12))
-      if i == 2 then win.Selected = row else row:SetColorTexture(1, 1, 1, 0.10) end
-    end
-    sw.Win = win
+    sw.World = world
     return sw
   end
 
-  function Ctx.PaintSwatch(sw)
+  function Ctx.Mini(parent)
     local T = ns.Theme
-    local win = sw.Win
+    local skin = ns.Skin
+    local own = MW.Own()
+    local sw = Ctx.Swatch(parent)
+    local win = CreateFrame("Frame", nil, sw, (not own) and "BackdropTemplate" or nil)
+    win:SetFrameLevel(sw.World:GetFrameLevel() + 2)
+    win:SetPoint("TOPLEFT", sw, "TOPLEFT", MW.PAD_X, -MW.PAD_Y)
+    win:SetPoint("BOTTOMRIGHT", sw, "BOTTOMRIGHT", -MW.PAD_X, MW.PAD_Y)
+    win.own = own
+    if not own then
+      -- A host's or Blizzard's window: its fill at the opacity and an edge
+      -- standing for its frame (MW.PaintHost); under ElvUI, ElvUI's own
+      -- template, which the real window wears.
+      win.Fill = win:CreateTexture(nil, "BACKGROUND", nil, -8)
+      win.Fill:SetAllPoints()
+      win.Edges = MW.Edges(win, "BORDER", 6)
+      if HostSkinName() == "ElvUI" and type(win.SetTemplate) == "function" then
+        win.template = pcall(win.SetTemplate, win, "Transparent")
+      end
+    end
+
+    -- The Mail tab and the Send tab: the window's own plates.
+    win.Tabs = {}
+    for i = 1, 2 do
+      local plate = T.CreatePlate(win, "tab")
+      plate:EnableMouse(false)
+      if plate.Text then plate.Text:SetFontObject(T.FontObject("bodySmall")) end
+      if skin and skin.StyleTabPlate then skin.StyleTabPlate(plate) end
+      win.Tabs[i] = plate
+    end
+
+    -- The list and its rows. Each row is a frame of its own, so a host's
+    -- repaint of the list (which fades the textures the list itself owns)
+    -- leaves the rows' stripes and dots alone, as in the window.
+    local list
+    if own then
+      list = MW.Block(win)
+    else
+      list = CreateFrame("Frame", nil, win, "BackdropTemplate")
+      T.ApplyList(list)
+    end
+    local R = ns.CollectTab and ns.CollectTab.RowRules
+    list.Rows = {}
+    for i = 1, #MW.SAMPLES do
+      local row = CreateFrame("Frame", nil, list)
+      -- The read mark: the list's flat round dot and its soft shadow.
+      local dot = row:CreateTexture(nil, "ARTWORK")
+      dot:SetTexture(WHITE)
+      dot:SetSize(MW.DOT, MW.DOT)
+      dot:SetPoint("CENTER", row, "LEFT", MW.DOT_X, 0)
+      if type(row.CreateMaskTexture) == "function" then
+        local mask = row:CreateMaskTexture()
+        mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetAllPoints(dot)
+        dot:AddMaskTexture(mask)
+      end
+      row.Indicator = dot
+      if R and R.ShadeDot then R.ShadeDot(row) end
+      row.Sender = T.CreateText(row, "label")
+      row.Sender:SetPoint("LEFT", row, "LEFT", MW.SENDER_X, 0)
+      row.Subject = T.CreateText(row, "value")
+      row.Subject:SetJustifyH("LEFT")
+      row.Gold = T.CreateText(row, "secondary")
+      row.Gold:SetPoint("RIGHT", row, "RIGHT", -MW.ROW_END, 0)
+      for _, fs in ipairs({ row.Sender, row.Subject, row.Gold }) do
+        fs:SetWordWrap(false)
+        if fs.SetMaxLines then fs:SetMaxLines(1) end
+      end
+      list.Rows[i] = row
+    end
+    win.List = list
+
+    -- The totals band.
+    local band
+    if own then
+      band = MW.Block(win)
+    else
+      band = CreateFrame("Frame", nil, win, "BackdropTemplate")
+      T.ApplyBand(band)
+    end
+    band.Text = T.CreateText(band, "value")
+    band.Text:SetPoint("LEFT", band, "LEFT", MW.BAND_PAD, 0)
+    band.Text:SetJustifyH("CENTER")
+    band.Text:SetWordWrap(false)
+    if band.Text.SetMaxLines then band.Text:SetMaxLines(1) end
+    win.Band = band
+
+    -- The All mail button: the Postbox style's block and caption, or under
+    -- any other look the real button, which that look's skin paints.
+    local button
+    if own then
+      button = MW.Block(win)
+      button.Text = T.CreateText(button, "bodySmall")
+      button.Text:SetPoint("CENTER", button, "CENTER", 0, 0)
+    else
+      button = T.CreateButton(nil, win)
+      button:EnableMouse(false)
+      button:SetText(L["CAT_ALL"])
+    end
+    win.Button = button
+
+    -- A host's parts by its own pass, as the window's are.
+    if not own and skin and type(skin.Refresh) == "function" then pcall(skin.Refresh, win) end
+    sw.Mini = win
+    return sw
+  end
+
+  -- Lays the drawing out at the heights in force, only where one moved.
+  function MW.Lay(sw, win)
+    local total = MW.Heights()
+    local h = MW.h
+    sw:SetHeight(total)
+    local key = h.tab + 100 * h.row + 10000 * h.band + 1000000 * h.button
+    if win.laid == key then return end
+    win.laid = key
+    local inner = CTX_W - 2 * MW.PAD_X - 2 * h.side
+    local y = h.strip + h.titleGap
+    local cols = ns.Theme.ColumnEdges(inner, 2, MW.Scaled(ns.Theme.Metrics.gap), MW.cols)
+    for i = 1, 2 do
+      local plate, col = win.Tabs[i], cols[i]
+      plate:ClearAllPoints()
+      plate:SetPoint("TOPLEFT", win, "TOPLEFT", h.side + col.left, -y)
+      plate:SetSize(col.width, h.tab)
+      plate.w = col.width
+    end
+    y = y + h.tab + h.underTabs
+    -- The list, the band and the button, one under the other, each across
+    -- the content's width.
+    MW.ACROSS[1], MW.ACROSS[2], MW.ACROSS[3] = win.List, win.Band, win.Button
+    MW.TALL[1], MW.TALL[2], MW.TALL[3] = h.list, h.band, h.button
+    for i = 1, 3 do
+      local frame = MW.ACROSS[i]
+      frame:ClearAllPoints()
+      frame:SetPoint("TOPLEFT", win, "TOPLEFT", h.side, -y)
+      frame:SetPoint("TOPRIGHT", win, "TOPRIGHT", -h.side, -y)
+      frame:SetHeight(MW.TALL[i])
+      y = y + MW.TALL[i] + h.gap
+    end
+    local rows = win.List.Rows
+    for i = 1, #rows do
+      local at = -(h.pad + (i - 1) * (h.row + h.rowGap))
+      rows[i]:ClearAllPoints()
+      rows[i]:SetPoint("TOPLEFT", win.List, "TOPLEFT", h.pad, at)
+      rows[i]:SetPoint("TOPRIGHT", win.List, "TOPRIGHT", -h.pad, at)
+      rows[i]:SetHeight(h.row)
+    end
+    win.inner = inner
+  end
+
+  -- The Postbox style's frame and blocks, from its palette.
+  function MW.PaintOwn(win)
+    local T = ns.Theme
+    local skin = ns.Skin
+    local P = skin.Palette
+    if type(skin.PaintShell) == "function" then skin.PaintShell(win, MW.h.strip, MW.Scaled(MW.SHEEN)) end
+    MW.PaintBlock(win.List, P.list, P.listEdge)
+    MW.PaintBlock(win.Band, P.band, P.bandEdge)
+    MW.PaintBlock(win.Button, P.button, P.buttonEdge)
+    MW.Caption(win.Button.Text, win.inner, L["CAT_ALL"])
+    if skin.ButtonTextRGB then T.SetTextRGB(win.Button.Text, skin.ButtonTextRGB()) end
+  end
+
+  -- Any other look's frame: its fill in the host's colour at its opacity,
+  -- and its edge -- the host's own border where it draws one on any frame
+  -- (EllesmereUI's, Skin.ApplyBorder), else a line standing for the frame.
+  -- ElvUI's template paints itself.
+  function MW.PaintHost(win)
+    local T = ns.Theme
+    local e = win.Edges
+    if win.template then
+      win.Fill:Hide()
+      for i = 1, 4 do e[i]:Hide() end
+      return
+    end
     local skin = GetSkin()
     local alpha = 1
     if skin and type(skin.GetBgOpacity) == "function" then
@@ -1541,17 +1878,24 @@ do
       r, g, b = c[1], c[2], c[3]
     end
     win.Fill:SetColorTexture(r, g, b, alpha)
+    win.Fill:Show()
 
-    -- The border: none, or a line as thick as its size step. Match is the
-    -- edge of the windows beside Postbox: one unit in their edge's colour, or
-    -- the one-unit light edge where that edge is the host's own frame. A skin
-    -- with no border of its own to choose (ElvUI) draws its one-unit edge; a
-    -- stock window wears Blizzard's frame.
+    -- The edge: none; the host's own (EllesmereUI draws it on the frame);
+    -- Match on EllesmereUI's api backend, whose edge is its shell's chrome,
+    -- which only its shell draws: a one-unit line in its place; a skin with
+    -- no border to choose (ElvUI without its template): its one-unit edge;
+    -- a stock window: Blizzard's frame.
     local size, a = 0, 0
     local er, eg, eb = 1, 1, 1
     if skin then
       local style = type(skin.GetBorderStyle) == "function" and skin.GetBorderStyle() or "none"
-      if style == "match" and type(skin.GetEdge) == "function" then
+      if type(skin.ApplyBorder) == "function" then
+        pcall(skin.ApplyBorder, win)
+        if style == "match" and type(skin.GetEdge) == "function" then
+          local ok, _, _, _, _, px = pcall(skin.GetEdge)
+          if ok and (tonumber(px) or 0) <= 0 then size, a = 1, 0.6 end
+        end
+      elseif style == "match" and type(skin.GetEdge) == "function" then
         local ok, cr, cg, cb, ca, px = pcall(skin.GetEdge)
         size, a = 1, 0.6
         if ok and type(px) == "number" and px > 0 then er, eg, eb, a = cr, cg, cb, ca end
@@ -1565,240 +1909,128 @@ do
     else
       size, a = 2, 0.45
     end
-    local e = win.Edges
+    if size > 0 and win.edgeW ~= size then
+      win.edgeW = size
+      MW.LayEdges(e, win, size)
+    end
     for i = 1, 4 do
-      e[i]:ClearAllPoints()
       e[i]:SetColorTexture(er, eg, eb, a)
       e[i]:SetShown(size > 0)
     end
-    if size > 0 then
-      e[1]:SetPoint("TOPLEFT", win, "TOPLEFT", 0, 0)
-      e[1]:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, 0)
-      e[1]:SetHeight(size)
-      e[2]:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 0, 0)
-      e[2]:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", 0, 0)
-      e[2]:SetHeight(size)
-      e[3]:SetPoint("TOPLEFT", win, "TOPLEFT", 0, -size)
-      e[3]:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 0, size)
-      e[3]:SetWidth(size)
-      e[4]:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, -size)
-      e[4]:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", 0, size)
-      e[4]:SetWidth(size)
-    end
-    local ar, ag, ab = T.GetAccent()
-    win.Selected:SetColorTexture(ar, ag, ab, 0.22)
   end
 
-  ---------------------------------------------------------
-  -- The Postbox style's window, small
-  --
-  -- Under the Postbox style the Window tab's drawing is a window of that
-  -- style over the same bit of world, painted from its live palette: the
-  -- fill at the player's opacity, the tint and the strip, the keyline in its
-  -- weight and colour, the sheen, a lit tab over an idle one, a heading and
-  -- its rule, two striped rows with their figures, a button's caption and a
-  -- ticked box. Every row of the style's groups shows in it as it changes;
-  -- its text wears the style's own fonts, so face, size and outline do too.
-  ---------------------------------------------------------
-  local MINI_PAD_X, MINI_PAD_Y, MINI_STRIP, MINI_ROW = 12, 9, 12, 16
-
-  -- A caption on one of the drawing's controls, `width` wide (its tab or
-  -- its button), in a box of its own: the control less 3 at each end, one
-  -- line, centred where it always stood. One too long for it (a long
-  -- translation, a large text size) is cut short by the house fitter rather
-  -- than spilling out of its control; a box is never measured from the text,
-  -- so a font changed under the caption cannot wrap it either.
-  local function MiniCaption(fs, width, text)
-    if not fs then return end
-    if fs.SetMaxLines then fs:SetMaxLines(1) end
-    ns.Theme.FitText(fs, width - 6, text)
-  end
-
-  -- Four lines of the addon's white tile round `frame`, `inset` in.
-  local function MiniEdges(frame, layer, sub)
-    local e = {}
-    for i = 1, 4 do e[i] = frame:CreateTexture(nil, layer, nil, sub) end
-    return e
-  end
-
-  local function LayEdges(e, frame, inset, w)
-    for i = 1, 4 do e[i]:ClearAllPoints() end
-    e[1]:SetPoint("TOPLEFT", frame, "TOPLEFT", inset, -inset)
-    e[1]:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -inset, -inset)
-    e[1]:SetHeight(w)
-    e[2]:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", inset, inset)
-    e[2]:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
-    e[2]:SetHeight(w)
-    e[3]:SetPoint("TOPLEFT", frame, "TOPLEFT", inset, -inset)
-    e[3]:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", inset, inset)
-    e[3]:SetWidth(w)
-    e[4]:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -inset, -inset)
-    e[4]:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
-    e[4]:SetWidth(w)
-  end
-
-  local function TintEdges(e, c, shown)
-    for i = 1, 4 do
-      e[i]:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
-      e[i]:SetShown(shown ~= false)
-    end
-  end
-
-  -- A block: a fill and a one-unit edge.
-  local function MiniBlock(parent)
-    local b = CreateFrame("Frame", nil, parent)
-    b.Fill = b:CreateTexture(nil, "BACKGROUND", nil, 1)
-    b.Fill:SetAllPoints()
-    b.Edges = MiniEdges(b, "BORDER", 1)
-    LayEdges(b.Edges, b, 0, 1)
-    return b
-  end
-
-  local function PaintBlock(b, fill, edge)
-    b.Fill:SetColorTexture(fill[1], fill[2], fill[3], fill[4] or 1)
-    TintEdges(b.Edges, edge)
-  end
-
-  function Ctx.Mini(parent)
+  -- The tabs: the Mail tab lit, its caption as the window writes it while
+  -- mail waits (UI.TabCaption: its name and the dot where Tab indicator
+  -- puts it, in the accent's mark tone); the Send tab idle.
+  function MW.PaintTabs(win)
     local T = ns.Theme
-    local sw = Ctx.Swatch(parent)
-    sw:SetHeight(MINI_H)
-    -- The swatch's own little window gives way to the style's.
-    sw.Win:Hide()
-    local win = CreateFrame("Frame", nil, sw)
-    win:SetFrameLevel(sw.Win:GetFrameLevel())
-    win:SetPoint("TOPLEFT", sw, "TOPLEFT", MINI_PAD_X, -MINI_PAD_Y)
-    win:SetPoint("BOTTOMRIGHT", sw, "BOTTOMRIGHT", -MINI_PAD_X, MINI_PAD_Y)
-    win.Fill = win:CreateTexture(nil, "BACKGROUND", nil, -8)
-    win.Fill:SetAllPoints()
-    win.Strip = win:CreateTexture(nil, "BACKGROUND", nil, -7)
-    win.Strip:SetPoint("TOPLEFT", win, "TOPLEFT", 0, 0)
-    win.Strip:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, 0)
-    win.Strip:SetHeight(MINI_STRIP)
-    win.Sheen = win:CreateTexture(nil, "BACKGROUND", nil, -6)
-    win.Sheen:SetTexture(WHITE)
-    win.Sheen:SetPoint("TOPLEFT", win, "TOPLEFT", 0, 0)
-    win.Sheen:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, 0)
-    win.Sheen:SetHeight(40)
-    win.Outer = MiniEdges(win, "BORDER", 6)
-    win.Inner = MiniEdges(win, "BORDER", 7)
-    win.Title = T.CreateText(win, "bodySmall")
-    win.Title:SetPoint("CENTER", win.Strip, "CENTER", 0, 0)
-    win.Title:SetText(L["FRAME_TITLE"])
-
-    -- A lit tab and an idle one, the window's own plates.
-    win.Tabs = {}
-    for i = 1, 2 do
-      local plate = T.CreatePlate(win, "tab")
-      local caption = L[i == 1 and "TAB_COLLECT" or "TAB_SEND"]
-      plate:SetHeight(16)
-      plate:SetWidth(62)
-      plate:SetPoint("TOPLEFT", win, "TOPLEFT", 6 + (i - 1) * 66, -(MINI_STRIP + 4))
-      plate:EnableMouse(false)
-      plate:SetText(caption)
-      if plate.Text then plate.Text:SetFontObject(T.FontObject("bodySmall")) end
-      local skin = ns.Skin
-      if skin and skin.StyleTabPlate then skin.StyleTabPlate(plate) end
-      T.SetPlateSelected(plate, i == 1)
-      MiniCaption(plate.Text, 62, caption)
-      win.Tabs[i] = plate
+    local UI = ns.MailboxUI
+    local caption = L["TAB_COLLECT"]
+    if UI and type(UI.TabCaption) == "function" and type(UI.GetTabIndicator) == "function" then
+      local r, g, b = T.GetAccentTone("mark")
+      local floor = math.floor
+      caption = UI.TabCaption(UI.GetTabIndicator(),
+        string.format("|cff%02x%02x%02x", floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5)))
     end
+    local tabs = win.Tabs
+    MW.Caption(tabs[1].Text, tabs[1].w, caption)
+    MW.Caption(tabs[2].Text, tabs[2].w, L["TAB_SEND"])
+    for i = 1, 2 do T.SetPlateSelected(tabs[i], i == 1) end
+  end
 
-    win.Head = T.CreateText(win, "heading")
-    win.Head:SetPoint("TOPLEFT", win, "TOPLEFT", 7, -(MINI_STRIP + 25))
-    win.Head:SetText(L["OPT_GROUP_COLORS"])
-    win.Rule = win:CreateTexture(nil, "ARTWORK")
-    win.Rule:SetHeight(1)
-    win.Rule:SetPoint("LEFT", win.Head, "RIGHT", 6, 0)
-    win.Rule:SetPoint("RIGHT", win, "RIGHT", -7, 0)
-
-    -- The list and its two rows.
-    local list = MiniBlock(win)
-    list:SetPoint("TOPLEFT", win, "TOPLEFT", 6, -(MINI_STRIP + 40))
-    list:SetPoint("TOPRIGHT", win, "TOPRIGHT", -6, -(MINI_STRIP + 40))
-    list:SetHeight(2 * MINI_ROW + 2)
-    list.Rows = {}
-    for i = 1, 2 do
-      local row = list:CreateTexture(nil, "BACKGROUND", nil, 2)
-      row:SetPoint("TOPLEFT", list, "TOPLEFT", 1, -1 - (i - 1) * MINI_ROW)
-      row:SetPoint("TOPRIGHT", list, "TOPRIGHT", -1, -1 - (i - 1) * MINI_ROW)
-      row:SetHeight(MINI_ROW)
-      local name = T.CreateText(list, "bodySmall")
-      name:SetPoint("LEFT", row, "LEFT", 5, 0)
-      name:SetText(i == 1 and L["ROW_AH_BOUGHT"] or L["TAB_COLLECT"])
-      local fig = T.CreateText(list, "bodySmall")
-      fig:SetPoint("RIGHT", row, "RIGHT", -5, 0)
-      fig:SetText(i == 1 and "-52g" or "+1309g")
-      list.Rows[i] = { stripe = row, name = name, fig = fig }
+  -- The rows, by the list's own rules: the stripe of the row's place, the
+  -- read dot, the sender (an auction outcome in its tone; your character,
+  -- in its class colour), the gold in its tone. The sender's column is as
+  -- wide as the widest sender, so no sender is cut and the subjects start
+  -- on one line; the subject has the rest, and a long one is shortened by
+  -- the house fitter, as the list shortens it.
+  function MW.PaintRows(win)
+    local T = ns.Theme
+    local R = ns.CollectTab and ns.CollectTab.RowRules
+    local figs = MW.Figures()
+    local rows = win.List.Rows
+    local senderW, goldW = 0, 0
+    for i = 1, #rows do
+      local row, s = rows[i], MW.SAMPLES[i]
+      T.StyleMailRow(row, i, false)
+      if R and R.PaintDot then R.PaintDot(row.Indicator, s.read, false)
+      else T.SetColor(row.Indicator, s.read and "read" or "unread") end
+      local sender = row.Sender
+      if s.kind then
+        sender:SetText(R and R.OutcomeSender and R.OutcomeSender(s.kind) or "")
+        if R and R.PaintSender then R.PaintSender(sender, nil) end
+      else
+        MW.PaintMe(sender)
+      end
+      row.Gold:SetText(T.Colorize(s.tone, figs[s.fig]))
+      senderW = math.max(senderW, T.TextWidth(sender))
+      goldW = math.max(goldW, T.TextWidth(row.Gold))
     end
-    win.List = list
+    local x = MW.SENDER_X + math.ceil(senderW) + MW.COL_GAP
+    local room = (win.inner or 0) - 2 * MW.h.pad - x - MW.COL_GAP - math.ceil(goldW) - MW.ROW_END
+    local name = SampleItem() or ""
+    for i = 1, #rows do
+      local subject = rows[i].Subject
+      if subject.x ~= x then
+        subject.x = x
+        subject:ClearAllPoints()
+        subject:SetPoint("LEFT", rows[i], "LEFT", x, 0)
+      end
+      T.FitText(subject, math.max(1, room), name)
+    end
+  end
 
-    local button = MiniBlock(win)
-    button:SetSize(70, 16)
-    button:SetPoint("TOPLEFT", list, "BOTTOMLEFT", 0, -6)
-    button.Text = T.CreateText(button, "bodySmall")
-    button.Text:SetPoint("CENTER", button, "CENTER", 0, 0)
-    MiniCaption(button.Text, 70, L["BTN_TAKE_ALL"])
-    win.Button = button
+  -- The third row's sender: you, in your class colour, as the list draws
+  -- one of your characters (RowRules.PaintSender) -- your class read from
+  -- the game where Postbox has not noted it yet.
+  function MW.PaintMe(fs)
+    local T = ns.Theme
+    local R = ns.CollectTab and ns.CollectTab.RowRules
+    local name = type(UnitName) == "function" and UnitName("player") or nil
+    fs:SetText(name or "")
+    if R and R.PaintSender then R.PaintSender(fs, name) end
+    if fs.__pbClass then return end
+    local CS = ns.ContactService
+    local token
+    if type(UnitClass) == "function" then
+      local _, t = UnitClass("player")
+      token = t
+    end
+    local r, g, b
+    if token and CS and type(CS.ClassColour) == "function" then r, g, b = CS.ClassColour(token) end
+    if r then T.SetTextRGB(fs, r, g, b) end
+  end
 
-    local box = MiniBlock(win)
-    box:SetSize(12, 12)
-    box:SetPoint("TOPRIGHT", list, "BOTTOMRIGHT", 0, -8)
-    box.Tick = T.Glyph and T.Glyph(box, "check", 8, "OVERLAY") or nil
-    if box.Tick then box.Tick:SetPoint("CENTER", box, "CENTER", 0, 0) end
-    win.Box = box
-
-    sw.Mini = win
-    return sw
+  -- The band's sums, as the window's band writes them (CollectTab's
+  -- FitBanner): the two labels and the gold of each, in their tones on the
+  -- band; where that is wider than the band, the two sums alone. The coins
+  -- are inline textures, which a string's measure leaves out, so each is
+  -- counted at its own size.
+  function MW.PaintBand(win)
+    local T = ns.Theme
+    local F = ns.Core and ns.Core.Formatting
+    local fs = win.Band.Text
+    local room = (win.inner or 0) - 2 * MW.BAND_PAD
+    if not (F and F.FormatMoneyIcons) then fs:SetText("") return end
+    local up = "ff" .. (T.InkHex("positive", "band") or "40d55a")
+    local down = "ff" .. (T.InkHex("negative", "band") or "ff4444")
+    local earned = F.FormatMoneyIcons(SAMPLE_SALE + MW.GIFT, up, 1)
+    local spent = F.FormatMoneyIcons(SAMPLE_PRICE, down, 1)
+    fs:SetWidth(room)
+    fs:SetText(L["BANNER_EARNED_SHORT"] .. earned .. "   |   " .. L["BANNER_SPENT_SHORT"] .. spent)
+    if T.TextWidth(fs) + 2 * (F.MONEY_ICON_SIZE or 12) > room then
+      fs:SetText(earned .. "   |   " .. spent)
+    end
   end
 
   function Ctx.PaintMini(sw)
-    local T = ns.Theme
-    local skin = GetSkin()
-    local win = sw.Mini
-    local P = skin and skin.Palette
-    if not (win and P) then return end
-    local C = T.Colors
-    local alpha = skin.GetBgOpacity()
-    local fill = P.window
-    win.Fill:SetColorTexture(fill[1], fill[2], fill[3], alpha)
-    local s = P.strip
-    win.Strip:SetColorTexture(s[1], s[2], s[3], s[4] * alpha)
-    local sheen = skin.GetSheen and skin.GetSheen()
-    local sc = P.sheen
-    if sheen and win.Sheen.SetGradient and type(CreateColor) == "function" then
-      if not win.SheenLo then win.SheenLo, win.SheenHi = CreateColor(0, 0, 0, 0), CreateColor(0, 0, 0, 0) end
-      win.SheenLo:SetRGBA(sc[1], sc[2], sc[3], 0)
-      win.SheenHi:SetRGBA(sc[1], sc[2], sc[3], sc[4])
-      win.Sheen:SetGradient("VERTICAL", win.SheenLo, win.SheenHi)
-    end
-    win.Sheen:SetShown(sheen and true or false)
-    local border = skin.GetBorderStyle()
-    local show = border ~= "none"
-    LayEdges(win.Outer, win, 0, 1)
-    LayEdges(win.Inner, win, 1, border == "thick" and 2 or 1)
-    -- Edge: the inner line's colour alone, on the outer line's place.
-    local edge = border == "edge"
-    TintEdges(win.Outer, edge and P.inner or P.keyOuter, show)
-    TintEdges(win.Inner, P.inner, show and not edge)
-    local t = P.title
-    win.Title:SetTextColor(t[1], t[2], t[3], t[4])
-    for i = 1, 2 do T.SetPlateSelected(win.Tabs[i], i == 1) end
-    T.FillColor(win.Rule, "accentRule")
-    PaintBlock(win.List, P.list, P.listEdge)
-    local stripes = { C.stripeOdd, C.stripeEven }
-    for i = 1, 2 do
-      local row = win.List.Rows[i]
-      local c = stripes[i]
-      row.stripe:SetColorTexture(c[1], c[2], c[3], c[4])
-      T.SetColor(row.fig, i == 1 and "negative" or "positive")
-    end
-    PaintBlock(win.Button, P.button, P.buttonEdge)
-    if skin.ButtonTextRGB then
-      T.SetTextRGB(win.Button.Text, skin.ButtonTextRGB())
-    end
-    PaintBlock(win.Box, P.check, P.checkEdge)
-    if win.Box.Tick then win.Box.Tick:SetVertexColor(T.GetAccentTone("mark")) end
+    local win = sw and sw.Mini
+    if not win then return end
+    MW.Lay(sw, win)
+    if win.own then MW.PaintOwn(win) else MW.PaintHost(win) end
+    MW.PaintTabs(win)
+    MW.PaintRows(win)
+    MW.PaintBand(win)
   end
 
   -- The accent row's reading, under its description: the ratios the tones
@@ -1846,11 +2078,9 @@ do
       host:SetScript("OnLeave", SpotLeave)
       y = HOST_H + 8
     end
-    local skin = GetSkin()
-    local mini = skin and skin.IsPostboxStyle and not skin.IsCreativeStyle and true or false
-    local sw = mini and Ctx.Mini(f) or Ctx.Swatch(f)
+    local sw = Ctx.Mini(f)
     sw:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -y)
-    f:SetSize(CTX_W, y + (mini and MINI_H or SWATCH_H))
+    f:SetSize(CTX_W, y + Ctx.MiniHeight())
     f.Paint = function()
       if host then
         PaintPlain(host)
@@ -1863,7 +2093,8 @@ do
         end
         T.FitText(host.Text, CTX_W - 36, S.idle.window.title, host)
       end
-      if mini then Ctx.PaintMini(sw) else Ctx.PaintSwatch(sw) end
+      Ctx.PaintMini(sw)
+      f:SetHeight(y + MW.h.total)
     end
     return f
   end

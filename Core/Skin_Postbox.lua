@@ -1350,7 +1350,7 @@ local function PaintSheen(frame, shell, trim)
   sheen:ClearAllPoints()
   sheen:SetPoint("TOPLEFT", frame, "TOPLEFT", trim, 0)
   sheen:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -trim, 0)
-  sheen:SetHeight(min(SHEEN_H, (frame:GetHeight() or SHEEN_H)))
+  sheen:SetHeight(min(frame.__pbShellSheen or SHEEN_H, (frame:GetHeight() or SHEEN_H)))
   local c = P.sheen
   if sheen.SetGradient and type(CreateColor) == "function" then
     -- The colour objects are made once per shell and re-set in place.
@@ -1459,7 +1459,7 @@ local function RoundCorners(frame, shell, unit, inner, show, alpha, color)
   local art = CORNER_ART[n]
   local R = n * unit
   local s = P.strip
-  local stripH = P.stripHeight
+  local stripH = frame.__pbShellStrip or P.stripHeight
 
   -- The fill: a middle band full width, a band above and below it between
   -- the corners, and the four corner pieces.
@@ -1632,6 +1632,18 @@ function Skin.ApplyScale()
   for frame in pairs(Skin._windows) do
     if frame then pcall(PaintWindow, frame) end
   end
+end
+
+-- The options' drawing of the window (Core/OptionsPanel.lua, the Window
+-- tab): this shell -- fill, strip, keyline, corners and sheen -- on a frame
+-- of its own, painted by the code that paints the windows, its strip and its
+-- sheen at the drawing's own heights. Not one of the windows (Skin._windows):
+-- the drawing paints it again whenever a setting it shows changes.
+function Skin.PaintShell(frame, stripH, sheenH)
+  if not frame then return end
+  frame.__pbShellStrip, frame.__pbShellSheen = stripH, sheenH
+  EnsureShell(frame).strip:SetHeight(stripH or P.stripHeight)
+  PaintWindow(frame)
 end
 
 -- The title, the cog and the close button, centred on the strip: one
