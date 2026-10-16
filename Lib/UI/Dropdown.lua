@@ -31,6 +31,11 @@ local MARK_GUTTER = 8
 -- The toggle's colour square: its left edge in from the toggle's, its size,
 -- and the room kept between it and the value.
 local SWATCH_X, SWATCH_SIZE, SWATCH_GAP = 7, 10, 4
+-- The toggle's art, where the items carry their own (the list draws each
+-- beside its name; the toggle the chosen one's, PaintArt): the least room
+-- between it and the toggle's left edge, and the room between it and the
+-- value, the list's own.
+local ART = { X = 4, GAP = 6 }
 -- The room kept clear at each end of the toggle for what is drawn there: the
 -- Postbox style's caret (5 wide, centred 9 in from the right edge, so out to
 -- 11.5) and the stock button's end caps (12). Only a value that already ran
@@ -254,19 +259,101 @@ function Dropdown.Create(parent, opts)
     return (items[1] and items[1].name) or ""
   end
 
+  -- The art an item carries ({ texture= or atlas=, aspect= }), or nil.
+  local function ArtOf(id)
+    for i = 1, #items do
+      local item = items[i]
+      if item.id == id then return type(item.icon) == "table" and item.icon or nil end
+    end
+    return nil
+  end
+
+  -- The art's side: the list rows' own (BuildList).
+  local artSize = rowHeight - 4
+
   -- The value's caption box: the toggle less a gutter at each end, the same
   -- at both, so a value that fits stands centred on the toggle exactly where
-  -- it always stood -- clear of the colour square at the left and of a
-  -- style's caret at the right. One line, never wrapped. A value too long
+  -- it always stood -- clear of the colour square at the left, of the
+  -- chosen item's art just before the value, and of a style's caret at the
+  -- right. One line, never wrapped. A value too long
   -- for its box (a long translation, a large text size) widens the toggle
   -- where its owner has the room (FitWidth); only one that still does not
   -- fit is cut short by the house fitter (Theme.FitText) and says the whole
   -- of it on hover (ToggleEnter). A box of its own rather than a string
   -- sized to its text: that width is measured when the text is set and kept
   -- when a font object is changed under it, which wrapped a value's last
-  -- letter onto a second line.
-  local inset = CAPTION_GUTTER
-  if swatchFor then inset = math.max(inset, SWATCH_X + SWATCH_SIZE + SWATCH_GAP) end
+  -- letter onto a second line. Where the items carry art, the box leaves
+  -- the art's room at both ends, so the longest value that fits still has
+  -- its art whole on the toggle, and the value stays centred.
+  local function Inset()
+    local n = CAPTION_GUTTER
+    if swatchFor then n = math.max(n, SWATCH_X + SWATCH_SIZE + SWATCH_GAP) end
+    for i = 1, #items do
+      if type(items[i].icon) == "table" then
+        n = math.max(n, ART.X + artSize + ART.GAP)
+        break
+      end
+    end
+    return n
+  end
+  local inset = Inset()
+
+  -- The chosen item's art on the toggle, the list's art at the list's size,
+  -- just before the value as it shows (its words centred, the art a gap to
+  -- their left), on a holder frame of its own: a skin's repaint of the
+  -- button fades the button's own textures, never a child's. One texture
+  -- per toggle, made the first time a chosen item has art; a new choice
+  -- sets its file only when the art is another, and builds nothing. Greyed
+  -- with the toggle (ArtState).
+  local art
+  local function ArtState()
+    if not art then return end
+    local on = toggle:IsEnabled() and true or false
+    if art.on == on then return end
+    art.on = on
+    art.Tex:SetDesaturated(not on)
+    art:SetAlpha(on and 1 or 0.5)
+  end
+  local function PaintArt()
+    local spec = ArtOf(container._selectedId)
+    if not spec then
+      if art then art:Hide() end
+      return
+    end
+    if not art then
+      art = CreateFrame("Frame", nil, toggle)
+      art:SetFrameLevel((toggle:GetFrameLevel() or 1) + 2)
+      art.Tex = art:CreateTexture(nil, "ARTWORK")
+      art.Tex:SetAllPoints()
+      toggle:HookScript("OnEnable", ArtState)
+      toggle:HookScript("OnDisable", ArtState)
+    end
+    if art.spec ~= spec then
+      art.spec = spec
+      local tex = art.Tex
+      if spec.atlas then
+        tex:SetAtlas(spec.atlas)
+      else
+        tex:SetTexture(spec.texture)
+        tex:SetTexCoord(0, 1, 0, 1)
+      end
+      art:SetSize(artSize, artSize * (spec.aspect or 1))
+    end
+    -- The value's words as they show: their whole width, or the box's
+    -- where they were cut short to it.
+    local label = toggle:GetFontString()
+    local w = 0
+    if label then
+      w = TextWidth(label)
+      local box = label:GetWidth() or 0
+      if box > 0 and w > box then w = box end
+    end
+    art:ClearAllPoints()
+    art:SetPoint("RIGHT", label or toggle, "CENTER", -(math.floor(w / 2 + 0.5) + ART.GAP), 0)
+    ArtState()
+    art:Show()
+  end
+
   local caption = ""   -- the value as given, whatever its box shows of it
   local function Caption(text)
     caption = text or ""
@@ -274,9 +361,11 @@ function Dropdown.Create(parent, opts)
     local fit = ns.Theme and ns.Theme.FitText
     if not label or type(fit) ~= "function" then
       toggle:SetText(caption)
+      PaintArt()
       return
     end
     fit(label, math.max(1, (toggle:GetWidth() or 0) - 2 * inset), caption, toggle)
+    PaintArt()
   end
 
   toggle:SetText(NameFor(container._selectedId))
@@ -329,6 +418,8 @@ function Dropdown.Create(parent, opts)
       if w > widest then widest = w end
     end
     label:SetText(shown)
+    -- The art beside the value as this face draws it.
+    PaintArt()
     local width = toggleWidth
     if widest > width - 2 * inset then width = math.ceil(widest) + 2 * inset end
     if widest > 0 then
@@ -758,6 +849,7 @@ function Dropdown.Create(parent, opts)
     if list then built[items] = list end
     items = newItems
     list = built[newItems]
+    inset = Inset()
     Caption(NameFor(container._selectedId))
     PaintToggleSwatch()
   end
