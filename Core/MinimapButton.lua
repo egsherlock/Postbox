@@ -333,13 +333,16 @@ MB.MARKER_SHAPES = { "dot", "ring", "square", "bar", "exclamation", "triangle" }
 
 -- Anchor (`markerCorner`, the name it had when only three corners were
 -- offered): the spot on the icon the marker is anchored to, one of the
--- eight a frame is anchored by -- a corner, or the middle of a side. The
--- bottom right is where the count sits; it is offered all the same. Each
--- spot's side of the icon: x -1 the left, 1 the right, 0 the middle; y 1
--- the top, -1 the bottom, 0 the middle. Listed in reading order.
-local ANCHOR_X = { TOPLEFT = -1, TOP = 0, TOPRIGHT = 1, LEFT = -1, RIGHT = 1, BOTTOMLEFT = -1, BOTTOM = 0, BOTTOMRIGHT = 1 }
-local ANCHOR_Y = { TOPLEFT = 1, TOP = 1, TOPRIGHT = 1, LEFT = 0, RIGHT = 0, BOTTOMLEFT = -1, BOTTOM = -1, BOTTOMRIGHT = -1 }
-MB.MARKER_CORNERS = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
+-- nine a frame is anchored by -- a corner, the middle of a side, or the
+-- centre. The bottom right is where the count sits; it is offered all the
+-- same. Each spot's side of the icon: x -1 the left, 1 the right, 0 the
+-- middle; y 1 the top, -1 the bottom, 0 the middle (both 0: the centre).
+-- Listed in reading order.
+local ANCHOR_X = { TOPLEFT = -1, TOP = 0, TOPRIGHT = 1, LEFT = -1, CENTER = 0, RIGHT = 1,
+  BOTTOMLEFT = -1, BOTTOM = 0, BOTTOMRIGHT = 1 }
+local ANCHOR_Y = { TOPLEFT = 1, TOP = 1, TOPRIGHT = 1, LEFT = 0, CENTER = 0, RIGHT = 0,
+  BOTTOMLEFT = -1, BOTTOM = -1, BOTTOMRIGHT = -1 }
+MB.MARKER_CORNERS = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
 
 local function MarkerShape(prefs)
   local shape = (prefs or Settings()).marker
@@ -617,8 +620,9 @@ local function Glowing(prefs)
   return prefs.glow == true and (view.lit or view.alert) and not view.alone
 end
 
--- The alert's mark, the marker: a small flat shape at the icon's corner or
--- at the middle of one of its sides (Anchor; the top right unless chosen),
+-- The alert's mark, the marker: a small flat shape at the icon's corner, at
+-- the middle of one of its sides or at its centre (Anchor; the top right
+-- unless chosen),
 -- moved from there by Offset X and Offset Y, its fill in Color (MarkerRGB;
 -- red unless chosen, since it warns that mail is about to be lost). The
 -- Dot, the default, is shaped as the Mail tab's dot (MailboxUI,
@@ -634,9 +638,10 @@ end
 -- from one number, `d`: a quarter of the icon, rounded, and never under 4,
 -- the least that still reads as a round dot on a 16 px icon. At its anchor
 -- the fill is flush with the icon's edges -- in the corner, or centred
--- along the side -- and the edge a pixel past them; both are snapped to the
--- pixel grid, so each is crisp at every icon size and UI scale, and the
--- offset moves them by whole screen pixels.
+-- along the side -- and the edge a pixel past them; at the centre the two
+-- are centred on the icon's. Both are snapped to the pixel grid, so each is
+-- crisp at every icon size and UI scale, and the offset moves them by whole
+-- screen pixels.
 --
 --   Dot          a disc d across, from Media/minimap-dot.tga, which holds
 --                one for every diameter from 4 to 21 screen pixels (a disc
@@ -655,8 +660,9 @@ end
 --   Exclamation  "!", 1.3 d tall (at least 5): a stem and a square point
 --                a fifth of that wide (at least 1), an eighth of it apart
 --                (at least 1), each with its own edge, which meet in a gap
---                of one pixel. At a side the "!" as a whole is centred on
---                it; at the bottom its point's edge is the one a pixel past.
+--                of one pixel. At a side or the centre the "!" as a whole
+--                is centred on it; at the bottom its point's edge is the
+--                one a pixel past.
 --   Triangle     from Media/minimap-triangle.tga, drawn the same way for
 --                the same sizes, in two forms by its anchor:
 --                  in a corner, a right triangle that fills the corner: its
@@ -668,7 +674,9 @@ end
 --                  its height three quarters of the base (rounded, at
 --                  least 3). It stands outside the icon, its base flush
 --                  with the edge, and its dark edge a pixel past the base,
---                  into the icon.
+--                  into the icon;
+--                  at the centre, the side form pointing up, centred on
+--                  the icon (a warning sign's own shape).
 --                One drawing of each, turned by its texture coordinates
 --                (Tri.Coords): mirrored for the other corners and for the
 --                bottom, a quarter turn for the left and the right.
@@ -728,10 +736,10 @@ end
 
 -- The cell for `d` (past 21 the 21, drawn larger), its edge's if `edge`,
 -- turned to face `corner`: the corner form mirrored from the top right
--- across, down or both; the side form as drawn at the top, mirrored down
--- at the bottom, a quarter turn clockwise at the right and back at the
--- left. A whole cell turned or mirrored is its texels moved whole, so each
--- screen pixel still lands in its own 2 x 2 block.
+-- across, down or both; the side form as drawn at the top and the centre,
+-- mirrored down at the bottom, a quarter turn clockwise at the right and
+-- back at the left. A whole cell turned or mirrored is its texels moved
+-- whole, so each screen pixel still lands in its own 2 x 2 block.
 function Tri.Coords(tex, d, edge, corner)
   if d > DOT_CELL_MAX then d = DOT_CELL_MAX end
   local ax, ay = ANCHOR_X[corner], ANCHOR_Y[corner]
@@ -747,7 +755,7 @@ function Tri.Coords(tex, d, edge, corner)
   local l, r = (x0 + 1) / Tri.W, (x0 + 1 + 2 * w) / Tri.W
   local t, b = (y0 + 1) / Tri.H, (y0 + 1 + 2 * h) / Tri.H
   -- Corner by corner: top left, bottom left, top right, bottom right.
-  if ay == 0 then
+  if ay == 0 and ax ~= 0 then
     if ax > 0 then
       tex:SetTexCoord(l, b, r, b, l, t, r, t)
     else
@@ -773,8 +781,9 @@ end
 local OPPOSITE = { TOP = "BOTTOM", BOTTOM = "TOP", LEFT = "RIGHT", RIGHT = "LEFT" }
 
 -- The shape's fill, w x h pixels, from its `d` (and, for the Triangle, its
--- anchor: the side form turned a quarter at the left and the right); for
--- the Exclamation also its stem's height and the gap under it.
+-- anchor: the side form turned a quarter at the left and the right, and
+-- pointing up at the centre); for the Exclamation also its stem's height
+-- and the gap under it.
 local function MarkGeometry(shape, d, corner)
   if shape == "square" then
     local s = math.max(3, math.floor(d * 0.9 + 0.5))
@@ -794,7 +803,7 @@ local function MarkGeometry(shape, d, corner)
       return legs, legs
     end
     local base, tall = Tri.Side(d)
-    if ay == 0 then return tall, base end
+    if ay == 0 and ax ~= 0 then return tall, base end
     return base, tall
   end
   return d, d
@@ -923,6 +932,9 @@ local function PaintMark(holder, anchor, size, on, shape, corner, large, ox, oy,
     edge:ClearAllPoints()
     local ax, ay = ANCHOR_X[corner], ANCHOR_Y[corner]
     local x, y = ox * px, oy * px
+    -- The edge's step past the icon at its spot: a pixel (nothing at the
+    -- centre).
+    local sx, sy = ax * px, ay * px
     if bang then
       -- The stem's edge stands where the whole "!" puts it; the point's edge
       -- a gap under it, the two edges meeting where the gap is one pixel.
@@ -936,22 +948,25 @@ local function PaintMark(holder, anchor, size, on, shape, corner, large, ox, oy,
         edge:SetPoint("TOP", anchor, "CENTER", 0, half)
       elseif ay < 0 then
         -- At the bottom: the point's edge the one a pixel past the icon.
-        edge:SetPoint(corner, anchor, corner, ax * px + x, (w + gap - 1) * px + y)
+        edge:SetPoint(corner, anchor, corner, sx + x, (w + gap) * px + sy + y)
+      elseif ay == 0 and ax == 0 then
+        -- At the centre: the "!" as a whole centred on it.
+        edge:SetPoint("TOP", anchor, "CENTER", x, half + y)
       elseif ay == 0 then
         -- At a side: the "!" as a whole centred on it.
         local top = (ax < 0) and "TOPLEFT" or "TOPRIGHT"
-        edge:SetPoint(top, anchor, corner, ax * px + x, half + y)
+        edge:SetPoint(top, anchor, corner, sx + x, half + y)
       else
-        edge:SetPoint(corner, anchor, corner, ax * px + x, px + y)
+        edge:SetPoint(corner, anchor, corner, sx + x, sy + y)
       end
     elseif large then
       edge:SetPoint("CENTER", anchor, "CENTER")
-    elseif shape == "triangle" and (ax == 0 or ay == 0) then
+    elseif shape == "triangle" and OPPOSITE[corner] then
       -- At a side, outside the icon: its base on the edge, and its dark
       -- edge a pixel past the base, into the icon.
       edge:SetPoint(OPPOSITE[corner], anchor, corner, -ax * px + x, -ay * px + y)
     else
-      edge:SetPoint(corner, anchor, corner, ax * px + x, ay * px + y)
+      edge:SetPoint(corner, anchor, corner, sx + x, sy + y)
     end
   end
   local r, g, b = MarkerRGB(color)

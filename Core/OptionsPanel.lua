@@ -1894,8 +1894,8 @@ do
   -- three), Larger when alone, and Glow color (its five colours, three over
   -- two; Custom's, in either, the colour picked, or, with none yet, the
   -- colour the picker opens on). Anchor answers with the icon at G.ANCHOR
-  -- in a three by three grid, the marker at each of its eight spots and the
-  -- middle left empty, each row's names under it. When to show answers with
+  -- in a three by three grid, the marker at each of its nine spots, the
+  -- centre in the middle, each row's names under it. When to show answers with
   -- a grid: a column for each choice, a strip of ground for each situation
   -- that tells them apart -- no mail anywhere, mail on another character,
   -- new mail here -- and in each cell what the map shows then: nothing, the
@@ -1922,12 +1922,12 @@ do
   -- The number the icon wears here while Count on icon is on.
   local MM = { COUNT = { me = 3, all = 12 } }
   -- Each answer's choices, in MinimapButton's order, and their names.
-  -- Anchor's in reading order, as its grid stands, the middle left out.
+  -- Anchor's in reading order, as its grid stands.
   MM.IDS = {
     show = { "new", "any", "always" },
     expiry = { "off", "icon", "always" },
     marker = { "dot", "ring", "square", "bar", "exclamation", "triangle" },
-    corner = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" },
+    corner = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" },
     color = { "red", "gold", "accent", "class", "white", "custom" },
     glow = { "gold", "accent", "class", "white", "custom" },
     large = { "off", "on" },
@@ -1938,7 +1938,8 @@ do
     marker = { "OPT_MINIMAP_MARKER_DOT", "OPT_MINIMAP_MARKER_RING", "OPT_MINIMAP_MARKER_SQUARE",
       "OPT_MINIMAP_MARKER_BAR", "OPT_MINIMAP_MARKER_EXCLAMATION", "OPT_MINIMAP_MARKER_TRIANGLE" },
     corner = { "OPT_MINIMAP_ANCHOR_TL", "OPT_MINIMAP_ANCHOR_T", "OPT_MINIMAP_ANCHOR_TR", "OPT_MINIMAP_ANCHOR_L",
-      "OPT_MINIMAP_ANCHOR_R", "OPT_MINIMAP_ANCHOR_BL", "OPT_MINIMAP_ANCHOR_B", "OPT_MINIMAP_ANCHOR_BR" },
+      "OPT_MINIMAP_ANCHOR_C", "OPT_MINIMAP_ANCHOR_R", "OPT_MINIMAP_ANCHOR_BL", "OPT_MINIMAP_ANCHOR_B",
+      "OPT_MINIMAP_ANCHOR_BR" },
     color = { "OPT_MINIMAP_MARKERCOLOR_RED", "OPT_MINIMAP_GLOWCOLOR_GOLD", "OPT_MINIMAP_GLOWCOLOR_ACCENT",
       "OPT_COLOR_CLASS", "OPT_MINIMAP_GLOWCOLOR_WHITE", "OPT_MINIMAP_GLOWCOLOR_CUSTOM" },
     glow = { "OPT_MINIMAP_GLOWCOLOR_GOLD", "OPT_MINIMAP_GLOWCOLOR_ACCENT", "OPT_COLOR_CLASS",
@@ -1957,8 +1958,8 @@ do
   MM.ROWS2 = { marker = true, color = true, glow = true }
   MM.PICKED = { color = true, glow = true }
   -- Anchor's grid: each row's choices, by their place in MM.IDS.corner,
-  -- and the column each stands in (the middle row's two at the sides).
-  MM.GRID = { { 1, 2, 3 }, { 4, 0, 5 }, { 6, 7, 8 } }
+  -- and the column each stands in.
+  MM.GRID = { { 1, 2, 3 }, { 4, 5, 6 }, { 7, 8, 9 } }
 
   -- A caption under a figure: centred, two lines at most.
   function Ctx.Caption(parent)
@@ -2201,10 +2202,10 @@ do
     f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
     f:SetSize(CTX_W, 4 + STAGE)
     local strips = { Strip(f), Strip(f), Strip(f) }
-    -- The captions under the ground (Anchor's eight at the most) and the
+    -- The captions under the ground (Anchor's nine at the most) and the
     -- grid's situations, on the inspector's own ground and in its inks.
     local caps, labels = {}, {}
-    for i = 1, 8 do
+    for i = 1, 9 do
       local cap = Ctx.Caption(f)
       cap.Mark = f:CreateTexture(nil, "ARTWORK")
       cap.Mark:SetHeight(G.MARK_H)
@@ -2320,7 +2321,7 @@ do
         end
       elseif mode == "corner" then
         -- Anchor: the icon in a three by three grid, the marker at each
-        -- spot, the middle empty; each row's names under its strip.
+        -- spot, the centre in the middle; each row's names under its strip.
         P.mark = true
         local top = -4
         for r = 1, 3 do
@@ -4737,12 +4738,12 @@ function Pages.minimap(col)
   modes[colorRow.entry] = "color"
   rows.color = colorRow
   Rows.Why(colorRow, "OPT_MINIMAP_WHY_MARKER")
-  -- Anchor: the eight spots, in reading order; its drawing is the grid of
+  -- Anchor: the nine spots, in reading order; its drawing is the grid of
   -- them.
   local anchorNames = {
     TOPLEFT = L["OPT_MINIMAP_ANCHOR_TL"], TOP = L["OPT_MINIMAP_ANCHOR_T"], TOPRIGHT = L["OPT_MINIMAP_ANCHOR_TR"],
-    LEFT = L["OPT_MINIMAP_ANCHOR_L"], RIGHT = L["OPT_MINIMAP_ANCHOR_R"], BOTTOMLEFT = L["OPT_MINIMAP_ANCHOR_BL"],
-    BOTTOM = L["OPT_MINIMAP_ANCHOR_B"], BOTTOMRIGHT = L["OPT_MINIMAP_ANCHOR_BR"],
+    LEFT = L["OPT_MINIMAP_ANCHOR_L"], CENTER = L["OPT_MINIMAP_ANCHOR_C"], RIGHT = L["OPT_MINIMAP_ANCHOR_R"],
+    BOTTOMLEFT = L["OPT_MINIMAP_ANCHOR_BL"], BOTTOM = L["OPT_MINIMAP_ANCHOR_B"], BOTTOMRIGHT = L["OPT_MINIMAP_ANCHOR_BR"],
   }
   local cornerItems = {}
   for _, id in ipairs((Icon and Icon.MARKER_CORNERS) or { "TOPRIGHT" }) do
