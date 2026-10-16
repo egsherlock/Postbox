@@ -164,10 +164,10 @@ local OPTION_DEFAULTS = {
   attachFromMail  = false,
   -- The collect screen's one-click sweeps (bought, sold, canceled, expired,
   -- other, from alts, and each character group's) under the full-width
-  -- Collect button. On: they are what the screen has always offered. Off is
-  -- for the player who only ever takes everything, and would rather have
-  -- their rows back for the list.
-  showCategoryButtons = true,
+  -- Collect button. Off since 1.50 (Elliott): All mail is what most players
+  -- press, and the list gets the room; the sweeps are one switch away, and
+  -- the Character Groups window says when its groups have no button.
+  showCategoryButtons = false,
   -- The totals band under the Mail tab's list: earned and spent across the
   -- mail listed. On: it is what the tab has always shown. Off, the blocks
   -- under the list close up and the window's floor comes down with them

@@ -29,6 +29,9 @@ Options, Window); your recipients, groups, Mail Memory and History are kept.*
   any order you arrange; Arrange shows packed rows exactly as they are.
 - **Character Groups:** put characters together (bank alts, crafters) and give
   each group its own collect button.
+- **Category buttons are off by default:** All mail and the list get the
+  room. Turn on **Show category buttons** (Options, Mail tab) for the
+  one-click sweeps by kind and your groups' buttons.
 
 ### New looks
 
