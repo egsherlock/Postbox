@@ -59,15 +59,21 @@ Options, Window). Your recipients, Mail Memory and History are kept.*
 
 ### The minimap icon
 
-- **When to show:** only for new mail, while any character has mail, or
-  always, resting in gray until something arrives.
-- **Expiring mail:** a small marker (dot, ring, square, bar or "!") in the
+- **When to show:** New mail, Mail on any character, or Always (resting in
+  gray until something arrives).
+- **Expiring mail:** a small marker (dot, ring, square, bar or "!") on the
   corner you choose when mail on any character is close to being lost. On
-  **Always**, it stands on its own when this character has no mail.
-- **Count on icon**, sizes from 16 to 40 px, and a **Glow color** of gold,
-  your accent or white.
+  **Always** it stays on the map when this character has no mail, the same
+  size and in the same place; **Larger when alone** makes it bigger there.
+- **Glow color:** gold, your accent or white, for the glow, its pulse and
+  the new-mail flash. Accent tint now colors only the Minimal letter.
+- **A big live preview** on the Minimap tab, beside the icon at its real
+  size, and settings with choices show them side by side.
+- **Count on icon**, and sizes from 16 to 40 px.
 - **A tidier tooltip:** your own mailbox first, then each of your other
   characters with mail.
+- **The Minimal badge style is retired:** its dot clashed with the
+  expiring-mail marker.
 
 ### History and Mail Memory
 
@@ -139,6 +145,7 @@ Options, Window). Your recipients, Mail Memory and History are kept.*
 - On EllesmereUI: your look is there from login, a chosen border no longer
   shows a shadowed frame inside the window, and the icon sits right on
   round minimaps and the Classic ring.
+- Flash on new mail plays for the mail that brings the minimap icon up.
 
 ## 1.40.1
 
