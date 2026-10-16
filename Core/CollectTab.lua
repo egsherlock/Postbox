@@ -9072,15 +9072,16 @@ function CloseDetailIfStale(panel)
     if not RV.AwaitsPaidTake(detail) then detail:Hide() end
     return
   end
-  if Mail().StuckReason(index) ~= detail._stuck then
+  -- And the view as a whole is painted again when the mail emptied (or
+  -- filled) under it -- the last tile or the coin taken here, or a take from
+  -- anywhere else: Collect stands while it holds something
+  -- (PaintDetailContent), so Collect showing or not is what the bar was
+  -- painted for, and the repaint gives the bar reopening the mail would
+  -- show (Return giving way to Delete). Once per change, never per refresh.
+  if Mail().StuckReason(index) ~= detail._stuck
+    or RV.HeldSomething(index) ~= (detail.Collect:IsShown() and true or false) then
     PaintDetailContent(detail, index)
     LayoutDetail(detail)
-  elseif RV.HeldSomething(index) ~= (detail.Collect:IsShown() and true or false) then
-    -- The mail emptied (or filled) under the open view -- the last tile or
-    -- the coin taken here, or a take from anywhere else: Collect follows
-    -- PaintDetailContent's rule, and only the bar is laid out again.
-    detail.Collect:SetShown(not detail.Collect:IsShown())
-    LayoutDetailActions(detail)
   end
 end
 
@@ -9277,12 +9278,17 @@ local function BuildDetail(panel)
         return
       end
       -- Re-read rather than assumed: the header says whether the gold went,
-      -- where the view's mail is now.
+      -- where the view's mail is now. Painted once: where the gold was all
+      -- the mail held, the refresh has painted its going already, and the
+      -- view shows the gold the header does (detail._money).
       CloseDetailIfStale(panel)
       local live = LiveIndex(detail)
       if live then
-        PaintDetailContent(detail, live)
-        LayoutDetail(detail)
+        local _, _, _, _, left = GetInboxHeaderInfo(live)
+        if (tonumber(left) or 0) ~= detail._money then
+          PaintDetailContent(detail, live)
+          LayoutDetail(detail)
+        end
       end
       RequestRefresh(panel)
     end, detail._history, detail.fingerprint, detail._stamp)
