@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>A modern, lightweight replacement for the World of Warcraft mailbox.</b><br />
-  Clear a full inbox in one click, arrange the window your way, see every character's mail from anywhere, and send without second-guessing.
+  Collect everything or just what sold, keep track of every character's mail and what's about to expire, send with names that finish themselves, and shape the window to fit your UI.
 </p>
 
 <p align="center">
