@@ -164,10 +164,10 @@ P.tooltipEdge = Hex("3a3a3a")
 Skin.Palette = P
 Skin.PaletteDark, Skin.PaletteLight = DARK, LIGHT
 
--- The segments, tiles and the options' tabs: Postbox's plates as in every
--- look, their ring from the mockups (concept C) -- solid greys rising with
--- state instead of a white at three alphas. The fills and the accent wash stay
--- the Theme's ladder (its light palette's, in Light mode).
+-- The segments and tiles: Postbox's plates as in every look, their ring
+-- from the mockups (concept C) -- solid greys rising with state instead of
+-- a white at three alphas. The fills and the accent wash stay the Theme's
+-- ladder (its light palette's, in Light mode).
 local RINGS_DARK = {
   plateEdge         = Hex("3e3e3e"),
   plateEdgeHover    = Hex("555555"),
@@ -179,22 +179,30 @@ local RINGS_LIGHT = {
   plateEdgeSelected = Hex("9d9d9a"),
 }
 
--- The window tabs: the mockups' plates, which are EllesmereUI's in game --
--- dark idle, a lighter plate selected, a ring each, no bevel, no wash, the
--- 2-pixel accent underline -- and a dimmer idle caption than a segment's.
--- In Light their rings are the plates' own neutral greys.
--- TAB_TOKENS is the table the tabs hold, rewritten in place from a set.
+-- The window tabs and the options' tabs: a ring each, no bevel, no wash,
+-- the 2-pixel accent underline. In Dark a tab at rest is the options
+-- footer's band -- its fill and its edge, a neutral of the style's own that
+-- neither the background colour nor the accent tints -- with the footer's
+-- words on it: the quiet text colour, the text colour when pointed at, and
+-- nothing else moving, as Report a bug and What's new? do. The open tab is
+-- one step lighter, the same neutral, with its caption and underline in the
+-- accent. In Light the plates are paper and their rings the plates' own
+-- neutral greys, the caption the plates' dark grey.
+-- TAB_TOKENS is the table the tabs hold, rewritten in place from a set; the
+-- captions are tokens, painted on the tab's own ground (Theme PaintPlate).
 local TABS_DARK = {
-  plateIdle         = { 18 / 255, 13 / 255, 11 / 255, 0.92 },
-  plateHover        = { 30 / 255, 26 / 255, 24 / 255, 0.94 },
-  plateSelected     = { 43 / 255, 39 / 255, 37 / 255, 0.95 },
-  plateFlagged      = { 18 / 255, 13 / 255, 11 / 255, 0.92 },
-  plateEdge         = Hex("3b3532"),
-  plateEdgeHover    = Hex("444140"),
-  plateEdgeSelected = Hex("4d4946"),
+  plateIdle         = DARK.band,
+  plateHover        = DARK.band,
+  plateSelected     = Hex("282828", 0.95),
+  plateFlagged      = DARK.band,
+  plateEdge         = DARK.bandEdge,
+  plateEdgeHover    = DARK.bandEdge,
+  plateEdgeSelected = Hex("4a4a4a"),
   plateBevel        = { 1, 1, 1, 0 },
-  plateHighlight    = { 1, 1, 1, 0.03 },
+  plateHighlight    = { 1, 1, 1, 0 },
   accentWash        = { 0, 0, 0, 0 },
+  captionToken      = "textSecondary",
+  captionHoverToken = "textPrimary",
 }
 local TABS_LIGHT = {
   plateIdle         = Hex("e6e6e3", 0.92),
@@ -207,9 +215,10 @@ local TABS_LIGHT = {
   plateBevel        = { 1, 1, 1, 0 },
   plateHighlight    = { 0, 0, 0, 0.03 },
   accentWash        = { 0, 0, 0, 0 },
+  captionToken      = "tabCaption",
+  captionHoverToken = false,
 }
 local TAB_TOKENS = Copy(TABS_DARK)
-TAB_TOKENS.captionToken = "tabCaption"
 
 -- Row stripes off: one even shade under every row.
 local STRIPES_OFF_DARK = {
@@ -870,7 +879,9 @@ local function ResolveLook()
     end
   end
   local tabs = light and TABS_LIGHT or TABS_DARK
-  for key, value in pairs(tabs) do Recolor(TAB_TOKENS[key], value) end
+  for key, value in pairs(tabs) do
+    if type(value) == "table" then Recolor(TAB_TOKENS[key], value) else TAB_TOKENS[key] = value end
+  end
   if not (over and over.accent) then
     local ar, ag, ab = AccentFor(Skin.GetAccentKey())
     P.accent[1], P.accent[2], P.accent[3] = ar, ag, ab

@@ -288,9 +288,10 @@ local C = {
   -- The SELECTED caption is the accent's bright tone and stays that way: which
   -- member of a group is open is exactly the kind of fact the accent is for.
   plateCaption   = { 0.86, 0.86, 0.86, 1.00 },
-  -- The idle caption of a WINDOW tab in the Postbox style (#a5a5a5), whose
-  -- tabs are the mockups' darker plates (Core/Skin_Postbox.lua, TAB_TOKENS).
-  -- No other look paints with it.
+  -- The idle caption of a WINDOW tab drawn from tokens of its own
+  -- (Theme.SetPlateTokens) that name it: the Postbox style's in Light, and
+  -- the creative styles' (#a5a5a5 here). The Postbox style's Dark tabs take
+  -- the options footer's words instead (Core/Skin_Postbox.lua, TABS_DARK).
   tabCaption     = { 0.647, 0.647, 0.647, 1.00 },
 
   -- Unread / read dot on a mail row.
@@ -4001,6 +4002,10 @@ local function PaintPlate(plate)
     underline:SetShown(selected)
   end
 
+  -- Tokens of its own change with the style's Mode: the client's wash under
+  -- the pointer is theirs too.
+  if plate.__pbTokens and T.plateHighlight then PaintTexture(plate.__pbHighlight, T.plateHighlight) end
+
   if plate.Text then
     -- Its halo as its object has it now, taken again where the halo moved
     -- or a SetText may have put another object on it (section 3b), and that
@@ -4013,12 +4018,16 @@ local function PaintPlate(plate)
     end
     -- On its own fill: a window tab's (tokens of its own) or a plate's. A
     -- tile with nothing behind it keeps its dimmed caption through every
-    -- repaint (Theme.DimEmptyTile's rule).
+    -- repaint (Theme.DimEmptyTile's rule). Tokens that name a caption for
+    -- the pointer (captionHoverToken) brighten an unselected caption under
+    -- it; the selected one is the accent's either way.
     local ground
     if plate.__pbTokens then ground = selected and "tabSelected" or "tab"
     else ground = selected and "plateSelected" or "plate" end
     local token = T.captionToken or "plateCaption"
-    if selected then token = "accentBright" elseif Theme.EmptyTile(plate) then token = "textDisabled" end
+    if selected then token = "accentBright"
+    elseif Theme.EmptyTile(plate) then token = "textDisabled"
+    elseif hovered and T.captionHoverToken then token = T.captionHoverToken end
     Theme.SetColor(plate.Text, token, ground)
   end
 end
@@ -4029,8 +4038,9 @@ Theme.RepaintPlate = PaintPlate
 -- the palette's plate keys (plateIdle, plateHover, plateSelected, plateFlagged,
 -- plateEdge, plateEdgeHover, plateEdgeSelected, plateBevel, plateHighlight,
 -- accentWash) and, optionally, `captionToken`, the palette token its idle
--- caption takes. nil hands the plate back to the palette. The Postbox style
--- draws its window tabs this way; nothing else asks.
+-- caption takes, and `captionHoverToken`, the one it takes pointed at. nil
+-- hands the plate back to the palette. The Postbox style draws its window
+-- tabs this way; nothing else asks.
 function Theme.SetPlateTokens(plate, tokens)
   if not plate then return end
   plate.__pbTokens = tokens
