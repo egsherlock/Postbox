@@ -636,11 +636,14 @@ end
 -- (black at 0.9, whatever the fill's colour), the edge that holds it over
 -- snow and over a cave alike, and every one is sized in whole screen pixels
 -- from one number, `d`: a quarter of the icon, rounded, and never under 4,
--- the least that still reads as a round dot on a 16 px icon. At its anchor
--- the fill is flush with the icon's edges -- in the corner, or centred
--- along the side -- and the edge a pixel past them; at the centre the two
--- are centred on the icon's. Both are snapped to the pixel grid, so each is
--- crisp at every icon size and UI scale, and the offset moves them by whole
+-- the least that still reads as a round dot on a 16 px icon. At the middle
+-- of a side the fill is flush with that edge, centred along it, and the
+-- edge a pixel past; at the centre the two are centred on the icon's. In a
+-- corner they stand further out, diagonally, by CornerOut(d) pixels more
+-- (1, or 2 from d = 8): the painted art sits inset in its square, and a
+-- marker flush with the square's corner read as sitting on the art rather
+-- than on its corner. Both are snapped to the pixel grid, so each is crisp
+-- at every icon size and UI scale, and the offset moves them by whole
 -- screen pixels.
 --
 --   Dot          a disc d across, from Media/minimap-dot.tga, which holds
@@ -829,6 +832,22 @@ end
 -- 2026-10-16). Past 21 the strips' largest cells are drawn up to it.
 local DOT_ALONE_MIN = 6
 
+-- How much further out than flush a marker in a corner stands, diagonally,
+-- in screen pixels: a fifth of `d`, rounded, and 1 or 2 -- 1 up to d = 7
+-- (an icon of 28 at one unit a pixel), 2 from d = 8. The painted icons sit
+-- inset in their square by about a fifth of it at the corners, so a marker
+-- whose fill met the square's corner covered the art's corner; 1 pixel out
+-- sets it on the corner at the small sizes, and 2 at the large ones, where
+-- 1 still read as on the art and 2 at the small ones floated off it
+-- (rendered at 20, 28 and 40, at 0.533 and 1.0 on 1440p). Never the larger
+-- lone marker, which stands centred; never a side or the centre.
+local function CornerOut(d)
+  local n = math.floor(d / 5 + 0.5)
+  if n < 1 then return 1 end
+  if n > 2 then return 2 end
+  return n
+end
+
 -- How far the marker reaches past the icon's top (positive) or bottom
 -- (negative), in the units of a frame whose screen pixel is `px`, the
 -- offset aside: only the Triangle at the top or the bottom does, by its
@@ -936,9 +955,11 @@ local function PaintMark(holder, anchor, size, on, shape, corner, large, ox, oy,
     edge:ClearAllPoints()
     local ax, ay = ANCHOR_X[corner], ANCHOR_Y[corner]
     local x, y = ox * px, oy * px
-    -- The edge's step past the icon at its spot: a pixel (nothing at the
-    -- centre).
-    local sx, sy = ax * px, ay * px
+    -- The edge's step past the icon at its spot: a pixel at a side, and in
+    -- a corner CornerOut(d) more, diagonally; nothing at the centre.
+    local out = 1
+    if ax ~= 0 and ay ~= 0 then out = 1 + CornerOut(d) end
+    local sx, sy = ax * out * px, ay * out * px
     if bang then
       -- The stem's edge stands where the whole "!" puts it; the point's edge
       -- a gap under it, the two edges meeting where the gap is one pixel.
@@ -951,7 +972,8 @@ local function PaintMark(holder, anchor, size, on, shape, corner, large, ox, oy,
         -- Centred as a whole: the stem's edge top half the "!" above the middle.
         edge:SetPoint("TOP", anchor, "CENTER", 0, half)
       elseif ay < 0 then
-        -- At the bottom: the point's edge the one a pixel past the icon.
+        -- At the bottom: the point's edge the one a pixel past the icon (in
+        -- a corner, further out with the rest).
         edge:SetPoint(corner, anchor, corner, sx + x, (w + gap) * px + sy + y)
       elseif ay == 0 and ax == 0 then
         -- At the centre: the "!" as a whole centred on it.
