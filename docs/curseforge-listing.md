@@ -1,6 +1,6 @@
 ![Postbox](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/hero.png)
 
-## Empty your mailbox in one click.
+## The mailbox Azeroth deserves.
 
 Postbox gives the game's mailbox one fast, clean window. Take everything at
 once or just what sold, see what every alt has waiting from anywhere, and

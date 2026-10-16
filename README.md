@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/screenshots/hero.png" alt="Postbox: empty your mailbox in one click" />
+  <img src="docs/screenshots/hero.png" alt="Postbox: the mailbox Azeroth deserves" />
 </p>
 
 <p align="center">
