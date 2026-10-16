@@ -61,12 +61,16 @@ Options, Window). Your recipients, Mail Memory and History are kept.*
 
 - **When to show:** New mail, Mail on any character, or Always (resting in
   gray until something arrives).
-- **Expiring mail:** a small marker (dot, ring, square, bar or "!") on the
-  corner you choose when mail on any character is close to being lost. On
-  **Always** it stays on the map when this character has no mail, the same
-  size and in the same place; **Larger when alone** makes it bigger there.
-- **Glow color:** gold, your accent, white or any color you pick, for the
-  glow, its pulse and the new-mail flash. It replaces Accent tint.
+- **Expiring mail:** a small marker, red unless you pick another color, when
+  mail on any character is close to being lost. Choose its shape (dot, ring,
+  square, bar, "!" or a triangle that fits its spot), put it on any corner
+  or side of the icon, and nudge it a pixel at a time with **Offset X** and
+  **Offset Y**. On **Always** it stays on the map when this character has no
+  mail, the same size and in the same place; **Larger when alone** makes it
+  bigger there.
+- **Glow color:** gold, your accent, your class color, white or any color you
+  pick, for the glow, its pulse and the new-mail flash. It replaces Accent
+  tint.
 - **A tidier Minimap tab** in five groups (When it shows, Icon, Glow,
   Expiring mail, Place), with a big live preview beside the icon at its
   real size. Settings with choices show them side by side, and a

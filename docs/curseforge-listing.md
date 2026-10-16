@@ -68,12 +68,14 @@ open a mailbox.
 ## A minimap icon that tells you more
 
 - Show it for **New mail**, for **Mail on any character**, or **Always**.
-- A **count** of what's waiting, and a small **marker** (dot, ring, square,
-  bar or "!") on the corner you choose when mail is about to expire. It
-  stays put even when the icon is hidden, or grows bigger if you like.
+- A **count** of what's waiting, and a small red **marker** when mail is
+  about to expire: pick its shape (a triangle can fill your minimap's
+  corner), its color and its spot, and nudge it into place. It stays put
+  even when the icon is hidden, or grows bigger if you like.
 - Two dozen hand-painted icon styles, 16 to 40 px, with glow (gold, your
-  accent, white or any color), pulse and shadow. Its tooltip shows your own
-  mailbox, then each of your other characters with mail.
+  accent, your class color, white or any color), pulse and shadow. Its
+  tooltip shows your own mailbox, then each of your other characters with
+  mail.
 
 ![The Send tab](https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/send.png)
 

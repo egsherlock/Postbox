@@ -171,13 +171,16 @@ icon steps aside.
 
 - **When to show:** New mail, Mail on any character, or Always (resting in
   gray until something arrives).
-- **Expiring mail:** a small marker (dot, ring, square, bar or "!") on the
-  corner you choose when mail on any character is close to being lost. On
-  **Always** it stays on the map when this character has no mail, the same
-  size and in the same place; **Larger when alone** makes it bigger there.
+- **Expiring mail:** a small marker, red unless you pick another color, when
+  mail on any character is close to being lost. Choose its shape (dot, ring,
+  square, bar, "!" or a triangle that fits its spot), put it on any corner
+  or side of the icon, and nudge it a pixel at a time with **Offset X** and
+  **Offset Y**. On **Always** it stays on the map when this character has no
+  mail, the same size and in the same place; **Larger when alone** makes it
+  bigger there.
 - **Count on icon** (this character or all), shadow, glow, pulse and
-  **Flash on new mail**, with a **Glow color** of gold, your accent, white
-  or any color you pick.
+  **Flash on new mail**, with a **Glow color** of gold, your accent, your
+  class color, white or any color you pick.
 - **The Minimap tab** reads in five groups (When it shows, Icon, Glow,
   Expiring mail, Place). Its preview draws the icon large beside a copy at
   its real size, wearing every setting; settings with choices show them
