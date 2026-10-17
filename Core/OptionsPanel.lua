@@ -1721,18 +1721,10 @@ do
   -- the outcome alone, without the auction house the list's rows put
   -- before it (ROW_AH_*), so the small rows keep room for the item's name;
   -- in the tone the list says each outcome in (CollectTab's
-  -- AUCTION_OUTCOME).
-  MW.OUTCOME = {
-    sold     = { key = "PREVIEW_AH_SOLD",     role = "positive" },
-    bought   = { key = "PREVIEW_AH_BOUGHT",   role = "info" },
-    expired  = { key = "PREVIEW_AH_EXPIRED",  role = "warning" },
-    canceled = { key = "PREVIEW_AH_CANCELED", role = "textSecondary" },
-  }
-
+  -- AUCTION_OUTCOME, its `short` words).
   function MW.PaintOutcome(fs, kind)
     local R = ns.CollectTab and ns.CollectTab.RowRules
-    local outcome = MW.OUTCOME[kind]
-    fs:SetText(outcome and ns.Theme.Colorize(outcome.role, L[outcome.key]) or "")
+    fs:SetText(R and R.OutcomeSender and R.OutcomeSender(kind, nil, true) or "")
     if R and R.PaintSender then R.PaintSender(fs, nil) end
   end
 
