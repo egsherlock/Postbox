@@ -56,3 +56,13 @@ and on GitHub — a relative path resolves on GitHub and nowhere else.
 
 They depend on the repository staying **public**. If it ever goes private the listing
 images break everywhere at once; CurseForge's own media manager is the fallback.
+
+## Gallery (2026-10-17)
+
+The gallery is `docs/gallery/`, numbered in upload order (01 is the Featured cover,
+"Your mailbox, your way."). Everything is 16:9: the slideshow over the description is a
+fixed 834 x 472 and letterboxes anything else; the pop-up viewer is at most 1200 wide.
+Slides are 1200 x 679, the cover 1774 x 1004. Sources: `.dev/design/media-src/clips`
+(`src/gallery.jsx`, `src/entries/gallery.jsx`, `gallery-render.sh`) and the cover from
+`stills/src/hero-gallery.html`. The description itself is HTML in
+`docs/curseforge-listing.md` (pasted into the Markdown editor), images from `main`.
