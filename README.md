@@ -69,7 +69,7 @@ deleted the moment Postbox empties it (**Delete when done**).
 <br clear="all" />
 
 <p align="center">
-  <img src="docs/screenshots/collect.gif" alt="All mail collecting a whole inbox, one mail at a time" />
+  <img src="docs/screenshots/collect.gif" alt="A search for ore taking just those mails, All mail taking the rest, then History showing what came in" />
 </p>
 
 <p align="center">
