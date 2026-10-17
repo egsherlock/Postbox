@@ -35,8 +35,8 @@ open a mailbox.
 
 - **Arrange the window right where you use it:** drag any column or button,
   hide what you don't need, and choose what the gold, time-left and slot
-  figures show. One-line rows,
-  larger two-line rows and History each keep their own layout.
+  figures show. One-line rows, larger two-line rows and History each keep
+  their own layout.
 - **Columns or Packed:** figures lined up like a table, or packed together so
   subjects get the room.
 - **Options that explain themselves:** point at any setting and a panel
@@ -75,8 +75,8 @@ open a mailbox.
 - Show it for **New mail**, for **Mail on any character**, or **Always**.
 - A **count** of what's waiting, and a small red **marker** when mail is
   about to expire: pick its shape (a triangle fits the icon's corner), its
-  color and its spot, and nudge it into place. It stays put
-  even when the icon is hidden, or grows bigger if you like.
+  color and its spot, and nudge it into place. It stays put even when the
+  icon is hidden, or grows bigger if you like.
 - Two dozen hand-painted icon styles, 16 to 40 px, with glow (gold, your
   accent, your class color, white or any color), pulse and shadow. Its
   tooltip shows your own mailbox, then each of your other characters with
