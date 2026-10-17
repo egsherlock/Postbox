@@ -1718,10 +1718,9 @@ do
   end
 
   -- An auction outcome where a row's sender stands, as the drawings say it:
-  -- the outcome alone, without the auction house the list's rows put
-  -- before it (ROW_AH_*), so the small rows keep room for the item's name;
-  -- in the tone the list says each outcome in (CollectTab's
-  -- AUCTION_OUTCOME, its `short` words).
+  -- the auction house alone (PREVIEW_AH, as the list's rows abbreviate it),
+  -- the outcome told only by the tone the list says it in (CollectTab's
+  -- OutcomeSender, short), so the small rows keep room for the item's name.
   function MW.PaintOutcome(fs, kind)
     local R = ns.CollectTab and ns.CollectTab.RowRules
     fs:SetText(R and R.OutcomeSender and R.OutcomeSender(kind, nil, true) or "")
@@ -2391,12 +2390,8 @@ do
     end
     row.Delete:SetShown(done and true or false)
     local x0 = MW.ICON_X + size + gap
-    local subX = x0 + fit.senderW + gap + fit.markW
     local edge = MW.ROW_END + (done and (MW.DELETE + gap) or 0)
     local top = two and -math.floor((rowH - h.text2) / 2) or 0
-    MW.At(row.Sender, two and "TOPLEFT" or "LEFT", row, x0, top)
-    T.FitText(row.Sender, fit.senderW, row.senderText)
-    MW.At(row.Subject, two and "TOPLEFT" or "LEFT", row, subX, top)
     local money, slots = row.Money, row.Slots
     if two then
       money:Hide()
@@ -2444,6 +2439,20 @@ do
       money:SetShown(row.moneyText ~= nil and not done)
       slots:SetShown(row.slotsText ~= nil and not done)
     end
+    -- The sender in the sender's column (PaintList). One wider than it --
+    -- yours, a friend's -- stands whole and this row's subject starts after
+    -- it, the room coming from this row's subject alone, up to the
+    -- column's own ceiling taken over this row's figures: MW.SUBJECT left
+    -- before them, the mark before the name not counted, as in the column.
+    local senderW = fit.senderW
+    if row.senderW + 2 > senderW then
+      local most = win.rowW - edge - x0 - gap - MW.SUBJECT
+      senderW = math.max(senderW, math.min(row.senderW + 2, most))
+    end
+    local subX = x0 + senderW + gap + fit.markW
+    MW.At(row.Sender, two and "TOPLEFT" or "LEFT", row, x0, top)
+    T.FitText(row.Sender, senderW, row.senderText)
+    MW.At(row.Subject, two and "TOPLEFT" or "LEFT", row, subX, top)
     -- Where the figures begin, and the subject's room, for the outlines.
     if not done and edge > fit.figures then fit.figures = edge end
     local run = math.max(1, win.rowW - edge - subX)
@@ -2493,8 +2502,9 @@ do
   -- foot), and while read mail stays below the inbox its divider and the
   -- read mail under it -- or, where the divider's place is below the rows
   -- that fit, the divider pinned at the list's foot, over them. The list's
-  -- columns -- the sender's, the gold's, the slots' -- are as wide as the
-  -- widest of the rows shown, as the window's are over its whole list.
+  -- columns -- the sender's (its auctions'), the gold's, the slots' -- are
+  -- as wide as the widest of the rows shown, as the window's are over its
+  -- whole list.
   MW.fit = { subjects = false, icon = false, mark = false }
   function MW.PaintList(win, st, inner)
     local h = MW.h
@@ -2519,30 +2529,35 @@ do
     fit.rowH, fit.packed, fit.figures = rowH, st.packed, 0
     -- The columns, from the rows drawn.
     local rows = win.Rows
-    local senderW, moneyW, slotsW = 0, 0, 0
+    local senderW, auctionW, moneyW, slotsW = 0, 0, 0, 0
     for k = 1, shown + (letter and 1 or 0) do
       local row = (k <= shown) and rows[k] or rows[n + 1]
       local m = (k <= shown) and MW.BOX[k] or MW.READ
       MW.RowTexts(row, m, two)
       senderW = math.max(senderW, row.senderW)
+      if m.kind then auctionW = math.max(auctionW, row.senderW) end
       if k <= shown then
         moneyW = math.max(moneyW, row.moneyW)
         slotsW = math.max(slotsW, row.slotsW)
       end
     end
     fit.moneyW, fit.slotsW = math.ceil(moneyW), math.ceil(slotsW)
-    -- The sender's column is as wide as the widest sender, unless that
-    -- leaves the subject less than MW.SUBJECT, the room for a letter or
-    -- two and the cut: the senders -- the auction outcomes in their tones,
-    -- the class colours -- are what the drawing shows of a row, and the
-    -- subject, one item's name over and over, gives way to them first. The
-    -- mark before the name takes its room from the subject's, as in the
-    -- window: the sender's column stays where it is.
+    -- The sender's column is as wide as the widest auction's sender (every
+    -- sender's, where no auction is in view), unless that leaves the
+    -- subject less than MW.SUBJECT, the room for a letter or two and the
+    -- cut: the senders -- the auction house in each outcome's tone, the
+    -- class colours -- are what the drawing shows of a row, and the
+    -- subject, one item's name over and over, gives way to them first. A
+    -- wider sender -- yours, a friend's -- takes its room from its own
+    -- row's subject alone (PlaceRow). The mark before the name takes its
+    -- room from the subject's, as in the window: the sender's column stays
+    -- where it is.
     local line = win.rowW - MW.ICON_X - (two and h.iconL or h.iconC) - MW.MGAP - MW.ROW_END
     if not two then
       if fit.moneyW > 0 then line = line - fit.moneyW - MW.MGAP end
       if fit.slotsW > 0 then line = line - fit.slotsW - MW.MGAP end
     end
+    if auctionW > 0 then senderW = auctionW end
     fit.senderW = math.max(1, math.min(math.ceil(senderW) + 2, line - MW.MGAP - MW.SUBJECT))
     for k = 1, n do
       if k <= shown then MW.PlaceRow(win, rows[k], MW.BOX[k], k, two, fit, false) else rows[k]:Hide() end

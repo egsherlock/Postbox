@@ -57,14 +57,12 @@ local function Th()      return ns.Theme end
 
 -- What a row says in place of "Auction House" for each auction outcome, and
 -- the palette role it says it in: a sale is good news, a win is neutral,
--- an expiry wants a look, a cancellation is the player's own doing. `short`
--- is the outcome alone, without the auction house, for the options'
--- drawings of the window, whose small rows need the room.
+-- an expiry wants a look, a cancellation is the player's own doing.
 local AUCTION_OUTCOME = {
-  sold     = { key = "ROW_AH_SOLD",     short = "PREVIEW_AH_SOLD",     role = "positive" },
-  bought   = { key = "ROW_AH_BOUGHT",   short = "PREVIEW_AH_BOUGHT",   role = "info" },
-  expired  = { key = "ROW_AH_EXPIRED",  short = "PREVIEW_AH_EXPIRED",  role = "warning" },
-  canceled = { key = "ROW_AH_CANCELED", short = "PREVIEW_AH_CANCELED", role = "textSecondary" },
+  sold     = { key = "ROW_AH_SOLD",     role = "positive" },
+  bought   = { key = "ROW_AH_BOUGHT",   role = "info" },
+  expired  = { key = "ROW_AH_EXPIRED",  role = "warning" },
+  canceled = { key = "ROW_AH_CANCELED", role = "textSecondary" },
 }
 
 -- The template's scroll bar, put where a modern one goes: pinned inside the
@@ -3292,11 +3290,13 @@ end
 
 -- What an auction mail says where its sender would be, in its own tone, or
 -- nil for any other kind of mail. `ground`: where it is read, when not on
--- the lists ("tooltip": the minimap tooltip's arrivals).
+-- the lists ("tooltip": the minimap tooltip's arrivals). `short`: the
+-- auction house alone (PREVIEW_AH), the outcome told by its tone only, for
+-- the options' drawings of the window, whose small rows need the room.
 local function OutcomeSender(kind, ground, short)
   local outcome = AUCTION_OUTCOME[kind]
   if not outcome then return nil end
-  return Th().Colorize(outcome.role, L()[short and outcome.short or outcome.key], ground)
+  return Th().Colorize(outcome.role, L()[short and "PREVIEW_AH" or outcome.key], ground)
 end
 
 -- Published for the mailbox memory, which draws its rows by these same rules
