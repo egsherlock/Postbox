@@ -70,16 +70,12 @@ Core\WhatsNew.lua
 # Skin_EllesmereUI.lua). A file added or renamed here is found only after a
 # full client restart, not a /reload.
 Core\Skin_Postbox.lua
-# The creative window styles are held back from 1.50.0 for a color and test
-# pass. Their code, art and strings stay in the repository, these seven lines
-# stay where they load, and .pkgmeta keeps them out of the zip; a profile that
-# chose one keeps its choice and wears the fallback until they return.
-#Core\Skin_Creative.lua
-#Core\Style_PillarBox.lua
-#Core\Style_Faction.lua
-#Core\Style_Counter.lua
-#Core\Style_Goblin.lua
-#Core\Style_Letters.lua
-#Core\Style_Daylight.lua
+Core\Skin_Creative.lua
+Core\Style_PillarBox.lua
+Core\Style_Faction.lua
+Core\Style_Counter.lua
+Core\Style_Goblin.lua
+Core\Style_Letters.lua
+Core\Style_Daylight.lua
 Core\Skin_ElvUI.lua
 Core\Skin_EllesmereUI.lua
