@@ -904,22 +904,27 @@ end
 -------------------------------------------------------------
 do
   local CTX_TOP = 11
-  -- Sample mail: a tiered reagent, whose link carries a quality mark --
-  -- Bismuth's top tier, with the gold mark, its name short so the small
-  -- rows keep room for it beside the mark -- bought for SAMPLE_PRICE and
-  -- sold for SAMPLE_SALE, the gold coming with a coin for its icon.
-  local SAMPLE_ITEM = 210932
+  -- Sample mail: Midnight's goods as the auction house trades them --
+  -- reagents of both quality tiers, whose links carry the tier's mark, and
+  -- a fish, which has none -- each named short, so the small rows show the
+  -- name whole beside its mark (MW.BOX, MW.SAMPLES): Azeroot of the gold
+  -- tier and of the silver, Bright Linen and Evercore of the gold, Mana
+  -- Lily and Sanguithorn of the silver, and Lynxfish. The first sale is
+  -- SAMPLE_SALE and the first win cost SAMPLE_PRICE, the gold coming with
+  -- a coin for its icon.
+  local SAMPLE_ITEMS = { 236775, 236774, 236965, 243582, 236778, 236770, 238366 }
   local SAMPLE_PRICE, SAMPLE_SALE = 522600, 13090000
   local SAMPLE_COIN = "Interface\\Icons\\INV_Misc_Coin_01"
 
   -- The height of each tab's drawing, and the gap under it.
   function Ctx.Height(key)
-    -- The window takes the room between the tile and the text (Layout).
-    if key == "mail" then return CTX_TOP + TILE_H + 8 + Ctx.MailMiniHeight() + 10 end
+    -- The window takes the room between the tile and the text (Layout),
+    -- under its caption (Ctx.PreviewRoom).
+    if key == "mail" then return CTX_TOP + TILE_H + 8 + Ctx.PreviewRoom() + Ctx.MailMiniHeight() + 10 end
     if key == "send" then return CTX_TOP + TILE_H + 10 end
     if key == "window" then
       -- The drawing grows with the text size (Ctx.MiniHeight).
-      return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + Ctx.MiniHeight() + 10
+      return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + Ctx.PreviewRoom() + Ctx.MiniHeight() + 10
     end
     if key == "minimap" then return CTX_TOP + 4 + Ctx.MinimapHeight() + 10 end
     return 0
@@ -1146,22 +1151,38 @@ do
   end
   Ctx.PaintPlain = PaintPlain
 
-  -- The sample item's name, link and quality, asked for once if the client
-  -- has not loaded it yet; the drawing on show repaints when it arrives (the
-  -- mail rows of the Mail tab's window and of the Window tab's name it).
-  local function SampleItem()
+  -- A sample item's name, link and quality (`id`, one of SAMPLE_ITEMS).
+  -- The first time one is not loaded yet, every one the client has not
+  -- loaded is asked for, once; the drawing on show repaints once, when the
+  -- last of them has arrived (the mail rows of the Mail tab's window and of
+  -- the Window tab's name them). Until then a row's name is empty.
+  local function SampleItem(id)
     local info = C_Item and C_Item.GetItemInfo
     local name, link, quality
-    if type(info) == "function" then name, link, quality = info(SAMPLE_ITEM) end
+    if type(info) == "function" then name, link, quality = info(id) end
     if not name and not S.sampleAsked then
       S.sampleAsked = true
-      local item = type(Item) == "table" and type(Item.CreateFromItemID) == "function"
-        and Item:CreateFromItemID(SAMPLE_ITEM) or nil
-      if item and item.ContinueOnItemLoad then
-        item:ContinueOnItemLoad(function()
+      if type(info) == "function" and type(Item) == "table" and type(Item.CreateFromItemID) == "function" then
+        -- One more than the items asked for, until all are asked: none
+        -- can repaint the drawing from inside this paint.
+        local waiting = 1
+        local function Landed()
+          waiting = waiting - 1
+          if waiting > 0 then return end
           local f = S.ctx[S.tab]
           if f and f:IsVisible() and f.Paint then f.Paint() end
-        end)
+        end
+        for i = 1, #SAMPLE_ITEMS do
+          local each = SAMPLE_ITEMS[i]
+          if not info(each) then
+            local item = Item:CreateFromItemID(each)
+            if item and item.ContinueOnItemLoad then
+              waiting = waiting + 1
+              item:ContinueOnItemLoad(Landed)
+            end
+          end
+        end
+        waiting = waiting - 1
       end
     end
     return name, link, quality
@@ -1169,16 +1190,19 @@ do
 
   -- The Mail tab: the character groups tile, and under it the Mail window,
   -- small, wearing the Mail tab's settings (Ctx.Mini, the Mail tab's
-  -- window), as tall as the room between the tile and the text (Layout).
+  -- window), under its caption (Ctx.PreviewCaption), as tall as the room
+  -- between the tile and the text (Layout).
   function Ctx.mail(card)
     local f = CreateFrame("Frame", nil, card)
     f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
-    f:SetSize(CTX_W, TILE_H + 8 + Ctx.MailMiniHeight())
+    f:SetSize(CTX_W, TILE_H + 8 + Ctx.PreviewRoom() + Ctx.MailMiniHeight())
     local tile = Ctx.Tile(f, "Interface\\AddOns\\Postbox\\Media\\minimap-mailbag.tga",
       L["GROUPS_TITLE"], S.idle.mail, Ctx.OpenGroups)
     tile:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    local cap = Ctx.PreviewCaption(f)
+    cap:SetPoint("TOPLEFT", tile, "BOTTOMLEFT", 0, -8)
     local sw = Ctx.Mini(f, true)
-    sw:SetPoint("TOPLEFT", tile, "BOTTOMLEFT", 0, -8)
+    sw:SetPoint("TOPLEFT", cap, "BOTTOMLEFT", 0, -Ctx.PREVIEW_GAP)
     S.mailMini = sw
     f.Paint = function()
       -- How many groups there are; none reads as the tile's way in. The
@@ -1192,7 +1216,7 @@ do
       end
       Ctx.PaintTile(tile, S.tileFact)
       local h = Ctx.MailMiniHeight()
-      f:SetHeight(TILE_H + 8 + h)
+      f:SetHeight(TILE_H + 8 + Ctx.PaintPreviewCaption(cap) + h)
       Ctx.PaintMini(sw, h)
     end
     return f
@@ -1278,11 +1302,12 @@ do
     -- The rows, top down: an auction sale and an auction win, unread, and
     -- gold from one of your characters, read. `kind` is the auction
     -- outcome (none: the character), `fig` the figure's place in the
-    -- figures (MW.Figures), `tone` its colour.
+    -- figures (MW.Figures), `tone` its colour, `item` the one it names
+    -- (SAMPLE_ITEMS): Mana Lily, Azeroot, Evercore.
     SAMPLES = {
-      { kind = "sold", read = false, fig = 1, tone = "positive" },
-      { kind = "bought", read = false, fig = 2, tone = "negative" },
-      { read = true, fig = 3, tone = "positive" },
+      { kind = "sold", read = false, fig = 1, tone = "positive", item = 236778 },
+      { kind = "bought", read = false, fig = 2, tone = "negative", item = 236775 },
+      { read = true, fig = 3, tone = "positive", item = 243582 },
     },
     -- The heights in force (MW.Heights), the tabs' columns
     -- (Theme.ColumnEdges), and the blocks stacked under the tabs with their
@@ -1317,6 +1342,34 @@ do
       size = tonumber(h)
     end
     return math.ceil(size or 12)
+  end
+
+  -- The caption over each drawing of the window, saying it is one, so no
+  -- one takes it for the window and reaches for All mail: small and muted
+  -- as the Minimap tab's captions are (Ctx.Caption), across the drawing,
+  -- one line tall, PREVIEW_GAP over the drawing. Its room comes out of the
+  -- Mail tab's window (Layout); the Window tab's text stands under it.
+  Ctx.PREVIEW_GAP = 4
+  function Ctx.PreviewRoom()
+    return MW.Line("secondary") + Ctx.PREVIEW_GAP
+  end
+
+  function Ctx.PreviewCaption(parent)
+    local cap = Ctx.Caption(parent)
+    cap:SetWidth(CTX_W)
+    if cap.SetMaxLines then cap:SetMaxLines(1) end
+    cap:SetText(L["OPT_DRAWING_PREVIEW"])
+    return cap
+  end
+
+  -- Its height, from the font as it is now; -> the room it takes.
+  function Ctx.PaintPreviewCaption(cap)
+    local line = MW.Line("secondary")
+    if cap.lineH ~= line then
+      cap.lineH = line
+      cap:SetHeight(line)
+    end
+    return line + Ctx.PREVIEW_GAP
   end
 
   -- Every height of the drawing, into MW.h, from the fonts in force; ->
@@ -1756,7 +1809,6 @@ do
     end
     local x = MW.SENDER_X + math.ceil(senderW) + MW.COL_GAP
     local room = (win.inner or 0) - 2 * MW.h.pad - x - MW.COL_GAP - math.ceil(goldW) - MW.ROW_END
-    local name = SampleItem() or ""
     for i = 1, #rows do
       local subject = rows[i].Subject
       if subject.x ~= x then
@@ -1764,7 +1816,7 @@ do
         subject:ClearAllPoints()
         subject:SetPoint("LEFT", rows[i], "LEFT", x, 0)
       end
-      T.FitText(subject, math.max(1, room), name)
+      T.FitText(subject, math.max(1, room), SampleItem(MW.SAMPLES[i].item) or "")
     end
   end
 
@@ -1862,23 +1914,29 @@ do
 
   -- The sample box, newest first. `kind`: the auction outcome (nil: a
   -- letter); `me`: from you; `money`: the gold it holds; `price`: what a won
-  -- auction cost; `n`: the first stack, on the icon; `items`: the stacks it
-  -- holds, `total` the item's count in all of them.
+  -- auction cost; `item`: what it sold or holds (SAMPLE_ITEMS), named by a
+  -- sale as its mail is and drawn with its own icon and mark where it is
+  -- held; `n`: the first stack, on the icon; `items`: the stacks it holds,
+  -- `total` the item's count in all of them. One stack each: the count a
+  -- second stack adds to a name leaves it no room on a won auction's row.
+  -- The won auctions, whose row holds the price and the slots too, are the
+  -- shortest names; the sales, which keep the room of a mark before the
+  -- name, the next; the expired and canceled ones have the most room.
   MW.BOX = {
-    { kind = "sold", money = SAMPLE_SALE },
-    { kind = "bought", price = SAMPLE_PRICE, n = 20, items = 1, total = 20 },
+    { kind = "sold", money = SAMPLE_SALE, item = 243582 },                                  -- Evercore
+    { kind = "bought", price = SAMPLE_PRICE, n = 20, items = 1, total = 20, item = 236775 }, -- Azeroot, gold
     { me = true, money = MW.GIFT, read = true, subject = "PREVIEW_GIFT" },
-    { kind = "sold", money = 864000 },
-    { kind = "expired", n = 5, items = 1, total = 5 },
-    { kind = "bought", price = 271300, n = 10, items = 1, total = 10, read = true },
-    { kind = "sold", money = 4120000, read = true },
-    { kind = "canceled", n = 12, items = 1, total = 12 },
-    { kind = "sold", money = 10500000 },
-    { kind = "bought", price = 1564000, n = 20, items = 2, total = 40 },
-    { kind = "sold", money = 640000, read = true },
-    { kind = "sold", money = 2210000 },
-    { kind = "bought", price = 89900, n = 5, items = 1, total = 5 },
-    { kind = "sold", money = 1560000, read = true },
+    { kind = "sold", money = 864000, item = 238366 },                                       -- Lynxfish
+    { kind = "expired", n = 5, items = 1, total = 5, item = 236770 },                       -- Sanguithorn, silver
+    { kind = "bought", price = 271300, n = 10, items = 1, total = 10, read = true, item = 238366 },
+    { kind = "sold", money = 4120000, read = true, item = 236775 },
+    { kind = "canceled", n = 12, items = 1, total = 12, item = 236965 },                    -- Bright Linen, gold
+    { kind = "sold", money = 10500000, item = 243582 },
+    { kind = "bought", price = 1564000, n = 20, items = 1, total = 20, item = 243582 },      -- Evercore, gold
+    { kind = "sold", money = 640000, read = true, item = 236775 },
+    { kind = "sold", money = 2210000, item = 238366 },
+    { kind = "bought", price = 89900, n = 5, items = 1, total = 5, item = 236774 },         -- Azeroot, silver
+    { kind = "sold", money = 1560000, read = true, item = 243582 },
   }
   -- Read, with nothing left in it: a letter from a friend whose class is
   -- known.
@@ -2183,16 +2241,16 @@ do
     return given > least and given or least
   end
 
-  -- What the Mail tab needs of the inspector: the tile, the window at its
-  -- least and the text zone `textH` under it (Layout).
+  -- What the Mail tab needs of the inspector: the tile, the caption, the
+  -- window at its least and the text zone `textH` under it (Layout).
   function Ctx.MailNeed(textH)
-    return CTX_TOP + TILE_H + 8 + MW.MailMin() + 10 + (textH or SAY_MIN)
+    return CTX_TOP + TILE_H + 8 + Ctx.PreviewRoom() + MW.MailMin() + 10 + (textH or SAY_MIN)
   end
 
   -- The window's height in an inspector `bodyH` tall: all the room between
-  -- the tile and the text zone.
+  -- the caption and the text zone.
   function Ctx.MailFill(bodyH, textH)
-    S.mailMiniH = math.floor(bodyH - (CTX_TOP + TILE_H + 8) - 10 - (textH or SAY_MIN))
+    S.mailMiniH = math.floor(bodyH - (CTX_TOP + TILE_H + 8) - Ctx.PreviewRoom() - 10 - (textH or SAY_MIN))
   end
 
   -- The settings the window shows, read once per paint.
@@ -2328,20 +2386,28 @@ do
     end
   end
 
-  -- The item's name with its count, as an auction's subject has it, for
-  -- each mail of the box that holds the item: made when the name is first
-  -- known, and kept.
-  function MW.Subjects(name)
+  -- The `k`th mail's subject: its item's `name` with its count, as an
+  -- auction's subject has it -- made when the name is first known, and
+  -- kept, in one table made once.
+  function MW.Subject(k, m, name)
     local t = S.boxSubjects
-    if t and t.name == name then return t end
-    t = { name = name }
-    for i = 1, #MW.BOX do
-      local total = MW.BOX[i].total or 0
-      -- No count before the name: the item is still loading.
-      t[i] = (total > 1 and name ~= "") and (name .. " (" .. total .. ")") or name
+    if not t then
+      t = { names = {} }
+      S.boxSubjects = t
     end
-    S.boxSubjects = t
-    return t
+    if t.names[k] ~= name then
+      t.names[k] = name
+      local total = m.total or 0
+      -- No count before the name: the item is still loading.
+      t[k] = (total > 1 and name ~= "") and (name .. " (" .. total .. ")") or name
+    end
+    return t[k]
+  end
+
+  -- An item's icon, by the client's own table, which needs nothing loaded.
+  function MW.Icon(id)
+    local icon = C_Item and type(C_Item.GetItemIconByID) == "function" and C_Item.GetItemIconByID(id) or nil
+    return icon or 134400
   end
 
   -- Where a row stands and what it shows, by the list's columns in `fit`:
@@ -2370,14 +2436,18 @@ do
       row.iconSize = size
       row.Icon:SetSize(size, size)
     end
+    -- What it holds wears its own icon and mark; a sale, the coin, and
+    -- names what it sold.
     local item = (m.items or 0) > 0
-    row.Icon:SetTexture(item and fit.icon or (m.kind and MW.COIN) or MW.LETTER)
-    local mark = item and fit.mark or nil
+    local name, link
+    if m.item then name, link = SampleItem(m.item) end
+    row.Icon:SetTexture(item and MW.Icon(m.item) or (m.kind and MW.COIN) or MW.LETTER)
+    local mark = item and R and R.QualityMark and R.QualityMark(link) or nil
     local subject
     if m.subject then
       subject = L[m.subject]
     else
-      subject = fit.subjects[k] or ""
+      subject = MW.Subject(k, m, name or "")
       if item and m.items <= 1 and R and R.SaysCount and R.SaysCount(m.n, MW.LAYOUT) then
         subject = R.DropCount(subject, m.total)
       end
@@ -2505,7 +2575,7 @@ do
   -- columns -- the sender's (its auctions'), the gold's, the slots' -- are
   -- as wide as the widest of the rows shown, as the window's are over its
   -- whole list.
-  MW.fit = { subjects = false, icon = false, mark = false }
+  MW.fit = { markW = 0, senderW = 0 }
   function MW.PaintList(win, st, inner)
     local h = MW.h
     local fit = MW.fit
@@ -2521,10 +2591,6 @@ do
     local shown = math.min(n, slots)
     local letter = fold and not pinned and not st.folded
     local R = ns.CollectTab and ns.CollectTab.RowRules
-    local name, link = SampleItem()
-    fit.subjects = MW.Subjects(name or "")
-    fit.icon = C_Item and type(C_Item.GetItemIconByID) == "function" and C_Item.GetItemIconByID(SAMPLE_ITEM) or 134400
-    fit.mark = R and R.QualityMark and R.QualityMark(link) or nil
     fit.markW = (R and R.NameMarkRoom) and R.NameMarkRoom() or 0
     fit.rowH, fit.packed, fit.figures = rowH, st.packed, 0
     -- The columns, from the rows drawn.
@@ -2547,7 +2613,7 @@ do
     -- subject less than MW.SUBJECT, the room for a letter or two and the
     -- cut: the senders -- the auction house in each outcome's tone, the
     -- class colours -- are what the drawing shows of a row, and the
-    -- subject, one item's name over and over, gives way to them first. A
+    -- subject, a sample item's name, gives way to them first. A
     -- wider sender -- yours, a friend's -- takes its room from its own
     -- row's subject alone (PlaceRow). The mark before the name takes its
     -- room from the subject's, as in the window: the sender's column stays
@@ -2776,9 +2842,12 @@ do
       host:SetScript("OnLeave", SpotLeave)
       y = HOST_H + 8
     end
+    -- The drawing under its caption (Ctx.PreviewCaption).
+    local cap = Ctx.PreviewCaption(f)
+    cap:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -y)
     local sw = Ctx.Mini(f)
-    sw:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -y)
-    f:SetSize(CTX_W, y + Ctx.MiniHeight())
+    sw:SetPoint("TOPLEFT", cap, "BOTTOMLEFT", 0, -Ctx.PREVIEW_GAP)
+    f:SetSize(CTX_W, y + Ctx.PreviewRoom() + Ctx.MiniHeight())
     f.Paint = function()
       if host then
         PaintPlain(host)
@@ -2791,8 +2860,9 @@ do
         end
         T.FitText(host.Text, CTX_W - 36, S.idle.window.title, host)
       end
+      local room = Ctx.PaintPreviewCaption(cap)
       Ctx.PaintMini(sw)
-      f:SetHeight(y + MW.h.total)
+      f:SetHeight(y + room + MW.h.total)
     end
     return f
   end
