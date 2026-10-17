@@ -905,9 +905,10 @@ end
 do
   local CTX_TOP = 11
   -- Sample mail: a tiered reagent, whose link carries a quality mark --
-  -- bought for SAMPLE_PRICE and sold for SAMPLE_SALE, the gold coming
-  -- with a coin for its icon.
-  local SAMPLE_ITEM = 191462
+  -- Bismuth's top tier, with the gold mark, its name short so the small
+  -- rows keep room for it beside the mark -- bought for SAMPLE_PRICE and
+  -- sold for SAMPLE_SALE, the gold coming with a coin for its icon.
+  local SAMPLE_ITEM = 210932
   local SAMPLE_PRICE, SAMPLE_SALE = 522600, 13090000
   local SAMPLE_COIN = "Interface\\Icons\\INV_Misc_Coin_01"
 
@@ -1716,6 +1717,25 @@ do
     for i = 1, 2 do T.SetPlateSelected(tabs[i], i == 1) end
   end
 
+  -- An auction outcome where a row's sender stands, as the drawings say it:
+  -- the outcome alone, without the auction house the list's rows put
+  -- before it (ROW_AH_*), so the small rows keep room for the item's name;
+  -- in the tone the list says each outcome in (CollectTab's
+  -- AUCTION_OUTCOME).
+  MW.OUTCOME = {
+    sold     = { key = "PREVIEW_AH_SOLD",     role = "positive" },
+    bought   = { key = "PREVIEW_AH_BOUGHT",   role = "info" },
+    expired  = { key = "PREVIEW_AH_EXPIRED",  role = "warning" },
+    canceled = { key = "PREVIEW_AH_CANCELED", role = "textSecondary" },
+  }
+
+  function MW.PaintOutcome(fs, kind)
+    local R = ns.CollectTab and ns.CollectTab.RowRules
+    local outcome = MW.OUTCOME[kind]
+    fs:SetText(outcome and ns.Theme.Colorize(outcome.role, L[outcome.key]) or "")
+    if R and R.PaintSender then R.PaintSender(fs, nil) end
+  end
+
   -- The rows, by the list's own rules: the stripe of the row's place, the
   -- read dot, the sender (an auction outcome in its tone; your character,
   -- in its class colour), the gold in its tone. The sender's column is as
@@ -1735,8 +1755,7 @@ do
       else T.SetColor(row.Indicator, s.read and "read" or "unread") end
       local sender = row.Sender
       if s.kind then
-        sender:SetText(R and R.OutcomeSender and R.OutcomeSender(s.kind) or "")
-        if R and R.PaintSender then R.PaintSender(sender, nil) end
+        MW.PaintOutcome(sender, s.kind)
       else
         MW.PaintMe(sender)
       end
@@ -2290,8 +2309,7 @@ do
     local R = ns.CollectTab and ns.CollectTab.RowRules
     local fs = row.Sender
     if m.kind then
-      fs:SetText(R and R.OutcomeSender and R.OutcomeSender(m.kind) or "")
-      if R and R.PaintSender then R.PaintSender(fs, nil) end
+      MW.PaintOutcome(fs, m.kind)
     elseif m.me then
       MW.PaintMe(fs)
     else
