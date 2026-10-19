@@ -68,6 +68,21 @@ local MR = ns.MailRules
 --     Blizzard's own send frame refuses anything above it.
 --  6. A character cannot mail itself (ERR_MAIL_TO_SELF).
 --
+-- WORLD OF WARCRAFT: FOREVER (ns.IsForever) has rules of its own, from
+-- Blizzard's client strings and game rules for it:
+--
+--  7. Mail cannot cross rulesets (ERR_MAIL_CANT_SEND_SUPERDISTRICT, "You
+--     can't send mail to that ruleset."). Said for a recipient the census
+--     places on another ruleset (Core/Recipients.lua, R.OtherRuleset).
+--  8. A character's name has two parts, and mail wants both
+--     (ERR_FULL_NAME_REQUIRED, "Please enter a full character name."):
+--     "First Last" or "First-Last". Said for a recipient of one word.
+--  9. There is no Warband bank and no realm a player chooses, so rules 1-3
+--     say nothing there.
+-- 10. Mail between the player's own characters is instant only while the game
+--     rule VanillaAccountMailInstant says so; otherwise rule 4's "instant" is
+--     not promised.
+--
 -- DELIBERATELY NOT ENCODED, because the research behind this module could not
 -- establish them and a wrong warning costs more than a missing one:
 --
@@ -129,13 +144,22 @@ local DEFAULT_COD_LIMIT_GOLD = 10000
 --                     false, the amount demanded when it is true
 --   cod               the C.O.D. box is ticked
 --   codLimitGold      MAX_COD_AMOUNT, in gold
+--   forever           World of Warcraft: Forever's rules apply (7-10)
+--   otherRuleset      the recipient is known to be on another ruleset
+--   fullNameNeeded    names have two parts and the recipient is one word
+--   ownInstant        Forever: own characters' mail is instant (true), is
+--                     not (false), or could not be asked (nil)
+--   rulesetText, fullNameText   Blizzard's own words for rules 7 and 8,
+--                     where the client has them
 --
 -- Returns nil for an empty/unusable recipient, so the caller can simply hide the
 -- guidance line. Otherwise:
 --
 --   { scope, delivery, isSelf, knownOwnCharacter, hasItems, hasMoney, isCOD,
 --     guidance = { key = <locale key>, severity = MR.INFO|MR.WARN,
---                  value = <number|nil, format argument> } or nil }
+--                  value = <number|nil, format argument>,
+--                  text = <string|nil, Blizzard's own words, said instead
+--                          of the key's> } or nil }
 function MR.Assess(ctx)
   if type(ctx) ~= "table" then return nil end
   if type(ctx.name) ~= "string" or ctx.name == "" then return nil end
@@ -186,13 +210,29 @@ function MR.Assess(ctx)
   local codLimitGold = (type(ctx.codLimitGold) == "number" and ctx.codLimitGold > 0)
     and ctx.codLimitGold or DEFAULT_COD_LIMIT_GOLD
 
+  local forever = ctx.forever and true or false
+
   if out.isSelf then
     -- Rule 6. Identity, not a guess: the recipient resolved to the sending
     -- character's own key.
     out.guidance = { key = "SEND_RULE_SELF", severity = MR.WARN }
+  elseif ctx.fullNameNeeded then
+    -- Rule 8. Half a name reaches nobody, whoever it was meant for.
+    out.guidance = { key = "SEND_RULE_FULL_NAME", text = ctx.fullNameText, severity = MR.WARN }
   elseif isCOD and money > codLimitGold * COPPER_IN_GOLD then
     -- Rule 5. The client's own gate, so this is certain.
     out.guidance = { key = "SEND_RULE_COD_CAP", severity = MR.WARN, value = codLimitGold }
+  elseif ctx.otherRuleset then
+    -- Rule 7. Only for a character the census places on another ruleset.
+    out.guidance = { key = "SEND_RULE_OTHER_RULESET", text = ctx.rulesetText, severity = MR.WARN }
+  elseif forever then
+    -- Rules 9 and 10: no realm rules, and "instant" only as the game rule
+    -- says. Nothing is promised otherwise.
+    if out.delivery == MR.DELIVERY_INSTANT then
+      if ctx.ownInstant then out.guidance = { key = "SEND_RULE_DELIVERY_OWN", severity = MR.INFO } end
+    elseif out.delivery == MR.DELIVERY_DELAYED then
+      out.guidance = { key = "SEND_RULE_DELIVERY_HOUR", severity = MR.INFO }
+    end
   elseif out.scope == MR.SCOPE_OTHER and (out.hasItems or out.hasMoney or isCOD) then
     -- Rules 1-3. Only ever for a realm we could show is outside the connected
     -- group, and only when something is actually attached.
@@ -415,7 +455,53 @@ function MR.Context(recipient, send)
   local own = KnownOwnCharacters()
   ctx.knownOwnCharacter = (own ~= nil and own[key] == true)
 
+  MR.ForeverContext(ctx, recipient, R)
   return ctx
+end
+
+-------------------------------------------------------------
+-- World of Warcraft: Forever (rules 7-10)
+-------------------------------------------------------------
+
+-- Whether mail between the player's own characters is instant, by the game
+-- rule Forever keeps for it: true, false, or nil where it cannot be asked.
+function MR.OwnMailInstant()
+  local rules = C_GameRules
+  local enum = type(Enum) == "table" and Enum.GameRule or nil
+  local rule = type(enum) == "table" and enum.VanillaAccountMailInstant or nil
+  if type(rules) ~= "table" or type(rules.IsGameRuleActive) ~= "function" or rule == nil then return nil end
+  local ok, on = pcall(rules.IsGameRuleActive, rule)
+  if not ok then return nil end
+  return on and true or false
+end
+
+-- A global string of the client's, or nil where this client lacks it.
+local function ClientText(text)
+  if type(text) == "string" and text ~= "" then return text end
+  return nil
+end
+
+-- The Forever half of the context: rules 7-10's facts. Retail asks none of
+-- it, and its assessment is exactly what it was.
+function MR.ForeverContext(ctx, recipient, R)
+  local H = ns.Helpers
+  if H.TwoPartNames() then
+    -- Not a full name ("First Last" or "First-Last", Helpers.TypedFullName).
+    -- A name autocomplete has filled in is one already.
+    local text = H.NormalizeText(recipient or "")
+    ctx.fullNameNeeded = text ~= "" and not H.TypedFullName(text)
+    ctx.fullNameText = ClientText(ERR_FULL_NAME_REQUIRED)
+  end
+  if not ns.IsForever then return end
+  ctx.forever = true
+  ctx.ownInstant = MR.OwnMailInstant()
+  ctx.rulesetText = ClientText(ERR_MAIL_CANT_SEND_SUPERDISTRICT)
+  -- Where the census places the recipient (Core/Recipients.lua), when that
+  -- question can be asked.
+  if R and type(R.OtherRuleset) == "function" then
+    local ok, other = pcall(R.OtherRuleset, recipient)
+    ctx.otherRuleset = (ok and other) and true or false
+  end
 end
 
 -- The one call the UI makes: recipient text plus what is attached, in; an

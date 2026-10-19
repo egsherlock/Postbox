@@ -873,9 +873,12 @@ function ST.UpdateSendGuidance(panel)
     return
   end
 
-  -- note.value is a format argument where the rule quotes a number (the C.O.D.
-  -- cap); ns.L's __call is the formatting form.
-  if note.value ~= nil then
+  -- note.text is Blizzard's own words for the rule, where the client has
+  -- them; note.value is a format argument where the rule quotes a number
+  -- (the C.O.D. cap), and ns.L's __call is the formatting form.
+  if note.text then
+    label:SetText(note.text)
+  elseif note.value ~= nil then
     label:SetText(L(note.key, note.value))
   else
     label:SetText(L[note.key])
