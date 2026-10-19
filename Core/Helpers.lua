@@ -158,7 +158,13 @@ function H.PlayerName()
   if type(UnitName) ~= "function" then return nil end
   if not H.TwoPartNames() then
     local name = UnitName("player")
-    if not IsSecret(name) and type(name) == "string" and name ~= "" then playerName = name end
+    -- Kept only once the player is in the world, and never the client's
+    -- placeholder: a name read during loading is asked again next time.
+    if not IsSecret(name) and type(name) == "string" and name ~= ""
+       and name ~= UNKNOWNOBJECT
+       and (type(IsLoggedIn) ~= "function" or IsLoggedIn()) then
+      playerName = name
+    end
     return name
   end
   local name, surname = UnitName("player")
