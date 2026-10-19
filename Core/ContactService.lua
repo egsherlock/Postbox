@@ -418,7 +418,14 @@ end
 -- What is filtered out, and what deliberately is not:
 --
 --   FILTERED  a game account that is not WoW, or not this WoW, or not in this
---             region. None of those can receive a letter under any conditions.
+--             region, or with no realm (no character in a world). None of
+--             those can receive a letter under any conditions. "This WoW" is
+--             Blizzard's own test (FriendsFrame): the friend's wowProjectID
+--             against WOW_PROJECT_ID, which is 1 on retail and 18
+--             (WOW_PROJECT_CAMELOT) on World of Warcraft: Forever, so a
+--             retail friend is never offered on Forever, nor a Forever friend
+--             on retail. The realm test is CanCooperateWithGameAccount's
+--             (realmID > 0); a friend without one has no realm to address.
 --   NOT       realm and faction. Mail crosses both for the player's own
 --             characters, cross-faction mail to a Battle.net friend on a
 --             connected realm is widely reported to work, and the connected
@@ -439,6 +446,7 @@ local function IsMailableGameAccount(game)
     return false
   end
   if game.isInCurrentRegion == false then return false end
+  if game.realmID ~= nil and (tonumber(game.realmID) or 0) <= 0 then return false end
   return true
 end
 
