@@ -1755,8 +1755,17 @@ local STAND_DOWN_TEXT = {
 -- latches its style: a profile switch that changes the look is reload-bound in
 -- EllesmereUI itself (it offers the reload), and Postbox's style is claimed at
 -- login, so the two change together at that reload.
-local LOOKS = { eui = true, blizzard = true, classic = true }
-local hostLook           -- nil until read; then "eui" | "blizzard" | "classic"
+--
+-- On World of Warcraft: Forever there is a fourth, "forever" (WoW Forever),
+-- EllesmereUI's default there. Its windows wear EllesmereUI's skins, as under
+-- the EllesmereUI look (all but the micro menu and the bag bar, which stay
+-- Blizzard's), so under it Postbox wears EllesmereUI's skin too: only the two
+-- stock looks step it down. EllesmereUI reads a Forever profile on retail as
+-- Blizzard Style; Postbox reads the look only on Forever, so retail reads
+-- exactly what it always has.
+local LOOKS = { eui = true, blizzard = true, classic = true, forever = ns.IsForever or nil }
+local STOCK_LOOKS = { blizzard = true, classic = true }
+local hostLook           -- nil until read; then "eui" | "blizzard" | "classic" | "forever"
 
 local function ReadHostLook()
   local db = _G.EllesmereUIDB
@@ -1942,7 +1951,7 @@ local function Activate()
   -- options panel offers no EllesmereUI appearance rows. Only a player who left
   -- the style on EllesmereUI gets here: an explicit Postbox style already
   -- returned above.
-  if HostLook() ~= "eui" then
+  if STOCK_LOOKS[HostLook()] then
     standDown = "stocklook"
     return
   end
