@@ -841,6 +841,20 @@ function ST.UpdateSendGuidance(panel)
     return
   end
 
+  -- The server refused the last send to this recipient in words of its own
+  -- that the line can carry (World of Warcraft: Forever's mail rules, ST.
+  -- OnSendRefusal): they stay, in the warning tone, until the recipient
+  -- changes.
+  local refusal = ST.refusal
+  if refusal then
+    if refusal.panel == panel and refusal.to == panel.ToBox:GetText() then
+      label:SetText(refusal.text)
+      Theme.SetColor(label, GUIDANCE_TOKEN.warn)
+      return
+    end
+    ST.refusal = nil
+  end
+
   local MR = ns.MailRules
   local assessment
   if type(MR) == "table" and type(MR.Inspect) == "function" then
@@ -939,6 +953,8 @@ end
 local function FinishSend(outcome)
   local pending = pendingSend
   if not pending then return end
+  -- A send the server is slow to answer is still with it (ST.KeepWaiting).
+  if outcome == "timeout" and ST.KeepWaiting(pending) then return end
   pendingSend = nil
 
   local panel = pending.panel
@@ -956,6 +972,15 @@ local function FinishSend(outcome)
     -- UI.NoteSent).
     local UI = ns.MailboxUI
     if UI and type(UI.NoteSent) == "function" then UI.NoteSent() end
+    -- The server's answer came late, and the player has written another
+    -- mail since: that draft is theirs, and stays (ST.KeepWaiting).
+    if pending.late and not ST.SameDraft(pending) then
+      panel._run = nil
+      Invalidate(panel, "slots")
+      Invalidate(panel, "cost")
+      Invalidate(panel, "guidance")
+      return
+    end
     -- Attachments still queued: the next mail goes out from here and the
     -- draft stands until the last one has. ContinueQueue settles it itself.
     if ContinueQueue(panel, pending) then return end
@@ -968,6 +993,8 @@ local function FinishSend(outcome)
     -- The client already shows its own red error for the underlying reason;
     -- this only tells the user their draft is still there.
     if ns.Print then ns.Print(L["MSG_SEND_FAILED"]) end
+    -- Its words can follow a moment later (ST.OnSendRefusal).
+    ST.failedAt, ST.failedPanel = GetTime(), panel
   end
 
   Invalidate(panel, "slots")
@@ -980,6 +1007,61 @@ end
 -- spaces counts as empty in all three checks below rather than in some of them.
 local function FieldText(box)
   return Helpers().NormalizeText(box:GetText())
+end
+
+-------------------------------------------------------------
+-- 8a. A slow server (World of Warcraft: Forever)
+--
+-- Forever's servers have taken two and three minutes to take a mail. So
+-- there, a send that is not answered in SEND_TIMEOUT is not called failed:
+-- it is still with the server, and the button still says it is sending.
+-- The player is told so once, and that closing the mailbox stops the wait
+-- (ST.Reset lets it go); the draft stays either way. The server's answer,
+-- whenever it comes, is taken as it always is: MAIL_SEND_SUCCESS settles
+-- the draft and the queue goes on, MAIL_FAILED fails. One exception keeps
+-- the player's words safe: if they have rewritten the mail in the meantime
+-- (another recipient or subject), a late success is counted and the draft
+-- on screen stays. A second send waits for the first's answer, as the
+-- client itself takes one at a time.
+--
+-- Event-driven: nothing runs while waiting but the two events the send
+-- already listens to. Retail keeps its timeout as it was.
+-------------------------------------------------------------
+
+-- pending -> whether it is still waited for: Forever, unanswered in time.
+function ST.KeepWaiting(pending)
+  if not ns.IsForever then return false end
+  if pending.late then return true end
+  pending.late = true
+  if ns.Print then ns.Print(L["MSG_SEND_WAITING"]) end
+  return true
+end
+
+-- The server's refusal of a send, in words Forever's mail rules add, is
+-- the guidance line's until the recipient changes (ST.UpdateSendGuidance):
+-- another ruleset, half a name, a self-found character on either end, a
+-- Free Trial recipient. Blizzard's own words, as the client said them;
+-- taken only while a send of Postbox's is out or has just failed.
+function ST.OnSendRefusal(message)
+  if not ns.IsForever or type(message) ~= "string" or message == "" then return end
+  if message ~= ERR_MAIL_CANT_SEND_SUPERDISTRICT and message ~= ERR_FULL_NAME_REQUIRED
+     and message ~= ERR_MAIL_TARGET_IS_TRIAL and message ~= ERR_PLAYER_IS_SELF_FOUND_CANNOT_SEND_MAIL
+     and message ~= ERR_MAIL_RECEPIENT_IS_SELF_FOUND_CANNOT_RECEIVE_MAIL then
+    return
+  end
+  local panel = pendingSend and pendingSend.panel
+  if not panel and ST.failedAt and GetTime() - ST.failedAt < 2 then panel = ST.failedPanel end
+  if not (panel and panel.ToBox) then return end
+  ST.refusal = { panel = panel, to = panel.ToBox:GetText(), text = message }
+  Invalidate(panel, "guidance")
+end
+
+-- pending -> whether the draft on screen is still the mail that was sent:
+-- the same recipient and subject.
+function ST.SameDraft(pending)
+  local panel = pending.panel
+  if not (panel and panel.ToBox and panel.SubjectBox) then return false end
+  return FieldText(panel.ToBox) == pending.toName and FieldText(panel.SubjectBox) == (pending.subject or "")
 end
 
 -- `confirmed` is set only by a confirmation's own accept: the press as its
@@ -1098,7 +1180,7 @@ local function DoSendMail(panel, confirmed)
   -- later send.
   sendToken = sendToken + 1
   local myToken = sendToken
-  pendingSend = { panel = panel, toName = toName, token = myToken }
+  pendingSend = { panel = panel, toName = toName, token = myToken, subject = FieldText(panel.SubjectBox) }
   -- A run of mails counts itself on the button ("Sending 2 of 3...").
   panel._run = (mails > 1) and { index = 1, total = mails } or nil
   SetSendButtonBusy(panel, true)
@@ -4716,7 +4798,7 @@ function Q.SendQueued(panel, toName)
 
   sendToken = sendToken + 1
   local myToken = sendToken
-  pendingSend = { panel = panel, toName = toName, token = myToken }
+  pendingSend = { panel = panel, toName = toName, token = myToken, subject = FieldText(panel.SubjectBox) }
   if panel._run then panel._run.index = panel._run.index + 1 end
   SetSendButtonBusy(panel, true)
 
@@ -5811,7 +5893,7 @@ local function InstallEvents(panel)
   panel:RegisterEvent("MAIL_LOCK_SEND_ITEMS")
   panel:RegisterEvent("MAIL_UNLOCK_SEND_ITEMS")
 
-  panel:SetScript("OnEvent", function(self, event, arg1)
+  panel:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "GLOBAL_MOUSE_DOWN" then
       ST.OnGlobalMouseDown(arg1)
       return
@@ -5822,9 +5904,12 @@ local function InstallEvents(panel)
     if event == "MAIL_SEND_SUCCESS" then
       FinishSend("success")
     elseif event == "MAIL_FAILED" then
-      FinishSend("failed")
+      -- One naming an item is a take that failed, not the send: while a
+      -- slow server still has the mail (ST.KeepWaiting), that is not this.
+      if not (arg1 ~= nil and pendingSend and pendingSend.late) then FinishSend("failed") end
     elseif event == "UI_ERROR_MESSAGE" then
       ST.OnAttachRefused()
+      ST.OnSendRefusal(arg2)
       return
     elseif event == "MAIL_LOCK_SEND_ITEMS" or event == "MAIL_UNLOCK_SEND_ITEMS" then
       ST.OnSendItemLock(event)
