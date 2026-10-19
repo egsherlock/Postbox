@@ -220,6 +220,25 @@ do
   for id, spec in pairs(ICONS) do spec.box = ART_BOX[id] or NONE end
 end
 
+-- World of Warcraft: Forever draws its mail indicator in art of its own
+-- (Blizzard_Minimap's Camelot template, a 32 x 24 slot), so there the
+-- Blizzard style draws that, at its own proportions, where the client knows
+-- it; else the retail envelope as everywhere. Its visible box is taken as
+-- the envelope's, a texel in from each edge: it has not been measured.
+do
+  local FOREVER_MAIL = "ui-hud-minimap-mail-icon"
+  local getInfo = ns.IsForever and C_Texture and C_Texture.GetAtlasInfo
+  if type(getInfo) == "function" then
+    local ok, info = pcall(getInfo, FOREVER_MAIL)
+    local w = ok and type(info) == "table" and tonumber(info.width) or 0
+    local h = ok and type(info) == "table" and tonumber(info.height) or 0
+    if w > 0 and h > 0 then
+      ICONS.blizzard.atlas = FOREVER_MAIL
+      ICONS.blizzard.aspect = h / w
+    end
+  end
+end
+
 -- A stored id as the style it is drawn in. One retired style has a nearest
 -- one still offered: Minimal badge (`badge`), an envelope with a dot of its
 -- own that the expiring-mail marker would sit beside, reads as Minimal
