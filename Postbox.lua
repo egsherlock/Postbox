@@ -1833,6 +1833,249 @@ local function NeighbourAddons()
   return table.concat(found, ", ")
 end
 
+-- The client and the shapes of names, for World of Warcraft: Forever. One
+-- session on Forever has to say which client it was, which rules it ran
+-- under and what every source of a name hands back there: "First Surname"
+-- or "First" and a surname apart, a hyphen or a space, a realm or none.
+-- The report goes into a public tracker, so a name is never written: only
+-- its shape, every capital an A and every small letter an a (Postbox's own
+-- case tables tell the case of an accented or Cyrillic letter; a letter
+-- they cannot tell is an x), with spaces, hyphens, apostrophes and the
+-- length kept, so "Abla Stone" reads "Aaaa Aaaaa". Realms are named, as
+-- the report's Realm line names this one. Every call is guarded, a secret value
+-- reads as one, and none of it runs until the report is asked for.
+local NameProbe = {}
+do
+  local Strings = ns.Core.Strings
+  local SHOW = 3
+
+  -- One value as the report writes it: a name's shape, quoted.
+  function NameProbe.Shape(value)
+    if type(issecretvalue) == "function" and issecretvalue(value) then return "<secret>" end
+    if type(value) ~= "string" then return tostring(value) end
+    local out = {}
+    local i, n = 1, #value
+    while i <= n do
+      local b = value:byte(i)
+      local size = (b >= 240 and 4) or (b >= 224 and 3) or (b >= 192 and 2) or 1
+      local c = value:sub(i, i + size - 1)
+      if b >= 65 and b <= 90 then
+        c = "A"
+      elseif b >= 97 and b <= 122 then
+        c = "a"
+      elseif size > 1 then
+        if Strings.Lower(c) ~= c then
+          c = "A"
+        elseif Strings.Upper(c) ~= c then
+          c = "a"
+        else
+          c = "x"
+        end
+      end
+      out[#out + 1] = c
+      i = i + size
+    end
+    return '"' .. table.concat(out) .. '"'
+  end
+
+  -- A raw value (a realm, a number), quoted when it is text.
+  function NameProbe.Raw(value)
+    if type(issecretvalue) == "function" and issecretvalue(value) then return "<secret>" end
+    if type(value) == "string" then return '"' .. value .. '"' end
+    return tostring(value)
+  end
+
+  local function Pack(...) return select("#", ...), { ... } end
+
+  -- Every value `fn(...)` returns, shaped: "none" for no value, "n/a" where
+  -- the client has no such call, "error" where it threw.
+  function NameProbe.Returns(fn, ...)
+    if type(fn) ~= "function" then return "n/a" end
+    local n, t = Pack(pcall(fn, ...))
+    if not t[1] then return "error" end
+    if n < 2 then return "none" end
+    local out = {}
+    for k = 2, n do out[#out + 1] = NameProbe.Shape(t[k]) end
+    return table.concat(out, " ")
+  end
+
+  -- The value at the guarded call's `at`th return, or nil.
+  local function Call(at, fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local n, t = Pack(pcall(fn, ...))
+    if not t[1] or at + 1 > n then return nil end
+    return t[at + 1]
+  end
+
+  -- "a shape, a shape" for up to SHOW names, or `none`.
+  local function List(names, none)
+    if #names == 0 then return none end
+    return table.concat(names, ", ")
+  end
+
+  local function YesNo(value)
+    if value == nil then return "n/a" end
+    if type(issecretvalue) == "function" and issecretvalue(value) then return "<secret>" end
+    return value and "yes" or "no"
+  end
+
+  -- The client: its project, the Forever flag, unique names, the input style.
+  function NameProbe.Client()
+    local _, build, _, interface = GetBuildInfo()
+    local style = "n/a"
+    local styles = C_InputInterfaceStyle
+    if type(styles) == "table" then
+      local current = Call(1, styles.GetCurrentStyle)
+      local types = Enum and Enum.InputDeviceInterfaceType
+      if current ~= nil and types and current == types.Gamepad then
+        style = "gamepad"
+      elseif current ~= nil and types and current == types.Mkb then
+        style = "mouse and keyboard"
+      else
+        style = tostring(current)
+      end
+    end
+    local unique = nil
+    if type(RegionalUniqueNamesEnabled) == "function" then
+      unique = Call(1, RegionalUniqueNamesEnabled)
+    end
+    return string.format("Client: project %s (WOW_PROJECT_CAMELOT %s) | interface %s, build %s | Forever %s | unique names %s | input %s",
+      tostring(WOW_PROJECT_ID), tostring(WOW_PROJECT_CAMELOT), tostring(interface), tostring(build),
+      ns.IsForever and "yes" or "no", YesNo(unique), style)
+  end
+
+  -- The rules in force: the rulesets and the mail rules, where the client
+  -- has them.
+  local RULES = {
+    { "PvPRuleset", "PvP" }, { "RPRuleset", "RP" }, { "HardcoreRuleset", "hardcore" },
+    { "SelfFoundAllowed", "self-found" }, { "VanillaAccountMailInstant", "alt mail instant" },
+    { "MailGameRule", "mail rule" },
+  }
+  function NameProbe.Rules()
+    local rules = Enum and Enum.GameRule
+    local active = C_GameRules and C_GameRules.IsGameRuleActive
+    if type(rules) ~= "table" or type(active) ~= "function" then return "Rules: n/a" end
+    local out = {}
+    for k = 1, #RULES do
+      local id = rules[RULES[k][1]]
+      if id ~= nil then out[#out + 1] = RULES[k][2] .. " " .. YesNo(Call(1, active, id)) end
+    end
+    return "Rules: " .. List(out, "none known")
+  end
+
+  function NameProbe.Realms()
+    return string.format("Realm names: GetRealmName %s | GetNormalizedRealmName %s",
+      NameProbe.Raw(Call(1, GetRealmName)), NameProbe.Raw(Call(1, GetNormalizedRealmName)))
+  end
+
+  -- Who the client says the player is, every way it can be asked, and what
+  -- Postbox makes of it where it has its own answer.
+  function NameProbe.Me()
+    local line = string.format("Player: UnitName %s | UnitFullName %s | GetUnitName true %s, false %s",
+      NameProbe.Returns(UnitName, "player"), NameProbe.Returns(UnitFullName, "player"),
+      NameProbe.Returns(GetUnitName, "player", true), NameProbe.Returns(GetUnitName, "player", false))
+    local H = ns.Helpers
+    if type(H) == "table" then
+      if type(H.PlayerName) == "function" then line = line .. " | PlayerName " .. NameProbe.Returns(H.PlayerName) end
+      if type(H.PlayerRealm) == "function" then line = line .. " | PlayerRealm " .. NameProbe.Returns(H.PlayerRealm) end
+    end
+    return line
+  end
+
+  -- The first senders in the inbox, while a mailbox is open.
+  function NameProbe.Inbox()
+    local UI = ns.MailboxUI
+    local open = UI and type(UI.IsMailboxOpen) == "function" and UI.IsMailboxOpen()
+    if not open then return "Inbox senders: no mailbox open" end
+    local shown = tonumber((Call(1, GetInboxNumItems))) or 0
+    local out = {}
+    for i = 1, math.min(SHOW, shown) do
+      out[#out + 1] = NameProbe.Shape(Call(3, GetInboxHeaderInfo, i))
+    end
+    return "Inbox senders: " .. List(out, "none")
+  end
+
+  function NameProbe.Friends()
+    local FL = C_FriendList
+    if type(FL) ~= "table" then return "Friends: n/a" end
+    local total = tonumber((Call(1, FL.GetNumFriends))) or 0
+    local out = {}
+    for i = 1, math.min(SHOW, total) do
+      local info = Call(1, FL.GetFriendInfoByIndex, i)
+      out[#out + 1] = NameProbe.Shape(type(info) == "table" and info.name or nil)
+    end
+    return "Friends: " .. List(out, "none")
+  end
+
+  function NameProbe.Guild()
+    local total = tonumber((Call(1, GetNumGuildMembers))) or 0
+    local out = {}
+    for i = 1, math.min(SHOW, total) do
+      out[#out + 1] = NameProbe.Shape(Call(1, GetGuildRosterInfo, i))
+    end
+    return "Guild: " .. List(out, "none")
+  end
+
+  -- The client's own completion of the player's first two letters: the
+  -- account's characters first, then anyone it knows.
+  function NameProbe.AutoComplete()
+    local fn = C_AutoComplete and C_AutoComplete.GetAutoCompleteResults
+    if type(fn) ~= "function" then return "Autocomplete: n/a" end
+    local first = Call(1, UnitName, "player")
+    if type(first) ~= "string" or (type(issecretvalue) == "function" and issecretvalue(first)) then
+      return "Autocomplete: no name to start from"
+    end
+    local cut = Strings.CharBoundary(first, 2)
+    local prefix = cut and first:sub(1, cut - 1) or first
+    local flags = Enum and Enum.AutoCompleteEntryFlag
+    local own = (flags and flags.AccountCharacter) or 0x80
+    local from, results = "own", Call(1, fn, prefix, 1, #prefix, true, own, 0)
+    if type(results) ~= "table" or #results == 0 then
+      from, results = "any", Call(1, fn, prefix, 1, #prefix, true, 0xFFFFFFFF, 0)
+    end
+    local entry = type(results) == "table" and results[1] or nil
+    local name = type(entry) == "table" and entry.name or entry
+    if name == nil then return string.format("Autocomplete %s: none", NameProbe.Shape(prefix)) end
+    return string.format("Autocomplete %s (%s): %s", NameProbe.Shape(prefix), from, NameProbe.Shape(name))
+  end
+
+  -- Battle.net friends in a WoW game: the character's shape, its realm as
+  -- given, the realm's id and the game's project.
+  function NameProbe.BattleNet()
+    local BN = C_BattleNet
+    if type(BNGetNumFriends) ~= "function" or type(BN) ~= "table"
+      or type(BN.GetFriendNumGameAccounts) ~= "function" or type(BN.GetFriendGameAccountInfo) ~= "function" then
+      return "Battle.net: n/a"
+    end
+    local wow = BNET_CLIENT_WOW or "WoW"
+    local total = tonumber((Call(1, BNGetNumFriends))) or 0
+    local out = {}
+    for i = 1, total do
+      local accounts = tonumber((Call(1, BN.GetFriendNumGameAccounts, i))) or 0
+      for j = 1, accounts do
+        local game = Call(1, BN.GetFriendGameAccountInfo, i, j)
+        if type(game) == "table" and game.clientProgram == wow and #out < SHOW then
+          out[#out + 1] = string.format("%s realm %s id %s project %s", NameProbe.Shape(game.characterName),
+            NameProbe.Raw(game.realmName), NameProbe.Raw(game.realmID), NameProbe.Raw(game.wowProjectID))
+        end
+      end
+      if #out >= SHOW then break end
+    end
+    return "Battle.net: " .. List(out, "none in WoW")
+  end
+
+  local PARTS = { "Client", "Rules", "Realms", "Me", "Inbox", "Friends", "Guild", "AutoComplete", "BattleNet" }
+
+  -- Each line, or the part's name and "error" where one fails: the report
+  -- goes on either way.
+  function NameProbe.Lines(add)
+    for k = 1, #PARTS do
+      local ok, line = pcall(NameProbe[PARTS[k]])
+      add((ok and type(line) == "string") and line or (PARTS[k] .. ": error"))
+    end
+  end
+end
+
 local function BuildDiagnosticReport()
   local lines = {}
   local function add(text) lines[#lines + 1] = text end
@@ -1872,6 +2115,9 @@ local function BuildDiagnosticReport()
   end
   add(string.format("Realm: %s (%s)%s",
     tostring(realm), tostring(faction or "?"), connected))
+
+  -- The client and the names' shapes (NameProbe), on either client.
+  NameProbe.Lines(add)
 
   local UI = ns.MailboxUI
   local options = Ask(UI, "DiagnoseOptions")
