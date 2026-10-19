@@ -5031,9 +5031,16 @@ function ST.AbandonQueuePass()
 end
 
 -- What the slot refresh calls: a free slot is the queue's, unless a send is
--- in flight -- then the slots belong to the mail the server is holding.
+-- under way. While a mail is with the server, the slots belong to that
+-- mail; from the press of a run of mails to its last mail, they belong to
+-- the run, which fills each next mail itself (ContinueQueue) and sends what
+-- it filled. A refresh between two of the run's mails -- the client saying
+-- the slots have emptied, before the server's word or after it, at any
+-- moment -- leaves them to the run. (A top-up there once moved the run's
+-- last items into the slots first, and the run, finding its queue empty,
+-- settled without sending them.)
 TopUpFromQueue = function(panel)
-  if pendingSend then return end
+  if pendingSend or (panel and panel._run) then return end
   local queue = panel and panel._queue
   if not queue or #queue == 0 then return end
   if AttachmentCount() >= K.SEND_SLOT_COUNT then return end
@@ -5097,6 +5104,8 @@ ContinueQueue = function(panel, pending)
     end
 
     -- The player emptied the queue in the meantime: the press is complete.
+    -- (Nothing else empties it between two mails: the slot refresh leaves
+    -- a run's queue to the run, TopUpFromQueue.)
     if not panel._queue or #panel._queue == 0 then
       Settle()
       return
@@ -5443,6 +5452,9 @@ function ST.Reset(panel, reason)
   -- the bags, and a queue that reappeared at the next mailbox would be a
   -- surprise waiting to attach itself.
   panel._queue = nil
+  -- Nor does a run of mails the queue was feeding: at the next visit the
+  -- slots are the queue's to fill again (TopUpFromQueue).
+  panel._run = nil
   if ST.AbandonQueuePass then ST.AbandonQueuePass() end
   if RefreshQueueLabel then RefreshQueueLabel(panel) end
 
