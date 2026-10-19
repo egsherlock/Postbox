@@ -1711,6 +1711,37 @@ local function HideNativeMailFrame()
   end
 end
 
+-- Controller players on World of Warcraft: Forever. Under its Gamepad
+-- interface style (C_InputInterfaceStyle) Blizzard drives its windows from
+-- the controller -- its own focus, bindings and navigation -- and Postbox's
+-- window is steered by a mouse: with MailFrame hidden under it, a controller
+-- player would be moving through a mailbox they cannot see. So under that
+-- style Postbox steps aside for the visit: Blizzard's mailbox shows as it is,
+-- Postbox's window does not open, and nothing of Postbox's touches MailFrame
+-- or the panel layout on the way (that navigation's secure code is where
+-- EllesmereUI saw a hook of its own turn into blocked actions). Decided as
+-- the mailbox opens and kept until it closes: a style changed with the
+-- mailbox open applies at the next open. Only an earlier visit's hide is
+-- undone, once, so Blizzard's window is not left invisible. Retail has no
+-- such style, and this answers false there at once.
+function UI.StepsAside()
+  local st = UI._state
+  if st.mailboxOpen then return false end
+  if st.aside then return true end
+  if not ns.IsForever then return false end
+  local style = C_InputInterfaceStyle
+  local types = type(Enum) == "table" and Enum.InputDeviceInterfaceType or nil
+  if type(style) ~= "table" or type(style.GetCurrentStyle) ~= "function"
+     or type(types) ~= "table" or types.Gamepad == nil then
+    return false
+  end
+  local ok, current = pcall(style.GetCurrentStyle)
+  if not ok or current ~= types.Gamepad then return false end
+  st.aside = true
+  if alphaHooked and MailFrame and type(MailFrame.SetAlpha) == "function" then MailFrame:SetAlpha(1) end
+  return true
+end
+
 -- Enum.PlayerInteractionType.MailInfo. The numeric value is the fallback for a
 -- client that does not publish the enum; section 9 matches incoming interaction
 -- events against the same constant.
@@ -4062,6 +4093,9 @@ end
 -- The mail session ended. MAIL_CLOSED and the interaction manager's hide event
 -- both fire for one close, so this is idempotent.
 local function OnMailClosed()
+  -- A visit Postbox stepped aside from (UI.StepsAside) is over; the next
+  -- open decides afresh.
+  UI._state.aside = nil
   -- A close signal while the preview window is up closes no session: there is
   -- none (section 5c), and the preview is not a mailbox to put away.
   if UI._state.preview and not UI._state.mailboxOpen then return end
@@ -4420,6 +4454,8 @@ function UI.Initialize()
   -- covered twice over, and OnMailShow is idempotent by design.
   -- COMBAT_TAINT.md 4.
   bus.Register("MAIL_SHOW", function()
+    -- A controller player's visit on Forever is Blizzard's (UI.StepsAside).
+    if UI.StepsAside() then return end
     HideNativeMailFrame()
     OnMailShow()
   end)
@@ -4435,6 +4471,7 @@ function UI.Initialize()
 
   bus.Register("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", function(_, kind)
     if not ns.Helpers.IsMailInteraction(kind) then return end
+    if UI.StepsAside() then return end
     HideNativeMailFrame()
     OnMailShow()
   end)
