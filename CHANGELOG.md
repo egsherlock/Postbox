@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.60.0
+
+**Postbox now runs in World of Warcraft: Forever**, from the same download
+as retail. *Restart the game once after updating (a /reload is not enough).*
+
+### World of Warcraft: Forever
+
+- **Full names, both halves.** Two characters who share a first name keep
+  their own mail, Mail Memory and History. Recipients, replies and
+  character groups take the full name, written "Abla Stone" or
+  "Abla-Stone", and suggestions fill in the surname as you type.
+- **The Send tab knows Forever's rules:** it warns before you send to a
+  first name alone or to your character on another ruleset, never suggests
+  the Warband bank, and promises instant delivery between your characters
+  only when the game does.
+- **A slow send isn't called failed.** When the server takes its time,
+  Postbox says it is still waiting and finishes the mail when the answer
+  comes.
+- **Reload now works** after a style change; in combat it asks you to type
+  /reload.
+- **Controller players get Blizzard's mailbox:** with the Gamepad interface
+  style, Postbox steps aside.
+- Also: senders wear their class colors, From alts counts your alts' mail,
+  EllesmereUI's WoW Forever look is matched, the options drawings show
+  Forever's goods, the minimap icon's Blizzard style uses Forever's mail
+  art, and the quality-mark options are hidden, since vanilla goods have
+  none.
+
+### New
+
+- **Six themed window styles:** London Postbox, Faction, Post Office
+  Counter, Goblin Express, Letters and Daylight, under Options, Window.
+- **Gold from strangers waits for your answer.** Where the game asks before
+  you take gold mailed by someone it doesn't know (in Forever now, and on
+  retail from patch 12.1.7), collecting pauses on that mail until you
+  answer: Accept and the gold comes, Cancel and it stays in the mail while
+  the rest carries on.
+
+### Improved
+
+- **The options say each thing once:** pointing at a setting no longer opens
+  a tooltip beside the window repeating the panel's description. Tooltips
+  stay where they add something, such as a value too long for its box.
+- Also: **/postbox debug** says which game it runs in and how that game
+  writes names, without ever writing one; Battle.net friends are suggested
+  only from a game Blizzard can deliver mail to.
+
 ## 1.50.0
 
 **Make Postbox yours.** Arrange the window your way, pick the new Postbox

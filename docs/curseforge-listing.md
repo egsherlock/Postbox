@@ -7,7 +7,7 @@
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Every alt's mail</span></strong><span style="display:none">: </span><span style="display:block">What each character has waiting, and what each mail holds, searched from anywhere.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Never lose expiring mail</span></strong><span style="display:none">: </span><span style="display:block">Expired auction mail is deleted, gold and all. You're warned at login and on the minimap while there's still time.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Faster sending</span></strong><span style="display:none">: </span><span style="display:block">Names complete as you type. Right-click attaches; Alt-right-click attaches every stack.</span></li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Your look, your layout</span></strong><span style="display:none">: </span><span style="display:block">Matches EllesmereUI or ElvUI, or its own Dark or Light style. Drag any column or button.</span></li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Your look, your layout</span></strong><span style="display:none">: </span><span style="display:block">Matches EllesmereUI or ElvUI, or its own Dark or Light style, or a themed one. Drag any column or button.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">A minimap icon</span></strong><span style="display:none">: </span><span style="display:block">A count of what's waiting and an expiry marker, in two dozen styles.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Safe with your gold</span></strong><span style="display:none">: </span><span style="display:block">C.O.D. is never paid without asking, and full bags stop a run cleanly.</span></li>
 </ul>
@@ -77,6 +77,7 @@
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">EllesmereUI:</span></strong> your font, your accent, and the same opacity and border as the windows beside it.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">ElvUI:</span></strong> your accent, live. <strong><span style="color:#e5e5e5">Blizzard:</span></strong> the game's own look.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Postbox style:</span></strong> Dark or Light, with your accent, border, corners, font and text size. Scale 80% to 130%.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Themed:</span></strong> London Postbox, Faction, Post Office Counter, Goblin Express, Letters and Daylight.</li>
 </ul>
 <p>&nbsp;</p>
 <ul style="display:flex;flex-wrap:wrap;gap:20px 24px;padding-left:0">
@@ -85,5 +86,5 @@
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Works with</span></strong><span style="display:none">: </span><span style="display:block">EllesmereUI, ElvUI, Baganator, EllesmereUI bags and the default bags (unmailable items grayed while you send), and the default UI.</span></li>
 </ul>
 <p>&nbsp;</p>
-<p style="text-align:center">Retail only · settings are account-wide · type <code>/pb</code> for the options<br>English, Français, Deutsch, Español, Русский, 简体中文, 繁體中文</p>
+<p style="text-align:center">Retail and WoW Forever, one download · settings are account-wide · type <code>/pb</code> for the options<br>English, Français, Deutsch, Español, Русский, 简体中文, 繁體中文</p>
 <p style="text-align:center">Free and open source. Ideas, bugs and source: <a href="https://github.com/egsherlock/Postbox">github.com/egsherlock/Postbox</a></p>

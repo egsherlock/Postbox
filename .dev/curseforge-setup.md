@@ -16,7 +16,7 @@ but the paste.
 | Slug | `postboxmail` (NOT `postbox`: that is another author's addon, project 1680332) |
 | Category | **Mail** (secondaries: Map & Minimap, Auction & Economy) |
 | Licence | **GNU General Public License version 3 (GPLv3)** |
-| Game versions | Retail **12.0.7** and **12.1.x** only — no Classic flavours |
+| Game versions | Retail **12.0.7** and **12.1.x**, and **WoW Forever 1.60.x** (from 1.60.0) — no Classic flavours. Nothing to switch on: the packager tags each file for every number in `Postbox.toc`'s `## Interface:` line (16xxx is Forever), so one file is listed under both |
 | Tags | `mail`, `mailbox`, `inbox`, `auction house`, `ui replacement`, `quality of life`, `minimap`, `elvui` |
 | CurseForge project id | `1639171` (also in `Postbox.toc`) |
 | Automatic packaging | **Off.** The GitHub Action builds and uploads; two packagers means two competing files per tag. |

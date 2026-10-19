@@ -25,6 +25,10 @@ the thing this checklist exists to prevent.
       `Postbox.lua` section 4b.
 - [ ] **Checkers** — all five in `.dev/tools/` clean. A bare run checks the whole
       addon.
+- [ ] **Interface numbers** — `Postbox.toc`'s `## Interface:` line lists the live
+      retail builds and the live WoW Forever build (16001 for 1.60.1; watch `wowf`
+      on wago.tools). A number is listed only once Postbox has been run on that
+      build; a new one is a one-line patch.
 
 ## The changelog is written for players
 
