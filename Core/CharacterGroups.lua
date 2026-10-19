@@ -69,6 +69,13 @@ local EMPTY = {}
 
 local function Helpers() return ns.Helpers end
 
+-- Forever's two-part names (Helpers.TwoPartNames): a full name is the whole
+-- address there, and no realm is ever written after it.
+local function TwoPart()
+  local H = ns.Helpers
+  return H ~= nil and type(H.TwoPartNames) == "function" and H.TwoPartNames() == true
+end
+
 local function Lower(text) return ns.Helpers.Lower(text) end
 local function Trim(text) return ns.Helpers.NormalizeText(text) end
 
@@ -106,13 +113,25 @@ local realmSpelling = nil
 -- realm, resolved NOW, which is the whole reason members are stored
 -- qualified. The name is written the way the game writes names (first letter
 -- up, the rest down), so "thorin" and "Thorin" are one member, spelled once.
+--
+-- On Forever a member is the full name alone ("Abla Stone"): it is one
+-- character across the region, and no ruleset is part of an address. Text
+-- that is not two names of letters, each the length the game allows, with a
+-- space or a hyphen between, cannot be a character (Helpers.TypedFullName).
 local function Canonical(text)
   local R = ns.Recipients
   if not (R and type(R.Key) == "function") or type(text) ~= "string" then return nil end
+  local H = Helpers()
+  if TwoPart() then
+    local full = H.TypedFullName(text)
+    if not full then return nil end
+    local key = R.Key(full)
+    if type(key) ~= "string" or key == "" then return nil end
+    return full, key
+  end
   local key, short, realm = R.Key(text)
   if type(key) ~= "string" or key == "" then return nil end
   if not LooksLikeName(short, realm) then return nil end
-  local H = Helpers()
   local name = (H and H.Capitalize) and H.Capitalize(Lower(short)) or short
   -- A realm typed in lowercase takes the census's spelling where it knows one.
   local known = realmSpelling and realmSpelling[Lower(realm)]
@@ -494,10 +513,13 @@ local function BuildCensus(home)
         spelling[Lower(norm)] = norm
       end
       local byName = type(classes) == "table" and classes[realm] or nil
+      -- Forever's census names are full names, and its realm a ruleset that
+      -- is no part of an address.
+      local bare = TwoPart()
       for i = 1, #names do
         local name = names[i]
         if type(name) == "string" and name ~= "" then
-          local member, key = Canonical(name .. "-" .. realm)
+          local member, key = Canonical(bare and name or name .. "-" .. realm)
           if member and not seen[key] then
             seen[key] = true
             out[#out + 1] = {
@@ -523,7 +545,8 @@ end
 local function Census()
   local CS = ns.ContactService
   local gen = CS and type(CS.CensusGen) == "function" and CS.CensusGen() or nil
-  local home = type(GetRealmName) == "function" and GetRealmName() or nil
+  local H = Helpers()
+  local home = H and type(H.PlayerRealm) == "function" and H.PlayerRealm() or nil
   local memo = censusMemo
   if memo.list and gen ~= nil and memo.gen == gen and memo.home == home then return memo.list end
   local out = BuildCensus(home)
@@ -539,10 +562,11 @@ end
 
 -- One of the player's characters, as the address book writes it: the name in
 -- its class colour, and the realm after it, quieter, when it is not the one
--- being played.
+-- being played. On Forever the full name says who on its own, and a ruleset
+-- is not a realm a player writes after a name.
 local function AltLabel(c)
   local text = Tint(c.name, c.class)
-  if not c.home then text = text .. Quiet("-" .. c.realm) end
+  if not c.home and not TwoPart() then text = text .. Quiet("-" .. c.realm) end
   return text
 end
 
@@ -552,7 +576,9 @@ local function OtherLabel(member)
   local R = ns.Recipients
   local address = (R and type(R.Address) == "function") and R.Address(member) or member
   if type(address) ~= "string" or address == "" then address = member end
-  local short, realm = address:match("^([^%-]+)%-(.+)$")
+  -- A Forever address is a full name and holds no realm to split off.
+  local short, realm
+  if not TwoPart() then short, realm = address:match("^([^%-]+)%-(.+)$") end
   short = short or address
   local CS = ns.ContactService
   local name = short

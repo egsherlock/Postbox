@@ -85,6 +85,8 @@ ns.Core.Logger.Bind(ns, "Postbox", "d3a44a")
 -- Realm keys throughout are the RAW GetRealmName() -- spaces, apostrophes and
 -- all. Core/ContactService.lua and Core/Recipients.lua both index with exactly
 -- that, so alts, altClasses and altMeta line up character for character.
+-- On Forever the realm key is the ruleset (PvE, PvP, RP, Hardcore) and the
+-- name is the full name, "Abla Stone": ns.Helpers.PlayerRealm/PlayerName.
 --
 -- The options' Reset everything (Core/MailboxUI.lua) empties every root here
 -- but the census of the player's characters -- alts, altClasses, altMeta. A
@@ -206,16 +208,57 @@ end
 
 -- levelOverride: PLAYER_LEVEL_UP hands us the new level as its payload, and
 -- UnitLevel("player") can still be reporting the old one at that instant.
+-- Forever: a full name is one character across the region, so the census
+-- holds it under one ruleset only. A character written under another (moved
+-- there, or seen there before) is taken out of it, with its class and level.
+local function ForgetOnOtherRulesets(realm, name)
+  local CS
+  for _, root in ipairs({ "alts", "altClasses", "altMeta" }) do
+    local byRealm = ns.Store.Get(root)
+    if type(byRealm) == "table" then
+      for bucket, held in pairs(byRealm) do
+        if bucket ~= realm and type(held) == "table" then
+          if root == "alts" then
+            for i = #held, 1, -1 do
+              if held[i] == name then
+                table.remove(held, i)
+                CS = ns.ContactService
+              end
+            end
+          elseif held[name] ~= nil then
+            held[name] = nil
+            CS = ns.ContactService
+          end
+          if next(held) == nil then byRealm[bucket] = nil end
+        end
+      end
+    end
+  end
+  if CS and type(CS.ClassesChanged) == "function" then CS.ClassesChanged() end
+end
+
 local function RegisterCurrentAlt(levelOverride)
   EnsureDB()
 
-  local name = UnitName("player")
-  local realm = GetRealmName()
+  -- Resolved now, not at file scope: Core/Helpers.lua loads after this file.
+  local H = ns.Helpers
+  if not (H and type(H.PlayerName) == "function") then return end
+  local name = H.PlayerName()
+  local realm = H.PlayerRealm()
   -- Either half missing means a half-formed identity, and half a record is
   -- worse than none: it would be indistinguishable from a real character and
   -- would never be corrected.
   if type(name) ~= "string" or name == "" then return end
   if type(realm) ~= "string" or realm == "" then return end
+
+  if ns.IsForever then
+    -- A name without its second half is half an identity too, and the
+    -- ruleset is only certain once the player is in the world: PLAYER_LOGIN
+    -- writes the character then.
+    if not name:find(H.NameSeparator(), 1, true) then return end
+    if type(IsLoggedIn) == "function" and not IsLoggedIn() then return end
+    ForgetOnOtherRulesets(realm, name)
+  end
 
   local _, classToken = UnitClass("player")
 

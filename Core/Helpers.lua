@@ -90,6 +90,229 @@ function H.ShortSubject(subject)
   return subject
 end
 
+-------------------------------------------------------------
+-- Who is playing, and how names are written
+--
+-- Retail names are one word, and "Name-Realm" addresses a character on
+-- another realm. World of Warcraft: Forever gives every character a main
+-- name and a secondary name ("Abla Stone"), unique across the region, so a
+-- full name is an address on its own: Forever never puts a realm in one, and
+-- Blizzard accepts "Abla-Stone" as well as "Abla Stone" there, so a hyphen
+-- is not a realm separator. Mail cannot cross Forever's rulesets, and its
+-- realm names drift inside one ruleset ("Classic Beta PvE" and "... PvE 2"),
+-- so Postbox's "my realm" on Forever is the ruleset, named the way AceDB and
+-- Syndicator name it: PvE, PvP, RP, Hardcore.
+--
+-- Everything here returns exactly one value, as the rest of this file does,
+-- and is memoised once it has a real answer: neither the character nor its
+-- realm can change while this Lua state lives.
+-------------------------------------------------------------
+
+local function IsSecret(value)
+  return type(issecretvalue) == "function" and issecretvalue(value) == true
+end
+
+-- Blizzard's own separator between the two names, a space.
+local separator = nil
+local function Separator()
+  if separator then return separator end
+  local consts = type(Constants) == "table" and Constants.CharacterNameSeparatorConsts or nil
+  local sep = type(consts) == "table" and consts.CHARACTERNAME_SURNAME_SEPARATOR or nil
+  separator = (type(sep) == "string" and sep ~= "") and sep or " "
+  return separator
+end
+H.NameSeparator = Separator
+
+-- Whether character names have two parts: Forever, or any client that
+-- answers RegionalUniqueNamesEnabled() yes. Constant for the session.
+local twoPart = nil
+function H.TwoPartNames()
+  if twoPart ~= nil then return twoPart end
+  local on = ns.IsForever == true
+  if not on and type(RegionalUniqueNamesEnabled) == "function" then
+    local ok, value = pcall(RegionalUniqueNamesEnabled)
+    on = ok and value == true
+  end
+  twoPart = on
+  return on
+end
+
+-- name, surname -> "Name Surname", or name alone when there is no surname
+-- or the name already ends with it (an early Forever build handed both
+-- parts back as the first value).
+local function JoinSurname(name, surname)
+  if type(name) ~= "string" or name == "" then return name end
+  if type(surname) ~= "string" or surname == "" then return name end
+  local tail = Separator() .. surname
+  if #name > #tail and name:sub(-#tail) == tail then return name end
+  return name .. tail
+end
+
+-- The character being played, by name: retail's UnitName("player"), exactly;
+-- on Forever the full name, "Abla Stone". On Forever a name without its
+-- second half is half an identity: it is returned but never kept, so the
+-- next call asks again.
+local playerName = nil
+function H.PlayerName()
+  if playerName then return playerName end
+  if type(UnitName) ~= "function" then return nil end
+  if not H.TwoPartNames() then
+    local name = UnitName("player")
+    if not IsSecret(name) and type(name) == "string" and name ~= "" then playerName = name end
+    return name
+  end
+  local name, surname = UnitName("player")
+  if IsSecret(name) or IsSecret(surname) then return name end
+  local full = JoinSurname(name, surname)
+  if type(full) == "string" and not full:find(Separator(), 1, true)
+     and type(UnitNameUnmodified) == "function" then
+    local n, s = UnitNameUnmodified("player")
+    if not (IsSecret(n) or IsSecret(s)) then
+      local other = JoinSurname(n, s)
+      if type(other) == "string" and other:find(Separator(), 1, true) then full = other end
+    end
+  end
+  if type(full) == "string" and full:find(Separator(), 1, true) then playerName = full end
+  return full
+end
+
+-- Forever's ruleset, as the realm key: Hardcore, RP, PvP, or PvE for the
+-- normal one (AceDB-3.0's names and order). Kept once the player is logged
+-- in; before that the game rules may not be known yet, so it is asked again.
+local ruleset = nil
+local RULESETS = { { "HardcoreRuleset", "Hardcore" }, { "RPRuleset", "RP" }, { "PvPRuleset", "PvP" } }
+local function Ruleset()
+  if ruleset then return ruleset end
+  local answer = "PvE"
+  local rules = type(Enum) == "table" and Enum.GameRule or nil
+  if type(C_GameRules) == "table" and type(C_GameRules.IsGameRuleActive) == "function"
+     and type(rules) == "table" then
+    for i = 1, #RULESETS do
+      local rule = rules[RULESETS[i][1]]
+      if rule ~= nil then
+        local ok, active = pcall(C_GameRules.IsGameRuleActive, rule)
+        if ok and active == true then
+          answer = RULESETS[i][2]
+          break
+        end
+      end
+    end
+  end
+  if type(IsLoggedIn) == "function" and IsLoggedIn() then ruleset = answer end
+  return answer
+end
+
+-- The realm the character being played is on, as a key.
+--   retail, plain:       GetRealmName(), "Twilight's Hammer"
+--   retail, normalized:  GetNormalizedRealmName(), "Twilight'sHammer", or
+--                        GetRealmName() in the moment after login where the
+--                        normalized one is not known yet (not kept)
+--   Forever:             the ruleset, either way
+local realmPlain, realmNormalized = nil, nil
+function H.PlayerRealm(normalized)
+  if ns.IsForever then return Ruleset() end
+  if normalized then
+    if realmNormalized then return realmNormalized end
+    local realm
+    if type(GetNormalizedRealmName) == "function" then
+      local ok, value = pcall(GetNormalizedRealmName)
+      if ok and type(value) == "string" then realm = value end
+    end
+    if realm and realm ~= "" then
+      realmNormalized = realm
+      return realm
+    end
+    if type(GetRealmName) == "function" then
+      local ok, value = pcall(GetRealmName)
+      if ok and type(value) == "string" then realm = value end
+    end
+    return realm
+  end
+  if realmPlain then return realmPlain end
+  if type(GetRealmName) ~= "function" then return nil end
+  local realm = GetRealmName()
+  if type(realm) == "string" and realm ~= "" and not IsSecret(realm) then realmPlain = realm end
+  return realm
+end
+
+-- text -> on a client with two-part names, the full name it spells, the
+-- caller's casing kept: "abla-stone" and "Abla  Stone" both give the two
+-- names joined by one separator, a single name is itself, and anything
+-- after the second name (a realm someone joined on) is not part of it.
+-- Elsewhere the text, trimmed. Never nil.
+function H.FullName(text)
+  text = H.NormalizeText(text)
+  if text == "" or not H.TwoPartNames() then return text end
+  local sep = Separator()
+  -- Already in shape: the common case, and it builds nothing.
+  if sep == " " and text:find("^[^%s%-]+ [^%s%-]+$") then return text end
+  local first, second
+  for part in text:gmatch("[^%s%-]+") do
+    if not first then
+      first = part
+    else
+      second = part
+      break
+    end
+  end
+  if not first then return "" end
+  if not second then return first end
+  return first .. sep .. second
+end
+
+-- A name as written from a lowercase key: each name's first letter up.
+-- Retail's is Capitalize; Forever's capitalizes both halves ("Abla Stone",
+-- where Capitalize alone would give "Abla stone").
+function H.CapitalizeName(text)
+  if not H.TwoPartNames() then return H.Capitalize(text) end
+  if type(text) ~= "string" or text == "" then return "" end
+  local sep = Separator()
+  local at = text:find(sep, 1, true)
+  if not at then return H.Capitalize(text) end
+  return H.Capitalize(text:sub(1, at - 1)) .. sep .. H.Capitalize(text:sub(at + #sep))
+end
+
+-- Letters only: ASCII letters and anything outside ASCII (an accented,
+-- Cyrillic or Hangul letter), as Blizzard's name boxes allow.
+local NAME_PART_MIN, NAME_PART_MAX = 2, 12
+
+-- text -> the full name a player typed, in the game's spelling ("Abla
+-- Stone" from "abla-stone"), or false when it is not one: exactly two
+-- names of letters only, each 2 to 12 of them (Forever's character create
+-- allows 12 a name, and the game's names start at 2), with one space or
+-- one hyphen between. For the boxes that take a name typed by hand, on a
+-- client with two-part names; RM_ERR_NAME_FULL says what is wanted.
+function H.TypedFullName(text)
+  text = H.NormalizeText(text)
+  local first, second = text:match("^([%a\128-\255]+)[ %-]([%a\128-\255]+)$")
+  if not first then return false end
+  local a, b = H.CharCount(first), H.CharCount(second)
+  if a < NAME_PART_MIN or a > NAME_PART_MAX or b < NAME_PART_MIN or b > NAME_PART_MAX then
+    return false
+  end
+  return H.Capitalize(H.Lower(first)) .. Separator() .. H.Capitalize(H.Lower(second))
+end
+
+-- name -> the name as it is SHOWN. Forever lets a player hide their own
+-- secondary name (C_PlayerInfo.ShouldDisplaySurname, which EllesmereUI
+-- honors too); where they have, the character being played is shown by its
+-- main name alone. Display only: every address and key keeps the full name.
+local shortPlayerName = nil
+function H.ShownName(name)
+  if not ns.IsForever or type(name) ~= "string" or name == "" then return name end
+  local me = H.PlayerName()
+  if name ~= me then return name end
+  local info = C_PlayerInfo
+  if not (type(info) == "table" and type(info.ShouldDisplaySurname) == "function") then return name end
+  local ok, show = pcall(info.ShouldDisplaySurname)
+  if not ok or show ~= false then return name end
+  if not shortPlayerName then
+    local at = me:find(Separator(), 1, true)
+    shortPlayerName = at and me:sub(1, at - 1) or me
+  end
+  return shortPlayerName
+end
+
 -- copper -> compact plain text ("12g 30s"), "" for zero.
 H.FormatMoney = ns.Core.Formatting.FormatMoneyText
 

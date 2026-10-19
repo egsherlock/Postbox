@@ -303,6 +303,8 @@ end
 -- row's tooltip, which stays dark in Light mode: both colours inked for it.
 local function DecorateName(display, ground)
   local text = tostring(display or "")
+  -- A Forever name is the full name, with no realm half to dim.
+  if ns.Helpers.TwoPartNames() then return ClassColored(text, nil, ground) end
   local short, realm = text:match("^([^%-]+)%-(.+)$")
   if short then
     return ClassColored(text, short, ground) .. Theme.Colorize("textSecondary", "-" .. realm, ground)
@@ -2179,7 +2181,9 @@ local function Build()
   addButton:SetText(addButton.caption)
   addButton:SetScript("OnClick", function()
     if not EnsureAddDialog() or type(StaticPopup_Show) ~= "function" then return end
-    Theme.LiftPopup(StaticPopup_Show(ADD_POPUP, L["RM_ADD_TITLE"]))
+    -- Forever's names have two parts and never a realm.
+    local title = ns.Helpers.TwoPartNames() and "RM_ADD_TITLE_FOREVER" or "RM_ADD_TITLE"
+    Theme.LiftPopup(StaticPopup_Show(ADD_POPUP, L[title]))
   end)
 
   -- Right-most control stops short of the resize grip in the corner.

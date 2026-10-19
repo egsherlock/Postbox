@@ -85,7 +85,7 @@ end
 -- letter drew as a box and vanished when the string was put into the To:
 -- box, which is the "bad cyrillic support" bug as reported.
 local function Capitalize(text)
-  return Helpers().Capitalize(text)
+  return Helpers().CapitalizeName(text)
 end
 
 -- Realm names are normalised the way GetNormalizedRealmName() does it: spaces,
@@ -183,15 +183,8 @@ local cachedRealm = nil
 local cachedLegacyRealm = nil
 
 local function RefreshRealmCache()
-  local realm
-  if type(GetNormalizedRealmName) == "function" then
-    local ok, value = pcall(GetNormalizedRealmName)
-    if ok and type(value) == "string" then realm = value end
-  end
-  if (realm == nil or realm == "") and type(GetRealmName) == "function" then
-    local ok, value = pcall(GetRealmName)
-    if ok and type(value) == "string" then realm = value end
-  end
+  -- GetNormalizedRealmName(), else GetRealmName(); Forever's ruleset there.
+  local realm = Helpers().PlayerRealm(true)
   cachedRealm = NormalizeRealm(realm)
   cachedLegacyRealm = LegacyNormalizeRealm(realm)
 end
@@ -213,6 +206,15 @@ end
 local function BuildKey(name, normalize, ownRealm)
   local text = Helpers().NormalizeText(name)
   if text == "" then return "", "", "" end
+
+  -- Forever: a full name is unique across the region and never carries a
+  -- realm, and "Abla-Stone" is "Abla Stone". The key is the full name,
+  -- lowercased, and every name is on the ruleset being played.
+  if Helpers().TwoPartNames() then
+    local full = Helpers().FullName(text)
+    if full == "" then return "", "", "" end
+    return Helpers().Lower(full), full, normalize(ownRealm())
+  end
 
   local short, realm = text:match("^([^%-]+)%-(.+)$")
   if not short then
@@ -243,6 +245,10 @@ end
 --
 -- A bare To: name means "on my realm" in WoW, so the first two forms collapse
 -- to one key. Connected realms stay distinct because the realm half is kept.
+--
+-- On Forever (two-part names), on the PvE ruleset:
+--   R.Key("Abla Stone")     -> "abla stone", "Abla Stone", "PvE"
+--   R.Key("abla-stone")     -> "abla stone", "abla stone", "PvE"
 -- Pure: no saved-variable access, and idempotent on its own output
 -- (R.Key(R.Key(x)) == R.Key(x)) so every accessor below can accept either a
 -- key or a raw name.
@@ -423,8 +429,9 @@ local function FormatAddress(short, realm)
   if short == "" then return "" end
   -- No realm half at all (including the pre-login window, where CurrentRealm is
   -- "" and no comparison is meaningful): the bare name is all we have, and it
-  -- is what mail defaults to anyway.
-  if realm == "" then return short end
+  -- is what mail defaults to anyway. On Forever the full name is the whole
+  -- address, always.
+  if realm == "" or Helpers().TwoPartNames() then return short end
   local lower = Helpers().Lower
   if lower(realm) == lower(CurrentRealm()) then return short end
   return short .. "-" .. realm
@@ -453,10 +460,22 @@ end
 -- every realm the account plays, and on all but one of them a bare name is
 -- somebody else. Read it back through R.Address (or R.Display), and a name on
 -- the realm being played still draws bare.
+--
+-- On Forever the full name is already that: it is the same character on
+-- every ruleset's list, and it never carries a realm.
 function R.Qualify(name)
   local k, short, realm = R.Key(name)
+  if k ~= "" and Helpers().TwoPartNames() then return short end
   if k == "" or realm == "" then return "" end
   return short .. "-" .. realm
+end
+
+-- name, realm -> the recipient key of a character the census (or any table
+-- keyed realm -> name) holds: R.Key("Name-Realm") on retail; on Forever the
+-- full name's own key, since a ruleset is never part of a name. One value.
+function R.CharacterKey(name, realm)
+  if Helpers().TwoPartNames() then return (R.Key(name)) end
+  return (R.Key(name .. "-" .. realm))
 end
 
 -------------------------------------------------------------
@@ -497,6 +516,13 @@ function R.QualifyHistory()
   local db = DB()
   if not db then return end
   if db.historyQualified then
+    historyQualified = true
+    return
+  end
+  -- Forever's names were never saved bare of a realm: a full name is the
+  -- form saved, and there is nothing to carry over.
+  if Helpers().TwoPartNames() then
+    db.historyQualified = true
     historyQualified = true
     return
   end
@@ -588,13 +614,16 @@ end
 -- gain.
 -------------------------------------------------------------
 
+-- On Forever every bucket matches: a full name is one character across the
+-- region, so wherever the census holds it, that is the one.
 local function MatchingRealmBuckets(container, realm)
   local out = {}
   if type(container) ~= "table" or realm == "" then return out end
+  local every = Helpers().TwoPartNames()
   local lower = Helpers().Lower
   local want = lower(realm)
   for realmKey in pairs(container) do
-    if type(realmKey) == "string" and lower(NormalizeRealm(realmKey)) == want then
+    if type(realmKey) == "string" and (every or lower(NormalizeRealm(realmKey)) == want) then
       out[#out + 1] = realmKey
     end
   end
@@ -824,16 +853,31 @@ function R.AddManual(name)
   local text = Helpers().NormalizeText(name)
   if text == "" then return nil, "RM_ERR_NAME_EMPTY" end
 
+  -- Forever: the full name, both halves, in the game's spelling. It is the
+  -- whole address, so nothing below about realms applies to it.
+  local forever = Helpers().TwoPartNames()
+  if forever then
+    local full = Helpers().TypedFullName(text)
+    if not full then
+      -- Two names of letters, just too short or too long: say that.
+      if text:find("^[%a\128-\255]+[ %-][%a\128-\255]+$") then return nil, "RM_ERR_NAME_LENGTH" end
+      return nil, "RM_ERR_NAME_FULL"
+    end
+    text = full
+  end
+
   local k, short, realm = R.Key(text)
   if k == "" or short == "" then return nil, "RM_ERR_NAME_EMPTY" end
-  if short:find("%s") then return nil, "RM_ERR_NAME_SPACES" end
+  if not forever then
+    if short:find("%s") then return nil, "RM_ERR_NAME_SPACES" end
 
-  local charCount = Helpers().CharCount
-  local shortLen = charCount(short)
-  if shortLen < NAME_MIN_CHARS or shortLen > NAME_MAX_CHARS then
-    return nil, "RM_ERR_NAME_LENGTH"
+    local charCount = Helpers().CharCount
+    local shortLen = charCount(short)
+    if shortLen < NAME_MIN_CHARS or shortLen > NAME_MAX_CHARS then
+      return nil, "RM_ERR_NAME_LENGTH"
+    end
+    if charCount(realm) > REALM_MAX_CHARS then return nil, "RM_ERR_NAME_LENGTH" end
   end
-  if charCount(realm) > REALM_MAX_CHARS then return nil, "RM_ERR_NAME_LENGTH" end
 
   local map = StateMapRW()
   if not map then return nil, "RM_ERR_NOT_READY" end
@@ -912,6 +956,45 @@ function R.IsStoredAlt(key)
   local k, short, realm = R.Key(key)
   if k == "" then return false end
   return StoredAsAlt(short, realm)
+end
+
+-- name or key -> on Forever, the ruleset ("PvP", "RP", ...) of one of the
+-- player's own characters that is NOT on the ruleset being played, which
+-- mail cannot reach; nil for anyone else, and always nil on retail. Only the
+-- census can know a ruleset, so a stranger is nil: unknown, not "same".
+--
+-- Cheap enough for every keystroke in the To: box: the census is indexed
+-- once (full-name key -> ruleset) and again only when it is written
+-- (ContactService's census generation) or replaced. A name the census holds
+-- on the ruleset being played as well (a character since moved) is on it.
+local rulesetIndex, rulesetGen, rulesetFrom, rulesetHere = nil, nil, nil, nil
+
+function R.OtherRuleset(name)
+  if not ns.IsForever then return nil end
+  local k = R.Key(name)
+  if k == "" then return nil end
+  local db = DB()
+  local alts = db and db.alts
+  if type(alts) ~= "table" then return nil end
+  local here = Helpers().PlayerRealm()
+  local CS = ns.ContactService
+  local gen = (CS and type(CS.CensusGen) == "function") and CS.CensusGen() or nil
+  if not rulesetIndex or gen == nil or rulesetGen ~= gen or rulesetFrom ~= alts
+     or rulesetHere ~= here then
+    local index = {}
+    for bucket, list in pairs(alts) do
+      if type(bucket) == "string" and type(list) == "table" then
+        for i = 1, #list do
+          local key = type(list[i]) == "string" and (R.Key(list[i])) or ""
+          if key ~= "" and index[key] ~= here then index[key] = bucket end
+        end
+      end
+    end
+    rulesetIndex, rulesetGen, rulesetFrom, rulesetHere = index, gen, alts, here
+  end
+  local where = rulesetIndex[k]
+  if where and where ~= here then return where end
+  return nil
 end
 
 -- Removes everything Postbox has stored for a recipient and reports what was
