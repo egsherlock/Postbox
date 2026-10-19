@@ -1420,8 +1420,13 @@ end
 -- the numbers that decided the window's smallest height.
 function CT.Diagnose()
   local compact, height, stride = RowMetrics()
-  return string.format("compact %s | row %d pitch %d | buttons %s | list floor %d",
+  local text = string.format("compact %s | row %d pitch %d | buttons %s | list floor %d",
     tostring(compact), height, stride, tostring(ShowCategoryButtons()), CT.MinPanelHeight())
+  -- What Blizzard's questions about gold from a stranger did this session,
+  -- where one came (MailService, "Gold from a stranger").
+  local report = Mail().StrangerReport and Mail().StrangerReport()
+  if report then text = text .. " | stranger gold: " .. report end
+  return text
 end
 
 -------------------------------------------------------------
@@ -7613,10 +7618,17 @@ function CollectSingleMail(panel, index, opts)
     -- Only a mail that held something is finished by a collect: an unread
     -- letter "collected" was read by the fetch, not by the player.
     local before = RV.HeldSomething(index) and RV.Before(index) or nil
-    Mail().CollectMail(index, function(status, refused, reason, _, paid)
+    Mail().CollectMail(index, function(status, refused, reason, kind, paid)
       -- A confirmed C.O.D. that changed hands is reported in chat, with the
       -- amount, from the service's own evidence, whatever else is said.
       RV.SayCODPaid(paid)
+      -- The gold stayed because the player answered Blizzard's question
+      -- about gold from a stranger with Cancel: nothing to report but any
+      -- items the server refused.
+      if status == "refused" and kind == "stranger" and refused == 0 then
+        RequestRefresh(panel)
+        return
+      end
       -- Emptied: in the "delete" read-mail mode it goes now, not later.
       if status == "collected" then
         RV.AutoDelete(panel, index, before, confirmed.history)
@@ -7985,7 +7997,28 @@ end
 
 function CT.RefreshRunStatus()
   if not Run.active then return end
+  -- While Blizzard asks about gold from a stranger, the line says so.
+  if Mail().StrangerAsking and Mail().StrangerAsking() then
+    StatusActivity(L()["STATUS_STRANGER_GOLD"], "warning")
+    return
+  end
   StatusActivity(format(L()["STATUS_REMAINING"], Remaining()))
+end
+
+-- Blizzard's own dialog is asking the player about gold from a stranger
+-- for a take of Postbox's, or has stopped (MailService, "Gold from a
+-- stranger"): the line says so while it asks, and Postbox's window goes
+-- below the dialog's layer so it never covers it.
+function CT.StrangerAsking(asking)
+  local UI = ns.MailboxUI
+  if UI and type(UI.YieldToDialog) == "function" then UI.YieldToDialog(asking) end
+  if asking then
+    StatusActivity(L()["STATUS_STRANGER_GOLD"], "warning")
+  elseif Run.active then
+    CT.RefreshRunStatus()
+  else
+    StatusActivity(nil)
+  end
 end
 
 -- The refusal reasons of a whole run, as the game gave them. Two attachments
@@ -8411,6 +8444,19 @@ function Run.OnCollected(status, refused, reason, refusal, _, took, record)
     if Run.took[i] then Run.Tally(i) end
     FinishRun(Remaining() + 1 + Run.dropped, "keep")
     return
+  end
+
+  -- The player answered Blizzard's question about this mail's gold from a
+  -- stranger with Cancel: the gold stays in the mail and none of it came
+  -- out. Items the server refused there are counted as ever; then the next.
+  if status == "refused" and refusal == "stranger" then
+    local n = tonumber(refused) or 0
+    if n > 0 then
+      Run.refused = Run.refused + n
+      Run.stuck = Run.stuck + 1
+      NoteReason(reason)
+    end
+    return Run.Next()
   end
 
   -- Past the two statuses that mean "the take may not have happened", so the

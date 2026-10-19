@@ -41,6 +41,23 @@ Mail.MAX_ATTACHMENTS = MAX_ATTACHMENTS
 
 local FALLBACK_ICON = "Interface\\Icons\\INV_Letter_02"
 
+-- Gold from a stranger: what the command layer knows of Blizzard's own
+-- question about it, declared here because the queue builders, the
+-- handshake and the takes all read it. The section that works it is
+-- further down ("Command layer :: gold from a stranger").
+local stranger = {
+  -- A gold take of Postbox's is out and not yet decided: "plan" (a whole
+  -- mail's takes, RunPlan) or "single" (the coin alone, Mail.TakeMoney),
+  -- with the mail it went to and the gold it held as it went.
+  armed = nil, fingerprint = nil, index = nil, amount = 0,
+  -- Blizzard's dialog stands for that take (since `askedAt`, GetTime), and
+  -- the handshake wait under way is parked while it does.
+  asking = false, askedAt = nil, parked = false,
+  -- fingerprint -> true: gold the player left in a mail by answering Cancel,
+  -- for the rest of the run (a run takes nothing more from it).
+  declined = {},
+}
+
 -- The category vocabulary, and the only place it is written down. Five of the
 -- seven are outcomes ClassifyMail can return; "all" is a filter the collect
 -- tab offers and is never a classification result, and "alts" is a sweep by
@@ -460,6 +477,8 @@ local function ConsiderEach(indices, category, queue, info)
 end
 
 function Mail.BuildQueue(category, order)
+  -- A new run: gold left from a stranger is asked about again.
+  for fingerprint in pairs(stranger.declined) do stranger.declined[fingerprint] = nil end
   local numItems, totalItems = GetInboxNumItems()
   numItems = tonumber(numItems) or 0
   totalItems = tonumber(totalItems) or numItems
@@ -502,6 +521,7 @@ end
 -- click on each row would be -- stuck or not, bags full or not (C.O.D. is
 -- still never swept).
 function Mail.BuildQueueFor(indices, category, picked)
+  for fingerprint in pairs(stranger.declined) do stranger.declined[fingerprint] = nil end
   category = category or "all"
   local numItems, totalItems = GetInboxNumItems()
   numItems = tonumber(numItems) or 0
@@ -881,6 +901,13 @@ local idle = { fn = nil, onTimeout = nil, aheadFn = nil, aheadTimeout = nil }
 
 -- One poll of the wait under way.
 local function WaitPoll()
+  -- Blizzard's dialog is asking the player about gold from a stranger for
+  -- this take: no deadline runs while they read it. Picked up again once
+  -- the answer shows (stranger.Unpark, "Gold from a stranger").
+  if stranger.asking then
+    stranger.parked = true
+    return
+  end
   wait.attempts = wait.attempts + 1
   if CommandPending() then
     if wait.attempts >= COMMAND_MAX_ATTEMPTS then
@@ -897,6 +924,17 @@ local function WaitPoll()
   wait.on, wait.fn = false, nil
   flight.on = false
   fn(false)
+end
+
+-- The parked wait goes on, with a whole deadline from now, answering `fn`
+-- instead where one is given. -> whether a wait was parked.
+function stranger.Unpark(fn)
+  if not stranger.parked then return false end
+  stranger.parked = false
+  if fn then wait.fn = fn end
+  wait.attempts = 0
+  C_Timer.After(COMMAND_POLL_INTERVAL, WaitPoll)
+  return true
 end
 
 -- Polls until the server is ready, then calls callback(timedOut). The callback
@@ -3000,6 +3038,7 @@ local function PlanOver(timedOut, full, kept, moved, closed)
   local p = plan
   local done = p.done
   p.done, p.pending = nil, nil
+  stranger.armed = nil
   local refused = p.refused
   done(timedOut, refused, p.reason or (refused == 0 and p.missedText) or nil, p.fingerprint, full, kept, p.missed,
     moved, closed, p.paidAmount, p.tookMoney)
@@ -3409,8 +3448,9 @@ function PlanStep()
   p.cursor = p.cursor + 1
   local op = p.list[p.cursor]
   -- The take before this one is decided: its mail is no longer expected to
-  -- go by it.
+  -- go by it, nor its gold asked about.
   TrackMayEmpty(false)
+  stranger.armed = nil
   -- Where the mail is now ("the inbox, followed"): gone, as a take of the
   -- plan's emptied it, and there is nothing left to take; not known, and
   -- nothing more goes -- "moved" only while a take of the plan's is still to
@@ -3525,6 +3565,8 @@ function PlanStep()
   p.watched = nil
   p.goneAtIssue = track.gone
   if op.kind == "money" then
+    -- The server may ask the player about this gold first (a stranger's).
+    stranger.Arm("plan", p.fingerprint, index, before)
     TakeInboxMoney(index)
   else
     p.watched = bagsCatch.Watch(p.keepFree)
@@ -3577,6 +3619,283 @@ local function RunPlan(index, fingerprint, list, done, record, keepFree, whole, 
   p.op, p.pending = nil, nil
   p.record = HistoryRecord(index, record)
   PlanStep()
+end
+
+-------------------------------------------------------------
+-- Command layer :: gold from a stranger
+--
+-- On World of Warcraft: Forever, and on retail from 12.1.7, the gold in a
+-- mail from someone the server counts as a stranger is not handed over on
+-- TakeInboxMoney. The server asks the player first: the client fires
+-- SECURE_TRANSFER_CONFIRM_TAKE_MAIL_MONEY, and Blizzard's own secure dialog
+-- (TAKE_MONEY_FROM_STRANGER: "Really take from %s the following amount?")
+-- names the sender and the sum. Accept takes the gold, Cancel leaves it in
+-- the mail. The dialog lives in Blizzard's secure environment: Postbox
+-- never answers it, never calls C_SecureTransfer, and cannot see it. The
+-- player's own click decides.
+--
+-- A take of Postbox's that meets the question waits for the answer. Its
+-- handshake wait is parked, so no deadline runs while the player reads; a
+-- plan already past its handshake (the grace, the wait for the character's
+-- word, the one more try) waits instead of trying again, which would only
+-- ask again; and the collect screen says what is happening
+-- (Core/CollectTab.lua, CT.StrangerAsking). Nothing reports the click, so
+-- the answer is read off what it did:
+--
+--   took      the gold left the mail (the mail reads less, or it went):
+--             the take is judged as any take is, and the sequence goes on.
+--   declined  the dialog went and the gold stayed: Blizzard's own word for
+--             it (SECURE_TRANSFER_CANCEL, which takes the dialog down;
+--             MAIL_FAILED or MAIL_OPEN_ALL_CANCELED once the moment it
+--             asked has passed), or, where the take held the channel
+--             through the question, the channel let go after a click with
+--             the gold still in the mail. The gold stays where it is, and a
+--             run leaves it for the rest of the run, as it leaves a C.O.D.,
+--             so the same question is never asked twice (`declined`); the
+--             mail's items are taken as ever.
+--   closed    the mailbox closed: as a walk-away mid-take always has.
+--
+-- With no answer the take waits as long as the dialog stands: nothing is
+-- reported failed or stuck while the player is reading.
+--
+-- Only a take of Postbox's own counts (`armed`): a question about another
+-- addon's take is not Postbox's. Who counts as a stranger is the server's
+-- to say. On a client without the event (retail before 12.1.7) nothing is
+-- registered and nothing here runs.
+--
+-- Blizzard's own Open All tells the client it is opening all
+-- (C_Mail.SetOpeningAll) and stops on MAIL_OPEN_ALL_CANCELED, which the
+-- client fires (no Lua does); whether at the question or at a Cancel, the
+-- source does not say. Postbox never says it is opening all, and reads that
+-- event only as one more sign of a Cancel.
+-------------------------------------------------------------
+
+stranger.CONFIRM = "SECURE_TRANSFER_CONFIRM_TAKE_MAIL_MONEY"
+-- What the answer is read from, listened to only while the dialog stands.
+stranger.WATCH = {
+  "MAIL_INBOX_UPDATE", "MAIL_SUCCESS", "MAIL_FAILED", "MAIL_CLOSED",
+  "PLAYER_INTERACTION_MANAGER_FRAME_HIDE", "SECURE_TRANSFER_CANCEL",
+  "MAIL_OPEN_ALL_CANCELED", "GLOBAL_MOUSE_UP",
+}
+-- How long after a click the channel is looked at again: the server's
+-- answer to a Cancel is a round trip. One look per click, the last click's
+-- (`recheckAt`: when it is due).
+stranger.RECHECK = 1.5
+stranger.recheckAt, stranger.heldAtClick = 0, false
+-- What the questions of this session did, for /postbox debug: the last
+-- NOTES events, kept only once a question has come.
+stranger.notes, stranger.noteN, stranger.NOTES = nil, 0, 24
+
+-- Whether this client knows the event (true where it cannot be asked: the
+-- protected register then decides).
+function stranger.Known(event)
+  if C_EventUtils and type(C_EventUtils.IsEventValid) == "function" then
+    local ok, valid = pcall(C_EventUtils.IsEventValid, event)
+    if ok then return valid and true or false end
+  end
+  return true
+end
+
+function stranger.Register(event)
+  if not stranger.Known(event) then return false end
+  return (pcall(stranger.frame.RegisterEvent, stranger.frame, event))
+end
+
+-- The question is listened for from Postbox's first gold take of the
+-- session, on a client that has it, and then for the session: it is quiet
+-- unless the server asks.
+function stranger.Listen()
+  local s = stranger
+  s.listening = false
+  if type(CreateFrame) ~= "function" or not s.Known(s.CONFIRM) then return end
+  s.frame = CreateFrame("Frame")
+  s.frame:SetScript("OnEvent", s.OnEvent)
+  s.listening = s.Register(s.CONFIRM)
+end
+
+-- A gold take of Postbox's is going out: whose (`kind`), to which mail, and
+-- the gold it holds.
+function stranger.Arm(kind, fingerprint, index, amount)
+  local s = stranger
+  if s.listening == nil then s.Listen() end
+  s.armed, s.fingerprint, s.index, s.amount = kind, fingerprint, index, tonumber(amount) or 0
+end
+
+function stranger.Note(what)
+  local s = stranger
+  if not s.notes then s.notes = {} end
+  s.noteN = s.noteN + 1
+  s.notes[(s.noteN - 1) % s.NOTES + 1] = string.format("%s@%.1f%s", what,
+    (GetTime() or 0) - (s.askedAt or 0), CommandPending() and "*" or "")
+end
+
+-- The collect screen is told when the question goes up and when it is over.
+function stranger.Tell(asking)
+  local CT = ns.CollectTab
+  if CT and type(CT.StrangerAsking) == "function" then pcall(CT.StrangerAsking, asking) end
+end
+
+-- Whether the gold has left the mail the take went to: it reads less, or
+-- the mail went (emptied by it).
+function stranger.GoldGone()
+  local s = stranger
+  local at = TrackWhere(s.index)
+  if at == nil then return true end
+  if at == false or Fingerprint(at) ~= s.fingerprint then return false end
+  return Mail.MoneyLeft(at) < s.amount
+end
+
+-- The question is up, for a take of Postbox's.
+function stranger.Ask()
+  local s = stranger
+  if not s.armed or s.asking then return end
+  s.asking, s.askedAt, s.heldAtClick = true, GetTime(), false
+  s.Note("ask")
+  local watch = s.WATCH
+  for k = 1, #watch do s.Register(watch[k]) end
+  if s.armed == "plan" then
+    local p = plan
+    local was = p.pending
+    -- The game's words that come while the player reads are not this take's.
+    if was == "handshake" or was == "grace" then ErrorWatch.Close() end
+    -- Past its handshake: it waits here rather than look, or try, again.
+    if was == "grace" or was == "retry" or was == "evidence" then
+      if was == "evidence" then
+        local f = evidence.frame
+        f:UnregisterEvent("PLAYER_MONEY")
+        f:UnregisterEvent("BAG_UPDATE_DELAYED")
+        f:UnregisterEvent("MAIL_CLOSED")
+      end
+      p.pending, p.again = "stranger", nil
+    end
+  end
+  s.Tell(true)
+end
+
+-- The plan's take was answered Cancel: once the channel is free, the plan
+-- goes on with the mail's next take.
+function stranger.AfterDecline(timedOut)
+  local p = plan
+  if p.pending ~= "stranger" then return end
+  p.pending = nil
+  if timedOut then return PlanOver(true) end
+  if not MailboxOpen() then return PlanOver(false, false, false, false, true) end
+  PlanStep()
+end
+
+-- The question is over (`how`: "took", "declined" or "closed").
+function stranger.Resolve(how)
+  local s = stranger
+  if not s.asking then return end
+  s.asking = false
+  s.Note(how)
+  local watch, f = s.WATCH, s.frame
+  for k = 1, #watch do pcall(f.UnregisterEvent, f, watch[k]) end
+  s.Tell(false)
+  local p = plan
+  local inPlan = s.armed == "plan"
+  local waiting = inPlan and p.pending == "stranger"
+  if how == "took" then
+    -- Judged as any take: where the mail is, what it holds.
+    if waiting then
+      p.pending = "handshake"
+      WaitForCommand(PlanOnHandshake)
+      return
+    end
+    s.Unpark()
+    return
+  end
+  if how == "declined" then
+    if inPlan then
+      s.declined[s.fingerprint] = true
+      p.pending = "stranger"
+      if not s.Unpark(s.AfterDecline) then WaitForCommand(s.AfterDecline) end
+      return
+    end
+    -- The coin alone: its own look finds the gold still there.
+    s.Unpark()
+    return
+  end
+  -- The mailbox closed. Nothing more goes, and what the take did is not
+  -- known: over as closed, without waiting out a deadline.
+  if s.parked then
+    local fn = wait.fn
+    s.parked = false
+    wait.on, wait.fn = false, nil
+    flight.on = false
+    if inPlan then
+      p.pending = nil
+      return PlanOver(false, false, false, false, true)
+    end
+    if fn then fn(false) end
+    return
+  end
+  if waiting then
+    p.pending = nil
+    PlanOver(false, false, false, false, true)
+  end
+end
+
+-- What the answer did, as far as anything shows yet.
+function stranger.Judge(event)
+  local s = stranger
+  if not MailboxOpen() then return s.Resolve("closed") end
+  if s.GoldGone() then return s.Resolve("took") end
+  if event == "SECURE_TRANSFER_CANCEL" then return s.Resolve("declined") end
+  -- Said in the very moment the question came, they are part of asking it.
+  if (event == "MAIL_FAILED" or event == "MAIL_OPEN_ALL_CANCELED") and GetTime() ~= s.askedAt then
+    return s.Resolve("declined")
+  end
+  if event == "recheck" and s.heldAtClick and not CommandPending() then
+    return s.Resolve("declined")
+  end
+end
+
+-- The look after a click: the last click's only, and only while the
+-- question stands.
+function stranger.Recheck()
+  local s = stranger
+  if not s.asking or (GetTime() or 0) < s.recheckAt - 0.001 then return end
+  s.Judge("recheck")
+end
+
+function stranger.OnEvent(_, event, kind)
+  local s = stranger
+  if event == s.CONFIRM then return s.Ask() end
+  if not s.asking then return end
+  s.Note(event)
+  if event == "GLOBAL_MOUSE_UP" then
+    -- Whether the take still held the channel as the player clicked: if it
+    -- lets go with the gold still in the mail, the click was the answer.
+    s.heldAtClick = CommandPending()
+    s.recheckAt = (GetTime() or 0) + s.RECHECK
+    C_Timer.After(s.RECHECK, s.Recheck)
+    return
+  end
+  if event == "MAIL_CLOSED" then return s.Resolve("closed") end
+  if event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
+    local enum = type(Enum) == "table" and Enum.PlayerInteractionType or nil
+    if enum and kind == enum.MailInfo then s.Resolve("closed") end
+    return
+  end
+  s.Judge(event)
+end
+
+-- Whether Blizzard is asking the player about gold from a stranger for a
+-- take of Postbox's right now.
+function Mail.StrangerAsking()
+  return stranger.asking
+end
+
+-- -> what the questions about gold from a stranger did this session, oldest
+-- first ("event@seconds since it asked", * while the channel was held), or
+-- nil when none came (/postbox debug).
+function Mail.StrangerReport()
+  local s = stranger
+  if not s.notes then return nil end
+  local out, n = {}, math.min(s.noteN, s.NOTES)
+  for k = s.noteN - n + 1, s.noteN do out[#out + 1] = s.notes[(k - 1) % s.NOTES + 1] end
+  return table.concat(out, " ")
 end
 
 -------------------------------------------------------------
@@ -3714,6 +4033,9 @@ local job = {
 local function JobFinish(status, refusedCount, reason, kind)
   local j = job
   if not j.token then return end
+  -- The mail's gold stayed because the player answered Blizzard's question
+  -- about it with Cancel: "stranger", so nothing is said of a refusal.
+  if status == "refused" and kind == nil and stranger.declined[j.fingerprint] then kind = "stranger" end
   local token, onDone, paid, tookMoney, record = j.token, j.onDone, j.paid, j.tookMoney, j.record
   j.token, j.onDone, j.pending = nil, nil, nil
   j.opts, j.clicked, j.record = nil, nil, nil
@@ -3868,7 +4190,10 @@ function JobExecute()
   -- Enumerate only now: before the fetch landed, every link is nil. The
   -- entries come from the plan's pool.
   local n = 0
-  if Mail.MoneyLeft(index) > 0 and type(TakeInboxMoney) == "function" then
+  -- Gold the player left in this mail at Blizzard's question, earlier in
+  -- this run, is not asked about again ("Gold from a stranger").
+  local leftGold = j.opts ~= nil and j.opts.moves and stranger.declined[j.fingerprint]
+  if Mail.MoneyLeft(index) > 0 and type(TakeInboxMoney) == "function" and not leftGold then
     n = n + 1
     PlanEntry(n, "money", nil, nil, nil)
   end
@@ -3913,6 +4238,8 @@ function JobExecute()
       C_Timer.After(RETRY_SETTLE, JobRelook)
       return
     end
+    -- Only the gold left at Blizzard's question: it stays, as the player said.
+    if leftGold and Mail.MoneyLeft(index) > 0 then return JobFinish("refused", 0, nil) end
     -- Nothing left to take: the mail is empty, so whatever was refused before
     -- is no longer true of it.
     ForgetStuck(j.fingerprint)
@@ -4310,9 +4637,16 @@ function Mail.TakeMoney(index, onDone, history, expected, stamp)
     -- Gold the last of what the mail holds, with no text of its own: it goes
     -- with its gold.
     local leaves = Mail.AttachmentsLeft(at) == 0 and not Mail.HasOwnText(at)
+    -- The server may ask the player about this gold first (a stranger's).
+    stranger.Arm("single", fingerprint, at, amount)
     TakeInboxMoney(at)
     return leaves
-  end, onDone, index, expected, function(where)
+  end, function(status)
+    -- Its own take only: a "busy" answer leaves the sequence that has the
+    -- channel armed as it was.
+    if status ~= "busy" and stranger.armed == "single" then stranger.armed = nil end
+    if onDone then onDone(status) end
+  end, index, expected, function(where)
     -- Landed: the sum has left the mail where it is, or the mail, emptied
     -- by it, has gone.
     if amount > 0 and (where == nil

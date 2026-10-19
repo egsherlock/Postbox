@@ -2141,6 +2141,18 @@ local function OutcomePartDown(kind)
   status.outcomeKind2, status.outcomeAfter2, status.outcomeAfterBoth = nil, nil, nil
 end
 
+-- Blizzard's own dialog about gold from a stranger stands for a take of
+-- Postbox's (Core/MailService.lua, "Gold from a stranger"). It opens in
+-- the middle of the screen at the DIALOG layer, where the window lives too
+-- and comes to the front when clicked: while it asks, the window sits one
+-- layer below it, so it can never cover the question, and goes back after.
+-- Postbox's own frame only; set, never read (GetFrameStrata can answer a
+-- secret value on Forever).
+function UI.YieldToDialog(yield)
+  local frame = UI._frame
+  if frame then frame:SetFrameStrata(yield and "HIGH" or "DIALOG") end
+end
+
 -- The mailbox opening or closing: the visit's line starts again, what was
 -- sent in it included.
 function UI.ClearStatus()
