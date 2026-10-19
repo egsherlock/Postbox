@@ -54,9 +54,10 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   of reporting "No confirmation from the server" after ten seconds. Accept
   and the mail is recorded as sent; if you don't accept, nothing is sent and
   your draft stays.
-- Sending more than 12 items in one press always sends the last mail too.
-  Its items could stay behind in the attachment slots when the game reported
-  the emptied slots very quickly.
+- Sending more than 12 items in one press sends every mail in full. The last
+  mail's items could stay behind in the attachment slots when the game
+  reported the emptied slots very quickly, and pressing Send while the game
+  asked about a refundable item could send part of a mail early.
 
 ## 1.50.0
 
