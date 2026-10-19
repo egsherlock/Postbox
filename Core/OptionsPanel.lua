@@ -1744,6 +1744,11 @@ do
       list = MW.Block(win)
     else
       list = CreateFrame("Frame", nil, win, "BackdropTemplate")
+      -- The mail window's list, not one of the options' cards: a style that
+      -- paints the lists of an always-solid window as its cards paints this
+      -- one as the window's (Skin_Postbox, FlatPanel), so its rows stand on
+      -- the ground the window's own rows do.
+      list.__pbWindowList = true
       T.ApplyList(list)
     end
     list.Rows = {}
@@ -1881,8 +1886,21 @@ do
       if ok and type(a) == "number" then alpha = math.max(0, math.min(1, a)) end
     end
     local r, g, b
+    -- A paper style (a creative style on a light ground) names as its
+    -- window's colour the sheet its inks are read on: the paper at its
+    -- darkest grain, already at the opacity floor over a dark scene. Laid
+    -- again at the opacity, that draws the window darker than it ever
+    -- shows, and the list and band on it darker than theirs. The drawing
+    -- lays the paper itself, at its darkest grain, as the window's art is.
+    local CS = skin and skin.IsCreativeStyle and ns.CreativeStyles
+    local def = CS and type(CS.Active) == "function" and CS.Active() or nil
+    local paper = def and def.light and def.ground and def.colors and def.grain and def.colors[def.ground.tint]
+    if paper then
+      local lo = def.grain[1] or 1
+      r, g, b = math.min(1, paper[1] * lo), math.min(1, paper[2] * lo), math.min(1, paper[3] * lo)
+    end
     local base = ns.Skin and ns.Skin.GetHostBaseline
-    if type(base) == "function" then
+    if not r and type(base) == "function" then
       local ok, br, bg, bb = pcall(base)
       if ok and type(br) == "number" then r, g, b = br, bg, bb end
     end

@@ -1743,7 +1743,8 @@ end
 -- A tagged panel, on its own ground. Which ground is what it is: the mail list
 -- and the cards the inset panel's, an input wrap a field's, the band its own;
 -- in an always-solid window (the options panel, Mail Memory) the lists and
--- cards are the options' cards.
+-- cards are the options' cards -- but for the options' drawing of the mail
+-- window, whose list is that window's (`__pbWindowList`, SkinOne).
 local function FlatPanel(panel, kind)
   if not panel or panel.__postboxSkinned then return end
   panel.__postboxSkinned = true
@@ -2011,7 +2012,7 @@ local function SkinOne(c, opaque)
     FlatPanel(c, "input")
   elseif c.__postboxPanel then
     local tag = c.__postboxPanel
-    FlatPanel(c, tag == "band" and "band" or (opaque and "optCard") or "list")
+    FlatPanel(c, tag == "band" and "band" or (opaque and not c.__pbWindowList and "optCard") or "list")
   elseif c:IsObjectType("EditBox") then
     if not c.__postboxNoEditSkin then FlatEdit(c) end
   elseif c:IsObjectType("ScrollFrame") then
