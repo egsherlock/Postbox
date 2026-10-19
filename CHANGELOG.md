@@ -47,6 +47,14 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   writes names, without ever writing one; Battle.net friends are suggested
   only from a game Blizzard can deliver mail to.
 
+### Fixed
+
+- When the game asks you to confirm sending gold or items to someone it
+  doesn't know, the Send tab now says so and waits for your answer, instead
+  of reporting "No confirmation from the server" after ten seconds. Accept
+  and the mail is recorded as sent; if you don't accept, nothing is sent and
+  your draft stays.
+
 ## 1.50.0
 
 **Make Postbox yours.** Arrange the window your way, pick the new Postbox
