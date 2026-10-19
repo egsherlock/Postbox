@@ -1332,6 +1332,18 @@ local function DoSendMail(panel, confirmed)
   -- post the draft a second time. Nothing is asked and nothing is said; the
   -- button already reads as sending.
   if pendingSend then return end
+  -- Nor while the queue is moving items into the slots (section 18a). The
+  -- pass has them until it has finished, waiting on the client's question
+  -- or on the moment before it, and a send now would post the slots half
+  -- filled and leave the pass, and any run of mails behind it, nowhere to
+  -- go. The button reads busy meanwhile (Q.HoldButton), so this is
+  -- Ctrl+Enter, or the accept of a question asked before the pass began.
+  -- Nothing is sent and nothing is asked; only while the client's question
+  -- is on screen is the player told that it is the thing to answer.
+  if ST.QueuePassActive and ST.QueuePassActive() then
+    if ST.QueueAwaitingAnswer() then ns.Print(L["MSG_QUEUE_ANSWER_FIRST"]) end
+    return
+  end
   local toName  = FieldText(panel.ToBox)
   local subject = FieldText(panel.SubjectBox)
   local body    = FieldText(panel.BodyBox)
@@ -1341,14 +1353,6 @@ local function DoSendMail(panel, confirmed)
 
   if type(SendMail) ~= "function" then
     PopupNotice(L["ERR_SENDMAIL_UNAVAILABLE"])
-    return
-  end
-
-  -- The client is asking about a queued item (section 18a): that dialog is
-  -- the thing to answer, and a send under it would post the slots as they
-  -- stand, with the item in question in neither the mail nor the queue.
-  if ST.QueueAwaitingAnswer and ST.QueueAwaitingAnswer() then
-    ns.Print(L["MSG_QUEUE_ANSWER_FIRST"])
     return
   end
 
@@ -4649,10 +4653,7 @@ RefreshQueueLabel = function(panel)
       button:Hide()
     end
   end
-  if panel.FillButton and not pendingSend then
-    panel.FillButton:SetText(SendButtonCaption(panel))
-    ST.FitSendHint(panel)
-  end
+  if panel.FillButton and not pendingSend then Q.HoldButton(panel) end
   -- Postage is quoted for the whole press, so it moves with the queue.
   Invalidate(panel, "cost")
   -- The pane shows the queue itself.
@@ -4742,6 +4743,34 @@ end
 -- waiting; every other way into the slots (a slot refresh, the Send
 -- button) stands aside until it has finished.
 Q.fillState = nil
+
+-- The Send button's face whenever no mail is with the server: while a pass
+-- is waiting, it waits with it, disabled as it is for a mail with the
+-- server, so a press cannot post the slots half filled (DoSendMail stands
+-- aside too, for Ctrl+Enter). A pass filling a run's next mail reads as that
+-- mail being sent ("Sending 2 of 3..."), which it is; a pass topping the
+-- slots up keeps the press's own caption, as nothing is being sent. `Q.held`
+-- marks a held button, so an ordinary refresh does what it always did and
+-- only the release enables it again.
+Q.held = false
+function Q.HoldButton(panel)
+  local button = panel.FillButton
+  local hold = Q.fillState ~= nil
+  if hold then
+    if button.Disable then button:Disable() end
+    local run = panel._run
+    if run and run.total > 1 then
+      button:SetText(L("BTN_SEND_RUN_PENDING", run.index + 1, run.total))
+    else
+      button:SetText(SendButtonCaption(panel))
+    end
+  else
+    if Q.held and button.Enable then button:Enable() end
+    button:SetText(SendButtonCaption(panel))
+  end
+  Q.held = hold
+  ST.FitSendHint(panel)
+end
 
 -- Will the client ask before attaching this item? An item still inside its
 -- refund window is the case: the attach raises the client's "this will make
@@ -4928,6 +4957,7 @@ function Q.RunFill(state)
       local pending = { entry = entry, slotIndex = state.slotIndex, asks = asks, ticks = 0, gone = 0 }
       state.pending = pending
       Q.fillState = state
+      if panel.FillButton and not pendingSend then Q.HoldButton(panel) end
       Q.Watch(state, pending)
       return
     end
