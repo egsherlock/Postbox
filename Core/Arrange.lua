@@ -6487,7 +6487,9 @@ do
   end
 
   -- Quality by the name, on the Subject card: the options' three answers.
+  -- Not on World of Warcraft: Forever, whose goods carry no quality mark.
   function AR.PutQualityName(y)
+    if ns.IsForever then return y end
     local ui = UI()
     if not (ui and ui.GetQualityName and ui.SetQualityName) then return y end
     local insp = AR._insp
@@ -6526,6 +6528,9 @@ do
         if ui and ui.SetOption then ui.SetOption("iconCounts", on) end
       end },
   }
+  -- World of Warcraft: Forever's goods carry no quality mark: the badge's
+  -- switch is not offered there, and the count's is the card's only one.
+  if ns.IsForever then table.remove(TOGGLES, 1) end
   AR.TOGGLES = TOGGLES
 
   local function PaintToggle(t)

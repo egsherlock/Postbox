@@ -4938,37 +4938,46 @@ function Pages.mail(col)
   -- comes first, so the badge stands next to Quality by the name below it:
   -- the two quality choices together, side by side or, where the pair comes
   -- apart, one above the other.
-  local marks = Rows.Pair(col, {
+  --
+  -- World of Warcraft: Forever's goods carry no crafting quality, so there
+  -- is no mark to draw there: the count has its row alone and neither
+  -- quality choice is offered. What a player chose for them stays saved.
+  local counts = {
     title = L["OPT_ICON_COUNTS_TITLE"], text = L["OPT_ICON_COUNTS_DESC"],
     get = function() return ns.MailboxUI.GetOption("iconCounts") end,
     set = function(on)
       ns.MailboxUI.SetOption("iconCounts", on)
       QualityChanged()
     end,
-  }, {
-    title = L["OPT_QUALITY_ICON_TITLE"], text = L["OPT_QUALITY_ICON_DESC"],
-    get = function() return not ns.MailboxUI.GetQualityIcon or ns.MailboxUI.GetQualityIcon() end,
-    set = function(on)
-      if ns.MailboxUI.SetQualityIcon then ns.MailboxUI.SetQualityIcon(on) end
-      QualityChanged()
-    end,
-  })
-  Shown(marks.pair[1].entry, "icons")
-  Shown(marks.pair[2].entry, "mark")
-  local byName = Rows.Dropdown(col, {
-    title = L["OPT_QUALITY_NAME_TITLE"], text = L["OPT_QUALITY_NAME_DESC"],
-    items = {
-      { id = "before", name = L["OPT_QUALITY_NAME_BEFORE"] },
-      { id = "after",  name = L["OPT_QUALITY_NAME_AFTER"] },
-      { id = "off",    name = L["OPT_QUALITY_OFF"] },
-    },
-    get = function() return ns.MailboxUI.GetQualityName and ns.MailboxUI.GetQualityName() or "off" end,
-    set = function(id)
-      if ns.MailboxUI.SetQualityName then ns.MailboxUI.SetQualityName(id) end
-      QualityChanged()
-    end,
-  })
-  Shown(byName.entry, "name")
+  }
+  if ns.IsForever then
+    Shown(Rows.Check(col, counts).entry, "icons")
+  else
+    local marks = Rows.Pair(col, counts, {
+      title = L["OPT_QUALITY_ICON_TITLE"], text = L["OPT_QUALITY_ICON_DESC"],
+      get = function() return not ns.MailboxUI.GetQualityIcon or ns.MailboxUI.GetQualityIcon() end,
+      set = function(on)
+        if ns.MailboxUI.SetQualityIcon then ns.MailboxUI.SetQualityIcon(on) end
+        QualityChanged()
+      end,
+    })
+    Shown(marks.pair[1].entry, "icons")
+    Shown(marks.pair[2].entry, "mark")
+    local byName = Rows.Dropdown(col, {
+      title = L["OPT_QUALITY_NAME_TITLE"], text = L["OPT_QUALITY_NAME_DESC"],
+      items = {
+        { id = "before", name = L["OPT_QUALITY_NAME_BEFORE"] },
+        { id = "after",  name = L["OPT_QUALITY_NAME_AFTER"] },
+        { id = "off",    name = L["OPT_QUALITY_OFF"] },
+      },
+      get = function() return ns.MailboxUI.GetQualityName and ns.MailboxUI.GetQualityName() or "off" end,
+      set = function(id)
+        if ns.MailboxUI.SetQualityName then ns.MailboxUI.SetQualityName(id) end
+        QualityChanged()
+      end,
+    })
+    Shown(byName.entry, "name")
+  end
   -- What resting on the item icon of a mail with several items shows: the
   -- list of them, or the fan, the items spread beside the icon to take one
   -- at a time (CollectTab). Read on hover, so nothing is redrawn. The same
