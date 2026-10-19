@@ -379,8 +379,9 @@ local function PersistOnClose()
   snapshot.baseNew = (MM.ReadMailFlags())
   snapshot.baseFrom = SenderTriple()
 
-  local realm = GetRealmName()
-  local name = UnitName("player")
+  -- Forever: the ruleset and the full name (Helpers.PlayerRealm/PlayerName).
+  local realm = ns.Helpers.PlayerRealm()
+  local name = ns.Helpers.PlayerName()
   if not (realm and name) then return end
 
   -- Raw realm key, same convention as alts/lastRun (see Postbox.lua schema).
@@ -393,8 +394,8 @@ local function PersistOnClose()
 end
 
 local function StoredSnapshot()
-  local realm = GetRealmName()
-  local name = UnitName("player")
+  local realm = ns.Helpers.PlayerRealm()
+  local name = ns.Helpers.PlayerName()
   if not (realm and name) then return nil end
   local root = ns.Store and ns.Store.Get and ns.Store.Get("mailMemory")
   local byRealm = root and root[realm]
@@ -526,8 +527,10 @@ local AUCTION_LONGEST = 48 * 3600
 local MAIL_LIFE = 30 * DAY
 local UNSEEN_STOP = MAIL_LIFE + AUCTION_LONGEST
 
+-- realm, name: exactly two values (UnitName's realm, or Forever's surname,
+-- never rides along as a third).
 local function Me()
-  return GetRealmName(), UnitName("player")
+  return ns.Helpers.PlayerRealm(), ns.Helpers.PlayerName()
 end
 
 local function WatchFor(realm, name, create)
@@ -678,7 +681,11 @@ end
 
 -- A character's name as the lists show it: the realm only when it is not
 -- `myRealm`, the one being played.
+-- On Forever a full name says whose box it is on its own: no ruleset after
+-- it, and the character being played as the player has chosen to see it
+-- (Helpers.ShownName).
 local function CharacterLabel(realm, name, myRealm)
+  if ns.Helpers.TwoPartNames() then return ns.Helpers.ShownName(name) end
   if realm ~= myRealm then return name .. " - " .. realm end
   return name
 end
@@ -870,7 +877,8 @@ function MM.NoteSentTo(toName)
     if type(names) == "table" then
       for i = 1, #names do
         local name = names[i]
-        if not (realm == myRealm and name == myName) and R.Key(name .. "-" .. realm) == key then
+        if not (realm == myRealm and name == myName)
+           and (R.CharacterKey and R.CharacterKey(name, realm) or R.Key(name .. "-" .. realm)) == key then
           NoteArrival(realm, name)
           return
         end
@@ -1189,10 +1197,14 @@ end
 -- it (Theme section 2c).
 function MM.ClassName(realm, name, noRealm, ground)
   local text = tostring(name or "")
+  -- Forever: no ruleset after a full name, and the player's own as they
+  -- have chosen to see it.
+  local forever = ns.Helpers.TwoPartNames()
+  if forever then text = ns.Helpers.ShownName(text) end
   local CS = ns.ContactService
   local token = ClassOf(realm, name)
   if token and CS and CS.WrapClass then text = CS.WrapClass(token, text, ground) end
-  if not noRealm and realm and realm ~= GetRealmName() then
+  if not noRealm and not forever and realm and realm ~= ns.Helpers.PlayerRealm() then
     text = text .. " " .. ns.Theme.Colorize("textSecondary", "- " .. realm, ground)
   end
   return text
@@ -3742,7 +3754,7 @@ if bus then
   -- item when it does not. An expiry while online is that mail arriving.
   registered.auctionPosted = bus.Register("AUCTION_HOUSE_AUCTION_CREATED", function()
     if not MemoryEnabled() then return end
-    local watch = WatchFor(GetRealmName(), UnitName("player"), true)
+    local watch = WatchFor(ns.Helpers.PlayerRealm(), ns.Helpers.PlayerName(), true)
     if not watch then return end
     local now = time()
     watch.auctionAt = watch.auctionAt or now

@@ -1221,7 +1221,9 @@ end
 -- Core/RecipientManager.lua draws its rows the same way.
 local function DecorateAddress(address)
   local text = tostring(address or "")
-  local short, realm = text:match("^([^%-]+)%-(.+)$")
+  -- A Forever address is the full name, with no realm half to dim.
+  local short, realm
+  if not ns.Helpers.TwoPartNames() then short, realm = text:match("^([^%-]+)%-(.+)$") end
   if short then
     return Contacts().GetClassColoredName(text, short)
         .. Theme.Colorize("textSecondary", "-" .. realm)

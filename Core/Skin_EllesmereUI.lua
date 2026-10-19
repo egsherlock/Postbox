@@ -194,12 +194,19 @@ do
     return loaded and true or false
   end
 
-  -- AceDB's key for this character, "Name - Realm". Made once: it cannot
+  -- AceDB's key for this character, "Name - Realm"; on Forever AceDB keys a
+  -- character by its full name alone, "Abla Stone". Made once: it cannot
   -- change without a relog.
   local function CharKey()
     if charKey then return charKey end
-    local name = type(UnitName) == "function" and UnitName("player") or nil
-    local realm = type(GetRealmName) == "function" and GetRealmName() or nil
+    local H = ns.Helpers
+    local name = H.PlayerName()
+    if H.TwoPartNames() then
+      if type(name) ~= "string" or not name:find(H.NameSeparator(), 1, true) then return nil end
+      charKey = name
+      return charKey
+    end
+    local realm = H.PlayerRealm()
     if type(name) ~= "string" or type(realm) ~= "string" or name == "" then return nil end
     charKey = name .. " - " .. realm
     return charKey

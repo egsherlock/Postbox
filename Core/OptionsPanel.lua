@@ -1826,8 +1826,10 @@ do
   function MW.PaintMe(fs)
     local T = ns.Theme
     local R = ns.CollectTab and ns.CollectTab.RowRules
-    local name = type(UnitName) == "function" and UnitName("player") or nil
-    fs:SetText(name or "")
+    -- Forever: the full name, shown as the player has chosen to see theirs.
+    local H = ns.Helpers
+    local name = H.PlayerName()
+    fs:SetText(H.ShownName(name) or "")
     if R and R.PaintSender then R.PaintSender(fs, name) end
     if fs.__pbClass then return end
     local CS = ns.ContactService
@@ -2160,7 +2162,7 @@ do
     for i = #available, 1, -1 do available[i] = nil end
     for i = 1, #MW.BUILTIN do available[i] = MW.BUILTIN[i] end
     -- A group's button counts the mail its members sent: here, yours.
-    local me = type(UnitName) == "function" and UnitName("player") or nil
+    local me = ns.Helpers.PlayerName()
     local RC = ns.Recipients
     local key = me and RC and type(RC.Key) == "function" and RC.Key(me) or nil
     local names = {}

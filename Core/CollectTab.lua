@@ -2107,6 +2107,14 @@ local NPC_ARTICLES = ({
 
 local function DisplaySender(sender)
   if type(sender) ~= "string" or sender == "" then return sender end
+  -- Forever: a player's name is two words ("La Stone" is a player, never
+  -- "Stone" with its article dropped), shown whole as the full name, and a
+  -- hyphen in it joins the two names, never a realm. Only a name of more
+  -- words is surely an NPC's, and goes on below like one.
+  if ns.Helpers.TwoPartNames() then
+    local space = sender:find(" ", 1, true)
+    if not (space and sender:find(" ", space + 1, true)) then return ns.Helpers.FullName(sender) end
+  end
   -- Name-Realm first: the name part never has a space, the realm part may.
   local dash = sender:find("-", 1, true)
   if dash and dash > 1 and not sender:sub(1, dash - 1):find(" ", 1, true) then
@@ -4643,7 +4651,8 @@ function AV.Paint(panel)
 
   panel.Picker:SetShown(others or who ~= nil)
   if Memory then
-    local crest = Memory.ClassIcon(who and who.realm or GetRealmName(), who and who.name or UnitName("player"))
+    local crest = Memory.ClassIcon(who and who.realm or ns.Helpers.PlayerRealm(),
+      who and who.name or ns.Helpers.PlayerName())
     if crest then panel.Picker.Icon:SetAtlas(crest, false) end
   end
   T.SetPlateSelected(panel.Picker, who ~= nil)
@@ -4739,7 +4748,7 @@ end
 function AV.OpenHeader(panel, realm, name)
   panel._searchAll = false
   if panel.SearchBox then panel.SearchBox:SetText("") end
-  local mine = (realm == GetRealmName() and name == UnitName("player"))
+  local mine = (realm == ns.Helpers.PlayerRealm() and name == ns.Helpers.PlayerName())
   AV.Show(panel, (not mine) and { realm = realm, name = name } or nil)
 end
 
@@ -5469,7 +5478,7 @@ do
     local alts = Store and Store.Get and Store.Get("alts")
     if type(alts) ~= "table" then return nil end
     local classes = Store.Get("altClasses")
-    local myRealm, me = GetRealmName(), UnitName("player")
+    local myRealm, me = ns.Helpers.PlayerRealm(), ns.Helpers.PlayerName()
     local function Known(realm, name)
       local byRealm = type(classes) == "table" and classes[realm] or nil
       return type(byRealm) == "table" and byRealm[name] ~= nil
@@ -5487,7 +5496,11 @@ do
     for realm, names in pairs(alts) do
       if realm ~= myRealm and type(names) == "table" then
         for i = 1, #names do
-          if Known(realm, names[i]) then return names[i] .. "-" .. (realm:gsub("[%s%-]", "")) end
+          if Known(realm, names[i]) then
+            -- On Forever a full name never carries its ruleset.
+            if ns.Helpers.TwoPartNames() then return names[i] end
+            return names[i] .. "-" .. (realm:gsub("[%s%-]", ""))
+          end
         end
       end
     end
@@ -8062,8 +8075,9 @@ end
 -------------------------------------------------------------
 
 local function LastRunStore(create)
-  local realm = GetRealmName()
-  local name = UnitName("player")
+  -- Forever: the ruleset and the full name.
+  local realm = ns.Helpers.PlayerRealm()
+  local name = ns.Helpers.PlayerName()
   if type(realm) ~= "string" or realm == "" then return nil end
   if type(name) ~= "string" or name == "" then return nil end
 

@@ -1918,8 +1918,9 @@ end
 function TIP.Heading(Memory, me)
   local realm, name = me and me.realm, me and me.name
   if not name then
-    realm = GetRealmName()
-    name = UnitName("player")
+    -- Forever: the ruleset and the full name.
+    realm = ns.Helpers.PlayerRealm()
+    name = ns.Helpers.PlayerName()
     if IsSecret(name) or IsSecret(realm) then name = nil end
   end
   if not name then return end

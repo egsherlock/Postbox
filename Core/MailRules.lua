@@ -318,7 +318,9 @@ local function KnownOwnCharacters()
     if key ~= "" then set[key] = true end
   end
 
-  if type(UnitName) == "function" then Add(UnitName("player")) end
+  -- The character being played: its full name on Forever.
+  local H = ns.Helpers
+  if H and type(H.PlayerName) == "function" then Add(H.PlayerName()) end
 
   -- alts is realm -> array of BARE names, keyed by the raw GetRealmName() of the
   -- character that wrote it, so the two halves have to be rejoined before they
@@ -402,7 +404,9 @@ function MR.Context(recipient, send)
 
   -- The sender's own realm comes from the same function applied to the sending
   -- character, so the two realms are guaranteed to be in the same form.
-  local ownKey, _, ownRealm = R.Key(type(UnitName) == "function" and UnitName("player") or "")
+  -- On Forever the full name, so "Abla Stone" and "abla-stone" are both self.
+  local H = ns.Helpers
+  local ownKey, _, ownRealm = R.Key(H and type(H.PlayerName) == "function" and H.PlayerName() or "")
   ctx.ownRealm = Lower(ownRealm)
   ctx.isSelf = (ownKey ~= "" and key == ownKey)
 

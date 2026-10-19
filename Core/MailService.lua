@@ -333,7 +333,9 @@ function Mail.OwnCharacterKeys()
   for realm, names in pairs(alts) do
     if type(names) == "table" then
       for i = 1, #names do
-        local key = R.Key(names[i] .. "-" .. realm)
+        -- Name-Realm's key; on Forever the full name's (R.CharacterKey).
+        local key = (type(R.CharacterKey) == "function") and R.CharacterKey(names[i], realm)
+          or R.Key(names[i] .. "-" .. realm)
         if key then set[key] = true end
       end
     end

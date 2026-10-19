@@ -96,9 +96,12 @@ end
 -- Joins a bare character name to a raw realm field, or returns the name alone
 -- when there is no usable realm. A name that already carries a suffix is left
 -- alone so we cannot build "Name-Realm-Realm".
+--
+-- On Forever a name is never joined to a realm: the full name is the whole
+-- address, and a realm or ruleset after it is not one.
 local function JoinRealm(name, realm)
   if type(name) ~= "string" or name == "" then return nil end
-  if name:find("-", 1, true) then return name end
+  if name:find("-", 1, true) or Helpers().TwoPartNames() then return name end
   local suffix = NormalizeRealm(realm)
   if suffix == "" then return name end
   return name .. "-" .. suffix
@@ -209,6 +212,9 @@ function CS.Fold(text)
   -- it was, which is what a nil lookup means to gsub.
   local folded = Helpers().Upper(input)
   folded = folded:gsub("[\195-\197][\128-\191]", ACCENT_BASE)
+  -- Forever writes "Abla-Stone" and "Abla Stone" for one name, so the two
+  -- separators fold alike, one character for one: typing either completes.
+  if Helpers().TwoPartNames() then folded = folded:gsub("%-", " ") end
 
   foldCache[input] = folded
   return folded
@@ -626,7 +632,8 @@ end
 -- a bare name and leaving the reader to assume a realm.
 local function CollectSavedAlts(out)
   if type(PostboxDB) ~= "table" or type(PostboxDB.alts) ~= "table" then return end
-  local realm = type(GetRealmName) == "function" and GetRealmName() or nil
+  -- On Forever, the ruleset's: mail cannot reach the others.
+  local realm = Helpers().PlayerRealm()
   if type(realm) ~= "string" or realm == "" then return end
 
   local alts = PostboxDB.alts[realm]
@@ -851,7 +858,7 @@ local function EnsureSources()
   local h = Helpers()
 
   if me == nil or me == "" then
-    me = IdentityKey(type(UnitName) == "function" and UnitName("player") or nil)
+    me = IdentityKey(h.PlayerName())
   end
 
   local R = ns.Recipients
@@ -1402,11 +1409,13 @@ local function BuildOwnClasses()
   ownGen = censusGen
   local classes = type(PostboxDB) == "table" and PostboxDB.altClasses or nil
   if type(classes) ~= "table" then return end
+  -- Forever: the full name is the key on every ruleset.
+  local bare = Helpers().TwoPartNames()
   for realm, byName in pairs(classes) do
     if type(realm) == "string" and realm ~= "" and type(byName) == "table" then
       for name, token in pairs(byName) do
         if type(name) == "string" and name ~= "" and type(token) == "string" and token ~= "" then
-          local key = IdentityKey(name .. "-" .. realm)
+          local key = IdentityKey(bare and name or name .. "-" .. realm)
           if key ~= "" then ownClasses[key] = token end
         end
       end
@@ -1432,7 +1441,10 @@ local SENDER_MEMO_MAX = 1024
 -- have learned the class of (friends, guild, Battle.net, the alts). Never
 -- collects anything: what the sources have not learned yet is simply unknown.
 -- An NPC's name holds a space before any realm, which no player's can, and is
--- never looked up.
+-- never looked up. On Forever a player's name holds exactly one space ("Abla
+-- Stone"), so there only a name with two or more is an NPC's; a one-space NPC
+-- ("Auction House") is looked up and simply not found. Nor is a realm joined
+-- there: a full name is the same character on every ruleset.
 function CS.ClassOf(sender, realm)
   if type(sender) ~= "string" or sender == "" then return nil end
   if memoGen ~= classGen then
@@ -1448,10 +1460,18 @@ function CS.ClassOf(sender, realm)
   local token = false
   local dash = sender:find("-", 1, true)
   local space = sender:find(" ", 1, true)
-  if not (space and (not dash or space < dash)) then
+  local npc
+  if Helpers().TwoPartNames() then
+    npc = space ~= nil and sender:find(" ", space + 1, true) ~= nil
+  else
+    npc = space and (not dash or space < dash)
+  end
+  if not npc then
     if ownGen ~= censusGen then BuildOwnClasses() end
     local name = sender
-    if realm and realm ~= "" and not dash then name = sender .. "-" .. realm end
+    if realm and realm ~= "" and not dash and not Helpers().TwoPartNames() then
+      name = sender .. "-" .. realm
+    end
     local key = IdentityKey(name)
     if key ~= "" then token = ownClasses[key] or classCache[key] or false end
   end
@@ -1587,6 +1607,9 @@ function CS.BuildSuggestions(text, opts)
   local h = Helpers()
   local clean = h.NormalizeText(text)
   local query = h.Lower(clean)
+  -- Forever: "abla-st" is how the game lets a player write "abla st".
+  local twoPart = h.TwoPartNames()
+  if twoPart and query:find("-", 1, true) then query = (query:gsub("%-", " ")) end
   local includeHidden = (type(opts) == "table" and opts.includeHidden) and true or false
   local R = ns.Recipients
 
@@ -1628,6 +1651,9 @@ function CS.BuildSuggestions(text, opts)
 
   local function IsHidden(key)
     if not state then return false end
+    -- A Forever key is the full name, and no row is filed under another
+    -- spelling of it: the row's own flag is the answer.
+    if twoPart then return state[key] == true end
     if key:find(".", 1, true) or not key:find("-", 1, true) then
       return R.IsHidden(key) == true
     end
