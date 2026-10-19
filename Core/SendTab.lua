@@ -1193,6 +1193,13 @@ function ST.Asking(panel)
   return pending ~= nil and pending.asking == true and pending.panel == panel
 end
 
+-- Whether Blizzard is asking about any send of Postbox's (MailboxUI's
+-- UI.YieldToDialog keeps the window below the dialog while one is).
+function ST.AnyAsking()
+  local pending = pendingSend
+  return pending ~= nil and pending.asking == true
+end
+
 -- The question is up: for the send of Postbox's in flight, or for nothing
 -- of Postbox's.
 function ST.Asked()
@@ -1219,12 +1226,10 @@ function ST.EndAsk(pending, how)
   if f then
     for k = 1, #watch do pcall(f.UnregisterEvent, f, watch[k]) end
   end
-  -- Unless Blizzard is asking about gold from a stranger now (MailService).
-  local Mail, UI = ns.MailService, ns.MailboxUI
-  if UI and type(UI.YieldToDialog) == "function"
-     and not (Mail and type(Mail.StrangerAsking) == "function" and Mail.StrangerAsking()) then
-    UI.YieldToDialog(false)
-  end
+  -- Back to its own layer, unless another question of Blizzard's still
+  -- stands (UI.YieldToDialog decides).
+  local UI = ns.MailboxUI
+  if UI and type(UI.YieldToDialog) == "function" then UI.YieldToDialog(false) end
   Invalidate(pending.panel, "guidance")
 end
 

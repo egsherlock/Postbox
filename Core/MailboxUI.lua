@@ -2172,16 +2172,26 @@ local function OutcomePartDown(kind)
   status.outcomeKind2, status.outcomeAfter2, status.outcomeAfterBoth = nil, nil, nil
 end
 
--- Blizzard's own dialog about gold from a stranger stands for a take of
--- Postbox's (Core/MailService.lua, "Gold from a stranger"). It opens in
--- the middle of the screen at the DIALOG layer, where the window lives too
--- and comes to the front when clicked: while it asks, the window sits one
--- layer below it, so it can never cover the question, and goes back after.
--- Postbox's own frame only; set, never read (GetFrameStrata can answer a
--- secret value on Forever).
+-- Blizzard's own dialog asks about something of Postbox's: gold from a
+-- stranger in a take (Core/MailService.lua, "Gold from a stranger") or a
+-- send to one (Core/SendTab.lua, 8c). It opens in the middle of the screen
+-- at the DIALOG layer, where the window lives too and comes to the front
+-- when clicked: while it asks, the window sits one layer below it, so it
+-- can never cover the question. The window goes back only once neither
+-- question stands, whichever ended first, so each caller just says its own
+-- question is over. Postbox's own frame only; set, never read
+-- (GetFrameStrata can answer a secret value on Forever).
 function UI.YieldToDialog(yield)
   local frame = UI._frame
-  if frame then frame:SetFrameStrata(yield and "HIGH" or "DIALOG") end
+  if not frame then return end
+  if not yield then
+    local Mail, ST = ns.MailService, ns.SendTab
+    if (Mail and type(Mail.StrangerAsking) == "function" and Mail.StrangerAsking())
+       or (ST and type(ST.AnyAsking) == "function" and ST.AnyAsking()) then
+      return
+    end
+  end
+  frame:SetFrameStrata(yield and "HIGH" or "DIALOG")
 end
 
 -- The mailbox opening or closing: the visit's line starts again, what was
