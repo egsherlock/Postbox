@@ -841,6 +841,14 @@ function ST.UpdateSendGuidance(panel)
     return
   end
 
+  -- Blizzard is asking the player to confirm a send of Postbox's before it
+  -- goes (section 8c): the same, until it is answered.
+  if ST.Asking(panel) then
+    label:SetText(L["GUIDE_SEND_ASK"])
+    Theme.SetColor(label, GUIDANCE_TOKEN.warn)
+    return
+  end
+
   -- The server refused the last send to this recipient in words of its own
   -- that the line can carry (World of Warcraft: Forever's mail rules, ST.
   -- OnSendRefusal): they stay, in the warning tone, until the recipient
@@ -937,8 +945,11 @@ end
 -- so a mailbox close/open cycle can never leave the Send button stuck disabled.
 local function AbandonPendingSend(panel)
   if pendingSend and (not panel or pendingSend.panel == panel) then
+    -- A question Blizzard was asking about it goes with it (8c).
+    if pendingSend.asking then ST.EndAsk(pendingSend, "closed") end
     pendingSend = nil
   end
+  ST.ask.after = nil
   if panel then SetSendButtonBusy(panel, false) end
 end
 
@@ -952,10 +963,16 @@ local function SettleDraftAfterSuccess(panel)
   ClearSendMailMoneyState()
 end
 
--- outcome: "success" | "failed" | "timeout"
+-- outcome: "success" | "failed" | "timeout" | "canceled"
 local function FinishSend(outcome)
   local pending = pendingSend
   if not pending then return end
+  -- A send Blizzard asked the player about: what the outcome means is the
+  -- answer's (section 8c), and nothing ends it while the question stands.
+  if pending.asked then
+    outcome = ST.AskedOutcome(pending, outcome)
+    if not outcome then return end
+  end
   -- A send the server is slow to answer is still with it (ST.KeepWaiting).
   if outcome == "timeout" and ST.KeepWaiting(pending) then return end
   pendingSend = nil
@@ -991,6 +1008,11 @@ local function FinishSend(outcome)
   elseif outcome == "timeout" then
     panel._run = nil
     PopupNotice(L["MSG_SEND_TIMEOUT"])
+  elseif outcome == "canceled" then
+    panel._run = nil
+    -- Nothing went wrong and nothing went: Blizzard's question was not
+    -- accepted (8c). One plain line, and nothing to dismiss.
+    if ns.Print then ns.Print(L["MSG_SEND_NOT_ACCEPTED"]) end
   else
     panel._run = nil
     -- The client already shows its own red error for the underlying reason;
@@ -1065,6 +1087,234 @@ function ST.SameDraft(pending)
   local panel = pending.panel
   if not (panel and panel.ToBox and panel.SubjectBox) then return false end
   return FieldText(panel.ToBox) == pending.toName and FieldText(panel.SubjectBox) == (pending.subject or "")
+end
+
+-------------------------------------------------------------
+-- 8c. Blizzard asks first: a send to someone it doesn't know
+--
+-- Before a mail with gold or items goes to someone the game counts as a
+-- stranger (not a friend, a guildmate or one of the player's own
+-- characters), the client holds it and asks the player:
+-- SECURE_TRANSFER_CONFIRM_SEND_MAIL, and Blizzard's own secure dialog
+-- (SEND_MONEY_TO_STRANGER or SEND_ITEMS_TO_STRANGER) names the recipient
+-- and any gold. Its Accept sends the mail (C_SecureTransfer.SendMail); its
+-- Cancel sends nothing. The dialog lives in Blizzard's secure environment:
+-- Postbox never answers it, never calls C_SecureTransfer, and cannot see
+-- it. The player's own click decides.
+--
+-- A send of Postbox's that meets the question waits for the answer. No
+-- deadline runs while it asks (the send's SEND_TIMEOUT is parked), the
+-- guidance line says Blizzard is asking, the button still says sending,
+-- the window steps one layer below the dialog (UI.YieldToDialog), and Send
+-- and Ctrl+Enter do nothing, as for any send in flight. The answer is read
+-- off what it did:
+--
+--   accepted  the server takes the mail (MAIL_SEND_SUCCESS): settled as any
+--             send is, and a run of mails goes on (its next mail may be
+--             asked about in turn).
+--   refused   MAIL_FAILED with the client's words for why: the server
+--             refused a mail the player accepted, as any failed send.
+--   not accepted  SECURE_TRANSFER_CANCEL (the client took the question
+--             down), or MAIL_FAILED with no words: nothing went, the draft
+--             stays, the button comes back, and one plain line says so.
+--   closed    the mailbox closed: as a close mid-send always has (ST.Reset).
+--
+-- The dialog's Cancel calls nothing of the client's (unlike the question
+-- about gold from a stranger, whose Cancel calls C_SecureTransfer.Cancel),
+-- and Blizzard's own Send button is given back by the dialog's OnHide. So a
+-- Cancel can be silent, and the player's click is the sign: each click
+-- while the question stands gives the server SEND_TIMEOUT to take the mail,
+-- as an Accept is a send like any other, and a click it does not answer is
+-- taken as the question gone unaccepted. On retail the send then ends as
+-- not accepted, and a success that does come later, before another send,
+-- is still taken as this send's, as Forever's late answers are. On Forever,
+-- where a send can take minutes, it waits on as a slow send
+-- (ST.KeepWaiting). Event-driven: one look per click, the last click's.
+--
+-- Only a send of Postbox's own counts: a question about another addon's
+-- send is not Postbox's. On a client without the event nothing is
+-- registered and nothing here runs.
+-------------------------------------------------------------
+
+ST.ask = {
+  CONFIRM = "SECURE_TRANSFER_CONFIRM_SEND_MAIL",
+  -- What the answer is read from, listened to only while the question
+  -- stands: the player's clicks, the client taking the question down, and
+  -- its words for a refusal.
+  WATCH = { "GLOBAL_MOUSE_UP", "SECURE_TRANSFER_CANCEL", "UI_ERROR_MESSAGE" },
+  askedAt = 0, lookAt = 0, wordsAt = -1,
+  -- A send ended unanswered on retail, and the send token it ended at: a
+  -- success before any other send goes is still its (ST.AskAfter).
+  after = nil, afterToken = nil,
+  -- What the questions of this session did, for /postbox debug: the last
+  -- NOTES events, kept only once a question has come.
+  notes = nil, noteN = 0, NOTES = 16,
+}
+
+-- Whether this client knows the event (true where it cannot be asked: the
+-- protected register then decides).
+function ST.ask.Known(event)
+  if C_EventUtils and type(C_EventUtils.IsEventValid) == "function" then
+    local ok, valid = pcall(C_EventUtils.IsEventValid, event)
+    if ok then return valid and true or false end
+  end
+  return true
+end
+
+function ST.ask.Register(event)
+  local A = ST.ask
+  if not A.Known(event) then return false end
+  return (pcall(A.frame.RegisterEvent, A.frame, event))
+end
+
+-- "event@seconds since it asked", * while the client held a mail command.
+function ST.ask.Note(what)
+  local A = ST.ask
+  if not A.notes then A.notes = {} end
+  A.noteN = A.noteN + 1
+  local held = type(C_Mail) == "table" and type(C_Mail.IsCommandPending) == "function" and C_Mail.IsCommandPending()
+  A.notes[(A.noteN - 1) % A.NOTES + 1] = string.format("%s@%.1f%s", tostring(what),
+    (GetTime() or 0) - A.askedAt, held and "*" or "")
+end
+
+-- Listened for from the panel's build, on a client that has the question,
+-- for the session: quiet unless Blizzard asks.
+function ST.ListenForAsk()
+  local A = ST.ask
+  if A.frame or type(CreateFrame) ~= "function" or not A.Known(A.CONFIRM) then return end
+  A.frame = CreateFrame("Frame")
+  A.frame:SetScript("OnEvent", function(_, event, arg1) ST.OnAskEvent(event, arg1) end)
+  A.Register(A.CONFIRM)
+end
+
+-- Whether Blizzard is asking about the send `panel` has with the server.
+function ST.Asking(panel)
+  local pending = pendingSend
+  return pending ~= nil and pending.asking == true and pending.panel == panel
+end
+
+-- The question is up: for the send of Postbox's in flight, or for nothing
+-- of Postbox's.
+function ST.Asked()
+  local A, pending = ST.ask, pendingSend
+  if not pending or pending.asking then return end
+  pending.asking, pending.asked = true, true
+  A.askedAt, A.lookAt, A.wordsAt = GetTime() or 0, 0, -1
+  A.Note("ask")
+  local watch = A.WATCH
+  for k = 1, #watch do A.Register(watch[k]) end
+  local UI = ns.MailboxUI
+  if UI and type(UI.YieldToDialog) == "function" then UI.YieldToDialog(true) end
+  Invalidate(pending.panel, "guidance")
+end
+
+-- The question is over for `pending` (`how`, for the notes): the watch
+-- stops, the window goes back to its own layer, and the guidance line to
+-- what it says of the mail.
+function ST.EndAsk(pending, how)
+  local A = ST.ask
+  pending.asking = false
+  A.Note(how)
+  local watch, f = A.WATCH, A.frame
+  if f then
+    for k = 1, #watch do pcall(f.UnregisterEvent, f, watch[k]) end
+  end
+  -- Unless Blizzard is asking about gold from a stranger now (MailService).
+  local Mail, UI = ns.MailService, ns.MailboxUI
+  if UI and type(UI.YieldToDialog) == "function"
+     and not (Mail and type(Mail.StrangerAsking) == "function" and Mail.StrangerAsking()) then
+    UI.YieldToDialog(false)
+  end
+  Invalidate(pending.panel, "guidance")
+end
+
+-- What `outcome` means for a send Blizzard asked about (FinishSend): the
+-- outcome to settle it with, or nil while the question stands.
+function ST.AskedOutcome(pending, outcome)
+  if not pending.asking then return outcome end
+  local A = ST.ask
+  -- No deadline runs while Blizzard asks.
+  if outcome == "timeout" then return nil end
+  if outcome == "failed" then
+    local now = GetTime() or 0
+    -- Said in the very moment it asked: part of asking.
+    if now == A.askedAt then
+      A.Note("failed")
+      return nil
+    end
+    -- With the client's words for why, the server refused a mail the player
+    -- accepted; without them, the question went unaccepted.
+    if now - A.wordsAt > 1 then outcome = "canceled" end
+  end
+  ST.EndAsk(pending, outcome)
+  return outcome
+end
+
+-- The last click's look (ST.OnAskEvent): the server has had SEND_TIMEOUT
+-- since it to take a mail the click accepted.
+function ST.AskLook()
+  local A, pending = ST.ask, pendingSend
+  if not (pending and pending.asking) or (GetTime() or 0) < A.lookAt - 0.001 then return end
+  if ns.IsForever then
+    -- A send there can take minutes: it waits on as a slow one, and the
+    -- player is told so (ST.KeepWaiting).
+    ST.EndAsk(pending, "look")
+    FinishSend("timeout")
+    return
+  end
+  A.Note("look")
+  A.after, A.afterToken = pending, pending.token
+  FinishSend("canceled")
+end
+
+-- A success with no send in flight: the send that ended unanswered on
+-- retail, when no send has gone since, is the one the server took after
+-- all. It is settled as Forever's late answers are (ST.KeepWaiting):
+-- counted, and the draft on screen kept if the player has rewritten it.
+function ST.AskAfter()
+  local A = ST.ask
+  local pending = A.after
+  A.after = nil
+  if not pending or pendingSend or A.afterToken ~= sendToken then return end
+  A.Note("late")
+  pending.late = true
+  pendingSend = pending
+end
+
+function ST.OnAskEvent(event, button)
+  local A = ST.ask
+  if event == A.CONFIRM then return ST.Asked() end
+  local pending = pendingSend
+  if not (pending and pending.asking) then return end
+  if event == "GLOBAL_MOUSE_UP" then
+    -- The dialog's buttons answer a left click; the click that sent the
+    -- mail, in the moment it asked, is not an answer.
+    local now = GetTime() or 0
+    if button ~= "LeftButton" or now == A.askedAt then return end
+    A.Note("click")
+    A.lookAt = now + SEND_TIMEOUT
+    C_Timer.After(SEND_TIMEOUT, ST.AskLook)
+  elseif event == "UI_ERROR_MESSAGE" then
+    A.wordsAt = GetTime() or 0
+  elseif event == "SECURE_TRANSFER_CANCEL" then
+    A.Note("stcancel")
+    -- Taken down as the mailbox closed: as any close mid-send (ST.Reset).
+    local UI = ns.MailboxUI
+    if UI and type(UI.IsMailboxOpen) == "function" and not UI.IsMailboxOpen() then
+      return AbandonPendingSend(pending.panel)
+    end
+    FinishSend("canceled")
+  end
+end
+
+-- For /postbox debug: what the questions of this session did, oldest first,
+-- or nil when none came.
+function ST.ask.Report()
+  local A = ST.ask
+  if not A.notes then return nil end
+  local out, n = {}, math.min(A.noteN, A.NOTES)
+  for k = A.noteN - n + 1, A.noteN do out[#out + 1] = A.notes[(k - 1) % A.NOTES + 1] end
+  return table.concat(out, " ")
 end
 
 -- `confirmed` is set only by a confirmation's own accept: the press as its
@@ -4959,10 +5209,15 @@ function ST.Diagnose()
   end
   table.sort(declined)
   local trace = Q.stats.trace
-  return string.format("attach queue: click %d | use %d | alt %d | refused %d | queued %d | asked %d | waiting %d | declined %s\n  pass trace: %s",
+  local text = string.format("attach queue: click %d | use %d | alt %d | refused %d | queued %d | asked %d | waiting %d | declined %s\n  pass trace: %s",
     Q.stats.click, Q.stats.use, Q.stats.all or 0, Q.stats.refused, Q.stats.queued, Q.stats.asked or 0, waiting,
     (#declined > 0) and table.concat(declined, ", ") or "none",
     (trace and #trace > 0) and table.concat(trace, " ; ") or "none")
+  -- What Blizzard's questions before a send did this session, where one
+  -- came (8c).
+  local asked = ST.ask.Report()
+  if asked then text = text .. "\n  send to a stranger: " .. asked end
+  return text
 end
 
 -- The way in, second route, and the one that holds when the first does not:
@@ -5895,6 +6150,8 @@ local function InstallEvents(panel)
   -- mails carries on from the outcome whichever tab is showing.
   panel:RegisterEvent("MAIL_LOCK_SEND_ITEMS")
   panel:RegisterEvent("MAIL_UNLOCK_SEND_ITEMS")
+  -- Blizzard's question before a send to someone it doesn't know (8c).
+  ST.ListenForAsk()
 
   panel:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "GLOBAL_MOUSE_DOWN" then
@@ -5905,11 +6162,14 @@ local function InstallEvents(panel)
     -- switch to the collect screen while the server is still working, and the
     -- draft must still be handled correctly when they do.
     if event == "MAIL_SEND_SUCCESS" then
+      -- A send whose question went unanswered may have gone after all (8c).
+      if not pendingSend then ST.AskAfter() end
       FinishSend("success")
     elseif event == "MAIL_FAILED" then
       -- One naming an item is a take that failed, not the send: while a
-      -- slow server still has the mail (ST.KeepWaiting), that is not this.
-      if not (arg1 ~= nil and pendingSend and pendingSend.late) then FinishSend("failed") end
+      -- slow server still has the mail (ST.KeepWaiting), or Blizzard is
+      -- asking about it (8c), that is not this.
+      if not (arg1 ~= nil and pendingSend and (pendingSend.late or pendingSend.asking)) then FinishSend("failed") end
     elseif event == "UI_ERROR_MESSAGE" then
       ST.OnAttachRefused()
       ST.OnSendRefusal(arg2)
