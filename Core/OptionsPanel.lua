@@ -1077,6 +1077,20 @@ do
   local SAMPLE_ITEMS = { 236775, 236774, 236965, 243582, 236778, 236770, 238366 }
   local SAMPLE_PRICE, SAMPLE_SALE = 522600, 13090000
   local SAMPLE_COIN = "Interface\\Icons\\INV_Misc_Coin_01"
+  -- World of Warcraft: Forever has none of Midnight's goods. There each
+  -- stands for a vanilla good in the same rows, its name as short:
+  -- Earthroot for Azeroot (both tiers: vanilla goods carry no mark),
+  -- Mooncloth for Evercore, Iron Ore for Lynxfish, Briarthorn for
+  -- Sanguithorn, Linen Cloth for Bright Linen and Peacebloom for Mana Lily
+  -- (IDs from Forever's own item table, build 1.60.1.70245).
+  local FOREVER_GOODS = {
+    [236775] = 2449, [236774] = 2449, [243582] = 14342, [238366] = 2772,
+    [236770] = 2450, [236965] = 2589, [236778] = 2447,
+  }
+  -- The good a sample names, on this client.
+  local function SampleID(id)
+    return ns.IsForever and FOREVER_GOODS[id] or id
+  end
 
   -- The height of each tab's drawing, and the gap under it.
   function Ctx.Height(key)
@@ -1317,8 +1331,12 @@ do
   -- The first time one is not loaded yet, every one the client has not
   -- loaded is asked for, once; the drawing on show repaints once, when the
   -- last of them has arrived (the mail rows of the Mail tab's window and of
-  -- the Window tab's name them). Until then a row's name is empty.
+  -- the Window tab's name them). Until then a row's name is empty. Only an
+  -- item the client knows is asked for, and the asking is guarded: loading
+  -- one it does not know throws, and the drawing must paint all the same
+  -- (that row's name stays empty, its icon the question mark).
   local function SampleItem(id)
+    id = SampleID(id)
     local info = C_Item and C_Item.GetItemInfo
     local name, link, quality
     if type(info) == "function" then name, link, quality = info(id) end
@@ -1334,13 +1352,14 @@ do
           local f = S.ctx[S.tab]
           if f and f:IsVisible() and f.Paint then f.Paint() end
         end
+        local exists = C_Item.DoesItemExistByID
         for i = 1, #SAMPLE_ITEMS do
-          local each = SAMPLE_ITEMS[i]
-          if not info(each) then
-            local item = Item:CreateFromItemID(each)
-            if item and item.ContinueOnItemLoad then
+          local each = SampleID(SAMPLE_ITEMS[i])
+          if not info(each) and (type(exists) ~= "function" or exists(each)) then
+            local made, item = pcall(Item.CreateFromItemID, Item, each)
+            if made and item and item.ContinueOnItemLoad then
               waiting = waiting + 1
-              item:ContinueOnItemLoad(Landed)
+              if not pcall(item.ContinueOnItemLoad, item, Landed) then waiting = waiting - 1 end
             end
           end
         end
@@ -2570,6 +2589,7 @@ do
 
   -- An item's icon, by the client's own table, which needs nothing loaded.
   function MW.Icon(id)
+    id = SampleID(id)
     local icon = C_Item and type(C_Item.GetItemIconByID) == "function" and C_Item.GetItemIconByID(id) or nil
     return icon or 134400
   end
