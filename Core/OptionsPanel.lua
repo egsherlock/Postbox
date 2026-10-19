@@ -802,11 +802,16 @@ end
 -------------------------------------------------------------
 -- Tooltips
 --
--- Every control keeps a tooltip, as in every Postbox window: its name and
--- the summary of its description, the paragraph before its first blank
--- line (Locales.lua, ns.Summary) -- the inspector beside it says the
--- whole. It stands beside the panel, level with the control, on the side
--- with room: over the panel it would cover the inspector.
+-- The inspector says what a setting does as soon as the pointer is on its
+-- row or on its control, and a drawing's tile or badge the same, so none of
+-- them has a tooltip: one would say again, outside the window, what the
+-- window already says. A tooltip stands only where it adds what the
+-- inspector does not: a dropdown's value cut short in its box, whole; the
+-- hidden characters' names the row cuts short; a tab's caption cut short;
+-- what each reset in the footer's menu clears and keeps; and the footer's
+-- own buttons, which the inspector does not describe. It stands beside the
+-- panel, level with what it is for, on the side with room: over the panel
+-- it would cover the inspector (a tab's, under its tab, is the exception).
 -------------------------------------------------------------
 
 -- Begun as the house's (Theme section 5b): the title white, what the
@@ -843,12 +848,14 @@ function Tip.Show(owner)
   end
 end
 
-function Tip.Entry(owner, entry)
-  if not entry then return end
-  local tip = Tip.Begin(owner, entry.title, ns.Summary(entry.text))
-  -- A dropdown's value cut short in its box (Lib/UI/Dropdown.lua) is said
-  -- whole under what the setting does.
-  if owner.__postboxSelect and owner.__pbOverflowText then ns.Theme.AddOverflowLine(owner, tip) end
+-- A dropdown's value cut short in its box (Lib/UI/Dropdown.lua), whole:
+-- over the dropdown's own tooltip of it, beside the panel as the others.
+function Tip.Value(owner)
+  local text = owner.__postboxSelect and owner.__pbOverflowText
+  if not text then return end
+  local T = ns.Theme
+  T.TipBegin(owner, "ANCHOR_NONE")
+  T.TipTitle(text)
   Tip.Show(owner)
 end
 
@@ -1019,24 +1026,19 @@ do
     Insp.Show(entry or nil)
   end
 
-  -- The height an entry's text needs, `extraH` included. Its tooltip's
-  -- summary is cut here too, with the measuring, so no hover is the first
-  -- to cut one. A row that greys says why in a text of its own (Rows.Why):
-  -- each of its texts is measured, and the tallest is its need.
+  -- The height an entry's text needs, `extraH` included. A row that greys
+  -- says why in a text of its own (Rows.Why): each of its texts is
+  -- measured, and the tallest is its need.
   function Insp.Need(entry, extraH)
-    ns.Summary(entry.text)
     local h = Lay(S.measure, entry.title, entry.text, extraH)
     local plain, off, blocked = entry.onText, entry.offText, entry.blockText
     if plain and plain ~= entry.text then
-      ns.Summary(plain)
       h = math.max(h, Lay(S.measure, entry.title, plain, extraH))
     end
     if off and off ~= entry.text then
-      ns.Summary(off)
       h = math.max(h, Lay(S.measure, entry.title, off, extraH))
     end
     if blocked and blocked ~= entry.text then
-      ns.Summary(blocked)
       h = math.max(h, Lay(S.measure, entry.title, blocked, extraH))
     end
     return h
@@ -1196,8 +1198,8 @@ do
     for i = 1, #parts do T.SetColor(parts[i], hot and "textPrimary" or "textDisabled") end
   end
 
-  -- The pointer on a drawing: the inspector says what it is, the tooltip
-  -- too. Shared by every tile and badge, so a hover builds nothing.
+  -- The pointer on a drawing: the inspector says what it is. Shared by
+  -- every tile and badge, so a hover builds nothing.
   local function SpotEnter(self)
     if Rows.Held(self, SpotEnter) then return end
     if self.Hover then
@@ -1205,7 +1207,6 @@ do
       TintChevron(self, true)
     end
     Rows.Hover(self)
-    Tip.Entry(self, self.entry)
   end
 
   local function SpotLeave(self)
@@ -1213,7 +1214,6 @@ do
       self.Hover:Hide()
       TintChevron(self, false)
     end
-    GameTooltip:Hide()
     if Rows.HeldLeave(self) then return end
     Rows.Unhover(self)
   end
@@ -3809,16 +3809,16 @@ do
   end
 
   -- A control: the inspector for its cell (or its own entry, where it has
-  -- one), and its tooltip.
+  -- one), and a dropdown's value whole where its box cuts it short.
   local function ControlEnter(self)
     if Rows.Held(self, ControlEnter) then return end
     local cell = self.__pbCell
     Rows.Hover(cell, self.__pbEntry)
-    Tip.Entry(self, self.__pbEntry or cell.entry)
+    Tip.Value(self)
   end
 
   local function ControlLeave(self)
-    GameTooltip:Hide()
+    if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
     if Rows.HeldLeave(self) then return end
     Rows.Unhover(self.__pbCell)
   end
@@ -4297,11 +4297,6 @@ do
     row.Name:SetText(text)
     row.nameText = text
     row.kind = "note"
-    -- The line is all there is to point at, so it carries the tooltip the
-    -- line always had.
-    row.__pbCell = row
-    row:SetScript("OnEnter", ControlEnter)
-    row:SetScript("OnLeave", ControlLeave)
     return row
   end
 
@@ -4831,7 +4826,9 @@ function State.FitHidden()
   T.FitText(row.Name, ROW_W - NAME_X - CONTROL_R, row.nameText, row)
   local room = ROW_W - NAME_X - CONTROL_R - TextW(row.Name) - NAME_GAP
     - (row.any and (math.ceil(row.more:GetWidth() or 0) + NAME_GAP) or 0)
-  T.FitText(row.Names, math.max(room, 20), row.namesText or "")
+  local cut = T.FitText(row.Names, math.max(room, 20), row.namesText or "")
+  -- What the tooltip is for (HiddenEnter): names the row could not show.
+  row.namesCut = row.any and (cut or row.moreLine ~= nil) or false
 end
 
 -------------------------------------------------------------
@@ -6077,13 +6074,15 @@ function Pages.memory(col)
   names:SetJustifyH("RIGHT")
   names:SetWordWrap(false)
   row.more, row.Names, row.lines = showAll, names, {}
-  -- Its tooltip also lists every name the row may have cut.
+  -- Where the row cuts its names short, its tooltip lists them under the
+  -- row's name; what the row does is the inspector's.
   local function HiddenEnter(self)
     if Rows.Held(self, HiddenEnter) then return end
     Rows.Hover(self)
-    local tip = Tip.Begin(self, self.entry.title, ns.Summary(self.entry.text))
-    -- The names are its facts, under what it does; the rest counted, muted.
-    -- No blank line: the house keeps that for the hints.
+    if not (self.namesCut and #self.lines > 0) then return end
+    local tip = Tip.Begin(self, self.entry.title)
+    -- The names are its facts; the rest counted, muted. No blank line: the
+    -- house keeps that for the hints.
     local lines = self.lines
     for i = 1, #lines do tip:AddLine(lines[i], 1, 1, 1) end
     if self.moreLine then
