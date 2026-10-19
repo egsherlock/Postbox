@@ -63,6 +63,168 @@ local function EnsureStyleDialog()
   return true
 end
 
+-- The same offer on World of Warcraft: Forever, which refuses ReloadUI()
+-- from addon code: the call above would raise Blizzard's "blocked" popup,
+-- which names Postbox and offers to disable it. A /reload run by the
+-- player's own click on a secure action button is the player's command,
+-- not ours, and that the client allows. So there the offer is a card of
+-- the house's (Theme.ApplyCard, which every style paints as one of Postbox's
+-- popups) with the same words and answers, where a StaticPopup stands, and
+-- its Reload now is covered by a button of Blizzard's
+-- InsecureActionButtonTemplate whose click runs the macro "/reload". That
+-- template acts out of combat only, so in combat the card offers OK alone,
+-- and its words, which already say to type /reload, are the way; it follows
+-- a fight that starts or ends while it is up (PLAYER_REGEN_DISABLED comes
+-- before the lockdown). The template is not a protected one, so nothing here
+-- is held by combat; the secure button is made all the same out of combat,
+-- the first time the card shows there. The card goes with the options panel
+-- (PanelHide), which asks every offer. Retail never builds any of it.
+local ReloadAsk = {}
+do
+  local CARD = { W = 320, PAD = 16, GAP = 14, BUTTON_H = 22, BUTTON_GAP = 8 }
+  CARD.PAIR = { height = CARD.BUTTON_H, gap = CARD.BUTTON_GAP, minWidth = 96 }
+  CARD.ONE = { height = CARD.BUTTON_H, minWidth = 96 }
+  local card
+
+  -- The visible button keeps its look: the secure one over it hands on
+  -- the pointer's hover and press.
+  local function SecureEnter(self)
+    local shown = self:GetParent()
+    shown:LockHighlight()
+    local enter = shown:GetScript("OnEnter")
+    if enter then enter(shown) end
+  end
+  local function SecureLeave(self)
+    local shown = self:GetParent()
+    shown:UnlockHighlight()
+    shown:SetButtonState("NORMAL")
+    local leave = shown:GetScript("OnLeave")
+    if leave then leave(shown) end
+  end
+  local function SecureDown(self) self:GetParent():SetButtonState("PUSHED") end
+  local function SecureUp(self) self:GetParent():SetButtonState("NORMAL") end
+
+  -- Over Reload now, made once. Released clicks only, and said so: left
+  -- unset, the template acts on the press whenever the game's key-down
+  -- setting is on, and a release-only button never delivers one.
+  local function Secure(c)
+    if c.Secure then return c.Secure end
+    local shown = c.Reload
+    local b = CreateFrame("Button", nil, shown, "InsecureActionButtonTemplate")
+    b:SetAllPoints(shown)
+    b:SetFrameLevel(shown:GetFrameLevel() + 5)
+    b:RegisterForClicks("LeftButtonUp")
+    b:SetAttribute("useOnKeyDown", false)
+    b:SetAttribute("type", "macro")
+    b:SetAttribute("macrotext", "/reload")
+    b:SetScript("OnEnter", SecureEnter)
+    b:SetScript("OnLeave", SecureLeave)
+    b:SetScript("OnMouseDown", SecureDown)
+    b:SetScript("OnMouseUp", SecureUp)
+    c.Secure = b
+    return b
+  end
+
+  local function Build()
+    local T = ns.Theme
+    local c = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    -- The options panel's strata, raised on every show: over the panel, as
+    -- the lifted popup is.
+    c:SetFrameStrata("FULLSCREEN_DIALOG")
+    c:SetToplevel(true)
+    c:SetClampedToScreen(true)
+    c:EnableMouse(true)
+    c:SetPoint("TOP", UIParent, "TOP", 0, -135)
+    c:Hide()
+    -- A popup: solid at any window opacity.
+    c.__pbPopupAlways = true
+    c.__pbEuiAlwaysOpaque = true
+    T.ApplyCard(c)
+    c:SetScript("OnEvent", ReloadAsk.OnEvent)
+    c:HookScript("OnHide", ReloadAsk.Hidden)
+
+    local text = T.CreateText(c, "body")
+    text:SetJustifyH("CENTER")
+    text:SetWordWrap(true)
+    text:SetText(L["MSG_STYLE_RELOAD"])
+    local reload = T.CreateButton(nil, c)
+    reload:SetText(L["BTN_RELOAD_NOW"])
+    local later = T.CreateButton(nil, c)
+    later:SetText(L["BTN_LATER"])
+    later:SetScript("OnClick", ReloadAsk.Hide)
+    local ok = T.CreateButton(nil, c)
+    ok:SetText(L["POPUP_OK"])
+    ok:SetScript("OnClick", ReloadAsk.Hide)
+    c.Text, c.Reload, c.Later, c.OK = text, reload, later, ok
+    c.Pair = { reload, later }
+    return c
+  end
+
+  -- Measured on every paint: the skin may have re-fonted the buttons. Out
+  -- of combat Reload now and Later, side by side as a StaticPopup's; in
+  -- combat OK alone.
+  local function Paint(c, combat)
+    local T = ns.Theme
+    local P = CARD
+    local _, pair = T.SizeRow(c.Pair, P.PAIR)
+    T.SizeToText(c.OK, P.ONE)
+    local width = math.max(P.W, pair + 2 * P.PAD)
+    local text = c.Text
+    text:ClearAllPoints()
+    text:SetPoint("TOP", c, "TOP", 0, -P.PAD)
+    text:SetWidth(width - 2 * P.PAD)
+    local textH = math.ceil(text:GetStringHeight() or 12)
+    c:SetSize(width, P.PAD + textH + P.GAP + P.BUTTON_H + P.PAD)
+
+    if not combat then Secure(c) end
+    c.Reload:ClearAllPoints()
+    c.Reload:SetPoint("BOTTOMRIGHT", c, "BOTTOM", -P.BUTTON_GAP / 2, P.PAD)
+    c.Later:ClearAllPoints()
+    c.Later:SetPoint("BOTTOMLEFT", c, "BOTTOM", P.BUTTON_GAP / 2, P.PAD)
+    c.OK:ClearAllPoints()
+    c.OK:SetPoint("BOTTOM", c, "BOTTOM", 0, P.PAD)
+    c.Reload:SetShown(not combat)
+    c.Later:SetShown(not combat)
+    c.OK:SetShown(combat)
+  end
+
+  function ReloadAsk.Show()
+    card = card or Build()
+    local skin = ns.Skin
+    if skin and skin.Refresh then pcall(skin.Refresh, card) end
+    card:RegisterEvent("PLAYER_REGEN_DISABLED")
+    card:RegisterEvent("PLAYER_REGEN_ENABLED")
+    card:Show()
+    card:Raise()
+    Paint(card, InCombatLockdown() and true or false)
+  end
+
+  function ReloadAsk.Hide()
+    if card then card:Hide() end
+  end
+
+  -- A fight began (before the lockdown) or ended while the card is up.
+  function ReloadAsk.OnEvent(self, event)
+    Paint(self, event == "PLAYER_REGEN_DISABLED")
+  end
+
+  function ReloadAsk.Hidden(self)
+    self:UnregisterEvent("PLAYER_REGEN_DISABLED")
+    self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+  end
+end
+
+-- After a style change: the offer to reload, on either client.
+local function OfferStyleReload()
+  if ns.IsForever then
+    ReloadAsk.Show()
+  elseif EnsureStyleDialog() then
+    ns.Theme.LiftPopup(StaticPopup_Show(POPUP_STYLE_RELOAD))
+  else
+    ns.Print(L["MSG_STYLE_RELOAD"])
+  end
+end
+
 -- The HOST UI driving the window's look, or nil when the look is Postbox's
 -- own (either style). SkinAppliedBy is the truth once a window has been
 -- painted; before that -- the options panel opens from the minimap icon
@@ -5039,11 +5201,7 @@ function Pages.window(col)
       -- to take. A dialog with the reload in it beats a chat line telling
       -- the player to go and type one -- and Later is a real answer: the
       -- setting is already saved either way.
-      if EnsureStyleDialog() then
-        ns.Theme.LiftPopup(StaticPopup_Show(POPUP_STYLE_RELOAD))
-      else
-        ns.Print(L["MSG_STYLE_RELOAD"])
-      end
+      OfferStyleReload()
     end,
   })
 
@@ -6227,13 +6385,7 @@ function Footer.Build(frame, above)
       -- them again.
       S.sendText = nil
       Panel.RefreshControls()
-      if styleChanged then
-        if EnsureStyleDialog() then
-          ns.Theme.LiftPopup(StaticPopup_Show(POPUP_STYLE_RELOAD))
-        else
-          ns.Print(L["MSG_STYLE_RELOAD"])
-        end
-      end
+      if styleChanged then OfferStyleReload() end
     end
 
     -- No reset runs while Postbox is collecting or sending (MailboxUI,
@@ -6572,6 +6724,8 @@ local function PanelHide()
   for _, f in pairs(S.ctx) do
     if f.Stop then f.Stop() end
   end
+  -- Forever's reload offer goes with the panel that asked it.
+  ReloadAsk.Hide()
 end
 
 local function Build()
