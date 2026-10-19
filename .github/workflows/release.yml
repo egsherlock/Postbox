@@ -12,6 +12,10 @@ name: Release
 # substitutes @project-version@ in the TOC with the tag, and attaches the zip
 # to the GitHub release. Addon managers such as WowUp read that release asset —
 # a tag or commit on its own is not enough, there must be an attached zip.
+#
+# One zip serves Retail and World of Warcraft: Forever. The TOC's Interface
+# line sets the games: the packager tags the CurseForge file for each number
+# it lists (16xxx is Forever) and writes each flavor into release.json.
 on:
   push:
     tags:
@@ -43,8 +47,11 @@ jobs:
       - name: Changelog for the upload
         run: python3 .github/release-changelog.py "$GITHUB_REF_NAME" > .github/release-changelog.md
 
+      # Pinned to the commit that built v1.50.0, so the upload cannot change
+      # under a release. On this commit a failed CurseForge upload stops the
+      # GitHub release too: re-run the workflow on the tag from the Actions tab.
       - name: Package and release
-        uses: BigWigsMods/packager@master
+        uses: BigWigsMods/packager@0f24d2169de3ceb3b79a981311b2ebab4c6160c7 # master 2026-10-10, built v1.50.0
         env:
           # Built-in token — no personal access token needed here. A PAT is only
           # needed on the *client* side (WowUp) for API rate limits.

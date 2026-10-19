@@ -45,6 +45,19 @@ end
 
 ns.VERSION = CurrentVersion()
 
+-- World of Warcraft: Forever runs the same Mainline client as retail, so
+-- almost nothing needs telling apart. Where something does (two-part names,
+-- realms, a reload, a few Midnight-only goods), it asks this. Forever's
+-- project id is its own since build 70170; the interface bracket is the
+-- fallback a client without the constant still answers.
+ns.IsForever = (function()
+  if type(WOW_PROJECT_CAMELOT) == "number" and WOW_PROJECT_ID == WOW_PROJECT_CAMELOT then
+    return true
+  end
+  local interface = select(4, GetBuildInfo())
+  return type(interface) == "number" and interface >= 16000 and interface < 20000
+end)()
+
 -------------------------------------------------------------
 -- 2. Foundation bindings
 --
