@@ -1968,18 +1968,27 @@ do
       NameProbe.Raw(Call(1, GetRealmName)), NameProbe.Raw(Call(1, GetNormalizedRealmName)))
   end
 
-  -- Who the client says the player is, every way it can be asked, and what
-  -- Postbox makes of it where it has its own answer.
+  -- Who the client says the player is, every way it can be asked.
   function NameProbe.Me()
-    local line = string.format("Player: UnitName %s | UnitFullName %s | GetUnitName true %s, false %s",
+    return string.format("Player: UnitName %s | UnitFullName %s | GetUnitName true %s, false %s",
       NameProbe.Returns(UnitName, "player"), NameProbe.Returns(UnitFullName, "player"),
       NameProbe.Returns(GetUnitName, "player", true), NameProbe.Returns(GetUnitName, "player", false))
+  end
+
+  -- What Postbox makes of it (Core/Helpers.lua): whether names come in two
+  -- parts, the player's name as a shape, and the key it files characters
+  -- under (a realm on retail, a ruleset on Forever), as given.
+  function NameProbe.Postbox()
     local H = ns.Helpers
-    if type(H) == "table" then
-      if type(H.PlayerName) == "function" then line = line .. " | PlayerName " .. NameProbe.Returns(H.PlayerName) end
-      if type(H.PlayerRealm) == "function" then line = line .. " | PlayerRealm " .. NameProbe.Returns(H.PlayerRealm) end
+    if type(H) ~= "table" then return "Postbox: n/a" end
+    local two = type(H.TwoPartNames) == "function" and YesNo(Call(1, H.TwoPartNames)) or "n/a"
+    local realm, normalized = "n/a", "n/a"
+    if type(H.PlayerRealm) == "function" then
+      realm = NameProbe.Raw(Call(1, H.PlayerRealm))
+      normalized = NameProbe.Raw(Call(1, H.PlayerRealm, true))
     end
-    return line
+    return string.format("Postbox: two-part names %s | PlayerName %s | PlayerRealm %s, normalized %s",
+      two, NameProbe.Returns(H.PlayerName), realm, normalized)
   end
 
   -- The first senders in the inbox, while a mailbox is open.
@@ -2064,7 +2073,7 @@ do
     return "Battle.net: " .. List(out, "none in WoW")
   end
 
-  local PARTS = { "Client", "Rules", "Realms", "Me", "Inbox", "Friends", "Guild", "AutoComplete", "BattleNet" }
+  local PARTS = { "Client", "Rules", "Realms", "Me", "Postbox", "Inbox", "Friends", "Guild", "AutoComplete", "BattleNet" }
 
   -- Each line, or the part's name and "error" where one fails: the report
   -- goes on either way.
