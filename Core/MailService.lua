@@ -313,13 +313,16 @@ end
 -- place of Delete on it. The one place Postbox asks: the rows' marks, their
 -- tooltip, Mail Memory's capture and the reading view's buttons all come
 -- here. Guarded, so a client without the function, or one that throws for
--- an index, answers nil; nothing is allocated.
+-- an index, answers nil; nothing is allocated. The second value says
+-- whether the client answered at all (an answer of nil included), for the
+-- reading view's buttons, which read any answer but true as Return.
 function Mail.ExpiryFate(index)
   local ask = InboxItemCanDelete
-  if type(ask) ~= "function" then return nil end
+  if type(ask) ~= "function" then return nil, false end
   local ok, canDelete = pcall(ask, index)
-  if not ok or canDelete == nil then return nil end
-  return canDelete and "gone" or "back"
+  if not ok then return nil, false end
+  if canDelete == nil then return nil, true end
+  return canDelete and "gone" or "back", true
 end
 
 -------------------------------------------------------------

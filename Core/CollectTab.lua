@@ -5540,7 +5540,7 @@ function RV.LIVE.Classify(index) return Mail().ClassifyMail(index) end
 function RV.LIVE.Stuck(index) return Mail().StuckReason(index) end
 function RV.LIVE.Icon(index) return Mail().GetMailIcon(index) end
 function RV.LIVE.Mark(index, slot) return RV.QualityMark(index, slot) end
-function RV.LIVE.Fate(index) return Mail().ExpiryFate(index) end
+function RV.LIVE.Fate(index) return (Mail().ExpiryFate(index)) end
 RV.LIVE.Money = RowMoneyText
 RV.LIVE.Invoice = AppendInvoiceFigures
 
@@ -9889,9 +9889,12 @@ function PaintDetailContent(detail, index)
   -- Return on the same test. Once a mail has been emptied there is nothing to
   -- return, and a system mail (auction house, quest reward) cannot be. Delete
   -- is never offered on a C.O.D. mail, nor on one the client says to return.
-  -- The client's answer is the mail's fate on expiry (Mail().ExpiryFate):
-  -- a mail it cannot say of is offered Delete, as before.
-  local canDelete = Mail().ExpiryFate(index) ~= "back"
+  -- The client's answer is the mail's fate on expiry (Mail().ExpiryFate).
+  -- Read as Blizzard's own frame reads it: any answer but true offers
+  -- Return, nil included; a client without the function, or one that
+  -- throws for the index, offers Delete.
+  local fate, answered = Mail().ExpiryFate(index)
+  local canDelete = fate == "gone" or not answered
   -- Collect stands only while the mail holds something it would take: gold,
   -- or items, a C.O.D. mail's included (its click still asks first). A
   -- letter with nothing in it reads with Back and Delete alone, and the bar
