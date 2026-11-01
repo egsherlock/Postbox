@@ -40,6 +40,10 @@ deleted the moment Postbox empties it (**Delete when done**).
   collects your picks. C.O.D. mail is never swept.
 - **Sort by time left:** Newest first or Expiring first, remembered. When your
   bags fill, what's left is the bottom of the list.
+- **Time left** turns amber under three days (one for C.O.D.). On a mail that
+  still holds something, a curved arrow in front says it goes back to its
+  sender, a bin that it is deleted; the tooltip's **On expiry:** line says
+  the same.
 - **Largest stack first:** a mail holding several stacks of an item you can
   only carry so many of gives you the largest first.
 - **Bags are checked before anything opens**, with an offer to collect what
@@ -131,7 +135,8 @@ a mail to see what it holds. A character you no longer play can be hidden
 
 - **Arrivals are detected, not guessed:** the game's new-mail signal, the
   unread flag, and the auction house's own sold / expired / bought notices.
-- **Warnings** name any character with mail under three days from expiring,
+- **Warnings** name any character with mail under three days (one for
+  C.O.D.) from expiring,
   or with mail known to be on its way and no mailbox visit in over three
   weeks: in chat at login (**Warn about other characters' mail**), in the
   minimap tooltip, and as the minimap icon's expiry marker.

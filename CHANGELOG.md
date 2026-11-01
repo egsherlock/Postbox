@@ -25,13 +25,18 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 - Also: senders wear their class colors, From alts counts your alts' mail,
   EllesmereUI's WoW Forever look is matched, the options drawings show
   Forever's goods, the minimap icon's Blizzard style uses Forever's mail
-  art, and the quality-mark options are hidden, since vanilla goods have
-  none.
+  art, Mail Memory knows Forever's auction house mail, and the quality-mark
+  options are hidden, since vanilla goods have none.
 
 ### New
 
 - **Six themed window styles:** London Postbox, Faction, Post Office
   Counter, Goblin Express, Letters and Daylight, under Options, Window.
+- **Expiring mail says where it goes.** Once a mail that still holds gold or
+  items is down to its last three days (one for C.O.D.), a curved arrow in
+  front of its time left says it will go back to its sender, a bin that it
+  will be deleted. Its tooltip says it on an "On expiry:" line, and Mail
+  Memory shows the same.
 - **Gold from strangers waits for your answer.** Where the game asks before
   you take gold mailed by someone it doesn't know (in Forever now, and on
   retail from patch 12.1.7), collecting pauses on that mail until you
@@ -44,8 +49,9 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   a tooltip beside the window repeating the panel's description. Tooltips
   stay where they add something, such as a value too long for its box.
 - Also: **/postbox debug** says which game it runs in and how that game
-  writes names, without ever writing one; Battle.net friends are suggested
-  only from a game Blizzard can deliver mail to.
+  writes character names, by their shape alone, so a pasted report never
+  names anyone; Battle.net friends are suggested only from a game Blizzard
+  can deliver mail to.
 
 ### Fixed
 
@@ -54,10 +60,12 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   of reporting "No confirmation from the server" after ten seconds. Accept
   and the mail is recorded as sent; if you don't accept, nothing is sent and
   your draft stays.
-- Sending more than 12 items in one press sends every mail in full. The last
-  mail's items could stay behind in the attachment slots when the game
-  reported the emptied slots very quickly, and pressing Send while the game
-  asked about a refundable item could send part of a mail early.
+- Sending more than 12 items in one press sends every mail in full, however
+  quickly the game empties the attachment slots. While the game asks about a
+  refundable item you are attaching, Send waits for your answer.
+- A C.O.D. mail no longer counts as about to expire the moment it arrives:
+  Mail Memory's warnings and the minimap icon's expiry marker count it once
+  it has under a day left, as the Mail tab's amber does.
 
 ## 1.50.0
 
