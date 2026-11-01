@@ -524,8 +524,8 @@ end
 --
 -- Mail lives thirty days. Either time is therefore the earliest that unseen
 -- mail could start to be lost, and a character is flagged a week before it.
--- A character whose snapshot holds mail under three days from expiring is
--- flagged too. That is the whole of it: nothing is guessed, and a character
+-- A character whose snapshot holds mail under three days from expiring (one
+-- for C.O.D., as the rows turn amber) is flagged too. That is the whole of it: nothing is guessed, and a character
 -- with nothing on the way says nothing, however long it has been idle.
 -------------------------------------------------------------
 
@@ -640,7 +640,8 @@ end
 
 -- realm, name, now -> what there is to say about that character's mail.
 --   waiting    mails in its snapshot still waiting
---   soon       how many of them expire within three days, and `soonest`
+--   soon       how many of them are short (three days, one for C.O.D.),
+--              and `soonest`
 --   unseenDays set when mail known to be on the way has gone unopened
 --              long enough to be a week from its earliest loss
 local function Status(realm, name, now)
@@ -652,12 +653,19 @@ local function Status(realm, name, now)
     soon = nil, soonest = nil, pending = 0, unseenDays = nil, warn = false,
     me = nil, hidden = nil, label = nil, text = nil }
   local mails = snap and snap.mails or {}
+  -- Soon by the rows' own rule (the Mail tab's RV.ShortDays, its amber):
+  -- under three days, or one for a C.O.D. mail, which only lives three.
+  -- Mail that goes back to its sender counts as well.
+  local CT = ns.CollectTab
+  local shortDays = CT and CT.RowRules and CT.RowRules.ShortDays
   for i = 1, #mails do
     local mail = mails[i]
     if Holds(mail, now) then
       st.waiting = st.waiting + 1
       local left = (tonumber(mail.expires) or 0) - now
-      if left > 0 and left < SOON then
+      local cod = (tonumber(mail.cod) or 0) > 0
+      local soon = shortDays and shortDays(cod) * DAY or (cod and DAY or SOON)
+      if left > 0 and left < soon then
         st.soon = (st.soon or 0) + 1
         if not st.soonest or mail.expires < st.soonest then st.soonest = mail.expires end
       end
