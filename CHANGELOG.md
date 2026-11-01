@@ -63,8 +63,10 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   stay where they add something, such as a value too long for its box.
 - **Windows open beside what opened them:** the options right of the
   Postbox window from its cog and left of the minimap from the icon, and
-  Manage Recipients right of the Postbox window or the options. Move one
-  and it opens there again next time, beside the same window.
+  Manage Recipients right of the Postbox window or the options. With Dock
+  beside game windows on, the options stay beside the Postbox window as it
+  moves or resizes, so you watch each setting reshape it and the two never
+  overlap.
 - Also: **/postbox debug** says which game it runs in and how that game
   writes character names, by their shape alone, so a pasted report never
   names anyone; Battle.net friends are suggested only from a game Blizzard

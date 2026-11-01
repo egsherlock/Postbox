@@ -779,13 +779,16 @@ local S = {
   -- the pointer rests meanwhile (Rows.Hold)
   bodyH = 0,
   textGen = 0,    -- counts changes to a text the inspector can show
-  -- What the panel was last opened from (Panel.Toggle): the opener's frame,
-  -- or nil, and its key in the remembered places.
-  opener = nil, from = "center",
+  -- Where the panel stands (Place): what it was opened from, the opener's
+  -- frame or nil, and its key; the side it stands on where that is not the
+  -- key's (`side`: the preview's); the side it took this showing (`took`);
+  -- whether it stands by its window still (`follow`), and a placement
+  -- waiting for the next frame (`queued`).
+  opener = nil, from = "center", side = nil, took = nil, follow = false, queued = false,
 }
 
 -- The sections below, declared together so each can reach the others.
-local Tip, Insp, Ctx, Rows, Tabs, Pages, State, Footer = {}, {}, {}, {}, {}, {}, {}, {}
+local Tip, Insp, Ctx, Rows, Tabs, Pages, State, Footer, Place = {}, {}, {}, {}, {}, {}, {}, {}, {}
 
 -- title, text [, extra]: one thing the inspector can say. `extra` names a
 -- drawing shown under the text ("arrange").
@@ -7077,6 +7080,8 @@ local function PanelHide()
   end
   -- Forever's reload offer goes with the panel that asked it.
   ReloadAsk.Hide()
+  -- Standing by nothing until it next opens (Place).
+  S.follow = false
 end
 
 local function Build()
@@ -7090,17 +7095,21 @@ local function Build()
   frame:EnableMouse(true)
   frame:SetMovable(true)
   frame:RegisterForDrag("LeftButton")
-  frame:SetScript("OnDragStart", frame.StartMoving)
-  -- Where the player leaves it is remembered against what opened it
-  -- (Panel.Toggle), and the next open from there keeps it.
+  -- A drag puts the panel where the player wants it until it next opens:
+  -- it stops standing by its window (Place), and nothing is remembered.
+  frame:SetScript("OnDragStart", function(self)
+    S.follow = false
+    self:StartMoving()
+  end)
   frame:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
-    local helpers = ns.Core.UI.Helpers
-    helpers.RememberBeside(self, S.opener, "options", S.from)
-    helpers.PinFrameTopLeft(self)
+    ns.Core.UI.Helpers.PinFrameTopLeft(self)
   end)
   frame:Hide()
   frame:SetSize(PANEL_W, 480)
+  -- Its own size moving while it stands by its window (a taller list in
+  -- another language, a new font) is placed again as the window's is.
+  frame:HookScript("OnSizeChanged", function(self) Place.Moved(self) end)
 
   -- Never transparent: you need to read it while adjusting the transparency
   -- of the window behind it. Skin.ApplyBgOpacity honours this flag.
@@ -7371,18 +7380,89 @@ function Panel.Open()
   Panel.Toggle(nil)
 end
 
--- Where the panel opens, by what opened it (`from`, and `anchor`, the frame
--- it opened from): right of the Postbox window from its cog, wherever that
--- window stands (in its panel slot when docked); left of the minimap from
--- the minimap icon; below Mail Memory's window from there; and from
--- anywhere else (/postbox, the game's Settings page) the screen's middle.
--- Each opener's own spot once the player has moved the panel from it
--- (Helpers.PlaceBeside).
+-------------------------------------------------------------
+-- Where the panel stands
+--
+-- Every open places it beside what opened it, by one rule (`from`, and
+-- `opener`, the frame it opened from): right of the Postbox window from its
+-- cog, the inbox's or the preview's, wherever that window stands (in its
+-- panel slot when docked); below Mail Memory's window from its cog; left
+-- of the minimap from the icon; and from anywhere else (/postbox, the
+-- game's Settings page) the screen's middle. Nothing is remembered: a drag
+-- lasts while the panel stays open, and the next open is beside its opener
+-- again (Helpers.PlaceBeside).
+--
+-- While Dock beside game windows is on, the panel stands by its window for
+-- as long as both are up. Whenever that window moves or changes size --
+-- its grip, a re-dock, the game laying out its panels, Window scale, a
+-- setting here that makes it taller -- the panel is placed beside it again
+-- by the same rule, keeping the side it took this showing while that side
+-- has the room, so it never flips back and forth. Changing a setting then
+-- visibly reshapes the window beside the panel, and the two never overlap.
+-- The minimap and the middle have nothing to follow, except the preview
+-- window that Test mail or arranging opens beside the panel
+-- (MailboxUI.OpenPreview): the panel then stands by that window, on the
+-- side opposite the one it took (Panel.StandBeside). The panel moves, never
+-- the window. A drag of the panel ends the following until it next opens;
+-- with docking off it opens beside its opener and stays put.
+--
+-- The window says when it moves (Helpers.WatchPlace: its size, and a probe
+-- on its corner) as often as the client lays it out -- every frame of a
+-- drag -- and the panel is placed once for all of it, a frame later. No
+-- OnUpdate and no timer otherwise; nothing at all while nothing moves.
+-------------------------------------------------------------
 local OPEN_SIDE = { main = "right", minimap = "left", memory = "below" }
 
-local function PlacePanel(frame)
-  local side = S.opener and OPEN_SIDE[S.from] or nil
-  ns.Core.UI.Helpers.PlaceBeside(frame, S.opener, side, "options", S.from)
+-- The openers the panel stands by: the windows, never the minimap.
+Place.FOLLOWS = { main = true, memory = true, preview = true }
+
+-- Beside the opener, on its key's side (or the preview's own), keeping the
+-- side this showing took while it has the room.
+function Place.Put(frame)
+  local side = S.opener and (S.side or OPEN_SIDE[S.from]) or nil
+  S.took = ns.Core.UI.Helpers.PlaceBeside(frame, S.opener, side, S.took)
+end
+
+-- Whether the panel stands by its window now: one it follows, on screen,
+-- not dragged away from since it opened, and docking on.
+function Place.Following()
+  local opener = S.opener
+  if not (S.follow and opener and Place.FOLLOWS[S.from]) then return false end
+  if not opener:IsVisible() then return false end
+  local UI = ns.MailboxUI
+  return UI and type(UI.GetOption) == "function" and UI.GetOption("gridDock") and true or false
+end
+
+-- The placement a move asked for, a frame after it.
+function Place.Now()
+  S.queued = false
+  local frame = S.frame
+  if frame and frame:IsShown() and Place.Following() then Place.Put(frame) end
+end
+
+-- The window the panel stands by moved or changed size (Helpers.WatchPlace),
+-- or the panel itself changed size: placed once, at the next frame, however
+-- often this is heard before then. The window hiding (`gone`) ends it: a
+-- window shown again later is another showing, which the panel did not
+-- open beside.
+function Place.Moved(window, gone)
+  if gone then
+    if window == S.opener then S.follow = false end
+    return
+  end
+  if S.queued or not S.follow then return end
+  if window ~= S.opener and window ~= S.frame then return end
+  if not Place.Following() then return end
+  S.queued = true
+  C_Timer.After(0, Place.Now)
+end
+
+-- The opener heard from when it moves, once per window for the session.
+function Place.Watch()
+  local opener = S.opener
+  if opener and Place.FOLLOWS[S.from] then
+    ns.Core.UI.Helpers.WatchPlace(opener, Place.Moved)
+  end
 end
 
 function Panel.Toggle(anchor, from)
@@ -7391,17 +7471,19 @@ function Panel.Toggle(anchor, from)
     frame:Hide()
     return
   end
-  -- What it opens from, for this open and a drag during it. An opener not
-  -- on screen is no opener: the middle, as from anywhere else.
+  -- What it opens from, for this open. An opener not on screen is no
+  -- opener: the middle, as from anywhere else.
   if anchor and OPEN_SIDE[from] and anchor.IsVisible and anchor:IsVisible() then
     S.opener, S.from = anchor, from
   else
     S.opener, S.from = nil, "center"
   end
+  S.side, S.took, S.follow = nil, nil, true
+  Place.Watch()
   -- Counted again when the Send tab is next shown.
   S.sendText = nil
   Refresh()
-  PlacePanel(frame)
+  Place.Put(frame)
   frame:Show()
   frame:Raise()
   if ns.Skin and ns.Skin.Refresh then ns.Skin.Refresh(frame) end
@@ -7414,8 +7496,19 @@ function Panel.Toggle(anchor, from)
   -- back where it opens if that moved its scale.
   local T = ns.Theme
   if T and type(T.FitToScreen) == "function" then T.FitToScreen(frame) end
-  -- Placed again at its size and scale as they now stand: the side with
-  -- room, and the clamp, depend on both.
-  PlacePanel(frame)
+  -- Placed again at its size and scale as they now stand, the side chosen
+  -- afresh: the side with room, and the clamp, depend on both.
+  S.took = nil
+  Place.Put(frame)
   Panel.SelectTab(S.tab)
+end
+
+-- The preview window opened beside the panel (MailboxUI.OpenPreview), on
+-- the side of it opposite `side`: whatever the panel was opened from, it
+-- stands by that window from now on, on `side`, while docking is on.
+function Panel.StandBeside(window, side)
+  local frame = S.frame
+  if not (frame and frame:IsShown() and window) then return end
+  S.opener, S.from, S.side, S.took, S.follow = window, "preview", side, side, true
+  Place.Watch()
 end

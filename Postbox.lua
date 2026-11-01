@@ -2467,8 +2467,13 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   -- Explicit rather than relying on RegisterCurrentAlt's own call: the schema
   -- has to exist before MailboxUI reads a setting out of it, and that must not
   -- depend on whether the census found a usable name.
-  EnsureDB()
+  local profile = EnsureDB()
   RegisterCurrentAlt()
+
+  -- Where an alpha of 1.60 remembered the options, Manage Recipients and
+  -- the preview window last moved from each opener: they open beside their
+  -- opener every time now, and nothing reads it.
+  if type(profile) == "table" and profile.placement ~= nil then profile.placement = nil end
 
   -- The performance record as the player left it (section 5b), before
   -- anything can open a mailbox: the first open after a /reload is one of

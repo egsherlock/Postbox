@@ -2366,16 +2366,13 @@ local function Build()
   -- change it. Its own clamp is a sanity bound on what it writes; the real
   -- floor is the measured one (ApplyBounds), which never goes under these rows.
   -- The size only: where the window stands is its opener's to say (RM.Show),
-  -- and a drag is remembered against that opener, after the wrapped stop.
+  -- and a drag lasts while the window stays open.
   helpers.ApplyWindowPersistence(frame, store, {
     minW = MIN_W, maxW = MAX_W, minH = MIN_ROWS * ROW_H, maxH = MAX_H,
     extraWidthFn = function() return RM._loanW end,
     extraHeightFn = function() return RM._loanH end,
     savePlace = false,
   })
-  frame:HookScript("OnDragStop", function(self)
-    helpers.RememberBeside(self, RM._opener, "recipients", RM._from)
-  end)
 
   RM._frame = frame
 
@@ -2393,9 +2390,9 @@ end
 -- Where the window opens: right of what opened it (`anchor`, the window
 -- the button stands in, and `from`, its key: "main" the Send tab's, in the
 -- Postbox window wherever that stands; "options" the options panel's), or
--- the screen's middle from anywhere else (/postbox recipients). Each
--- opener's own spot once the player has moved the window from it
--- (Helpers.PlaceBeside). The size is the player's, kept as it always was.
+-- the screen's middle from anywhere else (/postbox recipients), on every
+-- open: a drag lasts while it stays open (Helpers.PlaceBeside). The size is
+-- the player's, kept as it always was.
 RM._opener, RM._from = nil, "center"
 
 function RM.Show(anchor, from)
@@ -2427,7 +2424,7 @@ function RM.Show(anchor, from)
   -- Placed last, at the size it opens at.
   if opening then
     local helpers = ns.Core.UI.Helpers
-    helpers.PlaceBeside(frame, RM._opener, RM._opener and "right" or nil, "recipients", RM._from)
+    helpers.PlaceBeside(frame, RM._opener, RM._opener and "right" or nil)
   end
 end
 

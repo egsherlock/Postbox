@@ -3343,7 +3343,9 @@ end
 -- and the window stays the game's and grid docking's. Away from a mailbox
 -- it is the preview window: this same window, opened with no mail session
 -- over the samples, beside the options that opened it (left of them, else
--- right) or where the player last left it from there. Arranging from the
+-- right), every time. While docking is on the options then follow it
+-- (OptionsPanel.StandBeside): it is the preview that resizes, and the
+-- options that move to stay beside it, never the other way. Arranging from the
 -- options away from a mailbox opens it arranging; Done leaves it up as Test
 -- mail's, and turning Test mail off, its close button, Escape, or anything
 -- else that hides it closes it.
@@ -3365,9 +3367,8 @@ end
 
 -- What the preview put aside, given back when it ends: the tab the next
 -- mailbox opens on, and the per-session drag override (a drag of the preview
--- window is not one). And the options window it opened beside (`opener`),
--- against which a drag of it is remembered.
-local previewKeep = { tab = nil, freeMoved = false, opener = nil }
+-- window is not one).
+local previewKeep = { tab = nil, freeMoved = false }
 
 local function PreviewSendEnter(self)
   if not UI._state.preview then return end
@@ -3458,7 +3459,7 @@ local function EndPreview()
   st.preview = false
   if previewKeep.tab then st.activeTab = previewKeep.tab end
   st.freeMoved = previewKeep.freeMoved and true or false
-  previewKeep.tab, previewKeep.freeMoved, previewKeep.opener = nil, false, nil
+  previewKeep.tab, previewKeep.freeMoved = nil, false
   local frame = UI._frame
   if frame then
     MarkPreview(frame, false)
@@ -4095,15 +4096,6 @@ local function BuildFrame()
       -- The preview beside the options is not where the window is kept.
       savePlace = function() return not UI._state.previewPlaced end,
     })
-    -- A drag of the preview is remembered against the options it opened
-    -- beside instead (section 5c), after the persistence's own drag-stop.
-    if helpers.RememberBeside then
-      frame:HookScript("OnDragStop", function(self)
-        if UI._state.preview and previewKeep.opener then
-          helpers.RememberBeside(self, previewKeep.opener, "preview", "options")
-        end
-      end)
-    end
   end
 
   -- After the panels and after the restore: the floor is derived from the former
@@ -4363,17 +4355,17 @@ function UI.OpenPreview(arrange, opener)
   UI.SelectTab("collect")
   collect.SetSamples(panel, true)
 
-  -- Beside the options, left of them first (the window's place is its own
-  -- business: nothing of the preview is saved as it). Without them, where
-  -- the player keeps the window when it floats free (the spot it was last
-  -- put away at), or centred, where the default spot is, when it docks --
-  -- the preview never docks. Anchored to the screen either way, so no anchor
-  -- to MailFrame survives from the last visit.
+  -- Beside the options, left of them first, every time (the window's place
+  -- is its own business: nothing of the preview is saved as it). Without
+  -- them, where the player keeps the window when it floats free (the spot
+  -- it was last put away at), or centred, where the default spot is, when
+  -- it docks -- the preview never docks. Anchored to the screen either way,
+  -- so no anchor to MailFrame survives from the last visit.
   local helpers = WindowHelpers()
   st.previewPlaced = true
+  local took
   if opener and helpers and helpers.PlaceBeside then
-    previewKeep.opener = opener
-    helpers.PlaceBeside(frame, opener, "left", "preview", "options")
+    took = helpers.PlaceBeside(frame, opener, "left")
   else
     local store = UI._windowStore
     frame:ClearAllPoints()
@@ -4388,6 +4380,12 @@ function UI.OpenPreview(arrange, opener)
   frame:SetAlpha(1)
   frame:Show()
   frame:Raise()
+  -- The options it opened beside stand by it from now on: on the side
+  -- opposite the one it took, following it while docking is on.
+  local options = ns.OptionsPanel
+  if took and options and type(options.StandBeside) == "function" then
+    options.StandBeside(frame, helpers.OppositeSide(took))
+  end
   -- After the show: the skins' refresh pass on it repaints the tabs.
   MarkPreview(frame, true)
   UI.UpdateStatusSummary()

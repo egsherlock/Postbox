@@ -135,24 +135,20 @@ end
 -- Beside the opener
 --
 -- The options, Manage Recipients and the Postbox window's preview each open
--- beside whatever opened them: right of the Postbox window from its cog,
--- left of the minimap from the icon, and so on. Top edges line up for a
--- place to the left or right, left edges for one below; a side with no room
--- on screen gives way to the opposite one, and wherever the window lands it
--- is clamped whole onto the screen and put on whole pixels.
---
--- Once the player drags a window, where they left it is remembered RELATIVE
--- to the opener, under the opener's key (profile.placement[window][key]):
--- the next open from there keeps that offset, so a Postbox window moved
--- since takes its options along. Each opener's spot is its own, and the
--- default above stands only until there is one. A window opened from
--- nowhere in particular (a slash command) is placed against the screen, in
--- its middle until it has a spot of its own.
+-- beside whatever opened them, every time: right of the Postbox window from
+-- its cog, left of the minimap from the icon, and so on. Top edges line up
+-- for a place to the left or right, left edges for one below; a side with
+-- no room on screen gives way to the opposite one, and wherever the window
+-- lands it is clamped whole onto the screen and put on whole pixels. A
+-- window opened from nowhere in particular (a slash command) stands in the
+-- screen's middle. Nothing is remembered: a drag lasts while the window
+-- stays open, and the next open is beside its opener again.
 --
 -- Everything is measured in screen units (a frame's units times its
--- effective scale), since the windows carry different scales; a spot is
--- kept in UIParent's units. The window is anchored to UIParent, never to
--- the opener, so an opener closing later does not take it along.
+-- effective scale), since the windows carry different scales; the gap is
+-- UIParent's 8 units, so two windows placed beside each other either way
+-- round stand the same distance apart. The window is anchored to UIParent,
+-- never to the opener, so an opener closing later does not take it along.
 -------------------------------------------------------------
 
 local BESIDE_GAP = 8
@@ -180,22 +176,17 @@ local function Snap(value, px)
   return floor(value / px + 0.5) * px
 end
 
--- The remembered spot for `key` of `window`, read without creating anything.
-local function Spot(window, key)
-  local Store = ns.Store
-  local all = Store and type(Store.Get) == "function" and Store.Get("profile.placement") or nil
-  local spots = type(all) == "table" and all[window] or nil
-  local spot = type(spots) == "table" and spots[key] or nil
-  if type(spot) ~= "table" or type(spot.x) ~= "number" or type(spot.y) ~= "number" then return nil end
-  return spot
-end
+local OPPOSITE = { right = "left", left = "right", below = "above", above = "below" }
 
--- frame, opener, side, window, key -> places `frame` (its size already
--- settled) beside `opener` on `side` ("right", "left" or "below"), or where
--- the player last left it from there. With no opener, or one not laid out,
--- the screen is the opener and `key` should say so.
-function Helpers.PlaceBeside(frame, opener, side, window, key)
-  if not (frame and type(frame.GetWidth) == "function") then return false end
+-- frame, opener, side [, keep] -> places `frame` (its size already settled)
+-- beside `opener` on `side` ("right", "left" or "below"), and answers the
+-- side it took ("right", "left", "below" or "above"; nil in the middle).
+-- `keep`, the side an earlier placement of this same showing took: a
+-- window that follows its opener keeps it while it has the room, so it
+-- never flips back and forth as the opener grows and shrinks. With no
+-- opener, or one not laid out, the screen's middle.
+function Helpers.PlaceBeside(frame, opener, side, keep)
+  if not (frame and type(frame.GetWidth) == "function") then return nil end
   local s = frame:GetEffectiveScale() or 1
   if s <= 0 then s = 1 end
   local ui = UIParent:GetEffectiveScale() or 1
@@ -203,33 +194,39 @@ function Helpers.PlaceBeside(frame, opener, side, window, key)
   local w, h = (frame:GetWidth() or 0) * s, (frame:GetHeight() or 0) * s
 
   local oL, oR, oB, oT = ScreenRect(opener)
-  if not oL then opener, oL, oR, oB, oT = nil, 0, screenW, 0, screenH end
+  if not oL then opener = nil end
 
-  local x, y
-  local spot = Spot(window, key)
-  if spot then
-    x, y = oL + spot.x * ui, oT + spot.y * ui
-  elseif not opener then
+  local x, y, took
+  if not opener then
     x, y = (screenW - w) / 2, (screenH + h) / 2
-  elseif side == "below" then
-    local gap = BESIDE_GAP * s
-    x, y = oL, oB - gap
-    -- Above it where only above has the room.
-    if y - h < 0 and oT + gap + h <= screenH then y = oT + gap + h end
   else
-    local gap = BESIDE_GAP * s
-    local right, left = oR + gap, oL - gap - w
-    local fitsRight, fitsLeft = right + w <= screenW, left >= 0
-    local goLeft
-    if fitsRight ~= fitsLeft then
-      goLeft = fitsLeft
-    elseif fitsRight then
-      goLeft = side == "left"
+    local gap = BESIDE_GAP * ui
+    if side == "below" or side == "above" then
+      local fitsBelow, fitsAbove = oB - gap - h >= 0, oT + gap + h <= screenH
+      local goAbove
+      if (keep == "below" and fitsBelow) or (keep == "above" and fitsAbove) then
+        goAbove = keep == "above"
+      else
+        -- Above it where only above has the room.
+        goAbove = side == "above" and (fitsAbove or not fitsBelow) or (not fitsBelow and fitsAbove)
+      end
+      x, y, took = oL, goAbove and (oT + gap + h) or (oB - gap), goAbove and "above" or "below"
     else
-      -- Neither side has the room: the one with more, clamped below.
-      goLeft = oL > screenW - oR
+      local right, left = oR + gap, oL - gap - w
+      local fitsRight, fitsLeft = right + w <= screenW, left >= 0
+      local goLeft
+      if (keep == "right" and fitsRight) or (keep == "left" and fitsLeft) then
+        goLeft = keep == "left"
+      elseif fitsRight ~= fitsLeft then
+        goLeft = fitsLeft
+      elseif fitsRight then
+        goLeft = side == "left"
+      else
+        -- Neither side has the room: the one with more, clamped below.
+        goLeft = oL > screenW - oR
+      end
+      x, y, took = goLeft and left or right, oT, goLeft and "left" or "right"
     end
-    x, y = goLeft and left or right, oT
   end
 
   x = max(0, min(x, screenW - w))
@@ -238,41 +235,68 @@ function Helpers.PlaceBeside(frame, opener, side, window, key)
   x, y = Snap(x, px), Snap(y, px)
   frame:ClearAllPoints()
   frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / s, y / s)
-  return true
+  return took
 end
 
--- frame, opener, window, key -> where the player has just left `frame`,
--- remembered relative to `opener` (the screen where there is none) under
--- `key`. Nothing is kept against an opener that cannot be measured.
-function Helpers.RememberBeside(frame, opener, window, key)
-  if key == nil or window == nil then return false end
-  local fL, _, _, fT = ScreenRect(frame)
-  if not fL then return false end
-  local ui = UIParent:GetEffectiveScale() or 1
-  local oL, oT
-  if opener then
-    local l, _, _, t = ScreenRect(opener)
-    if not l then return false end
-    oL, oT = l, t
-  else
-    oL, oT = 0, (UIParent:GetHeight() or 0) * ui
+-- The side opposite `side`: where the opener stands seen from the window
+-- placed beside it.
+function Helpers.OppositeSide(side)
+  return OPPOSITE[side]
+end
+
+-------------------------------------------------------------
+-- Watching a window's place
+--
+-- The client says when a frame's size changes (OnSizeChanged) but never
+-- when it moves. So a watched window gets a probe: a child frame, without
+-- art or mouse, stretched from the screen's bottom-left corner to the
+-- window's top-right one. Wherever that corner goes -- a drag, a re-dock,
+-- the game laying out its panels, a new scale, a wider window -- the
+-- probe's size changes and the client says so. Together with the window's
+-- own OnSizeChanged (a height that grows downward moves no corner the
+-- probe holds), every change of place or size is heard, and nothing runs
+-- while nothing moves: no OnUpdate, no timer. A child of the window, it
+-- falls silent while the window is hidden.
+--
+-- Each listener is called with the window, as often as the client fires;
+-- coalescing is the listener's business. And once more, with `gone` true,
+-- when the window hides. The probe is the window's own frame anchored to
+-- the window: it reads the window's place, as every region inside it
+-- does, and writes nothing.
+-------------------------------------------------------------
+
+local watchers = setmetatable({}, { __mode = "k" })
+
+-- frame, fn -> `fn(frame)` from now on whenever `frame` moves or changes
+-- size, and `fn(frame, true)` when it hides. Once per frame and listener:
+-- a second call adds nothing.
+function Helpers.WatchPlace(frame, fn)
+  if not (frame and type(fn) == "function" and type(frame.HookScript) == "function") then return false end
+  local list = watchers[frame]
+  if not list then
+    list = {}
+    watchers[frame] = list
+    local function Changed()
+      for i = 1, #list do list[i](frame) end
+    end
+    frame:HookScript("OnHide", function()
+      for i = 1, #list do list[i](frame, true) end
+    end)
+    local probe = CreateFrame("Frame", nil, frame)
+    if probe.EnableMouse then probe:EnableMouse(false) end
+    -- Postbox's own, and nothing to dress: a host skin that diffs the
+    -- window's children for art it laid down (EllesmereUI's) passes it by.
+    probe.__pbEuiSkinned = true
+    probe:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
+    probe:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    probe:SetScript("OnSizeChanged", Changed)
+    frame:HookScript("OnSizeChanged", Changed)
+    frame.__pbPlaceProbe = probe
   end
-  local Store = ns.Store
-  if not (Store and type(Store.EnsurePath) == "function") then return false end
-  -- The placement table itself is kept (a reset empties it where it stands),
-  -- so the per-window tables under it are found afresh on every write.
-  local all = Store.EnsurePath("profile.placement", {})
-  local spots = all[window]
-  if type(spots) ~= "table" then
-    spots = {}
-    all[window] = spots
+  for i = 1, #list do
+    if list[i] == fn then return true end
   end
-  local spot = spots[key]
-  if type(spot) ~= "table" then
-    spot = {}
-    spots[key] = spot
-  end
-  spot.x, spot.y = Round((fL - oL) / ui), Round((fT - oT) / ui)
+  list[#list + 1] = fn
   return true
 end
 
