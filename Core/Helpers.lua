@@ -167,12 +167,15 @@ function H.PlayerName()
     end
     return name
   end
-  local name, surname = UnitName("player")
+  -- UnitNameUnmodified first, as AceDB-3.0 keys a Forever character (the
+  -- EllesmereUI skin finds its profile by that key); UnitName when it
+  -- has no surname to give.
+  local first = type(UnitNameUnmodified) == "function" and UnitNameUnmodified or UnitName
+  local name, surname = first("player")
   if IsSecret(name) or IsSecret(surname) then return name end
   local full = JoinSurname(name, surname)
-  if type(full) == "string" and not full:find(Separator(), 1, true)
-     and type(UnitNameUnmodified) == "function" then
-    local n, s = UnitNameUnmodified("player")
+  if type(full) == "string" and not full:find(Separator(), 1, true) and first ~= UnitName then
+    local n, s = UnitName("player")
     if not (IsSecret(n) or IsSecret(s)) then
       local other = JoinSurname(n, s)
       if type(other) == "string" and other:find(Separator(), 1, true) then full = other end
