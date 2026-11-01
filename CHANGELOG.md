@@ -58,8 +58,8 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 - When the game asks you to confirm sending gold or items to someone it
   doesn't know, the Send tab now says so and waits for your answer, instead
   of reporting "No confirmation from the server" after ten seconds. Accept
-  and the mail is recorded as sent; if you don't accept, nothing is sent and
-  your draft stays.
+  and the mail is recorded as sent; Cancel and nothing is sent and your
+  draft stays.
 - Sending more than 12 items in one press sends every mail in full, however
   quickly the game empties the attachment slots. While the game asks about a
   refundable item you are attaching, Send waits for your answer.
