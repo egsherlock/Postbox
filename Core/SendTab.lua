@@ -945,12 +945,15 @@ end
 -- so a mailbox close/open cycle can never leave the Send button stuck disabled.
 local function AbandonPendingSend(panel)
   if pendingSend and (not panel or pendingSend.panel == panel) then
-    -- A question Blizzard was asking about it goes with it (8c).
-    if pendingSend.asking then ST.EndAsk(pendingSend, "closed") end
-    -- On Forever a send still waited for when the box closes (ST.KeepWaiting)
-    -- may yet arrive: the draft is put aside and comes back on the next
-    -- visit, so say what retail's timeout says before it can be sent twice.
-    if pendingSend.late and ns.IsForever then PopupNotice(L["MSG_SEND_TIMEOUT"]) end
+    -- A question Blizzard was asking about it goes with it (8c), and so
+    -- does the send: the client drops a mail it is still asking about.
+    local wasAsking = pendingSend.asking
+    if wasAsking then ST.EndAsk(pendingSend, "closed") end
+    -- On Forever any other send still with the server when the box closes,
+    -- in its first SEND_TIMEOUT or waited for since (ST.KeepWaiting), may
+    -- yet arrive: the draft is put aside and comes back on the next visit,
+    -- so say what retail's timeout says before it can be sent twice.
+    if ns.IsForever and not wasAsking then PopupNotice(L["MSG_SEND_TIMEOUT"]) end
     pendingSend = nil
   end
   ST.ask.after = nil
