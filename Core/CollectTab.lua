@@ -326,6 +326,11 @@ end
 -- RV.art is.
 RV.MARK = {
   W = 33, H = 28, BUTTON = 37, OVER = 1.5,
+  -- A row's icon past the one-line rows' 18 (Larger mail rows' 28) grows
+  -- its mark by ROW_GROWTH of the difference only: at the icon's full
+  -- proportion the mark read a touch large there (Elliott, 2026-11-02),
+  -- while the one-line rows' stays exactly as it was.
+  ROW_BASE = 18, ROW_GROWTH = 0.7,
   INK = {
     ["professions-icon-quality-tier1-inv"] = { 2.6, 1.7 },
     ["professions-icon-quality-tier2-inv"] = { 0.9, 2.2 },
@@ -505,7 +510,9 @@ function RV.PaintQuality(row, mark, layout)
   local holder = RV.IconOverlay(row)
   if not row.Quality then row.Quality, row.QualityShadow = RV.NewMark(holder) end
   RV.ShowMark(row.Quality, row.QualityShadow, atlas)
-  RV.PlaceMark(row.Quality, row.QualityShadow, row.Icon, row.Icon:GetWidth() or 18)
+  local size, M = row.Icon:GetWidth() or 18, RV.MARK
+  if size > M.ROW_BASE then size = M.ROW_BASE + (size - M.ROW_BASE) * M.ROW_GROWTH end
+  RV.PlaceMark(row.Quality, row.QualityShadow, row.Icon, size)
 end
 
 -------------------------------------------------------------
@@ -2282,7 +2289,8 @@ end
 -- inline texture on its line, and draws the digits centred on the line too
 -- (the 1.50 screenshots: a 13-unit row's digits sit within half a unit of
 -- its middle), so with no vertical offset the mark's top is level with the
--- digits' tops and its bottom stands on their baseline. The keyline's unit
+-- digits' tops and its bottom stands on their baseline; the bin is drawn a
+-- unit lower (DROP), as in game its flat lid read high. The keyline's unit
 -- on every side is added round that, scaled with the mark, and the texture
 -- reaches GAP units past the art into clear texels: the gap before the
 -- digits, which so needs no space character.
@@ -2300,6 +2308,11 @@ end
 do
   local DIGIT = 0.71
   local GAP = 1
+  -- How far a mark is drawn below the line's centre, in units at the
+  -- digits' height: the whole-pixel bin's flat lid reads a unit high beside
+  -- the digits (Elliott, 2026-11-02, EllesmereUI; an earlier verdict was
+  -- taken on the old bin's art); the arrow, all curve, sits where it is.
+  local DROP = { back = 0, gone = 1 }
   local FATE_MAX = 96
   local GLYPH = { back = "expiry-back", gone = "expiry-bin" }
   -- hex: the warning ink the marks were made in; byH[h] the marks at
@@ -2336,7 +2349,8 @@ do
     local y0, y1 = floor(G.t * ch + 0.5), floor(G.b * ch + 0.5)
     x1 = x1 + floor(GAP * (x1 - x0) / G.w + 0.5)
     local eh, ew = floor(G.h * k + 0.5), floor((G.w + GAP) * k + 0.5)
-    return format("|T%s:%d:%d:0:0:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", G.file, eh, ew, cw, ch, x0, x1, y0, y1,
+    local dy = -floor((DROP[fate] or 0) * k + 0.5)
+    return format("|T%s:%d:%d:0:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", G.file, eh, ew, dy, cw, ch, x0, x1, y0, y1,
       floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5)), ew
   end
 
