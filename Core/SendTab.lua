@@ -1066,6 +1066,14 @@ function ST.KeepWaiting(pending)
   return true
 end
 
+-- Whether, on Forever, a take of Postbox's holds the mail channel: the
+-- client's MAIL_FAILED with no words is then the take's, not a slow or
+-- asked send's (the send outcome's handler, InstallEvents).
+function ST.TakeHoldsChannel()
+  local M = ns.MailService
+  return ns.IsForever and M ~= nil and type(M.IsBusy) == "function" and M.IsBusy() and true or false
+end
+
 -- The server's refusal of a send, in words Forever's mail rules add, is
 -- the guidance line's until the recipient changes (ST.UpdateSendGuidance):
 -- another ruleset, half a name, a self-found character on either end, a
@@ -6219,8 +6227,13 @@ local function InstallEvents(panel)
     elseif event == "MAIL_FAILED" then
       -- One naming an item is a take that failed, not the send: while a
       -- slow server still has the mail (ST.KeepWaiting), or Blizzard is
-      -- asking about it (8c), that is not this.
-      if not (arg1 ~= nil and pendingSend and (pendingSend.late or pendingSend.asking)) then FinishSend("failed") end
+      -- asking about it (8c), that is not this. On Forever neither is one
+      -- with no words while a take of Postbox's holds the channel: the
+      -- take's own (a Cancel of the question about a stranger's gold), and
+      -- the send is still with the server.
+      if not ((arg1 ~= nil or ST.TakeHoldsChannel()) and pendingSend and (pendingSend.late or pendingSend.asking)) then
+        FinishSend("failed")
+      end
     elseif event == "UI_ERROR_MESSAGE" then
       ST.OnAttachRefused()
       ST.OnSendRefusal(arg2)
