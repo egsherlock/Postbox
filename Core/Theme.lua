@@ -1722,6 +1722,17 @@ function Theme.Ink(token, ground)
   return 1, 1, 1, 1
 end
 
+-- Whether `token`'s text on `ground` (its home ground where nil, as
+-- Theme.Ink reads it) is dark ink on a light ground: the light palette, or
+-- a light ground in a dark one (the test Theme.FontFor dresses a light copy
+-- by). Text there is drawn clean, no shadow and no outline (DressCopy), so
+-- an inline texture drawn in that ink goes without its keyline too.
+function Theme.InkOnLight(token, ground)
+  if lightPalette then return true end
+  if not Grounds.on then return false end
+  return Grounds.IsLight(ground or Grounds.HOME[token] or "content") and true or false
+end
+
 -------------------------------------------------------------
 -- 3. Text roles
 --
@@ -4449,6 +4460,8 @@ do
     history = { file = MEDIA .. "glyph-history.tga", w = 12, h = 11, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.71875 },
     ["expiry-back"] = { file = MEDIA .. "glyph-expiry-back.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875, pad = 1 },
     ["expiry-bin"] = { file = MEDIA .. "glyph-expiry-bin.tga", w = 10, h = 11, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.71875, pad = 1 },
+    ["expiry-back-clean"] = { file = MEDIA .. "glyph-expiry-back-clean.tga", w = 9, h = 9, l = 0.03125, r = 0.59375, t = 0.03125, b = 0.59375 },
+    ["expiry-bin-clean"] = { file = MEDIA .. "glyph-expiry-bin-clean.tga", w = 8, h = 9, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.59375 },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
   }
 

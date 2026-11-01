@@ -2260,7 +2260,10 @@ end
 -- does (Arrange's Time left setting, the column's own switch), a one-line
 -- row's column is measured with it, and a two-line row's second line simply
 -- flows. The glyphs are Theme.GLYPHS "expiry-back" / "expiry-bin", keylined
--- in the texture since a font's shadow never reaches an inline texture.
+-- in the texture since a font's shadow never reaches an inline texture; and
+-- where the time is dark ink on a light ground (Postbox Light, a paper
+-- style: Theme.InkOnLight), where text is drawn clean, their clean twins
+-- "expiry-back-clean" / "expiry-bin-clean", with no keyline.
 --
 -- SIZE AND PLACE, by rule from the font the time is drawn in. The mark is
 -- as tall as the digits: DIGIT of the font's size, 0.71, the digits' height
@@ -2278,7 +2281,8 @@ end
 --
 -- Nothing is made per row: each marked text is made once per (time text,
 -- fate, mark height) and kept, the whole of it let go when the warning ink
--- moves (Light mode, a themed style's grounds: Theme.InkHex) or past
+-- or its ground's polarity moves (Light mode, a themed style's grounds:
+-- Theme.InkHex, Theme.InkOnLight) or past
 -- FATE_MAX texts. The client's string widths leave inline textures out
 -- (FitBanner found the coins missing), so a width measured of a marked text
 -- has the mark's own width added (RV.FateExtra, from MeasureWith), unless a
@@ -2295,9 +2299,11 @@ do
   -- escape and a digit; texts[fate][time text] the marked text. marked:
   -- every marked text made -> the mark's width (for RV.FateExtra); n, how
   -- many. counted: whether this client's widths count inline textures (nil
-  -- until probed). tip: the tooltip's marks, at tipSize.
-  local F = { hex = false, byH = {}, sets = 0, marked = {}, n = 0, counted = nil,
-    tip = { back = false, gone = false }, tipSize = false }
+  -- until probed). tip: the tooltip's marks, at tipSize. clean: whether
+  -- the marks are made clean (Theme.InkOnLight), CLEAN their glyphs then.
+  local F = { hex = false, clean = false, byH = {}, sets = 0, marked = {}, n = 0, counted = nil,
+    tip = { back = false, gone = false }, tipSize = false,
+    CLEAN = { back = "expiry-back-clean", gone = "expiry-bin-clean" } }
   RV.FATE = F
 
   -- A font's size -> the mark's height, the digits' (above).
@@ -2307,13 +2313,14 @@ do
     return max(floor(size * DIGIT + 0.5), 1)
   end
 
-  -- fate, h, r, g, b (0-255) -> the inline escape drawing the mark h units
-  -- tall, and its width in units; nil where the glyph is missing. The
-  -- canvas's size is 1 / l (the art starts one texel in), its texels per
-  -- unit the art's width over its box's.
-  function RV.FateEscape(fate, h, r, g, b)
+  -- fate, h, r, g, b (0-255)[, clean] -> the inline escape drawing the
+  -- mark h units tall, and its width in units; nil where the glyph is
+  -- missing. `clean`: its twin with no keyline. The canvas's size is 1 / l
+  -- (the art starts one texel in), its texels per unit the art's width over
+  -- its box's.
+  function RV.FateEscape(fate, h, r, g, b, clean)
     local T = Th()
-    local G = T.GLYPHS and T.GLYPHS[GLYPH[fate]]
+    local G = T.GLYPHS and T.GLYPHS[(clean and F.CLEAN or GLYPH)[fate]]
     if not G then return nil, 0 end
     local k = h / (G.h - 2 * (G.pad or 0))
     local cw, ch = floor(1 / G.l + 0.5), floor(1 / G.t + 0.5)
@@ -2340,7 +2347,7 @@ do
     local r, g, b = Th().Ink("warning")
     set = { esc = {}, w = {}, probe = {}, texts = {} }
     for fate in pairs(GLYPH) do
-      local esc, w = RV.FateEscape(fate, h, r, g, b)
+      local esc, w = RV.FateEscape(fate, h, r, g, b, F.clean)
       set.esc[fate], set.w[fate] = esc or false, w
       set.probe[fate] = esc and (esc .. "0") or false
       set.texts[fate] = {}
@@ -2355,10 +2362,12 @@ do
   -- unknown fate or a missing glyph.
   function RV.FateText(text, fate, fs)
     if (fate ~= "back" and fate ~= "gone") or not text then return nil end
-    local hex = Th().InkHex("warning")
-    if hex ~= F.hex then
+    local T = Th()
+    local hex = T.InkHex("warning")
+    local clean = type(T.InkOnLight) == "function" and T.InkOnLight("warning") or false
+    if hex ~= F.hex or clean ~= F.clean then
       Forget()
-      F.hex = hex
+      F.hex, F.clean = hex, clean
     end
     local size
     if fs and fs.GetFont then size = select(2, fs:GetFont()) end
