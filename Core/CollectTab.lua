@@ -3304,6 +3304,13 @@ function RV.Place(row, s)
     if detail then
       RV.Anchor(row, detail, 5, x, s.bottom or 0)
       T.FitText(detail, textWidth, s.detailText or "", detail)
+      -- FitText's width leaves an expiry mark out (RV.FateExtra): a line
+      -- carrying one is measured again with it, and one the client will
+      -- cut keeps its whole text for the tooltip. Only while marks exist.
+      if RV.FATE.n > 0 and detail.__pbOverflowText == nil and row.panel and s.detailText
+         and s.detailText:find("|T", 1, true) and MeasureWith(row.panel, detail, s.detailText, true) > textWidth then
+        detail.__pbOverflowText = s.detailText
+      end
       detail:Show()
     end
     if focus == "sender" and senderShown then target = second and detail or sender end
