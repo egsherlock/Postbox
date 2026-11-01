@@ -56,6 +56,11 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 - **A C.O.D. price is red,** as spent gold is, so amber means only that time
   is running out, and the totals band adds the C.O.D. still to pay on the
   mail listed.
+- **A lighter divider over read mail:** smaller words and a thin line to
+  Delete all, on the list's own background, so it no longer reads as a box
+  set into the list. Prefer a row like the mail around it? Choose Full row
+  under Options, Mail, Divider. On Larger mail rows it takes a whole row's
+  place, centered, with no gap above it.
 - **The options say each thing once:** pointing at a setting no longer opens
   a tooltip beside the window repeating the panel's description. Tooltips
   stay where they add something, such as a value too long for its box.

@@ -2241,24 +2241,25 @@ do
     return row
   end
 
-  -- The read mail's divider: its ground and rule, the fold mark, its words,
-  -- and Delete all at its right; once in the list, once pinned at its foot.
+  -- The read mail's divider, in the look the window's wears (CollectTab,
+  -- RV.LOOKS): the ground it stands on pinned, the stripe Full row wears,
+  -- Hairline's sign and rule, the fold mark, its words, and Delete all at
+  -- its right; once in the list, once pinned at its foot.
   function MW.NewDivider(parent)
-    local T = ns.Theme
     local d = CreateFrame("Frame", nil, parent)
-    d.Fill = d:CreateTexture(nil, "BACKGROUND")
+    d.Fill = d:CreateTexture(nil, "BACKGROUND", nil, -8)
     d.Fill:SetAllPoints()
+    d._bg = d:CreateTexture(nil, "BACKGROUND", nil, -7)
+    d._bg:SetAllPoints()
     d.Rule = d:CreateTexture(nil, "ARTWORK")
     d.Rule:SetHeight(1)
-    d.Rule:SetPoint("TOPLEFT", d, "TOPLEFT", 0, -1)
-    d.Rule:SetPoint("TOPRIGHT", d, "TOPRIGHT", 0, -1)
     d.Rule:SetTexture(WHITE)
     d.Fold = d:CreateTexture(nil, "ARTWORK")
     d.Fold:SetSize(MW.FOLD, MW.FOLD)
     d.Fold:SetDesaturated(true)
     d.Fold:SetAlpha(0.7)
+    d.Sign = MW.Text(d, "secondary")
     d.Label = MW.Text(d, "secondary")
-    d.Label:SetPoint("LEFT", d.Fold, "RIGHT", 4, 0)
     d.Delete = MW.Text(d, "secondary", "RIGHT")
     d.Delete:SetPoint("RIGHT", d, "RIGHT", -MW.ROW_END, 0)
     d:Hide()
@@ -2480,6 +2481,7 @@ do
     st.counts = not get or get("showTabCounts") and true or false
     st.folded = get and get("readFolded") and true or false
     st.mode = UI and type(UI.GetReadMode) == "function" and UI.GetReadMode() or "fold"
+    st.look = UI and type(UI.GetDividerLook) == "function" and UI.GetDividerLook() or "hairline"
     st.packed = UI and type(UI.GetRowPacking) == "function" and UI.GetRowPacking() == "packed" or false
     local order = UI and type(UI.GetStackOrder) == "function" and UI.GetStackOrder() or nil
     st.order = type(order) == "table" and order or MW.STACK
@@ -2756,12 +2758,17 @@ do
   -- the gap between a row's columns; the least room the subject keeps.
   MW.JOIN, MW.MGAP, MW.SUBJECT = "  |  ", 4, 16
 
-  -- The read mail's divider at `k` in the list, or pinned at its foot: its
-  -- ground and rule, the fold mark as the window's divider was left, its
-  -- words with the count while Show mail counts is on, and Delete all.
-  function MW.PaintDivider(win, d, st, rowH, k)
+  -- The read mail's divider at `k` in the list, or pinned at its foot over
+  -- the slot `pos`, in the window's look: exactly a row's slot; pinned, on
+  -- the list's ground; Full row in its slot's stripe, the fold mark in the
+  -- icon's lane and the words where the names start; Hairline's sign and
+  -- words a size smaller from the row's inset and its rule through the
+  -- middle to Delete all. The fold mark as the window's divider was left,
+  -- the words with the count while Show mail counts is on.
+  function MW.PaintDivider(win, d, st, rowH, k, pos)
     local T = ns.Theme
     local h = MW.h
+    local full = st.look == "row"
     d:SetSize(win.rowW, rowH)
     if k then
       MW.At(d, "TOPLEFT", win.Clip, 0, -(k - 1) * (rowH + h.rowGap))
@@ -2769,20 +2776,65 @@ do
       MW.At(d, "BOTTOMLEFT", win.Clip, 0, 0)
     end
     d:SetFrameLevel(win.Clip:GetFrameLevel() + (k and 1 or 5))
-    T.FillColor(d.Fill, "surface", 0.95)
-    T.SetColor(d.Rule, "textSecondary")
-    d.Rule:SetAlpha(0.25)
-    d.Fold:SetTexture(st.folded and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
-    local x = MW.Scaled(ns.Theme.Metrics.inset)
-    MW.At(d.Fold, "LEFT", d, x, 0)
+    if k then
+      d.Fill:Hide()
+    else
+      local P = MW.Own() and ns.Skin.Palette
+      local c = P and P.list or T.Colors.surface
+      d.Fill:SetColorTexture(c[1], c[2], c[3], 0.95)
+      d.Fill:Show()
+    end
+    if full then
+      T.StyleMailRow(d, pos or k or 1, false)
+      d._bg:Show()
+    else
+      d._bg:Hide()
+    end
+    -- The words' size, as the window's (RV.DividerLook): only when the
+    -- look moved.
+    if d.__look ~= st.look then
+      d.__look = st.look
+      local shared = T._sharedTheme
+      if shared and type(shared.BindFont) == "function" then
+        local size = full and "normal" or "tiny"
+        shared.BindFont(d.Label, size)
+        shared.BindFont(d.Delete, size)
+        shared.BindFont(d.Sign, "tiny")
+      end
+    end
+    d.Fold:SetShown(full)
+    d.Sign:SetShown(not full)
+    d.Rule:SetShown(not full)
+    local x, textX
+    if full then
+      local size = (rowH == h.rowL) and h.iconL or h.iconC
+      x = MW.ICON_X + math.floor((size - MW.FOLD) / 2)
+      textX = MW.ICON_X + size + MW.MGAP
+      d.Fold:SetTexture(st.folded and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+      MW.At(d.Fold, "LEFT", d, x, 0)
+    else
+      x = MW.Scaled(T.Metrics.inset)
+      textX = x + MW.FOLD
+      d.Sign:SetText(st.folded and "+" or "\226\128\147")
+      T.SetColor(d.Sign, "textSecondary")
+      MW.At(d.Sign, "LEFT", d, x, 0)
+    end
+    MW.At(d.Label, "LEFT", d, textX, 0)
     local words = L["BTN_DELETE_ALL"]
     d.Delete:SetText(words)
     local del = TextW(d.Delete)
     T.FitText(d.Delete, del, words)
     T.SetColor(d.Delete, "textSecondary")
     T.SetColor(d.Label, "textSecondary")
-    local room = win.rowW - x - MW.FOLD - 4 - del - MW.MGAP - MW.ROW_END
+    local room = win.rowW - textX - del - MW.MGAP - MW.ROW_END
     T.FitText(d.Label, math.max(1, room), st.counts and MW.Counts().divider or L["INBOX_READ_DIVIDER_PLAIN"])
+    if not full then
+      local from = textX + TextW(d.Label) + MW.MGAP
+      MW.At(d.Rule, "TOPLEFT", d, from, -math.floor(rowH / 2))
+      d.Rule:SetWidth(math.max(1, win.rowW - MW.ROW_END - del - MW.MGAP - from))
+      T.SetColor(d.Rule, "textSecondary")
+      d.Rule:SetAlpha(0.22)
+    end
     d:Show()
   end
 
@@ -2853,7 +2905,12 @@ do
     else
       win.Divider:Hide()
     end
-    if pinned then MW.PaintDivider(win, win.Pin, st, rowH, nil) else win.Pin:Hide() end
+    -- Pinned, over the slot whose last unit is the list's.
+    if pinned then
+      MW.PaintDivider(win, win.Pin, st, rowH, nil, math.floor((inner - 0.5) / stride) + 1)
+    else
+      win.Pin:Hide()
+    end
     if letter then MW.PlaceRow(win, rows[n + 1], MW.READ, n + 2, two, fit, true) else rows[n + 1]:Hide() end
     fit.letter = letter
   end
@@ -2939,6 +2996,11 @@ do
       elseif st.mode == "fold" then
         local d = win.Divider:IsShown() and win.Divider or win.Pin
         t.a, t.b = d, fit.letter and rows[#MW.BOX + 1] or d
+      end
+    elseif part == "divider" then
+      if st.mode == "fold" then
+        local d = win.Divider:IsShown() and win.Divider or win.Pin
+        t.a, t.b = d, d
       end
     elseif part == "rows" then
       t.a, t.b = win.List, win.List
@@ -4985,6 +5047,15 @@ function State.MinimapRows()
   if rows.glow then Rows.SetEnabled(rows.glow, glow or (Icon.GetAlertFlash() and true or false)) end
 end
 
+-- Divider is grey while read mail does not stand under one (Read mail is
+-- not Below the inbox), saying what turns it on (Rows.Why).
+function State.DividerLook()
+  local cell, UI = S.dividerCell, ns.MailboxUI
+  if not cell then return end
+  local mode = UI and type(UI.GetReadMode) == "function" and UI.GetReadMode() or "fold"
+  Rows.SetEnabled(cell, mode == "fold")
+end
+
 -- Row layout stays live with Larger mail rows on: History, Mail Memory and
 -- another character's box are one line whatever the Mail tab's rows are.
 -- Its inspector then says the Mail tab's own rows are not among them.
@@ -5433,10 +5504,31 @@ function Pages.mail(col)
     get = function() return ns.MailboxUI.GetReadMode and ns.MailboxUI.GetReadMode() or "fold" end,
     set = function(id)
       if ns.MailboxUI.SetReadMode then ns.MailboxUI.SetReadMode(id) end
+      State.DividerLook()
       Ctx.Repaint()
     end,
   })
   Shown(read.entry, "read")
+  -- How the divider looks: smaller words and a hairline on the list's own
+  -- ground (the default), or a row like the mail around it. Under Read
+  -- mail, grey while read mail does not stand under a divider
+  -- (State.DividerLook). The list is bound again where it stands, the
+  -- drawing's divider drawn again.
+  local look = Rows.Dropdown(col, {
+    title = L["OPT_DIVIDER_TITLE"], text = L["OPT_DIVIDER_DESC"],
+    items = {
+      { id = "hairline", name = L["OPT_DIVIDER_HAIRLINE"] },
+      { id = "row",      name = L["OPT_DIVIDER_ROW"] },
+    },
+    get = function() return ns.MailboxUI.GetDividerLook and ns.MailboxUI.GetDividerLook() or "hairline" end,
+    set = function(id)
+      if ns.MailboxUI.SetDividerLook then ns.MailboxUI.SetDividerLook(id) end
+      Ctx.Repaint()
+    end,
+  })
+  Rows.Why(look, "OPT_DIVIDER_WHY")
+  Shown(look.entry, "divider")
+  S.dividerCell = look
   -- How far back History goes, or Never, which turns it off (stored as 0),
   -- last: it clears what History kept on every character, so it is asked
   -- first, and until the answer the choice shows what it was. Cancel leaves
@@ -7199,6 +7291,7 @@ local function Build()
   S.refresh[#S.refresh + 1] = State.Minimap
   S.refresh[#S.refresh + 1] = State.Memory
   S.refresh[#S.refresh + 1] = State.RowLayout
+  S.refresh[#S.refresh + 1] = State.DividerLook
   S.refresh[#S.refresh + 1] = State.Hidden
   S.refresh[#S.refresh + 1] = State.Arrange
   S.refresh[#S.refresh + 1] = Ctx.PaintExtra

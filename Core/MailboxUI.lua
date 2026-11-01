@@ -228,7 +228,7 @@ local function ForgetSettings()
   memo.root, memo.profile = nil, nil
   memo.qIcon, memo.qName = nil, nil
   memo.layout, memo.slots = nil, nil
-  memo.packing = nil
+  memo.packing, memo.divider = nil, nil
   memo.history, memo.age, memo.large = nil, nil, nil
   memo.grid, memo.gridText = nil, nil
 end
@@ -1015,6 +1015,30 @@ function UI.SetReadMode(mode)
   if profile then profile.readMail = mode end
   local panel, collect = CollectPanel(), ns.CollectTab
   if panel and collect and collect.RefreshReadMode then collect.RefreshReadMode(panel) end
+end
+
+-- How the read mail's divider looks (CollectTab, RV.LOOKS): "hairline", its
+-- words a size smaller and a hairline to Delete all on the list's own
+-- ground (the default); or "row", a row like the mails around it, in its
+-- place's stripe. Stored only when it is not the default (profile.
+-- dividerLook), so nothing stored is the hairline. Read on every bind that
+-- shows the divider, so remembered with the other row settings
+-- (ForgetSettings); a write draws the list again where it stands.
+local DIVIDER_LOOKS = { hairline = true, row = true }
+function UI.GetDividerLook()
+  local memo = Settings()
+  if memo.divider then return memo.divider end
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.dividerLook")
+  memo.divider = DIVIDER_LOOKS[stored] and stored or "hairline"
+  return memo.divider
+end
+function UI.SetDividerLook(look)
+  if look ~= nil and not DIVIDER_LOOKS[look] then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.dividerLook = (look ~= nil and look ~= "hairline") and look or nil end
+  ForgetSettings()
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
 end
 
 -- What resting the pointer on the item icon of a mail holding several items
@@ -4489,6 +4513,7 @@ function UI.DiagnoseOptions()
   Named("qualityIcon", UI.GetQualityIcon() and "on" or "off", "on")
   Named("qualityName", UI.GetQualityName(), "off")
   Named("readMail", UI.GetReadMode(), "fold")
+  Named("divider", UI.GetDividerLook(), "hairline")
   Named("tabIndicator", UI.GetTabIndicator(), "dot")
   Named("historyDays", UI.GetHistoryDays(), "7")
   Named("afterSend", UI.GetAfterSendKeep(), "nothing")
