@@ -3974,19 +3974,27 @@ end
 -- caught up still reads "not finished", and nothing is deleted on the link
 -- scan alone. Only the sequence that owns the channel waits, so there is
 -- never more than one wait at a time.
+--
+-- The read flag is the header's other half of "finished", and it trails the
+-- same way: the fetch that reads a mail is answered before the update that
+-- marks it read. A sequence that read the mail itself (`read`: it fetched
+-- the body) and emptied it waits for that flag as it waits for the count,
+-- or a quick mail -- a letter's gold, one item -- was handed over still
+-- reading unread, and the "delete" read-mail mode passed it over for good.
 -------------------------------------------------------------
 
 local SETTLE_DEADLINE = 3
 
-local settle = { fn = nil, index = nil, fingerprint = nil, gen = 0 }
+local settle = { fn = nil, index = nil, fingerprint = nil, read = false, gen = 0 }
 
--- index, fingerprint -> true while the mail is still this one, holds no
--- money and no linked attachment, and its header still counts an item. The
--- header's count first: zero is the answer after almost every take, and it
--- costs one call.
-local function HeaderBehind(index, fingerprint)
-  local _, _, _, _, money, _, _, itemCount = GetInboxHeaderInfo(index)
-  if (tonumber(itemCount) or 0) <= 0 then return false end
+-- index, fingerprint, read -> true while the mail is still this one, holds
+-- no money and no linked attachment, and its header still counts an item
+-- -- or, where the sequence read it (`read`), does not say read yet. The
+-- header first: no count and read is the answer after almost every take,
+-- and it costs one call.
+local function HeaderBehind(index, fingerprint, read)
+  local _, _, _, _, money, _, _, itemCount, wasRead = GetInboxHeaderInfo(index)
+  if (tonumber(itemCount) or 0) <= 0 and (wasRead or not read) then return false end
   if (tonumber(money) or 0) > 0 then return false end
   if Mail.AttachmentsLeft(index) > 0 then return false end
   return Fingerprint(index) == fingerprint
@@ -3997,7 +4005,7 @@ local OnSettleEvent
 local function EndSettle()
   local fn = settle.fn
   if not fn then return end
-  settle.fn, settle.index, settle.fingerprint = nil, nil, nil
+  settle.fn, settle.index, settle.fingerprint, settle.read = nil, nil, nil, false
   settle.gen = settle.gen + 1
   local bus = ns.Events
   if bus and type(bus.Unregister) == "function" then
@@ -4018,21 +4026,23 @@ function OnSettleEvent(event)
     local at = TrackWhere(settle.index)
     if type(at) == "number" then
       settle.index = at
-      if HeaderBehind(at, settle.fingerprint) then return end
+      if HeaderBehind(at, settle.fingerprint, settle.read) then return end
     end
   end
   EndSettle()
 end
 
--- index, fingerprint, fn -> fn(), now or once the header agrees.
-local function AfterHeaderSettles(index, fingerprint, fn)
-  if not HeaderBehind(index, fingerprint) or not MailboxOpen() then return fn() end
+-- index, fingerprint, fn [, read] -> fn(), now or once the header agrees.
+-- `read`: the sequence read the mail itself, so the header owes it the flag.
+local function AfterHeaderSettles(index, fingerprint, fn, read)
+  read = read and true or false
+  if not HeaderBehind(index, fingerprint, read) or not MailboxOpen() then return fn() end
   local bus = ns.Events
   if not (bus and type(bus.Register) == "function") or type(C_Timer) ~= "table" then
     return fn()
   end
   EndSettle()
-  settle.fn, settle.index, settle.fingerprint = fn, index, fingerprint
+  settle.fn, settle.index, settle.fingerprint, settle.read = fn, index, fingerprint, read
   settle.gen = settle.gen + 1
   local gen = settle.gen
   bus.Register("MAIL_INBOX_UPDATE", OnSettleEvent)
@@ -4220,7 +4230,9 @@ local function JobPlanDone(timedOut, refusedCount, reason, current, full, kept, 
   -- and that answer reads the header.
   j.current, j.refusedCount, j.reason = current, refusedCount, reason
   j.pending = "settle"
-  AfterHeaderSettles(j.index, current, JobSettled)
+  -- Read by this collect's fetch, or by the caller's (opts.skipFetch): the
+  -- header owes it the read flag too.
+  AfterHeaderSettles(j.index, current, JobSettled, j.needFetch or (j.opts ~= nil and j.opts.skipFetch))
 end
 
 -- Where the mail is, and whether it is still the one asked for, is looked at
@@ -4492,10 +4504,16 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
   -- Followed from here, as Mail.CollectMail's mail is.
   if fingerprint then TrackBegin(index) end
   -- Not loaded yet, and the caller asked for the fetch: the slot must at
-  -- least hold an item the header knows of.
-  local fetch = fingerprint ~= nil and opts ~= nil and opts.fetch and not GetInboxItemLink(index, slot)
-    and type(GetInboxText) == "function" and GetInboxItem(index, slot) ~= nil
-  if not fingerprint or not (fetch or GetInboxItemLink(index, slot)) then
+  -- least hold an item the header knows of. Or loaded, by a reading
+  -- earlier than this record's, with the letter's words not in it: fetched
+  -- again for them, as a collect fetches every letter it takes from, since
+  -- History is the only copy once the "delete" read-mail mode has removed
+  -- the letter.
+  local linked = fingerprint ~= nil and GetInboxItemLink(index, slot) ~= nil
+  local fetch = fingerprint ~= nil and opts ~= nil and opts.fetch and type(GetInboxText) == "function"
+    and ((not linked and GetInboxItem(index, slot) ~= nil)
+      or (linked and opts.history ~= nil and opts.history.body == nil and Mail.HasOwnText(index)))
+  if not fingerprint or not (fetch or linked) then
     return finish("collected")
   end
 
@@ -4543,12 +4561,14 @@ function Mail.TakeAttachment(index, slot, onDone, opts)
         if current and current ~= fingerprint then ForgetStuck(current) end
         -- The last tile of a mail is over once the header agrees, as a whole
         -- collect is: the reading view's Back asks whether it is finished.
+        -- An item is taken only from a mail whose body was fetched, which
+        -- read it, so the header owes it the read flag too.
         local at = TrackWhere(index)
         if type(at) ~= "number" then return finish("collected", 0, reason) end
         index = at
         AfterHeaderSettles(index, current or fingerprint, function()
           finish("collected", 0, reason)
-        end)
+        end, true)
       end, opts and opts.history, nil, false, clicked)
   end
 
@@ -4606,7 +4626,7 @@ end
 -- empty the mail and see it go; judge(where), where given, reads what it did
 -- once its handshake clears, with the mail's index then (or nil, gone, or
 -- false, not known), and answers whether the mail is now on its way out.
-local function SingleCommand(issue, onDone, index, expected, judge, stamp, item)
+local function SingleCommand(issue, onDone, index, expected, judge, stamp, item, fetch)
   if testHold then
     if onDone then onDone("closed") end
     return
@@ -4635,24 +4655,41 @@ local function SingleCommand(issue, onDone, index, expected, judge, stamp, item)
   end
   TrackBegin(index)
 
-  WhenIdle(function()
+  -- `fetch(at)`, where given, may read the mail first: true when it fetched
+  -- the body, and the command then waits for that fetch and looks again.
+  -- A mail the command read is over once the header says read ("Letting
+  -- the header catch up").
+  local fetched = false
+  local function command()
     -- The last look before the command (see `expected` above).
     local at = TrackWhere(index)
     if type(at) ~= "number" then return finish("moved") end
     if expected and Fingerprint(at) ~= expected then return finish("moved") end
     if item ~= nil and FirstItem(at) ~= item then return finish("moved") end
+    if fetch and not fetched and fetch(at) then
+      fetched, index = true, at
+      WaitForCommand(function(timedOut)
+        if timedOut then return finish("timeout") end
+        if not MailboxOpen() then return finish("closed") end
+        command()
+      end)
+      return
+    end
     local leaves = issue(at)
     TrackMayEmpty(leaves)
     WaitForCommand(function(timedOut)
-      if not timedOut then
-        local where = TrackWhere(at)
-        local going
-        if judge then going = judge(where) else going = leaves end
-        TrackSettled(going and true or false)
+      if timedOut then return finish("timeout") end
+      local where = TrackWhere(at)
+      local going
+      if judge then going = judge(where) else going = leaves end
+      TrackSettled(going and true or false)
+      if fetched and type(where) == "number" then
+        return AfterHeaderSettles(where, Fingerprint(where), function() finish("done") end, true)
       end
-      finish(timedOut and "timeout" or "done")
+      finish("done")
     end)
-  end, function() finish("timeout") end)
+  end
+  WhenIdle(command, function() finish("timeout") end)
 end
 
 function Mail.DeleteMail(index, onDone, expected, stamp, item)
@@ -4707,6 +4744,20 @@ function Mail.TakeMoney(index, onDone, history, expected, stamp)
   -- Held as a run's take is ("Mail on its way out"): a gold-only mail with
   -- no text goes with its gold.
   local markSender, markSubject
+  -- A letter with words of its own is read first, as a collect reads every
+  -- letter it takes from (Mail.CollectMail): unread, or read before this
+  -- record began and its words not in it. The fetch marks it read, so a
+  -- letter whose gold was the last of it reads finished, and hands its
+  -- words to History, the only copy once the "delete" read-mail mode has
+  -- removed it.
+  local function fetch(at)
+    if type(GetInboxText) ~= "function" or not Mail.HasOwnText(at) then return false end
+    local _, _, _, _, _, _, _, _, wasRead = GetInboxHeaderInfo(at)
+    if wasRead and not (record and record.body == nil) then return false end
+    local body = GetInboxText(at)
+    if record and type(body) == "string" and body ~= "" and not record.body then record.body = body end
+    return true
+  end
   SingleCommand(function(at)
     markSender, markSubject = LeavingMark(at)
     HoldLeaving(markSender, markSubject)
@@ -4733,7 +4784,7 @@ function Mail.TakeMoney(index, onDone, history, expected, stamp)
         and not Mail.HasOwnText(where)
     end
     return false
-  end)
+  end, nil, nil, fetch)
 end
 
 function Mail.ReturnMail(index, onDone, expected, stamp, item)
@@ -4823,9 +4874,12 @@ function SweepStep()
   -- relocating by fingerprint could delete a sibling the caller never
   -- listed. Never by the index alone: the inbox is followed from the sweep's
   -- start (Mail.DeleteMails arms it), and where it cannot be, nothing goes.
+  -- And never a mail the client says goes back to its sender rather than
+  -- being deleted (Mail.ExpiryFate): finished mail never reads so, and one
+  -- that does is not finished whatever else it says.
   local at = Mail.Rebase(index, s.stamp)
   if type(at) ~= "number" or (s.expected and Fingerprint(at) ~= s.expected[index])
-     or not Mail.IsReadPersistent(at) then
+     or not Mail.IsReadPersistent(at) or Mail.ExpiryFate(at) == "back" then
     return SweepStep()
   end
 
