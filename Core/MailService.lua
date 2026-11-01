@@ -3765,6 +3765,15 @@ function stranger.GoldGone()
   return Mail.MoneyLeft(at) < s.amount
 end
 
+-- Whether the client's `event` belongs to a send of Postbox's that is out
+-- (SendTab's IsSending): a MAIL_FAILED then is the send's, not an answer
+-- to the question about this mail's gold.
+function stranger.Sending(event)
+  if event ~= "MAIL_FAILED" then return false end
+  local ST = ns.SendTab
+  return ST ~= nil and type(ST.IsSending) == "function" and ST.IsSending() and true or false
+end
+
 -- The question is up, for a take of Postbox's.
 function stranger.Ask()
   local s = stranger
@@ -3863,7 +3872,9 @@ function stranger.Judge(event)
   if s.GoldGone() then return s.Resolve("took") end
   if event == "SECURE_TRANSFER_CANCEL" then return s.Resolve("declined") end
   -- Said in the very moment the question came, they are part of asking it.
-  if (event == "MAIL_FAILED" or event == "MAIL_OPEN_ALL_CANCELED") and GetTime() ~= s.askedAt then
+  -- A MAIL_FAILED while a send of Postbox's is out is the send's.
+  if (event == "MAIL_FAILED" or event == "MAIL_OPEN_ALL_CANCELED") and GetTime() ~= s.askedAt
+     and not s.Sending(event) then
     return s.Resolve("declined")
   end
   if event == "recheck" and s.heldAtClick and not CommandPending() then
