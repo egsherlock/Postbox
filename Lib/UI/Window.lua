@@ -103,6 +103,32 @@ function Helpers.PinFrameTopLeft(frame)
   return true
 end
 
+-- A window whose place has left the screen -- a saved spot from a larger
+-- screen or UI scale, or one written while something pushed the window off
+-- (the 2026-11-01 probe) -- is moved back whole onto it, pinned by its
+-- top-left as PinFrameTopLeft does; one taller or wider than the screen
+-- keeps its title bar's corner on it. Answers whether it moved. Nothing is
+-- touched where the window already stands on the screen, or is not laid
+-- out yet.
+function Helpers.KeepOnScreen(frame)
+  if not frame or type(frame.GetLeft) ~= "function" then return false end
+  local left, top, w, h = frame:GetLeft(), frame:GetTop(), frame:GetWidth(), frame:GetHeight()
+  if not (left and top and w and h) then return false end
+  local s = frame:GetEffectiveScale() or 1
+  local ui = UIParent:GetEffectiveScale() or 1
+  if s <= 0 or ui <= 0 then return false end
+  -- The screen in the frame's own units.
+  local k = ui / s
+  local screenW, screenH = (UIParent:GetWidth() or 0) * k, (UIParent:GetHeight() or 0) * k
+  if screenW <= 0 or screenH <= 0 then return false end
+  local x = max(0, min(left, screenW - w))
+  local y = min(screenH, max(top, h))
+  if math.abs(x - left) < 0.5 and math.abs(y - top) < 0.5 then return false end
+  frame:ClearAllPoints()
+  frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
+  return true
+end
+
 -- Records the frame's centre as an integer offset from the screen centre.
 -- Both centres are nil before the first layout pass; bail rather than write
 -- garbage.
@@ -148,7 +174,14 @@ end
 -- effective scale), since the windows carry different scales; the gap is
 -- UIParent's 8 units, so two windows placed beside each other either way
 -- round stand the same distance apart. The window is anchored to UIParent,
--- never to the opener, so an opener closing later does not take it along.
+-- or, asked to stay beside its opener (`attach`), to the opener's facing
+-- edge: the client then carries it along as the opener moves or resizes,
+-- and nothing is added to the opener or heard from it. Only the placed
+-- window's own anchors are written, never the opener's. (Watching the
+-- opener instead, through a child frame stretched from the screen's corner
+-- to the window's, was tried on 2026-11-01 and reverted: a window holding
+-- such a child was pushed off the top of the screen when dragged, and saved
+-- there.)
 -------------------------------------------------------------
 
 local BESIDE_GAP = 8
@@ -178,14 +211,21 @@ end
 
 local OPPOSITE = { right = "left", left = "right", below = "above", above = "below" }
 
--- frame, opener, side [, keep] -> places `frame` (its size already settled)
--- beside `opener` on `side` ("right", "left" or "below"), and answers the
--- side it took ("right", "left", "below" or "above"; nil in the middle).
--- `keep`, the side an earlier placement of this same showing took: a
--- window that follows its opener keeps it while it has the room, so it
--- never flips back and forth as the opener grows and shrinks. With no
--- opener, or one not laid out, the screen's middle.
-function Helpers.PlaceBeside(frame, opener, side, keep)
+-- How a window placed on each side is held by its opener's edge, when it
+-- stays beside it: its own point, and the opener's it is set against.
+local HOLD = {
+  right = { "TOPLEFT", "TOPRIGHT" }, left = { "TOPRIGHT", "TOPLEFT" },
+  below = { "TOPLEFT", "BOTTOMLEFT" }, above = { "BOTTOMLEFT", "TOPLEFT" },
+}
+
+-- frame, opener, side [, keep [, attach]] -> places `frame` (its size
+-- already settled) beside `opener` on `side` ("right", "left" or "below"),
+-- and answers the side it took ("right", "left", "below" or "above"; nil in
+-- the middle). `keep`, a side an earlier placement of this same showing
+-- took, kept while it has the room. `attach`: held by the opener's edge from
+-- now on (HOLD), so it goes where the opener goes; otherwise anchored to
+-- the screen. With no opener, or one not laid out, the screen's middle.
+function Helpers.PlaceBeside(frame, opener, side, keep, attach)
   if not (frame and type(frame.GetWidth) == "function") then return nil end
   local s = frame:GetEffectiveScale() or 1
   if s <= 0 then s = 1 end
@@ -234,7 +274,17 @@ function Helpers.PlaceBeside(frame, opener, side, keep)
   local px = PixelUnit()
   x, y = Snap(x, px), Snap(y, px)
   frame:ClearAllPoints()
-  frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / s, y / s)
+  local hold = attach and opener and HOLD[took]
+  if hold then
+    -- The offset from the opener's point, in the frame's own units.
+    local ax = (hold[2] == "TOPRIGHT") and oR or oL
+    local ay = (hold[2] == "BOTTOMLEFT") and oB or oT
+    local fx = (hold[1] == "TOPRIGHT") and (x + w) or x
+    local fy = (hold[1] == "BOTTOMLEFT") and (y - h) or y
+    frame:SetPoint(hold[1], opener, hold[2], (fx - ax) / s, (fy - ay) / s)
+  else
+    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / s, y / s)
+  end
   return took
 end
 
@@ -242,62 +292,6 @@ end
 -- placed beside it.
 function Helpers.OppositeSide(side)
   return OPPOSITE[side]
-end
-
--------------------------------------------------------------
--- Watching a window's place
---
--- The client says when a frame's size changes (OnSizeChanged) but never
--- when it moves. So a watched window gets a probe: a child frame, without
--- art or mouse, stretched from the screen's bottom-left corner to the
--- window's top-right one. Wherever that corner goes -- a drag, a re-dock,
--- the game laying out its panels, a new scale, a wider window -- the
--- probe's size changes and the client says so. Together with the window's
--- own OnSizeChanged (a height that grows downward moves no corner the
--- probe holds), every change of place or size is heard, and nothing runs
--- while nothing moves: no OnUpdate, no timer. A child of the window, it
--- falls silent while the window is hidden.
---
--- Each listener is called with the window, as often as the client fires;
--- coalescing is the listener's business. And once more, with `gone` true,
--- when the window hides. The probe is the window's own frame anchored to
--- the window: it reads the window's place, as every region inside it
--- does, and writes nothing.
--------------------------------------------------------------
-
-local watchers = setmetatable({}, { __mode = "k" })
-
--- frame, fn -> `fn(frame)` from now on whenever `frame` moves or changes
--- size, and `fn(frame, true)` when it hides. Once per frame and listener:
--- a second call adds nothing.
-function Helpers.WatchPlace(frame, fn)
-  if not (frame and type(fn) == "function" and type(frame.HookScript) == "function") then return false end
-  local list = watchers[frame]
-  if not list then
-    list = {}
-    watchers[frame] = list
-    local function Changed()
-      for i = 1, #list do list[i](frame) end
-    end
-    frame:HookScript("OnHide", function()
-      for i = 1, #list do list[i](frame, true) end
-    end)
-    local probe = CreateFrame("Frame", nil, frame)
-    if probe.EnableMouse then probe:EnableMouse(false) end
-    -- Postbox's own, and nothing to dress: a host skin that diffs the
-    -- window's children for art it laid down (EllesmereUI's) passes it by.
-    probe.__pbEuiSkinned = true
-    probe:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
-    probe:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-    probe:SetScript("OnSizeChanged", Changed)
-    frame:HookScript("OnSizeChanged", Changed)
-    frame.__pbPlaceProbe = probe
-  end
-  for i = 1, #list do
-    if list[i] == fn then return true end
-  end
-  list[#list + 1] = fn
-  return true
 end
 
 -- `extraHeight` is transient height the caller layered on top of the size the
@@ -370,6 +364,7 @@ function Helpers.ApplyWindowPersistence(frame, store, opts)
     frame:SetPoint("CENTER", UIParent, "CENTER", store.x, store.y)
   end
   Helpers.PinFrameTopLeft(frame)
+  Helpers.KeepOnScreen(frame)
 
   -- OnSizeChanged fires on every frame of a resize drag. Writing to saved
   -- variables 60 times a second is pure waste, so coalesce: mark dirty, flush
@@ -413,6 +408,7 @@ function Helpers.ApplyWindowPersistence(frame, store, opts)
   -- stable single corner and no anchor mutation happens in the same handler.
   frame:HookScript("OnShow", function(self)
     Helpers.PinFrameTopLeft(self)
+    Helpers.KeepOnScreen(self)
   end)
 
   frame:HookScript("OnHide", function(self)

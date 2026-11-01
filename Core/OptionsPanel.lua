@@ -4319,8 +4319,9 @@ do
     return row
   end
 
-  -- Between a button row's lead (Rows.Lead) and its own button.
-  local LEAD_GAP = 6
+  -- Between a button row's own button and its lead (Rows.Lead) where the
+  -- two share the column: two buttons, the gap between them their divider.
+  local LEAD_GAP = 4
 
   -- Four one-unit edges on `owner`, inside its rect: top, bottom, left,
   -- right.
@@ -4359,9 +4360,10 @@ do
     if lit then lit.Lift:Hide() end
   end
 
-  -- A second push button in a button row, standing before the row's own --
-  -- or, where the two and the row's name will not fit the row
-  -- (Rows.FitLead), on a line of its own under it, in the same column. A
+  -- A second push button in a button row, standing after the row's own,
+  -- the two sharing the column one button would fill -- or, where the two
+  -- and the row's name will not fit the row (Rows.FitLead), on a line of
+  -- its own under it, in the same column. A
   -- switch: `get` answers whether it is on, `onClick` turns it; off it
   -- reads `offText`, on it reads `onText` lit on the selected plate the
   -- window's segments wear (Rows.PaintLead), so the state shows at a glance
@@ -4373,7 +4375,7 @@ do
     local T = ns.Theme
     local btn = T.CreateButton(nil, row)
     btn:SetHeight(BUTTON_H)
-    btn:SetPoint("RIGHT", row.button, "LEFT", -LEAD_GAP, 0)
+    btn:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
     btn:SetText(spec.offText)
     btn:SetScript("OnClick", spec.onClick)
     Wire(btn, row, true)
@@ -4626,14 +4628,16 @@ do
     lit:Show()
   end
 
-  -- A button row with a lead (Rows.Lead). The lead is as wide as the wider
-  -- of its two captions, and of its lit words, so it never changes width as
-  -- it lights. Side by side with the row's own button while the row's name
-  -- and both buttons, each at its caption's width, fit the row -- the two
-  -- read as one pair there, and the row's own least width (the dropdowns'
-  -- column) is let go; else, a long translation or a wide font, the lead
-  -- on a line of its own under the button, the two one column at the
-  -- row's least width or wider, in a row twice as tall, which the page is
+  -- A button row with a lead (Rows.Lead): the row's own button and its lead
+  -- share the column one button fills (the row's least width, the
+  -- dropdowns'), each half of it, the row's own first and the lead after
+  -- it, LEAD_GAP apart. The lead is as wide as the wider of its two
+  -- captions and its lit words, so it never changes width as it lights. A
+  -- caption that outgrows its half widens both halves alike, so the pair
+  -- stays even; and where the row's name and the widened pair no longer
+  -- fit the row (a long translation, a wide font), the lead stands on a
+  -- line of its own under the button, the two one column at the row's
+  -- least width or wider, in a row twice as tall, which the page is
   -- stacked again for. Answers the width the row's name has to leave its
   -- controls.
   function Rows.FitLead(cell, inner)
@@ -4658,37 +4662,42 @@ do
     widest = math.max(widest, litW)
     btn:SetText(current)
     cell.Name:SetText(cell.nameText)
-    local apart = TextW(cell.Name) + NAME_GAP + widest + LEAD_GAP + ownW > inner
+    local half = math.max(math.floor((base - LEAD_GAP) / 2), ownW, widest)
+    local pair = 2 * half + LEAD_GAP
+    local apart = TextW(cell.Name) + NAME_GAP + pair > inner
+    local controlW
     if apart then
       local column = math.max(base, widest, ownW)
-      cell.minW = column
-      ownW = FitButton(cell)
-      widest = column
+      cell.minW, lead.minW = column, column
+      controlW = column
+    else
+      cell.minW, lead.minW = half, half
+      controlW = pair
     end
-    lead.minW = widest
+    FitButton(cell)
     FitButton(lead)
     if apart ~= lead.apart then
       lead.apart = apart
       local h = apart and 2 * ROW_H or ROW_H
       cell:SetHeight(h)
       cell.item.h = h
-      -- The name and the row's own button on the first line; the lead
-      -- before the button, or under it.
-      cell.Name:ClearAllPoints()
-      cell.Name:SetPoint("LEFT", cell, "TOPLEFT", NAME_X, -ROW_H / 2)
-      cell.button:ClearAllPoints()
-      cell.button:SetPoint("RIGHT", cell, "TOPRIGHT", -CONTROL_R, -ROW_H / 2)
-      btn:ClearAllPoints()
-      if apart then
-        btn:SetPoint("RIGHT", cell, "TOPRIGHT", -CONTROL_R, -ROW_H * 1.5)
-      else
-        btn:SetPoint("RIGHT", cell.button, "LEFT", -LEAD_GAP, 0)
-      end
       Rows.Restack({ [lead.page] = true })
     end
+    -- The name on the first line; the row's own button before the lead,
+    -- or over it.
+    cell.Name:ClearAllPoints()
+    cell.Name:SetPoint("LEFT", cell, "TOPLEFT", NAME_X, -ROW_H / 2)
+    cell.button:ClearAllPoints()
+    btn:ClearAllPoints()
+    if apart then
+      cell.button:SetPoint("RIGHT", cell, "TOPRIGHT", -CONTROL_R, -ROW_H / 2)
+      btn:SetPoint("RIGHT", cell, "TOPRIGHT", -CONTROL_R, -ROW_H * 1.5)
+    else
+      btn:SetPoint("RIGHT", cell, "TOPRIGHT", -CONTROL_R, -ROW_H / 2)
+      cell.button:SetPoint("RIGHT", btn, "LEFT", -LEAD_GAP, 0)
+    end
     Rows.PaintLead(cell)
-    if apart then return ownW end
-    return widest + LEAD_GAP + ownW
+    return controlW
   end
 
   -- Measured on every open, after the skins have had their say about
@@ -5139,21 +5148,19 @@ function Pages.mail(col)
   -- mark beside the cog is, a row like the others with its button on the
   -- right. The inspector names what the row and its button do together,
   -- and that it works anywhere: away from a mailbox it opens the window's
-  -- preview over sample mail. Arrange Postbox, since it arranges History
-  -- and Mail Memory's window too: as wide as the dropdowns below it, and
-  -- wider where a translation needs it -- or, with Test mail beside it,
-  -- as wide as its caption (Rows.FitLead). First, since it is where most
-  -- of how a row looks is chosen.
+  -- preview over sample mail. Arrange, with Test after it, the two sharing
+  -- the width of the dropdowns below them (Rows.FitLead). First, since it
+  -- is where most of how a row looks is chosen.
   local arrange = Rows.Button(col, {
     title = L["OPT_ARRANGE_ROW"], text = L["ARRANGE_TIP"] .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"],
-    caption = L["OPT_ARRANGE_CAPTION"], onClick = Panel.Arrange, onHover = State.Arrange, mark = true,
+    caption = L["ARRANGE_TITLE"], onClick = Panel.Arrange, onHover = State.Arrange, mark = true,
     minWidth = DD_W,
   })
   arrange.entry.title, arrange.entry.extra = L["OPT_ARRANGE_BUTTON"], "arrange"
   S.arrangeCell = arrange
 
-  -- Test mail, before Arrange Postbox in the same row (under it where the
-  -- row is too narrow for both: Rows.FitLead): the arrange mode's own
+  -- Test, after Arrange in the same row (under it where the row is too
+  -- narrow for both: Rows.FitLead): Test mail, the arrange mode's own
   -- switch (the same state, MailboxUI.SetTestMail), here so the sample mail
   -- can be looked at without arranging. At a mailbox it lists in the Mail
   -- tab in the inbox's place; away from one it opens the Postbox window
@@ -5163,7 +5170,7 @@ function Pages.mail(col)
   -- anything that turns it off (the window closing) refreshes it.
   Rows.Lead(arrange, {
     title = L["ARRANGE_PREVIEW"], text = L["OPT_TEST_MAIL_DESC"],
-    offText = L["ARRANGE_PREVIEW"], onText = L["OPT_TEST_MAIL_ON"], glyph = "eye",
+    offText = L["OPT_TEST_SHORT"], onText = L["OPT_TEST_MAIL_ON"], glyph = "eye",
     get = function()
       local UI = ns.MailboxUI
       return UI.IsTestMail and UI.IsTestMail() or false
@@ -5580,6 +5587,7 @@ function Pages.window(col)
       ns.MailboxUI.SetOption("gridDock", on)
       if on and ns.MailboxUI._state then ns.MailboxUI._state.freeMoved = false end
       if ns.MailboxUI.ApplyWindowLayout then ns.MailboxUI.ApplyWindowLayout() end
+      Panel.DockChanged()
     end,
   })
 
@@ -7081,7 +7089,7 @@ local function PanelHide()
   -- Forever's reload offer goes with the panel that asked it.
   ReloadAsk.Hide()
   -- Standing by nothing until it next opens (Place).
-  S.follow = false
+  Place.Loose()
 end
 
 local function Build()
@@ -7098,7 +7106,7 @@ local function Build()
   -- A drag puts the panel where the player wants it until it next opens:
   -- it stops standing by its window (Place), and nothing is remembered.
   frame:SetScript("OnDragStart", function(self)
-    S.follow = false
+    Place.Loose()
     self:StartMoving()
   end)
   frame:SetScript("OnDragStop", function(self)
@@ -7107,9 +7115,6 @@ local function Build()
   end)
   frame:Hide()
   frame:SetSize(PANEL_W, 480)
-  -- Its own size moving while it stands by its window (a taller list in
-  -- another language, a new font) is placed again as the window's is.
-  frame:HookScript("OnSizeChanged", function(self) Place.Moved(self) end)
 
   -- Never transparent: you need to read it while adjusting the transparency
   -- of the window behind it. Skin.ApplyBgOpacity honours this flag.
@@ -7392,77 +7397,69 @@ end
 -- lasts while the panel stays open, and the next open is beside its opener
 -- again (Helpers.PlaceBeside).
 --
--- While Dock beside game windows is on, the panel stands by its window for
--- as long as both are up. Whenever that window moves or changes size --
--- its grip, a re-dock, the game laying out its panels, Window scale, a
--- setting here that makes it taller -- the panel is placed beside it again
--- by the same rule, keeping the side it took this showing while that side
--- has the room, so it never flips back and forth. Changing a setting then
--- visibly reshapes the window beside the panel, and the two never overlap.
--- The minimap and the middle have nothing to follow, except the preview
+-- While Dock beside game windows is on, the panel stands by its window: it
+-- is held by the window's facing edge (Helpers.PlaceBeside's `attach`), so
+-- the client carries it along as the window moves, resizes, re-docks or
+-- changes scale, and a setting here that reshapes the window visibly does
+-- so beside the panel. Nothing is added to the window, hooked on it or
+-- written to it: only the panel's own anchor names the window. The
+-- minimap and the middle have nothing to stand by, except the preview
 -- window that Test mail or arranging opens beside the panel
 -- (MailboxUI.OpenPreview): the panel then stands by that window, on the
--- side opposite the one it took (Panel.StandBeside). The panel moves, never
--- the window. A drag of the panel ends the following until it next opens;
--- with docking off it opens beside its opener and stays put.
---
--- The window says when it moves (Helpers.WatchPlace: its size, and a probe
--- on its corner) as often as the client lays it out -- every frame of a
--- drag -- and the panel is placed once for all of it, a frame later. No
--- OnUpdate and no timer otherwise; nothing at all while nothing moves.
+-- side opposite the one it took (Panel.StandBeside). A drag of the panel,
+-- docking turned off, or the window it stands by hiding lets it go,
+-- anchored to the screen where it stands, until it next opens; with
+-- docking off it opens beside its opener and stays put.
 -------------------------------------------------------------
 local OPEN_SIDE = { main = "right", minimap = "left", memory = "below" }
 
 -- The openers the panel stands by: the windows, never the minimap.
 Place.FOLLOWS = { main = true, memory = true, preview = true }
 
--- Beside the opener, on its key's side (or the preview's own), keeping the
--- side this showing took while it has the room.
-function Place.Put(frame)
-  local side = S.opener and (S.side or OPEN_SIDE[S.from]) or nil
-  S.took = ns.Core.UI.Helpers.PlaceBeside(frame, S.opener, side, S.took)
-end
-
--- Whether the panel stands by its window now: one it follows, on screen,
--- not dragged away from since it opened, and docking on.
-function Place.Following()
+-- Whether the panel stands by its opener: a window it follows, on screen,
+-- and docking on.
+function Place.Follows()
   local opener = S.opener
-  if not (S.follow and opener and Place.FOLLOWS[S.from]) then return false end
-  if not opener:IsVisible() then return false end
+  if not (opener and Place.FOLLOWS[S.from] and opener:IsVisible()) then return false end
   local UI = ns.MailboxUI
   return UI and type(UI.GetOption) == "function" and UI.GetOption("gridDock") and true or false
 end
 
--- The placement a move asked for, a frame after it.
-function Place.Now()
-  S.queued = false
+-- Beside the opener, on its key's side (or the preview's own), held by it
+-- where it stands by it.
+function Place.Put(frame)
+  local side = S.opener and (S.side or OPEN_SIDE[S.from]) or nil
+  local held = Place.Follows()
+  S.took = ns.Core.UI.Helpers.PlaceBeside(frame, S.opener, side, S.took, held)
+  S.standBy = held and S.opener or nil
+  if held then Place.Hear(S.opener) end
+end
+
+-- Let go of the window it stands by: anchored to the screen where it
+-- stands now, so nothing the window does later moves it.
+function Place.Loose()
+  if not S.standBy then return end
+  S.standBy = nil
   local frame = S.frame
-  if frame and frame:IsShown() and Place.Following() then Place.Put(frame) end
+  if frame then ns.Core.UI.Helpers.PinFrameTopLeft(frame) end
 end
 
--- The window the panel stands by moved or changed size (Helpers.WatchPlace),
--- or the panel itself changed size: placed once, at the next frame, however
--- often this is heard before then. The window hiding (`gone`) ends it: a
--- window shown again later is another showing, which the panel did not
--- open beside.
-function Place.Moved(window, gone)
-  if gone then
-    if window == S.opener then S.follow = false end
-    return
-  end
-  if S.queued or not S.follow then return end
-  if window ~= S.opener and window ~= S.frame then return end
-  if not Place.Following() then return end
-  S.queued = true
-  C_Timer.After(0, Place.Now)
+-- The window it stands by hiding lets it go (a mailbox closing, Mail
+-- Memory closed): one OnHide hook per window for the session, which reads
+-- nothing of the window and writes only the panel's anchor.
+Place.heard = setmetatable({}, { __mode = "k" })
+function Place.Hear(window)
+  if Place.heard[window] or type(window.HookScript) ~= "function" then return end
+  Place.heard[window] = true
+  window:HookScript("OnHide", function(self)
+    if S.standBy == self then Place.Loose() end
+  end)
 end
 
--- The opener heard from when it moves, once per window for the session.
-function Place.Watch()
-  local opener = S.opener
-  if opener and Place.FOLLOWS[S.from] then
-    ns.Core.UI.Helpers.WatchPlace(opener, Place.Moved)
-  end
+-- Dock beside game windows turned off while the panel stands by a window:
+-- let go where it stands.
+function Panel.DockChanged()
+  if not Place.Follows() then Place.Loose() end
 end
 
 function Panel.Toggle(anchor, from)
@@ -7478,8 +7475,8 @@ function Panel.Toggle(anchor, from)
   else
     S.opener, S.from = nil, "center"
   end
-  S.side, S.took, S.follow = nil, nil, true
-  Place.Watch()
+  Place.Loose()
+  S.side, S.took = nil, nil
   -- Counted again when the Send tab is next shown.
   S.sendText = nil
   Refresh()
@@ -7509,6 +7506,7 @@ end
 function Panel.StandBeside(window, side)
   local frame = S.frame
   if not (frame and frame:IsShown() and window) then return end
-  S.opener, S.from, S.side, S.took, S.follow = window, "preview", side, side, true
-  Place.Watch()
+  Place.Loose()
+  S.opener, S.from, S.side, S.took = window, "preview", side, side
+  if Place.Follows() then Place.Put(frame) end
 end

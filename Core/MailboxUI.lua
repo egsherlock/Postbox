@@ -3435,6 +3435,7 @@ local function KeptPlace(frame)
   end
   local helpers = WindowHelpers()
   if helpers and helpers.PinFrameTopLeft then helpers.PinFrameTopLeft(frame) end
+  if helpers and helpers.KeepOnScreen then helpers.KeepOnScreen(frame) end
 end
 
 -- The preview ends: the mode first, while the window is still the preview,
@@ -4374,6 +4375,7 @@ function UI.OpenPreview(arrange, opener)
     else
       frame:SetPoint("CENTER", UIParent, "CENTER", 0, 50)
     end
+    if helpers and helpers.KeepOnScreen then helpers.KeepOnScreen(frame) end
   end
 
   st.visible = true
