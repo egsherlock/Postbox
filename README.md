@@ -22,7 +22,7 @@
 | **Mail Memory** | Every character's last-seen mailbox, from anywhere, searchable across characters, with warnings before mail is lost. |
 | **Send tab** | Names complete as you type, a line says what a send will do, gold always asks first, and more than twelve items go out in one press. |
 | **Minimap icon** | Optional: two dozen hand-painted styles, a count of what's waiting, and a marker for mail about to expire. |
-| **Looks** | Follows EllesmereUI or ElvUI, or wears the Postbox style (Dark or Light), one of six themed styles or the Blizzard look. |
+| **Looks** | Follows EllesmereUI or ElvUI, or wears the Postbox style (Dark or Light) or the Blizzard look. |
 | **Options** | Five tabs, and a panel that explains and previews whatever you point at. |
 
 ## The Mail tab
@@ -238,8 +238,6 @@ new?** in the footer shows the last three releases.
   Thin or Thick) and its color, corners, row stripes, sheen, font and text
   size. In Light mode text is crisp dark ink and your accent stays in the
   marks; each mode keeps its own background.
-- **Themed styles:** London Postbox, Faction, Post Office Counter, Goblin
-  Express, Letters and Daylight, each a window with its own art.
 - **Blizzard**, to match the default UI with the game's own art (texture
   packs restyle it).
 - **Window scale** from 80% to 130% in every look.

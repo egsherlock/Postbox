@@ -30,8 +30,6 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 
 ### New
 
-- **Six themed window styles:** London Postbox, Faction, Post Office
-  Counter, Goblin Express, Letters and Daylight, under Options, Window.
 - **Expiring mail says where it goes.** Once a mail that still holds gold or
   items is down to its last three days (one for C.O.D.), a curved arrow in
   front of its time left says it will go back to its sender, a bin that it
