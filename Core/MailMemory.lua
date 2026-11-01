@@ -3318,6 +3318,13 @@ function MM.ArrangeHost(frame)
   return host
 end
 
+-- The cog's click: the options below this window (OptionsPanel.Toggle),
+-- standing by it while docking is on.
+local function OpenOptions()
+  local panel = ns.OptionsPanel
+  if panel and type(panel.Toggle) == "function" then panel.Toggle(MM._frame, "memory") end
+end
+
 local function Build()
   if MM._frame then return MM._frame end
 
@@ -3474,16 +3481,33 @@ local function Build()
   local applyWindow = ns.Skin and (ns.Skin.ApplyWindow or ns.Skin.Apply)
   if applyWindow then applyWindow(frame) end
 
-  -- The cog key, where the Postbox window has its cog and its own key: the
-  -- rows here are the Mail tab's rows, and arranging them is as close as the
-  -- window. After the skin, so it stands in the bar the skin drew; anchored
-  -- by its left edge, so its lit Done widens to the right.
+  -- The cog and its key, as the Postbox window has them: the same cog
+  -- (MailboxUI's, so the two look and answer alike in every style), opening
+  -- the options below this window, and right of it the key, since the rows
+  -- here are the Mail tab's rows and arranging them is as close as the
+  -- window. After the skin, so they stand in the bar the skin drew. The
+  -- Postbox style centres its bar's children on the strip it draws (and
+  -- seats the cog there again on every refresh); the other looks keep the
+  -- template's bar, where the cog's own offsets are right.
+  local UI = ns.MailboxUI
+  if UI and type(UI.BuildOptionsButton) == "function" then
+    frame.OptionsButton = UI.BuildOptionsButton(frame, ns.Theme, OpenOptions)
+    local strip = frame.__pbModernStrip
+    if strip then
+      frame.OptionsButton:ClearAllPoints()
+      frame.OptionsButton:SetPoint("LEFT", strip, "LEFT", 5, 0)
+    end
+  end
+  -- The key anchored to the cog by its left edge, so it follows the cog
+  -- wherever a skin seats it and its lit Done widens to the right.
   local arrange = ns.Arrange
   if arrange and arrange.BuildToggle then
     frame.ArrangeButton = arrange.BuildToggle(frame, function(button)
-      -- The Postbox style centres its bar's children on the strip it draws;
-      -- the other looks keep the template's bar, where the cog's own
-      -- offsets are right.
+      local cog = frame.OptionsButton
+      if cog then
+        button:SetPoint("LEFT", cog, "RIGHT", 4, 0)
+        return
+      end
       local strip = frame.__pbModernStrip
       if strip then
         button:SetPoint("LEFT", strip, "LEFT", 5, 0)

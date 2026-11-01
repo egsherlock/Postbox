@@ -49,6 +49,8 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   Mail tab, and anywhere else it opens the Postbox window beside the
   options. None of it can be collected. Arranging from the options now
   leaves them open, and Done keeps the sample window up.
+- **Mail Memory has the options cog** the Postbox window has, opening the
+  options below it.
 
 ### Improved
 

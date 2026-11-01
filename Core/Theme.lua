@@ -2741,12 +2741,16 @@ function Theme.RepaintAccentText()
   end
 end
 
--- The options cog in its icon tone: after the accent moved, and after the
--- strip it stands on did (the opacity, the background colour), which a light
--- palette's icon tone is held to.
+-- The options cogs in their icon tone, the Postbox window's and Mail
+-- Memory's: after the accent moved, and after the strip they stand on did
+-- (the opacity, the background colour), which a light palette's icon tone
+-- is held to.
 function Theme.RepaintCog()
   local frame = ns.MailboxUI and ns.MailboxUI._frame
   local icon = frame and frame.OptionsButton and frame.OptionsButton.icon
+  if icon then icon:SetVertexColor(Theme.GetAccentTone("icon")) end
+  frame = ns.MailMemory and ns.MailMemory._frame
+  icon = frame and frame.OptionsButton and frame.OptionsButton.icon
   if icon then icon:SetVertexColor(Theme.GetAccentTone("icon")) end
 end
 
@@ -2760,9 +2764,10 @@ function Theme.RepaintAccentIcons()
   end
   local AR = ns.Arrange
   if AR and type(AR.RepaintLook) == "function" then pcall(AR.RepaintLook) end
+  -- Both cogs, Mail Memory's whether or not the mailbox has been opened.
+  Theme.RepaintCog()
   local frame = ns.MailboxUI and ns.MailboxUI._frame
   if not frame then return end
-  Theme.RepaintCog()
   local collect = frame.Tabs and frame.Tabs.collect
   if collect and ns.CollectTab and type(ns.CollectTab.RepaintViewToggle) == "function" then
     ns.CollectTab.RepaintViewToggle(collect)

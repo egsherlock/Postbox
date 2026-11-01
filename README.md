@@ -100,8 +100,8 @@ looks through all of them.
   <img src="docs/screenshots/arrange.png" width="560" alt="Arranging the Mail tab" />
 </p>
 
-Click the arrange mark beside the options cog (in Mail Memory's window it sits
-at the left of the title bar):
+Click the arrange mark beside the options cog (Mail Memory's window has both
+too):
 
 - **A column header takes the top row's place**, each heading over its column.
   Drag a column by its heading or straight from any row; right-click to hide

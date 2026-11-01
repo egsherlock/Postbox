@@ -3558,7 +3558,11 @@ local function OpenOptions()
   if panel and panel.Toggle then panel.Toggle(UI._frame, "main") end
 end
 
-local function BuildOptionsButton(frame, theme)
+-- The cog, on `frame`'s title bar; `onClick` what a click on it does, the
+-- options right of this window where it is not given. Mail Memory's window
+-- wears the same one (UI.BuildOptionsButton), so the two cogs look and
+-- answer alike in every style.
+local function BuildOptionsButton(frame, theme, onClick)
   local button = CreateFrame("Button", nil, frame)
   button:SetSize(18, 18)
   -- Two different title bars, two different centres: a HOST skin rebuilds
@@ -3593,7 +3597,7 @@ local function BuildOptionsButton(frame, theme)
   local highlight = button:GetHighlightTexture()
   if highlight then highlight:SetBlendMode("ADD") end
 
-  button:SetScript("OnClick", OpenOptions)
+  button:SetScript("OnClick", onClick or OpenOptions)
   button:SetScript("OnEnter", function(self)
     local T = ns.Theme
     if not (GameTooltip and T) then return end
@@ -3610,6 +3614,7 @@ local function BuildOptionsButton(frame, theme)
 
   return button
 end
+UI.BuildOptionsButton = BuildOptionsButton
 
 -- The cog key, right of the cog and anchored TO it by its left edge, so it
 -- stands level with the cog in every look -- the skins move the cog, and it
