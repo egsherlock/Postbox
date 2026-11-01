@@ -288,6 +288,29 @@ function Helpers.PlaceBeside(frame, opener, side, keep, attach)
   return took
 end
 
+-- frame, opener, side -> `frame` held by `opener`'s edge on `side` (HOLD)
+-- exactly where it stands now: nothing moves, not even by a part of a
+-- pixel, and from now on it goes where the opener goes. For a window that
+-- was already placed, which something then opened beside (the preview
+-- beside the options): placing it again would shift it by the rounding of
+-- the newcomer's edge. Answers whether it is held.
+function Helpers.HoldWhereItStands(frame, opener, side)
+  local hold = HOLD[side]
+  if not (hold and frame and opener) then return false end
+  local fL, fR, fB, fT = ScreenRect(frame)
+  local oL, oR, oB, oT = ScreenRect(opener)
+  if not (fL and oL) then return false end
+  local s = frame:GetEffectiveScale() or 1
+  if s <= 0 then return false end
+  local ax = (hold[2] == "TOPRIGHT") and oR or oL
+  local ay = (hold[2] == "BOTTOMLEFT") and oB or oT
+  local fx = (hold[1] == "TOPRIGHT") and fR or fL
+  local fy = (hold[1] == "BOTTOMLEFT") and fB or fT
+  frame:ClearAllPoints()
+  frame:SetPoint(hold[1], opener, hold[2], (fx - ax) / s, (fy - ay) / s)
+  return true
+end
+
 -- The side opposite `side`: where the opener stands seen from the window
 -- placed beside it.
 function Helpers.OppositeSide(side)

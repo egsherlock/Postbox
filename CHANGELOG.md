@@ -47,7 +47,7 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 - **Test mail on its own.** Click Test, beside Arrange under Options, Mail,
   to see your settings on sample mail without arranging: at a mailbox it
   fills the Mail tab, and anywhere else it opens the Postbox window beside
-  the options. The button reads Testing, lit, while it is on.
+  the options. The button is lit while it is on.
   None of it can be collected. Arranging from the options now leaves them
   open, and Done keeps the sample window up.
 - **Mail Memory has the options cog** the Postbox window has, opening the

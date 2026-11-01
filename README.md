@@ -116,7 +116,7 @@ too):
 One-line rows (shared with Mail Memory), Larger mail rows and History each
 keep their own arrangement. **Test mail** fills the list with sample mail
 while you arrange, or on its own from **Test**, beside **Arrange** in
-Options, Mail, which reads **Testing**, lit, while it is on; **Arrange**
+Options, Mail, which is lit while it is on; **Arrange**
 works away from a mailbox too, opening the window beside the options.
 
 ## Mail Memory

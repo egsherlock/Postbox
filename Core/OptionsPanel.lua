@@ -747,6 +747,9 @@ local PLAIN_BACKDROP = {
 }
 -- A push button's size, from its caption: 14 each side of it.
 local BUTTON_FIT = { height = BUTTON_H, padding = 28, minWidth = 64 }
+-- Two buttons sharing one button's width (Rows.FitLead): half the padding,
+-- and no least width of their own, the column they share being theirs.
+local PAIR_FIT = { height = BUTTON_H, padding = 14, minWidth = 0 }
 
 local TABS = {
   { key = "mail",    caption = "OPT_MAILTAB_HEADING" },
@@ -1306,8 +1309,14 @@ do
     end)
   end
 
+  -- The tile is a toggle, as the recipients' is: a second click closes the
+  -- editor it opened.
   function Ctx.OpenGroups()
     local groups = ns.CharacterGroups
+    if groups and type(groups.EditorShown) == "function" and groups.EditorShown() and groups.CloseEditor then
+      groups.CloseEditor()
+      return
+    end
     if groups and type(groups.OpenEditor) == "function" then
       Watch(groups.OpenEditor(nil, S.frame), "mail")
     end
@@ -4544,10 +4553,10 @@ do
   -- a button puts its state's font back on it at every enable and disable,
   -- and a width frozen in one font cut the caption short in another.
   -- Answers the button's width.
-  local function FitButton(cell)
+  local function FitButton(cell, fit)
     local T = ns.Theme
     local btn = cell.control
-    local width = T.SizeToText(btn, BUTTON_FIT)
+    local width = T.SizeToText(btn, fit or BUTTON_FIT)
     local mark = btn.Mark
     local lead = mark and (mark.w + 6) or 0
     local want = math.max(cell.minW or 0, width + lead)
@@ -4585,8 +4594,9 @@ do
     if not on then
       lit:Hide()
       lit.Lift:Hide()
-      -- The glyph back beside the caption (FitButton places both).
-      FitButton(lead)
+      -- The glyph back beside the caption (FitButton places both), at the
+      -- fit the row gave it (Rows.FitLead).
+      FitButton(lead, lead.fit)
       if mark then
         local c = T.Colors.textPrimary
         mark:SetVertexColor(c[1], c[2], c[3], 1)
@@ -4630,16 +4640,16 @@ do
 
   -- A button row with a lead (Rows.Lead): the row's own button and its lead
   -- share the column one button fills (the row's least width, the
-  -- dropdowns'), each half of it, the row's own first and the lead after
-  -- it, LEAD_GAP apart. The lead is as wide as the wider of its two
-  -- captions and its lit words, so it never changes width as it lights. A
-  -- caption that outgrows its half widens both halves alike, so the pair
-  -- stays even; and where the row's name and the widened pair no longer
-  -- fit the row (a long translation, a wide font), the lead stands on a
-  -- line of its own under the button, the two one column at the row's
-  -- least width or wider, in a row twice as tall, which the page is
-  -- stacked again for. Answers the width the row's name has to leave its
-  -- controls.
+  -- dropdowns'), the row's own first and the lead after it, LEAD_GAP
+  -- apart, each at its caption's width with half a button's padding
+  -- (PAIR_FIT) and the column's spare shared between them -- so the pair is
+  -- exactly as wide as the dropdowns under it. A pair whose captions
+  -- outgrow the column takes the room it needs; and where the row's name
+  -- and the pair no longer fit the row (a long translation, a wide font),
+  -- the lead stands on a line of its own under the button, the two one
+  -- column at the row's least width or wider, in a row twice as tall,
+  -- which the page is stacked again for. Answers the width the row's name
+  -- has to leave its controls.
   function Rows.FitLead(cell, inner)
     local lead = cell.lead
     local btn = lead.control
@@ -4649,33 +4659,28 @@ do
       base = cell.minW or 0
       lead.ownMinW = base
     end
-    cell.minW = 0
-    local ownW = FitButton(cell)
-    local current = btn:GetText()
-    lead.minW = 0
-    btn:SetText(lead.offText)
-    local widest = FitButton(lead)
-    btn:SetText(lead.onText)
-    widest = math.max(widest, FitButton(lead))
-    local mark = btn.Mark
-    local litW = TextW(btn.Lit.Label) + BUTTON_FIT.padding + (mark and (mark.w + 6) or 0)
-    widest = math.max(widest, litW)
-    btn:SetText(current)
+    cell.minW, lead.minW = 0, 0
+    local ownW = FitButton(cell, PAIR_FIT)
+    local leadW = FitButton(lead, PAIR_FIT)
     cell.Name:SetText(cell.nameText)
-    local half = math.max(math.floor((base - LEAD_GAP) / 2), ownW, widest)
-    local pair = 2 * half + LEAD_GAP
+    local need = ownW + LEAD_GAP + leadW
+    local pair = math.max(base, need)
     local apart = TextW(cell.Name) + NAME_GAP + pair > inner
     local controlW
+    lead.fit = (not apart) and PAIR_FIT or nil
     if apart then
-      local column = math.max(base, widest, ownW)
+      local column = math.max(base, FitButton(cell), FitButton(lead))
       cell.minW, lead.minW = column, column
+      FitButton(cell)
+      FitButton(lead)
       controlW = column
     else
-      cell.minW, lead.minW = half, half
+      local first = ownW + math.floor((pair - need) / 2)
+      cell.minW, lead.minW = first, pair - LEAD_GAP - first
+      FitButton(cell, PAIR_FIT)
+      FitButton(lead, PAIR_FIT)
       controlW = pair
     end
-    FitButton(cell)
-    FitButton(lead)
     if apart ~= lead.apart then
       lead.apart = apart
       local h = apart and 2 * ROW_H or ROW_H
@@ -5164,13 +5169,13 @@ function Pages.mail(col)
   -- switch (the same state, MailboxUI.SetTestMail), here so the sample mail
   -- can be looked at without arranging. At a mailbox it lists in the Mail
   -- tab in the inbox's place; away from one it opens the Postbox window
-  -- over it, beside this panel. On, the button reads Testing, lit in the
-  -- accent, so the panel says at a glance that the window is showing
-  -- samples. Never saved: the panel reads it on every refresh, and
+  -- over it, beside this panel. On, the button is lit in the accent, its
+  -- words the same (a longer "Testing" widened the pair), so the panel
+  -- says at a glance that the window is showing samples. Never saved: the panel reads it on every refresh, and
   -- anything that turns it off (the window closing) refreshes it.
   Rows.Lead(arrange, {
     title = L["ARRANGE_PREVIEW"], text = L["OPT_TEST_MAIL_DESC"],
-    offText = L["OPT_TEST_SHORT"], onText = L["OPT_TEST_MAIL_ON"], glyph = "eye",
+    offText = L["OPT_TEST_SHORT"], onText = L["OPT_TEST_SHORT"], glyph = "eye",
     get = function()
       local UI = ns.MailboxUI
       return UI.IsTestMail and UI.IsTestMail() or false
@@ -7508,5 +7513,10 @@ function Panel.StandBeside(window, side)
   if not (frame and frame:IsShown() and window) then return end
   Place.Loose()
   S.opener, S.from, S.side, S.took = window, "preview", side, side
-  if Place.Follows() then Place.Put(frame) end
+  -- Held where it stands: placing it again would move the whole panel by
+  -- the rounding of the preview's edge, every line of it with it.
+  if Place.Follows() and ns.Core.UI.Helpers.HoldWhereItStands(frame, window, side) then
+    S.standBy = window
+    Place.Hear(window)
+  end
 end
