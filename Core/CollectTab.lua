@@ -2276,8 +2276,7 @@ end
 -- inline texture on its line, and draws the digits centred on the line too
 -- (the 1.50 screenshots: a 13-unit row's digits sit within half a unit of
 -- its middle), so with no vertical offset the mark's top is level with the
--- digits' tops and its bottom stands on their baseline; the bin is drawn a
--- unit lower (DROP), as in game its flat lid read high. The keyline's unit
+-- digits' tops and its bottom stands on their baseline. The keyline's unit
 -- on every side is added round that, scaled with the mark, and the texture
 -- reaches GAP units past the art into clear texels: the gap before the
 -- digits, which so needs no space character.
@@ -2295,10 +2294,6 @@ end
 do
   local DIGIT = 0.71
   local GAP = 1
-  -- How far a mark is drawn below the line's centre, in units at the
-  -- digits' height: the bin's flat lid read a unit high beside the digits
-  -- (Elliott, 2026-11-01); the arrow, all curve, sits right where it is.
-  local DROP = { back = 0, gone = 1 }
   local FATE_MAX = 96
   local GLYPH = { back = "expiry-back", gone = "expiry-bin" }
   -- hex: the warning ink the marks were made in; byH[h] the marks at
@@ -2335,8 +2330,7 @@ do
     local y0, y1 = floor(G.t * ch + 0.5), floor(G.b * ch + 0.5)
     x1 = x1 + floor(GAP * (x1 - x0) / G.w + 0.5)
     local eh, ew = floor(G.h * k + 0.5), floor((G.w + GAP) * k + 0.5)
-    local dy = -floor((DROP[fate] or 0) * k + 0.5)
-    return format("|T%s:%d:%d:0:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", G.file, eh, ew, dy, cw, ch, x0, x1, y0, y1,
+    return format("|T%s:%d:%d:0:0:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", G.file, eh, ew, cw, ch, x0, x1, y0, y1,
       floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5)), ew
   end
 
@@ -6077,6 +6071,7 @@ do
       end
       local hasCOD = m.cod > 0
       if m.kind == "bought" then spent = spent + (m.price or m.money) else earned = earned + m.money end
+      if hasCOD and not finished then panel._codDue = panel._codDue + m.cod end
       if cols.sender < senderCap then
         local label = AUCTION_OUTCOME[m.kind] and L()[AUCTION_OUTCOME[m.kind].key] or DisplaySender(m.sender)
         cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), senderCap)
@@ -6114,7 +6109,7 @@ do
         filtered[i] = tail[i]
         filteredDone[i] = true
       end
-      earned, spent = 0, 0
+      earned, spent, panel._codDue = 0, 0, 0
     elseif #tail > 0 and RV.Mode() ~= "tab" then
       filtered[#filtered + 1] = DIVIDER
       filteredDone[#filtered] = true
@@ -7285,9 +7280,15 @@ local FitBanner
 do
   local candidates = {}
 
+  -- The C.O.D. still to pay joins the line only while a listed mail asks
+  -- one, in the red it wears on the rows: the band otherwise reads as ever.
   local function Line(strings, icons, sums, up, down, parts)
-    return strings["BANNER_EARNED_SHORT"] .. icons(sums.earned, up, parts)
+    local line = strings["BANNER_EARNED_SHORT"] .. icons(sums.earned, up, parts)
         .. "   |   " .. strings["BANNER_SPENT_SHORT"] .. icons(sums.spent, down, parts)
+    if (sums.cod or 0) > 0 then
+      line = line .. "   |   " .. strings["LABEL_COD"] .. icons(sums.cod, down, parts)
+    end
+    return line
   end
 
   -- How many inline textures a line carries ("|T" escapes), counted in
@@ -7369,6 +7370,7 @@ local function UpdateBanner(panel, earned, spent)
     panel._bannerSums = sums
   end
   sums.earned, sums.spent = tonumber(earned) or 0, tonumber(spent) or 0
+  sums.cod = panel._codDue or 0
   FitBanner(panel)
 end
 
@@ -7461,6 +7463,8 @@ function CT.RefreshMailList(panel)
   if StuckOnly(panel) and Mail().StuckCount() == 0 then panel._stuckOnly = false end
   local stuckOnly = StuckOnly(panel)
   local earned, spent = 0, 0
+  -- The C.O.D. still to pay on the mail listed, for the band (FitBanner).
+  panel._codDue = 0
   -- Tallied here rather than by a second walk anywhere else. Every consumer
   -- wants the same verdict for the same mails, and that verdict is the expensive
   -- one: IsReadPersistent scans all sixteen attachment slots of every finished
@@ -7568,6 +7572,7 @@ function CT.RefreshMailList(panel)
       local rowEarned, rowSpent = MailEconomy(index, kind, money)
       earned = earned + rowEarned
       spent = spent + rowSpent
+      if hasCOD and not finished then panel._codDue = panel._codDue + (tonumber(cod) or 0) end
 
       -- Under the stuck filter every listed mail is stuck, which no sweep
       -- takes; the primary ("Shown") retries them as a selection would
@@ -7651,7 +7656,7 @@ function CT.RefreshMailList(panel)
     end
     -- The band totals what is listed, and read mail with nothing left in it
     -- carries no gold either way.
-    earned, spent = 0, 0
+    earned, spent, panel._codDue = 0, 0, 0
   elseif #tail > 0 and RV.Mode() ~= "tab" then
     filtered[#filtered + 1] = DIVIDER
     filteredDone[#filtered] = true
@@ -7672,6 +7677,7 @@ function CT.RefreshMailList(panel)
   -- stay the inbox's.
   local previewed = nil
   if panel._preview and view ~= VIEW_HISTORY and not AV.Active(panel) then
+    panel._codDue = 0
     earned, spent = RV.PreviewList(panel, sample, compact, view)
     previewed = panel._pvList
   end
@@ -7685,6 +7691,8 @@ function CT.RefreshMailList(panel)
   -- The history view lists the record, not the inbox. The walk above still
   -- ran: the segment counts describe the inbox whichever view is showing.
   if view == VIEW_HISTORY then
+    -- The record has no C.O.D. still to pay: one paid is spent.
+    panel._codDue = 0
     earned, spent = HV.BuildHistoryList(panel, query)
     stride = COMPACT_ROW_HEIGHT + ROW_GAP
     listed = #panel._history
@@ -7693,6 +7701,7 @@ function CT.RefreshMailList(panel)
   -- Another character's box, or every box's matches: that list instead.
   local away = AV.Active(panel)
   if away then
+    panel._codDue = 0
     earned, spent, listed = AV.Build(panel, query)
     stride = COMPACT_ROW_HEIGHT + ROW_GAP
   end

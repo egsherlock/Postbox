@@ -6506,10 +6506,11 @@ do
   -- A list-wide switch on a card, named as the options name it: a plate
   -- with the eye open while it is on and crossed while it is off, and its
   -- name, lit as the column's own switch is when pointed at; greyed, and
-  -- taking no click, while the icon it draws on is hidden. Its tooltip is
-  -- the options' description. `get` and `set` are the option's own.
+  -- taking no click, while the column it draws on is hidden. Its tooltip is
+  -- the options' description. `get` and `set` are the option's own; `card`
+  -- the column whose card shows it.
   local TOGGLES = {
-    { title = "OPT_QUALITY_ICON_TITLE", desc = "OPT_QUALITY_ICON_DESC",
+    { card = "icon", title = "OPT_QUALITY_ICON_TITLE", desc = "OPT_QUALITY_ICON_DESC",
       get = function()
         local ui = UI()
         return not (ui and ui.GetQualityIcon) or ui.GetQualityIcon() and true or false
@@ -6518,7 +6519,7 @@ do
         local ui = UI()
         if ui and ui.SetQualityIcon then ui.SetQualityIcon(on) end
       end },
-    { title = "OPT_ICON_COUNTS_TITLE", desc = "OPT_ICON_COUNTS_DESC",
+    { card = "icon", title = "OPT_ICON_COUNTS_TITLE", desc = "OPT_ICON_COUNTS_DESC",
       get = function()
         local ui = UI()
         return ui and ui.GetOption and ui.GetOption("iconCounts") and true or false
@@ -6526,6 +6527,19 @@ do
       set = function(on)
         local ui = UI()
         if ui and ui.SetOption then ui.SetOption("iconCounts", on) end
+      end },
+    -- The expiry marks, on the Time left card where they are drawn (the
+    -- Mail page has the same switch). The time column is measured again:
+    -- a one-line row's widens by the mark.
+    { card = "time", title = "OPT_EXPIRY_MARKS_TITLE", desc = "OPT_EXPIRY_MARKS_DESC",
+      get = function()
+        local ui = UI()
+        return ui and ui.GetOption and ui.GetOption("expiryMarks") and true or false
+      end,
+      set = function(on)
+        local ui = UI()
+        if ui and ui.SetOption then ui.SetOption("expiryMarks", on) end
+        AR.RowsChanged(true)
       end },
   }
   -- World of Warcraft: Forever's goods carry no quality mark: the badge's
@@ -6600,24 +6614,26 @@ do
     return t
   end
 
-  -- The Icon card's switches, one to a line under its Move row, `live`
-  -- while the icon shows. Answers the y under them.
-  function AR.PutToggles(y, live)
+  -- The switches of `card`'s column, one to a line, `live` while the
+  -- column shows. Answers the y under them.
+  function AR.PutToggles(y, live, card)
     local insp, P = AR._insp, INSP
     for i = 1, #TOGGLES do
       local spec = TOGGLES[i]
-      local t = insp.Toggles[i] or Toggle(insp, i)
-      local text = L()[spec.title]
-      local w = math.min(P.SWITCH_LEAD + Measured(insp.Measure.control, text, false) + P.SWITCH_TAIL, P.INNER)
-      t.on, t.live = spec.get() and true or false, live and true or false
-      t.hover = t.hover and t:IsMouseOver() or false
-      t:SetWidth(w)
-      Th().FitText(t.Label, w - P.SWITCH_LEAD - P.SWITCH_TAIL + 1, text, t)
-      y = y - P.ROW_WRAP
-      At(t, P.PAD, y)
-      PaintToggle(t)
-      t:Show()
-      y = y - P.SWITCH_H
+      if spec.card == card then
+        local t = insp.Toggles[i] or Toggle(insp, i)
+        local text = L()[spec.title]
+        local w = math.min(P.SWITCH_LEAD + Measured(insp.Measure.control, text, false) + P.SWITCH_TAIL, P.INNER)
+        t.on, t.live = spec.get() and true or false, live and true or false
+        t.hover = t.hover and t:IsMouseOver() or false
+        t:SetWidth(w)
+        Th().FitText(t.Label, w - P.SWITCH_LEAD - P.SWITCH_TAIL + 1, text, t)
+        y = y - P.ROW_WRAP
+        At(t, P.PAD, y)
+        PaintToggle(t)
+        t:Show()
+        y = y - P.SWITCH_H
+      end
     end
     return y
   end
@@ -6661,13 +6677,15 @@ local function FillColumn(id, y)
     end
   end
 
+  -- The time left's list-wide switch: the expiry marks before it.
+  if id == "time" then y = AR.PutToggles(y, shown and true or false, "time") end
   -- The subject's list-wide choice: the quality mark by the name.
   if spec.fixed then y = AR.PutQualityName(y) end
   -- The icon's list-wide switches, its badge and its count, and its hover
   -- in the manner of a column's own choices: grey while the icon is
   -- hidden, since there is then nothing to draw on or to rest on.
   if id == "icon" then
-    y = AR.PutToggles(y, shown)
+    y = AR.PutToggles(y, shown, "icon")
     local hover, now, setHover = AR.AttachHover()
     if hover then
       insp.set = setHover
@@ -6782,7 +6800,7 @@ local function HideParts(insp)
   for i = 1, #insp.Segs do insp.Segs[i]:Hide() end
   for i = 1, #insp.Chips do insp.Chips[i]:Hide() end
   for i = 1, #insp.BlockRows do insp.BlockRows[i]:Hide() end
-  for i = 1, #insp.Toggles do insp.Toggles[i]:Hide() end
+  for _, t in pairs(insp.Toggles) do t:Hide() end
 end
 
 -- The inspector filled again for what is selected now, if it is up. Called
