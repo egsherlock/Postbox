@@ -44,6 +44,11 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   retail from patch 12.1.7), collecting pauses on that mail until you
   answer: Accept and the gold comes, Cancel and it stays in the mail while
   the rest carries on.
+- **Test mail on its own.** Turn on Test mail under Options, Mail to see
+  your settings on sample mail without arranging: at a mailbox it fills the
+  Mail tab, and anywhere else it opens the Postbox window beside the
+  options. None of it can be collected. Arranging from the options now
+  leaves them open, and Done keeps the sample window up.
 
 ### Improved
 
@@ -53,6 +58,10 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 - **The options say each thing once:** pointing at a setting no longer opens
   a tooltip beside the window repeating the panel's description. Tooltips
   stay where they add something, such as a value too long for its box.
+- **Windows open beside what opened them:** the options right of the
+  Postbox window from its cog and left of the minimap from the icon, and
+  Manage Recipients right of the Postbox window or the options. Move one
+  and it opens there again next time, beside the same window.
 - Also: **/postbox debug** says which game it runs in and how that game
   writes character names, by their shape alone, so a pasted report never
   names anyone; Battle.net friends are suggested only from a game Blizzard

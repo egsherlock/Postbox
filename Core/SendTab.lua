@@ -5668,7 +5668,9 @@ local function BuildRecipientField(panel)
   manage:SetScript("OnClick", function()
     local RM = ns.RecipientManager
     if RM and type(RM.Toggle) == "function" then
-      RM.Toggle()
+      -- Right of the Postbox window, wherever it stands.
+      local UI = ns.MailboxUI
+      RM.Toggle(UI and UI._frame, "main")
     else
       -- Same answer the /postbox recipients path gives: a doorway that does
       -- nothing at all reads as broken.

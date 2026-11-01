@@ -131,6 +131,151 @@ function Helpers.SaveFramePosition(frame, store)
   return true
 end
 
+-------------------------------------------------------------
+-- Beside the opener
+--
+-- The options, Manage Recipients and the Postbox window's preview each open
+-- beside whatever opened them: right of the Postbox window from its cog,
+-- left of the minimap from the icon, and so on. Top edges line up for a
+-- place to the left or right, left edges for one below; a side with no room
+-- on screen gives way to the opposite one, and wherever the window lands it
+-- is clamped whole onto the screen and put on whole pixels.
+--
+-- Once the player drags a window, where they left it is remembered RELATIVE
+-- to the opener, under the opener's key (profile.placement[window][key]):
+-- the next open from there keeps that offset, so a Postbox window moved
+-- since takes its options along. Each opener's spot is its own, and the
+-- default above stands only until there is one. A window opened from
+-- nowhere in particular (a slash command) is placed against the screen, in
+-- its middle until it has a spot of its own.
+--
+-- Everything is measured in screen units (a frame's units times its
+-- effective scale), since the windows carry different scales; a spot is
+-- kept in UIParent's units. The window is anchored to UIParent, never to
+-- the opener, so an opener closing later does not take it along.
+-------------------------------------------------------------
+
+local BESIDE_GAP = 8
+
+-- frame -> its left, right, bottom and top in screen units, or nil before
+-- it has been laid out.
+local function ScreenRect(frame)
+  if not (frame and type(frame.GetLeft) == "function") then return nil end
+  local l, r, b, t = frame:GetLeft(), frame:GetRight(), frame:GetBottom(), frame:GetTop()
+  if not (l and r and b and t) then return nil end
+  local s = frame:GetEffectiveScale() or 1
+  return l * s, r * s, b * s, t * s
+end
+
+-- One physical pixel in screen units: 768 of them span the screen's height.
+local function PixelUnit()
+  if type(GetPhysicalScreenSize) == "function" then
+    local _, h = GetPhysicalScreenSize()
+    if type(h) == "number" and h > 0 then return 768 / h end
+  end
+  return 1
+end
+
+local function Snap(value, px)
+  return floor(value / px + 0.5) * px
+end
+
+-- The remembered spot for `key` of `window`, read without creating anything.
+local function Spot(window, key)
+  local Store = ns.Store
+  local all = Store and type(Store.Get) == "function" and Store.Get("profile.placement") or nil
+  local spots = type(all) == "table" and all[window] or nil
+  local spot = type(spots) == "table" and spots[key] or nil
+  if type(spot) ~= "table" or type(spot.x) ~= "number" or type(spot.y) ~= "number" then return nil end
+  return spot
+end
+
+-- frame, opener, side, window, key -> places `frame` (its size already
+-- settled) beside `opener` on `side` ("right", "left" or "below"), or where
+-- the player last left it from there. With no opener, or one not laid out,
+-- the screen is the opener and `key` should say so.
+function Helpers.PlaceBeside(frame, opener, side, window, key)
+  if not (frame and type(frame.GetWidth) == "function") then return false end
+  local s = frame:GetEffectiveScale() or 1
+  if s <= 0 then s = 1 end
+  local ui = UIParent:GetEffectiveScale() or 1
+  local screenW, screenH = (UIParent:GetWidth() or 0) * ui, (UIParent:GetHeight() or 0) * ui
+  local w, h = (frame:GetWidth() or 0) * s, (frame:GetHeight() or 0) * s
+
+  local oL, oR, oB, oT = ScreenRect(opener)
+  if not oL then opener, oL, oR, oB, oT = nil, 0, screenW, 0, screenH end
+
+  local x, y
+  local spot = Spot(window, key)
+  if spot then
+    x, y = oL + spot.x * ui, oT + spot.y * ui
+  elseif not opener then
+    x, y = (screenW - w) / 2, (screenH + h) / 2
+  elseif side == "below" then
+    local gap = BESIDE_GAP * s
+    x, y = oL, oB - gap
+    -- Above it where only above has the room.
+    if y - h < 0 and oT + gap + h <= screenH then y = oT + gap + h end
+  else
+    local gap = BESIDE_GAP * s
+    local right, left = oR + gap, oL - gap - w
+    local fitsRight, fitsLeft = right + w <= screenW, left >= 0
+    local goLeft
+    if fitsRight ~= fitsLeft then
+      goLeft = fitsLeft
+    elseif fitsRight then
+      goLeft = side == "left"
+    else
+      -- Neither side has the room: the one with more, clamped below.
+      goLeft = oL > screenW - oR
+    end
+    x, y = goLeft and left or right, oT
+  end
+
+  x = max(0, min(x, screenW - w))
+  y = min(screenH, max(y, h))
+  local px = PixelUnit()
+  x, y = Snap(x, px), Snap(y, px)
+  frame:ClearAllPoints()
+  frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / s, y / s)
+  return true
+end
+
+-- frame, opener, window, key -> where the player has just left `frame`,
+-- remembered relative to `opener` (the screen where there is none) under
+-- `key`. Nothing is kept against an opener that cannot be measured.
+function Helpers.RememberBeside(frame, opener, window, key)
+  if key == nil or window == nil then return false end
+  local fL, _, _, fT = ScreenRect(frame)
+  if not fL then return false end
+  local ui = UIParent:GetEffectiveScale() or 1
+  local oL, oT
+  if opener then
+    local l, _, _, t = ScreenRect(opener)
+    if not l then return false end
+    oL, oT = l, t
+  else
+    oL, oT = 0, (UIParent:GetHeight() or 0) * ui
+  end
+  local Store = ns.Store
+  if not (Store and type(Store.EnsurePath) == "function") then return false end
+  -- The placement table itself is kept (a reset empties it where it stands),
+  -- so the per-window tables under it are found afresh on every write.
+  local all = Store.EnsurePath("profile.placement", {})
+  local spots = all[window]
+  if type(spots) ~= "table" then
+    spots = {}
+    all[window] = spots
+  end
+  local spot = spots[key]
+  if type(spot) ~= "table" then
+    spot = {}
+    spots[key] = spot
+  end
+  spot.x, spot.y = Round((fL - oL) / ui), Round((fT - oT) / ui)
+  return true
+end
+
 -- `extraHeight` is transient height the caller layered on top of the size the
 -- user actually chose -- the mail window grows to fit a second row of attachment
 -- slots, and again to fit a message that has outgrown its box. Subtract it so
@@ -178,6 +323,17 @@ function Helpers.ApplyWindowPersistence(frame, store, opts)
     return tonumber((extraWidthFn())) or 0
   end
 
+  -- `savePlace`: false for a window placed by its opener instead
+  -- (Helpers.PlaceBeside), whose place this neither restores nor writes; a
+  -- function for one that stands, for a while, somewhere that is not its
+  -- own place (the Postbox window's preview), asked at each write.
+  local savePlace = opts.savePlace
+  local function MaySavePlace()
+    if savePlace == nil then return true end
+    if type(savePlace) == "function" then return savePlace() and true or false end
+    return savePlace and true or false
+  end
+
   -- Restore size first, then position, then pin immediately — otherwise the
   -- very first layout after login uses a centre anchor and the first resize
   -- drag moves the window.
@@ -185,7 +341,7 @@ function Helpers.ApplyWindowPersistence(frame, store, opts)
     frame:SetSize(store.width, store.height)
   end
 
-  if store.x and store.y then
+  if savePlace ~= false and store.x and store.y then
     frame:ClearAllPoints()
     frame:SetPoint("CENTER", UIParent, "CENTER", store.x, store.y)
   end
@@ -220,7 +376,7 @@ function Helpers.ApplyWindowPersistence(frame, store, opts)
   frame:SetScript("OnDragStop", function(self, ...)
     self:StopMovingOrSizing()
     if previousDragStop then previousDragStop(self, ...) end
-    Helpers.SaveFramePosition(self, store)
+    if MaySavePlace() then Helpers.SaveFramePosition(self, store) end
     -- StartMoving can leave a non-corner anchor; re-pin so the next resize
     -- starts from a clean single corner.
     Helpers.PinFrameTopLeft(self)
@@ -236,7 +392,7 @@ function Helpers.ApplyWindowPersistence(frame, store, opts)
   end)
 
   frame:HookScript("OnHide", function(self)
-    Helpers.SaveFramePosition(self, store)
+    if MaySavePlace() then Helpers.SaveFramePosition(self, store) end
     dirty = true
     Flush()
   end)

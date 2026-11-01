@@ -779,6 +779,9 @@ local S = {
   -- the pointer rests meanwhile (Rows.Hold)
   bodyH = 0,
   textGen = 0,    -- counts changes to a text the inspector can show
+  -- What the panel was last opened from (Panel.Toggle): the opener's frame,
+  -- or nil, and its key in the remembered places.
+  opener = nil, from = "center",
 }
 
 -- The sections below, declared together so each can reach the others.
@@ -1310,7 +1313,8 @@ do
   function Ctx.OpenRecipients()
     local RM = ns.RecipientManager
     if RM and type(RM.Toggle) == "function" then
-      RM.Toggle()
+      -- Right of this panel.
+      RM.Toggle(S.frame, "options")
       Watch(RM._frame, "send")
     else
       ns.Print(L["RM_NOT_AVAILABLE"])
@@ -4886,6 +4890,24 @@ function Pages.mail(col)
   arrange.entry.title, arrange.entry.extra = L["OPT_ARRANGE_BUTTON"], "arrange"
   S.arrangeCell = arrange
 
+  -- Test mail, under the way into arranging: the arrange mode's own switch
+  -- (the same state, MailboxUI.SetTestMail), here so the sample mail can be
+  -- looked at without arranging. At a mailbox it lists in the Mail tab in
+  -- the inbox's place; away from one it opens the Postbox window over it,
+  -- beside this panel. Never saved: the panel reads it on every refresh,
+  -- and anything that turns it off (the window closing) refreshes it.
+  Rows.Check(col, {
+    title = L["ARRANGE_PREVIEW"], text = L["OPT_TEST_MAIL_DESC"],
+    get = function()
+      local UI = ns.MailboxUI
+      return UI.IsTestMail and UI.IsTestMail() or false
+    end,
+    set = function(on)
+      local UI = ns.MailboxUI
+      if UI.SetTestMail then UI.SetTestMail(on, S.frame) end
+    end,
+  })
+
   -- Row layout: every figure in its own column on every row (Columns), or
   -- each row closing its gaps away from the subject and giving it the room
   -- (Packed), in the Mail tab, History and Mail Memory alike. Every list's
@@ -6799,7 +6821,14 @@ local function Build()
   frame:SetMovable(true)
   frame:RegisterForDrag("LeftButton")
   frame:SetScript("OnDragStart", frame.StartMoving)
-  frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+  -- Where the player leaves it is remembered against what opened it
+  -- (Panel.Toggle), and the next open from there keeps it.
+  frame:SetScript("OnDragStop", function(self)
+    self:StopMovingOrSizing()
+    local helpers = ns.Core.UI.Helpers
+    helpers.RememberBeside(self, S.opener, "options", S.from)
+    helpers.PinFrameTopLeft(self)
+  end)
   frame:Hide()
   frame:SetSize(PANEL_W, 480)
 
@@ -7046,20 +7075,19 @@ end
 -- way its own mark beside the cog opens it -- which brings the Mail tab
 -- forward first when the Send tab is showing. Called through the mark
 -- itself, at click time, so whatever that mark does, this does. Away from
--- a mailbox, the window opens as its preview (MailboxUI.OpenPreview),
--- already arranging. The panel steps out of the way of the rows being
--- arranged.
+-- a mailbox, the window opens as its preview (MailboxUI.OpenPreview) beside
+-- this panel, already arranging. The panel stays open: the window stands
+-- beside it, and Done leaves the preview up as Test mail's.
 function Panel.Arrange()
   local toggle = State.ArrangeToggle()
   if not toggle then
     local UI = ns.MailboxUI
-    if UI and type(UI.OpenPreview) == "function" and UI.OpenPreview() and S.frame then S.frame:Hide() end
+    if UI and type(UI.OpenPreview) == "function" then UI.OpenPreview(true, S.frame) end
     return
   end
   local AR = ns.Arrange
   local active = AR and AR.host ~= nil and AR.host.toggle == toggle
   if not active and type(toggle.Click) == "function" then toggle:Click("LeftButton") end
-  if S.frame then S.frame:Hide() end
 end
 
 -- Shown where it is closed, raised where it is open: /postbox, and the
@@ -7073,27 +7101,37 @@ function Panel.Open()
   Panel.Toggle(nil)
 end
 
--- Where the panel opens: under `anchor` (the cog), else the screen's middle.
-local function PlacePanel(frame, anchor)
-  frame:ClearAllPoints()
-  if anchor then
-    frame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
-  else
-    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-  end
+-- Where the panel opens, by what opened it (`from`, and `anchor`, the frame
+-- it opened from): right of the Postbox window from its cog, wherever that
+-- window stands (in its panel slot when docked); left of the minimap from
+-- the minimap icon; below Mail Memory's window from there; and from
+-- anywhere else (/postbox, the game's Settings page) the screen's middle.
+-- Each opener's own spot once the player has moved the panel from it
+-- (Helpers.PlaceBeside).
+local OPEN_SIDE = { main = "right", minimap = "left", memory = "below" }
+
+local function PlacePanel(frame)
+  local side = S.opener and OPEN_SIDE[S.from] or nil
+  ns.Core.UI.Helpers.PlaceBeside(frame, S.opener, side, "options", S.from)
 end
 
-function Panel.Toggle(anchor)
+function Panel.Toggle(anchor, from)
   local frame = Build()
   if frame:IsShown() then
     frame:Hide()
     return
   end
+  -- What it opens from, for this open and a drag during it. An opener not
+  -- on screen is no opener: the middle, as from anywhere else.
+  if anchor and OPEN_SIDE[from] and anchor.IsVisible and anchor:IsVisible() then
+    S.opener, S.from = anchor, from
+  else
+    S.opener, S.from = nil, "center"
+  end
   -- Counted again when the Send tab is next shown.
   S.sendText = nil
   Refresh()
-  PlacePanel(frame, anchor)
-  local scale = frame:GetScale()
+  PlacePanel(frame)
   frame:Show()
   frame:Raise()
   if ns.Skin and ns.Skin.Refresh then ns.Skin.Refresh(frame) end
@@ -7106,6 +7144,8 @@ function Panel.Toggle(anchor)
   -- back where it opens if that moved its scale.
   local T = ns.Theme
   if T and type(T.FitToScreen) == "function" then T.FitToScreen(frame) end
-  if frame:GetScale() ~= scale then PlacePanel(frame, anchor) end
+  -- Placed again at its size and scale as they now stand: the side with
+  -- room, and the clamp, depend on both.
+  PlacePanel(frame)
   Panel.SelectTab(S.tab)
 end

@@ -2338,7 +2338,6 @@ local function Build()
       if math.abs(f:GetHeight() - pressH) < 0.5 then RM._loanH = pressLoanH end
       pressW = nil
     end
-    helpers.SaveFramePosition(f, store)
     UpdateVisibleRows()
   end
 
@@ -2347,7 +2346,6 @@ local function Build()
   local function OnGripReset(f)
     helpers.PinFrameTopLeft(f)
     SetDefaultSize(f)
-    helpers.SaveFramePosition(f, store)
   end
 
   frame.ResizeButton = helpers.CreateResizeButton(frame, OnGripStop, OnGripStart, nil, OnGripReset)
@@ -2367,11 +2365,17 @@ local function Build()
   -- today's floor is kept as the player left it and stands on a loan until they
   -- change it. Its own clamp is a sanity bound on what it writes; the real
   -- floor is the measured one (ApplyBounds), which never goes under these rows.
+  -- The size only: where the window stands is its opener's to say (RM.Show),
+  -- and a drag is remembered against that opener, after the wrapped stop.
   helpers.ApplyWindowPersistence(frame, store, {
     minW = MIN_W, maxW = MAX_W, minH = MIN_ROWS * ROW_H, maxH = MAX_H,
     extraWidthFn = function() return RM._loanW end,
     extraHeightFn = function() return RM._loanH end,
+    savePlace = false,
   })
+  frame:HookScript("OnDragStop", function(self)
+    helpers.RememberBeside(self, RM._opener, "recipients", RM._from)
+  end)
 
   RM._frame = frame
 
@@ -2385,12 +2389,27 @@ end
 -------------------------------------------------------------
 -- Public API
 -------------------------------------------------------------
-function RM.Show()
+
+-- Where the window opens: right of what opened it (`anchor`, the window
+-- the button stands in, and `from`, its key: "main" the Send tab's, in the
+-- Postbox window wherever that stands; "options" the options panel's), or
+-- the screen's middle from anywhere else (/postbox recipients). Each
+-- opener's own spot once the player has moved the window from it
+-- (Helpers.PlaceBeside). The size is the player's, kept as it always was.
+RM._opener, RM._from = nil, "center"
+
+function RM.Show(anchor, from)
   local frame = Build()
-  if not frame:IsShown() then
+  local opening = not frame:IsShown()
+  if opening then
     -- Never leave the sort list and the Send tab's contact picker open at once.
     if ns.Core.UI.Dropdown and ns.Core.UI.Dropdown.CloseAll then
       ns.Core.UI.Dropdown.CloseAll()
+    end
+    if anchor and from and anchor.IsVisible and anchor:IsVisible() then
+      RM._opener, RM._from = anchor, from
+    else
+      RM._opener, RM._from = nil, "center"
     end
     frame:Show()
   end
@@ -2405,6 +2424,11 @@ function RM.Show()
   -- default is whole rows, which only a measured chrome can say.
   local saved = ns.Store.Get("profile.rmWindow")
   if not (type(saved) == "table" and tonumber(saved.height)) then SetDefaultSize(frame) end
+  -- Placed last, at the size it opens at.
+  if opening then
+    local helpers = ns.Core.UI.Helpers
+    helpers.PlaceBeside(frame, RM._opener, RM._opener and "right" or nil, "recipients", RM._from)
+  end
 end
 
 function RM.Hide()
@@ -2435,11 +2459,11 @@ function RM.ResetWindow()
   ns.Core.UI.Helpers.PinFrameTopLeft(frame)
 end
 
-function RM.Toggle()
+function RM.Toggle(anchor, from)
   local frame = Build()
   if frame:IsShown() then
     frame:Hide()
     return
   end
-  RM.Show()
+  RM.Show(anchor, from)
 end

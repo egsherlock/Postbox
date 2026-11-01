@@ -115,8 +115,8 @@ at the left of the title bar):
 
 One-line rows (shared with Mail Memory), Larger mail rows and History each
 keep their own arrangement. **Test mail** fills the list with sample mail
-while you arrange, and **Arrange Postbox** in the options works away from a
-mailbox too.
+while you arrange, or on its own from Options, Mail; **Arrange Postbox** in
+the options works away from a mailbox too, opening the window beside them.
 
 ## Mail Memory
 
@@ -213,7 +213,8 @@ icon steps aside.
 
 Five tabs (Mail tab, Send tab, Window, Minimap, Mail Memory), one column of
 settings, and a panel beside it that explains whatever you point at and shows
-it. **Reset to defaults** opens a menu: **Reset this tab**, **Reset
+it. The options open beside whatever opened them, and where you last moved
+them from there. **Reset to defaults** opens a menu: **Reset this tab**, **Reset
 settings** (your recipients, groups, Mail Memory and History are kept) or
 **Reset everything**, each saying what it clears before it asks. **What's
 new?** in the footer shows the last three releases.

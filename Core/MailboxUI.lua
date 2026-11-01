@@ -34,7 +34,8 @@ UI._state = UI._state or {
   ready          = false,     -- Initialize has run
   visible        = false,     -- our window is up
   mailboxOpen    = false,     -- a mail session is live
-  preview        = false,     -- the window is up as the arrange preview (section 5c), no mailbox
+  preview        = false,     -- the window is up as the preview (section 5c), no mailbox
+  previewPlaced  = false,     -- since the preview, until a mailbox shows it: no place of its saved (5c)
   inboxSeen      = false,     -- a real MAIL_INBOX_UPDATE has landed this visit
   activeTab      = "collect",
   freeMoved      = false,     -- the user dragged the window this session (grid mode)
@@ -760,7 +761,8 @@ function UI.ApplyWindowScale()
   if not frame then return end
   UI.ApplyWindowLayout()
   local helpers = WindowHelpers()
-  if helpers and helpers.SaveFramePosition and UI._windowStore and not (UI.GetOption("gridDock") and not UI._state.freeMoved) then
+  if helpers and helpers.SaveFramePosition and UI._windowStore and not (UI.GetOption("gridDock") and not UI._state.freeMoved)
+      and not UI._state.previewPlaced then
     helpers.SaveFramePosition(frame, UI._windowStore)
   end
 end
@@ -2081,8 +2083,13 @@ local function RenderStatus()
 
   local text, tone
   if UI._state.preview then
-    -- The preview window (section 5c) has no mailbox to report on.
-    text, tone = "", nil
+    -- The preview window (section 5c) has no mailbox to report on: it says
+    -- what it shows instead.
+    text, tone = L("ARRANGE_PREVIEW_AWAY"), "warning"
+  elseif UI.IsTestMail() then
+    -- Test mail at a mailbox (section 5c): nothing is collected while it is
+    -- on, so there is nothing else to report, and the line says why.
+    text, tone = L("TEST_MAIL_STATUS"), "warning"
   else
     if status.activity then
       text, tone = status.activity, status.activityTone
@@ -3267,7 +3274,7 @@ local function FollowFloor()
       local helpers = WindowHelpers()
       if helpers and helpers.PinFrameTopLeft then helpers.PinFrameTopLeft(frame) end
       frame:SetHeight(height + (after - before))
-      if helpers and helpers.SaveFramePosition and UI._windowStore then
+      if helpers and helpers.SaveFramePosition and UI._windowStore and not UI._state.previewPlaced then
         helpers.SaveFramePosition(frame, UI._windowStore)
       end
     end
@@ -3323,32 +3330,44 @@ function UI.RefreshCollectRowLayout()
 end
 
 -------------------------------------------------------------
--- 5c. The preview window
+-- 5c. Test mail, and the preview window
 --
--- Arranging from the options away from a mailbox (Core/OptionsPanel.lua, the
--- "Arrange..." row): this same window, opened with no mail session, straight
--- into the arrange mode over Preview mail's samples, and closed when the mode
--- ends -- Done, Escape, its close button, or anything else that hides it.
+-- Test mail lists sample mail in the Mail tab in the inbox's place, so a
+-- player can see how their settings look without collecting anything. One
+-- switch, in two places: the options' Mail page and the arrange mode's
+-- overview (Arrange.lua, AR.Test), each showing what the other did. It is
+-- session state, never saved, and off at every login; it goes off with the
+-- window it shows in.
+--
+-- At a mailbox it is the Mail tab's list alone (CollectTab, CT.SetSamples),
+-- and the window stays the game's and grid docking's. Away from a mailbox
+-- it is the preview window: this same window, opened with no mail session
+-- over the samples, beside the options that opened it (left of them, else
+-- right) or where the player last left it from there. Arranging from the
+-- options away from a mailbox opens it arranging; Done leaves it up as Test
+-- mail's, and turning Test mail off, its close button, Escape, or anything
+-- else that hides it closes it.
 --
 -- It has its own flag and never sets mailboxOpen, so everything that asks
 -- whether a mailbox is open (collecting, Mail Memory's capture, the tab's
--- counts, quick attach, the layout pass) still hears no. It stands where the
--- player keeps it when free-floating and centred when docking, and is never
--- docked: nothing on its path reads or writes MailFrame, calls a UI-panel
--- function or anything protected, so it opens, arranges and closes in combat
--- like the rest of the window (COMBAT_TAINT.md). Its close only hides it; there
--- is no mailbox to close. It says what it is in words: the title
--- (FRAME_TITLE_PREVIEW), Test mail held on beside the overview's title with
--- its tooltip saying why (Arrange.lua, PutTest), the Send tab greyed with its
--- reason. A mailbox
--- opening meanwhile ends it first (OnMailShow), and the mailbox then opens as
--- it always does.
+-- counts, quick attach, the layout pass) still hears no. It is never docked,
+-- and none of its places is saved as the window's own (`previewPlaced`); when
+-- it ends the window goes back, hidden, to where it is kept. Nothing on its
+-- path reads or writes MailFrame, calls a UI-panel function or anything
+-- protected, so it opens, arranges and closes in combat like the rest of the
+-- window (COMBAT_TAINT.md). Its close only hides it; there is no mailbox to
+-- close. It says what it is in words: the title (FRAME_TITLE_PREVIEW), the
+-- status line, Test mail held on beside the overview's title with its
+-- tooltip saying why (Arrange.lua, PutTest), the Send tab greyed with its
+-- reason. A mailbox opening meanwhile ends it first (OnMailShow), and the
+-- mailbox then opens as it always does.
 -------------------------------------------------------------
 
 -- What the preview put aside, given back when it ends: the tab the next
 -- mailbox opens on, and the per-session drag override (a drag of the preview
--- window is not one).
-local previewKeep = { tab = nil, freeMoved = false }
+-- window is not one). And the options window it opened beside (`opener`),
+-- against which a drag of it is remembered.
+local previewKeep = { tab = nil, freeMoved = false, opener = nil }
 
 local function PreviewSendEnter(self)
   if not UI._state.preview then return end
@@ -3401,30 +3420,57 @@ local function MarkPreview(frame, on)
   end
 end
 
--- The preview ends: the mode first, while the window is still the preview
--- (the samples go without the list being drawn again for a window about to
--- close; its next show draws it), then the marks, then the window.
+-- The window back where it is kept, once the preview that stood it beside
+-- the options is over: the spot the player keeps it at when it floats free,
+-- or where BuildFrame first puts it. Hidden, and no mailbox open: the next
+-- open docks it or holds it there, as it would have.
+local function KeptPlace(frame)
+  local store = UI._windowStore
+  frame:ClearAllPoints()
+  if store and type(store.x) == "number" and type(store.y) == "number" then
+    frame:SetPoint("CENTER", UIParent, "CENTER", store.x, store.y)
+  else
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 50)
+  end
+  local helpers = WindowHelpers()
+  if helpers and helpers.PinFrameTopLeft then helpers.PinFrameTopLeft(frame) end
+end
+
+-- The preview ends: the mode first, while the window is still the preview,
+-- then the samples (without the list being drawn again for a window about
+-- to close; its next show draws it), then the marks, then the window.
 -- Idempotent, and safe from inside the window's own OnHide and from the
--- mode's own end, which comes back here.
+-- mode's own end.
 local previewEnding = false
 local function EndPreview()
   local st = UI._state
   if not st.preview or previewEnding then return end
   previewEnding = true
-  local arrange, panel = ns.Arrange, CollectPanel()
+  local arrange, panel, collect = ns.Arrange, CollectPanel(), ns.CollectTab
   local ok, err = true, nil
   if arrange and arrange.LeaveIf and panel then ok, err = pcall(arrange.LeaveIf, panel) end
+  -- The samples go, unseen: the window is going with them.
+  if panel and collect and collect.SetSamples then
+    local done, why = pcall(collect.SetSamples, panel, false, true)
+    if ok and not done then ok, err = done, why end
+  end
   previewEnding = false
   st.preview = false
   if previewKeep.tab then st.activeTab = previewKeep.tab end
   st.freeMoved = previewKeep.freeMoved and true or false
-  previewKeep.tab, previewKeep.freeMoved = nil, false
+  previewKeep.tab, previewKeep.freeMoved, previewKeep.opener = nil, false, nil
   local frame = UI._frame
   if frame then
     MarkPreview(frame, false)
     st.visible = false
     if frame:IsShown() then frame:Hide() end
+    -- Back where it is kept, after the hide. `previewPlaced` stays set until
+    -- a mailbox shows the window (OnMailShow): this can run inside the hide
+    -- (Escape), before the persistence's own hide hook, which must not write
+    -- the preview's place as the window's.
+    KeptPlace(frame)
   end
+  UI.TestMailChanged()
   -- A failed leave is said where errors are read, once the preview is put
   -- away regardless.
   if not ok and type(geterrorhandler) == "function" then geterrorhandler()(err) end
@@ -3434,10 +3480,61 @@ function UI.IsPreview()
   return UI._state.preview == true
 end
 
--- The arrange mode ended (Core/Arrange.lua, through the Mail tab's host): the
--- preview window goes with it.
+-- The arrange mode ended (Core/Arrange.lua, through the Mail tab's host).
+-- The preview window stays, as Test mail's: nothing to do but say so where
+-- it is said.
 function UI.PreviewModeEnded()
-  if UI._state.preview then EndPreview() end
+  if UI._state.preview then UI.TestMailChanged() end
+end
+
+-- Whether the Mail tab lists sample mail: the preview window, or Test mail
+-- at a mailbox.
+function UI.IsTestMail()
+  if UI._state.preview then return true end
+  local panel = CollectPanel()
+  return panel ~= nil and panel._preview == true
+end
+
+-- Test mail switched, from the options (`opener`: their window, which the
+-- preview opens beside) or the arrange mode's overview. Away from a
+-- mailbox, on opens the preview window and off closes it. At a mailbox it
+-- is the Mail tab's list, brought forward to show it; while Postbox is
+-- collecting or deleting it waits, as Reset does, and says so in chat.
+-- Answers whether Test mail now stands as asked.
+function UI.SetTestMail(on, opener)
+  on = on and true or false
+  local st = UI._state
+  if UI.IsTestMail() == on then return true end
+  if not st.mailboxOpen then
+    if on then
+      UI.OpenPreview(false, opener)
+    else
+      EndPreview()
+    end
+    return UI.IsTestMail() == on
+  end
+  if on and UI.ResetBlockedBy() == "collect" then
+    if ns.Print then ns.Print(L("MSG_TEST_MAIL_WAIT")) end
+    UI.TestMailChanged()
+    return false
+  end
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if not (panel and collect and collect.SetSamples) then return false end
+  if on and st.activeTab ~= "collect" then UI.SelectTab("collect") end
+  collect.SetSamples(panel, on)
+  UI.TestMailChanged()
+  return UI.IsTestMail() == on
+end
+
+-- Test mail came on or went off, however: the arrange mode's overview, the
+-- options' switch and the status line show it as it now is.
+function UI.TestMailChanged()
+  local on = UI.IsTestMail()
+  local arrange = ns.Arrange
+  if arrange and arrange.PreviewChanged then arrange.PreviewChanged(CollectPanel(), on) end
+  local options = ns.OptionsPanel
+  if options and type(options.RefreshControls) == "function" then options.RefreshControls() end
+  RenderStatus()
 end
 
 -------------------------------------------------------------
@@ -3452,12 +3549,13 @@ end
 
 local WINDOW_TEMPLATE = "BasicFrameTemplateWithInset"
 
-local function OpenOptions(owner)
+local function OpenOptions()
   -- Postbox's own window, never a Blizzard context menu: menu frames are
   -- Compositor-guarded (CreateTexture is disallowed on them) and the only route
   -- to their submenu panels taints Blizzard's menu pipeline. See COMBAT_TAINT.md.
+  -- Right of this window, where it stands now: in its panel slot when docked.
   local panel = ns.OptionsPanel
-  if panel and panel.Toggle then panel.Toggle(owner) end
+  if panel and panel.Toggle then panel.Toggle(UI._frame, "main") end
 end
 
 local function BuildOptionsButton(frame, theme)
@@ -3495,7 +3593,7 @@ local function BuildOptionsButton(frame, theme)
   local highlight = button:GetHighlightTexture()
   if highlight then highlight:SetBlendMode("ADD") end
 
-  button:SetScript("OnClick", function(self) OpenOptions(self) end)
+  button:SetScript("OnClick", OpenOptions)
   button:SetScript("OnEnter", function(self)
     local T = ns.Theme
     if not (GameTooltip and T) then return end
@@ -3825,7 +3923,9 @@ local function BuildFrame()
       -- The drag was held to the floor as it stood at the press; one raised
       -- since (a count gaining a digit mid-drag) is met now.
       if w ~= nil and w < MinWindowWidth() then ApplyResizeBounds() end
-      if helpers.SaveFramePosition then helpers.SaveFramePosition(resized, windowStore) end
+      if helpers.SaveFramePosition and not UI._state.previewPlaced then
+        helpers.SaveFramePosition(resized, windowStore)
+      end
       UI.ApplyWindowLayout()
       -- Last, and after the re-dock: the compose screen re-reads its baseline
       -- from the size the user settled on, at the position it settled at.
@@ -3987,7 +4087,18 @@ local function BuildFrame()
       extraHeightFn = TotalExtra,
       -- And the width a raised floor lent, so what is saved is the player's.
       extraWidthFn = function() return UI._state.extraW end,
+      -- The preview beside the options is not where the window is kept.
+      savePlace = function() return not UI._state.previewPlaced end,
     })
+    -- A drag of the preview is remembered against the options it opened
+    -- beside instead (section 5c), after the persistence's own drag-stop.
+    if helpers.RememberBeside then
+      frame:HookScript("OnDragStop", function(self)
+        if UI._state.preview and previewKeep.opener then
+          helpers.RememberBeside(self, previewKeep.opener, "preview", "options")
+        end
+      end)
+    end
   end
 
   -- After the panels and after the restore: the floor is derived from the former
@@ -4044,6 +4155,8 @@ local function OnMailShow()
   -- first -- its mode, its marks, the window -- and the open below runs from a
   -- closed window, exactly as any other.
   if UI._state.preview then EndPreview() end
+  -- The window is itself again, its place its own to save.
+  UI._state.previewPlaced = false
 
   if UI._state.mailboxOpen then
     -- Re-dock only. This is the taint-free half of the layout; re-running the
@@ -4134,6 +4247,12 @@ local function OnMailClosed()
   -- to its grid slot next time.
   UI._state.freeMoved = false
 
+  -- Test mail goes with the window it shows in (section 5c), unseen: the
+  -- inbox's own list is there again for the next open.
+  local testPanel, testTab = CollectPanel(), ns.CollectTab
+  local wasTest = testPanel ~= nil and testPanel._preview == true
+  if wasTest and testTab and testTab.SetSamples then testTab.SetSamples(testPanel, false, true) end
+
   -- The stuck registry deliberately SURVIVES this boundary (see
   -- .dev/SPEC-RunMemory.md). It was once cleared here, on the argument that a
   -- stale "your bags are full" is worse than no marker; in practice the
@@ -4189,6 +4308,7 @@ local function OnMailClosed()
   if hideAt then perf.ClosePart("hide", hideAt) end
   UI._state.visible = false
   UI.ClearStatus()
+  if wasTest then UI.TestMailChanged() end
   if perf and type(perf.CloseEnd) == "function" then perf.CloseEnd() end
 
   -- MailFrame is deliberately not touched here. Blizzard's own secure hide runs
@@ -4200,19 +4320,26 @@ local function OnMailClosed()
   -- anyway, and a /reload restores it. COMBAT_TAINT.md 7 fix #3.
 end
 
--- The preview window opens (section 5c), from the options' "Arrange..." away
--- from a mailbox: the Mail tab forward, the window free of MailFrame, and the
--- arrange mode entered through the window's own mark, as its click enters it.
--- Answers whether the mode is open over it. At a mailbox the window is the
--- real one and this does nothing.
-function UI.OpenPreview()
+-- The preview window opens (section 5c), from the options away from a
+-- mailbox -- their Test mail, or their "Arrange..." (`arrange`) -- beside
+-- `opener`, the options' window: the Mail tab forward over the samples, the
+-- window free of MailFrame, and with `arrange` the arrange mode entered
+-- through the window's own mark, as its click enters it. Answers whether
+-- the window is up. At a mailbox the window is the real one and this does
+-- nothing.
+function UI.OpenPreview(arrange, opener)
   local st = UI._state
   if st.mailboxOpen or not st.ready then return false end
-  local arrange = ns.Arrange
-  if not (arrange and arrange.Enter) then return false end
+  local mode = ns.Arrange
   if st.preview then
-    -- Already up, and so already arranging: it closes with the mode.
-    if UI._frame then UI._frame:Raise() end
+    -- Already up: raised, and arranging where that was asked.
+    local frame = UI._frame
+    if frame then frame:Raise() end
+    local toggle = frame and frame.ArrangeButton
+    if arrange and toggle and mode and not (mode.host and mode.host.toggle == toggle) then
+      local click = toggle:GetScript("OnClick")
+      if click then click(toggle, "LeftButton") end
+    end
     return true
   end
 
@@ -4221,24 +4348,35 @@ function UI.OpenPreview()
   st.activeTab = "collect"
   BuildFrame()
   local frame = UI._frame
-  if not frame then
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if not (frame and panel and collect and collect.SetSamples) then
     st.preview = false
     st.activeTab = previewKeep.tab or st.activeTab
     previewKeep.tab = nil
     return false
   end
   UI.SelectTab("collect")
+  collect.SetSamples(panel, true)
 
-  -- Where the player keeps the window when it floats free (the spot it was
-  -- last put away at); centred, where the default spot is, when it docks --
+  -- Beside the options, left of them first (the window's place is its own
+  -- business: nothing of the preview is saved as it). Without them, where
+  -- the player keeps the window when it floats free (the spot it was last
+  -- put away at), or centred, where the default spot is, when it docks --
   -- the preview never docks. Anchored to the screen either way, so no anchor
   -- to MailFrame survives from the last visit.
-  local store = UI._windowStore
-  frame:ClearAllPoints()
-  if not UI.GetOption("gridDock") and store and type(store.x) == "number" and type(store.y) == "number" then
-    frame:SetPoint("CENTER", UIParent, "CENTER", store.x, store.y)
+  local helpers = WindowHelpers()
+  st.previewPlaced = true
+  if opener and helpers and helpers.PlaceBeside then
+    previewKeep.opener = opener
+    helpers.PlaceBeside(frame, opener, "left", "preview", "options")
   else
-    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 50)
+    local store = UI._windowStore
+    frame:ClearAllPoints()
+    if not UI.GetOption("gridDock") and store and type(store.x) == "number" and type(store.y) == "number" then
+      frame:SetPoint("CENTER", UIParent, "CENTER", store.x, store.y)
+    else
+      frame:SetPoint("CENTER", UIParent, "CENTER", 0, 50)
+    end
   end
 
   st.visible = true
@@ -4251,12 +4389,10 @@ function UI.OpenPreview()
 
   local toggle = frame.ArrangeButton
   local click = toggle and toggle:GetScript("OnClick")
-  if click and not (arrange.host and arrange.host.toggle == toggle) then click(toggle, "LeftButton") end
-  if not (arrange.host and arrange.host.toggle == toggle) then
-    -- No mode to open (the arrange file failed to load): nothing to preview.
-    EndPreview()
-    return false
+  if arrange and click and mode and not (mode.host and mode.host.toggle == toggle) then
+    click(toggle, "LeftButton")
   end
+  UI.TestMailChanged()
   return true
 end
 
@@ -4267,7 +4403,7 @@ end
 function UI.Show(shouldShow)
   -- The window is only ever up while a mailbox is open; it is not a standalone
   -- screen and there is nothing useful in it away from a mailbox. (The one
-  -- exception, the arrange preview, is shown by UI.OpenPreview and never
+  -- exception, the preview window, is shown by UI.OpenPreview and never
   -- through here.)
   local show = shouldShow == true and UI._state.mailboxOpen
   UI._state.visible = show and true or false

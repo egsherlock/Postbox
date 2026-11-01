@@ -2362,8 +2362,9 @@ local COMMANDS = {
 -- options.
 function Postbox_OnAddonCompartmentClick(_, mouseButton)
   if mouseButton == "RightButton" then
+    -- Left of the minimap, as the minimap icon's right-click opens them.
     local panel = ns.OptionsPanel
-    if panel and panel.Toggle then panel.Toggle() end
+    if panel and panel.Toggle then panel.Toggle(_G.Minimap, "minimap") end
     return
   end
   local Memory = ns.MailMemory

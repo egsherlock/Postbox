@@ -1358,8 +1358,9 @@ local function EnsureEuiOverlay(btn)
   overlay:SetScript("OnClick", function(self, mouseButton)
     if not Reachable() then return end
     if mouseButton == "RightButton" then
+      -- Left of the minimap: the icon is EllesmereUI's, on its rim.
       local Panel = ns.OptionsPanel
-      if Panel and type(Panel.Toggle) == "function" then Panel.Toggle(self) end
+      if Panel and type(Panel.Toggle) == "function" then Panel.Toggle(_G.Minimap or self, "minimap") end
       return
     end
     local Memory = ns.MailMemory
@@ -2204,9 +2205,11 @@ local function Build()
     if mouseButton == "RightButton" then
       -- Settings live behind the deliberate click; a stray left-click must
       -- never fling a window at the player.
+      -- Left of the minimap, or of the icon itself where it floats free.
       local Panel = ns.OptionsPanel
       if Panel and type(Panel.Toggle) == "function" then
-        Panel.Toggle(self)
+        local prefs = NormalizeSettings(Settings())
+        Panel.Toggle(prefs.position == "FREE" and self or (_G.Minimap or self), "minimap")
       end
       return
     end

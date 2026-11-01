@@ -1634,15 +1634,17 @@ end
 -- does not close with the mailbox, and an answer given after it -- or after
 -- the mailbox opened again on an inbox that has moved -- would be about mail
 -- the question no longer names. So every question is taken down on the
--- close; the service still checks everything again before a command.
+-- close, and as Test mail puts samples in the inbox's place (CT.SetSamples);
+-- the service still checks everything again before a command.
+function RV.HideQuestions()
+  if type(StaticPopup_Hide) ~= "function" then return end
+  StaticPopup_Hide(POPUP_COD)
+  StaticPopup_Hide(POPUP_BAGSPACE)
+  StaticPopup_Hide(POPUP_DELETE_ALL)
+  StaticPopup_Hide(POPUP_DELETE_ONE)
+end
 do
-  local function HideQuestions()
-    if type(StaticPopup_Hide) ~= "function" then return end
-    StaticPopup_Hide(POPUP_COD)
-    StaticPopup_Hide(POPUP_BAGSPACE)
-    StaticPopup_Hide(POPUP_DELETE_ALL)
-    StaticPopup_Hide(POPUP_DELETE_ONE)
-  end
+  local HideQuestions = RV.HideQuestions
   local bus = ns.Events
   if bus and type(bus.Register) == "function" then
     bus.Register("MAIL_CLOSED", HideQuestions)
@@ -1809,7 +1811,11 @@ end
 -- current and still reads as its mail (LiveIndex); else nil, and true when
 -- it is only behind the inbox (it does nothing this frame).
 function RV.Acting(widget)
-  if not RV.Current(widget.panel or widget._panel, widget._gen) then return nil, true end
+  local panel = widget.panel or widget._panel
+  -- Sample mail in the list's place (Test mail, CT.SetSamples): nothing
+  -- bound before it came on acts on the inbox either.
+  if panel and panel._preview then return nil, false end
+  if not RV.Current(panel, widget._gen) then return nil, true end
   return LiveIndex(widget), false
 end
 
@@ -12013,6 +12019,66 @@ function RV.ShowTopRow(panel)
   AV.Paint(panel)
 end
 
+-- Test mail (MailboxUI.SetTestMail, from the options or the arrange mode's
+-- overview): a new sample set in the list's place, from its top; switched
+-- off, the list as it was, at the place it was scrolled to when the list is
+-- still the one it was (the same view, the same box), carried across a
+-- change of row size as CT.ApplyRowLayout carries it. `quiet`: the window is
+-- going (the preview window closing, the mailbox shutting), and nothing is
+-- drawn again for it; its next show draws it.
+--
+-- A sample row stands on an index that may be a real mail's, so going on
+-- lets go of everything that could still act on the inbox from before --
+-- the selection, the reading view, the fan, a question still asked -- and
+-- holds the mail service (Mail.Hold) for as long as samples are listed.
+-- The rows themselves are bound to no mail (BindRow), and the tab's
+-- sweeps and deletes refuse while `_preview` stands.
+function CT.SetSamples(panel, on, quiet)
+  on = on and true or false
+  if not panel or (panel._preview == true) == on then return end
+  local scroll = panel.MailListScroll
+  local keep = panel._previewKeep or {}
+  panel._previewKeep = keep
+  local M = Mail()
+  if M.Hold then M.Hold(on) end
+  if on then
+    ClearSelection(panel)
+    HideDetail(panel)
+    RV.FanClose(true)
+    RV.HideQuestions()
+    keep.offset, keep.stride = scroll:GetVerticalScroll() or 0, panel._rowStride or 0
+    keep.view, keep.alt = panel.viewMode, panel._alt
+    RV.PreviewBuild()
+    panel._preview = true
+    scroll:SetVerticalScroll(0)
+    if not quiet then CT.RefreshMailList(panel) end
+    return
+  end
+  panel._preview = nil
+  panel._pvList, panel._pvDone, panel._pvTail = nil, nil, nil
+  CT.PreviewRelease()
+  if quiet then
+    panel._dirty = true
+    return
+  end
+  CT.RefreshMailList(panel)
+  local stride = panel._rowStride or 0
+  local offset = 0
+  if keep.view == panel.viewMode and keep.alt == panel._alt and stride > 0 and (keep.stride or 0) > 0 then
+    offset = (keep.stride == stride) and keep.offset or keep.offset / keep.stride * stride
+  end
+  local listed = #panel._filtered
+  if AV.Active(panel) then
+    listed = #(panel._avRows or {})
+  elseif panel.viewMode == VIEW_HISTORY then
+    listed = #panel._history
+  end
+  local maxScroll = max(0, RV.ListHeight(listed, stride) - (scroll:GetHeight() or 0))
+  scroll:SetVerticalScroll(min(offset, maxScroll))
+  if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
+  if panel:IsShown() then UpdateVisibleRows(panel) end
+end
+
 -- The arrange mode over this tab (Core/Arrange.lua): its column header
 -- stands in the top row's place, over the list's lanes, and the list does
 -- not move; the blocks under the list become cards, and the category grid
@@ -12083,51 +12149,21 @@ function CT.ArrangeHost(panel)
   function host.TwoLine()
     return not AV.Active(panel) and panel.viewMode ~= VIEW_HISTORY and not RowMetrics()
   end
-  -- Preview mail, from the overview (Arrange.lua): a new sample set in the
-  -- list's place, from its top; switched off -- or the mode ending, which
-  -- switches it off -- the list as it was, at the place it was scrolled to
-  -- when the list is still the one it was (the same view, the same box),
-  -- carried across a change of row size as CT.ApplyRowLayout carries it.
+  -- Test mail, from the overview (Arrange.lua): the one switch the options
+  -- have too (MailboxUI.SetTestMail), which lists the samples here
+  -- (CT.SetSamples). Answers false where it was refused (a collect under
+  -- way), and the overview's switch then stays as it was.
   function host.Preview(on)
-    on = on and true or false
-    if (panel._preview == true) == on then return end
-    local scroll = panel.MailListScroll
-    local keep = panel._previewKeep or {}
-    panel._previewKeep = keep
-    if on then
-      keep.offset, keep.stride = scroll:GetVerticalScroll() or 0, panel._rowStride or 0
-      keep.view, keep.alt = panel.viewMode, panel._alt
-      RV.PreviewBuild()
-      panel._preview = true
-      scroll:SetVerticalScroll(0)
-      CT.RefreshMailList(panel)
-      return
-    end
-    panel._preview = nil
-    panel._pvList, panel._pvDone, panel._pvTail = nil, nil, nil
-    CT.PreviewRelease()
-    -- The preview window closes with the mode (MailboxUI, 5c): nothing on
-    -- screen needs the list again, and its next show draws it afresh.
-    if host.PreviewLocked() then return end
-    CT.RefreshMailList(panel)
-    local stride = panel._rowStride or 0
-    local offset = 0
-    if keep.view == panel.viewMode and keep.alt == panel._alt and stride > 0 and (keep.stride or 0) > 0 then
-      offset = (keep.stride == stride) and keep.offset or keep.offset / keep.stride * stride
-    end
-    local listed = #panel._filtered
-    if AV.Active(panel) then
-      listed = #(panel._avRows or {})
-    elseif panel.viewMode == VIEW_HISTORY then
-      listed = #panel._history
-    end
-    local maxScroll = max(0, RV.ListHeight(listed, stride) - (scroll:GetHeight() or 0))
-    scroll:SetVerticalScroll(min(offset, maxScroll))
-    if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
-    if panel:IsShown() then UpdateVisibleRows(panel) end
+    local UI = ns.MailboxUI
+    if UI and UI.SetTestMail then return UI.SetTestMail(on) end
+    CT.SetSamples(panel, on)
+    return true
   end
+  -- Whether Test mail is on as the mode opens: it stays on into the mode.
+  function host.PreviewOn() return panel._preview == true end
   -- The preview window, away from a mailbox (MailboxUI, 5c): the samples are
-  -- the list for the whole mode, and the window goes with the mode.
+  -- the list for the whole mode, and stay when it ends, the window with
+  -- them, as Test mail's.
   function host.PreviewLocked()
     local UI = ns.MailboxUI
     return UI and UI.IsPreview and UI.IsPreview() or false

@@ -1072,6 +1072,23 @@ local function Release(token)
   if channelOwner == token then channelOwner = nil end
 end
 
+-- Test mail (MailboxUI.SetTestMail): while the Mail tab lists sample mail in
+-- the inbox's place, nothing goes to the inbox from here. A sample row
+-- stands on an index that may be a real mail's; the screens already leave
+-- the samples alone, and this is the floor under them, so a path that slips
+-- past them still sends nothing. Every command answers "closed", which
+-- every caller already stops on, and the body fetch answers nil. Never on
+-- while a command is out: the switch waits for the channel to be free.
+local testHold = false
+
+function Mail.Hold(on)
+  testHold = on and true or false
+end
+
+function Mail.Held()
+  return testHold
+end
+
 -------------------------------------------------------------
 -- Command layer :: the body fetch
 --
@@ -1094,7 +1111,7 @@ end
 -------------------------------------------------------------
 
 function Mail.FetchMailBody(index)
-  if type(GetInboxText) ~= "function" then return nil end
+  if testHold or type(GetInboxText) ~= "function" then return nil end
   if Mail.IsBusy() then return nil end
   if not MailboxOpen() then return nil end
   local text = GetInboxText(index)
@@ -4341,6 +4358,10 @@ end
 --                 C.O.D., and opts.clicked is what was clicked (Mail.Clicked):
 --                 the only way a take that pays is ever sent.
 function Mail.CollectMail(index, onDone, opts)
+  if testHold then
+    if onDone then onDone("closed", 0, nil) end
+    return
+  end
   local token = Claim()
   if not token then
     if onDone then onDone("busy", 0, nil) end
@@ -4443,6 +4464,10 @@ end
 --             is taken, and paid for, only while the index still reads as what
 --             the player clicked, with the inbox listing as many mails.
 function Mail.TakeAttachment(index, slot, onDone, opts)
+  if testHold then
+    if onDone then onDone("closed", 0, nil) end
+    return
+  end
   local token = Claim()
   local finished = false
   -- As Mail.CollectMail's: the C.O.D. the take paid, from RunPlan's evidence.
@@ -4582,6 +4607,10 @@ end
 -- once its handshake clears, with the mail's index then (or nil, gone, or
 -- false, not known), and answers whether the mail is now on its way out.
 local function SingleCommand(issue, onDone, index, expected, judge, stamp, item)
+  if testHold then
+    if onDone then onDone("closed") end
+    return
+  end
   local token = Claim()
   if not token then
     if onDone then onDone("busy") end
@@ -4627,6 +4656,10 @@ local function SingleCommand(issue, onDone, index, expected, judge, stamp, item)
 end
 
 function Mail.DeleteMail(index, onDone, expected, stamp, item)
+  if testHold then
+    if onDone then onDone("closed") end
+    return
+  end
   if type(DeleteInboxItem) ~= "function" then
     if onDone then onDone("unavailable") end
     return
@@ -4645,6 +4678,10 @@ end
 -- stamp its index was read at; the gold goes only from that mail, followed
 -- to where it is ("moved", with nothing sent, otherwise).
 function Mail.TakeMoney(index, onDone, history, expected, stamp)
+  if testHold then
+    if onDone then onDone("closed") end
+    return
+  end
   if type(TakeInboxMoney) ~= "function" then
     if onDone then onDone("unavailable") end
     return
@@ -4700,6 +4737,10 @@ function Mail.TakeMoney(index, onDone, history, expected, stamp)
 end
 
 function Mail.ReturnMail(index, onDone, expected, stamp, item)
+  if testHold then
+    if onDone then onDone("closed") end
+    return
+  end
   if type(ReturnInboxItem) ~= "function" then
     if onDone then onDone("unavailable") end
     return
@@ -4796,6 +4837,10 @@ function SweepStep()
 end
 
 function Mail.DeleteMails(indices, onDone, expected, stamp)
+  if testHold then
+    if onDone then onDone(0, "closed") end
+    return
+  end
   if type(DeleteInboxItem) ~= "function" then
     if onDone then onDone(0, "unavailable") end
     return

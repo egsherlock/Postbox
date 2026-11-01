@@ -4925,7 +4925,7 @@ function AR.Test.Click(self)
   if self.locked or not AR.host then return end
   local on = not AR.preview
   AR.SetPreview(on)
-  PlayToggle(on)
+  if AR.preview == on then PlayToggle(on) end
   AR.Inspect()
   if GameTooltip:IsOwned(self) then AR.Test.Tip(self) end
 end
@@ -5060,13 +5060,24 @@ end
 
 -- Test mail switched from the overview: the host lists its sample set
 -- in the list's place, or the list as it was (host.Preview). Only where
--- the host can.
+-- the host can, and not where it refuses (answers false).
 function AR.SetPreview(on)
   local host = AR.host
   on = on and true or false
   if not (host and host.Preview) or AR.preview == on then return end
   AR.preview = on
-  host.Preview(on)
+  if host.Preview(on) == false then AR.preview = not on end
+end
+
+-- Test mail switched elsewhere (the options, MailboxUI.SetTestMail) while
+-- the mode is open over `owner`: the overview shows it as it now is.
+function AR.PreviewChanged(owner, on)
+  on = on and true or false
+  local host = AR.host
+  if not (host and host.owner == owner) or AR.preview == on then return end
+  AR.preview = on
+  local insp = AR._insp
+  if insp and insp:IsShown() then AR.Inspect() end
 end
 
 -- Move, one step: an arrow on a plate, dimmed where the thing cannot go
@@ -6918,9 +6929,10 @@ end
 --
 -- A host with no mail of its own to show (the Mail tab in the preview
 -- window, away from a mailbox) answers PreviewLocked(): Test mail is on
--- for the whole mode and its toggle is held. A host may answer Left(): the
--- mode has ended, called after everything else, for a window that goes with
--- the mode.
+-- for the whole mode, its toggle is held, and the samples stay when the
+-- mode ends. One whose samples can be on before the mode opens answers
+-- PreviewOn(). A host may answer Left(): the mode has ended, called after
+-- everything else.
 -------------------------------------------------------------
 
 function AR.Enter(host)
@@ -6934,7 +6946,8 @@ function AR.Enter(host)
   AR.host = host
   AR.hover, AR.focus, AR.drag, AR.rowHover = nil, nil, nil, nil
   AR.selKind, AR.selId, AR.moving = nil, nil, nil
-  AR.preview = false
+  -- Test mail, where it is on already (from the options), stays on.
+  AR.preview = (host.PreviewOn and host.PreviewOn()) and true or false
   AR.listKind, AR.relisted = AR.ListKind(), false
   strip:Show()
   if host.OnEnter then host.OnEnter(strip) end
@@ -6991,10 +7004,11 @@ function AR.Leave()
     cover.Ghost:Hide()
     cover:Hide()
   end
-  -- Sample mail goes with the mode: the list as it was.
+  -- Sample mail goes with the mode: the list as it was. Not in the preview
+  -- window, which has no list of its own: it stays, as Test mail's.
   if AR.preview then
     AR.preview = false
-    if host.Preview then host.Preview(false) end
+    if host.Preview and not (host.PreviewLocked and host.PreviewLocked()) then host.Preview(false) end
   end
   if host.OnLeave then host.OnLeave() end
   if host.toggle then AR.PaintToggle(host.toggle) end
@@ -7002,7 +7016,8 @@ function AR.Leave()
   AR.MoveCursor(false)
   -- The rows placed again with nothing marked on them.
   AR.RowsChanged(false)
-  -- Last: a window that goes with the mode (the preview window) goes now.
+  -- Last: the host told the mode is over (the preview window stays, as
+  -- Test mail's, and says so).
   if host.Left then host.Left() end
   -- And the update notice comes back, if one waits beside a window still up.
   local news = ns.WhatsNew
