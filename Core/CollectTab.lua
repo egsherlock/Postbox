@@ -9629,11 +9629,9 @@ function PaintDetailContent(detail, index)
   -- Return on the same test. Once a mail has been emptied there is nothing to
   -- return, and a system mail (auction house, quest reward) cannot be. Delete
   -- is never offered on a C.O.D. mail, nor on one the client says to return.
-  local canDelete = true
-  if type(InboxItemCanDelete) == "function" then
-    local ok, answer = pcall(InboxItemCanDelete, index)
-    if ok then canDelete = answer and true or false end
-  end
+  -- The client's answer is the mail's fate on expiry (Mail().ExpiryFate):
+  -- a mail it cannot say of is offered Delete, as before.
+  local canDelete = Mail().ExpiryFate(index) ~= "back"
   -- Collect stands only while the mail holds something it would take: gold,
   -- or items, a C.O.D. mail's included (its click still asks first). A
   -- letter with nothing in it reads with Back and Delete alone, and the bar

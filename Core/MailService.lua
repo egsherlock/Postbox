@@ -302,6 +302,26 @@ function Mail.IsReadPersistent(index)
   return Mail.AttachmentsLeft(index) == 0
 end
 
+-- index -> what the server does with the mail when it expires: "back" (it
+-- goes back to its sender), "gone" (it is deleted), or nil where the client
+-- cannot say. The client's InboxItemCanDelete answers it: false for a mail
+-- from a player that still holds gold or items, which is returned; true for
+-- everything else -- auction house and other system mail, a plain letter,
+-- an emptied mail, one already returned once -- which is deleted. Blizzard's
+-- own inbox asks it for the same thing (its time left's tooltip, "until
+-- returned" or "until deleted"), and its open-mail frame offers Return in
+-- place of Delete on it. The one place Postbox asks: the rows' marks, their
+-- tooltip, Mail Memory's capture and the reading view's buttons all come
+-- here. Guarded, so a client without the function, or one that throws for
+-- an index, answers nil; nothing is allocated.
+function Mail.ExpiryFate(index)
+  local ask = InboxItemCanDelete
+  if type(ask) ~= "function" then return nil end
+  local ok, canDelete = pcall(ask, index)
+  if not ok or canDelete == nil then return nil end
+  return canDelete and "gone" or "back"
+end
+
 -------------------------------------------------------------
 -- Queue construction -- the order, and the critical identity invariant
 -------------------------------------------------------------
