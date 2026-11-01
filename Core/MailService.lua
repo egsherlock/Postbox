@@ -4874,12 +4874,9 @@ function SweepStep()
   -- relocating by fingerprint could delete a sibling the caller never
   -- listed. Never by the index alone: the inbox is followed from the sweep's
   -- start (Mail.DeleteMails arms it), and where it cannot be, nothing goes.
-  -- And never a mail the client says goes back to its sender rather than
-  -- being deleted (Mail.ExpiryFate): finished mail never reads so, and one
-  -- that does is not finished whatever else it says.
   local at = Mail.Rebase(index, s.stamp)
   if type(at) ~= "number" or (s.expected and Fingerprint(at) ~= s.expected[index])
-     or not Mail.IsReadPersistent(at) or Mail.ExpiryFate(at) == "back" then
+     or not Mail.IsReadPersistent(at) then
     return SweepStep()
   end
 
