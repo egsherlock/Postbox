@@ -1000,9 +1000,18 @@ local function FinishSend(outcome)
     local UI = ns.MailboxUI
     if UI and type(UI.NoteSent) == "function" then UI.NoteSent() end
     -- The server's answer came late, and the player has written another
-    -- mail since: that draft is theirs, and stays (ST.KeepWaiting).
+    -- mail since: that draft is theirs, and stays (ST.KeepWaiting). The
+    -- run that mail began ends with it: what its queue still holds stays
+    -- in the bags, said once, and never goes into the new mail's slots.
     if pending.late and not ST.SameDraft(pending) then
+      local run = panel._run
       panel._run = nil
+      local left = run and #(panel._queue or {}) or 0
+      if left > 0 then
+        panel._queue = nil
+        if RefreshQueueLabel then RefreshQueueLabel(panel) end
+        if ns.Print then ns.Print(ns.Plural("MSG_QUEUE_LEFT", left)) end
+      end
       Invalidate(panel, "slots")
       Invalidate(panel, "cost")
       Invalidate(panel, "guidance")
