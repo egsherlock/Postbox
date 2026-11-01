@@ -241,6 +241,15 @@ local function CaptureNow()
         bid = ok and tonumber(bid) or 0
         if invoiceType == "buyer" and bid > 0 then paid = bid end
       end
+      -- What the server does with it when it expires (MailService's
+      -- ExpiryFate), for the rows' expiry mark: true, it goes back to its
+      -- sender; false, it is deleted; nil where the client cannot say, as
+      -- every record saved before this was asked, which then shows no mark.
+      local back
+      if service and type(service.ExpiryFate) == "function" then
+        local fate = service.ExpiryFate(index)
+        if fate then back = (fate == "back") end
+      end
 
       sender, subject = tostring(sender or ""), tostring(subject or "")
       count = count + 1
@@ -248,7 +257,8 @@ local function CaptureNow()
       if not mail then
         -- Sized for all its fields at once; each is set just below.
         mail = { stuck = false, icon = false, sender = "", subject = "", money = 0, cod = 0, items = 0,
-          read = false, link = false, kind = false, paid = false, expires = 0, count = false, it = false }
+          read = false, link = false, kind = false, paid = false, expires = 0, count = false, it = false,
+          back = false }
         mails[count] = mail
       elseif mail.sender ~= sender or mail.subject ~= subject or mail.kind ~= kind then
         -- Another mail in this slot now: the text a search folded is not its.
@@ -284,6 +294,7 @@ local function CaptureNow()
       mail.count   = stack
       mail.kind    = kind
       mail.paid    = paid
+      mail.back    = back
       -- Absolute, so "has this expired since I saw it" is answerable in a
       -- later session without trusting a stale daysLeft.
       mail.expires = now + math.floor((tonumber(daysLeft) or 0) * 86400)
@@ -1413,6 +1424,14 @@ function MM.RowTip(row, owner)
     T.TipFact(L["TIP_TIME_LEFT"], warn and T.TipTone("warning", expiry) or expiry)
   end
 
+  -- On expiry: what the server does with it, as the visit recorded it, on
+  -- a mail that held gold or items; past its date, what it did. A record
+  -- from before the visits asked says nothing (mail.back nil).
+  if mail.back ~= nil and R.TipFate and (money > 0 or (tonumber(mail.items) or 0) > 0) then
+    local past = (tonumber(mail.expires) or 0) <= time()
+    R.TipFate(mail.back and "back" or "gone", named and R.DisplaySender(named) or nil, past)
+  end
+
   TipState(R, row, true)
   T.TipHint(MM.TakeHint(row))
   GameTooltip:Show()
@@ -1646,9 +1665,10 @@ function MM.NewRow(parent)
   return row
 end
 
--- mail, now -> the row's three figures as coloured text (or nil each), what
--- the switches keep off the row for its tooltip, and the time-left line.
-local function Figures(mail, now)
+-- mail, now, fs -> the row's three figures as coloured text (or nil each),
+-- what the switches keep off the row for its tooltip, and the time-left
+-- line. `fs`: the string the time is drawn in, which sizes its expiry mark.
+local function Figures(mail, now, fs)
   local R = Rules()
   local T = ns.Theme
   local hasCOD = (mail.cod or 0) > 0
@@ -1667,12 +1687,22 @@ local function Figures(mail, now)
   -- threshold, amber when genuinely short -- and "expired" always shows.
   local expiryText, expired = ExpiryText(mail.expires, now)
   local left = (tonumber(mail.expires) or 0) - now
+  -- Short, or past its date, a mail that held gold or items carries the
+  -- expiry mark the visit recorded (the Mail tab's RV.FateText): where it
+  -- goes, or where it went. None on a record from before the visits asked.
+  local fate
+  if mail.back ~= nil and R and R.FateText and ((mail.money or 0) > 0 or (mail.items or 0) > 0) then
+    fate = mail.back and "back" or "gone"
+  end
   local expiry
   if expired then
-    expiry = T.Colorize("warning", expiryText)
+    expiry = fate and R.FateText(expiryText, fate, fs) or T.Colorize("warning", expiryText)
   elseif R then
     local show, warn = R.ExpiryState(left / 86400, hasCOD)
-    if show then expiry = T.Colorize(warn and "warning" or "textSecondary", expiryText) end
+    if show then
+      expiry = (warn and fate) and R.FateText(expiryText, fate, fs)
+        or T.Colorize(warn and "warning" or "textSecondary", expiryText)
+    end
   end
 
   -- A figure switched off leaves the row; the row's tooltip says it in full
@@ -1702,7 +1732,7 @@ end
 -- ask for the next row, and neither keeps it. The figure ids are the three
 -- columns (the rules' IsFigure), so the fields cleared here are all it holds.
 local rowTexts = {}
-local function RowTexts(mail, now)
+local function RowTexts(mail, now, fs)
   local R = Rules()
   local texts = rowTexts
   texts.time, texts.money, texts.slots, texts.facts = nil, nil, nil, nil
@@ -1713,7 +1743,7 @@ local function RowTexts(mail, now)
     if last then texts[last] = ns.Theme.Colorize("positive", L["MEMORY_NEW_ROW"]) end
     return texts
   end
-  texts.money, texts.slots, texts.time, texts.facts, texts.expiryText, texts.expired, texts.cod = Figures(mail, now)
+  texts.money, texts.slots, texts.time, texts.facts, texts.expiryText, texts.expired, texts.cod = Figures(mail, now, fs)
   return texts
 end
 
@@ -1786,7 +1816,7 @@ do
         local label = R.OutcomeSender(mail.kind) or R.DisplaySender(mail.sender) or ""
         cols.sender = math.min(math.max(cols.sender, Width(widths, owner, R, sample.Sender, label) + 2), cap)
       end
-      local texts = RowTexts(mail, now)
+      local texts = RowTexts(mail, now, sample.ColTime)
       for k = 1, #FIGURES do
         local id = FIGURES[k]
         local text = texts[id]
@@ -1918,7 +1948,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   end
 
   -- Read at once: RowTexts fills the same table for the next row.
-  local texts = RowTexts(mail, now)
+  local texts = RowTexts(mail, now, row.ColTime)
   local timeText, moneyText, slotsText = texts.time, texts.money, texts.slots
   local codShown, expired = texts.cod, texts.expired
   -- The time left in words, for the row's tooltip (MM.RowTip).
@@ -2747,7 +2777,7 @@ function MM.PreviewRows(order)
         sender = m.sender, subject = m.subject, money = m.money, cod = m.cod, paid = m.price,
         items = #m.items, expires = now + math.floor(m.days * 86400), read = m.read,
         kind = m.kind, icon = m.icon, link = first and first.link or nil, id = first and first.id or nil,
-        stuck = false, it = list,
+        stuck = false, it = list, back = (m.fate == "back"),
       }
     end
     kept = { gen = gen, rows = rows }
