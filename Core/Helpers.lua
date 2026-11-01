@@ -182,26 +182,35 @@ function H.PlayerName()
   return full
 end
 
--- Forever's ruleset, as the realm key: Hardcore, RP, PvP, or PvE for the
--- normal one (AceDB-3.0's names and order). Kept once the player is logged
--- in; before that the game rules may not be known yet, so it is asked again.
+-- Forever's ruleset, as the realm key: Hardcore, RPPvP, RP, PvP, or PvE for
+-- the normal one (AceDB-3.0's order; its name for the roleplay PvP ruleset,
+-- added for launch, is "RP-PvP", written here without the hyphen, which
+-- would read as a name-realm separator). That ruleset is the RP and PvP
+-- rules at once, so it is asked before either alone. Kept once the player
+-- is logged in; before that the game rules may not be known yet, so it is
+-- asked again.
 local ruleset = nil
-local RULESETS = { { "HardcoreRuleset", "Hardcore" }, { "RPRuleset", "RP" }, { "PvPRuleset", "PvP" } }
+local function RuleActive(rules, key)
+  local rule = rules[key]
+  if rule == nil then return false end
+  local ok, active = pcall(C_GameRules.IsGameRuleActive, rule)
+  return ok and active == true
+end
 local function Ruleset()
   if ruleset then return ruleset end
   local answer = "PvE"
   local rules = type(Enum) == "table" and Enum.GameRule or nil
   if type(C_GameRules) == "table" and type(C_GameRules.IsGameRuleActive) == "function"
      and type(rules) == "table" then
-    for i = 1, #RULESETS do
-      local rule = rules[RULESETS[i][1]]
-      if rule ~= nil then
-        local ok, active = pcall(C_GameRules.IsGameRuleActive, rule)
-        if ok and active == true then
-          answer = RULESETS[i][2]
-          break
-        end
-      end
+    local rp, pvp = RuleActive(rules, "RPRuleset"), RuleActive(rules, "PvPRuleset")
+    if RuleActive(rules, "HardcoreRuleset") then
+      answer = "Hardcore"
+    elseif rp and pvp then
+      answer = "RPPvP"
+    elseif rp then
+      answer = "RP"
+    elseif pvp then
+      answer = "PvP"
     end
   end
   if type(IsLoggedIn) == "function" and IsLoggedIn() then ruleset = answer end
