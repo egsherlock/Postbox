@@ -4398,6 +4398,13 @@ Theme.AtlasSets = {
 --   history  a clock with a counter-clockwise arrow round it: History (the
 --     Mail tab's History button, History's age heading). A unit wider than
 --     it is tall, for the arrow's head.
+--   expiry-back / expiry-bin  the expiry marks (the return-mark mockup): a
+--     curved arrow, the mail goes back to its sender; a bin, the server
+--     deletes it. Keylined like the layout marks: they are drawn inline in
+--     a row's time text (CollectTab's RV.FateMark), where no font shadow
+--     reaches a texture. Each canvas is 32 texels square with clear texels
+--     right of the art, which the inline escape takes in as the gap before
+--     the digits.
 --
 -- Sharpness. The art is 2 texels per UI unit. A texel snapping bias above 0
 -- "sharpens": the renderer picks a texel instead of blending texels (the API
@@ -4440,6 +4447,8 @@ do
     ["dot-shadow"] = { file = MEDIA .. "glyph-dot-shadow.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
     hourglass = { file = MEDIA .. "glyph-hourglass.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
     history = { file = MEDIA .. "glyph-history.tga", w = 12, h = 11, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.71875 },
+    ["expiry-back"] = { file = MEDIA .. "glyph-expiry-back.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875, pad = 1 },
+    ["expiry-bin"] = { file = MEDIA .. "glyph-expiry-bin.tga", w = 10, h = 11, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.71875, pad = 1 },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
   }
 
