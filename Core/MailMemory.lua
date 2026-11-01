@@ -1786,7 +1786,7 @@ do
     local R = Rules()
     local cols = owner._memCols or {}
     owner._memCols = cols
-    cols.money, cols.slots, cols.time = 0, 0, 0
+    cols.money, cols.slots, cols.time, cols.timeMark = 0, 0, 0, 0
     if not R then
       cols.sender = 92
       return cols
@@ -1829,6 +1829,7 @@ do
         local id = FIGURES[k]
         local text = texts[id]
         if text then cols[id] = math.max(cols[id], Width(widths, owner, R, fsFor[id], text)) end
+        if id == "time" and text and R.FateMarkW then cols.timeMark = math.max(cols.timeMark, R.FateMarkW(text)) end
       end
     end
     -- Slot counts written as the number alone can measure narrower than any

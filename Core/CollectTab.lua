@@ -2301,7 +2301,7 @@ do
   -- many. counted: whether this client's widths count inline textures (nil
   -- until probed). tip: the tooltip's marks, at tipSize. clean: whether
   -- the marks are made clean (Theme.InkOnLight), CLEAN their glyphs then.
-  local F = { hex = false, clean = false, byH = {}, sets = 0, marked = {}, n = 0, counted = nil,
+  local F = { hex = false, clean = false, byH = {}, sets = 0, marked = {}, plain = {}, n = 0, counted = nil,
     tip = { back = false, gone = false }, tipSize = false,
     CLEAN = { back = "expiry-back-clean", gone = "expiry-bin-clean" } }
   RV.FATE = F
@@ -2336,6 +2336,7 @@ do
   local function Forget()
     for h in pairs(F.byH) do F.byH[h] = nil end
     for text in pairs(F.marked) do F.marked[text] = nil end
+    for text in pairs(F.plain) do F.plain[text] = nil end
     F.sets, F.n = 0, 0
   end
 
@@ -2381,11 +2382,38 @@ do
       Forget()
       return RV.FateText(text, fate, fs)
     end
-    marked = esc .. Th().Colorize("warning", text)
+    local plain = Th().Colorize("warning", text)
+    marked = esc .. plain
     texts[text] = marked
-    F.marked[marked] = set.w[fate]
+    F.marked[marked], F.plain[marked] = set.w[fate], plain
     F.n = F.n + 1
     return marked
+  end
+
+  -- A marked text -> its mark's width, the room a list's figures are given
+  -- beyond their share while it is listed (RV.Place); 0 for any other text.
+  function RV.FateMarkW(text)
+    return F.marked[text] or 0
+  end
+
+  -- s (a row's spec), id, width -> what the figure `id` writes in `width`:
+  -- its text, or, where a marked time left would be cut, the time alone,
+  -- in the same amber. The time is what the column is for; the mark is
+  -- still in the row's tooltip. Only a window too narrow for both drops it.
+  function RV.FigureText(s, id, width)
+    local text = s.text[id] or ""
+    local plain = F.n > 0 and F.plain[text]
+    if plain and width < RV.OwnWidth(s, id) then return plain end
+    return text
+  end
+
+  -- cols, id, width -> whether `width` is too narrow for the time alone
+  -- while a marked time is listed: the room the mark adds (cols.timeMark)
+  -- is the mark's, so a time it cannot hold is placed as it was before the
+  -- marks, as one under the least is (RV.Place).
+  function RV.TimeShort(cols, id, width)
+    local mark = cols.timeMark or 0
+    return id == "time" and mark > 0 and width < (cols.time or 0) - mark
   end
 
   -- fs, text -> what a measured width of `text` in `fs` leaves out: the
@@ -3041,7 +3069,10 @@ function RV.Place(row, s)
   -- (below). Packed, on either side, only what the mail has, as wide as its
   -- own text is (RV.OwnWidth); cut short by the allowance, it gives up its
   -- place only where that leaves it narrower than a column is ever drawn.
-  local room = s.share and floor(textWidth * s.share) or textWidth
+  -- While a marked time is listed, its mark is room beyond the figures'
+  -- share (cols.timeMark), so the time's column widens rather than being
+  -- left the narrow end of the share (RV.FateMarkW).
+  local room = s.share and min(floor(textWidth * s.share) + (cols.timeMark or 0), textWidth) or textWidth
   local used = 0
   -- The narrowest a figure's column may be drawn (RV.FIGURE_MIN).
   local least = RV.FIGURE_MIN
@@ -3057,7 +3088,7 @@ function RV.Place(row, s)
         if (layout[i].shown or (force == id and not lanes)) and not two then
           if lanes then
             width = min(cols[id] or 0, room - used)
-            if width < least then
+            if width < least or RV.TimeShort(cols, id, width) then
               if (cols[id] or 0) >= least then laneless = true end
               width = 0
             end
@@ -3119,7 +3150,7 @@ function RV.Place(row, s)
           placed = not (lanes and text[id] == nil)
           if placed then
             RV.Anchor(row, region, 1, x, 0)
-            T.FitText(region, w[id], text[id] or "", nil)
+            T.FitText(region, w[id], RV.FigureText(s, id, w[id]), nil)
             drawn = drawn + w[id] + gap
           end
           lw = w[id]
@@ -3170,7 +3201,7 @@ function RV.Place(row, s)
           placed = not (lanes and text[id] == nil)
           if placed then
             RV.Anchor(row, region, 2, -edge, 0)
-            T.FitText(region, w[id], text[id] or "", nil)
+            T.FitText(region, w[id], RV.FigureText(s, id, w[id]), nil)
             drawn = drawn + w[id] + gap
           end
           lw = w[id]
@@ -3237,7 +3268,7 @@ function RV.Place(row, s)
           if region and RV.FIGURE[id] and (w[id] or 0) == 0 and text[id] ~= nil
               and (layout[i].shown or force == id) then
             local width = min(cols[id] or 0, room - drawn, run - gap - 20 - mw)
-            if width >= least then
+            if width >= least and not RV.TimeShort(cols, id, width) then
               run = run - width - gap
               drawn = drawn + width + gap
               if pass == 2 then
@@ -3246,7 +3277,7 @@ function RV.Place(row, s)
               else
                 RV.Anchor(row, region, 1, sx + run + gap, 0)
               end
-              T.FitText(region, width, text[id], nil)
+              T.FitText(region, width, RV.FigureText(s, id, width), nil)
               region:Show()
               if id == focus then target = region end
             end
@@ -3853,7 +3884,7 @@ do
   R.MoneyFacts, R.Dressable = RV.MoneyFacts, RV.Dressable
   -- The expiry marks (RV.FateText) and their tooltip line, and when a mail
   -- is short, for Mail Memory's rows and its expiry alert.
-  R.FateText, R.TipFate, R.ShortDays = RV.FateText, RV.TipFate, RV.ShortDays
+  R.FateText, R.TipFate, R.ShortDays, R.FateMarkW = RV.FateText, RV.TipFate, RV.ShortDays, RV.FateMarkW
   -- kind -> whether it is an auction's mail (its row says the outcome).
   function R.IsAuction(kind) return AUCTION_OUTCOME[kind] ~= nil end
 end
@@ -6008,7 +6039,7 @@ do
     local cols, markHas = panel._cols, panel._markHas
     local layout = compact and RV.Layout() or RV.LargeLayout()
     local senderCap = layout.shown.sender and SenderColumnWidth(panel, sample.Sender) or 0
-    cols.sender, cols.money, cols.slots, cols.time = 0, 0, 0, 0
+    cols.sender, cols.money, cols.slots, cols.time, cols.timeMark = 0, 0, 0, 0, 0
     markHas.time, markHas.money, markHas.slots = false, false, false
     local showEarned = compact and MoneyShown("earned")
     local showSpent = compact and MoneyShown("spent")
@@ -6046,6 +6077,7 @@ do
           local expiry = RowExpiryText(m.days, hasCOD, nil, sample.ColTime, RV.SAMPLE, i, m.money > 0 or #m.items > 0)
           if expiry then
             cols.time = max(cols.time, MeasureWith(panel, sample.ColTime, expiry))
+            cols.timeMark = max(cols.timeMark, RV.FateMarkW(expiry))
             if finished then markHas.time = true end
           end
         end
@@ -7444,7 +7476,7 @@ function CT.RefreshMailList(panel)
   local rowLayout = compact and RV.Layout() or RV.LargeLayout()
   local senderCap = rowLayout.shown.sender and SenderColumnWidth(panel, sample.Sender) or 0
   cols.sender = 0
-  cols.money, cols.slots, cols.time = 0, 0, 0
+  cols.money, cols.slots, cols.time, cols.timeMark = 0, 0, 0, 0
   -- The inbox's own columns are measured only while its rows are what is on
   -- screen: History and another character's box measure their own, and the
   -- walk below still has to run for the counts and the totals. Coming back
@@ -7564,6 +7596,7 @@ function CT.RefreshMailList(panel)
             (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0)
           if text then
             cols.time = max(cols.time, MeasureWith(panel, sample.ColTime, text))
+            cols.timeMark = max(cols.timeMark, RV.FateMarkW(text))
             if finished then markHas.time = true end
           end
         end
