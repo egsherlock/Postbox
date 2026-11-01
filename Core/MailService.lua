@@ -3702,6 +3702,9 @@ stranger.WATCH = {
 -- (`recheckAt`: when it is due).
 stranger.RECHECK = 1.5
 stranger.recheckAt, stranger.heldAtClick = 0, false
+-- The least time a person takes to read the question and answer it: the
+-- client's words before then are part of asking (stranger.Judge).
+stranger.READ = 1
 -- What the questions of this session did, for /postbox debug: the last
 -- NOTES events, kept only once a question has come.
 stranger.notes, stranger.noteN, stranger.NOTES = nil, 0, 24
@@ -3871,10 +3874,12 @@ function stranger.Judge(event)
   if not MailboxOpen() then return s.Resolve("closed") end
   if s.GoldGone() then return s.Resolve("took") end
   if event == "SECURE_TRANSFER_CANCEL" then return s.Resolve("declined") end
-  -- Said in the very moment the question came, they are part of asking it.
-  -- A MAIL_FAILED while a send of Postbox's is out is the send's.
-  if (event == "MAIL_FAILED" or event == "MAIL_OPEN_ALL_CANCELED") and GetTime() ~= s.askedAt
-     and not s.Sending(event) then
+  -- Said within a second of the question, they are part of asking it: no
+  -- one reads it and clicks Cancel faster (Escape is SECURE_TRANSFER_CANCEL,
+  -- and a click is looked at again, stranger.Recheck). A MAIL_FAILED while
+  -- a send of Postbox's is out is the send's.
+  if (event == "MAIL_FAILED" or event == "MAIL_OPEN_ALL_CANCELED")
+     and (GetTime() or 0) - (s.askedAt or 0) >= s.READ and not s.Sending(event) then
     return s.Resolve("declined")
   end
   if event == "recheck" and s.heldAtClick and not CommandPending() then
