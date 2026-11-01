@@ -1150,8 +1150,11 @@ end
 -- while the question stands gives the server SEND_TIMEOUT to take the mail,
 -- as an Accept is a send like any other, and a click it does not answer is
 -- taken as the question gone unaccepted. On retail the send then ends as
--- not accepted, and a success that does come later, before another send,
--- is still taken as this send's, as Forever's late answers are. On Forever,
+-- its timeout does, the draft kept and the player told to check the
+-- mailbox before sending it again (an Accept the server is slow to take
+-- looks the same), and a success that does come later, before another
+-- send, is still taken as this send's when its mail is seen gone, as
+-- Forever's late answers are (ST.AskAfter). On Forever,
 -- where a send can take minutes, it waits on as a slow send
 -- (ST.KeepWaiting). Event-driven: one look per click, the last click's.
 --
@@ -1295,10 +1298,13 @@ function ST.AskLook()
     FinishSend("timeout")
     return
   end
-  A.Note("look")
   A.after, A.afterToken = pending, pending.token
   A.Hold()
-  FinishSend("canceled")
+  -- An Accept the server is slow to take looks the same as a silent
+  -- Cancel: not called "not accepted", but what retail's timeout says,
+  -- to check the mailbox before sending it again.
+  ST.EndAsk(pending, "look")
+  FinishSend("timeout")
 end
 
 -- A success with no send in flight: the send that ended unanswered on
