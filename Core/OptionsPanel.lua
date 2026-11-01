@@ -4113,6 +4113,13 @@ do
         moved[row.page] = true
       end
     end
+    return Rows.Restack(moved)
+  end
+
+  -- The pages a row's height moved on (`moved`: page -> true, or nil),
+  -- stacked again, and the list's height after them. Answers whether
+  -- anything moved.
+  function Rows.Restack(moved)
     if not moved then return false end
     local need = 0
     for key, page in pairs(S.pages) do
@@ -4305,8 +4312,126 @@ do
     -- own textures.
     if spec.mark then btn.Mark = Ctx.Mark(ArtHolder(btn), 12) end
     row.kind, row.control, row.button, row.onHover = "button", btn, btn, spec.onHover
-    row.minW = spec.minWidth
+    row.minW, row.col = spec.minWidth, col
     return row
+  end
+
+  -- Between a button row's lead (Rows.Lead) and its own button.
+  local LEAD_GAP = 6
+
+  -- Four one-unit edges on `owner`, inside its rect: top, bottom, left,
+  -- right.
+  local function Edges(owner, sublevel)
+    local edges = {}
+    for i = 1, 4 do
+      local t = owner:CreateTexture(nil, "ARTWORK", nil, sublevel)
+      t:SetTexture(WHITE)
+      edges[i] = t
+    end
+    edges[1]:SetPoint("TOPLEFT", owner, "TOPLEFT", 0, 0)
+    edges[1]:SetPoint("TOPRIGHT", owner, "TOPRIGHT", 0, 0)
+    edges[1]:SetHeight(1)
+    edges[2]:SetPoint("BOTTOMLEFT", owner, "BOTTOMLEFT", 0, 0)
+    edges[2]:SetPoint("BOTTOMRIGHT", owner, "BOTTOMRIGHT", 0, 0)
+    edges[2]:SetHeight(1)
+    edges[3]:SetPoint("TOPLEFT", owner, "TOPLEFT", 0, -1)
+    edges[3]:SetPoint("BOTTOMLEFT", owner, "BOTTOMLEFT", 0, 1)
+    edges[3]:SetWidth(1)
+    edges[4]:SetPoint("TOPRIGHT", owner, "TOPRIGHT", 0, -1)
+    edges[4]:SetPoint("BOTTOMRIGHT", owner, "BOTTOMRIGHT", 0, 1)
+    edges[4]:SetWidth(1)
+    return edges
+  end
+
+  -- The lead's hover, for the lift its lit plate takes under the pointer.
+  local function LeadEnter(self)
+    self.hover = true
+    local lit = self.Lit
+    if lit and lit.on then lit.Lift:Show() end
+  end
+
+  local function LeadLeave(self)
+    self.hover = false
+    local lit = self.Lit
+    if lit then lit.Lift:Hide() end
+  end
+
+  -- A second push button in a button row, standing before the row's own --
+  -- or, where the two and the row's name will not fit the row
+  -- (Rows.FitLead), on a line of its own under it, in the same column. A
+  -- switch: `get` answers whether it is on, `onClick` turns it; off it
+  -- reads `offText`, on it reads `onText` lit on the selected plate the
+  -- window's segments wear (Rows.PaintLead), so the state shows at a glance
+  -- from across the panel. `glyph` (Theme.GLYPHS) stands before its words,
+  -- as the arrange mark stands before the row's own. The pointer on it
+  -- shows its own entry (`title`, `text`); anywhere else on the row the
+  -- row's. spec: title, text, offText, onText, glyph, get, onClick
+  function Rows.Lead(row, spec)
+    local T = ns.Theme
+    local btn = T.CreateButton(nil, row)
+    btn:SetHeight(BUTTON_H)
+    btn:SetPoint("RIGHT", row.button, "LEFT", -LEAD_GAP, 0)
+    btn:SetText(spec.offText)
+    btn:SetScript("OnClick", spec.onClick)
+    Wire(btn, row, true)
+    btn:HookScript("OnEnter", LeadEnter)
+    btn:HookScript("OnLeave", LeadLeave)
+    btn.__pbEntry = Entry(spec.title, spec.text)
+
+    -- On a holder of its own, as the arrange mark is (a skin's button
+    -- repaint fades the button's own textures): the glyph, and the lit
+    -- plate over the whole button, back to front its fill, the accent's
+    -- wash, the ring, the lit top edge, the underline and the hover lift,
+    -- then its glyph and words in the accent.
+    local art = ArtHolder(btn)
+    local lit = CreateFrame("Frame", nil, art)
+    lit:SetAllPoints(btn)
+    lit.Fill = lit:CreateTexture(nil, "BACKGROUND")
+    lit.Fill:SetTexture(WHITE)
+    lit.Fill:SetAllPoints()
+    lit.Wash = lit:CreateTexture(nil, "BORDER")
+    lit.Wash:SetTexture(WHITE)
+    lit.Wash:SetPoint("TOPLEFT", lit, "TOPLEFT", 1, -1)
+    lit.Wash:SetPoint("BOTTOMRIGHT", lit, "BOTTOMRIGHT", -1, 1)
+    lit.Ring = Edges(lit, 0)
+    lit.Bevel = lit:CreateTexture(nil, "ARTWORK", nil, 1)
+    lit.Bevel:SetTexture(WHITE)
+    lit.Bevel:SetHeight(1)
+    lit.Bevel:SetPoint("TOPLEFT", lit, "TOPLEFT", 1, -1)
+    lit.Bevel:SetPoint("TOPRIGHT", lit, "TOPRIGHT", -1, -1)
+    lit.Base = lit:CreateTexture(nil, "ARTWORK", nil, 2)
+    lit.Base:SetTexture(WHITE)
+    lit.Base:SetHeight(2)
+    lit.Base:SetPoint("BOTTOMLEFT", lit, "BOTTOMLEFT", 1, 1)
+    lit.Base:SetPoint("BOTTOMRIGHT", lit, "BOTTOMRIGHT", -1, 1)
+    lit.Lift = lit:CreateTexture(nil, "ARTWORK", nil, 3)
+    lit.Lift:SetTexture(WHITE)
+    lit.Lift:SetPoint("TOPLEFT", lit, "TOPLEFT", 1, -1)
+    lit.Lift:SetPoint("BOTTOMRIGHT", lit, "BOTTOMRIGHT", -1, 1)
+    lit.Lift:Hide()
+    lit.Label = T.CreateText(lit, "segment", "OVERLAY")
+    lit.Label:SetWordWrap(false)
+    lit.Label:SetText(spec.onText)
+    lit:Hide()
+    lit.on = false
+    btn.Lit = lit
+    -- The glyph above the plate, so one texture serves both states.
+    local markHolder = CreateFrame("Frame", nil, art)
+    markHolder:SetAllPoints(btn)
+    markHolder:SetFrameLevel(lit:GetFrameLevel() + 1)
+    local mark = T.Glyph and T.Glyph(markHolder, spec.glyph, 8, "OVERLAY") or nil
+    if mark then
+      mark.w = math.ceil(mark:GetWidth() or 12)
+      btn.Mark = mark
+    end
+
+    local page = row.col
+    while page and page.parent do page = page.parent end
+    row.lead = {
+      control = btn, minW = 0, get = spec.get, offText = spec.offText, onText = spec.onText,
+      apart = false, page = page,
+    }
+    return btn
   end
 
   -- A quiet line across the row, centred: something to know, not a setting.
@@ -4434,6 +4559,135 @@ do
     return width
   end
 
+  -- A button row's lead lit or not, from its `get` (Rows.Lead): its words,
+  -- and on, the selected plate the window's segments wear -- their style's
+  -- tokens where it gives them, the palette's otherwise, as the arrange
+  -- key's lit Done (Arrange.lua, AR.PaintToggle) -- with the glyph and the
+  -- words in the accent's selected-caption tone, the two centred as one.
+  -- Off, the button's own look, the glyph in the caption's ink as the
+  -- arrange mark's.
+  function Rows.PaintLead(cell)
+    local lead = cell and cell.lead
+    if not lead then return end
+    local T = ns.Theme
+    local btn, mark = lead.control, lead.control.Mark
+    local lit = btn.Lit
+    local ok, on = pcall(lead.get)
+    on = ok and on and true or false
+    local text = on and lead.onText or lead.offText
+    if btn:GetText() ~= text then btn:SetText(text) end
+    lit.on = on
+    if not on then
+      lit:Hide()
+      lit.Lift:Hide()
+      -- The glyph back beside the caption (FitButton places both).
+      FitButton(lead)
+      if mark then
+        local c = T.Colors.textPrimary
+        mark:SetVertexColor(c[1], c[2], c[3], 1)
+      end
+      return
+    end
+    local tok = T.VariantTokens and T.VariantTokens("segment") or nil
+    local C = tok or T.Colors
+    local ground = tok and "tabSelected" or "plateSelected"
+    local fill, ring, bevel, lift = C.plateSelected, C.plateEdgeSelected, C.plateBevel, C.plateHighlight
+    -- Whole: the button's own caption under it never shows through.
+    lit.Fill:SetVertexColor(fill[1], fill[2], fill[3], 1)
+    for i = 1, 4 do lit.Ring[i]:SetVertexColor(ring[1], ring[2], ring[3], ring[4]) end
+    local r, g, b = T.GetAccentTone("base")
+    lit.Wash:SetVertexColor(r, g, b, C.accentWash[4])
+    -- The underline is a mark: on a light palette the accent's mark tone,
+    -- 3:1 on the plate, as a selected tab's is.
+    if T.IsLight and T.IsLight() then
+      r, g, b = T.GetAccentTone("mark")
+    else
+      r, g, b = T.GetAccent()
+    end
+    lit.Base:SetVertexColor(r, g, b, 1)
+    lit.Bevel:SetVertexColor(bevel[1], bevel[2], bevel[3], bevel[4])
+    lit.Lift:SetVertexColor(lift[1], lift[2], lift[3], lift[4])
+    lit.Lift:SetShown(btn.hover and true or false)
+    T.SetColor(lit.Label, "accentBright", ground)
+    local w = mark and mark.w or 0
+    local gap = mark and 6 or 0
+    local total = w + gap + TextW(lit.Label)
+    local x = math.floor(((btn:GetWidth() or 0) - total) / 2 + 0.5)
+    lit.Label:ClearAllPoints()
+    lit.Label:SetPoint("LEFT", btn, "LEFT", x + w + gap, 0)
+    if mark then
+      mark:ClearAllPoints()
+      mark:SetPoint("CENTER", btn, "LEFT", x + w / 2, 0)
+      T.SetColor(mark, "accentBright", ground)
+    end
+    lit:Show()
+  end
+
+  -- A button row with a lead (Rows.Lead). The lead is as wide as the wider
+  -- of its two captions, and of its lit words, so it never changes width as
+  -- it lights. Side by side with the row's own button while the row's name
+  -- and both buttons, each at its caption's width, fit the row -- the two
+  -- read as one pair there, and the row's own least width (the dropdowns'
+  -- column) is let go; else, a long translation or a wide font, the lead
+  -- on a line of its own under the button, the two one column at the
+  -- row's least width or wider, in a row twice as tall, which the page is
+  -- stacked again for. Answers the width the row's name has to leave its
+  -- controls.
+  function Rows.FitLead(cell, inner)
+    local lead = cell.lead
+    local btn = lead.control
+    -- The row's own least width, as it was given.
+    local base = lead.ownMinW
+    if base == nil then
+      base = cell.minW or 0
+      lead.ownMinW = base
+    end
+    cell.minW = 0
+    local ownW = FitButton(cell)
+    local current = btn:GetText()
+    lead.minW = 0
+    btn:SetText(lead.offText)
+    local widest = FitButton(lead)
+    btn:SetText(lead.onText)
+    widest = math.max(widest, FitButton(lead))
+    local mark = btn.Mark
+    local litW = TextW(btn.Lit.Label) + BUTTON_FIT.padding + (mark and (mark.w + 6) or 0)
+    widest = math.max(widest, litW)
+    btn:SetText(current)
+    cell.Name:SetText(cell.nameText)
+    local apart = TextW(cell.Name) + NAME_GAP + widest + LEAD_GAP + ownW > inner
+    if apart then
+      local column = math.max(base, widest, ownW)
+      cell.minW = column
+      ownW = FitButton(cell)
+      widest = column
+    end
+    lead.minW = widest
+    FitButton(lead)
+    if apart ~= lead.apart then
+      lead.apart = apart
+      local h = apart and 2 * ROW_H or ROW_H
+      cell:SetHeight(h)
+      cell.item.h = h
+      -- The name and the row's own button on the first line; the lead
+      -- before the button, or under it.
+      cell.Name:ClearAllPoints()
+      cell.Name:SetPoint("LEFT", cell, "TOPLEFT", NAME_X, -ROW_H / 2)
+      cell.button:ClearAllPoints()
+      cell.button:SetPoint("RIGHT", cell, "TOPRIGHT", -CONTROL_R, -ROW_H / 2)
+      btn:ClearAllPoints()
+      if apart then
+        btn:SetPoint("RIGHT", cell, "TOPRIGHT", -CONTROL_R, -ROW_H * 1.5)
+      else
+        btn:SetPoint("RIGHT", cell.button, "LEFT", -LEAD_GAP, 0)
+      end
+      Rows.Restack({ [lead.page] = true })
+    end
+    Rows.PaintLead(cell)
+    if apart then return ownW end
+    return widest + LEAD_GAP + ownW
+  end
+
   -- Measured on every open, after the skins have had their say about
   -- fonts, and in whatever language the client speaks, and again after a
   -- font change (the skins' RefitScreens). The normal case keeps its look:
@@ -4471,7 +4725,11 @@ do
           end
           controlW = want
         elseif kind == "button" then
-          controlW = FitButton(cell)
+          if cell.lead then
+            controlW = Rows.FitLead(cell, inner)
+          else
+            controlW = FitButton(cell)
+          end
         end
         T.FitText(cell.Name, inner - controlW - NAME_GAP, cell.nameText, cell)
       end
@@ -4880,8 +5138,9 @@ function Pages.mail(col)
   -- and that it works anywhere: away from a mailbox it opens the window's
   -- preview over sample mail. Arrange Postbox, since it arranges History
   -- and Mail Memory's window too: as wide as the dropdowns below it, and
-  -- wider where a translation needs it. First, since it is where most of
-  -- how a row looks is chosen.
+  -- wider where a translation needs it -- or, with Test mail beside it,
+  -- as wide as its caption (Rows.FitLead). First, since it is where most
+  -- of how a row looks is chosen.
   local arrange = Rows.Button(col, {
     title = L["OPT_ARRANGE_ROW"], text = L["ARRANGE_TIP"] .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"],
     caption = L["OPT_ARRANGE_CAPTION"], onClick = Panel.Arrange, onHover = State.Arrange, mark = true,
@@ -4890,21 +5149,30 @@ function Pages.mail(col)
   arrange.entry.title, arrange.entry.extra = L["OPT_ARRANGE_BUTTON"], "arrange"
   S.arrangeCell = arrange
 
-  -- Test mail, under the way into arranging: the arrange mode's own switch
-  -- (the same state, MailboxUI.SetTestMail), here so the sample mail can be
-  -- looked at without arranging. At a mailbox it lists in the Mail tab in
-  -- the inbox's place; away from one it opens the Postbox window over it,
-  -- beside this panel. Never saved: the panel reads it on every refresh,
-  -- and anything that turns it off (the window closing) refreshes it.
-  Rows.Check(col, {
+  -- Test mail, before Arrange Postbox in the same row (under it where the
+  -- row is too narrow for both: Rows.FitLead): the arrange mode's own
+  -- switch (the same state, MailboxUI.SetTestMail), here so the sample mail
+  -- can be looked at without arranging. At a mailbox it lists in the Mail
+  -- tab in the inbox's place; away from one it opens the Postbox window
+  -- over it, beside this panel. On, the button reads Testing, lit in the
+  -- accent, so the panel says at a glance that the window is showing
+  -- samples. Never saved: the panel reads it on every refresh, and
+  -- anything that turns it off (the window closing) refreshes it.
+  Rows.Lead(arrange, {
     title = L["ARRANGE_PREVIEW"], text = L["OPT_TEST_MAIL_DESC"],
+    offText = L["ARRANGE_PREVIEW"], onText = L["OPT_TEST_MAIL_ON"], glyph = "eye",
     get = function()
       local UI = ns.MailboxUI
       return UI.IsTestMail and UI.IsTestMail() or false
     end,
-    set = function(on)
+    onClick = function()
       local UI = ns.MailboxUI
-      if UI.SetTestMail then UI.SetTestMail(on, S.frame) end
+      if not UI.SetTestMail then return end
+      local on = not (UI.IsTestMail and UI.IsTestMail())
+      UI.SetTestMail(on, S.frame)
+      if type(SOUNDKIT) == "table" and UI.IsTestMail() == on then
+        PlaySound(on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+      end
     end,
   })
 
@@ -6697,6 +6965,8 @@ local function Refresh()
       Rows.PaintDropdown(cell)
     elseif cell.kind == "slider" then
       Rows.PaintSlider(cell)
+    elseif cell.lead then
+      Rows.PaintLead(cell)
     end
   end
   for i = 1, #S.refresh do pcall(S.refresh[i]) end
