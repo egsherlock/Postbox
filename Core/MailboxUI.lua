@@ -182,6 +182,11 @@ local OPTION_DEFAULTS = {
   -- bags and the game's own inbox show a stack, and it lets an auction
   -- mail's subject drop the count the icon already writes.
   iconCounts      = true,
+  -- The expiry marks in front of a short mail's amber time left: an arrow
+  -- when it goes back to its sender, a bin when it is deleted (CollectTab,
+  -- RV.MarksShown), in the Mail tab and Mail Memory. On: it is the 1.60
+  -- feature. Off, the time is amber alone; the tooltip still says it.
+  expiryMarks     = true,
   -- Alternate rows a shade apart, under the Postbox style (its Row stripes
   -- row; Core/Skin_Postbox.lua). On: the mockups' rows. Off, every row wears
   -- one even shade. The Blizzard look and the host skins stripe as ever.

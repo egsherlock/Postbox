@@ -2058,10 +2058,12 @@ function RV.LinedUp()
 end
 
 -- The money, in its shortest honest form ("52g 26s", "1309g", "12.3k"; the
--- compact row keeps the largest coin alone). Three tones for three meanings:
--- green is gold arriving, amber is a C.O.D. price you would pay by collecting
--- (a decision, so the warning tone), red is what a won auction already cost
--- (spent, as the band's own "Spent" is red). Returns the text or nil, and
+-- compact row keeps the largest coin alone). Two tones: green is gold
+-- arriving; red is gold leaving, a C.O.D. price you would pay by collecting
+-- or what a won auction already cost (as the band's own "Spent" is red, and
+-- the reading view's C.O.D. always was). Amber stays the time left's alone,
+-- so a C.O.D. mail about to expire no longer shows two ambers side by side
+-- (Elliott, 2026-11-01). Returns the text or nil, and
 -- which of the three it is: "earned", "cod" or "spent" -- a won auction's
 -- price, which the invoice figures then skip.
 -- `price` is that price, or nil. A live inbox row passes its index as
@@ -2075,9 +2077,9 @@ local function MoneyText(hasCOD, moneyValue, codValue, price, brief, priceIndex)
   end
   if hasCOD then
     if codValue > 0 then
-      return T.Colorize("warning", L()["LABEL_COD"] .. compactMoney(codValue, brief)), "cod"
+      return T.Colorize("negative", L()["LABEL_COD"] .. compactMoney(codValue, brief)), "cod"
     end
-    return T.Colorize("warning", L()["LABEL_COD_SHORT"]), "cod"
+    return T.Colorize("negative", L()["LABEL_COD_SHORT"]), "cod"
   end
   if price == nil and priceIndex then price = PurchasePrice(priceIndex) end
   if price then return T.Colorize("negative", compactMoney(price, brief)), "spent" end
@@ -2167,7 +2169,7 @@ end
 function RV.MoneyFacts(money, cod)
   local T, H, L0 = Th(), Helpers(), L()
   if money > 0 then T.TipFact(L0["LABEL_GOLD"], T.TipTone("positive", H.FormatMoney(money))) end
-  if cod > 0 then T.TipFact(L0["LABEL_COD"], T.TipTone("warning", H.FormatMoney(cod))) end
+  if cod > 0 then T.TipFact(L0["LABEL_COD"], T.TipTone("negative", H.FormatMoney(cod))) end
 end
 
 -- owner, index, items -> the tooltip of the icon of a mail holding several
@@ -2274,7 +2276,8 @@ end
 -- inline texture on its line, and draws the digits centred on the line too
 -- (the 1.50 screenshots: a 13-unit row's digits sit within half a unit of
 -- its middle), so with no vertical offset the mark's top is level with the
--- digits' tops and its bottom stands on their baseline. The keyline's unit
+-- digits' tops and its bottom stands on their baseline; the bin is drawn a
+-- unit lower (DROP), as in game its flat lid read high. The keyline's unit
 -- on every side is added round that, scaled with the mark, and the texture
 -- reaches GAP units past the art into clear texels: the gap before the
 -- digits, which so needs no space character.
@@ -2291,7 +2294,11 @@ end
 
 do
   local DIGIT = 0.71
-  local GAP = 2
+  local GAP = 1
+  -- How far a mark is drawn below the line's centre, in units at the
+  -- digits' height: the bin's flat lid read a unit high beside the digits
+  -- (Elliott, 2026-11-01); the arrow, all curve, sits right where it is.
+  local DROP = { back = 0, gone = 1 }
   local FATE_MAX = 96
   local GLYPH = { back = "expiry-back", gone = "expiry-bin" }
   -- hex: the warning ink the marks were made in; byH[h] the marks at
@@ -2328,7 +2335,8 @@ do
     local y0, y1 = floor(G.t * ch + 0.5), floor(G.b * ch + 0.5)
     x1 = x1 + floor(GAP * (x1 - x0) / G.w + 0.5)
     local eh, ew = floor(G.h * k + 0.5), floor((G.w + GAP) * k + 0.5)
-    return format("|T%s:%d:%d:0:0:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", G.file, eh, ew, cw, ch, x0, x1, y0, y1,
+    local dy = -floor((DROP[fate] or 0) * k + 0.5)
+    return format("|T%s:%d:%d:0:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", G.file, eh, ew, dy, cw, ch, x0, x1, y0, y1,
       floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5)), ew
   end
 
@@ -2363,6 +2371,7 @@ do
   -- unknown fate or a missing glyph.
   function RV.FateText(text, fate, fs)
     if (fate ~= "back" and fate ~= "gone") or not text then return nil end
+    if not RV.MarksShown() then return nil end
     local T = Th()
     local hex = T.InkHex("warning")
     local clean = type(T.InkOnLight) == "function" and T.InkOnLight("warning") or false
@@ -2388,6 +2397,14 @@ do
     F.marked[marked], F.plain[marked] = set.w[fate], plain
     F.n = F.n + 1
     return marked
+  end
+
+  -- Whether the rows draw the marks: the Mail page's Expiry marks (on by
+  -- default). Off, a row's time left is drawn as it was before the marks,
+  -- amber alone; the tooltip's "On expiry:" line stays either way.
+  function RV.MarksShown()
+    local UI = ns.MailboxUI
+    return not (UI and UI.GetOption) or UI.GetOption("expiryMarks")
   end
 
   -- A marked text -> its mark's width, the room a list's figures are given
@@ -3731,7 +3748,7 @@ do
     end
     if cod > 0 then
       if #buf > 0 then buf[#buf + 1] = DOT end
-      buf[#buf + 1] = T.TipTone("warning", L()["LABEL_COD"] .. H.FormatMoney(cod))
+      buf[#buf + 1] = T.TipTone("negative", L()["LABEL_COD"] .. H.FormatMoney(cod))
     end
   end
 
@@ -6628,12 +6645,12 @@ function HV.HistoryWhat(entry, iconSays)
 end
 
 -- entry, brief -> the money line in its tone, or nil: gold in green, a
--- C.O.D. paid in amber, a won auction's price in red.
+-- C.O.D. paid and a won auction's price in red, money that left.
 function HV.HistoryMoney(entry, brief)
   local T = Th()
   local compactMoney = ns.Core.Formatting.FormatMoneyCompact
   if (entry.m or 0) > 0 then return T.Colorize("positive", "+" .. compactMoney(entry.m, brief)) end
-  if (entry.c or 0) > 0 then return T.Colorize("warning", "-" .. compactMoney(entry.c, brief)) end
+  if (entry.c or 0) > 0 then return T.Colorize("negative", "-" .. compactMoney(entry.c, brief)) end
   if (entry.p or 0) > 0 then return T.Colorize("negative", "-" .. compactMoney(entry.p, brief)) end
   return nil
 end
@@ -6800,7 +6817,7 @@ function HV.RowTip(row)
   end
   if #buf > 0 then T.TipFact(L0["TIP_HELD"], concat(buf)) end
   if c > 0 and not HV.MoneyOnRow(row, "cod", c) then
-    T.TipFact(L0["LABEL_COD"], T.TipTone("warning", H.FormatMoney(c)))
+    T.TipFact(L0["LABEL_COD"], T.TipTone("negative", H.FormatMoney(c)))
   end
   if p > 0 and not HV.MoneyOnRow(row, "spent", p) then
     T.TipFact(L0["LABEL_PURCHASE"], T.TipTone("negative", H.FormatMoney(p)))

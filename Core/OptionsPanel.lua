@@ -4918,8 +4918,11 @@ function Pages.mail(col)
 
   -- Compact is the default, so the switch is the one a player turns ON to
   -- change it: larger, two-line rows. The stored option is still
-  -- compactRows, read inverted, so nobody's choice moves.
-  local larger = Rows.Check(col, {
+  -- compactRows, read inverted, so nobody's choice moves. Beside it, the
+  -- expiry marks in front of a short mail's time left (on by default):
+  -- both windows' lists are drawn again, the preview's too. The Mail
+  -- page is the panel's tallest, so the two share a row.
+  local larger = Rows.Pair(col, {
     title = L["OPT_LARGER_ROWS_TITLE"], text = L["OPT_LARGER_ROWS_DESC"],
     get = function() return not ns.MailboxUI.GetOption("compactRows") end,
     set = function(on)
@@ -4930,8 +4933,18 @@ function Pages.mail(col)
       State.RowLayout()
       Ctx.Repaint()
     end,
+  }, {
+    title = L["OPT_EXPIRY_MARKS_TITLE"], text = L["OPT_EXPIRY_MARKS_DESC"],
+    get = function() return ns.MailboxUI.GetOption("expiryMarks") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("expiryMarks", on)
+      -- Measured again: a one-line row's time column widens by the mark.
+      local AR = ns.Arrange
+      if AR and AR.RowsChanged then AR.RowsChanged(true) end
+      Ctx.Repaint()
+    end,
   })
-  Shown(larger.entry, "rows")
+  Shown(larger.pair[1].entry, "rows")
 
   -- The crafting quality mark, in the list, History and the memory alike,
   -- is two things a player sets apart: the badge on the corner of the

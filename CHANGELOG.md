@@ -36,7 +36,8 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   items is down to its last three days (one for C.O.D.), a curved arrow in
   front of its time left says it will go back to its sender, a bin that it
   will be deleted. Its tooltip says it on an "On expiry:" line, and Mail
-  Memory shows the same.
+  Memory shows the same. Don't want them? Turn off Expiry marks under
+  Options, Mail; the tooltip keeps the line.
 - **Gold from strangers waits for your answer.** Where the game asks before
   you take gold mailed by someone it doesn't know (in Forever now, and on
   retail from patch 12.1.7), collecting pauses on that mail until you
@@ -45,6 +46,8 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 
 ### Improved
 
+- **A C.O.D. price is red,** as spent gold is, so amber means only that time
+  is running out.
 - **The options say each thing once:** pointing at a setting no longer opens
   a tooltip beside the window repeating the panel's description. Tooltips
   stay where they add something, such as a value too long for its box.

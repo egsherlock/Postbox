@@ -42,8 +42,8 @@ deleted the moment Postbox empties it (**Delete when done**).
   bags fill, what's left is the bottom of the list.
 - **Time left** turns amber under three days (one for C.O.D.). On a mail that
   still holds something, a curved arrow in front says it goes back to its
-  sender, a bin that it is deleted; the tooltip's **On expiry:** line says
-  the same.
+  sender, a bin that it is deleted (**Expiry marks** turns them off); the
+  tooltip's **On expiry:** line says the same.
 - **Largest stack first:** a mail holding several stacks of an item you can
   only carry so many of gives you the largest first.
 - **Bags are checked before anything opens**, with an offer to collect what

@@ -4459,9 +4459,9 @@ do
     hourglass = { file = MEDIA .. "glyph-hourglass.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
     history = { file = MEDIA .. "glyph-history.tga", w = 12, h = 11, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.71875 },
     ["expiry-back"] = { file = MEDIA .. "glyph-expiry-back.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875, pad = 1 },
-    ["expiry-bin"] = { file = MEDIA .. "glyph-expiry-bin.tga", w = 10, h = 11, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.71875, pad = 1 },
+    ["expiry-bin"] = { file = MEDIA .. "glyph-expiry-bin.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875, pad = 1 },
     ["expiry-back-clean"] = { file = MEDIA .. "glyph-expiry-back-clean.tga", w = 9, h = 9, l = 0.03125, r = 0.59375, t = 0.03125, b = 0.59375 },
-    ["expiry-bin-clean"] = { file = MEDIA .. "glyph-expiry-bin-clean.tga", w = 8, h = 9, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.59375 },
+    ["expiry-bin-clean"] = { file = MEDIA .. "glyph-expiry-bin-clean.tga", w = 9, h = 9, l = 0.03125, r = 0.59375, t = 0.03125, b = 0.59375 },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
   }
 
