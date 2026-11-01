@@ -2218,15 +2218,246 @@ local function ExpiryState(daysLeft, hasCOD, layout)
   local when = UI and UI.GetExpiryWhen and UI.GetExpiryWhen(layout and layout.arrangement) or "always"
   local limit = (when ~= "always") and tonumber(when) or nil
   local show = (limit == nil) or daysLeft < limit
-  local warn = daysLeft < (hasCOD and 1 or EXPIRY_SOON_DAYS)
+  local warn = daysLeft < RV.ShortDays(hasCOD)
   return show, warn
 end
 
-local function RowExpiryText(daysLeft, hasCOD, layout)
+-- hasCOD -> under how many days a mail is short: the warning tone's
+-- threshold, the same in every arrangement, and what Mail Memory's
+-- expiry alert counts as soon.
+function RV.ShortDays(hasCOD)
+  return hasCOD and 1 or EXPIRY_SOON_DAYS
+end
+
+-- daysLeft, hasCOD, layout -> the row's time left as coloured text, or nil
+-- where the row does not show it. With `fs` (the string it is drawn in),
+-- `S` (the row's source, RV.LIVE or RV.SAMPLE), its `index` and `holds`
+-- (the mail still holds gold or items), a short mail's text carries its
+-- expiry mark when its fate is known (RV.FateText).
+local function RowExpiryText(daysLeft, hasCOD, layout, fs, S, index, holds)
   if not daysLeft then return nil end
   local show, warn = ExpiryState(daysLeft, hasCOD, layout)
   if not show then return nil end
+  if warn and holds and S then
+    local marked = RV.FateText(Helpers().TimeLeft(daysLeft), S.Fate(index), fs)
+    if marked then return marked end
+  end
   return Th().Colorize(warn and "warning" or "textSecondary", Helpers().TimeLeft(daysLeft))
+end
+
+-------------------------------------------------------------
+-- Mail rows :: the expiry marks
+--
+-- What happens to a mail when it runs out, said in front of its time left
+-- exactly when that turns amber (ExpiryState's warn: under three days, one
+-- for C.O.D.) on a mail that still holds gold or items: a curved arrow when
+-- it goes back to its sender, a bin when the server deletes it (its fate,
+-- MailService.ExpiryFate). Empty mail has nothing to lose and gets none,
+-- and before the time turns amber a row looks as it always did.
+--
+-- The mark is part of the time text, an inline texture ahead of the
+-- digits, tinted with the warning ink: so it shows only where the time
+-- does (Arrange's Time left setting, the column's own switch), a one-line
+-- row's column is measured with it, and a two-line row's second line simply
+-- flows. The glyphs are Theme.GLYPHS "expiry-back" / "expiry-bin", keylined
+-- in the texture since a font's shadow never reaches an inline texture.
+--
+-- SIZE AND PLACE, by rule from the font the time is drawn in. The mark is
+-- as tall as the digits: DIGIT of the font's size, 0.71, the digits' height
+-- in every face the rows meet, read off the fonts' own outlines (Barlow Semi
+-- Condensed 0.710, Expressway and the game's override fonts 0.705, Arial
+-- Narrow 0.719, Ubuntu 0.709, Poppins 0.734: within a quarter unit of each
+-- other at the rows' sizes), rounded to whole units. The client centres an
+-- inline texture on its line, and draws the digits centred on the line too
+-- (the 1.50 screenshots: a 13-unit row's digits sit within half a unit of
+-- its middle), so with no vertical offset the mark's top is level with the
+-- digits' tops and its bottom stands on their baseline. The keyline's unit
+-- on every side is added round that, scaled with the mark, and the texture
+-- reaches GAP units past the art into clear texels: the gap before the
+-- digits, which so needs no space character.
+--
+-- Nothing is made per row: each marked text is made once per (time text,
+-- fate, mark height) and kept, the whole of it let go when the warning ink
+-- moves (Light mode, a themed style's grounds: Theme.InkHex) or past
+-- FATE_MAX texts. The client's string widths leave inline textures out
+-- (FitBanner found the coins missing), so a width measured of a marked text
+-- has the mark's own width added (RV.FateExtra, from MeasureWith), unless a
+-- one-time probe finds this client counts them.
+-------------------------------------------------------------
+
+do
+  local DIGIT = 0.71
+  local GAP = 2
+  local FATE_MAX = 96
+  local GLYPH = { back = "expiry-back", gone = "expiry-bin" }
+  -- hex: the warning ink the marks were made in; byH[h] the marks at
+  -- height h: esc[fate], the escape; w[fate], its width; probe[fate], the
+  -- escape and a digit; texts[fate][time text] the marked text. marked:
+  -- every marked text made -> the mark's width (for RV.FateExtra); n, how
+  -- many. counted: whether this client's widths count inline textures (nil
+  -- until probed). tip: the tooltip's marks, at tipSize.
+  local F = { hex = false, byH = {}, sets = 0, marked = {}, n = 0, counted = nil,
+    tip = { back = false, gone = false }, tipSize = false }
+  RV.FATE = F
+
+  -- A font's size -> the mark's height, the digits' (above).
+  function RV.MarkHeight(size)
+    size = tonumber(size) or 0
+    if size <= 0 then size = 12 end
+    return max(floor(size * DIGIT + 0.5), 1)
+  end
+
+  -- fate, h, r, g, b (0-255) -> the inline escape drawing the mark h units
+  -- tall, and its width in units; nil where the glyph is missing. The
+  -- canvas's size is 1 / l (the art starts one texel in), its texels per
+  -- unit the art's width over its box's.
+  function RV.FateEscape(fate, h, r, g, b)
+    local T = Th()
+    local G = T.GLYPHS and T.GLYPHS[GLYPH[fate]]
+    if not G then return nil, 0 end
+    local k = h / (G.h - 2 * (G.pad or 0))
+    local cw, ch = floor(1 / G.l + 0.5), floor(1 / G.t + 0.5)
+    local x0, x1 = floor(G.l * cw + 0.5), floor(G.r * cw + 0.5)
+    local y0, y1 = floor(G.t * ch + 0.5), floor(G.b * ch + 0.5)
+    x1 = x1 + floor(GAP * (x1 - x0) / G.w + 0.5)
+    local eh, ew = floor(G.h * k + 0.5), floor((G.w + GAP) * k + 0.5)
+    return format("|T%s:%d:%d:0:0:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", G.file, eh, ew, cw, ch, x0, x1, y0, y1,
+      floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5)), ew
+  end
+
+  -- Everything made let go: the warning ink moved, or the cap was reached.
+  local function Forget()
+    for h in pairs(F.byH) do F.byH[h] = nil end
+    for text in pairs(F.marked) do F.marked[text] = nil end
+    F.sets, F.n = 0, 0
+  end
+
+  -- The marks at height h in the warning ink, made once.
+  local function SetFor(h)
+    local set = F.byH[h]
+    if set then return set end
+    if F.sets >= 8 then Forget() end
+    local r, g, b = Th().Ink("warning")
+    set = { esc = {}, w = {}, probe = {}, texts = {} }
+    for fate in pairs(GLYPH) do
+      local esc, w = RV.FateEscape(fate, h, r, g, b)
+      set.esc[fate], set.w[fate] = esc or false, w
+      set.probe[fate] = esc and (esc .. "0") or false
+      set.texts[fate] = {}
+    end
+    F.byH[h] = set
+    F.sets = F.sets + 1
+    return set
+  end
+
+  -- text (a plain time text: "2d", "expired"), fate, fs -> the text in the
+  -- warning ink with its mark in front, sized for `fs`'s font; nil for an
+  -- unknown fate or a missing glyph.
+  function RV.FateText(text, fate, fs)
+    if (fate ~= "back" and fate ~= "gone") or not text then return nil end
+    local hex = Th().InkHex("warning")
+    if hex ~= F.hex then
+      Forget()
+      F.hex = hex
+    end
+    local size
+    if fs and fs.GetFont then size = select(2, fs:GetFont()) end
+    local set = SetFor(RV.MarkHeight(size))
+    local esc = set.esc[fate]
+    if not esc then return nil end
+    local texts = set.texts[fate]
+    local marked = texts[text]
+    if marked then return marked end
+    if F.n >= FATE_MAX then
+      Forget()
+      return RV.FateText(text, fate, fs)
+    end
+    marked = esc .. Th().Colorize("warning", text)
+    texts[text] = marked
+    F.marked[marked] = set.w[fate]
+    F.n = F.n + 1
+    return marked
+  end
+
+  -- fs, text -> what a measured width of `text` in `fs` leaves out: the
+  -- width of each mark it carries (a marked text, or a line holding one),
+  -- unless this client counts inline textures, which a probe answers once
+  -- (a digit with and without a mark in front). Called by MeasureWith only
+  -- while marked texts exist (F.n > 0); nothing is made.
+  function RV.FateExtra(fs, text)
+    local w = F.marked[text]
+    local probe
+    if not w then
+      if not text:find("|T", 1, true) then return 0 end
+      for _, set in pairs(F.byH) do
+        for fate, esc in pairs(set.esc) do
+          if esc and text:find(esc, 1, true) then
+            w, probe = set.w[fate], set.probe[fate]
+            break
+          end
+        end
+        if w then break end
+      end
+      if not w then return 0 end
+    end
+    if F.counted == nil then
+      if not probe then
+        for _, set in pairs(F.byH) do
+          for fate in pairs(GLYPH) do
+            if set.w[fate] == w and set.probe[fate] then probe = set.probe[fate] break end
+          end
+          if probe then break end
+        end
+      end
+      if probe then
+        fs:SetText("0")
+        local digit = fs:GetStringWidth() or 0
+        fs:SetText(probe)
+        local with = fs:GetStringWidth() or 0
+        if digit > 0 then F.counted = (with - digit) > w / 2 end
+      end
+    end
+    if F.counted then return 0 end
+    return w
+  end
+
+  -- fate -> the tooltip's mark: the glyph at the tooltip text's digit
+  -- height, in the tooltip's quiet value grey (it is always dark; Theme 5b).
+  -- Made once per fate and tooltip size.
+  function RV.FateTipMark(fate)
+    local size
+    local font = GameTooltipText
+    if font and font.GetFont then size = select(2, font:GetFont()) end
+    size = tonumber(size) or 12
+    local tip = F.tip
+    if F.tipSize ~= size then
+      tip.back, tip.gone, F.tipSize = false, false, size
+    end
+    local mark = tip[fate]
+    if mark == false then
+      mark = RV.FateEscape(fate, RV.MarkHeight(size), 0.82, 0.82, 0.82) or nil
+      tip[fate] = mark
+    end
+    return mark
+  end
+
+  -- fate, name, past -> the tooltip's fact for it: "On expiry: returns to
+  -- Kaelyth" or "deleted", the mark in front of the value; `past` (a
+  -- remembered mail past its date), "returned to Kaelyth". Built on hover.
+  function RV.TipFate(fate, name, past)
+    local L0 = L()
+    local value
+    if fate == "back" then
+      if not name or name == "" then name = L0["SENDER_UNKNOWN"] end
+      value = format(L0[past and "TIP_FATE_RETURNED" or "TIP_FATE_RETURNS"], name)
+    elseif fate == "gone" then
+      value = L0["TIP_FATE_DELETED"]
+    else
+      return
+    end
+    local mark = RV.FateTipMark(fate)
+    Th().TipFact(L0["TIP_ON_EXPIRY"], mark and (mark .. value) or value)
+  end
 end
 
 -- The rendered width of `text` in `sample`'s font. One hidden string per
@@ -2317,9 +2548,13 @@ local function MeasureWith(panel, sample, text, exact)
     end
     fs.__pbFontPass = pass
   end
+  -- A text carrying an expiry mark is measured with the mark (RV.FateExtra),
+  -- only while marks exist.
+  local fate = RV.FATE
   if pass == nil then
     fs:SetText(text)
     local width = fs:GetStringWidth() or 0
+    if fate.n > 0 and width > 0 then width = width + RV.FateExtra(fs, text) end
     if exact then return width end
     return ceil(width)
   end
@@ -2341,6 +2576,7 @@ local function MeasureWith(panel, sample, text, exact)
   if not width then
     fs:SetText(text)
     width = fs:GetStringWidth() or 0
+    if fate.n > 0 and width > 0 then width = width + RV.FateExtra(fs, text) end
     if width > 0 then
       memo[text] = width
       fs.__pbMemoN = fs.__pbMemoN + 1
@@ -3485,7 +3721,7 @@ do
     local index = LiveIndex(row)
     if not index then return false end
     local T, L0, H = Th(), L(), Helpers()
-    local _, _, sender, subject, money, cod, daysLeft, _, wasRead = GetInboxHeaderInfo(index)
+    local _, _, sender, subject, money, cod, daysLeft, itemCount, wasRead = GetInboxHeaderInfo(index)
     money, cod = tonumber(money) or 0, tonumber(cod) or 0
     local compact = row._compact
     local layout = compact and RV.Layout() or RV.LargeLayout()
@@ -3573,6 +3809,13 @@ do
       end
     end
 
+    -- On expiry: what the server will do with it, on any mail that holds
+    -- gold or items, short or not, whatever the row shows.
+    if money > 0 or (tonumber(itemCount) or 0) > 0 then
+      local fate = Mail().ExpiryFate(index)
+      if fate then RV.TipFate(fate, DisplaySender(sender), false) end
+    end
+
     -- State: stuck, always; read or unread while the mark's column is
     -- hidden.
     local unread
@@ -3592,6 +3835,9 @@ do
   R.TipSender, R.TipItem, R.TipMore, R.TipMoney = RV.TipSender, RV.TipItem, RV.TipMore, RV.TipMoney
   R.TipState, R.TipSubject, R.TIP_ITEMS = RV.TipState, RV.TipSubject, RV.TIP_ITEMS
   R.MoneyFacts, R.Dressable = RV.MoneyFacts, RV.Dressable
+  -- The expiry marks (RV.FateText) and their tooltip line, and when a mail
+  -- is short, for Mail Memory's rows and its expiry alert.
+  R.FateText, R.TipFate, R.ShortDays = RV.FateText, RV.TipFate, RV.ShortDays
   -- kind -> whether it is an auction's mail (its row says the outcome).
   function R.IsAuction(kind) return AUCTION_OUTCOME[kind] ~= nil end
 end
@@ -5294,6 +5540,7 @@ function RV.LIVE.Classify(index) return Mail().ClassifyMail(index) end
 function RV.LIVE.Stuck(index) return Mail().StuckReason(index) end
 function RV.LIVE.Icon(index) return Mail().GetMailIcon(index) end
 function RV.LIVE.Mark(index, slot) return RV.QualityMark(index, slot) end
+function RV.LIVE.Fate(index) return Mail().ExpiryFate(index) end
 RV.LIVE.Money = RowMoneyText
 RV.LIVE.Invoice = AppendInvoiceFigures
 
@@ -5529,6 +5776,11 @@ do
     local first = m.items[1]
     m.icon = m.icon or (first and first.icon) or LETTER_ICON
     m.mark = first and RV.MarkOf(first.link) or nil
+    -- What the server would do with it on expiry (RV.SAMPLE.Fate): a
+    -- player's mail holding something goes back to them, the rest is
+    -- deleted. So the short C.O.D. shows the arrow and the short canceled
+    -- auction the bin.
+    m.fate = (m.kind == "other" and (m.money > 0 or #m.items > 0)) and "back" or "gone"
     -- How long ago it arrived, for the inbox's order: a C.O.D. lives three
     -- days, every other mail thirty.
     m.age = ((m.cod > 0) and 3 or 30) - m.days
@@ -5705,6 +5957,10 @@ do
     local m = At(index)
     return m and m.mark or nil
   end
+  function RV.SAMPLE.Fate(index)
+    local m = At(index)
+    return m and m.fate or nil
+  end
   function RV.SAMPLE.Money(index, hasCOD, moneyValue, codValue, brief)
     local m = At(index)
     return MoneyText(hasCOD, moneyValue, codValue, m and m.price or nil, brief)
@@ -5771,7 +6027,7 @@ do
         end
         if measureSlots then slotsMost = max(slotsMost, #m.items) end
         if measureExpiry then
-          local expiry = RowExpiryText(m.days, hasCOD)
+          local expiry = RowExpiryText(m.days, hasCOD, nil, sample.ColTime, RV.SAMPLE, i, m.money > 0 or #m.items > 0)
           if expiry then
             cols.time = max(cols.time, MeasureWith(panel, sample.ColTime, expiry))
             if finished then markHas.time = true end
@@ -5941,8 +6197,11 @@ local function BindRow(panel, row, index, position, compact, done)
   local slots = (remaining > 0) and T.Colorize("textSecondary", RV.SlotsText(remaining, showSlots and compact)) or nil
 
   -- Time left is a warning, not a column: on the row only when it is short;
-  -- in the tooltip whenever the row does not say it.
-  local expiry = RowExpiryText(daysLeft, hasCOD, layout)
+  -- in the tooltip whenever the row does not say it. A short mail that
+  -- still holds something carries its expiry mark, sized for the string the
+  -- time is drawn in (RV.FateText).
+  local expiry = RowExpiryText(daysLeft, hasCOD, layout, compact and row.ColTime or row.Detail, S, index,
+    moneyValue > 0 or (tonumber(itemCount) or 0) > 0)
 
   -- A figure switched off leaves the row; the tooltip says it in full.
   if money and not MoneyShown(moneyKind, layout) then money = nil end
@@ -7285,7 +7544,8 @@ function CT.RefreshMailList(panel)
         end
         if measureSlots then slotsMost = max(slotsMost, tonumber(itemCount) or 0) end
         if measureExpiry then
-          local text = RowExpiryText(daysLeft, hasCOD)
+          local text = RowExpiryText(daysLeft, hasCOD, nil, sample.ColTime, RV.LIVE, index,
+            (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0)
           if text then
             cols.time = max(cols.time, MeasureWith(panel, sample.ColTime, text))
             if finished then markHas.time = true end
