@@ -956,7 +956,7 @@ local function AbandonPendingSend(panel)
     if ns.IsForever and not wasAsking then PopupNotice(L["MSG_SEND_TIMEOUT"]) end
     pendingSend = nil
   end
-  ST.ask.after = nil
+  ST.ask.after, ST.ask.later = nil, nil
   if panel then SetSendButtonBusy(panel, false) end
 end
 
@@ -1168,8 +1168,12 @@ ST.ask = {
   WATCH = { "GLOBAL_MOUSE_UP", "SECURE_TRANSFER_CANCEL", "UI_ERROR_MESSAGE" },
   askedAt = 0, lookAt = 0, wordsAt = -1,
   -- A send ended unanswered on retail, and the send token it ended at: a
-  -- success before any other send goes is still its (ST.AskAfter).
-  after = nil, afterToken = nil,
+  -- success before any other send goes is still its (ST.AskAfter), when
+  -- its mail is seen to have gone. `held`: the draft's attachments as the
+  -- send ended, each { bag, slot, guid } (ST.ask.Hold). `later`: that send
+  -- while a success waits one look more (SETTLE seconds) for the bags and
+  -- the purse to show it.
+  after = nil, afterToken = nil, held = nil, later = nil, SETTLE = 2,
   -- What the questions of this session did, for /postbox debug: the last
   -- NOTES events, kept only once a question has come.
   notes = nil, noteN = 0, NOTES = 16,
@@ -1293,21 +1297,49 @@ function ST.AskLook()
   end
   A.Note("look")
   A.after, A.afterToken = pending, pending.token
+  A.Hold()
   FinishSend("canceled")
 end
 
 -- A success with no send in flight: the send that ended unanswered on
 -- retail, when no send has gone since, is the one the server took after
--- all. It is settled as Forever's late answers are (ST.KeepWaiting):
--- counted, and the draft on screen kept if the player has rewritten it.
+-- all, if its mail is seen to have gone: the draft's attachments have left
+-- the bags, or its gold the purse (ST.ask.Went). Otherwise the success is
+-- another sender's (another addon's), and the kept draft stays as it is.
+-- It is settled as Forever's late answers are (ST.KeepWaiting): counted,
+-- and the draft on screen kept if the player has rewritten it.
 function ST.AskAfter()
   local A = ST.ask
   local pending = A.after
   A.after = nil
   if not pending or pendingSend or A.afterToken ~= sendToken then return end
+  if not A.Went(pending) then
+    -- The client's word can come before the bags and the purse show the
+    -- mail gone: one look more, once.
+    A.later = pending
+    C_Timer.After(A.SETTLE, ST.AskAfterLook)
+    return
+  end
   A.Note("late")
   pending.late = true
   pendingSend = pending
+end
+
+-- ST.AskAfter's one look more: still no send since, and the mail now seen
+-- gone, it is settled; otherwise the success was not Postbox's.
+function ST.AskAfterLook()
+  local A = ST.ask
+  local pending = A.later
+  A.later = nil
+  if not pending or pendingSend or A.afterToken ~= sendToken then return end
+  if not A.Went(pending) then
+    A.Note("other")
+    return
+  end
+  A.Note("late")
+  pending.late = true
+  pendingSend = pending
+  FinishSend("success")
 end
 
 function ST.OnAskEvent(event, button)
@@ -1466,7 +1498,10 @@ local function DoSendMail(panel, confirmed)
   -- later send.
   sendToken = sendToken + 1
   local myToken = sendToken
-  pendingSend = { panel = panel, toName = toName, token = myToken, subject = FieldText(panel.SubjectBox) }
+  -- `gold` and the purse it leaves: what shows the mail gone if the
+  -- server's word on it comes late (ST.ask.Went).
+  pendingSend = { panel = panel, toName = toName, token = myToken, subject = FieldText(panel.SubjectBox),
+    gold = gold, purse = type(GetMoney) == "function" and GetMoney() or nil }
   -- A run of mails counts itself on the button ("Sending 2 of 3...").
   panel._run = (mails > 1) and { index = 1, total = mails } or nil
   SetSendButtonBusy(panel, true)
@@ -4645,6 +4680,40 @@ end
 
 Q.LAST_BAG = (type(NUM_TOTAL_EQUIPPED_BAG_SLOTS) == "number" and NUM_TOTAL_EQUIPPED_BAG_SLOTS)
   or (type(NUM_BAG_SLOTS) == "number" and NUM_BAG_SLOTS) or 4
+
+-- The draft's attachments as a send asked about ends unanswered on retail
+-- (ST.AskLook): the client keeps an attached item in its bag, locked, until
+-- the mail goes, so the locked items are what that mail would take. Once a
+-- send, never on a refresh.
+function ST.ask.Hold()
+  local A = ST.ask
+  A.held = nil
+  if AttachmentCount() <= 0 or not (C_Container and type(C_Container.GetContainerNumSlots) == "function") then
+    return
+  end
+  local held = {}
+  for bag = 0, Q.LAST_BAG do
+    local ok, count = pcall(C_Container.GetContainerNumSlots, bag)
+    for slot = 1, (ok and tonumber(count)) or 0 do
+      local info = Q.ContainerInfo(bag, slot)
+      local guid = info and info.isLocked and Q.GuidAt(bag, slot)
+      if guid then held[#held + 1] = { bag = bag, slot = slot, guid = guid } end
+    end
+  end
+  A.held = held
+end
+
+-- pending -> whether its mail is seen to have gone: an attachment it held
+-- has left the bags, or its gold has left the purse.
+function ST.ask.Went(pending)
+  local gold, purse = tonumber(pending.gold) or 0, pending.purse
+  if gold > 0 and purse and type(GetMoney) == "function" and GetMoney() <= purse - gold then return true end
+  local held = ST.ask.held
+  for i = 1, held and #held or 0 do
+    if Q.Locate(held[i]) == nil then return true end
+  end
+  return false
+end
 
 -- Where the entry's item is now: its own position when the GUID there still
 -- agrees, otherwise wherever the bags hold that GUID, otherwise nowhere.
