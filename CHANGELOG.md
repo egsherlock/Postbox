@@ -82,6 +82,9 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 - Sending more than 12 items in one press sends every mail in full, however
   quickly the game empties the attachment slots. While the game asks about a
   refundable item you are attaching, Send waits for your answer.
+- Delete when done deletes every letter you empty, even one whose gold or
+  single item comes out in a blink, and one emptied from the fan; History
+  keeps each one's words.
 - A C.O.D. mail no longer counts as about to expire the moment it arrives:
   Mail Memory's warnings and the minimap icon's expiry marker count it once
   it has under a day left, as the Mail tab's amber does.
