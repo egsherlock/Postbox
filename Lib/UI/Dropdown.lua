@@ -268,7 +268,8 @@ function Dropdown.Create(parent, opts)
     return (items[1] and items[1].name) or ""
   end
 
-  -- The art an item carries ({ texture= or atlas=, aspect= }), or nil.
+  -- The art an item carries ({ texture= or atlas=, aspect= }, or { glyph= },
+  -- one of the addon theme's glyphs), or nil.
   local function ArtOf(id)
     for i = 1, #items do
       local item = items[i]
@@ -279,6 +280,12 @@ function Dropdown.Create(parent, opts)
 
   -- The art's side: the list rows' own (BuildList).
   local artSize = rowHeight - 4
+
+  -- An item's glyph ({ glyph = name }) as the addon theme has it, or nil.
+  local function GlyphOf(spec)
+    local glyphs = spec.glyph and ns.Theme and ns.Theme.GLYPHS
+    return glyphs and glyphs[spec.glyph] or nil
+  end
 
   -- The value's caption box: the toggle less a gutter at each end, the same
   -- at both, so a value that fits stands centred on the toggle exactly where
@@ -337,20 +344,33 @@ function Dropdown.Create(parent, opts)
       toggle:HookScript("OnEnable", ArtState)
       toggle:HookScript("OnDisable", ArtState)
     end
+    local label = toggle:GetFontString()
     if art.spec ~= spec then
       art.spec = spec
       local tex = art.Tex
-      if spec.atlas then
+      local g = GlyphOf(spec)
+      if g then
+        -- A glyph at its own size, so its whole pixels stay whole.
+        tex:SetTexture(g.file)
+        tex:SetTexCoord(g.l, g.r, g.t, g.b)
+        if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(true) end
+        if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
+        art:SetSize(g.w, g.h)
+      elseif spec.atlas then
         tex:SetAtlas(spec.atlas)
       else
         tex:SetTexture(spec.texture)
         tex:SetTexCoord(0, 1, 0, 1)
       end
-      art:SetSize(artSize, artSize * (spec.aspect or 1))
+      if not g then
+        tex:SetVertexColor(1, 1, 1, 1)
+        art:SetSize(artSize, artSize * (spec.aspect or 1))
+      end
     end
+    -- A glyph is white art: it wears the value's own ink.
+    if spec.glyph and label and label.GetTextColor then art.Tex:SetVertexColor(label:GetTextColor()) end
     -- The value's words as they show: their whole width, or the box's
     -- where they were cut short to it.
-    local label = toggle:GetFontString()
     local w = 0
     if label then
       w = TextWidth(label)
@@ -687,14 +707,25 @@ function Dropdown.Create(parent, opts)
         -- of chosen and unchosen items line up.
         local textOffset = LIST_PADDING + MARK_GUTTER
         if type(item.icon) == "table" then
-          local art = row:CreateTexture(nil, "ARTWORK")
           local size = rowHeight - 4
-          art:SetSize(size, size * (item.icon.aspect or 1))
-          art:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
-          if item.icon.atlas then
-            art:SetAtlas(item.icon.atlas)
+          local g = GlyphOf(item.icon)
+          if g then
+            -- A glyph at its own size, centred in the art's square, in the
+            -- caption's ink (painted on each open).
+            local art = ns.Theme.Glyph(row, item.icon.glyph, nil, "ARTWORK")
+            art:SetPoint("CENTER", row, "LEFT", LIST_PADDING + MARK_GUTTER + size / 2, 0)
+            row._glyph = art
+          elseif item.icon.glyph then
+            size = 0
           else
-            art:SetTexture(item.icon.texture)
+            local art = row:CreateTexture(nil, "ARTWORK")
+            art:SetSize(size, size * (item.icon.aspect or 1))
+            art:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
+            if item.icon.atlas then
+              art:SetAtlas(item.icon.atlas)
+            else
+              art:SetTexture(item.icon.texture)
+            end
           end
           textOffset = LIST_PADDING + MARK_GUTTER + size + 6
         elseif swatchFor then
@@ -858,6 +889,7 @@ function Dropdown.Create(parent, opts)
       for i = 1, #list._rows do
         local row = list._rows[i]
         if row._swatch then PaintSwatch(row._swatch, swatchFor(row._itemId)) end
+        if row._glyph and row._text then row._glyph:SetVertexColor(row._text:GetTextColor()) end
         -- A choice set aside (item.off, the owner's to set): faint, at
         -- half strength, whatever ink a skin gave it.
         local item = row._item

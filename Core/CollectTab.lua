@@ -7153,11 +7153,12 @@ end
 -- 28 with Larger mail rows), so it is never taken for a mail. It stands on
 -- a fill of the list's own ground (RV.BarRGB: the colour chosen, mixed a
 -- little into it), outlined by one faint hairline. Its words are centred,
--- as a heading's: what Bar says chose, in the secondary text colour, the
--- number of read mail a step dimmer after them while Show mail counts is
--- on (or a check mark and the number). The fold sign stands at its left
--- end on the read dot's column, and Delete all at its right, both dim;
--- Delete all turns red under the pointer.
+-- as a heading's: what Bar says chose (or the player's own words), in the
+-- secondary text colour, after the icon Bar icon chose, in the same ink,
+-- and the number of read mail a step dimmer after them while Show mail
+-- counts is on. The fold sign stands at its left end on the read dot's
+-- column, and Delete all at its right, both dim; Delete all turns red under
+-- the pointer.
 --
 -- While its place is below the view the bar waits at the list's foot as
 -- its notch: the same fill, outline and words, as narrow as the words
@@ -7180,7 +7181,7 @@ RV.BAR = {
   groundA = 0.95, mix = 0.15,
   -- The outline's strength, of the chrome ink.
   edgeA = 0.14,
-  -- From the words to the number; from the check mark to the number; the
+  -- From the words to the number; from the icon to what follows it; the
   -- check mark's size.
   gap = 6, checkGap = 4, check = 8,
   -- The notch's room each side of its words.
@@ -7202,7 +7203,8 @@ RV.SIGN_FILE = "Interface\\AddOns\\Postbox\\Media\\glyph-chevron"
 RV.SIGN_SHUT = { 5 / 32, 3 / 32, 5 / 32, 27 / 32, 19 / 32, 3 / 32, 19 / 32, 27 / 32 }
 RV.SIGN_OPEN = { 5 / 32, 27 / 32, 19 / 32, 27 / 32, 5 / 32, 3 / 32, 19 / 32, 3 / 32 }
 
--- What Bar says: each choice's words. "check" is the check mark, no words.
+-- What Bar says: each choice's words. "custom" is the player's own
+-- (MailboxUI, UI.GetDividerText), none at all where they left it empty.
 RV.WORDS = {
   read = "INBOX_DIVIDER_READ_PLAIN",
   nothing = "INBOX_DIVIDER_EMPTY_PLAIN",
@@ -7228,7 +7230,20 @@ end
 function RV.WordsOf()
   local UI = ns.MailboxUI
   local words = UI and type(UI.GetDividerWords) == "function" and UI.GetDividerWords() or "read"
-  return (RV.WORDS[words] or words == "check") and words or "read"
+  return (RV.WORDS[words] or words == "custom") and words or "read"
+end
+
+-- Custom's words as the client is to draw them, every bar escaped ("" for
+-- none), and the icon before the words ("none", or a glyph's name): each
+-- answered from the settings' memory, so a paint makes nothing.
+function RV.CustomOf()
+  local UI = ns.MailboxUI
+  return UI and type(UI.GetDividerTextShown) == "function" and UI.GetDividerTextShown() or ""
+end
+
+function RV.IconOf()
+  local UI = ns.MailboxUI
+  return UI and type(UI.GetDividerIcon) == "function" and UI.GetDividerIcon() or "none"
 end
 
 function RV.StyleOf()
@@ -7271,15 +7286,22 @@ function RV.BarRGB(panel)
   return r, g, b
 end
 
--- The check mark's tooltip, on either copy: the words it stands for.
--- Nothing under any other choice, which says them already.
+-- The bar's tooltip, on either copy: where it shows no words (an icon,
+-- the number), the words it stands for; where its words are cut short,
+-- the whole of them. Nothing where it says them whole already.
 function RV.WordsTip(self)
-  if RV.WordsOf() ~= "check" then return end
-  local panel = self.__panel
+  local text
+  if self.__noWords then
+    local panel = self.__panel
+    local n = panel and RV.BarCount(panel) or -1
+    text = n >= 0 and L()("INBOX_DIVIDER_READ", n) or L()["INBOX_DIVIDER_READ_PLAIN"]
+  elseif self.__placed then
+    text = self.__shows
+  end
+  if not text then return end
   local T = Th()
-  local n = panel and RV.BarCount(panel) or -1
   T.TipBegin(self)
-  T.TipTitle(n >= 0 and L()("INBOX_DIVIDER_READ", n) or L()["INBOX_DIVIDER_READ_PLAIN"])
+  T.TipTitle(text)
   GameTooltip:Show()
   self.__tip = true
 end
@@ -7322,13 +7344,38 @@ function RV.BarType(f, compact, style)
   f.__folded = nil
 end
 
--- The bar's words, number and check mark, centred as one: set only when
--- what it says, the number, the language or the type moves -- a scroll
--- makes no string. Also measures the notch's width around them.
-function RV.BarText(f, loc, words, n, style)
+-- A copy's icon: the glyph of that name (Theme.GLYPHS) on its one mark
+-- texture, at the glyph's own size, so its whole pixels stay whole. Only
+-- when the icon moves.
+function RV.BarIcon(f, icon)
+  if f.__glyph == icon then return end
+  local glyphs = Th().GLYPHS
+  local g = glyphs and glyphs[icon]
+  if not g then return end
+  f.__glyph = icon
+  local mark = f.Mark
+  mark:SetTexture(g.file)
+  mark:SetTexCoord(g.l, g.r, g.t, g.b)
+  mark:SetSize(g.w, g.h)
+end
+
+-- The bar's icon, words and number: set and measured only when what it
+-- says, the icon, the number, the language or the type moves -- a scroll
+-- makes no string. Where it would show nothing at all (Custom left empty,
+-- no icon, Show mail counts off) it says the default words, Read: the bar
+-- never stands empty. Placed by RV.BarFit and RV.BarPlace.
+function RV.BarText(f, loc, words, n, style, custom, icon)
   local B = RV.BAR
-  local key = RV.WORDS[words]
-  local text = key and loc[key] or nil
+  local text
+  if words == "custom" then
+    if custom and custom ~= "" then text = custom end
+  else
+    local key = RV.WORDS[words]
+    text = key and loc[key] or nil
+  end
+  local glyphs = Th().GLYPHS
+  if icon ~= "none" and not (glyphs and glyphs[icon]) then icon = "none" end
+  if not text and icon == "none" and n < 0 then text = loc["INBOX_DIVIDER_READ_PLAIN"] end
   local deleteText = loc["BTN_DELETE_ALL"]
   if style == "caps" then
     -- The house's capitals: Latin-1 and Cyrillic letters too (Lib/Util).
@@ -7337,42 +7384,114 @@ function RV.BarText(f, loc, words, n, style)
     deleteText = Up(deleteText)
   end
   local label, count, mark = f.Label, f.Count, f.Mark
-  local lift = f.__lift or 0
-  local width = 0
+  -- Measured whole: a cut the words were given goes first.
+  if f.__placed then
+    label:SetWidth(0)
+    f.__placed = false
+  end
+  local wordsW, iconW, countW = 0, 0, 0
   if text then
     label:SetText(text)
     label:Show()
-    mark:Hide()
-    width = label:GetStringWidth() or 0
+    wordsW = label:GetStringWidth() or 0
   else
     label:Hide()
+  end
+  if icon ~= "none" then
+    RV.BarIcon(f, icon)
     mark:Show()
-    width = mark:GetWidth() or B.check
+    iconW = mark:GetWidth() or B.check
+    f.__iconUp = ((glyphs[icon].h or 0) % 2 == 1) and 0.5 or 0
+  else
+    mark:Hide()
   end
   if n >= 0 then
     count:SetText(format("%d", n))
     count:Show()
-    width = width + (text and B.gap or B.checkGap) + (count:GetStringWidth() or 0)
+    countW = count:GetStringWidth() or 0
   else
     count:Hide()
   end
+  f.__wordsW, f.__iconW, f.__countW = wordsW, iconW, countW
+  f.__shows, f.__noWords = text, not text
+  local delete = f.Delete
+  delete.Text:SetText(deleteText)
+  delete:SetSize(max(Th().TextWidth(delete.Text) + 8, 40), RV.BAR.band)
+  f.__half = nil
+  f.__fitW = nil
+end
+
+-- What the words have room for, in a copy `W` wide: the icon before them
+-- and the number after them always whole, the words cut short with the
+-- client's "..." past the room, by measurement. The small tab at the
+-- list's foot (the notch) is never more than half the list wide; the open
+-- bar keeps its words clear of the fold sign and of Delete all, by its
+-- `pad`, centred, so its room is the list less the wider of its two ends
+-- each side. A width of 0 (not laid out yet) cuts nothing. The tab's
+-- width (`__chipW`), and the width at which the opening fill has room for
+-- the bar's words (`__barChip`), where RV.ApplyBar hands them over.
+-- Numbers only; run when the words or the list's width move.
+function RV.BarFit(f, W)
+  local B = RV.BAR
+  local wordsW, iconW, countW = f.__wordsW or 0, f.__iconW or 0, f.__countW or 0
+  local lead = (iconW > 0) and (iconW + ((wordsW > 0 or countW > 0) and B.checkGap or 0)) or 0
+  local tail = (countW > 0) and (((wordsW > 0) and B.gap or 0) + countW) or 0
+  local tabW, barW = false, false
+  if W > 0 and wordsW > 0 then
+    local tabRoom = floor(W / 2 - 2 * B.pad - lead - tail)
+    local left = (f.__signX or 0) + (f.__canvas or B.sign) / 2
+    local right = Th().Metrics.inset + (f.Delete:GetWidth() or 0)
+    local barRoom = floor(W - 2 * (max(left, right) + B.pad) - lead - tail)
+    if wordsW > tabRoom then tabW = max(1, tabRoom) end
+    if wordsW > barRoom then barW = max(1, barRoom) end
+  end
+  f.__lead, f.__tail, f.__tabW, f.__barW = lead, tail, tabW, barW
+  f.__chipW = math.ceil(lead + (tabW or wordsW) + tail) + 2 * B.pad
+  f.__barChip = math.ceil(lead + (barW or wordsW) + tail) + 2 * B.pad
+  f.__half = nil
+  RV.BarPlace(f, f.__wide or false, true)
+end
+
+-- The icon, the words and the number centred as one, the words at the
+-- tab's room or the open bar's (`wide`): the icon on the bar's middle,
+-- level with the fold sign and the words' lower-case middle (an icon an
+-- odd number of units tall half a unit up, so it falls on whole pixels),
+-- the check mark's gap after it; the words lifted (`__lift`); the number
+-- after the words, or after the icon. Only where the room it is placed at
+-- moves (or `again`: what it says, or its room, moved): a copy whose words
+-- fit both rooms is placed once.
+function RV.BarPlace(f, wide, again)
+  local cut
+  if wide then cut = f.__barW else cut = f.__tabW end
+  cut = cut or false
+  local was = f.__placed
+  if not again and was == cut then return end
+  local B = RV.BAR
+  local label, count, mark = f.Label, f.Count, f.Mark
+  if cut then
+    label:SetWidth(cut)
+  elseif was then
+    label:SetWidth(0)
+  end
+  f.__placed = cut
+  local wordsW, iconW = f.__wordsW or 0, f.__iconW or 0
+  local width = (f.__lead or 0) + (cut or wordsW) + (f.__tail or 0)
+  local lift = f.__lift or 0
   local x = -floor(width / 2 + 0.5)
-  if text then
+  if iconW > 0 then
+    mark:ClearAllPoints()
+    mark:SetPoint("LEFT", f, "CENTER", x, f.__iconUp or 0)
+    x = x + iconW + B.checkGap
+  end
+  if wordsW > 0 then
     label:ClearAllPoints()
     label:SetPoint("LEFT", f, "CENTER", x, lift)
     count:ClearAllPoints()
     count:SetPoint("LEFT", label, "RIGHT", B.gap, 0)
   else
-    mark:ClearAllPoints()
-    mark:SetPoint("LEFT", f, "CENTER", x, 0)
     count:ClearAllPoints()
-    count:SetPoint("LEFT", f, "CENTER", x + (mark:GetWidth() or B.check) + B.checkGap, lift)
+    count:SetPoint("LEFT", f, "CENTER", x, lift)
   end
-  f.__chipW = math.ceil(width) + 2 * B.pad
-  local delete = f.Delete
-  delete.Text:SetText(deleteText)
-  delete:SetSize(max(Th().TextWidth(delete.Text) + 8, 40), RV.BAR.band)
-  f.__half = nil
 end
 
 -- A copy of the bar painted as the list stands: its type, words, fill, fold
@@ -7390,10 +7509,12 @@ function RV.PaintBar(panel, f, compact)
   end
   local loc = L()
   local words = RV.WordsOf()
+  local custom = (words == "custom") and RV.CustomOf() or false
+  local icon = RV.IconOf()
   local n = RV.BarCount(panel)
-  if f.__words ~= words or f.__n ~= n or f.__loc ~= loc then
-    f.__words, f.__n, f.__loc = words, n, loc
-    RV.BarText(f, loc, words, n, style)
+  if f.__words ~= words or f.__n ~= n or f.__loc ~= loc or f.__custom ~= custom or f.__icon ~= icon then
+    f.__words, f.__n, f.__loc, f.__custom, f.__icon = words, n, loc, custom, icon
+    RV.BarText(f, loc, words, n, style, custom, icon)
   end
   local r, g, b = RV.BarRGB(panel)
   if f.__r ~= r or f.__g ~= g or f.__b ~= b then
@@ -7421,14 +7542,22 @@ function RV.PaintBar(panel, f, compact)
     f.Sign:ClearAllPoints()
     f.Sign:SetPoint("CENTER", f, "LEFT", x, 0)
   end
+  -- The words' room, where the words, the list's width or the fold sign's
+  -- place moved.
+  local W = (f.__wOf or f):GetWidth() or 0
+  if f.__fitW ~= W or f.__fitX ~= x then
+    f.__fitW, f.__fitX = W, x
+    RV.BarFit(f, W)
+  end
 end
 
 -- How open a copy stands, `e` from 0 (the notch: the fill as wide as the
 -- words) to 1 (the bar, edge to edge): the fill's width, growing out of both
--- sides of the notch; the fold sign and Delete all, over the second half;
--- the fade over the row under the bar at the foot; and the pointer taken
--- only over the fill. Numbers only, each set where it moved: every frame of
--- a move comes here, and makes nothing.
+-- sides of the notch; the words at the bar's room once the fill has room
+-- for them there, at the tab's before (RV.BarFit); the fold sign and Delete
+-- all, over the second half; the fade over the row under the bar at the
+-- foot; and the pointer taken only over the fill. Numbers only, each set
+-- where it moved: every frame of a move comes here, and makes nothing.
 function RV.ApplyBar(f, e)
   -- As wide as the list it stands in (the list's own width, set where the
   -- window lays it out), or its own where it is sized itself.
@@ -7444,6 +7573,11 @@ function RV.ApplyBar(f, e)
     fill:SetPoint("BOTTOMRIGHT", f, "BOTTOM", half, 0)
     local side = max(0, W / 2 - half)
     f:SetHitRectInsets(side, side, 0, 0)
+  end
+  local wide = 2 * half >= (f.__barChip or 0)
+  if f.__wide ~= wide then
+    f.__wide = wide
+    RV.BarPlace(f, wide)
   end
   local late = (e <= 0.5) and 0 or min(1, (e - 0.5) * 2)
   if f.__late ~= late then
@@ -12624,7 +12758,7 @@ end
 -------------------------------------------------------------
 
 -- The bar over the read mail: its fill and outline, the fold sign, the
--- words (or the check mark) and the number, and Delete all at its right.
+-- icon, the words and the number, and Delete all at its right.
 -- Built twice: the one in the list, and the copy at the list's foot that is
 -- its notch (`foot`: with the fade above it). Every texture is given its
 -- colour in the call that makes it, so nothing can stand white for a frame
@@ -12677,8 +12811,14 @@ function RV.BuildBar(panel, parent, foot)
   f.Count = T.CreateText(f, "secondary")
   f.Count:SetWordWrap(false)
   T.SetColor(f.Count, "textDisabled")
-  -- Bar says' check mark, in the words' ink from the moment it exists.
-  f.Mark = T.Glyph(f, "check", B.check, "ARTWORK") or f:CreateTexture(nil, "ARTWORK")
+  -- Bar icon's mark, in the words' ink from the moment it exists: the
+  -- check mark's glyph until another is chosen (RV.BarIcon).
+  f.Mark = T.Glyph(f, "check", B.check, "ARTWORK")
+  if f.Mark then
+    f.__glyph = "check"
+  else
+    f.Mark = f:CreateTexture(nil, "ARTWORK")
+  end
   T.SetColor(f.Mark, "textSecondary")
   f.Mark:Hide()
   -- "Delete all", not the one-mail "Delete": this button takes every read
@@ -12729,7 +12869,8 @@ function RV.BuildBar(panel, parent, foot)
     end
     f.Fade = fade
   end
-  -- The check mark's words, in a tooltip (RV.WordsTip); nothing otherwise.
+  -- The words an icon stands for, or words cut short, in a tooltip
+  -- (RV.WordsTip); nothing otherwise.
   f:SetScript("OnEnter", RV.WordsTip)
   f:SetScript("OnLeave", RV.WordsTipOff)
   f:Hide()

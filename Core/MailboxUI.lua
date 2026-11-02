@@ -233,6 +233,7 @@ local function ForgetSettings()
   memo.qIcon, memo.qName = nil, nil
   memo.layout, memo.slots = nil, nil
   memo.packing, memo.barColor, memo.words = nil, nil, nil
+  memo.barText, memo.barTextShown, memo.barIcon = nil, nil, nil
   memo.history, memo.age, memo.large = nil, nil, nil
   memo.grid, memo.gridText = nil, nil
 end
@@ -1022,34 +1023,47 @@ function UI.SetReadMode(mode)
 end
 
 -- The bar over the read mail (CollectTab, RV.PaintBar; Core/DividerNotch.lua
--- for the notch it waits as while its place is out of view). Two settings,
--- each remembered with the other row settings (ForgetSettings) and read on
--- every bind that shows the bar; a write draws the list again where it
+-- for the notch it waits as while its place is out of view). Its settings
+-- are each remembered with the other row settings (ForgetSettings) and read
+-- on every bind that shows the bar; a write draws the list again where it
 -- stands.
 --
 -- What it says (profile.dividerWords): "read" (the default), "nothing"
--- (Nothing left), "collected", or "check", a check mark. The number of read
--- mail follows it while Show mail counts is on, as every box count does.
--- Stored only when it is not the default. What 1.60's alphas stored before
--- these is read as the nearest, once, and stored so: "full" (Read, nothing
--- left) and "count" (the number alone) as Read; and the bar's old looks
--- (profile.dividerLook: Full row, the notch trials) are gone, forgotten.
-UI.DIVIDER_WORDS = { read = true, nothing = true, collected = true, check = true }
+-- (Nothing left), "collected", or "custom", the player's own words
+-- (profile.dividerText, UI.GetDividerText; none stored is no words). The
+-- number of read mail follows it while Show mail counts is on, as every box
+-- count does. Stored only when it is not the default. What 1.60's alphas
+-- stored before these is read as the nearest, once, and stored so: "full"
+-- (Read, nothing left) and "count" (the number alone) as Read; "check" (a
+-- check mark, no words) as Custom with no words and the Check mark icon
+-- (profile.dividerIcon), which draws the bar exactly as "check" did; and the
+-- bar's old looks (profile.dividerLook: Full row, the notch trials) are
+-- gone, forgotten.
+UI.DIVIDER_WORDS = { read = true, nothing = true, collected = true, custom = true }
 local DIVIDER_WORDS_OLD = { full = "read", count = "read" }
+
+-- The profile, with what the alphas stored for the bar read as the nearest
+-- (above), whichever of the bar's settings is asked first; nil while there
+-- is no profile.
+local function DividerProfile()
+  local profile = ns.Store and ns.Store.Get and ns.Store.Get("profile")
+  if type(profile) ~= "table" then return nil end
+  local stored = profile.dividerWords
+  if DIVIDER_WORDS_OLD[stored] then
+    profile.dividerWords = nil
+  elseif stored == "check" then
+    profile.dividerWords, profile.dividerText = "custom", nil
+    if profile.dividerIcon == nil then profile.dividerIcon = "check" end
+  end
+  if profile.dividerLook ~= nil then profile.dividerLook = nil end
+  return profile
+end
+
 function UI.GetDividerWords()
   local memo = Settings()
   if memo.words then return memo.words end
-  local profile = ns.Store and ns.Store.Get and ns.Store.Get("profile")
-  local stored = nil
-  if type(profile) == "table" then
-    stored = profile.dividerWords
-    local old = DIVIDER_WORDS_OLD[stored]
-    if old then
-      stored = old
-      profile.dividerWords = nil
-    end
-    if profile.dividerLook ~= nil then profile.dividerLook = nil end
-  end
+  local profile = DividerProfile()
+  local stored = profile and profile.dividerWords
   memo.words = UI.DIVIDER_WORDS[stored] and stored or "read"
   return memo.words
 end
@@ -1057,6 +1071,88 @@ function UI.SetDividerWords(words)
   if words ~= nil and not UI.DIVIDER_WORDS[words] then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if profile then profile.dividerWords = (words ~= nil and words ~= "read") and words or nil end
+  ForgetSettings()
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
+end
+
+-- Custom's words (profile.dividerText), as the player typed them, in any
+-- language: at most DIVIDER_TEXT_MAX letters (a letter is a character, not a
+-- byte), no spaces at either end, no control characters. A bar ("|") is a
+-- letter like any other and never one of the client's escapes (a colour, a
+-- texture, a link): the edit box hands a typed bar over as "||", which is
+-- read back as the one bar it is, and the bar's text and the box show each
+-- one escaped again (UI.GetDividerTextShown). The cap keeps the words a
+-- short label -- room for a phrase, more than any language's built-in
+-- choice -- and the small tab at the list's foot small; past what the tab
+-- or the bar has room for they are cut by measurement (CollectTab,
+-- RV.BarText). Nothing stored is no words; "" is answered.
+UI.DIVIDER_TEXT_MAX = 24
+function UI.CleanDividerText(text)
+  if type(text) ~= "string" then return "" end
+  text = (text:gsub("||", "|"))
+  text = (text:gsub("%c", ""))
+  text = text:match("^%s*(.-)%s*$") or ""
+  local letters, cap = 0, UI.DIVIDER_TEXT_MAX
+  for i = 1, #text do
+    local b = text:byte(i)
+    -- A letter starts at every byte that is not a UTF-8 continuation.
+    if b < 128 or b >= 192 then
+      letters = letters + 1
+      if letters > cap then
+        text = text:sub(1, i - 1):match("^(.-)%s*$") or ""
+        break
+      end
+    end
+  end
+  return text
+end
+
+function UI.GetDividerText()
+  local memo = Settings()
+  if memo.barText then return memo.barText end
+  local profile = DividerProfile()
+  memo.barText = UI.CleanDividerText(profile and profile.dividerText)
+  return memo.barText
+end
+
+-- The words as the client is to draw them: every bar escaped, so it shows
+-- as the bar it is. Made when the words are read, never per paint.
+function UI.GetDividerTextShown()
+  local memo = Settings()
+  if memo.barTextShown then return memo.barTextShown end
+  memo.barTextShown = (UI.GetDividerText():gsub("|", "||"))
+  return memo.barTextShown
+end
+
+function UI.SetDividerText(text)
+  local clean = UI.CleanDividerText(text)
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.dividerText = (clean ~= "") and clean or nil end
+  ForgetSettings()
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
+end
+
+-- The icon before the bar's words (profile.dividerIcon): "none" (the
+-- default, stored as nothing) or one of the bar's own marks for finished
+-- mail, each a glyph of that name (Theme.GLYPHS), drawn in the words' ink
+-- (CollectTab, RV.BarText). In the order the options offer them.
+UI.DIVIDER_ICONS = { "none", "check", "check-circle", "letter-open", "tray" }
+local DIVIDER_ICON = {}
+for i = 2, #UI.DIVIDER_ICONS do DIVIDER_ICON[UI.DIVIDER_ICONS[i]] = true end
+function UI.GetDividerIcon()
+  local memo = Settings()
+  if memo.barIcon then return memo.barIcon end
+  local profile = DividerProfile()
+  local stored = profile and profile.dividerIcon
+  memo.barIcon = DIVIDER_ICON[stored] and stored or "none"
+  return memo.barIcon
+end
+function UI.SetDividerIcon(icon)
+  if icon ~= nil and icon ~= "none" and not DIVIDER_ICON[icon] then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.dividerIcon = (icon ~= nil and icon ~= "none") and icon or nil end
   ForgetSettings()
   local panel, collect = CollectPanel(), ns.CollectTab
   if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
@@ -1202,7 +1298,12 @@ function UI.TryDivider(arg)
   if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
   local notch = ns.DividerNotch
   local state = panel and notch and type(notch.State) == "function" and notch.State(panel) or "none"
-  ns.Print(L("DEBUG_DIVIDER", UI.GetDividerStyle(), UI.GetDividerWords(), UI.GetDividerColor(), state))
+  -- What it says: the choice, Custom's words, and the icon before them.
+  local says = UI.GetDividerWords()
+  if says == "custom" then says = says .. ' "' .. UI.GetDividerTextShown() .. '"' end
+  local icon = UI.GetDividerIcon()
+  if icon ~= "none" then says = says .. " + " .. icon end
+  ns.Print(L("DEBUG_DIVIDER", UI.GetDividerStyle(), says, UI.GetDividerColor(), state))
   if arg ~= "" and arg ~= "caps" and arg ~= "quiet" then ns.Print(L("DEBUG_DIVIDER_HELP", "caps quiet")) end
 end
 
@@ -4705,6 +4806,8 @@ function UI.DiagnoseOptions()
   Named("qualityName", UI.GetQualityName(), "off")
   Named("readMail", UI.GetReadMode(), "fold")
   Named("dividerWords", UI.GetDividerWords(), "read")
+  Named("dividerText", UI.GetDividerTextShown(), "")
+  Named("dividerIcon", UI.GetDividerIcon(), "none")
   Named("dividerColor", UI.GetDividerColor(), "neutral")
   Named("tabIndicator", UI.GetTabIndicator(), "dot")
   Named("historyDays", UI.GetHistoryDays(), "7")

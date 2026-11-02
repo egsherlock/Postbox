@@ -4217,7 +4217,6 @@ do
         break
       end
     end
-    if cell.colorLead then cell.colorLead:PaintSwatch() end
   end
 
   -- A dropdown with nothing written about it says what it offers.
@@ -4542,40 +4541,191 @@ do
     ns.Theme.SetColor(mark, btn:IsEnabled() and "textPrimary" or "textDisabled")
   end
 
-  -- A small colour button before a dropdown's toggle, where Rows.Play's
-  -- stands: a sample of what the colour paints (`sampleFor`), opening a
-  -- list of colours, each with its square (`swatchFor`), as a colour
-  -- dropdown's list does (Lib/UI/Dropdown's `sample`): Bar says' Bar color.
-  -- Its own entry for the inspector (`title`, `text`); greyed with the row
-  -- (Rows.SetEnabled, `more`); its choice read again whenever the row's is
-  -- (Rows.PaintDropdown), and offered to the tab's reset (TabReset.Units,
-  -- `moreGet`). The row's name leaves it room (Rows.Fit, `playW`).
-  -- spec: title, text, items, swatchFor, sampleFor, get, set(id)
-  -- -> the select (its :PaintSwatch() paints the sample and the choice again).
-  local SAMPLE = { w = 16, h = 8 }
-  function Rows.ColorLead(row, spec)
-    local ok, current = pcall(spec.get)
-    local dd = ns.Core.UI.Dropdown.Create(row, {
-      items = spec.items, toggleWidth = PLAY_W, toggleHeight = BUTTON_H, alignRight = true, height = BUTTON_H,
-      defaultId = ok and current or nil, swatchFor = spec.swatchFor, sample = SAMPLE, sampleFor = spec.sampleFor,
-      listLeft = true, onList = ListShown,
-    })
-    dd.__pbCell = row
-    dd:SetPoint("RIGHT", row.dd, "LEFT", -LEAD_GAP, 0)
-    dd:SetWidth(PLAY_W)
-    dd:SetChangeCallback(spec.set)
-    local toggle = dd._toggle
-    Wire(toggle, row, true)
-    toggle.__pbEntry = Entry(spec.title, spec.text)
-    local get = spec.get
-    local paint = dd.PaintSwatch
-    function dd:PaintSwatch()
-      local fine, id = pcall(get)
-      if fine and id ~= nil then dd:SetSelectedId(id) else paint(dd) end
+  -- A dropdown whose last choice is the player's own words (Bar says'
+  -- Custom). Chosen, the dropdown's box turns into a text box in place:
+  -- the house's input (Theme.StyleInput, as Character Groups' name box),
+  -- with the dropdown's toggle at its right end as a small button wearing
+  -- the select's caret, whose click opens the choices as the whole toggle's
+  -- did. A click on the box edits the words. Enter, a click anywhere else,
+  -- the panel closing and another tab keep them; Escape puts back what was
+  -- there before this round of typing -- the choice too, where the round
+  -- began by choosing the words. They are stored as they are typed, so the
+  -- window's bar and the drawing follow each keystroke. Left empty, the
+  -- box says dim the words the bar shows in their place, where it shows
+  -- any (`spec.hint`). spec: id (the choice that is the words), max
+  -- (letters), getChoice(), getText(), shownText() (as the box shows them),
+  -- setText(text), setChoice(id), hint() (nil or a text), changed() (after
+  -- a write).
+  -- cell.layBox(cell) lays the row out for its choice (State.BarSays, and
+  -- Rows.Fit after a toggle's width); Rows.WordsBoxEnable greys it.
+  local BOX_X = 8
+  local function BoxHint(cell)
+    local box = cell.box
+    local text = ((box:GetText() or "") == "") and box.spec.hint() or nil
+    if text then box.hint:SetText(text) end
+    box.hint:SetShown(text ~= nil)
+  end
+
+  -- A press anywhere but on the box, while it has the keyboard: the words
+  -- are kept, as Enter keeps them. Heard only while it has the keyboard.
+  local function BoxPress(watch)
+    local box = watch.box
+    if not box.wrap:IsMouseOver() then box:ClearFocus() end
+  end
+
+  local function BoxFocus(box)
+    if not box.round then
+      box.round = true
+      box.wasChoice, box.wasText = box.spec.getChoice(), box.spec.getText()
     end
-    row.more, row.moreGet, row.colorLead = toggle, get, dd
-    row.playW = PLAY_W + LEAD_GAP
-    return dd
+    box.watch:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    box:HighlightText()
+  end
+
+  local function BoxTyped(box, user)
+    if user then
+      box.spec.setText(box:GetText())
+      box.spec.changed()
+    end
+    BoxHint(box.cell)
+  end
+
+  local function BoxLost(box)
+    box.watch:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+    box:HighlightText(0, 0)
+    local undo = box.undo
+    box.round, box.undo = nil, nil
+    local spec = box.spec
+    if undo then
+      spec.setChoice(box.wasChoice)
+      spec.setText(box.wasText)
+    end
+    box:SetText(spec.shownText())
+    Rows.PaintDropdown(box.cell)
+    box.cell.layBox(box.cell)
+    spec.changed()
+  end
+
+  -- The row as its choice has it: the words' box and the small toggle, or
+  -- the dropdown whole. The caret on the small toggle is the select's own
+  -- where the look draws one (the Postbox style's, centred on it while it
+  -- is small), else one of the same glyph in the same grey.
+  local function BoxLay(cell)
+    local box = cell.box
+    local ok, current = pcall(cell.get)
+    local on = ok and current == box.id
+    local toggle = cell.control
+    local w = cell.controlW or DD_W
+    local wrap = box.wrap
+    local skinCaret = toggle.__pbCaret
+    if on then
+      toggle:SetWidth(PLAY_W)
+      cell.dd:SetText("")
+      wrap:SetWidth(math.max(1, w - PLAY_W - LEAD_GAP))
+      if not box:HasFocus() then box:SetText(box.spec.shownText()) end
+      wrap:Show()
+    else
+      if box:HasFocus() then box:ClearFocus() end
+      wrap:Hide()
+      toggle:SetWidth(w)
+    end
+    if skinCaret then
+      skinCaret:ClearAllPoints()
+      if on then
+        skinCaret:SetPoint("CENTER", toggle, "CENTER", 0, 0)
+      else
+        skinCaret:SetPoint("CENTER", toggle, "RIGHT", -9, 0)
+      end
+    end
+    local caret = box.caret
+    if on and not skinCaret and not caret then
+      local T = ns.Theme
+      caret = T.Glyph and T.Glyph(ArtHolder(toggle), "caret", 5, "OVERLAY") or nil
+      if caret then caret:SetPoint("CENTER", toggle, "CENTER", 0, 0) end
+      box.caret = caret
+    end
+    if caret then
+      caret:SetShown(on and not skinCaret)
+      ns.Theme.SetColor(caret, "textDisabled")
+      caret:SetAlpha(toggle:IsEnabled() and 1 or 0.5)
+    end
+    BoxHint(cell)
+  end
+
+  function Rows.WordsBox(cell, spec)
+    local T = ns.Theme
+    local wrap = CreateFrame("Frame", nil, cell, "BackdropTemplate")
+    wrap:SetHeight(DD_H)
+    wrap:SetPoint("RIGHT", cell.control, "LEFT", -LEAD_GAP, 0)
+    local box = CreateFrame("EditBox", nil, wrap)
+    T.StyleInput(wrap, box)
+    box:SetAutoFocus(false)
+    local font = T.FontObject and T.FontObject("bodySmall")
+    if font then T.SetBoxFont(box, font) end
+    T.SetColor(box, "textPrimary")
+    box:SetPoint("TOPLEFT", wrap, "TOPLEFT", BOX_X, -2)
+    box:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -BOX_X, 2)
+    box:SetMaxLetters(spec.max or 24)
+    local hint = T.CreateText(wrap, "placeholder")
+    hint:SetPoint("TOPLEFT", wrap, "TOPLEFT", BOX_X, -2)
+    hint:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -BOX_X, 2)
+    hint:SetJustifyH("LEFT")
+    hint:SetJustifyV("MIDDLE")
+    hint:SetWordWrap(false)
+    hint:Hide()
+    box.wrap, box.hint, box.spec, box.cell, box.id = wrap, hint, spec, cell, spec.id
+    local watch = CreateFrame("Frame", nil, wrap)
+    watch.box = box
+    watch:SetScript("OnEvent", BoxPress)
+    box.watch = watch
+    -- The pointer on either is on the row's control.
+    wrap.__pbCell, box.__pbCell = cell, cell
+    wrap:EnableMouse(true)
+    wrap:SetScript("OnEnter", Rows.ControlEnter)
+    wrap:SetScript("OnLeave", Rows.ControlLeave)
+    box:SetScript("OnEnter", Rows.ControlEnter)
+    box:SetScript("OnLeave", Rows.ControlLeave)
+    wrap:SetScript("OnMouseDown", function()
+      if box:IsMouseEnabled() then box:SetFocus() end
+    end)
+    box:SetScript("OnEditFocusGained", BoxFocus)
+    box:SetScript("OnEditFocusLost", BoxLost)
+    box:SetScript("OnTextChanged", BoxTyped)
+    box:SetScript("OnEnterPressed", box.ClearFocus)
+    box:SetScript("OnEscapePressed", function(self)
+      self.undo = true
+      self:ClearFocus()
+    end)
+    -- The panel closing, or another tab: the words kept.
+    wrap:SetScript("OnHide", function()
+      if box:HasFocus() then box:ClearFocus() end
+    end)
+    wrap:Hide()
+    cell.box, cell.layBox = box, BoxLay
+    return box
+  end
+
+  -- The words' box greyed with its row: no keyboard, no click, its words
+  -- in the disabled grey. Its pointer stays, so the inspector says why.
+  function Rows.WordsBoxEnable(cell, on)
+    local box = cell.box
+    if not box then return end
+    if not on and box:HasFocus() then box:ClearFocus() end
+    box:EnableMouse(on)
+    ns.Theme.SetColor(box, on and "textPrimary" or "textDisabled")
+    if box.caret then box.caret:SetAlpha(on and 1 or 0.5) end
+  end
+
+  -- Choosing the words from the list: the box takes the keyboard, the round
+  -- of typing beginning at the choice that stood before (Escape goes back
+  -- to it).
+  function Rows.WordsBoxOpen(cell, before)
+    local box = cell.box
+    box.round = true
+    box.wasChoice, box.wasText = before, box.spec.getText()
+    cell.layBox(cell)
+    box:SetText(box.spec.shownText())
+    box:SetFocus()
   end
 
   -- A quiet line across the row, centred: something to know, not a setting.
@@ -4885,6 +5035,7 @@ do
             cell.dd:SetWidth(want)
             cell.control:SetWidth(want)
           end
+          if cell.layBox then cell.layBox(cell) end
           controlW = want
         elseif kind == "button" then
           if cell.lead then
@@ -5742,15 +5893,19 @@ function State.Warnings()
   Rows.SetEnabled(cells.marker, warning and icon, warning and "OPT_MINIMAP_WHY_SWITCH" or "OPT_WARN_WHY")
 end
 
--- Bar says and its colour button are grey while read mail does not stand
+-- Bar says, Bar icon and Bar color are grey while read mail does not stand
 -- under the bar (Finished mail is not Below the inbox), saying what turns
--- them on (Rows.Why).
+-- them on (Rows.Why); Bar says' words' box with them. Bar says laid out
+-- for its choice: Custom's words in its box (Rows.WordsBox).
 function State.BarSays()
   local cell, UI = S.barSaysCell, ns.MailboxUI
   if not cell then return end
-  local mode = UI and type(UI.GetReadMode) == "function" and UI.GetReadMode() or "fold"
-  Rows.SetEnabled(cell, mode == "fold")
-  if S.barColorCell then Rows.Say(S.barColorCell, mode == "fold") end
+  local on = (UI and type(UI.GetReadMode) == "function" and UI.GetReadMode() or "fold") == "fold"
+  Rows.SetEnabled(cell, on)
+  Rows.WordsBoxEnable(cell, on)
+  if cell.layBox then cell.layBox(cell) end
+  if S.barIconCell then Rows.SetEnabled(S.barIconCell, on) end
+  if S.barColorCell then Rows.SetEnabled(S.barColorCell, on) end
 end
 
 -- Row layout stays live with Larger mail rows on: History, Mail Memory and
@@ -6217,6 +6372,8 @@ function Pages.mail(col)
       if ns.MailboxUI.RefreshCollectTabCounts then ns.MailboxUI.RefreshCollectTabCounts() end
       -- Mail Memory's header counts its box under the same switch.
       if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
+      -- Bar says' empty box says what the bar says in its place.
+      State.BarSays()
       Ctx.Repaint()
     end,
   })
@@ -6288,32 +6445,78 @@ function Pages.mail(col)
     end,
   })
   Shown(read.entry, "read")
-  -- What the bar over the read mail says (Read, Nothing left, Collected, or
-  -- a check mark; the number after it follows Show mail counts), with its
-  -- colour on the small button before the dropdown: a sample of the bar,
-  -- opening the colours' list (Rows.ColorLead). Grey, the button with it,
-  -- while read mail does not stand under the bar (State.BarSays). The list
-  -- is bound again where it stands, the drawing's bar drawn again.
-  local says = Rows.Dropdown(col, {
-    title = L["OPT_BAR_SAYS_TITLE"], text = L["OPT_BAR_SAYS_DESC"],
-    items = {
-      { id = "read",      name = L["INBOX_DIVIDER_READ_PLAIN"] },
-      { id = "nothing",   name = L["INBOX_DIVIDER_EMPTY_PLAIN"] },
-      { id = "collected", name = L["INBOX_DIVIDER_COLLECTED_PLAIN"] },
-      { id = "check",     name = L["OPT_BAR_SAYS_CHECK"] },
-    },
-    get = function() return ns.MailboxUI.GetDividerWords and ns.MailboxUI.GetDividerWords() or "read" end,
-    set = function(id)
-      if ns.MailboxUI.SetDividerWords then ns.MailboxUI.SetDividerWords(id) end
-      Ctx.Repaint()
-    end,
-  })
-  Rows.Why(says, "OPT_DIVIDER_WHY")
-  Shown(says.entry, "divider")
-  S.barSaysCell = says
+  -- The bar over the read mail, three rows under Finished mail: what it
+  -- says (Read, Nothing left, Collected, or Custom, the player's own words,
+  -- typed in the dropdown's box itself: Rows.WordsBox), the icon before the
+  -- words, and its colour, each choice of colour with its square. The
+  -- number after the words follows Show mail counts. All three grey, saying
+  -- why, while read mail does not stand under the bar (State.BarSays). The
+  -- list is bound again where it stands, the drawing's bar drawn again.
   do
     local UI = ns.MailboxUI
     local T = ns.Theme
+    local says = Rows.Dropdown(col, {
+      title = L["OPT_BAR_SAYS_TITLE"], text = L["OPT_BAR_SAYS_DESC"],
+      items = {
+        { id = "read",      name = L["INBOX_DIVIDER_READ_PLAIN"] },
+        { id = "nothing",   name = L["INBOX_DIVIDER_EMPTY_PLAIN"] },
+        { id = "collected", name = L["INBOX_DIVIDER_COLLECTED_PLAIN"] },
+        { id = "custom",    name = L["OPT_BAR_SAYS_CUSTOM"] },
+      },
+      get = function() return UI.GetDividerWords and UI.GetDividerWords() or "read" end,
+      set = function(id)
+        if not UI.SetDividerWords then return end
+        local before = UI.GetDividerWords()
+        UI.SetDividerWords(id)
+        if id == "custom" and S.barSaysCell then
+          Rows.WordsBoxOpen(S.barSaysCell, before)
+        end
+        State.BarSays()
+        Ctx.Repaint()
+      end,
+    })
+    Rows.WordsBox(says, {
+      id = "custom", max = UI.DIVIDER_TEXT_MAX,
+      getChoice = function() return UI.GetDividerWords() end,
+      getText = function() return UI.GetDividerText() end,
+      shownText = function() return UI.GetDividerTextShown() end,
+      setText = function(text) UI.SetDividerText(text) end,
+      setChoice = function(id) UI.SetDividerWords(id) end,
+      -- Left empty with no icon and no number, the bar says Read.
+      hint = function()
+        if UI.GetDividerIcon() ~= "none" or UI.GetOption("showTabCounts") then return nil end
+        return L["INBOX_DIVIDER_READ_PLAIN"]
+      end,
+      changed = function() Ctx.Repaint() end,
+    })
+    -- The words are a setting of the tab's too (TabReset.Units).
+    says.moreGet = UI.GetDividerText
+    Rows.Why(says, "OPT_DIVIDER_WHY")
+    Shown(says.entry, "divider")
+    S.barSaysCell = says
+
+    local iconItems = {}
+    local iconNames = {
+      none = L["OPT_BAR_ICON_NONE"], check = L["OPT_BAR_ICON_CHECK"], ["check-circle"] = L["OPT_BAR_ICON_CIRCLE"],
+      ["letter-open"] = L["OPT_BAR_ICON_LETTER"], tray = L["OPT_BAR_ICON_TRAY"],
+    }
+    for _, id in ipairs(UI.DIVIDER_ICONS or { "none" }) do
+      iconItems[#iconItems + 1] = { id = id, name = iconNames[id] or id, icon = (id ~= "none") and { glyph = id } or nil }
+    end
+    local icon = Rows.Dropdown(col, {
+      title = L["OPT_BAR_ICON_TITLE"], text = L["OPT_BAR_ICON_DESC"],
+      items = iconItems,
+      get = function() return UI.GetDividerIcon and UI.GetDividerIcon() or "none" end,
+      set = function(id)
+        if UI.SetDividerIcon then UI.SetDividerIcon(id) end
+        State.BarSays()
+        Ctx.Repaint()
+      end,
+    })
+    Rows.Why(icon, "OPT_DIVIDER_WHY")
+    Shown(icon.entry, "divider")
+    S.barIconCell = icon
+
     local names = {
       neutral = L["OPT_BAR_COLOR_NEUTRAL"], accent = L["OPT_COLOR_ACCENT"], class = L["OPT_COLOR_CLASS"],
       blue = L["OPT_ACCENT_ELVUI"], violet = L["OPT_ACCENT_VIOLET"], custom = L["OPT_COLOR_CUSTOM"],
@@ -6323,9 +6526,8 @@ function Pages.mail(col)
     for _, id in ipairs(UI.DIVIDER_COLORS or { "neutral" }) do
       if id ~= "custom" or canPick then items[#items + 1] = { id = id, name = names[id] } end
     end
-    -- Each choice's square: its colour as it is (the list's own ground for
-    -- Neutral); the button's sample: the bar's fill as it paints, the colour
-    -- mixed into the ground.
+    -- Each choice's square: its colour as it is, the list's own ground for
+    -- Neutral.
     local function Ground()
       local skin = ns.Skin
       local P = skin and skin.IsPostboxStyle and not skin.IsCreativeStyle and skin.Palette
@@ -6334,42 +6536,30 @@ function Pages.mail(col)
     end
     local color
     local function Picked()
-      if color then color:PaintSwatch() end
+      if color then Rows.PaintDropdown(color) end
       Ctx.Repaint()
     end
-    color = Rows.ColorLead(says, {
+    color = Rows.Dropdown(col, {
       title = L["OPT_BAR_COLOR_TITLE"], text = L["OPT_BAR_COLOR_DESC"], items = items,
       swatchFor = function(id)
         if id == "neutral" then return Ground() end
         if id == "custom" then return UI.GetDividerCustom() end
         return UI.DividerColorRGB(id)
       end,
-      sampleFor = function()
-        local r, g, b = Ground()
-        local cr, cg, cb = UI.DividerColorRGB()
-        if type(cr) == "number" then
-          local CT = ns.CollectTab
-          local k = CT and CT.BarParts and CT.BarParts.mix or 0.15
-          r, g, b = r + (cr - r) * k, g + (cg - g) * k, b + (cb - b) * k
-        end
-        return r, g, b
-      end,
       get = function() return UI.GetDividerColor and UI.GetDividerColor() or "neutral" end,
       set = function(id)
         if id == "custom" then
-          -- No picker: the list shows the choice that stands.
-          if not (UI.PickDividerColor and UI.PickDividerColor(Picked)) then color:PaintSwatch() end
+          -- No picker: the box shows the choice that stands.
+          if not (UI.PickDividerColor and UI.PickDividerColor(Picked)) then Rows.PaintDropdown(color) end
         elseif UI.SetDividerColor then
           UI.SetDividerColor(id)
         end
         Ctx.Repaint()
       end,
     })
-    -- The button's own entry says why it is grey, as the row's does.
-    local entry = color._toggle.__pbEntry
-    entry.stage, entry.part = "mail", "divider"
-    S.barColorCell = { entry = entry }
-    Rows.Why(S.barColorCell, "OPT_DIVIDER_WHY")
+    Rows.Why(color, "OPT_DIVIDER_WHY")
+    Shown(color.entry, "divider")
+    S.barColorCell = color
   end
   -- How far back History goes, or Never, which turns it off (stored as 0),
   -- last: it clears what History kept on every character, so it is asked
@@ -7622,8 +7812,8 @@ do
       if (cell.kind == "check" or cell.kind == "dropdown" or cell.kind == "slider") and type(cell.get) == "function" then
         gets[#gets + 1] = cell.get
       end
-      -- A colour button before its dropdown (Rows.ColorLead) is a setting
-      -- of the tab's too.
+      -- A value a row shows besides its choice (Bar says' words) is a
+      -- setting of the tab's too.
       if type(cell.moreGet) == "function" then gets[#gets + 1] = cell.moreGet end
       if cell == S.styleCell then looks = true end
     end
