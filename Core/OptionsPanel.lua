@@ -5544,8 +5544,6 @@ function Pages.mail(col)
       -- drawing shows each open, as Hairline.
       { id = "stretch",  name = L["OPT_DIVIDER_STRETCH"] },
       { id = "count",    name = L["OPT_DIVIDER_COUNT"] },
-      { id = "scroll",   name = L["OPT_DIVIDER_SCROLL"] },
-      { id = "drawer",   name = L["OPT_DIVIDER_DRAWER"] },
     },
     get = function() return ns.MailboxUI.GetDividerLook and ns.MailboxUI.GetDividerLook() or "hairline" end,
     set = function(id)
@@ -5567,6 +5565,7 @@ function Pages.mail(col)
       { id = "nothing",   name = L["INBOX_DIVIDER_EMPTY_PLAIN"] },
       { id = "read",      name = L["INBOX_DIVIDER_READ_PLAIN"] },
       { id = "count",     name = L["OPT_DIVIDER_WORDS_COUNT"] },
+      { id = "check",     name = L["OPT_DIVIDER_WORDS_CHECK"] },
     },
     get = function() return ns.MailboxUI.GetDividerWords and ns.MailboxUI.GetDividerWords() or "full" end,
     set = function(id)

@@ -7093,17 +7093,26 @@ end
 
 -- Whether the read mail is folded away under its divider: the player's own
 -- click, remembered between visits. A search shows it regardless -- a match
--- must not hide behind a fold -- and so does Preview mail, whose read samples
--- are there to show the columns a read mail's row has. Nothing else folds
--- or opens it: not a scroll.
+-- must not hide behind a fold. Nothing else folds or opens it: not a scroll.
+-- Test mail folds and opens as a mailbox does, but on its own (`_pvFolded`,
+-- open each time it comes on): a click on the samples' divider never stores
+-- the player's fold.
 function RV.Folded(panel)
-  if panel and panel._preview then return false end
-  local UI = ns.MailboxUI
-  local folded = UI and type(UI.GetOption) == "function" and UI.GetOption("readFolded") or false
+  local folded
+  if panel and panel._preview then
+    folded = panel._pvFolded == true
+  else
+    local UI = ns.MailboxUI
+    folded = UI and type(UI.GetOption) == "function" and UI.GetOption("readFolded") or false
+  end
   return folded and not Searching(panel)
 end
 
-function RV.SetFolded(folded)
+function RV.SetFolded(folded, panel)
+  if panel and panel._preview then
+    panel._pvFolded = folded and true or false
+    return
+  end
   local UI = ns.MailboxUI
   if UI and type(UI.SetOption) == "function" then UI.SetOption("readFolded", folded and true or false) end
 end
@@ -7143,30 +7152,30 @@ RV.LOOKS = {
   -- the pinned copy's place; open, Hairline itself, so its words are its size.
   stretch = { size = "tiny", notch = true },
   count = { size = "tiny", notch = true },
-  scroll = { size = "tiny", notch = true },
-  drawer = { size = "tiny", notch = true },
 }
 
 -- What the divider says (Options, Mail page: Divider words): each choice's
--- words with the count and without; "count" is the number alone, the words
--- in its tooltip, and shows it whatever Show mail counts says.
+-- words with the count and without. "count" is the number alone, the words
+-- in its tooltip, and shows it whatever Show mail counts says; "check" is
+-- Count only with a check mark after the number (RV.DividerMark).
 RV.WORDS = {
   full = { "INBOX_READ_DIVIDER", "INBOX_READ_DIVIDER_PLAIN" },
   collected = { "INBOX_DIVIDER_COLLECTED", "INBOX_DIVIDER_COLLECTED_PLAIN" },
   nothing = { "INBOX_DIVIDER_EMPTY", "INBOX_DIVIDER_EMPTY_PLAIN" },
   read = { "INBOX_DIVIDER_READ", "INBOX_DIVIDER_READ_PLAIN" },
 }
+RV.NUMBER_ONLY = { count = true, check = true }
 
 function RV.WordsOf()
   local UI = ns.MailboxUI
   local words = UI and type(UI.GetDividerWords) == "function" and UI.GetDividerWords() or "full"
-  return (words == "count" or RV.WORDS[words]) and words or "full"
+  return (RV.NUMBER_ONLY[words] or RV.WORDS[words]) and words or "full"
 end
 
 -- words, the count shown (-1 for none) -> the divider's text. Made only when
 -- one of them changes (RV.PaintDivider keeps what it last wrote).
 function RV.DividerText(loc, words, n)
-  if words == "count" then return format("%d", max(0, n)) end
+  if RV.NUMBER_ONLY[words] then return format("%d", max(0, n)) end
   local keys = RV.WORDS[words] or RV.WORDS.full
   if n >= 0 then return loc(keys[1], n) end
   return loc[keys[2]]
@@ -7174,14 +7183,23 @@ end
 
 -- The count the divider shows under `words`, or -1 for none.
 function RV.DividerCount(panel, words)
-  if words == "count" or ShowTabCounts() then return panel._readCount or 0 end
+  if RV.NUMBER_ONLY[words] or ShowTabCounts() then return panel._readCount or 0 end
   return -1
+end
+
+-- The check mark Count and check draws after the number: the check glyph at
+-- the digits' height (RV.MarkHeight) of the font it follows. -> its size.
+RV.DIVIDER_MARK_GAP = 3
+function RV.DividerMarkSize(fs)
+  local size
+  if fs and fs.GetFont then size = select(2, fs:GetFont()) end
+  return RV.MarkHeight(size)
 end
 
 -- Count only's tooltip, on either copy: the words its number stands for.
 -- Nothing under any other choice, which says them already.
 function RV.WordsTip(self)
-  if RV.WordsOf() ~= "count" then return end
+  if not RV.NUMBER_ONLY[RV.WordsOf()] then return end
   local panel = self.__panel
   local T = Th()
   T.TipBegin(self)
@@ -7210,6 +7228,8 @@ function RV.DividerLook(divider, look)
   local T = Th()
   local M = T.Metrics
   divider.__look = look
+  local mark = divider.__mark
+  divider.__mark = false
   -- The words' size: the role's font, or a step smaller (Lib/UI/Theme's
   -- sized fonts, which follow the face and size the window's text is set
   -- in). The sign is Hairline's alone and always its size.
@@ -7231,14 +7251,41 @@ function RV.DividerLook(divider, look)
     RV.Anchor(divider, divider.Label, 1, M.inset + RV.DIVIDER_FOLD, 0)
     -- Its top on the slot's middle, as the words are centred on it: whole
     -- units in both row sizes (26 and 44 are even).
+    RV.AnchorRule(divider, 0)
     local rule = divider.Rule
-    rule:ClearAllPoints()
-    rule:SetPoint("TOPLEFT", divider.Label, "RIGHT", M.gap, 0)
-    rule:SetPoint("TOPRIGHT", divider.Delete.Text, "LEFT", -M.gap, 0)
     T.SetColor(rule, "textSecondary")
     rule:SetAlpha(RV.DIVIDER_RULE_ALPHA)
   end
+  -- Count and check's mark is placed again for the words' new size.
+  if mark then RV.DividerMark(divider, true) end
   divider.__folded, divider.__n = nil, nil
+end
+
+-- Hairline's rule, from the words (or Count and check's mark after them) to
+-- Delete all; `cut` units short of Delete all (the notch's divider drawing
+-- itself in, Core/DividerNotch.lua), 0 at rest.
+function RV.AnchorRule(divider, cut)
+  local M = Th().Metrics
+  local rule = divider.Rule
+  rule:ClearAllPoints()
+  rule:SetPoint("TOPLEFT", divider.__mark and divider.Mark or divider.Label, "RIGHT", M.gap, 0)
+  rule:SetPoint("TOPRIGHT", divider.Delete.Text, "LEFT", -M.gap - cut, 0)
+end
+
+-- Count and check's mark after the number, or put away: sized to the words'
+-- font, in their ink, and Hairline's rule starting after it. Only when the
+-- words choice moves (RV.PaintDivider) or the look does (RV.DividerLook).
+function RV.DividerMark(divider, on)
+  divider.__mark = on
+  local mark = divider.Mark
+  if on then
+    local h = RV.DividerMarkSize(divider.Label)
+    mark:SetSize(h, h)
+    mark:ClearAllPoints()
+    mark:SetPoint("LEFT", divider.Label, "RIGHT", RV.DIVIDER_MARK_GAP, 0)
+  end
+  mark:SetShown(on)
+  if divider.Rule:IsShown() then RV.AnchorRule(divider, 0) end
 end
 
 -- Where Full row's fold mark and words stand: the fold mark centred in the
@@ -7265,7 +7312,7 @@ end
 -- The list's own colour under a texture, nearly opaque: the colour the
 -- list's container is painted in (whichever look painted it), else the
 -- palette's surface.
-function RV.PaintGround(panel, texture)
+function RV.GroundColor(panel)
   local area = panel.MailListArea
   local r, g, b
   if area and type(area.GetBackdropColor) == "function" then r, g, b = area:GetBackdropColor() end
@@ -7273,6 +7320,11 @@ function RV.PaintGround(panel, texture)
     local c = Th().Colors.surface
     r, g, b = c[1], c[2], c[3]
   end
+  return r, g, b
+end
+
+function RV.PaintGround(panel, texture)
+  local r, g, b = RV.GroundColor(panel)
   texture:SetColorTexture(r, g, b, RV.DIVIDER_GROUND_ALPHA)
 end
 
@@ -7290,6 +7342,8 @@ function RV.PaintDivider(panel, divider)
     divider.__n, divider.__loc, divider.__words = n, loc, words
     divider.Label:SetText(RV.DividerText(loc, words, n))
   end
+  local mark = words == "check"
+  if divider.__mark ~= mark then RV.DividerMark(divider, mark) end
   local folded = RV.Folded(panel)
   if divider.__folded ~= folded then
     divider.__folded = folded
@@ -7378,8 +7432,10 @@ end
 -- What Core/DividerNotch.lua reads of the divider: made once, at load.
 CT.DividerParts = {
   Folded = RV.Folded, Arranging = RV.Arranging, Words = RV.WordsOf,
-  Text = RV.DividerText, Count = RV.DividerCount,
+  Text = RV.DividerText, Count = RV.DividerCount, Ground = RV.GroundColor,
+  AnchorRule = RV.AnchorRule, MarkSize = RV.DividerMarkSize, NUMBER_ONLY = RV.NUMBER_ONLY,
   FOLD = RV.DIVIDER_FOLD, RULE_A = RV.DIVIDER_RULE_ALPHA, SIGN = RV.DIVIDER_OPEN_SIGN,
+  GROUND_A = RV.DIVIDER_GROUND_ALPHA, MARK_GAP = RV.DIVIDER_MARK_GAP,
 }
 CT.DividerText = RV.DividerText
 
@@ -12285,6 +12341,7 @@ function CT.SetSamples(panel, on, quiet)
     keep.view, keep.alt = panel.viewMode, panel._alt
     RV.PreviewBuild()
     panel._preview = true
+    panel._pvFolded = nil
     scroll:SetVerticalScroll(0)
     if not quiet then CT.RefreshMailList(panel) end
     return
@@ -12565,6 +12622,12 @@ function RV.BuildDivider(panel, parent)
   divider.__panel = panel
   divider:SetScript("OnEnter", RV.WordsTip)
   divider:SetScript("OnLeave", RV.WordsTipOff)
+  -- Count and check's mark after the number (RV.DividerMark): the check
+  -- glyph in the words' ink from the moment it exists, hidden until chosen.
+  divider.Mark = T.Glyph(divider, "check", RV.DIVIDER_FOLD, "ARTWORK") or divider:CreateTexture(nil, "ARTWORK")
+  T.SetColor(divider.Mark, "textSecondary")
+  divider.Mark:Hide()
+  divider.__mark = false
   divider:Hide()
   return divider
 end
@@ -13593,7 +13656,7 @@ function CT.Build(parent)
     -- A search shows it regardless; a click then would flip it unseen. The
     -- arrange mode's list folds nothing either.
     if Searching(panel) or RV.Arranging(panel) then return end
-    RV.SetFolded(not RV.Folded(panel))
+    RV.SetFolded(not RV.Folded(panel), panel)
     CT.RefreshMailList(panel)
   end)
   panel.Divider = divider
@@ -13608,7 +13671,7 @@ function CT.Build(parent)
   pin:SetScript("OnClick", function()
     if RV.Arranging(panel) then return end
     if RV.Folded(panel) then
-      RV.SetFolded(false)
+      RV.SetFolded(false, panel)
       CT.RefreshMailList(panel)
     end
     local at = panel._dividerAt
