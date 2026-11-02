@@ -5068,8 +5068,10 @@ end
 -- band writes gold -- and, on a foot strip in the head strip's tone, the
 -- total over every one of them ("1 character" over one). On its right, in
 -- the inspector's column, the three ways into the windows the account
--- builds, one lifted tile each, centred between the head strip and the
--- card's foot: Mail Memory, Character Groups and Manage Recipients. A click
+-- builds, one lifted tile each, the first level with the list's first line
+-- and as much room under the last as over the first: Mail Memory,
+-- Character Groups and Manage Recipients, a hairline the card's height
+-- under the strip between them and the list. A click
 -- on a character opens that character's box in Mail Memory
 -- (MailMemory.OpenCharacter).
 --
@@ -5102,23 +5104,22 @@ do
   -- The strip, the columns' headings, the gap between two figures and the
   -- sentence's padding.
   local HEAD_H, COLS_H, GAP, MSG_PAD = GROUP_H, 18, 18, 8
-  -- The tiles' column: the inspector's drawings' own, three tiles TILE_GAP
-  -- apart, with at least TILES_PAD over and under them.
-  local TILE_GAP, TILES_PAD = 8, 10
-  local TILES_X = LIST_W + BODY_GAP + CTX_X
-  local TILES_H = 3 * TILE_H + 2 * TILE_GAP
   -- The lines the list shows: five.
   local LINES = 5
   -- The card less its lines: its edges, the strip, the headings and the
   -- foot strip.
   local FIXED = 1 + HEAD_H + COLS_H + ROW_H + 1
-  -- The card's one height (214): its five lines, and never shorter than
-  -- its tiles' column with its least room round it.
-  Dash.H = math.max(FIXED + LINES * ROW_H, 1 + HEAD_H + TILES_PAD + TILES_H + TILES_PAD + 1)
-  -- The tiles in the middle of the room between the strip's rule and the
-  -- card's foot, inside its edges: as much over them as under them (16 and
-  -- 16), on whole units, an odd unit going under.
-  local TILES_TOP = 1 + HEAD_H + math.floor((Dash.H - 2 - HEAD_H - TILES_H) / 2)
+  -- The card's one height (214): its five lines.
+  Dash.H = FIXED + LINES * ROW_H
+  -- The tiles' column, three of the inspector's tiles one over the other:
+  -- its top level with the first line's, under the strip and the headings,
+  -- so the room over it is the headings' (18), and as much again under it,
+  -- over the card's foot inside its edge. The gaps between the tiles have
+  -- what is left (6 on this card; the inspector's drawings keep their 8),
+  -- an odd unit going under.
+  local TILES_X = LIST_W + BODY_GAP + CTX_X
+  local TILES_TOP = 1 + HEAD_H + COLS_H
+  local TILE_GAP = math.floor((Dash.H - 1 - TILES_TOP - COLS_H - 3 * TILE_H) / 2)
   -- What the slim bar takes from the lines while it shows: its 6 and 4
   -- each side (Theme.SlimScrollBar).
   local GUTTER = 14
@@ -5357,11 +5358,13 @@ do
     if msg.Text.SetSpacing then msg.Text:SetSpacing(2) end
     msg:Hide()
 
-    -- The list's side and the tiles' apart: a hairline down between them,
-    -- as tall as the tiles' column and level with it.
+    -- The list's side and the tiles' apart: a hairline down between them
+    -- the whole height under the strip, from its rule to the card's foot
+    -- inside its edge. The list's slim bar stands left of it, in the list's
+    -- own area (Theme.SlimScrollBar).
     local split = lift:CreateTexture(nil, "BORDER")
-    split:SetSize(1, TILES_H)
-    split:SetPoint("TOPLEFT", card, "TOPLEFT", LIST_W + BODY_GAP / 2 - 1, -TILES_TOP)
+    split:SetSize(1, Dash.H - 2 - HEAD_H)
+    split:SetPoint("TOPLEFT", card, "TOPLEFT", LIST_W + BODY_GAP / 2 - 1, -(1 + HEAD_H))
     T.FillChrome(split, HAIR_A)
 
     -- The three ways in, one over the other, over the lift.
