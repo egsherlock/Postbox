@@ -97,12 +97,13 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   While the read mail is below the view, the bar waits at the foot of the
   list as a small tab saying what it says; scroll down to it, or click it,
   and it opens smoothly into the bar.
-- **Choose what the bar says, and its color:** Read, Nothing left,
-  Collected or a check mark, under Options, Mail, Bar says; the number
-  follows Show mail counts. The small button before it colors the bar:
-  Neutral, Accent, Class color, Blue, Violet or a color of your own, mixed
-  in lightly so the words stay easy to read. Read mail is now called
-  Finished mail there.
+- **Choose what the bar says, its icon and its color:** under Options,
+  Mail, Bar says is Read, Nothing left, Collected or Custom, your own words
+  typed in its box; the number follows Show mail counts. Bar icon puts a
+  check mark, a circled check, an open letter or an empty tray before them.
+  Bar color is Neutral, Accent, Class color, Blue, Violet or a color of your
+  own, mixed in lightly so the words stay easy to read. Read mail is now
+  called Finished mail there.
 - **Tooltips end with one gesture per line,** in smaller type than the mail's
   own details, so "Right-click to...", "Shift-click to..." and the rest no
   longer wrap into each other. The same in every Postbox tooltip: the Mail

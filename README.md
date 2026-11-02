@@ -33,7 +33,8 @@ One inbox. Mail that still holds something comes first; read mail with nothing
 left sits under a bar at the foot of the list: click it to fold it away, or
 delete it all at once. While it is out of view the bar waits as a small tab
 at the list's foot; scroll to it or click it and it opens. What the bar says
-and its color are yours to choose (**Bar says**). Read mail can go to a
+(your own words too), its icon and its color are yours to choose (**Bar
+says**, **Bar icon**, **Bar color**). Read mail can go to a
 **Done** tab instead, or be deleted the moment Postbox empties it (**Finished
 mail**: **Delete when done**).
 
