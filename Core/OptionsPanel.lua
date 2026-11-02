@@ -5548,7 +5548,8 @@ do
       local r = data.rows[i]
       local line = d.rows[i] or NewLine(i)
       line.realm, line.name, line.more = r.realm, r.name, false
-      line.nameText = (MM and MM.ClassName) and MM.ClassName(r.realm, r.name) or r.name
+      -- A sample's line (Panel.TryCard) brings its name already coloured.
+      line.nameText = r.shown or ((MM and MM.ClassName) and MM.ClassName(r.realm, r.name) or r.name)
       line.Mail:SetText(tostring(r.mails))
       line.Gold:SetText(Gold(r.gold))
       line.Soon:SetText(Soon(r.soonest, r.fate, r.amber, line.Soon, now))
@@ -5619,7 +5620,8 @@ do
     local d = S.dash
     if not (d and d.card:IsVisible()) then return end
     local MM = ns.MailMemory
-    local data = MM and type(MM.Dashboard) == "function" and MM.Dashboard() or nil
+    local data = Dash.sample
+    if not data then data = MM and type(MM.Dashboard) == "function" and MM.Dashboard() or nil end
     local UI, T = ns.MailboxUI, ns.Theme
     local gen = data and data.gen or 0
     local marks = UI and UI.GetOption and UI.GetOption("expiryMarks") or false
@@ -5631,6 +5633,86 @@ do
     if made.open ~= S.openGen then d.scroll:SetVerticalScroll(0) end
     made.gen, made.marks, made.ink, made.open = gen, marks, ink, S.openGen
     Fill(data)
+  end
+
+  -- `/postbox debug card <n>` (Postbox.lua): the card filled with n sample
+  -- characters, 0 to 25, for the session, so its scroll and its "+N more"
+  -- line can be seen on an account with few characters -- names in a few
+  -- class colours, mixed mail and gold, two short of time with their
+  -- expiry marks, Seen from minutes to weeks -- and General brought up on
+  -- it. 0, or a /reload, shows the real summary again. Never stored, and
+  -- made only when asked for: Dash.Paint reads Dash.sample in place of
+  -- MailMemory.Dashboard while it is set, its gen below zero so it never
+  -- matches the real one's. A sample's line opens nothing. Not in the help.
+  Dash.sample, Dash.sampleGen = false, 0
+  function Panel.TryCard(arg)
+    -- The most a sample has, and the most of them listed (MailMemory's
+    -- DASH_CAP): past it, the "+N more" line.
+    local MOST, CAP, HOUR = 25, 20, 3600
+    local n = tonumber(arg)
+    if not n or n < 0 or n > MOST or n ~= math.floor(n) then
+      ns.Print(L("DEBUG_CARD_HELP", 0, MOST))
+      return
+    end
+    if n == 0 then
+      Dash.sample = false
+      ns.Print(L["DEBUG_CARD_OFF"])
+    else
+      -- Name, class, mails, gold, Seen (hours ago), soonest (hours left)
+      -- and fate, in the order MailMemory lists them: the mail short of
+      -- time first, the soonest first, then the most recently seen.
+      local DAY = 24
+      local SPEC = {
+        { "Vaelith", "DEATHKNIGHT", 6, 1240.5, 26 * DAY, 5, "back" },
+        { "Corwick", "HUNTER", 2, 0, 9 * DAY, 19, "gone" },
+        { "Seraphine", "PRIEST", 3, 86.2, 0.07, 28 * DAY },
+        { "Brokk", "WARRIOR", 12, 0.5, 0.8, 21 * DAY },
+        { "Thalindra", "MAGE", 1, 15500, 3, 29 * DAY },
+        { "Nyssa", "ROGUE", 7, 0, 7, 17 * DAY },
+        { "Ozrik", "SHAMAN", 24, 312, 20, 12 * DAY },
+        { "Mirelle", "PALADIN", 4, 2.75, DAY, 26 * DAY },
+        { "Tyveth", "EVOKER", 2, 0, 2 * DAY, 9 * DAY },
+        { "Lunara", "DRUID", 48, 4820, 3 * DAY, 6 * DAY },
+        { "Grimsby", false, 1, 0, 4 * DAY, 25 * DAY },
+        { "Eshara", "MONK", 9, 47, 5 * DAY, 14 * DAY },
+        { "Dorn", "WARLOCK", 5, 0, 6 * DAY, 8 * DAY },
+        { "Ilyra", "DEMONHUNTER", 16, 1050, 8 * DAY, 11 * DAY },
+        { "Bramble", "DRUID", 3, 0.12, 9 * DAY, 18 * DAY },
+        { "Zekhar", "MAGE", 31, 0, 11 * DAY, 5 * DAY },
+        { "Fenna", "HUNTER", 2, 19, 12 * DAY, 15 * DAY },
+        { "Torvald", "WARRIOR", 8, 650, 14 * DAY, 7 * DAY },
+        { "Quillon", "PRIEST", 1, 0, 15 * DAY, 13 * DAY },
+        { "Saphra", "PALADIN", 11, 3.4, 17 * DAY, 4 * DAY },
+        { "Holt", false, 5, 0, 18 * DAY, 10 * DAY },
+        { "Ravenna", "WARLOCK", 1, 230, 20 * DAY, 6 * DAY },
+        { "Pemberly", "ROGUE", 14, 0, 21 * DAY, 8 * DAY },
+        { "Kestrin", "SHAMAN", 2, 77, 23 * DAY, 5 * DAY },
+        { "Oswin", "EVOKER", 6, 0, 24 * DAY, 4 * DAY },
+      }
+      local now = time()
+      local CS = ns.ContactService
+      local data = { gen = Dash.sampleGen - 1, enabled = true, recorded = true, n = n, listed = math.min(n, CAP),
+        rows = {}, mails = 0, gold = 0, soonest = nil, fate = nil, amber = false }
+      for i = 1, n do
+        local s = SPEC[i]
+        local soonest, amber = now + math.floor(s[6] * HOUR), s[7] ~= nil
+        data.rows[i] = { realm = false, name = s[1], mails = s[3], gold = math.floor(s[4] * 10000 + 0.5),
+          seenAt = now - math.floor(s[5] * HOUR), soonest = soonest, fate = s[7], amber = amber,
+          shown = (s[2] and CS and type(CS.WrapClass) == "function") and CS.WrapClass(s[2], s[1]) or s[1] }
+        data.mails, data.gold = data.mails + s[3], data.gold + data.rows[i].gold
+        if (amber and not data.amber) or (amber == data.amber and (not data.soonest or soonest < data.soonest)) then
+          data.soonest, data.fate, data.amber = soonest, s[7], amber
+        end
+      end
+      Dash.sampleGen, Dash.sample = data.gen, data
+      ns.Print(ns.Plural("DEBUG_CARD", n))
+    end
+    -- The list from its top, General brought up, and the card painted.
+    local d = S.dash
+    if d then d.scroll:SetVerticalScroll(0) end
+    Panel.SelectTab("general")
+    Panel.Open()
+    Dash.Paint()
   end
 end
 

@@ -2410,6 +2410,16 @@ SlashCmdList["POSTBOX"] = function(input)
     if UI and type(UI.TryDivider) == "function" then UI.TryDivider(divider) end
     return
   end
+  -- "debug card <n>": General's summary filled with n sample characters (0
+  -- to 25), to see it scroll and fold on an account with few; 0 shows the
+  -- real one again (OptionsPanel, Panel.TryCard). This session only; not in
+  -- the help.
+  local card = string.match(word, "^debug card ?(.*)$")
+  if card then
+    local panel = ns.OptionsPanel
+    if panel and type(panel.TryCard) == "function" then panel.TryCard(card) end
+    return
+  end
   local handler = COMMANDS[word]
   if handler then
     handler()
