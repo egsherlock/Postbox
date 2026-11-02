@@ -4641,6 +4641,11 @@ Theme.AtlasSets = {
 --   layout-mini  the layout mark drawn again seven units square, the eye's
 --     own height, with no keyline, for a caption on a button's plate: the
 --     options' Arrange, beside Test's eye.
+--   check, check-circle, letter-open, tray  the bar over finished mail's
+--     icons (Options, Mail, Bar icon; CollectTab's RV.BarText): the check
+--     mark, a check knocked out of a disc, an open letter, an empty tray.
+--     Drawn on whole pixels and shown at their own size, so each is crisp
+--     at one pixel per unit.
 --
 -- Sharpness. The art is 2 texels per UI unit. A texel snapping bias above 0
 -- "sharpens": the renderer picks a texel instead of blending texels (the API
@@ -4688,6 +4693,9 @@ do
     ["expiry-back-clean"] = { file = MEDIA .. "glyph-expiry-back-clean.tga", w = 9, h = 9, l = 0.03125, r = 0.59375, t = 0.03125, b = 0.59375 },
     ["expiry-bin-clean"] = { file = MEDIA .. "glyph-expiry-bin-clean.tga", w = 9, h = 9, l = 0.03125, r = 0.59375, t = 0.03125, b = 0.59375 },
     ["layout-mini"] = { file = MEDIA .. "glyph-layout-mini.tga", w = 7, h = 7, l = 0.0625, r = 0.9375, t = 0.0625, b = 0.9375 },
+    ["check-circle"] = { file = MEDIA .. "glyph-check-circle.tga", w = 9, h = 9, l = 0.03125, r = 0.59375, t = 0.03125, b = 0.59375 },
+    ["letter-open"] = { file = MEDIA .. "glyph-letter-open.tga", w = 10, h = 9, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.59375 },
+    tray = { file = MEDIA .. "glyph-tray.tga", w = 11, h = 7, l = 0.03125, r = 0.71875, t = 0.0625, b = 0.9375 },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
   }
 
