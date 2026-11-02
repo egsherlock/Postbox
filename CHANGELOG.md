@@ -49,7 +49,8 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   them open.
 - **Every character's mail at a glance:** the options open on a new General
   tab, topped by a line per character as its box was last seen (mail, gold,
-  the soonest to expire with its arrow or bin) and a total. Mail about to
+  the soonest to expire with its arrow or bin), five at a time with the rest
+  a scroll away, and a total. Mail about to
   go back or be deleted comes first, even on an alt you haven't played in
   months; click a character to open its box in Mail Memory. Under the list
   are Mail Memory's settings, Expiring mail and New mail; the Mail Memory

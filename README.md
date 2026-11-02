@@ -158,7 +158,7 @@ a mail to see what it holds. A character you no longer play can be hidden
   the soonest to expire with its arrow or bin, and how long ago), with a
   total for all of them. Mail about to go back or be deleted comes first,
   even on an alt you haven't played in months, then the characters you
-  played most recently. Past seven lines the list scrolls inside the card;
+  played most recently. Past five lines the list scrolls inside the card;
   past twenty characters it ends in "+N more in Mail Memory". Click a
   character to open its box in Mail Memory. Beside the list, Mail Memory,
   Character Groups and Manage Recipients are a click away.
