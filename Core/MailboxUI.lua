@@ -228,7 +228,7 @@ local function ForgetSettings()
   memo.root, memo.profile = nil, nil
   memo.qIcon, memo.qName = nil, nil
   memo.layout, memo.slots = nil, nil
-  memo.packing, memo.divider = nil, nil
+  memo.packing, memo.divider, memo.words = nil, nil, nil
   memo.history, memo.age, memo.large = nil, nil, nil
   memo.grid, memo.gridText = nil, nil
 end
@@ -1024,8 +1024,13 @@ end
 -- dividerLook), so nothing stored is the hairline. Read on every bind that
 -- shows the divider, so remembered with the other row settings
 -- (ForgetSettings); a write draws the list again where it stands.
-local DIVIDER_LOOKS = { hairline = true, row = true }
+-- The notches (Core/DividerNotch.lua) are looks too, for trying in game:
+-- "stretch", "count", "scroll" and "drawer". `/postbox debug divider <look>`
+-- tries one for the session (UI.TryDivider), never stored; a choice in the
+-- options ends the trial.
+local DIVIDER_LOOKS = { hairline = true, row = true, stretch = true, count = true, scroll = true, drawer = true }
 function UI.GetDividerLook()
+  if UI.tryLook then return UI.tryLook end
   local memo = Settings()
   if memo.divider then return memo.divider end
   local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.dividerLook")
@@ -1036,9 +1041,57 @@ function UI.SetDividerLook(look)
   if look ~= nil and not DIVIDER_LOOKS[look] then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if profile then profile.dividerLook = (look ~= nil and look ~= "hairline") and look or nil end
+  UI.tryLook = nil
   ForgetSettings()
   local panel, collect = CollectPanel(), ns.CollectTab
   if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
+end
+
+-- What the divider says (CollectTab, RV.WORDS), in every look: "full",
+-- "Read, nothing left" (the default); "collected"; "nothing", "Nothing
+-- left"; "read"; or "count", the number alone with the words in its
+-- tooltip. Stored only when it is not the default (profile.dividerWords);
+-- remembered as the look is.
+UI.DIVIDER_WORDS = { full = true, collected = true, nothing = true, read = true, count = true }
+function UI.GetDividerWords()
+  if UI.tryWords then return UI.tryWords end
+  local memo = Settings()
+  if memo.words then return memo.words end
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.dividerWords")
+  memo.words = UI.DIVIDER_WORDS[stored] and stored or "full"
+  return memo.words
+end
+function UI.SetDividerWords(words)
+  if words ~= nil and not UI.DIVIDER_WORDS[words] then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.dividerWords = (words ~= nil and words ~= "full") and words or nil end
+  UI.tryWords = nil
+  ForgetSettings()
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
+end
+
+-- `/postbox debug divider [look]` and `... divider words [choice]`: a look
+-- or a choice of words for this session only, never stored, drawn at once
+-- where the list stands; either way it says in chat what stands. Not in
+-- the help.
+function UI.TryDivider(arg)
+  local L = ns.L
+  local words = string.match(arg or "", "^words ?(.*)$")
+  if words then
+    if UI.DIVIDER_WORDS[words] then UI.tryWords = words end
+  elseif DIVIDER_LOOKS[arg] then
+    UI.tryLook = arg
+  end
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
+  local Options = ns.OptionsPanel
+  if Options and type(Options.RefreshControls) == "function" then Options.RefreshControls() end
+  ns.Print(L("DEBUG_DIVIDER", UI.GetDividerLook(), UI.GetDividerWords()))
+  if arg == "" or (words and words ~= "" and not UI.DIVIDER_WORDS[words])
+      or (not words and arg ~= "" and not DIVIDER_LOOKS[arg]) then
+    ns.Print(L("DEBUG_DIVIDER_HELP", "hairline row stretch count scroll drawer", "full collected nothing read count"))
+  end
 end
 
 -- What resting the pointer on the item icon of a mail holding several items
@@ -4514,6 +4567,7 @@ function UI.DiagnoseOptions()
   Named("qualityName", UI.GetQualityName(), "off")
   Named("readMail", UI.GetReadMode(), "fold")
   Named("divider", UI.GetDividerLook(), "hairline")
+  Named("dividerWords", UI.GetDividerWords(), "full")
   Named("tabIndicator", UI.GetTabIndicator(), "dot")
   Named("historyDays", UI.GetHistoryDays(), "7")
   Named("afterSend", UI.GetAfterSendKeep(), "nothing")

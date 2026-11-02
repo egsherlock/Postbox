@@ -2342,8 +2342,27 @@ do
     c.done = L["VIEW_DONE"] .. " (1)"
     c.allText = L["CAT_ALL"] .. " (" .. c.all .. ")"
     c.divider = L("INBOX_READ_DIVIDER", 1)
+    c.wordsN, c.wordsP = {}, {}
     S.boxCounts = c
     return c
+  end
+
+  -- The drawing's divider's words, as Divider words has them (CollectTab,
+  -- RV.DividerText), for its one read mail: made once each, kept with the
+  -- counts.
+  function MW.DividerWords(st)
+    local words = st.words or "full"
+    local c = MW.Counts()
+    if words == "full" then return st.counts and c.divider or L["INBOX_READ_DIVIDER_PLAIN"] end
+    local keep = (st.counts or words == "count") and c.wordsN or c.wordsP
+    local text = keep[words]
+    if not text then
+      local CT = ns.CollectTab
+      local n = (st.counts or words == "count") and 1 or -1
+      text = CT and CT.DividerText and CT.DividerText(L, words, n) or L["INBOX_READ_DIVIDER_PLAIN"]
+      keep[words] = text
+    end
+    return text
   end
 
   -- The category buttons the window shows, in its order: the built-in six
@@ -2482,6 +2501,7 @@ do
     st.folded = get and get("readFolded") and true or false
     st.mode = UI and type(UI.GetReadMode) == "function" and UI.GetReadMode() or "fold"
     st.look = UI and type(UI.GetDividerLook) == "function" and UI.GetDividerLook() or "hairline"
+    st.words = UI and type(UI.GetDividerWords) == "function" and UI.GetDividerWords() or "full"
     st.packed = UI and type(UI.GetRowPacking) == "function" and UI.GetRowPacking() == "packed" or false
     local order = UI and type(UI.GetStackOrder) == "function" and UI.GetStackOrder() or nil
     st.order = type(order) == "table" and order or MW.STACK
@@ -2827,7 +2847,7 @@ do
     T.SetColor(d.Delete, "textSecondary")
     T.SetColor(d.Label, "textSecondary")
     local room = win.rowW - textX - del - MW.MGAP - MW.ROW_END
-    T.FitText(d.Label, math.max(1, room), st.counts and MW.Counts().divider or L["INBOX_READ_DIVIDER_PLAIN"])
+    T.FitText(d.Label, math.max(1, room), MW.DividerWords(st))
     if not full then
       local from = textX + TextW(d.Label) + MW.MGAP
       MW.At(d.Rule, "TOPLEFT", d, from, -math.floor(rowH / 2))
@@ -5054,6 +5074,7 @@ function State.DividerLook()
   if not cell then return end
   local mode = UI and type(UI.GetReadMode) == "function" and UI.GetReadMode() or "fold"
   Rows.SetEnabled(cell, mode == "fold")
+  if S.dividerWordsCell then Rows.SetEnabled(S.dividerWordsCell, mode == "fold") end
 end
 
 -- Row layout stays live with Larger mail rows on: History, Mail Memory and
@@ -5519,6 +5540,12 @@ function Pages.mail(col)
     items = {
       { id = "hairline", name = L["OPT_DIVIDER_HAIRLINE"] },
       { id = "row",      name = L["OPT_DIVIDER_ROW"] },
+      -- The notches (Core/DividerNotch.lua), for trying in game; the
+      -- drawing shows each open, as Hairline.
+      { id = "stretch",  name = L["OPT_DIVIDER_STRETCH"] },
+      { id = "count",    name = L["OPT_DIVIDER_COUNT"] },
+      { id = "scroll",   name = L["OPT_DIVIDER_SCROLL"] },
+      { id = "drawer",   name = L["OPT_DIVIDER_DRAWER"] },
     },
     get = function() return ns.MailboxUI.GetDividerLook and ns.MailboxUI.GetDividerLook() or "hairline" end,
     set = function(id)
@@ -5529,6 +5556,27 @@ function Pages.mail(col)
   Rows.Why(look, "OPT_DIVIDER_WHY")
   Shown(look.entry, "divider")
   S.dividerCell = look
+  -- What the divider says, in every look: the words it says today, three
+  -- shorter, or the number alone with the words in its tooltip. Grey as
+  -- Divider is.
+  local words = Rows.Dropdown(col, {
+    title = L["OPT_DIVIDER_WORDS_TITLE"], text = L["OPT_DIVIDER_WORDS_DESC"],
+    items = {
+      { id = "full",      name = L["INBOX_READ_DIVIDER_PLAIN"] },
+      { id = "collected", name = L["INBOX_DIVIDER_COLLECTED_PLAIN"] },
+      { id = "nothing",   name = L["INBOX_DIVIDER_EMPTY_PLAIN"] },
+      { id = "read",      name = L["INBOX_DIVIDER_READ_PLAIN"] },
+      { id = "count",     name = L["OPT_DIVIDER_WORDS_COUNT"] },
+    },
+    get = function() return ns.MailboxUI.GetDividerWords and ns.MailboxUI.GetDividerWords() or "full" end,
+    set = function(id)
+      if ns.MailboxUI.SetDividerWords then ns.MailboxUI.SetDividerWords(id) end
+      Ctx.Repaint()
+    end,
+  })
+  Rows.Why(words, "OPT_DIVIDER_WHY")
+  Shown(words.entry, "divider")
+  S.dividerWordsCell = words
   -- How far back History goes, or Never, which turns it off (stored as 0),
   -- last: it clears what History kept on every character, so it is asked
   -- first, and until the answer the choice shows what it was. Cancel leaves

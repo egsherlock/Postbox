@@ -5101,6 +5101,7 @@ function CT.RepaintBoxCounts(panel)
   local divider, pin = panel.Divider, panel.DividerPin
   if divider and divider:IsShown() then RV.PaintDivider(panel, divider) end
   if pin and pin:IsShown() then RV.PaintDivider(panel, pin) end
+  if panel.Notch and ns.DividerNotch then ns.DividerNotch.Repaint(panel) end
   if AV.Other(panel) then AV.Paint(panel) end
 end
 
@@ -7137,7 +7138,63 @@ RV.DIVIDER_OPEN_SIGN = "\226\128\147"
 RV.LOOKS = {
   hairline = { size = "tiny" },
   row = { size = "normal" },
+  -- The notches (Core/DividerNotch.lua), for trying in game: while the read
+  -- mail is below the view, or folded, a small notch at the list's foot in
+  -- the pinned copy's place; open, Hairline itself, so its words are its size.
+  stretch = { size = "tiny", notch = true },
+  count = { size = "tiny", notch = true },
+  scroll = { size = "tiny", notch = true },
+  drawer = { size = "tiny", notch = true },
 }
+
+-- What the divider says (Options, Mail page: Divider words): each choice's
+-- words with the count and without; "count" is the number alone, the words
+-- in its tooltip, and shows it whatever Show mail counts says.
+RV.WORDS = {
+  full = { "INBOX_READ_DIVIDER", "INBOX_READ_DIVIDER_PLAIN" },
+  collected = { "INBOX_DIVIDER_COLLECTED", "INBOX_DIVIDER_COLLECTED_PLAIN" },
+  nothing = { "INBOX_DIVIDER_EMPTY", "INBOX_DIVIDER_EMPTY_PLAIN" },
+  read = { "INBOX_DIVIDER_READ", "INBOX_DIVIDER_READ_PLAIN" },
+}
+
+function RV.WordsOf()
+  local UI = ns.MailboxUI
+  local words = UI and type(UI.GetDividerWords) == "function" and UI.GetDividerWords() or "full"
+  return (words == "count" or RV.WORDS[words]) and words or "full"
+end
+
+-- words, the count shown (-1 for none) -> the divider's text. Made only when
+-- one of them changes (RV.PaintDivider keeps what it last wrote).
+function RV.DividerText(loc, words, n)
+  if words == "count" then return format("%d", max(0, n)) end
+  local keys = RV.WORDS[words] or RV.WORDS.full
+  if n >= 0 then return loc(keys[1], n) end
+  return loc[keys[2]]
+end
+
+-- The count the divider shows under `words`, or -1 for none.
+function RV.DividerCount(panel, words)
+  if words == "count" or ShowTabCounts() then return panel._readCount or 0 end
+  return -1
+end
+
+-- Count only's tooltip, on either copy: the words its number stands for.
+-- Nothing under any other choice, which says them already.
+function RV.WordsTip(self)
+  if RV.WordsOf() ~= "count" then return end
+  local panel = self.__panel
+  local T = Th()
+  T.TipBegin(self)
+  T.TipTitle(RV.DividerText(L(), "full", ShowTabCounts() and (panel and panel._readCount or 0) or -1))
+  GameTooltip:Show()
+  self.__tip = true
+end
+
+function RV.WordsTipOff(self)
+  if not self.__tip then return end
+  self.__tip = nil
+  GameTooltip:Hide()
+end
 
 -- The look chosen, or the default where nothing (or something unknown) is.
 function RV.LookOf()
@@ -7164,7 +7221,7 @@ function RV.DividerLook(divider, look)
     shared.BindFont(divider.Sign, "tiny")
   end
   divider.Delete:SetSize(max(T.TextWidth(divider.Delete.Text) + 8, 40), 18)
-  local hairline = look == "hairline"
+  local hairline = look == "hairline" or RV.LOOKS[look].notch == true
   divider.Fold:SetShown(not hairline)
   divider.Sign:SetShown(hairline)
   divider.Rule:SetShown(hairline)
@@ -7227,10 +7284,11 @@ function RV.PaintDivider(panel, divider)
   local look = RV.LookOf()
   if divider.__look ~= look then RV.DividerLook(divider, look) end
   local loc = L()
-  local n = ShowTabCounts() and (panel._readCount or 0) or -1
-  if divider.__n ~= n or divider.__loc ~= loc then
-    divider.__n, divider.__loc = n, loc
-    divider.Label:SetText(n >= 0 and loc("INBOX_READ_DIVIDER", n) or loc["INBOX_READ_DIVIDER_PLAIN"])
+  local words = RV.WordsOf()
+  local n = RV.DividerCount(panel, words)
+  if divider.__n ~= n or divider.__loc ~= loc or divider.__words ~= words then
+    divider.__n, divider.__loc, divider.__words = n, loc, words
+    divider.Label:SetText(RV.DividerText(loc, words, n))
   end
   local folded = RV.Folded(panel)
   if divider.__folded ~= folded then
@@ -7259,6 +7317,19 @@ function RV.UpdatePin(panel, offset, viewport, stride, height)
   local pin = panel.DividerPin
   if not pin then return false end
   local at = (panel.viewMode == VIEW_COLLECT) and panel._dividerAt or nil
+  -- A notch look (Core/DividerNotch.lua) stands at the foot in this copy's
+  -- place, and says whether the one in the list is to be drawn; any other
+  -- puts a notch still standing away.
+  local Notch = ns.DividerNotch
+  if Notch then
+    local look = RV.LookOf()
+    if RV.LOOKS[look].notch then
+      pin:Hide()
+      if pin.Foot then pin.Foot:Hide() end
+      return Notch.Update(panel, look, at, offset, viewport, stride, height)
+    end
+    if panel.Notch then Notch.Off(panel) end
+  end
   -- The foot fills the list's bottom margin under whichever copy of the
   -- divider is standing on the view's foot -- this pinned one, or the one in
   -- the list at its very end -- so the bar is one height either side of the
@@ -7303,6 +7374,14 @@ function RV.UpdatePin(panel, offset, viewport, stride, height)
   end
   return true
 end
+
+-- What Core/DividerNotch.lua reads of the divider: made once, at load.
+CT.DividerParts = {
+  Folded = RV.Folded, Arranging = RV.Arranging, Words = RV.WordsOf,
+  Text = RV.DividerText, Count = RV.DividerCount,
+  FOLD = RV.DIVIDER_FOLD, RULE_A = RV.DIVIDER_RULE_ALPHA, SIGN = RV.DIVIDER_OPEN_SIGN,
+}
+CT.DividerText = RV.DividerText
 
 -------------------------------------------------------------
 -- Mail rows :: the virtualiser
@@ -12482,6 +12561,10 @@ function RV.BuildDivider(panel, parent)
     Th().SetColor(self.Text, "textSecondary")
     GameTooltip:Hide()
   end)
+  -- Count only's words, in a tooltip (RV.WordsTip); nothing otherwise.
+  divider.__panel = panel
+  divider:SetScript("OnEnter", RV.WordsTip)
+  divider:SetScript("OnLeave", RV.WordsTipOff)
   divider:Hide()
   return divider
 end
