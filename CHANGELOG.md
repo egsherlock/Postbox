@@ -46,7 +46,10 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   to see your settings on sample mail without arranging: at a mailbox it
   fills the Mail tab, and anywhere else it opens the Postbox window beside
   the options. The button is lit while it is on.
-  None of it can be collected. Arranging from the options now leaves them
+  None of it can be collected, but it shows what your settings do: with
+  Read mail set to Delete when done there is no read mail and no divider,
+  and resting on an item icon lists its items or fans them out, as
+  Attachments on hover is set. Arranging from the options now leaves them
   open, and Done keeps the sample window up.
 - **Every character's mail at a glance:** the options open on a new General
   tab, topped by Across your characters: a line per character as its box
@@ -74,6 +77,8 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 
 ### Improved
 
+- **Reset to defaults opens downward:** its menu drops below the button,
+  and the arrow beside it turns to point down while the menu is open.
 - **The new-mail sound stays quiet for your own auction house purchases:**
   the game already tells you, and the minimap icon still flashes for them
   and counts them. Flash on new mail now sits beside the sound, under
@@ -113,7 +118,9 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 - Also: **/postbox debug** says which game it runs in and how that game
   writes character names, by their shape alone, so a pasted report never
   names anyone; Battle.net friends are suggested only from a game Blizzard
-  can deliver mail to.
+  can deliver mail to; Keep bag slots free's first choice reads Never
+  instead of None; and a button's words no longer grow when you point at
+  it.
 
 ### Fixed
 

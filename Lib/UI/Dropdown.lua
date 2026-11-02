@@ -637,7 +637,7 @@ function Dropdown.Create(parent, opts)
         else
           text:SetTextColor(0.6, 0.6, 0.6)
         end
-        head.Text, head._heading = text, true
+        head.Text, head._heading, head._textX = text, true, LIST_PADDING
         list._rows[#list._rows + 1] = head
       else
         local row = CreateFrame("Button", nil, rowParent)
@@ -708,7 +708,7 @@ function Dropdown.Create(parent, opts)
         row:SetScript("OnLeave", function()
           bg:SetColorTexture(0, 0, 0, 0)
         end)
-        row._item, row._text = item, text
+        row._item, row._text, row._textX = item, text, textOffset
         row:SetScript("OnClick", function()
           -- A choice its owner has set aside for now (item.off): drawn
           -- faint on each open, and a click on it changes nothing.
@@ -758,6 +758,27 @@ function Dropdown.Create(parent, opts)
     end
   end
 
+  -- The list's width that shows every item's words whole, in the face they
+  -- wear now: each row's words from where they start in it (`_textX`, the
+  -- dot's gutter and any art or colour before them) and a pad after, inside
+  -- the list's own padding, and the scroll bar's room where it scrolls.
+  -- Measured on each open; nothing is made.
+  local function ListNeed()
+    local rows = list._rows
+    if not rows then return 0 end
+    local widest = 0
+    for i = 1, #rows do
+      local row = rows[i]
+      local text = row._text or row.Text
+      if text then
+        local w = (row._textX or 0) + TextWidth(text) + LIST_PADDING
+        if w > widest then widest = w end
+      end
+    end
+    local right = list._scroll and (LIST_PADDING + SCROLLBAR_INSET + 4) or LIST_PADDING
+    return math.ceil(LIST_PADDING + widest + right)
+  end
+
   local function CloseList()
     if list and list:IsShown() then list:Hide() end
     -- Unconditional: hiding the owning window fires OnHide on its children too,
@@ -785,8 +806,11 @@ function Dropdown.Create(parent, opts)
     local level = base + LIST_LEVEL_OFFSET
 
     -- Never narrower than the toggle it hangs from: a toggle widened for its
-    -- widest value (FitWidth) takes its list with it.
-    local width = math.max(listWidth, toggle:GetWidth() or 0)
+    -- widest value (FitWidth) takes its list with it. And never narrower
+    -- than its widest item as it measures now (ListNeed): a select kept at
+    -- its column's width (the options' dropdowns) cuts a long value short
+    -- on the toggle, never in its list, which opens wider instead.
+    local width = math.max(listWidth, toggle:GetWidth() or 0, ListNeed())
     if list:GetWidth() ~= width then list:SetWidth(width) end
     list:SetFrameLevel(level)
     PlaceList()
@@ -913,10 +937,10 @@ end
 -- rows, wash and type, no selection dot -- that closes on a pick, on a press
 -- anywhere else, or with its window. items: { id, name } each; opts:
 -- onPick(id), onEnter(row, item) and onLeave(row, item) for a row's tooltip,
--- onClose() however it closed, minWidth. Built on first open; each open fits
--- it to its captions as they
--- measure now and puts it over the button where there is room, else under
--- it. -> the menu: :Toggle(), :Close(), :IsShown().
+-- onOpen() each time it opens, onClose() however it closed, minWidth. Built
+-- on first open; each open fits it to its captions as they measure now and
+-- puts it under the button, over it only where the screen has no room
+-- under it. -> the menu: :Toggle(), :Close(), :IsShown().
 function Dropdown.Menu(owner, items, opts)
   opts = type(opts) == "table" and opts or {}
   items = type(items) == "table" and items or {}
@@ -985,8 +1009,11 @@ function Dropdown.Menu(owner, items, opts)
     if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, owner) end
   end
 
-  -- As wide as its widest caption in the face it wears now, and over the
-  -- button, left edges lined up, where the screen has the room.
+  -- As wide as its widest caption in the face it wears now, and under the
+  -- button, left edges lined up, as the selects' lists open (PlaceList);
+  -- over it only where the room under it is too short for the menu and the
+  -- room over it is longer (a button near the foot of the screen). Kept on
+  -- the screen whatever else.
   local function Place()
     local widest = 0
     for i = 1, #rows do
@@ -997,12 +1024,12 @@ function Dropdown.Menu(owner, items, opts)
     list:SetWidth(width)
     local height = list:GetHeight() or 0
     local bottom, top = owner:GetBottom(), owner:GetTop()
-    local up = true
+    local up = false
     if bottom and top and UIParent then
       local own = owner:GetEffectiveScale() or 1
       local screenTop = (UIParent:GetTop() or 0) * (UIParent:GetEffectiveScale() or 1) / own
       local above, below = screenTop - top - LIST_GAP, bottom - LIST_GAP
-      up = above >= height or above > below
+      up = below < height and above > below
     end
     list:ClearAllPoints()
     if up then
@@ -1031,6 +1058,7 @@ function Dropdown.Menu(owner, items, opts)
     list:Show()
     list:Raise()
     Watch()
+    if opts.onOpen then opts.onOpen() end
   end
 
   return menu

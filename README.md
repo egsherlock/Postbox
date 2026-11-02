@@ -117,7 +117,10 @@ too):
 One-line rows (shared with Mail Memory), Larger mail rows and History each
 keep their own arrangement. **Test mail** fills the list with sample mail
 while you arrange, or on its own from **Test**, beside **Arrange** in
-Options, Mail, which is lit while it is on; **Arrange**
+Options, Mail, which is lit while it is on. The samples show what your
+settings do: under **Delete when done** there is no read mail and no
+divider, and resting on an item icon lists its items or fans them out, as
+**Attachments on hover** is set, though nothing can be taken. **Arrange**
 works away from a mailbox too, opening the window beside the options.
 
 ## Mail Memory
@@ -243,7 +246,7 @@ whatever opened them: right of the Postbox
 window from its cog, below Mail Memory from its cog (on General), left of the minimap
 from the icon. With **Dock beside game windows** on they stay beside that
 window as it moves or resizes, so you can watch a setting reshape it; drag
-them and they stay where you put them. **Reset to defaults** opens a menu: **Reset this tab**, **Reset
+them and they stay where you put them. **Reset to defaults** opens a menu below it: **Reset this tab**, **Reset
 settings** (your recipients, groups, Mail Memory and History are kept) or
 **Reset everything**, each saying what it clears before it asks. **What's
 new?** in the footer shows the last three releases.
