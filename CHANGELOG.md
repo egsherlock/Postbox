@@ -92,18 +92,21 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   is running out, and the totals band adds the C.O.D. still to pay on the
   mail listed.
 - **A quieter bar over read mail:** a little shorter than a row, on the
-  list's own background with a faint outline, its words centered ("Read 3",
+  list's own background with a faint outline, its words centered ("Done 3",
   the number a step dimmer) and Delete all dim until you point at it.
   While the read mail is below the view, the bar waits at the foot of the
   list as a small tab saying what it says; scroll down to it, or click it,
   and it opens smoothly into the bar.
-- **Choose what the bar says, its icon and its color:** under Options,
-  Mail, Bar says is Read, Nothing left, Collected or Custom, your own words
-  typed in its box; the number follows Show mail counts. Bar icon puts a
-  check mark, a circled check, an open letter or an empty tray before them.
-  Bar color is Neutral, Accent, Class color, Blue, Violet or a color of your
-  own, mixed in lightly so the words stay easy to read. Read mail is now
-  called Finished mail there.
+- **Choose how the bar looks, what it says, its icon and its color:** under
+  Options, Mail, Bar look keeps the small tab or brings back Hairline and
+  Full row. Bar says is Done (the same word as the Done tab), Nothing left,
+  Collected or Custom, your own words typed in its box, with a Count switch
+  beside it for the number. Bar icon puts a check mark, a circled check, an
+  open letter or an empty tray before them. Bar color is Neutral, Accent,
+  Class color, Blue, Violet or a color of your own, mixed in lightly so the
+  words stay easy to read. Read mail is now called Finished mail there.
+- **Test mail's notice fits the title bar:** "Sample mail." where the whole
+  notice won't fit, the rest when you point at it.
 - **Tooltips end with one gesture per line,** in smaller type than the mail's
   own details, so "Right-click to...", "Shift-click to..." and the rest no
   longer wrap into each other. The same in every Postbox tooltip: the Mail
