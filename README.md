@@ -23,7 +23,7 @@
 | **Send tab** | Names complete as you type, a line says what a send will do, gold always asks first, and more than twelve items go out in one press. |
 | **Minimap icon** | Optional: two dozen hand-painted styles, a count of what's waiting, and a marker for mail about to expire. |
 | **Looks** | Follows EllesmereUI or ElvUI, or wears the Postbox style (Dark or Light) or the Blizzard look. |
-| **Options** | Five tabs, and a panel that explains and previews whatever you point at. |
+| **Options** | Five tabs, General first with every character's mail at a glance, and a panel that explains and previews whatever you point at. |
 
 ## The Mail tab
 
@@ -132,15 +132,20 @@ any character's box right in the Mail tab (right-click it to come back to
 your own). **Search every character** looks through all of them at once.
 Every box says how long ago it was seen; it never pretends to be live. Hover
 a mail to see what it holds. A character you no longer play can be hidden
-(Options, Mail Memory, **Hidden characters**).
+(Options, General, **Hidden characters**).
 
 - **Arrivals are detected, not guessed:** the game's new-mail signal, the
   unread flag, and the auction house's own sold / expired / bought notices.
 - **Warnings** name any character with mail under three days (one for
   C.O.D.) from expiring,
   or with mail known to be on its way and no mailbox visit in over three
-  weeks: in chat at login (**Warn about other characters' mail**), in the
+  weeks: in chat at login (**Warn about other characters' mail**: about any
+  mail with gold or items, only mail that would be deleted, or off), in the
   minimap tooltip, and as the minimap icon's expiry marker.
+- **Across your characters,** at the top of the options' General tab, adds
+  it all up: mails waiting, how many characters have mail, the soonest to
+  expire and the gold waiting, over a line per character. Click one to open
+  its box in Mail Memory.
 
 ## Sending
 
@@ -192,9 +197,10 @@ icon steps aside.
   **Offset X** and **Offset Y**. On **Always** it stays on the map while the
   icon is hidden, the same size and in the same place; **Larger when alone**
   makes it bigger there.
-- **Count on icon** (this character or all), shadow, glow, pulse and
-  **Flash on new mail**, with a **Glow color** of gold, your accent, your
-  class color, white or any color you pick.
+- **Count on icon** (this character or all), shadow, glow and pulse, with a
+  **Glow color** of gold, your accent, your class color, white or any color
+  you pick. **Flash on new mail** (Options, General, with the sound) swells
+  a halo in that color when mail arrives.
 - **The Minimap tab** reads in five groups (When it shows, Icon, Glow,
   Expiring mail, Place). Its preview draws the icon large beside a copy at
   its real size, wearing every setting; settings with choices show them
@@ -212,10 +218,16 @@ icon steps aside.
   <img src="docs/screenshots/options.png" width="520" alt="The options" />
 </p>
 
-Five tabs (Mail tab, Send tab, Window, Minimap, Mail Memory), one column of
+Five tabs (General, Mail tab, Send tab, Window, Minimap), one column of
 settings, and a panel beside it that explains whatever you point at and shows
-it. The options open beside whatever opened them: right of the Postbox
-window from its cog, below Mail Memory from its cog, left of the minimap
+it. **General** comes first: every character's mail at a glance, Mail
+Memory's settings, and the mail alerts: **Sound on new mail** (the mail
+chime or one of four other sounds from the game, with a button to hear it
+first; it stays quiet for your own auction house purchases, which the game
+already announces) and **Flash on new mail**. **Character Groups** and
+**Manage Recipients** open from beside them. The options open beside
+whatever opened them: right of the Postbox
+window from its cog, below Mail Memory from its cog (on General), left of the minimap
 from the icon. With **Dock beside game windows** on they stay beside that
 window as it moves or resizes, so you can watch a setting reshape it; drag
 them and they stay where you put them. **Reset to defaults** opens a menu: **Reset this tab**, **Reset

@@ -146,9 +146,9 @@ local OPTION_DEFAULTS = {
   -- idle when unused, and a feature nobody can find switched off does not
   -- exist.
   mailMemory      = true,
-  -- One chat line at login when another character's mail is close to being
-  -- lost (Core/MailMemory, section 2b). On: that is the mail people lose.
-  mailWarnings    = true,
+  -- (mailWarnings, the one chat line at login about another character's
+  -- mail, is now one of three answers: UI.GetMemoryWarn, which reads it once
+  -- to carry an old profile over.)
   -- The read mail folded away under its divider, by a click on it, and kept
   -- so between visits (Core/CollectTab.lua, RV.Folded). Off: it is simply
   -- the rest of the list, and the scroll bar is the whole list.
@@ -1159,6 +1159,30 @@ function UI.SetAfterSendKeep(mode)
   if not profile then return end
   profile.afterSendKeep = AFTER_SEND_KEEP[mode] and mode or nil
   profile.keepRecipient = nil
+end
+
+-- The line in chat at login about another character's mail (Core/
+-- MailMemory.lua, MM.OtherWarnings): "any" (the default: mail short of
+-- time, or long unopened, as the switch always warned of), "deleted" (only
+-- mail the server would delete holding gold or items), or "off". Stored only
+-- when it is not "any". The old switch, profile.mailWarnings, reads as "off"
+-- when it was turned off, until a choice is made here, which is when it is
+-- dropped. Read once per login, so no memo.
+local MEMORY_WARN = { off = true, deleted = true, any = true }
+function UI.GetMemoryWarn()
+  local profile = ns.Store and ns.Store.Get and ns.Store.Get("profile")
+  if type(profile) ~= "table" then return "any" end
+  local stored = profile.memoryWarn
+  if MEMORY_WARN[stored] then return stored end
+  if stored == nil and profile.mailWarnings == false then return "off" end
+  return "any"
+end
+function UI.SetMemoryWarn(mode)
+  if not MEMORY_WARN[mode] then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if not profile then return end
+  profile.memoryWarn = (mode ~= "any") and mode or nil
+  profile.mailWarnings = nil
 end
 
 -- How many general bag slots a collect run leaves free: 0 (the default,

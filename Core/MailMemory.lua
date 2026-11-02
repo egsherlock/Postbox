@@ -651,6 +651,7 @@ local function Status(realm, name, now)
   -- set below, or there, when they apply.
   local st = { realm = realm, name = name, waiting = 0, seenAt = snap and snap.seenAt or nil,
     soon = nil, soonest = nil, pending = 0, unseenDays = nil, warn = false,
+    gone = nil, goneSoonest = nil, goneText = nil,
     me = nil, hidden = nil, label = nil, text = nil }
   local mails = snap and snap.mails or {}
   -- Soon by the rows' own rule (the Mail tab's RV.ShortDays, its amber):
@@ -668,6 +669,14 @@ local function Status(realm, name, now)
       if left > 0 and left < soon then
         st.soon = (st.soon or 0) + 1
         if not st.soonest or mail.expires < st.soonest then st.soonest = mail.expires end
+        -- Of those, the ones the server deletes rather than sends back,
+        -- still holding gold or items (the bin, the rows' expiry mark): what
+        -- the warning's "Mail that would be deleted" speaks of. A record
+        -- that could not say (`back` nil) is not counted.
+        if mail.back == false and ((mail.money or 0) > 0 or (mail.items or 0) > 0) then
+          st.gone = (st.gone or 0) + 1
+          if not st.goneSoonest or mail.expires < st.goneSoonest then st.goneSoonest = mail.expires end
+        end
       end
     end
   end
@@ -800,6 +809,7 @@ function MM.Characters()
     st.hidden = (not st.me) and InHiddenSet(hidden, st.realm, st.name)
     st.label = CharacterLabel(st.realm, st.name, myRealm)
     st.text = WarningText(st, now)
+    if st.gone then st.goneText = ns.Plural("OVERVIEW_EXPIRE", st.gone, (ExpiryText(st.goneSoonest, now))) end
   end
   memo.list, memo.gen, memo.minute = list, charactersGen, minute
   memo.memory, memo.watches, memo.hiddenRoot = memory, watches, hiddenRoot
@@ -807,18 +817,145 @@ function MM.Characters()
   return list
 end
 
--- The other characters with something to say, for the minimap tooltip and
--- the login line. Empty when memory is off. A hidden character says nothing:
--- the player hid it, most often an alt that was deleted or moved, and a
--- warning about it could only nag.
-function MM.OtherWarnings()
+-- The other characters with something to say, for the login line. Empty
+-- when memory is off. A hidden character says nothing: the player hid it,
+-- most often an alt that was deleted or moved, and a warning about it could
+-- only nag. `mode`, the warning's choice (MailboxUI.GetMemoryWarn): "any"
+-- (or nil), every character with mail short of time or long unopened;
+-- "deleted", only those with short mail the server would delete holding gold
+-- or items (`gone`; its words are `goneText`).
+function MM.OtherWarnings(mode)
   local out = {}
-  if not MemoryEnabled() then return out end
+  if not MemoryEnabled() or mode == "off" then return out end
   local all = MM.Characters()
   for i = 1, #all do
-    if all[i].warn and not all[i].me and not all[i].hidden then out[#out + 1] = all[i] end
+    local st = all[i]
+    local says = st.warn
+    if mode == "deleted" then says = st.gone ~= nil end
+    if says and not st.me and not st.hidden then out[#out + 1] = st end
   end
   return out
+end
+
+-- The options' summary (OptionsPanel, the General tab's "Across your
+-- characters"): each character's box as it was last seen, added up. Only
+-- what MM.Characters already reads, and one more walk of each box with mail
+-- for what it does not keep: the gold waiting, and the soonest mail with its
+-- fate. Read by the panel only while its General tab is shown, and made
+-- again only when the list it is made from is (a write, the minute turning:
+-- MM.Characters' own rule) or Mail Memory is switched; otherwise the same
+-- tables come back untouched, and `gen` says when they changed. The row
+-- tables are kept and refilled, never let go.
+--
+--   enabled   Mail Memory on
+--   recorded  some character's box has been seen
+--   n         rows filled: the characters with mail waiting, the hidden left
+--             out, the most pressing first (mail short of time, then the
+--             most mail, then by name)
+--   mails, gold, soonest, fate, amber   the totals, and the soonest mail
+--             (its expiry time, "back" / "gone" / nil, short of time)
+-- Each row: realm, name, mails, gold (copper), seenAt and the same three
+-- for its own soonest mail.
+local dash = { gen = 0, rows = {}, n = 0, from = false, enabled = false, recorded = false,
+  mails = 0, gold = 0, soonest = nil, fate = nil, amber = false }
+
+local function DashOrder(a, b)
+  if a.amber ~= b.amber then return a.amber end
+  if a.mails ~= b.mails then return a.mails > b.mails end
+  if a.name ~= b.name then return a.name < b.name end
+  return a.realm < b.realm
+end
+
+function MM.Dashboard()
+  local enabled = MemoryEnabled() and true or false
+  local all = MM.Characters()
+  if dash.from == all and dash.enabled == enabled then return dash end
+  dash.from, dash.enabled, dash.gen = all, enabled, dash.gen + 1
+  local now = time()
+  local CT = ns.CollectTab
+  local shortDays = CT and CT.RowRules and CT.RowRules.ShortDays
+  local rows, n = dash.rows, 0
+  dash.recorded, dash.mails, dash.gold = false, 0, 0
+  dash.soonest, dash.fate, dash.amber = nil, nil, false
+  for i = 1, #all do
+    local st = all[i]
+    if st.seenAt then dash.recorded = true end
+    if not st.hidden and st.waiting > 0 then
+      local mails = (SnapshotFor(st.realm, st.name) or {}).mails or {}
+      local gold, soonest, fate, amber = 0, nil, nil, false
+      for j = 1, #mails do
+        local mail = mails[j]
+        if Holds(mail, now) then
+          gold = gold + (tonumber(mail.money) or 0)
+          local at = tonumber(mail.expires) or 0
+          local cod = (tonumber(mail.cod) or 0) > 0
+          local short = shortDays and shortDays(cod) * DAY or (cod and DAY or SOON)
+          local isShort = at > now and at - now < short
+          -- The short mail first, then the soonest: the row's amber is the
+          -- list's own, and a mail that is not short never outranks one that is.
+          if at > 0 and ((isShort and not amber) or (isShort == amber and (not soonest or at < soonest))) then
+            soonest, amber = at, isShort
+            fate = nil
+            if mail.back ~= nil and ((mail.money or 0) > 0 or (mail.items or 0) > 0) then
+              fate = mail.back and "back" or "gone"
+            end
+          end
+        end
+      end
+      n = n + 1
+      local row = rows[n]
+      if not row then
+        row = { realm = "", name = "", mails = 0, gold = 0, seenAt = nil, soonest = nil, fate = nil, amber = false }
+        rows[n] = row
+      end
+      row.realm, row.name, row.mails, row.gold, row.seenAt = st.realm, st.name, st.waiting, gold, st.seenAt
+      row.soonest, row.fate, row.amber = soonest, fate, amber
+      dash.mails, dash.gold = dash.mails + st.waiting, dash.gold + gold
+      if soonest and ((amber and not dash.amber) or (amber == dash.amber and (not dash.soonest or soonest < dash.soonest))) then
+        dash.soonest, dash.fate, dash.amber = soonest, fate, amber
+      end
+    end
+  end
+  -- The spare rows sort after every filled one (no mail, not short).
+  for i = n + 1, #rows do rows[i].mails, rows[i].amber = -1, false end
+  dash.n = n
+  if n > 1 then table.sort(rows, DashOrder) end
+  return dash
+end
+
+-- realm, name -> that character's box in Mail Memory: its window away from a
+-- mailbox, the Mail tab's own view of it at one; nil for this character's
+-- own (at a mailbox, the character list, as the minimap's way in has it).
+function MM.OpenCharacter(realm, name)
+  if not MemoryEnabled() then
+    ns.Print(L["MEMORY_OFF"])
+    return
+  end
+  local myRealm, myName = Me()
+  local mine = not realm or (realm == myRealm and name == myName)
+  local state = MailboxState()
+  if state and state.mailboxOpen then
+    local UI, CT = ns.MailboxUI, ns.CollectTab
+    if not mine and CT and type(CT.ShowCharacter) == "function" then
+      CT.ShowCharacter(realm, name)
+    elseif UI and type(UI.ShowCharacterPicker) == "function" then
+      UI.ShowCharacterPicker()
+    end
+    return
+  end
+  local frame = MM._frame
+  if not (frame and frame:IsShown()) then
+    MM.Toggle()
+    frame = MM._frame
+  end
+  if not (frame and frame:IsShown()) then return end
+  frame.viewing = (not mine) and { realm = realm, name = name } or nil
+  frame.searchAll = false
+  if frame.SearchAllButton then frame.SearchAllButton.Paint() end
+  if frame.SearchBox then frame.SearchBox:SetText("") end
+  if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
+  MM.Refresh()
+  frame:Raise()
 end
 
 -- realm, name, hidden -> the character hidden from the lists of other
@@ -3764,9 +3901,10 @@ end
 -- loudly announced to the buyer, and a completed purchase IS mail in
 -- transit. Witnessed cause, honest badge.
 local function OnPurchaseCompleted()
-  -- The alert first: it does not depend on the memory.
+  -- The alert first: it does not depend on the memory. Your own purchase:
+  -- the icon flashes and counts it, the sound stays quiet (MB.NotifyArrival).
   local Icon = ns.MinimapButton
-  if Icon and type(Icon.NotifyArrival) == "function" then Icon.NotifyArrival() end
+  if Icon and type(Icon.NotifyArrival) == "function" then Icon.NotifyArrival("purchase") end
   if not MemoryEnabled() then return end
   NoteArrival(Me())
   local snap = StoredSnapshot()
@@ -3900,12 +4038,14 @@ if bus then
       end
 
       local UI = ns.MailboxUI
-      if UI and type(UI.GetOption) == "function" and not UI.GetOption("mailWarnings") then return end
-      local others = MM.OtherWarnings()
+      local mode = UI and type(UI.GetMemoryWarn) == "function" and UI.GetMemoryWarn() or "any"
+      if mode == "off" then return end
+      local others = MM.OtherWarnings(mode)
       if #others == 0 then return end
       local parts = {}
       for i = 1, #others do
-        parts[#parts + 1] = others[i].label .. " (" .. others[i].text .. ")"
+        local text = (mode == "deleted") and others[i].goneText or others[i].text
+        parts[#parts + 1] = others[i].label .. " (" .. text .. ")"
       end
       ns.Print(L("OVERVIEW_LOGIN", table.concat(parts, ", ")))
     end)
