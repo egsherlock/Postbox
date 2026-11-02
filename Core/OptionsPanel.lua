@@ -2320,9 +2320,10 @@ do
       end,
     },
   }
-  function MW.NewDivider(parent)
+  -- `island`: the Notch look's copy, the island (Core/DividerNotch.lua).
+  function MW.NewDivider(parent, island)
     local CT = ns.CollectTab
-    local d = CT and CT.BuildBar and CT.BuildBar(MW.barList, parent) or CreateFrame("Frame", nil, parent)
+    local d = CT and CT.BuildBar and CT.BuildBar(MW.barList, parent, island) or CreateFrame("Frame", nil, parent)
     d:EnableMouse(false)
     if d.Delete then d.Delete:EnableMouse(false) end
     -- Sized itself (MW.PaintDivider), not by the list it stands in.
@@ -2370,6 +2371,7 @@ do
     win.Rows = {}
     for i = 1, #MW.BOX + 1 do win.Rows[i] = MW.NewRow(clip) end
     win.Divider = MW.NewDivider(clip)
+    win.Island = MW.NewDivider(clip, true)
     win.Grid = CreateFrame("Frame", nil, win)
     win.Sweeps, win.gridCols = {}, {}
     for i = 1, #MW.BUILTIN do win.Sweeps[MW.BUILTIN[i]] = MW.NewSweep(win) end
@@ -2843,9 +2845,29 @@ do
     d:Show()
   end
 
+  -- The island at the list's foot as the window has it at rest (the Notch
+  -- look, Core/DividerNotch.lua): closed, in its room of the bar's slot,
+  -- `y` down the list, over the rows that pass under it.
+  function MW.PaintIsland(win, st, y, barH)
+    local d = win.Island
+    local P = ns.CollectTab and ns.CollectTab.BarParts
+    local DN = ns.DividerNotch
+    d:SetSize(win.rowW, barH)
+    MW.At(d, "TOPLEFT", win.Clip, 0, -y)
+    MW.barList._barSignX = MW.MDOT_X
+    if DN and d.Isle then DN.Levels(d, win.Clip:GetFrameLevel() + 3) end
+    if P and DN and d.Isle then
+      P.Paint(MW.barList, d, st.compact)
+      DN.Apply(d, 0, DN.FADE_K)
+      d.Delete:EnableMouse(false)
+    end
+    d:Show()
+  end
+
   -- The list: the rows that fit, from the top (the last cut by the list's
   -- foot); while read mail stays below the inbox, the rows that fit over
-  -- the bar and one read mail under it, the list ending on that mail, whole.
+  -- the bar and one read mail under it, the list ending on that mail, whole;
+  -- in the Notch look, the rows to the foot and the island over them there.
   -- The list's columns -- the sender's (its auctions'), the gold's, the
   -- slots' -- are as wide as the widest of the rows shown, as the window's
   -- are over its whole list.
@@ -2864,9 +2886,11 @@ do
     local band = CT and CT.BarParts and CT.BarParts.BarHeight(st.compact) or 18
     local barH = math.max(MW.Scaled(band), MW.Line("secondary") + 4)
     -- Hairline and Full row take a row's place, as in the window.
-    if CT and CT.BarParts and CT.BarParts.Look and CT.BarParts.Look() ~= "notch" then barH = rowH end
+    local notch = not (CT and CT.BarParts and CT.BarParts.Look and CT.BarParts.Look() ~= "notch")
+    if not notch then barH = rowH end
+    local island = fold and notch and win.Island ~= nil
     local shown
-    if fold then
+    if fold and not island then
       shown = math.max(0, math.min(n, math.floor((inner - barH - h.rowGap - rowH) / stride)))
     else
       shown = math.min(n, math.ceil((inner + h.rowGap) / stride))
@@ -2877,7 +2901,7 @@ do
     -- The columns, from the rows drawn.
     local rows = win.Rows
     local senderW, auctionW, moneyW, slotsW = 0, 0, 0, 0
-    for k = 1, shown + (fold and 1 or 0) do
+    for k = 1, shown + ((fold and not island) and 1 or 0) do
       local row = (k <= shown) and rows[k] or rows[n + 1]
       local m = (k <= shown) and MW.BOX[k] or MW.READ
       MW.RowTexts(row, m, two)
@@ -2911,12 +2935,21 @@ do
     end
     -- The last row the list shows whole, for the outlines.
     fit.last = fold and shown or math.min(shown, math.floor((inner + h.rowGap) / stride))
-    if fold then
+    if island then
+      -- The room is the bar's slot, a unit over and under the island.
+      local room = barH + 2
+      fit.last = math.min(shown, math.floor((inner - room + h.rowGap) / stride))
+      MW.PaintIsland(win, st, inner - room + 1, barH)
+      win.Divider:Hide()
+      rows[n + 1]:Hide()
+    elseif fold then
+      win.Island:Hide()
       local y = shown * stride
       MW.PaintDivider(win, st, y, barH, shown + 1)
       MW.PlaceRow(win, rows[n + 1], MW.READ, shown + 2, two, fit, true, y + barH + h.rowGap)
     else
       win.Divider:Hide()
+      win.Island:Hide()
       rows[n + 1]:Hide()
     end
     fit.letter = fold
@@ -3001,10 +3034,18 @@ do
       if st.mode == "tab" then
         t.a, t.b = win.Segs[2], win.Segs[2]
       elseif st.mode == "fold" then
-        t.a, t.b = win.Divider, rows[#MW.BOX + 1]
+        -- The island stands for the read mail below it, in the Notch look.
+        if win.Island:IsShown() then
+          t.a, t.b = win.Island, win.Island
+        else
+          t.a, t.b = win.Divider, rows[#MW.BOX + 1]
+        end
       end
     elseif part == "divider" then
-      if st.mode == "fold" then t.a, t.b = win.Divider, win.Divider end
+      if st.mode == "fold" then
+        local bar = win.Island:IsShown() and win.Island or win.Divider
+        t.a, t.b = bar, bar
+      end
     elseif part == "rows" then
       t.a, t.b = win.List, win.List
     elseif part == "figures" then
