@@ -2279,7 +2279,10 @@ end
 --   2. Still too long: whole parts go -- what was sent, the line's tail,
 --      first, then from the line's start -- so what it ends on, what stayed
 --      behind and why, is what stays.
---   3. One part left with no word to keep and wider than the room: the
+--   3. One part left, of more than one sentence: its first sentence, as
+--      Test mail's "Sample mail. None of it can be collected." gives way to
+--      "Sample mail." (". ", or the CJK full stop).
+--   4. One part left with no word to keep and wider than the room: the
 --      client cuts it at its end, as before. Measured in seven locales, the
 --      one that can be is "Stopped to keep N bag slots free", near the
 --      narrowest width in French and German (and in English and Spanish at
@@ -2312,6 +2315,8 @@ do
   local SF = StatusFit
   local JOIN, DOT = " \226\128\148 ", " \194\183 "
   local COLON, WIDE_COLON = ": ", "\239\188\154"
+  -- The CJK full stop, which ends a sentence with no space after it.
+  local FULL_STOP = "\227\128\130"
 
   -- "word: what" (or the CJK "word：what") -> the part with only its word,
   -- in the part's colour; nil for a part with no word to keep, or nothing
@@ -2389,6 +2394,19 @@ do
     while first < last do
       first = first + 1
       Add(Join(first, last))
+    end
+    -- 3. The part left, where it says more than one sentence: its first
+    -- (Test mail's "Sample mail."), the sentence's stop kept. Plain words
+    -- only: a part with a colour or a link keeps its client cut.
+    local left = SF.cands[SF.n]
+    if not left:find("|", 1, true) then
+      local stop = left:find(". ", 1, true)
+      local wide = left:find(FULL_STOP, 1, true)
+      if wide and (not stop or wide < stop) then
+        Add(left:sub(1, wide + #FULL_STOP - 1))
+      elseif stop and stop < #left - 1 then
+        Add(left:sub(1, stop))
+      end
     end
     for i = count + 1, SF.m do parts[i], seps[i], SF.words[i], SF.cur[i] = nil, nil, nil, nil end
     SF.m = count
