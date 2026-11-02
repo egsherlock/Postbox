@@ -5094,14 +5094,12 @@ function CT.RefreshOthers(panel, home)
 end
 
 -- Frozen: Core/MailboxUI.lua calls this when Show mail counts changes: the
--- counts the segments and the buttons do not carry -- the read mail's
--- divider, where it stands, and another character's plate -- painted again.
+-- counts the segments and the buttons do not carry -- the read mail's bar,
+-- where it stands, and another character's plate -- painted again.
 function CT.RepaintBoxCounts(panel)
   if not panel then return end
-  local divider, pin = panel.Divider, panel.DividerPin
-  if divider and divider:IsShown() then RV.PaintDivider(panel, divider) end
-  if pin and pin:IsShown() then RV.PaintDivider(panel, pin) end
-  if panel.Notch and ns.DividerNotch then ns.DividerNotch.Repaint(panel) end
+  local divider, notch = panel.Divider, panel.Notch
+  if (divider and divider:IsShown()) or (notch and notch:IsShown()) then CT.RebindRows(panel) end
   if AV.Other(panel) then AV.Paint(panel) end
 end
 
@@ -7149,200 +7147,104 @@ function RV.SetFolded(folded, panel)
 end
 
 -------------------------------------------------------------
--- The divider's looks (Options, Mail page: Divider)
+-- The bar over the read mail (Options, Mail page: Finished mail, Bar says)
 --
--- Both take exactly a row's slot, in either row size, so the list keeps one
--- pitch: every row's place, the list's height, the scroll, the window
--- standing on whole rows, the arrange mode's boxes and the pinned copy's
--- hand-over are the rows' arithmetic and nothing else. Neither has a fill
--- of its own in its place: a box set into the list is what read as one.
---   hairline  the default: the sign and the words a size smaller from the
---             row's inset, a hairline through the middle from them to
---             Delete all, on the list's own ground, centred in the slot.
---   row       Full row: a row like the mails around it, in the stripe its
---             place gives it, the game's fold button in the icon's lane
---             and the words where the rows' names start.
--- A look is an entry here: what size its words are, and what it does on
--- each paint. Another is a third entry, and nothing else changes.
+-- One bar, a little shorter than a row: 18 tall in a 20-unit slot (26 in
+-- 28 with Larger mail rows), so it is never taken for a mail. It stands on
+-- a fill of the list's own ground (RV.BarRGB: the colour chosen, mixed a
+-- little into it), outlined by one faint hairline. Its words are centred,
+-- as a heading's: what Bar says chose, in the secondary text colour, the
+-- number of read mail a step dimmer after them while Show mail counts is
+-- on (or a check mark and the number). The fold sign stands at its left
+-- end on the read dot's column, and Delete all at its right, both dim;
+-- Delete all turns red under the pointer.
+--
+-- While its place is below the view the bar waits at the list's foot as
+-- its notch: the same fill, outline and words, as narrow as the words
+-- (Core/DividerNotch.lua). Reaching its place, or a click on the notch,
+-- opens it where it stands: the fill grows out of both sides to the list's
+-- edges, and the fold sign and Delete all fade in at its ends.
+--
+-- Because the slot is shorter than a row's pitch, every row under the bar
+-- stands `pitch - slot` units higher (the virtualiser's one extra term), and
+-- the list's end is padded by the same units of ground: the list is still
+-- whole rows tall, so its height, its scroll range and the window standing
+-- on whole rows are the rows' arithmetic as before.
 -------------------------------------------------------------
 
--- The fold mark's size, and how much of the list's colour the pinned copy
--- stands on: enough that a row passing under it does not read through.
-RV.DIVIDER_FOLD = 12
-RV.DIVIDER_GROUND_ALPHA = 0.95
--- The hairline's strength, as the mockup chose it.
-RV.DIVIDER_RULE_ALPHA = 0.22
--- The en dash Hairline writes while the read mail is open.
-RV.DIVIDER_OPEN_SIGN = "\226\128\147"
-
-RV.LOOKS = {
-  hairline = { size = "tiny" },
-  row = { size = "normal" },
-  -- The notches (Core/DividerNotch.lua), for trying in game: while the read
-  -- mail is below the view, or folded, a small notch at the list's foot in
-  -- the pinned copy's place; open, Hairline itself, so its words are its size.
-  stretch = { size = "tiny", notch = true },
-  count = { size = "tiny", notch = true },
+RV.BAR = {
+  -- The bar's height and its slot, one-line rows and Larger mail rows.
+  band = 18, slot = 20, bandL = 26, slotL = 28,
+  -- The fill's strength over the rows, and how much of the chosen colour
+  -- is mixed into the ground.
+  groundA = 0.95, mix = 0.15,
+  -- The outline's strength, of the chrome ink.
+  edgeA = 0.14,
+  -- From the words to the number; from the check mark to the number; the
+  -- check mark's size.
+  gap = 6, checkGap = 4, check = 8,
+  -- The notch's room each side of its words.
+  pad = 10,
+  -- How far the words stand above the bar's middle, of their size: their
+  -- lower-case letters' middle on its middle, level with the fold sign.
+  lift = 0.14,
+  -- Above the bar at the foot, a short fade of its fill over the row it
+  -- covers half of: each step's share of the fill, and its height.
+  fade = { 0.6, 0.3 }, fadeStep = 2,
+  -- The fold sign's canvas (Media/glyph-chevron is 32 square, its visible
+  -- part 14 x 24 from x 5, y 3), one-line rows and Larger.
+  sign = 12, signL = 13,
 }
+-- The sign's art, cropped to its visible part, pointing right (folded) and
+-- turned a quarter clockwise to point down (open): the eight corners of
+-- SetTexCoord, so it turns about its own middle.
+RV.SIGN_FILE = "Interface\\AddOns\\Postbox\\Media\\glyph-chevron"
+RV.SIGN_SHUT = { 5 / 32, 3 / 32, 5 / 32, 27 / 32, 19 / 32, 3 / 32, 19 / 32, 27 / 32 }
+RV.SIGN_OPEN = { 5 / 32, 27 / 32, 19 / 32, 27 / 32, 5 / 32, 3 / 32, 19 / 32, 3 / 32 }
 
--- What the divider says (Options, Mail page: Divider words): each choice's
--- words with the count and without. "count" is the number alone, the words
--- in its tooltip, and shows it whatever Show mail counts says; "check" is
--- Count only with a check mark after the number (RV.DividerMark).
+-- What Bar says: each choice's words. "check" is the check mark, no words.
 RV.WORDS = {
-  full = { "INBOX_READ_DIVIDER", "INBOX_READ_DIVIDER_PLAIN" },
-  collected = { "INBOX_DIVIDER_COLLECTED", "INBOX_DIVIDER_COLLECTED_PLAIN" },
-  nothing = { "INBOX_DIVIDER_EMPTY", "INBOX_DIVIDER_EMPTY_PLAIN" },
-  read = { "INBOX_DIVIDER_READ", "INBOX_DIVIDER_READ_PLAIN" },
+  read = "INBOX_DIVIDER_READ_PLAIN",
+  nothing = "INBOX_DIVIDER_EMPTY_PLAIN",
+  collected = "INBOX_DIVIDER_COLLECTED_PLAIN",
 }
-RV.NUMBER_ONLY = { count = true, check = true }
+
+-- The bar's size: Small capitals (`/postbox debug divider caps`) or the
+-- quiet words, each in the one-line rows' and the larger rows' size. The
+-- words' size, and Delete all's.
+RV.BAR_FONTS = {
+  quiet = { "normal", "small", "medium", "normal" },
+  caps = { "tiny", "tiny", "small", "small" },
+}
+
+-- The bar's height, and its slot, in this row size.
+function RV.BarHeight(compact)
+  return compact and RV.BAR.band or RV.BAR.bandL
+end
+function RV.BarSlotOf(compact)
+  return compact and RV.BAR.slot or RV.BAR.slotL
+end
 
 function RV.WordsOf()
   local UI = ns.MailboxUI
-  local words = UI and type(UI.GetDividerWords) == "function" and UI.GetDividerWords() or "full"
-  return (RV.NUMBER_ONLY[words] or RV.WORDS[words]) and words or "full"
+  local words = UI and type(UI.GetDividerWords) == "function" and UI.GetDividerWords() or "read"
+  return (RV.WORDS[words] or words == "check") and words or "read"
 end
 
--- words, the count shown (-1 for none) -> the divider's text. Made only when
--- one of them changes (RV.PaintDivider keeps what it last wrote).
-function RV.DividerText(loc, words, n)
-  if RV.NUMBER_ONLY[words] then return format("%d", max(0, n)) end
-  local keys = RV.WORDS[words] or RV.WORDS.full
-  if n >= 0 then return loc(keys[1], n) end
-  return loc[keys[2]]
+function RV.StyleOf()
+  local UI = ns.MailboxUI
+  return UI and type(UI.GetDividerStyle) == "function" and UI.GetDividerStyle() or "quiet"
 end
 
--- The count the divider shows under `words`, or -1 for none.
-function RV.DividerCount(panel, words)
-  if RV.NUMBER_ONLY[words] or ShowTabCounts() then return panel._readCount or 0 end
+-- The number the bar shows, or -1 for none: the read mail it heads, while
+-- Show mail counts is on, as every box count follows it.
+function RV.BarCount(panel)
+  if ShowTabCounts() then return panel._readCount or 0 end
   return -1
 end
 
--- The check mark Count and check draws after the number: the check glyph at
--- the digits' height (RV.MarkHeight) of the font it follows. -> its size.
-RV.DIVIDER_MARK_GAP = 3
-function RV.DividerMarkSize(fs)
-  local size
-  if fs and fs.GetFont then size = select(2, fs:GetFont()) end
-  return RV.MarkHeight(size)
-end
-
--- Count only's tooltip, on either copy: the words its number stands for.
--- Nothing under any other choice, which says them already.
-function RV.WordsTip(self)
-  if not RV.NUMBER_ONLY[RV.WordsOf()] then return end
-  local panel = self.__panel
-  local T = Th()
-  T.TipBegin(self)
-  T.TipTitle(RV.DividerText(L(), "full", ShowTabCounts() and (panel and panel._readCount or 0) or -1))
-  GameTooltip:Show()
-  self.__tip = true
-end
-
-function RV.WordsTipOff(self)
-  if not self.__tip then return end
-  self.__tip = nil
-  GameTooltip:Hide()
-end
-
--- The look chosen, or the default where nothing (or something unknown) is.
-function RV.LookOf()
-  local UI = ns.MailboxUI
-  local look = UI and type(UI.GetDividerLook) == "function" and UI.GetDividerLook() or "hairline"
-  return RV.LOOKS[look] and look or "hairline"
-end
-
--- A copy of the divider put into `look`: its words' size, which parts it
--- draws, where the fixed ones stand. Only when the look changes; a paint
--- does the rest (RV.PaintDivider).
-function RV.DividerLook(divider, look)
-  local T = Th()
-  local M = T.Metrics
-  divider.__look = look
-  local mark = divider.__mark
-  divider.__mark = false
-  -- The words' size: the role's font, or a step smaller (Lib/UI/Theme's
-  -- sized fonts, which follow the face and size the window's text is set
-  -- in). The sign is Hairline's alone and always its size.
-  local shared = T._sharedTheme
-  if shared and type(shared.BindFont) == "function" then
-    local size = RV.LOOKS[look].size
-    shared.BindFont(divider.Label, size)
-    shared.BindFont(divider.Delete.Text, size)
-    shared.BindFont(divider.Sign, "tiny")
-  end
-  divider.Delete:SetSize(max(T.TextWidth(divider.Delete.Text) + 8, 40), 18)
-  local hairline = look == "hairline" or RV.LOOKS[look].notch == true
-  divider.Fold:SetShown(not hairline)
-  divider.Sign:SetShown(hairline)
-  divider.Rule:SetShown(hairline)
-  if hairline then
-    divider._bg:Hide()
-    RV.Anchor(divider, divider.Sign, 1, M.inset, 0)
-    RV.Anchor(divider, divider.Label, 1, M.inset + RV.DIVIDER_FOLD, 0)
-    -- Its top on the slot's middle, as the words are centred on it: whole
-    -- units in both row sizes (26 and 44 are even).
-    RV.AnchorRule(divider, 0)
-    local rule = divider.Rule
-    T.SetColor(rule, "textSecondary")
-    rule:SetAlpha(RV.DIVIDER_RULE_ALPHA)
-  end
-  -- Count and check's mark is placed again for the words' new size.
-  if mark then RV.DividerMark(divider, true) end
-  divider.__folded, divider.__n = nil, nil
-end
-
--- Hairline's rule, from the words (or Count and check's mark after them) to
--- Delete all; `cut` units short of Delete all (the notch's divider drawing
--- itself in, Core/DividerNotch.lua), 0 at rest.
-function RV.AnchorRule(divider, cut)
-  local M = Th().Metrics
-  local rule = divider.Rule
-  rule:ClearAllPoints()
-  rule:SetPoint("TOPLEFT", divider.__mark and divider.Mark or divider.Label, "RIGHT", M.gap, 0)
-  rule:SetPoint("TOPRIGHT", divider.Delete.Text, "LEFT", -M.gap - cut, 0)
-end
-
--- Count and check's mark after the number, or put away: sized to the words'
--- font, in their ink, and Hairline's rule starting after it. Only when the
--- words choice moves (RV.PaintDivider) or the look does (RV.DividerLook).
-function RV.DividerMark(divider, on)
-  divider.__mark = on
-  local mark = divider.Mark
-  if on then
-    local h = RV.DividerMarkSize(divider.Label)
-    mark:SetSize(h, h)
-    mark:ClearAllPoints()
-    mark:SetPoint("LEFT", divider.Label, "RIGHT", RV.DIVIDER_MARK_GAP, 0)
-  end
-  mark:SetShown(on)
-  if divider.Rule:IsShown() then RV.AnchorRule(divider, 0) end
-end
-
--- Where Full row's fold mark and words stand: the fold mark centred in the
--- icon's lane, the words where the rows' names start (their subjects',
--- with the names hidden), read off a row the pass just placed -- so they
--- follow the arrangement, the row size and the arrange mode's rooms as
--- the rows do. Kept on the panel for a pass that places no row. With no
--- icon before the subject, the fold mark takes the row's inset.
-function RV.DividerLanes(panel, row, compact)
-  local M = Th().Metrics
-  local fold = RV.DIVIDER_FOLD
-  local foldX = M.inset
-  local icon = row.Icon
-  if icon and icon:IsShown() and icon.__pbAt == 1 then
-    foldX = icon.__pbAtX + floor(((compact and ROW_ICON_COMPACT or ROW_ICON) - fold) / 2)
-  end
-  local text = row.Sender
-  if not (text and text:IsShown() and (text.__pbAt == 1 or text.__pbAt == 3)) then text = row.Subject end
-  local textX = (text and (text.__pbAt == 1 or text.__pbAt == 3)) and text.__pbAtX or 0
-  panel._divFoldX = foldX
-  panel._divTextX = max(textX, foldX + fold + 6)
-end
-
--- The list's own colour under a texture, nearly opaque: the colour the
--- list's container is painted in (whichever look painted it), else the
--- palette's surface.
+-- The list's own colour under a texture: the colour the list's container
+-- is painted in (whichever look painted it), else the palette's surface.
 function RV.GroundColor(panel)
   local area = panel.MailListArea
   local r, g, b
@@ -7354,121 +7256,231 @@ function RV.GroundColor(panel)
   return r, g, b
 end
 
-function RV.PaintGround(panel, texture)
+-- The bar's fill: the list's ground, with the colour chosen (Bar color)
+-- mixed a little into it -- Neutral is the ground itself. Arithmetic on
+-- numbers, nothing made.
+function RV.BarRGB(panel)
   local r, g, b = RV.GroundColor(panel)
-  texture:SetColorTexture(r, g, b, RV.DIVIDER_GROUND_ALPHA)
+  local UI = ns.MailboxUI
+  local cr, cg, cb
+  if UI and type(UI.DividerColorRGB) == "function" then cr, cg, cb = UI.DividerColorRGB() end
+  if type(cr) == "number" then
+    local k = RV.BAR.mix
+    r, g, b = r + (cr - r) * k, g + (cg - g) * k, b + (cb - b) * k
+  end
+  return r, g, b
 end
 
--- The divider's words and fold mark, for the one in the list and its pinned
--- copy, in the look chosen. Its count follows Show mail counts, as every
--- box count does. Called on every pass that shows it, so it sets only what
--- moved: no string is made while the list scrolls.
-function RV.PaintDivider(panel, divider)
-  local look = RV.LookOf()
-  if divider.__look ~= look then RV.DividerLook(divider, look) end
+-- The check mark's tooltip, on either copy: the words it stands for.
+-- Nothing under any other choice, which says them already.
+function RV.WordsTip(self)
+  if RV.WordsOf() ~= "check" then return end
+  local panel = self.__panel
+  local T = Th()
+  local n = panel and RV.BarCount(panel) or -1
+  T.TipBegin(self)
+  T.TipTitle(n >= 0 and L()("INBOX_DIVIDER_READ", n) or L()["INBOX_DIVIDER_READ_PLAIN"])
+  GameTooltip:Show()
+  self.__tip = true
+end
+
+function RV.WordsTipOff(self)
+  if not self.__tip then return end
+  self.__tip = nil
+  GameTooltip:Hide()
+end
+
+-- A copy of the bar put into a row size and a type (and the palette, for
+-- its inks): its words' and Delete all's sizes, how far each is lifted, the
+-- fold sign's size, the inks. Only when one of those moves.
+function RV.BarType(f, compact, style)
+  local T = Th()
+  local M = T.Metrics
+  local fonts = RV.BAR_FONTS[style] or RV.BAR_FONTS.quiet
+  local i = compact and 1 or 3
+  local shared = T._sharedTheme
+  if shared and type(shared.BindFont) == "function" then
+    shared.BindFont(f.Label, fonts[i])
+    shared.BindFont(f.Count, fonts[i])
+    shared.BindFont(f.Delete.Text, fonts[i + 1])
+  end
+  local _, size = f.Label:GetFont()
+  local _, deleteSize = f.Delete.Text:GetFont()
+  f.__lift = RV.BAR.lift * (tonumber(size) or 12)
+  f.__liftD = RV.BAR.lift * (tonumber(deleteSize) or 12)
+  f.__canvas = compact and RV.BAR.sign or RV.BAR.signL
+  T.SetColor(f.Label, "textSecondary")
+  T.SetColor(f.Count, "textDisabled")
+  T.SetColor(f.Mark, "textSecondary")
+  T.SetColor(f.Sign, "textDisabled")
+  T.SetColor(f.Delete.Text, f.Delete.__hot and "negative" or "textDisabled")
+  local edges = f.Edges
+  for k = 1, #edges do T.FillChrome(edges[k], RV.BAR.edgeA) end
+  local delete = f.Delete
+  delete:ClearAllPoints()
+  delete:SetPoint("RIGHT", f, "RIGHT", -M.inset, f.__liftD)
+  f.__folded = nil
+end
+
+-- The bar's words, number and check mark, centred as one: set only when
+-- what it says, the number, the language or the type moves -- a scroll
+-- makes no string. Also measures the notch's width around them.
+function RV.BarText(f, loc, words, n, style)
+  local B = RV.BAR
+  local key = RV.WORDS[words]
+  local text = key and loc[key] or nil
+  local deleteText = loc["BTN_DELETE_ALL"]
+  if style == "caps" then
+    -- The house's capitals: Latin-1 and Cyrillic letters too (Lib/Util).
+    local Up = ns.Helpers and ns.Helpers.Upper or string.upper
+    if text then text = Up(text) end
+    deleteText = Up(deleteText)
+  end
+  local label, count, mark = f.Label, f.Count, f.Mark
+  local lift = f.__lift or 0
+  local width = 0
+  if text then
+    label:SetText(text)
+    label:Show()
+    mark:Hide()
+    width = label:GetStringWidth() or 0
+  else
+    label:Hide()
+    mark:Show()
+    width = mark:GetWidth() or B.check
+  end
+  if n >= 0 then
+    count:SetText(format("%d", n))
+    count:Show()
+    width = width + (text and B.gap or B.checkGap) + (count:GetStringWidth() or 0)
+  else
+    count:Hide()
+  end
+  local x = -floor(width / 2 + 0.5)
+  if text then
+    label:ClearAllPoints()
+    label:SetPoint("LEFT", f, "CENTER", x, lift)
+    count:ClearAllPoints()
+    count:SetPoint("LEFT", label, "RIGHT", B.gap, 0)
+  else
+    mark:ClearAllPoints()
+    mark:SetPoint("LEFT", f, "CENTER", x, 0)
+    count:ClearAllPoints()
+    count:SetPoint("LEFT", f, "CENTER", x + (mark:GetWidth() or B.check) + B.checkGap, lift)
+  end
+  f.__chipW = math.ceil(width) + 2 * B.pad
+  local delete = f.Delete
+  delete.Text:SetText(deleteText)
+  delete:SetSize(max(Th().TextWidth(delete.Text) + 8, 40), RV.BAR.band)
+  f.__half = nil
+end
+
+-- A copy of the bar painted as the list stands: its type, words, fill, fold
+-- sign and the sign's place, each only where it moved. Called on every
+-- pass that shows it, so at rest it compares a handful of values and sets
+-- nothing.
+function RV.PaintBar(panel, f, compact)
+  local T = Th()
+  local style = RV.StyleOf()
+  local gen = type(T.SkinGeneration) == "function" and T.SkinGeneration() or 0
+  if f.__compact ~= compact or f.__style ~= style or f.__gen ~= gen then
+    f.__compact, f.__style, f.__gen = compact, style, gen
+    RV.BarType(f, compact, style)
+    f.__words = nil
+  end
   local loc = L()
   local words = RV.WordsOf()
-  local n = RV.DividerCount(panel, words)
-  if divider.__n ~= n or divider.__loc ~= loc or divider.__words ~= words then
-    divider.__n, divider.__loc, divider.__words = n, loc, words
-    divider.Label:SetText(RV.DividerText(loc, words, n))
+  local n = RV.BarCount(panel)
+  if f.__words ~= words or f.__n ~= n or f.__loc ~= loc then
+    f.__words, f.__n, f.__loc = words, n, loc
+    RV.BarText(f, loc, words, n, style)
   end
-  local mark = words == "check"
-  if divider.__mark ~= mark then RV.DividerMark(divider, mark) end
+  local r, g, b = RV.BarRGB(panel)
+  if f.__r ~= r or f.__g ~= g or f.__b ~= b then
+    f.__r, f.__g, f.__b = r, g, b
+    local a = RV.BAR.groundA
+    f.Fill:SetColorTexture(r, g, b, a)
+    local fade = f.Fade
+    if fade then
+      for i = 1, #fade do fade[i]:SetColorTexture(r, g, b, a * RV.BAR.fade[i]) end
+    end
+  end
   local folded = RV.Folded(panel)
-  if divider.__folded ~= folded then
-    divider.__folded = folded
-    divider.Fold:SetTexture(folded and "Interface\\Buttons\\UI-PlusButton-Up"
-      or "Interface\\Buttons\\UI-MinusButton-Up")
-    divider.Sign:SetText(folded and "+" or RV.DIVIDER_OPEN_SIGN)
+  if f.__folded ~= folded then
+    f.__folded = folded
+    local c = folded and RV.SIGN_SHUT or RV.SIGN_OPEN
+    local sign = f.Sign
+    sign:SetTexCoord(c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8])
+    -- 14 x 24 of the canvas's 32: pointing right, or turned to point down.
+    local k = (f.__canvas or RV.BAR.sign) / 32
+    if folded then sign:SetSize(14 * k, 24 * k) else sign:SetSize(24 * k, 14 * k) end
   end
-  if look == "row" then
-    local foldX = panel._divFoldX or Th().Metrics.inset
-    RV.Anchor(divider, divider.Fold, 1, foldX, 0)
-    RV.Anchor(divider, divider.Label, 1, panel._divTextX or (foldX + RV.DIVIDER_FOLD + 6), 0)
-    Th().StyleMailRow(divider, divider.__pos or 1, false)
-    divider._bg:Show()
+  local x = panel._barSignX or (T.Metrics.inset + 4)
+  if f.__signX ~= x then
+    f.__signX = x
+    f.Sign:ClearAllPoints()
+    f.Sign:SetPoint("CENTER", f, "LEFT", x, 0)
   end
-  if divider.__pinned then RV.PaintGround(panel, divider.Ground) end
-  divider.Ground:SetShown(divider.__pinned and true or false)
 end
 
--- The divider pinned to the list's foot while its own place is below the
--- viewport: in a long inbox it is the one sign that read mail is waiting to
--- be cleared, and it has to be seen without scrolling down to find out. The
--- moment its own place scrolls into view it un-pins and sits there. Returns
--- whether it is pinned.
-function RV.UpdatePin(panel, offset, viewport, stride, height)
-  local pin = panel.DividerPin
-  if not pin then return false end
-  local at = (panel.viewMode == VIEW_COLLECT) and panel._dividerAt or nil
-  -- A notch look (Core/DividerNotch.lua) stands at the foot in this copy's
-  -- place, and says whether the one in the list is to be drawn; any other
-  -- puts a notch still standing away.
-  local Notch = ns.DividerNotch
-  if Notch then
-    local look = RV.LookOf()
-    if RV.LOOKS[look].notch then
-      pin:Hide()
-      if pin.Foot then pin.Foot:Hide() end
-      return Notch.Update(panel, look, at, offset, viewport, stride, height)
+-- How open a copy stands, `e` from 0 (the notch: the fill as wide as the
+-- words) to 1 (the bar, edge to edge): the fill's width, growing out of both
+-- sides of the notch; the fold sign and Delete all, over the second half;
+-- the fade over the row under the bar at the foot; and the pointer taken
+-- only over the fill. Numbers only, each set where it moved: every frame of
+-- a move comes here, and makes nothing.
+function RV.ApplyBar(f, e)
+  -- As wide as the list it stands in (the list's own width, set where the
+  -- window lays it out), or its own where it is sized itself.
+  local W = (f.__wOf or f):GetWidth() or 0
+  local chip = f.__chipW or 0
+  if chip > W then chip = W end
+  local half = (chip + (W - chip) * e) / 2
+  if f.__half ~= half or f.__W ~= W then
+    f.__half, f.__W = half, W
+    local fill = f.Fill
+    fill:ClearAllPoints()
+    fill:SetPoint("TOPLEFT", f, "TOP", -half, 0)
+    fill:SetPoint("BOTTOMRIGHT", f, "BOTTOM", half, 0)
+    local side = max(0, W / 2 - half)
+    f:SetHitRectInsets(side, side, 0, 0)
+  end
+  local late = (e <= 0.5) and 0 or min(1, (e - 0.5) * 2)
+  if f.__late ~= late then
+    f.__late = late
+    f.Sign:SetAlpha(late)
+    f.Delete:SetAlpha(late)
+    local live = late >= 1
+    if f.__live ~= live then
+      f.__live = live
+      f.Delete:EnableMouse(live)
     end
-    if panel.Notch then Notch.Off(panel) end
   end
-  -- The foot fills the list's bottom margin under whichever copy of the
-  -- divider is standing on the view's foot -- this pinned one, or the one in
-  -- the list at its very end -- so the bar is one height either side of the
-  -- hand-over. (Shown with the pin alone, it made the bar 3px shorter the
-  -- moment it settled into place.)
-  local slotBottom = at and ((at - 1) * stride + height) or 0
-  local viewBottom = offset + viewport
-  -- Handed over within half a pixel of its place, so the bar does not move.
-  -- A list whose scroll stops a hair short of its end keeps the pinned copy,
-  -- in the same place.
-  if not at or viewport <= 0 or slotBottom <= viewBottom + 0.5 then
-    pin:Hide()
-    if pin.Foot then
-      local foot = at ~= nil and viewport > 0 and math.abs(slotBottom - viewBottom) <= 0.5
-      if foot then RV.PaintGround(panel, pin.Foot.Fill) end
-      pin.Foot:SetShown(foot)
-    end
-    return false
+  local fade = f.Fade
+  if fade and f.__fadeE ~= e then
+    f.__fadeE = e
+    fade.holder:SetAlpha(e)
   end
-  -- Exactly a slot, as the divider in its place is, so it hands over
-  -- without moving or changing size. Full row wears the stripe of the slot
-  -- it stands over: the one whose last unit is the view's -- at the
-  -- hand-over, its own.
-  pin.__pos = floor((viewBottom - 0.5) / stride) + 1
-  RV.PaintDivider(panel, pin)
-  -- It lives in the list itself, a sibling of the rows a few levels above
-  -- them, and is placed at the view's foot on every bind. Outside the list
-  -- it was drawn UNDER the rows whatever its own level said -- the row
-  -- passing beneath read straight through its fill -- and it was not clipped
-  -- as they are.
-  local child = panel.MailListChild
-  local y = -(viewBottom - height)
-  pin:ClearAllPoints()
-  pin:SetPoint("TOPLEFT", child, "TOPLEFT", 0, y)
-  pin:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, y)
-  pin:SetHeight(height)
-  pin:SetFrameLevel(child:GetFrameLevel() + 8)
-  pin:Show()
-  if pin.Foot then
-    RV.PaintGround(panel, pin.Foot.Fill)
-    pin.Foot:Show()
-  end
-  return true
 end
 
--- What Core/DividerNotch.lua reads of the divider: made once, at load.
-CT.DividerParts = {
-  Folded = RV.Folded, Arranging = RV.Arranging, Words = RV.WordsOf,
-  Text = RV.DividerText, Count = RV.DividerCount, Ground = RV.GroundColor,
-  AnchorRule = RV.AnchorRule, MarkSize = RV.DividerMarkSize, NUMBER_ONLY = RV.NUMBER_ONLY,
-  FOLD = RV.DIVIDER_FOLD, RULE_A = RV.DIVIDER_RULE_ALPHA, SIGN = RV.DIVIDER_OPEN_SIGN,
-  GROUND_A = RV.DIVIDER_GROUND_ALPHA, MARK_GAP = RV.DIVIDER_MARK_GAP,
+-- Where the fold sign stands: centred on the read dot's column, read off a
+-- row the pass just placed, so it follows the arrangement and the row size
+-- as the rows do; kept on the panel for a pass that places no row. With the
+-- dot hidden, a little in from the row's edge.
+function RV.BarLanes(panel, row)
+  local dot = row and row.Indicator
+  local x = Th().Metrics.inset + 4
+  if dot and dot:IsShown() and dot.__pbAt == 1 then x = dot.__pbAtX + (dot:GetWidth() or ROW_INDICATOR) / 2 end
+  panel._barSignX = x
+end
+
+-- What Core/DividerNotch.lua reads of the bar: made once, at load.
+-- And the options' drawing of the window (Core/OptionsPanel.lua), which
+-- draws the bar with these too.
+CT.BarParts = {
+  Folded = RV.Folded, Paint = RV.PaintBar, Apply = RV.ApplyBar, BarHeight = RV.BarHeight,
+  mix = RV.BAR.mix,
 }
-CT.DividerText = RV.DividerText
 
 -------------------------------------------------------------
 -- Mail rows :: the virtualiser
@@ -7514,10 +7526,27 @@ local function UpdateVisibleRows(panel)
   local viewport = scroll:GetHeight() or 0
   local offset = scroll:GetVerticalScroll() or 0
 
+  -- The bar over the read mail stands in a slot shorter than a row's pitch
+  -- (RV.BAR), so every row after it stands `lift` units higher: the one
+  -- term the bar adds to the rows' arithmetic. `split` is where the rows
+  -- after it begin. With no bar, both are nothing and every row is where
+  -- it always was.
+  local at = (not historyView and not away) and panel._dividerAt or nil
+  if at and filtered[at] ~= DIVIDER then at = nil end
+  local band = RV.BarHeight(compact)
+  local lift = at and (stride - RV.BarSlotOf(compact)) or 0
+  local split = at and (at * stride - lift) or 0
+
   local first = max(1, floor(offset / stride) + 1)
+  if at and offset >= split then first = at + 1 + floor((offset - split) / stride) end
   local last = first - 1
   if viewport > 0 and not historyView and not away then
-    last = min(#filtered, ceil((offset + viewport) / stride))
+    local foot = offset + viewport
+    if at and foot > split then
+      last = min(#filtered, at + ceil((foot - split) / stride))
+    else
+      last = min(#filtered, ceil(foot / stride))
+    end
   end
   if historyView or away then panel._rowStride = COMPACT_ROW_HEIGHT + ROW_GAP end
 
@@ -7533,16 +7562,14 @@ local function UpdateVisibleRows(panel)
     and RV.MarkReserve(RV.Layout(), panel._cols, panel._markHas, panel._markAny, true) or false
   for i = first, last do
     if filtered[i] == DIVIDER then
-      -- Exactly its slot, as a row is placed, in either row size: the
-      -- pinned copy is a slot too, so at the hand-over the bar stays where
-      -- it is. Painted once the rows are placed (below): Full row reads its
-      -- lanes off them.
+      -- At the top of its slot, the bar's own height: the copy at the foot
+      -- is that height too, so it hands over without moving. Painted once
+      -- the rows are placed (below): its fold sign reads its place off them.
       local y = -((i - 1) * stride)
-      divider:SetHeight(height)
+      divider:SetHeight(band)
       divider:ClearAllPoints()
       divider:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
       divider:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
-      divider.__pos = i
       divider:Show()
     else
     used = used + 1
@@ -7552,6 +7579,7 @@ local function UpdateVisibleRows(panel)
     -- it is bound after the option changed.
     ApplyRowMode(row, compact, height)
     local y = -((i - 1) * stride)
+    if at and i > at then y = y + lift end
     -- Two corner points on the same edge fix the width and the top without
     -- constraining the vertical centre, which would fight SetHeight.
     row:ClearAllPoints()
@@ -7575,13 +7603,16 @@ local function UpdateVisibleRows(panel)
     row.Warning:Hide()
     row:Hide()
   end
-  -- The rows give Full row its lanes; then the divider in its place.
-  if used > 0 then RV.DividerLanes(panel, panel._rows[1], compact) end
-  if divider and divider:IsShown() then RV.PaintDivider(panel, divider) end
-  -- Pinned, the divider's copy stands at the foot and its own place (at most
-  -- a sliver of it, at the viewport's bottom edge) is not drawn twice.
-  if RV.UpdatePin(panel, offset, (historyView or away) and 0 or viewport, stride, height) and divider then
-    divider:Hide()
+  -- The rows give the fold sign its place; then the bar in its place, or
+  -- its notch at the foot, standing for it, opening or open there
+  -- (Core/DividerNotch.lua).
+  if used > 0 then RV.BarLanes(panel, panel._rows[1]) end
+  local Notch = ns.DividerNotch
+  if Notch then
+    Notch.Update(panel, at, offset, (historyView or away) and 0 or viewport, stride, band, compact)
+  elseif divider and divider:IsShown() then
+    RV.PaintBar(panel, divider, compact)
+    RV.ApplyBar(divider, 1)
   end
   -- Rows carry no skinnable children -- no tagged push button, no themed panel,
   -- no edit box -- so a newly grown pool entry needs no ns.Skin.Refresh pass.
@@ -7957,9 +7988,10 @@ function CT.RefreshMailList(panel)
 
   -- The finished mails, after the divider: simply the rest of the list, so
   -- the scroll bar is the whole list from the start -- unless the player has
-  -- folded them away with a click (RV.Folded). The divider is their heading,
-  -- pinned at the list's foot while its place is further down (RV.UpdatePin):
-  -- read mail waiting is seen without a scroll. (They were once opened and
+  -- folded them away with a click (RV.Folded). The bar over them is their
+  -- heading, waiting at the list's foot as its notch while its place is
+  -- further down (Core/DividerNotch.lua): read mail waiting is seen without
+  -- a scroll. (They were once opened and
   -- folded BY the scroll, and the scroll bar jumped each time the list grew;
   -- only a click moves the fold now.)
   -- In a tab of their own they are that tab's whole list, and the inbox has
@@ -12591,56 +12623,79 @@ end
 -- Build
 -------------------------------------------------------------
 
--- "Read, nothing left (3)" with a fold mark and their Delete at its right.
--- Built twice: the one in the list, and its copy pinned at the list's foot.
--- The caller sets the click.
-function RV.BuildDivider(panel, parent)
+-- The bar over the read mail: its fill and outline, the fold sign, the
+-- words (or the check mark) and the number, and Delete all at its right.
+-- Built twice: the one in the list, and the copy at the list's foot that is
+-- its notch (`foot`: with the fade above it). Every texture is given its
+-- colour in the call that makes it, so nothing can stand white for a frame
+-- whichever pass shows it first. The caller sets the click.
+function RV.BuildBar(panel, parent, foot)
   local T = Th()
-  local M = T.Metrics
-  local divider = CreateFrame("Button", nil, parent)
-  divider:RegisterForClicks("LeftButtonUp")
-  -- A ground only while pinned (RV.PaintDivider): the list's own colour,
-  -- nearly opaque, so a row passing under the pinned copy does not read
-  -- through it. In its place in the list the divider has none: the list's
-  -- ground, or its slot's stripe, is its ground, and it is not a box set
-  -- into the list. Untagged and plain, so no host skin repaints it or fades
-  -- it with the window's opacity (under EllesmereUI the rows once read
-  -- through a ground it faded).
-  divider.Ground = divider:CreateTexture(nil, "BACKGROUND", nil, -8)
-  divider.Ground:SetAllPoints()
-  divider.Ground:Hide()
-  -- The stripe a row in its place would wear (Theme.StyleMailRow finds it
-  -- here as the row's own), for the Full row look; over the ground.
-  divider._bg = divider:CreateTexture(nil, "BACKGROUND", nil, -7)
-  divider._bg:SetAllPoints()
-  divider._bg:Hide()
-  -- Hairline: one unit, from the words to Delete all, through the middle.
-  divider.Rule = divider:CreateTexture(nil, "ARTWORK")
-  divider.Rule:SetTexture(WHITE)
-  divider.Rule:SetHeight(1)
-  divider.Rule:Hide()
-  -- The fold mark: plus while folded, minus while open, the cue that a click
-  -- here folds the read mail away. Full row draws the game's button in the
-  -- icon's lane; Hairline writes the sign itself, in its caption's size.
-  divider.Fold = divider:CreateTexture(nil, "ARTWORK")
-  divider.Fold:SetSize(RV.DIVIDER_FOLD, RV.DIVIDER_FOLD)
-  divider.Fold:SetDesaturated(true)
-  divider.Fold:SetAlpha(0.7)
-  divider.Sign = T.CreateText(divider, "secondary")
-  divider.Label = T.CreateText(divider, "secondary")
-  divider.Delete = CreateFrame("Button", nil, divider)
-  divider.Delete:SetPoint("RIGHT", divider, "RIGHT", -M.inset, 0)
-  divider.Delete.Text = T.CreateText(divider.Delete, "secondary")
-  divider.Delete.Text:SetPoint("RIGHT")
+  local B = RV.BAR
+  local f = CreateFrame("Button", nil, parent)
+  f:RegisterForClicks("LeftButtonUp")
+  f.__panel = panel
+  f.__wOf = parent
+  -- The fill: untagged and plain, so no host skin repaints it or fades it
+  -- with the window's opacity (under EllesmereUI the rows once read through
+  -- a ground it faded).
+  local r, g, b = RV.BarRGB(panel)
+  f.__r, f.__g, f.__b = r, g, b
+  f.Fill = f:CreateTexture(nil, "BACKGROUND", nil, -8)
+  f.Fill:SetColorTexture(r, g, b, B.groundA)
+  f.Fill:SetPoint("TOPLEFT", f, "TOP", 0, 0)
+  f.Fill:SetPoint("BOTTOMRIGHT", f, "BOTTOM", 0, 0)
+  -- The outline, on the fill's edges: the notch's edge, the bar's top and
+  -- bottom hairlines as it opens.
+  local fill = f.Fill
+  local edges = {}
+  for i = 1, 4 do
+    local t = f:CreateTexture(nil, "BORDER")
+    T.FillChrome(t, B.edgeA)
+    edges[i] = t
+  end
+  edges[1]:SetPoint("TOPLEFT", fill, "TOPLEFT", 0, 0)
+  edges[1]:SetPoint("TOPRIGHT", fill, "TOPRIGHT", 0, 0)
+  edges[1]:SetHeight(1)
+  edges[2]:SetPoint("BOTTOMLEFT", fill, "BOTTOMLEFT", 0, 0)
+  edges[2]:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT", 0, 0)
+  edges[2]:SetHeight(1)
+  edges[3]:SetPoint("TOPLEFT", fill, "TOPLEFT", 0, -1)
+  edges[3]:SetPoint("BOTTOMLEFT", fill, "BOTTOMLEFT", 0, 1)
+  edges[3]:SetWidth(1)
+  edges[4]:SetPoint("TOPRIGHT", fill, "TOPRIGHT", 0, -1)
+  edges[4]:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT", 0, 1)
+  edges[4]:SetWidth(1)
+  f.Edges = edges
+  -- The fold sign: a click here folds the read mail away or brings it back.
+  f.Sign = f:CreateTexture(nil, "ARTWORK")
+  f.Sign:SetTexture(RV.SIGN_FILE)
+  T.SetColor(f.Sign, "textDisabled")
+  f.Sign:SetAlpha(0)
+  f.Label = T.CreateText(f, "secondary")
+  f.Label:SetWordWrap(false)
+  f.Count = T.CreateText(f, "secondary")
+  f.Count:SetWordWrap(false)
+  T.SetColor(f.Count, "textDisabled")
+  -- Bar says' check mark, in the words' ink from the moment it exists.
+  f.Mark = T.Glyph(f, "check", B.check, "ARTWORK") or f:CreateTexture(nil, "ARTWORK")
+  T.SetColor(f.Mark, "textSecondary")
+  f.Mark:Hide()
   -- "Delete all", not the one-mail "Delete": this button takes every read
   -- mail with nothing left, and the word has to say so before the click.
-  divider.Delete.Text:SetText(L()["BTN_DELETE_ALL"])
-  RV.DividerLook(divider, RV.LookOf())
+  f.Delete = CreateFrame("Button", nil, f)
+  f.Delete.Text = T.CreateText(f.Delete, "secondary")
+  f.Delete.Text:SetPoint("RIGHT")
+  T.SetColor(f.Delete.Text, "textDisabled")
+  f.Delete:SetAlpha(0)
+  f.Delete:EnableMouse(false)
+  f.__live = false
   -- Nothing is deleted from the list while its columns are being arranged.
-  divider.Delete:SetScript("OnClick", function()
+  f.Delete:SetScript("OnClick", function()
     if not RV.Arranging(panel) then DeleteAllDone(panel) end
   end)
-  divider.Delete:SetScript("OnEnter", function(self)
+  f.Delete:SetScript("OnEnter", function(self)
+    self.__hot = true
     Th().SetColor(self.Text, "negative")
     local T2 = Th()
     T2.TipBegin(self)
@@ -12648,23 +12703,39 @@ function RV.BuildDivider(panel, parent)
     T2.TipLine(RawKey("HINT_DELETE_READ"))
     GameTooltip:Show()
   end)
-  divider.Delete:SetScript("OnLeave", function(self)
-    Th().SetColor(self.Text, "textSecondary")
+  f.Delete:SetScript("OnLeave", function(self)
+    self.__hot = nil
+    Th().SetColor(self.Text, "textDisabled")
     GameTooltip:Hide()
   end)
-  -- Count only's words, in a tooltip (RV.WordsTip); nothing otherwise.
-  divider.__panel = panel
-  divider:SetScript("OnEnter", RV.WordsTip)
-  divider:SetScript("OnLeave", RV.WordsTipOff)
-  -- Count and check's mark after the number (RV.DividerMark): the check
-  -- glyph in the words' ink from the moment it exists, hidden until chosen.
-  divider.Mark = T.Glyph(divider, "check", RV.DIVIDER_FOLD, "ARTWORK") or divider:CreateTexture(nil, "ARTWORK")
-  T.SetColor(divider.Mark, "textSecondary")
-  divider.Mark:Hide()
-  divider.__mark = false
-  divider:Hide()
-  return divider
+  -- Over the row the bar at the foot covers half of, a short fade of its
+  -- fill, so that row reads as passing under it. Solid steps: a colour
+  -- texture is the one fill that is never drawn white.
+  if foot then
+    local holder = CreateFrame("Frame", nil, f)
+    holder:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 0)
+    holder:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 0)
+    holder:SetHeight(#B.fade * B.fadeStep)
+    holder:SetAlpha(0)
+    local fade = { holder = holder }
+    for i = 1, #B.fade do
+      local t = holder:CreateTexture(nil, "BACKGROUND")
+      t:SetColorTexture(r, g, b, B.groundA * B.fade[i])
+      local y = (i - 1) * B.fadeStep
+      t:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT", 0, y)
+      t:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", 0, y)
+      t:SetHeight(B.fadeStep)
+      fade[i] = t
+    end
+    f.Fade = fade
+  end
+  -- The check mark's words, in a tooltip (RV.WordsTip); nothing otherwise.
+  f:SetScript("OnEnter", RV.WordsTip)
+  f:SetScript("OnLeave", RV.WordsTipOff)
+  f:Hide()
+  return f
 end
+CT.BuildBar = RV.BuildBar
 
 -------------------------------------------------------------
 -- The fan (Options, Mail tab: Attachments on hover, Fan out)
@@ -12809,7 +12880,7 @@ do
   function Fan.Build(scroll, panel)
     local T = Th()
     local plate = CreateFrame("Frame", nil, scroll:GetParent(), "BackdropTemplate")
-    -- Over the rows, their quality marks and the divider's pinned copy
+    -- Over the rows, their quality marks and the bar's notch
     -- (MailListChild + 8), under the reading view (the panel's + 20). Set
     -- before the card is painted: the popup floor's holder takes its level
     -- from it.
@@ -13761,7 +13832,7 @@ function CT.Build(parent)
   end
   PinScrollBar(scroll, panel.MailListArea)
   -- The rows end at the list's edge. A row partly scrolled out drew on past
-  -- it, into the padding under the pinned divider and below the list.
+  -- it, into the padding under the bar's notch and below the list.
   if scroll.SetClipsChildren then scroll:SetClipsChildren(true) end
   panel.MailListScroll = scroll
 
@@ -13773,11 +13844,11 @@ function CT.Build(parent)
   panel.MailListChild:SetSize(childWidth, 1)
   scroll:SetScrollChild(panel.MailListChild)
 
-  -- The inbox divider: "Read, nothing left (3)" with their delete at its right.
-  -- A row's slot in the list, so the virtualiser places it like one; its own
-  -- frame, because nothing about it is a mail.
-  local divider = RV.BuildDivider(panel, panel.MailListChild)
-  -- A click folds the read mail away or brings it back, and it stays so.
+  -- The bar over the read mail (RV.BuildBar), in the list in a slot of its
+  -- own, so the virtualiser places it as it places a row; a frame of its
+  -- own, because nothing about it is a mail. A click folds the read mail
+  -- away or brings it back, and it stays so.
+  local divider = RV.BuildBar(panel, panel.MailListChild)
   divider:SetScript("OnClick", function()
     -- A search shows it regardless; a click then would flip it unseen. The
     -- arrange mode's list folds nothing either.
@@ -13787,14 +13858,13 @@ function CT.Build(parent)
   end)
   panel.Divider = divider
 
-  -- Its pinned copy, in the list with the rows, standing at the view's foot
-  -- while the divider's own place is further down (RV.UpdatePin). A click
-  -- goes to the read mail -- unfolding it if it was folded; its Delete all is
-  -- the same Delete all.
-  local pin = RV.BuildDivider(panel, panel.MailListChild)
-  -- Standing over rows, it wears the list's ground (RV.PaintDivider).
-  pin.__pinned = true
-  pin:SetScript("OnClick", function()
+  -- Its notch: the copy at the list's foot, in the list with the rows,
+  -- standing while the bar's place is below the view and opening into the
+  -- bar there as the place comes up (Core/DividerNotch.lua). A click goes
+  -- to the read mail -- unfolding it if it was folded -- and the bar opens
+  -- where it lands; its Delete all is the same Delete all.
+  local notch = RV.BuildBar(panel, panel.MailListChild, true)
+  notch:SetScript("OnClick", function()
     if RV.Arranging(panel) then return end
     if RV.Folded(panel) then
       RV.SetFolded(false, panel)
@@ -13803,24 +13873,12 @@ function CT.Build(parent)
     local at = panel._dividerAt
     if not at then return end
     local _, _, stride = RowMetrics()
-    local maxScroll = max(0, RV.ListHeight(#panel._filtered, stride) - (scroll:GetHeight() or 0))
+    local listed = #((panel._preview and panel._pvList) or panel._filtered)
+    local maxScroll = max(0, RV.ListHeight(listed, stride) - (scroll:GetHeight() or 0))
     scroll:SetVerticalScroll(min((at - 1) * stride, maxScroll))
     UpdateVisibleRows(panel)
   end)
-  panel.DividerPin = pin
-
-  -- The pinned bar's foot: the list's bottom margin under it, in the bar's
-  -- ground (RV.PaintGround), so the bar reaches the container's edge instead
-  -- of stopping the margin short of it. Outside the scroll area, where
-  -- nothing scrolls, and shown only with the bar (RV.UpdatePin).
-  local foot = CreateFrame("Frame", nil, panel.MailListArea)
-  foot:SetPoint("TOPLEFT", scroll, "BOTTOMLEFT", 0, 0)
-  foot:SetPoint("TOPRIGHT", scroll, "BOTTOMRIGHT", 0, 0)
-  foot:SetHeight(max(1, M.tightGap - 1))
-  foot.Fill = foot:CreateTexture(nil, "BACKGROUND")
-  foot.Fill:SetAllPoints()
-  foot:Hide()
-  pin.Foot = foot
+  panel.Notch = notch
 
   -- HookScript, not SetScript: the template installs its own handlers here and
   -- replacing them desynchronises the scroll bar.

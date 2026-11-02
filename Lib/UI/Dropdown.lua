@@ -189,9 +189,15 @@ end
 -- An item { heading = true, name = } is no choice: it names the group of
 -- items under it in the list (Sound on new mail's Postbox, Game, Other
 -- addons).
+-- opts.sample = { w, h }: the toggle is a small colour button, no words and
+-- no caret on it, only a sample `w` x `h` in its middle, of the colour
+-- opts.sampleFor() answers (else swatchFor's for the choice); its list as
+-- any other (the options' Bar color).
 function Dropdown.Create(parent, opts)
   opts = type(opts) == "table" and opts or {}
   local swatchFor = type(opts.swatchFor) == "function" and opts.swatchFor or nil
+  local sample = type(opts.sample) == "table" and opts.sample or nil
+  local sampleFor = sample and type(opts.sampleFor) == "function" and opts.sampleFor or nil
   local onList = type(opts.onList) == "function" and opts.onList or nil
   local captions = type(opts.captions) == "table" and opts.captions or nil
 
@@ -248,7 +254,7 @@ function Dropdown.Create(parent, opts)
   -- and as a select where a style draws those differently (the Postbox style's
   -- caret and accent value).
   toggle.__postboxButton = true
-  toggle.__postboxSelect = true
+  toggle.__postboxSelect = not sample
   container._toggle = toggle
   -- News to the skins' window walk (Core/Theme.lua, SkinGeneration).
   if ns.Theme and type(ns.Theme.SkinChanged) == "function" then ns.Theme.SkinChanged() end
@@ -360,6 +366,10 @@ function Dropdown.Create(parent, opts)
   local caption = ""   -- the value as given, whatever its box shows of it
   local function Caption(text)
     caption = text or ""
+    if sample then
+      toggle:SetText("")
+      return
+    end
     local label = toggle:GetFontString()
     local fit = ns.Theme and ns.Theme.FitText
     if not label or type(fit) ~= "function" then
@@ -401,6 +411,7 @@ function Dropdown.Create(parent, opts)
   -- nothing and is not kept.
   local fitW, fitValues, fitPath, fitSize, fitFlags, fitShadow, fitScale
   function container:FitWidth()
+    if sample then return toggleWidth end
     local label = toggle:GetFontString()
     if not label or type(label.GetFont) ~= "function" then return toggleWidth end
     local values = captions or items
@@ -436,12 +447,25 @@ function Dropdown.Create(parent, opts)
 
   -- The chosen colour on the toggle, at its left, where the list has them.
   local toggleSwatch
-  if swatchFor then
+  if sample then
+    toggleSwatch = NewSwatch(toggle, tonumber(sample.w) or SWATCH_SIZE)
+    toggleSwatch:SetSize(tonumber(sample.w) or SWATCH_SIZE, tonumber(sample.h) or SWATCH_SIZE)
+    toggleSwatch:SetPoint("CENTER", toggle, "CENTER", 0, 0)
+    -- Greyed with the button: the sample at half strength.
+    local function SampleState() toggleSwatch:SetAlpha(toggle:IsEnabled() and 1 or 0.5) end
+    toggle:HookScript("OnEnable", SampleState)
+    toggle:HookScript("OnDisable", SampleState)
+  elseif swatchFor then
     toggleSwatch = NewSwatch(toggle, SWATCH_SIZE)
     toggleSwatch:SetPoint("LEFT", toggle, "LEFT", SWATCH_X, 0)
   end
   local function PaintToggleSwatch()
-    if toggleSwatch then PaintSwatch(toggleSwatch, swatchFor(container._selectedId)) end
+    if not toggleSwatch then return end
+    if sampleFor then
+      PaintSwatch(toggleSwatch, sampleFor(container._selectedId))
+    elseif swatchFor then
+      PaintSwatch(toggleSwatch, swatchFor(container._selectedId))
+    end
   end
   PaintToggleSwatch()
 

@@ -30,9 +30,12 @@
 <img src="docs/screenshots/mail.png" width="420" align="right" alt="The Mail tab" />
 
 One inbox. Mail that still holds something comes first; read mail with nothing
-left sits under a divider at the foot of the list: click it to fold it away,
-or delete it all at once. Read mail can go to a **Done** tab instead, or be
-deleted the moment Postbox empties it (**Delete when done**).
+left sits under a bar at the foot of the list: click it to fold it away, or
+delete it all at once. While it is out of view the bar waits as a small tab
+at the list's foot; scroll to it or click it and it opens. What the bar says
+and its color are yours to choose (**Bar says**). Read mail can go to a
+**Done** tab instead, or be deleted the moment Postbox empties it (**Finished
+mail**: **Delete when done**).
 
 - **All mail** collects everything still holding something, one server
   command at a time, in the order the list shows. Under a search it collects
@@ -119,7 +122,7 @@ keep their own arrangement. **Test mail** fills the list with sample mail
 while you arrange, or on its own from **Test**, beside **Arrange** in
 Options, Mail, which is lit while it is on. The samples show what your
 settings do: under **Delete when done** there is no read mail and no
-divider, and resting on an item icon lists its items or fans them out, as
+bar, and resting on an item icon lists its items or fans them out, as
 **Attachments on hover** is set, though nothing can be taken. **Arrange**
 works away from a mailbox too, opening the window beside the options.
 

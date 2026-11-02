@@ -2400,9 +2400,10 @@ SlashCmdList["POSTBOX"] = function(input)
     if collect and type(collect.TuneBadge) == "function" then collect.TuneBadge(badge) end
     return
   end
-  -- "debug divider [look]" and "debug divider words [choice]": the read
-  -- mail's divider in another look or words, to try in game with a macro
-  -- (MailboxUI, UI.TryDivider). This session only; not in the help.
+  -- "debug divider": how the bar over the read mail stands; "debug divider
+  -- caps" and "debug divider quiet": its words in small capitals or not, to
+  -- compare in game (MailboxUI, UI.TryDivider). This session only; not in
+  -- the help.
   local divider = string.match(word, "^debug divider ?(.*)$")
   if divider then
     local UI = ns.MailboxUI
