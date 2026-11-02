@@ -32,7 +32,8 @@
 One inbox. Mail that still holds something comes first; read mail with nothing
 left sits under a bar at the foot of the list: click it to fold it away, or
 delete it all at once. While it is out of view the bar waits as a small tab
-at the list's foot; scroll to it or click it and it opens. How the bar looks
+in a strip of its own at the list's foot; scroll to it or click it and it
+opens. How the bar looks
 (the tab, **Hairline** or **Full row**), what it says (your own words too),
 its count, its icon and its color are yours to choose (**Bar look**, **Bar
 says**, **Count**, **Bar icon**, **Bar color**). Read mail can go to a

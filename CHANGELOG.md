@@ -92,11 +92,13 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   is running out, and the totals band adds the C.O.D. still to pay on the
   mail listed.
 - **A quieter bar over read mail:** a little shorter than a row, on the
-  list's own background with a faint outline, its words centered ("Done 3",
-  the number a step dimmer) and Delete all dim until you point at it.
-  While the read mail is below the view, the bar waits at the foot of the
-  list as a small tab saying what it says; scroll down to it, or click it,
-  and it opens smoothly into the bar.
+  list's own background between two faint lines, its words centered
+  ("Done 3", the number a step dimmer) and Delete all the same size as the
+  words, red when you point at it. While the read mail is below the view,
+  the bar waits at the foot of the list as a small rounded tab in a strip of
+  its own, never over a mail; scroll down and it opens smoothly into the
+  bar, or click it to go straight there. Delete all takes a click only once
+  the bar is fully open.
 - **Choose how the bar looks, what it says, its icon and its color:** under
   Options, Mail, Bar look keeps the small tab or brings back Hairline and
   Full row. Bar says is Done (the same word as the Done tab), Nothing left,
