@@ -4277,6 +4277,7 @@ do
       defaultId    = ok and current or nil,
       swatchFor    = spec.swatchFor,
       onList       = ListShown,
+      maxListHeight = spec.maxListHeight,
     })
     dd.__pbCell = row
     dd:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
@@ -5493,12 +5494,77 @@ function State.Memory()
   if S.tab == "general" then Dash.Paint() end
 end
 
+-- Sound on new mail's choices: Off, then Postbox's own, the game's and,
+-- where another addon has loaded LibSharedMedia-3.0, the sounds it holds,
+-- each group under its name (a heading the list shows and nobody picks).
+-- A shared sound chosen and gone since (its addon off) stays in the list,
+-- named as not found: the mail chime plays in its place (MinimapButton's
+-- PlayTone). Made again only when what it lists has moved -- the shared
+-- sounds' count, or the one not found -- so an open builds nothing new.
+local Tones = {
+  key = false, items = false,
+  NAMES = {
+    soft = "OPT_SOUND_SOFT", envelope = "OPT_SOUND_ENVELOPE", bell = "OPT_SOUND_BELL", tock = "OPT_SOUND_TOCK",
+    chime = "OPT_SOUND_CHIME", page = "OPT_SOUND_PAGE", ping = "OPT_SOUND_PING",
+    auction = "OPT_SOUND_AUCTION", clock = "OPT_SOUND_CLOCK",
+  },
+  GROUPS = { { "postbox", "OPT_SOUND_GROUP_POSTBOX" }, { "game", "OPT_SOUND_GROUP_GAME" } },
+}
+
+function State.ToneItems()
+  local Icon = ns.MinimapButton
+  local shared, count
+  if Icon and Icon.SharedSounds then shared, count = Icon.SharedSounds() end
+  count = count or 0
+  local current = Icon and Icon.GetAlertTone and Icon.GetAlertTone() or "off"
+  local missing = Icon and Icon.SharedName and Icon.SharedName(current) or nil
+  if missing and Icon.SharedPresent(current) then missing = nil end
+  local key = count .. "\1" .. (missing or "")
+  if Tones.items and Tones.key == key then return Tones.items end
+
+  local items = { { id = "off", name = L["OPT_ALERT_OFF"] } }
+  local tones = (Icon and Icon.ALERT_TONES) or {}
+  local group = (Icon and Icon.TONE_GROUP) or {}
+  for g = 1, #Tones.GROUPS do
+    local which, heading = Tones.GROUPS[g][1], Tones.GROUPS[g][2]
+    items[#items + 1] = { heading = true, name = L[heading] }
+    for i = 1, #tones do
+      local id = tones[i]
+      if group[id] == which then
+        items[#items + 1] = { id = id, name = Tones.NAMES[id] and L[Tones.NAMES[id]] or id }
+      end
+    end
+  end
+  local first = #items + 1
+  if missing then
+    items[#items + 1] = { id = current, name = string.format(L["OPT_SOUND_MISSING"], missing) }
+  end
+  for i = 1, shared and #shared or 0 do
+    local name = shared[i]
+    if type(name) == "string" and name ~= "None" then
+      items[#items + 1] = { id = Icon.LSM_PREFIX .. name, name = name }
+    end
+  end
+  if #items >= first then
+    table.insert(items, first, { heading = true, name = L["OPT_SOUND_GROUP_ADDONS"] })
+  end
+  Tones.key, Tones.items = key, items
+  return items
+end
+
 -- The sound's play button plays the sound chosen, and has nothing to play
--- on Off (Rows.Play).
+-- on Off (Rows.Play). The choices are made again where another addon's
+-- sounds have come or gone since the list was made (State.ToneItems).
 function State.Tone()
   local cell = S.toneCell
   local play = cell and cell.play
   if not play then return end
+  local items = State.ToneItems()
+  if cell.items ~= items then
+    cell.items = items
+    if cell.dd.SetItems then cell.dd:SetItems(items) end
+    Rows.PaintDropdown(cell)
+  end
   local Icon = ns.MinimapButton
   local tone = Icon and Icon.GetAlertTone and Icon.GetAlertTone() or "off"
   play:SetEnabled(tone ~= "off")
@@ -6999,22 +7065,17 @@ function Pages.general(col)
   Rows.EndBlock(block)
 
   -- The mail alerts: the sound when mail arrives while you are out in the
-  -- world, chosen from the game's own and heard from the button beside it,
-  -- and the flash, which is drawn on the minimap icon and so greys while
-  -- the icon is off (State.Minimap), saying what turns it on.
+  -- world, chosen from Postbox's own, the game's and other addons'
+  -- (State.ToneItems) and heard from the button beside it, and the flash,
+  -- which is drawn on the minimap icon and so greys while the icon is off
+  -- (State.Minimap), saying what turns it on.
   Rows.Group(col, L["OPT_ALERTS_HEADING"])
-  local toneNames = {
-    off = L["OPT_ALERT_OFF"], chime = L["OPT_SOUND_CHIME"], coins = L["OPT_SOUND_COINS"],
-    invite = L["OPT_SOUND_INVITE"], toast = L["OPT_SOUND_TOAST"], ready = L["OPT_SOUND_READY"],
-  }
-  local toneItems = {}
-  local Icon = ns.MinimapButton
-  for _, id in ipairs((Icon and Icon.ALERT_TONES) or { "off" }) do
-    toneItems[#toneItems + 1] = { id = id, name = toneNames[id] or id }
-  end
   local sound = Rows.Dropdown(col, {
     title = L["OPT_ALERT_SOUND_TITLE"], text = L["OPT_ALERT_SOUND_DESC"] .. "\n\n" .. L["OPT_SOUND_MORE"],
-    items = toneItems,
+    items = State.ToneItems(),
+    -- The three groups whole without a scroll; other addons' sounds, as
+    -- many as they have, scroll.
+    maxListHeight = 16 * 20 + 8,
     get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertTone() or "off" end,
     set = function(id)
       if ns.MinimapButton then ns.MinimapButton.SetAlertTone(id) end
@@ -7023,6 +7084,7 @@ function Pages.general(col)
   })
   Rows.Play(sound)
   S.toneCell = sound
+  S.refresh[#S.refresh + 1] = State.Tone
   S.flashCell = Rows.Check(col, {
     title = L["OPT_ALERT_FLASH_TITLE"], text = L["OPT_ALERT_FLASH_DESC"],
     get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,

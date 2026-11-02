@@ -55,9 +55,12 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   line per character. Click a character to open its box in Mail Memory.
   General also holds Mail Memory's settings, the mail alerts, and Character
   Groups and Manage Recipients; the Mail Memory tab is gone.
-- **Choose the sound for new mail:** the mail chime, Coins, Group invite,
-  Friend online or Ready check, all the game's own, with a button to hear
-  it first. If you had the sound on, it is still the mail chime.
+- **Choose the sound for new mail:** four soft sounds made for Postbox (Soft
+  chime, Envelope, Small bell, Wood tap), the mail chime and four quiet
+  sounds of the game's, or any sound your other addons share, such as
+  ElvUI's or WeakAuras', with a button to hear it first. If you had the
+  sound on, it is still the mail chime, and if another addon's sound goes
+  missing, the mail chime plays in its place.
 - **Choose what the login warning covers:** any mail with gold or items, as
   before, or only mail that would be deleted. Off stays off.
 - **Mail Memory has the options cog** the Postbox window has, opening the
@@ -80,6 +83,10 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 - **Choose what the divider says:** "Read, nothing left", "Collected",
   "Nothing left", "Read", or just the number, with the words in its
   tooltip. Options, Mail, Divider words.
+- **Tooltips end with one gesture per line,** in smaller type than the mail's
+  own details, so "Right-click to...", "Shift-click to..." and the rest no
+  longer wrap into each other. The same in every Postbox tooltip: the Mail
+  tab, Mail Memory, the Send tab and the minimap icon.
 - **The options say each thing once:** pointing at a setting no longer opens
   a tooltip beside the window repeating the panel's description. Tooltips
   stay where they add something, such as a value too long for its box.

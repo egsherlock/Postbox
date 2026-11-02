@@ -3543,18 +3543,18 @@ end
 --
 -- One format for every Postbox tooltip: a title; a description where a
 -- control's name needs one; the facts, each a muted label and a bright
--- value, in a fixed order; one blank line; the gestures, muted, in the
--- house form ("Right-click to ... · Shift-click to ..."). A fact that is
--- not true is left out, and one the row already shows in full is not said
--- again.
+-- value, in a fixed order; one blank line; the gestures, muted and a size
+-- smaller than the facts, one to a line (TipHint). A fact that is not true
+-- is left out, and one the row already shows in full is not said again.
 --
 -- The tooltip is the game's GameTooltip, which stays dark under every look
 -- (the Postbox style leaves it dark in Light mode; a host UI skins it dark),
 -- so its colours are the dark palette's, fixed: a palette switch never
 -- reaches a tooltip line. BASE holds them as written.
 --
--- Nothing here makes a table. A label's muted prefix is made once and
--- kept; the lines themselves are the only strings a hover makes.
+-- A hover makes no table. A label's muted prefix is made once and kept, as
+-- are a hint text's pieces; the lines themselves are the only strings a
+-- hover makes.
 -------------------------------------------------------------
 
 local TIP_MUTED = 0.7
@@ -3568,10 +3568,140 @@ local tipLabels = {}
 -- Whether the tooltip being built has had its blank line before the hints.
 local tipHinted = false
 
+-- The hints' type and the lines that wear it.
+--
+-- A hint says how to use Postbox's gestures, not anything about the mail,
+-- so it is a size under the tooltip's own text: the tooltip's face, flags
+-- and shadow, five sixths of its size (the game's own 12 to 10), on a font
+-- of Postbox's own made from GameTooltipText as it is now -- a host UI's
+-- re-font included -- so every tooltip and every look gets the same hint
+-- type and the same step down from its facts.
+--
+-- The game's tooltip keeps a font set on one of its lines for whatever is
+-- shown on that line next, Postbox's or not, so each line given the hint
+-- font is put back as it was: when the tooltip hides (a frame of Postbox's
+-- own on the tooltip hears it: no hook on the tooltip itself), and at the
+-- next TipBegin. The lines changed are from..to; `was` keeps each one's
+-- font as found, `lines` each line's font string, both by line number and
+-- as long as the longest tooltip that has had a hint.
+--
+-- The house form joins a tooltip's gestures with " · " in every locale
+-- ("Right-click to ... · Shift-click to ..."); each is put on a line of its
+-- own here, so every locale's strings stay as they are. The pieces of a
+-- text are cut once and kept (`parts`); the cache is emptied when it holds
+-- more texts than any session's hovers name (a name in "Log in on %s" makes
+-- one text per character).
+local tipHint = {
+  SEP = " \194\183 ",
+  RATIO = 5 / 6,
+  MIN = 8,
+  font = false,          -- the font object, made at the first hint
+  path = false, size = false, flags = false,   -- what it was made from
+  from = 0, to = 0,      -- the lines wearing it now (0: none)
+  was = {}, lines = {},
+  parts = {}, count = 0, LIMIT = 200,
+  watch = false,
+}
+Theme._tipHint = tipHint
+
+-- The hint font, made again from GameTooltipText only when that has moved.
+local function HintFont()
+  local base = _G.GameTooltipText
+  if not (base and type(base.GetFont) == "function" and type(CreateFont) == "function") then return nil end
+  local font = tipHint.font
+  if not font then
+    font = CreateFont("PostboxTooltipHintFont")
+    tipHint.font = font
+  end
+  local path, size, flags = base:GetFont()
+  if path ~= tipHint.path or size ~= tipHint.size or flags ~= tipHint.flags then
+    tipHint.path, tipHint.size, tipHint.flags = path, size, flags
+    if path and size then
+      font:SetFont(path, math.max(tipHint.MIN, math.floor(size * tipHint.RATIO + 0.5)), flags or "")
+    end
+    if type(base.GetShadowOffset) == "function" and type(font.SetShadowOffset) == "function" then
+      font:SetShadowOffset(base:GetShadowOffset())
+      font:SetShadowColor(base:GetShadowColor())
+    end
+  end
+  return font
+end
+
+-- Puts every line the hint font was set on back to its own font.
+local function RestoreHintLines()
+  local from, to = tipHint.from, tipHint.to
+  if to == 0 then return end
+  tipHint.from, tipHint.to = 0, 0
+  local lines, was = tipHint.lines, tipHint.was
+  for i = from, to do
+    local fs, font = lines[i], was[i]
+    if fs and font then fs:SetFontObject(font) end
+    was[i] = false
+  end
+end
+Theme.RestoreTipHints = RestoreHintLines
+
+-- n -> the tooltip's nth left-hand font string, found once.
+local function TipLineString(n)
+  local fs = tipHint.lines[n]
+  if fs == nil then
+    fs = _G["GameTooltipTextLeft" .. n] or false
+    tipHint.lines[n] = fs
+  end
+  return fs or nil
+end
+
+-- text -> its gestures, cut at the house separator; kept per text.
+local function HintParts(text)
+  local parts = tipHint.parts[text]
+  if parts then return parts end
+  if tipHint.count >= tipHint.LIMIT then
+    tipHint.parts = {}
+    tipHint.count = 0
+  end
+  parts = {}
+  local sep, pos = tipHint.SEP, 1
+  while true do
+    local s, e = string.find(text, sep, pos, true)
+    if not s then break end
+    if s > pos then parts[#parts + 1] = string.sub(text, pos, s - 1) end
+    pos = e + 1
+  end
+  if pos <= #text then parts[#parts + 1] = string.sub(text, pos) end
+  tipHint.parts[text] = parts
+  tipHint.count = tipHint.count + 1
+  return parts
+end
+Theme._HintParts = HintParts
+
+-- One gesture on a line of its own, muted, in the hint font.
+local function AddHintLine(text)
+  GameTooltip:AddLine(text, TIP_MUTED, TIP_MUTED, TIP_MUTED, true)
+  local font = HintFont()
+  local n = type(GameTooltip.NumLines) == "function" and GameTooltip:NumLines() or 0
+  local fs = n > 0 and TipLineString(n) or nil
+  if not (font and fs) then return end
+  if not tipHint.was[n] then
+    tipHint.was[n] = (type(fs.GetFontObject) == "function" and fs:GetFontObject()) or _G.GameTooltipText
+  end
+  fs:SetFontObject(font)
+  if tipHint.to == 0 or n < tipHint.from then tipHint.from = n end
+  if n > tipHint.to then tipHint.to = n end
+  -- Put back when the tooltip hides, whoever hides it.
+  local watch = tipHint.watch
+  if not watch then
+    watch = CreateFrame("Frame", nil, GameTooltip)
+    watch:SetScript("OnHide", RestoreHintLines)
+    tipHint.watch = watch
+  end
+  watch:Show()
+end
+
 -- owner [, anchor] -> GameTooltip, owned and cleared: the start of every
 -- Postbox tooltip, and what lets TipHint put its blank line in once.
 function Theme.TipBegin(owner, anchor)
   tipHinted = false
+  RestoreHintLines()
   GameTooltip:SetOwner(owner, anchor or "ANCHOR_RIGHT")
   GameTooltip:ClearLines()
   return GameTooltip
@@ -3616,11 +3746,13 @@ function Theme.TipBlank()
   GameTooltip:AddLine(" ")
 end
 
--- One hint line, muted, after the blank line.
+-- The hints, after the blank line: each gesture of `text` (the house form
+-- joins them with " · ") on a line of its own, muted, in the hint font.
 function Theme.TipHint(text)
   if not text or text == "" then return end
   Theme.TipBlank()
-  GameTooltip:AddLine(text, TIP_MUTED, TIP_MUTED, TIP_MUTED, true)
+  local parts = HintParts(text)
+  for i = 1, #parts do AddHintLine(parts[i]) end
 end
 
 -------------------------------------------------------------

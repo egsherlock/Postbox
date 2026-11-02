@@ -1863,7 +1863,6 @@ end
 -- table: the helpers are made once, and the lists read are Mail Memory's.
 local TIP = {
   MUTED = 0.75,        -- a fact's label: (0.75, 0.75, 0.78), as the rows' quieter lines
-  HINT = 0.7,          -- the gesture line
   MORE = 0.6,          -- "and N more"
   SENDERS = 3,         -- senders listed under a fact before "and N more"
   ARRIVALS = 5,        -- arrivals listed by item
@@ -1993,7 +1992,8 @@ ShowTooltip = function(button, hostMode)
   Reevaluate()
   -- The reading may just have taken the icon away (an alert that ran out).
   if not button:IsVisible() then return end
-  GameTooltip:SetOwner(button, "ANCHOR_BOTTOMLEFT")
+  -- The house start, which also puts back a hint font left on a line.
+  ns.Theme.TipBegin(button, "ANCHOR_BOTTOMLEFT")
 
   -- Postbox describes the mailbox here, not the client. The default
   -- indicator's tooltip is "Unread mail from:" plus up to three bare names
@@ -2070,12 +2070,11 @@ ShowTooltip = function(button, hostMode)
 
   if memoryOn then TIP.Characters(Memory) end
 
-  GameTooltip:AddLine(" ")
+  -- The gestures as every Postbox tooltip has them (Theme.TipHint): after
+  -- the one blank line, one to a line, a size under the facts.
   local locked = (not hostMode) and Settings().lock and true or false
   local hints = MB.GestureLines(memoryOn, hostMode and true or false, locked)
-  for i = 1, #hints do
-    GameTooltip:AddLine(hints[i], TIP.HINT, TIP.HINT, TIP.HINT, true)
-  end
+  for i = 1, #hints do ns.Theme.TipHint(hints[i]) end
   GameTooltip:Show()
 end
 
@@ -2760,38 +2759,132 @@ local function PlayFlash(prefs)
   return true
 end
 
--- The sounds Sound on new mail offers (MB.ALERT_TONES, in the list's order):
--- the game's own, by their SOUNDKIT names, each with the kit's number where
--- the client's table lacks the name; never a file of ours, so every one
--- obeys the player's sound settings like every other UI sound. "chime" is
--- the one the switch played: the client's new-mail sound where it has one,
--- its whisper chime otherwise.
-local ALERT_TONES = { "off", "chime", "coins", "invite", "toast", "ready" }
+-- The sounds Sound on new mail offers (MB.ALERT_TONES, in the list's order,
+-- each in its group, MB.TONE_GROUP), all of them quiet things that say
+-- "something arrived" and nothing else -- no group, social, quest or combat
+-- alert, which over mail only confuse:
+--
+--   * Postbox's own: short, soft sounds made for it (Media/Sounds, made by
+--     .dev/tools/gen-sounds.py from sines and noise alone).
+--   * The game's: UI sounds by their SOUNDKIT names, each with the kit's
+--     number where the client's table lacks the name. "chime" is the one
+--     the old switch played: the client's new-mail sound where it has one,
+--     its whisper chime otherwise.
+--   * Other addons': whatever LibSharedMedia-3.0 holds, where another addon
+--     (ElvUI, WeakAuras, ...) has loaded it. Postbox embeds no library; it
+--     only reads one that is there. Kept as "lsm:" and the sound's name, and
+--     looked up when it plays: one gone since (its addon off) plays the mail
+--     chime instead, never nothing, and the options say so.
+--
+-- Every one plays on the channel PlaySound uses by default, "SFX", so the
+-- player's Sound Effects volume and switch govern them all alike.
+local ALERT_TONES = { "off", "soft", "envelope", "bell", "tock", "chime", "page", "ping", "auction", "clock" }
 MB.ALERT_TONES = ALERT_TONES
-local TONE_KIT = {
-  chime  = { "UI_MAIL_ARRIVED", "TELL_MESSAGE", 3081 },
-  coins  = { "LOOT_WINDOW_COIN_SOUND", nil, 120 },
-  invite = { "IG_PLAYER_INVITE", nil, 880 },
-  toast  = { "UI_BNET_TOAST", nil, 18019 },
-  ready  = { "READY_CHECK", nil, 8960 },
+local SOUND_DIR = "Interface\\AddOns\\Postbox\\Media\\Sounds\\"
+local TONE_FILE = {
+  soft     = SOUND_DIR .. "soft-chime.ogg",
+  envelope = SOUND_DIR .. "envelope.ogg",
+  bell     = SOUND_DIR .. "small-bell.ogg",
+  tock     = SOUND_DIR .. "wood-tock.ogg",
 }
+local TONE_KIT = {
+  chime   = { "UI_MAIL_ARRIVED", "TELL_MESSAGE", 3081 },
+  page    = { "IG_ABILITY_PAGE_TURN", nil, 836 },
+  ping    = { "MAP_PING", nil, 3175 },
+  auction = { "AUCTION_WINDOW_OPEN", nil, 5274 },
+  clock   = { "ALARM_CLOCK_WARNING_3", nil, 12889 },
+}
+MB.TONE_GROUP = {
+  soft = "postbox", envelope = "postbox", bell = "postbox", tock = "postbox",
+  chime = "game", page = "game", ping = "game", auction = "game", clock = "game",
+}
+MB.TONE_CHANNEL = "SFX"
+local LSM_PREFIX = "lsm:"
+MB.LSM_PREFIX = LSM_PREFIX
+
+-- LibSharedMedia-3.0, where another addon has loaded it; nil otherwise.
+local function SharedMedia()
+  local stub = _G.LibStub
+  if type(stub) ~= "table" and type(stub) ~= "function" then return nil end
+  local ok, lsm = pcall(stub, "LibSharedMedia-3.0", true)
+  if ok and type(lsm) == "table" and type(lsm.Fetch) == "function" then return lsm end
+  return nil
+end
+
+-- name -> the shared sound's file, or nil where it is not registered (or is
+-- LibSharedMedia's own silent "None").
+local function SharedSound(name)
+  local lsm = SharedMedia()
+  if not lsm or name == "None" then return nil end
+  local ok, path = pcall(lsm.Fetch, lsm, "sound", name, true)
+  if ok and (type(path) == "string" or type(path) == "number") then return path end
+  return nil
+end
+
+-- The other addons' sounds, by name, in LibSharedMedia's own sorted order,
+-- less its silent "None"; and a count that moves when one is registered.
+-- The list is LibSharedMedia's table, read, never copied; nil without it.
+function MB.SharedSounds()
+  local lsm = SharedMedia()
+  if not lsm or type(lsm.List) ~= "function" then return nil, 0 end
+  local ok, list = pcall(lsm.List, lsm, "sound")
+  if not ok or type(list) ~= "table" then return nil, 0 end
+  return list, #list
+end
+
+-- A chosen shared sound's name, from its stored id; nil for any other id.
+function MB.SharedName(tone)
+  if type(tone) == "string" and tone:sub(1, #LSM_PREFIX) == LSM_PREFIX then
+    return tone:sub(#LSM_PREFIX + 1)
+  end
+  return nil
+end
+
+-- Whether a stored shared sound can be found now.
+function MB.SharedPresent(tone)
+  local name = MB.SharedName(tone)
+  return name ~= nil and SharedSound(name) ~= nil
+end
 
 -- The sound chosen: `alertTone`, or, where none has been chosen, what the
--- old switch said (on: the chime).
+-- old switch said (on: the chime). A sound no longer offered (the group
+-- invite, friend online, ready check and coins of 1.60's first builds)
+-- reads as the chime: whoever chose one wanted to hear something.
 local function AlertTone(prefs)
   local tone = prefs.alertTone
-  if TONE_KIT[tone] then return tone end
+  if TONE_FILE[tone] or TONE_KIT[tone] then return tone end
+  if MB.SharedName(tone) then return tone end
+  if type(tone) == "string" and tone ~= "off" then return "chime" end
   if prefs.alertSound == true then return "chime" end
   return "off"
 end
 
--- Plays `tone` (an id of ALERT_TONES); nothing for "off" or an unknown id.
-function MB.PlayTone(tone)
-  local kit = TONE_KIT[tone]
-  if not kit or type(PlaySound) ~= "function" then return end
+local function PlayKit(kit)
+  if type(PlaySound) ~= "function" then return end
   local named = type(SOUNDKIT) == "table" and SOUNDKIT or nil
   local id = named and (named[kit[1]] or (kit[2] and named[kit[2]])) or kit[3]
-  if id then pcall(PlaySound, id) end
+  if id then pcall(PlaySound, id, MB.TONE_CHANNEL) end
+end
+
+local function PlayFile(path)
+  local play = _G.PlaySoundFile
+  if type(play) ~= "function" then return end
+  pcall(play, path, MB.TONE_CHANNEL)
+end
+
+-- Plays `tone` (an id of ALERT_TONES, or a shared sound's); nothing for
+-- "off" or an unknown id. A shared sound that cannot be found plays the
+-- mail chime.
+function MB.PlayTone(tone)
+  local file = TONE_FILE[tone]
+  if file then return PlayFile(file) end
+  local kit = TONE_KIT[tone]
+  if kit then return PlayKit(kit) end
+  local name = MB.SharedName(tone)
+  if not name then return end
+  local path = SharedSound(name)
+  if path then return PlayFile(path) end
+  PlayKit(TONE_KIT.chime)
 end
 
 -- kind: "purchase" for your own auction house purchase, announced by the
@@ -2838,7 +2931,10 @@ function MB.GetAlertTone()
 end
 
 function MB.SetAlertTone(tone)
-  if tone ~= "off" and not TONE_KIT[tone] then return end
+  if tone ~= "off" and not (TONE_FILE[tone] or TONE_KIT[tone]) then
+    local name = MB.SharedName(tone)
+    if not name or name == "" then return end
+  end
   local prefs = Settings()
   prefs.alertTone = (tone ~= "off") and tone or nil
   prefs.alertSound = nil
