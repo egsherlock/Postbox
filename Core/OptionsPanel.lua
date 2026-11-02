@@ -1231,11 +1231,13 @@ do
   end
 
   -- The pointer on a drawing: the inspector says what it is. Shared by
-  -- every tile and badge, so a hover builds nothing.
+  -- every tile and badge, so a hover builds nothing. A tile's hover takes
+  -- its rest fill's place, so the two never stack.
   local function SpotEnter(self)
     if Rows.Held(self, SpotEnter) then return end
     if self.Hover then
       self.Hover:Show()
+      if self.Rest then self.Rest:Hide() end
       TintChevron(self, true)
     end
     Rows.Hover(self)
@@ -1244,17 +1246,24 @@ do
   local function SpotLeave(self)
     if self.Hover then
       self.Hover:Hide()
+      if self.Rest then self.Rest:Show() end
       TintChevron(self, false)
     end
     if Rows.HeldLeave(self) then return end
     Rows.Unhover(self)
   end
 
+  -- A tile's plate, lifted off whatever it stands on: a fill of its own, a
+  -- ring round it and a brighter fill under the pointer. Chrome, so white at
+  -- these alphas on a dark palette, black on a light one, and neutral under
+  -- every look and window opacity.
+  local TILE_FILL_A, TILE_RING_A, TILE_HOVER_A = 0.07, 0.17, 0.11
+
   -- A tile: a list the player builds, which opens a window of its own. The
   -- art with the accent's glow behind it, the name, a line of fact, and a
-  -- chevron that says it opens something. Tagged as a card, so every skin
-  -- paints it as it paints the house's other cards; what must survive that
-  -- lives on a holder of its own (ArtHolder).
+  -- chevron that says it opens something, on its plate. Tagged as a card,
+  -- so every skin paints it as it paints the house's other cards; what must
+  -- survive that lives on a holder of its own (ArtHolder).
   function Ctx.Tile(parent, art, title, entry, onClick)
     local T = ns.Theme
     local tile = CreateFrame("Button", nil, parent, "BackdropTemplate")
@@ -1262,11 +1271,36 @@ do
     T.ApplyCard(tile)
     local holder = ArtHolder(tile)
 
+    local rest = holder:CreateTexture(nil, "BACKGROUND", nil, -1)
+    rest:SetPoint("TOPLEFT", tile, "TOPLEFT", 1, -1)
+    rest:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", -1, 1)
+    T.FillChrome(rest, TILE_FILL_A)
     local hover = holder:CreateTexture(nil, "BACKGROUND")
     hover:SetPoint("TOPLEFT", tile, "TOPLEFT", 1, -1)
     hover:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", -1, 1)
-    T.FillChrome(hover, WASH_A)
+    T.FillChrome(hover, TILE_HOVER_A)
     hover:Hide()
+    -- The ring: four hairlines on the tile's edge.
+    local top = holder:CreateTexture(nil, "BORDER")
+    top:SetPoint("TOPLEFT", tile, "TOPLEFT", 0, 0)
+    top:SetPoint("TOPRIGHT", tile, "TOPRIGHT", 0, 0)
+    top:SetHeight(1)
+    local bottom = holder:CreateTexture(nil, "BORDER")
+    bottom:SetPoint("BOTTOMLEFT", tile, "BOTTOMLEFT", 0, 0)
+    bottom:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", 0, 0)
+    bottom:SetHeight(1)
+    local left = holder:CreateTexture(nil, "BORDER")
+    left:SetPoint("TOPLEFT", tile, "TOPLEFT", 0, -1)
+    left:SetPoint("BOTTOMLEFT", tile, "BOTTOMLEFT", 0, 1)
+    left:SetWidth(1)
+    local right = holder:CreateTexture(nil, "BORDER")
+    right:SetPoint("TOPRIGHT", tile, "TOPRIGHT", 0, -1)
+    right:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", 0, 1)
+    right:SetWidth(1)
+    T.FillChrome(top, TILE_RING_A)
+    T.FillChrome(bottom, TILE_RING_A)
+    T.FillChrome(left, TILE_RING_A)
+    T.FillChrome(right, TILE_RING_A)
 
     local mark = holder:CreateTexture(nil, "ARTWORK")
     mark:SetSize(32, 32)
@@ -1292,6 +1326,7 @@ do
 
     tile.Chevron = Chevron(holder, tile)
     tile.Hover, tile.Glow, tile.Title, tile.Sub, tile.Mark = hover, glow, name, sub, mark
+    tile.Rest, tile.Holder = rest, holder
     S.tiles[#S.tiles + 1] = tile
     tile.titleText, tile.entry = title, entry
     TintChevron(tile, false)
@@ -4247,10 +4282,11 @@ do
   end
 
   -- The body's height `key`'s page needs: the page and the list's edges,
-  -- and on General the summary's card at its least over them (Dash).
+  -- and on General the summary's card at its most over them (Dash), so
+  -- the card never squeezes the settings, whatever its list holds.
   function Rows.PageNeed(key)
     local h = S.pageH[key] + 2
-    if key == "general" then h = h + Dash.LEAST + BODY_GAP end
+    if key == "general" then h = h + Dash.MOST + BODY_GAP end
     return h
   end
 
@@ -4918,46 +4954,71 @@ do
 end
 
 -------------------------------------------------------------
--- The summary (Dash): "Across your characters"
+-- The summary (Dash): "Mail waiting in your mailboxes"
 --
 -- General's card, across the top of the body over its settings and its
--- inspector, on a surface of its own under a strip that names it and says
--- how old it is. On its left every character's mail as each box was last
--- seen (MailMemory.Dashboard), in the options' own rows -- 28 high,
--- hairlines, the pointer's wash, each name in its class colour, a time
--- short of it in amber with the rows' own expiry mark -- and under them the
--- total over all of them. On its right, in the inspector's column, the
--- three ways into the windows the account builds, one kind of tile each:
--- Mail Memory, Character Groups and Manage Recipients. A click on a
--- character opens that character's box in Mail Memory
--- (MailMemory.OpenCharacter).
+-- inspector, a step lighter than the panel, under a strip a further step
+-- lighter that names it and says how old it is. On its left every
+-- character's mail as each box was last seen (MailMemory.Dashboard), one
+-- 28-high line each on the Mail tab's own alternating stripes -- each name
+-- in its class colour, a time short of it in amber with the rows' own
+-- expiry mark -- and, on a foot strip in the head strip's tone, the total
+-- over every one of them ("1 character" over one). On its right, in the
+-- inspector's column, the three ways into the windows the account builds,
+-- one lifted tile each: Mail Memory, Character Groups and Manage
+-- Recipients. A click on a character opens that character's box in Mail
+-- Memory (MailMemory.OpenCharacter).
 --
--- The card grows with its list down to where the settings under it, and
--- the inspector's text beside them, would no longer fit (General's least,
--- Layout), and there folds the rest into "+N more in Mail Memory": it never
--- scrolls, and the settings never leave the panel. It is never shorter than
--- its tiles. With nothing to add up -- Mail Memory off, no box seen yet, no
--- mail anywhere -- the list's side is one sentence saying so, never a row
--- of zeros, and the tiles stay.
+-- Ruled to the foot, at a height of its own: the list shows five lines at
+-- the least and seven at the most, so the card is 214 to 270 tall whatever
+-- the settings under it need, and a setting added to General later never
+-- squeezes it (the page's need counts the card at its most, Rows.PageNeed).
+-- Under a short list the stripes run on, empty, to the foot strip. Past
+-- seven lines the list scrolls under the column headings, which stay put
+-- with the foot strip, on the Mail tab's slim bar (Theme.SlimScrollBar),
+-- which is there only while there is more to see; the lines then stop
+-- short of it, and the columns and the total move left with them. The
+-- wheel scrolls it a line a step, and only over the list (the list's own
+-- scroll frame). At most twenty characters are listed (MailMemory picks
+-- them: the mail short of time first, then the most recently seen); past
+-- them one more line says "+N more in Mail Memory" and opens it. With
+-- nothing to add up -- Mail Memory off, no box seen yet, no mail anywhere
+-- -- the list's side is one sentence saying so, never a row of zeros, and
+-- the tiles stay.
 --
 -- Light: read only while General is shown (Ctx.general's paint), and its
 -- words made again only when what they are made from has moved -- the
--- summary's generation, the room, the warning ink, Expiry marks, an open
--- of the panel (the fonts) -- so a repaint with nothing new sets nothing.
--- Every row and every text is made once and kept. Only flat textures,
--- hairlines and the house's rows and tiles; amber only for mail short of
--- time.
+-- summary's generation, the warning ink, Expiry marks, an open of the
+-- panel (the fonts) -- so a repaint with nothing new sets nothing. At most
+-- 21 line frames (twenty characters and the +N line), each made the first
+-- time the list reaches it and kept; the empty ruled lines are the same
+-- frames, bare. A scroll moves the scroll child and rebinds nothing. Only
+-- flat textures; amber only for mail short of time.
 -------------------------------------------------------------
 do
-  -- The strip, the columns' headings, the gap between two figures, the
-  -- sentence's padding and the room under the last line.
-  local HEAD_H, COLS_H, GAP, MSG_PAD, FOOT_PAD = GROUP_H, 18, 18, 8, 6
+  -- The strip, the columns' headings, the gap between two figures and the
+  -- sentence's padding.
+  local HEAD_H, COLS_H, GAP, MSG_PAD = GROUP_H, 18, 18, 8
   -- The tiles' column: the inspector's drawings' own, under the strip.
   local TILE_GAP, TILES_PAD = 8, 10
   local TILES_X = LIST_W + BODY_GAP + CTX_X
   local TILES_TOP = 1 + HEAD_H + TILES_PAD
-  -- The card at its least: its tiles' column, whole.
-  Dash.LEAST = TILES_TOP + 3 * TILE_H + 2 * TILE_GAP + TILES_PAD + 1
+  -- The lines the list shows: five at the least, seven at the most.
+  local MIN_LINES, MAX_LINES = 5, 7
+  -- The card less its lines: its edges, the strip, the headings and the
+  -- foot strip.
+  local FIXED = 1 + HEAD_H + COLS_H + ROW_H + 1
+  -- The card at its least (214) and at its most (270). Never shorter than
+  -- its tiles' column either.
+  Dash.LEAST = math.max(TILES_TOP + 3 * TILE_H + 2 * TILE_GAP + TILES_PAD + 1, FIXED + MIN_LINES * ROW_H)
+  Dash.MOST = FIXED + MAX_LINES * ROW_H
+  -- What the slim bar takes from the lines while it shows: its 6 and 4
+  -- each side (Theme.SlimScrollBar).
+  local GUTTER = 14
+  -- The card's ground a step over the panel's; the strip and the foot strip
+  -- a further step over that (8% in all: #18191c over Postbox Dark's
+  -- #0b0b0d). Chrome, so neutral under every look and palette.
+  local LIFT_A, STRIP_A = 0.04, 0.04
   -- Each figure column's least width, from the row's right: Seen, Soonest,
   -- Gold, Mail (the mockup's). A longer heading or figure widens its own.
   local MIN_W = { 40, 52, 64, 30 }
@@ -4965,7 +5026,7 @@ do
   local HEADS = { "OPT_DASH_COL_SEEN", "OPT_DASH_COL_SOON", "OPT_DASH_COL_GOLD", "OPT_DASH_COL_MAIL" }
   local DASH = "\226\128\148"
   -- What the words were last made from, and the columns as they stand.
-  local made = { gen = false, room = false, marks = false, ink = false, open = false, below = false }
+  local made = { gen = false, marks = false, ink = false, open = false }
   local widths, rights = { 0, 0, 0, 0 }, { 0, 0, 0, 0 }
 
   local function Enter(self)
@@ -4978,11 +5039,6 @@ do
     Rows.Unhover(self)
   end
 
-  local function Click(self)
-    local MM = ns.MailMemory
-    if self.realm and MM and type(MM.OpenCharacter) == "function" then MM.OpenCharacter(self.realm, self.name) end
-  end
-
   -- Mail Memory's tile, and the line that folds the rest: the window, on
   -- the character being played (or, off, the line saying where to turn it
   -- on).
@@ -4991,8 +5047,24 @@ do
     if MM and type(MM.OpenCharacter) == "function" then MM.OpenCharacter(nil) end
   end
 
+  -- A character's line opens its box; the +N line, Mail Memory.
+  local function Click(self)
+    local MM = ns.MailMemory
+    if self.realm then
+      if MM and type(MM.OpenCharacter) == "function" then MM.OpenCharacter(self.realm, self.name) end
+    elseif self.more then
+      OpenClick()
+    end
+  end
+
+  -- A line's wash is its stripe in the hover's shade, as the Mail tab's
+  -- rows have it: the two never stack. Rows.Hover and Rows.Unhover show and
+  -- hide it like any cell's.
+  local function WashShow(self) ns.Theme.FillColor(self.line.Stripe, "stripeHover") end
+  local function WashHide(self) ns.Theme.FillColor(self.line.Stripe, self.line.parity) end
+
   -- A place the pointer rests on: the summary's text in the inspector, the
-  -- row's wash; `hair`, a hairline over it.
+  -- wash; `hair`, a hairline over it.
   local function Spot(parent, kind, height, hair)
     local T = ns.Theme
     local f = CreateFrame(kind, nil, parent)
@@ -5034,18 +5106,31 @@ do
     return f
   end
 
-  -- A character's line, built the first time the list reaches it.
-  local function NewRow(i)
+  -- The list's line `i`, made the first time the list reaches it: in its
+  -- place on the scroll child for good, on the stripe its place gives it.
+  local function NewLine(i)
     local d = S.dash
-    local row = Figures(Spot(d.card, "Button", ROW_H, true))
-    row:SetWidth(ROW_W)
-    row:SetScript("OnClick", Click)
-    d.rows[i] = row
-    return row
+    local T = ns.Theme
+    local f = CreateFrame("Button", nil, d.child)
+    f:SetHeight(ROW_H)
+    f:SetPoint("TOPLEFT", d.child, "TOPLEFT", 0, -(i - 1) * ROW_H)
+    f:SetPoint("TOPRIGHT", d.child, "TOPRIGHT", 0, -(i - 1) * ROW_H)
+    local stripe = f:CreateTexture(nil, "BACKGROUND")
+    stripe:SetAllPoints()
+    f.Stripe, f.parity = stripe, (i % 2 == 1) and "stripeOdd" or "stripeEven"
+    T.FillColor(stripe, f.parity)
+    f.Wash = { line = f, Show = WashShow, Hide = WashHide }
+    f.entry = S.dashEntry
+    f:SetScript("OnEnter", Enter)
+    f:SetScript("OnLeave", Leave)
+    f:SetScript("OnClick", Click)
+    Figures(f)
+    d.rows[i] = f
+    return f
   end
 
   -- On `body`, over the list and the inspector, shown on General only
-  -- (Dash.Place). Built before the pages: its height at its least is part
+  -- (Dash.Place). Built before the pages: its height at its most is part
   -- of General's (Rows.PageNeed).
   function Dash.Build(body)
     local T = ns.Theme
@@ -5055,15 +5140,26 @@ do
     card:SetHeight(Dash.LEAST)
     T.ApplyList(card)
     card:Hide()
+    -- The lift, on a holder the host skins' sweep of the card never
+    -- reaches (ArtHolder), one level over the card; everything else on the
+    -- card stands a level over the lift.
+    local level = card:GetFrameLevel()
+    local lift = ArtHolder(card)
+    lift:SetFrameLevel(level + 1)
+    local ground = lift:CreateTexture(nil, "BACKGROUND")
+    ground:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
+    ground:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -1, 1)
+    T.FillChrome(ground, LIFT_A)
 
     -- The strip: what the card is on the left, how old it is on the right,
     -- on a shade of its own over a hairline.
     local head = Spot(card, "Frame", HEAD_H)
+    head:SetFrameLevel(level + 2)
     head:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
     head:SetPoint("TOPRIGHT", card, "TOPRIGHT", -1, -1)
     local shade = head:CreateTexture(nil, "BACKGROUND", nil, -1)
     shade:SetAllPoints()
-    T.FillChrome(shade, WASH_A)
+    T.FillChrome(shade, STRIP_A)
     local rule = head:CreateTexture(nil, "BORDER")
     rule:SetHeight(1)
     rule:SetPoint("BOTTOMLEFT", head, "BOTTOMLEFT", 0, 0)
@@ -5077,8 +5173,9 @@ do
     head.Note:SetText(L["OPT_DASH_FOOT"])
     T.SetColor(head.Note, "textSecondary")
 
-    -- The columns' headings, quiet.
+    -- The columns' headings, quiet; they stay put while the list scrolls.
     local cols = Spot(card, "Frame", COLS_H)
+    cols:SetFrameLevel(level + 2)
     cols:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -(1 + HEAD_H))
     cols:SetWidth(ROW_W)
     cols.Name = Text(cols, "secondary")
@@ -5092,22 +5189,57 @@ do
       cols[FIELDS[j]] = fs
     end
 
-    -- How many the list leaves out, and the way to them.
-    local more = Spot(card, "Button", ROW_H, true)
-    more:SetWidth(ROW_W)
-    more.Text = Text(more, "secondary")
-    more.Text:SetPoint("LEFT", more, "LEFT", NAME_X, 0)
-    more:SetScript("OnClick", OpenClick)
-    more:Hide()
+    -- The lines: a scroll frame as tall as the lines shown, under the
+    -- headings, in an area of its own that holds the slim bar too. The
+    -- lines run to the area's edge while nothing scrolls, and stop short of
+    -- the bar while it shows.
+    local area = CreateFrame("Frame", nil, card)
+    area:SetFrameLevel(level + 2)
+    area:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -(1 + HEAD_H + COLS_H))
+    area:SetSize(ROW_W, MIN_LINES * ROW_H)
+    local scroll = CreateFrame("ScrollFrame", nil, area, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", area, "TOPLEFT", 0, 0)
+    scroll:SetSize(ROW_W, MIN_LINES * ROW_H)
+    if scroll.SetClipsChildren then scroll:SetClipsChildren(true) end
+    local child = CreateFrame("Frame", nil, scroll)
+    child:SetSize(ROW_W, MIN_LINES * ROW_H)
+    scroll:SetScrollChild(child)
+    scroll.__pbGutter = function(scrolling)
+      local w = ROW_W - (scrolling and GUTTER or 0)
+      scroll:SetWidth(w)
+      child:SetWidth(w)
+    end
+    scroll.scrollBarHideable = 1
+    T.SlimScrollBar(scroll, area)
+    -- One line a step, and only here: the list's own scroll frame takes the
+    -- wheel, nothing else on the card does.
+    scroll:EnableMouseWheel(true)
+    scroll:SetScript("OnMouseWheel", function(self, delta)
+      local bar = self.ScrollBar
+      if bar then bar:SetValue(bar:GetValue() - delta * ROW_H) end
+    end)
 
-    -- Every character with mail, added up.
-    local total = Figures(Spot(card, "Frame", ROW_H, true))
+    -- Every character with mail, added up, on the foot strip: the strip's
+    -- shade and a hairline over it across the list's side, at the card's
+    -- foot for good.
+    local total = Figures(Spot(card, "Frame", ROW_H))
+    total:SetFrameLevel(level + 2)
+    total:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 1, 1)
     total:SetWidth(ROW_W)
     T.SetColor(total.Name, "textPrimary")
+    local foot = total:CreateTexture(nil, "BACKGROUND", nil, -1)
+    foot:SetAllPoints()
+    T.FillChrome(foot, STRIP_A)
+    local footRule = total:CreateTexture(nil, "BORDER")
+    footRule:SetHeight(1)
+    footRule:SetPoint("TOPLEFT", total, "TOPLEFT", 0, 0)
+    footRule:SetPoint("TOPRIGHT", total, "TOPRIGHT", 0, 0)
+    T.FillChrome(footRule, HAIR_A)
     total:Hide()
 
     -- With nothing to add up: one sentence that says why.
     local msg = Spot(card, "Frame", ROW_H)
+    msg:SetFrameLevel(level + 2)
     msg:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -(1 + HEAD_H))
     msg:SetWidth(ROW_W)
     msg.Text = ns.Theme.CreateText(msg, "bodySmall")
@@ -5119,13 +5251,13 @@ do
     msg:Hide()
 
     -- The list's side and the tiles' apart: a hairline down between them.
-    local split = card:CreateTexture(nil, "BORDER")
+    local split = lift:CreateTexture(nil, "BORDER")
     split:SetWidth(1)
     split:SetPoint("TOPLEFT", card, "TOPLEFT", LIST_W + BODY_GAP / 2 - 1, -(1 + HEAD_H + TILES_PAD))
     split:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", LIST_W + BODY_GAP / 2 - 1, TILES_PAD)
     T.FillChrome(split, HAIR_A)
 
-    -- The three ways in, one over the other.
+    -- The three ways in, one over the other, over the lift.
     local memory = Ctx.Tile(card, "Interface\\AddOns\\Postbox\\Media\\minimap-scroll.tga",
       L["OPT_MEMORY_TITLE"], S.memoryTileEntry, OpenClick)
     memory:SetPoint("TOPLEFT", card, "TOPLEFT", TILES_X, -TILES_TOP)
@@ -5136,9 +5268,13 @@ do
       L["RM_OPT_BUTTON"], S.recipientsEntry, Ctx.OpenRecipients)
     recipients:SetPoint("TOPLEFT", groups, "BOTTOMLEFT", 0, -TILE_GAP)
     S.dashTiles = { memory = memory, groups = groups, recipients = recipients }
+    for _, tile in pairs(S.dashTiles) do
+      tile:SetFrameLevel(level + 2)
+      tile.Holder:SetFrameLevel(level + 3)
+    end
 
-    S.dash = { card = card, h = Dash.LEAST, top = false, rows = {}, head = head, cols = cols, more = more,
-      total = total, msg = msg }
+    S.dash = { card = card, h = Dash.LEAST, top = false, rows = {}, head = head, cols = cols, more = false,
+      total = total, msg = msg, area = area, scroll = scroll, child = child, lines = 0, scrolling = false }
   end
 
   -- Mail Memory's tile: "Every character's box", or Off with its art faint
@@ -5224,19 +5360,32 @@ do
     if S.tab == "general" then Dash.Place("general") end
   end
 
-  -- A line's figures against the columns as they stand.
-  local function PlaceFigures(f)
+  -- A line's figures against the columns as they stand, `shift` further
+  -- in from its right (the headings and the total, while the bar shows).
+  local function PlaceFigures(f, shift)
     for j = 1, #FIELDS do
       local fs = f[FIELDS[j]]
       fs:ClearAllPoints()
-      fs:SetPoint("RIGHT", f, "RIGHT", -rights[j], 0)
+      fs:SetPoint("RIGHT", f, "RIGHT", -(rights[j] + shift), 0)
+    end
+  end
+
+  -- Line `i` as a bare stripe: nothing on it, nothing to point at.
+  local function Bare(line)
+    line.realm, line.name, line.more = nil, nil, false
+    line.Name:SetText("")
+    for j = 1, #FIELDS do line[FIELDS[j]]:SetText("") end
+    line:EnableMouse(false)
+    if S.washed == line then
+      line.Wash:Hide()
+      S.washed = nil
     end
   end
 
   local function Fill(data)
     local d = S.dash
     local T = ns.Theme
-    local head, cols, more, total, msg = d.head, d.cols, d.more, d.total, d.msg
+    local head, cols, total, msg = d.head, d.cols, d.total, d.msg
     local words
     if not (data and data.enabled) then
       words = L["OPT_DASH_OFF"]
@@ -5245,67 +5394,67 @@ do
     elseif data.n == 0 then
       words = L["OPT_DASH_EMPTY"]
     end
-    -- The strip's name greys with Mail Memory, as its settings do.
+    -- The strip's name greys with Mail Memory, as its settings do; its note
+    -- has the room the name leaves it.
     T.SetColor(head.Title, (data and data.enabled) and "accent" or "textDisabled")
     head.Note:SetShown(not words)
+    if not words then
+      T.FitText(head.Note, LIST_W + BODY_GAP + INSP_W - 2 - NAME_X - CONTROL_R - GAP - TextW(head.Title),
+        L["OPT_DASH_FOOT"], head)
+    end
     cols:SetShown(not words)
+    d.area:SetShown(not words)
+    total:SetShown(not words)
     msg:SetShown(words and true or false)
     if words then
-      for i = 1, #d.rows do d.rows[i]:Hide() end
-      more:Hide()
-      total:Hide()
+      d.more = false
       msg.Text:SetText(words)
       local h = 2 * MSG_PAD + math.ceil(msg.Text:GetStringHeight() or 0)
       msg:SetHeight(h)
-      Lay(math.max(Dash.LEAST, 1 + HEAD_H + h + FOOT_PAD + 1))
+      Lay(math.min(Dash.MOST, math.max(Dash.LEAST, 1 + HEAD_H + h + MSG_PAD + 1)))
       return
     end
 
     local now = time()
     local n = data.n
-    -- The total only over two or more: over one it would say that line again.
-    local withTotal = n > 1
-    -- As many lines as the card may take: the body less what General's
-    -- settings and their inspector need under it (Layout). The fold takes
-    -- a line of its own.
-    local most = (S.bodyH or 0) - BODY_GAP - (S.generalBelow or 0)
-    local fixed = 1 + HEAD_H + COLS_H + (withTotal and ROW_H or 0) + FOOT_PAD + 1
-    local lines = math.floor((most - fixed) / ROW_H)
-    local shown, folded = n, 0
-    if n > lines then
-      shown = math.max(1, lines - 1)
-      folded = n - shown
-    end
+    local listed = math.min(data.listed or 0, #data.rows, n)
+    local folded = n - listed
+    -- The lines there is something on, the lines shown, and the lines made
+    -- up to the foot (the list's, or the ruled ones under a short one).
+    local content = listed + (folded > 0 and 1 or 0)
+    local lines = math.max(MIN_LINES, math.min(MAX_LINES, content))
+    local ruled = math.max(content, lines)
+    local scrolling = content > MAX_LINES
+    local gutter = scrolling and GUTTER or 0
 
     for j = 1, #FIELDS do widths[j] = math.max(MIN_W[j], TextW(cols[FIELDS[j]])) end
     local CT = ns.CollectTab
     local age = CT and CT.HistoryAge
     local MM = ns.MailMemory
-    for i = 1, shown do
+    for i = 1, listed do
       local r = data.rows[i]
-      local row = d.rows[i] or NewRow(i)
-      row.realm, row.name = r.realm, r.name
-      row.nameText = (MM and MM.ClassName) and MM.ClassName(r.realm, r.name) or r.name
-      row.Mail:SetText(tostring(r.mails))
-      row.Gold:SetText(Gold(r.gold))
-      row.Soon:SetText(Soon(r.soonest, r.fate, r.amber, row.Soon, now))
-      row.Seen:SetText((r.seenAt and age) and age(now - r.seenAt, "plain") or "")
-      T.SetColor(row.Seen, "textSecondary")
+      local line = d.rows[i] or NewLine(i)
+      line.realm, line.name, line.more = r.realm, r.name, false
+      line.nameText = (MM and MM.ClassName) and MM.ClassName(r.realm, r.name) or r.name
+      line.Mail:SetText(tostring(r.mails))
+      line.Gold:SetText(Gold(r.gold))
+      line.Soon:SetText(Soon(r.soonest, r.fate, r.amber, line.Soon, now))
+      line.Seen:SetText((r.seenAt and r.seenAt > 0 and age) and age(now - r.seenAt, "plain") or "")
+      T.SetColor(line.Name, "textPrimary")
+      T.SetColor(line.Seen, "textSecondary")
+      line:EnableMouse(true)
       for j = 1, #FIELDS do
-        local w = Width(row[FIELDS[j]])
+        local w = Width(line[FIELDS[j]])
         if w > widths[j] then widths[j] = w end
       end
     end
-    for i = shown + 1, #d.rows do d.rows[i]:Hide() end
-    if withTotal then
-      total.Mail:SetText(tostring(data.mails))
-      total.Gold:SetText(Gold(data.gold))
-      total.Soon:SetText(Soon(data.soonest, data.fate, data.amber, total.Soon, now))
-      total.Seen:SetText("")
-      for j = 2, #FIELDS do
-        local w = Width(total[FIELDS[j]])
-        if w > widths[j] then widths[j] = w end
-      end
+    total.Mail:SetText(tostring(data.mails))
+    total.Gold:SetText(Gold(data.gold))
+    total.Soon:SetText(Soon(data.soonest, data.fate, data.amber, total.Soon, now))
+    total.Seen:SetText("")
+    for j = 2, #FIELDS do
+      local w = Width(total[FIELDS[j]])
+      if w > widths[j] then widths[j] = w end
     end
 
     -- The columns from the right, each as wide as its widest, GAP apart;
@@ -5316,38 +5465,40 @@ do
       rights[j] = x
       x = x + widths[j] + GAP
     end
-    local nameRoom = ROW_W - NAME_X - x
-    PlaceFigures(cols)
-    local y = -(1 + HEAD_H + COLS_H)
-    for i = 1, shown do
-      local row = d.rows[i]
-      row:ClearAllPoints()
-      row:SetPoint("TOPLEFT", d.card, "TOPLEFT", 1, y)
-      PlaceFigures(row)
-      T.FitText(row.Name, nameRoom, row.nameText, row)
-      row:Show()
-      y = y - ROW_H
+    local nameRoom = ROW_W - gutter - NAME_X - x
+    PlaceFigures(cols, gutter)
+    for i = 1, listed do
+      local line = d.rows[i]
+      PlaceFigures(line, 0)
+      T.FitText(line.Name, nameRoom, line.nameText, line)
+      line:Show()
     end
-    more:ClearAllPoints()
-    if folded > 0 then
-      more:SetPoint("TOPLEFT", d.card, "TOPLEFT", 1, y)
-      T.FitText(more.Text, ROW_W - 2 * NAME_X, L("OPT_DASH_MORE", folded), more)
-      more:Show()
-      y = y - ROW_H
-    else
-      more:Hide()
+    -- The +N line, then the bare stripes down to the foot.
+    d.more = false
+    for i = listed + 1, ruled do
+      local line = d.rows[i] or NewLine(i)
+      Bare(line)
+      if i == listed + 1 and folded > 0 then
+        line.more = true
+        line:EnableMouse(true)
+        T.SetColor(line.Name, "textSecondary")
+        T.FitText(line.Name, ROW_W - gutter - 2 * NAME_X, L("OPT_DASH_MORE", folded), line)
+        d.more = line
+      end
+      line:Show()
     end
-    total:ClearAllPoints()
-    if withTotal then
-      total:SetPoint("TOPLEFT", d.card, "TOPLEFT", 1, y)
-      PlaceFigures(total)
-      T.FitText(total.Name, nameRoom, ns.Plural("OPT_DASH_ALL", n), total)
-      total:Show()
-      y = y - ROW_H
-    else
-      total:Hide()
-    end
-    Lay(math.max(Dash.LEAST, -y + FOOT_PAD + 1))
+    for i = ruled + 1, #d.rows do d.rows[i]:Hide() end
+    PlaceFigures(total, gutter)
+    T.FitText(total.Name, nameRoom, ns.Plural("OPT_DASH_ALL", n), total)
+
+    -- The list's window on its lines; the bar comes with what is hidden.
+    d.lines, d.scrolling = lines, scrolling
+    d.area:SetHeight(lines * ROW_H)
+    d.scroll:SetHeight(lines * ROW_H)
+    d.child:SetHeight(ruled * ROW_H)
+    d.scroll.__pbGutter(scrolling)
+    if d.scroll.UpdateScrollChildRect then d.scroll:UpdateScrollChildRect() end
+    Lay(FIXED + lines * ROW_H)
   end
 
   -- Read now, made again only where something it is made from has moved.
@@ -5360,12 +5511,12 @@ do
     local gen = data and data.gen or 0
     local marks = UI and UI.GetOption and UI.GetOption("expiryMarks") or false
     local ink = T.InkHex and T.InkHex("warning") or ""
-    if made.gen == gen and made.room == S.bodyH and made.marks == marks and made.ink == ink
-      and made.open == S.openGen and made.below == S.generalBelow then
+    if made.gen == gen and made.marks == marks and made.ink == ink and made.open == S.openGen then
       return
     end
-    made.gen, made.room, made.marks, made.ink, made.open = gen, S.bodyH, marks, ink, S.openGen
-    made.below = S.generalBelow
+    -- A panel opened again shows the list from its top.
+    if made.open ~= S.openGen then d.scroll:SetVerticalScroll(0) end
+    made.gen, made.marks, made.ink, made.open = gen, marks, ink, S.openGen
     Fill(data)
   end
 end
@@ -7883,7 +8034,7 @@ local function Layout()
     -- The Mail tab's text zone, under its window: the tab's own text and
     -- every setting's the window shows, the tallest of them. General's
     -- texts have the inspector under its card: the tallest of them, with
-    -- the card at its least over it (Dash).
+    -- the card at its most over it (Dash).
     local mailText, generalText = SAY_MIN, SAY_MIN
     local entries = S.entries
     for i = 1, #entries do
@@ -7918,7 +8069,7 @@ local function Layout()
     end
     S.mailText = math.ceil(mailText)
     S.generalText = math.ceil(generalText)
-    S.textNeed = math.max(text, Dash.LEAST + BODY_GAP + S.generalText)
+    S.textNeed = math.max(text, Dash.MOST + BODY_GAP + S.generalText)
     text = S.textNeed
   end
   -- The Mail tab: its window at its least over its text zone. The window
@@ -7935,9 +8086,6 @@ local function Layout()
     local T = ns.Theme
     if T and type(T.FitToScreen) == "function" then T.FitToScreen(S.frame) end
   end
-  -- What General's settings and their text need under its card: the most
-  -- the card may leave them (Dash's fold).
-  S.generalBelow = math.max(S.pageH.general + 2, S.generalText or 0)
   -- The list and the inspector the body's height, less the card on General.
   Dash.Place(S.tab)
   Ctx.MailFill(need, S.mailText)
