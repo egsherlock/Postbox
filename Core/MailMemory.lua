@@ -647,7 +647,8 @@ end
 --   * Which characters count: every character Mail Memory knows, the one
 --     being played included; only the hidden are left out (MM.Warns).
 --   * What each choice warns of: "deleted", mail the server deletes when
---     its time runs out (`gone`, the bin); "any", that and mail going back
+--     its time runs out (`gone`, the bin), or whose fate the record cannot
+--     say (saved before 1.60); "any", that and mail going back
 --     to its sender (the arrow) or long unopened on its way (`warn`); "off",
 --     nothing.
 local function Counts(mail)
@@ -688,9 +689,13 @@ local function Status(realm, name, now)
         if not st.soonest or mail.expires < st.soonest then st.soonest = mail.expires end
         -- Of those, the ones the server deletes rather than sends back,
         -- still holding gold or items (the bin, the rows' expiry mark): what
-        -- the warning's "Mail that would be deleted" speaks of. A record
-        -- that could not say (`back` nil) is not counted.
-        if mail.back == false and ((mail.money or 0) > 0 or (mail.items or 0) > 0) then
+        -- Warn about's "Mail to be deleted" speaks of. A record that cannot
+        -- say (`back` nil: every one saved before 1.60 asked) counts too,
+        -- since it already holds something (Counts): a warning that turns
+        -- out needless beats a silent loss. Only the warning reads it so;
+        -- the rows and the summary card show no mark for an unknown fate.
+        local back = mail.back
+        if back == nil or (back == false and ((mail.money or 0) > 0 or (mail.items or 0) > 0)) then
           st.gone = (st.gone or 0) + 1
           if not st.goneSoonest or mail.expires < st.goneSoonest then st.goneSoonest = mail.expires end
         end

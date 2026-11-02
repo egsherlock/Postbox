@@ -5680,9 +5680,10 @@ end
 -- With the icon on, the rows that need something else grey while it is
 -- not there, each saying what turns it on (Rows.Why): Count on icon, and
 -- the marker's look, while Mail Memory is off, which they are made from;
--- Shape, Color, Anchor, Offset X and Offset Y while Minimap marker (under
--- General) is Off; Larger when alone unless it is Always (the one choice
--- that puts the marker on its own); Pulse while Glow is off; Glow color
+-- Shape, Color, Anchor, Offset X and Offset Y while Warn about or Minimap
+-- marker (both under General) is Off; Larger when alone unless it is
+-- Always (the one choice that puts the marker on its own), and with the
+-- rest; Pulse while Glow is off; Glow color
 -- while neither Glow nor Flash on new mail, the two things that wear it, is
 -- on. When to show stays live, its Mail on any character set aside (faint
 -- in its list, and said why) while Mail Memory is off. With the icon off
@@ -5690,10 +5691,13 @@ end
 function State.MinimapRows()
   local Icon, rows = ns.MinimapButton, S.mmRows
   if not (Icon and rows and Icon.GetEnabled and Icon.GetEnabled()) then return end
-  local memory = ns.MailboxUI.GetOption("mailMemory") and true or false
+  local UI = ns.MailboxUI
+  local memory = UI.GetOption("mailMemory") and true or false
+  local warning = (UI.GetMemoryWarn and UI.GetMemoryWarn() or "any") ~= "off"
   local expiry = Icon.GetExpiry()
-  local marking = memory and expiry ~= "off"
-  local why = memory and "OPT_MINIMAP_WHY_MARKER" or "OPT_MINIMAP_WHY_MEMORY"
+  local marking = memory and warning and expiry ~= "off"
+  local why = (not memory and "OPT_MINIMAP_WHY_MEMORY") or (not warning and "OPT_MINIMAP_WHY_WARN")
+    or "OPT_MINIMAP_WHY_MARKER"
   local glow = Icon.GetGlow() and true or false
   if rows.marker then Rows.SetEnabled(rows.marker, marking, why) end
   if rows.color then Rows.SetEnabled(rows.color, marking, why) end
@@ -5701,9 +5705,7 @@ function State.MinimapRows()
   if rows.offx then Rows.SetEnabled(rows.offx, marking, why) end
   if rows.offy then Rows.SetEnabled(rows.offy, marking, why) end
   if rows.large then
-    local alone = (not memory and "OPT_MINIMAP_WHY_MEMORY") or (expiry == "off" and "OPT_MINIMAP_WHY_MARKER")
-      or "OPT_MINIMAP_WHY_ALONE"
-    Rows.SetEnabled(rows.large, memory and expiry == "always", alone)
+    Rows.SetEnabled(rows.large, marking and expiry == "always", marking and "OPT_MINIMAP_WHY_ALONE" or why)
   end
   if rows.count then Rows.SetEnabled(rows.count, memory, "OPT_MINIMAP_WHY_MEMORY") end
   if rows.show then
@@ -7150,7 +7152,7 @@ function Pages.minimap(col)
   Rows.Group(block, L["OPT_MINIMAP_GROUP_EXPIRY"])
 
   -- Shape, Color, Anchor, Offset X and Offset Y grey while Minimap marker
-  -- is Off, or Mail Memory is; Larger when alone unless it is Always, the
+  -- or Warn about is Off, or Mail Memory is; Larger when alone unless it is Always, the
   -- only choice that puts the marker on its own (State.MinimapRows).
   local markerNames = {
     dot = L["OPT_MINIMAP_MARKER_DOT"], ring = L["OPT_MINIMAP_MARKER_RING"], square = L["OPT_MINIMAP_MARKER_SQUARE"],
@@ -7172,6 +7174,7 @@ function Pages.minimap(col)
   modes[markerRow.entry] = "marker"
   rows.marker = markerRow
   Rows.Why(markerRow, "OPT_MINIMAP_WHY_MARKER")
+  Rows.Why(markerRow, "OPT_MINIMAP_WHY_WARN")
   Rows.Why(markerRow, "OPT_MINIMAP_WHY_MEMORY")
   local colorRow = ColorRow({
     title = L["OPT_MINIMAP_MARKERCOLOR_TITLE"], text = L["OPT_MINIMAP_MARKERCOLOR_DESC"],
@@ -7181,6 +7184,7 @@ function Pages.minimap(col)
   modes[colorRow.entry] = "color"
   rows.color = colorRow
   Rows.Why(colorRow, "OPT_MINIMAP_WHY_MARKER")
+  Rows.Why(colorRow, "OPT_MINIMAP_WHY_WARN")
   Rows.Why(colorRow, "OPT_MINIMAP_WHY_MEMORY")
   -- Anchor: the nine spots, in reading order; its drawing is the grid of
   -- them.
@@ -7204,6 +7208,7 @@ function Pages.minimap(col)
   modes[cornerRow.entry] = "corner"
   rows.corner = cornerRow
   Rows.Why(cornerRow, "OPT_MINIMAP_WHY_MARKER")
+  Rows.Why(cornerRow, "OPT_MINIMAP_WHY_WARN")
   Rows.Why(cornerRow, "OPT_MINIMAP_WHY_MEMORY")
   -- Offset X and Offset Y: whole screen pixels from the anchor. No answers
   -- of their own: the drawing shows the icon as set, the marker moving with
@@ -7217,6 +7222,7 @@ function Pages.minimap(col)
     after = Ctx.Repaint,
   })
   Rows.Why(rows.offx, "OPT_MINIMAP_WHY_MARKER")
+  Rows.Why(rows.offx, "OPT_MINIMAP_WHY_WARN")
   Rows.Why(rows.offx, "OPT_MINIMAP_WHY_MEMORY")
   rows.offy = Rows.Slider(block, {
     title = L["OPT_MINIMAP_OFFSETY_TITLE"], text = L["OPT_MINIMAP_OFFSETY_DESC"], min = lo, max = hi,
@@ -7225,6 +7231,7 @@ function Pages.minimap(col)
     after = Ctx.Repaint,
   })
   Rows.Why(rows.offy, "OPT_MINIMAP_WHY_MARKER")
+  Rows.Why(rows.offy, "OPT_MINIMAP_WHY_WARN")
   Rows.Why(rows.offy, "OPT_MINIMAP_WHY_MEMORY")
   local largeRow = Rows.Check(block, {
     title = L["OPT_MINIMAP_LARGE_TITLE"], text = L["OPT_MINIMAP_LARGE_DESC"],
@@ -7236,6 +7243,7 @@ function Pages.minimap(col)
   rows.large = largeRow
   Rows.Why(largeRow, "OPT_MINIMAP_WHY_ALONE")
   Rows.Why(largeRow, "OPT_MINIMAP_WHY_MARKER")
+  Rows.Why(largeRow, "OPT_MINIMAP_WHY_WARN")
   Rows.Why(largeRow, "OPT_MINIMAP_WHY_MEMORY")
   for entry in pairs(modes) do entry.stage = "minimap" end
   rows.offx.entry.stage, rows.offy.entry.stage = "minimap", "minimap"
@@ -7359,6 +7367,8 @@ function Pages.general(col)
   Rows.Group(block, L["OPT_MINIMAP_GROUP_EXPIRY"])
   local function Warned()
     State.Warnings()
+    -- The Minimap tab's marker look greys with Warn about too.
+    State.MinimapRows()
     local Icon = ns.MinimapButton
     if Icon and Icon.Refresh then Icon.Refresh() end
   end

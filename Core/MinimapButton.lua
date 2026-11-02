@@ -1878,6 +1878,7 @@ local TIP = {
   CHARACTERS = 6,      -- characters listed before "and N more"
   INDENT = "   ",
   seen = {},           -- the one-field snapshot MailMemory.AgeText reads
+  mode = "any",        -- Warn about, read as each showing begins (TIP.WarningText)
 }
 
 -- `tone`: a palette token for the whole line ("warning"), inked for the
@@ -1917,6 +1918,17 @@ function TIP.Senders(groups)
   if #groups > shown then TIP.More(#groups - shown, true) end
 end
 
+-- A character's warning, in words, by Warn about's rule (MM.Warns, read
+-- once a showing into TIP.mode), as the marker and the login line have it:
+-- nothing while it is Off; under Mail to be deleted, only mail that would
+-- be, in the login line's words for it (`goneText`); otherwise `text`.
+function TIP.WarningText(Memory, st)
+  local warns = Memory and Memory.Warns
+  if not (warns and warns(st, TIP.mode)) then return nil end
+  if TIP.mode == "deleted" then return st.goneText end
+  return st.text
+end
+
 -- One character's left-hand side: its name, and while Mail Memory warns
 -- about it, the warning's own words (the soonest expiry, or how long mail
 -- on its way has gone unopened) after it in the warning tone. The count is
@@ -1926,7 +1938,7 @@ function TIP.CharacterName(Memory, st)
   -- as the warning: in Light mode the palette's tones are the light
   -- paper's, and the tooltip stays dark.
   local name = Memory.ClassName(st.realm, st.name, nil, "tooltip")
-  local warning = st.warn and st.text
+  local warning = TIP.WarningText(Memory, st)
   if not warning then return name end
   return name .. "  " .. ns.Theme.Colorize("warning", warning, "tooltip")
 end
@@ -1968,9 +1980,11 @@ function TIP.Characters(Memory)
   if not (Memory and type(Memory.Characters) == "function") then return end
   local list = Memory.Characters()
   local others = false
+  local warns = Memory.Warns
+  local mode = TIP.mode
   for i = 1, #list do
     local st = list[i]
-    if not (st.me or st.hidden) and (st.warn or (st.waiting + (st.pending or 0)) > 0) then
+    if not (st.me or st.hidden) and ((st.waiting + (st.pending or 0)) > 0 or (warns and warns(st, mode))) then
       others = true
       break
     end
@@ -1982,7 +1996,7 @@ function TIP.Characters(Memory)
   for i = 1, #list do
     local st = list[i]
     local n = st.waiting + (st.pending or 0)
-    if not (st.me or st.hidden) and (n > 0 or st.warn) then
+    if not (st.me or st.hidden) and (n > 0 or (warns and warns(st, mode))) then
       if shown < TIP.CHARACTERS then
         shown = shown + 1
         GameTooltip:AddDoubleLine(TIP.CharacterName(Memory, st), tostring(n), 1, 1, 1, 1, 1, 1)
@@ -2021,7 +2035,10 @@ ShowTooltip = function(button, hostMode)
   -- lost, or on its way unopened) is said here, after the counts, in the
   -- warning tone; the Characters list below is the other characters'.
   local me = memoryOn and TIP.Me(Memory) or nil
-  local myWarning = me and me.warn and me.text or nil
+  -- Warn about, once for the whole tooltip: its warnings say what the
+  -- marker and the login line say (TIP.WarningText).
+  TIP.mode = WarnMode()
+  local myWarning = me and TIP.WarningText(Memory, me) or nil
   if state or view.lit or myWarning then TIP.Heading(Memory, me) end
 
   if state and state.arrived then

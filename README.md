@@ -148,7 +148,8 @@ a mail to see what it holds. A character you no longer play can be hidden
   known to be on its way and no mailbox visit in over three weeks, the
   character you're on included. One choice, **Warn about** (Options,
   General, Expiring mail), sets what both warnings cover: **Mail to be
-  deleted**, **Mail to be deleted or sent back**, or **Off**. They come as a
+  deleted**, **Mail to be deleted or sent back**, or **Off** (mail last seen
+  before 1.60 counts as possibly deleted, to be safe). They come as a
   line in chat at login (**Chat line at login**) and as the minimap icon's
   marker (**Minimap marker**: with the icon, always, or off); the minimap
   tooltip names them too.
@@ -223,7 +224,7 @@ icon steps aside.
   its real size, wearing every setting; settings with choices show them
   side by side, and a grayed-out setting says what turns it on. What needs
   Mail Memory (Mail on any character, Count on icon, the marker) is grayed
-  out while it is off.
+  out while it is off, and the marker's look also while Warn about is Off.
 - Two dozen hand-painted styles from 16 to 40 px, on the minimap's rim or
   anywhere on screen (Shift-drag; Alt-click locks it).
 - **Its tooltip** shows your own mailbox first, then each of your other
