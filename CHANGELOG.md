@@ -48,11 +48,27 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   the options. The button is lit while it is on.
   None of it can be collected. Arranging from the options now leaves them
   open, and Done keeps the sample window up.
+- **Every character's mail at a glance:** the options open on a new General
+  tab whose top block, Across your characters, adds up each character's box
+  as it was last seen: mails waiting, how many characters have mail, the
+  soonest to expire (with its arrow or bin) and the gold waiting, over a
+  line per character. Click a character to open its box in Mail Memory.
+  General also holds Mail Memory's settings, the mail alerts, and Character
+  Groups and Manage Recipients; the Mail Memory tab is gone.
+- **Choose the sound for new mail:** the mail chime, Coins, Group invite,
+  Friend online or Ready check, all the game's own, with a button to hear
+  it first. If you had the sound on, it is still the mail chime.
+- **Choose what the login warning covers:** any mail with gold or items, as
+  before, or only mail that would be deleted. Off stays off.
 - **Mail Memory has the options cog** the Postbox window has, opening the
-  options below it.
+  options on General, below it.
 
 ### Improved
 
+- **The new-mail sound stays quiet for your own auction house purchases:**
+  the game already tells you, and the minimap icon still flashes for them
+  and counts them. Flash on new mail now sits beside the sound, under
+  General.
 - **A C.O.D. price is red,** as spent gold is, so amber means only that time
   is running out, and the totals band adds the C.O.D. still to pay on the
   mail listed.

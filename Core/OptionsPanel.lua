@@ -751,12 +751,17 @@ local BUTTON_FIT = { height = BUTTON_H, padding = 28, minWidth = 64 }
 -- and no least width of their own, the column they share being theirs.
 local PAIR_FIT = { height = BUTTON_H, padding = 14, minWidth = 0 }
 
+-- General first: what belongs to no one window -- every character's mail
+-- (Mail Memory, and the summary of it), the mail alerts, and the lists the
+-- player builds (Character Groups, Manage Recipients). It took the Mail
+-- Memory tab's place, and its page id: an opener that asked for "memory"
+-- is shown General (Panel.SelectTab).
 local TABS = {
+  { key = "general", caption = "OPT_GENERAL_HEADING" },
   { key = "mail",    caption = "OPT_MAILTAB_HEADING" },
   { key = "send",    caption = "OPT_SENDTAB_HEADING" },
   { key = "window",  caption = "OPT_WINDOW_HEADING" },
   { key = "minimap", caption = "OPT_MINIMAP_HEADING", square = true },
-  { key = "memory",  caption = "OPT_MEMORY_TITLE",    square = true },
 }
 
 -- Everything the panel keeps between calls, on one table.
@@ -776,7 +781,7 @@ local S = {
   plates = {},    -- tab key -> its tab
   ctx = {},       -- tab key -> its drawing, once built
   tiles = {},     -- the drawings' tiles (Character Groups, Manage Recipients)
-  tab = "mail",
+  tab = "general",
   shown = false,  -- the entry the inspector's text zone shows (nil: at rest)
   -- held: the row whose dropdown's list is open; heldAt and heldEnter, where
   -- the pointer rests meanwhile (Rows.Hold)
@@ -791,7 +796,7 @@ local S = {
 }
 
 -- The sections below, declared together so each can reach the others.
-local Tip, Insp, Ctx, Rows, Tabs, Pages, State, Footer, Place = {}, {}, {}, {}, {}, {}, {}, {}, {}
+local Tip, Insp, Ctx, Rows, Tabs, Pages, State, Footer, Place, Dash = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
 
 -- title, text [, extra]: one thing the inspector can say. `extra` names a
 -- drawing shown under the text ("arrange").
@@ -1065,9 +1070,10 @@ end
 -- The inspector's drawings (Ctx)
 --
 -- One per tab, built the first time its tab is shown and painted every
--- time it is: on the Mail tab the character groups tile and, under it, the
--- Mail window small, wearing the Mail tab's settings; the Send tab's
--- recipients tile; on the Window tab the same window over a bit of world,
+-- time it is: on General the character groups tile and, under it, the
+-- recipients tile; on the Mail tab the Mail window small, wearing the Mail
+-- tab's settings; none on the Send tab, whose text has the card; on the
+-- Window tab the same window over a bit of world,
 -- at the player's opacity and border; the minimap icon large and at its
 -- own size, wearing everything its settings put on it, and the answers of
 -- each setting with choices while it is pointed at. Drawn here, from the
@@ -1107,8 +1113,9 @@ do
   function Ctx.Height(key)
     -- The window takes the room between the tile and the text (Layout),
     -- under its caption (Ctx.PreviewRoom).
-    if key == "mail" then return CTX_TOP + TILE_H + 8 + Ctx.PreviewRoom() + Ctx.MailMiniHeight() + 10 end
-    if key == "send" then return CTX_TOP + TILE_H + 10 end
+    if key == "mail" then return CTX_TOP + Ctx.PreviewRoom() + Ctx.MailMiniHeight() + 10 end
+    -- General: the two tiles, one over the other.
+    if key == "general" then return CTX_TOP + 2 * TILE_H + 8 + 10 end
     if key == "window" then
       -- The drawing grows with the text size (Ctx.MiniHeight).
       return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + Ctx.PreviewRoom() + Ctx.MiniHeight() + 10
@@ -1305,7 +1312,7 @@ do
         return
       end
       local panel = S.frame
-      if panel and panel:IsShown() then Ctx.Paint(watched[self]) end
+      if panel and panel:IsShown() then Ctx.Paint("general") end
     end)
   end
 
@@ -1385,25 +1392,44 @@ do
     return name, link, quality
   end
 
-  -- The Mail tab: the character groups tile, and under it the Mail window,
-  -- small, wearing the Mail tab's settings (Ctx.Mini, the Mail tab's
-  -- window), under its caption (Ctx.PreviewCaption), as tall as the room
-  -- between the tile and the text (Layout).
+  -- The Mail tab: the Mail window, small, wearing the Mail tab's settings
+  -- (Ctx.Mini, the Mail tab's window), under its caption
+  -- (Ctx.PreviewCaption), as tall as the room over the text (Layout).
   function Ctx.mail(card)
     local f = CreateFrame("Frame", nil, card)
     f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
-    f:SetSize(CTX_W, TILE_H + 8 + Ctx.PreviewRoom() + Ctx.MailMiniHeight())
-    local tile = Ctx.Tile(f, "Interface\\AddOns\\Postbox\\Media\\minimap-mailbag.tga",
-      L["GROUPS_TITLE"], S.idle.mail, Ctx.OpenGroups)
-    tile:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    f:SetSize(CTX_W, Ctx.PreviewRoom() + Ctx.MailMiniHeight())
     local cap = Ctx.PreviewCaption(f)
-    cap:SetPoint("TOPLEFT", tile, "BOTTOMLEFT", 0, -8)
+    cap:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
     local sw = Ctx.Mini(f, true)
     sw:SetPoint("TOPLEFT", cap, "BOTTOMLEFT", 0, -Ctx.PREVIEW_GAP)
     S.mailMini = sw
     f.Paint = function()
-      -- How many groups there are; none reads as the tile's way in. The
-      -- words are made when the number changes.
+      local h = Ctx.MailMiniHeight()
+      f:SetHeight(Ctx.PaintPreviewCaption(cap) + h)
+      Ctx.PaintMini(sw, h)
+    end
+    return f
+  end
+
+  -- General: the two lists the player builds, each a tile that opens its
+  -- window -- the character groups, and under it the recipients. The
+  -- recipients' count walks every recipient Postbox knows, so it is
+  -- counted only when this tab is shown, once each time the panel opens,
+  -- and again after the manager closes; the groups' words are made when
+  -- their number changes.
+  function Ctx.general(card)
+    local f = CreateFrame("Frame", nil, card)
+    f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
+    f:SetSize(CTX_W, 2 * TILE_H + 8)
+    local groups = Ctx.Tile(f, "Interface\\AddOns\\Postbox\\Media\\minimap-mailbag.tga",
+      L["GROUPS_TITLE"], S.groupsEntry, Ctx.OpenGroups)
+    groups:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    local recipients = Ctx.Tile(f, "Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga",
+      L["RM_OPT_BUTTON"], S.recipientsEntry, Ctx.OpenRecipients)
+    recipients:SetPoint("TOPLEFT", groups, "BOTTOMLEFT", 0, -8)
+    f.Paint = function()
+      -- How many groups there are; none reads as the tile's way in.
       local CG = ns.CharacterGroups
       local list = CG and type(CG.List) == "function" and CG.List() or nil
       local n = type(list) == "table" and #list or 0
@@ -1411,31 +1437,15 @@ do
         S.tileGroups = n
         S.tileFact = n > 0 and ns.Plural("OPT_GROUPS_COUNT", n) or L["GROUPS_NEW"]
       end
-      Ctx.PaintTile(tile, S.tileFact)
-      local h = Ctx.MailMiniHeight()
-      f:SetHeight(TILE_H + 8 + Ctx.PaintPreviewCaption(cap) + h)
-      Ctx.PaintMini(sw, h)
-    end
-    return f
-  end
-
-  -- The Send tab: the recipients tile. Its count walks every recipient
-  -- Postbox knows, so it is counted only when this tab is shown, once each
-  -- time the panel opens, and again after the manager closes.
-  function Ctx.send(card)
-    local f = CreateFrame("Frame", nil, card)
-    f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
-    f:SetSize(CTX_W, TILE_H)
-    local tile = Ctx.Tile(f, "Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga",
-      L["RM_OPT_BUTTON"], S.idle.send, Ctx.OpenRecipients)
-    tile:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-    f.Paint = function()
+      Ctx.PaintTile(groups, S.tileFact)
       if not S.sendText then
         local RM = ns.RecipientManager
         local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
         S.sendText = ns.Plural("RM_HERO_COUNT", count)
       end
-      Ctx.PaintTile(tile, S.sendText)
+      Ctx.PaintTile(recipients, S.sendText)
+      -- The summary on the tab's own page, read now and only now (Dash).
+      Dash.Paint()
     end
     return f
   end
@@ -2478,16 +2488,16 @@ do
     return given > least and given or least
   end
 
-  -- What the Mail tab needs of the inspector: the tile, the caption, the
-  -- window at its least and the text zone `textH` under it (Layout).
+  -- What the Mail tab needs of the inspector: the caption, the window at
+  -- its least and the text zone `textH` under it (Layout).
   function Ctx.MailNeed(textH)
-    return CTX_TOP + TILE_H + 8 + Ctx.PreviewRoom() + MW.MailMin() + 10 + (textH or SAY_MIN)
+    return CTX_TOP + Ctx.PreviewRoom() + MW.MailMin() + 10 + (textH or SAY_MIN)
   end
 
   -- The window's height in an inspector `bodyH` tall: all the room between
   -- the caption and the text zone.
   function Ctx.MailFill(bodyH, textH)
-    S.mailMiniH = math.floor(bodyH - (CTX_TOP + TILE_H + 8) - Ctx.PreviewRoom() - 10 - (textH or SAY_MIN))
+    S.mailMiniH = math.floor(bodyH - CTX_TOP - Ctx.PreviewRoom() - 10 - (textH or SAY_MIN))
   end
 
   -- The settings the window shows, read once per paint.
@@ -4530,6 +4540,40 @@ do
     return btn
   end
 
+  -- A square button before a dropdown's toggle that plays what the
+  -- dropdown chose: Sound on new mail's. The arrow on a holder of its own,
+  -- as the arrange mark is (a skin's button repaint fades the button's own
+  -- textures), in the caption's ink, grey while there is nothing to play
+  -- (State.Tone). The row's name leaves it room (Rows.Fit, `playW`). The
+  -- pointer on it shows the row's own entry.
+  local PLAY_W = 22
+  local function PlayClick()
+    local Icon = ns.MinimapButton
+    if Icon and Icon.PlayTone and Icon.GetAlertTone then Icon.PlayTone(Icon.GetAlertTone()) end
+  end
+
+  function Rows.Play(row)
+    local T = ns.Theme
+    local btn = T.CreateButton(nil, row)
+    btn:SetSize(PLAY_W, BUTTON_H)
+    btn:SetPoint("RIGHT", row.dd, "LEFT", -LEAD_GAP, 0)
+    btn:SetText("")
+    btn:SetScript("OnClick", PlayClick)
+    Wire(btn, row, true)
+    local mark = T.Glyph and T.Glyph(ArtHolder(btn), "arrow-right", 8, "OVERLAY") or nil
+    if mark then mark:SetPoint("CENTER", btn, "CENTER", 1, 0) end
+    btn.Mark = mark
+    row.play, row.playW = btn, PLAY_W + LEAD_GAP
+    return btn
+  end
+
+  function Rows.PaintPlay(row)
+    local btn = row and row.play
+    local mark = btn and btn.Mark
+    if not mark then return end
+    ns.Theme.SetColor(mark, btn:IsEnabled() and "textPrimary" or "textDisabled")
+  end
+
   -- A quiet line across the row, centred: something to know, not a setting.
   function Rows.Note(col, text, title, desc)
     local row = Rows.New(col, ROW_H)
@@ -4803,7 +4847,8 @@ do
     for i = 1, #cells do
       local cell = cells[i]
       local kind = cell.kind
-      local inner = cell.w - NAME_X - CONTROL_R
+      -- Less the button that stands before a dropdown (Rows.Play).
+      local inner = cell.w - NAME_X - CONTROL_R - (cell.playW or 0)
       if kind == "note" then
         T.FitText(cell.Name, inner - NAME_X, cell.nameText, cell)
       elseif kind == "hidden" then
@@ -4842,14 +4887,360 @@ do
 end
 
 -------------------------------------------------------------
+-- The summary (Dash): "Across your characters"
+--
+-- General's first block: every character's mail as each box was last
+-- seen, added up (MailMemory.Dashboard) -- four figures over a list of the
+-- characters with mail, in the options' own rows: 28 high, hairlines, the
+-- pointer's wash, each name in its class colour, a time short of it in
+-- amber with the rows' own expiry mark. The list takes the room down to the
+-- settings under it and no more; past that, its foot folds the rest into
+-- "+N more". The foot opens Mail Memory, and a click on a character opens
+-- that character's box there (MailMemory.OpenCharacter). With nothing to
+-- add up -- Mail Memory off, no box seen yet, no mail anywhere -- the block
+-- is one sentence saying so, never a row of zeros.
+--
+-- Light: read only while General is shown (Ctx.general's paint), and its
+-- words made again only when what they are made from has moved -- the
+-- summary's generation, the room, the warning ink, Expiry marks, an open
+-- of the panel (the fonts) -- so a repaint with nothing new sets nothing.
+-- Every row and every text is made once and kept. The page's height for
+-- the panel's measure is the block at its least (Build): the summary takes
+-- the room the panel has, and never makes it taller.
+-------------------------------------------------------------
+do
+  local NUMS_H, HEAD_H, GAP, MSG_PAD, FOOT_GAP = 60, 18, 18, 8, 8
+  -- Each figure column's least width, from the row's right: Seen, Soonest,
+  -- Gold, Mail (the mockup's). A longer heading or figure widens its own.
+  local MIN_W = { 40, 52, 64, 30 }
+  local FIELDS = { "Seen", "Soon", "Gold", "Mail" }
+  local HEADS = { "OPT_DASH_COL_SEEN", "OPT_DASH_COL_SOON", "OPT_DASH_COL_GOLD", "OPT_DASH_COL_MAIL" }
+  local DASH = "\226\128\148"
+  -- What the words were last made from, and the columns as they stand.
+  local made = { gen = false, room = false, marks = false, ink = false, open = false }
+  local widths, rights = { 0, 0, 0, 0 }, { 0, 0, 0, 0 }
+
+  local function Enter(self)
+    if Rows.Held(self, Enter) then return end
+    Rows.Hover(self)
+  end
+
+  local function Leave(self)
+    if Rows.HeldLeave(self) then return end
+    Rows.Unhover(self)
+  end
+
+  local function Click(self)
+    local MM = ns.MailMemory
+    if self.realm and MM and type(MM.OpenCharacter) == "function" then MM.OpenCharacter(self.realm, self.name) end
+  end
+
+  local function OpenClick()
+    local MM = ns.MailMemory
+    if MM and type(MM.OpenCharacter) == "function" then MM.OpenCharacter(nil) end
+  end
+
+  -- A place the pointer rests on: the summary's text in the inspector, the
+  -- row's wash; `hair`, a hairline over it.
+  local function Spot(parent, kind, height, hair)
+    local T = ns.Theme
+    local f = CreateFrame(kind, nil, parent)
+    f:SetHeight(height)
+    if hair then
+      local line = f:CreateTexture(nil, "BORDER")
+      line:SetHeight(1)
+      line:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+      line:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+      T.FillChrome(line, HAIR_A)
+    end
+    local wash = f:CreateTexture(nil, "BACKGROUND")
+    wash:SetAllPoints()
+    T.FillChrome(wash, WASH_A)
+    wash:Hide()
+    f.Wash, f.entry = wash, S.dashEntry
+    f:EnableMouse(true)
+    -- A click passes on where there is nothing to click, so the panel
+    -- still drags from here.
+    if kind == "Frame" and f.SetPropagateMouseClicks then f:SetPropagateMouseClicks(true) end
+    f:SetScript("OnEnter", Enter)
+    f:SetScript("OnLeave", Leave)
+    return f
+  end
+
+  local function Text(parent, role, justify)
+    local fs = ns.Theme.CreateText(parent, role)
+    fs:SetJustifyH(justify or "LEFT")
+    fs:SetWordWrap(false)
+    return fs
+  end
+
+  -- A character's line, built the first time the list reaches it.
+  local function NewRow(i)
+    local d = S.dash
+    local row = Spot(d.frame, "Button", ROW_H, true)
+    row.Name = Text(row, "value")
+    row.Name:SetPoint("LEFT", row, "LEFT", NAME_X, 0)
+    for j = 1, #FIELDS do row[FIELDS[j]] = Text(row, "value", "RIGHT") end
+    row:SetScript("OnClick", Click)
+    d.rows[i] = row
+    return row
+  end
+
+  function Dash.Build(col)
+    local T = ns.Theme
+    local frame = CreateFrame("Frame", nil, col.frame)
+    frame:SetPoint("TOPLEFT", col.frame, "TOPLEFT", 0, col.y)
+    frame:SetPoint("TOPRIGHT", col.frame, "TOPRIGHT", 0, col.y)
+    -- At its least: the figures, the headings, one character and the foot.
+    local least = NUMS_H + HEAD_H + 2 * ROW_H
+    frame:SetHeight(least)
+    local item = { frame = frame, h = least }
+    col.items[#col.items + 1] = item
+    col.y = col.y - least
+    col.first = false
+
+    -- The four figures, each over its words, a hairline between two.
+    local nums = Spot(frame, "Frame", NUMS_H)
+    nums:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    nums:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    local quarter = ROW_W / 4
+    local labels = { "OPT_DASH_MAILS", "OPT_DASH_CHARS", "OPT_DASH_SOONEST", "OPT_DASH_GOLD" }
+    nums.Big, nums.Label = {}, {}
+    for i = 1, 4 do
+      local x = (i - 0.5) * quarter
+      local big = Text(nums, "title", "CENTER")
+      big:SetPoint("TOP", nums, "TOPLEFT", x, -9)
+      T.SetColor(big, "textPrimary")
+      local label = Text(nums, "secondary", "CENTER")
+      label:SetPoint("TOP", big, "BOTTOM", 0, -3)
+      label:SetText(L[labels[i]])
+      label.full = L[labels[i]]
+      nums.Big[i], nums.Label[i] = big, label
+      if i > 1 then
+        local line = nums:CreateTexture(nil, "BORDER")
+        line:SetWidth(1)
+        line:SetPoint("TOPLEFT", nums, "TOPLEFT", math.floor((i - 1) * quarter), -12)
+        line:SetPoint("BOTTOMLEFT", nums, "BOTTOMLEFT", math.floor((i - 1) * quarter), 10)
+        T.FillChrome(line, HAIR_A)
+      end
+    end
+
+    -- The columns' headings, quiet.
+    local head = Spot(frame, "Frame", HEAD_H)
+    head:SetPoint("TOPLEFT", nums, "BOTTOMLEFT", 0, 0)
+    head:SetPoint("TOPRIGHT", nums, "BOTTOMRIGHT", 0, 0)
+    head.Name = Text(head, "secondary")
+    head.Name:SetPoint("LEFT", head, "LEFT", NAME_X, 0)
+    head.Name:SetText(L["OPT_DASH_COL_CHAR"])
+    T.SetColor(head.Name, "textDisabled")
+    for j = 1, #FIELDS do
+      local fs = Text(head, "secondary", "RIGHT")
+      fs:SetText(L[HEADS[j]])
+      T.SetColor(fs, "textDisabled")
+      head[FIELDS[j]] = fs
+    end
+
+    -- The foot: what the list is, or how many it leaves out, and the way
+    -- to the rest.
+    local foot = Spot(frame, "Frame", ROW_H, true)
+    foot.Text = Text(foot, "secondary")
+    foot.Text:SetPoint("LEFT", foot, "LEFT", NAME_X, 0)
+    local open = T.CreateButton(nil, foot)
+    open:SetHeight(BUTTON_H)
+    open:SetPoint("RIGHT", foot, "RIGHT", -CONTROL_R, 0)
+    open:SetText(L["OPT_DASH_OPEN"])
+    open:SetScript("OnClick", OpenClick)
+    open.__pbCell = foot
+    if open.SetMotionScriptsWhileDisabled then open:SetMotionScriptsWhileDisabled(true) end
+    open:HookScript("OnEnter", Rows.ControlEnter)
+    open:HookScript("OnLeave", Rows.ControlLeave)
+    foot.Open = open
+
+    -- With nothing to add up: one sentence that says why.
+    local msg = Spot(frame, "Frame", ROW_H)
+    msg:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    msg:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    msg.Text = ns.Theme.CreateText(msg, "bodySmall")
+    msg.Text:SetPoint("TOPLEFT", msg, "TOPLEFT", NAME_X, -MSG_PAD)
+    msg.Text:SetWidth(ROW_W - 2 * NAME_X)
+    msg.Text:SetJustifyH("LEFT")
+    msg.Text:SetWordWrap(true)
+    if msg.Text.SetSpacing then msg.Text:SetSpacing(2) end
+    msg:Hide()
+
+    S.dash = { frame = frame, item = item, col = col, rows = {}, nums = nums, head = head, foot = foot, msg = msg }
+  end
+
+  -- `at` (an expiry time), fate, amber, fs -> the time left as a row writes
+  -- it: in amber with the expiry mark where it is short, plain otherwise.
+  local function Soon(at, fate, amber, fs, now)
+    if not at then return DASH end
+    local text = ns.Helpers.TimeLeft((at - now) / 86400)
+    if not amber then return text end
+    local CT = ns.CollectTab
+    local R = CT and CT.RowRules
+    local marked = fate and R and R.FateText and R.FateText(text, fate, fs)
+    return marked or ns.Theme.Colorize("warning", text)
+  end
+
+  local function Gold(copper)
+    if not copper or copper <= 0 then return ns.Theme.Colorize("textSecondary", DASH) end
+    local F = ns.Core and ns.Core.Formatting
+    if F and F.FormatMoneyCompact then return F.FormatMoneyCompact(copper, true) end
+    return tostring((math.floor(copper / 10000)))
+  end
+
+  -- A text's width, its expiry mark's included (CollectTab's RV.FateMarkW).
+  local function Width(fs)
+    local CT = ns.CollectTab
+    local R = CT and CT.RowRules
+    local w = TextW(fs)
+    if R and R.FateMarkW then w = w + R.FateMarkW(fs:GetText() or "") end
+    return w
+  end
+
+  -- The block `h` tall: the settings under it move with it.
+  local function Lay(h)
+    local d = S.dash
+    if d.item.h == h then return end
+    d.item.h = h
+    d.frame:SetHeight(h)
+    local page = S.pages.general
+    local used = Rows.Reflow(d.col)
+    if page then page:SetHeight(used + 2 * LIST_PAD) end
+  end
+
+  local function Fill(data)
+    local d = S.dash
+    local T = ns.Theme
+    local nums, head, foot, msg = d.nums, d.head, d.foot, d.msg
+    local words
+    if not (data and data.enabled) then
+      words = L["OPT_DASH_OFF"]
+    elseif not data.recorded then
+      words = L["OPT_DASH_NONE"]
+    elseif data.n == 0 then
+      words = L["OPT_DASH_EMPTY"]
+    end
+    nums:SetShown(not words)
+    head:SetShown(not words)
+    foot:SetShown(not words)
+    msg:SetShown(words and true or false)
+    if words then
+      for i = 1, #d.rows do d.rows[i]:Hide() end
+      msg.Text:SetText(words)
+      local h = 2 * MSG_PAD + math.ceil(msg.Text:GetStringHeight() or 0)
+      msg:SetHeight(h)
+      Lay(h)
+      return
+    end
+
+    local now = time()
+    -- As many characters as the room down to the settings holds.
+    local room = (S.bodyH or 0) - 2 - 2 * LIST_PAD - GROUP_H - NUMS_H - HEAD_H - ROW_H
+      - (S.dashBelow or 0) - FOOT_GAP
+    local cap = math.max(1, math.floor(room / ROW_H))
+    local n = data.n
+    local shown = (n <= cap) and n or cap
+
+    nums.Big[1]:SetText(tostring(data.mails))
+    nums.Big[2]:SetText(tostring(n))
+    nums.Big[3]:SetText(Soon(data.soonest, data.fate, data.amber, nums.Big[3], now))
+    nums.Big[4]:SetText(Gold(data.gold))
+    for i = 1, 4 do
+      local label = nums.Label[i]
+      T.FitText(label, ROW_W / 4 - 8, label.full, label)
+    end
+
+    for j = 1, #FIELDS do widths[j] = math.max(MIN_W[j], TextW(head[FIELDS[j]])) end
+    local CT = ns.CollectTab
+    local age = CT and CT.HistoryAge
+    for i = 1, shown do
+      local r = data.rows[i]
+      local row = d.rows[i] or NewRow(i)
+      row.realm, row.name = r.realm, r.name
+      local MM = ns.MailMemory
+      row.nameText = (MM and MM.ClassName) and MM.ClassName(r.realm, r.name) or r.name
+      row.Mail:SetText(tostring(r.mails))
+      row.Gold:SetText(Gold(r.gold))
+      row.Soon:SetText(Soon(r.soonest, r.fate, r.amber, row.Soon, now))
+      row.Seen:SetText((r.seenAt and age) and age(now - r.seenAt, "plain") or "")
+      T.SetColor(row.Seen, "textSecondary")
+      for j = 1, #FIELDS do
+        local w = Width(row[FIELDS[j]])
+        if w > widths[j] then widths[j] = w end
+      end
+    end
+    for i = shown + 1, #d.rows do d.rows[i]:Hide() end
+
+    -- The columns from the right, each as wide as its widest, GAP apart;
+    -- the names have what is left, cut short where it is not enough (the
+    -- whole name is Mail Memory's, a click away).
+    local x = CONTROL_R + 2
+    for j = 1, #FIELDS do
+      rights[j] = x
+      x = x + widths[j] + GAP
+    end
+    local nameRoom = ROW_W - NAME_X - x
+    for j = 1, #FIELDS do
+      local fs = head[FIELDS[j]]
+      fs:ClearAllPoints()
+      fs:SetPoint("RIGHT", head, "RIGHT", -rights[j], 0)
+    end
+    local y = -(NUMS_H + HEAD_H)
+    for i = 1, shown do
+      local row = d.rows[i]
+      row:ClearAllPoints()
+      row:SetPoint("TOPLEFT", d.frame, "TOPLEFT", 0, y)
+      row:SetPoint("TOPRIGHT", d.frame, "TOPRIGHT", 0, y)
+      for j = 1, #FIELDS do
+        local fs = row[FIELDS[j]]
+        fs:ClearAllPoints()
+        fs:SetPoint("RIGHT", row, "RIGHT", -rights[j], 0)
+      end
+      T.FitText(row.Name, nameRoom, row.nameText, row)
+      row:Show()
+      y = y - ROW_H
+    end
+
+    foot:ClearAllPoints()
+    foot:SetPoint("TOPLEFT", d.frame, "TOPLEFT", 0, y)
+    foot:SetPoint("TOPRIGHT", d.frame, "TOPRIGHT", 0, y)
+    local btnW = T.SizeToText(foot.Open, BUTTON_FIT)
+    local footText = (shown < n) and L("OPT_DASH_MORE", n - shown) or L["OPT_DASH_FOOT"]
+    T.FitText(foot.Text, ROW_W - NAME_X - CONTROL_R - (btnW or 0) - NAME_GAP, footText, foot)
+    Lay(NUMS_H + HEAD_H + (shown + 1) * ROW_H)
+  end
+
+  -- Read now, made again only where something it is made from has moved.
+  function Dash.Paint()
+    local d = S.dash
+    if not (d and d.frame:IsVisible()) then return end
+    local MM = ns.MailMemory
+    local data = MM and type(MM.Dashboard) == "function" and MM.Dashboard() or nil
+    local UI, T = ns.MailboxUI, ns.Theme
+    local gen = data and data.gen or 0
+    local marks = UI and UI.GetOption and UI.GetOption("expiryMarks") or false
+    local ink = T.InkHex and T.InkHex("warning") or ""
+    if made.gen == gen and made.room == S.bodyH and made.marks == marks and made.ink == ink
+      and made.open == S.openGen then
+      return
+    end
+    made.gen, made.room, made.marks, made.ink, made.open = gen, S.bodyH, marks, ink, S.openGen
+    Fill(data)
+  end
+end
+
+-------------------------------------------------------------
 -- Tabs
 --
 -- Five house plates, like the window's own segments: the selected one in
--- the accent, the others neutral. The two tabs a feature's switch leads,
--- Minimap and Mail Memory, carry a small square beside their name that
--- says whether the feature is on: green on, a grey ring off. Window has
--- none: no one switch is what that tab is about (whose look the window
--- wears is the dot on its inspector's host badge).
+-- the accent, the others neutral. The tab a feature's switch leads,
+-- Minimap, carries a small square beside its name that says whether the
+-- feature is on: green on, a grey ring off. The others have none: no one
+-- switch is what such a tab is about (whose look the window wears is the
+-- dot on Window's inspector's host badge; Mail Memory's switch is one row
+-- of General's).
 -------------------------------------------------------------
 do
   local function TabClick(self)
@@ -5039,6 +5430,8 @@ function State.Minimap()
   local Icon = ns.MinimapButton
   local on = Icon and Icon.GetEnabled and Icon.GetEnabled() and true or false
   Rows.SetBlock(S.minimapBlock, on)
+  -- Flash on new mail, under General, is drawn on the icon too.
+  if S.flashCell then Rows.SetEnabled(S.flashCell, on) end
   State.MinimapRows()
   Tabs.SetSquare("minimap", on and "on" or "off")
   Ctx.Paint("minimap")
@@ -5087,10 +5480,29 @@ function State.RowLayout()
   cell.entry = (larger and cell.largeEntry or cell.plainEntry) or cell.entry
 end
 
+-- Mail Memory's switch: the rows it governs grey with it, and the summary
+-- made from it says so (Dash), its heading grey too.
 function State.Memory()
   local on = ns.MailboxUI.GetOption("mailMemory") and true or false
   Rows.SetBlock(S.memoryBlock, on)
-  Tabs.SetSquare("memory", on and "on" or "off")
+  local head = S.dashHead
+  if head and head.off ~= not on then
+    head.off = not on
+    Rows.PaintGroup(head)
+  end
+  if S.tab == "general" then Dash.Paint() end
+end
+
+-- The sound's play button plays the sound chosen, and has nothing to play
+-- on Off (Rows.Play).
+function State.Tone()
+  local cell = S.toneCell
+  local play = cell and cell.play
+  if not play then return end
+  local Icon = ns.MinimapButton
+  local tone = Icon and Icon.GetAlertTone and Icon.GetAlertTone() or "off"
+  play:SetEnabled(tone ~= "off")
+  Rows.PaintPlay(cell)
 end
 
 -- Who the window's look comes from. Re-derived on every open rather than
@@ -5228,9 +5640,8 @@ end
 -- it sits has changed.
 -------------------------------------------------------------
 
--- The Mail tab: how a row looks, what stands under the list, how the tab
--- collects, and the sound when mail arrives -- which a player looks for
--- with the mail, not under the minimap.
+-- The Mail tab: how a row looks, what stands under the list, and how the
+-- tab collects.
 function Pages.mail(col)
   -- A setting the drawing of the window shows: its text stands under the
   -- drawing, never over it (Layout), and while it is pointed at the drawing
@@ -5619,15 +6030,8 @@ function Pages.mail(col)
       ns.Theme.LiftPopup(StaticPopup_Show(POPUP_HISTORY_OFF, L["MSG_HISTORY_OFF_CONFIRM"]))
     end,
   })
-
-  -- The sound when mail arrives while you are out in the world. The flash
-  -- stays with the minimap icon: it is drawn on the icon.
-  Rows.Group(col, L["OPT_ALERTS_HEADING"])
-  Rows.Check(col, {
-    title = L["OPT_ALERT_SOUND_TITLE"], text = L["OPT_ALERT_SOUND_DESC"],
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertSound() end,
-    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertSound(on) end end,
-  })
+  -- (The sound when mail arrives is General's now, with the other mail
+  -- alerts: Pages.general.)
 end
 
 -- The Send tab: the settings about composing, the form's own first, then
@@ -6283,9 +6687,9 @@ function Pages.minimap(col)
   Rows.Check(block, Effect("OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC", "GetShadow", "SetShadow"))
 
   -- Glow: the glow and its pulse side by side, the one breathing the
-  -- other; the colour it wears; and the flash when mail arrives, in that
-  -- colour too. Pulse greys while Glow is off, Glow color while neither
-  -- Glow nor the flash is on (State.MinimapRows).
+  -- other, and the colour it wears -- which the flash when mail arrives
+  -- (General, Mail alerts) wears too. Pulse greys while Glow is off, Glow
+  -- color while neither Glow nor the flash is on (State.MinimapRows).
   Rows.Group(block, L["OPT_MINIMAP_GROUP_GLOW"])
   local glowPair = Rows.Pair(block,
     Effect("OPT_MINIMAP_GLOW_TITLE", "OPT_MINIMAP_GLOW_DESC", "GetGlow", "SetGlow", function()
@@ -6358,16 +6762,8 @@ function Pages.minimap(col)
   modes[glowRow.entry] = "glow"
   rows.glow = glowRow
   Rows.Why(glowRow, "OPT_MINIMAP_WHY_GLOWCOLOR")
-
-  -- The flash is drawn on the icon, so with the icon off it has nothing to
-  -- draw on: it greys with the rows around it. It wears Glow color, which
-  -- stays live while it is on (State.MinimapRows).
-  Rows.Check(block, {
-    title = L["OPT_ALERT_FLASH_TITLE"], text = L["OPT_ALERT_FLASH_DESC"],
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
-    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end,
-    after = State.MinimapRows,
-  })
+  -- (Flash on new mail, which wears Glow color and keeps it live while it
+  -- is on, is under General's Mail alerts: Pages.general.)
 
   -- Expiring mail: the marker for mail close to being lost -- where it
   -- shows (nowhere, on the icon while When to show has it up, or also on
@@ -6515,12 +6911,21 @@ function Pages.minimap(col)
   Rows.EndBlock(block)
 end
 
--- Mail Memory: every character's last-seen mailbox -- a window of its own
--- away from the mailbox, and the other characters in the Mail tab at one.
-function Pages.memory(col)
+-- General: what belongs to no one window. At its top, every character's
+-- mail as each box was last seen (Dash, the summary); under it Mail Memory,
+-- which that summary is made from, and the mail alerts. Its inspector holds
+-- the lists the player builds, Character Groups and Manage Recipients
+-- (Ctx.general).
+function Pages.general(col)
   local T = ns.Theme
+  -- The summary under its heading, which greys while Mail Memory is off.
+  S.dashHead = Rows.Group(col, L["OPT_DASH_TITLE"])
+  Dash.Build(col)
+  local below = col.y
+
+  Rows.Group(col, L["OPT_MEMORY_TITLE"])
   Rows.Check(col, {
-    master = true, title = L["OPT_MEMORY_SWITCH"], entryTitle = L["OPT_MEMORY_TITLE"],
+    title = L["OPT_MEMORY_SWITCH"], entryTitle = L["OPT_MEMORY_TITLE"],
     text = L["OPT_MEMORY_DESC"],
     get = function() return ns.MailboxUI.GetOption("mailMemory") end,
     set = function(on)
@@ -6530,13 +6935,10 @@ function Pages.memory(col)
     after = State.Memory,
   })
 
+  -- What the switch governs, grey with it: who is left out of the lists,
+  -- and the line at login.
   local block = Rows.Block(col)
   S.memoryBlock = block
-  Rows.Check(block, {
-    title = L["OPT_ALERT_OTHERS_TITLE"], text = L["OPT_ALERT_OTHERS_DESC"],
-    get = function() return ns.MailboxUI.GetOption("mailWarnings") end,
-    set = function(on) ns.MailboxUI.SetOption("mailWarnings", on) end,
-  })
 
   -- Hidden characters: the caption, the names, and Show all.
   local row = Rows.New(block, ROW_H)
@@ -6580,7 +6982,57 @@ function Pages.memory(col)
   row:SetScript("OnEnter", HiddenEnter)
   row:SetScript("OnLeave", Rows.LeaveRow)
   S.hiddenRow = row
+
+  -- The line in chat at login about the other characters' mail: none, only
+  -- mail the server would delete, or all mail short of time (the old
+  -- switch's on, MailboxUI.GetMemoryWarn). Read at the next login.
+  Rows.Dropdown(block, {
+    title = L["OPT_ALERT_OTHERS_TITLE"], text = L["OPT_ALERT_OTHERS_DESC"] .. "\n\n" .. L["OPT_WARN_MORE"],
+    items = {
+      { id = "off",     name = L["OPT_ALERT_OFF"] },
+      { id = "deleted", name = L["OPT_WARN_DELETED"] },
+      { id = "any",     name = L["OPT_WARN_ANY"] },
+    },
+    get = function() return ns.MailboxUI.GetMemoryWarn and ns.MailboxUI.GetMemoryWarn() or "any" end,
+    set = function(id) if ns.MailboxUI.SetMemoryWarn then ns.MailboxUI.SetMemoryWarn(id) end end,
+  })
   Rows.EndBlock(block)
+
+  -- The mail alerts: the sound when mail arrives while you are out in the
+  -- world, chosen from the game's own and heard from the button beside it,
+  -- and the flash, which is drawn on the minimap icon and so greys while
+  -- the icon is off (State.Minimap), saying what turns it on.
+  Rows.Group(col, L["OPT_ALERTS_HEADING"])
+  local toneNames = {
+    off = L["OPT_ALERT_OFF"], chime = L["OPT_SOUND_CHIME"], coins = L["OPT_SOUND_COINS"],
+    invite = L["OPT_SOUND_INVITE"], toast = L["OPT_SOUND_TOAST"], ready = L["OPT_SOUND_READY"],
+  }
+  local toneItems = {}
+  local Icon = ns.MinimapButton
+  for _, id in ipairs((Icon and Icon.ALERT_TONES) or { "off" }) do
+    toneItems[#toneItems + 1] = { id = id, name = toneNames[id] or id }
+  end
+  local sound = Rows.Dropdown(col, {
+    title = L["OPT_ALERT_SOUND_TITLE"], text = L["OPT_ALERT_SOUND_DESC"] .. "\n\n" .. L["OPT_SOUND_MORE"],
+    items = toneItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertTone() or "off" end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetAlertTone(id) end
+      State.Tone()
+    end,
+  })
+  Rows.Play(sound)
+  S.toneCell = sound
+  S.flashCell = Rows.Check(col, {
+    title = L["OPT_ALERT_FLASH_TITLE"], text = L["OPT_ALERT_FLASH_DESC"],
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
+    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end,
+    after = State.MinimapRows,
+  })
+  Rows.Why(S.flashCell, "OPT_MINIMAP_WHY_SWITCH")
+  -- The settings' height under the summary: the room the summary's list
+  -- leaves them (Dash.Lay).
+  S.dashBelow = below - col.y
 end
 
 -------------------------------------------------------------
@@ -6886,7 +7338,7 @@ function Footer.Build(frame, above)
     -- style change makes. Nothing else needs one: everything a reset
     -- touches is put back on screen as it happens (MailboxUI, the resets).
     local function AfterReset(styleChanged)
-      -- Everything can clear the recipients: the Send tab's tile counts
+      -- Everything can clear the recipients: General's tile counts
       -- them again.
       S.sendText = nil
       Panel.RefreshControls()
@@ -7280,15 +7732,20 @@ local function Build()
   S.frame = frame
   S.installedHost = InstalledHostName()
 
-  -- What the inspector says at rest on each tab: the tile's own words on
-  -- the two tabs with one, the look's source on Window, the switch's own
-  -- on the two tabs a switch leads. The Window and Minimap texts are
-  -- settled below, once it is known what is painting.
-  S.idle.mail = Entry(L["GROUPS_TITLE"], L["GROUPS_OPT_DESC"])
-  S.idle.send = Entry(L["RM_OPT_BUTTON"], L["RM_OPT_BUTTON_DESC"])
+  -- What the inspector says at rest on each tab: the summary's words on
+  -- General, the way into arranging on the Mail tab, under the window it
+  -- arranges, the first setting's on the Send tab, which draws nothing,
+  -- the look's source on Window, the switch's own on Minimap. The Window
+  -- and Minimap texts are settled below, once it is known what is
+  -- painting. General's two tiles say what they open.
+  S.dashEntry = Entry(L["OPT_DASH_TITLE"], L["OPT_DASH_DESC"])
+  S.idle.general = S.dashEntry
+  S.groupsEntry = Entry(L["GROUPS_TITLE"], L["GROUPS_OPT_DESC"])
+  S.recipientsEntry = Entry(L["RM_OPT_BUTTON"], L["RM_OPT_BUTTON_DESC"])
+  S.idle.mail = Entry(L["OPT_ARRANGE_BUTTON"], L["ARRANGE_TIP"] .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"])
+  S.idle.send = Entry(L["OPT_AFTER_SEND_TITLE"], L["OPT_AFTER_SEND_DESC"])
   S.idle.window = Entry(L["OPT_STYLE_TITLE"], L["OPT_STYLE_DESC"])
   S.idle.minimap = Entry(L["OPT_MINIMAP_TITLE"], L["OPT_MINIMAP_DESC"])
-  S.idle.memory = Entry(L["OPT_MEMORY_TITLE"], L["OPT_MEMORY_DESC"])
 
   Tabs.Build(frame)
 
@@ -7338,6 +7795,7 @@ local function Build()
   S.refresh[#S.refresh + 1] = State.Inheritance
   S.refresh[#S.refresh + 1] = State.Minimap
   S.refresh[#S.refresh + 1] = State.Memory
+  S.refresh[#S.refresh + 1] = State.Tone
   S.refresh[#S.refresh + 1] = State.RowLayout
   S.refresh[#S.refresh + 1] = State.DividerLook
   S.refresh[#S.refresh + 1] = State.Hidden
@@ -7470,9 +7928,11 @@ function Panel.ShowTextReport()
 end
 
 -- The tab the panel shows; kept for the session, so the panel reopens where
--- it was left.
+-- it was left. "memory", the Mail Memory tab's id before General took its
+-- place, is General.
 function Panel.SelectTab(key)
-  if not S.pages[key] then key = "mail" end
+  if key == "memory" then key = "general" end
+  if not S.pages[key] then key = "general" end
   S.tab = key
   if not S.frame then return end
   -- A row left washed on the page going away would still be washed when
@@ -7492,6 +7952,8 @@ end
 function Panel.RefreshControls()
   local frame = S.frame
   if not (frame and frame:IsShown()) then return end
+  -- The summary's words are made again with the controls (Dash).
+  S.openGen = (S.openGen or 0) + 1
   Refresh()
   Rows.Fit()
   Tabs.Fit()
@@ -7623,8 +8085,12 @@ function Panel.Toggle(anchor, from)
   end
   Place.Loose()
   S.side, S.took = nil, nil
-  -- Counted again when the Send tab is next shown.
+  -- Counted again when General is next shown, and the summary's words made
+  -- again in the fonts as they now stand (Dash).
   S.sendText = nil
+  S.openGen = (S.openGen or 0) + 1
+  -- Mail Memory's cog opens General, where Mail Memory's settings are.
+  if S.from == "memory" then S.tab = "general" end
   Refresh()
   Place.Put(frame)
   frame:Show()

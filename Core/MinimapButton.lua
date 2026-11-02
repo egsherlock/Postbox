@@ -55,8 +55,10 @@ local DEFAULTS = {
   pulse    = true,   -- the glow's slow breathe; shadows never pulse
   -- Arrival notification. Both off by default: a sound and a moving icon
   -- are the two things an addon can do that a player cannot ignore, so
-  -- they are asked for rather than assumed.
-  alertSound = false,
+  -- they are asked for rather than assumed. The sound is a choice
+  -- (`alertTone`, MB.ALERT_TONES), deliberately not seeded here: an unset
+  -- one is read from the switch it replaced, `alertSound` (on: the mail
+  -- chime), which a seeded default would hide.
   alertFlash = false,
   lock     = false,  -- swallow shift-drag entirely: no accidental nudges
   -- When the icon is on the map: "new" while the game says there is unread
@@ -2758,19 +2760,53 @@ local function PlayFlash(prefs)
   return true
 end
 
-function MB.NotifyArrival()
+-- The sounds Sound on new mail offers (MB.ALERT_TONES, in the list's order):
+-- the game's own, by their SOUNDKIT names, each with the kit's number where
+-- the client's table lacks the name; never a file of ours, so every one
+-- obeys the player's sound settings like every other UI sound. "chime" is
+-- the one the switch played: the client's new-mail sound where it has one,
+-- its whisper chime otherwise.
+local ALERT_TONES = { "off", "chime", "coins", "invite", "toast", "ready" }
+MB.ALERT_TONES = ALERT_TONES
+local TONE_KIT = {
+  chime  = { "UI_MAIL_ARRIVED", "TELL_MESSAGE", 3081 },
+  coins  = { "LOOT_WINDOW_COIN_SOUND", nil, 120 },
+  invite = { "IG_PLAYER_INVITE", nil, 880 },
+  toast  = { "UI_BNET_TOAST", nil, 18019 },
+  ready  = { "READY_CHECK", nil, 8960 },
+}
+
+-- The sound chosen: `alertTone`, or, where none has been chosen, what the
+-- old switch said (on: the chime).
+local function AlertTone(prefs)
+  local tone = prefs.alertTone
+  if TONE_KIT[tone] then return tone end
+  if prefs.alertSound == true then return "chime" end
+  return "off"
+end
+
+-- Plays `tone` (an id of ALERT_TONES); nothing for "off" or an unknown id.
+function MB.PlayTone(tone)
+  local kit = TONE_KIT[tone]
+  if not kit or type(PlaySound) ~= "function" then return end
+  local named = type(SOUNDKIT) == "table" and SOUNDKIT or nil
+  local id = named and (named[kit[1]] or (kit[2] and named[kit[2]])) or kit[3]
+  if id then pcall(PlaySound, id) end
+end
+
+-- kind: "purchase" for your own auction house purchase, announced by the
+-- auction house as it completes (Core/MailMemory.lua, OnPurchaseCompleted);
+-- nil for any other arrival. A purchase stays quiet: the game has just said
+-- so itself, at the auction house the player is standing at. It still opens
+-- the echo's window, so the purchase's own mail landing a moment later is
+-- quiet too, and it still flashes the icon.
+function MB.NotifyArrival(kind)
   local now = Now()
   local prefs = Settings()
 
   if not (now and lastAlertAt and now - lastAlertAt < ALERT_REPEAT) then
     lastAlertAt = now
-    if prefs.alertSound and type(PlaySound) == "function" and type(SOUNDKIT) == "table" then
-      -- The client's own new-mail sound where it has one, its message chime
-      -- otherwise; never a file of ours, so it obeys the player's sound
-      -- settings like every other UI sound.
-      local id = SOUNDKIT.UI_MAIL_ARRIVED or SOUNDKIT.TELL_MESSAGE
-      if id then pcall(PlaySound, id) end
-    end
+    if kind ~= "purchase" then MB.PlayTone(AlertTone(prefs)) end
   end
 
   if prefs.alertFlash and not (now and lastFlashAt and now - lastFlashAt < ALERT_REPEAT) then
@@ -2794,12 +2830,18 @@ FlushFlash = function()
   if PlayFlash(prefs) then lastFlashAt, flashWantedAt = now, nil end
 end
 
-function MB.GetAlertSound()
-  return Settings().alertSound == true
+-- Sound on new mail (MB.ALERT_TONES). Stored only once chosen, and the old
+-- switch is dropped then: a profile carries across without a write, and
+-- Reset to defaults gives Off.
+function MB.GetAlertTone()
+  return AlertTone(Settings())
 end
 
-function MB.SetAlertSound(on)
-  Settings().alertSound = on == true
+function MB.SetAlertTone(tone)
+  if tone ~= "off" and not TONE_KIT[tone] then return end
+  local prefs = Settings()
+  prefs.alertTone = (tone ~= "off") and tone or nil
+  prefs.alertSound = nil
 end
 
 function MB.GetAlertFlash()

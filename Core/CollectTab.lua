@@ -5128,6 +5128,18 @@ function CT.OpenPicker(panel)
   if perfAt then perf.Done("picker", perfAt) end
 end
 
+-- Another character's box in the Mail tab, as a pick from its character
+-- list shows it: the options' summary, at a mailbox (MailMemory.OpenCharacter).
+function CT.ShowCharacter(realm, name)
+  local UI = ns.MailboxUI
+  local frame = UI and UI._frame
+  if not (frame and frame:IsShown() and type(realm) == "string" and type(name) == "string") then return end
+  if UI._state.activeTab ~= "collect" and type(UI.SelectTab) == "function" then UI.SelectTab("collect") end
+  local panel = frame.Tabs and frame.Tabs.collect
+  if not panel then return end
+  AV.Show(panel, { realm = realm, name = name })
+end
+
 -- The pool of memory rows, built by Mail Memory (one row construction for
 -- both windows) and placed here at the list's own pitch.
 function AV.Row(panel, slot)
