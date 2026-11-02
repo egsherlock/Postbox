@@ -859,8 +859,8 @@ function MM.Warnings(mode)
   return out
 end
 
--- The options' summary (OptionsPanel, the General tab's "Across your
--- characters"): each character's box as it was last seen, added up. Only
+-- The options' summary (OptionsPanel, the General tab's "Mail waiting in
+-- your mailboxes"): each character's box as it was last seen, added up. Only
 -- what MM.Characters already reads, and one more walk of each box with mail
 -- for what it does not keep: the gold waiting, and the soonest mail with its
 -- fate. Read by the panel only while its General tab is shown, and made
@@ -871,21 +871,53 @@ end
 --
 --   enabled   Mail Memory on
 --   recorded  some character's box has been seen
---   n         rows filled: the characters with mail waiting, the hidden left
---             out, the most pressing first (mail short of time, then the
---             most mail, then by name)
---   mails, gold, soonest, fate, amber   the totals, and the soonest mail
---             (its expiry time, "back" / "gone" / nil, short of time)
+--   n         the characters with mail waiting, the hidden left out: every
+--             one of them is in the totals
+--   listed    the rows filled, at most DASH_CAP of them: the mail short of
+--             time first, the soonest of it first (so an alt not seen for
+--             months whose mail is about to go back or be deleted is always
+--             a line), then the most recently seen. Picked as the walk goes,
+--             into a list never longer than the cap: hundreds of characters
+--             are never sorted.
+--   mails, gold, soonest, fate, amber   the totals over all n, and the
+--             soonest mail of all (its expiry time, "back" / "gone" / nil,
+--             short of time)
 -- Each row: realm, name, mails, gold (copper), seenAt and the same three
 -- for its own soonest mail.
-local dash = { gen = 0, rows = {}, n = 0, from = false, enabled = false, recorded = false,
-  mails = 0, gold = 0, soonest = nil, fate = nil, amber = false }
+local DASH_CAP = 20
+local dash = { gen = 0, rows = {}, n = 0, listed = 0, from = false, enabled = false, recorded = false,
+  mails = 0, gold = 0, soonest = nil, fate = nil, amber = false,
+  -- The character being weighed, before it is known whether it is listed.
+  cand = { realm = "", name = "", mails = 0, gold = 0, seenAt = 0, soonest = nil, fate = nil, amber = false } }
 
+-- Whether `a` lists before `b`.
 local function DashOrder(a, b)
   if a.amber ~= b.amber then return a.amber end
-  if a.mails ~= b.mails then return a.mails > b.mails end
+  if a.amber and a.soonest ~= b.soonest then return (a.soonest or 0) < (b.soonest or 0) end
+  if a.seenAt ~= b.seenAt then return a.seenAt > b.seenAt end
   if a.name ~= b.name then return a.name < b.name end
   return a.realm < b.realm
+end
+
+-- `cand` into the list of `k` rows kept in order, when it lists before the
+-- last of them or the list is short of the cap; answers the new length.
+-- The row table it takes is a spare one, or the one it pushes out.
+local function DashKeep(rows, k, cand)
+  if k >= DASH_CAP and not DashOrder(cand, rows[k]) then return k end
+  if k < DASH_CAP then k = k + 1 end
+  local row = rows[k]
+  if not row then
+    row = { realm = "", name = "", mails = 0, gold = 0, seenAt = 0, soonest = nil, fate = nil, amber = false }
+  end
+  row.realm, row.name, row.mails, row.gold, row.seenAt = cand.realm, cand.name, cand.mails, cand.gold, cand.seenAt
+  row.soonest, row.fate, row.amber = cand.soonest, cand.fate, cand.amber
+  local i = k
+  while i > 1 and DashOrder(row, rows[i - 1]) do
+    rows[i] = rows[i - 1]
+    i = i - 1
+  end
+  rows[i] = row
+  return k
 end
 
 function MM.Dashboard()
@@ -896,7 +928,7 @@ function MM.Dashboard()
   local now = time()
   local CT = ns.CollectTab
   local shortDays = CT and CT.RowRules and CT.RowRules.ShortDays
-  local rows, n = dash.rows, 0
+  local rows, cand, n, k = dash.rows, dash.cand, 0, 0
   dash.recorded, dash.mails, dash.gold = false, 0, 0
   dash.soonest, dash.fate, dash.amber = nil, nil, false
   for i = 1, #all do
@@ -925,23 +957,17 @@ function MM.Dashboard()
         end
       end
       n = n + 1
-      local row = rows[n]
-      if not row then
-        row = { realm = "", name = "", mails = 0, gold = 0, seenAt = nil, soonest = nil, fate = nil, amber = false }
-        rows[n] = row
-      end
-      row.realm, row.name, row.mails, row.gold, row.seenAt = st.realm, st.name, st.waiting, gold, st.seenAt
-      row.soonest, row.fate, row.amber = soonest, fate, amber
+      cand.realm, cand.name, cand.mails, cand.gold, cand.seenAt = st.realm, st.name, st.waiting, gold, st.seenAt or 0
+      cand.soonest, cand.fate, cand.amber = soonest, fate, amber
+      k = DashKeep(rows, k, cand)
       dash.mails, dash.gold = dash.mails + st.waiting, dash.gold + gold
       if soonest and ((amber and not dash.amber) or (amber == dash.amber and (not dash.soonest or soonest < dash.soonest))) then
         dash.soonest, dash.fate, dash.amber = soonest, fate, amber
       end
     end
   end
-  -- The spare rows sort after every filled one (no mail, not short).
-  for i = n + 1, #rows do rows[i].mails, rows[i].amber = -1, false end
-  dash.n = n
-  if n > 1 then table.sort(rows, DashOrder) end
+  -- Rows past `listed` are spares, kept for the next walk.
+  dash.n, dash.listed = n, k
   return dash
 end
 

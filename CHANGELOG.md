@@ -52,10 +52,14 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   Attachments on hover is set. Arranging from the options now leaves them
   open, and Done keeps the sample window up.
 - **Every character's mail at a glance:** the options open on a new General
-  tab, topped by Across your characters: a line per character as its box
-  was last seen (mail, gold, the soonest to expire with its arrow or bin,
-  and how long ago), and a total for them all. A long list ends in "+N more
-  in Mail Memory". Click a character to open its box in Mail Memory; Mail
+  tab, topped by Mail waiting in your mailboxes: a line per character as
+  its box was last seen (mail, gold, the soonest to expire with its arrow
+  or bin, and how long ago), and a total for them all. Mail about to go
+  back or be deleted comes first, even on an alt you haven't played in
+  months, then the characters you played most recently. Past seven lines
+  the list scrolls inside the card, and past twenty characters it ends in
+  "+N more in Mail Memory". Click a character to open its box in Mail
+  Memory; Mail
   Memory, Character Groups and Manage Recipients are one click away beside
   the list. Under it are Mail Memory's settings and the mail alerts; the
   Mail Memory tab is gone.

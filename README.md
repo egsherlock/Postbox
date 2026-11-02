@@ -149,10 +149,13 @@ a mail to see what it holds. A character you no longer play can be hidden
   line in chat at login (**Chat line at login**) and as the minimap icon's
   marker (**Minimap marker**: with the icon, always, or off); the minimap
   tooltip names them too.
-- **Across your characters,** a card across the top of the options' General
-  tab, lists each character's box as it was last seen (mail, gold, the
-  soonest to expire with its arrow or bin, and how long ago), with a total
-  for all of them; a long list ends in "+N more in Mail Memory". Click a
+- **Mail waiting in your mailboxes,** a card across the top of the options'
+  General tab, lists each character's box as it was last seen (mail, gold,
+  the soonest to expire with its arrow or bin, and how long ago), with a
+  total for all of them. Mail about to go back or be deleted comes first,
+  even on an alt you haven't played in months, then the characters you
+  played most recently. Past seven lines the list scrolls inside the card;
+  past twenty characters it ends in "+N more in Mail Memory". Click a
   character to open its box in Mail Memory. Beside the list, Mail Memory,
   Character Groups and Manage Recipients are a click away.
 
