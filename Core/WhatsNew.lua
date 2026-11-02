@@ -58,6 +58,7 @@ local function Releases()
   return {
     { version = "1.60.0", groups = {
       { "WHATSNEW_160_FOREVER", "WHATSNEW_160_FOREVER_LINES" },
+      { "WHATSNEW_160_BAR", "WHATSNEW_160_BAR_LINES" },
       { "WHATSNEW_160_EXPIRY", "WHATSNEW_160_EXPIRY_LINES" },
       { "WHATSNEW_160_GOLD", "WHATSNEW_160_GOLD_LINES" },
       { "WHATSNEW_160_OPTIONS", "WHATSNEW_160_OPTIONS_LINES" },

@@ -42,27 +42,18 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   retail from patch 12.1.7), collecting pauses on that mail until you
   answer: Accept and the gold comes, Cancel and it stays in the mail while
   the rest carries on.
-- **Test mail on its own.** Click Test, beside Arrange under Options, Mail,
-  to see your settings on sample mail without arranging: at a mailbox it
-  fills the Mail tab, and anywhere else it opens the Postbox window beside
-  the options. The button is lit while it is on.
-  None of it can be collected, but it shows what your settings do: with
-  Finished mail set to Delete when done there is no read mail and no bar,
-  and resting on an item icon lists its items or fans them out, as
-  Attachments on hover is set. Arranging from the options now leaves them
-  open, and Done keeps the sample window up.
+- **Test mail without arranging:** Test, beside Arrange under Options, Mail,
+  shows your settings on sample mail: in the Mail tab at a mailbox, in the
+  Postbox window anywhere else. Nothing in it can be collected, and the
+  button stays lit while it is on. Arranging from the options now leaves
+  them open.
 - **Every character's mail at a glance:** the options open on a new General
-  tab, topped by Mail waiting in your mailboxes: a line per character as
-  its box was last seen (mail, gold, the soonest to expire with its arrow
-  or bin, and how long ago), and a total for them all. Mail about to go
-  back or be deleted comes first, even on an alt you haven't played in
-  months, then the characters you played most recently. Past seven lines
-  the list scrolls inside the card, and past twenty characters it ends in
-  "+N more in Mail Memory". Click a character to open its box in Mail
-  Memory; Mail
-  Memory, Character Groups and Manage Recipients are one click away beside
-  the list. Under it are Mail Memory's settings and the mail alerts; the
-  Mail Memory tab is gone.
+  tab, topped by a line per character as its box was last seen (mail, gold,
+  the soonest to expire with its arrow or bin) and a total. Mail about to
+  go back or be deleted comes first, even on an alt you haven't played in
+  months; click a character to open its box in Mail Memory. Under the list
+  are Mail Memory's settings, Expiring mail and New mail; the Mail Memory
+  tab is gone.
 - **Choose the sound for new mail:** four soft sounds made for Postbox (Soft
   chime, Envelope, Small bell, Wood tap), the mail chime and four quiet
   sounds of the game's, or any sound your other addons share, such as
@@ -72,8 +63,9 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 - **One choice for both expiring-mail warnings:** Warn about, under
   General, Expiring mail, sets what the chat line at login and the minimap
   marker warn of: Mail to be deleted, Mail to be deleted or sent back (as
-  before), or Off. Each warning has its own switch beside it, Chat line at
-  login and Minimap marker; the marker's switch moved here from the Minimap
+  before), or Off. Mail last seen before 1.60 counts as possibly deleted, to
+  be safe. Below it, Chat line at login is a switch, and Minimap marker a
+  choice of With the icon, Always or Off; it moved here from the Minimap
   tab, where its shape, color and place stay. Your choices carry over, and
   Off stays off.
 - **Mail Memory has the options cog** the Postbox window has, opening the
@@ -87,12 +79,13 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   the game already tells you, and the minimap icon still flashes for them
   and counts them. Flash on new mail now sits beside the sound, under
   General, New mail.
-- **The minimap marker and the login line agree:** both name every
-  character you haven't hidden, the one you're on included, and only for
-  mail holding gold or items (or a C.O.D.), so an unread letter with nothing
-  in it no longer sets either off.
-- **Minimap options that need Mail Memory say so:** while it is off, Mail on
-  any character, Count on icon and the marker's look are grayed out, each
+- **The minimap marker, its tooltip and the login line agree:** all three
+  follow Warn about and name every character you haven't hidden, the one
+  you're on included, and only for mail holding gold or items (or a
+  C.O.D.), so an unread letter with nothing in it no longer sets them off.
+- **Minimap options that need something else say so:** while Mail Memory is
+  off, Mail on any character, Count on icon and the marker's look are
+  grayed out, and the marker's look also while Warn about is Off, each
   saying where to turn it on.
 - **A C.O.D. price is red,** as spent gold is, so amber means only that time
   is running out, and the totals band adds the C.O.D. still to pay on the
