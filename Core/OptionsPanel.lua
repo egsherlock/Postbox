@@ -998,14 +998,24 @@ do
     if extra then extra:Show() end
     local least = Insp.Least(S.tab)
     if h < least then h = least end
-    if S.bodyH > 0 and h > S.bodyH then h = S.bodyH end
+    local room = Insp.Room()
+    if room > 0 and h > room then h = room end
     say:SetHeight(h)
   end
 
+  -- The inspector's height: the body's, less the summary's card over it on
+  -- General (Dash.Place).
+  function Insp.Room()
+    return S.inspH or S.bodyH
+  end
+
   -- The text zone's least height on `key`'s tab: on the Mail tab, all the
-  -- room under its window (Layout), so the text starts right under it.
+  -- room under its window (Layout), so the text starts right under it; on
+  -- General, which draws nothing beside its settings, the whole inspector,
+  -- so a setting's text stands at its top as the tab's own does.
   function Insp.Least(key)
     if key == "mail" and (S.mailText or 0) > SAY_MIN then return S.mailText end
+    if key == "general" then return math.max(SAY_MIN, Insp.Room()) end
     return SAY_MIN
   end
 
@@ -1017,7 +1027,7 @@ do
     local h = Lay(idle, entry.title, entry.text, 0)
     if Ctx.Height(key) == 0 then
       idle.Rule:Hide()
-      h = math.max(h, S.bodyH - 2)
+      h = math.max(h, Insp.Room() - 2)
     else
       idle.Rule:Show()
       local least = Insp.Least(key)
@@ -1041,8 +1051,9 @@ do
   end
 
   -- The height an entry's text needs, `extraH` included. A row that greys
-  -- says why in a text of its own (Rows.Why): each of its texts is
-  -- measured, and the tallest is its need.
+  -- says why in a text of its own (Rows.Why), one per reason where it has
+  -- more than one: each of its texts is measured, and the tallest is its
+  -- need.
   function Insp.Need(entry, extraH)
     local h = Lay(S.measure, entry.title, entry.text, extraH)
     local plain, off, blocked = entry.onText, entry.offText, entry.blockText
@@ -1054,6 +1065,11 @@ do
     end
     if blocked and blocked ~= entry.text then
       h = math.max(h, Lay(S.measure, entry.title, blocked, extraH))
+    end
+    if entry.why then
+      for _, text in pairs(entry.why) do
+        h = math.max(h, Lay(S.measure, entry.title, text, extraH))
+      end
     end
     return h
   end
@@ -1114,8 +1130,8 @@ do
     -- The window takes the room between the tile and the text (Layout),
     -- under its caption (Ctx.PreviewRoom).
     if key == "mail" then return CTX_TOP + Ctx.PreviewRoom() + Ctx.MailMiniHeight() + 10 end
-    -- General: the two tiles, one over the other.
-    if key == "general" then return CTX_TOP + 2 * TILE_H + 8 + 10 end
+    -- (General draws nothing here: its tiles are on the summary's card over
+    -- the settings, Dash, and its text has the whole inspector.)
     if key == "window" then
       -- The drawing grows with the text size (Ctx.MiniHeight).
       return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + Ctx.PreviewRoom() + Ctx.MiniHeight() + 10
@@ -1275,7 +1291,7 @@ do
     sub:SetWordWrap(false)
 
     tile.Chevron = Chevron(holder, tile)
-    tile.Hover, tile.Glow, tile.Title, tile.Sub = hover, glow, name, sub
+    tile.Hover, tile.Glow, tile.Title, tile.Sub, tile.Mark = hover, glow, name, sub, mark
     S.tiles[#S.tiles + 1] = tile
     tile.titleText, tile.entry = title, entry
     TintChevron(tile, false)
@@ -1412,39 +1428,39 @@ do
     return f
   end
 
-  -- General: the two lists the player builds, each a tile that opens its
-  -- window -- the character groups, and under it the recipients. The
-  -- recipients' count walks every recipient Postbox knows, so it is
-  -- counted only when this tab is shown, once each time the panel opens,
-  -- and again after the manager closes; the groups' words are made when
-  -- their number changes.
+  -- General draws nothing in the inspector: its three tiles stand on the
+  -- summary's card over the settings (Dash.Build). What it paints when its
+  -- tab is shown is that card: the tiles' facts and the summary, read now
+  -- and only now. The recipients' count walks every recipient Postbox
+  -- knows, so it is counted once each time the panel opens, and again after
+  -- the manager closes; the groups' words are made when their number
+  -- changes; Mail Memory's say whether it is on.
   function Ctx.general(card)
     local f = CreateFrame("Frame", nil, card)
     f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
-    f:SetSize(CTX_W, 2 * TILE_H + 8)
-    local groups = Ctx.Tile(f, "Interface\\AddOns\\Postbox\\Media\\minimap-mailbag.tga",
-      L["GROUPS_TITLE"], S.groupsEntry, Ctx.OpenGroups)
-    groups:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-    local recipients = Ctx.Tile(f, "Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga",
-      L["RM_OPT_BUTTON"], S.recipientsEntry, Ctx.OpenRecipients)
-    recipients:SetPoint("TOPLEFT", groups, "BOTTOMLEFT", 0, -8)
+    f:SetSize(1, 1)
     f.Paint = function()
-      -- How many groups there are; none reads as the tile's way in.
-      local CG = ns.CharacterGroups
-      local list = CG and type(CG.List) == "function" and CG.List() or nil
-      local n = type(list) == "table" and #list or 0
-      if S.tileGroups ~= n or not S.tileFact then
-        S.tileGroups = n
-        S.tileFact = n > 0 and ns.Plural("OPT_GROUPS_COUNT", n) or L["GROUPS_NEW"]
+      local tiles = S.dashTiles
+      if tiles then
+        local UI = ns.MailboxUI
+        local on = UI.GetOption("mailMemory") and true or false
+        Dash.PaintMemoryTile(tiles.memory, on)
+        -- How many groups there are; none reads as the tile's way in.
+        local CG = ns.CharacterGroups
+        local list = CG and type(CG.List) == "function" and CG.List() or nil
+        local n = type(list) == "table" and #list or 0
+        if S.tileGroups ~= n or not S.tileFact then
+          S.tileGroups = n
+          S.tileFact = n > 0 and ns.Plural("OPT_GROUPS_COUNT", n) or L["GROUPS_NEW"]
+        end
+        Ctx.PaintTile(tiles.groups, S.tileFact)
+        if not S.sendText then
+          local RM = ns.RecipientManager
+          local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
+          S.sendText = ns.Plural("RM_HERO_COUNT", count)
+        end
+        Ctx.PaintTile(tiles.recipients, S.sendText)
       end
-      Ctx.PaintTile(groups, S.tileFact)
-      if not S.sendText then
-        local RM = ns.RecipientManager
-        local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
-        S.sendText = ns.Plural("RM_HERO_COUNT", count)
-      end
-      Ctx.PaintTile(recipients, S.sendText)
-      -- The summary on the tab's own page, read now and only now (Dash).
       Dash.Paint()
     end
     return f
@@ -3236,7 +3252,6 @@ do
   -- Anchor's in reading order, as its grid stands.
   MM.IDS = {
     show = { "new", "any", "always" },
-    expiry = { "off", "icon", "always" },
     marker = { "dot", "ring", "square", "bar", "exclamation", "triangle" },
     corner = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" },
     color = { "red", "gold", "accent", "class", "white", "custom" },
@@ -3245,7 +3260,6 @@ do
   }
   MM.CAPS = {
     show = { "OPT_MINIMAP_SHOW_NEW", "OPT_MINIMAP_SHOW_ANY", "OPT_MINIMAP_SHOW_ALWAYS" },
-    expiry = { "OPT_MINIMAP_EXPIRY_OFF", "OPT_MINIMAP_EXPIRY_ICON", "OPT_MINIMAP_EXPIRY_ALWAYS" },
     marker = { "OPT_MINIMAP_MARKER_DOT", "OPT_MINIMAP_MARKER_RING", "OPT_MINIMAP_MARKER_SQUARE",
       "OPT_MINIMAP_MARKER_BAR", "OPT_MINIMAP_MARKER_EXCLAMATION", "OPT_MINIMAP_MARKER_TRIANGLE" },
     corner = { "OPT_MINIMAP_ANCHOR_TL", "OPT_MINIMAP_ANCHOR_T", "OPT_MINIMAP_ANCHOR_TR", "OPT_MINIMAP_ANCHOR_L",
@@ -3261,7 +3275,7 @@ do
   -- The grid's situations, top down.
   MM.ROWS = { "OPT_MINIMAP_GRID_NONE", "OPT_MINIMAP_GRID_OTHER", "OPT_MINIMAP_GRID_HERE" }
   -- Each answer's current choice.
-  MM.GET = { show = "GetShowWhen", expiry = "GetExpiry", marker = "GetMarker", corner = "GetMarkerCorner",
+  MM.GET = { show = "GetShowWhen", marker = "GetMarker", corner = "GetMarkerCorner",
     color = "GetMarkerColor", glow = "GetGlowColor", large = "GetMarkerLarge" }
   -- The answers drawn in two rows (three, or as many as are offered, over
   -- the rest), and Custom's: offered only where the client has the colour
@@ -3685,18 +3699,6 @@ do
               at == MM.HALVES and (math.floor(CTX_W / 2) - 4) or nil)
           end
         end
-      else
-        -- Three: Show marker's.
-        local strip = strips[1]
-        PlaceStrip(f, strip, -4, stageH)
-        for c = 1, 3 do
-          local x = math.floor(MM.THIRDS[c] * CTX_W + 0.5)
-          local look = "lit"
-          P.mark = c == 2
-          if c == 3 then look = "alone" end
-          PaintFigure(strip.figs[c], Icon, look, G.CHOICE, x)
-          PaintCaption(f, caps[c], x, capY, keys[c], ids[c] == current, on)
-        end
       end
     end
     return f
@@ -4019,11 +4021,16 @@ do
   -- A grey row says why: under its description, one line saying what
   -- turns it on (`key`, a locale key), while another setting has it grey
   -- (Rows.SetEnabled). Written here, once, and measured with every text
-  -- (Insp.Need): greying a row builds no string.
+  -- (Insp.Need): greying a row builds no string. A row that greys for
+  -- more than one reason is given each (the first stands until another is
+  -- named), and Rows.SetEnabled is told which one holds.
   function Rows.Why(cell, key)
     local entry = cell.entry
     entry.onText = entry.onText or entry.text
-    entry.offText = entry.onText .. "\n\n" .. L[key]
+    local text = entry.onText .. "\n\n" .. L[key]
+    entry.why = entry.why or {}
+    entry.why[key] = text
+    entry.offText = entry.offText or text
   end
 
   -- A row `height` tall at the column's cursor, under a hairline unless it
@@ -4232,10 +4239,19 @@ do
         S.pageH[key] = Rows.Reflow(col) + 2 * LIST_PAD
         page:SetHeight(S.pageH[key])
       end
-      if S.pageH[key] + 2 > need then need = S.pageH[key] + 2 end
+      local h = Rows.PageNeed(key)
+      if h > need then need = h end
     end
     S.listNeed = need
     return true
+  end
+
+  -- The body's height `key`'s page needs: the page and the list's edges,
+  -- and on General the summary's card at its least over them (Dash).
+  function Rows.PageNeed(key)
+    local h = S.pageH[key] + 2
+    if key == "general" then h = h + Dash.LEAST + BODY_GAP end
+    return h
   end
 
   -- Reflects the stored value in the toggle's caption.
@@ -4287,6 +4303,9 @@ do
     Wire(toggle, row, true)
     row.kind, row.control, row.dd, row.items = "dropdown", toggle, dd, spec.items
     row.get, row.controlW = spec.get, DD_W
+    -- `fixed`: as wide as its column's other dropdowns whatever its values;
+    -- a value too long for it is cut short and said whole on hover (Rows.Fit).
+    row.fixedW = spec.fixed and true or nil
     Rows.PaintDropdown(row)
     return row
   end
@@ -4628,8 +4647,11 @@ do
   -- scripts stay, so the inspector and the tooltip still say what it does.
   -- Where it can say why it is grey (Rows.Why, Rows.Block), its text says
   -- it: what turns its block on while the block is grey, else what turns
-  -- the row on. The inspector says it again where it is showing it.
-  function Rows.SetEnabled(cell, on)
+  -- the row on -- `why`, the reason that holds, where it has more than one.
+  -- The inspector says it again where it is showing it.
+  function Rows.SetEnabled(cell, on, why)
+    local entry = cell.entry
+    if why and entry and entry.why and entry.why[why] then entry.offText = entry.why[why] end
     local control = cell.control
     if cell.kind == "slider" then
       SliderLook(cell, on)
@@ -4641,6 +4663,14 @@ do
     if cell.kind ~= "note" and cell.Name then
       ns.Theme.SetColor(cell.Name, on and "accent" or "textDisabled")
     end
+    Rows.Say(cell, on)
+  end
+
+  -- What a row's text says, live or grey (Rows.SetEnabled): its own, or
+  -- its own and why it is grey. Also for a row that stays live while one
+  -- of its choices is set aside (State.MinimapRows: When to show's Mail on
+  -- any character), which says why without greying.
+  function Rows.Say(cell, on)
     local entry = cell.entry
     local text = entry and entry.onText
     if not text then return end
@@ -4857,7 +4887,9 @@ do
       else
         local controlW = cell.controlW or 0
         if kind == "dropdown" then
-          local full = cell.dd.FitWidth and cell.dd:FitWidth() or DD_W
+          -- A fixed one keeps the dropdowns' width: its value is cut short
+          -- in its box (the select's own fitter) and said whole on hover.
+          local full = (not cell.fixedW and cell.dd.FitWidth) and cell.dd:FitWidth() or DD_W
           local want = full
           local nameW = TextW(cell.Name)
           if nameW + NAME_GAP + full > inner then
@@ -4890,27 +4922,44 @@ end
 -------------------------------------------------------------
 -- The summary (Dash): "Across your characters"
 --
--- General's first block: every character's mail as each box was last
--- seen, added up (MailMemory.Dashboard) -- four figures over a list of the
--- characters with mail, in the options' own rows: 28 high, hairlines, the
--- pointer's wash, each name in its class colour, a time short of it in
--- amber with the rows' own expiry mark. The list takes the room down to the
--- settings under it and no more; past that, its foot folds the rest into
--- "+N more". The foot opens Mail Memory, and a click on a character opens
--- that character's box there (MailMemory.OpenCharacter). With nothing to
--- add up -- Mail Memory off, no box seen yet, no mail anywhere -- the block
--- is one sentence saying so, never a row of zeros.
+-- General's card, across the top of the body over its settings and its
+-- inspector, on a surface of its own under a strip that names it and says
+-- how old it is. On its left every character's mail as each box was last
+-- seen (MailMemory.Dashboard), in the options' own rows -- 28 high,
+-- hairlines, the pointer's wash, each name in its class colour, a time
+-- short of it in amber with the rows' own expiry mark -- and under them the
+-- total over all of them. On its right, in the inspector's column, the
+-- three ways into the windows the account builds, one kind of tile each:
+-- Mail Memory, Character Groups and Manage Recipients. A click on a
+-- character opens that character's box in Mail Memory
+-- (MailMemory.OpenCharacter).
+--
+-- The card grows with its list down to where the settings under it, and
+-- the inspector's text beside them, would no longer fit (General's least,
+-- Layout), and there folds the rest into "+N more in Mail Memory": it never
+-- scrolls, and the settings never leave the panel. It is never shorter than
+-- its tiles. With nothing to add up -- Mail Memory off, no box seen yet, no
+-- mail anywhere -- the list's side is one sentence saying so, never a row
+-- of zeros, and the tiles stay.
 --
 -- Light: read only while General is shown (Ctx.general's paint), and its
 -- words made again only when what they are made from has moved -- the
 -- summary's generation, the room, the warning ink, Expiry marks, an open
 -- of the panel (the fonts) -- so a repaint with nothing new sets nothing.
--- Every row and every text is made once and kept. The page's height for
--- the panel's measure is the block at its least (Build): the summary takes
--- the room the panel has, and never makes it taller.
+-- Every row and every text is made once and kept. Only flat textures,
+-- hairlines and the house's rows and tiles; amber only for mail short of
+-- time.
 -------------------------------------------------------------
 do
-  local NUMS_H, HEAD_H, GAP, MSG_PAD, FOOT_GAP = 60, 18, 18, 8, 8
+  -- The strip, the columns' headings, the gap between two figures, the
+  -- sentence's padding and the room under the last line.
+  local HEAD_H, COLS_H, GAP, MSG_PAD, FOOT_PAD = GROUP_H, 18, 18, 8, 6
+  -- The tiles' column: the inspector's drawings' own, under the strip.
+  local TILE_GAP, TILES_PAD = 8, 10
+  local TILES_X = LIST_W + BODY_GAP + CTX_X
+  local TILES_TOP = 1 + HEAD_H + TILES_PAD
+  -- The card at its least: its tiles' column, whole.
+  Dash.LEAST = TILES_TOP + 3 * TILE_H + 2 * TILE_GAP + TILES_PAD + 1
   -- Each figure column's least width, from the row's right: Seen, Soonest,
   -- Gold, Mail (the mockup's). A longer heading or figure widens its own.
   local MIN_W = { 40, 52, 64, 30 }
@@ -4918,7 +4967,7 @@ do
   local HEADS = { "OPT_DASH_COL_SEEN", "OPT_DASH_COL_SOON", "OPT_DASH_COL_GOLD", "OPT_DASH_COL_MAIL" }
   local DASH = "\226\128\148"
   -- What the words were last made from, and the columns as they stand.
-  local made = { gen = false, room = false, marks = false, ink = false, open = false }
+  local made = { gen = false, room = false, marks = false, ink = false, open = false, below = false }
   local widths, rights = { 0, 0, 0, 0 }, { 0, 0, 0, 0 }
 
   local function Enter(self)
@@ -4936,6 +4985,9 @@ do
     if self.realm and MM and type(MM.OpenCharacter) == "function" then MM.OpenCharacter(self.realm, self.name) end
   end
 
+  -- Mail Memory's tile, and the line that folds the rest: the window, on
+  -- the character being played (or, off, the line saying where to turn it
+  -- on).
   local function OpenClick()
     local MM = ns.MailMemory
     if MM and type(MM.OpenCharacter) == "function" then MM.OpenCharacter(nil) end
@@ -4975,92 +5027,91 @@ do
     return fs
   end
 
+  -- A line of the list's figures: a name and the four figures from the
+  -- right, the names placed by Fill.
+  local function Figures(f)
+    f.Name = Text(f, "value")
+    f.Name:SetPoint("LEFT", f, "LEFT", NAME_X, 0)
+    for j = 1, #FIELDS do f[FIELDS[j]] = Text(f, "value", "RIGHT") end
+    return f
+  end
+
   -- A character's line, built the first time the list reaches it.
   local function NewRow(i)
     local d = S.dash
-    local row = Spot(d.frame, "Button", ROW_H, true)
-    row.Name = Text(row, "value")
-    row.Name:SetPoint("LEFT", row, "LEFT", NAME_X, 0)
-    for j = 1, #FIELDS do row[FIELDS[j]] = Text(row, "value", "RIGHT") end
+    local row = Figures(Spot(d.card, "Button", ROW_H, true))
+    row:SetWidth(ROW_W)
     row:SetScript("OnClick", Click)
     d.rows[i] = row
     return row
   end
 
-  function Dash.Build(col)
+  -- On `body`, over the list and the inspector, shown on General only
+  -- (Dash.Place). Built before the pages: its height at its least is part
+  -- of General's (Rows.PageNeed).
+  function Dash.Build(body)
     local T = ns.Theme
-    local frame = CreateFrame("Frame", nil, col.frame)
-    frame:SetPoint("TOPLEFT", col.frame, "TOPLEFT", 0, col.y)
-    frame:SetPoint("TOPRIGHT", col.frame, "TOPRIGHT", 0, col.y)
-    -- At its least: the figures, the headings, one character and the foot.
-    local least = NUMS_H + HEAD_H + 2 * ROW_H
-    frame:SetHeight(least)
-    local item = { frame = frame, h = least }
-    col.items[#col.items + 1] = item
-    col.y = col.y - least
-    col.first = false
+    local card = CreateFrame("Frame", nil, body, "BackdropTemplate")
+    card:SetPoint("TOPLEFT", body, "TOPLEFT", 0, 0)
+    card:SetPoint("TOPRIGHT", body, "TOPRIGHT", 0, 0)
+    card:SetHeight(Dash.LEAST)
+    T.ApplyList(card)
+    card:Hide()
 
-    -- The four figures, each over its words, a hairline between two.
-    local nums = Spot(frame, "Frame", NUMS_H)
-    nums:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    nums:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-    local quarter = ROW_W / 4
-    local labels = { "OPT_DASH_MAILS", "OPT_DASH_CHARS", "OPT_DASH_SOONEST", "OPT_DASH_GOLD" }
-    nums.Big, nums.Label = {}, {}
-    for i = 1, 4 do
-      local x = (i - 0.5) * quarter
-      local big = Text(nums, "title", "CENTER")
-      big:SetPoint("TOP", nums, "TOPLEFT", x, -9)
-      T.SetColor(big, "textPrimary")
-      local label = Text(nums, "secondary", "CENTER")
-      label:SetPoint("TOP", big, "BOTTOM", 0, -3)
-      label:SetText(L[labels[i]])
-      label.full = L[labels[i]]
-      nums.Big[i], nums.Label[i] = big, label
-      if i > 1 then
-        local line = nums:CreateTexture(nil, "BORDER")
-        line:SetWidth(1)
-        line:SetPoint("TOPLEFT", nums, "TOPLEFT", math.floor((i - 1) * quarter), -12)
-        line:SetPoint("BOTTOMLEFT", nums, "BOTTOMLEFT", math.floor((i - 1) * quarter), 10)
-        T.FillChrome(line, HAIR_A)
-      end
-    end
+    -- The strip: what the card is on the left, how old it is on the right,
+    -- on a shade of its own over a hairline.
+    local head = Spot(card, "Frame", HEAD_H)
+    head:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
+    head:SetPoint("TOPRIGHT", card, "TOPRIGHT", -1, -1)
+    local shade = head:CreateTexture(nil, "BACKGROUND", nil, -1)
+    shade:SetAllPoints()
+    T.FillChrome(shade, WASH_A)
+    local rule = head:CreateTexture(nil, "BORDER")
+    rule:SetHeight(1)
+    rule:SetPoint("BOTTOMLEFT", head, "BOTTOMLEFT", 0, 0)
+    rule:SetPoint("BOTTOMRIGHT", head, "BOTTOMRIGHT", 0, 0)
+    T.FillChrome(rule, HAIR_A)
+    head.Title = Text(head, "heading")
+    head.Title:SetPoint("LEFT", head, "LEFT", NAME_X, 0)
+    head.Title:SetText(L["OPT_DASH_TITLE"])
+    head.Note = Text(head, "secondary", "RIGHT")
+    head.Note:SetPoint("RIGHT", head, "RIGHT", -CONTROL_R, 0)
+    head.Note:SetText(L["OPT_DASH_FOOT"])
+    T.SetColor(head.Note, "textSecondary")
 
     -- The columns' headings, quiet.
-    local head = Spot(frame, "Frame", HEAD_H)
-    head:SetPoint("TOPLEFT", nums, "BOTTOMLEFT", 0, 0)
-    head:SetPoint("TOPRIGHT", nums, "BOTTOMRIGHT", 0, 0)
-    head.Name = Text(head, "secondary")
-    head.Name:SetPoint("LEFT", head, "LEFT", NAME_X, 0)
-    head.Name:SetText(L["OPT_DASH_COL_CHAR"])
-    T.SetColor(head.Name, "textDisabled")
+    local cols = Spot(card, "Frame", COLS_H)
+    cols:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -(1 + HEAD_H))
+    cols:SetWidth(ROW_W)
+    cols.Name = Text(cols, "secondary")
+    cols.Name:SetPoint("LEFT", cols, "LEFT", NAME_X, 0)
+    cols.Name:SetText(L["OPT_DASH_COL_CHAR"])
+    T.SetColor(cols.Name, "textDisabled")
     for j = 1, #FIELDS do
-      local fs = Text(head, "secondary", "RIGHT")
+      local fs = Text(cols, "secondary", "RIGHT")
       fs:SetText(L[HEADS[j]])
       T.SetColor(fs, "textDisabled")
-      head[FIELDS[j]] = fs
+      cols[FIELDS[j]] = fs
     end
 
-    -- The foot: what the list is, or how many it leaves out, and the way
-    -- to the rest.
-    local foot = Spot(frame, "Frame", ROW_H, true)
-    foot.Text = Text(foot, "secondary")
-    foot.Text:SetPoint("LEFT", foot, "LEFT", NAME_X, 0)
-    local open = T.CreateButton(nil, foot)
-    open:SetHeight(BUTTON_H)
-    open:SetPoint("RIGHT", foot, "RIGHT", -CONTROL_R, 0)
-    open:SetText(L["OPT_DASH_OPEN"])
-    open:SetScript("OnClick", OpenClick)
-    open.__pbCell = foot
-    if open.SetMotionScriptsWhileDisabled then open:SetMotionScriptsWhileDisabled(true) end
-    open:HookScript("OnEnter", Rows.ControlEnter)
-    open:HookScript("OnLeave", Rows.ControlLeave)
-    foot.Open = open
+    -- How many the list leaves out, and the way to them.
+    local more = Spot(card, "Button", ROW_H, true)
+    more:SetWidth(ROW_W)
+    more.Text = Text(more, "secondary")
+    more.Text:SetPoint("LEFT", more, "LEFT", NAME_X, 0)
+    more:SetScript("OnClick", OpenClick)
+    more:Hide()
+
+    -- Every character with mail, added up.
+    local total = Figures(Spot(card, "Frame", ROW_H, true))
+    total:SetWidth(ROW_W)
+    T.SetColor(total.Name, "textPrimary")
+    total:Hide()
 
     -- With nothing to add up: one sentence that says why.
-    local msg = Spot(frame, "Frame", ROW_H)
-    msg:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    msg:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    local msg = Spot(card, "Frame", ROW_H)
+    msg:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -(1 + HEAD_H))
+    msg:SetWidth(ROW_W)
     msg.Text = ns.Theme.CreateText(msg, "bodySmall")
     msg.Text:SetPoint("TOPLEFT", msg, "TOPLEFT", NAME_X, -MSG_PAD)
     msg.Text:SetWidth(ROW_W - 2 * NAME_X)
@@ -5069,7 +5120,73 @@ do
     if msg.Text.SetSpacing then msg.Text:SetSpacing(2) end
     msg:Hide()
 
-    S.dash = { frame = frame, item = item, col = col, rows = {}, nums = nums, head = head, foot = foot, msg = msg }
+    -- The list's side and the tiles' apart: a hairline down between them.
+    local split = card:CreateTexture(nil, "BORDER")
+    split:SetWidth(1)
+    split:SetPoint("TOPLEFT", card, "TOPLEFT", LIST_W + BODY_GAP / 2 - 1, -(1 + HEAD_H + TILES_PAD))
+    split:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", LIST_W + BODY_GAP / 2 - 1, TILES_PAD)
+    T.FillChrome(split, HAIR_A)
+
+    -- The three ways in, one over the other.
+    local memory = Ctx.Tile(card, "Interface\\AddOns\\Postbox\\Media\\minimap-scroll.tga",
+      L["OPT_MEMORY_TITLE"], S.memoryTileEntry, OpenClick)
+    memory:SetPoint("TOPLEFT", card, "TOPLEFT", TILES_X, -TILES_TOP)
+    local groups = Ctx.Tile(card, "Interface\\AddOns\\Postbox\\Media\\minimap-mailbag.tga",
+      L["GROUPS_TITLE"], S.groupsEntry, Ctx.OpenGroups)
+    groups:SetPoint("TOPLEFT", memory, "BOTTOMLEFT", 0, -TILE_GAP)
+    local recipients = Ctx.Tile(card, "Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga",
+      L["RM_OPT_BUTTON"], S.recipientsEntry, Ctx.OpenRecipients)
+    recipients:SetPoint("TOPLEFT", groups, "BOTTOMLEFT", 0, -TILE_GAP)
+    S.dashTiles = { memory = memory, groups = groups, recipients = recipients }
+
+    S.dash = { card = card, h = Dash.LEAST, top = false, rows = {}, head = head, cols = cols, more = more,
+      total = total, msg = msg }
+  end
+
+  -- Mail Memory's tile: "Every character's box", or Off with its art faint
+  -- and its name grey while Remember mailboxes is off -- still a way in,
+  -- whose click says where to turn it on, and whose text says it too.
+  function Dash.PaintMemoryTile(tile, on)
+    local T = ns.Theme
+    if tile.on ~= on then
+      tile.on = on
+      tile.Mark:SetDesaturated(not on)
+      tile.Mark:SetAlpha(on and 1 or 0.5)
+      tile.Glow:SetShown(on)
+      local entry = tile.entry
+      local text = on and entry.onText or entry.offText
+      if entry.text ~= text then
+        entry.text = text
+        if S.shown == entry then
+          S.shown = false
+          Insp.Show(entry)
+        end
+      end
+    end
+    Ctx.PaintTile(tile, on and L["OPT_DASH_MEMORY_SUB"] or L["OPT_ALERT_OFF"])
+    T.SetColor(tile.Title, on and "accent" or "textDisabled")
+  end
+
+  -- Where the list and the inspector stand under `key`: on General under
+  -- the card and a gap, the card's height less than the body's; on every
+  -- other tab at the top, the card hidden. Moved only when that changes.
+  function Dash.Place(key)
+    local d = S.dash
+    if not (d and S.list and S.insp) then return end
+    local on = key == "general"
+    local top = on and (d.h + BODY_GAP) or 0
+    local h = math.max(1, (S.bodyH or 0) - top)
+    d.card:SetShown(on)
+    if d.top == top and S.inspH == h then return end
+    d.top, S.inspH = top, h
+    S.list:ClearAllPoints()
+    S.list:SetPoint("TOPLEFT", S.body, "TOPLEFT", 0, -top)
+    S.list:SetHeight(h)
+    S.insp:ClearAllPoints()
+    S.insp:SetPoint("TOPRIGHT", S.body, "TOPRIGHT", 0, -top)
+    S.insp:SetHeight(h)
+    -- The inspector's text laid again for the room it now has.
+    if S.say then Insp.Repaint() end
   end
 
   -- `at` (an expiry time), fate, amber, fs -> the time left as a row writes
@@ -5100,21 +5217,28 @@ do
     return w
   end
 
-  -- The block `h` tall: the settings under it move with it.
+  -- The card `h` tall: the list and the inspector under it move with it.
   local function Lay(h)
     local d = S.dash
-    if d.item.h == h then return end
-    d.item.h = h
-    d.frame:SetHeight(h)
-    local page = S.pages.general
-    local used = Rows.Reflow(d.col)
-    if page then page:SetHeight(used + 2 * LIST_PAD) end
+    if d.h == h then return end
+    d.h = h
+    d.card:SetHeight(h)
+    if S.tab == "general" then Dash.Place("general") end
+  end
+
+  -- A line's figures against the columns as they stand.
+  local function PlaceFigures(f)
+    for j = 1, #FIELDS do
+      local fs = f[FIELDS[j]]
+      fs:ClearAllPoints()
+      fs:SetPoint("RIGHT", f, "RIGHT", -rights[j], 0)
+    end
   end
 
   local function Fill(data)
     local d = S.dash
     local T = ns.Theme
-    local nums, head, foot, msg = d.nums, d.head, d.foot, d.msg
+    local head, cols, more, total, msg = d.head, d.cols, d.more, d.total, d.msg
     local words
     if not (data and data.enabled) then
       words = L["OPT_DASH_OFF"]
@@ -5123,44 +5247,46 @@ do
     elseif data.n == 0 then
       words = L["OPT_DASH_EMPTY"]
     end
-    nums:SetShown(not words)
-    head:SetShown(not words)
-    foot:SetShown(not words)
+    -- The strip's name greys with Mail Memory, as its settings do.
+    T.SetColor(head.Title, (data and data.enabled) and "accent" or "textDisabled")
+    head.Note:SetShown(not words)
+    cols:SetShown(not words)
     msg:SetShown(words and true or false)
     if words then
       for i = 1, #d.rows do d.rows[i]:Hide() end
+      more:Hide()
+      total:Hide()
       msg.Text:SetText(words)
       local h = 2 * MSG_PAD + math.ceil(msg.Text:GetStringHeight() or 0)
       msg:SetHeight(h)
-      Lay(h)
+      Lay(math.max(Dash.LEAST, 1 + HEAD_H + h + FOOT_PAD + 1))
       return
     end
 
     local now = time()
-    -- As many characters as the room down to the settings holds.
-    local room = (S.bodyH or 0) - 2 - 2 * LIST_PAD - GROUP_H - NUMS_H - HEAD_H - ROW_H
-      - (S.dashBelow or 0) - FOOT_GAP
-    local cap = math.max(1, math.floor(room / ROW_H))
     local n = data.n
-    local shown = (n <= cap) and n or cap
-
-    nums.Big[1]:SetText(tostring(data.mails))
-    nums.Big[2]:SetText(tostring(n))
-    nums.Big[3]:SetText(Soon(data.soonest, data.fate, data.amber, nums.Big[3], now))
-    nums.Big[4]:SetText(Gold(data.gold))
-    for i = 1, 4 do
-      local label = nums.Label[i]
-      T.FitText(label, ROW_W / 4 - 8, label.full, label)
+    -- The total only over two or more: over one it would say that line again.
+    local withTotal = n > 1
+    -- As many lines as the card may take: the body less what General's
+    -- settings and their inspector need under it (Layout). The fold takes
+    -- a line of its own.
+    local most = (S.bodyH or 0) - BODY_GAP - (S.generalBelow or 0)
+    local fixed = 1 + HEAD_H + COLS_H + (withTotal and ROW_H or 0) + FOOT_PAD + 1
+    local lines = math.floor((most - fixed) / ROW_H)
+    local shown, folded = n, 0
+    if n > lines then
+      shown = math.max(1, lines - 1)
+      folded = n - shown
     end
 
-    for j = 1, #FIELDS do widths[j] = math.max(MIN_W[j], TextW(head[FIELDS[j]])) end
+    for j = 1, #FIELDS do widths[j] = math.max(MIN_W[j], TextW(cols[FIELDS[j]])) end
     local CT = ns.CollectTab
     local age = CT and CT.HistoryAge
+    local MM = ns.MailMemory
     for i = 1, shown do
       local r = data.rows[i]
       local row = d.rows[i] or NewRow(i)
       row.realm, row.name = r.realm, r.name
-      local MM = ns.MailMemory
       row.nameText = (MM and MM.ClassName) and MM.ClassName(r.realm, r.name) or r.name
       row.Mail:SetText(tostring(r.mails))
       row.Gold:SetText(Gold(r.gold))
@@ -5173,6 +5299,16 @@ do
       end
     end
     for i = shown + 1, #d.rows do d.rows[i]:Hide() end
+    if withTotal then
+      total.Mail:SetText(tostring(data.mails))
+      total.Gold:SetText(Gold(data.gold))
+      total.Soon:SetText(Soon(data.soonest, data.fate, data.amber, total.Soon, now))
+      total.Seen:SetText("")
+      for j = 2, #FIELDS do
+        local w = Width(total[FIELDS[j]])
+        if w > widths[j] then widths[j] = w end
+      end
+    end
 
     -- The columns from the right, each as wide as its widest, GAP apart;
     -- the names have what is left, cut short where it is not enough (the
@@ -5183,40 +5319,43 @@ do
       x = x + widths[j] + GAP
     end
     local nameRoom = ROW_W - NAME_X - x
-    for j = 1, #FIELDS do
-      local fs = head[FIELDS[j]]
-      fs:ClearAllPoints()
-      fs:SetPoint("RIGHT", head, "RIGHT", -rights[j], 0)
-    end
-    local y = -(NUMS_H + HEAD_H)
+    PlaceFigures(cols)
+    local y = -(1 + HEAD_H + COLS_H)
     for i = 1, shown do
       local row = d.rows[i]
       row:ClearAllPoints()
-      row:SetPoint("TOPLEFT", d.frame, "TOPLEFT", 0, y)
-      row:SetPoint("TOPRIGHT", d.frame, "TOPRIGHT", 0, y)
-      for j = 1, #FIELDS do
-        local fs = row[FIELDS[j]]
-        fs:ClearAllPoints()
-        fs:SetPoint("RIGHT", row, "RIGHT", -rights[j], 0)
-      end
+      row:SetPoint("TOPLEFT", d.card, "TOPLEFT", 1, y)
+      PlaceFigures(row)
       T.FitText(row.Name, nameRoom, row.nameText, row)
       row:Show()
       y = y - ROW_H
     end
-
-    foot:ClearAllPoints()
-    foot:SetPoint("TOPLEFT", d.frame, "TOPLEFT", 0, y)
-    foot:SetPoint("TOPRIGHT", d.frame, "TOPRIGHT", 0, y)
-    local btnW = T.SizeToText(foot.Open, BUTTON_FIT)
-    local footText = (shown < n) and L("OPT_DASH_MORE", n - shown) or L["OPT_DASH_FOOT"]
-    T.FitText(foot.Text, ROW_W - NAME_X - CONTROL_R - (btnW or 0) - NAME_GAP, footText, foot)
-    Lay(NUMS_H + HEAD_H + (shown + 1) * ROW_H)
+    more:ClearAllPoints()
+    if folded > 0 then
+      more:SetPoint("TOPLEFT", d.card, "TOPLEFT", 1, y)
+      T.FitText(more.Text, ROW_W - 2 * NAME_X, L("OPT_DASH_MORE", folded), more)
+      more:Show()
+      y = y - ROW_H
+    else
+      more:Hide()
+    end
+    total:ClearAllPoints()
+    if withTotal then
+      total:SetPoint("TOPLEFT", d.card, "TOPLEFT", 1, y)
+      PlaceFigures(total)
+      T.FitText(total.Name, nameRoom, ns.Plural("OPT_DASH_ALL", n), total)
+      total:Show()
+      y = y - ROW_H
+    else
+      total:Hide()
+    end
+    Lay(math.max(Dash.LEAST, -y + FOOT_PAD + 1))
   end
 
   -- Read now, made again only where something it is made from has moved.
   function Dash.Paint()
     local d = S.dash
-    if not (d and d.frame:IsVisible()) then return end
+    if not (d and d.card:IsVisible()) then return end
     local MM = ns.MailMemory
     local data = MM and type(MM.Dashboard) == "function" and MM.Dashboard() or nil
     local UI, T = ns.MailboxUI, ns.Theme
@@ -5224,10 +5363,11 @@ do
     local marks = UI and UI.GetOption and UI.GetOption("expiryMarks") or false
     local ink = T.InkHex and T.InkHex("warning") or ""
     if made.gen == gen and made.room == S.bodyH and made.marks == marks and made.ink == ink
-      and made.open == S.openGen then
+      and made.open == S.openGen and made.below == S.generalBelow then
       return
     end
     made.gen, made.room, made.marks, made.ink, made.open = gen, S.bodyH, marks, ink, S.openGen
+    made.below = S.generalBelow
     Fill(data)
   end
 end
@@ -5431,34 +5571,65 @@ function State.Minimap()
   local Icon = ns.MinimapButton
   local on = Icon and Icon.GetEnabled and Icon.GetEnabled() and true or false
   Rows.SetBlock(S.minimapBlock, on)
-  -- Flash on new mail, under General, is drawn on the icon too.
+  -- Flash on new mail, under General, is drawn on the icon too; so is the
+  -- marker General's Minimap marker places (State.Warnings).
   if S.flashCell then Rows.SetEnabled(S.flashCell, on) end
   State.MinimapRows()
+  State.Warnings()
   Tabs.SetSquare("minimap", on and "on" or "off")
   Ctx.Paint("minimap")
 end
 
--- With the icon on, the rows that say how something looks grey while that
--- something is not there, each saying what turns it on (Rows.Why): Pulse
--- while Glow is off; Glow color while neither Glow nor Flash on new mail,
--- the two things that wear it, is on; Shape, Color, Anchor, Offset X and
--- Offset Y while Show marker is Off; Larger when alone unless Show marker
--- is Always (the one choice that puts the marker on its own). With the
--- icon off the block has them grey already, saying to turn the icon on.
+-- With the icon on, the rows that need something else grey while it is
+-- not there, each saying what turns it on (Rows.Why): Count on icon, and
+-- the marker's look, while Mail Memory is off, which they are made from;
+-- Shape, Color, Anchor, Offset X and Offset Y while Minimap marker (under
+-- General) is Off; Larger when alone unless it is Always (the one choice
+-- that puts the marker on its own); Pulse while Glow is off; Glow color
+-- while neither Glow nor Flash on new mail, the two things that wear it, is
+-- on. When to show stays live, its Mail on any character set aside (faint
+-- in its list, and said why) while Mail Memory is off. With the icon off
+-- the block has them grey already, saying to turn the icon on.
 function State.MinimapRows()
   local Icon, rows = ns.MinimapButton, S.mmRows
   if not (Icon and rows and Icon.GetEnabled and Icon.GetEnabled()) then return end
+  local memory = ns.MailboxUI.GetOption("mailMemory") and true or false
   local expiry = Icon.GetExpiry()
-  local marking = expiry ~= "off"
+  local marking = memory and expiry ~= "off"
+  local why = memory and "OPT_MINIMAP_WHY_MARKER" or "OPT_MINIMAP_WHY_MEMORY"
   local glow = Icon.GetGlow() and true or false
-  if rows.marker then Rows.SetEnabled(rows.marker, marking) end
-  if rows.color then Rows.SetEnabled(rows.color, marking) end
-  if rows.corner then Rows.SetEnabled(rows.corner, marking) end
-  if rows.offx then Rows.SetEnabled(rows.offx, marking) end
-  if rows.offy then Rows.SetEnabled(rows.offy, marking) end
-  if rows.large then Rows.SetEnabled(rows.large, expiry == "always") end
+  if rows.marker then Rows.SetEnabled(rows.marker, marking, why) end
+  if rows.color then Rows.SetEnabled(rows.color, marking, why) end
+  if rows.corner then Rows.SetEnabled(rows.corner, marking, why) end
+  if rows.offx then Rows.SetEnabled(rows.offx, marking, why) end
+  if rows.offy then Rows.SetEnabled(rows.offy, marking, why) end
+  if rows.large then
+    local alone = (not memory and "OPT_MINIMAP_WHY_MEMORY") or (expiry == "off" and "OPT_MINIMAP_WHY_MARKER")
+      or "OPT_MINIMAP_WHY_ALONE"
+    Rows.SetEnabled(rows.large, memory and expiry == "always", alone)
+  end
+  if rows.count then Rows.SetEnabled(rows.count, memory, "OPT_MINIMAP_WHY_MEMORY") end
+  if rows.show then
+    if S.mmShowAny then S.mmShowAny.off = not memory end
+    Rows.Say(rows.show, memory)
+  end
   if rows.pulse then Rows.SetEnabled(rows.pulse, glow) end
   if rows.glow then Rows.SetEnabled(rows.glow, glow or (Icon.GetAlertFlash() and true or false)) end
+end
+
+-- General's Expiring mail, with Mail Memory on (off, its block has the
+-- rows grey, saying to turn it on): Chat line at login and Minimap marker
+-- grey while Warn about is Off, since they follow it; the marker also
+-- while the minimap icon, which it is drawn on, is off -- each saying what
+-- turns it on.
+function State.Warnings()
+  local cells = S.warnCells
+  if not cells or not ns.MailboxUI.GetOption("mailMemory") then return end
+  local UI, Icon = ns.MailboxUI, ns.MinimapButton
+  local warning = (UI.GetMemoryWarn and UI.GetMemoryWarn() or "any") ~= "off"
+  local icon = Icon and Icon.GetEnabled and Icon.GetEnabled() and true or false
+  Rows.SetEnabled(cells.chat, warning, "OPT_WARN_WHY")
+  Rows.SetEnabled(cells.marker, warning and icon, warning and "OPT_MINIMAP_WHY_SWITCH" or "OPT_WARN_WHY")
 end
 
 -- Divider is grey while read mail does not stand under one (Read mail is
@@ -5481,17 +5652,16 @@ function State.RowLayout()
   cell.entry = (larger and cell.largeEntry or cell.plainEntry) or cell.entry
 end
 
--- Mail Memory's switch: the rows it governs grey with it, and the summary
--- made from it says so (Dash), its heading grey too.
+-- Mail Memory's switch: the rows it governs grey with it -- Hidden
+-- characters and the expiring-mail warnings here, what the Minimap tab
+-- makes from it there -- and the summary made from it says so (Dash), its
+-- strip and its tile grey too.
 function State.Memory()
   local on = ns.MailboxUI.GetOption("mailMemory") and true or false
   Rows.SetBlock(S.memoryBlock, on)
-  local head = S.dashHead
-  if head and head.off ~= not on then
-    head.off = not on
-    Rows.PaintGroup(head)
-  end
-  if S.tab == "general" then Dash.Paint() end
+  State.Warnings()
+  State.MinimapRows()
+  if S.tab == "general" then Ctx.Paint("general") end
 end
 
 -- Sound on new mail's choices: Off, then Postbox's own, the game's and,
@@ -6096,8 +6266,8 @@ function Pages.mail(col)
       ns.Theme.LiftPopup(StaticPopup_Show(POPUP_HISTORY_OFF, L["MSG_HISTORY_OFF_CONFIRM"]))
     end,
   })
-  -- (The sound when mail arrives is General's now, with the other mail
-  -- alerts: Pages.general.)
+  -- (The sound when mail arrives is General's now, under New mail:
+  -- Pages.general.)
 end
 
 -- The Send tab: the settings about composing, the form's own first, then
@@ -6651,6 +6821,9 @@ function Pages.minimap(col)
   local showItems = {}
   for _, mode in ipairs((Icon and Icon.SHOW_MODES) or { "new" }) do
     showItems[#showItems + 1] = { id = mode, name = showNames[mode] }
+    -- Mail on any character is made from Mail Memory: set aside while it
+    -- is off (State.MinimapRows).
+    if mode == "any" then S.mmShowAny = showItems[#showItems] end
   end
   local showRow = Rows.Dropdown(block, {
     title = L["OPT_MINIMAP_SHOW_TITLE"], text = L["OPT_MINIMAP_SHOW_DESC"], items = showItems,
@@ -6661,6 +6834,8 @@ function Pages.minimap(col)
     end,
   })
   modes[showRow.entry] = "show"
+  rows.show = showRow
+  Rows.Why(showRow, "OPT_MINIMAP_WHY_ANY")
 
   -- Icon: its art, its size, its count and its shadow. EllesmereUI's
   -- button wears all of it but the size.
@@ -6742,7 +6917,7 @@ function Pages.minimap(col)
   for _, mode in ipairs((Icon and Icon.COUNT_MODES) or { "off" }) do
     countItems[#countItems + 1] = { id = mode, name = countNames[mode] }
   end
-  Rows.Dropdown(block, {
+  rows.count = Rows.Dropdown(block, {
     title = L["OPT_MINIMAP_COUNT_TITLE"], text = L["OPT_MINIMAP_COUNT_DESC"], items = countItems,
     get = function() return ns.MinimapButton and ns.MinimapButton.GetCount() end,
     set = function(id)
@@ -6750,11 +6925,12 @@ function Pages.minimap(col)
       Ctx.Repaint()
     end,
   })
+  Rows.Why(rows.count, "OPT_MINIMAP_WHY_MEMORY")
   Rows.Check(block, Effect("OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC", "GetShadow", "SetShadow"))
 
   -- Glow: the glow and its pulse side by side, the one breathing the
   -- other, and the colour it wears -- which the flash when mail arrives
-  -- (General, Mail alerts) wears too. Pulse greys while Glow is off, Glow
+  -- (General, New mail) wears too. Pulse greys while Glow is off, Glow
   -- color while neither Glow nor the flash is on (State.MinimapRows).
   Rows.Group(block, L["OPT_MINIMAP_GROUP_GLOW"])
   local glowPair = Rows.Pair(block,
@@ -6829,36 +7005,19 @@ function Pages.minimap(col)
   rows.glow = glowRow
   Rows.Why(glowRow, "OPT_MINIMAP_WHY_GLOWCOLOR")
   -- (Flash on new mail, which wears Glow color and keeps it live while it
-  -- is on, is under General's Mail alerts: Pages.general.)
+  -- is on, is under General's New mail: Pages.general.)
 
-  -- Expiring mail: the marker for mail close to being lost -- where it
-  -- shows (nowhere, on the icon while When to show has it up, or also on
-  -- its own where the icon sits; it never brings the icon up itself), its
-  -- shape, its colour, the spot on the icon it is anchored to and how far
-  -- it is moved from there, and whether, on its own, it grows into the
-  -- icon's spot.
+  -- Expiring mail: how the marker for mail to be deleted or sent back
+  -- looks -- its shape, its colour, the spot on the icon it is anchored to
+  -- and how far it is moved from there, and whether, on its own, it grows
+  -- into the icon's spot. Whether and where it shows, and what it warns
+  -- of, are General's (Minimap marker and Warn about, one rule with the
+  -- chat line at login: Pages.general).
   Rows.Group(block, L["OPT_MINIMAP_GROUP_EXPIRY"])
-  local expiryNames = {
-    off = L["OPT_MINIMAP_EXPIRY_OFF"], icon = L["OPT_MINIMAP_EXPIRY_ICON"], always = L["OPT_MINIMAP_EXPIRY_ALWAYS"],
-  }
-  local expiryItems = {}
-  for _, mode in ipairs((Icon and Icon.EXPIRY_MODES) or { "always" }) do
-    expiryItems[#expiryItems + 1] = { id = mode, name = expiryNames[mode] }
-  end
-  local expiryRow = Rows.Dropdown(block, {
-    title = L["OPT_MINIMAP_EXPIRY_TITLE"], text = L["OPT_MINIMAP_EXPIRY_DESC"], items = expiryItems,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetExpiry() end,
-    set = function(id)
-      if ns.MinimapButton then ns.MinimapButton.SetExpiry(id) end
-      State.MinimapRows()
-      Ctx.Repaint()
-    end,
-  })
-  modes[expiryRow.entry] = "expiry"
 
-  -- Shape, Color, Anchor, Offset X and Offset Y grey while Show marker is
-  -- Off; Larger when alone unless it is Always, the only choice that puts
-  -- the marker on its own (State.MinimapRows).
+  -- Shape, Color, Anchor, Offset X and Offset Y grey while Minimap marker
+  -- is Off, or Mail Memory is; Larger when alone unless it is Always, the
+  -- only choice that puts the marker on its own (State.MinimapRows).
   local markerNames = {
     dot = L["OPT_MINIMAP_MARKER_DOT"], ring = L["OPT_MINIMAP_MARKER_RING"], square = L["OPT_MINIMAP_MARKER_SQUARE"],
     bar = L["OPT_MINIMAP_MARKER_BAR"], exclamation = L["OPT_MINIMAP_MARKER_EXCLAMATION"],
@@ -6879,6 +7038,7 @@ function Pages.minimap(col)
   modes[markerRow.entry] = "marker"
   rows.marker = markerRow
   Rows.Why(markerRow, "OPT_MINIMAP_WHY_MARKER")
+  Rows.Why(markerRow, "OPT_MINIMAP_WHY_MEMORY")
   local colorRow = ColorRow({
     title = L["OPT_MINIMAP_MARKERCOLOR_TITLE"], text = L["OPT_MINIMAP_MARKERCOLOR_DESC"],
     ids = (Icon and Icon.MARKER_COLORS) or { "red" }, names = colorNames,
@@ -6887,6 +7047,7 @@ function Pages.minimap(col)
   modes[colorRow.entry] = "color"
   rows.color = colorRow
   Rows.Why(colorRow, "OPT_MINIMAP_WHY_MARKER")
+  Rows.Why(colorRow, "OPT_MINIMAP_WHY_MEMORY")
   -- Anchor: the nine spots, in reading order; its drawing is the grid of
   -- them.
   local anchorNames = {
@@ -6909,6 +7070,7 @@ function Pages.minimap(col)
   modes[cornerRow.entry] = "corner"
   rows.corner = cornerRow
   Rows.Why(cornerRow, "OPT_MINIMAP_WHY_MARKER")
+  Rows.Why(cornerRow, "OPT_MINIMAP_WHY_MEMORY")
   -- Offset X and Offset Y: whole screen pixels from the anchor. No answers
   -- of their own: the drawing shows the icon as set, the marker moving with
   -- the slider, and their text stands under it.
@@ -6921,6 +7083,7 @@ function Pages.minimap(col)
     after = Ctx.Repaint,
   })
   Rows.Why(rows.offx, "OPT_MINIMAP_WHY_MARKER")
+  Rows.Why(rows.offx, "OPT_MINIMAP_WHY_MEMORY")
   rows.offy = Rows.Slider(block, {
     title = L["OPT_MINIMAP_OFFSETY_TITLE"], text = L["OPT_MINIMAP_OFFSETY_DESC"], min = lo, max = hi,
     get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerY() end,
@@ -6928,6 +7091,7 @@ function Pages.minimap(col)
     after = Ctx.Repaint,
   })
   Rows.Why(rows.offy, "OPT_MINIMAP_WHY_MARKER")
+  Rows.Why(rows.offy, "OPT_MINIMAP_WHY_MEMORY")
   local largeRow = Rows.Check(block, {
     title = L["OPT_MINIMAP_LARGE_TITLE"], text = L["OPT_MINIMAP_LARGE_DESC"],
     get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerLarge() end,
@@ -6937,6 +7101,8 @@ function Pages.minimap(col)
   modes[largeRow.entry] = "large"
   rows.large = largeRow
   Rows.Why(largeRow, "OPT_MINIMAP_WHY_ALONE")
+  Rows.Why(largeRow, "OPT_MINIMAP_WHY_MARKER")
+  Rows.Why(largeRow, "OPT_MINIMAP_WHY_MEMORY")
   for entry in pairs(modes) do entry.stage = "minimap" end
   rows.offx.entry.stage, rows.offy.entry.stage = "minimap", "minimap"
 
@@ -6977,18 +7143,15 @@ function Pages.minimap(col)
   Rows.EndBlock(block)
 end
 
--- General: what belongs to no one window. At its top, every character's
--- mail as each box was last seen (Dash, the summary); under it Mail Memory,
--- which that summary is made from, and the mail alerts. Its inspector holds
--- the lists the player builds, Character Groups and Manage Recipients
--- (Ctx.general).
+-- General: what belongs to no one window. Over it, on a card of its own
+-- across the panel, every character's mail as each box was last seen and
+-- the ways into Mail Memory, Character Groups and Manage Recipients (Dash).
+-- Its rows, in the order they depend on each other: Mail Memory, which the
+-- card and the warnings are made from; Expiring mail, the warnings -- one
+-- rule, Warn about, for the line in chat at login and the minimap marker
+-- (MailMemory.lua, MM.Warns); and New mail, the sound and the flash.
 function Pages.general(col)
   local T = ns.Theme
-  -- The summary under its heading, which greys while Mail Memory is off.
-  S.dashHead = Rows.Group(col, L["OPT_DASH_TITLE"])
-  Dash.Build(col)
-  local below = col.y
-
   Rows.Group(col, L["OPT_MEMORY_TITLE"])
   Rows.Check(col, {
     title = L["OPT_MEMORY_SWITCH"], entryTitle = L["OPT_MEMORY_TITLE"],
@@ -7001,9 +7164,9 @@ function Pages.general(col)
     after = State.Memory,
   })
 
-  -- What the switch governs, grey with it: who is left out of the lists,
-  -- and the line at login.
-  local block = Rows.Block(col)
+  -- What the switch governs, grey with it, saying so: who is left out of
+  -- the lists, and the expiring-mail warnings.
+  local block = Rows.Block(col, "OPT_MEMORY_WHY")
   S.memoryBlock = block
 
   -- Hidden characters: the caption, the names, and Show all.
@@ -7049,26 +7212,67 @@ function Pages.general(col)
   row:SetScript("OnLeave", Rows.LeaveRow)
   S.hiddenRow = row
 
-  -- The line in chat at login about the other characters' mail: none, only
-  -- mail the server would delete, or all mail short of time (the old
-  -- switch's on, MailboxUI.GetMemoryWarn). Read at the next login.
+  -- Expiring mail: Warn about, the one rule for both warnings -- nothing,
+  -- mail to be deleted, or that and mail to be sent back (its ids are the
+  -- old warning's, so a saved choice carries over: MailboxUI.GetMemoryWarn)
+  -- -- and the two warnings that follow it: the line in chat at login, read
+  -- at the next login, and the minimap marker, where it shows (its saved
+  -- setting is the Minimap tab's old Show marker's; its look is still
+  -- there). Both grey while Warn about is Off, and the marker while the
+  -- minimap icon is off too (State.Warnings). Warn about keeps the
+  -- dropdowns' width: its longest value is cut short in its box, and said
+  -- whole on hover (Rows.Fit).
+  Rows.Group(block, L["OPT_MINIMAP_GROUP_EXPIRY"])
+  local function Warned()
+    State.Warnings()
+    local Icon = ns.MinimapButton
+    if Icon and Icon.Refresh then Icon.Refresh() end
+  end
   Rows.Dropdown(block, {
-    title = L["OPT_ALERT_OTHERS_TITLE"], text = L["OPT_ALERT_OTHERS_DESC"] .. "\n\n" .. L["OPT_WARN_MORE"],
+    title = L["OPT_WARN_TITLE"], text = L["OPT_WARN_DESC"] .. "\n\n" .. L["OPT_WARN_MORE"], fixed = true,
     items = {
       { id = "off",     name = L["OPT_ALERT_OFF"] },
       { id = "deleted", name = L["OPT_WARN_DELETED"] },
       { id = "any",     name = L["OPT_WARN_ANY"] },
     },
     get = function() return ns.MailboxUI.GetMemoryWarn and ns.MailboxUI.GetMemoryWarn() or "any" end,
-    set = function(id) if ns.MailboxUI.SetMemoryWarn then ns.MailboxUI.SetMemoryWarn(id) end end,
+    set = function(id)
+      if ns.MailboxUI.SetMemoryWarn then ns.MailboxUI.SetMemoryWarn(id) end
+      Warned()
+    end,
   })
+  local chat = Rows.Check(block, {
+    title = L["OPT_WARN_CHAT_TITLE"], text = L["OPT_WARN_CHAT_DESC"],
+    get = function() return ns.MailboxUI.GetOption("warnAtLogin") end,
+    set = function(on) ns.MailboxUI.SetOption("warnAtLogin", on) end,
+  })
+  Rows.Why(chat, "OPT_WARN_WHY")
+  local Icon = ns.MinimapButton
+  local markerNames = {
+    off = L["OPT_MINIMAP_EXPIRY_OFF"], icon = L["OPT_MINIMAP_EXPIRY_ICON"], always = L["OPT_MINIMAP_EXPIRY_ALWAYS"],
+  }
+  local markerItems = {}
+  for _, mode in ipairs((Icon and Icon.EXPIRY_MODES) or { "always" }) do
+    markerItems[#markerItems + 1] = { id = mode, name = markerNames[mode] }
+  end
+  local marker = Rows.Dropdown(block, {
+    title = L["OPT_WARN_MARKER_TITLE"], text = L["OPT_WARN_MARKER_DESC"], items = markerItems, fixed = true,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetExpiry() end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetExpiry(id) end
+      State.MinimapRows()
+    end,
+  })
+  Rows.Why(marker, "OPT_WARN_WHY")
+  Rows.Why(marker, "OPT_MINIMAP_WHY_SWITCH")
+  S.warnCells = { chat = chat, marker = marker }
   Rows.EndBlock(block)
 
-  -- The mail alerts: the sound when mail arrives while you are out in the
-  -- world, chosen from Postbox's own, the game's and other addons'
+  -- New mail: the sound when mail arrives while you are out in the world,
+  -- chosen from Postbox's own, the game's and other addons'
   -- (State.ToneItems) and heard from the button beside it, and the flash,
   -- which is drawn on the minimap icon and so greys while the icon is off
-  -- (State.Minimap), saying what turns it on.
+  -- (State.Minimap), saying what turns it on. Neither needs Mail Memory.
   Rows.Group(col, L["OPT_ALERTS_HEADING"])
   local sound = Rows.Dropdown(col, {
     title = L["OPT_ALERT_SOUND_TITLE"], text = L["OPT_ALERT_SOUND_DESC"] .. "\n\n" .. L["OPT_SOUND_MORE"],
@@ -7092,9 +7296,6 @@ function Pages.general(col)
     after = State.MinimapRows,
   })
   Rows.Why(S.flashCell, "OPT_MINIMAP_WHY_SWITCH")
-  -- The settings' height under the summary: the room the summary's list
-  -- leaves them (Dash.Lay).
-  S.dashBelow = below - col.y
 end
 
 -------------------------------------------------------------
@@ -7111,7 +7312,8 @@ end
 -- still carries over when the new one is unset, the second a value that
 -- counts only beside another (a custom colour's hex beside its choice). A
 -- table's entries are judged one by one: the minimap icon's settings share
--- one table, and its alert sound is a Mail tab row.
+-- one table, and its alert sound, its flash and its marker's on/off
+-- (Minimap marker) are General's rows, the marker's look the Minimap tab's.
 --
 -- A look's own values are named for it: pb (the Postbox style, and the
 -- creative styles drawn on it), eui (the EllesmereUI skin), modern (the
@@ -7675,8 +7877,10 @@ local function Layout()
     -- The Minimap drawing's captions first: its height counts them.
     Ctx.MeasureCaptions()
     -- The Mail tab's text zone, under its window: the tab's own text and
-    -- every setting's the window shows, the tallest of them.
-    local mailText = SAY_MIN
+    -- every setting's the window shows, the tallest of them. General's
+    -- texts have the inspector under its card: the tallest of them, with
+    -- the card at its least over it (Dash).
+    local mailText, generalText = SAY_MIN, SAY_MIN
     local entries = S.entries
     for i = 1, #entries do
       local entry = entries[i]
@@ -7685,6 +7889,8 @@ local function Layout()
       -- under the drawing, never over it.
       if entry.stage == "mail" then
         if h > mailText then mailText = h end
+      elseif entry.tab == "general" then
+        if h > generalText then generalText = h end
       else
         if entry.stage then h = Ctx.Height(entry.stage) + math.max(h, SAY_MIN) end
         if h > text then text = h end
@@ -7695,6 +7901,8 @@ local function Layout()
       local entry = S.idle[key]
       if key == "mail" then
         if entry then mailText = math.max(mailText, Insp.Need(entry, 0)) end
+      elseif key == "general" then
+        if entry then generalText = math.max(generalText, Insp.Need(entry, 0)) end
       else
         local ctxH = Ctx.Height(key)
         if entry and ctxH > 0 then
@@ -7705,7 +7913,9 @@ local function Layout()
       end
     end
     S.mailText = math.ceil(mailText)
-    S.textNeed = text
+    S.generalText = math.ceil(generalText)
+    S.textNeed = math.max(text, Dash.LEAST + BODY_GAP + S.generalText)
+    text = S.textNeed
   end
   -- The Mail tab: its window at its least over its text zone. The window
   -- then takes whatever room the panel has between the two (Ctx.MailFill),
@@ -7716,13 +7926,16 @@ local function Layout()
   if need ~= S.bodyH or height ~= S.frameH then
     S.bodyH, S.frameH = need, height
     S.body:SetHeight(need)
-    S.list:SetHeight(need)
-    S.insp:SetHeight(need)
     S.frame:SetHeight(height)
     -- Never taller than the screen, whatever the window scale.
     local T = ns.Theme
     if T and type(T.FitToScreen) == "function" then T.FitToScreen(S.frame) end
   end
+  -- What General's settings and their text need under its card: the most
+  -- the card may leave them (Dash's fold).
+  S.generalBelow = math.max(S.pageH.general + 2, S.generalText or 0)
+  -- The list and the inspector the body's height, less the card on General.
+  Dash.Place(S.tab)
   Ctx.MailFill(need, S.mailText)
 end
 
@@ -7799,11 +8012,17 @@ local function Build()
   -- arranges, the first setting's on the Send tab, which draws nothing,
   -- the look's source on Window, the switch's own on Minimap. The Window
   -- and Minimap texts are settled below, once it is known what is
-  -- painting. General's two tiles say what they open.
+  -- painting. General's three tiles say what they open; Mail Memory's, while
+  -- it is off, says where to turn it on (Dash.PaintMemoryTile).
   S.dashEntry = Entry(L["OPT_DASH_TITLE"], L["OPT_DASH_DESC"])
   S.idle.general = S.dashEntry
+  S.memoryTileEntry = Entry(L["OPT_MEMORY_TITLE"], L["OPT_DASH_MEMORY_DESC"])
+  S.memoryTileEntry.onText = S.memoryTileEntry.text
+  S.memoryTileEntry.offText = S.memoryTileEntry.text .. "\n\n" .. L["OPT_MEMORY_WHY"]
   S.groupsEntry = Entry(L["GROUPS_TITLE"], L["GROUPS_OPT_DESC"])
   S.recipientsEntry = Entry(L["RM_OPT_BUTTON"], L["RM_OPT_BUTTON_DESC"])
+  S.dashEntry.tab, S.memoryTileEntry.tab = "general", "general"
+  S.groupsEntry.tab, S.recipientsEntry.tab = "general", "general"
   S.idle.mail = Entry(L["OPT_ARRANGE_BUTTON"], L["ARRANGE_TIP"] .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"])
   S.idle.send = Entry(L["OPT_AFTER_SEND_TITLE"], L["OPT_AFTER_SEND_DESC"])
   S.idle.window = Entry(L["OPT_STYLE_TITLE"], L["OPT_STYLE_DESC"])
@@ -7835,6 +8054,8 @@ local function Build()
   T.ApplyList(insp)
   S.list, S.insp = list, insp
   Insp.Build(insp)
+  -- General's card, over the two on its tab.
+  Dash.Build(body)
 
   local need = 0
   for i = 1, #TABS do
@@ -7844,13 +8065,17 @@ local function Build()
     page:SetPoint("TOPRIGHT", list, "TOPRIGHT", -1, -1)
     page:Hide()
     local col = Rows.Column(page)
-    local first = #S.cells + 1
+    local first, firstEntry = #S.cells + 1, #S.entries + 1
     Pages[key](col)
     S.tabCells[key] = { first, #S.cells }
+    -- General's texts stand under its card (Layout).
+    if key == "general" then
+      for e = firstEntry, #S.entries do S.entries[e].tab = "general" end
+    end
     local h = -col.y + LIST_PAD
     page:SetHeight(h)
     S.pages[key], S.cols[key], S.pageH[key] = page, col, h
-    if h + 2 > need then need = h + 2 end
+    if Rows.PageNeed(key) > need then need = Rows.PageNeed(key) end
   end
   S.listNeed = need
 
@@ -7868,7 +8093,7 @@ local function Build()
   -- a group may have been made or renamed meanwhile.
   S.refresh[#S.refresh + 1] = function() S.gridStale = true end
 
-  Footer.Build(frame, list)
+  Footer.Build(frame, body)
   frame:HookScript("OnHide", PanelHide)
 
   -- Let an active host-UI skin restyle the panel like the main window.
@@ -8003,6 +8228,7 @@ function Panel.SelectTab(key)
   if washed and washed.Wash then washed.Wash:Hide() end
   S.washed = nil
   Tabs.Select(key)
+  Dash.Place(key)
   Ctx.Show(key)
   Insp.SetTab(key)
 end

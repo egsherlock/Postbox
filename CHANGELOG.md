@@ -49,20 +49,26 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   None of it can be collected. Arranging from the options now leaves them
   open, and Done keeps the sample window up.
 - **Every character's mail at a glance:** the options open on a new General
-  tab whose top block, Across your characters, adds up each character's box
-  as it was last seen: mails waiting, how many characters have mail, the
-  soonest to expire (with its arrow or bin) and the gold waiting, over a
-  line per character. Click a character to open its box in Mail Memory.
-  General also holds Mail Memory's settings, the mail alerts, and Character
-  Groups and Manage Recipients; the Mail Memory tab is gone.
+  tab, topped by Across your characters: a line per character as its box
+  was last seen (mail, gold, the soonest to expire with its arrow or bin,
+  and how long ago), and a total for them all. A long list ends in "+N more
+  in Mail Memory". Click a character to open its box in Mail Memory; Mail
+  Memory, Character Groups and Manage Recipients are one click away beside
+  the list. Under it are Mail Memory's settings and the mail alerts; the
+  Mail Memory tab is gone.
 - **Choose the sound for new mail:** four soft sounds made for Postbox (Soft
   chime, Envelope, Small bell, Wood tap), the mail chime and four quiet
   sounds of the game's, or any sound your other addons share, such as
   ElvUI's or WeakAuras', with a button to hear it first. If you had the
   sound on, it is still the mail chime, and if another addon's sound goes
   missing, the mail chime plays in its place.
-- **Choose what the login warning covers:** any mail with gold or items, as
-  before, or only mail that would be deleted. Off stays off.
+- **One choice for both expiring-mail warnings:** Warn about, under
+  General, Expiring mail, sets what the chat line at login and the minimap
+  marker warn of: Mail to be deleted, Mail to be deleted or sent back (as
+  before), or Off. Each warning has its own switch beside it, Chat line at
+  login and Minimap marker; the marker's switch moved here from the Minimap
+  tab, where its shape, color and place stay. Your choices carry over, and
+  Off stays off.
 - **Mail Memory has the options cog** the Postbox window has, opening the
   options on General, below it.
 
@@ -71,7 +77,14 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 - **The new-mail sound stays quiet for your own auction house purchases:**
   the game already tells you, and the minimap icon still flashes for them
   and counts them. Flash on new mail now sits beside the sound, under
-  General.
+  General, New mail.
+- **The minimap marker and the login line agree:** both name every
+  character you haven't hidden, the one you're on included, and only for
+  mail holding gold or items (or a C.O.D.), so an unread letter with nothing
+  in it no longer sets either off.
+- **Minimap options that need Mail Memory say so:** while it is off, Mail on
+  any character, Count on icon and the marker's look are grayed out, each
+  saying where to turn it on.
 - **A C.O.D. price is red,** as spent gold is, so amber means only that time
   is running out, and the totals band adds the C.O.D. still to pay on the
   mail listed.

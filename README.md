@@ -137,16 +137,21 @@ a mail to see what it holds. A character you no longer play can be hidden
 
 - **Arrivals are detected, not guessed:** the game's new-mail signal, the
   unread flag, and the auction house's own sold / expired / bought notices.
-- **Warnings** name any character with mail under three days (one for
-  C.O.D.) from expiring,
-  or with mail known to be on its way and no mailbox visit in over three
-  weeks: in chat at login (**Warn about other characters' mail**: about any
-  mail with gold or items, only mail that would be deleted, or off), in the
-  minimap tooltip, and as the minimap icon's expiry marker.
-- **Across your characters,** at the top of the options' General tab, adds
-  it all up: mails waiting, how many characters have mail, the soonest to
-  expire and the gold waiting, over a line per character. Click one to open
-  its box in Mail Memory.
+- **Warnings** name any character with mail holding gold or items (or a
+  C.O.D.) under three days (one for C.O.D.) from expiring, or with mail
+  known to be on its way and no mailbox visit in over three weeks, the
+  character you're on included. One choice, **Warn about** (Options,
+  General, Expiring mail), sets what both warnings cover: **Mail to be
+  deleted**, **Mail to be deleted or sent back**, or **Off**. They come as a
+  line in chat at login (**Chat line at login**) and as the minimap icon's
+  marker (**Minimap marker**: with the icon, always, or off); the minimap
+  tooltip names them too.
+- **Across your characters,** a card across the top of the options' General
+  tab, lists each character's box as it was last seen (mail, gold, the
+  soonest to expire with its arrow or bin, and how long ago), with a total
+  for all of them; a long list ends in "+N more in Mail Memory". Click a
+  character to open its box in Mail Memory. Beside the list, Mail Memory,
+  Character Groups and Manage Recipients are a click away.
 
 ## Sending
 
@@ -192,7 +197,9 @@ icon steps aside.
 - **When to show:** New mail, Mail on any character, or Always (resting in
   gray until something arrives).
 - **Expiring mail:** a small marker, red unless you pick another color, when
-  mail on any character is close to being lost. Choose its shape (dot, ring,
+  mail on any character is about to be deleted or sent back (switched on,
+  and told which, under General: **Minimap marker** and **Warn about**).
+  Choose its shape (dot, ring,
   square, bar, "!" or a triangle that fits its spot), put it on any corner,
   side or the center of the icon, and nudge it a pixel at a time with
   **Offset X** and **Offset Y**. On **Always** it stays on the map while the
@@ -200,12 +207,14 @@ icon steps aside.
   makes it bigger there.
 - **Count on icon** (this character or all), shadow, glow and pulse, with a
   **Glow color** of gold, your accent, your class color, white or any color
-  you pick. **Flash on new mail** (Options, General, with the sound) swells
-  a halo in that color when mail arrives.
+  you pick. **Flash on new mail** (Options, General, New mail) swells a
+  halo in that color when mail arrives.
 - **The Minimap tab** reads in five groups (When it shows, Icon, Glow,
   Expiring mail, Place). Its preview draws the icon large beside a copy at
   its real size, wearing every setting; settings with choices show them
-  side by side, and a grayed-out setting says what turns it on.
+  side by side, and a grayed-out setting says what turns it on. What needs
+  Mail Memory (Mail on any character, Count on icon, the marker) is grayed
+  out while it is off.
 - Two dozen hand-painted styles from 16 to 40 px, on the minimap's rim or
   anywhere on screen (Shift-drag; Alt-click locks it).
 - **Its tooltip** shows your own mailbox first, then each of your other
@@ -221,14 +230,15 @@ icon steps aside.
 
 Five tabs (General, Mail tab, Send tab, Window, Minimap), one column of
 settings, and a panel beside it that explains whatever you point at and shows
-it. **General** comes first: every character's mail at a glance, Mail
-Memory's settings, and the mail alerts: **Sound on new mail** (one of four
-soft sounds made for Postbox, the mail chime or another quiet sound of the
-game's, or any sound your other addons share through LibSharedMedia, such as
-ElvUI's or WeakAuras', with a button to hear it first; it stays quiet for
-your own auction house purchases, which the game already announces) and
-**Flash on new mail**. **Character Groups** and
-**Manage Recipients** open from beside them. The options open beside
+it. **General** comes first: every character's mail at a glance on a card
+across the top, with **Mail Memory**, **Character Groups** and **Manage
+Recipients** beside it; under it Mail Memory's settings, **Expiring mail**
+(Warn about, Chat line at login, Minimap marker) and **New mail**: **Sound
+on new mail** (one of four soft sounds made for Postbox, the mail chime or
+another quiet sound of the game's, or any sound your other addons share
+through LibSharedMedia, such as ElvUI's or WeakAuras', with a button to hear
+it first; it stays quiet for your own auction house purchases, which the
+game already announces) and **Flash on new mail**. The options open beside
 whatever opened them: right of the Postbox
 window from its cog, below Mail Memory from its cog (on General), left of the minimap
 from the icon. With **Dock beside game windows** on they stay beside that

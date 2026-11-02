@@ -576,23 +576,32 @@ end
 
 local view = { lit = false, shown = false, mine = 0, all = 0, count = 0, alert = false, alone = false }
 
+-- Warn about (General, Expiring mail): what the marker warns of, by the
+-- rule the chat line at login follows too (MailMemory.lua, MM.Warns).
+local function WarnMode()
+  local UI = ns.MailboxUI
+  return UI and type(UI.GetMemoryWarn) == "function" and UI.GetMemoryWarn() or "any"
+end
+
 local function Evaluate()
   local prefs = Settings()
   local mode = ShowMode(prefs)
   local countMode = CountMode(prefs)
   local expiry = ExpiryMode(prefs)
+  local warnMode = (expiry ~= "off") and WarnMode() or "off"
   local mine, all, warn = 0, 0, false
   local Memory = ns.MailMemory
-  if (mode == "any" or countMode ~= "off" or expiry ~= "off") and MemoryOn() and Memory
+  if (mode == "any" or countMode ~= "off" or warnMode ~= "off") and MemoryOn() and Memory
     and type(Memory.Characters) == "function" then
     local list = Memory.Characters()
+    local warns = Memory.Warns
     for i = 1, #list do
       local st = list[i]
       if not st.hidden then
         local n = (tonumber(st.waiting) or 0) + (tonumber(st.pending) or 0)
         if st.me then mine = n end
         all = all + n
-        if st.warn then warn = true end
+        if not warn and warns and warns(st, warnMode) then warn = true end
       end
     end
   end
