@@ -234,6 +234,7 @@ local function ForgetSettings()
   memo.layout, memo.slots = nil, nil
   memo.packing, memo.barColor, memo.words = nil, nil, nil
   memo.barText, memo.barTextShown, memo.barIcon = nil, nil, nil
+  memo.barLook, memo.barCount = nil, nil
   memo.history, memo.age, memo.large = nil, nil, nil
   memo.grid, memo.gridText = nil, nil
 end
@@ -1031,16 +1032,24 @@ end
 -- What it says (profile.dividerWords): "read" (the default), "nothing"
 -- (Nothing left), "collected", or "custom", the player's own words
 -- (profile.dividerText, UI.GetDividerText; none stored is no words). The
--- number of read mail follows it while Show mail counts is on, as every box
--- count does. Stored only when it is not the default. What 1.60's alphas
--- stored before these is read as the nearest, once, and stored so: "full"
--- (Read, nothing left) and "count" (the number alone) as Read; "check" (a
--- check mark, no words) as Custom with no words and the Check mark icon
--- (profile.dividerIcon), which draws the bar exactly as "check" did; and the
--- bar's old looks (profile.dividerLook: Full row, the notch trials) are
--- gone, forgotten.
+-- number of finished mail follows it while the bar's own Count is on
+-- (UI.GetBarCount). Stored only when it is not the default; "read" is the
+-- id of the default words, whatever they say. What 1.60's alphas stored
+-- before these is read as the nearest, once, and stored so: "full" (Read,
+-- nothing left) and "count" (the number alone) as the default words;
+-- "check" (a check mark, no words) as Custom with no words and the Check
+-- mark icon (profile.dividerIcon), which draws the bar exactly as "check"
+-- did.
+--
+-- How it looks (profile.dividerLook, UI.GetDividerLook): nothing stored is
+-- the notch. What the alphas stored for the looks before it reads so too:
+-- Hairline and Full row as themselves ("row" was Full row's name then, and
+-- is stored as "full"), the notch trials ("stretch", "count", "scroll",
+-- "drawer") as the notch, which they became.
 UI.DIVIDER_WORDS = { read = true, nothing = true, collected = true, custom = true }
 local DIVIDER_WORDS_OLD = { full = "read", count = "read" }
+UI.DIVIDER_LOOKS = { "notch", "hairline", "full" }
+local DIVIDER_LOOK = { hairline = true, full = true }
 
 -- The profile, with what the alphas stored for the bar read as the nearest
 -- (above), whichever of the bar's settings is asked first; nil while there
@@ -1055,8 +1064,63 @@ local function DividerProfile()
     profile.dividerWords, profile.dividerText = "custom", nil
     if profile.dividerIcon == nil then profile.dividerIcon = "check" end
   end
-  if profile.dividerLook ~= nil then profile.dividerLook = nil end
+  local look = profile.dividerLook
+  if look == "row" then
+    profile.dividerLook = "full"
+  elseif look ~= nil and not DIVIDER_LOOK[look] then
+    profile.dividerLook = nil
+  end
   return profile
+end
+
+-- The bar's look: "notch" (the default: a little shorter than a row, on
+-- the list's ground with a faint outline, its words centred; out of view
+-- it waits at the list's foot as a small tab that opens into it,
+-- Core/DividerNotch.lua), "hairline" (small words and a hairline to Delete
+-- all on the list's own ground, a row's slot tall) or "full" (a row like
+-- the mail around it, in its own stripe); either of the last two waits at
+-- the list's foot whole while its place is out of view (CollectTab,
+-- RV.UpdatePin). Stored only when it is not the notch.
+function UI.GetDividerLook()
+  local memo = Settings()
+  if memo.barLook then return memo.barLook end
+  local profile = DividerProfile()
+  local stored = profile and profile.dividerLook
+  memo.barLook = DIVIDER_LOOK[stored] and stored or "notch"
+  return memo.barLook
+end
+function UI.SetDividerLook(look)
+  if look ~= nil and look ~= "notch" and not DIVIDER_LOOK[look] then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.dividerLook = DIVIDER_LOOK[look] and look or nil end
+  ForgetSettings()
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
+end
+
+-- Whether the bar shows the number of finished mail after its words
+-- (profile.dividerCount), a switch of its own. Until it is first read it
+-- followed Show mail counts, so the first read takes that switch's value
+-- and stores it: nobody's bar changes. Nothing stored (a new profile, or
+-- one Reset to defaults cleared) reads as Show mail counts says then.
+function UI.GetBarCount()
+  local memo = Settings()
+  if memo.barCount ~= nil then return memo.barCount end
+  local profile = DividerProfile()
+  local stored = profile and profile.dividerCount
+  if stored == nil then
+    stored = UI.GetOption("showTabCounts") and true or false
+    if profile then profile.dividerCount = stored end
+  end
+  memo.barCount = stored == true
+  return memo.barCount
+end
+function UI.SetBarCount(on)
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.dividerCount = on and true or false end
+  ForgetSettings()
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
 end
 
 function UI.GetDividerWords()
@@ -1303,6 +1367,8 @@ function UI.TryDivider(arg)
   if says == "custom" then says = says .. ' "' .. UI.GetDividerTextShown() .. '"' end
   local icon = UI.GetDividerIcon()
   if icon ~= "none" then says = says .. " + " .. icon end
+  if UI.GetBarCount() then says = says .. " + count" end
+  state = UI.GetDividerLook() .. ", " .. state
   ns.Print(L("DEBUG_DIVIDER", UI.GetDividerStyle(), says, UI.GetDividerColor(), state))
   if arg ~= "" and arg ~= "caps" and arg ~= "quiet" then ns.Print(L("DEBUG_DIVIDER_HELP", "caps quiet")) end
 end
@@ -4805,7 +4871,9 @@ function UI.DiagnoseOptions()
   Named("qualityIcon", UI.GetQualityIcon() and "on" or "off", "on")
   Named("qualityName", UI.GetQualityName(), "off")
   Named("readMail", UI.GetReadMode(), "fold")
+  Named("dividerLook", UI.GetDividerLook(), "notch")
   Named("dividerWords", UI.GetDividerWords(), "read")
+  Named("dividerCount", UI.GetBarCount() and "on" or "off", UI.GetOption("showTabCounts") and "on" or "off")
   Named("dividerText", UI.GetDividerTextShown(), "")
   Named("dividerIcon", UI.GetDividerIcon(), "none")
   Named("dividerColor", UI.GetDividerColor(), "neutral")

@@ -5098,8 +5098,10 @@ end
 -- where it stands, and another character's plate -- painted again.
 function CT.RepaintBoxCounts(panel)
   if not panel then return end
-  local divider, notch = panel.Divider, panel.Notch
-  if (divider and divider:IsShown()) or (notch and notch:IsShown()) then CT.RebindRows(panel) end
+  local divider, notch, pin = panel.Divider, panel.Notch, panel.DividerPin
+  if (divider and divider:IsShown()) or (notch and notch:IsShown()) or (pin and pin:IsShown()) then
+    CT.RebindRows(panel)
+  end
   if AV.Other(panel) then AV.Paint(panel) end
 end
 
@@ -7219,11 +7221,51 @@ RV.BAR_FONTS = {
   caps = { "tiny", "tiny", "small", "small" },
 }
 
--- The bar's height, and its slot, in this row size.
+-------------------------------------------------------------
+-- The bar's looks (Options, Mail page: Bar look)
+--
+--   notch     the default, above: a little shorter than a row, its words
+--             centred; out of view, the notch at the list's foot.
+--   hairline  small words and a hairline to Delete all on the list's own
+--             ground, the fold sign written before the words at the row's
+--             inset: a row's slot tall in either row size.
+--   full      Full row: a row like the mail around it, in the stripe its
+--             place gives it, the game's fold button in the icon's lane
+--             and the words where the rows' names start.
+-- The last two take exactly a row's slot, so the rows keep one pitch, and
+-- while their place is below the view a copy of the bar stands whole at
+-- the list's foot (RV.UpdatePin), handing over without moving. Every look
+-- says what Bar says chose, with Bar icon's mark before the words and the
+-- number after them while Count is on; Bar color is the notch's fill, and
+-- the fill under the other two wherever a colour is chosen (Neutral leaves
+-- them on the list's ground, or their stripe) and under their copy at the
+-- foot always. A look is an entry here: its words' size.
+-------------------------------------------------------------
+
+RV.LOOKS = {
+  notch = {},
+  hairline = { size = "tiny" },
+  full = { size = "normal" },
+}
+-- The fold mark's size, the en dash Hairline writes while the read mail is
+-- open, the hairline's strength, and the least of it left between the
+-- words and Delete all where long words are cut.
+RV.LINE = { fold = 12, open = "\226\128\147", ruleA = 0.22, ruleMin = 12, foldA = 0.7 }
+
+function RV.LookOf()
+  local UI = ns.MailboxUI
+  local look = UI and type(UI.GetDividerLook) == "function" and UI.GetDividerLook() or "notch"
+  return RV.LOOKS[look] and look or "notch"
+end
+
+-- The bar's height, and its slot, in this row size and the look chosen: a
+-- row's height and pitch for Hairline and Full row.
 function RV.BarHeight(compact)
+  if RV.LookOf() ~= "notch" then return compact and COMPACT_ROW_HEIGHT or Th().Metrics.rowHeight end
   return compact and RV.BAR.band or RV.BAR.bandL
 end
 function RV.BarSlotOf(compact)
+  if RV.LookOf() ~= "notch" then return (compact and COMPACT_ROW_HEIGHT or Th().Metrics.rowHeight) + ROW_GAP end
   return compact and RV.BAR.slot or RV.BAR.slotL
 end
 
@@ -7251,11 +7293,22 @@ function RV.StyleOf()
   return UI and type(UI.GetDividerStyle) == "function" and UI.GetDividerStyle() or "quiet"
 end
 
--- The number the bar shows, or -1 for none: the read mail it heads, while
--- Show mail counts is on, as every box count follows it.
+-- The number the bar shows, or -1 for none: the finished mail it heads,
+-- while the bar's own Count is on (MailboxUI, UI.GetBarCount). The preview
+-- window has no inbox to count, as for every box count (ShowTabCounts).
 function RV.BarCount(panel)
-  if ShowTabCounts() then return panel._readCount or 0 end
+  local UI = ns.MailboxUI
+  if not UI or type(UI.GetBarCount) ~= "function" then return panel._readCount or 0 end
+  if UI._state and UI._state.preview then return -1 end
+  if UI.GetBarCount() then return panel._readCount or 0 end
   return -1
+end
+
+-- Whether a colour other than Neutral is chosen (Bar color): Hairline and
+-- Full row then stand on the bar's fill in their place too.
+function RV.Tinted()
+  local UI = ns.MailboxUI
+  return (UI and type(UI.DividerColorRGB) == "function" and UI.DividerColorRGB()) ~= nil
 end
 
 -- The list's own colour under a texture: the colour the list's container
@@ -7499,6 +7552,9 @@ end
 -- pass that shows it, so at rest it compares a handful of values and sets
 -- nothing.
 function RV.PaintBar(panel, f, compact)
+  local look = RV.LookOf()
+  if look ~= "notch" then return RV.PaintLine(panel, f, compact, look) end
+  if f.__look ~= "notch" then RV.NotchParts(f) end
   local T = Th()
   local style = RV.StyleOf()
   local gen = type(T.SkinGeneration) == "function" and T.SkinGeneration() or 0
@@ -7608,12 +7664,339 @@ function RV.BarLanes(panel, row)
   panel._barSignX = x
 end
 
+-- A copy put back into the notch's look from another: the parts only the
+-- other looks draw put away, the outline back, and everything the notch's
+-- paint remembers forgotten, so its next paint and move set each part
+-- again exactly as a copy that was never anything else.
+function RV.NotchParts(f)
+  f.__look = "notch"
+  f.SignText:Hide()
+  f.Fold:Hide()
+  f.Rule:Hide()
+  f._bg:Hide()
+  f.Fill:Show()
+  local edges = f.Edges
+  for i = 1, #edges do edges[i]:Show() end
+  f.Sign:Show()
+  f.__compact, f.__style, f.__gen, f.__words, f.__folded, f.__signX = nil, nil, nil, nil, nil, nil
+  f.__fitW, f.__fitX, f.__half, f.__W, f.__wide, f.__late, f.__live, f.__fadeE = nil, nil, nil, nil, nil, nil, nil, nil
+  f.__r = nil
+  f.__deleteInk = "textDisabled"
+  if f.Fade then f.Fade.holder:Show() end
+end
+
+-- Hairline and Full row: a copy put into `look` and the row size (and the
+-- palette, for its inks): the parts the look draws, its words' and Delete
+-- all's size, the fill edge to edge, Delete all at the right whole and
+-- live, the outline and the notch's fold sign away. Only when one of those
+-- moves; RV.PaintLine does the rest.
+function RV.LineType(f, look, compact)
+  local T = Th()
+  local M = T.Metrics
+  local B = RV.LINE
+  f.__look = look
+  local size = RV.LOOKS[look].size
+  local shared = T._sharedTheme
+  if shared and type(shared.BindFont) == "function" then
+    shared.BindFont(f.Label, size)
+    shared.BindFont(f.Count, size)
+    shared.BindFont(f.Delete.Text, size)
+    shared.BindFont(f.SignText, "tiny")
+  end
+  T.SetColor(f.Label, "textSecondary")
+  T.SetColor(f.Count, "textDisabled")
+  T.SetColor(f.Mark, "textSecondary")
+  T.SetColor(f.SignText, "textSecondary")
+  f.__deleteInk = "textSecondary"
+  T.SetColor(f.Delete.Text, f.Delete.__hot and "negative" or "textSecondary")
+  T.SetColor(f.Rule, "textSecondary")
+  f.Rule:SetAlpha(B.ruleA)
+  local edges = f.Edges
+  for i = 1, #edges do edges[i]:Hide() end
+  f.Sign:Hide()
+  local hairline = look == "hairline"
+  f.SignText:SetShown(hairline)
+  f.Rule:SetShown(hairline)
+  f.Fold:SetShown(not hairline)
+  if hairline then
+    f._bg:Hide()
+    RV.Anchor(f, f.SignText, 1, M.inset, 0)
+  end
+  local fill = f.Fill
+  fill:ClearAllPoints()
+  fill:SetAllPoints()
+  f:SetHitRectInsets(0, 0, 0, 0)
+  local delete = f.Delete
+  delete:ClearAllPoints()
+  delete:SetPoint("RIGHT", f, "RIGHT", -M.inset, 0)
+  delete:SetAlpha(1)
+  delete:EnableMouse(true)
+  if f.Fade then f.Fade.holder:Hide() end
+  f.__compact, f.__words, f.__folded, f.__lineX, f.__fitW, f.__tint, f.__r = compact, nil, nil, nil, nil, nil, nil
+  f.__half, f.__W, f.__wide, f.__late, f.__live, f.__fadeE, f.__signX = nil, nil, nil, nil, nil, nil, nil
+end
+
+-- Where Full row's fold mark and words stand: the fold mark centred in the
+-- icon's lane, the words where the rows' names start (their subjects',
+-- with the names hidden), read off a row the pass just placed -- so they
+-- follow the arrangement, the row size and the arrange mode's rooms as
+-- the rows do. Kept on the panel for a pass that places no row. With no
+-- icon before the subject, the fold mark takes the row's inset.
+function RV.DividerLanes(panel, row, compact)
+  local M = Th().Metrics
+  local fold = RV.LINE.fold
+  local foldX = M.inset
+  local icon = row.Icon
+  if icon and icon:IsShown() and icon.__pbAt == 1 then
+    foldX = icon.__pbAtX + floor(((compact and ROW_ICON_COMPACT or ROW_ICON) - fold) / 2)
+  end
+  local text = row.Sender
+  if not (text and text:IsShown() and (text.__pbAt == 1 or text.__pbAt == 3)) then text = row.Subject end
+  local textX = (text and (text.__pbAt == 1 or text.__pbAt == 3)) and text.__pbAtX or 0
+  panel._divFoldX = foldX
+  panel._divTextX = max(textX, foldX + fold + 6)
+end
+
+-- Hairline's and Full row's icon, words and number, from `x`, left to
+-- right: the icon on the bar's middle (an icon an odd number of units tall
+-- half a unit up), the words at their room (`f.__lineCut`), the number a
+-- gap after them; Hairline's rule from the last of them to Delete all.
+function RV.LinePlace(f, x)
+  local B, M = RV.BAR, Th().Metrics
+  local label, count, mark = f.Label, f.Count, f.Mark
+  local wordsW, iconW, countW = f.__wordsW or 0, f.__iconW or 0, f.__countW or 0
+  local cut = f.__lineCut or false
+  if cut then
+    label:SetWidth(cut)
+  elseif f.__placed then
+    label:SetWidth(0)
+  end
+  f.__placed = cut
+  local x0 = x
+  if iconW > 0 then
+    mark:ClearAllPoints()
+    mark:SetPoint("LEFT", f, "LEFT", x, f.__iconUp or 0)
+    x = x + iconW + B.checkGap
+  end
+  if wordsW > 0 then
+    label:ClearAllPoints()
+    label:SetPoint("LEFT", f, "LEFT", x, 0)
+  end
+  if countW > 0 then
+    count:ClearAllPoints()
+    if wordsW > 0 then
+      count:SetPoint("LEFT", label, "RIGHT", B.gap, 0)
+    else
+      count:SetPoint("LEFT", f, "LEFT", x, 0)
+    end
+  end
+  -- Hairline's rule from the last of them: its top on the slot's middle,
+  -- as the words are centred on it, on whole units in both row sizes.
+  if f.Rule:IsShown() then
+    local rule = f.Rule
+    local stop = x0 + (f.__lead or 0) + (cut or wordsW) + (f.__tail or 0)
+    rule:ClearAllPoints()
+    rule:SetPoint("TOPLEFT", f, "LEFT", math.ceil(stop) + M.gap, 0)
+    rule:SetPoint("TOPRIGHT", f.Delete.Text, "LEFT", -M.gap, 0)
+  end
+end
+
+-- Hairline or Full row painted as the list stands: its look, words, fill,
+-- stripe and fold mark, each only where it moved. Called on every pass that
+-- shows it, so at rest it compares a handful of values and sets nothing.
+-- The copy at the foot (`f.__pinned`) always stands on the bar's fill,
+-- where rows pass under it; the one in its place only where a colour is
+-- chosen. Full row wears the stripe of the slot it stands in (`f.__pos`)
+-- where it has no fill.
+function RV.PaintLine(panel, f, compact, look)
+  local T = Th()
+  local M = T.Metrics
+  local gen = type(T.SkinGeneration) == "function" and T.SkinGeneration() or 0
+  if f.__look ~= look or f.__compact ~= compact or f.__gen ~= gen then
+    f.__gen = gen
+    RV.LineType(f, look, compact)
+  end
+  local loc = L()
+  local words = RV.WordsOf()
+  local custom = (words == "custom") and RV.CustomOf() or false
+  local icon = RV.IconOf()
+  local n = RV.BarCount(panel)
+  if f.__words ~= words or f.__n ~= n or f.__loc ~= loc or f.__custom ~= custom or f.__icon ~= icon then
+    f.__words, f.__n, f.__loc, f.__custom, f.__icon = words, n, loc, custom, icon
+    RV.BarText(f, loc, words, n, "quiet", custom, icon)
+    f.__lineX = nil
+  end
+  -- The fill: the bar's colour (the list's ground under Neutral).
+  local tint = RV.Tinted()
+  local filled = f.__pinned or tint
+  if filled then
+    local r, g, b = RV.BarRGB(panel)
+    if f.__r ~= r or f.__g ~= g or f.__b ~= b then
+      f.__r, f.__g, f.__b = r, g, b
+      f.Fill:SetColorTexture(r, g, b, RV.BAR.groundA)
+    end
+  end
+  if f.__tint ~= filled then
+    f.__tint = filled
+    f.Fill:SetShown(filled and true or false)
+  end
+  local full = look == "full"
+  if full then
+    if filled and not f.__pinned then
+      f._bg:Hide()
+    else
+      T.StyleMailRow(f, f.__pos or 1, false)
+      f._bg:Show()
+    end
+  end
+  local folded = RV.Folded(panel)
+  if f.__folded ~= folded then
+    f.__folded = folded
+    f.SignText:SetText(folded and "+" or RV.LINE.open)
+    f.Fold:SetTexture(folded and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+  end
+  -- Where the words start: past Hairline's sign, or on Full row's lanes.
+  local x
+  if full then
+    local foldX = panel._divFoldX or M.inset
+    RV.Anchor(f, f.Fold, 1, foldX, 0)
+    x = panel._divTextX or (foldX + RV.LINE.fold + 6)
+  else
+    x = M.inset + RV.LINE.fold
+  end
+  -- The words' room: the row less where they start, the icon and the
+  -- number, Delete all and the least of the rule; cut short past it.
+  local W = (f.__wOf or f):GetWidth() or 0
+  if f.__lineX ~= x or f.__fitW ~= W then
+    f.__lineX, f.__fitW = x, W
+    local wordsW, iconW, countW = f.__wordsW or 0, f.__iconW or 0, f.__countW or 0
+    local lead = (iconW > 0) and (iconW + ((wordsW > 0 or countW > 0) and RV.BAR.checkGap or 0)) or 0
+    local tail = (countW > 0) and (((wordsW > 0) and RV.BAR.gap or 0) + countW) or 0
+    local room = floor(W - x - lead - tail - M.inset - (f.Delete:GetWidth() or 0) - 2 * M.gap - RV.LINE.ruleMin)
+    f.__lineCut = (W > 0 and wordsW > 0 and wordsW > room) and max(1, room) or false
+    f.__lead, f.__tail = lead, tail
+    RV.LinePlace(f, x)
+  end
+end
+
+-- The bar's copy at the list's foot, for Hairline and Full row, while its
+-- place is below the view: in a long inbox it is the one sign that
+-- finished mail is waiting, and it has to be seen without scrolling down
+-- to find out. The moment the bar's own place is in view it stands down
+-- and the bar in its place is drawn there. `at`: the bar's place (nil for
+-- none), `height`: the bar's (a row's). Answers whether it stands.
+function RV.UpdatePin(panel, at, offset, viewport, stride, height, compact)
+  local pin = panel.DividerPin
+  if not pin then return false end
+  local foot = pin.Foot
+  -- The foot fills the list's bottom margin under whichever copy of the
+  -- bar is standing on the view's foot -- this one, or the one in its
+  -- place at the very end -- so the bar is one height either side of the
+  -- hand-over.
+  local slotBottom = at and ((at - 1) * stride + height) or 0
+  local viewBottom = offset + viewport
+  -- Handed over within half a unit of its place, so the bar does not move.
+  if not at or viewport <= 0 or slotBottom <= viewBottom + 0.5 then
+    if pin.__up then
+      pin.__up = false
+      pin:Hide()
+    end
+    if foot then
+      local on = at ~= nil and viewport > 0 and math.abs(slotBottom - viewBottom) <= 0.5
+      if on then RV.PaintFoot(panel, foot) end
+      if foot.__up ~= on then
+        foot.__up = on
+        foot:SetShown(on)
+      end
+    end
+    return false
+  end
+  -- Exactly a slot, as the bar in its place is, so it hands over without
+  -- moving or changing size. Full row wears the stripe of the slot it
+  -- stands over: the one whose last unit is the view's -- at the hand-over,
+  -- its own.
+  pin.__pos = floor((viewBottom - 0.5) / stride) + 1
+  RV.PaintBar(panel, pin, compact)
+  -- In the list itself, a sibling of the rows a few levels above them,
+  -- placed at the view's foot on every pass: outside the list it was drawn
+  -- under the rows whatever its own level said, and not clipped as they are.
+  local child = panel.MailListChild
+  local y = -(viewBottom - height)
+  if pin.__y ~= y or pin.__h ~= height then
+    pin.__y, pin.__h = y, height
+    pin:ClearAllPoints()
+    pin:SetPoint("TOPLEFT", child, "TOPLEFT", 0, y)
+    pin:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, y)
+    pin:SetHeight(height)
+  end
+  local level = child:GetFrameLevel() + 8
+  if pin.__level ~= level then
+    pin.__level = level
+    pin:SetFrameLevel(level)
+  end
+  if not pin.__up then
+    pin.__up = true
+    pin:Show()
+  end
+  if foot then
+    RV.PaintFoot(panel, foot)
+    if not foot.__up then
+      foot.__up = true
+      foot:Show()
+    end
+  end
+  return true
+end
+
+-- The foot under the copy at the foot: the bar's fill, as its copy wears it.
+function RV.PaintFoot(panel, foot)
+  local r, g, b = RV.BarRGB(panel)
+  if foot.__r ~= r or foot.__g ~= g or foot.__b ~= b then
+    foot.__r, foot.__g, foot.__b = r, g, b
+    foot.Fill:SetColorTexture(r, g, b, RV.BAR.groundA)
+  end
+end
+
+-- The copy at the foot and its foot put away (the notch's look, no bar).
+function RV.PinOff(panel)
+  local pin = panel.DividerPin
+  if not pin then return end
+  if pin.__up then
+    pin.__up = false
+    pin:Hide()
+  end
+  local foot = pin.Foot
+  if foot and foot.__up then
+    foot.__up = false
+    foot:Hide()
+  end
+end
+
+-- A click on the bar's copy at the foot (the notch, or Hairline's and Full
+-- row's whole copy): to the finished mail, unfolding it where it was
+-- folded, the list scrolled to the bar's place.
+function RV.GoToBar(panel)
+  if RV.Arranging(panel) then return end
+  if RV.Folded(panel) then
+    RV.SetFolded(false, panel)
+    CT.RefreshMailList(panel)
+  end
+  local at = panel._dividerAt
+  if not at then return end
+  local scroll = panel.MailListScroll
+  local _, _, stride = RowMetrics()
+  local listed = #((panel._preview and panel._pvList) or panel._filtered)
+  local maxScroll = max(0, RV.ListHeight(listed, stride) - (scroll:GetHeight() or 0))
+  scroll:SetVerticalScroll(min((at - 1) * stride, maxScroll))
+  CT.RebindRows(panel)
+end
+
 -- What Core/DividerNotch.lua reads of the bar: made once, at load.
 -- And the options' drawing of the window (Core/OptionsPanel.lua), which
 -- draws the bar with these too.
 CT.BarParts = {
   Folded = RV.Folded, Paint = RV.PaintBar, Apply = RV.ApplyBar, BarHeight = RV.BarHeight,
-  mix = RV.BAR.mix,
+  mix = RV.BAR.mix, Look = RV.LookOf,
 }
 
 -------------------------------------------------------------
@@ -7704,6 +8087,7 @@ local function UpdateVisibleRows(panel)
       divider:ClearAllPoints()
       divider:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
       divider:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
+      divider.__pos = i
       divider:Show()
     else
     used = used + 1
@@ -7740,9 +8124,22 @@ local function UpdateVisibleRows(panel)
   -- The rows give the fold sign its place; then the bar in its place, or
   -- its notch at the foot, standing for it, opening or open there
   -- (Core/DividerNotch.lua).
-  if used > 0 then RV.BarLanes(panel, panel._rows[1]) end
+  -- Hairline and Full row (RV.LOOKS): the bar in its place, or its whole
+  -- copy at the foot (RV.UpdatePin), Full row on lanes read off the rows.
+  local look = RV.LookOf()
+  if used > 0 then
+    RV.BarLanes(panel, panel._rows[1])
+    if look == "full" then RV.DividerLanes(panel, panel._rows[1], compact) end
+  end
   local Notch = ns.DividerNotch
-  if Notch then
+  if look ~= "notch" then
+    if Notch then Notch.Off(panel) end
+    if divider and divider:IsShown() then RV.PaintBar(panel, divider, compact) end
+    if RV.UpdatePin(panel, at, offset, (historyView or away) and 0 or viewport, stride, band, compact) and divider then
+      divider:Hide()
+    end
+  elseif Notch then
+    RV.PinOff(panel)
     Notch.Update(panel, at, offset, (historyView or away) and 0 or viewport, stride, band, compact)
   elseif divider and divider:IsShown() then
     RV.PaintBar(panel, divider, compact)
@@ -12821,6 +13218,31 @@ function RV.BuildBar(panel, parent, foot)
   end
   T.SetColor(f.Mark, "textSecondary")
   f.Mark:Hide()
+  -- Hairline's and Full row's own parts (RV.LineType), hidden until one of
+  -- them is chosen: the stripe a row in Full row's place would wear
+  -- (Theme.StyleMailRow finds it here as the row's own), over the fill;
+  -- Hairline's fold sign, written in its caption's size, and its rule from
+  -- the words to Delete all; Full row's fold mark, the game's plus and
+  -- minus button, in the icon's lane.
+  f._bg = f:CreateTexture(nil, "BACKGROUND", nil, -7)
+  f._bg:SetAllPoints()
+  f._bg:SetColorTexture(r, g, b, 0)
+  f._bg:Hide()
+  f.SignText = T.CreateText(f, "secondary")
+  f.SignText:Hide()
+  f.Rule = f:CreateTexture(nil, "ARTWORK")
+  f.Rule:SetTexture(WHITE)
+  f.Rule:SetHeight(1)
+  T.SetColor(f.Rule, "textSecondary")
+  f.Rule:Hide()
+  f.Fold = f:CreateTexture(nil, "ARTWORK")
+  f.Fold:SetSize(RV.LINE.fold, RV.LINE.fold)
+  f.Fold:SetTexture("Interface\\Buttons\\UI-MinusButton-Up")
+  f.Fold:SetVertexColor(1, 1, 1, 1)
+  f.Fold:SetDesaturated(true)
+  f.Fold:SetAlpha(RV.LINE.foldA)
+  f.Fold:Hide()
+  f.__deleteInk = "textDisabled"
   -- "Delete all", not the one-mail "Delete": this button takes every read
   -- mail with nothing left, and the word has to say so before the click.
   f.Delete = CreateFrame("Button", nil, f)
@@ -12845,7 +13267,7 @@ function RV.BuildBar(panel, parent, foot)
   end)
   f.Delete:SetScript("OnLeave", function(self)
     self.__hot = nil
-    Th().SetColor(self.Text, "textDisabled")
+    Th().SetColor(self.Text, f.__deleteInk or "textDisabled")
     GameTooltip:Hide()
   end)
   -- Over the row the bar at the foot covers half of, a short fade of its
@@ -14020,6 +14442,28 @@ function CT.Build(parent)
     UpdateVisibleRows(panel)
   end)
   panel.Notch = notch
+
+  -- Hairline's and Full row's copy at the foot (RV.UpdatePin): the bar
+  -- whole, standing on its fill over the rows passing under it. A click goes
+  -- to the read mail as the notch's does; its Delete all is the same Delete
+  -- all. Under it, its foot: the list's bottom margin in the bar's fill, so
+  -- the bar reaches the container's edge instead of stopping the margin
+  -- short of it -- outside the scroll area, where nothing scrolls.
+  local pin = RV.BuildBar(panel, panel.MailListChild)
+  pin.__pinned = true
+  pin:SetScript("OnClick", function() RV.GoToBar(panel) end)
+  pin.__up = false
+  panel.DividerPin = pin
+  local foot = CreateFrame("Frame", nil, panel.MailListArea)
+  foot:SetPoint("TOPLEFT", scroll, "BOTTOMLEFT", 0, 0)
+  foot:SetPoint("TOPRIGHT", scroll, "BOTTOMRIGHT", 0, 0)
+  foot:SetHeight(max(1, M.tightGap - 1))
+  foot.Fill = foot:CreateTexture(nil, "BACKGROUND")
+  foot.Fill:SetAllPoints()
+  RV.PaintFoot(panel, foot)
+  foot:Hide()
+  foot.__up = false
+  pin.Foot = foot
 
   -- HookScript, not SetScript: the template installs its own handlers here and
   -- replacing them desynchronises the scroll bar.

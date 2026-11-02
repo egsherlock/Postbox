@@ -2820,14 +2820,21 @@ do
   -- the gap between a row's columns; the least room the subject keeps.
   MW.JOIN, MW.MGAP, MW.SUBJECT = "  |  ", 4, 16
 
-  -- The bar `barH` tall, `y` down the list, as the window paints it (MW.barList).
-  function MW.PaintDivider(win, st, y, barH)
+  -- The bar `barH` tall, `y` down the list, in the list's place `pos`, as
+  -- the window paints it (MW.barList): Full row's fold mark in the icons'
+  -- lane and its words where the names start, as the drawing's rows have
+  -- them, and the stripe of its place.
+  function MW.PaintDivider(win, st, y, barH, pos)
     local d = win.Divider
     local P = ns.CollectTab and ns.CollectTab.BarParts
     d:SetSize(win.rowW, barH)
     MW.At(d, "TOPLEFT", win.Clip, 0, -y)
     d:SetFrameLevel(win.Clip:GetFrameLevel() + 1)
     MW.barList._barSignX = MW.MDOT_X
+    local size = st.compact and MW.h.iconC or MW.h.iconL
+    MW.barList._divFoldX = MW.ICON_X + math.floor((size - 12) / 2)
+    MW.barList._divTextX = MW.ICON_X + size + MW.MGAP
+    d.__pos = pos or 1
     if P then
       P.Paint(MW.barList, d, st.compact)
       P.Apply(d, 1)
@@ -2856,6 +2863,8 @@ do
     local CT = ns.CollectTab
     local band = CT and CT.BarParts and CT.BarParts.BarHeight(st.compact) or 18
     local barH = math.max(MW.Scaled(band), MW.Line("secondary") + 4)
+    -- Hairline and Full row take a row's place, as in the window.
+    if CT and CT.BarParts and CT.BarParts.Look and CT.BarParts.Look() ~= "notch" then barH = rowH end
     local shown
     if fold then
       shown = math.max(0, math.min(n, math.floor((inner - barH - h.rowGap - rowH) / stride)))
@@ -2904,7 +2913,7 @@ do
     fit.last = fold and shown or math.min(shown, math.floor((inner + h.rowGap) / stride))
     if fold then
       local y = shown * stride
-      MW.PaintDivider(win, st, y, barH)
+      MW.PaintDivider(win, st, y, barH, shown + 1)
       MW.PlaceRow(win, rows[n + 1], MW.READ, shown + 2, two, fit, true, y + barH + h.rowGap)
     else
       win.Divider:Hide()
@@ -4728,6 +4737,138 @@ do
     box:SetFocus()
   end
 
+  -- A second setting on a dropdown's row, a switch of its own: its name and
+  -- a checkbox before the dropdown's box, set off from the row's name by a
+  -- hairline as a pair's halves are (Bar says' Count). The row's name
+  -- leaves it room (Rows.Fit, `playW`), and the boxes keep their column.
+  -- Where its name, the row's and the dropdown at its full width will not
+  -- fit the row (a long translation, a wide font), it stands on a line of
+  -- its own under the dropdown, the row twice as tall, its page stacked
+  -- again (Rows.FitSide). The pointer on it shows its own entry (`title`,
+  -- `text`, and `why` while it is grey, Rows.SideEnable). spec: title,
+  -- text, why (a locale key), get, set(on) [, after(on)].
+  local SIDE_GAP = 6
+  local function SideClick(self)
+    local side = self.__pbSide
+    local on = self:GetChecked() and true or false
+    side.set(on)
+    if side.after then side.after(on) end
+    CheckSound(on)
+  end
+
+  function Rows.Side(cell, spec)
+    local T = ns.Theme
+    local frame = CreateFrame("Frame", nil, cell)
+    frame:SetHeight(ROW_H)
+    -- From the right: the checkbox a name's gap before the box, its name
+    -- before it, right-aligned to it.
+    local cb = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
+    cb:SetSize(CHECK_H, CHECK_H)
+    cb:SetPoint("RIGHT", frame, "RIGHT", -NAME_GAP, 0)
+    local name = T.CreateText(frame, "label")
+    name:SetPoint("RIGHT", cb, "LEFT", -SIDE_GAP, 0)
+    name:SetJustifyH("RIGHT")
+    name:SetWordWrap(false)
+    name:SetText(spec.title)
+    cb.__postboxCheck = true
+    cb.__label = name
+    local line = frame:CreateTexture(nil, "BORDER")
+    line:SetWidth(1)
+    line:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    line:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    T.FillChrome(line, HAIR_A)
+    local entry = Entry(spec.title, spec.text)
+    entry.onText = spec.text
+    if spec.why then
+      entry.offText = spec.text .. "\n\n" .. L[spec.why]
+      entry.why = { [spec.why] = entry.offText }
+    end
+    entry.stage, entry.part = cell.entry.stage, cell.entry.part
+    local side = {
+      frame = frame, name = name, check = cb, line = line, entry = entry, nameText = spec.title,
+      get = spec.get, set = spec.set, after = spec.after, apart = false,
+    }
+    cb.__pbSide = side
+    frame.__pbCell, cb.__pbCell = cell, cell
+    frame.__pbEntry, cb.__pbEntry = entry, entry
+    frame:EnableMouse(true)
+    if frame.SetPropagateMouseClicks then frame:SetPropagateMouseClicks(true) end
+    frame:SetScript("OnEnter", ControlEnter)
+    frame:SetScript("OnLeave", ControlLeave)
+    Wire(cb, cell)
+    cb:SetScript("OnClick", SideClick)
+    local page = spec.col
+    while page and page.parent do page = page.parent end
+    side.page = page
+    cell.side = side
+    Rows.PaintSide(cell)
+    return side
+  end
+
+  function Rows.PaintSide(cell)
+    local side = cell and cell.side
+    if not side then return end
+    local ok, on = pcall(side.get)
+    side.check:SetChecked(ok and on and true or false)
+  end
+
+  -- The side switch greyed with its row: no click, its name grey, its
+  -- entry saying why.
+  function Rows.SideEnable(cell, on)
+    local side = cell and cell.side
+    if not side then return end
+    side.check:SetEnabled(on)
+    ns.Theme.SetColor(side.name, on and "accent" or "textDisabled")
+    local entry = side.entry
+    local text = on and entry.onText or (entry.offText or entry.onText)
+    if entry.text ~= text then
+      entry.text = text
+      if S.shown == entry then
+        S.shown = false
+        Insp.Show(entry)
+      end
+    end
+  end
+
+  -- Where the side switch stands, and the room it takes from the row's
+  -- name: before the dropdown's box, or on a line of its own under it where
+  -- the row's name, it and the box at its full width will not fit.
+  -- Answers the room (`playW`) the row's first line keeps for it.
+  function Rows.FitSide(cell)
+    local side = cell.side
+    side.name:SetText(side.nameText)
+    local sideW = NAME_GAP + TextW(side.name) + SIDE_GAP + CHECK_H + NAME_GAP
+    cell.Name:SetText(cell.nameText)
+    local inner = cell.w - NAME_X - CONTROL_R
+    local apart = TextW(cell.Name) + NAME_GAP + sideW + DD_W > inner
+    if apart ~= side.apart then
+      side.apart = apart
+      local h = apart and 2 * ROW_H or ROW_H
+      cell:SetHeight(h)
+      cell.item.h = h
+      Rows.Restack({ [side.page] = true })
+    end
+    local frame = side.frame
+    frame:SetWidth(sideW)
+    frame:ClearAllPoints()
+    if apart then
+      frame:SetPoint("TOPRIGHT", cell, "TOPRIGHT", -CONTROL_R, -ROW_H)
+    else
+      frame:SetPoint("TOPRIGHT", cell, "TOPRIGHT", -(CONTROL_R + DD_W), 0)
+    end
+    side.line:SetShown(not apart)
+    -- The row's name and its dropdown on the first line, whatever its height.
+    if cell.Name then
+      cell.Name:ClearAllPoints()
+      cell.Name:SetPoint("LEFT", cell, "TOPLEFT", NAME_X, -ROW_H / 2)
+    end
+    if cell.dd then
+      cell.dd:ClearAllPoints()
+      cell.dd:SetPoint("RIGHT", cell, "TOPRIGHT", -CONTROL_R, -ROW_H / 2)
+    end
+    return apart and 0 or sideW
+  end
+
   -- A quiet line across the row, centred: something to know, not a setting.
   function Rows.Note(col, text, title, desc)
     local row = Rows.New(col, ROW_H)
@@ -5016,6 +5157,8 @@ do
     for i = 1, #cells do
       local cell = cells[i]
       local kind = cell.kind
+      -- A switch of its own before the dropdown (Rows.Side): where it stands.
+      if cell.side then cell.playW = Rows.FitSide(cell) end
       -- Less the button that stands before a dropdown (Rows.Play).
       local inner = cell.w - NAME_X - CONTROL_R - (cell.playW or 0)
       if kind == "note" then
@@ -5978,17 +6121,20 @@ function State.Warnings()
   Rows.SetEnabled(cells.marker, warning and icon, warning and "OPT_MINIMAP_WHY_SWITCH" or "OPT_WARN_WHY")
 end
 
--- Bar says, Bar icon and Bar color are grey while read mail does not stand
--- under the bar (Finished mail is not Below the inbox), saying what turns
--- them on (Rows.Why); Bar says' words' box with them. Bar says laid out
--- for its choice: Custom's words in its box (Rows.WordsBox).
+-- Bar look, Bar says (and its Count), Bar icon and Bar color are grey
+-- while finished mail does not stand under the bar (Finished mail is not
+-- Below the inbox), saying what turns them on (Rows.Why); Bar says' words'
+-- box with them. Bar says laid out for its choice: Custom's words in its
+-- box (Rows.WordsBox).
 function State.BarSays()
   local cell, UI = S.barSaysCell, ns.MailboxUI
   if not cell then return end
   local on = (UI and type(UI.GetReadMode) == "function" and UI.GetReadMode() or "fold") == "fold"
   Rows.SetEnabled(cell, on)
   Rows.WordsBoxEnable(cell, on)
+  Rows.SideEnable(cell, on)
   if cell.layBox then cell.layBox(cell) end
+  if S.barLookCell then Rows.SetEnabled(S.barLookCell, on) end
   if S.barIconCell then Rows.SetEnabled(S.barIconCell, on) end
   if S.barColorCell then Rows.SetEnabled(S.barColorCell, on) end
 end
@@ -6457,8 +6603,6 @@ function Pages.mail(col)
       if ns.MailboxUI.RefreshCollectTabCounts then ns.MailboxUI.RefreshCollectTabCounts() end
       -- Mail Memory's header counts its box under the same switch.
       if ns.MailMemory and ns.MailMemory.Refresh then ns.MailMemory.Refresh() end
-      -- Bar says' empty box says what the bar says in its place.
-      State.BarSays()
       Ctx.Repaint()
     end,
   })
@@ -6530,16 +6674,37 @@ function Pages.mail(col)
     end,
   })
   Shown(read.entry, "read")
-  -- The bar over the read mail, three rows under Finished mail: what it
-  -- says (Read, Nothing left, Collected, or Custom, the player's own words,
-  -- typed in the dropdown's box itself: Rows.WordsBox), the icon before the
-  -- words, and its colour, each choice of colour with its square. The
-  -- number after the words follows Show mail counts. All three grey, saying
-  -- why, while read mail does not stand under the bar (State.BarSays). The
-  -- list is bound again where it stands, the drawing's bar drawn again.
+  -- The bar over the finished mail, four rows under Finished mail: how it
+  -- looks (the notch, Hairline or Full row), what it says (Done, Nothing
+  -- left, Collected, or Custom, the player's own words, typed in the
+  -- dropdown's box itself: Rows.WordsBox) with Count beside it, the number
+  -- after the words, a switch of its own (Rows.Side); the icon before the
+  -- words, and its colour, each choice of colour with its square. All grey,
+  -- saying why, while finished mail does not stand under the bar
+  -- (State.BarSays). The list is bound again where it stands, the
+  -- drawing's bar drawn again.
   do
     local UI = ns.MailboxUI
     local T = ns.Theme
+    local lookNames = {
+      notch = L["OPT_BAR_LOOK_NOTCH"], hairline = L["OPT_DIVIDER_HAIRLINE"], full = L["OPT_DIVIDER_ROW"],
+    }
+    local lookItems = {}
+    for _, id in ipairs(UI.DIVIDER_LOOKS or { "notch" }) do lookItems[#lookItems + 1] = { id = id, name = lookNames[id] or id } end
+    local look = Rows.Dropdown(col, {
+      title = L["OPT_BAR_LOOK_TITLE"], text = L["OPT_BAR_LOOK_DESC"],
+      items = lookItems,
+      get = function() return UI.GetDividerLook and UI.GetDividerLook() or "notch" end,
+      set = function(id)
+        if UI.SetDividerLook then UI.SetDividerLook(id) end
+        State.BarSays()
+        Ctx.Repaint()
+      end,
+    })
+    Rows.Why(look, "OPT_DIVIDER_WHY")
+    Shown(look.entry, "divider")
+    S.barLookCell = look
+
     local says = Rows.Dropdown(col, {
       title = L["OPT_BAR_SAYS_TITLE"], text = L["OPT_BAR_SAYS_DESC"],
       items = {
@@ -6567,9 +6732,10 @@ function Pages.mail(col)
       shownText = function() return UI.GetDividerTextShown() end,
       setText = function(text) UI.SetDividerText(text) end,
       setChoice = function(id) UI.SetDividerWords(id) end,
-      -- Left empty with no icon and no number, the bar says Read.
+      -- Left empty with no icon and no number, the bar says the default
+      -- words.
       hint = function()
-        if UI.GetDividerIcon() ~= "none" or UI.GetOption("showTabCounts") then return nil end
+        if UI.GetDividerIcon() ~= "none" or UI.GetBarCount() then return nil end
         return L["INBOX_DIVIDER_READ_PLAIN"]
       end,
       changed = function() Ctx.Repaint() end,
@@ -6579,6 +6745,16 @@ function Pages.mail(col)
     Rows.Why(says, "OPT_DIVIDER_WHY")
     Shown(says.entry, "divider")
     S.barSaysCell = says
+    Rows.Side(says, {
+      title = L["OPT_BAR_COUNT_TITLE"], text = L["OPT_BAR_COUNT_DESC"], why = "OPT_DIVIDER_WHY", col = col,
+      get = function() return UI.GetBarCount and UI.GetBarCount() end,
+      set = function(on)
+        if UI.SetBarCount then UI.SetBarCount(on) end
+        -- The empty words' box says what the bar says in their place.
+        State.BarSays()
+        Ctx.Repaint()
+      end,
+    })
 
     local iconItems = {}
     local iconNames = {
@@ -7900,6 +8076,8 @@ do
       -- A value a row shows besides its choice (Bar says' words) is a
       -- setting of the tab's too.
       if type(cell.moreGet) == "function" then gets[#gets + 1] = cell.moreGet end
+      -- And a switch of its own on the row (Rows.Side: Bar says' Count).
+      if cell.side and type(cell.side.get) == "function" then gets[#gets + 1] = cell.side.get end
       if cell == S.styleCell then looks = true end
     end
     local snap = Copy(profile)
@@ -8280,6 +8458,7 @@ local function Refresh()
     elseif cell.lead then
       Rows.PaintLead(cell)
     end
+    if cell.side then Rows.PaintSide(cell) end
   end
   for i = 1, #S.refresh do pcall(S.refresh[i]) end
 end
