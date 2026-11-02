@@ -1025,10 +1025,11 @@ end
 -- shows the divider, so remembered with the other row settings
 -- (ForgetSettings); a write draws the list again where it stands.
 -- The notches (Core/DividerNotch.lua) are looks too, for trying in game:
--- "stretch", "count", "scroll" and "drawer". `/postbox debug divider <look>`
--- tries one for the session (UI.TryDivider), never stored; a choice in the
--- options ends the trial.
-local DIVIDER_LOOKS = { hairline = true, row = true, stretch = true, count = true, scroll = true, drawer = true }
+-- "stretch" and "count" (a stored "scroll" or "drawer", from the first
+-- trial, reads as the hairline). `/postbox debug divider <look>` tries one
+-- for the session (UI.TryDivider), never stored; a choice in the options
+-- ends the trial.
+local DIVIDER_LOOKS = { hairline = true, row = true, stretch = true, count = true }
 function UI.GetDividerLook()
   if UI.tryLook then return UI.tryLook end
   local memo = Settings()
@@ -1049,10 +1050,10 @@ end
 
 -- What the divider says (CollectTab, RV.WORDS), in every look: "full",
 -- "Read, nothing left" (the default); "collected"; "nothing", "Nothing
--- left"; "read"; or "count", the number alone with the words in its
--- tooltip. Stored only when it is not the default (profile.dividerWords);
--- remembered as the look is.
-UI.DIVIDER_WORDS = { full = true, collected = true, nothing = true, read = true, count = true }
+-- left"; "read"; "count", the number alone with the words in its tooltip;
+-- or "check", the number and a check mark. Stored only when it is not the
+-- default (profile.dividerWords); remembered as the look is.
+UI.DIVIDER_WORDS = { full = true, collected = true, nothing = true, read = true, count = true, check = true }
 function UI.GetDividerWords()
   if UI.tryWords then return UI.tryWords end
   local memo = Settings()
@@ -1090,7 +1091,7 @@ function UI.TryDivider(arg)
   ns.Print(L("DEBUG_DIVIDER", UI.GetDividerLook(), UI.GetDividerWords()))
   if arg == "" or (words and words ~= "" and not UI.DIVIDER_WORDS[words])
       or (not words and arg ~= "" and not DIVIDER_LOOKS[arg]) then
-    ns.Print(L("DEBUG_DIVIDER_HELP", "hairline row stretch count scroll drawer", "full collected nothing read count"))
+    ns.Print(L("DEBUG_DIVIDER_HELP", "hairline row stretch count", "full collected nothing read count check"))
   end
 end
 

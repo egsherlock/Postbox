@@ -82,7 +82,8 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   place, centered, with no gap above it.
 - **Choose what the divider says:** "Read, nothing left", "Collected",
   "Nothing left", "Read", or just the number, with the words in its
-  tooltip. Options, Mail, Divider words.
+  tooltip, on its own or with a check mark beside it. Options, Mail,
+  Divider words.
 - **Tooltips end with one gesture per line,** in smaller type than the mail's
   own details, so "Right-click to...", "Shift-click to..." and the rest no
   longer wrap into each other. The same in every Postbox tooltip: the Mail
