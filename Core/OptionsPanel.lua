@@ -1172,12 +1172,14 @@ do
   end
 
   -- The mark for the way into arranging: the art the title bar wears for it
-  -- (Theme.Glyph "layout"), else the grip it wore before that art. A white
+  -- (Theme.Glyph "layout"), or `name`, the same mark drawn for a button's
+  -- caption ("layout-mini"), else the grip it wore before that art. A white
   -- texture, or a frame of white dots, to tint and to anchor by its CENTER
   -- (a glyph's keyline overhangs it evenly); `w` is the mark's own width.
-  function Ctx.Mark(parent, size, layer)
+  function Ctx.Mark(parent, size, layer, name)
     local T = ns.Theme
-    local glyph = T and type(T.Glyph) == "function" and T.Glyph(parent, "layout", size, layer or "ARTWORK") or nil
+    local glyph = T and type(T.Glyph) == "function" and T.Glyph(parent, name or "layout", size, layer or "ARTWORK")
+      or nil
     if glyph then
       glyph.w = size
       return glyph
@@ -4378,8 +4380,9 @@ do
     btn:SetScript("OnClick", spec.onClick)
     Wire(btn, row, true)
     -- On a holder of its own: a skin's button repaint fades the button's
-    -- own textures.
-    if spec.mark then btn.Mark = Ctx.Mark(ArtHolder(btn), 12) end
+    -- own textures. The mark drawn for a caption, at the height of the eye
+    -- before Test's (Rows.Lead) and with no keyline, as the eye has none.
+    if spec.mark then btn.Mark = Ctx.Mark(ArtHolder(btn), 7, nil, "layout-mini") end
     row.kind, row.control, row.button, row.onHover = "button", btn, btn, spec.onHover
     row.minW, row.col = spec.minWidth, col
     return row

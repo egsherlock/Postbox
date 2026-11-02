@@ -4596,8 +4596,8 @@ Theme.AtlasSets = {
 -- Lib/UI/Theme.lua): white art, tinted entirely in code, standing in for no
 -- Blizzard art a UI pack could restyle. The colour is the caller's, from this
 -- file: a chrome token at rest, textPrimary when pointed at, GetAccent when
--- lit. The two layout marks carry a baked black keyline, which no tint
--- changes, so they hold over a bright scene.
+-- lit. The layout marks at 12 and 9 carry a baked black keyline, which no
+-- tint changes, so they hold over a bright scene.
 --
 -- Theme.GLYPHS: name -> { file, w, h, l, r, t, b [, pad] [, wrap] }. w and h
 -- are the texture's size in UI units at the mockup's size; l, r, t, b crop
@@ -4638,6 +4638,9 @@ Theme.AtlasSets = {
 --     reaches a texture. Each canvas is 32 texels square with clear texels
 --     right of the art, which the inline escape takes in as the gap before
 --     the digits.
+--   layout-mini  the layout mark drawn again seven units square, the eye's
+--     own height, with no keyline, for a caption on a button's plate: the
+--     options' Arrange, beside Test's eye.
 --
 -- Sharpness. The art is 2 texels per UI unit. A texel snapping bias above 0
 -- "sharpens": the renderer picks a texel instead of blending texels (the API
@@ -4684,6 +4687,7 @@ do
     ["expiry-bin"] = { file = MEDIA .. "glyph-expiry-bin.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875, pad = 1 },
     ["expiry-back-clean"] = { file = MEDIA .. "glyph-expiry-back-clean.tga", w = 9, h = 9, l = 0.03125, r = 0.59375, t = 0.03125, b = 0.59375 },
     ["expiry-bin-clean"] = { file = MEDIA .. "glyph-expiry-bin-clean.tga", w = 9, h = 9, l = 0.03125, r = 0.59375, t = 0.03125, b = 0.59375 },
+    ["layout-mini"] = { file = MEDIA .. "glyph-layout-mini.tga", w = 7, h = 7, l = 0.0625, r = 0.9375, t = 0.0625, b = 0.9375 },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
   }
 
