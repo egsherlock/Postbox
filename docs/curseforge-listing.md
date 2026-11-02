@@ -42,9 +42,9 @@
 <h2 style="text-align:center">Never lose mail on a forgotten alt</h2>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/minimap.gif" width="708" alt="The minimap icon's tooltip, then Mail Memory"></p>
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Warned in time:</span></strong> a line in chat at login and a marker on the minimap icon when any character's mail has under three days left (one for C.O.D.). Expired auction mail is deleted, gold and all; an arrow or a bin by the time left says which way a short mail goes.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Warned in time:</span></strong> a line in chat at login and a marker on the minimap icon when any character's mail with gold or items has under three days left (one for C.O.D.). One choice covers both: mail to be deleted, or mail sent back too. Expired auction mail is deleted, gold and all; an arrow or a bin by the time left says which way a short mail goes.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Mail Memory</span></strong> remembers each character's mailbox at your last visit. Search one character or all of them.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">One glance:</span></strong> the icon's tooltip lists every character with mail waiting, and what's about to run out; the options' General tab adds it all up, gold included.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">One glance:</span></strong> the icon's tooltip lists every character with mail waiting, and what's about to run out; the options' General tab lists every character's mail, gold included, with a total for them all.</li>
 </ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Sending made easy</h2>

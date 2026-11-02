@@ -638,10 +638,26 @@ local function Holds(mail, now)
   return (mail.items or 0) > 0 or (mail.money or 0) > 0 or (mail.cod or 0) > 0 or not mail.read
 end
 
+-- The warnings' rule, in one place: Warn about (MailboxUI.GetMemoryWarn)
+-- drives both warnings, the line in chat at login and the minimap marker,
+-- and both read it here (MM.Warns). Three decisions, each a line below:
+--   * Which mail counts: only mail holding gold or items, or a C.O.D.
+--     (Counts). An unread letter that holds nothing is still waiting (Holds)
+--     and still amber in the rows, but it is not worth a warning.
+--   * Which characters count: every character Mail Memory knows, the one
+--     being played included; only the hidden are left out (MM.Warns).
+--   * What each choice warns of: "deleted", mail the server deletes when
+--     its time runs out (`gone`, the bin); "any", that and mail going back
+--     to its sender (the arrow) or long unopened on its way (`warn`); "off",
+--     nothing.
+local function Counts(mail)
+  return (mail.items or 0) > 0 or (mail.money or 0) > 0 or (mail.cod or 0) > 0
+end
+
 -- realm, name, now -> what there is to say about that character's mail.
 --   waiting    mails in its snapshot still waiting
---   soon       how many of them are short (three days, one for C.O.D.),
---              and `soonest`
+--   soon       how many of them are short (three days, one for C.O.D.) and
+--              worth a warning (Counts), and `soonest`
 --   unseenDays set when mail known to be on the way has gone unopened
 --              long enough to be a week from its earliest loss
 local function Status(realm, name, now)
@@ -656,7 +672,8 @@ local function Status(realm, name, now)
   local mails = snap and snap.mails or {}
   -- Soon by the rows' own rule (the Mail tab's RV.ShortDays, its amber):
   -- under three days, or one for a C.O.D. mail, which only lives three.
-  -- Mail that goes back to its sender counts as well.
+  -- Mail that goes back to its sender counts as well; a letter holding
+  -- nothing does not (Counts).
   local CT = ns.CollectTab
   local shortDays = CT and CT.RowRules and CT.RowRules.ShortDays
   for i = 1, #mails do
@@ -666,7 +683,7 @@ local function Status(realm, name, now)
       local left = (tonumber(mail.expires) or 0) - now
       local cod = (tonumber(mail.cod) or 0) > 0
       local soon = shortDays and shortDays(cod) * DAY or (cod and DAY or SOON)
-      if left > 0 and left < soon then
+      if left > 0 and left < soon and Counts(mail) then
         st.soon = (st.soon or 0) + 1
         if not st.soonest or mail.expires < st.soonest then st.soonest = mail.expires end
         -- Of those, the ones the server deletes rather than sends back,
@@ -817,22 +834,27 @@ function MM.Characters()
   return list
 end
 
--- The other characters with something to say, for the login line. Empty
--- when memory is off. A hidden character says nothing: the player hid it,
+-- Whether `st` (one of MM.Characters) is warned of under `mode`, Warn
+-- about's choice (MailboxUI.GetMemoryWarn): the one rule both warnings read
+-- (see Counts, above). A hidden character says nothing: the player hid it,
 -- most often an alt that was deleted or moved, and a warning about it could
--- only nag. `mode`, the warning's choice (MailboxUI.GetMemoryWarn): "any"
--- (or nil), every character with mail short of time or long unopened;
--- "deleted", only those with short mail the server would delete holding gold
--- or items (`gone`; its words are `goneText`).
-function MM.OtherWarnings(mode)
+-- only nag. The character being played counts like any other.
+function MM.Warns(st, mode)
+  if mode == "off" or st.hidden then return false end
+  if mode == "deleted" then return st.gone ~= nil end
+  return st.warn and true or false
+end
+
+-- The characters with something to say, for the login line, by MM.Warns.
+-- Empty when memory is off. Under "deleted" a character's words are
+-- `goneText`, otherwise `text`.
+function MM.Warnings(mode)
   local out = {}
   if not MemoryEnabled() or mode == "off" then return out end
   local all = MM.Characters()
   for i = 1, #all do
     local st = all[i]
-    local says = st.warn
-    if mode == "deleted" then says = st.gone ~= nil end
-    if says and not st.me and not st.hidden then out[#out + 1] = st end
+    if MM.Warns(st, mode) then out[#out + 1] = st end
   end
   return out
 end
@@ -4025,7 +4047,7 @@ if bus then
     pcall(PruneAllHistory)
     -- Once the client has settled its mail state: mail that arrived while
     -- logged out raised the unread flag that was down at the last close.
-    -- Then, once per login, the one line about the other characters.
+    -- Then, once per login, the one line about your characters' mail.
     C_Timer.After(LOGIN_SETTLE + 5, function()
       if not MemoryEnabled() then return end
       local snap = StoredSnapshot()
@@ -4037,15 +4059,17 @@ if bus then
         NoteArrival(realm, name, snap and snap.seenAt)
       end
 
+      -- Warn about's rule (MM.Warns), and Chat line at login.
       local UI = ns.MailboxUI
       local mode = UI and type(UI.GetMemoryWarn) == "function" and UI.GetMemoryWarn() or "any"
       if mode == "off" then return end
-      local others = MM.OtherWarnings(mode)
-      if #others == 0 then return end
+      if UI and type(UI.GetOption) == "function" and not UI.GetOption("warnAtLogin") then return end
+      local warned = MM.Warnings(mode)
+      if #warned == 0 then return end
       local parts = {}
-      for i = 1, #others do
-        local text = (mode == "deleted") and others[i].goneText or others[i].text
-        parts[#parts + 1] = others[i].label .. " (" .. text .. ")"
+      for i = 1, #warned do
+        local text = (mode == "deleted") and warned[i].goneText or warned[i].text
+        parts[#parts + 1] = warned[i].label .. " (" .. text .. ")"
       end
       ns.Print(L("OVERVIEW_LOGIN", table.concat(parts, ", ")))
     end)

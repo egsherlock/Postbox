@@ -146,9 +146,13 @@ local OPTION_DEFAULTS = {
   -- idle when unused, and a feature nobody can find switched off does not
   -- exist.
   mailMemory      = true,
-  -- (mailWarnings, the one chat line at login about another character's
-  -- mail, is now one of three answers: UI.GetMemoryWarn, which reads it once
-  -- to carry an old profile over.)
+  -- (mailWarnings, the old switch for the chat line at login, is now one of
+  -- Warn about's three answers: UI.GetMemoryWarn, which reads it once to
+  -- carry an old profile over.)
+  -- Chat line at login: the one line in chat at login about expiring mail
+  -- on your characters, by Warn about's rule (MailMemory.lua, MM.Warns).
+  -- On: it is what the warning has always been.
+  warnAtLogin     = true,
   -- The read mail folded away under its divider, by a click on it, and kept
   -- so between visits (Core/CollectTab.lua, RV.Folded). Off: it is simply
   -- the rest of the list, and the scroll bar is the whole list.
@@ -1162,13 +1166,15 @@ function UI.SetAfterSendKeep(mode)
   profile.keepRecipient = nil
 end
 
--- The line in chat at login about another character's mail (Core/
--- MailMemory.lua, MM.OtherWarnings): "any" (the default: mail short of
--- time, or long unopened, as the switch always warned of), "deleted" (only
--- mail the server would delete holding gold or items), or "off". Stored only
--- when it is not "any". The old switch, profile.mailWarnings, reads as "off"
--- when it was turned off, until a choice is made here, which is when it is
--- dropped. Read once per login, so no memo.
+-- Warn about: what the expiring-mail warnings speak of, both of them -- the
+-- line in chat at login and the minimap marker (Core/MailMemory.lua,
+-- MM.Warns, holds the rule): "any" (the default: mail to be deleted or sent
+-- back, or long unopened on its way), "deleted" (only mail the server
+-- deletes, holding gold or items), or "off". Stored only when it is not
+-- "any". The old switch, profile.mailWarnings, reads as "off" when it was
+-- turned off, until a choice is made here, which is when it is dropped. Read
+-- at login and when the minimap icon is worked out again: a few lookups, no
+-- memo.
 local MEMORY_WARN = { off = true, deleted = true, any = true }
 function UI.GetMemoryWarn()
   local profile = ns.Store and ns.Store.Get and ns.Store.Get("profile")

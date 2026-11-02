@@ -702,12 +702,17 @@ function Dropdown.Create(parent, opts)
         row._selMark = mark
 
         row:SetScript("OnEnter", function()
+          if item.off then return end
           bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4])
         end)
         row:SetScript("OnLeave", function()
           bg:SetColorTexture(0, 0, 0, 0)
         end)
+        row._item, row._text = item, text
         row:SetScript("OnClick", function()
+          -- A choice its owner has set aside for now (item.off): drawn
+          -- faint on each open, and a click on it changes nothing.
+          if item.off then return end
           container._selectedId = item.id
           Caption(item.name)
           PaintToggleSwatch()
@@ -805,6 +810,16 @@ function Dropdown.Create(parent, opts)
       for i = 1, #list._rows do
         local row = list._rows[i]
         if row._swatch then PaintSwatch(row._swatch, swatchFor(row._itemId)) end
+        -- A choice set aside (item.off, the owner's to set): faint, at
+        -- half strength, whatever ink a skin gave it.
+        local item = row._item
+        if item and row._text then
+          local off = item.off and true or false
+          if row._off ~= off then
+            row._off = off
+            row._text:SetAlpha(off and 0.4 or 1)
+          end
+        end
         if row._selMark then
           if row._itemId == container._selectedId then
             row._selMark:SetColorTexture(r, g, b, 0.9)
