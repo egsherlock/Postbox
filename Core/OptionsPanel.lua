@@ -4193,11 +4193,11 @@ do
   end
 
   -- The body's height `key`'s page needs: the page and the list's edges,
-  -- and on General the summary's card at its most over them (Dash), so
-  -- the card never squeezes the settings, whatever its list holds.
+  -- and on General the summary's card over them (Dash), one height
+  -- whatever its list holds, so it never squeezes the settings.
   function Rows.PageNeed(key)
     local h = S.pageH[key] + 2
-    if key == "general" then h = h + Dash.MOST + BODY_GAP end
+    if key == "general" then h = h + Dash.H + BODY_GAP end
     return h
   end
 
@@ -4910,29 +4910,30 @@ end
 -- character's mail as each box was last seen (MailMemory.Dashboard), one
 -- 28-high line each on the Mail tab's own alternating stripes -- each name
 -- in its class colour, a time short of it in amber with the rows' own
--- expiry mark -- and, on a foot strip in the head strip's tone, the total
--- over every one of them ("1 character" over one). On its right, in the
--- inspector's column, the three ways into the windows the account builds,
--- one lifted tile each: Mail Memory, Character Groups and Manage
--- Recipients. A click on a character opens that character's box in Mail
--- Memory (MailMemory.OpenCharacter).
+-- expiry mark, the gold with the Mail tab's coin after it, as its totals
+-- band writes gold -- and, on a foot strip in the head strip's tone, the
+-- total over every one of them ("1 character" over one). On its right, in
+-- the inspector's column, the three ways into the windows the account
+-- builds, one lifted tile each, centred between the head strip and the
+-- card's foot: Mail Memory, Character Groups and Manage Recipients. A click
+-- on a character opens that character's box in Mail Memory
+-- (MailMemory.OpenCharacter).
 --
--- Ruled to the foot, at a height of its own: the list shows five lines at
--- the least and seven at the most, so the card is 214 to 270 tall whatever
--- the settings under it need, and a setting added to General later never
--- squeezes it (the page's need counts the card at its most, Rows.PageNeed).
--- Under a short list the stripes run on, empty, to the foot strip. Past
--- seven lines the list scrolls under the column headings, which stay put
--- with the foot strip, on the Mail tab's slim bar (Theme.SlimScrollBar),
--- which is there only while there is more to see; the lines then stop
--- short of it, and the columns and the total move left with them. The
--- wheel scrolls it a line a step, and only over the list (the list's own
--- scroll frame). At most twenty characters are listed (MailMemory picks
--- them: the mail short of time first, then the most recently seen); past
--- them one more line says "+N more in Mail Memory" and opens it. With
--- nothing to add up -- Mail Memory off, no box seen yet, no mail anywhere
--- -- the list's side is one sentence saying so, never a row of zeros, and
--- the tiles stay.
+-- Ruled to the foot, at one height: the list shows five lines, always, so
+-- the card is 214 tall whatever the settings under it need, and a setting
+-- added to General later never squeezes it (the page's need counts the
+-- card, Rows.PageNeed). Under a short list the stripes run on, empty, to
+-- the foot strip. Past five lines the list scrolls under the column
+-- headings, which stay put with the foot strip, on the Mail tab's slim bar
+-- (Theme.SlimScrollBar), which is there only while there is more to see;
+-- the lines then stop short of it, and the columns and the total move left
+-- with them. The wheel scrolls it a line a step, and only over the list
+-- (the list's own scroll frame). At most twenty characters are listed
+-- (MailMemory picks them: the mail short of time first, then the most
+-- recently seen); past them one more line says "+N more in Mail Memory"
+-- and opens it. With nothing to add up -- Mail Memory off, no box seen
+-- yet, no mail anywhere -- the list's side is one sentence saying so,
+-- never a row of zeros, and the tiles stay.
 --
 -- Light: read only while General is shown (Ctx.general's paint), and its
 -- words made again only when what they are made from has moved -- the
@@ -4947,19 +4948,23 @@ do
   -- The strip, the columns' headings, the gap between two figures and the
   -- sentence's padding.
   local HEAD_H, COLS_H, GAP, MSG_PAD = GROUP_H, 18, 18, 8
-  -- The tiles' column: the inspector's drawings' own, under the strip.
+  -- The tiles' column: the inspector's drawings' own, three tiles TILE_GAP
+  -- apart, with at least TILES_PAD over and under them.
   local TILE_GAP, TILES_PAD = 8, 10
   local TILES_X = LIST_W + BODY_GAP + CTX_X
-  local TILES_TOP = 1 + HEAD_H + TILES_PAD
-  -- The lines the list shows: five at the least, seven at the most.
-  local MIN_LINES, MAX_LINES = 5, 7
+  local TILES_H = 3 * TILE_H + 2 * TILE_GAP
+  -- The lines the list shows: five.
+  local LINES = 5
   -- The card less its lines: its edges, the strip, the headings and the
   -- foot strip.
   local FIXED = 1 + HEAD_H + COLS_H + ROW_H + 1
-  -- The card at its least (214) and at its most (270). Never shorter than
-  -- its tiles' column either.
-  Dash.LEAST = math.max(TILES_TOP + 3 * TILE_H + 2 * TILE_GAP + TILES_PAD + 1, FIXED + MIN_LINES * ROW_H)
-  Dash.MOST = FIXED + MAX_LINES * ROW_H
+  -- The card's one height (214): its five lines, and never shorter than
+  -- its tiles' column with its least room round it.
+  Dash.H = math.max(FIXED + LINES * ROW_H, 1 + HEAD_H + TILES_PAD + TILES_H + TILES_PAD + 1)
+  -- The tiles in the middle of the room between the strip's rule and the
+  -- card's foot, inside its edges: as much over them as under them (16 and
+  -- 16), on whole units, an odd unit going under.
+  local TILES_TOP = 1 + HEAD_H + math.floor((Dash.H - 2 - HEAD_H - TILES_H) / 2)
   -- What the slim bar takes from the lines while it shows: its 6 and 4
   -- each side (Theme.SlimScrollBar).
   local GUTTER = 14
@@ -5078,14 +5083,14 @@ do
   end
 
   -- On `body`, over the list and the inspector, shown on General only
-  -- (Dash.Place). Built before the pages: its height at its most is part
-  -- of General's (Rows.PageNeed).
+  -- (Dash.Place). Built before the pages: its height is part of General's
+  -- (Rows.PageNeed).
   function Dash.Build(body)
     local T = ns.Theme
     local card = CreateFrame("Frame", nil, body, "BackdropTemplate")
     card:SetPoint("TOPLEFT", body, "TOPLEFT", 0, 0)
     card:SetPoint("TOPRIGHT", body, "TOPRIGHT", 0, 0)
-    card:SetHeight(Dash.LEAST)
+    card:SetHeight(Dash.H)
     T.ApplyList(card)
     card:Hide()
     -- The lift, on a holder the host skins' sweep of the card never
@@ -5144,13 +5149,13 @@ do
     local area = CreateFrame("Frame", nil, card)
     area:SetFrameLevel(level + 2)
     area:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -(1 + HEAD_H + COLS_H))
-    area:SetSize(ROW_W, MIN_LINES * ROW_H)
+    area:SetSize(ROW_W, LINES * ROW_H)
     local scroll = CreateFrame("ScrollFrame", nil, area, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", area, "TOPLEFT", 0, 0)
-    scroll:SetSize(ROW_W, MIN_LINES * ROW_H)
+    scroll:SetSize(ROW_W, LINES * ROW_H)
     if scroll.SetClipsChildren then scroll:SetClipsChildren(true) end
     local child = CreateFrame("Frame", nil, scroll)
-    child:SetSize(ROW_W, MIN_LINES * ROW_H)
+    child:SetSize(ROW_W, LINES * ROW_H)
     scroll:SetScrollChild(child)
     scroll.__pbGutter = function(scrolling)
       local w = ROW_W - (scrolling and GUTTER or 0)
@@ -5198,11 +5203,11 @@ do
     if msg.Text.SetSpacing then msg.Text:SetSpacing(2) end
     msg:Hide()
 
-    -- The list's side and the tiles' apart: a hairline down between them.
+    -- The list's side and the tiles' apart: a hairline down between them,
+    -- as tall as the tiles' column and level with it.
     local split = lift:CreateTexture(nil, "BORDER")
-    split:SetWidth(1)
-    split:SetPoint("TOPLEFT", card, "TOPLEFT", LIST_W + BODY_GAP / 2 - 1, -(1 + HEAD_H + TILES_PAD))
-    split:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", LIST_W + BODY_GAP / 2 - 1, TILES_PAD)
+    split:SetSize(1, TILES_H)
+    split:SetPoint("TOPLEFT", card, "TOPLEFT", LIST_W + BODY_GAP / 2 - 1, -TILES_TOP)
     T.FillChrome(split, HAIR_A)
 
     -- The three ways in, one over the other, over the lift.
@@ -5221,7 +5226,7 @@ do
       tile.Holder:SetFrameLevel(level + 3)
     end
 
-    S.dash = { card = card, h = Dash.LEAST, top = false, rows = {}, head = head, cols = cols, more = false,
+    S.dash = { card = card, h = Dash.H, top = false, rows = {}, head = head, cols = cols, more = false,
       total = total, msg = msg, area = area, scroll = scroll, child = child, lines = 0, scrolling = false }
   end
 
@@ -5283,29 +5288,35 @@ do
     return marked or ns.Theme.Colorize("warning", text)
   end
 
+  -- The gold as the Mail tab's totals band writes it where it is short of
+  -- room: the largest coin alone, its figure and then the coin itself
+  -- (Formatting.FormatMoneyIcons), so the coins stand in a column at the
+  -- right of the figures. No gold is the dash, with no coin.
   local function Gold(copper)
     if not copper or copper <= 0 then return ns.Theme.Colorize("textSecondary", DASH) end
     local F = ns.Core and ns.Core.Formatting
-    if F and F.FormatMoneyCompact then return F.FormatMoneyCompact(copper, true) end
+    if F and F.FormatMoneyIcons then return F.FormatMoneyIcons(copper, nil, 1) end
     return tostring((math.floor(copper / 10000)))
   end
 
-  -- A text's width, its expiry mark's included (CollectTab's RV.FateMarkW).
-  local function Width(fs)
-    local CT = ns.CollectTab
-    local R = CT and CT.RowRules
-    local w = TextW(fs)
-    if R and R.FateMarkW then w = w + R.FateMarkW(fs:GetText() or "") end
-    return w
+  -- The width Gold's coin adds to its figure: an inline texture, which the
+  -- client's measure of the string leaves out (CollectTab's FitBanner), so
+  -- it is counted at its own size.
+  local function Coin(copper)
+    if not copper or copper <= 0 then return 0 end
+    local F = ns.Core and ns.Core.Formatting
+    if not (F and F.FormatMoneyIcons) then return 0 end
+    return F.MONEY_ICON_SIZE or 12
   end
 
-  -- The card `h` tall: the list and the inspector under it move with it.
-  local function Lay(h)
-    local d = S.dash
-    if d.h == h then return end
-    d.h = h
-    d.card:SetHeight(h)
-    if S.tab == "general" then Dash.Place("general") end
+  -- A text's width, its expiry mark's included (CollectTab's RV.FateMarkW),
+  -- and `more` with it (Coin).
+  local function Width(fs, more)
+    local CT = ns.CollectTab
+    local R = CT and CT.RowRules
+    local w = TextW(fs) + (more or 0)
+    if R and R.FateMarkW then w = w + R.FateMarkW(fs:GetText() or "") end
+    return w
   end
 
   -- A line's figures against the columns as they stand, `shift` further
@@ -5357,9 +5368,7 @@ do
     if words then
       d.more = false
       msg.Text:SetText(words)
-      local h = 2 * MSG_PAD + math.ceil(msg.Text:GetStringHeight() or 0)
-      msg:SetHeight(h)
-      Lay(math.min(Dash.MOST, math.max(Dash.LEAST, 1 + HEAD_H + h + MSG_PAD + 1)))
+      msg:SetHeight(2 * MSG_PAD + math.ceil(msg.Text:GetStringHeight() or 0))
       return
     end
 
@@ -5367,12 +5376,11 @@ do
     local n = data.n
     local listed = math.min(data.listed or 0, #data.rows, n)
     local folded = n - listed
-    -- The lines there is something on, the lines shown, and the lines made
-    -- up to the foot (the list's, or the ruled ones under a short one).
+    -- The lines there is something on, and the lines made up to the foot
+    -- (the list's, or the ruled ones under a short one).
     local content = listed + (folded > 0 and 1 or 0)
-    local lines = math.max(MIN_LINES, math.min(MAX_LINES, content))
-    local ruled = math.max(content, lines)
-    local scrolling = content > MAX_LINES
+    local ruled = math.max(content, LINES)
+    local scrolling = content > LINES
     local gutter = scrolling and GUTTER or 0
 
     for j = 1, #FIELDS do widths[j] = math.max(MIN_W[j], TextW(cols[FIELDS[j]])) end
@@ -5391,8 +5399,9 @@ do
       T.SetColor(line.Name, "textPrimary")
       T.SetColor(line.Seen, "textSecondary")
       line:EnableMouse(true)
+      local coin = Coin(r.gold)
       for j = 1, #FIELDS do
-        local w = Width(line[FIELDS[j]])
+        local w = Width(line[FIELDS[j]], FIELDS[j] == "Gold" and coin or 0)
         if w > widths[j] then widths[j] = w end
       end
     end
@@ -5400,8 +5409,9 @@ do
     total.Gold:SetText(Gold(data.gold))
     total.Soon:SetText(Soon(data.soonest, data.fate, data.amber, total.Soon, now))
     total.Seen:SetText("")
+    local coin = Coin(data.gold)
     for j = 2, #FIELDS do
-      local w = Width(total[FIELDS[j]])
+      local w = Width(total[FIELDS[j]], FIELDS[j] == "Gold" and coin or 0)
       if w > widths[j] then widths[j] = w end
     end
 
@@ -5439,14 +5449,12 @@ do
     PlaceFigures(total, gutter)
     T.FitText(total.Name, nameRoom, ns.Plural("OPT_DASH_ALL", n), total)
 
-    -- The list's window on its lines; the bar comes with what is hidden.
-    d.lines, d.scrolling = lines, scrolling
-    d.area:SetHeight(lines * ROW_H)
-    d.scroll:SetHeight(lines * ROW_H)
+    -- The list's window on its lines, five tall (Build); the bar comes with
+    -- what is hidden.
+    d.lines, d.scrolling = LINES, scrolling
     d.child:SetHeight(ruled * ROW_H)
     d.scroll.__pbGutter(scrolling)
     if d.scroll.UpdateScrollChildRect then d.scroll:UpdateScrollChildRect() end
-    Lay(FIXED + lines * ROW_H)
   end
 
   -- Read now, made again only where something it is made from has moved.
@@ -8033,7 +8041,7 @@ local function Layout()
     -- The Mail tab's text zone, under its window: the tab's own text and
     -- every setting's the window shows, the tallest of them. General's
     -- texts have the inspector under its card: the tallest of them, with
-    -- the card at its most over it (Dash).
+    -- the card over it (Dash).
     local mailText, generalText = SAY_MIN, SAY_MIN
     local entries = S.entries
     for i = 1, #entries do
@@ -8068,7 +8076,7 @@ local function Layout()
     end
     S.mailText = math.ceil(mailText)
     S.generalText = math.ceil(generalText)
-    S.textNeed = math.max(text, Dash.MOST + BODY_GAP + S.generalText)
+    S.textNeed = math.max(text, Dash.H + BODY_GAP + S.generalText)
     text = S.textNeed
   end
   -- The Mail tab: its window at its least over its text zone. The window
