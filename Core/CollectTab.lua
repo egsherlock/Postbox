@@ -7151,22 +7151,22 @@ end
 -------------------------------------------------------------
 -- The bar over the read mail (Options, Mail page: Finished mail, Bar says)
 --
--- One bar, a little shorter than a row: 18 tall in a 20-unit slot (26 in
+-- One bar, a little shorter than a row: 22 tall in a 24-unit slot (26 in
 -- 28 with Larger mail rows), so it is never taken for a mail. It stands on
 -- a fill of the list's own ground (RV.BarRGB: the colour chosen, mixed a
--- little into it), outlined by one faint hairline. Its words are centred,
+-- little into it), between two faint hairlines. Its words are centred,
 -- as a heading's: what Bar says chose (or the player's own words), in the
 -- secondary text colour, after the icon Bar icon chose, in the same ink,
--- and the number of read mail a step dimmer after them while Show mail
--- counts is on. The fold sign stands at its left end on the read dot's
--- column, and Delete all at its right, both dim; Delete all turns red under
--- the pointer.
+-- and the number of read mail a step dimmer after them while Count is on.
+-- The fold sign stands at its left end on the read dot's column, dim, and
+-- Delete all at its right in the words' size and ink; Delete all turns red
+-- under the pointer.
 --
 -- While its place is below the view the bar waits at the list's foot as
--- its notch: the same fill, outline and words, as narrow as the words
--- (Core/DividerNotch.lua). Reaching its place, or a click on the notch,
--- opens it where it stands: the fill grows out of both sides to the list's
--- edges, and the fold sign and Delete all fade in at its ends.
+-- the island, in a room of its own (Core/DividerNotch.lua): a capsule as
+-- tall as the bar, as wide as its words. Reaching its place, or a click on
+-- the island, opens it into the bar: it grows out of both sides to the
+-- list's edges, and the fold sign and Delete all are uncovered at its ends.
 --
 -- Because the slot is shorter than a row's pitch, every row under the bar
 -- stands `pitch - slot` units higher (the virtualiser's one extra term), and
@@ -7177,20 +7177,23 @@ end
 
 RV.BAR = {
   -- The bar's height and its slot, one-line rows and Larger mail rows.
-  band = 18, slot = 20, bandL = 26, slotL = 28,
+  band = 22, slot = 24, bandL = 26, slotL = 28,
   -- The fill's strength over the rows, and how much of the chosen colour
   -- is mixed into the ground.
   groundA = 0.95, mix = 0.15,
-  -- The outline's strength, of the chrome ink.
+  -- The hairlines' strength, of the chrome ink.
   edgeA = 0.14,
   -- From the words to the number; from the icon to what follows it; the
   -- check mark's size.
   gap = 6, checkGap = 4, check = 8,
-  -- The notch's room each side of its words.
-  pad = 10,
-  -- How far the words stand above the bar's middle, of their size: their
-  -- lower-case letters' middle on its middle, level with the fold sign.
-  lift = 0.14,
+  -- The island's room each side of its words.
+  pad = 12,
+  -- How far the words stand above the bar's middle, of their size: none,
+  -- the client centres a line on its box, which puts the capitals on the
+  -- middle within half a unit, as the rows have theirs.
+  lift = 0,
+  -- Delete all's height on Hairline and Full row.
+  deleteH = 18,
   -- Above the bar at the foot, a short fade of its fill over the row it
   -- covers half of: each step's share of the fill, and its height.
   fade = { 0.6, 0.3 }, fadeStep = 2,
@@ -7225,7 +7228,7 @@ RV.BAR_FONTS = {
 -- The bar's looks (Options, Mail page: Bar look)
 --
 --   notch     the default, above: a little shorter than a row, its words
---             centred; out of view, the notch at the list's foot.
+--             centred; out of view, the island at the list's foot.
 --   hairline  small words and a hairline to Delete all on the list's own
 --             ground, the fold sign written before the words at the row's
 --             inset: a row's slot tall in either row size.
@@ -7377,7 +7380,8 @@ function RV.BarType(f, compact, style)
   if shared and type(shared.BindFont) == "function" then
     shared.BindFont(f.Label, fonts[i])
     shared.BindFont(f.Count, fonts[i])
-    shared.BindFont(f.Delete.Text, fonts[i + 1])
+    -- Delete all in the words' own size (the island's copy).
+    shared.BindFont(f.Delete.Text, fonts[f.Inner and i or (i + 1)])
   end
   local _, size = f.Label:GetFont()
   local _, deleteSize = f.Delete.Text:GetFont()
@@ -7395,6 +7399,9 @@ function RV.BarType(f, compact, style)
   delete:ClearAllPoints()
   delete:SetPoint("RIGHT", f, "RIGHT", -M.inset, f.__liftD)
   f.__folded = nil
+  -- The island's own: Delete all on the words' middle in their ink.
+  local DN = f.Inner and ns.DividerNotch
+  if DN then DN.Type(f) end
 end
 
 -- A copy's icon: the glyph of that name (Theme.GLYPHS) on its one mark
@@ -7469,7 +7476,7 @@ function RV.BarText(f, loc, words, n, style, custom, icon)
   f.__shows, f.__noWords = text, not text
   local delete = f.Delete
   delete.Text:SetText(deleteText)
-  delete:SetSize(max(Th().TextWidth(delete.Text) + 8, 40), RV.BAR.band)
+  delete:SetSize(max(Th().TextWidth(delete.Text) + 8, 40), RV.BAR.deleteH)
   f.__half = nil
   f.__fitW = nil
 end
@@ -7562,6 +7569,8 @@ function RV.PaintBar(panel, f, compact)
     f.__compact, f.__style, f.__gen = compact, style, gen
     RV.BarType(f, compact, style)
     f.__words = nil
+    -- The island's inks follow the palette's chrome ink.
+    if f.Isle then f.__r = nil end
   end
   local loc = L()
   local words = RV.WordsOf()
@@ -7581,6 +7590,7 @@ function RV.PaintBar(panel, f, compact)
     if fade then
       for i = 1, #fade do fade[i]:SetColorTexture(r, g, b, a * RV.BAR.fade[i]) end
     end
+    if f.Isle then ns.DividerNotch.Ink(f, r, g, b) end
   end
   local folded = RV.Folded(panel)
   if f.__folded ~= folded then
@@ -7596,14 +7606,14 @@ function RV.PaintBar(panel, f, compact)
   if f.__signX ~= x then
     f.__signX = x
     f.Sign:ClearAllPoints()
-    f.Sign:SetPoint("CENTER", f, "LEFT", x, 0)
+    f.Sign:SetPoint("CENTER", f.Inner or f, "LEFT", x, 0)
   end
   -- The words' room, where the words, the list's width or the fold sign's
-  -- place moved.
+  -- place moved: the island's own rule on its copy (Core/DividerNotch.lua).
   local W = (f.__wOf or f):GetWidth() or 0
   if f.__fitW ~= W or f.__fitX ~= x then
     f.__fitW, f.__fitX = W, x
-    RV.BarFit(f, W)
+    if f.Isle then ns.DividerNotch.Fit(f, W) else RV.BarFit(f, W) end
   end
 end
 
@@ -7615,6 +7625,8 @@ end
 -- foot; and the pointer taken only over the fill. Numbers only, each set
 -- where it moved: every frame of a move comes here, and makes nothing.
 function RV.ApplyBar(f, e)
+  -- The island's copy draws its own shape (Core/DividerNotch.lua).
+  if f.Isle and f.__look == "notch" then return ns.DividerNotch.Apply(f, e) end
   -- As wide as the list it stands in (the list's own width, set where the
   -- window lays it out), or its own where it is sized itself.
   local W = (f.__wOf or f):GetWidth() or 0
@@ -7683,6 +7695,8 @@ function RV.NotchParts(f)
   f.__r = nil
   f.__deleteInk = "textDisabled"
   if f.Fade then f.Fade.holder:Show() end
+  -- The island's copy: its room, outline and shape as its drawing sets them.
+  if f.Isle then ns.DividerNotch.Reset(f) end
 end
 
 -- Hairline and Full row: a copy put into `look` and the row size (and the
@@ -7998,6 +8012,8 @@ end
 CT.BarParts = {
   Folded = RV.Folded, Paint = RV.PaintBar, Apply = RV.ApplyBar, BarHeight = RV.BarHeight,
   mix = RV.BAR.mix, Look = RV.LookOf,
+  BarSlot = RV.BarSlotOf, Tip = RV.WordsTip, TipOff = RV.WordsTipOff,
+  pad = RV.BAR.pad, gap = RV.BAR.gap, checkGap = RV.BAR.checkGap, edgeA = RV.BAR.edgeA, groundA = RV.BAR.groundA,
 }
 
 -------------------------------------------------------------
@@ -8078,18 +8094,24 @@ local function UpdateVisibleRows(panel)
   panel._rowSpec.publish = true
   panel._markReserve = (compact and not historyView and not away and RV.LinedUp())
     and RV.MarkReserve(RV.Layout(), panel._cols, panel._markHas, panel._markAny, true) or false
+  -- The Notch look draws the bar in its place too (Core/DividerNotch.lua,
+  -- the island's one copy), so the bar in the list is Hairline's and Full
+  -- row's only.
+  local look = RV.LookOf()
   for i = first, last do
     if filtered[i] == DIVIDER then
       -- At the top of its slot, the bar's own height: the copy at the foot
       -- is that height too, so it hands over without moving. Painted once
       -- the rows are placed (below): its fold sign reads its place off them.
-      local y = -((i - 1) * stride)
-      divider:SetHeight(band)
-      divider:ClearAllPoints()
-      divider:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
-      divider:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
-      divider.__pos = i
-      divider:Show()
+      if look ~= "notch" then
+        local y = -((i - 1) * stride)
+        divider:SetHeight(band)
+        divider:ClearAllPoints()
+        divider:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
+        divider:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
+        divider.__pos = i
+        divider:Show()
+      end
     else
     used = used + 1
     local row = AcquireRow(panel, used)
@@ -8122,12 +8144,11 @@ local function UpdateVisibleRows(panel)
     row.Warning:Hide()
     row:Hide()
   end
-  -- The rows give the fold sign its place; then the bar in its place, or
-  -- its notch at the foot, standing for it, opening or open there
-  -- (Core/DividerNotch.lua).
+  -- The rows give the fold sign its place; then the bar at the lower of
+  -- its place and the foot, the island at the foot, opening as its place
+  -- comes up (Core/DividerNotch.lua).
   -- Hairline and Full row (RV.LOOKS): the bar in its place, or its whole
   -- copy at the foot (RV.UpdatePin), Full row on lanes read off the rows.
-  local look = RV.LookOf()
   if used > 0 then
     RV.BarLanes(panel, panel._rows[1])
     if look == "full" then RV.DividerLanes(panel, panel._rows[1], compact) end
@@ -13157,8 +13178,10 @@ end
 
 -- The bar over the read mail: its fill and outline, the fold sign, the
 -- icon, the words and the number, and Delete all at its right.
--- Built twice: the one in the list, and the copy at the list's foot that is
--- its notch (`foot`: with the fade above it). Every texture is given its
+-- Built three times: the one in the list and the copy at the list's foot
+-- (Hairline's and Full row's), and the island (`foot`: the Notch look's one
+-- copy, with the fade above its room, its fold sign, words and Delete all
+-- held in its shape, Core/DividerNotch.lua). Every texture is given its
 -- colour in the call that makes it, so nothing can stand white for a frame
 -- whichever pass shows it first. The caller sets the click.
 function RV.BuildBar(panel, parent, foot)
@@ -13168,6 +13191,10 @@ function RV.BuildBar(panel, parent, foot)
   f:RegisterForClicks("LeftButtonUp")
   f.__panel = panel
   f.__wOf = parent
+  -- What the shape holds is made in it (the island), else on the bar.
+  local host = f
+  local DN = foot and ns.DividerNotch
+  if DN then host = DN.Build(f) end
   -- The fill: untagged and plain, so no host skin repaints it or fades it
   -- with the window's opacity (under EllesmereUI the rows once read through
   -- a ground it faded).
@@ -13200,22 +13227,22 @@ function RV.BuildBar(panel, parent, foot)
   edges[4]:SetWidth(1)
   f.Edges = edges
   -- The fold sign: a click here folds the read mail away or brings it back.
-  f.Sign = f:CreateTexture(nil, "ARTWORK")
+  f.Sign = host:CreateTexture(nil, "ARTWORK")
   f.Sign:SetTexture(RV.SIGN_FILE)
   T.SetColor(f.Sign, "textDisabled")
   f.Sign:SetAlpha(0)
-  f.Label = T.CreateText(f, "secondary")
+  f.Label = T.CreateText(host, "secondary")
   f.Label:SetWordWrap(false)
-  f.Count = T.CreateText(f, "secondary")
+  f.Count = T.CreateText(host, "secondary")
   f.Count:SetWordWrap(false)
   T.SetColor(f.Count, "textDisabled")
   -- Bar icon's mark, in the words' ink from the moment it exists: the
   -- check mark's glyph until another is chosen (RV.BarIcon).
-  f.Mark = T.Glyph(f, "check", B.check, "ARTWORK")
+  f.Mark = T.Glyph(host, "check", B.check, "ARTWORK")
   if f.Mark then
     f.__glyph = "check"
   else
-    f.Mark = f:CreateTexture(nil, "ARTWORK")
+    f.Mark = host:CreateTexture(nil, "ARTWORK")
   end
   T.SetColor(f.Mark, "textSecondary")
   f.Mark:Hide()
@@ -13246,7 +13273,7 @@ function RV.BuildBar(panel, parent, foot)
   f.__deleteInk = "textDisabled"
   -- "Delete all", not the one-mail "Delete": this button takes every read
   -- mail with nothing left, and the word has to say so before the click.
-  f.Delete = CreateFrame("Button", nil, f)
+  f.Delete = CreateFrame("Button", nil, host)
   f.Delete.Text = T.CreateText(f.Delete, "secondary")
   f.Delete.Text:SetPoint("RIGHT")
   T.SetColor(f.Delete.Text, "textDisabled")
@@ -13296,6 +13323,8 @@ function RV.BuildBar(panel, parent, foot)
   -- (RV.WordsTip); nothing otherwise.
   f:SetScript("OnEnter", RV.WordsTip)
   f:SetScript("OnLeave", RV.WordsTipOff)
+  -- The island's capsule, under what its shape holds, and its pointer.
+  if DN then DN.Skin(f) end
   f:Hide()
   return f
 end
@@ -14422,25 +14451,18 @@ function CT.Build(parent)
   end)
   panel.Divider = divider
 
-  -- Its notch: the copy at the list's foot, in the list with the rows,
-  -- standing while the bar's place is below the view and opening into the
-  -- bar there as the place comes up (Core/DividerNotch.lua). A click goes
-  -- to the read mail -- unfolding it if it was folded -- and the bar opens
-  -- where it lands; its Delete all is the same Delete all.
+  -- The Notch look's one copy: the island at the list's foot while the
+  -- bar's place is below it, the bar in its place once the place carries
+  -- it (Core/DividerNotch.lua), in the list with the rows. At the foot a
+  -- click on it or its room goes to the read mail -- unfolding it if it was
+  -- folded -- and the island flies to its place as it opens; in its place
+  -- a click folds, as the bar's does. Its Delete all is the same Delete all.
   local notch = RV.BuildBar(panel, panel.MailListChild, true)
   notch:SetScript("OnClick", function()
-    if RV.Arranging(panel) then return end
-    if RV.Folded(panel) then
-      RV.SetFolded(false, panel)
-      CT.RefreshMailList(panel)
-    end
-    local at = panel._dividerAt
-    if not at then return end
-    local _, _, stride = RowMetrics()
-    local listed = #((panel._preview and panel._pvList) or panel._filtered)
-    local maxScroll = max(0, RV.ListHeight(listed, stride) - (scroll:GetHeight() or 0))
-    scroll:SetVerticalScroll(min((at - 1) * stride, maxScroll))
-    UpdateVisibleRows(panel)
+    if (panel._barK or 0) > 0 then return RV.GoToBar(panel) end
+    if Searching(panel) or RV.Arranging(panel) then return end
+    RV.SetFolded(not RV.Folded(panel), panel)
+    CT.RefreshMailList(panel)
   end)
   panel.Notch = notch
 
