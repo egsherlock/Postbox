@@ -232,7 +232,7 @@ local function ForgetSettings()
   memo.root, memo.profile = nil, nil
   memo.qIcon, memo.qName = nil, nil
   memo.layout, memo.slots = nil, nil
-  memo.packing, memo.divider, memo.words = nil, nil, nil
+  memo.packing, memo.barColor, memo.words = nil, nil, nil
   memo.history, memo.age, memo.large = nil, nil, nil
   memo.grid, memo.gridText = nil, nil
 end
@@ -1021,82 +1021,189 @@ function UI.SetReadMode(mode)
   if panel and collect and collect.RefreshReadMode then collect.RefreshReadMode(panel) end
 end
 
--- How the read mail's divider looks (CollectTab, RV.LOOKS): "hairline", its
--- words a size smaller and a hairline to Delete all on the list's own
--- ground (the default); or "row", a row like the mails around it, in its
--- place's stripe. Stored only when it is not the default (profile.
--- dividerLook), so nothing stored is the hairline. Read on every bind that
--- shows the divider, so remembered with the other row settings
--- (ForgetSettings); a write draws the list again where it stands.
--- The notches (Core/DividerNotch.lua) are looks too, for trying in game:
--- "stretch" and "count" (a stored "scroll" or "drawer", from the first
--- trial, reads as the hairline). `/postbox debug divider <look>` tries one
--- for the session (UI.TryDivider), never stored; a choice in the options
--- ends the trial.
-local DIVIDER_LOOKS = { hairline = true, row = true, stretch = true, count = true }
-function UI.GetDividerLook()
-  if UI.tryLook then return UI.tryLook end
-  local memo = Settings()
-  if memo.divider then return memo.divider end
-  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.dividerLook")
-  memo.divider = DIVIDER_LOOKS[stored] and stored or "hairline"
-  return memo.divider
-end
-function UI.SetDividerLook(look)
-  if look ~= nil and not DIVIDER_LOOKS[look] then return end
-  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if profile then profile.dividerLook = (look ~= nil and look ~= "hairline") and look or nil end
-  UI.tryLook = nil
-  ForgetSettings()
-  local panel, collect = CollectPanel(), ns.CollectTab
-  if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
-end
-
--- What the divider says (CollectTab, RV.WORDS), in every look: "full",
--- "Read, nothing left" (the default); "collected"; "nothing", "Nothing
--- left"; "read"; "count", the number alone with the words in its tooltip;
--- or "check", the number and a check mark. Stored only when it is not the
--- default (profile.dividerWords); remembered as the look is.
-UI.DIVIDER_WORDS = { full = true, collected = true, nothing = true, read = true, count = true, check = true }
+-- The bar over the read mail (CollectTab, RV.PaintBar; Core/DividerNotch.lua
+-- for the notch it waits as while its place is out of view). Two settings,
+-- each remembered with the other row settings (ForgetSettings) and read on
+-- every bind that shows the bar; a write draws the list again where it
+-- stands.
+--
+-- What it says (profile.dividerWords): "read" (the default), "nothing"
+-- (Nothing left), "collected", or "check", a check mark. The number of read
+-- mail follows it while Show mail counts is on, as every box count does.
+-- Stored only when it is not the default. What 1.60's alphas stored before
+-- these is read as the nearest, once, and stored so: "full" (Read, nothing
+-- left) and "count" (the number alone) as Read; and the bar's old looks
+-- (profile.dividerLook: Full row, the notch trials) are gone, forgotten.
+UI.DIVIDER_WORDS = { read = true, nothing = true, collected = true, check = true }
+local DIVIDER_WORDS_OLD = { full = "read", count = "read" }
 function UI.GetDividerWords()
-  if UI.tryWords then return UI.tryWords end
   local memo = Settings()
   if memo.words then return memo.words end
-  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.dividerWords")
-  memo.words = UI.DIVIDER_WORDS[stored] and stored or "full"
+  local profile = ns.Store and ns.Store.Get and ns.Store.Get("profile")
+  local stored = nil
+  if type(profile) == "table" then
+    stored = profile.dividerWords
+    local old = DIVIDER_WORDS_OLD[stored]
+    if old then
+      stored = old
+      profile.dividerWords = nil
+    end
+    if profile.dividerLook ~= nil then profile.dividerLook = nil end
+  end
+  memo.words = UI.DIVIDER_WORDS[stored] and stored or "read"
   return memo.words
 end
 function UI.SetDividerWords(words)
   if words ~= nil and not UI.DIVIDER_WORDS[words] then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if profile then profile.dividerWords = (words ~= nil and words ~= "full") and words or nil end
-  UI.tryWords = nil
+  if profile then profile.dividerWords = (words ~= nil and words ~= "read") and words or nil end
   ForgetSettings()
   local panel, collect = CollectPanel(), ns.CollectTab
   if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
 end
 
--- `/postbox debug divider [look]` and `... divider words [choice]`: a look
--- or a choice of words for this session only, never stored, drawn at once
--- where the list stands; either way it says in chat what stands. Not in
--- the help.
+-- The bar's colour (profile.dividerColor): Neutral, the list's own ground
+-- (the default, stored as nothing); "accent", the live accent (the window
+-- style's or the host UI's); "class", the character's class colour; "blue";
+-- "violet"; or "custom", a colour of the player's own from the game's colour
+-- picker (UI.PickDividerColor), saved beside it as "rrggbb"
+-- (profile.dividerHex). Custom with no colour saved, and Class color where
+-- the UI gives none, read as Neutral. Whatever is chosen is mixed a little
+-- into the ground (CollectTab, RV.BarRGB), so the bar stays dark and its
+-- words easy to read.
+UI.DIVIDER_COLORS = { "neutral", "accent", "class", "blue", "violet", "custom" }
+local DIVIDER_RGB = {
+  blue = { 0x17 / 255, 0x85 / 255, 0xd1 / 255 },
+  violet = { 0xa7 / 255, 0x7b / 255, 0xff / 255 },
+}
+local dividerCustom = { hex = false, r = 1, g = 1, b = 1 }
+
+-- r, g, b of the saved Custom colour, or nil; parsed again only when it
+-- moves, so a paint makes nothing.
+function UI.GetDividerCustom()
+  local h = ns.Store and ns.Store.Get and ns.Store.Get("profile.dividerHex")
+  local c = dividerCustom
+  if h ~= c.hex then
+    c.hex = h
+    c.ok = type(h) == "string" and h:match("^%x%x%x%x%x%x$") ~= nil
+    if c.ok then
+      c.r = tonumber((h:sub(1, 2)), 16) / 255
+      c.g = tonumber((h:sub(3, 4)), 16) / 255
+      c.b = tonumber((h:sub(5, 6)), 16) / 255
+    end
+  end
+  if not c.ok then return nil end
+  return c.r, c.g, c.b
+end
+
+-- The character's class colour as the UI gives it (ContactService), or nil.
+local function DividerClassRGB()
+  local CS = ns.ContactService
+  if not (CS and type(CS.UIClassColour) == "function" and type(UnitClass) == "function") then return nil end
+  local _, token = UnitClass("player")
+  if type(token) ~= "string" then return nil end
+  return CS.UIClassColour(token)
+end
+
+-- r, g, b of a colour choice (nil: the one chosen) as it is before it is
+-- mixed into the ground, or nil for Neutral, which is the ground itself.
+function UI.DividerColorRGB(mode)
+  if mode == nil then mode = UI.GetDividerColor() end
+  if mode == "custom" then return UI.GetDividerCustom() end
+  if mode == "class" then return DividerClassRGB() end
+  if mode == "accent" then
+    local T = ns.Theme
+    if T and type(T.GetAccent) == "function" then
+      local r, g, b = T.GetAccent()
+      return r, g, b
+    end
+    return nil
+  end
+  local c = DIVIDER_RGB[mode]
+  if c then return c[1], c[2], c[3] end
+  return nil
+end
+
+function UI.GetDividerColor()
+  local memo = Settings()
+  if memo.barColor then return memo.barColor end
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.dividerColor")
+  local mode = "neutral"
+  if stored == "custom" then
+    if UI.GetDividerCustom() then mode = stored end
+  elseif stored == "class" then
+    if DividerClassRGB() then mode = stored end
+  elseif stored == "accent" or DIVIDER_RGB[stored] then
+    mode = stored
+  end
+  memo.barColor = mode
+  return mode
+end
+
+-- Any choice but Custom, which only the picker sets.
+function UI.SetDividerColor(mode)
+  if mode ~= "neutral" and mode ~= "accent" and mode ~= "class" and not DIVIDER_RGB[mode] then return end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.dividerColor = (mode ~= "neutral") and mode or nil end
+  ForgetSettings()
+  local panel, collect = CollectPanel(), ns.CollectTab
+  if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
+end
+
+-- Custom: the game's colour picker (Theme.PickColor), open on the colour
+-- chosen now. Each colour picked is saved and worn at once; Cancel puts
+-- back the choice and the colour there were. `after` runs after each, for
+-- the options to repaint. Answers whether the picker opened.
+function UI.PickDividerColor(after)
+  local T = ns.Theme
+  if not (T and type(T.PickColor) == "function") then return false end
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if not profile then return false end
+  local wasMode, wasHex = profile.dividerColor, profile.dividerHex
+  local r, g, b = UI.DividerColorRGB()
+  if not r then r, g, b = 1, 1, 1 end
+  local function Moved()
+    ForgetSettings()
+    local panel, collect = CollectPanel(), ns.CollectTab
+    if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
+    if after then after() end
+  end
+  local function Byte(v) return math.floor(math.max(0, math.min(1, v)) * 255 + 0.5) end
+  return T.PickColor(r, g, b, function(pr, pg, pb)
+    profile.dividerHex = string.format("%02x%02x%02x", Byte(pr), Byte(pg), Byte(pb))
+    profile.dividerColor = "custom"
+    Moved()
+  end, function()
+    profile.dividerColor, profile.dividerHex = wasMode, wasHex
+    Moved()
+  end)
+end
+
+-- The bar's type, for comparing the two in game: "quiet" (the words in the
+-- secondary text colour, the number a step dimmer) or "caps" (small
+-- capitals). Never stored: `/postbox debug divider caps` and `... quiet`
+-- set it for the session (UI.TryDivider).
+function UI.GetDividerStyle()
+  return UI.tryStyle == "caps" and "caps" or "quiet"
+end
+
+-- `/postbox debug divider` says how the bar stands; `... caps` and
+-- `... quiet` switch its type for this session, drawn at once where the
+-- list stands. Not in the help.
 function UI.TryDivider(arg)
   local L = ns.L
-  local words = string.match(arg or "", "^words ?(.*)$")
-  if words then
-    if UI.DIVIDER_WORDS[words] then UI.tryWords = words end
-  elseif DIVIDER_LOOKS[arg] then
-    UI.tryLook = arg
+  arg = arg or ""
+  if arg == "caps" then
+    UI.tryStyle = "caps"
+  elseif arg == "quiet" then
+    UI.tryStyle = nil
   end
   local panel, collect = CollectPanel(), ns.CollectTab
   if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
-  local Options = ns.OptionsPanel
-  if Options and type(Options.RefreshControls) == "function" then Options.RefreshControls() end
-  ns.Print(L("DEBUG_DIVIDER", UI.GetDividerLook(), UI.GetDividerWords()))
-  if arg == "" or (words and words ~= "" and not UI.DIVIDER_WORDS[words])
-      or (not words and arg ~= "" and not DIVIDER_LOOKS[arg]) then
-    ns.Print(L("DEBUG_DIVIDER_HELP", "hairline row stretch count", "full collected nothing read count check"))
-  end
+  local notch = ns.DividerNotch
+  local state = panel and notch and type(notch.State) == "function" and notch.State(panel) or "none"
+  ns.Print(L("DEBUG_DIVIDER", UI.GetDividerStyle(), UI.GetDividerWords(), UI.GetDividerColor(), state))
+  if arg ~= "" and arg ~= "caps" and arg ~= "quiet" then ns.Print(L("DEBUG_DIVIDER_HELP", "caps quiet")) end
 end
 
 -- What resting the pointer on the item icon of a mail holding several items
@@ -4597,8 +4704,8 @@ function UI.DiagnoseOptions()
   Named("qualityIcon", UI.GetQualityIcon() and "on" or "off", "on")
   Named("qualityName", UI.GetQualityName(), "off")
   Named("readMail", UI.GetReadMode(), "fold")
-  Named("divider", UI.GetDividerLook(), "hairline")
-  Named("dividerWords", UI.GetDividerWords(), "full")
+  Named("dividerWords", UI.GetDividerWords(), "read")
+  Named("dividerColor", UI.GetDividerColor(), "neutral")
   Named("tabIndicator", UI.GetTabIndicator(), "dot")
   Named("historyDays", UI.GetHistoryDays(), "7")
   Named("afterSend", UI.GetAfterSendKeep(), "nothing")

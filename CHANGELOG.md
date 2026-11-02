@@ -47,7 +47,7 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   fills the Mail tab, and anywhere else it opens the Postbox window beside
   the options. The button is lit while it is on.
   None of it can be collected, but it shows what your settings do: with
-  Read mail set to Delete when done there is no read mail and no divider,
+  Finished mail set to Delete when done there is no read mail and no bar,
   and resting on an item icon lists its items or fans them out, as
   Attachments on hover is set. Arranging from the options now leaves them
   open, and Done keeps the sample window up.
@@ -97,15 +97,18 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 - **A C.O.D. price is red,** as spent gold is, so amber means only that time
   is running out, and the totals band adds the C.O.D. still to pay on the
   mail listed.
-- **A lighter divider over read mail:** smaller words and a thin line to
-  Delete all, on the list's own background, so it no longer reads as a box
-  set into the list. Prefer a row like the mail around it? Choose Full row
-  under Options, Mail, Divider. On Larger mail rows it takes a whole row's
-  place, centered, with no gap above it.
-- **Choose what the divider says:** "Read, nothing left", "Collected",
-  "Nothing left", "Read", or just the number, with the words in its
-  tooltip, on its own or with a check mark beside it. Options, Mail,
-  Divider words.
+- **A quieter bar over read mail:** a little shorter than a row, on the
+  list's own background with a faint outline, its words centered ("Read 3",
+  the number a step dimmer) and Delete all dim until you point at it.
+  While the read mail is below the view, the bar waits at the foot of the
+  list as a small tab saying what it says; scroll down to it, or click it,
+  and it opens smoothly into the bar.
+- **Choose what the bar says, and its color:** Read, Nothing left,
+  Collected or a check mark, under Options, Mail, Bar says; the number
+  follows Show mail counts. The small button before it colors the bar:
+  Neutral, Accent, Class color, Blue, Violet or a color of your own, mixed
+  in lightly so the words stay easy to read. Read mail is now called
+  Finished mail there.
 - **Tooltips end with one gesture per line,** in smaller type than the mail's
   own details, so "Right-click to...", "Shift-click to..." and the rest no
   longer wrap into each other. The same in every Postbox tooltip: the Mail
