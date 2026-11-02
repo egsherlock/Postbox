@@ -70,7 +70,7 @@ DN.FADE_K = 4
 local function Parts() return ns.CollectTab and ns.CollectTab.BarParts end
 local function Th() return ns.Theme end
 
--- Smoothstep from a to b.
+-- Smoothstep over the range r = { from, to } of e.
 local function Smooth(r, x)
   local t = (x - r[1]) / (r[2] - r[1])
   if t <= 0 then return 0 elseif t >= 1 then return 1 end
