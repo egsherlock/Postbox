@@ -17,9 +17,11 @@ local _, ns = ...
 -- tall as the bar, as wide as its icon, words and number with RV.BAR.pad
 -- each side, centred. Once the place's top is in the view it opens into the
 -- bar, edge to edge, on one critically damped spring: both edges move by
--- the same whole units every frame about the list's middle, the corners'
--- radius shrinks a whole unit at a time from the capsule's to none, the
--- colours mix into the bar's, and the fold sign and Delete all, standing
+-- the same whole units every frame about the list's middle, the ends stay
+-- round until they come within the capsule's radius of the list's edges
+-- and then square off as they meet them (the corners' radius the edges'
+-- whole-unit gap, at most the capsule's), the colours mix into the bar's,
+-- and the fold sign and Delete all, standing
 -- where the bar has them, come up once the edge has passed them whole,
 -- settling as the shape lands; they take the pointer only once it is open.
 -- The words never move during a move: they are cut once, for the room they
@@ -63,13 +65,9 @@ DN.STEP = 0.05
 -- under a unit of the widest move); a flight under a third of a unit; a
 -- glide within half a unit and under half a unit a frame.
 DN.LAND, DN.LAND_V, DN.LAND_Y, DN.LAND_YV, DN.LAND_G = 0.002, 0.05, 0.33, 2, 30
--- Where along the opening each change happens: the colours mix from the
--- island's into the bar's, the corners' radius shrinks to none, and the
--- ring's straight sides, once the corners are square, go into the fill
--- (the bar has no sides of its own).
+-- Where along the opening the colours mix from the island's into the
+-- bar's. (The corners follow the edges instead: DN.Shape.)
 DN.MIX = { 0.15, 0.85 }
-DN.ENDS = { 0.55, 0.95 }
-DN.SIDES = { 0.95, 1 }
 -- The inks, as shares of the chrome ink mixed into the bar's fill (white on
 -- a dark palette, black on a light one): the island's fill and ring, at
 -- rest, pointed at and pressed; the bar's wash pointed at and pressed (a
@@ -617,9 +615,13 @@ end
 
 -- The shape `e` open (0 the island, 1 the bar), `yo` whole units off its
 -- place in a flight: both edges `s` in from the list's, s whole; the
--- corners' radius, whole; the colours as the pointer's eases stand; the
--- fold sign's and Delete all's alpha and Delete all's pointer, each set
--- only where it moved. Every frame of a move comes here, and makes nothing.
+-- corners' radius the lesser of the capsule's and s, so the ends are round
+-- until they come within it of the list's edges and square exactly as they
+-- meet them, the ring's straight sides (there only then) going into the
+-- fill as the radius goes, since the bar has no sides of its own; the
+-- colours as the pointer's eases stand; the fold sign's and Delete all's
+-- alpha and Delete all's pointer, each set only where it moved. Every frame
+-- of a move comes here, and makes nothing.
 function DN.Shape(f, e, yo)
   if e < 0 then e = 0 elseif e > 1 then e = 1 end
   yo = yo or 0
@@ -635,16 +637,14 @@ function DN.Shape(f, e, yo)
     end
     f.__s, f.__yo = s, yo
   end
-  local kc = Smooth(DN.ENDS, e)
   local r0 = (f.__isleBand or 22) / 2
-  local R
-  if kc <= 0 then R = r0 elseif kc >= 1 then R = 0 else R = floor(r0 * (1 - kc) + 0.5) end
+  local R = (s < r0) and s or r0
   if f.__R ~= R then
     f.__R = R
     Round(f, R)
   end
   local kf = Smooth(DN.MIX, e)
-  local ks = Smooth(DN.SIDES, e)
+  local ks = (r0 > 0) and (1 - R / r0) or 1
   local hv, pv = f.__hv or 0, f.__pv or 0
   if f.__kf ~= kf or f.__khv ~= hv or f.__kpv ~= pv or f.__ks ~= ks then
     f.__kf, f.__khv, f.__kpv, f.__ks = kf, hv, pv, ks
