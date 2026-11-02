@@ -74,6 +74,8 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 
 ### Improved
 
+- **Reset to defaults opens downward:** its menu drops below the button,
+  and the arrow beside it turns to point down while the menu is open.
 - **The new-mail sound stays quiet for your own auction house purchases:**
   the game already tells you, and the minimap icon still flashes for them
   and counts them. Flash on new mail now sits beside the sound, under
@@ -113,7 +115,9 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
 - Also: **/postbox debug** says which game it runs in and how that game
   writes character names, by their shape alone, so a pasted report never
   names anyone; Battle.net friends are suggested only from a game Blizzard
-  can deliver mail to.
+  can deliver mail to; Keep bag slots free's first choice reads Never
+  instead of None; and a button's words no longer grow when you point at
+  it.
 
 ### Fixed
 

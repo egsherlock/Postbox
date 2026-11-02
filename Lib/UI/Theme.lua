@@ -471,8 +471,14 @@ local BUTTON_TEMPLATE = "UIPanelButtonTemplate"
 
 -- Every push button in the addon is created here, so there is one answer to
 -- "what does a Postbox button look like" and one place to change it.
+-- Its words keep their size under the pointer: the addon's theme, where it
+-- is loaded, makes its highlight font its normal font in the highlight's
+-- colour (Theme.EvenButtonFonts, Core/Theme.lua).
 function Theme.CreateButton(name, parent)
-  return CreateFrame("Button", name, parent, BUTTON_TEMPLATE)
+  local button = CreateFrame("Button", name, parent, BUTTON_TEMPLATE)
+  local even = Theme.EvenButtonFonts
+  if button and type(even) == "function" then even(button) end
+  return button
 end
 
 local function FontStringOf(widget)

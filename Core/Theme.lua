@@ -2072,6 +2072,7 @@ function Theme.RefreshHostFonts(recolor)
       RecolorCopy(HF.lightCopies[base], base, true)
     end
     if SharedTheme and type(SharedTheme.RecolorDerived) == "function" then SharedTheme.RecolorDerived() end
+    Theme.RedressEvenFonts(true)
     return true
   end
   HF.path, HF.flags, HF.shadow, HF.scale, HF.light = path, flags, shadow, scale, lightPalette
@@ -2083,6 +2084,8 @@ function Theme.RefreshHostFonts(recolor)
     local base = HF.lightBases[i]
     DressCopy(HF.lightCopies[base], base, path, flags, shadow, scale, true)
   end
+  -- The buttons' pointed-at fonts after the copies they are made from.
+  Theme.RedressEvenFonts()
   HF.gen = HF.gen + 1
   HF.halo = HF.halo + 1
   Theme.ForgetFits()
@@ -2566,6 +2569,11 @@ end
 -- skin to call on Postbox's push buttons; a no-op without a host face.
 function Theme.HostFontButton(button)
   if not button then return end
+  -- Its pointed-at font back to the one it was made from first
+  -- (Theme.EvenButtonFonts), so that one takes the host's face too; evened
+  -- again below.
+  local lit = type(button.GetHighlightFontObject) == "function" and button:GetHighlightFontObject() or nil
+  if lit and HF.evenFrom[lit] then button:SetHighlightFontObject(HF.evenFrom[lit]) end
   local pairs_ = HF.buttonPairs
   if not pairs_ then
     pairs_ = { "GetNormalFontObject", "SetNormalFontObject", "GetHighlightFontObject",
@@ -2586,7 +2594,84 @@ function Theme.HostFontButton(button)
     local face = object and Theme.HostFont(object)
     if face and face ~= object then label:SetFontObject(face) end
   end
+  Theme.EvenButtonFonts(button)
 end
+
+-- A push button's words keep their size under the pointer. The button puts
+-- its highlight font on its label while the pointer is on it, and its
+-- normal font back after: the template's are two game fonts (and their
+-- copies in a host's face), so whatever made those two differ -- a size,
+-- an outline, a shadow, a UI pack's re-font of one of them -- made every
+-- button's words grow or change the moment it was pointed at, on top of
+-- the hover the button already draws. So a button's highlight font is made
+-- its normal font with the highlight's colour: a copy of the normal one,
+-- the highlight's colour set on it, one per pair and kept (a handful in a
+-- session), named so the house can set it and never copied again in a
+-- host's face (HF.isCopy). Its colour on the pointer, the wash or edge the
+-- look draws there, stay as they were; nothing else moves. Dressed again
+-- with the copies (Theme.RefreshHostFonts); a button the host skin
+-- re-fonts takes its highlight back first and is evened again
+-- (Theme.HostFontButton). Every push button goes through here as it is
+-- made (Lib/UI/Theme.lua, Theme.CreateButton), a select's toggle too.
+HF.evenLit, HF.evenFrom, HF.evenBase, HF.evenList, HF.evenN = {}, {}, {}, {}, 0
+
+local function DressEven(lit, normal, high, colourOnly)
+  if not colourOnly and type(lit.CopyFontObject) == "function" then pcall(lit.CopyFontObject, lit, normal) end
+  if type(high.GetTextColor) ~= "function" or type(lit.SetTextColor) ~= "function" then return end
+  local r, g, b, a = high:GetTextColor()
+  if type(r) ~= "number" then return end
+  a = a or 1
+  if colourOnly and type(lit.GetTextColor) == "function" then
+    local cr, cg, cb, ca = lit:GetTextColor()
+    local abs = math.abs
+    if type(cr) == "number" and abs(cr - r) < 0.002 and abs(cg - g) < 0.002 and abs(cb - b) < 0.002
+       and abs((ca or 1) - a) < 0.002 then
+      return
+    end
+  end
+  lit:SetTextColor(r, g, b, a)
+end
+
+function Theme.EvenButtonFonts(button)
+  if not button then return end
+  local getN, getH, setH = button.GetNormalFontObject, button.GetHighlightFontObject, button.SetHighlightFontObject
+  if type(getN) ~= "function" or type(getH) ~= "function" or type(setH) ~= "function" then return end
+  local normal, worn = NamedFont(getN(button)), NamedFont(getH(button))
+  if not (normal and worn) or HF.evenFrom[normal] then return end
+  local high = HF.evenFrom[worn] or worn
+  if high == normal then return end
+  local byNormal = HF.evenLit[normal]
+  if not byNormal then
+    byNormal = {}
+    HF.evenLit[normal] = byNormal
+  end
+  local lit = byNormal[high]
+  if not lit then
+    if type(CreateFont) ~= "function" then return end
+    HF.evenN = HF.evenN + 1
+    lit = CreateFont("PostboxEvenFont" .. HF.evenN)
+    if not lit then return end
+    DressEven(lit, normal, high)
+    byNormal[high] = lit
+    HF.evenFrom[lit], HF.evenBase[lit], HF.isCopy[lit] = high, normal, true
+    HF.evenList[#HF.evenList + 1] = lit
+  end
+  if worn ~= lit then setH(button, lit) end
+end
+
+-- Every evened font after the fonts it is made from (`colourOnly`: only
+-- their colours moved, and only a colour that moved is set).
+function Theme.RedressEvenFonts(colourOnly)
+  local list = HF.evenList
+  for i = 1, #list do
+    local lit = list[i]
+    DressEven(lit, HF.evenBase[lit], HF.evenFrom[lit], colourOnly)
+  end
+end
+
+-- The foundation layer makes the push buttons (Theme.CreateButton) and
+-- evens each one as it is made.
+if SharedTheme then SharedTheme.EvenButtonFonts = Theme.EvenButtonFonts end
 
 -- Font strings currently wearing an accent token -> that token.
 --
@@ -4620,7 +4705,71 @@ do
     tex:SetSize(g.w * k, g.h * k)
     if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(true) end
     if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
+    -- The art it was made from, for a turn of it (Theme.TurnGlyph).
+    tex.__pbSpec = g
     return tex
+  end
+
+  -- A glyph that turns half round and back: the caret of a button whose
+  -- menu opens under it (the options' Reset to defaults) points down while
+  -- the menu is open and back up once it closes. A short eased turn, an
+  -- AnimationGroup's Rotation, as the addon's other motion is: nothing runs
+  -- between turns, and nothing is made after the first. Opening turns it
+  -- clockwise, closing back the other way. Each turn starts from the
+  -- glyph as it shows -- its art drawn the way up it was left (the
+  -- texture's coordinates, top and bottom swapped for down) -- and its end
+  -- draws the art the new way up as the rotation lets go, so it rests with
+  -- no transform held. A glyph out of sight turns at once.
+  local TURN = { TIME = 0.15 }
+
+  -- The turn ended: the art drawn the way it now points.
+  function TURN.Landed(group)
+    local tex = group.__pbTex
+    local g = tex.__pbSpec
+    if tex.__pbDown then
+      tex:SetTexCoord(g.l, g.r, g.b, g.t)
+    else
+      tex:SetTexCoord(g.l, g.r, g.t, g.b)
+    end
+  end
+
+  function TURN.Group(tex, degrees)
+    local group = tex:CreateAnimationGroup()
+    local spin = group:CreateAnimation("Rotation")
+    spin:SetDegrees(degrees)
+    spin:SetDuration(TURN.TIME)
+    spin:SetSmoothing("IN_OUT")
+    if spin.SetOrigin then spin:SetOrigin("CENTER", 0, 0) end
+    group.__pbTex = tex
+    group:SetScript("OnFinished", TURN.Landed)
+    return group
+  end
+
+  -- tex (from Theme.Glyph), down -> the glyph turned to point down (true)
+  -- or back the way its art is drawn.
+  function Theme.TurnGlyph(tex, down)
+    local g = tex and tex.__pbSpec
+    if not g or type(tex.CreateAnimationGroup) ~= "function" then return end
+    down = down and true or false
+    if (tex.__pbDown or false) == down then return end
+    local turn = tex.__pbTurn
+    if not turn then
+      -- Clockwise to point down (SetDegrees turns counter-clockwise).
+      turn = { down = TURN.Group(tex, -180), up = TURN.Group(tex, 180) }
+      tex.__pbTurn = turn
+    end
+    -- The way it points now, as drawn art: a turn under way is cut short
+    -- at its end, and the new one starts from there.
+    turn.down:Stop()
+    turn.up:Stop()
+    TURN.Landed(turn.down)
+    tex.__pbDown = down
+    local group = down and turn.down or turn.up
+    if tex:IsVisible() then
+      group:Play()
+    else
+      TURN.Landed(group)
+    end
   end
 end
 

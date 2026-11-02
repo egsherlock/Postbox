@@ -4303,9 +4303,6 @@ do
     Wire(toggle, row, true)
     row.kind, row.control, row.dd, row.items = "dropdown", toggle, dd, spec.items
     row.get, row.controlW = spec.get, DD_W
-    -- `fixed`: as wide as its column's other dropdowns whatever its values;
-    -- a value too long for it is cut short and said whole on hover (Rows.Fit).
-    row.fixedW = spec.fixed and true or nil
     Rows.PaintDropdown(row)
     return row
   end
@@ -4865,11 +4862,15 @@ do
   -- Measured on every open, after the skins have had their say about
   -- fonts, and in whatever language the client speaks, and again after a
   -- font change (the skins' RefitScreens). The normal case keeps its look:
-  -- a pair whose name will not fit its half comes apart (Rows.FitPairs); a
-  -- dropdown is DD_W wide unless its widest value will not fit that, and
-  -- then as wide as that value needs (the select's FitWidth), it alone; a
-  -- name that would reach the dropdown beside it narrows that toggle, down
-  -- to DD_MIN_W, and only past that is the name cut short -- the
+  -- a pair whose name will not fit its half comes apart (Rows.FitPairs);
+  -- every dropdown is DD_W wide, so a page's dropdowns line up as one
+  -- column whatever their values: a value too long for the box is cut
+  -- short in it (the select's own fitter) and said whole on hover, and its
+  -- list opens as wide as its widest value (the select's list fits its
+  -- items); Sound on new mail's play button stands outside its box, before
+  -- it, taking room from the name, never from the box. A name that would
+  -- reach the dropdown beside it narrows that toggle, down to DD_MIN_W
+  -- (a long translation), and only past that is the name cut short -- the
   -- inspector's title still carries it whole.
   function Rows.Fit()
     local T = ns.Theme
@@ -4887,12 +4888,9 @@ do
       else
         local controlW = cell.controlW or 0
         if kind == "dropdown" then
-          -- A fixed one keeps the dropdowns' width: its value is cut short
-          -- in its box (the select's own fitter) and said whole on hover.
-          local full = (not cell.fixedW and cell.dd.FitWidth) and cell.dd:FitWidth() or DD_W
-          local want = full
+          local want = DD_W
           local nameW = TextW(cell.Name)
-          if nameW + NAME_GAP + full > inner then
+          if nameW + NAME_GAP + DD_W > inner then
             want = math.max(DD_MIN_W, inner - nameW - NAME_GAP)
           end
           if cell.controlW ~= want then
@@ -6145,7 +6143,7 @@ function Pages.mail(col)
     get = function() return ns.MailboxUI.GetOption("previewOnClick") end,
     set = function(on) ns.MailboxUI.SetOption("previewOnClick", on) end,
   })
-  -- How many bag slots a collect run leaves free: None (runs go until the
+  -- How many bag slots a collect run leaves free: Never (runs go until the
   -- bags are full) or 1 to 12, a mail's worth of items. Read at the start
   -- of each run.
   local freeItems = { { id = 0, name = L["OPT_KEEP_FREE_NONE"] } }
@@ -7218,9 +7216,9 @@ function Pages.general(col)
   -- at the next login, and the minimap marker, where it shows (its saved
   -- setting is the Minimap tab's old Show marker's; its look is still
   -- there). Both grey while Warn about is Off, and the marker while the
-  -- minimap icon is off too (State.Warnings). Warn about keeps the
-  -- dropdowns' width: its longest value is cut short in its box, and said
-  -- whole on hover (Rows.Fit).
+  -- minimap icon is off too (State.Warnings). Warn about's longest value
+  -- is cut short in its box, as any dropdown's is, and said whole on
+  -- hover (Rows.Fit).
   Rows.Group(block, L["OPT_MINIMAP_GROUP_EXPIRY"])
   local function Warned()
     State.Warnings()
@@ -7228,7 +7226,7 @@ function Pages.general(col)
     if Icon and Icon.Refresh then Icon.Refresh() end
   end
   Rows.Dropdown(block, {
-    title = L["OPT_WARN_TITLE"], text = L["OPT_WARN_DESC"] .. "\n\n" .. L["OPT_WARN_MORE"], fixed = true,
+    title = L["OPT_WARN_TITLE"], text = L["OPT_WARN_DESC"] .. "\n\n" .. L["OPT_WARN_MORE"],
     items = {
       { id = "off",     name = L["OPT_ALERT_OFF"] },
       { id = "deleted", name = L["OPT_WARN_DELETED"] },
@@ -7255,7 +7253,7 @@ function Pages.general(col)
     markerItems[#markerItems + 1] = { id = mode, name = markerNames[mode] }
   end
   local marker = Rows.Dropdown(block, {
-    title = L["OPT_WARN_MARKER_TITLE"], text = L["OPT_WARN_MARKER_DESC"], items = markerItems, fixed = true,
+    title = L["OPT_WARN_MARKER_TITLE"], text = L["OPT_WARN_MARKER_DESC"], items = markerItems,
     get = function() return ns.MinimapButton and ns.MinimapButton.GetExpiry() end,
     set = function(id)
       if ns.MinimapButton then ns.MinimapButton.SetExpiry(id) end
@@ -7697,7 +7695,7 @@ function Footer.Build(frame, above)
     resetText:SetPoint("LEFT", reset, "LEFT", arrow and 21 or 4, 0)
     resetText:SetWordWrap(false)
     resetText:SetText(L["OPT_RESET_DEFAULTS"])
-    S.footer.resetText = resetText
+    S.footer.reset, S.footer.resetText, S.footer.resetCaret = reset, resetText, caret
     if arrow then arrow:SetPoint("CENTER", reset, "LEFT", 10, 0) end
     if caret then caret:SetPoint("CENTER", resetText, "RIGHT", 9, 0) end
     -- At rest the band's quiet text colour, as Report a bug and What's new?
@@ -7746,12 +7744,19 @@ function Footer.Build(frame, above)
       if not menu then
         local Drop = ns.Core.UI.Dropdown
         if not (Drop and type(Drop.Menu) == "function") then return end
+        -- The menu opens under the button (over it only at the foot of
+        -- the screen), and the caret turns to point down while it is
+        -- open (Theme.TurnGlyph), back up however it closes.
         menu = Drop.Menu(self, RESETS, {
           onPick = Ask,
           onEnter = ResetTip,
           onLeave = ResetUntip,
+          onOpen = function() if caret then ns.Theme.TurnGlyph(caret, true) end end,
           -- However it closed: quiet again unless the pointer is on it.
-          onClose = function() Quiet(not reset:IsMouseOver()) end,
+          onClose = function()
+            Quiet(not reset:IsMouseOver())
+            if caret then ns.Theme.TurnGlyph(caret, false) end
+          end,
           minWidth = math.max(120, self:GetWidth() or 0),
         })
       end
