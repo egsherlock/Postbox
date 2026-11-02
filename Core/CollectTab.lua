@@ -7194,8 +7194,10 @@ RV.BAR = {
   lift = 0,
   -- Delete all's height on Hairline and Full row.
   deleteH = 18,
-  -- Above the bar at the foot, a short fade of its fill over the row it
-  -- covers half of: each step's share of the fill, and its height.
+  -- Above the island's room, a short fade of its fill over the rows passing
+  -- under it, #fade * fadeStep units tall where it crosses no row's words
+  -- (Core/DividerNotch.lua); drawn as two steps, each step's share of the
+  -- fill, where the client draws no gradient.
   fade = { 0.6, 0.3 }, fadeStep = 2,
   -- The fold sign's canvas (Media/glyph-chevron is 32 square, its visible
   -- part 14 x 24 from x 5, y 3), one-line rows and Larger.
@@ -7584,23 +7586,25 @@ function RV.PaintBar(panel, f, compact)
   local r, g, b = RV.BarRGB(panel)
   if f.__r ~= r or f.__g ~= g or f.__b ~= b then
     f.__r, f.__g, f.__b = r, g, b
-    local a = RV.BAR.groundA
-    f.Fill:SetColorTexture(r, g, b, a)
-    local fade = f.Fade
-    if fade then
-      for i = 1, #fade do fade[i]:SetColorTexture(r, g, b, a * RV.BAR.fade[i]) end
-    end
+    f.Fill:SetColorTexture(r, g, b, RV.BAR.groundA)
+    -- The island's inks, its room and the fade over the rows above it.
     if f.Isle then ns.DividerNotch.Ink(f, r, g, b) end
   end
   local folded = RV.Folded(panel)
   if f.__folded ~= folded then
     f.__folded = folded
-    local c = folded and RV.SIGN_SHUT or RV.SIGN_OPEN
-    local sign = f.Sign
-    sign:SetTexCoord(c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8])
-    -- 14 x 24 of the canvas's 32: pointing right, or turned to point down.
-    local k = (f.__canvas or RV.BAR.sign) / 32
-    if folded then sign:SetSize(14 * k, 24 * k) else sign:SetSize(24 * k, 14 * k) end
+    if f.Isle then
+      -- The island's fold sign turns a quarter on a spring
+      -- (Core/DividerNotch.lua).
+      ns.DividerNotch.Sign(f, not folded)
+    else
+      local c = folded and RV.SIGN_SHUT or RV.SIGN_OPEN
+      local sign = f.Sign
+      sign:SetTexCoord(c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8])
+      -- 14 x 24 of the canvas's 32: pointing right, or turned to point down.
+      local k = (f.__canvas or RV.BAR.sign) / 32
+      if folded then sign:SetSize(14 * k, 24 * k) else sign:SetSize(24 * k, 14 * k) end
+    end
   end
   local x = panel._barSignX or (T.Metrics.inset + 4)
   if f.__signX ~= x then
@@ -7989,7 +7993,8 @@ end
 
 -- A click on the bar's copy at the foot (the notch, or Hairline's and Full
 -- row's whole copy): to the finished mail, unfolding it where it was
--- folded, the list scrolled to the bar's place.
+-- folded, the list gliding to the bar's place (Core/DividerNotch.lua, a
+-- pass of the list each frame as a drag of the scroll bar is).
 function RV.GoToBar(panel)
   if RV.Arranging(panel) then return end
   if RV.Folded(panel) then
@@ -8002,7 +8007,10 @@ function RV.GoToBar(panel)
   local _, _, stride = RowMetrics()
   local listed = #((panel._preview and panel._pvList) or panel._filtered)
   local maxScroll = max(0, RV.ListHeight(listed, stride) - (scroll:GetHeight() or 0))
-  scroll:SetVerticalScroll(min((at - 1) * stride, maxScroll))
+  local to = min((at - 1) * stride, maxScroll)
+  local DN = ns.DividerNotch
+  if DN then return DN.Glide(panel, to) end
+  scroll:SetVerticalScroll(to)
   CT.RebindRows(panel)
 end
 
@@ -8014,6 +8022,8 @@ CT.BarParts = {
   mix = RV.BAR.mix, Look = RV.LookOf,
   BarSlot = RV.BarSlotOf, Tip = RV.WordsTip, TipOff = RV.WordsTipOff,
   pad = RV.BAR.pad, gap = RV.BAR.gap, checkGap = RV.BAR.checkGap, edgeA = RV.BAR.edgeA, groundA = RV.BAR.groundA,
+  fade = RV.BAR.fade, fadeStep = RV.BAR.fadeStep, rowGap = ROW_GAP,
+  signShut = RV.SIGN_SHUT, signOpen = RV.SIGN_OPEN,
 }
 
 -------------------------------------------------------------
@@ -8154,6 +8164,9 @@ local function UpdateVisibleRows(panel)
     if look == "full" then RV.DividerLanes(panel, panel._rows[1], compact) end
   end
   local Notch = ns.DividerNotch
+  -- A glide to the bar stops where the list stands once anything else
+  -- has moved it.
+  if Notch then Notch.Watch(panel, offset) end
   if look ~= "notch" then
     if Notch then Notch.Off(panel) end
     if divider and divider:IsShown() then RV.PaintBar(panel, divider, compact) end
@@ -13298,32 +13311,12 @@ function RV.BuildBar(panel, parent, foot)
     Th().SetColor(self.Text, f.__deleteInk or "textDisabled")
     GameTooltip:Hide()
   end)
-  -- Over the row the bar at the foot covers half of, a short fade of its
-  -- fill, so that row reads as passing under it. Solid steps: a colour
-  -- texture is the one fill that is never drawn white.
-  if foot then
-    local holder = CreateFrame("Frame", nil, f)
-    holder:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 0)
-    holder:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 0)
-    holder:SetHeight(#B.fade * B.fadeStep)
-    holder:SetAlpha(0)
-    local fade = { holder = holder }
-    for i = 1, #B.fade do
-      local t = holder:CreateTexture(nil, "BACKGROUND")
-      t:SetColorTexture(r, g, b, B.groundA * B.fade[i])
-      local y = (i - 1) * B.fadeStep
-      t:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT", 0, y)
-      t:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", 0, y)
-      t:SetHeight(B.fadeStep)
-      fade[i] = t
-    end
-    f.Fade = fade
-  end
   -- The words an icon stands for, or words cut short, in a tooltip
   -- (RV.WordsTip); nothing otherwise.
   f:SetScript("OnEnter", RV.WordsTip)
   f:SetScript("OnLeave", RV.WordsTipOff)
-  -- The island's capsule, under what its shape holds, and its pointer.
+  -- The island's shape under what it holds, the fade over the rows above
+  -- its room, and its pointer.
   if DN then DN.Skin(f) end
   f:Hide()
   return f
@@ -14455,8 +14448,9 @@ function CT.Build(parent)
   -- bar's place is below it, the bar in its place once the place carries
   -- it (Core/DividerNotch.lua), in the list with the rows. At the foot a
   -- click on it or its room goes to the read mail -- unfolding it if it was
-  -- folded -- and the island flies to its place as it opens; in its place
-  -- a click folds, as the bar's does. Its Delete all is the same Delete all.
+  -- folded -- the list gliding there and the island opening as its place
+  -- comes up; in its place a click folds, as the bar's does. Its Delete all
+  -- is the same Delete all.
   local notch = RV.BuildBar(panel, panel.MailListChild, true)
   notch:SetScript("OnClick", function()
     if (panel._barK or 0) > 0 then return RV.GoToBar(panel) end

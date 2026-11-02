@@ -9,7 +9,7 @@ local _, ns = ...
 -- two places: its own place in the list, and its stand at the view's foot.
 -- While its place is below the stand it waits there in a room of its own,
 -- the bar's slot (24 on one-line rows, 28 on Larger), full width, in the
--- bar's fill, with a short fade over the rows passing under it. As the
+-- bar's fill, with a soft fade over the rows passing under it. As the
 -- place comes up the room tightens onto the bar, and the place picks the
 -- bar up exactly where it stands: one copy, one rule, nothing handed over.
 --
@@ -17,55 +17,76 @@ local _, ns = ...
 -- tall as the bar, as wide as its icon, words and number with RV.BAR.pad
 -- each side, centred. Once the place's top is in the view it opens into the
 -- bar, edge to edge, on one critically damped spring: both edges move by
--- the same whole units every frame about the list's middle, the round ends
--- turn square, the colours mix into the bar's, and the fold sign and Delete
--- all, standing where the bar has them, are uncovered by the growing edge
--- (the shape clips them) and take the pointer only once it is open. The
--- words never move during a move: they are cut once, for the room they are
--- going to have, as it starts. Scrolling back, it closes into the island
--- where it stands, a little quicker.
+-- the same whole units every frame about the list's middle, the corners'
+-- radius shrinks a whole unit at a time from the capsule's to none, the
+-- colours mix into the bar's, and the fold sign and Delete all, standing
+-- where the bar has them, come up once the edge has passed them whole,
+-- settling as the shape lands; they take the pointer only once it is open.
+-- The words never move during a move: they are cut once, for the room they
+-- are going to have, as it starts. Scrolling back, it closes into the
+-- island where it stands, a little quicker, the fold sign and Delete all
+-- gone before the edge reaches them.
 --
--- A jump (a wheel step, a click on the island) can carry the place across
--- the stand in one pass. Then, while the shape is still mostly island, it
--- keeps its place on screen for that frame and flies to the new one on a
--- spring of its own as it opens. Once mostly bar it moves with the list,
--- as any row does.
+-- A wheel step can carry the place across the stand in one pass. Then,
+-- while the shape is still mostly island, it keeps its place on screen for
+-- that frame and flies to the new one on a spring of its own as it opens.
+-- A click on the island glides the list itself to the bar's place instead,
+-- a pass of the list each frame as a drag of the scroll bar is, and the
+-- one rule carries the island up as its place comes into view; the
+-- player's own scroll stops a glide where it stands.
 --
 -- State, on the panel, numbers only: how open (_barE, its speed _barEV,
 -- where it is going _barTo), how far the shape is off its place in a
--- flight (_barYO, _barYV), and the last pass's stand (_barYT, _barFoot,
--- _barK). A move is one OnUpdate on a frame of the panel's own, set when
--- it starts and taken off when it lands; the window hidden mid-move lands
--- it at once. At rest nothing runs, and a pass compares a few numbers and
--- makes nothing.
+-- flight (_barYO, _barYV), the last pass's stand (_barYT, _barFoot, _barK),
+-- a glide (_glideY, _glideV, _glideTo, _glideSet) and the fade's height
+-- (_fadeH, _fadeTo, _fadeOff); on the copy, the pointer's eases and the
+-- fold sign's turn. A move is one OnUpdate on a frame of the panel's own,
+-- set when something starts to move and taken off when everything has
+-- landed; the window hidden mid-move lands it all at once. At rest nothing
+-- runs, and a pass compares a few numbers and makes nothing.
 -------------------------------------------------------------
 
 ns.DividerNotch = ns.DividerNotch or {}
 local DN = ns.DividerNotch
 
-local max, min, floor, exp, abs = math.max, math.min, math.floor, math.exp, math.abs
+local max, min, floor, ceil, exp, abs = math.max, math.min, math.floor, math.ceil, math.exp, math.abs
 
--- The springs (rad/s): opening, closing, and the flight to the place.
--- Opening is at 50% in 70 ms, 90% in 160 ms; closing a little quicker.
-DN.OPEN, DN.CLOSE, DN.FLY = 24, 28, 22
+-- The springs (rad/s): opening, closing, the flight to the place, the
+-- list's glide to the bar (a click on the island: visually there in about
+-- 300 ms, as the bar opens on its way), and the fold sign's quarter turn
+-- (about 150 ms). Opening is at 50% in 70 ms, 90% in 160 ms; closing a
+-- little quicker. All critically damped: nothing overshoots or bounces.
+DN.OPEN, DN.CLOSE, DN.FLY, DN.GLIDE, DN.TURN = 24, 28, 22, 24, 32
 -- The longest frame a move counts: a hitch slows it, never skips it.
 DN.STEP = 0.05
 -- Landed: under a fifth of a percent of the way and almost still (well
--- under a unit of the widest move); a flight under a third of a unit.
-DN.LAND, DN.LAND_V, DN.LAND_Y, DN.LAND_YV = 0.002, 0.05, 0.33, 2
+-- under a unit of the widest move); a flight under a third of a unit; a
+-- glide within half a unit and under half a unit a frame.
+DN.LAND, DN.LAND_V, DN.LAND_Y, DN.LAND_YV, DN.LAND_G = 0.002, 0.05, 0.33, 2, 30
 -- Where along the opening each change happens: the colours mix from the
--- island's into the bar's, the round ends turn square, and the fold sign
--- and Delete all come up.
+-- island's into the bar's, the corners' radius shrinks to none, and the
+-- ring's straight sides, once the corners are square, go into the fill
+-- (the bar has no sides of its own).
 DN.MIX = { 0.15, 0.85 }
 DN.ENDS = { 0.55, 0.95 }
-DN.UP = { 0.72, 1 }
+DN.SIDES = { 0.95, 1 }
 -- The inks, as shares of the chrome ink mixed into the bar's fill (white on
--- a dark palette, black on a light one): the island's fill and ring, at rest
--- and pointed at; the bar's hairlines (RV.BAR.edgeA) and its wash pointed at.
-DN.INK = { fill = 0.08, fillHot = 0.13, ring = 0.26, ringHot = 0.40, wash = 0.035 }
+-- a dark palette, black on a light one): the island's fill and ring, at
+-- rest, pointed at and pressed; the bar's wash pointed at and pressed (a
+-- press a step back from the pointer's, toward the ground).
+DN.INK = { fill = 0.08, fillHot = 0.13, fillDown = 0.04, ring = 0.26, ringHot = 0.40, ringDown = 0.30,
+  wash = 0.035, washDown = -0.025 }
+-- The pointer's eases: an exponential approach this many seconds long per
+-- e-fold (95% in about 120 ms).
+DN.EASE = 0.04
 -- The fade over the rows above the room reaches its whole in this many
 -- units of approach.
 DN.FADE_K = 4
+-- How far a row's words and icon stand in from its top and its foot, as
+-- measured on the rows (one-line rows: the icon 4..22 of 26; Larger rows:
+-- the two lines 6..38 of 44). The room's top crossing a row inside these
+-- crosses its words.
+DN.WORDS = { 4, 6 }
 
 local function Parts() return ns.CollectTab and ns.CollectTab.BarParts end
 local function Th() return ns.Theme end
@@ -90,6 +111,27 @@ local function Spring(x, v, to, w, dt)
 end
 DN.Spring = Spring
 
+-- One step of an exponential approach, `k` of the way: landed within a
+-- hundredth. Answers the value and whether it still moves.
+local function Ease(x, to, k)
+  x = x + (to - x) * k
+  if abs(to - x) < 0.01 then return to, false end
+  return x, true
+end
+
+local function Clamp(v)
+  if v < 0 then return 0 elseif v > 1 then return 1 end
+  return v
+end
+
+-- A texture shown or hidden by its own flag, so a redraw asks the client
+-- only where it changed.
+local function On(t, on)
+  if t.__dnOn == on then return end
+  t.__dnOn = on
+  t:SetShown(on)
+end
+
 -------------------------------------------------------------
 -- The island's parts (RV.BuildBar, for the copy that is the Notch look)
 -------------------------------------------------------------
@@ -97,10 +139,7 @@ DN.Spring = Spring
 -- Made once, on a copy built for the foot: the shape (a frame that clips
 -- what it holds, so the fold sign and Delete all show only inside it),
 -- the frame inside it that holds the words, the fold sign and Delete all
--- at the bar's own places, and the textures of the capsule: its middle
--- (fill, top and bottom hairlines), four round quarters (ring, and the
--- fill a unit inside it) and two square ends (fill and hairlines). Every
--- texture takes its colour in the call that makes it.
+-- at the bar's own places.
 function DN.Build(f)
   local shape = CreateFrame("Frame", nil, f)
   shape:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
@@ -116,165 +155,240 @@ function DN.Build(f)
   return inner
 end
 
--- The capsule's textures, on the copy itself under everything the shape
--- holds. After RV.BuildBar has made the rest, so no other part's place in
--- the copy moves.
+-- The shape's textures, on the copy itself under everything the shape
+-- holds: a rounded rectangle at any radius, every point of it one piece --
+-- the middle's fill, the fill beside the corners, four corners (a quarter
+-- of a disc in the ring's ink, a quarter a unit smaller in the fill's over
+-- it), the top and bottom hairlines between the corners and the straight
+-- sides between them. Drawn solid, in the inks the fill would show over the
+-- room, so a corner's fill over its ring shows the fill alone: the corners
+-- are the middle's shade. Then the fade over the rows above the room (one
+-- gradient; two solid steps where the client draws no gradient), and the
+-- pointer. After RV.BuildBar has made the rest, so no other part's place
+-- in the copy moves. Every texture takes its colour in the call that
+-- makes it.
 function DN.Skin(f)
   local T = Th()
+  local B = Parts()
   local WHITE = "Interface\\Buttons\\WHITE8X8"
   local g = T.GLYPHS and T.GLYPHS.cap
+  local shape = f.Shape
   local function Plain(layer, sub)
     local t = f:CreateTexture(nil, layer, nil, sub)
     t:SetTexture(WHITE)
     t:SetVertexColor(0, 0, 0, 0)
     return t
   end
-  local function Quarter(sub, flipX, flipY)
+  local Q = DN.QUARTER
+  local function Quarter(sub, i, inset)
     local t = f:CreateTexture(nil, "BACKGROUND", nil, sub)
     if g then
       t:SetTexture(g.file)
       local l, r, top, b = g.l, g.r, g.t, g.b
-      if flipX then l, r = r, l end
-      if flipY then top, b = b, top end
+      if i > 2 then l, r = r, l end
+      if i % 2 == 0 then top, b = b, top end
       t:SetTexCoord(l, r, top, b)
       -- Blended, not sharpened, as Theme.Glyph has its art: the curve is
-      -- drawn smaller than its art on one-line rows.
+      -- drawn smaller than its art at every radius but the largest.
       if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(true) end
       if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
     else
       t:SetTexture(WHITE)
     end
     t:SetVertexColor(0, 0, 0, 0)
+    local corner = Q[i]
+    t:SetPoint(corner, shape, corner, inset and Q.dx[i] or 0, inset and Q.dy[i] or 0)
     return t
   end
   local P = {}
-  -- The middle.
-  P.mid, P.midT, P.midB = Plain("BACKGROUND", -6), Plain("BORDER", 0), Plain("BORDER", 0)
-  -- The round ends: top-left, bottom-left, top-right, bottom-right; the ring
-  -- under, the fill over it.
-  P.ring = { Quarter(-7, false, false), Quarter(-7, false, true), Quarter(-7, true, false), Quarter(-7, true, true) }
-  P.fill = { Quarter(-6, false, false), Quarter(-6, false, true), Quarter(-6, true, false), Quarter(-6, true, true) }
-  -- The square ends: left and right, a fill and its two hairlines each.
-  P.sq = { Plain("BACKGROUND", -6), Plain("BACKGROUND", -6) }
-  P.sqT = { Plain("BORDER", 0), Plain("BORDER", 0) }
-  P.sqB = { Plain("BORDER", 0), Plain("BORDER", 0) }
-  -- The inks the pieces are mixed from (DN.Ink), and the colours drawn.
-  P.ink = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+  -- The fill: the middle, and the strips beside the corners.
+  P.mid = Plain("BACKGROUND", -6)
+  P.side = { Plain("BACKGROUND", -6), Plain("BACKGROUND", -6) }
+  -- The corners: top-left, bottom-left, top-right, bottom-right; the ring's
+  -- quarter under, the fill's over it.
+  P.ring = { Quarter(-7, 1), Quarter(-7, 2), Quarter(-7, 3), Quarter(-7, 4) }
+  P.fill = { Quarter(-6, 1, true), Quarter(-6, 2, true), Quarter(-6, 3, true), Quarter(-6, 4, true) }
+  -- The ring's straight parts: top and bottom, left and right.
+  P.top, P.bot = Plain("BORDER", 0), Plain("BORDER", 0)
+  P.top:SetHeight(1)
+  P.bot:SetHeight(1)
+  P.edgeL, P.edgeR = Plain("BORDER", 0), Plain("BORDER", 0)
+  P.edgeL:SetWidth(1)
+  P.edgeR:SetWidth(1)
+  -- The inks the pieces are mixed from (DN.Ink): the bar's fill, the chrome
+  -- ink and its strength, the fill's strength over the rows, the bar's
+  -- hairlines' share. Then the words' and Delete all's tones at rest and
+  -- pointed at (DN.Type).
+  P.br, P.bg, P.bb, P.ir, P.ig, P.ib, P.ik, P.a, P.edge = 0, 0, 0, 1, 1, 1, 1, 0.95, 0.14
+  P.tone = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 }
   f.Isle = P
-  -- Over the rows above the room, the fade stands on the room's top.
-  local fade = f.Fade
-  if fade then
-    fade.holder:ClearAllPoints()
-    fade.holder:SetPoint("BOTTOMLEFT", f.Fill, "TOPLEFT", 0, 0)
-    fade.holder:SetPoint("BOTTOMRIGHT", f.Fill, "TOPRIGHT", 0, 0)
+  -- The fade over the rows above the room, standing on the room's top.
+  local holder = CreateFrame("Frame", nil, f)
+  holder:SetPoint("BOTTOMLEFT", f.Fill, "TOPLEFT", 0, 0)
+  holder:SetPoint("BOTTOMRIGHT", f.Fill, "TOPRIGHT", 0, 0)
+  local base = #B.fade * B.fadeStep
+  holder:SetHeight(base)
+  holder:SetAlpha(0)
+  local fade = { holder = holder, base = base }
+  local t = holder:CreateTexture(nil, "BACKGROUND")
+  if t.SetGradient and type(CreateColor) == "function" then
+    -- The room's fill, solid on the room, to nothing at the top. The
+    -- colour objects are made once and re-set in place.
+    t:SetTexture(WHITE)
+    t:SetAllPoints(holder)
+    t:SetVertexColor(0, 0, 0, 0)
+    fade.grad, fade.lo, fade.hi = t, CreateColor(0, 0, 0, 1), CreateColor(0, 0, 0, 0)
+  else
+    -- The lower half and the upper half, at the fill's shares (RV.BAR.fade).
+    t:SetColorTexture(0, 0, 0, 0)
+    t:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT", 0, 0)
+    t:SetPoint("TOPRIGHT", holder, "RIGHT", 0, 0)
+    local u = holder:CreateTexture(nil, "BACKGROUND")
+    u:SetColorTexture(0, 0, 0, 0)
+    u:SetPoint("BOTTOMLEFT", holder, "LEFT", 0, 0)
+    u:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, 0)
+    fade[1], fade[2] = t, u
   end
+  f.Fade = fade
   local edges = f.Edges
   for i = 1, #edges do edges[i]:Hide() end
+  -- The pointer's eases (0 at rest, 1 pointed at, pressed, Delete all's red).
+  f.__hv, f.__pv, f.__dv = 0, 0, 0
   f:SetScript("OnEnter", DN.Enter)
   f:SetScript("OnLeave", DN.Leave)
+  f:SetScript("OnMouseDown", DN.Down)
+  f:SetScript("OnMouseUp", DN.Up)
+  -- Delete all's red eases in and out: after its own handlers, which say
+  -- its tooltip and set the red outright.
+  local delete = f.Delete
+  delete.__copy = f
+  delete:HookScript("OnEnter", DN.DeleteHot)
+  delete:HookScript("OnLeave", DN.DeleteHot)
 end
 
--- The capsule laid out for a bar `band` tall: the round ends a radius
--- wide, the fill a unit in from the ring. Only when the height moves.
+-- The four corners, in DN.Skin's order (the left end's top and bottom, the
+-- right end's), and where each one's fill stands in from it.
+DN.QUARTER = { "TOPLEFT", "BOTTOMLEFT", "TOPRIGHT", "BOTTOMRIGHT", dx = { 1, 1, -1, -1 }, dy = { -1, 1, -1, 1 } }
+
+-- The shape laid out for a bar `band` tall: its radius drawn again on the
+-- next frame. Only when the height moves.
 function DN.Size(f, band)
   if f.__isleBand == band then return end
   f.__isleBand = band
-  local P, shape = f.Isle, f.Shape
-  local r = band / 2
-  local q = r - 1
-  local mid, midT, midB = P.mid, P.midT, P.midB
-  mid:ClearAllPoints()
-  mid:SetPoint("TOPLEFT", shape, "TOPLEFT", r, 0)
-  mid:SetPoint("BOTTOMRIGHT", shape, "BOTTOMRIGHT", -r, 0)
-  midT:ClearAllPoints()
-  midT:SetPoint("TOPLEFT", shape, "TOPLEFT", r, 0)
-  midT:SetPoint("TOPRIGHT", shape, "TOPRIGHT", -r, 0)
-  midT:SetHeight(1)
-  midB:ClearAllPoints()
-  midB:SetPoint("BOTTOMLEFT", shape, "BOTTOMLEFT", r, 0)
-  midB:SetPoint("BOTTOMRIGHT", shape, "BOTTOMRIGHT", -r, 0)
-  midB:SetHeight(1)
-  local Q = DN.QUARTER
-  for i = 1, 4 do
-    local ring, fill, corner = P.ring[i], P.fill[i], Q[i]
-    ring:ClearAllPoints()
-    ring:SetPoint(corner, shape, corner, 0, 0)
-    ring:SetSize(r, r)
-    fill:ClearAllPoints()
-    fill:SetPoint(corner, shape, corner, Q.dx[i], Q.dy[i])
-    fill:SetSize(q, q)
-  end
-  for i = 1, 2 do
-    local top, bottom = Q[i * 2 - 1], Q[i * 2]
-    local sq, sqT, sqB = P.sq[i], P.sqT[i], P.sqB[i]
-    sq:ClearAllPoints()
-    sq:SetPoint(top, shape, top, 0, 0)
-    sq:SetPoint(bottom, shape, bottom, 0, 0)
-    sq:SetWidth(r)
-    sqT:ClearAllPoints()
-    sqT:SetPoint(top, shape, top, 0, 0)
-    sqT:SetSize(r, 1)
-    sqB:ClearAllPoints()
-    sqB:SetPoint(bottom, shape, bottom, 0, 0)
-    sqB:SetSize(r, 1)
-  end
-  f.__kc = nil
+  f.__R = nil
 end
--- The four quarters' corners, in DN.Skin's order (the left end's top and
--- bottom, the right end's), and where each one's fill stands in from it.
-DN.QUARTER = { "TOPLEFT", "BOTTOMLEFT", "TOPRIGHT", "BOTTOMRIGHT", dx = { 1, 1, -1, -1 }, dy = { -1, 1, -1, 1 } }
 
--- The inks of the island and of the bar, from the bar's fill (r, g, b):
--- the chrome ink mixed in at DN.INK's shares, its strength as the palette
--- gives it, kept in the copy's list at DN.INKS (1 the island's fill, 4
--- pointed at; 7 its ring, 10 pointed at; 13 the bar's fill pointed at --
--- its own is the fill itself; 16 the bar's hairlines). Only when the fill
--- or the palette moves; then the pieces are coloured again, and the room.
-DN.INKS = { 1, 4, 7, 10, 13, 16 }
+-- The pieces laid out for a radius of `R` units (whole, from the capsule's
+-- half height to none): the fill's middle from the radius in (a unit at
+-- least, inside the ring's sides), the hairlines between the corners, the
+-- straight sides and the fill beside the corners where the corners leave
+-- room for them, the corners a radius wide. No piece overlaps another but
+-- a corner's fill on its ring.
+local function Round(f, R)
+  local P, shape = f.Isle, f.Shape
+  local h = f.__isleBand or 22
+  local a = (R >= 1) and R or 1
+  local mid = P.mid
+  mid:SetPoint("TOPLEFT", shape, "TOPLEFT", a, -1)
+  mid:SetPoint("BOTTOMRIGHT", shape, "BOTTOMRIGHT", -a, 1)
+  local top, bot = P.top, P.bot
+  top:SetPoint("TOPLEFT", shape, "TOPLEFT", R, 0)
+  top:SetPoint("TOPRIGHT", shape, "TOPRIGHT", -R, 0)
+  bot:SetPoint("BOTTOMLEFT", shape, "BOTTOMLEFT", R, 0)
+  bot:SetPoint("BOTTOMRIGHT", shape, "BOTTOMRIGHT", -R, 0)
+  local sides = h - 2 * a > 0
+  local l, r = P.edgeL, P.edgeR
+  On(l, sides)
+  On(r, sides)
+  if sides then
+    l:SetPoint("TOPLEFT", shape, "TOPLEFT", 0, -a)
+    l:SetPoint("BOTTOMLEFT", shape, "BOTTOMLEFT", 0, a)
+    r:SetPoint("TOPRIGHT", shape, "TOPRIGHT", 0, -a)
+    r:SetPoint("BOTTOMRIGHT", shape, "BOTTOMRIGHT", 0, a)
+  end
+  local strips = R > 1 and h - 2 * R > 0
+  local sl, sr = P.side[1], P.side[2]
+  On(sl, strips)
+  On(sr, strips)
+  if strips then
+    sl:SetPoint("TOPLEFT", shape, "TOPLEFT", 1, -R)
+    sl:SetPoint("BOTTOMRIGHT", shape, "BOTTOMLEFT", R, R)
+    sr:SetPoint("TOPLEFT", shape, "TOPRIGHT", -R, -R)
+    sr:SetPoint("BOTTOMRIGHT", shape, "BOTTOMRIGHT", -1, R)
+  end
+  local ring, fill = R > 0, R > 1
+  for i = 1, 4 do
+    local ri, fi = P.ring[i], P.fill[i]
+    On(ri, ring)
+    On(fi, fill)
+    if ring then ri:SetSize(R, R) end
+    if fill then fi:SetSize(R - 1, R - 1) end
+  end
+end
+
+-- The inks of the island and of the bar, from the bar's fill (r, g, b): the
+-- chrome ink and its strength as the palette gives it; then the pieces are
+-- coloured again on the next frame, and the room and its fade now. Only
+-- when the fill or the palette moves.
 function DN.Ink(f, r, g, b)
   local c = Th().Colors.chromeInk
-  local ir, ig, ib, k = c[1], c[2], c[3], c[4] or 1
-  local I, ink, at = DN.INK, f.Isle.ink, DN.INKS
-  local B = ns.CollectTab and ns.CollectTab.BarParts
-  for n = 1, 6 do
-    local s
-    if n == 1 then s = I.fill elseif n == 2 then s = I.fillHot elseif n == 3 then s = I.ring
-    elseif n == 4 then s = I.ringHot elseif n == 5 then s = I.wash else s = B and B.edgeA or 0.14 end
-    s = min(1, s * k)
-    local i = at[n]
-    ink[i], ink[i + 1], ink[i + 2] = r + (ir - r) * s, g + (ig - g) * s, b + (ib - b) * s
-  end
-  f.__isleR, f.__isleG, f.__isleB = r, g, b
+  local P = f.Isle
+  local B = Parts()
+  P.br, P.bg, P.bb = r, g, b
+  P.ir, P.ig, P.ib, P.ik = c[1], c[2], c[3], c[4] or 1
+  P.a = B and B.groundA or 0.95
+  P.edge = B and B.edgeA or 0.14
   f.__kf = nil
   -- The room is solid: the rows passing under it never show through.
   f.Fill:SetColorTexture(r, g, b, 1)
+  local fade = f.Fade
+  if fade then
+    if fade.grad then
+      fade.lo:SetRGBA(r, g, b, 1)
+      fade.hi:SetRGBA(r, g, b, 0)
+      fade.grad:SetVertexColor(1, 1, 1, 1)
+      fade.grad:SetGradient("VERTICAL", fade.lo, fade.hi)
+    else
+      local s = B and B.fade or { 0.6, 0.3 }
+      for i = 1, #s do fade[i]:SetColorTexture(r, g, b, P.a * s[i]) end
+    end
+  end
 end
 
--- The pieces coloured for `kf` (0 the island, 1 the bar) and the pointer.
-local function Colour(f, kf, hot)
+-- The pieces coloured for `kf` (0 the island, 1 the bar), the pointer's
+-- ease `hv` and the press's `pv`, and `ks` of the way the straight sides
+-- have gone into the fill. Each ink is the share of the chrome ink the
+-- fill would show at its strength over the room, drawn solid.
+local function Colour(f, kf, hv, pv, ks)
   local P = f.Isle
-  local ink = P.ink
-  local B = ns.CollectTab and ns.CollectTab.BarParts
-  local a = B and B.groundA or 0.95
-  local fi = hot and 4 or 1
-  local ri = hot and 10 or 7
-  local br, bg, bb = f.__isleR or 0, f.__isleG or 0, f.__isleB or 0
-  if hot then br, bg, bb = ink[13], ink[14], ink[15] end
+  local I = DN.INK
+  local k, A = P.ik, P.a
   local u = 1 - kf
-  local fr, fg, fb = ink[fi] * u + br * kf, ink[fi + 1] * u + bg * kf, ink[fi + 2] * u + bb * kf
-  local rr, rg, rb = ink[ri] * u + ink[16] * kf, ink[ri + 1] * u + ink[17] * kf, ink[ri + 2] * u + ink[18] * kf
-  P.mid:SetVertexColor(fr, fg, fb, a)
-  P.midT:SetVertexColor(rr, rg, rb, a)
-  P.midB:SetVertexColor(rr, rg, rb, a)
+  local sf = I.fill + (I.fillHot - I.fill) * hv
+  sf = sf + (I.fillDown - sf) * pv
+  local sb = I.wash * hv
+  sb = sb + (I.washDown - sb) * pv
+  local sr = I.ring + (I.ringHot - I.ring) * hv
+  sr = sr + (I.ringDown - sr) * pv
+  local fs = (min(1, sf * k) * u + min(1, sb * k) * kf) * A
+  local rs = (min(1, sr * k) * u + min(1, P.edge * k) * kf) * A
+  local es = rs + (fs - rs) * ks
+  local br, bg, bb = P.br, P.bg, P.bb
+  local dr, dg, db = P.ir - br, P.ig - bg, P.ib - bb
+  local fr, fg, fb = Clamp(br + dr * fs), Clamp(bg + dg * fs), Clamp(bb + db * fs)
+  local rr, rg, rb = Clamp(br + dr * rs), Clamp(bg + dg * rs), Clamp(bb + db * rs)
+  P.mid:SetVertexColor(fr, fg, fb, 1)
+  P.side[1]:SetVertexColor(fr, fg, fb, 1)
+  P.side[2]:SetVertexColor(fr, fg, fb, 1)
   for i = 1, 4 do
-    P.fill[i]:SetVertexColor(fr, fg, fb, a)
-    P.ring[i]:SetVertexColor(rr, rg, rb, a)
+    P.fill[i]:SetVertexColor(fr, fg, fb, 1)
+    P.ring[i]:SetVertexColor(rr, rg, rb, 1)
   end
-  for i = 1, 2 do
-    P.sq[i]:SetVertexColor(fr, fg, fb, a)
-    P.sqT[i]:SetVertexColor(rr, rg, rb, a)
-    P.sqB[i]:SetVertexColor(rr, rg, rb, a)
-  end
+  P.top:SetVertexColor(rr, rg, rb, 1)
+  P.bot:SetVertexColor(rr, rg, rb, 1)
+  local er, eg, eb = Clamp(br + dr * es), Clamp(bg + dg * es), Clamp(bb + db * es)
+  P.edgeL:SetVertexColor(er, eg, eb, 1)
+  P.edgeR:SetVertexColor(er, eg, eb, 1)
 end
 
 -- The words, icon and number in their ink: brighter under the pointer.
@@ -285,13 +399,43 @@ local function WordsInk(f, hot)
   T.SetColor(f.Mark, tone)
 end
 
+-- The words' and Delete all's tones as the pointer's eases stand: at either
+-- end the palette's own (Theme.SetColor, as at rest), between them the two
+-- mixed (DN.Type's tones). Only where an ease moved.
+function DN.Tones(f)
+  local hv, dv = f.__hv or 0, f.__dv or 0
+  local t = f.Isle.tone
+  if f.__thv ~= hv then
+    f.__thv = hv
+    if hv <= 0 or hv >= 1 then
+      WordsInk(f, hv >= 1)
+    else
+      local u = 1 - hv
+      f.Label:SetTextColor(t[1] * u + t[5] * hv, t[2] * u + t[6] * hv, t[3] * u + t[7] * hv, t[4] * u + t[8] * hv)
+      f.Mark:SetVertexColor(t[9] * u + t[13] * hv, t[10] * u + t[14] * hv, t[11] * u + t[15] * hv, t[12] * u + t[16] * hv)
+    end
+  end
+  if f.__tdv ~= dv then
+    f.__tdv = dv
+    local text = f.Delete.Text
+    if dv <= 0 or dv >= 1 then
+      Th().SetColor(text, (dv >= 1) and "negative" or (f.__deleteInk or "textSecondary"))
+    else
+      local u = 1 - dv
+      text:SetTextColor(t[17] * u + t[21] * dv, t[18] * u + t[22] * dv, t[19] * u + t[23] * dv, t[20] * u + t[24] * dv)
+    end
+  end
+end
+
 -------------------------------------------------------------
 -- The words (RV.PaintBar calls these for the island's copy)
 -------------------------------------------------------------
 
 -- The island's own type, after RV.BarType: Delete all in the words' size
 -- and ink, on their middle, its click its words and the house's padding,
--- its words' right end at the row's inset like Hairline's.
+-- its words' right end at the row's inset like Hairline's; and the tones
+-- the pointer's eases mix (the words and their icon at rest and pointed
+-- at, Delete all at rest and red).
 function DN.Type(f)
   local T = Th()
   local M = T.Metrics
@@ -301,8 +445,17 @@ function DN.Type(f)
   delete.Text:ClearAllPoints()
   delete.Text:SetPoint("CENTER", delete, "CENTER", 0, 0)
   f.__deleteInk = "textSecondary"
-  T.SetColor(delete.Text, delete.__hot and "negative" or "textSecondary")
-  WordsInk(f, f.__hot)
+  local t = f.Isle.tone
+  t[1], t[2], t[3], t[4] = T.Ink("textSecondary")
+  t[5], t[6], t[7], t[8] = T.Ink("textPrimary")
+  local C = T.Colors
+  local c0, c1 = C.textSecondary or t, C.textPrimary or t
+  t[9], t[10], t[11], t[12] = c0[1], c0[2], c0[3], c0[4] or 1
+  t[13], t[14], t[15], t[16] = c1[1], c1[2], c1[3], c1[4] or 1
+  t[17], t[18], t[19], t[20] = T.Ink(f.__deleteInk)
+  t[21], t[22], t[23], t[24] = T.Ink("negative")
+  f.__thv, f.__tdv = nil, nil
+  DN.Tones(f)
   f.__fitW = nil
 end
 
@@ -312,8 +465,11 @@ end
 -- the wider of its two ends (the fold sign, Delete all) and the padding,
 -- each side, centred. Then the island's side inset at rest (`__s0`, whole
 -- units, so its width has the list's parity and both its edges stand on
--- whole units), Delete all's click, and the words placed. Numbers only;
--- run when the words, the list's width or the fold sign's place move.
+-- whole units), Delete all's click, the words placed, and how far in from
+-- the list's edges the shape's edges must be for the fold sign (at its
+-- widest, turned) and Delete all's words both to stand whole inside it
+-- (`__reveal`). Numbers only; run when the words, the list's width or the
+-- fold sign's place move.
 function DN.Fit(f, W)
   local B = Parts()
   local pad, gap, checkGap = B.pad, B.gap, B.checkGap
@@ -340,6 +496,11 @@ function DN.Fit(f, W)
   f.__s0 = max(0, floor((W - chip) / 2))
   f.__W2 = W
   f.__s = nil
+  -- The fold sign's art is 24 of its canvas's 32 at its longest; Delete
+  -- all's words end the row's inset from the right.
+  local signL = floor((f.__signX or 0) - (f.__canvas or 12) * 12 / 32)
+  f.__reveal = max(0, min(signL, M.inset))
+  f.__late = nil
   DN.Place(f, f.__wide or false, true)
 end
 
@@ -380,14 +541,85 @@ function DN.Place(f, wide, again)
 end
 
 -------------------------------------------------------------
+-- The fold sign (RV.PaintBar, on the island's copy)
+-------------------------------------------------------------
+
+-- Whether the copy turns its fold sign, eases its pointer or glides: the
+-- panel's own copy, shown, on a client that turns textures.
+local function Lively(f)
+  local panel = f.__panel
+  return panel ~= nil and panel.Notch == f and f.__on == true and panel.GetObjectType ~= nil
+end
+
+-- The fold sign drawn as its turn stands: pointing right (folded) and down
+-- (open) by its art's coordinates, at its art's size, exactly as it has
+-- always stood; between them the right-pointing art turned clockwise about
+-- its middle. Only where it moved.
+function DN.SignDraw(f)
+  local a = f.__sgA or 0
+  local k = (f.__canvas or 12) / 32
+  local mode = (a <= 0) and 0 or ((a >= 1) and 1 or 2)
+  local sign = f.Sign
+  if f.__sgMode ~= mode or f.__sgK ~= k then
+    local B = Parts()
+    local c = (mode == 1) and B.signOpen or B.signShut
+    sign:SetTexCoord(c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8])
+    if mode == 1 then sign:SetSize(24 * k, 14 * k) else sign:SetSize(14 * k, 24 * k) end
+    if mode ~= 2 and f.__sgR and f.__sgR ~= 0 then
+      sign:SetRotation(0)
+      f.__sgR = 0
+    end
+    f.__sgMode, f.__sgK = mode, k
+  end
+  if mode == 2 then
+    local r = -a * 1.5707963267949
+    if f.__sgR ~= r then
+      sign:SetRotation(r)
+      f.__sgR = r
+    end
+  end
+end
+
+-- The fold sign told the fold (`open`, the read mail shown): it turns a
+-- quarter on its spring where it is seen and the client turns textures;
+-- else it stands at once. Called again after a retype, which may have
+-- moved its size.
+function DN.Sign(f, open)
+  local to = open and 1 or 0
+  f.__sgTo = to
+  f.__sgMode = nil
+  local turn = f.__sgA ~= nil and f.__sgA ~= to and (f.__late or 0) > 0 and f.Sign.SetRotation ~= nil and Lively(f)
+  if turn then
+    DN.Start(f.__panel)
+  else
+    f.__sgA, f.__sgV = to, 0
+  end
+  DN.SignDraw(f)
+end
+
+-------------------------------------------------------------
 -- Drawing: the shape at `e`, the room at `k`
 -------------------------------------------------------------
 
+-- The fold sign's and Delete all's alpha with the shape's edges `s` in:
+-- none until both stand whole inside it, then up over the rest of the
+-- opening, whole as it lands; closing, gone the frame the edge leaves them.
+local function Reveal(f, s, e)
+  local d = f.__reveal or 0
+  if s > d then return 0 end
+  if e >= 1 then return 1 end
+  local s0 = f.__s0 or 0
+  local from = (s0 > d) and (1 - (d + 0.5) / s0) or 0
+  local t = (e - from) / (1 - from)
+  if t <= 0 then return 0 elseif t >= 1 then return 1 end
+  return t * t * (3 - 2 * t)
+end
+
 -- The shape `e` open (0 the island, 1 the bar), `yo` whole units off its
--- place in a flight: both edges `s` in from the list's, s whole; the colours,
--- the ends, the fold sign's and Delete all's alpha and Delete all's pointer,
--- each set only where it moved. Every frame of a move comes here, and
--- makes nothing.
+-- place in a flight: both edges `s` in from the list's, s whole; the
+-- corners' radius, whole; the colours as the pointer's eases stand; the
+-- fold sign's and Delete all's alpha and Delete all's pointer, each set
+-- only where it moved. Every frame of a move comes here, and makes nothing.
 function DN.Shape(f, e, yo)
   if e < 0 then e = 0 elseif e > 1 then e = 1 end
   yo = yo or 0
@@ -403,28 +635,22 @@ function DN.Shape(f, e, yo)
     end
     f.__s, f.__yo = s, yo
   end
-  local hot = f.__hot and true or false
-  local kf = Smooth(DN.MIX, e)
-  if f.__kf ~= kf or f.__kh ~= hot then
-    f.__kf, f.__kh = kf, hot
-    Colour(f, kf, hot)
-  end
   local kc = Smooth(DN.ENDS, e)
-  if f.__kc ~= kc then
-    f.__kc = kc
-    local P = f.Isle
-    local round = 1 - kc
-    for i = 1, 4 do
-      P.ring[i]:SetAlpha(round)
-      P.fill[i]:SetAlpha(round)
-    end
-    for i = 1, 2 do
-      P.sq[i]:SetAlpha(kc)
-      P.sqT[i]:SetAlpha(kc)
-      P.sqB[i]:SetAlpha(kc)
-    end
+  local r0 = (f.__isleBand or 22) / 2
+  local R
+  if kc <= 0 then R = r0 elseif kc >= 1 then R = 0 else R = floor(r0 * (1 - kc) + 0.5) end
+  if f.__R ~= R then
+    f.__R = R
+    Round(f, R)
   end
-  local ka = Smooth(DN.UP, e)
+  local kf = Smooth(DN.MIX, e)
+  local ks = Smooth(DN.SIDES, e)
+  local hv, pv = f.__hv or 0, f.__pv or 0
+  if f.__kf ~= kf or f.__khv ~= hv or f.__kpv ~= pv or f.__ks ~= ks then
+    f.__kf, f.__khv, f.__kpv, f.__ks = kf, hv, pv, ks
+    Colour(f, kf, hv, pv, ks)
+  end
+  local ka = Reveal(f, s, e)
   if f.__late ~= ka then
     f.__late = ka
     f.Sign:SetAlpha(ka)
@@ -466,6 +692,18 @@ function DN.Room(f, k, m)
   end
 end
 
+-- The fade's height as the panel's ease has it, on whole units.
+local function FadeDraw(f, panel)
+  local fade = f.Fade
+  local h = panel._fadeH
+  if not (fade and h) then return end
+  h = floor(h + 0.5)
+  if f.__fadeHd ~= h then
+    f.__fadeHd = h
+    fade.holder:SetHeight(h)
+  end
+end
+
 -- The copy at `level`, and what it holds over it in order: the fade and
 -- the shape, the words in the shape, Delete all over the words.
 function DN.Levels(f, level)
@@ -476,11 +714,21 @@ function DN.Levels(f, level)
   f.Delete:SetFrameLevel(level + 3)
 end
 
+-- The copy's eases landed where they are going (hidden, or no driver).
+function DN.Land(f)
+  f.__hv = f.__hot and 1 or 0
+  f.__pv = f.__down and 1 or 0
+  f.__dv = f.Delete.__hot and 1 or 0
+  if f.__sgTo then f.__sgA, f.__sgV = f.__sgTo, 0 end
+end
+
 -- Everything the drawing remembers forgotten, so the next pass sets each
 -- part again (RV.NotchParts, a copy put back into the Notch look).
 function DN.Reset(f)
-  f.__s, f.__yo, f.__kf, f.__kh, f.__kc, f.__late, f.__live, f.__e = nil, nil, nil, nil, nil, nil, nil, nil
-  f.__roomOn, f.__roomPad, f.__fadeE, f.__pw, f.__isleR = nil, nil, nil, nil, nil
+  f.__s, f.__yo, f.__kf, f.__khv, f.__kpv, f.__ks, f.__R, f.__late, f.__live, f.__e = nil, nil, nil, nil, nil, nil, nil, nil,
+    nil, nil
+  f.__roomOn, f.__roomPad, f.__fadeE, f.__fadeHd, f.__pw = nil, nil, nil, nil, nil
+  f.__thv, f.__tdv, f.__sgMode, f.__sgK = nil, nil, nil, nil
   local edges = f.Edges
   for i = 1, #edges do edges[i]:Hide() end
 end
@@ -493,25 +741,69 @@ function DN.Apply(f, e, k)
   DN.Place(f, e >= 0.5)
   DN.Shape(f, e, 0)
   DN.Room(f, k or 0, 1)
+  DN.Tones(f)
+end
+
+-------------------------------------------------------------
+-- The pointer
+-------------------------------------------------------------
+
+-- The pointer's eases set going toward where the pointer now has them, on
+-- the panel's driver where the copy is its own and shown; else there at
+-- once.
+local function Pointer(f)
+  if Lively(f) then
+    DN.Start(f.__panel)
+  else
+    DN.Land(f)
+    if f.__e then
+      DN.Shape(f, f.__e, f.__yo)
+      DN.Tones(f)
+    end
+  end
 end
 
 -- The pointer over the island, its room or the bar: the island's fill and
 -- ring a step lighter (the bar's fill washed a little), the words bright;
--- and the bar's tooltip (RV.WordsTip).
+-- and the bar's tooltip (RV.WordsTip). A press takes the fill a step back
+-- from that (darker on a dark palette, lighter on a light one), until the
+-- button comes up or the pointer leaves.
 function DN.Enter(self)
   self.__hot = true
-  WordsInk(self, true)
-  if self.__e then DN.Shape(self, self.__e, self.__yo) end
+  Pointer(self)
   local B = Parts()
   if B and B.Tip then B.Tip(self) end
 end
 
 function DN.Leave(self)
   self.__hot = nil
-  WordsInk(self, false)
-  if self.__e then DN.Shape(self, self.__e, self.__yo) end
+  self.__down = nil
+  Pointer(self)
   local B = Parts()
   if B and B.TipOff then B.TipOff(self) end
+end
+
+function DN.Down(self, button)
+  if button ~= "LeftButton" then return end
+  self.__down = true
+  Pointer(self)
+end
+
+function DN.Up(self)
+  if not self.__down then return end
+  self.__down = nil
+  Pointer(self)
+end
+
+-- Delete all pointed at or left (after its own handler set its red or its
+-- ink outright): its words back at their ease's tone, and the ease set
+-- going.
+function DN.DeleteHot(self)
+  local f = self.__copy
+  if not f then return end
+  f.__tdv = nil
+  Pointer(f)
+  DN.Tones(f)
 end
 
 -------------------------------------------------------------
@@ -524,49 +816,128 @@ function DN.Draw(panel)
   if not (f and f.__on) then return end
   local yo = panel._barYO or 0
   DN.Shape(f, panel._barE or 0, floor(yo + 0.5))
+  FadeDraw(f, panel)
+  DN.Tones(f)
+  DN.SignDraw(f)
 end
 
--- One frame of a move: each spring a step nearer, drawn; off once both
--- have landed.
+-- Whether anything is still to move: a glide, the bar's springs, the
+-- fade's height, the copy's eases or its fold sign.
+function DN.Busy(panel)
+  if panel._glideTo then return true end
+  local to = panel._barTo
+  if to ~= nil and (panel._barE ~= to or (panel._barEV or 0) ~= 0 or (panel._barYO or 0) ~= 0) then return true end
+  local f = panel.Notch
+  if not (f and f.__on) then return false end
+  if panel._fadeTo and panel._fadeH ~= panel._fadeTo then return true end
+  if f.__hv ~= (f.__hot and 1 or 0) or f.__pv ~= (f.__down and 1 or 0) or f.__dv ~= (f.Delete.__hot and 1 or 0) then
+    return true
+  end
+  return f.__sgA ~= f.__sgTo
+end
+
+-- One frame of the glide: the list a spring's step nearer the bar's place,
+-- on whole units toward it, never past it and never back, and one pass of
+-- the list where that moved it. Answers whether it still moves.
+local function GlideStep(panel, dt)
+  local to = panel._glideTo
+  local y, v = Spring(panel._glideY, panel._glideV, to, DN.GLIDE, dt)
+  local landed = abs(to - y) < 0.5 and abs(v) < DN.LAND_G
+  if landed then y, v = to, 0 end
+  panel._glideY, panel._glideV = y, v
+  local was = panel._glideSet
+  local set
+  if landed then
+    set = to
+    panel._glideTo = nil
+  elseif to > was then
+    set = min(to, max(was, floor(y)))
+  else
+    set = max(to, min(was, ceil(y)))
+  end
+  if set ~= was then
+    panel._glideSet = set
+    panel.MailListScroll:SetVerticalScroll(set)
+  end
+  return not landed
+end
+
+-- One frame of a move: each spring and ease a step nearer, drawn; off once
+-- all have landed.
 function DN.Tick(driver, elapsed)
   local panel = driver.panel
-  local to = panel._barTo
-  if to == nil then
-    DN.Stop(panel)
-    return
-  end
   local dt = min(elapsed or 0, DN.STEP)
   local moving = false
-  local e, v = panel._barE or to, panel._barEV or 0
-  if e ~= to or v ~= 0 then
-    e, v = Spring(e, v, to, (to == 1) and DN.OPEN or DN.CLOSE, dt)
-    if abs(e - to) < DN.LAND and abs(v) < DN.LAND_V then
-      e, v = to, 0
-    else
-      moving = true
+  panel._ticking = true
+  if panel._glideTo and GlideStep(panel, dt) then moving = true end
+  local to = panel._barTo
+  if to ~= nil then
+    local e, v = panel._barE or to, panel._barEV or 0
+    if e ~= to or v ~= 0 then
+      e, v = Spring(e, v, to, (to == 1) and DN.OPEN or DN.CLOSE, dt)
+      if abs(e - to) < DN.LAND and abs(v) < DN.LAND_V then
+        e, v = to, 0
+      else
+        moving = true
+      end
+      panel._barE, panel._barEV = e, v
     end
-    panel._barE, panel._barEV = e, v
-  end
-  local yo, yv = panel._barYO or 0, panel._barYV or 0
-  if yo ~= 0 or yv ~= 0 then
-    yo, yv = Spring(yo, yv, 0, DN.FLY, dt)
-    if abs(yo) < DN.LAND_Y and abs(yv) < DN.LAND_YV then
-      yo, yv = 0, 0
-    else
-      moving = true
+    local yo, yv = panel._barYO or 0, panel._barYV or 0
+    if yo ~= 0 or yv ~= 0 then
+      yo, yv = Spring(yo, yv, 0, DN.FLY, dt)
+      if abs(yo) < DN.LAND_Y and abs(yv) < DN.LAND_YV then
+        yo, yv = 0, 0
+      else
+        moving = true
+      end
+      panel._barYO, panel._barYV = yo, yv
     end
-    panel._barYO, panel._barYV = yo, yv
   end
+  local f = panel.Notch
+  if f and f.__on then
+    local k = 1 - exp(-dt / DN.EASE)
+    local m
+    local th, tp, td = f.__hot and 1 or 0, f.__down and 1 or 0, f.Delete.__hot and 1 or 0
+    if f.__hv ~= th then f.__hv, m = Ease(f.__hv, th, k); moving = moving or m end
+    if f.__pv ~= tp then f.__pv, m = Ease(f.__pv, tp, k); moving = moving or m end
+    if f.__dv ~= td then f.__dv, m = Ease(f.__dv, td, k); moving = moving or m end
+    local sa, st = f.__sgA, f.__sgTo
+    if sa ~= nil and st ~= nil and (sa ~= st or (f.__sgV or 0) ~= 0) then
+      local a, v = Spring(sa, f.__sgV or 0, st, DN.TURN, dt)
+      if abs(a - st) < DN.LAND and abs(v) < DN.LAND_V then a, v = st, 0 else moving = true end
+      if a < 0 then a = 0 elseif a > 1 then a = 1 end
+      f.__sgA, f.__sgV = a, v
+    end
+    local fh, ft = panel._fadeH, panel._fadeTo
+    if fh and ft and fh ~= ft then
+      fh = fh + (ft - fh) * k
+      if abs(ft - fh) < 0.5 then fh = ft else moving = true end
+      panel._fadeH = fh
+    end
+  elseif f then
+    DN.Land(f)
+    if panel._fadeTo then panel._fadeH = panel._fadeTo end
+  end
+  panel._ticking = nil
   DN.Draw(panel)
   if not moving then DN.Stop(panel) end
 end
 
 -- Hidden with the panel (another tab, the window closing) while a move
--- runs: landed where it was going, nothing left running.
+-- runs: everything landed where it was going -- the glide's list at the
+-- bar's place -- nothing left running.
 function DN.Hidden(driver)
   local panel = driver.panel
+  local glide = panel._glideTo
+  if glide then
+    panel._glideTo, panel._glideV, panel._glideSet = nil, 0, glide
+    panel.MailListScroll:SetVerticalScroll(glide)
+  end
   if panel._barTo ~= nil then panel._barE, panel._barEV = panel._barTo, 0 end
   panel._barYO, panel._barYV = 0, 0
+  if panel._fadeTo then panel._fadeH = panel._fadeTo end
+  local f = panel.Notch
+  if f then DN.Land(f) end
   DN.Stop(panel)
   DN.Draw(panel)
 end
@@ -599,6 +970,38 @@ function DN.Stop(panel)
 end
 
 -------------------------------------------------------------
+-- The glide (RV.GoToBar: a click on the island, or on Hairline's and Full
+-- row's copy at the foot)
+-------------------------------------------------------------
+
+-- The list glides to offset `to` from where it stands, a glide already
+-- under way keeping its pace.
+function DN.Glide(panel, to)
+  local scroll = panel.MailListScroll
+  local y = scroll:GetVerticalScroll() or 0
+  if not panel._glideTo then
+    if abs(to - y) < 0.5 then
+      scroll:SetVerticalScroll(to)
+      return
+    end
+    panel._glideY, panel._glideV = y, 0
+    panel._glideSet = y
+  end
+  panel._glideTo = to
+  DN.Start(panel)
+end
+
+-- Every pass of the list (CollectTab, the virtualiser), at `offset`: a
+-- glide stops where the list stands the moment anything but the glide has
+-- moved it -- the wheel, the scroll bar, a key, a refresh that shortened
+-- the list.
+function DN.Watch(panel, offset)
+  if panel._glideTo and abs(offset - (panel._glideSet or offset)) > 0.01 then
+    panel._glideTo, panel._glideV = nil, 0
+  end
+end
+
+-------------------------------------------------------------
 -- The pass (CollectTab, the virtualiser)
 -------------------------------------------------------------
 
@@ -612,22 +1015,31 @@ end
 
 -- No bar in the list (no read mail, read mail in the Done tab or deleted,
 -- History, another character's box, another look): the copy put away and
--- the state forgotten, so the bar's next coming is drawn as it then stands.
+-- the bar's state forgotten, so the bar's next coming is drawn as it then
+-- stands. A glide keeps going (Hairline's and Full row's copy glides too).
 function DN.Off(panel)
   local N = panel.Notch
-  if N then Shown(N, false) end
+  if N then
+    Shown(N, false)
+    DN.Land(N)
+  end
   if panel._barE ~= nil or panel._barTo ~= nil then
-    DN.Stop(panel)
     panel._barE, panel._barEV, panel._barTo = nil, nil, nil
     panel._barYO, panel._barYV, panel._barYT, panel._barFoot, panel._barK = nil, nil, nil, nil, nil
+    panel._fadeH, panel._fadeTo, panel._fadeOff = nil, nil, nil
   end
+  if not panel._ticking and not panel._glideTo then DN.Stop(panel) end
 end
 
 -- One pass of the list. `at`: the bar's place in the list (nil for none);
 -- `band`: the bar's height. The bar stands at the lower of its place and
 -- its stand, the room's margin over the view's foot; while the place is
 -- below the stand, in the room. It opens while its place's top is in the
--- view, and closes once it is not.
+-- view, and closes once it is not. The fade over the rows above the room
+-- is its own height, or, where the room's top crosses a row's words, as
+-- tall as that row's part above the room, so no words show cut by it; it
+-- eases from one to the other, at once where the list jumped a row or
+-- more in one pass (a wheel step; a glide's passes ease).
 function DN.Update(panel, at, offset, viewport, stride, band, compact)
   local N = panel.Notch
   if not (at and N) or viewport <= 0 then
@@ -647,9 +1059,10 @@ function DN.Update(panel, at, offset, viewport, stride, band, compact)
   if e == nil then
     -- First seen: as it stands, with no move.
     panel._barE, panel._barEV, panel._barYO, panel._barYV = to, 0, 0, 0
-  elseif panel._barYT and foot ~= panel._barFoot and abs(y - panel._barYT) > band and e < 0.5 then
-    -- Carried across the stand in one pass while still mostly island: it
-    -- stays where it was on screen and flies to its new place.
+  elseif panel._barYT and foot ~= panel._barFoot and abs(y - panel._barYT) > band and e < 0.5 and not panel._glideTo then
+    -- Carried across the stand in one pass while still mostly island (a
+    -- wheel step; a glide carries it by the rule): it stays where it was
+    -- on screen and flies to its new place.
     panel._barYO, panel._barYV = (panel._barYO or 0) + (panel._barYT - y), 0
   end
   panel._barYT, panel._barFoot, panel._barK, panel._barTo = y, foot, k, to
@@ -677,8 +1090,25 @@ function DN.Update(panel, at, offset, viewport, stride, band, compact)
   P.Paint(panel, N, compact)
   DN.Place(N, wide)
   DN.Room(N, k, m)
+  local fade = N.Fade
+  if fade and foot then
+    local line = offset + stand - min(m, floor(k))
+    local u = line - floor(line / stride) * stride
+    local w = compact and DN.WORDS[1] or DN.WORDS[2]
+    local want = fade.base
+    if u > w and u < stride - P.rowGap - w then want = max(want, ceil(u)) end
+    panel._fadeTo = want
+    local jump = abs(offset - (panel._fadeOff or offset)) >= stride and not panel._glideTo
+    if panel._fadeH == nil or jump then panel._fadeH = want end
+    panel._fadeOff = offset
+  elseif panel._fadeTo then
+    -- No room, no fade to ease.
+    panel._fadeH = panel._fadeTo
+  end
+  -- Inside a frame of the move (a glide's pass), the move draws.
+  if panel._ticking then return end
   DN.Draw(panel)
-  if panel._barE ~= to or panel._barEV ~= 0 or panel._barYO ~= 0 then DN.Start(panel) else DN.Stop(panel) end
+  if DN.Busy(panel) then DN.Start(panel) else DN.Stop(panel) end
 end
 
 -- For `/postbox debug divider`: how the bar stands.
@@ -690,5 +1120,6 @@ function DN.State(panel)
   local s = shape .. " " .. where
   if e ~= to then s = s .. string.format(" (moving, %d%%)", floor(e * 100 + 0.5)) end
   if (panel._barYO or 0) ~= 0 then s = s .. string.format(", flying %d", floor(panel._barYO + 0.5)) end
+  if panel._glideTo then s = s .. string.format(", gliding to %d", floor(panel._glideTo + 0.5)) end
   return s
 end
