@@ -55,6 +55,7 @@ Core\MailService.lua
 Core\ContactService.lua
 Core\Arrange.lua
 Core\CollectTab.lua
+Core\DividerNotch.lua
 Core\SendTab.lua
 Core\MailboxUI.lua
 Core\MailMemory.lua

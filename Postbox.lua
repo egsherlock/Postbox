@@ -2400,6 +2400,15 @@ SlashCmdList["POSTBOX"] = function(input)
     if collect and type(collect.TuneBadge) == "function" then collect.TuneBadge(badge) end
     return
   end
+  -- "debug divider [look]" and "debug divider words [choice]": the read
+  -- mail's divider in another look or words, to try in game with a macro
+  -- (MailboxUI, UI.TryDivider). This session only; not in the help.
+  local divider = string.match(word, "^debug divider ?(.*)$")
+  if divider then
+    local UI = ns.MailboxUI
+    if UI and type(UI.TryDivider) == "function" then UI.TryDivider(divider) end
+    return
+  end
   local handler = COMMANDS[word]
   if handler then
     handler()
