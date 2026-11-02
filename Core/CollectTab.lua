@@ -5427,6 +5427,10 @@ local function BuildRow(panel)
     -- while the cursor is still on it.
     Th().StyleMailRow(owner, owner._rowIndex, true)
     local index = LiveIndex(owner)
+    -- A sample of Test mail: the same hover from its own items (RV.SampleIcon).
+    if not index and owner.fanSource and owner.fanSource == RV.SampleFan then
+      return RV.SampleIcon(self, owner)
+    end
     if not (index and owner.iconSlot) then return end
     -- A mail with several items lists them all; one item, its own tooltip.
     -- Where the player chose the fan and it may open here, it opens after a
@@ -6025,6 +6029,8 @@ do
   -- The sample source: what BindRow asks, answered from the set.
   local function At(index) return pv.mails and pv.mails[index] end
   RV.SAMPLE = {}
+  -- The sample itself: the icon's hover and the fan read its items (RV.SampleFan).
+  RV.SAMPLE.Mail = At
   function RV.SAMPLE.Header(index)
     local m = At(index)
     if not m then return nil end
@@ -6092,38 +6098,47 @@ do
     local slotsMost, earned, spent = 0, 0, 0
     -- In the sort's order, as the inbox's list would be (RV.ByLeft).
     local left = RV.Sort() == "expiry" and RV.LEFT or nil
+    -- Read mail as the player's Read mail setting leaves it, as at a
+    -- mailbox: under the divider, in the Done tab, or -- Delete when done --
+    -- gone, deleted the moment it was finished with, so the samples' read
+    -- mail is not listed at all and the list has no divider.
+    local deleted = RV.Mode() == "delete"
     for i = 1, #mails do
       local m = mails[i]
       local finished = m.done == true
-      if left then left[i] = m.days end
-      if finished then
-        tail[#tail + 1] = i
-      else
-        filtered[#filtered + 1] = i
-        filteredDone[#filtered] = false
-      end
-      local hasCOD = m.cod > 0
-      if m.kind == "bought" then spent = spent + (m.price or m.money) else earned = earned + m.money end
-      if hasCOD and not finished then panel._codDue = panel._codDue + m.cod end
-      if cols.sender < senderCap then
-        local label = AUCTION_OUTCOME[m.kind] and L()[AUCTION_OUTCOME[m.kind].key] or DisplaySender(m.sender)
-        cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), senderCap)
-      end
-      if compact then
-        local text, kind = MoneyText(hasCOD, m.money, m.cod, m.price, true)
-        local shown = true
-        if kind == "earned" then shown = showEarned elseif kind == "spent" then shown = showSpent end
-        if text and shown then
-          cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, text))
-          if finished then markHas.money = true end
+      -- Delete when done: not listed, so nothing of it is drawn, measured
+      -- or totalled.
+      if not (finished and deleted) then
+        if left then left[i] = m.days end
+        if finished then
+          tail[#tail + 1] = i
+        else
+          filtered[#filtered + 1] = i
+          filteredDone[#filtered] = false
         end
-        if measureSlots then slotsMost = max(slotsMost, #m.items) end
-        if measureExpiry then
-          local expiry = RowExpiryText(m.days, hasCOD, nil, sample.ColTime, RV.SAMPLE, i, m.money > 0 or #m.items > 0)
-          if expiry then
-            cols.time = max(cols.time, MeasureWith(panel, sample.ColTime, expiry))
-            cols.timeMark = max(cols.timeMark, RV.FateMarkW(expiry))
-            if finished then markHas.time = true end
+        local hasCOD = m.cod > 0
+        if m.kind == "bought" then spent = spent + (m.price or m.money) else earned = earned + m.money end
+        if hasCOD and not finished then panel._codDue = panel._codDue + m.cod end
+        if cols.sender < senderCap then
+          local label = AUCTION_OUTCOME[m.kind] and L()[AUCTION_OUTCOME[m.kind].key] or DisplaySender(m.sender)
+          cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), senderCap)
+        end
+        if compact then
+          local text, kind = MoneyText(hasCOD, m.money, m.cod, m.price, true)
+          local shown = true
+          if kind == "earned" then shown = showEarned elseif kind == "spent" then shown = showSpent end
+          if text and shown then
+            cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, text))
+            if finished then markHas.money = true end
+          end
+          if measureSlots then slotsMost = max(slotsMost, #m.items) end
+          if measureExpiry then
+            local expiry = RowExpiryText(m.days, hasCOD, nil, sample.ColTime, RV.SAMPLE, i, m.money > 0 or #m.items > 0)
+            if expiry then
+              cols.time = max(cols.time, MeasureWith(panel, sample.ColTime, expiry))
+              cols.timeMark = max(cols.timeMark, RV.FateMarkW(expiry))
+              if finished then markHas.time = true end
+            end
           end
         end
       end
@@ -6195,6 +6210,10 @@ local function BindRow(panel, row, index, position, compact, done)
 
   -- A sample names no mail: nothing can act on it or ask the inbox about it.
   row.mailIndex = (S == RV.LIVE) and index or nil
+  -- What its icon's hover and its fan show instead: the sample's own items,
+  -- read from the sample (RV.SampleFan), never from the inbox.
+  row.fanSource = (S == RV.SAMPLE) and RV.SampleFan or nil
+  row.mail = (S == RV.SAMPLE) and S.Mail(index) or nil
   row.mailDone = showDelete
   -- The inbox's mark the list this row comes from was built at (RV.Acting).
   row._gen = panel._bindGen
@@ -7550,6 +7569,7 @@ local function UpdateVisibleRows(panel)
     row.mailDone = nil
     row.fingerprint = nil
     row.iconSlot = nil
+    row.fanSource, row.mail = nil, nil
     row.stuckReason = nil
     row.tipMoney = nil
     row.Warning:Hide()
@@ -12360,6 +12380,8 @@ function CT.SetSamples(panel, on, quiet)
   end
   panel._preview = nil
   panel._pvList, panel._pvDone, panel._pvTail = nil, nil, nil
+  -- A fan out over a sample goes with the samples.
+  RV.FanClose(true)
   CT.PreviewRelease()
   if quiet then
     panel._dirty = true
@@ -13469,6 +13491,98 @@ do
     local n, changed = Fan.Fill(index)
     if n == 0 then return Fan.Close() end
     if changed then Fan.Place(row, n, false) end
+  end
+
+  -- Test mail's samples (CT.SetSamples): resting on a sample's item icon
+  -- shows what resting on a mail's shows at a mailbox, under the player's
+  -- Attachments on hover -- the list of its items, or the fan -- from the
+  -- sample's own items, never the inbox's. A sample row carries this as
+  -- its `fanSource` and its sample as `row.mail` (BindRow), as Mail
+  -- Memory's rows carry theirs, so the fan is the same fan, read-only:
+  -- nothing in a sample can be taken, so a plain click on a tile does
+  -- nothing (the status line already says none of it can be collected),
+  -- and Shift- and Ctrl-click link and try on, as on any item.
+  local SampleFan = {}
+  RV.SampleFan = SampleFan
+
+  function SampleFan.Allowed(row)
+    local panel = row.panel
+    if not (panel and panel._preview and row.mail) or Run.active or RV.Arranging(panel) then return false end
+    local detail = panel.Detail
+    return not (detail and detail:IsShown())
+  end
+
+  function SampleFan.Scroll(row) return row.panel.MailListScroll end
+
+  function SampleFan.Totals(row)
+    local m = row.mail
+    return m.money, m.cod, #m.items
+  end
+
+  function SampleFan.Item(row, k)
+    local it = row.mail.items[k]
+    return it.icon, it.count, RV.MarkOf(it.link)
+  end
+
+  function SampleFan.Link(row, k)
+    local it = row.mail.items[k]
+    return it and it.link or nil
+  end
+
+  -- One item's own tooltip, on the tooltip being built: by its link, or
+  -- by its id where it has none.
+  function SampleFan.ItemTip(it)
+    if it.link then
+      GameTooltip:SetHyperlink(it.link)
+    elseif it.id and type(GameTooltip.SetItemByID) == "function" then
+      GameTooltip:SetItemByID(it.id)
+    end
+  end
+
+  -- What a tile says: the item's own tooltip or the gold's sum, that none
+  -- of it can be collected, and the gestures it still has.
+  function SampleFan.TileTip(row, k)
+    local T, L0 = Th(), L()
+    if not k then
+      T.TipTitle(L0["LABEL_GOLD"] .. Helpers().FormatMoney(row.mail.money))
+      T.TipHint(L0["TEST_MAIL_STATUS"])
+      return
+    end
+    local it = row.mail.items[k]
+    if not it then return end
+    SampleFan.ItemTip(it)
+    T.TipHint(L0["TEST_MAIL_STATUS"])
+    T.TipHint(L0[RV.Dressable(it.id) and "TILE_HINT_LINK_DRESS" or "TILE_HINT_LINK"])
+  end
+
+  -- hit, row -> the sample's icon hovered: a sample of several items opens
+  -- the fan where the player chose it (RV.FanHover), else lists them; one
+  -- item shows its own tooltip. Each ends saying none of it can be
+  -- collected, where a mail's says how to take it.
+  function RV.SampleIcon(hit, row)
+    local m = row.mail
+    if not (m and row.iconSlot) then return end
+    local T, L0 = Th(), L()
+    local items = row.iconItems or 0
+    if items > 1 then
+      if RV.FanHover(row) then return end
+      T.TipBegin(hit)
+      T.TipTitle(ns.Plural("COUNT_ITEMS", items))
+      local quality = C_Item and C_Item.GetItemQualityByID
+      for k = 1, #m.items do
+        local it = m.items[k]
+        local q = (it.id and type(quality) == "function") and quality(it.id) or nil
+        RV.ItemLine(it.icon, it.name, q, RV.MarkOf(it.link), it.count)
+      end
+      RV.MoneyFacts(m.money, m.cod)
+    else
+      local it = m.items[row.iconSlot]
+      if not it then return end
+      T.TipBegin(hit)
+      SampleFan.ItemTip(it)
+    end
+    T.TipHint(L0["TEST_MAIL_STATUS"])
+    GameTooltip:Show()
   end
 
   -- Mail Memory's rows open the fan over remembered mail too, read-only

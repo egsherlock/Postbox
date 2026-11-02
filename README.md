@@ -117,7 +117,10 @@ too):
 One-line rows (shared with Mail Memory), Larger mail rows and History each
 keep their own arrangement. **Test mail** fills the list with sample mail
 while you arrange, or on its own from **Test**, beside **Arrange** in
-Options, Mail, which is lit while it is on; **Arrange**
+Options, Mail, which is lit while it is on. The samples show what your
+settings do: under **Delete when done** there is no read mail and no
+divider, and resting on an item icon lists its items or fans them out, as
+**Attachments on hover** is set, though nothing can be taken. **Arrange**
 works away from a mailbox too, opening the window beside the options.
 
 ## Mail Memory
