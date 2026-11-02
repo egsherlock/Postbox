@@ -186,6 +186,9 @@ end
 -- opts.captions: every text the toggle can show, where the owner puts its
 -- own there rather than an item's name (the recipient manager's "Sort:
 -- Name"); measured in the names' place (container:FitWidth).
+-- An item { heading = true, name = } is no choice: it names the group of
+-- items under it in the list (Sound on new mail's Postbox, Game, Other
+-- addons).
 function Dropdown.Create(parent, opts)
   opts = type(opts) == "table" and opts or {}
   local swatchFor = type(opts.swatchFor) == "function" and opts.swatchFor or nil
@@ -412,10 +415,13 @@ function Dropdown.Create(parent, opts)
     local widest = 0
     for i = 1, #values do
       local value = values[i]
-      if type(value) == "table" then value = value.name end
-      label:SetText(value or "")
-      local w = TextWidth(label)
-      if w > widest then widest = w end
+      -- A heading is never the value: the list shows it, the toggle never.
+      if type(value) == "table" then value = (not value.heading) and value.name or nil end
+      if value then
+        label:SetText(value)
+        local w = TextWidth(label)
+        if w > widest then widest = w end
+      end
     end
     label:SetText(shown)
     -- The art beside the value as this face draws it.
@@ -605,80 +611,110 @@ function Dropdown.Create(parent, opts)
     for i = 1, #items do
       local item = items[i]
 
-      local row = CreateFrame("Button", nil, rowParent)
-      row:SetHeight(rowHeight)
-      row._itemId = item.id
-      list._rows[#list._rows + 1] = row
-      if scrolling then
-        row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", 0, -((i - 1) * rowHeight))
-        row:SetPoint("RIGHT", rowParent, "RIGHT", 0, 0)
-      else
-        row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", LIST_PADDING, -LIST_PADDING - ((i - 1) * rowHeight))
-        row:SetPoint("RIGHT", rowParent, "RIGHT", -LIST_PADDING, 0)
-      end
-
-      local bg = row:CreateTexture(nil, "BACKGROUND")
-      bg:SetAllPoints()
-      bg:SetColorTexture(0, 0, 0, 0)
-
-      -- An item may carry its own art: { texture= or atlas=, aspect= }.
-      -- Drawn at row height beside the caption, so a list of visual choices
-      -- shows the choices. Everything sits one gutter in, because the
-      -- selection dot lives in that gutter -- on EVERY row, so the captions
-      -- of chosen and unchosen items line up.
-      local textOffset = LIST_PADDING + MARK_GUTTER
-      if type(item.icon) == "table" then
-        local art = row:CreateTexture(nil, "ARTWORK")
-        local size = rowHeight - 4
-        art:SetSize(size, size * (item.icon.aspect or 1))
-        art:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
-        if item.icon.atlas then
-          art:SetAtlas(item.icon.atlas)
+      -- A heading ({ heading = true, name = }): the name of the group of
+      -- items under it, quiet and at the list's own edge, where the
+      -- choices stand a gutter in. Not a choice: no wash, no click, no dot.
+      if item.heading then
+        local head = CreateFrame("Frame", nil, rowParent)
+        head:SetHeight(rowHeight)
+        if scrolling then
+          head:SetPoint("TOPLEFT", rowParent, "TOPLEFT", 0, -((i - 1) * rowHeight))
+          head:SetPoint("RIGHT", rowParent, "RIGHT", 0, 0)
         else
-          art:SetTexture(item.icon.texture)
+          head:SetPoint("TOPLEFT", rowParent, "TOPLEFT", LIST_PADDING, -LIST_PADDING - ((i - 1) * rowHeight))
+          head:SetPoint("RIGHT", rowParent, "RIGHT", -LIST_PADDING, 0)
         end
-        textOffset = LIST_PADDING + MARK_GUTTER + size + 6
-      elseif swatchFor then
-        local size = rowHeight - 10
-        local sw = NewSwatch(row, size)
-        sw:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
-        row._swatch = sw
-        textOffset = LIST_PADDING + MARK_GUTTER + size + 6
-      end
+        local text = head:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        text:SetPoint("LEFT", head, "LEFT", LIST_PADDING, 0)
+        text:SetPoint("RIGHT", head, "RIGHT", -LIST_PADDING, 0)
+        text:SetJustifyH("LEFT")
+        text:SetWordWrap(false)
+        text:SetText(item.name)
+        if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
+        local themed = ns.Theme
+        if themed and type(themed.SetColor) == "function" then
+          themed.SetColor(text, "textSecondary")
+        else
+          text:SetTextColor(0.6, 0.6, 0.6)
+        end
+        head.Text, head._heading = text, true
+        list._rows[#list._rows + 1] = head
+      else
+        local row = CreateFrame("Button", nil, rowParent)
+        row:SetHeight(rowHeight)
+        row._itemId = item.id
+        list._rows[#list._rows + 1] = row
+        if scrolling then
+          row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", 0, -((i - 1) * rowHeight))
+          row:SetPoint("RIGHT", rowParent, "RIGHT", 0, 0)
+        else
+          row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", LIST_PADDING, -LIST_PADDING - ((i - 1) * rowHeight))
+          row:SetPoint("RIGHT", rowParent, "RIGHT", -LIST_PADDING, 0)
+        end
 
-      local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-      text:SetPoint("LEFT", row, "LEFT", textOffset, 0)
-      text:SetText(item.name)
-      if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
-
-      -- The current selection's marker: a small accent DOT at the row's
-      -- left, painted on open. Feedback that a choice is in effect even
-      -- when the toggle's caption does not repeat it (an owner may keep a
-      -- fixed title there instead).
-      --
-      -- It was a full-height 2px bar down the row's edge, which read as a
-      -- border rather than a mark -- and sat a hairline from the list's own
-      -- edge, so the two looked like one thickened line. The dot is the
-      -- same language the tab caption and the style status already use.
-      local mark = row:CreateTexture(nil, "ARTWORK")
-      mark:SetSize(4, 4)
-      mark:SetPoint("LEFT", row, "LEFT", LIST_PADDING + 2, 0)
-      mark:Hide()
-      row._selMark = mark
-
-      row:SetScript("OnEnter", function()
-        bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4])
-      end)
-      row:SetScript("OnLeave", function()
+        local bg = row:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
         bg:SetColorTexture(0, 0, 0, 0)
-      end)
-      row:SetScript("OnClick", function()
-        container._selectedId = item.id
-        Caption(item.name)
-        PaintToggleSwatch()
-        list:Hide()
-        if container._onChange then container._onChange(item.id, item.name) end
-      end)
+
+        -- An item may carry its own art: { texture= or atlas=, aspect= }.
+        -- Drawn at row height beside the caption, so a list of visual choices
+        -- shows the choices. Everything sits one gutter in, because the
+        -- selection dot lives in that gutter -- on EVERY row, so the captions
+        -- of chosen and unchosen items line up.
+        local textOffset = LIST_PADDING + MARK_GUTTER
+        if type(item.icon) == "table" then
+          local art = row:CreateTexture(nil, "ARTWORK")
+          local size = rowHeight - 4
+          art:SetSize(size, size * (item.icon.aspect or 1))
+          art:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
+          if item.icon.atlas then
+            art:SetAtlas(item.icon.atlas)
+          else
+            art:SetTexture(item.icon.texture)
+          end
+          textOffset = LIST_PADDING + MARK_GUTTER + size + 6
+        elseif swatchFor then
+          local size = rowHeight - 10
+          local sw = NewSwatch(row, size)
+          sw:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
+          row._swatch = sw
+          textOffset = LIST_PADDING + MARK_GUTTER + size + 6
+        end
+
+        local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        text:SetPoint("LEFT", row, "LEFT", textOffset, 0)
+        text:SetText(item.name)
+        if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
+
+        -- The current selection's marker: a small accent DOT at the row's
+        -- left, painted on open. Feedback that a choice is in effect even
+        -- when the toggle's caption does not repeat it (an owner may keep a
+        -- fixed title there instead).
+        --
+        -- It was a full-height 2px bar down the row's edge, which read as a
+        -- border rather than a mark -- and sat a hairline from the list's own
+        -- edge, so the two looked like one thickened line. The dot is the
+        -- same language the tab caption and the style status already use.
+        local mark = row:CreateTexture(nil, "ARTWORK")
+        mark:SetSize(4, 4)
+        mark:SetPoint("LEFT", row, "LEFT", LIST_PADDING + 2, 0)
+        mark:Hide()
+        row._selMark = mark
+
+        row:SetScript("OnEnter", function()
+          bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4])
+        end)
+        row:SetScript("OnLeave", function()
+          bg:SetColorTexture(0, 0, 0, 0)
+        end)
+        row:SetScript("OnClick", function()
+          container._selectedId = item.id
+          Caption(item.name)
+          PaintToggleSwatch()
+          list:Hide()
+          if container._onChange then container._onChange(item.id, item.name) end
+        end)
+      end
     end
 
     list:SetScript("OnHide", ListHidden)

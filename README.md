@@ -68,7 +68,8 @@ deleted the moment Postbox empties it (**Delete when done**).
 - **Senders wear their class color** when Postbox knows them (your alts,
   friends, guild), in your UI's own class colors.
 - **One tooltip format everywhere:** the subject, then only what the row
-  doesn't already show.
+  doesn't already show, and last what you can click, one gesture per line
+  in smaller type.
 
 <br clear="all" />
 
@@ -221,10 +222,12 @@ icon steps aside.
 Five tabs (General, Mail tab, Send tab, Window, Minimap), one column of
 settings, and a panel beside it that explains whatever you point at and shows
 it. **General** comes first: every character's mail at a glance, Mail
-Memory's settings, and the mail alerts: **Sound on new mail** (the mail
-chime or one of four other sounds from the game, with a button to hear it
-first; it stays quiet for your own auction house purchases, which the game
-already announces) and **Flash on new mail**. **Character Groups** and
+Memory's settings, and the mail alerts: **Sound on new mail** (one of four
+soft sounds made for Postbox, the mail chime or another quiet sound of the
+game's, or any sound your other addons share through LibSharedMedia, such as
+ElvUI's or WeakAuras', with a button to hear it first; it stays quiet for
+your own auction house purchases, which the game already announces) and
+**Flash on new mail**. **Character Groups** and
 **Manage Recipients** open from beside them. The options open beside
 whatever opened them: right of the Postbox
 window from its cog, below Mail Memory from its cog (on General), left of the minimap
