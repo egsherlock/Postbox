@@ -7872,7 +7872,8 @@ function RV.PaintLine(panel, f, compact, look)
     local wordsW, iconW, countW = f.__wordsW or 0, f.__iconW or 0, f.__countW or 0
     local lead = (iconW > 0) and (iconW + ((wordsW > 0 or countW > 0) and RV.BAR.checkGap or 0)) or 0
     local tail = (countW > 0) and (((wordsW > 0) and RV.BAR.gap or 0) + countW) or 0
-    local room = floor(W - x - lead - tail - M.inset - (f.Delete:GetWidth() or 0) - 2 * M.gap - RV.LINE.ruleMin)
+    local deleteW = max(f.Delete:GetWidth() or 0, tonumber((f.Delete.Text:GetStringWidth())) or 0)
+    local room = floor(W - x - lead - tail - M.inset - deleteW - 2 * M.gap - RV.LINE.ruleMin)
     f.__lineCut = (W > 0 and wordsW > 0 and wordsW > room) and max(1, room) or false
     f.__lead, f.__tail = lead, tail
     RV.LinePlace(f, x)
