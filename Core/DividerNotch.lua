@@ -1,17 +1,21 @@
 local _, ns = ...
 
 -------------------------------------------------------------
--- Postbox :: the bar over the read mail in the Notch look: the island
--- (CollectTab: RV.BuildBar makes it, RV.PaintBar gives it its words and
--- colours; this file its shape, where it stands and how it moves).
+-- Postbox :: the bar over the read mail in the Island look (saved as
+-- "notch"): the island (CollectTab: RV.BuildBar makes it, RV.PaintBar gives
+-- it its words and colours; this file its shape, its shadow, where it
+-- stands and how it moves).
 --
 -- One copy of the bar, in the list with the rows, drawn at the lower of
 -- two places: its own place in the list, and its stand at the view's foot.
 -- While its place is below the stand it waits there in a room of its own,
--- the bar's slot (24 on one-line rows, 28 on Larger), full width, in the
--- bar's fill, with a soft fade over the rows passing under it. As the
--- place comes up the room tightens onto the bar, and the place picks the
--- bar up exactly where it stands: one copy, one rule, nothing handed over.
+-- the bar's slot (24 on one-line rows, 28 on Larger), full width, over its
+-- shadow: one see-through gradient over the rows at the list's foot, in
+-- Shadow color, strongest at the foot and gone a little above the room, so
+-- the mail behind it reads faded and the island stands out. As the place
+-- comes up the room tightens onto the bar and the shadow fades away, and
+-- the place picks the bar up exactly where it stands: one copy, one rule,
+-- nothing handed over.
 --
 -- Its shape is the island while the place is below the view: a capsule as
 -- tall as the bar, as wide as its icon, words and number with RV.BAR.pad
@@ -39,12 +43,12 @@ local _, ns = ...
 --
 -- State, on the panel, numbers only: how open (_barE, its speed _barEV,
 -- where it is going _barTo), how far the shape is off its place in a
--- flight (_barYO, _barYV), the last pass's stand (_barYT, _barFoot, _barK),
--- a glide (_glideY, _glideV, _glideTo, _glideSet) and the fade's height
--- (_fadeH, _fadeTo, _fadeOff); on the copy, the pointer's eases and the
--- fold sign's turn. A move is one OnUpdate on a frame of the panel's own,
--- set when something starts to move and taken off when everything has
--- landed; the window hidden mid-move lands it all at once. At rest nothing
+-- flight (_barYO, _barYV), the last pass's stand (_barYT, _barFoot, _barK)
+-- and a glide (_glideY, _glideV, _glideTo, _glideSet); on the copy, the
+-- pointer's eases and the fold sign's turn. A move is one OnUpdate on a
+-- frame of the panel's own, set when something starts to move and taken
+-- off when everything has landed; the window hidden mid-move lands it all
+-- at once. At rest nothing
 -- runs, and a pass compares a few numbers and makes nothing.
 -------------------------------------------------------------
 
@@ -77,14 +81,15 @@ DN.INK = { fill = 0.08, fillHot = 0.13, fillDown = 0.04, ring = 0.26, ringHot = 
 -- The pointer's eases: an exponential approach this many seconds long per
 -- e-fold (95% in about 120 ms).
 DN.EASE = 0.04
--- The fade over the rows above the room reaches its whole in this many
--- units of approach.
+-- The shadow fades away over this many units of the place's last approach
+-- (and is whole beyond them).
 DN.FADE_K = 4
--- How far a row's words and icon stand in from its top and its foot, as
--- measured on the rows (one-line rows: the icon 4..22 of 26; Larger rows:
--- the two lines 6..38 of 44). The room's top crossing a row inside these
--- crosses its words.
-DN.WORDS = { 4, 6 }
+-- The shadow: its strength at the list's foot (falling evenly to none at
+-- its top), how far its top stands over the room, and how much of a
+-- colour chosen for it (Shadow color) is mixed into the list's ground --
+-- Neutral is the ground itself. Measured on renders: the rows' words in
+-- the room keep about half their contrast with their row.
+DN.SHADE = { a = 0.7, up = 16, mix = 0.6 }
 
 local function Parts() return ns.CollectTab and ns.CollectTab.BarParts end
 local function Th() return ns.Theme end
@@ -160,14 +165,13 @@ end
 -- it), the top and bottom hairlines between the corners and the straight
 -- sides between them. Drawn solid, in the inks the fill would show over the
 -- room, so a corner's fill over its ring shows the fill alone: the corners
--- are the middle's shade. Then the fade over the rows above the room (one
--- gradient; two solid steps where the client draws no gradient), and the
--- pointer. After RV.BuildBar has made the rest, so no other part's place
--- in the copy moves. Every texture takes its colour in the call that
--- makes it.
+-- are the middle's shade. Then the shadow, on the room's own texture (one
+-- gradient; where the client draws no gradient, the room and a strip over
+-- it in two solid steps), and the pointer. After RV.BuildBar has made the
+-- rest, so no other part's place in the copy moves. Every texture takes
+-- its colour in the call that makes it.
 function DN.Skin(f)
   local T = Th()
-  local B = Parts()
   local WHITE = "Interface\\Buttons\\WHITE8X8"
   local g = T.GLYPHS and T.GLYPHS.cap
   local shape = f.Shape
@@ -220,34 +224,28 @@ function DN.Skin(f)
   P.br, P.bg, P.bb, P.ir, P.ig, P.ib, P.ik, P.a, P.edge = 0, 0, 0, 1, 1, 1, 1, 0.95, 0.14
   P.tone = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 }
   f.Isle = P
-  -- The fade over the rows above the room, standing on the room's top.
-  local holder = CreateFrame("Frame", nil, f)
-  holder:SetPoint("BOTTOMLEFT", f.Fill, "TOPLEFT", 0, 0)
-  holder:SetPoint("BOTTOMRIGHT", f.Fill, "TOPRIGHT", 0, 0)
-  local base = #B.fade * B.fadeStep
-  holder:SetHeight(base)
-  holder:SetAlpha(0)
-  local fade = { holder = holder, base = base }
-  local t = holder:CreateTexture(nil, "BACKGROUND")
-  if t.SetGradient and type(CreateColor) == "function" then
-    -- The room's fill, solid on the room, to nothing at the top. The
-    -- colour objects are made once and re-set in place.
-    t:SetTexture(WHITE)
-    t:SetAllPoints(holder)
-    t:SetVertexColor(0, 0, 0, 0)
-    fade.grad, fade.lo, fade.hi = t, CreateColor(0, 0, 0, 1), CreateColor(0, 0, 0, 0)
+  -- The shadow: the room's texture (f.Fill, under everything the copy
+  -- draws), from the room's foot to DN.SHADE.up over its top, in Shadow
+  -- color, DN.SHADE.a strong at the foot to none at the top (DN.Shade).
+  -- The colour objects are made once and re-set in place. Where the client
+  -- draws no gradient: the room at the strength the gradient has at its
+  -- middle and a strip over it at the strength over the room's top.
+  local shade = { r = false }
+  local fill = f.Fill
+  fill:SetTexture(WHITE)
+  fill:SetVertexColor(0, 0, 0, 0)
+  if fill.SetGradient and type(CreateColor) == "function" then
+    shade.lo, shade.hi = CreateColor(0, 0, 0, 0), CreateColor(0, 0, 0, 0)
   else
-    -- The lower half and the upper half, at the fill's shares (RV.BAR.fade).
-    t:SetColorTexture(0, 0, 0, 0)
-    t:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT", 0, 0)
-    t:SetPoint("TOPRIGHT", holder, "RIGHT", 0, 0)
-    local u = holder:CreateTexture(nil, "BACKGROUND")
-    u:SetColorTexture(0, 0, 0, 0)
-    u:SetPoint("BOTTOMLEFT", holder, "LEFT", 0, 0)
-    u:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, 0)
-    fade[1], fade[2] = t, u
+    local up = f:CreateTexture(nil, "BACKGROUND", nil, -8)
+    up:SetColorTexture(0, 0, 0, 0)
+    up:SetPoint("BOTTOMLEFT", fill, "TOPLEFT", 0, 0)
+    up:SetPoint("BOTTOMRIGHT", fill, "TOPRIGHT", 0, 0)
+    up:SetHeight(DN.SHADE.up)
+    up:Hide()
+    shade.up = up
   end
-  f.Fade = fade
+  f.Shade = shade
   local edges = f.Edges
   for i = 1, #edges do edges[i]:Hide() end
   -- The pointer's eases (0 at rest, 1 pointed at, pressed, Delete all's red).
@@ -274,6 +272,9 @@ function DN.Size(f, band)
   if f.__isleBand == band then return end
   f.__isleBand = band
   f.__R = nil
+  -- The shadow's two steps, where there is no gradient, are measured on
+  -- the room.
+  if f.Shade and f.Shade.up then f.Shade.r = false end
 end
 
 -- The pieces laid out for a radius of `R` units (whole, from the capsule's
@@ -324,10 +325,10 @@ local function Round(f, R)
   end
 end
 
--- The inks of the island and of the bar, from the bar's fill (r, g, b): the
--- chrome ink and its strength as the palette gives it; then the pieces are
--- coloured again on the next frame, and the room and its fade now. Only
--- when the fill or the palette moves.
+-- The inks of the island and of the bar, from the bar's fill (r, g, b, Bar
+-- color): the chrome ink and its strength as the palette gives it; the
+-- pieces are coloured again on the next frame. Only when the fill or the
+-- palette moves. The shadow has its own colour (DN.Shade).
 function DN.Ink(f, r, g, b)
   local c = Th().Colors.chromeInk
   local P = f.Isle
@@ -337,19 +338,48 @@ function DN.Ink(f, r, g, b)
   P.a = B and B.groundA or 0.95
   P.edge = B and B.edgeA or 0.14
   f.__kf = nil
-  -- The room is solid: the rows passing under it never show through.
-  f.Fill:SetColorTexture(r, g, b, 1)
-  local fade = f.Fade
-  if fade then
-    if fade.grad then
-      fade.lo:SetRGBA(r, g, b, 1)
-      fade.hi:SetRGBA(r, g, b, 0)
-      fade.grad:SetVertexColor(1, 1, 1, 1)
-      fade.grad:SetGradient("VERTICAL", fade.lo, fade.hi)
-    else
-      local s = B and B.fade or { 0.6, 0.3 }
-      for i = 1, #s do fade[i]:SetColorTexture(r, g, b, P.a * s[i]) end
-    end
+end
+
+-- The shadow's colour (Shadow color): the list's ground under Neutral, so
+-- the rows fade toward it (darker on a dark palette, lighter on a light
+-- one); a colour chosen, DN.SHADE.mix of it in the ground, so it reads as
+-- that colour. Numbers only; the ground as the caller read it, where it
+-- did.
+function DN.ShadeRGB(panel, gr, gg, gb)
+  local r, g, b = gr, gg, gb
+  if not r then r, g, b = Parts().Ground(panel) end
+  local UI = ns.MailboxUI
+  local cr, cg, cb
+  if UI and type(UI.ShadowColorRGB) == "function" then cr, cg, cb = UI.ShadowColorRGB() end
+  if type(cr) == "number" then
+    local k = DN.SHADE.mix
+    r, g, b = r + (cr - r) * k, g + (cg - g) * k, b + (cb - b) * k
+  end
+  return r, g, b
+end
+
+-- The shadow painted in its colour, on every pass that shows the island
+-- (RV.PaintBar, with the list's ground it read): set only where the colour
+-- moved, so at rest it compares three numbers.
+function DN.Shade(panel, f, gr, gg, gb)
+  local S = f.Shade
+  if not S then return end
+  local r, g, b = DN.ShadeRGB(panel, gr, gg, gb)
+  if S.r == r and S.g == g and S.b == b then return end
+  S.r, S.g, S.b = r, g, b
+  local a = DN.SHADE.a
+  local fill = f.Fill
+  if S.lo then
+    S.lo:SetRGBA(r, g, b, a)
+    S.hi:SetRGBA(r, g, b, 0)
+    fill:SetVertexColor(1, 1, 1, 1)
+    fill:SetGradient("VERTICAL", S.lo, S.hi)
+  else
+    -- The gradient's strength at the room's middle and over its top.
+    local up = DN.SHADE.up
+    local room = (f.__isleBand or 22) + 2
+    fill:SetColorTexture(r, g, b, a * (room / 2 + up) / (room + up))
+    S.up:SetColorTexture(r, g, b, a * (up / 2) / (room + up))
   end
 end
 
@@ -470,7 +500,7 @@ end
 -- fold sign's place move.
 function DN.Fit(f, W)
   local B = Parts()
-  local pad, gap, checkGap = B.pad, B.gap, B.checkGap
+  local pad, gap, checkGap = B.pad, f.__gap or B.gap, B.checkGap
   local T = Th()
   local M = T.Metrics
   local delete = f.Delete
@@ -531,7 +561,7 @@ function DN.Place(f, wide, again)
     label:ClearAllPoints()
     label:SetPoint("LEFT", inner, "LEFT", x, 0)
     count:ClearAllPoints()
-    count:SetPoint("LEFT", label, "RIGHT", B.gap, 0)
+    count:SetPoint("LEFT", label, "RIGHT", f.__gap or B.gap, 0)
   else
     count:ClearAllPoints()
     count:SetPoint("LEFT", inner, "LEFT", x, 0)
@@ -667,49 +697,39 @@ end
 -- The room at the foot: `k` units of the place below the stand (0 once the
 -- place carries the bar), `m` the room's margin over and under the bar at
 -- most. The room tightens onto the bar over the last units of approach, on
--- whole units, and its fade comes in over DN.FADE_K; the whole room takes
--- the pointer. Only where it moved.
+-- whole units, and the shadow over it fades away over the last DN.FADE_K;
+-- the whole room takes the pointer. The shadow stands from the room's foot
+-- to DN.SHADE.up over its top. Only where it moved.
 function DN.Room(f, k, m)
   local on = k > 0
   local pad = on and min(m, floor(k)) or 0
   local fill = f.Fill
+  local up = f.Shade and f.Shade.up
   if f.__roomOn ~= on then
     f.__roomOn = on
     fill:SetShown(on)
-    if f.Fade then f.Fade.holder:SetShown(on) end
+    if up then up:SetShown(on) end
   end
   if f.__roomPad ~= pad then
     f.__roomPad = pad
     fill:ClearAllPoints()
-    fill:SetPoint("TOPLEFT", f, "TOPLEFT", 0, pad)
-    fill:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, -pad)
+    fill:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, -pad)
+    fill:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, pad + (up and 0 or DN.SHADE.up))
     f:SetHitRectInsets(0, 0, -pad, -pad)
   end
   local a = on and min(1, k / DN.FADE_K) or 0
-  if f.Fade and f.__fadeE ~= a then
+  if f.__fadeE ~= a then
     f.__fadeE = a
-    f.Fade.holder:SetAlpha(a)
+    fill:SetAlpha(a)
+    if up then up:SetAlpha(a) end
   end
 end
 
--- The fade's height as the panel's ease has it, on whole units.
-local function FadeDraw(f, panel)
-  local fade = f.Fade
-  local h = panel._fadeH
-  if not (fade and h) then return end
-  h = floor(h + 0.5)
-  if f.__fadeHd ~= h then
-    f.__fadeHd = h
-    fade.holder:SetHeight(h)
-  end
-end
-
--- The copy at `level`, and what it holds over it in order: the fade and
--- the shape, the words in the shape, Delete all over the words.
+-- The copy at `level`, and what it holds over it in order: the shape, the
+-- words in the shape, Delete all over the words.
 function DN.Levels(f, level)
   f:SetFrameLevel(level)
   f.Shape:SetFrameLevel(level + 1)
-  if f.Fade then f.Fade.holder:SetFrameLevel(level + 1) end
   f.Inner:SetFrameLevel(level + 2)
   f.Delete:SetFrameLevel(level + 3)
 end
@@ -727,7 +747,8 @@ end
 function DN.Reset(f)
   f.__s, f.__yo, f.__kf, f.__khv, f.__kpv, f.__ks, f.__R, f.__late, f.__live, f.__e = nil, nil, nil, nil, nil, nil, nil, nil,
     nil, nil
-  f.__roomOn, f.__roomPad, f.__fadeE, f.__fadeHd, f.__pw = nil, nil, nil, nil, nil
+  f.__roomOn, f.__roomPad, f.__fadeE, f.__pw = nil, nil, nil, nil
+  if f.Shade then f.Shade.r = false end
   f.__thv, f.__tdv, f.__sgMode, f.__sgK = nil, nil, nil, nil
   local edges = f.Edges
   for i = 1, #edges do edges[i]:Hide() end
@@ -816,20 +837,18 @@ function DN.Draw(panel)
   if not (f and f.__on) then return end
   local yo = panel._barYO or 0
   DN.Shape(f, panel._barE or 0, floor(yo + 0.5))
-  FadeDraw(f, panel)
   DN.Tones(f)
   DN.SignDraw(f)
 end
 
 -- Whether anything is still to move: a glide, the bar's springs, the
--- fade's height, the copy's eases or its fold sign.
+-- copy's eases or its fold sign.
 function DN.Busy(panel)
   if panel._glideTo then return true end
   local to = panel._barTo
   if to ~= nil and (panel._barE ~= to or (panel._barEV or 0) ~= 0 or (panel._barYO or 0) ~= 0) then return true end
   local f = panel.Notch
   if not (f and f.__on) then return false end
-  if panel._fadeTo and panel._fadeH ~= panel._fadeTo then return true end
   if f.__hv ~= (f.__hot and 1 or 0) or f.__pv ~= (f.__down and 1 or 0) or f.__dv ~= (f.Delete.__hot and 1 or 0) then
     return true
   end
@@ -908,15 +927,8 @@ function DN.Tick(driver, elapsed)
       if a < 0 then a = 0 elseif a > 1 then a = 1 end
       f.__sgA, f.__sgV = a, v
     end
-    local fh, ft = panel._fadeH, panel._fadeTo
-    if fh and ft and fh ~= ft then
-      fh = fh + (ft - fh) * k
-      if abs(ft - fh) < 0.5 then fh = ft else moving = true end
-      panel._fadeH = fh
-    end
   elseif f then
     DN.Land(f)
-    if panel._fadeTo then panel._fadeH = panel._fadeTo end
   end
   panel._ticking = nil
   DN.Draw(panel)
@@ -935,7 +947,6 @@ function DN.Hidden(driver)
   end
   if panel._barTo ~= nil then panel._barE, panel._barEV = panel._barTo, 0 end
   panel._barYO, panel._barYV = 0, 0
-  if panel._fadeTo then panel._fadeH = panel._fadeTo end
   local f = panel.Notch
   if f then DN.Land(f) end
   DN.Stop(panel)
@@ -1026,7 +1037,6 @@ function DN.Off(panel)
   if panel._barE ~= nil or panel._barTo ~= nil then
     panel._barE, panel._barEV, panel._barTo = nil, nil, nil
     panel._barYO, panel._barYV, panel._barYT, panel._barFoot, panel._barK = nil, nil, nil, nil, nil
-    panel._fadeH, panel._fadeTo, panel._fadeOff = nil, nil, nil
   end
   if not panel._ticking and not panel._glideTo then DN.Stop(panel) end
 end
@@ -1034,12 +1044,9 @@ end
 -- One pass of the list. `at`: the bar's place in the list (nil for none);
 -- `band`: the bar's height. The bar stands at the lower of its place and
 -- its stand, the room's margin over the view's foot; while the place is
--- below the stand, in the room. It opens while its place's top is in the
--- view, and closes once it is not. The fade over the rows above the room
--- is its own height, or, where the room's top crosses a row's words, as
--- tall as that row's part above the room, so no words show cut by it; it
--- eases from one to the other, at once where the list jumped a row or
--- more in one pass (a wheel step; a glide's passes ease).
+-- below the stand, in the room over its shadow, the rows seen through it.
+-- It opens while its place's top is in the view, and closes once it is
+-- not.
 function DN.Update(panel, at, offset, viewport, stride, band, compact)
   local N = panel.Notch
   if not (at and N) or viewport <= 0 then
@@ -1090,21 +1097,6 @@ function DN.Update(panel, at, offset, viewport, stride, band, compact)
   P.Paint(panel, N, compact)
   DN.Place(N, wide)
   DN.Room(N, k, m)
-  local fade = N.Fade
-  if fade and foot then
-    local line = offset + stand - min(m, floor(k))
-    local u = line - floor(line / stride) * stride
-    local w = compact and DN.WORDS[1] or DN.WORDS[2]
-    local want = fade.base
-    if u > w and u < stride - P.rowGap - w then want = max(want, ceil(u)) end
-    panel._fadeTo = want
-    local jump = abs(offset - (panel._fadeOff or offset)) >= stride and not panel._glideTo
-    if panel._fadeH == nil or jump then panel._fadeH = want end
-    panel._fadeOff = offset
-  elseif panel._fadeTo then
-    -- No room, no fade to ease.
-    panel._fadeH = panel._fadeTo
-  end
   -- Inside a frame of the move (a glide's pass), the move draws.
   if panel._ticking then return end
   DN.Draw(panel)

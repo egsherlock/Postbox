@@ -4647,7 +4647,7 @@ Theme.AtlasSets = {
 --     Drawn on whole pixels and shown at their own size, so each is crisp
 --     at one pixel per unit.
 --   cap  a quarter of a disc 13 units in radius: the island's round ends
---     (the bar over finished mail in the Notch look, Core/DividerNotch.lua),
+--     (the bar over finished mail in the Island look, Core/DividerNotch.lua),
 --     four to a capsule, mirrored by their coordinates, each a ring as wide
 --     as the end and its fill a unit inside it.
 --

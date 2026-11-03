@@ -232,7 +232,7 @@ local function ForgetSettings()
   memo.root, memo.profile = nil, nil
   memo.qIcon, memo.qName = nil, nil
   memo.layout, memo.slots = nil, nil
-  memo.packing, memo.barColor, memo.words = nil, nil, nil
+  memo.packing, memo.barColor, memo.shadowColor, memo.words = nil, nil, nil, nil
   memo.barText, memo.barTextShown, memo.barIcon = nil, nil, nil
   memo.barLook, memo.barCount = nil, nil
   memo.history, memo.age, memo.large = nil, nil, nil
@@ -1073,14 +1073,15 @@ local function DividerProfile()
   return profile
 end
 
--- The bar's look: "notch" (the default: a little shorter than a row, on
--- the list's ground with a faint outline, its words centred; out of view
--- it waits at the list's foot as a small tab that opens into it,
+-- The bar's look: "notch", Island (the default: a little shorter than a
+-- row, its words centred; out of view it waits at the list's foot as an
+-- island over a see-through shadow, and opens into the bar,
 -- Core/DividerNotch.lua), "hairline" (small words and a hairline to Delete
--- all on the list's own ground, a row's slot tall) or "full" (a row like
--- the mail around it, in its own stripe); either of the last two waits at
--- the list's foot whole while its place is out of view (CollectTab,
--- RV.UpdatePin). Stored only when it is not the notch.
+-- all on the list's own ground, a thin strip as tall as its words) or
+-- "full" (Hairline at a row's height, in the rows' size); either of the
+-- last two waits at the list's foot whole while its place is out of view
+-- (CollectTab, RV.UpdatePin). Stored only when it is not the island; the
+-- island's id stays "notch", its name in the alphas.
 function UI.GetDividerLook()
   local memo = Settings()
   if memo.barLook then return memo.barLook end
@@ -1222,121 +1223,149 @@ function UI.SetDividerIcon(icon)
   if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
 end
 
--- The bar's colour (profile.dividerColor): Neutral, the list's own ground
--- (the default, stored as nothing); "accent", the live accent (the window
--- style's or the host UI's); "class", the character's class colour; "blue";
--- "violet"; or "custom", a colour of the player's own from the game's colour
--- picker (UI.PickDividerColor), saved beside it as "rrggbb"
--- (profile.dividerHex). Custom with no colour saved, and Class color where
--- the UI gives none, read as Neutral. Whatever is chosen is mixed a little
--- into the ground (CollectTab, RV.BarRGB), so the bar stays dark and its
--- words easy to read.
+-- The bar's colours, two settings with the same choices: Bar color
+-- (profile.dividerColor), the island and the bar, and Shadow color
+-- (profile.dividerShadow), the island's shadow over the rows at the list's
+-- foot. Each is Neutral, the list's own ground (the default, stored as
+-- nothing); "accent", the live accent (the window style's or the host
+-- UI's); "class", the character's class colour; "blue"; "violet"; or
+-- "custom", a colour of the player's own from the game's colour picker
+-- (UI.PickDividerColor, UI.PickShadowColor), saved beside it as "rrggbb"
+-- (profile.dividerHex, profile.dividerShadowHex). Custom with no colour
+-- saved, and Class color where the UI gives none, read as Neutral. Bar
+-- color is mixed a little into the ground (CollectTab, RV.BarRGB), so the
+-- bar stays dark and its words easy to read; Shadow color more
+-- (Core/DividerNotch.lua, DN.ShadeRGB), so the shadow reads as its colour.
 UI.DIVIDER_COLORS = { "neutral", "accent", "class", "blue", "violet", "custom" }
-local DIVIDER_RGB = {
-  blue = { 0x17 / 255, 0x85 / 255, 0xd1 / 255 },
-  violet = { 0xa7 / 255, 0x7b / 255, 0xff / 255 },
-}
-local dividerCustom = { hex = false, r = 1, g = 1, b = 1 }
+do
+  local DIVIDER_RGB = {
+    blue = { 0x17 / 255, 0x85 / 255, 0xd1 / 255 },
+    violet = { 0xa7 / 255, 0x7b / 255, 0xff / 255 },
+  }
+  -- Each setting's paths, keys and memo, and its Custom colour as last
+  -- parsed: every path whole, so a paint builds no string.
+  local BAR = { mode = "profile.dividerColor", hex = "profile.dividerHex", modeKey = "dividerColor",
+    hexKey = "dividerHex", memo = "barColor", custom = { hex = false, r = 1, g = 1, b = 1 } }
+  local SHADOW = { mode = "profile.dividerShadow", hex = "profile.dividerShadowHex", modeKey = "dividerShadow",
+    hexKey = "dividerShadowHex", memo = "shadowColor", custom = { hex = false, r = 1, g = 1, b = 1 } }
 
--- r, g, b of the saved Custom colour, or nil; parsed again only when it
--- moves, so a paint makes nothing.
-function UI.GetDividerCustom()
-  local h = ns.Store and ns.Store.Get and ns.Store.Get("profile.dividerHex")
-  local c = dividerCustom
-  if h ~= c.hex then
-    c.hex = h
-    c.ok = type(h) == "string" and h:match("^%x%x%x%x%x%x$") ~= nil
-    if c.ok then
-      c.r = tonumber((h:sub(1, 2)), 16) / 255
-      c.g = tonumber((h:sub(3, 4)), 16) / 255
-      c.b = tonumber((h:sub(5, 6)), 16) / 255
+  -- r, g, b of a setting's saved Custom colour, or nil; parsed again only
+  -- when it moves, so a paint makes nothing.
+  local function Custom(p)
+    local h = ns.Store and ns.Store.Get and ns.Store.Get(p.hex)
+    local c = p.custom
+    if h ~= c.hex then
+      c.hex = h
+      c.ok = type(h) == "string" and h:match("^%x%x%x%x%x%x$") ~= nil
+      if c.ok then
+        c.r = tonumber((h:sub(1, 2)), 16) / 255
+        c.g = tonumber((h:sub(3, 4)), 16) / 255
+        c.b = tonumber((h:sub(5, 6)), 16) / 255
+      end
     end
+    if not c.ok then return nil end
+    return c.r, c.g, c.b
   end
-  if not c.ok then return nil end
-  return c.r, c.g, c.b
-end
 
--- The character's class colour as the UI gives it (ContactService), or nil.
-local function DividerClassRGB()
-  local CS = ns.ContactService
-  if not (CS and type(CS.UIClassColour) == "function" and type(UnitClass) == "function") then return nil end
-  local _, token = UnitClass("player")
-  if type(token) ~= "string" then return nil end
-  return CS.UIClassColour(token)
-end
+  -- The character's class colour as the UI gives it (ContactService), or nil.
+  local function ClassRGB()
+    local CS = ns.ContactService
+    if not (CS and type(CS.UIClassColour) == "function" and type(UnitClass) == "function") then return nil end
+    local _, token = UnitClass("player")
+    if type(token) ~= "string" then return nil end
+    return CS.UIClassColour(token)
+  end
 
--- r, g, b of a colour choice (nil: the one chosen) as it is before it is
--- mixed into the ground, or nil for Neutral, which is the ground itself.
-function UI.DividerColorRGB(mode)
-  if mode == nil then mode = UI.GetDividerColor() end
-  if mode == "custom" then return UI.GetDividerCustom() end
-  if mode == "class" then return DividerClassRGB() end
-  if mode == "accent" then
-    local T = ns.Theme
-    if T and type(T.GetAccent) == "function" then
-      local r, g, b = T.GetAccent()
-      return r, g, b
+  -- The choice that stands, answered from memory once read.
+  local function Mode(p)
+    local memo = Settings()
+    local mode = memo[p.memo]
+    if mode then return mode end
+    local stored = ns.Store and ns.Store.Get and ns.Store.Get(p.mode)
+    mode = "neutral"
+    if stored == "custom" then
+      if Custom(p) then mode = stored end
+    elseif stored == "class" then
+      if ClassRGB() then mode = stored end
+    elseif stored == "accent" or DIVIDER_RGB[stored] then
+      mode = stored
     end
+    memo[p.memo] = mode
+    return mode
+  end
+
+  -- r, g, b of a colour choice (nil: the one chosen) as it is before it is
+  -- mixed into the ground, or nil for Neutral, which is the ground itself.
+  local function RGB(p, mode)
+    if mode == nil then mode = Mode(p) end
+    if mode == "custom" then return Custom(p) end
+    if mode == "class" then return ClassRGB() end
+    if mode == "accent" then
+      local T = ns.Theme
+      if T and type(T.GetAccent) == "function" then
+        local r, g, b = T.GetAccent()
+        return r, g, b
+      end
+      return nil
+    end
+    local c = DIVIDER_RGB[mode]
+    if c then return c[1], c[2], c[3] end
     return nil
   end
-  local c = DIVIDER_RGB[mode]
-  if c then return c[1], c[2], c[3] end
-  return nil
-end
 
-function UI.GetDividerColor()
-  local memo = Settings()
-  if memo.barColor then return memo.barColor end
-  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.dividerColor")
-  local mode = "neutral"
-  if stored == "custom" then
-    if UI.GetDividerCustom() then mode = stored end
-  elseif stored == "class" then
-    if DividerClassRGB() then mode = stored end
-  elseif stored == "accent" or DIVIDER_RGB[stored] then
-    mode = stored
-  end
-  memo.barColor = mode
-  return mode
-end
-
--- Any choice but Custom, which only the picker sets.
-function UI.SetDividerColor(mode)
-  if mode ~= "neutral" and mode ~= "accent" and mode ~= "class" and not DIVIDER_RGB[mode] then return end
-  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if profile then profile.dividerColor = (mode ~= "neutral") and mode or nil end
-  ForgetSettings()
-  local panel, collect = CollectPanel(), ns.CollectTab
-  if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
-end
-
--- Custom: the game's colour picker (Theme.PickColor), open on the colour
--- chosen now. Each colour picked is saved and worn at once; Cancel puts
--- back the choice and the colour there were. `after` runs after each, for
--- the options to repaint. Answers whether the picker opened.
-function UI.PickDividerColor(after)
-  local T = ns.Theme
-  if not (T and type(T.PickColor) == "function") then return false end
-  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if not profile then return false end
-  local wasMode, wasHex = profile.dividerColor, profile.dividerHex
-  local r, g, b = UI.DividerColorRGB()
-  if not r then r, g, b = 1, 1, 1 end
-  local function Moved()
+  local function Redraw()
     ForgetSettings()
     local panel, collect = CollectPanel(), ns.CollectTab
     if panel and collect and collect.RebindRows then collect.RebindRows(panel) end
-    if after then after() end
   end
-  local function Byte(v) return math.floor(math.max(0, math.min(1, v)) * 255 + 0.5) end
-  return T.PickColor(r, g, b, function(pr, pg, pb)
-    profile.dividerHex = string.format("%02x%02x%02x", Byte(pr), Byte(pg), Byte(pb))
-    profile.dividerColor = "custom"
-    Moved()
-  end, function()
-    profile.dividerColor, profile.dividerHex = wasMode, wasHex
-    Moved()
-  end)
+
+  -- Any choice but Custom, which only the picker sets.
+  local function Set(p, mode)
+    if mode ~= "neutral" and mode ~= "accent" and mode ~= "class" and not DIVIDER_RGB[mode] then return end
+    local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+    if profile then profile[p.modeKey] = (mode ~= "neutral") and mode or nil end
+    Redraw()
+  end
+
+  -- Custom: the game's colour picker (Theme.PickColor), open on the colour
+  -- chosen now. Each colour picked is saved and worn at once; Cancel puts
+  -- back the choice and the colour there were. `after` runs after each, for
+  -- the options to repaint. Answers whether the picker opened.
+  local function Pick(p, after)
+    local T = ns.Theme
+    if not (T and type(T.PickColor) == "function") then return false end
+    local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+    if not profile then return false end
+    local modeKey, hexKey = p.modeKey, p.hexKey
+    local wasMode, wasHex = profile[modeKey], profile[hexKey]
+    local r, g, b = RGB(p)
+    if not r then r, g, b = 1, 1, 1 end
+    local function Moved()
+      Redraw()
+      if after then after() end
+    end
+    local function Byte(v) return math.floor(math.max(0, math.min(1, v)) * 255 + 0.5) end
+    return T.PickColor(r, g, b, function(pr, pg, pb)
+      profile[hexKey] = string.format("%02x%02x%02x", Byte(pr), Byte(pg), Byte(pb))
+      profile[modeKey] = "custom"
+      Moved()
+    end, function()
+      profile[modeKey], profile[hexKey] = wasMode, wasHex
+      Moved()
+    end)
+  end
+
+  function UI.GetDividerCustom() return Custom(BAR) end
+  function UI.DividerColorRGB(mode) return RGB(BAR, mode) end
+  function UI.GetDividerColor() return Mode(BAR) end
+  function UI.SetDividerColor(mode) Set(BAR, mode) end
+  function UI.PickDividerColor(after) return Pick(BAR, after) end
+
+  function UI.GetShadowCustom() return Custom(SHADOW) end
+  function UI.ShadowColorRGB(mode) return RGB(SHADOW, mode) end
+  function UI.GetShadowColor() return Mode(SHADOW) end
+  function UI.SetShadowColor(mode) Set(SHADOW, mode) end
+  function UI.PickShadowColor(after) return Pick(SHADOW, after) end
 end
 
 -- The bar's type, for comparing the two in game: "quiet" (the words in the
@@ -4895,6 +4924,7 @@ function UI.DiagnoseOptions()
   Named("dividerText", UI.GetDividerTextShown(), "")
   Named("dividerIcon", UI.GetDividerIcon(), "none")
   Named("dividerColor", UI.GetDividerColor(), "neutral")
+  Named("dividerShadow", UI.GetShadowColor(), "neutral")
   Named("tabIndicator", UI.GetTabIndicator(), "dot")
   Named("historyDays", UI.GetHistoryDays(), "7")
   Named("afterSend", UI.GetAfterSendKeep(), "nothing")

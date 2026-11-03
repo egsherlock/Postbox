@@ -2822,21 +2822,15 @@ do
   -- the gap between a row's columns; the least room the subject keeps.
   MW.JOIN, MW.MGAP, MW.SUBJECT = "  |  ", 4, 16
 
-  -- The bar `barH` tall, `y` down the list, in the list's place `pos`, as
-  -- the window paints it (MW.barList): Full row's fold mark in the icons'
-  -- lane and its words where the names start, as the drawing's rows have
-  -- them, and the stripe of its place.
-  function MW.PaintDivider(win, st, y, barH, pos)
+  -- The bar `barH` tall, `y` down the list, as the window paints it
+  -- (MW.barList): Hairline's thin strip, or Full row at a row's height.
+  function MW.PaintDivider(win, st, y, barH)
     local d = win.Divider
     local P = ns.CollectTab and ns.CollectTab.BarParts
     d:SetSize(win.rowW, barH)
     MW.At(d, "TOPLEFT", win.Clip, 0, -y)
     d:SetFrameLevel(win.Clip:GetFrameLevel() + 1)
     MW.barList._barSignX = MW.MDOT_X
-    local size = st.compact and MW.h.iconC or MW.h.iconL
-    MW.barList._divFoldX = MW.ICON_X + math.floor((size - 12) / 2)
-    MW.barList._divTextX = MW.ICON_X + size + MW.MGAP
-    d.__pos = pos or 1
     if P then
       P.Paint(MW.barList, d, st.compact)
       P.Apply(d, 1)
@@ -2845,9 +2839,9 @@ do
     d:Show()
   end
 
-  -- The island at the list's foot as the window has it at rest (the Notch
+  -- The island at the list's foot as the window has it at rest (the Island
   -- look, Core/DividerNotch.lua): closed, in its room of the bar's slot,
-  -- `y` down the list, over the rows that pass under it.
+  -- `y` down the list, over its shadow on the rows that pass under it.
   function MW.PaintIsland(win, st, y, barH)
     local d = win.Island
     local P = ns.CollectTab and ns.CollectTab.BarParts
@@ -2881,13 +2875,13 @@ do
     local n = #MW.BOX
     local fold = st.mode == "fold"
     -- The bar: its height in the window, at the drawing's scale, never
-    -- shorter than its words need.
+    -- shorter than its words need; Full row a row's, as in the window.
     local CT = ns.CollectTab
     local band = CT and CT.BarParts and CT.BarParts.BarHeight(st.compact) or 18
+    local look = CT and CT.BarParts and CT.BarParts.Look and CT.BarParts.Look() or "notch"
+    local notch = look == "notch"
     local barH = math.max(MW.Scaled(band), MW.Line("secondary") + 4)
-    -- Hairline and Full row take a row's place, as in the window.
-    local notch = not (CT and CT.BarParts and CT.BarParts.Look and CT.BarParts.Look() ~= "notch")
-    if not notch then barH = rowH end
+    if look == "full" then barH = rowH end
     local island = fold and notch and win.Island ~= nil
     local shown
     if fold and not island then
@@ -2945,7 +2939,7 @@ do
     elseif fold then
       win.Island:Hide()
       local y = shown * stride
-      MW.PaintDivider(win, st, y, barH, shown + 1)
+      MW.PaintDivider(win, st, y, barH)
       MW.PlaceRow(win, rows[n + 1], MW.READ, shown + 2, two, fit, true, y + barH + h.rowGap)
     else
       win.Divider:Hide()
@@ -6162,11 +6156,12 @@ function State.Warnings()
   Rows.SetEnabled(cells.marker, warning and icon, warning and "OPT_MINIMAP_WHY_SWITCH" or "OPT_WARN_WHY")
 end
 
--- Bar look, Bar says (and its Count), Bar icon and Bar color are grey
--- while finished mail does not stand under the bar (Finished mail is not
--- Below the inbox), saying what turns them on (Rows.Why); Bar says' words'
--- box with them. Bar says laid out for its choice: Custom's words in its
--- box (Rows.WordsBox).
+-- Bar look, Bar says (and its Count), Bar icon, Bar color and Shadow color
+-- are grey while finished mail does not stand under the bar (Finished mail
+-- is not Below the inbox), saying what turns them on (Rows.Why); Bar says'
+-- words' box with them. Shadow color is grey too while Bar look is not
+-- Island, the one look with a shadow, saying so. Bar says laid out for its
+-- choice: Custom's words in its box (Rows.WordsBox).
 function State.BarSays()
   local cell, UI = S.barSaysCell, ns.MailboxUI
   if not cell then return end
@@ -6178,6 +6173,10 @@ function State.BarSays()
   if S.barLookCell then Rows.SetEnabled(S.barLookCell, on) end
   if S.barIconCell then Rows.SetEnabled(S.barIconCell, on) end
   if S.barColorCell then Rows.SetEnabled(S.barColorCell, on) end
+  if S.barShadowCell then
+    local island = (UI and type(UI.GetDividerLook) == "function" and UI.GetDividerLook() or "notch") == "notch"
+    Rows.SetEnabled(S.barShadowCell, on and island, on and "OPT_BAR_SHADOW_WHY" or "OPT_DIVIDER_WHY")
+  end
 end
 
 -- Row layout stays live with Larger mail rows on: History, Mail Memory and
@@ -6715,13 +6714,14 @@ function Pages.mail(col)
     end,
   })
   Shown(read.entry, "read")
-  -- The bar over the finished mail, four rows under Finished mail: how it
-  -- looks (the notch, Hairline or Full row), what it says (Done, Nothing
-  -- left, Collected, or Custom, the player's own words, typed in the
-  -- dropdown's box itself: Rows.WordsBox) with Count beside it, the number
-  -- after the words, a switch of its own (Rows.Side); the icon before the
-  -- words, and its colour, each choice of colour with its square. All grey,
-  -- saying why, while finished mail does not stand under the bar
+  -- The bar over the finished mail, five rows under Finished mail: how it
+  -- looks (Island, Hairline or Full row), what it says (Done, Nothing left,
+  -- Collected, or Custom, the player's own words, typed in the dropdown's
+  -- box itself: Rows.WordsBox) with Count beside it, the number after the
+  -- words, a switch of its own (Rows.Side); the icon before the words, its
+  -- colour and its island's shadow's, each choice of colour with its
+  -- square. All grey, saying why, while finished mail does not stand under
+  -- the bar, and the shadow's too under a look with no island
   -- (State.BarSays). The list is bound again where it stands, the
   -- drawing's bar drawn again.
   do
@@ -6836,32 +6836,44 @@ function Pages.mail(col)
       local c = P and P.list or T.Colors.surface
       return c[1], c[2], c[3]
     end
-    local color
-    local function Picked()
-      if color then Rows.PaintDropdown(color) end
-      Ctx.Repaint()
-    end
-    color = Rows.Dropdown(col, {
-      title = L["OPT_BAR_COLOR_TITLE"], text = L["OPT_BAR_COLOR_DESC"], items = items,
-      swatchFor = function(id)
-        if id == "neutral" then return Ground() end
-        if id == "custom" then return UI.GetDividerCustom() end
-        return UI.DividerColorRGB(id)
-      end,
-      get = function() return UI.GetDividerColor and UI.GetDividerColor() or "neutral" end,
-      set = function(id)
-        if id == "custom" then
-          -- No picker: the box shows the choice that stands.
-          if not (UI.PickDividerColor and UI.PickDividerColor(Picked)) then Rows.PaintDropdown(color) end
-        elseif UI.SetDividerColor then
-          UI.SetDividerColor(id)
-        end
+    -- A colour row, Bar color's or Shadow color's, by the setting's own
+    -- getter, setter, picker and Custom colour; the same choices.
+    local function ColorRow(title, desc, get, set, pick, custom)
+      local cell
+      local function Picked()
+        if cell then Rows.PaintDropdown(cell) end
         Ctx.Repaint()
-      end,
-    })
-    Rows.Why(color, "OPT_DIVIDER_WHY")
-    Shown(color.entry, "divider")
-    S.barColorCell = color
+      end
+      cell = Rows.Dropdown(col, {
+        title = title, text = desc, items = items,
+        swatchFor = function(id)
+          if id == "neutral" then return Ground() end
+          if id == "custom" then return custom() end
+          return UI.DividerColorRGB(id)
+        end,
+        get = function() return get() or "neutral" end,
+        set = function(id)
+          if id == "custom" then
+            -- No picker: the box shows the choice that stands.
+            if not pick(Picked) then Rows.PaintDropdown(cell) end
+          else
+            set(id)
+          end
+          Ctx.Repaint()
+        end,
+      })
+      Rows.Why(cell, "OPT_DIVIDER_WHY")
+      Shown(cell.entry, "divider")
+      return cell
+    end
+    S.barColorCell = ColorRow(L["OPT_BAR_COLOR_TITLE"], L["OPT_BAR_COLOR_DESC"], UI.GetDividerColor, UI.SetDividerColor,
+      UI.PickDividerColor, UI.GetDividerCustom)
+    -- The island's shadow: grey, saying so, under Hairline and Full row,
+    -- which have none (State.BarSays).
+    local shadow = ColorRow(L["OPT_BAR_SHADOW_TITLE"], L["OPT_BAR_SHADOW_DESC"], UI.GetShadowColor, UI.SetShadowColor,
+      UI.PickShadowColor, UI.GetShadowCustom)
+    Rows.Why(shadow, "OPT_BAR_SHADOW_WHY")
+    S.barShadowCell = shadow
   end
   -- How far back History goes, or Never, which turns it off (stored as 0),
   -- last: it clears what History kept on every character, so it is asked
