@@ -93,20 +93,22 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   mail listed.
 - **A quieter bar over read mail:** a little shorter than a row, on the
   list's own background between two faint lines, its words centered
-  ("Done 3", the number a step dimmer) and Delete all the same size as the
+  ("Done (3)", the number a step dimmer) and Delete all the same size as the
   words, red when you point at it. While the read mail is below the view,
-  the bar waits at the foot of the list as a small rounded tab in a strip of
-  its own, never over a mail; scroll down and it opens smoothly into the
-  bar, or click it to go straight there. Delete all takes a click only once
-  the bar is fully open.
-- **Choose how the bar looks, what it says, its icon and its color:** under
-  Options, Mail, Bar look keeps the small tab or brings back Hairline and
-  Full row. Bar says is Done (the same word as the Done tab), Nothing left,
-  Collected or Custom, your own words typed in its box, with a Count switch
-  beside it for the number. Bar icon puts a check mark, a circled check, an
-  open letter or an empty tray before them. Bar color is Neutral, Accent,
-  Class color, Blue, Violet or a color of your own, mixed in lightly so the
-  words stay easy to read. Read mail is now called Finished mail there.
+  the bar waits at the foot of the list as a small rounded island over a
+  soft shadow, the mail behind it still readable; scroll down and it opens
+  smoothly into the bar, or click it to glide there. Delete all takes a
+  click only once the bar is fully open.
+- **Choose how the bar looks, what it says, its icon and its colors:** under
+  Options, Mail, Bar look keeps the Island or brings back Hairline, a thin
+  strip with small words, and Full row, the same at a row's height. Bar says
+  is Done (the same word as the Done tab), Nothing left, Collected or
+  Custom, your own words typed in its box, with a Count switch beside it for
+  the number. Bar icon puts a check mark, a circled check, an open letter or
+  an empty tray before them. Bar color is Neutral, Accent, Class color,
+  Blue, Violet or a color of your own, mixed in lightly so the words stay
+  easy to read, and Shadow color offers the same choices for the island's
+  shadow. Read mail is now called Finished mail there.
 - **Test mail's notice fits the title bar:** "Sample mail." where the whole
   notice won't fit, the rest when you point at it.
 - **Tooltips end with one gesture per line,** in smaller type than the mail's
