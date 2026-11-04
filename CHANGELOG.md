@@ -3,13 +3,11 @@
 ## 1.60.0
 
 **Postbox now runs in World of Warcraft: Forever as well as retail**, from
-the same download. *Restart the game once after updating (a /reload is not
-enough).*
-
-Please report any bugs you find, on retail or in WoW Forever: open an
-[issue on GitHub](https://github.com/egsherlock/Postbox/issues) or leave a
-comment on CurseForge. **Report a bug**, at the foot of the options, gives
-you a report to paste in.
+the same download: please report any bugs you find as an
+[issue on GitHub](https://github.com/egsherlock/Postbox/issues) or a
+CurseForge comment (**Report a bug**, at the foot of the options, gives you
+a report to paste in). *Restart the game once after updating (a /reload is
+not enough).*
 
 ### World of Warcraft: Forever
 
