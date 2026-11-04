@@ -419,11 +419,13 @@ local function Colour(f, kf, hv, pv, ks)
   P.edgeR:SetVertexColor(er, eg, eb, 1)
 end
 
--- The words, icon and number in their ink: brighter under the pointer.
+-- The words, icon and number in their ink (the number's brackets keep
+-- their own, dimmer): brighter under the pointer.
 local function WordsInk(f, hot)
   local T = Th()
   local tone = hot and "textPrimary" or "textSecondary"
   T.SetColor(f.Label, tone)
+  T.SetColor(f.Count, tone)
   T.SetColor(f.Mark, tone)
 end
 
@@ -439,7 +441,9 @@ function DN.Tones(f)
       WordsInk(f, hv >= 1)
     else
       local u = 1 - hv
-      f.Label:SetTextColor(t[1] * u + t[5] * hv, t[2] * u + t[6] * hv, t[3] * u + t[7] * hv, t[4] * u + t[8] * hv)
+      local r, g, b, a = t[1] * u + t[5] * hv, t[2] * u + t[6] * hv, t[3] * u + t[7] * hv, t[4] * u + t[8] * hv
+      f.Label:SetTextColor(r, g, b, a)
+      f.Count:SetTextColor(r, g, b, a)
       f.Mark:SetVertexColor(t[9] * u + t[13] * hv, t[10] * u + t[14] * hv, t[11] * u + t[15] * hv, t[12] * u + t[16] * hv)
     end
   end
@@ -506,6 +510,8 @@ function DN.Fit(f, W)
   local delete = f.Delete
   local deleteW = math.ceil(tonumber((delete.Text:GetStringWidth())) or 0) + 2 * M.tightGap
   delete:SetSize(deleteW, f.__isleBand or f:GetHeight() or 22)
+  -- Its words' ink on the middle, as the words' (RV.Lifts).
+  delete.Text:SetPoint("CENTER", delete, "CENTER", 0, f.__liftD or 0)
   local wordsW, iconW, countW = f.__wordsW or 0, f.__iconW or 0, f.__countW or 0
   local lead = (iconW > 0) and (iconW + ((wordsW > 0 or countW > 0) and checkGap or 0)) or 0
   local tail = (countW > 0) and (((wordsW > 0) and gap or 0) + countW) or 0
@@ -534,15 +540,15 @@ end
 
 -- The icon, the words and the number centred on the list as one, at the
 -- island's cut or the bar's (`wide`), on whole units from the copy's left,
--- on its middle (the client centres a line on its box, which puts the
--- capitals on the middle within half a unit). Only where the cut moves,
--- or `again`.
+-- each lifted so its ink is on the middle (RV.Lifts); the number in one
+-- string with whole words (RV.Join). Only where the cut moves, or `again`.
 function DN.Place(f, wide, again)
   local cut = (wide and f.__barW or f.__tabW) or false
   if not again and f.__pw == wide and f.__placed == cut then return end
   f.__pw = wide
   local B = Parts()
   local label, count, mark, inner = f.Label, f.Count, f.Mark, f.Inner
+  B.Join(f, cut)
   if cut then
     label:SetWidth(cut)
   elseif f.__placed then
@@ -557,14 +563,15 @@ function DN.Place(f, wide, again)
     mark:SetPoint("LEFT", inner, "LEFT", x, f.__iconUp or 0)
     x = x + iconW + B.checkGap
   end
+  local lift = f.__lift or 0
   if wordsW > 0 then
     label:ClearAllPoints()
-    label:SetPoint("LEFT", inner, "LEFT", x, 0)
+    label:SetPoint("LEFT", inner, "LEFT", x, lift)
     count:ClearAllPoints()
     count:SetPoint("LEFT", label, "RIGHT", f.__gap or B.gap, 0)
   else
     count:ClearAllPoints()
-    count:SetPoint("LEFT", inner, "LEFT", x, 0)
+    count:SetPoint("LEFT", inner, "LEFT", x, lift)
   end
 end
 

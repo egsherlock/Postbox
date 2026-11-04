@@ -7157,11 +7157,12 @@ end
 -- little into it), between two faint hairlines. Its words are centred,
 -- as a heading's: what Bar says chose (or the player's own words), in the
 -- secondary text colour, after the icon Bar icon chose, in the same ink,
--- and the number of read mail in brackets a step dimmer after them while
--- Count is on, a space apart, as the segments write theirs ("Inbox (3)").
--- The fold sign stands at its left end on the read dot's column, dim, and
--- Delete all at its right in the words' size and ink; Delete all turns red
--- under the pointer.
+-- and the number of read mail in brackets after them while Count is on, a
+-- space apart, as the segments write theirs ("Inbox (3)"): its digits in
+-- the words' ink, its brackets a step dimmer. Every part's ink stands on
+-- the bar's middle (RV.Lifts). The fold sign stands at its left end on the
+-- read dot's column, dim, and Delete all at its right in the words' size
+-- and ink; Delete all turns red under the pointer.
 --
 -- While its place is below the view the bar waits at the list's foot as
 -- the island, in a room of its own over a see-through shadow
@@ -7190,10 +7191,6 @@ RV.BAR = {
   gap = 6, checkGap = 4, check = 8,
   -- The island's room each side of its words.
   pad = 12,
-  -- How far the words stand above the bar's middle, of their size: none,
-  -- the client centres a line on its box, which puts the capitals on the
-  -- middle within half a unit, as the rows have theirs.
-  lift = 0,
   -- Delete all's height on Hairline and Full row (Hairline's own height at
   -- most).
   deleteH = 18,
@@ -7231,20 +7228,22 @@ RV.BAR_FONTS = {
 --             its words centred; out of view, the island at the list's
 --             foot over its shadow.
 --   hairline  small words and a hairline to Delete all on the list's own
---             ground, the fold sign written before the words at the row's
---             inset: a strip as tall as its words' line and a little more,
---             the same in either row size.
+--             ground, the fold sign on the rows' read dots and the words
+--             where the rows' icons start (RV.BarLanes): a strip measured
+--             from its words' font, as much room over them as under them
+--             (RV.LineBand), the same in either row size.
 --   full      Full row: Hairline at a row's height, its fold sign, words,
 --             number and Delete all in the rows' own size.
 -- The last two differ only in height and size. While their place is below
 -- the view a copy of the bar stands whole at the list's foot
--- (RV.UpdatePin), handing over without moving. Every look says what Bar
--- says chose, with Bar icon's mark before the words and the number in
--- brackets after them while Count is on; Bar color is the island's and the
--- open bar's fill, and the fill under the other two wherever a colour is
--- chosen (Neutral leaves them on the list's ground) and under their copy at
--- the foot always. A look is an entry here: its words' size, and how far
--- past the row's inset they start, after the fold sign.
+-- (RV.UpdatePin), handing over without moving, a faint edge over it and
+-- "+" for its sign. Every look says what Bar says chose, with Bar icon's
+-- mark before the words and the number in brackets after them while Count
+-- is on; Bar color is the island's and the open bar's fill, and the fill
+-- under the other two wherever a colour is chosen (Neutral leaves them on
+-- the list's ground) and under their copy at the foot always. A look is
+-- an entry here: its words' size, and how far past the row's inset they
+-- start where the rows have no column after the read dot.
 -------------------------------------------------------------
 
 RV.LOOKS = {
@@ -7254,10 +7253,133 @@ RV.LOOKS = {
 }
 -- The en dash the fold sign writes while the read mail is open, the
 -- hairline's strength, the least of it left between the words and Delete
--- all where long words are cut, and Hairline's height (its slot a row's gap
--- more, 16): its tiny words' line, 9 units in the game's small font as
--- EllesmereUI sizes it, and two and a half units over and under it.
-RV.LINE = { open = "\226\128\147", ruleA = 0.22, ruleMin = 12, band = 14 }
+-- all where long words are cut, and the strip Hairline's room is measured
+-- in (RV.LineBand): 14 units, its height before it was measured from its
+-- font. `now`: Hairline's height in the font it is drawn in, as its last
+-- typing measured it (RV.LineType), the same in both row sizes.
+RV.LINE = { open = "\226\128\147", ruleA = 0.22, ruleMin = 12, band = 14, now = false }
+
+-------------------------------------------------------------
+-- The bar's ink on its middle
+--
+-- A string is laid out on its line -- the face's ascent over the baseline
+-- and its descent under it -- and the client centres that line on the
+-- string's anchor, puts the line's top on the pixel grid, and sets the
+-- baseline the ascent under it, on the grid. Words with no descenders
+-- ("Done") have no ink in the descent, so centred that way their capitals
+-- stand the face's own (ascent - descent - capitals) / 2 off the middle:
+-- half a unit low in EllesmereUI's Expressway at 13, a little high in the
+-- game's Friz Quadrata. The game says nothing of a face's metrics at run
+-- time, so the faces Postbox is drawn in carry them here, by the name of
+-- their file, as the client itself compiles them (its own font files'
+-- metrics for Friz Quadrata and Expressway; the faces' own tables for the
+-- rest): the line's ascent and descent, the capitals' height, and the ink
+-- of the two signs Hairline and Full row write, "+" and the en dash, from
+-- the baseline up, all in ems. A face not here is taken to have the
+-- common proportions of these.
+--
+-- From those, RV.InkLift raises a string by whole units, so its baseline
+-- moves exactly that far whatever the client rounds, until its ink is
+-- centred on the bar's middle: to the pixel where it can be, half a pixel
+-- up where its height and the bar's differ in parity. The icon then stands
+-- on the pixels nearest the words' ink, the same half pixel up (RV.Lifts),
+-- so the two always share their rows. Measured once per face, size and
+-- bar height, on a copy's typing; never on a pass.
+-------------------------------------------------------------
+
+RV.FACES = {
+  expressway = { 0.954, 0.192, 0.692, 0.157, 0.519, 0.214, 0.320 },
+  frizqt__ = { 0.917, 0.270, 0.706, 0.068, 0.632, 0.247, 0.375 },
+  ["barlowsemicondensed-semibold"] = { 1.000, 0.200, 0.700, 0.107, 0.514, 0.234, 0.334 },
+  arialn = { 0.9355, 0.2119, 0.716, 0.116, 0.589, 0.224, 0.294 },
+  ["arial narrow"] = { 0.9355, 0.2119, 0.716, 0.116, 0.589, 0.224, 0.294 },
+  ["ptsansnarrow-bold"] = { 0.900, 0.276, 0.700, 0.139, 0.538, 0.234, 0.343 },
+}
+RV.FACE_COMMON = { 0.93, 0.21, 0.70, 0.12, 0.55, 0.23, 0.33 }
+-- The faces by path, as each was first looked up: a handful of paths.
+RV.FACE_AT = {}
+
+-- A string's face (RV.FACES) and size, from the font it wears.
+function RV.FaceOf(fs)
+  local path, size = fs:GetFont()
+  local face = path and RV.FACE_AT[path]
+  if not face then
+    local name = type(path) == "string" and path:match("([^\\/]+)%.%w+$")
+    face = name and RV.FACES[name:lower()] or RV.FACE_COMMON
+    if type(path) == "string" then RV.FACE_AT[path] = face end
+  end
+  return face, tonumber(size) or 12
+end
+
+-- How far, in whole units up, a one-line string in `face` at `size`,
+-- anchored on the middle of a bar `H` tall, is raised so its ink from `lo`
+-- to `hi` (ems over the baseline) is centred `dy` / 2 under that middle
+-- (the foot under a copy at the list's foot, `dy` tall, is part of the bar
+-- it shows): on whole pixels, half a pixel up where it cannot be exact.
+-- And where its baseline then stands, from the bar's top, and where it
+-- stood unraised.
+function RV.InkLift(face, size, H, dy, lo, hi)
+  local asc = face[1] * size
+  local top = floor(H / 2 - (asc + face[2] * size) / 2 + 0.5)
+  local base = floor(top + asc + 0.5)
+  local want = ceil(H / 2 + dy / 2 + (lo + hi) / 2 * size - 0.5)
+  return base - want, want, base
+end
+
+-- A copy's lifts for a bar `H` tall with a foot `dy` under it: the words',
+-- the number's (theirs, in one string or after them), Delete all's, Hairline's
+-- and Full row's signs ("+", the en dash), the icon's (an icon `__iconH`
+-- tall, on the pixels nearest the words' ink, or the middle with no words),
+-- and the rule's top, on the words' ink. Numbers only; when the type, the
+-- icon, the height or the foot moves.
+function RV.Lifts(f, H, dy)
+  local face, size = RV.FaceOf(f.Label)
+  local lift, base = RV.InkLift(face, size, H, dy, 0, face[3])
+  f.__lift = lift
+  local dface, dsize = RV.FaceOf(f.Delete.Text)
+  f.__liftD = RV.InkLift(dface, dsize, H, dy, 0, dface[3])
+  local sface, ssize = RV.FaceOf(f.SignText)
+  f.__liftPlus = RV.InkLift(sface, ssize, H, dy, sface[4], sface[5])
+  f.__liftDash = RV.InkLift(sface, ssize, H, dy, sface[6], sface[7])
+  local c = H / 2 + dy / 2
+  if (f.__wordsW or 0) > 0 or (f.__countW or 0) > 0 then c = base - face[3] * size / 2 end
+  local h = f.__iconH or 0
+  f.__iconUp = (h > 0) and (H / 2 - h / 2 - ceil(c - h / 2 - 0.5)) or 0
+  f.__ruleY = H / 2 - floor(c)
+  f.__lH, f.__lDy, f.__lGen, f.__lIcon = H, dy, f.__gen, h
+end
+
+-- Whether a copy's lifts are for this height and foot, its type and icon.
+function RV.Lifted(f, H, dy)
+  return f.__lH == H and f.__lDy == dy and f.__lGen == f.__gen and f.__lIcon == (f.__iconH or 0)
+end
+
+-- The foot under the copy at the list's foot: the list's bottom margin.
+function RV.FootH()
+  return max(1, Th().Metrics.tightGap - 1)
+end
+
+-- Hairline's height in the font it is drawn in (`fs`): the room the 14-unit
+-- strip leaves under its capitals, the font's line centred in it, and the
+-- foot under the copy at the list's foot -- the room under the words there
+-- -- over the capitals as under them, so at the foot they stand on the middle
+-- of all the bar shows; a whole unit, at least the 14.
+function RV.LineBand(fs)
+  local face, size = RV.FaceOf(fs)
+  local B = RV.LINE.band
+  local _, _, base = RV.InkLift(face, size, B, 0, 0, 0)
+  local foot = RV.FootH()
+  local room = (B - base) + foot
+  return max(B, floor(2 * room + face[3] * size - foot + 0.5))
+end
+
+-- What a copy's type is keyed on: the skin's generation and the host face's
+-- (a face moved in place leaves every measure of the old one standing).
+function RV.TypeGen()
+  local T = Th()
+  return (type(T.SkinGeneration) == "function" and T.SkinGeneration() or 0)
+    + (type(T.FontGeneration) == "function" and T.FontGeneration() or 0)
+end
 
 function RV.LookOf()
   local UI = ns.MailboxUI
@@ -7266,11 +7388,11 @@ function RV.LookOf()
 end
 
 -- The bar's height, and its slot, in this row size and the look chosen:
--- Hairline's own thin height in both, a row's height for Full row, each a
--- row's gap under it; the island's bar and slot.
+-- Hairline's own thin height in both, measured from its font, a row's
+-- height for Full row, each a row's gap under it; the island's bar and slot.
 function RV.BarHeight(compact)
   local look = RV.LookOf()
-  if look == "hairline" then return RV.LINE.band end
+  if look == "hairline" then return RV.LINE.now or RV.LINE.band end
   if look == "full" then return compact and COMPACT_ROW_HEIGHT or Th().Metrics.rowHeight end
   return compact and RV.BAR.band or RV.BAR.bandL
 end
@@ -7379,8 +7501,10 @@ function RV.WordsTipOff(self)
 end
 
 -- A copy of the bar put into a row size and a type (and the palette, for
--- its inks): its words' and Delete all's sizes, how far each is lifted, the
--- fold sign's size, the inks. Only when one of those moves.
+-- its inks): its words' and Delete all's sizes, the fold sign's size, the
+-- inks; its lifts are measured again after (RV.Lifts). The number in the
+-- words' ink, its brackets dimmer (RV.BarText). Only when one of those
+-- moves.
 function RV.BarType(f, compact, style)
   local T = Th()
   local M = T.Metrics
@@ -7393,14 +7517,9 @@ function RV.BarType(f, compact, style)
     -- Delete all in the words' own size (the island's copy).
     shared.BindFont(f.Delete.Text, fonts[f.Inner and i or (i + 1)])
   end
-  local _, size = f.Label:GetFont()
-  local _, deleteSize = f.Delete.Text:GetFont()
-  f.__lift = RV.BAR.lift * (tonumber(size) or 12)
-  f.__liftD = RV.BAR.lift * (tonumber(deleteSize) or 12)
-  f.__gap = RV.SpaceOf(f.Count)
   f.__canvas = compact and RV.BAR.sign or RV.BAR.signL
   T.SetColor(f.Label, "textSecondary")
-  T.SetColor(f.Count, "textDisabled")
+  T.SetColor(f.Count, "textSecondary")
   T.SetColor(f.Mark, "textSecondary")
   T.SetColor(f.Sign, "textDisabled")
   T.SetColor(f.Delete.Text, f.Delete.__hot and "negative" or "textDisabled")
@@ -7408,29 +7527,17 @@ function RV.BarType(f, compact, style)
   for k = 1, #edges do T.FillChrome(edges[k], RV.BAR.edgeA) end
   local delete = f.Delete
   delete:ClearAllPoints()
-  delete:SetPoint("RIGHT", f, "RIGHT", -M.inset, f.__liftD)
+  delete:SetPoint("RIGHT", f, "RIGHT", -M.inset, 0)
   f.__folded = nil
   -- The island's own: Delete all on the words' middle in their ink.
   local DN = f.Inner and ns.DividerNotch
   if DN then DN.Type(f) end
 end
 
--- The width of a space in the number's font, the gap the number stands
--- after the words, as a segment's count stands after its name ("Inbox
--- (3)"): measured between two digits, where every client keeps it; the
--- bar's own gap where it answers nothing. When a copy is typed, never on a
--- pass (BarText writes the number again after).
-function RV.SpaceOf(fs)
-  fs:SetText("0 0")
-  local wide = tonumber((fs:GetStringWidth())) or 0
-  fs:SetText("00")
-  local w = wide - (tonumber((fs:GetStringWidth())) or 0)
-  return (w > 0) and w or RV.BAR.gap
-end
-
 -- A copy's icon: the glyph of that name (Theme.GLYPHS) on its one mark
 -- texture, at the glyph's own size, so its whole pixels stay whole. Only
--- when the icon moves.
+-- when the icon moves. Each glyph's ink fills its box, so its box is
+-- centred as its ink (RV.Lifts).
 function RV.BarIcon(f, icon)
   if f.__glyph == icon then return end
   local glyphs = Th().GLYPHS
@@ -7443,11 +7550,27 @@ function RV.BarIcon(f, icon)
   mark:SetSize(g.w, g.h)
 end
 
+-- The words and the number as one string where the words are whole, so
+-- the client sets the space between them as it sets any space ("Done
+-- (1)"); the words alone, cut short (`cut`), with the number its own
+-- string a measured space after them. Only where that moves.
+function RV.Join(f, cut)
+  local joined = f.__joinText
+  if not joined then return end
+  local join = not cut
+  if f.__joined == join then return end
+  f.__joined = join
+  f.Label:SetText(join and joined or f.__wordsText)
+  f.Count:SetShown(not join)
+end
+
 -- The bar's icon, words and number: set and measured only when what it
 -- says, the icon, the number, the language or the type moves -- a scroll
 -- makes no string. Where it would show nothing at all (Custom left empty,
 -- no icon, Show mail counts off) it says the default words, Read: the bar
--- never stands empty. Placed by RV.BarFit and RV.BarPlace.
+-- never stands empty. The number in the words' ink, its brackets in the
+-- dimmer one (`__dimHex`, the palette's as the copy was painted). Placed
+-- by RV.BarFit and RV.BarPlace.
 function RV.BarText(f, loc, words, n, style, custom, icon)
   local B = RV.BAR
   local text
@@ -7481,22 +7604,38 @@ function RV.BarText(f, loc, words, n, style, custom, icon)
   else
     label:Hide()
   end
+  f.__iconH = nil
   if icon ~= "none" then
     RV.BarIcon(f, icon)
     mark:Show()
     iconW = mark:GetWidth() or B.check
-    f.__iconUp = ((glyphs[icon].h or 0) % 2 == 1) and 0.5 or 0
+    f.__iconH = mark:GetHeight() or glyphs[icon].h
   else
     mark:Hide()
   end
+  local countText, joined = nil, nil
   if n >= 0 then
-    -- In brackets, as the segments and the category buttons write theirs.
-    count:SetText("(" .. FormatCount(n) .. ")")
+    -- In brackets, as the segments and the category buttons write theirs:
+    -- the number in the words' ink (the string's own), the brackets dimmer.
+    local hex = f.__dimHex or "8f8f8f"
+    countText = "|cff" .. hex .. "(|r" .. FormatCount(n) .. "|cff" .. hex .. ")|r"
+    count:SetText(countText)
     count:Show()
     countW = count:GetStringWidth() or 0
   else
     count:Hide()
   end
+  -- The space between the words and the number, as the client sets it in
+  -- one string: what that string measures past the two alone.
+  f.__gap = B.gap
+  if text and countText then
+    joined = text .. " " .. countText
+    label:SetText(joined)
+    local gap = (label:GetStringWidth() or 0) - wordsW - countW
+    if gap > 0 then f.__gap = gap end
+    label:SetText(text)
+  end
+  f.__wordsText, f.__joinText, f.__joined = text, joined, false
   f.__wordsW, f.__iconW, f.__countW = wordsW, iconW, countW
   f.__shows, f.__noWords = text, not text
   local delete = f.Delete
@@ -7504,6 +7643,8 @@ function RV.BarText(f, loc, words, n, style, custom, icon)
   delete:SetSize(max(Th().TextWidth(delete.Text) + 8, 40), f.__deleteH or RV.BAR.deleteH)
   f.__half = nil
   f.__fitW = nil
+  -- The icon's lift follows the words' ink, where there are words.
+  f.__lH = nil
 end
 
 -- What the words have room for, in a copy `W` wide: the icon before them
@@ -7538,13 +7679,12 @@ function RV.BarFit(f, W)
 end
 
 -- The icon, the words and the number centred as one, the words at the
--- tab's room or the open bar's (`wide`): the icon on the bar's middle,
--- level with the fold sign and the words' lower-case middle (an icon an
--- odd number of units tall half a unit up, so it falls on whole pixels),
--- the check mark's gap after it; the words lifted (`__lift`); the number
--- after the words, or after the icon. Only where the room it is placed at
--- moves (or `again`: what it says, or its room, moved): a copy whose words
--- fit both rooms is placed once.
+-- tab's room or the open bar's (`wide`): each lifted so its ink is on the
+-- bar's middle (RV.Lifts), the check mark's gap after the icon; the number
+-- in one string with whole words, or a space after words cut short, or
+-- after the icon. Only where the room it is placed at moves (or `again`:
+-- what it says, or its room, moved): a copy whose words fit both rooms is
+-- placed once.
 function RV.BarPlace(f, wide, again)
   local cut
   if wide then cut = f.__barW else cut = f.__tabW end
@@ -7553,6 +7693,7 @@ function RV.BarPlace(f, wide, again)
   if not again and was == cut then return end
   local B = RV.BAR
   local label, count, mark = f.Label, f.Count, f.Mark
+  RV.Join(f, cut)
   if cut then
     label:SetWidth(cut)
   elseif was then
@@ -7589,7 +7730,7 @@ function RV.PaintBar(panel, f, compact)
   if f.__look ~= "notch" then RV.NotchParts(f) end
   local T = Th()
   local style = RV.StyleOf()
-  local gen = type(T.SkinGeneration) == "function" and T.SkinGeneration() or 0
+  local gen = RV.TypeGen()
   if f.__compact ~= compact or f.__style ~= style or f.__gen ~= gen then
     f.__compact, f.__style, f.__gen = compact, style, gen
     RV.BarType(f, compact, style)
@@ -7602,9 +7743,18 @@ function RV.PaintBar(panel, f, compact)
   local custom = (words == "custom") and RV.CustomOf() or false
   local icon = RV.IconOf()
   local n = RV.BarCount(panel)
-  if f.__words ~= words or f.__n ~= n or f.__loc ~= loc or f.__custom ~= custom or f.__icon ~= icon then
-    f.__words, f.__n, f.__loc, f.__custom, f.__icon = words, n, loc, custom, icon
+  local hex = T.InkHex("textDisabled")
+  if f.__words ~= words or f.__n ~= n or f.__loc ~= loc or f.__custom ~= custom or f.__icon ~= icon
+     or f.__dimHex ~= hex then
+    f.__words, f.__n, f.__loc, f.__custom, f.__icon, f.__dimHex = words, n, loc, custom, icon, hex
     RV.BarText(f, loc, words, n, style, custom, icon)
+  end
+  -- The lifts, for the bar's height (the island's band) with no foot.
+  local H = f.__isleBand or f:GetHeight() or 0
+  if H <= 0 then H = compact and RV.BAR.band or RV.BAR.bandL end
+  if not RV.Lifted(f, H, 0) then
+    RV.Lifts(f, H, 0)
+    f.__fitW = nil
   end
   local gr, gg, gb = RV.GroundColor(panel)
   local r, g, b = RV.BarRGB(panel, gr, gg, gb)
@@ -7692,13 +7842,34 @@ end
 -- Where the fold sign stands: centred on the read dot's column, read off a
 -- row the pass just placed, so it follows the arrangement and the row size
 -- as the rows do; kept on the panel for a pass that places no row. With the
--- dot hidden, a little in from the row's edge.
+-- dot hidden, a little in from the row's edge. And where Hairline's and
+-- Full row's own content starts (`_barIconX`): where the row's item icon
+-- starts, so the bar keeps the row's step from its dot to its icon; with
+-- the icon hidden or standing before the dot, where the row's first column
+-- after the dot starts (its sender, else its subject); with none of those
+-- on the left, nil (RV.PaintLine then keeps the look's own step from the
+-- sign).
 function RV.BarLanes(panel, row)
   local dot = row and row.Indicator
   local x = Th().Metrics.inset + 4
   if dot and dot:IsShown() and dot.__pbAt == 1 then x = dot.__pbAtX + (dot:GetWidth() or ROW_INDICATOR) / 2 end
   panel._barSignX = x
+  local start
+  if row then
+    local parts = RV.LANE_PARTS
+    for i = 1, #parts do
+      local r = row[parts[i]]
+      local at = r and r.__pbAt
+      if r and r:IsShown() and (at == 1 or at == 3) and r.__pbAtX > x then
+        start = r.__pbAtX
+        break
+      end
+    end
+  end
+  panel._barIconX = start
 end
+-- The row's parts the bar's content may start at, in their order.
+RV.LANE_PARTS = { "Icon", "Sender", "Subject" }
 
 -- A copy put back into the notch's look from another: the parts only the
 -- other looks draw put away, the outline back, and everything the notch's
@@ -7722,10 +7893,11 @@ end
 
 -- Hairline and Full row: a copy put into `look` and the row size (and the
 -- palette, for its inks): the look's size for the fold sign, the words,
--- the number and Delete all; the fold sign at the row's inset and the rule,
--- the fill edge to edge, Delete all at the right whole and live, as tall as
--- the bar at most; the outline and the island's fold sign away. Only when
--- one of those moves; RV.PaintLine does the rest.
+-- the number and Delete all; Hairline's height measured in that font
+-- (RV.LineBand); the fill edge to edge, a faint top edge on the copy at
+-- the list's foot (the rows pass under it), Delete all at the right whole
+-- and live, as tall as the bar at most; the island's outline and fold sign
+-- away. Only when one of those moves; RV.PaintLine does the rest.
 function RV.LineType(f, look, compact)
   local T = Th()
   local M = T.Metrics
@@ -7739,9 +7911,9 @@ function RV.LineType(f, look, compact)
     shared.BindFont(f.Delete.Text, size)
     shared.BindFont(f.SignText, size)
   end
-  f.__gap = RV.SpaceOf(f.Count)
+  if look == "hairline" then B.now = RV.LineBand(f.Label) end
   T.SetColor(f.Label, "textSecondary")
-  T.SetColor(f.Count, "textDisabled")
+  T.SetColor(f.Count, "textSecondary")
   T.SetColor(f.Mark, "textSecondary")
   T.SetColor(f.SignText, "textSecondary")
   f.__deleteInk = "textSecondary"
@@ -7750,10 +7922,15 @@ function RV.LineType(f, look, compact)
   f.Rule:SetAlpha(B.ruleA)
   local edges = f.Edges
   for i = 1, #edges do edges[i]:Hide() end
+  if f.__pinned then
+    T.FillChrome(edges[1], RV.BAR.edgeA)
+    edges[1]:Show()
+  end
   f.Sign:Hide()
   f.SignText:Show()
+  f.SignText:ClearAllPoints()
+  f.SignText:SetJustifyH("CENTER")
   f.Rule:Show()
-  RV.Anchor(f, f.SignText, 1, M.inset, 0)
   local fill = f.Fill
   fill:ClearAllPoints()
   fill:SetAllPoints()
@@ -7761,29 +7938,46 @@ function RV.LineType(f, look, compact)
   local delete = f.Delete
   delete:ClearAllPoints()
   delete:SetPoint("RIGHT", f, "RIGHT", -M.inset, 0)
+  delete.Text:ClearAllPoints()
   f.__deleteH = min(RV.BAR.deleteH, RV.BarHeight(compact))
   delete:SetHeight(f.__deleteH)
   delete:SetAlpha(1)
   delete:EnableMouse(true)
-  f.__compact, f.__words, f.__folded, f.__lineX, f.__fitW, f.__tint, f.__r = compact, nil, nil, nil, nil, nil, nil
+  f.__compact, f.__words, f.__sign, f.__lineX, f.__fitW, f.__tint, f.__r = compact, nil, nil, nil, nil, nil, nil
   f.__half, f.__W, f.__wide, f.__late, f.__live, f.__fadeE, f.__signX = nil, nil, nil, nil, nil, nil, nil
+  f.__lH = nil
+end
+
+-- A copy typed for `look` and the row size, where the type, the row size or
+-- the palette moved: before anything reads the look's height (the
+-- virtualiser's pass, the options' drawing).
+function RV.LineReady(f, look, compact)
+  local gen = RV.TypeGen()
+  if f.__look ~= look or f.__compact ~= compact or f.__gen ~= gen then
+    f.__gen = gen
+    RV.LineType(f, look, compact)
+  end
 end
 
 -- Hairline's and Full row's icon, words and number, from `x`, left to
--- right: the icon on the bar's middle (an icon an odd number of units tall
--- half a unit up), the words at their room (`f.__lineCut`), the number a
--- space after them; the rule from the last of them to Delete all.
+-- right, each lifted so its ink is on the middle of all the bar shows
+-- (RV.Lifts): the icon, the words at their room (`f.__lineCut`) with the
+-- number in one string, or the number a space after words cut short; Delete
+-- all at the right on the same middle; the rule from the last of them to
+-- Delete all, on the words' ink.
 function RV.LinePlace(f, x)
   local B, M = RV.BAR, Th().Metrics
   local label, count, mark = f.Label, f.Count, f.Mark
   local wordsW, iconW, countW = f.__wordsW or 0, f.__iconW or 0, f.__countW or 0
   local cut = f.__lineCut or false
+  RV.Join(f, cut)
   if cut then
     label:SetWidth(cut)
   elseif f.__placed then
     label:SetWidth(0)
   end
   f.__placed = cut
+  local lift = f.__lift or 0
   local x0 = x
   if iconW > 0 then
     mark:ClearAllPoints()
@@ -7792,24 +7986,27 @@ function RV.LinePlace(f, x)
   end
   if wordsW > 0 then
     label:ClearAllPoints()
-    label:SetPoint("LEFT", f, "LEFT", x, 0)
+    label:SetPoint("LEFT", f, "LEFT", x, lift)
   end
   if countW > 0 then
     count:ClearAllPoints()
     if wordsW > 0 then
       count:SetPoint("LEFT", label, "RIGHT", f.__gap or B.gap, 0)
     else
-      count:SetPoint("LEFT", f, "LEFT", x, 0)
+      count:SetPoint("LEFT", f, "LEFT", x, lift)
     end
   end
-  -- The rule from the last of them: its top on the bar's middle, as the
-  -- words are centred on it, on whole units in both looks and row sizes.
+  local delete = f.Delete
+  delete.Text:SetPoint("RIGHT", delete, "RIGHT", 0, f.__liftD or 0)
+  -- The rule from the last of them, on the words' ink: a whole unit's row,
+  -- from either end's middle.
   if f.Rule:IsShown() then
     local rule = f.Rule
     local stop = x0 + (f.__lead or 0) + (cut or wordsW) + (f.__tail or 0)
+    local y = f.__ruleY or 0
     rule:ClearAllPoints()
-    rule:SetPoint("TOPLEFT", f, "LEFT", math.ceil(stop) + M.gap, 0)
-    rule:SetPoint("TOPRIGHT", f.Delete.Text, "LEFT", -M.gap, 0)
+    rule:SetPoint("TOPLEFT", f, "LEFT", ceil(stop) + M.gap, y)
+    rule:SetPoint("TOPRIGHT", delete.Text, "LEFT", -M.gap, y - (f.__liftD or 0))
   end
 end
 
@@ -7818,24 +8015,35 @@ end
 -- it, so at rest it compares a handful of values and sets nothing. The copy
 -- at the foot (`f.__pinned`) always stands on the bar's fill, where rows
 -- pass under it; the one in its place only where a colour is chosen, on
--- the list's own ground otherwise.
+-- the list's own ground otherwise. Under the copy at the foot, and under
+-- the bar in its place while it stands on the view's foot (`__footUnder`),
+-- the foot is part of the bar, so its content stands on the middle of
+-- both. The fold sign stands on the rows' read dot (RV.BarLanes): "+"
+-- while the copy at the foot stands for the bar, or the finished mail is
+-- folded; the en dash over it unfolded. The content starts where the rows'
+-- icons do.
 function RV.PaintLine(panel, f, compact, look)
   local T = Th()
   local M = T.Metrics
-  local gen = type(T.SkinGeneration) == "function" and T.SkinGeneration() or 0
-  if f.__look ~= look or f.__compact ~= compact or f.__gen ~= gen then
-    f.__gen = gen
-    RV.LineType(f, look, compact)
-  end
+  RV.LineReady(f, look, compact)
   local loc = L()
   local words = RV.WordsOf()
   local custom = (words == "custom") and RV.CustomOf() or false
   local icon = RV.IconOf()
   local n = RV.BarCount(panel)
-  if f.__words ~= words or f.__n ~= n or f.__loc ~= loc or f.__custom ~= custom or f.__icon ~= icon then
-    f.__words, f.__n, f.__loc, f.__custom, f.__icon = words, n, loc, custom, icon
+  local hex = T.InkHex("textDisabled")
+  if f.__words ~= words or f.__n ~= n or f.__loc ~= loc or f.__custom ~= custom or f.__icon ~= icon
+     or f.__dimHex ~= hex then
+    f.__words, f.__n, f.__loc, f.__custom, f.__icon, f.__dimHex = words, n, loc, custom, icon, hex
     RV.BarText(f, loc, words, n, "quiet", custom, icon)
     f.__lineX = nil
+  end
+  -- The bar's height (a copy sized by a drawing of its own says its own).
+  local H = f.__barH or RV.BarHeight(compact)
+  local dy = (f.__pinned or f.__footUnder) and (f.__footH or RV.FootH()) or 0
+  if not RV.Lifted(f, H, dy) then
+    RV.Lifts(f, H, dy)
+    f.__lineX, f.__sign = nil, nil
   end
   -- The fill: the bar's colour (the list's ground under Neutral).
   local tint = RV.Tinted()
@@ -7851,13 +8059,17 @@ function RV.PaintLine(panel, f, compact, look)
     f.__tint = filled
     f.Fill:SetShown(filled and true or false)
   end
-  local folded = RV.Folded(panel)
-  if f.__folded ~= folded then
-    f.__folded = folded
-    f.SignText:SetText(folded and "+" or RV.LINE.open)
+  local sign = (f.__pinned or RV.Folded(panel)) and "+" or RV.LINE.open
+  local sx = panel._barSignX or (M.inset + 4)
+  if f.__sign ~= sign or f.__signX ~= sx then
+    f.__sign, f.__signX = sign, sx
+    local text = f.SignText
+    text:SetText(sign)
+    text:SetPoint("CENTER", f, "LEFT", sx, (sign == "+") and f.__liftPlus or f.__liftDash)
   end
-  -- Where the words start: past the fold sign, by the look's own room.
-  local x = M.inset + RV.LOOKS[look].fold
+  -- Where the content starts: where the rows' icons start, else past the
+  -- fold sign by the look's own room.
+  local x = panel._barIconX or (M.inset + RV.LOOKS[look].fold)
   -- The words' room: the row less where they start, the icon and the
   -- number, Delete all and the least of the rule; cut short past it.
   local W = (f.__wOf or f):GetWidth() or 0
@@ -7898,7 +8110,7 @@ function RV.UpdatePin(panel, at, offset, viewport, stride, height, compact)
       pin:Hide()
     end
     if foot then
-      local on = at ~= nil and viewport > 0 and math.abs(slotBottom - viewBottom) <= 0.5
+      local on = RV.OnFoot(at, offset, viewport, stride, height)
       if on then RV.PaintFoot(panel, foot) end
       if foot.__up ~= on then
         foot.__up = on
@@ -7939,6 +8151,13 @@ function RV.UpdatePin(panel, at, offset, viewport, stride, height, compact)
     end
   end
   return true
+end
+
+-- Whether the bar in its place stands on the view's foot, within half a
+-- unit (the list's end): the foot is under it then.
+function RV.OnFoot(at, offset, viewport, stride, height)
+  if not at or viewport <= 0 then return false end
+  return math.abs((at - 1) * stride + height - offset - viewport) <= 0.5
 end
 
 -- The foot under the copy at the foot: the bar's fill, as its copy wears it.
@@ -7997,6 +8216,7 @@ CT.BarParts = {
   BarSlot = RV.BarSlotOf, Tip = RV.WordsTip, TipOff = RV.WordsTipOff,
   pad = RV.BAR.pad, gap = RV.BAR.gap, checkGap = RV.BAR.checkGap, edgeA = RV.BAR.edgeA, groundA = RV.BAR.groundA,
   signShut = RV.SIGN_SHUT, signOpen = RV.SIGN_OPEN,
+  Join = RV.Join, LineReady = RV.LineReady,
 }
 
 -------------------------------------------------------------
@@ -8050,6 +8270,9 @@ local function UpdateVisibleRows(panel)
   -- it always was.
   local at = (not historyView and not away) and panel._dividerAt or nil
   if at and filtered[at] ~= DIVIDER then at = nil end
+  -- Hairline's height is its font's: the bar typed before it is read.
+  local look = RV.LookOf()
+  if at and look ~= "notch" and panel.Divider then RV.LineReady(panel.Divider, look, compact) end
   local band = RV.BarHeight(compact)
   local lift = at and (stride - RV.BarSlotOf(compact)) or 0
   local split = at and (at * stride - lift) or 0
@@ -8080,7 +8303,6 @@ local function UpdateVisibleRows(panel)
   -- The Island look draws the bar in its place too (Core/DividerNotch.lua,
   -- the island's one copy), so the bar in the list is Hairline's and Full
   -- row's only.
-  local look = RV.LookOf()
   for i = first, last do
     if filtered[i] == DIVIDER then
       -- At the top of its slot, the bar's own height: the copy at the foot
@@ -8138,7 +8360,11 @@ local function UpdateVisibleRows(panel)
   if Notch then Notch.Watch(panel, offset) end
   if look ~= "notch" then
     if Notch then Notch.Off(panel) end
-    if divider and divider:IsShown() then RV.PaintBar(panel, divider, compact) end
+    if divider and divider:IsShown() then
+      -- On the view's foot (the list's end) the foot is under it.
+      divider.__footUnder = RV.OnFoot(at, offset, viewport, stride, band)
+      RV.PaintBar(panel, divider, compact)
+    end
     if RV.UpdatePin(panel, at, offset, (historyView or away) and 0 or viewport, stride, band, compact) and divider then
       divider:Hide()
     end
@@ -14429,7 +14655,7 @@ function CT.Build(parent)
   local foot = CreateFrame("Frame", nil, panel.MailListArea)
   foot:SetPoint("TOPLEFT", scroll, "BOTTOMLEFT", 0, 0)
   foot:SetPoint("TOPRIGHT", scroll, "BOTTOMRIGHT", 0, 0)
-  foot:SetHeight(max(1, M.tightGap - 1))
+  foot:SetHeight(RV.FootH())
   foot.Fill = foot:CreateTexture(nil, "BACKGROUND")
   foot.Fill:SetAllPoints()
   RV.PaintFoot(panel, foot)
