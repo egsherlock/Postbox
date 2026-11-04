@@ -7636,10 +7636,27 @@ end
 -- no such call, or answers anything but plain numbers (a secret, a string it
 -- has not laid out). Answers a fresh table: when the text or the type
 -- moves, never on a pass.
+--
+-- Asked of a copy the client never draws (`probe`), in `fs`'s font, not of
+-- `fs` itself: a string the client has drawn can answer from that drawing,
+-- so a change of size made live (Larger mail rows) read the old size's
+-- letters and held the island off its middle until a reload. The copy
+-- answers a live change as a fresh load is answered.
+local probe
 function RV.Span(fs, text)
   local calc = fs.CalculateScreenAreaFromCharacterSpan
   if type(calc) ~= "function" or type(text) ~= "string" or text == "" then return nil end
-  local ok, areas = pcall(calc, fs, 1, #text + 1)
+  if type(fs.GetFont) ~= "function" then return nil end
+  local path, size, flags = fs:GetFont()
+  if type(path) ~= "string" or type(size) ~= "number" then return nil end
+  if not probe then
+    local holder = CreateFrame("Frame")
+    holder:Hide()
+    probe = holder:CreateFontString(nil, "OVERLAY")
+  end
+  if probe:SetFont(path, size, flags or "") == false then return nil end
+  probe:SetText(text)
+  local ok, areas = pcall(calc, probe, 1, #text + 1)
   if not ok or type(areas) ~= "table" then return nil end
   local secret = type(issecretvalue) == "function" and issecretvalue or nil
   local l, r
