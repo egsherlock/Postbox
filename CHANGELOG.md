@@ -9,8 +9,8 @@ enough).*
 ### World of Warcraft: Forever
 
 - **Full names, both halves:** characters who share a first name keep their
-  own mail, Mail Memory and History, and recipients, replies and groups take
-  the full name, "Abla Stone" or "Abla-Stone".
+  own mail, Mail Memory and History, and recipients, replies and Character
+  Groups take the full name, "Abla Stone" or "Abla-Stone".
 - **Forever's mail rules:** Postbox files your characters by ruleset as you
   log in on them, and warns before mail to one on another ruleset or to a
   first name alone. It never suggests the Warband bank, and promises instant
@@ -33,7 +33,7 @@ enough).*
   items is down to its last three days (one for C.O.D.), a curved arrow
   before its amber time means it goes back to its sender, a bin that it
   will be deleted. Its tooltip and Mail Memory say so too; **Expiry marks**
-  (Options, Mail tab) turns them off.
+  (Options, Mail tab) turns the marks off, and the tooltip still says.
 - **One choice for both warnings:** **Warn about** (General, Expiring mail)
   sets what the login line and the minimap marker warn of: Mail to be
   deleted, Mail to be deleted or sent back (as before), or Off. Mail last
