@@ -557,8 +557,17 @@ function DN.Place(f, wide, again)
   end
   f.__placed = cut
   local wordsW, iconW = f.__wordsW or 0, f.__iconW or 0
-  local width = (f.__lead or 0) + (cut or wordsW) + (f.__tail or 0)
-  local x = B.CentreAt((f.__W2 or 0) / 2, width, f.__shadowX)
+  local lead = f.__lead or 0
+  local x
+  local runL, runR = f.__runL, f.__runR
+  if not cut and runL then
+    -- Where the client lays the letters out in their string (RV.Span): from
+    -- the icon, or from the first letter, to the last, on the middle.
+    local lo = (iconW > 0) and 0 or (lead + runL)
+    x = floor((f.__W2 or 0) / 2 - (lo + lead + runR) / 2 + 0.5)
+  else
+    x = B.CentreAt((f.__W2 or 0) / 2, lead + (cut or wordsW) + (f.__tail or 0), f.__shadowX)
+  end
   if iconW > 0 then
     mark:ClearAllPoints()
     mark:SetPoint("LEFT", inner, "LEFT", x, f.__iconUp or 0)

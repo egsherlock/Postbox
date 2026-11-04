@@ -7627,6 +7627,35 @@ function RV.CentreAt(mid, width, shadow)
   return floor(mid - width / 2 + (shadow or 0) / 2 + 0.5)
 end
 
+-- Where the client laid a string's letters out in its own width: the left
+-- and right of what it says its whole text covers (FontString's
+-- CalculateScreenAreaFromCharacterSpan, from the string's left; byte
+-- indices, escape codes included, its end one past the last, as Blizzard's
+-- own selection asks it), so its inset and its room past the letters are the
+-- client's own, whatever the face, size and flags. nil where the client has
+-- no such call, or answers anything but plain numbers (a secret, a string it
+-- has not laid out). Answers a fresh table: when the text or the type
+-- moves, never on a pass.
+function RV.Span(fs, text)
+  local calc = fs.CalculateScreenAreaFromCharacterSpan
+  if type(calc) ~= "function" or type(text) ~= "string" or text == "" then return nil end
+  local ok, areas = pcall(calc, fs, 1, #text + 1)
+  if not ok or type(areas) ~= "table" then return nil end
+  local secret = type(issecretvalue) == "function" and issecretvalue or nil
+  local l, r
+  for i = 1, #areas do
+    local a = areas[i]
+    if type(a) ~= "table" then return nil end
+    local al, aw = a.left, a.width
+    if secret and (secret(al) or secret(aw)) then return nil end
+    if type(al) ~= "number" or type(aw) ~= "number" or aw ~= aw or al ~= al then return nil end
+    l = l and min(l, al) or al
+    r = r and max(r, al + aw) or (al + aw)
+  end
+  if not l or r <= l then return nil end
+  return l, r
+end
+
 -- A copy's icon: the glyph of that name (Theme.GLYPHS) on its one mark
 -- texture, at the glyph's own size, so its whole pixels stay whole. Only
 -- when the icon moves. Each glyph's ink fills its box, so its box is
@@ -7726,12 +7755,23 @@ function RV.BarText(f, loc, words, n, style, custom, icon)
   -- cut short then stands where the one string would set it, and the words
   -- and the number whole measure as the one string they are drawn as.
   f.__gap = B.gap
+  -- The island's copy centres the letters where the client lays them out
+  -- in the string it shows whole (RV.Span): the words and the number as
+  -- one, or either alone; nil where it cannot say (DN.Place then centres
+  -- the measured width).
+  local island = f.Inner ~= nil
+  f.__runL, f.__runR = nil, nil
   if text and countText then
     joined = text .. " " .. countText
     label:SetText(joined)
     local whole = label:GetStringWidth() or 0
     if whole > 0 then f.__gap = whole - wordsW - countW end
+    if island then f.__runL, f.__runR = RV.Span(label, joined) end
     label:SetText(text)
+  elseif island and text then
+    f.__runL, f.__runR = RV.Span(label, text)
+  elseif island and countText then
+    f.__runL, f.__runR = RV.Span(count, countText)
   end
   f.__wordsText, f.__joinText, f.__joined = text, joined, false
   f.__wordsW, f.__iconW, f.__countW = wordsW, iconW, countW
