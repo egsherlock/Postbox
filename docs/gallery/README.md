@@ -6,7 +6,7 @@ Featured cover.
 
 | # | File | Title on CurseForge |
 |---|---|---|
-| 1 | `01-hero.png` | Postbox (Featured) |
+| 1 | `01-hero.gif` | Postbox (Featured) |
 | 2 | `02-collect.gif` | Collect in one click |
 | 3 | `03-looks.png` | Fits your UI |
 | 4 | `04-minimap.gif` | Every alt's mail |
@@ -20,6 +20,12 @@ All are 16:9, the shape of CurseForge's slideshow (834 x 472 on the page): the
 slides are 1200 x 679, the largest the gallery viewer shows them, and the cover is
 1774 x 1004. Each slide is the same clip as on the description, on the hero's sky
 with a short caption.
+
+The cover moves: the window wipes through Postbox's five looks (the Postbox
+style in Dark, Blizzard, ElvUI, EllesmereUI, the Postbox style in Light), with
+the look's name under it and, under the tagline, where Postbox runs (Retail,
+WoW Forever) and the UIs it fits (Blizzard UI, ElvUI, EllesmereUI).
+`01-hero.png` is its first frame, for anywhere a still is wanted instead.
 
 The description's own pictures are in `../screenshots`. Nothing under `docs/`
 ships in the addon: `.pkgmeta` leaves the folder out of the zip.
