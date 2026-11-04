@@ -146,9 +146,8 @@ local OPTION_DEFAULTS = {
   -- idle when unused, and a feature nobody can find switched off does not
   -- exist.
   mailMemory      = true,
-  -- (mailWarnings, the old switch for the chat line at login, is now one of
-  -- Warn about's three answers: UI.GetMemoryWarn, which reads it once to
-  -- carry an old profile over.)
+  -- (mailWarnings, 1.50's switch for the chat line at login, is carried
+  -- over at load as warnAtLogin: Postbox.lua.)
   -- Chat line at login: the one line in chat at login about expiring mail
   -- on your characters, by Warn about's rule (MailMemory.lua, MM.Warns).
   -- On: it is what the warning has always been.
@@ -1474,17 +1473,15 @@ end
 -- MM.Warns, holds the rule): "any" (the default: mail to be deleted or sent
 -- back, or long unopened on its way), "deleted" (only mail the server
 -- deletes, holding gold or items), or "off". Stored only when it is not
--- "any". The old switch, profile.mailWarnings, reads as "off" when it was
--- turned off, until a choice is made here, which is when it is dropped. Read
--- at login and when the minimap icon is worked out again: a few lookups, no
--- memo.
+-- "any". (1.50's switch, profile.mailWarnings, spoke of the chat line alone
+-- and is carried over at load as warnAtLogin: Postbox.lua.) Read at login
+-- and when the minimap icon is worked out again: a few lookups, no memo.
 local MEMORY_WARN = { off = true, deleted = true, any = true }
 function UI.GetMemoryWarn()
   local profile = ns.Store and ns.Store.Get and ns.Store.Get("profile")
   if type(profile) ~= "table" then return "any" end
   local stored = profile.memoryWarn
   if MEMORY_WARN[stored] then return stored end
-  if stored == nil and profile.mailWarnings == false then return "off" end
   return "any"
 end
 function UI.SetMemoryWarn(mode)

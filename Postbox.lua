@@ -2495,6 +2495,15 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   -- opener every time now, and nothing reads it.
   if type(profile) == "table" and profile.placement ~= nil then profile.placement = nil end
 
+  -- 1.50's "Warn about other characters' mail" (mailWarnings) switched the
+  -- chat line at login alone: carried over as that line's own switch, so a
+  -- player who turned it off keeps it off and keeps the minimap marker,
+  -- which Warn about now speaks for too.
+  if type(profile) == "table" and profile.mailWarnings ~= nil then
+    if profile.mailWarnings == false and profile.warnAtLogin == nil then profile.warnAtLogin = false end
+    profile.mailWarnings = nil
+  end
+
   -- The performance record as the player left it (section 5b), before
   -- anything can open a mailbox: the first open after a /reload is one of
   -- the opens it is for.
