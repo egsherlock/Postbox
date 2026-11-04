@@ -92,7 +92,7 @@
 <h2 style="text-align:center">Ready for WoW Forever</h2>
 <p style="text-align:center">The same download runs in World of Warcraft: Forever. CurseForge lists it under WoW Forever, WowUp offers it for a Forever install, and Forever keeps settings of its own.</p>
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Full names:</span></strong> write "Abla Stone" or "Abla-Stone". Characters who share a first name keep their own mail, Mail Memory and History.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Full names:</span></strong> write "Abla Stone" or "Abla-Stone". Postbox uses the full name everywhere, so two of your characters with the same first name never get mixed up.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Forever's mail rules:</span></strong> your characters filed by ruleset, a warning before mail to another ruleset or to a first name alone, and no Warband bank.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Your answer, always:</span></strong> gold from a stranger waits while you answer the game's question, and a slow send is waited for, never called failed.</li>
 </ul>

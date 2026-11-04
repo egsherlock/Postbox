@@ -11,9 +11,10 @@ not enough).*
 
 ### World of Warcraft: Forever
 
-- **Full names, both halves:** characters who share a first name keep their
-  own mail, Mail Memory and History, and recipients, replies and Character
-  Groups take the full name, "Abla Stone" or "Abla-Stone".
+- **Full names:** Postbox uses Forever's first name and surname everywhere,
+  in recipients, replies, Character Groups, Mail Memory and History, so two
+  of your characters with the same first name never get mixed up. Type
+  "Abla Stone" or "Abla-Stone".
 - **Forever's mail rules:** Postbox files your characters by ruleset as you
   log in on them, and warns before mail to one on another ruleset or to a
   first name alone. It never suggests the Warband bank, and promises instant

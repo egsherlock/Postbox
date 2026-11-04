@@ -43,9 +43,8 @@ WoW Forever, and WowUp offers it for a Forever install. By hand, copy the
 Forever keeps its own settings, separate from retail's.
 
 - **Full names.** Write the whole name, "Abla Stone" or "Abla-Stone" (the
-  same character either way). Characters who share a first name keep their
-  own mail, Mail Memory and History, and recipients, replies and Character
-  Groups take the full name.
+  same character either way). Postbox uses the full name everywhere, so two
+  of your characters with the same first name never get mixed up.
 - **Rulesets.** Mail can't cross rulesets, so Postbox files your characters
   by ruleset (Normal, PvP, RP and RP-PvP) and warns before mail to one it
   has seen on another. It knows a character once you've logged in on it

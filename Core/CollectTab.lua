@@ -8412,6 +8412,8 @@ CT.BarParts = {
   pad = RV.BAR.pad, gap = RV.BAR.gap, checkGap = RV.BAR.checkGap, edgeA = RV.BAR.edgeA, groundA = RV.BAR.groundA,
   signShut = RV.SIGN_SHUT, signOpen = RV.SIGN_OPEN,
   Join = RV.Join, LineReady = RV.LineReady, CentreAt = RV.CentreAt,
+  -- Where the client lays a string's letters out (What's new's placard too).
+  Span = RV.Span,
 }
 
 -------------------------------------------------------------

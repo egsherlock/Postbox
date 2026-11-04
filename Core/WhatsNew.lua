@@ -155,9 +155,9 @@ local PLACARD = {
   L = 0.203125, R = 0.796875, T = 0.15625, B = 0.84375,
   ART_W = 19, ART_H = 22,
   PAD_Y = 1,               -- the emblem in from the plate's top and bottom
-  PAD_L = 3,               -- the emblem in from the plate's left edge
+  PAD = 5,                 -- the emblem's left and the words' last letter in from the plate's edges
   WORDS_GAP = 5,           -- the emblem to the words
-  PAD_R = 8,               -- the words in from the plate's right edge
+  RIGHT_IN = 6,            -- the plate in from the page's right end, clear of the scroll bar's gutter
   BRIGHT = "WoW Forever",  -- the words' name of the game, in the bright ink
   TITLE_GAP = 12,          -- the least room between the title and the plate
 }
@@ -263,17 +263,30 @@ local function LayoutPlacard(plate, title, page, y, width)
   local over = floor((plateH - line) / 2)
   emblem:SetSize(ew, eh)
   emblem:ClearAllPoints()
-  emblem:SetPoint("LEFT", plate, "LEFT", P.PAD_L, 0)
+  emblem:SetPoint("LEFT", plate, "LEFT", P.PAD, 0)
 
-  local room = width - Natural(title) - P.TITLE_GAP
-  local lead = P.PAD_L + ew + P.WORDS_GAP
+  -- The plate's right end, a little in from the page's.
+  local right = width - P.RIGHT_IN
+  local room = right - Natural(title) - P.TITLE_GAP
+  local lead = P.PAD + ew + P.WORDS_GAP
   -- A unit to spare: a string given exactly its own width can still be
   -- cut by the client's rounding. The words stand left, so it is never seen.
   local shown = Natural(words) + 1
-  local w = lead + shown + P.PAD_R
+  -- Where the last letter really ends, as the client lays the words out
+  -- (CollectTab's Span, the island's own rule): a client can measure a
+  -- string several units past its letters, which would leave the plate's
+  -- right gap wider than its left. The measured width where it cannot say.
+  local inkR = shown
+  local CT = ns.CollectTab
+  local Span = CT and CT.BarParts and CT.BarParts.Span
+  if Span then
+    local _, r = Span(words, words:GetText())
+    if r and r > 0 and r <= shown then inkR = ceil(r) end
+  end
+  local w = lead + inkR + P.PAD
   local alone = w > room
   if alone then
-    w = P.PAD_L + ew + P.PAD_L
+    w = P.PAD + ew + P.PAD
     words:Hide()
   else
     words:SetWidth(shown)
@@ -289,7 +302,7 @@ local function LayoutPlacard(plate, title, page, y, width)
     return 0
   end
   plate:ClearAllPoints()
-  plate:SetPoint("TOPRIGHT", page, "TOPLEFT", width, -(y - over))
+  plate:SetPoint("TOPRIGHT", page, "TOPLEFT", right, -(y - over))
   plate:SetSize(w, plateH)
   PlaceRing(plate, ns.Theme.OnePixel(plate))
   plate:Show()
