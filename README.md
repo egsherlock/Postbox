@@ -76,8 +76,8 @@ opens. How the bar looks (the **Island**, a thin **Hairline** or a **Full
 row**), what it says (your own words too), its count, its icon and its colors
 are yours to choose (**Bar look**, **Bar says**, **Count**, **Bar icon**,
 **Bar color**, **Shadow color**). Read mail can go to a **Done** tab
-instead, or be deleted the moment Postbox empties it (**Finished mail**:
-**Delete when done**).
+instead, or be deleted the moment Postbox empties it (**Finished mail**,
+**Where it goes**: **Delete when done**).
 
 - **All mail** collects everything still holding something, one server
   command at a time, in the order the list shows. Under a search it collects

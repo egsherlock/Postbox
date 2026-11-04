@@ -50,10 +50,11 @@ enough).*
   is below the view, the bar waits at the list's foot as a small island
   over a soft shadow; scroll down or click it and it opens. Delete all turns
   red when you point at it, and takes a click only once the bar is open.
-- **Make it yours** under Options, Mail tab: **Bar look** (Island, Hairline
-  or Full row), **Bar says** (Done, Nothing left, Collected or your own
-  words), **Count**, **Bar icon**, **Bar color** and **Shadow color**. Read
-  mail is called Finished mail there now.
+- **Make it yours** under Options, Mail tab, in a new **Finished mail**
+  group: **Bar look** (Island, Hairline or Full row), **Bar says** (Done,
+  Nothing left, Collected or your own words), **Count**, **Bar icon**,
+  **Bar color** and **Shadow color**. **Where it goes** there is the choice
+  1.50 called Read mail.
 
 ### At the mailbox
 

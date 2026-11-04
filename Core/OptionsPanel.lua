@@ -6726,8 +6726,53 @@ function Pages.mail(col)
     get = function() return ns.MailboxUI.GetKeepFreeSlots and ns.MailboxUI.GetKeepFreeSlots() or 0 end,
     set = function(id) if ns.MailboxUI.SetKeepFreeSlots then ns.MailboxUI.SetKeepFreeSlots(id) end end,
   })
-  -- Finished mail -- read, with nothing left in it: under a bar after the
-  -- inbox, in a Done tab of its own, or deleted once finished with. One
+  -- How far back History goes, or Never, which turns it off (stored as 0),
+  -- last of Collecting: it clears what History kept on every character, so it is asked
+  -- first, and until the answer the choice shows what it was. Cancel leaves
+  -- it there. Where the client has no popup, it is set as it was before.
+  local dayItems = {}
+  for _, days in ipairs({ 7, 14, 21, 30 }) do
+    dayItems[#dayItems + 1] = { id = days, name = ns.Plural("OPT_HISTORY_DAYS", days) }
+  end
+  dayItems[#dayItems + 1] = { id = 0, name = L["OPT_HISTORY_NEVER"] }
+  local POPUP_HISTORY_OFF = "POSTBOX_HISTORY_OFF"
+  local keep
+  keep = Rows.Dropdown(col, {
+    title = L["OPT_HISTORY_KEEP_TITLE"], text = L["OPT_HISTORY_KEEP_DESC"],
+    items = dayItems,
+    get = function() return ns.MailboxUI.GetHistoryDays and ns.MailboxUI.GetHistoryDays() or 7 end,
+    set = function(id)
+      local UI = ns.MailboxUI
+      if not UI.SetHistoryDays then return end
+      local asks = type(StaticPopupDialogs) == "table" and type(StaticPopup_Show) == "function"
+      if id ~= 0 or not asks or (UI.GetHistoryDays and UI.GetHistoryDays() == 0) then
+        UI.SetHistoryDays(id)
+        return
+      end
+      Rows.PaintDropdown(keep)
+      if not StaticPopupDialogs[POPUP_HISTORY_OFF] then
+        StaticPopupDialogs[POPUP_HISTORY_OFF] = {
+          text = "%s",
+          button1 = L["BTN_HISTORY_OFF"],
+          button2 = L["COD_CONFIRM_CANCEL"],
+          OnAccept = function()
+            if ns.MailboxUI.SetHistoryDays then ns.MailboxUI.SetHistoryDays(0) end
+            Panel.RefreshControls()
+          end,
+          timeout = 0,
+          whileDead = true,
+          hideOnEscape = true,
+          showAlert = true,
+        }
+      end
+      ns.Theme.LiftPopup(StaticPopup_Show(POPUP_HISTORY_OFF, L["MSG_HISTORY_OFF_CONFIRM"]))
+    end,
+  })
+  -- Finished mail, a group of its own: where it goes, and the bar over it.
+  -- Collecting keeps the rows about a collect run and its History.
+  Rows.Group(col, L["OPT_FINISHED_HEADING"])
+  -- Where it goes -- read mail with nothing left in it: under a bar after
+  -- the inbox, in a Done tab of its own, or deleted once finished with. One
   -- choice, three answers -- a switch for the tab and another for deleting
   -- would have been two controls over one fact.
   local read = Rows.Dropdown(col, {
@@ -6906,48 +6951,6 @@ function Pages.mail(col)
     Rows.Why(shadow, "OPT_BAR_SHADOW_WHY")
     S.barShadowCell = shadow
   end
-  -- How far back History goes, or Never, which turns it off (stored as 0),
-  -- last: it clears what History kept on every character, so it is asked
-  -- first, and until the answer the choice shows what it was. Cancel leaves
-  -- it there. Where the client has no popup, it is set as it was before.
-  local dayItems = {}
-  for _, days in ipairs({ 7, 14, 21, 30 }) do
-    dayItems[#dayItems + 1] = { id = days, name = ns.Plural("OPT_HISTORY_DAYS", days) }
-  end
-  dayItems[#dayItems + 1] = { id = 0, name = L["OPT_HISTORY_NEVER"] }
-  local POPUP_HISTORY_OFF = "POSTBOX_HISTORY_OFF"
-  local keep
-  keep = Rows.Dropdown(col, {
-    title = L["OPT_HISTORY_KEEP_TITLE"], text = L["OPT_HISTORY_KEEP_DESC"],
-    items = dayItems,
-    get = function() return ns.MailboxUI.GetHistoryDays and ns.MailboxUI.GetHistoryDays() or 7 end,
-    set = function(id)
-      local UI = ns.MailboxUI
-      if not UI.SetHistoryDays then return end
-      local asks = type(StaticPopupDialogs) == "table" and type(StaticPopup_Show) == "function"
-      if id ~= 0 or not asks or (UI.GetHistoryDays and UI.GetHistoryDays() == 0) then
-        UI.SetHistoryDays(id)
-        return
-      end
-      Rows.PaintDropdown(keep)
-      if not StaticPopupDialogs[POPUP_HISTORY_OFF] then
-        StaticPopupDialogs[POPUP_HISTORY_OFF] = {
-          text = "%s",
-          button1 = L["BTN_HISTORY_OFF"],
-          button2 = L["COD_CONFIRM_CANCEL"],
-          OnAccept = function()
-            if ns.MailboxUI.SetHistoryDays then ns.MailboxUI.SetHistoryDays(0) end
-            Panel.RefreshControls()
-          end,
-          timeout = 0,
-          whileDead = true,
-          hideOnEscape = true,
-          showAlert = true,
-        }
-      end
-      ns.Theme.LiftPopup(StaticPopup_Show(POPUP_HISTORY_OFF, L["MSG_HISTORY_OFF_CONFIRM"]))
-    end,
-  })
   -- (The sound when mail arrives is General's now, under New mail:
   -- Pages.general.)
 end
