@@ -93,7 +93,7 @@ as retail. *Restart the game once after updating (a /reload is not enough).*
   mail listed.
 - **A quieter bar over read mail:** a little shorter than a row, on the
   list's own background between two faint lines, its words centered
-  ("Done (3)", the number a step dimmer) and Delete all the same size as the
+  ("Done (3)", its brackets a step dimmer) and Delete all the same size as the
   words, red when you point at it. While the read mail is below the view,
   the bar waits at the foot of the list as a small rounded island over a
   soft shadow, the mail behind it still readable; scroll down and it opens
