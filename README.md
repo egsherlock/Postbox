@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/screenshots/hero.gif" alt="Postbox: the mailbox Azeroth deserves. Its window in each of its looks: the Postbox style in Dark, Blizzard, ElvUI, EllesmereUI and the Postbox style in Light. For retail and WoW Forever, with the Blizzard UI, ElvUI or EllesmereUI" />
+  <img src="docs/screenshots/hero.gif" alt="Postbox: the mailbox Azeroth deserves. Its window in each of its looks: the Postbox style in Dark, Blizzard, ElvUI, EllesmereUI and the Postbox style in Light. For Retail and Forever, each beside its game's own emblem, with the Blizzard UI, ElvUI or EllesmereUI" />
 </p>
 
 <p align="center">

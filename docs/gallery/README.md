@@ -24,9 +24,10 @@ with a short caption.
 
 The cover moves: the window wipes through Postbox's five looks (the Postbox
 style in Dark, Blizzard, ElvUI, EllesmereUI, the Postbox style in Light), with
-the look's name under it and, under the tagline, where Postbox runs (Retail,
-WoW Forever) and the UIs it fits (Blizzard UI, ElvUI, EllesmereUI).
-`01-hero.png` is its first frame, for anywhere a still is wanted instead.
+the look's name under it. Under the tagline, where Postbox runs: Retail and
+Forever, each beside its game's own emblem, and under them the UIs it fits
+(Blizzard UI, ElvUI, EllesmereUI), named in text. `01-hero.png` is its first
+frame, for anywhere a still is wanted instead.
 
 The description's own pictures are in `../screenshots`. Nothing under `docs/`
 ships in the addon: `.pkgmeta` leaves the folder out of the zip.
