@@ -1,13 +1,14 @@
 <h1 style="text-align:center">The mailbox Azeroth deserves.</h1>
-<p style="text-align:center"><strong><span style="color:#e5e5e5">Postbox replaces the game's mailbox with one fast window: collect in one click, send faster, and never lose mail on a forgotten alt.</span></strong><br>For retail WoW, and now with full support for World of Warcraft: Forever, from the same download. It works the moment you open a mailbox. Every extra has an off switch, and it stays light either way.</p>
+<p style="text-align:center"><strong><span style="color:#e5e5e5">Postbox replaces the game's mailbox with one fast window: collect in one click, send faster, and never lose mail on a forgotten alt.</span></strong><br>It works the moment you open a mailbox. Every extra has an off switch, and it stays light either way.</p>
+<p style="text-align:center"><strong><span style="color:#ffd100">Retail · WoW Forever</span></strong> &nbsp;|&nbsp; <strong><span style="color:#ffd100">Blizzard UI · ElvUI · EllesmereUI</span></strong><br>One download runs on retail and, new in 1.60, on World of Warcraft: Forever. On the Blizzard UI it wears its own Dark or Light style or the game's own look; under ElvUI or EllesmereUI it matches them.</p>
 <ul style="display:flex;flex-wrap:wrap;gap:20px 24px;padding-left:0">
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">All mail, one click</span></strong><span style="display:none">: </span><span style="display:block">The whole inbox, gold, items and letters, in one go.</span></li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Just one kind</span></strong><span style="display:none">: </span><span style="display:block">Buttons for sold, bought, canceled, expired, your alts and your own Character Groups.</span></li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Pick or search</span></strong><span style="display:none">: </span><span style="display:block">Shift- or Ctrl-click rows, or search "ore" or a name, and take just those.</span></li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Just what you want</span></strong><span style="display:none">: </span><span style="display:block">Search "ore" or a name, Shift- or Ctrl-click rows, or use buttons for sold, bought, your alts and your own Character Groups.</span></li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Finished mail, out of the way</span></strong><span style="display:none">: </span><span style="display:block">Read mail with nothing left waits under one quiet bar at the foot of the list, to fold away or clear in one go.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Every alt's mail</span></strong><span style="display:none">: </span><span style="display:block">What each character has waiting, and what each mail holds, searched from anywhere.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Never lose expiring mail</span></strong><span style="display:none">: </span><span style="display:block">Expired auction mail is deleted, gold and all. You're warned at login and on the minimap while there's still time, and a mail about to run out shows whether it goes back to its sender or is deleted.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Faster sending</span></strong><span style="display:none">: </span><span style="display:block">Names complete as you type. Right-click attaches; Alt-right-click attaches every stack.</span></li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Your look, your layout</span></strong><span style="display:none">: </span><span style="display:block">Matches EllesmereUI or ElvUI, or its own Dark or Light style. Drag any column or button.</span></li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Your look, your layout</span></strong><span style="display:none">: </span><span style="display:block">Matches EllesmereUI or ElvUI, keeps the Blizzard look, or wears its own Dark or Light style. Drag any column or button.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">A minimap icon</span></strong><span style="display:none">: </span><span style="display:block">A count of what's waiting and an expiry marker, in two dozen styles.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Safe with your gold</span></strong><span style="display:none">: </span><span style="display:block">C.O.D. is never paid without asking, and full bags stop a run cleanly.</span></li>
 </ul>
@@ -41,9 +42,10 @@
 <p>&nbsp;</p>
 <h2 style="text-align:center">Finished mail, out of the way</h2>
 <p style="text-align:center">Read mail with nothing left in it sits under one quiet bar. While it's out of view, the bar waits at the foot of the list as a small island; scroll to it or click it and it opens.</p>
+<p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/finished.gif" width="672" alt="Scrolling down to the island at the list's foot: it opens into the bar over the read mail, and Delete all turns red under the pointer"></p>
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Yours to style:</span></strong> the Island, a thin Hairline or a Full row, saying Done, Nothing left, Collected or your own words, with an icon, a count and a color.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Clear it in one go:</span></strong> Delete all removes only the finished mail under the bar, and takes a click only once the bar is open.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Clear it in one go:</span></strong> Delete all removes only the finished mail under the bar, takes a click only once the bar is open, and asks first.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Or never see it:</span></strong> give finished mail a Done tab of its own, or delete each letter once it's emptied. History keeps its words.</li>
 </ul>
 <p>&nbsp;</p>
@@ -68,13 +70,13 @@
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Drag any column or button,</span></strong> hide what you don't need, and choose what each figure shows.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Columns or Packed:</span></strong> figures lined up like a table, or packed so subjects get the room.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">One-line rows, larger rows and History</span></strong> each keep their own layout.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">One-line rows, larger rows and History</span></strong> each keep their own layout, and <strong><span style="color:#e5e5e5">Test mail</span></strong> fills the list with samples to try it on, even away from a mailbox.</li>
 </ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">A minimap icon that tells you more</h2>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/icons.gif" width="730" alt="Pointing at minimap icon options while the panel beside them previews each one"></p>
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Off until you turn it on;</span></strong> then the game's own mail icon steps aside. New mail can flash it, with a sound you pick: Postbox's own, the game's, or one your other addons share.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Off until you turn it on;</span></strong> then the game's own mail icon steps aside. New mail can flash it, and play a sound you choose: one of Postbox's own, the game's, or one your other addons share.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">A count of what's waiting,</span></strong> and a marker when mail is about to expire, in the shape, color and spot you pick.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Two dozen hand-painted styles</span></strong> with glow, pulse and shadow. Point at any option and the panel beside it shows you.</li>
 </ul>
@@ -83,8 +85,8 @@
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/looks.png" width="836" alt="Postbox under EllesmereUI, ElvUI, Blizzard and its own style"></p>
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">EllesmereUI:</span></strong> your font, your accent, and the same opacity and border as the windows beside it.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">ElvUI:</span></strong> your accent, live. <strong><span style="color:#e5e5e5">Blizzard:</span></strong> the game's own look.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Postbox style:</span></strong> Dark or Light, with your accent, border, corners, font and text size. Scale 80% to 130%.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">ElvUI:</span></strong> your accent, live. <strong><span style="color:#e5e5e5">Blizzard:</span></strong> the game's own window art, to sit beside the default UI.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Postbox style,</span></strong> the default on the game's own UI: Dark or Light, with your accent, border, corners, font and text size. Scale 80% to 130%.</li>
 </ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Ready for WoW Forever</h2>

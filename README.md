@@ -9,6 +9,7 @@
 
 <p align="center">
   <b>Runs on retail WoW (12.0.7–12.1.x) and, new in 1.60, fully supports World of Warcraft: Forever (1.60.1), from one download.</b><br />
+  On the Blizzard UI it wears its own Dark or Light style or the game's own look; under ElvUI or EllesmereUI it matches them.<br />
   No dependencies, no libraries &nbsp;·&nbsp;
   <a href="https://www.curseforge.com/wow/addons/postboxmail">CurseForge</a> &nbsp;·&nbsp;
   <a href="CHANGELOG.md">Changelog</a> &nbsp;·&nbsp;
@@ -24,7 +25,7 @@
 | **Mail Memory** | Every character's last-seen mailbox, from anywhere, searchable across characters, with warnings before mail is lost. |
 | **Send tab** | Names complete as you type, a line says what a send will do, gold always asks first, and more than twelve items go out in one press. |
 | **Minimap icon** | Optional: two dozen hand-painted styles, a count of what's waiting, and a marker for mail about to expire. |
-| **Looks** | Follows EllesmereUI or ElvUI, or wears the Postbox style (Dark or Light) or the Blizzard look. |
+| **Looks** | Follows EllesmereUI or ElvUI; on the game's own UI, wears the Postbox style (the default, in Dark or Light) or the Blizzard look. |
 | **Options** | Five tabs, General first with every character's mail at a glance, and a panel that explains and previews whatever you point at. |
 | **WoW Forever** | The same download: full names, Forever's mail rules, slow sends waited for, and Blizzard's mailbox for controller players. |
 
@@ -126,6 +127,10 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
 
 <p align="center">
   <img src="docs/screenshots/collect.gif" alt="A search for ore taking just those mails, All mail taking the rest, then History showing what came in" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/finished.gif" alt="Scrolling down to the island at the list's foot: it opens into the bar over the read mail, and Delete all turns red under the pointer" />
 </p>
 
 <p align="center">
