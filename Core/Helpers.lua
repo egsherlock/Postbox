@@ -97,11 +97,13 @@ end
 -- another realm. World of Warcraft: Forever gives every character a main
 -- name and a secondary name ("Abla Stone"), unique across the region, so a
 -- full name is an address on its own: Forever never puts a realm in one, and
--- Blizzard accepts "Abla-Stone" as well as "Abla Stone" there, so a hyphen
--- is not a realm separator. Mail cannot cross Forever's rulesets, and its
--- realm names drift inside one ruleset ("Classic Beta PvE" and "... PvE 2"),
--- so Postbox's "my realm" on Forever is the ruleset, named the way AceDB and
--- Syndicator name it: PvE, PvP, RP, Hardcore.
+-- Blizzard's chat accepts "Abla-Stone" as well as "Abla Stone" there, so a
+-- hyphen is not a realm separator. Mail cannot cross Forever's rulesets, and
+-- its realm names drift inside one ruleset ("Classic Beta PvE" and "... PvE
+-- 2"; "CAMWOW EU1 Realm 1 PVP" and "EU2 Realm 2 PVP" in the stress test), so
+-- Postbox's "my realm" on Forever is the ruleset, named the way AceDB-3.0
+-- names it: PvE, PvP, RP, RPPvP, Hardcore (Syndicator files the roleplay PvP
+-- ruleset under PvP; Postbox reads neither addon's keys).
 --
 -- Everything here returns exactly one value, as the rest of this file does,
 -- and is memoised once it has a real answer: neither the character nor its
@@ -309,6 +311,23 @@ function H.TypedFullName(text)
     return false
   end
   return H.Capitalize(H.Lower(first)) .. Separator() .. H.Capitalize(H.Lower(second))
+end
+
+-- text -> the recipient SendMail is given for what the To: box holds. On a
+-- client with two-part names, a full name written with a hyphen
+-- ("Abla-Stone", which Blizzard's chat takes as well) goes in the game's
+-- own spelling, "Abla Stone", the caller's casing kept: that is how every
+-- Forever name the client hands out is spelled (the guild roster,
+-- Battle.net, recent allies, NameUtil), and the form Forever's other mail
+-- addons send, while whether the mail server takes the hyphen has not been
+-- seen. Only that exact shape, two names and one hyphen, is respelled;
+-- anything else, and everything on retail, goes exactly as typed. One
+-- value, and nothing is built for a name already spelled with a space.
+function H.MailAddress(text)
+  if type(text) ~= "string" or not text:find("-", 1, true) or not H.TwoPartNames() then return text end
+  local first, second = text:match("^([^%s%-]+)%-([^%s%-]+)$")
+  if not first then return text end
+  return first .. Separator() .. second
 end
 
 -- name -> the name as it is SHOWN. Forever lets a player hide their own

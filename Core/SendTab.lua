@@ -1512,7 +1512,8 @@ local function DoSendMail(panel, confirmed)
   panel._run = (mails > 1) and { index = 1, total = mails } or nil
   SetSendButtonBusy(panel, true)
 
-  SendMail(toName, subject, body)
+  -- On Forever a hyphenated full name goes as the game spells it (Helpers.MailAddress).
+  SendMail(Helpers().MailAddress(toName), subject, body)
 
   C_Timer.After(SEND_TIMEOUT, function()
     if pendingSend and pendingSend.token == myToken then
@@ -5196,7 +5197,8 @@ function Q.SendQueued(panel, toName)
   if panel._run then panel._run.index = panel._run.index + 1 end
   SetSendButtonBusy(panel, true)
 
-  SendMail(toName, subject, body)
+  -- On Forever a hyphenated full name goes as the game spells it (Helpers.MailAddress).
+  SendMail(Helpers().MailAddress(toName), subject, body)
 
   C_Timer.After(SEND_TIMEOUT, function()
     if pendingSend and pendingSend.token == myToken then

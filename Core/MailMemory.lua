@@ -2257,10 +2257,14 @@ end
 -- not only new ones, so a sender with unread mail already in the snapshot is
 -- that mail, not an arrival.
 -- sender, name -> whether the sender is three words or more and its last
--- words are `name` ("Horde Auction House", "Auction House").
+-- words are `name` ("Horde Auction House", "Auction House"), or its first
+-- ones, as the other languages put a house's faction after it
+-- ("Auktionshaus der Horde", "Hôtel des ventes de la Horde").
 function MM.EndsWithWord(sender, name)
   if type(name) ~= "string" or name == "" or #sender <= #name + 1 then return false end
-  if sender:sub(-(#name + 1)) ~= " " .. name then return false end
+  if sender:sub(-(#name + 1)) ~= " " .. name and sender:sub(1, #name + 1) ~= name .. " " then
+    return false
+  end
   local _, spaces = sender:gsub(" ", " ")
   return spaces >= 2
 end
@@ -2287,11 +2291,12 @@ local function PendingRows(watch, arrived, from, snap)
       for i = 1, #from do
         local sender = from[i]
         local isAH = (sender == ah or sender == hostAH)
-        -- On World of Warcraft: Forever the auction house is reported to sign
-        -- its mail with its faction ("Horde Auction House"). A character's
-        -- name there is two words of letters with one space between, so a
-        -- sender of three words or more that ends in the auction house's
-        -- name is the auction house, never a player.
+        -- On World of Warcraft: Forever the auction house signs its mail with
+        -- its faction (a beta dump of a canceled auction: "Horde Auction
+        -- House"; the client's houses are Alliance, Horde and Blackwater). A
+        -- character's name there is two words of letters with one space
+        -- between, so a sender of three words or more that ends or begins
+        -- with the auction house's name is the auction house, never a player.
         if not isAH and ns.IsForever and type(sender) == "string" then
           isAH = MM.EndsWithWord(sender, ah) or MM.EndsWithWord(sender, hostAH)
         end
