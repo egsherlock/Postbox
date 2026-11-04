@@ -130,9 +130,11 @@ end
 -- in the window's own chrome (the totals banner's quiet fill inside its
 -- one-pixel edge, bandFill and bandBorder: neutral, following the look and
 -- the mode), WoW Forever's emblem at its left end and the words beside it
--- in the body's small type, on one line. As tall as the title's line; the
--- emblem at its own size, 13 by 15 units (its art's 2 texels a unit), and
--- smaller only on a shorter line. All of it painted again on every open.
+-- in the body's small type, on one line, "WoW Forever" in the bright ink and
+-- the rest a step quieter. The emblem at its own size, 19 by 22 units (its
+-- art's 2 texels a unit), so it stays legible at one screen pixel a unit;
+-- the plate a unit clear of it all round, and centred on the title's line,
+-- which it may stand taller than. All of it painted again on every open.
 --
 -- The emblem is Blizzard's, shown only to say Postbox supports their game:
 -- the Forever client's own Interface\Glues\Common\
@@ -149,12 +151,14 @@ end
 -------------------------------------------------------------
 local PLACARD = {
   FILE = "Interface\\AddOns\\Postbox\\Media\\forever-logo.tga",
-  -- The art on its 32-texel canvas, and its own size in units.
-  L = 0.09375, R = 0.90625, T = 0.03125, B = 0.96875,
-  ART_W = 13, ART_H = 15,
+  -- The art on its 64-texel canvas, and its own size in units.
+  L = 0.203125, R = 0.796875, T = 0.15625, B = 0.84375,
+  ART_W = 19, ART_H = 22,
+  PAD_Y = 1,               -- the emblem in from the plate's top and bottom
   PAD_L = 3,               -- the emblem in from the plate's left edge
-  WORDS_GAP = 4,           -- the emblem to the words
-  PAD_R = 6,               -- the words in from the plate's right edge
+  WORDS_GAP = 5,           -- the emblem to the words
+  PAD_R = 8,               -- the words in from the plate's right edge
+  BRIGHT = "WoW Forever",  -- the words' name of the game, in the bright ink
   TITLE_GAP = 12,          -- the least room between the title and the plate
 }
 
@@ -162,7 +166,7 @@ local PLACARD = {
 function PLACARD.Tip(self)
   local T = ns.Theme
   T.TipBegin(self, "ANCHOR_TOP")
-  T.TipTitle(self.Words:GetText())
+  T.TipTitle(self.__words or "")
   GameTooltip:Show()
   self.__tip = true
 end
@@ -188,8 +192,8 @@ local function BuildPlacard(page, words)
   local text = T.CreateText(plate, "bodySmall")
   text:SetJustifyH("LEFT")
   text:SetWordWrap(false)
-  text:SetText(words)
   plate.Fill, plate.Ring, plate.Emblem, plate.Words = fill, ring, emblem, text
+  plate.__words = words
   return plate
 end
 
@@ -199,6 +203,16 @@ local function PaintPlacard(plate)
   local T = ns.Theme
   T.FillColor(plate.Fill, "bandFill")
   for i = 1, 4 do T.FillColor(plate.Ring[i], "bandBorder") end
+  -- The words a step quieter, the game's name in them bright: inks as the
+  -- look has them now, so the string is made here, once an open.
+  local words, bright = plate.__words or "", PLACARD.BRIGHT
+  T.SetColor(plate.Words, "textSecondary")
+  local hex = T.InkHex("textPrimary")
+  if hex and words:find(bright, 1, true) then
+    local s, e = words:find(bright, 1, true)
+    words = words:sub(1, s - 1) .. "|cff" .. hex .. bright .. "|r" .. words:sub(e + 1)
+  end
+  plate.Words:SetText(words)
 end
 
 -- The ring inside the plate's edge, `px` thick, and the fill inside the
@@ -241,9 +255,12 @@ local function LayoutPlacard(plate, title, page, y, width)
   local words, emblem = plate.Words, plate.Emblem
   PaintPlacard(plate)
   local _, size = title:GetFont()
-  local line = ceil(tonumber(size) or P.ART_H + 1)
-  local eh = min(P.ART_H, line - 1)
-  local ew = floor(eh * P.ART_W / P.ART_H + 0.5)
+  local line = ceil(tonumber(size) or P.ART_H)
+  local eh, ew = P.ART_H, P.ART_W
+  -- The plate a unit clear of the emblem, never shorter than the line, and
+  -- centred on it: `over` above the title's top, the rest below.
+  local plateH = max(line, eh + 2 * P.PAD_Y)
+  local over = floor((plateH - line) / 2)
   emblem:SetSize(ew, eh)
   emblem:ClearAllPoints()
   emblem:SetPoint("LEFT", plate, "LEFT", P.PAD_L, 0)
@@ -272,11 +289,12 @@ local function LayoutPlacard(plate, title, page, y, width)
     return 0
   end
   plate:ClearAllPoints()
-  plate:SetPoint("TOPRIGHT", page, "TOPLEFT", width, -y)
-  plate:SetSize(w, line)
+  plate:SetPoint("TOPRIGHT", page, "TOPLEFT", width, -(y - over))
+  plate:SetSize(w, plateH)
   PlaceRing(plate, ns.Theme.OnePixel(plate))
   plate:Show()
-  return line
+  -- The line's height with the plate's part below the title's line.
+  return plateH - over
 end
 
 local function BuildWindow()
