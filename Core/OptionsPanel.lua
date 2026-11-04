@@ -7787,7 +7787,7 @@ function Pages.minimap(col)
     -- leads: it is where the stock indicator lives. A fresh install starts
     -- in the top-right corner (MinimapButton's DEFAULTS.position), and
     -- picking that corner again is the way back to it after a shift-drag.
-    Rows.Dropdown(block, {
+    local placeRow = Rows.Dropdown(block, {
       title = L["OPT_MINIMAP_POS_TITLE"], text = L["OPT_MINIMAP_POS_DESC"],
       items = {
         { id = "BLIZZARD",    name = L["OPT_MINIMAP_POS_BLIZZARD"] },
@@ -7801,6 +7801,17 @@ function Pages.minimap(col)
       get = function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
       set = function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end,
     })
+    -- Where the icon was moved to, besides the choice: the spot on the rim a
+    -- shift-drag left (Minimap - custom) and the one on screen (Anywhere on
+    -- screen). Read only by Reset this tab (TabReset.Units), so the tab's
+    -- reset puts them back with Position, as Reset settings does, and a
+    -- later pick of either choice starts from the default spot.
+    placeRow.moreGet = function()
+      local store = ns.Store
+      local prefs = store and store.Get and store.Get("profile.minimap")
+      if type(prefs) ~= "table" then return nil end
+      return tostring(prefs.angle) .. "|" .. tostring(prefs.offsetX) .. "|" .. tostring(prefs.offsetY)
+    end
     Rows.Check(block, {
       title = L["OPT_MINIMAP_LOCK_TITLE"], text = L["OPT_MINIMAP_LOCK_DESC"],
       get = function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
