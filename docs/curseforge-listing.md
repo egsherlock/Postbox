@@ -1,5 +1,5 @@
 <h1 style="text-align:center">The mailbox Azeroth deserves.</h1>
-<p style="text-align:center"><strong><span style="color:#e5e5e5">Postbox replaces the game's mailbox with one fast window: collect in one click, send faster, and never lose mail on a forgotten alt.</span></strong><br>For Retail and World of Warcraft: Forever, from one download. It works the moment you open a mailbox. Every extra has an off switch, and it stays light either way.</p>
+<p style="text-align:center"><strong><span style="color:#e5e5e5">Postbox replaces the game's mailbox with one fast window: collect in one click, send faster, and never lose mail on a forgotten alt.</span></strong><br>For retail WoW, and now with full support for World of Warcraft: Forever, from the same download. It works the moment you open a mailbox. Every extra has an off switch, and it stays light either way.</p>
 <ul style="display:flex;flex-wrap:wrap;gap:20px 24px;padding-left:0">
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">All mail, one click</span></strong><span style="display:none">: </span><span style="display:block">The whole inbox, gold, items and letters, in one go.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Just one kind</span></strong><span style="display:none">: </span><span style="display:block">Buttons for sold, bought, canceled, expired, your alts and your own Character Groups.</span></li>
@@ -39,6 +39,14 @@
 </div>
 <p>&nbsp;</p>
 <p>&nbsp;</p>
+<h2 style="text-align:center">Finished mail, out of the way</h2>
+<p style="text-align:center">Read mail with nothing left in it sits under one quiet bar. While it's out of view, the bar waits at the foot of the list as a small island; scroll to it or click it and it opens.</p>
+<ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Yours to style:</span></strong> the Island, a thin Hairline or a Full row, saying Done, Nothing left, Collected or your own words, with an icon, a count and a color.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Clear it in one go:</span></strong> Delete all removes only the finished mail under the bar, and takes a click only once the bar is open.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Or never see it:</span></strong> give finished mail a Done tab of its own, or delete each letter once it's emptied. History keeps its words.</li>
+</ul>
+<p>&nbsp;</p>
 <h2 style="text-align:center">Never lose mail on a forgotten alt</h2>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/minimap.gif" width="708" alt="The minimap icon's tooltip, then Mail Memory"></p>
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
@@ -66,7 +74,7 @@
 <h2 style="text-align:center">A minimap icon that tells you more</h2>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/icons.gif" width="730" alt="Pointing at minimap icon options while the panel beside them previews each one"></p>
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Off until you turn it on;</span></strong> then the game's own mail icon steps aside.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Off until you turn it on;</span></strong> then the game's own mail icon steps aside. New mail can flash it, with a sound you pick: Postbox's own, the game's, or one your other addons share.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">A count of what's waiting,</span></strong> and a marker when mail is about to expire, in the shape, color and spot you pick.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Two dozen hand-painted styles</span></strong> with glow, pulse and shadow. Point at any option and the panel beside it shows you.</li>
 </ul>
@@ -79,12 +87,21 @@
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Postbox style:</span></strong> Dark or Light, with your accent, border, corners, font and text size. Scale 80% to 130%.</li>
 </ul>
 <p>&nbsp;</p>
+<h2 style="text-align:center">Ready for WoW Forever</h2>
+<p style="text-align:center">The same download runs in World of Warcraft: Forever. CurseForge lists it under WoW Forever, WowUp offers it for a Forever install, and Forever keeps settings of its own.</p>
+<ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Full names:</span></strong> write "Abla Stone" or "Abla-Stone". Characters who share a first name keep their own mail, Mail Memory and History.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Forever's mail rules:</span></strong> your characters filed by ruleset, a warning before mail to another ruleset or to a first name alone, and no Warband bank.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Your answer, always:</span></strong> gold from a stranger waits while you answer the game's question, and a slow send is waited for, never called failed.</li>
+</ul>
+<p style="text-align:center">Reload now works after a style change, EllesmereUI's WoW Forever look is matched, and with a controller (the Gamepad interface style) you get Blizzard's own mailbox. Built for Forever 1.60.1, so a Forever patch can show Postbox as out of date until it is updated.</p>
+<p>&nbsp;</p>
 <ul style="display:flex;flex-wrap:wrap;gap:20px 24px;padding-left:0">
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Safe by design</span></strong><span style="display:none">: </span><span style="display:block">C.O.D. mail is never paid without asking, and one confirmation pays once, for the mail you chose. Deleting in bulk only ever removes finished mail you chose.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Light on your game</span></strong><span style="display:none">: </span><span style="display:block">No libraries, and no repeating timers away from a mailbox. A full refresh of 50 mails leaves under 2 KB of garbage. Blizzard's mail code is never replaced.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Works with</span></strong><span style="display:none">: </span><span style="display:block">EllesmereUI, ElvUI, Baganator, EllesmereUI bags and the default bags (unmailable items grayed while you send), and the default UI.</span></li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Ready for WoW Forever</span></strong><span style="display:none">: </span><span style="display:block">Full "First Last" names, a warning before mail to a first name alone or another ruleset, and Blizzard's mailbox when you play with a controller.</span></li>
 </ul>
 <p>&nbsp;</p>
+<p style="text-align:center"><strong><span style="color:#e5e5e5">Found a bug?</span></strong> Please report it, on <a href="https://github.com/egsherlock/Postbox/issues">GitHub</a> or in the comments here. Report a bug, at the foot of the options (or <code>/postbox debug</code>), gives you a report to paste in. Thank you!</p>
 <p style="text-align:center">Retail and WoW Forever, one download · settings are account-wide · type <code>/pb</code> for the options<br>English, Français, Deutsch, Español, Русский, 简体中文, 繁體中文</p>
-<p style="text-align:center">Free and open source. Ideas, bugs and source: <a href="https://github.com/egsherlock/Postbox">github.com/egsherlock/Postbox</a></p>
+<p style="text-align:center">Free and open source, and ideas are welcome: <a href="https://github.com/egsherlock/Postbox">github.com/egsherlock/Postbox</a></p>

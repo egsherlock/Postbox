@@ -8,22 +8,61 @@
 </p>
 
 <p align="center">
-  Retail 12.0.7–12.1.x and WoW Forever &nbsp;·&nbsp; no dependencies, no libraries &nbsp;·&nbsp;
+  <b>Runs on retail WoW (12.0.7–12.1.x) and, new in 1.60, fully supports World of Warcraft: Forever (1.60.1), from one download.</b><br />
+  No dependencies, no libraries &nbsp;·&nbsp;
   <a href="https://www.curseforge.com/wow/addons/postboxmail">CurseForge</a> &nbsp;·&nbsp;
-  <a href="CHANGELOG.md">Changelog</a>
+  <a href="CHANGELOG.md">Changelog</a> &nbsp;·&nbsp;
+  <a href="https://github.com/egsherlock/Postbox/issues">Report a bug</a>
 </p>
 
 ## At a glance
 
 | | |
 |---|---|
-| **Mail tab** | One-click collection in the order your list shows, search and row selection, optional buttons by kind and for your own character groups, read mail folded away, and a History of what you collected. |
+| **Mail tab** | One-click collection in the order your list shows, search and row selection, optional buttons by kind and for your own character groups, finished mail out of the way under one quiet bar, and a History of what you collected. |
 | **Arrange** | Drag, hide and set up every column and button right in the window; each list keeps its own layout. |
 | **Mail Memory** | Every character's last-seen mailbox, from anywhere, searchable across characters, with warnings before mail is lost. |
 | **Send tab** | Names complete as you type, a line says what a send will do, gold always asks first, and more than twelve items go out in one press. |
 | **Minimap icon** | Optional: two dozen hand-painted styles, a count of what's waiting, and a marker for mail about to expire. |
 | **Looks** | Follows EllesmereUI or ElvUI, or wears the Postbox style (Dark or Light) or the Blizzard look. |
 | **Options** | Five tabs, General first with every character's mail at a glance, and a panel that explains and previews whatever you point at. |
+| **WoW Forever** | The same download: full names, Forever's mail rules, slow sends waited for, and Blizzard's mailbox for controller players. |
+
+Found a bug, on retail or in WoW Forever? Please report it: open an
+[issue](https://github.com/egsherlock/Postbox/issues) or leave a comment on
+[CurseForge](https://www.curseforge.com/wow/addons/postboxmail). **Report a
+bug**, at the foot of the options (or `/postbox debug`), gives you a report
+to paste in, with no character names in it.
+
+## World of Warcraft: Forever
+
+Since 1.60 the same download runs in WoW Forever: CurseForge lists it under
+WoW Forever, and WowUp offers it for a Forever install. By hand, copy the
+`Postbox` folder into `World of Warcraft\_forever_\Interface\AddOns\`.
+Forever keeps its own settings, separate from retail's.
+
+- **Full names.** Write the whole name, "Abla Stone" or "Abla-Stone" (the
+  same character either way). Characters who share a first name keep their
+  own mail, Mail Memory and History, and recipients, replies and Character
+  Groups take the full name.
+- **Rulesets.** Mail can't cross rulesets, so Postbox files your characters
+  by ruleset (Normal, PvP, RP and RP-PvP) and warns before mail to one it
+  has seen on another. It knows a character once you've logged in on it
+  with Postbox, and never adds a realm to a Forever address.
+- **Sending.** The Send tab warns about a first name alone, never suggests
+  the Warband bank, and promises instant delivery between your characters
+  only when the game does. A slow server isn't called a failure: if you
+  close the mailbox while it waits, Postbox tells you to check your mailbox
+  before sending again.
+- **Gold from strangers.** The game asks before you take gold from someone
+  it doesn't know, and Postbox waits for your answer. You answer the game's
+  question; Postbox never answers it for you.
+- **Reload and controller.** After a style change, **Reload now** reloads;
+  in combat it asks you to type `/reload`. With the Gamepad interface style
+  you get Blizzard's own mailbox, and a style change made with the mailbox
+  open applies the next time you open it.
+- **Known limit.** Postbox is built for Forever 1.60.1, so a Forever patch
+  can show it as "out of date" until Postbox is updated.
 
 ## The Mail tab
 
@@ -36,9 +75,9 @@ island over a soft shadow at the list's foot; scroll to it or click it and it
 opens. How the bar looks (the **Island**, a thin **Hairline** or a **Full
 row**), what it says (your own words too), its count, its icon and its colors
 are yours to choose (**Bar look**, **Bar says**, **Count**, **Bar icon**,
-**Bar color**, **Shadow color**). Read mail can go to a
-**Done** tab instead, or be deleted the moment Postbox empties it (**Finished
-mail**: **Delete when done**).
+**Bar color**, **Shadow color**). Read mail can go to a **Done** tab
+instead, or be deleted the moment Postbox empties it (**Finished mail**:
+**Delete when done**).
 
 - **All mail** collects everything still holding something, one server
   command at a time, in the order the list shows. Under a search it collects
@@ -60,6 +99,12 @@ mail**: **Delete when done**).
   words, and `Stuck: N` in the title bar, which filters the list to those
   mails. It clears itself once the mail can come out (for example once you
   hold fewer of a limited item). A slow reply just gets one more try.
+- **Gold from strangers:** where the game asks before you take gold from
+  someone it doesn't know (WoW Forever, and retail from patch 12.1.7), the
+  run pauses on that mail until you answer: Accept and the gold comes,
+  Cancel and it stays in the mail while the rest carries on.
+- **C.O.D. prices are red,** as spent gold is, so amber only ever means time
+  running out; the totals under the list add the C.O.D. still to pay.
 - **Category buttons** (off by default; **Show category buttons**): All
   bought, All sold, All canceled, All expired, Other, From alts, and one for
   each **Character Group** you make: your bank alts, your crafters, a friend
@@ -123,7 +168,7 @@ too):
 One-line rows (shared with Mail Memory), Larger mail rows and History each
 keep their own arrangement. **Test mail** fills the list with sample mail
 while you arrange, or on its own from **Test**, beside **Arrange** in
-Options, Mail, which is lit while it is on. The samples show what your
+Options, Mail tab, which is lit while it is on. The samples show what your
 settings do: under **Delete when done** there is no read mail and no
 bar, and resting on an item icon lists its items or fans them out, as
 **Attachments on hover** is set, though nothing can be taken. **Arrange**
@@ -322,11 +367,8 @@ strings live in `Core/Locales.lua`.
 From CurseForge or any addon manager, or copy the `Postbox` folder into
 `World of Warcraft\_retail_\Interface\AddOns\` (for WoW Forever,
 `World of Warcraft\_forever_\Interface\AddOns\`). One download serves both
-games. Settings are account-wide, and each game keeps its own.
-
-In WoW Forever, characters are known by their full name, "First Surname",
-and a name typed with a hyphen ("Abla-Stone") is the same character. Mail
-stays within a ruleset, so Postbox never adds a realm to a Forever address.
+games. Settings are account-wide, and each game keeps its own. What changes
+in WoW Forever is under [World of Warcraft: Forever](#world-of-warcraft-forever).
 
 | Command | |
 |---|---|

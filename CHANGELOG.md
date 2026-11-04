@@ -2,151 +2,111 @@
 
 ## 1.60.0
 
-**Postbox now runs in World of Warcraft: Forever**, from the same download
-as retail. *Restart the game once after updating (a /reload is not enough).*
+**Postbox now runs in World of Warcraft: Forever as well as retail**, from
+the same download. *Restart the game once after updating (a /reload is not
+enough).*
 
 ### World of Warcraft: Forever
 
-- **Full names, both halves.** Two characters who share a first name keep
-  their own mail, Mail Memory and History. Recipients, replies and
-  character groups take the full name, written "Abla Stone" or
-  "Abla-Stone", and suggestions fill in the surname as you type.
-- **The Send tab knows Forever's rules:** it warns before you send to a
-  first name alone or to your character on another ruleset, never suggests
-  the Warband bank, and promises instant delivery between your characters
-  only when the game does.
-- **A slow send isn't called failed.** When the server takes its time,
-  Postbox says it is still waiting and finishes the mail when the answer
-  comes.
-- **Reload now works** after a style change; in combat it asks you to type
-  /reload.
-- **Controller players get Blizzard's mailbox:** with the Gamepad interface
-  style, Postbox steps aside.
+- **Full names, both halves:** characters who share a first name keep their
+  own mail, Mail Memory and History, and recipients, replies and groups take
+  the full name, "Abla Stone" or "Abla-Stone".
+- **Forever's mail rules:** Postbox files your characters by ruleset as you
+  log in on them, and warns before mail to one on another ruleset or to a
+  first name alone. It never suggests the Warband bank, and promises instant
+  delivery only when the game does.
+- **A slow send isn't called failed:** Postbox waits for the server, and if
+  you close the mailbox meanwhile, tells you to check it before sending
+  again.
+- **Reload now works** after a style change (in combat, type /reload), and
+  **controller players get Blizzard's mailbox** with the Gamepad interface
+  style.
 - Also: senders wear their class colors, From alts counts your alts' mail,
   EllesmereUI's WoW Forever look is matched, the options drawings show
-  Forever's goods, the minimap icon's Blizzard style uses Forever's mail
-  art, Mail Memory knows Forever's auction house mail, and the quality-mark
-  options are hidden, since vanilla goods have none.
+  Forever's goods and the minimap icon's Blizzard style its mail art, and
+  the quality-mark options are hidden, since vanilla goods have none.
+  Forever keeps its own settings.
 
-### New
+### Expiring mail
 
-- **Expiring mail says where it goes.** Once a mail that still holds gold or
-  items is down to its last three days (one for C.O.D.), a curved arrow in
-  front of its time left says it will go back to its sender, a bin that it
-  will be deleted. Its tooltip says it on an "On expiry:" line, and Mail
-  Memory shows the same. Don't want them? Turn off Expiry marks on the
-  Time left card while arranging, or under Options, Mail; the tooltip
-  keeps the line.
+- **Expiring mail says where it goes:** when a mail still holding gold or
+  items is down to its last three days (one for C.O.D.), a curved arrow
+  before its amber time means it goes back to its sender, a bin that it
+  will be deleted. Its tooltip and Mail Memory say so too; **Expiry marks**
+  (Options, Mail tab) turns them off.
+- **One choice for both warnings:** **Warn about** (General, Expiring mail)
+  sets what the login line and the minimap marker warn of: Mail to be
+  deleted, Mail to be deleted or sent back (as before), or Off. Mail last
+  seen before 1.60 counts as possibly deleted, to be safe. **Minimap
+  marker** moved there from the Minimap tab, and your choices carry over.
+- **The warnings agree:** the marker, its tooltip and the login line name
+  every character you haven't hidden, the one you're on included, and only
+  for mail holding gold or items (or a C.O.D.).
+
+### The bar over finished mail
+
+- **Quieter, and out of the way:** a little shorter than a row, on the
+  list's own background, its words centered ("Done (3)"). While that mail
+  is below the view, the bar waits at the list's foot as a small island
+  over a soft shadow; scroll down or click it and it opens. Delete all turns
+  red when you point at it, and takes a click only once the bar is open.
+- **Make it yours** under Options, Mail tab: **Bar look** (Island, Hairline
+  or Full row), **Bar says** (Done, Nothing left, Collected or your own
+  words), **Count**, **Bar icon**, **Bar color** and **Shadow color**. Read
+  mail is called Finished mail there now.
+
+### At the mailbox
+
 - **Gold from strangers waits for your answer.** Where the game asks before
-  you take gold mailed by someone it doesn't know (in Forever now, and on
-  retail from patch 12.1.7), collecting pauses on that mail until you
-  answer: Accept and the gold comes, Cancel and it stays in the mail while
-  the rest carries on.
-- **Test mail without arranging:** Test, beside Arrange under Options, Mail,
-  shows your settings on sample mail: in the Mail tab at a mailbox, in the
-  Postbox window anywhere else. Nothing in it can be collected, and the
-  button stays lit while it is on. Arranging from the options now leaves
-  them open.
-- **Every character's mail at a glance:** the options open on a new General
-  tab, topped by a line per character as its box was last seen (mail, gold,
-  the soonest to expire with its arrow or bin), five at a time with the rest
-  a scroll away, and a total. Mail about to
-  go back or be deleted comes first, even on an alt you haven't played in
-  months; click a character to open its box in Mail Memory. Under the list
-  are Mail Memory's settings, Expiring mail and New mail; the Mail Memory
-  tab is gone.
-- **Choose the sound for new mail:** four soft sounds made for Postbox (Soft
-  chime, Envelope, Small bell, Wood tap), the mail chime and four quiet
-  sounds of the game's, or any sound your other addons share, such as
-  ElvUI's or WeakAuras', with a button to hear it first. If you had the
-  sound on, it is still the mail chime, and if another addon's sound goes
-  missing, the mail chime plays in its place.
-- **One choice for both expiring-mail warnings:** Warn about, under
-  General, Expiring mail, sets what the chat line at login and the minimap
-  marker warn of: Mail to be deleted, Mail to be deleted or sent back (as
-  before), or Off. Mail last seen before 1.60 counts as possibly deleted, to
-  be safe. Below it, Chat line at login is a switch, and Minimap marker a
-  choice of With the icon, Always or Off; it moved here from the Minimap
-  tab, where its shape, color and place stay. Your choices carry over, and
-  Off stays off.
-- **Mail Memory has the options cog** the Postbox window has, opening the
-  options on General, below it.
+  you take gold from someone it doesn't know (in Forever, and on retail from
+  patch 12.1.7), collecting pauses on that mail: Accept and the gold comes,
+  Cancel and it stays while the rest carries on. Postbox never answers for
+  you.
+- **A C.O.D. price is red,** as spent gold is, so amber means only time
+  running out; the totals band adds the C.O.D. still to pay.
+- **Tooltips end with one gesture per line,** in smaller type, so
+  "Right-click to..." and "Shift-click to..." no longer run together.
 
-### Improved
+### Options
 
-- **Reset to defaults opens downward:** its menu drops below the button,
-  and the arrow beside it turns to point down while the menu is open.
-- **The new-mail sound stays quiet for your own auction house purchases:**
-  the game already tells you, and the minimap icon still flashes for them
-  and counts them. Flash on new mail now sits beside the sound, under
-  General, New mail.
-- **The minimap marker, its tooltip and the login line agree:** all three
-  follow Warn about and name every character you haven't hidden, the one
-  you're on included, and only for mail holding gold or items (or a
-  C.O.D.), so an unread letter with nothing in it no longer sets them off.
-- **Minimap options that need something else say so:** while Mail Memory is
-  off, Mail on any character, Count on icon and the marker's look are
-  grayed out, and the marker's look also while Warn about is Off, each
-  saying where to turn it on.
-- **A C.O.D. price is red,** as spent gold is, so amber means only that time
-  is running out, and the totals band adds the C.O.D. still to pay on the
-  mail listed.
-- **A quieter bar over read mail:** a little shorter than a row, on the
-  list's own background between two faint lines, its words centered
-  ("Done (3)", its brackets a step dimmer) and Delete all the same size as the
-  words, red when you point at it. While the read mail is below the view,
-  the bar waits at the foot of the list as a small rounded island over a
-  soft shadow, the mail behind it still readable; scroll down and it opens
-  smoothly into the bar, or click it to glide there. Delete all takes a
-  click only once the bar is fully open.
-- **Choose how the bar looks, what it says, its icon and its colors:** under
-  Options, Mail, Bar look keeps the Island or brings back Hairline, a thin
-  strip with small words, and Full row, the same at a row's height. Bar says
-  is Done (the same word as the Done tab), Nothing left, Collected or
-  Custom, your own words typed in its box, with a Count switch beside it for
-  the number. Bar icon puts a check mark, a circled check, an open letter or
-  an empty tray before them. Bar color is Neutral, Accent, Class color,
-  Blue, Violet or a color of your own, mixed in lightly so the words stay
-  easy to read, and Shadow color offers the same choices for the island's
-  shadow. Read mail is now called Finished mail there.
-- **Test mail's notice fits the title bar:** "Sample mail." where the whole
-  notice won't fit, the rest when you point at it.
-- **Tooltips end with one gesture per line,** in smaller type than the mail's
-  own details, so "Right-click to...", "Shift-click to..." and the rest no
-  longer wrap into each other. The same in every Postbox tooltip: the Mail
-  tab, Mail Memory, the Send tab and the minimap icon.
-- **The options say each thing once:** pointing at a setting no longer opens
-  a tooltip beside the window repeating the panel's description. Tooltips
-  stay where they add something, such as a value too long for its box.
-- **Windows open beside what opened them:** the options right of the
-  Postbox window from its cog and left of the minimap from the icon, and
-  Manage Recipients right of the Postbox window or the options. With Dock
-  beside game windows on, the options stay beside the Postbox window as it
-  moves or resizes, so you watch each setting reshape it and the two never
-  overlap.
-- Also: **/postbox debug** says which game it runs in and how that game
-  writes character names, by their shape alone, so a pasted report never
-  names anyone; Battle.net friends are suggested only from a game Blizzard
-  can deliver mail to; Keep bag slots free's first choice reads Never
-  instead of None; and a button's words no longer grow when you point at
-  it.
+- **A General tab comes first:** every character's mail as its box was last
+  seen, with a total, and mail about to go back or be deleted first, even
+  on an alt you haven't played in months. Click a character to open its box
+  in Mail Memory. Mail Memory's settings live here now, with Expiring mail
+  and New mail.
+- **Choose the sound for new mail:** four soft sounds made for Postbox, the
+  mail chime, four of the game's, or any your other addons share, such as
+  ElvUI's or WeakAuras', with a button to hear it first. It stays quiet for
+  your own auction house purchases, which the game already announces. If
+  you had the sound on, it stays the mail chime.
+- **Try your settings on sample mail:** **Test**, beside Arrange under
+  Options, Mail tab, works at a mailbox or anywhere else, and nothing in it
+  can be collected.
+- **Windows open beside what opened them,** and with Dock beside game
+  windows on, the options follow the Postbox window as it moves or resizes.
+  Mail Memory has the options cog too.
+- **The options say each thing once:** no tooltip repeating the panel's
+  description, and a grayed-out setting says what turns it on.
+- Also: Reset to defaults opens downward; arranging from the options leaves
+  them open; /postbox debug's report says which game it runs in, still
+  without naming anyone; Battle.net friends are suggested only from a game
+  Blizzard can deliver mail to; Keep bag slots free's first choice reads
+  Never; a button's words no longer grow when you point at it; the quality
+  mark on Larger mail rows is a touch smaller.
 
 ### Fixed
 
 - When the game asks you to confirm sending gold or items to someone it
-  doesn't know, the Send tab now says so and waits for your answer, instead
-  of reporting "No confirmation from the server" after ten seconds. Accept
-  and the mail is recorded as sent; Cancel and nothing is sent and your
-  draft stays.
-- Sending more than 12 items in one press sends every mail in full, however
-  quickly the game empties the attachment slots. While the game asks about a
-  refundable item you are attaching, Send waits for your answer.
-- Delete when done deletes every letter you empty, even one whose gold or
-  single item comes out in a blink, and one emptied from the fan; History
-  keeps each one's words.
-- A C.O.D. mail no longer counts as about to expire the moment it arrives:
-  Mail Memory's warnings and the minimap icon's expiry marker count it once
-  it has under a day left, as the Mail tab's amber does.
+  doesn't know, the Send tab waits for your answer, and Cancel keeps your
+  draft.
+- Sending more than 12 items in one press sends every mail in full, and
+  Send waits while the game asks about a refundable item you are attaching.
+- Delete when done deletes every letter you empty, however quickly it
+  empties and even from the fan, and History keeps its words.
+- A new C.O.D. mail no longer sets off the expiry warnings: they count it
+  once it has under a day left, as the Mail tab's amber does.
+- Reset this tab on the Minimap tab also forgets where you dragged the
+  icon.
 
 ## 1.50.0
 
