@@ -16,6 +16,7 @@ Featured cover.
 | 8 | `08-arrange.gif` | Arrange it your way |
 | 9 | `09-fanout.gif` | Take one item |
 | 10 | `10-finished.gif` | Finished mail, out of the way |
+| 11 | `11-expiry.gif` | Where expiring mail goes |
 
 All are 16:9, the shape of CurseForge's slideshow (834 x 472 on the page): the
 slides are 1200 x 679, the largest the gallery viewer shows them, and the cover is

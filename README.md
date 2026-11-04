@@ -133,6 +133,10 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
 </p>
 
 <p align="center">
+  <img src="docs/screenshots/expiry.gif" alt="Pointing at a short mail's bin: its tooltip says On expiry: deleted. Then at a C.O.D. mail's arrow: On expiry: returns to Brannoc" />
+</p>
+
+<p align="center">
   <img src="docs/screenshots/groups.png" width="640" alt="A Character Group and its button among the category buttons" />
 </p>
 

@@ -52,7 +52,7 @@
 <h2 style="text-align:center">Never lose mail on a forgotten alt</h2>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/minimap.gif" width="708" alt="The minimap icon's tooltip, then Mail Memory"></p>
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Warned in time:</span></strong> a line in chat at login and a marker on the minimap icon when any character's mail with gold or items has under three days left (one for C.O.D.). One choice covers both: mail to be deleted, or mail sent back too. Expired auction mail is deleted, gold and all; an arrow or a bin by the time left says which way a short mail goes.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Warned in time:</span></strong> a line in chat at login and a marker on the minimap icon when any character's mail with gold or items has under three days left (one for C.O.D.). One choice covers both: mail to be deleted, or mail sent back too.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Mail Memory</span></strong> remembers each character's mailbox at your last visit. Search one character or all of them.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">One glance:</span></strong> the icon's tooltip lists every character with mail waiting, and what's about to run out; the options' General tab lists every character's mail, what's about to run out first, gold included, with a total for them all.</li>
 </ul>
@@ -72,6 +72,7 @@
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Columns or Packed:</span></strong> figures lined up like a table, or packed so subjects get the room.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">One-line rows, larger rows and History</span></strong> each keep their own layout, and <strong><span style="color:#e5e5e5">Test mail</span></strong> fills the list with samples to try it on, even away from a mailbox.</li>
 </ul>
+<p style="text-align:center"><strong><span style="color:#e5e5e5">A look for every UI:</span></strong> under EllesmereUI, your font, your accent, and the same opacity and border as the windows beside it; under ElvUI, your accent, live; beside the default UI, the game's own window art or the Postbox style, the default there, in Dark or Light with your accent, border, corners, font and text size. Scale 80% to 130%.</p>
 <p>&nbsp;</p>
 <h2 style="text-align:center">A minimap icon that tells you more</h2>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/icons.gif" width="730" alt="Pointing at minimap icon options while the panel beside them previews each one"></p>
@@ -81,12 +82,13 @@
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Two dozen hand-painted styles</span></strong> with glow, pulse and shadow. Point at any option and the panel beside it shows you.</li>
 </ul>
 <p>&nbsp;</p>
-<h2 style="text-align:center">A look for every UI</h2>
-<p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/looks.png" width="836" alt="Postbox under EllesmereUI, ElvUI, Blizzard and its own style"></p>
+<h2 style="text-align:center">Know where expiring mail goes</h2>
+<p style="text-align:center">When mail runs out, the game sends a player's mail with gold or items back to its sender and deletes the rest, auction mail too, gold and all. Postbox shows you which while there's still time.</p>
+<p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/expiry.gif" width="672" alt="Pointing at a short mail's bin: its tooltip says On expiry: deleted. Then at a C.O.D. mail's arrow: On expiry: returns to Brannoc"></p>
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">EllesmereUI:</span></strong> your font, your accent, and the same opacity and border as the windows beside it.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">ElvUI:</span></strong> your accent, live. <strong><span style="color:#e5e5e5">Blizzard:</span></strong> the game's own window art, to sit beside the default UI.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Postbox style,</span></strong> the default on the game's own UI: Dark or Light, with your accent, border, corners, font and text size. Scale 80% to 130%.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">An arrow or a bin</span></strong> in front of the time left as it turns amber (under three days, one for C.O.D.): the arrow when it goes back to its sender, the bin when it's deleted.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Said in words:</span></strong> point at any mail with gold or items and its tooltip says what happens on expiry, short or not. Turn off Expiry marks and the tooltip still says it.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">On every alt:</span></strong> Mail Memory's rows carry the same marks, so you see what's at risk on characters you're not playing.</li>
 </ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Ready for WoW Forever</h2>
