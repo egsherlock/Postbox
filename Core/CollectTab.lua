@@ -7251,13 +7251,12 @@ RV.LOOKS = {
   hairline = { size = "tiny", fold = 12 },
   full = { size = "normal", fold = 13 },
 }
--- The en dash the fold sign writes while the read mail is open, the
--- hairline's strength, the least of it left between the words and Delete
--- all where long words are cut, and the strip Hairline's room is measured
--- in (RV.LineBand): 14 units, its height before it was measured from its
--- font. `now`: Hairline's height in the font it is drawn in, as its last
--- typing measured it (RV.LineType), the same in both row sizes.
-RV.LINE = { open = "\226\128\147", ruleA = 0.22, ruleMin = 12, band = 14, now = false }
+-- The hairline's strength, the least of it left between the words and
+-- Delete all where long words are cut, and the strip Hairline's room is
+-- measured in (RV.LineBand): 14 units, its height before it was measured
+-- from its font. `now`: Hairline's height in the font it is drawn in, as
+-- its last typing measured it (RV.LineType), the same in both row sizes.
+RV.LINE = { ruleA = 0.22, ruleMin = 12, band = 14, now = false }
 
 -------------------------------------------------------------
 -- The bar's ink on its middle
@@ -7265,37 +7264,84 @@ RV.LINE = { open = "\226\128\147", ruleA = 0.22, ruleMin = 12, band = 14, now = 
 -- A string is laid out on its line -- the face's ascent over the baseline
 -- and its descent under it -- and the client centres that line on the
 -- string's anchor, puts the line's top on the pixel grid, and sets the
--- baseline the ascent under it, on the grid. Words with no descenders
--- ("Done") have no ink in the descent, so centred that way their capitals
--- stand the face's own (ascent - descent - capitals) / 2 off the middle:
--- half a unit low in EllesmereUI's Expressway at 13, a little high in the
--- game's Friz Quadrata. The game says nothing of a face's metrics at run
--- time, so the faces Postbox is drawn in carry them here, by the name of
--- their file, as the client itself compiles them (its own font files'
--- metrics for Friz Quadrata and Expressway; the faces' own tables for the
--- rest): the line's ascent and descent, the capitals' height, and the ink
--- of the two signs Hairline and Full row write, "+" and the en dash, from
--- the baseline up, all in ems. A face not here is taken to have the
--- common proportions of these.
+-- baseline the ascent under it, on the grid. The game says nothing of a
+-- face's metrics at run time, so the faces Postbox is drawn in carry them
+-- here, by the name of their file, as the client itself compiles them (its
+-- own font files' metrics for Friz Quadrata and Expressway; the faces' own
+-- tables for the rest): the line's ascent and descent, the capitals'
+-- height, the brackets' reach under and over the baseline (their glyph's
+-- own bounds) and the width of a capital's stem, all in ems. A face not
+-- here is taken to have the common proportions of these.
 --
 -- From those, RV.InkLift raises a string by whole units, so its baseline
--- moves exactly that far whatever the client rounds, until its ink is
--- centred on the bar's middle: to the pixel where it can be, half a pixel
--- up where its height and the bar's differ in parity. The icon then stands
--- on the pixels nearest the words' ink, the same half pixel up (RV.Lifts),
--- so the two always share their rows. Measured once per face, size and
--- bar height, on a copy's typing; never on a pass.
+-- moves exactly that far whatever the client rounds, until what the line
+-- shows is centred on the bar's middle: its capitals (custom words may
+-- have any letters, and capitals are the one height every word stands
+-- on) and, while the number shows, its brackets' reach, each counted in
+-- the rows it covers at least half of. Where two whole units are as near
+-- as each other, the one with the capitals nearer the middle. Delete all
+-- stands on the words' baseline, the icon on the pixels nearest the
+-- capitals (RV.Lifts), so the three always share their rows.
+--
+-- The client rounds a line's top to the nearest pixel but draws a texture
+-- from the pixel its edge falls in, so a bar standing a fraction of a pixel
+-- off the grid can show its words a pixel lower against its own edges: in
+-- Larger rows at 14 units Expressway's line top falls 0.02 short of a whole
+-- unit, and from about half a pixel off it rounded down a row (the open bar
+-- a pixel lower than the island, which hangs from the view's foot rather
+-- than from the rows). So every string's anchor carries a fraction more
+-- (`RV.HOLD`): its line's top just under half a unit before the pixel it
+-- rounds to, the same pixel as before, and the same row wherever the bar
+-- stands within a pixel. Measured once per face, size and bar height, on a
+-- copy's typing; never on a pass.
 -------------------------------------------------------------
 
+-- The game's own faces (Friz Quadrata, its Cyrillic cut for ruRU, Arial
+-- Narrow; zhCN's and zhTW's, from the client's compiled copies), Postbox's
+-- (Barlow), ElvUI's default (PT Sans Narrow) and every face EllesmereUI
+-- offers. A face with no capitals (zhCN's, zhTW's) stands on its
+-- ideographs' ink box instead, its foot the seventh number (under the
+-- baseline; none for capitals).
 RV.FACES = {
-  expressway = { 0.954, 0.192, 0.692, 0.157, 0.519, 0.214, 0.320 },
-  frizqt__ = { 0.917, 0.270, 0.706, 0.068, 0.632, 0.247, 0.375 },
-  ["barlowsemicondensed-semibold"] = { 1.000, 0.200, 0.700, 0.107, 0.514, 0.234, 0.334 },
-  arialn = { 0.9355, 0.2119, 0.716, 0.116, 0.589, 0.224, 0.294 },
-  ["arial narrow"] = { 0.9355, 0.2119, 0.716, 0.116, 0.589, 0.224, 0.294 },
-  ["ptsansnarrow-bold"] = { 0.900, 0.276, 0.700, 0.139, 0.538, 0.234, 0.343 },
+  frizqt__ = { 0.917, 0.270, 0.706, -0.258, 0.715, 0.120 },
+  frizqt___cyr = { 0.917, 0.270, 0.706, -0.258, 0.715, 0.120 },
+  arialn = { 0.9355, 0.2119, 0.716, -0.210, 0.728, 0.078 },
+  arkai_t = { 0.879, 0.121, 0.842, -0.111, 0.657, 0.100, -0.083 },
+  arkai_c = { 0.879, 0.121, 0.842, -0.111, 0.657, 0.100, -0.083 },
+  arhei = { 0.879, 0.121, 0.842, -0.111, 0.657, 0.100, -0.083 },
+  blei00d = { 0.879, 0.121, 0.842, -0.111, 0.657, 0.100, -0.083 },
+  bhei00m = { 0.879, 0.121, 0.842, -0.111, 0.657, 0.100, -0.083 },
+  bhei01b = { 0.879, 0.121, 0.842, -0.111, 0.657, 0.100, -0.083 },
+  bkai00m = { 0.879, 0.121, 0.842, -0.111, 0.657, 0.100, -0.083 },
+  ["barlowsemicondensed-semibold"] = { 1.000, 0.200, 0.700, -0.096, 0.760, 0.116 },
+  ptsansnarrow = { 0.900, 0.276, 0.700, -0.220, 0.712, 0.126 },
+  ["ptsansnarrow-bold"] = { 0.900, 0.276, 0.700, -0.220, 0.712, 0.126 },
+  expressway = { 0.954, 0.192, 0.692, -0.167, 0.691, 0.136 },
+  ["expressway bold"] = { 0.954, 0.192, 0.692, -0.165, 0.691, 0.154 },
+  ["expressway caps"] = { 0.954, 0.192, 0.692, -0.167, 0.691, 0.136 },
+  ["arial bold"] = { 0.9053, 0.2119, 0.716, -0.210, 0.728, 0.145 },
+  ["arial narrow"] = { 0.9355, 0.2119, 0.716, -0.210, 0.728, 0.078 },
+  ["avant garde naowh"] = { 0.740, 0.185, 0.740, -0.257, 0.755, 0.108 },
+  ["barlow condensed"] = { 1.000, 0.200, 0.700, -0.100, 0.762, 0.096 },
+  changa = { 1.227, 0.613, 0.625, -0.106, 0.730, 0.100 },
+  ["cinzel decorative"] = { 0.976, 0.372, 0.700, -0.100, 0.732, 0.120 },
+  exo = { 1.002, 0.272, 0.732, -0.210, 0.860, 0.092 },
+  ["firasans bold"] = { 0.935, 0.265, 0.693, -0.159, 0.859, 0.164 },
+  ["firasans light"] = { 0.935, 0.265, 0.689, -0.145, 0.845, 0.095 },
+  ["firasans medium"] = { 0.935, 0.265, 0.691, -0.152, 0.852, 0.132 },
+  ["future x black"] = { 0.984, 0.214, 0.700, -0.189, 0.835, 0.230 },
+  ["gotham narrow"] = { 0.800, 0.200, 0.700, -0.138, 0.714, 0.116 },
+  ["gotham narrow ultra"] = { 0.800, 0.200, 0.700, -0.141, 0.714, 0.216 },
+  ["hwt artz"] = { 0.993, 0.007, 0.710, -0.005, 0.705, 0.170 },
+  homespun = { 0.900, 0.099, 0.700, 0.000, 0.700, 0.100 },
+  ["kmt kimberley"] = { 1.004, 0.206, 0.760, -0.146, 0.893, 0.173 },
+  ["kmt ninja naruto"] = { 0.9053, 0.2119, 0.904, -0.002, 0.906, 0.120 },
+  poppins = { 1.050, 0.350, 0.698, -0.186, 0.934, 0.091 },
+  ["russo one"] = { 0.926, 0.279, 0.700, -0.230, 0.820, 0.150 },
+  ubuntu = { 0.932, 0.189, 0.693, -0.185, 0.783, 0.097 },
 }
-RV.FACE_COMMON = { 0.93, 0.21, 0.70, 0.12, 0.55, 0.23, 0.33 }
+RV.FACE_COMMON = { 0.93, 0.21, 0.70, -0.20, 0.72, 0.12 }
+RV.HOLD = 0.45
 -- The faces by path, as each was first looked up: a handful of paths.
 RV.FACE_AT = {}
 
@@ -7311,38 +7357,68 @@ function RV.FaceOf(fs)
   return face, tonumber(size) or 12
 end
 
--- How far, in whole units up, a one-line string in `face` at `size`,
--- anchored on the middle of a bar `H` tall, is raised so its ink from `lo`
--- to `hi` (ems over the baseline) is centred `dy` / 2 under that middle
--- (the foot under a copy at the list's foot, `dy` tall, is part of the bar
--- it shows): on whole pixels, half a pixel up where it cannot be exact.
--- And where its baseline then stands, from the bar's top, and where it
--- stood unraised.
-function RV.InkLift(face, size, H, dy, lo, hi)
+-- Where a one-line string in `face` at `size`, anchored `up` units over the
+-- middle of a bar `H` tall, has its line's top and its baseline, in units
+-- from the bar's top, by the client's rule; and its line's top unrounded.
+function RV.LineAt(face, size, H, up)
   local asc = face[1] * size
-  local top = floor(H / 2 - (asc + face[2] * size) / 2 + 0.5)
-  local base = floor(top + asc + 0.5)
-  local want = ceil(H / 2 + dy / 2 + (lo + hi) / 2 * size - 0.5)
-  return base - want, want, base
+  local t = H / 2 - up - (asc + face[2] * size) / 2
+  local top = floor(t + 0.5)
+  return top, floor(top + asc + 0.5), t
 end
 
--- A copy's lifts for a bar `H` tall with a foot `dy` under it: the words',
--- the number's (theirs, in one string or after them), Delete all's, Hairline's
--- and Full row's signs ("+", the en dash), the icon's (an icon `__iconH`
--- tall, on the pixels nearest the words' ink, or the middle with no words),
--- and the rule's top, on the words' ink. Numbers only; when the type, the
--- icon, the height or the foot moves.
+-- How far up a one-line string in `face` at `size`, anchored on the middle
+-- of a bar `H` tall, is set so what its line shows -- its capitals, and
+-- while `count` the number's brackets' reach -- is centred on the middle of
+-- all the bar shows (the foot `dy` tall under a copy at the list's foot is
+-- part of it), each counted in the rows it covers at least half of, on
+-- whole units; where two are as near, the one with the capitals nearer the
+-- middle, then the higher. Whole units, and the fraction that holds the
+-- line's top just under half a unit before the pixel it rounds to
+-- (RV.HOLD); then where the baseline stands, from the bar's top.
+function RV.InkLift(face, size, H, dy, count)
+  local _, base0 = RV.LineAt(face, size, H, 0)
+  local foot = (face[7] or 0) * size
+  local hi, lo = floor(face[3] * size + 0.5), floor(-foot + 0.5)
+  if count then
+    hi = max(hi, floor(face[5] * size + 0.5))
+    lo = max(lo, floor(-face[4] * size + 0.5))
+  end
+  local mid = H / 2 + dy / 2
+  local want = mid + (hi - lo) / 2
+  local base = floor(want)
+  -- The capitals' (or ideographs') middle under the baseline it stands on.
+  local c = (face[3] * size + foot) / 2
+  if base ~= want and math.abs(base + 1 - c - mid) < math.abs(base - c - mid) then base = base + 1 end
+  return RV.Held(face, size, H, base0 - base), base
+end
+
+-- `lift` whole units up, and the fraction more that holds the string's
+-- line's top just under half a unit before the pixel it rounds to: the
+-- same row as `lift` alone, wherever the bar stands within a pixel.
+function RV.Held(face, size, H, lift)
+  local top, _, t = RV.LineAt(face, size, H, lift)
+  return lift + (t - top) + RV.HOLD
+end
+
+-- A copy's lifts for a bar `H` tall with a foot `dy` under it: the words'
+-- and the number's (theirs, in one string or after them), Delete all's on
+-- the words' baseline, the icon's (an icon `__iconH` tall, on the pixels
+-- nearest the capitals, or the middle with no words), the rule's top, on
+-- the capitals, and the capitals' middle (`__capC`, from the bar's top),
+-- which Hairline's and Full row's fold sign keeps level with. Numbers
+-- only; when the type, the words, the icon, the height or the foot moves.
 function RV.Lifts(f, H, dy)
   local face, size = RV.FaceOf(f.Label)
-  local lift, base = RV.InkLift(face, size, H, dy, 0, face[3])
+  local count = (f.__countW or 0) > 0
+  local lift, base = RV.InkLift(face, size, H, dy, count)
   f.__lift = lift
   local dface, dsize = RV.FaceOf(f.Delete.Text)
-  f.__liftD = RV.InkLift(dface, dsize, H, dy, 0, dface[3])
-  local sface, ssize = RV.FaceOf(f.SignText)
-  f.__liftPlus = RV.InkLift(sface, ssize, H, dy, sface[4], sface[5])
-  f.__liftDash = RV.InkLift(sface, ssize, H, dy, sface[6], sface[7])
+  local _, dbase = RV.LineAt(dface, dsize, H, 0)
+  f.__liftD = RV.Held(dface, dsize, H, dbase - base)
   local c = H / 2 + dy / 2
-  if (f.__wordsW or 0) > 0 or (f.__countW or 0) > 0 then c = base - face[3] * size / 2 end
+  if (f.__wordsW or 0) > 0 or count then c = base - (face[3] + (face[7] or 0)) * size / 2 end
+  f.__capC = c
   local h = f.__iconH or 0
   f.__iconUp = (h > 0) and (H / 2 - h / 2 - ceil(c - h / 2 - 0.5)) or 0
   f.__ruleY = H / 2 - floor(c)
@@ -7367,7 +7443,7 @@ end
 function RV.LineBand(fs)
   local face, size = RV.FaceOf(fs)
   local B = RV.LINE.band
-  local _, _, base = RV.InkLift(face, size, B, 0, 0, 0)
+  local _, base = RV.LineAt(face, size, B, 0)
   local foot = RV.FootH()
   local room = (B - base) + foot
   return max(B, floor(2 * room + face[3] * size - foot + 0.5))
@@ -7518,6 +7594,7 @@ function RV.BarType(f, compact, style)
     shared.BindFont(f.Delete.Text, fonts[f.Inner and i or (i + 1)])
   end
   f.__canvas = compact and RV.BAR.sign or RV.BAR.signL
+  f.__shadowX = RV.ShadowX(f.Label)
   T.SetColor(f.Label, "textSecondary")
   T.SetColor(f.Count, "textSecondary")
   T.SetColor(f.Mark, "textSecondary")
@@ -7532,6 +7609,22 @@ function RV.BarType(f, compact, style)
   -- The island's own: Delete all on the words' middle in their ink.
   local DN = f.Inner and ns.DividerNotch
   if DN then DN.Type(f) end
+end
+
+-- How far right of its letters a string's shadow reaches (its font's
+-- shadow offset, 0 where it says none): part of what the client measures
+-- the string as, none of its letters. When a copy is typed.
+function RV.ShadowX(fs)
+  if type(fs.GetShadowOffset) ~= "function" then return 0 end
+  return tonumber((fs:GetShadowOffset())) or 0
+end
+
+-- Where content `width` wide starts so its letters stand centred on `mid`:
+-- half its shadow right of centring the width (RV.ShadowX), and a half unit
+-- that cannot be split to the right, where every measure of the client's
+-- puts the letters in their string (a unit or so left of its middle).
+function RV.CentreAt(mid, width, shadow)
+  return floor(mid - width / 2 + (shadow or 0) / 2 + 0.5)
 end
 
 -- A copy's icon: the glyph of that name (Theme.GLYPHS) on its one mark
@@ -7626,13 +7719,18 @@ function RV.BarText(f, loc, words, n, style, custom, icon)
     count:Hide()
   end
   -- The space between the words and the number, as the client sets it in
-  -- one string: what that string measures past the two alone.
+  -- one string: what that string measures past the two alone, whatever its
+  -- sign. The client gives every string some room past its letters (in
+  -- EllesmereUI's Expressway at 13 about five units, more than a space), so
+  -- the one string can measure less than the two: the number after words
+  -- cut short then stands where the one string would set it, and the words
+  -- and the number whole measure as the one string they are drawn as.
   f.__gap = B.gap
   if text and countText then
     joined = text .. " " .. countText
     label:SetText(joined)
-    local gap = (label:GetStringWidth() or 0) - wordsW - countW
-    if gap > 0 then f.__gap = gap end
+    local whole = label:GetStringWidth() or 0
+    if whole > 0 then f.__gap = whole - wordsW - countW end
     label:SetText(text)
   end
   f.__wordsText, f.__joinText, f.__joined = text, joined, false
@@ -7703,7 +7801,7 @@ function RV.BarPlace(f, wide, again)
   local wordsW, iconW = f.__wordsW or 0, f.__iconW or 0
   local width = (f.__lead or 0) + (cut or wordsW) + (f.__tail or 0)
   local lift = f.__lift or 0
-  local x = -floor(width / 2 + 0.5)
+  local x = RV.CentreAt(0, width, f.__shadowX)
   if iconW > 0 then
     mark:ClearAllPoints()
     mark:SetPoint("LEFT", f, "CENTER", x, f.__iconUp or 0)
@@ -7842,8 +7940,10 @@ end
 -- Where the fold sign stands: centred on the read dot's column, read off a
 -- row the pass just placed, so it follows the arrangement and the row size
 -- as the rows do; kept on the panel for a pass that places no row. With the
--- dot hidden, a little in from the row's edge. And where Hairline's and
--- Full row's own content starts (`_barIconX`): where the row's item icon
+-- dot hidden, a little in from the row's edge. The dot's width as the row
+-- draws it (`_barDotW`), Hairline's and Full row's sign's. And where
+-- Hairline's and Full row's own content starts (`_barIconX`): where the
+-- row's item icon
 -- starts, so the bar keeps the row's step from its dot to its icon; with
 -- the icon hidden or standing before the dot, where the row's first column
 -- after the dot starts (its sender, else its subject); with none of those
@@ -7852,8 +7952,12 @@ end
 function RV.BarLanes(panel, row)
   local dot = row and row.Indicator
   local x = Th().Metrics.inset + 4
-  if dot and dot:IsShown() and dot.__pbAt == 1 then x = dot.__pbAtX + (dot:GetWidth() or ROW_INDICATOR) / 2 end
-  panel._barSignX = x
+  local w = ROW_INDICATOR - 1
+  if dot and dot:IsShown() and dot.__pbAt == 1 then
+    w = dot:GetWidth() or w
+    x = dot.__pbAtX + w / 2
+  end
+  panel._barSignX, panel._barDotW = x, w
   local start
   if row then
     local parts = RV.LANE_PARTS
@@ -7877,7 +7981,8 @@ RV.LANE_PARTS = { "Icon", "Sender", "Subject" }
 -- again exactly as a copy that was never anything else.
 function RV.NotchParts(f)
   f.__look = "notch"
-  f.SignText:Hide()
+  f.SignH:Hide()
+  f.SignV:Hide()
   f.Rule:Hide()
   f.Fill:Show()
   local edges = f.Edges
@@ -7892,8 +7997,8 @@ function RV.NotchParts(f)
 end
 
 -- Hairline and Full row: a copy put into `look` and the row size (and the
--- palette, for its inks): the look's size for the fold sign, the words,
--- the number and Delete all; Hairline's height measured in that font
+-- palette, for its inks): the look's size for the words, the number and
+-- Delete all, the fold sign's ink; Hairline's height measured in that font
 -- (RV.LineBand); the fill edge to edge, a faint top edge on the copy at
 -- the list's foot (the rows pass under it), Delete all at the right whole
 -- and live, as tall as the bar at most; the island's outline and fold sign
@@ -7909,13 +8014,13 @@ function RV.LineType(f, look, compact)
     shared.BindFont(f.Label, size)
     shared.BindFont(f.Count, size)
     shared.BindFont(f.Delete.Text, size)
-    shared.BindFont(f.SignText, size)
   end
   if look == "hairline" then B.now = RV.LineBand(f.Label) end
   T.SetColor(f.Label, "textSecondary")
   T.SetColor(f.Count, "textSecondary")
   T.SetColor(f.Mark, "textSecondary")
-  T.SetColor(f.SignText, "textSecondary")
+  T.SetColor(f.SignH, "textSecondary")
+  T.SetColor(f.SignV, "textSecondary")
   f.__deleteInk = "textSecondary"
   T.SetColor(f.Delete.Text, f.Delete.__hot and "negative" or "textSecondary")
   T.SetColor(f.Rule, "textSecondary")
@@ -7927,9 +8032,7 @@ function RV.LineType(f, look, compact)
     edges[1]:Show()
   end
   f.Sign:Hide()
-  f.SignText:Show()
-  f.SignText:ClearAllPoints()
-  f.SignText:SetJustifyH("CENTER")
+  f.SignH:Show()
   f.Rule:Show()
   local fill = f.Fill
   fill:ClearAllPoints()
@@ -8010,6 +8113,42 @@ function RV.LinePlace(f, x)
   end
 end
 
+-- Hairline's and Full row's fold sign, "+" (`plus`) or "-": as wide as the
+-- rows' read dot as they draw it (`w`), centred on its middle (`sx`), so
+-- the "+" spans the dot's own columns; its strokes as heavy as the words'
+-- stems, in whole pixels of the dot's parity, so each stands on the
+-- middle; its ink on the middle of all the bar shows (RV.Lifts' height
+-- and foot), on whole units, level with the capitals where two are as
+-- near. The "-" is the "+"'s crossbar. Only where it moved.
+function RV.SignPlace(f, plus, sx, w)
+  local face, size = RV.FaceOf(f.Label)
+  local one = Th().OnePixel(f)
+  local wide = floor(w / one + 0.5)
+  local exact = face[6] * size / one
+  local s = floor(exact + 0.5)
+  if (wide - s) % 2 ~= 0 then s = (exact >= s) and (s + 1) or (s - 1) end
+  -- A third of the sign at most (a display face's wide stems), at least a pixel.
+  while s > 1 and s * 3 > wide do s = s - 2 end
+  if s < 1 then s = s + 2 end
+  s = s * one
+  local mid = ((f.__lH or 0) + (f.__lDy or 0)) / 2
+  local c = f.__capC or mid
+  local want = mid - w / 2
+  local top = floor(want)
+  if top ~= want and math.abs(top + 1 + w / 2 - c) < math.abs(top + w / 2 - c) then top = top + 1 end
+  local left, k = sx - w / 2, (w - s) / 2
+  local bar, stem = f.SignH, f.SignV
+  bar:ClearAllPoints()
+  bar:SetPoint("TOPLEFT", f, "TOPLEFT", left, -(top + k))
+  bar:SetSize(w, s)
+  if plus then
+    stem:ClearAllPoints()
+    stem:SetPoint("TOPLEFT", f, "TOPLEFT", left + k, -top)
+    stem:SetSize(s, w)
+  end
+  stem:SetShown(plus)
+end
+
 -- Hairline or Full row painted as the list stands: its look, words, fill
 -- and fold sign, each only where it moved. Called on every pass that shows
 -- it, so at rest it compares a handful of values and sets nothing. The copy
@@ -8018,10 +8157,10 @@ end
 -- the list's own ground otherwise. Under the copy at the foot, and under
 -- the bar in its place while it stands on the view's foot (`__footUnder`),
 -- the foot is part of the bar, so its content stands on the middle of
--- both. The fold sign stands on the rows' read dot (RV.BarLanes): "+"
--- while the copy at the foot stands for the bar, or the finished mail is
--- folded; the en dash over it unfolded. The content starts where the rows'
--- icons do.
+-- both. The fold sign stands on the rows' read dot, as wide as it
+-- (RV.BarLanes, RV.SignPlace): "+" while the copy at the foot stands for
+-- the bar, or the finished mail is folded; "-" over it unfolded. The
+-- content starts where the rows' icons do.
 function RV.PaintLine(panel, f, compact, look)
   local T = Th()
   local M = T.Metrics
@@ -8059,13 +8198,12 @@ function RV.PaintLine(panel, f, compact, look)
     f.__tint = filled
     f.Fill:SetShown(filled and true or false)
   end
-  local sign = (f.__pinned or RV.Folded(panel)) and "+" or RV.LINE.open
+  local plus = (f.__pinned or RV.Folded(panel)) and true or false
   local sx = panel._barSignX or (M.inset + 4)
-  if f.__sign ~= sign or f.__signX ~= sx then
-    f.__sign, f.__signX = sign, sx
-    local text = f.SignText
-    text:SetText(sign)
-    text:SetPoint("CENTER", f, "LEFT", sx, (sign == "+") and f.__liftPlus or f.__liftDash)
+  local dotW = panel._barDotW or (ROW_INDICATOR - 1)
+  if f.__sign ~= plus or f.__signX ~= sx or f.__signW ~= dotW then
+    f.__sign, f.__signX, f.__signW = plus, sx, dotW
+    RV.SignPlace(f, plus, sx, dotW)
   end
   -- Where the content starts: where the rows' icons start, else past the
   -- fold sign by the look's own room.
@@ -8216,7 +8354,7 @@ CT.BarParts = {
   BarSlot = RV.BarSlotOf, Tip = RV.WordsTip, TipOff = RV.WordsTipOff,
   pad = RV.BAR.pad, gap = RV.BAR.gap, checkGap = RV.BAR.checkGap, edgeA = RV.BAR.edgeA, groundA = RV.BAR.groundA,
   signShut = RV.SIGN_SHUT, signOpen = RV.SIGN_OPEN,
-  Join = RV.Join, LineReady = RV.LineReady,
+  Join = RV.Join, LineReady = RV.LineReady, CentreAt = RV.CentreAt,
 }
 
 -------------------------------------------------------------
@@ -13455,10 +13593,18 @@ function RV.BuildBar(panel, parent, foot)
   T.SetColor(f.Mark, "textSecondary")
   f.Mark:Hide()
   -- Hairline's and Full row's own parts (RV.LineType), hidden until one of
-  -- them is chosen: the fold sign, written in the words' size, and the rule
-  -- from the words to Delete all.
-  f.SignText = T.CreateText(f, "secondary")
-  f.SignText:Hide()
+  -- them is chosen: the fold sign, a "+" or a "-" of two strokes on whole
+  -- pixels (RV.SignPlace), and the rule from the words to Delete all.
+  f.SignH = f:CreateTexture(nil, "ARTWORK")
+  f.SignV = f:CreateTexture(nil, "ARTWORK")
+  for i = 1, 2 do
+    local t = (i == 1) and f.SignH or f.SignV
+    t:SetTexture(WHITE)
+    T.SetColor(t, "textSecondary")
+    if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(true) end
+    if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
+    t:Hide()
+  end
   f.Rule = f:CreateTexture(nil, "ARTWORK")
   f.Rule:SetTexture(WHITE)
   f.Rule:SetHeight(1)

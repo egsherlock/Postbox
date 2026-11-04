@@ -540,8 +540,9 @@ end
 
 -- The icon, the words and the number centred on the list as one, at the
 -- island's cut or the bar's (`wide`), on whole units from the copy's left,
--- each lifted so its ink is on the middle (RV.Lifts); the number in one
--- string with whole words (RV.Join). Only where the cut moves, or `again`.
+-- their letters on the middle (RV.CentreAt), each lifted so its ink is on
+-- the middle (RV.Lifts); the number in one string with whole words
+-- (RV.Join). Only where the cut moves, or `again`.
 function DN.Place(f, wide, again)
   local cut = (wide and f.__barW or f.__tabW) or false
   if not again and f.__pw == wide and f.__placed == cut then return end
@@ -556,8 +557,8 @@ function DN.Place(f, wide, again)
   end
   f.__placed = cut
   local wordsW, iconW = f.__wordsW or 0, f.__iconW or 0
-  local width = math.ceil((f.__lead or 0) + (cut or wordsW) + (f.__tail or 0))
-  local x = floor(((f.__W2 or 0) - width) / 2)
+  local width = (f.__lead or 0) + (cut or wordsW) + (f.__tail or 0)
+  local x = B.CentreAt((f.__W2 or 0) / 2, width, f.__shadowX)
   if iconW > 0 then
     mark:ClearAllPoints()
     mark:SetPoint("LEFT", inner, "LEFT", x, f.__iconUp or 0)

@@ -2308,7 +2308,7 @@ do
   -- for the drawing's: one read mail, open, on the drawing's ground. It
   -- takes no pointer: the drawing is a picture.
   MW.barList = {
-    _preview = true, _pvFolded = false, _readCount = 1, _barSignX = 5,
+    _preview = true, _pvFolded = false, _readCount = 1, _barSignX = 5, _barDotW = MW.DOT,
     MailListArea = {
       GetBackdropColor = function()
         local P = MW.Own() and ns.Skin and ns.Skin.Palette
