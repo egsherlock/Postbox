@@ -959,6 +959,9 @@ do
     say.__pbPopupAlways = true
     T.ApplyCard(say)
     TextBlock(say)
+    -- Its words in the foot's column: the card stands on the inspector's
+    -- edge, the foot one unit inside it.
+    say.Title:SetPoint("TOPLEFT", say, "TOPLEFT", TEXT_X + 1, -TEXT_TOP)
     say:Hide()
     S.say = say
 
@@ -983,6 +986,8 @@ do
     if not say then return end
     if not entry then
       say:Hide()
+      -- The tab's own text back in the foot a setting's text borrowed.
+      if S.idleHolds then Insp.Idle(S.tab) end
       idle:Show()
       return
     end
@@ -990,6 +995,21 @@ do
     local was = S.extraShown
     if was and was ~= extra then was:Hide() end
     S.extraShown = extra
+    -- A text that fits the foot is written in the foot itself, where the
+    -- tab's own stands: the same place to the pixel and the same ground, so
+    -- moving onto a setting changes the words and nothing else. Only a text
+    -- that needs more room, or carries a drawing of its own, takes the card.
+    if not extra then
+      local room = idle:GetHeight() or 0
+      if Lay(S.measure, entry.title, entry.text, 0) <= room then
+        Lay(idle, entry.title, entry.text, 0)
+        S.idleHolds = true
+        say:Hide()
+        idle:Show()
+        return
+      end
+    end
+    if S.idleHolds then Insp.Idle(S.tab) end
     -- Shown before it is measured, in the same frame: nothing is drawn in
     -- between, and the text lays out on a shown card.
     say:Show()
@@ -1024,6 +1044,7 @@ do
   function Insp.Idle(key)
     local idle, entry = S.idleBlock, S.idle[key]
     if not (idle and entry) then return end
+    S.idleHolds = nil
     local h = Lay(idle, entry.title, entry.text, 0)
     if Ctx.Height(key) == 0 then
       idle.Rule:Hide()
