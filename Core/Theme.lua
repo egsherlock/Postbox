@@ -3945,16 +3945,24 @@ local STRATA_RANK = {
   DIALOG = 5, FULLSCREEN = 6, FULLSCREEN_DIALOG = 7, TOOLTIP = 8,
 }
 
+-- A frame's layer, or nil where it has none to read: on WoW Forever
+-- GetFrameStrata can answer a secret value, which can't be looked up.
+local function StrataOf(frame)
+  if type(frame.GetFrameStrata) ~= "function" then return nil end
+  local strata = frame:GetFrameStrata()
+  if type(issecretvalue) == "function" and issecretvalue(strata) then return nil end
+  return strata
+end
+
 local function Floats(frame)
   if type(frame.IsToplevel) == "function" and frame:IsToplevel() then return true end
 
   local parent = type(frame.GetParent) == "function" and frame:GetParent() or nil
   if not parent then return false end
-  if type(frame.GetFrameStrata) ~= "function" or type(parent.GetFrameStrata) ~= "function" then
-    return false
-  end
+  local mine, theirs = StrataOf(frame), StrataOf(parent)
+  if not mine or not theirs then return false end
 
-  return (STRATA_RANK[frame:GetFrameStrata()] or 0) > (STRATA_RANK[parent:GetFrameStrata()] or 0)
+  return (STRATA_RANK[mine] or 0) > (STRATA_RANK[theirs] or 0)
 end
 
 -- The host's own window fill where there is one, so the floor is the colour the
@@ -4069,7 +4077,7 @@ do
     if type(info) == "table" then
       if info.OnHide == nil then info.OnHide = DropLift end
       if info.OnHide == DropLift and not liftedFrom[dialog] then
-        liftedFrom[dialog] = dialog.GetFrameStrata and dialog:GetFrameStrata() or "DIALOG"
+        liftedFrom[dialog] = StrataOf(dialog) or "DIALOG"
       end
     end
     dialog:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -5597,7 +5605,7 @@ do
   function Theme.PickColor(r, g, b, set, restore)
     if not Theme.CanPickColor() then return false end
     local picker = _G.ColorPickerFrame
-    local job = { set = set, strata = picker.GetFrameStrata and picker:GetFrameStrata() or nil }
+    local job = { set = set, strata = StrataOf(picker) }
     picking = job
     local ok = pcall(picker.SetupColorPickerAndShow, picker, {
       r = r, g = g, b = b, hasOpacity = false,
