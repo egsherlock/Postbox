@@ -547,6 +547,9 @@ local CENSUS_KEEP = {
   -- Not the census, but a fact like it: which release last saved all this
   -- (Postbox.lua, 4b), which the next release's one-time steps go by.
   savedBy    = true,
+  -- And which release's news What's new has shown (Core/WhatsNew.lua,
+  -- section 5), so it does not open by itself again after a reset.
+  newsShown  = true,
 }
 
 -- Clears everything but the census, tells the modules that remember what

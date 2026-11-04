@@ -21,23 +21,29 @@ local _, ns = ...
 -- it steps aside while the arrange mode's inspector stands beside the
 -- window (WN.Aside, from Core/Arrange.lua).
 --
+-- Once by itself: a release with news for everyone (NEWS, section 5) opens
+-- the window by itself the first time a player logs in with it, a few
+-- seconds into the world, and never again.
+--
 -- Nothing here is built until it is shown. With no notice waiting, a
--- mailbox open costs one read of the saved variables' root.
+-- mailbox open costs one read of the saved variables' root, and a login
+-- after the news was shown costs one more.
 -- =====================================================================
 
 ns.WhatsNew = ns.WhatsNew or {}
 local WN = ns.WhatsNew
 local L = ns.L
 
-local ceil, max, min = math.ceil, math.max, math.min
+local ceil, floor, max, min = math.ceil, math.floor, math.max, math.min
 
 -- The notice PostboxDB.notice can name: its release, which is its title,
 -- and its words.
 local NOTICE = { key = "1.50", text = "NOTICE_150" }
 
--- Escape's own small parts (section 4), named here so the window and the
--- notice can reach them.
+-- Escape's own small parts (section 4), and the open by itself's (section
+-- 5), named here so the window and the notice can reach them.
 local ESC = {}
+local ONCE = {}
 
 -------------------------------------------------------------
 -- 1. The releases
@@ -51,12 +57,16 @@ local ESC = {}
 -- the top, and the one that falls past KEEP goes, with its WHATSNEW_ keys:
 -- nothing shows them any more. Made when the window is first built, not at
 -- load.
+--
+-- A release may also carry a badge, the words of a pill under its title
+-- (section 2b), and a note, a line of its own under that: 1.60's say that
+-- Postbox now supports WoW Forever, and ask for bug reports.
 -------------------------------------------------------------
 local KEEP = 3
 
 local function Releases()
   return {
-    { version = "1.60.0", groups = {
+    { version = "1.60.0", badge = "WHATSNEW_160_BADGE", note = "WHATSNEW_160_BUGS", groups = {
       { "WHATSNEW_160_FOREVER", "WHATSNEW_160_FOREVER_LINES" },
       { "WHATSNEW_160_EXPIRY", "WHATSNEW_160_EXPIRY_LINES" },
       { "WHATSNEW_160_BAR", "WHATSNEW_160_BAR_LINES" },
@@ -103,6 +113,7 @@ local WIN = {
   TITLE_GAP = 6,           -- a release's title to its first heading
   GROUP_GAP = 10,          -- a group's last line to the next heading
   LINE_GAP = 2,            -- a heading to its first line, and line to line
+  NOTE_GAP = 5,            -- a badge to the note under it
 }
 local BULLET = "\226\128\162"
 local win
@@ -111,6 +122,110 @@ local win
 -- inset and the scroll bar's gutter, which is theirs whether it shows or not.
 local function PageWidth()
   return WIN.W - 2 * WIN.EDGE - WIN.PAD_X - ns.Theme.Metrics.scrollGutter
+end
+
+-------------------------------------------------------------
+-- 2b. A release's badge
+--
+-- A pill under the release's title: the accent's wash inside a one-pixel
+-- ring in the accent's ring tone (accentEdge, the ring the favourites flag
+-- wears: a fact, not a state), the check knocked out of a disc in the
+-- accent's mark tone, and the words in the body's ink, which reads on the
+-- pages' ground in every look and is barely moved by a 14% wash. All of it
+-- drawn by the theme from tokens, so it follows the look, the mode and a
+-- host UI's accent, and is painted again on every open. Postbox's own words
+-- in Postbox's font, never anyone's logo.
+--
+-- As wide as its mark and words need, on one line where they fit the
+-- page; a translation that runs longer wraps inside the ring, which grows
+-- taller rather than past the page.
+-------------------------------------------------------------
+local BADGE = {
+  PAD_X = 6, PAD_Y = 4,    -- what it holds in from its ring
+  MARK_GAP = 5,            -- the mark to the words
+}
+
+local function BuildBadge(page, words)
+  local T = ns.Theme
+  local pill = CreateFrame("Frame", nil, page)
+  local fill = pill:CreateTexture(nil, "BACKGROUND")
+  local ring = {}
+  for i = 1, 4 do ring[i] = pill:CreateTexture(nil, "BORDER") end
+  local mark = T.Glyph(pill, "check-circle", nil, "ARTWORK")
+  local text = T.CreateText(pill, "body")
+  text:SetJustifyH("LEFT")
+  text:SetWordWrap(true)
+  text:SetText(words)
+  pill.Fill, pill.Ring, pill.Mark = fill, ring, mark
+  return { kind = "badge", text = text, pill = pill }
+end
+
+-- From the tokens as they are now: the look, the mode or the accent may
+-- have moved since the last open.
+local function PaintBadge(pill)
+  local T = ns.Theme
+  T.FillColor(pill.Fill, "accentWash")
+  for i = 1, 4 do T.FillColor(pill.Ring[i], "accentEdge") end
+  if pill.Mark then T.SetColor(pill.Mark, "accent") end
+end
+
+-- The ring inside the pill's edge, `px` thick, and the wash inside the
+-- ring, so neither doubles the other's alpha.
+local function PlaceRing(pill, px)
+  local top, bottom, left, right = pill.Ring[1], pill.Ring[2], pill.Ring[3], pill.Ring[4]
+  top:ClearAllPoints()
+  top:SetPoint("TOPLEFT", pill, "TOPLEFT", 0, 0)
+  top:SetPoint("TOPRIGHT", pill, "TOPRIGHT", 0, 0)
+  top:SetHeight(px)
+  bottom:ClearAllPoints()
+  bottom:SetPoint("BOTTOMLEFT", pill, "BOTTOMLEFT", 0, 0)
+  bottom:SetPoint("BOTTOMRIGHT", pill, "BOTTOMRIGHT", 0, 0)
+  bottom:SetHeight(px)
+  left:ClearAllPoints()
+  left:SetPoint("TOPLEFT", pill, "TOPLEFT", 0, -px)
+  left:SetPoint("BOTTOMLEFT", pill, "BOTTOMLEFT", 0, px)
+  left:SetWidth(px)
+  right:ClearAllPoints()
+  right:SetPoint("TOPRIGHT", pill, "TOPRIGHT", 0, -px)
+  right:SetPoint("BOTTOMRIGHT", pill, "BOTTOMRIGHT", 0, px)
+  right:SetWidth(px)
+  local fill = pill.Fill
+  fill:ClearAllPoints()
+  fill:SetPoint("TOPLEFT", pill, "TOPLEFT", px, -px)
+  fill:SetPoint("BOTTOMRIGHT", pill, "BOTTOMRIGHT", -px, px)
+end
+
+-- At `y` down the page, `width` wide at most; answers its height.
+local function LayoutBadge(item, page, y, width)
+  local P = BADGE
+  local pill, text = item.pill, item.text
+  local mark = pill.Mark
+  PaintBadge(pill)
+  local markW = mark and ceil(mark:GetWidth() or 0) or 0
+  local lead = P.PAD_X + (markW > 0 and markW + P.MARK_GAP or 0)
+  local room = width - lead - P.PAD_X
+  local natural = text.GetUnboundedStringWidth and text:GetUnboundedStringWidth() or text:GetStringWidth()
+  local words = min(room, ceil(tonumber(natural) or room))
+  -- A unit to spare where it fits on one line: a string given exactly its
+  -- own width can still be cut by the client's rounding. The words stand
+  -- left, so the spare unit is never seen.
+  text:SetWidth(min(room, words + 1))
+  text:ClearAllPoints()
+  text:SetPoint("TOPLEFT", pill, "TOPLEFT", lead, -P.PAD_Y)
+  local textH = ceil(text:GetStringHeight() or 12)
+  local height = textH + 2 * P.PAD_Y
+  pill:ClearAllPoints()
+  pill:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -y)
+  pill:SetSize(lead + words + P.PAD_X, height)
+  if mark then
+    -- Level with the first line's middle, on a whole unit.
+    local _, size = text:GetFont()
+    local line = min(textH, ceil(tonumber(size) or textH))
+    mark:ClearAllPoints()
+    mark:SetPoint("TOPLEFT", pill, "TOPLEFT", P.PAD_X, -(P.PAD_Y + floor((line - (mark:GetHeight() or 0)) / 2 + 0.5)))
+  end
+  PlaceRing(pill, ns.Theme.OnePixel(pill))
+  return height
 end
 
 local function BuildWindow()
@@ -171,6 +286,14 @@ local function BuildWindow()
     title:SetJustifyH("LEFT")
     title:SetText(L("WHATSNEW_RELEASE", release.version))
     items[#items + 1] = { kind = "release", text = title }
+    if release.badge then items[#items + 1] = BuildBadge(page, L[release.badge]) end
+    if release.note then
+      local note = T.CreateText(page, "secondary")
+      note:SetJustifyH("LEFT")
+      note:SetWordWrap(true)
+      note:SetText(L[release.note])
+      items[#items + 1] = { kind = "note", text = note }
+    end
     local groups = release.groups
     for g = 1, #groups do
       local group = groups[g]
@@ -195,7 +318,9 @@ local function BuildWindow()
 end
 
 -- Top down, each text at the width it has and the height that gives it;
--- the window as tall as that, up to MAX_H.
+-- the window as tall as that, up to MAX_H. A badge and a note stand
+-- between a release's title and its first heading, a title's gap below the
+-- title and a group's gap above the heading.
 local function LayoutWindow(f)
   local width = PageWidth()
   local y, before = WIN.PAD_Y, nil
@@ -205,21 +330,27 @@ local function LayoutWindow(f)
     local kind = item.kind
     if kind == "release" then
       if before then y = y + WIN.RELEASE_GAP end
-    elseif kind == "heading" then
+    elseif kind == "heading" or kind == "badge" then
       y = y + (before == "release" and WIN.TITLE_GAP or WIN.GROUP_GAP)
+    elseif kind == "note" then
+      y = y + (before == "badge" and WIN.NOTE_GAP or WIN.TITLE_GAP)
     else
       y = y + WIN.LINE_GAP
     end
-    local x = (kind == "line") and WIN.BULLET or 0
-    local text = item.text
-    text:ClearAllPoints()
-    text:SetPoint("TOPLEFT", f.Page, "TOPLEFT", x, -y)
-    text:SetWidth(width - x)
-    if item.dot then
-      item.dot:ClearAllPoints()
-      item.dot:SetPoint("TOPLEFT", f.Page, "TOPLEFT", 1, -y)
+    if kind == "badge" then
+      y = y + LayoutBadge(item, f.Page, y, width)
+    else
+      local x = (kind == "line") and WIN.BULLET or 0
+      local text = item.text
+      text:ClearAllPoints()
+      text:SetPoint("TOPLEFT", f.Page, "TOPLEFT", x, -y)
+      text:SetWidth(width - x)
+      if item.dot then
+        item.dot:ClearAllPoints()
+        item.dot:SetPoint("TOPLEFT", f.Page, "TOPLEFT", 1, -y)
+      end
+      y = y + ceil(text:GetStringHeight() or 12)
     end
-    y = y + ceil(text:GetStringHeight() or 12)
     before = kind
   end
   y = y + WIN.PAD_Y
@@ -257,7 +388,9 @@ local function Place(f, beside, foot)
 end
 
 -- Shown (or raised, where it is up) beside `beside`, as Place puts it.
+-- However it is opened, the news it brings counts as shown (section 5).
 function WN.Open(beside, foot)
+  ONCE.Shown()
   if not win then
     win = BuildWindow()
     -- The same expression as the options panel and the bug report.
@@ -640,4 +773,120 @@ function WN.TestNotice()
   local UI = ns.MailboxUI
   local frame = UI and UI._frame
   if frame and frame:IsShown() then ShowCard(frame) end
+end
+
+-------------------------------------------------------------
+-- 5. Once by itself
+--
+-- A release with news for everyone names it in NEWS, and What's new opens
+-- by itself for it once: at the first login that finds it, after an update
+-- or on a fresh install (WoW Forever keeps saved variables of its own, so
+-- nearly every Forever player is one). 1.60's is WoW Forever. A release
+-- without such news sets NEWS to nil, and nothing here runs at all.
+--
+-- Postbox.lua arms it at load (WN.ArmOnce), after the one-time steps, and
+-- one read of PostboxDB.newsShown says whether it was shown: if it was,
+-- nothing is registered and nothing is made, at this login or any after.
+--
+-- Shown politely, by events and one-shot timers, never a repeating one or
+-- an OnUpdate:
+--   * AFTER seconds after the session's first PLAYER_ENTERING_WORLD, so
+--     never on the loading screen;
+--   * never in combat: it waits for PLAYER_REGEN_ENABLED, once, then
+--     SETTLE seconds;
+--   * never over a cinematic or a movie the game says is playing: it waits
+--     for its end, as for a fight;
+--   * never with the 1.50 notice, which only a player coming from 1.40 has.
+--     While it waits, the news is left to it (its What's new? opens this
+--     window), and comes by itself at a later login if it was answered
+--     with OK.
+-- Opened centred, or beside the mail window if one is up. Escape and its
+-- close button close it as ever.
+--
+-- Any open of the window shows the news -- by itself, from the notice, the
+-- options' footer or /postbox whatsnew -- and the mark is written as it
+-- opens (ONCE.Shown), so a /reload straight after never shows it twice; a
+-- player who never got past the loading screen still has it to come. Reset
+-- everything keeps the mark (Core/MailboxUI.lua, CENSUS_KEEP).
+-------------------------------------------------------------
+local NEWS = "1.60"
+ONCE.AFTER = 5    -- seconds in the world before it opens
+ONCE.SETTLE = 2   -- seconds after a fight or a film before it opens
+
+-- The one saved read: shown already, or no news to show.
+local function NewsShown()
+  if not NEWS then return true end
+  local db = PostboxDB
+  return type(db) == "table" and db.newsShown == NEWS
+end
+
+-- Every wait let go; unregistering what is not registered costs nothing.
+function ONCE.Disarm()
+  local bus = ns.Events
+  bus.Unregister("PLAYER_ENTERING_WORLD", ONCE.Entered)
+  bus.Unregister("PLAYER_REGEN_ENABLED", ONCE.Resume)
+  bus.Unregister("CINEMATIC_STOP", ONCE.Resume)
+  bus.Unregister("STOP_MOVIE", ONCE.Resume)
+end
+
+-- The window opened, however: the news is shown, for good.
+function ONCE.Shown()
+  if NewsShown() then return end
+  local db = PostboxDB
+  if type(db) ~= "table" then return end
+  db.newsShown = NEWS
+  ONCE.Disarm()
+end
+
+-- What the game is in the middle of, as far as it is cheap to know: a
+-- fight, a cinematic or a movie ("combat", "film"), or nil.
+function ONCE.Busy()
+  if InCombatLockdown() then return "combat" end
+  local cinematic, movie = _G.CinematicFrame, _G.MovieFrame
+  if (cinematic and cinematic:IsShown()) or (movie and movie:IsShown()) then return "film" end
+  local inCinematic, inScene = _G.InCinematic, _G.IsInCinematicScene
+  if (type(inCinematic) == "function" and inCinematic())
+    or (type(inScene) == "function" and inScene()) then
+    return "film"
+  end
+  return nil
+end
+
+function ONCE.Try()
+  if NewsShown() then return end
+  -- The 1.50 notice goes first, and alone.
+  if Waiting() then return end
+  ONCE.Disarm()
+  local busy = ONCE.Busy()
+  if busy == "combat" then
+    ns.Events.Register("PLAYER_REGEN_ENABLED", ONCE.Resume)
+    return
+  elseif busy == "film" then
+    -- Either end will do; a client that knows neither event shows it at a
+    -- later login instead.
+    ns.Events.Register("CINEMATIC_STOP", ONCE.Resume)
+    ns.Events.Register("STOP_MOVIE", ONCE.Resume)
+    return
+  end
+  local UI = ns.MailboxUI
+  local frame = UI and UI._frame
+  WN.Open(frame and frame:IsShown() and frame or nil, false)
+end
+
+-- The session's first entry into the world: the one timer.
+function ONCE.Entered()
+  ns.Events.Unregister("PLAYER_ENTERING_WORLD", ONCE.Entered)
+  C_Timer.After(ONCE.AFTER, ONCE.Try)
+end
+
+-- A fight or a film over: a moment, then the same tests again.
+function ONCE.Resume()
+  ONCE.Disarm()
+  C_Timer.After(ONCE.SETTLE, ONCE.Try)
+end
+
+-- At load, from Postbox.lua's ADDON_LOADED.
+function WN.ArmOnce()
+  if NewsShown() then return end
+  ns.Events.Register("PLAYER_ENTERING_WORLD", ONCE.Entered)
 end
