@@ -4640,7 +4640,8 @@ local function OnMailShow()
   UI.ApplyWindowLayout()
   if mark then perf.Stage("layout", mark, true) end
   -- The update notice, beside the window where it now stands, when an update
-  -- has one waiting (Core/WhatsNew.lua); otherwise one read, and nothing built.
+  -- has one waiting, else What's new the first time a release with news
+  -- opens a mailbox (Core/WhatsNew.lua); otherwise one read, and nothing built.
   local news = ns.WhatsNew
   if news and news.WindowShown then news.WindowShown(UI._frame) end
 end

@@ -2518,10 +2518,10 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   -- old settings over, before the minimap icon or any skin reads them.
   Upgrade(savedBy)
 
-  -- What's new, once by itself, for a release with news for everyone
-  -- (Core/WhatsNew.lua, section 5): after the steps, which may have left
-  -- the 1.50 notice waiting, and one read of the saved variables once it
-  -- has been shown.
+  -- What's new, once by itself at the first mailbox, for a release with
+  -- news for everyone (Core/WhatsNew.lua, section 5): after the steps,
+  -- which may have left the 1.50 notice waiting. One read of the saved
+  -- variables; once it has been shown, nothing is armed.
   local News = ns.WhatsNew
   if News and type(News.ArmOnce) == "function" then News.ArmOnce() end
 

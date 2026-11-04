@@ -91,9 +91,10 @@ not enough).*
   Mail Memory has the options cog too.
 - **The options say each thing once:** no tooltip repeating the panel's
   description, and a grayed-out setting says what turns it on.
-- **What's new opens by itself, once,** a few seconds after your first
-  login with 1.60 (never in combat), to say Postbox now supports WoW
-  Forever. **What's new?**, at the foot of the options, opens it any time.
+- **What's new opens by itself, once,** beside the mail window the first
+  time you open a mailbox with 1.60 (never in combat), to say Postbox now
+  supports WoW Forever. **What's new?**, at the foot of the options, opens
+  it any time.
 - Also: Reset to defaults opens downward; arranging from the options leaves
   them open; /postbox debug's report says which game it runs in, still
   without naming anyone; Battle.net friends are suggested only from a game
