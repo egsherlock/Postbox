@@ -3040,6 +3040,17 @@ end
 --                             width, and where this row keeps it (above)
 --   publish                   true: the next row placed publishes, the rest
 --                             of the pass not; nil: every row does
+-- The sender written into its width: cut with an ellipsis where it does
+-- not fit, as ever -- unless the row has a `bare` form (a Sent row: the
+-- recipient without another realm), which is shown instead, so a realm is
+-- what gives way and the name stays whole.
+function RV.FitSender(region, width, text, bare)
+  local T = Th()
+  if T.FitText(region, width, text, region) and bare and bare ~= text then
+    T.FitText(region, width, bare, region)
+  end
+end
+
 function RV.Place(row, s)
   local layout = s.layout or RV.Layout()
   local T = Th()
@@ -3145,6 +3156,13 @@ function RV.Place(row, s)
   local lineWidth = max(textWidth - used, 40)
   local senderShown = layout.shown.sender and el.sender ~= nil
   local senderW = senderShown and min(s.senderCol or SENDER_MIN, floor(lineWidth / 2)) or 0
+  -- Sent's names are never cut (HV.SentWho): a realm is shown within half
+  -- the line, and past that the column takes what its longest name needs
+  -- without a realm from the subject, down to the subject's own floor
+  -- (below), which ellipsizes.
+  if senderShown and s.senderLeast and s.senderLeast > senderW then
+    senderW = min(s.senderLeast, lineWidth - gap - 20)
+  end
   local subjectW = max(lineWidth - (senderShown and (senderW + gap) or 0), 20)
 
   local focus, target = s.focus, nil
@@ -3172,7 +3190,7 @@ function RV.Place(row, s)
           placed = nil  -- a name, on the first line below
         elseif id == "sender" then
           RV.Anchor(row, region, 1, x, 0)
-          T.FitText(region, senderW, text.sender, region)
+          RV.FitSender(region, senderW, text.sender, s.senderBare)
           lw = senderW
           x = x + senderW + gap
           placed = true
@@ -3224,7 +3242,7 @@ function RV.Place(row, s)
           placed = nil
         elseif id == "sender" then
           RV.Anchor(row, region, 2, -edge, 0)
-          T.FitText(region, senderW, text.sender, region)
+          RV.FitSender(region, senderW, text.sender, s.senderBare)
           lw = senderW
           edge = edge + senderW + gap
           placed = true
@@ -3351,13 +3369,13 @@ function RV.Place(row, s)
     if senderShown and not second then
       if before then
         RV.Anchor(row, sender, 3, x, top)
-        T.FitText(sender, senderW, text.sender, sender)
+        RV.FitSender(sender, senderW, text.sender, s.senderBare)
         subX = x + senderW + gap
         RV.Anchor(row, subject, 3, subX + mw, top)
       else
         RV.Anchor(row, subject, 3, x + mw, top)
         RV.Anchor(row, sender, 4, -edge, top)
-        T.FitText(sender, senderW, text.sender, sender)
+        RV.FitSender(sender, senderW, text.sender, s.senderBare)
       end
       sender:Show()
     else
@@ -6903,6 +6921,9 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   spec.left, spec.trail, spec.gap = M.inset, M.inset, M.gap
   spec.cols = cols
   spec.senderCol = cols.sender or SENDER_MIN
+  -- Sent: the name is never cut; another realm gives way first (RV.Place).
+  spec.senderLeast = sent and cols.senderLeast or nil
+  spec.senderBare = sent and not outcome and HV.SentWho(entry, true) or nil
   spec.share, spec.two = nil, false
   spec.force = (kind == "cod") and "money" or nil
   spec.markW = RV.NameMarkRoom()
@@ -7074,7 +7095,7 @@ function HV.BuildHistoryList(panel, query)
   local cols = panel._hcols
   -- A packed row measures its own figures as the columns are measured here.
   RV.MeasureIn(panel._histSpec, panel, nil, sample.ColMoney, nil, sample.ColTime)
-  cols.sender, cols.money, cols.age = 0, 0, 0
+  cols.sender, cols.money, cols.age, cols.senderLeast = 0, 0, 0, 0
   local layout = HV.Layout()
   local showSender, showAge = layout.shown.sender, layout.shown.age
   local style = HV.AgeStyle()
@@ -7111,9 +7132,21 @@ function HV.BuildHistoryList(panel, query)
       out[#out + 1] = entry
       earned = earned + (entry.m or 0)
       spent = spent + (entry.c or 0) + (entry.p or 0)
-      if cols.sender < cap and showSender then
+      if sent and showSender then
+        -- Sent: every recipient whole, so the column is its widest name
+        -- (with another realm), past the cap; and the widest without a
+        -- realm is the least a row may cut it to (RV.Place, RV.FitSender).
+        local full = HV.SentWho(entry)
+        if full then
+          local width = MeasureWith(panel, sample.Sender, full) + 2
+          if width > cols.sender then cols.sender = width end
+          if width > cols.senderLeast then
+            cols.senderLeast = max(cols.senderLeast, MeasureWith(panel, sample.Sender, HV.SentWho(entry, true)) + 2)
+          end
+        end
+      elseif cols.sender < cap and showSender then
         local label = (AUCTION_OUTCOME[entry.k] and L()[AUCTION_OUTCOME[entry.k].key])
-          or (sent and HV.SentWho(entry)) or R.DisplaySender(entry.s) or ""
+          or R.DisplaySender(entry.s) or ""
         cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), cap)
       end
       local kind = sent and HV.SentKind(entry) or HV.MoneyKind(entry)
@@ -7398,23 +7431,43 @@ function HV.SentMoney(entry, brief)
   return nil
 end
 
--- entry -> the sender column of a Sent row: a dim "to" and the recipient
--- as a row names a sender (DisplaySender: the realm left to the tooltip).
--- Kept per recipient, so a bind and the list's measuring make nothing; let
--- go past HV.AGE_MAX names, and when the dim's ink changes (a palette).
-HV.sentWho, HV.sentWhoN = {}, 0
-function HV.SentWho(entry)
+-- to -> the realm a Sent row names after the recipient: another realm's,
+-- as it was addressed; none for this character's own realm, and none where
+-- names have two parts (Forever: a hyphen there joins the names).
+function HV.SentRealm(to)
+  local H = Helpers()
+  if H.TwoPartNames() then return nil end
+  local dash = to:find("-", 1, true)
+  if not dash or dash == 1 or dash == #to then return nil end
+  local realm = to:sub(dash + 1)
+  local own, plain = H.PlayerRealm(true), H.PlayerRealm()
+  if realm == own or realm == plain then return nil end
+  if own and (realm:gsub("[%s%-]", "")) == (own:gsub("[%s%-]", "")) then return nil end
+  return realm
+end
+
+-- entry[, bare] -> the sender column of a Sent row: a dim "to" and the
+-- recipient's whole name, as a row names a sender (DisplaySender), with
+-- another realm after it; `bare`, the name alone, which a row too narrow
+-- for the realm shows instead (RV.FitSender): the realm gives way, never
+-- the name. Kept per recipient, so a bind and the list's measuring make
+-- nothing; let go past HV.AGE_MAX names, and when the dim's ink changes.
+HV.sentWho, HV.sentBare, HV.sentWhoN = {}, {}, 0
+function HV.SentWho(entry, bare)
   local to = entry.s
   if type(to) ~= "string" or to == "" then return nil end
   local prefix = Th().Colorize("textSecondary", L()["SENT_ROW_TO"])
-  local cache = HV.sentWho
   if HV.sentPrefix ~= prefix or HV.sentWhoN >= HV.AGE_MAX then
-    for k in pairs(cache) do cache[k] = nil end
+    for k in pairs(HV.sentWho) do HV.sentWho[k] = nil end
+    for k in pairs(HV.sentBare) do HV.sentBare[k] = nil end
     HV.sentWhoN, HV.sentPrefix = 0, prefix
   end
+  local cache = bare and HV.sentBare or HV.sentWho
   local text = cache[to]
   if text then return text end
   text = prefix .. " " .. (DisplaySender(to) or to)
+  local realm = not bare and HV.SentRealm(to) or nil
+  if realm then text = text .. "-" .. realm end
   cache[to] = text
   HV.sentWhoN = HV.sentWhoN + 1
   return text
