@@ -589,7 +589,9 @@ local function Evaluate()
   local countMode = CountMode(prefs)
   local expiry = ExpiryMode(prefs)
   local warnMode = (expiry ~= "off") and WarnMode() or "off"
-  local mine, all, warn = 0, 0, false
+  -- `uncounted`: some character has mail that came uncounted (MailMemory's
+  -- Status): mail waiting all the same, though no number can say it.
+  local mine, all, warn, uncounted = 0, 0, false, false
   local Memory = ns.MailMemory
   if (mode == "any" or countMode ~= "off" or warnMode ~= "off") and MemoryOn() and Memory
     and type(Memory.Characters) == "function" then
@@ -601,6 +603,7 @@ local function Evaluate()
         local n = (tonumber(st.waiting) or 0) + (tonumber(st.pending) or 0)
         if st.me then mine = n end
         all = all + n
+        if st.uncounted then uncounted = true end
         if not warn and warns and warns(st, warnMode) then warn = true end
       end
     end
@@ -612,7 +615,7 @@ local function Evaluate()
   if mode == "always" then
     up = true
   elseif mode == "any" then
-    up = lit or all > 0
+    up = lit or all > 0 or uncounted
   else
     up = lit
   end
@@ -1982,9 +1985,12 @@ function TIP.Characters(Memory)
   local others = false
   local warns = Memory.Warns
   local mode = TIP.mode
+  -- Mail that came uncounted is mail: "new", or "N+" (MailMemory.CountText).
+  local hasMail = Memory.HasMail
+  if not (hasMail and Memory.CountText) then return end
   for i = 1, #list do
     local st = list[i]
-    if not (st.me or st.hidden) and ((st.waiting + (st.pending or 0)) > 0 or (warns and warns(st, mode))) then
+    if not (st.me or st.hidden) and (hasMail(st) or (warns and warns(st, mode))) then
       others = true
       break
     end
@@ -1995,11 +2001,11 @@ function TIP.Characters(Memory)
   local shown, extra = 0, 0
   for i = 1, #list do
     local st = list[i]
-    local n = st.waiting + (st.pending or 0)
-    if not (st.me or st.hidden) and (n > 0 or (warns and warns(st, mode))) then
+    if not (st.me or st.hidden) and (hasMail(st) or (warns and warns(st, mode))) then
       if shown < TIP.CHARACTERS then
         shown = shown + 1
-        GameTooltip:AddDoubleLine(TIP.CharacterName(Memory, st), tostring(n), 1, 1, 1, 1, 1, 1)
+        GameTooltip:AddDoubleLine(TIP.CharacterName(Memory, st),
+          Memory.CountText(st.waiting + (st.pending or 0), st.uncounted), 1, 1, 1, 1, 1, 1)
       else
         extra = extra + 1
       end

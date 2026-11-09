@@ -536,6 +536,12 @@ end
 --   auctionAt /    an auction was posted, and its mail -- the gold, or the
 --   auctionsUntil  item back -- has had no visit to land in yet. Until is the
 --                  latest such auction could end (48h, the longest listing).
+--   uncountedAt    the last time mail arrived that no notice named: the
+--                  unread flag up at login, an arrival or expiry event with
+--                  no auction house notice to go with it, a purchase, mail
+--                  Postbox sent from another character. The count says
+--                  "new" or "N+" while it stands (MM.CountText): how many
+--                  came is not known, only that some did.
 --
 -- Mail lives thirty days. Either time is therefore the earliest that unseen
 -- mail could start to be lost, and a character is flagged a week before it.
@@ -592,13 +598,56 @@ end
 
 -- Mail is known to have arrived for this character -- at `at` at the latest
 -- (default now; the earliest it could have landed is the safer guess when
--- all that is known is "since the last visit").
-local function NoteArrival(realm, name, at)
+-- all that is known is "since the last visit"). `uncounted`: nothing named
+-- it, so the count cannot include it (uncountedAt).
+local function NoteArrival(realm, name, at, uncounted)
   if not MemoryEnabled() then return end
   local watch = WatchFor(realm, name, true)
-  if watch and not watch.newAt then
+  if not watch then return end
+  local changed = false
+  if not watch.newAt then
     watch.newAt = tonumber(at) or time()
-    CharactersChanged()
+    changed = true
+  end
+  if uncounted then
+    watch.uncountedAt = time()
+    changed = true
+  end
+  if changed then CharactersChanged() end
+end
+
+-- An arrival on the character being played that says neither what nor how
+-- many: the client's pending-mail event, the auctions-expired event, a
+-- purchase. The auction house names its own outcomes in a notice
+-- (NotePending, section 5), and the same mail raises both, in either order
+-- and some seconds apart -- the notice up to an hour before the mail, which
+-- lands within the hour. So the arrival is counted already when a notice
+-- came in the hour before it, or comes in the seconds after; only when
+-- neither did is it an uncounted one. One timer for an event the client
+-- sends a handful of times an hour at most.
+do
+  local NOTICE_LANDS, NOTICE_PAIR = 3600, 10
+
+  local function NoticeSince(watch, from)
+    local pending = watch and type(watch.pending) == "table" and watch.pending or nil
+    local last = pending and pending[#pending]
+    return last ~= nil and (tonumber(last.t) or 0) >= from
+  end
+
+  function MM._NoteSignal()
+    if not MemoryEnabled() then return end
+    local realm, name = Me()
+    NoteArrival(realm, name)
+    local at = time()
+    if NoticeSince(WatchFor(realm, name, false), at - NOTICE_LANDS) then return end
+    C_Timer.After(NOTICE_PAIR, function()
+      local watch = WatchFor(realm, name, false)
+      if not watch or NoticeSince(watch, at - NOTICE_LANDS) then return end
+      -- A visit since then holds the mail in its record.
+      local snap = SnapshotFor(realm, name)
+      if snap and (tonumber(snap.seenAt) or 0) >= at then return end
+      NoteArrival(realm, name, nil, true)
+    end)
   end
 end
 
@@ -634,8 +683,10 @@ function MM._SettleWatch(realm, name, now)
   local watch = WatchFor(realm, name, false)
   if not watch then return end
   watch.newAt = nil
-  -- What the notifications said had arrived is in the snapshot now.
+  -- What the notifications said had arrived is in the snapshot now, and so
+  -- is what nothing named.
   watch.pending = nil
+  watch.uncountedAt = nil
   if watch.auctionsUntil and watch.auctionsUntil > now then
     watch.auctionAt = now
   else
@@ -670,8 +721,19 @@ local function Counts(mail)
   return (mail.items or 0) > 0 or (mail.money or 0) > 0 or (mail.cod or 0) > 0
 end
 
+-- watch, seenAt, now -> whether mail nothing named has come since the last
+-- visit (uncountedAt), while it can still be there.
+local function Uncounted(watch, seenAt, now)
+  if not watch then return false end
+  local at = tonumber(watch.uncountedAt)
+  return (at ~= nil and now - at < MAIL_LIFE) and true or false
+end
+
 -- realm, name, now -> what there is to say about that character's mail.
 --   waiting    mails in its snapshot still waiting
+--   pending    the mail the auction house's notices named since
+--   uncounted  mail came since that nothing named (Uncounted): the count
+--              is waiting + pending and more (MM.CountText)
 --   soon       how many of them are short (three days, one for C.O.D.) and
 --              worth a warning (Counts), and `soonest`
 --   unseenDays set when mail known to be on the way has gone unopened
@@ -682,7 +744,7 @@ local function Status(realm, name, now)
   -- the table is sized once rather than grown twice; the ones left nil are
   -- set below, or there, when they apply.
   local st = { realm = realm, name = name, waiting = 0, seenAt = snap and snap.seenAt or nil,
-    soon = nil, soonest = nil, pending = 0, unseenDays = nil, warn = false,
+    soon = nil, soonest = nil, pending = 0, uncounted = false, unseenDays = nil, warn = false,
     gone = nil, goneSoonest = nil, goneText = nil,
     me = nil, hidden = nil, label = nil, text = nil }
   local mails = snap and snap.mails or {}
@@ -720,6 +782,7 @@ local function Status(realm, name, now)
   local watch = WatchFor(realm, name, false)
   st.pending = LivePendingCount(watch, now)
   if watch then
+    st.uncounted = Uncounted(watch, st.seenAt, now)
     local since = watch.newAt
     if watch.auctionAt and (not since or watch.auctionAt < since) then since = watch.auctionAt end
     if since and now - since >= UNSEEN_WARN and now - since < UNSEEN_STOP then
@@ -738,10 +801,39 @@ local function WarningText(st, now)
     text = ns.Plural("OVERVIEW_EXPIRE", st.soon, (ExpiryText(st.soonest, now)))
   end
   if st.unseenDays then
-    local unseen = ns.Plural("OVERVIEW_UNSEEN", st.unseenDays)
+    -- Counted from the last visit where there was one ("mailbox last opened
+    -- 24 days ago"), otherwise from the first mail known to be on its way
+    -- ("mail waiting 24 days").
+    local unseen = ns.Plural(st.seenAt and "OVERVIEW_UNSEEN" or "OVERVIEW_UNVISITED", st.unseenDays)
     text = text and (text .. "; " .. unseen) or unseen
   end
   return text
+end
+
+-- A character's count as every list says it. `n` is what is counted (the
+-- snapshot's mail waiting and what the notices named); `uncounted`, that
+-- more came which nothing named (Status). Then it is "N+", or "new" where
+-- nothing was counted: never a bare 0 beside mail known to be there.
+-- CountText is the bare number (the minimap tooltip, the Mail tab's
+-- plate); MailsText says "mails" with it (the character list).
+function MM.CountText(n, uncounted)
+  n = tonumber(n) or 0
+  if not uncounted then return tostring(n) end
+  if n <= 0 then return L["OVERVIEW_COUNT_NEW"] end
+  return string.format(L["OVERVIEW_COUNT_MORE"], n)
+end
+
+function MM.MailsText(n, uncounted)
+  n = tonumber(n) or 0
+  if not uncounted then return ns.Plural("COUNT_MAILS", n) end
+  if n <= 0 then return L["OVERVIEW_MAILS_NEW"] end
+  return ns.Plural("OVERVIEW_MAILS_MORE", n)
+end
+
+-- st (one of MM.Characters) -> whether it has mail to show: counted, or
+-- known to have come uncounted. What decides whether a list names it.
+function MM.HasMail(st)
+  return (st.waiting + (st.pending or 0)) > 0 or st.uncounted == true
 end
 
 -- A character's name as the lists show it: the realm only when it is not
@@ -1103,7 +1195,8 @@ function MM.NoteSentTo(toName)
         local name = names[i]
         if not (realm == myRealm and name == myName)
            and (R.CharacterKey and R.CharacterKey(name, realm) or R.Key(name .. "-" .. realm)) == key then
-          NoteArrival(realm, name)
+          -- One mail, but nothing names it to that character's count.
+          NoteArrival(realm, name, nil, true)
           return
         end
       end
@@ -2373,7 +2466,7 @@ local function SwitchChoices(all)
   local out, hidden = {}, {}
   for i = 1, #all do
     local st = all[i]
-    if st.me or st.waiting > 0 or (st.pending or 0) > 0 or st.warn then
+    if st.me or MM.HasMail(st) or st.warn then
       if st.hidden then hidden[#hidden + 1] = st else out[#out + 1] = st end
     end
   end
@@ -2393,11 +2486,13 @@ function MM.HasOthers(all)
 end
 
 -- realm, name -> what the picker says of that character: its count of mail
--- waiting (with what is known to be on the way) and whether it warns.
+-- waiting (with what is known to be on the way), whether it warns, the
+-- warning's words, and whether more came than the count holds (Status's
+-- `uncounted`; MM.CountText says them together).
 function MM.CountFor(realm, name)
   local myRealm, myName = Me()
   local st = Status(realm or myRealm, name or myName, time())
-  return st.waiting + (st.pending or 0), st.warn, WarningText(st, time())
+  return st.waiting + (st.pending or 0), st.warn, WarningText(st, time()), st.uncounted
 end
 
 -- The whole box a list heads, as the Mail tab's Inbox counts its own: every
@@ -2417,10 +2512,12 @@ local function BoxTotal(snapshot, pending, now)
 end
 
 -- realm, name -> another character's whole box, for its plate on the Mail
--- tab: the count MM.RowsFor gives that box as info.box.
+-- tab: the count MM.RowsFor gives that box as info.box; and whether more
+-- came than it holds (Uncounted; MM.CountText says them together).
 function MM.BoxCount(realm, name)
   local now = time()
-  return BoxTotal(SnapshotFor(realm, name), LivePendingCount(WatchFor(realm, name, false), now), now)
+  local snapshot, watch = SnapshotFor(realm, name), WatchFor(realm, name, false)
+  return BoxTotal(snapshot, LivePendingCount(watch, now), now), Uncounted(watch, snapshot and snapshot.seenAt, now)
 end
 
 -- The foot of the list, standing for the characters the player hid: one
@@ -2597,8 +2694,7 @@ local function PaintPicker(list)
         T.SetColor(row.Name, "textPrimary")
         row.Name:SetAlpha(1)
         row.Name:SetText(MM.ClassName(st.realm, st.name))
-        local waiting = st.waiting + (st.pending or 0)
-        local count = ns.Plural("COUNT_MAILS", waiting)
+        local count = MM.MailsText(st.waiting + (st.pending or 0), st.uncounted)
         row.Count:SetText(st.warn and T.Colorize("warning", count) or count)
       end
       nameW = math.max(nameW, row.Name:GetStringWidth() or 0)
@@ -3366,8 +3462,8 @@ function Refresh(frame)
   local who = MM.ClassName(info.realm, info.name, true)
   local UI = ns.MailboxUI
   if not UI or type(UI.GetOption) ~= "function" or UI.GetOption("showTabCounts") then
-    local _, warn = MM.CountFor(info.realm, info.name)
-    local tally = ns.Plural("COUNT_MAILS", info.box)
+    local _, warn, _, uncounted = MM.CountFor(info.realm, info.name)
+    local tally = MM.MailsText(info.box, uncounted)
     frame.Who:SetText(who .. "  " .. T.Colorize(warn and "warning" or "textSecondary", "(" .. tally .. ")", "solid"))
   else
     frame.Who:SetText(who)
@@ -3979,8 +4075,9 @@ local function OnPendingMail()
   lastPendingVerdict = "memory off"
   if not MemoryEnabled() then return end
 
-  -- Arrived, whatever else is known: the watch needs no snapshot.
-  NoteArrival(Me())
+  -- Arrived, whatever else is known: the watch needs no snapshot. Counted
+  -- only where a notice names it (MM._NoteSignal).
+  MM._NoteSignal()
 
   lastPendingVerdict = "no snapshot"
   local snap = StoredSnapshot()
@@ -4009,7 +4106,7 @@ local function OnPurchaseCompleted()
   local Icon = ns.MinimapButton
   if Icon and type(Icon.NotifyArrival) == "function" then Icon.NotifyArrival("purchase") end
   if not MemoryEnabled() then return end
-  NoteArrival(Me())
+  MM._NoteSignal()
   local snap = StoredSnapshot()
   if not snap then return end
   snap.newSince = true
@@ -4083,7 +4180,7 @@ if bus then
     CharactersChanged()
   end)
   registered.auctionExpired = bus.Register("AUCTION_HOUSE_AUCTIONS_EXPIRED", function()
-    NoteArrival(Me())
+    MM._NoteSignal()
   end)
 
   -- The auction house's own notices -- sold, expired, won -- name the item,
@@ -4136,8 +4233,11 @@ if bus then
       if flag and (not snap or snap.baseNew == false) then
         -- It landed some time since the last visit: dated from that visit,
         -- the earliest it could have, so a warning never comes late.
+        -- Uncounted, unless the auction house's notices since the visit
+        -- can be what raised it: their mail is counted already.
         local realm, name = Me()
-        NoteArrival(realm, name, snap and snap.seenAt)
+        local named = LivePendingCount(WatchFor(realm, name, false), time()) > 0
+        NoteArrival(realm, name, snap and snap.seenAt, not named)
       end
 
       -- Warn about's rule (MM.Warns), and Chat line at login.

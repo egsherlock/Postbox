@@ -4982,7 +4982,9 @@ function AV.MeasurePlate(panel, plate, Memory, who)
   local name = Memory.ClassName(who.realm, who.name, true, Th().PlateGround(plate, true))
   local count = ""
   if ShowTabCounts() then
-    count = " (" .. FormatCount((Memory.BoxCount(who.realm, who.name))) .. ")"
+    -- With mail that came uncounted, "N+" or "new" (MailMemory.CountText).
+    local n, uncounted = Memory.BoxCount(who.realm, who.name)
+    count = " (" .. ((uncounted and Memory.CountText) and Memory.CountText(n, true) or FormatCount(n)) .. ")"
   end
   local fs = plate:GetFontString()
   plate.pad = 2 * M.tightGap + 12
