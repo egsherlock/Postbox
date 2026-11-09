@@ -3986,9 +3986,12 @@ local function PaintViewToggle(panel)
     T.SetPlateSelected(seg, seg.segId == active)
   end
   if container.history then T.SetPlateSelected(container.history, active == VIEW_HISTORY) end
+  if container.sides then RV.PaintSides(panel) end
   local alt = container.alt
   if alt then
-    T.SetPlateSelected(alt, away and panel._alt ~= nil)
+    -- Selected while that character's mail is on screen: its box, or its
+    -- History (the picker chooses whose mail, the segments which list).
+    T.SetPlateSelected(alt, AV.Other(panel))
     -- The count beside a cut name wears the caption's colour, as it does
     -- inside the whole caption, inked for the plate's own ground.
     local tokens, selected = T.PlateTokens(alt), alt.isSelected
@@ -4028,7 +4031,9 @@ local function BuildViewToggle(panel)
     seg:SetText(segments[i].label)
     -- From another character's box, a segment is the way home first.
     seg:SetScript("OnClick", function(self)
-      AV.Leave(panel)
+      -- From another character's History, Inbox is that character's box:
+      -- the picker chose whose mail, the segment chooses which list.
+      if not (panel.viewMode == VIEW_HISTORY and AV.Other(panel)) then AV.Leave(panel) end
       SetViewMode(panel, self.segId)
     end)
     -- Hover is the plate's own OnEnter/OnLeave, installed by the factory and
@@ -4059,7 +4064,8 @@ local function BuildViewToggle(panel)
     hist:SetText(L()["VIEW_HISTORY"])
   end
   hist:SetScript("OnClick", function(self)
-    AV.Leave(panel)
+    -- From another character's box, that character's History.
+    if not AV.Other(panel) then AV.Leave(panel) end
     SetViewMode(panel, self.segId)
   end)
   hist:HookScript("OnEnter", function(self)
@@ -4073,6 +4079,9 @@ local function BuildViewToggle(panel)
   end)
   hist:HookScript("OnLeave", function() GameTooltip:Hide() end)
   container.history = hist
+  -- History's two halves, Received and Sent, right of the clock while
+  -- History is on screen (RV.LayoutSides).
+  RV.BuildSides(panel, container)
 
   -- Another character's box, while one is on screen: its name in its class
   -- colour and its count, selected, where this character's Inbox sits beside
@@ -4705,9 +4714,9 @@ local function LayoutViewToggle(panel)
   -- tightGap, the padding rung, so the group read a shade tighter than the
   -- design says a switch should.
   local gap = T.Metrics.space.snug
-  -- Another character's box: nothing there can be deleted or collected, and
-  -- History is this character's, so the row is the Inbox (the way home), the
-  -- box's name, the picker and the search.
+  -- Another character's mail: nothing there can be deleted or collected, so
+  -- the row is the Inbox (the way home, or from its History its box), its
+  -- History, the character's name, the picker and the search.
   local other = AV.Other(panel)
   local shown = VisibleSegments(container, other)
 
@@ -4730,7 +4739,9 @@ local function LayoutViewToggle(panel)
   -- while History is off.
   local hist = container.history
   if hist then
-    local histShown = not other and RV.HistoryOn()
+    -- Another character's History is as much its own as its box is, so the
+    -- clock stays beside the Inbox that is the way home.
+    local histShown = RV.HistoryOn()
     hist:SetShown(histShown)
     if histShown then
       local width = hist.Icon and T.Metrics.segmentHeight + 6
@@ -4741,6 +4752,8 @@ local function LayoutViewToggle(panel)
       total = total + gap + width
     end
   end
+  -- Received and Sent, while History is on screen.
+  total = RV.LayoutSides(panel, container, total)
   container:SetWidth(max(total, 1))
 
   -- The right-hand end of the row: the search box and the sort right of it
@@ -4752,8 +4765,11 @@ local function LayoutViewToggle(panel)
   -- narrowest, is what the row needed before there was a sort.
   local M = T.Metrics
   local row = PanelWidth(panel) - 2 * M.inset
+  -- While History's switch stands in the row, the search may give back more
+  -- (RV.SearchYield), down to its floor; its natural width is as before.
   local give = panel.SearchWrap and RV.SortRoom(panel) or 0
   local right = panel.SearchWrap and SEARCH_W + give or 0
+  give = give + (panel.SearchWrap and RV.SearchYield(panel) or 0)
   if panel.Picker and panel.Picker:IsShown() then right = right + M.space.snug + M.segmentHeight end
   local alt = container.alt
   local named = alt and alt:IsShown() and alt.natW
@@ -4776,7 +4792,7 @@ local function LayoutViewToggle(panel)
   if hint then
     -- A gap either side of it.
     local room = row - total - M.gap - right - M.gap
-    hint:SetShown(room >= T.TextWidth(hint) and not AV.Active(panel))
+    hint:SetShown(room >= T.TextWidth(hint) and not AV.Active(panel) and not other)
   end
 
   PaintViewToggle(panel)
@@ -4909,14 +4925,16 @@ end
 -- History's own list (HV.BuildHistoryList), not the boxes'.
 function AV.Active(panel)
   if not panel or not AV.Memory() then return false end
+  -- History lists whoever's mail the picker chose: its own list, not a box.
+  if panel.viewMode == VIEW_HISTORY then return false end
   if panel._alt then return true end
-  return panel._searchAll == true and Searching(panel) and panel.viewMode ~= VIEW_HISTORY
+  return panel._searchAll == true and Searching(panel)
 end
 
--- Whether the search box searches History: this character's History view on
--- screen, not another character's box picked from it.
+-- Whether the search box searches History: History on screen, this
+-- character's or the one the picker chose.
 function AV.History(panel)
-  return panel ~= nil and panel.viewMode == VIEW_HISTORY and panel._alt == nil
+  return panel ~= nil and panel.viewMode == VIEW_HISTORY
 end
 
 -- Inbox to History or back (SetViewMode): a search is a question about the
@@ -4946,7 +4964,8 @@ function AV.PaintSearch(panel, others)
   local toggle = others
   if history then
     local Memory = AV.Memory()
-    toggle = Memory ~= nil and Memory.HistoryOthers ~= nil and Memory.HistoryOthers()
+    local others = Memory and (RV.SentShown(panel) and Memory.SentOthers or Memory.HistoryOthers)
+    toggle = others ~= nil and others()
   end
   panel.Search.PaintToggle(panel._searchAll)
   panel.Search.Place(toggle)
@@ -5215,6 +5234,9 @@ function CT.ShowCharacter(realm, name)
   local panel = frame.Tabs and frame.Tabs.collect
   if not panel then return end
   AV.Show(panel, { realm = realm, name = name })
+  -- A box was asked for: from History, the Inbox is the list that shows it
+  -- (the picker keeps the list; this is not the picker).
+  if panel.viewMode == VIEW_HISTORY then SetViewMode(panel, VIEW_COLLECT) end
 end
 
 -- The pool of memory rows, built by Mail Memory (one row construction for
@@ -6852,7 +6874,11 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   -- what came out runs on into the money's column on a row with none, as a
   -- mail row's subject does; packed, each row's own (RV.Place).
   local cols = panel._hcols
-  local kind = HV.MoneyKind(entry)
+  -- Sent (HV.Sent): the recipient where the sender goes, after a dim "to";
+  -- the gold sent as spent, the C.O.D. asked as a C.O.D.
+  local sent = panel._hsent == true
+  local kind = sent and HV.SentKind(entry) or HV.MoneyKind(entry)
+  row.sentRow = sent
   -- A system mail's sender is recorded as "": that is "unknown", not a name.
   local named = (entry.s ~= "" and entry.s) or nil
   local spec = panel._histSpec
@@ -6860,12 +6886,12 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   el.age, el.icon, el.sender, el.subject, el.money = row.Age, row.Icon, row.Sender, row.Subject, row.Money
   text.age = HV.EntryAge(entry, now, style)
   local outcome = R.OutcomeSender(entry.k)
-  text.sender = outcome or R.DisplaySender(named) or L()["SENDER_UNKNOWN"]
+  text.sender = outcome or (sent and HV.SentWho(entry)) or R.DisplaySender(named) or L()["SENDER_UNKNOWN"]
   -- Coloured by the class it has on the realm its record is from (`realm`:
   -- nil, this character's own).
   RV.PaintSender(row.Sender, not outcome and named or nil, realm)
   text.subject = HV.HistoryWhat(entry, RV.SaysCount(firstCount, layout))
-  text.money = MoneyShown(kind, layout) and HV.HistoryMoney(entry, true) or nil
+  text.money = MoneyShown(kind, layout) and (sent and HV.SentMoney(entry, true) or HV.HistoryMoney(entry, true)) or nil
   -- For the tooltip (HV.RowTip): whether the row shows less of the sender
   -- than the record has, the realm the record is from, and which money the
   -- row shows.
@@ -6911,6 +6937,7 @@ end
 function HV.RowTip(row)
   local entry = row.entry
   if not entry then return false end
+  if row.sentRow then return HV.SentRowTip(row) end
   local T, L0, H = Th(), L(), Helpers()
   local layout = HV.Layout()
   local named = (entry.s ~= "" and entry.s) or nil
@@ -7014,7 +7041,7 @@ end
 -- toggle on, something typed, and Mail Memory there to say who they are.
 function HV.SearchingAll(panel, query)
   local Memory = AV.Memory()
-  return query ~= "" and panel._searchAll == true and panel._alt == nil
+  return query ~= "" and panel._searchAll == true
     and Memory ~= nil and Memory.HistoryCharacters ~= nil
 end
 
@@ -7029,14 +7056,17 @@ function HV.BuildHistoryList(panel, query)
   local out = panel._history
   Clear(out)
   local Memory = ns.MailMemory
-  local chars = HV.SearchingAll(panel, query) and Memory.HistoryCharacters() or nil
+  -- Received or Sent (HV.Sent), the rows' rule for this list.
+  local sent = HV.Sent(panel)
+  panel._hsent = sent
+  local chars = HV.SearchingAll(panel, query)
+    and (sent and Memory.SentCharacters or Memory.HistoryCharacters)() or nil
   local found = 0
   if query ~= "" then HV.SearchFresh() end
   local list = HV.NONE
   -- The arrange mode's Preview mail: History's samples (RV.PreviewHistory).
   if not chars then
-    list = panel._preview and RV.PreviewHistory()
-      or (Memory and Memory.History and Memory.History() or HV.NONE)
+    list = panel._preview and RV.PreviewHistory() or HV.Record(panel, Memory, sent)
   end
   local R = CT.RowRules
   local sample = AcquireRow(panel, 1)
@@ -7063,7 +7093,7 @@ function HV.BuildHistoryList(panel, query)
     while i < 1 and chars and c < #chars do
       c = c + 1
       head, headed = chars[c], false
-      list = Memory.HistoryOf(head) or HV.NONE
+      list = (sent and Memory.SentOf or Memory.HistoryOf)(head) or HV.NONE
       i = #list
     end
     if i < 1 then break end
@@ -7082,13 +7112,14 @@ function HV.BuildHistoryList(panel, query)
       earned = earned + (entry.m or 0)
       spent = spent + (entry.c or 0) + (entry.p or 0)
       if cols.sender < cap and showSender then
-        local label = (AUCTION_OUTCOME[entry.k] and L()[AUCTION_OUTCOME[entry.k].key]) or R.DisplaySender(entry.s) or ""
+        local label = (AUCTION_OUTCOME[entry.k] and L()[AUCTION_OUTCOME[entry.k].key])
+          or (sent and HV.SentWho(entry)) or R.DisplaySender(entry.s) or ""
         cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), cap)
       end
-      local kind = HV.MoneyKind(entry)
+      local kind = sent and HV.SentKind(entry) or HV.MoneyKind(entry)
       local shown = true
       if kind == "earned" then shown = showEarned elseif kind == "spent" then shown = showSpent end
-      local money = shown and HV.HistoryMoney(entry, true) or nil
+      local money = shown and (sent and HV.SentMoney(entry, true) or HV.HistoryMoney(entry, true)) or nil
       if money then cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, money)) end
       -- The age's column is as wide as the widest age listed, in the words
       -- chosen: whatever the language and wording, no age is cut.
@@ -7109,7 +7140,7 @@ end
 -- over a search of every box says (AV.Build).
 function HV.Note(panel)
   local matched = panel._hmatched
-  if not matched then return ns.Plural("HISTORY_NOTE", HV.Days()) end
+  if not matched then return HV.SideText(panel, "note") end
   local note = ns.Plural("MEMORY_MATCHES", matched)
   if (panel._hchars or 0) > 1 then
     note = note .. "  " .. ns.Plural("MEMORY_ON_CHARACTERS", panel._hchars)
@@ -7156,11 +7187,15 @@ function HV.UpdateHistoryRows(panel)
   -- Memory's search of every box has it (MM.RowRealm); nil, this
   -- character's own.
   local realm
+  -- Whose record each entry is from, for a Sent row's tooltip: the heading
+  -- it stands under, the character picked, or nil (this one).
+  local who = panel._alt
+  if who then realm = who.realm end
   if panel._hchars then
     for k = first, 1, -1 do
       local e = list[k]
       if e and e.header then
-        realm = e.realm
+        realm, who = e.realm, e
         break
       end
     end
@@ -7173,7 +7208,7 @@ function HV.UpdateHistoryRows(panel)
       -- A character's heading, over every character's History: not a
       -- button, since History has no view of another character's own.
       heads = heads + 1
-      realm = entry.realm
+      realm, who = entry.realm, entry
       row = HV.Head(panel, heads)
     else
       used = used + 1
@@ -7190,6 +7225,7 @@ function HV.UpdateHistoryRows(panel)
       ns.MailMemory.FillRow(row, entry, now, nil, i, nil, entry.realm)
     else
       HV.BindHistoryRow(panel, row, entry, i, now, style, realm)
+      row.tipWho = who
     end
   end
   for i = used + 1, #pool do
@@ -7197,6 +7233,290 @@ function HV.UpdateHistoryRows(panel)
     pool[i]:Hide()
   end
   HV.HideHeads(panel, heads + 1)
+end
+
+-------------------------------------------------------------
+-- History :: Received and Sent
+--
+-- History has two halves: what Postbox collected (Received, as it always
+-- was) and what it sent (Sent, Core/MailMemory.lua 2d). A two-part switch
+-- right of the clock picks one while History is on screen; it is not there
+-- otherwise, so the Inbox's row looks as it did. Received is the start,
+-- and the choice is kept for the session (`_hside`).
+--
+-- Sent's rows are History's rows -- the same pool, arrangement, options,
+-- search and every-character search -- with the recipient where the sender
+-- goes, after a dim "to", the gold sent in the spent red and a C.O.D.
+-- asked in the C.O.D. amber; the band totals the two. Its rows do nothing
+-- on a click, as Received's do not.
+--
+-- And whose: the character picker chooses whose mail is on screen, the
+-- segments which list. Another character's History and Sent are view-only,
+-- as its box is.
+-------------------------------------------------------------
+
+-- The search's narrowest while the switch is on screen: it gives up width
+-- down to this before the window is made wider for the switch.
+RV.SEARCH_FLOOR = 96
+
+-- Whether Sent is the half on screen (Preview mail is History's samples,
+-- which are Received's).
+function HV.Sent(panel)
+  return panel._hside == "sent" and not panel._preview
+end
+
+-- For the search box (AV.PaintSearch): Sent is the list on screen.
+function RV.SentShown(panel)
+  return panel ~= nil and panel.viewMode == VIEW_HISTORY and HV.Sent(panel)
+end
+
+-- The two plates, built once with the row (BuildViewToggle).
+function RV.BuildSides(panel, container)
+  local T = Th()
+  local sides = { opts = {} }
+  local ids = { "received", "sent" }
+  local keys = { "SENT_VIEW_RECEIVED", "SENT_VIEW_SENT" }
+  for i = 1, 2 do
+    local seg = T.CreatePlate(container, "segment")
+    seg.sideId = ids[i]
+    seg:SetText(L()[keys[i]])
+    seg:SetScript("OnClick", function(self) HV.SetSide(panel, self.sideId) end)
+    seg:Hide()
+    sides[i] = seg
+  end
+  container.sides = sides
+end
+
+function RV.PaintSides(panel)
+  local sides = panel.ViewToggle.sides
+  local on = HV.Sent(panel) and 2 or 1
+  local T = Th()
+  for i = 1, 2 do T.SetPlateSelected(sides[i], i == on) end
+end
+
+-- The switch laid out after the clock (`total`, the row's width so far),
+-- while History is on screen: each half as wide as its own caption needs,
+-- a switch's step apart, a control's step from the clock. Returns the
+-- row's width with it.
+function RV.LayoutSides(panel, container, total)
+  local sides = container.sides
+  if not sides then return total end
+  local hist = container.history
+  local on = panel.viewMode == VIEW_HISTORY and hist ~= nil and hist:IsShown()
+  panel._sidesOn = on
+  sides[1]:SetShown(on)
+  sides[2]:SetShown(on)
+  if not on then return total end
+  local T = Th()
+  local M = T.Metrics
+  local opts = sides.opts
+  opts.height, opts.minWidth = M.segmentHeight, 0
+  local x = total + M.gap
+  for i = 1, 2 do
+    local seg = sides[i]
+    if i > 1 then x = x + M.space.snug end
+    local width = T.SizeToText(seg, opts)
+    seg:ClearAllPoints()
+    seg:SetPoint("LEFT", container, "LEFT", x, 0)
+    x = x + width
+  end
+  RV.PaintSides(panel)
+  return x
+end
+
+-- The width the search may give back to the switch beyond the sort's room:
+-- down to RV.SEARCH_FLOOR, and only while the switch is on screen. The
+-- normal case keeps its width; a long language takes it from the search.
+function RV.SearchYield(panel)
+  if not panel._sidesOn then return 0 end
+  return max(0, SEARCH_W - RV.SEARCH_FLOOR)
+end
+
+-- One half or the other, from the switch (or the Send tab, CT.OpenSent).
+-- The search stays: it is a question asked of either list.
+function HV.SetSide(panel, side)
+  if panel._hside == side or (side == "received" and panel._hside == nil) then return end
+  panel._hside = side
+  if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
+  if panel.Search then AV.PaintSearch(panel, panel._searchOthers) end
+  PaintViewToggle(panel)
+  CT.RefreshMailList(panel)
+end
+
+-- The record History lists without a search of every character: the
+-- picked character's, or this one's, of the half on screen.
+function HV.Record(panel, Memory, sent)
+  if not Memory then return HV.NONE end
+  local who = panel._alt
+  if who then
+    return (sent and Memory.SentOf or Memory.HistoryOf)(who) or HV.NONE
+  end
+  if sent then return Memory.Sent and Memory.Sent() or HV.NONE end
+  return Memory.History and Memory.History() or HV.NONE
+end
+
+-- entry -> its money's kind on a Sent row: gold sent is "spent" (the gold
+-- column's choice of which applies to it), a C.O.D. asked "cod" (always
+-- shown, as a C.O.D. is).
+function HV.SentKind(entry)
+  if (entry.m or 0) > 0 then return "spent" end
+  if (entry.c or 0) > 0 then return "cod" end
+  return nil
+end
+
+-- entry, brief -> its money line: the gold sent in red, as Spent is; a
+-- C.O.D. asked in amber, as the C.O.D. it is waiting to be paid.
+function HV.SentMoney(entry, brief)
+  local T = Th()
+  local compactMoney = ns.Core.Formatting.FormatMoneyCompact
+  if (entry.m or 0) > 0 then return T.Colorize("negative", "-" .. compactMoney(entry.m, brief)) end
+  if (entry.c or 0) > 0 then return T.Colorize("warning", L()["LABEL_COD"] .. compactMoney(entry.c, brief)) end
+  return nil
+end
+
+-- entry -> the sender column of a Sent row: a dim "to" and the recipient
+-- as a row names a sender (DisplaySender: the realm left to the tooltip).
+-- Kept per recipient, so a bind and the list's measuring make nothing; let
+-- go past HV.AGE_MAX names, and when the dim's ink changes (a palette).
+HV.sentWho, HV.sentWhoN = {}, 0
+function HV.SentWho(entry)
+  local to = entry.s
+  if type(to) ~= "string" or to == "" then return nil end
+  local prefix = Th().Colorize("textSecondary", L()["SENT_ROW_TO"])
+  local cache = HV.sentWho
+  if HV.sentPrefix ~= prefix or HV.sentWhoN >= HV.AGE_MAX then
+    for k in pairs(cache) do cache[k] = nil end
+    HV.sentWhoN, HV.sentPrefix = 0, prefix
+  end
+  local text = cache[to]
+  if text then return text end
+  text = prefix .. " " .. (DisplaySender(to) or to)
+  cache[to] = text
+  HV.sentWhoN = HV.sentWhoN + 1
+  return text
+end
+
+-- A recipient in full, "Name - Realm", the name in its class's colour where
+-- Postbox knows it; on a client with two-part names, the full name alone.
+function HV.SentFull(to)
+  if type(to) ~= "string" then return "" end
+  local name, realm = to, nil
+  if not Helpers().TwoPartNames() then
+    local dash = to:find("-", 1, true)
+    if dash and dash > 1 then name, realm = to:sub(1, dash - 1), to:sub(dash + 1) end
+  end
+  local CS = ns.ContactService
+  local token = (CS and CS.ClassOf) and CS.ClassOf(to) or nil
+  if token and CS.WrapClass then name = CS.WrapClass(token, name) end
+  if realm and realm ~= "" then return name .. " - " .. realm end
+  return name
+end
+
+-- owner, entries, who, hint -> the house tooltip of what one press sent
+-- (or one Sent row: one entry): To, the recipient in full; Sent, when and
+-- by which character (`who`, Mail Memory's character item, nil for this
+-- one); each mail's items, one line each with its count, and its gold or
+-- C.O.D.; "Arrives in about an hour" while one of them, by the delivery
+-- rule the Send tab's line says (MailRules: `h`), plausibly has not; then
+-- the hint, where the owner has one. Built on hover.
+function HV.SentTip(owner, entries, who, hint)
+  local first = entries and entries[1]
+  if not first then return false end
+  local T, L0, H = Th(), L(), Helpers()
+  local now = time()
+  T.TipBegin(owner)
+  T.TipTitle(L0("SENT_TIP_TO", HV.SentFull(first.s)))
+  local realm = (who and who.realm) or H.PlayerRealm()
+  local name = (who and who.name) or H.PlayerName()
+  local Memory = ns.MailMemory
+  local by = (Memory and Memory.ClassName) and Memory.ClassName(realm, name, true, "tooltip") or H.ShownName(name)
+  local last = entries[#entries]
+  T.TipLine(L0("SENT_TIP_BY", HV.HistoryAge(now - (tonumber(last.t) or now), "short"), by))
+  local many = #entries > 1
+  local iconOf = C_Item and C_Item.GetItemIconByID
+  local qualityOf = C_Item and C_Item.GetItemQualityByID
+  local arriving = false
+  for k = 1, #entries do
+    local e = entries[k]
+    if many then GameTooltip:AddLine(L0("SENT_TIP_MAIL", k), T.TIP_MUTED, T.TIP_MUTED, T.TIP_MUTED) end
+    local items = e.it or HV.NONE
+    for i = 1, #items do
+      local link = items[i].l
+      local itemName = type(link) == "string" and link:match("%[(.-)%]") or nil
+      local icon = (type(iconOf) == "function" and link) and iconOf(link) or nil
+      local quality = (itemName and type(qualityOf) == "function") and qualityOf(link) or nil
+      RV.ItemLine(icon or "Interface\\Icons\\INV_Misc_QuestionMark", itemName, quality, nil, items[i].n)
+    end
+    if (e.m or 0) > 0 then T.TipFact(L0["LABEL_GOLD"], T.TipTone("negative", H.FormatMoney(e.m))) end
+    if (e.c or 0) > 0 then T.TipFact(L0["LABEL_COD"], T.TipTone("warning", H.FormatMoney(e.c))) end
+    if e.h and now - (tonumber(e.t) or now) < 3600 then arriving = true end
+  end
+  if arriving then GameTooltip:AddLine(L0["SENT_TIP_ARRIVES"], T.TIP_MUTED, T.TIP_MUTED, T.TIP_MUTED, true) end
+  if hint then T.TipHint(hint) end
+  GameTooltip:Show()
+  return true
+end
+CT.SentTip = HV.SentTip
+
+-- A Sent row's tooltip: its one mail, by the rule above. The entry goes in
+-- a list kept for it, so a hover builds no table.
+HV.oneSent = {}
+function HV.SentRowTip(row)
+  local one = HV.oneSent
+  one[1] = row.entry
+  local shown = HV.SentTip(row, one, row.tipWho, nil)
+  one[1] = nil
+  return shown
+end
+
+-- What the list says of itself, as `what` ("note" under it, "empty" in
+-- its place): this character's Received in History's own words; Sent, and
+-- another character's, by name and the days kept.
+HV.SIDE_KEYS = {
+  note = { "HISTORY_NOTE", "SENT_NOTE", "SENT_HISTORY_NOTE_OF", "SENT_NOTE_OF" },
+  empty = { "EMPTY_LIST_HISTORY", "SENT_EMPTY", "SENT_HISTORY_EMPTY_OF", "SENT_EMPTY_OF" },
+}
+function HV.SideText(panel, what)
+  local who = panel._alt
+  local Memory = AV.Memory()
+  if not Memory then who = nil end
+  local which = (who and 3 or 1) + (panel._hsent and 1 or 0)
+  local text = ns.Plural(HV.SIDE_KEYS[what][which], HV.Days())
+  if who then
+    local name = Memory.ClassName(who.realm, who.name, true, "window")
+    text = text:gsub("{name}", function() return name end)
+  end
+  return text
+end
+
+-- The Send tab's way in (its clock and its line, SendTab 8d): the Mail tab,
+-- History, Sent, this character's. The draft on the Send tab is left as
+-- it is: the tab is switched as its own button switches it.
+function CT.OpenSent()
+  local UI = ns.MailboxUI
+  local frame = UI and UI._frame
+  if not (frame and frame:IsShown() and RV.HistoryOn()) then return end
+  if UI._state.activeTab ~= "collect" and type(UI.SelectTab) == "function" then UI.SelectTab("collect") end
+  local panel = frame.Tabs and frame.Tabs.collect
+  if not panel then return end
+  -- This character's own.
+  AV.Leave(panel)
+  panel._hside = "sent"
+  if panel.viewMode ~= VIEW_HISTORY then
+    SetViewMode(panel, VIEW_HISTORY)
+  else
+    if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
+    if panel.Search then AV.PaintSearch(panel, panel._searchOthers) end
+    PaintViewToggle(panel)
+    CT.RefreshMailList(panel)
+  end
+end
+
+-- A send was recorded (SendTab 8d): Sent on screen lists it.
+function CT.SentChanged()
+  local UI = ns.MailboxUI
+  local panel = UI and UI._frame and UI._frame.Tabs and UI._frame.Tabs.collect
+  if panel and panel.viewMode == VIEW_HISTORY and HV.Sent(panel) then RequestRefresh(panel) end
 end
 
 -- Whether the read mail is folded away under its divider: the player's own
@@ -8678,6 +8998,12 @@ do
   -- The C.O.D. still to pay joins the line only while a listed mail asks
   -- one, in the red it wears on the rows: the band otherwise reads as ever.
   local function Line(strings, icons, sums, up, down, parts)
+    -- Sent: "Sent: 500g | C.O.D. asked: 180g", the gold in Spent's red and
+    -- the C.O.D. in its amber.
+    if sums.sent then
+      return strings["SENT_BANNER_SENT"] .. icons(sums.earned, down, parts)
+        .. "   |   " .. strings["SENT_BANNER_COD"] .. icons(sums.spent, sums.amber, parts)
+    end
     local line = strings["BANNER_EARNED_SHORT"] .. icons(sums.earned, up, parts)
         .. "   |   " .. strings["BANNER_SPENT_SHORT"] .. icons(sums.spent, down, parts)
     if (sums.cod or 0) > 0 then
@@ -8720,6 +9046,7 @@ do
     -- enamel) inks the label and hands back the figures' dark twins.
     local skin = ns.Skin
     if skin and skin.BannerInk then up, down = skin.BannerInk(text, up, down) end
+    if sums.sent then sums.amber = "ff" .. T.InkHex("warning", "band") end
 
     -- Two coins is the whole of it: "Earned 95g 57s". The copper on a total
     -- of the whole inbox is noise, and "Total" said nothing the band's
@@ -8766,6 +9093,8 @@ local function UpdateBanner(panel, earned, spent)
   end
   sums.earned, sums.spent = tonumber(earned) or 0, tonumber(spent) or 0
   sums.cod = panel._codDue or 0
+  -- Sent on screen: the gold sent and the C.O.D. asked (HV.BuildHistoryList).
+  sums.sent = panel.viewMode == VIEW_HISTORY and panel._hsent == true
   FitBanner(panel)
 end
 
@@ -9124,7 +9453,7 @@ function CT.RefreshMailList(panel)
   elseif away then
     emptyText = ns.MailMemory.SeenText(panel._avInfo and panel._avInfo.snapshot)
   elseif view == VIEW_HISTORY then
-    emptyText = ns.Plural("EMPTY_LIST_HISTORY", HV.Days())
+    emptyText = HV.SideText(panel, "empty")
   elseif view == VIEW_DONE then
     emptyText = L()["EMPTY_LIST_DONE"]
   elseif #tail > 0 then
