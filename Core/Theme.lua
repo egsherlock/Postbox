@@ -5159,6 +5159,9 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
     local inset = clearAt + 14
     box:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -inset, 2)
     placeholder:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -inset - 2, 2)
+    -- What the box takes either side of its placeholder, for a row that
+    -- narrows the box and must leave the placeholder whole.
+    wrap.__pbTextChrome = SEARCH_TEXT_INSET + inset + 2
   end
 
   search.Wrap, search.Box, search.Placeholder = wrap, box, placeholder
@@ -5173,7 +5176,7 @@ end
 --
 -- A few short lines, centred, on a small card of its own in the small font:
 -- for a control whose gestures want saying but not a full tooltip's weight
--- (the resize grips: "Drag to resize" over "Right-click to reset"). It opens just
+-- (the resize grips: "Drag: resize" over "Right-click: reset"). It opens just
 -- under the cursor, where the eye already is, and its ground is a shade
 -- lighter than a popup's -- a note, not a window. Untagged, so no host skin
 -- repaints it: it is the one surface that is Postbox's own everywhere.

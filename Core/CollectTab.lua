@@ -4335,6 +4335,7 @@ function RV.SizeSearch(panel, given)
   if panel._searchW ~= width then
     panel._searchW = width
     panel.SearchWrap:SetWidth(width)
+    RV.FitPlaceholder(panel)
   end
 end
 
@@ -4970,10 +4971,9 @@ function AV.PaintSearch(panel, others)
   panel.Search.PaintToggle(panel._searchAll)
   panel.Search.Place(toggle)
   RV.PlaceSort(panel, not history)
-  if panel._searchHistory ~= history then
-    panel._searchHistory = history
-    panel.SearchPlaceholder:SetText(L()[history and "SEARCH_HISTORY_PLACEHOLDER" or "SEARCH_PLACEHOLDER"])
-  end
+  -- Its words follow the list, and the room the toggle just left them.
+  panel._searchHistory = history
+  RV.FitPlaceholder(panel)
 end
 
 -- Showing another character's box -- one box, not every box's matches: the
@@ -7247,7 +7247,7 @@ end
 -- Sent's rows are History's rows -- the same pool, arrangement, options,
 -- search and every-character search -- with the recipient where the sender
 -- goes, after a dim "to", the gold sent in the spent red and a C.O.D.
--- asked in the C.O.D. amber; the band totals the two. Its rows do nothing
+-- asked as every C.O.D. is written; the band totals the two. Its rows do nothing
 -- on a click, as Received's do not.
 --
 -- And whose: the character picker chooses whose mail is on screen, the
@@ -7327,9 +7327,33 @@ end
 -- The width the search may give back to the switch beyond the sort's room:
 -- down to RV.SEARCH_FLOOR, and only while the switch is on screen. The
 -- normal case keeps its width; a long language takes it from the search.
+-- Never so far that the plain placeholder ("Search", "Rechercher") is cut:
+-- measured, with the box's own insets either side of it (Theme.
+-- CreateSearchBox); past that the window's floor is raised instead. History's
+-- longer one stands where it fits (RV.FitPlaceholder).
 function RV.SearchYield(panel)
   if not panel._sidesOn then return 0 end
-  return max(0, SEARCH_W - RV.SEARCH_FLOOR)
+  local least = RV.SEARCH_FLOOR
+  local wrap, placeholder = panel.SearchWrap, panel.SearchPlaceholder
+  if wrap and placeholder and wrap.__pbTextChrome then
+    least = max(least, ceil(MeasureWith(panel, placeholder, L()["SEARCH_PLACEHOLDER"]) + wrap.__pbTextChrome))
+  end
+  return max(0, SEARCH_W - least)
+end
+
+-- The search's placeholder: History's own words ("Search History") where
+-- they fit the box as wide as it now is, the plain "Search" where a row
+-- short of room narrowed the box past them. Set only when it changes.
+function RV.FitPlaceholder(panel)
+  local placeholder, wrap = panel.SearchPlaceholder, panel.SearchWrap
+  if not (placeholder and wrap) then return end
+  local key = "SEARCH_PLACEHOLDER"
+  if panel._searchHistory then
+    local room = (panel._searchW or SEARCH_W) - (wrap.__pbTextChrome or 0)
+    if MeasureWith(panel, placeholder, L()["SEARCH_HISTORY_PLACEHOLDER"]) <= room then key = "SEARCH_HISTORY_PLACEHOLDER" end
+  end
+  local text = L()[key]
+  if placeholder:GetText() ~= text then placeholder:SetText(text) end
 end
 
 -- One half or the other, from the switch (or the Send tab, CT.OpenSent).
