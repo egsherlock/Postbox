@@ -20,6 +20,11 @@
   any mail it's attached to, in the Mail tab, Mail Memory and History
   alike. Typing in the search box is lighter, too.
 
+### Improved
+
+- Tooltip hints are quicker to read: "Click: take · Shift-click: link",
+  "Right-click: options".
+
 ### Fixed
 
 - A character whose mail Postbox couldn't count, such as auctions that
