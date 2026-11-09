@@ -838,6 +838,7 @@ function ST.UpdateSendGuidance(panel)
   if ST.QueueAwaitingAnswer and ST.QueueAwaitingAnswer() then
     label:SetText(L("GUIDE_QUEUE_ASK", (ST.QueueAskedItem and ST.QueueAskedItem()) or "?"))
     Theme.SetColor(label, GUIDANCE_TOKEN.warn)
+    ST.HideSentLink(panel)
     return
   end
 
@@ -846,6 +847,7 @@ function ST.UpdateSendGuidance(panel)
   if ST.Asking(panel) then
     label:SetText(L["GUIDE_SEND_ASK"])
     Theme.SetColor(label, GUIDANCE_TOKEN.warn)
+    ST.HideSentLink(panel)
     return
   end
 
@@ -858,10 +860,14 @@ function ST.UpdateSendGuidance(panel)
     if refusal.panel == panel and refusal.to == panel.ToBox:GetText() then
       label:SetText(refusal.text)
       Theme.SetColor(label, GUIDANCE_TOKEN.warn)
+      ST.HideSentLink(panel)
       return
     end
     ST.refusal = nil
   end
+
+  -- What the last press sent, while the draft is as it left it (8d).
+  if ST.PaintSentLine(panel, label) then return end
 
   local MR = ns.MailRules
   local assessment
@@ -968,6 +974,8 @@ local function SettleDraftAfterSuccess(panel)
   panel._run = nil
   ClearDraftFields(panel, keep)
   ClearSendMailMoneyState()
+  -- The guidance line says what went, from the draft as it now stands (8d).
+  ST.SentSettled(panel)
 end
 
 -- outcome: "success" | "failed" | "timeout" | "canceled"
@@ -991,6 +999,8 @@ local function FinishSend(outcome)
     -- History is written here and nowhere else: a recipient the server refused
     -- is not a recipient the player has mailed.
     Contacts().SaveRecipient(pending.toName)
+    -- And into Sent, one entry per mail the server took (8d).
+    ST.RecordSent(pending)
     -- Mail to one of the player's own characters is mail that character has
     -- waiting, whether or not it is played again this month.
     if ns.MailMemory and ns.MailMemory.NoteSentTo then ns.MailMemory.NoteSentTo(pending.toName) end
@@ -1384,6 +1394,259 @@ function ST.ask.Report()
   return table.concat(out, " ")
 end
 
+-------------------------------------------------------------
+-- 8d. What went: Sent, and the line that says so
+--
+-- Each mail a send of Postbox's posts is written down when the server
+-- takes it (FinishSend's success), one entry per mail, into History's Sent
+-- (Core/MailMemory.lua, 2d): the recipient as addressed, its realm
+-- resolved, the subject, what it carried, its gold or C.O.D., and whether
+-- the game takes about an hour to deliver it. What it carried is read from
+-- the slots as the send goes, once per mail, never on a keystroke.
+--
+-- After the last mail of a press, the guidance line says what went --
+-- "Sent to Shalara: 2 mails" -- for as long as the draft is as the send
+-- left it. It has no age: an age would need a timer running, and the
+-- tooltip works it out on hover instead. The whole line is a link to Sent.
+-- Anything the line already says for a reason (a question waiting, a
+-- refusal) comes first; the player starting another mail -- a recipient
+-- typed, an item attached, gold, words -- puts the usual line back.
+--
+-- Only Postbox's own sends: Blizzard's send frame stays hidden under the
+-- window, and another addon's SendMail says nothing of what it sent short
+-- of hooking it, which Postbox never does.
+-------------------------------------------------------------
+
+-- press: the mails of the last press, each its record, with `to` the name
+-- as typed; line: that press while the line says so; base: the draft as
+-- the press left it.
+ST.sent = { press = nil, line = nil, base = nil, panel = nil }
+
+do
+  -- The mail in the slots as the send that posts it reads it: its record,
+  -- should the server take it. Items of one link are one entry, their
+  -- counts added, as History keeps them.
+  function ST.SentSnapshot(toName, subject, gold, cod)
+    local items
+    if type(GetSendMailItem) == "function" and type(GetSendMailItemLink) == "function" then
+      for i = 1, K.SEND_SLOT_COUNT do
+        local name, _, _, count = GetSendMailItem(i)
+        local link = name and GetSendMailItemLink(i) or nil
+        if type(link) == "string" and link ~= "" then
+          items = items or {}
+          count = tonumber(count) or 1
+          local merged = false
+          for j = 1, #items do
+            if items[j].l == link then
+              items[j].n = items[j].n + count
+              merged = true
+              break
+            end
+          end
+          if not merged then items[#items + 1] = { l = link, n = count } end
+        end
+      end
+    end
+    -- The recipient as addressed, with the realm it resolves to kept
+    -- (Recipients.Qualify, "Name-Realm"); on Forever the full name, as the
+    -- game spells a hyphenated one (Helpers.MailAddress).
+    local H, R = Helpers(), ns.Recipients
+    local to
+    if H.TwoPartNames() then
+      to = H.FullName(H.MailAddress(toName))
+    elseif R and type(R.Qualify) == "function" then
+      to = R.Qualify(toName)
+    end
+    if type(to) ~= "string" or to == "" then to = toName end
+    -- An hour on the way, by the rule the guidance line says it by.
+    local hour
+    local MR = ns.MailRules
+    if type(MR) == "table" and type(MR.Inspect) == "function" then
+      local assessed = MR.Inspect(toName, { items = items and #items or 0,
+        money = (cod > 0) and cod or gold, cod = cod > 0 })
+      hour = (assessed ~= nil and assessed.delivery == MR.DELIVERY_DELAYED) or nil
+    end
+    return { s = to, sub = subject, it = items, m = (gold > 0) and gold or nil,
+      c = (cod > 0) and cod or nil, h = hour }
+  end
+
+  -- The server took the mail `pending` sent: its record kept, and counted
+  -- to the press it belongs to.
+  function ST.RecordSent(pending)
+    local entry = pending.record
+    if not entry then return end
+    pending.record = nil
+    entry.t = time()
+    local MM = ns.MailMemory
+    if MM and type(MM.SentRecord) == "function" then MM.SentRecord(entry) end
+    local press = pending.press
+    if press then press[#press + 1] = entry end
+    local CT = ns.CollectTab
+    if CT and type(CT.SentChanged) == "function" then CT.SentChanged() end
+  end
+
+  -- The last mail of a press went and the draft was settled: the line says
+  -- so from now, while the draft is as the settle left it.
+  function ST.SentSettled(panel)
+    local S = ST.sent
+    local press = S.press
+    if not (press and press[1]) then return end
+    S.line, S.panel = press, panel
+    local base = S.base or {}
+    base.to, base.sub = FieldText(panel.ToBox), FieldText(panel.SubjectBox)
+    S.base = base
+  end
+
+  -- Whether the draft is still what the last send left: the recipient and
+  -- subject After sending, keep kept, and nothing else.
+  function ST.SentDraftUntouched(panel)
+    local S = ST.sent
+    local base = S.base
+    if not base or S.panel ~= panel then return false end
+    if FieldText(panel.ToBox) ~= base.to or FieldText(panel.SubjectBox) ~= base.sub then return false end
+    if FieldText(panel.BodyBox) ~= "" then return false end
+    if AttachmentCount() > 0 or ComposedCopper(panel) > 0 or IsCODArmed(panel) then return false end
+    local queue = panel._queue
+    return not (queue and #queue > 0)
+  end
+
+  -- The recipient's name as a row shows it, in its class's colour where
+  -- Postbox knows it (as the Mail tab's senders are).
+  function ST.SentName(to, ground)
+    local CT = ns.CollectTab
+    local R = CT and CT.RowRules
+    local shown = (R and R.DisplaySender and R.DisplaySender(to)) or to
+    local CS = ns.ContactService
+    local token = (CS and CS.ClassOf) and CS.ClassOf(to) or nil
+    if token and CS.WrapClass then return CS.WrapClass(token, shown, ground) end
+    return shown
+  end
+
+  -- The line, when it stands: true when it painted it.
+  function ST.PaintSentLine(panel, label)
+    local S = ST.sent
+    local line = S.line
+    if line and (pendingSend or not ST.SentDraftUntouched(panel)) then
+      S.line = nil
+      line = nil
+    end
+    if not line then
+      ST.HideSentLink(panel)
+      return false
+    end
+    label:SetText(L("SENT_LINE", ST.SentName(line[1].s, "window"), ns.Plural("SENT_LINE_MAILS", #line)))
+    Theme.SetColor(label, GUIDANCE_TOKEN.info)
+    -- The whole line is the link, under the words.
+    local link = panel.SentLink
+    if not link then
+      link = CreateFrame("Button", nil, panel)
+      link:SetPoint("TOPLEFT", label, "TOPLEFT", 0, 0)
+      link:SetPoint("BOTTOMRIGHT", label, "BOTTOMRIGHT", 0, 0)
+      link:SetScript("OnEnter", function(self)
+        Theme.SetColor(label, "textPrimary")
+        ST.SentLineTip(self)
+      end)
+      link:SetScript("OnLeave", function()
+        if ST.sent.line then Theme.SetColor(label, GUIDANCE_TOKEN.info) end
+        GameTooltip:Hide()
+      end)
+      link:SetScript("OnClick", function() ST.OpenSent() end)
+      panel.SentLink = link
+    end
+    link:Show()
+    return true
+  end
+
+  function ST.HideSentLink(panel)
+    local link = panel and panel.SentLink
+    if link and link:IsShown() then link:Hide() end
+  end
+
+  -- The line's tooltip, worked out on hover: the house tooltip of a Sent
+  -- row (the Mail tab's), for every mail of the press, and the way in.
+  function ST.SentLineTip(owner)
+    local line = ST.sent.line
+    local CT = ns.CollectTab
+    if not (line and CT and type(CT.SentTip) == "function") then return end
+    CT.SentTip(owner, line, nil, ST.SentOn() and L["SENT_TIP_OPEN"] or nil)
+  end
+
+  -- Whether Sent is there to open: History not turned off (Never).
+  function ST.SentOn()
+    local UI = ns.MailboxUI
+    return not (UI and type(UI.GetHistoryDays) == "function") or UI.GetHistoryDays() > 0
+  end
+
+  -- The Mail tab, History, Sent, this character's: from the line and from
+  -- the clock in the Recipient field. The draft stays as it is.
+  function ST.OpenSent()
+    if not ST.SentOn() then return end
+    GameTooltip:Hide()
+    local CT = ns.CollectTab
+    if CT and type(CT.OpenSent) == "function" then CT.OpenSent() end
+  end
+
+  -- The clock in the Recipient field, left of the address book's segment
+  -- and built as it is (BuildRecipientField): 24 wide, a hairline on its
+  -- left, the same wash under the pointer, and untagged for the same
+  -- reason. History's own glyph.
+  function ST.BuildSentClock(panel, manage)
+    local clock = CreateFrame("Button", nil, panel.ToWrap)
+    clock:SetPoint("TOPRIGHT", manage, "TOPLEFT", 0, 0)
+    clock:SetPoint("BOTTOMRIGHT", manage, "BOTTOMLEFT", 0, 0)
+    clock:SetWidth(24)
+    clock:SetFrameLevel(manage:GetFrameLevel())
+
+    local divider = clock:CreateTexture(nil, "BORDER")
+    divider:SetWidth(1)
+    divider:SetPoint("TOPLEFT", clock, "TOPLEFT", 0, 0)
+    divider:SetPoint("BOTTOMLEFT", clock, "BOTTOMLEFT", 0, 0)
+    Theme.FillChrome(divider, 0.12)
+
+    local wash = clock:CreateTexture(nil, "BACKGROUND")
+    wash:SetPoint("TOPLEFT", clock, "TOPLEFT", 1, 0)
+    wash:SetPoint("BOTTOMRIGHT", clock, "BOTTOMRIGHT", 0, 0)
+    Theme.FillChrome(wash, 0)
+
+    -- Grey, as the Mail tab's clock is: chrome stays neutral.
+    local glyph = Theme.Glyph and Theme.Glyph(clock, "history", 12, "ARTWORK") or nil
+    if glyph then
+      glyph:SetPoint("CENTER", clock, "CENTER", 0, 0)
+      Theme.SetGrey(glyph, 1)
+      glyph:SetAlpha(0.85)
+    end
+
+    clock:SetScript("OnEnter", function(self)
+      Theme.FillChrome(wash, 0.07)
+      Theme.TipBegin(self, "ANCHOR_RIGHT")
+      Theme.TipTitle(L["SENT_VIEW_SENT"])
+      Theme.TipLine(L["SENT_CLOCK_TIP"])
+      GameTooltip:Show()
+    end)
+    clock:SetScript("OnLeave", function()
+      Theme.FillChrome(wash, 0)
+      GameTooltip:Hide()
+    end)
+    clock:SetScript("OnClick", function() ST.OpenSent() end)
+    panel.SentClock = clock
+    ST.SyncSentClock(panel)
+  end
+
+  -- Shown while History is on; the typed text stops short of both
+  -- segments, or of the address book's alone.
+  function ST.SyncSentClock(panel)
+    panel = panel or ActivePanel()
+    local clock = panel and panel.SentClock
+    if not clock then return end
+    local on = ST.SentOn()
+    if clock:IsShown() ~= on or panel._sentInset == nil then
+      clock:SetShown(on)
+      panel._sentInset = on and 50 or 26
+      panel.ToBox:SetTextInsets(0, panel._sentInset, 0, 0)
+    end
+  end
+end
+
 -- `confirmed` is set only by a confirmation's own accept: the press as its
 -- question named it -- how many mails, the gold leaving, the recipient --
 -- and whether C.O.D. was checked when it was asked.
@@ -1508,6 +1771,11 @@ local function DoSendMail(panel, confirmed)
   -- server's word on it comes late (ST.ask.Went).
   pendingSend = { panel = panel, toName = toName, token = myToken, subject = FieldText(panel.SubjectBox),
     gold = gold, purse = type(GetMoney) == "function" and GetMoney() or nil }
+  -- What it carries, for Sent should the server take it, and the press it
+  -- begins (8d).
+  ST.sent.press = { to = toName }
+  pendingSend.press = ST.sent.press
+  pendingSend.record = ST.SentSnapshot(toName, subject, gold, cod and totalCopper or 0)
   -- A run of mails counts itself on the button ("Sending 2 of 3...").
   panel._run = (mails > 1) and { index = 1, total = mails } or nil
   SetSendButtonBusy(panel, true)
@@ -5194,6 +5462,9 @@ function Q.SendQueued(panel, toName)
   sendToken = sendToken + 1
   local myToken = sendToken
   pendingSend = { panel = panel, toName = toName, token = myToken, subject = FieldText(panel.SubjectBox) }
+  -- The press's next mail, recorded as the first was (8d).
+  pendingSend.press = ST.sent.press
+  pendingSend.record = ST.SentSnapshot(toName, subject, 0, 0)
   if panel._run then panel._run.index = panel._run.index + 1 end
   SetSendButtonBusy(panel, true)
 
@@ -5571,6 +5842,8 @@ function ST.Reset(panel, reason)
   -- draft itself is not touched here; ClearDraftFields below does that.
   AbandonPendingSend(panel)
   ClearSendMailMoneyState()
+  -- What the last press sent was this visit's news (8d).
+  ST.sent.line, ST.sent.press = nil, nil
   if reason == "close" then StashDraft(panel) end
   ClearDraftFields(panel)
   if reason == "open" then
@@ -5680,6 +5953,8 @@ local function BuildRecipientField(panel)
     end
   end)
   panel.ManageRecipients = manage
+  -- Sent, from the field where the doubt starts (8d).
+  ST.BuildSentClock(panel, manage)
 end
 
 local function BuildContactBar(panel)
@@ -6382,6 +6657,7 @@ local function InstallEvents(panel)
     end
     ST.RefreshAttachmentSlots(self)
     ST.UpdateSendCost(self)
+    ST.SyncSentClock(self)
     ST.UpdateSendGuidance(self)
     -- Favourites can change while this tab is hidden (the recipient manager is
     -- its own window and can sit open beside the mailbox), and so can what any
@@ -6487,6 +6763,8 @@ function ST.Build(parent)
                                                L["DEFAULT_NO_SUBJECT"], false)
   panel.SubjectBox:SetScript("OnTextChanged", function(self)
     self._placeholder:SetShown(self:GetText() == "")
+    -- The line saying what went stands only over the draft the send left.
+    if ST.sent.line then Invalidate(panel, "guidance") end
   end)
   panel.SubjectBox:SetScript("OnEditFocusGained", function(self)
     if self:GetText() ~= "" then self:HighlightText() end
@@ -6543,6 +6821,7 @@ function ST.Build(parent)
     -- frame because the edit box has not re-measured itself yet, and because a
     -- held key must not cost a resize per repeat.
     Invalidate(panel, "body")
+    if ST.sent.line then Invalidate(panel, "guidance") end
   end)
   panel.BodyBox:SetScript("OnEditFocusGained", function(self)
     if self:GetText() ~= "" then self:HighlightText() end

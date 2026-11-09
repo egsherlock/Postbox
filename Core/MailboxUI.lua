@@ -1446,6 +1446,9 @@ function UI.SetHistoryDays(days)
   end
   local panel, collect = CollectPanel(), ns.CollectTab
   if panel and collect and collect.RefreshHistoryDays then collect.RefreshHistoryDays(panel) end
+  -- The Send tab's way into Sent goes and comes back with History.
+  local send = ns.SendTab
+  if send and type(send.SyncSentClock) == "function" then send.SyncSentClock() end
 end
 
 -- What the Send tab keeps once a mail has gone: "nothing" (the default: a

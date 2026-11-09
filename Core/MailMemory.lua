@@ -1304,22 +1304,27 @@ end
 -- each list is in date order, so this touches only what goes. A list left
 -- empty is dropped, so "Never" leaves no character's record behind, and a
 -- record already empty costs one lookup and allocates nothing.
+-- What was sent (2d) is kept and pruned by the same rule, in its own root.
 local function PruneAllHistory()
-  local root = ns.Store and ns.Store.Get and ns.Store.Get("mailHistory")
-  if type(root) ~= "table" then return end
-  local now = time()
-  for realm, byRealm in pairs(root) do
-    if type(byRealm) == "table" then
-      for name, list in pairs(byRealm) do
-        if type(list) == "table" then
-          PruneHistory(list, now)
-          if #list == 0 then
-            byRealm[name] = nil
-            MM.HistoryChanged()
+  for pass = 1, 2 do
+    local key = (pass == 1) and "mailHistory" or "mailSent"
+    local root = ns.Store and ns.Store.Get and ns.Store.Get(key)
+    if type(root) == "table" then
+      local now = time()
+      for realm, byRealm in pairs(root) do
+        if type(byRealm) == "table" then
+          for name, list in pairs(byRealm) do
+            if type(list) == "table" then
+              PruneHistory(list, now)
+              if #list == 0 then
+                byRealm[name] = nil
+                if pass == 1 then MM.HistoryChanged() else MM.SentChanged() end
+              end
+            end
           end
+          if next(byRealm) == nil then root[realm] = nil end
         end
       end
-      if next(byRealm) == nil then root[realm] = nil end
     end
   end
 end
@@ -1346,11 +1351,14 @@ end
 -- keystroke builds nothing. One list until the record's root is replaced, a
 -- character's record is made or dropped (MM.HistoryChanged), the hidden set
 -- changes (charactersGen) or another character is played.
+-- What was sent (2d) is listed by the same rule from its own root: one memo
+-- per root, each with its own generation.
 do
-  local memo = {}
-  local historyGen = 0
+  local memos = { mailHistory = {}, mailSent = {} }
+  local gens = { mailHistory = 0, mailSent = 0 }
 
-  function MM.HistoryChanged() historyGen = historyGen + 1 end
+  function MM.HistoryChanged() gens.mailHistory = gens.mailHistory + 1 end
+  function MM.SentChanged() gens.mailSent = gens.mailSent + 1 end
 
   local function MeFirst(a, b)
     if a.me ~= b.me then return a.me end
@@ -1358,8 +1366,9 @@ do
     return a.realm < b.realm
   end
 
-  function MM.HistoryCharacters()
-    local root = ns.Store and ns.Store.Get and ns.Store.Get("mailHistory")
+  local function Characters(key)
+    local memo, historyGen = memos[key], gens[key]
+    local root = ns.Store and ns.Store.Get and ns.Store.Get(key)
     local myRealm, myName = Me()
     if memo.list and memo.root == root and memo.gen == historyGen and memo.chars == charactersGen
       and memo.realm == myRealm and memo.name == myName then
@@ -1387,12 +1396,14 @@ do
     return list
   end
 
+  function MM.HistoryCharacters() return Characters("mailHistory") end
+  function MM.SentCharacters() return Characters("mailSent") end
+
   -- An item of that list -> its character's record, oldest first, pruned to
   -- the days kept as this character's is on every read; nil when it has
   -- none.
-  function MM.HistoryOf(item)
-    if item.me then return MM.History() end
-    local root = ns.Store and ns.Store.Get and ns.Store.Get("mailHistory")
+  local function RecordOf(key, item)
+    local root = ns.Store and ns.Store.Get and ns.Store.Get(key)
     local byRealm = type(root) == "table" and root[item.realm] or nil
     local list = type(byRealm) == "table" and byRealm[item.name] or nil
     if type(list) ~= "table" then return nil end
@@ -1400,11 +1411,20 @@ do
     return list
   end
 
+  function MM.HistoryOf(item)
+    if item.me then return MM.History() end
+    return RecordOf("mailHistory", item)
+  end
+  function MM.SentOf(item)
+    if item.me then return MM.Sent() end
+    return RecordOf("mailSent", item)
+  end
+
   -- Whether another character (not hidden) has History to search: asked
   -- whenever History comes on screen, so read straight off the record,
   -- building nothing.
-  function MM.HistoryOthers()
-    local root = ns.Store and ns.Store.Get and ns.Store.Get("mailHistory")
+  local function Others(key)
+    local root = ns.Store and ns.Store.Get and ns.Store.Get(key)
     if type(root) ~= "table" then return false end
     local myRealm, myName = Me()
     local hidden = HiddenSet(false)
@@ -1419,6 +1439,80 @@ do
       end
     end
     return false
+  end
+
+  function MM.HistoryOthers() return Others("mailHistory") end
+  function MM.SentOthers() return Others("mailSent") end
+end
+
+-------------------------------------------------------------
+-- 2d. What went out of the box
+--
+-- History's other half: each mail a send of Postbox's put in the post, one
+-- entry per mail (a run of mails from one press makes one each), written
+-- when the server CONFIRMS the send (Core/SendTab.lua, on its
+-- MAIL_SEND_SUCCESS) and never when it is asked, since the server may
+-- refuse it. Kept per character beside History, under its days and its
+-- cap, at the root `mailSent`, realm -> name -> entries oldest first:
+--   t    when the server took it
+--   s    the recipient as addressed, its realm resolved and kept
+--        (Recipients.Qualify: "Name-Realm"; Forever's full name)
+--   sub  the subject it went with
+--   it   what it carried, { l = link, n = count } per item, as History's
+--   m    the gold it carried, c the C.O.D. it asked (copper)
+--   h    true when the game takes about an hour to deliver it (MailRules:
+--        items, gold or C.O.D. to someone not known as the player's own)
+-- "Never" records nothing and clears it with History (PruneAllHistory).
+-- Nothing runs between sends: one write per mail the server took.
+-------------------------------------------------------------
+do
+  -- No record: one empty list, read and never written.
+  local NONE = {}
+
+  local function SentList(create)
+    local realm, name = Me()
+    if not (realm and name) then return nil end
+    local root
+    if create then
+      root = ns.Store.EnsurePath("mailSent")
+    else
+      root = ns.Store and ns.Store.Get and ns.Store.Get("mailSent")
+    end
+    if type(root) ~= "table" then return nil end
+    local byRealm = root[realm]
+    if type(byRealm) ~= "table" then
+      if not create then return nil end
+      byRealm = {}
+      root[realm] = byRealm
+    end
+    local list = byRealm[name]
+    if type(list) ~= "table" and create then
+      list = {}
+      byRealm[name] = list
+      MM.SentChanged()
+    end
+    return list
+  end
+
+  -- This character's record of what it sent, oldest first, pruned to the
+  -- days kept; empty when there is none.
+  function MM.Sent()
+    local list = SentList(false)
+    if not list then return NONE end
+    PruneHistory(list, time())
+    return list
+  end
+
+  -- One mail the server took: `entry` as above, built by the send that
+  -- posted it, kept as given. Returns it, or nil when History is off.
+  function MM.SentRecord(entry)
+    if type(entry) ~= "table" or HistoryKeep() <= 0 then return nil end
+    local list = SentList(true)
+    if not list then return nil end
+    entry.t = entry.t or time()
+    list[#list + 1] = entry
+    PruneHistory(list, entry.t)
+    return entry
   end
 end
 
@@ -3885,7 +3979,7 @@ function MM.Rebind()
   if frame and frame:IsShown() and frame._list then BindRows(frame) end
 end
 
--- What this file keeps -- mailMemory, mailWatch, mailHistory, hiddenChars --
+-- What this file keeps -- mailMemory, mailWatch, mailHistory, mailSent, hiddenChars --
 -- was emptied from outside it (Options, Reset everything), each table where
 -- it stands. The character list is remembered against those same tables,
 -- so it is told here; the character list's popup closes, and the window,
@@ -3895,6 +3989,7 @@ end
 function MM.DataCleared()
   CharactersChanged()
   MM.HistoryChanged()
+  MM.SentChanged()
   MM.ClosePicker()
   local frame = MM._frame
   if not frame then return end

@@ -116,6 +116,8 @@ local SCHEMA = {
                               -- since the last visit (Core/MailMemory.lua, 2b)
   "mailHistory",              -- realm -> name -> a week of what was collected
                               -- (Core/MailMemory.lua, 2c)
+  "mailSent",                 -- realm -> name -> what was sent, kept as History
+                              -- is (Core/MailMemory.lua, 2d)
   "hiddenChars",              -- realm -> name -> true: hidden from the lists
                               -- of other characters (Core/MailMemory.lua, 2b)
 }
@@ -1539,6 +1541,18 @@ do
         end
       end
       parts[#parts + 1] = format("history %d (most %d), letters %d KB", entries, most, floor(bytes / 1024 + 0.5))
+
+      local sent, sentN = get("mailSent"), 0
+      if type(sent) == "table" then
+        for _, byName in pairs(sent) do
+          if type(byName) == "table" then
+            for _, list in pairs(byName) do
+              if type(list) == "table" then sentN = sentN + #list end
+            end
+          end
+        end
+      end
+      parts[#parts + 1] = format("sent %d", sentN)
     end
 
     -- The first value only: GetNumGuildMembers and BNGetNumFriends both
