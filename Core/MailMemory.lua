@@ -541,7 +541,9 @@ end
 --                  no auction house notice to go with it, a purchase, mail
 --                  Postbox sent from another character. The count says
 --                  "new" or "N+" while it stands (MM.CountText): how many
---                  came is not known, only that some did.
+--                  came is not known, only that some did. An auction
+--                  posted since the visit says the same once it has
+--                  surely ended (Uncounted): every ending sends mail.
 --
 -- Mail lives thirty days. Either time is therefore the earliest that unseen
 -- mail could start to be lost, and a character is flagged a week before it.
@@ -726,7 +728,14 @@ end
 local function Uncounted(watch, seenAt, now)
   if not watch then return false end
   local at = tonumber(watch.uncountedAt)
-  return (at ~= nil and now - at < MAIL_LIFE) and true or false
+  if at ~= nil and now - at < MAIL_LIFE then return true end
+  -- An auction posted since the last visit has ended by 48 hours on, and
+  -- every ending, sold, expired or canceled, sends mail. Only one posted
+  -- AFTER the visit: one carried over a visit (auctionAt is then the
+  -- visit, _SettleWatch) may have sold and been collected already.
+  local posted = tonumber(watch.auctionAt)
+  return (posted ~= nil and posted > (tonumber(seenAt) or 0)
+    and now - posted >= AUCTION_LONGEST and now - posted < UNSEEN_STOP) and true or false
 end
 
 -- realm, name, now -> what there is to say about that character's mail.
