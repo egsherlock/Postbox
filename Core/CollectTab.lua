@@ -7365,12 +7365,12 @@ function HV.SentKind(entry)
 end
 
 -- entry, brief -> its money line: the gold sent in red, as Spent is; a
--- C.O.D. asked in amber, as the C.O.D. it is waiting to be paid.
+-- C.O.D. asked as every C.O.D. is written, by the mail rows' own MoneyText.
 function HV.SentMoney(entry, brief)
-  local T = Th()
-  local compactMoney = ns.Core.Formatting.FormatMoneyCompact
-  if (entry.m or 0) > 0 then return T.Colorize("negative", "-" .. compactMoney(entry.m, brief)) end
-  if (entry.c or 0) > 0 then return T.Colorize("warning", L()["LABEL_COD"] .. compactMoney(entry.c, brief)) end
+  if (entry.m or 0) > 0 then
+    return Th().Colorize("negative", "-" .. ns.Core.Formatting.FormatMoneyCompact(entry.m, brief))
+  end
+  if (entry.c or 0) > 0 then return (MoneyText(true, 0, entry.c, nil, brief)) end
   return nil
 end
 
@@ -7448,7 +7448,7 @@ function HV.SentTip(owner, entries, who, hint)
       RV.ItemLine(icon or "Interface\\Icons\\INV_Misc_QuestionMark", itemName, quality, nil, items[i].n)
     end
     if (e.m or 0) > 0 then T.TipFact(L0["LABEL_GOLD"], T.TipTone("negative", H.FormatMoney(e.m))) end
-    if (e.c or 0) > 0 then T.TipFact(L0["LABEL_COD"], T.TipTone("warning", H.FormatMoney(e.c))) end
+    if (e.c or 0) > 0 then T.TipFact(L0["LABEL_COD"], T.TipTone("negative", H.FormatMoney(e.c))) end
     if e.h and now - (tonumber(e.t) or now) < 3600 then arriving = true end
   end
   if arriving then GameTooltip:AddLine(L0["SENT_TIP_ARRIVES"], T.TIP_MUTED, T.TIP_MUTED, T.TIP_MUTED, true) end
@@ -8998,11 +8998,11 @@ do
   -- The C.O.D. still to pay joins the line only while a listed mail asks
   -- one, in the red it wears on the rows: the band otherwise reads as ever.
   local function Line(strings, icons, sums, up, down, parts)
-    -- Sent: "Sent: 500g | C.O.D. asked: 180g", the gold in Spent's red and
-    -- the C.O.D. in its amber.
+    -- Sent: "Sent: 500g | C.O.D. asked: 180g", both in the red the gold
+    -- sent and a C.O.D. wear on the rows.
     if sums.sent then
       return strings["SENT_BANNER_SENT"] .. icons(sums.earned, down, parts)
-        .. "   |   " .. strings["SENT_BANNER_COD"] .. icons(sums.spent, sums.amber, parts)
+        .. "   |   " .. strings["SENT_BANNER_COD"] .. icons(sums.spent, down, parts)
     end
     local line = strings["BANNER_EARNED_SHORT"] .. icons(sums.earned, up, parts)
         .. "   |   " .. strings["BANNER_SPENT_SHORT"] .. icons(sums.spent, down, parts)
@@ -9046,7 +9046,6 @@ do
     -- enamel) inks the label and hands back the figures' dark twins.
     local skin = ns.Skin
     if skin and skin.BannerInk then up, down = skin.BannerInk(text, up, down) end
-    if sums.sent then sums.amber = "ff" .. T.InkHex("warning", "band") end
 
     -- Two coins is the whole of it: "Earned 95g 57s". The copper on a total
     -- of the whole inbox is noise, and "Total" said nothing the band's
