@@ -3671,7 +3671,7 @@ local tipHinted = false
 -- as long as the longest tooltip that has had a hint.
 --
 -- The house form joins a tooltip's gestures with " · " in every locale
--- ("Right-click to ... · Shift-click to ..."); each is put on a line of its
+-- ("Right-click: ... · Shift-click: ..."); each is put on a line of its
 -- own here, so every locale's strings stay as they are. The pieces of a
 -- text are cut once and kept (`parts`); the cache is emptied when it holds
 -- more texts than any session's hovers name (a name in "Log in on %s" makes
