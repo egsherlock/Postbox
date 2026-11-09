@@ -4351,11 +4351,85 @@ function RV.ToggleSort(panel)
   end
 end
 
--- The auction outcome a row shows where its sender would be ("AH Sold"), so
--- a search finds the mail by the words on screen, as the other lists do.
-function RV.OutcomeMatches(index, query)
+-- What the inbox's search looks in, one folded haystack per mail
+-- (Helpers.SearchHaystack, the rule every list's search follows): the
+-- sender, the auction outcome the row shows in its place ("AH Sold"), the
+-- subject and the name of every item attached. Built only while something
+-- is typed, the first time a refresh asks for that mail, and kept until the
+-- inbox moves: an index names the same mail for as long as Mail.InboxGen
+-- has not, and no longer. So a keystroke folds nothing and builds nothing;
+-- each mail is one plain find in a string already made. A haystack built
+-- while an item's name was missing (an item the client had not loaded) is
+-- built again once a name has arrived (Helpers.SearchNamesFilled).
+RV.searchHay = {}       -- index -> folded haystack, or false
+RV.searchMissed = {}    -- index -> the names fill it missed one at, or false
+RV.searchGen = -1
+RV.searchNames = {}     -- one mail's item names, reused
+
+-- Once per walk: a moved inbox lets every haystack go.
+function RV.SearchBegin()
+  local gen = Mail().InboxGen()
+  if RV.searchGen == gen then return end
+  RV.searchGen = gen
+  local hay, missed = RV.searchHay, RV.searchMissed
+  for index in pairs(hay) do hay[index], missed[index] = false, false end
+end
+
+-- The mailbox closed: nothing a visit's search built is kept.
+function RV.ForgetInboxSearch()
+  RV.searchGen = -1
+  local hay, missed = RV.searchHay, RV.searchMissed
+  for index in pairs(hay) do hay[index], missed[index] = nil, nil end
+end
+
+-- index, sender, subject, itemCount (the header's, as the walk read it) ->
+-- the mail's haystack. The slots are read up to the header's count of items.
+function RV.SearchHay(index, sender, subject, itemCount)
+  local H = Helpers()
+  local hay = RV.searchHay[index]
+  local missed = RV.searchMissed[index]
+  if hay and not (missed and missed ~= H.SearchNamesFilled()) then return hay end
+  local names, n, miss = RV.searchNames, 0, false
+  local attached = tonumber(itemCount) or 0
+  if attached > 0 and type(GetInboxItem) == "function" then
+    local found = 0
+    for slot = 1, Mail().MAX_ATTACHMENTS or 16 do
+      local name, itemID, texture = GetInboxItem(index, slot)
+      if name or itemID or texture then
+        found = found + 1
+        if type(name) ~= "string" or name == "" then name = itemID and H.SearchItemName(itemID) or nil end
+        if name then
+          n = n + 1
+          names[n] = name
+        else
+          miss = true
+        end
+        if found >= attached then break end
+      end
+    end
+  end
   local outcome = AUCTION_OUTCOME[Mail().ClassifyMail(index)]
-  return outcome ~= nil and Fold(L()[outcome.key]):find(query, 1, true) ~= nil
+  hay = H.SearchHaystack(sender, outcome and L()[outcome.key], subject, names, n)
+  for j = n, 1, -1 do names[j] = nil end
+  -- A header that has not arrived yet is not kept: the next look has it.
+  if sender ~= nil or subject ~= nil then
+    RV.searchHay[index] = hay
+    RV.searchMissed[index] = miss and H.SearchNamesFilled() or false
+  end
+  return hay
+end
+
+-- Names the client had not loaded have arrived (Helpers.OnSearchNames): the
+-- list again, once, if a search is showing on it -- the inbox's, another
+-- character's box or History.
+function RV.SearchNamesArrived()
+  local UI = ns.MailboxUI
+  local panel = UI and UI._frame and UI._frame.Tabs and UI._frame.Tabs.collect
+  if panel and panel:IsShown() and Searching(panel) then CT.RefreshMailList(panel) end
+end
+do
+  local H = Helpers()
+  if H and H.OnSearchNames then H.OnSearchNames(RV.SearchNamesArrived) end
 end
 
 -- Frozen: Core/MailboxUI.lua calls this when the mailbox closes. A search is
@@ -4373,6 +4447,7 @@ function CT.ClearSearch(panel)
     if ns.MailMemory and ns.MailMemory.ClosePicker then ns.MailMemory.ClosePicker() end
     -- And the folded text History's search built: kept only while in use.
     if RV.ForgetHistorySearch then RV.ForgetHistorySearch() end
+    RV.ForgetInboxSearch()
   end
 end
 
@@ -6916,19 +6991,19 @@ function HV.SearchFresh()
   end
 end
 
--- The pieces, joined once: a string grown item by item left one string of
--- garbage per item behind it, and an entry holds up to sixteen.
+-- Built by the rule every list's search follows (Helpers.SearchHaystack),
+-- from the item names its links carry (HV.ItemName, which keeps or drops the
+-- quality mark as the list does). The names go into one table kept for it.
 HV.searchParts = {}
 function HV.SearchText(entry)
   local items = entry.it or HV.NONE
   local text = HV.searchText[entry]
   if text and HV.searchItems[entry] == #items then return text end
   local outcome = AUCTION_OUTCOME[entry.k]
-  local parts = HV.searchParts
-  parts[1], parts[2] = entry.s or "", entry.sub or ""
-  parts[3] = outcome and L()[outcome.key] or ""
-  for j = 1, #items do parts[3 + j] = HV.ItemName(items[j].l) or "" end
-  text = Fold(concat(parts, "\001", 1, 3 + #items))
+  local names = HV.searchParts
+  for j = 1, #items do names[j] = HV.ItemName(items[j].l) or "" end
+  text = Helpers().SearchHaystack(entry.s, outcome and L()[outcome.key], entry.sub, names, #items)
+  for j = #items, 1, -1 do names[j] = nil end
   HV.searchText[entry], HV.searchItems[entry] = text, #items
   return text
 end
@@ -6993,7 +7068,7 @@ function HV.BuildHistoryList(panel, query)
     local entry = list[i]
     local keep = true
     if query ~= "" then
-      keep = HV.SearchText(entry):find(query, 1, true) ~= nil
+      keep = Helpers().SearchFinds(HV.SearchText(entry), query)
     end
     if keep then
       if head and not headed then
@@ -8790,10 +8865,12 @@ function CT.RefreshMailList(panel)
   -- API calls on every single refresh. This walk is the one that records; see
   -- "The inbox counts".
   local doneCount, toCollectCount, goneCount = 0, 0, 0
-  -- The search, folded once. Matched against the sender and the subject as
-  -- the client reports them; the counts above are deliberately NOT narrowed
-  -- by it, because the segment captions describe the inbox, not the view.
+  -- The search, folded once. Matched against each mail's haystack (RV.SearchHay:
+  -- the sender, the outcome, the subject and the items' names); the counts
+  -- above are deliberately NOT narrowed by it, because the segment captions
+  -- describe the inbox, not the view.
   local query = Fold(SearchQuery(panel))
+  if query ~= "" then RV.SearchBegin() end
 
   -- The compact row's columns and the category buttons' counts, from this same
   -- walk (see "the columns"). The first pooled row is the font sample, so the
@@ -8871,9 +8948,7 @@ function CT.RefreshMailList(panel)
       local _, _, subject
       _, _, sender, subject, money, cod, daysLeft, itemCount = GetInboxHeaderInfo(index)
       if query ~= "" then
-        listed = Fold(sender or ""):find(query, 1, true) ~= nil
-              or Fold(subject or ""):find(query, 1, true) ~= nil
-              or RV.OutcomeMatches(index, query)
+        listed = Helpers().SearchFinds(RV.SearchHay(index, sender, subject, itemCount), query)
       end
     end
     if listed then

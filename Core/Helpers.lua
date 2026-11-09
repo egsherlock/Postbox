@@ -495,3 +495,163 @@ function H.SubjectLooksLike(subject, globalPattern, folded)
   if source == literal then return true end
   return source:find(literal, 1, true) ~= nil
 end
+
+-------------------------------------------------------------
+-- Mail search: one rule for every list
+--
+-- A search finds a mail by any words on its row -- who it is from (or, for
+-- mail sent, who it went to), the auction outcome a row says in that
+-- person's place ("AH Sold"), the subject -- or by the name of any item
+-- attached to it. Not the body and not the gold. The Mail tab's inbox, Mail
+-- Memory and History all build what they search with H.SearchHaystack and
+-- test it with H.SearchFinds, so the three cannot come to disagree again.
+--
+-- Each list keeps the haystacks it built and decides when one is stale; this
+-- builds one from its pieces and allocates only the result. The query is
+-- folded once per keystroke by the caller (H.Lower, which also trims it).
+-------------------------------------------------------------
+
+do
+  local concat, find, gsub = table.concat, string.find, string.gsub
+  local Lower = H.Lower
+  -- The pieces of one haystack, joined once: a string grown piece by piece
+  -- left one string of garbage per piece, and a mail holds up to sixteen
+  -- items. Emptied after each join, so it holds no name past it.
+  local parts = {}
+  -- Between pieces: a byte no typed query contains, so a match never runs
+  -- from one piece into the next.
+  local SEP = "\001"
+
+  -- who, label, subject, names, count -> the folded text a search looks in.
+  -- who: the other party as written (the sender of mail received, the
+  -- recipient of mail sent). label: what the row says in who's place, the
+  -- auction outcome, or nil; a coloured label is searched without its colour
+  -- codes. names: an array of item names, of which the first `count` are
+  -- taken (a nil among them reads as no name).
+  function H.SearchHaystack(who, label, subject, names, count)
+    if type(label) ~= "string" then
+      label = ""
+    elseif find(label, "|", 1, true) then
+      label = gsub(gsub(label, "|c%x%x%x%x%x%x%x%x", ""), "|r", "")
+    end
+    parts[1] = type(who) == "string" and who or ""
+    parts[2] = label
+    parts[3] = type(subject) == "string" and subject or ""
+    count = names and tonumber(count) or 0
+    for j = 1, count do
+      local name = names[j]
+      parts[3 + j] = type(name) == "string" and name or ""
+    end
+    local hay = Lower(concat(parts, SEP, 1, 3 + count))
+    for j = 3 + count, 1, -1 do parts[j] = nil end
+    return hay
+  end
+
+  -- haystack, query -> whether the folded query is in it. Plain find: a query
+  -- is text, never a pattern.
+  function H.SearchFinds(hay, query)
+    return hay ~= nil and find(hay, query, 1, true) ~= nil
+  end
+
+  -- Item names by ID, for lists that keep IDs rather than names (Mail
+  -- Memory). The client's item cache answers at once for an item it holds
+  -- and nil for one it has not loaded; that one is asked for, and when it
+  -- arrives the fill count moves on (H.SearchNamesFilled) and every search
+  -- that is showing is told, once, a moment later (H.OnSearchNames). A
+  -- haystack built while a name was missing is built again once the count
+  -- has moved past the one it was built at. Kept for the session, never
+  -- saved; bounded, and emptied whole at the bound. An item the client says
+  -- does not exist is remembered as false, so it is not asked for again.
+  local NAMES_MAX = 4096
+  local ARRIVALS_WAIT = 0.2
+  local names, namesCount = {}, 0
+  local pending, pendingCount = {}, 0
+  local fills = 0
+  local listeners = {}
+  local frame, queued = nil, false
+
+  local function Remember(id, name)
+    if namesCount >= NAMES_MAX then
+      names = {}
+      namesCount = 0
+    end
+    if names[id] == nil then namesCount = namesCount + 1 end
+    names[id] = name
+  end
+
+  local function Told()
+    queued = false
+    for i = 1, #listeners do pcall(listeners[i]) end
+  end
+
+  local function OnItem(_, _, id, success)
+    id = tonumber(id)
+    if not (id and pending[id]) then return end
+    pending[id] = nil
+    pendingCount = pendingCount - 1
+    if pendingCount <= 0 then
+      pendingCount = 0
+      frame:UnregisterAllEvents()
+    end
+    if success == false then Remember(id, false) end
+    fills = fills + 1
+    if queued then return end
+    queued = true
+    -- The client answers a search's asks over a few frames: the lists are
+    -- told once, after a short wait that gathers the rest of them.
+    if not pcall(C_Timer.After, ARRIVALS_WAIT, Told) then Told() end
+  end
+
+  local function Ask(id)
+    local api = C_Item
+    if type(api) ~= "table" or type(api.RequestLoadItemDataByID) ~= "function" then return end
+    if not frame then
+      if type(CreateFrame) ~= "function" then return end
+      frame = CreateFrame("Frame")
+      frame:SetScript("OnEvent", OnItem)
+    end
+    if not pcall(api.RequestLoadItemDataByID, id) then return end
+    pending[id] = true
+    pendingCount = pendingCount + 1
+    if pendingCount == 1 then
+      -- Listened to only while something is asked for: every addon's item
+      -- loads fire these.
+      pcall(frame.RegisterEvent, frame, "ITEM_DATA_LOAD_RESULT")
+      pcall(frame.RegisterEvent, frame, "GET_ITEM_INFO_RECEIVED")
+    end
+  end
+
+  -- itemID -> its name, or nil while the client has not loaded it (asked
+  -- for once; see above).
+  function H.SearchItemName(id)
+    id = tonumber(id)
+    if not id then return nil end
+    local name = names[id]
+    if name ~= nil then return name or nil end
+    local api = C_Item
+    local get = type(api) == "table" and api.GetItemNameByID
+    if type(get) ~= "function" then get = type(api) == "table" and api.GetItemInfo end
+    if type(get) == "function" then
+      local ok, got = pcall(get, id)
+      if ok and type(got) == "string" and got ~= "" then name = got end
+    end
+    if name then
+      Remember(id, name)
+      return name
+    end
+    if not pending[id] then Ask(id) end
+    return nil
+  end
+
+  -- -> how many asked-for items have arrived this session: a haystack built
+  -- with a name missing is stale once this has moved.
+  function H.SearchNamesFilled()
+    return fills
+  end
+
+  -- fn: called once, a moment after asked-for names arrive. It refreshes its
+  -- own list if, and only if, a search is showing there.
+  function H.OnSearchNames(fn)
+    if type(fn) == "function" then listeners[#listeners + 1] = fn end
+  end
+end

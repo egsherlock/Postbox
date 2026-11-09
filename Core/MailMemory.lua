@@ -99,6 +99,9 @@ local captureQueued = false
 -- on the mail itself, which is saved variables. Here because a capture that
 -- puts another mail into one of this visit's tables drops that table's text.
 local searchText = setmetatable({}, { __mode = "k" })
+-- Beside it, for text built while an item's name was not loaded yet: the
+-- names fill it was built at (Helpers.SearchNamesFilled).
+local searchMissed = setmetatable({}, { __mode = "k" })
 
 -- One mail's items as the capture's slot scan reads them, id and count in
 -- turn, before they are copied into that mail's own list (`it`). One table
@@ -272,10 +275,22 @@ local function CaptureNow()
           list = spareLists[#spareLists] or {}
           spareLists[#spareLists] = nil
           mail.it = list
+          -- Items the text a search folded did not have: it names them now.
+          searchText[mail] = nil
+        elseif #list ~= held then
+          searchText[mail] = nil
         end
-        for k = 1, held do list[k] = scanned[k] end
+        for k = 1, held do
+          if list[k] ~= scanned[k] then
+            -- Another item in a slot (an odd place; the even ones are
+            -- counts): the search's text may not name it.
+            if k % 2 == 1 then searchText[mail] = nil end
+            list[k] = scanned[k]
+          end
+        end
         for k = #list, held + 1, -1 do list[k] = nil end
       else
+        if type(list) == "table" then searchText[mail] = nil end
         if type(list) == "table" and #spareLists < MAX_MAILS then
           for k = #list, 1, -1 do list[k] = nil end
           spareLists[#spareLists + 1] = list
@@ -2705,25 +2720,47 @@ end
 
 local function Fold(text) return ns.Helpers.Lower(text) end
 
--- One matcher for every list a search narrows: the sender as written, the
--- sender as the row shows it (an auction outcome, "AH Sold"), and the
--- subject -- which for an auction mail is the item's name.
+-- One matcher for every list a search narrows, by the rule every list's
+-- search follows (Helpers.SearchHaystack): the sender as written, the sender
+-- as the row shows it (an auction outcome, "AH Sold"), the subject, and the
+-- name of every item the mail holds, from the IDs its record keeps
+-- (Helpers.SearchItemName: the client's item cache; names are never saved).
 --
 -- The folded text is kept per mail table (`searchText`, section 1): a search
 -- of every box used to colour, uncolour and fold every remembered mail on
--- every keystroke.
+-- every keystroke. Text built while an item's name was not loaded yet is
+-- built again once names have arrived (`searchMissed`, the fill it missed
+-- one at).
+local hayNames = {}
 local function Matches(mail, query)
+  local H = ns.Helpers
   local hay = searchText[mail]
-  if not hay then
+  local missed = searchMissed[mail]
+  if not hay or (missed and missed ~= H.SearchNamesFilled()) then
     local R = Rules()
-    local outcome = R and R.OutcomeSender and mail.kind and R.OutcomeSender(mail.kind) or ""
-    -- The outcome label arrives coloured; the escape codes are not searched.
-    outcome = outcome:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-    hay = Fold((mail.sender or "") .. "\001" .. (mail.subject or "") .. "\001" .. outcome)
+    local outcome = R and R.OutcomeSender and mail.kind and R.OutcomeSender(mail.kind) or nil
+    local items, n, miss = mail.it, 0, false
+    if type(items) == "table" then
+      -- Pairs of item ID and count.
+      for k = 1, #items, 2 do
+        local name = H.SearchItemName(items[k])
+        if name then
+          n = n + 1
+          hayNames[n] = name
+        else
+          miss = true
+        end
+      end
+    end
+    hay = H.SearchHaystack(mail.sender, outcome, mail.subject, hayNames, n)
+    for j = n, 1, -1 do hayNames[j] = nil end
     -- Kept only once the row rules could name the outcome.
-    if R then searchText[mail] = hay end
+    if R then
+      searchText[mail] = hay
+      searchMissed[mail] = miss and H.SearchNamesFilled() or nil
+    end
   end
-  return hay:find(query, 1, true) ~= nil
+  return H.SearchFinds(hay, query)
 end
 MM.Fold = Fold
 
@@ -3727,6 +3764,14 @@ function MM.Refresh()
   local frame = MM._frame
   if frame and frame:IsShown() then Refresh(frame) end
 end
+
+-- Item names a search was missing have arrived (Helpers.OnSearchNames): the
+-- window again, once, if it is showing a search. Nothing otherwise.
+function MM.SearchNamesArrived()
+  local frame = MM._frame
+  if frame and frame:IsShown() and SearchQuery(frame) ~= "" then Refresh(frame) end
+end
+if ns.Helpers and ns.Helpers.OnSearchNames then ns.Helpers.OnSearchNames(MM.SearchNamesArrived) end
 
 -- The rows on screen bound again where they stand, without re-reading the
 -- box: the arrange mode's pointer moved (Core/Arrange.lua).
