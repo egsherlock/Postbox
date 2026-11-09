@@ -20,7 +20,7 @@
 
 | | |
 |---|---|
-| **Mail tab** | One-click collection in the order your list shows, search and row selection, optional buttons by kind and for your own character groups, finished mail out of the way under one quiet bar, and a History of what you collected. |
+| **Mail tab** | One-click collection in the order your list shows, search and row selection, optional buttons by kind and for your own character groups, finished mail out of the way under one quiet bar, and a History of what you collected and sent. |
 | **Arrange** | Drag, hide and set up every column and button right in the window; each list keeps its own layout. |
 | **Mail Memory** | Every character's last-seen mailbox, from anywhere, searchable across characters, with warnings before mail is lost. |
 | **Send tab** | Names complete as you type, a line says what a send will do, gold always asks first, and more than twelve items go out in one press. |
@@ -146,11 +146,18 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
 
 The clock beside Inbox lists what Postbox collected on this character, newest
 first: when, from whom, what came out and what it was worth, with the
-letter's text kept after the mail is gone. **Keep History for** 7, 14, 21 or
-30 days, or **Never** (asks, then clears every character's). At most 1,000
-entries per character. History has its own layout, shows when you collected
-("3d ago" or the date, either way round), and **Search every character**
-looks through all of them.
+letter's text kept after the mail is gone. **Received** and **Sent** switch
+between that and the mail you sent: who each went to, exactly as you
+addressed it, what it carried, its gold and any C.O.D. After a send, the line
+above Send says who it went to (click it, or the clock in the Recipient
+field, to open Sent). Pick another character to see their History and Sent.
+**Keep History for** 7, 14, 21 or 30 days, or **Never** (asks, then clears
+every character's). At most 1,000 entries of each per character. History has
+its own layout, shows when you collected ("3d ago" or the date, either way
+round), and **Search every character** looks through all of them.
+
+Every search, here, on the Mail tab and in Mail Memory, finds a mail by its
+sender or recipient, its subject, or any item attached to it.
 
 <br clear="all" />
 

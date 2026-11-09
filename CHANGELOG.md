@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.61.0
+
+### Sent mail
+
+- **See what you sent:** History now has **Received** and **Sent**. Sent
+  lists every mail Postbox sends: who it went to, exactly as you addressed
+  it, with their realm, and what it carried, its gold and any C.O.D. It
+  follows **Keep History for**, and you can search it like the rest.
+- **Know where that mail went:** after a send, the line above Send says who
+  it went to. Hover it for the full name, realm and items, or click it to
+  open Sent. The new clock in the Recipient field opens Sent too.
+- **The character picker keeps your list:** pick another character while
+  in History to see their History and Sent; Inbox shows their saved box.
+
+### Search
+
+- **Search finds mail by what's inside it:** type an item's name to find
+  any mail it's attached to, in the Mail tab, Mail Memory and History
+  alike. Typing in the search box is lighter, too.
+
+### Fixed
+
+- A character whose mail Postbox couldn't count, such as auctions that
+  ended while you played someone else, now says **new** (or **2+**) in the
+  minimap tooltip and the character list, instead of 0.
+- The long-unopened warning says what it means: "mailbox last opened 24
+  days ago", or "mail waiting 24 days".
+
 ## 1.60.0
 
 **Postbox now runs in World of Warcraft: Forever as well as retail**, from

@@ -18,7 +18,7 @@
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">In the order you see.</span></strong> Gold, items and letters come out in your list's order. Sort by time left and what's about to expire goes first.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Bags checked first.</span></strong> Keep a few slots free for loot. If your bags fill anyway, the run stops cleanly and says what's left.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">History.</span></strong> What you collected, kept for a week or up to a month: who, what, how much, even the letter's text.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">History.</span></strong> What you collected and what you sent, kept for a week or up to a month: who, what, how much, even the letter's text. Search any of it by an item's name.</li>
 </ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Or take only what you want</h2>

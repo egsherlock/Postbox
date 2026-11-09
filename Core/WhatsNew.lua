@@ -66,6 +66,11 @@ local KEEP = 3
 
 local function Releases()
   return {
+    { version = "1.61.0", groups = {
+      { "WHATSNEW_161_SENT", "WHATSNEW_161_SENT_LINES" },
+      { "WHATSNEW_161_SEARCH", "WHATSNEW_161_SEARCH_LINES" },
+      { "WHATSNEW_FIXED", "WHATSNEW_161_FIXED_LINES" },
+    } },
     { version = "1.60.0", placard = "WHATSNEW_160_PLACARD", note = "WHATSNEW_160_BUGS", groups = {
       { "WHATSNEW_160_FOREVER", "WHATSNEW_160_FOREVER_LINES" },
       { "WHATSNEW_160_EXPIRY", "WHATSNEW_160_EXPIRY_LINES" },
@@ -84,10 +89,6 @@ local function Releases()
       { "WHATSNEW_150_UI", "WHATSNEW_150_UI_LINES" },
       { "WHATSNEW_150_LIGHTER", "WHATSNEW_150_LIGHTER_LINES" },
       { "WHATSNEW_FIXED", "WHATSNEW_150_FIXED_LINES" },
-    } },
-    { version = "1.40.1", groups = {
-      { "WHATSNEW_IMPROVED", "WHATSNEW_1401_IMPROVED_LINES" },
-      { "WHATSNEW_FIXED", "WHATSNEW_1401_FIXED_LINES" },
     } },
   }
 end
