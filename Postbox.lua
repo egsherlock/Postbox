@@ -374,22 +374,25 @@ end
 
 -- 1.61: the category buttons have a new default (Core/MailboxUI.lua,
 -- GetGridLayout: three in a row, the other three hidden), which a profile
--- without an arrangement of its own reads. One that had Postbox before it
--- keeps what it had: its arrangement as the old default laid it, every
--- button in the grid's own order (a group's after them, as before), written
--- out once. Settled once per install, by its own mark at the root rather
--- than by `savedBy`, which a 1.61 build from before this default also
--- stamps; the mark stays through Reset everything (CENSUS_KEEP), so every
+-- without an arrangement of its own reads. One last saved by 1.50 to 1.60,
+-- or by a 1.61 build from before this default, keeps what it had: its
+-- arrangement as the old default laid it, every button in the grid's own
+-- order (a group's after them, as before), written out once. A profile from
+-- 1.40 or earlier takes the new default: the 1.50 step (UPGRADES) has just
+-- put it on today's defaults. Settled once per install, by its own mark at
+-- the root, since a 1.61 build from before this default also stamps
+-- `savedBy`; the mark stays through Reset everything (CENSUS_KEEP), so every
 -- reset after it gives the new default. `fresh`: no saved variables at all
--- (ns.freshInstall), which starts on the new default.
+-- (ns.freshInstall), which starts on the new default; `savedBy`:
+-- SavedByRelease's answer, read before this load stamped it.
 local GRID_SETTLED = "gridDefault"
 local GRID_BEFORE_161 = "bought,sold,canceled,expired,other,alts"
 
-local function SettleGridDefault(fresh)
+local function SettleGridDefault(fresh, savedBy)
   local db = PostboxDB
   if type(db) ~= "table" or db[GRID_SETTLED] ~= nil then return end
   db[GRID_SETTLED] = "1.61"
-  if fresh then return end
+  if fresh or not (savedBy and savedBy >= RELEASE_150) then return end
   local profile = db.profile
   if type(profile) == "table" and profile.gridLayout == nil then profile.gridLayout = GRID_BEFORE_161 end
 end
