@@ -3696,6 +3696,189 @@ local function IconPlate(parent, atlases, size)
   return plate
 end
 
+-- Whose box: one control for both windows, the Mail tab's top row and this
+-- one's. The picker is a cell, the crest of the box on screen and a caret
+-- under which its list opens, and the first of a ring whose next cell names
+-- the box: the Mail tab's Inbox, or another character's name and count in
+-- its class colour; here, always the name. The ring is the caller's (a
+-- texture under the cells, each cell's own ring put away), as Inbox | Done
+-- and the find plate are one ring.
+MM.PICK_W = 31
+MM.PLATE_MAX = 160
+-- The letters of a name the plate keeps however narrow it has to go.
+-- Three: with the class colour and the crest beside them they tell a
+-- roster's characters apart, where two letters too often do not; a name no
+-- longer than that is never cut at all.
+MM.PLATE_LETTERS = 3
+
+-- The caret, a grey glyph as the clock's is, brightening under the pointer
+-- where the plate is drawn as a tab is (Theme.SetPlateGlyph).
+function MM.PaintCaret(glyph)
+  ns.Theme.SetGrey(glyph, 1)
+  glyph:SetAlpha(0.85)
+end
+
+-- parent, height -> the picker's cell: as narrow as the square it was plus
+-- the step that stood between it and the next control, which the ring's
+-- shared divider gives back, so no row grows for it. Clicks, tooltip and
+-- crest are the caller's.
+function MM.NewPickCell(parent, height)
+  local T = ns.Theme
+  local cell = T.CreatePlate(parent, "segment")
+  cell:SetSize(MM.PICK_W, height)
+  cell:SetText("")
+  cell.Icon = cell:CreateTexture(nil, "OVERLAY")
+  cell.Icon:SetSize(height - 8, height - 8)
+  cell.Icon:SetPoint("LEFT", cell, "LEFT", 4, 0)
+  local caret = T.Glyph and T.Glyph(cell, "caret", 4, "OVERLAY")
+  if caret then
+    caret:SetPoint("CENTER", cell, "LEFT", 25, 0)
+    T.SetPlateGlyph(cell, caret, MM.PaintCaret)
+  end
+  cell:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  return cell
+end
+
+-- parent -> the plate that names a box. The count has a caption of its own,
+-- used only while a long name is cut: the ellipsis then falls in the name
+-- and the number stays whole beside it (MM.FitPlate).
+function MM.NewNamePlate(parent)
+  local T = ns.Theme
+  local plate = T.CreatePlate(parent, "segment")
+  plate.Count = T.CreateText(plate, "segment")
+  plate.Count:SetPoint("LEFT", plate.Text, "RIGHT", 0, 0)
+  plate.Count:SetWordWrap(false)
+  plate.Count:Hide()
+  return plate
+end
+
+-- owner, sample, text -> the width `text` takes in `sample`'s face, on a
+-- string of the owner's kept for it, so the plate's own words are never
+-- set to be measured.
+function MM.MeasureWith(owner, sample, text)
+  local fs = owner._pbMeasure
+  if not fs then
+    fs = owner:CreateFontString(nil, "ARTWORK")
+    fs:Hide()
+    owner._pbMeasure = fs
+  end
+  local path, size, flags = sample:GetFont()
+  if path and (fs.__pbPath ~= path or fs.__pbSize ~= size or fs.__pbFlags ~= flags) then
+    fs:SetFont(path, size, flags)
+    fs.__pbPath, fs.__pbSize, fs.__pbFlags = path, size, flags
+  end
+  fs:SetText(text or "")
+  local width = fs:GetStringWidth()
+  return (type(width) == "number" and width > 0) and width or 0
+end
+
+-- The plate's caption, measured when a box is put on screen: whole, as it
+-- is shown while it fits; and the name and the count apart, with the
+-- narrowest the name may go, for when it does not. `count` is the caption's
+-- " (N)", or ""; `lit`, whether the plate is drawn selected, which its ink
+-- is made for; `measure(owner, fs, text)` the caller's measure. `minW` is
+-- the narrowest the plate itself may be.
+function MM.MeasurePlate(plate, realm, name, count, lit, measure, owner)
+  local T = ns.Theme
+  local M = T.Metrics
+  local shown = MM.ClassName(realm, name, true, T.PlateGround(plate, lit))
+  local fs = plate:GetFontString()
+  plate.pad = 2 * M.tightGap + 12
+  plate.caption, plate.nameText = shown .. count, shown
+  plate.fullName = MM.ClassName(realm, name, nil, "tooltip")
+  plate._lit = lit
+  plate.Count:SetText(count)
+  plate.natW = measure(owner, fs, plate.caption) + plate.pad
+  plate.nameW = measure(owner, fs, shown)
+  plate.countW = (count ~= "") and measure(owner, fs, count) or 0
+  -- The first letters, by character: a name can be accented or Cyrillic.
+  local raw = tostring(name or "")
+  local cut, letters = 0, 0
+  for letter in raw:gmatch("[^\128-\191][\128-\191]*") do
+    letters = letters + 1
+    cut = cut + #letter
+    if letters >= MM.PLATE_LETTERS then break end
+  end
+  -- A pixel over the measure, so the client's own cut leaves them standing.
+  local least = measure(owner, fs, raw:sub(1, cut) .. "...") + 1
+  plate.minNameW = math.min(plate.nameW, least)
+  plate.minW = math.min(plate.natW, plate.pad + plate.minNameW + plate.countW)
+end
+
+-- The plate at the width a row can give it (`room`), capped at PLATE_MAX.
+-- While its whole caption fits it is drawn whole, centred; past that the
+-- name gives way -- an ellipsis, down to its first letters -- and the count
+-- stays whole beside it, the full name in the tooltip. Never narrower than
+-- `minW`: a row that cannot give it that much is made wider instead.
+-- Returns the width.
+function MM.FitPlate(plate, room)
+  local T = ns.Theme
+  local fs, pad = plate.Text, plate.pad
+  local cap = math.min(MM.PLATE_MAX, room)
+  local whole = plate.natW <= cap
+  if whole ~= plate._whole then
+    plate._whole = whole
+    fs:ClearAllPoints()
+    if whole then
+      fs:SetPoint("CENTER", plate, "CENTER", 0, 0)
+      fs:SetJustifyH("CENTER")
+    else
+      fs:SetPoint("LEFT", plate, "LEFT", pad / 2, 0)
+      fs:SetJustifyH("LEFT")
+    end
+    plate.Count:SetShown(not whole)
+  end
+  local width
+  if whole then
+    width = plate.natW
+    T.FitText(fs, width - pad, plate.caption, plate)
+  else
+    local nameW = math.min(plate.nameW, math.max(plate.minNameW, math.floor(cap - pad - plate.countW)))
+    T.FitText(fs, nameW, plate.nameText, plate)
+    width = pad + nameW + plate.countW
+  end
+  plate._room = room
+  plate:SetWidth(width)
+  return width
+end
+
+-- The count beside a cut name wears the caption's colour, as it does
+-- inside the whole caption, inked for the plate's own ground.
+function MM.PaintPlateCount(plate)
+  local T = ns.Theme
+  local tokens, selected = T.PlateTokens(plate), plate.isSelected
+  T.SetColor(plate.Count, selected and "accentBright" or (tokens and tokens.captionToken) or "plateCaption",
+    T.PlateGround(plate, selected))
+end
+
+-- The cells of one ring (`first` .. `last`, every plate in `cells` between
+-- them) in one ring: each cell's own ring put away for the ring texture
+-- under them, anchored from the first to the last; or (`on` false) each its
+-- own again. `cells` is the caller's list of every plate the ring can hold.
+-- Only on a change.
+function MM.JoinRing(ring, cells, on, first, last)
+  if ring._on == on and ring._first == first and ring._last == last then return end
+  ring._on, ring._first, ring._last = on, first, last
+  for i = 1, #cells do
+    local edge = cells[i]._edge
+    if edge then edge:SetShown(not on) end
+  end
+  if on and first and last then
+    ring:ClearAllPoints()
+    ring:SetPoint("TOPLEFT", first, "TOPLEFT", 0, 0)
+    ring:SetPoint("BOTTOMRIGHT", last, "BOTTOMRIGHT", 0, 0)
+  end
+  ring:SetShown(on and first ~= nil)
+end
+
+-- The ring texture in the ring the plates would wear at rest: their
+-- tokens' (a style's, Theme.PlateTokens) or the palette's.
+function MM.PaintRing(ring, plate)
+  local T = ns.Theme
+  local c = (T.PlateTokens(plate) or T.Colors).plateEdge
+  if c then ring:SetColorTexture(c[1], c[2], c[3], c[4] or 1) end
+end
+
 -- The order a list is shown in, from its sort (MailboxUI.GetListSort):
 -- "mailbox" or "expiry". `list` is "memory" for this window, "inbox" for
 -- the Mail tab's.

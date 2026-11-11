@@ -4431,24 +4431,25 @@ local function PaintViewToggle(panel)
     local seg = container.buttons[i]
     T.SetPlateSelected(seg, seg.segId == active)
   end
-  -- Inbox | Done's ring, in the ring the plates would wear at rest, as
-  -- History's switch's is (RV.PaintSides).
-  if container.segRing then
-    local c = (T.PlateTokens(container.buttons[1]) or T.Colors).plateEdge
-    if c then container.segRing:SetColorTexture(c[1], c[2], c[3], c[4] or 1) end
-  end
+  local Memory = ns.MailMemory
+  -- The ring of the picker's cell, Inbox and Done, in the ring the plates
+  -- would wear at rest, as History's switch's is (RV.PaintSides).
+  if container.segRing then Memory.PaintRing(container.segRing, container.buttons[1]) end
   if container.history then T.SetPlateSelected(container.history, active == VIEW_HISTORY) end
   if container.sides then RV.PaintSides(panel) end
   local alt = container.alt
   if alt then
-    -- Selected while that character's mail is on screen: its box, or its
-    -- History (the picker chooses whose mail, the segments which list).
-    T.SetPlateSelected(alt, AV.Other(panel))
-    -- The count beside a cut name wears the caption's colour, as it does
-    -- inside the whole caption, inked for the plate's own ground.
-    local tokens, selected = T.PlateTokens(alt), alt.isSelected
-    T.SetColor(alt.Count, selected and "accentBright" or (tokens and tokens.captionToken) or "plateCaption",
-      T.PlateGround(alt, selected))
+    -- The cell that names the list on screen is the lit one: the other
+    -- box's name while its box is shown, the clock while its History is.
+    local lit = AV.Lit(panel)
+    T.SetPlateSelected(alt, lit)
+    -- Its name inked for the ground it now stands on: measured again only
+    -- when that changed, and fitted to the room the row last gave it.
+    if alt:IsShown() and alt._lit ~= lit and panel._alt and Memory then
+      AV.MeasurePlate(panel, alt, Memory, panel._alt)
+      if alt._room then Memory.FitPlate(alt, alt._room) end
+    end
+    Memory.PaintPlateCount(alt)
   end
 end
 
@@ -4495,12 +4496,10 @@ local function BuildViewToggle(panel)
     -- nothing to hook and nothing to replace them with.
     container.buttons[i] = seg
   end
-  -- Inbox and Done in one ring while both stand in the row (RV.JoinSegs):
-  -- the row's own texture under the two plates, as History's switch has
-  -- (RV.BuildSides).
+  -- The picker's cell, Inbox (or the other box's name) and Done in one ring
+  -- while two of them stand in the row (RV.JoinSegs): the row's own texture
+  -- under the plates, as History's switch has (RV.BuildSides).
   local segRing = container:CreateTexture(nil, "BACKGROUND", nil, -1)
-  segRing:SetPoint("TOPLEFT", container.buttons[1], "TOPLEFT", 0, 0)
-  segRing:SetPoint("BOTTOMRIGHT", container.buttons[#container.buttons], "BOTTOMRIGHT", 0, 0)
   segRing:Hide()
   container.segRing = segRing
 
@@ -4545,30 +4544,22 @@ local function BuildViewToggle(panel)
   -- History is on screen (RV.LayoutSides).
   RV.BuildSides(panel, container)
 
-  -- Another character's box, while one is on screen: its name in its class
-  -- colour and its count, selected, where this character's Inbox sits beside
-  -- it. A click opens the character list again; a right-click goes back to
-  -- this character's own box (AV.Back).
-  local alt = T.CreatePlate(panel, "segment")
-  alt:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-  alt:SetScript("OnClick", function(_, button)
-    if button == "RightButton" then AV.Back(panel) else CT.OpenPicker(panel) end
+  -- Another character's box, while one is on screen: the Inbox cell names
+  -- it, its name in its class colour and its count, in this character's
+  -- Inbox's place in the ring after the picker's cell (MailMemory's
+  -- NewNamePlate, the plate Mail Memory's window names its box with). It is
+  -- that character's Inbox: a click from its History shows its box.
+  local Memory = ns.MailMemory
+  local alt = Memory.NewNamePlate(container)
+  alt:SetScript("OnClick", function()
+    if panel.viewMode ~= VIEW_COLLECT then SetViewMode(panel, VIEW_COLLECT) end
   end)
-  -- The count on a caption of its own, used only while a long name is cut:
-  -- the ellipsis then falls in the name and the number stays whole beside
-  -- it (AV.FitPlate). Coloured as the caption is (PaintViewToggle).
-  alt.Count = T.CreateText(alt, "segment")
-  alt.Count:SetPoint("LEFT", alt.Text, "RIGHT", 0, 0)
-  alt.Count:SetWordWrap(false)
-  alt.Count:Hide()
-  -- The whole name, realm and all -- the plate may show only its start --
-  -- and the way back, which the plate cannot show by itself.
+  -- The whole name, realm and all: the plate may show only its start.
   alt:HookScript("OnEnter", function(self)
     if not (self.fullName and AV.Other(panel)) then return end
     local T2 = Th()
     T2.TipBegin(self, "ANCHOR_TOPRIGHT")
     T2.TipTitle(self.fullName)
-    T2.TipHint(L()["PICKER_BACK_HINT"])
     GameTooltip:Show()
   end)
   alt:HookScript("OnLeave", function(self)
@@ -4680,20 +4671,15 @@ local function BuildSearchBox(panel)
   search.Join(panel.Sort)
   RV.PlaceSort(panel, true)
 
-  -- The character picker, first in the row: whose mail is on screen decides
-  -- everything after it. It wears the crest of the box on screen, and lists
-  -- every character with mail to look at. Placed by the row's layout
-  -- (LayoutViewToggle).
-  local picker = T.CreatePlate(panel, "segment")
-  picker:SetSize(M.segmentHeight, M.segmentHeight)
+  -- The character picker, the first cell of the Inbox's ring: whose mail is
+  -- on screen decides everything after it. It wears the crest of the box on
+  -- screen, and lists every character with mail to look at (MailMemory's
+  -- NewPickCell, the cell Mail Memory's window has). Placed by the row's
+  -- layout (LayoutViewToggle).
+  local picker = ns.MailMemory.NewPickCell(panel.ViewToggle, M.segmentHeight)
   picker:SetPoint("LEFT", panel.ViewToggle, "LEFT", 0, 0)
-  picker:SetText("")
-  picker.Icon = picker:CreateTexture(nil, "OVERLAY")
-  picker.Icon:SetSize(M.segmentHeight - 8, M.segmentHeight - 8)
-  picker.Icon:SetPoint("CENTER")
   -- A right-click, while another character's box is on screen, goes back to
   -- this character's own (AV.Back); on this character's own it does nothing.
-  picker:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   picker:SetScript("OnClick", function(_, button)
     if button == "RightButton" then AV.Back(panel) else CT.OpenPicker(panel) end
   end)
@@ -4701,6 +4687,9 @@ local function BuildSearchBox(panel)
   picker:HookScript("OnLeave", function() GameTooltip:Hide() end)
   picker:Hide()
   panel.Picker = picker
+  -- Every plate the Inbox's ring can hold (RV.JoinSegs).
+  local box = panel.ViewToggle
+  box.ringCells = { picker, box.alt, box.buttons[1], box.buttons[2] }
 end
 
 -------------------------------------------------------------
@@ -6064,7 +6053,8 @@ end
 -- The segments actually on screen, in order. Hiding one is a layout fact,
 -- not a special case: everything below sizes and spaces what this returns.
 -- Done is this character's read mail, so it steps out while another box is
--- on screen (`other`), and is back the moment this one is.
+-- on screen (`other`), and is back the moment this one is; the Inbox cell
+-- then names that box (the other box's plate stands in its place).
 -- The list is the container's own, filled again on every layout: a list
 -- refresh lays the row out, and nothing reads the list past the layout.
 local function VisibleSegments(container, other)
@@ -6074,10 +6064,10 @@ local function VisibleSegments(container, other)
     container._shownSegs = shown
   end
   local n = 0
-  local tab = RV.Mode() == "tab" and not other
+  local tab = RV.Mode() == "tab"
   for i = 1, #container.buttons do
     local seg = container.buttons[i]
-    local on = (seg.segId ~= VIEW_DONE) or tab
+    local on = not other and ((seg.segId ~= VIEW_DONE) or tab)
     seg:SetShown(on)
     if on then
       n = n + 1
@@ -6105,8 +6095,8 @@ local function LayoutViewToggle(panel)
   -- design says a switch should.
   local gap = T.Metrics.space.snug
   -- Another character's mail: nothing there can be deleted or collected, so
-  -- the row is the Inbox (the way home, or from its History its box), its
-  -- History, the character's name, the picker and the search.
+  -- the row is the picker's cell, the character's name in the Inbox's place
+  -- (from its History, its box), its History and the search.
   local other = AV.Other(panel)
   local shown = VisibleSegments(container, other)
 
@@ -6117,20 +6107,27 @@ local function LayoutViewToggle(panel)
     container._sizeOpts = opts
   end
   local M = T.Metrics
-  -- Inbox and Done, both in the row, are one ring (RV.JoinSegs): each as
-  -- wide as the shared rule gives, the second over the first's last column,
+  -- Whose: the picker's cell, while there is another box to pick, and the
+  -- other box's plate in the Inbox's place while one is on screen.
+  local picker = panel.Picker
+  local pick = picker and picker:IsShown() and picker or nil
+  local alt = container.alt
+  local named = alt and alt:IsShown() and alt.natW
+  -- The picker's cell, Inbox (or the name) and Done are one ring
+  -- (RV.JoinSegs): each cell over the last column of the one before it,
   -- their divider. Inbox alone stands as a plate of its own.
-  local joined = #shown > 1
-  RV.JoinSegs(container, joined)
-  local segGap = joined and -1 or gap
+  local first = pick or shown[1] or (named and alt) or nil
+  local last = (named and alt) or shown[#shown] or pick
+  RV.JoinSegs(container, first ~= last, first, last)
+  local segGap = #shown > 1 and -1 or gap
   opts.height, opts.gap, opts.minWidth = M.segmentHeight, segGap, M.buttonMinWidth
-  -- The row reads in order of meaning: whose mail (the picker, and the
-  -- other box's name beside it while one is on screen), which list (the
-  -- segments, then the History clock), which half (Received and Sent,
-  -- joined to the clock), then at the far end find (the search) and order
-  -- (the sort). Every square -- the picker, the clock, the sort -- is one
-  -- plate the segments' height, and the controls of one end stand the snug
-  -- step apart. Measured first, placed once the name's room is known.
+  -- The row reads in order of meaning: whose mail (the picker's cell, and
+  -- the other box's name in the Inbox's place while one is on screen), which
+  -- list (the segments, then the History clock), which half (Received and
+  -- Sent, joined to the clock), then at the far end find (the search) and
+  -- order (the sort). Every square -- the clock, the sort -- is one plate
+  -- the segments' height, and the controls of one end stand the snug step
+  -- apart. Measured first, placed once the name's room is known.
   local per, total = T.SizeRow(shown, opts)
   -- The clock: square when it wears the icon, its caption's width when it
   -- fell back to text. Out of the row, which closes up without it, while
@@ -6151,13 +6148,12 @@ local function LayoutViewToggle(panel)
   -- column, one ring with it.
   local sidesW = RV.LayoutSides(panel, container)
   if sidesW > 0 then total = total + sidesW - 1 end
-  -- Whose: the picker, then the name.
-  local picker = panel.Picker
-  local lead = (picker and picker:IsShown()) and M.segmentHeight + gap or 0
+  -- The picker's cell, its last column the next cell's divider.
+  local lead = pick and pick:GetWidth() - 1 or 0
 
   -- The row's far end: the find plate, the search and the sort as its last
   -- cell. The other box's name is given the room the rest of the row leaves
-  -- it (AV.FitPlate). A row short of room has the search give back the room
+  -- it (MailMemory.FitPlate). A row short of room has the search give back the room
   -- the sort's cell takes (RV.SortRoom) before the name is cut, and only
   -- that: `least`, the far end with the search at its narrowest and the
   -- name's, is what the row needed before there was a sort.
@@ -6171,10 +6167,9 @@ local function LayoutViewToggle(panel)
   -- Never past what the placeholder needs (RV.SearchLeast): a row short of
   -- more raises the window's floor rather than cutting the search's word.
   if panel.SearchWrap then give = min(give, max(0, SEARCH_W - RV.SearchLeast(panel))) end
-  local alt = container.alt
-  local named = alt and alt:IsShown() and alt.natW
+  local Memory = ns.MailMemory
   if panel.SearchWrap then
-    local want = right + (named and gap + min(alt.natW, AV.PLATE_MAX) or 0)
+    local want = right + (named and min(alt.natW, Memory.PLATE_MAX) or 0)
     local given = min(give, max(0, ceil(want - (row - left - M.gap))))
     RV.SizeSearch(panel, given)
     right = right - given
@@ -6182,22 +6177,23 @@ local function LayoutViewToggle(panel)
   local least = right - (give - (panel._searchGiven or 0))
   local altW = 0
   if named then
-    altW = AV.FitPlate(panel, row - left - M.gap - right - gap)
-    least = least + gap + alt.minW
+    altW = Memory.FitPlate(alt, row - left - M.gap - right)
+    least = least + alt.minW
   end
 
-  -- Placed: the picker at the row's start, the name after it, the rest after
-  -- them. The container keeps its place (the list and the strip hang from
-  -- it) and its width is the whole of the row's start.
-  if lead > 0 then
-    picker:ClearAllPoints()
-    picker:SetPoint("LEFT", container, "LEFT", 0, 0)
+  -- Placed: the picker's cell at the row's start, the name or the segments
+  -- over its last column, the rest after them. The container keeps its
+  -- place (the list and the strip hang from it) and its width is the whole
+  -- of the row's start.
+  if pick then
+    pick:ClearAllPoints()
+    pick:SetPoint("LEFT", container, "LEFT", 0, 0)
   end
   local x = lead
   if named then
     alt:ClearAllPoints()
     alt:SetPoint("LEFT", container, "LEFT", x, 0)
-    x = x + altW + gap
+    x = x + altW
   end
   for i = 1, #shown do
     local seg = shown[i]
@@ -6336,9 +6332,10 @@ end
 -- Other characters
 --
 -- The Mail tab shows another character's box, as Mail Memory remembers it:
--- pick a character with the button at the row's start and the list is
--- that box -- read-only, the same rows, the name in its class colour beside
--- the button and before this character's own Inbox, which is the way back. The toggle inside the
+-- pick a character with the cell at the row's start and the list is that
+-- box -- read-only, the same rows, the name in its class colour in the
+-- Inbox's cell beside it; this character, first in the list, is the way
+-- back. The toggle inside the
 -- search box searches every character's box at once, each character's
 -- matches under its name. The mailbox closing puts everything back to this
 -- character's own box, so a later visit never opens on somebody else's mail.
@@ -6414,85 +6411,24 @@ function AV.Other(panel)
   return panel ~= nil and panel._alt ~= nil and AV.Memory() ~= nil
 end
 
--- The plate's widest, and the letters of a name it keeps however narrow it
--- has to go. Three: with the class colour and the crest beside them they
--- tell a roster's characters apart, where two letters too often do not; a
--- name no longer than that is never cut at all.
-AV.PLATE_MAX = 160
-AV.PLATE_LETTERS = 3
+-- The cell that names the list on screen is lit: the other box's plate
+-- while its box is on screen, not while its History is (the clock is).
+function AV.Lit(panel)
+  return AV.Other(panel) and panel.viewMode ~= VIEW_HISTORY
+end
 
--- The plate's caption, measured when a box is put on screen: whole, as it is
--- shown while it fits; and the name and the count apart, with the narrowest
--- the name may go, for when it does not. `minW` is the narrowest the plate
--- itself may be, which is what the row reports as its need.
+-- The other box's plate, measured when its box is put on screen
+-- (MailMemory.MeasurePlate, the rule Mail Memory's window names its box
+-- by): its name inked for the ground it stands on, and its count as the
+-- Inbox's would be, with Show mail counts.
 function AV.MeasurePlate(panel, plate, Memory, who)
-  local M = Th().Metrics
-  -- The name inked for the plate it stands on, selected while the box is
-  -- on screen (PaintViewToggle).
-  local name = Memory.ClassName(who.realm, who.name, true, Th().PlateGround(plate, true))
   local count = ""
   if ShowTabCounts() then
     -- With mail that came uncounted, "N+" or "new" (MailMemory.CountText).
     local n, uncounted = Memory.BoxCount(who.realm, who.name)
     count = " (" .. ((uncounted and Memory.CountText) and Memory.CountText(n, true) or FormatCount(n)) .. ")"
   end
-  local fs = plate:GetFontString()
-  plate.pad = 2 * M.tightGap + 12
-  plate.caption, plate.nameText = name .. count, name
-  plate.fullName = Memory.ClassName(who.realm, who.name, nil, "tooltip")
-  plate.Count:SetText(count)
-  plate.natW = MeasureWith(panel, fs, plate.caption) + plate.pad
-  plate.nameW = MeasureWith(panel, fs, name)
-  plate.countW = (count ~= "") and MeasureWith(panel, fs, count) or 0
-  -- The first letters, by character: a name can be accented or Cyrillic.
-  local raw = tostring(who.name or "")
-  local cut, letters = 0, 0
-  for letter in raw:gmatch("[^\128-\191][\128-\191]*") do
-    letters = letters + 1
-    cut = cut + #letter
-    if letters >= AV.PLATE_LETTERS then break end
-  end
-  -- A pixel over the measure, so the client's own cut leaves them standing.
-  local least = MeasureWith(panel, fs, raw:sub(1, cut) .. "...") + 1
-  plate.minNameW = min(plate.nameW, least)
-  plate.minW = min(plate.natW, plate.pad + plate.minNameW + plate.countW)
-end
-
--- The plate at the width the row can give it (`room`), capped. While its
--- whole caption fits it is drawn exactly as it always was; past that the
--- name gives way -- an ellipsis, down to its first letters -- and the count
--- stays whole beside it, the full name in the tooltip. Never narrower than
--- `minW`: a row that cannot give it that much has the window made wider
--- instead (LayoutViewToggle). Returns the width.
-function AV.FitPlate(panel, room)
-  local T = Th()
-  local plate = panel.ViewToggle.alt
-  local fs, pad = plate.Text, plate.pad
-  local cap = min(AV.PLATE_MAX, room)
-  local whole = plate.natW <= cap
-  if whole ~= plate._whole then
-    plate._whole = whole
-    fs:ClearAllPoints()
-    if whole then
-      fs:SetPoint("CENTER", plate, "CENTER", 0, 0)
-      fs:SetJustifyH("CENTER")
-    else
-      fs:SetPoint("LEFT", plate, "LEFT", pad / 2, 0)
-      fs:SetJustifyH("LEFT")
-    end
-    plate.Count:SetShown(not whole)
-  end
-  local width
-  if whole then
-    width = plate.natW
-    T.FitText(fs, width - pad, plate.caption, plate)
-  else
-    local nameW = min(plate.nameW, max(plate.minNameW, floor(cap - pad - plate.countW)))
-    T.FitText(fs, nameW, plate.nameText, plate)
-    width = pad + nameW + plate.countW
-  end
-  plate:SetWidth(width)
-  return width
+  Memory.MeasurePlate(plate, who.realm, who.name, count, AV.Lit(panel), MeasureWith, panel)
 end
 
 -- The picker's crest, the toggle's tint, the other box's name beside Inbox,
@@ -6518,18 +6454,17 @@ function AV.Paint(panel)
       who and who.name or ns.Helpers.PlayerName())
     if crest then panel.Picker.Icon:SetAtlas(crest, false) end
   end
-  T.SetPlateSelected(panel.Picker, who ~= nil)
 
   -- The every-character toggle shows while there is another box to search,
   -- and the box says what it searches.
   AV.PaintSearch(panel, others)
 
-  -- The other box's name and count, just right of the picker that chose it:
-  -- the two read as one control. No realm -- the list the name was picked
-  -- from said which -- and never wider than the row can give it: a long name
-  -- is cut, its count kept (AV.FitPlate, from the row's layout below, which
-  -- places it). Measured from the full caption, so a cut never feeds the
-  -- next width.
+  -- The other box's name and count, in the Inbox's cell after the picker's
+  -- that chose it: one ring. No realm -- the list the name was picked from
+  -- said which -- and never wider than the row can give it: a long name is
+  -- cut, its count kept (MailMemory.FitPlate, from the row's layout below,
+  -- which places it). Measured from the full caption, so a cut never feeds
+  -- the next width.
   local plate = panel.ViewToggle and panel.ViewToggle.alt
   if plate then
     if who and Memory then
@@ -6569,9 +6504,8 @@ function AV.Leave(panel)
   return true
 end
 
--- A right-click on the picker or on the other box's plate: back to this
--- character's own box, as picking its own name from the list is -- the list
--- closes, and the view on screen before the visit returns. From this
+-- A right-click on the picker: back to this character's own box -- the
+-- list closes, and the view on screen before the visit returns. From this
 -- character's own box it does nothing. Whether there was anywhere to come
 -- back from.
 function AV.Back(panel)
@@ -9552,20 +9486,16 @@ function RV.JoinClock(hist, on)
   Th().SetPlateSelected(hist, hist.isSelected)
 end
 
--- Inbox and Done joined in one ring (`on`: both in the row) or standing as
--- plates of their own: joined, each puts its own ring away for the row's
+-- The picker's cell, Inbox (or the other box's name) and Done joined in one
+-- ring (`on`: two or more in the row, `first` to `last`) or Inbox standing
+-- as a plate of its own: joined, each puts its own ring away for the row's
 -- (BuildViewToggle's segRing, painted with the row by PaintViewToggle) and
 -- keeps its fill, hover, selected wash and underline; apart, the rings come
--- back. Only on a change.
-function RV.JoinSegs(container, on)
-  if (container._segsJoined == true) == on then return end
-  container._segsJoined = on
-  local buttons = container.buttons
-  for i = 1, #buttons do
-    local edge = buttons[i]._edge
-    if edge then edge:SetShown(not on) end
-  end
-  if container.segRing then container.segRing:SetShown(on) end
+-- back (MailMemory.JoinRing). Only on a change.
+function RV.JoinSegs(container, on, first, last)
+  local ring, cells = container.segRing, container.ringCells
+  if not (ring and cells) then return end
+  ns.MailMemory.JoinRing(ring, cells, on, first, last)
 end
 
 -- The width the search may give back to the switch beyond the sort's room:
