@@ -8884,7 +8884,8 @@ end
 -------------------------------------------------------------
 -- Find a setting
 --
--- The house search box (Theme.CreateSearchBox) at the left of the title
+-- A minimal search box -- a magnifier and muted words on a hairline, with
+-- the house's clear button (Find.Build) -- at the left of the title
 -- bar, where the Postbox window keeps its cog and arrange key, so it costs
 -- the panel no height: level with the title, whatever bar the look draws,
 -- and never nearer the title than GAP. Where the title leaves it less than
@@ -8920,7 +8921,8 @@ end
 -- The list hangs under the box on the house's popup card, the dropdowns'
 -- own (Theme.ApplyCard, opaque at any opacity): a line a match, its name
 -- and, muted at the right, its tab and group. The keyboard is the box's
--- own while it has it: typing, Enter picks the first line, Escape empties
+-- own while it has it: typing, Enter picks the first line (which wears the
+-- chosen-row mark, so it is plain which one Enter takes), Escape empties
 -- the box and then lets the keyboard go. A press outside the box and the
 -- list closes them, heard as GLOBAL_MOUSE_DOWN only while the box has the
 -- keyboard.
@@ -8929,6 +8931,11 @@ do
   local FIND = {
     X = 6,          -- the box in from the panel's left edge, as the window's cog
     W = 160, H = 20, MIN_W = 80,
+    -- The magnifier's height and its gap to the words, the clear button's
+    -- room at the right end, and the hairline's chrome at rest and lit.
+    GLYPH = 12, GLYPH_GAP = 5, CLEAR_W = 14, LINE_A = 0.22, LINE_HOT = 0.45,
+    -- The chosen line's wash (the accent) and bar, as the mail rows' are.
+    CHOSEN_A = 0.14, BAR_W = 2,
     GAP = 8,        -- the least room between the box and the title's first letter
     LIST_W = 340, LINE_H = 22, LINES = 10, PAD = 4, TEXT_X = 8, WHERE_GAP = 12,
     MARK_FOR = 1.6, -- seconds a picked row stays marked
@@ -9160,7 +9167,8 @@ do
   end
 
   local function LineEnter(self)
-    self.Wash:Show()
+    -- The chosen line keeps its own mark alone.
+    if not self.Chosen:IsShown() then self.Wash:Show() end
   end
 
   local function LineLeave(self)
@@ -9200,6 +9208,17 @@ do
       wash:SetAllPoints()
       wash:SetColorTexture(hover[1], hover[2], hover[3], hover[4])
       wash:Hide()
+      -- The chosen-row mark, worn by the line Enter takes (Find.Paint): a
+      -- wash, an accent bar at its left and its words in the accent.
+      local chosen = line:CreateTexture(nil, "BACKGROUND", nil, 1)
+      chosen:SetAllPoints()
+      chosen:Hide()
+      local bar = line:CreateTexture(nil, "ARTWORK")
+      bar:SetWidth(FIND.BAR_W)
+      bar:SetPoint("TOPLEFT", line, "TOPLEFT", 0, 0)
+      bar:SetPoint("BOTTOMLEFT", line, "BOTTOMLEFT", 0, 0)
+      bar:Hide()
+      line.Chosen, line.Bar = chosen, bar
       local where = T.CreateText(line, "secondary")
       where:SetPoint("RIGHT", line, "RIGHT", -FIND.TEXT_X, 0)
       where:SetJustifyH("RIGHT")
@@ -9263,12 +9282,19 @@ do
     Find.Paint(n, total)
   end
 
-  -- `n` lines from `hits`, and a quiet line under them for no match or for
-  -- matches past the last line.
+  -- `n` lines from `hits`, and a quiet line under them for matches past the
+  -- last line; with no match, the lists' one wording, "Nothing matches.",
+  -- centred where the lines would stand. The first line is the one Enter
+  -- takes, and wears the chosen-row mark (the accent's wash, bar and words,
+  -- as a chosen mail row does); the line under the pointer, a lighter wash
+  -- alone.
   function Find.Paint(n, total)
     local list = Find.List()
     local T = ns.Theme
     local inner = FIND.LIST_W - 2 * FIND.PAD - 2 * FIND.TEXT_X
+    local ar, ag, ab = T.GetAccent()
+    local mr, mg, mb = ar, ag, ab
+    if T.GetAccentTone then mr, mg, mb = T.GetAccentTone("mark") end
     for i = 1, FIND.LINES do
       local line = list.lines[i]
       local e = hits[i]
@@ -9278,9 +9304,16 @@ do
         local whereW = math.min(TextW(line.Where), math.floor(inner / 2))
         T.FitText(line.Where, whereW, e.where)
         T.FitText(line.Name, inner - whereW - FIND.WHERE_GAP, e.name)
-        T.SetColor(line.Name, "textPrimary")
+        local chosen = i == 1
+        T.SetColor(line.Name, chosen and "accent" or "textPrimary")
         T.SetColor(line.Where, "textSecondary")
-        line.Wash:SetShown(line:IsMouseOver())
+        line.Chosen:SetShown(chosen)
+        line.Bar:SetShown(chosen)
+        if chosen then
+          line.Chosen:SetColorTexture(ar, ag, ab, FIND.CHOSEN_A)
+          line.Bar:SetColorTexture(mr, mg, mb, 0.9)
+        end
+        line.Wash:SetShown(not chosen and line:IsMouseOver())
         line:Show()
       else
         line.e = nil
@@ -9288,11 +9321,13 @@ do
       end
     end
     local say = list.Say
-    local words = (n == 0 and L["OPT_FIND_NONE"]) or (total > n and L["OPT_FIND_MORE"]) or nil
+    local none = n == 0
+    local words = (none and L["EMPTY_LIST_SEARCH"]) or (total > n and L["OPT_FIND_MORE"]) or nil
     local h = FIND.PAD + n * FIND.LINE_H
     if words then
       say:SetText(words)
       T.SetColor(say, "textSecondary")
+      say:SetJustifyH(none and "CENTER" or "LEFT")
       say:ClearAllPoints()
       say:SetPoint("LEFT", list, "TOPLEFT", FIND.PAD + FIND.TEXT_X, -(h + FIND.LINE_H / 2))
       say:SetWidth(inner)
@@ -9397,14 +9432,45 @@ do
     if S.findBox then S.findBox:ClearFocus() end
   end
 
+  -- The box's hairline and magnifier: chrome at rest, brighter while the
+  -- pointer is on the box, the line in the accent while it has the
+  -- keyboard. Shared by every event that moves them, so nothing is made.
+  local function PaintLine()
+    local wrap, box = S.findWrap, S.findBox
+    if not (wrap and box) then return end
+    local T = ns.Theme
+    local focus = box:HasFocus() and true or false
+    local hot = focus or (wrap:IsMouseOver() and true or false)
+    if focus then
+      T.FillColor(wrap.Line, "accent")
+    else
+      T.FillChrome(wrap.Line, hot and FIND.LINE_HOT or FIND.LINE_A)
+    end
+    if wrap.Glyph then T.SetColor(wrap.Glyph, hot and "textPrimary" or "textSecondary") end
+  end
+  Find.PaintLine = PaintLine
+
   local function Gained(box)
     S.findWatch:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    PaintLine()
     Find.Typed(box:GetText())
   end
 
   local function Lost()
     S.findWatch:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+    PaintLine()
     Find.Hide()
+  end
+
+  local function Typed(box)
+    local text = box:GetText() or ""
+    S.findSearch.Placeholder:SetShown(text == "")
+    Find.Typed(text)
+  end
+
+  local function WrapDown()
+    local box = S.findBox
+    if box then box:SetFocus() end
   end
 
   -- Escape empties the box, and from an empty box lets the keyboard go.
@@ -9421,24 +9487,72 @@ do
     if first then Find.Pick(first) else box:ClearFocus() end
   end
 
+  -- The box, minimal: a magnifier (Theme.GLYPHS "search", where the build
+  -- has one), the muted words and a hairline under them, and the house's
+  -- clear button at the right end while there is text -- no solid box, so
+  -- it reads as part of the title bar in every look. Postbox's own: no
+  -- skin's tag is on it, and the edit box keeps the house's named font
+  -- (Theme.SetBoxFont), as the house search box's does.
   function Find.Build(frame)
     local T = ns.Theme
-    if not (T and T.CreateSearchBox) then return end
-    local search = T.CreateSearchBox(frame, FIND.W, FIND.H, L["OPT_FIND_PLACEHOLDER"], {
-      onTextChanged = Find.Typed,
-    })
-    local wrap, box = search.Wrap, search.Box
-    -- One line, cut short in its box where the box gives way (Find.Fit).
-    search.Placeholder:SetWordWrap(false)
+    if not (T and T.CreateText and T.SetBoxFont) then return end
+    local wrap = CreateFrame("Frame", nil, frame)
+    wrap:SetSize(FIND.W, FIND.H)
     wrap:SetFrameLevel(frame:GetFrameLevel() + 20)
     wrap:SetPoint("LEFT", frame, "TOPLEFT", FIND.X, -12)
+    wrap:EnableMouse(true)
+    wrap:SetScript("OnMouseDown", WrapDown)
+    wrap:SetScript("OnEnter", PaintLine)
+    wrap:SetScript("OnLeave", PaintLine)
+    local line = wrap:CreateTexture(nil, "BORDER")
+    line:SetHeight(1)
+    line:SetPoint("BOTTOMLEFT", wrap, "BOTTOMLEFT", 0, 0)
+    line:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", 0, 0)
+    wrap.Line = line
+    -- The words start after the magnifier, or at the line's start.
+    local glyph = type(T.Glyph) == "function" and T.Glyph(wrap, "search", FIND.GLYPH, "ARTWORK") or nil
+    local x = 0
+    if glyph then
+      glyph:SetPoint("LEFT", wrap, "LEFT", 0, 0)
+      x = math.ceil(glyph:GetWidth() or FIND.GLYPH) + FIND.GLYPH_GAP
+      wrap.Glyph = glyph
+    end
+    local box = CreateFrame("EditBox", nil, wrap)
+    box:SetAutoFocus(false)
+    local font = T.FontObject and T.FontObject("bodySmall")
+    if font then T.SetBoxFont(box, font) end
+    T.SetColor(box, "textPrimary")
+    box.__postboxNoEditSkin = true
+    box:SetMaxLetters(64)
+    box:SetPoint("TOPLEFT", wrap, "TOPLEFT", x, -2)
+    box:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -FIND.CLEAR_W, 2)
+    local placeholder = T.CreateText(wrap, "placeholder")
+    placeholder:SetPoint("TOPLEFT", wrap, "TOPLEFT", x, -2)
+    placeholder:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -FIND.CLEAR_W, 2)
+    placeholder:SetJustifyH("LEFT")
+    placeholder:SetJustifyV("MIDDLE")
+    -- One line, cut short where the box gives way (Find.Fit).
+    placeholder:SetWordWrap(false)
+    placeholder:SetText(L["OPT_FIND_PLACEHOLDER"])
+    box:SetScript("OnTextChanged", Typed)
     box:SetScript("OnEscapePressed", Escape)
     box:SetScript("OnEnterPressed", Enter)
     box:SetScript("OnEditFocusGained", Gained)
     box:SetScript("OnEditFocusLost", Lost)
+    box:SetScript("OnEnter", PaintLine)
+    box:SetScript("OnLeave", PaintLine)
+    -- The house's clear button, at the line's right end.
+    if T.AddClearButton then
+      local clear = T.AddClearButton(wrap, box)
+      clear:SetPoint("RIGHT", wrap, "RIGHT", 0, 0)
+    end
+    -- What the words take besides themselves, for Find.Fit's width.
+    wrap.__pbTextChrome = x + FIND.CLEAR_W + 2
     local watch = CreateFrame("Frame", nil, wrap)
     watch:SetScript("OnEvent", Press)
-    S.findSearch, S.findWrap, S.findBox, S.findWatch = search, wrap, box, watch
+    S.findSearch = { Wrap = wrap, Box = box, Placeholder = placeholder }
+    S.findWrap, S.findBox, S.findWatch = wrap, box, watch
+    PaintLine()
   end
 
   -- Each open: an empty box, and the index made again when it is next used.
@@ -9449,6 +9563,7 @@ do
     if box:HasFocus() then box:ClearFocus() end
     box:SetText("")
     Find.Fit()
+    PaintLine()
   end
 
   -- Level with the title, as far left as the cog stands in the window, and
