@@ -9021,7 +9021,8 @@ end
 -- nothing the last did not, so it is asked only of the last one's list,
 -- narrowed where it stands -- when that list was built from records nothing
 -- has written to since (MailMemory's recordWrites), on the same half, the
--- same characters, order and filter. The order needs no sorting again: the
+-- same characters, order and filters (told by their count of changes,
+-- panel._sfGen). The order needs no sorting again: the
 -- most gold first breaks its ties by the place each held, which a
 -- narrowing keeps. Anything else walks the records.
 function HV.BuildHistoryList(panel, query)
@@ -9065,7 +9066,7 @@ function HV.BuildHistoryList(panel, query)
   local narrow = query ~= "" and prev.q ~= nil and prev.out == out and prev.n == #out
     and query:find(prev.q, 1, true) ~= nil and prev.sent == sent and prev.chars == chars
     and prev.list == record and prev.order == order and prev.show == show and prev.writes == writes
-    and prev.markOff == markOff and prev.alt == panel._alt
+    and prev.markOff == markOff and prev.alt == panel._alt and prev.gen == panel._sfGen
   if not narrow then Clear(out) end
   local R = CT.RowRules
   local sample = AcquireRow(panel, 1)
@@ -9251,7 +9252,9 @@ function HV.BuildHistoryList(panel, query)
   if query ~= "" then
     prev.q, prev.out, prev.n, prev.sent, prev.chars, prev.list = query, out, #out, sent, chars, record
     -- Read after the walk: a record pruned as it was read moved it.
-    prev.order, prev.show, prev.markOff, prev.alt = order, show, markOff, panel._alt
+    -- The filters are one set of flags for the whole visit, so a change to
+    -- them is told by its count (panel._sfGen), never by the set.
+    prev.order, prev.show, prev.markOff, prev.alt, prev.gen = order, show, markOff, panel._alt, panel._sfGen
     prev.writes = Memory and Memory.recordWrites or 0
     if chars and #out > HV.LONG then HV.long = true end
   elseif prev.q then
