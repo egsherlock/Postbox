@@ -1023,21 +1023,29 @@ do
     if extra then extra:Show() end
     local least = Insp.Least(S.tab)
     if h < least then h = least end
-    local room = Insp.Room()
+    local room = Insp.Room(entry)
     if room > 0 and h > room then h = room end
     say:SetHeight(h)
   end
 
   -- The inspector's height: the body's, less the summary's card over it on
-  -- General (Dash.Place).
-  function Insp.Room()
+  -- General (Dash.Place). On General a setting's text that needs more
+  -- (`entry`, not one of the card's own: entry.under) rises over the
+  -- card's tiles, as a text rises over another tab's drawing, up to the
+  -- card's strip, which stays in sight: the card is what General is about,
+  -- and its long descriptions no longer make the whole window taller.
+  function Insp.Room(entry)
+    if entry and not entry.under and S.tab == "general" and S.dash and S.bodyH then
+      return S.bodyH - Dash.KEEP
+    end
     return S.inspH or S.bodyH
   end
 
   -- The text zone's least height on `key`'s tab: on the Mail tab, all the
   -- room under its window (Layout), so the text starts right under it; on
-  -- General, which draws nothing beside its settings, the whole inspector,
-  -- so a setting's text stands at its top as the tab's own does.
+  -- General, which draws nothing beside its settings, the whole inspector
+  -- under the card, so a setting's text stands at its top as the tab's own
+  -- does.
   function Insp.Least(key)
     if key == "mail" and (S.mailText or 0) > SAY_MIN then return S.mailText end
     if key == "general" then return math.max(SAY_MIN, Insp.Room()) end
@@ -1505,7 +1513,7 @@ do
         Dash.PaintMemoryTile(tiles.memory, on)
         -- How many groups and recipients there are, or none yet
         -- (State.ListWords).
-        local groups, recipients = State.ListWords()
+        local groups, recipients = State.ListWords(true)
         Ctx.PaintTile(tiles.groups, groups)
         Ctx.PaintTile(tiles.recipients, recipients)
       end
@@ -5444,6 +5452,14 @@ do
     return width
   end
 
+  -- A plain button row fitted again after its caption changed: the button
+  -- to its words, the name to what is left (as Rows.Fit does on an open).
+  function Rows.FitButtonRow(cell)
+    local inner = cell.w - NAME_X - CONTROL_R
+    local controlW = FitButton(cell)
+    ns.Theme.FitText(cell.Name, inner - controlW - NAME_GAP, cell.nameText, cell)
+  end
+
   -- A button row's lead lit or not, from its `get` (Rows.Lead): its words,
   -- and on, the selected plate the window's segments wear -- their style's
   -- tokens where it gives them, the palette's otherwise, as the arrange
@@ -5700,6 +5716,9 @@ do
   local FIXED = 1 + HEAD_H + COLS_H + ROW_H + 1
   -- The card's one height (214): its five lines.
   Dash.H = FIXED + LINES * ROW_H
+  -- What a General setting's long text leaves of the card over it, rising
+  -- (Insp.Room): the card's edge and its strip.
+  Dash.KEEP = 1 + HEAD_H
   -- The tiles' column, three of the inspector's tiles one over the other:
   -- its top level with the first line's, under the strip and the headings,
   -- so the room over it is the headings' (18), and as much again under it,
@@ -7345,8 +7364,10 @@ end
 -- recipients, or that there are none yet. The recipients are counted once
 -- each time the panel opens and again after the manager closes
 -- (S.sendText); the groups' words are made when their number changes.
--- -> the groups' words, the recipients'.
-function State.ListWords()
+-- The count walks every recipient Postbox knows, so it is asked for only
+-- where it is shown: General's tile, the Send tab's button (`recipients`).
+-- -> the groups' words, the recipients' (or nil, not asked for).
+function State.ListWords(recipients)
   local CG = ns.CharacterGroups
   local list = CG and type(CG.List) == "function" and CG.List() or nil
   local n = type(list) == "table" and #list or 0
@@ -7354,7 +7375,7 @@ function State.ListWords()
     S.tileGroups = n
     S.tileFact = n > 0 and ns.Plural("OPT_GROUPS_COUNT", n) or L["OPT_GROUPS_NONE"]
   end
-  if not S.sendText then
+  if recipients and not S.sendText then
     local RM = ns.RecipientManager
     local count = (RM and type(RM.Count) == "function" and RM.Count()) or 0
     S.sendText = count > 0 and ns.Plural("RM_HERO_COUNT", count) or L["OPT_RECIPIENTS_NONE"]
@@ -7362,12 +7383,20 @@ function State.ListWords()
   return S.tileFact, S.sendText
 end
 
--- The buttons' captions (Rows.Fit then sizes the buttons to them).
+-- The buttons' captions, each sized to its words again where they moved
+-- (Rows.FitButtonRow). The recipients' only while the Send tab shows
+-- (Panel.SelectTab asks again as it comes up).
 function State.Lists()
-  local groups, recipients = State.ListWords()
+  local groups, recipients = State.ListWords(S.tab == "send")
   local g, r = S.groupsCell, S.recipientsCell
-  if g and g.button:GetText() ~= groups then g.button:SetText(groups) end
-  if r and r.button:GetText() ~= recipients then r.button:SetText(recipients) end
+  if g and g.button:GetText() ~= groups then
+    g.button:SetText(groups)
+    Rows.FitButtonRow(g)
+  end
+  if r and recipients and r.button:GetText() ~= recipients then
+    r.button:SetText(recipients)
+    Rows.FitButtonRow(r)
+  end
 end
 
 -- The Window tab: the style first, since every row under it is that style's,
@@ -9005,7 +9034,9 @@ local function Layout()
     -- every setting's the window shows, the tallest of them. General's
     -- texts have the inspector under its card: the tallest of them, with
     -- the card over it (Dash).
-    local mailText, generalText = SAY_MIN, SAY_MIN
+    -- General's settings' texts may rise over the card's tiles to its strip
+    -- (Insp.Room); the card's own stand under it.
+    local mailText, generalText, generalRise = SAY_MIN, SAY_MIN, 0
     local entries = S.entries
     for i = 1, #entries do
       local entry = entries[i]
@@ -9014,6 +9045,8 @@ local function Layout()
       -- under the drawing, never over it.
       if entry.stage == "mail" then
         if h > mailText then mailText = h end
+      elseif entry.tab == "general" and not entry.under then
+        if h > generalRise then generalRise = h end
       elseif entry.tab == "general" then
         if h > generalText then generalText = h end
       else
@@ -9039,7 +9072,7 @@ local function Layout()
     end
     S.mailText = math.ceil(mailText)
     S.generalText = math.ceil(generalText)
-    S.textNeed = math.max(text, Dash.H + BODY_GAP + S.generalText)
+    S.textNeed = math.max(text, Dash.H + BODY_GAP + S.generalText, Dash.KEEP + math.ceil(generalRise))
     text = S.textNeed
   end
   -- The Mail tab: its window at its least over its text zone. The window
@@ -9153,6 +9186,10 @@ local function Build()
   S.recipientsEntry = Entry(L["RM_OPT_BUTTON"], L["RM_OPT_BUTTON_DESC"])
   S.dashEntry.tab, S.memoryTileEntry.tab = "general", "general"
   S.groupsEntry.tab, S.recipientsEntry.tab = "general", "general"
+  -- The card's own texts stand under it, never over the card they describe
+  -- (Insp.Room); a General setting's long text may rise over the tiles.
+  S.dashEntry.under, S.memoryTileEntry.under = true, true
+  S.groupsEntry.under, S.recipientsEntry.under = true, true
   S.idle.mail = Entry(L["OPT_ARRANGE_BUTTON"], L["ARRANGE_TIP"] .. "\n\n"
     .. (ns.IsForever and L["OPT_ARRANGE_CARDS_FOREVER"] or L["OPT_ARRANGE_CARDS"]) .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"])
   S.idle.send = Entry(L["OPT_AFTER_SEND_TITLE"], L["OPT_AFTER_SEND_DESC"])
@@ -9365,6 +9402,9 @@ function Panel.SelectTab(key)
   Dash.Place(key)
   Ctx.Show(key)
   Insp.SetTab(key)
+  -- The Send tab's Manage Recipients says how many there are, counted
+  -- once an open, when the tab first comes up (State.Lists).
+  if key == "send" then State.Lists() end
 end
 
 -- Re-reads every control from its source of truth. The panel does this on
