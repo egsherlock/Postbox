@@ -379,6 +379,29 @@ function CG.SetOrder(ids)
   if moved then Changed() end
 end
 
+-- Where a dragged group lands in the editor's list: `n` rows `pitch` apart,
+-- the first one's top at `top` (offsets from the list's top, down being
+-- negative), the one from place `from` in the hand, the pointer at `y`. The
+-- other rows stand where they were, and the group goes after every one of
+-- them whose middle is above the pointer: above the first row, first; below
+-- the last, last; otherwise between the two rows the pointer is between.
+-- -> its new place, 1 to n.
+function CG.DropIndex(from, n, y, top, pitch)
+  local at = 1
+  for k = 1, n do
+    if k ~= from and y < top - (k - 1) * pitch - pitch / 2 then at = at + 1 end
+  end
+  return at
+end
+
+-- `ids` (the list's ids, in order) with the one at `from` moved to `to`, in
+-- place.
+function CG.MoveId(ids, from, to)
+  local id = table.remove(ids, from)
+  if id ~= nil then table.insert(ids, math.max(1, math.min(to, #ids + 1)), id) end
+  return ids
+end
+
 -- id, name -> the member's key when it is (now) in the group, or nil when
 -- the text cannot be a character or the group is gone.
 function CG.AddMember(id, text)
@@ -888,8 +911,11 @@ local function GroupRow(frame, i)
     row._dragging = true
     row:SetFrameLevel(row:GetFrameLevel() + 10)
     -- Scoped to the drag: set here, cleared on the drop (or the window closing).
+    row._pointer = cursorY / scale - (frame.GroupList:GetTop() or 0)
     row:SetScript("OnUpdate", function(self)
       local _, y = GetCursorPosition()
+      -- Where the pointer is, which is where the group lands (CG.DropIndex).
+      self._pointer = y / scale - (frame.GroupList:GetTop() or 0)
       local offset = (y / scale + self._grab) - (frame.GroupList:GetTop() or 0)
       -- Kept inside the list, between its first and last slot.
       local lowest = -1 - (#CG.List() - 1) * GROUP_ROW_H
@@ -905,20 +931,19 @@ local function GroupRow(frame, i)
     if not row._dragging then return end
     row._dragging = false
     row:SetFrameLevel(math.max(row:GetFrameLevel() - 10, 0))
-    -- The new order is the rows' order down the list, the dragged one
-    -- included, read from where each one's middle now stands.
-    local shown = {}
-    for n = 1, #CG.List() do
-      if frame.GroupRows[n] and frame.GroupRows[n]:IsShown() then shown[#shown + 1] = frame.GroupRows[n] end
-    end
-    table.sort(shown, function(p, q)
-      local _, py = p:GetCenter()
-      local _, qy = q:GetCenter()
-      return (py or 0) > (qy or 0)
-    end)
+    -- The new order: the list's, with the dragged group moved to where the
+    -- pointer let go of it, between the middles of the rows that stayed
+    -- (CG.DropIndex). The row in the hand stands clamped to the list's
+    -- first and last slot, so let go past either end it is there, first
+    -- or last, as it lands.
+    local list = CG.List()
     local ids = {}
-    for n = 1, #shown do ids[n] = shown[n].groupId end
-    CG.SetOrder(ids)
+    for n = 1, #list do ids[n] = list[n].id end
+    local from = row.position
+    if from and ids[from] == row.groupId then
+      CG.MoveId(ids, from, CG.DropIndex(from, #ids, row._pointer or 0, -1, GROUP_ROW_H))
+      CG.SetOrder(ids)
+    end
     PaintGroupRows(frame)
   end)
   row.Grip = grip
