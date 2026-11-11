@@ -2267,34 +2267,49 @@ do
 
   -- The rows, by the list's own rules: the stripe of the row's place, the
   -- read dot, the sender (an auction outcome in its tone; your character,
-  -- in its class colour), the gold in its tone. The sender's column is as
-  -- wide as the widest sender, so no sender is cut and the subjects start
-  -- on one line; the subject has the rest, and a long one is shortened by
-  -- the house fitter, as the list shortens it.
+  -- in its class colour), the gold in its tone. The sender's column is
+  -- one width for every row, as the list's is, and never sized by a long
+  -- name: as wide as the auction outcomes' senders, and wider only by what
+  -- the item names leave whole -- your name stands whole where it fits
+  -- beside them, and is cut short where it does not (the full name a
+  -- character has on WoW Forever), the item names keeping their room. The
+  -- subject has the rest, and a long one is shortened by the house
+  -- fitter, as the list shortens it.
   function MW.PaintRows(win)
     local T = ns.Theme
     local R = ns.CollectTab and ns.CollectTab.RowRules
     local figs = MW.Figures()
     local rows = win.List.Rows
-    local senderW, goldW = 0, 0
+    local senderW, auctionW, itemW, goldW = 0, 0, 0, 0
     for i = 1, #rows do
       local row, s = rows[i], MW.SAMPLES[i]
       T.StyleMailRow(row, i, false)
       if R and R.PaintDot then R.PaintDot(row.Indicator, s.read, false)
       else T.SetColor(row.Indicator, s.read and "read" or "unread") end
       local sender = row.Sender
+      -- Measured whole: the width a fit earlier set is let go first.
+      sender:SetWidth(0)
       if s.kind then
         MW.PaintOutcome(sender, s.kind)
       else
         MW.PaintMe(sender)
       end
       row.Gold:SetText(T.Colorize(s.tone, figs[s.fig]))
-      senderW = math.max(senderW, T.TextWidth(sender))
+      local w = T.TextWidth(sender)
+      senderW = math.max(senderW, w)
+      if s.kind then auctionW = math.max(auctionW, w) end
+      row.Subject:SetText(SampleItem(s.item) or "")
+      itemW = math.max(itemW, T.TextWidth(row.Subject))
       goldW = math.max(goldW, T.TextWidth(row.Gold))
     end
-    local x = MW.SENDER_X + math.ceil(senderW) + MW.COL_GAP
-    local room = (win.inner or 0) - 2 * MW.h.pad - x - MW.COL_GAP - math.ceil(goldW) - MW.ROW_END
+    -- The room the sender and the subject share, then the column.
+    local both = (win.inner or 0) - 2 * MW.h.pad - MW.SENDER_X - 2 * MW.COL_GAP - math.ceil(goldW) - MW.ROW_END
+    local col = math.ceil(math.max(auctionW, math.min(senderW, both - math.ceil(itemW))))
+    local x = MW.SENDER_X + col + MW.COL_GAP
+    local room = both - col
     for i = 1, #rows do
+      local sender = rows[i].Sender
+      T.FitText(sender, math.max(1, col), sender:GetText() or "")
       local subject = rows[i].Subject
       if subject.x ~= x then
         subject.x = x
