@@ -4432,8 +4432,8 @@ local function PaintViewToggle(panel)
     T.SetPlateSelected(seg, seg.segId == active)
   end
   local Memory = ns.MailMemory
-  -- The ring of the picker's cell, Inbox and Done, in the ring the plates
-  -- would wear at rest, as History's switch's is (RV.PaintSides).
+  -- The ring of Inbox and Done, in the ring the plates would wear at rest,
+  -- as History's switch's is (RV.PaintSides).
   if container.segRing then Memory.PaintRing(container.segRing, container.buttons[1]) end
   if container.history then T.SetPlateSelected(container.history, active == VIEW_HISTORY) end
   if container.sides then RV.PaintSides(panel) end
@@ -4496,9 +4496,9 @@ local function BuildViewToggle(panel)
     -- nothing to hook and nothing to replace them with.
     container.buttons[i] = seg
   end
-  -- The picker's cell, Inbox (or the other box's name) and Done in one ring
-  -- while two of them stand in the row (RV.JoinSegs): the row's own texture
-  -- under the plates, as History's switch has (RV.BuildSides).
+  -- Inbox (or the other box's name) and Done in one ring while both stand
+  -- in the row (RV.JoinSegs): the row's own texture under the plates, as
+  -- History's switch has (RV.BuildSides).
   local segRing = container:CreateTexture(nil, "BACKGROUND", nil, -1)
   segRing:Hide()
   container.segRing = segRing
@@ -4553,7 +4553,7 @@ local function BuildViewToggle(panel)
 
   -- Another character's box, while one is on screen: the Inbox cell names
   -- it, its name in its class colour and its count, in this character's
-  -- Inbox's place in the ring after the picker's cell (MailMemory's
+  -- Inbox's place, the picker's crest in its left end (MailMemory's
   -- NewNamePlate, the plate Mail Memory's window names its box with). It is
   -- that character's Inbox: a click from its History shows its box.
   local Memory = ns.MailMemory
@@ -4678,13 +4678,14 @@ local function BuildSearchBox(panel)
   search.Join(panel.Sort)
   RV.PlaceSort(panel, true)
 
-  -- The character picker, the first cell of the Inbox's ring: whose mail is
-  -- on screen decides everything after it. It wears the crest of the box on
-  -- screen, and lists every character with mail to look at (MailMemory's
-  -- NewPickCell, the cell Mail Memory's window has). Placed by the row's
-  -- layout (LayoutViewToggle).
+  -- The character picker, the crest at the left end of the plate that
+  -- names the box on screen -- Inbox, or the other box's name -- one button
+  -- with it: whose mail is on screen decides everything after it. It wears
+  -- the crest of the box on screen, and lists every character with mail to
+  -- look at (MailMemory's NewPickCell, as Mail Memory's window has it). Put
+  -- into its plate by AV.Paint (MailMemory.HostPick), which the row's
+  -- layout widens by the crest's room (LayoutViewToggle).
   local picker = ns.MailMemory.NewPickCell(panel.ViewToggle, M.segmentHeight)
-  picker:SetPoint("LEFT", panel.ViewToggle, "LEFT", 0, 0)
   -- A right-click, while another character's box is on screen, goes back to
   -- this character's own (AV.Back); on this character's own it does nothing.
   picker:SetScript("OnClick", function(_, button)
@@ -4696,7 +4697,7 @@ local function BuildSearchBox(panel)
   panel.Picker = picker
   -- Every plate the Inbox's ring can hold (RV.JoinSegs).
   local box = panel.ViewToggle
-  box.ringCells = { picker, box.alt, box.buttons[1], box.buttons[2] }
+  box.ringCells = { box.alt, box.buttons[1], box.buttons[2] }
 end
 
 -------------------------------------------------------------
@@ -6111,8 +6112,8 @@ local function LayoutViewToggle(panel)
   -- design says a switch should.
   local gap = T.Metrics.space.snug
   -- Another character's mail: nothing there can be deleted or collected, so
-  -- the row is the picker's cell, the character's name in the Inbox's place
-  -- (from its History, its box), its History and the search.
+  -- the row is the character's name in the Inbox's place with the picker in
+  -- it (from its History, its box), its History and the search.
   local other = AV.Other(panel)
   local shown = VisibleSegments(container, other)
 
@@ -6123,17 +6124,19 @@ local function LayoutViewToggle(panel)
     container._sizeOpts = opts
   end
   local M = T.Metrics
-  -- Whose: the picker's cell, while there is another box to pick, and the
-  -- other box's plate in the Inbox's place while one is on screen.
+  -- Whose: the other box's plate in the Inbox's place while one is on
+  -- screen, and the picker in the left end of whichever names the box,
+  -- while there is another box to pick (MailMemory.HostPick).
   local picker = panel.Picker
-  local pick = picker and picker:IsShown() and picker or nil
   local alt = container.alt
   local named = alt and alt:IsShown() and alt.natW
-  -- The picker's cell, Inbox (or the name) and Done are one ring
-  -- (RV.JoinSegs): each cell over the last column of the one before it,
-  -- their divider. Inbox alone stands as a plate of its own.
-  local first = pick or shown[1] or (named and alt) or nil
-  local last = (named and alt) or shown[#shown] or pick
+  local host = picker and picker:IsShown() and ((named and alt) or shown[1]) or nil
+  if picker then ns.MailMemory.HostPick(picker, host) end
+  -- Inbox (or the name) and Done are one ring (RV.JoinSegs): Done over
+  -- Inbox's last column, their divider. Inbox alone stands as a plate of
+  -- its own.
+  local first = shown[1] or (named and alt) or nil
+  local last = (named and alt) or shown[#shown]
   RV.JoinSegs(container, first ~= last, first, last)
   local segGap = #shown > 1 and -1 or gap
   opts.height, opts.gap, opts.minWidth = M.segmentHeight, segGap, M.buttonMinWidth
@@ -6145,6 +6148,12 @@ local function LayoutViewToggle(panel)
   -- the segments' height, and the controls of one end stand the snug step
   -- apart. Measured first, placed once the name's room is known.
   local per, total = T.SizeRow(shown, opts)
+  -- Inbox holding the picker: wider by the crest's room, Done as it was.
+  local crest = (host ~= nil and host == shown[1]) and (host.lead or 0) or 0
+  if crest > 0 then
+    host:SetWidth(per + crest)
+    total = total + crest
+  end
   -- The clock: square when it wears the icon, its caption's width when it
   -- fell back to text. Out of the row, which closes up without it, while
   -- History is off. Another character's History is as much its own as its
@@ -6164,8 +6173,6 @@ local function LayoutViewToggle(panel)
   -- column, one ring with it.
   local sidesW = RV.LayoutSides(panel, container)
   if sidesW > 0 then total = total + sidesW - 1 end
-  -- The picker's cell, its last column the next cell's divider.
-  local lead = pick and pick:GetWidth() - 1 or 0
 
   -- The row's far end: the find plate, the search and the sort as its last
   -- cell. The other box's name is given the room the rest of the row leaves
@@ -6174,7 +6181,7 @@ local function LayoutViewToggle(panel)
   -- that: `least`, the far end with the search at its narrowest and the
   -- name's, is what the row needed before there was a sort.
   local row = PanelWidth(panel) - 2 * M.inset
-  local left = lead + total
+  local left = total
   -- While History's switch stands in the row, the search may give back more
   -- (RV.SearchYield), down to its floor; its natural width is as before.
   local give = panel.SearchWrap and RV.SortRoom(panel) or 0
@@ -6185,7 +6192,7 @@ local function LayoutViewToggle(panel)
   if panel.SearchWrap then give = min(give, max(0, SEARCH_W - RV.SearchLeast(panel))) end
   local Memory = ns.MailMemory
   if panel.SearchWrap then
-    local want = right + (named and min(alt.natW, Memory.PLATE_MAX) or 0)
+    local want = right + (named and min(alt.natW, Memory.PLATE_MAX + (alt.lead or 0)) or 0)
     local given = min(give, max(0, ceil(want - (row - left - M.gap))))
     RV.SizeSearch(panel, given)
     right = right - given
@@ -6197,15 +6204,10 @@ local function LayoutViewToggle(panel)
     least = least + alt.minW
   end
 
-  -- Placed: the picker's cell at the row's start, the name or the segments
-  -- over its last column, the rest after them. The container keeps its
-  -- place (the list and the strip hang from it) and its width is the whole
-  -- of the row's start.
-  if pick then
-    pick:ClearAllPoints()
-    pick:SetPoint("LEFT", container, "LEFT", 0, 0)
-  end
-  local x = lead
+  -- Placed: the name or the segments at the row's start, the rest after
+  -- them. The container keeps its place (the list and the strip hang from
+  -- it) and its width is the whole of the row's start.
+  local x = 0
   if named then
     alt:ClearAllPoints()
     alt:SetPoint("LEFT", container, "LEFT", x, 0)
@@ -6214,7 +6216,7 @@ local function LayoutViewToggle(panel)
   for i = 1, #shown do
     local seg = shown[i]
     seg:ClearAllPoints()
-    seg:SetPoint("LEFT", container, "LEFT", x + (i - 1) * (per + segGap), 0)
+    seg:SetPoint("LEFT", container, "LEFT", x + (i - 1) * (per + segGap) + (i > 1 and crest or 0), 0)
   end
   if histW > 0 then
     local at = x + total - histW - (sidesW > 0 and sidesW - 1 or 0)
@@ -6246,8 +6248,8 @@ local function LayoutViewToggle(panel)
   -- Where the window is narrower than that, the window's floor is raised to
   -- it (Core/MailboxUI.lua, UI.RefreshCollectWidth) -- which hears of it only
   -- when it moves. Last, so a resize it causes finds the row already laid.
-  -- While the arrange mode's header stands in the row's place, the picker's
-  -- cell and the other box's name are hidden with it and were measured out
+  -- While the arrange mode's header stands in the row's place, the picker
+  -- and the other box's name are hidden with it and were measured out
   -- above; the need the row last had shown stands until it shows again
   -- (RV.ShowTopRow lays it out).
   local need = ceil(left + M.gap + least + 2 * M.inset)
@@ -6468,7 +6470,14 @@ function AV.Paint(panel)
   local others = Memory and Memory.HasOthers() or false
   local who = panel._alt
 
-  panel.Picker:SetShown(others or who ~= nil)
+  local picking = others or who ~= nil
+  panel.Picker:SetShown(picking)
+  -- The picker in the plate that names the box, before that plate is
+  -- measured: its crest's room is part of the plate (MailMemory.HostPick).
+  local box = panel.ViewToggle
+  if box and Memory then
+    Memory.HostPick(panel.Picker, picking and (who and box.alt or box.buttons[1]) or nil)
+  end
   if Memory then
     local crest = Memory.ClassIcon(who and who.realm or ns.Helpers.PlayerRealm(),
       who and who.name or ns.Helpers.PlayerName())
@@ -6479,8 +6488,8 @@ function AV.Paint(panel)
   -- and the box says what it searches.
   AV.PaintSearch(panel, others)
 
-  -- The other box's name and count, in the Inbox's cell after the picker's
-  -- that chose it: one ring. No realm -- the list the name was picked from
+  -- The other box's name and count, in the Inbox's cell, the picker that
+  -- chose it in its left end. No realm -- the list the name was picked from
   -- said which -- and never wider than the row can give it: a long name is
   -- cut, its count kept (MailMemory.FitPlate, from the row's layout below,
   -- which places it). Measured from the full caption, so a cut never feeds
@@ -9527,8 +9536,8 @@ function RV.JoinClock(hist, on)
   Th().SetPlateSelected(hist, hist.isSelected)
 end
 
--- The picker's cell, Inbox (or the other box's name) and Done joined in one
--- ring (`on`: two or more in the row, `first` to `last`) or Inbox standing
+-- Inbox (or the other box's name) and Done joined in one ring (`on`: both
+-- in the row, `first` to `last`) or Inbox standing
 -- as a plate of its own: joined, each puts its own ring away for the row's
 -- (BuildViewToggle's segRing, painted with the row by PaintViewToggle) and
 -- keeps its fill, hover, selected wash and underline; apart, the rings come
