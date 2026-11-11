@@ -2082,7 +2082,12 @@ local function Figures(mail, now, fs)
   local T = ns.Theme
   local hasCOD = (mail.cod or 0) > 0
   local money, moneyKind
-  if R then money, moneyKind = R.MoneyText(hasCOD, mail.money or 0, mail.cod or 0, mail.paid, true) end
+  -- With coins where the Mail tab's rows have them (they share an
+  -- arrangement), made for `fs`, the rows' figures' font.
+  if R then
+    money, moneyKind = R.MoneyText(hasCOD, mail.money or 0, mail.cod or 0, mail.paid, true, nil,
+      R.RowCoins and R.RowCoins(nil, fs) or nil)
+  end
   -- The slot count in the quiet tone, and as the player chose it written, as
   -- the Mail tab has it: in the words when it goes to the tooltip (below).
   local slots

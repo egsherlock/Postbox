@@ -2244,6 +2244,8 @@ do
   }
   -- The arrangement the drawing's rows wear: every column it draws shown.
   MW.LAYOUT = { shown = { read = true, icon = true, sender = true, subject = true, money = true, slots = true } }
+  -- Which arrangement's Gold choices a two-line drawing follows.
+  MW.AS_LARGE = { arrangement = "large" }
   -- The rows' icons: a coin for gold, a letter, the item's own.
   MW.COIN, MW.LETTER = SAMPLE_COIN, 134327
   -- A row: its icon's least size (one line) and that of a two-line row,
@@ -2680,7 +2682,10 @@ do
     end
     row.senderText, row.senderW = fs:GetText() or "", TextW(fs)
     local money, kind
-    if R and R.MoneyText then money, kind = R.MoneyText(false, m.money or 0, 0, m.price, not two) end
+    -- With coins where the rows' arrangement chose them (CollectTab's
+    -- RV.RowCoins), measured with them (RV.CoinW).
+    local coins = R and R.RowCoins and R.RowCoins(two and MW.AS_LARGE or MW.LAYOUT, row.Money) or nil
+    if R and R.MoneyText then money, kind = R.MoneyText(false, m.money or 0, 0, m.price, not two, nil, coins) end
     if money and R.MoneyShown and not R.MoneyShown(kind, MW.LAYOUT) then money = nil end
     local slots
     if (m.items or 0) > 0 then
@@ -2690,7 +2695,7 @@ do
     row.moneyText, row.slotsText, row.moneyW, row.slotsW = money, slots, 0, 0
     if money then
       row.Money:SetText(money)
-      row.moneyW = TextW(row.Money)
+      row.moneyW = TextW(row.Money) + (R.CoinW and R.CoinW(money) or 0)
     end
     if slots then
       row.Slots:SetText(slots)

@@ -2082,20 +2082,27 @@ end
 -- `price` is that price, or nil. A live inbox row passes its index as
 -- `priceIndex` instead, and the price is read from the invoice only when
 -- nothing else answered, because reading it costs an invoice call.
-local function MoneyText(hasCOD, moneyValue, codValue, price, brief, priceIndex)
+-- `coins`: a coin set (RV.RowCoins) where the rows write their sums with
+-- coins rather than letters (RV.CoinText); nil, the letters.
+local function MoneyText(hasCOD, moneyValue, codValue, price, brief, priceIndex, coins)
   local T = Th()
   local compactMoney = ns.Core.Formatting.FormatMoneyCompact
   if moneyValue > 0 then
+    if coins then return RV.CoinText(coins, "earned", moneyValue, brief), "earned" end
     return T.Colorize("positive", compactMoney(moneyValue, brief)), "earned"
   end
   if hasCOD then
     if codValue > 0 then
+      if coins then return RV.CoinText(coins, "cod", codValue, brief), "cod" end
       return T.Colorize("negative", L()["LABEL_COD"] .. compactMoney(codValue, brief)), "cod"
     end
     return T.Colorize("negative", L()["LABEL_COD_SHORT"]), "cod"
   end
   if price == nil and priceIndex then price = PurchasePrice(priceIndex) end
-  if price then return T.Colorize("negative", compactMoney(price, brief)), "spent" end
+  if price then
+    if coins then return RV.CoinText(coins, "spent", price, brief), "spent" end
+    return T.Colorize("negative", compactMoney(price, brief)), "spent"
+  end
   return nil, nil
 end
 
@@ -2152,8 +2159,8 @@ local function DisplaySender(sender)
   return sender
 end
 
-local function RowMoneyText(index, hasCOD, moneyValue, codValue, brief)
-  return MoneyText(hasCOD, moneyValue, codValue, nil, brief, index)
+local function RowMoneyText(index, hasCOD, moneyValue, codValue, brief, coins)
+  return MoneyText(hasCOD, moneyValue, codValue, nil, brief, index, coins)
 end
 
 -- texture, name, quality, mark, count -> one item's line in the tooltip
@@ -2573,6 +2580,135 @@ function RV.Coins(fs)
   return Fm.CoinSet(h, -floor(off + 0.5), Fm.COIN_GAP)
 end
 
+-------------------------------------------------------------
+-- The rows' coins
+--
+-- The Gold column's choice of how its sums are written (Arrange: the
+-- column's options; MailboxUI.GetGoldLook, one per arrangement as the
+-- column's other choices are): the letters ("1373g", the default) or the
+-- coins the totals band draws, by RV.Coins for the string the sum is drawn
+-- in. The figures keep their tones, earned green and spent and C.O.D. red;
+-- the coins wear their own colours.
+--
+-- Nothing is made per row: each text is made once per (coin set, kind,
+-- amount, brevity) and kept, the whole of it let go when the inks it was
+-- made in move (Theme.InkHex) or past COIN_MAX texts. The client's string
+-- widths leave inline textures out, so a width measured of a coin text has
+-- its coins' room added (RV.CoinExtra, from MeasureWith, as RV.FateExtra
+-- adds a mark's), unless a one-time probe finds this client counts them.
+-------------------------------------------------------------
+do
+  local COIN_MAX = 256
+  -- The kinds of sum: their ink, and what is written before the figure.
+  -- `pre` false is the C.O.D. label, read when a text is made.
+  local KIND = {
+    earned = { 1, "positive", "" }, cod = { 2, "negative", false }, spent = { 3, "negative", "" },
+    gain = { 4, "positive", "+" }, loss = { 5, "negative", "-" },
+  }
+  -- texts[set][key]: the text; made[text]: the room its coins take across;
+  -- n: how many; hexP / hexN: the inks they were made in; counted: whether
+  -- this client's widths count inline textures (nil until probed).
+  local C = { texts = {}, made = {}, n = 0, hexP = false, hexN = false, counted = nil }
+  RV.COIN = C
+
+  local function Forget()
+    for set in pairs(C.texts) do C.texts[set] = nil end
+    for text in pairs(C.made) do C.made[text] = nil end
+    C.n = 0
+  end
+
+  -- How many of `esc` stand in `text`, counted in place.
+  local function Count(text, esc)
+    local n, at = 0, 1
+    while true do
+      local i = text:find(esc, at, true)
+      if not i then return n end
+      n, at = n + 1, i + #esc
+    end
+  end
+
+  -- coins (a set), kind, amount, brief -> the sum written with its coins in
+  -- its tone, made once and kept.
+  function RV.CoinText(coins, kind, amount, brief)
+    local spec = KIND[kind]
+    if not (spec and coins) then return nil end
+    local T = Th()
+    local hexP, hexN = T.InkHex("positive"), T.InkHex("negative")
+    if hexP ~= C.hexP or hexN ~= C.hexN then
+      Forget()
+      C.hexP, C.hexN = hexP, hexN
+    end
+    local byKey = C.texts[coins]
+    if not byKey then
+      byKey = {}
+      C.texts[coins] = byKey
+    end
+    local key = (floor(amount) * 8 + spec[1]) * 2 + (brief and 1 or 0)
+    local text = byKey[key]
+    if text then return text end
+    if C.n >= COIN_MAX then
+      Forget()
+      return RV.CoinText(coins, kind, amount, brief)
+    end
+    local figure = ns.Core.Formatting.FormatMoneyCompactCoins(amount, brief, coins)
+    local pre = spec[3] or L()["LABEL_COD"]
+    text = T.Colorize(spec[2], pre .. figure)
+    byKey[key] = text
+    C.made[text] = (Count(figure, coins.gold) + Count(figure, coins.silver) + Count(figure, coins.copper)) * coins.w
+    C.n = C.n + 1
+    return text
+  end
+
+  -- layout (a row's arrangement; nil: the one-line rows'), fs -> the coin
+  -- set the rows of that arrangement write their sums with, drawn in `fs`;
+  -- nil where they write the letters.
+  function RV.RowCoins(layout, fs)
+    local UI = ns.MailboxUI
+    if not (UI and UI.GetGoldLook) then return nil end
+    if UI.GetGoldLook(layout and layout.arrangement) ~= "coins" then return nil end
+    return RV.Coins(fs)
+  end
+
+  -- fs, text -> the room the coins of a text measured in `fs` take, which
+  -- the measure left out: a coin text, or a line holding some (a Larger
+  -- row's second line); 0 for any other, or where a probe (a digit with and
+  -- without a coin after it, once) finds this client counts them. Called by
+  -- MeasureWith only while coin texts exist (C.n > 0); nothing is made but
+  -- the probe's one string.
+  function RV.CoinExtra(fs, text)
+    local w = C.made[text]
+    local set
+    if not w then
+      if not text:find("|TInterface\\MoneyFrame\\UI-", 1, true) then return 0 end
+      w = 0
+      for coins in pairs(C.texts) do
+        local n = Count(text, coins.gold) + Count(text, coins.silver) + Count(text, coins.copper)
+        if n > 0 then w, set = w + n * coins.w, coins end
+      end
+      if w == 0 then return 0 end
+    end
+    if C.counted == nil then
+      if not set then set = next(C.texts) end
+      if set then
+        fs:SetText("0")
+        local digit = fs:GetStringWidth() or 0
+        fs:SetText("0" .. set.gold)
+        local with = fs:GetStringWidth() or 0
+        if digit > 0 then C.counted = (with - digit) > set.h / 2 end
+      end
+    end
+    if C.counted then return 0 end
+    return w
+  end
+
+  -- A coin text -> its coins' room, without a probe (the options' drawings,
+  -- which measure their own strings); 0 for any other text.
+  function RV.CoinW(text)
+    if C.counted then return 0 end
+    return C.made[text] or 0
+  end
+end
+
 -- The rendered width of `text` in `sample`'s font. One hidden string per
 -- panel, re-fonted from the sample on every call, so the measurement is taken
 -- in exactly the face, size, outline and shadow the row draws in --
@@ -2663,11 +2799,13 @@ local function MeasureWith(panel, sample, text, exact)
   end
   -- A text carrying an expiry mark is measured with the mark (RV.FateExtra),
   -- only while marks exist.
-  local fate = RV.FATE
+  -- So is one carrying coins (RV.CoinExtra), only while coin texts exist.
+  local fate, coin = RV.FATE, RV.COIN
   if pass == nil then
     fs:SetText(text)
     local width = fs:GetStringWidth() or 0
     if fate.n > 0 and width > 0 then width = width + RV.FateExtra(fs, text) end
+    if coin.n > 0 and width > 0 then width = width + RV.CoinExtra(fs, text) end
     if exact then return width end
     return ceil(width)
   end
@@ -2690,6 +2828,7 @@ local function MeasureWith(panel, sample, text, exact)
     fs:SetText(text)
     width = fs:GetStringWidth() or 0
     if fate.n > 0 and width > 0 then width = width + RV.FateExtra(fs, text) end
+    if coin.n > 0 and width > 0 then width = width + RV.CoinExtra(fs, text) end
     if width > 0 then
       memo[text] = width
       fs.__pbMemoN = fs.__pbMemoN + 1
@@ -3440,8 +3579,9 @@ function RV.Place(row, s)
       T.FitText(detail, textWidth, s.detailText or "", detail)
       -- FitText's width leaves an expiry mark out (RV.FateExtra): a line
       -- carrying one is measured again with it, and one the client will
-      -- cut keeps its whole text for the tooltip. Only while marks exist.
-      if RV.FATE.n > 0 and detail.__pbOverflowText == nil and row.panel and s.detailText
+      -- cut keeps its whole text for the tooltip. Only while marks exist;
+      -- the same for coins (RV.CoinExtra).
+      if (RV.FATE.n > 0 or RV.COIN.n > 0) and detail.__pbOverflowText == nil and row.panel and s.detailText
          and s.detailText:find("|T", 1, true) and MeasureWith(row.panel, detail, s.detailText, true) > textWidth then
         detail.__pbOverflowText = s.detailText
       end
@@ -3979,6 +4119,9 @@ do
   -- The coins' set for a font (RV.Coins): the options' drawings and the
   -- Send tab draw their coins by it.
   R.Coins = RV.Coins
+  -- Mail Memory's rows and the options' drawing of them write their sums as
+  -- the rows' arrangement chose (RV.RowCoins), and measure the coins.
+  R.RowCoins, R.CoinW = RV.RowCoins, RV.CoinW
   -- The expiry marks (RV.FateText) and their tooltip line, and when a mail
   -- is short, for Mail Memory's rows and its expiry alert.
   R.FateText, R.TipFate, R.ShortDays, R.FateMarkW = RV.FateText, RV.TipFate, RV.ShortDays, RV.FateMarkW
@@ -6223,9 +6366,9 @@ do
     local m = At(index)
     return m and m.fate or nil
   end
-  function RV.SAMPLE.Money(index, hasCOD, moneyValue, codValue, brief)
+  function RV.SAMPLE.Money(index, hasCOD, moneyValue, codValue, brief, coins)
     local m = At(index)
-    return MoneyText(hasCOD, moneyValue, codValue, m and m.price or nil, brief)
+    return MoneyText(hasCOD, moneyValue, codValue, m and m.price or nil, brief, nil, coins)
   end
   function RV.SAMPLE.Invoice(parts, index, withSaleTotal)
     local m = At(index)
@@ -6289,7 +6432,7 @@ do
           cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), senderCap)
         end
         if compact then
-          local text, kind = MoneyText(hasCOD, m.money, m.cod, m.price, true)
+          local text, kind = MoneyText(hasCOD, m.money, m.cod, m.price, true, nil, RV.RowCoins(layout, sample.ColMoney))
           local shown = true
           if kind == "earned" then shown = showEarned elseif kind == "spent" then shown = showSpent end
           if text and shown then
@@ -6464,7 +6607,8 @@ local function BindRow(panel, row, index, position, compact, done)
   Clear(parts)
 
   local showSlots, showExpiry = layout.shown.slots == true, layout.shown.time == true
-  local money, moneyKind = S.Money(index, hasCOD, moneyValue, codValue, compact)
+  local money, moneyKind = S.Money(index, hasCOD, moneyValue, codValue, compact,
+    RV.RowCoins(layout, compact and row.ColMoney or row.Detail))
   local purchaseShown = (moneyKind == "spent")
   -- In the quiet tone the time left wears: a count, not a warning. The
   -- money is the row's one coloured figure. The number alone where the
@@ -6858,8 +7002,16 @@ end
 
 -- entry, brief -> the money line in its tone, or nil: gold in green, a
 -- C.O.D. paid and a won auction's price in red, money that left.
-function HV.HistoryMoney(entry, brief)
+-- `coins`: History's coin set where it writes sums with coins
+-- (RV.RowCoins), nil for the letters.
+function HV.HistoryMoney(entry, brief, coins)
   local T = Th()
+  if coins then
+    if (entry.m or 0) > 0 then return RV.CoinText(coins, "gain", entry.m, brief) end
+    if (entry.c or 0) > 0 then return RV.CoinText(coins, "loss", entry.c, brief) end
+    if (entry.p or 0) > 0 then return RV.CoinText(coins, "loss", entry.p, brief) end
+    return nil
+  end
   local compactMoney = ns.Core.Formatting.FormatMoneyCompact
   if (entry.m or 0) > 0 then return T.Colorize("positive", "+" .. compactMoney(entry.m, brief)) end
   if (entry.c or 0) > 0 then return T.Colorize("negative", "-" .. compactMoney(entry.c, brief)) end
@@ -6957,7 +7109,9 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   -- nil, this character's own).
   RV.PaintSender(row.Sender, not outcome and named or nil, realm)
   text.subject = HV.HistoryWhat(entry, RV.SaysCount(firstCount, layout))
-  text.money = MoneyShown(kind, layout) and (sent and HV.SentMoney(entry, true) or HV.HistoryMoney(entry, true)) or nil
+  local coins = RV.RowCoins(layout, row.Money)
+  text.money = MoneyShown(kind, layout)
+    and (sent and HV.SentMoney(entry, true, coins) or HV.HistoryMoney(entry, true, coins)) or nil
   -- For the tooltip (HV.RowTip): whether the row shows less of the sender
   -- than the record has, the realm the record is from, and which money the
   -- row shows.
@@ -7200,7 +7354,8 @@ function HV.BuildHistoryList(panel, query)
       local kind = sent and HV.SentKind(entry) or HV.MoneyKind(entry)
       local shown = true
       if kind == "earned" then shown = showEarned elseif kind == "spent" then shown = showSpent end
-      local money = shown and (sent and HV.SentMoney(entry, true) or HV.HistoryMoney(entry, true)) or nil
+      local coins = shown and RV.RowCoins(layout, sample.ColMoney) or nil
+      local money = shown and (sent and HV.SentMoney(entry, true, coins) or HV.HistoryMoney(entry, true, coins)) or nil
       if money then cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, money)) end
       -- The age's column is as wide as the widest age listed, in the words
       -- chosen: whatever the language and wording, no age is cut.
@@ -7496,11 +7651,12 @@ end
 
 -- entry, brief -> its money line: the gold sent in red, as Spent is; a
 -- C.O.D. asked as every C.O.D. is written, by the mail rows' own MoneyText.
-function HV.SentMoney(entry, brief)
+function HV.SentMoney(entry, brief, coins)
   if (entry.m or 0) > 0 then
+    if coins then return RV.CoinText(coins, "loss", entry.m, brief) end
     return Th().Colorize("negative", "-" .. ns.Core.Formatting.FormatMoneyCompact(entry.m, brief))
   end
-  if (entry.c or 0) > 0 then return (MoneyText(true, 0, entry.c, nil, brief)) end
+  if (entry.c or 0) > 0 then return (MoneyText(true, 0, entry.c, nil, brief, nil, coins)) end
   return nil
 end
 
@@ -9479,7 +9635,8 @@ function CT.RefreshMailList(panel)
 
       if compact and measured then
         if measureMoney then
-          local text, moneyKind = RowMoneyText(index, hasCOD, tonumber(money) or 0, tonumber(cod) or 0, true)
+          local text, moneyKind = RowMoneyText(index, hasCOD, tonumber(money) or 0, tonumber(cod) or 0, true,
+            RV.RowCoins(nil, sample.ColMoney))
           local shown = true
           if moneyKind == "earned" then shown = showEarned elseif moneyKind == "spent" then shown = showSpent end
           if text and shown then

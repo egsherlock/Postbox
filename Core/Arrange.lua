@@ -270,6 +270,7 @@ function AR.Reset(kind, blocks)
   if kind == nil then kind = AR.ListKind() end
   AR.SetLayout(nil, kind)
   if ui.SetGoldMode then ui.SetGoldMode("both", kind) end
+  if ui.SetGoldLook then ui.SetGoldLook(nil, kind) end
   if kind == "history" then
     if ui.SetHistoryAge then ui.SetHistoryAge(nil) end
   else
@@ -4708,6 +4709,28 @@ function AR.ChooseExpiry(id)
   if ui and ui.SetExpiryWhen then ui.SetExpiryWhen(id, AR.ListKind()) end
 end
 
+-- The gold's second choice: how its sums are written, the letters or the
+-- coins (MailboxUI.GetGoldLook), the arrangement's being edited as its
+-- first choice is. The list is made once; nil without the accessors.
+function AR.GoldLooks()
+  local ui = UI()
+  if not (ui and ui.GetGoldLook and ui.SetGoldLook) then return nil end
+  local list = AR._goldLooks
+  if not list then
+    list = {
+      { id = "letters", name = L()["OPT_GOLD_LETTERS"] },
+      { id = "coins",   name = L()["OPT_GOLD_COINS"] },
+    }
+    AR._goldLooks = list
+  end
+  return list, ui.GetGoldLook(AR.ListKind()), AR.ChooseGoldLook
+end
+
+function AR.ChooseGoldLook(id)
+  local ui = UI()
+  if ui and ui.SetGoldLook then ui.SetGoldLook(id, AR.ListKind()) end
+end
+
 -- History's age is chosen in two steps: first its kind, how long ago or
 -- the day (the card's two segments, AR.AgeKinds), then that kind's formats,
 -- each as the rows write it -- "3d", "3d ago" and "3 days ago" for three
@@ -6685,6 +6708,19 @@ local function FillColumn(id, y)
     if spec.choice == "age" then y = PutSegs(shown and true or false, y) end
     for i = 1, #choices do
       y = PutRadio(i, choices[i], choices[i].id == current, shown and true or false, y)
+    end
+    -- The gold's: then how its sums are written, under a kicker of its own,
+    -- its answers after the first choice's.
+    if spec.choice == "gold" then
+      local looks, look, setLook = AR.GoldLooks()
+      if looks then
+        insp.set = setLook
+        y = PutKicker(L()["OPT_GOLD_AS"], y)
+        for i = 1, #looks do
+          y = PutRadio(#choices + i, looks[i], looks[i].id == look, shown and true or false, y)
+        end
+        insp.set = set
+      end
     end
   end
 

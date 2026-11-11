@@ -278,18 +278,39 @@ do
   end
 end
 
-function Formatting.FormatMoneyCompact(copper, brief)
+-- The pieces in `g`, `s` and `c` after the figures: the letters, or the
+-- coins (FormatMoneyCompactCoins), with no colour of their own. Where the
+-- amount is abbreviated ("12.3k") the gold's piece follows it: nothing for
+-- the letters, which the k and m already say, the gold coin for the coins.
+local MoneyIn
+local function CompactIn(copper, brief, g, s, c, after)
   local gold, _, _, total = Split(copper)
   if total == 0 then return "" end
-  if ABBREVIATE and gold >= 10000 then return ABBREVIATE(gold, ABBREVIATE_OPTIONS) end
+  if ABBREVIATE and gold >= 10000 then
+    if after then return ABBREVIATE(gold, ABBREVIATE_OPTIONS) .. after end
+    return ABBREVIATE(gold, ABBREVIATE_OPTIONS)
+  end
   -- Cut down to the digit shown, never rounded up, as the thousands are: a
   -- reading never says more than the mail holds (12,960g is "12.9k", and
   -- 99,950g stays "99.9k" rather than "100.0k").
-  if gold >= 1000000 then return format("%.1fm", floor(gold / 100000) / 10) end
-  if gold >= 100000 then return format("%dk", floor(gold / 1000)) end
-  if gold >= 10000 then return format("%.1fk", floor(gold / 100) / 10) end
-  if gold >= 1000 then return format("%d%s", gold, GOLD_SUFFIX) end
-  return Formatting.FormatMoneyText(copper, brief and 1 or 2)
+  if gold >= 1000000 then return format("%.1fm%s", floor(gold / 100000) / 10, after or "") end
+  if gold >= 100000 then return format("%dk%s", floor(gold / 1000), after or "") end
+  if gold >= 10000 then return format("%.1fk%s", floor(gold / 100) / 10, after or "") end
+  if gold >= 1000 then return format("%d%s", gold, g) end
+  return MoneyIn(copper, brief and 1 or 2, g, s, c)
+end
+
+function Formatting.FormatMoneyCompact(copper, brief)
+  return CompactIn(copper, brief, GOLD_SUFFIX, SILVER_SUFFIX, COPPER_SUFFIX, nil)
+end
+
+-- The same reading with the coins of `coins` (Formatting.CoinSet) in place
+-- of the letters: "1373" and the gold coin, "52" gold "26" silver, "12.3k"
+-- gold. No colour: the caller tints the whole, which leaves the coins as
+-- they are.
+function Formatting.FormatMoneyCompactCoins(copper, brief, coins)
+  coins = coins or Formatting.DefaultCoins()
+  return CompactIn(copper, brief, coins.gold, coins.silver, coins.copper, coins.gold)
 end
 
 -- Zero coins in the middle are skipped ("5g 35c"), and `parts` caps the
@@ -300,7 +321,7 @@ end
 -- One format per amount and no tables: every money figure on every list
 -- refresh comes through here, a month of History is a thousand of them, and
 -- the pieces-and-join way made five tables a call.
-function Formatting.FormatMoneyText(copper, parts)
+MoneyIn = function(copper, parts, GOLD_SUFFIX, SILVER_SUFFIX, COPPER_SUFFIX)
   local gold, silver, rest, total = Split(copper)
   if total == 0 then return "" end
 
@@ -328,6 +349,10 @@ function Formatting.FormatMoneyText(copper, parts)
     return format("%d%s", silver, SILVER_SUFFIX)
   end
   return format("%d%s", rest, COPPER_SUFFIX)
+end
+
+function Formatting.FormatMoneyText(copper, parts)
+  return MoneyIn(copper, parts, GOLD_SUFFIX, SILVER_SUFFIX, COPPER_SUFFIX)
 end
 
 -- Amount rendered with the client's coin textures inline.

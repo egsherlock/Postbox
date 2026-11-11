@@ -948,6 +948,25 @@ do
     Keep(key, GOLD_SHARED[key], mode, "both")
   end
 
+  -- How the rows write their sums: "letters" ("1373g", the default) or
+  -- "coins", the band's coins after the figures (CollectTab, RV.RowCoins).
+  -- One per arrangement, as which gold is: rowGoldLook, largeGoldLook,
+  -- historyGoldLook; stored only as "coins". nil sets the default.
+  local LOOK_KEY = { rows = "rowGoldLook", large = "largeGoldLook", history = "historyGoldLook" }
+  function UI.GetGoldLook(arrangement)
+    local key = LOOK_KEY[arrangement] or LOOK_KEY.rows
+    local memo = Settings().gold
+    local look = memo[key]
+    if look then return look end
+    look = (Stored(key) == "coins") and "coins" or "letters"
+    memo[key] = look
+    return look
+  end
+  function UI.SetGoldLook(look, arrangement)
+    if look ~= nil and look ~= "letters" and look ~= "coins" then return end
+    Keep(LOOK_KEY[arrangement] or LOOK_KEY.rows, nil, look or "letters", "letters")
+  end
+
   -- When the rows show the time left. nil sets the default.
   function UI.GetExpiryWhen(arrangement)
     local key = EXPIRY_KEY[arrangement] or EXPIRY_KEY.rows
