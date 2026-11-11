@@ -22,7 +22,7 @@
 
 ### Sort and filter
 
-- **Sort and filter your mail:** the **Sort** button opens a menu. Order the
+- **Sort and filter your mail:** the button beside Search opens a menu. Order the
   list by newest, expiring, most gold or sender, and show only unread mail,
   mail with gold or mail with items. History's Received and Sent each have
   their own.

@@ -83,7 +83,7 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   command at a time, in the order the list shows. Under a search it collects
   what's shown; with rows selected (Shift-click a range, Ctrl-click one) it
   collects your picks. C.O.D. mail is never swept.
-- **Sort and filter:** the **Sort** button orders the list by newest,
+- **Sort and filter:** the button beside Search orders the list by newest,
   expiring, most gold or sender, remembered, and can show only unread mail,
   mail with gold or mail with items until you close the mailbox. A line above
   the list says what's on, with **Clear** beside it. When your bags fill,
