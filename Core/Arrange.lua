@@ -6556,22 +6556,17 @@ do
     return y
   end
 
-  -- A list-wide switch on a card, named as the options name it: a plate
-  -- with the eye open while it is on and crossed while it is off, and its
-  -- name, lit as the column's own switch is when pointed at; greyed, and
-  -- taking no click, while the column it draws on is hidden. Its tooltip is
-  -- the options' description. `get` and `set` are the option's own; `card`
-  -- the column whose card shows it.
+  -- A list-wide setting on a card, as the options' Mail tab has it: the
+  -- same name and the same kind of control, a checkbox, its name on the
+  -- left and its box at the card's right edge, ticked in the accent's mark
+  -- tone while it is on. One value, two controls: a click here writes the
+  -- option and the options panel follows (Redrawn), and the panel's own
+  -- checkbox brings the card with it (AR.ListWideChanged). Greyed, and
+  -- taking no click, while the column it draws on is hidden. Its tooltip
+  -- is the options' description. `get` and `set` are the option's own;
+  -- `card` the column whose card shows it. The Icon card's two in the
+  -- options' order: the count, then the badge, beside Quality by the name.
   local TOGGLES = {
-    { card = "icon", title = "OPT_QUALITY_ICON_TITLE", desc = "OPT_QUALITY_ICON_DESC",
-      get = function()
-        local ui = UI()
-        return not (ui and ui.GetQualityIcon) or ui.GetQualityIcon() and true or false
-      end,
-      set = function(on)
-        local ui = UI()
-        if ui and ui.SetQualityIcon then ui.SetQualityIcon(on) end
-      end },
     { card = "icon", title = "OPT_ICON_COUNTS_TITLE", desc = "OPT_ICON_COUNTS_DESC",
       get = function()
         local ui = UI()
@@ -6580,6 +6575,15 @@ do
       set = function(on)
         local ui = UI()
         if ui and ui.SetOption then ui.SetOption("iconCounts", on) end
+      end },
+    { card = "icon", title = "OPT_QUALITY_ICON_TITLE", desc = "OPT_QUALITY_ICON_DESC", quality = true,
+      get = function()
+        local ui = UI()
+        return not (ui and ui.GetQualityIcon) or ui.GetQualityIcon() and true or false
+      end,
+      set = function(on)
+        local ui = UI()
+        if ui and ui.SetQualityIcon then ui.SetQualityIcon(on) end
       end },
     -- The expiry marks, on the Time left card where they are drawn (the
     -- Mail page has the same switch). The time column is measured again:
@@ -6596,25 +6600,43 @@ do
       end },
   }
   -- World of Warcraft: Forever's goods carry no quality mark: the badge's
-  -- switch is not offered there, and the count's is the card's only one.
-  if ns.IsForever then table.remove(TOGGLES, 1) end
+  -- checkbox is not offered there, as the options panel offers none, and
+  -- the count's is the card's only one.
+  if ns.IsForever then
+    for i = #TOGGLES, 1, -1 do
+      if TOGGLES[i].quality then table.remove(TOGGLES, i) end
+    end
+  end
   AR.TOGGLES = TOGGLES
 
+  -- The box's side, and its inset from the card's right edge.
+  local BOX, BOX_IN = 11, 3
+
+  -- As an answer is painted (PaintRadio): a wash while pointed at, the name
+  -- white while on or pointed at; the box's ring lighter while pointed at
+  -- and its tick in the accent's mark tone; all of it grey while the
+  -- column is hidden.
   local function PaintToggle(t)
-    if t.live then
-      PaintSwitch(t)
-      return
+    local live, on = t.live, t.on
+    local hover = t.hover and live
+    t.Hover:SetShown(hover and true or false)
+    local spec = PLATE.switch
+    if live then
+      TintPlate(t.Box, hover and 0.17 or spec.fill, hover and spec.hover or (on and spec.on or spec.ring),
+        hover and "hover" or (on and "on" or "rest"))
+    else
+      TintPlate(t.Box, spec.fill, PLATE.nudge.off, "off")
     end
-    TintPlate(t, PLATE.switch.fill, PLATE.nudge.off, "off")
-    if t.Eye then
-      t.Eye:SetShown(t.on and true or false)
-      Grey(t.Eye, 0.4)
+    if t.Check then
+      t.Check:SetShown(on and true or false)
+      if live then
+        local r, g, b = AR.MarkRGB()
+        t.Check:SetVertexColor(r, g, b, 1)
+      else
+        Grey(t.Check, 0.44)
+      end
     end
-    if t.EyeOff then
-      t.EyeOff:SetShown(not t.on)
-      Grey(t.EyeOff, 0.4)
-    end
-    Grey(t.Label, 0.44)
+    Grey(t.Label, live and ((on or hover) and 1 or 0.91) or 0.44)
   end
 
   local function ToggleEnter(self)
@@ -6648,15 +6670,21 @@ do
 
   local function Toggle(insp, i)
     local T, P = Th(), INSP
-    local t = InspPlate(insp, "Button", true)
-    t:SetHeight(P.SWITCH_H)
+    local t = CreateFrame("Button", nil, insp)
+    t:SetSize(P.INNER, P.RADIO_H)
     t.hover, t.on, t.live, t.index = false, false, false, i
-    t.Eye = T.Glyph and T.Glyph(t, "eye", 8, "ARTWORK") or nil
-    t.EyeOff = T.Glyph and T.Glyph(t, "eye-off", 8, "ARTWORK") or nil
-    if t.Eye then t.Eye:SetPoint("CENTER", t, "LEFT", 12, 0) end
-    if t.EyeOff then t.EyeOff:SetPoint("CENTER", t, "LEFT", 12, 0) end
+    t.Hover = t:CreateTexture(nil, "BACKGROUND")
+    t.Hover:SetTexture(WHITE)
+    T.TintChrome(t.Hover, 0.06)
+    t.Hover:SetAllPoints()
+    t.Hover:Hide()
+    t.Box = InspPlate(t, "Frame", true)
+    t.Box:SetSize(BOX, BOX)
+    t.Box:SetPoint("RIGHT", t, "RIGHT", -BOX_IN, 0)
+    t.Check = T.Glyph and T.Glyph(t.Box, "check", 8, "ARTWORK") or nil
+    if t.Check then t.Check:SetPoint("CENTER", t.Box, "CENTER", 0, 0) end
     t.Label = Text(t, "bodySmall", "control")
-    t.Label:SetPoint("LEFT", t, "LEFT", P.SWITCH_LEAD, 0)
+    t.Label:SetPoint("LEFT", t, "LEFT", 0, 0)
     t.Label:SetJustifyH("LEFT")
     t.Label:SetWordWrap(false)
     t:SetScript("OnEnter", ToggleEnter)
@@ -6667,25 +6695,26 @@ do
     return t
   end
 
-  -- The switches of `card`'s column, one to a line, `live` while the
-  -- column shows. Answers the y under them.
+  -- The checkboxes of `card`'s column, one to a line as the answers stand,
+  -- a line's gap above the first; `live` while the column shows. Answers
+  -- the y under them.
   function AR.PutToggles(y, live, card)
     local insp, P = AR._insp, INSP
+    local first = true
     for i = 1, #TOGGLES do
       local spec = TOGGLES[i]
       if spec.card == card then
         local t = insp.Toggles[i] or Toggle(insp, i)
-        local text = L()[spec.title]
-        local w = math.min(P.SWITCH_LEAD + Measured(insp.Measure.control, text, false) + P.SWITCH_TAIL, P.INNER)
         t.on, t.live = spec.get() and true or false, live and true or false
         t.hover = t.hover and t:IsMouseOver() or false
-        t:SetWidth(w)
-        Th().FitText(t.Label, w - P.SWITCH_LEAD - P.SWITCH_TAIL + 1, text, t)
-        y = y - P.ROW_WRAP
+        t:SetWidth(P.INNER)
+        Th().FitText(t.Label, P.INNER - BOX - BOX_IN - P.MOVE_GAP, L()[spec.title], t)
+        if first then y = y - P.ROW_WRAP end
+        first = false
         At(t, P.PAD, y)
         PaintToggle(t)
         t:Show()
-        y = y - P.SWITCH_H
+        y = y - P.RADIO_H
       end
     end
     return y

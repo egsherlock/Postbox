@@ -282,6 +282,13 @@ function UI.SetOption(key, value)
   -- recipient tables live at the saved-variables root instead (see Postbox.lua).
   if profile then profile[key] = value == true end
   ForgetSettings()
+  -- Expiry marks are on the Time left card while arranging as well as on
+  -- the options' Mail tab: switched from either, the card shows it at once
+  -- (the options' own checkbox follows the card through RefreshControls).
+  if key == "expiryMarks" then
+    local AR = ns.Arrange
+    if AR and type(AR.ListWideChanged) == "function" then AR.ListWideChanged() end
+  end
 end
 
 -- A switch's default, for a reset of one part (the arrange mode's, which
