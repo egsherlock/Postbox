@@ -369,6 +369,28 @@ local function Upgrade(savedBy)
   if own and type(PostboxDB) == "table" then PostboxDB[SAVED_BY] = ns.VERSION end
 end
 
+-- 1.61: the category buttons have a new default (Core/MailboxUI.lua,
+-- GetGridLayout: three in a row, the other three hidden), which a profile
+-- without an arrangement of its own reads. One that had Postbox before it
+-- keeps what it had: its arrangement as the old default laid it, every
+-- button in the grid's own order (a group's after them, as before), written
+-- out once. Settled once per install, by its own mark at the root rather
+-- than by `savedBy`, which a 1.61 build from before this default also
+-- stamps; the mark stays through Reset everything (CENSUS_KEEP), so every
+-- reset after it gives the new default. `fresh`: no saved variables at all
+-- (ns.freshInstall), which starts on the new default.
+local GRID_SETTLED = "gridDefault"
+local GRID_BEFORE_161 = "bought,sold,canceled,expired,other,alts"
+
+local function SettleGridDefault(fresh)
+  local db = PostboxDB
+  if type(db) ~= "table" or db[GRID_SETTLED] ~= nil then return end
+  db[GRID_SETTLED] = "1.61"
+  if fresh then return end
+  local profile = db.profile
+  if type(profile) == "table" and profile.gridLayout == nil then profile.gridLayout = GRID_BEFORE_161 end
+end
+
 -------------------------------------------------------------
 -- 5. Error capture
 --
@@ -2531,6 +2553,7 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   -- The steps that run once (section 4b): after Initialize has carried the
   -- old settings over, before the minimap icon or any skin reads them.
   Upgrade(savedBy)
+  SettleGridDefault(ns.freshInstall)
 
   -- What's new, once by itself at the first mailbox, for a release with
   -- news for everyone (Core/WhatsNew.lua, section 5): after the steps,

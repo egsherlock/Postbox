@@ -550,6 +550,10 @@ local CENSUS_KEEP = {
   -- And which release's news What's new has shown (Core/WhatsNew.lua,
   -- section 5), so it does not open by itself again after a reset.
   newsShown  = true,
+  -- And that the category buttons' default was settled for this install
+  -- (Postbox.lua, 4b), so a reset gives today's default and not the one an
+  -- install from before it kept.
+  gridDefault = true,
 }
 
 -- Clears everything but the census, tells the modules that remember what
@@ -1946,8 +1950,15 @@ end
 -- where a new one goes, is the grid's to decide (CollectTab, "The category
 -- grid"), because only the grid knows what can be shown. An id is written
 -- with its commas and percent signs escaped, so a group's key can be
--- anything. Unset or unreadable is the default: every button, in the grid's
--- own order.
+-- anything. Unset or unreadable is the default, GRID_DEFAULT: All bought,
+-- All sold and All expired, then All canceled, Other and From alts hidden,
+-- listed with the hidden in the arrange mode for a right-click to show; a
+-- group's button, which it does not name, comes after them all, shown, as
+-- after any stored list. Every reset leaves it unset. A profile that had
+-- Postbox before this default keeps the one it had, written out once at
+-- load (Postbox.lua, 4b: every button, in the grid's own order).
+local GRID_DEFAULT = "bought,sold,expired,-canceled,-other,-alts"
+
 local function GridEscape(id)
   return (id:gsub("%%", "%%25"):gsub(",", "%%2C"))
 end
@@ -1965,9 +1976,11 @@ function UI.GetGridLayout()
   local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.gridLayout")
   if memo.grid and memo.gridText == stored then return memo.grid end
   local out = {}
-  if type(stored) == "string" then
+  local text = stored
+  if type(text) ~= "string" then text = GRID_DEFAULT end
+  do
     local seen = {}
-    for token in stored:gmatch("[^,]+") do
+    for token in text:gmatch("[^,]+") do
       local hidden = token:sub(1, 1) == "-"
       local id = GridUnescape(hidden and token:sub(2) or token)
       if id ~= "" and not seen[id] then

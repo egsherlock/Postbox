@@ -11957,7 +11957,8 @@ end
 -- The category grid
 --
 -- The full-width primary, then the sweeps tiling in rows of three: six of
--- them as the grid comes (two rows), and a character group's own button for
+-- them, three shown as the grid comes and three hidden (MailboxUI's
+-- GRID_DEFAULT; one row), and a character group's own button for
 -- each group the player has made (ns.CharacterGroups.GridButtons), wrapping
 -- onto as many rows as they need. Which sweeps show and in what order is the
 -- player's (MailboxUI.GetGridLayout), arranged in the arrange mode; the
