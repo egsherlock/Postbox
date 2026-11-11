@@ -4120,15 +4120,16 @@ local function BuildOptionsButton(frame, theme, onClick)
   button.icon:SetTexture("Interface\\Buttons\\UI-OptionsButton")
 
   -- The game's glow on the gear shape itself rather than a square box round
-  -- a round icon: shown only where the cog is the game's own art (Theme.PaintCog).
+  -- a round icon: shown only where no style dresses the windows (Theme.PaintCog).
   button:SetHighlightTexture("Interface\\Buttons\\UI-OptionsButton")
   local highlight = button:GetHighlightTexture()
   if highlight then highlight:SetBlendMode("ADD") end
 
   -- Chrome, as the arrange mark beside it: grey at rest, brighter under the
-  -- pointer, whatever the accent (Theme.PaintCog, which Theme.RepaintCog
-  -- runs again for both cogs after the palette, the accent or the strip
-  -- moved).
+  -- pointer, and the accent only while the options window is open
+  -- (Theme.PaintCog, which Theme.RepaintCog runs again for both cogs as
+  -- that window opens and closes, and after the palette, the accent or the
+  -- strip moved).
   button.hover = false
   if theme and theme.PaintCog then theme.PaintCog(button) end
 

@@ -10516,6 +10516,14 @@ local function Build()
   -- Find a setting, in the title bar, before the skins' first pass.
   Find.Build(frame)
   frame:HookScript("OnHide", PanelHide)
+  -- The two title-bar cogs wear the accent while this window is open
+  -- (Theme.PaintCog): painted again as it opens and closes, and only then.
+  local function Cogs()
+    local th = ns.Theme
+    if th and th.RepaintCog then th.RepaintCog() end
+  end
+  frame:HookScript("OnShow", Cogs)
+  frame:HookScript("OnHide", Cogs)
 
   -- Let an active host-UI skin restyle the panel like the main window.
   -- ElvUI's skin has no ApplyWindow, so testing only for that left the

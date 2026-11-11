@@ -3061,33 +3061,47 @@ function Theme.RepaintAccentText()
 end
 
 -- An options cog (MailboxUI's BuildOptionsButton), painted from its state.
--- Chrome, never the accent's: the game's art without its gold, in the
--- arrange mark's two greys beside it (Core/Arrange.lua), the quiet one at
--- rest and the bright one under the pointer (`button.hover`), painted from
--- their tokens so a palette change paints it again; the game's additive
--- glow is left out, the brighter grey being the hover. Where no style
--- dresses the windows (the Blizzard look, or a host UI's skin standing
--- down), the game's own art as the game draws it: gold, untinted, its glow
--- under the pointer.
+-- Chrome at rest, the accent only while the options window is open: that
+-- is a state, and the accent marks states. Open wins over the pointer.
+-- Where a style dresses the windows: the game's art without its gold, in
+-- the arrange mark's two greys beside it (Core/Arrange.lua), the quiet one
+-- at rest and the bright one under the pointer (`button.hover`), painted
+-- from their tokens so a palette change paints it again; the game's
+-- additive glow is left out, the brighter grey being the hover. Open, the
+-- same grey art in the accent's icon tone (as Theme.TintAccentGlyph's
+-- glyphs, held on the title strip), out of the palette's keeping so a
+-- palette repaint never greys it. Where no style dresses the windows (the
+-- Blizzard look, or a host UI's skin standing down): the game's art grey
+-- at rest, the game's glow under the pointer, and the game's own gold,
+-- untinted, while the options are open.
 function Theme.PaintCog(button)
   local icon = button and button.icon
   if not icon then return end
   local native = not ns.Skin
+  local panel = ns.OptionsPanel and ns.OptionsPanel._frame
+  local open = panel and panel:IsShown() and true or false
   local glow = button.GetHighlightTexture and button:GetHighlightTexture()
   if glow then glow:SetAlpha(native and 1 or 0) end
   if native then
-    if icon.SetDesaturated then icon:SetDesaturated(false) end
+    if icon.SetDesaturated then icon:SetDesaturated(not open) end
     icon:SetVertexColor(1, 1, 1, 1)
     return
   end
   if icon.SetDesaturated then icon:SetDesaturated(true) end
+  if open then
+    if track then track.tint[icon] = nil; track.grey[icon] = nil end
+    local r, g, b = Theme.GetAccentTone("icon")
+    icon:SetVertexColor(r, g, b, 1)
+    return
+  end
   Theme.SetColor(icon, button.hover and "textPrimary" or "textDisabled")
 end
 
 -- Both options cogs, the Postbox window's and Mail Memory's, painted again:
 -- after the palette, the accent or the strip they stand on moved, as every
--- caller has it. Their greys need nothing from the accent; the glyphs kept
--- in the accent's icon tone (Theme.TintAccentGlyph) do.
+-- caller has it, and as the options window opens and closes
+-- (Core/OptionsPanel.lua's Build hooks its OnShow and OnHide once). The
+-- glyphs kept in the accent's icon tone (Theme.TintAccentGlyph) follow too.
 function Theme.RepaintCog()
   local frame = ns.MailboxUI and ns.MailboxUI._frame
   if frame and frame.OptionsButton then Theme.PaintCog(frame.OptionsButton) end
