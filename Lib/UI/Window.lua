@@ -520,17 +520,22 @@ function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn, onR
   local button = CreateFrame("Button", nil, frame)
   button:SetSize(16, 16)
   button:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 6)
-  button:SetFrameStrata(frame:GetFrameStrata())
-  button:SetFrameLevel(frame:GetFrameLevel() + 30)
+  -- The theme read at call time: Lib loads before Core/Theme.lua.
+  local T = ns.Theme
+  -- Over the window, on its layer; a layer WoW Forever keeps secret is left
+  -- unread (Theme.StrataOf, Theme.LevelOf), and the grip keeps the one it
+  -- takes from the window as its child.
+  local strata = T and type(T.StrataOf) == "function" and T.StrataOf(frame) or nil
+  if strata then button:SetFrameStrata(strata) end
+  local level = T and type(T.LevelOf) == "function" and T.LevelOf(frame) or nil
+  if level then button:SetFrameLevel(level + 30) end
 
   -- The art: the mockups' two thin diagonals (Theme.GLYPHS.resize) at their
   -- own size, their box flush with the grip's bottom-right corner, pointing
   -- into the window's. Grey at rest; white while pointed at and while
   -- held, a drag that outruns the pointer included. The grip, not the
   -- window, owns the texture (see Theme.Glyph). Blizzard's chat grabber
-  -- where the theme's glyphs are not to be had. Read at call time: Lib
-  -- loads before Core/Theme.lua.
-  local T = ns.Theme
+  -- where the theme's glyphs are not to be had.
   local glyph = T and type(T.Glyph) == "function" and T.Glyph(button, "resize", nil, "ARTWORK") or nil
   local held = false
   local function Tint(lit)

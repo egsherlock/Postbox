@@ -1432,10 +1432,14 @@ do
       key:SetScript("OnHide", KeyHidden)
       AR._key = key
     end
+    -- Over the owner, on its layer; a layer WoW Forever keeps secret is
+    -- left unread (Theme.StrataOf), and the key keeps its own.
     local owner = host.owner
-    if owner and owner.GetFrameStrata then
-      key:SetFrameStrata(owner:GetFrameStrata())
-      key:SetFrameLevel(math.min((owner:GetFrameLevel() or 0) + 1, 10000))
+    local T = Th()
+    if owner and owner.GetFrameStrata and T and T.StrataOf then
+      local strata = T.StrataOf(owner)
+      if strata then key:SetFrameStrata(strata) end
+      key:SetFrameLevel(math.min((T.LevelOf(owner) or 0) + 1, 10000))
     end
     key:SetPropagateKeyboardInput(true)
     key:Show()

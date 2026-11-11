@@ -4188,6 +4188,16 @@ local function StrataOf(frame)
   if type(issecretvalue) == "function" and issecretvalue(strata) then return nil end
   return strata
 end
+Theme.StrataOf = StrataOf
+
+-- A frame's level, or nil where it has none to read, as StrataOf: a secret
+-- level can't be added to.
+function Theme.LevelOf(frame)
+  if type(frame.GetFrameLevel) ~= "function" then return nil end
+  local level = frame:GetFrameLevel()
+  if type(issecretvalue) == "function" and issecretvalue(level) then return nil end
+  return tonumber(level)
+end
 
 local function Floats(frame)
   if type(frame.IsToplevel) == "function" and frame:IsToplevel() then return true end
