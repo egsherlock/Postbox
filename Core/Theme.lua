@@ -4712,12 +4712,18 @@ do
     tex = plate:CreateTexture(nil, layer or "OVERLAY", nil, sub)
     local g = glyph.__pbSpec
     if g then
-      if g.wrap then tex:SetTexture(g.file, g.wrap, g.wrap) else tex:SetTexture(g.file) end
+      -- A pixel glyph's copy is sampled as the glyph is (Theme.Glyph).
+      if glyph.__pbPixel then
+        tex:SetTexture(g.file, "CLAMP", "CLAMP", "NEAREST")
+      elseif g.wrap then
+        tex:SetTexture(g.file, g.wrap, g.wrap)
+      else
+        tex:SetTexture(g.file)
+      end
       tex:SetTexCoord(g.l, g.r, g.t, g.b)
     else
       tex:SetTexture(glyph:GetTexture())
     end
-    tex:SetSize(glyph:GetSize())
     if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(true) end
     if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
     tex:Hide()
@@ -4725,11 +4731,14 @@ do
     return tex
   end
 
+  -- On the glyph's own corners, so it keeps the glyph's size (a pixel
+  -- glyph's is measured again when the scale moves) and its place.
   local function Place(tex, glyph, x, y)
     if tex.__pbX == x and tex.__pbY == y then return end
     tex.__pbX, tex.__pbY = x, y
     tex:ClearAllPoints()
-    tex:SetPoint("CENTER", glyph, "CENTER", x, y)
+    tex:SetPoint("TOPLEFT", glyph, "TOPLEFT", x, y)
+    tex:SetPoint("BOTTOMRIGHT", glyph, "BOTTOMRIGHT", x, y)
   end
 
   -- -> "shadow", "outline" or nil: what the plate's glyph is drawn with now.
@@ -5062,7 +5071,8 @@ Theme.AtlasSets = {
 -- sort-list, search, people, eye, and the three tools' small masters) is
 -- drawn from its 12-unit master at 12 units, pixel for pixel, centred on
 -- whole pixels in its box. Their art and its self-test:
--- .dev/design/icons-r8/gen_icons_r8.py (Set 1, "Solid").
+-- .dev/design/icons-r8/gen_icons_r8.py (Set 1, "Solid"; `--ship` writes the
+-- Media files and the table lines, `--selftest --media Media` proves them).
 --
 -- Theme.GLYPHS: name -> { file, w, h, l, r, t, b [, pad] [, wrap] }. w and h
 -- are the texture's size in UI units at the mockup's size; l, r, t, b crop
@@ -5144,10 +5154,10 @@ Theme.AtlasSets = {
 -- documentation's words; Blizzard's own NineSliceUtil.DisableSharpening sets
 -- the bias to 0 and the snap off, so a texture's default sharpens). On 2x art
 -- that throws half the anti-aliasing away. So the bias is 0 while the quad
--- still snaps to the pixel grid: at one screen pixel per unit (EllesmereUI's
--- pixel-perfect scale) the client then samples exactly between four texels,
--- and the tool made every four average to the mockup's own pixel. Both
--- setters are nil-guarded.
+-- still snaps to the pixel grid. Both setters are nil-guarded. The small
+-- family's hard-edged masters (`px`) are drawn as pixel art instead: on an
+-- even texel, point-sampled, a whole number of screen pixels to each master
+-- pixel (see PX by Theme.Glyph, which says why the old canvases blurred).
 --
 -- A new file under Media/ is found only after a full client restart.
 -------------------------------------------------------------
@@ -5156,11 +5166,11 @@ do
   local MEDIA = "Interface\\AddOns\\Postbox\\Media\\"
 
   Theme.GLYPHS = {
-    cog = { file = MEDIA .. "glyph-cog.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
-    layout = { file = MEDIA .. "glyph-layout.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
+    cog = { file = MEDIA .. "glyph-cog.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
+    layout = { file = MEDIA .. "glyph-layout.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
     ["layout-small"] = { file = MEDIA .. "glyph-layout-small.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875, pad = 1 },
     check = { file = MEDIA .. "glyph-check.tga", w = 8, h = 8, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125 },
-    eye = { file = MEDIA .. "glyph-eye.tga", w = 12, h = 8, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.53125 },
+    eye = { file = MEDIA .. "glyph-eye.tga", w = 12, h = 8, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.5625, px = true },
     ["eye-off"] = { file = MEDIA .. "glyph-eye-off.tga", w = 12, h = 8, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.53125 },
     slot = { file = MEDIA .. "glyph-slot.tga", w = 12, h = 11, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.71875 },
     ["arrow-left"] = { file = MEDIA .. "glyph-arrow-left.tga", w = 6, h = 8, l = 0.0625, r = 0.8125, t = 0.03125, b = 0.53125 },
@@ -5171,7 +5181,7 @@ do
     ["stretch-mid"] = { file = MEDIA .. "glyph-stretch.tga", w = 2, h = 7, l = 0.234375, r = 0.296875, t = 0.0625, b = 0.9375 },
     ["stretch-right"] = { file = MEDIA .. "glyph-stretch.tga", w = 4, h = 7, l = 0.390625, r = 0.515625, t = 0.0625, b = 0.9375 },
     sort = { file = MEDIA .. "glyph-sort.tga", w = 9, h = 6, l = 0.03125, r = 0.59375, t = 0.0625, b = 0.8125 },
-    people = { file = MEDIA .. "glyph-people.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
+    people = { file = MEDIA .. "glyph-people.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
     chevron = { file = MEDIA .. "glyph-chevron.tga", w = 10, h = 14, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.90625 },
     reset = { file = MEDIA .. "glyph-reset.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
     caret = { file = MEDIA .. "glyph-caret.tga", w = 8, h = 6, l = 0.03125, r = 0.53125, t = 0.0625, b = 0.8125 },
@@ -5180,7 +5190,7 @@ do
     ["arrow-back"] = { file = MEDIA .. "glyph-arrow-back.tga", w = 10, h = 9, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.59375 },
     ["dot-shadow"] = { file = MEDIA .. "glyph-dot-shadow.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
     hourglass = { file = MEDIA .. "glyph-hourglass.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
-    history = { file = MEDIA .. "glyph-history.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
+    history = { file = MEDIA .. "glyph-history.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
     ["expiry-back"] = { file = MEDIA .. "glyph-expiry-back.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875, pad = 1 },
     ["expiry-bin"] = { file = MEDIA .. "glyph-expiry-bin.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875, pad = 1 },
     ["expiry-back-clean"] = { file = MEDIA .. "glyph-expiry-back-clean.tga", w = 9, h = 9, l = 0.03125, r = 0.59375, t = 0.03125, b = 0.59375 },
@@ -5190,20 +5200,134 @@ do
     ["letter-open"] = { file = MEDIA .. "glyph-letter-open.tga", w = 10, h = 9, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.59375 },
     tray = { file = MEDIA .. "glyph-tray.tga", w = 11, h = 7, l = 0.03125, r = 0.71875, t = 0.0625, b = 0.9375 },
     cap = { file = MEDIA .. "glyph-cap.tga", w = 13, h = 13, l = 0.03125, r = 0.84375, t = 0.03125, b = 0.84375 },
-    ["sort-list"] = { file = MEDIA .. "glyph-sort-list.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
-    memory = { file = MEDIA .. "glyph-memory-12.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125,
+    ["sort-list"] = { file = MEDIA .. "glyph-sort-list.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
+    memory = { file = MEDIA .. "glyph-memory-12.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true,
       large = { from = 21, file = MEDIA .. "glyph-memory-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
-    groups = { file = MEDIA .. "glyph-groups-12.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125,
+    groups = { file = MEDIA .. "glyph-groups-12.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true,
       large = { from = 21, file = MEDIA .. "glyph-groups-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
-    recipients = { file = MEDIA .. "glyph-recipients-12.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125,
+    recipients = { file = MEDIA .. "glyph-recipients-12.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true,
       large = { from = 21, file = MEDIA .. "glyph-recipients-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
-    search = { file = MEDIA .. "glyph-search.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
+    search = { file = MEDIA .. "glyph-search.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
     link = { file = MEDIA .. "glyph-link.tga", w = 15, h = 8, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.53125 },
     ["link-broken"] = { file = MEDIA .. "glyph-link-broken.tga", w = 15, h = 8, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.53125 },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
   }
 
   local GLYPHS = Theme.GLYPHS
+
+  -- The small family's masters (`px` in the table: every pixel fully on or
+  -- off, drawn by .dev/design/icons-r8/gen_icons_r8.py --ship), asked for
+  -- at their own size, are drawn as pixel art:
+  --   * The art starts at texel 2, an even texel. The client builds each
+  --     texture's mip chain from the canvas's corner, so its level 1 is the
+  --     2 x 2 average of texels (0,1), (2,3) ..., and a 24-texel master
+  --     shown at 12 pixels is sampled there. With the art at texel 1 every
+  --     one of those averages held half of one unit and half of the next,
+  --     and every edge came out a [1 2 1] / 4 blur. At an even texel each is
+  --     exactly one unit.
+  --   * Point sampling (the "NEAREST" filter): each screen pixel takes one
+  --     texel, so a master pixel is a block of whole screen pixels at any
+  --     whole multiple, never a blend of two.
+  --   * A whole number of screen pixels for each master pixel: at one pixel
+  --     a unit (EllesmereUI's pixel-perfect scale, a Window scale of 100%)
+  --     that is the glyph's own size in units, pixel for pixel. Where a unit
+  --     is not a whole number of pixels (a Window scale of 90%, another UI
+  --     scale, a window shrunk to fit the screen) the glyph is drawn at the
+  --     nearest whole number of pixels per master pixel (one at least), so
+  --     it stays hard-edged and may stand a pixel or two larger or smaller
+  --     than its size in units says. Measured again only when the scale can
+  --     have moved: a window of Postbox's own shown or put on a new scale
+  --     (Theme.ApplyFrameTheme, Theme.RescaleWindows, Theme.FitToScreen),
+  --     and the client's UI_SCALE_CHANGED and DISPLAY_SIZE_CHANGED. Each
+  --     glyph compares one number and returns when nothing moved.
+  --   * Its anchor carries a quarter of a screen pixel right and down. The
+  --     glyph snaps to the pixel grid (SetSnapToPixelGrid); a glyph centred
+  --     in a box whose spare room is odd stands on half a pixel, where
+  --     rounding can send its two edges different ways and draw it a pixel
+  --     short or long. A quarter pixel more decides every such tie the same
+  --     way for both edges, and leaves a glyph on whole pixels where it was.
+  --     SetPoint on the texture does this itself, so its callers anchor it
+  --     as any other texture. Asked for at another size, a glyph of the
+  --     family is drawn as any other (the arrange mode's six-unit peg eye).
+  local PX = { list = setmetatable({}, { __mode = "k" }), BIAS = 0.25 }
+
+  -- The screen's height in pixels, read once and again after the client
+  -- says the screen or the UI scale changed.
+  function PX.Screen()
+    local h = PX.H
+    if not h then
+      h = 768
+      if type(GetPhysicalScreenSize) == "function" then
+        local _, ph = GetPhysicalScreenSize()
+        if type(ph) == "number" and ph > 0 then h = ph end
+      end
+      PX.H = h
+    end
+    return h
+  end
+
+  -- How many screen pixels a unit is where `tex` draws (Theme.OnePixel's
+  -- rule, inverted).
+  function PX.Of(tex)
+    local parent = tex:GetParent()
+    local s = parent and type(parent.GetEffectiveScale) == "function" and parent:GetEffectiveScale()
+    if type(s) ~= "number" or s <= 0 then return 1 end
+    return s * PX.Screen() / 768
+  end
+
+  -- Its anchor as given, a quarter pixel right and down.
+  function PX.Put(tex)
+    local b = PX.BIAS / (tex.__pbPx or 1)
+    PX.Raw(tex, tex.__pbAt, tex.__pbRel or tex:GetParent(), tex.__pbRelAt or tex.__pbAt,
+      (tex.__pbAx or 0) + b, (tex.__pbAy or 0) - b)
+  end
+
+  -- The texture's own SetPoint: (point), (point, x, y), (point, relativeTo
+  -- [, relativePoint [, x, y]]).
+  function PX.SetPoint(tex, point, a, b, c, d)
+    if type(a) == "number" then a, b, c, d = nil, nil, a, b end
+    tex.__pbAt, tex.__pbRel, tex.__pbRelAt, tex.__pbAx, tex.__pbAy = point, a, b, c, d
+    PX.Put(tex)
+  end
+
+  -- Sized for the scale it draws at; nothing when that has not moved.
+  function PX.Fit(tex)
+    local p = PX.Of(tex)
+    if tex.__pbPx == p then return end
+    tex.__pbPx = p
+    local g = tex.__pbSpec
+    local n = math.floor(p + 0.5)
+    if n < 1 then n = 1 end
+    local k = n / p
+    if math.abs(k - 1) < 0.002 then k = 1 end
+    tex:SetSize(g.w * k, g.h * k)
+    if tex.__pbAt then PX.Put(tex) end
+  end
+
+  -- Every pixel glyph measured against the scale it draws at now.
+  function Theme.RefitGlyphs()
+    for tex in pairs(PX.list) do PX.Fit(tex) end
+  end
+
+  function PX.Forget()
+    PX.H = nil
+    Theme.RefitGlyphs()
+  end
+
+  function PX.Adopt(tex, g)
+    tex:SetTexture(g.file, "CLAMP", "CLAMP", "NEAREST")
+    if not PX.Raw then PX.Raw = tex.SetPoint end
+    tex.SetPoint = PX.SetPoint
+    tex.__pbPixel = true
+    PX.list[tex] = true
+    if not PX.watch and type(CreateFrame) == "function" then
+      local w = CreateFrame("Frame")
+      w:RegisterEvent("UI_SCALE_CHANGED")
+      w:RegisterEvent("DISPLAY_SIZE_CHANGED")
+      w:SetScript("OnEvent", PX.Forget)
+      PX.watch = w
+    end
+  end
 
   function Theme.Glyph(parent, name, size, layer)
     local g = GLYPHS[name]
@@ -5213,20 +5337,24 @@ do
     local big = g.large
     if big and (tonumber(size) or g.h) >= big.from then g = big end
     local tex = parent:CreateTexture(nil, layer or "ARTWORK")
-    if g.wrap then
+    size = tonumber(size)
+    local pixel = g.px and (not size or size == g.h)
+    if pixel then
+      PX.Adopt(tex, g)
+    elseif g.wrap then
       tex:SetTexture(g.file, g.wrap, g.wrap)
     else
       tex:SetTexture(g.file)
     end
     tex:SetTexCoord(g.l, g.r, g.t, g.b)
     local k = 1
-    size = tonumber(size)
     if size and size > 0 then k = size / (g.h - 2 * (g.pad or 0)) end
     tex:SetSize(g.w * k, g.h * k)
     if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(true) end
     if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
     -- The art it was made from, for a turn of it (Theme.TurnGlyph).
     tex.__pbSpec = g
+    if pixel then PX.Fit(tex) end
     return tex
   end
 
@@ -6284,6 +6412,8 @@ do
     -- re-font since: Theme.CheckHostFonts). A frame of Postbox's own.
     if not windows[frame] and type(frame.HookScript) == "function" then
       frame:HookScript("OnShow", Theme.CheckHostFonts)
+      -- The pixel glyphs on the scale it opens at (Theme.Glyph).
+      if Theme.RefitGlyphs then frame:HookScript("OnShow", Theme.RefitGlyphs) end
     end
     windows[frame] = true
     local s = ScaleFor(frame, WindowScale())
@@ -6299,7 +6429,10 @@ do
     local h = frame:GetHeight() or 0
     if h > (fitted[frame] or 0) then fitted[frame] = h end
     local s = ScaleFor(frame, WindowScale())
-    if Differs(frame:GetScale(), s) then Rescale(frame, s) end
+    if Differs(frame:GetScale(), s) then
+      Rescale(frame, s)
+      if Theme.RefitGlyphs then Theme.RefitGlyphs() end
+    end
   end
 
   -- Every Postbox window built so far (the ones made through ApplyFrameTheme):
@@ -6322,6 +6455,7 @@ do
         Rescale(frame, s)
       end
     end
+    if moved > 0 and Theme.RefitGlyphs then Theme.RefitGlyphs() end
     return moved
   end
 end
