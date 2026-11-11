@@ -5859,7 +5859,10 @@ local function FitWidth(insp)
     Measured(m.note, L()["ARRANGE_ESC_CANCEL"], false))
   -- The overview's head: its title, Test mail and the cross on one line.
   local title = Measured(insp.Title, L()["ARRANGE_TITLE"], false)
-  local test = Measured(m.control, L()["ARRANGE_PREVIEW"], false)
+  -- Test mail at the wider of its two words, Test mail and Testing
+  -- (PutTest), so the head is one width whichever it says.
+  local test = math.max(Measured(m.control, L()["ARRANGE_PREVIEW"], false),
+    Measured(m.control, L()["OPT_TEST_MAIL_ON"], false))
   if reset > 0 and key > 0 and finish > 0 and title > 0 and test > 0 then
     fit.path, fit.size, fit.flags, fit.scale = path, size, flags, scale
   end
@@ -6107,9 +6110,15 @@ local function PutTest(host, room)
   local insp, P = AR._insp, INSP
   local test = insp.Test
   if not (test and host.Preview) then return room end
-  local text = L()["ARRANGE_PREVIEW"]
-  local w = P.TEST_LEAD + Measured(insp.Measure.control, text, false) + P.TEST_TAIL
+  -- Its words say what it is doing, Testing while on, as the options'
+  -- switch does (Rows.PaintLead), on a toggle as wide as the wider of the
+  -- two, so nothing on the line moves when it turns. Measured is memoised
+  -- per font: two lookups after the first.
+  local m = insp.Measure.control
+  local off, onText = L()["ARRANGE_PREVIEW"], L()["OPT_TEST_MAIL_ON"]
+  local w = P.TEST_LEAD + math.max(Measured(m, off, false), Measured(m, onText, false)) + P.TEST_TAIL
   test.on = AR.preview and true or false
+  local text = test.on and onText or off
   test.locked = host.PreviewLocked and host.PreviewLocked() and true or nil
   test.hover = test.hover and test:IsMouseOver() or false
   test.Label:SetText(text)
