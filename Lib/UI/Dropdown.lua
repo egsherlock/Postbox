@@ -1017,8 +1017,10 @@ end
 -- opts.checked(id) -> whether that choice is the one in effect, marked with
 -- the select's dot on each open and after each pick; opts.keepOpen, a pick
 -- leaves the menu open with its dots painted again (a menu of two groups is
--- set twice); opts.alignRight, the menu hangs under the button's right
--- edge, for a button at its window's right. :Repaint() paints the dots
+-- set twice). Every menu opens the one way, outward: its left edge on the
+-- button's, out past the window's edge where it must, the screen keeping
+-- it whole (it is clamped to the screen, which shifts it in rather than
+-- flipping it). :Repaint() paints the dots
 -- again while it is open (the choices changed under it). An item with
 -- `rule` has a hairline over it; opts.disabled(id) -> a row drawn faint
 -- whose click does nothing, asked with the dots.
@@ -1208,12 +1210,10 @@ function Dropdown.Menu(owner, items, opts)
       up = below < height and above > below
     end
     list:ClearAllPoints()
-    -- Right edges lined up instead, for a button at its window's right.
-    local side = opts.alignRight and "RIGHT" or "LEFT"
     if up then
-      list:SetPoint("BOTTOM" .. side, owner, "TOP" .. side, 0, LIST_GAP)
+      list:SetPoint("BOTTOMLEFT", owner, "TOPLEFT", 0, LIST_GAP)
     else
-      list:SetPoint("TOP" .. side, owner, "BOTTOM" .. side, 0, -LIST_GAP)
+      list:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -LIST_GAP)
     end
     list:SetFrameLevel(((owner:GetFrameLevel()) or 0) + LIST_LEVEL_OFFSET)
   end

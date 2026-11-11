@@ -5517,9 +5517,10 @@ function RV.SFMenu(panel, list)
   -- Last, under a hairline: Reset, as the right-click does it; grayed
   -- while there is nothing to reset.
   items[#items + 1] = { id = "reset", name = L0["SF_RESET"], rule = true }
+  -- Under the button, its left edge on the button's, out past the window's
+  -- edge as the character picker's list opens; the screen keeps it whole.
   local menu = D.Menu(panel.Sort, items, {
     keepOpen = true,
-    alignRight = true,
     disabled = function(id) return id == "reset" and not RV.SFLit(panel) end,
     checked = function(id)
       local pick = RV.SF_IDS[id]
