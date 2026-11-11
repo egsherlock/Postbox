@@ -163,7 +163,7 @@ local OPTION_DEFAULTS = {
   attachFromMail  = false,
   -- The collect screen's one-click sweeps (bought, sold, canceled, expired,
   -- other, from alts, and each character group's) under the full-width
-  -- Collect button. On since 1.61 (Elliott), for a fresh install and after
+  -- Collect button. On since 1.70 (Elliott), for a fresh install and after
   -- every reset: the default grid is three buttons, All bought, All sold and
   -- All expired (GetGridLayout). Off from 1.50 to 1.60, and an install from
   -- then that never chose keeps them off, written out once at load

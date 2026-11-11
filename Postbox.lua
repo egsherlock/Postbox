@@ -372,43 +372,43 @@ local function Upgrade(savedBy)
   if own and type(PostboxDB) == "table" then PostboxDB[SAVED_BY] = ns.VERSION end
 end
 
--- 1.61: the category buttons have a new default (Core/MailboxUI.lua,
+-- 1.70: the category buttons have a new default (Core/MailboxUI.lua,
 -- GetGridLayout: three in a row, the other three hidden), which a profile
 -- without an arrangement of its own reads. One last saved by 1.50 to 1.60,
--- or by a 1.61 build from before this default, keeps what it had: its
+-- or by a 1.70 build from before this default, keeps what it had: its
 -- arrangement as the old default laid it, every button in the grid's own
 -- order (a group's after them, as before), written out once. A profile from
 -- 1.40 or earlier takes the new default: the 1.50 step (UPGRADES) has just
 -- put it on today's defaults. Settled once per install, by its own mark at
--- the root, since a 1.61 build from before this default also stamps
+-- the root, since a 1.70 build from before this default also stamps
 -- `savedBy`; the mark stays through Reset everything (CENSUS_KEEP), so every
 -- reset after it gives the new default. `fresh`: no saved variables at all
 -- (ns.freshInstall), which starts on the new default; `savedBy`:
 -- SavedByRelease's answer, read before this load stamped it.
 local GRID_SETTLED = "gridDefault"
-local GRID_BEFORE_161 = "bought,sold,canceled,expired,other,alts"
+local GRID_BEFORE_170 = "bought,sold,canceled,expired,other,alts"
 
 local function SettleGridDefault(fresh, savedBy)
   local db = PostboxDB
   if type(db) ~= "table" or db[GRID_SETTLED] ~= nil then return end
-  db[GRID_SETTLED] = "1.61"
+  db[GRID_SETTLED] = "1.70"
   if fresh or not (savedBy and savedBy >= RELEASE_150) then return end
   local profile = db.profile
-  if type(profile) == "table" and profile.gridLayout == nil then profile.gridLayout = GRID_BEFORE_161 end
+  if type(profile) == "table" and profile.gridLayout == nil then profile.gridLayout = GRID_BEFORE_170 end
 end
 
--- 1.61: the category buttons are on by default (Core/MailboxUI.lua,
+-- 1.70: the category buttons are on by default (Core/MailboxUI.lua,
 -- showCategoryButtons), for a fresh install and after every reset. Off was
 -- the default only from 1.50 to 1.60 (on from 1.35, when the switch came,
 -- and always shown before it), so a profile last saved by one of those, or
--- by a 1.61 build from before this default, that never chose keeps them
+-- by a 1.70 build from before this default, that never chose keeps them
 -- off, as it showed them: written out once, through the setting's own
 -- accessor (which forgets what the settings memo read). A profile from
--- 1.40 or earlier showed them, as 1.61 does by default, and the 1.50 step
+-- 1.40 or earlier showed them, as 1.70 does by default, and the 1.50 step
 -- (UPGRADES) has just put it on today's defaults anyway: left to the
 -- default. Its own mark at the root, kept through Reset everything
 -- (CENSUS_KEEP), so a reset after it gives the new default; not
--- SettleGridDefault's, which 1.61 builds from before this default already
+-- SettleGridDefault's, which 1.70 builds from before this default already
 -- stamped. `fresh`: no saved variables, which starts on the new default;
 -- `savedBy`: SavedByRelease's answer, read before this load stamped it.
 local GRID_SHOWN = "gridShown"
@@ -424,10 +424,10 @@ local function SettleGridShown(fresh, savedBy)
       UI.SetOption("showCategoryButtons", false)
     end
   end
-  db[GRID_SHOWN] = "1.61"
+  db[GRID_SHOWN] = "1.70"
 end
 
--- 1.61: a character group's button the arrangement does not name stands
+-- 1.70: a character group's button the arrangement does not name stands
 -- after the rest in the order the groups were made (CollectTab,
 -- RV.ReconcileGrid); before, it stood in the Character Groups list's order,
 -- which is now that list's own. A player whose unnamed buttons stood in
@@ -442,7 +442,7 @@ local GROUPS_SETTLED = "groupOrder"
 local function SettleGroupOrder(fresh)
   local db = PostboxDB
   if type(db) ~= "table" or db[GROUPS_SETTLED] ~= nil then return end
-  db[GROUPS_SETTLED] = "1.61"
+  db[GROUPS_SETTLED] = "1.70"
   if fresh then return end
   local CG, CT, UI = ns.CharacterGroups, ns.CollectTab, ns.MailboxUI
   if not (CG and type(CG.List) == "function" and CT and type(CT.GroupsByCreation) == "function"
