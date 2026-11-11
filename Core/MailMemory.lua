@@ -839,6 +839,73 @@ function MM.MailsText(n, uncounted)
   return ns.Plural("OVERVIEW_MAILS_MORE", n)
 end
 
+-- The last seven days by mail, for the options' General tab: `who` "me"
+-- (the character being played) or "all" (every character with a record,
+-- a hidden one left out as the lists of every box leave it out). Read from
+-- History (2c: `m` gold taken, `c` C.O.D. paid, one entry a mail
+-- collected) and Sent (2d: `m` gold sent, one entry a mail sent):
+--   earned     copper taken from mail
+--   spent      copper paid for C.O.D. and copper sent
+--   collected  mails in History, sent  mails in Sent
+--   walked     the entries read, for a cost check
+-- Each record is oldest first, so it is read from its newest end back to
+-- the first entry older than the week and no further: one walk per
+-- character and record, nothing pruned, written or built. The answer is
+-- one table, filled again on each call; the caller says when to ask
+-- (OptionsPanel's Week: on General's show, MM.recordWrites, the switch).
+do
+  local WEEK = { earned = 0, spent = 0, collected = 0, sent = 0, walked = 0 }
+
+  local function WeekWalk(list, cutoff, sent)
+    local w = WEEK
+    for i = #list, 1, -1 do
+      local e = list[i]
+      w.walked = w.walked + 1
+      local t = type(e) == "table" and tonumber(e.t) or nil
+      if not t or t < cutoff then return end
+      if sent then
+        w.spent = w.spent + (tonumber(e.m) or 0)
+        w.sent = w.sent + 1
+      else
+        w.earned = w.earned + (tonumber(e.m) or 0)
+        w.spent = w.spent + (tonumber(e.c) or 0)
+        w.collected = w.collected + 1
+      end
+    end
+  end
+
+  local function WeekRoot(key, cutoff, sent, all, myRealm, myName)
+    local root = ns.Store and ns.Store.Get and ns.Store.Get(key)
+    if type(root) ~= "table" then return end
+    if not all then
+      local byRealm = root[myRealm]
+      local list = type(byRealm) == "table" and byRealm[myName] or nil
+      if type(list) == "table" then WeekWalk(list, cutoff, sent) end
+      return
+    end
+    for realm, byRealm in pairs(root) do
+      if type(byRealm) == "table" then
+        for name, list in pairs(byRealm) do
+          if type(list) == "table" and ((realm == myRealm and name == myName) or not MM.IsHidden(realm, name)) then
+            WeekWalk(list, cutoff, sent)
+          end
+        end
+      end
+    end
+  end
+
+  function MM.Week(who)
+    local w = WEEK
+    w.earned, w.spent, w.collected, w.sent, w.walked = 0, 0, 0, 0, 0
+    local myRealm, myName = Me()
+    if not (myRealm and myName) then return w end
+    local cutoff, all = time() - 7 * DAY, who == "all"
+    WeekRoot("mailHistory", cutoff, false, all, myRealm, myName)
+    WeekRoot("mailSent", cutoff, true, all, myRealm, myName)
+    return w
+  end
+end
+
 -- st (one of MM.Characters) -> whether it has mail to show: counted, or
 -- known to have come uncounted. What decides whether a list names it.
 function MM.HasMail(st)

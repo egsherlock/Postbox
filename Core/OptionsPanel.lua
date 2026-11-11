@@ -1053,9 +1053,15 @@ do
   -- stays in sight (Ctx.Keep: the Preview's heading and its Test mail
   -- switch, the minimap icon's ground), so no description makes the window
   -- taller than its list (Layout).
+  -- On General the card's own texts (entry.under) stand under both cards
+  -- while they fit there; a longer one, at a long language and a large
+  -- Text size, rises over the 7-day card (Dash.Week) while it is pointed
+  -- at, never over the card it describes, and is cut at rest
+  -- (Insp.Idle), so neither card makes the window taller than its list.
   function Insp.Room(entry)
-    if entry and not entry.under and S.tab == "general" and S.dash and S.bodyH then
-      return S.bodyH - Dash.KEEP
+    if entry and S.tab == "general" and S.dash and S.bodyH then
+      if not entry.under then return S.bodyH - Dash.KEEP end
+      return S.bodyH - Dash.H - BODY_GAP
     end
     local room = S.inspH or S.bodyH
     local stage = entry and (entry.stage or entry.rise)
@@ -1134,7 +1140,11 @@ do
     local h = Lay(idle, entry.title, entry.text, 0)
     if Ctx.Height(key) == 0 then
       idle.Rule:Hide()
-      h = math.max(h, Insp.Room() - 2)
+      local room = Insp.Room() - 2
+      -- General's own text where the room under its two cards is shorter
+      -- than it: cut to that room, whole under the pointer (Insp.Room).
+      if key == "general" and h > room and room > 0 then h = Insp.Cut(idle, entry, room, 0) end
+      h = math.max(h, room)
     else
       idle.Rule:Show()
       local least = Insp.Least(key)
@@ -1638,6 +1648,7 @@ do
         Ctx.PaintTile(tiles.recipients, recipients)
       end
       Dash.Paint()
+      Dash.Week.Paint()
     end
     return f
   end
@@ -4576,7 +4587,7 @@ do
   -- whatever its list holds, so it never squeezes the settings.
   function Rows.PageNeed(key)
     local h = S.pageH[key] + 2
-    if key == "general" then h = h + Dash.H + BODY_GAP end
+    if key == "general" then h = h + Dash.H + BODY_GAP + Dash.Week.H + BODY_GAP end
     return h
   end
 
@@ -5923,6 +5934,18 @@ do
   -- The strip, the columns' headings, the gap between two figures and the
   -- sentence's padding.
   local HEAD_H, COLS_H, GAP, MSG_PAD = GROUP_H, 18, 18, 8
+  -- The least room the strip's note is shown in.
+  local NOTE_MIN = 48
+  -- The 7-day card under this one (Week.Build): its strip, its figures'
+  -- band and the figures' padding from its top; the gap between the
+  -- switch's two words and the underline under the chosen one.
+  local Week = { HEAD = HEAD_H, FIG = 46, FIG_PAD = 7, FIG_GAP = 3, SWITCH_GAP = 14, MARK_GAP = 2, MARK_H = 2,
+    LABELS = { "OPT_WEEK_EARNED", "OPT_WEEK_SPENT", "OPT_WEEK_COLLECTED", "OPT_WEEK_SENT" },
+    -- What the figures were last made from; the card's shows, counted.
+    made = { writes = false, who = false, off = false, open = false, shown = false, up = false, down = false },
+    shown = 0 }
+  Week.H = 1 + Week.HEAD + Week.FIG + 1
+  Dash.Week = Week
   -- The lines the list shows: five.
   local LINES = 5
   -- The card less its lines: its edges, the strip, the headings and the
@@ -5933,15 +5956,14 @@ do
   -- What a General setting's long text leaves of the card over it, rising
   -- (Insp.Room): the card's edge and its strip.
   Dash.KEEP = 1 + HEAD_H
-  -- The tiles' column, three of the inspector's tiles one over the other:
-  -- its top level with the first line's, under the strip and the headings,
-  -- so the room over it is the headings' (18), and as much again under it,
-  -- over the card's foot inside its edge. The gaps between the tiles have
-  -- what is left (6 on this card; the inspector's drawings keep their 8),
-  -- an odd unit going under.
+  -- The tiles' column, three of the inspector's tiles one over the other,
+  -- a block of their own beside the table: no strip over them (the strip
+  -- and its note are the table's, over the list's side alone), 6 apart
+  -- (the inspector's drawings keep their 8), the three centred in the
+  -- card's height inside its edges, an odd unit going under.
   local TILES_X = LIST_W + BODY_GAP + CTX_X
-  local TILES_TOP = 1 + HEAD_H + COLS_H
-  local TILE_GAP = math.floor((Dash.H - 1 - TILES_TOP - COLS_H - 3 * TILE_H) / 2)
+  local TILE_GAP = 6
+  local TILES_TOP = 1 + math.floor((Dash.H - 2 - 3 * TILE_H - 2 * TILE_GAP) / 2)
   -- What the slim bar takes from the lines while it shows: its 6 and 4
   -- each side (Theme.SlimScrollBar).
   local GUTTER = 14
@@ -6081,12 +6103,14 @@ do
     ground:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -1, 1)
     T.FillChrome(ground, LIFT_A)
 
-    -- The strip: what the card is on the left, how old it is on the right,
-    -- on a shade of its own over a hairline.
+    -- The strip: what the table is on the left, how old it is on the right
+    -- over the Seen column it explains, on a shade of its own over a
+    -- hairline, across the list's side only: the tiles beside it are not
+    -- what it names.
     local head = Spot(card, "Frame", HEAD_H)
     head:SetFrameLevel(level + 2)
     head:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
-    head:SetPoint("TOPRIGHT", card, "TOPRIGHT", -1, -1)
+    head:SetWidth(ROW_W)
     local shade = head:CreateTexture(nil, "BACKGROUND", nil, -1)
     shade:SetAllPoints()
     T.FillChrome(shade, STRIP_A)
@@ -6099,7 +6123,7 @@ do
     head.Title:SetPoint("LEFT", head, "LEFT", NAME_X, 0)
     head.Title:SetText(L["OPT_DASH_TITLE"])
     head.Note = Text(head, "secondary", "RIGHT")
-    head.Note:SetPoint("RIGHT", head, "RIGHT", -CONTROL_R, 0)
+    head.Note:SetPoint("RIGHT", head, "RIGHT", -(CONTROL_R + 2), 0)
     head.Note:SetText(L["OPT_DASH_FOOT"])
     T.SetColor(head.Note, "textSecondary")
 
@@ -6195,12 +6219,12 @@ do
     msg:Hide()
 
     -- The list's side and the tiles' apart: a hairline down between them
-    -- the whole height under the strip, from its rule to the card's foot
-    -- inside its edge. The list's slim bar stands left of it, in the list's
-    -- own area (Theme.SlimScrollBar).
+    -- the card's whole height inside its edges, the strip ending at it.
+    -- The list's slim bar stands left of it, in the list's own area
+    -- (Theme.SlimScrollBar).
     local split = lift:CreateTexture(nil, "BORDER")
-    split:SetSize(1, Dash.H - 2 - HEAD_H)
-    split:SetPoint("TOPLEFT", card, "TOPLEFT", LIST_W + BODY_GAP / 2 - 1, -(1 + HEAD_H))
+    split:SetSize(1, Dash.H - 2)
+    split:SetPoint("TOPLEFT", card, "TOPLEFT", LIST_W + BODY_GAP / 2 - 1, -1)
     T.FillChrome(split, HAIR_A)
 
     -- The three ways in, one over the other, over the lift: each wears
@@ -6255,15 +6279,17 @@ do
   end
 
   -- Where the list and the inspector stand under `key`: on General under
-  -- the card and a gap, the card's height less than the body's; on every
-  -- other tab at the top, the card hidden. Moved only when that changes.
+  -- the two cards (the overview, then the last 7 days), each with its gap,
+  -- the cards' height less than the body's; on every other tab at the top,
+  -- the cards hidden. Moved only when that changes.
   function Dash.Place(key)
     local d = S.dash
     if not (d and S.list and S.insp) then return end
     local on = key == "general"
-    local top = on and (d.h + BODY_GAP) or 0
+    local top = on and (d.h + BODY_GAP + Week.H + BODY_GAP) or 0
     local h = math.max(1, (S.bodyH or 0) - top)
     d.card:SetShown(on)
+    if Week.d then Week.d.card:SetShown(on) end
     if d.top == top and S.inspH == h then return end
     d.top, S.inspH = top, h
     S.list:ClearAllPoints()
@@ -6365,11 +6391,8 @@ do
     -- The strip's name greys with Mail Memory, as its settings do; its note
     -- has the room the name leaves it.
     T.SetColor(head.Title, (data and data.enabled) and "accent" or "textDisabled")
+    T.FitText(head.Title, ROW_W - NAME_X - CONTROL_R - 2, L["OPT_DASH_TITLE"])
     head.Note:SetShown(not words)
-    if not words then
-      T.FitText(head.Note, LIST_W + BODY_GAP + INSP_W - 2 - NAME_X - CONTROL_R - GAP - TextW(head.Title),
-        L["OPT_DASH_FOOT"], head)
-    end
     cols:SetShown(not words)
     d.area:SetShown(not words)
     total:SetShown(not words)
@@ -6441,6 +6464,20 @@ do
     end
     local nameRoom = ROW_W - gutter - NAME_X - x
     PlaceFigures(cols, gutter)
+    -- The strip's note over the Seen column it explains, in with it while
+    -- the bar shows; cut where the title leaves it less than its room, and
+    -- left out where it leaves too little to read.
+    local noteR = CONTROL_R + 2 + gutter
+    head.Note:ClearAllPoints()
+    head.Note:SetPoint("RIGHT", head, "RIGHT", -noteR, 0)
+    local noteRoom = ROW_W - NAME_X - TextW(head.Title) - GAP - noteR
+    if noteRoom < NOTE_MIN then
+      head.Note:Hide()
+      head.__pbOverflowText = nil
+    else
+      head.Note:Show()
+      T.FitText(head.Note, noteRoom, L["OPT_DASH_FOOT"], head)
+    end
     for i = 1, listed do
       local line = d.rows[i]
       PlaceFigures(line, 0)
@@ -6491,6 +6528,221 @@ do
     if made.open ~= S.openGen then d.scroll:SetVerticalScroll(0) end
     made.gen, made.marks, made.ink, made.open = gen, marks, ink, S.openGen
     Fill(data)
+  end
+
+  -------------------------------------------------------------
+  -- The last 7 days (Dash.Week): a second, smaller card under the
+  -- overview, the same lifted chrome. Its strip says "The last 7 days" on
+  -- the left and, on the right, whose: two words side by side, This
+  -- character and All characters, a light switch of plain text, no plate --
+  -- the chosen word in the accent's text tone with the house underline
+  -- under it, the other muted and brightening under the pointer; a click
+  -- on it chooses it, kept on the profile (MailboxUI.GetWeekScope, This
+  -- character by default). Under the strip, four figures side by side, each
+  -- a quiet label over its value: Earned and Spent written as the Mail
+  -- tab's totals write gold (its largest coin, in the positive and the
+  -- negative ink; none is the dash), Collected and Sent as "41 mails".
+  -- Read from History and Sent (MailMemory.Week): gold taken, and C.O.D.
+  -- paid with gold sent, over the last seven days.
+  --
+  -- While Keep History for is Never there is nothing to add up: the card
+  -- greys, its figures are the dash, the switch rests, and its text says
+  -- why, as an inactive row's does.
+  --
+  -- Light: added up when the card is shown and again only when a record
+  -- was written (MailMemory.recordWrites) or the switch moved -- one walk
+  -- per character, back to the first entry older than the week -- and
+  -- painted again only when one of those, History's state, the inks or an
+  -- open of the panel moved. Nothing while the options are closed or
+  -- another tab is up.
+  -------------------------------------------------------------
+  local function SwitchPaint(b)
+    local T = ns.Theme
+    local d = Week.d
+    local on = not d.off
+    local chosen = b.who == d.who
+    T.SetColor(b.Text, (not on and "textDisabled") or (chosen and "accentText")
+      or (b.hot and "textPrimary") or "textSecondary")
+    b.Mark:SetShown(chosen)
+    if chosen then T.FillColor(b.Mark, on and "accent" or "textDisabled") end
+  end
+
+  local function SwitchEnter(self)
+    if Rows.Held(self, SwitchEnter) then return end
+    self.hot = true
+    SwitchPaint(self)
+    Rows.Hover(Week.d.head)
+  end
+
+  local function SwitchLeave(self)
+    self.hot = false
+    SwitchPaint(self)
+    if Rows.HeldLeave(self) then return end
+    Rows.Unhover(Week.d.head)
+  end
+
+  local function SwitchClick(self)
+    local d = Week.d
+    if d.off or self.who == d.who then return end
+    local UI = ns.MailboxUI
+    if UI and type(UI.SetWeekScope) == "function" then UI.SetWeekScope(self.who) end
+    Week.Paint()
+  end
+
+  local function WeekShown()
+    Week.shown = Week.shown + 1
+  end
+
+  function Week.Build(body)
+    local T = ns.Theme
+    local card = CreateFrame("Frame", nil, body, "BackdropTemplate")
+    card:SetPoint("TOPLEFT", body, "TOPLEFT", 0, -(Dash.H + BODY_GAP))
+    card:SetPoint("TOPRIGHT", body, "TOPRIGHT", 0, -(Dash.H + BODY_GAP))
+    card:SetHeight(Week.H)
+    T.ApplyList(card)
+    card:Hide()
+    card:HookScript("OnShow", WeekShown)
+    local level = card:GetFrameLevel()
+    local lift = ArtHolder(card)
+    lift:SetFrameLevel(level + 1)
+    local ground = lift:CreateTexture(nil, "BACKGROUND")
+    ground:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
+    ground:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -1, 1)
+    T.FillChrome(ground, LIFT_A)
+
+    -- The strip, across the card: its figures are the whole card's.
+    local head = Spot(card, "Frame", Week.HEAD)
+    head.entry = S.weekEntry
+    head:SetFrameLevel(level + 2)
+    head:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
+    head:SetPoint("TOPRIGHT", card, "TOPRIGHT", -1, -1)
+    local shade = head:CreateTexture(nil, "BACKGROUND", nil, -1)
+    shade:SetAllPoints()
+    T.FillChrome(shade, STRIP_A)
+    local rule = head:CreateTexture(nil, "BORDER")
+    rule:SetHeight(1)
+    rule:SetPoint("BOTTOMLEFT", head, "BOTTOMLEFT", 0, 0)
+    rule:SetPoint("BOTTOMRIGHT", head, "BOTTOMRIGHT", 0, 0)
+    T.FillChrome(rule, HAIR_A)
+    head.Title = Text(head, "heading")
+    head.Title:SetPoint("LEFT", head, "LEFT", NAME_X, 0)
+    head.Title:SetText(L["OPT_WEEK_TITLE"])
+
+    -- The switch: two words, the second at the strip's right.
+    local switch = {}
+    local whos = { "me", "all" }
+    for i = 1, 2 do
+      local b = CreateFrame("Button", nil, head)
+      b:SetFrameLevel(level + 3)
+      b:SetHeight(Week.HEAD)
+      b.Text = Text(b, "secondary", "CENTER")
+      b.Text:SetPoint("CENTER", b, "CENTER", 0, 0)
+      b.Text:SetText(L[i == 1 and "OPT_WEEK_ME" or "OPT_WEEK_ALL"])
+      local mark = b:CreateTexture(nil, "ARTWORK")
+      mark:SetHeight(Week.MARK_H)
+      mark:SetPoint("TOPLEFT", b.Text, "BOTTOMLEFT", 0, -Week.MARK_GAP)
+      mark:SetPoint("TOPRIGHT", b.Text, "BOTTOMRIGHT", 0, -Week.MARK_GAP)
+      mark:Hide()
+      b.Mark, b.who, b.entry, b.hot = mark, whos[i], S.weekEntry, false
+      b:SetScript("OnEnter", SwitchEnter)
+      b:SetScript("OnLeave", SwitchLeave)
+      b:SetScript("OnClick", SwitchClick)
+      switch[i] = b
+    end
+    switch[2]:SetPoint("RIGHT", head, "RIGHT", -CONTROL_R, 0)
+    switch[1]:SetPoint("RIGHT", switch[2], "LEFT", -Week.SWITCH_GAP, 0)
+
+    -- The four figures, a quarter of the card each.
+    local figs = Spot(card, "Frame", Week.FIG)
+    figs.entry = S.weekEntry
+    figs:SetFrameLevel(level + 2)
+    figs:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -(1 + Week.HEAD))
+    figs:SetPoint("TOPRIGHT", card, "TOPRIGHT", -1, -(1 + Week.HEAD))
+    local colW = math.floor((LIST_W + BODY_GAP + INSP_W - 2) / 4)
+    local labels, values = {}, {}
+    for j = 1, 4 do
+      local label = Text(figs, "secondary")
+      label:SetPoint("TOPLEFT", figs, "TOPLEFT", NAME_X + (j - 1) * colW, -Week.FIG_PAD)
+      local value = Text(figs, "value")
+      value:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -Week.FIG_GAP)
+      labels[j], values[j] = label, value
+    end
+
+    Week.d = { card = card, head = head, switch = switch, figs = figs, labels = labels, values = values,
+      colW = colW, off = false, who = "me" }
+  end
+
+  -- A figure's gold: the largest coin in the ink given, or the dash.
+  local function WeekGold(copper, fs, hex)
+    if not copper or copper <= 0 then return ns.Theme.Colorize("textSecondary", DASH) end
+    local F = ns.Core and ns.Core.Formatting
+    if F and F.FormatMoneyIcons then return F.FormatMoneyIcons(copper, hex, 1, Coins(fs)) end
+    return tostring((math.floor(copper / 10000)))
+  end
+
+  function Week.Paint()
+    local d = Week.d
+    if not (d and d.card:IsVisible()) then return end
+    local UI, MM, T = ns.MailboxUI, ns.MailMemory, ns.Theme
+    local off = not (UI and type(UI.GetHistoryDays) == "function" and UI.GetHistoryDays() ~= 0)
+    local who = UI and type(UI.GetWeekScope) == "function" and UI.GetWeekScope() or "me"
+    local writes = MM and MM.recordWrites or 0
+    local up = T.InkHex and T.InkHex("positive") or ""
+    local down = T.InkHex and T.InkHex("negative") or ""
+    local m = Week.made
+    local add = m.writes ~= writes or m.who ~= who or m.off ~= off or m.shown ~= Week.shown
+    if not add and m.open == S.openGen and m.up == up and m.down == down then return end
+    m.writes, m.who, m.off, m.shown, m.open, m.up, m.down = writes, who, off, Week.shown, S.openGen, up, down
+    d.off, d.who = off, who
+    -- The sums: MailMemory's one table, filled again only when asked here.
+    if add and not off and MM and type(MM.Week) == "function" then d.sums = MM.Week(who) end
+    local sums = (not off) and d.sums or nil
+
+    -- Its text says why it is grey, as an inactive row's does.
+    local entry = S.weekEntry
+    local text = off and entry.offText or entry.onText
+    if entry.text ~= text then
+      entry.text = text
+      if S.shown == entry then
+        S.shown = false
+        Insp.Show(entry)
+      end
+    end
+
+    -- The strip: the switch at its words' widths, the title in what is
+    -- left.
+    local switchW = 0
+    for i = 1, 2 do
+      local b = d.switch[i]
+      local w = TextW(b.Text)
+      b:SetWidth(w)
+      switchW = switchW + w
+      SwitchPaint(b)
+    end
+    T.SetColor(d.head.Title, off and "textDisabled" or "accent")
+    T.FitText(d.head.Title, LIST_W + BODY_GAP + INSP_W - 2 - NAME_X - CONTROL_R - Week.SWITCH_GAP - switchW - GAP,
+      L["OPT_WEEK_TITLE"])
+
+    -- The figures, each fitted to its quarter.
+    local room = d.colW - 2 * NAME_X
+    local labels, values = d.labels, d.values
+    for j = 1, 4 do
+      T.SetColor(labels[j], off and "textDisabled" or "textSecondary")
+      T.FitText(labels[j], room, L[Week.LABELS[j]])
+      local v = values[j]
+      local words
+      if not sums then
+        words = DASH
+      elseif j == 1 then
+        words = WeekGold(sums.earned, v, "ff" .. up)
+      elseif j == 2 then
+        words = WeekGold(sums.spent, v, "ff" .. down)
+      else
+        words = ns.Plural("COUNT_MAILS", j == 3 and sums.collected or sums.sent)
+      end
+      T.SetColor(v, off and "textDisabled" or "textPrimary")
+      T.FitText(v, room, words)
+    end
   end
 
   -- `/postbox debug card <n>` (Postbox.lua): the card filled with n sample
@@ -7128,6 +7380,8 @@ function Pages.historyDays(col)
       local asks = type(StaticPopupDialogs) == "table" and type(StaticPopup_Show) == "function"
       if id ~= 0 or not asks or (UI.GetHistoryDays and UI.GetHistoryDays() == 0) then
         UI.SetHistoryDays(id)
+        -- General's 7-day card greys or comes back with it (Dash.Week).
+        Ctx.Repaint()
         return
       end
       Rows.PaintDropdown(keep)
@@ -8408,7 +8662,7 @@ end
 function Pages.general(col)
   local T = ns.Theme
   Rows.Group(col, L["OPT_MEMORY_HISTORY_HEADING"])
-  Rows.Check(col, {
+  local memory = Rows.Check(col, {
     title = L["OPT_MEMORY_SWITCH"], entryTitle = L["OPT_MEMORY_TITLE"],
     text = L["OPT_MEMORY_DESC"],
     get = function() return ns.MailboxUI.GetOption("mailMemory") end,
@@ -8418,6 +8672,8 @@ function Pages.general(col)
     end,
     after = State.Memory,
   })
+  -- The 7-day card's switch is a setting of this tab's too (TabReset.Units).
+  memory.moreGets = { function() return ns.MailboxUI.GetWeekScope and ns.MailboxUI.GetWeekScope() or "me" end }
 
   -- What the switch governs here, grey with it, saying so: who is left out
   -- of the lists. (The expiring-mail warnings it governs are Alerts'.)
@@ -10171,6 +10427,12 @@ local function Build()
   -- (Insp.Room); a General setting's long text may rise over the tiles.
   S.dashEntry.under, S.memoryTileEntry.under = true, true
   S.groupsEntry.under, S.recipientsEntry.under = true, true
+  -- The 7-day card's: what it adds up, or, while History is off, why it
+  -- has nothing to (Dash.Week).
+  S.weekEntry = Entry(L["OPT_WEEK_TITLE"], L["OPT_WEEK_DESC"])
+  S.weekEntry.onText = S.weekEntry.text
+  S.weekEntry.offText = L["OPT_WEEK_OFF"]
+  S.weekEntry.tab, S.weekEntry.under = "general", true
   S.idle.mail = Entry(L["OPT_ARRANGE_BUTTON"], L["ARRANGE_TIP"] .. "\n\n"
     .. (ns.IsForever and L["OPT_ARRANGE_CARDS_FOREVER"] or L["OPT_ARRANGE_CARDS"]) .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"])
   -- Cut to the room under the window where that is shorter, it rises whole
@@ -10208,8 +10470,9 @@ local function Build()
   T.ApplyList(insp)
   S.list, S.insp = list, insp
   Insp.Build(insp)
-  -- General's card, over the two on its tab.
+  -- General's cards, over the two on its tab.
   Dash.Build(body)
+  Dash.Week.Build(body)
 
   local need = 0
   for i = 1, #TABS do

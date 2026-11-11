@@ -1637,6 +1637,18 @@ function UI.LetGoListSort(list)
   if UI.GetListSort(list) ~= "mailbox" then UI.SetListSort(list, "mailbox") end
 end
 
+-- Whose last seven days the options' General tab adds up (OptionsPanel's
+-- Week card, its switch): "me", the character being played (the default),
+-- or "all". profile.weekScope, stored only when it is "all".
+function UI.GetWeekScope()
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.weekScope")
+  return stored == "all" and "all" or "me"
+end
+function UI.SetWeekScope(who)
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.weekScope = (who == "all") and "all" or nil end
+end
+
 -- A mail row's columns: which it shows, and in what order, left to right.
 -- One string on the profile -- "read,icon,sender,subject,time,money,slots",
 -- a leading "-" on a column it hides -- and one arrangement for every list
