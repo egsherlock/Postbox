@@ -4507,9 +4507,10 @@ local function BuildViewToggle(panel)
   -- which the counts and the caption sizing walk -- it has neither.
   local hist = T.CreatePlate(container, "segment")
   hist.segId = VIEW_HISTORY
-  -- The history glyph (a clock with a counter-clockwise arrow round it) at
-  -- the clock's height, made once with the plate.
-  hist.Icon = T.Glyph and T.Glyph(hist, "history", 11, "OVERLAY") or nil
+  -- The history glyph (a clock with a counter-clockwise arrow round it),
+  -- its 12-unit master at 12, six units in on the 24-unit plate, made once
+  -- with the plate.
+  hist.Icon = T.Glyph and T.Glyph(hist, "history", 12, "OVERLAY") or nil
   if hist.Icon then
     hist:SetText("")
     hist.Icon:SetPoint("CENTER")
@@ -5667,7 +5668,7 @@ function RV.SFCloseStale(panel)
 end
 
 -- The button: a square plate, the segments' height, wearing the sort mark
--- (Theme.GLYPHS "sort-list": three bars, longest on top) at its own size,
+-- (Theme.GLYPHS "sort-list": three bars, longest on top) at 12, its master,
 -- the same in every language; its name is in its tooltip. While the list
 -- on screen is not at its defaults (RV.SFLit) it is drawn in the house's
 -- selected state, as a chosen segment is -- the plate's wash, ring and
@@ -5681,7 +5682,7 @@ function RV.NewSortButton(panel, size)
   local sort = T.CreatePlate(panel, "segment")
   sort:SetSize(size, size)
   sort:SetText("")
-  sort.Icon = T.Glyph and T.Glyph(sort, "sort-list", nil, "OVERLAY") or nil
+  sort.Icon = T.Glyph and T.Glyph(sort, "sort-list", 12, "OVERLAY") or nil
   if sort.Icon then
     -- A unit right of the plate's middle: the bars run from the left, and
     -- their ink's middle is a unit and a third left of their box's, so

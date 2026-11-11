@@ -3920,7 +3920,7 @@ function MM.NewSortButton(parent, size, spec)
   local sort = T.CreatePlate(parent, "segment")
   sort:SetSize(size, size)
   sort:SetText("")
-  sort.Icon = T.Glyph and T.Glyph(sort, "sort-list", nil, "OVERLAY") or nil
+  sort.Icon = T.Glyph and T.Glyph(sort, "sort-list", 12, "OVERLAY") or nil
   if sort.Icon then
     -- A unit right of the plate's middle, as the Mail tab's: the bars run
     -- from the left, so centred by its box the mark looks pushed left.

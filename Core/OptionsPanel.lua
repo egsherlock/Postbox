@@ -4879,13 +4879,10 @@ do
   -- One icon box for every button row, ICON.BOX square, the caption
   -- ICON.GAP after it; a glyph drawn smaller is centred in it, so the
   -- captions of three buttons stacked one over another start alike.
-  local ICON = { BOX = 16, GAP = 6 }
-  -- Each glyph at the size that draws its master texel for texel (2 art
-  -- texels a unit): the groups' and the recipients' 16-unit masters, and
-  -- the layout's 14-unit one (its ink 14 by 13, the nearest the two
-  -- beside it read; `layout-small` reads a size lighter, `layout-mini`
-  -- two). Theme.Glyph's size is the glyph's height less its padding.
-  local ICON_SIZE = { layout = 12, groups = 16, recipients = 16 }
+  -- Every glyph here (layout, groups, recipients) is drawn from its 12-unit
+  -- master at 12, texel for texel (2 art texels a unit), so the box is the
+  -- glyph: on the 22-unit button it stands 5 units from the top.
+  local ICON = { BOX = 12, GAP = 6 }
 
   function Rows.Button(col, spec)
     local row = Rows.New(col, ROW_H)
@@ -4902,7 +4899,7 @@ do
     -- caption's ink (Rows.PaintCaption).
     local art = ArtHolder(btn)
     if spec.glyph then
-      local icon = Ctx.Mark(art, ICON_SIZE[spec.glyph] or ICON.BOX, "OVERLAY", spec.glyph)
+      local icon = Ctx.Mark(art, ICON.BOX, "OVERLAY", spec.glyph)
       if icon then
         icon.w = math.floor((icon:GetWidth() or ICON.BOX) + 0.5)
         btn.Icon = icon
