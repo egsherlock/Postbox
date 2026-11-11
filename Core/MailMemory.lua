@@ -2241,6 +2241,21 @@ do
     -- Slot counts written as the number alone can measure narrower than any
     -- column is drawn: the column stands at the narrowest, as the Mail tab's.
     if cols.slots > 0 then cols.slots = math.max(cols.slots, R.FIGURE_MIN or 12) end
+    -- On World of Warcraft: Forever, which first names this list shares,
+    -- where the rows write first names (the rules' Firsts); MM.FillRow
+    -- reads it from here. Never on retail.
+    local FN = R.Firsts
+    cols.firsts = nil
+    if FN and FN.On("rows") then
+      local owners = owner._memFirsts or {}
+      owner._memFirsts = owners
+      FN.Begin(owners)
+      for i = 1, #rows do
+        local mail = rows[i]
+        if not mail.header then FN.Note(owners, R.DisplaySender(mail.sender)) end
+      end
+      cols.firsts = owners
+    end
     return cols
   end
 end
@@ -2380,6 +2395,9 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   local outcome = R and R.OutcomeSender(mail.kind) or nil
   local senderText = (R and (outcome or R.DisplaySender(named)))
     or named or L["MEMORY_SENDER_UNKNOWN"]
+  -- On Forever, the first name alone where no other sender listed shares it
+  -- (the rules' Firsts, noted as the list was measured).
+  if cols and cols.firsts and named and not outcome then senderText = R.Firsts.Pick(cols.firsts, senderText) end
   -- Whether the row shows less of the name than the mail has, for the
   -- tooltip, which then says it whole.
   row.tipShort = named ~= nil and not outcome and senderText ~= named

@@ -967,6 +967,27 @@ do
     Keep(LOOK_KEY[arrangement] or LOOK_KEY.rows, nil, look or "letters", "letters")
   end
 
+  -- World of Warcraft: Forever: what the Sender column writes for a
+  -- character, "full" ("Abla Stone", the default) or "first" ("Abla"; a
+  -- first name another sender in the list shares keeps the full name,
+  -- CollectTab's RV.Firsts). One per arrangement, as how the gold is
+  -- written: rowSenderName, largeSenderName, historySenderName; stored only
+  -- as "first". nil sets the default. Asked only on Forever.
+  local NAME_KEY = { rows = "rowSenderName", large = "largeSenderName", history = "historySenderName" }
+  function UI.GetSenderName(arrangement)
+    local key = NAME_KEY[arrangement] or NAME_KEY.rows
+    local memo = Settings().gold
+    local name = memo[key]
+    if name then return name end
+    name = (Stored(key) == "first") and "first" or "full"
+    memo[key] = name
+    return name
+  end
+  function UI.SetSenderName(name, arrangement)
+    if name ~= nil and name ~= "full" and name ~= "first" then return end
+    Keep(NAME_KEY[arrangement] or NAME_KEY.rows, nil, name or "full", "full")
+  end
+
   -- When the rows show the time left. nil sets the default.
   function UI.GetExpiryWhen(arrangement)
     local key = EXPIRY_KEY[arrangement] or EXPIRY_KEY.rows

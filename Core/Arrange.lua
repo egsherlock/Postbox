@@ -72,6 +72,9 @@ AR.COLUMNS = {
   slots   = { title = "OPT_ROW_SLOTS",  desc = "OPT_ROW_SLOTS_DESC", choice = "slots", figure = true, head = "slot" },
   age     = { title = "COL_AGE",        desc = "COL_AGE_DESC",        choice = "age", head = "history" },
 }
+-- World of Warcraft: Forever's names are two, and the Sender column can
+-- write the first alone (AR.Choices): a choice of its own there only.
+if ns.IsForever then AR.COLUMNS.sender.choice = "sender" end
 
 -- The cog key (section 4): the cog's size at rest; lit, a check and Done on
 -- a selected plate, `KEY_LEAD` in, the check's width and `KEY_GAP`, the
@@ -271,6 +274,7 @@ function AR.Reset(kind, blocks)
   AR.SetLayout(nil, kind)
   if ui.SetGoldMode then ui.SetGoldMode("both", kind) end
   if ui.SetGoldLook then ui.SetGoldLook(nil, kind) end
+  if ns.IsForever and ui.SetSenderName then ui.SetSenderName(nil, kind) end
   if kind == "history" then
     if ui.SetHistoryAge then ui.SetHistoryAge(nil) end
   else
@@ -4643,7 +4647,7 @@ end
 -- The column's own choice: the gold's, the time left's, the slots' and
 -- History's age's, each the arrangement's being edited. The lists are
 -- made once; what is chosen and how to choose are read each time.
-AR.CHOICE_KINDS = { gold = true, expiry = true, slots = true, age = true }
+AR.CHOICE_KINDS = { gold = true, expiry = true, slots = true, age = true, sender = true }
 
 function AR.Choices(kind)
   local ui = UI()
@@ -4674,6 +4678,12 @@ function AR.Choices(kind)
         { id = "words",  name = ns.Plural("COUNT_SLOTS", 4) },
         { id = "number", name = tostring(4) },
       }
+    elseif kind == "sender" then
+      -- World of Warcraft: Forever's: the whole name, or the first alone.
+      list = {
+        { id = "full",  name = L()["ARRANGE_SENDER_FULL"] },
+        { id = "first", name = L()["ARRANGE_SENDER_FIRST"] },
+      }
     else
       list = {
         { id = "always", name = L()["OPT_EXPIRY_ALWAYS"] },
@@ -4695,6 +4705,10 @@ function AR.Choices(kind)
     if arrangement ~= "rows" then return lists.none, nil, nil end
     return list, ui.GetSlotsStyle and ui.GetSlotsStyle(), ui.SetSlotsStyle
   end
+  if kind == "sender" then
+    if not (ns.IsForever and ui.GetSenderName and ui.SetSenderName) then return lists.none, nil, nil end
+    return list, ui.GetSenderName(arrangement), AR.ChooseSender
+  end
   return list, ui.GetExpiryWhen and ui.GetExpiryWhen(arrangement), ui.SetExpiryWhen and AR.ChooseExpiry
 end
 
@@ -4707,6 +4721,11 @@ end
 function AR.ChooseExpiry(id)
   local ui = UI()
   if ui and ui.SetExpiryWhen then ui.SetExpiryWhen(id, AR.ListKind()) end
+end
+
+function AR.ChooseSender(id)
+  local ui = UI()
+  if ui and ui.SetSenderName then ui.SetSenderName(id, AR.ListKind()) end
 end
 
 -- The gold's second choice: how its sums are written, the letters or the
@@ -6709,6 +6728,9 @@ local function FillColumn(id, y)
     for i = 1, #choices do
       y = PutRadio(i, choices[i], choices[i].id == current, shown and true or false, y)
     end
+    -- The sender's (World of Warcraft: Forever): what a first name two
+    -- senders share does, in one quiet line under the answers.
+    if spec.choice == "sender" then y = PutText(insp.LayoutNote, L()["ARRANGE_SENDER_SHARED"], y, "note") end
     -- The gold's: then how its sums are written, under a kicker of its own,
     -- its answers after the first choice's.
     if spec.choice == "gold" then
