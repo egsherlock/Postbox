@@ -16,7 +16,7 @@
 <h2 style="text-align:center">Empty your mailbox in one click</h2>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/collect.gif" width="672" alt="All mail collecting a full inbox"></p>
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">In the order you see.</span></strong> Gold, items and letters come out in your list's order. Sort by time left and what's about to expire goes first.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">In the order you see.</span></strong> Gold, items and letters come out in your list's order. Sort by what's about to expire, by most gold or by sender, or show only unread mail, mail with gold or mail with items.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Bags checked first.</span></strong> Keep a few slots free for loot. If your bags fill anyway, the run stops cleanly and says what's left.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">History.</span></strong> What you collected and what you sent, kept for a week or up to a month: who, what, how much, even the letter's text. Search any of it by an item's name.</li>
 </ul>

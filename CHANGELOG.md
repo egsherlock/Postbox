@@ -20,12 +20,63 @@
   any mail it's attached to, in the Mail tab, Mail Memory and History
   alike. Typing in the search box is lighter, too.
 
+### Sort and filter
+
+- **Sort and filter your mail:** the **Sort** button opens a menu. Order the
+  list by newest, expiring, most gold or sender, and show only unread mail,
+  mail with gold or mail with items. History's Received and Sent each have
+  their own.
+- **See what's on at a glance:** a line above the list says which sort and
+  filter are in force, with **Clear** beside it. A filter is forgotten when
+  you close the mailbox, so nothing stays hidden by accident.
+- **Collect shown means shown:** with a filter on, the collect buttons take
+  only the mail you can see, as they do when you search.
+
+### Text and looks
+
+- **Text is a comfortable size everywhere:** on a standard UI Postbox now
+  draws its text a little larger, the size a UI that enlarges the game's
+  fonts already gave it. Nothing changes if yours already did.
+- **Text size works in every window style:** the Blizzard look, ElvUI and
+  EllesmereUI as well as the Postbox style, and it changes as you pick.
+- **Coins sit level with the numbers,** a hair clear of them, at any text
+  size and in every font.
+- **Mail rows can show gold as coins:** while arranging, click the Gold
+  heading and choose **Coins**.
+- **History's Received and Sent are one switch,** framed together.
+
+### Arranging and options
+
+- **One side panel at a time:** while you arrange, the options step aside
+  and the Arrange card takes their place. They come back where they stood
+  when you finish.
+- **Test mail ends with what turned it on:** from the options it stays until
+  you close them; from the Arrange card it ends when you finish. It is
+  called Test mail everywhere now, the window's title included.
+- **A row's settings are on its columns:** Stack counts, Quality on item
+  icons and Expiry marks are checkboxes on their column's card in Arrange,
+  the same settings as in the options.
+- **Group buttons stay where you put them:** reordering the Character Groups
+  list no longer moves their buttons; order those in Arrange.
+- **New installs start with fewer category buttons:** All bought, All sold
+  and All expired. All canceled, Other and From alts are hidden until you
+  show them in Arrange. If you already use Postbox, yours stay as they are.
+- **WoW Forever: senders by first name.** Arrange's Sender card offers Full
+  name or First name. Two senders who share a first name keep their full
+  names, and the tooltip always has the whole name.
+
 ### Improved
 
 - Tooltip hints are quicker to read: "Click: take · Shift-click: link",
   "Right-click: options".
+- Hidden characters and Manage Recipients' Hide each say that the other list
+  is separate.
 
 ### Fixed
+
+- A character group dragged in the groups window lands where you drop it,
+  first and last included.
+- The options' Mail tab preview shows every category button's full name.
 
 - A character whose mail Postbox couldn't count, such as auctions that
   ended while you played someone else, now says **new** (or **2+**) in the

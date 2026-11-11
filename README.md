@@ -83,8 +83,11 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   command at a time, in the order the list shows. Under a search it collects
   what's shown; with rows selected (Shift-click a range, Ctrl-click one) it
   collects your picks. C.O.D. mail is never swept.
-- **Sort by time left:** Newest first or Expiring first, remembered. When your
-  bags fill, what's left is the bottom of the list.
+- **Sort and filter:** the **Sort** button orders the list by newest,
+  expiring, most gold or sender, remembered, and can show only unread mail,
+  mail with gold or mail with items until you close the mailbox. A line above
+  the list says what's on, with **Clear** beside it. When your bags fill,
+  what's left is the bottom of the list.
 - **Time left** turns amber under three days (one for C.O.D.). On a mail that
   still holds something, a curved arrow in front says it goes back to its
   sender, a bin that it is deleted (**Expiry marks** turns them off); the
@@ -106,9 +109,9 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
 - **C.O.D. prices are red,** as spent gold is, so amber only ever means time
   running out; the totals under the list add the C.O.D. still to pay.
 - **Category buttons** (off by default; **Show category buttons**): All
-  bought, All sold, All canceled, All expired, Other, From alts, and one for
-  each **Character Group** you make: your bank alts, your crafters, a friend
-  who sends you materials.
+  bought, All sold and All expired, with All canceled, Other and From alts
+  one right-click away in Arrange, and one for each **Character Group** you
+  make: your bank alts, your crafters, a friend who sends you materials.
 - **Rows:** compact by default, or **Larger mail rows** on two lines. **Row
   layout** is Columns (every figure under its heading) or Packed (each mail's
   figures together, the subject gets the rest). Columns: read mark, icon,
