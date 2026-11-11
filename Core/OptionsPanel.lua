@@ -7328,6 +7328,14 @@ function Pages.mail(col)
     get = function() return ns.MailboxUI.GetOption("previewOnClick") end,
     set = function(on) ns.MailboxUI.SetOption("previewOnClick", on) end,
   })
+  -- Whether each list keeps its order between visits (on, the default) or
+  -- opens newest first again after the mailbox closes (MailboxUI's
+  -- LetGoListSort). Read at the close, so nothing to refresh now.
+  Rows.Check(col, {
+    title = L["OPT_REMEMBER_SORT_TITLE"], text = L["OPT_REMEMBER_SORT_DESC"],
+    get = function() return ns.MailboxUI.GetOption("rememberSort") end,
+    set = function(on) ns.MailboxUI.SetOption("rememberSort", on) end,
+  })
   -- How many bag slots a collect run leaves free: Never (runs go until the
   -- bags are full) or 1 to 12, a mail's worth of items. Read at the start
   -- of each run.

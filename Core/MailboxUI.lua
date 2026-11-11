@@ -197,6 +197,11 @@ local OPTION_DEFAULTS = {
   -- shows the keys (Core/SendTab.lua, 8b). On: it is how the tab has always
   -- sent from the keyboard. Off, Ctrl+Enter is a plain Enter there.
   ctrlEnterSends  = true,
+  -- Each list's order kept between visits (UI.GetListSort): on, as it has
+  -- been since 1.50. Off, every list goes back to the newest first when the
+  -- mailbox closes, and Mail Memory's when its window does
+  -- (UI.LetGoListSort). Filters are let go at close either way.
+  rememberSort    = true,
 }
 -- What a mail row shows, and in what order, is no longer three switches here
 -- (rowGold, rowSlots, rowExpiry): it is the row's arrangement, UI.GetRowLayout
@@ -1623,6 +1628,13 @@ function UI.SetListSort(list, order)
   if not key or (order ~= "mailbox" and not LIST_SORTS[list][order]) then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if profile then profile[key] = (order ~= "mailbox") and order or nil end
+end
+-- A visit over (the mailbox closed: CollectTab's CT.ClearSearch; Mail
+-- Memory's window closed): `list` back to the newest first while Remember
+-- sort order is off. A list already there writes nothing.
+function UI.LetGoListSort(list)
+  if UI.GetOption("rememberSort") then return end
+  if UI.GetListSort(list) ~= "mailbox" then UI.SetListSort(list, "mailbox") end
 end
 
 -- A mail row's columns: which it shows, and in what order, left to right.

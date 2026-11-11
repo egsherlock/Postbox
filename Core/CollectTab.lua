@@ -4993,6 +4993,15 @@ function CT.ClearSearch(panel)
     if RV.ForgetHistorySearch then RV.ForgetHistorySearch(panel, true) end
     RV.ForgetInboxSearch()
   end
+  -- The orders too, while Remember sort order is off: the Inbox and
+  -- History's two halves open newest first next visit
+  -- (MailboxUI.LetGoListSort; Mail Memory's goes with its window).
+  local UI = ns.MailboxUI
+  if UI and type(UI.LetGoListSort) == "function" then
+    UI.LetGoListSort("inbox")
+    UI.LetGoListSort("history")
+    UI.LetGoListSort("sent")
+  end
 end
 
 -------------------------------------------------------------

@@ -4351,6 +4351,9 @@ local function Build()
     if R and R.FanGone then R.FanGone(frame.Scroll) end
     -- The arrange mode ends with the window it was opened in.
     if ns.Arrange and ns.Arrange.LeaveIf then ns.Arrange.LeaveIf(frame) end
+    -- Its order back to the newest first, while Remember sort order is off.
+    local UI = ns.MailboxUI
+    if UI and type(UI.LetGoListSort) == "function" then UI.LetGoListSort("memory") end
   end)
   -- Shown while the arrange mode is open over the Postbox window: this
   -- window's Escape entry, added as it was built, is taken by the mode as
