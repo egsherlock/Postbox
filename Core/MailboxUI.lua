@@ -4115,9 +4115,19 @@ local function BuildOptionsButton(frame, theme, onClick)
   button:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, hostBar and -4 or -2)
   button:SetFrameLevel(frame:GetFrameLevel() + 20)
 
+  -- The game's gear, where no style dresses the windows (the Blizzard look,
+  -- or a host skin standing down), and the house cog (Theme.GLYPHS "cog",
+  -- its 12-unit master at 12, three units in on the 18-unit button, level
+  -- with the arrange mark beside it) where one does. Theme.PaintCog shows
+  -- the one in force.
   button.icon = button:CreateTexture(nil, "ARTWORK")
   button.icon:SetAllPoints()
   button.icon:SetTexture("Interface\\Buttons\\UI-OptionsButton")
+  button.glyph = theme and theme.Glyph and theme.Glyph(button, "cog", 12, "ARTWORK") or nil
+  if button.glyph then
+    button.glyph:SetPoint("CENTER", button, "CENTER", 0, 0)
+    button.glyph:Hide()
+  end
 
   -- The game's glow on the gear shape itself rather than a square box round
   -- a round icon: shown only where no style dresses the windows (Theme.PaintCog).

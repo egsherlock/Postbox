@@ -3063,31 +3063,43 @@ end
 -- An options cog (MailboxUI's BuildOptionsButton), painted from its state.
 -- Chrome at rest, the accent only while the options window is open: that
 -- is a state, and the accent marks states. Open wins over the pointer.
--- Where a style dresses the windows: the game's art without its gold, in
--- the arrange mark's two greys beside it (Core/Arrange.lua), the quiet one
--- at rest and the bright one under the pointer (`button.hover`), painted
--- from their tokens so a palette change paints it again; the game's
--- additive glow is left out, the brighter grey being the hover. Open, the
--- same grey art in the accent's icon tone (as Theme.TintAccentGlyph's
--- glyphs, held on the title strip), out of the palette's keeping so a
--- palette repaint never greys it. Where no style dresses the windows (the
--- Blizzard look, or a host UI's skin standing down): the game's art grey
--- at rest, the game's glow under the pointer, and the game's own gold,
--- untinted, while the options are open.
+-- Where a style dresses the windows: the house cog (`button.glyph`, the
+-- white Theme.GLYPHS "cog"), in the arrange mark's two greys beside it
+-- (Core/Arrange.lua), the quiet one at rest and the bright one under the
+-- pointer (`button.hover`), painted from their tokens so a palette change
+-- paints it again; the game's additive glow is left out, the brighter grey
+-- being the hover. Open, the cog in the accent's icon tone (as
+-- Theme.TintAccentGlyph's glyphs, held on the title strip), out of the
+-- palette's keeping so a palette repaint never greys it. Where no style
+-- dresses the windows (the Blizzard look, or a host UI's skin standing
+-- down): the game's own gear (`button.icon`), grey at rest, the game's glow
+-- under the pointer, and the game's own gold, untinted, while the options
+-- are open. A build without the cog's art keeps the game's gear, greyed
+-- and tinted as the cog would be.
 function Theme.PaintCog(button)
-  local icon = button and button.icon
-  if not icon then return end
+  local gear = button and button.icon
+  if not gear then return end
   local native = not ns.Skin
   local panel = ns.OptionsPanel and ns.OptionsPanel._frame
   local open = panel and panel:IsShown() and true or false
   local glow = button.GetHighlightTexture and button:GetHighlightTexture()
   if glow then glow:SetAlpha(native and 1 or 0) end
+  local cog = button.glyph
   if native then
-    if icon.SetDesaturated then icon:SetDesaturated(not open) end
-    icon:SetVertexColor(1, 1, 1, 1)
+    if cog then cog:Hide() end
+    gear:Show()
+    if gear.SetDesaturated then gear:SetDesaturated(not open) end
+    gear:SetVertexColor(1, 1, 1, 1)
     return
   end
-  if icon.SetDesaturated then icon:SetDesaturated(true) end
+  local icon = gear
+  if cog then
+    gear:Hide()
+    cog:Show()
+    icon = cog
+  elseif gear.SetDesaturated then
+    gear:SetDesaturated(true)
+  end
   if open then
     if track then track.tint[icon] = nil; track.grey[icon] = nil end
     local r, g, b = Theme.GetAccentTone("icon")
