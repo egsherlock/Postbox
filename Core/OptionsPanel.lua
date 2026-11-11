@@ -756,14 +756,19 @@ local PAIR_FIT = { height = BUTTON_H, padding = 14, minWidth = 0 }
 -- ways into the lists the player builds (Character Groups, Manage
 -- Recipients). It took the Mail Memory tab's place, and its page id: an
 -- opener that asked for "memory" is shown General (Panel.SelectTab).
+-- Window next: the style and the window every other tab is drawn in, then
+-- the window's own tabs, Mail and Send, in the window's order.
 -- Alerts: what tells the player about mail -- the expiring-mail warnings
 -- with the minimap marker and its look, and new mail's sound and flash.
+-- Everything reads this list by key (the remembered tab, the pages, Reset
+-- this tab, the search index), so its order is only the strip's and the
+-- search results'.
 local TABS = {
   { key = "general", caption = "OPT_GENERAL_HEADING" },
+  { key = "window",  caption = "OPT_WINDOW_HEADING" },
   { key = "mail",    caption = "OPT_MAILTAB_HEADING" },
   { key = "send",    caption = "OPT_SENDTAB_HEADING" },
   { key = "alerts",  caption = "OPT_ALERTS_TAB" },
-  { key = "window",  caption = "OPT_WINDOW_HEADING" },
   { key = "minimap", caption = "OPT_MINIMAP_HEADING", square = true },
 }
 
