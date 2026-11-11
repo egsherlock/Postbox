@@ -118,10 +118,27 @@ local function ChosenArt(row)
   row._selWash, row._selBar = wash, bar
 end
 
+-- The ink a row's words wear when it is not the chosen one: their font's,
+-- as that font is now. The font is the named one the words wear (a copy of
+-- a host UI's under its skin, the Postbox style's recoloured with its
+-- palette), else the one they were given when the row was made (row._font).
+-- Read when the row is painted, never kept: a palette, a Mode or a host's
+-- looks may have moved since, and a colour kept from then is that palette's.
+local function FontInk(row, text)
+  local themed = ns.Theme
+  local font = text.GetFontObject and text:GetFontObject() or nil
+  if themed and type(themed.NamedFont) == "function" then font = themed.NamedFont(font) end
+  font = font or row._font
+  if font and type(font.GetTextColor) == "function" then return font:GetTextColor() end
+  return nil
+end
+
 -- The mark painted on (`on`) or off a row, the accent resolved live (a host
--- UI's own colour wins where the addon theme is present). The words' own
--- colour, whatever a skin gave them, is kept while they wear the accent and
--- given back after. Nothing is made.
+-- UI's own colour wins where the addon theme is present). A row given the
+-- accent's ink once takes its font's ink again whenever it is painted
+-- unchosen (FontInk), off the theme's repaints so none paints it in the
+-- accent it no longer wears; a row never chosen keeps following its font
+-- untouched. Nothing is made.
 local function PaintChosen(row, text, on)
   local wash, bar = row._selWash, row._selBar
   if not wash then return end
@@ -134,21 +151,20 @@ local function PaintChosen(row, text, on)
     if themed and type(themed.GetAccentTone) == "function" then r, g, b = themed.GetAccentTone("mark") end
     bar:SetColorTexture(r, g, b, 0.9)
     if text then
-      if not row._lit then row._inkR, row._inkG, row._inkB, row._inkA = text:GetTextColor() end
       if themed and type(themed.SetColor) == "function" then
         themed.SetColor(text, "accentBright")
       else
         text:SetTextColor(r, g, b, 1)
       end
     end
-    row._lit = true
-  elseif row._lit then
-    row._lit = nil
-    if text and row._inkR then
+    row._inked = true
+  elseif row._inked and text then
+    local r, g, b, a = FontInk(row, text)
+    if type(r) == "number" then
       if themed and type(themed.SetTextRGB) == "function" then
-        themed.SetTextRGB(text, row._inkR, row._inkG, row._inkB, row._inkA)
+        themed.SetTextRGB(text, r, g, b, a)
       else
-        text:SetTextColor(row._inkR, row._inkG, row._inkB, row._inkA)
+        text:SetTextColor(r, g, b, a or 1)
       end
     end
   end
@@ -809,6 +825,10 @@ function Dropdown.Create(parent, opts)
         text:SetPoint("LEFT", row, "LEFT", textOffset, 0)
         text:SetText(item.name)
         if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
+        -- The named font the words were given, for FontInk where they
+        -- answer none of their own later.
+        row._font = ns.Theme and type(ns.Theme.NamedFont) == "function"
+          and ns.Theme.NamedFont(text:GetFontObject()) or nil
 
         -- The current selection's mark (ChosenArt), painted on open: the
         -- choice in effect, even when the toggle's caption does not repeat
@@ -1158,6 +1178,8 @@ function Dropdown.Menu(owner, items, opts)
         text:SetText(item.name)
         if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
         row.Text, row.item = text, item
+        row._font = ns.Theme and type(ns.Theme.NamedFont) == "function"
+          and ns.Theme.NamedFont(text:GetFontObject()) or nil
         if item.rule then
           local rule = row:CreateTexture(nil, "ARTWORK")
           rule:SetHeight(1)
