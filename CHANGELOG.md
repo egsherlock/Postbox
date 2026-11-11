@@ -32,7 +32,8 @@
 
 ### Options and Arrange
 
-- **Six tabs,** with a new **Alerts** tab for expiring-mail warnings and
+- **Six tabs** in a new order (General, Window, Mail tab, Send tab, Alerts,
+  Minimap), with a new **Alerts** tab for expiring-mail warnings and
   new-mail sound and flash, and a **search** in the options' title bar that
   finds any setting.
 - **Text size** (Options, Window) works in every window style, and all of
@@ -40,15 +41,19 @@
 - **Arrange:** each column's card holds its own settings (stack counts,
   quality marks, expiry marks), and the options step aside while you
   arrange.
-- **Test mail** has its own switch over the options' Preview.
+- **Test mail** has its own switch over the options' Preview, and reads
+  **Testing** while it is on.
 - New installs start with three category buttons under the mail list: All
   bought, All sold and All expired. Yours stay as they are.
 - Mail counts always show on Inbox, the collect buttons and each
   character's box; the setting for them is gone.
 - **Escape closes one Postbox window at a time:** an editor goes back to
   the options, and the options close before the mailbox.
-- Mail Memory, Character Groups and Manage Recipients have new icons on
-  the options' General tab, in your accent color.
+- Mail Memory, Character Groups and Manage Recipients have new icons: on
+  the options' General tab in your accent color, and on the buttons that
+  open them.
+- The cog on the Postbox window's title bar is plain gray, like the arrange
+  mark beside it, whatever your accent.
 
 ### WoW Forever
 
@@ -59,8 +64,11 @@
 - In the character list and the minimap icon's tooltip, a character whose
   mail Postbox couldn't count says **new** (or **2+**) instead of 0.
 - The words on the bar over finished mail sit dead center at any scale.
-- A character group dragged in the groups window lands where you drop it,
-  and the list shows everyone in the group first.
+- A character group dragged in the groups window lifts the moment you
+  press its grip and lands where you drop it, and the list shows everyone
+  in the group first.
+- On the Send tab, the fields are evenly spaced, and the Ctrl+Enter hint on
+  Send mail is smaller.
 - The hint lines at the foot of Postbox's tooltips sit safely beside
   addons that restyle the game's tooltips.
 - History opens and searches quickly however long it gets.
