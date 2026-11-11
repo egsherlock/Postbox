@@ -7443,12 +7443,15 @@ end
 -- The count a stack's subject carries is tried with the name and then
 -- without. An answer is kept by the subject (`icon`: the icon, or false for
 -- none), so a row bind reads one table; one with no answer is asked again
--- once a new list is built (`build`, the panel's build mark), or when item
--- names the client was asked for arrive, which binds the rows on screen once
--- more. Bounded: past SOLD.MAX subjects, emptied as a build starts.
+-- only when something that could tell it is new -- an auction posted, an
+-- item History records, item names the client was asked for arriving (each
+-- binding the rows on screen once more), or an inbox update bringing an
+-- auction mail for an item not in the inbox before -- never because a list
+-- was built again. Bounded: past SOLD.MAX subjects, emptied as the inbox's
+-- mark moves.
 -------------------------------------------------------------
 do
-  local S = { icon = {}, n = 0, miss = 0, MAX = 512, build = nil, index = nil, live = nil, liveAt = nil }
+  local S = { icon = {}, n = 0, miss = 0, MAX = 512, build = nil, index = nil, live = nil, spare = nil, liveAt = nil }
   RV.SOLD = S
 
   -- link -> its item's id and its name as this client wrote it, or nil.
@@ -7537,13 +7540,16 @@ do
   end
 
   -- This inbox's auction mails holding an item, by the item's name: made
-  -- once per list build, and only when a name was not found before it.
+  -- once per inbox mark, and only when a name was not found before it.
+  -- Two maps take turns, so a new one is weighed against the last: the
+  -- second result is true when it holds a name the last did not.
   local function Live()
-    if S.live and S.liveAt == S.build then return S.live end
-    local map = S.live or {}
+    if S.live and S.liveAt == S.build then return S.live, false end
+    local last = S.live
+    local map = S.spare or {}
     for key in pairs(map) do map[key] = nil end
-    S.live, S.liveAt = map, S.build
-    if type(GetInboxNumItems) ~= "function" or type(GetInboxItem) ~= "function" then return map end
+    S.live, S.spare, S.liveAt = map, last, S.build
+    if type(GetInboxNumItems) ~= "function" or type(GetInboxItem) ~= "function" then return map, false end
     local shown = tonumber((GetInboxNumItems())) or 0
     local service = Mail()
     for index = 1, shown do
@@ -7556,7 +7562,10 @@ do
         end
       end
     end
-    return map
+    for name in pairs(map) do
+      if not (last and last[name] ~= nil) then return map, true end
+    end
+    return map, false
   end
 
   -- name -> the item's icon by the sources above, or nil.
@@ -7584,8 +7593,11 @@ do
   end
 
   -- subject -> the icon of the item a sold auction's mail names, or nil for
-  -- the coin. `build`: the list's build mark (nil where a row has no inbox
-  -- beside it), at whose change an unanswered subject is asked again.
+  -- the coin. `build`: the inbox's mark the list was built at (nil where a
+  -- row has no inbox beside it). At a new mark an unanswered subject is
+  -- asked again only when the inbox now holds an auction mail naming an
+  -- item it did not before; a list built again at the same mark, or an
+  -- update that only took or dropped mail, asks nothing.
   function RV.SoldIcon(subject, build)
     if type(subject) ~= "string" or subject == "" then return nil end
     if build ~= nil and build ~= S.build then
@@ -7594,7 +7606,8 @@ do
         for key in pairs(S.icon) do S.icon[key] = nil end
         S.n, S.miss = 0, 0
       elseif S.miss > 0 then
-        RV.SoldForget()
+        local _, new = Live()
+        if new then RV.SoldForget() end
       end
     end
     local known = S.icon[subject]
@@ -7647,7 +7660,7 @@ do
   -- as a reload would have it.
   function CT.SoldReset()
     for key in pairs(S.icon) do S.icon[key] = nil end
-    S.n, S.miss, S.index, S.live, S.liveAt = 0, 0, nil, nil, nil
+    S.n, S.miss, S.index, S.live, S.spare, S.liveAt = 0, 0, nil, nil, nil, nil
   end
 
   -- Item names the client was asked for have arrived (Helpers): the records'
