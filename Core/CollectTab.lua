@@ -4985,11 +4985,20 @@ end
 -- a question about THIS inbox; the next one starts unfiltered.
 function CT.ClearSearch(panel)
   local box = panel and panel.SearchBox
+  -- Whether the list on screen was narrowed, or was another box: its place
+  -- in it means nothing in the whole list the next visit opens on.
+  local narrowed = panel ~= nil and ((box and box:GetText() ~= "") or panel._stuckOnly or panel._alt ~= nil)
   if box and box:GetText() ~= "" then box:SetText("") end
   if panel then
     panel._stuckOnly = false
     -- A filter is a question about this visit too (RV.ForgetShows).
+    local gen = panel._sfGen
     RV.ForgetShows(panel)
+    -- What was narrowed opens at the list's top, as a filter changed puts
+    -- it there (RV.SFChanged).
+    if (narrowed or gen ~= panel._sfGen) and panel.MailListScroll then
+      panel.MailListScroll:SetVerticalScroll(0)
+    end
     -- And back to this character's own box: a later visit must never open
     -- on somebody else's mail.
     panel._alt = nil
