@@ -1259,6 +1259,12 @@ do
     if not f and type(build) == "function" and S.insp then
       f = build(S.insp)
       S.ctx[key] = f
+      -- Skinned as it is built, before it first paints: the panel's skin
+      -- pass ran at the open, before this drawing existed, and its buttons
+      -- (Test mail's) would otherwise show the bare template until the
+      -- next open.
+      local skin = ns.Skin
+      if skin and type(skin.Refresh) == "function" then pcall(skin.Refresh, f) end
     end
     if f then
       f:Show()
@@ -1736,8 +1742,10 @@ do
   -- Mail tab's window (Layout); the Window tab's text stands under it.
   --
   -- Beside the caption, the two centred as one, Test mail's switch: the eye
-  -- and its words on a button, lit in the accent while the window lists
-  -- sample mail (Rows.Lead, as the window's segments light). Its click is
+  -- and one label of its own, the same words in the same font in both
+  -- states, on a house button, lit on the selected plate in the accent
+  -- while the window lists sample mail (Rows.Lead, as the window's
+  -- segments light). Its click is
   -- the arrange mode's own switch (MailboxUI.SetTestMail, with this panel
   -- as its opener): at a mailbox the Mail tab lists the samples, away from
   -- one the Postbox window opens over them beside the panel, and either way
@@ -4835,13 +4843,13 @@ do
     lit.Lift:SetPoint("TOPLEFT", lit, "TOPLEFT", 1, -1)
     lit.Lift:SetPoint("BOTTOMRIGHT", lit, "BOTTOMRIGHT", -1, 1)
     lit.Lift:Hide()
-    lit.Label = T.CreateText(lit, "segment", "OVERLAY")
-    lit.Label:SetWordWrap(false)
-    lit.Label:SetText(spec.onText)
     lit:Hide()
     lit.on = false
     btn.Lit = lit
-    -- The glyph above the plate, so one texture serves both states.
+    -- The glyph and the words above the plate, so one texture and one
+    -- label of Postbox's own serve both states: the words never change
+    -- font, size or place when it is pressed, only their ink. The button's
+    -- own caption stays empty (a skin re-fonts it; nothing reads it).
     local markHolder = CreateFrame("Frame", nil, art)
     markHolder:SetAllPoints(btn)
     markHolder:SetFrameLevel(lit:GetFrameLevel() + 1)
@@ -4850,6 +4858,11 @@ do
       mark.w = math.ceil(mark:GetWidth() or 12)
       btn.Mark = mark
     end
+    local label = T.CreateText(markHolder, "segment", "OVERLAY")
+    label:SetWordWrap(false)
+    label:SetText(spec.onText)
+    btn.Label = label
+    btn:SetText("")
 
     local page = row.col
     while page and page.parent do page = page.parent end
@@ -5376,22 +5389,31 @@ do
     if not lead then return end
     local T = ns.Theme
     local btn, mark = lead.control, lead.control.Mark
-    local lit = btn.Lit
+    local lit, label = btn.Lit, btn.Label
     local ok, on = pcall(lead.get)
     on = ok and on and true or false
-    local text = on and lead.onText or lead.offText
-    if btn:GetText() ~= text then btn:SetText(text) end
+    -- One label in both states: the button as wide as the glyph and the
+    -- words with a button's padding (BUTTON_FIT), the two centred as one.
+    local w = mark and mark.w or 0
+    local gap = mark and 6 or 0
+    local total = w + gap + TextW(label)
+    local width = math.max(lead.minW or 0, BUTTON_FIT.minWidth, total + BUTTON_FIT.padding)
+    if math.abs((btn:GetWidth() or 0) - width) > 0.5 then btn:SetWidth(width) end
+    local x = math.floor((width - total) / 2 + 0.5)
+    label:ClearAllPoints()
+    label:SetPoint("LEFT", btn, "LEFT", x + w + gap, 0)
+    if mark then
+      mark:ClearAllPoints()
+      mark:SetPoint("CENTER", btn, "LEFT", x + w / 2, 0)
+    end
     lit.on = on
     if not on then
       lit:Hide()
       lit.Lift:Hide()
-      -- The glyph back beside the caption (FitButton places both), at the
-      -- fit the row gave it (Rows.FitLead).
-      FitButton(lead, lead.fit)
-      if mark then
-        local c = T.Colors.textPrimary
-        mark:SetVertexColor(c[1], c[2], c[3], 1)
-      end
+      -- Off: the button's own look, the glyph and the words in the
+      -- caption's ink.
+      T.SetColor(label, "textPrimary", "button")
+      if mark then T.SetColor(mark, "textPrimary", "button") end
       return
     end
     local tok = T.VariantTokens and T.VariantTokens("segment") or nil
@@ -5414,18 +5436,8 @@ do
     lit.Bevel:SetVertexColor(bevel[1], bevel[2], bevel[3], bevel[4])
     lit.Lift:SetVertexColor(lift[1], lift[2], lift[3], lift[4])
     lit.Lift:SetShown(btn.hover and true or false)
-    T.SetColor(lit.Label, "accentBright", ground)
-    local w = mark and mark.w or 0
-    local gap = mark and 6 or 0
-    local total = w + gap + TextW(lit.Label)
-    local x = math.floor(((btn:GetWidth() or 0) - total) / 2 + 0.5)
-    lit.Label:ClearAllPoints()
-    lit.Label:SetPoint("LEFT", btn, "LEFT", x + w + gap, 0)
-    if mark then
-      mark:ClearAllPoints()
-      mark:SetPoint("CENTER", btn, "LEFT", x + w / 2, 0)
-      T.SetColor(mark, "accentBright", ground)
-    end
+    T.SetColor(label, "accentBright", ground)
+    if mark then T.SetColor(mark, "accentBright", ground) end
     lit:Show()
   end
 
