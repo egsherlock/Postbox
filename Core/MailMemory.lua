@@ -3000,6 +3000,14 @@ local function PaintPicker(list)
       row.Hover:SetAllPoints()
       ns.Theme.FillChrome(row.Hover, 0.06)
       row.Hover:Hide()
+      -- The box on screen wears the one mark every list and menu gives a
+      -- chosen row: an accent wash over the row and an accent bar at its
+      -- left edge (its name keeps its class colour, which says whose it
+      -- is); the row under the pointer, the lighter neutral wash alone.
+      row.Wash = row:CreateTexture(nil, "BACKGROUND", nil, 1)
+      row.Wash:SetAllPoints()
+      row.Wash:SetTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
+      row.Wash:Hide()
       row.Bar = row:CreateTexture(nil, "ARTWORK")
       row.Bar:SetWidth(2)
       row.Bar:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
@@ -3111,9 +3119,12 @@ local function PaintPicker(list)
       current = (cur == nil and st.me) or (cur ~= nil and cur.realm == st.realm and cur.name == st.name)
     end
     if current and T.GetAccentTone then
-      local r, g, b = T.GetAccentTone("mark")
+      local r, g, b = T.GetAccent()
+      row.Wash:SetVertexColor(r, g, b, 0.14)
+      r, g, b = T.GetAccentTone("mark")
       row.Bar:SetVertexColor(r, g, b, 0.9)
     end
+    row.Wash:SetShown(current and true or false)
     row.Bar:SetShown(current and true or false)
   end
   -- A row no longer needed keeps no hover wash for the next time it is.

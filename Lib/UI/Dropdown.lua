@@ -25,8 +25,8 @@ local DEFAULT_ROW_HEIGHT = 20
 local DEFAULT_TOGGLE_WIDTH = 200
 local DEFAULT_TOGGLE_HEIGHT = 22
 local LIST_PADDING = 4
--- The gutter the selection dot lives in, reserved on every row so a chosen
--- and an unchosen caption start at the same x.
+-- The room before every row's caption, chosen or not, so the two start at
+-- the same x and a chosen row's bar (ChosenArt) stands clear of its words.
 local MARK_GUTTER = 8
 -- The toggle's colour square: its left edge in from the toggle's, its size,
 -- and the room kept between it and the value.
@@ -98,6 +98,62 @@ local function Watch()
   else
     watcher:UnregisterEvent("GLOBAL_MOUSE_DOWN")
   end
+end
+
+-- One mark for a chosen row, in every list and menu here as on the mail
+-- rows and the character picker: a wash of the accent over the whole row,
+-- an accent bar at its left edge, and its words in the accent's bright tone.
+-- The row under the pointer has a lighter, neutral wash alone (the row's
+-- own hover), so chosen and pointed-at differ in hue, the bar and the words,
+-- never in alpha alone, at any window opacity. Made once with the row.
+local function ChosenArt(row)
+  local wash = row:CreateTexture(nil, "BACKGROUND", nil, 1)
+  wash:SetAllPoints()
+  wash:Hide()
+  local bar = row:CreateTexture(nil, "ARTWORK")
+  bar:SetWidth(2)
+  bar:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+  bar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+  bar:Hide()
+  row._selWash, row._selBar = wash, bar
+end
+
+-- The mark painted on (`on`) or off a row, the accent resolved live (a host
+-- UI's own colour wins where the addon theme is present). The words' own
+-- colour, whatever a skin gave them, is kept while they wear the accent and
+-- given back after. Nothing is made.
+local function PaintChosen(row, text, on)
+  local wash, bar = row._selWash, row._selBar
+  if not wash then return end
+  local themed = ns.Theme
+  if on then
+    local r, g, b = 0.90, 0.78, 0.30
+    if themed and type(themed.GetAccent) == "function" then r, g, b = themed.GetAccent() end
+    wash:SetColorTexture(r, g, b, 0.14)
+    -- The bar is a mark: the accent's mark tone, legible on a light list.
+    if themed and type(themed.GetAccentTone) == "function" then r, g, b = themed.GetAccentTone("mark") end
+    bar:SetColorTexture(r, g, b, 0.9)
+    if text then
+      if not row._lit then row._inkR, row._inkG, row._inkB, row._inkA = text:GetTextColor() end
+      if themed and type(themed.SetColor) == "function" then
+        themed.SetColor(text, "accentBright")
+      else
+        text:SetTextColor(r, g, b, 1)
+      end
+    end
+    row._lit = true
+  elseif row._lit then
+    row._lit = nil
+    if text and row._inkR then
+      if themed and type(themed.SetTextRGB) == "function" then
+        themed.SetTextRGB(text, row._inkR, row._inkG, row._inkB, row._inkA)
+      else
+        text:SetTextColor(row._inkR, row._inkG, row._inkB, row._inkA)
+      end
+    end
+  end
+  wash:SetShown(on and true or false)
+  bar:SetShown(on and true or false)
 end
 
 -- Closes every list this module created, except the one passed in. Called with
@@ -671,7 +727,7 @@ function Dropdown.Create(parent, opts)
 
       -- A heading ({ heading = true, name = }): the name of the group of
       -- items under it, quiet and at the list's own edge, where the
-      -- choices stand a gutter in. Not a choice: no wash, no click, no dot.
+      -- choices stand a gutter in. Not a choice: no wash, no click, no mark.
       if item.heading then
         local head = CreateFrame("Frame", nil, rowParent)
         head:SetHeight(rowHeight)
@@ -716,9 +772,8 @@ function Dropdown.Create(parent, opts)
 
         -- An item may carry its own art: { texture= or atlas=, aspect= }.
         -- Drawn at row height beside the caption, so a list of visual choices
-        -- shows the choices. Everything sits one gutter in, because the
-        -- selection dot lives in that gutter -- on EVERY row, so the captions
-        -- of chosen and unchosen items line up.
+        -- shows the choices. Everything sits one gutter in (MARK_GUTTER) --
+        -- on EVERY row, so the captions of chosen and unchosen items line up.
         local textOffset = LIST_PADDING + MARK_GUTTER
         if type(item.icon) == "table" then
           local size = rowHeight - 4
@@ -755,20 +810,12 @@ function Dropdown.Create(parent, opts)
         text:SetText(item.name)
         if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
 
-        -- The current selection's marker: a small accent DOT at the row's
-        -- left, painted on open. Feedback that a choice is in effect even
-        -- when the toggle's caption does not repeat it (an owner may keep a
-        -- fixed title there instead).
-        --
-        -- It was a full-height 2px bar down the row's edge, which read as a
-        -- border rather than a mark -- and sat a hairline from the list's own
-        -- edge, so the two looked like one thickened line. The dot is the
-        -- same language the tab caption and the style status already use.
-        local mark = row:CreateTexture(nil, "ARTWORK")
-        mark:SetSize(4, 4)
-        mark:SetPoint("LEFT", row, "LEFT", LIST_PADDING + 2, 0)
-        mark:Hide()
-        row._selMark = mark
+        -- The current selection's mark (ChosenArt), painted on open: the
+        -- choice in effect, even when the toggle's caption does not repeat
+        -- it (an owner may keep a fixed title there instead). Its bar
+        -- stands on a washed row, the list's padding clear of the card's
+        -- edge, so it reads as a mark and never as the card's border.
+        ChosenArt(row)
 
         row:SetScript("OnEnter", function()
           if item.off then return end
@@ -829,7 +876,7 @@ function Dropdown.Create(parent, opts)
 
   -- The list's width that shows every item's words whole, in the face they
   -- wear now: each row's words from where they start in it (`_textX`, the
-  -- dot's gutter and any art or colour before them) and a pad after, inside
+  -- gutter and any art or colour before them) and a pad after, inside
   -- the list's own padding, and the scroll bar's room where it scrolls.
   -- Measured on each open; nothing is made.
   local function ListNeed()
@@ -888,20 +935,13 @@ function Dropdown.Create(parent, opts)
     Watch()
     Tell(true)
 
-    -- Paint the selection markers for THIS open: selection may have changed
-    -- since the last one, and the accent is resolved live (a host UI's own
-    -- colour wins when the addon theme is present) -- as a mark, in the
-    -- accent's mark tone, which the addon theme keeps legible on a light list.
+    -- Paint the selection mark for THIS open: selection may have changed
+    -- since the last one, and the accent is resolved live (PaintChosen).
+    -- A row's glyph wears its words' ink, the chosen one's accent with them.
     if list._rows then
-      local r, g, b = 0.90, 0.78, 0.30
-      local themed = ns.Theme
-      if themed and type(themed.GetAccentTone) == "function" then
-        r, g, b = themed.GetAccentTone("mark")
-      elseif themed and type(themed.GetAccent) == "function" then
-        r, g, b = themed.GetAccent()
-      end
       for i = 1, #list._rows do
         local row = list._rows[i]
+        if row._selWash then PaintChosen(row, row._text, row._itemId == container._selectedId) end
         if row._swatch then PaintSwatch(row._swatch, swatchFor(row._itemId)) end
         if row._glyph and row._text then row._glyph:SetVertexColor(row._text:GetTextColor()) end
         -- A choice set aside (item.off, the owner's to set): faint, at
@@ -912,14 +952,6 @@ function Dropdown.Create(parent, opts)
           if row._off ~= off then
             row._off = off
             row._text:SetAlpha(off and 0.4 or 1)
-          end
-        end
-        if row._selMark then
-          if row._itemId == container._selectedId then
-            row._selMark:SetColorTexture(r, g, b, 0.9)
-            row._selMark:Show()
-          else
-            row._selMark:Hide()
           end
         end
       end
@@ -1004,7 +1036,7 @@ end
 
 -- A menu of actions that opens from a button of the owner's (the options'
 -- Reset to defaults): the select's list without a value -- the same card,
--- rows, wash and type, no selection dot -- that closes on a pick, on a press
+-- rows, wash and type, no selection mark -- that closes on a pick, on a press
 -- anywhere else, or with its window. items: { id, name } each; opts:
 -- onPick(id), onEnter(row, item) and onLeave(row, item) for a row's tooltip,
 -- onOpen() each time it opens, onClose() however it closed, minWidth. Built
@@ -1015,15 +1047,15 @@ end
 -- { heading = true, name = } names the group under it, as a select's list
 -- has them, and a heading after the first item has a hairline over it;
 -- opts.checked(id) -> whether that choice is the one in effect, marked with
--- the select's dot on each open and after each pick; opts.keepOpen, a pick
--- leaves the menu open with its dots painted again (a menu of two groups is
+-- the select's mark (ChosenArt) on each open and after each pick;
+-- opts.keepOpen, a pick leaves the menu open with its marks painted again (a menu of two groups is
 -- set twice). Every menu opens the one way, outward: its left edge on the
 -- button's, out past the window's edge where it must, the screen keeping
 -- it whole (it is clamped to the screen, which shifts it in rather than
--- flipping it). :Repaint() paints the dots
+-- flipping it). :Repaint() paints the marks
 -- again while it is open (the choices changed under it). An item with
 -- `rule` has a hairline over it; opts.disabled(id) -> a row drawn faint
--- whose click does nothing, asked with the dots.
+-- whose click does nothing, asked with the marks.
 function Dropdown.Menu(owner, items, opts)
   opts = type(opts) == "table" and opts or {}
   items = type(items) == "table" and items or {}
@@ -1032,7 +1064,7 @@ function Dropdown.Menu(owner, items, opts)
   local checked = type(opts.checked) == "function" and opts.checked or nil
   local disabled = type(opts.disabled) == "function" and opts.disabled or nil
 
-  -- The dots, in the accent's mark tone as the select's are; and a row its
+  -- The chosen rows' mark, as the select's (PaintChosen); and a row its
   -- owner has set aside for now, faint (as a select's `off` item is).
   local function PaintMarks()
     if not rows then return end
@@ -1047,23 +1079,9 @@ function Dropdown.Menu(owner, items, opts)
       end
     end
     if not checked then return end
-    local r, g, b = 0.90, 0.78, 0.30
-    local themed = ns.Theme
-    if themed and type(themed.GetAccentTone) == "function" then
-      r, g, b = themed.GetAccentTone("mark")
-    elseif themed and type(themed.GetAccent) == "function" then
-      r, g, b = themed.GetAccent()
-    end
     for i = 1, #rows do
-      local mark = rows[i]._selMark
-      if mark then
-        if checked(rows[i].item.id) then
-          mark:SetColorTexture(r, g, b, 0.9)
-          mark:Show()
-        else
-          mark:Hide()
-        end
-      end
+      local row = rows[i]
+      if row._selWash then PaintChosen(row, row.Text, checked(row.item.id) and true or false) end
     end
   end
 
@@ -1140,8 +1158,6 @@ function Dropdown.Menu(owner, items, opts)
         text:SetText(item.name)
         if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
         row.Text, row.item = text, item
-        -- The choice in effect, where the menu has one: the select's dot, in
-        -- the gutter every row keeps for it.
         if item.rule then
           local rule = row:CreateTexture(nil, "ARTWORK")
           rule:SetHeight(1)
@@ -1154,13 +1170,8 @@ function Dropdown.Menu(owner, items, opts)
             rule:SetColorTexture(1, 1, 1, 0.12)
           end
         end
-        if checked then
-          local mark = row:CreateTexture(nil, "ARTWORK")
-          mark:SetSize(4, 4)
-          mark:SetPoint("LEFT", row, "LEFT", LIST_PADDING + 2, 0)
-          mark:Hide()
-          row._selMark = mark
-        end
+        -- The choice in effect, where the menu has one: the select's mark.
+        if checked then ChosenArt(row) end
         row:SetScript("OnEnter", function(self)
           if not self._off then bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4]) end
           if opts.onEnter then opts.onEnter(self, self.item) end
