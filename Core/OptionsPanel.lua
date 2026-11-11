@@ -1750,10 +1750,11 @@ do
   -- Mail tab's window (Layout); the Window tab's text stands under it.
   --
   -- Beside the caption, the two centred as one, Test mail's switch: the eye
-  -- and one label of its own, the same words in the same font in both
-  -- states, on a house button, lit on the selected plate in the accent
-  -- while the window lists sample mail (Rows.Lead, as the window's
-  -- segments light). Its click is
+  -- and one label of its own in the same font in both states, on a house
+  -- button as wide as the wider of its words, which say Test mail off and
+  -- Testing on, lit on the selected plate in the accent with the eye
+  -- breathing while the window lists sample mail (Rows.Lead, as the
+  -- window's segments light). Its click is
   -- the arrange mode's own switch (MailboxUI.SetTestMail, with this panel
   -- as its opener): at a mailbox the Mail tab lists the samples, away from
   -- one the Postbox window opens over them beside the panel, and either way
@@ -1803,7 +1804,7 @@ do
     head.Cap = cap
     Rows.Lead(head, {
       title = L["ARRANGE_PREVIEW"], text = L["OPT_TEST_MAIL_DESC"],
-      offText = L["ARRANGE_PREVIEW"], onText = L["ARRANGE_PREVIEW"], glyph = "eye",
+      offText = L["ARRANGE_PREVIEW"], onText = L["OPT_TEST_MAIL_ON"], glyph = "eye",
       get = TestMailOn, onClick = TestMailClick,
     })
     S.testHeads = S.testHeads or {}
@@ -4880,6 +4881,30 @@ do
     if lit then lit.Lift:Hide() end
   end
 
+  -- While a lead is on and in sight its glyph breathes (Rows.Lead's
+  -- `Pulse`): a slow fade to LEAD_PULSE.TO and back, the house's looping
+  -- alpha (the minimap icon's glow), so a switch left on is seen to be
+  -- working. Never the only sign: the lit plate and the words say it
+  -- too. Started and stopped here, from each paint and as the button shows
+  -- and hides with its page or the panel; nothing runs behind a hidden
+  -- panel, and a stopped glyph is whole again.
+  local LEAD_PULSE = { TO = 0.4, TIME = 1.4 }
+  function Rows.Pulse(btn)
+    local pulse = btn and btn.Pulse
+    if not pulse then return end
+    local lit = btn.Lit
+    if lit and lit.on and btn:IsVisible() then
+      if not pulse:IsPlaying() then pulse:Play() end
+    elseif pulse:IsPlaying() then
+      pulse:Stop()
+    end
+  end
+
+  local function LeadHidden(self)
+    local pulse = self.Pulse
+    if pulse and pulse:IsPlaying() then pulse:Stop() end
+  end
+
   -- A second push button in a button row, standing after the row's own,
   -- the two sharing the column one button would fill -- or, where the two
   -- and the row's name will not fit the row (Rows.FitLead), on a line of
@@ -4948,10 +4973,21 @@ do
     if mark then
       mark.w = math.ceil(mark:GetWidth() or 12)
       btn.Mark = mark
+      -- Its breath while on (Rows.Pulse), made once.
+      local pulse = mark:CreateAnimationGroup()
+      pulse:SetLooping("BOUNCE")
+      local fade = pulse:CreateAnimation("Alpha")
+      fade:SetFromAlpha(1)
+      fade:SetToAlpha(LEAD_PULSE.TO)
+      fade:SetDuration(LEAD_PULSE.TIME)
+      fade:SetSmoothing("IN_OUT")
+      btn.Pulse = pulse
+      btn:HookScript("OnShow", Rows.Pulse)
+      btn:HookScript("OnHide", LeadHidden)
     end
     local label = T.CreateText(markHolder, "segment", "OVERLAY")
     label:SetWordWrap(false)
-    label:SetText(spec.onText)
+    label:SetText(spec.offText)
     btn.Label = label
     btn:SetText("")
 
@@ -4960,6 +4996,9 @@ do
     row.lead = {
       control = btn, minW = 0, get = spec.get, offText = spec.offText, onText = spec.onText,
       apart = false, page = page,
+      -- The wider of its two words, and the font and scale it was measured
+      -- in (Rows.LeadNeed).
+      wordsW = false, wPath = false, wSize = false, wFlags = false, wScale = false,
     }
     return btn
   end
@@ -5518,13 +5557,48 @@ do
     Rows.FitButtonRow(cell)
   end
 
+  -- The width a lead needs (Rows.Lead): its glyph and the wider of its two
+  -- words with `fit`'s padding (a button's, BUTTON_FIT), so it is one
+  -- width on and off and nothing beside it moves when it turns. Both words
+  -- are measured on its own label, in the font it is drawn in, once each
+  -- time that font, its size or the scale moves, the label's words put
+  -- back after; between, a paint reads the width kept.
+  function Rows.LeadNeed(lead, fit)
+    local btn = lead.control
+    local label, mark = btn.Label, btn.Mark
+    local path, size, flags = label:GetFont()
+    local scale = label:GetEffectiveScale()
+    if not (lead.wordsW and lead.wPath == path and lead.wSize == size and lead.wFlags == flags
+            and lead.wScale == scale) then
+      local now = label:GetText()
+      label:SetText(lead.offText)
+      local a = TextW(label)
+      label:SetText(lead.onText)
+      local b = TextW(label)
+      label:SetText(now)
+      -- Nothing measured is a font still loading, not an answer.
+      if a > 0 or b > 0 then
+        lead.wordsW = math.max(a, b)
+        lead.wPath, lead.wSize, lead.wFlags, lead.wScale = path, size, flags, scale
+      else
+        lead.wordsW = false
+        return (fit or BUTTON_FIT).minWidth
+      end
+    end
+    local w = mark and (mark.w + 6) or 0
+    fit = fit or BUTTON_FIT
+    return math.max(fit.minWidth, w + lead.wordsW + fit.padding)
+  end
+
   -- A button row's lead lit or not, from its `get` (Rows.Lead): its words,
-  -- and on, the selected plate the window's segments wear -- their style's
-  -- tokens where it gives them, the palette's otherwise, as the arrange
-  -- key's lit Done (Arrange.lua, AR.PaintToggle) -- with the glyph and the
-  -- words in the accent's selected-caption tone, the two centred as one.
-  -- Off, the button's own look, the glyph in the caption's ink as the
-  -- arrange mark's.
+  -- `offText` or `onText`, and on, the selected plate the window's
+  -- segments wear -- their style's tokens where it gives them, the
+  -- palette's otherwise, as the arrange key's lit Done (Arrange.lua,
+  -- AR.PaintToggle) -- with the glyph and the words in the accent's
+  -- selected-caption tone, the glyph breathing (Rows.Pulse). Off, the
+  -- button's own look, the glyph in the caption's ink as the arrange
+  -- icon's. Either way the glyph and the words centred as one on a button
+  -- as wide as the wider words need (Rows.LeadNeed).
   function Rows.PaintLead(cell)
     local lead = cell and cell.lead
     if not lead then return end
@@ -5533,12 +5607,12 @@ do
     local lit, label = btn.Lit, btn.Label
     local ok, on = pcall(lead.get)
     on = ok and on and true or false
-    -- One label in both states: the button as wide as the glyph and the
-    -- words with a button's padding (BUTTON_FIT), the two centred as one.
+    local words = on and lead.onText or lead.offText
+    if label:GetText() ~= words then label:SetText(words) end
     local w = mark and mark.w or 0
     local gap = mark and 6 or 0
     local total = w + gap + TextW(label)
-    local width = math.max(lead.minW or 0, BUTTON_FIT.minWidth, total + BUTTON_FIT.padding)
+    local width = math.max(lead.minW or 0, Rows.LeadNeed(lead, lead.fit))
     if math.abs((btn:GetWidth() or 0) - width) > 0.5 then btn:SetWidth(width) end
     local x = math.floor((width - total) / 2 + 0.5)
     label:ClearAllPoints()
@@ -5548,6 +5622,7 @@ do
       mark:SetPoint("CENTER", btn, "LEFT", x + w / 2, 0)
     end
     lit.on = on
+    Rows.Pulse(btn)
     if not on then
       lit:Hide()
       lit.Lift:Hide()
@@ -5605,7 +5680,9 @@ do
     end
     cell.minW, lead.minW = 0, 0
     local ownW = FitButton(cell, PAIR_FIT)
-    local leadW = FitButton(lead, PAIR_FIT)
+    -- The lead at the wider of its words (Rows.LeadNeed); its width is
+    -- set where it is painted (Rows.PaintLead, below), from its minW.
+    local leadW = Rows.LeadNeed(lead, PAIR_FIT)
     cell.Name:SetText(cell.nameText)
     local need = ownW + LEAD_GAP + leadW
     local pair = math.max(base, need)
@@ -5613,16 +5690,14 @@ do
     local controlW
     lead.fit = (not apart) and PAIR_FIT or nil
     if apart then
-      local column = math.max(base, FitButton(cell), FitButton(lead))
+      local column = math.max(base, FitButton(cell), Rows.LeadNeed(lead))
       cell.minW, lead.minW = column, column
       FitButton(cell)
-      FitButton(lead)
       controlW = column
     else
       local first = ownW + math.floor((pair - need) / 2)
       cell.minW, lead.minW = first, pair - LEAD_GAP - first
       FitButton(cell, PAIR_FIT)
-      FitButton(lead, PAIR_FIT)
       controlW = pair
     end
     if apart ~= lead.apart then
