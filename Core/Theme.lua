@@ -4558,14 +4558,22 @@ local function PaintPlate(plate)
   end
 
   -- A plate whose caption is a glyph (Theme.SetPlateGlyph: History, the
-  -- sort). Under tokens that name a caption for the pointer the glyph is
-  -- painted as their caption is -- the idle caption's colour, the pointer's
-  -- while it is on the plate unselected; otherwise, and again once those
-  -- tokens are lifted, it wears its own paint.
+  -- sort). On a selected plate it is that plate's caption in glyph form, so
+  -- it wears what a selected caption's words wear: the accent's bright tone,
+  -- whole, never the idle grey beside a lit caption (History's clock joined
+  -- to Received and Sent). Unselected, under tokens that name a caption for
+  -- the pointer the glyph is painted as their caption is -- the idle
+  -- caption's colour, the pointer's while it is on the plate; otherwise,
+  -- and again once those tokens are lifted or the plate is let go, it wears
+  -- its own paint.
   local glyph = plate.__pbGlyph
   if glyph then
     local point = own and own.captionHoverToken
-    if point then
+    if selected then
+      plate.__pbGlyphLit = true
+      glyph:SetAlpha(1)
+      Theme.SetColor(glyph, "accentBright")
+    elseif point then
       plate.__pbGlyphLit = true
       glyph:SetAlpha(1)
       Theme.SetColor(glyph, (hovered and not selected) and point or own.captionToken or "plateCaption")
