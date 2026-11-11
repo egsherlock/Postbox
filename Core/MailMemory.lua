@@ -3764,8 +3764,8 @@ end
 
 local function BuildSearch(frame)
   local T = ns.Theme
-  -- The sort at the row's right end, the search beside it (MM.NewSortButton):
-  -- the order is remembered (MailboxUI.GetListSort, "memory").
+  -- The sort, the find plate's last cell (MM.NewSortButton): the order is
+  -- remembered (MailboxUI.GetListSort, "memory").
   local sort
   sort = MM.NewSortButton(frame, HEADER_H, {
     lit = function() return MM.SortOf("memory") ~= "mailbox" end,
@@ -3792,7 +3792,6 @@ local function BuildSearch(frame)
       T.TipLine(L[MM.SortOf("memory") == "expiry" and "SORT_EXPIRY_TITLE" or "SORT_NEWEST_TITLE"])
     end,
   })
-  sort:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(PAD - 2), HEADER_Y)
   frame.Sort = sort
   -- Theme's search box, as the Mail tab's is: the toggle inside its right end
   -- searches every character's box (Refresh shows it and places the clear
@@ -3810,7 +3809,11 @@ local function BuildSearch(frame)
       T.TipLine(L[frame.searchAll and "MEMORY_SEARCH_ALL_ON" or "MEMORY_SEARCH_ALL_OFF"])
     end,
   })
-  search.Wrap:SetPoint("RIGHT", sort, "LEFT", -4, 0)
+  -- One find plate at the row's right end, as the Mail tab's: the search,
+  -- then the sort as its last cell in the same ring (Theme's search.Join).
+  search.Wrap:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(PAD - 2), HEADER_Y)
+  search.Join(sort)
+  search.Wrap:SetWidth(SEARCH_W + search.endW)
   frame.Search = search
   frame.SearchWrap, frame.SearchBox, frame.SearchClear = search.Wrap, search.Box, search.Clear
   -- Repaints the toggle for frame.searchAll, wherever that is set from.
@@ -3981,6 +3984,8 @@ function Refresh(frame)
   -- In the order the sort keeps for this window, its plate painted for it.
   local order = MM.SortOf("memory")
   frame.Sort.Paint()
+  -- The find plate's divider in the ring the look gives the search now.
+  if frame.Search then frame.Search.PaintJoin() end
   -- What is asked of the box, in a table kept for it.
   local opts = frame._rowsOpts
   if not opts then

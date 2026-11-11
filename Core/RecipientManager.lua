@@ -1949,7 +1949,15 @@ local function Build()
   })
   local searchWrap, searchBox = search.Wrap, search.Box
   searchWrap:SetPoint("TOPLEFT", band, "TOPLEFT", BAND_PAD + 1, -BAND_PAD)
-  searchWrap:SetPoint("RIGHT", sortButton, "LEFT", -M.space.snug, 0)
+  -- One find plate, as the Mail tab's and Mail Memory's: the sort is its
+  -- last cell in the same ring (Theme's search.Join), at the row's right
+  -- end where it stood; the search takes the rest of the row.
+  if sortButton._edge then
+    searchWrap:SetPoint("TOPRIGHT", band, "TOPRIGHT", -BAND_PAD - 1, -BAND_PAD)
+    search.Join(sortButton)
+  else
+    searchWrap:SetPoint("RIGHT", sortButton, "LEFT", -M.space.snug, 0)
+  end
   searchBox:SetScript("OnEscapePressed", function(self)
     if (self:GetText() or "") ~= "" then
       self:SetText("")

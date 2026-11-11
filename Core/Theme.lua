@@ -5485,22 +5485,86 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
   end
 
   -- The clear button stands left of the toggle, or at the end without one,
-  -- and the text (and its placeholder) stops short of both.
+  -- and the text (and its placeholder) stops short of both. All of it stands
+  -- in the search's own cell: left of a joined last cell (search.Join), the
+  -- wrap's right end otherwise.
   function search.Place(withToggle)
-    all:SetShown(withToggle and true or false)
+    search.toggled = withToggle and true or false
+    all:SetShown(search.toggled)
+    local endW = search.endW
+    all:ClearAllPoints()
+    all:SetPoint("RIGHT", wrap, "RIGHT", -4 - endW, 0)
     local clearAt = withToggle and 20 or 4
     clear:ClearAllPoints()
-    clear:SetPoint("RIGHT", wrap, "RIGHT", -clearAt, 0)
+    clear:SetPoint("RIGHT", wrap, "RIGHT", -clearAt - endW, 0)
     local inset = clearAt + 14
-    box:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -inset, 2)
-    placeholder:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -inset - 2, 2)
+    box:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -inset - endW, 2)
+    placeholder:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -inset - 2 - endW, 2)
     -- What the box takes either side of its placeholder, for a row that
-    -- narrows the box and must leave the placeholder whole.
+    -- narrows the box and must leave the placeholder whole: the search's
+    -- own cell's, a joined last cell not counted.
     wrap.__pbTextChrome = SEARCH_TEXT_INSET + inset + 2
+  end
+
+  -- search.Join(cell): a square plate (the sort) as the search's last cell,
+  -- one plate in one ring, as History's clock is joined to Received and
+  -- Sent: on the wrap at its right end, the wrap's height, its own ring put
+  -- away for the wrap's (whatever a look paints the wrap with), and before
+  -- it a single divider a unit wide, which is its first column -- the one
+  -- its fill leaves -- and the search's last. The search's own cell is the
+  -- wrap less `search.endW` (the cell less the shared column); the caller
+  -- sizes the wrap. The cell keeps its own hover, selected look and clicks.
+  -- search.SetJoined(on) takes the cell in or out of the ring (out, it is
+  -- hidden and the search has the wrap to itself); search.PaintJoin() paints
+  -- the divider in the wrap's ring, read where a look gives it one (the
+  -- backdrop's edge), else the cell's plate ring at rest, as a joined
+  -- ring's dividers are drawn. Made once; nothing per paint.
+  function search.Join(cell)
+    if not cell or search.cell then return end
+    search.cell = cell
+    cell:SetParent(wrap)
+    cell:ClearAllPoints()
+    cell:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, 0)
+    cell:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", 0, 0)
+    if cell._edge then cell._edge:Hide() end
+    local line = cell:CreateTexture(nil, "BACKGROUND", nil, -1)
+    line:SetWidth(1)
+    line:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, 0)
+    line:SetPoint("BOTTOMLEFT", cell, "BOTTOMLEFT", 0, 0)
+    cell.__pbDivider = line
+    -- A look's ring may be painted after the cell was built: read again
+    -- each time it comes on screen.
+    cell:HookScript("OnShow", search.PaintJoin)
+    search.SetJoined(true)
+  end
+
+  function search.SetJoined(on)
+    local cell = search.cell
+    if not cell then return end
+    on = on and true or false
+    cell:SetShown(on)
+    search.endW = on and max(0, (cell:GetWidth() or 0) - 1) or 0
+    search.Place(search.toggled)
+    if on then search.PaintJoin() end
+  end
+
+  function search.PaintJoin()
+    local cell = search.cell
+    local line = cell and cell.__pbDivider
+    if not line then return end
+    local r, g, b, a
+    if type(wrap.GetBackdropBorderColor) == "function" then r, g, b, a = wrap:GetBackdropBorderColor() end
+    if type(r) ~= "number" then
+      local c = (Theme.PlateTokens(cell) or C).plateEdge
+      if not c then return end
+      r, g, b, a = c[1], c[2], c[3], c[4]
+    end
+    line:SetColorTexture(r, g, b, a or 1)
   end
 
   search.Wrap, search.Box, search.Placeholder = wrap, box, placeholder
   search.All, search.Clear = all, clear
+  search.endW = 0
   search.PaintToggle(false)
   search.Place(false)
   return search

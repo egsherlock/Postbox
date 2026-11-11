@@ -4450,6 +4450,8 @@ end
 -- accent colour live.
 function CT.RepaintViewToggle(panel)
   PaintViewToggle(panel)
+  -- The find plate's divider, in the ring the look now gives the search.
+  if panel and panel.Search and panel.Search.PaintJoin then panel.Search.PaintJoin() end
 end
 
 local SetViewMode  -- forward declaration; the segments call it
@@ -4643,11 +4645,13 @@ local function BuildSearchBox(panel)
   panel.SearchWrap, panel.SearchBox, panel.SearchPlaceholder = wrap, search.Box, search.Placeholder
   panel.SearchAll, panel.SearchClear = search.All, search.Clear
 
-  -- The sort and filter, at the row's right end with the search beside it
-  -- (RV.NewSortButton, "Sort and filter"). Placed, and the search with it,
-  -- by RV.PlaceSort.
+  -- The sort and filter (RV.NewSortButton, "Sort and filter"): the find
+  -- plate's last cell, joined to the search in one ring at the row's right
+  -- end (Theme's search.Join), as Mail Memory's and Manage Recipients' are.
+  -- Shown, and the search sized round it, by RV.PlaceSort.
   panel.Sort = RV.NewSortButton(panel, M.segmentHeight)
-  panel.Sort:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -M.inset, -M.inset)
+  wrap:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -M.inset, -M.inset)
+  search.Join(panel.Sort)
   RV.PlaceSort(panel, true)
 
   -- The character picker, first in the row: whose mail is on screen decides
@@ -4815,44 +4819,43 @@ function RV.SortAsListed(queue)
   table.sort(queue, by)
 end
 
--- The room the sort takes at the row's right end, beside the search: the
--- plate and the snug step to it. The search and the sort together are
--- SEARCH_W and this wide, on the Mail tab's every list.
+-- The room the sort adds to the find plate: its cell, the segments'
+-- height square, less the column it shares with the search as their one
+-- divider (Theme's search.Join). The plate is SEARCH_W and this wide, on
+-- the Mail tab's every list.
 function RV.SortRoom(panel)
   if not panel.Sort then return 0 end
-  local M = Th().Metrics
-  return M.space.snug + M.segmentHeight
+  return Th().Metrics.segmentHeight - 1
 end
 
--- The sort shown or not (AV.PaintSearch: on every list), and the search
--- placed beside it or widened into its room. Moved only when that changes.
+-- The sort shown or not (AV.PaintSearch: on every list): the plate's last
+-- cell, or the search widened into its room. Changed only when that
+-- changes.
 function RV.PlaceSort(panel, shown)
   local sort, wrap = panel.Sort, panel.SearchWrap
   if not wrap then return end
   shown = sort ~= nil and shown and true or false
-  if sort then sort:SetShown(shown and not panel._topHidden) end
-  if panel._sortPlaced == shown then return end
-  panel._sortPlaced = shown
-  local M = Th().Metrics
-  wrap:ClearAllPoints()
-  if shown then
-    wrap:SetPoint("TOPRIGHT", sort, "TOPLEFT", -M.space.snug, 0)
-  else
-    wrap:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -M.inset, -M.inset)
+  if panel._sortPlaced ~= shown then
+    panel._sortPlaced = shown
+    if panel.Search then panel.Search.SetJoined(shown) end
+    RV.SizeSearch(panel, panel._searchGiven or 0)
   end
-  RV.SizeSearch(panel, panel._searchGiven or 0)
+  if sort then sort:SetShown(shown and not panel._topHidden) end
 end
 
 -- The search's width: its share of the row's end, less what it gave back to
 -- a row short of room (`given`, from LayoutViewToggle, never more than the
 -- sort's room -- so the search is never narrower than SEARCH_W was before
--- there was a sort). Set only when it changes.
+-- there was a sort). `_searchW` is the search's own cell, from the plate's
+-- left edge to the divider; the plate is that and the sort's cell. Set only
+-- when it changes.
 function RV.SizeSearch(panel, given)
   panel._searchGiven = given
-  local width = SEARCH_W + (panel._sortPlaced and 0 or RV.SortRoom(panel)) - given
+  local room = RV.SortRoom(panel)
+  local width = SEARCH_W + (panel._sortPlaced and 0 or room) - given
   if panel._searchW ~= width then
     panel._searchW = width
-    panel.SearchWrap:SetWidth(width)
+    panel.SearchWrap:SetWidth(width + (panel._sortPlaced and room or 0))
     RV.FitPlaceholder(panel)
   end
 end
@@ -5826,12 +5829,12 @@ local function LayoutViewToggle(panel)
   local picker = panel.Picker
   local lead = (picker and picker:IsShown()) and M.segmentHeight + gap or 0
 
-  -- The row's far end: the search box and the sort right of it. The other
-  -- box's name is given the room the rest of the row leaves it (AV.FitPlate).
-  -- A row short of room has the search give back the room the sort took
-  -- (RV.SortRoom) before the name is cut, and only that: `least`, the far
-  -- end with the search at its narrowest and the name's, is what the row
-  -- needed before there was a sort.
+  -- The row's far end: the find plate, the search and the sort as its last
+  -- cell. The other box's name is given the room the rest of the row leaves
+  -- it (AV.FitPlate). A row short of room has the search give back the room
+  -- the sort's cell takes (RV.SortRoom) before the name is cut, and only
+  -- that: `least`, the far end with the search at its narrowest and the
+  -- name's, is what the row needed before there was a sort.
   local row = PanelWidth(panel) - 2 * M.inset
   local left = lead + total
   -- While History's switch stands in the row, the search may give back more
