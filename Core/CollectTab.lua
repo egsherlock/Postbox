@@ -7303,58 +7303,83 @@ function RV.SentShown(panel)
   return panel ~= nil and panel.viewMode == VIEW_HISTORY and HV.Sent(panel)
 end
 
--- The two plates, built once with the row (BuildViewToggle).
+-- The switch, built once with the row (BuildViewToggle): one control, as
+-- the mockup draws it. A holder owns the ring round both halves; the halves
+-- are the house's segment plates standing on it with their own rings put
+-- away, the second overlapping the first by the ring's width, so the line
+-- between them is the holder's ring showing through the one column neither
+-- fill covers -- one ring, one divider, whatever a skin or style paints the
+-- plates with (every look leaves these plates Postbox's own: neither host
+-- skin takes a segment over). The chosen half is selected as any segment
+-- is: its fill, its caption in the accent and its underline.
 function RV.BuildSides(panel, container)
   local T = Th()
   local sides = { opts = {} }
+  local holder = CreateFrame("Frame", nil, container)
+  holder:SetHeight(T.Metrics.segmentHeight)
+  local ring = holder:CreateTexture(nil, "BACKGROUND", nil, -1)
+  ring:SetAllPoints()
+  holder.Ring = ring
+  holder:Hide()
+  sides.holder = holder
   local ids = { "received", "sent" }
   local keys = { "SENT_VIEW_RECEIVED", "SENT_VIEW_SENT" }
   for i = 1, 2 do
-    local seg = T.CreatePlate(container, "segment")
+    local seg = T.CreatePlate(holder, "segment")
+    -- Its ring is the holder's; hidden, a repaint only recolours it.
+    if seg._edge then seg._edge:Hide() end
     seg.sideId = ids[i]
     seg:SetText(L()[keys[i]])
     seg:SetScript("OnClick", function(self) HV.SetSide(panel, self.sideId) end)
-    seg:Hide()
     sides[i] = seg
   end
   container.sides = sides
 end
 
+-- The halves' selection and the holder's ring, in the ring the plates
+-- would wear at rest: their tokens' (a style's, Theme.PlateTokens) or the
+-- palette's. Run with every repaint of the row, which every change of
+-- accent, Mode or host looks reaches (Theme.RepaintAccentIcons).
 function RV.PaintSides(panel)
   local sides = panel.ViewToggle.sides
   local on = HV.Sent(panel) and 2 or 1
   local T = Th()
   for i = 1, 2 do T.SetPlateSelected(sides[i], i == on) end
+  local c = (T.PlateTokens(sides[1]) or T.Colors).plateEdge
+  if c then sides.holder.Ring:SetColorTexture(c[1], c[2], c[3], c[4] or 1) end
 end
 
 -- The switch laid out after the clock (`total`, the row's width so far),
 -- while History is on screen: each half as wide as its own caption needs,
--- a switch's step apart, a control's step from the clock. Returns the
--- row's width with it.
+-- the second over the first's last column (the divider), a control's step
+-- from the clock. Returns the row's width with it.
 function RV.LayoutSides(panel, container, total)
   local sides = container.sides
   if not sides then return total end
   local hist = container.history
   local on = panel.viewMode == VIEW_HISTORY and hist ~= nil and hist:IsShown()
   panel._sidesOn = on
-  sides[1]:SetShown(on)
-  sides[2]:SetShown(on)
+  local holder = sides.holder
+  holder:SetShown(on)
   if not on then return total end
   local T = Th()
   local M = T.Metrics
   local opts = sides.opts
   opts.height, opts.minWidth = M.segmentHeight, 0
-  local x = total + M.gap
+  local x = 0
   for i = 1, 2 do
     local seg = sides[i]
-    if i > 1 then x = x + M.space.snug end
+    if i > 1 then x = x - 1 end
     local width = T.SizeToText(seg, opts)
     seg:ClearAllPoints()
-    seg:SetPoint("LEFT", container, "LEFT", x, 0)
+    seg:SetPoint("LEFT", holder, "LEFT", x, 0)
     x = x + width
   end
+  holder:SetWidth(x)
+  holder:ClearAllPoints()
+  holder:SetPoint("LEFT", container, "LEFT", total + M.gap, 0)
   RV.PaintSides(panel)
-  return x
+  return total + M.gap + x
 end
 
 -- The width the search may give back to the switch beyond the sort's room:
