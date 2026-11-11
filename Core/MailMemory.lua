@@ -4132,6 +4132,12 @@ local function BuildHeader(frame)
     end
     MM.OpenPicker(self, frame.viewing, function(realm, name, isMe)
       frame.viewing = (not isMe) and { realm = realm, name = name } or nil
+      -- This character picked is the way home, as Back is: a search of
+      -- every box ends with it (the Mail tab's AV.Home).
+      if isMe and frame.searchAll then
+        frame.searchAll = false
+        if frame.SearchAllButton then frame.SearchAllButton.Paint() end
+      end
       if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
       Refresh(frame)
     end)
