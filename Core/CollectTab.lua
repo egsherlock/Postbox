@@ -5702,9 +5702,11 @@ function RV.SFMenu(panel, list)
       items[#items + 1] = { id = "show:" .. def.shows[i], name = RV.ShowName(list, def.shows[i]) }
     end
   end
-  -- Last, under a hairline: Reset, as the right-click does it; grayed
-  -- while there is nothing to reset.
-  items[#items + 1] = { id = "reset", name = L0["SF_RESET"], rule = true }
+  -- Last, under a hairline: Reset, as the right-click does it -- an action,
+  -- not a choice, so a button of its own in the menu's foot with the house
+  -- reset glyph (Dropdown.Menu, `action`), gray while there is nothing to
+  -- reset.
+  items[#items + 1] = { id = "reset", name = L0["SF_RESET"], rule = true, action = true, glyph = "reset" }
   -- Under the button, its left edge on the button's, out past the window's
   -- edge as the character picker's list opens; the screen keeps it whole.
   local menu = D.Menu(panel.Sort, items, {

@@ -1086,6 +1086,107 @@ end
 -- The menu is as wide as the longer words of each.
 local FLIP = { SIZE = 5, X = 8, ROOM = 12 }
 
+-- An action, not a choice (the sort menus' Reset): an item with `action`,
+-- drawn in the menu's foot as a quiet full-width button -- an inset plate
+-- of its own, its words centred with the house glyph `item.glyph` (a
+-- Theme.GLYPHS name) before them -- never the chosen mark, never a tick.
+-- Live, its plate's outline and wash stand in the chrome's ink and its
+-- words and glyph in the body text's, and the pointer lights it further;
+-- at rest (opts.disabled) the outline is faint, the words and glyph the
+-- disabled grey, and the pointer lights nothing -- colour and strength
+-- change together, so it reads at any window opacity. Its click, pointer
+-- and tooltip hooks are any row's. Taller than a row by its plate's
+-- margins (H); its plate is SIDE in from the rows' edges, TOP under the
+-- hairline over it and BOTTOM over the menu's padding.
+local ACTION = { H = 26, SIDE = 2, TOP = 5, BOTTOM = 1, GLYPH = 12, GAP = 4 }
+
+function ACTION.Paint(row)
+  local themed = ns.Theme
+  local off = row._off and true or false
+  local hot = row._hover and not off
+  local edgeA = off and 0.10 or (hot and 0.45 or 0.28)
+  local fillA = off and 0.02 or (hot and 0.14 or 0.07)
+  local chrome = themed and type(themed.FillChrome) == "function"
+  for k = 1, #row._edges do
+    if chrome then themed.FillChrome(row._edges[k], edgeA) else row._edges[k]:SetColorTexture(1, 1, 1, edgeA) end
+  end
+  if chrome then themed.FillChrome(row._fill, fillA) else row._fill:SetColorTexture(1, 1, 1, fillA) end
+  if themed and type(themed.SetColor) == "function" then
+    local token = off and "textDisabled" or "textPrimary"
+    themed.SetColor(row.Text, token)
+    if row._glyph then themed.SetColor(row._glyph, token) end
+  else
+    local v = off and 0.5 or 1
+    row.Text:SetTextColor(v, v, v)
+    if row._glyph then row._glyph:SetVertexColor(v, v, v) end
+  end
+end
+
+-- The row at `y` under the list's top, and its plate: a wash and four
+-- hairlines, each one unit, the sides between the top and bottom so no
+-- corner is drawn twice. The caller gives it its click.
+function ACTION.Build(list, item, y, opts)
+  local themed = ns.Theme
+  local Theme = Core.UI.Theme
+  local row = CreateFrame("Button", nil, list)
+  row:SetHeight(ACTION.H)
+  row:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -y)
+  row:SetPoint("RIGHT", list, "RIGHT", -LIST_PADDING, 0)
+  row.item = item
+  if item.rule then
+    local rule = row:CreateTexture(nil, "ARTWORK")
+    rule:SetHeight(1)
+    rule:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    rule:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
+    if themed and type(themed.FillChrome) == "function" then
+      themed.FillChrome(rule, 0.12)
+    else
+      rule:SetColorTexture(1, 1, 1, 0.12)
+    end
+  end
+  local fill = row:CreateTexture(nil, "BACKGROUND")
+  fill:SetPoint("TOPLEFT", row, "TOPLEFT", ACTION.SIDE, -ACTION.TOP)
+  fill:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -ACTION.SIDE, ACTION.BOTTOM)
+  local top, bottom, left, right = row:CreateTexture(nil, "BORDER"), row:CreateTexture(nil, "BORDER"),
+    row:CreateTexture(nil, "BORDER"), row:CreateTexture(nil, "BORDER")
+  top:SetHeight(1)
+  top:SetPoint("TOPLEFT", fill, "TOPLEFT", 0, 0)
+  top:SetPoint("TOPRIGHT", fill, "TOPRIGHT", 0, 0)
+  bottom:SetHeight(1)
+  bottom:SetPoint("BOTTOMLEFT", fill, "BOTTOMLEFT", 0, 0)
+  bottom:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT", 0, 0)
+  left:SetWidth(1)
+  left:SetPoint("TOPLEFT", fill, "TOPLEFT", 0, -1)
+  left:SetPoint("BOTTOMLEFT", fill, "BOTTOMLEFT", 0, 1)
+  right:SetWidth(1)
+  right:SetPoint("TOPRIGHT", fill, "TOPRIGHT", 0, -1)
+  right:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT", 0, 1)
+  local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  text:SetWordWrap(false)
+  text:SetText(item.name)
+  if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
+  local glyph = item.glyph and themed and type(themed.Glyph) == "function"
+    and themed.Glyph(row, item.glyph, ACTION.GLYPH, "OVERLAY") or nil
+  -- The glyph and the words centred together on the plate.
+  text:SetPoint("CENTER", fill, "CENTER", glyph and (ACTION.GLYPH + ACTION.GAP) / 2 or 0, 0)
+  if glyph then glyph:SetPoint("RIGHT", text, "LEFT", -ACTION.GAP, 0) end
+  row.Text, row._fill, row._glyph = text, fill, glyph
+  row._edges = { top, bottom, left, right }
+  row._paintAction = ACTION.Paint
+  row:SetScript("OnEnter", function(self)
+    self._hover = true
+    ACTION.Paint(self)
+    if opts.onEnter then opts.onEnter(self, self.item) end
+  end)
+  row:SetScript("OnLeave", function(self)
+    self._hover = false
+    ACTION.Paint(self)
+    if opts.onLeave then opts.onLeave(self, self.item) end
+  end)
+  ACTION.Paint(row)
+  return row
+end
+
 function Dropdown.Menu(owner, items, opts)
   opts = type(opts) == "table" and opts or {}
   items = type(items) == "table" and items or {}
@@ -1117,14 +1218,16 @@ function Dropdown.Menu(owner, items, opts)
   -- owner has set aside for now, faint (as a select's `off` item is).
   local function PaintMarks(still)
     if not rows then return end
-    if disabled then
-      for i = 1, #rows do
-        local row = rows[i]
-        if row.item.id ~= nil and not row.item.heading then
-          local off = disabled(row.item.id) and true or false
-          row._off = off
-          row.Text:SetAlpha(off and 0.4 or 1)
-        end
+    for i = 1, #rows do
+      local row = rows[i]
+      if row._paintAction then
+        -- An action row: live or at rest in its own look (ACTION.Paint).
+        row._off = disabled and disabled(row.item.id) and true or false
+        row._paintAction(row)
+      elseif disabled and row.item.id ~= nil and not row.item.heading then
+        local off = disabled(row.item.id) and true or false
+        row._off = off
+        row.Text:SetAlpha(off and 0.4 or 1)
       end
     end
     if not checked then return end
@@ -1159,18 +1262,30 @@ function Dropdown.Menu(owner, items, opts)
       list:SetBackdropBorderColor(border[1], border[2], border[3], border[4])
       list.__postboxPanel = "card"
     end
-    list:SetHeight(LIST_PADDING * 2 + #items * DEFAULT_ROW_HEIGHT)
     list:Hide()
     rows = {}
+    -- Each row under the last: an action row is taller (ACTION.H).
+    local y = LIST_PADDING
     for i = 1, #items do
       local item = items[i]
       -- A heading: the group's name, quiet, at the rows' edge, as a
       -- select's list draws one (Dropdown.Create); no wash, no click. A
       -- hairline over it where a group stands above.
-      if item.heading then
+      if item.action then
+        local row = ACTION.Build(list, item, y, opts)
+        -- A click as any row's: nothing while at rest, else the pick.
+        row:SetScript("OnClick", function(self)
+          if self._off then return end
+          if not opts.keepOpen then list:Hide() end
+          if opts.onPick then opts.onPick(self.item.id) end
+          if opts.keepOpen and list:IsShown() then PaintMarks() end
+        end)
+        rows[i] = row
+        y = y + ACTION.H
+      elseif item.heading then
         local head = CreateFrame("Frame", nil, list)
         head:SetHeight(DEFAULT_ROW_HEIGHT)
-        head:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -LIST_PADDING - (i - 1) * DEFAULT_ROW_HEIGHT)
+        head:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -y)
         head:SetPoint("RIGHT", list, "RIGHT", -LIST_PADDING, 0)
         local text = head:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         text:SetPoint("LEFT", head, "LEFT", LIST_PADDING, 0)
@@ -1197,10 +1312,11 @@ function Dropdown.Menu(owner, items, opts)
         -- Measured with the rows (Place): its words from the rows' edge.
         head.Text, head.item, head._textX = text, item, LIST_PADDING
         rows[i] = head
+        y = y + DEFAULT_ROW_HEIGHT
       else
         local row = CreateFrame("Button", nil, list)
         row:SetHeight(DEFAULT_ROW_HEIGHT)
-        row:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -LIST_PADDING - (i - 1) * DEFAULT_ROW_HEIGHT)
+        row:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -y)
         row:SetPoint("RIGHT", list, "RIGHT", -LIST_PADDING, 0)
         local bg = row:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
@@ -1252,8 +1368,10 @@ function Dropdown.Menu(owner, items, opts)
           if opts.keepOpen and list:IsShown() then PaintMarks() end
         end)
         rows[i] = row
+        y = y + DEFAULT_ROW_HEIGHT
       end
     end
+    list:SetHeight(y + LIST_PADDING)
     list:SetScript("OnHide", function()
       Watch()
       if opts.onClose then opts.onClose() end
@@ -1282,6 +1400,8 @@ function Dropdown.Menu(owner, items, opts)
         row.Text:SetText(now)
         room = FLIP.ROOM
       end
+      -- An action row: its glyph and the gap beside its words too.
+      if row._glyph then w = w + ACTION.GLYPH + ACTION.GAP end
       if w > widest then widest = w end
     end
     local width = math.max(tonumber(opts.minWidth) or 0, math.ceil(widest) + 2 * (LIST_PADDING + MARK_GUTTER) + room)

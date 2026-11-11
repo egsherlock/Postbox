@@ -1881,7 +1881,7 @@ local function Build()
       items[#items + 1] = { id = "sort:" .. sort.id, name = L[pair[sort.desc and 2 or 1]],
         flip = L[pair[sort.desc and 1 or 2]] }
     end
-    items[#items + 1] = { id = "reset", name = L["SF_RESET"], rule = true }
+    items[#items + 1] = { id = "reset", name = L["SF_RESET"], rule = true, action = true, glyph = "reset" }
     sortMenu = memory.SortMenu(sortButton, items, function(id)
       return sortPicks[id] ~= nil and (RM._sort or "name") == sortPicks[id]
     end, function(id)

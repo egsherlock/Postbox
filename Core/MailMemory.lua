@@ -4131,7 +4131,8 @@ function MM.PaintSortMark(icon)
 end
 
 -- A sort button's menu (Dropdown.Menu), as the Mail tab's is made: `items`
--- its groups and Reset last under a hairline; a pick leaves it open with its
+-- its groups and Reset last under a hairline, an action row (`action`, a
+-- button of its own in the foot); a pick leaves it open with its
 -- dots moved; Reset grayed while there is nothing to reset. `checked(id)`,
 -- `disabled(id)`, `onPick(id)` and `flipped(id)` (a field's row turned
 -- round, reading its `flip` words) as Dropdown.Menu takes them. It opens
@@ -4188,7 +4189,7 @@ local function BuildSearch(frame)
           { heading = true, name = L["SF_SORT_HEAD"] },
           { id = "sort:mailbox", name = L["SORT_NEWEST_TITLE"], flip = L["SF_SORT_OLDEST"] },
           { id = "sort:expiry", name = L["SORT_EXPIRY_TITLE"], flip = L["SF_SORT_EXPIRY_LAST"] },
-          { id = "reset", name = L["SF_RESET"], rule = true },
+          { id = "reset", name = L["SF_RESET"], rule = true, action = true, glyph = "reset" },
         }, function(id)
           return picks[id] ~= nil and MM.SORT_FIELD[MM.SortOf("memory")] == picks[id]
         end, function(id)
