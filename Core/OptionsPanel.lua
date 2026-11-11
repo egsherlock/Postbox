@@ -802,6 +802,8 @@ local S = {
 
 -- The sections below, declared together so each can reach the others.
 local Tip, Insp, Ctx, Rows, Tabs, Pages, State, Footer, Place, Dash = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
+-- Find a setting: the search box in the title bar (section "Find").
+local Find = {}
 
 -- title, text [, extra]: one thing the inspector can say. `extra` names a
 -- drawing shown under the text ("arrange").
@@ -4316,6 +4318,9 @@ do
     cell.Wash, cell.Name, cell.nameText, cell.w = wash, name, title, width
     cell.entry = Entry(title, text)
     cell.kind = "plain"
+    -- Where it stands, for Find a setting: its column (a fold's, a
+    -- block's or the page's) and the group heading over it.
+    cell.home, cell.groupName = col, S.groupNow
     cell:EnableMouse(true)
     if cell.SetPropagateMouseClicks then cell:SetPropagateMouseClicks(true) end
     cell:SetScript("OnEnter", CellEnter)
@@ -5310,6 +5315,8 @@ do
     T.FillColor(rule, "accent")
     head.Text, head.Rule = text, rule
     S.groups[#S.groups + 1] = head
+    -- The rows under it are its, for Find a setting (Rows.Cell).
+    S.groupNow = title
     if col.heads then col.heads[#col.heads + 1] = head end
     col.y = col.y - GROUP_H
     col.first = true
@@ -9055,6 +9062,656 @@ function Footer.Fit()
 end
 
 -------------------------------------------------------------
+-- Find a setting
+--
+-- The house search box (Theme.CreateSearchBox) at the left of the title
+-- bar, where the Postbox window keeps its cog and arrange key, so it costs
+-- the panel no height: level with the title, whatever bar the look draws,
+-- and never nearer the title than GAP. Where the title leaves it less than
+-- its width, it narrows to the room, its placeholder fitted (Theme.FitText);
+-- where the room is under MIN_W, the box gives way and stands hidden for
+-- that open. It sits left of the title, so the close button at the right
+-- end is never near it.
+--
+-- What it finds: every row the tabs built, as built -- a row this client or
+-- this look does not offer was never built or stands hidden, and is not
+-- listed -- by its name and its group's, the rows behind a closed More line
+-- included; a dropdown's choices by their names too, listed as the row
+-- with the choice beside its name; Test mail's switch on the Preview's
+-- heading; and what lives only on Arrange's cards (Core/Arrange.lua): each
+-- column of the mail rows with its own choices and its card's switches,
+-- Quality by the name on the Subject's card, Row size, and the blocks under
+-- the list, each listed "In Arrange" with its card. Matched as the mail
+-- search matches (Helpers.Lower, a plain find, any length, one letter
+-- included), in the client's language: a name beginning with the query
+-- first, then the rest in the order the tabs show them.
+--
+-- The index is made from the rows the first time the box is used after an
+-- open (or after anything that may change which rows stand: a reset, a
+-- setting read again), and kept while the panel is open; a keystroke folds
+-- the query and runs one find per index line, and writes its lines from
+-- strings the index already holds.
+--
+-- A pick: an options row brings its tab forward, opens the More line it is
+-- behind, and marks the row for a moment in the accent, the inspector saying
+-- what it does as it does under the pointer; an Arrange setting starts
+-- arranging through the options' own Arrange button (Panel.Arrange: the
+-- panel steps aside, one side panel at a time) on its card.
+--
+-- The list hangs under the box on the house's popup card, the dropdowns'
+-- own (Theme.ApplyCard, opaque at any opacity): a line a match, its name
+-- and, muted at the right, its tab and group. The keyboard is the box's
+-- own while it has it: typing, Enter picks the first line, Escape empties
+-- the box and then lets the keyboard go. A press outside the box and the
+-- list closes them, heard as GLOBAL_MOUSE_DOWN only while the box has the
+-- keyboard.
+-------------------------------------------------------------
+do
+  local FIND = {
+    X = 6,          -- the box in from the panel's left edge, as the window's cog
+    W = 160, H = 20, MIN_W = 80,
+    GAP = 8,        -- the least room between the box and the title's first letter
+    LIST_W = 340, LINE_H = 22, LINES = 10, PAD = 4, TEXT_X = 8, WHERE_GAP = 12,
+    MARK_FOR = 1.6, -- seconds a picked row stays marked
+  }
+  Find.FIND = FIND
+  local DOT = " \194\183 "
+  local find, format = string.find, string.format
+  -- The matches on screen, reused; `gen` counts queries, so a line is taken
+  -- once a query (e.hit).
+  local hits, gen = {}, 0
+
+  local function Fold(text)
+    return ns.Helpers.Lower(text or "")
+  end
+
+  -- Whether `cell` stands on `page` as built: every frame up to the page
+  -- shown, a closed More line's frame aside.
+  local function Offered(cell, page, folds)
+    local f = cell
+    while f and f ~= page do
+      if not f:IsShown() and not folds[f] then return false end
+      f = f:GetParent()
+    end
+    return f == page
+  end
+
+  -- The More line a cell is behind, if any.
+  local function FoldOf(cell)
+    local col = cell.home
+    while col do
+      if col.row and col.row.fold == col then return col end
+      col = col.parent
+    end
+    return nil
+  end
+
+  -- A line of the index, into `list`. `lead`: what a name beginning with
+  -- the query is looked for in (the name, folded; a choice's own name for a
+  -- choice).
+  local function Add(list, name, where, hay, e, lead)
+    e.name, e.where, e.hay, e.lead = name, where, hay, lead or Fold(name)
+    list[#list + 1] = e
+    return e
+  end
+
+  -- `from`'s lines onto the index.
+  local function Append(list, from)
+    for i = 1, #from do list[#list + 1] = from[i] end
+  end
+
+  -- A row's name: its caption, or its inspector title where it shows none
+  -- (the minimap icon gallery).
+  local function NameOf(cell)
+    local name = cell.nameText
+    if not name or name == "" then name = cell.entry and cell.entry.title or "" end
+    return name
+  end
+
+  -- A choice's line: its row's name with the choice beside it.
+  local function Choice(name, choice)
+    return format(L["OPT_FIND_CHOICE"], name, choice)
+  end
+
+  -- What lives only on Arrange's cards: each column of the mail rows, its
+  -- own choices and its card's switches, Quality by the name, Row size and
+  -- the blocks under the list. Read from Arrange's own tables, as it lists
+  -- them; a setting this client does not offer is not in them.
+  -- Every line's words are the client's own and the panel's, the same for
+  -- the session, so each row's lines, and each Arrange card's, are made the
+  -- first time and kept on it (a row's again only if its name moved); an
+  -- index is those lines gathered, in order, from what stands now.
+  local arrange = { cols = {}, blocks = {} }
+
+  -- A column's lines: its card, its own choices, its card's switches and
+  -- (the Subject's) Quality by the name.
+  local function ColumnLines(AR, UI, id, spec)
+    local lines = arrange.cols[id]
+    if lines then return lines end
+    lines = {}
+    local inArrange = L["OPT_FIND_IN_ARRANGE"]
+    -- `hay`: a choice's own name, which is all a choice is found by.
+    local function Put(name, where, row, hay)
+      return Add(lines, name, where, hay or Fold(name), { arrange = "column", id = id, row = row }, hay)
+    end
+    local title = L[spec.title]
+    local where = inArrange .. DOT .. title
+    local card = Put(title, inArrange)
+    if spec.choice and spec.choice ~= "age" and type(AR.Choices) == "function" then
+      local choices = AR.Choices(spec.choice)
+      for k = 1, #choices do Put(Choice(title, choices[k].name), where, card, Fold(choices[k].name)) end
+      if spec.choice == "gold" and type(AR.GoldLooks) == "function" then
+        local looks = AR.GoldLooks()
+        for k = 1, looks and #looks or 0 do Put(Choice(title, looks[k].name), where, card, Fold(looks[k].name)) end
+      end
+    end
+    for k = 1, #(AR.TOGGLES or {}) do
+      local t = AR.TOGGLES[k]
+      if t.card == id then Put(L[t.title], where) end
+    end
+    if spec.fixed and not ns.IsForever and UI.GetQualityName and UI.SetQualityName then
+      local name = L["OPT_QUALITY_NAME_TITLE"]
+      local q = Put(name, where)
+      for _, key in ipairs({ "OPT_QUALITY_NAME_BEFORE", "OPT_QUALITY_NAME_AFTER", "OPT_QUALITY_OFF" }) do
+        Put(Choice(name, L[key]), where, q, Fold(L[key]))
+      end
+    end
+    arrange.cols[id] = lines
+    return lines
+  end
+
+  -- What lives only on Arrange's cards, read from Arrange's own tables as it
+  -- lists them (a setting this client does not offer is not in them): each
+  -- column of the mail rows in their order, Row size on the overview, and
+  -- the blocks under the list in their order, each its own card.
+  local function ArrangeLines(list)
+    local AR, UI = ns.Arrange, ns.MailboxUI
+    if not (AR and AR.COLUMNS and UI) then return end
+    local layout = type(AR.Layout) == "function" and AR.Layout() or nil
+    if type(layout) == "table" then
+      for i = 1, #layout do
+        local id = layout[i].id
+        local spec = AR.COLUMNS[id]
+        if spec then Append(list, ColumnLines(AR, UI, id, spec)) end
+      end
+    end
+    local size = arrange.size
+    if not size then
+      size = {}
+      local name, inArrange = L["ARRANGE_ROW_SIZE"], L["OPT_FIND_IN_ARRANGE"]
+      local card = Add(size, name, inArrange, Fold(name), { arrange = "overview" })
+      for _, key in ipairs({ "ARRANGE_ROW_SIZE_LINE", "ARRANGE_ROW_SIZE_LARGER" }) do
+        local hay = Fold(L[key])
+        Add(size, Choice(name, L[key]), inArrange, hay, { arrange = "overview", row = card }, hay)
+      end
+      arrange.size = size
+    end
+    Append(list, size)
+    local order = type(UI.GetStackOrder) == "function" and UI.GetStackOrder() or nil
+    if type(order) ~= "table" then order = Find.STACK end
+    for i = 1, #order do
+      local id = order[i]
+      local line = arrange.blocks[id]
+      if line == nil then
+        local name = (id == "band" and L["ARRANGE_BLOCK_TOTALS"]) or (id == "grid" and L["ARRANGE_BLOCK_GRID"])
+          or (id == "all" and ns.CATEGORY_LABELS and ns.CATEGORY_LABELS.all) or nil
+        line = false
+        if name then
+          local one = {}
+          Add(one, name, L["OPT_FIND_IN_ARRANGE"] .. DOT .. L["ARRANGE_UNDER_LIST"], Fold(name), { arrange = "block", id = id })
+          line = one[1]
+        end
+        arrange.blocks[id] = line
+      end
+      if line then list[#list + 1] = line end
+    end
+  end
+  Find.STACK = { "band", "all", "grid" }
+
+  -- A row's lines: the row, each of its dropdown's choices or its gallery's
+  -- tiles, and the switch beside it (Rows.Side).
+  local function RowLines(cell, key, tabName, name)
+    local lines = {}
+    local kind = cell.kind
+    local group = cell.groupName
+    local where = group and (tabName .. DOT .. group) or tabName
+    local title = cell.entry and cell.entry.title
+    local hay = Fold(name) .. "\001" .. Fold(group)
+    if title and title ~= name then hay = hay .. "\001" .. Fold(title) end
+    local fold = FoldOf(cell)
+    local row = Add(lines, name, where, hay, { cell = cell, tab = key, fold = fold })
+    local items = (kind == "dropdown") and cell.items or nil
+    for k = 1, items and #items or 0 do
+      local item = items[k]
+      if not item.heading and item.name and item.name ~= "" then
+        local hayC = Fold(item.name)
+        Add(lines, Choice(name, item.name), where, hayC, { cell = cell, tab = key, fold = fold, row = row }, hayC)
+      end
+    end
+    local tiles = (kind == "gallery") and cell.tiles or nil
+    for k = 1, tiles and #tiles or 0 do
+      local tname = tiles[k].name
+      if tname and tname ~= "" then
+        local hayC = Fold(tname)
+        Add(lines, Choice(name, tname), where, hayC, { cell = cell, tab = key, fold = fold, row = row }, hayC)
+      end
+    end
+    local side = cell.side
+    if side and side.nameText then
+      Add(lines, side.nameText, where, Fold(side.nameText), { cell = cell, tab = key, fold = fold })
+    end
+    cell.findLines, cell.findName = lines, name
+    return lines
+  end
+
+  -- The index: every row as the tabs built it and as it stands now, then
+  -- Test mail's switch and Arrange's settings. Gathered once an open, the
+  -- first time it is needed, into one list kept for the session.
+  function Find.Index()
+    if S.findIndex then return S.findIndex end
+    local list = S.findLines
+    if not list then
+      list = {}
+      S.findLines = list
+    end
+    for i = #list, 1, -1 do list[i] = nil end
+    local folds = S.findFolds
+    if not folds then
+      folds = {}
+      for i = 1, #S.folds do folds[S.folds[i].frame] = true end
+      S.findFolds = folds
+    end
+    for t = 1, #TABS do
+      local key = TABS[t].key
+      local page, range = S.pages[key], S.tabCells[key]
+      for i = range and range[1] or 1, range and range[2] or 0 do
+        local cell = S.cells[i]
+        local kind = cell.kind
+        if kind ~= "note" and kind ~= "fold" and Offered(cell, page, folds) then
+          local name = NameOf(cell)
+          local lines = cell.findLines
+          if not lines or cell.findName ~= name then lines = RowLines(cell, key, L[TABS[t].caption], name) end
+          Append(list, lines)
+        end
+      end
+      -- Test mail's switch, on the Mail tab's Preview heading.
+      if key == "mail" then
+        local test = S.findTest
+        if not test then
+          local one, name = {}, L["ARRANGE_PREVIEW"]
+          Add(one, name, L[TABS[t].caption] .. DOT .. L["OPT_DRAWING_PREVIEW"], Fold(name), { tab = key, head = true })
+          test = one[1]
+          S.findTest = test
+        end
+        list[#list + 1] = test
+      end
+    end
+    ArrangeLines(list)
+    S.findIndex = list
+    return list
+  end
+
+  -- `e` matches the folded query `q` in pass `pass`: a setting's name
+  -- beginning with it, then a choice's, then either holding it anywhere.
+  -- Once a query, and a choice only where its row has not matched itself
+  -- (the row stands for both).
+  local function Take(e, q, pass)
+    if e.hit == gen then return false end
+    local row = e.row
+    if row and row.hit == gen then return false end
+    if pass < 3 and ((pass == 1) == (row ~= nil)) then return false end
+    local at = find(pass < 3 and e.lead or e.hay, q, 1, true)
+    if not at or (pass < 3 and at ~= 1) then return false end
+    e.hit = gen
+    return true
+  end
+
+  local function LineEnter(self)
+    self.Wash:Show()
+  end
+
+  local function LineLeave(self)
+    self.Wash:Hide()
+  end
+
+  local function LineClick(self)
+    Find.Pick(self.e)
+  end
+
+  -- The list under the box, made the first time it shows.
+  function Find.List()
+    local list = S.findList
+    if list then return list end
+    local T = ns.Theme
+    local colors = ns.Core.UI.Theme and ns.Core.UI.Theme.MenuColors or nil
+    local hover = colors and colors.hover or { 0.90, 0.78, 0.30, 0.18 }
+    list = CreateFrame("Frame", nil, S.frame, "BackdropTemplate")
+    list:SetFrameStrata("FULLSCREEN_DIALOG")
+    list:SetFrameLevel(S.frame:GetFrameLevel() + 60)
+    list:SetClampedToScreen(true)
+    list:SetWidth(FIND.LIST_W)
+    list:EnableMouse(true)
+    list.__pbPopupAlways = true
+    T.ApplyCard(list)
+    -- The lines on a holder of their own: a host skin's repaint of the
+    -- card fades the card's own textures, never a child's.
+    local art = CreateFrame("Frame", nil, list)
+    art:SetAllPoints()
+    list.lines = {}
+    for i = 1, FIND.LINES do
+      local line = CreateFrame("Button", nil, art)
+      line:SetHeight(FIND.LINE_H)
+      line:SetPoint("TOPLEFT", list, "TOPLEFT", FIND.PAD, -(FIND.PAD + (i - 1) * FIND.LINE_H))
+      line:SetPoint("RIGHT", list, "RIGHT", -FIND.PAD, 0)
+      local wash = line:CreateTexture(nil, "BACKGROUND")
+      wash:SetAllPoints()
+      wash:SetColorTexture(hover[1], hover[2], hover[3], hover[4])
+      wash:Hide()
+      local where = T.CreateText(line, "secondary")
+      where:SetPoint("RIGHT", line, "RIGHT", -FIND.TEXT_X, 0)
+      where:SetJustifyH("RIGHT")
+      where:SetWordWrap(false)
+      local name = T.CreateText(line, "bodySmall")
+      name:SetPoint("LEFT", line, "LEFT", FIND.TEXT_X, 0)
+      name:SetJustifyH("LEFT")
+      name:SetWordWrap(false)
+      line.Wash, line.Name, line.Where = wash, name, where
+      line:SetScript("OnEnter", LineEnter)
+      line:SetScript("OnLeave", LineLeave)
+      line:SetScript("OnClick", LineClick)
+      line:Hide()
+      list.lines[i] = line
+    end
+    -- One quiet line for no match, or for more matches than lines.
+    local say = T.CreateText(art, "secondary")
+    say:SetJustifyH("LEFT")
+    say:SetWordWrap(false)
+    list.Say = say
+    list:Hide()
+    S.findList = list
+    if ns.Theme.SkinChanged then ns.Theme.SkinChanged() end
+    return list
+  end
+
+  function Find.Hide()
+    local list = S.findList
+    if list and list:IsShown() then list:Hide() end
+  end
+
+  -- The query typed (the box's onTextChanged): the matches, a line each.
+  function Find.Typed(text)
+    local box = S.findBox
+    if not (box and box:HasFocus()) then
+      Find.Hide()
+      return
+    end
+    local q = Fold(text)
+    if q == "" then
+      Find.Hide()
+      return
+    end
+    local index = Find.Index()
+    gen = gen + 1
+    local n, total = 0, 0
+    -- A name beginning with the query first, then the rest in order.
+    for pass = 1, 3 do
+      for i = 1, #index do
+        local e = index[i]
+        if Take(e, q, pass) then
+          total = total + 1
+          if n < FIND.LINES then
+            n = n + 1
+            hits[n] = e
+          end
+        end
+      end
+    end
+    for i = n + 1, #hits do hits[i] = nil end
+    Find.Paint(n, total)
+  end
+
+  -- `n` lines from `hits`, and a quiet line under them for no match or for
+  -- matches past the last line.
+  function Find.Paint(n, total)
+    local list = Find.List()
+    local T = ns.Theme
+    local inner = FIND.LIST_W - 2 * FIND.PAD - 2 * FIND.TEXT_X
+    for i = 1, FIND.LINES do
+      local line = list.lines[i]
+      local e = hits[i]
+      if i <= n and e then
+        line.e = e
+        line.Where:SetText(e.where)
+        local whereW = math.min(TextW(line.Where), math.floor(inner / 2))
+        T.FitText(line.Where, whereW, e.where)
+        T.FitText(line.Name, inner - whereW - FIND.WHERE_GAP, e.name)
+        T.SetColor(line.Name, "textPrimary")
+        T.SetColor(line.Where, "textSecondary")
+        line.Wash:SetShown(line:IsMouseOver())
+        line:Show()
+      else
+        line.e = nil
+        line:Hide()
+      end
+    end
+    local say = list.Say
+    local words = (n == 0 and L["OPT_FIND_NONE"]) or (total > n and L["OPT_FIND_MORE"]) or nil
+    local h = FIND.PAD + n * FIND.LINE_H
+    if words then
+      say:SetText(words)
+      T.SetColor(say, "textSecondary")
+      say:ClearAllPoints()
+      say:SetPoint("LEFT", list, "TOPLEFT", FIND.PAD + FIND.TEXT_X, -(h + FIND.LINE_H / 2))
+      say:SetWidth(inner)
+      say:Show()
+      h = h + FIND.LINE_H
+    else
+      say:Hide()
+    end
+    list:SetHeight(h + FIND.PAD)
+    list:ClearAllPoints()
+    list:SetPoint("TOPLEFT", S.findWrap, "BOTTOMLEFT", 0, -2)
+    list:Show()
+  end
+
+  -- Test mail's switch on the Mail tab's Preview heading, once the tab's
+  -- drawing is built.
+  local function TestHead()
+    local f = S.ctx.mail
+    for i = 1, #(S.testHeads or {}) do
+      local head = S.testHeads[i]
+      if head:GetParent() == f then return head end
+    end
+    return nil
+  end
+
+  -- The mark a pick leaves: four accent edges round the row, for a moment,
+  -- on the row itself, so it goes where the row goes (another tab, a fold
+  -- closing, the panel hiding).
+  local function Mark(target)
+    local mark = S.findMark
+    if not mark then
+      mark = CreateFrame("Frame", nil, target)
+      mark.Edges = Rows.Edges(mark, 7)
+      S.findMark = mark
+    end
+    if mark:GetParent() ~= target then mark:SetParent(target) end
+    mark:SetFrameLevel((target:GetFrameLevel() or 1) + 12)
+    mark:ClearAllPoints()
+    mark:SetAllPoints(target)
+    local T = ns.Theme
+    local r, g, b
+    if T.GetAccentTone then r, g, b = T.GetAccentTone("mark") else r, g, b = T.GetAccent() end
+    for i = 1, 4 do mark.Edges[i]:SetVertexColor(r, g, b, 1) end
+    mark:Show()
+  end
+
+  -- The moment over: the mark goes, and the row's wash and the inspector's
+  -- words follow the pointer again. A later pick moves the moment on.
+  function Find.Unmark()
+    local until_ = S.findMarkUntil
+    if not until_ or GetTime() < until_ - 0.05 then return end
+    S.findMarkUntil = nil
+    if S.findMark then S.findMark:Hide() end
+    local cell = S.findMarked
+    S.findMarked = nil
+    if S.held then return end
+    if cell and S.washed == cell and not cell:IsMouseOver() then
+      if cell.Wash then cell.Wash:Hide() end
+      S.washed = nil
+    end
+    local body = S.body
+    if not (body and body:IsMouseOver()) then Insp.Show(nil) end
+  end
+
+  function Find.Pick(e)
+    if not e then return end
+    local box = S.findBox
+    if box and box:HasFocus() then box:ClearFocus() end
+    Find.Hide()
+    if e.arrange then
+      -- The same door as the Arrange button's: the panel steps aside, and
+      -- the card opens on what was picked.
+      Panel.Arrange()
+      local AR = ns.Arrange
+      local kind = e.arrange ~= "overview" and e.arrange or nil
+      if AR and AR.host and kind and not AR.Selected(kind, e.id) then AR.Select(kind, e.id) end
+      return
+    end
+    Panel.SelectTab(e.tab)
+    if e.fold and not e.fold.open then Rows.SetFold(e.fold, true) end
+    local target, entry = e.cell, nil
+    if e.head then
+      target = TestHead()
+      entry = target and target.lead and target.lead.control.__pbEntry
+    end
+    if not target then return end
+    Mark(target)
+    if target == e.cell then
+      Rows.Hover(target)
+    elseif entry then
+      Insp.Show(entry)
+    end
+    S.findMarked = e.cell
+    S.findMarkUntil = GetTime() + FIND.MARK_FOR
+    C_Timer.After(FIND.MARK_FOR, Find.Unmark)
+  end
+
+  -- A press outside the box and its list, while the box has the keyboard.
+  local function Press(watch)
+    local wrap, list = S.findWrap, S.findList
+    if wrap and wrap:IsMouseOver() then return end
+    if list and list:IsShown() and list:IsMouseOver() then return end
+    if S.findBox then S.findBox:ClearFocus() end
+  end
+
+  local function Gained(box)
+    S.findWatch:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    Find.Typed(box:GetText())
+  end
+
+  local function Lost()
+    S.findWatch:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+    Find.Hide()
+  end
+
+  -- Escape empties the box, and from an empty box lets the keyboard go.
+  local function Escape(box)
+    if (box:GetText() or "") ~= "" then
+      box:SetText("")
+    else
+      box:ClearFocus()
+    end
+  end
+
+  local function Enter(box)
+    local first = S.findList and S.findList:IsShown() and hits[1] or nil
+    if first then Find.Pick(first) else box:ClearFocus() end
+  end
+
+  function Find.Build(frame)
+    local T = ns.Theme
+    if not (T and T.CreateSearchBox) then return end
+    local search = T.CreateSearchBox(frame, FIND.W, FIND.H, L["OPT_FIND_PLACEHOLDER"], {
+      onTextChanged = Find.Typed,
+    })
+    local wrap, box = search.Wrap, search.Box
+    -- One line, cut short in its box where the box gives way (Find.Fit).
+    search.Placeholder:SetWordWrap(false)
+    wrap:SetFrameLevel(frame:GetFrameLevel() + 20)
+    wrap:SetPoint("LEFT", frame, "TOPLEFT", FIND.X, -12)
+    box:SetScript("OnEscapePressed", Escape)
+    box:SetScript("OnEnterPressed", Enter)
+    box:SetScript("OnEditFocusGained", Gained)
+    box:SetScript("OnEditFocusLost", Lost)
+    local watch = CreateFrame("Frame", nil, wrap)
+    watch:SetScript("OnEvent", Press)
+    S.findSearch, S.findWrap, S.findBox, S.findWatch = search, wrap, box, watch
+  end
+
+  -- Each open: an empty box, and the index made again when it is next used.
+  function Find.Open()
+    S.findIndex = nil
+    local box = S.findBox
+    if not box then return end
+    if box:HasFocus() then box:ClearFocus() end
+    box:SetText("")
+    Find.Fit()
+  end
+
+  -- Level with the title, as far left as the cog stands in the window, and
+  -- clear of the title's first letter by GAP; measured on every open and
+  -- refresh, after the look has placed the title and its font.
+  function Find.Fit()
+    local wrap, frame = S.findWrap, S.frame
+    if not (wrap and frame) then return end
+    local title = frame.TitleText
+    local top, left = frame:GetTop(), frame:GetLeft()
+    local y, first = -12, nil
+    if title and top and left then
+      local tt, tb, tl, tr = title:GetTop(), title:GetBottom(), title:GetLeft(), title:GetRight()
+      if tt and tb then y = (tt + tb) / 2 - top end
+      if tl and tr then
+        local w = TextW(title)
+        first = ((title.GetJustifyH and title:GetJustifyH() == "LEFT") and tl or ((tl + tr) / 2 - w / 2)) - left
+      end
+    end
+    -- Inside the bar, whatever the title's own height.
+    y = math.min(y, -(1 + FIND.H / 2))
+    local search = S.findSearch
+    local chrome = wrap.__pbTextChrome or 24
+    local want = math.max(FIND.W, TextW(search.Placeholder) + chrome)
+    local room = math.floor((first or (PANEL_W / 2 - 60)) - FIND.GAP - FIND.X)
+    local w = math.min(want, room)
+    if w < FIND.MIN_W then
+      if search.Box:HasFocus() then search.Box:ClearFocus() end
+      wrap:Hide()
+      return
+    end
+    wrap:SetWidth(w)
+    wrap:ClearAllPoints()
+    wrap:SetPoint("LEFT", frame, "TOPLEFT", FIND.X, math.floor(y + 0.5))
+    wrap:Show()
+  end
+
+  -- The rows were read again (a reset, a setting changed elsewhere): the
+  -- index is made again when next used, and the box placed again.
+  function Find.Refresh()
+    S.findIndex = nil
+    Find.Fit()
+  end
+
+  -- The panel hid: the keyboard let go, the list closed, a mark gone.
+  function Find.Close()
+    local box = S.findBox
+    if box and box:HasFocus() then box:ClearFocus() end
+    Find.Hide()
+    S.findMarkUntil, S.findMarked = nil, nil
+    if S.findMark then S.findMark:Hide() end
+  end
+end
+
+-------------------------------------------------------------
 -- Build, refresh, layout
 -------------------------------------------------------------
 
@@ -9216,6 +9873,7 @@ local function PanelHide()
   local washed = S.washed
   if washed and washed.Wash then washed.Wash:Hide() end
   S.washed, S.held, S.heldAt, S.heldEnter = nil, nil, nil, nil
+  Find.Close()
   Insp.Show(nil)
   for _, f in pairs(S.ctx) do
     if f.Stop then f.Stop() end
@@ -9333,6 +9991,7 @@ local function Build()
     page:Hide()
     local col = Rows.Column(page)
     local first, firstEntry = #S.cells + 1, #S.entries + 1
+    S.groupNow = nil
     Pages[key](col)
     S.tabCells[key] = { first, #S.cells }
     -- General's texts stand under its card (Layout).
@@ -9364,6 +10023,8 @@ local function Build()
   S.refresh[#S.refresh + 1] = function() S.gridStale = true end
 
   Footer.Build(frame, body)
+  -- Find a setting, in the title bar, before the skins' first pass.
+  Find.Build(frame)
   frame:HookScript("OnHide", PanelHide)
 
   -- Let an active host-UI skin restyle the panel like the main window.
@@ -9519,6 +10180,7 @@ function Panel.RefreshControls()
   Rows.Fit()
   Tabs.Fit()
   Footer.Fit()
+  Find.Refresh()
   Layout()
   Ctx.Paint(S.tab)
   Insp.Repaint()
@@ -9728,6 +10390,7 @@ function Panel.Toggle(anchor, from)
   Rows.Fit()
   Tabs.Fit()
   Footer.Fit()
+  Find.Open()
   Layout()
   -- Fitted to the screen again (its size may have changed since), and put
   -- back where it opens if that moved its scale.
