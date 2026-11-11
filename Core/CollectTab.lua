@@ -5229,8 +5229,11 @@ end
 --
 -- The button right of the search opens a small menu in the house's
 -- dropdown parts (Lib/UI/Dropdown.lua, Dropdown.Menu; never a Blizzard
--- menu, COMBAT_TAINT.md): Sort, one order, and Show, one filter, the first
--- of them the unfiltered list. Each list offers its own (RV.SF): the Mail
+-- menu, COMBAT_TAINT.md): Sort, one order, and Show, any of its filters at
+-- once, each a tick that turns on or off, the first of them the unfiltered
+-- list ("All mail"), which lets every filter go and is the one lit while
+-- none is on. Filters on together narrow together: a mail is shown only
+-- if every filter on shows it. Each list offers its own (RV.SF): the Mail
 -- tab's inbox -- and another character's box and every box's matches,
 -- which are the same kind of list -- History's Received, and Sent; the
 -- Done tab, read mail with nothing left in it, sorts and never filters.
@@ -5244,7 +5247,8 @@ end
 --
 -- The order is remembered for each list (MailboxUI.GetListSort: "inbox",
 -- "history", "sent"). A filter never is: it is the panel's own
--- (panel._sfShow), let go when the mailbox closes (CT.ClearSearch) and,
+-- (panel._sfShow[list], a set of flags: RV.ShowFlags), let go when the
+-- mailbox closes (CT.ClearSearch) and,
 -- for History's, when History is left (SetViewMode) or its half is changed
 -- (HV.SetSide), so no mail stays out of sight behind a filter the player
 -- has forgotten.
@@ -5296,10 +5300,42 @@ function RV.SortOf(list)
   return sort
 end
 
--- The filter on a list, nil for none.
+-- A list's filters: one set of flags for each list, made the first time
+-- it is asked for and kept on the panel (panel._sfShow[list]). Each filter
+-- that is on holds the turn it was set at (panel._sfTurn, counting up), so
+-- the chips stand in the order they were set; one that is off is nil.
+-- Filters are let go by emptying the set, never by making another.
+function RV.ShowFlags(panel, list)
+  local shows = panel._sfShow
+  if not shows then
+    shows = {}
+    panel._sfShow = shows
+  end
+  local flags = shows[list]
+  if not flags then
+    flags = {}
+    shows[list] = flags
+  end
+  return flags
+end
+
+-- The filters on a list, its set of flags while any is on, nil for none:
+-- what the walks hand RV.Shows and RV.HistoryShows.
 function RV.ShowOf(panel, list)
   local shows = panel and panel._sfShow
-  return shows and shows[list] or nil
+  local flags = shows and shows[list]
+  if flags and next(flags) ~= nil then return flags end
+  return nil
+end
+
+-- Every filter on a list let go, quietly; whether any was on. The chips
+-- are told by the count of changes (panel._sfGen).
+function RV.DropShows(panel, list)
+  local flags = panel._sfShow and panel._sfShow[list]
+  if not (flags and next(flags) ~= nil) then return false end
+  for k in pairs(flags) do flags[k] = nil end
+  panel._sfGen = (panel._sfGen or 0) + 1
+  return true
 end
 
 -- Whether a filter narrows the inbox's list: one of the narrowings a
@@ -5315,30 +5351,33 @@ function RV.SFLit(panel)
   return RV.SortOf(list) ~= "mailbox" or RV.ShowOf(panel, list) ~= nil
 end
 
--- A mail by the inbox's filters (and another box's): money, items and read
--- as its header or its remembered row has them.
-function RV.Shows(show, money, items, read)
-  if show == "unread" then return not read end
-  if show == "gold" then return (tonumber(money) or 0) > 0 end
-  if show == "items" then return (tonumber(items) or 0) > 0 end
+-- A mail by the inbox's filters (and another box's), `on` the list's set
+-- of flags (RV.ShowOf): money, items and read as its header or its
+-- remembered row has them. Shown only if every filter on shows it; one
+-- look-up a filter, nothing made.
+function RV.Shows(on, money, items, read)
+  if on.unread and read then return false end
+  if on.gold and (tonumber(money) or 0) <= 0 then return false end
+  if on.items and (tonumber(items) or 0) <= 0 then return false end
   return true
 end
 
--- A History entry by its half's filters: Received by what the mail was
--- (an auction's outcome, or none: a player's or another letter), Sent by
--- what it carried.
-function RV.HistoryShows(show, entry, sent)
+-- A History entry by its half's filters, `on` as above: Received by what
+-- the mail was (an auction's outcome, or none: a player's or another
+-- letter), Sent by what it carried. Received's are kinds, and a mail is
+-- one kind, so two of them on together show nothing, as asked.
+function RV.HistoryShows(on, entry, sent)
   if sent then
-    if show == "gold" then return (entry.m or 0) > 0 end
-    if show == "items" then return entry.it ~= nil and #entry.it > 0 end
-    if show == "cod" then return (entry.c or 0) > 0 end
+    if on.gold and (entry.m or 0) <= 0 then return false end
+    if on.items and not (entry.it ~= nil and #entry.it > 0) then return false end
+    if on.cod and (entry.c or 0) <= 0 then return false end
     return true
   end
   local k = entry.k
-  if show == "sold" then return k == "sold" end
-  if show == "bought" then return k == "bought" end
-  if show == "expired" then return k == "expired" or k == "canceled" end
-  if show == "players" then return k == nil end
+  if on.sold and k ~= "sold" then return false end
+  if on.bought and k ~= "bought" then return false end
+  if on.expired and k ~= "expired" and k ~= "canceled" then return false end
+  if on.players and k ~= nil then return false end
   return true
 end
 
@@ -5457,21 +5496,30 @@ function CT.SetSort(panel, list, order)
   RV.SFChanged(panel)
 end
 
--- A filter chosen for a list ("all", or nil, for none): the picks let go
--- (a pick must never stand on a row the filter hides), and the list shown
--- through it.
-function CT.SetShow(panel, list, show)
+-- A filter turned on or off for a list (the menu's tick, a chip's x, or a
+-- test): `on` true or false, or nil to turn it over; "all" (or nil) lets
+-- every filter on the list go. Then the picks let go (a pick must never
+-- stand on a row a filter hides), and the list shown through what is on.
+function CT.SetShow(panel, list, show, on)
   local def = panel and RV.SF[list]
   if not (def and def.shows) then return end
-  if show == "all" then show = nil end
-  if show ~= nil then
+  if show == "all" or show == nil then
+    if not RV.DropShows(panel, list) then return end
+  else
     local known = false
     for i = 1, #def.shows do if def.shows[i] == show then known = true end end
     if not known then return end
+    local flags = RV.ShowFlags(panel, list)
+    if on == nil then on = flags[show] == nil end
+    if (flags[show] ~= nil) == (on and true or false) then return end
+    if on then
+      panel._sfTurn = (panel._sfTurn or 0) + 1
+      flags[show] = panel._sfTurn
+    else
+      flags[show] = nil
+    end
+    panel._sfGen = (panel._sfGen or 0) + 1
   end
-  if RV.ShowOf(panel, list) == show then return end
-  panel._sfShow = panel._sfShow or {}
-  panel._sfShow[list] = show
   ClearSelection(panel)
   RV.SFChanged(panel)
 end
@@ -5482,9 +5530,10 @@ function RV.ForgetShows(panel, which)
   local shows = panel and panel._sfShow
   if not shows then return end
   if which == "history" then
-    shows.received, shows.sent = nil, nil
+    RV.DropShows(panel, "received")
+    RV.DropShows(panel, "sent")
   else
-    for k in pairs(shows) do shows[k] = nil end
+    for list in pairs(shows) do RV.DropShows(panel, list) end
   end
 end
 
@@ -5499,25 +5548,32 @@ function RV.ResetSF(panel)
     UI.SetListSort(def.save, "mailbox")
     changed = true
   end
-  if RV.ShowOf(panel, list) ~= nil then
-    panel._sfShow[list] = nil
+  if RV.DropShows(panel, list) then
     ClearSelection(panel)
     changed = true
   end
   if changed then RV.SFChanged(panel) end
 end
 
--- The button's tooltip: what the list on screen is in, as facts, and the
--- two gestures.
+-- The button's tooltip: what the list on screen is in, as facts -- every
+-- filter on, in the menu's order -- and the two gestures. The words joined
+-- in a table kept for it.
+RV.TIP_SHOWS = {}
 function RV.SFTip(panel, owner)
   local T, L0 = Th(), L()
   local list = RV.SFList(panel)
   T.TipBegin(owner, "ANCHOR_TOPRIGHT")
   T.TipTitle(L0["SF_TITLE"])
   T.TipFact(L0["SF_TIP_SORT"], L0[RV.SF_SORT_KEYS[RV.SortOf(list)]])
-  if RV.SF[list].shows then
-    local show = RV.ShowOf(panel, list)
-    T.TipFact(L0["SF_TIP_SHOW"], RV.ShowName(list, show or "all"))
+  local def = RV.SF[list]
+  if def.shows then
+    local on, words = RV.ShowOf(panel, list), RV.TIP_SHOWS
+    for i = #words, 1, -1 do words[i] = nil end
+    for i = 1, #def.shows do
+      if on and on[def.shows[i]] then words[#words + 1] = RV.ShowName(list, def.shows[i]) end
+    end
+    T.TipFact(L0["SF_TIP_SHOW"], #words > 0 and table.concat(words, " \194\183 ") or RV.ShowName(list, "all"))
+    for i = #words, 1, -1 do words[i] = nil end
   end
   T.TipHint(L0["SF_HINT"])
   GameTooltip:Show()
@@ -5531,8 +5587,10 @@ end
 
 -- The menu for a list, made on its first open and kept on the panel: a
 -- heading and the orders, then a heading and the filters, then Reset. Each pick
--- leaves it open with its dots moved, so an order and a filter can be
--- chosen in one visit to it.
+-- leaves it open with its marks moved, so an order and any filters can be
+-- chosen in one visit to it. The orders are one choice; each filter is a
+-- tick of its own, marked while it is on (the select's chosen mark, which
+-- any number of rows can wear), and "All mail" is marked while none is.
 function RV.SFMenu(panel, list)
   local menus = panel._sfMenus
   if not menus then
@@ -5565,7 +5623,9 @@ function RV.SFMenu(panel, list)
       local pick = RV.SF_IDS[id]
       if not pick then return false end
       if pick[1] == "sort" then return RV.SortOf(list) == pick[2] end
-      return (RV.ShowOf(panel, list) or "all") == pick[2]
+      local on = RV.ShowOf(panel, list)
+      if pick[2] == "all" then return on == nil end
+      return on ~= nil and on[pick[2]] ~= nil
     end,
     onPick = function(id)
       if id == "reset" then return RV.ResetAll(panel) end
@@ -5673,7 +5733,7 @@ function RV.ResetAll(panel)
   RV.SFTold(panel)
 end
 
--- The strip's Clear: the filter on the list on screen let go, the order
+-- The strip's Clear: every filter on the list on screen let go, the order
 -- left as it was saved (CT.SetShow "all"), and the tooltip and an open
 -- menu told.
 function RV.ClearFilter(panel)
@@ -5690,9 +5750,10 @@ end
 
 -- What is in force, in words, between the toolbar and the list: a slim
 -- band (Theme.ApplyBand, the totals' fill, held legible at any window
--- opacity) with the filter, then the order where it is not the newest
--- first -- "Unread · Most gold first", or "Unread" -- and Clear at its
--- right end, which lets the filter go and leaves the order (RV.ClearFilter).
+-- opacity) with the filters, in the menu's order, then the order where it
+-- is not the newest first -- "Unread · With gold · Most gold first", or
+-- "Unread" -- and Clear at its right end, which lets the filters go and
+-- leaves the order (RV.ClearFilter).
 -- Built once with the panel; shown only while a filter is on, and then the
 -- list starts under it (its height and a gap) instead of under the
 -- toolbar, so with no filter -- whatever the order -- the window is as it
@@ -5739,18 +5800,26 @@ function RV.PaintStrip(panel, on)
   end
   if not on then return end
   local list = RV.SFList(panel)
-  local sort, show = RV.SortOf(list), RV.ShowOf(panel, list)
+  local sort = RV.SortOf(list)
   local width = strip:GetWidth() or 0
   -- The face too (Theme.FontGeneration): a Text size or font change sizes
   -- Clear and fits the words again in it.
   local L0, T = L(), Th()
   local gen = type(T.FontGeneration) == "function" and T.FontGeneration() or 0
-  if strip._list == list and strip._sort == sort and strip._show == show and strip._width == width
-      and strip._gen == gen then
+  local fonts = gen
+  gen = panel._sfGen or 0
+  if strip._list == list and strip._sort == sort and strip._shows == gen and strip._width == width
+      and strip._gen == fonts then
     return
   end
-  strip._list, strip._sort, strip._show, strip._width, strip._gen = list, sort, show, width, gen
-  local words = show and RV.ShowName(list, show) or nil
+  strip._list, strip._sort, strip._shows, strip._width, strip._gen = list, sort, gen, width, fonts
+  local flags, def, words = RV.ShowOf(panel, list), RV.SF[list], nil
+  for i = 1, (flags and def.shows) and #def.shows or 0 do
+    if flags[def.shows[i]] then
+      local said = RV.ShowName(list, def.shows[i])
+      words = words and (words .. " \194\183 " .. said) or said
+    end
+  end
   if sort ~= "mailbox" then
     local said = L0[RV.SF_SORT_KEYS[sort]]
     words = words and (words .. " \194\183 " .. said) or said
@@ -5762,7 +5831,7 @@ function RV.PaintStrip(panel, on)
 end
 
 -- The list empty through a filter: under its words (panel.Empty), the way
--- back to every mail (CT.SetShow "all": the filter alone; the order stays),
+-- back to every mail (CT.SetShow "all": every filter; the order stays),
 -- placed and sized only when shown.
 function RV.PaintEmptyClear(panel, on)
   local clear = panel.EmptyClear
