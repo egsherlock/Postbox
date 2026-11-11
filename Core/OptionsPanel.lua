@@ -4745,28 +4745,86 @@ do
   local function ChevronEnter(self) ns.Theme.SetColor(self.Chev, "textPrimary") end
   local function ChevronLeave(self) ns.Theme.SetColor(self.Chev, "textDisabled") end
 
-  -- A button row's caption and its icon, in one ink: the caption's
-  -- (textPrimary on the button, as Test mail's switch wears off: Rows.
-  -- PaintLead), grey while the button is off. Both are Postbox's own
-  -- (Rows.Button), painted through Theme.SetColor, so the theme's own
-  -- repaint (a palette, a Mode, a style's looks) takes them together; the
-  -- button's enable and disable paint them here (its OnEnable/OnDisable).
-  -- The pointer on the button changes neither: the button's own hover
-  -- shows it, as on Test mail's switch.
+  -- A button row's caption and its icon (Rows.Button) in the ink every
+  -- push button's words take in the style in force, state by state: the
+  -- caption wears the button's own state font -- normal at rest, the
+  -- highlight under the pointer, the disabled one while off: the objects
+  -- the client would put on the button's own label, after the skins' pass
+  -- (Theme.HostFontButton, a style's own) -- and nothing set on the string
+  -- itself, so a palette or Mode that recolours those objects in place
+  -- (the copies' Theme.RefreshHostFonts) recolours it with them. The icon
+  -- takes the object's colour, painted here at each state change and
+  -- whenever one of those objects is recoloured (CAPTION.Watch): the
+  -- theme's own repaint reaching it, no repaint of the options'.
+  local CAPTION = {
+    buttons = setmetatable({}, { __mode = "k" }),  -- caption buttons, for a recolour
+    fonts = setmetatable({}, { __mode = "k" }),    -- the state fonts watched
+  }
+
+  -- The state's font: a named one only (never a widget's own instance).
+  function CAPTION.Font(btn)
+    local T = ns.Theme
+    local named = T.NamedFont
+    local get
+    if not btn:IsEnabled() then
+      get = btn.GetDisabledFontObject
+    elseif btn.__pbPointed then
+      get = btn.GetHighlightFontObject
+    else
+      get = btn.GetNormalFontObject
+    end
+    local object = get and named(get(btn)) or nil
+    if not object then object = named(btn:GetNormalFontObject()) end
+    return object or named((T.FontObject("segment")))
+  end
+
+  -- Every caption painted again: one of the state fonts was recoloured or
+  -- dressed again in place. A few buttons; nothing made.
+  function CAPTION.Moved()
+    for btn in pairs(CAPTION.buttons) do Rows.PaintCaption(btn) end
+  end
+
+  -- A state font of Postbox's own (a copy or an evened font: named
+  -- Postbox...) is watched for the setters the theme recolours it with;
+  -- a game font object is never touched.
+  function CAPTION.Watch(object)
+    if CAPTION.fonts[object] then return end
+    CAPTION.fonts[object] = true
+    local name = object:GetName()
+    if type(name) ~= "string" or name:sub(1, 7) ~= "Postbox" then return end
+    hooksecurefunc(object, "SetTextColor", CAPTION.Moved)
+    hooksecurefunc(object, "CopyFontObject", CAPTION.Moved)
+  end
+
   function Rows.PaintCaption(btn)
     local label = btn and btn.Caption
     if not label then return end
-    local T = ns.Theme
-    local token = btn:IsEnabled() and "textPrimary" or "textDisabled"
-    T.SetColor(label, token, "button")
+    CAPTION.buttons[btn] = true
+    local object = CAPTION.Font(btn)
+    if not object then return end
+    CAPTION.Watch(object)
+    if label:GetFontObject() ~= object then label:SetFontObject(object) end
     local icon = btn.Icon
     if not icon then return end
+    local r, g, b, a = object:GetTextColor()
+    if type(r) ~= "number" then return end
     if icon.dots then
-      local c = T.Colors[token]
-      Ctx.TintMark(icon, c[1], c[2], c[3], 1)
+      Ctx.TintMark(icon, r, g, b, a or 1)
     else
-      T.SetColor(icon, token, "button")
+      icon:SetVertexColor(r, g, b, a or 1)
     end
+  end
+
+  -- The pointer on and off: the highlight font and back, as the client
+  -- does the button's own label.
+  function CAPTION.Enter(self)
+    self.__pbPointed = true
+    Rows.PaintCaption(self)
+  end
+
+  function CAPTION.Leave(self)
+    self.__pbPointed = false
+    Rows.PaintCaption(self)
   end
 
   -- A push button on the right. spec: title, text, caption, onClick
@@ -4815,14 +4873,18 @@ do
         btn.Icon = icon
       end
     end
-    local label = T.CreateText(art, "segment", "OVERLAY")
+    -- No template and no colour of its own: its font, and with it its ink,
+    -- is the button's state font (Rows.PaintCaption), set before any text.
+    local label = art:CreateFontString(nil, "OVERLAY")
+    btn.Caption, btn.captionText, btn.__pbCaption = label, spec.caption, true
+    Rows.PaintCaption(btn)
     label:SetWordWrap(false)
     label:SetJustifyH("LEFT")
-    btn.Caption, btn.captionText, btn.__pbCaption = label, spec.caption, true
     label:SetText(spec.caption)
     btn:HookScript("OnEnable", Rows.PaintCaption)
     btn:HookScript("OnDisable", Rows.PaintCaption)
-    Rows.PaintCaption(btn)
+    btn:HookScript("OnEnter", CAPTION.Enter)
+    btn:HookScript("OnLeave", CAPTION.Leave)
     if spec.chevron then
       local chev = T.Glyph and T.Glyph(art, "chevron", 10, "OVERLAY") or nil
       if chev then
@@ -5488,6 +5550,9 @@ do
   local function FitCaption(cell, fit)
     local btn = cell.control
     local label = btn.Caption
+    -- In the state font the skins' pass left on the button (a host may
+    -- re-font it after build), before it is measured.
+    Rows.PaintCaption(btn)
     fit = fit or BUTTON_FIT
     local pad = fit.padding / 2
     local icon, chev = btn.Icon, btn.Chev
