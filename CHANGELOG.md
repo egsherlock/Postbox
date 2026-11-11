@@ -61,6 +61,11 @@
 
 ### Fixed
 
+- **The bank and other game windows work after a visit to the mailbox.**
+  With Dock beside game windows on, Postbox could leave the bank unusable
+  until a reload (seen in WoW Forever). Docking now places the mail window
+  by itself and leaves the game's window layout alone, so other game
+  windows no longer move aside for it.
 - In the character list and the minimap icon's tooltip, a character whose
   mail Postbox couldn't count says **new** (or **2+**) instead of 0.
 - The words on the bar over finished mail sit dead center at any scale.
