@@ -66,9 +66,14 @@ local KEEP = 3
 
 local function Releases()
   return {
+    -- No placard: 1.60's says Postbox now supports WoW Forever, news once;
+    -- 1.61's Forever line is a group like the others.
     { version = "1.61.0", groups = {
       { "WHATSNEW_161_SENT", "WHATSNEW_161_SENT_LINES" },
       { "WHATSNEW_161_SEARCH", "WHATSNEW_161_SEARCH_LINES" },
+      { "WHATSNEW_161_LOOKS", "WHATSNEW_161_LOOKS_LINES" },
+      { "WHATSNEW_161_OPTIONS", "WHATSNEW_161_OPTIONS_LINES" },
+      { "WHATSNEW_161_FOREVER", "WHATSNEW_161_FOREVER_LINES" },
       { "WHATSNEW_FIXED", "WHATSNEW_161_FIXED_LINES" },
     } },
     { version = "1.60.0", placard = "WHATSNEW_160_PLACARD", note = "WHATSNEW_160_BUGS", groups = {
@@ -869,8 +874,15 @@ end
 -- by itself for it once: the first time the player opens a mailbox with
 -- it after an update (never on a fresh install: WN.ArmOnce), beside the
 -- mail window as the 1.50 notice stands (WN.WindowShown, from the mail
--- window's open in Core/MailboxUI.lua). 1.60's is WoW Forever. A release
+-- window's open in Core/MailboxUI.lua). 1.60's was WoW Forever; 1.61's is
+-- Sent mail, the sort and filter menu and Find a setting. A release
 -- without such news sets NEWS to nil, and nothing here runs at all.
+--
+-- PostboxDB.newsShown holds the NEWS of the last release whose news was
+-- shown, and the news is shown while it differs: a key per release, so a
+-- player who saw 1.60's has "1.60" and is shown 1.61's once. No build ever
+-- carried "1.61" before this one (the 1.61 dev builds still said "1.60"),
+-- so nobody can hold it by mistake.
 --
 -- Postbox.lua arms it at load (WN.ArmOnce), after the one-time steps: one
 -- read of PostboxDB.newsShown. Once it was shown nothing is armed, and a
@@ -895,7 +907,7 @@ end
 -- never shows it twice. Reset everything keeps the mark
 -- (Core/MailboxUI.lua, CENSUS_KEEP).
 -------------------------------------------------------------
-local NEWS = "1.60"
+local NEWS = "1.61"
 
 -- The one saved read: shown already, or no news to show.
 local function NewsShown()
