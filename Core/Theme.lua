@@ -4713,9 +4713,11 @@ do
     tex = plate:CreateTexture(nil, layer or "OVERLAY", nil, sub)
     local g = glyph.__pbSpec
     if g then
-      -- A pixel glyph's copy is sampled as the glyph is (Theme.Glyph).
+      -- A pixel glyph's copy is sampled as the glyph is, now and whenever
+      -- a new scale changes its filter (Theme.Glyph's PX.Filter).
       if glyph.__pbPixel then
-        tex:SetTexture(g.file, "CLAMP", "CLAMP", "NEAREST")
+        glyph.__pbHalo = list
+        tex:SetTexture(g.file, "CLAMP", "CLAMP", glyph.__pbFilter or "LINEAR")
       elseif g.wrap then
         tex:SetTexture(g.file, g.wrap, g.wrap)
       else
@@ -5071,9 +5073,11 @@ Theme.AtlasSets = {
 -- button, an options button or a title bar (cog, layout, history,
 -- sort-list, search, people, eye, and the three tools' small masters) is
 -- drawn from its 12-unit master at 12 units, pixel for pixel, centred on
--- whole pixels in its box. Their art and its self-test:
--- .dev/design/icons-r8/gen_icons_r8.py (Set 1, "Solid"; `--ship` writes the
--- Media files and the table lines, `--selftest --media Media` proves them).
+-- whole pixels in its box. Their designs: .dev/design/icons-r8/gen_icons_r8.py
+-- (Set 1, "Solid"); their masters, drawn from those designs' geometry with
+-- coverage anti-aliasing, and the self-test:
+-- .dev/design/icons-r11/gen_icons_r11.py (`--ship` writes the Media files and
+-- the table lines, `--selftest --media Media` proves them).
 --
 -- Theme.GLYPHS: name -> { file, w, h, l, r, t, b [, pad] [, wrap] }. w and h
 -- are the texture's size in UI units at the mockup's size; l, r, t, b crop
@@ -5141,8 +5145,10 @@ Theme.AtlasSets = {
 --     one pixel for pixel. Accent-tinted where Theme.TintAccentGlyph keeps
 --     one in the icon tone.
 --   groups-10, recipients-10  the busts and the address book again, the
---     12s simplified to a 10-unit ink box: the options' Character Groups
---     and Manage Recipients buttons only, beside their 13-unit captions.
+--     12s simplified to 10 units tall (the busts 12 wide, so the two behind
+--     keep shoulders two units wide to the glyph's edges): the options'
+--     Character Groups and Manage Recipients buttons only, beside their
+--     13-unit captions.
 --   search  a magnifier, 12 units: the options' search box.
 --   eye, eye-off  an almond with a ring round its pupil, 12 by 8, and the
 --     same eye with a one-unit slash from top left to bottom right and a
@@ -5154,7 +5160,8 @@ Theme.AtlasSets = {
 --   link, link-broken  a chain link, two capsules, 15 by 8 units, and the
 --     same link open with two ticks at the break: the Window tab's line
 --     naming the host UI the look comes from, broken while it is overridden
---     (OptionsPanel's Ctx.window; the round6 mockup's LINK and LINKX).
+--     (OptionsPanel's Ctx.window; the round6 mockup's LINK and LINKX). One
+--     of the small family (`px`), its cut ends on whole units.
 --   The tiles' 30-unit art and its self-test:
 --     .dev/design/tile-icons/gen_tile_glyphs.py.
 --
@@ -5164,9 +5171,9 @@ Theme.AtlasSets = {
 -- the bias to 0 and the snap off, so a texture's default sharpens). On 2x art
 -- that throws half the anti-aliasing away. So the bias is 0 while the quad
 -- still snaps to the pixel grid. Both setters are nil-guarded. The small
--- family's hard-edged masters (`px`) are drawn as pixel art instead: on an
--- even texel, point-sampled, a whole number of screen pixels to each master
--- pixel (see PX by Theme.Glyph, which says why the old canvases blurred).
+-- family's masters (`px`) start on an even texel and are drawn at a whole
+-- number of screen pixels a unit, with the filter that number needs (see PX
+-- by Theme.Glyph, which also says why the old canvases blurred).
 --
 -- A new file under Media/ is found only after a full client restart.
 -------------------------------------------------------------
@@ -5216,41 +5223,50 @@ do
       large = { from = 21, file = MEDIA .. "glyph-groups-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
     recipients = { file = MEDIA .. "glyph-recipients-12.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true,
       large = { from = 21, file = MEDIA .. "glyph-recipients-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
-    ["groups-10"] = { file = MEDIA .. "glyph-groups-10.tga", w = 10, h = 10, l = 0.0625, r = 0.6875, t = 0.0625, b = 0.6875, px = true },
+    ["groups-10"] = { file = MEDIA .. "glyph-groups-10.tga", w = 12, h = 10, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.6875, px = true },
     ["recipients-10"] = { file = MEDIA .. "glyph-recipients-10.tga", w = 10, h = 10, l = 0.0625, r = 0.6875, t = 0.0625, b = 0.6875, px = true },
     search = { file = MEDIA .. "glyph-search.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
-    link = { file = MEDIA .. "glyph-link.tga", w = 15, h = 8, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.53125 },
-    ["link-broken"] = { file = MEDIA .. "glyph-link-broken.tga", w = 15, h = 8, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.53125 },
+    link = { file = MEDIA .. "glyph-link.tga", w = 15, h = 8, l = 0.03125, r = 0.5, t = 0.0625, b = 0.5625, px = true },
+    ["link-broken"] = { file = MEDIA .. "glyph-link-broken.tga", w = 15, h = 8, l = 0.03125, r = 0.5, t = 0.0625, b = 0.5625, px = true },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
   }
 
   local GLYPHS = Theme.GLYPHS
 
-  -- The small family's masters (`px` in the table: every pixel fully on or
-  -- off, drawn by .dev/design/icons-r8/gen_icons_r8.py --ship), asked for
-  -- at their own size, are drawn as pixel art:
-  --   * The art starts at texel 2, an even texel. The client builds each
-  --     texture's mip chain from the canvas's corner, so its level 1 is the
-  --     2 x 2 average of texels (0,1), (2,3) ..., and a 24-texel master
-  --     shown at 12 pixels is sampled there. With the art at texel 1 every
-  --     one of those averages held half of one unit and half of the next,
-  --     and every edge came out a [1 2 1] / 4 blur. At an even texel each is
-  --     exactly one unit.
-  --   * Point sampling (the "NEAREST" filter): each screen pixel takes one
-  --     texel, so a master pixel is a block of whole screen pixels at any
-  --     whole multiple, never a blend of two.
-  --   * A whole number of screen pixels for each master pixel: at one pixel
-  --     a unit (EllesmereUI's pixel-perfect scale, a Window scale of 100%)
-  --     that is the glyph's own size in units, pixel for pixel. Where a unit
-  --     is not a whole number of pixels (a Window scale of 90%, another UI
-  --     scale, a window shrunk to fit the screen) the glyph is drawn at the
-  --     nearest whole number of pixels per master pixel (one at least), so
-  --     it stays hard-edged and may stand a pixel or two larger or smaller
-  --     than its size in units says. Measured again only when the scale can
-  --     have moved: a window of Postbox's own shown or put on a new scale
-  --     (Theme.ApplyFrameTheme, Theme.RescaleWindows, Theme.FitToScreen),
-  --     and the client's UI_SCALE_CHANGED and DISPLAY_SIZE_CHANGED. Each
-  --     glyph compares one number and returns when nothing moved.
+  -- The small family's masters (`px` in the table, drawn from their
+  -- geometry by .dev/design/icons-r11/gen_icons_r11.py --ship), asked for
+  -- at their own size, are drawn as a hinted font draws its letters:
+  -- straight strokes full strength on whole pixels, curves and diagonals
+  -- anti-aliased for the size they are drawn at.
+  --   * Each master is 2 texels a unit, its texels the exact coverage of the
+  --     glyph's shapes, every straight edge on a whole unit, and the art
+  --     starts at texel 2, an even texel. The client builds each texture's
+  --     mip chain from the canvas's corner, so its level 1 is the 2 x 2
+  --     average of texels (0,1), (2,3) ..., and at one pixel a unit a
+  --     pixel's centre falls on the middle of one such block: a bilinear
+  --     sample there, or level 1, is the mean of that block's four texels,
+  --     which is the pixel's own coverage. So a straight stroke, two texels
+  --     on even ones, stays whole and full, and a curve comes out with the
+  --     anti-aliasing worked out for twelve pixels. (With the art at texel 1
+  --     every block held half of one unit and half of the next, and every
+  --     edge came out a [1 2 1] / 4 blur.)
+  --   * The filter follows the pixels a unit (PX.Filter): at one, "LINEAR",
+  --     the box above; at two or more, "NEAREST", each texel a block of
+  --     whole pixels, texel for texel at two (a blend there could only
+  --     soften the master's own edges).
+  --   * A whole number of screen pixels a unit: at one pixel a unit
+  --     (EllesmereUI's pixel-perfect scale, a Window scale of 100%) that is
+  --     the glyph's own size in units. Where a unit is not a whole number of
+  --     pixels (a Window scale of 90% or 110%, another UI scale, a window
+  --     shrunk to fit the screen) the glyph is drawn at the nearest whole
+  --     number of pixels a unit (one at least), its master sampled as at
+  --     that whole number, so it stays crisp and may stand a pixel or two
+  --     larger or smaller than its size in units says. Measured again only
+  --     when the scale can have moved: a window of Postbox's own shown or
+  --     put on a new scale (Theme.ApplyFrameTheme, Theme.RescaleWindows,
+  --     Theme.FitToScreen), and the client's UI_SCALE_CHANGED and
+  --     DISPLAY_SIZE_CHANGED. Each glyph compares one number and returns
+  --     when nothing moved.
   --   * Its anchor carries a quarter of a screen pixel right and down. The
   --     glyph snaps to the pixel grid (SetSnapToPixelGrid); a glyph centred
   --     in a box whose spare room is odd stands on half a pixel, where
@@ -5313,6 +5329,25 @@ do
     if math.abs(k - 1) < 0.002 then k = 1 end
     tex:SetSize(g.w * k, g.h * k)
     if tex.__pbAt then PX.Put(tex) end
+    PX.Filter(tex, n == 1 and "LINEAR" or "NEAREST")
+  end
+
+  -- The glyph and its halo copies (Theme.PaintGlyphHalo) sampled with
+  -- `filter`; nothing when they already are. The art and its crop set again
+  -- with it, as SetTexture takes the filter only with the file.
+  function PX.Filter(tex, filter)
+    if tex.__pbFilter == filter then return end
+    tex.__pbFilter = filter
+    local g = tex.__pbSpec
+    tex:SetTexture(g.file, "CLAMP", "CLAMP", filter)
+    tex:SetTexCoord(g.l, g.r, g.t, g.b)
+    local halo = tex.__pbHalo
+    if halo then
+      for i = 1, #halo do
+        halo[i]:SetTexture(g.file, "CLAMP", "CLAMP", filter)
+        halo[i]:SetTexCoord(g.l, g.r, g.t, g.b)
+      end
+    end
   end
 
   -- Every pixel glyph measured against the scale it draws at now.
@@ -5325,8 +5360,8 @@ do
     Theme.RefitGlyphs()
   end
 
-  function PX.Adopt(tex, g)
-    tex:SetTexture(g.file, "CLAMP", "CLAMP", "NEAREST")
+  -- Its art and filter are set by its first PX.Fit.
+  function PX.Adopt(tex)
     if not PX.Raw then PX.Raw = tex.SetPoint end
     tex.SetPoint = PX.SetPoint
     tex.__pbPixel = true
@@ -5351,7 +5386,7 @@ do
     size = tonumber(size)
     local pixel = g.px and (not size or size == g.h)
     if pixel then
-      PX.Adopt(tex, g)
+      PX.Adopt(tex)
     elseif g.wrap then
       tex:SetTexture(g.file, g.wrap, g.wrap)
     else

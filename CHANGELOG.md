@@ -70,6 +70,9 @@
   at: the clock, the sort bars, the arrange mark, the address book and the
   rest, and a cog of Postbox's own on the title bar. The cog is plain gray
   and takes your accent only while the options are open.
+- **Small icons are drawn the way text is:** on the Mail tab's bar, the
+  title bar, the options' buttons and the Window tab's link, straight
+  edges stay crisp and curves are smoothed like the letters beside them.
 - **Text outline** is now called **Text style** (Options, Window), and a
   new **Text weight** beside it offers Bold for Barlow Semi Condensed and
   the four new fonts.
