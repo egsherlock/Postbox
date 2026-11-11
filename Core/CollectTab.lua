@@ -5666,9 +5666,15 @@ function RV.PaintStrip(panel, on)
   local list = RV.SFList(panel)
   local sort, show = RV.SortOf(list), RV.ShowOf(panel, list)
   local width = strip:GetWidth() or 0
-  if strip._list == list and strip._sort == sort and strip._show == show and strip._width == width then return end
-  strip._list, strip._sort, strip._show, strip._width = list, sort, show, width
+  -- The face too (Theme.FontGeneration): a Text size or font change sizes
+  -- Clear and fits the words again in it.
   local L0, T = L(), Th()
+  local gen = type(T.FontGeneration) == "function" and T.FontGeneration() or 0
+  if strip._list == list and strip._sort == sort and strip._show == show and strip._width == width
+      and strip._gen == gen then
+    return
+  end
+  strip._list, strip._sort, strip._show, strip._width, strip._gen = list, sort, show, width, gen
   local words = show and RV.ShowName(list, show) or nil
   if sort ~= "mailbox" then
     local said = L0[RV.SF_SORT_KEYS[sort]]
