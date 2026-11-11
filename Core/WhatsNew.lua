@@ -61,25 +61,31 @@ local ONCE = {}
 --
 -- A release may also carry a placard, the words of a small plate beside its
 -- title (section 2b), and a note, a line of its own under the title: 1.60's
--- say that Postbox now supports WoW Forever, and ask for bug reports.
+-- say that Postbox now supports Forever, and ask for bug reports.
+--
+-- A group about one game only names the game and its lines,
+-- `{ game = "forever" or "retail", lines = key }`: its heading is that
+-- game's mark and one word (section 2c), and its lines say nothing of
+-- which game. Both games' groups show in both clients, as
+-- they are. A game's group stands after the shared groups and before Fixed.
 -------------------------------------------------------------
 local KEEP = 3
 
 local function Releases()
   return {
-    -- No placard: 1.60's says Postbox now supports WoW Forever, news once;
+    -- No placard: 1.60's says Postbox now supports Forever, news once;
     -- 1.61's Forever line is a group like the others.
     { version = "1.61.0", groups = {
       { "WHATSNEW_161_NEW", "WHATSNEW_161_NEW_LINES" },
       { "WHATSNEW_161_LOOKS", "WHATSNEW_161_LOOKS_LINES" },
       { "WHATSNEW_161_OPTIONS", "WHATSNEW_161_OPTIONS_LINES" },
-      { "WHATSNEW_161_FOREVER", "WHATSNEW_161_FOREVER_LINES" },
+      { game = "forever", lines = "WHATSNEW_161_FOREVER_LINES" },
       { "WHATSNEW_FIXED", "WHATSNEW_161_FIXED_LINES" },
     } },
     { version = "1.60.0", placard = "WHATSNEW_160_PLACARD", note = "WHATSNEW_160_BUGS", groups = {
-      { "WHATSNEW_160_FOREVER", "WHATSNEW_160_FOREVER_LINES" },
       { "WHATSNEW_160_MAIL", "WHATSNEW_160_MAIL_LINES" },
       { "WHATSNEW_160_OPTIONS", "WHATSNEW_160_OPTIONS_LINES" },
+      { game = "forever", lines = "WHATSNEW_160_FOREVER_LINES" },
     } },
     { version = "1.50.0", groups = {
       { "WHATSNEW_150_ARRANGE", "WHATSNEW_150_ARRANGE_LINES" },
@@ -134,7 +140,7 @@ end
 -- in the window's own chrome (the totals banner's quiet fill inside its
 -- one-pixel edge, bandFill and bandBorder: neutral, following the look and
 -- the mode), WoW Forever's emblem at its left end and the words beside it
--- in the body's small type, on one line, "WoW Forever" in the bright ink and
+-- in the body's small type, on one line, "Forever" in the bright ink and
 -- the rest a step quieter. The emblem at its own size, 19 by 22 units (its
 -- art's 2 texels a unit), so it stays legible at one screen pixel a unit;
 -- the plate a unit clear of it all round, and centred on the title's line,
@@ -162,7 +168,7 @@ local PLACARD = {
   PAD = 5,                 -- the emblem's left and the words' last letter in from the plate's edges
   WORDS_GAP = 5,           -- the emblem to the words
   RIGHT_IN = 6,            -- the plate in from the page's right end, clear of the scroll bar's gutter
-  BRIGHT = "WoW Forever",  -- the words' name of the game, in the bright ink
+  BRIGHT = "Forever",      -- the words' name of the game, in the bright ink
   TITLE_GAP = 12,          -- the least room between the title and the plate
 }
 
@@ -314,6 +320,95 @@ local function LayoutPlacard(plate, title, page, y, width)
   return plateH - over
 end
 
+-------------------------------------------------------------
+-- 2c. A game's heading
+--
+-- A group about one game only (section 1, `game`) is headed by the game's
+-- mark, a small gap, then one word, "Forever" or "Retail", in the
+-- heading's own font and ink; the mark in its own colours, never tinted.
+-- The mark as tall as the heading's capitals, rounded to whole units, its
+-- foot on the words' baseline: where the client sets them, from the face's
+-- own ascent (CollectTab's FaceOf, the bar's rule; a face it does not know
+-- has the common proportions). A face with no capitals (zhCN's, zhTW's)
+-- gives its ideographs' box instead.
+--
+-- Forever's mark is the placard's emblem (section 2b). Retail's is the
+-- game's own, logo-wow-retail: the round emblem the game draws for retail
+-- beside logo-wow-forever and logo-wow-classic, in an atlas both clients
+-- carry (the same file in each), so nothing is shipped for it. Cut to the
+-- emblem's own box in its 320-texel cell. A client without the atlas
+-- heads the group with the word alone, never a hole. Looked up once, when
+-- the window is first built.
+-------------------------------------------------------------
+local GAMES = {
+  GAP = 4,                 -- the mark to the word
+  forever = { word = "WHATSNEW_GAME_FOREVER", file = PLACARD.FILE, L = PLACARD.L, R = PLACARD.R, T = PLACARD.T, B = PLACARD.B,
+    aspect = PLACARD.ART_W / PLACARD.ART_H },
+  -- The emblem's box in its cell: texels 88 to 240 of 320, both ways.
+  retail = { word = "WHATSNEW_GAME_RETAIL", atlas = "logo-wow-retail", cut = { 88 / 320, 240 / 320, 88 / 320, 240 / 320 }, aspect = 1 },
+  -- Where a face is not known: the common proportions (CollectTab's).
+  FACE = { 0.93, 0.21, 0.70, -0.20, 0.72, 0.12 },
+}
+
+-- The game's mark on a texture of the page, or nil where the client has
+-- none: then the heading is the word alone.
+function GAMES.Mark(page, game)
+  local art = GAMES[game]
+  if type(art) ~= "table" or not art.aspect then return nil end
+  local info
+  if not art.file then
+    local T = ns.Theme
+    local get = C_Texture and C_Texture.GetAtlasInfo
+    if not (T and T.AtlasExists and T.AtlasExists(art.atlas) and type(get) == "function") then return nil end
+    local ok, found = pcall(get, art.atlas)
+    if not (ok and type(found) == "table") then return nil end
+    info = found
+  end
+  local mark = page:CreateTexture(nil, "ARTWORK")
+  if art.file then
+    mark:SetTexture(art.file)
+    mark:SetTexCoord(art.L, art.R, art.T, art.B)
+  else
+    mark:SetAtlas(art.atlas)
+    -- The atlas's own corners, then the emblem's box within them.
+    local l, r = info.leftTexCoord or 0, info.rightTexCoord or 1
+    local t, b = info.topTexCoord or 0, info.bottomTexCoord or 1
+    local cut = art.cut
+    mark:SetTexCoord(l + (r - l) * cut[1], l + (r - l) * cut[2], t + (b - t) * cut[3], t + (b - t) * cut[4])
+  end
+  -- Theme.Glyph's sampling: on the pixel grid, no texel snapping bias.
+  if mark.SetSnapToPixelGrid then mark:SetSnapToPixelGrid(true) end
+  if mark.SetTexelSnappingBias then mark:SetTexelSnappingBias(0) end
+  mark.__aspect = art.aspect
+  return mark
+end
+
+-- The mark beside `heading`, which stands at `y` down the page: as tall as
+-- its capitals, its foot on their baseline. Answers how far in its word
+-- starts.
+function GAMES.Place(mark, heading, page, y)
+  local CT = ns.CollectTab
+  local FaceOf = CT and CT.BarParts and CT.BarParts.FaceOf
+  local face, size
+  if FaceOf then face, size = FaceOf(heading) end
+  if type(face) ~= "table" then
+    local _, s = heading:GetFont()
+    face, size = GAMES.FACE, tonumber(s) or 12
+  end
+  -- The line's top is the heading's, on a whole unit; the baseline the
+  -- ascent under it.
+  local base = floor(face[1] * size + 0.5)
+  local top, foot = face[3], face[7] or 0
+  local h = max(1, floor((top - foot) * size + 0.5))
+  local w = max(1, floor(h * mark.__aspect + 0.5))
+  local under = floor(-foot * size + 0.5)
+  mark:SetSize(w, h)
+  mark:ClearAllPoints()
+  mark:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -(y + base + under - h))
+  mark:Show()
+  return w + GAMES.GAP
+end
+
 local function BuildWindow()
   local T = ns.Theme
 
@@ -382,11 +477,14 @@ local function BuildWindow()
     local groups = release.groups
     for g = 1, #groups do
       local group = groups[g]
+      -- A game's group: its word, and its mark before it (section 2c).
+      local game = group.game and GAMES[group.game]
       local heading = T.CreateText(page, "heading")
       heading:SetJustifyH("LEFT")
-      heading:SetText(L[group[1]])
-      items[#items + 1] = { kind = "heading", text = heading }
-      for line in string.gmatch(L[group[2]], "[^\n]+") do
+      heading:SetText(L[game and game.word or group[1]])
+      local mark = game and GAMES.Mark(page, group.game) or nil
+      items[#items + 1] = { kind = "heading", text = heading, mark = mark }
+      for line in string.gmatch(L[game and group.lines or group[2]], "[^\n]+") do
         local dot = T.CreateText(page, "secondary")
         dot:SetText(BULLET)
         local words = T.CreateText(page, "bodySmall")
@@ -425,6 +523,7 @@ local function LayoutWindow(f)
     end
     local x = (kind == "line") and WIN.BULLET or 0
     local text = item.text
+    if item.mark then x = GAMES.Place(item.mark, text, f.Page, y) end
     text:ClearAllPoints()
     text:SetPoint("TOPLEFT", f.Page, "TOPLEFT", x, -y)
     text:SetWidth(width - x)
