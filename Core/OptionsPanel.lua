@@ -8065,7 +8065,7 @@ end
 -- (Mode, the accent, the background colour -- the Mode's own list, a tint
 -- among it -- and opacity), Edges and rows (the border, its colour, the
 -- corners, row stripes and the sheen side by side), Text (font, size,
--- outline; every text's colour is worked out from what it stands on, so
+-- outline, weight; every text's colour is worked out from what it stands on, so
 -- there is none to pick). The drawing at the
 -- top of the inspector is the style's window, small, painted live from every
 -- one of them; the accent's row adds its measured contrast under its
@@ -8217,7 +8217,11 @@ do
     Rows.Dropdown(col, {
       title = L["OPT_FONT_TITLE"], text = L["OPT_FONT_DESC"], items = Items(Skin.GetFontChoices()),
       get = function() return Skin.GetFont() end,
-      set = function(id) Skin.SetFont(id) end,
+      set = function(id)
+        Skin.SetFont(id)
+        -- Text weight follows the font: live where it has a Bold.
+        State.PostboxWeight()
+      end,
     })
     local sizeItems = {}
     for _, scale in ipairs(Skin.GetTextScaleChoices()) do
@@ -8235,17 +8239,50 @@ do
       set = function(id) Skin.SetOutline(id) Ctx.Repaint() end,
     })
     S.pbOutlineOn = true
+    State.WeightRow(col, Skin, Items(Skin.GetWeightChoices()))
   end
+end
+
+-- Text weight, under Text style, in either Mode: Regular or Bold, applied
+-- as a font is (Skin.SetWeight: the copies re-dressed, live). Grey where
+-- the chosen font has no Bold for this client, saying why
+-- (State.PostboxWeight); the saved choice is kept for a font that has one.
+-- `col` is the page's column, stacked again when Text style stands aside
+-- above it (State.Postbox).
+function State.WeightRow(col, Skin, items)
+  if not Skin.GetWeightChoices then return end
+  local cell = Rows.Dropdown(col, {
+    title = L["OPT_WEIGHT_TITLE"], text = L["OPT_WEIGHT_DESC"], items = items,
+    get = function() return Skin.GetWeight() end,
+    set = function(id) Skin.SetWeight(id) end,
+  })
+  Rows.Why(cell, "OPT_WEIGHT_WHY_FONT")
+  Rows.Why(cell, "OPT_WEIGHT_WHY_SCRIPT")
+  Rows.Why(cell, "OPT_WEIGHT_WHY_FILE")
+  S.pbWeightCell, S.pbWeightPage = cell, col
+  State.PostboxWeight()
+end
+
+-- Text weight live where the chosen font can be drawn Bold here, grey with
+-- its reason where it cannot (Skin.GetWeightWhy). On every open and after
+-- a pick of the font.
+function State.PostboxWeight()
+  local cell = S.pbWeightCell
+  local skin = GetSkin()
+  if not (cell and skin and skin.GetWeightWhy) then return end
+  local why = skin.GetWeightWhy()
+  Rows.SetEnabled(cell, not why, why)
 end
 
 -- Under the Postbox style: the background colour's list is the Mode's, and
 -- shows the Mode's own pick (a flip of the Mode changes the list live); the
 -- opacity row shows the value in force (Light keeps 85% or more); and Text
 -- outline stands aside while the Mode is Light, whose text is always drawn
--- clean, and comes back with Dark showing Dark's choice, which it keeps. It
--- is the page's last row, so hiding it moves nothing (State.BorderSize's
--- rule).
+-- clean, and comes back with Dark showing Dark's choice, which it keeps.
+-- Text weight stands under it in both Modes, so the page is stacked again
+-- as it goes and comes (Rows.Restack), leaving no gap.
 function State.Postbox()
+  State.PostboxWeight()
   local cell = S.pbSurfaceCell
   local skin = GetSkin()
   if not (cell and skin and skin.GetMode) then return end
@@ -8261,6 +8298,7 @@ function State.Postbox()
   if outline and S.pbOutlineOn ~= on then
     S.pbOutlineOn = on
     outline:SetShown(on)
+    if S.pbWeightPage then Rows.Restack({ [S.pbWeightPage] = true }) end
   end
 end
 
@@ -8322,7 +8360,10 @@ function Pages.windowCreative(col, Skin)
   Rows.Dropdown(col, {
     title = L["OPT_FONT_TITLE"], text = L["OPT_FONT_DESC"], items = fontItems,
     get = function() return Skin.GetFont() end,
-    set = function(id) Skin.SetFont(id) end,
+    set = function(id)
+      Skin.SetFont(id)
+      State.PostboxWeight()
+    end,
   })
   local sizeItems = {}
   for _, scale in ipairs(Skin.GetTextScaleChoices()) do
@@ -8349,6 +8390,14 @@ function Pages.windowCreative(col, Skin)
       get = function() return Skin.GetOutline() end,
       set = function(id) Skin.SetOutline(id) Ctx.Repaint() end,
     })
+  end
+  -- Text weight too: its text is the Postbox style's fonts.
+  if Skin.GetWeightChoices then
+    local weightItems = {}
+    for _, choice in ipairs(Skin.GetWeightChoices()) do
+      weightItems[#weightItems + 1] = { id = choice.key, name = choice.name }
+    end
+    State.WeightRow(col, Skin, weightItems)
   end
 end
 

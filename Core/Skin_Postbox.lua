@@ -305,7 +305,7 @@ end
 -- needs nothing here but the repaint. Saved under profile: pbBorder,
 -- pbBorderTone, pbBorderHex, pbOpacity, pbFont, pbTextScale, pbMode,
 -- pbAccent, pbAccentHex, pbSurface and pbSurfaceHex (Dark's background),
--- pbSurfaceLight and pbSurfaceLightHex (Light's), pbOutline, pbCorners,
+-- pbSurfaceLight and pbSurfaceLightHex (Light's), pbOutline, pbWeight, pbCorners,
 -- pbSheen; and rowStripes, a boolean option (MailboxUI OPTION_DEFAULTS).
 -- Read and never written: pbTint, the Tint a background colour now carries
 -- (GetSurfaceKey). Ignored: pbButtonText, from when a button's caption had
@@ -1003,6 +1003,14 @@ Skin._ResolveLook = ResolveLook
 -- thin outline, no shadow) or None, in Dark mode. Light mode's text is always
 -- drawn clean, with neither (Theme DressCopy): the setting is Dark's, kept
 -- as it was through a turn in Light.
+--
+-- Text weight: Regular or Bold, in either Mode. The client cannot thicken a
+-- face, so Bold is the font's own Bold file (FONT_FILES `<script>Bold`),
+-- and only where the chosen font has one for the client's letters and the
+-- client loads it: anywhere else the text stays in the Regular file -- never
+-- in no file -- and the saved choice is kept, for a font that has a Bold.
+-- The weight is part of the face's file, so it reaches the copies as a
+-- change of font does (Skin.ApplyFonts), live.
 -------------------------------------------------------------
 
 local SCRIPT
@@ -1016,9 +1024,18 @@ local function Script()
 end
 
 -- key -> the file on each script that has one. Proper names, the same in
--- every language.
+-- every language. An entry:
+--   key = { name = "Proper Name",
+--           latin = <file>, russian = <file>, cjk = <file>,      -- Regular
+--           latinBold = <file>, russianBold = <file>, cjkBold = <file> },
+-- each file where the font has one for that script, and nothing where it
+-- has none. The plain file is the font's Regular weight (for Barlow, the
+-- SemiBold it has always drawn in); `<script>Bold` its Bold, beside it,
+-- where it comes in one (Text weight). A font with two weights is one line
+-- here and nothing else; the order of the Font list is FONT_ORDER's.
 local FONT_FILES = {
-  barlow   = { name = "Barlow Semi Condensed", latin = FONT_DIR .. "BarlowSemiCondensed-SemiBold.ttf" },
+  barlow   = { name = "Barlow Semi Condensed", latin = FONT_DIR .. "BarlowSemiCondensed-SemiBold.ttf",
+               latinBold = FONT_DIR .. "BarlowSemiCondensed-Bold.ttf" },
   friz     = { name = "Friz Quadrata", latin = "Fonts\\FRIZQT__.TTF", russian = "Fonts\\FRIZQT___CYR.TTF" },
   arialn   = { name = "Arial Narrow", latin = "Fonts\\ARIALN.TTF", russian = "Fonts\\ARIALN.TTF" },
   morpheus = { name = "Morpheus", latin = "Fonts\\MORPHEUS.TTF", russian = "Fonts\\MORPHEUS_CYR.TTF" },
@@ -1040,6 +1057,88 @@ local function FontPath(key)
   if key == "eui" then return EUIFontPath() or false end
   local spec = FONT_FILES[key]
   return spec and spec[Script()] or false
+end
+
+-- Text weight's choices, the Bold file's name on each script, and which
+-- files the client was found to load (WEIGHT.Loads). One table: BuildSkin's
+-- locals are counted.
+local WEIGHT = {
+  order = { "regular", "bold" },
+  names = { regular = "OPT_WEIGHT_REGULAR", bold = "OPT_WEIGHT_BOLD" },
+  bold = { latin = "latinBold", russian = "russianBold", cjk = "cjkBold" },
+  loads = {},
+}
+
+-- Whether the client loads the font file at `path`, asked once a file, of
+-- a font object of Postbox's own that no text wears (a set of a file the
+-- client cannot open answers false, as RV.Span reads it). A file missing
+-- from the install -- one added to the addon since the client started,
+-- which it sees only after a restart -- is never put on a copy.
+function WEIGHT.Loads(path)
+  local known = WEIGHT.loads[path]
+  if known ~= nil then return known end
+  local probe = WEIGHT.probe
+  if probe == nil then
+    probe = type(CreateFont) == "function" and CreateFont("PostboxWeightProbe") or false
+    WEIGHT.probe = probe
+  end
+  local ok = false
+  if probe and type(probe.SetFont) == "function" then
+    local fine, set = pcall(probe.SetFont, probe, path, 12, "")
+    ok = fine and set ~= false
+  end
+  WEIGHT.loads[path] = ok
+  return ok
+end
+
+-- The chosen font's Bold file on this client, where it has one and the
+-- client loads it; else nil.
+function WEIGHT.BoldOf(key)
+  local spec = FONT_FILES[key]
+  if not (spec and spec[Script()]) then return nil end
+  local bold = spec[WEIGHT.bold[Script()]]
+  if bold and WEIGHT.Loads(bold) then return bold end
+  return nil
+end
+
+-- The file a font key draws with at the chosen weight: its Bold where Bold
+-- is chosen and it has one that loads, else its Regular (FontPath: false
+-- for the game's own). Never nil.
+function WEIGHT.Path(key)
+  local path = FontPath(key)
+  if path and Skin.GetWeight() == "bold" then
+    return WEIGHT.BoldOf(key) or path
+  end
+  return path
+end
+
+function Skin.GetWeightChoices() return Choices(WEIGHT.order, WEIGHT.names) end
+
+-- The saved choice, whatever the chosen font can draw (nil is Regular).
+function Skin.GetWeight()
+  return (GetProfile().pbWeight == "bold") and "bold" or "regular"
+end
+
+function Skin.SetWeight(key)
+  if not WEIGHT.names[key] then return end
+  GetProfile().pbWeight = (key == "bold") and "bold" or nil
+  Skin.ApplyFonts()
+end
+
+-- nil where the chosen font can be drawn Bold on this client; else why not,
+-- a locale key: the font's Bold file did not load (an install updated
+-- while the game ran), the font comes in one weight while another for
+-- these letters has a Bold, or no font for these letters has one.
+function Skin.GetWeightWhy()
+  local key = Skin.GetFont()
+  if WEIGHT.BoldOf(key) then return nil end
+  local script = Script()
+  local spec = FONT_FILES[key]
+  if spec and spec[script] and spec[WEIGHT.bold[script]] then return "OPT_WEIGHT_WHY_FILE" end
+  for _, other in pairs(FONT_FILES) do
+    if other[script] and other[WEIGHT.bold[script]] then return "OPT_WEIGHT_WHY_FONT" end
+  end
+  return "OPT_WEIGHT_WHY_SCRIPT"
 end
 
 function Skin.GetFontChoices()
@@ -1102,7 +1201,8 @@ function Skin.SetOutline(key)
 end
 
 -- The face Theme.HostFont dresses its copies in: the file (false: each game
--- object's own), the flags, the shadow and the size factor. Shadow is a drop
+-- object's own; the chosen font's Bold where Text weight is Bold and it has
+-- one), the flags, the shadow and the size factor. Shadow is a drop
 -- shadow and no outline, whatever a font pack or a host UI set on the game's
 -- own fonts (one that outlines every game font would otherwise draw its
 -- outline under "Shadow"); Outline the client's thin outline, no shadow;
@@ -1116,7 +1216,7 @@ function Skin.GetFontFace()
   elseif outline == "none" then
     shadow = false
   end
-  return FontPath(Skin.GetFont()), flags, shadow, Skin.GetTextScale()
+  return WEIGHT.Path(Skin.GetFont()), flags, shadow, Skin.GetTextScale()
 end
 
 -- Window titles are set at a size of their own (15), so they are re-dressed
@@ -1143,7 +1243,8 @@ local function DressTitle(fs)
   if not base then return end
   -- The game's font: the face of the object it was set in, as it is now (a
   -- host's re-font of the game's fonts reaches the title with the copies).
-  local path = FontPath(Skin.GetFont())
+  -- At the chosen weight, as the copies (WEIGHT.Path).
+  local path = WEIGHT.Path(Skin.GetFont())
   if not path then
     local object = base.object
     local now = object and type(object.GetFont) == "function" and object:GetFont() or nil
