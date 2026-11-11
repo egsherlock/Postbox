@@ -6543,8 +6543,10 @@ do
   -- a quiet label over its value: Earned and Spent written as the Mail
   -- tab's totals write gold (its largest coin, in the positive and the
   -- negative ink; none is the dash), Collected and Sent as "41 mails".
-  -- Read from History and Sent (MailMemory.Week): gold taken, and C.O.D.
-  -- paid with gold sent, over the last seven days.
+  -- Read from History, Sent and the deposits paid (MailMemory.Week): gold
+  -- taken from mail, and gold out for mail and auctions -- auctions bought,
+  -- C.O.D. paid, gold sent, deposits paid -- over the last seven days, each
+  -- figure's parts in its tooltip (FigureEnter).
   --
   -- While Keep History for is Never there is nothing to add up: the card
   -- greys, its figures are the dash, the switch rests, and its text says
@@ -6608,6 +6610,60 @@ do
 
   local function WeekShown()
     Week.shown = Week.shown + 1
+  end
+
+  -- Earned's and Spent's parts, under the pointer: the house tooltip, its
+  -- title the figure's name, then each part that is not zero, a label and
+  -- its gold. Earned's returned deposits are inside its sales, and the
+  -- auction house's cut was never in a mail: both muted, the cut stated,
+  -- never taken off. Under either, where the week reaches back past the
+  -- deposits' record, that they count from 1.70. Built from the sums the
+  -- card was painted from; the lines are the only strings a hover makes.
+  local function TipGold(label, copper, tone)
+    if copper and copper > 0 then
+      local T = ns.Theme
+      T.TipFact(L[label], T.TipTone(tone, ns.Helpers.FormatMoney(copper)))
+    end
+  end
+
+  local function TipMuted(text)
+    local m = ns.Theme.TIP_MUTED
+    GameTooltip:AddLine(text, m, m, m, true)
+  end
+
+  local function FigureEnter(self)
+    if Rows.Held(self, FigureEnter) then return end
+    local d = Week.d
+    Rows.Hover(d.figs)
+    local w = (not d.off) and d.sums or nil
+    if not w then return end
+    local T = ns.Theme
+    T.TipBegin(self, "ANCHOR_TOP")
+    if self.spent then
+      T.TipTitle(L["OPT_WEEK_SPENT"])
+      TipGold("OPT_WEEK_BOUGHT", w.bought, "negative")
+      TipGold("OPT_WEEK_COD", w.cod, "negative")
+      TipGold("OPT_WEEK_GOLD_SENT", w.gold, "negative")
+      TipGold("OPT_WEEK_DEP_PAID", w.depPaid, "negative")
+    else
+      T.TipTitle(L["OPT_WEEK_EARNED"])
+      TipGold("OPT_WEEK_SALES", w.sales, "positive")
+      TipGold("OPT_WEEK_DEP_BACK", w.depBack, "muted")
+      TipGold("OPT_WEEK_OTHER", w.other, "positive")
+      if w.cut > 0 then
+        T.TipFact(L["OPT_WEEK_CUT"], T.TipTone("muted",
+          string.format(L["OPT_WEEK_CUT_NOTE"], ns.Helpers.FormatMoney(w.cut))))
+      end
+      if w.unopened > 0 then TipMuted(ns.Plural("OPT_WEEK_UNOPENED", w.unopened)) end
+    end
+    if w.partial then TipMuted(L["OPT_WEEK_SINCE"]) end
+    GameTooltip:Show()
+  end
+
+  local function FigureLeave(self)
+    if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+    if Rows.HeldLeave(self) then return end
+    Rows.Unhover(Week.d.figs)
   end
 
   function Week.Build(body)
@@ -6678,6 +6734,19 @@ do
       local value = Text(figs, "value")
       value:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -Week.FIG_GAP)
       labels[j], values[j] = label, value
+    end
+    -- Earned's and Spent's quarters: their parts under the pointer. Motion
+    -- only: a click passes on, so the panel still drags from here.
+    for j = 1, 2 do
+      local zone = CreateFrame("Frame", nil, figs)
+      zone:SetFrameLevel(level + 3)
+      zone:SetPoint("TOPLEFT", figs, "TOPLEFT", (j - 1) * colW, 0)
+      zone:SetSize(colW, Week.FIG)
+      zone:EnableMouse(true)
+      if zone.SetPropagateMouseClicks then zone:SetPropagateMouseClicks(true) end
+      zone.entry, zone.spent = S.weekEntry, j == 2
+      zone:SetScript("OnEnter", FigureEnter)
+      zone:SetScript("OnLeave", FigureLeave)
     end
 
     Week.d = { card = card, head = head, link = link, figs = figs, labels = labels, values = values,
