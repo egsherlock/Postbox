@@ -395,20 +395,25 @@ local function SettleGridDefault(fresh)
 end
 
 -- 1.61: the category buttons are on by default (Core/MailboxUI.lua,
--- showCategoryButtons), for a fresh install and after every reset. A
--- profile that had Postbox before it and never chose keeps them off, as it
--- showed them: written out once, through the setting's own accessor (which
--- forgets what the settings memo read). Its own mark at the root, kept
--- through Reset everything (CENSUS_KEEP), so a reset after it gives the new
--- default; not SettleGridDefault's, which 1.61 builds from before this
--- default already stamped. `fresh`: no saved variables, which starts on
--- the new default.
+-- showCategoryButtons), for a fresh install and after every reset. Off was
+-- the default only from 1.50 to 1.60 (on from 1.35, when the switch came,
+-- and always shown before it), so a profile last saved by one of those, or
+-- by a 1.61 build from before this default, that never chose keeps them
+-- off, as it showed them: written out once, through the setting's own
+-- accessor (which forgets what the settings memo read). A profile from
+-- 1.40 or earlier showed them, as 1.61 does by default, and the 1.50 step
+-- (UPGRADES) has just put it on today's defaults anyway: left to the
+-- default. Its own mark at the root, kept through Reset everything
+-- (CENSUS_KEEP), so a reset after it gives the new default; not
+-- SettleGridDefault's, which 1.61 builds from before this default already
+-- stamped. `fresh`: no saved variables, which starts on the new default;
+-- `savedBy`: SavedByRelease's answer, read before this load stamped it.
 local GRID_SHOWN = "gridShown"
 
-local function SettleGridShown(fresh)
+local function SettleGridShown(fresh, savedBy)
   local db = PostboxDB
   if type(db) ~= "table" or db[GRID_SHOWN] ~= nil then return end
-  if not fresh then
+  if not fresh and savedBy and savedBy >= RELEASE_150 then
     local profile = db.profile
     if type(profile) ~= "table" or profile.showCategoryButtons == nil then
       local UI = ns.MailboxUI
@@ -2645,7 +2650,7 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   -- Each settled once, as Upgrade runs its steps: one that fails is
   -- reported, and the rest of the setup below goes on.
   for _, settle in ipairs({ SettleGridDefault, SettleGroupOrder, SettleGridShown }) do
-    local ok, err = pcall(settle, ns.freshInstall)
+    local ok, err = pcall(settle, ns.freshInstall, savedBy)
     if not ok and type(geterrorhandler) == "function" then
       local handler = geterrorhandler()
       if type(handler) == "function" then handler(err) end
