@@ -1039,30 +1039,22 @@ do
     say:SetHeight(h)
   end
 
-  -- The inspector's height: the body's, less the summary's card over it on
-  -- General (Dash.Place). On General a setting's text that needs more
-  -- (`entry`, not one of the card's own: entry.under) rises over the
-  -- card's tiles, as a text rises over another tab's drawing, up to the
-  -- card's strip, which stays in sight: the card is what General is about,
-  -- and its long descriptions no longer make the whole window taller.
+  -- The inspector's height: the body's, less General's two cards over it
+  -- (Dash.Place). One rule for every text: it stays inside the inspector's
+  -- own box, never over anything beside or above it. On General, whose
+  -- inspector stands under the summary and the 7-day card, the box is
+  -- under both, and the window is as tall as General's tallest text needs
+  -- there (Layout): measured, so only a language and Text size that need
+  -- it make the window taller.
   --
   -- A setting its tab's drawing answers (entry.stage), and the Mail tab's
   -- own text where the room under its window cut it (entry.rise), stand
   -- under the drawing while they fit there; a longer one rises over the
-  -- drawing's lower part while it is pointed at, up to what of the drawing
-  -- stays in sight (Ctx.Keep: the Preview's heading and its Test mail
-  -- switch, the minimap icon's ground), so no description makes the window
-  -- taller than its list (Layout).
-  -- On General the card's own texts (entry.under) stand under both cards
-  -- while they fit there; a longer one, at a long language and a large
-  -- Text size, rises over the 7-day card (Dash.Week) while it is pointed
-  -- at, never over the card it describes, and is cut at rest
-  -- (Insp.Idle), so neither card makes the window taller than its list.
+  -- drawing's lower part, inside the inspector, while it is pointed at, up
+  -- to what of the drawing stays in sight (Ctx.Keep: the Preview's heading
+  -- and its Test mail switch, the minimap icon's ground), so no description
+  -- makes the window taller than its list (Layout).
   function Insp.Room(entry)
-    if entry and S.tab == "general" and S.dash and S.bodyH then
-      if not entry.under then return S.bodyH - Dash.KEEP end
-      return S.bodyH - Dash.H - BODY_GAP
-    end
     local room = S.inspH or S.bodyH
     local stage = entry and (entry.stage or entry.rise)
     if stage and room then return room - Ctx.Keep(stage) end
@@ -6011,9 +6003,6 @@ do
   local FIXED = 1 + HEAD_H + COLS_H + ROW_H + 1
   -- The card's one height (214): its five lines.
   Dash.H = FIXED + LINES * ROW_H
-  -- What a General setting's long text leaves of the card over it, rising
-  -- (Insp.Room): the card's edge and its strip.
-  Dash.KEEP = 1 + HEAD_H
   -- The tiles' column, three of the inspector's tiles one over the other,
   -- a block of their own beside the table: no strip over them (the strip
   -- and its note are the table's, over the list's side alone), 6 apart
@@ -10451,8 +10440,9 @@ end
 -- the client's language and the host's font, with the drawing it must
 -- leave room for where it sits under one. A description longer than the
 -- room under its drawing rises over the drawing's lower part (Insp.Room),
--- as General's rise over its card, so in every language the pages set it
--- unless a text would not fit even risen.
+-- inside the inspector, so in every language the pages set it unless a
+-- text would not fit even risen. General's texts stand under its two cards
+-- and never over them: their tallest, under the cards, is a need of its own.
 local function Layout()
   local text = S.textNeed
   if not (MeasuredAlready() and text) then
@@ -10461,15 +10451,15 @@ local function Layout()
     Ctx.MeasureCaptions()
     -- The Mail tab's text zone, under its window: the tab's own text and
     -- every setting's the window shows, the tallest of them. General's
-    -- card's own texts stand under the card: the tallest of them, with the
-    -- card over it (Dash).
+    -- texts, its cards' and its settings', stand under both cards: the
+    -- tallest of them, with the cards over it (Dash).
     --
     -- A setting's text is shown on the raised card, which rises as far as
-    -- its room (Insp.Room): over another tab's drawing, over the lower part
-    -- of a drawing that answers it, over General's tiles. None of them
-    -- makes the window taller; the drawings ask only for their least text
-    -- zone under them, and a text that would not fit even risen is cut to
-    -- its room, whole under the pointer (Insp.Cut).
+    -- its room (Insp.Room), never out of the inspector: over another tab's
+    -- drawing, over the lower part of a drawing that answers it. None of
+    -- them makes the window taller; the drawings ask only for their least
+    -- text zone under them, and a text that would not fit even risen is cut
+    -- to its room, whole under the pointer (Insp.Cut).
     local mailText, generalText = SAY_MIN, SAY_MIN
     -- One line of the secondary role, and the room between two, for a text
     -- cut to the lines that fit (Insp.Cut).
@@ -10481,7 +10471,7 @@ local function Layout()
       if entry.stage == "mail" then
         local h = Insp.Need(entry, entry.extra and Ctx.ExtraHeight(entry.extra) or 0)
         if h > mailText then mailText = h end
-      elseif entry.tab == "general" and entry.under then
+      elseif entry.tab == "general" then
         local h = Insp.Need(entry, 0)
         if h > generalText then generalText = h end
       elseif entry.stage then
@@ -10507,7 +10497,7 @@ local function Layout()
     end
     S.mailMost = math.ceil(mailText)
     S.generalText = math.ceil(generalText)
-    S.textNeed = math.max(text, Dash.H + BODY_GAP + S.generalText)
+    S.textNeed = math.max(text, Dash.H + BODY_GAP + Dash.Week.H + BODY_GAP + S.generalText)
     text = S.textNeed
   end
   -- The Mail tab's window at its least over the least text zone (the
@@ -10628,16 +10618,13 @@ local function Build()
   S.recipientsEntry = Entry(L["RM_OPT_BUTTON"], L["RM_OPT_BUTTON_DESC"])
   S.dashEntry.tab, S.memoryTileEntry.tab = "general", "general"
   S.groupsEntry.tab, S.recipientsEntry.tab = "general", "general"
-  -- The card's own texts stand under it, never over the card they describe
-  -- (Insp.Room); a General setting's long text may rise over the tiles.
-  S.dashEntry.under, S.memoryTileEntry.under = true, true
-  S.groupsEntry.under, S.recipientsEntry.under = true, true
   -- The 7-day card's: what it adds up, or, while History is off, why it
-  -- has nothing to (Dash.Week).
+  -- has nothing to (Dash.Week). Every General text stands under the two
+  -- cards, never over them (Insp.Room).
   S.weekEntry = Entry(L["OPT_WEEK_TITLE"], L["OPT_WEEK_DESC"])
   S.weekEntry.onText = S.weekEntry.text
   S.weekEntry.offText = L["OPT_WEEK_OFF"]
-  S.weekEntry.tab, S.weekEntry.under = "general", true
+  S.weekEntry.tab = "general"
   S.idle.mail = Entry(L["OPT_ARRANGE_BUTTON"], L["ARRANGE_TIP"] .. "\n\n"
     .. (ns.IsForever and L["OPT_ARRANGE_CARDS_FOREVER"] or L["OPT_ARRANGE_CARDS"]) .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"])
   -- Cut to the room under the window where that is shorter, it rises whole
