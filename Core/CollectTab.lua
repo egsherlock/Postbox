@@ -7562,9 +7562,11 @@ do
   -- name -> the item's icon by the sources above, or nil.
   local function IconFor(name)
     if type(name) ~= "string" or name == "" then return nil end
-    local id
+    local id, noted
     local Memory = ns.MailMemory
-    if Memory and type(Memory.PostedItem) == "function" then id = Memory.PostedItem(name) end
+    if Memory and type(Memory.PostedItem) == "function" then id, noted = Memory.PostedItem(name) end
+    -- The icon of the very item posted (a caged pet's own, not the cage's).
+    if noted then return noted end
     if not id and S.build ~= nil then id = Live()[name] end
     if not id then id = RV.SoldIndex()[name] end
     local api = C_Item

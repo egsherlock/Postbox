@@ -1617,7 +1617,8 @@ end
 -- A sold auction's mail names its item only by name, and holds only gold,
 -- so its row cannot show the item unless something knows which item that
 -- name was. Every auction this account posts is noted as it goes up, in
--- `auctionPosts` (realm -> name -> item name -> { i = item id, t = when }):
+-- `auctionPosts` (realm -> name -> item name -> { i = item id, t = when,
+-- c = the posted item's own icon, only where its id's icon is another }):
 -- the name exactly as this client wrote it, from the item the post was made
 -- from (C_AuctionHouse.PostItem and PostCommodity, post-hooked; an item's
 -- auction is noted again from AUCTION_HOUSE_AUCTION_CREATED where the client
@@ -1672,19 +1673,32 @@ do
   end
 
   -- An item put up for auction, by its id and its name as this client wrote
-  -- it: noted for this character.
-  local function Note(itemID, itemName)
+  -- it: noted for this character. `icon`: the icon the game gave the very
+  -- item posted, kept (`c`) only where its id's own icon differs -- a caged
+  -- pet's id is the Pet Cage's -- so an ordinary note stays { i, t }.
+  local function Note(itemID, itemName, icon)
     itemID = tonumber(itemID)
     if not itemID or type(itemName) ~= "string" or itemName == "" then return end
-    if type(issecretvalue) == "function" and issecretvalue(itemName) then return end
+    local secret = type(issecretvalue) == "function" and issecretvalue or nil
+    if secret and secret(itemName) then return end
+    if icon ~= nil and secret and secret(icon) then icon = nil end
+    if type(icon) ~= "number" then icon = nil end
+    if icon and C_Item and type(C_Item.GetItemIconByID) == "function" then
+      local ok, own = pcall(C_Item.GetItemIconByID, itemID)
+      if ok and own == icon then icon = nil end
+    end
     local list = Posts(true)
     if not list then return end
     local now = time()
     local note = list[itemName]
     if type(note) == "table" then
+      -- An icon kept for another item of this name is not this one's.
+      if icon or tonumber(note.i) ~= itemID then note.c = icon end
       note.i, note.t = itemID, now
     else
-      list[itemName] = { i = itemID, t = now }
+      note = { i = itemID, t = now }
+      if icon then note.c = icon end
+      list[itemName] = note
     end
     Prune(list, now)
     postsGen = postsGen + 1
@@ -1694,13 +1708,19 @@ do
   end
 
   -- The post-hook on C_AuctionHouse.PostItem / PostCommodity: the item the
-  -- auction is made from, by the bag slot it was posted from.
+  -- auction is made from, by the bag slot it was posted from, with the icon
+  -- the game gives that very item.
   local function Posted(location)
     local api = C_Item
     if type(api) ~= "table" or type(location) ~= "table" then return end
     if type(api.DoesItemExist) == "function" and not api.DoesItemExist(location) then return end
     if type(api.GetItemID) ~= "function" or type(api.GetItemName) ~= "function" then return end
-    Note(api.GetItemID(location), api.GetItemName(location))
+    local icon
+    if type(api.GetItemIcon) == "function" then
+      local ok, got = pcall(api.GetItemIcon, location)
+      if ok then icon = got end
+    end
+    Note(api.GetItemID(location), api.GetItemName(location), icon)
   end
   local function Hooked(location) pcall(Posted, location) end
 
@@ -1734,19 +1754,20 @@ do
   end
 
   -- An item name -> the id of the item this character (else any on the
-  -- account) last put up for auction under exactly that name, or nil.
+  -- account) last put up for auction under exactly that name, and the icon
+  -- noted with it where one was (nil for a note without one), or nil.
   function MM.PostedItem(itemName)
     if type(itemName) ~= "string" or itemName == "" then return nil end
     local own = Posts(false)
     local note = own and own[itemName]
-    if type(note) == "table" and tonumber(note.i) then return tonumber(note.i) end
+    if type(note) == "table" and tonumber(note.i) then return tonumber(note.i), tonumber(note.c) end
     local root = ns.Store and ns.Store.Get and ns.Store.Get("auctionPosts")
     if type(root) ~= "table" then return nil end
     for _, byRealm in pairs(root) do
       if type(byRealm) == "table" then
         for _, list in pairs(byRealm) do
           note = type(list) == "table" and list[itemName]
-          if type(note) == "table" and tonumber(note.i) then return tonumber(note.i) end
+          if type(note) == "table" and tonumber(note.i) then return tonumber(note.i), tonumber(note.c) end
         end
       end
     end
