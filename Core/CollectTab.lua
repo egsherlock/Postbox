@@ -134,9 +134,20 @@ end
 -- atlas escape the client puts there for tiered reagents and crafted gear),
 -- or nil. Read from the link rather than built from an atlas name: the name
 -- has changed between expansions and the link is always the client's own.
+-- Read once per link and kept (false: none), so a row bind makes no
+-- string; up to MARKOF_MAX links, past which one is read without being
+-- kept, emptied only where a list's build starts (RV.TrimCaches).
+RV.markOf, RV.markOfN, RV.MARKOF_MAX = {}, 0, 256
 function RV.MarkOf(link)
   if type(link) ~= "string" then return nil end
-  return link:match("|A:Professions%-[^|]*|a") or link:match("|A:[^|]*[Qq]uality[^|]*|a")
+  local known = RV.markOf[link]
+  if known ~= nil then return known or nil end
+  local mark = link:match("|A:Professions%-[^|]*|a") or link:match("|A:[^|]*[Qq]uality[^|]*|a")
+  if RV.markOfN < RV.MARKOF_MAX then
+    RV.markOf[link] = mark or false
+    RV.markOfN = RV.markOfN + 1
+  end
+  return mark
 end
 
 -- The mark for a mail's attachment: its own link once the body is loaded, the
@@ -873,6 +884,37 @@ function RV.DropCount(text, n)
   known[text] = short
   RV.droppedN = RV.droppedN + 1
   return short
+end
+
+-- subject, quantity, drop -> the subject a mail row shows: an auction's
+-- item name alone (Helpers.ShortSubject), its trailing count rewritten to
+-- the `quantity` still attached (a stack partly taken must not keep saying
+-- what it came with), and that count left out where `drop` (the icon writes
+-- it, RV.DropCount). Made once per (subject, quantity, drop) and kept, so a
+-- row bind makes no string; up to SUBJECTS_MAX of them, past which one is
+-- made without being kept, and emptied only where a list's build starts
+-- (RV.TrimCaches).
+RV.subjects, RV.subjectsN, RV.SUBJECTS_MAX = {}, 0, 256
+
+function RV.ShownSubject(subject, quantity, drop)
+  local key = quantity * 2 + (drop and 1 or 0)
+  local bySubject = RV.subjects[subject]
+  local shown = bySubject and bySubject[key]
+  if shown then return shown end
+  shown = Helpers().ShortSubject(subject)
+  if quantity > 0 then
+    shown = (shown:gsub("%(%d+%)%s*$", "(" .. quantity .. ")"))
+    if drop then shown = RV.DropCount(shown, quantity) end
+  end
+  if RV.subjectsN < RV.SUBJECTS_MAX then
+    if not bySubject then
+      bySubject = {}
+      RV.subjects[subject] = bySubject
+    end
+    bySubject[key] = shown
+    RV.subjectsN = RV.subjectsN + 1
+  end
+  return shown
 end
 
 -- text, mark -> the text with the mark after the item's name and before a
@@ -2143,14 +2185,16 @@ local function DisplaySender(sender)
     if not (space and sender:find(" ", space + 1, true)) then return ns.Helpers.FullName(sender) end
   end
   -- Name-Realm first: the name part never has a space, the realm part may.
+  -- (Both tests read the name in place: no piece of it is made to look.)
   local dash = sender:find("-", 1, true)
-  if dash and dash > 1 and not sender:sub(1, dash - 1):find(" ", 1, true) then
+  local space = sender:find(" ", 1, true)
+  if dash and dash > 1 and not (space and space < dash) then
     return sender:sub(1, dash - 1)
   end
-  if sender:find(" ", 1, true) then
+  if space then
     for i = 1, #NPC_ARTICLES do
       local article = NPC_ARTICLES[i]
-      if #sender > #article and sender:sub(1, #article) == article then
+      if #sender > #article and sender:find(article, 1, true) == 1 then
         return sender:sub(#article + 1)
       end
     end
@@ -4701,7 +4745,8 @@ function RV.NameKey(sender)
 end
 
 -- Where a list's build starts (CT.RefreshMailList): a record kept across
--- builds -- the senders folded, the coin texts, Forever's first names -- is
+-- builds -- the senders folded, the rows' subjects and quality marks, the
+-- coin texts, Forever's first names -- is
 -- emptied if the last builds filled it. Nothing is let go in the middle of
 -- a build, so one list never makes what it already made.
 function RV.TrimCaches()
@@ -4709,6 +4754,16 @@ function RV.TrimCaches()
     local keys = RV.nameKeys
     for k in pairs(keys) do keys[k] = nil end
     RV.nameKeyN = 0
+  end
+  if RV.subjectsN >= RV.SUBJECTS_MAX then
+    local subjects = RV.subjects
+    for k in pairs(subjects) do subjects[k] = nil end
+    RV.subjectsN = 0
+  end
+  if RV.markOfN >= RV.MARKOF_MAX then
+    local marks = RV.markOf
+    for k in pairs(marks) do marks[k] = nil end
+    RV.markOfN = 0
   end
   RV.CoinTrim()
   RV.Firsts.Trim()
@@ -7366,16 +7421,12 @@ local function BindRow(panel, row, index, position, compact, done)
   -- already says "Auction House" and the category says what kind of mail it
   -- is, so "Auction won:" was the same fact a third time, and the part that
   -- pushed the item's name off the end of the row.
-  local displaySubject = Helpers().ShortSubject(subject or "")
-  if quantity > 0 then
-    displaySubject = (displaySubject:gsub("%(%d+%)%s*$", "(" .. quantity .. ")"))
-    -- A single stack whose count the icon writes: the subject does not say
-    -- it again ("Light's Potential", the icon's 19). A hidden icon, or a
-    -- count it shortens, and the subject keeps it.
-    if stacks == 1 and RV.SaysCount(iconCount, layout) then
-      displaySubject = RV.DropCount(displaySubject, quantity)
-    end
-  end
+  -- A single stack whose count the icon writes: the subject does not say
+  -- it again ("Light's Potential", the icon's 19). A hidden icon, or a
+  -- count it shortens, and the subject keeps it. Made once per subject and
+  -- count (RV.ShownSubject), so a bind makes no string.
+  local displaySubject = RV.ShownSubject(subject or "", quantity,
+    quantity > 0 and stacks == 1 and RV.SaysCount(iconCount, layout))
   -- The crafting quality mark, as the item's own link draws it: on the
   -- icon's corner, before or after the name, or both.
   local mark = (iconSlot and RV.MarkAny()) and S.Mark(index, iconSlot) or nil
