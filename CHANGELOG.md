@@ -83,6 +83,10 @@
   tooltips: a line another addon has given its own font keeps it.
 - WoW Forever: the resize grip and the arrange mode can no longer stop on a
   window layer the game keeps to itself.
+- The words on the bar over finished mail sit in its middle in every font
+  and size; the count's brackets no longer push them up.
+- Fanned-out items stay on their own row, on the first and last rows too: a
+  C.O.D. line or a second line of items reaches past the list's edge instead.
 
 - A character whose mail Postbox couldn't count, such as auctions that
   ended while you played someone else, now says **new** (or **2+**) in the
