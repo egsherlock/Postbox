@@ -2491,7 +2491,7 @@ do
       Add(Join(first, last))
     end
     -- 3. The part left, where it says more than one sentence: its first
-    -- (Test mail's "Sample mail."), the sentence's stop kept. Plain words
+    -- (Test mail's "Test mail."), the sentence's stop kept. Plain words
     -- only: a part with a colour or a link keeps its client cut.
     local left = SF.cands[SF.n]
     if not left:find("|", 1, true) then
@@ -2579,8 +2579,9 @@ local function RenderStatus()
   local text, tone
   if UI._state.preview then
     -- The preview window (section 5c) has no mailbox to report on: it says
-    -- what it shows instead.
-    text, tone = L("ARRANGE_PREVIEW_AWAY"), "warning"
+    -- what it shows instead, its name first, so the name is what a narrow
+    -- line keeps (StatusFit's first sentence).
+    text, tone = L("TEST_MAIL_STATUS_AWAY"), "warning"
   elseif UI.IsTestMail() then
     -- Test mail at a mailbox (section 5c): nothing is collected while it is
     -- on, so there is nothing else to report, and the line says why.
