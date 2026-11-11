@@ -2693,6 +2693,9 @@ do
       if type(w) == "table" then
         if w.GetChildren then
           if retake and w.__pbFont then pcall(RetakenBox, w) end
+          -- A plate whose caption is a glyph: its halo as the caption
+          -- font's now is (Theme.PaintGlyphHalo).
+          if w.__pbGlyph then pcall(Theme.PaintGlyphHalo, w) end
           n = Push(n, w:GetRegions())
           n = Push(n, w:GetChildren())
         elseif w.GetStringWidth and w.SetText then
@@ -4607,9 +4610,141 @@ local function PaintPlate(plate)
     elseif hovered and T.captionHoverToken then token = T.captionHoverToken end
     Theme.SetColor(plate.Text, token, ground)
   end
+
+  -- Its glyph's halo, after the caption's font is settled above.
+  if glyph then Theme.PaintGlyphHalo(plate) end
 end
 
 Theme.RepaintPlate = PaintPlate
+
+-- A caption glyph's halo: the glyph is its plate's caption in glyph form, so
+-- it is drawn as the caption's letters are -- with their drop shadow, or
+-- their outline, or plain. Read from the font object the plate's caption
+-- wears (the copy in the host's face, which carries the halo: section 3b),
+-- never from the string. The look decides through that font: the Postbox
+-- style's Text outline in Dark (Shadow, Outline or None), plain in Light,
+-- whose copies have neither; a host's face as it publishes it (EllesmereUI's
+-- shadow switch, an outlining face); otherwise the game font's own shadow.
+--   * a drop shadow (no outline; a shadow colour with alpha, an offset): one
+--     copy of the glyph behind it, at the font's offset, in its shadow colour;
+--   * an outline: the client strokes letters with black on every side, which
+--     a texture cannot do of itself. The nearest honest equivalent is four
+--     black copies behind the glyph a screen pixel left, right, up and down,
+--     which put a one-pixel black edge round every stroke as the thin
+--     outline does (its outer corners a little softer than a stroked one's);
+--   * neither: nothing shows.
+-- The copies are made the first time a plate needs them (one for a shadow,
+-- four for an outline, the first shared), the same art at the same size,
+-- just under the glyph in its own layer, and kept; afterwards a paint sets
+-- colours and offsets. Each offset is a whole number of screen pixels (at
+-- least one) so a copy, snapped as the glyph is, never lands between pixels
+-- and blurs its 2-texel art. Painted with its plate (PaintPlate) and when the
+-- fonts are dressed again (Theme.RelayoutText), never per frame.
+do
+  local OUT_X = { -1, 1, 0, 0 }
+  local OUT_Y = { 0, 0, 1, -1 }
+  local floor, abs = math.floor, math.abs
+
+  -- The font the plate's caption wears: the named one Postbox gave it, else
+  -- the one it is seen wearing, else the button's normal font; its copy in
+  -- the host's face where one was made.
+  local function CaptionFont(plate)
+    local fs = plate.Text
+    local object = fs and (fs.__pbFont or (type(fs.GetFontObject) == "function" and NamedFont(fs:GetFontObject())))
+    if not object and type(plate.GetNormalFontObject) == "function" then
+      object = NamedFont(plate:GetNormalFontObject())
+    end
+    if object and HF.copies[object] then object = HF.copies[object] end
+    return object
+  end
+
+  -- `units` as a whole number of screen pixels, at least one, in units.
+  local function Whole(units, px)
+    if units == 0 then return 0 end
+    local n = floor(abs(units) / px + 0.5)
+    if n < 1 then n = 1 end
+    return (units < 0 and -n or n) * px
+  end
+
+  local function Copy(plate, glyph, i)
+    local list = plate.__pbGlyphHalo
+    if not list then
+      list = {}
+      plate.__pbGlyphHalo = list
+    end
+    local tex = list[i]
+    if tex then return tex end
+    local layer, sub = glyph:GetDrawLayer()
+    sub = (tonumber(sub) or 0) - 1
+    if sub < -8 then sub = -8 end
+    tex = plate:CreateTexture(nil, layer or "OVERLAY", nil, sub)
+    local g = glyph.__pbSpec
+    if g then
+      if g.wrap then tex:SetTexture(g.file, g.wrap, g.wrap) else tex:SetTexture(g.file) end
+      tex:SetTexCoord(g.l, g.r, g.t, g.b)
+    else
+      tex:SetTexture(glyph:GetTexture())
+    end
+    tex:SetSize(glyph:GetSize())
+    if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(true) end
+    if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
+    tex:Hide()
+    list[i] = tex
+    return tex
+  end
+
+  local function Place(tex, glyph, x, y)
+    if tex.__pbX == x and tex.__pbY == y then return end
+    tex.__pbX, tex.__pbY = x, y
+    tex:ClearAllPoints()
+    tex:SetPoint("CENTER", glyph, "CENTER", x, y)
+  end
+
+  -- -> "shadow", "outline" or nil: what the plate's glyph is drawn with now.
+  function Theme.PaintGlyphHalo(plate)
+    local glyph = plate and plate.__pbGlyph
+    if not glyph then return nil end
+    local kind, x, y, r, g, b, a
+    local font = CaptionFont(plate)
+    if font and type(font.GetFont) == "function" then
+      local _, _, flags = font:GetFont()
+      if type(flags) == "string" and flags:find("OUTLINE", 1, true) then
+        kind, r, g, b, a = "outline", 0, 0, 0, 1
+      elseif type(font.GetShadowOffset) == "function" and type(font.GetShadowColor) == "function" then
+        x, y = font:GetShadowOffset()
+        r, g, b, a = font:GetShadowColor()
+        a = a or 1
+        if type(x) == "number" and type(y) == "number" and type(r) == "number"
+           and (x ~= 0 or y ~= 0) and a > 0 then
+          kind = "shadow"
+        end
+      end
+    end
+    local list = plate.__pbGlyphHalo
+    local want = (kind == "outline" and 4) or (kind == "shadow" and 1) or 0
+    if want > 0 then
+      local shown = glyph:IsShown()
+      a = a * (glyph:GetAlpha() or 1)
+      local px = Theme.OnePixel(plate)
+      for i = 1, want do
+        local tex = Copy(plate, glyph, i)
+        if kind == "outline" then
+          Place(tex, glyph, OUT_X[i] * px, OUT_Y[i] * px)
+        else
+          Place(tex, glyph, Whole(x, px), Whole(y, px))
+        end
+        tex:SetVertexColor(r, g, b, a)
+        tex:SetShown(shown)
+      end
+      list = plate.__pbGlyphHalo
+    end
+    if list then
+      for i = want + 1, #list do list[i]:Hide() end
+    end
+    plate.__pbGlyphHaloKind = kind
+    return kind
+  end
+end
 
 -- Gives one plate tokens of its own in place of the palette's: a table with
 -- the palette's plate keys (plateIdle, plateHover, plateSelected, plateFlagged,
