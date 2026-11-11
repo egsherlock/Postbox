@@ -83,6 +83,12 @@ if ns.IsForever then AR.COLUMNS.sender.choice = "sender" end
 -- on an 18-unit plate whose foot is the underline.
 local KEY_SIZE = 18
 local KEY_MARK = 12
+-- At rest the key is a unit wider than tall, so its mark's ink -- 11 units
+-- across, its 12-unit box's last column clear -- stands dead centre: 4
+-- units of plate either side (3 inside the ring), where the 18-unit square
+-- left 3 and 4. It starts a unit further left than the square did, so the
+-- mark stays where it was (its callers anchor it 3 units right of the cog).
+AR.KEY_W, AR.KEY_INK = 19, 11
 local KEY_CHECK = 8
 local KEY_LEAD, KEY_GAP, KEY_TAIL = 6, 4, 7
 local KEY_LIFT = 1
@@ -977,7 +983,7 @@ function AR.PaintToggle(button)
     button:SetWidth(KEY_LEAD + KEY_CHECK + KEY_GAP + math.ceil(T.TextWidth(label)) + KEY_TAIL)
     return
   end
-  button:SetWidth(KEY_SIZE)
+  button:SetWidth(AR.KEY_W)
   AR.Chrome(button.Fill, 0.07)
   button.Fill:SetShown(hover)
   if light then
@@ -1055,7 +1061,8 @@ local function BuildKeyArt(button)
   -- The mark, and where the glyph art is missing the six dots it replaced.
   button.Mark = T.Glyph and T.Glyph(button, "layout", KEY_MARK, "ARTWORK") or nil
   if button.Mark then
-    button.Mark:SetPoint("CENTER", button, "CENTER", 0, 0)
+    -- By its ink, centred on the key at rest (AR.KEY_W).
+    button.Mark:SetPoint("LEFT", button, "LEFT", (AR.KEY_W - AR.KEY_INK) / 2, 0)
   else
     button.grip = AR.Grip(button, 4, 3)
     button.grip:SetPoint("CENTER")
@@ -1074,7 +1081,7 @@ end
 
 function AR.BuildToggle(parent, place, getHost)
   local button = CreateFrame("Button", nil, parent)
-  button:SetSize(KEY_SIZE, KEY_SIZE)
+  button:SetSize(AR.KEY_W, KEY_SIZE)
   place(button)
   button:SetFrameLevel(parent:GetFrameLevel() + 20)
   button:RegisterForClicks("LeftButtonUp", "RightButtonUp")

@@ -4264,7 +4264,9 @@ local function BuildArrangeButton(frame)
   local arrange = ns.Arrange
   if not (arrange and arrange.BuildToggle and frame.OptionsButton) then return nil end
   return arrange.BuildToggle(frame, function(button)
-    button:SetPoint("LEFT", frame.OptionsButton, "RIGHT", 4, 0)
+    -- 3 units clear: the key at rest is a unit wider on its left than the
+    -- mark's own square (Arrange's AR.KEY_W), the mark where it was.
+    button:SetPoint("LEFT", frame.OptionsButton, "RIGHT", 3, 0)
   end, function()
     if UI._state.activeTab ~= "collect" then UI.SelectTab("collect") end
     local panel, collect = CollectPanel(), ns.CollectTab

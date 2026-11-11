@@ -5088,7 +5088,8 @@ local function Build()
     frame.ArrangeButton = arrange.BuildToggle(frame, function(button)
       local cog = frame.OptionsButton
       if cog then
-        button:SetPoint("LEFT", cog, "RIGHT", 4, 0)
+        -- 3 units clear, the mark where it was (Arrange's AR.KEY_W).
+        button:SetPoint("LEFT", cog, "RIGHT", 3, 0)
         return
       end
       local strip = frame.__pbModernStrip
