@@ -168,10 +168,13 @@ local OPTION_DEFAULTS = {
   attachFromMail  = false,
   -- The collect screen's one-click sweeps (bought, sold, canceled, expired,
   -- other, from alts, and each character group's) under the full-width
-  -- Collect button. Off since 1.50 (Elliott): All mail is what most players
-  -- press, and the list gets the room; the sweeps are one switch away, and
-  -- the Character Groups window says when its groups have no button.
-  showCategoryButtons = false,
+  -- Collect button. On since 1.61 (Elliott), for a fresh install and after
+  -- every reset: the default grid is three buttons, All bought, All sold and
+  -- All expired (GetGridLayout). Off from 1.50 to 1.60, and an install from
+  -- then that never chose keeps them off, written out once at load
+  -- (Postbox.lua, 4b). Off, the Character Groups window says that its
+  -- groups have no button.
+  showCategoryButtons = true,
   -- The totals band under the Mail tab's list: earned and spent across the
   -- mail listed. On: it is what the tab has always shown. Off, the blocks
   -- under the list close up and the window's floor comes down with them
@@ -564,6 +567,9 @@ local CENSUS_KEEP = {
   -- And that the groups' buttons were settled into the order they were
   -- made in (Postbox.lua, 4b), for the same reason.
   groupOrder = true,
+  -- And that an install from before the category buttons were on by
+  -- default kept them as it had them (Postbox.lua, 4b), for the same reason.
+  gridShown  = true,
 }
 
 -- Clears everything but the census, tells the modules that remember what

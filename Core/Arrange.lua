@@ -287,8 +287,9 @@ function AR.Reset(kind, blocks)
     if ui.SetStackOrder then ui.SetStackOrder(nil) end
     -- The grid and the totals the mode hides and shows are the "Show
     -- category buttons" and "Show totals" options, so they go back to their
-    -- defaults with the rest -- the grid hidden, the totals shown -- and the
-    -- window's floor with them. In the mode a hidden block stands as its
+    -- defaults with the rest -- both shown, the grid as its three default
+    -- buttons -- and the window's floor with them. In the mode a hidden
+    -- block stands as its
     -- folded placeholder, as it does whenever its option is off.
     switched = AR.ResetBlockShown(ui, "showCategoryButtons")
     switched = AR.ResetBlockShown(ui, "showTotals") or switched

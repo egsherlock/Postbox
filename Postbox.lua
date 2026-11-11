@@ -394,6 +394,31 @@ local function SettleGridDefault(fresh)
   if type(profile) == "table" and profile.gridLayout == nil then profile.gridLayout = GRID_BEFORE_161 end
 end
 
+-- 1.61: the category buttons are on by default (Core/MailboxUI.lua,
+-- showCategoryButtons), for a fresh install and after every reset. A
+-- profile that had Postbox before it and never chose keeps them off, as it
+-- showed them: written out once, through the setting's own accessor (which
+-- forgets what the settings memo read). Its own mark at the root, kept
+-- through Reset everything (CENSUS_KEEP), so a reset after it gives the new
+-- default; not SettleGridDefault's, which 1.61 builds from before this
+-- default already stamped. `fresh`: no saved variables, which starts on
+-- the new default.
+local GRID_SHOWN = "gridShown"
+
+local function SettleGridShown(fresh)
+  local db = PostboxDB
+  if type(db) ~= "table" or db[GRID_SHOWN] ~= nil then return end
+  if not fresh then
+    local profile = db.profile
+    if type(profile) ~= "table" or profile.showCategoryButtons == nil then
+      local UI = ns.MailboxUI
+      if not (UI and type(UI.SetOption) == "function") then return end
+      UI.SetOption("showCategoryButtons", false)
+    end
+  end
+  db[GRID_SHOWN] = "1.61"
+end
+
 -- 1.61: a character group's button the arrangement does not name stands
 -- after the rest in the order the groups were made (CollectTab,
 -- RV.ReconcileGrid); before, it stood in the Character Groups list's order,
@@ -2619,7 +2644,7 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   Upgrade(savedBy)
   -- Each settled once, as Upgrade runs its steps: one that fails is
   -- reported, and the rest of the setup below goes on.
-  for _, settle in ipairs({ SettleGridDefault, SettleGroupOrder }) do
+  for _, settle in ipairs({ SettleGridDefault, SettleGroupOrder, SettleGridShown }) do
     local ok, err = pcall(settle, ns.freshInstall)
     if not ok and type(geterrorhandler) == "function" then
       local handler = geterrorhandler()
