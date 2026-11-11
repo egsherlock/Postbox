@@ -6169,7 +6169,11 @@ do
     head.Title = Text(head, "heading")
     head.Title:SetPoint("LEFT", head, "LEFT", NAME_X, 0)
     head.Title:SetText(L["OPT_DASH_TITLE"])
+    -- The note a step under the column headings: the game's smallest face
+    -- (the host's where it has one), as the footer's version is, muted.
     head.Note = Text(head, "secondary", "RIGHT")
+    local tiny = _G.GameFontWhiteTiny
+    if tiny and T.HostFont then head.Note:SetFontObject(T.HostFont(tiny)) end
     head.Note:SetPoint("RIGHT", head, "RIGHT", -(CONTROL_R + 2), 0)
     head.Note:SetText(L["OPT_DASH_FOOT"])
     T.SetColor(head.Note, "textSecondary")
