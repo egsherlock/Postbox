@@ -842,12 +842,25 @@ end
 -- The last seven days by mail, for the options' General tab: `who` "me"
 -- (the character being played) or "all" (every character with a record,
 -- a hidden one left out as the lists of every box leave it out). Read from
--- History (2c: `m` gold taken, `c` C.O.D. paid, one entry a mail
--- collected) and Sent (2d: `m` gold sent, one entry a mail sent):
---   earned     copper taken from mail
---   spent      copper paid for C.O.D. and copper sent
+-- History (2c: `m` gold taken, `c` C.O.D. paid, `p` a won auction's price,
+-- `dp` and `ct` a sale's deposit and the auction house's cut, one entry a
+-- mail collected), Sent (2d: `m` gold sent, one entry a mail sent) and the
+-- deposits paid (2f: hour, copper pairs):
+--   earned     copper taken from mail: sales + other
+--     sales      from sold auctions' mail, the deposits returned in it
+--       depBack    of which deposits returned (sales whose invoice was read)
+--     other      from every other mail
+--     cut        the auction house's cut of those sales, never in a mail
+--     unopened   sales taken without their invoice: deposit and cut unknown
+--   spent      copper out for mail and auctions: bought + cod + gold + depPaid
+--     bought     won auctions' prices    cod      C.O.D. paid
+--     gold       gold sent               depPaid  deposits paid on posts
 --   collected  mails in History gold or items were taken from (`m`, `it`,
 --              or `c`), not letters only read; sent  mails in Sent
+--   chars      the characters counted under "all": this one and every other
+--              with a record, the hidden left out (asked of either scope)
+--   partial    the week reaches back past a counted character's first run of
+--              the deposits' record: its deposits and cut start there
 --   walked     the entries read, for a cost check
 -- Each record is oldest first, so it is read from its newest end back to
 -- the first entry older than the week and no further: one walk per
@@ -855,22 +868,41 @@ end
 -- one table, filled again on each call; the caller says when to ask
 -- (OptionsPanel's Week: on General's show, MM.recordWrites, the switch).
 do
-  local WEEK = { earned = 0, spent = 0, collected = 0, sent = 0, walked = 0 }
+  local WEEK = { earned = 0, spent = 0, collected = 0, sent = 0, walked = 0,
+    sales = 0, depBack = 0, other = 0, cut = 0, unopened = 0,
+    bought = 0, cod = 0, gold = 0, depPaid = 0, chars = 0, partial = false }
+  local HOUR = 3600
+  local KEYS = { "mailHistory", "mailSent", "auctionDeposits" }
+  local roots = {}
 
+  -- A History or Sent list: whether any of it was in the week.
   local function WeekWalk(list, cutoff, sent)
     local w = WEEK
+    local any = false
     for i = #list, 1, -1 do
       local e = list[i]
       w.walked = w.walked + 1
       local t = type(e) == "table" and tonumber(e.t) or nil
-      if not t or t < cutoff then return end
+      if not t or t < cutoff then return any end
+      any = true
       if sent then
-        w.spent = w.spent + (tonumber(e.m) or 0)
+        w.gold = w.gold + (tonumber(e.m) or 0)
         w.sent = w.sent + 1
       else
         local m, c = tonumber(e.m) or 0, tonumber(e.c) or 0
-        w.earned = w.earned + m
-        w.spent = w.spent + c
+        w.cod = w.cod + c
+        w.bought = w.bought + (tonumber(e.p) or 0)
+        if e.k == "sold" then
+          w.sales = w.sales + m
+          local dp, ct = tonumber(e.dp), tonumber(e.ct)
+          if dp or ct then
+            w.depBack, w.cut = w.depBack + (dp or 0), w.cut + (ct or 0)
+          elseif m > 0 then
+            w.unopened = w.unopened + 1
+          end
+        else
+          w.other = w.other + m
+        end
         -- Collected: a mail gold or items were taken from (a C.O.D. paid
         -- gave its items); a letter only read is in History, not here.
         if m > 0 or c > 0 or (type(e.it) == "table" and e.it[1] ~= nil) then
@@ -878,36 +910,76 @@ do
         end
       end
     end
+    return any
   end
 
-  local function WeekRoot(key, cutoff, sent, all, myRealm, myName)
-    local root = ns.Store and ns.Store.Get and ns.Store.Get(key)
-    if type(root) ~= "table" then return end
-    if not all then
-      local byRealm = root[myRealm]
-      local list = type(byRealm) == "table" and byRealm[myName] or nil
-      if type(list) == "table" then WeekWalk(list, cutoff, sent) end
-      return
+  -- A deposits record: hour, copper pairs, oldest first. The hour the week
+  -- starts in is counted whole.
+  local function DepositWalk(list, cutoffH)
+    local w = WEEK
+    for i = #list - 1, 1, -2 do
+      w.walked = w.walked + 1
+      local h = tonumber(list[i])
+      if not h or h < cutoffH then return end
+      w.depPaid = w.depPaid + (tonumber(list[i + 1]) or 0)
     end
-    for realm, byRealm in pairs(root) do
-      if type(byRealm) == "table" then
-        for name, list in pairs(byRealm) do
-          if type(list) == "table" and ((realm == myRealm and name == myName) or not MM.IsHidden(realm, name)) then
-            WeekWalk(list, cutoff, sent)
-          end
-        end
-      end
-    end
+  end
+
+  local function ListOf(root, realm, name)
+    local byRealm = root and root[realm]
+    local list = type(byRealm) == "table" and byRealm[name] or nil
+    return type(list) == "table" and list or nil
+  end
+
+  -- One character's three records, and whether its week reaches back past
+  -- the start of its deposits' record.
+  local function WeekCharacter(realm, name, cutoff)
+    local hist, sent, deps = ListOf(roots[1], realm, name), ListOf(roots[2], realm, name), ListOf(roots[3], realm, name)
+    local any = false
+    if hist then any = WeekWalk(hist, cutoff, false) end
+    if sent then any = WeekWalk(sent, cutoff, true) or any end
+    if deps then DepositWalk(deps, math.floor(cutoff / HOUR)) end
+    local since = deps and tonumber(deps.s) or nil
+    if any and (not since or since > cutoff) then WEEK.partial = true end
   end
 
   function MM.Week(who)
     local w = WEEK
     w.earned, w.spent, w.collected, w.sent, w.walked = 0, 0, 0, 0, 0
+    w.sales, w.depBack, w.other, w.cut, w.unopened = 0, 0, 0, 0, 0
+    w.bought, w.cod, w.gold, w.depPaid, w.chars, w.partial = 0, 0, 0, 0, 1, false
     local myRealm, myName = Me()
     if not (myRealm and myName) then return w end
+    local get = ns.Store and ns.Store.Get
+    for k = 1, 3 do
+      local root = get and get(KEYS[k])
+      roots[k] = type(root) == "table" and root or false
+    end
     local cutoff, all = time() - 7 * DAY, who == "all"
-    WeekRoot("mailHistory", cutoff, false, all, myRealm, myName)
-    WeekRoot("mailSent", cutoff, true, all, myRealm, myName)
+    WeekCharacter(myRealm, myName, cutoff)
+    -- The others: counted once each, whichever record names them first,
+    -- and added up only under "all".
+    for k = 1, 3 do
+      local root = roots[k]
+      if root then
+        for realm, byRealm in pairs(root) do
+          if type(byRealm) == "table" then
+            for name, list in pairs(byRealm) do
+              if type(list) == "table" and not (realm == myRealm and name == myName)
+                  and not (k > 1 and ListOf(roots[1], realm, name))
+                  and not (k > 2 and ListOf(roots[2], realm, name))
+                  and not MM.IsHidden(realm, name) then
+                w.chars = w.chars + 1
+                if all then WeekCharacter(realm, name, cutoff) end
+              end
+            end
+          end
+        end
+      end
+    end
+    for k = 1, 3 do roots[k] = false end
+    w.earned = w.sales + w.other
+    w.spent = w.bought + w.cod + w.gold + w.depPaid
     return w
   end
 end
@@ -1407,6 +1479,8 @@ local function PruneAllHistory()
       end
     end
   end
+  -- And the deposits paid (2f), kept and emptied with History.
+  if MM.PruneDeposits then MM.PruneDeposits() end
 end
 
 -- Frozen: Core/MailboxUI.lua calls this when History is set to "Never", so
@@ -1822,7 +1896,65 @@ do
     end
     Note(api.GetItemID(location), api.GetItemName(location), icon)
   end
-  local function Hooked(location) pcall(Posted, location) end
+  -- The deposit paid for a post (2f): what the game answers for that item,
+  -- duration and quantity, rounded up to the silver where the house takes
+  -- no copper, as its own sell frame shows it. Nothing when it cannot say.
+  local function DepositOf(commodity, location, duration, quantity)
+    local house, api = C_AuctionHouse, C_Item
+    if type(house) ~= "table" or type(location) ~= "table" then return end
+    local secret = type(issecretvalue) == "function" and issecretvalue or nil
+    local ok, cost
+    if commodity then
+      if type(house.CalculateCommodityDeposit) ~= "function" or type(api) ~= "table"
+          or type(api.GetItemID) ~= "function" then return end
+      local got, itemID = pcall(api.GetItemID, location)
+      if not (got and type(itemID) == "number") or (secret and secret(itemID)) then return end
+      ok, cost = pcall(house.CalculateCommodityDeposit, itemID, duration, quantity)
+    else
+      if type(house.CalculateItemDeposit) ~= "function" then return end
+      ok, cost = pcall(house.CalculateItemDeposit, location, duration, quantity)
+    end
+    if not ok or (secret and secret(cost)) or type(cost) ~= "number" or cost <= 0 then return end
+    if type(house.SupportsCopperValues) == "function" then
+      local fine, copper = pcall(house.SupportsCopperValues)
+      if fine and copper == false then cost = math.ceil(cost / 100) * 100 end
+    end
+    if MM.NoteDeposit then MM.NoteDeposit(cost) end
+  end
+
+  -- A post that asked the player first: the game raises
+  -- AUCTION_HOUSE_POST_WARNING inside PostItem / PostCommodity, before the
+  -- post-hook runs, and nothing is posted until the confirm (and never, if
+  -- the player says no). Its deposit is noted at the confirm. The warning
+  -- is known by its frame's time (GetTime holds still through a frame), so
+  -- a question the player turned down never holds back the next post.
+  local warnedAt = false
+  function MM.PostWarned()
+    warnedAt = type(GetTime) == "function" and GetTime() or false
+  end
+  local function Warned()
+    local now = type(GetTime) == "function" and GetTime() or nil
+    local was = warnedAt
+    warnedAt = false
+    return was ~= false and was == now
+  end
+
+  local function ItemPosted(location, duration, quantity)
+    pcall(Posted, location)
+    if Warned() then return end
+    pcall(DepositOf, false, location, duration, quantity)
+  end
+  local function CommodityPosted(location, duration, quantity)
+    pcall(Posted, location)
+    if Warned() then return end
+    pcall(DepositOf, true, location, duration, quantity)
+  end
+  local function ItemConfirmed(location, duration, quantity)
+    pcall(DepositOf, false, location, duration, quantity)
+  end
+  local function CommodityConfirmed(location, duration, quantity)
+    pcall(DepositOf, true, location, duration, quantity)
+  end
 
   -- Hooked once, the first time the auction house opens: nothing is hooked
   -- for a player who never uses it.
@@ -1832,8 +1964,12 @@ do
     local house = C_AuctionHouse
     if type(house) ~= "table" or type(hooksecurefunc) ~= "function" then return end
     hooked = true
-    if type(house.PostItem) == "function" then hooksecurefunc(house, "PostItem", Hooked) end
-    if type(house.PostCommodity) == "function" then hooksecurefunc(house, "PostCommodity", Hooked) end
+    if type(house.PostItem) == "function" then hooksecurefunc(house, "PostItem", ItemPosted) end
+    if type(house.PostCommodity) == "function" then hooksecurefunc(house, "PostCommodity", CommodityPosted) end
+    if type(house.ConfirmPostItem) == "function" then hooksecurefunc(house, "ConfirmPostItem", ItemConfirmed) end
+    if type(house.ConfirmPostCommodity) == "function" then
+      hooksecurefunc(house, "ConfirmPostCommodity", CommodityConfirmed)
+    end
   end
 
   -- An auction the client says was made (AUCTION_HOUSE_AUCTION_CREATED):
@@ -1892,6 +2028,105 @@ do
   end
 
   function MM.PostsGen() return postsGen end
+end
+
+-------------------------------------------------------------
+-- 2f. Deposits paid
+--
+-- What posting auctions cost, for the options' 7-day card (MM.Week): no mail
+-- ever says it. Each post's deposit (2e's hooks: the game's own answer for
+-- that item, duration and quantity) is added to the hour it was paid in,
+-- per character, at the root `auctionDeposits`, realm -> name -> a list of
+-- hour, copper pairs, oldest first (hour = time / 3600, whole), and `s`, when
+-- the record began: the week reaches back past it, and the card says its
+-- deposits count from then. Not tied to any auction: "paid in the last
+-- seven days" is a plain sum. Kept DEPOSITS_KEEP hours (a day more than
+-- the week), so a list never holds more than that many pairs however many
+-- auctions are posted. Written only while History is kept, and emptied with
+-- it ("Never"); pruned at login with History.
+-------------------------------------------------------------
+do
+  local HOUR, DEPOSITS_KEEP = 3600, 8 * 24
+
+  local function Deposits(create)
+    local realm, name = Me()
+    if not (realm and name) then return nil end
+    local root
+    if create then
+      root = ns.Store.EnsurePath("auctionDeposits")
+    else
+      root = ns.Store and ns.Store.Get and ns.Store.Get("auctionDeposits")
+    end
+    if type(root) ~= "table" then return nil end
+    local byRealm = root[realm]
+    if type(byRealm) ~= "table" then
+      if not create then return nil end
+      byRealm = {}
+      root[realm] = byRealm
+    end
+    local list = byRealm[name]
+    if type(list) ~= "table" then
+      if not create then return nil end
+      list = { s = time() }
+      byRealm[name] = list
+    end
+    return list
+  end
+
+  -- Pairs older than DEPOSITS_KEEP hours dropped, the rest moved down.
+  local function Prune(list, now)
+    local keep = math.floor(now / HOUR) - DEPOSITS_KEEP
+    local n, first = #list, 1
+    while first < n and (tonumber(list[first]) or 0) < keep do first = first + 2 end
+    if first == 1 then return end
+    local j = 1
+    for i = first, n do
+      list[j] = list[i]
+      j = j + 1
+    end
+    for i = j, n do list[i] = nil end
+  end
+
+  -- `copper` paid as a deposit, now.
+  function MM.NoteDeposit(copper)
+    copper = tonumber(copper)
+    if not copper or copper <= 0 or HistoryKeep() <= 0 then return end
+    local list = Deposits(true)
+    if not list then return end
+    local now = time()
+    local h, n = math.floor(now / HOUR), #list
+    if n >= 2 and list[n - 1] == h then
+      list[n] = (tonumber(list[n]) or 0) + copper
+    else
+      list[n + 1], list[n + 2] = h, copper
+    end
+    Prune(list, now)
+    MM.recordWrites = MM.recordWrites + 1
+  end
+
+  -- At login: every character's record pruned, and this character's begun,
+  -- so its deposits count from its first run of this; with History off,
+  -- none kept.
+  function MM.PruneDeposits()
+    local root = ns.Store and ns.Store.Get and ns.Store.Get("auctionDeposits")
+    if HistoryKeep() <= 0 then
+      if type(root) == "table" then
+        for realm in pairs(root) do root[realm] = nil end
+      end
+      return
+    end
+    Deposits(true)
+    root = ns.Store.Get("auctionDeposits")
+    if type(root) ~= "table" then return end
+    local now = time()
+    for _, byRealm in pairs(root) do
+      if type(byRealm) == "table" then
+        for _, list in pairs(byRealm) do
+          if type(list) == "table" then Prune(list, now) end
+        end
+      end
+    end
+  end
 end
 
 -------------------------------------------------------------
@@ -5208,6 +5443,9 @@ if bus then
     watch.auctionsUntil = math.max(watch.auctionsUntil or 0, now + AUCTION_LONGEST)
     CharactersChanged()
   end)
+  -- A post the game asks the player about first: its deposit waits for the
+  -- confirm (2e, 2f).
+  registered.postWarning = bus.Register("AUCTION_HOUSE_POST_WARNING", function() MM.PostWarned() end)
   registered.auctionExpired = bus.Register("AUCTION_HOUSE_AUCTIONS_EXPIRED", function()
     MM._NoteSignal()
   end)

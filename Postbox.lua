@@ -121,6 +121,8 @@ local SCHEMA = {
   "auctionPosts",             -- realm -> name -> item name -> { item id, when }:
                               -- what was put up for auction, so a sold
                               -- auction's row shows its item (Core/MailMemory.lua, 2e)
+  "auctionDeposits",          -- realm -> name -> hour, copper pairs: deposits
+                              -- paid on posts, for the 7-day card (Core/MailMemory.lua, 2f)
   "hiddenChars",              -- realm -> name -> true: hidden from the lists
                               -- of other characters (Core/MailMemory.lua, 2b)
 }
