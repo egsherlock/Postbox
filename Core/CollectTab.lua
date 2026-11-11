@@ -6594,6 +6594,9 @@ end
 function CT.OpenPicker(panel)
   local Memory = AV.Memory()
   if not (panel and panel.Picker and Memory) then return end
+  -- The arrange mode's header stands where the picker's cell would be: its
+  -- list waits for the row (RV.HideTopRow).
+  if panel._topHidden then return end
   -- Timed on the visit's record (Postbox.lua, 5b): the list's frame is built
   -- on the first.
   local perf = ns.Perf
