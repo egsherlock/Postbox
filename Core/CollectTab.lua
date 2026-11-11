@@ -8844,12 +8844,14 @@ RV.LINE = { ruleA = 0.22, ruleMin = 12, band = 14, now = false }
 -- here is taken to have the common proportions of these.
 --
 -- From those, RV.InkLift raises a string by whole units, so its baseline
--- moves exactly that far whatever the client rounds, until what the line
--- shows is centred on the bar's middle: its capitals (custom words may
--- have any letters, and capitals are the one height every word stands
--- on) and, while the number shows, its brackets' reach, each counted in
--- the rows it covers at least half of. Where two whole units are as near
--- as each other, the one with the capitals nearer the middle. Delete all
+-- moves exactly that far whatever the client rounds, until its capitals
+-- are centred on the bar's middle (custom words may have any letters, and
+-- capitals are the one height every word stands on), counted in the rows
+-- they cover at least half of; the number's brackets and any descender
+-- hang where they hang, as under any heading. Where two whole units are as
+-- near as each other, the one with the capitals nearer the middle. The
+-- island takes the capitals' parity (Core/DividerNotch.lua, DN.Fit), so
+-- the room over them is the room under them. Delete all
 -- stands on the words' baseline, the icon on the pixels nearest the
 -- capitals (RV.Lifts), so the three always share their rows.
 --
@@ -8938,29 +8940,26 @@ function RV.LineAt(face, size, H, up)
 end
 
 -- How far up a one-line string in `face` at `size`, anchored on the middle
--- of a bar `H` tall, is set so what its line shows -- its capitals, and
--- while `count` the number's brackets' reach -- is centred on the middle of
--- all the bar shows (the foot `dy` tall under a copy at the list's foot is
--- part of it), each counted in the rows it covers at least half of, on
--- whole units; where two are as near, the one with the capitals nearer the
--- middle, then the higher. Whole units, and the fraction that holds the
--- line's top just under half a unit before the pixel it rounds to
--- (RV.HOLD); then where the baseline stands, from the bar's top.
-function RV.InkLift(face, size, H, dy, count)
+-- of a bar `H` tall, is set so its capitals (a face without them: its
+-- ideographs' box) are centred on the middle of all the bar shows (the
+-- foot `dy` tall under a copy at the list's foot is part of it), counted in
+-- the rows they cover at least half of, on whole units; where two are as
+-- near, the one with the capitals nearer the middle, then the higher. The
+-- number's brackets hang where they hang. Whole units, and the fraction
+-- that holds the line's top just under half a unit before the pixel it
+-- rounds to (RV.HOLD); then where the baseline stands, from the bar's top,
+-- and the capitals' rows over it and under it.
+function RV.InkLift(face, size, H, dy)
   local _, base0 = RV.LineAt(face, size, H, 0)
   local foot = (face[7] or 0) * size
   local hi, lo = floor(face[3] * size + 0.5), floor(-foot + 0.5)
-  if count then
-    hi = max(hi, floor(face[5] * size + 0.5))
-    lo = max(lo, floor(-face[4] * size + 0.5))
-  end
   local mid = H / 2 + dy / 2
   local want = mid + (hi - lo) / 2
   local base = floor(want)
   -- The capitals' (or ideographs') middle under the baseline it stands on.
   local c = (face[3] * size + foot) / 2
   if base ~= want and math.abs(base + 1 - c - mid) < math.abs(base - c - mid) then base = base + 1 end
-  return RV.Held(face, size, H, base0 - base), base
+  return RV.Held(face, size, H, base0 - base), base, hi, lo
 end
 
 -- `lift` whole units up, and the fraction more that holds the string's
@@ -8975,14 +8974,18 @@ end
 -- and the number's (theirs, in one string or after them), Delete all's on
 -- the words' baseline, the icon's (an icon `__iconH` tall, on the pixels
 -- nearest the capitals, or the middle with no words), the rule's top, on
--- the capitals, and the capitals' middle (`__capC`, from the bar's top),
--- which Hairline's and Full row's fold sign keeps level with. Numbers
--- only; when the type, the words, the icon, the height or the foot moves.
+-- the capitals, the capitals' middle (`__capC`, from the bar's top),
+-- which Hairline's and Full row's fold sign keeps level with, and their
+-- rows (`__capT` to `__capB`, from the bar's top; false with no words or
+-- number), which the island takes its parity from. Numbers only; when the
+-- type, the words, the icon, the height or the foot moves.
 function RV.Lifts(f, H, dy)
   local face, size = RV.FaceOf(f.Label)
   local count = (f.__countW or 0) > 0
-  local lift, base = RV.InkLift(face, size, H, dy, count)
+  local lift, base, hi, lo = RV.InkLift(face, size, H, dy)
   f.__lift = lift
+  local inked = (f.__wordsW or 0) > 0 or count
+  f.__capT, f.__capB = inked and (base - hi), inked and (base + lo)
   local dface, dsize = RV.FaceOf(f.Delete.Text)
   local _, dbase = RV.LineAt(dface, dsize, H, 0)
   f.__liftD = RV.Held(dface, dsize, H, dbase - base)

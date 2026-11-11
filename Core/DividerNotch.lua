@@ -19,9 +19,12 @@ local _, ns = ...
 --
 -- Its shape is the island while the place is below the view: a capsule as
 -- tall as the bar, as wide as its icon, words and number with RV.BAR.pad
--- each side, centred. Once the place's top is in the view it opens into the
--- bar, edge to edge, on one critically damped spring: both edges move by
--- the same whole units every frame about the list's middle, the ends stay
+-- each side, centred; a unit shorter, or narrower, where the capitals'
+-- height, or the letters' span, has the other parity, so they stand on its
+-- middle (DN.Fit, DN.Place). Once the place's top is in the view it opens
+-- into the bar, edge to edge, on one critically damped spring: both edges
+-- move by the same whole units every frame about the list's middle (the
+-- parity's unit gone by half way), the ends stay
 -- round until they come within the capsule's radius of the list's edges
 -- and then square off as they meet them (the corners' radius the edges'
 -- whole-unit gap, at most the capsule's), the colours mix into the bar's,
@@ -278,14 +281,14 @@ function DN.Size(f, band)
 end
 
 -- The pieces laid out for a radius of `R` units (whole, from the capsule's
--- half height to none): the fill's middle from the radius in (a unit at
--- least, inside the ring's sides), the hairlines between the corners, the
--- straight sides and the fill beside the corners where the corners leave
--- room for them, the corners a radius wide. No piece overlaps another but
--- a corner's fill on its ring.
-local function Round(f, R)
+-- half height, rounded down, to none) on a shape `h` tall: the fill's
+-- middle from the radius in (a unit at least, inside the ring's sides), the
+-- hairlines between the corners, the straight sides and the fill beside
+-- the corners where the corners leave room for them (a unit of each at
+-- rest on an island of odd height), the corners a radius wide. No piece
+-- overlaps another but a corner's fill on its ring.
+local function Round(f, R, h)
   local P, shape = f.Isle, f.Shape
-  local h = f.__isleBand or 22
   local a = (R >= 1) and R or 1
   local mid = P.mid
   mid:SetPoint("TOPLEFT", shape, "TOPLEFT", a, -1)
@@ -530,6 +533,15 @@ function DN.Fit(f, W)
   f.__s0 = max(0, floor((W - chip) / 2))
   f.__W2 = W
   f.__s = nil
+  -- The island's height takes the capitals' parity (RV.Lifts, `__capT` and
+  -- `__capB`): where the room over them and under them differ by a unit, the
+  -- island is a unit shorter on the side with more, so the two are equal.
+  -- The bar keeps its whole height (DN.Shape).
+  local band = f.__isleBand or 22
+  local capT, capB = f.__capT, f.__capB
+  local over, under = capT and capT or 0, capB and (band - capB) or 0
+  f.__vT = (capT and over > under) and (over - under) or 0
+  f.__vB = (capT and under > over) and (under - over) or 0
   -- The fold sign's art is 24 of its canvas's 32 at its longest; Delete
   -- all's words end the row's inset from the right.
   local signL = floor((f.__signX or 0) - (f.__canvas or 12) * 12 / 32)
@@ -559,15 +571,27 @@ function DN.Place(f, wide, again)
   local wordsW, iconW = f.__wordsW or 0, f.__iconW or 0
   local lead = f.__lead or 0
   local x
+  local off = 0
   local runL, runR = f.__runL, f.__runR
+  local mid = (f.__W2 or 0) / 2
   if not cut and runL then
     -- Where the client lays the letters out in their string (RV.Span): from
     -- the icon, or from the first letter, to the last, on the middle.
     local lo = (iconW > 0) and 0 or (lead + runL)
-    x = floor((f.__W2 or 0) / 2 - (lo + lead + runR) / 2 + 0.5)
+    local at = mid - (lo + lead + runR) / 2
+    x = floor(at + 0.5)
+    off = x - at
   else
-    x = B.CentreAt((f.__W2 or 0) / 2, lead + (cut or wordsW) + (f.__tail or 0), f.__shadowX)
+    x = B.CentreAt(mid, lead + (cut or wordsW) + (f.__tail or 0), f.__shadowX)
   end
+  -- Whole units leave the letters up to half a unit off the list's middle
+  -- (`off`, where the client said where they are); the island, standing
+  -- clear of the list's edges, takes their span's parity instead: a unit
+  -- narrower on the side they lean away from, where that brings its middle
+  -- nearer theirs. The bar keeps its width.
+  local s0 = f.__s0 or 0
+  f.__tL = (s0 > 0 and off > 0.25) and 1 or 0
+  f.__tR = (s0 > 0 and off < -0.25) and 1 or 0
   if iconW > 0 then
     mark:ClearAllPoints()
     mark:SetPoint("LEFT", inner, "LEFT", x, f.__iconUp or 0)
@@ -661,34 +685,46 @@ local function Reveal(f, s, e)
 end
 
 -- The shape `e` open (0 the island, 1 the bar), `yo` whole units off its
--- place in a flight: both edges `s` in from the list's, s whole; the
--- corners' radius the lesser of the capsule's and s, so the ends are round
--- until they come within it of the list's edges and square exactly as they
--- meet them, the ring's straight sides (there only then) going into the
--- fill as the radius goes, since the bar has no sides of its own; the
--- colours as the pointer's eases stand; the fold sign's and Delete all's
--- alpha and Delete all's pointer, each set only where it moved. Every frame
--- of a move comes here, and makes nothing.
+-- place in a flight: both edges in from the list's by the island's inset
+-- (DN.Fit) and the unit its parity takes on a side (DN.Place, `__tL` and
+-- `__tR`), its top and foot in by the unit its height's parity takes
+-- (`__vT`, `__vB`), each scaled by 1 - e and on whole units, so the shape
+-- starts from the island and lands on the bar; the corners' radius the
+-- lesser of the capsule's and the nearer edge's inset, so the ends are
+-- round until they come within it of the list's edges and square exactly
+-- as they meet them, the ring's straight sides (there only then, or a unit
+-- of them on an island of odd height) going into the fill as the radius
+-- goes, since the bar has no sides of its own; the colours as the
+-- pointer's eases stand; the fold sign's and Delete all's alpha and Delete
+-- all's pointer, each set only where it moved. Every frame of a move comes
+-- here, and makes nothing.
 function DN.Shape(f, e, yo)
   if e < 0 then e = 0 elseif e > 1 then e = 1 end
   yo = yo or 0
-  local s = floor((f.__s0 or 0) * (1 - e) + 0.5)
-  if f.__s ~= s or f.__yo ~= yo then
+  local u = 1 - e
+  local s0 = f.__s0 or 0
+  local s = floor((s0 + (f.__tL or 0)) * u + 0.5)
+  local sR = floor((s0 + (f.__tR or 0)) * u + 0.5)
+  local vT = floor((f.__vT or 0) * u + 0.5)
+  local vB = floor((f.__vB or 0) * u + 0.5)
+  if f.__s ~= s or f.__sR ~= sR or f.__vt ~= vT or f.__vb ~= vB or f.__yo ~= yo then
     local shape = f.Shape
-    shape:SetPoint("TOPLEFT", f, "TOPLEFT", s, -yo)
-    shape:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -s, -yo)
+    shape:SetPoint("TOPLEFT", f, "TOPLEFT", s, -yo - vT)
+    shape:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -sR, -yo + vB)
     if f.__yo ~= yo then
       local inner = f.Inner
       inner:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -yo)
       inner:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, -yo)
     end
-    f.__s, f.__yo = s, yo
+    f.__s, f.__sR, f.__vt, f.__vb, f.__yo = s, sR, vT, vB, yo
   end
-  local r0 = (f.__isleBand or 22) / 2
-  local R = (s < r0) and s or r0
-  if f.__R ~= R then
-    f.__R = R
-    Round(f, R)
+  local h = (f.__isleBand or 22) - vT - vB
+  local r0 = floor(h / 2)
+  local near = (s < sR) and s or sR
+  local R = (near < r0) and near or r0
+  if f.__R ~= R or f.__rh ~= h then
+    f.__R, f.__rh = R, h
+    Round(f, R, h)
   end
   local kf = Smooth(DN.MIX, e)
   local ks = (r0 > 0) and (1 - R / r0) or 1
@@ -697,7 +733,7 @@ function DN.Shape(f, e, yo)
     f.__kf, f.__khv, f.__kpv, f.__ks = kf, hv, pv, ks
     Colour(f, kf, hv, pv, ks)
   end
-  local ka = Reveal(f, s, e)
+  local ka = Reveal(f, (s > sR) and s or sR, e)
   if f.__late ~= ka then
     f.__late = ka
     f.Sign:SetAlpha(ka)
@@ -765,6 +801,7 @@ function DN.Reset(f)
   f.__s, f.__yo, f.__kf, f.__khv, f.__kpv, f.__ks, f.__R, f.__late, f.__live, f.__e = nil, nil, nil, nil, nil, nil, nil, nil,
     nil, nil
   f.__roomOn, f.__roomPad, f.__fadeE, f.__pw = nil, nil, nil, nil
+  f.__sR, f.__vt, f.__vb, f.__rh = nil, nil, nil, nil
   if f.Shade then f.Shade.r = false end
   f.__thv, f.__tdv, f.__sgMode, f.__sgK = nil, nil, nil, nil
   local edges = f.Edges
