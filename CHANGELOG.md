@@ -60,6 +60,9 @@
 - **Test mail ends with what turned it on:** from the options it stays until
   you close them; from the Arrange card it ends when you finish. It is
   called Test mail everywhere now, the window's title included.
+- **Find a setting:** type in the box at the top left of the options to find
+  any setting, the ones behind More and the ones that live in Arrange
+  included, and pick one to go straight to it.
 - **The options are shorter and in order:** every tab keeps one height, the
   bar's rarer settings and the minimap marker's looks wait behind a **More**
   line, Keep History for sits on General beside Remember mailboxes, and
