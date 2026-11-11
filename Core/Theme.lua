@@ -5087,6 +5087,10 @@ Theme.AtlasSets = {
 --     units up, so ask for 16 or 30 to see each one pixel for pixel.
 --     Accent-tinted: Theme.TintAccentGlyph keeps one in the icon tone.
 --   search  a magnifier, 12 units: the options' search box.
+--   link, link-broken  a chain link, two capsules, 15 by 8 units, and the
+--     same link open with two ticks at the break: the Window tab's line
+--     naming the host UI the look comes from, broken while it is overridden
+--     (OptionsPanel's Ctx.window; the round6 mockup's LINK and LINKX).
 --   Their art and its self-test: .dev/design/tile-icons/gen_tile_glyphs.py.
 --
 -- Sharpness. The art is 2 texels per UI unit. A texel snapping bias above 0
@@ -5147,6 +5151,8 @@ do
     recipients = { file = MEDIA .. "glyph-recipients-16.tga", w = 16, h = 16, l = 0.015625, r = 0.515625, t = 0.015625, b = 0.515625,
       large = { from = 23, file = MEDIA .. "glyph-recipients-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
     search = { file = MEDIA .. "glyph-search.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
+    link = { file = MEDIA .. "glyph-link.tga", w = 15, h = 8, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.53125 },
+    ["link-broken"] = { file = MEDIA .. "glyph-link-broken.tga", w = 15, h = 8, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.53125 },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
   }
 

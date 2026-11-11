@@ -3405,11 +3405,12 @@ do
 
   -- The room the host notice takes under the Window tab's drawing: its gap
   -- and one line of its text, where a host UI is installed; none
-  -- otherwise.
-  Ctx.HOST_GAP, Ctx.HOST_DOT = 6, 8
+  -- otherwise. The link glyph is HOST_LINK tall, HOST_LINK_GAP before the
+  -- words.
+  Ctx.HOST_GAP, Ctx.HOST_LINK, Ctx.HOST_LINK_GAP = 6, 8, 6
   function Ctx.HostRoom()
     if not S.installedHost then return 0 end
-    return Ctx.HOST_GAP + math.max(Ctx.HOST_DOT, MW.Line("secondary"))
+    return Ctx.HOST_GAP + math.max(Ctx.HOST_LINK, MW.Line("secondary"))
   end
 
   -- The notice cut short (the house fitter's ellipsis) says itself whole
@@ -3428,8 +3429,14 @@ do
   end
 
   -- The Window tab: the window itself under its Preview heading, and under
-  -- it who the look comes from -- one plain muted line after its square
-  -- ("Inheriting EllesmereUI settings", or its siblings), no box of its own.
+  -- it who the look comes from, as a fact line centred under the drawing:
+  -- a chain link, then the words ("Inheriting EllesmereUI settings", or
+  -- their siblings) muted with the host's name in the bright ink, no box
+  -- and no colour of its own. While Postbox overrides the host the link is
+  -- drawn broken, so the state rests on the shape, never on a colour, and
+  -- holds at any opacity and in Light. The words are the inspector's title
+  -- (State.Inheritance), coloured here; made again only when the state,
+  -- the host or the bright ink moves.
   function Ctx.window(card)
     local T = ns.Theme
     local f = CreateFrame("Frame", nil, card)
@@ -3441,16 +3448,23 @@ do
     sw:SetPoint("TOPLEFT", cap, "BOTTOMLEFT", 0, -Ctx.PREVIEW_GAP)
     local host
     if S.installedHost then
-      -- Is this window wearing your UI's look, or Postbox's? The square
-      -- says it, the words name it.
+      -- Is this window wearing your UI's look, or Postbox's? The link says
+      -- it, the words name it. The frame is the group's own width, centred
+      -- under the drawing (Paint), so the pointer finds it where it shows.
       host = CreateFrame("Frame", nil, f)
-      host:SetPoint("TOPLEFT", sw, "BOTTOMLEFT", 0, -Ctx.HOST_GAP)
-      host:SetSize(CTX_W, Ctx.HOST_DOT)
-      host.Dot = host:CreateTexture(nil, "OVERLAY")
-      host.Dot:SetSize(Ctx.HOST_DOT, Ctx.HOST_DOT)
-      host.Dot:SetPoint("LEFT", host, "LEFT", 0, 0)
+      host:SetPoint("TOP", sw, "BOTTOM", 0, -Ctx.HOST_GAP)
+      host:SetSize(CTX_W, Ctx.HOST_LINK)
+      host.Link = T.Glyph(host, "link", Ctx.HOST_LINK, "OVERLAY")
+      host.Broken = T.Glyph(host, "link-broken", Ctx.HOST_LINK, "OVERLAY")
+      host.linkW = host.Link and host.Link:GetWidth() or 0
+      for _, tex in ipairs({ host.Link or false, host.Broken or false }) do
+        if tex then
+          tex:SetPoint("CENTER", host, "LEFT", host.linkW / 2, 0)
+          T.SetColor(tex, "textSecondary")
+        end
+      end
       host.Text = T.CreateText(host, "secondary")
-      host.Text:SetPoint("LEFT", host.Dot, "RIGHT", 6, 0)
+      host.Text:SetPoint("LEFT", host, "LEFT", host.linkW > 0 and (host.linkW + Ctx.HOST_LINK_GAP) or 0, 0)
       host.Text:SetJustifyH("LEFT")
       host.Text:SetWordWrap(false)
       host.entry = S.idle.window
@@ -3466,16 +3480,26 @@ do
       Ctx.PaintMini(sw)
       local hostRoom = Ctx.HostRoom()
       if host then
-        if S.badgeGreen then
-          host.Dot:SetColorTexture(0.38, 0.80, 0.44, 1)
-        else
-          -- Neutral grey, not a warning colour: a deliberate choice is not
-          -- a fault.
-          host.Dot:SetColorTexture(0.54, 0.54, 0.58, 1)
-        end
+        local broken = not S.badgeGreen
+        if host.Link then host.Link:SetShown(not broken) end
+        if host.Broken then host.Broken:SetShown(broken) end
         host:SetHeight(hostRoom - Ctx.HOST_GAP)
         T.SetColor(host.Text, "textSecondary")
-        T.FitText(host.Text, CTX_W - Ctx.HOST_DOT - 6, S.idle.window.title, host)
+        -- The words, the host's name in the bright ink.
+        local key, name = S.hostKey, S.installedHost
+        local hex = T.InkHex and T.InkHex("textPrimary") or nil
+        if host.key ~= key or host.name ~= name or host.hex ~= hex then
+          host.key, host.name, host.hex = key, name, hex
+          host.words = key and L(key, hex and ("|cff" .. hex .. name .. "|r") or name) or S.idle.window.title
+        end
+        local lead = host.linkW > 0 and (host.linkW + Ctx.HOST_LINK_GAP) or 0
+        local textRoom = CTX_W - lead
+        T.FitText(host.Text, textRoom, host.words, host)
+        -- As wide as what shows, in whole units and an even number of
+        -- them, so centring it never lands the words on a half unit.
+        local w = lead + math.ceil(math.min(T.TextWidth(host.Text), textRoom))
+        if w % 2 == 1 then w = w + 1 end
+        host:SetWidth(math.min(w, CTX_W))
       end
       f:SetHeight(room + MW.h.total + hostRoom)
     end
@@ -6980,15 +7004,15 @@ function State.Inheritance()
   local stockName = stock == "classic" and L["OPT_STYLE_LOOK_CLASSIC"]
     or stock == "blizzard" and L["OPT_STYLE_LOOK_BLIZZARD"] or nil
   if HostSkinName() then
-    S.badgeGreen = true
+    S.badgeGreen, S.hostKey = true, "OPT_STYLE_INHERIT"
     title = L("OPT_STYLE_INHERIT", host)
     text = L("OPT_STYLE_INHERIT_DESC", host)
   elseif stockName then
-    S.badgeGreen = true
+    S.badgeGreen, S.hostKey = true, "OPT_STYLE_FOLLOW"
     title = L("OPT_STYLE_FOLLOW", host)
     text = L("OPT_STYLE_FOLLOW_DESC", host, stockName)
   else
-    S.badgeGreen = false
+    S.badgeGreen, S.hostKey = false, "OPT_STYLE_OVERRIDE"
     title = L("OPT_STYLE_OVERRIDE", host)
     text = L("OPT_STYLE_OVERRIDE_DESC", host, host)
   end
