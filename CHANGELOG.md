@@ -26,9 +26,10 @@
   list by newest, expiring, most gold or sender, and show only unread mail,
   mail with gold or mail with items. History's Received and Sent each have
   their own.
-- **See what's on at a glance:** a line above the list says which sort and
-  filter are in force, with **Clear** beside it. A filter is forgotten when
-  you close the mailbox, so nothing stays hidden by accident.
+- **See when mail is hidden:** while a filter is on, a line above the list
+  says so in words, with **Clear** beside it to remove the filter and keep
+  your sort. A filter is forgotten when you close the mailbox, so nothing
+  stays hidden by accident.
 - **Collect shown means shown:** with a filter on, the collect buttons take
   only the mail you can see, as they do when you search.
 
@@ -84,8 +85,10 @@
   "Right-click: options".
 - Hidden characters and Manage Recipients' Hide each say that the other list
   is separate.
-- History written in coins refreshes without remaking every sum, and closing
-  the mailbox no longer rebuilds every character's status.
+- History stays light however long it gets: refreshing it and searching
+  every character's History cost a fraction of what they did, nothing is
+  kept once you stop searching, and closing the mailbox no longer rebuilds
+  every character's status.
 
 ### Fixed
 

@@ -85,8 +85,8 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   collects your picks. C.O.D. mail is never swept.
 - **Sort and filter:** the button beside Search orders the list by newest,
   expiring, most gold or sender, remembered, and can show only unread mail,
-  mail with gold or mail with items until you close the mailbox. A line above
-  the list says what's on, with **Clear** beside it. When your bags fill,
+  mail with gold or mail with items until you close the mailbox. While a
+  filter is on, a line above the list says so, with **Clear** beside it. When your bags fill,
   what's left is the bottom of the list.
 - **Time left** turns amber under three days (one for C.O.D.). On a mail that
   still holds something, a curved arrow in front says it goes back to its
