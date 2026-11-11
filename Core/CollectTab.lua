@@ -5241,9 +5241,11 @@ end
 -- selected plate is, while an order other than the newest first or any
 -- filter is on; its tooltip says which. A click opens the menu, a
 -- right-click puts the list back to its defaults (GESTURES.md: reset).
--- While a filter is on, a line over the list says so (RV.PaintStrip): a
--- filter hides mail, and an order hides none, so an order alone -- a saved
--- one the player keeps -- puts no line there.
+-- While a filter is on, a row of chips under the find plate says so, one
+-- for each filter and, beside them, one for an order other than the
+-- newest first, each with its own x (RV.PaintStrip): a filter hides mail,
+-- and an order hides none, so an order alone -- a saved one the player
+-- keeps -- puts no row there.
 --
 -- The order is remembered for each list (MailboxUI.GetListSort: "inbox",
 -- "history", "sent"). A filter never is: it is the panel's own
@@ -5666,10 +5668,10 @@ end
 -- on screen is not at its defaults (RV.SFLit) it is drawn in the house's
 -- selected state, as a chosen segment is -- the plate's wash, ring and
 -- underline, and the mark in the accent's bright tone, as a selected
--- caption is (RV.PaintSortMark) -- and, while a filter is on, the words of
--- what is on stand over the list (RV.PaintStrip). plate.Paint() paints it
--- and the strip for the list on screen, only what changed, and shuts a menu
--- left from another list.
+-- caption is (RV.PaintSortMark) -- and, while a filter is on, a chip for
+-- each thing on stands under it (RV.PaintStrip). plate.Paint() paints it
+-- and the chips for the list on screen, only what changed, and shuts a
+-- menu left from another list.
 function RV.NewSortButton(panel, size)
   local T = Th()
   local sort = T.CreatePlate(panel, "segment")
@@ -5733,9 +5735,9 @@ function RV.ResetAll(panel)
   RV.SFTold(panel)
 end
 
--- The strip's Clear: every filter on the list on screen let go, the order
--- left as it was saved (CT.SetShow "all"), and the tooltip and an open
--- menu told.
+-- Every filter on the list on screen let go, the order left as it was
+-- saved (CT.SetShow "all"), and the tooltip and an open menu told: the
+-- empty list's Clear filter.
 function RV.ClearFilter(panel)
   CT.SetShow(panel, RV.SFList(panel), "all")
   RV.SFTold(panel)
@@ -5748,90 +5750,304 @@ function RV.SFTold(panel)
   if menu then menu:Repaint() end
 end
 
--- What is in force, in words, between the toolbar and the list: a slim
--- band (Theme.ApplyBand, the totals' fill, held legible at any window
--- opacity) with the filters, in the menu's order, then the order where it
--- is not the newest first -- "Unread · With gold · Most gold first", or
--- "Unread" -- and Clear at its right end, which lets the filters go and
--- leaves the order (RV.ClearFilter).
--- Built once with the panel; shown only while a filter is on, and then the
--- list starts under it (its height and a gap) instead of under the
--- toolbar, so with no filter -- whatever the order -- the window is as it
--- always was. The list is re-anchored only when the strip comes or goes,
--- and its words set only when they change.
-RV.STRIP_H = 22
+-- What is in force, as chips, between the toolbar and the list: a slim row
+-- right-aligned under the find plate, so it ends under the sort cell it
+-- springs from, one chip for each filter on and, while one is, one for an
+-- order other than the newest first. Each chip is a plate of the house's
+-- kind in its selected state, as the lit sort cell is (its fill held
+-- legible at any window opacity, its words in the accent's bright tone),
+-- with an x at its right end in the chrome's grey that the pointer lights
+-- in the accent; a click anywhere on it lets exactly that thing go -- the
+-- filter (CT.SetShow, off), or the order back to the newest first for
+-- this list, saved as any order is (CT.SetSort). Right to left: the
+-- filters, the last set nearest the sort cell, then the order.
+--
+-- Where they do not all fit the row's width (a long language, several
+-- filters), the measured rule: the chips set first fold, from the left,
+-- into one "+N" chip -- as few as leave the rest whole -- whose tooltip
+-- lists them and whose click opens the menu, where each can still be let
+-- go. Never a second row, never a wider window; only a chip alone that is
+-- wider than the row is cut short, with an ellipsis.
+--
+-- The row is RV.CHIP_H tall, the house's tight gap under the toolbar and
+-- over the list, and stands only while a filter is on; then the list
+-- starts under it instead of a gap under the toolbar, giving up
+-- CHIP_H + 2 * tightGap - gap (18 units). With no filter -- whatever the
+-- order -- the window is as it always was. Its chips are made once with
+-- the panel, as many as a list can need (an order, Received's four
+-- filters and the "+N"), and laid out only when what stands, the row's
+-- width or the face changes (RV.PaintStrip); nothing is made per refresh.
+RV.CHIP_H = 18
+RV.CHIP_PAD = 8      -- the words from the chip's left end
+RV.CHIP_X_GAP = 4    -- the words to the x's part
+RV.CHIP_X_W = 16     -- the x's part, at the chip's right end
+RV.CHIP_MAX = 6
+RV.CHIP_X_ART = { "uitools-icon-close", "transmog-icon-remove" }
+
 function RV.BuildStrip(panel)
   local T = Th()
   local M = T.Metrics
-  local strip = CreateFrame("Frame", nil, panel, "BackdropTemplate")
-  strip:SetPoint("TOPLEFT", panel.ViewToggle, "BOTTOMLEFT", 0, -M.gap)
-  strip:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
-  strip:SetHeight(RV.STRIP_H)
-  T.ApplyBand(strip)
-  local clear = T.CreateButton(nil, strip)
-  clear:SetText(L()["SF_STRIP_CLEAR"])
-  clear:SetHeight(RV.STRIP_H - 4)
-  clear:SetPoint("RIGHT", strip, "RIGHT", -2, 0)
-  clear:SetScript("OnClick", function() RV.ClearFilter(panel) end)
-  strip.Clear = clear
-  local text = T.CreateText(strip, "value")
-  text:SetPoint("LEFT", strip, "LEFT", M.inset, 0)
-  text:SetJustifyH("LEFT")
-  text:SetWordWrap(false)
-  strip.Text = text
-  -- The window resized: the words fitted again to the room.
-  strip:SetScript("OnSizeChanged", function() if panel._stripOn then RV.PaintStrip(panel, true) end end)
-  strip:Hide()
-  panel.SFStrip = strip
+  local row = CreateFrame("Frame", nil, panel)
+  row:SetPoint("TOPLEFT", panel.ViewToggle, "BOTTOMLEFT", 0, -M.tightGap)
+  if panel.SearchWrap then
+    row:SetPoint("RIGHT", panel.SearchWrap, "RIGHT", 0, 0)
+  else
+    row:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
+  end
+  row:SetHeight(RV.CHIP_H)
+  -- What stands, left to right (RV.ChipsFor), and each chip's width.
+  row.Chips, row.Kinds, row.Ids, row.Widths = {}, {}, {}, {}
+  row.fold = 0
+  for i = 1, RV.CHIP_MAX do row.Chips[i] = RV.NewChip(panel, row) end
+  -- The window resized: the chips laid out again in the room.
+  row:SetScript("OnSizeChanged", function() if panel._stripOn then RV.PaintStrip(panel, true) end end)
+  row:Hide()
+  panel.SFStrip = row
 end
 
+-- One chip: a tile plate (no underline) the row's height, selected for
+-- good, its words from its left end, and the x -- the search's own clear
+-- art, at the chip's size -- in a part of its own at the right end. Its
+-- scripts are shared by every chip; what it stands for is on it (kind,
+-- id, list), set as it is laid out.
+function RV.NewChip(panel, row)
+  local T = Th()
+  local chip = T.CreatePlate(row, "tile")
+  chip:SetHeight(RV.CHIP_H)
+  chip.Text:ClearAllPoints()
+  chip.Text:SetPoint("LEFT", chip, "LEFT", RV.CHIP_PAD, 0)
+  chip.Text:SetJustifyH("LEFT")
+  local art = T.FirstAtlas and T.FirstAtlas(RV.CHIP_X_ART)
+  local x
+  if art then
+    x = chip:CreateTexture(nil, "OVERLAY")
+    x:SetAtlas(art, false)
+    x:SetSize(7, 7)
+  else
+    x = T.CreateText(chip, "value")
+    x:SetText("\195\151")
+  end
+  x:SetPoint("CENTER", chip, "RIGHT", -RV.CHIP_X_W / 2, 0)
+  chip.X, chip.panel = x, panel
+  RV.PaintChipX(chip, false)
+  chip:RegisterForClicks("LeftButtonUp")
+  chip:SetScript("OnClick", RV.ChipClick)
+  chip:HookScript("OnEnter", RV.ChipEnter)
+  chip:HookScript("OnLeave", RV.ChipLeave)
+  T.SetPlateSelected(chip, true)
+  chip:Hide()
+  return chip
+end
+
+-- The x: the chrome's grey at rest, the accent's bright tone under the
+-- pointer.
+function RV.PaintChipX(chip, lit)
+  Th().SetColor(chip.X, lit and "accentBright" or "textSecondary")
+end
+
+function RV.ChipEnter(self)
+  RV.PaintChipX(self, true)
+  if self.kind == "more" then RV.ChipMoreTip(self) end
+end
+
+function RV.ChipLeave(self)
+  RV.PaintChipX(self, false)
+  if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+end
+
+function RV.ChipClick(self)
+  local panel = self.panel
+  if self.kind == "more" then return RV.OpenSFMenu(panel) end
+  if self.kind == "sort" then
+    CT.SetSort(panel, self.list, "mailbox")
+  else
+    CT.SetShow(panel, self.list, self.id, false)
+  end
+  RV.SFTold(panel)
+end
+
+-- The "+N" chip's tooltip: what it folds, as the sort's tooltip says it.
+function RV.ChipMoreTip(chip)
+  local row, T, L0 = chip:GetParent(), Th(), L()
+  T.TipBegin(chip, "ANCHOR_TOPRIGHT")
+  T.TipTitle(L0["SF_TITLE"])
+  for i = 1, row.fold or 0 do
+    if row.Kinds[i] == "sort" then
+      T.TipFact(L0["SF_TIP_SORT"], L0[RV.SF_SORT_KEYS[row.Ids[i]]])
+    else
+      T.TipFact(L0["SF_TIP_SHOW"], RV.ShowName(chip.list, row.Ids[i]))
+    end
+  end
+  T.TipHint(L0["SF_MORE_HINT"])
+  GameTooltip:Show()
+end
+
+-- What stands, left to right, in the row's own lists: the order where it
+-- is not the newest first, then the filters on, in the order they were set
+-- (RV.ShowFlags' turns), so the last set stands nearest the sort cell.
+-- -> how many.
+function RV.ChipsFor(panel, row, list, sort)
+  local kinds, ids = row.Kinds, row.Ids
+  local n = 0
+  if sort ~= "mailbox" then
+    n = 1
+    kinds[1], ids[1] = "sort", sort
+  end
+  local def, on = RV.SF[list], RV.ShowOf(panel, list)
+  local from = n + 1
+  local shows = on and def and def.shows
+  for i = 1, shows and #shows or 0 do
+    local id = shows[i]
+    if on[id] and n < RV.CHIP_MAX - 1 then
+      n = n + 1
+      kinds[n] = "show"
+      -- In among those placed by its turn.
+      local j = n
+      while j > from and on[ids[j - 1]] > on[id] do
+        ids[j] = ids[j - 1]
+        j = j - 1
+      end
+      ids[j] = id
+    end
+  end
+  for i = #kinds, n + 1, -1 do kinds[i], ids[i] = nil, nil end
+  return n
+end
+
+-- A chip given what it stands for and its words, its words' width let go
+-- where a cut had set one.
+function RV.DressChip(chip, kind, id, list, words)
+  chip.kind, chip.id, chip.list = kind, id, list
+  chip.X:SetShown(kind ~= "more")
+  if chip._cut then
+    chip._cut = nil
+    chip.Text:SetWidth(0)
+  end
+  chip:SetText(words)
+end
+
+-- Its width for its words as they measure now: the words between the pad
+-- and the x's part, or between two pads for the "+N".
+function RV.ChipWidth(chip)
+  local text = ceil(Th().TextWidth(chip.Text))
+  if chip.kind == "more" then return RV.CHIP_PAD + text + RV.CHIP_PAD end
+  return RV.CHIP_PAD + text + RV.CHIP_X_GAP + RV.CHIP_X_W
+end
+
+-- The fold: as few of the first chips as leave the rest whole beside a
+-- "+N" in `width`, or all but the last. widths[1..n], the snug gap
+-- between chips, and moreW(k), the "+k" chip's width. -> how many fold, and
+-- the "+N" chip's width (0 for none). Pure arithmetic, for a test to run.
+function RV.FoldChips(widths, n, gap, width, moreW)
+  local total = 0
+  for i = 1, n do total = total + widths[i] + (i > 1 and gap or 0) end
+  if total <= width or n < 2 then return 0, 0 end
+  local rest, w = total, 0
+  for k = 1, n - 1 do
+    rest = rest - widths[k] - gap
+    w = moreW(k)
+    if w + gap + rest <= width then return k, w end
+  end
+  return n - 1, w
+end
+
+-- The "+k" chip's width, measured on the chip that will wear it.
+RV.moreChip = nil
+function RV.MoreWidth(k)
+  local chip = RV.moreChip
+  RV.DressChip(chip, "more", k, chip.list, "+" .. k)
+  return RV.ChipWidth(chip)
+end
+
+function RV.LayChips(panel, row, list, sort, width)
+  local gap = Th().Metrics.space.snug
+  local chips, widths, kinds, ids = row.Chips, row.Widths, row.Kinds, row.Ids
+  local n = RV.ChipsFor(panel, row, list, sort)
+  local L0 = L()
+  for i = 1, n do
+    local chip = chips[i]
+    local words = kinds[i] == "sort" and L0[RV.SF_SORT_KEYS[ids[i]]] or RV.ShowName(list, ids[i])
+    RV.DressChip(chip, kinds[i], ids[i], list, words)
+    widths[i] = RV.ChipWidth(chip)
+  end
+  local more = chips[n + 1]
+  more.list = list
+  RV.moreChip = more
+  local fold, moreW = RV.FoldChips(widths, n, gap, width, RV.MoreWidth)
+  RV.moreChip = nil
+  row.fold = fold
+  -- Right to left from the row's right end, under the sort cell.
+  local x = 0
+  local keep = fold > 0 and (moreW + gap) or 0
+  for i = n, fold + 1, -1 do
+    local chip, w = chips[i], widths[i]
+    local room = width - x - keep
+    if w > room then
+      -- A chip alone wider than the row: its words cut to what is left.
+      w = max(RV.CHIP_PAD + RV.CHIP_X_GAP + RV.CHIP_X_W + 1, floor(room))
+      chip._cut = true
+      Th().FitText(chip.Text, w - RV.CHIP_PAD - RV.CHIP_X_GAP - RV.CHIP_X_W, chip.Text:GetText(), chip)
+    end
+    chip:ClearAllPoints()
+    chip:SetPoint("RIGHT", row, "RIGHT", -x, 0)
+    chip:SetWidth(w)
+    chip:Show()
+    RV.PaintChipX(chip, chip:IsMouseOver())
+    x = x + w + gap
+  end
+  for i = 1, fold do chips[i]:Hide() end
+  local used = n
+  if fold > 0 then
+    -- The "+N", dressed again for its count (the fold measured others).
+    RV.DressChip(more, "more", fold, list, "+" .. fold)
+    more:ClearAllPoints()
+    more:SetPoint("RIGHT", row, "RIGHT", -x, 0)
+    more:SetWidth(moreW)
+    more:Show()
+    used = n + 1
+  end
+  for i = used + 1, RV.CHIP_MAX do chips[i]:Hide() end
+end
+
+-- The row shown or put away with what it stands for (`on`: a filter on
+-- the list on screen), the list re-anchored only when it comes or goes,
+-- and the chips laid out only when what stands (the list, its order, the
+-- count of filter changes, panel._sfGen), the row's width or the face
+-- (Theme.FontGeneration) has changed since they last were.
 function RV.PaintStrip(panel, on)
-  local strip = panel.SFStrip
-  if not strip then return end
+  local row = panel.SFStrip
+  if not row then return end
+  local T = Th()
   if on ~= (panel._stripOn == true) then
     panel._stripOn = on
-    strip:SetShown(on)
+    row:SetShown(on)
     local area = panel.MailListArea
-    local M = Th().Metrics
+    local M = T.Metrics
     area:ClearAllPoints()
-    area:SetPoint("TOPLEFT", on and strip or panel.ViewToggle, "BOTTOMLEFT", 0, -M.gap)
+    if on then
+      area:SetPoint("TOPLEFT", row, "BOTTOMLEFT", 0, -M.tightGap)
+    else
+      area:SetPoint("TOPLEFT", panel.ViewToggle, "BOTTOMLEFT", 0, -M.gap)
+    end
     area:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
     area:SetPoint("BOTTOM", panel.Footer, "TOP", 0, M.gap)
   end
   if not on then return end
   local list = RV.SFList(panel)
-  local sort = RV.SortOf(list)
-  local width = strip:GetWidth() or 0
-  -- The face too (Theme.FontGeneration): a Text size or font change sizes
-  -- Clear and fits the words again in it.
-  local L0, T = L(), Th()
-  local gen = type(T.FontGeneration) == "function" and T.FontGeneration() or 0
-  local fonts = gen
-  gen = panel._sfGen or 0
-  if strip._list == list and strip._sort == sort and strip._shows == gen and strip._width == width
-      and strip._gen == fonts then
+  local sort, gen = RV.SortOf(list), panel._sfGen or 0
+  local width = row:GetWidth() or 0
+  local fonts = type(T.FontGeneration) == "function" and T.FontGeneration() or 0
+  if row._list == list and row._sort == sort and row._gen == gen and row._width == width
+      and row._fonts == fonts then
     return
   end
-  strip._list, strip._sort, strip._shows, strip._width, strip._gen = list, sort, gen, width, fonts
-  local flags, def, words = RV.ShowOf(panel, list), RV.SF[list], nil
-  for i = 1, (flags and def.shows) and #def.shows or 0 do
-    if flags[def.shows[i]] then
-      local said = RV.ShowName(list, def.shows[i])
-      words = words and (words .. " \194\183 " .. said) or said
-    end
-  end
-  if sort ~= "mailbox" then
-    local said = L0[RV.SF_SORT_KEYS[sort]]
-    words = words and (words .. " \194\183 " .. said) or said
-  end
-  local clear = strip.Clear
-  T.SizeToText(clear, { padding = 2 * T.Metrics.gap + 8, height = RV.STRIP_H - 4 })
-  local room = max(1, width - T.Metrics.inset - (clear:GetWidth() or 0) - 2 - T.Metrics.gap)
-  T.FitText(strip.Text, room, words or "", strip)
+  row._list, row._sort, row._gen, row._width, row._fonts = list, sort, gen, width, fonts
+  RV.LayChips(panel, row, list, sort, width)
 end
 
 -- The list empty through a filter: under its words (panel.Empty), the way
--- back to every mail (CT.SetShow "all": every filter; the order stays),
+-- back to every mail (RV.ClearFilter: every filter on the list; the order
+-- stays),
 -- placed and sized only when shown.
 function RV.PaintEmptyClear(panel, on)
   local clear = panel.EmptyClear
@@ -17518,8 +17734,8 @@ function CT.Build(parent)
   panel.MailListArea:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
   panel.MailListArea:SetPoint("BOTTOM", panel.Footer, "TOP", 0, M.gap)
   T.ApplyList(panel.MailListArea)
-  -- What sort and filter are in force, over the list while any is
-  -- (RV.PaintStrip).
+  -- What sort and filter are in force, as chips under the find plate
+  -- while a filter is on (RV.PaintStrip).
   RV.BuildStrip(panel)
 
   -- The list runs to the container's inner edge while nothing scrolls, and
@@ -17623,7 +17839,7 @@ function CT.Build(parent)
   panel.EmptyClear:SetText(L()["SF_CLEAR"])
   panel.EmptyClear:SetPoint("TOPLEFT", panel.Empty, "BOTTOMLEFT", 0, -M.gap)
   panel.EmptyClear:SetFrameLevel(scroll:GetFrameLevel() + 10)
-  panel.EmptyClear:SetScript("OnClick", function() CT.SetShow(panel, RV.SFList(panel), "all") end)
+  panel.EmptyClear:SetScript("OnClick", function() RV.ClearFilter(panel) end)
   panel.EmptyClear:Hide()
 
   BuildDetail(panel)
