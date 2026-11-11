@@ -231,6 +231,11 @@ local SORT_DIRECTION_KEY = {
   level    = { "RM_SORT_DIR_LEVEL_ASC",    "RM_SORT_DIR_LEVEL_DESC" },
   lastSeen = { "RM_SORT_DIR_LASTSEEN_ASC", "RM_SORT_DIR_LASTSEEN_DESC" },
 }
+-- The sort menu's rows say each field's order alone, so a direction that
+-- does not name its field ("A to Z") is named with it there.
+local SORT_MENU_KEY = {
+  name = { "RM_SORT_NAME_AZ", "RM_SORT_NAME_ZA" },
+}
 
 -------------------------------------------------------------
 -- Small utilities
@@ -1849,57 +1854,50 @@ local function Build()
   -----------------------------------------------------------
   -- Sort: the Mail tab's sort button, as Mail Memory's window wears it
   -- (MailMemory's MM.NewSortButton): a square at the row's right end that
-  -- opens a menu -- Sort: Name, Category, Level, Last played; under a
-  -- hairline the two directions in the field's own words, the field's own
-  -- first; then Reset -- drawn selected while the order is not Name, A to
-  -- Z, which a right-click puts back. Kept for the session, as it always
+  -- opens a menu -- Sort: a row for each field, Name, Category, Level, Last
+  -- played, each saying its order in the field's own words; a click
+  -- chooses a field in its own most useful direction, and a click on the
+  -- one chosen turns it round (RM.SetSort), as every sort menu here does;
+  -- then Reset -- drawn selected while the order is not Name, A to Z,
+  -- which a right-click puts back. Kept for the session, as it always
   -- was. Postbox's own menu (Dropdown.Menu): no MenuUtil, see
   -- COMBAT_TAINT.md. The category tiles are this window's filters and keep
   -- their own bar.
   -----------------------------------------------------------
-  -- The menu's ids, each to what it picks: a field, or a direction (true
-  -- for descending).
+  -- The menu's ids, each to the field it picks.
   local sortPicks = {}
   for _, sort in ipairs(SORTS) do sortPicks["sort:" .. sort.id] = sort.id end
-  local dirPicks = { ["dir:asc"] = false, ["dir:desc"] = true }
 
-  -- One menu per field, made on its first open and kept: the directions'
-  -- words are the field's, so a pick that changes the field puts that
-  -- field's menu where the open one stood (RefreshSortControl).
-  local sortMenus = {}
+  -- One menu, made on its first open and kept: each row carries both its
+  -- directions' words (`name` the field's own first, `flip` the other).
+  local sortMenu
   local memory = ns.MailMemory
   local sortButton
   local function SortMenu()
-    local field = SORT_BY_ID[RM._sort or "name"] or SORTS[1]
-    local menu = sortMenus[field.id]
-    if menu then return menu end
-    local pair = SORT_DIRECTION_KEY[field.id]
+    if sortMenu then return sortMenu end
     local items = { { heading = true, name = L["SF_SORT_HEAD"] } }
     for _, sort in ipairs(SORTS) do
-      items[#items + 1] = { id = "sort:" .. sort.id, name = L[sort.nameKey] }
+      local pair = SORT_MENU_KEY[sort.id] or SORT_DIRECTION_KEY[sort.id]
+      items[#items + 1] = { id = "sort:" .. sort.id, name = L[pair[sort.desc and 2 or 1]],
+        flip = L[pair[sort.desc and 1 or 2]] }
     end
-    local own, other = field.desc and "desc" or "asc", field.desc and "asc" or "desc"
-    items[#items + 1] = { id = "dir:" .. own, name = L[pair[field.desc and 2 or 1]], rule = true }
-    items[#items + 1] = { id = "dir:" .. other, name = L[pair[field.desc and 1 or 2]] }
     items[#items + 1] = { id = "reset", name = L["SF_RESET"], rule = true }
-    menu = memory.SortMenu(sortButton, items, function(id)
-      if sortPicks[id] then return (RM._sort or "name") == sortPicks[id] end
-      local desc = dirPicks[id]
-      if desc ~= nil then return (RM._sortDesc and true or false) == desc end
-      return false
+    sortMenu = memory.SortMenu(sortButton, items, function(id)
+      return sortPicks[id] ~= nil and (RM._sort or "name") == sortPicks[id]
     end, function(id)
       return id == "reset" and RM.SortIsDefault()
     end, function(id)
       if id == "reset" then
         RM.ResetSort()
       elseif sortPicks[id] then
-        RM.SetSort(sortPicks[id])
-      elseif dirPicks[id] ~= nil then
-        RM.SetSortDirection(dirPicks[id])
+        RM.SetSort(sortPicks[id], true)
       end
+    end, function(id)
+      local field = SORT_BY_ID[sortPicks[id] or ""]
+      return field ~= nil and (RM._sort or "name") == field.id
+        and (RM._sortDesc and true or false) ~= (field.desc and true or false)
     end)
-    sortMenus[field.id] = menu
-    return menu
+    return sortMenu
   end
 
   if memory and type(memory.NewSortButton) == "function" then
@@ -1923,15 +1921,9 @@ local function Build()
   frame.Sort = sortButton
 
   -- One place tells the button what the order is: its plate, its tooltip
-  -- and an open menu -- the field's own, where a pick changed the field.
+  -- and an open menu.
   function frame.RefreshSortControl()
     if not sortButton.Told then return end
-    local open = sortButton.open
-    if open and open ~= sortMenus[RM._sort or "name"] then
-      open:Close()
-      local menu = SortMenu()
-      if menu then sortButton.Toggle(menu) end
-    end
     sortButton.Told()
   end
 

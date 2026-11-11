@@ -1610,12 +1610,18 @@ end
 -- first, "oldest" the oldest first, "gold" the most gold first. Each list
 -- stores only what is not its default; anything else stored reads as the
 -- default.
+-- Every order turns round (a sort row clicked again), and each order turned
+-- is an order of its own, stored as any is, so a value stored before keeps
+-- its meaning: "oldest" (the box's order turned, now on every list),
+-- "expirylast" (the most time left first), "goldleast" (the least gold
+-- first) and "senderza" (senders Z to A).
 local LIST_SORT_KEY = { inbox = "inboxSort", memory = "memorySort", history = "historySort", sent = "sentSort" }
 local LIST_SORTS = {
-  inbox = { expiry = true, gold = true, sender = true },
-  memory = { expiry = true },
-  history = { oldest = true, gold = true },
-  sent = { oldest = true, gold = true },
+  inbox = { oldest = true, expiry = true, expirylast = true, gold = true, goldleast = true, sender = true,
+    senderza = true },
+  memory = { oldest = true, expiry = true, expirylast = true },
+  history = { oldest = true, gold = true, goldleast = true },
+  sent = { oldest = true, gold = true, goldleast = true },
 }
 function UI.GetListSort(list)
   local key = LIST_SORT_KEY[list]

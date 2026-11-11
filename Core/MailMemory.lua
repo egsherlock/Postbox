@@ -3437,22 +3437,40 @@ function Order.ByExpiry(a, b)
   if ea ~= eb then return ea < eb end
   return (a.subject or "") < (b.subject or "")
 end
+-- "expirylast", the order turned round (a sort row clicked again): the
+-- most time left first, its ties turned with it. What has already gone
+-- stays last: it is no longer in the box to expire.
+function Order.ByExpiryLast(a, b)
+  local now = Order.now
+  local ea, eb = tonumber(a.expires) or 0, tonumber(b.expires) or 0
+  local ga, gb = ea <= now, eb <= now
+  if ga ~= gb then return gb end
+  if ea ~= eb then return ea > eb end
+  return (a.subject or "") > (b.subject or "")
+end
+-- The orders that shape the record here: the two by expiry, and "oldest",
+-- the box's order read backwards (no comparison made).
+Order.BY = { expiry = Order.ByExpiry, expirylast = Order.ByExpiryLast }
+Order.SHAPED = { expiry = true, expirylast = true, oldest = true }
 
--- Appends to `rows` the first `n` mails of Order.list, in the expiry order,
--- each through `copy` where one is given, and empties the list for the next.
-function Order.Append(rows, n, now, copy)
+-- Appends to `rows` the first `n` mails of Order.list in `order` (one of
+-- Order.SHAPED; nil is "expiry"), each through `copy` where one is given,
+-- and empties the list for the next.
+function Order.Append(rows, n, now, copy, order)
   local list = Order.list
   -- Nothing past the n given: a sort that threw part-way left its mails.
   for i = #list, n + 1, -1 do list[i] = nil end
-  if n > 1 then
+  local by = Order.BY[order or "expiry"]
+  if by and n > 1 then
     Order.now = now
-    table.sort(list, Order.ByExpiry)
+    table.sort(list, by)
   end
-  local at = #rows
+  local at, back = #rows, order == "oldest"
   for i = 1, n do
-    rows[at + i] = copy and copy(list[i]) or list[i]
-    list[i] = nil
+    local mail = list[back and (n + 1 - i) or i]
+    rows[at + i] = copy and copy(mail) or mail
   end
+  for i = 1, n do list[i] = nil end
 end
 
 -- A mail of this visit's look, as a list may keep it: the next capture fills
@@ -3501,9 +3519,9 @@ end
 local function SearchAll(query, now, order, all)
   local rows, characters = {}, 0
   all = all or MM.Characters()
-  -- In the expiry order each box's matches are gathered in Order.list and
-  -- sorted there, under the box's heading.
-  local byExpiry, list = order == "expiry", Order.list
+  -- In an order of its own (Order.SHAPED) each box's matches are gathered
+  -- in Order.list and put in it there, under the box's heading.
+  local byExpiry, list = Order.SHAPED[order], Order.list
   for i = 1, #all do
     local st = all[i]
     local snap = (not st.hidden) and SnapshotOf(st.realm, st.name) or nil
@@ -3526,7 +3544,7 @@ local function SearchAll(query, now, order, all)
         end
       end
     end
-    if byExpiry and found > 0 then Order.Append(rows, found, now, copy) end
+    if byExpiry and found > 0 then Order.Append(rows, found, now, copy, order) end
   end
   return rows, characters
 end
@@ -3566,7 +3584,8 @@ end
 
 -- realm, name, opts -> rows, info. `realm`/`name` nil for the character
 -- being played. opts.query: the search, folded ("" for none); opts.all:
--- search every character's box; opts.sort: "expiry" for the soonest first;
+-- search every character's box; opts.sort: "expiry" for the soonest first,
+-- "expirylast" for the latest first, "oldest" for the box's order turned;
 -- opts.characters: an MM.Characters() list already built for this refresh.
 -- info: realm, name, me, snapshot, total (mails in the snapshot), hidden
 -- (in the box but past the record's cap), box (the whole box, BoxTotal,
@@ -3594,10 +3613,10 @@ function MM.RowsFor(realm, name, opts)
   -- Order.list on its way (the arrivals stay first either way).
   local mails = snapshot and snapshot.mails
   local count = mails and #mails or 0
-  if opts.sort == "expiry" then
+  if Order.SHAPED[opts.sort] then
     local list = Order.list
     for i = 1, count do list[i] = mails[i] end
-    Order.Append(rows, count, now)
+    Order.Append(rows, count, now, nil, opts.sort)
   else
     for i = 1, count do rows[#rows + 1] = mails[i] end
   end
@@ -3650,7 +3669,7 @@ end
 -- of this kind: the Mail tab's sample set, each mail as a snapshot would
 -- have remembered it. Made once per set; read, never written, by the rows.
 -- `order` "expiry": the same rows, the soonest to go first -- a second list,
--- sorted once per set.
+-- sorted once per set; likewise each order of Order.SHAPED.
 function MM.PreviewRows(order)
   local CT = ns.CollectTab
   local mails = CT and CT.PreviewMails and CT.PreviewMails() or {}
@@ -3682,14 +3701,19 @@ function MM.PreviewRows(order)
     kept = { gen = gen, rows = rows }
     MM._previewRows = kept
   end
-  if order ~= "expiry" then return kept.rows end
-  local sorted = kept.byExpiry
+  if not Order.SHAPED[order] then return kept.rows end
+  local shaped = kept.shaped
+  if not shaped then
+    shaped = {}
+    kept.shaped = shaped
+  end
+  local sorted = shaped[order]
   if not sorted then
     sorted = {}
     local list, rows = Order.list, kept.rows
     for i = 1, #rows do list[i] = rows[i] end
-    Order.Append(sorted, #rows, time())
-    kept.byExpiry = sorted
+    Order.Append(sorted, #rows, time(), nil, order)
+    shaped[order] = sorted
   end
   return sorted
 end
@@ -4109,9 +4133,10 @@ end
 -- A sort button's menu (Dropdown.Menu), as the Mail tab's is made: `items`
 -- its groups and Reset last under a hairline; a pick leaves it open with its
 -- dots moved; Reset grayed while there is nothing to reset. `checked(id)`,
--- `disabled(id)` and `onPick(id)` as Dropdown.Menu takes them. It opens
+-- `disabled(id)`, `onPick(id)` and `flipped(id)` (a field's row turned
+-- round, reading its `flip` words) as Dropdown.Menu takes them. It opens
 -- under the button, left edges lined up, free to pass the window's edge.
-function MM.SortMenu(sort, items, checked, disabled, onPick)
+function MM.SortMenu(sort, items, checked, disabled, onPick, flipped)
   local D = ns.Core and ns.Core.UI and ns.Core.UI.Dropdown
   if not (D and type(D.Menu) == "function") then return nil end
   local menu
@@ -4120,14 +4145,22 @@ function MM.SortMenu(sort, items, checked, disabled, onPick)
     checked = checked,
     disabled = disabled,
     onPick = onPick,
+    flipped = flipped,
     onClose = function() if sort.open == menu then sort.open = nil end end,
   })
   return menu
 end
 
 -- This window's menu: Sort, Newest first (the default) and Expiring first,
--- then Reset. Its ids, each to the order it picks.
+-- then Reset. Its ids, each to the field it picks: a click chooses that
+-- field the right way round, and a click on the one chosen turns it round
+-- ("Oldest first", "Expiring last"), as the Mail tab's menu does. Each
+-- order's field, each order turned, and each order's words.
 MM.MEMORY_SORT_PICKS = { ["sort:mailbox"] = "mailbox", ["sort:expiry"] = "expiry" }
+MM.SORT_FIELD = { mailbox = "mailbox", oldest = "mailbox", expiry = "expiry", expirylast = "expiry" }
+MM.SORT_FLIP = { mailbox = "oldest", oldest = "mailbox", expiry = "expirylast", expirylast = "expiry" }
+MM.SORT_WORDS = { mailbox = "SORT_NEWEST_TITLE", oldest = "SF_SORT_OLDEST", expiry = "SORT_EXPIRY_TITLE",
+  expirylast = "SF_SORT_EXPIRY_LAST" }
 
 -- The order kept for this window (MailboxUI.SetListSort, "memory"), and the
 -- list shown in it from its top; the button and an open menu told.
@@ -4153,21 +4186,27 @@ local function BuildSearch(frame)
         local picks = MM.MEMORY_SORT_PICKS
         frame._sortMenu = MM.SortMenu(sort, {
           { heading = true, name = L["SF_SORT_HEAD"] },
-          { id = "sort:mailbox", name = L["SORT_NEWEST_TITLE"] },
-          { id = "sort:expiry", name = L["SORT_EXPIRY_TITLE"] },
+          { id = "sort:mailbox", name = L["SORT_NEWEST_TITLE"], flip = L["SF_SORT_OLDEST"] },
+          { id = "sort:expiry", name = L["SORT_EXPIRY_TITLE"], flip = L["SF_SORT_EXPIRY_LAST"] },
           { id = "reset", name = L["SF_RESET"], rule = true },
         }, function(id)
-          return picks[id] ~= nil and MM.SortOf("memory") == picks[id]
+          return picks[id] ~= nil and MM.SORT_FIELD[MM.SortOf("memory")] == picks[id]
         end, function(id)
           return id == "reset" and MM.SortOf("memory") == "mailbox"
         end, function(id)
-          SetMemorySort(frame, picks[id] or "mailbox")
+          if id == "reset" then return SetMemorySort(frame, "mailbox") end
+          local field, now = picks[id], MM.SortOf("memory")
+          if not field then return end
+          SetMemorySort(frame, MM.SORT_FIELD[now] == field and MM.SORT_FLIP[now] or field)
+        end, function(id)
+          local now = MM.SortOf("memory")
+          return picks[id] ~= nil and MM.SORT_FIELD[now] == picks[id] and now ~= picks[id]
         end)
       end
       return frame._sortMenu
     end,
     tip = function()
-      T.TipLine(L[MM.SortOf("memory") == "expiry" and "SORT_EXPIRY_TITLE" or "SORT_NEWEST_TITLE"])
+      T.TipLine(L[MM.SORT_WORDS[MM.SortOf("memory")] or "SORT_NEWEST_TITLE"])
     end,
   })
   frame.Sort = sort

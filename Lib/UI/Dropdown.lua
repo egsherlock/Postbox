@@ -1076,6 +1076,16 @@ end
 -- again while it is open (the choices changed under it). An item with
 -- `rule` has a hairline over it; opts.disabled(id) -> a row drawn faint
 -- whose click does nothing, asked with the marks.
+-- A choice that runs two ways (the sort menus' orders): an item with
+-- `flip`, its words the other way round ("Oldest first" to "Newest
+-- first"); opts.flipped(id) -> whether it reads them now, asked with the
+-- marks. While it is the choice in effect it carries the turn mark at its
+-- right end -- the house caret (Theme.GLYPHS "caret"), pointing down the
+-- way its `name` runs and up the way its `flip` does, turned as it changes
+-- (Theme.TurnGlyph) -- so it is plain that another click turns it round.
+-- The menu is as wide as the longer words of each.
+local FLIP = { SIZE = 5, X = 8, ROOM = 12 }
+
 function Dropdown.Menu(owner, items, opts)
   opts = type(opts) == "table" and opts or {}
   items = type(items) == "table" and items or {}
@@ -1083,10 +1093,29 @@ function Dropdown.Menu(owner, items, opts)
   local list, rows
   local checked = type(opts.checked) == "function" and opts.checked or nil
   local disabled = type(opts.disabled) == "function" and opts.disabled or nil
+  local flipped = type(opts.flipped) == "function" and opts.flipped or nil
+
+  -- A two-way row's words and its turn mark, as the choice stands now. A
+  -- mark is turned while out of sight where `still` (the menu opening), so
+  -- it never spins as the menu appears; a click on a shown one turns it.
+  local function PaintTurn(row, on, still)
+    local item, mark = row.item, row._turn
+    local back = flipped and flipped(item.id) and true or false
+    local words = back and item.flip or item.name
+    if row.Text:GetText() ~= words then row.Text:SetText(words) end
+    if not mark then return end
+    local themed = ns.Theme
+    if not on or still then mark:Hide() end
+    if themed and type(themed.TurnGlyph) == "function" then themed.TurnGlyph(mark, not back) end
+    if on then
+      if themed and type(themed.SetColor) == "function" then themed.SetColor(mark, "accentBright") end
+      mark:Show()
+    end
+  end
 
   -- The chosen rows' mark, as the select's (PaintChosen); and a row its
   -- owner has set aside for now, faint (as a select's `off` item is).
-  local function PaintMarks()
+  local function PaintMarks(still)
     if not rows then return end
     if disabled then
       for i = 1, #rows do
@@ -1101,7 +1130,11 @@ function Dropdown.Menu(owner, items, opts)
     if not checked then return end
     for i = 1, #rows do
       local row = rows[i]
-      if row._selWash then PaintChosen(row, row.Text, checked(row.item.id) and true or false) end
+      if row._selWash then
+        local on = checked(row.item.id) and true or false
+        if row.item.flip then PaintTurn(row, on, still) end
+        PaintChosen(row, row.Text, on)
+      end
     end
   end
 
@@ -1194,6 +1227,16 @@ function Dropdown.Menu(owner, items, opts)
         end
         -- The choice in effect, where the menu has one: the select's mark.
         if checked then ChosenArt(row) end
+        -- A two-way choice's turn mark, shown while it is the one in effect.
+        local themed = ns.Theme
+        if item.flip and themed and type(themed.Glyph) == "function" then
+          local mark = themed.Glyph(row, "caret", FLIP.SIZE, "OVERLAY")
+          if mark then
+            mark:SetPoint("CENTER", row, "RIGHT", -FLIP.X, 0)
+            mark:Hide()
+            row._turn = mark
+          end
+        end
         row:SetScript("OnEnter", function(self)
           if not self._off then bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4]) end
           if opts.onEnter then opts.onEnter(self, self.item) end
@@ -1226,12 +1269,22 @@ function Dropdown.Menu(owner, items, opts)
   -- room over it is longer (a button near the foot of the screen). Kept on
   -- the screen whatever else.
   local function Place()
-    local widest = 0
+    local widest, room = 0, 0
     for i = 1, #rows do
-      local w = TextWidth(rows[i].Text)
+      local row = rows[i]
+      local w = TextWidth(row.Text)
+      -- A two-way row: its other words too, and the room for its mark.
+      local flip = row.item and row.item.flip
+      if flip then
+        local now = row.Text:GetText()
+        row.Text:SetText(flip)
+        w = math.max(w, TextWidth(row.Text))
+        row.Text:SetText(now)
+        room = FLIP.ROOM
+      end
       if w > widest then widest = w end
     end
-    local width = math.max(tonumber(opts.minWidth) or 0, math.ceil(widest) + 2 * (LIST_PADDING + MARK_GUTTER))
+    local width = math.max(tonumber(opts.minWidth) or 0, math.ceil(widest) + 2 * (LIST_PADDING + MARK_GUTTER) + room)
     list:SetWidth(width)
     local height = list:GetHeight() or 0
     local bottom, top = owner:GetBottom(), owner:GetTop()
@@ -1268,7 +1321,7 @@ function Dropdown.Menu(owner, items, opts)
     Place()
     list:Show()
     list:Raise()
-    PaintMarks()
+    PaintMarks(true)
     Watch()
     if opts.onOpen then opts.onOpen() end
   end

@@ -4706,7 +4706,9 @@ end
 -- The order the list is shown in, from the menu right of the search ("Sort
 -- and filter", below the selection): "mailbox", as the box holds them
 -- (newest first), "expiry", the least time left first, "gold", the most
--- gold first, or "sender", the senders A to Z. Display only: each group is
+-- gold first, or "sender", the senders A to Z -- or any of them turned
+-- round: "oldest", "expirylast", "goldleast", "senderza", each the exact
+-- mirror of its field's order (RV.SORT_FLIP). Display only: each group is
 -- sorted within itself -- the mail to collect, and the read mail under its
 -- divider or in the Done tab -- and everything that acts on mail still
 -- finds it by index and fingerprint. A selection's range runs down the rows
@@ -4753,14 +4755,52 @@ do
     if la ~= lb then return la < lb end
     return a < b
   end
-  -- The comparator for each order that sorts.
-  RV.SORTERS = { expiry = RV.ByLeft, gold = RV.ByMost, sender = RV.ByName }
+  -- Each turned round (a sort row clicked again): the exact mirror of its
+  -- order, its ties turned with it, so mails with the same time left, gold
+  -- or sender stand the oldest first.
+  function RV.ByLeftLast(a, b)
+    local la, lb = left[a] or 0, left[b] or 0
+    if la ~= lb then return la > lb end
+    return a > b
+  end
+  function RV.ByLeast(a, b)
+    local la, lb = left[a] or 0, left[b] or 0
+    if la ~= lb then return la < lb end
+    return a > b
+  end
+  function RV.ByNameZA(a, b)
+    local la, lb = left[a], left[b]
+    if type(la) ~= "string" then la = "" end
+    if type(lb) ~= "string" then lb = "" end
+    if la ~= lb then return la > lb end
+    return a > b
+  end
+  -- The comparator for each order that sorts by a key. The box's order
+  -- turned ("oldest") is the walk's list read backwards (RV.Arrange).
+  RV.SORTERS = { expiry = RV.ByLeft, gold = RV.ByMost, sender = RV.ByName,
+    expirylast = RV.ByLeftLast, goldleast = RV.ByLeast, senderza = RV.ByNameZA }
 end
 
--- order, daysLeft, money, sender -> what that order sorts a mail by.
+-- A group of the list put in an order other than the box's, in place: by
+-- `by`, or with none (the oldest first) turned end for end -- what the walk
+-- listed newest first, the exact mirror, and no comparison made.
+function RV.Arrange(list, by)
+  if by then
+    table.sort(list, by)
+    return
+  end
+  local i, j = 1, #list
+  while i < j do
+    list[i], list[j] = list[j], list[i]
+    i, j = i + 1, j - 1
+  end
+end
+
+-- order, daysLeft, money, sender -> what that order sorts a mail by (either
+-- way round).
 function RV.SortKey(order, daysLeft, money, sender)
-  if order == "gold" then return tonumber(money) or 0 end
-  if order == "sender" then return RV.NameKey(sender) end
+  if order == "gold" or order == "goldleast" then return tonumber(money) or 0 end
+  if order == "sender" or order == "senderza" then return RV.NameKey(sender) end
   return tonumber(daysLeft) or 0
 end
 
@@ -4832,6 +4872,7 @@ function RV.SortAsListed(queue)
   local by = RV.SORTERS[order]
   if not by then
     table.sort(queue)
+    if order == "oldest" then RV.Arrange(queue) end
     return
   end
   local left = RV.LEFT
@@ -5272,20 +5313,29 @@ end
 -- the filter hides.
 -------------------------------------------------------------
 
--- What each list offers, in the menu's order: its orders and its filters
--- ("all" the unfiltered list), and which saved order it keeps (`save`,
+-- What each list offers, in the menu's order: what it sorts by (each a
+-- field, named by its order the right way round) and its filters ("all"
+-- the unfiltered list), and which saved order it keeps (`save`,
 -- MailboxUI.GetListSort). The Done tab keeps the inbox's order.
 RV.SF = {
   inbox = { save = "inbox", sorts = { "mailbox", "expiry", "gold", "sender" },
     shows = { "all", "unread", "gold", "items" } },
   done = { save = "inbox", sorts = { "mailbox", "expiry", "sender" } },
-  received = { save = "history", sorts = { "mailbox", "oldest", "gold" },
+  received = { save = "history", sorts = { "mailbox", "gold" },
     shows = { "all", "sold", "bought", "expired", "players" } },
-  sent = { save = "sent", sorts = { "mailbox", "oldest", "gold" }, shows = { "all", "gold", "items", "cod" } },
+  sent = { save = "sent", sorts = { "mailbox", "gold" }, shows = { "all", "gold", "items", "cod" } },
 }
+-- Every order turns round: a sort row clicked again while it is the one in
+-- force puts its field the other way (CT.PickSort). Each order's field (the
+-- order the right way round), and each order turned.
+RV.SORT_FIELD = { mailbox = "mailbox", oldest = "mailbox", expiry = "expiry", expirylast = "expiry",
+  gold = "gold", goldleast = "gold", sender = "sender", senderza = "sender" }
+RV.SORT_FLIP = { mailbox = "oldest", oldest = "mailbox", expiry = "expirylast", expirylast = "expiry",
+  gold = "goldleast", goldleast = "gold", sender = "senderza", senderza = "sender" }
 -- The words for each order and each filter.
 RV.SF_SORT_KEYS = { mailbox = "SORT_NEWEST_TITLE", expiry = "SORT_EXPIRY_TITLE", gold = "SF_SORT_GOLD",
-  sender = "SF_SORT_SENDER", oldest = "SF_SORT_OLDEST" }
+  sender = "SF_SORT_SENDER", oldest = "SF_SORT_OLDEST", expirylast = "SF_SORT_EXPIRY_LAST",
+  goldleast = "SF_SORT_GOLD_LEAST", senderza = "SF_SORT_SENDER_ZA" }
 RV.SF_SHOW_KEYS = { all = "SF_SHOW_ALL", unread = "SF_SHOW_UNREAD", gold = "SF_SHOW_GOLD", items = "SF_SHOW_ITEMS",
   sold = "SF_SHOW_SOLD", bought = "SF_SHOW_BOUGHT", expired = "SF_SHOW_EXPIRED", players = "SF_SHOW_PLAYERS",
   cod = "SF_SHOW_COD" }
@@ -5298,13 +5348,13 @@ function RV.SFList(panel)
 end
 
 -- The order a list is shown in: its saved one. The Done tab's read mail
--- holds no gold, so the inbox's Most gold leaves it in the box's order, and
--- says so.
+-- holds no gold, so the inbox's Most or Least gold leaves it in the box's
+-- order, and says so.
 function RV.SortOf(list)
   local def = RV.SF[list]
   local UI = ns.MailboxUI
   local sort = def and UI and type(UI.GetListSort) == "function" and UI.GetListSort(def.save) or "mailbox"
-  if list == "done" and sort == "gold" then return "mailbox" end
+  if list == "done" and RV.SORT_FIELD[sort] == "gold" then return "mailbox" end
   return sort
 end
 
@@ -5440,12 +5490,30 @@ function RV.RowByName(a, b)
   if na ~= nb then return na < nb end
   return RV.POS[a] < RV.POS[b]
 end
-RV.ROW_SORTERS = { gold = RV.RowByMost, sender = RV.RowByName }
+-- Each turned round: the exact mirror, ties in the list's order backwards.
+function RV.RowByLeast(a, b)
+  local ma, mb = tonumber(a.money) or 0, tonumber(b.money) or 0
+  if ma ~= mb then return ma < mb end
+  return RV.POS[a] > RV.POS[b]
+end
+function RV.RowByNameZA(a, b)
+  local na, nb = RV.NameKey(a.sender), RV.NameKey(b.sender)
+  if na ~= nb then return na > nb end
+  return RV.POS[a] > RV.POS[b]
+end
+RV.ROW_SORTERS = { gold = RV.RowByMost, sender = RV.RowByName, goldleast = RV.RowByLeast,
+  senderza = RV.RowByNameZA }
 function RV.HistoryByMost(a, b)
   local ma, mb = a.m or 0, b.m or 0
   if ma ~= mb then return ma > mb end
   return RV.POS[a] < RV.POS[b]
 end
+function RV.HistoryByLeast(a, b)
+  local ma, mb = a.m or 0, b.m or 0
+  if ma ~= mb then return ma < mb end
+  return RV.POS[a] > RV.POS[b]
+end
+RV.HISTORY_SORTERS = { gold = RV.HistoryByMost, goldleast = RV.HistoryByLeast }
 
 -- Another character's box, or every box's matches (AV.Build), in the
 -- order and through the filter the inbox's list has: Mail Memory's own
@@ -5478,7 +5546,7 @@ function RV.ShapeRows(panel, rows, order, show)
   return out
 end
 
--- The menu's ids, "sort:<order>" and "show:<filter>", read back once each.
+-- The menu's ids, "sort:<field>" and "show:<filter>", read back once each.
 -- Filled in a function of its own: a loop at the file's level would hold
 -- its names among the chunk's locals while it ran.
 RV.SF_IDS = {}
@@ -5492,16 +5560,24 @@ RV.SFIdsFill()
 
 -- An order chosen for a list (the menu, or a test): remembered, and the
 -- list shown in it.
+-- An order is known to a list where its field is one the list sorts by.
 function CT.SetSort(panel, list, order)
   local def = panel and RV.SF[list]
   if not def then return end
-  local known = false
-  for i = 1, #def.sorts do if def.sorts[i] == order then known = true end end
+  local field, known = RV.SORT_FIELD[order], false
+  for i = 1, #def.sorts do if def.sorts[i] == field then known = true end end
   local UI = ns.MailboxUI
   if not (known and UI and type(UI.SetListSort) == "function") then return end
   if RV.SortOf(list) == order then return end
   UI.SetListSort(def.save, order)
   RV.SFChanged(panel)
+end
+
+-- A sort row clicked (the menu, or a test): its field the right way round,
+-- or, where that field is already the one in force, turned round.
+function CT.PickSort(panel, list, field)
+  local now = RV.SortOf(list)
+  CT.SetSort(panel, list, RV.SORT_FIELD[now] == field and RV.SORT_FLIP[now] or field)
 end
 
 -- A filter turned on or off for a list (the menu's tick, a chip's x, or a
@@ -5596,7 +5672,12 @@ end
 -- The menu for a list, made on its first open and kept on the panel: a
 -- heading and the orders, then a heading and the filters, then Reset. Each pick
 -- leaves it open with its marks moved, so an order and any filters can be
--- chosen in one visit to it. The orders are one choice; each filter is a
+-- chosen in one visit to it. The orders are one choice, a row for each
+-- field: a click chooses it the right way round, and a click on the one
+-- chosen turns it round (CT.PickSort); each row says its order in words,
+-- the way it runs now ("Newest first", "Oldest first"), and the chosen one
+-- carries the menu's turn mark at its right end (Dropdown.Menu, `flip`).
+-- Each filter is a
 -- tick of its own, marked while it is on (the select's chosen mark, which
 -- any number of rows can wear), and "All mail" is marked while none is.
 function RV.SFMenu(panel, list)
@@ -5611,7 +5692,9 @@ function RV.SFMenu(panel, list)
   local def, L0 = RV.SF[list], L()
   local items = { { heading = true, name = L0["SF_SORT_HEAD"] } }
   for i = 1, #def.sorts do
-    items[#items + 1] = { id = "sort:" .. def.sorts[i], name = L0[RV.SF_SORT_KEYS[def.sorts[i]]] }
+    local field = def.sorts[i]
+    items[#items + 1] = { id = "sort:" .. field, name = L0[RV.SF_SORT_KEYS[field]],
+      flip = L0[RV.SF_SORT_KEYS[RV.SORT_FLIP[field]]] }
   end
   if def.shows then
     items[#items + 1] = { heading = true, name = L0["SF_SHOW_HEAD"] }
@@ -5630,16 +5713,22 @@ function RV.SFMenu(panel, list)
     checked = function(id)
       local pick = RV.SF_IDS[id]
       if not pick then return false end
-      if pick[1] == "sort" then return RV.SortOf(list) == pick[2] end
+      if pick[1] == "sort" then return RV.SORT_FIELD[RV.SortOf(list)] == pick[2] end
       local on = RV.ShowOf(panel, list)
       if pick[2] == "all" then return on == nil end
       return on ~= nil and on[pick[2]] ~= nil
+    end,
+    -- A field's row turned round while its order runs the other way.
+    flipped = function(id)
+      local pick = RV.SF_IDS[id]
+      local now = RV.SortOf(list)
+      return pick ~= nil and pick[1] == "sort" and RV.SORT_FIELD[now] == pick[2] and now ~= pick[2]
     end,
     onPick = function(id)
       if id == "reset" then return RV.ResetAll(panel) end
       local pick = RV.SF_IDS[id]
       if not pick then return end
-      if pick[1] == "sort" then CT.SetSort(panel, list, pick[2]) else CT.SetShow(panel, list, pick[2]) end
+      if pick[1] == "sort" then CT.PickSort(panel, list, pick[2]) else CT.SetShow(panel, list, pick[2]) end
       if GameTooltip:IsOwned(panel.Sort) then RV.SFTip(panel, panel.Sort) end
     end,
     onClose = function() if panel._sfOpen == list then panel._sfOpen = nil end end,
@@ -7625,7 +7714,7 @@ do
     -- In the sort's order and through the filter, as the inbox's list
     -- would be (RV.SORTERS, RV.Shows).
     local order = RV.SortOf(view == VIEW_DONE and "done" or "inbox")
-    local left = (order ~= "mailbox") and RV.LEFT or nil
+    local left = RV.SORTERS[order] and RV.LEFT or nil
     local show = (view ~= VIEW_DONE) and RV.ShowOf(panel, "inbox") or nil
     -- Read mail as the player's Read mail setting leaves it, as at a
     -- mailbox: under the divider, in the Done tab, or -- Delete when done --
@@ -7702,10 +7791,10 @@ do
     panel._readCount = #tail
     panel._dividerAt = nil
     panel._markAny = #tail > 0 and (view == VIEW_DONE or (RV.Mode() ~= "tab" and not RV.Folded(panel)))
-    if left then
+    if order ~= "mailbox" then
       local by = RV.SORTERS[order]
-      if view ~= VIEW_DONE then table.sort(filtered, by) end
-      if panel._markAny then table.sort(tail, by) end
+      if view ~= VIEW_DONE then RV.Arrange(filtered, by) end
+      if panel._markAny then RV.Arrange(tail, by) end
     end
     if view == VIEW_DONE then
       Clear(filtered)
@@ -9064,7 +9153,7 @@ function HV.BuildHistoryList(panel, query)
   panel._hsent = sent
   -- Its order and its filter (RV.SortOf, RV.ShowOf): the newest first
   -- walks each record from its end, the oldest first from its start, and
-  -- the most gold sorts what was listed (RV.SortRuns).
+  -- the most or least gold sorts what was listed (RV.SortRuns).
   local half = sent and "sent" or "received"
   local order = RV.SortOf(half)
   local show = RV.ShowOf(panel, half)
@@ -9271,7 +9360,7 @@ function HV.BuildHistoryList(panel, query)
   -- measured knowing it.
   moneyW.counted = RV.COIN.counted
   -- A narrowed list keeps its order (above).
-  if order == "gold" and not narrow then RV.SortRuns(out, RV.HistoryByMost) end
+  if RV.HISTORY_SORTERS[order] and not narrow then RV.SortRuns(out, RV.HISTORY_SORTERS[order]) end
   panel._hmatched = chars and (#out - found) or nil
   panel._hchars = chars and found or nil
   -- What a longer query may narrow (above), kept only for a search.
@@ -11651,7 +11740,7 @@ function CT.RefreshMailList(panel)
   -- by the inbox's order as it can (RV.SortOf).
   if panel.Sort then panel.Sort.Paint() end
   local order = (measuring and not panel._preview) and RV.SortOf(view == VIEW_DONE and "done" or "inbox") or "mailbox"
-  local left = (order ~= "mailbox") and RV.LEFT or nil
+  local left = RV.SORTERS[order] and RV.LEFT or nil
   -- The filter (RV.ShowOf), a narrowing of the list as the search is:
   -- what it does not show is not listed, counted or swept. Never on the
   -- Done tab, whose read mail none of them would show.
@@ -11770,10 +11859,10 @@ function CT.RefreshMailList(panel)
   panel._markAny = #tail > 0 and (view == VIEW_DONE or (RV.Mode() ~= "tab" and not RV.Folded(panel)))
   -- Each group in the sort's order, in place: the mail to collect unless
   -- the Done tab is on screen, and the read mail where it is listed.
-  if left then
+  if order ~= "mailbox" then
     local by = RV.SORTERS[order]
-    if view ~= VIEW_DONE then table.sort(filtered, by) end
-    if panel._markAny then table.sort(tail, by) end
+    if view ~= VIEW_DONE then RV.Arrange(filtered, by) end
+    if panel._markAny then RV.Arrange(tail, by) end
   end
   if view == VIEW_DONE then
     Clear(filtered)
