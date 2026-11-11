@@ -4973,7 +4973,7 @@ function CT.ClearSearch(panel)
     AV.Paint(panel)
     if ns.MailMemory and ns.MailMemory.ClosePicker then ns.MailMemory.ClosePicker() end
     -- And the folded text History's search built: kept only while in use.
-    if RV.ForgetHistorySearch then RV.ForgetHistorySearch() end
+    if RV.ForgetHistorySearch then RV.ForgetHistorySearch(panel, true) end
     RV.ForgetInboxSearch()
   end
 end
@@ -7891,12 +7891,19 @@ end
 -- C.O.D. paid and a won auction's price in red, money that left.
 -- `coins`: History's coin set where it writes sums with coins
 -- (RV.RowCoins), nil for the letters.
-function HV.HistoryMoney(entry, brief, coins)
+function HV.HistoryMoney(entry, brief, coins, passing)
   local T = Th()
   if coins then
     if (entry.m or 0) > 0 then return RV.CoinText(coins, "gain", entry.m, brief) end
     if (entry.c or 0) > 0 then return RV.CoinText(coins, "loss", entry.c, brief) end
     if (entry.p or 0) > 0 then return RV.CoinText(coins, "loss", entry.p, brief) end
+    return nil
+  end
+  -- A row's short form: each text made once (HV.LetterText).
+  if brief then
+    if (entry.m or 0) > 0 then return HV.LetterText(1, entry.m, passing) end
+    if (entry.c or 0) > 0 then return HV.LetterText(2, entry.c, passing) end
+    if (entry.p or 0) > 0 then return HV.LetterText(2, entry.p, passing) end
     return nil
   end
   local compactMoney = ns.Core.Formatting.FormatMoneyCompact
@@ -8118,7 +8125,13 @@ end
 -- name carries (HV.SearchFresh, asked once per list) or the mailbox closes
 -- (HV.ForgetSearch): what a visit's search built is not kept for the session.
 HV.WEAK_KEYS = { __mode = "k" }
-function HV.ForgetSearch()
+function HV.ForgetSearch(panel, closing)
+  -- The mailbox closed: the widths and texts History keeps (HV.Widths,
+  -- HV.LetterText) go too.
+  if closing then
+    HV.widths = {}
+    HV.mtext = { t = {}, n = 0, hexP = false, hexN = false }
+  end
   -- Nothing built since the last time: nothing to let go of.
   if HV.searchText and next(HV.searchText) == nil then return end
   HV.searchText = setmetatable({}, HV.WEAK_KEYS)
@@ -8150,6 +8163,133 @@ function HV.SearchText(entry)
   for j = #items, 1, -1 do names[j] = nil end
   HV.searchText[entry], HV.searchItems[entry] = text, #items
   return text
+end
+
+-------------------------------------------------------------
+-- History's columns, measured once
+--
+-- A list's columns are its widest texts, and a month of History is a
+-- thousand of them. What each entry's texts measure is kept, by what makes
+-- the text rather than by the entry: a sum by its kind and its reading
+-- (Formatting.CompactKey: 1373g and 1373g 50s are one text), a sender by
+-- its name, an age by the stretch of time it reads the same for. So a
+-- refresh measures nothing it measured before and makes no text: the
+-- widths are kept until what they were measured in moves -- the measuring
+-- generation (RV.MeasureScale), the host's face (Theme.FontGeneration),
+-- the sample's font and shadow, the coins' set and whether this client
+-- counts their room (RV.CoinExtra) -- and let go whole then, or where a
+-- build starts once full; never in the middle of one.
+-------------------------------------------------------------
+
+-- The sums' texts in letters, made once per kind and reading (the coins'
+-- are RV.CoinText's): 1 earned (+, the positive ink), 2 spent (-, the
+-- negative), 3 a C.O.D. asked on Sent (its label, the negative). Kept for
+-- the rows drawn, which a rebind draws again; a text the list's measuring
+-- makes (`passing`) is not kept, since its width is (HV.Widths). Let go
+-- when the inks move, where a build starts once full, and when the mailbox
+-- closes.
+HV.MONEY_MAX = 256
+HV.mtext = { t = {}, n = 0, hexP = false, hexN = false }
+function HV.LetterText(class, amount, passing)
+  local T = Th()
+  local C = HV.mtext
+  local hexP, hexN = T.InkHex("positive"), T.InkHex("negative")
+  if hexP ~= C.hexP or hexN ~= C.hexN then
+    C.t, C.n, C.hexP, C.hexN = {}, 0, hexP, hexN
+  end
+  local Fm = ns.Core.Formatting
+  local key = class * 1e10 + Fm.CompactKey(amount)
+  local text = C.t[key]
+  if text then return text end
+  local figure = Fm.FormatMoneyCompact(amount, true)
+  if class == 1 then
+    text = T.Colorize("positive", "+" .. figure)
+  elseif class == 2 then
+    text = T.Colorize("negative", "-" .. figure)
+  else
+    text = T.Colorize("negative", L()["LABEL_COD"] .. figure)
+  end
+  if C.n < HV.MONEY_MAX and not passing then
+    C.t[key] = text
+    C.n = C.n + 1
+  end
+  return text
+end
+
+-- One record of widths per column ("money", "age", "sender", and Sent's
+-- "to", whose names are keyed as Received's are): `w`, keyed as above; `n`
+-- how many; the stamp of what they were measured in.
+HV.W_MAX = 4096
+HV.widths = {}
+
+-- panel, column, sample[, coins] -> the widths of that column measured in
+-- `sample` for this build, let go first if they were measured in anything
+-- else (above).
+function HV.Widths(panel, column, sample, coins)
+  local W = HV.widths[column]
+  if not W then
+    W = { w = {}, n = 0 }
+    HV.widths[column] = W
+  end
+  local path, size, flags = sample:GetFont()
+  local shadow = sample.GetShadowOffset and sample:GetShadowOffset() or 0
+  local T = Th()
+  local face = type(T.FontGeneration) == "function" and T.FontGeneration() or 0
+  local gen, counted = panel._measureGen or 0, RV.COIN.counted
+  if W.gen ~= gen or W.face ~= face or W.path ~= path or W.size ~= size or W.flags ~= flags
+      or W.shadow ~= shadow or W.counted ~= counted or W.coins ~= coins or W.sample ~= sample
+      or W.n >= HV.W_MAX then
+    if W.n > 0 then W.w, W.n = {}, 0 end
+    W.gen, W.face, W.path, W.size, W.flags, W.shadow, W.counted, W.coins = gen, face, path, size, flags, shadow,
+      counted, coins
+    W.sample = sample
+  end
+  return W
+end
+
+-- W, key, width -> the width kept (a font not laid out yet measures zero,
+-- which is never kept, as MeasureWith keeps none).
+function HV.Keep(W, key, width)
+  if width > 0 and W.n < HV.W_MAX then
+    W.w[key] = width
+    W.n = W.n + 1
+  end
+  return width
+end
+
+-- An outcome's key among the senders' widths: a mark no name holds first.
+HV.OKEY = {}
+function HV.FillKeys()
+  for k in pairs(AUCTION_OUTCOME) do HV.OKEY[k] = "\001" .. k end
+end
+HV.FillKeys()
+
+-- How long an age reads the same: after HV.EntryAge(entry, now, style)
+-- wrote `t`'s, the times either side of it that read the same, as
+-- `lo`, `hi` and how they bound it (1: lo < t <= hi, the ages; 2: lo <= t
+-- < hi, the days). nil where it cannot say.
+function HV.AgeSpan(t, now, style)
+  if HV.DATE_KEYS[style] then
+    local at = HV.dayAt
+    local lo, hi = HV.dayLo[at], HV.dayHi[at]
+    if at > 0 and lo and t >= lo and t < hi then return lo, hi, 2 end
+    return nil
+  end
+  local s = max(0, now - t)
+  local from, to
+  if s < 3600 then
+    local v = max(1, floor(s / 60))
+    from, to = (v == 1) and 0 or v * 60, v * 60 + 60
+  elseif s < 86400 then
+    local v = floor(s / 3600)
+    from, to = v * 3600, min(v * 3600 + 3600, 86400)
+  else
+    local v = floor(s / 86400)
+    from, to = v * 86400, v * 86400 + 86400
+  end
+  -- s in [from, to): t in (now - to, now - from], and every later t where
+  -- the age is the least there is (a clock behind the record).
+  return now - to, (from == 0) and math.huge or now - from, 1
 end
 
 -- Whether History's list is every character's (HV.BuildHistoryList): the
@@ -8203,69 +8343,144 @@ function HV.BuildHistoryList(panel, query)
   -- Whether the gold column shows each kind, asked once for the list rather
   -- than once per entry: a month of History is a thousand of them.
   local showEarned, showSpent = MoneyShown("earned", layout), MoneyShown("spent", layout)
+  local coins = RV.RowCoins(layout, sample.ColMoney)
+  -- The widths kept for each column (HV.Widths); the letters' texts let go
+  -- here if they filled their record.
+  if HV.mtext.n >= HV.MONEY_MAX then HV.mtext.t, HV.mtext.n = {}, 0 end
+  local moneyW = HV.Widths(panel, "money", sample.ColMoney, coins)
+  local senderW = showSender and HV.Widths(panel, sent and "to" or "sender", sample.Sender) or nil
+  local ageW = showAge and HV.Widths(panel, "age", sample.ColTime) or nil
+  local look = coins and 5e9 or 0
+  local CompactKey = ns.Core.Formatting.CompactKey
   local earned, spent = 0, 0
   -- The ages are drawn at the moment they are measured at (HV.UpdateHistoryRows).
   local now = time()
   panel._hNow = now
-  -- One walk, over this character's record or over each character's in
-  -- turn: the next record is taken up when the one before runs out.
-  local c, head, headed = 0, nil, false
-  local i = (step > 0) and 1 or #list
-  while true do
-    while (i < 1 or i > #list) and chars and c < #chars do
-      c = c + 1
-      head, headed = chars[c], false
+  -- The stretch the last age measured reads the same for (HV.AgeSpan).
+  local ageLo, ageHi, ageHow = 0, -1, 1
+  -- What is listed: a walk over this character's record, or over each
+  -- character's in turn, each character's matches under its heading.
+  local searching = query ~= ""
+  local head, headed, w = nil, false, 0
+  local c, records = 0, chars and #chars or 1
+  while c < records do
+    c = c + 1
+    if chars then
+      head = chars[c]
       list = (sent and Memory.SentOf or Memory.HistoryOf)(head) or HV.NONE
-      i = (step > 0) and 1 or #list
     end
-    if i < 1 or i > #list then break end
-    local entry = list[i]
-    local keep = true
-    if query ~= "" then
-      keep = Helpers().SearchFinds(HV.SearchText(entry), query)
-    end
-    if keep and show then keep = RV.HistoryShows(show, entry, sent) end
-    if keep then
-      if head and not headed then
-        headed = true
-        found = found + 1
-        out[#out + 1] = head
+    headed = false
+    local first, last = 1, #list
+    if step < 0 then first, last = last, 1 end
+    for i = first, last, step do
+      local entry = list[i]
+      local keep = not searching or Helpers().SearchFinds(HV.SearchText(entry), query)
+      if keep and show then keep = RV.HistoryShows(show, entry, sent) end
+      if keep then
+        if head and not headed then
+          headed = true
+          found = found + 1
+          w = w + 1
+          out[w] = head
+        end
+        w = w + 1
+        out[w] = entry
       end
-      out[#out + 1] = entry
+    end
+  end
+  -- Then what it adds up to, and the columns: each entry listed, once. The
+  -- widest so far are held here and written to the columns after.
+  local colSender, colLeast, colMoney, colAge = 0, 0, 0, 0
+  local sw, mw, aw = senderW and senderW.w, moneyW.w, ageW and ageW.w
+  for k = 1, #out do
+    local entry = out[k]
+    if not entry.header then
       earned = earned + (entry.m or 0)
       spent = spent + (entry.c or 0) + (entry.p or 0)
+      local to = entry.s
       if sent and showSender then
         -- Sent: every recipient whole, so the column is its widest name
         -- (with another realm), past the cap; and the widest without a
         -- realm is the least a row may cut it to (RV.Place, RV.FitSender).
-        local full = HV.SentWho(entry)
-        if full then
-          local width = MeasureWith(panel, sample.Sender, full) + 2
-          if width > cols.sender then cols.sender = width end
-          if width > cols.senderLeast then
-            cols.senderLeast = max(cols.senderLeast, MeasureWith(panel, sample.Sender, HV.SentWho(entry, true)) + 2)
+        -- Each kept by the name as addressed: the full one under it, the
+        -- bare one under the name and a mark no name holds.
+        if type(to) == "string" and to ~= "" then
+          local width = sw[to]
+          if not width then
+            width = HV.Keep(senderW, to, MeasureWith(panel, sample.Sender, HV.SentWho(entry)) + 2)
+          end
+          if width > colSender then colSender = width end
+          if width > colLeast then
+            local key = to .. "\001"
+            local least = sw[key]
+            if not least then
+              least = HV.Keep(senderW, key, MeasureWith(panel, sample.Sender, HV.SentWho(entry, true)) + 2)
+            end
+            if least > colLeast then colLeast = least end
           end
         end
-      elseif cols.sender < cap and showSender then
-        local label = (AUCTION_OUTCOME[entry.k] and L()[AUCTION_OUTCOME[entry.k].key])
-          or R.DisplaySender(entry.s) or ""
-        cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), cap)
+      elseif colSender < cap and showSender then
+        -- An outcome's words, kept under the outcome; a sender's, under
+        -- the name as recorded (a system mail's "" among them). Never past
+        -- the cap.
+        local k = AUCTION_OUTCOME[entry.k] and entry.k or nil
+        local key = k and HV.OKEY[k] or to or ""
+        local width = sw[key]
+        if not width then
+          local label = (k and L()[AUCTION_OUTCOME[k].key]) or R.DisplaySender(to) or ""
+          width = HV.Keep(senderW, key, MeasureWith(panel, sample.Sender, label) + 2)
+        end
+        if width > colSender then colSender = min(width, cap) end
       end
-      local kind = sent and HV.SentKind(entry) or HV.MoneyKind(entry)
-      local shown = true
-      if kind == "earned" then shown = showEarned elseif kind == "spent" then shown = showSpent end
-      local coins = shown and RV.RowCoins(layout, sample.ColMoney) or nil
-      local money = shown and (sent and HV.SentMoney(entry, true, coins) or HV.HistoryMoney(entry, true, coins)) or nil
-      if money then cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, money)) end
+      -- Its sum's class (HV.LetterText), and whether the column shows its
+      -- kind: earned and spent as the column's choice says, a C.O.D. always.
+      local class, amount, shown = nil, entry.m or 0, true
+      if amount > 0 then
+        if sent then class, shown = 2, showSpent else class, shown = 1, showEarned end
+      else
+        amount = entry.c or 0
+        if amount > 0 then
+          class = sent and 3 or 2
+        elseif not sent then
+          amount = entry.p or 0
+          if amount > 0 then class, shown = 2, showSpent end
+        end
+      end
+      if class then
+        if shown then
+          local key = class * 1e10 + look + CompactKey(amount)
+          local width = mw[key]
+          if not width then
+            local text = sent and HV.SentMoney(entry, true, coins, true) or HV.HistoryMoney(entry, true, coins, true)
+            width = HV.Keep(moneyW, key, MeasureWith(panel, sample.ColMoney, text))
+          end
+          if width > colMoney then colMoney = width end
+        end
+      end
       -- The age's column is as wide as the widest age listed, in the words
-      -- chosen: whatever the language and wording, no age is cut.
+      -- chosen: whatever the language and wording, no age is cut. Written
+      -- and measured again only where an entry's age reads otherwise than
+      -- the last one's.
       if showAge then
-        local age = HV.EntryAge(entry, now, style)
-        cols.age = max(cols.age, MeasureWith(panel, sample.ColTime, age) + 2)
+        local t = tonumber(entry.t) or now
+        local same
+        if ageHow == 1 then same = t > ageLo and t <= ageHi else same = t >= ageLo and t < ageHi end
+        if not same then
+          local age = HV.EntryAge(entry, now, style)
+          local width = aw[age]
+          if not width then width = HV.Keep(ageW, age, MeasureWith(panel, sample.ColTime, age) + 2) end
+          if width > colAge then colAge = width end
+          local lo, hi, how = HV.AgeSpan(t, now, style)
+          if lo then ageLo, ageHi, ageHow = lo, hi, how else ageLo, ageHi, ageHow = 0, -1, 1 end
+        end
       end
     end
-    i = i + step
   end
+  cols.sender, cols.senderLeast, cols.money, cols.age = colSender, colLeast, colMoney, colAge
+  -- Whether this client counts the coins' room is found (RV.CoinExtra)
+  -- before the first coin text is measured, so what was measured here was
+  -- measured knowing it.
+  moneyW.counted = RV.COIN.counted
   if order == "gold" then RV.SortRuns(out, RV.HistoryByMost) end
   panel._hmatched = chars and (#out - found) or nil
   panel._hchars = chars and found or nil
@@ -8558,12 +8773,16 @@ end
 
 -- entry, brief -> its money line: the gold sent in red, as Spent is; a
 -- C.O.D. asked as every C.O.D. is written, by the mail rows' own MoneyText.
-function HV.SentMoney(entry, brief, coins)
+function HV.SentMoney(entry, brief, coins, passing)
   if (entry.m or 0) > 0 then
     if coins then return RV.CoinText(coins, "loss", entry.m, brief) end
+    if brief then return HV.LetterText(2, entry.m, passing) end
     return Th().Colorize("negative", "-" .. ns.Core.Formatting.FormatMoneyCompact(entry.m, brief))
   end
-  if (entry.c or 0) > 0 then return (MoneyText(true, 0, entry.c, nil, brief, nil, coins)) end
+  if (entry.c or 0) > 0 then
+    if brief and not coins then return HV.LetterText(3, entry.c, passing) end
+    return (MoneyText(true, 0, entry.c, nil, brief, nil, coins))
+  end
   return nil
 end
 

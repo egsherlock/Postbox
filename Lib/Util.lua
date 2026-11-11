@@ -313,6 +313,35 @@ function Formatting.FormatMoneyCompactCoins(copper, brief, coins)
   return CompactIn(copper, brief, coins.gold, coins.silver, coins.copper, coins.gold)
 end
 
+-- copper -> a number that names the brief compact reading of the amount
+-- (FormatMoneyCompact(copper, true), and the coins' reading of it): two
+-- amounts with one key read the same, so whatever is made of a reading --
+-- its text, its width -- can be kept by the key instead of by the amount.
+-- A month of History holds a thousand distinct amounts and far fewer
+-- readings: 1373g and 1373g 50s are both "1373g". The ranges follow
+-- CompactIn above, and change with it: 0 for nothing, the gold up to ten
+-- thousand, the silver and the copper alone, the abbreviations each in a
+-- range of their own, and on a client that abbreviates its own way the
+-- gold itself.
+-- Split's arithmetic in place, the common case (some gold) first: a list's
+-- walk asks it of every sum.
+function Formatting.CompactKey(copper)
+  local value = tonumber(copper) or 0
+  if value < 1 then return 0 end
+  value = floor(value)
+  local gold = floor(value / COPPER_PER_GOLD)
+  if gold > 0 and gold < 10000 then return gold end
+  if gold > 0 then
+    if ABBREVIATE then return 4e9 + gold end
+    if gold >= 1000000 then return 3e9 + floor(gold / 100000) end
+    if gold >= 100000 then return 2e9 + floor(gold / 1000) end
+    return 1e9 + floor(gold / 100)
+  end
+  local silver = floor(value / COPPER_PER_SILVER)
+  if silver > 0 then return 1e8 + silver end
+  return 2e8 + value
+end
+
 -- Zero coins in the middle are skipped ("5g 35c"), and `parts` caps the
 -- coins by rank from the largest non-zero one: 2 keeps gold and silver of
 -- an amount with gold in it, silver and copper of one without. A list row
