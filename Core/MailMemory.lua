@@ -3873,6 +3873,18 @@ function MM.PaintRing(ring, plate)
   if c then ring:SetColorTexture(c[1], c[2], c[3], c[4] or 1) end
 end
 
+-- The palette, the Mode or the look changed (Theme.RepaintAccentIcons, as
+-- the Mail tab's top row hears it): this window's joined ring and the
+-- divider between its search and its sort, in the rings the look gives
+-- them now, without waiting for the next refresh.
+function MM.RepaintLook()
+  local frame = MM._frame
+  if not frame then return end
+  local bar = frame.WhoBar
+  if bar and bar.Ring and frame.Who then MM.PaintRing(bar.Ring, frame.Who) end
+  if frame.Search and frame.Search.PaintJoin then frame.Search.PaintJoin() end
+end
+
 -- The order a list is shown in, from its sort (MailboxUI.GetListSort):
 -- "mailbox" or "expiry". `list` is "memory" for this window, "inbox" for
 -- the Mail tab's.

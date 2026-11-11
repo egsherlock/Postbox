@@ -1965,7 +1965,7 @@ local function Build()
       self:ClearFocus()
     end
   end)
-  frame.SearchWrap, frame.SearchBox = searchWrap, searchBox
+  frame.SearchWrap, frame.SearchBox, frame.Search = searchWrap, searchBox, search
 
   -----------------------------------------------------------
   -- Category bar
@@ -2370,6 +2370,14 @@ end
 -- -- the sort is a square that wears a mark -- so there is nothing to
 -- measure again; kept for the skins and the theme that call it.
 function RM.RefitText()
+end
+
+-- The palette, the Mode or the look changed (Theme.RepaintAccentIcons, as
+-- the Mail tab's top row hears it): the divider between the search and the
+-- sort, in the ring the look gives the find plate now.
+function RM.RepaintLook()
+  local frame = RM._frame
+  if frame and frame.Search and frame.Search.PaintJoin then frame.Search.PaintJoin() end
 end
 
 function RM.IsShown()

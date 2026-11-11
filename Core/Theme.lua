@@ -3112,7 +3112,8 @@ end
 
 -- The accent-tinted icons outside the plates and the text: the minimap mail
 -- icon (outside every window, so repainted whether or not the mailbox has been
--- opened), the options cog and the Mail tab's view toggle; and the arrange
+-- opened), the options cog, the Mail tab's view toggle and Mail Memory's
+-- and Manage Recipients' rings (their RepaintLook); and the arrange
 -- mode's own parts while it is open (Arrange.RepaintLook).
 function Theme.RepaintAccentIcons()
   if ns.MinimapButton and type(ns.MinimapButton.RefreshLook) == "function" then
@@ -3122,6 +3123,11 @@ function Theme.RepaintAccentIcons()
   if AR and type(AR.RepaintLook) == "function" then pcall(AR.RepaintLook) end
   -- Both cogs, Mail Memory's whether or not the mailbox has been opened.
   Theme.RepaintCog()
+  -- Mail Memory's and Manage Recipients' rings and their find plates'
+  -- dividers, as the Mail tab's below, whether or not a mailbox is open.
+  local MM, RM = ns.MailMemory, ns.RecipientManager
+  if MM and type(MM.RepaintLook) == "function" then pcall(MM.RepaintLook) end
+  if RM and type(RM.RepaintLook) == "function" then pcall(RM.RepaintLook) end
   local frame = ns.MailboxUI and ns.MailboxUI._frame
   if not frame then return end
   local collect = frame.Tabs and frame.Tabs.collect
