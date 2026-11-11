@@ -5237,7 +5237,8 @@ end
 -- character's name over every box's matches) and the arrivals Mail Memory
 -- puts first (`pending`) is sorted by `by`, which breaks ties by the place
 -- each held (RV.POS), so the order is the same every time. The places and
--- a stretch go in tables kept for it; nothing is made per call.
+-- a stretch go in tables kept for it, emptied when the sort is done;
+-- nothing is made per call.
 RV.POS, RV.RUN = {}, {}
 function RV.SortRuns(list, by)
   local pos, run = RV.POS, RV.RUN
@@ -5260,7 +5261,10 @@ function RV.SortRuns(list, by)
       for j = 1, k do list[from + j - 1] = run[j] end
     end
   end
+  -- Let go of what was sorted: History's entries are pruned in time, and
+  -- nothing but the list should hold them.
   for j = #run, 1, -1 do run[j] = nil end
+  for k in pairs(pos) do pos[k] = nil end
 end
 
 -- Remembered mail by gold and by sender (Mail Memory's rows: `money`,
