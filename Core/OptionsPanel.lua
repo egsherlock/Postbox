@@ -922,6 +922,12 @@ do
   -- padding and `extraH` more kept under the text.
   local function Lay(block, title, text, extraH)
     local t, d = block.Title, block.Text
+    -- A text cut to the room it had (Insp.Cut) is whole again first.
+    if block.cut then
+      block.cut = nil
+      if d.SetMaxLines then d:SetMaxLines(0) end
+      Insp.CutMouse(block, nil)
+    end
     t:SetText(title or "")
     local h = TEXT_TOP + math.ceil(t:GetStringHeight() or 0)
     if text and text ~= "" then
@@ -1024,7 +1030,7 @@ do
     local least = Insp.Least(S.tab)
     if h < least then h = least end
     local room = Insp.Room(entry)
-    if room > 0 and h > room then h = room end
+    if room > 0 and h > room then h = Insp.Cut(say, entry, room, extra and extra.height or 0) end
     say:SetHeight(h)
   end
 
@@ -1034,11 +1040,73 @@ do
   -- card's tiles, as a text rises over another tab's drawing, up to the
   -- card's strip, which stays in sight: the card is what General is about,
   -- and its long descriptions no longer make the whole window taller.
+  --
+  -- A setting its tab's drawing answers (entry.stage), and the Mail tab's
+  -- own text where the room under its window cut it (entry.rise), stand
+  -- under the drawing while they fit there; a longer one rises over the
+  -- drawing's lower part while it is pointed at, up to what of the drawing
+  -- stays in sight (Ctx.Keep: the Preview's heading and its Test mail
+  -- switch, the minimap icon's ground), so no description makes the window
+  -- taller than its list (Layout).
   function Insp.Room(entry)
     if entry and not entry.under and S.tab == "general" and S.dash and S.bodyH then
       return S.bodyH - Dash.KEEP
     end
-    return S.inspH or S.bodyH
+    local room = S.inspH or S.bodyH
+    local stage = entry and (entry.stage or entry.rise)
+    if stage and room then return room - Ctx.Keep(stage) end
+    return room
+  end
+
+  -- A text with no room left for all of it, even risen (a translation or a
+  -- text size past any the layout was measured for): cut to the lines that
+  -- fit `room` by the house rule for fitted text -- the client's own
+  -- ellipsis at the end of the last line -- and the whole of it a pointer's
+  -- rest away (Insp.CutMouse). Answers the room.
+  function Insp.Cut(block, entry, room, extraH)
+    local d = block.Text
+    if not (d.SetMaxLines and entry and entry.text and entry.text ~= "") then return room end
+    local lineH, gap = S.lineH or 12, S.lineGap or 2
+    local titleH = math.ceil(block.Title:GetStringHeight() or 0)
+    local avail = room - TEXT_TOP - titleH - TEXT_GAP - (extraH or 0) - TEXT_BOTTOM
+    d:SetMaxLines(math.max(1, math.floor((avail + gap) / (lineH + gap))))
+    block.cut = true
+    Insp.CutMouse(block, entry)
+    return room
+  end
+
+  -- The pointer on a text cut short brings the whole of it: the tab's own,
+  -- cut under its window, rises as a setting's does (Insp.Show); a
+  -- setting's that is cut even risen says itself whole in a tooltip beside
+  -- the panel. Motion only, and only while the text is cut.
+  local function CutEnter(self)
+    if Rows.Held(self, CutEnter) then return end
+    local entry = self.cutEntry
+    if not entry then return end
+    if self == S.idleBlock then
+      Insp.Show(entry)
+      return
+    end
+    Tip.Begin(self, entry.title, entry.text)
+    Tip.Show(self)
+  end
+
+  local function CutLeave(self)
+    if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+    if Rows.HeldLeave(self) then return end
+    local body = S.body
+    if not (body and body:IsMouseOver()) then Insp.Show(nil) end
+  end
+
+  function Insp.CutMouse(block, entry)
+    block.cutEntry = entry
+    if entry and not block.cutWired then
+      block.cutWired = true
+      if block.SetPropagateMouseClicks then block:SetPropagateMouseClicks(true) end
+      block:SetScript("OnEnter", CutEnter)
+      block:SetScript("OnLeave", CutLeave)
+    end
+    if block.cutWired then block:EnableMouse(entry ~= nil) end
   end
 
   -- The text zone's least height on `key`'s tab: on the Mail tab, all the
@@ -1065,6 +1133,9 @@ do
     else
       idle.Rule:Show()
       local least = Insp.Least(key)
+      -- The Mail tab's own text where the room under its window is shorter
+      -- than it (Layout): cut to that room, whole under the pointer.
+      if key == "mail" and h > least then h = Insp.Cut(idle, entry, least, 0) end
       if h < least then h = least end
     end
     idle:SetHeight(h)
@@ -1642,6 +1713,17 @@ do
   Ctx.PREVIEW_GAP = 4
   function Ctx.PreviewRoom()
     return math.max(MW.Line("secondary"), BUTTON_H) + Ctx.PREVIEW_GAP
+  end
+
+  -- What of `key`'s drawing a description rising over it leaves in sight,
+  -- from the inspector's top (Insp.Room): the Preview's heading with Test
+  -- mail's switch (under the host badge on the Window tab), and on the
+  -- Minimap tab the icon's ground, the stage that answers what is pointed at.
+  function Ctx.Keep(key)
+    if key == "mail" then return CTX_TOP + Ctx.PreviewRoom() end
+    if key == "window" then return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + Ctx.PreviewRoom() end
+    if key == "minimap" then return CTX_TOP + 4 + Ctx.MinimapStage() end
+    return 0
   end
 
   local function TestMailOn()
@@ -9022,8 +9104,10 @@ end
 -- the panel never jumps as the tabs change: the tallest page of rows, or
 -- the tallest description the inspector can be asked for -- measured in
 -- the client's language and the host's font, with the drawing it must
--- leave room for where it sits under one. In English the pages set it;
--- only a language whose descriptions run longer makes the panel taller.
+-- leave room for where it sits under one. A description longer than the
+-- room under its drawing rises over the drawing's lower part (Insp.Room),
+-- as General's rise over its card, so in every language the pages set it
+-- unless a text would not fit even risen.
 local function Layout()
   local text = S.textNeed
   if not (MeasuredAlready() and text) then
@@ -9032,25 +9116,31 @@ local function Layout()
     Ctx.MeasureCaptions()
     -- The Mail tab's text zone, under its window: the tab's own text and
     -- every setting's the window shows, the tallest of them. General's
-    -- texts have the inspector under its card: the tallest of them, with
-    -- the card over it (Dash).
-    -- General's settings' texts may rise over the card's tiles to its strip
-    -- (Insp.Room); the card's own stand under it.
-    local mailText, generalText, generalRise = SAY_MIN, SAY_MIN, 0
+    -- card's own texts stand under the card: the tallest of them, with the
+    -- card over it (Dash).
+    --
+    -- A setting's text is shown on the raised card, which rises as far as
+    -- its room (Insp.Room): over another tab's drawing, over the lower part
+    -- of a drawing that answers it, over General's tiles. None of them
+    -- makes the window taller; the drawings ask only for their least text
+    -- zone under them, and a text that would not fit even risen is cut to
+    -- its room, whole under the pointer (Insp.Cut).
+    local mailText, generalText = SAY_MIN, SAY_MIN
+    -- One line of the secondary role, and the room between two, for a text
+    -- cut to the lines that fit (Insp.Cut).
+    local one = Insp.TextHeight("A")
+    S.lineH, S.lineGap = one, math.max(0, Insp.TextHeight("A\nA") - 2 * one)
     local entries = S.entries
     for i = 1, #entries do
       local entry = entries[i]
-      local h = Insp.Need(entry, entry.extra and Ctx.ExtraHeight(entry.extra) or 0)
-      -- A setting its tab's drawing answers (`stage`: that tab) has its text
-      -- under the drawing, never over it.
       if entry.stage == "mail" then
+        local h = Insp.Need(entry, entry.extra and Ctx.ExtraHeight(entry.extra) or 0)
         if h > mailText then mailText = h end
-      elseif entry.tab == "general" and not entry.under then
-        if h > generalRise then generalRise = h end
-      elseif entry.tab == "general" then
+      elseif entry.tab == "general" and entry.under then
+        local h = Insp.Need(entry, 0)
         if h > generalText then generalText = h end
-      else
-        if entry.stage then h = Ctx.Height(entry.stage) + math.max(h, SAY_MIN) end
+      elseif entry.stage then
+        local h = Ctx.Height(entry.stage) + SAY_MIN
         if h > text then text = h end
       end
     end
@@ -9070,16 +9160,22 @@ local function Layout()
         end
       end
     end
-    S.mailText = math.ceil(mailText)
+    S.mailMost = math.ceil(mailText)
     S.generalText = math.ceil(generalText)
-    S.textNeed = math.max(text, Dash.H + BODY_GAP + S.generalText, Dash.KEEP + math.ceil(generalRise))
+    S.textNeed = math.max(text, Dash.H + BODY_GAP + S.generalText)
     text = S.textNeed
   end
-  -- The Mail tab: its window at its least over its text zone. The window
-  -- then takes whatever room the panel has between the two (Ctx.MailFill),
-  -- so it never makes the panel taller unless even its least needs it.
-  text = math.max(text, Ctx.MailNeed(S.mailText))
-  local need = math.ceil(math.max(S.listNeed or 0, text))
+  -- The Mail tab's window at its least over the least text zone (the
+  -- window's least follows the blocks shown under its list).
+  local need = math.ceil(math.max(S.listNeed or 0, text, Ctx.MailNeed(SAY_MIN)))
+  -- The Mail tab: its window at its least over its text zone, the zone as
+  -- tall as its tallest text where the window still fits over it, else the
+  -- room the window at its least leaves -- a longer text rises over the
+  -- window's lower part while it is pointed at (Insp.Room), and the tab's
+  -- own is cut to the zone (Insp.Idle). The window then takes whatever room
+  -- the panel has between the two (Ctx.MailFill), so it never makes the
+  -- panel taller than its list.
+  S.mailText = math.max(SAY_MIN, math.min(S.mailMost or SAY_MIN, need - Ctx.MailNeed(0)))
   local height = TOP + TAB_H + BODY_GAP + need + BODY_GAP + BAND_H + (S.footH or FOOT_BOTTOM)
   if need ~= S.bodyH or height ~= S.frameH then
     S.bodyH, S.frameH = need, height
@@ -9192,6 +9288,9 @@ local function Build()
   S.groupsEntry.under, S.recipientsEntry.under = true, true
   S.idle.mail = Entry(L["OPT_ARRANGE_BUTTON"], L["ARRANGE_TIP"] .. "\n\n"
     .. (ns.IsForever and L["OPT_ARRANGE_CARDS_FOREVER"] or L["OPT_ARRANGE_CARDS"]) .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"])
+  -- Cut to the room under the window where that is shorter, it rises whole
+  -- over the window's lower part under the pointer (Insp.Room, Insp.Idle).
+  S.idle.mail.rise = "mail"
   S.idle.send = Entry(L["OPT_AFTER_SEND_TITLE"], L["OPT_AFTER_SEND_DESC"])
   S.idle.window = Entry(L["OPT_STYLE_TITLE"], L["OPT_STYLE_DESC"])
   S.idle.minimap = Entry(L["OPT_MINIMAP_TITLE"], L["OPT_MINIMAP_DESC"])
