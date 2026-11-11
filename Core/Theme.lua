@@ -655,8 +655,8 @@ end
 --           dark palette; on a light one the ink, as text.
 --   muted   the quiet member of a pair: a near-neutral bright grey on a dark
 --           palette, a near-neutral dark grey on a light one.
---   icon    the accent on an icon in the chrome, the options cog on the
---           title strip: the text tone on a dark palette, the mark tone on a
+--   icon    the accent on an icon in the chrome (Theme.TintAccentGlyph):
+--           the text tone on a dark palette, the mark tone on a
 --           light one (where the text tone is the ink), either held at 3:1 on
 --           the strip at its darkest and its lightest as the opacity in force
 --           shows it (HoldOnStrip): a control stays legible at any opacity.
@@ -3057,18 +3057,39 @@ function Theme.RepaintAccentText()
   end
 end
 
--- The options cogs in their icon tone, the Postbox window's and Mail
--- Memory's: after the accent moved, and after the strip they stand on did
--- (the opacity, the background colour), which a light palette's icon tone
--- is held to.
+-- An options cog (MailboxUI's BuildOptionsButton), painted from its state.
+-- Chrome, never the accent's: the game's art without its gold, in the
+-- arrange mark's two greys beside it (Core/Arrange.lua), the quiet one at
+-- rest and the bright one under the pointer (`button.hover`), painted from
+-- their tokens so a palette change paints it again; the game's additive
+-- glow is left out, the brighter grey being the hover. Where no style
+-- dresses the windows (the Blizzard look, or a host UI's skin standing
+-- down), the game's own art as the game draws it: gold, untinted, its glow
+-- under the pointer.
+function Theme.PaintCog(button)
+  local icon = button and button.icon
+  if not icon then return end
+  local native = not ns.Skin
+  local glow = button.GetHighlightTexture and button:GetHighlightTexture()
+  if glow then glow:SetAlpha(native and 1 or 0) end
+  if native then
+    if icon.SetDesaturated then icon:SetDesaturated(false) end
+    icon:SetVertexColor(1, 1, 1, 1)
+    return
+  end
+  if icon.SetDesaturated then icon:SetDesaturated(true) end
+  Theme.SetColor(icon, button.hover and "textPrimary" or "textDisabled")
+end
+
+-- Both options cogs, the Postbox window's and Mail Memory's, painted again:
+-- after the palette, the accent or the strip they stand on moved, as every
+-- caller has it. Their greys need nothing from the accent; the glyphs kept
+-- in the accent's icon tone (Theme.TintAccentGlyph) do.
 function Theme.RepaintCog()
   local frame = ns.MailboxUI and ns.MailboxUI._frame
-  local icon = frame and frame.OptionsButton and frame.OptionsButton.icon
-  if icon then icon:SetVertexColor(Theme.GetAccentTone("icon")) end
+  if frame and frame.OptionsButton then Theme.PaintCog(frame.OptionsButton) end
   frame = ns.MailMemory and ns.MailMemory._frame
-  icon = frame and frame.OptionsButton and frame.OptionsButton.icon
-  if icon then icon:SetVertexColor(Theme.GetAccentTone("icon")) end
-  -- And every glyph kept in the same tone (Theme.TintAccentGlyph).
+  if frame and frame.OptionsButton then Theme.PaintCog(frame.OptionsButton) end
   if Theme.RepaintAccentGlyphs then Theme.RepaintAccentGlyphs() end
 end
 
@@ -5013,8 +5034,8 @@ do
     return tex
   end
 
-  -- A glyph in the accent's icon tone (Theme.GetAccentTone "icon", the
-  -- cogs' tone), kept in it: tinted now, and again by every
+  -- A glyph in the accent's icon tone (Theme.GetAccentTone "icon"), kept
+  -- in it: tinted now, and again by every
   -- Theme.RepaintAccentIcons -- an accent moved, the host's looks, the
   -- palette or the strip under it. Weak-keyed, so a texture let go is
   -- forgotten; nothing is made per paint.

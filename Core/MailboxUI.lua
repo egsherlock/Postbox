@@ -4141,24 +4141,25 @@ local function BuildOptionsButton(frame, theme, onClick)
   button.icon = button:CreateTexture(nil, "ARTWORK")
   button.icon:SetAllPoints()
   button.icon:SetTexture("Interface\\Buttons\\UI-OptionsButton")
-  -- The live accent, resolved through the theme so a host UI's own accent wins,
-  -- in its icon tone: the text tone on a dark window, the mark tone held at
-  -- 3:1 on the title strip on a light one, where text is the ink. Never
-  -- cached: EllesmereUI re-tints this exact texture through
-  -- Skin.RefreshAccents when the user changes their colour
-  -- (Theme.RepaintAccentIcons), and the Postbox style when the strip moves.
-  if theme and theme.GetAccentTone then
-    button.icon:SetVertexColor(theme.GetAccentTone("icon"))
-  end
 
-  -- Highlight the gear shape itself rather than a square box around a round icon.
+  -- The game's glow on the gear shape itself rather than a square box round
+  -- a round icon: shown only where the cog is the game's own art (Theme.PaintCog).
   button:SetHighlightTexture("Interface\\Buttons\\UI-OptionsButton")
   local highlight = button:GetHighlightTexture()
   if highlight then highlight:SetBlendMode("ADD") end
 
+  -- Chrome, as the arrange mark beside it: grey at rest, brighter under the
+  -- pointer, whatever the accent (Theme.PaintCog, which Theme.RepaintCog
+  -- runs again for both cogs after the palette, the accent or the strip
+  -- moved).
+  button.hover = false
+  if theme and theme.PaintCog then theme.PaintCog(button) end
+
   button:SetScript("OnClick", onClick or OpenOptions)
   button:SetScript("OnEnter", function(self)
     local T = ns.Theme
+    self.hover = true
+    if T and T.PaintCog then T.PaintCog(self) end
     if not (GameTooltip and T) then return end
     T.TipBegin(self, "ANCHOR_RIGHT")
     T.TipTitle(L("OPTIONS_TITLE"))
@@ -4167,7 +4168,10 @@ local function BuildOptionsButton(frame, theme, onClick)
     T.TipHint(L("OPTIONS_COG_TOOLTIP"))
     GameTooltip:Show()
   end)
-  button:SetScript("OnLeave", function()
+  button:SetScript("OnLeave", function(self)
+    self.hover = false
+    local T = ns.Theme
+    if T and T.PaintCog then T.PaintCog(self) end
     if GameTooltip then GameTooltip:Hide() end
   end)
 
