@@ -5668,58 +5668,70 @@ function Q.BagSlotUnderCursor(strict)
   -- The frame with focus can be a child laid over the button -- a cooldown,
   -- a quality border, an overlay of some bag addon's -- so each focus frame
   -- is walked up a few parents until something that is an item button
-  -- turns up.
+  -- turns up. A forbidden frame (the game's own, closed to addons) is left
+  -- alone, and so is everything above it; a parent that cannot be read
+  -- ends the walk there.
   local candidates = {}
   for i = 1, #frames do
     local f = frames[i]
     local depth = 0
     while type(f) == "table" and depth < 4 do
+      if f.IsForbidden and f:IsForbidden() then break end
       candidates[#candidates + 1] = f
-      f = type(f.GetParent) == "function" and f:GetParent() or nil
+      local ok, parent = false, nil
+      if type(f.GetParent) == "function" then ok, parent = pcall(f.GetParent, f) end
+      f = ok and parent or nil
       depth = depth + 1
     end
   end
 
+  -- Each asked under pcall (Q.SlotOfButton): a restricted frame that will
+  -- not answer is passed over, never an error.
   for i = 1, #candidates do
-    local f = candidates[i]
-    if type(f) == "table" and type(f.IsObjectType) == "function" then
-      local isItemButton = f:IsObjectType("ItemButton") or f.icon ~= nil or f.Icon ~= nil
-      if isItemButton then
-        local bag, slot
-        if type(f.GetBagID) == "function" then
-          local ok, id = pcall(f.GetBagID, f)
-          if ok and type(id) == "number" then bag = id end
-        end
-        if bag == nil and type(f.bagID) == "number" then bag = f.bagID end
-        if bag == nil and not strict and type(f.GetParent) == "function" then
-          local parent = f:GetParent()
-          local ok, id = pcall(function() return parent:GetID() end)
-          if ok and type(id) == "number" then bag = id end
-        end
-        if type(f.slotID) == "number" then slot = f.slotID end
-        if slot == nil and type(f.GetID) == "function" then
-          local ok, id = pcall(f.GetID, f)
-          if ok and type(id) == "number" then slot = id end
-        end
-        -- Strict also asks the button to be SHOWING that bag slot's item:
-        -- its icon is the item's own art. Compared only when both sides are
-        -- file ids, so a bag addon that draws its icon some other way is
-        -- never refused on a mismatch of formats.
-        if strict and type(bag) == "number" and type(slot) == "number" then
-          local art = f.icon or f.Icon
-          local shown = art and type(art.GetTexture) == "function" and art:GetTexture() or nil
-          local info = C_Container and C_Container.GetContainerItemInfo
-            and C_Container.GetContainerItemInfo(bag, slot) or nil
-          if type(shown) == "number" and info and type(info.iconFileID) == "number"
-            and shown ~= info.iconFileID then
-            bag = nil
-          end
-        end
-        if type(bag) == "number" and type(slot) == "number" and slot > 0 then
-          return bag, slot
-        end
-      end
+    local ok, bag, slot = pcall(Q.SlotOfButton, candidates[i], strict)
+    if ok and bag ~= nil then return bag, slot end
+  end
+  return nil
+end
+
+-- frame, strict -> the bag and slot the item button `f` says it shows, or
+-- nil where it is no item button or says none (Q.BagSlotUnderCursor).
+function Q.SlotOfButton(f, strict)
+  if type(f) ~= "table" or type(f.IsObjectType) ~= "function" then return nil end
+  local isItemButton = f:IsObjectType("ItemButton") or f.icon ~= nil or f.Icon ~= nil
+  if not isItemButton then return nil end
+  local bag, slot
+  if type(f.GetBagID) == "function" then
+    local ok, id = pcall(f.GetBagID, f)
+    if ok and type(id) == "number" then bag = id end
+  end
+  if bag == nil and type(f.bagID) == "number" then bag = f.bagID end
+  if bag == nil and not strict and type(f.GetParent) == "function" then
+    local parent = f:GetParent()
+    local ok, id = pcall(function() return parent:GetID() end)
+    if ok and type(id) == "number" then bag = id end
+  end
+  if type(f.slotID) == "number" then slot = f.slotID end
+  if slot == nil and type(f.GetID) == "function" then
+    local ok, id = pcall(f.GetID, f)
+    if ok and type(id) == "number" then slot = id end
+  end
+  -- Strict also asks the button to be SHOWING that bag slot's item:
+  -- its icon is the item's own art. Compared only when both sides are
+  -- file ids, so a bag addon that draws its icon some other way is
+  -- never refused on a mismatch of formats.
+  if strict and type(bag) == "number" and type(slot) == "number" then
+    local art = f.icon or f.Icon
+    local shown = art and type(art.GetTexture) == "function" and art:GetTexture() or nil
+    local info = C_Container and C_Container.GetContainerItemInfo
+      and C_Container.GetContainerItemInfo(bag, slot) or nil
+    if type(shown) == "number" and info and type(info.iconFileID) == "number"
+      and shown ~= info.iconFileID then
+      bag = nil
     end
+  end
+  if type(bag) == "number" and type(slot) == "number" and slot > 0 then
+    return bag, slot
   end
   return nil
 end
