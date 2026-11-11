@@ -391,6 +391,58 @@ local function SettleGridDefault(fresh)
   if type(profile) == "table" and profile.gridLayout == nil then profile.gridLayout = GRID_BEFORE_161 end
 end
 
+-- 1.61: a character group's button the arrangement does not name stands
+-- after the rest in the order the groups were made (CollectTab,
+-- RV.ReconcileGrid); before, it stood in the Character Groups list's order,
+-- which is now that list's own. A player whose unnamed buttons stood in
+-- another order keeps them where they were: every button the arrangement
+-- leaves out written into it, after it, in the order the grid drew them --
+-- the built-ins', then the groups' in the list's order -- once. Its own
+-- mark at the root, kept through Reset everything (CENSUS_KEEP) as the
+-- grid's is; run after SettleGridDefault, which may have written the
+-- arrangement out first. `fresh`: no saved variables, so no groups.
+local GROUPS_SETTLED = "groupOrder"
+
+local function SettleGroupOrder(fresh)
+  local db = PostboxDB
+  if type(db) ~= "table" or db[GROUPS_SETTLED] ~= nil then return end
+  db[GROUPS_SETTLED] = "1.61"
+  if fresh then return end
+  local CG, CT, UI = ns.CharacterGroups, ns.CollectTab, ns.MailboxUI
+  if not (CG and type(CG.List) == "function" and CT and type(CT.GroupsByCreation) == "function"
+      and type(CT.BuiltinGridIds) == "function" and UI and type(UI.GetGridLayout) == "function"
+      and type(UI.SetGridLayout) == "function") then
+    return
+  end
+  local stored = UI.GetGridLayout()
+  local named = {}
+  for i = 1, #stored do named[stored[i].id] = true end
+  -- The groups with a button that the arrangement leaves out, in the
+  -- list's order: where they stood until now.
+  local listed, list = {}, CG.List()
+  for i = 1, #list do
+    local group = list[i]
+    local id = "group:" .. tostring(group.id)
+    if #group.members > 0 and not named[id] then listed[#listed + 1] = id end
+  end
+  local made = {}
+  for i = 1, #listed do made[i] = listed[i] end
+  table.sort(made, CT.GroupsByCreation)
+  local moved = false
+  for i = 1, #listed do
+    if listed[i] ~= made[i] then moved = true end
+  end
+  if not moved then return end
+  local entries = {}
+  for i = 1, #stored do entries[i] = { id = stored[i].id, shown = stored[i].shown } end
+  local builtins = CT.BuiltinGridIds()
+  for i = 1, #builtins do
+    if not named[builtins[i]] then entries[#entries + 1] = { id = builtins[i], shown = true } end
+  end
+  for i = 1, #listed do entries[#entries + 1] = { id = listed[i], shown = true } end
+  UI.SetGridLayout(entries)
+end
+
 -------------------------------------------------------------
 -- 5. Error capture
 --
@@ -2554,6 +2606,7 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   -- old settings over, before the minimap icon or any skin reads them.
   Upgrade(savedBy)
   SettleGridDefault(ns.freshInstall)
+  SettleGroupOrder(ns.freshInstall)
 
   -- What's new, once by itself at the first mailbox, for a release with
   -- news for everyone (Core/WhatsNew.lua, section 5): after the steps,

@@ -41,8 +41,8 @@ local L = ns.L
 --
 -- PostboxDB.charGroups = {
 --   nextId = 4,                       -- ids are handed out once, never reused
---   list = {                          -- the player's order, which is the
---     { id = "1",                     -- buttons' order
+--   list = {                          -- the player's order for this list
+--     { id = "1",                     -- alone; the buttons' is Arrange's
 --       name = "Bank alts",
 --       members = { "Bankalt-ArgentDawn", "Thorin-Kazzak" } },
 --   },
@@ -356,6 +356,9 @@ end
 
 -- The groups in the order of `ids`; any group the list leaves out keeps its
 -- place after them, so a stale list can reorder but never lose a group.
+-- The editor's list alone: no button moves with it. The buttons stand as
+-- Arrange puts them, and one Arrange has not placed stands after the rest
+-- in the order the groups were made (CollectTab, RV.ReconcileGrid).
 function CG.SetOrder(ids)
   local root = Data()
   if not root or type(ids) ~= "table" then return end
@@ -434,9 +437,12 @@ end
 --
 -- The contract with the category grid (Core/CollectTab.lua):
 --
---   CG.GridButtons(panel) -> { spec, ... } in the groups' own order, one per
---   group with at least one member (an empty group has nothing to collect and
---   no button until it does). The panel argument is accepted and not needed:
+--   CG.GridButtons(panel) -> { spec, ... } in the groups list's order, one
+--   per group with at least one member (an empty group has nothing to
+--   collect and no button until it does). The grid takes no order from it:
+--   the buttons stand as Arrange puts them, and one it has not placed after
+--   the rest in the order the groups were made. The panel argument is
+--   accepted and not needed:
 --   each spec's own functions take the panel they act on. Each spec:
 --     id       "group:<id>", stable across renames
 --     label    the player's name for the group
@@ -1447,10 +1453,24 @@ local function Build()
   frame.GroupRows, frame.MemberRows, frame.EditParts = {}, {}, {}
   local parts = frame.EditParts
 
-  -- Left: the groups, and New group under them.
+  -- Left: the groups, one quiet line under them, and New group under that.
+  -- The line says what a drag in the list does not do: the buttons are
+  -- ordered in Arrange (CG.SetOrder), on two lines where a language runs
+  -- long, and the list stands on it.
+  local orderNote = T.CreateText(frame, "secondary")
+  orderNote:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, PAD + BUTTON_H + M.gap)
+  orderNote:SetWidth(LIST_W)
+  orderNote:SetJustifyH("LEFT")
+  orderNote:SetWordWrap(true)
+  if orderNote.SetMaxLines then orderNote:SetMaxLines(2) end
+  T.SetColor(orderNote, "textDisabled")
+  orderNote:SetText(L["GROUPS_ORDER_NOTE"])
+  if T.OnWindow then T.OnWindow(orderNote, "solid") end
+  parts[#parts + 1] = orderNote
+
   local list = CreateFrame("Frame", nil, frame, "BackdropTemplate")
   list:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -TOP)
-  list:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, PAD + BUTTON_H + M.gap)
+  list:SetPoint("BOTTOMLEFT", orderNote, "TOPLEFT", 0, M.gap)
   list:SetWidth(LIST_W)
   T.ApplyList(list)
   frame.GroupList = list

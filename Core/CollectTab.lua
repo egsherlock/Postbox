@@ -12371,10 +12371,26 @@ function RV.GroupSpecs(panel)
   return type(specs) == "table" and specs or {}
 end
 
+-- Character groups' buttons ("group:<id>") in the order the groups were
+-- made: their ids are handed out one after another and never used again
+-- (CharacterGroups, nextId). An id that is not a number goes after those
+-- that are.
+function RV.ByCreation(a, b)
+  local x, y = tonumber(a:sub(7)), tonumber(b:sub(7))
+  if x and y then return x < y end
+  if x or y then return x ~= nil end
+  return a < b
+end
+CT.GroupsByCreation = RV.ByCreation
+CT.BuiltinGridIds = RV.BuiltinGridIds
+
 -- stored, available, known [, keep] -> the grid's entries { {id=, shown=},
 -- ... } and whether the stored list named a button that no longer exists.
 -- The stored order first, for the ids that exist; then every id it has never
--- seen, at the end and shown, in the order `available` gives them. A group's
+-- seen, at the end and shown: the built-ins in the order `available` gives
+-- them, then the groups' buttons in the order the groups were made
+-- (RV.ByCreation) -- never the groups list's order, which is that list's
+-- own: a button's place is set in Arrange and nowhere else. A group's
 -- id can only be judged gone when the groups module answered (`known`);
 -- until then it is kept for later rather than forgotten. `keep(id)`, where
 -- given, names an id the grid cannot draw now that is not gone either -- an
@@ -12395,9 +12411,21 @@ function RV.ReconcileGrid(stored, available, known, keep)
       end
     end
   end
+  local groups = nil
   for i = 1, #available do
     local id = available[i]
-    if not seen[id] then out[#out + 1] = { id = id, shown = true } end
+    if not seen[id] then
+      if type(id) == "string" and id:sub(1, 6) == "group:" then
+        groups = groups or {}
+        groups[#groups + 1] = id
+      else
+        out[#out + 1] = { id = id, shown = true }
+      end
+    end
+  end
+  if groups then
+    table.sort(groups, RV.ByCreation)
+    for i = 1, #groups do out[#out + 1] = { id = groups[i], shown = true } end
   end
   return out, stale
 end

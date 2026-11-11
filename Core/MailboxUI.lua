@@ -561,6 +561,9 @@ local CENSUS_KEEP = {
   -- (Postbox.lua, 4b), so a reset gives today's default and not the one an
   -- install from before it kept.
   gridDefault = true,
+  -- And that the groups' buttons were settled into the order they were
+  -- made in (Postbox.lua, 4b), for the same reason.
+  groupOrder = true,
 }
 
 -- Clears everything but the census, tells the modules that remember what
