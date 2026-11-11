@@ -7086,13 +7086,15 @@ do
     local function Name(k) return NAMES[((first + k - 1) % #NAMES) + 1] end
     local alt = Alt() or Name(3)
 
-    -- Sold, unread: the gold alone, and its invoice not fetched yet.
+    -- Sold, unread: the gold alone, and its invoice not fetched yet; its row
+    -- shows the item that sold (RV.SoldIcon), as one whose item is known.
     local item = Item("stack", used) or Item("any", used)
     if item then
       Add(out, { kind = "sold", sender = ah, subject = AuctionSubject(AUCTION_SOLD_MAIL_SUBJECT, item, Rand(3)),
-        money = Gold(1284), days = Days(29.3, 29.95), read = false, icon = COIN_ICON })
+        money = Gold(1284), days = Days(29.3, 29.95), read = false, icon = item.icon or COIN_ICON })
     end
-    -- Sold, read: its invoice's deposit and the auction house's cut.
+    -- Sold, read: its invoice's deposit and the auction house's cut; the
+    -- coin, as one whose item cannot be told.
     item = Item("any", used)
     if item then
       local bid = Gold(92)
@@ -7197,6 +7199,8 @@ do
         if m.money > 0 then entry.m = m.money end
         if m.cod > 0 then entry.c = m.cod end
         if m.price then entry.p = m.price end
+        -- A sold sample's item, as History keeps one it could tell.
+        if m.kind == "sold" and m.icon ~= COIN_ICON then entry.ic = m.icon end
         for k = 1, #m.items do
           local it = m.items[k]
           if it.link then
@@ -7392,6 +7396,244 @@ do
 end
 
 -------------------------------------------------------------
+-- A sold auction's item
+--
+-- A sold auction's mail holds only its gold, and names the item that sold
+-- only in its subject ("Auction successful: Silk Cloth (20)"). Its row --
+-- the inbox's, History's, Mail Memory's -- shows that item's icon where
+-- Postbox can tell which item it was, and the coin where it cannot. The item
+-- is found by its name, exactly as this client writes it, never by a guess:
+--   1. what was posted (Core/MailMemory.lua, MM.PostedItem): the item each
+--      auction this account posted was made from, by its name;
+--   2. a mail in this inbox for the same item -- an auction that expired,
+--      was canceled or was won -- by the name of the item it holds;
+--   3. the player's own records: every item link in any character's
+--      History and the first item of every remembered mail, and the items of
+--      remembered auction mails by their ids, whose names the client loads
+--      (Helpers, H.SearchItemName);
+--   4. the client itself, by name: it answers for an item in the bags or the
+--      bank this session (GetItemInfo), and is checked to say that name.
+-- The count a stack's subject carries is tried with the name and then
+-- without. An answer is kept by the subject (`icon`: the icon, or false for
+-- none), so a row bind reads one table; one with no answer is asked again
+-- once a new list is built (`build`, the panel's build mark), or when item
+-- names the client was asked for arrive, which binds the rows on screen once
+-- more. Bounded: past SOLD.MAX subjects, emptied as a build starts.
+-------------------------------------------------------------
+do
+  local S = { icon = {}, n = 0, miss = 0, MAX = 512, build = nil, index = nil, live = nil, liveAt = nil }
+  RV.SOLD = S
+
+  -- link -> its item's id and its name as this client wrote it, or nil.
+  local function FromLink(link)
+    if type(link) ~= "string" then return nil end
+    local id = tonumber((link:match("item:(%d+)")))
+    local name = link:match("|h%[(.-)%]|h")
+    if id and name and name ~= "" then return id, name end
+    return nil
+  end
+
+  -- An item's id learned under its name (the first one wins: a later one of
+  -- the same name is the same item as far as its name can tell).
+  local function Learn(map, id, name)
+    if id and name and map[name] == nil then map[name] = id end
+  end
+
+  -- The player's own records, by item name: once, the first time a name is
+  -- not found elsewhere, and again after asked-for names arrive.
+  function RV.SoldIndex()
+    if S.index then return S.index end
+    local map = {}
+    local get = ns.Store and ns.Store.Get
+    local history = get and get("mailHistory")
+    if type(history) == "table" then
+      for _, byRealm in pairs(history) do
+        if type(byRealm) == "table" then
+          for _, list in pairs(byRealm) do
+            if type(list) == "table" then
+              for i = 1, #list do
+                local items = type(list[i]) == "table" and list[i].it
+                if type(items) == "table" then
+                  for k = 1, #items do
+                    local id, name = FromLink(type(items[k]) == "table" and items[k].l)
+                    Learn(map, id, name)
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+    local memory = get and get("mailMemory")
+    local H = ns.Helpers
+    local named = H and type(H.SearchItemName) == "function" and H.SearchItemName or nil
+    if type(memory) == "table" then
+      for _, byRealm in pairs(memory) do
+        if type(byRealm) == "table" then
+          for _, snap in pairs(byRealm) do
+            local mails = type(snap) == "table" and snap.mails
+            if type(mails) == "table" then
+              for i = 1, #mails do
+                local mail = mails[i]
+                if type(mail) == "table" then
+                  local id, name = FromLink(mail.link)
+                  Learn(map, id, name)
+                  -- An auction's own mail holds the one item the auction
+                  -- was: its name, where the client has it (or once it
+                  -- loads).
+                  local kind, it = mail.kind, mail.it
+                  if named and type(it) == "table" and (kind == "expired" or kind == "canceled" or kind == "bought") then
+                    local itemID = tonumber(it[1])
+                    if itemID then Learn(map, itemID, named(itemID)) end
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+    S.index = map
+    return map
+  end
+
+  -- An item link History just recorded, into the records' index where it
+  -- has been built (Core/MailMemory.lua, MM.HistoryTook).
+  function CT.SoldLearn(link)
+    if not S.index then return end
+    local id, name = FromLink(link)
+    if id and name and S.index[name] == nil then
+      S.index[name] = id
+      RV.SoldAgain()
+    end
+  end
+
+  -- This inbox's auction mails holding an item, by the item's name: made
+  -- once per list build, and only when a name was not found before it.
+  local function Live()
+    if S.live and S.liveAt == S.build then return S.live end
+    local map = S.live or {}
+    for key in pairs(map) do map[key] = nil end
+    S.live, S.liveAt = map, S.build
+    if type(GetInboxNumItems) ~= "function" or type(GetInboxItem) ~= "function" then return map end
+    local shown = tonumber((GetInboxNumItems())) or 0
+    local service = Mail()
+    for index = 1, shown do
+      local _, _, _, _, _, _, _, itemCount = GetInboxHeaderInfo(index)
+      if (tonumber(itemCount) or 0) > 0 then
+        local kind = service and service.ClassifyMail and service.ClassifyMail(index)
+        if kind == "expired" or kind == "canceled" or kind == "bought" then
+          local name, itemID = GetInboxItem(index, 1)
+          Learn(map, tonumber(itemID), type(name) == "string" and name ~= "" and name or nil)
+        end
+      end
+    end
+    return map
+  end
+
+  -- name -> the item's icon by the sources above, or nil.
+  local function IconFor(name)
+    if type(name) ~= "string" or name == "" then return nil end
+    local id
+    local Memory = ns.MailMemory
+    if Memory and type(Memory.PostedItem) == "function" then id = Memory.PostedItem(name) end
+    if not id and S.build ~= nil then id = Live()[name] end
+    if not id then id = RV.SoldIndex()[name] end
+    local api = C_Item
+    if id then
+      local icon = type(api) == "table" and type(api.GetItemIconByID) == "function" and api.GetItemIconByID(id) or nil
+      if icon then return icon end
+    end
+    -- The client, by name, for an item in the bags or bank this session.
+    local info = type(api) == "table" and api.GetItemInfo or nil
+    if type(info) == "function" then
+      local ok, got, _, _, _, _, _, _, _, _, texture = pcall(info, name)
+      if ok and got == name and texture then return texture end
+    end
+    return nil
+  end
+
+  -- subject -> the icon of the item a sold auction's mail names, or nil for
+  -- the coin. `build`: the list's build mark (nil where a row has no inbox
+  -- beside it), at whose change an unanswered subject is asked again.
+  function RV.SoldIcon(subject, build)
+    if type(subject) ~= "string" or subject == "" then return nil end
+    if build ~= nil and build ~= S.build then
+      S.build = build
+      if S.n >= S.MAX then
+        for key in pairs(S.icon) do S.icon[key] = nil end
+        S.n, S.miss = 0, 0
+      elseif S.miss > 0 then
+        RV.SoldForget()
+      end
+    end
+    local known = S.icon[subject]
+    if known ~= nil then return known or nil end
+    local H = ns.Helpers
+    local name = H and type(H.ShortSubject) == "function" and H.ShortSubject(subject) or nil
+    local icon
+    if name and name ~= subject then
+      icon = IconFor(name)
+      if not icon then
+        local base = name:match("^(.-) %(%d+%)$")
+        if base then icon = IconFor(base) end
+      end
+    end
+    S.icon[subject] = icon or false
+    S.n = S.n + 1
+    if not icon then S.miss = S.miss + 1 end
+    return icon
+  end
+  CT.SoldIcon = RV.SoldIcon
+
+  -- The subjects with no answer forgotten, to be asked again.
+  function RV.SoldForget()
+    for key, value in pairs(S.icon) do
+      if value == false then
+        S.icon[key] = nil
+        S.n = S.n - 1
+      end
+    end
+    S.miss = 0
+  end
+
+  -- Something new to find a name by (a post, an item recorded, names the
+  -- client loaded): the unanswered subjects asked again, and the rows on
+  -- screen bound once more where any showed the coin.
+  function RV.SoldAgain()
+    if S.miss <= 0 then return end
+    RV.SoldForget()
+    local UI = ns.MailboxUI
+    local frame = UI and UI._frame
+    local panel = frame and frame.Tabs and frame.Tabs.collect
+    if panel and panel:IsShown() then CT.RebindRows(panel) end
+    local Memory = ns.MailMemory
+    if Memory and type(Memory.Rebind) == "function" then Memory.Rebind() end
+  end
+  CT.SoldAgain = RV.SoldAgain
+
+  -- The records it learns from were emptied (Options, Reset everything,
+  -- through Mail Memory's MM.DataCleared): everything it knew is forgotten,
+  -- as a reload would have it.
+  function CT.SoldReset()
+    for key in pairs(S.icon) do S.icon[key] = nil end
+    S.n, S.miss, S.index, S.live, S.liveAt = 0, 0, nil, nil, nil
+  end
+
+  -- Item names the client was asked for have arrived (Helpers): the records'
+  -- index is made again with them.
+  local H = ns.Helpers
+  if H and type(H.OnSearchNames) == "function" then
+    H.OnSearchNames(function()
+      if S.miss <= 0 then return end
+      S.index = nil
+      RV.SoldAgain()
+    end)
+  end
+end
+
+-------------------------------------------------------------
 -- Mail rows :: the bind
 --
 -- `position` is the row's DISPLAYED position, not its inbox index. The list is
@@ -7451,7 +7693,10 @@ local function BindRow(panel, row, index, position, compact, done)
   -- The read mark, or on a stuck mail the warning triangle in its place
   -- (RV.PaintDot; RV.Place shows the triangle).
   RV.PaintDot(row.Indicator, wasRead, stuckReason ~= nil)
-  row.Icon:SetTexture(S.Icon(index))
+  -- A sold auction's gold: the item that sold, where it can be told (RV.SoldIcon).
+  local icon = (S == RV.LIVE and kind == "sold" and (tonumber(itemCount) or 0) == 0)
+    and RV.SoldIcon(subject, panel._bindGen) or nil
+  row.Icon:SetTexture(icon or S.Icon(index))
   row.Delete:SetShown(showDelete)
   -- Back to the idle tint, for the same reason StyleMailRow above re-asserts the
   -- unhovered row: this row is being bound to a different mail, so whatever
@@ -7992,6 +8237,9 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
       icon = C_Item.GetItemIconByID(first.l)
     end
   end
+  -- A sold auction's gold: the item that sold, kept with the entry when it
+  -- was recorded (`ic`), else told by its subject (RV.SoldIcon).
+  if not icon and entry.k == "sold" then icon = tonumber(entry.ic) or RV.SoldIcon(entry.sub, panel._bindGen) end
   if not icon and (entry.m or 0) > 0 then icon = "Interface\\Icons\\INV_Misc_Coin_01" end
   row.Icon:SetTexture(icon or "Interface\\Icons\\INV_Letter_02")
   -- The first item's quality mark on the icon's corner or before its name,

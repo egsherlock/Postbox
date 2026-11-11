@@ -1578,6 +1578,15 @@ function MM.HistoryTook(ctx, what, value, count)
   end
   if what == "money" then
     entry.m = (entry.m or 0) + (tonumber(value) or 0)
+    -- A sold auction's gold: the item that sold, kept with the entry where
+    -- it can be told now (CollectTab, CT.SoldIcon), so its row needs no
+    -- telling again.
+    if entry.k == "sold" and entry.ic == nil then
+      local CT = ns.CollectTab
+      local ok, icon = false, nil
+      if CT and type(CT.SoldIcon) == "function" then ok, icon = pcall(CT.SoldIcon, entry.sub) end
+      if ok and type(icon) == "number" then entry.ic = icon end
+    end
     return
   end
   -- A letter read: the entry is the whole record.
@@ -1588,6 +1597,10 @@ function MM.HistoryTook(ctx, what, value, count)
   end
   if ctx.price and not entry.p then entry.p = ctx.price end
   if type(value) ~= "string" then return end
+  -- An item now in the record: a sold auction's row can be told by it
+  -- (CollectTab, CT.SoldLearn).
+  local CT = ns.CollectTab
+  if CT and type(CT.SoldLearn) == "function" then pcall(CT.SoldLearn, value) end
   entry.it = entry.it or {}
   for i = 1, #entry.it do
     if entry.it[i].l == value then
@@ -1596,6 +1609,168 @@ function MM.HistoryTook(ctx, what, value, count)
     end
   end
   entry.it[#entry.it + 1] = { l = value, n = tonumber(count) or 1 }
+end
+
+-------------------------------------------------------------
+-- 2e. What was put up for auction
+--
+-- A sold auction's mail names its item only by name, and holds only gold,
+-- so its row cannot show the item unless something knows which item that
+-- name was. Every auction this account posts is noted as it goes up, in
+-- `auctionPosts` (realm -> name -> item name -> { i = item id, t = when }):
+-- the name exactly as this client wrote it, from the item the post was made
+-- from (C_AuctionHouse.PostItem and PostCommodity, post-hooked; an item's
+-- auction is noted again from AUCTION_HOUSE_AUCTION_CREATED where the client
+-- can say what it was). Nothing else: no price, no count. Kept POSTS_KEEP,
+-- longer than an auction runs and its mail lives, at most POSTS_MAX names a
+-- character, pruned as History is at login and as each post is noted.
+-- Read by CollectTab's RV.SoldIcon, through MM.PostedItem.
+-------------------------------------------------------------
+do
+  local POSTS_KEEP, POSTS_MAX = 33 * DAY, 200
+  local postsGen = 0
+
+  local function Posts(create)
+    local realm, name = Me()
+    if not (realm and name) then return nil end
+    local root
+    if create then
+      root = ns.Store.EnsurePath("auctionPosts")
+    else
+      root = ns.Store and ns.Store.Get and ns.Store.Get("auctionPosts")
+    end
+    if type(root) ~= "table" then return nil end
+    local byRealm = root[realm]
+    if type(byRealm) ~= "table" then
+      if not create then return nil end
+      byRealm = {}
+      root[realm] = byRealm
+    end
+    local list = byRealm[name]
+    if type(list) ~= "table" then
+      if not create then return nil end
+      list = {}
+      byRealm[name] = list
+    end
+    return list
+  end
+
+  -- One character's notes past POSTS_KEEP dropped, and the oldest past
+  -- POSTS_MAX.
+  local function Prune(list, now)
+    local count, oldest, oldestAt = 0, nil, nil
+    for item, note in pairs(list) do
+      local t = type(note) == "table" and tonumber(note.t) or nil
+      if not t or t < now - POSTS_KEEP then
+        list[item] = nil
+      else
+        count = count + 1
+        if not oldestAt or t < oldestAt then oldest, oldestAt = item, t end
+      end
+    end
+    if count > POSTS_MAX and oldest then list[oldest] = nil end
+  end
+
+  -- An item put up for auction, by its id and its name as this client wrote
+  -- it: noted for this character.
+  local function Note(itemID, itemName)
+    itemID = tonumber(itemID)
+    if not itemID or type(itemName) ~= "string" or itemName == "" then return end
+    if type(issecretvalue) == "function" and issecretvalue(itemName) then return end
+    local list = Posts(true)
+    if not list then return end
+    local now = time()
+    local note = list[itemName]
+    if type(note) == "table" then
+      note.i, note.t = itemID, now
+    else
+      list[itemName] = { i = itemID, t = now }
+    end
+    Prune(list, now)
+    postsGen = postsGen + 1
+    -- A sold row that showed the coin for it may show it now.
+    local CT = ns.CollectTab
+    if CT and type(CT.SoldAgain) == "function" then pcall(CT.SoldAgain) end
+  end
+
+  -- The post-hook on C_AuctionHouse.PostItem / PostCommodity: the item the
+  -- auction is made from, by the bag slot it was posted from.
+  local function Posted(location)
+    local api = C_Item
+    if type(api) ~= "table" or type(location) ~= "table" then return end
+    if type(api.DoesItemExist) == "function" and not api.DoesItemExist(location) then return end
+    if type(api.GetItemID) ~= "function" or type(api.GetItemName) ~= "function" then return end
+    Note(api.GetItemID(location), api.GetItemName(location))
+  end
+  local function Hooked(location) pcall(Posted, location) end
+
+  -- Hooked once, the first time the auction house opens: nothing is hooked
+  -- for a player who never uses it.
+  local hooked = false
+  function MM.WatchPosts()
+    if hooked then return end
+    local house = C_AuctionHouse
+    if type(house) ~= "table" or type(hooksecurefunc) ~= "function" then return end
+    hooked = true
+    if type(house.PostItem) == "function" then hooksecurefunc(house, "PostItem", Hooked) end
+    if type(house.PostCommodity) == "function" then hooksecurefunc(house, "PostCommodity", Hooked) end
+  end
+
+  -- An auction the client says was made (AUCTION_HOUSE_AUCTION_CREATED):
+  -- its item, where the client can say what it was.
+  function MM.PostCreated(auctionID)
+    local house, api = C_AuctionHouse, C_Item
+    if type(house) ~= "table" or type(house.GetAuctionInfoByID) ~= "function" then return end
+    local ok, info = pcall(house.GetAuctionInfoByID, auctionID)
+    local key = ok and type(info) == "table" and info.itemKey or nil
+    local itemID = type(key) == "table" and tonumber(key.itemID) or nil
+    if not itemID then return end
+    local name = type(info.itemLink) == "string" and info.itemLink:match("|h%[(.-)%]|h") or nil
+    if not name and type(api) == "table" and type(api.GetItemNameByID) == "function" then
+      local got, n = pcall(api.GetItemNameByID, itemID)
+      if got then name = n end
+    end
+    Note(itemID, name)
+  end
+
+  -- An item name -> the id of the item this character (else any on the
+  -- account) last put up for auction under exactly that name, or nil.
+  function MM.PostedItem(itemName)
+    if type(itemName) ~= "string" or itemName == "" then return nil end
+    local own = Posts(false)
+    local note = own and own[itemName]
+    if type(note) == "table" and tonumber(note.i) then return tonumber(note.i) end
+    local root = ns.Store and ns.Store.Get and ns.Store.Get("auctionPosts")
+    if type(root) ~= "table" then return nil end
+    for _, byRealm in pairs(root) do
+      if type(byRealm) == "table" then
+        for _, list in pairs(byRealm) do
+          note = type(list) == "table" and list[itemName]
+          if type(note) == "table" and tonumber(note.i) then return tonumber(note.i) end
+        end
+      end
+    end
+    return nil
+  end
+
+  -- Every character's notes pruned (at login, with History), a character
+  -- left with none dropped.
+  function MM.PrunePosts()
+    local root = ns.Store and ns.Store.Get and ns.Store.Get("auctionPosts")
+    if type(root) ~= "table" then return end
+    local now = time()
+    for realm, byRealm in pairs(root) do
+      if type(byRealm) == "table" then
+        for name, list in pairs(byRealm) do
+          if type(list) == "table" then Prune(list, now) end
+          if type(list) ~= "table" or next(list) == nil then byRealm[name] = nil end
+        end
+        if next(byRealm) == nil then root[realm] = nil end
+      end
+    end
+  end
+
+  function MM.PostsGen() return postsGen end
 end
 
 -------------------------------------------------------------
@@ -1667,6 +1842,13 @@ end
 -- of several items is a generic crate; where it kept the item's link, the
 -- icon is the item's, by that link. A number either way: nothing is made.
 function MM.MailIcon(mail)
+  -- A sold auction's gold: the item that sold, where it can be told
+  -- (CollectTab, CT.SoldIcon, kept by its subject), else the coin.
+  if mail.kind == "sold" and (mail.items or 0) == 0 then
+    local CT = ns.CollectTab
+    local icon = CT and type(CT.SoldIcon) == "function" and CT.SoldIcon(mail.subject) or nil
+    if icon then return icon end
+  end
   if mail.it == nil and mail.link and C_Item and type(C_Item.GetItemIconByID) == "function" then
     local icon = C_Item.GetItemIconByID(mail.link)
     if icon then return icon end
@@ -4100,7 +4282,7 @@ function MM.Rebind()
   if frame and frame:IsShown() and frame._list then BindRows(frame) end
 end
 
--- What this file keeps -- mailMemory, mailWatch, mailHistory, mailSent, hiddenChars --
+-- What this file keeps -- mailMemory, mailWatch, mailHistory, mailSent, hiddenChars, auctionPosts --
 -- was emptied from outside it (Options, Reset everything), each table where
 -- it stands. The character list is remembered against those same tables,
 -- so it is told here; the character list's popup closes, and the window,
@@ -4109,6 +4291,9 @@ end
 -- and stays. The caller repaints (MM.Refresh).
 function MM.DataCleared()
   CharactersChanged()
+  -- What a sold auction's row was told by (2e, History, the memory).
+  local CT = ns.CollectTab
+  if CT and type(CT.SoldReset) == "function" then CT.SoldReset() end
   MM.HistoryChanged()
   MM.SentChanged()
   MM.ClosePicker()
@@ -4395,7 +4580,12 @@ if bus then
   registered.commodity = bus.Register("COMMODITY_PURCHASE_SUCCEEDED", OnPurchaseCompleted)
   -- Posting an auction starts mail on its way: the gold when it sells, the
   -- item when it does not. An expiry while online is that mail arriving.
-  registered.auctionPosted = bus.Register("AUCTION_HOUSE_AUCTION_CREATED", function()
+  -- The auction house opened: what is put up for auction is noted from
+  -- here on (2e).
+  registered.auctionShow = bus.Register("AUCTION_HOUSE_SHOW", function() pcall(MM.WatchPosts) end)
+  registered.auctionPosted = bus.Register("AUCTION_HOUSE_AUCTION_CREATED", function(_, auctionID)
+    -- Its item, for a sold auction's row (2e), whether or not Mail Memory is on.
+    pcall(MM.PostCreated, auctionID)
     if not MemoryEnabled() then return end
     local watch = WatchFor(ns.Helpers.PlayerRealm(), ns.Helpers.PlayerName(), true)
     if not watch then return end
@@ -4446,8 +4636,10 @@ if bus then
     loginAt = time()
     if MemoryEnabled() then EnsureBaseline(StoredSnapshot()) end
     if not isInitialLogin then return end
-    -- History is kept whether or not Mail Memory is on; so is its pruning.
+    -- History is kept whether or not Mail Memory is on; so is its pruning,
+    -- and the auctions' notes' with it (2e).
     pcall(PruneAllHistory)
+    pcall(MM.PrunePosts)
     -- Once the client has settled its mail state: mail that arrived while
     -- logged out raised the unread flag that was down at the last close.
     -- Then, once per login, the one line about your characters' mail.

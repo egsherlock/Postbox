@@ -118,6 +118,9 @@ local SCHEMA = {
                               -- (Core/MailMemory.lua, 2c)
   "mailSent",                 -- realm -> name -> what was sent, kept as History
                               -- is (Core/MailMemory.lua, 2d)
+  "auctionPosts",             -- realm -> name -> item name -> { item id, when }:
+                              -- what was put up for auction, so a sold
+                              -- auction's row shows its item (Core/MailMemory.lua, 2e)
   "hiddenChars",              -- realm -> name -> true: hidden from the lists
                               -- of other characters (Core/MailMemory.lua, 2b)
 }
