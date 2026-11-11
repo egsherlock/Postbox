@@ -6195,8 +6195,8 @@ end
 -------------------------------------------------------------
 -- Tabs
 --
--- Five house plates, like the window's own segments: the selected one in
--- the accent, the others neutral. The tab a feature's switch leads,
+-- Six house plates, like the window's own segments, each as wide as its
+-- caption (Tabs.Fit): the selected one in the accent, the others neutral. The tab a feature's switch leads,
 -- Minimap, carries a small square beside its name that says whether the
 -- feature is on: green on, a grey ring off. The others have none: no one
 -- switch is what such a tab is about (whose look the window wears is the
@@ -6272,13 +6272,17 @@ do
     end
   end
 
+  -- The least room each side of a tab's caption (Tabs.Fit).
+  local TAB_PAD = 6
+
   -- The caption, cut to its plate where a translation will not fit, and
-  -- centred with its square as one.
+  -- centred with its square as one. A unit's leeway: the plate's width is
+  -- rounded to whole units.
   local function FitOne(plate)
     local T = ns.Theme
     local sq = plate.Square
     local withSquare = sq and sq:IsShown()
-    local room = (plate:GetWidth() or 0) - 12 - (withSquare and 14 or 0)
+    local room = (plate:GetWidth() or 0) - 2 * TAB_PAD - (withSquare and 14 or 0) + 1
     local text = plate.Text
     T.FitText(text, room, plate.caption, plate)
     text:SetWidth(math.min(TextW(text), room))
@@ -6290,12 +6294,13 @@ do
     end
   end
 
-  -- Measured on every open. The strip is shared out evenly, the normal
-  -- case; only where a caption and its square need more than an even share
-  -- (a long translation) does that tab take what it needs, the rest
-  -- sharing what is left evenly -- and if even that cannot hold every
-  -- caption, the shares go back to even and a caption is cut, its tooltip
-  -- carrying it whole.
+  -- Measured on every open, and after a font change. Each tab is as wide
+  -- as its caption and its square need, and the room left over is shared
+  -- evenly between them as padding, the same each side of every caption;
+  -- never less than TAB_PAD a side. Where even that leaves too little (a
+  -- long translation at a large text size), only the longest captions are
+  -- cut, each to one width that just fits, their tooltips carrying them
+  -- whole (FitOne).
   function Tabs.Fit()
     local T = ns.Theme
     local n = #TABS
@@ -6303,45 +6308,47 @@ do
     local edges = T.ColumnEdges(strip, n, TAB_GAP, S.tabEdges)
     S.tabEdges = edges
     local need, fixed = S.tabNeed, S.tabFixed
-    local even = (strip - (n - 1) * TAB_GAP) / n
-    local over = false
+    local room = strip - (n - 1) * TAB_GAP
+    local sum = 0
     for i = 1, n do
       local plate = S.plates[TABS[i].key]
       local text, sq = plate.Text, plate.Square
       text:SetText(plate.caption)
-      need[i] = TextW(text) + 12 + ((sq and sq:IsShown()) and 14 or 0)
-      fixed[i] = false
-      if need[i] > even then over = true end
+      -- The square stands 6 after the caption and is 8 wide (AddSquare).
+      need[i] = TextW(text) + ((sq and sq:IsShown()) and 14 or 0)
+      fixed[i] = need[i]
+      sum = sum + need[i]
     end
-    if over then
-      -- Fix every tab whose need is over the share of the room still
-      -- unfixed, until none is; at most n passes.
-      local room, left = strip - (n - 1) * TAB_GAP, n
+    local pad = (room - sum) / (2 * n)
+    if pad < TAB_PAD then
+      -- Every tab at the least padding; the captions share what is left,
+      -- the longest cut to one width (`cap`) and the rest whole.
+      pad = TAB_PAD
+      local left, spread = room - 2 * TAB_PAD * n, n
+      local cap = left / n
       for _ = 1, n do
-        local share = room / left
-        local any = false
+        local whole, any = 0, false
         for i = 1, n do
-          if not fixed[i] and need[i] > share then
-            fixed[i], any = true, true
-            room, left = room - need[i], left - 1
+          if fixed[i] ~= false and need[i] <= cap then
+            whole, any = whole + need[i], true
+            fixed[i] = false
+            spread = spread - 1
           end
         end
-        if not any or left == 0 then break end
+        if not any or spread == 0 then break end
+        left = left - whole
+        cap = left / spread
       end
-      if room >= 0 and (left == 0 or room / left >= 1) then
-        -- What the unfixed share; with none, what is over goes to all.
-        local share = left > 0 and room / left or 0
-        local spare = left > 0 and 0 or room / n
-        local x = 0
-        for i = 1, n do
-          local w = (fixed[i] and need[i] or share) + spare
-          local e = edges[i]
-          e.left = math.floor(x + 0.5)
-          e.right = math.floor(x + w + 0.5)
-          e.width = e.right - e.left
-          x = x + w + TAB_GAP
-        end
-      end
+      for i = 1, n do fixed[i] = math.min(need[i], cap) end
+    end
+    local x = 0
+    for i = 1, n do
+      local w = fixed[i] + 2 * pad
+      local e = edges[i]
+      e.left = math.floor(x + 0.5)
+      e.right = math.floor(x + w + 0.5)
+      e.width = e.right - e.left
+      x = x + w + TAB_GAP
     end
     for i = 1, n do
       local plate, e = S.plates[TABS[i].key], edges[i]
