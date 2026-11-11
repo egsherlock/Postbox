@@ -71,7 +71,12 @@
   rest, and a cog of Postbox's own on the title bar. The cog is plain gray
   and takes your accent only while the options are open.
 - **Text outline** is now called **Text style** (Options, Window), and a
-  new **Text weight** beside it offers Bold for Barlow Semi Condensed.
+  new **Text weight** beside it offers Bold for Barlow Semi Condensed and
+  the four new fonts.
+- **Four new fonts** in the Postbox style's Font list (Options, Window):
+  Fira Sans Condensed, Noto Sans, Overpass and Roboto Condensed, each in
+  Regular and Bold, with the letters of every language the game's Latin
+  and Russian clients use, so Russian players can pick them too.
 
 ### WoW Forever
 

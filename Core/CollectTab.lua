@@ -10076,8 +10076,10 @@ RV.LINE = { ruleA = 0.22, ruleMin = 12, band = 14, now = false }
 
 -- The game's own faces (Friz Quadrata, its Cyrillic cut for ruRU, Arial
 -- Narrow; zhCN's and zhTW's, from the client's compiled copies), Postbox's
--- (Barlow), ElvUI's default (PT Sans Narrow) and every face EllesmereUI
--- offers. A face with no capitals (zhCN's, zhTW's) stands on its
+-- (Barlow, Fira Sans Condensed, Noto Sans, Overpass, Roboto Condensed: their
+-- hhea line, capitals, brackets and the I's stem, Noto's from its l as its
+-- I has bars, read off the shipped files), ElvUI's default (PT Sans
+-- Narrow) and every face EllesmereUI offers. A face with no capitals (zhCN's, zhTW's) stands on its
 -- ideographs' ink box instead, its foot the seventh number (under the
 -- baseline; none for capitals).
 RV.FACES = {
@@ -10093,6 +10095,14 @@ RV.FACES = {
   bkai00m = { 0.879, 0.121, 0.842, -0.111, 0.657, 0.100, -0.083 },
   ["barlowsemicondensed-semibold"] = { 1.000, 0.200, 0.700, -0.096, 0.760, 0.116 },
   ["barlowsemicondensed-bold"] = { 1.000, 0.200, 0.700, -0.091, 0.759, 0.141 },
+  ["firasanscondensed-regular"] = { 0.935, 0.265, 0.688, -0.144, 0.844, 0.093 },
+  ["firasanscondensed-bold"] = { 0.935, 0.265, 0.693, -0.158, 0.858, 0.160 },
+  ["notosans-regular"] = { 1.069, 0.293, 0.714, -0.158, 0.714, 0.088 },
+  ["notosans-bold"] = { 1.069, 0.293, 0.714, -0.158, 0.714, 0.151 },
+  ["overpass-regular"] = { 0.883, 0.383, 0.700, -0.130, 0.712, 0.087 },
+  ["overpass-bold"] = { 0.883, 0.383, 0.700, -0.130, 0.712, 0.130 },
+  ["robotocondensed-regular"] = { 0.928, 0.244, 0.711, -0.229, 0.802, 0.090 },
+  ["robotocondensed-bold"] = { 0.928, 0.244, 0.711, -0.222, 0.790, 0.142 },
   ptsansnarrow = { 0.900, 0.276, 0.700, -0.220, 0.712, 0.126 },
   ["ptsansnarrow-bold"] = { 0.900, 0.276, 0.700, -0.220, 0.712, 0.126 },
   expressway = { 0.954, 0.192, 0.692, -0.167, 0.691, 0.136 },

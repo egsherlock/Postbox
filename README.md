@@ -337,8 +337,9 @@ new?** in the footer shows the last three releases.
 - **The Postbox style** (the default on the game's own UI): **Dark** or
   **Light** mode, accent (Gold by default, White and other presets, your
   class color or any color), background color, opacity, border (None, Edge,
-  Thin or Thick) and its color, corners, row stripes, sheen, font and text
-  size. In Light mode text is crisp dark ink and your accent stays in the
+  Thin or Thick) and its color, corners, row stripes, sheen, font (the
+  game's, Barlow Semi Condensed, Fira Sans Condensed, Noto Sans, Overpass or
+  Roboto Condensed), text weight (Regular or Bold) and text size. In Light mode text is crisp dark ink and your accent stays in the
   marks; each mode keeps its own background.
 - **Blizzard**, to match the default UI with the game's own art (texture
   packs restyle it).

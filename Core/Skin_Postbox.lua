@@ -990,14 +990,17 @@ Skin._ResolveLook = ResolveLook
 -- size (Theme's floor and the Text size, which every look shares). The other
 -- faces are
 -- Barlow Semi Condensed SemiBold (Media/Fonts, SIL Open Font License; the
--- mockups' face), the fonts the game itself ships, and EllesmereUI's font
--- while EllesmereUI is loaded (its own copy, by its own path: nothing of it is
+-- mockups' face), the fonts the game itself ships, Fira Sans Condensed, Noto
+-- Sans, Overpass and Roboto Condensed (Media/Fonts, each in a Regular and a
+-- Bold, under the licence file beside it), and EllesmereUI's font while
+-- EllesmereUI is loaded (its own copy, by its own path: nothing of it is
 -- shipped here).
 --
 -- A face without the letters of the client's language is not offered there,
 -- and a saved one falls back to the game font: Barlow and the game's Latin
 -- faces have no Cyrillic (the game's Russian client has Cyrillic cuts of
--- them), and none of them has Chinese or Korean.
+-- them; Fira, Noto, Overpass and Roboto carry Cyrillic in the same file as
+-- their Latin), and none of them has Chinese or Korean.
 --
 -- Text outline: Shadow (a drop shadow, no outline), Outline (the client's
 -- thin outline, no shadow) or None, in Dark mode. Light mode's text is always
@@ -1040,8 +1043,20 @@ local FONT_FILES = {
   arialn   = { name = "Arial Narrow", latin = "Fonts\\ARIALN.TTF", russian = "Fonts\\ARIALN.TTF" },
   morpheus = { name = "Morpheus", latin = "Fonts\\MORPHEUS.TTF", russian = "Fonts\\MORPHEUS_CYR.TTF" },
   skurri   = { name = "Skurri", latin = "Fonts\\SKURRI.TTF", russian = "Fonts\\SKURRI_CYR.TTF" },
+  fira     = { name = "Fira Sans Condensed",
+               latin = FONT_DIR .. "FiraSansCondensed-Regular.ttf", latinBold = FONT_DIR .. "FiraSansCondensed-Bold.ttf",
+               russian = FONT_DIR .. "FiraSansCondensed-Regular.ttf", russianBold = FONT_DIR .. "FiraSansCondensed-Bold.ttf" },
+  noto     = { name = "Noto Sans",
+               latin = FONT_DIR .. "NotoSans-Regular.ttf", latinBold = FONT_DIR .. "NotoSans-Bold.ttf",
+               russian = FONT_DIR .. "NotoSans-Regular.ttf", russianBold = FONT_DIR .. "NotoSans-Bold.ttf" },
+  overpass = { name = "Overpass",
+               latin = FONT_DIR .. "Overpass-Regular.ttf", latinBold = FONT_DIR .. "Overpass-Bold.ttf",
+               russian = FONT_DIR .. "Overpass-Regular.ttf", russianBold = FONT_DIR .. "Overpass-Bold.ttf" },
+  roboto   = { name = "Roboto Condensed",
+               latin = FONT_DIR .. "RobotoCondensed-Regular.ttf", latinBold = FONT_DIR .. "RobotoCondensed-Bold.ttf",
+               russian = FONT_DIR .. "RobotoCondensed-Regular.ttf", russianBold = FONT_DIR .. "RobotoCondensed-Bold.ttf" },
 }
-local FONT_ORDER = { "game", "barlow", "friz", "arialn", "morpheus", "skurri", "eui" }
+local FONT_ORDER = { "game", "barlow", "friz", "arialn", "morpheus", "skurri", "fira", "noto", "overpass", "roboto", "eui" }
 local TEXT_SCALES = { 0.90, 1.00, 1.10, 1.20 }
 
 local function EUIFontPath()
