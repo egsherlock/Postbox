@@ -2605,8 +2605,15 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   -- The steps that run once (section 4b): after Initialize has carried the
   -- old settings over, before the minimap icon or any skin reads them.
   Upgrade(savedBy)
-  SettleGridDefault(ns.freshInstall)
-  SettleGroupOrder(ns.freshInstall)
+  -- Each settled once, as Upgrade runs its steps: one that fails is
+  -- reported, and the rest of the setup below goes on.
+  for _, settle in ipairs({ SettleGridDefault, SettleGroupOrder }) do
+    local ok, err = pcall(settle, ns.freshInstall)
+    if not ok and type(geterrorhandler) == "function" then
+      local handler = geterrorhandler()
+      if type(handler) == "function" then handler(err) end
+    end
+  end
 
   -- What's new, once by itself at the first mailbox, for a release with
   -- news for everyone (Core/WhatsNew.lua, section 5): after the steps,
