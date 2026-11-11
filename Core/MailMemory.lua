@@ -846,7 +846,8 @@ end
 -- collected) and Sent (2d: `m` gold sent, one entry a mail sent):
 --   earned     copper taken from mail
 --   spent      copper paid for C.O.D. and copper sent
---   collected  mails in History, sent  mails in Sent
+--   collected  mails in History gold or items were taken from (`m`, `it`,
+--              or `c`), not letters only read; sent  mails in Sent
 --   walked     the entries read, for a cost check
 -- Each record is oldest first, so it is read from its newest end back to
 -- the first entry older than the week and no further: one walk per
@@ -867,9 +868,14 @@ do
         w.spent = w.spent + (tonumber(e.m) or 0)
         w.sent = w.sent + 1
       else
-        w.earned = w.earned + (tonumber(e.m) or 0)
-        w.spent = w.spent + (tonumber(e.c) or 0)
-        w.collected = w.collected + 1
+        local m, c = tonumber(e.m) or 0, tonumber(e.c) or 0
+        w.earned = w.earned + m
+        w.spent = w.spent + c
+        -- Collected: a mail gold or items were taken from (a C.O.D. paid
+        -- gave its items); a letter only read is in History, not here.
+        if m > 0 or c > 0 or (type(e.it) == "table" and e.it[1] ~= nil) then
+          w.collected = w.collected + 1
+        end
       end
     end
   end
