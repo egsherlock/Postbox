@@ -3881,6 +3881,16 @@ local function BuildSearch(frame)
   search.Wrap:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(PAD - 2), HEADER_Y)
   search.Join(sort)
   search.Wrap:SetWidth(SEARCH_W + search.endW)
+  -- Escape, as in every search box here: with text in the box the first
+  -- press empties it and the second lets the keyboard go; an empty box
+  -- lets it go at once. Once it has, Escape closes as it always did.
+  search.Box:SetScript("OnEscapePressed", function(self)
+    if (self:GetText() or "") ~= "" then
+      self:SetText("")
+    else
+      self:ClearFocus()
+    end
+  end)
   frame.Search = search
   frame.SearchWrap, frame.SearchBox, frame.SearchClear = search.Wrap, search.Box, search.Clear
   -- Repaints the toggle for frame.searchAll, wherever that is set from.

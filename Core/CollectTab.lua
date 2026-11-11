@@ -4655,6 +4655,18 @@ local function BuildSearchBox(panel)
     end,
   })
   local wrap = search.Wrap
+  -- Escape, as in every search box here (Manage Recipients', the
+  -- options'): with text in the box the first press empties it and the
+  -- second lets the keyboard go; an empty box lets it go at once. The box
+  -- takes the key only while it has the keyboard, so the window's own
+  -- Escape (WhatsNew.lua section 4) is as it was once it has let go.
+  search.Box:SetScript("OnEscapePressed", function(self)
+    if (self:GetText() or "") ~= "" then
+      self:SetText("")
+    else
+      self:ClearFocus()
+    end
+  end)
   panel.Search = search
   panel.SearchWrap, panel.SearchBox, panel.SearchPlaceholder = wrap, search.Box, search.Placeholder
   panel.SearchAll, panel.SearchClear = search.All, search.Clear
