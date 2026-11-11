@@ -21,11 +21,14 @@
 
 ### Mail tab
 
-- The bar above the list reads in order: whose mail, Inbox and History,
-  then one box for search and sort. Inbox and Done are one switch, and in
-  History, Received and Sent join the clock.
-- While a filter is on, a line above the list says so, with **Clear**
-  beside it. The collect buttons take only the mail you can see.
+- **The bar above the list is three controls:** one for whose mail and
+  which list (the character list opens from its first cell, and your own
+  character is always its first row, the way back to your inbox), the
+  History clock with Received and Sent, and one box for search and sort.
+  A second click on the clock returns to the Inbox.
+- **Several filters at once:** each filter you tick in the sort menu shows
+  as a small chip under the sort button, with an x to let it go. The
+  collect buttons take only the mail you can see.
 - **Gold as coins:** mail rows can show gold as coin icons instead of
   letters (Arrange, Gold column, Written as).
 - With **Attachments on hover** set to Fan out, a mail's items open from
@@ -55,12 +58,14 @@
 - Mail counts always show on Inbox, the collect buttons and each
   character's box; the setting for them is gone.
 - **Escape closes one Postbox window at a time:** an editor goes back to
-  the options, and the options close before the mailbox.
+  the options, and the options close before the mailbox. In a search box
+  with words in it, the first press clears it and the second leaves it.
 - Mail Memory, Character Groups and Manage Recipients have new icons: on
   the options' General tab in your accent color, on the buttons that open
   them, and on their own windows' title bars.
 - The cog on the Postbox window's title bar is plain gray, like the arrange
-  mark beside it, whatever your accent.
+  mark beside it, and takes your accent only while the options are open.
+- **Text outline** is now called **Text style** (Options, Window).
 
 ### WoW Forever
 
