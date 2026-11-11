@@ -9701,11 +9701,13 @@ end
 -------------------------------------------------------------
 do
   local FIND = {
-    X = 6,          -- the box in from the panel's left edge, as the window's cog
-    W = 160, H = 20, MIN_W = 80,
+    -- As the options drawing has it (design round 6): 10 in from the
+    -- panel's left edge, 150 wide and 18 tall on its hairline.
+    X = 10,
+    W = 150, H = 18, MIN_W = 80,
     -- The magnifier's height and its gap to the words, the clear button's
     -- room at the right end, and the hairline's chrome at rest and lit.
-    GLYPH = 12, GLYPH_GAP = 5, CLEAR_W = 14, LINE_A = 0.22, LINE_HOT = 0.45,
+    GLYPH = 12, GLYPH_GAP = 6, CLEAR_W = 14, LINE_A = 0.22, LINE_HOT = 0.45,
     -- The chosen line's wash (the accent) and bar, as the mail rows' are.
     CHOSEN_A = 0.14, BAR_W = 2,
     GAP = 8,        -- the least room between the box and the title's first letter
@@ -10218,7 +10220,11 @@ do
     else
       T.FillChrome(wrap.Line, hot and FIND.LINE_HOT or FIND.LINE_A)
     end
-    if wrap.Glyph then T.SetColor(wrap.Glyph, hot and "textPrimary" or "textSecondary") end
+    -- The magnifier in the placeholder's ink at rest, as the drawing has
+    -- it; brighter under the pointer, the accent while typing, as the line.
+    if wrap.Glyph then
+      T.SetColor(wrap.Glyph, (focus and "accent") or (hot and "textPrimary") or "textPlaceholder")
+    end
   end
   Find.PaintLine = PaintLine
 
@@ -10291,16 +10297,19 @@ do
     end
     local box = CreateFrame("EditBox", nil, wrap)
     box:SetAutoFocus(false)
-    local font = T.FontObject and T.FontObject("bodySmall")
+    -- The words at the rows' size, as the drawing writes them: the body
+    -- role's font, the placeholder in its own muted ink.
+    local font = T.FontObject and T.FontObject("body")
     if font then T.SetBoxFont(box, font) end
     T.SetColor(box, "textPrimary")
     box.__postboxNoEditSkin = true
     box:SetMaxLetters(64)
-    box:SetPoint("TOPLEFT", wrap, "TOPLEFT", x, -2)
-    box:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -FIND.CLEAR_W, 2)
-    local placeholder = T.CreateText(wrap, "placeholder")
-    placeholder:SetPoint("TOPLEFT", wrap, "TOPLEFT", x, -2)
-    placeholder:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -FIND.CLEAR_W, 2)
+    box:SetPoint("TOPLEFT", wrap, "TOPLEFT", x, -1)
+    box:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -FIND.CLEAR_W, 1)
+    local placeholder = T.CreateText(wrap, "body")
+    T.SetColor(placeholder, "textPlaceholder")
+    placeholder:SetPoint("TOPLEFT", wrap, "TOPLEFT", x, -1)
+    placeholder:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -FIND.CLEAR_W, 1)
     placeholder:SetJustifyH("LEFT")
     placeholder:SetJustifyV("MIDDLE")
     -- One line, cut short where the box gives way (Find.Fit).
