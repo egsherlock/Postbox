@@ -867,8 +867,7 @@ end
 --
 -- A release with news for everyone names it in NEWS, and What's new opens
 -- by itself for it once: the first time the player opens a mailbox with
--- it, after an update or on a fresh install (WoW Forever keeps saved
--- variables of its own, so nearly every Forever player is one), beside the
+-- it after an update (never on a fresh install: WN.ArmOnce), beside the
 -- mail window as the 1.50 notice stands (WN.WindowShown, from the mail
 -- window's open in Core/MailboxUI.lua). 1.60's is WoW Forever. A release
 -- without such news sets NEWS to nil, and nothing here runs at all.
@@ -948,7 +947,15 @@ function ONCE.Resume()
   if st and st.mailboxOpen then ONCE.Try(UI._frame) end
 end
 
--- At load, from Postbox.lua's ADDON_LOADED.
+-- At load, from Postbox.lua's ADDON_LOADED. A fresh install, with no saved
+-- variables at all (ns.freshInstall), has nothing new to be told about:
+-- the current news is marked as shown, so What's new never opens by itself
+-- for a first install. It still opens from the options' footer and
+-- /postbox whatsnew. An update arms it as before.
 function WN.ArmOnce()
+  if ns.freshInstall and NEWS then
+    local db = PostboxDB
+    if type(db) == "table" then db.newsShown = NEWS end
+  end
   ONCE.armed = not NewsShown() or nil
 end
