@@ -11293,8 +11293,9 @@ CT.BarParts = {
   Join = RV.Join, LineReady = RV.LineReady, CentreAt = RV.CentreAt,
   -- Where the client lays a string's letters out (What's new's placard too).
   Span = RV.Span,
-  -- A string's face and size (What's new's game headings).
-  FaceOf = RV.FaceOf,
+  -- A string's face and size (What's new's game headings), and where its
+  -- line and baseline stand (the options' button icons).
+  FaceOf = RV.FaceOf, LineAt = RV.LineAt,
 }
 
 -------------------------------------------------------------

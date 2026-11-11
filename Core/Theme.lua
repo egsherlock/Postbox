@@ -5139,6 +5139,9 @@ Theme.AtlasSets = {
 --     master from `large.from` units up, so ask for 12 or 30 to see each
 --     one pixel for pixel. Accent-tinted where Theme.TintAccentGlyph keeps
 --     one in the icon tone.
+--   groups-10, recipients-10  the busts and the address book again, the
+--     12s simplified to a 10-unit ink box: the options' Character Groups
+--     and Manage Recipients buttons only, beside their 13-unit captions.
 --   search  a magnifier, 12 units: the options' search box.
 --   eye, eye-off  an almond with a ring round its pupil, 12 by 8, and the
 --     same eye with a one-unit slash from top left to bottom right and a
@@ -5212,6 +5215,8 @@ do
       large = { from = 21, file = MEDIA .. "glyph-groups-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
     recipients = { file = MEDIA .. "glyph-recipients-12.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true,
       large = { from = 21, file = MEDIA .. "glyph-recipients-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
+    ["groups-10"] = { file = MEDIA .. "glyph-groups-10.tga", w = 10, h = 10, l = 0.0625, r = 0.6875, t = 0.0625, b = 0.6875, px = true },
+    ["recipients-10"] = { file = MEDIA .. "glyph-recipients-10.tga", w = 10, h = 10, l = 0.0625, r = 0.6875, t = 0.0625, b = 0.6875, px = true },
     search = { file = MEDIA .. "glyph-search.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
     link = { file = MEDIA .. "glyph-link.tga", w = 15, h = 8, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.53125 },
     ["link-broken"] = { file = MEDIA .. "glyph-link-broken.tga", w = 15, h = 8, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.53125 },

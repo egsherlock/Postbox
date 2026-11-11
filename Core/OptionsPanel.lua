@@ -4879,10 +4879,35 @@ do
   -- One icon box for every button row, ICON.BOX square, the caption
   -- ICON.GAP after it; a glyph drawn smaller is centred in it, so the
   -- captions of three buttons stacked one over another start alike.
-  -- Every glyph here (layout, groups, recipients) is drawn from its 12-unit
-  -- master at 12, texel for texel (2 art texels a unit), so the box is the
-  -- glyph: on the 22-unit button it stands 5 units from the top.
+  -- Every glyph here is drawn from its own master at its own size, pixel
+  -- for pixel: Arrange's layout mark at 12, the box; the openers' groups
+  -- and recipients at 10 (their -10 masters, the 12s simplified, so they
+  -- weigh no more than the 13-unit caption), a unit in from either side.
+  -- Upright, each stands with its middle on the middle of the caption's
+  -- capitals (ICON.Top), not of its line: the line's room for descenders
+  -- set an icon centred on the button high against the words.
   local ICON = { BOX = 12, GAP = 6 }
+
+  -- How far under the button's top the icon's top stands, in whole units:
+  -- its middle on the middle of the caption's capitals (a face without
+  -- them: its ideographs' ink box), where the client lays the caption's
+  -- line and baseline out (the Mail tab's bar rule, CollectTab's
+  -- BarParts.FaceOf and LineAt), in the font the caption wears now, so it
+  -- follows the Text size and the style's face. Centred on the button
+  -- where those are not loaded.
+  function ICON.Top(btn, label, icon)
+    local H = btn:GetHeight() or BUTTON_H
+    local ih = icon:GetHeight() or ICON.BOX
+    local mid = H / 2
+    local CT = ns.CollectTab
+    local BP = CT and CT.BarParts
+    if BP and BP.FaceOf and BP.LineAt then
+      local face, size = BP.FaceOf(label)
+      local _, base = BP.LineAt(face, size, H, 0)
+      mid = base - (face[3] + (face[7] or 0)) * size / 2
+    end
+    return math.floor(mid - ih / 2 + 0.5)
+  end
 
   function Rows.Button(col, spec)
     local row = Rows.New(col, ROW_H)
@@ -4899,7 +4924,9 @@ do
     -- caption's ink (Rows.PaintCaption).
     local art = ArtHolder(btn)
     if spec.glyph then
-      local icon = Ctx.Mark(art, ICON.BOX, "OVERLAY", spec.glyph)
+      -- At its master's own size (ICON).
+      local g = T.GLYPHS and T.GLYPHS[spec.glyph]
+      local icon = Ctx.Mark(art, g and g.h or ICON.BOX, "OVERLAY", spec.glyph)
       if icon then
         icon.w = math.floor((icon:GetWidth() or ICON.BOX) + 0.5)
         btn.Icon = icon
@@ -5602,12 +5629,17 @@ do
     label:SetWidth(math.max(1, capW))
     if math.abs((btn:GetWidth() or 0) - width) > 0.5 then btn:SetWidth(width) end
     local x = math.floor(pad + (width - 2 * pad - tail - lead - capW) / 2 + 0.5)
-    if icon then
-      icon:ClearAllPoints()
-      icon:SetPoint("LEFT", btn, "LEFT", x + math.floor((ICON.BOX - icon.w) / 2), 0)
-    end
     label:ClearAllPoints()
     label:SetPoint("LEFT", btn, "LEFT", x + lead, 0)
+    if icon then
+      icon:ClearAllPoints()
+      local ix = x + math.floor((ICON.BOX - icon.w) / 2)
+      if icon.dots then
+        icon:SetPoint("LEFT", btn, "LEFT", ix, 0)
+      else
+        icon:SetPoint("TOPLEFT", btn, "TOPLEFT", ix, -ICON.Top(btn, label, icon))
+      end
+    end
     return width
   end
 
@@ -7665,7 +7697,7 @@ function Pages.mail(col)
   -- chevron, since it opens a window.
   S.groupsCell = Rows.Button(col, {
     title = L["GROUPS_TITLE"], text = L["GROUPS_OPT_DESC"], caption = L["OPT_GROUPS_NONE"],
-    onClick = function() Ctx.OpenGroups() end, minWidth = DD_W, chevron = true, glyph = "groups",
+    onClick = function() Ctx.OpenGroups() end, minWidth = DD_W, chevron = true, glyph = "groups-10",
   })
 
   Rows.Group(col, L["OPT_COLLECTING_HEADING"])
@@ -7935,7 +7967,7 @@ function Pages.send(col)
   Rows.Group(col, L["OPT_RECIPIENTS_HEADING"])
   S.recipientsCell = Rows.Button(col, {
     title = L["RM_OPT_BUTTON"], text = L["RM_OPT_BUTTON_DESC"], caption = L["OPT_RECIPIENTS_NONE"],
-    onClick = function() Ctx.OpenRecipients() end, minWidth = DD_W, chevron = true, glyph = "recipients",
+    onClick = function() Ctx.OpenRecipients() end, minWidth = DD_W, chevron = true, glyph = "recipients-10",
   })
 end
 
