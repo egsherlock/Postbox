@@ -103,10 +103,11 @@ local K = {}
 -- called SECTION_GAP while holding M.gap, which is the SIBLING step, not
 -- M.sectionGap (14). It stays M.gap and is renamed to say so: this screen is
 -- one continuous form from recipient to Send button rather than a set of
--- separable groups, and the two places it is used -- subject field to message
--- caption, message body to attachments -- are band boundaries in a stack whose
+-- separable groups, and the places it is used -- category bar to subject
+-- caption, subject field to message caption, message body to attachments
+-- caption -- are band boundaries in a stack whose
 -- total height is what the window's floor is derived from. Widening them to
--- M.sectionGap would raise that floor by 12px to buy grouping this screen does
+-- M.sectionGap would raise that floor by 18px to buy grouping this screen does
 -- not have, so the value is deliberate and the name now matches it.
 K.BAND_GAP          = M.gap
 -- The recipient field and the category bar under it are ONE control as far as
@@ -119,10 +120,11 @@ K.BAR_GAP           = M.space.hair
 -- see it, and Theme.CreatePlate("tile") gives every tile the same height from
 -- the same token.
 K.BAR_H             = M.tileHeight
--- Caption to the field it names is M.labelGap everywhere; the SUBJECT caption
--- is the one that follows a control rather than a field, and the bar above it
--- is already inset, so it gets the padding rung instead of the section one.
-K.SUBJECT_LABEL_GAP = M.tightGap
+-- Caption to the field it names is M.labelGap everywhere. Above each caption
+-- -- Subject under the category bar, Message under the subject field,
+-- Attachments under the message box -- is the same band gap, so the fields
+-- stand evenly spaced down the form and the bar does not crowd Subject.
+K.SUBJECT_LABEL_GAP = K.BAND_GAP
 K.MONEY_INPUT_H     = M.controlHeight -- the money boxes and the C.O.D. box share it
 -- The money row is its tallest control plus a hair of air, not a round number:
 -- it was 28px around controls of 22, and those 6px were dead space directly
@@ -253,9 +255,11 @@ local function MessageMinHeight()
   return TextHeight("bodySmall", K.MESSAGE_MIN_LINES) + 2 * K.BODY_PAD
 end
 
--- The "Attachments" caption's band, above the first row of slots.
+-- The "Attachments" caption's band, above the first row of slots. The
+-- caption stands at the area's top edge: the space above it is the band gap
+-- the message box ends with (K.BAND_GAP), as above every other caption.
 local function SlotBandTop()
-  return M.tightGap + LabelHeight() + M.tightGap
+  return LabelHeight() + M.tightGap
 end
 
 -- Rows of slots, with no trailing gap after the last one: the area used to
@@ -6269,7 +6273,7 @@ local function BuildAttachmentArea(panel)
   panel._attachRows = 1
 
   local label = Theme.CreateText(area, "label")
-  label:SetPoint("TOPLEFT", area, "TOPLEFT", M.inset, -M.tightGap)
+  label:SetPoint("TOPLEFT", area, "TOPLEFT", M.inset, 0)
   label:SetHeight(LabelHeight())
   label:SetText(L["LABEL_ATTACHMENTS"])
   if Theme.OnWindow then Theme.OnWindow(label, "window") end
@@ -6316,7 +6320,7 @@ local function BuildAttachmentArea(panel)
   -- of queued icons is drawn under it by ST.RefreshQueueStrip, and the
   -- whole pane is hidden while nothing is queued.
   local pane = CreateFrame("Frame", nil, area)
-  pane:SetPoint("TOPLEFT", area, "TOPLEFT", M.inset + K.SEND_SLOTS_PER_ROW * K.SLOT_STEP_X, -M.tightGap)
+  pane:SetPoint("TOPLEFT", area, "TOPLEFT", M.inset + K.SEND_SLOTS_PER_ROW * K.SLOT_STEP_X, 0)
   pane:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -M.inset, 0)
   pane.icons = {}
   pane.More = Theme.CreateText(pane, "secondary")
