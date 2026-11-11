@@ -4650,13 +4650,13 @@ local function BuildSearchBox(panel)
   panel.Sort:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -M.inset, -M.inset)
   RV.PlaceSort(panel, true)
 
-  -- The character picker, left of the search box: it wears the crest of the
-  -- box on screen, and lists every character with mail to look at.
+  -- The character picker, first in the row: whose mail is on screen decides
+  -- everything after it. It wears the crest of the box on screen, and lists
+  -- every character with mail to look at. Placed by the row's layout
+  -- (LayoutViewToggle).
   local picker = T.CreatePlate(panel, "segment")
   picker:SetSize(M.segmentHeight, M.segmentHeight)
-  -- One unit with the search it scopes, so the snug step of a switch's
-  -- segments, as Inbox and History are.
-  picker:SetPoint("RIGHT", wrap, "LEFT", -M.space.snug, 0)
+  picker:SetPoint("LEFT", panel.ViewToggle, "LEFT", 0, 0)
   picker:SetText("")
   picker.Icon = picker:CreateTexture(nil, "OVERLAY")
   picker.Icon:SetSize(M.segmentHeight - 8, M.segmentHeight - 8)
@@ -5791,45 +5791,47 @@ local function LayoutViewToggle(panel)
     opts = {}
     container._sizeOpts = opts
   end
-  opts.height, opts.gap, opts.minWidth = T.Metrics.segmentHeight, gap, T.Metrics.buttonMinWidth
+  local M = T.Metrics
+  opts.height, opts.gap, opts.minWidth = M.segmentHeight, gap, M.buttonMinWidth
+  -- The row reads in order of meaning: whose mail (the picker, and the
+  -- other box's name beside it while one is on screen), which list (the
+  -- segments, then the History clock), which half (Received and Sent,
+  -- joined to the clock), then at the far end find (the search) and order
+  -- (the sort). Every square -- the picker, the clock, the sort -- is one
+  -- plate the segments' height, and the controls of one end stand the snug
+  -- step apart. Measured first, placed once the name's room is known.
   local per, total = T.SizeRow(shown, opts)
-
-  for i = 1, #shown do
-    local seg = shown[i]
-    seg:ClearAllPoints()
-    seg:SetPoint("LEFT", container, "LEFT", (i - 1) * (per + gap), 0)
-  end
-  -- The history plate: square when it wears the icon, its caption's width
-  -- when it fell back to text. Out of the row, which closes up without it,
-  -- while History is off.
+  -- The clock: square when it wears the icon, its caption's width when it
+  -- fell back to text. Out of the row, which closes up without it, while
+  -- History is off. Another character's History is as much its own as its
+  -- box is, so the clock stays beside the Inbox.
   local hist = container.history
+  local histW = 0
   if hist then
-    -- Another character's History is as much its own as its box is, so the
-    -- clock stays beside the Inbox that is the way home.
     local histShown = RV.HistoryOn()
     hist:SetShown(histShown)
     if histShown then
-      local width = hist.Icon and T.Metrics.segmentHeight + 6
-        or ceil(T.TextWidth(hist)) + 2 * T.Metrics.tightGap + 8
-      hist:SetSize(width, T.Metrics.segmentHeight)
-      hist:ClearAllPoints()
-      hist:SetPoint("LEFT", container, "LEFT", total + gap, 0)
-      total = total + gap + width
+      histW = hist.Icon and M.segmentHeight or ceil(T.TextWidth(hist)) + 2 * M.tightGap + 8
+      hist:SetSize(histW, M.segmentHeight)
+      total = total + gap + histW
     end
   end
-  -- Received and Sent, while History is on screen.
-  total = RV.LayoutSides(panel, container, total)
-  container:SetWidth(max(total, 1))
+  -- Received and Sent, while History is on screen: over the clock's last
+  -- column, one ring with it.
+  local sidesW = RV.LayoutSides(panel, container)
+  if sidesW > 0 then total = total + sidesW - 1 end
+  -- Whose: the picker, then the name.
+  local picker = panel.Picker
+  local lead = (picker and picker:IsShown()) and M.segmentHeight + gap or 0
 
-  -- The right-hand end of the row: the search box and the sort right of it
-  -- (or the search alone, as wide, on History), the picker left of them, and
-  -- the other box's name left of that -- which is given the room the rest of
-  -- the row leaves it (AV.FitPlate). A row short of room has the search give
-  -- back the room the sort took (RV.SortRoom) before the name is cut, and
-  -- only that: `least`, the same end with the search and the name at their
-  -- narrowest, is what the row needed before there was a sort.
-  local M = T.Metrics
+  -- The row's far end: the search box and the sort right of it. The other
+  -- box's name is given the room the rest of the row leaves it (AV.FitPlate).
+  -- A row short of room has the search give back the room the sort took
+  -- (RV.SortRoom) before the name is cut, and only that: `least`, the far
+  -- end with the search at its narrowest and the name's, is what the row
+  -- needed before there was a sort.
   local row = PanelWidth(panel) - 2 * M.inset
+  local left = lead + total
   -- While History's switch stands in the row, the search may give back more
   -- (RV.SearchYield), down to its floor; its natural width is as before.
   local give = panel.SearchWrap and RV.SortRoom(panel) or 0
@@ -5838,20 +5840,51 @@ local function LayoutViewToggle(panel)
   -- Never past what the placeholder needs (RV.SearchLeast): a row short of
   -- more raises the window's floor rather than cutting the search's word.
   if panel.SearchWrap then give = min(give, max(0, SEARCH_W - RV.SearchLeast(panel))) end
-  if panel.Picker and panel.Picker:IsShown() then right = right + M.space.snug + M.segmentHeight end
   local alt = container.alt
   local named = alt and alt:IsShown() and alt.natW
   if panel.SearchWrap then
-    local want = right + (named and M.space.snug + min(alt.natW, AV.PLATE_MAX) or 0)
-    local given = min(give, max(0, ceil(want - (row - total - M.gap))))
+    local want = right + (named and gap + min(alt.natW, AV.PLATE_MAX) or 0)
+    local given = min(give, max(0, ceil(want - (row - left - M.gap))))
     RV.SizeSearch(panel, given)
     right = right - given
   end
   local least = right - (give - (panel._searchGiven or 0))
+  local altW = 0
   if named then
-    right = right + M.space.snug + AV.FitPlate(panel, row - total - M.gap - right - M.space.snug)
-    least = least + M.space.snug + alt.minW
+    altW = AV.FitPlate(panel, row - left - M.gap - right - gap)
+    least = least + gap + alt.minW
   end
+
+  -- Placed: the picker at the row's start, the name after it, the rest after
+  -- them. The container keeps its place (the list and the strip hang from
+  -- it) and its width is the whole of the row's start.
+  if lead > 0 then
+    picker:ClearAllPoints()
+    picker:SetPoint("LEFT", container, "LEFT", 0, 0)
+  end
+  local x = lead
+  if named then
+    alt:ClearAllPoints()
+    alt:SetPoint("LEFT", container, "LEFT", x, 0)
+    x = x + altW + gap
+  end
+  for i = 1, #shown do
+    local seg = shown[i]
+    seg:ClearAllPoints()
+    seg:SetPoint("LEFT", container, "LEFT", x + (i - 1) * (per + gap), 0)
+  end
+  if histW > 0 then
+    local at = x + total - histW - (sidesW > 0 and sidesW - 1 or 0)
+    hist:ClearAllPoints()
+    hist:SetPoint("LEFT", container, "LEFT", at, 0)
+    if sidesW > 0 then
+      local holder = container.sides.holder
+      holder:ClearAllPoints()
+      holder:SetPoint("LEFT", container, "LEFT", at + histW - 1, 0)
+    end
+  end
+  x = x + total
+  container:SetWidth(max(x, 1))
 
   -- The hint shares the top row. It is genuinely optional text, so it is shown
   -- only when it fits beside the segments in full: clipping it would be worse
@@ -5859,18 +5892,18 @@ local function LayoutViewToggle(panel)
   local hint = panel.Hint
   if hint then
     -- A gap either side of it.
-    local room = row - total - M.gap - right - M.gap
+    local room = row - x - M.gap - right - M.gap
     hint:SetShown(room >= T.TextWidth(hint) and not AV.Active(panel) and not other)
   end
 
   PaintViewToggle(panel)
 
-  -- The width this row needs, whatever the window is now: the segments as
-  -- measured, a gap, and the right-hand end with the name at its narrowest.
+  -- The width this row needs, whatever the window is now: the row's start
+  -- as measured with the name at its narrowest, a gap, and the far end.
   -- Where the window is narrower than that, the window's floor is raised to
   -- it (Core/MailboxUI.lua, UI.RefreshCollectWidth) -- which hears of it only
   -- when it moves. Last, so a resize it causes finds the row already laid.
-  local need = ceil(total + M.gap + least + 2 * M.inset)
+  local need = ceil(left + M.gap + least + 2 * M.inset)
   if need ~= panel._needW then
     panel._needW = need
     local UI = ns.MailboxUI
@@ -5972,9 +6005,9 @@ end
 -- Other characters
 --
 -- The Mail tab shows another character's box, as Mail Memory remembers it:
--- pick a character with the button beside the search box and the list is
+-- pick a character with the button at the row's start and the list is
 -- that box -- read-only, the same rows, the name in its class colour beside
--- this character's own Inbox, which is the way back. The toggle inside the
+-- the button and before this character's own Inbox, which is the way back. The toggle inside the
 -- search box searches every character's box at once, each character's
 -- matches under its name. The mailbox closing puts everything back to this
 -- character's own box, so a later visit never opens on somebody else's mail.
@@ -6160,29 +6193,21 @@ function AV.Paint(panel)
   -- and the box says what it searches.
   AV.PaintSearch(panel, others)
 
-  -- The other box's name and count, just left of the picker that chose it:
+  -- The other box's name and count, just right of the picker that chose it:
   -- the two read as one control. No realm -- the list the name was picked
   -- from said which -- and never wider than the row can give it: a long name
-  -- is cut, its count kept (AV.FitPlate, from the row's layout below).
-  -- Measured from the full caption, so a cut never feeds the next width.
+  -- is cut, its count kept (AV.FitPlate, from the row's layout below, which
+  -- places it). Measured from the full caption, so a cut never feeds the
+  -- next width.
   local plate = panel.ViewToggle and panel.ViewToggle.alt
   if plate then
     if who and Memory then
       AV.MeasurePlate(panel, plate, Memory, who)
       plate:SetHeight(M.segmentHeight)
-      plate:ClearAllPoints()
-      plate:SetPoint("RIGHT", panel.Picker, "LEFT", -M.space.snug, 0)
       plate:Show()
     else
       plate:Hide()
     end
-  end
-
-  local hint = panel.Hint
-  if hint then
-    local edge = (plate and plate:IsShown() and plate)
-      or (panel.Picker:IsShown() and panel.Picker) or panel.SearchWrap
-    hint:SetPoint("RIGHT", edge, "LEFT", -M.gap, 0)
   end
   LayoutViewToggle(panel)
   if RV.ApplyFooter then RV.ApplyFooter(panel) end
@@ -9036,10 +9061,11 @@ end
 -- History :: Received and Sent
 --
 -- History has two halves: what Postbox collected (Received, as it always
--- was) and what it sent (Sent, Core/MailMemory.lua 2d). A two-part switch
--- right of the clock picks one while History is on screen; it is not there
--- otherwise, so the Inbox's row looks as it did. Received is the start,
--- and the choice is kept for the session (`_hside`).
+-- was) and what it sent (Sent, Core/MailMemory.lua 2d). While History is on
+-- screen the two halves stand joined to the clock that opened it, clock,
+-- Received and Sent in one ring, so the switch reads as part of History; it
+-- is not there otherwise, and the clock stands alone. Received is the
+-- start, and the choice is kept for the session (`_hside`).
 --
 -- Sent's rows are History's rows -- the same pool, arrangement, options,
 -- search and every-character search -- with the recipient where the sender
@@ -9067,22 +9093,28 @@ function RV.SentShown(panel)
   return panel ~= nil and panel.viewMode == VIEW_HISTORY and HV.Sent(panel)
 end
 
--- The switch, built once with the row (BuildViewToggle): one control, as
--- the mockup draws it. A holder owns the ring round both halves; the halves
--- are the house's segment plates standing on it with their own rings put
--- away, the second overlapping the first by the ring's width, so the line
--- between them is the holder's ring showing through the one column neither
--- fill covers -- one ring, one divider, whatever a skin or style paints the
--- plates with (every look leaves these plates Postbox's own: neither host
--- skin takes a segment over). The chosen half is selected as any segment
--- is: its fill, its caption in the accent and its underline.
+-- The switch, built once with the row (BuildViewToggle): one control with
+-- the clock, as the mockup draws it. The ring round the clock and both
+-- halves is the row's own (a texture of the container, so it is always
+-- under the plates); the halves are the house's segment plates on a holder
+-- with their own rings put away, each overlapping the plate before it by
+-- the ring's width, and the clock puts its own away while joined
+-- (RV.JoinClock), so each line between two parts is the ring showing
+-- through the one column neither fill covers -- one ring, single dividers,
+-- whatever a skin or style paints the plates with (every look leaves these
+-- plates Postbox's own: neither host skin takes a segment over). The chosen
+-- half is selected as any segment is: its fill, its caption in the accent
+-- and its underline; the clock keeps its selected fill and leaves the
+-- underline to the half.
 function RV.BuildSides(panel, container)
   local T = Th()
   local sides = { opts = {} }
   local holder = CreateFrame("Frame", nil, container)
   holder:SetHeight(T.Metrics.segmentHeight)
-  local ring = holder:CreateTexture(nil, "BACKGROUND", nil, -1)
-  ring:SetAllPoints()
+  local ring = container:CreateTexture(nil, "BACKGROUND", nil, -1)
+  ring:SetPoint("TOPLEFT", container.history, "TOPLEFT", 0, 0)
+  ring:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", 0, 0)
+  ring:Hide()
   holder.Ring = ring
   holder:Hide()
   sides.holder = holder
@@ -9113,19 +9145,22 @@ function RV.PaintSides(panel)
   if c then sides.holder.Ring:SetColorTexture(c[1], c[2], c[3], c[4] or 1) end
 end
 
--- The switch laid out after the clock (`total`, the row's width so far),
--- while History is on screen: each half as wide as its own caption needs,
--- the second over the first's last column (the divider), a control's step
--- from the clock. Returns the row's width with it.
-function RV.LayoutSides(panel, container, total)
+-- The switch measured, while History is on screen: each half as wide as
+-- its own caption needs, the second over the first's last column (the
+-- divider), and the clock joined to them (RV.JoinClock). Returns the
+-- holder's width, 0 while the switch is not there; the row places the
+-- holder over the clock's last column (LayoutViewToggle).
+function RV.LayoutSides(panel, container)
   local sides = container.sides
-  if not sides then return total end
+  if not sides then return 0 end
   local hist = container.history
   local on = panel.viewMode == VIEW_HISTORY and hist ~= nil and hist:IsShown()
   panel._sidesOn = on
   local holder = sides.holder
   holder:SetShown(on)
-  if not on then return total end
+  holder.Ring:SetShown(on)
+  if hist then RV.JoinClock(hist, on) end
+  if not on then return 0 end
   local T = Th()
   local M = T.Metrics
   local opts = sides.opts
@@ -9140,10 +9175,27 @@ function RV.LayoutSides(panel, container, total)
     x = x + width
   end
   holder:SetWidth(x)
-  holder:ClearAllPoints()
-  holder:SetPoint("LEFT", container, "LEFT", total + M.gap, 0)
   RV.PaintSides(panel)
-  return total + M.gap + x
+  return x
+end
+
+-- The clock joined to the halves (`on`) or standing alone: joined, its own
+-- ring is put away for the row's (RV.BuildSides) and its underline is the
+-- chosen half's to show, so the plate paints none (Theme's PaintPlate
+-- shows the one it is given); alone, both come back. Only on a change.
+function RV.JoinClock(hist, on)
+  if (hist._joined == true) == on then return end
+  hist._joined = on
+  if on then
+    hist.__pbUnder = hist.__pbUnder or hist._accent
+    hist._accent = nil
+    if hist.__pbUnder then hist.__pbUnder:Hide() end
+    if hist._edge then hist._edge:Hide() end
+  else
+    hist._accent = hist.__pbUnder or hist._accent
+    if hist._edge then hist._edge:Show() end
+  end
+  Th().SetPlateSelected(hist, hist.isSelected)
 end
 
 -- The width the search may give back to the switch beyond the sort's room:
