@@ -22,7 +22,8 @@
 ### Mail tab
 
 - The bar above the list reads in order: whose mail, Inbox and History,
-  then search and sort. In History, Received and Sent join the clock.
+  then one box for search and sort. Inbox and Done are one switch, and in
+  History, Received and Sent join the clock.
 - While a filter is on, a line above the list says so, with **Clear**
   beside it. The collect buttons take only the mail you can see.
 - **Gold as coins:** mail rows can show gold as coin icons instead of
@@ -41,6 +42,12 @@
 - **Arrange:** each column's card holds its own settings (stack counts,
   quality marks, expiry marks), and the options step aside while you
   arrange.
+- **The last 7 days** on the options' General tab: gold earned and spent
+  by mail, and mails collected and sent, for this character or all of
+  them.
+- **Remember sort order** (Options, Mail tab): on, each list keeps the
+  order you chose; off, every list is back to newest first at your next
+  visit. Filters are always let go when the mailbox closes.
 - **Test mail** has its own switch over the options' Preview, and reads
   **Testing** while it is on.
 - New installs start with three category buttons under the mail list: All
@@ -50,8 +57,8 @@
 - **Escape closes one Postbox window at a time:** an editor goes back to
   the options, and the options close before the mailbox.
 - Mail Memory, Character Groups and Manage Recipients have new icons: on
-  the options' General tab in your accent color, and on the buttons that
-  open them.
+  the options' General tab in your accent color, on the buttons that open
+  them, and on their own windows' title bars.
 - The cog on the Postbox window's title bar is plain gray, like the arrange
   mark beside it, whatever your accent.
 
