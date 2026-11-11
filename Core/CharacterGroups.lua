@@ -871,8 +871,9 @@ end
 -- ground and follows the pointer; the others stand where they will be if it
 -- is let go now, which opens a gap at its landing place (CG.DropIndex), and
 -- an accent line runs through the gap. Its state is on the window (_drag*),
--- set when it starts and cleared when it ends: let go (the grip's drag stop,
--- or GLOBAL_MOUSE_UP for a release no script of the grip hears), or the
+-- set when it starts, at the press on the grip, and cleared when it ends:
+-- let go (the grip's mouse up, or GLOBAL_MOUSE_UP for a release no script
+-- of the grip hears), or the
 -- window closing. Each frame of it reads the pointer, moves the lifted row,
 -- and moves the others only when the landing place changes; it allocates
 -- nothing.
@@ -1021,7 +1022,6 @@ local function GroupRow(frame, i)
   grip:SetSize(GRIP_W, GROUP_ROW_H)
   grip:SetPoint("LEFT", row, "LEFT", 6, 0)
   grip:EnableMouse(true)
-  grip:RegisterForDrag("LeftButton")
   grip.lines = {}
   for n = 1, 3 do
     local line = grip:CreateTexture(nil, "ARTWORK")
@@ -1046,12 +1046,19 @@ local function GroupRow(frame, i)
     GameTooltip:Show()
   end)
   grip:SetScript("OnLeave", function() Lit(0.6) GameTooltip:Hide() end)
-  grip:SetScript("OnDragStart", function() StartDrag(frame, row) end)
+  -- The group is in the hand from the press itself, held where it was
+  -- pressed: the game's own drag (RegisterForDrag) begins only once the
+  -- pointer has travelled some way, so the row lifted late and hung that far
+  -- from the pointer. The grip has no click of its own; a press let go
+  -- without moving lands the group where it stood.
+  grip:SetScript("OnMouseDown", function(_, button)
+    if button == "LeftButton" then StartDrag(frame, row) end
+  end)
   -- Let go: the group lands where the gap is. The row in the hand stands
   -- clamped to the list's first and last slot, so let go past either end
   -- it is there, first or last, as it lands.
-  grip:SetScript("OnDragStop", function()
-    if frame._dragRow == row then EndDrag(frame, true) end
+  grip:SetScript("OnMouseUp", function(_, button)
+    if button == "LeftButton" and frame._dragRow == row then EndDrag(frame, true) end
   end)
   row.Grip = grip
 
