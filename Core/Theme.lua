@@ -3068,6 +3068,8 @@ function Theme.RepaintCog()
   frame = ns.MailMemory and ns.MailMemory._frame
   icon = frame and frame.OptionsButton and frame.OptionsButton.icon
   if icon then icon:SetVertexColor(Theme.GetAccentTone("icon")) end
+  -- And every glyph kept in the same tone (Theme.TintAccentGlyph).
+  if Theme.RepaintAccentGlyphs then Theme.RepaintAccentGlyphs() end
 end
 
 -- The accent-tinted icons outside the plates and the text: the minimap mail
@@ -4913,6 +4915,15 @@ Theme.AtlasSets = {
 --   sort-list  the Mail tab's sort-and-filter button (CollectTab's
 --     RV.NewSortButton): three bars, longest on top, two units thick, on
 --     whole pixels and shown at its own size on the square plate.
+--   memory, groups, recipients  the three tools (Mail Memory, Character
+--     Groups, Manage Recipients): an envelope with a clock, three busts,
+--     an address book. Each drawn twice by hand on whole pixels, 16 units
+--     square (the Recipient field, small buttons) and 30 (`large`, the
+--     options tiles); Theme.Glyph takes the large master from `large.from`
+--     units up, so ask for 16 or 30 to see each one pixel for pixel.
+--     Accent-tinted: Theme.TintAccentGlyph keeps one in the icon tone.
+--   search  a magnifier, 12 units: the options' search box.
+--   Their art and its self-test: .dev/design/tile-icons/gen_tile_glyphs.py.
 --
 -- Sharpness. The art is 2 texels per UI unit. A texel snapping bias above 0
 -- "sharpens": the renderer picks a texel instead of blending texels (the API
@@ -4965,6 +4976,13 @@ do
     tray = { file = MEDIA .. "glyph-tray.tga", w = 11, h = 7, l = 0.03125, r = 0.71875, t = 0.0625, b = 0.9375 },
     cap = { file = MEDIA .. "glyph-cap.tga", w = 13, h = 13, l = 0.03125, r = 0.84375, t = 0.03125, b = 0.84375 },
     ["sort-list"] = { file = MEDIA .. "glyph-sort-list.tga", w = 12, h = 10, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.65625 },
+    memory = { file = MEDIA .. "glyph-memory-16.tga", w = 16, h = 16, l = 0.015625, r = 0.515625, t = 0.015625, b = 0.515625,
+      large = { from = 23, file = MEDIA .. "glyph-memory-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
+    groups = { file = MEDIA .. "glyph-groups-16.tga", w = 16, h = 16, l = 0.015625, r = 0.515625, t = 0.015625, b = 0.515625,
+      large = { from = 23, file = MEDIA .. "glyph-groups-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
+    recipients = { file = MEDIA .. "glyph-recipients-16.tga", w = 16, h = 16, l = 0.015625, r = 0.515625, t = 0.015625, b = 0.515625,
+      large = { from = 23, file = MEDIA .. "glyph-recipients-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
+    search = { file = MEDIA .. "glyph-search.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
   }
 
@@ -4973,6 +4991,10 @@ do
   function Theme.Glyph(parent, name, size, layer)
     local g = GLYPHS[name]
     if not g or not parent or type(parent.CreateTexture) ~= "function" then return nil end
+    -- A glyph drawn twice, each master for its size: the large one from
+    -- `large.from` units up.
+    local big = g.large
+    if big and (tonumber(size) or g.h) >= big.from then g = big end
     local tex = parent:CreateTexture(nil, layer or "ARTWORK")
     if g.wrap then
       tex:SetTexture(g.file, g.wrap, g.wrap)
@@ -4989,6 +5011,24 @@ do
     -- The art it was made from, for a turn of it (Theme.TurnGlyph).
     tex.__pbSpec = g
     return tex
+  end
+
+  -- A glyph in the accent's icon tone (Theme.GetAccentTone "icon", the
+  -- cogs' tone), kept in it: tinted now, and again by every
+  -- Theme.RepaintAccentIcons -- an accent moved, the host's looks, the
+  -- palette or the strip under it. Weak-keyed, so a texture let go is
+  -- forgotten; nothing is made per paint.
+  local accentGlyphs = setmetatable({}, { __mode = "k" })
+
+  function Theme.TintAccentGlyph(tex)
+    if not tex then return end
+    accentGlyphs[tex] = true
+    tex:SetVertexColor(Theme.GetAccentTone("icon"))
+  end
+
+  function Theme.RepaintAccentGlyphs()
+    local r, g, b = Theme.GetAccentTone("icon")
+    for tex in pairs(accentGlyphs) do tex:SetVertexColor(r, g, b) end
   end
 
   -- A glyph that turns half round and back: the caret of a button whose
