@@ -58,11 +58,25 @@ local SIZE_SAVE_DELAY = 0.25
 -- remembered locally rather than re-scanned.
 local escRegistered = {}
 
+-- A window that Escape closes showing or hiding: What's new's Escape
+-- (Core/WhatsNew.lua, section 4) counts the Postbox windows up, so one
+-- press closes the top one alone while another stands under it. Resolved
+-- at call time; the window is our own, hooked once.
+local function EscWindowChanged()
+  local news = ns.WhatsNew
+  if news and news.EscSync then news.EscSync() end
+end
+
 function Helpers.RegisterEscClose(frame)
   if not frame or type(frame.GetName) ~= "function" then return false end
 
   local name = frame:GetName()
   if type(name) ~= "string" or name == "" then return false end
+  if not frame.__pbEscWatched and type(frame.HookScript) == "function" then
+    frame.__pbEscWatched = true
+    frame:HookScript("OnShow", EscWindowChanged)
+    frame:HookScript("OnHide", EscWindowChanged)
+  end
   if escRegistered[name] then return true end
   if type(UISpecialFrames) ~= "table" then return false end
 

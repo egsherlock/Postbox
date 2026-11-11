@@ -16,7 +16,8 @@ local _, ns = ...
 -- what was kept, What's new? and OK. Either button answers it for good, and
 -- so does Escape, as OK; a mailbox closed without an answer shows it again
 -- at the next one. Escape closes the window or the notice alone, leaving
--- the mail window up (section 4). It
+-- the mail window up (section 4), and the same key frame closes the
+-- other Postbox windows one at a time while two or more are up. It
 -- stands outside the window, so nothing the player needs is under it, and
 -- it steps aside while the arrange mode's inspector stands beside the
 -- window (WN.Aside, from Core/Arrange.lua).
@@ -342,10 +343,9 @@ local function BuildWindow()
   end
   T.ApplyFrameTheme(f)
   -- Escape closes it alone (section 4); the client's own pass, by this
-  -- name, is the net for a press in combat.
+  -- name, is the net for a press in combat. Registering hooks its show and
+  -- hide to ESC.Sync (WN.EscSync), as every Postbox window's.
   ns.Core.UI.Helpers.RegisterEscClose(f)
-  f:HookScript("OnShow", ESC.Sync)
-  f:HookScript("OnHide", ESC.Sync)
 
   -- The pages on the list surface the bug report's report stands on.
   local card = CreateFrame("Frame", nil, f, "BackdropTemplate")
@@ -720,20 +720,93 @@ end
 -- client's pass as before: the window's name stays in UISpecialFrames for
 -- it. Nothing of Blizzard's is touched, and the frame and its two events
 -- exist only while there is something of ours to close.
+--
+-- The same frame, and only it, closes the Postbox windows one at a time:
+-- while two or more of them are up (ESC.ALL), a press closes the top one
+-- alone, by the same Hide the client's pass gives it, and leaves the rest
+-- -- the mailbox, the bags and anyone else's windows -- for the next. Top
+-- is who opened whom, never the last click: the bug report and the two
+-- editors, Character Groups and Manage Recipients, first (the higher of
+-- them where two are up), so an editor opened from the options goes back
+-- to the options; then the preview window, the options' Test mail away
+-- from a mailbox; then the options; then Mail Memory. The mail window is
+-- the floor: with it, or any one window, alone, the press is the client's
+-- pass, which closes the mailbox and everything else as it always has.
+-- While the arrange mode is open its own frame has Escape's layers
+-- (Core/Arrange.lua, section 5), and this one passes the key to it. In
+-- combat it is hidden, as above, and one press closes everything again.
+-- Every window registered by Helpers.RegisterEscClose calls ESC.Sync as it
+-- shows and hides (Lib/UI/Window.lua); counting reads a handful of
+-- frames and makes nothing.
 -------------------------------------------------------------
 
--- The topmost thing of ours up: the window (over the mail window's strata),
--- then the notice. Hides it; answers whether there was one.
+-- Every Postbox window Escape closes, by name; the first three are the
+-- editors that close first.
+ESC.ALL = {
+  "PostboxBugReportFrame", "PostboxCharacterGroupsFrame", "PostboxRecipientManagerFrame",
+  "PostboxOptionsFrame", "PostboxMailMemoryFrame", "PostboxFrame", "PostboxWhatsNewFrame",
+}
+ESC.EDITORS = 3
+
+function ESC.Up(name)
+  local f = _G[name]
+  return type(f) == "table" and type(f.IsVisible) == "function" and f:IsVisible() and f or nil
+end
+
+-- How many Postbox windows are up, the notice counting as one.
+function ESC.Count()
+  local n = (card and card:IsVisible()) and 1 or 0
+  local all = ESC.ALL
+  for i = 1, #all do
+    if ESC.Up(all[i]) then n = n + 1 end
+  end
+  return n
+end
+
+-- The window one press closes while two or more are up, or nil: the
+-- editors (the highest of them), the preview, the options, Mail Memory.
+function ESC.Top()
+  local all, best, bestLevel = ESC.ALL, nil, nil
+  local T = ns.Theme
+  for i = 1, ESC.EDITORS do
+    local f = ESC.Up(all[i])
+    if f then
+      local level = T and T.LevelOf and T.LevelOf(f) or 0
+      if not best or level > bestLevel then best, bestLevel = f, level end
+    end
+  end
+  if best then return best end
+  local UI = ns.MailboxUI
+  local st = UI and UI._state
+  if st and st.preview then
+    local preview = ESC.Up("PostboxFrame")
+    if preview then return preview end
+  end
+  return ESC.Up("PostboxOptionsFrame") or ESC.Up("PostboxMailMemoryFrame")
+end
+
+-- What one press closes: What's new, else the notice, else -- outside the
+-- arrange mode, with two or more windows up -- the top window. Reads only.
+function ESC.Target()
+  if win and win:IsVisible() then return win end
+  if card and card:IsVisible() then return card end
+  local AR = ns.Arrange
+  if AR and AR.host then return nil end
+  if ESC.Count() < 2 then return nil end
+  return ESC.Top()
+end
+
+-- The press answered: the target as it is now, hidden. Answers whether
+-- there was one.
 function ESC.Close()
-  if win and win:IsVisible() then
-    win:Hide()
-    return true
-  end
-  if card and card:IsVisible() then
+  local target = ESC.Target()
+  if not target then return false end
+  if target == card then
     Answer(false)
-    return true
+  else
+    target:Hide()
   end
-  return false
+  return true
 end
 
 -- Keys pass again. In combat propagation cannot be set, and the frame
@@ -765,6 +838,12 @@ function ESC.KeyDown(self, pressed)
   if AR and type(AR.EscapeReachesAddOns) == "function" then
     local ok, yes = pcall(AR.EscapeReachesAddOns, pressed)
     ours = ok and yes
+  end
+  -- Only a press with something of ours to close alone (the arrange mode's
+  -- frame hears the rest).
+  if ours then
+    local ok, target = pcall(ESC.Target)
+    ours = ok and target ~= nil
   end
   if not ours then
     if not self:GetPropagateKeyboardInput() then self:SetPropagateKeyboardInput(true) end
@@ -828,11 +907,12 @@ function ESC.Arm(key)
   return true
 end
 
--- The window or the notice shown or hidden, or a fight ended: the frame
--- up while either is up out of combat, and listening for combat while
--- either is up at all.
+-- The window or the notice shown or hidden, a Postbox window shown or
+-- hidden, or a fight ended: the frame up while either is up, or two
+-- Postbox windows are, out of combat, and listening for combat while so
+-- at all.
 function ESC.Sync()
-  local up = (win and win:IsVisible()) or (card and card:IsVisible())
+  local up = (win and win:IsVisible()) or (card and card:IsVisible()) or ESC.Count() >= 2
   local key = ESC.key
   if not up then
     if key then
@@ -855,6 +935,8 @@ function ESC.Sync()
     key:Show()
   end
 end
+
+WN.EscSync = ESC.Sync
 
 -- /postbox whatsnew notice: the notice as a player coming from 1.40 sees
 -- it, without their reset, to try it in game -- beside the mail window now
