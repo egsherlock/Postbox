@@ -86,23 +86,6 @@ local BAR_GAP    = M.space.hair
 -- Widths, so no spacing token describes them.
 -- Between the two bulk buttons at the foot of the window.
 local ACTION_GAP    = 6
--- The sort group is ONE control in two halves: a toggle that names the field
--- and a square button that flips the direction. Both are built from
--- Theme.CreateButton and both are this tall, written once here so the pair
--- cannot drift apart -- the direction half used to be a flat plate at
--- M.tileHeight beside a push button, which on a stock UI is a bevelled button
--- two pixels from a flat fill: two controls, not one. The toggle is
--- SORT_TOGGLE_W wide, and wider only where its longest caption needs it
--- (FitSortControl), the group with it.
-local SORT_TOGGLE_H = 22
-local SORT_TOGGLE_W = 150
-local SORT_DIR_W    = SORT_TOGGLE_H
--- The direction glyph inside that square. Small enough that the button still
--- reads as a button rather than as an arrow with a border round it.
-local SORT_DIR_GLYPH = 12
--- Hair, not the padding rung: the two halves belong to each other, and this is
--- the same gap the category strips use between tiles in one dense bar.
-local SORT_GROUP_W  = SORT_TOGGLE_W + M.space.hair + SORT_DIR_W
 
 -- THE VERTICAL CHAIN, top to bottom. Named once because two places read it:
 -- the anchors in Build and the height floor (HeightBounds), which have to agree
@@ -238,8 +221,10 @@ local SORTS = {
 local SORT_BY_ID = {}
 for _, sort in ipairs(SORTS) do SORT_BY_ID[sort.id] = sort end
 
--- An arrow can only say "up" or "down"; it cannot say whether up means A-to-Z
--- or level 1 first. The tooltip spells the current direction out in words.
+-- The two directions of each field in its own words, ascending then
+-- descending: "A to Z" says what "up" cannot. The sort menu offers them, the
+-- field's own first (see the sort button in Build), and the tooltip says the
+-- one in force.
 local SORT_DIRECTION_KEY = {
   name     = { "RM_SORT_DIR_NAME_ASC",     "RM_SORT_DIR_NAME_DESC" },
   category = { "RM_SORT_DIR_CATEGORY_ASC", "RM_SORT_DIR_CATEGORY_DESC" },
@@ -409,61 +394,15 @@ end
 -------------------------------------------------------------
 -- Artwork
 --
--- The probe is Core/Theme.lua's, and so is the star: the Send tab's contact bar
--- draws the same one, and the two windows have to agree about what a favourite
--- looks like. The reasoning for the artwork lives there with the code.
---
--- The sort arrow below stays here -- this is the only window that sorts.
+-- The star is Core/Theme.lua's: the Send tab's contact bar draws the same
+-- one, and the two windows have to agree about what a favourite looks like.
+-- The reasoning for the artwork lives there with the code.
 -------------------------------------------------------------
-local AtlasExists = Theme.AtlasExists
-
 -- `on` true draws the filled gold star, false the hollow outline. Used for the
 -- per-row toggle and for the Favourites tile alike, which is why there is no
 -- third "dimmed" state: the tile with nothing in it shows the same outline star
 -- a row that is not a favourite shows, at the same full opacity.
 local SetStarArt = Theme.SetStarArt
-
--- The sort direction arrow. Blizzard's own sortable column headers use
--- `UI-SortArrow` flipped vertically for the opposite direction; that is the
--- fallback, with the atlas pairs tried first.
-local ARROW_ATLASES = {
-  { up = "auctionhouse-ui-sortarrow-up", down = "auctionhouse-ui-sortarrow-down" },
-  { up = "uitools-icon-chevron-up",      down = "uitools-icon-chevron-down" },
-}
-local ARROW_TEXTURE = "Interface\\Buttons\\UI-SortArrow"
-
-local arrowAtlas, arrowProbed
-
-local function ArrowAtlas()
-  if not arrowProbed then
-    arrowProbed = true
-    for _, pair in ipairs(ARROW_ATLASES) do
-      if AtlasExists(pair.up) and AtlasExists(pair.down) then
-        arrowAtlas = pair
-        break
-      end
-    end
-  end
-  return arrowAtlas
-end
-
-local function SetArrowArt(texture, up)
-  if not texture then return end
-  local atlas = ArrowAtlas()
-  if atlas then
-    texture:SetTexCoord(0, 1, 0, 1)
-    texture:SetAtlas(up and atlas.up or atlas.down, false)
-    return
-  end
-  texture:SetTexture(ARROW_TEXTURE)
-  -- The asset's arrow occupies the left 0.5625 of the sheet and points up in
-  -- its natural orientation; the down arrow is the same crop mirrored in Y.
-  if up then
-    texture:SetTexCoord(0, 0.5625, 0, 1)
-  else
-    texture:SetTexCoord(0, 0.5625, 1, 0)
-  end
-end
 
 -------------------------------------------------------------
 -- Category tile / direction button plating
@@ -1377,9 +1316,11 @@ local function EmptyText(total)
   local query = Trim(RM._query or "")
   local id = RM._filter or "all"
 
+  -- A search that finds nothing says so as every list does; under a
+  -- category, the way out follows it, as an empty category's does.
   if query ~= "" then
-    if id == "all" then return L("RM_EMPTY_SEARCH", ShortQuery(query)) end
-    return L("RM_EMPTY_SEARCH_FILTER", ShortQuery(query), CategoryLabel(id))
+    if id == "all" then return L["EMPTY_LIST_SEARCH"] end
+    return L["EMPTY_LIST_SEARCH"] .. "\n\n" .. L["RM_EMPTY_FILTER_HINT"]
   end
   if id == "favourites" then return L["RM_EMPTY_FAVOURITES"] end
   if id == "hidden" then return L["RM_EMPTY_HIDDEN"] end
@@ -1410,6 +1351,14 @@ local function UpdateSummary()
   end
 
   if shown == 0 then
+    -- A search's "Nothing matches." stands centred where the list is, as
+    -- the other lists' does; the longer explanations read from the top left.
+    local searched = total > 0 and Trim(RM._query or "") ~= ""
+    if frame._emptyCentred ~= searched then
+      frame._emptyCentred = searched
+      frame.Empty:SetJustifyH(searched and "CENTER" or "LEFT")
+      frame.Empty:SetJustifyV(searched and "MIDDLE" or "TOP")
+    end
     frame.Empty:SetText(EmptyText(total))
     frame.Empty:Show()
   else
@@ -1530,9 +1479,19 @@ function RM.SetFilter(id)
   RelayoutList(true)
 end
 
+-- The order changed: the sort button and its menu told, the list sorted and
+-- shown from its top.
+function RM.SortChanged()
+  if not RM._frame then return end
+  if RM._frame.RefreshSortControl then RM._frame.RefreshSortControl() end
+  ApplyFilterAndSort()
+  RelayoutList(true)
+end
+
 -- Sets the sort field, or reverses the direction when the field is already
--- selected. Picking a new field starts it in its own most-useful direction
--- rather than inheriting the previous field's.
+-- selected and `toggleDirection` asks it. Picking a new field starts it in
+-- its own most-useful direction rather than inheriting the previous field's.
+-- The field already in force, not reversed, changes nothing.
 function RM.SetSort(id, toggleDirection)
   local sort = SORT_BY_ID[id or "name"]
   if not sort then return end
@@ -1542,12 +1501,32 @@ function RM.SetSort(id, toggleDirection)
   elseif RM._sort ~= sort.id then
     RM._sort = sort.id
     RM._sortDesc = sort.desc and true or false
+  else
+    return
   end
+  RM.SortChanged()
+end
 
-  if not RM._frame then return end
-  if RM._frame.RefreshSortControl then RM._frame.RefreshSortControl() end
-  ApplyFilterAndSort()
-  RelayoutList(true)
+-- The field in force, in this direction: descending (`desc`) or ascending.
+function RM.SetSortDirection(desc)
+  desc = desc and true or false
+  if (RM._sortDesc and true or false) == desc then return end
+  RM._sortDesc = desc
+  RM.SortChanged()
+end
+
+-- The order a first open shows: Name, A to Z. While anything else is in
+-- force the sort button is drawn selected.
+function RM.SortIsDefault()
+  return (RM._sort or "name") == "name" and not RM._sortDesc
+end
+
+-- The sort button's right-click and its menu's Reset: Name, A to Z. The
+-- category and the search stay as they are.
+function RM.ResetSort()
+  if RM.SortIsDefault() then return end
+  RM._sort, RM._sortDesc = "name", false
+  RM.SortChanged()
 end
 
 function RM.AddRecipient(text)
@@ -1868,176 +1847,117 @@ local function Build()
   frame.HeaderBand = band
 
   -----------------------------------------------------------
-  -- Sort control (Postbox's own dropdown: no MenuUtil, see COMBAT_TAINT.md)
-  --
-  -- The label used to be a separate "Sort" caption sitting to the left of the
-  -- toggle, which read as stray text. It is now inside the toggle -- the button
-  -- says "Sort: Name" -- so the control is one object, and the direction lives
-  -- in the arrow immediately beside it.
+  -- Sort: the Mail tab's sort button, as Mail Memory's window wears it
+  -- (MailMemory's MM.NewSortButton): a square at the row's right end that
+  -- opens a menu -- Sort: Name, Category, Level, Last played; under a
+  -- hairline the two directions in the field's own words, the field's own
+  -- first; then Reset -- drawn selected while the order is not Name, A to
+  -- Z, which a right-click puts back. Kept for the session, as it always
+  -- was. Postbox's own menu (Dropdown.Menu): no MenuUtil, see
+  -- COMBAT_TAINT.md. The category tiles are this window's filters and keep
+  -- their own bar.
   -----------------------------------------------------------
-  local sortGroup = CreateFrame("Frame", nil, band)
-  sortGroup:SetSize(SORT_GROUP_W, CTRL_H)
-  sortGroup:SetPoint("TOPRIGHT", band, "TOPRIGHT", -BAND_PAD - 1, -BAND_PAD)
+  -- The menu's ids, each to what it picks: a field, or a direction (true
+  -- for descending).
+  local sortPicks = {}
+  for _, sort in ipairs(SORTS) do sortPicks["sort:" .. sort.id] = sort.id end
+  local dirPicks = { ["dir:asc"] = false, ["dir:desc"] = true }
 
-  -- The list names each field; the toggle says "Sort: <field>", every one of
-  -- which it measures for its width (FitSortControl).
-  local sortItems, sortCaptions = {}, {}
-  for index, sort in ipairs(SORTS) do
-    sortItems[index] = { id = sort.id, name = L[sort.nameKey] }
-    sortCaptions[index] = L("RM_SORT_TOGGLE", L[sort.nameKey])
+  -- One menu per field, made on its first open and kept: the directions'
+  -- words are the field's, so a pick that changes the field puts that
+  -- field's menu where the open one stood (RefreshSortControl).
+  local sortMenus = {}
+  local memory = ns.MailMemory
+  local sortButton
+  local function SortMenu()
+    local field = SORT_BY_ID[RM._sort or "name"] or SORTS[1]
+    local menu = sortMenus[field.id]
+    if menu then return menu end
+    local pair = SORT_DIRECTION_KEY[field.id]
+    local items = { { heading = true, name = L["SF_SORT_HEAD"] } }
+    for _, sort in ipairs(SORTS) do
+      items[#items + 1] = { id = "sort:" .. sort.id, name = L[sort.nameKey] }
+    end
+    local own, other = field.desc and "desc" or "asc", field.desc and "asc" or "desc"
+    items[#items + 1] = { id = "dir:" .. own, name = L[pair[field.desc and 2 or 1]], rule = true }
+    items[#items + 1] = { id = "dir:" .. other, name = L[pair[field.desc and 1 or 2]] }
+    items[#items + 1] = { id = "reset", name = L["SF_RESET"], rule = true }
+    menu = memory.SortMenu(sortButton, items, function(id)
+      if sortPicks[id] then return (RM._sort or "name") == sortPicks[id] end
+      local desc = dirPicks[id]
+      if desc ~= nil then return (RM._sortDesc and true or false) == desc end
+      return false
+    end, function(id)
+      return id == "reset" and RM.SortIsDefault()
+    end, function(id)
+      if id == "reset" then
+        RM.ResetSort()
+      elseif sortPicks[id] then
+        RM.SetSort(sortPicks[id])
+      elseif dirPicks[id] ~= nil then
+        RM.SetSortDirection(dirPicks[id])
+      end
+    end)
+    sortMenus[field.id] = menu
+    return menu
   end
 
-  local sortDrop = ns.Core.UI.Dropdown.Create(sortGroup, {
-    items        = sortItems,
-    captions     = sortCaptions,
-    toggleWidth  = SORT_TOGGLE_W,
-    toggleHeight = SORT_TOGGLE_H,
-    height       = CTRL_H,
-    defaultId    = RM._sort,
-  })
-  sortDrop:SetWidth(SORT_TOGGLE_W)
-  sortDrop:SetPoint("LEFT", sortGroup, "LEFT", 0, 0)
-  frame.SortDropdown = sortDrop
-
-  -- Reversal, the other half of the control. Clicking the arrow flips the
-  -- direction; re-picking the field that is already selected flips it too,
-  -- which is the idiom every sortable column header in the game uses.
-  --
-  -- The SAME widget class as the toggle it sits against, not a flat plate. The
-  -- two are one control -- "sort by this field, in this direction" -- and a
-  -- plate beside a push button reads as two, because on a stock UI the button
-  -- carries UIPanelButtonTemplate's bevel and the plate is a flat fill. Same
-  -- factory, same height, same __postboxButton tag, so both host-UI skins
-  -- restyle the pair together instead of one of them.
-  local sortDir = Theme.CreateButton(nil, sortGroup)
-  sortDir:SetSize(SORT_DIR_W, SORT_TOGGLE_H)
-  sortDir:SetPoint("RIGHT", sortGroup, "RIGHT", 0, 0)
-
-  -- The glyph hangs off a child FRAME rather than off the button, and that is
-  -- the whole reason it is visible at all.
-  --
-  -- Both host-UI skins clear a push button's stock art by sweeping its REGIONS:
-  -- Core/Skin_EllesmereUI.lua's Button primitive walks GetRegions() and sets
-  -- every texture it finds to alpha 0, and Core/Skin_ElvUI.lua hands the button
-  -- to S:HandleButton with strip = true, which is StripTextures. An icon created
-  -- on the button IS one of those regions, so from the moment this control
-  -- stopped being a plate and became a real button the arrow was wiped the
-  -- instant either skin ran -- a blank square with a working tooltip.
-  --
-  -- A child frame is not a region of its parent, so nothing sweeps it. It is
-  -- mouse-transparent (frames take no input unless asked to), so the button
-  -- still receives every click and hover. And it draws above every layer of the
-  -- parent's art, which on a stock UI also puts the arrow over
-  -- UIPanelButtonTemplate's bevel instead of into it.
-  local glyph = CreateFrame("Frame", nil, sortDir)
-  glyph:SetAllPoints(sortDir)
-  -- Stated rather than left to the implicit parent+1: EllesmereUI's border
-  -- primitive can add its own overlay frame to a widget it skins, and the glyph
-  -- has to stay above whatever a host UI puts on top.
-  glyph:SetFrameLevel(sortDir:GetFrameLevel() + 3)
-  sortDir.Arrow = glyph:CreateTexture(nil, "OVERLAY")
-  sortDir.Arrow:SetSize(SORT_DIR_GLYPH, SORT_DIR_GLYPH)
-  sortDir.Arrow:SetPoint("CENTER")
-  frame.SortDirection = sortDir
-
-  local function SortDirectionText()
-    local pair = SORT_DIRECTION_KEY[RM._sort or "name"] or SORT_DIRECTION_KEY.name
-    return L[pair[RM._sortDesc and 2 or 1]]
+  if memory and type(memory.NewSortButton) == "function" then
+    sortButton = memory.NewSortButton(band, CTRL_H, {
+      lit = function() return not RM.SortIsDefault() end,
+      reset = RM.ResetSort,
+      menu = SortMenu,
+      -- The field, then its direction in its own words.
+      tip = function()
+        local field = SORT_BY_ID[RM._sort or "name"] or SORTS[1]
+        Theme.TipLine(L[field.nameKey])
+        Theme.TipLine(L[SORT_DIRECTION_KEY[field.id][RM._sortDesc and 2 or 1]])
+      end,
+    })
+  else
+    -- Never without Mail Memory's file; the row keeps its shape regardless.
+    sortButton = CreateFrame("Frame", nil, band)
+    sortButton:SetSize(CTRL_H, CTRL_H)
   end
+  sortButton:SetPoint("TOPRIGHT", band, "TOPRIGHT", -BAND_PAD - 1, -BAND_PAD)
+  frame.Sort = sortButton
 
-  -- One place decides what the whole control says, so the toggle caption, the
-  -- arrow and the tooltip can never disagree about the current sort.
+  -- One place tells the button what the order is: its plate, its tooltip
+  -- and an open menu -- the field's own, where a pick changed the field.
   function frame.RefreshSortControl()
-    local sort = SORT_BY_ID[RM._sort or "name"] or SORTS[1]
-    sortDrop:SetSelectedId(sort.id)
-    sortDrop:SetText(L("RM_SORT_TOGGLE", L[sort.nameKey]))
-    SetArrowArt(sortDir.Arrow, not RM._sortDesc)
-    -- After the art, and on every refresh rather than once at build. The glyph
-    -- reads as this control's caption, so it takes the caption's loud tone
-    -- rather than a warm off-white chosen here -- and a TEXTURE carries no token
-    -- for Theme.RepaintAccentText to find, so re-asserting it here is what keeps
-    -- it on the LIVE accent after an EllesmereUI user retunes theirs.
-    Theme.SetColor(sortDir.Arrow, "accentBright")
+    if not sortButton.Told then return end
+    local open = sortButton.open
+    if open and open ~= sortMenus[RM._sort or "name"] then
+      open:Close()
+      local menu = SortMenu()
+      if menu then sortButton.Toggle(menu) end
+    end
+    sortButton.Told()
   end
 
-  -- The toggle SORT_TOGGLE_W wide unless its longest caption will not fit
-  -- that (a German or Russian "Sort: Last played"); then as wide as that
-  -- caption needs (the select's FitWidth), the direction square keeping its
-  -- place against it and the search box beside the group giving up the
-  -- difference. Run once the window's fonts are on it (RM.Show) and when
-  -- they move (RM.RefitText); a width that has not changed is not set.
-  function frame.FitSortControl()
-    local width = sortDrop:FitWidth()
-    local toggle = sortDrop._toggle
-    if toggle:GetWidth() == width then return end
-    sortDrop:SetWidth(width)
-    toggle:SetWidth(width)
-    sortGroup:SetWidth(width + M.space.hair + SORT_DIR_W)
-  end
-
-  sortDrop:SetChangeCallback(function(id)
-    RM.SetSort(id, true)
-  end)
-
-  -- SetScript, not the plate factory's `_onEnter` slot: this is a push button
-  -- now, and it has no plate art to repaint on hover -- the template's own
-  -- highlight does that.
-  sortDir:SetScript("OnEnter", function(self)
-    Theme.TipBegin(self, "ANCHOR_RIGHT")
-    Theme.TipTitle(L["RM_SORT_LABEL"])
-    Theme.TipLine(SortDirectionText())
-    Theme.TipHint(L["RM_SORT_DIR_TIP"])
-    GameTooltip:Show()
-  end)
-  sortDir:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  sortDir:SetScript("OnClick", function()
-    RM.SetSort(RM._sort, true)
-    ToggleSound(not RM._sortDesc)
-  end)
-
-  frame.RefreshSortControl()
-
   -----------------------------------------------------------
-  -- Search box
+  -- Search box: the house's (Theme.CreateSearchBox), as the Mail tab's and
+  -- Mail Memory's are, with its clear button at the right end while it
+  -- holds text. Escape empties it first, and lets the keyboard go second.
   -----------------------------------------------------------
-  local searchWrap = CreateFrame("Frame", nil, band, "BackdropTemplate")
-  searchWrap:SetHeight(CTRL_H)
+  local search = Theme.CreateSearchBox(band, 0, CTRL_H, L["RM_SEARCH_PLACEHOLDER"], {
+    onTextChanged = function(text)
+      RM._query = text
+      ApplyFilterAndSort()
+      RelayoutList(true)
+    end,
+  })
+  local searchWrap, searchBox = search.Wrap, search.Box
   searchWrap:SetPoint("TOPLEFT", band, "TOPLEFT", BAND_PAD + 1, -BAND_PAD)
-  searchWrap:SetPoint("RIGHT", sortGroup, "LEFT", -8, 0)
-  Theme.StyleInput(searchWrap)
-  searchWrap.__postboxInputWrap = true
-
-  local searchBox = CreateFrame("EditBox", nil, searchWrap)
-  searchBox:SetAutoFocus(false)
-  local searchFont = Theme.FontObject("bodySmall")
-  if searchFont then Theme.SetBoxFont(searchBox, searchFont) end
-  Theme.SetColor(searchBox, "textPrimary")
-  searchBox:SetPoint("TOPLEFT", searchWrap, "TOPLEFT", 8, -4)
-  searchBox:SetPoint("BOTTOMRIGHT", searchWrap, "BOTTOMRIGHT", -6, 4)
-  -- The wrap carries the backdrop; skinning the inner box as well would double
-  -- the border.
-  searchBox.__postboxNoEditSkin = true
+  searchWrap:SetPoint("RIGHT", sortButton, "LEFT", -M.space.snug, 0)
   searchBox:SetScript("OnEscapePressed", function(self)
-    self:SetText("")
-    self:ClearFocus()
+    if (self:GetText() or "") ~= "" then
+      self:SetText("")
+    else
+      self:ClearFocus()
+    end
   end)
-  searchWrap:SetScript("OnMouseDown", function() searchBox:SetFocus() end)
-  frame.SearchBox = searchBox
-
-  local searchPH = Theme.CreateText(searchWrap, "placeholder")
-  searchPH:SetPoint("TOPLEFT", searchWrap, "TOPLEFT", 8, -4)
-  searchPH:SetPoint("BOTTOMRIGHT", searchWrap, "BOTTOMRIGHT", -8, 4)
-  searchPH:SetJustifyH("LEFT")
-  searchPH:SetJustifyV("MIDDLE")
-  searchPH:SetText(L["RM_SEARCH_PLACEHOLDER"])
-
-  searchBox:SetScript("OnTextChanged", function(self)
-    local text = self:GetText() or ""
-    searchPH:SetShown(text == "")
-    RM._query = text
-    ApplyFilterAndSort()
-    RelayoutList(true)
-  end)
+  frame.SearchWrap, frame.SearchBox = searchWrap, searchBox
 
   -----------------------------------------------------------
   -- Category bar
@@ -2057,7 +1977,7 @@ local function Build()
   local catBar = CreateFrame("Frame", nil, band)
   catBar:SetHeight(BAR_H)
   catBar:SetPoint("TOPLEFT", searchWrap, "BOTTOMLEFT", 0, -BAND_PAD)
-  catBar:SetPoint("RIGHT", sortGroup, "RIGHT", 0, 0)
+  catBar:SetPoint("RIGHT", sortButton, "RIGHT", 0, 0)
   frame.CategoryBar = catBar
   frame.CategoryTiles = {}
 
@@ -2416,9 +2336,8 @@ function RM.Show(anchor, from)
   RM.Refresh()
   frame:Raise()
   if ns.Skin and ns.Skin.Refresh then ns.Skin.Refresh(frame) end
-  -- Last: the summary line has its text and the skin its fonts, so both are
-  -- measured as they will be seen; the sort's captions too.
-  frame.FitSortControl()
+  -- Last: the summary line has its text and the skin its fonts, so it is
+  -- measured as it will be seen.
   ApplyBounds(frame)
   -- With no size stored yet (a first open, or after Reset to defaults), the
   -- default is whole rows, which only a measured chrome can say.
@@ -2436,11 +2355,10 @@ function RM.Hide()
 end
 
 -- The face the window's text wears moved (a skin's RefitScreens, after the
--- text was laid out again): the sort's captions measured again. A hidden
--- window is measured when it next shows (RM.Show).
+-- text was laid out again). Nothing here is fitted to its captions any more
+-- -- the sort is a square that wears a mark -- so there is nothing to
+-- measure again; kept for the skins and the theme that call it.
 function RM.RefitText()
-  local frame = RM._frame
-  if frame and frame:IsShown() then frame.FitSortControl() end
 end
 
 function RM.IsShown()
