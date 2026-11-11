@@ -1473,6 +1473,9 @@ do
     local T = ns.Theme
     if tile.glyph then
       if tile.off then
+        -- Out of the accent's keeping first, so an accent change does not
+        -- tint a greyed tile again (Theme.ReleaseAccentGlyph).
+        if type(T.ReleaseAccentGlyph) == "function" then T.ReleaseAccentGlyph(tile.Mark) end
         T.SetColor(tile.Mark, "textDisabled")
       elseif type(T.TintAccentGlyph) == "function" then
         T.TintAccentGlyph(tile.Mark)

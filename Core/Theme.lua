@@ -5031,6 +5031,12 @@ do
     for tex in pairs(accentGlyphs) do tex:SetVertexColor(r, g, b) end
   end
 
+  -- A glyph no longer kept in the accent (a tile whose list is off wears
+  -- the disabled grey): forgotten here, so a repaint leaves it as it was set.
+  function Theme.ReleaseAccentGlyph(tex)
+    if tex then accentGlyphs[tex] = nil end
+  end
+
   -- A glyph that turns half round and back: the caret of a button whose
   -- menu opens under it (the options' Reset to defaults) points down while
   -- the menu is open and back up once it closes. A short eased turn, an
