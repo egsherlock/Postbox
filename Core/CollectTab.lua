@@ -4431,6 +4431,12 @@ local function PaintViewToggle(panel)
     local seg = container.buttons[i]
     T.SetPlateSelected(seg, seg.segId == active)
   end
+  -- Inbox | Done's ring, in the ring the plates would wear at rest, as
+  -- History's switch's is (RV.PaintSides).
+  if container.segRing then
+    local c = (T.PlateTokens(container.buttons[1]) or T.Colors).plateEdge
+    if c then container.segRing:SetColorTexture(c[1], c[2], c[3], c[4] or 1) end
+  end
   if container.history then T.SetPlateSelected(container.history, active == VIEW_HISTORY) end
   if container.sides then RV.PaintSides(panel) end
   local alt = container.alt
@@ -4489,6 +4495,14 @@ local function BuildViewToggle(panel)
     -- nothing to hook and nothing to replace them with.
     container.buttons[i] = seg
   end
+  -- Inbox and Done in one ring while both stand in the row (RV.JoinSegs):
+  -- the row's own texture under the two plates, as History's switch has
+  -- (RV.BuildSides).
+  local segRing = container:CreateTexture(nil, "BACKGROUND", nil, -1)
+  segRing:SetPoint("TOPLEFT", container.buttons[1], "TOPLEFT", 0, 0)
+  segRing:SetPoint("BOTTOMRIGHT", container.buttons[#container.buttons], "BOTTOMRIGHT", 0, 0)
+  segRing:Hide()
+  container.segRing = segRing
 
   -- History: a square icon plate after the captions. Kept out of `buttons`,
   -- which the counts and the caption sizing walk -- it has neither.
@@ -5797,7 +5811,13 @@ local function LayoutViewToggle(panel)
     container._sizeOpts = opts
   end
   local M = T.Metrics
-  opts.height, opts.gap, opts.minWidth = M.segmentHeight, gap, M.buttonMinWidth
+  -- Inbox and Done, both in the row, are one ring (RV.JoinSegs): each as
+  -- wide as the shared rule gives, the second over the first's last column,
+  -- their divider. Inbox alone stands as a plate of its own.
+  local joined = #shown > 1
+  RV.JoinSegs(container, joined)
+  local segGap = joined and -1 or gap
+  opts.height, opts.gap, opts.minWidth = M.segmentHeight, segGap, M.buttonMinWidth
   -- The row reads in order of meaning: whose mail (the picker, and the
   -- other box's name beside it while one is on screen), which list (the
   -- segments, then the History clock), which half (Received and Sent,
@@ -5876,7 +5896,7 @@ local function LayoutViewToggle(panel)
   for i = 1, #shown do
     local seg = shown[i]
     seg:ClearAllPoints()
-    seg:SetPoint("LEFT", container, "LEFT", x + (i - 1) * (per + gap), 0)
+    seg:SetPoint("LEFT", container, "LEFT", x + (i - 1) * (per + segGap), 0)
   end
   if histW > 0 then
     local at = x + total - histW - (sidesW > 0 and sidesW - 1 or 0)
@@ -9224,6 +9244,22 @@ function RV.JoinClock(hist, on)
     if hist._edge then hist._edge:Show() end
   end
   Th().SetPlateSelected(hist, hist.isSelected)
+end
+
+-- Inbox and Done joined in one ring (`on`: both in the row) or standing as
+-- plates of their own: joined, each puts its own ring away for the row's
+-- (BuildViewToggle's segRing, painted with the row by PaintViewToggle) and
+-- keeps its fill, hover, selected wash and underline; apart, the rings come
+-- back. Only on a change.
+function RV.JoinSegs(container, on)
+  if (container._segsJoined == true) == on then return end
+  container._segsJoined = on
+  local buttons = container.buttons
+  for i = 1, #buttons do
+    local edge = buttons[i]._edge
+    if edge then edge:SetShown(not on) end
+  end
+  if container.segRing then container.segRing:SetShown(on) end
 end
 
 -- The width the search may give back to the switch beyond the sort's room:
