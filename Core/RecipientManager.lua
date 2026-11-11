@@ -2311,6 +2311,8 @@ local function Build()
   -- ApplyWindow only exists in the EllesmereUI skin; without the Apply fallback
   -- ElvUI users would get an unskinned window.
   if ns.Skin then (ns.Skin.ApplyWindow or ns.Skin.Apply)(frame) end
+  -- Its glyph before its title, once the look has placed the title.
+  if Theme.TitleGlyph then Theme.TitleGlyph(frame, "recipients") end
 
   return frame
 end

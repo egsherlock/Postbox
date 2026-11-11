@@ -4402,6 +4402,8 @@ local function Build()
       end
     end, function() return MM.ArrangeHost(frame) end)
   end
+  -- Its glyph before its title, clear of the cog and the key beside it.
+  if ns.Theme.TitleGlyph then ns.Theme.TitleGlyph(frame, "memory") end
 
   MM._frame = frame
   return frame

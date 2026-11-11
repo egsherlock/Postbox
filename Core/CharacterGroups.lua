@@ -1801,6 +1801,8 @@ local function Build()
   -- host-UI skin restyle the shell, whichever entry point it offers.
   local applyWindow = ns.Skin and (ns.Skin.ApplyWindow or ns.Skin.Apply)
   if applyWindow then applyWindow(frame) end
+  -- Its glyph before its title, once the look has placed the title.
+  if T.TitleGlyph then T.TitleGlyph(frame, "groups") end
 
   CG._editor = frame
   return frame

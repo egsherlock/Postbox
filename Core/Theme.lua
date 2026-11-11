@@ -5205,6 +5205,168 @@ do
     if tex then accentGlyphs[tex] = nil end
   end
 
+  -- A window's glyph on its title bar (Mail Memory, Character Groups,
+  -- Manage Recipients: `memory`, `groups`, `recipients`), its 16-unit
+  -- master left of the title, the two laid out as the house lays a title
+  -- out: centred where the look centred the title, as one group, the title
+  -- moved right by half the glyph and its gap and the glyph standing that
+  -- gap before the title's first letter. It wears the title's own ink,
+  -- whatever the look gave it (white, the Light ink, the game's gold),
+  -- taken again whenever the title is given a colour; chrome, never the
+  -- accent. On a child frame of the window over its bar, so no skin's pass
+  -- over the window's own textures (ElvUI's strip, EllesmereUI's fade)
+  -- reaches it, and it takes no mouse: the bar still drags the window.
+  --
+  -- It gives way, never the title: measured whenever the title's words,
+  -- face or the window's width move (and on each open), the group must
+  -- stand clear, by TITLE.CLEAR, of everything else on the bar -- the cog
+  -- and the arrange key (lit Done included) on the left, the close button
+  -- on the right, any other control a window puts there -- and the title
+  -- must not be cut short; where it cannot, the glyph hides and the title
+  -- stands alone where the look put it. Nothing is made after the first
+  -- call, and nothing runs but on those changes.
+  local TITLE = { GAP = 6, CLEAR = 8, SIZE = 16, pts = {} }
+
+  -- The title's anchors, as the look set them, moved right by `shift`
+  -- (the shift it carries already taken off first: frame.__pbTitleShift).
+  function TITLE.Shift(frame, title, shift)
+    local was = frame.__pbTitleShift or 0
+    if was == shift then return end
+    local pts, n = TITLE.pts, title:GetNumPoints()
+    for i = 1, n do
+      local p, rel, rp, x, y = title:GetPoint(i)
+      local k = 5 * (i - 1)
+      pts[k + 1], pts[k + 2], pts[k + 3], pts[k + 4], pts[k + 5] = p, rel or frame, rp or p, x or 0, y or 0
+    end
+    title:ClearAllPoints()
+    for i = 1, n do
+      local k = 5 * (i - 1)
+      title:SetPoint(pts[k + 1], pts[k + 2], pts[k + 3], pts[k + 4] - was + shift, pts[k + 5])
+    end
+    for i = 1, 5 * n do pts[i] = nil end
+    frame.__pbTitleShift = shift
+  end
+
+  -- What stands on the bar beside the title: of the window's shown child
+  -- frames whose height spans the title's middle and which are narrower
+  -- than half the window (a shell, an inset or a strip spans it), the
+  -- rightmost edge of those wholly left of `centre` and the leftmost of
+  -- those wholly right of it, in units from the window's left.
+  function TITLE.Claims(frame, holder, fl, fw, centre, y, ...)
+    local left, right = 0, fw
+    for i = 1, select("#", ...) do
+      local c = select(i, ...)
+      if c ~= holder and c:IsShown() then
+        local l, r, t, b = c:GetLeft(), c:GetRight(), c:GetTop(), c:GetBottom()
+        if l and r and t and b and t >= y and b <= y and (r - l) < fw / 2 then
+          l, r = l - fl, r - fl
+          if r <= centre and r > left then left = r end
+          if l >= centre and l < right then right = l end
+        end
+      end
+    end
+    return left, right
+  end
+
+  -- -> whether the glyph shows.
+  function Theme.LayoutTitleGlyph(frame)
+    local holder = frame and frame.__pbTitleGlyph
+    local title = frame and frame.TitleText
+    if not (holder and title) then return false end
+    local gap, gw = TITLE.GAP, holder:GetWidth()
+    local shift = floor((gw + gap) / 2 + 0.5)
+    local was = frame.__pbTitleShift or 0
+    local w = Theme.TextWidth(title)
+    local box = title:GetWidth() or 0
+    local fl, fw = frame:GetLeft(), frame:GetWidth() or 0
+    local tl, tr, tt, tb = title:GetLeft(), title:GetRight(), title:GetTop(), title:GetBottom()
+    local fits = w > 0 and fl ~= nil and tl ~= nil and tt ~= nil
+    -- A title cut short already has no room to give.
+    if fits and box > 0 and w > box + 0.5 then fits = false end
+    local left = (title.GetJustifyH and title:GetJustifyH() == "LEFT") and true or false
+    if fits then
+      -- Where the look centred it: its middle now, less the shift it carries.
+      local centre = (tl + tr) / 2 - was - fl
+      local y = (tt + tb) / 2
+      local lo, hi = TITLE.Claims(frame, holder, fl, fw, centre, y, frame:GetChildren())
+      local first = left and (tl - was - fl) or (centre - w / 2)
+      if left then
+        fits = first - gap - gw >= lo + TITLE.CLEAR and first + w <= hi - TITLE.CLEAR
+        shift = 0
+      else
+        local half = (w + gap + gw) / 2
+        fits = centre - half >= lo + TITLE.CLEAR and centre + half <= hi - TITLE.CLEAR
+      end
+    end
+    if not fits then
+      TITLE.Shift(frame, title, 0)
+      holder:Hide()
+      return false
+    end
+    TITLE.Shift(frame, title, shift)
+    -- Its right edge the gap before the first letter, on a whole pixel.
+    local px = Theme.OnePixel(holder)
+    holder:ClearAllPoints()
+    if left then
+      holder:SetPoint("RIGHT", title, "LEFT", -floor(gap / px + 0.5) * px, 0)
+    else
+      holder:SetPoint("RIGHT", title, "CENTER", -floor((w / 2 + gap) / px + 0.5) * px, 0)
+    end
+    holder:Show()
+    return true
+  end
+
+  -- The title was given a colour: the glyph takes it.
+  function TITLE.Ink(title)
+    local holder = title.__pbTitleGlyph
+    if not holder then return end
+    local r, g, b, a = title:GetTextColor()
+    if type(r) == "number" then holder.glyph:SetVertexColor(r, g, b, a or 1) end
+  end
+
+  -- The title's words or face moved: laid out again, and its ink taken (a
+  -- font object carries a colour).
+  function TITLE.Moved(title)
+    local holder = title.__pbTitleGlyph
+    if not holder then return end
+    Theme.LayoutTitleGlyph(holder:GetParent())
+    TITLE.Ink(title)
+  end
+
+  function TITLE.Relay(self) Theme.LayoutTitleGlyph(self) end
+
+  -- `frame`'s title bar takes the glyph `name` (a Theme.GLYPHS key with a
+  -- 16-unit master). Once per window, after its look and the bar's other
+  -- controls are in place. -> the holder, or nil.
+  function Theme.TitleGlyph(frame, name)
+    local title = frame and frame.TitleText
+    if not (title and GLYPHS[name]) or frame.__pbTitleGlyph then return frame and frame.__pbTitleGlyph end
+    local holder = CreateFrame("Frame", nil, frame)
+    holder:SetFrameLevel(frame:GetFrameLevel() + 20)
+    local glyph = Theme.Glyph(holder, name, TITLE.SIZE, "OVERLAY")
+    if not glyph then return nil end
+    glyph:SetPoint("CENTER")
+    holder:SetSize(glyph:GetSize())
+    holder.glyph = glyph
+    holder:Hide()
+    frame.__pbTitleGlyph, title.__pbTitleGlyph = holder, holder
+    if type(hooksecurefunc) == "function" then
+      hooksecurefunc(title, "SetTextColor", TITLE.Ink)
+      hooksecurefunc(title, "SetText", TITLE.Moved)
+      hooksecurefunc(title, "SetFont", TITLE.Moved)
+      hooksecurefunc(title, "SetFontObject", TITLE.Moved)
+    end
+    frame:HookScript("OnShow", TITLE.Relay)
+    frame:HookScript("OnSizeChanged", TITLE.Relay)
+    -- The arrange key widens into Done while a window arranges.
+    local key = frame.ArrangeButton
+    if key and type(key.HookScript) == "function" then
+      key:HookScript("OnSizeChanged", function() Theme.LayoutTitleGlyph(frame) end)
+    end
+    TITLE.Moved(title)
+    return holder
+  end
+
   -- A glyph that turns half round and back: the caret of a button whose
   -- menu opens under it (the options' Reset to defaults) points down while
   -- the menu is open and back up once it closes. A short eased turn, an
