@@ -6323,8 +6323,8 @@ local function BuildAttachmentArea(panel)
   queueButton:SetScript("OnEnter", function(self)
     local queue = panel._queue
     if not queue or #queue == 0 then return end
-    -- The house's (Theme section 5b): what waits, then how the queue works
-    -- and the gesture, muted after the blank line.
+    -- The house's (Theme section 5b): what waits, then how the queue works,
+    -- then the gesture, muted after the blank line.
     local muted = Theme.TIP_MUTED
     Theme.TipBegin(self, "ANCHOR_RIGHT")
     Theme.TipTitle(L["QUEUE_TIP_TITLE"])
@@ -6341,11 +6341,11 @@ local function BuildAttachmentArea(panel)
     if #queue > shown then
       GameTooltip:AddLine(L("MEMORY_WAITING_MORE", #queue - shown), muted, muted, muted)
     end
-    Theme.TipHint(L["QUEUE_TIP_HOW"])
+    Theme.TipLine(L["QUEUE_TIP_HOW"])
     -- The questions to come are explained only when one will come.
     for i = 1, #queue do
       if queue[i].asks then
-        Theme.TipHint(L["QUEUE_TIP_ASK"])
+        Theme.TipLine(L["QUEUE_TIP_ASK"])
         break
       end
     end

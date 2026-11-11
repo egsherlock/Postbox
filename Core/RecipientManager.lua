@@ -2054,8 +2054,9 @@ local function Build()
           GameTooltip:AddLine(L[reason], muted, muted, muted, true)
         end
       end
-      -- Empty is not a dead end: say how to fill it, after the blank line.
-      if category.star and count == 0 then Theme.TipHint(L["RM_CAT_TIP_FAV_EMPTY"]) end
+      -- Empty is not a dead end: say how to fill it, a line of its own (a
+      -- sentence, not a gesture, so not on the hint line).
+      if category.star and count == 0 then Theme.TipLine(L["RM_CAT_TIP_FAV_EMPTY"]) end
       GameTooltip:Show()
     end
     tile:SetScript("OnClick", function(self)

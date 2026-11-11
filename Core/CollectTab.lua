@@ -17236,13 +17236,13 @@ do
     local T, L0 = Th(), L()
     if not k then
       T.TipTitle(L0["LABEL_GOLD"] .. Helpers().FormatMoney(row.mail.money))
-      T.TipHint(L0["TEST_MAIL_STATUS"])
+      T.TipLine(L0["TEST_MAIL_STATUS"])
       return
     end
     local it = row.mail.items[k]
     if not it then return end
     SampleFan.ItemTip(it)
-    T.TipHint(L0["TEST_MAIL_STATUS"])
+    T.TipLine(L0["TEST_MAIL_STATUS"])
     T.TipHint(L0[RV.Dressable(it.id) and "TILE_HINT_LINK_DRESS" or "TILE_HINT_LINK"])
   end
 
@@ -17272,7 +17272,7 @@ do
       T.TipBegin(hit)
       SampleFan.ItemTip(it)
     end
-    T.TipHint(L0["TEST_MAIL_STATUS"])
+    T.TipLine(L0["TEST_MAIL_STATUS"])
     GameTooltip:Show()
   end
 
