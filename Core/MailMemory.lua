@@ -5074,7 +5074,9 @@ local function Build()
   if UI and type(UI.BuildOptionsButton) == "function" then
     frame.OptionsButton = UI.BuildOptionsButton(frame, ns.Theme, OpenOptions)
     local strip = frame.__pbModernStrip
-    if strip then
+    if strip and UI.SeatCog then
+      UI.SeatCog(frame.OptionsButton, strip)
+    elseif strip then
       frame.OptionsButton:ClearAllPoints()
       frame.OptionsButton:SetPoint("LEFT", strip, "LEFT", 5, 0)
     end

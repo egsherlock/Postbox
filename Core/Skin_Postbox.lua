@@ -1848,8 +1848,14 @@ local function SeatTitleBar(frame)
     frame.CloseButton:SetPoint("RIGHT", strip, "RIGHT", -3, 0)
   end
   if frame.OptionsButton then
-    frame.OptionsButton:ClearAllPoints()
-    frame.OptionsButton:SetPoint("LEFT", strip, "LEFT", 5, 0)
+    -- On whole units (MailboxUI's UI.SeatCog).
+    local UI = ns.MailboxUI
+    if UI and UI.SeatCog then
+      UI.SeatCog(frame.OptionsButton, strip)
+    else
+      frame.OptionsButton:ClearAllPoints()
+      frame.OptionsButton:SetPoint("LEFT", strip, "LEFT", 5, 0)
+    end
   end
 end
 

@@ -5493,13 +5493,22 @@ do
       return false
     end
     TITLE.Shift(frame, title, shift)
-    -- Its right edge the gap before the first letter, on a whole pixel.
+    -- Its right edge the gap before the first letter, on a whole pixel, and
+    -- its top on a whole unit under the window's: level with the title's
+    -- middle, or half a unit under it where that middle is on half a unit
+    -- (a title centred on the Postbox style's 25-unit strip).
     local px = Theme.OnePixel(holder)
+    local dy = 0
+    local ft = frame:GetTop()
+    if ft then
+      local off = ft - (tt + tb) / 2 - holder:GetHeight() / 2
+      dy = off - floor(off + 0.5)
+    end
     holder:ClearAllPoints()
     if left then
-      holder:SetPoint("RIGHT", title, "LEFT", -floor(gap / px + 0.5) * px, 0)
+      holder:SetPoint("RIGHT", title, "LEFT", -floor(gap / px + 0.5) * px, dy)
     else
-      holder:SetPoint("RIGHT", title, "CENTER", -floor((w / 2 + gap) / px + 0.5) * px, 0)
+      holder:SetPoint("RIGHT", title, "CENTER", -floor((w / 2 + gap) / px + 0.5) * px, dy)
     end
     holder:Show()
     return true

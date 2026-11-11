@@ -4175,6 +4175,19 @@ local function BuildOptionsButton(frame, theme, onClick)
 end
 UI.BuildOptionsButton = BuildOptionsButton
 
+-- The cog on a style's own title strip (the Postbox style's, on this
+-- window and Mail Memory's): 5 units in, its top on a whole unit, the
+-- strip's spare height split with an odd unit under it (on the 25-unit
+-- strip, 3 above and 4 below). Centred by its middle it stood on half a
+-- unit, and its 12-unit glyph, and the arrange mark anchored beside it,
+-- on half a pixel. The arrange key follows it (BuildArrangeButton).
+function UI.SeatCog(button, strip)
+  if not (button and strip) then return end
+  local spare = (strip:GetHeight() or 0) - (button:GetHeight() or 18)
+  button:ClearAllPoints()
+  button:SetPoint("TOPLEFT", strip, "TOPLEFT", 5, -math.floor(spare / 2))
+end
+
 -- The cog key, right of the cog and anchored TO it by its left edge, so it
 -- stands level with the cog in every look -- the skins move the cog, and it
 -- follows -- and widens to the right into Done while the mode is open. It
