@@ -4900,6 +4900,9 @@ Theme.AtlasSets = {
 --     (the bar over finished mail in the Island look, Core/DividerNotch.lua),
 --     four to a capsule, mirrored by their coordinates, each a ring as wide
 --     as the end and its fill a unit inside it.
+--   sort-list  the Mail tab's sort-and-filter button (CollectTab's
+--     RV.NewSortButton): three bars, longest on top, two units thick, on
+--     whole pixels and shown at its own size on the square plate.
 --
 -- Sharpness. The art is 2 texels per UI unit. A texel snapping bias above 0
 -- "sharpens": the renderer picks a texel instead of blending texels (the API
@@ -4951,6 +4954,7 @@ do
     ["letter-open"] = { file = MEDIA .. "glyph-letter-open.tga", w = 10, h = 9, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.59375 },
     tray = { file = MEDIA .. "glyph-tray.tga", w = 11, h = 7, l = 0.03125, r = 0.71875, t = 0.0625, b = 0.9375 },
     cap = { file = MEDIA .. "glyph-cap.tga", w = 13, h = 13, l = 0.03125, r = 0.84375, t = 0.03125, b = 0.84375 },
+    ["sort-list"] = { file = MEDIA .. "glyph-sort-list.tga", w = 12, h = 10, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.65625 },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
   }
 

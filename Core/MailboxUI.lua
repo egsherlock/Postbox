@@ -3050,13 +3050,6 @@ end
 -- the window's less it, it is what persists, and it is what the window goes
 -- back to when the floor comes down. A drag or a reset on the grip makes the
 -- window's width the player's own again (AdoptTransientHeight).
--- The widest the Mail tab's panel can be: the window's ceiling less its
--- chrome. The Mail tab's toolbar asks it before it lays a long language out
--- (CollectTab, RV.FitSort).
-function UI.MaxPanelWidth()
-  return MAX_WIDTH - 2 * (ChromeChain())
-end
-
 local function MinWindowWidth()
   local need = MIN_WIDTH
   local panel, collect = CollectPanel(), ns.CollectTab

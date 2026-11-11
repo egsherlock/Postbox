@@ -4718,61 +4718,12 @@ function RV.SortAsListed(queue)
 end
 
 -- The room the sort takes at the row's right end, beside the search: the
--- button, as wide as its caption and caret need (RV.SortWidth), and the
--- snug step to it. The search gives it up as the row needs (LayoutViewToggle),
--- never past the width its placeholder needs (RV.SearchLeast).
+-- plate and the snug step to it. The search and the sort together are
+-- SEARCH_W and this wide, on the Mail tab's every list.
 function RV.SortRoom(panel)
   if not panel.Sort then return 0 end
-  return Th().Metrics.space.snug + RV.SortWidth(panel)
-end
-
--- The button's width: its word measured in the face it wears now, a pad
--- before it, the caret's room after it (RV.SF_CARET), set on it only when
--- it changes. Its word is never cut: the row makes room for it -- unless
--- even the widest window could not (RV.FitSort), when the button is the
--- caret alone on a square plate, its name in its tooltip.
-RV.SF_PAD, RV.SF_CARET = 8, 18
-function RV.SortWordWidth(panel)
-  return RV.SF_PAD + ceil(MeasureWith(panel, panel.Sort.Text, L()["SF_BUTTON"])) + RV.SF_CARET
-end
-function RV.SortWidth(panel)
-  local sort = panel.Sort
-  local width = panel._sortCompact and Th().Metrics.segmentHeight or RV.SortWordWidth(panel)
-  if sort._w ~= width then
-    sort._w = width
-    sort:SetWidth(width)
-  end
-  return width
-end
-
--- The word or the caret alone: the word, unless the row with it -- `total`,
--- the switch and what stands beside it, a gap, the search at its narrowest,
--- the button, the picker and another box's name at their narrowest -- would
--- need a panel wider than the window can be (MailboxUI.MaxPanelWidth): a
--- long language beside History's switch. The face changes only when that
--- changes.
-function RV.FitSort(panel, total)
-  local sort = panel.Sort
-  if not sort then return end
   local M = Th().Metrics
-  local need = total + M.gap + RV.SearchLeast(panel) + M.space.snug + RV.SortWordWidth(panel)
-  if panel.Picker and panel.Picker:IsShown() then need = need + M.space.snug + M.segmentHeight end
-  local alt = panel.ViewToggle and panel.ViewToggle.alt
-  if alt and alt:IsShown() and alt.minW then need = need + M.space.snug + alt.minW end
-  local UI = ns.MailboxUI
-  local cap = UI and type(UI.MaxPanelWidth) == "function" and UI.MaxPanelWidth() or nil
-  local compact = cap ~= nil and ceil(need + 2 * M.inset) > cap
-  if (panel._sortCompact == true) == compact then return end
-  panel._sortCompact = compact
-  sort.Text:SetShown(not compact)
-  if sort.Caret then
-    sort.Caret:ClearAllPoints()
-    if compact then
-      sort.Caret:SetPoint("CENTER", sort, "CENTER", 0, 0)
-    else
-      sort.Caret:SetPoint("CENTER", sort, "RIGHT", -9, 0)
-    end
-  end
+  return M.space.snug + M.segmentHeight
 end
 
 -- The sort shown or not (AV.PaintSearch: on every list), and the search
@@ -5499,41 +5450,69 @@ function RV.SFCloseStale(panel)
   if menu then menu:Close() end
 end
 
--- The button says what it is: the word "Sort" and the house dropdown's
--- caret after it, on a plate as wide as they need (RV.SortWidth). While the
--- list on screen is not at its defaults (RV.SFLit) it is drawn in the
--- house's selected state, as a chosen segment is, and nothing else is
--- added: the words of what is on stand over the list (RV.PaintStrip).
--- plate.Paint() paints it and the strip for the list on screen, only what
--- changed, and shuts a menu left from another list.
+-- The button: a square plate, the segments' height, wearing the sort mark
+-- (Theme.GLYPHS "sort-list": three bars, longest on top) at its own size,
+-- the same in every language; its name is in its tooltip. While the list
+-- on screen is not at its defaults (RV.SFLit) it is drawn in the house's
+-- selected state, as a chosen segment is -- the plate's wash, ring and
+-- underline, and the mark in the accent's bright tone, as a selected
+-- caption is (RV.PaintSortMark) -- and the words of what is on stand over
+-- the list (RV.PaintStrip). plate.Paint() paints it and the strip for the
+-- list on screen, only what changed, and shuts a menu left from another
+-- list.
 function RV.NewSortButton(panel, size)
   local T = Th()
   local sort = T.CreatePlate(panel, "segment")
   sort:SetSize(size, size)
-  sort:SetText(L()["SF_BUTTON"])
-  sort.Text:ClearAllPoints()
-  sort.Text:SetPoint("LEFT", sort, "LEFT", RV.SF_PAD, 0)
-  -- The caret a select wears (Skin_Postbox), in the caption's ink: it
-  -- brightens and lights with the caption (Theme.SetPlateGlyph).
-  sort.Caret = T.Glyph and T.Glyph(sort, "caret", 5, "OVERLAY") or nil
-  if sort.Caret then
-    sort.Caret:SetPoint("CENTER", sort, "RIGHT", -9, 0)
-    T.SetPlateGlyph(sort, sort.Caret, function(caret) T.SetColor(caret, "textSecondary") end)
+  sort:SetText("")
+  sort.Icon = T.Glyph and T.Glyph(sort, "sort-list", nil, "OVERLAY") or nil
+  if sort.Icon then
+    -- A unit right of the plate's middle: the bars run from the left, and
+    -- their ink's middle is a unit and a third left of their box's, so
+    -- centred by its box the mark looks pushed left.
+    sort.Icon:SetPoint("CENTER", sort, "CENTER", 1, 0)
+    T.SetPlateGlyph(sort, sort.Icon, RV.PaintSortMark)
+  else
+    sort:SetText("v")
   end
   sort:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   sort:SetScript("OnClick", function(self, button)
     if button == "RightButton" then RV.ResetAll(panel) else RV.OpenSFMenu(panel) end
   end)
-  sort:HookScript("OnEnter", function(self) RV.SFTip(panel, self) end)
-  sort:HookScript("OnLeave", function() GameTooltip:Hide() end)
+  -- The plate's own hover paint runs first (Theme.CreatePlate); where a
+  -- style's tokens paint the mark as their caption, it is lit again after.
+  sort:HookScript("OnEnter", function(self)
+    if self.isSelected and self.Icon then RV.PaintSortMark(self.Icon) end
+    RV.SFTip(panel, self)
+  end)
+  sort:HookScript("OnLeave", function(self)
+    if self.isSelected and self.Icon then RV.PaintSortMark(self.Icon) end
+    GameTooltip:Hide()
+  end)
   function sort.Paint()
     local on = RV.SFLit(panel)
-    if sort.isSelected ~= on then T.SetPlateSelected(sort, on) end
+    local turned = sort.isSelected ~= on
+    if turned then T.SetPlateSelected(sort, on) end
+    if sort.Icon and (on or turned) then RV.PaintSortMark(sort.Icon) end
     RV.PaintStrip(panel, on)
     if panel._sfOpen then RV.SFCloseStale(panel) end
   end
   T.SetPlateSelected(sort, false)
   return sort
+end
+
+-- The sort mark's ink: the accent's bright tone while its plate is
+-- selected, as a selected segment's caption; otherwise the chrome's grey
+-- (textSecondary), as Mail Memory's sort is drawn -- unless a style's
+-- tokens paint it as their caption (Theme.SetPlateGlyph), which then
+-- stands.
+function RV.PaintSortMark(icon)
+  local sort = icon:GetParent()
+  if sort.isSelected then
+    Th().SetColor(icon, "accentBright")
+  elseif not sort.__pbGlyphLit then
+    Th().SetColor(icon, "textSecondary")
+  end
 end
 
 -- Every way back to the defaults -- the right-click, the strip's Clear, the
@@ -5720,16 +5699,13 @@ local function LayoutViewToggle(panel)
   -- narrowest, is what the row needed before there was a sort.
   local M = T.Metrics
   local row = PanelWidth(panel) - 2 * M.inset
-  -- The Sort button's face for this row: its word, or where no window could
-  -- hold the word the caret alone (RV.FitSort).
-  RV.FitSort(panel, total)
   -- While History's switch stands in the row, the search may give back more
   -- (RV.SearchYield), down to its floor; its natural width is as before.
   local give = panel.SearchWrap and RV.SortRoom(panel) or 0
   local right = panel.SearchWrap and SEARCH_W + give or 0
   give = give + (panel.SearchWrap and RV.SearchYield(panel) or 0)
-  -- Never past what the placeholder needs (RV.SearchLeast): a wider button
-  -- raises the window's floor rather than cutting the search's word.
+  -- Never past what the placeholder needs (RV.SearchLeast): a row short of
+  -- more raises the window's floor rather than cutting the search's word.
   if panel.SearchWrap then give = min(give, max(0, SEARCH_W - RV.SearchLeast(panel))) end
   if panel.Picker and panel.Picker:IsShown() then right = right + M.space.snug + M.segmentHeight end
   local alt = container.alt
