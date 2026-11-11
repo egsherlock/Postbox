@@ -5041,9 +5041,13 @@ do
   -- forgotten; nothing is made per paint.
   local accentGlyphs = setmetatable({}, { __mode = "k" })
 
+  -- Taken into the accent's keeping, a glyph leaves the palette's: a token or
+  -- grey it wore before (a tile's disabled grey) is forgotten, so a palette
+  -- repaint (Theme.RepaintTracked) never paints it back over the accent.
   function Theme.TintAccentGlyph(tex)
     if not tex then return end
     accentGlyphs[tex] = true
+    if track then track.tint[tex] = nil; track.grey[tex] = nil end
     tex:SetVertexColor(Theme.GetAccentTone("icon"))
   end
 
