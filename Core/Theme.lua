@@ -4706,7 +4706,8 @@ do
     end
     local tex = list[i]
     if tex then return tex end
-    local layer, sub = glyph:GetDrawLayer()
+    local layer, sub
+    if type(glyph.GetDrawLayer) == "function" then layer, sub = glyph:GetDrawLayer() end
     sub = (tonumber(sub) or 0) - 1
     if sub < -8 then sub = -8 end
     tex = plate:CreateTexture(nil, layer or "OVERLAY", nil, sub)
