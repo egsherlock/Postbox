@@ -4525,6 +4525,12 @@ local function BuildViewToggle(panel)
     hist:SetText(L()["VIEW_HISTORY"])
   end
   hist:SetScript("OnClick", function(self)
+    -- Lit, the clock is the way back: the Inbox of whoever's History it
+    -- is, as that cell's own click is.
+    if panel.viewMode == VIEW_HISTORY then
+      SetViewMode(panel, VIEW_COLLECT)
+      return
+    end
     -- From another character's box, that character's History.
     if not AV.Other(panel) then AV.Leave(panel) end
     SetViewMode(panel, self.segId)
