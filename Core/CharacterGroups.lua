@@ -746,10 +746,11 @@ end
 -------------------------------------------------------------
 -- 3. The editor
 --
--- One window, two panes. Left: the groups, in button order, each with a grip
--- to drag it up or down, and New group under them. Right: the selected
--- group -- its name, and the characters it collects from, ticked. One box
--- above that list both finds and adds: typing narrows the list to the
+-- One window, two panes. Left: the groups, in the list's own order, each
+-- with a grip to drag it up or down, and New group under them. Right: the
+-- selected group -- its name, and the characters it collects from: everyone
+-- in it first, ticked, then the player's other characters. One box above
+-- that list both finds and adds: typing narrows the list to the
 -- matching characters, offers the guildmates, friends and recent contacts
 -- who match, and -- when what is typed can be a character's name and nobody
 -- listed is it -- offers to add exactly that name. Enter takes the obvious
@@ -866,6 +867,122 @@ local function PaintSelection(row, on)
   row.Bar:SetShown(on)
 end
 
+-- A drag in the groups list. The group in the hand is lifted on a solid
+-- ground and follows the pointer; the others stand where they will be if it
+-- is let go now, which opens a gap at its landing place (CG.DropIndex), and
+-- an accent line runs through the gap. Its state is on the window (_drag*),
+-- set when it starts and cleared when it ends: let go (the grip's drag stop,
+-- or GLOBAL_MOUSE_UP for a release no script of the grip hears), or the
+-- window closing. Each frame of it reads the pointer, moves the lifted row,
+-- and moves the others only when the landing place changes; it allocates
+-- nothing.
+local DragUpdate
+
+-- The slot row `k` stands in while the group from `from` is in the hand and
+-- would land at `at`: the list without the one in the hand, opened at `at`.
+-- No row stands at `at`, which is the gap, and each stands where MoveId
+-- puts it on the drop.
+function CG.DragSlot(k, from, at)
+  local j = (k < from) and k or (k - 1)
+  if j < at then return j end
+  return j + 1
+end
+
+-- A slot's top, as an offset from the list's top.
+local function SlotY(slot)
+  return -1 - (slot - 1) * GROUP_ROW_H
+end
+
+local function PlaceRow(frame, row, y)
+  row:ClearAllPoints()
+  row:SetPoint("TOPLEFT", frame.GroupList, "TOPLEFT", 1, y)
+  row:SetPoint("TOPRIGHT", frame.GroupList, "TOPRIGHT", -1, y)
+end
+
+-- The rows that stay, around the gap at `at`, and the line in the gap.
+local function OpenGap(frame, at)
+  local from, rows = frame._dragFrom, frame.GroupRows
+  for k = 1, frame._dragN do
+    if k ~= from and rows[k] then PlaceRow(frame, rows[k], SlotY(CG.DragSlot(k, from, at))) end
+  end
+  local line, mid = frame.DropLine, SlotY(at) - GROUP_ROW_H / 2
+  line:ClearAllPoints()
+  line:SetPoint("LEFT", frame.GroupList, "TOPLEFT", 4, mid)
+  line:SetPoint("RIGHT", frame.GroupList, "TOPRIGHT", -4, mid)
+  line:Show()
+  frame._dragAt = at
+end
+
+-- Ends a drag: `drop` moves the group to the landing place on screen (the
+-- one the gap showed), else everything goes back as it was.
+local function EndDrag(frame, drop)
+  local row = frame._dragRow
+  if not row then return end
+  local from, at, n = frame._dragFrom, frame._dragAt, frame._dragN
+  frame._dragRow, frame._dragAt = nil, nil
+  frame:UnregisterEvent("GLOBAL_MOUSE_UP")
+  row:SetScript("OnUpdate", nil)
+  row._dragging = false
+  row:SetFrameLevel(math.max(row:GetFrameLevel() - 10, 0))
+  row.Lift:Hide()
+  row.LiftEdge:Hide()
+  frame.DropLine:Hide()
+  if drop and at and at ~= from then
+    local list = CG.List()
+    if #list == n and list[from] and list[from].id == frame._dragId then
+      local ids = {}
+      for i = 1, #list do ids[i] = list[i].id end
+      CG.SetOrder(CG.MoveId(ids, from, at))
+    end
+  end
+  PaintGroupRows(frame)
+end
+
+function DragUpdate(row)
+  local frame = row._editor
+  if not frame._dragRow then return end
+  -- The button came up where nothing of ours heard it.
+  if type(IsMouseButtonDown) == "function" and not IsMouseButtonDown("LeftButton") then
+    EndDrag(frame, true)
+    return
+  end
+  local _, y = GetCursorPosition()
+  y = y / frame._dragScale
+  local top = frame.GroupList:GetTop() or 0
+  -- The lifted row, kept inside the list, between its first and last slot.
+  local offset = y + frame._dragGrab - top
+  local lowest = SlotY(frame._dragN)
+  if offset > -1 then offset = -1 end
+  if offset < lowest then offset = lowest end
+  PlaceRow(frame, row, offset)
+  -- Where the pointer is, which is where the group lands.
+  local at = CG.DropIndex(frame._dragFrom, frame._dragN, y - top, -1, GROUP_ROW_H)
+  if at ~= frame._dragAt then OpenGap(frame, at) end
+end
+
+local function StartDrag(frame, row)
+  EndDrag(frame, false)
+  local from, n = row.position, #CG.List()
+  if not from or n < 2 then return end
+  GameTooltip:Hide()
+  local scale = row:GetEffectiveScale() or 1
+  if scale <= 0 then scale = 1 end
+  local _, y = GetCursorPosition()
+  frame._dragScale = scale
+  frame._dragGrab = (row:GetTop() or 0) - y / scale
+  frame._dragRow, frame._dragFrom, frame._dragN, frame._dragAt = row, from, n, nil
+  frame._dragId = row.groupId
+  row._dragging = true
+  row:SetFrameLevel(row:GetFrameLevel() + 10)
+  row.Lift:Show()
+  row.LiftEdge:Show()
+  local r, g, b = ns.Theme.GetAccentTone("mark")
+  frame.DropLine:SetColorTexture(r, g, b, 1)
+  frame:RegisterEvent("GLOBAL_MOUSE_UP")
+  row:SetScript("OnUpdate", DragUpdate)
+  DragUpdate(row)
+end
+
 -- A group row: grip, name. Built on first need and reused.
 local function GroupRow(frame, i)
   local row = frame.GroupRows[i]
@@ -875,6 +992,20 @@ local function GroupRow(frame, i)
   row = CreateFrame("Button", nil, frame.GroupList)
   row:SetHeight(GROUP_ROW_H)
   row:RegisterForClicks("LeftButtonUp")
+  row._editor = frame
+
+  -- The ground it is lifted on while in the hand: the list's own surface,
+  -- solid whatever the window's opacity, so no row under it reads through,
+  -- in a neutral ring a unit wider than the row.
+  row.LiftEdge = row:CreateTexture(nil, "BACKGROUND", nil, -8)
+  row.LiftEdge:SetPoint("TOPLEFT", row, "TOPLEFT", -1, 1)
+  row.LiftEdge:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 1, -1)
+  T.FillChrome(row.LiftEdge, 0.55)
+  row.LiftEdge:Hide()
+  row.Lift = row:CreateTexture(nil, "BACKGROUND", nil, -7)
+  row.Lift:SetAllPoints()
+  T.FillColor(row.Lift, "surface", 1)
+  row.Lift:Hide()
 
   row.Wash = row:CreateTexture(nil, "BACKGROUND", nil, 1)
   row.Wash:SetAllPoints()
@@ -902,55 +1033,25 @@ local function GroupRow(frame, i)
     grip.lines[n] = line
   end
   local function Lit(alpha) for n = 1, 3 do grip.lines[n]:SetAlpha(alpha) end end
+  -- Its tooltip: the group, what the list's order is not (the buttons are
+  -- ordered in Arrange, CG.SetOrder), and the drag.
   grip:SetScript("OnEnter", function(self)
     Lit(1)
+    if frame._dragRow then return end
+    local group = Find(row.groupId)
     T.TipBegin(self, "ANCHOR_RIGHT")
-    T.TipTitle(L["GROUPS_DRAG_TIP"])
+    T.TipTitle(group and CG.DisplayName(group) or L["GROUPS_TITLE"])
+    T.TipLine(L["GROUPS_ORDER_TIP"])
+    T.TipHint(L["GROUPS_DRAG_TIP"])
     GameTooltip:Show()
   end)
   grip:SetScript("OnLeave", function() Lit(0.6) GameTooltip:Hide() end)
-  grip:SetScript("OnDragStart", function()
-    GameTooltip:Hide()
-    local scale = row:GetEffectiveScale()
-    local _, cursorY = GetCursorPosition()
-    row._grab = (row:GetTop() or 0) - cursorY / scale
-    row._dragging = true
-    row:SetFrameLevel(row:GetFrameLevel() + 10)
-    -- Scoped to the drag: set here, cleared on the drop (or the window closing).
-    row._pointer = cursorY / scale - (frame.GroupList:GetTop() or 0)
-    row:SetScript("OnUpdate", function(self)
-      local _, y = GetCursorPosition()
-      -- Where the pointer is, which is where the group lands (CG.DropIndex).
-      self._pointer = y / scale - (frame.GroupList:GetTop() or 0)
-      local offset = (y / scale + self._grab) - (frame.GroupList:GetTop() or 0)
-      -- Kept inside the list, between its first and last slot.
-      local lowest = -1 - (#CG.List() - 1) * GROUP_ROW_H
-      if offset > -1 then offset = -1 end
-      if offset < lowest then offset = lowest end
-      self:ClearAllPoints()
-      self:SetPoint("TOPLEFT", frame.GroupList, "TOPLEFT", 1, offset)
-      self:SetPoint("TOPRIGHT", frame.GroupList, "TOPRIGHT", -1, offset)
-    end)
-  end)
+  grip:SetScript("OnDragStart", function() StartDrag(frame, row) end)
+  -- Let go: the group lands where the gap is. The row in the hand stands
+  -- clamped to the list's first and last slot, so let go past either end
+  -- it is there, first or last, as it lands.
   grip:SetScript("OnDragStop", function()
-    row:SetScript("OnUpdate", nil)
-    if not row._dragging then return end
-    row._dragging = false
-    row:SetFrameLevel(math.max(row:GetFrameLevel() - 10, 0))
-    -- The new order: the list's, with the dragged group moved to where the
-    -- pointer let go of it, between the middles of the rows that stayed
-    -- (CG.DropIndex). The row in the hand stands clamped to the list's
-    -- first and last slot, so let go past either end it is there, first
-    -- or last, as it lands.
-    local list = CG.List()
-    local ids = {}
-    for n = 1, #list do ids[n] = list[n].id end
-    local from = row.position
-    if from and ids[from] == row.groupId then
-      CG.MoveId(ids, from, CG.DropIndex(from, #ids, row._pointer or 0, -1, GROUP_ROW_H))
-      CG.SetOrder(ids)
-    end
-    PaintGroupRows(frame)
+    if frame._dragRow == row then EndDrag(frame, true) end
   end)
   row.Grip = grip
 
@@ -1085,6 +1186,17 @@ function PaintGroupRows(frame)
   end
   for i = #list + 1, #frame.GroupRows do frame.GroupRows[i]:Hide() end
   frame.NewButton:SetEnabled(#list < MAX_GROUPS)
+  -- Painted mid-drag (a change from elsewhere): the gap stays open while
+  -- the list is the one the drag began on, and the drag ends where it is not.
+  local held = frame._dragRow
+  if held then
+    local group = list[frame._dragFrom]
+    if #list ~= frame._dragN or not group or group.id ~= frame._dragId then
+      EndDrag(frame, false)
+    elseif frame._dragAt then
+      OpenGap(frame, frame._dragAt)
+    end
+  end
 end
 
 -- The list again, while the window is open: `always` after a change to the
@@ -1238,11 +1350,41 @@ function RebuildMembers(frame)
   local byKey = CensusByKey(census)
   local listed = {}
 
-  -- Your characters.
+  -- In this group: everyone in it, the player's own characters and anyone
+  -- else alike, in the order they were added, each ticked, so a group with
+  -- someone who is not an alt shows them at the top however many alts there
+  -- are. Unticked, a row stays where it is until the list is built again.
+  local members = {}
+  for i = 1, #group.members do
+    local member = group.members[i]
+    local key = KeyOf(member)
+    if key and not listed[key] then
+      local c = byKey[key]
+      local found
+      if c then
+        found = Matches(query, c.name, c.key, c.name .. "-" .. c.realm)
+      else
+        found = Matches(query, member, key)
+      end
+      if found then
+        members[#members + 1] = {
+          kind = "member", key = key, member = c and c.member or member,
+          text = c and AltLabel(c) or OtherLabel(member),
+        }
+        listed[key] = true
+      end
+    end
+  end
+  if #members > 0 then
+    entries[#entries + 1] = { kind = "heading", text = L["GROUPS_IN_GROUP"] }
+    for i = 1, #members do entries[#entries + 1] = members[i] end
+  end
+
+  -- Your characters: the rest of them.
   local yours = {}
   for i = 1, #census do
     local c = census[i]
-    if Matches(query, c.name, c.key, c.name .. "-" .. c.realm) then
+    if not listed[c.key] and Matches(query, c.name, c.key, c.name .. "-" .. c.realm) then
       yours[#yours + 1] = { kind = "member", key = c.key, member = c.member, text = AltLabel(c) }
       listed[c.key] = true
     end
@@ -1252,16 +1394,8 @@ function RebuildMembers(frame)
     for i = 1, #yours do entries[#entries + 1] = yours[i] end
   end
 
-  -- Other players: this group's own, then whoever the query finds.
+  -- Other players: whoever the query finds.
   local others = {}
-  for i = 1, #group.members do
-    local member = group.members[i]
-    local key = KeyOf(member)
-    if key and not byKey[key] and not listed[key] and Matches(query, member, key) then
-      others[#others + 1] = { kind = "member", key = key, member = member, text = OtherLabel(member) }
-      listed[key] = true
-    end
-  end
   local add
   if query ~= "" then
     local results = Suggestions(raw)
@@ -1454,29 +1588,9 @@ local function Build()
   frame.GroupRows, frame.MemberRows, frame.EditParts = {}, {}, {}
   local parts = frame.EditParts
 
-  -- Left: the groups, one quiet line under them, and New group under that.
-  -- The line says what a drag in the list does not do: the buttons are
-  -- ordered in Arrange (CG.SetOrder), on two lines where a language runs
-  -- long, and the list stands on it.
-  local orderNote = T.CreateText(frame, "secondary")
-  orderNote:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, PAD + BUTTON_H + M.gap)
-  orderNote:SetWidth(LIST_W)
-  orderNote:SetJustifyH("LEFT")
-  orderNote:SetWordWrap(true)
-  if orderNote.SetMaxLines then orderNote:SetMaxLines(2) end
-  T.SetColor(orderNote, "textDisabled")
-  orderNote:SetText(L["GROUPS_ORDER_NOTE"])
-  if T.OnWindow then T.OnWindow(orderNote, "solid") end
-  parts[#parts + 1] = orderNote
-
-  local list = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-  list:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -TOP)
-  list:SetPoint("BOTTOMLEFT", orderNote, "TOPLEFT", 0, M.gap)
-  list:SetWidth(LIST_W)
-  T.ApplyList(list)
-  frame.GroupList = list
-  parts[#parts + 1] = list
-
+  -- Left: the groups, and New group under them. That a drag in the list
+  -- leaves the buttons where they are (they are ordered in Arrange,
+  -- CG.SetOrder) is the grip's tooltip's to say.
   local new = T.CreateButton(nil, frame)
   new:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, PAD)
   new:SetSize(LIST_W, BUTTON_H)
@@ -1494,6 +1608,25 @@ local function Build()
   new:SetScript("OnLeave", function() GameTooltip:Hide() end)
   frame.NewButton = new
   parts[#parts + 1] = new
+
+  local list = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+  list:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -TOP)
+  list:SetPoint("BOTTOMLEFT", new, "TOPLEFT", 0, M.gap)
+  list:SetWidth(LIST_W)
+  T.ApplyList(list)
+  frame.GroupList = list
+  parts[#parts + 1] = list
+
+  -- Where a dragged group lands: an accent line through the gap the other
+  -- rows open for it (OpenGap), shown only while one is in the hand.
+  local dropLine = list:CreateTexture(nil, "OVERLAY")
+  dropLine:SetHeight(2)
+  dropLine:Hide()
+  frame.DropLine = dropLine
+  -- A release no script of the grip hears ends the drag too.
+  frame:SetScript("OnEvent", function(self, event)
+    if event == "GLOBAL_MOUSE_UP" then EndDrag(self, true) end
+  end)
 
   -- Right: the selected group.
   local left = PAD + LIST_W + PAD
@@ -1551,7 +1684,7 @@ local function Build()
   if T.OnWindow then T.OnWindow(membersCaption, "solid") end
   parts[#parts + 1] = membersCaption
 
-  local search = T.CreateSearchBox(frame, paneW, M.controlHeight, L["GROUPS_SEARCH"], {
+  local search = T.CreateSearchBox(frame, paneW, M.controlHeight, L["GROUPS_ADD_ANY"], {
     onTextChanged = function()
       if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
       RebuildMembers(frame)
@@ -1644,14 +1777,7 @@ local function Build()
 
   -- Closing mid-drag or mid-typing leaves nothing running or half-said.
   frame:SetScript("OnHide", function(self)
-    for i = 1, #self.GroupRows do
-      local row = self.GroupRows[i]
-      if row._dragging then
-        row:SetScript("OnUpdate", nil)
-        row._dragging = false
-        row:SetFrameLevel(math.max(row:GetFrameLevel() - 10, 0))
-      end
-    end
+    EndDrag(self, false)
     self.NameBox:ClearFocus()
     self.Search.Box:ClearFocus()
     GameTooltip:Hide()
