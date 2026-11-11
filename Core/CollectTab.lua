@@ -6523,6 +6523,20 @@ function AV.Back(panel)
   return true
 end
 
+-- This character, the character list's first row, picked: its own Inbox,
+-- from anywhere -- another box, another character's History, its own
+-- History or Done. The list on screen changes once.
+function AV.Home(panel)
+  if panel.viewMode == VIEW_COLLECT then return AV.Leave(panel) end
+  if panel._alt or panel._searchAll then
+    panel._alt, panel._searchAll = nil, false
+    if panel.Detail then panel.Detail:Hide() end
+    AV.Paint(panel)
+  end
+  SetViewMode(panel, VIEW_COLLECT)
+  return true
+end
+
 -- The picker's tooltip; the way back only while there is one to take.
 function AV.PickerTip(picker, panel)
   local T = Th()
@@ -6582,8 +6596,9 @@ function CT.OpenPicker(panel)
     ns.Print(L()[(tonumber(hidden) or 0) > 0 and "MEMORY_NO_OTHERS_HIDDEN" or "MEMORY_NO_OTHERS"])
     return
   end
+  -- This character, first in the list, is the way home (AV.Home).
   Memory.OpenPicker(panel.Picker, panel._alt, function(realm, name, isMe)
-    AV.Show(panel, (not isMe) and { realm = realm, name = name } or nil)
+    if isMe then AV.Home(panel) else AV.Show(panel, { realm = realm, name = name }) end
   end)
   if perfAt then perf.Done("picker", perfAt) end
 end

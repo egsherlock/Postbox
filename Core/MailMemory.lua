@@ -3199,9 +3199,18 @@ local function PaintPicker(list)
         T.SetColor(row.Name, "textPrimary")
         row.Name:SetAlpha(1)
         row.Name:SetText(MM.ClassName(st.realm, st.name))
-        local count = MM.MailsText(st.waiting + (st.pending or 0), st.uncounted)
-        row.Count:SetText(st.warn and T.Colorize("warning", count) or count)
+        if st.me then
+          -- The character being played, always first: the way back to its
+          -- own box, said in words where the others have their counts.
+          row.Count:SetText(L["PICKER_THIS_CHARACTER"])
+        else
+          local count = MM.MailsText(st.waiting + (st.pending or 0), st.uncounted)
+          row.Count:SetText(st.warn and T.Colorize("warning", count) or count)
+        end
       end
+      -- A hairline under it, between this character and the others.
+      local above = first + i - 2 >= 1 and entries[first + i - 2] or nil
+      row.Rule:SetShown(above ~= nil and above.me == true and not st.hidden)
       nameW = math.max(nameW, row.Name:GetStringWidth() or 0)
       countW = math.max(countW, row.Count:GetStringWidth() or 0)
       current = (cur == nil and st.me) or (cur ~= nil and cur.realm == st.realm and cur.name == st.name)
