@@ -71,6 +71,8 @@
   "Right-click: options".
 - Hidden characters and Manage Recipients' Hide each say that the other list
   is separate.
+- History written in coins refreshes without remaking every sum, and closing
+  the mailbox no longer rebuilds every character's status.
 
 ### Fixed
 
@@ -79,6 +81,8 @@
 - The options' Mail tab preview shows every category button's full name.
 - Postbox's tooltip hints sit safely beside addons that restyle the game's
   tooltips: a line another addon has given its own font keeps it.
+- WoW Forever: the resize grip and the arrange mode can no longer stop on a
+  window layer the game keeps to itself.
 
 - A character whose mail Postbox couldn't count, such as auctions that
   ended while you played someone else, now says **new** (or **2+**) in the
