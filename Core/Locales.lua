@@ -195,7 +195,7 @@ L["GRID_TOGGLE_TITLE"]         = "Dock beside game windows"
 -- option does, then a blank line, then the detail (ns.Summary, above). The
 -- tooltip says the sentence; the options panel's side panel says it all. A
 -- tooltip that runs to a paragraph is a tooltip nobody finishes.
-L["GRID_TOGGLE_DESC"]          = "Postbox opens beside the game's other windows.\n\nDragged away, it goes back there at the next mailbox. Off, it stays wherever you leave it."
+L["GRID_TOGGLE_DESC"]          = "Postbox opens beside the game's other windows, and windows you open beside it make room for it.\n\nDragged away, it goes back there at the next mailbox. Off, it stays wherever you leave it."
 -- Options menu (cog button)
 L["OPTIONS_TITLE"]             = "Postbox options"
 L["OPT_FIND_PLACEHOLDER"]      = "Search settings"
@@ -2330,7 +2330,7 @@ if GetLocale() == "frFR" then
   -- Complement de traduction
   L["FRAME_TITLE"]               = "Postbox"
   L["GRID_TOGGLE_TITLE"]         = "Ancrer à côté des fenêtres du jeu"
-  L["GRID_TOGGLE_DESC"]          = "Postbox s'ouvre parmi les autres fenêtres du jeu.\n\nDéplacé, il y revient à la prochaine boîte aux lettres. Désactivé, il reste là où tu le laisses."
+  L["GRID_TOGGLE_DESC"]          = "Postbox s'ouvre parmi les autres fenêtres du jeu, et celles que tu ouvres à côté lui laissent la place.\n\nDéplacé, il y revient à la prochaine boîte aux lettres. Désactivé, il reste là où tu le laisses."
   L["OPTIONS_TITLE"]             = "Options de Postbox"
   L["OPT_FIND_PLACEHOLDER"]      = "Rechercher un réglage"
   L["OPT_REMEMBER_SORT_TITLE"]   = "Mémoriser le tri"
@@ -3395,7 +3395,7 @@ if GetLocale() == "deDE" then
   -- Ergaenzte Uebersetzungen
   L["FRAME_TITLE"]               = "Postbox"
   L["GRID_TOGGLE_TITLE"]         = "Neben Spielfenstern andocken"
-  L["GRID_TOGGLE_DESC"]          = "Postbox öffnet sich neben den anderen Fenstern des Spiels.\n\nVerschoben, kehrt es beim nächsten Briefkasten dorthin zurück. Aus, bleibt es, wo du es hinstellst."
+  L["GRID_TOGGLE_DESC"]          = "Postbox öffnet sich neben den anderen Fenstern des Spiels, und Fenster, die du daneben öffnest, machen ihm Platz.\n\nVerschoben, kehrt es beim nächsten Briefkasten dorthin zurück. Aus, bleibt es, wo du es hinstellst."
   L["OPTIONS_TITLE"]             = "Postbox-Optionen"
   L["OPT_FIND_PLACEHOLDER"]      = "Einstellungen durchsuchen"
   L["OPT_REMEMBER_SORT_TITLE"]   = "Sortierung merken"
@@ -4549,7 +4549,7 @@ if esLocale == "esES" or esLocale == "esMX" then
   -- Traducciones anadidas
   L["FRAME_TITLE"]               = "Postbox"
   L["GRID_TOGGLE_TITLE"]         = "Acoplar junto a las ventanas del juego"
-  L["GRID_TOGGLE_DESC"]          = "Postbox se abre junto a las demás ventanas del juego.\n\nSi lo mueves, vuelve allí en el próximo buzón. Desactivado, se queda donde lo dejes."
+  L["GRID_TOGGLE_DESC"]          = "Postbox se abre junto a las demás ventanas del juego, y las que abras a su lado le dejan sitio.\n\nSi lo mueves, vuelve allí en el próximo buzón. Desactivado, se queda donde lo dejes."
   L["OPTIONS_TITLE"]             = "Opciones de Postbox"
   L["OPT_FIND_PLACEHOLDER"]      = "Buscar ajustes"
   L["OPT_REMEMBER_SORT_TITLE"]   = "Recordar el orden"
@@ -5754,7 +5754,7 @@ L["MINIMAP_TOGGLE_OFF"]        = "Значок почты у миникарты:
 
 -- Дополненные переводы
 L["GRID_TOGGLE_TITLE"]         = "Пристыковка к окнам игры"
-L["GRID_TOGGLE_DESC"]          = "Postbox открывается рядом с другими окнами игры.\n\nЕсли его передвинуть, у следующего ящика он вернётся туда. Выключено — остаётся там, где вы его оставили."
+L["GRID_TOGGLE_DESC"]          = "Postbox открывается рядом с другими окнами игры, а окна, открытые рядом с ним, оставляют ему место.\n\nЕсли его передвинуть, у следующего ящика он вернётся туда. Выключено — остаётся там, где вы его оставили."
 L["OPTIONS_TITLE"]             = "Настройки Postbox"
 L["OPT_FIND_PLACEHOLDER"]      = "Поиск настроек"
 L["OPT_REMEMBER_SORT_TITLE"]   = "Запоминать сортировку"
@@ -6152,7 +6152,7 @@ if GetLocale() == "zhCN" then
   L["GRIP_TIP_DRAG"]           = "拖动：调整大小"
   L["GRIP_TIP_RESET"]          = "右键：重置"
   L["GRID_TOGGLE_TITLE"]       = "停靠在游戏窗口旁"
-  L["GRID_TOGGLE_DESC"]        = "Postbox 在游戏其他窗口旁打开。\n\n拖走后，下次打开邮箱时它会回到那里。关闭后，它会停留在你放置的位置。"
+  L["GRID_TOGGLE_DESC"]        = "Postbox 在游戏其他窗口旁打开，在它旁边打开的窗口会为它让出位置。\n\n拖走后，下次打开邮箱时它会回到那里。关闭后，它会停留在你放置的位置。"
   L["OPTIONS_TITLE"]           = "Postbox 选项"
   L["OPT_FIND_PLACEHOLDER"]    = "搜索设置"
   L["OPT_REMEMBER_SORT_TITLE"] = "记住排序"
@@ -7283,7 +7283,7 @@ if GetLocale() == "zhTW" then
   L["GRIP_TIP_DRAG"]           = "拖曳：調整大小"
   L["GRIP_TIP_RESET"]          = "右鍵：重設"
   L["GRID_TOGGLE_TITLE"]       = "停靠在遊戲視窗旁"
-  L["GRID_TOGGLE_DESC"]        = "Postbox 在遊戲其他視窗旁開啟。\n\n拖走後，下次開啟信箱時它會回到那裡。關閉後，它會停留在你放置的位置。"
+  L["GRID_TOGGLE_DESC"]        = "Postbox 在遊戲其他視窗旁開啟，在它旁邊開啟的視窗會為它讓出位置。\n\n拖走後，下次開啟信箱時它會回到那裡。關閉後，它會停留在你放置的位置。"
   L["OPTIONS_TITLE"]           = "Postbox 選項"
   L["OPT_FIND_PLACEHOLDER"]    = "搜尋設定"
   L["OPT_REMEMBER_SORT_TITLE"] = "記住排序"

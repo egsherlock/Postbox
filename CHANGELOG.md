@@ -85,10 +85,11 @@
 ### Fixed
 
 - **The bank and other game windows work after a visit to the mailbox.**
-  With Dock beside game windows on, Postbox could leave the bank unusable
-  until a reload (seen in WoW Forever). Docking now places the mail window
-  by itself and leaves the game's window layout alone, so other game
-  windows no longer move aside for it.
+  With Dock beside game windows on, the bank works as usual after the
+  mailbox, in WoW Forever too: docking leaves the game's window layout
+  alone. A game window you open beside the docked mail window, such as the
+  character sheet or the group finder, still opens clear of it, beside its
+  right edge.
 - History records what you paid for an auction you won, also when its
   mail was still unread.
 - In the character list and the minimap icon's tooltip, a character whose
