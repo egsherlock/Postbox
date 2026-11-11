@@ -2326,6 +2326,8 @@ do
     tip = { back = false, gone = false }, tipSize = false,
     CLEAN = { back = "expiry-back-clean", gone = "expiry-bin-clean" } }
   RV.FATE = F
+  -- The digits' height, for the coins' rule too (RV.Coins).
+  RV.DIGIT = DIGIT
 
   -- A font's size -> the mark's height, the digits' (above).
   function RV.MarkHeight(size)
@@ -2526,6 +2528,49 @@ do
     local mark = RV.FateTipMark(fate)
     Th().TipFact(L0["TIP_ON_EXPIRY"], mark and (mark .. value) or value)
   end
+end
+
+-------------------------------------------------------------
+-- The coins
+--
+-- Gold, silver and copper after a figure (the totals band, History's and
+-- Sent's, the rows' coins, the options' drawings, the Send tab), drawn by
+-- one builder (Formatting.FormatMoneyIcons) from one set per font: RV.Coins.
+--
+-- SIZE AND PLACE, by rule from the font the figure is drawn in. A coin is
+-- as tall as the font's size, as the game's own money strings make theirs
+-- (its art fills 14 of the texture's 16 rows, centred), and never taller
+-- than the line it stands on. The client centres an inline texture on its
+-- line, but puts the digits on the baseline the face's ascent under the
+-- line's top (RV.LineAt), so the digits' middle is off the line's by
+-- round(ascent) - (DIGIT + ascent + descent) / 2 of the size, which moves
+-- with the size as the baseline rounds: up to 0.9 of a unit up in Friz
+-- Quadrata and 0.75 down in Expressway between sizes 9 and 19, 1.1 in
+-- Barlow, 3 in HWT Artz. A coin centred on the line sat that far high or
+-- low as the text size, the face or the style moved. So the coin is moved
+-- by it, in whole units (the escape takes no fraction): its middle within
+-- half a unit of the digits' at every size, in every face RV.FACES knows
+-- and in the common proportions for one it does not. It stands
+-- COIN_GAP units after the figure (Formatting.COIN_GAP), the texture's
+-- own offset, so no space character is needed.
+--
+-- Nothing is made per call: the face is looked up once per font path
+-- (RV.FaceOf), and the set once per (height, drop, gap) and kept
+-- (Formatting.CoinSet).
+-------------------------------------------------------------
+
+-- fs (a font string, or a font object: anything with GetFont) -> the coin
+-- set for money drawn in its font.
+function RV.Coins(fs)
+  local Fm = ns.Core.Formatting
+  if not (fs and fs.GetFont) then return Fm.DefaultCoins() end
+  local face, size = RV.FaceOf(fs)
+  if size <= 0 then size = 12 end
+  local asc = face[1] * size
+  local line = asc + face[2] * size
+  local h = min(floor(size + 0.5), floor(line))
+  local off = floor(asc + 0.5) - RV.DIGIT * size / 2 - line / 2
+  return Fm.CoinSet(h, -floor(off + 0.5), Fm.COIN_GAP)
 end
 
 -- The rendered width of `text` in `sample`'s font. One hidden string per
@@ -3931,6 +3976,9 @@ do
   R.TipSender, R.TipItem, R.TipMore, R.TipMoney = RV.TipSender, RV.TipItem, RV.TipMore, RV.TipMoney
   R.TipState, R.TipSubject, R.TIP_ITEMS = RV.TipState, RV.TipSubject, RV.TIP_ITEMS
   R.MoneyFacts, R.Dressable = RV.MoneyFacts, RV.Dressable
+  -- The coins' set for a font (RV.Coins): the options' drawings and the
+  -- Send tab draw their coins by it.
+  R.Coins = RV.Coins
   -- The expiry marks (RV.FateText) and their tooltip line, and when a mail
   -- is short, for Mail Memory's rows and its expiry alert.
   R.FateText, R.TipFate, R.ShortDays, R.FateMarkW = RV.FateText, RV.TipFate, RV.ShortDays, RV.FateMarkW
@@ -9099,17 +9147,18 @@ do
 
   -- The C.O.D. still to pay joins the line only while a listed mail asks
   -- one, in the red it wears on the rows: the band otherwise reads as ever.
-  local function Line(strings, icons, sums, up, down, parts)
+  -- `coins`: the set for the band's font (RV.Coins).
+  local function Line(strings, icons, sums, up, down, parts, coins)
     -- Sent: "Sent: 500g | C.O.D. asked: 180g", both in the red the gold
     -- sent and a C.O.D. wear on the rows.
     if sums.sent then
-      return strings["SENT_BANNER_SENT"] .. icons(sums.earned, down, parts)
-        .. "   |   " .. strings["SENT_BANNER_COD"] .. icons(sums.spent, down, parts)
+      return strings["SENT_BANNER_SENT"] .. icons(sums.earned, down, parts, coins)
+        .. "   |   " .. strings["SENT_BANNER_COD"] .. icons(sums.spent, down, parts, coins)
     end
-    local line = strings["BANNER_EARNED_SHORT"] .. icons(sums.earned, up, parts)
-        .. "   |   " .. strings["BANNER_SPENT_SHORT"] .. icons(sums.spent, down, parts)
+    local line = strings["BANNER_EARNED_SHORT"] .. icons(sums.earned, up, parts, coins)
+        .. "   |   " .. strings["BANNER_SPENT_SHORT"] .. icons(sums.spent, down, parts, coins)
     if (sums.cod or 0) > 0 then
-      line = line .. "   |   " .. strings["LABEL_COD"] .. icons(sums.cod, down, parts)
+      line = line .. "   |   " .. strings["LABEL_COD"] .. icons(sums.cod, down, parts, coins)
     end
     return line
   end
@@ -9127,9 +9176,9 @@ do
 
   -- The client's measurement leaves inline textures out -- the fullest
   -- line "fitted" and ran off the band by about the width of its coins --
-  -- so each coin is added back at its declared size. Where a client does
-  -- count them the line is judged a little wide, which at the worst costs
-  -- a coin at a borderline width.
+  -- so each coin is added back at its declared size and gap. Where a client
+  -- does count them the line is judged a little wide, which at the worst
+  -- costs a coin at a borderline width.
   local function Width(text, candidate, iconSize)
     return (text:GetStringWidth() or 0) + IconCount(candidate) * iconSize
   end
@@ -9152,9 +9201,10 @@ do
     -- Two coins is the whole of it: "Earned 95g 57s". The copper on a total
     -- of the whole inbox is noise, and "Total" said nothing the band's
     -- position under the list did not. The single coin is for a narrow window.
-    candidates[1] = Line(strings, icons, sums, up, down, 2)
-    candidates[2] = Line(strings, icons, sums, up, down, 1)
-    local iconSize = ns.Core.Formatting.MONEY_ICON_SIZE or 12
+    local coins = RV.Coins(text)
+    candidates[1] = Line(strings, icons, sums, up, down, 2, coins)
+    candidates[2] = Line(strings, icons, sums, up, down, 1, coins)
+    local iconSize = coins.w
 
     -- The room is the band's, not the string's: asked for its own width, the
     -- string answered with the width of whatever it was showing, so the

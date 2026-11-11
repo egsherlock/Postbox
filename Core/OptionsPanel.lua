@@ -2155,11 +2155,13 @@ do
     if not (F and F.FormatMoneyIcons) then fs:SetText("") return end
     local up = "ff" .. (T.InkHex("positive", "band") or "40d55a")
     local down = "ff" .. (T.InkHex("negative", "band") or "ff4444")
-    local earned = F.FormatMoneyIcons(gained, up, 1)
-    local spent = F.FormatMoneyIcons(paid, down, 1)
+    local R = ns.CollectTab and ns.CollectTab.RowRules
+    local coins = R and R.Coins and R.Coins(fs) or nil
+    local earned = F.FormatMoneyIcons(gained, up, 1, coins)
+    local spent = F.FormatMoneyIcons(paid, down, 1, coins)
     fs:SetWidth(room)
     fs:SetText(L["BANNER_EARNED_SHORT"] .. earned .. "   |   " .. L["BANNER_SPENT_SHORT"] .. spent)
-    if T.TextWidth(fs) + 2 * (F.MONEY_ICON_SIZE or 12) > room then
+    if T.TextWidth(fs) + 2 * (coins and coins.w or (F.MONEY_ICON_SIZE or 12)) > room then
       fs:SetText(earned .. "   |   " .. spent)
     end
   end
@@ -5658,21 +5660,28 @@ do
   -- room: the largest coin alone, its figure and then the coin itself
   -- (Formatting.FormatMoneyIcons), so the coins stand in a column at the
   -- right of the figures. No gold is the dash, with no coin.
-  local function Gold(copper)
+  -- `fs`: the string it is drawn in, whose font sizes and places the coin
+  -- (CollectTab's RV.Coins).
+  local function Coins(fs)
+    local R = ns.CollectTab and ns.CollectTab.RowRules
+    return R and R.Coins and R.Coins(fs) or nil
+  end
+  local function Gold(copper, fs)
     if not copper or copper <= 0 then return ns.Theme.Colorize("textSecondary", DASH) end
     local F = ns.Core and ns.Core.Formatting
-    if F and F.FormatMoneyIcons then return F.FormatMoneyIcons(copper, nil, 1) end
+    if F and F.FormatMoneyIcons then return F.FormatMoneyIcons(copper, nil, 1, Coins(fs)) end
     return tostring((math.floor(copper / 10000)))
   end
 
   -- The width Gold's coin adds to its figure: an inline texture, which the
   -- client's measure of the string leaves out (CollectTab's FitBanner), so
-  -- it is counted at its own size.
-  local function Coin(copper)
+  -- it is counted at its own size and gap.
+  local function Coin(copper, fs)
     if not copper or copper <= 0 then return 0 end
     local F = ns.Core and ns.Core.Formatting
     if not (F and F.FormatMoneyIcons) then return 0 end
-    return F.MONEY_ICON_SIZE or 12
+    local coins = Coins(fs)
+    return coins and coins.w or (F.MONEY_ICON_SIZE or 12)
   end
 
   -- A text's width, its expiry mark's included (CollectTab's RV.FateMarkW),
@@ -5760,23 +5769,23 @@ do
       -- A sample's line (Panel.TryCard) brings its name already coloured.
       line.nameText = r.shown or ((MM and MM.ClassName) and MM.ClassName(r.realm, r.name) or r.name)
       line.Mail:SetText(tostring(r.mails))
-      line.Gold:SetText(Gold(r.gold))
+      line.Gold:SetText(Gold(r.gold, line.Gold))
       line.Soon:SetText(Soon(r.soonest, r.fate, r.amber, line.Soon, now))
       line.Seen:SetText((r.seenAt and r.seenAt > 0 and age) and age(now - r.seenAt, "plain") or "")
       T.SetColor(line.Name, "textPrimary")
       T.SetColor(line.Seen, "textSecondary")
       line:EnableMouse(true)
-      local coin = Coin(r.gold)
+      local coin = Coin(r.gold, line.Gold)
       for j = 1, #FIELDS do
         local w = Width(line[FIELDS[j]], FIELDS[j] == "Gold" and coin or 0)
         if w > widths[j] then widths[j] = w end
       end
     end
     total.Mail:SetText(tostring(data.mails))
-    total.Gold:SetText(Gold(data.gold))
+    total.Gold:SetText(Gold(data.gold, total.Gold))
     total.Soon:SetText(Soon(data.soonest, data.fate, data.amber, total.Soon, now))
     total.Seen:SetText("")
-    local coin = Coin(data.gold)
+    local coin = Coin(data.gold, total.Gold)
     for j = 2, #FIELDS do
       local w = Width(total[FIELDS[j]], FIELDS[j] == "Gold" and coin or 0)
       if w > widths[j] then widths[j] = w end

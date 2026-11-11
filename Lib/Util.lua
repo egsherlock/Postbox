@@ -175,14 +175,54 @@ end
 local COPPER_PER_SILVER = 100
 local COPPER_PER_GOLD = 10000
 
--- Rendered inline at body-text size so the coins sit on the text baseline.
+-- The coins, as inline textures: one set of the three escapes per height,
+-- drop and gap (Formatting.CoinSet). What height and drop a string's coins
+-- take is a rule of the font it is drawn in, and lives with the other rules
+-- of that kind (Core/CollectTab.lua, RV.Coins); a caller that knows no font
+-- gets the default set, 12 units with no drop.
 local ICON_SIZE = 12
--- Published for anything that has to measure a money string: the client's
--- own measurement leaves inline textures out.
+-- The units between a figure and its coin: the texture's own offset to the
+-- right, as the game's money strings space theirs.
+local COIN_GAP = 1
+-- Published for anything that has to measure a money string without a set
+-- in hand: the client's own measurement leaves inline textures out.
 Formatting.MONEY_ICON_SIZE = ICON_SIZE
-local GOLD_ICON = format("|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:0:0|t", ICON_SIZE, ICON_SIZE)
-local SILVER_ICON = format("|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:0:0|t", ICON_SIZE, ICON_SIZE)
-local COPPER_ICON = format("|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:0:0|t", ICON_SIZE, ICON_SIZE)
+Formatting.COIN_GAP = COIN_GAP
+
+-- The sets made, by key, and how many: a handful (one per font size and
+-- face a surface draws money in), let go whole past COIN_SETS_MAX.
+local coinSets, coinSetCount, COIN_SETS_MAX = {}, 0, 24
+
+-- h, dy, gap -> the coins h units tall, `dy` units up from the line's centre
+-- (negative: down) and `gap` units right of what comes before them: a table
+-- of the escapes (gold, silver, copper) and the room each takes across (w),
+-- which a string's measure leaves out. Made once per (h, dy, gap) and kept.
+function Formatting.CoinSet(h, dy, gap)
+  h = floor(tonumber(h) or ICON_SIZE)
+  if h < 1 then h = 1 end
+  dy, gap = floor(tonumber(dy) or 0), floor(tonumber(gap) or COIN_GAP)
+  local key = (h * 1000 + dy + 500) * 100 + gap
+  local set = coinSets[key]
+  if set then return set end
+  if coinSetCount >= COIN_SETS_MAX then
+    for k in pairs(coinSets) do coinSets[k] = nil end
+    coinSetCount = 0
+  end
+  set = {
+    gold = format("|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:%d:%d|t", h, h, gap, dy),
+    silver = format("|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:%d:%d|t", h, h, gap, dy),
+    copper = format("|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:%d:%d|t", h, h, gap, dy),
+    w = h + gap, h = h, dy = dy, gap = gap,
+  }
+  coinSets[key] = set
+  coinSetCount = coinSetCount + 1
+  return set
+end
+
+-- The set for a caller that knows no font.
+function Formatting.DefaultCoins()
+  return Formatting.CoinSet(ICON_SIZE, 0, COIN_GAP)
+end
 
 -- Floor, not round: a fractional value from a division must not carry 99.6
 -- copper up into "100 copper, zero silver".
@@ -305,8 +345,12 @@ end
 -- its edge. Without it every coin from the largest non-zero one down is shown.
 -- One format per amount, as FormatMoneyText: the banner asks for its two sums
 -- on every list refresh, at up to four widths.
-function Formatting.FormatMoneyIcons(copper, colorHex, parts)
+-- `coins`: the set to draw (Formatting.CoinSet; RV.Coins makes the one for
+-- a string's font); the default set without it.
+function Formatting.FormatMoneyIcons(copper, colorHex, parts, coins)
   local gold, silver, rest = Split(copper)
+  coins = coins or Formatting.DefaultCoins()
+  local GOLD_ICON, SILVER_ICON, COPPER_ICON = coins.gold, coins.silver, coins.copper
 
   local open, close = "", ""
   if type(colorHex) == "string" and colorHex ~= "" then

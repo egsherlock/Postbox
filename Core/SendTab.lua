@@ -797,7 +797,10 @@ function ST.UpdateSendCost(panel)
   -- Postage is not an error. It used to be wrapped in a red escape, so normal
   -- 30-copper postage read as a failure; the label's own `secondary` role now
   -- carries it.
-  label:SetText(L["LABEL_SEND_COST"] .. ns.Core.Formatting.FormatMoneyIcons(cost))
+  -- The coins sized and placed for the label's font (CollectTab's RV.Coins).
+  local rules = ns.CollectTab and ns.CollectTab.RowRules
+  local coins = rules and rules.Coins and rules.Coins(label) or nil
+  label:SetText(L["LABEL_SEND_COST"] .. ns.Core.Formatting.FormatMoneyIcons(cost, nil, nil, coins))
 end
 
 -------------------------------------------------------------
@@ -1719,17 +1722,20 @@ local function DoSendMail(panel, confirmed)
   if not confirmed and (mails > 1 or gold > 0) then
     local answer = { mails = mails, gold = gold, to = toName, cod = cod }
     local fmt = ns.Core.Formatting.FormatMoneyIcons
+    -- The coins for the question's text, the game's dialog font (RV.Coins).
+    local rules = ns.CollectTab and ns.CollectTab.RowRules
+    local coins = rules and rules.Coins and rules.Coins(_G.GameFontHighlight) or nil
     local message
     if mails > 1 then
       local items = attachments + #(panel._queue or {})
-      local postage = fmt(RunPostage(panel))
+      local postage = fmt(RunPostage(panel), nil, nil, coins)
       if gold > 0 then
-        message = L("SEND_RUN_GOLD_CONFIRM", mails, toName, fmt(gold), items, postage)
+        message = L("SEND_RUN_GOLD_CONFIRM", mails, toName, fmt(gold, nil, nil, coins), items, postage)
       else
         message = L("SEND_RUN_CONFIRM", mails, toName, items, postage)
       end
     else
-      message = L("SEND_GOLD_CONFIRM", fmt(gold), toName)
+      message = L("SEND_GOLD_CONFIRM", fmt(gold, nil, nil, coins), toName)
     end
     PopupConfirm(message, L["SEND_RUN_ACCEPT"], function() DoSendMail(panel, answer) end)
     return
