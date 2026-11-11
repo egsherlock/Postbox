@@ -5102,22 +5102,28 @@ end
 
 -- Test mail switched from the overview: the host lists its sample set
 -- in the list's place, or the list as it was (host.Preview). Only where
--- the host can, and not where it refuses (answers false).
+-- the host can, and not where it refuses (answers false). Turned on here,
+-- it is the mode's (AR.previewOwn), and ends with it.
 function AR.SetPreview(on)
   local host = AR.host
   on = on and true or false
   if not (host and host.Preview) or AR.preview == on then return end
   AR.preview = on
-  if host.Preview(on) == false then AR.preview = not on end
+  if host.Preview(on) == false then
+    AR.preview = not on
+    return
+  end
+  AR.previewOwn = on
 end
 
 -- Test mail switched elsewhere (the options, MailboxUI.SetTestMail) while
--- the mode is open over `owner`: the overview shows it as it now is.
+-- the mode is open over `owner`: the overview shows it as it now is, and
+-- whatever it now is, the mode did not turn it on.
 function AR.PreviewChanged(owner, on)
   on = on and true or false
   local host = AR.host
   if not (host and host.owner == owner) or AR.preview == on then return end
-  AR.preview = on
+  AR.preview, AR.previewOwn = on, false
   local insp = AR._insp
   if insp and insp:IsShown() then AR.Inspect() end
 end
@@ -5626,6 +5632,9 @@ function AR.BuildInspector()
   insp.__pbPopupAlways = true
   T.ApplyCard(insp)
   insp:SetFrameStrata("FULLSCREEN_DIALOG")
+  -- In front of Postbox's own windows whenever it shows (AR.ShowInspector),
+  -- and brought forward by a click, as the options are.
+  insp:SetToplevel(true)
   insp:SetClampedToScreen(true)
   insp:EnableMouse(true)
   insp:SetWidth(P.W)
@@ -6971,6 +6980,7 @@ function AR.ShowInspector(host)
   insp.side = nil
   AR.Dock(insp, host)
   insp:Show()
+  insp:Raise()
   AR.Inspect()
 end
 
@@ -7033,8 +7043,11 @@ function AR.Enter(host)
   AR.host = host
   AR.hover, AR.focus, AR.drag, AR.rowHover = nil, nil, nil, nil
   AR.selKind, AR.selId, AR.moving = nil, nil, nil
-  -- Test mail, where it is on already (from the options), stays on.
+  -- Test mail, where it is on already (from the options), stays on, and
+  -- stays on when the mode ends: only what the overview turns on
+  -- (AR.previewOwn) ends with the mode.
   AR.preview = (host.PreviewOn and host.PreviewOn()) and true or false
+  AR.previewOwn = false
   AR.listKind, AR.relisted = AR.ListKind(), false
   strip:Show()
   if host.OnEnter then host.OnEnter(strip) end
@@ -7051,6 +7064,11 @@ function AR.Enter(host)
   -- (AR.ListPlaced) -- and here, for a list that placed none.
   AR.RowsChanged(false)
   AR.LayoutStrip(host)
+  -- One side panel at a time: the options step aside (OptionsPanel.
+  -- StepAside), and the inspector docks by its own rule, where they stood
+  -- in the usual case. They come back when the mode ends (AR.Leave).
+  local options = ns.OptionsPanel
+  if options and type(options.StepAside) == "function" then options.StepAside(true) end
   AR.ShowInspector(host)
   -- The update notice stands where the inspector does (Core/WhatsNew.lua):
   -- it waits for the mode to close.
@@ -7091,11 +7109,13 @@ function AR.Leave()
     cover.Ghost:Hide()
     cover:Hide()
   end
-  -- Sample mail goes with the mode: the list as it was. Not in the preview
-  -- window, which has no list of its own: it stays, as Test mail's.
+  -- Test mail the overview turned on goes with the mode: the list as it
+  -- was. Test mail the options turned on stays, theirs to end; so does the
+  -- preview window's, which has no list of its own.
   if AR.preview then
-    AR.preview = false
-    if host.Preview and not (host.PreviewLocked and host.PreviewLocked()) then host.Preview(false) end
+    local own = AR.previewOwn
+    AR.preview, AR.previewOwn = false, false
+    if own and host.Preview and not (host.PreviewLocked and host.PreviewLocked()) then host.Preview(false) end
   end
   if host.OnLeave then host.OnLeave() end
   if host.toggle then AR.PaintToggle(host.toggle) end
@@ -7106,6 +7126,13 @@ function AR.Leave()
   -- Last: the host told the mode is over (the preview window stays, as
   -- Test mail's, and says so).
   if host.Left then host.Left() end
+  -- The options come back where they stood, unless the window went away
+  -- for good under the mode (the mailbox closed): then they close.
+  local options, ui = ns.OptionsPanel, UI()
+  if options and type(options.StepAside) == "function" then
+    local dock = (host.Dock and host.Dock()) or host.owner
+    options.StepAside(false, ui and type(ui.WindowGone) == "function" and ui.WindowGone(dock) or false)
+  end
   -- And the update notice comes back, if one waits beside a window still up.
   local news = ns.WhatsNew
   if news and news.Aside then news.Aside(false) end

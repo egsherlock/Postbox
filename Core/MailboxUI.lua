@@ -3417,14 +3417,22 @@ function UI.ResetWindowGeometry()
   state.adoptedExtraW, state.adoptedAtWidth = nil, nil
   state.freeMoved = false
 
-  -- Where BuildFrame first puts it.
-  frame:ClearAllPoints()
-  frame:SetPoint("CENTER", UIParent, "CENTER", 0, 50)
-  local helpers = WindowHelpers()
-  if helpers and helpers.PinFrameTopLeft then helpers.PinFrameTopLeft(frame) end
-  frame:SetSize(DEFAULT_WIDTH, BaseMinHeight() + state.extraH)
-  ApplyResizeBounds()
-  UI.ApplyWindowLayout()
+  if state.preview then
+    -- The preview window (section 5c) stands beside the options, which is
+    -- not the window's own place: at the new size, beside them again.
+    frame:SetSize(DEFAULT_WIDTH, BaseMinHeight() + state.extraH)
+    ApplyResizeBounds()
+    UI.PlacePreviewAgain(frame)
+  else
+    -- Where BuildFrame first puts it.
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 50)
+    local helpers = WindowHelpers()
+    if helpers and helpers.PinFrameTopLeft then helpers.PinFrameTopLeft(frame) end
+    frame:SetSize(DEFAULT_WIDTH, BaseMinHeight() + state.extraH)
+    ApplyResizeBounds()
+    UI.ApplyWindowLayout()
+  end
 
   local send = ns.SendTab
   if send and send.SuspendElastic then send.SuspendElastic(false) end
@@ -3835,6 +3843,13 @@ end
 -- session state, never saved, and off at every login; it goes off with the
 -- window it shows in.
 --
+-- It ends with what turned it on (`testBy`). Turned on from the options, it
+-- stays while they are open -- and while they only stand aside for the
+-- arrange mode (OptionsPanel.StepAside) -- and ends when the player closes
+-- them (UI.OptionsClosed); finishing the mode leaves it on. Turned on from
+-- the mode's overview, it ends when the mode ends (Arrange.lua, AR.Leave).
+-- A mailbox opening or closing ends it either way.
+--
 -- At a mailbox it is the Mail tab's list alone (CollectTab, CT.SetSamples),
 -- and the window stays the game's and grid docking's. Away from a mailbox
 -- it is the preview window: this same window, opened with no mail session
@@ -3843,8 +3858,9 @@ end
 -- (OptionsPanel.StandBeside): it is the preview that resizes, and the
 -- options that move to stay beside it, never the other way. Arranging from the
 -- options away from a mailbox opens it arranging; Done leaves it up as Test
--- mail's, and turning Test mail off, its close button, Escape, or anything
--- else that hides it closes it.
+-- mail's, and turning Test mail off, closing the options, its close button,
+-- Escape, or anything else that hides it closes it. It is always the
+-- options' Test mail: away from a mailbox the overview's switch is held.
 --
 -- It has its own flag and never sets mailboxOpen, so everything that asks
 -- whether a mailbox is open (collecting, Mail Memory's capture, the tab's
@@ -3863,8 +3879,9 @@ end
 
 -- What the preview put aside, given back when it ends: the tab the next
 -- mailbox opens on, and the per-session drag override (a drag of the preview
--- window is not one).
-local previewKeep = { tab = nil, freeMoved = false }
+-- window is not one). And the options' window it opened beside, which a
+-- reset places it beside again (UI.ResetWindowGeometry).
+local previewKeep = { tab = nil, freeMoved = false, opener = nil }
 
 local function PreviewSendEnter(self)
   if not UI._state.preview then return end
@@ -3956,7 +3973,7 @@ local function EndPreview()
   st.preview = false
   if previewKeep.tab then st.activeTab = previewKeep.tab end
   st.freeMoved = previewKeep.freeMoved and true or false
-  previewKeep.tab, previewKeep.freeMoved = nil, false
+  previewKeep.tab, previewKeep.freeMoved, previewKeep.opener = nil, false, nil
   local frame = UI._frame
   if frame then
     MarkPreview(frame, false)
@@ -3994,7 +4011,8 @@ function UI.IsTestMail()
 end
 
 -- Test mail switched, from the options (`opener`: their window, which the
--- preview opens beside) or the arrange mode's overview. Away from a
+-- preview opens beside) or the arrange mode's overview (no `opener`): the
+-- one that turned it on is what ends it (section 5c, `testBy`). Away from a
 -- mailbox, on opens the preview window and off closes it. At a mailbox it
 -- is the Mail tab's list, brought forward to show it; while Postbox is
 -- collecting or deleting it waits, as Reset does, and says so in chat.
@@ -4019,15 +4037,36 @@ function UI.SetTestMail(on, opener)
   local panel, collect = CollectPanel(), ns.CollectTab
   if not (panel and collect and collect.SetSamples) then return false end
   if on and st.activeTab ~= "collect" then UI.SelectTab("collect") end
+  if on then st.testBy = opener and "options" or "arrange" end
   collect.SetSamples(panel, on)
   UI.TestMailChanged()
   return UI.IsTestMail() == on
 end
 
+-- The options closed (OptionsPanel, PanelHide), not merely stepped aside
+-- for the arrange mode: Test mail they turned on ends with them -- away
+-- from a mailbox, the preview window with it.
+function UI.OptionsClosed()
+  if UI._state.testBy ~= "options" or not UI.IsTestMail() then return end
+  UI.SetTestMail(false)
+end
+
+-- Whether `window` is the Postbox window put away for good: hidden, with
+-- neither a mailbox nor the preview keeping it. The arrange mode asks as it
+-- ends (AR.Leave): the options it stepped aside for then close rather than
+-- come back over an empty screen.
+function UI.WindowGone(window)
+  local frame, st = UI._frame, UI._state
+  if not frame or window ~= frame then return false end
+  return not frame:IsShown() and not st.mailboxOpen and not st.preview
+end
+
 -- Test mail came on or went off, however: the arrange mode's overview, the
--- options' switch and the status line show it as it now is.
+-- options' switch and the status line show it as it now is. Off, nothing
+-- turned it on any more.
 function UI.TestMailChanged()
   local on = UI.IsTestMail()
+  if not on then UI._state.testBy = nil end
   local arrange = ns.Arrange
   if arrange and arrange.PreviewChanged then arrange.PreviewChanged(CollectPanel(), on) end
   local options = ns.OptionsPanel
@@ -4052,6 +4091,8 @@ local function OpenOptions()
   -- Compositor-guarded (CreateTexture is disallowed on them) and the only route
   -- to their submenu panels taints Blizzard's menu pipeline. See COMBAT_TAINT.md.
   -- Right of this window, where it stands now: in its panel slot when docked.
+  -- While a window arranges, the click finishes arranging first and the
+  -- options come back where they stood, or open (OptionsPanel.Toggle).
   local panel = ns.OptionsPanel
   if panel and panel.Toggle then panel.Toggle(UI._frame, "main") end
 end
@@ -4815,6 +4856,20 @@ local function OnMailClosed()
   -- anyway, and a /reload restores it. COMBAT_TAINT.md 7 fix #3.
 end
 
+-- The preview window beside the options that opened it (`opener`), left of
+-- them first. Where neither side has the room but the two fit across the
+-- screen, the options move along the least that makes it
+-- (Helpers.MakeRoomBeside): the two never stand over each other while the
+-- screen can hold both. The options let go of whatever they stood by
+-- first: they are about to stand by this window instead (StandBeside).
+-- Answers the side taken.
+local function PreviewBeside(frame, opener, helpers)
+  local options = ns.OptionsPanel
+  if options and type(options.LetGo) == "function" then options.LetGo() end
+  if helpers.MakeRoomBeside then helpers.MakeRoomBeside(frame, opener, "left") end
+  return helpers.PlaceBeside(frame, opener, "left")
+end
+
 -- The preview window opens (section 5c), from the options away from a
 -- mailbox -- their Test mail, or their "Arrange..." (`arrange`) -- beside
 -- `opener`, the options' window: the Mail tab forward over the samples, the
@@ -4839,15 +4894,17 @@ function UI.OpenPreview(arrange, opener)
   end
 
   st.preview = true
-  previewKeep.tab, previewKeep.freeMoved = st.activeTab, st.freeMoved
+  -- Always the options' Test mail (section 5c): closing them closes it.
+  st.testBy = "options"
+  previewKeep.tab, previewKeep.freeMoved, previewKeep.opener = st.activeTab, st.freeMoved, opener
   st.activeTab = "collect"
   BuildFrame()
   local frame = UI._frame
   local panel, collect = CollectPanel(), ns.CollectTab
   if not (frame and panel and collect and collect.SetSamples) then
-    st.preview = false
+    st.preview, st.testBy = false, nil
     st.activeTab = previewKeep.tab or st.activeTab
-    previewKeep.tab = nil
+    previewKeep.tab, previewKeep.opener = nil, nil
     return false
   end
   UI.SelectTab("collect")
@@ -4863,7 +4920,7 @@ function UI.OpenPreview(arrange, opener)
   st.previewPlaced = true
   local took
   if opener and helpers and helpers.PlaceBeside then
-    took = helpers.PlaceBeside(frame, opener, "left")
+    took = PreviewBeside(frame, opener, helpers)
   else
     local store = UI._windowStore
     frame:ClearAllPoints()
@@ -4896,6 +4953,25 @@ function UI.OpenPreview(arrange, opener)
   end
   UI.TestMailChanged()
   return true
+end
+
+-- A reset while the preview is up (UI.ResetWindowGeometry): the window,
+-- at its new size, beside the options that opened it again, as it opened
+-- (PreviewBeside, which first lets the options go of it: held by its edge,
+-- they would move with it while it is placed beside them), and the options
+-- standing by it. Without them on screen it stays where it stands, whole
+-- on the screen.
+function UI.PlacePreviewAgain(frame)
+  local opener, helpers, options = previewKeep.opener, WindowHelpers(), ns.OptionsPanel
+  previewKeep.freeMoved = false
+  if not (opener and opener:IsShown() and helpers and helpers.PlaceBeside) then
+    if helpers and helpers.KeepOnScreen then helpers.KeepOnScreen(frame) end
+    return
+  end
+  local took = PreviewBeside(frame, opener, helpers)
+  if took and options and type(options.StandBeside) == "function" then
+    options.StandBeside(frame, helpers.OppositeSide(took))
+  end
 end
 
 -------------------------------------------------------------

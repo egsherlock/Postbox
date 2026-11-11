@@ -8329,6 +8329,8 @@ function Footer.Build(frame, above)
       -- them again.
       S.sendText = nil
       Panel.RefreshControls()
+      -- Beside its window again, wherever the reset put that.
+      Place.Settle()
       if styleChanged then OfferStyleReload() end
     end
 
@@ -8677,7 +8679,18 @@ local function BodyLeave(self)
   Insp.Show(nil)
 end
 
--- Closing stops everything the panel set moving.
+-- What only a close does, never a step aside (Panel.StepAside): Forever's
+-- reload offer goes with the panel that asked it, the panel stands by
+-- nothing until it next opens (Place), and Test mail the panel turned on
+-- ends (MailboxUI.OptionsClosed).
+local function PanelClosed()
+  ReloadAsk.Hide()
+  Place.Loose()
+  local UI = ns.MailboxUI
+  if UI and type(UI.OptionsClosed) == "function" then UI.OptionsClosed() end
+end
+
+-- Hiding stops everything the panel set moving; closing does the rest.
 local function PanelHide()
   local washed = S.washed
   if washed and washed.Wash then washed.Wash:Hide() end
@@ -8686,10 +8699,7 @@ local function PanelHide()
   for _, f in pairs(S.ctx) do
     if f.Stop then f.Stop() end
   end
-  -- Forever's reload offer goes with the panel that asked it.
-  ReloadAsk.Hide()
-  -- Standing by nothing until it next opens (Place).
-  Place.Loose()
+  if not S.aside then PanelClosed() end
 end
 
 local function Build()
@@ -8984,8 +8994,9 @@ end
 -- forward first when the Send tab is showing. Called through the mark
 -- itself, at click time, so whatever that mark does, this does. Away from
 -- a mailbox, the window opens as its preview (MailboxUI.OpenPreview) beside
--- this panel, already arranging. The panel stays open: the window stands
--- beside it, and Done leaves the preview up as Test mail's.
+-- this panel, already arranging. Either way the panel steps aside while the
+-- mode is open and comes back where it stood when it ends
+-- (Panel.StepAside), and Done leaves the preview up as Test mail's.
 function Panel.Arrange()
   local toggle = State.ArrangeToggle()
   if not toggle then
@@ -9086,8 +9097,72 @@ function Panel.DockChanged()
   if not Place.Follows() then Place.Loose() end
 end
 
+-- After a reset (the footer's AfterReset): the window the panel stands by
+-- may have gone back to its default place, and the panel itself changed
+-- size and scale. Placed beside it again as an open places it, the side it
+-- took kept while that has room, so nothing is carried off the screen;
+-- standing by nothing (dragged, or docking off), it stays where it stands,
+-- whole on the screen.
+function Place.Settle()
+  local frame = S.frame
+  if not (frame and frame:IsShown()) then return end
+  if S.standBy and Place.Follows() then
+    Place.Put(frame)
+  else
+    ns.Core.UI.Helpers.KeepOnScreen(frame)
+  end
+end
+
+-- Let go of the window it stands by, from outside: the preview placed again
+-- beside the panel (MailboxUI.PlacePreviewAgain), which must not carry the
+-- panel along while it moves.
+function Panel.LetGo()
+  Place.Loose()
+end
+
+-- One side panel at a time. While a window arranges, the arrange mode's
+-- card stands beside it, so the panel steps aside (`on`, from AR.Enter):
+-- hidden, and nothing else -- it keeps its place, its anchor to the window
+-- it stands by, its tab, and Test mail it turned on (PanelHide runs only
+-- what a hide needs). When the mode ends, however it ends (AR.Leave), it
+-- comes back exactly where it stood, a place it was dragged to included,
+-- with every control read again: the mode may have changed what they show.
+-- Unless the mode ended because its window went away for good (`gone`: the
+-- mailbox closed under it): then the panel closes, as the player's own close
+-- would, rather than come back over an empty screen.
+function Panel.StepAside(on, gone)
+  local frame = S.frame
+  if not frame then return end
+  if on then
+    if S.aside or not frame:IsShown() then return end
+    S.aside = true
+    frame:Hide()
+    return
+  end
+  if not S.aside then return end
+  S.aside = nil
+  if gone then
+    PanelClosed()
+    return
+  end
+  frame:Show()
+  frame:Raise()
+  Panel.RefreshControls()
+end
+
 function Panel.Toggle(anchor, from)
   local frame = Build()
+  -- Opened while a window arranges (the window's cog, /postbox, the
+  -- minimap): the mode finishes first, and a panel that stood aside for it
+  -- comes back where it stood (Panel.StepAside) and is only raised.
+  local AR, aside = ns.Arrange, S.aside
+  if AR and AR.host and type(AR.Leave) == "function" then AR.Leave() end
+  -- Aside with no mode open is never left standing.
+  if S.aside then Panel.StepAside(false) end
+  if aside and frame:IsShown() then
+    frame:Raise()
+    return
+  end
   if frame:IsShown() then
     frame:Hide()
     return

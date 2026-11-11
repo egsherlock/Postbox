@@ -288,6 +288,45 @@ function Helpers.PlaceBeside(frame, opener, side, keep, attach)
   return took
 end
 
+-- frame, opener, side -> where `frame`, about to be placed beside `opener`
+-- to its left or right, has room on neither side but the two fit across
+-- the screen side by side, `opener` is moved along its row the least
+-- distance that gives `frame` the room: on `side` where that is no further
+-- than the other side, else on the other. Its top stays; it is anchored to
+-- the screen by its top-left, its left on a whole pixel. Answers whether
+-- it moved.
+-- For a window Postbox placed itself (the options, beside which the
+-- preview opens), never a game window.
+function Helpers.MakeRoomBeside(frame, opener, side)
+  if not (frame and type(frame.GetWidth) == "function" and opener) then return false end
+  local oL, oR, _, oT = ScreenRect(opener)
+  if not oL then return false end
+  local s = frame:GetEffectiveScale() or 1
+  local oScale = opener:GetEffectiveScale() or 1
+  if s <= 0 or oScale <= 0 then return false end
+  local ui = UIParent:GetEffectiveScale() or 1
+  local screenW = (UIParent:GetWidth() or 0) * ui
+  local w, gap = (frame:GetWidth() or 0) * s, BESIDE_GAP * ui
+  if oR + gap + w <= screenW or oL - gap - w >= 0 then return false end
+  if w + gap + (oR - oL) > screenW then return false end
+  -- Right for room on its left, left for room on its right.
+  local toRight = (w + gap) - oL
+  local toLeft = oR - (screenW - w - gap)
+  local dx
+  if side == "right" then
+    dx = (toLeft <= toRight) and -toLeft or toRight
+  else
+    dx = (toRight <= toLeft) and toRight or -toLeft
+  end
+  local px = PixelUnit()
+  local x = Snap(max(0, min(oL + dx, screenW - (oR - oL))), px)
+  -- Rounded away from the frame, so the snap never takes back the room.
+  if dx > 0 and x < oL + dx then x = x + px elseif dx < 0 and x > oL + dx then x = x - px end
+  opener:ClearAllPoints()
+  opener:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / oScale, oT / oScale)
+  return true
+end
+
 -- frame, opener, side -> `frame` held by `opener`'s edge on `side` (HOLD)
 -- exactly where it stands now: nothing moves, not even by a part of a
 -- pixel, and from now on it goes where the opener goes. For a window that
