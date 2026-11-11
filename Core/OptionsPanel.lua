@@ -1686,9 +1686,9 @@ do
 
   -- A caption on one of the drawing's controls, `width` wide (its tab or
   -- its button), in a box of its own: the control less 3 at each end, one
-  -- line, centred. Every caption in every language fits its control at
-  -- every text size; one that ever did not would be cut short by the house
-  -- fitter rather than spill out of its control.
+  -- line, centred. One that does not fit is cut short by the house fitter
+  -- rather than spill out of its control (the category buttons step their
+  -- size down first: MW.PaintGrid).
   function MW.Caption(fs, width, text)
     if not fs then return end
     if fs.SetMaxLines then fs:SetMaxLines(1) end
@@ -2363,6 +2363,8 @@ do
       button = MW.Block(win)
       button.Text = T.CreateText(button, "bodySmall")
       button.Text:SetPoint("CENTER", button, "CENTER", 0, 0)
+      -- The named font it wears, for MW.GridFont.
+      button.__mwBase = T.NamedFont and T.NamedFont(button.Text:GetFontObject()) or nil
     else
       button = T.CreateButton(nil, win)
       button:EnableMouse(false)
@@ -3006,8 +3008,33 @@ do
     return r, g, b
   end
 
+  -- The font a category button's caption wears at its own size: the
+  -- block's text role under the Postbox style, else the button's font for
+  -- its state. A named object, never one read off the caption.
+  function MW.GridFont(b, own, on)
+    local T = ns.Theme
+    local object
+    if own then
+      object = b.__mwBase or T.FontObject("bodySmall")
+    elseif not on and b.GetDisabledFontObject and b:GetDisabledFontObject() then
+      object = b:GetDisabledFontObject()
+    else
+      object = b.GetNormalFontObject and b:GetNormalFontObject() or nil
+    end
+    return T.NamedFont and T.NamedFont(object) or nil
+  end
+
+  -- The least size the drawing's category captions step down to; past it
+  -- a caption is shortened (MW.Caption).
+  MW.GRID_MIN = 8
+
   -- The category buttons, three to a row across the grid, in the window's
   -- order, each greyed where it would collect nothing of the box.
+  -- The drawing's buttons are a third of the window's, its text the
+  -- window's own size, so a caption the window shows whole may not fit its
+  -- button here (a long label, a count, a larger Text size). The grid's
+  -- captions then step down together, to the size the widest one needs, as
+  -- one size for the grid; one that fits keeps its own. The drawing only.
   function MW.PaintGrid(win, st)
     local sweeps = win.Sweeps
     for _, b in pairs(sweeps) do b.used = false end
@@ -3017,6 +3044,7 @@ do
       local g = MW.Grid()
       local P = win.own and ns.Skin and ns.Skin.Palette
       local cols = T.ColumnEdges(win.inner, MW.GRID_COLUMNS, h.gap, win.gridCols)
+      local widest, natural = 0, nil
       for k = 1, g.n do
         local id = g.ids[k]
         local b = sweeps[id]
@@ -3031,15 +3059,49 @@ do
         MW.At(b, "TOPLEFT", win.Grid, col.left, -line * (h.sweep + h.gap))
         b:SetSize(col.width, h.sweep)
         local on = g.counts[k] > 0
+        -- Its caption in its own font first, as the window has it: put
+        -- back where a step down below gave it a size of its own.
+        local font = b.Text and MW.GridFont(b, win.own, on)
+        b.__mwFont = font
+        if font and b.__mwSized then
+          b.Text:SetFontObject(font)
+          b.__mwSized = nil
+        end
         if P then
           MW.PaintBlock(b, P.button, P.buttonEdge)
           T.SetTextRGB(b.Text, MW.ButtonRGB(not on))
         else
           b:SetEnabled(on)
         end
-        if b.Text then MW.Caption(b.Text, col.width, st.counts and g.counted[k] or g.plain[k]) end
+        if b.Text then
+          local text = st.counts and g.counted[k] or g.plain[k]
+          b.__mwText, b.__mwW = text, col.width
+          b.Text:SetText(text)
+          local room = math.max(1, col.width - 6)
+          local ratio = (T.TextWidth(b.Text) or 0) / room
+          if ratio > widest then widest = ratio end
+          if font and not natural then
+            local _, size = font:GetFont()
+            natural = tonumber(size)
+          end
+        end
         b.used = true
         b:Show()
+      end
+      -- One size for the grid where the widest caption needs a smaller one.
+      local size = (widest > 1 and natural) and math.max(MW.GRID_MIN, math.floor(natural / widest)) or nil
+      for _, b in pairs(sweeps) do
+        if b.used and b.Text then
+          local font = b.__mwFont
+          if size and font then
+            local path, _, flags = font:GetFont()
+            if type(path) == "string" and path ~= "" then
+              b.Text:SetFont(path, size, flags or "")
+              b.__mwSized = true
+            end
+          end
+          MW.Caption(b.Text, b.__mwW, b.__mwText)
+        end
       end
     end
     for _, b in pairs(sweeps) do
@@ -7063,6 +7125,23 @@ function Pages.window(col)
       Ctx.Repaint()
     end,
   })
+
+  -- The Text size, in every style, live (Theme.SetTextScale): beside the
+  -- scale here; the Postbox style and the creative ones keep it in their
+  -- Text group, with the font it sizes.
+  local T = ns.Theme
+  if not (Skin and (own or Skin.IsCreativeStyle)) and T.GetTextScaleChoices then
+    local textItems = {}
+    for _, scale in ipairs(T.GetTextScaleChoices()) do
+      local pct = math.floor(scale * 100 + 0.5)
+      textItems[#textItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
+    end
+    Rows.Dropdown(col, {
+      title = L["OPT_TEXT_SIZE_TITLE"], text = L["OPT_TEXT_SIZE_DESC"], items = textItems,
+      get = function() return math.floor(T.GetTextScale() * 100 + 0.5) end,
+      set = function(id) T.SetTextScale((tonumber(id) or 100) / 100) end,
+    })
+  end
 
   Rows.Check(col, {
     title = L["GRID_TOGGLE_TITLE"], text = L["GRID_TOGGLE_DESC"],

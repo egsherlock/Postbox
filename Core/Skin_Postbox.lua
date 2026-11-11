@@ -985,8 +985,10 @@ Skin._ResolveLook = ResolveLook
 -- one re-dress of the copies -- a dozen objects -- and every string wearing
 -- one follows, live, nothing per row.
 --
--- The default is the game's own font: the copies are then the game's objects
--- exactly, whatever face this client's game fonts are. The other faces are
+-- The default is the game's own font: the copies then keep each game
+-- object's face, whatever face this client's game fonts are, at Postbox's
+-- size (Theme's floor and the Text size, which every look shares). The other
+-- faces are
 -- Barlow Semi Condensed SemiBold (Media/Fonts, SIL Open Font License; the
 -- mockups' face), the fonts the game itself ships, and EllesmereUI's font
 -- while EllesmereUI is loaded (its own copy, by its own path: nothing of it is
@@ -1065,20 +1067,21 @@ function Skin.SetFont(key)
   Skin.ApplyFonts()
 end
 
-function Skin.GetTextScaleChoices() return TEXT_SCALES end
+-- The Text size is every look's (Theme.GetTextScale, the same saved
+-- pbTextScale); these answer it for this style's rows and titles.
+function Skin.GetTextScaleChoices()
+  local T = ns.Theme
+  return T and T.GetTextScaleChoices and T.GetTextScaleChoices() or TEXT_SCALES
+end
 
 function Skin.GetTextScale()
-  local saved = tonumber((GetProfile().pbTextScale))
-  if not saved then return 1 end
-  return max(TEXT_SCALES[1], min(TEXT_SCALES[#TEXT_SCALES], saved))
+  local T = ns.Theme
+  return T and T.GetTextScale and T.GetTextScale() or 1
 end
 
 function Skin.SetTextScale(value)
-  value = tonumber(value)
-  if not value then return end
-  value = max(TEXT_SCALES[1], min(TEXT_SCALES[#TEXT_SCALES], value))
-  GetProfile().pbTextScale = (value ~= 1) and value or nil
-  Skin.ApplyFonts()
+  local T = ns.Theme
+  if T and T.SetTextScale then T.SetTextScale(value) end
 end
 
 local OUTLINE_ORDER = { "shadow", "outline", "none" }
@@ -1123,7 +1126,14 @@ local titles = setmetatable({}, { __mode = "k" })
 local function DressTitle(fs)
   local base = titles[fs]
   if not base then return end
-  local path = FontPath(Skin.GetFont()) or base.path
+  -- The game's font: the face of the object it was set in, as it is now (a
+  -- host's re-font of the game's fonts reaches the title with the copies).
+  local path = FontPath(Skin.GetFont())
+  if not path then
+    local object = base.object
+    local now = object and type(object.GetFont) == "function" and object:GetFont() or nil
+    path = (type(now) == "string" and now ~= "") and now or base.path
+  end
   local outline = Skin.GetOutline()
   local light = Skin.GetMode() == "light"
   -- As the copies (Skin.GetFontFace): Shadow a shadow and no outline,
@@ -1807,6 +1817,9 @@ local function SelectFont()
   -- Its colour is the ink already: its copy wears it as it is.
   local T = ns.Theme
   if T and T.KeepInk then T.KeepInk(font) end
+  -- Its copy never under the floor of the font it is made from, and made
+  -- again from it when a host re-fonts the game's.
+  if T and T.MadeFrom then T.MadeFrom(font, base) end
   selectFont = font
   return font
 end

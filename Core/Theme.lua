@@ -1791,27 +1791,40 @@ local FONT_FALLBACK = { "GameFontHighlightSmall", "GameFontHighlight", "GameFont
 -- every game font ("Apply to All Game Text").
 --
 -- A copy of each game font object Postbox uses, in the host's face and outline
--- and at the object's own size, so Postbox's size hierarchy is the game's as
--- ever and only the face changes. Copies rather than a font set on each string:
+-- and at the object's own size -- never under its floor (below) -- times the
+-- player's Text size, so Postbox's size hierarchy is the game's as ever.
+-- Copies rather than a font set on each string:
 -- a string wears its copy for nothing at all per bind, a button's own state
 -- fonts can wear them (a button puts its state's object back on its label
 -- whenever it is enabled or disabled, which would undo a font set on the
 -- label), and when the host's face moves, re-dressing the handful of copies
 -- moves every string wearing one.
 --
--- Only while a skin publishes a face (ns.Skin.GetFontFace: the EllesmereUI
--- skin, and the Postbox style's font and text size): with none, every call
--- below answers the game's own object, so Postbox's Blizzard look and ElvUI
--- (which re-fonts the game's objects itself) are untouched. Copies are made the
--- first time a string asks, by when the host has finished its own login pass
--- over the game's fonts.
+-- In every look. A skin may publish a face (ns.Skin.GetFontFace: the
+-- EllesmereUI skin, and the Postbox style's font); with none -- the Blizzard
+-- look, ElvUI, which re-fonts the game's objects itself, or a host skin before
+-- its handshake -- the copies keep each object's own face, flags and shadow,
+-- and only the size is Postbox's. Copies are made the first time a string
+-- asks; a host that re-fonts the game's objects after that (a login pass, a
+-- font or size changed mid-session) reaches them the next time a Postbox
+-- window opens (Theme.CheckHostFonts).
 --
 -- A face is four values: the font file, the outline flags, the shadow and a
--- size factor. The Postbox style may answer `false` for the file and the flags
--- and nil for the shadow, meaning "the game object's own": its default is the
--- game's font at the game's size, so the copies it asks for are the game's
--- objects exactly, made so that a later change of font or size moves every
--- string at once.
+-- size factor. A skin may answer `false` for the file and the flags and nil
+-- for the shadow, meaning "the game object's own". The size factor is the
+-- player's Text size (Theme.GetTextScale), one setting for every look,
+-- whatever a skin answers for it.
+--
+-- The floor. The game sizes its small text for a UI of its own (10 for a
+-- list row, 12 for a heading), and a UI that resizes the game's fonts
+-- (atrocityEssentials, ElvUI) draws them larger; Postbox reads best at the
+-- larger sizes, so it never draws an object under them, whatever the player
+-- runs: the 9 class at 10, the 10 class at 12, the 12 class at 13, 13 to 15
+-- at 14, 16 and up as they are. The class is the object's by its name -- the
+-- size the game ships it at -- never the size it has now, which a host may
+-- have changed; a host that draws an object larger than its floor is
+-- followed. Postbox's own fonts made from a game object take that object's
+-- floor (Theme.FloorAs); any other font has none.
 -- `pending`: the game objects asked for while no skin published a face, which
 -- the strings set in them are still wearing (Theme.AdoptHostFace).
 -- `light`: the copies made for light grounds while the palette is dark (the
@@ -1821,8 +1834,95 @@ local FONT_FALLBACK = { "GameFontHighlightSmall", "GameFontHighlight", "GameFont
 -- the palette in force (Theme.KeepInk), which their copies wear as it is.
 -- `halo`: counts the copies dressed anew in place (section 3b): a text that
 -- took its object before the last count may still draw the halo it had.
+-- `floorOf`: font object -> its floor, or false for none (FloorOf).
+-- `sawPath`, `sawSize`, `sawFlags`: each object a copy was made from, as it
+-- was when the copy was last dressed (Theme.CheckHostFonts).
+-- `gameCopies`, `gameBases`: the number fonts at their floor in the game's
+-- own face (Theme.GameFaceFont).
 local HF = { copies = {}, bases = {}, isCopy = {}, failed = {}, pending = {}, n = 0, gen = 0, halo = 0,
-  lightCopies = {}, lightBases = {}, baseOf = {}, ownInk = setmetatable({}, { __mode = "k" }) }
+  lightCopies = {}, lightBases = {}, baseOf = {}, ownInk = setmetatable({}, { __mode = "k" }),
+  floorOf = {}, sawPath = {}, sawSize = {}, sawFlags = {}, gameCopies = {}, gameBases = {} }
+
+-- The size each game font object Postbox sets text in is shipped at, by
+-- name: its class for the floor. Its siblings in the game's font families
+-- too, so an object a later change sets text in has its floor already.
+local STOCK_SIZE = {
+  GameFontWhiteTiny = 9, GameFontNormalTiny = 9, GameFontHighlightExtraSmall = 9,
+  GameFontNormalSmall = 10, GameFontHighlightSmall = 10, GameFontDisableSmall = 10,
+  GameFontNormalSmallLeft = 10, GameFontHighlightSmallLeft = 10, GameFontDisableSmallLeft = 10,
+  GameFontWhiteSmall = 10, GameFontGreenSmall = 10, GameFontRedSmall = 10,
+  GameFontHighlightSmallOutline = 10,
+  GameFontNormalSmall2 = 11, GameFontHighlightSmall2 = 11,
+  GameFontNormal = 12, GameFontHighlight = 12, GameFontDisable = 12,
+  GameFontNormalLeft = 12, GameFontHighlightLeft = 12, GameFontDisableLeft = 12,
+  GameFontHighlightRight = 12, GameFontHighlightCenter = 12, GameFontHighlightOutline = 12,
+  GameFontGreen = 12, GameFontRed = 12, GameFontWhite = 12,
+  GameTooltipText = 12, NumberFontNormalSmall = 12,
+  GameFontNormalMed1 = 13, GameFontHighlightMedium = 14, GameFontNormalMed2 = 14,
+  NumberFontNormal = 14,
+}
+
+-- A class's floor (a stock size -> the least Postbox draws it at), or nil.
+local function FloorFor(stock)
+  if stock >= 16 then return nil end
+  if stock >= 13 then return 14 end
+  if stock >= 12 then return 13 end
+  if stock >= 10 then return 12 end
+  return 10
+end
+
+-- A font object -> its floor, or nil: a game object's by its name, one of
+-- Postbox's own by the object it was made from (Theme.FloorAs).
+local function FloorOf(base)
+  local f = HF.floorOf[base]
+  if f == nil then
+    local name = base:GetName()
+    local stock = name and STOCK_SIZE[name]
+    f = stock and FloorFor(stock) or false
+    HF.floorOf[base] = f
+  end
+  return f or nil
+end
+
+-- One of Postbox's own font objects, copied from game object `like` (the
+-- Postbox style's select value): it takes that object's floor, so a copy of
+-- it is never drawn under it either, and when a host re-fonts the game's
+-- objects it is copied from `like` again, keeping its own colour
+-- (Theme.RefreshHostFonts, `force`).
+HF.madeFrom = {}
+function Theme.MadeFrom(font, like)
+  if not (font and type(like) == "table" and type(like.GetName) == "function") then return end
+  local named = like:GetName()
+  local stock = named and STOCK_SIZE[named]
+  HF.floorOf[font] = stock and FloorFor(stock) or false
+  HF.madeFrom[font] = like
+end
+
+-- The player's Text size: one factor on all of Postbox's text, in every
+-- look, live. Saved where the Postbox style first kept it (pbTextScale, so a
+-- size picked there keeps its effect); nil is 100%.
+local TEXT_SCALES = { 0.90, 1.00, 1.10, 1.20 }
+
+function Theme.GetTextScaleChoices() return TEXT_SCALES end
+
+function Theme.GetTextScale()
+  local Store = ns.Store
+  local profile = Store and type(Store.Get) == "function" and Store.Get("profile") or nil
+  local saved = type(profile) == "table" and tonumber((profile.pbTextScale)) or nil
+  if not saved then return 1 end
+  return max(TEXT_SCALES[1], min(TEXT_SCALES[#TEXT_SCALES], saved))
+end
+
+function Theme.SetTextScale(value)
+  value = tonumber(value)
+  local Store = ns.Store
+  if not value or not (Store and type(Store.EnsurePath) == "function") then return end
+  value = max(TEXT_SCALES[1], min(TEXT_SCALES[#TEXT_SCALES], value))
+  local profile = Store.EnsurePath("profile")
+  if not profile then return end
+  profile.pbTextScale = (value ~= 1) and value or nil
+  Theme.FontsMoved()
+end
 
 -- `object` where it is a font object with a name -- the game's, a host's,
 -- Postbox's own (CreateFont("Postbox...")) -- else nil. An unnamed font read
@@ -1847,19 +1947,21 @@ function Theme.KeepInk(object)
   if object then HF.ownInk[object] = true end
 end
 
--- path, flags, shadow, scale of the published face, or nil while no skin
--- publishes one. A face with a file and flags keeps the rules the EllesmereUI
--- skin was built on (flags a string, the shadow a boolean); one that keeps the
--- object's file or flags keeps whatever of the object's own it was not given.
+-- path, flags, shadow, scale of the face the copies wear: the one a skin
+-- publishes, else each object's own (false, false, nil); the scale is the
+-- player's Text size. A face with a file and flags keeps the rules the
+-- EllesmereUI skin was built on (flags a string, the shadow a boolean); one
+-- that keeps the object's file or flags keeps whatever of the object's own it
+-- was not given.
 local function HostFace()
+  local scale = Theme.GetTextScale()
   local skin = ns.Skin
   local get = skin and skin.GetFontFace
-  if type(get) ~= "function" then return nil end
-  local ok, path, flags, shadow, scale = pcall(get)
-  if not ok then return nil end
-  scale = tonumber(scale) or 1
-  if scale <= 0 then scale = 1 end
-  if path ~= false and (type(path) ~= "string" or path == "") then return nil end
+  if type(get) ~= "function" then return false, false, nil, scale end
+  local ok, path, flags, shadow = pcall(get)
+  if not ok or (path ~= false and (type(path) ~= "string" or path == "")) then
+    return false, false, nil, scale
+  end
   if path == false or flags == false then
     if flags ~= false and type(flags) ~= "string" then flags = false end
     if shadow ~= nil then shadow = shadow and true or false end
@@ -1930,7 +2032,11 @@ local function DressCopy(copy, base, path, flags, shadow, scale, light)
     if type(r) == "number" then copy:SetTextColor(CopyInk(r, g, b, a, light, base)) end
   end
   local basePath, size, baseFlags = base:GetFont()
+  HF.sawPath[base], HF.sawSize[base], HF.sawFlags[base] = basePath, size, baseFlags
   if type(size) ~= "number" or size <= 0 then size = 12 end
+  -- Never under its floor; the Text size on top.
+  local least = FloorOf(base)
+  local want = ((least and size < least) and least or size) * (scale or 1)
   if (shadow ~= nil or light) and type(copy.SetShadowColor) == "function" then
     if shadow and not light then
       local sh = BASE.textShadow
@@ -1941,14 +2047,25 @@ local function DressCopy(copy, base, path, flags, shadow, scale, light)
       copy:SetShadowOffset(0, 0)
     end
   end
-  scale = scale or 1
   if light then flags = "" end
-  if path == false and flags == false and scale == 1 then return true end
+  if path == false and flags == false and want == size then return true end
   if path == false then path = basePath end
   if type(path) ~= "string" or path == "" then path = STANDARD_TEXT_FONT end
   if flags == false then flags = baseFlags or "" end
-  if scale ~= 1 then size = size * scale end
-  return pcall(copy.SetFont, copy, path, size, flags) and true or false
+  return pcall(copy.SetFont, copy, path, want, flags) and true or false
+end
+
+-- A number font -- a count drawn on an item's art -- at its floor, in the
+-- game's own face, flags, shadow and colour (the host's own item buttons
+-- keep it there too): never under the floor, and no Text size, the count
+-- standing on art of a fixed size. -> whether it was dressed.
+local function DressGameCopy(copy, base)
+  if type(copy.CopyFontObject) == "function" then pcall(copy.CopyFontObject, copy, base) end
+  local path, size, flags = base:GetFont()
+  HF.sawPath[base], HF.sawSize[base], HF.sawFlags[base] = path, size, flags
+  local least = FloorOf(base)
+  if type(path) ~= "string" or path == "" or type(size) ~= "number" or not least or size >= least then return true end
+  return pcall(copy.SetFont, copy, path, least, flags or "") and true or false
 end
 
 -- A copy dressed already, its face unchanged, given the colour DressCopy
@@ -1996,8 +2113,8 @@ local function LightCopy(base)
   return copy
 end
 
--- A game font object -> the one to set on Postbox's text: its copy in the
--- host's face while a host publishes one, else the object itself.
+-- A game font object -> the one to set on Postbox's text: its copy, in the
+-- host's face where one is published, at Postbox's size.
 -- `polarity` "light", where a string stands on a light ground in a dark
 -- palette (Theme.SetGround): the copy dressed for one, without the host's
 -- outline.
@@ -2037,23 +2154,42 @@ function Theme.HostFont(base, polarity)
   return copy
 end
 
+-- A number font (a text role's `gameFace`: a count on an item's art) -> its
+-- copy at its floor in the game's own face (DressGameCopy); the object
+-- itself where it has no floor or the client makes no copy.
+function Theme.GameFaceFont(base)
+  if not NamedFont(base) or type(base.GetFont) ~= "function" then return base end
+  local copy = HF.gameCopies[base]
+  if copy then return copy end
+  if HF.isCopy[base] or not FloorOf(base) or type(CreateFont) ~= "function" then return base end
+  HF.n = HF.n + 1
+  copy = CreateFont("PostboxHostFont" .. HF.n)
+  if not copy or not DressGameCopy(copy, base) then return base end
+  HF.gameCopies[base], HF.isCopy[copy] = copy, true
+  HF.gameBases[#HF.gameBases + 1] = base
+  HF.made = true
+  return copy
+end
+
 -- Moves every copy to the host's face as it is now, when it is not the face
 -- they wear. Called on each of the host's looks passes (the EllesmereUI skin's
--- OnHostLooksChanged) and when the Postbox style's font or text size is
--- changed; a pass whose face did not move reads it and returns. Strings
+-- OnHostLooksChanged) and when the font or the Text size is changed; a pass
+-- whose face did not move reads it and returns. `force`: the game objects
+-- they are made from moved (Theme.CheckHostFonts), and every copy is dressed
+-- again whatever the face. Strings
 -- wearing a copy take the new face, and are laid out in it again
 -- (Theme.RelayoutText): a copy is changed in place, and a string sized to
 -- its text would keep the width it measured in the old face. A string set to
 -- a size of its own (the arrange inspector's type) is told through
 -- Arrange.OnFontsChanged.
-function Theme.RefreshHostFonts(recolor)
+function Theme.RefreshHostFonts(recolor, force)
   if not HF.made then return false end
   local path, flags, shadow, scale = HostFace()
   if path == nil then return false end
   -- A palette of the other polarity is another face too: its copies lose
   -- or take the host's outline (DressCopy).
   local same = path == HF.path and flags == HF.flags and shadow == HF.shadow and scale == HF.scale
-    and HF.light == lightPalette
+    and HF.light == lightPalette and not force
   if same and not recolor then return false end
   if same then
     -- The face is where it was and only the palette or the grounds moved
@@ -2076,6 +2212,14 @@ function Theme.RefreshHostFonts(recolor)
     return true
   end
   HF.path, HF.flags, HF.shadow, HF.scale, HF.light = path, flags, shadow, scale, lightPalette
+  if force then
+    -- Postbox's own fonts copied from a game object, from it as it is now.
+    for font, like in pairs(HF.madeFrom) do
+      local r, g, b, a = font:GetTextColor()
+      pcall(font.CopyFontObject, font, like)
+      if type(r) == "number" then font:SetTextColor(r, g, b, a) end
+    end
+  end
   for i = 1, #HF.bases do
     local base = HF.bases[i]
     DressCopy(HF.copies[base], base, path, flags, shadow, scale, lightPalette)
@@ -2083,6 +2227,10 @@ function Theme.RefreshHostFonts(recolor)
   for i = 1, #HF.lightBases do
     local base = HF.lightBases[i]
     DressCopy(HF.lightCopies[base], base, path, flags, shadow, scale, true)
+  end
+  for i = 1, #HF.gameBases do
+    local base = HF.gameBases[i]
+    DressGameCopy(HF.gameCopies[base], base)
   end
   -- The buttons' pointed-at fonts after the copies they are made from.
   Theme.RedressEvenFonts()
@@ -2102,6 +2250,75 @@ end
 -- Counts the host face's moves: what a string sized on its own compares.
 function Theme.FontGeneration()
   return HF.gen
+end
+
+do
+  -- Whether any object in `list` is not as it was when its copy was dressed.
+  local function Moved(list)
+    local sawPath, sawSize, sawFlags = HF.sawPath, HF.sawSize, HF.sawFlags
+    for i = 1, #list do
+      local base = list[i]
+      local p, s, f = base:GetFont()
+      if p ~= sawPath[base] or s ~= sawSize[base] or f ~= sawFlags[base] then return true end
+    end
+    return false
+  end
+
+  -- Whether a font of Postbox's own is no longer as the object it was
+  -- copied from is (Theme.MadeFrom).
+  local function Remade()
+    for font, like in pairs(HF.madeFrom) do
+      local p, s, f = like:GetFont()
+      local p2, s2, f2 = font:GetFont()
+      if p ~= p2 or s ~= s2 or f ~= f2 then return true end
+    end
+    return false
+  end
+
+  -- The screens that fit text to its width, measured again: after the fonts
+  -- moved, in a look whose skin has no pass of its own for it.
+  function Theme.RefitScreens()
+    local UI = ns.MailboxUI
+    if UI then
+      if type(UI.RefreshCollectRowLayout) == "function" then pcall(UI.RefreshCollectRowLayout) end
+      if type(UI.RefreshCollectTabCounts) == "function" then pcall(UI.RefreshCollectTabCounts) end
+    end
+    local MM = ns.MailMemory
+    if MM and type(MM.Refresh) == "function" then pcall(MM.Refresh) end
+    local panel = ns.OptionsPanel
+    if panel and type(panel.RefreshControls) == "function" then pcall(panel.RefreshControls) end
+    local RM = ns.RecipientManager
+    if RM and type(RM.RefitText) == "function" then pcall(RM.RefitText) end
+  end
+
+  -- The fonts moved -- the Text size, or the game objects under the copies:
+  -- the look's own pass over its fonts where it has one (the Postbox
+  -- style's titles, the EllesmereUI skin's strings in its face), else the
+  -- copies and the screens that fit text. A deliberate change, or a window
+  -- opening after a host re-fonted the game; never per row.
+  function Theme.FontsMoved()
+    local skin = ns.Skin
+    if skin and type(skin.ApplyFonts) == "function" then
+      pcall(skin.ApplyFonts)
+      return
+    end
+    Theme.RefreshHostFonts()
+    Theme.RefitScreens()
+  end
+
+  -- A Postbox window opening: where a host re-fonted the game's objects
+  -- since the copies were dressed from them -- its login pass, which may come
+  -- after Postbox's first text, or a font or size changed mid-session -- the
+  -- copies are dressed again from them, and every string follows. A
+  -- comparison per object (a dozen) on each open; nothing otherwise, no
+  -- timer and no polling.
+  function Theme.CheckHostFonts()
+    if not HF.made then return false end
+    if not (Moved(HF.bases) or Moved(HF.lightBases) or Moved(HF.gameBases) or Remade()) then return false end
+    Theme.RefreshHostFonts(false, true)
+    Theme.FontsMoved()
+    return true
+  end
 end
 
 -------------------------------------------------------------
@@ -2531,10 +2748,13 @@ do
   end
 
   function Theme.AdoptHostFace()
-    if next(HF.pending) == nil or HostFace() == nil then return false end
+    -- The copies made before the face (each object's own face, at
+    -- Postbox's size) take it now, and every string wearing one with them.
+    local refreshed = Theme.RefreshHostFonts()
+    if next(HF.pending) == nil or HostFace() == nil then return refreshed end
     local moved = WalkRoots(Walk, CollectRoots())
     for object in pairs(HF.pending) do HF.pending[object] = nil end
-    if moved == 0 then return false end
+    if moved == 0 then return refreshed end
     HF.gen = HF.gen + 1
     Theme.ForgetFits()
     Theme.RelayoutText()
@@ -2560,13 +2780,16 @@ function Theme.FontObject(role)
       if object then break end
     end
   end
-  if object and not spec.gameFace then object = Theme.HostFont(object) end
+  if object then
+    if spec.gameFace then object = Theme.GameFaceFont(object) else object = Theme.HostFont(object) end
+  end
   return object, spec
 end
 
 -- A button's own fonts -- the ones it puts on its label as it is enabled,
--- disabled and pointed at -- and its label, in the host's face. For the host
--- skin to call on Postbox's push buttons; a no-op without a host face.
+-- disabled and pointed at -- and its label, in their copies (the host's
+-- face, Postbox's size). Every push button as it is made, and again where a
+-- host skin re-fonts one; the second time finds them in place.
 function Theme.HostFontButton(button)
   if not button then return end
   -- Its pointed-at font back to the one it was made from first
@@ -2670,8 +2893,10 @@ function Theme.RedressEvenFonts(colourOnly)
 end
 
 -- The foundation layer makes the push buttons (Theme.CreateButton) and
--- evens each one as it is made.
-if SharedTheme then SharedTheme.EvenButtonFonts = Theme.EvenButtonFonts end
+-- evens each one as it is made, its state fonts and label in their copies
+-- first (Theme.HostFontButton), in every look: a host skin that re-fonts the
+-- button later does it again, which finds them in place.
+if SharedTheme then SharedTheme.EvenButtonFonts = Theme.HostFontButton end
 
 -- Font strings currently wearing an accent token -> that token.
 --
@@ -4466,6 +4691,13 @@ function Theme.CreatePlate(parent, variant, name)
   label:SetPoint("CENTER", plate, "CENTER", 0, 0)
   label:SetWordWrap(false)
   plate:SetFontString(label)
+  -- Its copy is the button's normal font, so the label wears it (a button
+  -- with none leaves its label on no font object at SetFontString and at
+  -- each SetText: section 3b). Under a look that derives its inks the
+  -- paint below does this.
+  if not Grounds.on and face and face ~= base and plate.SetNormalFontObject then
+    plate:SetNormalFontObject(face)
+  end
   plate.Text = label
   plate.__pbTextRole = role
   -- Under a look that derives its inks, its SetText paints it again
@@ -5519,6 +5751,11 @@ do
   function Theme.ApplyFrameTheme(frame)
     if paintFrame then paintFrame(frame) end
     if not frame then return end
+    -- Its text in the game's fonts as they are when it opens (a host's
+    -- re-font since: Theme.CheckHostFonts). A frame of Postbox's own.
+    if not windows[frame] and type(frame.HookScript) == "function" then
+      frame:HookScript("OnShow", Theme.CheckHostFonts)
+    end
     windows[frame] = true
     local s = ScaleFor(frame, WindowScale())
     if s ~= 1 and type(frame.SetScale) == "function" then frame:SetScale(s) end

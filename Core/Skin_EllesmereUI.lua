@@ -1174,6 +1174,34 @@ function Skin.GetFontFace()
   return path, flags, shadow
 end
 
+-- A string the host's S.Font sets in its face, at the size it has then: a
+-- window's title, its status line, a checkbox's caption. S.Font gives it a
+-- face of its own, which no copy reaches afterwards, so the font it wore
+-- before (a copy, or a size made from one: named) is kept, weakly, and when
+-- the fonts move -- the Text size, the host's face -- it takes that font
+-- again, at its new size, and S.Font again (Skin._RefontHouse).
+Skin._fonted = setmetatable({}, { __mode = "k" })
+
+function Skin._HouseFont(fs, r, g, b)
+  if not (fs and S and type(S.Font) == "function") then return end
+  if not Skin._fonted[fs] then
+    local T = ns.Theme
+    local object = type(fs.GetFontObject) == "function" and fs:GetFontObject() or nil
+    object = T and T.NamedFont and T.NamedFont(object) or nil
+    Skin._fonted[fs] = { object = object or false, r = r, g = g, b = b }
+  end
+  S.Font(fs, r, g, b)
+end
+
+function Skin._RefontHouse()
+  if not (S and type(S.Font) == "function") then return end
+  local T = ns.Theme
+  for fs, rec in pairs(Skin._fonted) do
+    if rec.object and T and T.Retake then pcall(T.Retake, fs, rec.object) end
+    pcall(S.Font, fs, rec.r, rec.g, rec.b)
+  end
+end
+
 -------------------------------------------------------------
 -- Element handlers (identical on both backends)
 -------------------------------------------------------------
@@ -1284,7 +1312,7 @@ local function SkinOne(c)
     if not c.__pbEuiSkinned then
       c.__pbEuiSkinned = true
       if S.Checkbox then S.Checkbox(c) end
-      if c.__label then S.Font(c.__label) end
+      if c.__label then Skin._HouseFont(c.__label) end
     end
   elseif c:IsObjectType("Button") then
     if c.__postboxButton then SkinLeaf(c, SkinButton) end
@@ -1381,12 +1409,12 @@ function Skin.Apply(frame)
   pcall(function() if frame.CloseButton then S.CloseButton(frame.CloseButton) end end)
   pcall(function()
     if frame.TitleText then
-      S.Font(frame.TitleText, 1, 1, 1)
+      Skin._HouseFont(frame.TitleText, 1, 1, 1)
       frame.TitleText:ClearAllPoints()
       frame.TitleText:SetPoint("CENTER", frame, "TOP", 0, -13)
     end
   end)
-  pcall(function() if frame.Status then S.Font(frame.Status) end end)
+  pcall(function() if frame.Status then Skin._HouseFont(frame.Status) end end)
   -- The window's tabs stay Postbox's own plates, as the options panel's
   -- tabs and the segments under them are: the host's tab (S.Tab, and the
   -- shim's copy of it) is a fixed warm plate of its own, which put the
@@ -1422,7 +1450,7 @@ function Skin.ApplyWindow(frame)
   pcall(function() if frame.Inset then S.Inset(frame.Inset) end end)
   pcall(function() if frame.NineSlice then S.FadeNineSlice(frame.NineSlice) end end)
   pcall(function() if frame.CloseButton then S.CloseButton(frame.CloseButton) end end)
-  pcall(function() if frame.TitleText then S.Font(frame.TitleText, 1, 1, 1) end end)
+  pcall(function() if frame.TitleText then Skin._HouseFont(frame.TitleText, 1, 1, 1) end end)
   pcall(function() Skin.ApplyBorder(frame) end)
   pcall(function()
     frame:HookScript("OnShow", function() Skin.OnHostLooksChanged(true) end)
@@ -1457,6 +1485,17 @@ local function RefitScreens()
   if panel and type(panel.RefreshControls) == "function" then pcall(panel.RefreshControls) end
   local RM = ns.RecipientManager
   if RM and type(RM.RefitText) == "function" then pcall(RM.RefitText) end
+end
+
+-- The fonts moved -- the Text size (Theme.SetTextScale), or the game's
+-- objects under the copies (Theme.CheckHostFonts): the copies, the strings
+-- set in the house face at a size (Skin._HouseFont), then the screens that
+-- fit text to its width.
+function Skin.ApplyFonts()
+  local T = ns.Theme
+  if T and type(T.RefreshHostFonts) == "function" then pcall(T.RefreshHostFonts) end
+  Skin._RefontHouse()
+  RefitScreens()
 end
 
 -- Window tabs, view segments and category tiles sample the accent at paint
@@ -1531,7 +1570,10 @@ function Skin.OnHostLooksChanged(fromShow)
   -- forgotten, and the screens that fit text are measured again.
   if ns.Theme and type(ns.Theme.RefreshHostFonts) == "function" then
     local ok, moved = pcall(ns.Theme.RefreshHostFonts)
-    if ok and moved then RefitScreens() end
+    if ok and moved then
+      Skin._RefontHouse()
+      RefitScreens()
+    end
   end
   pcall(Skin.ApplyBgOpacity)          -- baseline fill colour + opacity
   pcall(Skin.ApplyBorder)             -- the user's configured window border
