@@ -2169,13 +2169,13 @@ end
 -- tipShort), and the column is still measured on the full names, so its
 -- width never moves. Nothing here is asked on retail.
 --
--- A name's first name is made once and kept (`first`, let go whole past
--- MAX); a name that is not two names of letters -- an NPC's, the auction
+-- A name's first name is made once and kept (`first`, up to MAX, a
+-- History's worth, let go whole where a build starts once full); a name that is not two names of letters -- an NPC's, the auction
 -- house's, a system sender's -- has none, and is never shortened. Which
 -- first names a list shares is kept on the list's owner and made again only
 -- when that list is built again.
 do
-  local FN = { first = {}, n = 0, MAX = 512, to = {}, toN = 0 }
+  local FN = { first = {}, n = 0, MAX = 1024, to = {}, toN = 0 }
   RV.Firsts = FN
 
   -- Whether the rows of `arrangement` ("rows", "large", "history") write
@@ -2213,13 +2213,21 @@ do
         end
       end
     end
-    if FN.n >= FN.MAX then
-      for k in pairs(FN.first) do FN.first[k] = nil end
-      FN.n = 0
+    -- Full, the answer is given without being kept: emptied only where a
+    -- list's build starts (RV.TrimCaches), never in the middle of one.
+    if FN.n < FN.MAX then
+      FN.first[name] = first
+      FN.n = FN.n + 1
     end
-    FN.first[name] = first
-    FN.n = FN.n + 1
     return first or nil
+  end
+
+  -- At the start of a list's build: let the names go if the last ones
+  -- filled the record.
+  function FN.Trim()
+    if FN.n < FN.MAX then return end
+    for k in pairs(FN.first) do FN.first[k] = nil end
+    FN.n = 0
   end
 
   -- A list's own record, `owners`: for each first name, the one name in
@@ -2754,13 +2762,15 @@ end
 --
 -- Nothing is made per row: each text is made once per (coin set, kind,
 -- amount, brevity) and kept, the whole of it let go when the inks it was
--- made in move (Theme.InkHex) or past COIN_MAX texts. The client's string
--- widths leave inline textures out, so a width measured of a coin text has
--- its coins' room added (RV.CoinExtra, from MeasureWith, as RV.FateExtra
+-- made in move (Theme.InkHex), or where a list's build starts once it holds
+-- COIN_MAX texts. The client's string widths leave inline textures out, so
+-- a width measured of a coin text has its coins' room added (RV.CoinExtra, from MeasureWith, as RV.FateExtra
 -- adds a mark's), unless a one-time probe finds this client counts them.
 -------------------------------------------------------------
 do
-  local COIN_MAX = 256
+  -- A month of History is a thousand entries, each one sum; the inbox's
+  -- and the reading view's fit beside them.
+  local COIN_MAX = 1536
   -- The kinds of sum: their ink, and what is written before the figure.
   -- `pre` false is the C.O.D. label, read when a text is made.
   local KIND = {
@@ -2808,17 +2818,24 @@ do
     local key = (floor(amount) * 8 + spec[1]) * 2 + (brief and 1 or 0)
     local text = byKey[key]
     if text then return text end
-    if C.n >= COIN_MAX then
-      Forget()
-      return RV.CoinText(coins, kind, amount, brief)
-    end
     local figure = ns.Core.Formatting.FormatMoneyCompactCoins(amount, brief, coins)
     local pre = spec[3] or L()["LABEL_COD"]
     text = T.Colorize(spec[2], pre .. figure)
-    byKey[key] = text
-    C.made[text] = (Count(figure, coins.gold) + Count(figure, coins.silver) + Count(figure, coins.copper)) * coins.w
-    C.n = C.n + 1
+    -- Full, a text is made and not kept (its coins' room is then found by
+    -- RV.CoinExtra from the text): nothing is let go in the middle of a
+    -- list's build, only where one starts (RV.CoinTrim).
+    if C.n < COIN_MAX then
+      byKey[key] = text
+      C.made[text] = (Count(figure, coins.gold) + Count(figure, coins.silver) + Count(figure, coins.copper)) * coins.w
+      C.n = C.n + 1
+    end
     return text
+  end
+
+  -- At the start of a list's build: the texts let go if the last ones
+  -- filled the record.
+  function RV.CoinTrim()
+    if C.n >= COIN_MAX then Forget() end
   end
 
   -- layout (a row's arrangement; nil: the one-line rows'), fs -> the coin
@@ -4665,22 +4682,36 @@ function RV.SortKey(order, daysLeft, money, sender)
 end
 
 -- A sender folded for the order A to Z, made once per name and kept: a
--- refresh sorting by sender folds nothing it folded before. Let go past
--- 400 names (a box holds 50 mails; every box's matches a few hundred).
-RV.nameKeys, RV.nameKeyN = {}, 0
+-- refresh sorting by sender folds nothing it folded before. Up to 1,024
+-- names (a box holds 50 mails; every box's matches a few hundred); full, a
+-- name is folded without being kept, since a sort's comparison must never
+-- let the others go. Emptied only where a list's build starts.
+RV.nameKeys, RV.nameKeyN, RV.NAMEKEY_MAX = {}, 0, 1024
 function RV.NameKey(sender)
   if type(sender) ~= "string" then return "" end
   local keys = RV.nameKeys
   local key = keys[sender]
   if key then return key end
-  if RV.nameKeyN >= 400 then
+  key = ns.Core.Strings.Lower(sender)
+  if RV.nameKeyN < RV.NAMEKEY_MAX then
+    keys[sender] = key
+    RV.nameKeyN = RV.nameKeyN + 1
+  end
+  return key
+end
+
+-- Where a list's build starts (CT.RefreshMailList): a record kept across
+-- builds -- the senders folded, the coin texts, Forever's first names -- is
+-- emptied if the last builds filled it. Nothing is let go in the middle of
+-- a build, so one list never makes what it already made.
+function RV.TrimCaches()
+  if RV.nameKeyN >= RV.NAMEKEY_MAX then
+    local keys = RV.nameKeys
     for k in pairs(keys) do keys[k] = nil end
     RV.nameKeyN = 0
   end
-  key = ns.Core.Strings.Lower(sender)
-  keys[sender] = key
-  RV.nameKeyN = RV.nameKeyN + 1
-  return key
+  RV.CoinTrim()
+  RV.Firsts.Trim()
 end
 
 -- The order a collect run takes mail in: the inbox list's own, as drawn --
@@ -10226,6 +10257,7 @@ function CT.RefreshMailList(panel)
   -- refresh, and the walk up to the row binds. nil otherwise.
   local perf = ns.Perf
   local perfAt = perf and perf.cur and perf.Begin and perf.Begin()
+  RV.TrimCaches()
 
   CloseDetailIfStale(panel)
 
