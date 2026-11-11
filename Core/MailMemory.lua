@@ -1282,6 +1282,12 @@ local function HistoryList(create)
   return list
 end
 
+-- Every write to a History or Sent record -- an entry made, an entry
+-- added to, entries dropped, a record made or let go -- moves this count,
+-- so a list built from the records (CollectTab's History) knows exactly
+-- when what it built from has changed.
+MM.recordWrites = 0
+
 local function PruneHistory(list, now)
   local keep = HistoryKeep()
   local cutoff = now - keep
@@ -1292,6 +1298,7 @@ local function PruneHistory(list, now)
     drop = drop + 1
   end
   if drop > 0 then
+    MM.recordWrites = MM.recordWrites + 1
     for i = 1, #list - drop do list[i] = list[i + drop] end
     for i = #list, #list - drop + 1, -1 do list[i] = nil end
   end
@@ -1357,8 +1364,14 @@ do
   local memos = { mailHistory = {}, mailSent = {} }
   local gens = { mailHistory = 0, mailSent = 0 }
 
-  function MM.HistoryChanged() gens.mailHistory = gens.mailHistory + 1 end
-  function MM.SentChanged() gens.mailSent = gens.mailSent + 1 end
+  function MM.HistoryChanged()
+    gens.mailHistory = gens.mailHistory + 1
+    MM.recordWrites = MM.recordWrites + 1
+  end
+  function MM.SentChanged()
+    gens.mailSent = gens.mailSent + 1
+    MM.recordWrites = MM.recordWrites + 1
+  end
 
   local function MeFirst(a, b)
     if a.me ~= b.me then return a.me end
@@ -1511,6 +1524,7 @@ do
     if not list then return nil end
     entry.t = entry.t or time()
     list[#list + 1] = entry
+    MM.recordWrites = MM.recordWrites + 1
     PruneHistory(list, entry.t)
     return entry
   end
@@ -1544,6 +1558,7 @@ function MM.HistoryTook(ctx, what, value, count)
   if not ctx or HistoryKeep() <= 0 then return end
   local list = HistoryList(true)
   if not list then return end
+  MM.recordWrites = MM.recordWrites + 1
   local entry = ctx.entry
   if not entry then
     entry = {

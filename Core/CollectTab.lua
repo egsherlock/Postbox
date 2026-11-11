@@ -5305,12 +5305,13 @@ end
 -- puts first (`pending`) is sorted by `by`, which breaks ties by the place
 -- each held (RV.POS), so the order is the same every time. The places and
 -- a stretch go in tables kept for it, emptied when the sort is done;
--- nothing is made per call.
+-- nothing is made per call. The places are noted a stretch at a time, so
+-- they never hold more than one stretch (a character's month of History,
+-- not every character's).
 RV.POS, RV.RUN = {}, {}
 function RV.SortRuns(list, by)
   local pos, run = RV.POS, RV.RUN
   for k in pairs(pos) do pos[k] = nil end
-  for i = 1, #list do pos[list[i]] = i end
   local i, n = 1, #list
   while i <= n do
     local item = list[i]
@@ -5321,11 +5322,15 @@ function RV.SortRuns(list, by)
       while i <= n and not (list[i].header or list[i].pending) do
         k = k + 1
         run[k] = list[i]
+        pos[list[i]] = i
         i = i + 1
       end
       for j = #run, k + 1, -1 do run[j] = nil end
       if k > 1 then table.sort(run, by) end
-      for j = 1, k do list[from + j - 1] = run[j] end
+      for j = 1, k do
+        list[from + j - 1] = run[j]
+        pos[run[j]] = nil
+      end
     end
   end
   -- Let go of what was sorted: History's entries are pruned in time, and
@@ -8114,55 +8119,165 @@ function HV.RowTip(row)
   return true
 end
 
--- entry -> the folded text a search looks in: sender, subject, the outcome
--- label and every item's name. Built once per entry, not per keystroke per
--- entry (a month of History is up to a thousand of them, and a search of
--- every character's History walks each character's). Weak keys, and never a
--- field on the entry, which is saved variables; the text and the item count
--- it was built from are kept apart, so an entry costs no table of its own.
--- Rebuilt when the entry gains an item -- the reading view adds to its entry
--- as it takes -- and all of it when the quality-mark option changes what a
--- name carries (HV.SearchFresh, asked once per list) or the mailbox closes
--- (HV.ForgetSearch): what a visit's search built is not kept for the session.
-HV.WEAK_KEYS = { __mode = "k" }
+-- History's search, by the rule every list's search follows (Helpers.
+-- SearchHaystack, H.SearchFinds): an entry is found by its sender (on Sent,
+-- the recipient), the auction outcome its row says in the sender's place,
+-- its subject, or any item's name. Each piece is tested where it stands,
+-- by a pattern that matches it in either case (Strings.FoldPattern), so
+-- nothing is folded and nothing is kept per entry: a search of every
+-- character's History -- forty months of a thousand entries -- makes no
+-- copy of what it reads. A match is one piece's, as the haystack's
+-- separator kept it. Only an item name the rows write without its quality
+-- mark (RV.MarkOnName off) is folded first, since the mark it drops sits
+-- inside the name: once per link, in HV.names, the one table the search
+-- keeps -- bounded, let go whole only where a list's build starts, and
+-- with everything else the search holds when the search is cleared,
+-- History is left or the mailbox closes (HV.ForgetSearch).
+HV.NAMES_MAX = 2048
+HV.names, HV.namesN = {}, 0
+HV.labels = {}
+-- The last search's list, which a longer query narrows (HV.BuildHistoryList).
+HV.prev = {}
+-- A list of every character's matches longer than this is let go with the
+-- search: a table keeps every slot it ever grew to.
+HV.LONG = 2048
+
 function HV.ForgetSearch(panel, closing)
-  -- The mailbox closed: the widths and texts History keeps (HV.Widths,
-  -- HV.LetterText) go too.
+  if HV.namesN > 0 then HV.names, HV.namesN = {}, 0 end
+  -- The mailbox closed: the widths and texts History keeps (below) go too.
   if closing then
     HV.widths = {}
     HV.mtext = { t = {}, n = 0, hexP = false, hexN = false }
   end
-  -- Nothing built since the last time: nothing to let go of.
-  if HV.searchText and next(HV.searchText) == nil then return end
-  HV.searchText = setmetatable({}, HV.WEAK_KEYS)
-  HV.searchItems = setmetatable({}, HV.WEAK_KEYS)
-end
-HV.ForgetSearch()
-RV.ForgetHistorySearch = HV.ForgetSearch
-
-function HV.SearchFresh()
-  local mode = RV.MarkOnName()
-  if HV.searchMode ~= mode then
-    HV.ForgetSearch()
-    HV.searchMode = mode
+  if HV.prev.q then HV.prev = {} end
+  if panel and HV.long then
+    HV.long = nil
+    panel._history = {}
   end
 end
+RV.ForgetHistorySearch = HV.ForgetSearch
 
--- Built by the rule every list's search follows (Helpers.SearchHaystack),
--- from the item names its links carry (HV.ItemName, which keeps or drops the
--- quality mark as the list does). The names go into one table kept for it.
+-- Where a build with a query starts: the folded names let go if the
+-- quality-mark option changed what a name carries, or they filled the table.
+-- -> whether names are written without their mark.
+function HV.SearchFresh()
+  local mode = RV.MarkOnName()
+  if HV.searchMode ~= mode or HV.namesN >= HV.NAMES_MAX then
+    HV.searchMode = mode
+    if HV.namesN > 0 then HV.names, HV.namesN = {}, 0 end
+  end
+  return not mode
+end
+
+-- link, markOff -> how its name is searched, kept in HV.names: the name as
+-- the list writes it, folded (HV.ItemName), where the rows drop a quality
+-- mark from inside it (`markOff`); false, searched where it stands.
+function HV.LinkName(link, markOff)
+  local name = false
+  if markOff then
+    local open = link:find("[", 1, true)
+    local close = open and link:find("]", open + 1, true)
+    local mark = close and link:find("|A:", open + 1, true)
+    if mark and mark < close then name = Helpers().Lower(HV.ItemName(link) or "") end
+  end
+  if HV.namesN < HV.NAMES_MAX then
+    HV.names[link] = name
+    HV.namesN = HV.namesN + 1
+  end
+  return name
+end
+
+-- An auction outcome's words, as the haystack has them: without colour
+-- codes, folded. One per outcome; the locale is fixed for the session.
+function HV.LabelFold(k)
+  local label = HV.labels[k]
+  if label then return label end
+  label = L()[AUCTION_OUTCOME[k].key]
+  if type(label) ~= "string" then
+    label = ""
+  elseif label:find("|", 1, true) then
+    label = (label:gsub("|c%x%x%x%x%x%x%x%x", ""))
+    label = (label:gsub("|r", ""))
+  end
+  label = Helpers().Lower(label)
+  HV.labels[k] = label
+  return label
+end
+
+-- The haystack itself, made and not kept: for a query FoldPattern cannot
+-- read (not whole UTF-8), which a search box never gives.
 HV.searchParts = {}
-function HV.SearchText(entry)
+function HV.Haystack(entry)
   local items = entry.it or HV.NONE
-  local text = HV.searchText[entry]
-  if text and HV.searchItems[entry] == #items then return text end
   local outcome = AUCTION_OUTCOME[entry.k]
   local names = HV.searchParts
   for j = 1, #items do names[j] = HV.ItemName(items[j].l) or "" end
-  text = Helpers().SearchHaystack(entry.s, outcome and L()[outcome.key], entry.sub, names, #items)
+  local text = Helpers().SearchHaystack(entry.s, outcome and L()[outcome.key], entry.sub, names, #items)
   for j = #items, 1, -1 do names[j] = nil end
-  HV.searchText[entry], HV.searchItems[entry] = text, #items
   return text
+end
+
+-- Per build, whether each outcome's words hold the query (HV.LabelFold):
+-- four answers, asked of every entry.
+HV.hit = {}
+function HV.LabelHits(query)
+  for k in pairs(AUCTION_OUTCOME) do
+    HV.hit[k] = HV.LabelFold(k):find(query, 1, true) ~= nil
+  end
+end
+
+-- entry -> whether the query (folded; `pat` and `cross` its FoldPattern,
+-- `markOff` from HV.SearchFresh) is in it. HV.find is Strings.FoldFind
+-- and HV.hit the outcomes' answers, both set where the build starts. Where
+-- the pattern cannot over-match (no `cross`), a piece it is not found in
+-- anywhere is done with in one find.
+function HV.Finds(entry, query, pat, cross, markOff)
+  if not pat then return Helpers().SearchFinds(HV.Haystack(entry), query) end
+  local text = entry.s
+  if type(text) == "string" then
+    if cross then
+      if HV.find(text, query, pat, true) then return true end
+    elseif text:find(pat) then
+      return true
+    end
+  end
+  local k = entry.k
+  if k and HV.hit[k] then return true end
+  text = entry.sub
+  if type(text) == "string" then
+    if cross then
+      if HV.find(text, query, pat, true) then return true end
+    elseif text:find(pat) then
+      return true
+    end
+  end
+  local items = entry.it
+  if not items then return false end
+  local names = HV.names
+  -- An item's link is always a string: History records an item only by
+  -- its link (MailMemory's HistoryTook), and Sent by the links it posted.
+  for j = 1, #items do
+    local link = items[j].l
+    local name = names[link]
+    if name == nil then name = HV.LinkName(link, markOff) end
+    if name then
+      if name:find(query, 1, true) then return true end
+    -- A link the query is nowhere in holds no match in its name: only the
+    -- rest is looked at closer (HV.ItemFinds).
+    elseif link:find(pat) and HV.ItemFinds(link, query, pat, cross) then
+      return true
+    end
+  end
+  return false
+end
+
+-- link -> whether the item's name holds the query: the link's first [...]
+-- (HV.ItemName), searched where it stands.
+function HV.ItemFinds(link, query, pat, cross)
+  local open = link:find("[", 1, true)
+  local close = open and link:find("]", open + 1, true)
+  if not close then return false end
+  return HV.find(link, query, pat, cross, open + 1, close - 1)
 end
 
 -------------------------------------------------------------
@@ -8307,9 +8422,21 @@ end
 -- search of every box lists them. The headings are Mail Memory's list of
 -- those characters, whose items are made to be drawn as headings, so a
 -- keystroke builds nothing; `_hmatched` and `_hchars` count what it found.
+--
+-- A query that holds the last one (typing on, "sto" after "st") can find
+-- nothing the last did not, so it is asked only of the last one's list,
+-- narrowed where it stands -- when that list was built from records nothing
+-- has written to since (MailMemory's recordWrites), on the same half, the
+-- same characters, order and filter. The order needs no sorting again: the
+-- most gold first breaks its ties by the place each held, which a
+-- narrowing keeps. Anything else walks the records.
 function HV.BuildHistoryList(panel, query)
   local out = panel._history
-  Clear(out)
+  -- A search let go: what it held goes with it.
+  if query == "" and (HV.prev.q or HV.namesN > 0 or HV.long) then
+    HV.ForgetSearch(panel)
+    out = panel._history
+  end
   local Memory = ns.MailMemory
   -- Received or Sent (HV.Sent), the rows' rule for this list.
   local sent = HV.Sent(panel)
@@ -8324,12 +8451,28 @@ function HV.BuildHistoryList(panel, query)
   local chars = HV.SearchingAll(panel, query)
     and (sent and Memory.SentCharacters or Memory.HistoryCharacters)() or nil
   local found = 0
-  if query ~= "" then HV.SearchFresh() end
+  local pat, cross, never, markOff
+  if query ~= "" then
+    markOff = HV.SearchFresh()
+    pat, cross, never = ns.Core.Strings.FoldPattern(query)
+    HV.find = ns.Core.Strings.FoldFind
+    HV.LabelHits(query)
+  end
   local list = HV.NONE
   -- The arrange mode's Preview mail: History's samples (RV.PreviewHistory).
   if not chars then
     list = panel._preview and RV.PreviewHistory() or HV.Record(panel, Memory, sent)
   end
+  -- The last search's list, narrowed (above)?
+  local writes = Memory and Memory.recordWrites or 0
+  -- The record walked (every character's: none here, each taken up in turn).
+  local record = list
+  local prev = HV.prev
+  local narrow = query ~= "" and prev.q ~= nil and prev.out == out and prev.n == #out
+    and query:find(prev.q, 1, true) ~= nil and prev.sent == sent and prev.chars == chars
+    and prev.list == record and prev.order == order and prev.show == show and prev.writes == writes
+    and prev.markOff == markOff and prev.alt == panel._alt
+  if not narrow then Clear(out) end
   local R = CT.RowRules
   local sample = AcquireRow(panel, 1)
   local cap = SenderColumnWidth(panel, sample.Sender)
@@ -8359,24 +8502,21 @@ function HV.BuildHistoryList(panel, query)
   -- The stretch the last age measured reads the same for (HV.AgeSpan).
   local ageLo, ageHi, ageHow = 0, -1, 1
   -- What is listed: a walk over this character's record, or over each
-  -- character's in turn, each character's matches under its heading.
+  -- character's in turn, each character's matches under its heading. Or,
+  -- narrowing, over the last list itself, written back over its own front.
+  local Finds = HV.Finds
   local searching = query ~= ""
   local head, headed, w = nil, false, 0
-  local c, records = 0, chars and #chars or 1
-  while c < records do
-    c = c + 1
-    if chars then
-      head = chars[c]
-      list = (sent and Memory.SentOf or Memory.HistoryOf)(head) or HV.NONE
-    end
-    headed = false
-    local first, last = 1, #list
-    if step < 0 then first, last = last, 1 end
-    for i = first, last, step do
-      local entry = list[i]
-      local keep = not searching or Helpers().SearchFinds(HV.SearchText(entry), query)
-      if keep and show then keep = RV.HistoryShows(show, entry, sent) end
-      if keep then
+  if never then
+    -- A letter no folded text holds: nothing is found.
+    Clear(out)
+  elseif narrow then
+    local n = #out
+    for r = 1, n do
+      local entry = out[r]
+      if entry.header then
+        head, headed = entry, false
+      elseif Finds(entry, query, pat, cross, markOff) then
         if head and not headed then
           headed = true
           found = found + 1
@@ -8385,6 +8525,34 @@ function HV.BuildHistoryList(panel, query)
         end
         w = w + 1
         out[w] = entry
+      end
+    end
+    for k = n, w + 1, -1 do out[k] = nil end
+  else
+    local c, records = 0, chars and #chars or 1
+    while c < records do
+      c = c + 1
+      if chars then
+        head = chars[c]
+        list = (sent and Memory.SentOf or Memory.HistoryOf)(head) or HV.NONE
+      end
+      headed = false
+      local first, last = 1, #list
+      if step < 0 then first, last = last, 1 end
+      for i = first, last, step do
+        local entry = list[i]
+        local keep = not searching or Finds(entry, query, pat, cross, markOff)
+        if keep and show then keep = RV.HistoryShows(show, entry, sent) end
+        if keep then
+          if head and not headed then
+            headed = true
+            found = found + 1
+            w = w + 1
+            out[w] = head
+          end
+          w = w + 1
+          out[w] = entry
+        end
       end
     end
   end
@@ -8481,9 +8649,20 @@ function HV.BuildHistoryList(panel, query)
   -- before the first coin text is measured, so what was measured here was
   -- measured knowing it.
   moneyW.counted = RV.COIN.counted
-  if order == "gold" then RV.SortRuns(out, RV.HistoryByMost) end
+  -- A narrowed list keeps its order (above).
+  if order == "gold" and not narrow then RV.SortRuns(out, RV.HistoryByMost) end
   panel._hmatched = chars and (#out - found) or nil
   panel._hchars = chars and found or nil
+  -- What a longer query may narrow (above), kept only for a search.
+  if query ~= "" then
+    prev.q, prev.out, prev.n, prev.sent, prev.chars, prev.list = query, out, #out, sent, chars, record
+    -- Read after the walk: a record pruned as it was read moved it.
+    prev.order, prev.show, prev.markOff, prev.alt = order, show, markOff, panel._alt
+    prev.writes = Memory and Memory.recordWrites or 0
+    if chars and #out > HV.LONG then HV.long = true end
+  elseif prev.q then
+    HV.prev = {}
+  end
   return earned, spent
 end
 
@@ -15186,7 +15365,11 @@ function SetViewMode(panel, id)
   if crossed then AV.ResetSearch(panel) end
   -- History left: its filters go, so neither half hides anything at the
   -- next look (RV.ForgetShows).
-  if crossed and id ~= VIEW_HISTORY then RV.ForgetShows(panel, "history") end
+  if crossed and id ~= VIEW_HISTORY then
+    RV.ForgetShows(panel, "history")
+    -- And what History's search held (HV.ForgetSearch).
+    RV.ForgetHistorySearch(panel)
+  end
 
   RV.ApplyFooter(panel)
 

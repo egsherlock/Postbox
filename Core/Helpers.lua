@@ -509,6 +509,10 @@ end
 -- Each list keeps the haystacks it built and decides when one is stale; this
 -- builds one from its pieces and allocates only the result. The query is
 -- folded once per keystroke by the caller (H.Lower, which also trims it).
+-- History, which can be every character's month of mail, builds none: it
+-- asks the same question of each piece where it stands, unfolded
+-- (Strings.FoldPattern, CollectTab's HV.Finds), and keeps H.SearchHaystack
+-- for a query that rule cannot read.
 -------------------------------------------------------------
 
 do

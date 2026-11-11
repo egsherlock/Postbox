@@ -108,6 +108,109 @@ function Strings.Lower(value)
   return LowerBytes(Strings.Trim(value))
 end
 
+-- Finding a folded query in text that was never folded: whether
+-- Lower(text) holds `query` (itself folded), answered without making the
+-- folded copy. A search walking a month of every character's History would
+-- otherwise fold and keep a copy of every subject, sender and item name.
+--
+-- Strings.FoldPattern(query) -> a Lua pattern that matches, byte for byte,
+-- every way the text can be written before folding: each letter as either
+-- case ("[aA]", Latin-1 and Cyrillic by the same pairs as above), anything
+-- else as itself. Every piece of it matches exactly one byte, so a match is
+-- always #query bytes long. Two more answers: `cross`, true where a letter's
+-- two cases begin with different bytes (most of Cyrillic's lower half: р is
+-- D1 80, Р is D0 A0), which a byte class can only over-match, so each match
+-- is then checked (Strings.FoldedAt); and `never`, true where the query holds
+-- a letter folding always removes (an uppercase one), which no folded text
+-- can hold. nil for a query that is not whole UTF-8, which the caller folds
+-- the old way. The last query's answer is kept: one per keystroke.
+do
+  local byte, sub, find, concat = string.byte, string.sub, string.find, table.concat
+  local parts = {}
+  local last, lastPat, lastCross, lastNever
+
+  function Strings.FoldPattern(query)
+    if query == last then return lastPat, lastCross, lastNever end
+    local i, n, k = 1, #query, 0
+    local cross, never = false, false
+    while i <= n do
+      local b = byte(query, i)
+      local size = (b < 128 and 1) or (b >= 240 and 4) or (b >= 224 and 3) or (b >= 194 and 2) or 0
+      if b == 0 or size == 0 or i + size - 1 > n then return nil end
+      for j = i + 1, i + size - 1 do
+        local c = byte(query, j)
+        if c < 128 or c > 191 then return nil end
+      end
+      local ch = sub(query, i, i + size - 1)
+      local up = UPPER[ch]
+      local piece
+      if LOWER[ch] then
+        never = true
+        piece = ch
+      elseif not up then
+        piece = (size == 1 and not find(ch, "%w")) and ("%" .. ch) or ch
+      elseif size == 1 then
+        piece = "[" .. ch .. up .. "]"
+      elseif byte(up, 1) == b then
+        piece = sub(ch, 1, 1) .. "[" .. sub(ch, 2, 2) .. sub(up, 2, 2) .. "]"
+      else
+        cross = true
+        piece = "[" .. sub(ch, 1, 1) .. sub(up, 1, 1) .. "][" .. sub(ch, 2, 2) .. sub(up, 2, 2) .. "]"
+      end
+      k = k + 1
+      parts[k] = piece
+      i = i + size
+    end
+    local pat = concat(parts, "", 1, k)
+    for j = k, 1, -1 do parts[j] = nil end
+    last, lastPat, lastCross, lastNever = query, pat, cross, never
+    return pat, cross, never
+  end
+
+  -- text, at, query -> whether Lower(text) holds `query` at byte `at`,
+  -- compared byte by byte as LowerBytes would fold them: A-Z, and the two
+  -- lead bytes whose pairs it rewrites. Nothing is made.
+  function Strings.FoldedAt(text, at, query)
+    local j, n = 1, #query
+    while j <= n do
+      local q, t = byte(query, j), byte(text, at + j - 1)
+      if not t then return false end
+      local t2 = (t == 195 or t == 208) and byte(text, at + j) or nil
+      if t2 and t2 >= 128 and t2 <= 191 then
+        local f1, f2 = t, t2
+        if t == 195 then
+          if t2 <= 158 and t2 ~= 151 then f2 = t2 + 32 end
+        elseif t2 >= 144 and t2 <= 159 then
+          f2 = t2 + 32
+        elseif t2 >= 160 and t2 <= 175 then
+          f1, f2 = 209, t2 - 32
+        elseif t2 <= 143 then
+          f1, f2 = 209, t2 + 16
+        end
+        if f1 ~= q or f2 ~= byte(query, j + 1) then return false end
+        j = j + 2
+      else
+        if t >= 65 and t <= 90 then t = t + 32 end
+        if t ~= q then return false end
+        j = j + 1
+      end
+    end
+    return true
+  end
+
+  -- text, query, pattern, cross[, from[, to]] -> whether Lower of the text
+  -- (or of its bytes from..to) holds the query, by FoldPattern's answer.
+  function Strings.FoldFind(text, query, pat, cross, from, to)
+    local init = from or 1
+    while true do
+      local s, e = find(text, pat, init)
+      if not s or (to and e > to) then return false end
+      if not cross or Strings.FoldedAt(text, s, query) then return true end
+      init = s + 1
+    end
+  end
+end
+
 -- Uppercase, same alphabet. Not trimmed: this is a fold for comparison, and
 -- what it is given is what it answers for.
 function Strings.Upper(value)
