@@ -1623,9 +1623,11 @@ local function Build()
   dropLine:SetHeight(2)
   dropLine:Hide()
   frame.DropLine = dropLine
-  -- A release no script of the grip hears ends the drag too.
-  frame:SetScript("OnEvent", function(self, event)
-    if event == "GLOBAL_MOUSE_UP" then EndDrag(self, true) end
+  -- A release no script of the grip hears ends the drag too: the left
+  -- button's, which began it (the grip drags with it alone); another
+  -- button let go meanwhile leaves the group in the hand.
+  frame:SetScript("OnEvent", function(self, event, button)
+    if event == "GLOBAL_MOUSE_UP" and button == "LeftButton" then EndDrag(self, true) end
   end)
 
   -- Right: the selected group.
