@@ -45,6 +45,12 @@
 - **Mail rows can show gold as coins:** while arranging, click the Gold
   heading and choose **Coins**.
 - **History's Received and Sent are one switch,** framed together.
+- **A sold auction shows the item that sold:** inbox, History and Mail
+  Memory rows carry the item's icon instead of a coin wherever Postbox can
+  tell which item it was. It notes what you post from now on, so earlier
+  sales may still show the coin.
+- **The fan grows out of the icon as one piece:** the plate and its items
+  arrive together and draw back into the icon when it closes.
 
 ### Arranging and options
 
@@ -100,7 +106,8 @@
 - WoW Forever: the resize grip and the arrange mode can no longer stop on a
   window layer the game keeps to itself.
 - The words on the bar over finished mail sit in its middle in every font
-  and size; the count's brackets no longer push them up.
+  and size and at any window or UI scale; the count's brackets no longer
+  push them up.
 - Fanned-out items stay on their own row, on the first and last rows too: a
   C.O.D. line or a second line of items reaches past the list's edge instead.
 
