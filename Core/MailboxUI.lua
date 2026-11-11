@@ -1644,15 +1644,17 @@ function UI.LetGoListSort(list)
 end
 
 -- Whose last seven days the options' General tab adds up (OptionsPanel's
--- Week card, its switch): "me", the character being played (the default),
--- or "all". profile.weekScope, stored only when it is "all".
+-- Week card, its link): "all", every character (the default, as the summary
+-- over it counts every box), or "me", the character being played.
+-- profile.weekScope, stored only when it is "me"; a profile that chose
+-- "all" before this was the default keeps "all", which reads the same.
 function UI.GetWeekScope()
   local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.weekScope")
-  return stored == "all" and "all" or "me"
+  return stored == "me" and "me" or "all"
 end
 function UI.SetWeekScope(who)
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if profile then profile.weekScope = (who == "all") and "all" or nil end
+  if profile then profile.weekScope = (who == "me") and "me" or nil end
 end
 
 -- A mail row's columns: which it shows, and in what order, left to right.

@@ -6529,13 +6529,17 @@ do
 
   -------------------------------------------------------------
   -- The last 7 days (Dash.Week): a second, smaller card under the
-  -- overview, the same lifted chrome. Its strip says "The last 7 days" on
-  -- the left and, on the right, whose: two words side by side, This
-  -- character and All characters, a light switch of plain text, no plate --
-  -- the chosen word in the accent's text tone with the house underline
-  -- under it, the other muted and brightening under the pointer; a click
-  -- on it chooses it, kept on the profile (MailboxUI.GetWeekScope, This
-  -- character by default). Under the strip, four figures side by side, each
+  -- overview, the same lifted chrome. Its strip's heading is a sentence
+  -- that says whose: "The last 7 days on Cursed" (the name as the lists
+  -- write it, in its class colour) or "The last 7 days on all 3
+  -- characters" (those counted, the hidden left out: MailMemory.Week's
+  -- `chars`), cut by the house fit rule with the whole in a tooltip. At the
+  -- strip's right, one quiet link says what a click will do -- Show all
+  -- characters / Show this character -- muted, brightening and underlined
+  -- under the pointer, never cut; a click flips whose, kept on the profile
+  -- every character shares (MailboxUI.GetWeekScope, every character by
+  -- default). With one character counted there is no link, and the heading
+  -- names it. Under the strip, four figures side by side, each
   -- a quiet label over its value: Earned and Spent written as the Mail
   -- tab's totals write gold (its largest coin, in the positive and the
   -- negative ink; none is the dash), Collected and Sent as "41 mails".
@@ -6553,37 +6557,53 @@ do
   -- open of the panel moved. Nothing while the options are closed or
   -- another tab is up.
   -------------------------------------------------------------
-  local function SwitchPaint(b)
+  -- The link: muted at rest, bright and underlined under the pointer.
+  local function LinkPaint(b)
     local T = ns.Theme
-    local d = Week.d
-    local on = not d.off
-    local chosen = b.who == d.who
-    T.SetColor(b.Text, (not on and "textDisabled") or (chosen and "accentText")
-      or (b.hot and "textPrimary") or "textSecondary")
-    b.Mark:SetShown(chosen)
-    if chosen then T.FillColor(b.Mark, on and "accent" or "textDisabled") end
+    local hot = b.hot and not Week.d.off
+    T.SetColor(b.Text, (Week.d.off and "textDisabled") or (hot and "textPrimary") or "textSecondary")
+    b.Mark:SetShown(hot)
+    if hot then T.FillColor(b.Mark, "textPrimary") end
   end
 
-  local function SwitchEnter(self)
-    if Rows.Held(self, SwitchEnter) then return end
+  local function LinkEnter(self)
+    if Rows.Held(self, LinkEnter) then return end
     self.hot = true
-    SwitchPaint(self)
+    LinkPaint(self)
     Rows.Hover(Week.d.head)
   end
 
-  local function SwitchLeave(self)
+  local function LinkLeave(self)
     self.hot = false
-    SwitchPaint(self)
+    LinkPaint(self)
     if Rows.HeldLeave(self) then return end
     Rows.Unhover(Week.d.head)
   end
 
-  local function SwitchClick(self)
+  local function LinkClick()
     local d = Week.d
-    if d.off or self.who == d.who then return end
+    if d.off then return end
     local UI = ns.MailboxUI
-    if UI and type(UI.SetWeekScope) == "function" then UI.SetWeekScope(self.who) end
+    if UI and type(UI.SetWeekScope) == "function" then UI.SetWeekScope(d.who == "all" and "me" or "all") end
     Week.Paint()
+  end
+
+  -- The strip: the inspector, and the whole heading where it was cut.
+  local function HeadEnter(self)
+    if Rows.Held(self, HeadEnter) then return end
+    Rows.Hover(self)
+    if self.__pbOverflowText then
+      local T = ns.Theme
+      T.TipBegin(self, "ANCHOR_TOP")
+      T.TipTitle(self.__pbOverflowText)
+      GameTooltip:Show()
+    end
+  end
+
+  local function HeadLeave(self)
+    if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+    if Rows.HeldLeave(self) then return end
+    Rows.Unhover(self)
   end
 
   local function WeekShown()
@@ -6624,30 +6644,25 @@ do
     head.Title = Text(head, "heading")
     head.Title:SetPoint("LEFT", head, "LEFT", NAME_X, 0)
     head.Title:SetText(L["OPT_WEEK_TITLE"])
+    head:SetScript("OnEnter", HeadEnter)
+    head:SetScript("OnLeave", HeadLeave)
 
-    -- The switch: two words, the second at the strip's right.
-    local switch = {}
-    local whos = { "me", "all" }
-    for i = 1, 2 do
-      local b = CreateFrame("Button", nil, head)
-      b:SetFrameLevel(level + 3)
-      b:SetHeight(Week.HEAD)
-      b.Text = Text(b, "secondary", "CENTER")
-      b.Text:SetPoint("CENTER", b, "CENTER", 0, 0)
-      b.Text:SetText(L[i == 1 and "OPT_WEEK_ME" or "OPT_WEEK_ALL"])
-      local mark = b:CreateTexture(nil, "ARTWORK")
-      mark:SetHeight(Week.MARK_H)
-      mark:SetPoint("TOPLEFT", b.Text, "BOTTOMLEFT", 0, -Week.MARK_GAP)
-      mark:SetPoint("TOPRIGHT", b.Text, "BOTTOMRIGHT", 0, -Week.MARK_GAP)
-      mark:Hide()
-      b.Mark, b.who, b.entry, b.hot = mark, whos[i], S.weekEntry, false
-      b:SetScript("OnEnter", SwitchEnter)
-      b:SetScript("OnLeave", SwitchLeave)
-      b:SetScript("OnClick", SwitchClick)
-      switch[i] = b
-    end
-    switch[2]:SetPoint("RIGHT", head, "RIGHT", -CONTROL_R, 0)
-    switch[1]:SetPoint("RIGHT", switch[2], "LEFT", -Week.SWITCH_GAP, 0)
+    -- The link, at the strip's right.
+    local link = CreateFrame("Button", nil, head)
+    link:SetFrameLevel(level + 3)
+    link:SetHeight(Week.HEAD)
+    link.Text = Text(link, "secondary", "CENTER")
+    link.Text:SetPoint("CENTER", link, "CENTER", 0, 0)
+    local mark = link:CreateTexture(nil, "ARTWORK")
+    mark:SetHeight(1)
+    mark:SetPoint("TOPLEFT", link.Text, "BOTTOMLEFT", 0, -Week.MARK_GAP)
+    mark:SetPoint("TOPRIGHT", link.Text, "BOTTOMRIGHT", 0, -Week.MARK_GAP)
+    mark:Hide()
+    link.Mark, link.entry, link.hot = mark, S.weekEntry, false
+    link:SetScript("OnEnter", LinkEnter)
+    link:SetScript("OnLeave", LinkLeave)
+    link:SetScript("OnClick", LinkClick)
+    link:SetPoint("RIGHT", head, "RIGHT", -CONTROL_R, 0)
 
     -- The four figures, a quarter of the card each.
     local figs = Spot(card, "Frame", Week.FIG)
@@ -6665,8 +6680,8 @@ do
       labels[j], values[j] = label, value
     end
 
-    Week.d = { card = card, head = head, switch = switch, figs = figs, labels = labels, values = values,
-      colW = colW, off = false, who = "me" }
+    Week.d = { card = card, head = head, link = link, figs = figs, labels = labels, values = values,
+      colW = colW, off = false, who = "all" }
   end
 
   -- A figure's gold: the largest coin in the ink given, or the dash.
@@ -6706,19 +6721,33 @@ do
       end
     end
 
-    -- The strip: the switch at its words' widths, the title in what is
-    -- left.
-    local switchW = 0
-    for i = 1, 2 do
-      local b = d.switch[i]
-      local w = TextW(b.Text)
-      b:SetWidth(w)
-      switchW = switchW + w
-      SwitchPaint(b)
+    -- The strip: the link at its words' width, never cut, and only where
+    -- there is another character to show; the heading in what is left.
+    local chars = sums and sums.chars or d.chars or 1
+    d.chars = chars
+    local link, linkW = d.link, 0
+    if chars > 1 then
+      link.Text:SetText(L[who == "all" and "OPT_WEEK_SHOW_ME" or "OPT_WEEK_SHOW_ALL"])
+      linkW = TextW(link.Text)
+      link:SetWidth(linkW)
+      link:Show()
+      LinkPaint(link)
+      linkW = linkW + Week.SWITCH_GAP
+    else
+      link:Hide()
+    end
+    local heading
+    if chars > 1 and who == "all" then
+      heading = ns.Plural("OPT_WEEK_ON_ALL", chars)
+    else
+      local H, MMod = ns.Helpers, ns.MailMemory
+      local realm, name = H.PlayerRealm(), H.PlayerName()
+      local shown
+      if off or not (MMod and MMod.ClassName) then shown = H.ShownName(name) else shown = MMod.ClassName(realm, name, true) end
+      heading = string.format(L["OPT_WEEK_ON"], shown or "")
     end
     T.SetColor(d.head.Title, off and "textDisabled" or "accent")
-    T.FitText(d.head.Title, LIST_W + BODY_GAP + INSP_W - 2 - NAME_X - CONTROL_R - Week.SWITCH_GAP - switchW - GAP,
-      L["OPT_WEEK_TITLE"])
+    T.FitText(d.head.Title, LIST_W + BODY_GAP + INSP_W - 2 - NAME_X - CONTROL_R - linkW - GAP, heading, d.head)
 
     -- The figures, each fitted to its quarter.
     local room = d.colW - 2 * NAME_X
