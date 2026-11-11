@@ -4570,14 +4570,11 @@ local function BuildSearchBox(panel)
   panel.SearchWrap, panel.SearchBox, panel.SearchPlaceholder = wrap, search.Box, search.Placeholder
   panel.SearchAll, panel.SearchClear = search.All, search.Clear
 
-  -- The sort, at the row's right end with the search beside it: Mail
-  -- Memory's own plate (MM.NewSortPlate), keeping this list's order
-  -- (RV.Sort). Placed, and the search with it, by RV.PlaceSort.
-  local Memory = ns.MailMemory
-  if Memory and type(Memory.NewSortPlate) == "function" then
-    panel.Sort = Memory.NewSortPlate(panel, M.segmentHeight, RV.Sort, function() RV.ToggleSort(panel) end)
-    panel.Sort:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -M.inset, -M.inset)
-  end
+  -- The sort and filter, at the row's right end with the search beside it
+  -- (RV.NewSortButton, "Sort and filter"). Placed, and the search with it,
+  -- by RV.PlaceSort.
+  panel.Sort = RV.NewSortButton(panel, M.segmentHeight)
+  panel.Sort:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -M.inset, -M.inset)
   RV.PlaceSort(panel, true)
 
   -- The character picker, left of the search box: it wears the crest of the
@@ -4606,27 +4603,30 @@ end
 -------------------------------------------------------------
 -- Sort
 --
--- The order the list is shown in, from the plate right of the search:
--- "mailbox", as the box holds them (newest first), or "expiry", the least
--- time left first. Display only: each group is sorted within itself -- the
--- mail to collect, and the read mail under its divider or in the Done tab
--- -- and everything that acts on mail still finds it by index and
--- fingerprint. A selection's range runs down the rows as shown (the list
--- is sorted in place), and a collect run takes its mails in the order shown
--- (RV.RunOrder), finding each again by what it is before its take. Another
--- character's box, every box's matches and Preview mail sort by the same
--- choice; History keeps the newest collected first and has no sort.
+-- The order the list is shown in, from the menu right of the search ("Sort
+-- and filter", below the selection): "mailbox", as the box holds them
+-- (newest first), "expiry", the least time left first, "gold", the most
+-- gold first, or "sender", the senders A to Z. Display only: each group is
+-- sorted within itself -- the mail to collect, and the read mail under its
+-- divider or in the Done tab -- and everything that acts on mail still
+-- finds it by index and fingerprint. A selection's range runs down the rows
+-- as shown (the list is sorted in place), and a collect run takes its mails
+-- in the order shown (RV.RunOrder), finding each again by what it is before
+-- its take: an order changes which mail is taken first, never which mails
+-- are taken. Another character's box, every box's matches and Preview mail
+-- sort by the same choice; History's halves keep one each.
 -------------------------------------------------------------
 
 function RV.Sort()
-  local UI = ns.MailboxUI
-  return UI and type(UI.GetListSort) == "function" and UI.GetListSort("inbox") or "mailbox"
+  return RV.SortOf("inbox")
 end
 
 do
-  -- index -> days left, written by the list's walk for each mail it lists
-  -- while the order is expiry (and by Preview mail's, for its samples), and
-  -- read by the one comparator, made once: the walk sorts in place.
+  -- index -> what the order sorts by -- days left, the gold, or the
+  -- sender folded (RV.SortKey) -- written by the list's walk for each mail
+  -- it lists while the order is not the box's (and by Preview mail's, for
+  -- its samples), and read by the order's comparator, each made once: the
+  -- walk sorts in place. One order at a time, so one table.
   local left = {}
   RV.LEFT = left
   -- The least time left first; mails with the same time left keep the
@@ -4636,6 +4636,51 @@ do
     if la ~= lb then return la < lb end
     return a < b
   end
+  -- The most gold first; mails with the same gold (none, most often) keep
+  -- the box's order between them, the newest first.
+  function RV.ByMost(a, b)
+    local la, lb = left[a] or 0, left[b] or 0
+    if la ~= lb then return la > lb end
+    return a < b
+  end
+  -- The senders A to Z, by the folded name (Strings.Lower, so case and
+  -- the accented and Cyrillic capitals do not split a name from itself);
+  -- one sender's mails keep the box's order between them, the newest first.
+  function RV.ByName(a, b)
+    local la, lb = left[a], left[b]
+    if type(la) ~= "string" then la = "" end
+    if type(lb) ~= "string" then lb = "" end
+    if la ~= lb then return la < lb end
+    return a < b
+  end
+  -- The comparator for each order that sorts.
+  RV.SORTERS = { expiry = RV.ByLeft, gold = RV.ByMost, sender = RV.ByName }
+end
+
+-- order, daysLeft, money, sender -> what that order sorts a mail by.
+function RV.SortKey(order, daysLeft, money, sender)
+  if order == "gold" then return tonumber(money) or 0 end
+  if order == "sender" then return RV.NameKey(sender) end
+  return tonumber(daysLeft) or 0
+end
+
+-- A sender folded for the order A to Z, made once per name and kept: a
+-- refresh sorting by sender folds nothing it folded before. Let go past
+-- 400 names (a box holds 50 mails; every box's matches a few hundred).
+RV.nameKeys, RV.nameKeyN = {}, 0
+function RV.NameKey(sender)
+  if type(sender) ~= "string" then return "" end
+  local keys = RV.nameKeys
+  local key = keys[sender]
+  if key then return key end
+  if RV.nameKeyN >= 400 then
+    for k in pairs(keys) do keys[k] = nil end
+    RV.nameKeyN = 0
+  end
+  key = ns.Core.Strings.Lower(sender)
+  keys[sender] = key
+  RV.nameKeyN = RV.nameKeyN + 1
+  return key
 end
 
 -- The order a collect run takes mail in: the inbox list's own, as drawn --
@@ -4654,32 +4699,34 @@ function RV.RunOrder(panel)
 end
 
 -- A queue put in the order the inbox's list keeps (RV.Sort), by the list's
--- own rule: the box's order, newest first, or the least time left first by
--- the list's own comparator (RV.ByLeft) over the same days left.
+-- own rule: the box's order, newest first, or the order's own comparator
+-- (RV.SORTERS) over the same keys the walk writes (RV.SortKey). The queue
+-- is the same mails in another order.
 function RV.SortAsListed(queue)
-  if RV.Sort() ~= "expiry" then
+  local order = RV.Sort()
+  local by = RV.SORTERS[order]
+  if not by then
     table.sort(queue)
     return
   end
   local left = RV.LEFT
   for i = 1, #queue do
-    local _, _, _, _, _, _, daysLeft = GetInboxHeaderInfo(queue[i])
-    left[queue[i]] = tonumber(daysLeft) or 0
+    local _, _, sender, _, money, _, daysLeft = GetInboxHeaderInfo(queue[i])
+    left[queue[i]] = RV.SortKey(order, daysLeft, money, sender)
   end
-  table.sort(queue, RV.ByLeft)
+  table.sort(queue, by)
 end
 
 -- The room the sort takes at the row's right end, beside the search: the
 -- plate and the snug step to it. The search and the sort together are
--- SEARCH_W and this wide; on History, where there is no sort, the search
--- has all of it.
+-- SEARCH_W and this wide, on the Mail tab's every list.
 function RV.SortRoom(panel)
   if not panel.Sort then return 0 end
   local M = Th().Metrics
   return M.space.snug + M.segmentHeight
 end
 
--- The sort shown or not (AV.PaintSearch: not on History), and the search
+-- The sort shown or not (AV.PaintSearch: on every list), and the search
 -- placed beside it or widened into its room. Moved only when that changes.
 function RV.PlaceSort(panel, shown)
   local sort, wrap = panel.Sort, panel.SearchWrap
@@ -4712,13 +4759,10 @@ function RV.SizeSearch(panel, given)
   end
 end
 
--- The plate clicked: the other order, remembered, and the list shown in it
--- from its top. The shift-click anchor is a place in the list, so it goes
+-- The order or the filter changed: the list shown in it from its top,
+-- rebuilt once. The shift-click anchor is a place in the list, so it goes
 -- with its mail to that mail's new place.
-function RV.ToggleSort(panel)
-  local UI = ns.MailboxUI
-  if not (UI and type(UI.SetListSort) == "function") then return end
-  UI.SetListSort("inbox", RV.Sort() == "expiry" and "mailbox" or "expiry")
+function RV.SFChanged(panel)
   local filtered, anchor = panel._filtered, panel._selectAnchor
   local at = anchor and filtered and filtered[anchor]
   if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
@@ -4822,6 +4866,8 @@ function CT.ClearSearch(panel)
   if box and box:GetText() ~= "" then box:SetText("") end
   if panel then
     panel._stuckOnly = false
+    -- A filter is a question about this visit too (RV.ForgetShows).
+    RV.ForgetShows(panel)
     -- And back to this character's own box: a later visit must never open
     -- on somebody else's mail.
     panel._alt = nil
@@ -5040,6 +5086,414 @@ end
 
 function CT.StuckFilterOn(panel)
   return StuckOnly(panel)
+end
+
+-------------------------------------------------------------
+-- Sort and filter
+--
+-- The button right of the search opens a small menu in the house's
+-- dropdown parts (Lib/UI/Dropdown.lua, Dropdown.Menu; never a Blizzard
+-- menu, COMBAT_TAINT.md): Sort, one order, and Show, one filter, the first
+-- of them the unfiltered list. Each list offers its own (RV.SF): the Mail
+-- tab's inbox -- and another character's box and every box's matches,
+-- which are the same kind of list -- History's Received, and Sent; the
+-- Done tab, read mail with nothing left in it, sorts and never filters.
+-- The button is neutral while its list is at its defaults and lit, as a
+-- selected plate is, while an order other than the newest first or any
+-- filter is on; its tooltip says which. A click opens the menu, a
+-- right-click puts the list back to its defaults (GESTURES.md: reset).
+--
+-- The order is remembered for each list (MailboxUI.GetListSort: "inbox",
+-- "history", "sent"). A filter never is: it is the panel's own
+-- (panel._sfShow), let go when the mailbox closes (CT.ClearSearch) and,
+-- for History's, when History is left (SetViewMode), so no mail stays out
+-- of sight behind a filter the player has forgotten.
+--
+-- A filter narrows the list exactly as a search does, in the walk that
+-- builds it (CT.RefreshMailList): what is not shown is not in
+-- panel._filtered, so every button that acts on what is listed -- the
+-- full-width one, which reads "Collect shown" (CAT_SHOWN), each sweep and
+-- each group's sweep, the bag room All mail's tooltip counts, the read
+-- mail's Delete all (DeleteAllDone) -- counts and acts on the rows on
+-- screen and nothing else (StartCategoryRun). A filter changed clears the
+-- picks, as the stuck filter's does, so a pick can never stand on a row
+-- the filter hides.
+-------------------------------------------------------------
+
+-- What each list offers, in the menu's order: its orders and its filters
+-- ("all" the unfiltered list), and which saved order it keeps (`save`,
+-- MailboxUI.GetListSort). The Done tab keeps the inbox's order.
+RV.SF = {
+  inbox = { save = "inbox", sorts = { "mailbox", "expiry", "gold", "sender" },
+    shows = { "all", "unread", "gold", "items" } },
+  done = { save = "inbox", sorts = { "mailbox", "expiry", "sender" } },
+  received = { save = "history", sorts = { "mailbox", "oldest", "gold" },
+    shows = { "all", "sold", "bought", "expired", "players" } },
+  sent = { save = "sent", sorts = { "mailbox", "oldest", "gold" }, shows = { "all", "gold", "items", "cod" } },
+}
+-- The words for each order and each filter.
+RV.SF_SORT_KEYS = { mailbox = "SORT_NEWEST_TITLE", expiry = "SORT_EXPIRY_TITLE", gold = "SF_SORT_GOLD",
+  sender = "SF_SORT_SENDER", oldest = "SF_SORT_OLDEST" }
+RV.SF_SHOW_KEYS = { all = "SF_SHOW_ALL", unread = "SF_SHOW_UNREAD", gold = "SF_SHOW_GOLD", items = "SF_SHOW_ITEMS",
+  sold = "SF_SHOW_SOLD", bought = "SF_SHOW_BOUGHT", expired = "SF_SHOW_EXPIRED", players = "SF_SHOW_PLAYERS",
+  cod = "SF_SHOW_COD" }
+
+-- The list on screen, as the menu knows it.
+function RV.SFList(panel)
+  if panel.viewMode == VIEW_HISTORY then return RV.SentShown(panel) and "sent" or "received" end
+  if panel.viewMode == VIEW_DONE and not AV.Active(panel) then return "done" end
+  return "inbox"
+end
+
+-- The order a list is shown in: its saved one. The Done tab's read mail
+-- holds no gold, so the inbox's Most gold leaves it in the box's order, and
+-- says so.
+function RV.SortOf(list)
+  local def = RV.SF[list]
+  local UI = ns.MailboxUI
+  local sort = def and UI and type(UI.GetListSort) == "function" and UI.GetListSort(def.save) or "mailbox"
+  if list == "done" and sort == "gold" then return "mailbox" end
+  return sort
+end
+
+-- The filter on a list, nil for none.
+function RV.ShowOf(panel, list)
+  local shows = panel and panel._sfShow
+  return shows and shows[list] or nil
+end
+
+-- Whether a filter narrows the inbox's list: one of the narrowings a
+-- search is (StartCategoryRun, the primary's caption, DeleteAllDone). The
+-- Done tab's list is never filtered.
+function RV.Filtering(panel)
+  return RV.ShowOf(panel, "inbox") ~= nil and panel.viewMode ~= VIEW_DONE
+end
+
+-- Whether the list on screen is anything but its defaults: the button lit.
+function RV.SFLit(panel)
+  local list = RV.SFList(panel)
+  return RV.SortOf(list) ~= "mailbox" or RV.ShowOf(panel, list) ~= nil
+end
+
+-- A mail by the inbox's filters (and another box's): money, items and read
+-- as its header or its remembered row has them.
+function RV.Shows(show, money, items, read)
+  if show == "unread" then return not read end
+  if show == "gold" then return (tonumber(money) or 0) > 0 end
+  if show == "items" then return (tonumber(items) or 0) > 0 end
+  return true
+end
+
+-- A History entry by its half's filters: Received by what the mail was
+-- (an auction's outcome, or none: a player's or another letter), Sent by
+-- what it carried.
+function RV.HistoryShows(show, entry, sent)
+  if sent then
+    if show == "gold" then return (entry.m or 0) > 0 end
+    if show == "items" then return entry.it ~= nil and #entry.it > 0 end
+    if show == "cod" then return (entry.c or 0) > 0 end
+    return true
+  end
+  local k = entry.k
+  if show == "sold" then return k == "sold" end
+  if show == "bought" then return k == "bought" end
+  if show == "expired" then return k == "expired" or k == "canceled" end
+  if show == "players" then return k == nil end
+  return true
+end
+
+-- A list's runs sorted in place: each stretch between its headings (a
+-- character's name over every box's matches) and the arrivals Mail Memory
+-- puts first (`pending`) is sorted by `by`, which breaks ties by the place
+-- each held (RV.POS), so the order is the same every time. The places and
+-- a stretch go in tables kept for it; nothing is made per call.
+RV.POS, RV.RUN = {}, {}
+function RV.SortRuns(list, by)
+  local pos, run = RV.POS, RV.RUN
+  for k in pairs(pos) do pos[k] = nil end
+  for i = 1, #list do pos[list[i]] = i end
+  local i, n = 1, #list
+  while i <= n do
+    local item = list[i]
+    if item.header or item.pending then
+      i = i + 1
+    else
+      local from, k = i, 0
+      while i <= n and not (list[i].header or list[i].pending) do
+        k = k + 1
+        run[k] = list[i]
+        i = i + 1
+      end
+      for j = #run, k + 1, -1 do run[j] = nil end
+      if k > 1 then table.sort(run, by) end
+      for j = 1, k do list[from + j - 1] = run[j] end
+    end
+  end
+  for j = #run, 1, -1 do run[j] = nil end
+end
+
+-- Remembered mail by gold and by sender (Mail Memory's rows: `money`,
+-- `sender`), and History's by gold (`m`); ties in the list's own order.
+function RV.RowByMost(a, b)
+  local ma, mb = tonumber(a.money) or 0, tonumber(b.money) or 0
+  if ma ~= mb then return ma > mb end
+  return RV.POS[a] < RV.POS[b]
+end
+function RV.RowByName(a, b)
+  local na, nb = RV.NameKey(a.sender), RV.NameKey(b.sender)
+  if na ~= nb then return na < nb end
+  return RV.POS[a] < RV.POS[b]
+end
+RV.ROW_SORTERS = { gold = RV.RowByMost, sender = RV.RowByName }
+function RV.HistoryByMost(a, b)
+  local ma, mb = a.m or 0, b.m or 0
+  if ma ~= mb then return ma > mb end
+  return RV.POS[a] < RV.POS[b]
+end
+
+-- Another character's box, or every box's matches (AV.Build), in the
+-- order and through the filter the inbox's list has: Mail Memory's own
+-- order where it keeps it (the box's, or expiry), the rest here, in a list
+-- kept on the panel. A heading whose matches the filter left none of goes
+-- with them; the arrivals Mail Memory lists first stay, as they are not
+-- yet known. The rows themselves as given with the defaults.
+function RV.ShapeRows(panel, rows, order, show)
+  local by = RV.ROW_SORTERS[order]
+  if not (by or show) then return rows end
+  local out = panel._avShaped
+  if not out then
+    out = {}
+    panel._avShaped = out
+  end
+  Clear(out)
+  local headAt
+  for i = 1, #rows do
+    local mail = rows[i]
+    if mail.header then
+      if headAt and headAt == #out then out[headAt] = nil end
+      out[#out + 1] = mail
+      headAt = #out
+    elseif mail.pending or not show or RV.Shows(show, mail.money, mail.items, mail.read) then
+      out[#out + 1] = mail
+    end
+  end
+  if headAt and headAt == #out then out[headAt] = nil end
+  if by then RV.SortRuns(out, by) end
+  return out
+end
+
+-- The menu's ids, "sort:<order>" and "show:<filter>", read back once each.
+-- Filled in a function of its own: a loop at the file's level would hold
+-- its names among the chunk's locals while it ran.
+RV.SF_IDS = {}
+function RV.SFIdsFill()
+  for _, def in pairs(RV.SF) do
+    for i = 1, #def.sorts do RV.SF_IDS["sort:" .. def.sorts[i]] = { "sort", def.sorts[i] } end
+    for i = 1, def.shows and #def.shows or 0 do RV.SF_IDS["show:" .. def.shows[i]] = { "show", def.shows[i] } end
+  end
+end
+RV.SFIdsFill()
+
+-- An order chosen for a list (the menu, or a test): remembered, and the
+-- list shown in it.
+function CT.SetSort(panel, list, order)
+  local def = panel and RV.SF[list]
+  if not def then return end
+  local known = false
+  for i = 1, #def.sorts do if def.sorts[i] == order then known = true end end
+  local UI = ns.MailboxUI
+  if not (known and UI and type(UI.SetListSort) == "function") then return end
+  if RV.SortOf(list) == order then return end
+  UI.SetListSort(def.save, order)
+  RV.SFChanged(panel)
+end
+
+-- A filter chosen for a list ("all", or nil, for none): the picks let go
+-- (a pick must never stand on a row the filter hides), and the list shown
+-- through it.
+function CT.SetShow(panel, list, show)
+  local def = panel and RV.SF[list]
+  if not (def and def.shows) then return end
+  if show == "all" then show = nil end
+  if show ~= nil then
+    local known = false
+    for i = 1, #def.shows do if def.shows[i] == show then known = true end end
+    if not known then return end
+  end
+  if RV.ShowOf(panel, list) == show then return end
+  panel._sfShow = panel._sfShow or {}
+  panel._sfShow[list] = show
+  ClearSelection(panel)
+  RV.SFChanged(panel)
+end
+
+-- Every filter let go (`which` nil), or History's ("history"): the mailbox
+-- closed, or History left. Quiet: the caller draws the list.
+function RV.ForgetShows(panel, which)
+  local shows = panel and panel._sfShow
+  if not shows then return end
+  if which == "history" then
+    shows.received, shows.sent = nil, nil
+  else
+    for k in pairs(shows) do shows[k] = nil end
+  end
+end
+
+-- A right-click: the list on screen back to its defaults, the newest first
+-- and everything shown.
+function RV.ResetSF(panel)
+  local list = RV.SFList(panel)
+  local def = RV.SF[list]
+  local UI = ns.MailboxUI
+  local changed = false
+  if RV.SortOf(list) ~= "mailbox" and UI and type(UI.SetListSort) == "function" then
+    UI.SetListSort(def.save, "mailbox")
+    changed = true
+  end
+  if RV.ShowOf(panel, list) ~= nil then
+    panel._sfShow[list] = nil
+    ClearSelection(panel)
+    changed = true
+  end
+  if changed then RV.SFChanged(panel) end
+end
+
+-- The button's tooltip: what the list on screen is in, as facts, and the
+-- two gestures.
+function RV.SFTip(panel, owner)
+  local T, L0 = Th(), L()
+  local list = RV.SFList(panel)
+  T.TipBegin(owner, "ANCHOR_TOPRIGHT")
+  T.TipTitle(L0["SF_TITLE"])
+  T.TipFact(L0["SF_TIP_SORT"], L0[RV.SF_SORT_KEYS[RV.SortOf(list)]])
+  if RV.SF[list].shows then
+    local show = RV.ShowOf(panel, list)
+    T.TipFact(L0["SF_TIP_SHOW"], RV.ShowName(list, show or "all"))
+  end
+  T.TipHint(L0["SF_HINT"])
+  GameTooltip:Show()
+end
+
+-- A filter's words: the unfiltered inbox is "All mail", History's "All".
+function RV.ShowName(list, show)
+  if show == "all" and list == "inbox" then return L()["SF_SHOW_ALL_MAIL"] end
+  return L()[RV.SF_SHOW_KEYS[show]]
+end
+
+-- The menu for a list, made on its first open and kept on the panel: a
+-- heading and the orders, then a heading and the filters. Each pick
+-- leaves it open with its dots moved, so an order and a filter can be
+-- chosen in one visit to it.
+function RV.SFMenu(panel, list)
+  local menus = panel._sfMenus
+  if not menus then
+    menus = {}
+    panel._sfMenus = menus
+  end
+  if menus[list] then return menus[list] end
+  local D = ns.Core and ns.Core.UI and ns.Core.UI.Dropdown
+  if not (D and type(D.Menu) == "function") then return nil end
+  local def, L0 = RV.SF[list], L()
+  local items = { { heading = true, name = L0["SF_SORT_HEAD"] } }
+  for i = 1, #def.sorts do
+    items[#items + 1] = { id = "sort:" .. def.sorts[i], name = L0[RV.SF_SORT_KEYS[def.sorts[i]]] }
+  end
+  if def.shows then
+    items[#items + 1] = { heading = true, name = L0["SF_SHOW_HEAD"] }
+    for i = 1, #def.shows do
+      items[#items + 1] = { id = "show:" .. def.shows[i], name = RV.ShowName(list, def.shows[i]) }
+    end
+  end
+  local menu = D.Menu(panel.Sort, items, {
+    keepOpen = true,
+    alignRight = true,
+    checked = function(id)
+      local pick = RV.SF_IDS[id]
+      if not pick then return false end
+      if pick[1] == "sort" then return RV.SortOf(list) == pick[2] end
+      return (RV.ShowOf(panel, list) or "all") == pick[2]
+    end,
+    onPick = function(id)
+      local pick = RV.SF_IDS[id]
+      if not pick then return end
+      if pick[1] == "sort" then CT.SetSort(panel, list, pick[2]) else CT.SetShow(panel, list, pick[2]) end
+      if GameTooltip:IsOwned(panel.Sort) then RV.SFTip(panel, panel.Sort) end
+    end,
+    onClose = function() if panel._sfOpen == list then panel._sfOpen = nil end end,
+  })
+  menus[list] = menu
+  return menu
+end
+
+-- The button clicked: the menu for the list on screen, or shut.
+function RV.OpenSFMenu(panel)
+  local list = RV.SFList(panel)
+  local menu = RV.SFMenu(panel, list)
+  if not menu then return end
+  if GameTooltip:IsOwned(panel.Sort) then GameTooltip:Hide() end
+  menu:Toggle()
+  panel._sfOpen = menu:IsShown() and list or nil
+end
+
+-- The menu shut where it no longer belongs to the list on screen (a view,
+-- a half or a box changed under it).
+function RV.SFCloseStale(panel)
+  local open = panel._sfOpen
+  if not open or open == RV.SFList(panel) then return end
+  local menu = panel._sfMenus and panel._sfMenus[open]
+  panel._sfOpen = nil
+  if menu then menu:Close() end
+end
+
+-- The button: a square plate wearing the sort glyph at its own size, one
+-- grey in every state (textSecondary), as Mail Memory's sort is drawn
+-- (MM.NewSortPlate); lit -- selected -- while the list on screen is not at
+-- its defaults (RV.SFLit), in colour and in its fill together, so it reads
+-- at any window opacity. plate.Paint() paints it for the list on screen,
+-- only when that changed, and shuts a menu left from another list.
+function RV.NewSortButton(panel, size)
+  local T = Th()
+  local sort = T.CreatePlate(panel, "segment")
+  sort:SetSize(size, size)
+  sort:SetText("")
+  sort.Icon = T.Glyph and T.Glyph(sort, "sort", nil, "OVERLAY") or nil
+  if sort.Icon then
+    sort.Icon:SetPoint("CENTER")
+    T.SetPlateGlyph(sort, sort.Icon, function(icon) T.SetColor(icon, "textSecondary") end)
+  else
+    sort:SetText("v")
+  end
+  sort:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  sort:SetScript("OnClick", function(self, button)
+    if button == "RightButton" then
+      RV.ResetSF(panel)
+      if GameTooltip:IsOwned(self) then RV.SFTip(panel, self) end
+      local menu = panel._sfOpen and panel._sfMenus and panel._sfMenus[panel._sfOpen]
+      if menu then menu:Repaint() end
+    else
+      RV.OpenSFMenu(panel)
+    end
+  end)
+  sort:HookScript("OnEnter", function(self) RV.SFTip(panel, self) end)
+  sort:HookScript("OnLeave", function() GameTooltip:Hide() end)
+  function sort.Paint()
+    local on = RV.SFLit(panel)
+    if sort.isSelected ~= on then T.SetPlateSelected(sort, on) end
+    if panel._sfOpen then RV.SFCloseStale(panel) end
+  end
+  T.SetPlateSelected(sort, false)
+  return sort
+end
+
+-- The list empty through a filter: under its words (panel.Empty), the way
+-- back to everything (CT.SetShow "all"), placed and sized only when shown.
+function RV.PaintEmptyClear(panel, on)
+  local clear = panel.EmptyClear
+  if not clear then return end
+  if on and not clear:IsShown() then
+    Th().SizeToText(clear, { padding = 2 * Th().Metrics.gap + 8, height = 22 })
+  end
+  clear:SetShown(on)
 end
 
 -- Sizes every segment to the longest rendered caption -- counts included -- and
@@ -5330,8 +5784,8 @@ end
 -- The search box's part of the paint: the every-character toggle, shown
 -- while there is another box to search (`others`, as AV.Paint last found)
 -- -- on History, another character's History -- and its tint; the
--- placeholder, saying what the box searches; and the sort beside it, which
--- History has none of (RV.PlaceSort).
+-- placeholder, saying what the box searches; and the sort and filter
+-- beside it, on every list (RV.PlaceSort).
 function AV.PaintSearch(panel, others)
   panel._searchOthers = others
   local history = AV.History(panel)
@@ -5343,7 +5797,7 @@ function AV.PaintSearch(panel, others)
   end
   panel.Search.PaintToggle(panel._searchAll)
   panel.Search.Place(toggle)
-  RV.PlaceSort(panel, not history)
+  RV.PlaceSort(panel, true)
   -- Its words follow the list, and the room the toggle just left them.
   panel._searchHistory = history
   RV.FitPlaceholder(panel)
@@ -5634,7 +6088,10 @@ end
 function AV.Build(panel, query)
   local Memory = AV.Memory()
   local who = panel._alt
+  -- Mail Memory keeps the box's order and expiry; the rest, and the
+  -- filter, are put on its rows here (RV.ShapeRows).
   local order = RV.Sort()
+  local show = RV.ShowOf(panel, "inbox")
   -- What is asked of the box, in a table kept for it.
   local opts = panel._avOpts
   if not opts then
@@ -5645,6 +6102,7 @@ function AV.Build(panel, query)
   local rows, info = Memory.RowsFor(who and who.realm, who and who.name, opts)
   -- The arrange mode's Preview mail: the samples, as remembered mail.
   if panel._preview and Memory.PreviewRows then rows = Memory.PreviewRows(order) end
+  rows = RV.ShapeRows(panel, rows, order, show)
   panel._avRows, panel._avInfo = rows, info
   -- The moment the columns are measured at is the one the rows are drawn
   -- at (AV.UpdateRows), so an age measured as "9m" is not drawn as "10m".
@@ -5665,9 +6123,17 @@ function AV.Build(panel, query)
   -- where to go to collect it; or what a search of every box found.
   local note
   if info.matched and panel._searchAll and query ~= "" then
-    note = ns.Plural("MEMORY_MATCHES", info.matched)
-    if (info.onCharacters or 0) > 1 then
-      note = note .. "  " .. ns.Plural("MEMORY_ON_CHARACTERS", info.onCharacters)
+    -- Through a filter, what it left: the rows and their headings.
+    local matched, chars = info.matched, info.onCharacters or 0
+    if show then
+      matched, chars = 0, 0
+      for i = 1, #rows do
+        if rows[i].header then chars = chars + 1 else matched = matched + 1 end
+      end
+    end
+    note = ns.Plural("MEMORY_MATCHES", matched)
+    if chars > 1 then
+      note = note .. "  " .. ns.Plural("MEMORY_ON_CHARACTERS", chars)
     end
   elseif who and info.snapshot then
     -- The name inked for the window the note stands on (Theme.OnWindow).
@@ -6568,8 +7034,11 @@ do
     local measureSlots = compact and RowShows("slots")
     local measureExpiry = compact and RowShows("time")
     local slotsMost, earned, spent = 0, 0, 0
-    -- In the sort's order, as the inbox's list would be (RV.ByLeft).
-    local left = RV.Sort() == "expiry" and RV.LEFT or nil
+    -- In the sort's order and through the filter, as the inbox's list
+    -- would be (RV.SORTERS, RV.Shows).
+    local order = RV.SortOf(view == VIEW_DONE and "done" or "inbox")
+    local left = (order ~= "mailbox") and RV.LEFT or nil
+    local show = (view ~= VIEW_DONE) and RV.ShowOf(panel, "inbox") or nil
     -- Read mail as the player's Read mail setting leaves it, as at a
     -- mailbox: under the divider, in the Done tab, or -- Delete when done --
     -- gone, deleted the moment it was finished with, so the samples' read
@@ -6580,8 +7049,8 @@ do
       local finished = m.done == true
       -- Delete when done: not listed, so nothing of it is drawn, measured
       -- or totalled.
-      if not (finished and deleted) then
-        if left then left[i] = m.days end
+      if not (finished and deleted) and (not show or RV.Shows(show, m.money, #m.items, m.read)) then
+        if left then left[i] = RV.SortKey(order, m.days, m.money, m.sender) end
         if finished then
           tail[#tail + 1] = i
         else
@@ -6619,8 +7088,9 @@ do
     panel._dividerAt = nil
     panel._markAny = #tail > 0 and (view == VIEW_DONE or (RV.Mode() ~= "tab" and not RV.Folded(panel)))
     if left then
-      if view ~= VIEW_DONE then table.sort(filtered, RV.ByLeft) end
-      if panel._markAny then table.sort(tail, RV.ByLeft) end
+      local by = RV.SORTERS[order]
+      if view ~= VIEW_DONE then table.sort(filtered, by) end
+      if panel._markAny then table.sort(tail, by) end
     end
     if view == VIEW_DONE then
       Clear(filtered)
@@ -7456,6 +7926,13 @@ function HV.BuildHistoryList(panel, query)
   -- Received or Sent (HV.Sent), the rows' rule for this list.
   local sent = HV.Sent(panel)
   panel._hsent = sent
+  -- Its order and its filter (RV.SortOf, RV.ShowOf): the newest first
+  -- walks each record from its end, the oldest first from its start, and
+  -- the most gold sorts what was listed (RV.SortRuns).
+  local half = sent and "sent" or "received"
+  local order = RV.SortOf(half)
+  local show = RV.ShowOf(panel, half)
+  local step = (order == "oldest") and 1 or -1
   local chars = HV.SearchingAll(panel, query)
     and (sent and Memory.SentCharacters or Memory.HistoryCharacters)() or nil
   local found = 0
@@ -7485,20 +7962,21 @@ function HV.BuildHistoryList(panel, query)
   -- One walk, over this character's record or over each character's in
   -- turn: the next record is taken up when the one before runs out.
   local c, head, headed = 0, nil, false
-  local i = #list
+  local i = (step > 0) and 1 or #list
   while true do
-    while i < 1 and chars and c < #chars do
+    while (i < 1 or i > #list) and chars and c < #chars do
       c = c + 1
       head, headed = chars[c], false
       list = (sent and Memory.SentOf or Memory.HistoryOf)(head) or HV.NONE
-      i = #list
+      i = (step > 0) and 1 or #list
     end
-    if i < 1 then break end
+    if i < 1 or i > #list then break end
     local entry = list[i]
     local keep = true
     if query ~= "" then
       keep = Helpers().SearchFinds(HV.SearchText(entry), query)
     end
+    if keep and show then keep = RV.HistoryShows(show, entry, sent) end
     if keep then
       if head and not headed then
         headed = true
@@ -7538,8 +8016,9 @@ function HV.BuildHistoryList(panel, query)
         cols.age = max(cols.age, MeasureWith(panel, sample.ColTime, age) + 2)
       end
     end
-    i = i - 1
+    i = i + step
   end
+  if order == "gold" then RV.SortRuns(out, RV.HistoryByMost) end
   panel._hmatched = chars and (#out - found) or nil
   panel._hchars = chars and found or nil
   return earned, spent
@@ -9731,12 +10210,18 @@ function CT.RefreshMailList(panel)
   -- it reads them.
   local measureOpen = measuring and view ~= VIEW_DONE
   local measureDone = measuring and (view == VIEW_DONE or (RV.Mode() ~= "tab" and not RV.Folded(panel)))
-  -- The order the sort keeps (RV.Sort), its plate painted for it: in the
-  -- expiry order the walk writes each listed mail's days left where the
-  -- comparator reads them (RV.LEFT), and only while the inbox's rows are
-  -- the ones on screen.
+  -- The order the sort keeps (RV.Sort), its plate painted for it: in an
+  -- order other than the box's the walk writes what each listed mail is
+  -- sorted by where the comparator reads it (RV.LEFT, RV.SortKey), and
+  -- only while the inbox's rows are the ones on screen. The Done tab sorts
+  -- by the inbox's order as it can (RV.SortOf).
   if panel.Sort then panel.Sort.Paint() end
-  local left = (measuring and not panel._preview and RV.Sort() == "expiry") and RV.LEFT or nil
+  local order = (measuring and not panel._preview) and RV.SortOf(view == VIEW_DONE and "done" or "inbox") or "mailbox"
+  local left = (order ~= "mailbox") and RV.LEFT or nil
+  -- The filter (RV.ShowOf), a narrowing of the list as the search is:
+  -- what it does not show is not listed, counted or swept. Never on the
+  -- Done tab, whose read mail none of them would show.
+  local show = (view ~= VIEW_DONE) and RV.ShowOf(panel, "inbox") or nil
 
   for index = 1, numItems do
     -- "Read" alone will not do: collecting marks every mail read as a side
@@ -9755,16 +10240,17 @@ function CT.RefreshMailList(panel)
       toCollectCount = toCollectCount + 1
     end
     local listed = not leaving and (not stuckOnly or Mail().StuckReason(index) ~= nil)
-    local money, cod, daysLeft, itemCount, sender
+    local money, cod, daysLeft, itemCount, sender, wasRead
     if listed then
       local _, _, subject
-      _, _, sender, subject, money, cod, daysLeft, itemCount = GetInboxHeaderInfo(index)
+      _, _, sender, subject, money, cod, daysLeft, itemCount, wasRead = GetInboxHeaderInfo(index)
       if query ~= "" then
         listed = Helpers().SearchFinds(RV.SearchHay(index, sender, subject, itemCount), query)
       end
+      if listed and show then listed = RV.Shows(show, money, itemCount, wasRead) end
     end
     if listed then
-      if left then left[index] = tonumber(daysLeft) or 0 end
+      if left then left[index] = RV.SortKey(order, daysLeft, money, sender) end
       -- The verdict travels with the index, so the row binder never repeats the
       -- sixteen-slot scan this walk has already paid for.
       if finished then
@@ -9851,8 +10337,9 @@ function CT.RefreshMailList(panel)
   -- Each group in the sort's order, in place: the mail to collect unless
   -- the Done tab is on screen, and the read mail where it is listed.
   if left then
-    if view ~= VIEW_DONE then table.sort(filtered, RV.ByLeft) end
-    if panel._markAny then table.sort(tail, RV.ByLeft) end
+    local by = RV.SORTERS[order]
+    if view ~= VIEW_DONE then table.sort(filtered, by) end
+    if panel._markAny then table.sort(tail, by) end
   end
   if view == VIEW_DONE then
     Clear(filtered)
@@ -9930,7 +10417,12 @@ function CT.RefreshMailList(panel)
   -- on a mailbox that still holds finished mail would be right and would read as
   -- a lie on the all view, where those mails are on screen.
   local emptyText = L()["EMPTY_LIST_ALL"]
-  if query ~= "" then
+  -- A filter that leaves nothing says so, and offers the way back to
+  -- everything (RV.PaintEmptyClear), so nobody takes their mail for gone.
+  local emptyFilter = listed == 0 and RV.ShowOf(panel, RV.SFList(panel)) ~= nil
+  if emptyFilter then
+    emptyText = L()["SF_EMPTY"]
+  elseif query ~= "" then
     emptyText = L()["EMPTY_LIST_SEARCH"]
   elseif away then
     emptyText = ns.MailMemory.SeenText(panel._avInfo and panel._avInfo.snapshot)
@@ -9945,6 +10437,7 @@ function CT.RefreshMailList(panel)
   end
   panel.Empty:SetText(emptyText)
   panel.Empty:SetShown(listed == 0)
+  RV.PaintEmptyClear(panel, emptyFilter)
 
   UpdateBanner(panel, earned, spent)
   -- The verdicts this walk reached, published before anything renders them: all
@@ -10276,7 +10769,8 @@ local function DeleteAllDone(panel)
   local queue = Mail().BuildDeleteQueue()
   -- Under a search the divider counts the read mail it lists, so Delete
   -- takes exactly those: the dialog must name the number the divider did.
-  if Searching(panel) then
+  -- A filter narrows it the same way (it leaves no read mail listed).
+  if Searching(panel) or RV.Filtering(panel) then
     local shown = {}
     for i = 1, #panel._tail do shown[panel._tail[i]] = true end
     local narrowed = {}
@@ -11143,7 +11637,7 @@ local function StartCategoryRun(panel, category)
   local queue, info
   -- Picked or searched mail, or the stuck filter's: a subset of the box,
   -- where a twin of a queued mail is not the run's to take (Run.Find).
-  local subset = Selecting(panel) or Searching(panel) or StuckOnly(panel)
+  local subset = Selecting(panel) or Searching(panel) or StuckOnly(panel) or RV.Filtering(panel)
   if Selecting(panel) then
     -- The picked rows, and of those only the ones the button names: the
     -- primary takes them all, a category button the picked mail of its
@@ -11157,10 +11651,11 @@ local function StartCategoryRun(panel, category)
     -- each row would be, stuck or not.
     queue, info = Mail().BuildQueueFor(SelectionIndices(panel, order), category, true)
     ClearSelection(panel)
-  elseif Searching(panel) or StuckOnly(panel) then
+  elseif Searching(panel) or StuckOnly(panel) or RV.Filtering(panel) then
     -- The rows on screen, narrowed again by the sweep's own category. The
-    -- stuck filter is a narrowing like a search: the buttons count what it
-    -- shows, so they take what it shows. Its rows are the stuck mails the
+    -- stuck filter and the menu's filter (RV.Filtering) are narrowings
+    -- like a search: the buttons count what they show, so they take what
+    -- they show. The stuck filter's rows are the stuck mails the
     -- player asked to see, so the primary ("Shown") retries them as it
     -- would a selection; the category sweeps still leave them be.
     queue, info = Mail().BuildQueueFor(order or panel._filtered, category,
@@ -12805,7 +13300,7 @@ local function LayoutGrid(panel)
     -- The picks it will take, by the run's own rules (RV.SelectionCounts):
     -- not a C.O.D. one, nor one finished since it was picked.
     primary.caption = L()("CAT_SELECTED", RV.SelectionCounts(panel).all or 0)
-  elseif Searching(panel) or StuckOnly(panel) then
+  elseif Searching(panel) or StuckOnly(panel) or RV.Filtering(panel) then
     primary.caption = L()["CAT_SHOWN"]
   else
     primary.caption = Labels().all or "all"
@@ -14209,6 +14704,9 @@ function SetViewMode(panel, id)
   -- The search finds mail on the inbox and entries on History: into History
   -- or out of it, what was typed was asked of the other list.
   if crossed then AV.ResetSearch(panel) end
+  -- History left: its filters go, so neither half hides anything at the
+  -- next look (RV.ForgetShows).
+  if crossed and id ~= VIEW_HISTORY then RV.ForgetShows(panel, "history") end
 
   RV.ApplyFooter(panel)
 
@@ -15803,6 +16301,14 @@ function CT.Build(parent)
   panel.Empty:SetPoint("RIGHT", panel.MailListArea, "RIGHT", -M.inset * 2, 0)
   panel.Empty:SetJustifyH("LEFT")
   panel.Empty:Hide()
+  -- Under it while a filter has left the list empty: Clear filter, a house
+  -- button over the list's scroll frame (RV.PaintEmptyClear).
+  panel.EmptyClear = T.CreateButton(nil, panel.MailListArea)
+  panel.EmptyClear:SetText(L()["SF_CLEAR"])
+  panel.EmptyClear:SetPoint("TOPLEFT", panel.Empty, "BOTTOMLEFT", 0, -M.gap)
+  panel.EmptyClear:SetFrameLevel(scroll:GetFrameLevel() + 10)
+  panel.EmptyClear:SetScript("OnClick", function() CT.SetShow(panel, RV.SFList(panel), "all") end)
+  panel.EmptyClear:Hide()
 
   BuildDetail(panel)
 

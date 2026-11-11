@@ -1597,17 +1597,31 @@ end
 -- ("memory"), kept as profile.inboxSort and profile.memorySort and stored
 -- only when it is expiry, so nothing stored is the mailbox's. Read once per
 -- refresh through the store's cached path, so no memo.
-local LIST_SORT_KEY = { inbox = "inboxSort", memory = "memorySort" }
+-- The Mail tab's sort-and-filter menu adds two more orders to "inbox":
+-- "gold", the most gold first, and "sender", senders A to Z; and History
+-- keeps one for each half, "history" (Received) and "sent"
+-- (profile.historySort, profile.sentSort): "mailbox" there is the newest
+-- first, "oldest" the oldest first, "gold" the most gold first. Each list
+-- stores only what is not its default; anything else stored reads as the
+-- default.
+local LIST_SORT_KEY = { inbox = "inboxSort", memory = "memorySort", history = "historySort", sent = "sentSort" }
+local LIST_SORTS = {
+  inbox = { expiry = true, gold = true, sender = true },
+  memory = { expiry = true },
+  history = { oldest = true, gold = true },
+  sent = { oldest = true, gold = true },
+}
 function UI.GetListSort(list)
   local key = LIST_SORT_KEY[list]
   local profile = key and ns.Store and ns.Store.Get and ns.Store.Get("profile")
-  return (type(profile) == "table" and profile[key] == "expiry") and "expiry" or "mailbox"
+  local stored = type(profile) == "table" and profile[key] or nil
+  return (stored and LIST_SORTS[list][stored]) and stored or "mailbox"
 end
 function UI.SetListSort(list, order)
   local key = LIST_SORT_KEY[list]
-  if not key or (order ~= "mailbox" and order ~= "expiry") then return end
+  if not key or (order ~= "mailbox" and not LIST_SORTS[list][order]) then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if profile then profile[key] = (order == "expiry") and "expiry" or nil end
+  if profile then profile[key] = (order ~= "mailbox") and order or nil end
 end
 
 -- A mail row's columns: which it shows, and in what order, left to right.

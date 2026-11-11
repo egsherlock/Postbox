@@ -997,11 +997,44 @@ end
 -- on first open; each open fits it to its captions as they measure now and
 -- puts it under the button, over it only where the screen has no room
 -- under it. -> the menu: :Toggle(), :Close(), :IsShown().
+-- A menu of choices (the Mail tab's sort and filter) adds to that: an item
+-- { heading = true, name = } names the group under it, as a select's list
+-- has them, and a heading after the first item has a hairline over it;
+-- opts.checked(id) -> whether that choice is the one in effect, marked with
+-- the select's dot on each open and after each pick; opts.keepOpen, a pick
+-- leaves the menu open with its dots painted again (a menu of two groups is
+-- set twice); opts.alignRight, the menu hangs under the button's right
+-- edge, for a button at its window's right. :Repaint() paints the dots
+-- again while it is open (the choices changed under it).
 function Dropdown.Menu(owner, items, opts)
   opts = type(opts) == "table" and opts or {}
   items = type(items) == "table" and items or {}
   local menu = {}
   local list, rows
+  local checked = type(opts.checked) == "function" and opts.checked or nil
+
+  -- The dots, in the accent's mark tone as the select's are.
+  local function PaintMarks()
+    if not (checked and rows) then return end
+    local r, g, b = 0.90, 0.78, 0.30
+    local themed = ns.Theme
+    if themed and type(themed.GetAccentTone) == "function" then
+      r, g, b = themed.GetAccentTone("mark")
+    elseif themed and type(themed.GetAccent) == "function" then
+      r, g, b = themed.GetAccent()
+    end
+    for i = 1, #rows do
+      local mark = rows[i]._selMark
+      if mark then
+        if checked(rows[i].item.id) then
+          mark:SetColorTexture(r, g, b, 0.9)
+          mark:Show()
+        else
+          mark:Hide()
+        end
+      end
+    end
+  end
 
   local function Build()
     local Theme = Core.UI.Theme
@@ -1029,32 +1062,77 @@ function Dropdown.Menu(owner, items, opts)
     rows = {}
     for i = 1, #items do
       local item = items[i]
-      local row = CreateFrame("Button", nil, list)
-      row:SetHeight(DEFAULT_ROW_HEIGHT)
-      row:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -LIST_PADDING - (i - 1) * DEFAULT_ROW_HEIGHT)
-      row:SetPoint("RIGHT", list, "RIGHT", -LIST_PADDING, 0)
-      local bg = row:CreateTexture(nil, "BACKGROUND")
-      bg:SetAllPoints()
-      bg:SetColorTexture(0, 0, 0, 0)
-      local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-      text:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
-      text:SetWordWrap(false)
-      text:SetText(item.name)
-      if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
-      row.Text, row.item = text, item
-      row:SetScript("OnEnter", function(self)
-        bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4])
-        if opts.onEnter then opts.onEnter(self, self.item) end
-      end)
-      row:SetScript("OnLeave", function(self)
+      -- A heading: the group's name, quiet, at the rows' edge, as a
+      -- select's list draws one (Dropdown.Create); no wash, no click. A
+      -- hairline over it where a group stands above.
+      if item.heading then
+        local head = CreateFrame("Frame", nil, list)
+        head:SetHeight(DEFAULT_ROW_HEIGHT)
+        head:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -LIST_PADDING - (i - 1) * DEFAULT_ROW_HEIGHT)
+        head:SetPoint("RIGHT", list, "RIGHT", -LIST_PADDING, 0)
+        local text = head:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        text:SetPoint("LEFT", head, "LEFT", LIST_PADDING, 0)
+        text:SetWordWrap(false)
+        text:SetText(item.name)
+        if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
+        local themed = ns.Theme
+        if themed and type(themed.SetColor) == "function" then
+          themed.SetColor(text, "textSecondary")
+        else
+          text:SetTextColor(0.6, 0.6, 0.6)
+        end
+        if i > 1 then
+          local rule = head:CreateTexture(nil, "ARTWORK")
+          rule:SetHeight(1)
+          rule:SetPoint("TOPLEFT", head, "TOPLEFT", 0, 0)
+          rule:SetPoint("TOPRIGHT", head, "TOPRIGHT", 0, 0)
+          if themed and type(themed.FillChrome) == "function" then
+            themed.FillChrome(rule, 0.12)
+          else
+            rule:SetColorTexture(1, 1, 1, 0.12)
+          end
+        end
+        -- Measured with the rows (Place): its words from the rows' edge.
+        head.Text, head.item, head._textX = text, item, LIST_PADDING
+        rows[i] = head
+      else
+        local row = CreateFrame("Button", nil, list)
+        row:SetHeight(DEFAULT_ROW_HEIGHT)
+        row:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -LIST_PADDING - (i - 1) * DEFAULT_ROW_HEIGHT)
+        row:SetPoint("RIGHT", list, "RIGHT", -LIST_PADDING, 0)
+        local bg = row:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
         bg:SetColorTexture(0, 0, 0, 0)
-        if opts.onLeave then opts.onLeave(self, self.item) end
-      end)
-      row:SetScript("OnClick", function(self)
-        list:Hide()
-        if opts.onPick then opts.onPick(self.item.id) end
-      end)
-      rows[i] = row
+        local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        text:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
+        text:SetWordWrap(false)
+        text:SetText(item.name)
+        if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
+        row.Text, row.item = text, item
+        -- The choice in effect, where the menu has one: the select's dot, in
+        -- the gutter every row keeps for it.
+        if checked then
+          local mark = row:CreateTexture(nil, "ARTWORK")
+          mark:SetSize(4, 4)
+          mark:SetPoint("LEFT", row, "LEFT", LIST_PADDING + 2, 0)
+          mark:Hide()
+          row._selMark = mark
+        end
+        row:SetScript("OnEnter", function(self)
+          bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4])
+          if opts.onEnter then opts.onEnter(self, self.item) end
+        end)
+        row:SetScript("OnLeave", function(self)
+          bg:SetColorTexture(0, 0, 0, 0)
+          if opts.onLeave then opts.onLeave(self, self.item) end
+        end)
+        row:SetScript("OnClick", function(self)
+          if not opts.keepOpen then list:Hide() end
+          if opts.onPick then opts.onPick(self.item.id) end
+          if opts.keepOpen and list:IsShown() then PaintMarks() end
+        end)
+        rows[i] = row
+      end
     end
     list:SetScript("OnHide", function()
       Watch()
@@ -1088,10 +1166,12 @@ function Dropdown.Menu(owner, items, opts)
       up = below < height and above > below
     end
     list:ClearAllPoints()
+    -- Right edges lined up instead, for a button at its window's right.
+    local side = opts.alignRight and "RIGHT" or "LEFT"
     if up then
-      list:SetPoint("BOTTOMLEFT", owner, "TOPLEFT", 0, LIST_GAP)
+      list:SetPoint("BOTTOM" .. side, owner, "TOP" .. side, 0, LIST_GAP)
     else
-      list:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -LIST_GAP)
+      list:SetPoint("TOP" .. side, owner, "BOTTOM" .. side, 0, -LIST_GAP)
     end
     list:SetFrameLevel(((owner:GetFrameLevel()) or 0) + LIST_LEVEL_OFFSET)
   end
@@ -1113,8 +1193,13 @@ function Dropdown.Menu(owner, items, opts)
     Place()
     list:Show()
     list:Raise()
+    PaintMarks()
     Watch()
     if opts.onOpen then opts.onOpen() end
+  end
+
+  function menu:Repaint()
+    if list and list:IsShown() then PaintMarks() end
   end
 
   return menu
