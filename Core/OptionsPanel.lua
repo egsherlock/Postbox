@@ -875,7 +875,7 @@ end
 -- A dropdown's value cut short in its box (Lib/UI/Dropdown.lua), whole:
 -- over the dropdown's own tooltip of it, beside the panel as the others.
 function Tip.Value(owner)
-  local text = owner.__postboxSelect and owner.__pbOverflowText
+  local text = (owner.__postboxSelect or owner.__pbCaption) and owner.__pbOverflowText
   if not text then return end
   local T = ns.Theme
   T.TipBegin(owner, "ANCHOR_NONE")
@@ -4744,28 +4744,86 @@ do
   local function ChevronEnter(self) ns.Theme.SetColor(self.Chev, "textPrimary") end
   local function ChevronLeave(self) ns.Theme.SetColor(self.Chev, "textDisabled") end
 
+  -- A button row's caption and its icon, in one ink: the caption's
+  -- (textPrimary on the button, as Test mail's switch wears off: Rows.
+  -- PaintLead), grey while the button is off. Both are Postbox's own
+  -- (Rows.Button), painted through Theme.SetColor, so the theme's own
+  -- repaint (a palette, a Mode, a style's looks) takes them together; the
+  -- button's enable and disable paint them here (its OnEnable/OnDisable).
+  -- The pointer on the button changes neither: the button's own hover
+  -- shows it, as on Test mail's switch.
+  function Rows.PaintCaption(btn)
+    local label = btn and btn.Caption
+    if not label then return end
+    local T = ns.Theme
+    local token = btn:IsEnabled() and "textPrimary" or "textDisabled"
+    T.SetColor(label, token, "button")
+    local icon = btn.Icon
+    if not icon then return end
+    if icon.dots then
+      local c = T.Colors[token]
+      Ctx.TintMark(icon, c[1], c[2], c[3], 1)
+    else
+      T.SetColor(icon, token, "button")
+    end
+  end
+
   -- A push button on the right. spec: title, text, caption, onClick
-  -- [, onHover(cell)] [, mark] [, minWidth] [, chevron]: `mark` puts the
-  -- way into arranging's mark before the caption, the two centred as one
-  -- (Rows.Fit sizes the button to both); `minWidth`, the least it is,
-  -- however short its caption; `chevron`, the General tiles' chevron at
-  -- its right end, for a button that opens a window of its own.
+  -- [, onHover(cell)] [, glyph] [, minWidth] [, chevron]: `glyph` (Theme.
+  -- GLYPHS) stands before the caption in its ink, the two centred as one
+  -- (FitButton); `minWidth`, the button's width, the caption cut short in
+  -- it only where it cannot fit, and said whole on hover; `chevron`, the
+  -- General tiles' chevron at its right end, for a button that opens a
+  -- window of its own.
+  -- The caption is a label of Postbox's own over the button, as Test
+  -- mail's words are (Rows.Lead), and the button's own stays empty: the
+  -- client's Button:SetText puts the button's state font back on its
+  -- label, so a caption set again after the skins' pass (the counts the
+  -- openers say, State.Lists) wore whatever that font's colour was, not
+  -- the one its neighbours were painted. A label of our own changes only
+  -- its words (Rows.SetCaption).
+  -- One icon box for every button row, ICON.BOX square, the caption
+  -- ICON.GAP after it; a glyph drawn smaller is centred in it, so the
+  -- captions of three buttons stacked one over another start alike.
+  local ICON = { BOX = 16, GAP = 6 }
+  -- Each glyph at the size that draws its master texel for texel (2 art
+  -- texels a unit): the groups' and the recipients' 16-unit masters, and
+  -- the layout's 14-unit one (its ink 14 by 13, the nearest the two
+  -- beside it read; `layout-small` reads a size lighter, `layout-mini`
+  -- two). Theme.Glyph's size is the glyph's height less its padding.
+  local ICON_SIZE = { layout = 12, groups = 16, recipients = 16 }
+
   function Rows.Button(col, spec)
     local row = Rows.New(col, ROW_H)
     Rows.Cell(col, row, ROW_W, spec.title, spec.text)
-    local btn = ns.Theme.CreateButton(nil, row)
+    local T = ns.Theme
+    local btn = T.CreateButton(nil, row)
     btn:SetHeight(BUTTON_H)
     btn:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
-    btn:SetText(spec.caption)
+    btn:SetText("")
     btn:SetScript("OnClick", spec.onClick)
     Wire(btn, row, true)
     -- On a holder of its own: a skin's button repaint fades the button's
-    -- own textures. The mark drawn for a caption, at the height of the eye
-    -- before Test's (Rows.Lead) and with no keyline, as the eye has none.
-    if spec.mark then btn.Mark = Ctx.Mark(ArtHolder(btn), 7, nil, "layout-mini") end
+    -- own textures. The icon and the caption on it, the icon in the
+    -- caption's ink (Rows.PaintCaption).
+    local art = ArtHolder(btn)
+    if spec.glyph then
+      local icon = Ctx.Mark(art, ICON_SIZE[spec.glyph] or ICON.BOX, "OVERLAY", spec.glyph)
+      if icon then
+        icon.w = math.floor((icon:GetWidth() or ICON.BOX) + 0.5)
+        btn.Icon = icon
+      end
+    end
+    local label = T.CreateText(art, "segment", "OVERLAY")
+    label:SetWordWrap(false)
+    label:SetJustifyH("LEFT")
+    btn.Caption, btn.captionText, btn.__pbCaption = label, spec.caption, true
+    label:SetText(spec.caption)
+    btn:HookScript("OnEnable", Rows.PaintCaption)
+    btn:HookScript("OnDisable", Rows.PaintCaption)
+    Rows.PaintCaption(btn)
     if spec.chevron then
-      local T = ns.Theme
-      local chev = T.Glyph and T.Glyph(ArtHolder(btn), "chevron", 10, "OVERLAY") or nil
+      local chev = T.Glyph and T.Glyph(art, "chevron", 10, "OVERLAY") or nil
       if chev then
         chev.w = math.ceil(chev:GetWidth() or 7)
         chev:SetPoint("RIGHT", btn, "RIGHT", -CHEVRON_R, 0)
@@ -5324,6 +5382,9 @@ do
       SliderLook(cell, on)
     elseif control and control.SetEnabled then
       control:SetEnabled(on)
+      -- A caption of our own goes grey with its button (its OnDisable does
+      -- it too; a button already off fires none).
+      if control.Caption then Rows.PaintCaption(control) end
     end
     local more = cell.more
     if more and more.SetEnabled then more:SetEnabled(on) end
@@ -5377,9 +5438,47 @@ do
   -- a button puts its state's font back on it at every enable and disable,
   -- and a width frozen in one font cut the caption short in another.
   -- Answers the button's width.
+  -- A button row's own button (Rows.Button), its caption a label of our
+  -- own: the icon and the caption centred as one in the room left of the
+  -- chevron, with a button's padding each side. With a least width
+  -- (`minW`, the openers' and Arrange's: the dropdowns' column) that is
+  -- the button's width, and a caption that cannot fit the room it leaves
+  -- is cut short there and said whole on hover (Tip.Value); without one,
+  -- the button is as wide as its contents. Measured in the label's font as
+  -- it is now, on every open and after a font change (Rows.Fit).
+  local function FitCaption(cell, fit)
+    local btn = cell.control
+    local label = btn.Caption
+    fit = fit or BUTTON_FIT
+    local pad = fit.padding / 2
+    local icon, chev = btn.Icon, btn.Chev
+    local lead = icon and (ICON.BOX + ICON.GAP) or 0
+    local tail = chev and (chev.w + CHEVRON_R + CHEVRON_GAP - pad) or 0
+    if tail < 0 then tail = 0 end
+    label:SetText(btn.captionText)
+    local whole = TextW(label)
+    local width = cell.minW
+    if not width or width <= 0 then width = math.max(fit.minWidth, whole + 2 * pad + lead + tail) end
+    width = math.floor(width + 0.5)
+    local room = math.max(1, width - 2 * pad - lead - tail)
+    ns.Theme.FitText(label, room, btn.captionText, btn)
+    local capW = math.min(whole, room)
+    label:SetWidth(math.max(1, capW))
+    if math.abs((btn:GetWidth() or 0) - width) > 0.5 then btn:SetWidth(width) end
+    local x = math.floor(pad + (width - 2 * pad - tail - lead - capW) / 2 + 0.5)
+    if icon then
+      icon:ClearAllPoints()
+      icon:SetPoint("LEFT", btn, "LEFT", x + math.floor((ICON.BOX - icon.w) / 2), 0)
+    end
+    label:ClearAllPoints()
+    label:SetPoint("LEFT", btn, "LEFT", x + lead, 0)
+    return width
+  end
+
   local function FitButton(cell, fit)
     local T = ns.Theme
     local btn = cell.control
+    if btn.Caption then return FitCaption(cell, fit) end
     local width = T.SizeToText(btn, fit or BUTTON_FIT)
     local mark, chev = btn.Mark, btn.Chev
     local lead = mark and (mark.w + 6) or 0
@@ -5408,6 +5507,15 @@ do
     local inner = cell.w - NAME_X - CONTROL_R
     local controlW = FitButton(cell)
     ns.Theme.FitText(cell.Name, inner - controlW - NAME_GAP, cell.nameText, cell)
+  end
+
+  -- A button row's caption says `text` now (Rows.Button): its words, the
+  -- row fitted to them again; nothing where they are the same.
+  function Rows.SetCaption(cell, text)
+    local btn = cell and cell.button
+    if not (btn and btn.Caption) or btn.captionText == text then return end
+    btn.captionText = text
+    Rows.FitButtonRow(cell)
   end
 
   -- A button row's lead lit or not, from its `get` (Rows.Lead): its words,
@@ -6761,17 +6869,14 @@ function State.ArrangeToggle()
 end
 
 -- The arrange button is always live: at a mailbox it arranges the Postbox
--- window, anywhere else that window's preview. Its mark takes the caption's
--- colour, read on every refresh, since the palette can change under the
--- open panel.
+-- window, anywhere else that window's preview. Its icon and caption are
+-- painted together (Rows.PaintCaption), and kept so by the theme's own
+-- repaint; painted again on each open all the same, as a look that keeps
+-- no paint (a host's) has no repaint of its own.
 function State.Arrange(cell)
   cell = cell or S.arrangeCell
   if not cell then return end
-  local btn = cell.button
-  if btn.Mark then
-    local c = ns.Theme.Colors.textPrimary
-    Ctx.TintMark(btn.Mark, c[1], c[2], c[3], 1)
-  end
+  Rows.PaintCaption(cell.button)
 end
 
 -- The characters hidden from the character list (Core/MailMemory.lua, 2b):
@@ -6908,7 +7013,7 @@ function Pages.mail(col)
   local arrange = Rows.Button(col, {
     title = L["OPT_ARRANGE_ROW"],
     text = L["ARRANGE_TIP"] .. "\n\n" .. cards .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"],
-    caption = L["ARRANGE_TITLE"], onClick = Panel.Arrange, onHover = State.Arrange, mark = true,
+    caption = L["ARRANGE_TITLE"], onClick = Panel.Arrange, glyph = "layout",
     minWidth = DD_W,
   })
   arrange.entry.title, arrange.entry.extra = L["OPT_ARRANGE_BUTTON"], "arrange"
@@ -7047,7 +7152,7 @@ function Pages.mail(col)
   -- chevron, since it opens a window.
   S.groupsCell = Rows.Button(col, {
     title = L["GROUPS_TITLE"], text = L["GROUPS_OPT_DESC"], caption = L["OPT_GROUPS_NONE"],
-    onClick = function() Ctx.OpenGroups() end, minWidth = DD_W, chevron = true,
+    onClick = function() Ctx.OpenGroups() end, minWidth = DD_W, chevron = true, glyph = "groups",
   })
 
   Rows.Group(col, L["OPT_COLLECTING_HEADING"])
@@ -7309,7 +7414,7 @@ function Pages.send(col)
   Rows.Group(col, L["OPT_RECIPIENTS_HEADING"])
   S.recipientsCell = Rows.Button(col, {
     title = L["RM_OPT_BUTTON"], text = L["RM_OPT_BUTTON_DESC"], caption = L["OPT_RECIPIENTS_NONE"],
-    onClick = function() Ctx.OpenRecipients() end, minWidth = DD_W, chevron = true,
+    onClick = function() Ctx.OpenRecipients() end, minWidth = DD_W, chevron = true, glyph = "recipients",
   })
 end
 
@@ -7342,15 +7447,8 @@ end
 -- (Panel.SelectTab asks again as it comes up).
 function State.Lists()
   local groups, recipients = State.ListWords(S.tab == "send")
-  local g, r = S.groupsCell, S.recipientsCell
-  if g and g.button:GetText() ~= groups then
-    g.button:SetText(groups)
-    Rows.FitButtonRow(g)
-  end
-  if r and recipients and r.button:GetText() ~= recipients then
-    r.button:SetText(recipients)
-    Rows.FitButtonRow(r)
-  end
+  if S.groupsCell then Rows.SetCaption(S.groupsCell, groups) end
+  if S.recipientsCell and recipients then Rows.SetCaption(S.recipientsCell, recipients) end
 end
 
 -- The Window tab: the style first, since every row under it is that style's,
