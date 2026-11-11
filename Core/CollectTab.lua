@@ -4718,12 +4718,61 @@ function RV.SortAsListed(queue)
 end
 
 -- The room the sort takes at the row's right end, beside the search: the
--- plate and the snug step to it. The search and the sort together are
--- SEARCH_W and this wide, on the Mail tab's every list.
+-- button, as wide as its caption and caret need (RV.SortWidth), and the
+-- snug step to it. The search gives it up as the row needs (LayoutViewToggle),
+-- never past the width its placeholder needs (RV.SearchLeast).
 function RV.SortRoom(panel)
   if not panel.Sort then return 0 end
+  return Th().Metrics.space.snug + RV.SortWidth(panel)
+end
+
+-- The button's width: its word measured in the face it wears now, a pad
+-- before it, the caret's room after it (RV.SF_CARET), set on it only when
+-- it changes. Its word is never cut: the row makes room for it -- unless
+-- even the widest window could not (RV.FitSort), when the button is the
+-- caret alone on a square plate, its name in its tooltip.
+RV.SF_PAD, RV.SF_CARET = 8, 18
+function RV.SortWordWidth(panel)
+  return RV.SF_PAD + ceil(MeasureWith(panel, panel.Sort.Text, L()["SF_BUTTON"])) + RV.SF_CARET
+end
+function RV.SortWidth(panel)
+  local sort = panel.Sort
+  local width = panel._sortCompact and Th().Metrics.segmentHeight or RV.SortWordWidth(panel)
+  if sort._w ~= width then
+    sort._w = width
+    sort:SetWidth(width)
+  end
+  return width
+end
+
+-- The word or the caret alone: the word, unless the row with it -- `total`,
+-- the switch and what stands beside it, a gap, the search at its narrowest,
+-- the button, the picker and another box's name at their narrowest -- would
+-- need a panel wider than the window can be (MailboxUI.MaxPanelWidth): a
+-- long language beside History's switch. The face changes only when that
+-- changes.
+function RV.FitSort(panel, total)
+  local sort = panel.Sort
+  if not sort then return end
   local M = Th().Metrics
-  return M.space.snug + M.segmentHeight
+  local need = total + M.gap + RV.SearchLeast(panel) + M.space.snug + RV.SortWordWidth(panel)
+  if panel.Picker and panel.Picker:IsShown() then need = need + M.space.snug + M.segmentHeight end
+  local alt = panel.ViewToggle and panel.ViewToggle.alt
+  if alt and alt:IsShown() and alt.minW then need = need + M.space.snug + alt.minW end
+  local UI = ns.MailboxUI
+  local cap = UI and type(UI.MaxPanelWidth) == "function" and UI.MaxPanelWidth() or nil
+  local compact = cap ~= nil and ceil(need + 2 * M.inset) > cap
+  if (panel._sortCompact == true) == compact then return end
+  panel._sortCompact = compact
+  sort.Text:SetShown(not compact)
+  if sort.Caret then
+    sort.Caret:ClearAllPoints()
+    if compact then
+      sort.Caret:SetPoint("CENTER", sort, "CENTER", 0, 0)
+    else
+      sort.Caret:SetPoint("CENTER", sort, "RIGHT", -9, 0)
+    end
+  end
 end
 
 -- The sort shown or not (AV.PaintSearch: on every list), and the search
@@ -5381,7 +5430,7 @@ function RV.ShowName(list, show)
 end
 
 -- The menu for a list, made on its first open and kept on the panel: a
--- heading and the orders, then a heading and the filters. Each pick
+-- heading and the orders, then a heading and the filters, then Reset. Each pick
 -- leaves it open with its dots moved, so an order and a filter can be
 -- chosen in one visit to it.
 function RV.SFMenu(panel, list)
@@ -5404,9 +5453,13 @@ function RV.SFMenu(panel, list)
       items[#items + 1] = { id = "show:" .. def.shows[i], name = RV.ShowName(list, def.shows[i]) }
     end
   end
+  -- Last, under a hairline: Reset, as the right-click and the strip's
+  -- Clear do it; grayed while there is nothing to reset.
+  items[#items + 1] = { id = "reset", name = L0["SF_RESET"], rule = true }
   local menu = D.Menu(panel.Sort, items, {
     keepOpen = true,
     alignRight = true,
+    disabled = function(id) return id == "reset" and not RV.SFLit(panel) end,
     checked = function(id)
       local pick = RV.SF_IDS[id]
       if not pick then return false end
@@ -5414,6 +5467,7 @@ function RV.SFMenu(panel, list)
       return (RV.ShowOf(panel, list) or "all") == pick[2]
     end,
     onPick = function(id)
+      if id == "reset" then return RV.ResetAll(panel) end
       local pick = RV.SF_IDS[id]
       if not pick then return end
       if pick[1] == "sort" then CT.SetSort(panel, list, pick[2]) else CT.SetShow(panel, list, pick[2]) end
@@ -5445,48 +5499,121 @@ function RV.SFCloseStale(panel)
   if menu then menu:Close() end
 end
 
--- The button: a square plate wearing the sort glyph at its own size, one
--- grey in every state (textSecondary), as Mail Memory's sort is drawn
--- (MM.NewSortPlate); lit -- selected -- while the list on screen is not at
--- its defaults (RV.SFLit), in colour and in its fill together, so it reads
--- at any window opacity. plate.Paint() paints it for the list on screen,
--- only when that changed, and shuts a menu left from another list.
+-- The button says what it is: the word "Sort" and the house dropdown's
+-- caret after it, on a plate as wide as they need (RV.SortWidth). While the
+-- list on screen is not at its defaults (RV.SFLit) it is drawn in the
+-- house's selected state, as a chosen segment is, and nothing else is
+-- added: the words of what is on stand over the list (RV.PaintStrip).
+-- plate.Paint() paints it and the strip for the list on screen, only what
+-- changed, and shuts a menu left from another list.
 function RV.NewSortButton(panel, size)
   local T = Th()
   local sort = T.CreatePlate(panel, "segment")
   sort:SetSize(size, size)
-  sort:SetText("")
-  sort.Icon = T.Glyph and T.Glyph(sort, "sort", nil, "OVERLAY") or nil
-  if sort.Icon then
-    sort.Icon:SetPoint("CENTER")
-    T.SetPlateGlyph(sort, sort.Icon, function(icon) T.SetColor(icon, "textSecondary") end)
-  else
-    sort:SetText("v")
+  sort:SetText(L()["SF_BUTTON"])
+  sort.Text:ClearAllPoints()
+  sort.Text:SetPoint("LEFT", sort, "LEFT", RV.SF_PAD, 0)
+  -- The caret a select wears (Skin_Postbox), in the caption's ink: it
+  -- brightens and lights with the caption (Theme.SetPlateGlyph).
+  sort.Caret = T.Glyph and T.Glyph(sort, "caret", 5, "OVERLAY") or nil
+  if sort.Caret then
+    sort.Caret:SetPoint("CENTER", sort, "RIGHT", -9, 0)
+    T.SetPlateGlyph(sort, sort.Caret, function(caret) T.SetColor(caret, "textSecondary") end)
   end
   sort:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   sort:SetScript("OnClick", function(self, button)
-    if button == "RightButton" then
-      RV.ResetSF(panel)
-      if GameTooltip:IsOwned(self) then RV.SFTip(panel, self) end
-      local menu = panel._sfOpen and panel._sfMenus and panel._sfMenus[panel._sfOpen]
-      if menu then menu:Repaint() end
-    else
-      RV.OpenSFMenu(panel)
-    end
+    if button == "RightButton" then RV.ResetAll(panel) else RV.OpenSFMenu(panel) end
   end)
   sort:HookScript("OnEnter", function(self) RV.SFTip(panel, self) end)
   sort:HookScript("OnLeave", function() GameTooltip:Hide() end)
   function sort.Paint()
     local on = RV.SFLit(panel)
     if sort.isSelected ~= on then T.SetPlateSelected(sort, on) end
+    RV.PaintStrip(panel, on)
     if panel._sfOpen then RV.SFCloseStale(panel) end
   end
   T.SetPlateSelected(sort, false)
   return sort
 end
 
+-- Every way back to the defaults -- the right-click, the strip's Clear, the
+-- menu's Reset -- is this one: the list on screen newest first and whole
+-- (RV.ResetSF), and the tooltip and an open menu told.
+function RV.ResetAll(panel)
+  RV.ResetSF(panel)
+  if GameTooltip:IsOwned(panel.Sort) then RV.SFTip(panel, panel.Sort) end
+  local menu = panel._sfOpen and panel._sfMenus and panel._sfMenus[panel._sfOpen]
+  if menu then menu:Repaint() end
+end
+
+-- What is in force, in words, between the toolbar and the list: a slim
+-- band (Theme.ApplyBand, the totals' fill, held legible at any window
+-- opacity) with the filter, then the order -- "Unread · Most gold first"
+-- -- and Clear at its right end. Built once with the panel; shown only
+-- while the list is not at its defaults, and then the list starts under
+-- it (its height and a gap) instead of under the toolbar, so at the
+-- defaults the window is as it always was. The list is re-anchored only
+-- when the strip comes or goes, and its words set only when they change.
+RV.STRIP_H = 22
+function RV.BuildStrip(panel)
+  local T = Th()
+  local M = T.Metrics
+  local strip = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+  strip:SetPoint("TOPLEFT", panel.ViewToggle, "BOTTOMLEFT", 0, -M.gap)
+  strip:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
+  strip:SetHeight(RV.STRIP_H)
+  T.ApplyBand(strip)
+  local clear = T.CreateButton(nil, strip)
+  clear:SetText(L()["SF_STRIP_CLEAR"])
+  clear:SetHeight(RV.STRIP_H - 4)
+  clear:SetPoint("RIGHT", strip, "RIGHT", -2, 0)
+  clear:SetScript("OnClick", function() RV.ResetAll(panel) end)
+  strip.Clear = clear
+  local text = T.CreateText(strip, "value")
+  text:SetPoint("LEFT", strip, "LEFT", M.inset, 0)
+  text:SetJustifyH("LEFT")
+  text:SetWordWrap(false)
+  strip.Text = text
+  -- The window resized: the words fitted again to the room.
+  strip:SetScript("OnSizeChanged", function() if panel._stripOn then RV.PaintStrip(panel, true) end end)
+  strip:Hide()
+  panel.SFStrip = strip
+end
+
+function RV.PaintStrip(panel, on)
+  local strip = panel.SFStrip
+  if not strip then return end
+  if on ~= (panel._stripOn == true) then
+    panel._stripOn = on
+    strip:SetShown(on)
+    local area = panel.MailListArea
+    local M = Th().Metrics
+    area:ClearAllPoints()
+    area:SetPoint("TOPLEFT", on and strip or panel.ViewToggle, "BOTTOMLEFT", 0, -M.gap)
+    area:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
+    area:SetPoint("BOTTOM", panel.Footer, "TOP", 0, M.gap)
+  end
+  if not on then return end
+  local list = RV.SFList(panel)
+  local sort, show = RV.SortOf(list), RV.ShowOf(panel, list)
+  local width = strip:GetWidth() or 0
+  if strip._list == list and strip._sort == sort and strip._show == show and strip._width == width then return end
+  strip._list, strip._sort, strip._show, strip._width = list, sort, show, width
+  local L0, T = L(), Th()
+  local words = show and RV.ShowName(list, show) or nil
+  if sort ~= "mailbox" then
+    local said = L0[RV.SF_SORT_KEYS[sort]]
+    words = words and (words .. " \194\183 " .. said) or said
+  end
+  local clear = strip.Clear
+  T.SizeToText(clear, { padding = 2 * T.Metrics.gap + 8, height = RV.STRIP_H - 4 })
+  local room = max(1, width - T.Metrics.inset - (clear:GetWidth() or 0) - 2 - T.Metrics.gap)
+  T.FitText(strip.Text, room, words or "", strip)
+end
+
 -- The list empty through a filter: under its words (panel.Empty), the way
--- back to everything (CT.SetShow "all"), placed and sized only when shown.
+-- back to every mail (CT.SetShow "all": the filter alone; the order stays),
+-- placed and sized only when shown.
 function RV.PaintEmptyClear(panel, on)
   local clear = panel.EmptyClear
   if not clear then return end
@@ -5593,11 +5720,17 @@ local function LayoutViewToggle(panel)
   -- narrowest, is what the row needed before there was a sort.
   local M = T.Metrics
   local row = PanelWidth(panel) - 2 * M.inset
+  -- The Sort button's face for this row: its word, or where no window could
+  -- hold the word the caret alone (RV.FitSort).
+  RV.FitSort(panel, total)
   -- While History's switch stands in the row, the search may give back more
   -- (RV.SearchYield), down to its floor; its natural width is as before.
   local give = panel.SearchWrap and RV.SortRoom(panel) or 0
   local right = panel.SearchWrap and SEARCH_W + give or 0
   give = give + (panel.SearchWrap and RV.SearchYield(panel) or 0)
+  -- Never past what the placeholder needs (RV.SearchLeast): a wider button
+  -- raises the window's floor rather than cutting the search's word.
+  if panel.SearchWrap then give = min(give, max(0, SEARCH_W - RV.SearchLeast(panel))) end
   if panel.Picker and panel.Picker:IsShown() then right = right + M.space.snug + M.segmentHeight end
   local alt = container.alt
   local named = alt and alt:IsShown() and alt.natW
@@ -8247,12 +8380,18 @@ end
 -- longer one stands where it fits (RV.FitPlaceholder).
 function RV.SearchYield(panel)
   if not panel._sidesOn then return 0 end
+  return max(0, SEARCH_W - RV.SearchLeast(panel))
+end
+
+-- The search's narrowest: RV.SEARCH_FLOOR, or its plain placeholder whole
+-- with the box's insets, whichever is wider.
+function RV.SearchLeast(panel)
   local least = RV.SEARCH_FLOOR
   local wrap, placeholder = panel.SearchWrap, panel.SearchPlaceholder
   if wrap and placeholder and wrap.__pbTextChrome then
     least = max(least, ceil(MeasureWith(panel, placeholder, L()["SEARCH_PLACEHOLDER"]) + wrap.__pbTextChrome))
   end
-  return max(0, SEARCH_W - least)
+  return least
 end
 
 -- The search's placeholder: History's own words ("Search History") where
@@ -16205,6 +16344,9 @@ function CT.Build(parent)
   panel.MailListArea:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
   panel.MailListArea:SetPoint("BOTTOM", panel.Footer, "TOP", 0, M.gap)
   T.ApplyList(panel.MailListArea)
+  -- What sort and filter are in force, over the list while any is
+  -- (RV.PaintStrip).
+  RV.BuildStrip(panel)
 
   -- The list runs to the container's inner edge while nothing scrolls, and
   -- stops a gutter short of it only while the bar is there (Theme's slim bar

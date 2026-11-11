@@ -1005,17 +1005,32 @@ end
 -- leaves the menu open with its dots painted again (a menu of two groups is
 -- set twice); opts.alignRight, the menu hangs under the button's right
 -- edge, for a button at its window's right. :Repaint() paints the dots
--- again while it is open (the choices changed under it).
+-- again while it is open (the choices changed under it). An item with
+-- `rule` has a hairline over it; opts.disabled(id) -> a row drawn faint
+-- whose click does nothing, asked with the dots.
 function Dropdown.Menu(owner, items, opts)
   opts = type(opts) == "table" and opts or {}
   items = type(items) == "table" and items or {}
   local menu = {}
   local list, rows
   local checked = type(opts.checked) == "function" and opts.checked or nil
+  local disabled = type(opts.disabled) == "function" and opts.disabled or nil
 
-  -- The dots, in the accent's mark tone as the select's are.
+  -- The dots, in the accent's mark tone as the select's are; and a row its
+  -- owner has set aside for now, faint (as a select's `off` item is).
   local function PaintMarks()
-    if not (checked and rows) then return end
+    if not rows then return end
+    if disabled then
+      for i = 1, #rows do
+        local row = rows[i]
+        if row.item.id ~= nil and not row.item.heading then
+          local off = disabled(row.item.id) and true or false
+          row._off = off
+          row.Text:SetAlpha(off and 0.4 or 1)
+        end
+      end
+    end
+    if not checked then return end
     local r, g, b = 0.90, 0.78, 0.30
     local themed = ns.Theme
     if themed and type(themed.GetAccentTone) == "function" then
@@ -1111,6 +1126,18 @@ function Dropdown.Menu(owner, items, opts)
         row.Text, row.item = text, item
         -- The choice in effect, where the menu has one: the select's dot, in
         -- the gutter every row keeps for it.
+        if item.rule then
+          local rule = row:CreateTexture(nil, "ARTWORK")
+          rule:SetHeight(1)
+          rule:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+          rule:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
+          local themed = ns.Theme
+          if themed and type(themed.FillChrome) == "function" then
+            themed.FillChrome(rule, 0.12)
+          else
+            rule:SetColorTexture(1, 1, 1, 0.12)
+          end
+        end
         if checked then
           local mark = row:CreateTexture(nil, "ARTWORK")
           mark:SetSize(4, 4)
@@ -1119,7 +1146,7 @@ function Dropdown.Menu(owner, items, opts)
           row._selMark = mark
         end
         row:SetScript("OnEnter", function(self)
-          bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4])
+          if not self._off then bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4]) end
           if opts.onEnter then opts.onEnter(self, self.item) end
         end)
         row:SetScript("OnLeave", function(self)
@@ -1127,6 +1154,7 @@ function Dropdown.Menu(owner, items, opts)
           if opts.onLeave then opts.onLeave(self, self.item) end
         end)
         row:SetScript("OnClick", function(self)
+          if self._off then return end
           if not opts.keepOpen then list:Hide() end
           if opts.onPick then opts.onPick(self.item.id) end
           if opts.keepOpen and list:IsShown() then PaintMarks() end
