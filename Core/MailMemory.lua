@@ -3670,15 +3670,12 @@ function Refresh(frame)
   local count = #rows
 
   -- The top row: whose box, and its count, where the Mail tab has Inbox:
-  -- the whole box, as Inbox counts its own, while Show mail counts is on.
+  -- the whole box, as Inbox counts its own (counts always show).
   local who = MM.ClassName(info.realm, info.name, true)
-  local UI = ns.MailboxUI
-  if not UI or type(UI.GetOption) ~= "function" or UI.GetOption("showTabCounts") then
+  do
     local _, warn, _, uncounted = MM.CountFor(info.realm, info.name)
     local tally = MM.MailsText(info.box, uncounted)
     frame.Who:SetText(who .. "  " .. T.Colorize(warn and "warning" or "textSecondary", "(" .. tally .. ")", "solid"))
-  else
-    frame.Who:SetText(who)
   end
   local crest = MM.ClassIcon(info.realm, info.name)
   if crest then frame.Picker.Icon:SetAtlas(crest, false) end

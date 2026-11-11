@@ -1276,9 +1276,16 @@ local function ShowTabCounts()
   local UI = ns.MailboxUI
   -- Default on when the option plumbing has not loaded yet.
   if not UI or type(UI.GetOption) ~= "function" then return true end
-  -- The preview window (MailboxUI, 5c) has no inbox to count.
-  if UI._state and UI._state.preview then return false end
-  return UI.GetOption("showTabCounts") and true or false
+  -- The preview window (MailboxUI, 5c) has no inbox to count: only Test
+  -- mail's samples, while they are listed (CT.InboxCounts).
+  if UI._state and UI._state.preview then
+    local frame = UI._frame
+    local panel = frame and frame.Tabs and frame.Tabs.collect
+    return panel ~= nil and panel._preview == true
+  end
+  -- Counts always show: the switch that hid them is retired, and a value
+  -- saved for it is not read.
+  return true
 end
 
 -- The third segment. Collect and Done are the two halves of the inbox and
@@ -1532,8 +1539,13 @@ local function WalkCounts()
   RecordCounts(total - done - gone, done, total, server, gone)
 end
 
--- -> toCollect, done, total (listed), server (in the mailbox).
+-- -> toCollect, done, total (listed), server (in the mailbox). While Test
+-- mail lists its samples in the inbox's place, the samples' (RV.PreviewList
+-- records them as `counts.pv`; CT.SetSamples lets them go): what is on
+-- screen is what is counted. Nothing that collects reads these.
 function CT.InboxCounts()
+  local pv = counts.pv
+  if pv then return pv.toCollect, pv.done, pv.total, pv.total end
   if not counts.known then WalkCounts() end
   return counts.toCollect, counts.done, counts.total, counts.server
 end
@@ -7105,7 +7117,7 @@ do
     end
     -- From one of the player's own characters: gold, read but not taken.
     Add(out, { kind = "other", sender = alt, subject = L0["PREVIEW_GIFT"], money = Gold(500),
-      days = Days(20.5, 22), read = true, icon = LETTER_ICON })
+      days = Days(20.5, 22), read = true, icon = LETTER_ICON, me = true })
     -- And their materials: many slots.
     local pool = {}
     for k = 1, 3 do
@@ -7116,7 +7128,7 @@ do
       local slots = {}
       for k = 1, 8 do slots[k] = Slot(pool[((k - 1) % #pool) + 1], 20 * Rand(10)) end
       Add(out, { kind = "other", sender = alt, subject = pool[1].name, days = Days(25.5, 27),
-        read = false, items = slots })
+        read = false, items = slots, me = true })
     end
     -- A letter with nothing attached: no gold, no slots.
     Add(out, { kind = "other", sender = Name(2), subject = L0["PREVIEW_LETTER"], days = Days(11, 13.5),
@@ -7256,9 +7268,27 @@ do
     -- gone, deleted the moment it was finished with, so the samples' read
     -- mail is not listed at all and the list has no divider.
     local deleted = RV.Mode() == "delete"
+    -- What the samples count, in the walk's own places, so Inbox, All mail
+    -- and the category buttons count what is listed (CT.InboxCounts,
+    -- RV.GridCount): the box whole, and each sweep what it would take of the
+    -- listed samples -- never a C.O.D., nothing finished; from alts and
+    -- Other splitting the players' mail. Nothing here collects: the sweeps
+    -- still refuse while samples stand (CT.SetSamples).
+    local box = panel._pvCounts
+    if not box then
+      box = {}
+      panel._pvCounts = box
+    end
+    box.toCollect, box.done, box.total = 0, 0, 0
+    local cat = panel._catCounts
+    for key in pairs(cat) do cat[key] = nil end
     for i = 1, #mails do
       local m = mails[i]
       local finished = m.done == true
+      if not (finished and deleted) then
+        box.total = box.total + 1
+        if finished then box.done = box.done + 1 else box.toCollect = box.toCollect + 1 end
+      end
       -- Delete when done: not listed, so nothing of it is drawn, measured
       -- or totalled.
       if not (finished and deleted) and (not show or RV.Shows(show, m.money, #m.items, m.read)) then
@@ -7272,6 +7302,15 @@ do
         local hasCOD = m.cod > 0
         if m.kind == "bought" then spent = spent + (m.price or m.money) else earned = earned + m.money end
         if hasCOD and not finished then panel._codDue = panel._codDue + m.cod end
+        if not finished and not hasCOD then
+          cat.all = (cat.all or 0) + 1
+          if m.me then
+            cat.alts = (cat.alts or 0) + 1
+            if m.kind ~= "other" then cat[m.kind] = (cat[m.kind] or 0) + 1 end
+          else
+            cat[m.kind] = (cat[m.kind] or 0) + 1
+          end
+        end
         if cols.sender < senderCap then
           local label = AUCTION_OUTCOME[m.kind] and L()[AUCTION_OUTCOME[m.kind].key] or DisplaySender(m.sender)
           cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), senderCap)
@@ -7324,6 +7363,7 @@ do
       end
     end
     if slotsMost > 0 then cols.slots = RV.SlotsWidth(panel, sample.ColSlots, slotsMost) end
+    counts.pv = box
     return earned, spent
   end
 end
@@ -13306,6 +13346,9 @@ function RV.GridCount(panel, id)
     return n
   end
   local spec = panel._gridSpecs[id]
+  -- Test mail's samples are what is listed: a group's button counts none of
+  -- them (RV.PreviewList counts the built-in sweeps').
+  if spec and panel._preview then return 0 end
   if spec then
     if type(spec.count) ~= "function" then return 0 end
     local ok, n = pcall(spec.count, panel)
@@ -15003,6 +15046,8 @@ function CT.SetSamples(panel, on, quiet)
   end
   panel._preview = nil
   panel._pvList, panel._pvDone, panel._pvTail = nil, nil, nil
+  -- The inbox's own counts again (CT.InboxCounts).
+  counts.pv = nil
   -- A fan out over a sample goes with the samples.
   RV.FanClose(true)
   CT.PreviewRelease()

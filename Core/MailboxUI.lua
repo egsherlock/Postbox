@@ -1157,16 +1157,16 @@ end
 
 -- Whether the bar shows the number of finished mail after its words
 -- (profile.dividerCount), a switch of its own. Until it is first read it
--- followed Show mail counts, so the first read takes that switch's value
--- and stores it: nobody's bar changes. Nothing stored (a new profile, or
--- one Reset to defaults cleared) reads as Show mail counts says then.
+-- followed Show mail counts, which is retired: counts always show, so
+-- nothing stored (a new profile, or one Reset to defaults cleared) reads as
+-- on, and is stored so.
 function UI.GetBarCount()
   local memo = Settings()
   if memo.barCount ~= nil then return memo.barCount end
   local profile = DividerProfile()
   local stored = profile and profile.dividerCount
   if stored == nil then
-    stored = UI.GetOption("showTabCounts") and true or false
+    stored = true
     if profile then profile.dividerCount = stored end
   end
   memo.barCount = stored == true
@@ -5078,7 +5078,7 @@ function UI.DiagnoseOptions()
   Named("readMail", UI.GetReadMode(), "fold")
   Named("dividerLook", UI.GetDividerLook(), "notch")
   Named("dividerWords", UI.GetDividerWords(), "read")
-  Named("dividerCount", UI.GetBarCount() and "on" or "off", UI.GetOption("showTabCounts") and "on" or "off")
+  Named("dividerCount", UI.GetBarCount() and "on" or "off", "on")
   Named("dividerText", UI.GetDividerTextShown(), "")
   Named("dividerIcon", UI.GetDividerIcon(), "none")
   Named("dividerColor", UI.GetDividerColor(), "neutral")
