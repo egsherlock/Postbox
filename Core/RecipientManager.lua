@@ -1158,7 +1158,10 @@ local function BuildRow(parent)
     local entry = row._entry
     Theme.TipBegin(self, "ANCHOR_RIGHT")
     Theme.TipTitle(L["CONTACT_FAVORITES"])
-    Theme.TipLine(entry and entry.fav and L["RM_TIP_FAV_ON"] or L["RM_TIP_FAV_OFF"])
+    local fav = entry and entry.fav
+    Theme.TipLine(fav and L["RM_TIP_FAV_ON"] or L["RM_TIP_FAV_OFF"])
+    -- What the click does, last, in the house's hint line.
+    Theme.TipHint(fav and L["RM_HINT_FAV_ON"] or L["RM_HINT_FAV_OFF"])
     GameTooltip:Show()
   end)
   row.Fav:SetScript("OnLeave", function() GameTooltip:Hide() end)

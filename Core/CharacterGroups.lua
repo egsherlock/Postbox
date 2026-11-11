@@ -979,6 +979,7 @@ local function GroupRow(frame, i)
     if self.Glyph then T.SetColor(self.Glyph, "textSecondary") end
     T.TipBegin(self, "ANCHOR_RIGHT")
     T.TipTitle(L["GROUPS_HIDDEN_TIP"])
+    T.TipHint(L["GROUPS_HIDDEN_HINT"])
     GameTooltip:Show()
   end)
   eye:SetScript("OnLeave", function(self)
