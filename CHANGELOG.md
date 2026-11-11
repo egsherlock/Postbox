@@ -53,9 +53,22 @@
 - **Test mail ends with what turned it on:** from the options it stays until
   you close them; from the Arrange card it ends when you finish. It is
   called Test mail everywhere now, the window's title included.
-- **A row's settings are on its columns:** Stack counts, Quality on item
-  icons and Expiry marks are checkboxes on their column's card in Arrange,
-  the same settings as in the options.
+- **The options are shorter and in order:** every tab keeps one height, the
+  bar's rarer settings and the minimap marker's looks wait behind a **More**
+  line, Keep History for sits on General beside Remember mailboxes, and
+  Character Groups and Manage Recipients each have a row that says how many
+  there are.
+- **A row's settings are on its columns:** Stack counts, the quality marks
+  and Expiry marks are checkboxes on their column's card in Arrange, and
+  live there now instead of in the options.
+- **Test mail has a switch of its own** over the Preview in the options, and
+  while it is on, Inbox and the collect buttons count the sample mail.
+- **Pick the minimap icon from a gallery** of the icons themselves.
+- **Mail counts always show:** the Show mail counts setting is gone, so if
+  you had turned them off they are back.
+- **Color choices show a round dot,** not a square that looked like a
+  checkbox.
+- A first install no longer opens What's new by itself.
 - **Group buttons stay where you put them:** reordering the Character Groups
   list no longer moves their buttons; order those in Arrange.
 - **New installs start with fewer category buttons:** All bought, All sold

@@ -90,7 +90,8 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   what's left is the bottom of the list.
 - **Time left** turns amber under three days (one for C.O.D.). On a mail that
   still holds something, a curved arrow in front says it goes back to its
-  sender, a bin that it is deleted (**Expiry marks** turns them off); the
+  sender, a bin that it is deleted (**Expiry marks**, on the Time left card
+  in Arrange, turns them off); the
   tooltip's **On expiry:** line says the same.
 - **Largest stack first:** a mail holding several stacks of an item you can
   only carry so many of gives you the largest first.
@@ -185,8 +186,8 @@ too):
 
 One-line rows (shared with Mail Memory), Larger mail rows and History each
 keep their own arrangement. **Test mail** fills the list with sample mail
-while you arrange, or on its own from **Test**, beside **Arrange** in
-Options, Mail tab, which is lit while it is on. The samples show what your
+while you arrange, or on its own from the **Test mail** switch over the
+Preview in the options, which is lit while it is on. The samples show what your
 settings do: under **Delete when done** there is no read mail and no
 bar, and resting on an item icon lists its items or fans them out, as
 **Attachments on hover** is set, though nothing can be taken. **Arrange**
