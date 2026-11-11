@@ -1416,8 +1416,7 @@ do
     T.FillChrome(right, TILE_RING_A)
 
     -- The glyph where this build has it, centred where the art stands.
-    local mark = glyph and T.GLYPHS and T.GLYPHS[glyph] and type(T.Glyph) == "function"
-      and T.Glyph(holder, glyph, TILE_GLYPH, "ARTWORK") or nil
+    local mark = glyph and type(T.Glyph) == "function" and T.Glyph(holder, glyph, TILE_GLYPH, "ARTWORK") or nil
     if mark then
       mark:SetPoint("CENTER", tile, "LEFT", 8 + 16, 0)
       tile.glyph = true
@@ -1460,12 +1459,20 @@ do
     return tile
   end
 
-  -- The tile's accent as it is now: its glyph in the accent (the disabled
-  -- grey while its list is off, `tile.off`), or its art's glow.
+  -- The tile's accent as it is now: its glyph in the accent's icon tone
+  -- (Theme.TintAccentGlyph, which also repaints it whenever the accent, the
+  -- host's look or the palette moves), the disabled grey while its list is
+  -- off (`tile.off`); or its art's glow.
   function Ctx.TintTile(tile)
     local T = ns.Theme
     if tile.glyph then
-      T.SetColor(tile.Mark, tile.off and "textDisabled" or "accent")
+      if tile.off then
+        T.SetColor(tile.Mark, "textDisabled")
+      elseif type(T.TintAccentGlyph) == "function" then
+        T.TintAccentGlyph(tile.Mark)
+      else
+        T.SetColor(tile.Mark, "accent")
+      end
     else
       tile.Glow:SetVertexColor(T.GetAccent())
     end
@@ -10089,14 +10096,6 @@ function Panel.RefreshControls()
   Layout()
   Ctx.Paint(S.tab)
   Insp.Repaint()
-end
-
--- The accent moved (Theme.RepaintAccentIcons, as for the addon's other
--- accent-tinted icons): the General tiles' glyphs take it at once, shown
--- or not. A handful of texture tints; nothing is made.
-function Panel.RepaintAccents()
-  local tiles = S.tiles
-  for i = 1, #tiles do Ctx.TintTile(tiles[i]) end
 end
 
 -- Arrange columns and buttons: the arrange mode on the Postbox window, the
