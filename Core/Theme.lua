@@ -5140,6 +5140,11 @@ Theme.AtlasSets = {
 --     one pixel for pixel. Accent-tinted where Theme.TintAccentGlyph keeps
 --     one in the icon tone.
 --   search  a magnifier, 12 units: the options' search box.
+--   eye, eye-off  an almond with a ring round its pupil, 12 by 8, and the
+--     same eye with a one-unit slash from top left to bottom right and a
+--     unit of clear moat either side of it: a thing shown and a thing
+--     hidden (the arrange mode's switches and chips, its cards and pegs,
+--     Character Groups' hidden buttons).
 --   people  a group of figures, 12 units: the search box's every-character
 --     toggle (Theme.CreateSearchBox).
 --   link, link-broken  a chain link, two capsules, 15 by 8 units, and the
@@ -5171,7 +5176,7 @@ do
     ["layout-small"] = { file = MEDIA .. "glyph-layout-small.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875, pad = 1 },
     check = { file = MEDIA .. "glyph-check.tga", w = 8, h = 8, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125 },
     eye = { file = MEDIA .. "glyph-eye.tga", w = 12, h = 8, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.5625, px = true },
-    ["eye-off"] = { file = MEDIA .. "glyph-eye-off.tga", w = 12, h = 8, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.53125 },
+    ["eye-off"] = { file = MEDIA .. "glyph-eye-off.tga", w = 12, h = 8, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.5625, px = true },
     slot = { file = MEDIA .. "glyph-slot.tga", w = 12, h = 11, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.71875 },
     ["arrow-left"] = { file = MEDIA .. "glyph-arrow-left.tga", w = 6, h = 8, l = 0.0625, r = 0.8125, t = 0.03125, b = 0.53125 },
     ["arrow-right"] = { file = MEDIA .. "glyph-arrow-right.tga", w = 6, h = 8, l = 0.0625, r = 0.8125, t = 0.03125, b = 0.53125 },
