@@ -1844,10 +1844,24 @@ function ST.SendKeys()
   return keys
 end
 
--- The hint on the Send button, made with it.
+-- The hint on the Send button, made with it: a quiet reminder, so a step
+-- under the caption. The house's smallest face, as the options' version
+-- text has it (the game's tiny font, in its host copy: floored at 10, the
+-- Text size and the host's typeface follow it in place, Theme.CheckHostFonts),
+-- and a client without that object keeps the role's. The disabled grey only
+-- where the look holds every ink to its ground (Theme section 2c: 4.5:1 on
+-- the button at any opacity, 5:1 in Light); elsewhere the button may be the
+-- game's red art, which that grey is not proved against, so it keeps the
+-- secondary grey (set after the font, which carries a colour of its own).
+-- Centred on the button's middle, as the caption is: the two
+-- lines' boxes share a centre.
 function ST.BuildSendHint(button)
   local hint = Theme.CreateText(button, "secondary")
   if not hint then return end
+  local tiny = _G.GameFontWhiteTiny
+  if tiny then hint:SetFontObject(Theme.HostFont(tiny)) end
+  local grounds = Theme._Grounds
+  Theme.SetColor(hint, (grounds and grounds.on) and "textDisabled" or "textSecondary")
   hint:SetPoint("RIGHT", button, "RIGHT", -ST.HINT.PAD, 0)
   hint:SetJustifyH("RIGHT")
   hint:SetWordWrap(false)
