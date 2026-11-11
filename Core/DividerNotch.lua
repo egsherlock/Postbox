@@ -93,6 +93,9 @@ DN.FADE_K = 4
 -- Neutral is the ground itself. Measured on renders: the rows' words in
 -- the room keep about half their contrast with their row.
 DN.SHADE = { a = 0.7, up = 16, mix = 0.6 }
+-- Off the pixel grid, how far before the pixel it rounds to a string's left
+-- is held, in pixels (CollectTab's RV.HOLD_OFF, for its line's top).
+DN.HOLD = 0.49
 
 local function Parts() return ns.CollectTab and ns.CollectTab.BarParts end
 local function Th() return ns.Theme end
@@ -287,44 +290,60 @@ end
 -- the corners where the corners leave room for them (a unit of each at
 -- rest on an island of odd height), the corners a radius wide. No piece
 -- overlaps another but a corner's fill on its ring.
+--
+-- `R` and `h` are screen pixels, and so is every inset and hairline here
+-- (`o` units each, the copy's `__one`): a unit at 100% on a pixel-perfect
+-- scale, so the ring is one pixel thick at every window and UI scale.
 local function Round(f, R, h)
   local P, shape = f.Isle, f.Shape
+  local o = f.__one or 1
   local a = (R >= 1) and R or 1
   local mid = P.mid
-  mid:SetPoint("TOPLEFT", shape, "TOPLEFT", a, -1)
-  mid:SetPoint("BOTTOMRIGHT", shape, "BOTTOMRIGHT", -a, 1)
+  mid:SetPoint("TOPLEFT", shape, "TOPLEFT", a * o, -o)
+  mid:SetPoint("BOTTOMRIGHT", shape, "BOTTOMRIGHT", -a * o, o)
   local top, bot = P.top, P.bot
-  top:SetPoint("TOPLEFT", shape, "TOPLEFT", R, 0)
-  top:SetPoint("TOPRIGHT", shape, "TOPRIGHT", -R, 0)
-  bot:SetPoint("BOTTOMLEFT", shape, "BOTTOMLEFT", R, 0)
-  bot:SetPoint("BOTTOMRIGHT", shape, "BOTTOMRIGHT", -R, 0)
+  top:SetPoint("TOPLEFT", shape, "TOPLEFT", R * o, 0)
+  top:SetPoint("TOPRIGHT", shape, "TOPRIGHT", -R * o, 0)
+  bot:SetPoint("BOTTOMLEFT", shape, "BOTTOMLEFT", R * o, 0)
+  bot:SetPoint("BOTTOMRIGHT", shape, "BOTTOMRIGHT", -R * o, 0)
   local sides = h - 2 * a > 0
   local l, r = P.edgeL, P.edgeR
   On(l, sides)
   On(r, sides)
   if sides then
-    l:SetPoint("TOPLEFT", shape, "TOPLEFT", 0, -a)
-    l:SetPoint("BOTTOMLEFT", shape, "BOTTOMLEFT", 0, a)
-    r:SetPoint("TOPRIGHT", shape, "TOPRIGHT", 0, -a)
-    r:SetPoint("BOTTOMRIGHT", shape, "BOTTOMRIGHT", 0, a)
+    l:SetPoint("TOPLEFT", shape, "TOPLEFT", 0, -a * o)
+    l:SetPoint("BOTTOMLEFT", shape, "BOTTOMLEFT", 0, a * o)
+    r:SetPoint("TOPRIGHT", shape, "TOPRIGHT", 0, -a * o)
+    r:SetPoint("BOTTOMRIGHT", shape, "BOTTOMRIGHT", 0, a * o)
   end
   local strips = R > 1 and h - 2 * R > 0
   local sl, sr = P.side[1], P.side[2]
   On(sl, strips)
   On(sr, strips)
   if strips then
-    sl:SetPoint("TOPLEFT", shape, "TOPLEFT", 1, -R)
-    sl:SetPoint("BOTTOMRIGHT", shape, "BOTTOMLEFT", R, R)
-    sr:SetPoint("TOPLEFT", shape, "TOPRIGHT", -R, -R)
-    sr:SetPoint("BOTTOMRIGHT", shape, "BOTTOMRIGHT", -1, R)
+    sl:SetPoint("TOPLEFT", shape, "TOPLEFT", o, -R * o)
+    sl:SetPoint("BOTTOMRIGHT", shape, "BOTTOMLEFT", R * o, R * o)
+    sr:SetPoint("TOPLEFT", shape, "TOPRIGHT", -R * o, -R * o)
+    sr:SetPoint("BOTTOMRIGHT", shape, "BOTTOMRIGHT", -o, R * o)
+  end
+  -- The hairlines' thickness and the corners' fill insets, where the scale
+  -- moved (DN.Skin set them for a unit).
+  if f.__ro ~= o then
+    f.__ro = o
+    top:SetHeight(o)
+    bot:SetHeight(o)
+    l:SetWidth(o)
+    r:SetWidth(o)
+    local Q = DN.QUARTER
+    for i = 1, 4 do P.fill[i]:SetPoint(Q[i], shape, Q[i], Q.dx[i] * o, Q.dy[i] * o) end
   end
   local ring, fill = R > 0, R > 1
   for i = 1, 4 do
     local ri, fi = P.ring[i], P.fill[i]
     On(ri, ring)
     On(fi, fill)
-    if ring then ri:SetSize(R, R) end
-    if fill then fi:SetSize(R - 1, R - 1) end
+    if ring then ri:SetSize(R * o, R * o) end
+    if fill then fi:SetSize((R - 1) * o, (R - 1) * o) end
   end
 end
 
@@ -530,22 +549,27 @@ function DN.Fit(f, W)
   f.__lead, f.__tail, f.__tabW, f.__barW = lead, tail, tabW, barW
   local chip = math.ceil(lead + (tabW or wordsW) + tail) + 2 * pad
   f.__chipW = chip
-  f.__s0 = max(0, floor((W - chip) / 2))
+  -- From here in screen pixels (`__k` to a unit, RV.PxSet; the same numbers
+  -- as units at 100% on a pixel-perfect scale): the side inset, the height,
+  -- its trims and the reveal.
+  local k = f.__k or 1
+  f.__s0 = max(0, floor((W - chip) * k / 2))
   f.__W2 = W
   f.__s = nil
   -- The island's height takes the capitals' parity (RV.Lifts, `__capT` and
-  -- `__capB`): where the room over them and under them differ by a unit, the
-  -- island is a unit shorter on the side with more, so the two are equal.
-  -- The bar keeps its whole height (DN.Shape).
-  local band = f.__isleBand or 22
+  -- `__capB`): where the room over them and under them differ by a pixel,
+  -- the island is a pixel shorter on the side with more, so the two are
+  -- equal. The bar keeps its whole height (DN.Shape), `__hb` whole pixels.
+  local band = floor((f.__isleBand or 22) * k + 0.5)
+  f.__hb = band
   local capT, capB = f.__capT, f.__capB
   local over, under = capT and capT or 0, capB and (band - capB) or 0
   f.__vT = (capT and over > under) and (over - under) or 0
   f.__vB = (capT and under > over) and (under - over) or 0
   -- The fold sign's art is 24 of its canvas's 32 at its longest; Delete
   -- all's words end the row's inset from the right.
-  local signL = floor((f.__signX or 0) - (f.__canvas or 12) * 12 / 32)
-  f.__reveal = max(0, min(signL, M.inset))
+  local signL = (f.__signX or 0) - (f.__canvas or 12) * 12 / 32
+  f.__reveal = max(0, floor(min(signL, M.inset) * k + 1e-6))
   f.__late = nil
   DN.Place(f, f.__wide or false, true)
 end
@@ -570,42 +594,58 @@ function DN.Place(f, wide, again)
   f.__placed = cut
   local wordsW, iconW = f.__wordsW or 0, f.__iconW or 0
   local lead = f.__lead or 0
+  -- In screen pixels from the copy's left (`__k` to a unit): the list's
+  -- width, and the middle its shape is drawn about. The shape's edges stand
+  -- whole pixels in from the list's, so where the list is a fraction of a
+  -- pixel wide it shows a pixel wider on some columns than on others, and
+  -- the letters aim at the middle of the two.
+  local k = f.__k or 1
+  local Wp = (f.__W2 or 0) * k
+  local n = floor(Wp + 1e-6)
+  local mid = (k == 1 or Wp - n < 1e-6) and (Wp / 2) or (n / 2 + 0.25)
+  -- The icon's room before the words, on whole pixels off the grid.
+  local leadP = (iconW > 0) and ((k == 1) and lead or floor(lead * k + 0.5)) or 0
   local x
   local off = 0
   local runL, runR = f.__runL, f.__runR
-  local mid = (f.__W2 or 0) / 2
   if not cut and runL then
     -- Where the client lays the letters out in their string (RV.Span): from
     -- the icon, or from the first letter, to the last, on the middle.
-    local lo = (iconW > 0) and 0 or (lead + runL)
-    local at = mid - (lo + lead + runR) / 2
+    local lo = (iconW > 0) and 0 or (leadP + runL * k)
+    local at = mid - (lo + leadP + runR * k) / 2
     x = floor(at + 0.5)
     off = x - at
   else
-    x = B.CentreAt(mid, lead + (cut or wordsW) + (f.__tail or 0), f.__shadowX)
+    x = floor(mid - (lead + (cut or wordsW) + (f.__tail or 0)) * k / 2 + (f.__shadowX or 0) * k / 2 + 0.5)
   end
-  -- Whole units leave the letters up to half a unit off the list's middle
+  -- Whole pixels leave the letters up to half a pixel off the list's middle
   -- (`off`, where the client said where they are); the island, standing
-  -- clear of the list's edges, takes their span's parity instead: a unit
+  -- clear of the list's edges, takes their span's parity instead: a pixel
   -- narrower on the side they lean away from, where that brings its middle
   -- nearer theirs. The bar keeps its width.
   local s0 = f.__s0 or 0
   f.__tL = (s0 > 0 and off > 0.25) and 1 or 0
   f.__tR = (s0 > 0 and off < -0.25) and 1 or 0
+  local o = f.__one or 1
   if iconW > 0 then
     mark:ClearAllPoints()
-    mark:SetPoint("LEFT", inner, "LEFT", x, f.__iconUp or 0)
-    x = x + iconW + B.checkGap
+    mark:SetPoint("LEFT", inner, "LEFT", x * o, f.__iconUp or 0)
+    x = x + leadP
   end
+  -- Off the pixel grid, the words' string is held just under half a pixel
+  -- before the pixel it rounds to, as its line's top is (RV.HOLD), so its
+  -- letters keep their columns against the shape wherever the list stands
+  -- within a pixel; on it, they stand on the whole pixel itself.
+  local hold = (k ~= 1) and DN.HOLD or 0
   local lift = f.__lift or 0
   if wordsW > 0 then
     label:ClearAllPoints()
-    label:SetPoint("LEFT", inner, "LEFT", x, lift)
+    label:SetPoint("LEFT", inner, "LEFT", (x - hold) * o, lift)
     count:ClearAllPoints()
     count:SetPoint("LEFT", label, "RIGHT", f.__gap or B.gap, 0)
   else
     count:ClearAllPoints()
-    count:SetPoint("LEFT", inner, "LEFT", x, lift)
+    count:SetPoint("LEFT", inner, "LEFT", (x - hold) * o, lift)
   end
 end
 
@@ -707,18 +747,23 @@ function DN.Shape(f, e, yo)
   local sR = floor((s0 + (f.__tR or 0)) * u + 0.5)
   local vT = floor((f.__vT or 0) * u + 0.5)
   local vB = floor((f.__vB or 0) * u + 0.5)
-  if f.__s ~= s or f.__sR ~= sR or f.__vt ~= vT or f.__vb ~= vB or f.__yo ~= yo then
+  -- The edges in screen pixels (`__one` units each): the sides in from the
+  -- list's, the top and the foot whole pixels under the copy's top, so the
+  -- island is the same whole pixels tall wherever it stands within a pixel.
+  local o = f.__one or 1
+  local hb = f.__hb or (f.__isleBand or 22)
+  if f.__s ~= s or f.__sR ~= sR or f.__vt ~= vT or f.__vb ~= vB or f.__yo ~= yo or f.__shb ~= hb then
     local shape = f.Shape
-    shape:SetPoint("TOPLEFT", f, "TOPLEFT", s, -yo - vT)
-    shape:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -sR, -yo + vB)
+    shape:SetPoint("TOPLEFT", f, "TOPLEFT", s * o, -yo - vT * o)
+    shape:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", -sR * o, -yo - (hb - vB) * o)
     if f.__yo ~= yo then
       local inner = f.Inner
       inner:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -yo)
       inner:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, -yo)
     end
-    f.__s, f.__sR, f.__vt, f.__vb, f.__yo = s, sR, vT, vB, yo
+    f.__s, f.__sR, f.__vt, f.__vb, f.__yo, f.__shb = s, sR, vT, vB, yo, hb
   end
-  local h = (f.__isleBand or 22) - vT - vB
+  local h = hb - vT - vB
   local r0 = floor(h / 2)
   local near = (s < sR) and s or sR
   local R = (near < r0) and near or r0

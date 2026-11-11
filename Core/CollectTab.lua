@@ -9370,6 +9370,10 @@ RV.FACES = {
 }
 RV.FACE_COMMON = { 0.93, 0.21, 0.70, -0.20, 0.72, 0.12 }
 RV.HOLD = 0.45
+-- Off the pixel grid (another window or UI scale), where the bar stands at
+-- any fraction of a pixel as it scrolls, the hold in pixels: the string keeps
+-- its row however far within a pixel the bar stands but the last hundredth.
+RV.HOLD_OFF = 0.49
 -- The faces by path, as each was first looked up: a handful of paths.
 RV.FACE_AT = {}
 
@@ -9405,17 +9409,87 @@ end
 -- that holds the line's top just under half a unit before the pixel it
 -- rounds to (RV.HOLD); then where the baseline stands, from the bar's top,
 -- and the capitals' rows over it and under it.
-function RV.InkLift(face, size, H, dy)
-  local _, base0 = RV.LineAt(face, size, H, 0)
+--
+-- In screen pixels (`k` of them to a unit, RV.PxOf; 1 at 100% on a
+-- pixel-perfect UI scale, where this is exactly the rule in units): the
+-- capitals' rows as the font is drawn at k times its size, the baseline on a
+-- whole pixel from the bar's top, and the line's top held just under half a
+-- pixel before it, so the words keep their rows against the bar's edges
+-- wherever the bar stands within a pixel. `fixed`: the bar's height in whole
+-- pixels where its shape is drawn that tall (the island, DN.Shape); else the
+-- bar is as tall as it stands, and where that is a fraction of a pixel it
+-- shows a pixel taller on some rows than on others, so the capitals stand
+-- on the middle of the two, a half pixel from either.
+function RV.InkLift(face, size, H, dy, k, fixed)
+  k = k or 1
   local foot = (face[7] or 0) * size
-  local hi, lo = floor(face[3] * size + 0.5), floor(-foot + 0.5)
-  local mid = H / 2 + dy / 2
-  local want = mid + (hi - lo) / 2
-  local base = floor(want)
-  -- The capitals' (or ideographs') middle under the baseline it stands on.
-  local c = (face[3] * size + foot) / 2
-  if base ~= want and math.abs(base + 1 - c - mid) < math.abs(base - c - mid) then base = base + 1 end
-  return RV.Held(face, size, H, base0 - base), base, hi, lo
+  local hi, lo = floor(face[3] * size * k + 0.5), floor(-foot * k + 0.5)
+  local T = fixed or (H + dy) * k
+  local n = floor(T + 1e-6)
+  local base
+  if T - n < 1e-6 then
+    local mid = T / 2
+    local want = mid + (hi - lo) / 2
+    base = floor(want)
+    -- The capitals' (or ideographs') middle under the baseline it stands on.
+    local c = (face[3] * size + foot) * k / 2
+    if base ~= want and math.abs(base + 1 - c - mid) < math.abs(base - c - mid) then base = base + 1 end
+  else
+    base = ceil(n / 2 + (hi - lo) / 2 - 1e-6)
+  end
+  return RV.HeldAt(face, size, H, k, base), base, hi, lo
+end
+
+-- How far up a string in `face` at `size`, anchored on the middle of a bar
+-- `H` tall, is set so its baseline stands `base` whole pixels under the
+-- bar's top: its line's top just under half a pixel (RV.HOLD) before the
+-- pixel it rounds to. In units.
+function RV.HeldAt(face, size, H, k, base)
+  local top = base - floor(face[1] * size * k + 0.5)
+  return (H * k / 2 - (face[1] + face[2]) * size * k / 2 - top + ((k == 1) and RV.HOLD or RV.HOLD_OFF)) / k
+end
+
+-- How many screen pixels a unit of `f` is: its effective scale against the
+-- screen's height (Theme.OnePixel's rule), exactly 1 within a thousandth
+-- (a pixel-perfect UI scale). The screen's height is read once and again
+-- only after the client says the screen or the UI scale changed; the scale is
+-- the copy's own, read on a pass and compared, so a window scale or a host's
+-- own UI scale (EllesmereUI sets it with no event) is caught on the next pass.
+function RV.PxOf(f)
+  local s = type(f.GetEffectiveScale) == "function" and f:GetEffectiveScale()
+  if type(s) ~= "number" or s <= 0 then return 1 end
+  local h = RV.PXH
+  if not h then
+    h = 768
+    if type(GetPhysicalScreenSize) == "function" then
+      local _, ph = GetPhysicalScreenSize()
+      if type(ph) == "number" and ph > 0 then h = ph end
+    end
+    RV.PXH = h
+    if not RV.PxWatch and type(CreateFrame) == "function" then
+      local w = CreateFrame("Frame")
+      w:RegisterEvent("UI_SCALE_CHANGED")
+      w:RegisterEvent("DISPLAY_SIZE_CHANGED")
+      w:SetScript("OnEvent", RV.PxForget)
+      RV.PxWatch = w
+    end
+  end
+  if f.__es == s and f.__esH == h then return f.__k or 1 end
+  f.__es, f.__esH = s, h
+  local k = s * h / 768
+  if math.abs(k - 1) < 0.001 then k = 1 end
+  return k
+end
+function RV.PxForget() RV.PXH = nil end
+
+-- A copy put onto `k` pixels a unit where that moved: everything measured or
+-- placed in pixels done again on its next paint -- the letters' span (RV.Span,
+-- at the new scale), the lifts, the fit and the shape.
+function RV.PxSet(f, k)
+  if f.__k == k then return end
+  f.__k, f.__one = k, 1 / k
+  f.__words, f.__lH, f.__fitW, f.__lineX, f.__sign = nil, nil, nil, nil, nil
+  f.__s, f.__R, f.__ro = nil, nil, nil
 end
 
 -- `lift` whole units up, and the fraction more that holds the string's
@@ -9435,28 +9509,37 @@ end
 -- rows (`__capT` to `__capB`, from the bar's top; false with no words or
 -- number), which the island takes its parity from. Numbers only; when the
 -- type, the words, the icon, the height or the foot moves.
+--
+-- All of it in the copy's screen pixels (`__k`, RV.PxSet): the baseline and
+-- the capitals' rows (`__capT`, `__capB`) whole pixels from the bar's top;
+-- the lifts, `__capC` and the icon's and the rule's places in units. The
+-- island (`f.Isle`) is drawn a whole number of pixels tall (DN.Fit), so its
+-- capitals are centred on that.
 function RV.Lifts(f, H, dy)
   local face, size = RV.FaceOf(f.Label)
+  local k = f.__k or 1
   local count = (f.__countW or 0) > 0
-  local lift, base, hi, lo = RV.InkLift(face, size, H, dy)
+  local fixed = f.Isle and floor(H * k + 0.5) or nil
+  local lift, base, hi, lo = RV.InkLift(face, size, H, dy, k, fixed)
   f.__lift = lift
   local inked = (f.__wordsW or 0) > 0 or count
   f.__capT, f.__capB = inked and (base - hi), inked and (base + lo)
   local dface, dsize = RV.FaceOf(f.Delete.Text)
-  local _, dbase = RV.LineAt(dface, dsize, H, 0)
-  f.__liftD = RV.Held(dface, dsize, H, dbase - base)
-  local c = H / 2 + dy / 2
-  if (f.__wordsW or 0) > 0 or count then c = base - (face[3] + (face[7] or 0)) * size / 2 end
-  f.__capC = c
+  f.__liftD = RV.HeldAt(dface, dsize, H, k, base)
+  local c = (H / 2 + dy / 2) * k
+  if (f.__wordsW or 0) > 0 or count then c = base - (face[3] + (face[7] or 0)) * size * k / 2 end
+  f.__capC = c / k
   local h = f.__iconH or 0
-  f.__iconUp = (h > 0) and (H / 2 - h / 2 - ceil(c - h / 2 - 0.5)) or 0
-  f.__ruleY = H / 2 - floor(c)
-  f.__lH, f.__lDy, f.__lGen, f.__lIcon = H, dy, f.__gen, h
+  f.__iconUp = (h > 0) and ((H * k / 2 - h * k / 2 - ceil(c - h * k / 2 - 0.5)) / k) or 0
+  f.__ruleY = (H * k / 2 - floor(c)) / k
+  f.__lH, f.__lDy, f.__lGen, f.__lIcon, f.__lK = H, dy, f.__gen, h, k
 end
 
--- Whether a copy's lifts are for this height and foot, its type and icon.
+-- Whether a copy's lifts are for this height and foot, its type, icon and
+-- pixels.
 function RV.Lifted(f, H, dy)
   return f.__lH == H and f.__lDy == dy and f.__lGen == f.__gen and f.__lIcon == (f.__iconH or 0)
+    and f.__lK == (f.__k or 1)
 end
 
 -- The foot under the copy at the list's foot: the list's bottom margin.
@@ -9682,6 +9765,16 @@ function RV.Span(fs, text)
     local holder = CreateFrame("Frame")
     holder:Hide()
     probe = holder:CreateFontString(nil, "OVERLAY")
+    probe.__holder = holder
+  end
+  -- At `fs`'s own effective scale, so the client lays the letters out at
+  -- the size in pixels it draws `fs` at, and answers in `fs`'s units (the
+  -- areas are offsets from the string's own corner, as Blizzard's chat
+  -- selection uses them). A parentless frame's effective scale is its scale.
+  local es = type(fs.GetEffectiveScale) == "function" and fs:GetEffectiveScale()
+  if type(es) == "number" and es > 0 and probe.__es ~= es then
+    probe.__es = es
+    probe.__holder:SetScale(es)
   end
   if probe:SetFont(path, size, flags or "") == false then return nil end
   probe:SetText(text)
@@ -9922,6 +10015,8 @@ function RV.PaintBar(panel, f, compact)
     -- The island's inks follow the palette's chrome ink.
     if f.Isle then f.__r = nil end
   end
+  -- Its screen pixels (the window scale, the UI scale, the screen).
+  RV.PxSet(f, RV.PxOf(f))
   local loc = L()
   local words = RV.WordsOf()
   local custom = (words == "custom") and RV.CustomOf() or false
@@ -10217,11 +10312,14 @@ function RV.SignPlace(f, plus, sx, w)
   while s > 1 and s * 3 > wide do s = s - 2 end
   if s < 1 then s = s + 2 end
   s = s * one
+  -- Its top on a whole screen pixel (the copy's `__k`).
+  local px = f.__k or 1
   local mid = ((f.__lH or 0) + (f.__lDy or 0)) / 2
-  local c = f.__capC or mid
-  local want = mid - w / 2
+  local c = (f.__capC or mid) * px
+  local want = (mid - w / 2) * px
   local top = floor(want)
-  if top ~= want and math.abs(top + 1 + w / 2 - c) < math.abs(top + w / 2 - c) then top = top + 1 end
+  if top ~= want and math.abs(top + 1 + w * px / 2 - c) < math.abs(top + w * px / 2 - c) then top = top + 1 end
+  top = top / px
   local left, k = sx - w / 2, (w - s) / 2
   local bar, stem = f.SignH, f.SignV
   bar:ClearAllPoints()
@@ -10251,6 +10349,7 @@ function RV.PaintLine(panel, f, compact, look)
   local T = Th()
   local M = T.Metrics
   RV.LineReady(f, look, compact)
+  RV.PxSet(f, RV.PxOf(f))
   local loc = L()
   local words = RV.WordsOf()
   local custom = (words == "custom") and RV.CustomOf() or false
