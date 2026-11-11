@@ -5200,6 +5200,9 @@ end
 -- selected plate is, while an order other than the newest first or any
 -- filter is on; its tooltip says which. A click opens the menu, a
 -- right-click puts the list back to its defaults (GESTURES.md: reset).
+-- While a filter is on, a line over the list says so (RV.PaintStrip): a
+-- filter hides mail, and an order hides none, so an order alone -- a saved
+-- one the player keeps -- puts no line there.
 --
 -- The order is remembered for each list (MailboxUI.GetListSort: "inbox",
 -- "history", "sent"). A filter never is: it is the panel's own
@@ -5511,8 +5514,8 @@ function RV.SFMenu(panel, list)
       items[#items + 1] = { id = "show:" .. def.shows[i], name = RV.ShowName(list, def.shows[i]) }
     end
   end
-  -- Last, under a hairline: Reset, as the right-click and the strip's
-  -- Clear do it; grayed while there is nothing to reset.
+  -- Last, under a hairline: Reset, as the right-click does it; grayed
+  -- while there is nothing to reset.
   items[#items + 1] = { id = "reset", name = L0["SF_RESET"], rule = true }
   local menu = D.Menu(panel.Sort, items, {
     keepOpen = true,
@@ -5563,10 +5566,10 @@ end
 -- on screen is not at its defaults (RV.SFLit) it is drawn in the house's
 -- selected state, as a chosen segment is -- the plate's wash, ring and
 -- underline, and the mark in the accent's bright tone, as a selected
--- caption is (RV.PaintSortMark) -- and the words of what is on stand over
--- the list (RV.PaintStrip). plate.Paint() paints it and the strip for the
--- list on screen, only what changed, and shuts a menu left from another
--- list.
+-- caption is (RV.PaintSortMark) -- and, while a filter is on, the words of
+-- what is on stand over the list (RV.PaintStrip). plate.Paint() paints it
+-- and the strip for the list on screen, only what changed, and shuts a menu
+-- left from another list.
 function RV.NewSortButton(panel, size)
   local T = Th()
   local sort = T.CreatePlate(panel, "segment")
@@ -5601,7 +5604,7 @@ function RV.NewSortButton(panel, size)
     local turned = sort.isSelected ~= on
     if turned then T.SetPlateSelected(sort, on) end
     if sort.Icon and (on or turned) then RV.PaintSortMark(sort.Icon) end
-    RV.PaintStrip(panel, on)
+    RV.PaintStrip(panel, RV.ShowOf(panel, RV.SFList(panel)) ~= nil)
     if panel._sfOpen then RV.SFCloseStale(panel) end
   end
   T.SetPlateSelected(sort, false)
@@ -5622,11 +5625,24 @@ function RV.PaintSortMark(icon)
   end
 end
 
--- Every way back to the defaults -- the right-click, the strip's Clear, the
--- menu's Reset -- is this one: the list on screen newest first and whole
--- (RV.ResetSF), and the tooltip and an open menu told.
+-- Both ways back to the defaults -- the right-click and the menu's Reset --
+-- are this one: the list on screen newest first and whole (RV.ResetSF), and
+-- the tooltip and an open menu told.
 function RV.ResetAll(panel)
   RV.ResetSF(panel)
+  RV.SFTold(panel)
+end
+
+-- The strip's Clear: the filter on the list on screen let go, the order
+-- left as it was saved (CT.SetShow "all"), and the tooltip and an open
+-- menu told.
+function RV.ClearFilter(panel)
+  CT.SetShow(panel, RV.SFList(panel), "all")
+  RV.SFTold(panel)
+end
+
+-- The button's tooltip, where it stands, and an open menu: what is on now.
+function RV.SFTold(panel)
   if GameTooltip:IsOwned(panel.Sort) then RV.SFTip(panel, panel.Sort) end
   local menu = panel._sfOpen and panel._sfMenus and panel._sfMenus[panel._sfOpen]
   if menu then menu:Repaint() end
@@ -5634,12 +5650,14 @@ end
 
 -- What is in force, in words, between the toolbar and the list: a slim
 -- band (Theme.ApplyBand, the totals' fill, held legible at any window
--- opacity) with the filter, then the order -- "Unread · Most gold first"
--- -- and Clear at its right end. Built once with the panel; shown only
--- while the list is not at its defaults, and then the list starts under
--- it (its height and a gap) instead of under the toolbar, so at the
--- defaults the window is as it always was. The list is re-anchored only
--- when the strip comes or goes, and its words set only when they change.
+-- opacity) with the filter, then the order where it is not the newest
+-- first -- "Unread · Most gold first", or "Unread" -- and Clear at its
+-- right end, which lets the filter go and leaves the order (RV.ClearFilter).
+-- Built once with the panel; shown only while a filter is on, and then the
+-- list starts under it (its height and a gap) instead of under the
+-- toolbar, so with no filter -- whatever the order -- the window is as it
+-- always was. The list is re-anchored only when the strip comes or goes,
+-- and its words set only when they change.
 RV.STRIP_H = 22
 function RV.BuildStrip(panel)
   local T = Th()
@@ -5653,7 +5671,7 @@ function RV.BuildStrip(panel)
   clear:SetText(L()["SF_STRIP_CLEAR"])
   clear:SetHeight(RV.STRIP_H - 4)
   clear:SetPoint("RIGHT", strip, "RIGHT", -2, 0)
-  clear:SetScript("OnClick", function() RV.ResetAll(panel) end)
+  clear:SetScript("OnClick", function() RV.ClearFilter(panel) end)
   strip.Clear = clear
   local text = T.CreateText(strip, "value")
   text:SetPoint("LEFT", strip, "LEFT", M.inset, 0)
