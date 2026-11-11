@@ -1367,12 +1367,17 @@ do
   -- every look and window opacity.
   local TILE_FILL_A, TILE_RING_A, TILE_HOVER_A = 0.07, 0.17, 0.11
 
-  -- A tile: a list the player builds, which opens a window of its own. The
-  -- art with the accent's glow behind it, the name, a line of fact, and a
-  -- chevron that says it opens something, on its plate. Tagged as a card,
-  -- so every skin paints it as it paints the house's other cards; what must
-  -- survive that lives on a holder of its own (ArtHolder).
-  function Ctx.Tile(parent, art, title, entry, onClick)
+  -- A tile: a list the player builds, which opens a window of its own. Its
+  -- mark, the name, a line of fact, and a chevron that says it opens
+  -- something, on its plate. The mark is Postbox's own glyph for the list
+  -- (`glyph`, Theme.GLYPHS), TILE_GLYPH units tall and tinted with the
+  -- accent as the addon's other accent icons are (Ctx.TintTile), or, where
+  -- this build has no such glyph, `art` with the accent's glow behind it.
+  -- Tagged as a card, so every skin paints it as it paints the house's
+  -- other cards; what must survive that lives on a holder of its own
+  -- (ArtHolder).
+  local TILE_GLYPH = 30
+  function Ctx.Tile(parent, art, title, entry, onClick, glyph)
     local T = ns.Theme
     local tile = CreateFrame("Button", nil, parent, "BackdropTemplate")
     tile:SetSize(CTX_W, TILE_H)
@@ -1410,16 +1415,27 @@ do
     T.FillChrome(left, TILE_RING_A)
     T.FillChrome(right, TILE_RING_A)
 
-    local mark = holder:CreateTexture(nil, "ARTWORK")
-    mark:SetSize(32, 32)
-    mark:SetPoint("LEFT", tile, "LEFT", 8, 0)
-    mark:SetTexture(art)
+    -- The glyph where this build has it, centred where the art stands.
+    local mark = glyph and T.GLYPHS and T.GLYPHS[glyph] and type(T.Glyph) == "function"
+      and T.Glyph(holder, glyph, TILE_GLYPH, "ARTWORK") or nil
+    if mark then
+      mark:SetPoint("CENTER", tile, "LEFT", 8 + 16, 0)
+      tile.glyph = true
+    else
+      mark = holder:CreateTexture(nil, "ARTWORK")
+      mark:SetSize(32, 32)
+      mark:SetPoint("LEFT", tile, "LEFT", 8, 0)
+      mark:SetTexture(art)
+    end
     local glow = holder:CreateTexture(nil, "ARTWORK", nil, -1)
     glow:SetSize(58, 58)
     glow:SetPoint("CENTER", mark, "CENTER", 0, 0)
     glow:SetTexture(GLOW_TGA)
     glow:SetBlendMode("ADD")
     glow:SetAlpha(0.30)
+    -- A glyph is the accent itself, flat, as the addon's own icons are:
+    -- no glow behind it.
+    if tile.glyph then glow:Hide() end
 
     local name = T.CreateText(holder, "label")
     if _G.GameFontNormal then name:SetFontObject(T.HostFont(_G.GameFontNormal)) end
@@ -1444,12 +1460,23 @@ do
     return tile
   end
 
+  -- The tile's accent as it is now: its glyph in the accent (the disabled
+  -- grey while its list is off, `tile.off`), or its art's glow.
+  function Ctx.TintTile(tile)
+    local T = ns.Theme
+    if tile.glyph then
+      T.SetColor(tile.Mark, tile.off and "textDisabled" or "accent")
+    else
+      tile.Glow:SetVertexColor(T.GetAccent())
+    end
+  end
+
   function Ctx.PaintTile(tile, fact)
     local T = ns.Theme
     -- Their halo as their objects have it now (Theme section 3b).
     T.KeepHalo(tile.Title)
     T.KeepHalo(tile.Sub)
-    tile.Glow:SetVertexColor(T.GetAccent())
+    Ctx.TintTile(tile)
     local room = CTX_W - 48 - 28
     T.FitText(tile.Title, room, tile.titleText, tile)
     T.FitText(tile.Sub, room, fact or "")
@@ -5852,15 +5879,17 @@ do
     split:SetPoint("TOPLEFT", card, "TOPLEFT", LIST_W + BODY_GAP / 2 - 1, -(1 + HEAD_H))
     T.FillChrome(split, HAIR_A)
 
-    -- The three ways in, one over the other, over the lift.
+    -- The three ways in, one over the other, over the lift: each wears
+    -- Postbox's glyph for its list where the build has it (Theme.GLYPHS
+    -- memory, groups, recipients), else the icon art it wore before.
     local memory = Ctx.Tile(card, "Interface\\AddOns\\Postbox\\Media\\minimap-scroll.tga",
-      L["OPT_MEMORY_TITLE"], S.memoryTileEntry, OpenClick)
+      L["OPT_MEMORY_TITLE"], S.memoryTileEntry, OpenClick, "memory")
     memory:SetPoint("TOPLEFT", card, "TOPLEFT", TILES_X, -TILES_TOP)
     local groups = Ctx.Tile(card, "Interface\\AddOns\\Postbox\\Media\\minimap-mailbag.tga",
-      L["GROUPS_TITLE"], S.groupsEntry, Ctx.OpenGroups)
+      L["GROUPS_TITLE"], S.groupsEntry, Ctx.OpenGroups, "groups")
     groups:SetPoint("TOPLEFT", memory, "BOTTOMLEFT", 0, -TILE_GAP)
     local recipients = Ctx.Tile(card, "Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga",
-      L["RM_OPT_BUTTON"], S.recipientsEntry, Ctx.OpenRecipients)
+      L["RM_OPT_BUTTON"], S.recipientsEntry, Ctx.OpenRecipients, "recipients")
     recipients:SetPoint("TOPLEFT", groups, "BOTTOMLEFT", 0, -TILE_GAP)
     S.dashTiles = { memory = memory, groups = groups, recipients = recipients }
     for _, tile in pairs(S.dashTiles) do
@@ -5880,9 +5909,13 @@ do
     local T = ns.Theme
     if tile.on ~= on then
       tile.on = on
-      tile.Mark:SetDesaturated(not on)
-      tile.Mark:SetAlpha(on and 1 or 0.5)
-      tile.Glow:SetShown(on)
+      -- A glyph greys by its tint (Ctx.TintTile); art by its colours.
+      tile.off = not on
+      if not tile.glyph then
+        tile.Mark:SetDesaturated(not on)
+        tile.Mark:SetAlpha(on and 1 or 0.5)
+        tile.Glow:SetShown(on)
+      end
       local entry = tile.entry
       local text = on and entry.onText or entry.offText
       if entry.text ~= text then
@@ -9941,6 +9974,14 @@ function Panel.RefreshControls()
   Layout()
   Ctx.Paint(S.tab)
   Insp.Repaint()
+end
+
+-- The accent moved (Theme.RepaintAccentIcons, as for the addon's other
+-- accent-tinted icons): the General tiles' glyphs take it at once, shown
+-- or not. A handful of texture tints; nothing is made.
+function Panel.RepaintAccents()
+  local tiles = S.tiles
+  for i = 1, #tiles do Ctx.TintTile(tiles[i]) end
 end
 
 -- Arrange columns and buttons: the arrange mode on the Postbox window, the

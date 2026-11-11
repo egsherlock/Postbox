@@ -3084,6 +3084,9 @@ function Theme.RepaintAccentIcons()
   if AR and type(AR.RepaintLook) == "function" then pcall(AR.RepaintLook) end
   -- Both cogs, Mail Memory's whether or not the mailbox has been opened.
   Theme.RepaintCog()
+  -- The options' General tiles, whose glyphs wear the accent.
+  local OP = ns.OptionsPanel
+  if OP and type(OP.RepaintAccents) == "function" then pcall(OP.RepaintAccents) end
   local frame = ns.MailboxUI and ns.MailboxUI._frame
   if not frame then return end
   local collect = frame.Tabs and frame.Tabs.collect
