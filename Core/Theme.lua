@@ -5748,9 +5748,17 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
   placeholder:SetText(placeholderText or "")
 
   wrap:SetScript("OnMouseDown", function() box:SetFocus() end)
+  -- The house's one rule for Escape in a search box: with words in it the
+  -- first press empties it and the second lets the keyboard go; an empty
+  -- box lets go at once. Every search box takes it from here unless it sets
+  -- its own (the Mail tab's, Mail Memory's and Manage Recipients' do, to
+  -- the same rule), so the Character Groups' box agrees with them.
   box:SetScript("OnEscapePressed", function(self)
-    self:SetText("")
-    self:ClearFocus()
+    if (self:GetText() or "") ~= "" then
+      self:SetText("")
+    else
+      self:ClearFocus()
+    end
   end)
   box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
   box:SetScript("OnTextChanged", function(self)
