@@ -1123,6 +1123,21 @@ end
 -- here rather than following a copy. Weak-keyed: a title goes with its window.
 local titles = setmetatable({}, { __mode = "k" })
 
+-- The one font object every window title wears (DressTitle), made the first
+-- time a title is dressed; false where the client makes none, and the
+-- titles are given their face on themselves. Postbox's own, kept as it is
+-- (Theme.OwnFont: never copied again in a host's face).
+function Skin._TitleFont()
+  local font = Skin._titleFont
+  if font == nil then
+    font = type(CreateFont) == "function" and CreateFont("PostboxTitleFont") or false
+    local T = ns.Theme
+    if font and T and T.OwnFont then T.OwnFont(font) end
+    Skin._titleFont = font
+  end
+  return font or nil
+end
+
 local function DressTitle(fs)
   local base = titles[fs]
   if not base then return end
@@ -1140,11 +1155,49 @@ local function DressTitle(fs)
   -- Outline an outline; on a light ground, neither.
   local flags = (outline == "outline" and not light) and "OUTLINE" or ""
   local size = P.titleSize * Skin.GetTextScale()
+  local T0 = ns.Theme
+  -- The titles' own named font (Skin._TitleFont): the face, size, outline
+  -- and shadow are set on it, and each title wears it, taking it again
+  -- whenever it was dressed anew -- a shadow is drawn from the object as the
+  -- string took it, never from the string's own (Theme section 3b), and a
+  -- face set on the string itself would leave it on an instance of its own
+  -- that a later halo never reaches.
+  local font = Skin._TitleFont()
+  if font then
+    local sx, sy, sr, sg, sb, sa
+    if light then
+      sx, sy, sr, sg, sb, sa = 0, 0, 0, 0, 0, 0
+    elseif outline ~= "shadow" then
+      sx, sy, sr, sg, sb, sa = 0, 0, 0, 0, 0, 0
+    elseif base.sx and base.sx ~= 0 and (base.sa or 0) > 0 then
+      sx, sy, sr, sg, sb, sa = base.sx, base.sy, base.sr, base.sg, base.sb, base.sa
+    else
+      sx, sy, sr, sg, sb, sa = 1, -1, 0, 0, 0, 1
+    end
+    local p0, s0, f0 = font:GetFont()
+    local ox, oy = font:GetShadowOffset()
+    local _, _, _, oa = font:GetShadowColor()
+    if p0 ~= path or s0 ~= size or (f0 or "") ~= flags or ox ~= sx or oy ~= sy or oa ~= sa then
+      if base.object and type(font.CopyFontObject) == "function" then pcall(font.CopyFontObject, font, base.object) end
+      pcall(font.SetFont, font, path, size, flags)
+      font:SetShadowOffset(sx, sy)
+      font:SetShadowColor(sr, sg, sb, sa)
+      Skin._titleGen = (Skin._titleGen or 0) + 1
+    end
+    if base.gen ~= Skin._titleGen or fs:GetFontObject() ~= font then
+      base.gen = Skin._titleGen
+      if T0 and T0.Retake then T0.Retake(fs, font) else fs:SetFontObject(font) end
+    end
+    local c = P.title
+    fs:SetTextColor(c[1], c[2], c[3], c[4])
+    local T = ns.Theme
+    if T and type(T.RepaintTextPlates) == "function" then T.RepaintTextPlates(fs) end
+    return
+  end
   -- Where the copies' halo moved since it was last dressed, the title takes
   -- its object again first: a shadow is drawn from the object as the string
   -- took it, never from the string's own (Theme section 3b); its own face is
   -- then set again below.
-  local T0 = ns.Theme
   local halo = T0 and T0.HaloGeneration and T0.HaloGeneration()
   if halo and base.halo ~= halo then
     base.halo = halo

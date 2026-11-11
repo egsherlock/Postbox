@@ -1898,6 +1898,12 @@ function Theme.MadeFrom(font, like)
   HF.madeFrom[font] = like
 end
 
+-- A font object of Postbox's own dressed at its size already (the Postbox
+-- style's window titles): Theme.HostFont answers it as it is, never a copy.
+function Theme.OwnFont(font)
+  if font then HF.isCopy[font] = true end
+end
+
 -- The player's Text size: one factor on all of Postbox's text, in every
 -- look, live. Saved where the Postbox style first kept it (pbTextScale, so a
 -- size picked there keeps its effect); nil is 100%.
