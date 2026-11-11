@@ -70,8 +70,7 @@ local function Releases()
     -- No placard: 1.60's says Postbox now supports WoW Forever, news once;
     -- 1.61's Forever line is a group like the others.
     { version = "1.61.0", groups = {
-      { "WHATSNEW_161_SENT", "WHATSNEW_161_SENT_LINES" },
-      { "WHATSNEW_161_SEARCH", "WHATSNEW_161_SEARCH_LINES" },
+      { "WHATSNEW_161_NEW", "WHATSNEW_161_NEW_LINES" },
       { "WHATSNEW_161_LOOKS", "WHATSNEW_161_LOOKS_LINES" },
       { "WHATSNEW_161_OPTIONS", "WHATSNEW_161_OPTIONS_LINES" },
       { "WHATSNEW_161_FOREVER", "WHATSNEW_161_FOREVER_LINES" },
@@ -79,10 +78,8 @@ local function Releases()
     } },
     { version = "1.60.0", placard = "WHATSNEW_160_PLACARD", note = "WHATSNEW_160_BUGS", groups = {
       { "WHATSNEW_160_FOREVER", "WHATSNEW_160_FOREVER_LINES" },
-      { "WHATSNEW_160_EXPIRY", "WHATSNEW_160_EXPIRY_LINES" },
-      { "WHATSNEW_160_BAR", "WHATSNEW_160_BAR_LINES" },
+      { "WHATSNEW_160_MAIL", "WHATSNEW_160_MAIL_LINES" },
       { "WHATSNEW_160_OPTIONS", "WHATSNEW_160_OPTIONS_LINES" },
-      { "WHATSNEW_FIXED", "WHATSNEW_160_FIXED_LINES" },
     } },
     { version = "1.50.0", groups = {
       { "WHATSNEW_150_ARRANGE", "WHATSNEW_150_ARRANGE_LINES" },
