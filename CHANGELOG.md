@@ -48,7 +48,7 @@
   arrange.
 - **The last 7 days** on the options' General tab: gold earned and spent,
   and mails collected and sent, for all your characters or this one. Point
-  at Earned or Spent for its parts: auction sales, the auction house's
+  at Earned or Spent for its parts, each in coins: auction sales, the auction house's
   cut, deposits, auctions bought, C.O.D. and gold sent. Deposits and the
   cut are counted from this version on.
 - **Remember sort order** (Options, Mail tab): on, each list keeps the

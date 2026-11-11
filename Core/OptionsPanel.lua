@@ -6673,11 +6673,24 @@ do
   -- never taken off. Under either, where the week reaches back past the
   -- deposits' record, that they count from 1.70. Built from the sums the
   -- card was painted from; the lines are the only strings a hover makes.
+  -- Each part's gold is written as the card writes its figures and the
+  -- totals band its sums: the figures in their tone with the game's coins
+  -- after them (Formatting.FormatMoneyIcons), two coins as the band's
+  -- fullest line has them, sized for the tooltip's own font (Coins: a set
+  -- kept per size), and set at the line's right so the coins stand in one
+  -- column.
   local function TipGold(label, copper, tone)
-    if copper and copper > 0 then
-      local T = ns.Theme
-      T.TipFact(L[label], T.TipTone(tone, ns.Helpers.FormatMoney(copper)))
+    if not (copper and copper > 0) then return false end
+    local T = ns.Theme
+    local F = ns.Core and ns.Core.Formatting
+    local amount
+    if F and F.FormatMoneyIcons then
+      amount = F.FormatMoneyIcons(copper, nil, 2, Coins(_G.GameTooltipText))
+    else
+      amount = ns.Helpers.FormatMoney(copper)
     end
+    GameTooltip:AddDoubleLine(T.TipTone("muted", L[label]), T.TipTone(tone, amount), 1, 1, 1, 1, 1, 1)
+    return true
   end
 
   local function TipMuted(text)
@@ -6704,10 +6717,7 @@ do
       TipGold("OPT_WEEK_SALES", w.sales, "positive")
       TipGold("OPT_WEEK_DEP_BACK", w.depBack, "muted")
       TipGold("OPT_WEEK_OTHER", w.other, "positive")
-      if w.cut > 0 then
-        T.TipFact(L["OPT_WEEK_CUT"], T.TipTone("muted",
-          string.format(L["OPT_WEEK_CUT_NOTE"], ns.Helpers.FormatMoney(w.cut))))
-      end
+      if TipGold("OPT_WEEK_CUT", w.cut, "muted") then TipMuted(L["OPT_WEEK_CUT_NOTE"]) end
       if w.unopened > 0 then TipMuted(ns.Plural("OPT_WEEK_UNOPENED", w.unopened)) end
     end
     if w.partial then TipMuted(L["OPT_WEEK_SINCE"]) end
