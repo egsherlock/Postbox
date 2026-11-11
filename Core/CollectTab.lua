@@ -5207,8 +5207,9 @@ end
 -- The order is remembered for each list (MailboxUI.GetListSort: "inbox",
 -- "history", "sent"). A filter never is: it is the panel's own
 -- (panel._sfShow), let go when the mailbox closes (CT.ClearSearch) and,
--- for History's, when History is left (SetViewMode), so no mail stays out
--- of sight behind a filter the player has forgotten.
+-- for History's, when History is left (SetViewMode) or its half is changed
+-- (HV.SetSide), so no mail stays out of sight behind a filter the player
+-- has forgotten.
 --
 -- A filter narrows the list exactly as a search does, in the walk that
 -- builds it (CT.RefreshMailList): what is not shown is not in
@@ -9083,6 +9084,12 @@ end
 -- down to this before the window is made wider for the switch.
 RV.SEARCH_FLOOR = 96
 
+-- The room the every-character toggle takes in the search box
+-- (Theme.CreateSearchBox, Place: the clear button 20 in from the end with
+-- it and 4 without). History's placeholder is fitted as if it were there on
+-- both halves (RV.FitPlaceholder).
+RV.TOGGLE_ROOM = 16
+
 -- Whether Sent is the half on screen (Preview mail is History's samples,
 -- which are Received's).
 function HV.Sent(panel)
@@ -9224,13 +9231,19 @@ end
 
 -- The search's placeholder: History's own words ("Search History") where
 -- they fit the box as wide as it now is, the plain "Search" where a row
--- short of room narrowed the box past them. Set only when it changes.
+-- short of room narrowed the box past them. Received and Sent say the same
+-- words: one half may have the every-character toggle and the other not
+-- (no other character has sent mail yet), so the longer words are asked to
+-- fit beside the toggle whether it stands there or not. Set only when it
+-- changes.
 function RV.FitPlaceholder(panel)
   local placeholder, wrap = panel.SearchPlaceholder, panel.SearchWrap
   if not (placeholder and wrap) then return end
   local key = "SEARCH_PLACEHOLDER"
   if panel._searchHistory then
     local room = (panel._searchW or SEARCH_W) - (wrap.__pbTextChrome or 0)
+    local all = panel.Search and panel.Search.All
+    if not (all and all:IsShown()) then room = room - RV.TOGGLE_ROOM end
     if MeasureWith(panel, placeholder, L()["SEARCH_HISTORY_PLACEHOLDER"]) <= room then key = "SEARCH_HISTORY_PLACEHOLDER" end
   end
   local text = L()[key]
@@ -9238,10 +9251,13 @@ function RV.FitPlaceholder(panel)
 end
 
 -- One half or the other, from the switch (or the Send tab, CT.OpenSent).
--- The search stays: it is a question asked of either list.
+-- The search stays: it is a question asked of either list. A filter does
+-- not: each half has its own, and one left on the half behind would hide
+-- entries at the next look there (RV.ForgetShows; the list is drawn below).
 function HV.SetSide(panel, side)
   if panel._hside == side or (side == "received" and panel._hside == nil) then return end
   panel._hside = side
+  RV.ForgetShows(panel, "history")
   if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
   if panel.Search then AV.PaintSearch(panel, panel._searchOthers) end
   PaintViewToggle(panel)
