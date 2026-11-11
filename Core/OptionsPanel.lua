@@ -720,9 +720,6 @@ local CHECK_H, BUTTON_H = 22, 22
 -- Rows.Fit), and the narrowest a long translated name may squeeze it to
 -- before the name itself is cut short.
 local DD_W, DD_H, DD_MIN_W = 165, 22, 120
--- The same in half a row (Rows.Pair: two settings side by side inside a
--- fold), and a slider there.
-local DD_HALF, DD_HALF_MIN = 96, 72
 local BAND_H, FOOT_BOTTOM = 24, 14
 -- The inspector: its drawings stand CTX_X in (its edge and ten), and its
 -- text has the padding below.
@@ -755,14 +752,17 @@ local BUTTON_FIT = { height = BUTTON_H, padding = 28, minWidth = 64 }
 local PAIR_FIT = { height = BUTTON_H, padding = 14, minWidth = 0 }
 
 -- General first: what belongs to no one window -- every character's mail
--- (Mail Memory, and the summary of it), the mail alerts, and the lists the
--- player builds (Character Groups, Manage Recipients). It took the Mail
--- Memory tab's place, and its page id: an opener that asked for "memory"
--- is shown General (Panel.SelectTab).
+-- (Mail Memory, and the summary of it), what Postbox remembers, and the
+-- ways into the lists the player builds (Character Groups, Manage
+-- Recipients). It took the Mail Memory tab's place, and its page id: an
+-- opener that asked for "memory" is shown General (Panel.SelectTab).
+-- Alerts: what tells the player about mail -- the expiring-mail warnings
+-- with the minimap marker and its look, and new mail's sound and flash.
 local TABS = {
   { key = "general", caption = "OPT_GENERAL_HEADING" },
   { key = "mail",    caption = "OPT_MAILTAB_HEADING" },
   { key = "send",    caption = "OPT_SENDTAB_HEADING" },
+  { key = "alerts",  caption = "OPT_ALERTS_TAB" },
   { key = "window",  caption = "OPT_WINDOW_HEADING" },
   { key = "minimap", caption = "OPT_MINIMAP_HEADING", square = true },
 }
@@ -775,8 +775,6 @@ local S = {
   pairs = {},     -- the rows of two checkboxes, which come apart to fit
   cols = {},      -- tab key -> its page's column (Rows.Column)
   pageH = {},     -- tab key -> its page's height
-  pageMost = {},  -- tab key -> its page's height with every fold open
-  folds = {},     -- every "More" fold (Rows.Fold)
   tabNeed = {},   -- each tab's measured need, and whether it is held to it
   tabFixed = {},
   refresh = {},   -- run on every open and after a reset
@@ -1243,7 +1241,8 @@ do
       -- The drawing grows with the text size (Ctx.MiniHeight).
       return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + Ctx.PreviewRoom() + Ctx.MiniHeight() + 10
     end
-    if key == "minimap" then return CTX_TOP + 4 + Ctx.MinimapHeight() + 10 end
+    -- Alerts draws the same icon, wearing the marker it sets.
+    if key == "minimap" or key == "alerts" then return CTX_TOP + 4 + Ctx.MinimapHeight() + 10 end
     return 0
   end
 
@@ -1724,7 +1723,7 @@ do
   function Ctx.Keep(key)
     if key == "mail" then return CTX_TOP + Ctx.PreviewRoom() end
     if key == "window" then return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + Ctx.PreviewRoom() end
-    if key == "minimap" then return CTX_TOP + 4 + Ctx.MinimapStage() end
+    if key == "minimap" or key == "alerts" then return CTX_TOP + 4 + Ctx.MinimapStage() end
     return 0
   end
 
@@ -3582,6 +3581,8 @@ do
   function Ctx.Follow()
     local f = S.ctx.minimap
     if f and f.mode and f.mode ~= Ctx.MinimapMode() and f:IsVisible() then f.Paint() end
+    f = S.ctx.alerts
+    if f and f.mode and f.mode ~= Ctx.MinimapMode() and f:IsVisible() then f.Paint() end
     -- The Mail tab's window rings what the setting pointed at changes.
     local sw = S.mailMini
     if sw and sw:IsVisible() then MW.PaintRing(sw.Mini) end
@@ -3918,6 +3919,13 @@ do
     return f
   end
 
+  -- Alerts: the same drawing, a copy of its own on Alerts' inspector, so
+  -- the marker's look set there is seen on the icon as it changes, its
+  -- choices answered while pointed at as on the Minimap tab.
+  function Ctx.alerts(card)
+    return Ctx.minimap(card)
+  end
+
   ---------------------------------------------------------
   -- Where the way into arranging sits
   --
@@ -4223,7 +4231,7 @@ do
       for i = 1, #block.cells do
         local cell = block.cells[i]
         local entry = cell.entry
-        if cell.kind ~= "note" and cell.kind ~= "fold" and entry then
+        if cell.kind ~= "note" and entry then
           entry.onText = entry.onText or entry.text
           entry.blockText = entry.onText .. "\n\n" .. why
         end
@@ -4273,32 +4281,22 @@ do
   -- border size's row stands aside (State.BorderSize). Answers the height
   -- used. Run only on a page a pair has changed on (Rows.FitPairs), so a
   -- page nothing moves on is never touched.
-  --
-  -- Answers, too, the height it takes with every fold in it open
-  -- (Rows.Fold): the most it can need, which the window is sized for, so a
-  -- fold opening never makes the panel taller or a tab scroll.
   function Rows.Reflow(col)
-    local y, most = col.top, col.top
+    local y = col.top
     local items = col.items
     for i = 1, #items do
       local item = items[i]
       local f = item.frame
       if item.block then
-        item.h, item.m = Rows.Reflow(item.block)
+        item.h = Rows.Reflow(item.block)
         f:SetHeight(math.max(1, item.h))
       end
       f:ClearAllPoints()
       f:SetPoint("TOPLEFT", col.frame, "TOPLEFT", 0, y)
       f:SetPoint("TOPRIGHT", col.frame, "TOPRIGHT", 0, y)
-      if item.fold then
-        if f:IsShown() then y = y - item.h end
-        most = most - (item.m or item.h)
-      elseif f:IsShown() then
-        y = y - item.h
-        most = most - (item.m or item.h)
-      end
+      if f:IsShown() then y = y - item.h end
     end
-    return col.top - y, col.top - most
+    return col.top - y
   end
 
   -- Makes `cell` (a row, or half of one, `width` wide) a place the pointer
@@ -4318,8 +4316,8 @@ do
     cell.Wash, cell.Name, cell.nameText, cell.w = wash, name, title, width
     cell.entry = Entry(title, text)
     cell.kind = "plain"
-    -- Where it stands, for Find a setting: its column (a fold's, a
-    -- block's or the page's) and the group heading over it.
+    -- Where it stands, for Find a setting: its column (a block's or the
+    -- page's) and the group heading over it.
     cell.home, cell.groupName = col, S.groupNow
     cell:EnableMouse(true)
     if cell.SetPropagateMouseClicks then cell:SetPropagateMouseClicks(true) end
@@ -4374,11 +4372,9 @@ do
     return row
   end
 
-  -- Two settings side by side, each a cell of its own -- or, where either
+  -- Two checkboxes side by side, each a cell of its own -- or, where either
   -- name will not fit its half (Rows.FitPairs), one under the other, each
-  -- a whole row, under a hairline of its own. Checkboxes, or (`kind`) a
-  -- dropdown or a slider at a half-row's width (DD_HALF), each spec as
-  -- Rows.Check, Rows.Dropdown or Rows.Slider takes it.
+  -- a whole row, under a hairline of its own.
   function Rows.Pair(col, a, b)
     local row = Rows.New(col, ROW_H)
     local half = ROW_W / 2
@@ -4388,16 +4384,8 @@ do
       local cell = CreateFrame("Frame", nil, row)
       cell:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * half, 0)
       cell:SetSize(half, ROW_H)
-      if spec.kind == "dropdown" then
-        Rows.Cell(col, cell, half, spec.title, spec.text or Rows.Choices(spec.items))
-        Rows.AddDropdown(cell, spec, DD_HALF)
-      elseif spec.kind == "slider" then
-        Rows.Cell(col, cell, half, spec.title, spec.text)
-        Rows.AddSlider(cell, spec, DD_HALF)
-      else
-        Rows.Cell(col, cell, half, spec.title, spec.text)
-        AddCheck(cell, spec)
-      end
+      Rows.Cell(col, cell, half, spec.title, spec.text)
+      AddCheck(cell, spec)
       cells[i] = cell
     end
     local mid = row:CreateTexture(nil, "BORDER")
@@ -4445,7 +4433,7 @@ do
   -- the list's height follows (Layout). Answers whether anything moved.
   function Rows.FitPairs()
     local pairs_ = S.pairs
-    local room = ROW_W / 2 - NAME_X - CONTROL_R - NAME_GAP
+    local room = ROW_W / 2 - NAME_X - CONTROL_R - CHECK_H - NAME_GAP
     local moved
     for i = 1, #pairs_ do
       local row = pairs_[i]
@@ -4453,10 +4441,7 @@ do
       for j = 1, 2 do
         local cell = row.pair[j]
         cell.Name:SetText(cell.nameText)
-        -- A half's control at its least: a dropdown narrows to DD_HALF_MIN
-        -- for a long name (Rows.Fit); a slider and a checkbox keep theirs.
-        local least = (cell.kind == "dropdown" and DD_HALF_MIN) or (cell.kind == "slider" and DD_HALF) or CHECK_H
-        if TextW(cell.Name) > room - least then apart = true end
+        if TextW(cell.Name) > room then apart = true end
       end
       if apart ~= row.unpaired then
         LayPair(row, apart)
@@ -4476,8 +4461,7 @@ do
     for key, page in pairs(S.pages) do
       local col = S.cols[key]
       if moved[col] then
-        local h, m = Rows.Reflow(col)
-        S.pageH[key], S.pageMost[key] = h + 2 * LIST_PAD, m + 2 * LIST_PAD
+        S.pageH[key] = Rows.Reflow(col) + 2 * LIST_PAD
         page:SetHeight(S.pageH[key])
       end
       local h = Rows.PageNeed(key)
@@ -4491,7 +4475,7 @@ do
   -- and on General the summary's card over them (Dash), one height
   -- whatever its list holds, so it never squeezes the settings.
   function Rows.PageNeed(key)
-    local h = (S.pageMost[key] or S.pageH[key]) + 2
+    local h = S.pageH[key] + 2
     if key == "general" then h = h + Dash.H + BODY_GAP end
     return h
   end
@@ -4518,12 +4502,11 @@ do
     for i = 1, #items do names[i] = items[i].name end
     return table.concat(names, "  \194\183  ")
   end
-  Rows.Choices = Choices
 
   -- Postbox's own dropdown element, not UIDropDownMenu / MenuUtil, so the
   -- list panel is a frame we own and can keep fully opaque. spec: title,
   -- text, items, get, set(id).
-  -- The dropdown on `row` (a row, or half of one: Rows.Pair), `width` wide.
+  -- The dropdown on `row`, `width` wide.
   local function AddDropdown(row, spec, width)
     local ok, current = pcall(spec.get)
     local dd = ns.Core.UI.Dropdown.Create(row, {
@@ -4554,7 +4537,6 @@ do
     Rows.Cell(col, row, ROW_W, spec.title, spec.text or Choices(spec.items))
     return AddDropdown(row, spec, DD_W)
   end
-  Rows.AddDropdown = AddDropdown
 
   -- A slider: a whole number from spec.min to spec.max, as wide as a
   -- dropdown and where one stands. The game's own Slider does the dragging
@@ -4619,7 +4601,7 @@ do
   end
 
   -- The slider's track and its tick at zero, for the column `width` it
-  -- has: a whole row's, a dropdown's width, or a half-row's (Rows.Pair).
+  -- has: a dropdown's width.
   function Rows.SizeSlider(cell, width)
     local s = cell.slider
     local w = width - SLIDER.VALUE_W - SLIDER.GAP
@@ -4673,7 +4655,6 @@ do
     Rows.PaintSlider(row)
     return row
   end
-  Rows.AddSlider = AddSlider
 
   function Rows.Slider(col, spec)
     local row = Rows.New(col, ROW_H)
@@ -4701,107 +4682,6 @@ do
     if spec.mark then btn.Mark = Ctx.Mark(ArtHolder(btn), 7, nil, "layout-mini") end
     row.kind, row.control, row.button, row.onHover = "button", btn, btn, spec.onHover
     row.minW, row.col = spec.minWidth, col
-    return row
-  end
-
-  -- A gallery: every choice of a setting as a small tile showing its own
-  -- art (the minimap icon's styles), in rows across the list, the chosen
-  -- one framed in the accent. A click picks one. The pointer on a tile
-  -- says its name in a tooltip beside the panel, and the inspector says
-  -- what the setting does, as for any row. The row is as tall as its tiles
-  -- need. spec: title, text, items ({ id, name, icon = { texture | atlas,
-  -- aspect } }), get, set(id).
-  local GALLERY = { TILE = 24, ART = 20, GAP = 2, PAD = 3 }
-  local function GalleryPaintTile(tile)
-    local T = ns.Theme
-    local cell = tile.cell
-    local on = cell.value == tile.id
-    for i = 1, 4 do
-      if on then
-        T.FillColor(tile.Ring[i], "accent")
-      else
-        T.FillChrome(tile.Ring[i], tile.hot and 0.45 or 0.17)
-      end
-    end
-    tile.Wash:SetShown(tile.hot and true or false)
-    local live = cell.live ~= false
-    tile.Art:SetDesaturated(not live)
-    tile.Art:SetAlpha(live and 1 or 0.45)
-  end
-
-  function Rows.PaintGallery(cell)
-    local ok, v = pcall(cell.get)
-    cell.value = ok and v or nil
-    for i = 1, #cell.tiles do GalleryPaintTile(cell.tiles[i]) end
-  end
-
-  local function GalleryEnter(self)
-    if Rows.Held(self, GalleryEnter) then return end
-    self.hot = true
-    GalleryPaintTile(self)
-    Rows.Hover(self.cell)
-    local T = ns.Theme
-    T.TipBegin(self, "ANCHOR_NONE")
-    T.TipTitle(self.name or "")
-    Tip.Show(self)
-  end
-
-  local function GalleryLeave(self)
-    if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
-    self.hot = false
-    GalleryPaintTile(self)
-    if Rows.HeldLeave(self) then return end
-    Rows.Unhover(self.cell)
-  end
-
-  local function GalleryClick(self)
-    local cell = self.cell
-    if cell.live == false or cell.value == self.id then return end
-    cell.set(self.id)
-    Rows.PaintGallery(cell)
-    if type(SOUNDKIT) == "table" then PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON) end
-  end
-
-  function Rows.Gallery(col, spec)
-    local T = ns.Theme
-    local G = GALLERY
-    local items = spec.items
-    local across = math.floor((ROW_W - 2 * NAME_X + G.GAP) / (G.TILE + G.GAP))
-    local lines = math.ceil(#items / across)
-    local row = Rows.New(col, 2 * G.PAD + lines * G.TILE + (lines - 1) * G.GAP)
-    Rows.Cell(col, row, ROW_W, spec.title, spec.text)
-    row.Name:SetText("")
-    row.nameText = ""
-    row.kind, row.get, row.set, row.tiles = "gallery", spec.get, spec.set, {}
-    -- The tiles centred across the row, line by line.
-    local per = math.min(across, #items)
-    local x0 = math.floor((ROW_W - per * G.TILE - (per - 1) * G.GAP) / 2)
-    for i = 1, #items do
-      local item = items[i]
-      local k = i - 1
-      local tile = CreateFrame("Button", nil, row)
-      tile:SetSize(G.TILE, G.TILE)
-      tile:SetPoint("TOPLEFT", row, "TOPLEFT", x0 + (k % across) * (G.TILE + G.GAP),
-        -(G.PAD + math.floor(k / across) * (G.TILE + G.GAP)))
-      local wash = tile:CreateTexture(nil, "BACKGROUND")
-      wash:SetPoint("TOPLEFT", tile, "TOPLEFT", 1, -1)
-      wash:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", -1, 1)
-      T.FillChrome(wash, WASH_A * 2)
-      wash:Hide()
-      local art = tile:CreateTexture(nil, "ARTWORK")
-      local icon = item.icon or {}
-      local aspect = tonumber(icon.aspect) or 1
-      art:SetSize(math.floor(G.ART * math.min(1, aspect) + 0.5), math.floor(G.ART / math.max(1, aspect) + 0.5))
-      art:SetPoint("CENTER", tile, "CENTER", 0, 0)
-      if icon.atlas and art.SetAtlas then art:SetAtlas(icon.atlas) elseif icon.texture then art:SetTexture(icon.texture) end
-      tile.Ring = Rows.Edges(tile, 2)
-      tile.Wash, tile.Art, tile.cell, tile.id, tile.name = wash, art, row, item.id, item.name
-      tile:SetScript("OnEnter", GalleryEnter)
-      tile:SetScript("OnLeave", GalleryLeave)
-      tile:SetScript("OnClick", GalleryClick)
-      row.tiles[i] = tile
-    end
-    Rows.PaintGallery(row)
     return row
   end
 
@@ -5323,119 +5203,6 @@ do
     return head
   end
 
-  -- The "More" fold: one line in a group that opens and closes the rows
-  -- under it, the group's rarer settings, so a tall tab stays as short as
-  -- the window and every tab keeps one size. Its words say what is inside;
-  -- a caret at its right end points across while it is closed and down
-  -- while it is open; the inspector says what a click does, in the house's
-  -- words for a hint. Closed whenever the options open (Panel.Toggle). A
-  -- row inside a closed fold is not on screen, so it is never pointed at;
-  -- open, every row in it reads as any other, the inspector and the
-  -- drawings included. The window is sized for every fold open
-  -- (Rows.Reflow, Rows.PageNeed), so opening one never scrolls the tab or
-  -- grows the panel. Its rows are its column's for greying (a block's
-  -- switch greys a fold's rows with the rest). Rows.Fold opens it in `col`
-  -- and answers the fold, a column the rows go into; Rows.EndFold closes it.
-  local function FoldGlyphs(row)
-    local open = row.fold.open
-    local T = ns.Theme
-    if row.Shut then row.Shut:SetShown(not open) end
-    if row.Open then row.Open:SetShown(open) end
-    local ink = row.foldOff and "textDisabled" or (row.hot and "textPrimary" or "textSecondary")
-    if row.Shut then T.SetColor(row.Shut, ink) end
-    if row.Open then T.SetColor(row.Open, ink) end
-  end
-
-  local function FoldClick(self, button)
-    if button ~= "LeftButton" or not self:IsMouseOver() then return end
-    Rows.SetFold(self.fold, not self.fold.open)
-    if type(SOUNDKIT) == "table" then PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON) end
-  end
-
-  local function FoldEnter(self)
-    if Rows.Held(self, FoldEnter) then return end
-    self.hot = true
-    FoldGlyphs(self)
-    Rows.Hover(self)
-  end
-
-  local function FoldLeave(self)
-    self.hot = false
-    FoldGlyphs(self)
-    if Rows.HeldLeave(self) then return end
-    Rows.Unhover(self)
-  end
-
-  function Rows.Fold(col, text)
-    local T = ns.Theme
-    local row = Rows.New(col, ROW_H)
-    Rows.Cell(col, row, ROW_W, text, L["OPT_MORE_SHOW"])
-    row.kind, row.controlW = "fold", 14
-    T.SetColor(row.Name, "textSecondary")
-    -- A click opens it: the line takes its own clicks.
-    if row.SetPropagateMouseClicks then row:SetPropagateMouseClicks(false) end
-    row:SetScript("OnMouseUp", FoldClick)
-    row:SetScript("OnEnter", FoldEnter)
-    row:SetScript("OnLeave", FoldLeave)
-    if T.Glyph then
-      row.Shut = T.Glyph(row, "arrow-right", 8, "OVERLAY")
-      row.Open = T.Glyph(row, "caret", 5, "OVERLAY")
-      if row.Shut then row.Shut:SetPoint("CENTER", row, "RIGHT", -(CONTROL_R + 5), 0) end
-      if row.Open then row.Open:SetPoint("CENTER", row, "RIGHT", -(CONTROL_R + 5), 0) end
-    end
-    row.showEntry, row.hideEntry = row.entry, Entry(text, L["OPT_MORE_HIDE"])
-    local frame = CreateFrame("Frame", nil, col.frame)
-    frame:SetPoint("TOPLEFT", col.frame, "TOPLEFT", 0, col.y)
-    frame:SetPoint("TOPRIGHT", col.frame, "TOPRIGHT", 0, col.y)
-    frame:Hide()
-    local fold = { frame = frame, y = 0, top = 0, first = false, cells = col.cells, items = {},
-      heads = col.heads or {}, parent = col, open = false, row = row }
-    fold.item = { frame = frame, h = 0, m = 0, block = fold, fold = true }
-    col.items[#col.items + 1] = fold.item
-    local page = col
-    while page.parent do page = page.parent end
-    fold.page = page
-    row.fold = fold
-    S.folds[#S.folds + 1] = fold
-    FoldGlyphs(row)
-    return fold
-  end
-
-  -- The fold's rows are in; it stands closed, taking no height.
-  function Rows.EndFold(fold)
-    fold.frame:SetHeight(math.max(1, -fold.y))
-    fold.item.h = -fold.y
-    return fold
-  end
-
-  -- Opened or closed: its rows shown or put away, its page stacked again
-  -- (the window's height does not move: it was sized for the fold open),
-  -- and the inspector's hint the other way round if it is showing it.
-  function Rows.SetFold(fold, open)
-    open = open and true or false
-    if fold.open == open then return end
-    fold.open = open
-    if not open then ns.Core.UI.Dropdown.CloseAll() end
-    fold.frame:SetShown(open)
-    local row = fold.row
-    FoldGlyphs(row)
-    local entry = open and row.hideEntry or row.showEntry
-    if row.entry ~= entry then
-      local shown = S.shown == row.entry
-      row.entry = entry
-      if shown then
-        S.shown = false
-        Insp.Show(entry)
-      end
-    end
-    Rows.Restack({ [fold.page] = true })
-  end
-
-  -- Every fold closed: each time the options open.
-  function Rows.CloseFolds()
-    for i = 1, #S.folds do Rows.SetFold(S.folds[i], false) end
-  end
-
   -- A heading in the accent, or grey with its block's rows (head.off).
   function Rows.PaintGroup(head)
     local T = ns.Theme
@@ -5460,17 +5227,6 @@ do
     end
     local more = cell.more
     if more and more.SetEnabled then more:SetEnabled(on) end
-    if cell.kind == "gallery" then
-      cell.live = on
-      Rows.PaintGallery(cell)
-    end
-    if cell.kind == "fold" then
-      -- A fold's line stays a way in while its rows are grey: they say why.
-      cell.foldOff = not on
-      ns.Theme.SetColor(cell.Name, on and "textSecondary" or "textDisabled")
-      FoldGlyphs(cell)
-      return
-    end
     if cell.kind ~= "note" and cell.Name then
       ns.Theme.SetColor(cell.Name, on and "accent" or "textDisabled")
     end
@@ -5711,18 +5467,11 @@ do
         State.FitHidden()
       else
         local controlW = cell.controlW or 0
-        -- A whole row's control, or half a row's (Rows.Pair, side by side).
-        local whole = cell.w >= ROW_W
-        if kind == "slider" then
-          local want = whole and DD_W or DD_HALF
-          if cell.controlW ~= want then Rows.SizeSlider(cell, want) end
-          controlW = want
-        elseif kind == "dropdown" then
-          local full = whole and DD_W or DD_HALF
-          local want = full
+        if kind == "dropdown" then
+          local want = DD_W
           local nameW = TextW(cell.Name)
-          if nameW + NAME_GAP + full > inner then
-            want = math.max(whole and DD_MIN_W or DD_HALF_MIN, inner - nameW - NAME_GAP)
+          if nameW + NAME_GAP + DD_W > inner then
+            want = math.max(DD_MIN_W, inner - nameW - NAME_GAP)
           end
           if cell.controlW ~= want then
             cell.controlW = want
@@ -6642,37 +6391,41 @@ function State.Minimap()
   local Icon = ns.MinimapButton
   local on = Icon and Icon.GetEnabled and Icon.GetEnabled() and true or false
   Rows.SetBlock(S.minimapBlock, on)
-  -- Flash on new mail, under General, is drawn on the icon too; so is the
-  -- marker General's Minimap marker places (State.Warnings).
+  -- Flash on new mail, on Alerts, is drawn on the icon too; so is the
+  -- marker Alerts' Minimap marker places, with its look (State.Warnings,
+  -- State.MinimapRows).
   if S.flashCell then Rows.SetEnabled(S.flashCell, on) end
   State.MinimapRows()
   State.Warnings()
   Tabs.SetSquare("minimap", on and "on" or "off")
   Ctx.Paint("minimap")
+  Ctx.Paint("alerts")
 end
 
--- With the icon on, the rows that need something else grey while it is
--- not there, each saying what turns it on (Rows.Why): Count on icon, and
--- the marker's look, while Mail Memory is off, which they are made from;
--- Shape, Color, Anchor, Offset X and Offset Y while Warn about or Minimap
--- marker (both under General) is Off; Larger when alone unless it is
--- Always (the one choice that puts the marker on its own), and with the
--- rest; Pulse while Glow is off; Glow color
--- while neither Glow nor Flash on new mail, the two things that wear it, is
--- on. When to show stays live, its Mail on any character set aside (faint
--- in its list, and said why) while Mail Memory is off. With the icon off
--- the block has them grey already, saying to turn the icon on.
+-- The rows that need something else grey while it is not there, each
+-- saying what turns it on (Rows.Why). On Alerts, the marker's look --
+-- Shape, Color, Anchor, Offset X and Offset Y -- while there is no marker
+-- to wear it: Mail Memory off (its block has them grey already), Warn
+-- about Off, Minimap marker Off, or the minimap icon it is drawn on off;
+-- Larger when alone unless Minimap marker is Always (the one choice that
+-- puts the marker on its own), and with the rest. On the Minimap tab, with
+-- the icon on: Count on icon while Mail Memory is off, which it is made
+-- from; Pulse while Glow is off; Glow color while neither Glow nor Flash
+-- on new mail, the two things that wear it, is on. When to show stays
+-- live, its Mail on any character set aside (faint in its list, and said
+-- why) while Mail Memory is off. With the icon off the Minimap tab's block
+-- has its rows grey already, saying to turn the icon on.
 function State.MinimapRows()
   local Icon, rows = ns.MinimapButton, S.mmRows
-  if not (Icon and rows and Icon.GetEnabled and Icon.GetEnabled()) then return end
+  if not (Icon and rows and Icon.GetEnabled) then return end
   local UI = ns.MailboxUI
+  local icon = Icon.GetEnabled() and true or false
   local memory = UI.GetOption("mailMemory") and true or false
   local warning = (UI.GetMemoryWarn and UI.GetMemoryWarn() or "any") ~= "off"
   local expiry = Icon.GetExpiry()
-  local marking = memory and warning and expiry ~= "off"
+  local marking = icon and memory and warning and expiry ~= "off"
   local why = (not memory and "OPT_MINIMAP_WHY_MEMORY") or (not warning and "OPT_MINIMAP_WHY_WARN")
-    or "OPT_MINIMAP_WHY_MARKER"
-  local glow = Icon.GetGlow() and true or false
+    or (expiry == "off" and "OPT_MINIMAP_WHY_MARKER") or "OPT_MINIMAP_WHY_SWITCH"
   if rows.marker then Rows.SetEnabled(rows.marker, marking, why) end
   if rows.color then Rows.SetEnabled(rows.color, marking, why) end
   if rows.corner then Rows.SetEnabled(rows.corner, marking, why) end
@@ -6681,6 +6434,8 @@ function State.MinimapRows()
   if rows.large then
     Rows.SetEnabled(rows.large, marking and expiry == "always", marking and "OPT_MINIMAP_WHY_ALONE" or why)
   end
+  if not icon then return end
+  local glow = Icon.GetGlow() and true or false
   if rows.count then Rows.SetEnabled(rows.count, memory, "OPT_MINIMAP_WHY_MEMORY") end
   if rows.show then
     if S.mmShowAny then S.mmShowAny.off = not memory end
@@ -6690,7 +6445,7 @@ function State.MinimapRows()
   if rows.glow then Rows.SetEnabled(rows.glow, glow or (Icon.GetAlertFlash() and true or false)) end
 end
 
--- General's Expiring mail, with Mail Memory on (off, its block has the
+-- Alerts' Expiring mail, with Mail Memory on (off, its block has the
 -- rows grey, saying to turn it on): Chat line at login and Minimap marker
 -- grey while Warn about is Off, since they follow it; the marker also
 -- while the minimap icon, which it is drawn on, is off -- each saying what
@@ -6739,9 +6494,9 @@ function State.RowLayout()
 end
 
 -- Mail Memory's switch: the rows it governs grey with it -- Hidden
--- characters and the expiring-mail warnings here, what the Minimap tab
--- makes from it there -- and the summary made from it says so (Dash), its
--- strip and its tile grey too.
+-- characters here, the expiring-mail warnings and the marker's look on
+-- Alerts, what the Minimap tab makes from it there -- and the summary made
+-- from it says so (Dash), its strip and its tile grey too.
 function State.Memory()
   local on = ns.MailboxUI.GetOption("mailMemory") and true or false
   Rows.SetBlock(S.memoryBlock, on)
@@ -7221,16 +6976,15 @@ function Pages.mail(col)
     end,
   })
   Shown(read.entry, "read")
-  -- The bar over the finished mail, under Finished mail: how it looks
-  -- (Island, Hairline or Full row), then, behind the group's "More" fold
-  -- (Rows.Fold), what it says (Done, Nothing left, Collected, or Custom, the
-  -- player's own words, typed in the dropdown's box itself: Rows.WordsBox),
-  -- Count, the number after the words, a switch on a row of its own; the
-  -- icon before the words; and its colour beside its island's shadow's,
-  -- each choice of colour with its dot. All grey, saying why, while
-  -- finished mail does not stand under the bar, and the shadow's too under
-  -- a look with no island (State.BarSays). The list is bound again where it
-  -- stands, the drawing's bar drawn again.
+  -- The bar over the finished mail, six rows under Finished mail, each a
+  -- row of its own: how it looks (Island, Hairline or Full row), what it
+  -- says (Done, Nothing left, Collected, or Custom, the player's own words,
+  -- typed in the dropdown's box itself: Rows.WordsBox), Count, the number
+  -- after the words; the icon before the words; its colour, and its
+  -- island's shadow's, each choice of colour with its dot. All grey, saying
+  -- why, while finished mail does not stand under the bar, and the
+  -- shadow's too under a look with no island (State.BarSays). The list is
+  -- bound again where it stands, the drawing's bar drawn again.
   do
     local UI = ns.MailboxUI
     local T = ns.Theme
@@ -7253,9 +7007,7 @@ function Pages.mail(col)
     Shown(look.entry, "divider")
     S.barLookCell = look
 
-    local more = Rows.Fold(col, L["OPT_MORE_BAR"])
-
-    local says = Rows.Dropdown(more, {
+    local says = Rows.Dropdown(col, {
       title = L["OPT_BAR_SAYS_TITLE"], text = L["OPT_BAR_SAYS_DESC"],
       items = {
         { id = "read",      name = L["INBOX_DIVIDER_READ_PLAIN"] },
@@ -7296,7 +7048,7 @@ function Pages.mail(col)
     Shown(says.entry, "divider")
     S.barSaysCell = says
 
-    local count = Rows.Check(more, {
+    local count = Rows.Check(col, {
       title = L["OPT_BAR_COUNT_TITLE"], text = L["OPT_BAR_COUNT_DESC"],
       get = function() return UI.GetBarCount and UI.GetBarCount() end,
       set = function(on)
@@ -7320,7 +7072,7 @@ function Pages.mail(col)
     for _, id in ipairs(UI.DIVIDER_ICONS or { "none" }) do
       iconItems[#iconItems + 1] = { id = id, name = iconNames[id] or id, icon = (id ~= "none") and { glyph = id } or nil }
     end
-    local icon = Rows.Dropdown(more, {
+    local icon = Rows.Dropdown(col, {
       title = L["OPT_BAR_ICON_TITLE"], text = L["OPT_BAR_ICON_DESC"],
       items = iconItems,
       get = function() return UI.GetDividerIcon and UI.GetDividerIcon() or "none" end,
@@ -7351,18 +7103,16 @@ function Pages.mail(col)
       local c = P and P.list or T.Colors.surface
       return c[1], c[2], c[3]
     end
-    -- A colour's half-row, Bar color's or Shadow color's, by the setting's
-    -- own getter, setter, picker and Custom colour; the same choices. The
-    -- two side by side (Rows.Pair), one under the other where a name will
-    -- not fit its half.
-    local made = {}
-    local function ColorSpec(k, title, desc, get, set, pick, custom)
+    -- A colour row, Bar color's or Shadow color's, by the setting's own
+    -- getter, setter, picker and Custom colour; the same choices.
+    local function ColorRow(title, desc, get, set, pick, custom)
+      local cell
       local function Picked()
-        if made[k] then Rows.PaintDropdown(made[k]) end
+        if cell then Rows.PaintDropdown(cell) end
         Ctx.Repaint()
       end
-      return {
-        kind = "dropdown", title = title, text = desc, items = items,
+      cell = Rows.Dropdown(col, {
+        title = title, text = desc, items = items,
         swatchFor = function(id)
           if id == "neutral" then return Ground() end
           if id == "custom" then return custom() end
@@ -7372,29 +7122,25 @@ function Pages.mail(col)
         set = function(id)
           if id == "custom" then
             -- No picker: the box shows the choice that stands.
-            if not pick(Picked) and made[k] then Rows.PaintDropdown(made[k]) end
+            if not pick(Picked) then Rows.PaintDropdown(cell) end
           else
             set(id)
           end
           Ctx.Repaint()
         end,
-      }
+      })
+      Rows.Why(cell, "OPT_DIVIDER_WHY")
+      Shown(cell.entry, "divider")
+      return cell
     end
-    local colors = Rows.Pair(more,
-      ColorSpec(1, L["OPT_BAR_COLOR_TITLE"], L["OPT_BAR_COLOR_DESC"], UI.GetDividerColor, UI.SetDividerColor,
-        UI.PickDividerColor, UI.GetDividerCustom),
-      -- The island's shadow: grey, saying so, under Hairline and Full row,
-      -- which have none (State.BarSays).
-      ColorSpec(2, L["OPT_BAR_SHADOW_TITLE"], L["OPT_BAR_SHADOW_DESC"], UI.GetShadowColor, UI.SetShadowColor,
-        UI.PickShadowColor, UI.GetShadowCustom))
-    made[1], made[2] = colors.pair[1], colors.pair[2]
-    for i = 1, 2 do
-      Rows.Why(made[i], "OPT_DIVIDER_WHY")
-      Shown(made[i].entry, "divider")
-    end
-    Rows.Why(made[2], "OPT_BAR_SHADOW_WHY")
-    S.barColorCell, S.barShadowCell = made[1], made[2]
-    Rows.EndFold(more)
+    S.barColorCell = ColorRow(L["OPT_BAR_COLOR_TITLE"], L["OPT_BAR_COLOR_DESC"], UI.GetDividerColor, UI.SetDividerColor,
+      UI.PickDividerColor, UI.GetDividerCustom)
+    -- The island's shadow: grey, saying so, under Hairline and Full row,
+    -- which have none (State.BarSays).
+    local shadow = ColorRow(L["OPT_BAR_SHADOW_TITLE"], L["OPT_BAR_SHADOW_DESC"], UI.GetShadowColor, UI.SetShadowColor,
+      UI.PickShadowColor, UI.GetShadowCustom)
+    Rows.Why(shadow, "OPT_BAR_SHADOW_WHY")
+    S.barShadowCell = shadow
   end
   -- (The sound when mail arrives is General's now, under New mail:
   -- Pages.general.)
@@ -7966,9 +7712,9 @@ function Pages.windowCreative(col, Skin)
   end
 end
 
--- The Minimap tab (Core/MinimapButton.lua): the switch, then five groups --
--- when the icon shows, the icon itself, its glow, the marker for expiring
--- mail, and where it sits. Resolved at click time like every other
+-- The Minimap tab (Core/MinimapButton.lua): the switch, then four groups --
+-- when the icon shows, the icon itself, its glow, and where it sits (the
+-- marker for expiring mail is Alerts'). Resolved at click time like every other
 -- binding, so the page stays honest if the module is absent. A row grey
 -- because another setting is off says what turns it on (Rows.Why); with
 -- the switch off, every row says to turn the icon on.
@@ -7993,9 +7739,9 @@ function Pages.minimap(col)
   S.minimapBlock = block
   -- The settings with choices the drawing answers while pointed at
   -- (Ctx.MinimapMode), their text standing under it (Layout); and the rows
-  -- that grey with another setting (State.MinimapRows).
-  local modes, rows = {}, {}
-  S.mmModes, S.mmRows = modes, rows
+  -- that grey with another setting (State.MinimapRows). Alerts, built
+  -- first, has put the marker's in them.
+  local modes, rows = Pages.MinimapTables()
 
   local function Effect(titleKey, descKey, get, set, after)
     return {
@@ -8029,6 +7775,7 @@ function Pages.minimap(col)
     end,
   })
   modes[showRow.entry] = "show"
+  showRow.entry.stage = "minimap"
   rows.show = showRow
   Rows.Why(showRow, "OPT_MINIMAP_WHY_ANY")
 
@@ -8074,12 +7821,12 @@ function Pages.minimap(col)
     { id = "blizzard",     name = L["OPT_MINIMAP_ICON_BLIZZARD"] },
     { id = "postbox",      name = L["OPT_MINIMAP_ICON_POSTBOX"] },
   }
-  -- Every item carries its art: the gallery shows the icons themselves, the
-  -- only way to browse them without pending mail (Rows.Gallery).
+  -- Every item carries its art, so the open list shows the icons themselves
+  -- -- the only way to browse them without pending mail.
   if Icon and Icon.GetIconSpec then
     for _, item in ipairs(iconItems) do item.icon = Icon.GetIconSpec(item.id) end
   end
-  Rows.Gallery(block, {
+  Rows.Dropdown(block, {
     title = L["OPT_MINIMAP_ICON_TITLE"], text = L["OPT_MINIMAP_ICON_DESC"], items = iconItems,
     get = function() return ns.MinimapButton and ns.MinimapButton.GetIcon() end,
     set = function(id)
@@ -8125,7 +7872,7 @@ function Pages.minimap(col)
 
   -- Glow: the glow and its pulse side by side, the one breathing the
   -- other, and the colour it wears -- which the flash when mail arrives
-  -- (General, New mail) wears too. Pulse greys while Glow is off, Glow
+  -- (Alerts, New mail) wears too. Pulse greys while Glow is off, Glow
   -- color while neither Glow nor the flash is on (State.MinimapRows).
   Rows.Group(block, L["OPT_MINIMAP_GROUP_GLOW"])
   local glowPair = Rows.Pair(block,
@@ -8137,171 +7884,18 @@ function Pages.minimap(col)
   rows.pulse = glowPair.pair[2]
   Rows.Why(rows.pulse, "OPT_MINIMAP_WHY_GLOW")
 
-  -- A colour's list, Glow color's and the marker's Color alike: each choice
-  -- carries its colour in the list; Custom, offered where the client has
-  -- its colour picker, carries the colour picked, and choosing it opens the
-  -- picker (MinimapButton.PickGlowColor, PickMarkerColor): each colour
-  -- picked is worn at once, and Cancel puts back the choice before. `c`:
-  -- title, text, ids (MinimapButton's list), names, get, set, pick, custom
-  -- (the colour saved, or nil), rgb (a choice's colour); Get, Set, Pick,
-  -- Custom and RGB name MinimapButton's functions, resolved at call time.
-  local T = ns.Theme
-  S.mmGlowCustom = T.CanPickColor and T.CanPickColor() and true or false
-  -- ColorSpec answers the spec (a half-row's, for Rows.Pair), whose `made`
-  -- is set to its cell once built; ColorRow a whole row of it.
-  local function ColorSpec(c)
-    local items = {}
-    for _, id in ipairs(c.ids) do
-      if id ~= "custom" or S.mmGlowCustom then items[#items + 1] = { id = id, name = c.names[id] } end
-    end
-    local spec
-    -- What the picker changed, in the list and the drawing.
-    local function Picked()
-      if spec.made then Rows.PaintDropdown(spec.made) end
-      Ctx.Repaint()
-    end
-    spec = {
-      kind = "dropdown", title = c.title, text = c.text, items = items,
-      swatchFor = function(id)
-        local I = ns.MinimapButton
-        if not I then return nil end
-        if id == "custom" then
-          if I[c.custom] then return I[c.custom]() end
-          return nil
-        end
-        if I[c.rgb] then return I[c.rgb](id) end
-        return nil
-      end,
-      get = function() return ns.MinimapButton and ns.MinimapButton[c.get]() end,
-      set = function(id)
-        local I = ns.MinimapButton
-        if not I then return end
-        if id == "custom" then
-          -- No picker: the list shows the choice that stands.
-          if not (I[c.pick] and I[c.pick](Picked)) and spec.made then Rows.PaintDropdown(spec.made) end
-        else
-          I[c.set](id)
-        end
-        Ctx.Repaint()
-      end,
-    }
-    return spec
-  end
-  local function ColorRow(c)
-    local spec = ColorSpec(c)
-    spec.made = Rows.Dropdown(block, spec)
-    return spec.made
-  end
-
-  local colorNames = {
-    red = L["OPT_MINIMAP_MARKERCOLOR_RED"], gold = L["OPT_MINIMAP_GLOWCOLOR_GOLD"],
-    accent = L["OPT_MINIMAP_GLOWCOLOR_ACCENT"], class = L["OPT_COLOR_CLASS"], white = L["OPT_MINIMAP_GLOWCOLOR_WHITE"],
-    custom = L["OPT_MINIMAP_GLOWCOLOR_CUSTOM"],
-  }
-  local glowRow = ColorRow({
+  local glowRow = Pages.MinimapColor(block, {
     title = L["OPT_MINIMAP_GLOWCOLOR_TITLE"], text = L["OPT_MINIMAP_GLOWCOLOR_DESC"],
-    ids = (Icon and Icon.GLOW_COLORS) or { "gold" }, names = colorNames,
+    ids = (Icon and Icon.GLOW_COLORS) or { "gold" },
     get = "GetGlowColor", set = "SetGlowColor", pick = "PickGlowColor", custom = "GetGlowCustom", rgb = "GlowRGB",
   })
   modes[glowRow.entry] = "glow"
+  glowRow.entry.stage = "minimap"
   rows.glow = glowRow
   Rows.Why(glowRow, "OPT_MINIMAP_WHY_GLOWCOLOR")
   -- (Flash on new mail, which wears Glow color and keeps it live while it
-  -- is on, is under General's New mail: Pages.general.)
-
-  -- Expiring mail: how the marker for mail to be deleted or sent back
-  -- looks -- its shape, its colour, the spot on the icon it is anchored to
-  -- and how far it is moved from there, and whether, on its own, it grows
-  -- into the icon's spot. Whether and where it shows, and what it warns
-  -- of, are General's (Minimap marker and Warn about, one rule with the
-  -- chat line at login: Pages.general).
-  Rows.Group(block, L["OPT_MINIMAP_GROUP_EXPIRY"])
-
-  -- Behind the group's "More" fold (Rows.Fold), two to a row so the fold
-  -- open fits the window: Shape beside Color, Anchor beside Larger when
-  -- alone, Offset X beside Offset Y. Shape, Color, Anchor, Offset X and
-  -- Offset Y grey while Minimap marker or Warn about is Off, or Mail Memory
-  -- is; Larger when alone unless it is Always, the only choice that puts
-  -- the marker on its own (State.MinimapRows). The fold's line stays a way
-  -- in: its rows say why they are grey.
-  local more = Rows.Fold(block, L["OPT_MORE_MARKER"])
-  local markerNames = {
-    dot = L["OPT_MINIMAP_MARKER_DOT"], ring = L["OPT_MINIMAP_MARKER_RING"], square = L["OPT_MINIMAP_MARKER_SQUARE"],
-    bar = L["OPT_MINIMAP_MARKER_BAR"], exclamation = L["OPT_MINIMAP_MARKER_EXCLAMATION"],
-    triangle = L["OPT_MINIMAP_MARKER_TRIANGLE"],
-  }
-  local markerItems = {}
-  for _, id in ipairs((Icon and Icon.MARKER_SHAPES) or { "dot" }) do
-    markerItems[#markerItems + 1] = { id = id, name = markerNames[id] }
-  end
-  local colorSpec = ColorSpec({
-    title = L["OPT_MINIMAP_MARKERCOLOR_TITLE"], text = L["OPT_MINIMAP_MARKERCOLOR_DESC"],
-    ids = (Icon and Icon.MARKER_COLORS) or { "red" }, names = colorNames,
-    get = "GetMarkerColor", set = "SetMarkerColor", pick = "PickMarkerColor", custom = "GetMarkerCustom", rgb = "MarkerRGB",
-  })
-  local look = Rows.Pair(more, {
-    kind = "dropdown", title = L["OPT_MINIMAP_MARKER_TITLE"], text = L["OPT_MINIMAP_MARKER_DESC"], items = markerItems,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarker() end,
-    set = function(id)
-      if ns.MinimapButton then ns.MinimapButton.SetMarker(id) end
-      Ctx.Repaint()
-    end,
-  }, colorSpec)
-  rows.marker, rows.color = look.pair[1], look.pair[2]
-  colorSpec.made = rows.color
-  modes[rows.marker.entry], modes[rows.color.entry] = "marker", "color"
-  -- Anchor: the nine spots, in reading order; its drawing is the grid of
-  -- them.
-  local anchorNames = {
-    TOPLEFT = L["OPT_MINIMAP_ANCHOR_TL"], TOP = L["OPT_MINIMAP_ANCHOR_T"], TOPRIGHT = L["OPT_MINIMAP_ANCHOR_TR"],
-    LEFT = L["OPT_MINIMAP_ANCHOR_L"], CENTER = L["OPT_MINIMAP_ANCHOR_C"], RIGHT = L["OPT_MINIMAP_ANCHOR_R"],
-    BOTTOMLEFT = L["OPT_MINIMAP_ANCHOR_BL"], BOTTOM = L["OPT_MINIMAP_ANCHOR_B"], BOTTOMRIGHT = L["OPT_MINIMAP_ANCHOR_BR"],
-  }
-  local cornerItems = {}
-  for _, id in ipairs((Icon and Icon.MARKER_CORNERS) or { "TOPRIGHT" }) do
-    cornerItems[#cornerItems + 1] = { id = id, name = anchorNames[id] }
-  end
-  local place = Rows.Pair(more, {
-    kind = "dropdown", title = L["OPT_MINIMAP_ANCHOR_TITLE"], text = L["OPT_MINIMAP_ANCHOR_DESC"], items = cornerItems,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerCorner() end,
-    set = function(id)
-      if ns.MinimapButton then ns.MinimapButton.SetMarkerCorner(id) end
-      Ctx.Repaint()
-    end,
-  }, {
-    title = L["OPT_MINIMAP_LARGE_TITLE"], text = L["OPT_MINIMAP_LARGE_DESC"],
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerLarge() end,
-    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetMarkerLarge(on) end end,
-    after = Ctx.Repaint,
-  })
-  rows.corner, rows.large = place.pair[1], place.pair[2]
-  modes[rows.corner.entry], modes[rows.large.entry] = "corner", "large"
-  -- Offset X and Offset Y: whole screen pixels from the anchor. No answers
-  -- of their own: the drawing shows the icon as set, the marker moving with
-  -- the slider, and their text stands under it.
-  local lo = (Icon and Icon.MARKER_OFFSET_MIN) or -20
-  local hi = (Icon and Icon.MARKER_OFFSET_MAX) or 20
-  local offsets = Rows.Pair(more, {
-    kind = "slider", title = L["OPT_MINIMAP_OFFSETX_TITLE"], text = L["OPT_MINIMAP_OFFSETX_DESC"], min = lo, max = hi,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerX() end,
-    set = function(v) if ns.MinimapButton then ns.MinimapButton.SetMarkerX(v) end end,
-    after = Ctx.Repaint,
-  }, {
-    kind = "slider", title = L["OPT_MINIMAP_OFFSETY_TITLE"], text = L["OPT_MINIMAP_OFFSETY_DESC"], min = lo, max = hi,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerY() end,
-    set = function(v) if ns.MinimapButton then ns.MinimapButton.SetMarkerY(v) end end,
-    after = Ctx.Repaint,
-  })
-  rows.offx, rows.offy = offsets.pair[1], offsets.pair[2]
-  Rows.EndFold(more)
-  Rows.Why(rows.large, "OPT_MINIMAP_WHY_ALONE")
-  for _, key in ipairs({ "marker", "color", "corner", "offx", "offy", "large" }) do
-    Rows.Why(rows[key], "OPT_MINIMAP_WHY_MARKER")
-    Rows.Why(rows[key], "OPT_MINIMAP_WHY_WARN")
-    Rows.Why(rows[key], "OPT_MINIMAP_WHY_MEMORY")
-  end
-  for entry in pairs(modes) do entry.stage = "minimap" end
-  rows.offx.entry.stage, rows.offy.entry.stage = "minimap", "minimap"
+  -- is on, is under Alerts' New mail: Pages.alerts. So is the marker for
+  -- expiring mail, with its look.)
 
   -- Place: where it sits on the map, and the lock on moving it. Under
   -- EllesmereUI's minimap that, and the size, are EllesmereUI's, and one
@@ -8351,13 +7945,77 @@ function Pages.minimap(col)
   Rows.EndBlock(block)
 end
 
--- General: what belongs to no one window. Over it, on a card of its own
--- across the panel, every character's mail as each box was last seen and
--- the ways into Mail Memory, Character Groups and Manage Recipients (Dash).
--- Its rows, in the order they depend on each other: Mail Memory, which the
--- card and the warnings are made from; Expiring mail, the warnings -- one
--- rule, Warn about, for the line in chat at login and the minimap marker
--- (MailMemory.lua, MM.Warns); and New mail, the sound and the flash.
+-- The minimap drawing's two tables, shared by the tabs that draw it: the
+-- settings whose choices it answers while pointed at (S.mmModes), and the
+-- rows that grey with another setting (S.mmRows, State.MinimapRows).
+-- Alerts makes them, being built first; the Minimap tab adds its own.
+function Pages.MinimapTables()
+  S.mmModes = S.mmModes or {}
+  S.mmRows = S.mmRows or {}
+  return S.mmModes, S.mmRows
+end
+
+-- A colour's row for the minimap icon, Glow color's (Minimap) and the
+-- marker's Color (Alerts) alike: each choice carries its colour in the
+-- list; Custom, offered where the client has its colour picker, carries
+-- the colour picked, and choosing it opens the picker
+-- (MinimapButton.PickGlowColor, PickMarkerColor): each colour picked is
+-- worn at once, and Cancel puts back the choice before. `c`: title, text,
+-- ids (MinimapButton's list), get, set, pick, custom (the colour saved, or
+-- nil), rgb (a choice's colour) -- each naming MinimapButton's function,
+-- resolved at call time. -> the row.
+function Pages.MinimapColor(col, c)
+  local T = ns.Theme
+  if S.mmGlowCustom == nil then S.mmGlowCustom = T.CanPickColor and T.CanPickColor() and true or false end
+  local names = {
+    red = L["OPT_MINIMAP_MARKERCOLOR_RED"], gold = L["OPT_MINIMAP_GLOWCOLOR_GOLD"],
+    accent = L["OPT_MINIMAP_GLOWCOLOR_ACCENT"], class = L["OPT_COLOR_CLASS"], white = L["OPT_MINIMAP_GLOWCOLOR_WHITE"],
+    custom = L["OPT_MINIMAP_GLOWCOLOR_CUSTOM"],
+  }
+  local items = {}
+  for _, id in ipairs(c.ids) do
+    if id ~= "custom" or S.mmGlowCustom then items[#items + 1] = { id = id, name = names[id] } end
+  end
+  local row
+  -- What the picker changed, in the list and the drawing.
+  local function Picked()
+    if row then Rows.PaintDropdown(row) end
+    Ctx.Repaint()
+  end
+  row = Rows.Dropdown(col, {
+    title = c.title, text = c.text, items = items,
+    swatchFor = function(id)
+      local I = ns.MinimapButton
+      if not I then return nil end
+      if id == "custom" then
+        if I[c.custom] then return I[c.custom]() end
+        return nil
+      end
+      if I[c.rgb] then return I[c.rgb](id) end
+      return nil
+    end,
+    get = function() return ns.MinimapButton and ns.MinimapButton[c.get]() end,
+    set = function(id)
+      local I = ns.MinimapButton
+      if not I then return end
+      if id == "custom" then
+        -- No picker: the list shows the choice that stands.
+        if not (I[c.pick] and I[c.pick](Picked)) then Rows.PaintDropdown(row) end
+      else
+        I[c.set](id)
+      end
+      Ctx.Repaint()
+    end,
+  })
+  return row
+end
+
+-- General: the overview. Over it, on a card of its own across the panel,
+-- every character's mail as each box was last seen and the ways into Mail
+-- Memory, Character Groups and Manage Recipients (Dash). Under it, what
+-- Postbox remembers: Mail Memory, which the card and the warnings are made
+-- from, the characters hidden from its lists, and how far back History
+-- goes.
 function Pages.general(col)
   local T = ns.Theme
   Rows.Group(col, L["OPT_MEMORY_HISTORY_HEADING"])
@@ -8372,8 +8030,8 @@ function Pages.general(col)
     after = State.Memory,
   })
 
-  -- What the switch governs, grey with it, saying so: who is left out of
-  -- the lists here, and the expiring-mail warnings under Keep History for.
+  -- What the switch governs here, grey with it, saying so: who is left out
+  -- of the lists. (The expiring-mail warnings it governs are Alerts'.)
   local block = Rows.Block(col, "OPT_MEMORY_WHY")
   S.memoryBlock = block
 
@@ -8426,28 +8084,36 @@ function Pages.general(col)
   -- off; with the two rows it shares the group's question, what Postbox
   -- keeps.
   Pages.historyDays(col)
+end
 
-  -- The rest the switch governs: the expiring-mail warnings.
-  block = Rows.Block(col, "OPT_MEMORY_WHY")
+-- Alerts: what tells you about mail. Expiring mail first -- Warn about, the
+-- one rule for both warnings, the line in chat at login and the minimap
+-- marker that follow it (MailMemory.lua, MM.Warns), then the marker's look
+-- as plain rows -- all made from Mail Memory and grey with it; then New
+-- mail, the sound and the flash. The inspector draws the minimap icon
+-- wearing the marker (Ctx.alerts), so its look is seen as it changes.
+function Pages.alerts(col)
+  -- The rest Mail Memory's switch governs: the expiring-mail warnings.
+  local block = Rows.Block(col, "OPT_MEMORY_WHY")
   S.warnBlock = block
 
-  -- Expiring mail: Warn about, the one rule for both warnings -- nothing,
-  -- mail to be deleted, or that and mail to be sent back (its ids are the
-  -- old warning's, so a saved choice carries over: MailboxUI.GetMemoryWarn)
-  -- -- and the two warnings that follow it: the line in chat at login, read
-  -- at the next login, and the minimap marker, where it shows (its saved
-  -- setting is the Minimap tab's old Show marker's; its look is still
-  -- there). Both grey while Warn about is Off, and the marker while the
+  -- Warn about: nothing, mail to be deleted, or that and mail to be sent
+  -- back (its ids are the old warning's, so a saved choice carries over:
+  -- MailboxUI.GetMemoryWarn) -- and the two warnings that follow it: the
+  -- line in chat at login, read at the next login, and the minimap marker,
+  -- where it shows (its saved setting is the Minimap tab's old Show
+  -- marker's). Both grey while Warn about is Off, and the marker while the
   -- minimap icon is off too (State.Warnings). Warn about's longest value
-  -- is cut short in its box, as any dropdown's is, and said whole on
-  -- hover (Rows.Fit).
+  -- is cut short in its box, as any dropdown's is, and said whole on hover
+  -- (Rows.Fit).
   Rows.Group(block, L["OPT_MINIMAP_GROUP_EXPIRY"])
   local function Warned()
     State.Warnings()
-    -- The Minimap tab's marker look greys with Warn about too.
+    -- The marker's look greys with Warn about too.
     State.MinimapRows()
     local Icon = ns.MinimapButton
     if Icon and Icon.Refresh then Icon.Refresh() end
+    Ctx.Repaint()
   end
   Rows.Dropdown(block, {
     title = L["OPT_WARN_TITLE"], text = L["OPT_WARN_DESC"] .. "\n\n" .. L["OPT_WARN_MORE"],
@@ -8469,24 +8135,107 @@ function Pages.general(col)
   })
   Rows.Why(chat, "OPT_WARN_WHY")
   local Icon = ns.MinimapButton
-  local markerNames = {
+  local expiryNames = {
     off = L["OPT_MINIMAP_EXPIRY_OFF"], icon = L["OPT_MINIMAP_EXPIRY_ICON"], always = L["OPT_MINIMAP_EXPIRY_ALWAYS"],
   }
-  local markerItems = {}
+  local expiryItems = {}
   for _, mode in ipairs((Icon and Icon.EXPIRY_MODES) or { "always" }) do
-    markerItems[#markerItems + 1] = { id = mode, name = markerNames[mode] }
+    expiryItems[#expiryItems + 1] = { id = mode, name = expiryNames[mode] }
   end
   local marker = Rows.Dropdown(block, {
-    title = L["OPT_WARN_MARKER_TITLE"], text = L["OPT_WARN_MARKER_DESC"], items = markerItems,
+    title = L["OPT_WARN_MARKER_TITLE"], text = L["OPT_WARN_MARKER_DESC"], items = expiryItems,
     get = function() return ns.MinimapButton and ns.MinimapButton.GetExpiry() end,
     set = function(id)
       if ns.MinimapButton then ns.MinimapButton.SetExpiry(id) end
       State.MinimapRows()
+      Ctx.Repaint()
     end,
   })
   Rows.Why(marker, "OPT_WARN_WHY")
   Rows.Why(marker, "OPT_MINIMAP_WHY_SWITCH")
   S.warnCells = { chat = chat, marker = marker }
+
+  -- The marker's look, a row each: its shape, its colour, the spot on the
+  -- icon it is anchored to and how far it is moved from there, and whether,
+  -- on its own, it grows into the icon's spot. Each grey, saying why, while
+  -- there is no marker to wear it (State.MinimapRows). The drawing answers
+  -- Shape, Color, Anchor and Larger when alone with their choices while
+  -- pointed at; Offset X and Offset Y have none, and the drawing shows the
+  -- marker moving with the slider.
+  local modes, rows = Pages.MinimapTables()
+  local shapeNames = {
+    dot = L["OPT_MINIMAP_MARKER_DOT"], ring = L["OPT_MINIMAP_MARKER_RING"], square = L["OPT_MINIMAP_MARKER_SQUARE"],
+    bar = L["OPT_MINIMAP_MARKER_BAR"], exclamation = L["OPT_MINIMAP_MARKER_EXCLAMATION"],
+    triangle = L["OPT_MINIMAP_MARKER_TRIANGLE"],
+  }
+  local shapeItems = {}
+  for _, id in ipairs((Icon and Icon.MARKER_SHAPES) or { "dot" }) do
+    shapeItems[#shapeItems + 1] = { id = id, name = shapeNames[id] }
+  end
+  rows.marker = Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_MARKER_TITLE"], text = L["OPT_MINIMAP_MARKER_DESC"], items = shapeItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarker() end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetMarker(id) end
+      Ctx.Repaint()
+    end,
+  })
+  rows.color = Pages.MinimapColor(block, {
+    title = L["OPT_MINIMAP_MARKERCOLOR_TITLE"], text = L["OPT_MINIMAP_MARKERCOLOR_DESC"],
+    ids = (Icon and Icon.MARKER_COLORS) or { "red" },
+    get = "GetMarkerColor", set = "SetMarkerColor", pick = "PickMarkerColor", custom = "GetMarkerCustom", rgb = "MarkerRGB",
+  })
+  -- Anchor: the nine spots, in reading order; its drawing is the grid of
+  -- them.
+  local anchorNames = {
+    TOPLEFT = L["OPT_MINIMAP_ANCHOR_TL"], TOP = L["OPT_MINIMAP_ANCHOR_T"], TOPRIGHT = L["OPT_MINIMAP_ANCHOR_TR"],
+    LEFT = L["OPT_MINIMAP_ANCHOR_L"], CENTER = L["OPT_MINIMAP_ANCHOR_C"], RIGHT = L["OPT_MINIMAP_ANCHOR_R"],
+    BOTTOMLEFT = L["OPT_MINIMAP_ANCHOR_BL"], BOTTOM = L["OPT_MINIMAP_ANCHOR_B"], BOTTOMRIGHT = L["OPT_MINIMAP_ANCHOR_BR"],
+  }
+  local cornerItems = {}
+  for _, id in ipairs((Icon and Icon.MARKER_CORNERS) or { "TOPRIGHT" }) do
+    cornerItems[#cornerItems + 1] = { id = id, name = anchorNames[id] }
+  end
+  rows.corner = Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_ANCHOR_TITLE"], text = L["OPT_MINIMAP_ANCHOR_DESC"], items = cornerItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerCorner() end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetMarkerCorner(id) end
+      Ctx.Repaint()
+    end,
+  })
+  -- Offset X and Offset Y: whole screen pixels from the anchor.
+  local lo = (Icon and Icon.MARKER_OFFSET_MIN) or -20
+  local hi = (Icon and Icon.MARKER_OFFSET_MAX) or 20
+  rows.offx = Rows.Slider(block, {
+    title = L["OPT_MINIMAP_OFFSETX_TITLE"], text = L["OPT_MINIMAP_OFFSETX_DESC"], min = lo, max = hi,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerX() end,
+    set = function(v) if ns.MinimapButton then ns.MinimapButton.SetMarkerX(v) end end,
+    after = Ctx.Repaint,
+  })
+  rows.offy = Rows.Slider(block, {
+    title = L["OPT_MINIMAP_OFFSETY_TITLE"], text = L["OPT_MINIMAP_OFFSETY_DESC"], min = lo, max = hi,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerY() end,
+    set = function(v) if ns.MinimapButton then ns.MinimapButton.SetMarkerY(v) end end,
+    after = Ctx.Repaint,
+  })
+  rows.large = Rows.Check(block, {
+    title = L["OPT_MINIMAP_LARGE_TITLE"], text = L["OPT_MINIMAP_LARGE_DESC"],
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerLarge() end,
+    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetMarkerLarge(on) end end,
+    after = Ctx.Repaint,
+  })
+  Rows.Why(rows.large, "OPT_MINIMAP_WHY_ALONE")
+  modes[rows.marker.entry], modes[rows.color.entry] = "marker", "color"
+  modes[rows.corner.entry], modes[rows.large.entry] = "corner", "large"
+  for _, key in ipairs({ "marker", "color", "corner", "offx", "offy", "large" }) do
+    local cell = rows[key]
+    Rows.Why(cell, "OPT_MINIMAP_WHY_MARKER")
+    Rows.Why(cell, "OPT_MINIMAP_WHY_WARN")
+    Rows.Why(cell, "OPT_MINIMAP_WHY_MEMORY")
+    Rows.Why(cell, "OPT_MINIMAP_WHY_SWITCH")
+    cell.entry.stage = "alerts"
+  end
   Rows.EndBlock(block)
 
   -- New mail: the sound when mail arrives while you are out in the world,
@@ -8514,7 +8263,10 @@ function Pages.general(col)
     title = L["OPT_ALERT_FLASH_TITLE"], text = L["OPT_ALERT_FLASH_DESC"],
     get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
     set = function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end,
-    after = State.MinimapRows,
+    after = function()
+      State.MinimapRows()
+      Ctx.Repaint()
+    end,
   })
   Rows.Why(S.flashCell, "OPT_MINIMAP_WHY_SWITCH")
 end
@@ -8533,8 +8285,9 @@ end
 -- still carries over when the new one is unset, the second a value that
 -- counts only beside another (a custom colour's hex beside its choice). A
 -- table's entries are judged one by one: the minimap icon's settings share
--- one table, and its alert sound, its flash and its marker's on/off
--- (Minimap marker) are General's rows, the marker's look the Minimap tab's.
+-- one table, and its alert sound, its flash, its marker's on/off (Minimap
+-- marker) and the marker's look are Alerts' rows, the icon's own the
+-- Minimap tab's.
 --
 -- A look's own values are named for it: pb (the Postbox style, and the
 -- creative styles drawn on it), eui (the EllesmereUI skin), modern (the
@@ -8686,7 +8439,7 @@ do
     for i = range[1], range[2] do
       local cell = S.cells[i]
       local kind = cell.kind
-      if (kind == "check" or kind == "dropdown" or kind == "slider" or kind == "gallery") and type(cell.get) == "function" then
+      if (kind == "check" or kind == "dropdown" or kind == "slider") and type(cell.get) == "function" then
         gets[#gets + 1] = cell.get
       end
       -- A value a row shows besides its choice (Bar says' words) is a
@@ -9075,8 +8828,7 @@ end
 --
 -- What it finds: every row the tabs built, as built -- a row this client or
 -- this look does not offer was never built or stands hidden, and is not
--- listed -- by its name and its group's, the rows behind a closed More line
--- included; a dropdown's choices by their names too, listed as the row
+-- listed -- by its name and its group's; a dropdown's choices by their names too, listed as the row
 -- with the choice beside its name; Test mail's switch on the Preview's
 -- heading; and what lives only on Arrange's cards (Core/Arrange.lua): each
 -- column of the mail rows with its own choices and its card's switches,
@@ -9092,8 +8844,8 @@ end
 -- the query and runs one find per index line, and writes its lines from
 -- strings the index already holds.
 --
--- A pick: an options row brings its tab forward, opens the More line it is
--- behind, and marks the row for a moment in the accent, the inspector saying
+-- A pick: an options row brings its tab forward and marks the row for a
+-- moment in the accent, the inspector saying
 -- what it does as it does under the pointer; an Arrange setting starts
 -- arranging through the options' own Arrange button (Panel.Arrange: the
 -- panel steps aside, one side panel at a time) on its card.
@@ -9126,24 +8878,14 @@ do
   end
 
   -- Whether `cell` stands on `page` as built: every frame up to the page
-  -- shown, a closed More line's frame aside.
-  local function Offered(cell, page, folds)
+  -- shown.
+  local function Offered(cell, page)
     local f = cell
     while f and f ~= page do
-      if not f:IsShown() and not folds[f] then return false end
+      if not f:IsShown() then return false end
       f = f:GetParent()
     end
     return f == page
-  end
-
-  -- The More line a cell is behind, if any.
-  local function FoldOf(cell)
-    local col = cell.home
-    while col do
-      if col.row and col.row.fold == col then return col end
-      col = col.parent
-    end
-    return nil
   end
 
   -- A line of the index, into `list`. `lead`: what a name beginning with
@@ -9160,8 +8902,7 @@ do
     for i = 1, #from do list[#list + 1] = from[i] end
   end
 
-  -- A row's name: its caption, or its inspector title where it shows none
-  -- (the minimap icon gallery).
+  -- A row's name: its caption, or its inspector title where it shows none.
   local function NameOf(cell)
     local name = cell.nameText
     if not name or name == "" then name = cell.entry and cell.entry.title or "" end
@@ -9268,8 +9009,8 @@ do
   end
   Find.STACK = { "band", "all", "grid" }
 
-  -- A row's lines: the row, each of its dropdown's choices or its gallery's
-  -- tiles, and the switch beside it (Rows.Side).
+  -- A row's lines: the row, each of its dropdown's choices, and the switch
+  -- beside it (Rows.Side).
   local function RowLines(cell, key, tabName, name)
     local lines = {}
     local kind = cell.kind
@@ -9278,27 +9019,18 @@ do
     local title = cell.entry and cell.entry.title
     local hay = Fold(name) .. "\001" .. Fold(group)
     if title and title ~= name then hay = hay .. "\001" .. Fold(title) end
-    local fold = FoldOf(cell)
-    local row = Add(lines, name, where, hay, { cell = cell, tab = key, fold = fold })
+    local row = Add(lines, name, where, hay, { cell = cell, tab = key })
     local items = (kind == "dropdown") and cell.items or nil
     for k = 1, items and #items or 0 do
       local item = items[k]
       if not item.heading and item.name and item.name ~= "" then
         local hayC = Fold(item.name)
-        Add(lines, Choice(name, item.name), where, hayC, { cell = cell, tab = key, fold = fold, row = row }, hayC)
-      end
-    end
-    local tiles = (kind == "gallery") and cell.tiles or nil
-    for k = 1, tiles and #tiles or 0 do
-      local tname = tiles[k].name
-      if tname and tname ~= "" then
-        local hayC = Fold(tname)
-        Add(lines, Choice(name, tname), where, hayC, { cell = cell, tab = key, fold = fold, row = row }, hayC)
+        Add(lines, Choice(name, item.name), where, hayC, { cell = cell, tab = key, row = row }, hayC)
       end
     end
     local side = cell.side
     if side and side.nameText then
-      Add(lines, side.nameText, where, Fold(side.nameText), { cell = cell, tab = key, fold = fold })
+      Add(lines, side.nameText, where, Fold(side.nameText), { cell = cell, tab = key })
     end
     cell.findLines, cell.findName = lines, name
     return lines
@@ -9315,19 +9047,13 @@ do
       S.findLines = list
     end
     for i = #list, 1, -1 do list[i] = nil end
-    local folds = S.findFolds
-    if not folds then
-      folds = {}
-      for i = 1, #S.folds do folds[S.folds[i].frame] = true end
-      S.findFolds = folds
-    end
     for t = 1, #TABS do
       local key = TABS[t].key
       local page, range = S.pages[key], S.tabCells[key]
       for i = range and range[1] or 1, range and range[2] or 0 do
         local cell = S.cells[i]
         local kind = cell.kind
-        if kind ~= "note" and kind ~= "fold" and Offered(cell, page, folds) then
+        if kind ~= "note" and Offered(cell, page) then
           local name = NameOf(cell)
           local lines = cell.findLines
           if not lines or cell.findName ~= name then lines = RowLines(cell, key, L[TABS[t].caption], name) end
@@ -9526,8 +9252,8 @@ do
   end
 
   -- The mark a pick leaves: four accent edges round the row, for a moment,
-  -- on the row itself, so it goes where the row goes (another tab, a fold
-  -- closing, the panel hiding).
+  -- on the row itself, so it goes where the row goes (another tab, the
+  -- panel hiding).
   local function Mark(target)
     local mark = S.findMark
     if not mark then
@@ -9579,7 +9305,6 @@ do
       return
     end
     Panel.SelectTab(e.tab)
-    if e.fold and not e.fold.open then Rows.SetFold(e.fold, true) end
     local target, entry = e.cell, nil
     if e.head then
       target = TestHead()
@@ -9727,8 +9452,6 @@ local function Refresh()
       Rows.PaintDropdown(cell)
     elseif cell.kind == "slider" then
       Rows.PaintSlider(cell)
-    elseif cell.kind == "gallery" then
-      Rows.PaintGallery(cell)
     elseif cell.lead then
       Rows.PaintLead(cell)
     end
@@ -9950,6 +9673,8 @@ local function Build()
   -- over the window's lower part under the pointer (Insp.Room, Insp.Idle).
   S.idle.mail.rise = "mail"
   S.idle.send = Entry(L["OPT_AFTER_SEND_TITLE"], L["OPT_AFTER_SEND_DESC"])
+  -- Alerts' first setting's, as the Send tab's: what the warnings warn of.
+  S.idle.alerts = Entry(L["OPT_WARN_TITLE"], L["OPT_WARN_DESC"])
   S.idle.window = Entry(L["OPT_STYLE_TITLE"], L["OPT_STYLE_DESC"])
   S.idle.minimap = Entry(L["OPT_MINIMAP_TITLE"], L["OPT_MINIMAP_DESC"])
 
@@ -9998,11 +9723,9 @@ local function Build()
     if key == "general" then
       for e = firstEntry, #S.entries do S.entries[e].tab = "general" end
     end
-    -- Stacked as it stands, its folds closed, and measured with them open.
-    local h, most = Rows.Reflow(col)
-    h, most = h + 2 * LIST_PAD, most + 2 * LIST_PAD
+    local h = -col.y + LIST_PAD
     page:SetHeight(h)
-    S.pages[key], S.cols[key], S.pageH[key], S.pageMost[key] = page, col, h, most
+    S.pages[key], S.cols[key], S.pageH[key] = page, col, h
     if Rows.PageNeed(key) > need then need = Rows.PageNeed(key) end
   end
   S.listNeed = need
@@ -10379,8 +10102,6 @@ function Panel.Toggle(anchor, from)
   S.openGen = (S.openGen or 0) + 1
   -- Mail Memory's cog opens General, where Mail Memory's settings are.
   if S.from == "memory" then S.tab = "general" end
-  -- Every "More" fold closed, as each open finds them (Rows.Fold).
-  Rows.CloseFolds()
   Refresh()
   Place.Put(frame)
   frame:Show()
