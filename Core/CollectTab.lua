@@ -6236,8 +6236,12 @@ local function LayoutViewToggle(panel)
   -- Where the window is narrower than that, the window's floor is raised to
   -- it (Core/MailboxUI.lua, UI.RefreshCollectWidth) -- which hears of it only
   -- when it moves. Last, so a resize it causes finds the row already laid.
+  -- While the arrange mode's header stands in the row's place, the picker's
+  -- cell and the other box's name are hidden with it and were measured out
+  -- above; the need the row last had shown stands until it shows again
+  -- (RV.ShowTopRow lays it out).
   local need = ceil(left + M.gap + least + 2 * M.inset)
-  if need ~= panel._needW then
+  if need ~= panel._needW and not (panel._topHidden and panel._needW) then
     panel._needW = need
     local UI = ns.MailboxUI
     if UI and type(UI.RefreshCollectWidth) == "function" then UI.RefreshCollectWidth() end
