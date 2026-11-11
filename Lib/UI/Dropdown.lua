@@ -110,10 +110,14 @@ function Dropdown.CloseAll(except)
   Watch()
 end
 
--- A colour square: a one-unit edge in the theme's quiet grey and the colour
+-- A colour swatch: a one-unit edge in the theme's quiet grey and the colour
 -- inside it, on a holder frame of its own (a skin's repaint of the button it
 -- sits on fades the button's own textures, never a child's). `size` square.
-local function NewSwatch(parent, size)
+-- `round`: a dot rather than a square, so a colour beside a name never reads
+-- as an unticked checkbox; a colour the same as the ground behind it still
+-- shows, as its thin grey ring. Where the client has no masks, a square.
+local ROUND_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+local function NewSwatch(parent, size, round)
   local holder = CreateFrame("Frame", nil, parent)
   holder:SetSize(size, size)
   holder:SetFrameLevel((parent:GetFrameLevel() or 1) + 2)
@@ -122,6 +126,16 @@ local function NewSwatch(parent, size)
   local fill = holder:CreateTexture(nil, "OVERLAY", nil, 1)
   fill:SetPoint("TOPLEFT", holder, "TOPLEFT", 1, -1)
   fill:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", -1, 1)
+  if round and type(holder.CreateMaskTexture) == "function" then
+    local outer = holder:CreateMaskTexture()
+    outer:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    outer:SetAllPoints(edge)
+    edge:AddMaskTexture(outer)
+    local inner = holder:CreateMaskTexture()
+    inner:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    inner:SetAllPoints(fill)
+    fill:AddMaskTexture(inner)
+  end
   holder.Edge, holder.Fill = edge, fill
   holder:Hide()
   return holder
@@ -476,7 +490,7 @@ function Dropdown.Create(parent, opts)
     toggle:HookScript("OnEnable", SampleState)
     toggle:HookScript("OnDisable", SampleState)
   elseif swatchFor then
-    toggleSwatch = NewSwatch(toggle, SWATCH_SIZE)
+    toggleSwatch = NewSwatch(toggle, SWATCH_SIZE, true)
     toggleSwatch:SetPoint("LEFT", toggle, "LEFT", SWATCH_X, 0)
   end
   local function PaintToggleSwatch()
@@ -730,7 +744,7 @@ function Dropdown.Create(parent, opts)
           textOffset = LIST_PADDING + MARK_GUTTER + size + 6
         elseif swatchFor then
           local size = rowHeight - 10
-          local sw = NewSwatch(row, size)
+          local sw = NewSwatch(row, size, true)
           sw:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
           row._swatch = sw
           textOffset = LIST_PADDING + MARK_GUTTER + size + 6
