@@ -3076,6 +3076,23 @@ local function PickerTip(row)
   GameTooltip:Show()
 end
 
+-- The list is drawn as the house's menus are (Lib/UI/Dropdown.lua): its rows
+-- PICK_PAD in from the card's edges, their contents PICK_GUTTER in from the
+-- row's, the crest at the menus' art size, and the row under the pointer in
+-- the menus' hover wash (MenuColors.hover, which the palette recolours in
+-- place), painted as it is entered so it follows the look.
+local PICK_PAD, PICK_GUTTER, PICK_CREST = 4, 8, 16
+
+local function PaintPickHover(texture)
+  local shared = ns.Core and ns.Core.UI and ns.Core.UI.Theme
+  local h = shared and shared.MenuColors and shared.MenuColors.hover
+  if h then
+    texture:SetColorTexture(h[1], h[2], h[3], h[4] or 1)
+  else
+    texture:SetColorTexture(0.90, 0.78, 0.30, 0.18)
+  end
+end
+
 local function PaintPicker(list)
   local T = ns.Theme
   local entries = list.entries or {}
@@ -3092,7 +3109,6 @@ local function PaintPicker(list)
       row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
       row.Hover = row:CreateTexture(nil, "BACKGROUND")
       row.Hover:SetAllPoints()
-      ns.Theme.FillChrome(row.Hover, 0.06)
       row.Hover:Hide()
       -- The box on screen wears the one mark every list and menu gives a
       -- chosen row: an accent wash over the row and an accent bar at its
@@ -3108,23 +3124,24 @@ local function PaintPicker(list)
       row.Bar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
       row.Bar:SetTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
       -- The hairline over the foot: the names above it are offered, the ones
-      -- below it are not. Neutral, as a row heading's rule is.
+      -- below it are not. Neutral, the row's width, as a menu's rule is.
       row.Rule = row:CreateTexture(nil, "ARTWORK")
       row.Rule:SetHeight(1)
-      row.Rule:SetPoint("TOPLEFT", row, "TOPLEFT", 6, 0)
-      row.Rule:SetPoint("TOPRIGHT", row, "TOPRIGHT", -6, 0)
+      row.Rule:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+      row.Rule:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
       ns.Theme.FillChrome(row.Rule, 0.12)
       row.Rule:Hide()
       row.Crest = row:CreateTexture(nil, "ARTWORK")
-      row.Crest:SetSize(14, 14)
-      row.Crest:SetPoint("LEFT", row, "LEFT", 8, 0)
+      row.Crest:SetSize(PICK_CREST, PICK_CREST)
+      row.Crest:SetPoint("LEFT", row, "LEFT", PICK_PAD + PICK_GUTTER, 0)
       row.Name = T.CreateText(row, "value")
       row.Name:SetJustifyH("LEFT")
       row.Name:SetWordWrap(false)
       row.Count = T.CreateText(row, "secondary")
-      row.Count:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+      row.Count:SetPoint("RIGHT", row, "RIGHT", -PICK_GUTTER, 0)
       row.Count:SetJustifyH("RIGHT")
       row:SetScript("OnEnter", function(self)
+        PaintPickHover(self.Hover)
         self.Hover:Show()
         PickerTip(self)
       end)
@@ -3172,7 +3189,7 @@ local function PaintPicker(list)
       row.realm, row.charName, row.isMe, row.reason = nil, nil, false, nil
       row.Crest:Hide()
       row.Rule:Show()
-      row.Name:SetPoint("LEFT", row, "LEFT", 8, 0)
+      row.Name:SetPoint("LEFT", row, "LEFT", PICK_PAD + PICK_GUTTER, 0)
       row.Name:SetText(string.format(L["PICKER_HIDDEN"], #(list.hidden or {})))
       -- Brighter while unfolded: its state rises in colour, not alpha alone.
       T.SetColor(row.Name, list.showHidden and "textPrimary" or "textSecondary")
@@ -3236,77 +3253,97 @@ local function PaintPicker(list)
     list.rows[i]:Hide()
   end
 
-  local width = 8 + 14 + 6 + math.ceil(nameW) + 20 + math.ceil(countW) + 8
-  width = math.max(width, 8 + math.ceil(footW) + 8)
+  -- The row's width: its contents with the gutters; the card's, the rows
+  -- and the padding either side, as a menu's.
+  local inner = PICK_PAD + PICK_GUTTER
+  local width = inner + PICK_CREST + 6 + math.ceil(nameW) + 20 + math.ceil(countW) + PICK_GUTTER
+  width = math.max(width, inner + math.ceil(footW) + PICK_GUTTER)
   for i = 1, shown do
     local row = list.rows[i]
     row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", list, "TOPLEFT", 1, -4 - (i - 1) * PICK_ROW_H)
-    row:SetWidth(width - 2)
+    row:SetPoint("TOPLEFT", list, "TOPLEFT", PICK_PAD, -PICK_PAD - (i - 1) * PICK_ROW_H)
+    row:SetWidth(width)
     row.Name:SetWidth(math.ceil(row.kind == "foot" and footW or nameW) + 2)
     row:Show()
   end
-  list:SetSize(width, 8 + shown * PICK_ROW_H)
+  list:SetSize(width + 2 * PICK_PAD, 2 * PICK_PAD + shown * PICK_ROW_H)
+end
+
+-- anchor -> the character list that hangs from `anchor`, made the first
+-- time it opens there. Each button the list opens from has its own, a child
+-- of that button as a menu is of the button it opens from (Lib/UI/
+-- Dropdown.lua), so it wears what that window's menus wear: the house card
+-- with the popups' opacity floor under it (a menu is never see-through,
+-- whatever the window's opacity), and the skins' pass from the button, which
+-- dresses it as they dress that window's menus. Above the window by the
+-- menus' margin, at the window's own scale.
+local function NewPickList(anchor)
+  local T = ns.Theme
+  local list = CreateFrame("Frame", nil, anchor, "BackdropTemplate")
+  list.__pbPopupAlways = true
+  T.ApplyCard(list)
+  list:SetFrameStrata("FULLSCREEN_DIALOG")
+  list:SetClampedToScreen(true)
+  list:EnableMouse(true)
+  list:EnableMouseWheel(true)
+  list.rows = {}
+  list.anchor = anchor
+  -- Closes on any click outside it -- the list and the button that opened
+  -- it excepted, so that button's own click can close it. No full-screen
+  -- catcher frame: one swallowed the very click that chose a character.
+  list:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
+  list:SetScript("OnHide", function(self)
+    self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+    -- Put away with its button (a row stepping aside, the window closing),
+    -- it stays closed when the button comes back.
+    if self:IsShown() then self:Hide() end
+    -- A hide or a show made while the list was up repaints everything that
+    -- lists characters now, once: until the list closes, the button it
+    -- hangs from has to stay where it is.
+    if self.dirty then
+      self.dirty = false
+      MM.HiddenChanged()
+    end
+  end)
+  list:SetScript("OnEvent", function(self)
+    if self:IsMouseOver() or self.anchor:IsMouseOver() then return end
+    -- When, so a click that closed it here and then reaches a way in
+    -- (the minimap icon, the addon menu) reads as the second click of a
+    -- toggle, not as a request to open it again (MM.Toggle).
+    self.closedAt = type(GetTime) == "function" and GetTime() or nil
+    self:Hide()
+  end)
+  -- Past PICK_MAX names the wheel moves the list a name at a time.
+  list:SetScript("OnMouseWheel", function(self, delta)
+    local most = math.max(0, #(self.entries or {}) - PICK_MAX)
+    local offset = math.max(0, math.min(most, self.offset - delta))
+    if offset ~= self.offset then
+      self.offset = offset
+      PaintPicker(self)
+    end
+  end)
+  anchor.__pbPickList = list
+  -- The skins' pass, from the button: they walk a frame's children.
+  if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, anchor) end
+  -- A new frame starts SHOWN, so the Show below would not fire OnShow and
+  -- the click-away would never be registered on the first open.
+  list:Hide()
+  return list
 end
 
 -- anchor, current, onPick -> the character list under `anchor`. `current` is
 -- the box on screen ({ realm, name }, or nil for the one being played);
 -- onPick(realm, name, isMe) answers a pick. A second click on the same
--- anchor closes it.
+-- anchor closes it; one list is open at a time (MM._picker, the last).
 function MM.OpenPicker(anchor, current, onPick)
-  local T = ns.Theme
-  local list = MM._picker
-  if list and list:IsShown() and list.anchor == anchor then
-    list:Hide()
-    return
+  local open, list = MM._picker, anchor.__pbPickList
+  if open and open:IsShown() then
+    open:Hide()
+    if open == list then return end
   end
-  if not list then
-    list = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-    list.__pbPopupAlways = true
-    T.ApplyCard(list)
-    list:SetFrameStrata("FULLSCREEN_DIALOG")
-    list:SetClampedToScreen(true)
-    list:EnableMouse(true)
-    list:EnableMouseWheel(true)
-    list.rows = {}
-    -- Closes on any click outside it -- the list and the button that opened
-    -- it excepted, so that button's own click can close it. No full-screen
-    -- catcher frame: one swallowed the very click that chose a character.
-    list:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
-    list:SetScript("OnHide", function(self)
-      self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
-      -- A hide or a show made while the list was up repaints everything that
-      -- lists characters now, once: until the list closes, the button it
-      -- hangs from has to stay where it is.
-      if self.dirty then
-        self.dirty = false
-        MM.HiddenChanged()
-      end
-    end)
-    list:SetScript("OnEvent", function(self)
-      if self:IsMouseOver() or (self.anchor and self.anchor:IsMouseOver()) then return end
-      -- When, so a click that closed it here and then reaches a way in
-      -- (the minimap icon, the addon menu) reads as the second click of a
-      -- toggle, not as a request to open it again (MM.Toggle).
-      self.closedAt = type(GetTime) == "function" and GetTime() or nil
-      self:Hide()
-    end)
-    -- Past PICK_MAX names the wheel moves the list a name at a time.
-    list:SetScript("OnMouseWheel", function(self, delta)
-      local most = math.max(0, #(self.entries or {}) - PICK_MAX)
-      local offset = math.max(0, math.min(most, self.offset - delta))
-      if offset ~= self.offset then
-        self.offset = offset
-        PaintPicker(self)
-      end
-    end)
-    MM._picker = list
-    if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, list) end
-    -- A new frame starts SHOWN, so the Show below would not fire OnShow and
-    -- the click-away would never be registered on the first open.
-    list:Hide()
-  end
-  list.anchor, list.onPick, list.current = anchor, onPick, current
+  list = list or NewPickList(anchor)
+  MM._picker = list
+  list.onPick, list.current = onPick, current
   list.offset = 0
   -- The hidden characters folded away -- unless the box on screen is one of
   -- them, when the mark that says which box it is has to be seen.
@@ -3314,15 +3351,12 @@ function MM.OpenPicker(anchor, current, onPick)
   LoadPicker(list)
   PaintPicker(list)
   -- Hanging from the button's left edge and growing right, as a menu opens
-  -- from what was clicked -- out past the window's edge where it must; it
-  -- is clamped to the screen, not the window. At the size of what it hangs
-  -- from: its button's scale against the screen's carries the window scale.
-  local scale = (anchor:GetEffectiveScale() or 1) / (UIParent:GetEffectiveScale() or 1)
-  if math.abs((list:GetScale() or 1) - scale) > 0.0005 then list:SetScale(scale) end
+  -- from what was clicked, the menus' gap under it -- out past the window's
+  -- edge where it must; it is clamped to the screen, not the window.
   list:ClearAllPoints()
-  list:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+  list:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
+  list:SetFrameLevel((ns.Theme.LevelOf(anchor) or 0) + 40)
   list:Show()
-  list:Raise()
 end
 
 function MM.ClosePicker()
