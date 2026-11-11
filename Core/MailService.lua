@@ -2970,9 +2970,15 @@ local RETRY_SETTLE = 1
 -- entry, so a caller making several separate takes from one mail -- the
 -- reading view's tiles and its Take all -- hands the same record to each.
 -- Under pcall: a record that fails to write must never stop a collection.
+-- A record handed on is asked its auction invoice again: the game gives it
+-- only once the body is fetched, and the plan's takes come after the fetch
+-- (RunPlan), so a won auction opened unread has its price by its first take.
 local function HistoryRecord(index, given)
-  if given then return given end
   local History = ns.MailMemory
+  if given then
+    if History and type(History.HistoryInvoice) == "function" then pcall(History.HistoryInvoice, given, index) end
+    return given
+  end
   if not (History and type(History.HistoryBegin) == "function") then return nil end
   local ok, record = pcall(History.HistoryBegin, index)
   return ok and record or nil

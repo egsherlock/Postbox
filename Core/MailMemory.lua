@@ -1611,16 +1611,36 @@ function MM.HistoryBegin(index)
   if sender == nil and subject == nil then return nil end
   local service = ns.MailService
   local kind = service and service.ClassifyMail and service.ClassifyMail(index) or "other"
-  local price
-  if kind == "bought" and type(GetInboxInvoiceInfo) == "function" then
-    local invoiceType, _, _, bid = GetInboxInvoiceInfo(index)
-    bid = tonumber(bid) or 0
-    if invoiceType == "buyer" and bid > 0 then price = bid end
-  end
-  return {
+  local ctx = {
     sender = tostring(sender or ""), subject = tostring(subject or ""),
-    kind = kind, cod = tonumber(cod) or 0, price = price,
+    kind = kind, cod = tonumber(cod) or 0,
   }
+  MM.HistoryInvoice(ctx, index)
+  return ctx
+end
+
+-- What an auction mail's invoice says, onto the record `ctx` of the mail at
+-- `index`: a won auction's price (`price`), a sale's deposit returned and
+-- the auction house's cut (`deposit`, `cut`), read once. The game answers
+-- GetInboxInvoiceInfo only once the mail's body has been fetched, so this
+-- is asked when the record begins and again where the collect has fetched
+-- it (MailService's HistoryRecord, before the takes): a won auction opened
+-- unread has its price from the second. Amounts as the invoice gives them,
+-- no rate assumed. Only a settled sale ("seller") is read: a pending one
+-- holds no gold yet.
+function MM.HistoryInvoice(ctx, index)
+  if type(ctx) ~= "table" or ctx.invoiced or type(GetInboxInvoiceInfo) ~= "function" then return end
+  if ctx.kind ~= "bought" and ctx.kind ~= "sold" then return end
+  local ok, invoiceType, _, _, bid, _, deposit, consignment = pcall(GetInboxInvoiceInfo, index)
+  if not ok then return end
+  local secret = type(issecretvalue) == "function" and issecretvalue or nil
+  if secret and (secret(invoiceType) or secret(bid) or secret(deposit) or secret(consignment)) then return end
+  bid, deposit, consignment = tonumber(bid) or 0, tonumber(deposit) or 0, tonumber(consignment) or 0
+  if invoiceType == "buyer" and ctx.kind == "bought" then
+    if bid > 0 then ctx.price, ctx.invoiced = bid, true end
+  elseif invoiceType == "seller" and ctx.kind == "sold" then
+    ctx.deposit, ctx.cut, ctx.invoiced = deposit, consignment, true
+  end
 end
 
 -- One confirmed take from the mail `ctx` describes: "money" and a sum in
@@ -1651,6 +1671,13 @@ function MM.HistoryTook(ctx, what, value, count)
   end
   if what == "money" then
     entry.m = (entry.m or 0) + (tonumber(value) or 0)
+    -- A sale's invoice, where it was read: the deposit that came back in
+    -- this gold and the cut taken before it, each only when not zero
+    -- (MM.Week).
+    if entry.k == "sold" and ctx.invoiced and entry.dp == nil and entry.ct == nil then
+      if (ctx.deposit or 0) > 0 then entry.dp = ctx.deposit end
+      if (ctx.cut or 0) > 0 then entry.ct = ctx.cut end
+    end
     -- A sold auction's gold: the item that sold, kept with the entry where
     -- it can be told now (CollectTab, CT.SoldIcon), so its row needs no
     -- telling again.
