@@ -2498,6 +2498,15 @@ SlashCmdList["POSTBOX"] = function(input)
     if UI and type(UI.TryDivider) == "function" then UI.TryDivider(divider) end
     return
   end
+  -- "debug fan old" and "debug fan new": the fan's motion, the slide or
+  -- the plate grown with its tiles, to compare in game (CollectTab,
+  -- CT.TryFan). This session only; not in the help.
+  local fan = string.match(word, "^debug fan ?(.*)$")
+  if fan then
+    local collect = ns.CollectTab
+    if collect and type(collect.TryFan) == "function" then collect.TryFan(fan) end
+    return
+  end
   -- "debug card <n>": General's summary filled with n sample characters (0
   -- to 25), to see it scroll and fold on an account with few; 0 shows the
   -- real one again (OptionsPanel, Panel.TryCard). This session only; not in

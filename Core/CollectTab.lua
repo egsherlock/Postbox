@@ -15952,8 +15952,16 @@ CT.BuildBar = RV.BuildBar
 -- C_Timer.After calls on shared functions, told apart by counters rather
 -- than closures (timers of one length fire in the order they were set), so
 -- a rest, an open and a close allocate nothing once the texts are known.
--- Motion is AnimationGroups alone: the plate fades in, the tiles slide out
--- from under the icon, staggered, and the plate fades out on a close.
+-- Motion (Fan.MOTION): the plate grows out of the icon's edge with its
+-- tiles as one piece -- from the room of the first tile, beside the icon,
+-- the ground widens and deepens to its place while every tile spreads from
+-- that first place to its own, each always inside the ground, so nothing is
+-- scaled and no icon or number blurs -- and a close draws it all back into
+-- that first place, quicker, fading as it goes. One OnUpdate on the plate
+-- for the length of a move, taken off as it lands or the fan is put away.
+-- `/postbox debug fan old` brings back the earlier motion for the session
+-- (AnimationGroups: the plate fades in, the tiles slide out from under the
+-- icon, staggered, and the plate fades out on a close) to compare.
 -------------------------------------------------------------
 do
   local Fan = {
@@ -15965,6 +15973,12 @@ do
     -- least this many, or all of them; past that it takes the list's width.
     MIN_LINE = 4,
     FADE_IN = 0.08, SLIDE = 0.12, STAGGER = 0.012, LAND_BY = 0.2, FADE_OUT = 0.06,
+    -- The motion: "new" (grown as one piece) or "old" (the slide), for this
+    -- session only; the new one's open and close in seconds, the ground
+    -- whole by this share of the open, the C.O.D. line coming up over the
+    -- last half.
+    MOTION = "new", GROW = 0.15, SHRINK = 0.09, SOLID = 0.4,
+    moving = false, mT = 0, mDir = 1, mP = 0, mP0 = 1,
     COIN = "Interface\\Icons\\INV_Misc_Coin_02",
     tiles = {}, n = 0,
     -- Refusals met from this fan, by item link, for the mail `fp` names.
@@ -16104,9 +16118,12 @@ do
     -- is shown, whose rows name no panel: the plate keeps the tab's.
     if panel then set.plate._panel = panel end
     local last = Fan.plate
-    if last and last ~= set.plate and last:IsShown() then
-      last.Out:Stop()
-      last:Hide()
+    if last and last ~= set.plate then
+      Fan.Halt()
+      if last:IsShown() then
+        last.Out:Stop()
+        last:Hide()
+      end
     end
     Fan.plate, Fan.tiles, Fan.scroll = set.plate, set.tiles, scroll
   end
@@ -16308,6 +16325,9 @@ do
     local k = (UIParent:GetEffectiveScale() or 1) / (scroll:GetEffectiveScale() or 1)
     local uT, uB = UIParent:GetTop(), UIParent:GetBottom()
     if uT and uB then y = max(sT - uT * k, min(y, sT - h - uB * k)) end
+    -- Placed anew: a move under way is over (its tiles and plate stand where
+    -- this places them).
+    Fan.Halt()
     plate:ClearAllPoints()
     plate:SetPoint("TOPLEFT", scroll, "TOPLEFT", x, -y)
     plate:SetSize(w, h)
@@ -16318,6 +16338,7 @@ do
     local sx = (iL + iR) / 2 - size / 2 - (sL + x)
     local sy = mid + size / 2 - (sT - y)
     local most = Fan.LAND_BY - Fan.SLIDE
+    local grow = animate and Fan.MOTION ~= "old"
     for k = 1, n do
       local tile = Fan.tiles[k]
       local line, col = floor((k - 1) / per), (k - 1) % per
@@ -16330,7 +16351,12 @@ do
       RV.IconRule.EnsureCount(tile.Count, tile.Icon, size)
       tile.fx, tile.fy = P + col * step, -(P + codH + line * step)
       tile.Slide:Stop()
-      if animate then
+      if grow then
+        -- Grown with the plate (Fan.Draw, from Fan.Open's first frame).
+        tile:ClearAllPoints()
+        tile:SetAlpha(1)
+        tile:Show()
+      elseif animate then
         tile:ClearAllPoints()
         tile:SetPoint("TOPLEFT", plate, "TOPLEFT", sx, sy)
         tile.Move:SetOffset(tile.fx - sx, tile.fy - sy)
@@ -16345,7 +16371,95 @@ do
         tile:Show()
       end
     end
+    -- The plate's place and the first tile's room beside the icon, in the
+    -- list's terms (x right, y down from its top-left): where the plate
+    -- grows to and from. The first tile is the one nearest the icon, on the
+    -- row's line, and its room is a tile with the plate's padding round it.
+    Fan.zx, Fan.zy, Fan.zw, Fan.zh = x, y, w, h
+    local first = Fan.tiles[1]
+    Fan.t1x, Fan.t1y = x + first.fx, y - first.fy
+    Fan.ax, Fan.ay, Fan.aw, Fan.ah = Fan.t1x - P, Fan.t1y - P, size + 2 * P, size + 2 * P
+    -- Placed where it stands (a take, a refresh): whole at once.
+    if not animate then plate:SetAlpha(1) end
+    if not grow then plate.Cod:SetAlpha(1) end
     return true
+  end
+
+  -- p -> the plate and its tiles drawn p of the way from the first tile's
+  -- room beside the icon (0) to their places (1): the ground's edges and
+  -- every tile's place each moved p of their way, so each tile, inside the
+  -- ground at both ends, is inside it all the way; the ground solid by
+  -- Fan.SOLID of the way (its tiles with it), the C.O.D. line over the last
+  -- half. Numbers only, set in place: every frame of a move comes here.
+  function Fan.Draw(p)
+    local plate, scroll = Fan.plate, Fan.scroll
+    local x = Fan.ax + (Fan.zx - Fan.ax) * p
+    local y = Fan.ay + (Fan.zy - Fan.ay) * p
+    plate:SetPoint("TOPLEFT", scroll, "TOPLEFT", x, -y)
+    plate:SetSize(Fan.aw + (Fan.zw - Fan.aw) * p, Fan.ah + (Fan.zh - Fan.ah) * p)
+    local x1, y1, zx, zy = Fan.t1x, Fan.t1y, Fan.zx, Fan.zy
+    local tiles = Fan.tiles
+    for i = 1, Fan.n do
+      local tile = tiles[i]
+      local tx, ty = zx + tile.fx, zy - tile.fy
+      tile:SetPoint("TOPLEFT", plate, "TOPLEFT", x1 + (tx - x1) * p - x, y - (y1 + (ty - y1) * p))
+    end
+    local a = p / Fan.SOLID
+    plate:SetAlpha((a < 1) and a or 1)
+    local c = (p - 0.5) * 2
+    plate.Cod:SetAlpha((c <= 0) and 0 or ((c < 1) and c or 1))
+  end
+
+  -- One frame of a move (the plate's OnUpdate, only while one runs): the
+  -- open eased out, landing on the places Fan.Place set; the close eased
+  -- in from wherever it stood, the plate put away as it reaches the icon.
+  function Fan.Step(_, elapsed)
+    Fan.mT = Fan.mT + min(elapsed or 0, 0.05)
+    if Fan.mDir > 0 then
+      local t = Fan.mT / Fan.GROW
+      if t >= 1 then
+        Fan.Halt()
+        Fan.Draw(1)
+        return
+      end
+      local u = 1 - t
+      Fan.mP = 1 - u * u * u
+    else
+      local t = Fan.mT / Fan.SHRINK
+      if t >= 1 then
+        Fan.Halt()
+        Fan.mP = 0
+        if not Fan.open then Fan.plate:Hide() end
+        return
+      end
+      Fan.mP = Fan.mP0 * (1 - t * t)
+    end
+    Fan.Draw(Fan.mP)
+  end
+
+  -- A move set going: `dir` 1 opens from the icon's edge, -1 closes from
+  -- where the fan stands.
+  function Fan.Move(dir)
+    Fan.mDir, Fan.mT = dir, 0
+    if dir > 0 then
+      Fan.mP = 0
+    else
+      Fan.mP0 = Fan.moving and Fan.mP or 1
+      Fan.mP = Fan.mP0
+    end
+    Fan.Draw(Fan.mP)
+    if not Fan.moving then
+      Fan.moving = true
+      Fan.plate:SetScript("OnUpdate", Fan.Step)
+    end
+  end
+
+  -- A move taken off where it stands (landed, placed anew, put away).
+  function Fan.Halt()
+    if not Fan.moving then return end
+    Fan.moving = false
+    local plate = Fan.plate
+    if plate then plate:SetScript("OnUpdate", nil) end
   end
 
   function Fan.Open(row)
@@ -16382,9 +16496,16 @@ do
     Fan.row = row
     Fan.open, RV.fanOpen, Fan.graceOn = true, true, false
     Fan.offset = scroll:GetVerticalScroll()
-    plate:SetAlpha(0)
-    plate:Show()
-    plate.In:Play()
+    if Fan.MOTION == "old" then
+      plate:SetAlpha(0)
+      plate:Show()
+      plate.In:Play()
+    else
+      -- Grown out of the icon's edge (Fan.Move), drawn at its start before
+      -- it shows.
+      Fan.Move(1)
+      plate:Show()
+    end
     plate:RegisterEvent("GLOBAL_MOUSE_DOWN")
     Th().StyleMailRow(row, row._rowIndex, true)
   end
@@ -16399,6 +16520,7 @@ do
       -- with the tab (a stopped fade leaves the plate as it was).
       local plate = Fan.plate
       if instant and plate and plate:IsShown() then
+        Fan.Halt()
         plate.Out:Stop()
         plate:Hide()
       end
@@ -16409,20 +16531,27 @@ do
     local plate, row = Fan.plate, Fan.row
     Fan.row = nil
     plate:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+    local old = Fan.MOTION == "old"
+    local now = instant or not plate:IsVisible()
     for i = 1, Fan.n do
       local tile = Fan.tiles[i]
       tile.Slide:Stop()
-      Fan.Landed(tile.Slide)
+      if old or now then Fan.Landed(tile.Slide) end
     end
     local owner = GameTooltip.GetOwner and GameTooltip:GetOwner()
     if owner and (owner == plate or owner:GetParent() == plate) then GameTooltip:Hide() end
     if row and not row:IsMouseOver() then Th().StyleMailRow(row, row._rowIndex, false) end
     plate.In:Stop()
-    if instant or not plate:IsVisible() then
+    if now then
+      Fan.Halt()
       plate.Out:Stop()
       plate:Hide()
-    else
+    elseif old then
       plate.Out:Play()
+    else
+      -- Drawn back into the first tile's room beside the icon from where it
+      -- stands, and put away there (Fan.Step).
+      Fan.Move(-1)
     end
   end
 
@@ -16703,6 +16832,17 @@ do
 
   RV.FanClose = Fan.Close
   function CT.CloseFan() Fan.Close(true) end
+
+  -- `/postbox debug fan old` or `... new` (Postbox.lua): the fan's motion
+  -- for this session, to compare the two in game; never saved, not in the
+  -- help. An open fan is put away first. It says the motion in chat.
+  function CT.TryFan(arg)
+    if arg == "old" or arg == "new" then
+      Fan.Close(true)
+      Fan.MOTION = arg
+    end
+    ns.Print(L()("DEBUG_FAN", Fan.MOTION))
+  end
 
   -- The list scrolled: the row under the fan holds other mail now.
   function RV.FanScrolled(scroll)
