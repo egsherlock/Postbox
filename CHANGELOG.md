@@ -63,8 +63,10 @@
 - Mail Memory, Character Groups and Manage Recipients have new icons: on
   the options' General tab in your accent color, on the buttons that open
   them, and on their own windows' title bars.
-- The cog on the Postbox window's title bar is plain gray, like the arrange
-  mark beside it, and takes your accent only while the options are open.
+- **The small icons are one family,** redrawn for the size they are shown
+  at: the clock, the sort bars, the arrange mark, the address book and the
+  rest, and a cog of Postbox's own on the title bar. The cog is plain gray
+  and takes your accent only while the options are open.
 - **Text outline** is now called **Text style** (Options, Window).
 
 ### WoW Forever
