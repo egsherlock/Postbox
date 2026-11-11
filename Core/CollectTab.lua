@@ -16334,16 +16334,13 @@ CT.BuildBar = RV.BuildBar
 -- C_Timer.After calls on shared functions, told apart by counters rather
 -- than closures (timers of one length fire in the order they were set), so
 -- a rest, an open and a close allocate nothing once the texts are known.
--- Motion (Fan.MOTION): the plate grows out of the icon's edge with its
+-- Motion: the plate grows out of the icon's edge with its
 -- tiles as one piece -- from the room of the first tile, beside the icon,
 -- the ground widens and deepens to its place while every tile spreads from
 -- that first place to its own, each always inside the ground, so nothing is
 -- scaled and no icon or number blurs -- and a close draws it all back into
 -- that first place, quicker, fading as it goes. One OnUpdate on the plate
 -- for the length of a move, taken off as it lands or the fan is put away.
--- `/postbox debug fan old` brings back the earlier motion for the session
--- (AnimationGroups: the plate fades in, the tiles slide out from under the
--- icon, staggered, and the plate fades out on a close) to compare.
 -------------------------------------------------------------
 do
   local Fan = {
@@ -16354,12 +16351,9 @@ do
     -- A line of tiles is kept on a short row's room only while it holds at
     -- least this many, or all of them; past that it takes the list's width.
     MIN_LINE = 4,
-    FADE_IN = 0.08, SLIDE = 0.12, STAGGER = 0.012, LAND_BY = 0.2, FADE_OUT = 0.06,
-    -- The motion: "new" (grown as one piece) or "old" (the slide), for this
-    -- session only; the new one's open and close in seconds, the ground
-    -- whole by this share of the open, the C.O.D. line coming up over the
-    -- last half.
-    MOTION = "new", GROW = 0.15, SHRINK = 0.09, SOLID = 0.4,
+    -- The motion's open and close in seconds, the ground whole by this
+    -- share of the open, the C.O.D. line coming up over the last half.
+    GROW = 0.15, SHRINK = 0.09, SOLID = 0.4,
     moving = false, mT = 0, mDir = 1, mP = 0, mP0 = 1,
     COIN = "Interface\\Icons\\INV_Misc_Coin_02",
     tiles = {}, n = 0,
@@ -16463,20 +16457,6 @@ do
     plate.Cod:SetWordWrap(false)
     plate.Cod:SetPoint("TOPLEFT", plate, "TOPLEFT", Fan.PAD + 1, -Fan.PAD)
     plate.Cod:Hide()
-    local fadeIn = plate:CreateAnimationGroup()
-    local alpha = fadeIn:CreateAnimation("Alpha")
-    alpha:SetFromAlpha(0)
-    alpha:SetToAlpha(1)
-    alpha:SetDuration(Fan.FADE_IN)
-    fadeIn:SetToFinalAlpha(true)
-    local fadeOut = plate:CreateAnimationGroup()
-    alpha = fadeOut:CreateAnimation("Alpha")
-    alpha:SetFromAlpha(1)
-    alpha:SetToAlpha(0)
-    alpha:SetDuration(Fan.FADE_OUT)
-    fadeOut:SetToFinalAlpha(true)
-    fadeOut:SetScript("OnFinished", Fan.FadedOut)
-    plate.In, plate.Out = fadeIn, fadeOut
     plate:SetScript("OnEnter", Fan.Hold)
     plate:SetScript("OnLeave", Fan.Leaving)
     plate:SetScript("OnEvent", Fan.MouseDown)
@@ -16503,7 +16483,6 @@ do
     if last and last ~= set.plate then
       Fan.Halt()
       if last:IsShown() then
-        last.Out:Stop()
         last:Hide()
       end
     end
@@ -16511,8 +16490,7 @@ do
   end
 
   -- The i-th tile, made on first use: the reading view's slot, with the
-  -- quality mark at its top-left and the warning triangle at its top-right,
-  -- and its slide.
+  -- quality mark at its top-left and the warning triangle at its top-right.
   function Fan.Tile(i)
     local tile = Fan.tiles[i]
     if tile then return tile end
@@ -16552,19 +16530,6 @@ do
     highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
     highlight:SetBlendMode("ADD")
     T.ApplySlot(tile)
-    -- From under the icon to its place, fading in, eased out.
-    local slide = tile:CreateAnimationGroup()
-    local move = slide:CreateAnimation("Translation")
-    move:SetDuration(Fan.SLIDE)
-    move:SetSmoothing("OUT")
-    local fade = slide:CreateAnimation("Alpha")
-    fade:SetFromAlpha(0)
-    fade:SetToAlpha(1)
-    fade:SetDuration(Fan.SLIDE)
-    slide:SetToFinalAlpha(true)
-    slide:SetScript("OnFinished", Fan.Landed)
-    slide.tile = tile
-    tile.Slide, tile.Move, tile.Fade = slide, move, fade
     tile:SetScript("OnEnter", Fan.TileEnter)
     tile:SetScript("OnLeave", Fan.TileLeave)
     tile:SetScript("OnClick", Fan.TileClick)
@@ -16661,9 +16626,8 @@ do
     return n, changed
   end
 
-  -- An animation group that ran, or one stopped: its tile at its place.
-  function Fan.Landed(slide)
-    local tile = slide.tile
+  -- A tile at its place.
+  function Fan.Landed(tile)
     tile:ClearAllPoints()
     tile:SetPoint("TOPLEFT", Fan.plate, "TOPLEFT", tile.fx or 0, tile.fy or 0)
     tile:SetAlpha(1)
@@ -16716,11 +16680,6 @@ do
     -- The hit area reaches back over the gap to the icon, so the step from
     -- one to the other crosses no dead strip.
     if leftward then plate:SetHitRectInsets(0, -Fan.GAP, 0, 0) else plate:SetHitRectInsets(-Fan.GAP, 0, 0, 0) end
-    -- Where a tile starts its slide: under the icon, in the plate's terms.
-    local sx = (iL + iR) / 2 - size / 2 - (sL + x)
-    local sy = mid + size / 2 - (sT - y)
-    local most = Fan.LAND_BY - Fan.SLIDE
-    local grow = animate and Fan.MOTION ~= "old"
     for k = 1, n do
       local tile = Fan.tiles[k]
       local line, col = floor((k - 1) / per), (k - 1) % per
@@ -16732,24 +16691,13 @@ do
       RV.PlaceMark(tile.Mark, tile.MarkShadow, tile.Icon, size)
       RV.IconRule.EnsureCount(tile.Count, tile.Icon, size)
       tile.fx, tile.fy = P + col * step, -(P + codH + line * step)
-      tile.Slide:Stop()
-      if grow then
+      if animate then
         -- Grown with the plate (Fan.Draw, from Fan.Open's first frame).
         tile:ClearAllPoints()
         tile:SetAlpha(1)
         tile:Show()
-      elseif animate then
-        tile:ClearAllPoints()
-        tile:SetPoint("TOPLEFT", plate, "TOPLEFT", sx, sy)
-        tile.Move:SetOffset(tile.fx - sx, tile.fy - sy)
-        local delay = min((k - 1) * Fan.STAGGER, most)
-        tile.Move:SetStartDelay(delay)
-        tile.Fade:SetStartDelay(delay)
-        tile:SetAlpha(0)
-        tile:Show()
-        tile.Slide:Play()
       else
-        Fan.Landed(tile.Slide)
+        Fan.Landed(tile)
         tile:Show()
       end
     end
@@ -16763,7 +16711,7 @@ do
     Fan.ax, Fan.ay, Fan.aw, Fan.ah = Fan.t1x - P, Fan.t1y - P, size + 2 * P, size + 2 * P
     -- Placed where it stands (a take, a refresh): whole at once.
     if not animate then plate:SetAlpha(1) end
-    if not grow then plate.Cod:SetAlpha(1) end
+    if not animate then plate.Cod:SetAlpha(1) end
     return true
   end
 
@@ -16872,22 +16820,14 @@ do
     -- Bound as its row is (RV.Acting), and again at each row pass (RV.FanCheck).
     plate._gen = row._gen
     if Fan.Fill(index, row) == 0 then return end
-    plate.Out:Stop()
-    plate.In:Stop()
     if not Fan.Place(row, Fan.n, true) then return end
     Fan.row = row
     Fan.open, RV.fanOpen, Fan.graceOn = true, true, false
     Fan.offset = scroll:GetVerticalScroll()
-    if Fan.MOTION == "old" then
-      plate:SetAlpha(0)
-      plate:Show()
-      plate.In:Play()
-    else
-      -- Grown out of the icon's edge (Fan.Move), drawn at its start before
-      -- it shows.
-      Fan.Move(1)
-      plate:Show()
-    end
+    -- Grown out of the icon's edge (Fan.Move), drawn at its start before
+    -- it shows.
+    Fan.Move(1)
+    plate:Show()
     plate:RegisterEvent("GLOBAL_MOUSE_DOWN")
     Th().StyleMailRow(row, row._rowIndex, true)
   end
@@ -16903,7 +16843,6 @@ do
       local plate = Fan.plate
       if instant and plate and plate:IsShown() then
         Fan.Halt()
-        plate.Out:Stop()
         plate:Hide()
       end
       return
@@ -16913,32 +16852,22 @@ do
     local plate, row = Fan.plate, Fan.row
     Fan.row = nil
     plate:UnregisterEvent("GLOBAL_MOUSE_DOWN")
-    local old = Fan.MOTION == "old"
     local now = instant or not plate:IsVisible()
     for i = 1, Fan.n do
       local tile = Fan.tiles[i]
-      tile.Slide:Stop()
-      if old or now then Fan.Landed(tile.Slide) end
+      if now then Fan.Landed(tile) end
     end
     local owner = GameTooltip.GetOwner and GameTooltip:GetOwner()
     if owner and (owner == plate or owner:GetParent() == plate) then GameTooltip:Hide() end
     if row and not row:IsMouseOver() then Th().StyleMailRow(row, row._rowIndex, false) end
-    plate.In:Stop()
     if now then
       Fan.Halt()
-      plate.Out:Stop()
       plate:Hide()
-    elseif old then
-      plate.Out:Play()
     else
       -- Drawn back into the first tile's room beside the icon from where it
       -- stands, and put away there (Fan.Step).
       Fan.Move(-1)
     end
-  end
-
-  function Fan.FadedOut()
-    if not Fan.open then Fan.plate:Hide() end
   end
 
   -- The pointer is on the icon, the plate or a tile: no grace running, and
@@ -17214,17 +17143,6 @@ do
 
   RV.FanClose = Fan.Close
   function CT.CloseFan() Fan.Close(true) end
-
-  -- `/postbox debug fan old` or `... new` (Postbox.lua): the fan's motion
-  -- for this session, to compare the two in game; never saved, not in the
-  -- help. An open fan is put away first. It says the motion in chat.
-  function CT.TryFan(arg)
-    if arg == "old" or arg == "new" then
-      Fan.Close(true)
-      Fan.MOTION = arg
-    end
-    ns.Print(L()("DEBUG_FAN", Fan.MOTION))
-  end
 
   -- The list scrolled: the row under the fan holds other mail now.
   function RV.FanScrolled(scroll)
