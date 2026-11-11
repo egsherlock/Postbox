@@ -326,24 +326,35 @@ end
 -- A group about one game only (section 1, `game`) is headed by the game's
 -- mark, a small gap, then one word, "Forever" or "Retail", in the
 -- heading's own font and ink; the mark in its own colours, never tinted.
--- The mark as tall as the heading's capitals, rounded to whole units, its
--- foot on the words' baseline: where the client sets them, from the face's
--- own ascent (CollectTab's FaceOf, the bar's rule; a face it does not know
--- has the common proportions). A face with no capitals (zhCN's, zhTW's)
--- gives its ideographs' box instead.
+-- The mark 16 units tall (MARK_H), its width the art's own proportions in
+-- whole units, and the word's capitals centred on its middle: where the
+-- client sets them, from the face's own ascent (CollectTab's FaceOf, the
+-- bar's rule; a face it does not know has the common proportions). A face
+-- with no capitals (zhCN's, zhTW's) gives its ideographs' box instead.
+-- Whichever stands lower to share that middle, the mark or the word, moves
+-- down by whole units, and the heading's line is as tall as both need.
+-- UNDER more under it than under a heading of words alone, so the mark
+-- sits with its own lines rather than between groups.
 --
--- Forever's mark is the placard's emblem (section 2b). Retail's is the
--- game's own, logo-wow-retail: the round emblem the game draws for retail
+-- Forever's mark is the client's own emblem drawn for this size: 14 by 16
+-- units at 2 texels a unit on an even texel (Media/forever-mark-16.tga,
+-- .dev/design/icons-r8/gen_forever_mark16.py), from the full-size art
+-- the placard's (section 2b) is reduced from; the placard's 22-unit art
+-- shown at 16 would be a 2.75:1 reduction and blur. Retail's is the game's
+-- own, logo-wow-retail: the round emblem the game draws for retail
 -- beside logo-wow-forever and logo-wow-classic, in an atlas both clients
 -- carry (the same file in each), so nothing is shipped for it. Cut to the
--- emblem's own box in its 320-texel cell. A client without the atlas
+-- emblem's own box in its 320-texel cell: 152 texels shown at 16 units,
+-- the game's mip chain doing the reduction. A client without the atlas
 -- heads the group with the word alone, never a hole. Looked up once, when
 -- the window is first built.
 -------------------------------------------------------------
 local GAMES = {
   GAP = 4,                 -- the mark to the word
-  forever = { word = "WHATSNEW_GAME_FOREVER", file = PLACARD.FILE, L = PLACARD.L, R = PLACARD.R, T = PLACARD.T, B = PLACARD.B,
-    aspect = PLACARD.ART_W / PLACARD.ART_H },
+  MARK_H = 16,             -- the mark's height
+  UNDER = 2,               -- more under a game's heading than under words alone
+  forever = { word = "WHATSNEW_GAME_FOREVER", file = "Interface\\AddOns\\Postbox\\Media\\forever-mark-16.tga",
+    L = 0.0625, R = 0.9375, T = 0.03125, B = 0.53125, aspect = 14 / 16 },
   -- The emblem's box in its cell: texels 88 to 240 of 320, both ways.
   retail = { word = "WHATSNEW_GAME_RETAIL", atlas = "logo-wow-retail", cut = { 88 / 320, 240 / 320, 88 / 320, 240 / 320 }, aspect = 1 },
   -- Where a face is not known: the common proportions (CollectTab's).
@@ -383,9 +394,10 @@ function GAMES.Mark(page, game)
   return mark
 end
 
--- The mark beside `heading`, which stands at `y` down the page: as tall as
--- its capitals, its foot on their baseline. Answers how far in its word
--- starts.
+-- The mark beside `heading`, whose line starts `y` down the page: MARK_H
+-- tall, the word's capitals on its middle. Answers how far in the word
+-- starts, how far under `y` the word's line stands, and the least height
+-- the heading's line needs for the mark (UNDER included).
 function GAMES.Place(mark, heading, page, y)
   local CT = ns.CollectTab
   local FaceOf = CT and CT.BarParts and CT.BarParts.FaceOf
@@ -395,18 +407,22 @@ function GAMES.Place(mark, heading, page, y)
     local _, s = heading:GetFont()
     face, size = GAMES.FACE, tonumber(s) or 12
   end
-  -- The line's top is the heading's, on a whole unit; the baseline the
-  -- ascent under it.
+  -- The baseline the ascent under the line's top, on a whole unit; the
+  -- capitals' (or ideographs') middle over it.
   local base = floor(face[1] * size + 0.5)
-  local top, foot = face[3], face[7] or 0
-  local h = max(1, floor((top - foot) * size + 0.5))
+  local mid = base - (face[3] + (face[7] or 0)) * size / 2
+  local h = GAMES.MARK_H
   local w = max(1, floor(h * mark.__aspect + 0.5))
-  local under = floor(-foot * size + 0.5)
+  -- Both tops on `y`, the word's middle is `d` under the mark's: the
+  -- higher of the two moves down to meet the other, in whole units.
+  local d = mid - h / 2
+  local markDown, wordDown = 0, 0
+  if d >= 0 then markDown = floor(d + 0.5) else wordDown = floor(-d + 0.5) end
   mark:SetSize(w, h)
   mark:ClearAllPoints()
-  mark:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -(y + base + under - h))
+  mark:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -(y + markDown))
   mark:Show()
-  return w + GAMES.GAP
+  return w + GAMES.GAP, wordDown, markDown + h + GAMES.UNDER
 end
 
 local function BuildWindow()
@@ -523,15 +539,18 @@ local function LayoutWindow(f)
     end
     local x = (kind == "line") and WIN.BULLET or 0
     local text = item.text
-    if item.mark then x = GAMES.Place(item.mark, text, f.Page, y) end
+    -- A game's heading: the word beside its mark, the line as tall as both.
+    local down, least = 0, 0
+    if item.mark then x, down, least = GAMES.Place(item.mark, text, f.Page, y) end
     text:ClearAllPoints()
-    text:SetPoint("TOPLEFT", f.Page, "TOPLEFT", x, -y)
+    text:SetPoint("TOPLEFT", f.Page, "TOPLEFT", x, -(y + down))
     text:SetWidth(width - x)
     if item.dot then
       item.dot:ClearAllPoints()
       item.dot:SetPoint("TOPLEFT", f.Page, "TOPLEFT", 1, -y)
     end
     local h = ceil(text:GetStringHeight() or 12)
+    if item.mark then h = max(down + h + GAMES.UNDER, least) end
     if item.plate then h = max(h, LayoutPlacard(item.plate, text, f.Page, y, width)) end
     y = y + h
     before = kind
