@@ -3467,13 +3467,13 @@ do
       host:SetSize(CTX_W, Ctx.HOST_LINK)
       host.Link = T.Glyph(host, "link", Ctx.HOST_LINK, "OVERLAY")
       host.Broken = T.Glyph(host, "link-broken", Ctx.HOST_LINK, "OVERLAY")
-      host.linkW = host.Link and host.Link:GetWidth() or 0
-      for _, tex in ipairs({ host.Link or false, host.Broken or false }) do
-        if tex then
-          tex:SetPoint("CENTER", host, "LEFT", host.linkW / 2, 0)
-          T.SetColor(tex, "textSecondary")
-        end
-      end
+      -- Its width in units as drawn (the glyph's own size is measured
+      -- again whenever the scale moves: Theme.Glyph).
+      local spec = host.Link and T.GLYPHS and T.GLYPHS.link
+      host.linkW = spec and spec.w * Ctx.HOST_LINK / spec.h or 0
+      -- Placed as the line is laid out (Paint).
+      if host.Link then T.SetColor(host.Link, "textSecondary") end
+      if host.Broken then T.SetColor(host.Broken, "textSecondary") end
       host.Text = T.CreateText(host, "secondary")
       host.Text:SetPoint("LEFT", host, "LEFT", host.linkW > 0 and (host.linkW + Ctx.HOST_LINK_GAP) or 0, 0)
       host.Text:SetJustifyH("LEFT")
@@ -3511,6 +3511,17 @@ do
         local w = lead + math.ceil(math.min(T.TextWidth(host.Text), textRoom))
         if w % 2 == 1 then w = w + 1 end
         host:SetWidth(math.min(w, CTX_W))
+        -- The link's middle on the words' capitals (Rows.IconTop), as the
+        -- options' button icons stand; centred on the line it stood a
+        -- pixel off them in some faces and sizes.
+        if host.Link then
+          host.Link:ClearAllPoints()
+          host.Link:SetPoint("TOPLEFT", host, "TOPLEFT", 0, -Rows.IconTop(host, host.Text, host.Link))
+        end
+        if host.Broken then
+          host.Broken:ClearAllPoints()
+          host.Broken:SetPoint("TOPLEFT", host, "TOPLEFT", 0, -Rows.IconTop(host, host.Text, host.Broken))
+        end
       end
       f:SetHeight(room + MW.h.total + hostRoom)
     end
@@ -4881,32 +4892,47 @@ do
   -- captions of three buttons stacked one over another start alike.
   -- Every glyph here is drawn from its own master at its own size, pixel
   -- for pixel: Arrange's layout mark at 12, the box; the openers' groups
-  -- and recipients at 10 (their -10 masters, the 12s simplified, so they
-  -- weigh no more than the 13-unit caption), a unit in from either side.
-  -- Upright, each stands with its middle on the middle of the caption's
-  -- capitals (ICON.Top), not of its line: the line's room for descenders
-  -- set an icon centred on the button high against the words.
+  -- (12 by 10) and recipients (10) from their -10 masters, the 12s
+  -- simplified, so they weigh no more than the 13-unit caption. Upright,
+  -- each stands with its middle on the middle of the caption's capitals
+  -- (Rows.IconTop), not of its line: the line's room for descenders set an
+  -- icon centred on the button high against the words.
   local ICON = { BOX = 12, GAP = 6 }
 
-  -- How far under the button's top the icon's top stands, in whole units:
-  -- its middle on the middle of the caption's capitals (a face without
-  -- them: its ideographs' ink box), where the client lays the caption's
-  -- line and baseline out (the Mail tab's bar rule, CollectTab's
-  -- BarParts.FaceOf and LineAt), in the font the caption wears now, so it
-  -- follows the Text size and the style's face. Centred on the button
-  -- where those are not loaded.
-  function ICON.Top(btn, label, icon)
-    local H = btn:GetHeight() or BUTTON_H
+  -- How far under the top of `box` (a button, a line) the top of `icon`
+  -- stands, in units, for its middle on the middle of the capitals of
+  -- `label` (a face without them: its ideographs' ink box) as the client
+  -- draws them: the line and its baseline where the client lays them out
+  -- in the font the label wears now (the Mail tab's bar rule, CollectTab's
+  -- BarParts.FaceOf and LineAt, so it follows the Text size and the face),
+  -- the capitals as many screen pixels tall as they cover at least half of
+  -- (RV.InkLift's count), and the icon's top on a whole screen pixel. Where
+  -- the two cannot share a middle (capitals 9 pixels tall beside an icon
+  -- of 10 or 12, Expressway at 13), the icon stands half a pixel high, its
+  -- foot on the baseline, never a pixel under it: rounding the half down
+  -- (floor(x + 0.5)) hung it under the words. Centred on the box where
+  -- those are not loaded. `label` must be anchored by its middle on `box`'s.
+  function Rows.IconTop(box, label, icon)
+    local H = box:GetHeight() or BUTTON_H
     local ih = icon:GetHeight() or ICON.BOX
-    local mid = H / 2
+    local T = ns.Theme
+    local u = T and type(T.OnePixel) == "function" and T.OnePixel(box) or 1
+    if type(u) ~= "number" or u <= 0 then u = 1 end
+    local k = 1 / u
+    local mid = H / 2 * k
     local CT = ns.CollectTab
     local BP = CT and CT.BarParts
     if BP and BP.FaceOf and BP.LineAt then
+      -- LineAt's rule in pixels: the font drawn k times its size on a box
+      -- k times as tall, its line's top and its baseline on whole pixels.
       local face, size = BP.FaceOf(label)
-      local _, base = BP.LineAt(face, size, H, 0)
-      mid = base - (face[3] + (face[7] or 0)) * size / 2
+      local _, base = BP.LineAt(face, size * k, H * k, 0)
+      local hi = math.floor(face[3] * size * k + 0.5)
+      local lo = math.floor(-(face[7] or 0) * size * k + 0.5)
+      mid = base + (lo - hi) / 2
     end
-    return math.floor(mid - ih / 2 + 0.5)
+    -- (A millionth off, so a whole number reached in floating point stays it.)
+    return math.ceil(mid - ih * k / 2 - 0.5 - 1e-6) * u
   end
 
   function Rows.Button(col, spec)
@@ -5637,7 +5663,7 @@ do
       if icon.dots then
         icon:SetPoint("LEFT", btn, "LEFT", ix, 0)
       else
-        icon:SetPoint("TOPLEFT", btn, "TOPLEFT", ix, -ICON.Top(btn, label, icon))
+        icon:SetPoint("TOPLEFT", btn, "TOPLEFT", ix, -Rows.IconTop(btn, label, icon))
       end
     end
     return width
@@ -5747,8 +5773,11 @@ do
     label:ClearAllPoints()
     label:SetPoint("LEFT", btn, "LEFT", x + w + gap, 0)
     if mark then
+      -- Its middle on the words' capitals, as a button row's icon
+      -- (Rows.IconTop): centred on the button it stood a pixel off them
+      -- in some faces and sizes.
       mark:ClearAllPoints()
-      mark:SetPoint("CENTER", btn, "LEFT", x + w / 2, 0)
+      mark:SetPoint("TOPLEFT", btn, "TOPLEFT", x, -Rows.IconTop(btn, label, mark))
     end
     lit.on = on
     Rows.Pulse(btn)
