@@ -731,7 +731,7 @@ local TEXT_W = INSP_W - 2 - 2 * TEXT_X
 -- the text does not jump as the pointer moves from setting to setting.
 local SAY_MIN = 150
 -- STAGE: the Minimap drawing's ground at its least (Ctx.MinimapStage).
-local TILE_H, HOST_H, STAGE, MOCK_H = 46, 32, 120, 34
+local TILE_H, STAGE, MOCK_H = 46, 120, 34
 -- The accent row's reading under its description: its lines.
 local READOUT_LINES = 3
 local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
@@ -1239,7 +1239,7 @@ do
     -- the settings, Dash, and its text has the whole inspector.)
     if key == "window" then
       -- The drawing grows with the text size (Ctx.MiniHeight).
-      return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + Ctx.PreviewRoom() + Ctx.MiniHeight() + 10
+      return CTX_TOP + Ctx.PreviewRoom() + Ctx.MiniHeight() + Ctx.HostRoom() + 10
     end
     -- Alerts draws the same icon, wearing the marker it sets.
     if key == "minimap" or key == "alerts" then return CTX_TOP + 4 + Ctx.MinimapHeight() + 10 end
@@ -1760,11 +1760,12 @@ do
 
   -- What of `key`'s drawing a description rising over it leaves in sight,
   -- from the inspector's top (Insp.Room): the Preview's heading with Test
-  -- mail's switch (under the host badge on the Window tab), and on the
+  -- mail's switch (the host notice under the Window tab's drawing may be
+  -- covered), and on the
   -- Minimap tab the icon's ground, the stage that answers what is pointed at.
   function Ctx.Keep(key)
     if key == "mail" then return CTX_TOP + Ctx.PreviewRoom() end
-    if key == "window" then return CTX_TOP + (S.installedHost and (HOST_H + 8) or 0) + Ctx.PreviewRoom() end
+    if key == "window" then return CTX_TOP + Ctx.PreviewRoom() end
     if key == "minimap" or key == "alerts" then return CTX_TOP + 4 + Ctx.MinimapStage() end
     return 0
   end
@@ -3393,45 +3394,69 @@ do
     return line
   end
 
-  -- The Window tab: who the look comes from, and the window itself.
+  -- The room the host notice takes under the Window tab's drawing: its gap
+  -- and one line of its text, where a host UI is installed; none
+  -- otherwise.
+  Ctx.HOST_GAP, Ctx.HOST_DOT = 6, 8
+  function Ctx.HostRoom()
+    if not S.installedHost then return 0 end
+    return Ctx.HOST_GAP + math.max(Ctx.HOST_DOT, MW.Line("secondary"))
+  end
+
+  -- The notice cut short (the house fitter's ellipsis) says itself whole
+  -- in a tooltip; the inspector says what it means either way.
+  local function HostEnter(self)
+    SpotEnter(self)
+    if self.__pbOverflowText then
+      Tip.Begin(self, self.__pbOverflowText)
+      Tip.Show(self)
+    end
+  end
+
+  local function HostLeave(self)
+    if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+    SpotLeave(self)
+  end
+
+  -- The Window tab: the window itself under its Preview heading, and under
+  -- it who the look comes from -- one plain muted line after its square
+  -- ("Inheriting EllesmereUI settings", or its siblings), no box of its own.
   function Ctx.window(card)
     local T = ns.Theme
     local f = CreateFrame("Frame", nil, card)
     f:SetPoint("TOPLEFT", card, "TOPLEFT", CTX_X, -CTX_TOP)
-    local y = 0
+    -- The drawing under its caption (Ctx.PreviewCaption).
+    local cap = Ctx.PreviewCaption(f)
+    cap:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    local sw = Ctx.Mini(f)
+    sw:SetPoint("TOPLEFT", cap, "BOTTOMLEFT", 0, -Ctx.PREVIEW_GAP)
     local host
     if S.installedHost then
-      -- The badge that used to hang on the Window heading: is this window
-      -- wearing your UI's look, or Postbox's?
-      host = CreateFrame("Frame", nil, f, "BackdropTemplate")
-      host:SetBackdrop(PLAIN_BACKDROP)
-      PaintPlain(host)
-      host:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-      host:SetSize(CTX_W, HOST_H)
+      -- Is this window wearing your UI's look, or Postbox's? The square
+      -- says it, the words name it.
+      host = CreateFrame("Frame", nil, f)
+      host:SetPoint("TOPLEFT", sw, "BOTTOMLEFT", 0, -Ctx.HOST_GAP)
+      host:SetSize(CTX_W, Ctx.HOST_DOT)
       host.Dot = host:CreateTexture(nil, "OVERLAY")
-      host.Dot:SetSize(8, 8)
-      host.Dot:SetPoint("LEFT", host, "LEFT", 10, 0)
+      host.Dot:SetSize(Ctx.HOST_DOT, Ctx.HOST_DOT)
+      host.Dot:SetPoint("LEFT", host, "LEFT", 0, 0)
       host.Text = T.CreateText(host, "secondary")
-      host.Text:SetPoint("LEFT", host.Dot, "RIGHT", 8, 0)
+      host.Text:SetPoint("LEFT", host.Dot, "RIGHT", 6, 0)
       host.Text:SetJustifyH("LEFT")
       host.Text:SetWordWrap(false)
       host.entry = S.idle.window
       -- Motion only: a click passes on, so the panel still drags from here.
       host:EnableMouse(true)
       if host.SetPropagateMouseClicks then host:SetPropagateMouseClicks(true) end
-      host:SetScript("OnEnter", SpotEnter)
-      host:SetScript("OnLeave", SpotLeave)
-      y = HOST_H + 8
+      host:SetScript("OnEnter", HostEnter)
+      host:SetScript("OnLeave", HostLeave)
     end
-    -- The drawing under its caption (Ctx.PreviewCaption).
-    local cap = Ctx.PreviewCaption(f)
-    cap:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -y)
-    local sw = Ctx.Mini(f)
-    sw:SetPoint("TOPLEFT", cap, "BOTTOMLEFT", 0, -Ctx.PREVIEW_GAP)
-    f:SetSize(CTX_W, y + Ctx.PreviewRoom() + Ctx.MiniHeight())
+    f:SetSize(CTX_W, Ctx.PreviewRoom() + Ctx.MiniHeight() + Ctx.HostRoom())
     f.Paint = function()
+      local room = Ctx.PaintPreviewCaption(cap)
+      Ctx.PaintMini(sw)
+      local hostRoom = Ctx.HostRoom()
       if host then
-        PaintPlain(host)
         if S.badgeGreen then
           host.Dot:SetColorTexture(0.38, 0.80, 0.44, 1)
         else
@@ -3439,11 +3464,11 @@ do
           -- a fault.
           host.Dot:SetColorTexture(0.54, 0.54, 0.58, 1)
         end
-        T.FitText(host.Text, CTX_W - 36, S.idle.window.title, host)
+        host:SetHeight(hostRoom - Ctx.HOST_GAP)
+        T.SetColor(host.Text, "textSecondary")
+        T.FitText(host.Text, CTX_W - Ctx.HOST_DOT - 6, S.idle.window.title, host)
       end
-      local room = Ctx.PaintPreviewCaption(cap)
-      Ctx.PaintMini(sw)
-      f:SetHeight(y + room + MW.h.total)
+      f:SetHeight(room + MW.h.total + hostRoom)
     end
     return f
   end
