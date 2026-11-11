@@ -3766,9 +3766,13 @@ local function AddHintLine(text)
   local n = type(GameTooltip.NumLines) == "function" and GameTooltip:NumLines() or 0
   local fs = n > 0 and TipLineString(n) or nil
   if not (font and fs) then return end
-  if not tipHint.was[n] then
-    tipHint.was[n] = (type(fs.GetFontObject) == "function" and fs:GetFontObject()) or _G.GameTooltipText
-  end
+  -- Only a named font is kept and put back (NamedFont): a line another addon
+  -- gave a face of its own answers its own font instance, which is never set
+  -- back on it. Such a line keeps the face it has and takes no hint font.
+  local own
+  if type(fs.GetFontObject) == "function" then own = NamedFont(fs:GetFontObject()) else own = _G.GameTooltipText end
+  if not own then return end
+  if not tipHint.was[n] then tipHint.was[n] = own end
   fs:SetFontObject(font)
   if tipHint.to == 0 or n < tipHint.from then tipHint.from = n end
   if n > tipHint.to then tipHint.to = n end
