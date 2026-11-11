@@ -77,6 +77,15 @@ whether this release fixes the thing that annoyed them.
 >
 > No — *"Fixed hit-test propagation on the status overlay frame."*
 
+**Say where (Elliott, 2026-11-11).** Each line names the place a player meets
+the change: the window, tab, list or control, and for a setting, where it is set
+(the options tab, or Arrange and the column). *"Rows can show gold as coins"*
+leaves the reader asking which rows; *"Mail rows can show gold as coin icons
+(Arrange, Gold column)"* does not. The place is a few words, never a sentence, so
+the line stays short. One subject to a line: two addons or two features share a
+bullet only when they are one change (1.50's What's new had Baganator's bags on
+ElvUI's line). This holds for the in-game What's new as much as the changelog.
+
 No file names, no function names, no Lua, no "refactored", no internals. The *why*
 is welcome where it helps somebody trust a fix, or where the cause is genuinely
 interesting — the mechanism is not. Commit messages are where the mechanism goes;

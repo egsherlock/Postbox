@@ -6,17 +6,18 @@
 
 ### New
 
-- **Sent mail:** History now has **Received** and **Sent**. Sent lists what
-  you mailed, to whom, with its gold and any C.O.D. The clock beside Send
-  opens it.
-- **Sort and filter:** the button beside Search orders your mail by newest,
-  expiring, most gold or sender, and can show only unread mail, mail with
-  gold or mail with items. History, Mail Memory and Manage Recipients have
-  it too.
-- **Search finds mail by its items:** type an item's name to find any mail
-  it's attached to.
-- **Sold auctions show the item that sold,** wherever Postbox can tell
-  which it was.
+- **Sent mail:** History, the clock on the Mail tab, now has **Received**
+  and **Sent**. Sent lists what you mailed, to whom, with its gold and any
+  C.O.D. On the Send tab, the clock beside Send opens it.
+- **Sort and filter:** on the Mail tab, the button right of Search orders
+  your mail by newest, expiring, most gold or sender, and can show only
+  unread mail, mail with gold or mail with items. History has it too, and
+  Mail Memory and Manage Recipients have the same button to sort by.
+- **Search finds mail by its items:** on the Mail tab, in History and in
+  Mail Memory, type an item's name to find any mail it's attached to.
+- **Sold auctions show the item that sold:** an AH Sold mail wears that
+  item's icon in the Inbox, History and Mail Memory, wherever Postbox can
+  tell which it was.
 
 ### Mail tab
 
@@ -24,41 +25,45 @@
   then search and sort. In History, Received and Sent join the clock.
 - While a filter is on, a line above the list says so, with **Clear**
   beside it. The collect buttons take only the mail you can see.
-- Rows can show gold as coins (Arrange, Gold column).
-- Attachments fan out from their own row, as one piece.
+- **Gold as coins:** mail rows can show gold as coin icons instead of
+  letters (Arrange, Gold column, Written as).
+- With **Attachments on hover** set to Fan out, a mail's items open from
+  its own icon, as one piece.
 
 ### Options and Arrange
 
 - **Six tabs,** with a new **Alerts** tab for expiring-mail warnings and
-  new-mail sound and flash, and a **search** at the top that finds any
-  setting.
-- **Text size** works in every window style, and text is a comfortable
-  size on a standard UI.
+  new-mail sound and flash, and a **search** in the options' title bar that
+  finds any setting.
+- **Text size** (Options, Window) works in every window style, and all of
+  Postbox's text is a comfortable size on the default UI.
 - **Arrange:** each column's card holds its own settings (stack counts,
   quality marks, expiry marks), and the options step aside while you
   arrange.
-- **Test mail** has its own switch over the Preview.
-- New installs start with three category buttons shown: All bought, All
-  sold and All expired. Yours stay as they are.
-- Mail counts always show; that setting is gone.
+- **Test mail** has its own switch over the options' Preview.
+- New installs start with three category buttons under the mail list: All
+  bought, All sold and All expired. Yours stay as they are.
+- Mail counts always show on Inbox, the collect buttons and each
+  character's box; the setting for them is gone.
 - **Escape closes one Postbox window at a time:** an editor goes back to
   the options, and the options close before the mailbox.
-- Mail Memory, Character Groups and Manage Recipients have new icons that
-  take your UI's accent color.
+- Mail Memory, Character Groups and Manage Recipients have new icons on
+  the options' General tab, in your accent color.
 
 ### WoW Forever
 
-- Senders can be shown by first name (Arrange, Sender column).
+- Mail rows can show senders by first name (Arrange, Sender column).
 
 ### Fixed
 
-- A character whose mail Postbox couldn't count says **new** (or **2+**)
-  instead of 0.
+- In the character list and the minimap icon's tooltip, a character whose
+  mail Postbox couldn't count says **new** (or **2+**) instead of 0.
 - The words on the bar over finished mail sit dead center at any scale.
 - A character group dragged in the groups window lands where you drop it,
   and the list shows everyone in the group first.
-- Tooltip hints sit safely beside addons that restyle the game's tooltips.
-- History stays light however long it gets.
+- The hint lines at the foot of Postbox's tooltips sit safely beside
+  addons that restyle the game's tooltips.
+- History opens and searches quickly however long it gets.
 
 ## 1.60.0
 
