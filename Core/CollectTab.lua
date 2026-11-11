@@ -6015,7 +6015,7 @@ function RV.PaintStrip(panel, on)
   local T = Th()
   if on ~= (panel._stripOn == true) then
     panel._stripOn = on
-    row:SetShown(on)
+    row:SetShown(on and not panel._topHidden)
     local area = panel.MailListArea
     local M = T.Metrics
     area:ClearAllPoints()
@@ -16152,6 +16152,8 @@ function RV.HideTopRow(panel)
   if panel.SearchBox and panel.SearchBox.ClearFocus then panel.SearchBox:ClearFocus() end
   if panel.SearchWrap then panel.SearchWrap:Hide() end
   if panel.Sort then panel.Sort:Hide() end
+  -- And the chips (empty here: CT.ArrangeHost lets the filters go first).
+  if panel.SFStrip then panel.SFStrip:Hide() end
 end
 
 function RV.ShowTopRow(panel)
@@ -16159,6 +16161,7 @@ function RV.ShowTopRow(panel)
   panel._topHidden = nil
   if panel.ViewToggle then panel.ViewToggle:Show() end
   if panel.SearchWrap then panel.SearchWrap:Show() end
+  if panel.SFStrip then panel.SFStrip:SetShown(panel._stripOn == true) end
   AV.Paint(panel)
 end
 
@@ -16249,15 +16252,22 @@ function CT.ArrangeHost(panel)
   -- button clears it, so the rows the header arranges are the whole list
   -- (and a search of every box ends with its query); and the selection is
   -- let go, since a click on a row now takes a column, not a mail, and a
-  -- collect button under the mode is a card. Neither comes back when the
-  -- mode ends.
+  -- collect button under the mode is a card. The filters go as the search
+  -- does (RV.ForgetShows; never saved, so nothing is lost), and their chips
+  -- with them, before the mode reads where the list stands. None of it
+  -- comes back when the mode ends. The saved order stays: it hides no mail.
   function host.Prepare()
     ClearSelection(panel)
+    RV.ForgetShows(panel)
     local box = panel.SearchBox
     if box then
       if box:GetText() ~= "" then box:SetText("") end
       if box.ClearFocus then box:ClearFocus() end
     end
+    -- The list drawn whole once more where the search's own refresh did
+    -- not, so the chips' row is put away (RV.PaintStrip) and the list hangs
+    -- from the top row again.
+    if panel._stripOn then CT.RefreshMailList(panel) end
   end
   function host.OnEnter()
     -- The reading view is over the list the header describes.
