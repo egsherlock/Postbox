@@ -4662,11 +4662,19 @@ do
     return AddSlider(row, spec, DD_W)
   end
 
+  -- The chevron on a button that opens a window: chrome at rest, lit while
+  -- pointed at, as the General tiles' is. It stands CHEVRON_R in from the
+  -- button's right end, CHEVRON_GAP clear of the caption (FitButton).
+  local CHEVRON_R, CHEVRON_GAP = 8, 6
+  local function ChevronEnter(self) ns.Theme.SetColor(self.Chev, "textPrimary") end
+  local function ChevronLeave(self) ns.Theme.SetColor(self.Chev, "textDisabled") end
+
   -- A push button on the right. spec: title, text, caption, onClick
-  -- [, onHover(cell)] [, mark] [, minWidth]: `mark` puts the way into
-  -- arranging's mark before the caption, the two centred as one (Rows.Fit
-  -- sizes the button to both); `minWidth`, the least it is, however short
-  -- its caption.
+  -- [, onHover(cell)] [, mark] [, minWidth] [, chevron]: `mark` puts the
+  -- way into arranging's mark before the caption, the two centred as one
+  -- (Rows.Fit sizes the button to both); `minWidth`, the least it is,
+  -- however short its caption; `chevron`, the General tiles' chevron at
+  -- its right end, for a button that opens a window of its own.
   function Rows.Button(col, spec)
     local row = Rows.New(col, ROW_H)
     Rows.Cell(col, row, ROW_W, spec.title, spec.text)
@@ -4680,6 +4688,18 @@ do
     -- own textures. The mark drawn for a caption, at the height of the eye
     -- before Test's (Rows.Lead) and with no keyline, as the eye has none.
     if spec.mark then btn.Mark = Ctx.Mark(ArtHolder(btn), 7, nil, "layout-mini") end
+    if spec.chevron then
+      local T = ns.Theme
+      local chev = T.Glyph and T.Glyph(ArtHolder(btn), "chevron", 10, "OVERLAY") or nil
+      if chev then
+        chev.w = math.ceil(chev:GetWidth() or 7)
+        chev:SetPoint("RIGHT", btn, "RIGHT", -CHEVRON_R, 0)
+        T.SetColor(chev, "textDisabled")
+        btn.Chev = chev
+        btn:HookScript("OnEnter", ChevronEnter)
+        btn:HookScript("OnLeave", ChevronLeave)
+      end
+    end
     row.kind, row.control, row.button, row.onHover = "button", btn, btn, spec.onHover
     row.minW, row.col = spec.minWidth, col
     return row
@@ -5281,18 +5301,23 @@ do
     local T = ns.Theme
     local btn = cell.control
     local width = T.SizeToText(btn, fit or BUTTON_FIT)
-    local mark = btn.Mark
+    local mark, chev = btn.Mark, btn.Chev
     local lead = mark and (mark.w + 6) or 0
-    local want = math.max(cell.minW or 0, width + lead)
+    -- A chevron's room: the caption keeps its padding clear of it.
+    local tail = chev and (chev.w + CHEVRON_R + CHEVRON_GAP - (fit or BUTTON_FIT).padding / 2) or 0
+    if tail < 0 then tail = 0 end
+    local want = math.max(cell.minW or 0, width + lead + tail)
     if want ~= width then btn:SetWidth(want) end
     width = want
-    if not mark then return width end
+    if not (mark or chev) then return width end
     local fs = btn:GetFontString()
     if fs then
       fs:ClearAllPoints()
-      fs:SetPoint("CENTER", btn, "CENTER", lead / 2, 0)
-      mark:ClearAllPoints()
-      mark:SetPoint("CENTER", fs, "LEFT", -(6 + mark.w / 2), 0)
+      fs:SetPoint("CENTER", btn, "CENTER", (lead - tail) / 2, 0)
+      if mark then
+        mark:ClearAllPoints()
+        mark:SetPoint("CENTER", fs, "LEFT", -(6 + mark.w / 2), 0)
+      end
     end
     return width
   end
@@ -6933,10 +6958,11 @@ function Pages.mail(col)
   Shown(blocks.pair[2].entry, "band")
   -- Character Groups: its button opens the groups' window (a second click
   -- closes it, as General's tile does) and says how many there are
-  -- (State.Lists).
+  -- (State.Lists); as wide as the dropdowns in its column, with the tiles'
+  -- chevron, since it opens a window.
   S.groupsCell = Rows.Button(col, {
     title = L["GROUPS_TITLE"], text = L["GROUPS_OPT_DESC"], caption = L["OPT_GROUPS_NONE"],
-    onClick = function() Ctx.OpenGroups() end,
+    onClick = function() Ctx.OpenGroups() end, minWidth = DD_W, chevron = true,
   })
 
   Rows.Group(col, L["OPT_COLLECTING_HEADING"])
@@ -7193,11 +7219,12 @@ function Pages.send(col)
   })
   -- The address book the form draws on: its button opens Manage Recipients
   -- (a second click closes it, as General's tile does) and says how many
-  -- recipients there are (State.Lists).
+  -- recipients there are (State.Lists); as wide as the dropdowns in its
+  -- column, with the tiles' chevron, since it opens a window.
   Rows.Group(col, L["OPT_RECIPIENTS_HEADING"])
   S.recipientsCell = Rows.Button(col, {
     title = L["RM_OPT_BUTTON"], text = L["RM_OPT_BUTTON_DESC"], caption = L["OPT_RECIPIENTS_NONE"],
-    onClick = function() Ctx.OpenRecipients() end,
+    onClick = function() Ctx.OpenRecipients() end, minWidth = DD_W, chevron = true,
   })
 end
 
