@@ -9,10 +9,11 @@
 - **Sent mail:** History, the clock on the Mail tab, now has **Received**
   and **Sent**. Sent lists what you mailed, to whom, with its gold and any
   C.O.D. On the Send tab, the clock beside Send opens it.
-- **Sort and filter:** on the Mail tab, the button right of Search orders
-  your mail by newest, expiring, most gold or sender, and can show only
-  unread mail, mail with gold or mail with items. History has it too, and
-  Mail Memory and Manage Recipients have the same button to sort by.
+- **Sort and filter:** on the Mail tab, the three bars in the search box
+  order your mail by newest, expiring, most gold or sender (click a sort
+  again to turn it round) and can show only unread mail, mail with gold or
+  mail with items. History has it too, and Mail Memory and Manage
+  Recipients have the same button to sort by.
 - **Search finds mail by its items:** on the Mail tab, in History and in
   Mail Memory, type an item's name to find any mail it's attached to.
 - **Sold auctions show the item that sold:** an AH Sold mail wears that
@@ -45,9 +46,11 @@
 - **Arrange:** each column's card holds its own settings (stack counts,
   quality marks, expiry marks), and the options step aside while you
   arrange.
-- **The last 7 days** on the options' General tab: gold earned and spent
-  by mail, and mails collected and sent, for this character or all of
-  them.
+- **The last 7 days** on the options' General tab: gold earned and spent,
+  and mails collected and sent, for all your characters or this one. Point
+  at Earned or Spent for its parts: auction sales, the auction house's
+  cut, deposits, auctions bought, C.O.D. and gold sent. Deposits and the
+  cut are counted from this version on.
 - **Remember sort order** (Options, Mail tab): on, each list keeps the
   order you chose; off, every list is back to newest first at your next
   visit. Filters are always let go when the mailbox closes.
@@ -67,7 +70,8 @@
   at: the clock, the sort bars, the arrange mark, the address book and the
   rest, and a cog of Postbox's own on the title bar. The cog is plain gray
   and takes your accent only while the options are open.
-- **Text outline** is now called **Text style** (Options, Window).
+- **Text outline** is now called **Text style** (Options, Window), and a
+  new **Text weight** beside it offers Bold for Barlow Semi Condensed.
 
 ### WoW Forever
 
@@ -80,6 +84,8 @@
   until a reload (seen in WoW Forever). Docking now places the mail window
   by itself and leaves the game's window layout alone, so other game
   windows no longer move aside for it.
+- History records what you paid for an auction you won, also when its
+  mail was still unread.
 - In the character list and the minimap icon's tooltip, a character whose
   mail Postbox couldn't count says **new** (or **2+**) instead of 0.
 - The words on the bar over finished mail sit dead center at any scale.
