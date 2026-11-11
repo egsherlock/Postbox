@@ -1581,7 +1581,7 @@ do
   end
 
   -- The Mail tab, History, Sent, this character's: from the line and from
-  -- the clock in the Recipient field. The draft stays as it is.
+  -- the clock beside Send. The draft stays as it is.
   function ST.OpenSent()
     if not ST.SentOn() then return end
     GameTooltip:Hide()
@@ -1589,63 +1589,58 @@ do
     if CT and type(CT.OpenSent) == "function" then CT.OpenSent() end
   end
 
-  -- The clock in the Recipient field, left of the address book's segment
-  -- and built as it is (BuildRecipientField): 24 wide, a hairline on its
-  -- left, the same wash under the pointer, and untagged for the same
-  -- reason. History's own glyph.
-  function ST.BuildSentClock(panel, manage)
-    local clock = CreateFrame("Button", nil, panel.ToWrap)
-    clock:SetPoint("TOPRIGHT", manage, "TOPLEFT", 0, 0)
-    clock:SetPoint("BOTTOMRIGHT", manage, "BOTTOMLEFT", 0, 0)
-    clock:SetWidth(24)
-    clock:SetFrameLevel(manage:GetFrameLevel())
+  -- The clock left of the Send button, in its row: a square plate as tall
+  -- as the button (so the row is level), the house's small-button plate
+  -- (Theme.CreatePlate, as the Mail tab's History and sort are), History's
+  -- own glyph in grey as the Mail tab's clock is (chrome stays neutral).
+  -- Its room comes out of the button's width (SyncSentClock), so the window
+  -- is no wider. Built after the button, beside it (BuildSendControls).
+  ST.SENT_CLOCK = { GAP = M.gap }
 
-    local divider = clock:CreateTexture(nil, "BORDER")
-    divider:SetWidth(1)
-    divider:SetPoint("TOPLEFT", clock, "TOPLEFT", 0, 0)
-    divider:SetPoint("BOTTOMLEFT", clock, "BOTTOMLEFT", 0, 0)
-    Theme.FillChrome(divider, 0.12)
-
-    local wash = clock:CreateTexture(nil, "BACKGROUND")
-    wash:SetPoint("TOPLEFT", clock, "TOPLEFT", 1, 0)
-    wash:SetPoint("BOTTOMRIGHT", clock, "BOTTOMRIGHT", 0, 0)
-    Theme.FillChrome(wash, 0)
-
-    -- Grey, as the Mail tab's clock is: chrome stays neutral.
-    local glyph = Theme.Glyph and Theme.Glyph(clock, "history", 12, "ARTWORK") or nil
+  function ST.BuildSentClock(panel)
+    local size = K.SEND_BUTTON_H
+    local clock = Theme.CreatePlate(panel, "segment")
+    clock:SetSize(size, size)
+    clock:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", M.inset, M.inset)
+    clock:SetText("")
+    local glyph = Theme.Glyph and Theme.Glyph(clock, "history", 12, "OVERLAY") or nil
     if glyph then
       glyph:SetPoint("CENTER", clock, "CENTER", 0, 0)
-      Theme.SetGrey(glyph, 1)
-      glyph:SetAlpha(0.85)
+      Theme.SetPlateGlyph(clock, glyph, function(icon)
+        Theme.SetGrey(icon, 1)
+        icon:SetAlpha(0.85)
+      end)
+    else
+      clock:SetText(L["SENT_VIEW_SENT"])
     end
-
-    clock:SetScript("OnEnter", function(self)
-      Theme.FillChrome(wash, 0.07)
+    -- Hooked: the plate's own hover paint stays (Theme.CreatePlate).
+    clock:HookScript("OnEnter", function(self)
       Theme.TipBegin(self, "ANCHOR_RIGHT")
       Theme.TipTitle(L["SENT_VIEW_SENT"])
       Theme.TipLine(L["SENT_CLOCK_TIP"])
+      Theme.TipHint(L["SENT_TIP_OPEN"])
       GameTooltip:Show()
     end)
-    clock:SetScript("OnLeave", function()
-      Theme.FillChrome(wash, 0)
-      GameTooltip:Hide()
-    end)
+    clock:HookScript("OnLeave", function() GameTooltip:Hide() end)
     clock:SetScript("OnClick", function() ST.OpenSent() end)
+    Theme.SetPlateSelected(clock, false)
     panel.SentClock = clock
     ST.SyncSentClock(panel)
   end
 
-  -- Shown while History is on; the typed text stops short of both
-  -- segments, or of the address book's alone.
+  -- Shown while History is on: with History off (Never) there is no Sent
+  -- to open, so the clock is not offered and Send takes the whole row.
   function ST.SyncSentClock(panel)
     panel = panel or ActivePanel()
     local clock = panel and panel.SentClock
-    if not clock then return end
+    local button = panel and panel.FillButton
+    if not (clock and button) then return end
     local on = ST.SentOn()
-    if clock:IsShown() ~= on or panel._sentInset == nil then
+    if clock:IsShown() ~= on or panel._sentLead == nil then
       clock:SetShown(on)
-      panel._sentInset = on and 50 or 26
-      panel.ToBox:SetTextInsets(0, panel._sentInset, 0, 0)
+      panel._sentLead = on and (K.SEND_BUTTON_H + ST.SENT_CLOCK.GAP) or 0
+      button:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", M.inset + panel._sentLead, M.inset)
+      ST.FitSendHint(panel)
     end
   end
 end
@@ -1871,7 +1866,11 @@ function ST.FitSendHint(panel)
   if show then
     local caption = button:GetFontString()
     local captionW = caption and caption:GetStringWidth() or 0
-    local room = (ResolvedWidth(button, panel, M.inset) - captionW) / 2
+    -- Before the first layout pass the fallback is the panel's width, less
+    -- the Sent clock's room where it stands (ST.SyncSentClock).
+    local width = ResolvedWidth(button, panel, M.inset)
+    if button:GetWidth() <= 1 then width = width - (panel._sentLead or 0) end
+    local room = (width - captionW) / 2
     show = (hint:GetStringWidth() or 0) + ST.HINT.PAD + ST.HINT.GAP <= room
   end
   hint:SetShown(show)
@@ -5940,10 +5939,17 @@ local function BuildRecipientField(panel)
   hoverWash:SetPoint("BOTTOMRIGHT", manage, "BOTTOMRIGHT", 0, 0)
   Theme.FillChrome(hoverWash, 0)
 
-  local art = manage:CreateTexture(nil, "ARTWORK")
-  art:SetSize(16, 16)
+  -- Manage Recipients' own glyph, its 16-unit master, in the accent's icon
+  -- tone and kept in it (Theme.TintAccentGlyph).
+  local art = Theme.Glyph and Theme.Glyph(manage, "recipients", 16, "ARTWORK") or nil
+  if art then
+    Theme.TintAccentGlyph(art)
+  else
+    art = manage:CreateTexture(nil, "ARTWORK")
+    art:SetSize(16, 16)
+    art:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
+  end
   art:SetPoint("CENTER", manage, "CENTER", 0, 0)
-  art:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
 
   -- Typed text stops short of the segment instead of running under it.
   panel.ToBox:SetTextInsets(0, 26, 0, 0)
@@ -5971,8 +5977,6 @@ local function BuildRecipientField(panel)
     end
   end)
   panel.ManageRecipients = manage
-  -- Sent, from the field where the doubt starts (8d).
-  ST.BuildSentClock(panel, manage)
 end
 
 local function BuildContactBar(panel)
@@ -6537,8 +6541,10 @@ local function BuildSendControls(panel)
   -- Wrapping and vertically centred: a warning that has to say two things runs
   -- to two lines in a narrow window, and the one-line notes then still sit level
   -- in the same band instead of hanging from its top edge.
+  -- Its left edge is the panel's, not the button's: the Sent clock takes
+  -- the button's left end (8d), and the line keeps the row's whole width.
   local guidance = Theme.CreateText(panel, "secondary")
-  guidance:SetPoint("BOTTOMLEFT", button, "TOPLEFT", 0, K.GUIDANCE_GAP)
+  guidance:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", M.inset, M.inset + K.SEND_BUTTON_H + K.GUIDANCE_GAP)
   guidance:SetPoint("BOTTOMRIGHT", button, "TOPRIGHT", 0, K.GUIDANCE_GAP)
   guidance:SetHeight(GuidanceHeight())
   guidance:SetJustifyH("LEFT")
@@ -6547,6 +6553,8 @@ local function BuildSendControls(panel)
   guidance:SetText("")
   if Theme.OnWindow then Theme.OnWindow(guidance, "window") end
   panel.GuidanceLabel = guidance
+  -- Sent, from beside the button that sends (8d).
+  ST.BuildSentClock(panel)
 end
 
 -- Events this panel answers ONLY while it is on screen.
