@@ -15362,8 +15362,11 @@ CT.BuildBar = RV.BuildBar
 --
 -- Placed by rule: past the icon's far edge, or before its near edge when
 -- the icon stands in the list's far half (the row's end); a second line
--- past Fan.PER_LINE tiles, or where the room runs out; clamped inside the
--- list. It closes on leaving the icon and the plate (Fan.GRACE for the
+-- past Fan.PER_LINE tiles, or where the room runs out; across, clamped
+-- inside the list; up and down, its first line of tiles always on the row,
+-- the C.O.D. line over it and further lines under it reaching past the
+-- list's edges where they must, the plate kept whole on the screen. It
+-- closes on leaving the icon and the plate (Fan.GRACE for the
 -- step between them), a press anywhere else (GLOBAL_MOUSE_DOWN, registered
 -- only while it is open), any scroll, a row pass that binds its row to
 -- other mail (RV.FanCheck), a run, the reading view, the arrange mode and
@@ -15731,9 +15734,16 @@ do
     local h = 2 * P + lines * size + (lines - 1) * G + codH
     local x = leftward and (iL - Fan.GAP - w - sL) or (iR + Fan.GAP - sL)
     x = max(0, min(x, (sR - sL) - w))
-    -- The tiles centred on the row, the C.O.D. line above them.
+    -- The first line of tiles centred on the row, the C.O.D. line above it
+    -- and any further line below it, wherever that stands against the
+    -- list's edges (the plate is over the toolbar and the totals, and takes
+    -- every press on it); kept whole on the screen only (UIParent's edges in
+    -- the list's units).
     local mid = (rT + rB) / 2
-    local y = max(0, min(sT - (mid + (h - codH) / 2 + codH), (sT - sB) - h))
+    local y = sT - (mid + size / 2 + P + codH)
+    local k = (UIParent:GetEffectiveScale() or 1) / (scroll:GetEffectiveScale() or 1)
+    local uT, uB = UIParent:GetTop(), UIParent:GetBottom()
+    if uT and uB then y = max(sT - uT * k, min(y, sT - h - uB * k)) end
     plate:ClearAllPoints()
     plate:SetPoint("TOPLEFT", scroll, "TOPLEFT", x, -y)
     plate:SetSize(w, h)
