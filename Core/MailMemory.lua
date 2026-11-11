@@ -3605,64 +3605,161 @@ function MM.SortOf(list)
   return UI and type(UI.GetListSort) == "function" and UI.GetListSort(list) or "mailbox"
 end
 
--- The sort, right of the search in both windows, this one's and the Mail
--- tab's: the box's own order (newest first) or the soonest to expire
--- first. A square plate wearing the sort glyph at its own size in the
--- middle, one grey in every state (textSecondary, the token nearest the
--- mockup's #cfcfcf for this plate's glyph) -- the text colour under the
--- pointer, where the plate is drawn as a tab is. It does not turn with the
--- order: the order shows in the plate's selection, and its tooltip says
--- which it is and what a click does. `get()` answers the order on screen;
--- `toggle()` changes it and shows the list in it. plate.Paint() paints the
--- plate for get(), only when that changed.
-function MM.NewSortPlate(parent, size, get, toggle)
+-- The sort button of a window that sorts and has no filters on it -- this
+-- one, and Manage Recipients (Core/RecipientManager.lua) -- built as the
+-- Mail tab's sort-and-filter button is (CollectTab's RV.NewSortButton),
+-- from the same parts: a square segment plate wearing the sort mark
+-- (Theme.GLYPHS "sort-list": three bars, longest on top) a unit right of
+-- its middle; drawn in the house's selected state while the order is not
+-- the window's default, the mark then in the accent's bright tone
+-- (MM.PaintSortMark); a click opens the menu, a right-click puts the
+-- default back. `spec`:
+--   lit()        whether the order on screen is not the default
+--   reset()      the default order back (the right-click and the menu's Reset)
+--   menu(sort)   the menu to open now (MM.SortMenu), or nil
+--   tip()        the tooltip's lines between its title and its hint
+-- sort.Paint() paints the plate for lit(), only what changed; sort.Told()
+-- paints it and tells the tooltip and an open menu; sort.Toggle(menu) opens
+-- that menu or shuts it; sort.open is the menu open now, or nil.
+function MM.NewSortButton(parent, size, spec)
   local T = ns.Theme
   local sort = T.CreatePlate(parent, "segment")
   sort:SetSize(size, size)
   sort:SetText("")
-  sort.Icon = T.Glyph and T.Glyph(sort, "sort", nil, "OVERLAY") or nil
+  sort.Icon = T.Glyph and T.Glyph(sort, "sort-list", nil, "OVERLAY") or nil
   if sort.Icon then
-    sort.Icon:SetPoint("CENTER")
-    -- The plate's caption: where the plate is drawn as a tab is, it
-    -- brightens under the pointer as their words do (Theme.SetPlateGlyph).
-    T.SetPlateGlyph(sort, sort.Icon, function(icon) T.SetColor(icon, "textSecondary") end)
+    -- A unit right of the plate's middle, as the Mail tab's: the bars run
+    -- from the left, so centred by its box the mark looks pushed left.
+    sort.Icon:SetPoint("CENTER", sort, "CENTER", 1, 0)
+    T.SetPlateGlyph(sort, sort.Icon, MM.PaintSortMark)
   else
     sort:SetText("v")
   end
-  function sort.Paint()
-    local on = get() == "expiry"
-    if sort.isSelected ~= on then T.SetPlateSelected(sort, on) end
-  end
+  -- The house's form: the control's name, what is in force, the gestures.
   local function Tip(self)
     T.TipBegin(self, "ANCHOR_TOPRIGHT")
-    T.TipTitle(L("SORT_CURRENT", L[get() == "expiry" and "SORT_EXPIRY_TITLE" or "SORT_NEWEST_TITLE"]))
-    T.TipHint(L["SORT_TIP"])
+    T.TipTitle(L["SF_SORT_HEAD"])
+    spec.tip()
+    T.TipHint(L["SORT_MENU_HINT"])
     GameTooltip:Show()
   end
-  sort:SetScript("OnClick", function(self)
-    toggle()
+  function sort.Paint()
+    local on = spec.lit() and true or false
+    local turned = sort.isSelected ~= on
+    if turned then T.SetPlateSelected(sort, on) end
+    if sort.Icon and (on or turned) then MM.PaintSortMark(sort.Icon) end
+  end
+  function sort.Told()
     sort.Paint()
-    -- The tooltip names the order on screen: it changes with the click.
-    if GameTooltip:IsOwned(self) then Tip(self) end
+    if GameTooltip:IsOwned(sort) then Tip(sort) end
+    if sort.open then sort.open:Repaint() end
+  end
+  function sort.Toggle(menu)
+    if GameTooltip:IsOwned(sort) then GameTooltip:Hide() end
+    menu:Toggle()
+    sort.open = menu:IsShown() and menu or nil
+  end
+  sort:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  sort:SetScript("OnClick", function(self, button)
+    if button == "RightButton" then
+      if spec.lit() then spec.reset() end
+      return
+    end
+    local menu = spec.menu(self)
+    if menu then sort.Toggle(menu) end
   end)
-  sort:HookScript("OnEnter", Tip)
-  sort:HookScript("OnLeave", function() GameTooltip:Hide() end)
-  T.SetPlateSelected(sort, get() == "expiry")
+  -- The plate's own hover paint runs first (Theme.CreatePlate); where a
+  -- style's tokens paint the mark as their caption, it is lit again after.
+  sort:HookScript("OnEnter", function(self)
+    if self.isSelected and self.Icon then MM.PaintSortMark(self.Icon) end
+    Tip(self)
+  end)
+  sort:HookScript("OnLeave", function(self)
+    if self.isSelected and self.Icon then MM.PaintSortMark(self.Icon) end
+    GameTooltip:Hide()
+  end)
+  T.SetPlateSelected(sort, false)
+  sort.Paint()
   return sort
+end
+
+-- The sort mark's ink, as the Mail tab's (CollectTab's RV.PaintSortMark):
+-- the accent's bright tone while its plate is selected, otherwise the
+-- chrome's grey -- unless a style's tokens paint it as their caption
+-- (Theme.SetPlateGlyph), which then stands.
+function MM.PaintSortMark(icon)
+  local sort = icon:GetParent()
+  if sort.isSelected then
+    ns.Theme.SetColor(icon, "accentBright")
+  elseif not sort.__pbGlyphLit then
+    ns.Theme.SetColor(icon, "textSecondary")
+  end
+end
+
+-- A sort button's menu (Dropdown.Menu), as the Mail tab's is made: `items`
+-- its groups and Reset last under a hairline; a pick leaves it open with its
+-- dots moved; Reset grayed while there is nothing to reset. `checked(id)`,
+-- `disabled(id)` and `onPick(id)` as Dropdown.Menu takes them. It opens
+-- under the button, left edges lined up, free to pass the window's edge.
+function MM.SortMenu(sort, items, checked, disabled, onPick)
+  local D = ns.Core and ns.Core.UI and ns.Core.UI.Dropdown
+  if not (D and type(D.Menu) == "function") then return nil end
+  local menu
+  menu = D.Menu(sort, items, {
+    keepOpen = true,
+    checked = checked,
+    disabled = disabled,
+    onPick = onPick,
+    onClose = function() if sort.open == menu then sort.open = nil end end,
+  })
+  return menu
+end
+
+-- This window's menu: Sort, Newest first (the default) and Expiring first,
+-- then Reset. Its ids, each to the order it picks.
+MM.MEMORY_SORT_PICKS = { ["sort:mailbox"] = "mailbox", ["sort:expiry"] = "expiry" }
+
+-- The order kept for this window (MailboxUI.SetListSort, "memory"), and the
+-- list shown in it from its top; the button and an open menu told.
+local function SetMemorySort(frame, order)
+  if MM.SortOf("memory") == order then return end
+  local UI = ns.MailboxUI
+  if UI and type(UI.SetListSort) == "function" then UI.SetListSort("memory", order) end
+  if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
+  Refresh(frame)
+  frame.Sort.Told()
 end
 
 local function BuildSearch(frame)
   local T = ns.Theme
-  -- The sort at the row's right end, the search beside it (MM.NewSortPlate):
+  -- The sort at the row's right end, the search beside it (MM.NewSortButton):
   -- the order is remembered (MailboxUI.GetListSort, "memory").
-  local sort = MM.NewSortPlate(frame, HEADER_H, function() return MM.SortOf("memory") end, function()
-    local UI = ns.MailboxUI
-    if UI and type(UI.SetListSort) == "function" then
-      UI.SetListSort("memory", MM.SortOf("memory") == "expiry" and "mailbox" or "expiry")
-    end
-    if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
-    Refresh(frame)
-  end)
+  local sort
+  sort = MM.NewSortButton(frame, HEADER_H, {
+    lit = function() return MM.SortOf("memory") ~= "mailbox" end,
+    reset = function() SetMemorySort(frame, "mailbox") end,
+    menu = function()
+      if not frame._sortMenu then
+        local picks = MM.MEMORY_SORT_PICKS
+        frame._sortMenu = MM.SortMenu(sort, {
+          { heading = true, name = L["SF_SORT_HEAD"] },
+          { id = "sort:mailbox", name = L["SORT_NEWEST_TITLE"] },
+          { id = "sort:expiry", name = L["SORT_EXPIRY_TITLE"] },
+          { id = "reset", name = L["SF_RESET"], rule = true },
+        }, function(id)
+          return picks[id] ~= nil and MM.SortOf("memory") == picks[id]
+        end, function(id)
+          return id == "reset" and MM.SortOf("memory") == "mailbox"
+        end, function(id)
+          SetMemorySort(frame, picks[id] or "mailbox")
+        end)
+      end
+      return frame._sortMenu
+    end,
+    tip = function()
+      T.TipLine(L[MM.SortOf("memory") == "expiry" and "SORT_EXPIRY_TITLE" or "SORT_NEWEST_TITLE"])
+    end,
+  })
   sort:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(PAD - 2), HEADER_Y)
   frame.Sort = sort
   -- Theme's search box, as the Mail tab's is: the toggle inside its right end
@@ -3867,12 +3964,14 @@ function Refresh(frame)
   local count = #rows
 
   -- The top row: whose box, and its count, where the Mail tab has Inbox:
-  -- the whole box, as Inbox counts its own (counts always show).
+  -- the whole box, as Inbox counts its own (counts always show). Not a
+  -- button, so the count is in words after the name ("24 mails"), as the
+  -- picker's list says it; "Name (N)" is for buttons, tabs and segments.
   local who = MM.ClassName(info.realm, info.name, true)
   do
     local _, warn, _, uncounted = MM.CountFor(info.realm, info.name)
     local tally = MM.MailsText(info.box, uncounted)
-    frame.Who:SetText(who .. "  " .. T.Colorize(warn and "warning" or "textSecondary", "(" .. tally .. ")", "solid"))
+    frame.Who:SetText(who .. "  " .. T.Colorize(warn and "warning" or "textSecondary", tally, "solid"))
   end
   local crest = MM.ClassIcon(info.realm, info.name)
   if crest then frame.Picker.Icon:SetAtlas(crest, false) end
@@ -3906,7 +4005,11 @@ function Refresh(frame)
   end
   frame.Status:SetText(text)
 
-  frame.Card:SetShown(count > 0)
+  -- A search that finds nothing says so where the list stands, in the
+  -- house's one line (the Mail tab's words), the list's card kept under it.
+  local noMatch = count == 0 and query ~= "" and not frame._preview
+  frame.Card:SetShown(count > 0 or noMatch)
+  frame.Empty:SetShown(noMatch)
   if count > 0 and not frame.Rows[1] then frame.Rows[1] = MM.NewRow(frame.ListChild) end
   frame._list = rows
   frame._info = info
@@ -4131,6 +4234,17 @@ local function Build()
     frame.Scroll:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -(scrolling and gutter or 1), 1)
   end
   ns.Theme.SlimScrollBar(frame.Scroll, card, 1)
+
+  -- "Nothing matches.", centred in the card while a search finds nothing
+  -- (Refresh): the Mail tab's line for it, in its words.
+  frame.Empty = ns.Theme.CreateText(card, "secondary")
+  frame.Empty:SetPoint("TOPLEFT", card, "TOPLEFT", 8, 0)
+  frame.Empty:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -8, 0)
+  frame.Empty:SetJustifyH("CENTER")
+  frame.Empty:SetJustifyV("MIDDLE")
+  frame.Empty:SetWordWrap(false)
+  frame.Empty:SetText(L["EMPTY_LIST_SEARCH"])
+  frame.Empty:Hide()
 
   -- The rows are the scroll frame's full width: the child follows it.
   frame.ListChild = CreateFrame("Frame", nil, frame.Scroll)
