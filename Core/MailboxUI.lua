@@ -43,7 +43,6 @@ UI._state = UI._state or {
   extraH         = 0,         -- transient height added for a second attachment row
   bodyH          = 0,         -- transient height added for a message that outgrew its box
   extraW         = 0,         -- transient width lent while the Mail tab's top row needs more
-  layoutDeferred = false,     -- a grid reservation is waiting for combat to end
 }
 
 -------------------------------------------------------------
@@ -71,10 +70,6 @@ local function LF(key, ...)
   local template = L(key)
   local ok, formatted = pcall(string.format, template, ...)
   return ok and formatted or template
-end
-
-local function InCombat()
-  return type(InCombatLockdown) == "function" and InCombatLockdown() and true or false
 end
 
 local function CollectPanel()
@@ -753,8 +748,8 @@ UI._MigrateModern = MigrateModern
 
 -- The window scale, in every style: a factor, 0.8 to 1.3 in steps of 0.05,
 -- nil = 1. Read by Core/Theme.lua as each window is painted; a change is put
--- on every window at once, each kept where it stands, and the mail window's
--- place in the panel grid is reserved again at its new width.
+-- on every window at once, each kept where it stands, and the mail window is
+-- docked again at its new size.
 local WINDOW_SCALE_MIN, WINDOW_SCALE_MAX = 0.8, 1.3
 
 function UI.GetWindowScale()
@@ -2852,21 +2847,24 @@ end
 -------------------------------------------------------------
 -- 4. Position, docking and size
 --
--- Grid docking (option `gridDock`, default on) reuses the invisible MailFrame
--- as a correctly-sized spacer in the client's UI-panel layout: overriding its
--- panel width to match Postbox makes other Blizzard windows reserve room for
--- the size Postbox actually is, and Postbox then rides in that slot.
+-- Grid docking (option `gridDock`, default on) puts the window where the
+-- client's UI-panel layout put the invisible MailFrame, by anchoring Postbox's
+-- own frame to it. That only reads MailFrame and is always safe.
 --
 -- Three states, and they are easy to collapse into two by accident:
 --   docked        grid docking on, window sitting in the slot
 --   dragged       grid docking on, user has moved it -- honour the new position
 --                 for this session only, return to the slot on the next open
---   free-floating grid docking off -- no width override, hold the position
+--   free-floating grid docking off -- hold the position
 --
--- The two halves have very different taint properties. Reserving the space
--- writes MailFrame's protected attributes and is blocked in combat, so it is
--- deferred and re-applied on PLAYER_REGEN_ENABLED. Anchoring our own window
--- against MailFrame only reads it and is always safe. Keep them apart.
+-- Postbox never writes the panel layout: no SetUIPanelAttribute, no
+-- UpdateUIPanelPositions. The first leaves MailFrame's layout width tainted;
+-- the second runs Blizzard's panel manager from addon code, which leaves the
+-- manager's own state tainted for the session, and a later window shown
+-- through it (the bank on WoW Forever, GitHub issue 5) is then refused a
+-- protected call. The layout keeps MailFrame's own width, so
+-- another panel opened beside the mailbox sits where it would beside
+-- Blizzard's mail window. COMBAT_TAINT.md section 4.
 --
 -- SIZE. The minimum height is DERIVED, never chosen: it is the shell's own
 -- chrome plus whatever the tab panels say they need right now. BOTH screens
@@ -3187,32 +3185,6 @@ local function ApplyResizeBounds()
   end
 end
 
--- Whether this session has put a width on MailFrame's panel slot. Only then
--- is there an override for docking-off to drop: clearing one that was never
--- set is still a write to MailFrame, on every layout pass.
-local gridWidthReserved = false
-
-local function ReserveGridWidth(width)
-  if not MailFrame then return end
-  if width == nil and not gridWidthReserved then return end
-
-  if InCombat() then
-    -- The window still opens and still docks; only the panel-grid reservation
-    -- waits for PLAYER_REGEN_ENABLED.
-    UI._state.layoutDeferred = true
-    return
-  end
-
-  -- nil clears the override and reverts MailFrame to its own width.
-  if type(SetUIPanelAttribute) == "function" then
-    pcall(SetUIPanelAttribute, MailFrame, "width", width)
-  end
-  if type(UpdateUIPanelPositions) == "function" then
-    pcall(UpdateUIPanelPositions, MailFrame)
-  end
-  gridWidthReserved = width ~= nil
-end
-
 -- Taint-free: this reads MailFrame's position and writes only our own anchor.
 local function DockToSlot()
   local frame = UI._frame
@@ -3235,33 +3207,20 @@ function UI.ApplyWindowLayout()
 
   -- Only while a mail session is live. Every caller is inside one except the
   -- CLOSING path, which reaches this through SetAttachmentRows(1) on its way
-  -- out: without the guard, shutting the mailbox writes MailFrame's protected
-  -- panel attributes one last time, for a window that is already being hidden
-  -- and a slot nothing is about to occupy. COMBAT_TAINT.md.
+  -- out: without the guard, shutting the mailbox would anchor or pin a window
+  -- that is already being hidden.
   --
   -- The options panel's grid-dock toggle is the other caller that can arrive
   -- with no mailbox open, and it loses nothing either: the next open runs the
-  -- full layout, which is where a cleared or re-taken reservation lands anyway.
+  -- full layout.
   if not UI._state.mailboxOpen then return end
 
   if UI.GetOption("gridDock") then
-    -- The panel grid measures in MailFrame's units; under a window scale the
-    -- window's own width is in its own. At 100% the width goes through as it
-    -- always has.
-    local width = frame:GetWidth()
-    if UI.GetWindowScale() ~= 1 then
-      local own = frame:GetEffectiveScale()
-      local slot = MailFrame and MailFrame.GetEffectiveScale and MailFrame:GetEffectiveScale()
-      if type(own) == "number" and type(slot) == "number" and slot > 0 and own ~= slot then
-        width = width * own / slot
-      end
-    end
-    ReserveGridWidth(width)
     if not UI._state.freeMoved then
       DockToSlot()
       -- One deferred pass, in addition to the synchronous one above, purely to
-      -- absorb the width change once the panel system has finished positioning
-      -- MailFrame. Never instead of the synchronous pass.
+      -- follow MailFrame once the panel system has finished positioning it.
+      -- Never instead of the synchronous pass.
       if C_Timer and type(C_Timer.After) == "function" then
         C_Timer.After(0, function()
           if ShouldDock() then DockToSlot() end
@@ -3269,12 +3228,7 @@ function UI.ApplyWindowLayout()
       end
     end
   else
-    -- Free-floating: drop the size override (MailFrame keeps its own
-    -- reservation) and hold the window's current screen position.
-    -- The drop is an insecure SetUIPanelAttribute write on MailFrame, so it
-    -- happens only when this session reserved a width to drop (docking was
-    -- on, then turned off); a session that never docked never writes here.
-    ReserveGridWidth(nil)
+    -- Free-floating: hold the window's current screen position.
     local helpers = WindowHelpers()
     if helpers and helpers.PinFrameTopLeft then helpers.PinFrameTopLeft(frame) end
   end
@@ -3378,9 +3332,8 @@ function UI.SetMessageExtraHeight(pixels)
   end
   frame:SetHeight(frame:GetHeight() + (pixels - current))
 
-  -- Deliberately no ApplyWindowLayout: the WIDTH has not changed, and that is
-  -- the only thing the grid reservation is about. Re-reserving here would write
-  -- MailFrame's protected attributes on a keystroke.
+  -- Deliberately no ApplyWindowLayout: the top-left has not moved, so there is
+  -- nothing to re-dock on a keystroke.
   return pixels
 end
 
@@ -3829,7 +3782,7 @@ end
 -- changed. Called by the row only when that number moves. The floor follows
 -- it, and the window with it -- grown to a raised floor, and given back to the
 -- player's own width as the floor comes down (MinWindowWidth). Docked, the
--- panel slot is re-reserved at the new width.
+-- window is docked again.
 function UI.RefreshCollectWidth()
   local frame = UI._frame
   -- Not while the screens are still being built: the build's own bounds pass
@@ -4718,9 +4671,7 @@ local function OnMailShow()
   UI._state.previewPlaced = false
 
   if UI._state.mailboxOpen then
-    -- Re-dock only. This is the taint-free half of the layout; re-running the
-    -- grid reservation would write MailFrame's protected attributes two or
-    -- three times for one open, to no effect.
+    -- Re-dock only: the full layout already ran for this open.
     if ShouldDock() then DockToSlot() end
     return
   end
@@ -4856,10 +4807,6 @@ local function OnMailClosed()
   -- into the next session if that ever stops.
   UI.SetMessageExtraHeight(0)
   UI.SetAttachmentRows(1)
-
-  -- Any layout waiting on combat is moot once the mailbox is shut -- including
-  -- one the line above may just have queued.
-  UI._state.layoutDeferred = false
 
   -- Hiding the window runs every panel's OnHide, the compose screen's bag
   -- clearing among them when that screen was up.
@@ -5173,12 +5120,12 @@ function UI.Diagnose()
   end
 
   return string.format(
-    "mailbox %s | window %s | tab %s | inbox %s | free-moved %s | layout deferred %s | %s | %s",
+    "mailbox %s | window %s | tab %s | inbox %s | free-moved %s | %s | %s",
     state.mailboxOpen and "open" or "closed",
     state.visible and (state.preview and "preview" or "shown") or "hidden",
     tostring(state.activeTab),
     inbox,
-    tostring(state.freeMoved), tostring(state.layoutDeferred),
+    tostring(state.freeMoved),
     geometry, native)
 end
 
@@ -5287,13 +5234,5 @@ function UI.Initialize()
     -- waiting for the next inbox update.
     local collect = ns.CollectTab
     if collect and collect.OnMailSuccess then collect.OnMailSuccess() end
-  end)
-
-  bus.Register("PLAYER_REGEN_ENABLED", function()
-    -- Combat ended: apply the grid reservation that had to be deferred because
-    -- it writes MailFrame's protected panel attributes.
-    if not UI._state.layoutDeferred then return end
-    UI._state.layoutDeferred = false
-    if UI._state.mailboxOpen and UI._frame then UI.ApplyWindowLayout() end
   end)
 end

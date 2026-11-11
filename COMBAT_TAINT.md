@@ -16,9 +16,14 @@
 >
 > **§7 fix #3 is now implemented** (see §7). Two taint sources are gone with it: the
 > close no longer writes to `MailFrame` at all, and the `MailFrame:HookScript("OnShow", …)`
-> that tainted the frame at login has been removed. `MailFrame:SetAlpha(0)` on open and
-> the grid reservation remain, so **the in-combat open error is unchanged** — see the
-> "important caveat" in §7 #3.
+> that tainted the frame at login has been removed. `MailFrame:SetAlpha(0)` on open
+> remains, so **the in-combat open error is unchanged** — see the "important caveat" in
+> §7 #3.
+>
+> **The grid reservation is removed (2026-11-11, GitHub issue 5).** Its
+> `UpdateUIPanelPositions` call tainted Blizzard's panel manager for the session, which
+> on WoW Forever broke the bank out of combat. §4 has the mechanism, what players lose
+> and the taint-free way back; Postbox now writes nothing to the panel layout.
 >
 > **Correction to an earlier note here.** `FrameScriptObject:CanBeAccessedInContext` and
 > `HasAccessConstraints` (12.1; absent on live 12.0.7) are **not** the taint probe this
@@ -164,7 +169,6 @@ All in `Core/MailboxUI.lua` unless noted. Postbox’s whole design = hide the na
 | Write | Function | When | Taints? | Combat-guarded? |
 |---|---|---|---|---|
 | `MailFrame:SetAlpha(0)` | `HideNativeMailFrame` | every open | **yes** (confirmed culprit) | no — runs always |
-| `SetUIPanelAttribute(MailFrame,"width",..)` + `UpdateUIPanelPositions(MailFrame)` | `ReserveGridWidth` (grid space-reservation) | every open (grid mode on) | **yes** | yes — deferred via `InCombatLockdown()`, re-applied on `PLAYER_REGEN_ENABLED` |
 | `frame:SetPoint("TOPLEFT", MailFrame, ...)` | `DockToSlot` (grid positioning) | open | **no** — anchoring *our* frame to MailFrame only reads MailFrame; does not taint it | n/a |
 | `hooksecurefunc(MailFrame, "SetAlpha", …)` | `HideNativeMailFrame` (once, first open) | first open | **no** new taint — a secure post-hook; the original runs untouched and the hook runs after it. The frame is already tainted by the `SetAlpha(0)` above, and the hook's own re-zero is that same write again | no — a `SetAlpha` on a protected frame is not a combat-protected call |
 
@@ -175,24 +179,50 @@ All in `Core/MailboxUI.lua` unless noted. Postbox’s whole design = hide the na
 | `HideUIPanel(MailFrame)` (calls `UpdateUIPanelPositions`) | `CloseMailbox`, out of combat | `CloseMail()` is now the whole close, in combat and out. Blizzard's own `MailFrame_Hide` reaches the *same* `HideUIPanel(MailFrame)` from secure execution, so the panel is still released — without the taint. |
 | `MailFrame:SetAlpha(1)` + `MailFrame:Hide()` | `OnMailClosed`, out of combat | Blizzard performs the hide. Restoring alpha only to hide again bought a "tidy" state nothing reads, and made the frame visible at a moment when re-hiding it is not guaranteed to be allowed. |
 | `MailFrame:HookScript("OnShow", …)` | `UI.Initialize` | Installing a script handler on a protected frame from insecure code is itself a write to it — this tainted `MailFrame` at **login**, before any mailbox was opened. It was also redundant: `MAIL_SHOW` and `PLAYER_INTERACTION_MANAGER_FRAME_SHOW` are both registered, both call `OnMailShow`, and Blizzard's only route to showing `MailFrame` is `PlayerInteractionFrameManager:ShowFrame → MailFrame_Show`, which that interaction event drives. |
+| `SetUIPanelAttribute(MailFrame,"width",..)` + `UpdateUIPanelPositions(MailFrame)` | `ReserveGridWidth` (grid space-reservation), every docked open, deferred in combat to `PLAYER_REGEN_ENABLED` | It tainted the **panel manager itself**, not just `MailFrame`, and that broke other windows out of combat (GitHub issue 5, WoW Forever: open and close a mailbox, then the bank refuses `PurchaseBankTab()`). `UpdateUIPanelPositions` sets attributes on Blizzard's `FramePositionDelegate`, whose `OnAttributeChanged` then runs the whole layout pass with Postbox's taint and writes the delegate's own fields from it (`self.updatingPanels`, set and cleared on every pass; the layout offsets `CENTER_OFFSET`/`RIGHT_OFFSET`). Every later `ShowUIPanel` reads those fields first (`RepairUIPanelState` checks `updatingPanels`), so the next window shown through the manager runs its `OnShow` tainted; each later pass reads the tainted flag and writes it back tainted, so a close does not clean it. The Forever bank calls `C_Bank.PurchaseBankTab` from `OnShow` for a character's free first tab and is refused. Retail runs the same manager code and is tainted the same way; its bank's `OnShow` happens to call nothing protected. Docking does not need it: `DockToSlot` anchors Postbox's own frame. What went with it: other panels no longer leave room for Postbox's extra width (see the notes below). |
 
 Notes:
-- **Grid positioning (`DockToSlot`) is taint-free** and independent of reservation.
+- **Grid positioning (`DockToSlot`) is taint-free** and is all docking does now.
   The "window opens where the mailbox is / snaps after resize" behavior is this.
-- **Grid space-reservation (`ReserveGridWidth`)** — making other Blizzard
-  panels reserve room around Postbox — is the part that structurally taints. It is
-  confirmed to still *work* visually in 12.0 (other panels do reserve space), so it
-  is a real feature, not dead weight. This is now the **only** protected write left,
-  and it is the only reason `InCombatLockdown()` is still consulted anywhere.
-  With docking off, the clearing write (`ReserveGridWidth(nil)`) runs only when this
-  session actually reserved a width (docking was on, then turned off), and then once:
-  a session that never docks never writes the panel attributes at all (1.50 review).
+- **Grid space-reservation is gone** (removed for GitHub issue 5, see the table
+  above). Postbox writes nothing to the panel layout, so `MailFrame:SetAlpha(0)` is
+  the only write to a Blizzard frame left, and it taints `MailFrame` alone: the panel
+  manager never reads `MailFrame`'s alpha, it stores and moves the frame by
+  reference, and after the mailbox closes `MailFrame` sits in no panel slot. That is
+  why the issue's reporter could keep it and still use the bank. `MailboxUI.lua` no
+  longer consults `InCombatLockdown()` at all (the deferral and its
+  `PLAYER_REGEN_ENABLED` re-apply went with the write).
+- **What the reservation bought, and what is lost.** `MailFrame` is
+  `{ area = "left", pushable = 0 }` in `UIPanelWindows`, and the manager places a
+  panel beside it (the center slot) at `LEFT_OFFSET + GetUIPanelWidth(MailFrame)`
+  (`UpdateUIPanelPositions`, `CENTER_OFFSET`), which reads
+  the `width` attribute and otherwise the frame's own width. With the override, a
+  panel opened beside the mailbox (character sheet, dressing room, guild and
+  communities, group finder, professions book: the pushable ones, which go to the
+  center slot) sat clear of Postbox's whole window. Without it they sit where they
+  would beside Blizzard's own mail window, so a Postbox window wider than
+  `MailFrame` has its right-hand part covered by them. Panels with `pushable = 0`
+  (merchant, gossip, quest, trade) replace `MailFrame` in the left slot and close
+  the mailbox either way, so nothing changes for them.
+- **A taint-free way back, not built.** Let Postbox step aside instead of the
+  manager: after a panel is shown beside the mailbox, read where it went
+  (`GetUIPanel("center")` and its rect, reads only) and give Postbox's own window
+  the room, by narrowing it to end where that panel begins or by moving it, never
+  by touching the panel. What to hear it by: Forever's manager fires
+  `EventRegistry` `"UIParentPanelManager.ShowUIPanel"` / `"…HideUIPanel"` /
+  `"…ForcePanelHide"`; retail's (live, read 2026-11-11) fires none of them, so
+  retail would need `hooksecurefunc("ShowUIPanel", …)` / `HideUIPanel`, a secure
+  post-hook. Risks: both callbacks run inside Blizzard's show path, so the handler
+  must only read and set Postbox's own frame, nothing else; narrowing fights the
+  Mail tab's measured minimum width, and moving fights the left screen edge; and a
+  panel that closes must give the room back. Narrowing to a floor and overlapping
+  past it is the likely rule.
 - Every close — close button, ESC, walking away — goes through `CloseMail()` (a
   plain C API that touches no frame), never the `HideUIPanel` path that reads the
   tainted `MailFrame`. Combat no longer changes the close path in any way.
 - **Function names in this document have moved on.** `HideMailFrame`/`RestoreMailFrame`
   are `HideNativeMailFrame`/`ShowNativeMailFrame` (the latter no longer exists) and
-  `SetMailFrameSpacerWidth` is `ReserveGridWidth`. Named here so the old names remain
+  `SetMailFrameSpacerWidth` became `ReserveGridWidth`, since removed. Named here so the old names remain
   greppable against the history.
 
 `Core/SendTab.lua`: `ActivateNativeSendMail`/`DeactivateNativeSendMail` used to
@@ -266,6 +296,7 @@ neither swallows an error nor lengthens the chain by anything a secure path read
 | Remove `SendMailFrame`/`InboxFrame`/`PanelTemplates_SetTab` writes from SendTab | Correct cleanup; removed a taint vector and fixed the double-ESC. **Kept.** Did **not** fix the open block (that’s `MailFrame` taint, not `SendMailFrame`). |
 | **Secure-handler hide** — `SecureHandlerWrapScript(MailFrame, "OnShow", header, [[ self:SetAlpha(0) ]])` to hide in the secure sandbox (taint-free) | **FAILED / reverted.** `MailFrame` stayed **visible** behind Postbox. See §6. |
 | Gutting the grid reservation entirely | Reverted — it’s a wanted, working feature; deleting it was the wrong call. |
+| **Removing the grid reservation, for good** (2026-11-11) | GitHub issue 5 showed the cost the earlier revert did not know: the write taints the panel manager, not only `MailFrame`, and breaks other windows **out of combat** (the Forever bank). A layout nicety does not outweigh another window failing. **Kept.** Docking stays (`DockToSlot`); §4 describes a taint-free way to give the room back. |
 
 The committed state (`e8f6999`) keeps every feature and all the *partial* combat
 guards above; it accepts the residual log noise.
@@ -450,7 +481,7 @@ doing either way — it is a prerequisite for both routes.
 ## 8. Key references
 
 - `Core/MailboxUI.lua` — `HideNativeMailFrame` (was `HideMailFrame`), `ReserveGridWidth`
-  (was `SetMailFrameSpacerWidth`), `DockToSlot`, `ApplyWindowLayout`, `CloseMailbox`,
+  (was `SetMailFrameSpacerWidth`; removed for GitHub issue 5), `DockToSlot`, `ApplyWindowLayout`, `CloseMailbox`,
   `OnMailShow`/`OnMailClosed`, `UI.Initialize` (the event registrations).
 - `Core/SendTab.lua` — `ActivateNativeSendMail`/`DeactivateNativeSendMail`,
   `SetSendMailShowing`.
@@ -466,12 +497,14 @@ doing either way — it is a prerequisite for both routes.
 ## 9. One-line summary for future-you
 
 > Postbox hides the native, now-secure `MailFrame` by writing to it (`SetAlpha` on
-> open, plus `SetUIPanelAttribute` for grid reservation — those two are all that is
-> left). Any such write taints `MailFrame` for the session; Blizzard’s own mail
-> open/close code then reads that tainted frame and is **blocked in combat**. The
-> close side is now fully taint-free (§7 #3, implemented). The remaining routes are a
-> secure snippet (finicky — fights the interaction-manager fade), covering it with our
-> own frame, or — the best lead — replacing the globals `MailFrame_Show`/`MailFrame_Hide`
-> before the first mailbox so `MailFrame` is never shown at all (§7 #6), which forces
-> the own-frame reservation rework (§7 #4). Everything works; the errors are
-> combat-edge log noise.
+> open — the only write left). That taints `MailFrame` for the session; Blizzard’s own
+> mail open/close code then reads that tainted frame and is **blocked in combat**. The
+> grid reservation (`SetUIPanelAttribute` + `UpdateUIPanelPositions`) is gone: it
+> tainted the panel manager itself and broke the bank on WoW Forever out of combat
+> (GitHub issue 5), so Postbox never writes the panel layout, and docking is only
+> Postbox anchoring its own frame. The close side is fully taint-free (§7 #3,
+> implemented). The remaining routes for the alpha write are a secure snippet
+> (finicky — fights the interaction-manager fade), covering it with our own frame, or
+> replacing the globals `MailFrame_Show`/`MailFrame_Hide` before the first mailbox so
+> `MailFrame` is never shown at all (§7 #6), which loses the slot docking anchors to.
+> Everything works; the errors are combat-edge log noise.
