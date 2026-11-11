@@ -3690,21 +3690,6 @@ local function SearchQuery(frame)
   return Fold((text:match("^%s*(.-)%s*$")))
 end
 
--- A square control from the theme's segment plate, wearing an atlas: the
--- same control the Mail tab's History button is.
-local function IconPlate(parent, atlases, size)
-  local T = ns.Theme
-  local plate = T.CreatePlate(parent, "segment")
-  plate:SetSize(size, size)
-  plate:SetText("")
-  plate.Icon = plate:CreateTexture(nil, "OVERLAY")
-  plate.Icon:SetSize(size - 8, size - 8)
-  plate.Icon:SetPoint("CENTER")
-  local atlas = atlases and T.FirstAtlas(atlases)
-  if atlas then plate.Icon:SetAtlas(atlas, false) end
-  return plate
-end
-
 -- Whose box: one control for both windows, the Mail tab's top row and this
 -- one's. The picker is a cell, the crest of the box on screen and a caret
 -- under which its list opens, and the first of a ring whose next cell names
@@ -4100,11 +4085,11 @@ local function PickerButtonTip(frame)
   GameTooltip:Show()
 end
 
--- A right-click on the picker or on the name while another character's box
--- is on screen: back to this character's own, as picking its own name from
--- the list is, and the list closes. A search of every box ends with the
--- visit, as it does on the Mail tab's way back (AV.Back); what is typed
--- stays. On this character's own box it does nothing.
+-- A right-click on the picker while another character's box is on screen:
+-- back to this character's own, as picking its own name, first in the
+-- list, is, and the list closes. A search of every box ends with the visit,
+-- as it does on the Mail tab's way back (AV.Back); what is typed stays. On
+-- this character's own box it does nothing.
 local function Back(frame)
   if not frame.viewing then return end
   MM.ClosePicker()
@@ -4115,21 +4100,31 @@ local function Back(frame)
   Refresh(frame)
   -- The tooltip under the pointer spoke of the box just left: the name's
   -- goes with the name, the picker's is said again without the way back.
-  if GameTooltip:IsOwned(frame.WhoHit) then GameTooltip:Hide() end
+  if GameTooltip:IsOwned(frame.Who) then GameTooltip:Hide() end
   if GameTooltip:IsOwned(frame.Picker) then
     if frame.Picker:IsShown() then PickerButtonTip(frame) else GameTooltip:Hide() end
   end
 end
 
--- The character picker, left of the search on the top row, and whose box
--- left of that.
+-- Whose box, at the top row's start, as the Mail tab has it: the picker's
+-- cell (MM.NewPickCell), then the plate naming the box on screen, its name
+-- in its class colour and its count, one ring (MM.JoinRing). The plate
+-- always names the list on screen, so it is the lit one. With no other box
+-- to show the cell steps out and the plate stands alone.
 local function BuildHeader(frame)
-  local T = ns.Theme
-  local picker = IconPlate(frame, CLASS_FALLBACK, HEADER_H)
-  picker:SetPoint("RIGHT", frame.SearchWrap, "LEFT", -4, 0)
+  local bar = CreateFrame("Frame", nil, frame)
+  bar:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, HEADER_Y)
+  bar:SetSize(MM.PICK_W, HEADER_H)
+  frame.WhoBar = bar
+  bar.Ring = bar:CreateTexture(nil, "BACKGROUND", nil, -1)
+  bar.Ring:Hide()
+
+  local picker = MM.NewPickCell(bar, HEADER_H)
+  picker:SetPoint("LEFT", bar, "LEFT", 0, 0)
+  local atlas = ns.Theme.FirstAtlas(CLASS_FALLBACK)
+  if atlas then picker.Icon:SetAtlas(atlas, false) end
   -- A right-click, while another character's box is on screen, goes back to
   -- this character's own (Back); on this character's own it does nothing.
-  picker:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   picker:SetScript("OnClick", function(self, button)
     if button == "RightButton" then
       Back(frame)
@@ -4145,48 +4140,62 @@ local function BuildHeader(frame)
   picker:HookScript("OnLeave", function() GameTooltip:Hide() end)
   frame.Picker = picker
 
-  -- Whose box, and how much is waiting in it: the name in its class colour,
-  -- the count beside it, in the warning tone when the box needs a look.
-  frame.Who = T.CreateText(frame, "label")
-  frame.Who:SetPoint("LEFT", frame, "TOPLEFT", PAD, HEADER_Y - HEADER_H / 2)
-  frame.Who:SetPoint("RIGHT", picker, "LEFT", -8, 0)
-  frame.Who:SetJustifyH("LEFT")
-  frame.Who:SetWordWrap(false)
-  -- On the window itself: its inks from it, and a plate under its words
-  -- where the window cannot carry them (Theme.OnWindow).
-  if T.OnWindow then T.OnWindow(frame.Who, "solid", "LEFT") end
-
-  -- The name is a way back as well while it is another character's: a
-  -- right-click on it goes back as the picker's does (Back), and its tooltip
-  -- gives the whole name, realm and all, and says so. It answers over the
-  -- words and no further -- the rest of the row is the window's -- measured
-  -- when Refresh writes them and again when a resize moves the row's end.
-  -- A left-drag on it moves the window, which is dragged from anywhere.
-  local whoHit = CreateFrame("Button", nil, frame)
-  whoHit:SetPoint("TOPLEFT", frame.Who, "LEFT", 0, HEADER_H / 2)
-  whoHit:SetPoint("BOTTOMRIGHT", frame.Who, "RIGHT", 0, -HEADER_H / 2)
-  whoHit:RegisterForClicks("RightButtonUp")
-  whoHit:RegisterForDrag("LeftButton")
-  whoHit:SetScript("OnDragStart", function() frame:StartMoving() end)
-  whoHit:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
-  whoHit:SetScript("OnClick", function() Back(frame) end)
-  whoHit.Fit = function(self, width)
-    width = width or self:GetWidth() or 0
-    self:SetHitRectInsets(0, math.max(0, width - (frame.Who:GetStringWidth() or 0)), 0, 0)
-  end
-  whoHit:SetScript("OnSizeChanged", whoHit.Fit)
-  whoHit:SetScript("OnEnter", function(self)
-    local v = frame.viewing
-    if not v then return end
+  -- The plate: the whole name, realm and all, in its tooltip, since a long
+  -- one shows only its start. A left-drag on it moves the window, which is
+  -- dragged from anywhere.
+  local plate = MM.NewNamePlate(bar)
+  plate:SetHeight(HEADER_H)
+  plate:RegisterForDrag("LeftButton")
+  plate:SetScript("OnDragStart", function() frame:StartMoving() end)
+  plate:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
+  plate:HookScript("OnEnter", function(self)
+    if not self.fullName then return end
     local T = ns.Theme
     T.TipBegin(self, "ANCHOR_TOPRIGHT")
-    T.TipTitle(MM.ClassName(v.realm, v.name, nil, "tooltip"))
-    T.TipHint(L["PICKER_BACK_HINT"])
+    T.TipTitle(self.fullName)
     GameTooltip:Show()
   end)
-  whoHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  whoHit:Hide()
-  frame.WhoHit = whoHit
+  plate:HookScript("OnLeave", function(self)
+    if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+  end)
+  frame.Who = plate
+  -- Every plate the ring can hold (MM.JoinRing).
+  bar.Cells = { picker, plate }
+  -- Each opening measures the plate afresh: its ink follows the looks.
+  frame:HookScript("OnShow", function() frame._whoGen = (frame._whoGen or 0) + 1 end)
+end
+
+-- The plate names the box on screen: measured again only when what it says
+-- changed (another box, its count), so a keystroke in the search makes
+-- nothing; placed after the cell while the cell stands, alone without it.
+local function PaintWho(frame, info, others)
+  local T = ns.Theme
+  local plate, bar, picker = frame.Who, frame.WhoBar, frame.Picker
+  local _, warn, _, uncounted = MM.CountFor(info.realm, info.name)
+  local n = tonumber(info.box) or 0
+  if plate._realm ~= info.realm or plate._name ~= info.name or plate._n ~= n
+      or plate._uncounted ~= uncounted or plate._warn ~= warn or plate._gen ~= frame._whoGen then
+    plate._realm, plate._name, plate._n, plate._uncounted, plate._warn = info.realm, info.name, n, uncounted, warn
+    plate._gen = frame._whoGen
+    -- Counts always show here, "N+" or "new" with mail come uncounted, in
+    -- the warning tone when the box needs a look.
+    local count = " (" .. (uncounted and MM.CountText(n, true) or tostring(n)) .. ")"
+    if warn then count = T.Colorize("warning", count) end
+    MM.MeasurePlate(plate, info.realm, info.name, count, true, MM.MeasureWith, frame)
+    -- The window is never narrower than the plate's widest beside the cell
+    -- and the search, so it is fitted to that.
+    MM.FitPlate(plate, MM.PLATE_MAX)
+  end
+  T.SetPlateSelected(plate, true)
+  MM.PaintPlateCount(plate)
+  picker:SetShown(others)
+  if bar._others ~= others then
+    bar._others = others
+    plate:ClearAllPoints()
+    plate:SetPoint("LEFT", bar, "LEFT", others and MM.PICK_W - 1 or 0, 0)
+  end
+  MM.JoinRing(bar.Ring, bar.Cells, others, picker, plate)
+  MM.PaintRing(bar.Ring, plate)
 end
 
 -- A search across every box lists each character under a heading; a click
@@ -4270,33 +4279,15 @@ function Refresh(frame)
   local count = #rows
 
   -- The top row: whose box, and its count, where the Mail tab has Inbox:
-  -- the whole box, as Inbox counts its own (counts always show). Not a
-  -- button, so the count is in words after the name ("24 mails"), as the
-  -- picker's list says it; "Name (N)" is for buttons, tabs and segments.
-  local who = MM.ClassName(info.realm, info.name, true)
-  do
-    local _, warn, _, uncounted = MM.CountFor(info.realm, info.name)
-    local tally = MM.MailsText(info.box, uncounted)
-    frame.Who:SetText(who .. "  " .. T.Colorize(warn and "warning" or "textSecondary", tally, "solid"))
-  end
+  -- the whole box, as Inbox counts its own (counts always show), on the
+  -- plate after the picker's cell, as the Mail tab names another box.
   local crest = MM.ClassIcon(info.realm, info.name)
   if crest then frame.Picker.Icon:SetAtlas(crest, false) end
   -- The Mail tab's rule: a picker while there is another box with mail to
   -- show (the list it opens holds only those), or while one is on screen.
   local others = MM.HasOthers(characters) or v ~= nil
-  frame.Picker:SetShown(others)
   frame.Search.Place(others)
-  -- With no one else to show, the picker steps aside and the name's room
-  -- reaches to the search: no gap where the picker stood. It comes back as
-  -- soon as another box is known.
-  if frame._pickerShown ~= others then
-    frame._pickerShown = others
-    frame.Who:SetPoint("RIGHT", others and frame.Picker or frame.SearchWrap, "LEFT", -8, 0)
-  end
-  T.SetPlateSelected(frame.Picker, v ~= nil)
-  -- The name is the way back while it is another character's (Back).
-  frame.WhoHit:SetShown(v ~= nil)
-  if v then frame.WhoHit:Fit() end
+  PaintWho(frame, info, others)
   -- The arrange mode's column header stands where this row is.
   if frame._topHidden then MM.HideTopRow(frame) end
 
@@ -4353,7 +4344,7 @@ end
 -- not (Refresh, while the header stands, records what it lays out and
 -- hides it again). `set` is what Refresh shows or hides by itself; the rest
 -- is always there.
-MM.TOP_ROW = { "Who", "WhoHit", "Picker", "SearchWrap", "Sort", set = { WhoHit = true, Picker = true } }
+MM.TOP_ROW = { "WhoBar", "SearchWrap", "Sort", set = {} }
 
 function MM.HideTopRow(frame)
   local kept = frame._topKept
