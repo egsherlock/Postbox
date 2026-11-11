@@ -2602,13 +2602,99 @@ end
 -- Whether there is another character's box to look at, and how many more
 -- there would be but for the ones the player hid. `all` is an
 -- MM.Characters() list the caller has already built, where it has one.
-function MM.HasOthers(all)
-  if not MemoryEnabled() then return false, 0 end
-  local choices, hidden = SwitchChoices(all)
-  for i = 1, #choices do
-    if not choices[i].me then return true, #hidden end
+--
+-- Without `all` it is answered straight off the saved roots, by the rule
+-- SwitchChoices applies to MM.Characters (MM.HasMail, or a warning), and
+-- builds nothing: the Mail tab asks it on every paint, the mailbox's close
+-- among them, just after the list was let go.
+do
+  -- Whether that character's box would be offered (SwitchChoices): mail in
+  -- its record still waiting (Holds), mail the notices named, mail come
+  -- uncounted, or a box unopened long enough to warn of (Status). Mail
+  -- going soon is waiting mail, so it is in the first.
+  local function Offered(realm, name, now)
+    local snap = SnapshotFor(realm, name)
+    local mails = snap and snap.mails
+    if mails then
+      for i = 1, #mails do
+        if Holds(mails[i], now) then return true end
+      end
+    end
+    local watch = WatchFor(realm, name, false)
+    if not watch then return false end
+    if LivePendingCount(watch, now) > 0 then return true end
+    if Uncounted(watch, snap and snap.seenAt or nil, now) then return true end
+    local since = watch.newAt
+    if watch.auctionAt and (not since or watch.auctionAt < since) then since = watch.auctionAt end
+    return (since and now - since >= UNSEEN_WARN and now - since < UNSEEN_STOP) and true or false
   end
-  return false, #hidden
+
+  -- One root's characters (mailMemory, then mailWatch's not in it, as
+  -- MM.Characters adds them once each), other than this one: whether one
+  -- shown is offered, and how many hidden are, added to `hiddenN`.
+  local function Scan(root, skip, myRealm, myName, hiddenSet, now, hiddenN)
+    if type(root) ~= "table" then return false, hiddenN end
+    for realm, byRealm in pairs(root) do
+      if type(byRealm) == "table" then
+        local skipRealm = type(skip) == "table" and skip[realm] or nil
+        for name in pairs(byRealm) do
+          if not (realm == myRealm and name == myName)
+              and not (type(skipRealm) == "table" and skipRealm[name] ~= nil) then
+            if InHiddenSet(hiddenSet, realm, name) then
+              if Offered(realm, name, now) then hiddenN = hiddenN + 1 end
+            elseif Offered(realm, name, now) then
+              return true, hiddenN
+            end
+          end
+        end
+      end
+    end
+    return false, hiddenN
+  end
+
+  -- How many hidden characters would be offered, whatever else is.
+  local function CountHidden(root, skip, myRealm, myName, hiddenSet, now, hiddenN)
+    if type(root) ~= "table" or not hiddenSet then return hiddenN end
+    for realm, names in pairs(hiddenSet) do
+      local byRealm = type(names) == "table" and root[realm] or nil
+      if type(byRealm) == "table" then
+        local skipRealm = type(skip) == "table" and skip[realm] or nil
+        for name in pairs(names) do
+          if byRealm[name] ~= nil and names[name] and not (realm == myRealm and name == myName)
+              and not (type(skipRealm) == "table" and skipRealm[name] ~= nil)
+              and Offered(realm, name, now) then
+            hiddenN = hiddenN + 1
+          end
+        end
+      end
+    end
+    return hiddenN
+  end
+
+  function MM.HasOthers(all)
+    if not MemoryEnabled() then return false, 0 end
+    if all then
+      local choices, hidden = SwitchChoices(all)
+      for i = 1, #choices do
+        if not choices[i].me then return true, #hidden end
+      end
+      return false, #hidden
+    end
+    local get = ns.Store and ns.Store.Get
+    local memory = get and get("mailMemory")
+    local watches = get and get("mailWatch")
+    local myRealm, myName = Me()
+    local hiddenSet = HiddenSet(false)
+    local now = time()
+    local found, hiddenN = Scan(memory, nil, myRealm, myName, hiddenSet, now, 0)
+    if not found then found, hiddenN = Scan(watches, memory, myRealm, myName, hiddenSet, now, hiddenN) end
+    if not found then return false, hiddenN end
+    -- One is offered: the hidden counted again whole, since the scan
+    -- stopped at the first.
+    hiddenN = CountHidden(memory, nil, myRealm, myName, hiddenSet, now, 0)
+    hiddenN = CountHidden(watches, memory, myRealm, myName, hiddenSet, now, hiddenN)
+    return true, hiddenN
+  end
 end
 
 -- realm, name -> what the picker says of that character: its count of mail

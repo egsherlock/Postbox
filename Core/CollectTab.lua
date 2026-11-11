@@ -6035,6 +6035,13 @@ end
 -- and where the hint stops -- everything the state above changes on screen.
 function AV.Paint(panel)
   if not (panel and panel.Picker) then return end
+  -- A panel nobody sees is painted when it shows (its OnShow), first, as
+  -- it would have been: nothing is asked of Mail Memory for it until then.
+  if not panel:IsVisible() then
+    panel._avStale = true
+    return
+  end
+  panel._avStale = nil
   local T = Th()
   local M = T.Metrics
   local Memory = AV.Memory()
@@ -16471,6 +16478,8 @@ function CT.Build(parent)
 
   panel:SetScript("OnSizeChanged", function(self) LayoutPanel(self) end)
   panel:SetScript("OnShow", function(self)
+    -- A paint asked for while hidden, before the layout that reads it.
+    if self._avStale then AV.Paint(self) end
     LayoutPanel(self)
     -- Whether there is another character to pick changes between visits.
     AV.Paint(self)
