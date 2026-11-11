@@ -7447,8 +7447,8 @@ end
 -- item History records, item names the client was asked for arriving (each
 -- binding the rows on screen once more), or an inbox update bringing an
 -- auction mail for an item not in the inbox before -- never because a list
--- was built again. Bounded: past SOLD.MAX subjects, emptied as the inbox's
--- mark moves.
+-- was built again. Bounded: SOLD.MAX subjects, emptied when an answer would
+-- pass it, whoever asks.
 -------------------------------------------------------------
 do
   local S = { icon = {}, n = 0, miss = 0, MAX = 512, build = nil, index = nil, live = nil, spare = nil, liveAt = nil }
@@ -7602,10 +7602,7 @@ do
     if type(subject) ~= "string" or subject == "" then return nil end
     if build ~= nil and build ~= S.build then
       S.build = build
-      if S.n >= S.MAX then
-        for key in pairs(S.icon) do S.icon[key] = nil end
-        S.n, S.miss = 0, 0
-      elseif S.miss > 0 then
+      if S.miss > 0 then
         local _, new = Live()
         if new then RV.SoldForget() end
       end
@@ -7621,6 +7618,11 @@ do
         local base = name:match("^(.-) %(%d+%)$")
         if base then icon = IconFor(base) end
       end
+    end
+    -- The bound, held wherever the asking came from.
+    if S.n >= S.MAX then
+      for key in pairs(S.icon) do S.icon[key] = nil end
+      S.n, S.miss = 0, 0
     end
     S.icon[subject] = icon or false
     S.n = S.n + 1
