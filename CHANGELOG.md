@@ -41,6 +41,8 @@
 - New installs start with three category buttons shown: All bought, All
   sold and All expired. Yours stay as they are.
 - Mail counts always show; that setting is gone.
+- **Escape closes one Postbox window at a time:** an editor goes back to
+  the options, and the options close before the mailbox.
 - Mail Memory, Character Groups and Manage Recipients have new icons that
   take your UI's accent color.
 
