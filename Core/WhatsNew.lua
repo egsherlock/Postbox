@@ -722,11 +722,15 @@ end
 -- while two or more of them are up (ESC.ALL), a press closes the top one
 -- alone, by the same Hide the client's pass gives it, and leaves the rest
 -- -- the mailbox, the bags and anyone else's windows -- for the next. Top
--- is who opened whom, never the last click: the bug report and the two
--- editors, Character Groups and Manage Recipients, first (the higher of
--- them where two are up), so an editor opened from the options goes back
--- to the options; then the preview window, the options' Test mail away
--- from a mailbox; then the options; then Mail Memory. The mail window is
+-- is by kind, who opens whom, never the last click between kinds: the bug
+-- report and the two editors, Character Groups and Manage Recipients,
+-- first, so an editor opened from the options goes back to the options --
+-- and of those, where two are up, the one standing higher (each is raised
+-- as it opens or is clicked, so the last opened or clicked); then the
+-- preview window, the options' Test mail away from a mailbox; then the
+-- options; then Mail Memory. The window is chosen as the key goes down and
+-- only it is closed: one that went another way before the press is
+-- answered takes nothing else with it. The mail window is
 -- the floor: with it, or any one window, alone, the press is the client's
 -- pass, which closes the mailbox and everything else as it always has.
 -- While the arrange mode is open its own frame has Escape's layers
@@ -793,11 +797,18 @@ function ESC.Target()
   return ESC.Top()
 end
 
--- The press answered: the target as it is now, hidden. Answers whether
--- there was one.
-function ESC.Close()
-  local target = ESC.Target()
-  if not target then return false end
+-- The press answered: `target`, what ESC.Target chose as the key went
+-- down, hidden if it is still up -- the preview window only while it is
+-- still the preview, never the mail window it may have become. One that
+-- went another way meanwhile is not replaced by whatever is now on top.
+-- Answers whether there was one.
+function ESC.Close(target)
+  if not (target and target:IsVisible()) then return false end
+  if target == _G.PostboxFrame then
+    local UI = ns.MailboxUI
+    local st = UI and UI._state
+    if not (st and st.preview) then return false end
+  end
   if target == card then
     Answer(false)
   else
@@ -820,9 +831,10 @@ end
 -- The frame after a press was kept: keys pass, then the press is answered.
 function ESC.KeyAnswer(self)
   self:SetScript("OnUpdate", nil)
+  local target = self.pending
   self.pending = nil
   ESC.Pass(self)
-  ESC.Close()
+  ESC.Close(target)
 end
 
 function ESC.KeyDown(self, pressed)
@@ -838,30 +850,42 @@ function ESC.KeyDown(self, pressed)
   end
   -- Only a press with something of ours to close alone (the arrange mode's
   -- frame hears the rest).
+  local target
   if ours then
-    local ok, target = pcall(ESC.Target)
-    ours = ok and target ~= nil
+    local ok, chosen = pcall(ESC.Target)
+    target = ok and chosen or nil
+    ours = target ~= nil
   end
   if not ours then
     if not self:GetPropagateKeyboardInput() then self:SetPropagateKeyboardInput(true) end
     return
   end
+  -- `pending`: the window this press closes, chosen now.
   if not self.pending then
-    self.pending = true
+    self.pending = target
     self:SetScript("OnUpdate", ESC.KeyAnswer)
   end
   if self:GetPropagateKeyboardInput() then self:SetPropagateKeyboardInput(false) end
 end
 
 -- Hidden with a press unanswered (combat began, or what it would close went
--- another way): answered a frame later all the same.
+-- another way): answered a frame later all the same, on the window it was
+-- chosen for, if that is still up.
 function ESC.KeyHidden(self)
   self:SetScript("OnUpdate", nil)
   ESC.Pass(self)
   if self.pending then
+    ESC.late = self.pending
     self.pending = nil
-    C_Timer.After(0, ESC.Close)
+    C_Timer.After(0, ESC.CloseLate)
   end
+end
+
+-- KeyHidden's press, a frame later: the window it was chosen for.
+function ESC.CloseLate()
+  local target = ESC.late
+  ESC.late = nil
+  ESC.Close(target)
 end
 
 function ESC.OnEvent(self, event)
