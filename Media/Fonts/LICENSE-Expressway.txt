@@ -1,0 +1,11 @@
+Expressway
+Copyright (c) Typodermic Fonts Inc. Designed by Ray Larabie.
+
+The two Expressway font files in this folder are included in Postbox with
+the permission of Typodermic Fonts Inc., given to Postbox's maintainer in
+November 2026.
+
+These two font files are not covered by Postbox's GPL v3 license or by the
+SIL Open Font License that covers other fonts in this folder. They are not
+licensed for reuse from this addon: to use Expressway elsewhere, get it
+from https://typodermicfonts.com/ under Typodermic's own terms.

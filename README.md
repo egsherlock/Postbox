@@ -338,8 +338,8 @@ new?** in the footer shows the last three releases.
   **Light** mode, accent (Gold by default, White and other presets, your
   class color or any color), background color, opacity, border (None, Edge,
   Thin or Thick) and its color, corners, row stripes, sheen, font (the
-  game's, Barlow Semi Condensed, Fira Sans Condensed, Noto Sans, Overpass or
-  Roboto Condensed), text weight (Regular or Bold) and text size. In Light mode text is crisp dark ink and your accent stays in the
+  game's, Barlow Semi Condensed, Expressway, Fira Sans Condensed, Noto Sans,
+  Overpass or Roboto Condensed), text weight (Regular or Bold) and text size. In Light mode text is crisp dark ink and your accent stays in the
   marks; each mode keeps its own background.
 - **Blizzard**, to match the default UI with the game's own art (texture
   packs restyle it).
@@ -401,4 +401,4 @@ in WoW Forever is under [World of Warcraft: Forever](#world-of-warcraft-forever)
 | `/postbox perf` | Performance recording: off, on or detailed |
 | `/postbox debug` | Report a bug: a copyable report (no character names, no full addon list) |
 
-Licensed under [GPL v3](LICENSE).
+Licensed under [GPL v3](LICENSE). The fonts in `Media/Fonts/` carry their own licenses, in the files beside them.

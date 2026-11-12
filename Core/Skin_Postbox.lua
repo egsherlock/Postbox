@@ -990,7 +990,9 @@ Skin._ResolveLook = ResolveLook
 -- size (Theme's floor and the Text size, which every look shares). The other
 -- faces are
 -- Barlow Semi Condensed SemiBold (Media/Fonts, SIL Open Font License; the
--- mockups' face), the fonts the game itself ships, Fira Sans Condensed, Noto
+-- mockups' face), Expressway (Media/Fonts, a Regular and a Bold, included
+-- with Typodermic's permission: LICENSE-Expressway.txt), the fonts the game
+-- itself ships, Fira Sans Condensed, Noto
 -- Sans, Overpass and Roboto Condensed (Media/Fonts, each in a Regular and a
 -- Bold, under the licence file beside it), and EllesmereUI's font while
 -- EllesmereUI is loaded (its own copy, by its own path: nothing of it is
@@ -999,7 +1001,7 @@ Skin._ResolveLook = ResolveLook
 -- A face without the letters of the client's language is not offered there,
 -- and a saved one falls back to the game font: Barlow and the game's Latin
 -- faces have no Cyrillic (the game's Russian client has Cyrillic cuts of
--- them; Fira, Noto, Overpass and Roboto carry Cyrillic in the same file as
+-- them; Expressway, Fira, Noto, Overpass and Roboto carry Cyrillic in the same file as
 -- their Latin), and none of them has Chinese or Korean.
 --
 -- Text outline: Shadow (a drop shadow, no outline), Outline (the client's
@@ -1039,7 +1041,10 @@ end
 local FONT_FILES = {
   barlow   = { name = "Barlow Semi Condensed", latin = FONT_DIR .. "BarlowSemiCondensed-SemiBold.ttf",
                latinBold = FONT_DIR .. "BarlowSemiCondensed-Bold.ttf" },
-  friz     = { name = "Friz Quadrata", latin = "Fonts\\FRIZQT__.TTF", russian = "Fonts\\FRIZQT___CYR.TTF" },
+  expressway = { name = "Expressway",
+               latin = FONT_DIR .. "Expressway-Regular.ttf", latinBold = FONT_DIR .. "Expressway-Bold.ttf",
+               russian = FONT_DIR .. "Expressway-Regular.ttf", russianBold = FONT_DIR .. "Expressway-Bold.ttf" },
+  friz    = { name = "Friz Quadrata", latin = "Fonts\\FRIZQT__.TTF", russian = "Fonts\\FRIZQT___CYR.TTF" },
   arialn   = { name = "Arial Narrow", latin = "Fonts\\ARIALN.TTF", russian = "Fonts\\ARIALN.TTF" },
   morpheus = { name = "Morpheus", latin = "Fonts\\MORPHEUS.TTF", russian = "Fonts\\MORPHEUS_CYR.TTF" },
   skurri   = { name = "Skurri", latin = "Fonts\\SKURRI.TTF", russian = "Fonts\\SKURRI_CYR.TTF" },
@@ -1056,7 +1061,7 @@ local FONT_FILES = {
                latin = FONT_DIR .. "RobotoCondensed-Regular.ttf", latinBold = FONT_DIR .. "RobotoCondensed-Bold.ttf",
                russian = FONT_DIR .. "RobotoCondensed-Regular.ttf", russianBold = FONT_DIR .. "RobotoCondensed-Bold.ttf" },
 }
-local FONT_ORDER = { "game", "barlow", "friz", "arialn", "morpheus", "skurri", "fira", "noto", "overpass", "roboto", "eui" }
+local FONT_ORDER = { "game", "barlow", "expressway", "friz", "arialn", "morpheus", "skurri", "fira", "noto", "overpass", "roboto", "eui" }
 local TEXT_SCALES = { 0.90, 1.00, 1.10, 1.20 }
 
 local function EUIFontPath()

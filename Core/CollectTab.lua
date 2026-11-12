@@ -10131,7 +10131,8 @@ RV.LINE = { ruleA = 0.22, ruleMin = 12, band = 14, now = false }
 -- Narrow; zhCN's and zhTW's, from the client's compiled copies), Postbox's
 -- (Barlow, Fira Sans Condensed, Noto Sans, Overpass, Roboto Condensed: their
 -- hhea line, capitals, brackets and the I's stem, Noto's from its l as its
--- I has bars, read off the shipped files), ElvUI's default (PT Sans
+-- I has bars, read off the shipped files; Expressway's are EllesmereUI's
+-- Expressway and Expressway Bold, the same files), ElvUI's default (PT Sans
 -- Narrow) and every face EllesmereUI offers. A face with no capitals (zhCN's, zhTW's) stands on its
 -- ideographs' ink box instead, its foot the seventh number (under the
 -- baseline; none for capitals).
@@ -10156,6 +10157,8 @@ RV.FACES = {
   ["overpass-bold"] = { 0.883, 0.383, 0.700, -0.130, 0.712, 0.130 },
   ["robotocondensed-regular"] = { 0.928, 0.244, 0.711, -0.229, 0.802, 0.090 },
   ["robotocondensed-bold"] = { 0.928, 0.244, 0.711, -0.222, 0.790, 0.142 },
+  ["expressway-regular"] = { 0.954, 0.192, 0.692, -0.167, 0.691, 0.136 },
+  ["expressway-bold"] = { 0.954, 0.192, 0.692, -0.165, 0.691, 0.154 },
   ptsansnarrow = { 0.900, 0.276, 0.700, -0.220, 0.712, 0.126 },
   ["ptsansnarrow-bold"] = { 0.900, 0.276, 0.700, -0.220, 0.712, 0.126 },
   expressway = { 0.954, 0.192, 0.692, -0.167, 0.691, 0.136 },

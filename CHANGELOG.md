@@ -85,11 +85,14 @@
   edges stay crisp and curves are smoothed like the letters beside them.
 - **Text outline** is now called **Text style** (Options, Window), and a
   new **Text weight** beside it offers Bold for Barlow Semi Condensed and
-  the four new fonts.
+  the five new fonts.
 - **Four new fonts** in the Postbox style's Font list (Options, Window):
   Fira Sans Condensed, Noto Sans, Overpass and Roboto Condensed, each in
   Regular and Bold, with the letters of every language the game's Latin
   and Russian clients use, so Russian players can pick them too.
+- **Expressway** joins the Postbox style's Font list (Options, Window tab,
+  Font), in Regular and Bold, shipped in Postbox for everyone with
+  Typodermic's permission, on Latin and Russian clients alike.
 - **The Font list shows each font in itself** (Options, Window): every
   name is drawn in its own font, and so is your choice when the list is
   closed.
