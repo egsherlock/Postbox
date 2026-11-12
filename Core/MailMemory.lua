@@ -931,6 +931,12 @@ do
     return type(list) == "table" and list or nil
   end
 
+  -- A record that holds something: an empty one (a deposits record begun,
+  -- nothing paid) does not make its character one of "all".
+  local function Holds(list)
+    return type(list) == "table" and list[1] ~= nil
+  end
+
   -- One character's three records, and whether its week reaches back past
   -- the start of its deposits' record.
   local function WeekCharacter(realm, name, cutoff)
@@ -939,7 +945,11 @@ do
     if hist then any = WeekWalk(hist, cutoff, false) end
     if sent then any = WeekWalk(sent, cutoff, true) or any end
     if deps then DepositWalk(deps, math.floor(cutoff / HOUR)) end
+    -- The record's start: the character's own (written before 1.70's
+    -- release) or the account's, whichever is earlier.
     local since = deps and tonumber(deps.s) or nil
+    local began = roots[3] and tonumber(roots[3].s) or nil
+    if began and (not since or began < since) then since = began end
     if any and (not since or since > cutoff) then WEEK.partial = true end
   end
 
@@ -965,9 +975,9 @@ do
         for realm, byRealm in pairs(root) do
           if type(byRealm) == "table" then
             for name, list in pairs(byRealm) do
-              if type(list) == "table" and not (realm == myRealm and name == myName)
-                  and not (k > 1 and ListOf(roots[1], realm, name))
-                  and not (k > 2 and ListOf(roots[2], realm, name))
+              if Holds(list) and not (realm == myRealm and name == myName)
+                  and not (k > 1 and Holds(ListOf(roots[1], realm, name)))
+                  and not (k > 2 and Holds(ListOf(roots[2], realm, name)))
                   and not MM.IsHidden(realm, name) then
                 w.chars = w.chars + 1
                 if all then WeekCharacter(realm, name, cutoff) end
@@ -2146,8 +2156,9 @@ end
 -- was made) is added to the hour it was paid in,
 -- per character, at the root `auctionDeposits`, realm -> name -> a list of
 -- hour, copper pairs, oldest first (hour = time / 3600, whole), and `s`, when
--- the record began: the week reaches back past it, and the card says its
--- deposits count from then. Not tied to any auction: "paid in the last
+-- the record began (at the root for the account, set at login; in a list,
+-- when that character's first deposit began it): the week reaches back past
+-- the earlier, and the card says its deposits count from then. Not tied to any auction: "paid in the last
 -- seven days" is a plain sum. Kept DEPOSITS_KEEP hours (a day more than
 -- the week), so a list never holds more than that many pairs however many
 -- auctions are posted. Written only while History is kept, and emptied with
@@ -2212,9 +2223,10 @@ do
     MM.recordWrites = MM.recordWrites + 1
   end
 
-  -- At login: every character's record pruned, and this character's begun,
-  -- so its deposits count from its first run of this; with History off,
-  -- none kept.
+  -- At login: every character's record pruned, and the record begun (`s` at
+  -- the root, beside the realms) where it has not been, so deposits count
+  -- from this account's first run of this; with History off, none kept. No
+  -- character's record is made here: one is begun by its first deposit.
   function MM.PruneDeposits()
     local root = ns.Store and ns.Store.Get and ns.Store.Get("auctionDeposits")
     if HistoryKeep() <= 0 then
@@ -2223,9 +2235,9 @@ do
       end
       return
     end
-    Deposits(true)
-    root = ns.Store.Get("auctionDeposits")
+    root = ns.Store.EnsurePath("auctionDeposits")
     if type(root) ~= "table" then return end
+    if not tonumber(root.s) then root.s = time() end
     local now = time()
     for _, byRealm in pairs(root) do
       if type(byRealm) == "table" then
