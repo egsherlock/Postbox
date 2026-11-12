@@ -7418,6 +7418,8 @@ function State.Tone()
   if cell.items ~= items then
     cell.items = items
     if cell.dd.SetItems then cell.dd:SetItems(items) end
+    -- The search's index lists the new choices when next used.
+    S.findIndex = nil
     Rows.PaintDropdown(cell)
   end
   local Icon = ns.MinimapButton
@@ -8500,6 +8502,8 @@ function State.Postbox()
   if items and cell.items ~= items then
     cell.items = items
     if cell.dd.SetItems then cell.dd:SetItems(items) end
+    -- The search's index lists the Mode's colours when next used.
+    S.findIndex = nil
   end
   Rows.PaintDropdown(cell)
   if S.pbOpacityCell then Rows.PaintDropdown(S.pbOpacityCell) end
@@ -9981,7 +9985,7 @@ do
     if side and side.nameText then
       Add(lines, side.nameText, where, Fold(side.nameText), { cell = cell, tab = key })
     end
-    cell.findLines, cell.findName = lines, name
+    cell.findLines, cell.findName, cell.findItems = lines, name, cell.items
     return lines
   end
 
@@ -10006,9 +10010,15 @@ do
         -- no size) is listed where it names the row that brings it back
         -- (`findVia`), and a pick leads there (Find.Pick).
         if kind ~= "note" and (Offered(cell, page) or (cell.findVia and Offered(cell.findVia, page))) then
+          -- Made again where the row's name or its list of choices has
+          -- changed: a select whose list is swapped (State.Postbox's
+          -- background colours by Mode, State.Tone's sounds) is handed a
+          -- new list, never one changed in place.
           local name = NameOf(cell)
           local lines = cell.findLines
-          if not lines or cell.findName ~= name then lines = RowLines(cell, key, L[TABS[t].caption], name) end
+          if not lines or cell.findName ~= name or cell.findItems ~= cell.items then
+            lines = RowLines(cell, key, L[TABS[t].caption], name)
+          end
           Append(list, lines)
         end
       end
