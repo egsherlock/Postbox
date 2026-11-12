@@ -77,8 +77,8 @@
   the options' General tab in your accent color, on the buttons that open
   them, and on their own windows' title bars.
 - **New small icons on the Mail tab's bar:** the History clock, the
-  every-character toggle and the sort button are one set, drawn pixel by
-  pixel so every line is crisp. The Send tab's Sent clock and Manage
+  every-character toggle and the sort button are one set, fitted to whole
+  pixels so their lines stay crisp. The Send tab's Sent clock and Manage
   Recipients button, and the options' search box, Report a bug and Reset
   to defaults, wear the same set.
 - **The sort button's arrow shows the order** (Mail tab, Mail Memory and

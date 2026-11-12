@@ -5185,14 +5185,10 @@ Theme.AtlasSets = {
 --     Reset to defaults); history and reset stay for the places that draw
 --     them small (the arrange mode's column heads, the sort menus' Reset).
 --   bug  the options' Report a bug, 16 units.
---   Every 16-unit master here is redrawn by hand on the 16 x 16 pixel grid
---   after Phosphor Icons' bold set (MIT, Media/LICENSE-Phosphor.txt), every
---   stroke two whole pixels, the cog's and the arrange mark's weight, with
---   single dimmed pixels where a curve steps; the magnifier is Postbox's
---   own, drawn the same way. Groups' and recipients' 30s are Phosphor's
---   drawings fitted to the pixel grid. Their masters and self-tests:
---   .dev/design/icons-r14/gen_icons_r14.py (the 16s) and
---   .dev/design/icons-r13/gen_icons_r13.py (the 30s).
+--   Every 16-unit master here, and groups' and recipients' 30s, is drawn
+--   from Phosphor Icons' bold set (MIT, Media/LICENSE-Phosphor.txt) and
+--   fitted to the pixel grid, but the magnifier, which is Postbox's own.
+--   Their masters and self-test: .dev/design/icons-r13/gen_icons_r13.py.
 --   link, link-broken  a chain link, two capsules, 15 by 8 units, and the
 --     same link open with two ticks at the break: the Window tab's line
 --     naming the host UI the look comes from, broken while it is overridden
