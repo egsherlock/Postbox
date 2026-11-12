@@ -1156,6 +1156,27 @@ function Skin.GetWeightWhy()
   return "OPT_WEIGHT_WHY_SCRIPT"
 end
 
+-- The file a choice's name is drawn in on the Font list (`file`), so each
+-- font shows itself: its Regular, where the client loads it. The game's
+-- font in the game's own file (GameFontNormal's, this client's letters);
+-- a shipped font in its file for this client's letters, which has them; and
+-- EllesmereUI's only where its name is plain Latin letters, the one thing
+-- a face the player picked there is sure to have. Else nil: the list's own
+-- face.
+local function ShowFile(key, name)
+  local path
+  if key == "game" then
+    local base = _G.GameFontNormal
+    path = base and type(base.GetFont) == "function" and (base:GetFont()) or nil
+  elseif key == "eui" then
+    path = not (type(name) == "string" and name:find("[\128-\255]")) and EUIFontPath() or nil
+  else
+    path = FontPath(key) or nil
+  end
+  if type(path) ~= "string" or path == "" or not WEIGHT.Loads(path) then return nil end
+  return path
+end
+
 function Skin.GetFontChoices()
   local out = { { key = "game", name = ns.L["OPT_FONT_GAME"] } }
   for i = 2, #FONT_ORDER do
@@ -1166,6 +1187,7 @@ function Skin.GetFontChoices()
       out[#out + 1] = { key = key, name = FONT_FILES[key].name }
     end
   end
+  for i = 1, #out do out[i].file = ShowFile(out[i].key, out[i].name) end
   return out
 end
 
@@ -1978,6 +2000,10 @@ function Skin._PaintFonts()
     local r, g, b = SelectInk()
     Recoloured(selectFont, r, g, b)
   end
+  -- The Font list's value, in its own face, after the font it is made from
+  -- (Lib/UI/Dropdown.lua, FACE).
+  local D = ns.Core and ns.Core.UI and ns.Core.UI.Dropdown
+  if D and type(D.RepaintFaces) == "function" then D.RepaintFaces() end
 end
 
 local function SelectFont()

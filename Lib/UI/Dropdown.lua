@@ -172,6 +172,122 @@ local function PaintChosen(row, text, on)
   bar:SetShown(on and true or false)
 end
 
+-- An item drawn in a face of its own (`item.face`, a font file: the
+-- options' Font list, each font's name in that font). Its words wear a font
+-- object of this module's own, one per file and use -- "row" for the list's
+-- rows, "value" for the toggle's caption -- made the first time that file is
+-- shown and kept for the session: a dozen objects at most, never one per
+-- row or per open. Each is the font its words wore otherwise (`base`, a
+-- named font: the row's sized font, the toggle's select value) copied, then
+-- set in the item's file at that font's size and outline, so it keeps the
+-- base's colour, shadow and size and changes only the file. It is dressed
+-- again only when the base moved (a Text size, an outline, a palette:
+-- FACE.Dress compares), and the words take it again then (Theme.Retake). A
+-- file the client does not set leaves the words in their base. Copied
+-- with CopyFontObject and never given a font object to inherit from, so no
+-- chain of fonts can loop (the 2026-10-15 crash: a font inheriting from
+-- itself); its base is always a named font that is not one of these.
+local FACE = { objs = { row = {}, value = {} }, state = {}, n = 0, selects = setmetatable({}, { __mode = "k" }) }
+
+function FACE.Object(kind, path)
+  local byPath = FACE.objs[kind]
+  local font = byPath[path]
+  if font == nil then
+    font = false
+    if type(CreateFont) == "function" then
+      FACE.n = FACE.n + 1
+      font = CreateFont("PostboxFaceFont" .. FACE.n) or false
+    end
+    if font then
+      FACE.state[font] = { path = path, ok = false }
+      -- Postbox's own, kept as it is: never copied again in a host's face.
+      local themed = ns.Theme
+      if themed and type(themed.OwnFont) == "function" then themed.OwnFont(font) end
+    end
+    byPath[path] = font
+  end
+  return font or nil
+end
+
+-- `object` where it can be a base: a named font that is not one of these.
+function FACE.Base(object)
+  local themed = ns.Theme
+  if not object or FACE.state[object] then return nil end
+  if themed and type(themed.NamedFont) == "function" then return themed.NamedFont(object) end
+  return nil
+end
+
+-- `font` as `base` is now, in its own file. -> whether it set (the words
+-- may wear it), and whether it was dressed anew (the words take it again).
+function FACE.Dress(font, base)
+  local st = FACE.state[font]
+  if not (st and base and type(base.GetFont) == "function") then return false, false end
+  local p, s, f = base:GetFont()
+  local r, g, b, a = base:GetTextColor()
+  local sr, sg, sb, sa, sx, sy
+  if type(base.GetShadowColor) == "function" then sr, sg, sb, sa = base:GetShadowColor() end
+  if type(base.GetShadowOffset) == "function" then sx, sy = base:GetShadowOffset() end
+  if st.base == base and st.p == p and st.s == s and st.f == f and st.r == r and st.g == g and st.b == b
+      and st.a == a and st.sr == sr and st.sg == sg and st.sb == sb and st.sa == sa and st.sx == sx
+      and st.sy == sy then
+    return st.ok, false
+  end
+  st.base, st.p, st.s, st.f, st.r, st.g, st.b, st.a = base, p, s, f, r, g, b, a
+  st.sr, st.sg, st.sb, st.sa, st.sx, st.sy = sr, sg, sb, sa, sx, sy
+  st.ok = false
+  if type(s) ~= "number" or s <= 0 then return false, true end
+  if type(font.CopyFontObject) == "function" then pcall(font.CopyFontObject, font, base) end
+  local fine, set = pcall(font.SetFont, font, st.path, s, f or "")
+  st.ok = fine and set ~= false
+  return st.ok, true
+end
+
+-- A string onto `want`: set where it wears another, taken again where it
+-- wears it and it was dressed anew.
+function FACE.Wear(fs, want, worn, changed)
+  if worn ~= want then
+    fs:SetFontObject(want)
+  elseif changed then
+    local themed = ns.Theme
+    if themed and type(themed.Retake) == "function" then themed.Retake(fs, want) else fs:SetFontObject(want) end
+  end
+end
+
+-- A list's rows that carry a face, in it (on each open, before the list is
+-- measured): a row's base is the font it wore before, or the one a skin's
+-- pass put on it since.
+function FACE.PaintRows(list)
+  local rows = list and list._rows
+  if not rows then return end
+  for i = 1, #rows do
+    local row = rows[i]
+    local item, text = row._item, row._text
+    local path = item and item.face
+    if path and text then
+      local worn = text:GetFontObject()
+      local base = FACE.Base(worn) or row._faceBase
+      row._faceBase = base
+      local font = FACE.Object("row", path)
+      if font and base then
+        local ok, changed = FACE.Dress(font, base)
+        if ok then
+          FACE.Wear(text, font, worn, changed)
+        elseif worn ~= base then
+          text:SetFontObject(base)
+        end
+      end
+    end
+  end
+end
+
+-- Every select with faces fitted again in its chosen face: the fonts they
+-- are made from moved (the Postbox style's fonts, Skin._PaintFonts).
+function Dropdown.RepaintFaces()
+  for container in pairs(FACE.selects) do
+    if container.__pbRefaces then pcall(container.__pbRefaces) end
+  end
+end
+
 -- Closes every list this module created, except the one passed in. Called with
 -- no argument by Core/SendTab.lua and Core/RecipientManager.lua before they
 -- open their own popups, so two lists can never overlap.
@@ -400,6 +516,50 @@ function Dropdown.Create(parent, opts)
   end
   local inset = Inset()
 
+  -- Items in faces of their own (FACE): the toggle's caption in the chosen
+  -- one's, through the button's own fonts, since a button puts its state's
+  -- font back on its label as it is enabled and pointed at. Its base is the
+  -- button's own font as the skin left it (the select value); an item with
+  -- no face, or a file that does not set, shows in that.
+  local function Faced()
+    for i = 1, #items do
+      if items[i].face then return true end
+    end
+    return false
+  end
+  local faced = Faced()
+  local valueBase, valueLit
+  local function PaintFace()
+    if not faced or type(toggle.GetNormalFontObject) ~= "function"
+        or type(toggle.GetHighlightFontObject) ~= "function" then
+      return
+    end
+    local label = toggle:GetFontString()
+    if not label then return end
+    local normal = toggle:GetNormalFontObject()
+    local base = FACE.Base(normal)
+    if base then
+      valueBase = base
+      valueLit = FACE.Base(toggle:GetHighlightFontObject()) or base
+    end
+    base = valueBase
+    if not base then return end
+    local path
+    for i = 1, #items do
+      if items[i].id == container._selectedId then path = items[i].face break end
+    end
+    local font = path and FACE.Object("value", path)
+    local ok, changed = false, false
+    if font then ok, changed = FACE.Dress(font, base) end
+    local want = ok and font or base
+    local lit = ok and font or valueLit
+    if normal ~= want then toggle:SetNormalFontObject(want) end
+    if toggle:GetHighlightFontObject() ~= lit then toggle:SetHighlightFontObject(lit) end
+    -- A greyed toggle wears its disabled font, and takes the normal one
+    -- back itself when it is enabled.
+    if toggle:IsEnabled() then FACE.Wear(label, want, label:GetFontObject(), changed) end
+  end
+
   -- The chosen item's art on the toggle, the list's art at the list's size,
   -- just before the value as it shows (its words centred, the art a gap to
   -- their left), on a holder frame of its own: a skin's repaint of the
@@ -476,6 +636,8 @@ function Dropdown.Create(parent, opts)
       toggle:SetText("")
       return
     end
+    -- In the chosen item's face first, so it is fitted as it is drawn.
+    PaintFace()
     local label = toggle:GetFontString()
     local fit = ns.Theme and ns.Theme.FitText
     if not label or type(fit) ~= "function" then
@@ -498,6 +660,10 @@ function Dropdown.Create(parent, opts)
   -- long name) fits its value to the new box.
   local function Refit() Caption(caption) end
   toggle.__pbRefit = Refit
+  -- Faced, it is fitted again when the fonts it is made from move
+  -- (Dropdown.RepaintFaces).
+  container.__pbRefaces = Refit
+  if faced then FACE.selects[container] = true end
   toggle:HookScript("OnSizeChanged", Refit)
   toggle:HookScript("OnEnter", ToggleEnter)
   toggle:HookScript("OnLeave", ToggleLeave)
@@ -936,6 +1102,8 @@ function Dropdown.Create(parent, opts)
       -- And the list itself, to a style that dresses popups of its own.
       if type(ns.Skin.DressPopup) == "function" then pcall(ns.Skin.DressPopup, list) end
     end
+    -- Each row with a face of its own in it, before the list is measured.
+    if faced then FACE.PaintRows(list) end
 
     local owner = container:GetParent()
     local base = (owner and owner:GetFrameLevel()) or 0
@@ -1047,6 +1215,8 @@ function Dropdown.Create(parent, opts)
     items = newItems
     list = built[newItems]
     inset = Inset()
+    faced = Faced()
+    if faced then FACE.selects[container] = true end
     Caption(NameFor(container._selectedId))
     PaintToggleSwatch()
   end

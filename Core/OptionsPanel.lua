@@ -8251,7 +8251,8 @@ do
   -- choices -> dropdown items.
   local function Items(list)
     local items = {}
-    for i = 1, #list do items[i] = { id = list[i].key, name = list[i].name } end
+    -- A choice drawn in a face of its own (the Font list's `file`) keeps it.
+    for i = 1, #list do items[i] = { id = list[i].key, name = list[i].name, face = list[i].file } end
     return items
   end
 
@@ -8391,6 +8392,8 @@ do
     })
 
     Rows.Group(col, L["OPT_GROUP_TEXT"])
+    -- Each font's name in that font, in the list and on the toggle (Items:
+    -- a choice's `file` is its item's `face`, Lib/UI/Dropdown.lua).
     Rows.Dropdown(col, {
       title = L["OPT_FONT_TITLE"], text = L["OPT_FONT_DESC"], items = Items(Skin.GetFontChoices()),
       get = function() return Skin.GetFont() end,
