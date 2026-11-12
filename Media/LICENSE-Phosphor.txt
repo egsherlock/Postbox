@@ -1,4 +1,4 @@
-Drawn from Phosphor Icons (bold): glyph-history-16, glyph-people-16, glyph-people-on-16, glyph-sort-list-16, glyph-sort-list-turned-16, glyph-bug-16, glyph-reset-16, glyph-groups-16, glyph-groups-large, glyph-recipients-16 and glyph-recipients-large (.tga) in this folder.
+Drawn from Phosphor Icons (bold): glyph-groups-large and glyph-recipients-large (.tga) in this folder. Redrawn on the pixel grid after Phosphor Icons (bold): glyph-history-16, glyph-people-16, glyph-people-on-16, glyph-sort-list-16, glyph-sort-list-turned-16, glyph-bug-16, glyph-reset-16, glyph-groups-16 and glyph-recipients-16 (.tga).
 
 MIT License
 
