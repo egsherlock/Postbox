@@ -10250,6 +10250,10 @@ do
     list:SetHeight(h + FIND.PAD)
     list:ClearAllPoints()
     list:SetPoint("TOPLEFT", S.findWrap, "BOTTOMLEFT", 0, -2)
+    -- Over the panel as it stands now, on each showing, as a dropdown's
+    -- list is placed on each open: the panel is raised on every open and
+    -- click, and the list's own level is not left to follow it.
+    if not list:IsShown() then list:SetFrameLevel(S.frame:GetFrameLevel() + 60) end
     list:Show()
   end
 
