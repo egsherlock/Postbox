@@ -10350,7 +10350,7 @@ do
 
   -- The mark has eased out: it goes, and so does the hold.
   function Find.Faded()
-    S.findOwner = nil
+    S.findOwner, S.findArrange, S.findRefill = nil, nil, nil
     if S.findMark then S.findMark:Hide() end
     local rec = S.findRec
     if rec then rec.faded = true end
@@ -10360,7 +10360,7 @@ do
   -- A tab chosen by hand, a new pick, or the panel hiding: the mark stops
   -- where it is and goes, and the pick lets go of the panel.
   function Find.Stop(why)
-    S.findOwner = nil
+    S.findOwner, S.findArrange, S.findRefill = nil, nil, nil
     local mark = S.findMark
     if mark then
       if mark.Fade:IsPlaying() then mark.Fade:Stop() end
@@ -10370,12 +10370,71 @@ do
   end
 
   -- What an Arrange pick's mark stands on hid (Pick): the mark goes with
-  -- it. Hooked once per frame; nothing runs for a frame no mark is on.
+  -- it -- unless the card is only filling itself again (AR.Inspect hides
+  -- every answer and switch, then shows those it still has): the answer
+  -- hid on its own, its card still up and still the one picked. Then the
+  -- mark stays, and is placed again once the card is filled
+  -- (Find.Refilled). Hooked once per frame; nothing runs for a frame no
+  -- mark is on.
   function Find.OwnerHid(self)
     if S.findOwner ~= self then return end
+    local AR, e = ns.Arrange, S.findArrange
+    local insp = AR and AR._insp
+    if e and not self:IsShown() and insp and insp:IsShown()
+        and AR.Selected(e.arrange ~= "overview" and e.arrange or nil, e.id) then
+      S.findRefill = true
+      return
+    end
     local rec = S.findRec
     if rec and not rec.ended then rec.ended, rec.endAt = "card changed or closed", GetTime() end
     Find.Stop("stopped")
+  end
+
+  -- The card has filled itself again (after AR.Inspect, Find.Watch) with
+  -- the marked answer hidden on the way: the mark goes back on what the
+  -- pick names, found again (an answer can stand on another line of the
+  -- card now), the fade running on untouched; or goes, where the card no
+  -- longer shows it. One comparison on any other fill.
+  function Find.Refilled()
+    if not S.findRefill then return end
+    S.findRefill = nil
+    local e, mark, rec = S.findArrange, S.findMark, S.findRec
+    if not (e and mark and S.findOwner) then return end
+    local first, last, what = Find.ArrangeMark(e)
+    if not (first and what ~= "card" and rec and what == rec.target) then
+      if rec and not rec.ended then rec.ended, rec.endAt = "answer no longer on the card", GetTime() end
+      Find.Stop("stopped")
+      return
+    end
+    mark:ClearAllPoints()
+    mark:SetPoint("TOPLEFT", first, "TOPLEFT", 0, 0)
+    mark:SetPoint("BOTTOMRIGHT", last or first, "BOTTOMRIGHT", 0, 0)
+    S.findOwner = first
+    Find.Watch(first)
+  end
+
+  -- The marked answer or switch clicked: said in the pick's record. The
+  -- card fills itself again for it, and the mark stays (Find.OwnerHid).
+  function Find.OwnerClick(self)
+    if S.findOwner ~= self then return end
+    local rec = S.findRec
+    if rec and not rec.clicked then rec.clicked = GetTime() end
+  end
+
+  -- What an Arrange mark stands on is watched for hiding and, where it is
+  -- a button, for a click; each frame hooked once. Arrange's card fill is
+  -- followed once a session, the first time a mark stands on it.
+  function Find.Watch(frame)
+    if not frame.__pbFindHook then
+      frame.__pbFindHook = true
+      frame:HookScript("OnHide", Find.OwnerHid)
+      if frame:IsObjectType("Button") then frame:HookScript("PreClick", Find.OwnerClick) end
+    end
+    local AR = ns.Arrange
+    if not Find.hooked and AR and type(AR.Inspect) == "function" then
+      Find.hooked = true
+      hooksecurefunc(AR, "Inspect", Find.Refilled)
+    end
   end
 
   -- The last FIND.TRACE picks, for /postbox debug: a ring of records made
@@ -10401,6 +10460,7 @@ do
     r.seq, r.e, r.how, r.when = ring.seq, e, how, GetTime()
     r.from, r.to, r.target, r.shown, r.w, r.h = S.tab, nil, nil, nil, nil, nil
     r.mark, r.playing, r.why, r.ended, r.endAt, r.faded = nil, nil, nil, nil, nil, nil
+    r.clicked = nil
     return r
   end
 
@@ -10510,16 +10570,18 @@ do
         rec.target = what
         if first then
           rec.w, rec.h = first:GetWidth(), first:GetHeight()
-          rec.mark = Find.Mark(first, last)
+          -- An answer's or a switch's mark is the card's, spanning it
+          -- (as a group's is): the card hides every answer and switch to
+          -- fill itself again (AR.Inspect), and the mark stays through it.
+          rec.mark = Find.Mark(first, last or (what ~= "card" and first or nil))
           rec.playing = S.findMark and S.findMark.Fade:IsPlaying() or false
           -- The card fills its answers again for whatever it shows next:
-          -- the mark goes when what it stands on hides (another card, the
-          -- mode closing), never left on an answer that now says another.
-          S.findOwner = first
-          if not first.__pbFindHook then
-            first.__pbFindHook = true
-            first:HookScript("OnHide", Find.OwnerHid)
-          end
+          -- the mark goes when what it stands on hides for another card or
+          -- the mode closing, never left on an answer that now says
+          -- another; a refill of the same card finds it again
+          -- (Find.OwnerHid, Find.Refilled).
+          S.findOwner, S.findArrange = first, e
+          Find.Watch(first)
         else
           rec.why = rec.why or "card not on screen"
         end
@@ -10613,6 +10675,9 @@ do
         end
         if r.ended then
           parts[#parts + 1] = string.format("let go: %s after %.1fs", r.ended, (r.endAt or now) - (r.when or now))
+        end
+        if r.clicked then
+          parts[#parts + 1] = string.format("marked %s clicked after %.1fs", tostring(r.target), r.clicked - (r.when or r.clicked))
         end
         if r.faded then parts[#parts + 1] = "faded out" end
         if r.why then parts[#parts + 1] = "stopped: " .. r.why end
