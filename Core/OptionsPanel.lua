@@ -9743,17 +9743,20 @@ end
 -- the query and runs one find per index line, and writes its lines from
 -- strings the index already holds.
 --
--- A pick: an options row brings its tab forward and marks the row in the
--- accent, whole for a moment and then eased out (one AnimationGroup on the
--- mark, Find.Mark), the row washed and the inspector saying what it does as
--- under the pointer. Until the mark has gone, or the pointer moves, the
+-- A pick: an options row brings its tab forward and marks the row, the
+-- hover's wash with accent edges round it, whole for a moment and then
+-- eased out (one AnimationGroup on the mark, Find.Mark), the mark the
+-- row's own whatever the pointer does, and the inspector saying what it
+-- does as under the pointer. Until the mark has gone, or the pointer moves, the
 -- pick holds the panel as an open dropdown does (Rows.Held): the list
 -- hiding from under a still pointer must not hand the wash and the
 -- inspector to whatever row it uncovers. Choosing again restarts the mark
 -- on the new row; a tab chosen by hand, or the panel closing, stops it.
 -- An Arrange setting starts arranging through the options' own Arrange
 -- button (Panel.Arrange: the panel steps aside, one side panel at a time)
--- on its card.
+-- on its card; where arranging cannot start, the pick marks that button.
+-- The last picks, and what each led to, are kept for /postbox debug
+-- (Find.Note, Find.ReportLines).
 --
 -- The list hangs under the box on the house's popup card, the dropdowns'
 -- own (Theme.ApplyCard, opaque at any opacity): a line a match, its name
@@ -9790,6 +9793,9 @@ do
     -- How far the pointer moves, in screen pixels, before the row under it
     -- answers again while a pick holds the panel (Find.Moved).
     STILL = 2,
+    -- The last picks kept for /postbox debug (Find.Note), in a ring of
+    -- tables made once each and written over.
+    TRACE = 12,
   }
   Find.FIND = FIND
   local DOT = " \194\183 "
@@ -9862,24 +9868,33 @@ do
     end
     local title = L[spec.title]
     local where = inArrange .. DOT .. title
+    -- A choice's line: what finds its answer on the card (Find.ArrangeMark),
+    -- the answer's id and its words.
+    local function PutChoice(name, choice, row)
+      local c = Put(Choice(name, choice.name), where, row, Fold(choice.name))
+      c.pick, c.label = choice.id, choice.name
+      return c
+    end
     local card = Put(title, inArrange)
     if spec.choice and spec.choice ~= "age" and type(AR.Choices) == "function" then
       local choices = AR.Choices(spec.choice)
-      for k = 1, #choices do Put(Choice(title, choices[k].name), where, card, Fold(choices[k].name)) end
+      for k = 1, #choices do PutChoice(title, choices[k], card) end
       if spec.choice == "gold" and type(AR.GoldLooks) == "function" then
         local looks = AR.GoldLooks()
-        for k = 1, looks and #looks or 0 do Put(Choice(title, looks[k].name), where, card, Fold(looks[k].name)) end
+        for k = 1, looks and #looks or 0 do PutChoice(title, looks[k], card) end
       end
     end
     for k = 1, #(AR.TOGGLES or {}) do
       local t = AR.TOGGLES[k]
-      if t.card == id then Put(L[t.title], where) end
+      if t.card == id then Put(L[t.title], where).toggle = k end
     end
     if spec.fixed and not ns.IsForever and UI.GetQualityName and UI.SetQualityName then
       local name = L["OPT_QUALITY_NAME_TITLE"]
       local q = Put(name, where)
-      for _, key in ipairs({ "OPT_QUALITY_NAME_BEFORE", "OPT_QUALITY_NAME_AFTER", "OPT_QUALITY_OFF" }) do
-        Put(Choice(name, L[key]), where, q, Fold(L[key]))
+      q.span = {}
+      for _, pair in ipairs({ { "before", "OPT_QUALITY_NAME_BEFORE" }, { "after", "OPT_QUALITY_NAME_AFTER" }, { "off", "OPT_QUALITY_OFF" } }) do
+        local c = PutChoice(name, { id = pair[1], name = L[pair[2]] }, q)
+        q.span[#q.span + 1] = c
       end
     end
     arrange.cols[id] = lines
@@ -9905,10 +9920,13 @@ do
     if not size then
       size = {}
       local name, inArrange = L["ARRANGE_ROW_SIZE"], L["OPT_FIND_IN_ARRANGE"]
-      local card = Add(size, name, inArrange, Fold(name), { arrange = "overview" })
-      for _, key in ipairs({ "ARRANGE_ROW_SIZE_LINE", "ARRANGE_ROW_SIZE_LARGER" }) do
-        local hay = Fold(L[key])
-        Add(size, Choice(name, L[key]), inArrange, hay, { arrange = "overview", row = card }, hay)
+      local card = Add(size, name, inArrange, Fold(name), { arrange = "overview", span = {} })
+      for _, pair in ipairs({ { "one", "ARRANGE_ROW_SIZE_LINE" }, { "larger", "ARRANGE_ROW_SIZE_LARGER" } }) do
+        local words = L[pair[2]]
+        local hay = Fold(words)
+        local c = Add(size, Choice(name, words), inArrange, hay,
+          { arrange = "overview", row = card, pick = pair[1], label = words }, hay)
+        card.span[#card.span + 1] = c
       end
       arrange.size = size
     end
@@ -10026,8 +10044,14 @@ do
     Find.Select(self.slot)
   end
 
+  -- The press on a line is written down (Find.Note) before its click: a
+  -- press whose click never comes says so in /postbox debug.
+  local function LineDown(self)
+    if self.e then S.findDown = Find.Note("down", self.e) end
+  end
+
   local function LineClick(self)
-    Find.Pick(self.e)
+    Find.Pick(self.e, "mouse")
   end
 
   -- The list under the box, made the first time it shows.
@@ -10075,6 +10099,7 @@ do
       name:SetWordWrap(false)
       line.Name, line.Where = name, where
       line:SetScript("OnEnter", LineEnter)
+      line:SetScript("OnMouseDown", LineDown)
       line:SetScript("OnClick", LineClick)
       line:Hide()
       list.lines[i] = line
@@ -10092,6 +10117,13 @@ do
 
   function Find.Hide()
     local list = S.findList
+    -- A press on a line whose click has not come: the list closing now
+    -- means it never will (a hidden button hears no click).
+    local down = S.findDown
+    if down and down.how == "down" then
+      down.why = "list closed before the click"
+      S.findDown = nil
+    end
     if list and list:IsShown() then list:Hide() end
   end
 
@@ -10216,16 +10248,24 @@ do
     return nil
   end
 
-  -- The mark a pick leaves: four accent edges round the row, on the row
-  -- itself, so it goes where the row goes (another tab, the panel hiding).
-  -- Whole for MARK_HOLD, then eased out over MARK_FADE by the one
+  -- The mark a pick leaves: the row's hover wash and four accent edges
+  -- round it, on a frame of its own on the row, so it goes where the row
+  -- goes (another tab, the panel hiding) and stays on the row whatever the
+  -- pointer does meanwhile: the row's own wash is the pointer's, and moves
+  -- with it. Whole for MARK_HOLD, then eased out over MARK_FADE by the one
   -- AnimationGroup the mark carries, made with it the first time and played
   -- again from the start for each pick: finite, so nothing runs once it
-  -- has played, and nothing is made after the first.
-  function Find.Mark(target)
+  -- has played, and nothing is made after the first. Played only on a row
+  -- that is on screen; answers whether it was. `last`: the mark spans from
+  -- `target` down to it, on their parent (a group of answers on an Arrange
+  -- card, Find.ArrangeMark).
+  function Find.Mark(target, last)
     local mark = S.findMark
     if not mark then
       mark = CreateFrame("Frame", nil, target)
+      local wash = mark:CreateTexture(nil, "BACKGROUND")
+      wash:SetAllPoints()
+      mark.Wash = wash
       mark.Edges = Rows.Edges(mark, 7)
       local fade = mark:CreateAnimationGroup()
       fade:SetToFinalAlpha(true)
@@ -10240,95 +10280,338 @@ do
       S.findMark = mark
     end
     if mark.Fade:IsPlaying() then mark.Fade:Stop() end
-    if mark:GetParent() ~= target then mark:SetParent(target) end
-    mark:SetFrameLevel((target:GetFrameLevel() or 1) + 12)
+    if not target:IsVisible() then
+      mark:Hide()
+      return false
+    end
+    local owner = last and target:GetParent() or target
+    if mark:GetParent() ~= owner then mark:SetParent(owner) end
+    mark:SetFrameLevel((owner:GetFrameLevel() or 1) + 12)
     mark:ClearAllPoints()
-    mark:SetAllPoints(target)
+    if last then
+      mark:SetPoint("TOPLEFT", target, "TOPLEFT", 0, 0)
+      mark:SetPoint("BOTTOMRIGHT", last, "BOTTOMRIGHT", 0, 0)
+    else
+      mark:SetAllPoints(target)
+    end
     local T = ns.Theme
+    T.FillChrome(mark.Wash, WASH_A)
     local r, g, b
     if T.GetAccentTone then r, g, b = T.GetAccentTone("mark") else r, g, b = T.GetAccent() end
     for i = 1, 4 do mark.Edges[i]:SetVertexColor(r, g, b, 1) end
     mark:SetAlpha(1)
     mark:Show()
     mark.Fade:Play()
+    return true
   end
 
   -- The pick lets go of the panel: the row under the pointer answers again
   -- (Rows.Release runs the enter it kept, or the picked row's leave).
-  function Find.Let()
+  -- `why` goes in the pick's record: "moved" (the pointer), "faded" (the
+  -- mark ran out), "stopped" (a tab by hand, another pick, the panel
+  -- hiding).
+  function Find.Let(why)
     local held = S.findHeld
     if not held then return end
     S.findHeld = nil
+    local rec = S.findRec
+    if rec and not rec.ended then
+      rec.ended, rec.endAt = why or "moved", GetTime()
+    end
     if S.held == held then Rows.Release(held) end
   end
 
-  -- Whether the pointer has moved since the pick (Rows.Held asks, on an
-  -- enter or a leave while the pick holds the panel).
+  -- Whether the pick has let go of the pointer (Rows.Held asks, on an
+  -- enter or a leave while the pick holds the panel): the pointer has
+  -- moved since the pick, or the mark's time is up -- the hold never
+  -- waits on the fade's OnFinished alone.
   function Find.Moved()
+    if GetTime() - (S.findAt or 0) > FIND.MARK_HOLD + FIND.MARK_FADE then return true end
     local x, y = GetCursorPosition()
     return math.abs((x or 0) - (S.findX or 0)) + math.abs((y or 0) - (S.findY or 0)) > FIND.STILL
   end
 
   -- The mark has eased out: it goes, and so does the hold.
   function Find.Faded()
+    S.findOwner = nil
     if S.findMark then S.findMark:Hide() end
-    Find.Let()
+    local rec = S.findRec
+    if rec then rec.faded = true end
+    Find.Let("faded")
   end
 
   -- A tab chosen by hand, a new pick, or the panel hiding: the mark stops
   -- where it is and goes, and the pick lets go of the panel.
-  function Find.Stop()
+  function Find.Stop(why)
+    S.findOwner = nil
     local mark = S.findMark
     if mark then
       if mark.Fade:IsPlaying() then mark.Fade:Stop() end
       mark:Hide()
     end
-    Find.Let()
+    Find.Let(why or "stopped")
   end
 
-  function Find.Pick(e)
+  -- What an Arrange pick's mark stands on hid (Pick): the mark goes with
+  -- it. Hooked once per frame; nothing runs for a frame no mark is on.
+  function Find.OwnerHid(self)
+    if S.findOwner ~= self then return end
+    local rec = S.findRec
+    if rec and not rec.ended then rec.ended, rec.endAt = "card changed or closed", GetTime() end
+    Find.Stop("stopped")
+  end
+
+  -- The last FIND.TRACE picks, for /postbox debug: a ring of records made
+  -- once each and written over, so a pick allocates nothing once the ring
+  -- is full and nothing is kept but these. Each holds the index line
+  -- picked (its words are the panel's own: a setting's name, its tab's)
+  -- and what came of it. Starts and answers the next record.
+  function Find.Note(how, e)
+    local ring = S.findTrace
+    if not ring then
+      ring = { at = 0, n = 0, seq = 0 }
+      S.findTrace = ring
+    end
+    local i = ring.at % FIND.TRACE + 1
+    ring.at = i
+    if ring.n < FIND.TRACE then ring.n = ring.n + 1 end
+    ring.seq = ring.seq + 1
+    local r = ring[i]
+    if not r then
+      r = {}
+      ring[i] = r
+    end
+    r.seq, r.e, r.how, r.when = ring.seq, e, how, GetTime()
+    r.from, r.to, r.target, r.shown, r.w, r.h = S.tab, nil, nil, nil, nil, nil
+    r.mark, r.playing, r.why, r.ended, r.endAt, r.faded = nil, nil, nil, nil, nil, nil
+    return r
+  end
+
+  -- The way into arranging, where arranging cannot start now: the Arrange
+  -- button's row on its tab (State.Arrange), as an index line of its own.
+  function Find.ArrangeDoor()
+    local door = S.findDoor
+    if door then return door end
+    local cell = S.arrangeCell
+    if not cell then return nil end
+    for t = 1, #TABS do
+      local range = S.tabCells[TABS[t].key]
+      for i = range and range[1] or 1, range and range[2] or 0 do
+        if S.cells[i] == cell then
+          door = { cell = cell, tab = TABS[t].key, name = cell.nameText }
+          S.findDoor = door
+          return door
+        end
+      end
+    end
+    return nil
+  end
+
+  -- Whether an answer on the Arrange card is the one `c` names: its id and
+  -- its words (Theme.FitText keeps the whole words on a cut answer), since
+  -- one card can show two lists whose ids meet.
+  local function Answers(radio, c)
+    if radio.choiceId ~= c.pick then return false end
+    local text = radio.Text and radio.Text:GetText()
+    return text == nil or text == c.label
+  end
+
+  -- Where an Arrange line is marked on its card, once the card is up
+  -- (Arrange's inspector, AR._insp): a choice's answer, a switch, a
+  -- group's answers from the first to the last (Quality by the name, Row
+  -- size), or the card as a whole -- a column's or a block's card, and
+  -- anything whose own control the card is not showing. Answers the
+  -- frame, the last of a group, and what it is, for the trace.
+  function Find.ArrangeMark(e)
+    local AR = ns.Arrange
+    local insp = AR and AR._insp
+    if not (insp and insp:IsVisible()) then return nil, nil, "no card" end
+    if e.toggle then
+      local t = insp.Toggles and insp.Toggles[e.toggle]
+      if t and t:IsVisible() then return t, nil, "switch" end
+    elseif e.span or e.pick ~= nil then
+      local first, last
+      local radios = insp.Radios or {}
+      for i = 1, #radios do
+        local radio = radios[i]
+        if radio:IsVisible() then
+          local hit = false
+          if e.span then
+            for k = 1, #e.span do
+              if Answers(radio, e.span[k]) then hit = true end
+            end
+          else
+            hit = Answers(radio, e)
+          end
+          if hit then
+            first = first or radio
+            last = radio
+            if not e.span then break end
+          end
+        end
+      end
+      if first then
+        if e.span and last ~= first then return first, last, "answers" end
+        return first, nil, e.span and "answers" or "answer"
+      end
+    end
+    return insp, nil, "card"
+  end
+
+  -- A line chosen: `how` is "mouse" or "enter". What it led to is written
+  -- in its record (Find.Note) as it goes, an early stop with why.
+  function Find.Pick(e, how)
     if not e then return end
+    -- The last pick's mark and hold end here, in its own record.
+    Find.Stop("next pick")
+    local rec = S.findDown
+    S.findDown = nil
+    if not (rec and rec.e == e and rec.how == "down") then rec = Find.Note(how or "call", e) end
+    rec.how, rec.why = how or "call", nil
+    S.findRec = rec
     local box = S.findBox
     if box and box:HasFocus() then box:ClearFocus() end
     Find.Hide()
     if e.arrange then
       -- The same door as the Arrange button's: the panel steps aside, and
-      -- the card opens on what was picked.
+      -- the card opens on what was picked; Row size, on the overview.
       Panel.Arrange()
       local AR = ns.Arrange
-      local kind = e.arrange ~= "overview" and e.arrange or nil
-      if AR and AR.host and kind and not AR.Selected(kind, e.id) then AR.Select(kind, e.id) end
-      return
+      if AR and AR.host then
+        local kind = e.arrange ~= "overview" and e.arrange or nil
+        if kind then
+          if not AR.Selected(kind, e.id) then AR.Select(kind, e.id) end
+        elseif AR.selKind ~= nil then
+          AR.Select(nil)
+        end
+        rec.to = "arrange"
+        rec.shown = kind == nil or AR.Selected(kind, e.id)
+        if not rec.shown then rec.why = "card not offered here" end
+        -- Marked on the card as a row is on its tab: the answer or switch
+        -- picked, a group's answers, or the card itself.
+        local first, last, what = Find.ArrangeMark(e)
+        rec.target = what
+        if first then
+          rec.w, rec.h = first:GetWidth(), first:GetHeight()
+          rec.mark = Find.Mark(first, last)
+          rec.playing = S.findMark and S.findMark.Fade:IsPlaying() or false
+          -- The card fills its answers again for whatever it shows next:
+          -- the mark goes when what it stands on hides (another card, the
+          -- mode closing), never left on an answer that now says another.
+          S.findOwner = first
+          if not first.__pbFindHook then
+            first.__pbFindHook = true
+            first:HookScript("OnHide", Find.OwnerHid)
+          end
+        else
+          rec.why = rec.why or "card not on screen"
+        end
+        return
+      end
+      -- Arranging could not start: the Arrange button, marked on its tab,
+      -- so the pick still leads somewhere.
+      rec.why = "arranging did not start"
+      e = Find.ArrangeDoor()
+      if not e then
+        rec.to = S.tab
+        return
+      end
     end
     Panel.SelectTab(e.tab)
-    local target, entry = e.cell, nil
+    rec.to = S.tab
+    local target, entry, kind = e.cell, nil, "row"
     if e.head then
-      target = TestHead()
+      target, kind = TestHead(), "head"
       entry = target and target.lead and target.lead.control.__pbEntry
     elseif target and target.findVia and not target:IsShown() then
       -- A row standing aside: the row that brings it back.
-      target = target.findVia
+      target, kind = target.findVia, "via"
     end
-    if not target then return end
-    Find.Mark(target)
+    rec.target = target and kind or "none"
+    if not target then
+      rec.why = rec.why or "nothing to mark"
+      return
+    end
+    rec.shown, rec.w, rec.h = target:IsVisible() and true or false, target:GetWidth(), target:GetHeight()
+    if not rec.shown then
+      -- Gone from its page since the index was made: the tab, its words in
+      -- the inspector, and the index made again when next used.
+      S.findIndex = nil
+      rec.why = rec.why or "row not on screen"
+      if not e.head and e.cell and e.cell.entry then Insp.Show(e.cell.entry) end
+      return
+    end
+    rec.mark = Find.Mark(target)
+    rec.playing = S.findMark and S.findMark.Fade:IsPlaying() or false
     if not e.head then
       Rows.Hover(target)
+      -- The mark carries the wash now; the row's own is the pointer's.
+      if S.washed == target and not target:IsMouseOver() then
+        if target.Wash then target.Wash:Hide() end
+        S.washed = nil
+      end
     elseif entry then
       Insp.Show(entry)
     end
     -- Held on the row until the mark has gone or the pointer moves: the
     -- list hiding from under a still pointer uncovers rows, and their
-    -- enters wait (Rows.Held).
+    -- enters wait (Rows.Held), so the inspector keeps the row picked.
     S.held, S.heldAt, S.heldEnter = target, nil, nil
     S.findHeld = target
     S.findX, S.findY = GetCursorPosition()
+    S.findAt = GetTime()
   end
+
+  -- /postbox debug's lines for the search: the picks kept (Find.Note),
+  -- newest first, each with what it led to. Built on demand.
+  function Find.ReportLines()
+    local ring = S.findTrace
+    local lines = {}
+    if not ring or ring.n == 0 then
+      lines[1] = "Options search: no picks this session"
+      return lines
+    end
+    lines[1] = string.format("Options search: %d picks this session, last %d below (newest first)%s", ring.seq, ring.n,
+      (S.findOutside or 0) > 0 and string.format(" | list closed by a press outside it %d", S.findOutside) or "")
+    local now = GetTime()
+    for k = 0, ring.n - 1 do
+      local r = ring[(ring.at - 1 - k) % FIND.TRACE + 1]
+      if r then
+        local e = r.e or {}
+        -- A setting's name, or for a choice its row's (a choice's own words
+        -- can be a group's name, which stays out of the report).
+        local label = e.row and (tostring(e.row.name) .. " (a choice)") or tostring(e.name)
+        local place = e.arrange and ("arrange " .. tostring(e.arrange) .. (e.id and (" " .. tostring(e.id)) or ""))
+          or tostring(e.tab)
+        local parts = {
+          string.format("  #%d %.1fs ago %s \"%s\" [%s]: tab %s>%s", r.seq, now - (r.when or now), tostring(r.how),
+            label, place, tostring(r.from), tostring(r.to)),
+        }
+        if r.target then
+          parts[#parts + 1] = string.format("target %s%s", r.target,
+            r.w and string.format(" %s %dx%d", r.shown and "shown" or "NOT shown", math.floor(r.w + 0.5), math.floor((r.h or 0) + 0.5)) or "")
+        end
+        if r.mark ~= nil then
+          parts[#parts + 1] = string.format("mark %s%s", r.mark and "shown" or "NOT shown", r.playing and ", fading" or "")
+        end
+        if r.ended then
+          parts[#parts + 1] = string.format("let go: %s after %.1fs", r.ended, (r.endAt or now) - (r.when or now))
+        end
+        if r.faded then parts[#parts + 1] = "faded out" end
+        if r.why then parts[#parts + 1] = "stopped: " .. r.why end
+        lines[#lines + 1] = table.concat(parts, " | ")
+      end
+    end
+    return lines
+  end
+  Panel.FindReportLines = Find.ReportLines
 
   -- A press outside the box and its list, while the box has the keyboard.
   local function Press(watch)
     local wrap, list = S.findWrap, S.findList
     if wrap and wrap:IsMouseOver() then return end
     if list and list:IsShown() and list:IsMouseOver() then return end
+    if list and list:IsShown() then S.findOutside = (S.findOutside or 0) + 1 end
     if S.findBox then S.findBox:ClearFocus() end
   end
 
@@ -10391,7 +10674,7 @@ do
   local function Enter(box)
     local list = S.findList
     local e = list and list:IsShown() and hits[S.findSel or 1] or nil
-    if e then Find.Pick(e) else box:ClearFocus() end
+    if e then Find.Pick(e, "enter") else box:ClearFocus() end
   end
 
   -- Down and Up choose the next line and the one before, round from the

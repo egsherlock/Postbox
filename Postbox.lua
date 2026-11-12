@@ -2365,6 +2365,16 @@ local function BuildDiagnosticReport()
     end
   end
 
+  -- The options' search: its last picks and where each one led, by the
+  -- settings' own names (OptionsPanel, Find.ReportLines).
+  local Options = ns.OptionsPanel
+  if Options and type(Options.FindReportLines) == "function" then
+    local gotFind, findLines = pcall(Options.FindReportLines)
+    if gotFind and type(findLines) == "table" then
+      for i = 1, #findLines do add(findLines[i]) end
+    end
+  end
+
   -- Last, and last for a reason: it is the part a maintainer scrolls to, and
   -- anything appended below it would be missed.
   if #errorLog > 0 then
