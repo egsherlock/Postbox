@@ -1617,32 +1617,54 @@ end
 -- its meaning: "oldest" (the box's order turned, now on every list),
 -- "expirylast" (the most time left first), "goldleast" (the least gold
 -- first) and "senderza" (senders Z to A).
-local LIST_SORT_KEY = { inbox = "inboxSort", memory = "memorySort", history = "historySort", sent = "sentSort" }
+-- The Mail tab's Done list ("done", profile.doneSort) follows the inbox's
+-- order until an order is picked on it (LIST_FOLLOWS): its default is no
+-- order of its own, so GetListSort answers nil for it while it follows,
+-- and its newest first, once picked, is stored as "mailbox". Anything else
+-- stored there reads as following.
+local LIST_SORT_KEY = { inbox = "inboxSort", memory = "memorySort", history = "historySort", sent = "sentSort",
+  done = "doneSort" }
 local LIST_SORTS = {
   inbox = { oldest = true, expiry = true, expirylast = true, gold = true, goldleast = true, sender = true,
     senderza = true },
   memory = { oldest = true, expiry = true, expirylast = true },
   history = { oldest = true, gold = true, goldleast = true },
   sent = { oldest = true, gold = true, goldleast = true },
+  done = { mailbox = true, oldest = true, expiry = true, expirylast = true, sender = true, senderza = true },
 }
+local LIST_FOLLOWS = { done = "inbox" }
 function UI.GetListSort(list)
   local key = LIST_SORT_KEY[list]
   local profile = key and ns.Store and ns.Store.Get and ns.Store.Get("profile")
   local stored = type(profile) == "table" and profile[key] or nil
-  return (stored and LIST_SORTS[list][stored]) and stored or "mailbox"
+  if stored and LIST_SORTS[list][stored] then return stored end
+  if LIST_FOLLOWS[list] then return nil end
+  return "mailbox"
 end
+-- `order` nil: a list that follows another follows it again.
 function UI.SetListSort(list, order)
   local key = LIST_SORT_KEY[list]
-  if not key or (order ~= "mailbox" and not LIST_SORTS[list][order]) then return end
+  if not key then return end
+  local follows = LIST_FOLLOWS[list] ~= nil
+  if order == nil then
+    if not follows then return end
+  elseif order ~= "mailbox" and not LIST_SORTS[list][order] then
+    return
+  end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if profile then profile[key] = (order ~= "mailbox") and order or nil end
+  if profile then profile[key] = (follows or order ~= "mailbox") and order or nil end
 end
 -- A visit over (the mailbox closed: CollectTab's CT.ClearSearch; Mail
--- Memory's window closed): `list` back to the newest first while Remember
--- sort order is off. A list already there writes nothing.
+-- Memory's window closed): `list` back to the newest first, or a list that
+-- follows another back to following it, while Remember sort order is off.
+-- A list already there writes nothing.
 function UI.LetGoListSort(list)
   if UI.GetOption("rememberSort") then return end
-  if UI.GetListSort(list) ~= "mailbox" then UI.SetListSort(list, "mailbox") end
+  if LIST_FOLLOWS[list] then
+    if UI.GetListSort(list) ~= nil then UI.SetListSort(list, nil) end
+  elseif UI.GetListSort(list) ~= "mailbox" then
+    UI.SetListSort(list, "mailbox")
+  end
 end
 
 -- Whose last seven days the options' General tab adds up (OptionsPanel's

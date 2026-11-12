@@ -5116,11 +5116,13 @@ function CT.ClearSearch(panel)
     RV.ForgetInboxSearch()
   end
   -- The orders too, while Remember sort order is off: the Inbox and
-  -- History's two halves open newest first next visit
-  -- (MailboxUI.LetGoListSort; Mail Memory's goes with its window).
+  -- History's two halves open newest first next visit, and Done follows
+  -- the Inbox again (MailboxUI.LetGoListSort; Mail Memory's goes with its
+  -- window).
   local UI = ns.MailboxUI
   if UI and type(UI.LetGoListSort) == "function" then
     UI.LetGoListSort("inbox")
+    UI.LetGoListSort("done")
     UI.LetGoListSort("history")
     UI.LetGoListSort("sent")
   end
@@ -5358,7 +5360,7 @@ end
 -- keeps -- puts no row there.
 --
 -- The order is remembered for each list (MailboxUI.GetListSort: "inbox",
--- "history", "sent"). A filter never is: it is the panel's own
+-- "done", "history", "sent"). A filter never is: it is the panel's own
 -- (panel._sfShow[list], a set of flags: RV.ShowFlags), let go when the
 -- mailbox closes (CT.ClearSearch) and,
 -- for History's, when History is left (SetViewMode) or its half is changed
@@ -5379,11 +5381,12 @@ end
 -- What each list offers, in the menu's order: what it sorts by (each a
 -- field, named by its order the right way round) and its filters ("all"
 -- the unfiltered list), and which saved order it keeps (`save`,
--- MailboxUI.GetListSort). The Done tab keeps the inbox's order.
+-- MailboxUI.GetListSort). The Done tab keeps an order of its own once one
+-- is picked on it, and until then follows the inbox's (`follows`).
 RV.SF = {
   inbox = { save = "inbox", sorts = { "mailbox", "expiry", "gold", "sender" },
     shows = { "all", "unread", "gold", "items" } },
-  done = { save = "inbox", sorts = { "mailbox", "expiry", "sender" } },
+  done = { save = "done", follows = "inbox", sorts = { "mailbox", "expiry", "sender" } },
   received = { save = "history", sorts = { "mailbox", "gold" },
     shows = { "all", "sold", "bought", "expired", "players" } },
   sent = { save = "sent", sorts = { "mailbox", "gold" }, shows = { "all", "gold", "items", "cod" } },
@@ -5416,15 +5419,28 @@ function RV.SFList(panel)
   return "inbox"
 end
 
--- The order a list is shown in: its saved one. The Done tab's read mail
--- holds no gold, so the inbox's Most or Least gold leaves it in the box's
--- order, and says so.
+-- The order a list is shown in: its saved one. The Done tab's, until one
+-- is picked on it, is the inbox's; its read mail holds no gold, so the
+-- inbox's Most or Least gold leaves it in the box's order, and says so.
 function RV.SortOf(list)
   local def = RV.SF[list]
   local UI = ns.MailboxUI
-  local sort = def and UI and type(UI.GetListSort) == "function" and UI.GetListSort(def.save) or "mailbox"
-  if list == "done" and RV.SORT_FIELD[sort] == "gold" then return "mailbox" end
-  return sort
+  if not (def and UI and type(UI.GetListSort) == "function") then return "mailbox" end
+  local sort = UI.GetListSort(def.save)
+  if sort == nil and def.follows then
+    sort = UI.GetListSort(def.follows)
+    if RV.SORT_FIELD[sort] == "gold" then return "mailbox" end
+  end
+  return sort or "mailbox"
+end
+
+-- Whether the order a list is shown in is its own: always, but for a list
+-- that follows another (the Done tab) while no order has been picked on it.
+function RV.SortOwn(list)
+  local def = RV.SF[list]
+  if not (def and def.follows) then return true end
+  local UI = ns.MailboxUI
+  return UI ~= nil and type(UI.GetListSort) == "function" and UI.GetListSort(def.save) ~= nil
 end
 
 -- A list's filters: one set of flags for each list, made the first time
@@ -5476,6 +5492,15 @@ end
 function RV.SFLit(panel)
   local list = RV.SFList(panel)
   return RV.SortOf(list) ~= "mailbox" or RV.ShowOf(panel, list) ~= nil
+end
+
+-- Whether Reset has anything to put back (RV.ResetSF): what lights the
+-- button, but on the Done tab, which keeps no filter, only an order of its
+-- own -- one it shows through the inbox's is not its to reset.
+function RV.SFResettable(panel)
+  local list = RV.SFList(panel)
+  if RV.SF[list].follows then return RV.SortOwn(list) or RV.ShowOf(panel, list) ~= nil end
+  return RV.SFLit(panel)
 end
 
 -- A mail by the inbox's filters (and another box's), `on` the list's set
@@ -5637,16 +5662,20 @@ function CT.SetSort(panel, list, order)
   for i = 1, #def.sorts do if def.sorts[i] == field then known = true end end
   local UI = ns.MailboxUI
   if not (known and UI and type(UI.SetListSort) == "function") then return end
-  if RV.SortOf(list) == order then return end
+  -- The list's own saved order, so the Done tab's first pick is kept as its
+  -- own even where it shows that order already through the inbox's.
+  if UI.GetListSort(def.save) == order then return end
   UI.SetListSort(def.save, order)
   RV.SFChanged(panel)
 end
 
 -- A sort row clicked (the menu, or a test): its field the right way round,
--- or, where that field is already the one in force, turned round.
+-- or, where that field is already the list's own order, turned round. The
+-- Done tab, while it follows the inbox's order, takes the field the right
+-- way round as its own.
 function CT.PickSort(panel, list, field)
   local now = RV.SortOf(list)
-  CT.SetSort(panel, list, RV.SORT_FIELD[now] == field and RV.SORT_FLIP[now] or field)
+  CT.SetSort(panel, list, (RV.SORT_FIELD[now] == field and RV.SortOwn(list)) and RV.SORT_FLIP[now] or field)
 end
 
 -- A filter turned on or off for a list (the menu's tick, a chip's x, or a
@@ -5691,13 +5720,18 @@ function RV.ForgetShows(panel, which)
 end
 
 -- A right-click: the list on screen back to its defaults, the newest first
--- and everything shown.
+-- and everything shown; the Done tab back to following the inbox's order.
 function RV.ResetSF(panel)
   local list = RV.SFList(panel)
   local def = RV.SF[list]
   local UI = ns.MailboxUI
   local changed = false
-  if RV.SortOf(list) ~= "mailbox" and UI and type(UI.SetListSort) == "function" then
+  if def.follows then
+    if RV.SortOwn(list) and UI and type(UI.SetListSort) == "function" then
+      UI.SetListSort(def.save, nil)
+      changed = true
+    end
+  elseif RV.SortOf(list) ~= "mailbox" and UI and type(UI.SetListSort) == "function" then
     UI.SetListSort(def.save, "mailbox")
     changed = true
   end
@@ -5780,7 +5814,7 @@ function RV.SFMenu(panel, list)
   -- edge as the character picker's list opens; the screen keeps it whole.
   local menu = D.Menu(panel.Sort, items, {
     keepOpen = true,
-    disabled = function(id) return id == "reset" and not RV.SFLit(panel) end,
+    disabled = function(id) return id == "reset" and not RV.SFResettable(panel) end,
     checked = function(id)
       local pick = RV.SF_IDS[id]
       if not pick then return false end
