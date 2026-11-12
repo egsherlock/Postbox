@@ -87,8 +87,12 @@ local KEY_MARK = 12
 -- across, its 12-unit box's last column clear -- stands dead centre: 4
 -- units of plate either side (3 inside the ring), where the 18-unit square
 -- left 3 and 4. It starts a unit further left than the square did, so the
--- mark stays where it was (its callers anchor it 3 units right of the cog).
+-- mark stays where it was (its callers anchor it AR.COG_GAP right of the cog).
 AR.KEY_W, AR.KEY_INK = 19, 11
+-- The room between the cog's box and the key's, on every title bar that
+-- has the pair (the Postbox window's, Mail Memory's): 1 unit since
+-- 2026-11-12, the key two units nearer the cog than the 3 it stood at.
+AR.COG_GAP = 1
 local KEY_CHECK = 8
 local KEY_LEAD, KEY_GAP, KEY_TAIL = 6, 4, 7
 local KEY_LIFT = 1

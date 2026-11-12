@@ -5167,8 +5167,8 @@ local function Build()
     frame.ArrangeButton = arrange.BuildToggle(frame, function(button)
       local cog = frame.OptionsButton
       if cog then
-        -- 3 units clear, the mark where it was (Arrange's AR.KEY_W).
-        button:SetPoint("LEFT", cog, "RIGHT", 3, 0)
+        -- AR.COG_GAP clear of the cog's box, as on the Postbox window.
+        button:SetPoint("LEFT", cog, "RIGHT", arrange.COG_GAP or 1, 0)
         return
       end
       local strip = frame.__pbModernStrip
