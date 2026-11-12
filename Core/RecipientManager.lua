@@ -1896,7 +1896,7 @@ local function Build()
       local field = SORT_BY_ID[sortPicks[id] or ""]
       return field ~= nil and (RM._sort or "name") == field.id
         and (RM._sortDesc and true or false) ~= (field.desc and true or false)
-    end)
+    end, true)
     return sortMenu
   end
 

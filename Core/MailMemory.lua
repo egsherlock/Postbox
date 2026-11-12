@@ -4463,8 +4463,10 @@ end
 -- dots moved; Reset grayed while there is nothing to reset. `checked(id)`,
 -- `disabled(id)`, `onPick(id)` and `flipped(id)` (a field's row turned
 -- round, reading its `flip` words) as Dropdown.Menu takes them. It opens
--- under the button, left edges lined up, free to pass the window's edge.
-function MM.SortMenu(sort, items, checked, disabled, onPick, flipped)
+-- under the button, left edges lined up, free to pass the window's edge;
+-- with `alignRight` its right edge is on the button's and it opens
+-- leftward, over its own window (Manage Recipients).
+function MM.SortMenu(sort, items, checked, disabled, onPick, flipped, alignRight)
   local D = ns.Core and ns.Core.UI and ns.Core.UI.Dropdown
   if not (D and type(D.Menu) == "function") then return nil end
   local menu
@@ -4474,6 +4476,7 @@ function MM.SortMenu(sort, items, checked, disabled, onPick, flipped)
     disabled = disabled,
     onPick = onPick,
     flipped = flipped,
+    alignRight = alignRight and true or nil,
     onClose = function() if sort.open == menu then sort.open = nil end end,
   })
   return menu

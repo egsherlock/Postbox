@@ -1586,7 +1586,15 @@ function Dropdown.Menu(owner, items, opts)
       up = below < height and above > below
     end
     list:ClearAllPoints()
-    if up then
+    -- opts.alignRight: the list's right edge on the owner's, so it opens
+    -- leftward over its own window instead of past the window's edge.
+    if opts.alignRight then
+      if up then
+        list:SetPoint("BOTTOMRIGHT", owner, "TOPRIGHT", 0, LIST_GAP)
+      else
+        list:SetPoint("TOPRIGHT", owner, "BOTTOMRIGHT", 0, -LIST_GAP)
+      end
+    elseif up then
       list:SetPoint("BOTTOMLEFT", owner, "TOPLEFT", 0, LIST_GAP)
     else
       list:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -LIST_GAP)
