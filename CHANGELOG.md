@@ -43,6 +43,13 @@
 - **Easier to read rows:** item names, time left, gold, slots, the totals
   strip and the Search placeholder are a size larger on the default UI,
   the same size on every client and in every window style.
+- **An auction mail shows the item it holds:** on the Mail tab, when the
+  game's subject names one item and the mail holds another, the row and
+  the opened mail show the item inside. Its tooltip still shows the
+  game's own subject.
+- **Done keeps its own sort order** (Mail tab): an order you pick on Done
+  stays with Done and leaves the Inbox's alone. Until you pick one, Done
+  follows the Inbox.
 
 ### Options and Arrange
 
