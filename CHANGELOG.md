@@ -76,13 +76,19 @@
 - Mail Memory, Character Groups and Manage Recipients have new icons: on
   the options' General tab in your accent color, on the buttons that open
   them, and on their own windows' title bars.
-- **The small icons are one family,** redrawn for the size they are shown
-  at: the clock, the sort bars, the arrange mark, the address book and the
-  rest, and a cog of Postbox's own on the title bar. The cog is plain gray
-  and takes your accent only while the options are open.
-- **Small icons are drawn the way text is:** on the Mail tab's bar, the
-  title bar, the options' buttons and the Window tab's link, straight
-  edges stay crisp and curves are smoothed like the letters beside them.
+- **New small icons on the Mail tab's bar:** the History clock, the
+  every-character toggle and the sort button are one set, fitted to whole
+  pixels so their lines stay crisp. The Send tab's Sent clock and Manage
+  Recipients button, and the options' search box, Report a bug and Reset
+  to defaults, wear the same set.
+- **The sort button's arrow shows the order** (Mail tab, Mail Memory and
+  Manage Recipients): up for the usual order, down while the list runs
+  the other way.
+- **The every-character toggle** (the Search box on the Mail tab and in
+  Mail Memory) shows one figure, and two while every character's mail is
+  shown.
+- **A cog of Postbox's own on the title bar,** plain gray, taking your
+  accent only while the options are open.
 - **Text outline** is now called **Text style** (Options, Window), and a
   new **Text weight** beside it offers Bold for Barlow Semi Condensed and
   the five new fonts.
