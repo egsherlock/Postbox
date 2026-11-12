@@ -4457,8 +4457,10 @@ end
 -- accent colour live.
 function CT.RepaintViewToggle(panel)
   PaintViewToggle(panel)
-  -- The find plate's divider, in the ring the look now gives the search.
+  -- The find plate's divider, in the ring the look now gives the search,
+  -- and the every-character toggle in the accent it now has.
   if panel and panel.Search and panel.Search.PaintJoin then panel.Search.PaintJoin() end
+  if panel and panel.Search and panel.Search.PaintToggle then panel.Search.PaintToggle(panel._searchAll) end
 end
 
 local SetViewMode  -- forward declaration; the segments call it

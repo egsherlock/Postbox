@@ -4476,6 +4476,8 @@ function MM.RepaintLook()
   local frame = MM._frame
   if not frame then return end
   if frame.Search and frame.Search.PaintJoin then frame.Search.PaintJoin() end
+  -- The every-character toggle, in the accent it now has.
+  if frame.SearchAllButton then frame.SearchAllButton.Paint() end
 end
 
 -- The order a list is shown in, from its sort (MailboxUI.GetListSort):
