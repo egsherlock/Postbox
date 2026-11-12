@@ -3256,12 +3256,20 @@ end
 -- else has resized MailFrame since, whose width is then left alone. SetWidth
 -- is a protected call on a protected frame, so in combat nothing is written
 -- either way: the width stays as it stands until the next layout out of
--- combat (an open, a resize's end, the docking switch). Writes only on a
--- change of half a unit or more.
+-- combat (an open, a resize's end, the docking switch), or, for a docked
+-- mailbox still open, until combat ends: PLAYER_REGEN_ENABLED is listened
+-- for then, on Postbox's own bus, and only until it comes (UI.SyncAfterCombat).
+-- Writes only on a change of half a unit or more.
 local function SyncSlotWidth()
   local native = MailFrame
   if not (native and type(native.SetWidth) == "function" and type(native.GetWidth) == "function") then return end
-  if type(InCombatLockdown) == "function" and InCombatLockdown() then return end
+  if type(InCombatLockdown) == "function" and InCombatLockdown() then
+    if ShouldDock() and not UI._state.regenSync then
+      local bus = ns.Events
+      if bus and bus.Register("PLAYER_REGEN_ENABLED", UI.SyncAfterCombat) then UI._state.regenSync = true end
+    end
+    return
+  end
   local current = native:GetWidth()
   if type(current) ~= "number" or (type(issecretvalue) == "function" and issecretvalue(current)) then return end
   local st, frame = UI._state, UI._frame
@@ -3293,6 +3301,16 @@ local function SyncSlotWidth()
     end
     st.slotNativeW, st.slotSetW = nil, nil
   end
+end
+
+-- Combat over, after a width skipped in it: the listener goes, and the
+-- width is synced once if the mailbox is still open and docked. Nothing of
+-- Blizzard's panel layout is called (COMBAT_TAINT.md section 4).
+function UI.SyncAfterCombat()
+  UI._state.regenSync = nil
+  local bus = ns.Events
+  if bus then bus.Unregister("PLAYER_REGEN_ENABLED", UI.SyncAfterCombat) end
+  if ShouldDock() then SyncSlotWidth() end
 end
 
 function UI.ApplyWindowLayout()

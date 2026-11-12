@@ -200,8 +200,11 @@ Notes:
   reference, and after the mailbox closes `MailFrame` sits in no panel slot. That is
   why the issue's reporter could keep it and still use the bank. The width is the
   subject of the next note. `MailboxUI.lua` consults `InCombatLockdown()` in one
-  place, to skip the width write in combat; nothing is deferred to
-  `PLAYER_REGEN_ENABLED`.
+  place, to skip the width write in combat. Since 2026-11-12 one thing waits for
+  `PLAYER_REGEN_ENABLED`: when that write was skipped while the mailbox is open and
+  docked, Postbox listens for it on its own event bus, and at combat's end syncs the
+  width once (`UI.SyncAfterCombat`, the same `MailFrame:SetWidth`) and stops
+  listening. No attribute, no panel-manager call, nothing written in combat.
 - **The room beside the window (2026-11-11), and why it is clean.** `MailFrame` is
   `{ area = "left", pushable = 0 }` in `UIPanelWindows` (both clients,
   `Mainline/UIPanelWindows.lua:21`; line numbers below are retail's). The manager
@@ -243,7 +246,8 @@ Notes:
     lays it out before Postbox widens `MailFrame`, and Postbox will not call the
     layout to move it), and a resize while a panel stands beside the window (it
     moves at the next layout). In combat the width is not written (`SetWidth` is
-    `IsProtectedFunction`); a docked open in combat keeps the width the frame has.
+    `IsProtectedFunction`); a docked open in combat keeps the width the frame has
+    until combat ends, when it is synced once if the mailbox is still open and docked.
     A screen too narrow for the wider window plus the panel makes the manager close
     the mailbox, as it did with the old reservation (`CanShowCenterUIPanel`, `:999`).
   - *What else reads `MailFrame`'s width:* no script in its template chain
