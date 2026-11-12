@@ -917,6 +917,54 @@ function RV.ShownSubject(subject, quantity, drop)
   return shown
 end
 
+-- subject, name -> whether an auction's subject names the item `name` (a
+-- plain find). One rule for the row's tooltip, which then leaves the one
+-- stack off its Holds line, and the row's own name (RV.HeldSubject).
+function RV.SubjectNames(subject, name)
+  return name ~= nil and subject:find(name, 1, true) ~= nil
+end
+
+-- The Pet Cage: a caged pet is named by its subject ("Brown Rabbit") and
+-- held as the cage, so its subject is never a wrong one.
+RV.PET_CAGE = 82800
+
+-- name, quantity -> the item part of the subject an auction mail holding
+-- `quantity` of `name` carries ("Dripping Spider Mandible (2)", the count
+-- only past one), for RV.ShownSubject to treat as any subject. Made once per
+-- (name, quantity) and kept, bounded and emptied as RV.subjects is.
+RV.held, RV.heldN = {}, 0
+
+function RV.ItemSubject(name, quantity)
+  local byName = RV.held[name]
+  local said = byName and byName[quantity]
+  if said then return said end
+  said = (quantity > 1) and (name .. " (" .. quantity .. ")") or name
+  if RV.heldN < RV.SUBJECTS_MAX then
+    if not byName then
+      byName = {}
+      RV.held[name] = byName
+    end
+    byName[quantity] = said
+    RV.heldN = RV.heldN + 1
+  end
+  return said
+end
+
+-- subject, kind, name, itemID, quantity -> what an auction mail is shown
+-- under when the one kind of item it holds (`name`, from the attachment
+-- scan: RV.LIVE.Attachments) is not the item its subject names -- the
+-- server's subject can name another item than the one in the mail. Nil
+-- for every other mail, and where the client has no name for the item yet
+-- (the next refresh, once it has one, says it). The mail itself keeps its
+-- subject: its kind, fingerprint, search, History and Mail Memory read that.
+function RV.HeldSubject(subject, kind, name, itemID, quantity)
+  if type(name) ~= "string" or name == "" or type(subject) ~= "string" or not AUCTION_OUTCOME[kind] then
+    return nil
+  end
+  if itemID == RV.PET_CAGE or RV.SubjectNames(subject, name) then return nil end
+  return RV.ItemSubject(name, quantity)
+end
+
 -- text, mark -> the text with the mark after the item's name and before a
 -- trailing "(20)" count, where a chat link draws it. Each marked subject is
 -- made once and kept (RV.marked, a table per mark keyed by the text), so a
@@ -4269,7 +4317,7 @@ do
     local named = false
     if stacks == 1 and row.iconSlot and subject and AUCTION_OUTCOME[row.tipKind] then
       local name = GetInboxItem(index, row.iconSlot)
-      named = name ~= nil and subject:find(name, 1, true) ~= nil
+      named = RV.SubjectNames(subject, name)
     end
     if stacks > 0 and not named then
       local listed = 0
@@ -4848,6 +4896,11 @@ function RV.TrimCaches()
     local subjects = RV.subjects
     for k in pairs(subjects) do subjects[k] = nil end
     RV.subjectsN = 0
+  end
+  if RV.heldN >= RV.SUBJECTS_MAX then
+    local held = RV.held
+    for k in pairs(held) do held[k] = nil end
+    RV.heldN = 0
   end
   if RV.markOfN >= RV.MARKOF_MAX then
     local marks = RV.markOf
@@ -7338,23 +7391,31 @@ RV.LIVE.Invoice = AppendInvoiceFigures
 -- can raise that item's own tooltip; Mail().GetMailIcon returns the first
 -- slot bearing a texture, so this has to find the same one -- and after a
 -- partial take that is not necessarily slot 1), that item's count and how
--- many items the mail holds (RV.PaintCount).
+-- many items the mail holds (RV.PaintCount). Then, where every stack is
+-- one item, that item's name (nil while the client has none) and ID, from
+-- the same reads (RV.HeldSubject); nil, nil for two kinds or none.
 function RV.LIVE.Attachments(index, itemCount)
   local remaining, quantity = 0, 0
   local iconSlot = nil
   local iconCount, stacks = 0, 0
+  local heldName, heldID, oneKind = nil, nil, true
   if (tonumber(itemCount) or 0) > 0 then
     for slot = 1, Mail().MAX_ATTACHMENTS do
       if GetInboxItemLink(index, slot) then remaining = remaining + 1 end
-      local _, _, texture, count = GetInboxItem(index, slot)
+      local name, itemID, texture, count = GetInboxItem(index, slot)
       if texture then
         stacks = stacks + 1
-        if not iconSlot then iconSlot, iconCount = slot, tonumber(count) or 0 end
+        if not iconSlot then
+          iconSlot, iconCount, heldName, heldID = slot, tonumber(count) or 0, name, itemID
+        elseif itemID ~= heldID then
+          oneKind = false
+        end
       end
       quantity = quantity + (tonumber(count) or 0)
     end
   end
-  return remaining, quantity, iconSlot, iconCount, stacks
+  if not (oneKind and heldID) then heldName, heldID = nil, nil end
+  return remaining, quantity, iconSlot, iconCount, stacks, heldName, heldID
 end
 
 -------------------------------------------------------------
@@ -8233,7 +8294,7 @@ local function BindRow(panel, row, index, position, compact, done)
   -- The attachments left, their total count, the slot the row's icon came
   -- from, that item's count and how many items the mail holds, for the
   -- icon's corner (RV.PaintCount) and its tooltip (RV.LIVE.Attachments).
-  local remaining, quantity, iconSlot, iconCount, stacks = S.Attachments(index, itemCount)
+  local remaining, quantity, iconSlot, iconCount, stacks, heldName, heldID = S.Attachments(index, itemCount)
   iconCount, stacks = iconCount or 0, stacks or 0
   row.iconSlot = iconSlot
   row.iconItems = stacks
@@ -8263,7 +8324,14 @@ local function BindRow(panel, row, index, position, compact, done)
   -- it again ("Light's Potential", the icon's 19). A hidden icon, or a
   -- count it shortens, and the subject keeps it. Made once per subject and
   -- count (RV.ShownSubject), so a bind makes no string.
-  local displaySubject = RV.ShownSubject(subject or "", quantity,
+  -- An auction mail holding one kind of item its subject does not name
+  -- says the item it holds, as its own subject would (RV.HeldSubject); the
+  -- tooltip's title keeps the subject, and its Holds line names the item.
+  local shownFrom = subject or ""
+  if heldName and AUCTION_OUTCOME[kind] then
+    shownFrom = RV.HeldSubject(subject, kind, heldName, heldID, quantity) or shownFrom
+  end
+  local displaySubject = RV.ShownSubject(shownFrom, quantity,
     quantity > 0 and stacks == 1 and RV.SaysCount(iconCount, layout))
   -- The crafting quality mark, as the item's own link draws it: on the
   -- icon's corner, before or after the name, or both.
@@ -14268,7 +14336,11 @@ function PaintDetailContent(detail, index)
 
   detail.Sender:SetText(sender or L()["SENDER_UNKNOWN"])
   RV.PaintSender(detail.Sender, sender, nil)
-  detail.Subject:SetText(Helpers().ShortSubject(subject or ""))
+  -- The item an auction mail holds, where its subject names another, as
+  -- the mail's row says it (RV.HeldSubject).
+  local _, quantity, _, _, _, heldName, heldID = RV.LIVE.Attachments(index, itemCount)
+  detail.Subject:SetText((heldName and RV.HeldSubject(subject, kind, heldName, heldID, quantity))
+    or Helpers().ShortSubject(subject or ""))
   detail.Info:SetText(DetailInfoText(detail, index, kind, hasCOD))
 
   -- Reply exists to hand a C.O.D. mail back. Return is offered wherever the
