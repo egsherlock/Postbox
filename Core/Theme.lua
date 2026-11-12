@@ -5382,6 +5382,8 @@ do
     tex:SetSize(g.w * k, g.h * k)
     if tex.__pbAt then PX.Put(tex) end
     PX.Filter(tex, n == 1 and "LINEAR" or "NEAREST")
+    -- What is sized from it follows (a title glyph's holder: TITLE.Fitted).
+    if tex.__pbFitted then tex.__pbFitted(tex) end
   end
 
   -- The glyph and its halo copies (Theme.PaintGlyphHalo) sampled with
@@ -5586,7 +5588,11 @@ do
     local holder = frame and frame.__pbTitleGlyph
     local title = frame and frame.TitleText
     if not (holder and title) then return false end
-    local gap, gw = TITLE.GAP, holder:GetWidth()
+    -- The holder as large as its glyph is now: PX.Fit sizes the glyph again
+    -- when the scale it draws at moves.
+    local gw, gh = holder.glyph:GetSize()
+    if gw ~= holder:GetWidth() or gh ~= holder:GetHeight() then holder:SetSize(gw, gh) end
+    local gap = TITLE.GAP
     local shift = floor((TITLE.SIZE + gap) / 2 + 0.5)
     local was = frame.__pbTitleShift or 0
     local w = Theme.TextWidth(title)
@@ -5659,6 +5665,13 @@ do
 
   function TITLE.Relay(self) Theme.LayoutTitleGlyph(self) end
 
+  -- The glyph was sized for a new scale (PX.Fit): a shown window lays it
+  -- out again; a hidden one does on its next show.
+  function TITLE.Fitted(glyph)
+    local frame = glyph:GetParent():GetParent()
+    if frame and frame:IsShown() then Theme.LayoutTitleGlyph(frame) end
+  end
+
   -- `frame`'s title bar takes the glyph `name` (a Theme.GLYPHS key), at
   -- its own master's size. Once per window, after its look and the bar's
   -- other controls are in place. -> the holder, or nil.
@@ -5672,6 +5685,7 @@ do
     glyph:SetPoint("CENTER")
     holder:SetSize(glyph:GetSize())
     holder.glyph = glyph
+    glyph.__pbFitted = TITLE.Fitted
     holder:Hide()
     frame.__pbTitleGlyph, title.__pbTitleGlyph = holder, holder
     if type(hooksecurefunc) == "function" then
