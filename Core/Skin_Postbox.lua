@@ -1072,13 +1072,6 @@ local function EUIFontPath()
   return nil
 end
 
--- The file a font key draws with on this client, or false for the game's own.
-local function FontPath(key)
-  if key == "eui" then return EUIFontPath() or false end
-  local spec = FONT_FILES[key]
-  return spec and spec[Script()] or false
-end
-
 -- Text weight's choices, the Bold file's name on each script, and which
 -- files the client was found to load (WEIGHT.Loads). One table: BuildSkin's
 -- locals are counted.
@@ -1093,7 +1086,9 @@ local WEIGHT = {
 -- a font object of Postbox's own that no text wears (a set of a file the
 -- client cannot open answers false, as RV.Span reads it). A file missing
 -- from the install -- one added to the addon since the client started,
--- which it sees only after a restart -- is never put on a copy.
+-- which it sees only after a restart -- is never put on a copy. A client
+-- whose SetFont answers nothing is read by the face the probe holds after:
+-- the file asked for, or another than before, loaded.
 function WEIGHT.Loads(path)
   local known = WEIGHT.loads[path]
   if known ~= nil then return known end
@@ -1104,18 +1099,40 @@ function WEIGHT.Loads(path)
   end
   local ok = false
   if probe and type(probe.SetFont) == "function" then
+    local read = type(probe.GetFont) == "function"
+    local before = read and probe:GetFont() or nil
     local fine, set = pcall(probe.SetFont, probe, path, 12, "")
-    ok = fine and set ~= false
+    if fine and set == nil then
+      local now = read and probe:GetFont() or nil
+      set = not read or (now ~= nil and (now == path or now ~= before))
+    end
+    ok = (fine and set) and true or false
   end
   WEIGHT.loads[path] = ok
   return ok
+end
+
+-- The file a font key draws with on this client, or false for the game's
+-- own: also where its file does not load here (WEIGHT.Loads, asked once a
+-- file), as for a font this build does not have. EllesmereUI's is a file
+-- of another addon's, asked the same.
+local function FontPath(key)
+  local path
+  if key == "eui" then
+    path = EUIFontPath()
+  else
+    local spec = FONT_FILES[key]
+    path = spec and spec[Script()]
+  end
+  if not path or not WEIGHT.Loads(path) then return false end
+  return path
 end
 
 -- The chosen font's Bold file on this client, where it has one and the
 -- client loads it; else nil.
 function WEIGHT.BoldOf(key)
   local spec = FONT_FILES[key]
-  if not (spec and spec[Script()]) then return nil end
+  if not (spec and FontPath(key)) then return nil end
   local bold = spec[WEIGHT.bold[Script()]]
   if bold and WEIGHT.Loads(bold) then return bold end
   return nil
@@ -1187,7 +1204,7 @@ function Skin.GetFontChoices()
   for i = 2, #FONT_ORDER do
     local key = FONT_ORDER[i]
     if key == "eui" then
-      if EUIFontPath() then out[#out + 1] = { key = key, name = ns.L["OPT_FONT_EUI"] } end
+      if FontPath(key) then out[#out + 1] = { key = key, name = ns.L["OPT_FONT_EUI"] } end
     elseif FontPath(key) then
       out[#out + 1] = { key = key, name = FONT_FILES[key].name }
     end
@@ -1196,9 +1213,12 @@ function Skin.GetFontChoices()
   return out
 end
 
+-- The font drawn: the saved one where it has a file here that loads
+-- (FontPath), else the game's. The saved choice stays as it is, so a font
+-- whose file arrives with the next restart is back without choosing it again.
 function Skin.GetFont()
   local saved = GetProfile().pbFont
-  if saved == "eui" or FONT_FILES[saved] then return saved end
+  if (saved == "eui" or FONT_FILES[saved]) and FontPath(saved) then return saved end
   return "game"
 end
 

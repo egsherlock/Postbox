@@ -2237,6 +2237,8 @@ function Theme.RefreshHostFonts(recolor, force)
     return true
   end
   HF.path, HF.flags, HF.shadow, HF.scale, HF.light = path, flags, shadow, scale, lightPalette
+  -- A copy that would not dress in the face before is asked for again in this one.
+  for base in pairs(HF.failed) do HF.failed[base] = nil end
   if force then
     -- Postbox's own fonts copied from a game object, from it as it is now.
     for font, like in pairs(HF.madeFrom) do
