@@ -40,6 +40,9 @@
   letters (Arrange, Gold column, Written as).
 - With **Attachments on hover** set to Fan out, a mail's items open from
   its own icon, as one piece.
+- **Easier to read rows:** item names, time left, gold, slots, the totals
+  strip and the Search placeholder are a size larger on the default UI,
+  the same size on every client and in every window style.
 
 ### Options and Arrange
 

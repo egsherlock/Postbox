@@ -1820,7 +1820,8 @@ local FONT_FALLBACK = { "GameFontHighlightSmall", "GameFontHighlight", "GameFont
 -- (atrocityEssentials, ElvUI) draws them larger; Postbox reads best at the
 -- larger sizes, so it never draws an object under them, whatever the player
 -- runs: the 9 class at 10, the 10 class at 12, the 12 class at 13, 13 to 15
--- at 14, 16 and up as they are. The class is the object's by its name -- the
+-- at 14, 16 and up as they are, and the game's white text a step higher
+-- (FLOOR_RAISED). The class is the object's by its name -- the
 -- size the game ships it at -- never the size it has now, which a host may
 -- have changed; a host that draws an object larger than its floor is
 -- followed. Postbox's own fonts made from a game object take that object's
@@ -1871,14 +1872,34 @@ local function FloorFor(stock)
   return 10
 end
 
+-- The white text a step over its class: the game's white objects inherit
+-- their gold sibling's size, so a UI that resizes the game's fonts in turn
+-- resizes them twice and draws them a step over it (the small white 13 over
+-- the small gold 12, the white 14 over the gold 13). Postbox draws them
+-- there everywhere -- the Mail tab's item names, figures, totals and the
+-- Search placeholder are 13 on any client -- while the gold ones (the
+-- sender, headings, tabs) keep their class. The objects inheriting each
+-- take its floor.
+local FLOOR_RAISED = {
+  GameFontHighlightSmall = 13, GameFontHighlightSmallLeft = 13, GameFontHighlightSmallOutline = 13,
+  GameFontHighlight = 14, GameFontHighlightLeft = 14, GameFontHighlightRight = 14, GameFontHighlightCenter = 14,
+}
+
+-- A game object's name -> its floor, or false for none.
+local function FloorNamed(name)
+  if not name then return false end
+  local raised = FLOOR_RAISED[name]
+  if raised then return raised end
+  local stock = STOCK_SIZE[name]
+  return stock and FloorFor(stock) or false
+end
+
 -- A font object -> its floor, or nil: a game object's by its name, one of
 -- Postbox's own by the object it was made from (Theme.FloorAs).
 local function FloorOf(base)
   local f = HF.floorOf[base]
   if f == nil then
-    local name = base:GetName()
-    local stock = name and STOCK_SIZE[name]
-    f = stock and FloorFor(stock) or false
+    f = FloorNamed(base:GetName())
     HF.floorOf[base] = f
   end
   return f or nil
@@ -1892,9 +1913,7 @@ end
 HF.madeFrom = {}
 function Theme.MadeFrom(font, like)
   if not (font and type(like) == "table" and type(like.GetName) == "function") then return end
-  local named = like:GetName()
-  local stock = named and STOCK_SIZE[named]
-  HF.floorOf[font] = stock and FloorFor(stock) or false
+  HF.floorOf[font] = FloorNamed(like:GetName())
   HF.madeFrom[font] = like
 end
 
