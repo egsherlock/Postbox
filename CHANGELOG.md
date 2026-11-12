@@ -87,6 +87,8 @@
 - **The every-character toggle** (the Search box on the Mail tab and in
   Mail Memory) shows one figure, and two while every character's mail is
   shown.
+- **Send tab: the Manage Recipients button** at the end of the To field
+  is a key like History and the sort button, in the window's neutral gray.
 - **A cog of Postbox's own on the title bar,** plain gray, taking your
   accent only while the options are open.
 - **Text outline** is now called **Text style** (Options, Window), and a
