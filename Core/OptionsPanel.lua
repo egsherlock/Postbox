@@ -1755,7 +1755,7 @@ do
   -- Beside the caption, the two centred as one, Test mail's switch: the eye
   -- and one label of its own in the same font in both states, on a house
   -- button as wide as the wider of its words, which say Test mail off and
-  -- Testing on, lit on the selected plate in the accent with the eye
+  -- Testing on, lit on the selected plate, ringed in the accent, with the eye
   -- breathing while the window lists sample mail (Rows.Lead, as the
   -- window's segments light). Its click is
   -- the arrange mode's own switch (MailboxUI.SetTestMail, with this panel
@@ -5043,6 +5043,8 @@ do
   -- and hides with its page or the panel; nothing runs behind a hidden
   -- panel, and a stopped glyph is whole again.
   local LEAD_PULSE = { TO = 0.4, TIME = 1.4 }
+  -- A lit lead's least accent wash (Rows.PaintLead).
+  local LEAD_LIT = { WASH = 0.14 }
   function Rows.Pulse(btn)
     local pulse = btn and btn.Pulse
     if not pulse then return end
@@ -5756,7 +5758,7 @@ do
   -- `offText` or `onText`, and on, the selected plate the window's
   -- segments wear -- their style's tokens where it gives them, the
   -- palette's otherwise, as the arrange key's lit Done (Arrange.lua,
-  -- AR.PaintToggle) -- with the glyph and the words in the accent's
+  -- AR.PaintToggle) -- ringed and washed in the accent, with the glyph and the words in the accent's
   -- selected-caption tone, the glyph breathing (Rows.Pulse). Off, the
   -- button's own look, the glyph in the caption's ink as the arrange
   -- icon's. Either way the glyph and the words centred as one on a button
@@ -5800,12 +5802,20 @@ do
     local tok = T.VariantTokens and T.VariantTokens("segment") or nil
     local C = tok or T.Colors
     local ground = tok and "tabSelected" or "plateSelected"
-    local fill, ring, bevel, lift = C.plateSelected, C.plateEdgeSelected, C.plateBevel, C.plateHighlight
+    local fill, bevel, lift = C.plateSelected, C.plateBevel, C.plateHighlight
     -- Whole: the button's own caption under it never shows through.
     lit.Fill:SetVertexColor(fill[1], fill[2], fill[3], 1)
-    for i = 1, 4 do lit.Ring[i]:SetVertexColor(ring[1], ring[2], ring[3], ring[4]) end
-    local r, g, b = T.GetAccentTone("base")
-    lit.Wash:SetVertexColor(r, g, b, C.accentWash[4])
+    -- Its ring in the accent's mark tone, whole, as the arrange mode's own
+    -- Test mail switch is lit (Arrange.lua, AR.Test.Paint), and a wash of
+    -- the accent at least LEAD_LIT.WASH strong over the plate, so on is
+    -- told from off at a glance in every look -- a selected tab's plate
+    -- (the Postbox style's Dark has neither a wash nor a lit ring) is the
+    -- resting button's grey with a line under it. The fill is whole, so
+    -- neither depends on the window's opacity.
+    local r, g, b = T.GetAccentTone("mark")
+    for i = 1, 4 do lit.Ring[i]:SetVertexColor(r, g, b, 1) end
+    r, g, b = T.GetAccentTone("base")
+    lit.Wash:SetVertexColor(r, g, b, math.max(C.accentWash[4] or 0, LEAD_LIT.WASH))
     -- The underline is a mark: on a light palette the accent's mark tone,
     -- 3:1 on the plate, as a selected tab's is.
     if T.IsLight and T.IsLight() then
