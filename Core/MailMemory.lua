@@ -1896,19 +1896,23 @@ do
     end
     Note(api.GetItemID(location), api.GetItemName(location), icon)
   end
-  -- The deposit paid for a post (2f): what the game answers for that item,
+  -- The deposit a post would cost (2f): what the game answers for that item,
   -- duration and quantity, rounded up to the silver where the house takes
-  -- no copper, as its own sell frame shows it. Nothing when it cannot say.
+  -- no copper, as its own sell frame shows it, and the item's id. Nothing
+  -- when it cannot say. Asked at the hook, while the item is still in its
+  -- bag slot.
   local function DepositOf(commodity, location, duration, quantity)
     local house, api = C_AuctionHouse, C_Item
     if type(house) ~= "table" or type(location) ~= "table" then return end
     local secret = type(issecretvalue) == "function" and issecretvalue or nil
+    local itemID
+    if type(api) == "table" and type(api.GetItemID) == "function" then
+      local got, id = pcall(api.GetItemID, location)
+      if got and type(id) == "number" and not (secret and secret(id)) then itemID = id end
+    end
     local ok, cost
     if commodity then
-      if type(house.CalculateCommodityDeposit) ~= "function" or type(api) ~= "table"
-          or type(api.GetItemID) ~= "function" then return end
-      local got, itemID = pcall(api.GetItemID, location)
-      if not (got and type(itemID) == "number") or (secret and secret(itemID)) then return end
+      if type(house.CalculateCommodityDeposit) ~= "function" or not itemID then return end
       ok, cost = pcall(house.CalculateCommodityDeposit, itemID, duration, quantity)
     else
       if type(house.CalculateItemDeposit) ~= "function" then return end
@@ -1919,41 +1923,142 @@ do
       local fine, copper = pcall(house.SupportsCopperValues)
       if fine and copper == false then cost = math.ceil(cost / 100) * 100 end
     end
-    if MM.NoteDeposit then MM.NoteDeposit(cost) end
+    return cost, itemID
   end
 
-  -- A post that asked the player first: the game raises
-  -- AUCTION_HOUSE_POST_WARNING inside PostItem / PostCommodity, before the
-  -- post-hook runs, and nothing is posted until the confirm (and never, if
-  -- the player says no). Its deposit is noted at the confirm. The warning
-  -- is known by its frame's time (GetTime holds still through a frame), so
-  -- a question the player turned down never holds back the next post.
-  local warnedAt = false
-  function MM.PostWarned()
-    warnedAt = type(GetTime) == "function" and GetTime() or false
+  -- Deposits waiting for their auction. A post's deposit is worked out at
+  -- the hook and held here; it is added to the record (MM.NoteDeposit) only
+  -- when the game says an auction was made (AUCTION_HOUSE_AUCTION_CREATED,
+  -- MM.DepositCreated), the oldest waiting one for that item first, so
+  -- several posts in a row each count once. One the game asks the player
+  -- about first (AUCTION_HOUSE_POST_WARNING) waits as a question: no
+  -- auction is credited to it until the confirm. Dropped, never counted:
+  -- a question when a newer post is made (it was answered no), a post the
+  -- game reports an error for, anything older than PENDING_AGE seconds, and
+  -- all of them when the auction house closes. At most PENDING_MAX, in
+  -- parallel arrays reused for the session: nothing is built per post.
+  local PENDING_MAX, PENDING_AGE, FAIL_WINDOW = 16, 30, 5
+  local qCost, qItem, qAt, qAsk = {}, {}, {}, {}
+  local qN = 0
+  -- A warning or error, by its frame's time (GetTime holds still through a
+  -- frame): raised inside PostItem / PostCommodity, it is claimed by that
+  -- call's hook in the same frame; one that arrives later is matched to the
+  -- post before it the next time the queue is used (Settle).
+  local warnedAt, failedAt = false, false
+
+  local function Now() return type(GetTime) == "function" and GetTime() or 0 end
+
+  local function QRemove(i)
+    for j = i, qN - 1 do
+      qCost[j], qItem[j], qAt[j], qAsk[j] = qCost[j + 1], qItem[j + 1], qAt[j + 1], qAsk[j + 1]
+    end
+    qN = qN - 1
   end
-  local function Warned()
-    local now = type(GetTime) == "function" and GetTime() or nil
-    local was = warnedAt
-    warnedAt = false
-    return was ~= false and was == now
+
+  local function QPush(cost, itemID, asking, now)
+    if qN >= PENDING_MAX then QRemove(1) end
+    qN = qN + 1
+    qCost[qN], qItem[qN], qAt[qN], qAsk[qN] = cost, itemID or false, now, asking == true
+  end
+
+  -- Signals from an earlier frame settled against the posts made before
+  -- them, and anything too old dropped.
+  local function Settle(now)
+    if warnedAt and warnedAt ~= now then
+      for i = qN, 1, -1 do
+        if qAt[i] <= warnedAt then qAsk[i] = true break end
+      end
+      warnedAt = false
+    end
+    if failedAt and failedAt ~= now then
+      for i = qN, 1, -1 do
+        if qAt[i] <= failedAt then
+          if not qAsk[i] and failedAt - qAt[i] <= FAIL_WINDOW then QRemove(i) end
+          break
+        end
+      end
+      failedAt = false
+    end
+    local i = 1
+    while i <= qN do
+      if now - qAt[i] > PENDING_AGE or now < qAt[i] then QRemove(i) else i = i + 1 end
+    end
+  end
+
+  function MM.PostWarned() warnedAt = Now() end
+  function MM.PostFailed() failedAt = Now() end
+  function MM.PostsClosed() qN, warnedAt, failedAt = 0, false, false end
+
+  -- PostItem / PostCommodity's hook: the post's deposit, waiting.
+  local function PostMade(commodity, location, duration, quantity)
+    local now = Now()
+    local asked, failed = warnedAt == now, failedAt == now
+    if asked then warnedAt = false end
+    if failed then failedAt = false end
+    Settle(now)
+    -- A question still standing was answered no: this is a new post.
+    local i = 1
+    while i <= qN do
+      if qAsk[i] then QRemove(i) else i = i + 1 end
+    end
+    if failed then return end
+    local cost, itemID = DepositOf(commodity, location, duration, quantity)
+    if cost then QPush(cost, itemID, asked, now) end
+  end
+
+  -- ConfirmPostItem / ConfirmPostCommodity's hook: the question answered
+  -- yes, its deposit waiting for the auction from now. Where no question
+  -- was seen, a post of the same item and deposit already waiting is this
+  -- one, so it is not held twice.
+  local function PostConfirmed(commodity, location, duration, quantity)
+    local now = Now()
+    Settle(now)
+    local cost, itemID = DepositOf(commodity, location, duration, quantity)
+    for i = qN, 1, -1 do
+      if qAsk[i] then
+        qAsk[i], qAt[i] = false, now
+        if cost then qCost[i], qItem[i] = cost, itemID or false end
+        return
+      end
+    end
+    if not cost then return end
+    for i = qN, 1, -1 do
+      if qCost[i] == cost and qItem[i] == (itemID or false) then
+        qAt[i] = now
+        return
+      end
+    end
+    QPush(cost, itemID, false, now)
+  end
+
+  -- An auction the game made: the oldest deposit waiting for its item (or
+  -- the oldest waiting, where the game cannot say which item), counted.
+  function MM.DepositCreated(itemID)
+    Settle(Now())
+    itemID = tonumber(itemID)
+    for i = 1, qN do
+      if not qAsk[i] and (not itemID or qItem[i] == itemID) then
+        local cost = qCost[i]
+        QRemove(i)
+        if MM.NoteDeposit then MM.NoteDeposit(cost) end
+        return
+      end
+    end
   end
 
   local function ItemPosted(location, duration, quantity)
     pcall(Posted, location)
-    if Warned() then return end
-    pcall(DepositOf, false, location, duration, quantity)
+    pcall(PostMade, false, location, duration, quantity)
   end
   local function CommodityPosted(location, duration, quantity)
     pcall(Posted, location)
-    if Warned() then return end
-    pcall(DepositOf, true, location, duration, quantity)
+    pcall(PostMade, true, location, duration, quantity)
   end
   local function ItemConfirmed(location, duration, quantity)
-    pcall(DepositOf, false, location, duration, quantity)
+    pcall(PostConfirmed, false, location, duration, quantity)
   end
   local function CommodityConfirmed(location, duration, quantity)
-    pcall(DepositOf, true, location, duration, quantity)
+    pcall(PostConfirmed, true, location, duration, quantity)
   end
 
   -- Hooked once, the first time the auction house opens: nothing is hooked
@@ -1973,7 +2078,8 @@ do
   end
 
   -- An auction the client says was made (AUCTION_HOUSE_AUCTION_CREATED):
-  -- its item, where the client can say what it was.
+  -- its item, where the client can say what it was. Returns the item's id
+  -- (for its deposit, MM.DepositCreated), or nil.
   function MM.PostCreated(auctionID)
     local house, api = C_AuctionHouse, C_Item
     if type(house) ~= "table" or type(house.GetAuctionInfoByID) ~= "function" then return end
@@ -1987,6 +2093,7 @@ do
       if got then name = n end
     end
     Note(itemID, name)
+    return itemID
   end
 
   -- An item name -> the id of the item this character (else any on the
@@ -2035,7 +2142,8 @@ end
 --
 -- What posting auctions cost, for the options' 7-day card (MM.Week): no mail
 -- ever says it. Each post's deposit (2e's hooks: the game's own answer for
--- that item, duration and quantity) is added to the hour it was paid in,
+-- that item, duration and quantity, held until the game says the auction
+-- was made) is added to the hour it was paid in,
 -- per character, at the root `auctionDeposits`, realm -> name -> a list of
 -- hour, copper pairs, oldest first (hour = time / 3600, whole), and `s`, when
 -- the record began: the week reaches back past it, and the card says its
@@ -5520,8 +5628,10 @@ if bus then
   -- here on (2e).
   registered.auctionShow = bus.Register("AUCTION_HOUSE_SHOW", function() pcall(MM.WatchPosts) end)
   registered.auctionPosted = bus.Register("AUCTION_HOUSE_AUCTION_CREATED", function(_, auctionID)
-    -- Its item, for a sold auction's row (2e), whether or not Mail Memory is on.
-    pcall(MM.PostCreated, auctionID)
+    -- Its item, for a sold auction's row (2e), whether or not Mail Memory is
+    -- on, and the deposit that was waiting for it (2f).
+    local ok, itemID = pcall(MM.PostCreated, auctionID)
+    pcall(MM.DepositCreated, ok and itemID or nil)
     if not MemoryEnabled() then return end
     local watch = WatchFor(ns.Helpers.PlayerRealm(), ns.Helpers.PlayerName(), true)
     if not watch then return end
@@ -5531,8 +5641,12 @@ if bus then
     CharactersChanged()
   end)
   -- A post the game asks the player about first: its deposit waits for the
-  -- confirm (2e, 2f).
+  -- confirm (2e, 2f). A post the game reports an error for, and every one
+  -- still waiting when the auction house closes: their deposits are dropped.
   registered.postWarning = bus.Register("AUCTION_HOUSE_POST_WARNING", function() MM.PostWarned() end)
+  registered.postError = bus.Register("AUCTION_HOUSE_POST_ERROR", function() MM.PostFailed() end)
+  registered.auctionError = bus.Register("AUCTION_HOUSE_SHOW_ERROR", function() MM.PostFailed() end)
+  registered.auctionClosed = bus.Register("AUCTION_HOUSE_CLOSED", function() MM.PostsClosed() end)
   registered.auctionExpired = bus.Register("AUCTION_HOUSE_AUCTIONS_EXPIRED", function()
     MM._NoteSignal()
   end)
