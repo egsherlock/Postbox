@@ -5670,12 +5670,21 @@ function CT.SetSort(panel, list, order)
 end
 
 -- A sort row clicked (the menu, or a test): its field the right way round,
--- or, where that field is already the list's own order, turned round. The
--- Done tab, while it follows the inbox's order, takes the field the right
--- way round as its own.
+-- or, where that field is the one shown as chosen, turned round -- but for
+-- the Done tab's stand-in (RV.SortStandIn), which a click chooses. Either
+-- way the order is the list's own from then on.
 function CT.PickSort(panel, list, field)
   local now = RV.SortOf(list)
-  CT.SetSort(panel, list, (RV.SORT_FIELD[now] == field and RV.SortOwn(list)) and RV.SORT_FLIP[now] or field)
+  CT.SetSort(panel, list, (RV.SORT_FIELD[now] == field and not RV.SortStandIn(list)) and RV.SORT_FLIP[now] or field)
+end
+
+-- Whether the order a list shows is only a stand-in: the Done tab following
+-- the inbox's Most or Least gold, which it shows newest first (RV.SortOf).
+function RV.SortStandIn(list)
+  local def = RV.SF[list]
+  if not (def and def.follows) or RV.SortOwn(list) then return false end
+  local UI = ns.MailboxUI
+  return type(UI.GetListSort) == "function" and RV.SORT_FIELD[UI.GetListSort(def.follows)] == "gold"
 end
 
 -- A filter turned on or off for a list (the menu's tick, a chip's x, or a
