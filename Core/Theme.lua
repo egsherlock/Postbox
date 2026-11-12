@@ -5275,6 +5275,7 @@ do
     ["groups-10"] = { file = MEDIA .. "glyph-groups-10.tga", w = 12, h = 10, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.6875, px = true },
     ["recipients-10"] = { file = MEDIA .. "glyph-recipients-10.tga", w = 10, h = 10, l = 0.0625, r = 0.6875, t = 0.0625, b = 0.6875, px = true },
     search = { file = MEDIA .. "glyph-search-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
+    ["search-14"] = { file = MEDIA .. "glyph-search-14.tga", w = 14, h = 14, l = 0.0625, r = 0.9375, t = 0.0625, b = 0.9375, px = true },
     link = { file = MEDIA .. "glyph-link.tga", w = 15, h = 8, l = 0.03125, r = 0.5, t = 0.0625, b = 0.5625, px = true },
     ["link-broken"] = { file = MEDIA .. "glyph-link-broken.tga", w = 15, h = 8, l = 0.03125, r = 0.5, t = 0.0625, b = 0.5625, px = true },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },

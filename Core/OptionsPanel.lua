@@ -4235,10 +4235,18 @@ do
   -- pointer need not move. Checked by every enter and leave below, so
   -- nothing runs while no list is open but a comparison.
   --
+  -- A pick in the search box holds the panel the same way on the row it
+  -- marks (Find.Pick), until its mark has gone or the pointer moves: the
+  -- first enter or leave after a move lets go (Find.Let), and is answered.
+  --
   -- Answers whether the hold took the pointer's arrival on `frame`.
   function Rows.Held(frame, enter)
     local held = S.held
     if not held or frame == held or frame.__pbCell == held then return false end
+    if held == S.findHeld and Find.Moved() then
+      Find.Let()
+      return false
+    end
     S.heldAt, S.heldEnter = frame, enter
     return true
   end
@@ -4248,6 +4256,10 @@ do
   -- hold took it.
   function Rows.HeldLeave(frame)
     if not S.held then return false end
+    if S.held == S.findHeld and Find.Moved() then
+      Find.Let()
+      return false
+    end
     if S.heldAt == frame then S.heldAt, S.heldEnter = nil, nil end
     return true
   end
@@ -8195,7 +8207,7 @@ function Pages.window(col)
   for _, choice in ipairs(Skin.GetBorderChoices()) do
     borderItems[#borderItems + 1] = { id = choice.key, name = choice.name }
   end
-  Rows.Dropdown(col, {
+  local borderRow = Rows.Dropdown(col, {
     title = L["OPT_BORDER_TITLE"],
     text = (borderAuto and HostSkinName()) and L("OPT_BORDER_DESC_MATCH", HostSkinName()) or L["OPT_BORDER_DESC"],
     items = borderItems,
@@ -8227,6 +8239,8 @@ function Pages.window(col)
       end,
     }),
   }
+  -- While it stands aside, the search leads to the border it follows.
+  S.borderSize.row.findVia = borderRow
   S.refresh[#S.refresh + 1] = State.BorderSize
 end
 
@@ -9729,20 +9743,28 @@ end
 -- the query and runs one find per index line, and writes its lines from
 -- strings the index already holds.
 --
--- A pick: an options row brings its tab forward and marks the row for a
--- moment in the accent, the inspector saying
--- what it does as it does under the pointer; an Arrange setting starts
--- arranging through the options' own Arrange button (Panel.Arrange: the
--- panel steps aside, one side panel at a time) on its card.
+-- A pick: an options row brings its tab forward and marks the row in the
+-- accent, whole for a moment and then eased out (one AnimationGroup on the
+-- mark, Find.Mark), the row washed and the inspector saying what it does as
+-- under the pointer. Until the mark has gone, or the pointer moves, the
+-- pick holds the panel as an open dropdown does (Rows.Held): the list
+-- hiding from under a still pointer must not hand the wash and the
+-- inspector to whatever row it uncovers. Choosing again restarts the mark
+-- on the new row; a tab chosen by hand, or the panel closing, stops it.
+-- An Arrange setting starts arranging through the options' own Arrange
+-- button (Panel.Arrange: the panel steps aside, one side panel at a time)
+-- on its card.
 --
 -- The list hangs under the box on the house's popup card, the dropdowns'
 -- own (Theme.ApplyCard, opaque at any opacity): a line a match, its name
--- and, muted at the right, its tab and group. The keyboard is the box's
--- own while it has it: typing, Enter picks the first line (which wears the
--- chosen-row mark, so it is plain which one Enter takes), Escape empties
--- the box and then lets the keyboard go. A press outside the box and the
--- list closes them, heard as GLOBAL_MOUSE_DOWN only while the box has the
--- keyboard.
+-- and, muted at the right, its tab and group. One line at a time wears the
+-- chosen-row mark, the one Enter takes: the first as the words change,
+-- then the one the pointer is on or the arrow keys move to (Down and Up,
+-- round from the last line to the first and back). The keyboard is the
+-- box's own while it has it: typing, the arrows, Enter, and Escape, which
+-- empties the box and then lets the keyboard go. A press outside the box
+-- and the list closes them, heard as GLOBAL_MOUSE_DOWN only while the box
+-- has the keyboard.
 -------------------------------------------------------------
 do
   local FIND = {
@@ -9750,17 +9772,24 @@ do
     -- panel's left edge, 150 wide and 18 tall on its hairline.
     X = 10,
     W = 150, H = 18, MIN_W = 80,
-    -- The magnifier's height; the words stand where they stood beside a
-    -- WORDS_FOR-unit magnifier, GLYPH_GAP after it (18 in at one pixel a
-    -- unit: the 16-unit box's last two units and the gap, its ink ending a
-    -- unit short of its box); the clear button's room at the right end, and
-    -- the hairline's chrome at rest and lit.
-    GLYPH = 16, WORDS_FOR = 12, GLYPH_GAP = 6, CLEAR_W = 14, LINE_A = 0.22, LINE_HOT = 0.45,
+    -- The magnifier (its Theme.GLYPHS master and height: the 14-unit one, a
+    -- tad smaller than the 16 it was, from the line's start); the words
+    -- stand where they stood beside a WORDS_FOR-unit magnifier, GLYPH_GAP
+    -- after it (18 in at one pixel a unit, as they stood beside the 16);
+    -- the clear button's room at the right end, and the hairline's chrome
+    -- at rest and lit.
+    GLYPH_NAME = "search-14", GLYPH = 14, WORDS_FOR = 12, GLYPH_GAP = 6, CLEAR_W = 14,
+    LINE_A = 0.22, LINE_HOT = 0.45,
     -- The chosen line's wash (the accent) and bar, as the mail rows' are.
     CHOSEN_A = 0.14, BAR_W = 2,
     GAP = 8,        -- the least room between the box and the title's first letter
     LIST_W = 340, LINE_H = 22, LINES = 10, PAD = 4, TEXT_X = 8, WHERE_GAP = 12,
-    MARK_FOR = 1.6, -- seconds a picked row stays marked
+    -- A picked row's mark: whole for MARK_HOLD seconds, long enough to find
+    -- by eye, then eased out over MARK_FADE (Find.Mark).
+    MARK_HOLD = 1.2, MARK_FADE = 0.6,
+    -- How far the pointer moves, in screen pixels, before the row under it
+    -- answers again while a pick holds the panel (Find.Moved).
+    STILL = 2,
   }
   Find.FIND = FIND
   local DOT = " \194\183 "
@@ -9949,7 +9978,10 @@ do
       for i = range and range[1] or 1, range and range[2] or 0 do
         local cell = S.cells[i]
         local kind = cell.kind
-        if kind ~= "note" and Offered(cell, page) then
+        -- A row standing aside for now (Border size, while the border has
+        -- no size) is listed where it names the row that brings it back
+        -- (`findVia`), and a pick leads there (Find.Pick).
+        if kind ~= "note" and (Offered(cell, page) or (cell.findVia and Offered(cell.findVia, page))) then
           local name = NameOf(cell)
           local lines = cell.findLines
           if not lines or cell.findName ~= name then lines = RowLines(cell, key, L[TABS[t].caption], name) end
@@ -9988,13 +10020,10 @@ do
     return true
   end
 
+  -- The pointer on a line chooses it, as the arrow keys do: one chosen line
+  -- at a time, and it stays chosen when the pointer leaves.
   local function LineEnter(self)
-    -- The chosen line keeps its own mark alone.
-    if not self.Chosen:IsShown() then self.Wash:Show() end
-  end
-
-  local function LineLeave(self)
-    self.Wash:Hide()
+    Find.Select(self.slot)
   end
 
   local function LineClick(self)
@@ -10006,8 +10035,6 @@ do
     local list = S.findList
     if list then return list end
     local T = ns.Theme
-    local colors = ns.Core.UI.Theme and ns.Core.UI.Theme.MenuColors or nil
-    local hover = colors and colors.hover or { 0.90, 0.78, 0.30, 0.18 }
     list = CreateFrame("Frame", nil, S.frame, "BackdropTemplate")
     list:SetFrameStrata("FULLSCREEN_DIALOG")
     list:SetFrameLevel(S.frame:GetFrameLevel() + 60)
@@ -10026,11 +10053,8 @@ do
       line:SetHeight(FIND.LINE_H)
       line:SetPoint("TOPLEFT", list, "TOPLEFT", FIND.PAD, -(FIND.PAD + (i - 1) * FIND.LINE_H))
       line:SetPoint("RIGHT", list, "RIGHT", -FIND.PAD, 0)
-      local wash = line:CreateTexture(nil, "BACKGROUND")
-      wash:SetAllPoints()
-      wash:SetColorTexture(hover[1], hover[2], hover[3], hover[4])
-      wash:Hide()
-      -- The chosen-row mark, worn by the line Enter takes (Find.Paint): a
+      line.slot = i
+      -- The chosen-row mark, worn by the line Enter takes (Find.Chosen): a
       -- wash, an accent bar at its left and its words in the accent.
       local chosen = line:CreateTexture(nil, "BACKGROUND", nil, 1)
       chosen:SetAllPoints()
@@ -10049,9 +10073,8 @@ do
       name:SetPoint("LEFT", line, "LEFT", FIND.TEXT_X, 0)
       name:SetJustifyH("LEFT")
       name:SetWordWrap(false)
-      line.Wash, line.Name, line.Where = wash, name, where
+      line.Name, line.Where = name, where
       line:SetScript("OnEnter", LineEnter)
-      line:SetScript("OnLeave", LineLeave)
       line:SetScript("OnClick", LineClick)
       line:Hide()
       list.lines[i] = line
@@ -10101,22 +10124,48 @@ do
       end
     end
     for i = n + 1, #hits do hits[i] = nil end
+    -- New words: the first line is the chosen one again.
+    S.findSel = 1
     Find.Paint(n, total)
+  end
+
+  -- A line wears the chosen-row mark (the accent's wash, bar and words, as
+  -- a chosen mail row does), or not.
+  function Find.Chosen(line, chosen)
+    local T = ns.Theme
+    T.SetColor(line.Name, chosen and "accent" or "textPrimary")
+    line.Chosen:SetShown(chosen)
+    line.Bar:SetShown(chosen)
+    if chosen then
+      local ar, ag, ab = T.GetAccent()
+      local mr, mg, mb = ar, ag, ab
+      if T.GetAccentTone then mr, mg, mb = T.GetAccentTone("mark") end
+      line.Chosen:SetColorTexture(ar, ag, ab, FIND.CHOSEN_A)
+      line.Bar:SetColorTexture(mr, mg, mb, 0.9)
+    end
+  end
+
+  -- Line `i` chosen, the line chosen before let go; only those two are
+  -- painted. A line not showing a match is never chosen.
+  function Find.Select(i)
+    local list = S.findList
+    local was = S.findSel or 1
+    if not (list and list.lines[i] and list.lines[i].e) or i == was then return end
+    S.findSel = i
+    local old = list.lines[was]
+    if old and old.e then Find.Chosen(old, false) end
+    Find.Chosen(list.lines[i], true)
   end
 
   -- `n` lines from `hits`, and a quiet line under them for matches past the
   -- last line; with no match, the lists' one wording, "Nothing matches.",
-  -- centred where the lines would stand. The first line is the one Enter
-  -- takes, and wears the chosen-row mark (the accent's wash, bar and words,
-  -- as a chosen mail row does); the line under the pointer, a lighter wash
-  -- alone.
+  -- centred where the lines would stand. The chosen line (S.findSel) is
+  -- the one Enter takes, and wears the chosen-row mark (Find.Chosen).
   function Find.Paint(n, total)
     local list = Find.List()
     local T = ns.Theme
     local inner = FIND.LIST_W - 2 * FIND.PAD - 2 * FIND.TEXT_X
-    local ar, ag, ab = T.GetAccent()
-    local mr, mg, mb = ar, ag, ab
-    if T.GetAccentTone then mr, mg, mb = T.GetAccentTone("mark") end
+    if (S.findSel or 1) > n then S.findSel = 1 end
     for i = 1, FIND.LINES do
       local line = list.lines[i]
       local e = hits[i]
@@ -10126,16 +10175,8 @@ do
         local whereW = math.min(TextW(line.Where), math.floor(inner / 2))
         T.FitText(line.Where, whereW, e.where)
         T.FitText(line.Name, inner - whereW - FIND.WHERE_GAP, e.name)
-        local chosen = i == 1
-        T.SetColor(line.Name, chosen and "accent" or "textPrimary")
         T.SetColor(line.Where, "textSecondary")
-        line.Chosen:SetShown(chosen)
-        line.Bar:SetShown(chosen)
-        if chosen then
-          line.Chosen:SetColorTexture(ar, ag, ab, FIND.CHOSEN_A)
-          line.Bar:SetColorTexture(mr, mg, mb, 0.9)
-        end
-        line.Wash:SetShown(not chosen and line:IsMouseOver())
+        Find.Chosen(line, i == S.findSel)
         line:Show()
       else
         line.e = nil
@@ -10175,16 +10216,30 @@ do
     return nil
   end
 
-  -- The mark a pick leaves: four accent edges round the row, for a moment,
-  -- on the row itself, so it goes where the row goes (another tab, the
-  -- panel hiding).
-  local function Mark(target)
+  -- The mark a pick leaves: four accent edges round the row, on the row
+  -- itself, so it goes where the row goes (another tab, the panel hiding).
+  -- Whole for MARK_HOLD, then eased out over MARK_FADE by the one
+  -- AnimationGroup the mark carries, made with it the first time and played
+  -- again from the start for each pick: finite, so nothing runs once it
+  -- has played, and nothing is made after the first.
+  function Find.Mark(target)
     local mark = S.findMark
     if not mark then
       mark = CreateFrame("Frame", nil, target)
       mark.Edges = Rows.Edges(mark, 7)
+      local fade = mark:CreateAnimationGroup()
+      fade:SetToFinalAlpha(true)
+      local out = fade:CreateAnimation("Alpha")
+      out:SetFromAlpha(1)
+      out:SetToAlpha(0)
+      out:SetStartDelay(FIND.MARK_HOLD)
+      out:SetDuration(FIND.MARK_FADE)
+      out:SetSmoothing("IN_OUT")
+      fade:SetScript("OnFinished", Find.Faded)
+      mark.Fade = fade
       S.findMark = mark
     end
+    if mark.Fade:IsPlaying() then mark.Fade:Stop() end
     if mark:GetParent() ~= target then mark:SetParent(target) end
     mark:SetFrameLevel((target:GetFrameLevel() or 1) + 12)
     mark:ClearAllPoints()
@@ -10193,25 +10248,42 @@ do
     local r, g, b
     if T.GetAccentTone then r, g, b = T.GetAccentTone("mark") else r, g, b = T.GetAccent() end
     for i = 1, 4 do mark.Edges[i]:SetVertexColor(r, g, b, 1) end
+    mark:SetAlpha(1)
     mark:Show()
+    mark.Fade:Play()
   end
 
-  -- The moment over: the mark goes, and the row's wash and the inspector's
-  -- words follow the pointer again. A later pick moves the moment on.
-  function Find.Unmark()
-    local until_ = S.findMarkUntil
-    if not until_ or GetTime() < until_ - 0.05 then return end
-    S.findMarkUntil = nil
+  -- The pick lets go of the panel: the row under the pointer answers again
+  -- (Rows.Release runs the enter it kept, or the picked row's leave).
+  function Find.Let()
+    local held = S.findHeld
+    if not held then return end
+    S.findHeld = nil
+    if S.held == held then Rows.Release(held) end
+  end
+
+  -- Whether the pointer has moved since the pick (Rows.Held asks, on an
+  -- enter or a leave while the pick holds the panel).
+  function Find.Moved()
+    local x, y = GetCursorPosition()
+    return math.abs((x or 0) - (S.findX or 0)) + math.abs((y or 0) - (S.findY or 0)) > FIND.STILL
+  end
+
+  -- The mark has eased out: it goes, and so does the hold.
+  function Find.Faded()
     if S.findMark then S.findMark:Hide() end
-    local cell = S.findMarked
-    S.findMarked = nil
-    if S.held then return end
-    if cell and S.washed == cell and not cell:IsMouseOver() then
-      if cell.Wash then cell.Wash:Hide() end
-      S.washed = nil
+    Find.Let()
+  end
+
+  -- A tab chosen by hand, a new pick, or the panel hiding: the mark stops
+  -- where it is and goes, and the pick lets go of the panel.
+  function Find.Stop()
+    local mark = S.findMark
+    if mark then
+      if mark.Fade:IsPlaying() then mark.Fade:Stop() end
+      mark:Hide()
     end
-    local body = S.body
-    if not (body and body:IsMouseOver()) then Insp.Show(nil) end
+    Find.Let()
   end
 
   function Find.Pick(e)
@@ -10233,17 +10305,23 @@ do
     if e.head then
       target = TestHead()
       entry = target and target.lead and target.lead.control.__pbEntry
+    elseif target and target.findVia and not target:IsShown() then
+      -- A row standing aside: the row that brings it back.
+      target = target.findVia
     end
     if not target then return end
-    Mark(target)
-    if target == e.cell then
+    Find.Mark(target)
+    if not e.head then
       Rows.Hover(target)
     elseif entry then
       Insp.Show(entry)
     end
-    S.findMarked = e.cell
-    S.findMarkUntil = GetTime() + FIND.MARK_FOR
-    C_Timer.After(FIND.MARK_FOR, Find.Unmark)
+    -- Held on the row until the mark has gone or the pointer moves: the
+    -- list hiding from under a still pointer uncovers rows, and their
+    -- enters wait (Rows.Held).
+    S.held, S.heldAt, S.heldEnter = target, nil, nil
+    S.findHeld = target
+    S.findX, S.findY = GetCursorPosition()
   end
 
   -- A press outside the box and its list, while the box has the keyboard.
@@ -10308,13 +10386,32 @@ do
     end
   end
 
+  -- Enter takes the chosen line (the first, until the pointer or the arrows
+  -- chose another).
   local function Enter(box)
-    local first = S.findList and S.findList:IsShown() and hits[1] or nil
-    if first then Find.Pick(first) else box:ClearFocus() end
+    local list = S.findList
+    local e = list and list:IsShown() and hits[S.findSel or 1] or nil
+    if e then Find.Pick(e) else box:ClearFocus() end
   end
 
-  -- The box, minimal: a magnifier (Theme.GLYPHS "search", where the build
-  -- has one), the muted words and a hairline under them, and the house's
+  -- Down and Up choose the next line and the one before, round from the
+  -- last to the first and back; the list shows every line it can choose,
+  -- so nothing scrolls. Left and Right stay the box's own.
+  local function Arrow(box, key)
+    local list = S.findList
+    if not (list and list:IsShown()) then return end
+    local n = #hits
+    if n == 0 then return end
+    local at = S.findSel or 1
+    if key == "DOWN" then
+      Find.Select(at % n + 1)
+    elseif key == "UP" then
+      Find.Select((at - 2) % n + 1)
+    end
+  end
+
+  -- The box, minimal: a magnifier (Theme.GLYPHS FIND.GLYPH_NAME, where the
+  -- build has one), the muted words and a hairline under them, and the house's
   -- clear button at the right end while there is text -- no solid box, so
   -- it reads as part of the title bar in every look. Postbox's own: no
   -- skin's tag is on it, and the edit box keeps the house's named font
@@ -10336,7 +10433,7 @@ do
     line:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", 0, 0)
     wrap.Line = line
     -- The words start after the magnifier, or at the line's start.
-    local glyph = type(T.Glyph) == "function" and T.Glyph(wrap, "search", FIND.GLYPH, "ARTWORK") or nil
+    local glyph = type(T.Glyph) == "function" and T.Glyph(wrap, FIND.GLYPH_NAME, FIND.GLYPH, "ARTWORK") or nil
     local x = 0
     if glyph then
       glyph:SetPoint("LEFT", wrap, "LEFT", 0, 0)
@@ -10366,6 +10463,10 @@ do
     box:SetScript("OnTextChanged", Typed)
     box:SetScript("OnEscapePressed", Escape)
     box:SetScript("OnEnterPressed", Enter)
+    -- The arrows are the box's (never passed on to the game's movement),
+    -- Down and Up choosing a line.
+    box:SetAltArrowKeyMode(false)
+    box:SetScript("OnArrowPressed", Arrow)
     box:SetScript("OnEditFocusGained", Gained)
     box:SetScript("OnEditFocusLost", Lost)
     box:SetScript("OnEnter", PaintLine)
@@ -10437,13 +10538,12 @@ do
     Find.Fit()
   end
 
-  -- The panel hid: the keyboard let go, the list closed, a mark gone.
+  -- The panel hid: the keyboard let go, the list closed, a mark stopped.
   function Find.Close()
     local box = S.findBox
     if box and box:HasFocus() then box:ClearFocus() end
     Find.Hide()
-    S.findMarkUntil, S.findMarked = nil, nil
-    if S.findMark then S.findMark:Hide() end
+    Find.Stop()
   end
 end
 
@@ -10902,6 +11002,9 @@ function Panel.SelectTab(key)
   if not S.frame then return end
   -- A row left washed on the page going away would still be washed when
   -- that page came back.
+  -- A search pick's mark stops, here as when a tab is chosen by hand (a
+  -- new pick marks its row after this).
+  Find.Stop()
   local washed = S.washed
   if washed and washed.Wash then washed.Wash:Hide() end
   S.washed = nil
