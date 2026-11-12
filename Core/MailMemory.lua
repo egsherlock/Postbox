@@ -894,6 +894,8 @@ do
         w.bought = w.bought + (tonumber(e.p) or 0)
         if e.k == "sold" then
           w.sales = w.sales + m
+          -- An invoice read has `dp` or `ct`, `ct = 0` where it held
+          -- neither; a sale with neither was never read.
           local dp, ct = tonumber(e.dp), tonumber(e.ct)
           if dp or ct then
             w.depBack, w.cut = w.depBack + (dp or 0), w.cut + (ct or 0)
@@ -1757,10 +1759,12 @@ function MM.HistoryTook(ctx, what, value, count)
     entry.m = (entry.m or 0) + (tonumber(value) or 0)
     -- A sale's invoice, where it was read: the deposit that came back in
     -- this gold and the cut taken before it, each only when not zero
-    -- (MM.Week).
+    -- (MM.Week). An invoice read that holds neither keeps `ct = 0`, so the
+    -- week can tell it from one never read.
     if entry.k == "sold" and ctx.invoiced and entry.dp == nil and entry.ct == nil then
       if (ctx.deposit or 0) > 0 then entry.dp = ctx.deposit end
       if (ctx.cut or 0) > 0 then entry.ct = ctx.cut end
+      if entry.dp == nil and entry.ct == nil then entry.ct = 0 end
     end
     -- A sold auction's gold: the item that sold, kept with the entry where
     -- it can be told now (CollectTab, CT.SoldIcon), so its row needs no
