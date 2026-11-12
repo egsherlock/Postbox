@@ -4024,13 +4024,16 @@ end
 -- Whose box: one control for both windows, the Mail tab's top row and this
 -- one's. The plate that names the box on screen -- the Mail tab's Inbox, or
 -- another character's name and count in its class colour; here, always the
--- name -- carries the crest of that box at its left end, inside it, as an
--- icon sits in any button: the caption's own padding before it and
--- PICK_GAP after it. One plate, one state: its fill, ring, hover and
--- underline run its whole width, under the crest too. Only a click and the
--- tooltip tell its two parts apart: the crest's end (the picker, MM.
--- NewPickCell) opens the character list, the rest is the plate's own.
-MM.PICK_GAP = 5
+-- name -- wears the crest of that box as its left end, a portrait cap: the
+-- crest square, edge to edge inside the plate's ring, as tall as the ring
+-- leaves room for, and the caption centred in the rest. One button, one
+-- state, one click: the picker (MM.NewPickCell) lies over the whole plate,
+-- lights it whole under the pointer, and is the plate's click. A click on
+-- the plate while it is the lit one -- the list it names is the one on
+-- screen -- opens the character list; while it is not, it is the plate's
+-- own click (the way back to that Inbox), and the next opens the list, as
+-- a click on the lit History clock is its way back. Right-click, while
+-- another character's box is on screen, goes back to this character's own.
 MM.PLATE_MAX = 160
 -- The letters of a name the plate keeps however narrow it has to go.
 -- Three: with the class colour and the crest beside them they tell a
@@ -4039,7 +4042,8 @@ MM.PLATE_MAX = 160
 MM.PLATE_LETTERS = 3
 
 -- The crest's quiet cue that it opens something: a step dimmer at rest,
--- whole in colour and alpha under the pointer and while its list is open.
+-- whole under the pointer and while its list is open. Solid either way: a
+-- cap that faded would let the window's ground through it.
 function MM.PaintPickIcon(zone)
   local icon = zone and zone.Icon
   if not icon then return end
@@ -4047,13 +4051,36 @@ function MM.PaintPickIcon(zone)
   local lit = (zone.__pbOver or (list ~= nil and list:IsShown())) and true or false
   if lit == zone.__pbLit then return end
   zone.__pbLit = lit
-  local v = lit and 1 or 0.8
+  local v = lit and 1 or 0.85
   icon:SetVertexColor(v, v, v)
-  icon:SetAlpha(lit and 1 or 0.85)
+  icon:SetAlpha(1)
 end
 
--- The pointer on the crest's end is on its plate: the plate lit whole, its
--- wash and caption as under the pointer anywhere on it.
+-- texture, atlas -> the crest as the cap wears it: square, its own frame's
+-- edge cropped away so the class's picture runs to the cap's edges, as an
+-- item's icon is cropped on a row. A SetTexCoord after SetAtlas would show
+-- the whole sheet the crest lives on, so the crop is taken from the atlas's
+-- own coordinates; where the client cannot say them, the atlas whole. Only
+-- on a change.
+MM.CREST_CROP = 0.08
+function MM.SetCrest(tex, atlas)
+  if not (tex and atlas) or tex.__pbAtlas == atlas then return end
+  tex.__pbAtlas = atlas
+  local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)
+  local file = info and (info.file or info.filename)
+  local l, r, t, b = info and info.leftTexCoord, info and info.rightTexCoord, info and info.topTexCoord,
+    info and info.bottomTexCoord
+  if file and l and r and t and b and not (info.tilesHorizontally or info.tilesVertically) then
+    local dx, dy = (r - l) * MM.CREST_CROP, (b - t) * MM.CREST_CROP
+    tex:SetTexture(file)
+    tex:SetTexCoord(l + dx, r - dx, t + dy, b - dy)
+  else
+    tex:SetAtlas(atlas, false)
+  end
+end
+
+-- The pointer anywhere on the plate is on the button: the plate lit whole,
+-- its wash and caption as under the pointer.
 local function PickOver(zone, over)
   zone.__pbOver = over
   local host = zone.host
@@ -4066,17 +4093,21 @@ end
 local function PickEnter(self) PickOver(self, true) end
 local function PickLeave(self) PickOver(self, false) end
 
--- parent, height -> the picker: the crest's end of the plate it is given
--- (MM.HostPick), over it, with no art of its own but the crest. Clicks and
--- tooltip are the caller's (HookScript for the tooltip: the enter and leave
--- here light the plate).
+-- parent, height -> the picker: laid over the whole of the plate it is
+-- given (MM.HostPick), with no art of its own but the crest, the plate's
+-- portrait cap. Clicks and tooltip are the caller's (HookScript for the
+-- tooltip: the enter and leave here light the plate).
 function MM.NewPickCell(parent, height)
   local zone = CreateFrame("Button", nil, parent)
   zone:SetHeight(height)
+  -- The cap: square, as tall as the plate's ring leaves room for, a unit in
+  -- from its top, bottom and left edges, so the ring runs round it.
+  local cap = height - 2
   zone.Icon = zone:CreateTexture(nil, "OVERLAY")
-  zone.Icon:SetSize(height - 8, height - 8)
-  -- The room the crest takes in a plate's width: itself and the gap.
-  zone.lead = height - 8 + MM.PICK_GAP
+  zone.Icon:SetSize(cap, cap)
+  if zone.Icon.SetSnapToPixelGrid then zone.Icon:SetSnapToPixelGrid(true) end
+  -- The room the cap takes in a plate's width.
+  zone.lead = cap
   zone:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   zone:SetScript("OnEnter", PickEnter)
   zone:SetScript("OnLeave", PickLeave)
@@ -4084,9 +4115,9 @@ function MM.NewPickCell(parent, height)
   return zone
 end
 
--- The caption where its plate holds the crest, or not: half the crest's
--- room right of the middle, so crest and caption stand centred together;
--- a name plate from its fit (MM.FitPlate), measured with the room.
+-- The caption where its plate holds the cap, or not: half the cap's room
+-- right of the middle, so the caption stands centred in the rest of the
+-- plate; a name plate from its fit (MM.FitPlate), measured with the room.
 local function PlaceCaption(plate)
   if plate.pad then
     plate._whole = nil
@@ -4097,12 +4128,11 @@ local function PlaceCaption(plate)
   plate.Text:SetPoint("CENTER", plate, "CENTER", (plate.lead or 0) / 2, 0)
 end
 
--- The picker into `plate`'s left end (nil: into none, while it is hidden):
--- the plate's caption makes room (`plate.lead`, which its owner adds to its
--- width), the crest stands PICK_GAP before the caption, and the picker's
--- click and tooltip cover the plate from its left edge to just short of
--- the caption -- the crest and the padding before it, never narrower than
--- the plate is tall. Only on a change, but for its level over the plate.
+-- The picker onto `plate` (nil: onto none, while it is hidden): the
+-- plate's caption makes room for the cap (`plate.lead`, which its owner
+-- adds to its width), the cap fills the plate's left end inside its ring,
+-- and the picker's click and tooltip cover the whole plate. Only on a
+-- change, but for its level over the plate.
 function MM.HostPick(zone, plate)
   local old = zone.host
   if old ~= plate then
@@ -4118,12 +4148,10 @@ function MM.HostPick(zone, plate)
     if plate then
       plate.lead = zone.lead
       PlaceCaption(plate)
-      local h = zone:GetHeight() or 0
       zone.Icon:ClearAllPoints()
-      zone.Icon:SetPoint("RIGHT", plate.Text, "LEFT", -MM.PICK_GAP, 0)
+      zone.Icon:SetPoint("TOPLEFT", plate, "TOPLEFT", 1, -1)
       zone:ClearAllPoints()
-      zone:SetPoint("TOPLEFT", plate, "TOPLEFT", 0, 0)
-      zone:SetPoint("BOTTOMRIGHT", plate.Text, "LEFT", -2, -h / 2)
+      zone:SetAllPoints(plate)
       if zone.__pbOver then
         ns.Theme.SetPlateHover(plate, true)
         plate:LockHighlight()
@@ -4172,12 +4200,43 @@ function MM.MeasureWith(owner, sample, text)
   return (type(width) == "number" and width > 0) and width or 0
 end
 
+-- measure, owner, sample -> the digit, "0" to "9", that runs widest in
+-- `sample`'s face: a count is measured with it in every place, so a plate
+-- is as wide for 21 as for 29 and moves only when the count gains or loses
+-- a digit. Found once per face (its file, size and outline, and the host
+-- face's generation, Theme.FontGeneration) and kept on the owner; a face
+-- still loading measures nothing and is asked again next time.
+-- `measure(owner, sample, text, exact)` is the caller's measure.
+MM.DIGITS = { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" }
+function MM.WidestDigit(measure, owner, sample)
+  if not (owner and sample) then return "0" end
+  local path, size, flags = sample:GetFont()
+  local T = ns.Theme
+  local gen = T and type(T.FontGeneration) == "function" and T.FontGeneration() or 0
+  if owner._pbDigit and owner._pbDigitPath == path and owner._pbDigitSize == size
+      and owner._pbDigitFlags == flags and owner._pbDigitGen == gen then
+    return owner._pbDigit
+  end
+  local digits, best, bestW = MM.DIGITS, "0", 0
+  for i = 1, #digits do
+    local w = measure(owner, sample, digits[i], true) or 0
+    if w > bestW then best, bestW = digits[i], w end
+  end
+  if bestW > 0 then
+    owner._pbDigit, owner._pbDigitPath, owner._pbDigitSize, owner._pbDigitFlags, owner._pbDigitGen =
+      best, path, size, flags, gen
+  end
+  return best
+end
+
 -- The plate's caption, measured when a box is put on screen: whole, as it
 -- is shown while it fits; and the name and the count apart, with the
 -- narrowest the name may go, for when it does not. `count` is the caption's
 -- " (N)", or ""; `lit`, whether the plate is drawn selected, which its ink
 -- is made for; `measure(owner, fs, text)` the caller's measure. `minW` is
--- the narrowest the plate itself may be.
+-- the narrowest the plate itself may be. The count is measured with each
+-- digit as the widest (MM.WidestDigit), so the plate keeps its width while
+-- the count changes and keeps its number of digits.
 function MM.MeasurePlate(plate, realm, name, count, lit, measure, owner)
   local T = ns.Theme
   local M = T.Metrics
@@ -4188,12 +4247,14 @@ function MM.MeasurePlate(plate, realm, name, count, lit, measure, owner)
   plate.fullName = MM.ClassName(realm, name, nil, "tooltip")
   plate._lit = lit
   plate.Count:SetText(count)
-  -- The crest's room, where the plate holds the picker (MM.HostPick).
+  -- The cap's room, where the plate holds the picker (MM.HostPick).
   local lead = plate.lead or 0
   plate._mLead = lead
-  plate.natW = measure(owner, fs, plate.caption) + plate.pad + lead
+  local shape = count
+  if count ~= "" then shape = (count:gsub("%d", MM.WidestDigit(measure, owner, fs))) end
+  plate.natW = measure(owner, fs, shown .. shape) + plate.pad + lead
   plate.nameW = measure(owner, fs, shown)
-  plate.countW = (count ~= "") and measure(owner, fs, count) or 0
+  plate.countW = (count ~= "") and measure(owner, fs, shape) or 0
   -- The first letters, by character: a name can be accented or Cyrillic.
   local raw = tostring(name or "")
   local cut, letters = 0, 0
@@ -4511,12 +4572,14 @@ local function BuildSearch(frame)
   frame.SearchAllButton = search.All
 end
 
--- The picker's tooltip; the way back only while there is one to take.
+-- The plate's tooltip while the picker lies over it: the whole name, realm
+-- and all (the plate may show only its start), then its clicks -- the way
+-- back only while there is one to take.
 local function PickerButtonTip(frame)
   local T = ns.Theme
   T.TipBegin(frame.Picker, "ANCHOR_TOPRIGHT")
-  T.TipTitle(L["PICKER_TITLE"])
-  T.TipLine(L["PICKER_TIP"])
+  T.TipTitle(frame.Who and frame.Who.fullName or L["PICKER_TITLE"])
+  T.TipHint(L["PICKER_SWITCH_HINT"])
   if frame.viewing then T.TipHint(L["PICKER_BACK_HINT"]) end
   GameTooltip:Show()
 end
@@ -4535,7 +4598,7 @@ local function Back(frame)
   if frame.Scroll then frame.Scroll:SetVerticalScroll(0) end
   Refresh(frame)
   -- The tooltip under the pointer spoke of the box just left: the name's
-  -- goes with the name, the picker's is said again without the way back.
+  -- goes with the name, the picker's is said again for this box.
   if GameTooltip:IsOwned(frame.Who) then GameTooltip:Hide() end
   if GameTooltip:IsOwned(frame.Picker) then
     if frame.Picker:IsShown() then PickerButtonTip(frame) else GameTooltip:Hide() end
@@ -4544,9 +4607,10 @@ end
 
 -- Whose box, at the top row's start, as the Mail tab has it: the plate
 -- naming the box on screen, its name in its class colour and its count,
--- with the picker (MM.NewPickCell) in its left end, the crest of that box.
--- The plate always names the list on screen, so it is the lit one. With no
--- other box to show the picker steps out and the plate stands as it is.
+-- the crest of that box its portrait cap, the picker (MM.NewPickCell) over
+-- the whole of it. The plate always names the list on screen, so it is the
+-- lit one. With no other box to show the picker steps out and the plate
+-- stands as it is.
 local function BuildHeader(frame)
   local bar = CreateFrame("Frame", nil, frame)
   bar:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, HEADER_Y)
@@ -4555,9 +4619,15 @@ local function BuildHeader(frame)
 
   local picker = MM.NewPickCell(bar, HEADER_H)
   local atlas = ns.Theme.FirstAtlas(CLASS_FALLBACK)
-  if atlas then picker.Icon:SetAtlas(atlas, false) end
-  -- A right-click, while another character's box is on screen, goes back to
-  -- this character's own (Back); on this character's own it does nothing.
+  if atlas then MM.SetCrest(picker.Icon, atlas) end
+  -- The plate here always names the box on screen, so a click on it opens
+  -- the character list. A right-click, while another character's box is on
+  -- screen, goes back to this character's own (Back); on this character's
+  -- own it does nothing. A left-drag moves the window, as on the plate
+  -- under it.
+  picker:RegisterForDrag("LeftButton")
+  picker:SetScript("OnDragStart", function() frame:StartMoving() end)
+  picker:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
   picker:SetScript("OnClick", function(self, button)
     if button == "RightButton" then
       Back(frame)
@@ -4715,7 +4785,7 @@ function Refresh(frame)
   -- the whole box, as Inbox counts its own (counts always show), on the
   -- plate after the picker's cell, as the Mail tab names another box.
   local crest = MM.ClassIcon(info.realm, info.name)
-  if crest then frame.Picker.Icon:SetAtlas(crest, false) end
+  if crest then MM.SetCrest(frame.Picker.Icon, crest) end
   -- The Mail tab's rule: a picker while there is another box with mail to
   -- show (the list it opens holds only those), or while one is on screen.
   local others = MM.HasOthers(characters) or v ~= nil

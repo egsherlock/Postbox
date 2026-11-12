@@ -4553,24 +4553,15 @@ local function BuildViewToggle(panel)
 
   -- Another character's box, while one is on screen: the Inbox cell names
   -- it, its name in its class colour and its count, in this character's
-  -- Inbox's place, the picker's crest in its left end (MailMemory's
+  -- Inbox's place, its crest the plate's portrait cap (MailMemory's
   -- NewNamePlate, the plate Mail Memory's window names its box with). It is
-  -- that character's Inbox: a click from its History shows its box.
+  -- that character's Inbox: a click from its History shows its box. The
+  -- picker lies over it while it is shown, and is its click and its
+  -- tooltip (the whole name, realm and all: AV.PickerTip).
   local Memory = ns.MailMemory
   local alt = Memory.NewNamePlate(container)
   alt:SetScript("OnClick", function()
     if panel.viewMode ~= VIEW_COLLECT then SetViewMode(panel, VIEW_COLLECT) end
-  end)
-  -- The whole name, realm and all: the plate may show only its start.
-  alt:HookScript("OnEnter", function(self)
-    if not (self.fullName and AV.Other(panel)) then return end
-    local T2 = Th()
-    T2.TipBegin(self, "ANCHOR_TOPRIGHT")
-    T2.TipTitle(self.fullName)
-    GameTooltip:Show()
-  end)
-  alt:HookScript("OnLeave", function(self)
-    if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
   end)
   alt:Hide()
   container.alt = alt
@@ -4678,18 +4669,35 @@ local function BuildSearchBox(panel)
   search.Join(panel.Sort)
   RV.PlaceSort(panel, true)
 
-  -- The character picker, the crest at the left end of the plate that
-  -- names the box on screen -- Inbox, or the other box's name -- one button
-  -- with it: whose mail is on screen decides everything after it. It wears
-  -- the crest of the box on screen, and lists every character with mail to
-  -- look at (MailMemory's NewPickCell, as Mail Memory's window has it). Put
-  -- into its plate by AV.Paint (MailMemory.HostPick), which the row's
-  -- layout widens by the crest's room (LayoutViewToggle).
+  -- The character picker: the plate that names the box on screen -- Inbox,
+  -- or the other box's name -- wears the crest of that box as its portrait
+  -- cap, and the picker lies over the whole plate, one button with it:
+  -- whose mail is on screen decides everything after it. It lists every
+  -- character with mail to look at (MailMemory's NewPickCell, as Mail
+  -- Memory's window has it). Put onto its plate by AV.Paint (MailMemory.
+  -- HostPick), which the row's layout widens by the cap's room
+  -- (LayoutViewToggle).
   local picker = ns.MailMemory.NewPickCell(panel.ViewToggle, M.segmentHeight)
-  -- A right-click, while another character's box is on screen, goes back to
-  -- this character's own (AV.Back); on this character's own it does nothing.
-  picker:SetScript("OnClick", function(_, button)
-    if button == "RightButton" then AV.Back(panel) else CT.OpenPicker(panel) end
+  -- One click, by the rule the History clock has: on the lit plate -- its
+  -- list is the one on screen -- a click opens the character list; on an
+  -- unlit one it is the plate's own click, back to that Inbox, and the next
+  -- opens the list. A right-click, while another character's box is on
+  -- screen, goes back to this character's own (AV.Back); on this
+  -- character's own it does nothing.
+  picker:SetScript("OnClick", function(self, button)
+    if button == "RightButton" then
+      AV.Back(panel)
+      return
+    end
+    local host = self.host
+    local own = host and not host.isSelected and host:GetScript("OnClick")
+    if own then
+      own(host, "LeftButton")
+      -- The tooltip under the pointer is said again for where it now is.
+      if GameTooltip:IsOwned(self) then AV.PickerTip(self, panel) end
+      return
+    end
+    CT.OpenPicker(panel)
   end)
   picker:HookScript("OnEnter", function(self) AV.PickerTip(self, panel) end)
   picker:HookScript("OnLeave", function() GameTooltip:Hide() end)
@@ -6193,6 +6201,50 @@ function RV.HistoryOn()
   return not (UI and type(UI.GetHistoryDays) == "function") or UI.GetHistoryDays() > 0
 end
 
+-- The segments sized as one, as Theme.SizeRow sizes a row -- each as wide
+-- as the longest caption with the buttons' padding, never under the
+-- buttons' narrowest -- except that a caption carrying a count is measured
+-- with each digit of it as the widest digit of the face (MailMemory.
+-- WidestDigit): "Inbox (21)" is as wide as "Inbox (29)", so the row stands
+-- still while a collect run counts the box down, and moves only when the
+-- count loses a digit. The shape measured, "Inbox (55)", is made only when
+-- the number of digits, the digit or the caption changes; the width is
+-- measured each time, in the face the caption wears now. A caption with no
+-- count is measured as it is. Returns the width of one and of the row.
+function RV.SizeSegs(panel, shown, opts)
+  if #shown == 0 then return 0, 0 end
+  local T = Th()
+  local M = T.Metrics
+  local longest, digit = 0, nil
+  for i = 1, #shown do
+    local seg = shown[i]
+    local n, w = tonumber(seg._count), nil
+    if n and n >= 0 then
+      digit = digit or ns.MailMemory.WidestDigit(MeasureWith, panel, seg.Text)
+      local digits, k = 1, n
+      while k >= 10 do
+        k = floor(k / 10)
+        digits = digits + 1
+      end
+      local base = seg.baseLabel or ""
+      if seg._shapeN ~= digits or seg._shapeD ~= digit or seg._shapeBase ~= base then
+        seg._shapeN, seg._shapeD, seg._shapeBase = digits, digit, base
+        seg._shape = base .. " (" .. string.rep(digit, digits) .. ")"
+      end
+      w = MeasureWith(panel, seg.Text, seg._shape, true)
+    else
+      w = T.TextWidth(seg)
+    end
+    if w > longest then longest = w end
+  end
+  local per = floor(max(longest + M.buttonPadding, opts.minWidth or M.buttonMinWidth) + 0.5)
+  for i = 1, #shown do
+    shown[i]:SetWidth(per)
+    shown[i]:SetHeight(opts.height)
+  end
+  return per, per * #shown + opts.gap * (#shown - 1)
+end
+
 local function LayoutViewToggle(panel)
   local container = panel.ViewToggle
   if not container or not container.buttons then return end
@@ -6238,8 +6290,8 @@ local function LayoutViewToggle(panel)
   -- order (the sort). Every square -- the clock, the sort -- is one plate
   -- the segments' height, and the controls of one end stand the snug step
   -- apart. Measured first, placed once the name's room is known.
-  local per, total = T.SizeRow(shown, opts)
-  -- Inbox holding the picker: wider by the crest's room, Done as it was.
+  local per, total = RV.SizeSegs(panel, shown, opts)
+  -- Inbox holding the picker: wider by the cap's room, Done as it was.
   local crest = (host ~= nil and host == shown[1]) and (host.lead or 0) or 0
   if crest > 0 then
     host:SetWidth(per + crest)
@@ -6432,8 +6484,11 @@ function CT.UpdateTabCounts(panel)
         n = server
       end
       seg:SetText(base .. " (" .. FormatCount(n) .. ")")
+      -- The number, for its width's shape (RV.SizeSegs).
+      seg._count = n
     else
       seg:SetText(base)
+      seg._count = nil
     end
   end
 
@@ -6572,7 +6627,7 @@ function AV.Paint(panel)
   if Memory then
     local crest = Memory.ClassIcon(who and who.realm or ns.Helpers.PlayerRealm(),
       who and who.name or ns.Helpers.PlayerName())
-    if crest then panel.Picker.Icon:SetAtlas(crest, false) end
+    if crest then Memory.SetCrest(panel.Picker.Icon, crest) end
   end
 
   -- The every-character toggle shows while there is another box to search,
@@ -6657,12 +6712,17 @@ function AV.Home(panel)
   return true
 end
 
--- The picker's tooltip; the way back only while there is one to take.
+-- The tooltip of the plate the picker lies over: what it names -- Inbox,
+-- or the other character's whole name, realm and all, since the plate may
+-- show only its start -- then its clicks: the list, and the way back only
+-- while there is one to take.
 function AV.PickerTip(picker, panel)
   local T = Th()
+  local host = picker.host
+  local name = host and host == (panel.ViewToggle and panel.ViewToggle.alt) and host.fullName
   T.TipBegin(picker, "ANCHOR_TOPRIGHT")
-  T.TipTitle(L()["PICKER_TITLE"])
-  T.TipLine(L()["PICKER_TIP"])
+  T.TipTitle(name or (host and host.baseLabel) or L()["VIEW_INBOX"])
+  T.TipHint(L()["PICKER_SWITCH_HINT"])
   if AV.Other(panel) then T.TipHint(L()["PICKER_BACK_HINT"]) end
   GameTooltip:Show()
 end
@@ -9533,8 +9593,8 @@ end
 -- whatever a skin or style paints the plates with (every look leaves these
 -- plates Postbox's own: neither host skin takes a segment over). The chosen
 -- half is selected as any segment is: its fill, its caption in the accent
--- and its underline; the clock keeps its selected fill and leaves the
--- underline to the half.
+-- and its underline; the clock is selected as the list on screen is, its
+-- fill and its underline, as the Inbox is while the Inbox is on screen.
 function RV.BuildSides(panel, container)
   local T = Th()
   local sides = { opts = {} }
@@ -9609,21 +9669,14 @@ function RV.LayoutSides(panel, container)
 end
 
 -- The clock joined to the halves (`on`) or standing alone: joined, its own
--- ring is put away for the row's (RV.BuildSides) and its underline is the
--- chosen half's to show, so the plate paints none (Theme's PaintPlate
--- shows the one it is given); alone, both come back. Only on a change.
+-- ring is put away for the row's (RV.BuildSides); alone, it comes back.
+-- Either way it keeps its underline, lit while History is on screen, as
+-- every segment's is while its list is: the one column between it and
+-- Received is the ring's, so the two lines stand apart. Only on a change.
 function RV.JoinClock(hist, on)
   if (hist._joined == true) == on then return end
   hist._joined = on
-  if on then
-    hist.__pbUnder = hist.__pbUnder or hist._accent
-    hist._accent = nil
-    if hist.__pbUnder then hist.__pbUnder:Hide() end
-    if hist._edge then hist._edge:Hide() end
-  else
-    hist._accent = hist.__pbUnder or hist._accent
-    if hist._edge then hist._edge:Show() end
-  end
+  if hist._edge then hist._edge:SetShown(not on) end
   Th().SetPlateSelected(hist, hist.isSelected)
 end
 

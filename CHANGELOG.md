@@ -23,10 +23,16 @@
 ### Mail tab
 
 - **The bar above the list is three controls:** one for whose mail and
-  which list (the character list opens from its first cell, and your own
-  character is always its first row, the way back to your inbox), the
-  History clock with Received and Sent, and one box for search and sort.
-  A second click on the clock returns to the Inbox.
+  which list, the History clock with Received and Sent, and one box for
+  search and sort. A second click on the clock returns to the Inbox.
+- **Mail tab: Inbox is one button with your class icon at its left end.**
+  Click Inbox while it's on screen to open the character list (your own
+  character is always its first row, the way back to your inbox), and
+  right-click while another character's mail is on screen to come back to
+  your own. Mail Memory's window names its box the same way.
+- Inbox and Done keep their width while a collect run counts them down,
+  and the History clock is underlined while History is on screen, as
+  Inbox is.
 - **Several filters at once:** each filter you tick in the sort menu shows
   as a small chip under the sort button, with an x to let it go. The
   collect buttons take only the mail you can see.

@@ -201,9 +201,9 @@ works away from a mailbox too, opening the window beside the options.
 
 A snapshot of each character's mailbox, taken at every visit (up to 100
 mails). Away from a mailbox it opens from the minimap icon, the addon
-compartment or `/postbox mail`; at a mailbox, the **Characters** picker shows
-any character's box right in the Mail tab (right-click it to come back to
-your own). **Search every character** looks through all of them at once.
+compartment or `/postbox mail`; at a mailbox, click **Inbox** again (it
+wears your class icon) to show any character's box right in the Mail tab
+(right-click it to come back to your own). **Search every character** looks through all of them at once.
 Every box says how long ago it was seen; it never pretends to be live. Hover
 a mail to see what it holds. A character you no longer play can be hidden
 (Options, General, **Hidden characters**).
