@@ -4238,6 +4238,10 @@ do
   -- A pick in the search box holds the panel the same way on the row it
   -- marks (Find.Pick), until its mark has gone or the pointer moves: the
   -- first enter or leave after a move lets go (Find.Let), and is answered.
+  -- A list opening (or a slider's thumb pressed) ends the pick's hold there
+  -- and then, without letting go (Rows.Hold): the hold is the list's from
+  -- that moment, and only the list closing ends it, whatever the pointer or
+  -- the mark does meanwhile.
   --
   -- Answers whether the hold took the pointer's arrival on `frame`.
   function Rows.Held(frame, enter)
@@ -4264,7 +4268,9 @@ do
     return true
   end
 
-  function Rows.Hold(cell)
+  -- `why`: what took the hold, for a search pick's record (Find.Let).
+  function Rows.Hold(cell, why)
+    if S.findHeld then Find.Let(why or "dropdown opened", true) end
     S.held, S.heldAt, S.heldEnter = cell, nil, nil
     Rows.Hover(cell)
   end
@@ -4720,7 +4726,7 @@ do
   end
 
   local function SliderDown(self)
-    if self:IsEnabled() then Rows.Hold(self.__pbCell) end
+    if self:IsEnabled() then Rows.Hold(self.__pbCell, "slider held") end
   end
 
   local function SliderUp(self)
@@ -10309,8 +10315,9 @@ do
   -- (Rows.Release runs the enter it kept, or the picked row's leave).
   -- `why` goes in the pick's record: "moved" (the pointer), "faded" (the
   -- mark ran out), "stopped" (a tab by hand, another pick, the panel
-  -- hiding).
-  function Find.Let(why)
+  -- hiding), "dropdown opened" / "slider held" (Rows.Hold). `keep`: the
+  -- pick's hold ends but the panel stays held, by what took it over.
+  function Find.Let(why, keep)
     local held = S.findHeld
     if not held then return end
     S.findHeld = nil
@@ -10318,7 +10325,7 @@ do
     if rec and not rec.ended then
       rec.ended, rec.endAt = why or "moved", GetTime()
     end
-    if S.held == held then Rows.Release(held) end
+    if not keep and S.held == held then Rows.Release(held) end
   end
 
   -- Whether the pick has let go of the pointer (Rows.Held asks, on an
