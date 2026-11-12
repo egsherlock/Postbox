@@ -49,8 +49,10 @@
 - **Six tabs** in a new order (General, Window, Mail tab, Send tab, Alerts,
   Minimap), with a new **Alerts** tab for expiring-mail warnings and
   new-mail sound and flash, and a **search** in the options' title bar that
-  finds any setting and takes you to it, on whichever tab it is. Down and
-  Up choose a result and Enter opens it.
+  finds any setting and takes you to it, on whichever tab it is, and
+  keeps it highlighted for a moment wherever your pointer goes. A setting
+  on an Arrange card opens arranging on that card, highlighted the same
+  way. Down and Up choose a result and Enter opens it.
 - **Text size** (Options, Window) works in every window style, and all of
   Postbox's text is a comfortable size on the default UI.
 - **Arrange:** each column's card holds its own settings (stack counts,
