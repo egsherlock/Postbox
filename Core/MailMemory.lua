@@ -4366,12 +4366,14 @@ end
 -- one, and Manage Recipients (Core/RecipientManager.lua) -- built as the
 -- Mail tab's sort-and-filter button is (CollectTab's RV.NewSortButton),
 -- from the same parts: a square segment plate wearing the sort mark
--- (Theme.GLYPHS "sort-list": three bars, longest on top) a unit right of
--- its middle; drawn in the house's selected state while the order is not
--- the window's default, the mark then in the accent's bright tone
--- (MM.PaintSortMark); a click opens the menu, a right-click puts the
--- default back. `spec`:
+-- (Theme.GLYPHS "sort-list": three bars and an arrow up) at 16 on its
+-- middle, the pair's other one ("sort-list-turned", the arrow down) while
+-- the order runs its field the other way; drawn in the house's selected
+-- state while the order is not the window's default, the mark then in the
+-- accent's bright tone (MM.PaintSortMark); a click opens the menu, a
+-- right-click puts the default back. `spec`:
 --   lit()        whether the order on screen is not the default
+--   turned()     whether it is its field turned round (nil: never)
 --   reset()      the default order back (the right-click and the menu's Reset)
 --   menu(sort)   the menu to open now (MM.SortMenu), or nil
 --   tip()        the tooltip's lines between its title and its hint
@@ -4383,11 +4385,10 @@ function MM.NewSortButton(parent, size, spec)
   local sort = T.CreatePlate(parent, "segment")
   sort:SetSize(size, size)
   sort:SetText("")
-  sort.Icon = T.Glyph and T.Glyph(sort, "sort-list", 12, "OVERLAY") or nil
+  sort.Icon = T.Glyph and T.Glyph(sort, "sort-list", 16, "OVERLAY") or nil
   if sort.Icon then
-    -- A unit right of the plate's middle, as the Mail tab's: the bars run
-    -- from the left, so centred by its box the mark looks pushed left.
-    sort.Icon:SetPoint("CENTER", sort, "CENTER", 1, 0)
+    -- Centred by its box, as the Mail tab's.
+    sort.Icon:SetPoint("CENTER", sort, "CENTER", 0, 0)
     T.SetPlateGlyph(sort, sort.Icon, MM.PaintSortMark)
   else
     sort:SetText("v")
@@ -4404,7 +4405,10 @@ function MM.NewSortButton(parent, size, spec)
     local on = spec.lit() and true or false
     local turned = sort.isSelected ~= on
     if turned then T.SetPlateSelected(sort, on) end
-    if sort.Icon and (on or turned) then MM.PaintSortMark(sort.Icon) end
+    if sort.Icon then
+      T.SetGlyphArt(sort.Icon, (spec.turned and spec.turned()) and "sort-list-turned" or "sort-list")
+      if on or turned then MM.PaintSortMark(sort.Icon) end
+    end
   end
   function sort.Told()
     sort.Paint()
@@ -4504,6 +4508,11 @@ local function BuildSearch(frame)
   local sort
   sort = MM.NewSortButton(frame, HEADER_H, {
     lit = function() return MM.SortOf("memory") ~= "mailbox" end,
+    turned = function()
+      local now = MM.SortOf("memory")
+      local field = MM.SORT_FIELD[now]
+      return field ~= nil and field ~= now
+    end,
     reset = function() SetMemorySort(frame, "mailbox") end,
     menu = function()
       if not frame._sortMenu then

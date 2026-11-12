@@ -9396,9 +9396,10 @@ function Footer.Build(frame, above)
   -- Says what the click does. The band has always opened the bug report;
   -- nothing on it ever said so.
   statusText:SetText(L["OPT_REPORT_BUG"])
-  -- Its mark before it.
+  -- Its mark before it, at 16, centred where the 12-unit mark was, so the
+  -- words keep their place (Footer.Fit's bugMark).
   local bugArt = ArtHolder(statusBand)
-  local bug = Footer.Glyph(bugArt, "bug", 12)
+  local bug = Footer.Glyph(bugArt, "bug", 16)
   if bug then
     bug:SetPoint("CENTER", statusText, "LEFT", -11, 0)
     T.SetColor(bug, "textSecondary")
@@ -9558,8 +9559,10 @@ function Footer.Build(frame, above)
     reset:SetPoint("TOPLEFT", statusBand, "TOPLEFT", 4, 0)
     reset:SetPoint("BOTTOMLEFT", statusBand, "BOTTOMLEFT", 4, 0)
     reset:SetFrameLevel(statusBand:GetFrameLevel() + 2)
-    -- Its arrow before it and a caret after: a choice opens from here.
-    local arrow = Footer.Glyph(reset, "reset", 12)
+    -- Its arrow before it (at 16, centred where the 12-unit arrow was, so
+    -- the words keep their place) and a caret after: a choice opens from
+    -- here.
+    local arrow = Footer.Glyph(reset, "reset-16", 16)
     local caret = Footer.Glyph(reset, "caret", 6)
     local resetText = ns.Theme.CreateText(reset, "bodySmall")
     resetText:SetPoint("LEFT", reset, "LEFT", arrow and 21 or 4, 0)
@@ -9747,9 +9750,12 @@ do
     -- panel's left edge, 150 wide and 18 tall on its hairline.
     X = 10,
     W = 150, H = 18, MIN_W = 80,
-    -- The magnifier's height and its gap to the words, the clear button's
-    -- room at the right end, and the hairline's chrome at rest and lit.
-    GLYPH = 12, GLYPH_GAP = 6, CLEAR_W = 14, LINE_A = 0.22, LINE_HOT = 0.45,
+    -- The magnifier's height; the words stand where they stood beside a
+    -- WORDS_FOR-unit magnifier, GLYPH_GAP after it (18 in at one pixel a
+    -- unit: the 16-unit box's last two units and the gap, its ink ending a
+    -- unit short of its box); the clear button's room at the right end, and
+    -- the hairline's chrome at rest and lit.
+    GLYPH = 16, WORDS_FOR = 12, GLYPH_GAP = 6, CLEAR_W = 14, LINE_A = 0.22, LINE_HOT = 0.45,
     -- The chosen line's wash (the accent) and bar, as the mail rows' are.
     CHOSEN_A = 0.14, BAR_W = 2,
     GAP = 8,        -- the least room between the box and the title's first letter
@@ -10334,7 +10340,7 @@ do
     local x = 0
     if glyph then
       glyph:SetPoint("LEFT", wrap, "LEFT", 0, 0)
-      x = math.ceil(glyph:GetWidth() or FIND.GLYPH) + FIND.GLYPH_GAP
+      x = math.ceil((glyph:GetWidth() or FIND.GLYPH) * FIND.WORDS_FOR / FIND.GLYPH) + FIND.GLYPH_GAP
       wrap.Glyph = glyph
     end
     local box = CreateFrame("EditBox", nil, wrap)

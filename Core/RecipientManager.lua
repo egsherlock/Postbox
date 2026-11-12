@@ -1903,6 +1903,11 @@ local function Build()
   if memory and type(memory.NewSortButton) == "function" then
     sortButton = memory.NewSortButton(band, CTRL_H, {
       lit = function() return not RM.SortIsDefault() end,
+      -- The field the other way from its own first direction.
+      turned = function()
+        local field = SORT_BY_ID[RM._sort or "name"]
+        return field ~= nil and (RM._sortDesc and true or false) ~= (field.desc and true or false)
+      end,
       reset = RM.ResetSort,
       menu = SortMenu,
       -- The field, then its direction in its own words.

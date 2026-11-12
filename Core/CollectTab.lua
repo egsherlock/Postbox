@@ -4508,9 +4508,9 @@ local function BuildViewToggle(panel)
   local hist = T.CreatePlate(container, "segment")
   hist.segId = VIEW_HISTORY
   -- The history glyph (a clock with a counter-clockwise arrow round it),
-  -- its 12-unit master at 12, six units in on the 24-unit plate, made once
+  -- its 16-unit master at 16, four units in on the 24-unit plate, made once
   -- with the plate.
-  hist.Icon = T.Glyph and T.Glyph(hist, "history", 12, "OVERLAY") or nil
+  hist.Icon = T.Glyph and T.Glyph(hist, "history-16", 16, "OVERLAY") or nil
   if hist.Icon then
     hist:SetText("")
     hist.Icon:SetPoint("CENTER")
@@ -5768,8 +5768,11 @@ function RV.SFCloseStale(panel)
 end
 
 -- The button: a square plate, the segments' height, wearing the sort mark
--- (Theme.GLYPHS "sort-list": three bars, longest on top) at 12, its master,
+-- (Theme.GLYPHS "sort-list": three bars and an arrow up) at 16, its master,
 -- the same in every language; its name is in its tooltip. While the list
+-- on screen runs in its field's other order (Oldest first, Expiring last,
+-- Least gold, Z to A) the mark is the pair's other one, "sort-list-turned",
+-- its arrow down (RV.SortMarkArt). While the list
 -- on screen is not at its defaults (RV.SFLit) it is drawn in the house's
 -- selected state, as a chosen segment is -- the plate's wash, ring and
 -- underline, and the mark in the accent's bright tone, as a selected
@@ -5782,12 +5785,10 @@ function RV.NewSortButton(panel, size)
   local sort = T.CreatePlate(panel, "segment")
   sort:SetSize(size, size)
   sort:SetText("")
-  sort.Icon = T.Glyph and T.Glyph(sort, "sort-list", 12, "OVERLAY") or nil
+  sort.Icon = T.Glyph and T.Glyph(sort, "sort-list", 16, "OVERLAY") or nil
   if sort.Icon then
-    -- A unit right of the plate's middle: the bars run from the left, and
-    -- their ink's middle is a unit and a third left of their box's, so
-    -- centred by its box the mark looks pushed left.
-    sort.Icon:SetPoint("CENTER", sort, "CENTER", 1, 0)
+    -- Centred by its box: the bars and the arrow fill it about evenly.
+    sort.Icon:SetPoint("CENTER", sort, "CENTER", 0, 0)
     T.SetPlateGlyph(sort, sort.Icon, RV.PaintSortMark)
   else
     sort:SetText("v")
@@ -5810,12 +5811,22 @@ function RV.NewSortButton(panel, size)
     local on = RV.SFLit(panel)
     local turned = sort.isSelected ~= on
     if turned then T.SetPlateSelected(sort, on) end
-    if sort.Icon and (on or turned) then RV.PaintSortMark(sort.Icon) end
+    if sort.Icon then
+      T.SetGlyphArt(sort.Icon, RV.SortMarkArt(RV.SortOf(RV.SFList(panel))))
+      if on or turned then RV.PaintSortMark(sort.Icon) end
+    end
     RV.PaintStrip(panel, RV.ShowOf(panel, RV.SFList(panel)) ~= nil)
     if panel._sfOpen then RV.SFCloseStale(panel) end
   end
   T.SetPlateSelected(sort, false)
   return sort
+end
+
+-- The sort mark for `order` (RV.SortOf): the arrow up while it is its
+-- field's own order, down while it is the field turned round.
+function RV.SortMarkArt(order)
+  local field = RV.SORT_FIELD[order]
+  return (field and field ~= order) and "sort-list-turned" or "sort-list"
 end
 
 -- The sort mark's ink: the accent's bright tone while its plate is

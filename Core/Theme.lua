@@ -5152,30 +5152,43 @@ Theme.AtlasSets = {
 --     (the bar over finished mail in the Island look, Core/DividerNotch.lua),
 --     four to a capsule, mirrored by their coordinates, each a ring as wide
 --     as the end and its fill a unit inside it.
---   sort-list  the Mail tab's sort-and-filter button (CollectTab's
---     RV.NewSortButton): three bars, longest on top, two units thick, on
---     whole pixels, 12 units square on the square plate.
+--   sort-list, sort-list-turned  the sort cell (CollectTab's
+--     RV.NewSortButton, MailMemory's MM.NewSortButton): Phosphor's sort
+--     pair, three bars and an arrow up for a list in its field's own order,
+--     the arrow down while the order runs the other way (Theme.SetGlyphArt
+--     swaps them on the one texture). 16 units square.
 --   memory, groups, recipients  the three tools (Mail Memory, Character
 --     Groups, Manage Recipients): an envelope with a clock, three busts,
---     an address book. Each drawn twice by hand on whole pixels, 12 units
---     square (the title bars, the Recipient field, the options' buttons)
---     and 30 (`large`, the options tiles); Theme.Glyph takes the large
---     master from `large.from` units up, so ask for 12 or 30 to see each
---     one pixel for pixel. Accent-tinted where Theme.TintAccentGlyph keeps
---     one in the icon tone.
+--     an address book. Memory is drawn twice by hand on whole pixels, 12
+--     units square (its title bar) and 30 (`large`, the options tile);
+--     groups and recipients are Phosphor's, 16 (the title bars, the
+--     Recipient field) and 30 (the options tiles). Theme.Glyph takes the
+--     large master from `large.from` units up, so ask for the small size
+--     or 30 to see each one pixel for pixel. Accent-tinted where
+--     Theme.TintAccentGlyph keeps one in the icon tone.
 --   groups-10, recipients-10  the busts and the address book again, the
 --     12s simplified to 10 units tall (the busts 12 wide, so the two behind
 --     keep shoulders two units wide to the glyph's edges): the options'
 --     Character Groups and Manage Recipients buttons only, beside their
 --     13-unit captions.
---   search  a magnifier, 12 units: the options' search box.
+--   search  a magnifier, 16 units: the options' search box.
 --   eye, eye-off  an almond with a ring round its pupil, 12 by 8, and the
 --     same eye with a one-unit slash from top left to bottom right and a
 --     unit of clear moat either side of it: a thing shown and a thing
 --     hidden (the arrange mode's switches and chips, its cards and pegs,
 --     Character Groups' hidden buttons).
---   people  a group of figures, 12 units: the search box's every-character
---     toggle (Theme.CreateSearchBox).
+--   people, people-on  one figure, and one with another behind it, 16
+--     units: the search box's every-character toggle (Theme.CreateSearchBox),
+--     the pair while it is on.
+--   history-16, reset-16  History's clock and the reset arrow at 16 (the
+--     Mail tab's History key, the Send tab's Sent clock; the options'
+--     Reset to defaults); history and reset stay for the places that draw
+--     them small (the arrange mode's column heads, the sort menus' Reset).
+--   bug  the options' Report a bug, 16 units.
+--   Every 16-unit master here, and groups' and recipients' 30s, is drawn
+--   from Phosphor Icons' bold set (MIT, Media/LICENSE-Phosphor.txt) and
+--   fitted to the pixel grid, but the magnifier, which is Postbox's own.
+--   Their masters and self-test: .dev/design/icons-r13/gen_icons_r13.py.
 --   link, link-broken  a chain link, two capsules, 15 by 8 units, and the
 --     same link open with two ticks at the break: the Window tab's line
 --     naming the host UI the look comes from, broken while it is overridden
@@ -5216,16 +5229,19 @@ do
     ["stretch-mid"] = { file = MEDIA .. "glyph-stretch.tga", w = 2, h = 7, l = 0.234375, r = 0.296875, t = 0.0625, b = 0.9375 },
     ["stretch-right"] = { file = MEDIA .. "glyph-stretch.tga", w = 4, h = 7, l = 0.390625, r = 0.515625, t = 0.0625, b = 0.9375 },
     sort = { file = MEDIA .. "glyph-sort.tga", w = 9, h = 6, l = 0.03125, r = 0.59375, t = 0.0625, b = 0.8125 },
-    people = { file = MEDIA .. "glyph-people.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
+    people = { file = MEDIA .. "glyph-people-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
+    ["people-on"] = { file = MEDIA .. "glyph-people-on-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     chevron = { file = MEDIA .. "glyph-chevron.tga", w = 10, h = 14, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.90625 },
     reset = { file = MEDIA .. "glyph-reset.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
+    ["reset-16"] = { file = MEDIA .. "glyph-reset-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     caret = { file = MEDIA .. "glyph-caret.tga", w = 8, h = 6, l = 0.03125, r = 0.53125, t = 0.0625, b = 0.8125 },
-    bug = { file = MEDIA .. "glyph-bug.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
+    bug = { file = MEDIA .. "glyph-bug-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     resize = { file = MEDIA .. "glyph-resize.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
     ["arrow-back"] = { file = MEDIA .. "glyph-arrow-back.tga", w = 10, h = 9, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.59375 },
     ["dot-shadow"] = { file = MEDIA .. "glyph-dot-shadow.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
     hourglass = { file = MEDIA .. "glyph-hourglass.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875 },
     history = { file = MEDIA .. "glyph-history.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
+    ["history-16"] = { file = MEDIA .. "glyph-history-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["expiry-back"] = { file = MEDIA .. "glyph-expiry-back.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875, pad = 1 },
     ["expiry-bin"] = { file = MEDIA .. "glyph-expiry-bin.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875, pad = 1 },
     ["expiry-back-clean"] = { file = MEDIA .. "glyph-expiry-back-clean.tga", w = 9, h = 9, l = 0.03125, r = 0.59375, t = 0.03125, b = 0.59375 },
@@ -5235,16 +5251,17 @@ do
     ["letter-open"] = { file = MEDIA .. "glyph-letter-open.tga", w = 10, h = 9, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.59375 },
     tray = { file = MEDIA .. "glyph-tray.tga", w = 11, h = 7, l = 0.03125, r = 0.71875, t = 0.0625, b = 0.9375 },
     cap = { file = MEDIA .. "glyph-cap.tga", w = 13, h = 13, l = 0.03125, r = 0.84375, t = 0.03125, b = 0.84375 },
-    ["sort-list"] = { file = MEDIA .. "glyph-sort-list.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
+    ["sort-list"] = { file = MEDIA .. "glyph-sort-list-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
+    ["sort-list-turned"] = { file = MEDIA .. "glyph-sort-list-turned-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     memory = { file = MEDIA .. "glyph-memory-12.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true,
       large = { from = 21, file = MEDIA .. "glyph-memory-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
-    groups = { file = MEDIA .. "glyph-groups-12.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true,
-      large = { from = 21, file = MEDIA .. "glyph-groups-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
-    recipients = { file = MEDIA .. "glyph-recipients-12.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true,
-      large = { from = 21, file = MEDIA .. "glyph-recipients-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
+    groups = { file = MEDIA .. "glyph-groups-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true,
+      large = { from = 21, file = MEDIA .. "glyph-groups-large.tga", w = 30, h = 30, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.96875, px = true } },
+    recipients = { file = MEDIA .. "glyph-recipients-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true,
+      large = { from = 21, file = MEDIA .. "glyph-recipients-large.tga", w = 30, h = 30, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.96875, px = true } },
     ["groups-10"] = { file = MEDIA .. "glyph-groups-10.tga", w = 12, h = 10, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.6875, px = true },
     ["recipients-10"] = { file = MEDIA .. "glyph-recipients-10.tga", w = 10, h = 10, l = 0.0625, r = 0.6875, t = 0.0625, b = 0.6875, px = true },
-    search = { file = MEDIA .. "glyph-search.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
+    search = { file = MEDIA .. "glyph-search-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     link = { file = MEDIA .. "glyph-link.tga", w = 15, h = 8, l = 0.03125, r = 0.5, t = 0.0625, b = 0.5625, px = true },
     ["link-broken"] = { file = MEDIA .. "glyph-link-broken.tga", w = 15, h = 8, l = 0.03125, r = 0.5, t = 0.0625, b = 0.5625, px = true },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
@@ -5423,6 +5440,26 @@ do
     return tex
   end
 
+  -- A glyph made by Theme.Glyph shows the art of `name` instead, in the
+  -- same box: the two masters must be the same size and kind (the sort
+  -- cell's pair, the every-character toggle's pair). Its size, anchor and
+  -- tint stay; only the file and its crop are set, and nothing at all
+  -- when it already shows that art. Nothing is allocated.
+  function Theme.SetGlyphArt(tex, name)
+    local g = GLYPHS[name]
+    if not (tex and g) or tex.__pbSpec == g then return end
+    tex.__pbSpec = g
+    if tex.__pbPixel then
+      -- PX.Filter sets the art with the filter it is drawn with now.
+      local filter = tex.__pbFilter or "LINEAR"
+      tex.__pbFilter = nil
+      PX.Filter(tex, filter)
+    else
+      tex:SetTexture(g.file)
+      tex:SetTexCoord(g.l, g.r, g.t, g.b)
+    end
+  end
+
   -- A glyph in the accent's icon tone (Theme.GetAccentTone "icon"), kept
   -- in it: tinted now, and again by every
   -- Theme.RepaintAccentIcons -- an accent moved, the host's looks, the
@@ -5452,11 +5489,11 @@ do
   end
 
   -- A window's glyph on its title bar (Mail Memory, Character Groups,
-  -- Manage Recipients: `memory`, `groups`, `recipients`), its 12-unit
+  -- Manage Recipients: `memory`, `groups`, `recipients`), its small
   -- master left of the title, the two laid out as the house lays a title
   -- out: centred where the look centred the title, as one group, the title
-  -- moved right by half the glyph and its gap and the glyph standing that
-  -- gap before the title's first letter. It wears the title's own ink,
+  -- moved right by half a 12-unit glyph and its gap and the glyph standing
+  -- that gap before the title's first letter. It wears the title's own ink,
   -- whatever the look gave it (white, the Light ink, the game's gold),
   -- taken again whenever the title is given a colour; chrome, never the
   -- accent. On a child frame of the window over its bar, so no skin's pass
@@ -5471,9 +5508,11 @@ do
   -- must not be cut short; where it cannot, the glyph hides and the title
   -- stands alone where the look put it. Nothing is made after the first
   -- call, and nothing runs but on those changes.
-  -- The glyph 12 units square and 6 before the first letter: the title
-  -- moves right by half of 18, 9 units, so the pair stays centred on
-  -- whole units.
+  -- The glyph at its own master's size (memory 12 units square, groups and
+  -- recipients 16) and 6 before the first letter. The title moves right by
+  -- half of a 12-unit glyph and its gap, 9 units, whichever glyph it wears,
+  -- so the words stand where they always stood: the pair is centred for a
+  -- 12, and a 16 reaches its 4 units further out, not into the gap.
   local TITLE = { GAP = 6, CLEAR = 8, SIZE = 12, pts = {} }
 
   -- The title's anchors, as the look set them, moved right by `shift`
@@ -5523,7 +5562,7 @@ do
     local title = frame and frame.TitleText
     if not (holder and title) then return false end
     local gap, gw = TITLE.GAP, holder:GetWidth()
-    local shift = floor((gw + gap) / 2 + 0.5)
+    local shift = floor((TITLE.SIZE + gap) / 2 + 0.5)
     local was = frame.__pbTitleShift or 0
     local w = Theme.TextWidth(title)
     local box = title:GetWidth() or 0
@@ -5543,8 +5582,10 @@ do
         fits = first - gap - gw >= lo + TITLE.CLEAR and first + w <= hi - TITLE.CLEAR
         shift = 0
       else
-        local half = (w + gap + gw) / 2
-        fits = centre - half >= lo + TITLE.CLEAR and centre + half <= hi - TITLE.CLEAR
+        -- The words from centre + shift - w / 2, the glyph and its gap
+        -- before them.
+        local from = centre + shift - w / 2
+        fits = from - gap - gw >= lo + TITLE.CLEAR and from + w <= hi - TITLE.CLEAR
       end
     end
     if not fits then
@@ -5593,15 +5634,15 @@ do
 
   function TITLE.Relay(self) Theme.LayoutTitleGlyph(self) end
 
-  -- `frame`'s title bar takes the glyph `name` (a Theme.GLYPHS key with a
-  -- 12-unit master). Once per window, after its look and the bar's other
-  -- controls are in place. -> the holder, or nil.
+  -- `frame`'s title bar takes the glyph `name` (a Theme.GLYPHS key), at
+  -- its own master's size. Once per window, after its look and the bar's
+  -- other controls are in place. -> the holder, or nil.
   function Theme.TitleGlyph(frame, name)
     local title = frame and frame.TitleText
     if not (title and GLYPHS[name]) or frame.__pbTitleGlyph then return frame and frame.__pbTitleGlyph end
     local holder = CreateFrame("Frame", nil, frame)
     holder:SetFrameLevel(frame:GetFrameLevel() + 20)
-    local glyph = Theme.Glyph(holder, name, TITLE.SIZE, "OVERLAY")
+    local glyph = Theme.Glyph(holder, name, GLYPHS[name].h, "OVERLAY")
     if not glyph then return nil end
     glyph:SetPoint("CENTER")
     holder:SetSize(glyph:GetSize())
@@ -6005,16 +6046,16 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
     if opts.onTextChanged then opts.onTextChanged(text) end
   end)
 
-  -- Every character's box, or the one on screen: a group of figures, in the
-  -- accent while it is on -- where the picker beside the box wears one
-  -- character's crest. The figures are the people glyph's 12-unit master
-  -- at 12, centred on the button (a unit in); the button is the hit area.
-  -- White art, so the tint below is the whole colour, with nothing to
-  -- desaturate.
+  -- Every character's box, or the one on screen: one figure at rest, and
+  -- one with another behind it in the accent while it is on -- where the
+  -- picker beside the box wears one character's crest. The figures are the
+  -- people pair's 16-unit masters at 16, centred on the 14-unit button (a
+  -- unit past it each way); the button is the hit area. White art, so the
+  -- tint below is the whole colour, with nothing to desaturate.
   local all = CreateFrame("Button", nil, wrap)
   all:SetSize(14, 14)
   all:SetPoint("RIGHT", wrap, "RIGHT", -4, 0)
-  all.icon = Theme.Glyph(all, "people", 12, "ARTWORK") or all:CreateTexture(nil, "ARTWORK")
+  all.icon = Theme.Glyph(all, "people", 16, "ARTWORK") or all:CreateTexture(nil, "ARTWORK")
   all.icon:SetPoint("CENTER")
   local function Tip(self)
     if not opts.toggleTip then return end
@@ -6039,6 +6080,7 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
   -- accent (white on a light field) or the mark tone (a dark accent on a
   -- dark one) does not.
   function search.PaintToggle(on)
+    Theme.SetGlyphArt(all.icon, on and "people-on" or "people")
     if on and Theme.GetAccentTone then
       all.icon:SetVertexColor(Theme.GetAccentTone("text"))
       all.icon:SetAlpha(1)

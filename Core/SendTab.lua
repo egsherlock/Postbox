@@ -1607,7 +1607,7 @@ do
     clock:SetSize(size, size)
     clock:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", M.inset, M.inset)
     clock:SetText("")
-    local glyph = Theme.Glyph and Theme.Glyph(clock, "history", 12, "OVERLAY") or nil
+    local glyph = Theme.Glyph and Theme.Glyph(clock, "history-16", 16, "OVERLAY") or nil
     if glyph then
       glyph:SetPoint("CENTER", clock, "CENTER", 0, 0)
       Theme.SetPlateGlyph(clock, glyph, function(icon)
@@ -5957,9 +5957,9 @@ local function BuildRecipientField(panel)
   hoverWash:SetPoint("BOTTOMRIGHT", manage, "BOTTOMRIGHT", 0, 0)
   Theme.FillChrome(hoverWash, 0)
 
-  -- Manage Recipients' own glyph, its 12-unit master at 12, in the
+  -- Manage Recipients' own glyph, its 16-unit master at 16, in the
   -- accent's icon tone and kept in it (Theme.TintAccentGlyph).
-  local art = Theme.Glyph and Theme.Glyph(manage, "recipients", 12, "ARTWORK") or nil
+  local art = Theme.Glyph and Theme.Glyph(manage, "recipients", 16, "ARTWORK") or nil
   if art then
     Theme.TintAccentGlyph(art)
   else
