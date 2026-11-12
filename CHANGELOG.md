@@ -9,7 +9,7 @@
 - **Sent mail:** History, the clock on the Mail tab, now has **Received**
   and **Sent**. Sent lists what you mailed, to whom, with its gold and any
   C.O.D. On the Send tab, the clock beside Send opens it.
-- **Sort and filter:** on the Mail tab, the three bars in the search box
+- **Sort and filter:** on the Mail tab, the sort button in the search box
   order your mail by newest, expiring, most gold or sender (click a sort
   again to turn it round) and can show only unread mail, mail with gold or
   mail with items. History has it too, and Mail Memory and Manage
@@ -49,7 +49,8 @@
 - **Six tabs** in a new order (General, Window, Mail tab, Send tab, Alerts,
   Minimap), with a new **Alerts** tab for expiring-mail warnings and
   new-mail sound and flash, and a **search** in the options' title bar that
-  finds any setting.
+  finds any setting and takes you to it, on whichever tab it is. Down and
+  Up choose a result and Enter opens it.
 - **Text size** (Options, Window) works in every window style, and all of
   Postbox's text is a comfortable size on the default UI.
 - **Arrange:** each column's card holds its own settings (stack counts,
