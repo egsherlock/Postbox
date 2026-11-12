@@ -10,8 +10,8 @@
   and **Sent**. Sent lists what you mailed, to whom, with its gold and any
   C.O.D. On the Send tab, the clock beside Send opens it.
 - **Sort and filter:** on the Mail tab, the sort button in the search box
-  order your mail by newest, expiring, most gold or sender (click a sort
-  again to turn it round) and can show only unread mail, mail with gold or
+  order your mail by date, time left, gold or sender (click a sort
+  again to turn it round; its arrow shows which way) and can show only unread mail, mail with gold or
   mail with items. History has it too, and Mail Memory and Manage
   Recipients have the same button to sort by.
 - **Search finds mail by its items:** on the Mail tab, in History and in

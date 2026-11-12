@@ -5344,6 +5344,12 @@ RV.SORT_FLIP = { mailbox = "oldest", oldest = "mailbox", expiry = "expirylast", 
 RV.SF_SORT_KEYS = { mailbox = "SORT_NEWEST_TITLE", expiry = "SORT_EXPIRY_TITLE", gold = "SF_SORT_GOLD",
   sender = "SF_SORT_SENDER", oldest = "SF_SORT_OLDEST", expirylast = "SF_SORT_EXPIRY_LAST",
   goldleast = "SF_SORT_GOLD_LEAST", senderza = "SF_SORT_SENDER_ZA" }
+-- The sort menu's rows are named for what they sort by, in the columns'
+-- own words, and keep that name whichever way the field runs: the row's
+-- arrow says the way (the tooltip and the chip, which have no arrow, say
+-- the order in words, RV.SF_SORT_KEYS).
+RV.SF_FIELD_KEYS = { mailbox = "ARRANGE_AGE_DATE", expiry = "OPT_ROW_EXPIRY", gold = "OPT_ROW_GOLD",
+  sender = "COL_SENDER" }
 RV.SF_SHOW_KEYS = { all = "SF_SHOW_ALL", unread = "SF_SHOW_UNREAD", gold = "SF_SHOW_GOLD", items = "SF_SHOW_ITEMS",
   sold = "SF_SHOW_SOLD", bought = "SF_SHOW_BOUGHT", expired = "SF_SHOW_EXPIRED", players = "SF_SHOW_PLAYERS",
   cod = "SF_SHOW_COD" }
@@ -5701,8 +5707,8 @@ function RV.SFMenu(panel, list)
   local items = { { heading = true, name = L0["SF_SORT_HEAD"] } }
   for i = 1, #def.sorts do
     local field = def.sorts[i]
-    items[#items + 1] = { id = "sort:" .. field, name = L0[RV.SF_SORT_KEYS[field]],
-      flip = L0[RV.SF_SORT_KEYS[RV.SORT_FLIP[field]]] }
+    local words = L0[RV.SF_FIELD_KEYS[field]]
+    items[#items + 1] = { id = "sort:" .. field, name = words, flip = words }
   end
   if def.shows then
     items[#items + 1] = { heading = true, name = L0["SF_SHOW_HEAD"] }

@@ -222,19 +222,14 @@ local SORT_BY_ID = {}
 for _, sort in ipairs(SORTS) do SORT_BY_ID[sort.id] = sort end
 
 -- The two directions of each field in its own words, ascending then
--- descending: "A to Z" says what "up" cannot. The sort menu offers them, the
--- field's own first (see the sort button in Build), and the tooltip says the
--- one in force.
+-- descending: "A to Z" says what "up" cannot. The sort button's tooltip
+-- says the one in force; the sort menu's rows are the fields' names alone,
+-- the row's arrow saying the way.
 local SORT_DIRECTION_KEY = {
   name     = { "RM_SORT_DIR_NAME_ASC",     "RM_SORT_DIR_NAME_DESC" },
   category = { "RM_SORT_DIR_CATEGORY_ASC", "RM_SORT_DIR_CATEGORY_DESC" },
   level    = { "RM_SORT_DIR_LEVEL_ASC",    "RM_SORT_DIR_LEVEL_DESC" },
   lastSeen = { "RM_SORT_DIR_LASTSEEN_ASC", "RM_SORT_DIR_LASTSEEN_DESC" },
-}
--- The sort menu's rows say each field's order alone, so a direction that
--- does not name its field ("A to Z") is named with it there.
-local SORT_MENU_KEY = {
-  name = { "RM_SORT_NAME_AZ", "RM_SORT_NAME_ZA" },
 }
 
 -------------------------------------------------------------
@@ -1877,9 +1872,7 @@ local function Build()
     if sortMenu then return sortMenu end
     local items = { { heading = true, name = L["SF_SORT_HEAD"] } }
     for _, sort in ipairs(SORTS) do
-      local pair = SORT_MENU_KEY[sort.id] or SORT_DIRECTION_KEY[sort.id]
-      items[#items + 1] = { id = "sort:" .. sort.id, name = L[pair[sort.desc and 2 or 1]],
-        flip = L[pair[sort.desc and 1 or 2]] }
+      items[#items + 1] = { id = "sort:" .. sort.id, name = L[sort.nameKey], flip = L[sort.nameKey] }
     end
     items[#items + 1] = { id = "reset", name = L["SF_RESET"], rule = true, action = true, glyph = "reset" }
     sortMenu = memory.SortMenu(sortButton, items, function(id)

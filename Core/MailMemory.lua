@@ -4522,8 +4522,10 @@ local function BuildSearch(frame)
         local picks = MM.MEMORY_SORT_PICKS
         frame._sortMenu = MM.SortMenu(sort, {
           { heading = true, name = L["SF_SORT_HEAD"] },
-          { id = "sort:mailbox", name = L["SORT_NEWEST_TITLE"], flip = L["SF_SORT_OLDEST"] },
-          { id = "sort:expiry", name = L["SORT_EXPIRY_TITLE"], flip = L["SF_SORT_EXPIRY_LAST"] },
+          -- Named for what they sort by, as the Mail tab's rows are; the
+          -- row's arrow says the way.
+          { id = "sort:mailbox", name = L["ARRANGE_AGE_DATE"], flip = L["ARRANGE_AGE_DATE"] },
+          { id = "sort:expiry", name = L["OPT_ROW_EXPIRY"], flip = L["OPT_ROW_EXPIRY"] },
           { id = "reset", name = L["SF_RESET"], rule = true, action = true, glyph = "reset" },
         }, function(id)
           return picks[id] ~= nil and MM.SORT_FIELD[MM.SortOf("memory")] == picks[id]
