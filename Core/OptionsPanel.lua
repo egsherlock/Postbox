@@ -10897,10 +10897,13 @@ do
   end
 
   -- The rows were read again (a reset, a setting changed elsewhere): the
-  -- index is made again when next used, and the box placed again.
+  -- index is made again when next used, and the box placed again; a list
+  -- showing is found again from the new index (or closes with the box).
   function Find.Refresh()
     S.findIndex = nil
     Find.Fit()
+    local list, box = S.findList, S.findBox
+    if list and list:IsShown() and box then Find.Typed(box:GetText() or "") end
   end
 
   -- The panel hid: the keyboard let go, the list closed, a mark stopped.
