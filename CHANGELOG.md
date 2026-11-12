@@ -64,7 +64,8 @@
   order you chose; off, every list is back to newest first at your next
   visit. Filters are always let go when the mailbox closes.
 - **Test mail** has its own switch over the options' Preview, and reads
-  **Testing** while it is on.
+  **Testing** while it is on, with a ring and tint of your accent so it is
+  easy to spot.
 - New installs start with three category buttons under the mail list: All
   bought, All sold and All expired. Yours stay as they are.
 - Mail counts always show on Inbox, the collect buttons and each
@@ -89,6 +90,9 @@
   Fira Sans Condensed, Noto Sans, Overpass and Roboto Condensed, each in
   Regular and Bold, with the letters of every language the game's Latin
   and Russian clients use, so Russian players can pick them too.
+- **The Font list shows each font in itself** (Options, Window): every
+  name is drawn in its own font, and so is your choice when the list is
+  closed.
 
 ### WoW Forever
 
