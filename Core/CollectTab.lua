@@ -9577,10 +9577,10 @@ end
 RV.SEARCH_FLOOR = 96
 
 -- The room the every-character toggle takes in the search box
--- (Theme.CreateSearchBox, Place: the clear button 20 in from the end with
+-- (Theme.CreateSearchBox, Place: the clear button 22 in from the end with
 -- it and 4 without). History's placeholder is fitted as if it were there on
 -- both halves (RV.FitPlaceholder).
-RV.TOGGLE_ROOM = 16
+RV.TOGGLE_ROOM = 18
 
 -- Whether Sent is the half on screen (Preview mail is History's samples,
 -- which are Received's).

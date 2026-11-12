@@ -3144,7 +3144,8 @@ end
 -- The accent-tinted icons outside the plates and the text: the minimap mail
 -- icon (outside every window, so repainted whether or not the mailbox has been
 -- opened), the options cog, the Mail tab's view toggle and Mail Memory's
--- and Manage Recipients' rings (their RepaintLook); and the arrange
+-- and Manage Recipients' rings (their RepaintLook), the Send tab's
+-- Manage Recipients key's divider; and the arrange
 -- mode's own parts while it is open (Arrange.RepaintLook).
 function Theme.RepaintAccentIcons()
   if ns.MinimapButton and type(ns.MinimapButton.RefreshLook) == "function" then
@@ -3165,6 +3166,9 @@ function Theme.RepaintAccentIcons()
   if collect and ns.CollectTab and type(ns.CollectTab.RepaintViewToggle) == "function" then
     ns.CollectTab.RepaintViewToggle(collect)
   end
+  -- The Send tab's Manage Recipients key: its divider on the To field.
+  local send = frame.Tabs and frame.Tabs.send
+  if send and send.ManageRecipients then Theme.PaintJoin(send.ManageRecipients) end
 end
 
 -- Window tabs, view segments and category tiles sample the accent at paint
@@ -5154,9 +5158,13 @@ Theme.AtlasSets = {
 --     as the end and its fill a unit inside it.
 --   sort-list, sort-list-turned  the sort cell (CollectTab's
 --     RV.NewSortButton, MailMemory's MM.NewSortButton): Phosphor's sort
---     pair, three bars and an arrow up for a list in its field's own order,
---     the arrow down while the order runs the other way (Theme.SetGlyphArt
---     swaps them on the one texture). 16 units square.
+--     mark, three bars and an arrow up for a list in its field's own order,
+--     turned while the order runs the other way (Theme.SetGlyphArt swaps
+--     them on the one texture). The turned one is the same master with only
+--     its arrow turned: the long bar's pixels as they are, the arrow's
+--     pixels mirrored top to bottom in its own rows (its head at the foot),
+--     the two short bars on their rows with their lengths swapped, so the
+--     shorter is always the one beside the head. 16 units square.
 --   memory, groups, recipients  the three tools (Mail Memory, Character
 --     Groups, Manage Recipients): an envelope with a clock, three busts,
 --     an address book. Memory is drawn twice by hand on whole pixels, 12
@@ -5177,17 +5185,22 @@ Theme.AtlasSets = {
 --     unit of clear moat either side of it: a thing shown and a thing
 --     hidden (the arrange mode's switches and chips, its cards and pegs,
 --     Character Groups' hidden buttons).
---   people, people-on  one figure, and one with another behind it, 16
---     units: the search box's every-character toggle (Theme.CreateSearchBox),
---     the pair while it is on.
+--   people, people-on  one figure, 14 units, and one with another behind
+--     it, 16: the search box's every-character toggle (Theme.CreateSearchBox),
+--     the pair while it is on. The two share a centre; Theme.SetGlyphArt
+--     sizes the texture for each.
 --   history-16, reset-16  History's clock and the reset arrow at 16 (the
 --     Mail tab's History key, the Send tab's Sent clock; the options'
 --     Reset to defaults); history and reset stay for the places that draw
 --     them small (the arrange mode's column heads, the sort menus' Reset).
 --   bug  the options' Report a bug, 16 units.
---   Every 16-unit master here, and groups' and recipients' 30s, is drawn
---   from Phosphor Icons' bold set (MIT, Media/LICENSE-Phosphor.txt) and
---   fitted to the pixel grid, but the magnifier, which is Postbox's own.
+--   history-16, bug and reset-16 are GitHub's Octicons (history, bug,
+--   undo; MIT, Media/LICENSE-Octicons.txt), each scaled to the size of the
+--   Phosphor drawing it replaced on the same centre (Octicons fill their box
+--   edge to edge), so they sit with the rest. Every other 16-unit master
+--   here, the people figure's 14 and groups' and recipients' 30s are drawn
+--   from Phosphor Icons' bold set (MIT, Media/LICENSE-Phosphor.txt), but the
+--   magnifier, which is Postbox's own. All are fitted to the pixel grid.
 --   Their masters and self-test: .dev/design/icons-r13/gen_icons_r13.py.
 --   link, link-broken  a chain link, two capsules, 15 by 8 units, and the
 --     same link open with two ticks at the break: the Window tab's line
@@ -5229,7 +5242,7 @@ do
     ["stretch-mid"] = { file = MEDIA .. "glyph-stretch.tga", w = 2, h = 7, l = 0.234375, r = 0.296875, t = 0.0625, b = 0.9375 },
     ["stretch-right"] = { file = MEDIA .. "glyph-stretch.tga", w = 4, h = 7, l = 0.390625, r = 0.515625, t = 0.0625, b = 0.9375 },
     sort = { file = MEDIA .. "glyph-sort.tga", w = 9, h = 6, l = 0.03125, r = 0.59375, t = 0.0625, b = 0.8125 },
-    people = { file = MEDIA .. "glyph-people-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
+    people = { file = MEDIA .. "glyph-people-14.tga", w = 14, h = 14, l = 0.0625, r = 0.9375, t = 0.0625, b = 0.9375, px = true },
     ["people-on"] = { file = MEDIA .. "glyph-people-on-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     chevron = { file = MEDIA .. "glyph-chevron.tga", w = 10, h = 14, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.90625 },
     reset = { file = MEDIA .. "glyph-reset.tga", w = 12, h = 12, l = 0.03125, r = 0.78125, t = 0.03125, b = 0.78125 },
@@ -5440,16 +5453,25 @@ do
     return tex
   end
 
-  -- A glyph made by Theme.Glyph shows the art of `name` instead, in the
-  -- same box: the two masters must be the same size and kind (the sort
-  -- cell's pair, the every-character toggle's pair). Its size, anchor and
-  -- tint stay; only the file and its crop are set, and nothing at all
-  -- when it already shows that art. Nothing is allocated.
+  -- A glyph made by Theme.Glyph shows the art of `name` instead: the two
+  -- masters must be the same kind (the sort cell's pair, the every-character
+  -- toggle's pair). Its anchor and tint stay; the file and its crop are
+  -- set, and nothing at all when it already shows that art. A pixel glyph
+  -- (`px`) whose new master is another size is sized for it, as Theme.Glyph
+  -- sizes one, on the same anchor (the toggle's 14-unit figure and 16-unit
+  -- pair, centred, so the centre holds); any other keeps its size. Nothing
+  -- is allocated.
   function Theme.SetGlyphArt(tex, name)
     local g = GLYPHS[name]
     if not (tex and g) or tex.__pbSpec == g then return end
+    local was = tex.__pbSpec
     tex.__pbSpec = g
-    if tex.__pbPixel then
+    if tex.__pbPixel and was and (was.w ~= g.w or was.h ~= g.h) then
+      -- PX.Fit measures again from nothing: the size, the anchor's quarter
+      -- pixel and the filter with the art.
+      tex.__pbPx, tex.__pbFilter = nil, nil
+      PX.Fit(tex)
+    elseif tex.__pbPixel then
       -- PX.Filter sets the art with the filter it is drawn with now.
       local filter = tex.__pbFilter or "LINEAR"
       tex.__pbFilter = nil
@@ -5999,6 +6021,10 @@ end
 -------------------------------------------------------------
 
 local SEARCH_TEXT_INSET = 8
+-- The every-character toggle's room from its cell's right end (the wrap's,
+-- or a joined last cell's divider): six units, so the figures have air
+-- before the edge. The clear button and the text stand 16 further in.
+local SEARCH_TOGGLE_IN = 6
 
 function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
   opts = opts or {}
@@ -6049,13 +6075,15 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
   -- Every character's box, or the one on screen: one figure at rest, and
   -- one with another behind it in the accent while it is on -- where the
   -- picker beside the box wears one character's crest. The figures are the
-  -- people pair's 16-unit masters at 16, centred on the 14-unit button (a
-  -- unit past it each way); the button is the hit area. White art, so the
-  -- tint below is the whole colour, with nothing to desaturate.
+  -- people pair's masters at their own sizes, centred on the 14-unit
+  -- button: the one figure at 14, the pair at 16 (a unit past it each way);
+  -- the button is the hit area. It stands SEARCH_TOGGLE_IN from its cell's
+  -- right end. White art, so the tint below is the whole colour, with
+  -- nothing to desaturate.
   local all = CreateFrame("Button", nil, wrap)
   all:SetSize(14, 14)
-  all:SetPoint("RIGHT", wrap, "RIGHT", -4, 0)
-  all.icon = Theme.Glyph(all, "people", 16, "ARTWORK") or all:CreateTexture(nil, "ARTWORK")
+  all:SetPoint("RIGHT", wrap, "RIGHT", -SEARCH_TOGGLE_IN, 0)
+  all.icon = Theme.Glyph(all, "people", 14, "ARTWORK") or all:CreateTexture(nil, "ARTWORK")
   all.icon:SetPoint("CENTER")
   local function Tip(self)
     if not opts.toggleTip then return end
@@ -6099,8 +6127,8 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
     all:SetShown(search.toggled)
     local endW = search.endW
     all:ClearAllPoints()
-    all:SetPoint("RIGHT", wrap, "RIGHT", -4 - endW, 0)
-    local clearAt = withToggle and 20 or 4
+    all:SetPoint("RIGHT", wrap, "RIGHT", -SEARCH_TOGGLE_IN - endW, 0)
+    local clearAt = withToggle and SEARCH_TOGGLE_IN + 16 or 4
     clear:ClearAllPoints()
     clear:SetPoint("RIGHT", wrap, "RIGHT", -clearAt - endW, 0)
     local inset = clearAt + 14
@@ -6128,19 +6156,7 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
   function search.Join(cell)
     if not cell or search.cell then return end
     search.cell = cell
-    cell:SetParent(wrap)
-    cell:ClearAllPoints()
-    cell:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, 0)
-    cell:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", 0, 0)
-    if cell._edge then cell._edge:Hide() end
-    local line = cell:CreateTexture(nil, "BACKGROUND", nil, -1)
-    line:SetWidth(1)
-    line:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, 0)
-    line:SetPoint("BOTTOMLEFT", cell, "BOTTOMLEFT", 0, 0)
-    cell.__pbDivider = line
-    -- A look's ring may be painted after the cell was built: read again
-    -- each time it comes on screen.
-    cell:HookScript("OnShow", search.PaintJoin)
+    Theme.JoinCell(wrap, cell)
     search.SetJoined(true)
   end
 
@@ -6155,17 +6171,7 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
   end
 
   function search.PaintJoin()
-    local cell = search.cell
-    local line = cell and cell.__pbDivider
-    if not line then return end
-    local r, g, b, a
-    if type(wrap.GetBackdropBorderColor) == "function" then r, g, b, a = wrap:GetBackdropBorderColor() end
-    if type(r) ~= "number" then
-      local c = (Theme.PlateTokens(cell) or C).plateEdge
-      if not c then return end
-      r, g, b, a = c[1], c[2], c[3], c[4]
-    end
-    line:SetColorTexture(r, g, b, a or 1)
+    Theme.PaintJoin(search.cell)
   end
 
   search.Wrap, search.Box, search.Placeholder = wrap, box, placeholder
@@ -6174,6 +6180,44 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
   search.PaintToggle(false)
   search.Place(false)
   return search
+end
+
+-- A plate joined to a field as its last cell (search.Join above; the Send
+-- tab's Manage Recipients key on the To field): on `wrap` at its right
+-- end, the wrap's height, its own ring put away for the wrap's, and a
+-- divider a unit wide as its first column, painted by Theme.PaintJoin --
+-- now, and each time the cell comes on screen, since a look may paint the
+-- wrap's ring after the cell was built. The caller sets the cell's width.
+function Theme.JoinCell(wrap, cell)
+  if not (wrap and cell) or cell.__pbDivider then return end
+  cell:SetParent(wrap)
+  cell:ClearAllPoints()
+  cell:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, 0)
+  cell:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", 0, 0)
+  if cell._edge then cell._edge:Hide() end
+  local line = cell:CreateTexture(nil, "BACKGROUND", nil, -1)
+  line:SetWidth(1)
+  line:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, 0)
+  line:SetPoint("BOTTOMLEFT", cell, "BOTTOMLEFT", 0, 0)
+  cell.__pbDivider, cell.__pbJoinWrap = line, wrap
+  cell:HookScript("OnShow", Theme.PaintJoin)
+end
+
+-- A joined cell's divider in its wrap's ring, read where a look gives it
+-- one (the backdrop's edge), else the cell's plate ring at rest, as a
+-- joined ring's dividers are drawn. Nothing is made.
+function Theme.PaintJoin(cell)
+  local line = cell and cell.__pbDivider
+  local wrap = cell and cell.__pbJoinWrap
+  if not (line and wrap) then return end
+  local r, g, b, a
+  if type(wrap.GetBackdropBorderColor) == "function" then r, g, b, a = wrap:GetBackdropBorderColor() end
+  if type(r) ~= "number" then
+    local c = (Theme.PlateTokens(cell) or C).plateEdge
+    if not c then return end
+    r, g, b, a = c[1], c[2], c[3], c[4]
+  end
+  line:SetColorTexture(r, g, b, a or 1)
 end
 
 -------------------------------------------------------------

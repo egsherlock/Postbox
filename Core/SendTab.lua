@@ -5935,51 +5935,48 @@ local function BuildRecipientField(panel)
   -- A doorway to the recipient manager at the field's right edge: the window
   -- where this field's suggestions are curated, one click from where
   -- recipients are typed instead of a trip through the options panel.
-  -- An inline segment at the field's right end, not a floating button: the
-  -- field's own top, bottom and right edges enclose it, and a hairline on
-  -- its left is the only chrome it brings. Untagged on purpose, like the
-  -- window cog -- the host skins' button repaint fades a tagged button's
-  -- own textures, and this one is nothing but textures.
-  local manage = CreateFrame("Button", nil, panel.ToWrap)
-  manage:SetPoint("TOPRIGHT", panel.ToWrap, "TOPRIGHT", -1, -1)
-  manage:SetPoint("BOTTOMRIGHT", panel.ToWrap, "BOTTOMRIGHT", -1, 1)
+  -- The field's last cell, as the Mail tab's sort is the search's: the
+  -- house's segment plate (Theme.CreatePlate, as the Mail tab's History
+  -- and sort keys and the Sent clock are) joined to the field's right end
+  -- in its ring (Theme.JoinCell: the wrap's height, its own ring put away,
+  -- a divider a unit wide on its left), with its own fill, hover and
+  -- pressed looks. Manage Recipients' own glyph, its 16-unit master at 16,
+  -- is its caption in the chrome's grey, as History's clock is (chrome
+  -- stays neutral; Theme.SetPlateGlyph). A plate carries no skin tag, so
+  -- no host skin's button pass (EllesmereUI's, ElvUI's, the Postbox
+  -- style's) repaints it: Postbox paints it under every look, as it does
+  -- the Sent clock, and Theme.RepaintPlates sweeps it with the window.
+  -- Raised over the To box, whose frame runs under it.
+  local manage = Theme.CreatePlate(panel.ToWrap, "segment")
+  Theme.JoinCell(panel.ToWrap, manage)
   manage:SetWidth(24)
   manage:SetFrameLevel(panel.ToWrap:GetFrameLevel() + 5)
-
-  local divider = manage:CreateTexture(nil, "BORDER")
-  divider:SetWidth(1)
-  divider:SetPoint("TOPLEFT", manage, "TOPLEFT", 0, 0)
-  divider:SetPoint("BOTTOMLEFT", manage, "BOTTOMLEFT", 0, 0)
-  Theme.FillChrome(divider, 0.12)
-
-  local hoverWash = manage:CreateTexture(nil, "BACKGROUND")
-  hoverWash:SetPoint("TOPLEFT", manage, "TOPLEFT", 1, 0)
-  hoverWash:SetPoint("BOTTOMRIGHT", manage, "BOTTOMRIGHT", 0, 0)
-  Theme.FillChrome(hoverWash, 0)
-
-  -- Manage Recipients' own glyph, its 16-unit master at 16, in the
-  -- accent's icon tone and kept in it (Theme.TintAccentGlyph).
-  local art = Theme.Glyph and Theme.Glyph(manage, "recipients", 16, "ARTWORK") or nil
+  manage:SetText("")
+  local art = Theme.Glyph and Theme.Glyph(manage, "recipients", 16, "OVERLAY") or nil
   if art then
-    Theme.TintAccentGlyph(art)
+    art:SetPoint("CENTER", manage, "CENTER", 0, 0)
+    Theme.SetPlateGlyph(manage, art, function(icon)
+      Theme.SetGrey(icon, 1)
+      icon:SetAlpha(0.85)
+    end)
   else
     art = manage:CreateTexture(nil, "ARTWORK")
     art:SetSize(12, 12)
     art:SetTexture("Interface\\AddOns\\Postbox\\Media\\minimap-bundleclean.tga")
+    art:SetPoint("CENTER", manage, "CENTER", 0, 0)
   end
-  art:SetPoint("CENTER", manage, "CENTER", 0, 0)
+  Theme.SetPlateSelected(manage, false)
 
   -- Typed text stops short of the segment instead of running under it.
   panel.ToBox:SetTextInsets(0, 26, 0, 0)
-  manage:SetScript("OnEnter", function(self)
-    Theme.FillChrome(hoverWash, 0.07)
+  -- Hooked: the plate's own hover paint stays (Theme.CreatePlate).
+  manage:HookScript("OnEnter", function(self)
     Theme.TipBegin(self, "ANCHOR_RIGHT")
     Theme.TipTitle(L["RM_OPT_BUTTON"])
     Theme.TipLine(ns.Summary(L["RM_OPT_BUTTON_DESC"]))
     GameTooltip:Show()
   end)
-  manage:SetScript("OnLeave", function()
-    Theme.FillChrome(hoverWash, 0)
+  manage:HookScript("OnLeave", function()
     GameTooltip:Hide()
   end)
   manage:SetScript("OnClick", function()
