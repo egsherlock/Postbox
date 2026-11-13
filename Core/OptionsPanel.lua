@@ -6662,7 +6662,7 @@ do
   -- The last 7 days (Dash.Week): a second, smaller card under the
   -- overview, the same lifted chrome. Its strip's heading is a sentence
   -- that says whose: "The last 7 days on Cursed" (the name as the lists
-  -- write it, in its class colour) or "The last 7 days on all 3
+  -- write it, in its class colour) or "The last 7 days on 3
   -- characters" (those counted, the hidden left out: MailMemory.Week's
   -- `chars`), cut by the house fit rule with the whole in a tooltip. At the
   -- strip's right, one quiet link says what a click will do -- Show all
