@@ -6891,7 +6891,7 @@ local function Build()
       if strip then
         button:SetPoint("LEFT", strip, "LEFT", 5, 0)
       else
-        local hostBar = (ns.Skin and (_G.EllesmereUI or _G.ElvUI)) and true or false
+        local hostBar = (not ns.Theme.NativeLook() and (_G.EllesmereUI or _G.ElvUI)) and true or false
         button:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, hostBar and -4 or -2)
       end
     end, function() return MM.ArrangeHost(frame) end)

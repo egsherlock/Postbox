@@ -2273,7 +2273,7 @@ do
         size = math.max(1, math.min(4, step or 1))
         a = (style == "light") and 0.35 or 0.75
       end
-    elseif ns.Skin then
+    elseif not ns.Theme.NativeLook() then
       size, a = 1, 0.6
     else
       size, a = 2, 0.45
@@ -4563,10 +4563,11 @@ do
   -- A row's name, live: the neutral ink wherever a style dresses the
   -- window (the Postbox style, EllesmereUI's, ElvUI's), the accent being
   -- for the headings, their rules and the values chosen in the controls;
-  -- the accent in the Blizzard look, whose names keep the game's gold.
+  -- the accent in the Blizzard look, whose names keep the game's gold
+  -- (with or without its skin: Theme.NativeLook).
   -- Grey rows take the disabled ink in every look (Rows.SetEnabled).
   function Rows.LabelInk()
-    return ns.Skin and "textPrimary" or "accent"
+    return ns.Theme.NativeLook() and "accent" or "textPrimary"
   end
 
   -- Makes `cell` (a row, or half of one, `width` wide) a place the pointer

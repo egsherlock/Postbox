@@ -3102,6 +3102,19 @@ function Theme.RepaintAccentText()
 end
 
 -- An options cog (MailboxUI's BuildOptionsButton), painted from its state.
+-- Whether the windows wear the game's own look: no style dresses them (a
+-- host UI's skin standing down, or a session before any claim), or the
+-- Blizzard style does (Core/Skin_Blizzard.lua), which is the game's art
+-- laid on purpose. Every place that once read "no skin" as "the game's
+-- look" asks this, so the Blizzard style's skin keeps their game answers
+-- (the gear on the cog and its seat, the options' gold row names, the
+-- preview's frame edge) while the Postbox style and the host skins keep
+-- theirs.
+function Theme.NativeLook()
+  local skin = ns.Skin
+  return (skin == nil or skin.IsBlizzardStyle == true) and true or false
+end
+
 -- Chrome at rest, the accent only while the options window is open: that
 -- is a state, and the accent marks states. Open wins over the pointer.
 -- Where a style dresses the windows: the house cog (`button.glyph`, the
@@ -3120,7 +3133,7 @@ end
 function Theme.PaintCog(button)
   local gear = button and button.icon
   if not gear then return end
-  local native = not ns.Skin
+  local native = Theme.NativeLook()
   local panel = ns.OptionsPanel and ns.OptionsPanel._frame
   local open = panel and panel:IsShown() and true or false
   local glow = button.GetHighlightTexture and button:GetHighlightTexture()

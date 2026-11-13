@@ -4366,8 +4366,9 @@ local function BuildOptionsButton(frame, theme, onClick)
   -- too and seats the cog on its own title strip (Core/Skin_Postbox.lua), so
   -- it belongs with the stock case -- reading ns.Skin alone dropped the
   -- cog two pixels. Host globals are settled at login, well before a
-  -- mailbox can build this frame.
-  local hostBar = (ns.Skin and (_G.EllesmereUI or _G.ElvUI)) and true or false
+  -- mailbox can build this frame. The Blizzard style's skin seats it as the
+  -- stock case too (Theme.NativeLook).
+  local hostBar = (not ns.Theme.NativeLook() and (_G.EllesmereUI or _G.ElvUI)) and true or false
   button:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, hostBar and -4 or -2)
   button:SetFrameLevel(frame:GetFrameLevel() + 20)
 
