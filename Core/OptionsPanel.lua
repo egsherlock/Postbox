@@ -9240,7 +9240,8 @@ end
 -- Memory, Character Groups and Manage Recipients (Dash). Under it, what
 -- Postbox remembers: Mail Memory, which the card and the warnings are made
 -- from, and how far back History goes; then the characters: their class
--- icons and the ones hidden from Mail Memory's lists.
+-- icons, the order the character list offers them in and, last, the ones
+-- hidden from Mail Memory's lists.
 function Pages.general(col)
   local T = ns.Theme
   Rows.Group(col, L["OPT_MEMORY_HISTORY_HEADING"])
@@ -9267,16 +9268,25 @@ function Pages.general(col)
   Pages.historyHolds(col)
 
   -- Characters: how each one's class is drawn on the Inbox button and in
-  -- the character list, and who is left out of Mail Memory's lists. Class
-  -- icons is not Mail Memory's: the button wears it with the switch off, so
-  -- the row is live either way; the heading stays live with it.
+  -- the character list, the order that list offers them in, and who is
+  -- left out of Mail Memory's lists, last. Class icons is not Mail Memory's:
+  -- the button wears it with the switch off, so the row is live either way;
+  -- the heading stays live with it.
   Rows.Group(col, L["OPT_GROUP_CHARACTERS"])
   State.ClassIconsRow(col)
 
-  -- What the switch governs here, grey with it, saying so: who is left out
-  -- of the lists. (The expiring-mail warnings it governs are Alerts'.)
+  -- What the switch governs here, grey with it, saying so: the order of the
+  -- character list and who is left out of the lists. (The expiring-mail
+  -- warnings it governs are Alerts'.)
   local block = Rows.Block(col, "OPT_MEMORY_WHY")
   S.memoryBlock = block
+
+  -- Character order: the order the character list offers the characters
+  -- in, the one being played always first (MM.CharactersInOrder). Grey
+  -- with the switch: without Mail Memory the Inbox button opens no list
+  -- (MM.HasOthers answers no) and Mail Memory's window does not open, so
+  -- there is nothing for it to order.
+  State.CharacterOrderRow(block)
 
   -- Hidden characters: the caption, the names, and Show all.
   local row = Rows.New(block, ROW_H)
@@ -9320,13 +9330,6 @@ function Pages.general(col)
   row:SetScript("OnEnter", HiddenEnter)
   row:SetScript("OnLeave", Rows.LeaveRow)
   S.hiddenRow = row
-
-  -- Character order: the order the character list offers the characters
-  -- in, the one being played always first (MM.CharactersInOrder). Grey
-  -- with the switch: without Mail Memory the Inbox button opens no list
-  -- (MM.HasOthers answers no) and Mail Memory's window does not open, so
-  -- there is nothing for it to order.
-  State.CharacterOrderRow(block)
   Rows.EndBlock(block)
 end
 
