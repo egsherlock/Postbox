@@ -92,6 +92,11 @@
   at Earned or Spent for its parts, each in coins: auction sales, the auction house's
   cut, deposits, auctions bought, C.O.D. and gold sent. Deposits and the
   cut are counted from this version on.
+- **Nothing waiting** (Options > General): when no character has mail
+  waiting, the summary shows a quiet mark and when a mailbox was last
+  seen, in place of an empty box.
+- **Mail Memory has a new icon,** an envelope with a clock, drawn in the
+  same hand as Character Groups' and Manage Recipients'.
 - **Remember sort order** (Options, Mail tab): on, each list keeps the
   order you chose; off, every list is back to newest first at your next
   visit. Filters are always let go when the mailbox closes.
