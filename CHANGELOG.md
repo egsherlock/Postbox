@@ -156,6 +156,10 @@
   cleared and what is kept, recipient pins included.
 - **Warn about** (Options > Alerts > Expiring mail): the choices are now
   Off, Deleted, and Deleted or sent back.
+- **The expiring-mail marker is set on the Minimap tab** (Options >
+  Minimap > Expiring mail marker): Minimap marker and its shape, color,
+  anchor, offsets and Larger when alone. Alerts keeps Warn about, the chat
+  line, and new mail's sound and flash.
 - **Remember sort order** (Options > Mail tab): on, each list keeps the
   order you chose; off, every list is back to newest first at your next
   visit. Filters are always let go when the mailbox closes.
@@ -255,7 +259,8 @@
   ones.
 - The window's resize grip resets on a right-click's release, and only the
   left button resizes.
-- Options: grayed rows on the Alerts tab name the right setting to turn on.
+- Options: grayed rows on the Alerts and Minimap tabs name the right setting
+  to turn on.
 
 ## 1.60.0
 

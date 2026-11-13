@@ -292,9 +292,9 @@ icon steps aside.
 - **When to show:** New mail, Mail on any character, or Always (resting in
   gray until something arrives).
 - **Expiring mail:** a small marker, red unless you pick another color, when
-  mail on any character is about to be deleted or sent back (switched on,
-  and told which, under **Options > Alerts**: **Minimap marker** and
-  **Warn about**).
+  mail on any character is about to be deleted or sent back. **Minimap
+  marker** (Options > Minimap > Expiring mail marker) switches it on, and
+  **Warn about** (Options > Alerts) says which mail counts.
   Choose its shape (dot, ring,
   square, bar, "!" or a triangle that fits its spot), put it on any corner,
   side or the center of the icon, and nudge it a pixel at a time with
@@ -305,8 +305,8 @@ icon steps aside.
   **Glow color** of gold, your accent, your class color, white or any color
   you pick. **Flash on new mail** (Options > Alerts) swells a
   halo in that color when mail arrives.
-- **The Minimap tab** reads in four groups (When it shows, Icon, Glow,
-  Place); the marker's look is set on Alerts. Its preview draws the icon large beside a copy at
+- **The Minimap tab** reads in five groups (When it shows, Icon, Glow,
+  Expiring mail marker, Place). Its preview draws the icon large beside a copy at
   its real size, wearing every setting; settings with choices show them
   side by side, and a grayed-out setting says what turns it on. What needs
   Mail Memory (Mail on any character, Count on icon, the marker) is grayed
@@ -332,8 +332,7 @@ cards across the top, with **Mail Memory**, **Character Groups** and
 **Manage Recipients** beside them; under them **Memory and history**
 (Remember mailboxes, Keep History for, History holds) and **Characters**
 (Class icons, Character order, Hidden characters). **Alerts** holds
-**Expiring mail** (Warn about, Chat line at login, Minimap marker and its
-look) and **New mail**: **Sound on new mail** (one of four soft sounds made for Postbox, the mail chime or
+**Expiring mail** (Warn about, Chat line at login) and **New mail**: **Sound on new mail** (one of four soft sounds made for Postbox, the mail chime or
 another quiet sound of the game's, or any sound your other addons share
 through LibSharedMedia, such as ElvUI's or WeakAuras', with a button to hear
 it first; it stays quiet for your own auction house purchases, which the
