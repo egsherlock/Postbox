@@ -18,7 +18,7 @@
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">In the order you see.</span></strong> Gold, items and letters come out in your list's order. Sort by date, time left, gold or sender (click again to reverse), and show only unread mail, mail with gold or mail with items, several at once.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Bags checked first.</span></strong> Keep a few slots free for loot. If your bags fill anyway, the run stops cleanly and says what's left.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">History.</span></strong> What you collected (Received) and what you sent (Sent), kept for a week or up to a month: who, what, how much, even the letter's text. Search any of it by an item's name.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">History.</span></strong> What you collected (Received) and what you sent (Sent), kept for a week or up to a year: who, what, how much, even the letter's text. Search any of it by an item's name.</li>
 </ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Or take only what you want</h2>
@@ -62,7 +62,7 @@
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Names finish themselves:</span></strong> recent contacts, alts, friends, guild and players you grouped with, favorites first; you choose which (Options &gt; Send tab). Right-click hides a name.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Right-click to attach,</span></strong> Alt-right-click for every stack. More than 12 items go out in one press.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Gold always asks first,</span></strong> Ctrl+Enter sends, and <strong><span style="color:#e5e5e5">Manage Recipients</span></strong> is a table of every name: click to favorite, right-click to hide, select several at once.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Gold always asks first,</span></strong> Ctrl+Enter sends, and <strong><span style="color:#e5e5e5">Manage Recipients</span></strong> is a table of every name: double-click to favorite, right-click to hide, a note for each, select several at once.</li>
 </ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Arrange it your way</h2>

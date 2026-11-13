@@ -53,12 +53,17 @@
 - **Class icon styles** (Options > General > Characters > Class icons):
   choose the art for your characters on the Inbox button and in its
   character list: the game's own, Painted, Pixel, Comic, or Glyphs in class
-  colors. With EllesmereUI installed, its sets are offered too. Hidden
-  characters sits in the same new Characters group.
+  colors, or the game's round portraits (Game (round)). With EllesmereUI
+  installed, its sets are offered too.
 - **Character order** (Options > General > Characters): choose how the
   Inbox button's character list is ordered: Warnings first (as before),
   Expiring soonest, Most mail, Name or Last played. The character you are
   playing is always first.
+- **Hidden characters** (Options > General > Characters) is one list:
+  tick a name to hide that character, tick it again to show it, or Show
+  all. The Inbox button keeps its class icon and character list while your
+  other characters are all hidden, so they are one click away under
+  Hidden.
 - The mail list opens at its top after a visit that ended in a search, a
   filter or another character's mail.
 
@@ -67,13 +72,16 @@
 - **Manage Recipients is a table:** one line per name, in columns
   (Category, Class, Level, Played, Mailed), with a note, a hide and a
   delete mark at the end of each row.
-- **Manage Recipients: click a name to favorite it, right-click to hide
-  it.** Shift-click and Ctrl-click select several names, and the buttons
-  at the bottom then favorite, hide or delete them together.
+- **Manage Recipients: double-click a name to favorite it (or click its
+  star), right-click to hide it.** Shift-click and Ctrl-click select
+  several names, and the buttons at the bottom then favorite, hide or
+  delete them together.
+- **Manage Recipients shows each name's note** in a column of its own;
+  click a note, or its empty place, to write or change it.
 - **Send tab: right-click hides a name** in the suggestions under To and
   in the contact list. The star at the end of a name favorites it. Hidden
-  names wait under Hidden at the foot of the contact list, one click from
-  coming back.
+  names wait under Hidden at the foot of the contact list, Favorites
+  included, one click from coming back.
 - **Choose where suggested names come from** (Options > Send tab): your
   alts, your guild, your friends, people you mailed recently, and players
   you grouped with recently. Favorites stay whatever you switch off.
@@ -81,8 +89,6 @@
   sort by it.
 - Manage Recipients can delete a saved name that no list offers any more,
   and its Guild list fills in by itself once the roster arrives.
-- Hiding a character in the Inbox button's character list also stops the
-  Send tab suggesting it. Showing it brings it back.
 
 ### Options and Arrange
 
@@ -109,6 +115,9 @@
   seen, in place of an empty box.
 - **Mail Memory has a new icon,** an envelope with a clock, drawn in the
   same hand as Character Groups' and Manage Recipients'.
+- **Keep History for** (Options > General > Memory and history) goes up
+  to a year: 60, 90 and 180 days and 1 year join the list, with Never at
+  its top.
 - **History holds** (Options > General > Memory and history): choose how
   many mails History keeps for each character, 1,000 (as before), 2,500 or
   5,000, Received and Sent each. A larger History makes Postbox's saved

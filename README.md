@@ -157,7 +157,7 @@ between that and the mail you sent: who each went to, exactly as you
 addressed it, what it carried, its gold and any C.O.D. After a send, the line
 above Send says who it went to (click it, or the clock beside Send, to open
 Sent). Pick another character to see their History and Sent.
-**Keep History for** 7, 14, 21 or 30 days, or **Never** (asks, then clears
+**Keep History for** 7 days up to a year, or **Never** (asks, then clears
 every character's). **History holds** 1,000, 2,500 or 5,000 mails of each
 per character (Options > General > Memory and history). History has its own
 layout, shows when you collected ("3d ago" or the date, either way), and
@@ -209,10 +209,10 @@ your class icon) to open the character list and show any character's box
 right in the Mail tab (right-click it to come back to your own). **Search
 every character** looks through all of them at once. Every box says how
 long ago it was seen; it never pretends to be live. Hover a mail to see
-what it holds. A character you no longer play can be hidden (Options >
-General > Characters > **Hidden characters**), and **Character order**
-beside it sets the list's order: Warnings first, Expiring soonest, Most
-mail, Name or Last played.
+what it holds. A character you no longer play can be hidden (right-click
+it in the list, or tick it under Options > General > Characters > **Hidden
+characters**), and **Character order** above it sets the list's order:
+Warnings first, Expiring soonest, Most mail, Name or Last played.
 
 - **Arrivals are detected, not guessed:** the game's new-mail signal, the
   unread flag, and the auction house's own sold / expired / bought notices.
@@ -265,9 +265,10 @@ mail, Name or Last played.
   in the default bags, Baganator and EllesmereUI bags.
 
 **Manage Recipients** (`/postbox recipients`, works anywhere) is a table,
-one line per name (Category, Class, Level, Played, Mailed): click a name to
-favorite it, right-click to hide it, Shift- or Ctrl-click to select several,
-and favorite, hide or delete them together.
+one line per name (Category, Class, Level, Played, Mailed, Note):
+double-click a name to favorite it (or click its star), right-click to hide
+it, click its note to write one, Shift- or Ctrl-click to select several, and
+favorite, hide or delete them together.
 
 <p align="center">
   <img src="docs/screenshots/recipients.png" width="560" alt="Manage Recipients: favorites, notes, hidden names and class colors" />
@@ -326,7 +327,7 @@ it. **General** comes first: every character's mail and your last 7 days on
 cards across the top, with **Mail Memory**, **Character Groups** and
 **Manage Recipients** beside them; under them **Memory and history**
 (Remember mailboxes, Keep History for, History holds) and **Characters**
-(Class icons, Hidden characters, Character order). **Alerts** holds
+(Class icons, Character order, Hidden characters). **Alerts** holds
 **Expiring mail** (Warn about, Chat line at login, Minimap marker and its
 look) and **New mail**: **Sound on new mail** (one of four soft sounds made for Postbox, the mail chime or
 another quiet sound of the game's, or any sound your other addons share
@@ -362,8 +363,8 @@ new?** in the footer shows the last three releases.
   packs restyle it).
 - **Class icons** (Options > General > Characters): how your characters'
   classes are drawn on the Inbox button and in its list: the game's own,
-  Game: round, Game: square, Painted, Pixel, Comic or Glyphs, and
-  EllesmereUI's sets while it is loaded.
+  Game (round), Painted, Pixel, Comic or Glyphs, and EllesmereUI's sets
+  while it is loaded.
 - **Window scale** from 80% to 130% in every look.
 
 <p align="center">
