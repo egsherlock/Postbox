@@ -2306,8 +2306,19 @@ local function LayoutContactBar(panel)
   local width = ResolvedWidth(bar, panel, M.inset)
   if width < 40 then return end
 
+  -- A source switched off in the options has no tile (ContactService.SourceOn):
+  -- the tiles left share the width. All always stands.
   local tiles = panel.ContactTiles
-  local count = #tiles
+  local CS = Contacts()
+  local SourceOn = (type(CS) == "table" and type(CS.SourceOn) == "function") and CS.SourceOn or nil
+  local count = 0
+  for i = 1, #tiles do
+    local b = tiles[i]
+    local on = (b._catId == "all") or not SourceOn or SourceOn(b._catId)
+    b._offered = on
+    if on then count = count + 1 end
+    b:SetShown(on)
+  end
   if count == 0 then return end
 
   -- The star is the one fixed-width member of the bar, and its width tracks its
@@ -2322,13 +2333,17 @@ local function LayoutContactBar(panel)
   panel._barColumns = Theme.ColumnEdges(usable, count, BAR_TILE_GAP, panel._barColumns)
   local columns = panel._barColumns
 
-  for i = 1, count do
-    local column = columns[i]
+  local slot = 0
+  for i = 1, #tiles do
     local b = tiles[i]
-    b:ClearAllPoints()
-    b:SetWidth(max(column.width, 1))
-    b:SetPoint("TOPLEFT", bar, "TOPLEFT", lead + column.left, 0)
-    FitTileLabel(b, column.width)
+    if b._offered then
+      slot = slot + 1
+      local column = columns[slot]
+      b:ClearAllPoints()
+      b:SetWidth(max(column.width, 1))
+      b:SetPoint("TOPLEFT", bar, "TOPLEFT", lead + column.left, 0)
+      FitTileLabel(b, column.width)
+    end
   end
 end
 
@@ -2533,43 +2548,193 @@ function ST.RecipientTip(owner, address)
   GameTooltip:Show()
 end
 
+-------------------------------------------------------------
+-- 14a. A name's two curation gestures, in both lists
+--
+-- One rule for every list of names: right-click hides, and favoriting is the
+-- star. A right-click on a name in the picker or the type-ahead hides it,
+-- with or without a modifier, once -- the Characters list's gesture, so it
+-- means the same in every list of names. The star at the row's end is a
+-- control of its own: filled on a favorite, a hollow outline on any other
+-- name while the pointer is on the row, so the normal row keeps its look and
+-- the click it offers shows where it lands. A click on the star favorites or
+-- unfavorites and never picks the row. The picker keeps what it hides under
+-- a Hidden foot at its end (14b), where a click brings a name back; Manage
+-- Recipients lists every hidden name.
+--
+-- On a table, not as chunk locals: this file once passed Lua 5.1's 200.
+-------------------------------------------------------------
+
+ST.Curate = {}
+
+-- row -> its star drawn from its state: filled for a favorite; the hollow
+-- outline while the pointer is on the row or the star (`_hot`, `_starHot`);
+-- nothing otherwise. The row's own fields, so the picker's rows and the
+-- type-ahead's share it.
+function ST.Curate.PaintStar(row)
+  local star = row and row.Star
+  if not star then return end
+  if row._fav then
+    ApplyFavoriteIcon(star, true)
+    star:Show()
+  elseif row._hot or row._starHot then
+    ApplyFavoriteIcon(star, false)
+    star:Show()
+  else
+    star:Hide()
+  end
+end
+
+-- The star's tooltip, as Manage Recipients' star says it (its strings): what
+-- a favorite is, then the click.
+function ST.Curate.StarTip(owner, fav)
+  Theme.TipBegin(owner, "ANCHOR_RIGHT")
+  Theme.TipTitle(L["CONTACT_FAVORITES"])
+  Theme.TipLine(fav and L["RM_TIP_FAV_ON"] or L["RM_TIP_FAV_OFF"])
+  Theme.TipHint(fav and L["RM_HINT_FAV_ON"] or L["RM_HINT_FAV_OFF"])
+  GameTooltip:Show()
+end
+
+-- name -> hidden from every list Postbox offers names in (Recipients clears
+-- its favorite with it). Once, not a toggle: a name in these lists is never
+-- a hidden one.
+function ST.Curate.Hide(name)
+  local R = ns.Recipients
+  if type(R) ~= "table" or type(R.SetHidden) ~= "function" then return end
+  R.SetHidden(name, true)
+end
+
+-- The sections whose hidden names the foot gathers: the picker's own, but
+-- Favorites, which never holds a hidden name (hiding clears the star).
+ST.Curate.HIDDEN_FROM = { "recent", "alts", "friends", "guild", "manual" }
+
+-- picker, filter -> the hidden names of the sections the filter puts on
+-- screen, each once, in the picker's two kept tables (unsorted).
+function ST.Curate.HiddenNames(picker, filter)
+  local out, seen = picker._hiddenList, picker._hiddenSeen
+  for i = #out, 1, -1 do out[i] = nil end
+  for key in pairs(seen) do seen[key] = nil end
+  if filter == "favorites" then return out end
+  local CS = Contacts()
+  if type(CS) ~= "table" or type(CS.HiddenIn) ~= "function" then return out end
+  local from = ST.Curate.HIDDEN_FROM
+  for i = 1, #from do
+    local id = from[i]
+    if filter == "all" or filter == id then CS.HiddenIn(id, out, seen) end
+  end
+  return out
+end
+
+-- name -> favorited, or unfavorited: the star's click.
+function ST.Curate.ToggleFavorite(name)
+  local R = ns.Recipients
+  if type(R) ~= "table" or type(R.SetFavorite) ~= "function" then return end
+  R.SetFavorite(name, not R.IsFavorite(name))
+end
+
 local function RowEnter(self)
   Theme.StyleMailRow(self, self._position or 0, true)
+  local kind = self._kind
+  if kind == "foot" then
+    GameTooltip:Hide()
+    return
+  end
+  if kind == "hidden" then
+    Theme.TipBegin(self)
+    Theme.TipTitle(Contacts().GetClassColoredName(self.address or "", nil, "tooltip"))
+    Theme.TipHint(L["GROUPS_HIDDEN_HINT"])
+    GameTooltip:Show()
+    return
+  end
+  self._hot = true
+  ST.Curate.PaintStar(self)
   ST.RecipientTip(self, self.address)
 end
 
 local function RowLeave(self)
   Theme.StyleMailRow(self, self._position or 0, false)
+  self._hot = false
+  ST.Curate.PaintStar(self)
   GameTooltip:Hide()
 end
 
 local function RowClick(self, button)
   local picker = self._picker
   local panel = picker and picker.panel
+  local kind = self._kind
+  if not panel or not (self.address or kind == "foot") then return end
   local name = self.address
-  if not panel or not name then return end
+
+  -- The foot folds and unfolds; a hidden name under it, clicked with
+  -- either button, is offered again.
+  if kind == "foot" or kind == "hidden" then
+    if kind == "foot" then
+      picker._showHidden = not picker._showHidden
+    else
+      local R = ns.Recipients
+      if type(R) == "table" and type(R.SetHidden) == "function" then R.SetHidden(name, false) end
+    end
+    PopulateContactPicker(picker)
+    if ST.Curate.Place then ST.Curate.Place(panel, picker) end
+    RefreshContactBar(panel)
+    if self:IsShown() and self:IsMouseOver() then RowEnter(self) else GameTooltip:Hide() end
+    return
+  end
 
   if button == "RightButton" then
-    local R = ns.Recipients
-    if type(R) ~= "table" then return end
-    if IsShiftKeyDown() then
-      if type(R.SetHidden) == "function" then R.SetHidden(name, not R.IsHidden(name)) end
-    elseif type(R.SetFavorite) == "function" then
-      R.SetFavorite(name, not R.IsFavorite(name))
-    end
+    ST.Curate.Hide(name)
     GameTooltip:Hide()
-    -- Repopulate in place: the row the player just hid has to leave the list,
-    -- and a new favourite has to appear in the favourites section.
-    -- Unfavouriting the last one lands on the empty state, which says how to
-    -- make another; closing the picker instead looked like the click had
-    -- dismissed the window.
+    -- Repopulate in place: the row the player just hid leaves the list for
+    -- the foot, which unfolds, so where it went is on screen and so is the
+    -- way back -- as the Characters list does it. The picker stays open.
+    picker._showHidden = true
     PopulateContactPicker(picker)
+    if ST.Curate.Place then ST.Curate.Place(panel, picker) end
     RefreshContactBar(panel)
     return
   end
 
   ST.SetRecipient(panel, name)
   picker:Hide()
+end
+
+-- The picker row's star: its own button over the row's right end, so its
+-- click never reaches the row. Entering it keeps the row's hover wash (the
+-- row gets an OnLeave as the pointer crosses onto it); a right-click on it is
+-- the row's right-click.
+function ST.Curate.PickerStarEnter(self)
+  local row = self._row
+  row._starHot = true
+  Theme.StyleMailRow(row, row._position or 0, true)
+  ST.Curate.PaintStar(row)
+  ST.Curate.StarTip(self, row._fav)
+end
+
+function ST.Curate.PickerStarLeave(self)
+  local row = self._row
+  row._starHot = false
+  Theme.StyleMailRow(row, row._position or 0, false)
+  ST.Curate.PaintStar(row)
+  GameTooltip:Hide()
+end
+
+function ST.Curate.PickerStarClick(self, button)
+  local row = self._row
+  if button == "RightButton" then return RowClick(row, button) end
+  local picker = row._picker
+  local name = row.address
+  if not (picker and picker.panel and name) then return end
+  ST.Curate.ToggleFavorite(name)
+  -- In place, as a hide is: a new favorite joins the favorites section and
+  -- the bar's count follows.
+  PopulateContactPicker(picker)
+  if ST.Curate.Place then ST.Curate.Place(picker.panel, picker) end
+  RefreshContactBar(picker.panel)
+  if self:IsVisible() and self:IsMouseOver() then
+    ST.Curate.PickerStarEnter(self)
+  else
+    GameTooltip:Hide()
+  end
 end
 
 -- ONE WIDGET PER VISIBLE ROW, not per name. `index` is a VIEWPORT slot, so the
@@ -2597,13 +2762,36 @@ local function AcquireRow(picker, index)
   row.Text:SetJustifyH("LEFT")
   row.Text:SetWordWrap(false)
 
-  -- Favourite marker, so membership is legible from any category. Always the
-  -- filled star: it is only ever shown on a row that IS a favourite.
-  row.Star = row:CreateTexture(nil, "OVERLAY")
+  -- Favourite marker, so membership is legible from any category, and the
+  -- control that sets it (14a): a button over the 16 units the text leaves
+  -- at the row's end, the glyph where it always stood.
+  row.StarButton = CreateFrame("Button", nil, row)
+  row.StarButton:SetSize(16, ROW_H)
+  row.StarButton:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+  row.StarButton._row = row
+  row.StarButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  row.StarButton:SetScript("OnEnter", ST.Curate.PickerStarEnter)
+  row.StarButton:SetScript("OnLeave", ST.Curate.PickerStarLeave)
+  row.StarButton:SetScript("OnClick", ST.Curate.PickerStarClick)
+  row.Star = row.StarButton:CreateTexture(nil, "OVERLAY")
   row.Star:SetSize(11, 11)
   row.Star:SetPoint("RIGHT", row, "RIGHT", -3, 0)
   ApplyFavoriteIcon(row.Star, true)
   row.Star:Hide()
+
+  -- The Hidden foot's parts (14b): the hairline over the foot, between the
+  -- names offered and the ones that are not, and "Show" at a hidden name's
+  -- end, the one thing on its row to do.
+  row.Rule = row:CreateTexture(nil, "ARTWORK")
+  row.Rule:SetHeight(1)
+  row.Rule:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+  row.Rule:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
+  Theme.FillChrome(row.Rule, 0.12)
+  row.Rule:Hide()
+  row.ShowText = Theme.CreateText(row, "secondary")
+  row.ShowText:SetPoint("RIGHT", row, "RIGHT", -3, 0)
+  row.ShowText:SetJustifyH("RIGHT")
+  row.ShowText:Hide()
 
   row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   row:SetScript("OnEnter", RowEnter)
@@ -2658,8 +2846,53 @@ end
 -- whoever occupied the slot last.
 local function BindPickerRow(row, item)
   local name = item.address
+  local kind = item.kind
   row.address = name
   row._position = item.position
+  row._kind = kind
+
+  -- The text's right edge: clear of the star on a name, of "Show" on a
+  -- hidden one, the row's end on the foot. Set again only when a recycled row
+  -- changes kind.
+  if row._layoutKind ~= kind then
+    row._layoutKind = kind
+    row.Text:ClearAllPoints()
+    row.Text:SetPoint("LEFT", row, "LEFT", ROW_INDENT, 0)
+    if kind == "hidden" then
+      row.Text:SetPoint("RIGHT", row.ShowText, "LEFT", -M.gap, 0)
+    elseif kind == "foot" then
+      row.Text:SetPoint("RIGHT", row, "RIGHT", -3, 0)
+    else
+      row.Text:SetPoint("RIGHT", row, "RIGHT", -16, 0)
+    end
+  end
+
+  if kind then
+    -- The foot, "Hidden (N)", brighter while unfolded (its state rises in
+    -- colour, not alpha alone); a hidden name in the disabled grey at full
+    -- strength, with "Show" at its end. Neither has a star.
+    row._fav, row._hot, row._starHot = false, false, false
+    row.StarButton:Hide()
+    row.Star:Hide()
+    row.Rule:SetShown(kind == "foot")
+    if kind == "foot" then
+      row.Text:SetText(Theme.Colorize(row._picker._showHidden and "textPrimary" or "textSecondary", item.title or ""))
+      row.ShowText:Hide()
+    else
+      row.Text:SetText(Theme.Colorize("textDisabled", name or ""))
+      row.ShowText:SetText(L["PICKER_SHOW"])
+      row.ShowText:Show()
+    end
+    if row:IsMouseOver() then
+      RowEnter(row)
+    else
+      Theme.StyleMailRow(row, item.position, false)
+    end
+    return
+  end
+  row.Rule:Hide()
+  row.ShowText:Hide()
+  row.StarButton:Show()
 
   local R = ns.Recipients
   local stored = (type(R) == "table" and type(R.Get) == "function") and R.Get(name) or nil
@@ -2671,7 +2904,9 @@ local function BindPickerRow(row, item)
     label = label .. "  " .. Theme.Colorize("textDisabled", stored.note)
   end
   row.Text:SetText(label)
-  row.Star:SetShown(stored ~= nil and stored.fav == true)
+  row._fav = stored ~= nil and stored.fav == true
+  row._hot = false
+  ST.Curate.PaintStar(row)
 
   -- Painted from the row's DISPLAYED position through the same primitive the
   -- mail list uses, so the two lists stripe alike and the stripe stays put as
@@ -2765,7 +3000,7 @@ local function UpdatePickerRows(picker)
   -- whoever used to be in that slot.
   for i = rowsUsed + 1, #picker.Rows do
     local row = picker.Rows[i]
-    row.address = nil
+    row.address, row._kind = nil, nil
     row:Hide()
   end
   for i = headersUsed + 1, #picker.Headers do
@@ -2826,6 +3061,8 @@ local function EnsureContactPicker(panel)
   -- reads every one of them.
   f.Scroll, f.Child, f.Rows, f.Headers = scroll, child, {}, {}
   f._items, f._itemCount = {}, 0
+  -- The Hidden foot's names, gathered per populate into these two, kept.
+  f._hiddenList, f._hiddenSeen = {}, {}
 
   -- HookScript, not SetScript: UIPanelScrollFrameTemplate installs its own
   -- handlers on both of these and replacing them desynchronises the scroll bar
@@ -2855,9 +3092,12 @@ local function EnsureContactPicker(panel)
     -- Only our own row tooltip, never whatever else happens to be showing --
     -- the star button's, when its click is what closed us.
     local owner = GameTooltip.GetOwner and GameTooltip:GetOwner()
-    if owner and owner.GetParent and owner:GetParent() == child then
+    if owner and ((owner.GetParent and owner:GetParent() == child)
+                  or (owner._row and owner._row._picker == f)) then
       GameTooltip:Hide()
     end
+    -- The Hidden foot is folded again for the next time.
+    f._showHidden = false
     RefreshContactBar(panel)
   end)
 
@@ -2970,7 +3210,7 @@ function PopulateContactPicker(picker)
       if y > 0 then y = y + HEADER_GAP end
       local item = PushItem()
       item.header, item.title = true, L[section.titleKey]
-      item.address, item.position = nil, nil
+      item.address, item.position, item.kind = nil, nil, nil
       y = y + HEADER_H
     end
 
@@ -2991,13 +3231,10 @@ function PopulateContactPicker(picker)
       rowCount = rowCount + 1
       local item = PushItem()
       item.header, item.title = nil, nil
-      item.address, item.position = ordered[j], rowCount
+      item.address, item.position, item.kind = ordered[j], rowCount, nil
       y = y + ROW_H
     end
   end
-
-  for i = #items, count + 1, -1 do items[i] = nil end
-  picker._itemCount = count
 
   if rowCount == 0 then
     picker.Empty:SetText(EmptyPickerText(filter))
@@ -3009,6 +3246,35 @@ function PopulateContactPicker(picker)
   else
     picker.Empty:Hide()
   end
+
+  -- 14b. The Hidden foot: "Hidden (N)" under the list while any name of the
+  -- sections on screen is hidden, as the Characters list has it (MailMemory,
+  -- LoadPicker). Folded, it is the one row; unfolded, the hidden names follow
+  -- it by name, each with Show at its end. Never left out while there are
+  -- hidden names, an empty list's included; folded again as the picker closes.
+  local hidden = ST.Curate.HiddenNames(picker, filter)
+  if #hidden > 0 then
+    y = y + HEADER_GAP
+    local foot = PushItem()
+    foot.header, foot.kind = nil, "foot"
+    foot.title = L("PICKER_HIDDEN", #hidden)
+    rowCount = rowCount + 1
+    foot.address, foot.position = nil, rowCount
+    y = y + ROW_H
+    if picker._showHidden then
+      local ordered = SortForDisplay(hidden)
+      for j = 1, #ordered do
+        rowCount = rowCount + 1
+        local item = PushItem()
+        item.header, item.title, item.kind = nil, nil, "hidden"
+        item.address, item.position = ordered[j], rowCount
+        y = y + ROW_H
+      end
+    end
+  end
+
+  for i = #items, count + 1, -1 do items[i] = nil end
+  picker._itemCount = count
 
   local content = max(y, 10)
   picker.Child:SetHeight(content)
@@ -3075,6 +3341,10 @@ local function PlacePicker(panel, picker)
   end
 end
 
+-- For the rows' own clicks (14a), which are defined above this: a list that
+-- folds its foot open, or gains a favorite, asks for the height it now needs.
+ST.Curate.Place = PlacePicker
+
 local function OpenContactMenu(panel, filter)
   local picker = EnsureContactPicker(panel)
 
@@ -3090,7 +3360,7 @@ local function OpenContactMenu(panel, filter)
 
   -- A list opened from the bar starts at the top: switching from a guild you
   -- were 400px into, to Alts, must not land halfway down a list of four. Only
-  -- an IN-PLACE repopulate keeps the offset -- the right-click favourite toggle
+  -- an IN-PLACE repopulate keeps the offset -- a hide, a star or the foot
   -- calls PopulateContactPicker directly and never comes through here, which is
   -- what keeps the row the player just clicked under their cursor.
   if picker.Scroll then picker.Scroll:SetVerticalScroll(0) end
@@ -3105,6 +3375,18 @@ local function OpenContactMenu(panel, filter)
   -- they are given, so passing the picker itself would skin its rows and leave
   -- its own card surface unstyled until the window was next re-shown.
   if ns.Skin and ns.Skin.Refresh then ns.Skin.Refresh(picker:GetParent()) end
+end
+
+-- A source was switched on or off in the options (ContactService.SourcesChanged):
+-- an open picker closes, since the list it shows may be one that is no longer
+-- offered, and the bar loses or gains that source's tile.
+function ST.SourcesChanged()
+  local panel = ActivePanel()
+  if not panel then return end
+  local picker = panel.ContactPicker
+  if picker and picker:IsShown() then picker:Hide() end
+  RefreshCategoryEmptiness(panel)
+  RefreshContactBar(panel)
 end
 
 -------------------------------------------------------------
@@ -3526,7 +3808,8 @@ local function RefreshSuggestions(panel)
       -- recipient is not in this list at all, so a row that is here is a row
       -- with nothing to say beyond whether it is a favourite.
       local stored = GetRow and GetRow(name) or nil
-      btn.Star:SetShown(stored ~= nil and stored.fav == true)
+      btn._fav = stored ~= nil and stored.fav == true
+      ST.Curate.PaintStar(btn)
 
       btn:Show()
     else
@@ -3646,17 +3929,20 @@ end
 -- and say so in exactly the same words.
 --
 -- They used to be plain left-click buttons with no OnEnter at all: two visually
--- identical lists under the same field, one of which favourites on right-click
--- and teaches you how, the other silently ignoring the gesture it had just
--- taught. Right-click means favourite everywhere in the addon now -- the
--- recipient manager moved to match, and its note editing is a button on the row
--- instead.
+-- identical lists under the same field, one of which answered a right-click
+-- and taught it, the other silently ignoring the gesture it had just taught.
+-- Right-click hides a name in every list of names now, and the star at the
+-- row's end favorites it (14a).
 local function SuggestionEnter(self)
   if not self.value then return end
+  self._hot = true
+  ST.Curate.PaintStar(self)
   ST.RecipientTip(self, self.value)
 end
 
-local function SuggestionLeave()
+local function SuggestionLeave(self)
+  self._hot = false
+  ST.Curate.PaintStar(self)
   GameTooltip:Hide()
 end
 
@@ -3666,17 +3952,12 @@ local function SuggestionClick(self, button)
   if not panel or not name then return end
 
   if button == "RightButton" then
-    local R = ns.Recipients
-    if type(R) ~= "table" then return end
-    if IsShiftKeyDown() then
-      if type(R.SetHidden) == "function" then R.SetHidden(name, not R.IsHidden(name)) end
-    elseif type(R.SetFavorite) == "function" then
-      R.SetFavorite(name, not R.IsFavorite(name))
-    end
+    -- Hides, as in the picker (14a): the name leaves this list.
+    ST.Curate.Hide(name)
     GameTooltip:Hide()
-    -- Rebuilt in place, like the picker: favourites lead this list, so the name
-    -- moves, and the bar's star count has to follow. The popup stays open and
-    -- the To: box keeps its focus and its text -- nothing here touches the edit
+    -- Rebuilt in place, like the picker, and the bar's star count follows (a
+    -- hidden favourite is a favourite no more). The popup stays open and the
+    -- To: box keeps its focus and its text -- nothing here touches the edit
     -- box, which is the whole reason a curation gesture can live in a list that
     -- appears while somebody is typing.
     RefreshSuggestions(panel)
@@ -3689,6 +3970,44 @@ local function SuggestionClick(self, button)
   -- reopen itself a moment after it was chosen from.
   panel._suggestToken = (panel._suggestToken or 0) + 1
   panel.SuggestFrame:Hide()
+end
+
+-- The type-ahead row's star, as the picker's (14a): its own button, the row's
+-- highlight held while the pointer is on it, a right-click on it the row's.
+-- The popup is rebuilt in place after a click, the To: box untouched.
+function ST.Curate.SuggestStarEnter(self)
+  local btn = self._row
+  if not btn.value then return end
+  btn._starHot = true
+  btn:LockHighlight()
+  ST.Curate.PaintStar(btn)
+  ST.Curate.StarTip(self, btn._fav)
+end
+
+function ST.Curate.SuggestStarLeave(self)
+  local btn = self._row
+  btn._starHot = false
+  btn:UnlockHighlight()
+  ST.Curate.PaintStar(btn)
+  GameTooltip:Hide()
+end
+
+function ST.Curate.SuggestStarClick(self, button)
+  local btn = self._row
+  if button == "RightButton" then return SuggestionClick(btn, button) end
+  local panel = btn._panel
+  local name = btn.value
+  if not (panel and name) then return end
+  ST.Curate.ToggleFavorite(name)
+  -- Favourites lead this list, so the name may move; the row under the
+  -- pointer says what it holds now.
+  RefreshSuggestions(panel)
+  RefreshContactBar(panel)
+  if btn:IsShown() and btn.value and self:IsMouseOver() then
+    ST.Curate.SuggestStarEnter(self)
+  else
+    GameTooltip:Hide()
+  end
 end
 
 local function CreateSuggestionPopup(panel)
@@ -3720,9 +4039,17 @@ local function CreateSuggestionPopup(panel)
     btn.label:SetJustifyH("LEFT")
     btn.label:SetWordWrap(false)
 
-    -- Favourite marker. Always the filled star; it is only ever shown on a row
-    -- that IS a favourite, exactly as in the picker.
-    btn.Star = btn:CreateTexture(nil, "OVERLAY")
+    -- Favourite marker and control, exactly as in the picker (14a): a button
+    -- over the 16 units the label leaves, the glyph where it always stood.
+    btn.StarButton = CreateFrame("Button", nil, btn)
+    btn.StarButton:SetSize(16, SUGGEST_ROW_H)
+    btn.StarButton:SetPoint("RIGHT", btn, "RIGHT", 0, 0)
+    btn.StarButton._row = btn
+    btn.StarButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn.StarButton:SetScript("OnEnter", ST.Curate.SuggestStarEnter)
+    btn.StarButton:SetScript("OnLeave", ST.Curate.SuggestStarLeave)
+    btn.StarButton:SetScript("OnClick", ST.Curate.SuggestStarClick)
+    btn.Star = btn.StarButton:CreateTexture(nil, "OVERLAY")
     btn.Star:SetSize(11, 11)
     btn.Star:SetPoint("RIGHT", btn, "RIGHT", -3, 0)
     ApplyFavoriteIcon(btn.Star, true)

@@ -1573,6 +1573,115 @@ function CS.SaveRecipient(name)
   MarkDirty("recent", true)
 end
 
+-------------------------------------------------------------
+-- Which sources are offered
+--
+-- The options' Send tab has a switch per source (MailboxUI, offerAlts and its
+-- three neighbours). A source switched off is still COLLECTED -- its names
+-- keep the client's own autocomplete leftovers (`other`) from offering them
+-- under another heading -- but none of them is handed out: not in the To:
+-- box's suggestions, not in the picker, not in Manage Recipients, which asks
+-- SourceOn for its tiles itself. What the player curated stays his whatever
+-- the switches say: a favorite is offered under Favorites, a name added by
+-- hand under Added by you once no source still offering it holds it, and no
+-- favorite, hidden mark or note is ever touched by a switch.
+--
+-- People recently grouped with (`grouped`) have no switch of their own: they
+-- are only ever suggested as you type, beside the people you have mailed,
+-- so they follow "Offer recent recipients".
+-------------------------------------------------------------
+
+-- bucket -> whether its names are offered. "alts", "guild", "friends",
+-- "recent" by their switches; "grouped" with "recent"; anything else true.
+-- Allocation-free: the switches are read through MailboxUI's memo.
+function CS.SourceOn(bucket)
+  if bucket == "grouped" then bucket = "recent" end
+  local UI = ns.MailboxUI
+  if type(UI) ~= "table" or type(UI.GetOfferSource) ~= "function" then return true end
+  return UI.GetOfferSource(bucket) and true or false
+end
+
+-- A switch was changed: everything that lists the sources is drawn again --
+-- the Send tab's bar loses or gains its tile and an open list closes
+-- (SendTab), and Manage Recipients follows.
+function CS.SourcesChanged()
+  local ST = ns.SendTab
+  if type(ST) == "table" and type(ST.SourcesChanged) == "function" then ST.SourcesChanged() end
+  local RM = ns.RecipientManager
+  if type(RM) == "table" and type(RM.Refresh) == "function" then RM.Refresh() end
+end
+
+-- The switches as one build reads them, read once at its start (and by
+-- CS.HiddenIn): a table kept for the session, so a keystroke builds none.
+local offered = { recent = true, alts = true, friends = true, guild = true, grouped = true }
+
+local function ReadOffered()
+  for id in pairs(offered) do offered[id] = CS.SourceOn(id) end
+end
+
+-- key -> whether a source that is offered holds it. A hand-added name is
+-- listed under Added by you exactly when this is false.
+local function HeldByOffered(key)
+  for i = 1, #SOURCES do
+    local id = SOURCES[i].id
+    if offered[id] and sources[id].seen[key] then return true end
+  end
+  return false
+end
+
+-- The names of one picker section the player hid, for the picker's Hidden
+-- foot: `id` a source ("recent", "alts", "friends", "guild") or "manual";
+-- each address appended to `out` unless its key is already in `seen` (which
+-- it then joins), so one call per section on screen lists each name once.
+-- Nothing for a source that is not offered. Walks the stored rows once, and
+-- the section's list only when something is hidden; asked when the picker is
+-- filled, never on a keystroke.
+local hiddenScratch = {}
+
+function CS.HiddenIn(id, out, seen)
+  local R = ns.Recipients
+  if type(R) ~= "table" or type(R.ForEach) ~= "function" then return out end
+  EnsureSources()
+  ReadOffered()
+  if id ~= "manual" and not offered[id] then return out end
+
+  for key in pairs(hiddenScratch) do hiddenScratch[key] = nil end
+  local any = false
+  R.ForEach(function(key, row)
+    if row.hidden then
+      hiddenScratch[key] = row
+      any = true
+    end
+  end)
+  if not any then return out end
+
+  if id == "manual" then
+    if type(R.Display) ~= "function" then return out end
+    for key, row in pairs(hiddenScratch) do
+      if row.manual and not seen[key] and not HeldByOffered(key) then
+        local address = R.Display(key)
+        if address ~= "" then
+          seen[key] = true
+          out[#out + 1] = address
+        end
+      end
+    end
+    return out
+  end
+
+  local state = sources[id]
+  local list = state and state.list
+  if not list then return out end
+  for i = 1, #list do
+    local e = list[i]
+    if hiddenScratch[e.key] and not seen[e.key] then
+      seen[e.key] = true
+      out[#out + 1] = e.address
+    end
+  end
+  return out
+end
+
 -- text  : filter, "" for everything.
 -- opts  : { includeHidden = bool } -- defaults to FALSE, i.e. recipients the
 --         player has hidden are left out. Hidden means hidden: not in the
@@ -1712,11 +1821,14 @@ function CS.BuildSuggestions(text, opts)
     end
   end
 
-  Emit(results.recent, sources.recent.list)
-  Emit(results.alts, sources.alts.list)
-  Emit(results.friends, sources.friends.list)
-  Emit(results.guild, sources.guild.list)
-  Emit(results.grouped, sources.grouped.list)
+  -- A source switched off leaves its list empty, for every caller (see
+  -- CS.SourceOn).
+  ReadOffered()
+  if offered.recent then Emit(results.recent, sources.recent.list) end
+  if offered.alts then Emit(results.alts, sources.alts.list) end
+  if offered.friends then Emit(results.friends, sources.friends.list) end
+  if offered.guild then Emit(results.guild, sources.guild.list) end
+  if offered.grouped then Emit(results.grouped, sources.grouped.list) end
 
   -- Whatever the client itself would complete, for names no cached source
   -- claimed. Only for a typed query: that is this API's documented use, and it
@@ -1769,12 +1881,14 @@ function CS.BuildSuggestions(text, opts)
           favSeen[key] = true
           results.favorites[#results.favorites + 1] = address
         end
-      elseif not unionKeys[key] and not IsHidden(key) then
+      elseif not HeldByOffered(key) and not IsHidden(key) then
         -- A manually added recipient the player later un-favourited. No live
         -- source knows about it, so without this it would vanish from the addon
         -- entirely while still holding saved state. It gets its own list rather
         -- than being appended to Recent, which would put somebody the player has
         -- never written to at the bottom of "people you have written to".
+        -- A source switched off counts as not knowing it: a name the player
+        -- added is his own and stays offered.
         results.manual[#results.manual + 1] = address
       end
     end)

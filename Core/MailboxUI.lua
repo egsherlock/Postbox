@@ -204,6 +204,18 @@ local OPTION_DEFAULTS = {
   -- mailbox closes, and Mail Memory's when its window does
   -- (UI.LetGoListSort). Filters are let go at close either way.
   rememberSort    = true,
+  -- Where the names the Send tab offers come from, one switch per source
+  -- (the options' Send tab, Recipients): your alts, your guild, your friends,
+  -- and the people you have mailed (with those you recently grouped with).
+  -- On: every source is offered, as it always has been, so a profile from
+  -- before them reads as all on. Off, that source is left out of the To:
+  -- box's suggestions, the contact picker and Manage Recipients
+  -- (ContactService.SourceOn); favorites and names added by hand stay
+  -- offered, and nothing saved about a name is touched.
+  offerAlts       = true,
+  offerGuild      = true,
+  offerFriends    = true,
+  offerRecent     = true,
 }
 -- What a mail row shows, and in what order, is no longer three switches here
 -- (rowGold, rowSlots, rowExpiry): it is the row's arrangement, UI.GetRowLayout
@@ -294,6 +306,25 @@ function UI.SetOption(key, value)
     local AR = ns.Arrange
     if AR and type(AR.ListWideChanged) == "function" then AR.ListWideChanged() end
   end
+end
+
+-- The Send tab's sources by the contact service's own names for them
+-- (ContactService: "alts", "guild", "friends", "recent"), each the switch
+-- above that offers it. A name not here has no switch and is always offered.
+local OFFER_KEYS = { alts = "offerAlts", guild = "offerGuild", friends = "offerFriends", recent = "offerRecent" }
+
+-- bucket -> the switch's key, or nil where the source has none.
+function UI.OfferKey(bucket)
+  return OFFER_KEYS[bucket]
+end
+
+-- bucket -> whether the Send tab offers that source's names: its switch, read
+-- through the memo above, so asking costs nothing on a keystroke; true for a
+-- source with no switch.
+function UI.GetOfferSource(bucket)
+  local key = OFFER_KEYS[bucket]
+  if not key then return true end
+  return UI.GetOption(key)
 end
 
 -- A switch's default, for a reset of one part (the arrange mode's, which

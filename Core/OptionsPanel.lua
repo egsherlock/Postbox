@@ -8086,10 +8086,47 @@ function Pages.send(col)
   -- recipients there are (State.Lists); as wide as the dropdowns in its
   -- column, with the tiles' chevron, since it opens a window.
   Rows.Group(col, L["OPT_RECIPIENTS_HEADING"])
+  -- Where the names the form offers come from, one switch per source
+  -- (ContactService.SourceOn), above the window that lists them. A source
+  -- that cannot apply is listed grey with its reason, never left out:
+  -- State.Sources.
+  S.offerCells = {}
+  local sources = {
+    { id = "alts",    key = "offerAlts",    title = "OPT_OFFER_ALTS",    text = "OPT_OFFER_ALTS_DESC" },
+    { id = "guild",   key = "offerGuild",   title = "OPT_OFFER_GUILD",   text = "OPT_OFFER_GUILD_DESC" },
+    { id = "friends", key = "offerFriends", title = "OPT_OFFER_FRIENDS", text = "OPT_OFFER_FRIENDS_DESC" },
+    { id = "recent",  key = "offerRecent",  title = "OPT_OFFER_RECENT",  text = "OPT_OFFER_RECENT_DESC" },
+  }
+  for i = 1, #sources do
+    local src = sources[i]
+    local cell = Rows.Check(col, {
+      title = L[src.title], text = L[src.text],
+      get = function() return ns.MailboxUI.GetOption(src.key) end,
+      set = function(on)
+        ns.MailboxUI.SetOption(src.key, on)
+        local CS = ns.ContactService
+        if CS and type(CS.SourcesChanged) == "function" then CS.SourcesChanged() end
+      end,
+    })
+    S.offerCells[src.id] = cell
+  end
+  -- Not in a guild: Offer your guild has nothing to offer, and says so.
+  Rows.Why(S.offerCells.guild, "CONTACT_EMPTY_GUILD")
+  S.refresh[#S.refresh + 1] = State.Sources
   S.recipientsCell = Rows.Button(col, {
     title = L["RM_OPT_BUTTON"], text = L["RM_OPT_BUTTON_DESC"], caption = L["OPT_RECIPIENTS_NONE"],
     onClick = function() Ctx.OpenRecipients() end, minWidth = DD_W, chevron = true, glyph = "recipients-10",
   })
+end
+
+-- The Send tab's source switches: Offer your guild grey, saying why, while the
+-- character is in no guild; the others always apply. Read on every open.
+function State.Sources()
+  local cells = S.offerCells
+  local guild = cells and cells.guild
+  if not guild then return end
+  local inGuild = type(IsInGuild) == "function" and IsInGuild() and true or false
+  Rows.SetEnabled(guild, inGuild, "CONTACT_EMPTY_GUILD")
 end
 
 -- The two lists the player builds, as their buttons on the Mail and Send

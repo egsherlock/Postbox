@@ -1284,23 +1284,88 @@ function MM.OpenCharacter(realm, name)
   frame:Raise()
 end
 
+-- A hidden character is no longer offered as a recipient either: hiding it
+-- here hides it in the Send tab's lists and Manage Recipients too
+-- (Recipients.SetHidden), and showing it here brings it back there. One way
+-- only: hiding a recipient leaves this list alone, so tidying the Send tab can
+-- never silence a character's warnings.
+--
+-- Only what this list did is undone. The mark in `hiddenChars` says which:
+-- RECIPIENT_HID ("recipient") where hiding the character hid the recipient
+-- too, plain true where it did not -- the recipient was hidden by hand
+-- already, or it is a favorite, which stays a favorite and stays offered (a
+-- star is the player's own word that he writes to it). Showing the character
+-- shows the recipient only on RECIPIENT_HID, so a name hidden on purpose stays
+-- hidden. Both marks are truthy, which is all any other reader asks.
+local RECIPIENT_HID = "recipient"
+
+-- realm, name -> the character's recipient key and its address with realm
+-- (Recipients.CharacterKey: on Forever the full name alone), or nil before
+-- the client knows the realm.
+local function RecipientOf(realm, name)
+  local R = ns.Recipients
+  if type(R) ~= "table" or type(R.CharacterKey) ~= "function" then return nil end
+  local key = R.CharacterKey(name, realm)
+  if type(key) ~= "string" or key == "" then return nil end
+  local H = ns.Helpers
+  local twoPart = H and type(H.TwoPartNames) == "function" and H.TwoPartNames()
+  return key, twoPart and name or (name .. "-" .. realm)
+end
+
+-- realm, name -> the mark to keep: RECIPIENT_HID when the recipient was hidden
+-- here and now, true when it was left as it was.
+local function HideRecipient(realm, name)
+  local R = ns.Recipients
+  local key, address = RecipientOf(realm, name)
+  if not key or type(R.SetHidden) ~= "function" then return true end
+  if R.IsHidden(key) or R.IsFavorite(key) then return true end
+  R.SetHidden(address, true)
+  return RECIPIENT_HID
+end
+
+local function ShowRecipient(realm, name, mark)
+  if mark ~= RECIPIENT_HID then return end
+  local R = ns.Recipients
+  local key, address = RecipientOf(realm, name)
+  if not key or type(R.SetHidden) ~= "function" then return end
+  if R.IsHidden(key) then R.SetHidden(address, false) end
+end
+
+-- After a recipient changed: the Send tab's bar (its favorite count) and an
+-- open Manage Recipients.
+local function RecipientsChanged()
+  local ST = ns.SendTab
+  if ST and type(ST.RefreshRecipientBar) == "function" then ST.RefreshRecipientBar() end
+  local RM = ns.RecipientManager
+  if RM and type(RM.Refresh) == "function" and type(RM.IsShown) == "function" and RM.IsShown() then RM.Refresh() end
+end
+
 -- realm, name, hidden -> the character hidden from the lists of other
--- characters, or shown in them again. The caller repaints (MM.HiddenChanged);
--- the character list does that once, when it closes.
+-- characters, or shown in them again, and as a recipient with it (above).
+-- The caller repaints (MM.HiddenChanged); the character list does that once,
+-- when it closes.
 function MM.SetHidden(realm, name, hidden)
   if type(realm) ~= "string" or type(name) ~= "string" then return end
   if hidden then
     local set = HiddenSet(true)
     if type(set[realm]) ~= "table" then set[realm] = {} end
-    set[realm][name] = true
+    if not set[realm][name] then
+      set[realm][name] = HideRecipient(realm, name)
+      RecipientsChanged()
+    end
     CharactersChanged()
     return
   end
   local set = HiddenSet(false)
   local byRealm = set and set[realm]
   if type(byRealm) ~= "table" then return end
+  local mark = byRealm[name]
   byRealm[name] = nil
   if next(byRealm) == nil then set[realm] = nil end
+  if mark then
+    ShowRecipient(realm, name, mark)
+    RecipientsChanged()
+  end
   CharactersChanged()
 end
 
@@ -1338,7 +1403,16 @@ end
 function MM.ShowAllHidden()
   local set = HiddenSet(false)
   if set then
+    -- Each recipient this list hid comes back with its character.
+    for realm, byRealm in pairs(set) do
+      if type(byRealm) == "table" then
+        for name, mark in pairs(byRealm) do
+          if type(name) == "string" then ShowRecipient(realm, name, mark) end
+        end
+      end
+    end
     for realm in pairs(set) do set[realm] = nil end
+    RecipientsChanged()
   end
   CharactersChanged()
   MM.HiddenChanged()
