@@ -5111,8 +5111,7 @@ Theme.AtlasSets = {
 -- Lib/UI/Theme.lua): white art, tinted entirely in code, standing in for no
 -- Blizzard art a UI pack could restyle. The colour is the caller's, from this
 -- file: a chrome token at rest, textPrimary when pointed at, GetAccent when
--- lit. The small layout mark (layout-small, 9) carries a baked black
--- keyline, which no tint changes, so it holds over a bright scene.
+-- lit.
 --
 -- One size for the small family: every glyph on a 24-unit plate, a field's
 -- button, an options button or a title bar (cog, layout, history,
@@ -5267,7 +5266,6 @@ do
   Theme.GLYPHS = {
     cog = { file = MEDIA .. "glyph-cog.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
     layout = { file = MEDIA .. "glyph-layout.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
-    ["layout-small"] = { file = MEDIA .. "glyph-layout-small.tga", w = 11, h = 11, l = 0.03125, r = 0.71875, t = 0.03125, b = 0.71875, pad = 1 },
     check = { file = MEDIA .. "glyph-check.tga", w = 8, h = 8, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125 },
     eye = { file = MEDIA .. "glyph-eye.tga", w = 12, h = 8, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.5625, px = true },
     ["eye-off"] = { file = MEDIA .. "glyph-eye-off.tga", w = 12, h = 8, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.5625, px = true },
@@ -5318,7 +5316,6 @@ do
     ["eye-off-16"] = { file = MEDIA .. "glyph-eye-off-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["groups-10"] = { file = MEDIA .. "glyph-groups-10.tga", w = 14, h = 12, l = 0, r = 0.875, t = 0, b = 0.75, px = true },
     ["recipients-10"] = { file = MEDIA .. "glyph-recipients-10.tga", w = 12, h = 12, l = 0, r = 0.75, t = 0, b = 0.75, px = true },
-    search = { file = MEDIA .. "glyph-search-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["search-14"] = { file = MEDIA .. "glyph-search-14.tga", w = 14, h = 14, l = 0.0625, r = 0.9375, t = 0.0625, b = 0.9375, px = true },
     link = { file = MEDIA .. "glyph-link.tga", w = 15, h = 8, l = 0.03125, r = 0.5, t = 0.0625, b = 0.5625, px = true },
     ["link-broken"] = { file = MEDIA .. "glyph-link-broken.tga", w = 15, h = 8, l = 0.03125, r = 0.5, t = 0.0625, b = 0.5625, px = true },
