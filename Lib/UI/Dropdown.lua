@@ -593,6 +593,7 @@ function Dropdown.Create(parent, opts)
     if art.on == on then return end
     art.on = on
     art.Tex:SetDesaturated(not on)
+    if art.Glyph then art.Glyph:SetDesaturated(not on) end
     art:SetAlpha(on and 1 or 0.5)
   end
   local function PaintArt()
@@ -614,7 +615,29 @@ function Dropdown.Create(parent, opts)
       art.spec = spec
       local tex = art.Tex
       local g = GlyphOf(spec)
-      if g then
+      local themed = ns.Theme
+      -- A glyph through the house's own path (Theme.Glyph), as the list's
+      -- rows draw it, so the pixel rules hold on the toggle too: its whole
+      -- pixels whole at any scale, the quarter-pixel bias, the filter. One
+      -- glyph texture per toggle, made the first time a chosen item has one
+      -- and given another glyph's art after (Theme.SetGlyphArt), never one
+      -- per change. The plain texture waits hidden for an item's own art.
+      local glyph = art.Glyph
+      if g and not glyph and themed and type(themed.Glyph) == "function" then
+        glyph = themed.Glyph(art, spec.glyph, nil, "ARTWORK")
+        if glyph then
+          glyph:SetPoint("CENTER", art, "CENTER", 0, 0)
+          art.Glyph = glyph
+        end
+      elseif g and glyph and themed and type(themed.SetGlyphArt) == "function" then
+        themed.SetGlyphArt(glyph, spec.glyph)
+      end
+      if glyph then glyph:SetShown(g ~= nil) end
+      art.Ink = (g and glyph) or tex
+      tex:SetShown(not (g and glyph))
+      if g and glyph then
+        art:SetSize(g.w, g.h)
+      elseif g then
         -- A glyph at its own size, so its whole pixels stay whole.
         tex:SetTexture(g.file)
         tex:SetTexCoord(g.l, g.r, g.t, g.b)
@@ -648,7 +671,7 @@ function Dropdown.Create(parent, opts)
       end
     end
     -- A glyph is white art: it wears the value's own ink.
-    if spec.glyph and label and label.GetTextColor then art.Tex:SetVertexColor(label:GetTextColor()) end
+    if spec.glyph and label and label.GetTextColor then (art.Ink or art.Tex):SetVertexColor(label:GetTextColor()) end
     -- The value's words as they show: their whole width, or the box's
     -- where they were cut short to it.
     local w = 0

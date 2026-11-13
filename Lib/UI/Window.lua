@@ -602,13 +602,21 @@ function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn, onR
     if type(onStop) == "function" then onStop(frame) end
   end
 
+  -- A right-click resets on its release over the grip, as a click lands:
+  -- pressed and let go elsewhere, nothing is reset. Only the left button
+  -- sizes; the others do nothing here.
+  local resetArmed = false
+
   button:SetScript("OnMouseDown", function(self, mouseButton)
-    held = true
-    Tint(true)
     if mouseButton == "RightButton" then
-      if type(onReset) == "function" then onReset(frame) end
+      held = true
+      Tint(true)
+      resetArmed = type(onReset) == "function"
       return
     end
+    if mouseButton ~= "LeftButton" then return end
+    held = true
+    Tint(true)
     -- Before anything is measured: the owner may fold transient height into the
     -- base here, and the start height read below has to be the settled one.
     sizing = true
@@ -682,8 +690,16 @@ function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn, onR
     end)
   end)
 
-  button:SetScript("OnMouseUp", StopSizing)
-  button:SetScript("OnHide", StopSizing)
+  button:SetScript("OnMouseUp", function(self, mouseButton)
+    local reset = resetArmed and mouseButton == "RightButton"
+    if mouseButton == "RightButton" then resetArmed = false end
+    StopSizing()
+    if reset and self:IsMouseOver() then onReset(frame) end
+  end)
+  button:SetScript("OnHide", function()
+    resetArmed = false
+    StopSizing()
+  end)
 
   return button
 end
