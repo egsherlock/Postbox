@@ -759,7 +759,8 @@ local PAIR_FIT = { height = BUTTON_H, padding = 14, minWidth = 0 }
 -- Window next: the style and the window every other tab is drawn in, then
 -- the window's own tabs, Mail and Send, in the window's order.
 -- Alerts: what tells the player about mail -- the expiring-mail warnings
--- with the minimap marker and its look, and new mail's sound and flash.
+-- and new mail's sound and flash (the minimap marker and its look are the
+-- Minimap tab's).
 -- Everything reads this list by key (the remembered tab, the pages, Reset
 -- this tab, the search index), so its order is only the strip's and the
 -- search results'.
@@ -1248,7 +1249,7 @@ do
       -- The drawing grows with the text size (Ctx.MiniHeight).
       return CTX_TOP + Ctx.PreviewRoom() + Ctx.MiniHeight() + Ctx.HostRoom() + 10
     end
-    -- Alerts draws the same icon, wearing the marker it sets.
+    -- Alerts draws the same icon.
     if key == "minimap" or key == "alerts" then return CTX_TOP + 4 + Ctx.MinimapHeight() + 10 end
     return 0
   end
@@ -4095,9 +4096,7 @@ do
     return f
   end
 
-  -- Alerts: the same drawing, a copy of its own on Alerts' inspector, so
-  -- the marker's look set there is seen on the icon as it changes, its
-  -- choices answered while pointed at as on the Minimap tab.
+  -- Alerts: the same drawing, a copy of its own on Alerts' inspector.
   function Ctx.alerts(card)
     return Ctx.minimap(card)
   end
@@ -7464,8 +7463,8 @@ function State.Minimap()
   local Icon = ns.MinimapButton
   local on = Icon and Icon.GetEnabled and Icon.GetEnabled() and true or false
   Rows.SetBlock(S.minimapBlock, on)
-  -- Flash on new mail, on Alerts, is drawn on the icon too; so is the
-  -- marker Alerts' Minimap marker places, with its look (State.Warnings,
+  -- Flash on new mail, on Alerts, is drawn on the icon too. The marker's
+  -- rows are in the block, and grey for more besides (State.Warnings,
   -- State.MinimapRows).
   if S.flashCell then Rows.SetEnabled(S.flashCell, on) end
   State.MinimapRows()
@@ -7476,10 +7475,10 @@ function State.Minimap()
 end
 
 -- The rows that need something else grey while it is not there, each
--- saying what turns it on (Rows.Why). On Alerts, the marker's look --
--- Shape, Color, Anchor, Offset X and Offset Y -- while there is no marker
--- to wear it: Mail Memory off (its block has them grey already), Warn
--- about Off, Minimap marker Off, or the minimap icon it is drawn on off;
+-- saying what turns it on (Rows.Why). The marker's look -- Shape, Color,
+-- Anchor, Offset X and Offset Y -- while there is no marker to wear it:
+-- Mail Memory off, Warn about Off, Minimap marker Off, or the minimap icon
+-- it is drawn on off (its block has them grey already);
 -- Larger when alone unless Minimap marker is Always (the one choice that
 -- puts the marker on its own), and with the rest. On the Minimap tab, with
 -- the icon on: Count on icon while Mail Memory is off, which it is made
@@ -7518,19 +7517,23 @@ function State.MinimapRows()
   if rows.glow then Rows.SetEnabled(rows.glow, glow or (Icon.GetAlertFlash() and true or false)) end
 end
 
--- Alerts' Expiring mail, with Mail Memory on (off, its block has the
--- rows grey, saying to turn it on): Chat line at login and Minimap marker
--- grey while Warn about is Off, since they follow it; the marker also
--- while the minimap icon, which it is drawn on, is off -- each saying what
--- turns it on.
+-- The two warnings that follow Warn about, grey while it is Off, each
+-- saying what turns it on. Alerts' Chat line at login, with Mail Memory on
+-- (off, its block on Alerts has the row grey, saying to turn it on). The
+-- Minimap tab's Minimap marker, in the icon's block (off, the block has it
+-- grey, saying to turn the icon on): grey too while Mail Memory, which the
+-- warnings are made from, is off.
 function State.Warnings()
-  local cells = S.warnCells
-  if not cells or not ns.MailboxUI.GetOption("mailMemory") then return end
   local UI, Icon = ns.MailboxUI, ns.MinimapButton
+  local memory = UI.GetOption("mailMemory") and true or false
   local warning = (UI.GetMemoryWarn and UI.GetMemoryWarn() or "any") ~= "off"
+  local cells = S.warnCells
+  if cells and memory then Rows.SetEnabled(cells.chat, warning, "OPT_WARN_WHY") end
+  local marker = S.markerCell
+  if not marker then return end
   local icon = Icon and Icon.GetEnabled and Icon.GetEnabled() and true or false
-  Rows.SetEnabled(cells.chat, warning, "OPT_WARN_WHY")
-  Rows.SetEnabled(cells.marker, warning and icon, warning and "OPT_MINIMAP_WHY_SWITCH" or "OPT_WARN_WHY")
+  Rows.SetEnabled(marker, memory and warning and icon, (not memory and "OPT_MINIMAP_WHY_MEMORY")
+    or (not warning and "OPT_MINIMAP_WHY_WARN") or "OPT_MINIMAP_WHY_SWITCH")
 end
 
 -- Bar look, Bar says (and its Count), Bar icon, Bar color and Shadow color
@@ -7567,8 +7570,8 @@ function State.RowLayout()
 end
 
 -- Mail Memory's switch: the rows it governs grey with it -- Hidden
--- characters here, the expiring-mail warnings and the marker's look on
--- Alerts, what the Minimap tab makes from it there -- and the summary made
+-- characters here, the expiring-mail warnings on Alerts, the marker and
+-- what else the Minimap tab makes from it there -- and the summary made
 -- from it says so (Dash), its strip and its tile grey too.
 function State.Memory()
   local on = ns.MailboxUI.GetOption("mailMemory") and true or false
@@ -9109,9 +9112,9 @@ function Pages.windowCreative(col, Skin)
   end
 end
 
--- The Minimap tab (Core/MinimapButton.lua): the switch, then four groups --
--- when the icon shows, the icon itself, its glow, and where it sits (the
--- marker for expiring mail is Alerts'). Resolved at click time like every other
+-- The Minimap tab (Core/MinimapButton.lua): the switch, then five groups --
+-- when the icon shows, the icon itself, its glow, the marker it wears for
+-- expiring mail, and where it sits. Resolved at click time like every other
 -- binding, so the page stays honest if the module is absent. A row grey
 -- because another setting is off says what turns it on (Rows.Why); with
 -- the switch off, every row says to turn the icon on.
@@ -9136,8 +9139,7 @@ function Pages.minimap(col)
   S.minimapBlock = block
   -- The settings with choices the drawing answers while pointed at
   -- (Ctx.MinimapMode), their text standing under it (Layout); and the rows
-  -- that grey with another setting (State.MinimapRows). Alerts, built
-  -- first, has put the marker's in them.
+  -- that grey with another setting (State.MinimapRows).
   local modes, rows = Pages.MinimapTables()
 
   local function Effect(titleKey, descKey, get, set, after)
@@ -9291,8 +9293,10 @@ function Pages.minimap(col)
   rows.glow = glowRow
   Rows.Why(glowRow, "OPT_MINIMAP_WHY_GLOWCOLOR")
   -- (Flash on new mail, which wears Glow color and keeps it live while it
-  -- is on, is under Alerts' New mail: Pages.alerts. So is the marker for
-  -- expiring mail, with its look.)
+  -- is on, is under Alerts' New mail: Pages.alerts.)
+
+  -- Expiring mail marker: Minimap marker and the marker's look.
+  Pages.MinimapMarker(block, modes, rows)
 
   -- Place: where it sits on the map, and the lock on moving it. Under
   -- EllesmereUI's minimap that, and the size, are EllesmereUI's, and one
@@ -9354,18 +9358,129 @@ function Pages.minimap(col)
   Rows.EndBlock(block)
 end
 
+-- The Minimap tab's Expiring mail marker (Pages.minimap), inside its
+-- switch's block, so with the icon off every row of it says to turn the
+-- icon on. Minimap marker first -- Off, With the icon or Always (its saved
+-- setting is the old Show marker's) -- which follows Warn about on Alerts
+-- and greys while Warn about is Off or Mail Memory, which the warnings are
+-- made from, is off (State.Warnings). Then the marker's look, a row each:
+-- its shape, its colour, the spot on the icon it is anchored to and how far
+-- it is moved from there, and whether, on its own, it grows into the
+-- icon's spot. Each grey, saying why, while there is no marker to wear it
+-- (State.MinimapRows). The drawing answers Shape, Color, Anchor and Larger
+-- when alone with their choices while pointed at; Offset X and Offset Y
+-- have none, and the drawing shows the marker moving with the slider.
+function Pages.MinimapMarker(block, modes, rows)
+  local Icon = ns.MinimapButton
+  Rows.Group(block, L["OPT_MINIMAP_GROUP_MARKER"])
+  local expiryNames = {
+    off = L["OPT_MINIMAP_EXPIRY_OFF"], icon = L["OPT_MINIMAP_EXPIRY_ICON"], always = L["OPT_MINIMAP_EXPIRY_ALWAYS"],
+  }
+  local expiryItems = {}
+  for _, mode in ipairs((Icon and Icon.EXPIRY_MODES) or { "always" }) do
+    expiryItems[#expiryItems + 1] = { id = mode, name = expiryNames[mode] }
+  end
+  local marker = Rows.Dropdown(block, {
+    title = L["OPT_WARN_MARKER_TITLE"], text = L["OPT_WARN_MARKER_DESC"], items = expiryItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetExpiry() end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetExpiry(id) end
+      State.MinimapRows()
+      Ctx.Repaint()
+    end,
+  })
+  Rows.Why(marker, "OPT_MINIMAP_WHY_WARN")
+  Rows.Why(marker, "OPT_MINIMAP_WHY_MEMORY")
+  Rows.Why(marker, "OPT_MINIMAP_WHY_SWITCH")
+  S.markerCell = marker
+
+  local shapeNames = {
+    dot = L["OPT_MINIMAP_MARKER_DOT"], ring = L["OPT_MINIMAP_MARKER_RING"], square = L["OPT_MINIMAP_MARKER_SQUARE"],
+    bar = L["OPT_MINIMAP_MARKER_BAR"], exclamation = L["OPT_MINIMAP_MARKER_EXCLAMATION"],
+    triangle = L["OPT_MINIMAP_MARKER_TRIANGLE"],
+  }
+  local shapeItems = {}
+  for _, id in ipairs((Icon and Icon.MARKER_SHAPES) or { "dot" }) do
+    shapeItems[#shapeItems + 1] = { id = id, name = shapeNames[id] }
+  end
+  rows.marker = Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_MARKER_TITLE"], text = L["OPT_MINIMAP_MARKER_DESC"], items = shapeItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarker() end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetMarker(id) end
+      Ctx.Repaint()
+    end,
+  })
+  rows.color = Pages.MinimapColor(block, {
+    title = L["OPT_MINIMAP_MARKERCOLOR_TITLE"], text = L["OPT_MINIMAP_MARKERCOLOR_DESC"],
+    ids = (Icon and Icon.MARKER_COLORS) or { "red" },
+    get = "GetMarkerColor", set = "SetMarkerColor", pick = "PickMarkerColor", custom = "GetMarkerCustom", rgb = "MarkerRGB",
+  })
+  -- Anchor: the nine spots, in reading order; its drawing is the grid of
+  -- them.
+  local anchorNames = {
+    TOPLEFT = L["OPT_MINIMAP_ANCHOR_TL"], TOP = L["OPT_MINIMAP_ANCHOR_T"], TOPRIGHT = L["OPT_MINIMAP_ANCHOR_TR"],
+    LEFT = L["OPT_MINIMAP_ANCHOR_L"], CENTER = L["OPT_MINIMAP_ANCHOR_C"], RIGHT = L["OPT_MINIMAP_ANCHOR_R"],
+    BOTTOMLEFT = L["OPT_MINIMAP_ANCHOR_BL"], BOTTOM = L["OPT_MINIMAP_ANCHOR_B"], BOTTOMRIGHT = L["OPT_MINIMAP_ANCHOR_BR"],
+  }
+  local cornerItems = {}
+  for _, id in ipairs((Icon and Icon.MARKER_CORNERS) or { "TOPRIGHT" }) do
+    cornerItems[#cornerItems + 1] = { id = id, name = anchorNames[id] }
+  end
+  rows.corner = Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_ANCHOR_TITLE"], text = L["OPT_MINIMAP_ANCHOR_DESC"], items = cornerItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerCorner() end,
+    set = function(id)
+      if ns.MinimapButton then ns.MinimapButton.SetMarkerCorner(id) end
+      Ctx.Repaint()
+    end,
+  })
+  -- Offset X and Offset Y: whole screen pixels from the anchor.
+  local lo = (Icon and Icon.MARKER_OFFSET_MIN) or -20
+  local hi = (Icon and Icon.MARKER_OFFSET_MAX) or 20
+  rows.offx = Rows.Slider(block, {
+    title = L["OPT_MINIMAP_OFFSETX_TITLE"], text = L["OPT_MINIMAP_OFFSETX_DESC"], min = lo, max = hi,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerX() end,
+    set = function(v) if ns.MinimapButton then ns.MinimapButton.SetMarkerX(v) end end,
+    after = Ctx.Repaint,
+  })
+  rows.offy = Rows.Slider(block, {
+    title = L["OPT_MINIMAP_OFFSETY_TITLE"], text = L["OPT_MINIMAP_OFFSETY_DESC"], min = lo, max = hi,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerY() end,
+    set = function(v) if ns.MinimapButton then ns.MinimapButton.SetMarkerY(v) end end,
+    after = Ctx.Repaint,
+  })
+  rows.large = Rows.Check(block, {
+    title = L["OPT_MINIMAP_LARGE_TITLE"], text = L["OPT_MINIMAP_LARGE_DESC"],
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerLarge() end,
+    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetMarkerLarge(on) end end,
+    after = Ctx.Repaint,
+  })
+  Rows.Why(rows.large, "OPT_MINIMAP_WHY_ALONE")
+  modes[rows.marker.entry], modes[rows.color.entry] = "marker", "color"
+  modes[rows.corner.entry], modes[rows.large.entry] = "corner", "large"
+  for _, key in ipairs({ "marker", "color", "corner", "offx", "offy", "large" }) do
+    local cell = rows[key]
+    Rows.Why(cell, "OPT_MINIMAP_WHY_MARKER")
+    Rows.Why(cell, "OPT_MINIMAP_WHY_WARN")
+    Rows.Why(cell, "OPT_MINIMAP_WHY_MEMORY")
+    Rows.Why(cell, "OPT_MINIMAP_WHY_SWITCH")
+    cell.entry.stage = "minimap"
+  end
+end
+
 -- The minimap drawing's two tables, shared by the tabs that draw it: the
 -- settings whose choices it answers while pointed at (S.mmModes), and the
 -- rows that grey with another setting (S.mmRows, State.MinimapRows).
--- Alerts makes them, being built first; the Minimap tab adds its own.
+-- Made by whichever tab is built first.
 function Pages.MinimapTables()
   S.mmModes = S.mmModes or {}
   S.mmRows = S.mmRows or {}
   return S.mmModes, S.mmRows
 end
 
--- A colour's row for the minimap icon, Glow color's (Minimap) and the
--- marker's Color (Alerts) alike: each choice carries its colour in the
+-- A colour's row for the minimap icon, Glow color's and the marker's
+-- Color alike: each choice carries its colour in the
 -- list; Custom, offered where the client has its colour picker, carries
 -- the colour picked, and choosing it opens the picker
 -- (MinimapButton.PickGlowColor, PickMarkerColor): each colour picked is
@@ -9460,7 +9575,7 @@ function Pages.general(col)
 
   -- What the switch governs here, grey with it, saying so: the order of the
   -- character list and who is left out of the lists. (The expiring-mail
-  -- warnings it governs are Alerts'.)
+  -- warnings it governs are Alerts', the marker the Minimap tab's.)
   local block = Rows.Block(col, "OPT_MEMORY_WHY")
   S.memoryBlock = block
 
@@ -9478,11 +9593,11 @@ function Pages.general(col)
 end
 
 -- Alerts: what tells you about mail. Expiring mail first -- Warn about, the
--- one rule for both warnings, the line in chat at login and the minimap
--- marker that follow it (MailMemory.lua, MM.Warns), then the marker's look
--- as plain rows -- all made from Mail Memory and grey with it; then New
--- mail, the sound and the flash. The inspector draws the minimap icon
--- wearing the marker (Ctx.alerts), so its look is seen as it changes.
+-- one rule for both warnings, and the line in chat at login that follows
+-- it (MailMemory.lua, MM.Warns), made from Mail Memory and grey with it;
+-- the minimap marker, which follows it too, is the Minimap tab's
+-- (Pages.MinimapMarker). Then New mail, the sound and the flash. The
+-- inspector draws the minimap icon (Ctx.alerts).
 function Pages.alerts(col)
   -- The rest Mail Memory's switch governs: the expiring-mail warnings.
   local block = Rows.Block(col, "OPT_MEMORY_WHY")
@@ -9490,18 +9605,16 @@ function Pages.alerts(col)
 
   -- Warn about: nothing, mail to be deleted, or that and mail to be sent
   -- back (its ids are the old warning's, so a saved choice carries over:
-  -- MailboxUI.GetMemoryWarn) -- and the two warnings that follow it: the
-  -- line in chat at login, read at the next login, and the minimap marker,
-  -- where it shows (its saved setting is the Minimap tab's old Show
-  -- marker's). Both grey while Warn about is Off, and the marker while the
-  -- minimap icon is off too (State.Warnings). Warn about's longest value
+  -- MailboxUI.GetMemoryWarn) -- and the line in chat at login that follows
+  -- it, read at the next login, grey while Warn about is Off
+  -- (State.Warnings), as the Minimap tab's marker is. Warn about's longest value
   -- fits its box in English, French, Spanish and Chinese; in German and
   -- Russian it is cut short, as any dropdown's is, and said whole on hover
   -- (Rows.Fit).
   Rows.Group(block, L["OPT_MINIMAP_GROUP_EXPIRY"])
   local function Warned()
     State.Warnings()
-    -- The marker's look greys with Warn about too.
+    -- The marker, on the Minimap tab, and its look grey with Warn about too.
     State.MinimapRows()
     local Icon = ns.MinimapButton
     if Icon and Icon.Refresh then Icon.Refresh() end
@@ -9526,108 +9639,7 @@ function Pages.alerts(col)
     set = function(on) ns.MailboxUI.SetOption("warnAtLogin", on) end,
   })
   Rows.Why(chat, "OPT_WARN_WHY")
-  local Icon = ns.MinimapButton
-  local expiryNames = {
-    off = L["OPT_MINIMAP_EXPIRY_OFF"], icon = L["OPT_MINIMAP_EXPIRY_ICON"], always = L["OPT_MINIMAP_EXPIRY_ALWAYS"],
-  }
-  local expiryItems = {}
-  for _, mode in ipairs((Icon and Icon.EXPIRY_MODES) or { "always" }) do
-    expiryItems[#expiryItems + 1] = { id = mode, name = expiryNames[mode] }
-  end
-  local marker = Rows.Dropdown(block, {
-    title = L["OPT_WARN_MARKER_TITLE"], text = L["OPT_WARN_MARKER_DESC"], items = expiryItems,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetExpiry() end,
-    set = function(id)
-      if ns.MinimapButton then ns.MinimapButton.SetExpiry(id) end
-      State.MinimapRows()
-      Ctx.Repaint()
-    end,
-  })
-  Rows.Why(marker, "OPT_WARN_WHY")
-  Rows.Why(marker, "OPT_MINIMAP_WHY_SWITCH")
-  S.warnCells = { chat = chat, marker = marker }
-
-  -- The marker's look, a row each: its shape, its colour, the spot on the
-  -- icon it is anchored to and how far it is moved from there, and whether,
-  -- on its own, it grows into the icon's spot. Each grey, saying why, while
-  -- there is no marker to wear it (State.MinimapRows). The drawing answers
-  -- Shape, Color, Anchor and Larger when alone with their choices while
-  -- pointed at; Offset X and Offset Y have none, and the drawing shows the
-  -- marker moving with the slider.
-  local modes, rows = Pages.MinimapTables()
-  local shapeNames = {
-    dot = L["OPT_MINIMAP_MARKER_DOT"], ring = L["OPT_MINIMAP_MARKER_RING"], square = L["OPT_MINIMAP_MARKER_SQUARE"],
-    bar = L["OPT_MINIMAP_MARKER_BAR"], exclamation = L["OPT_MINIMAP_MARKER_EXCLAMATION"],
-    triangle = L["OPT_MINIMAP_MARKER_TRIANGLE"],
-  }
-  local shapeItems = {}
-  for _, id in ipairs((Icon and Icon.MARKER_SHAPES) or { "dot" }) do
-    shapeItems[#shapeItems + 1] = { id = id, name = shapeNames[id] }
-  end
-  rows.marker = Rows.Dropdown(block, {
-    title = L["OPT_MINIMAP_MARKER_TITLE"], text = L["OPT_MINIMAP_MARKER_DESC"], items = shapeItems,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarker() end,
-    set = function(id)
-      if ns.MinimapButton then ns.MinimapButton.SetMarker(id) end
-      Ctx.Repaint()
-    end,
-  })
-  rows.color = Pages.MinimapColor(block, {
-    title = L["OPT_MINIMAP_MARKERCOLOR_TITLE"], text = L["OPT_MINIMAP_MARKERCOLOR_DESC"],
-    ids = (Icon and Icon.MARKER_COLORS) or { "red" },
-    get = "GetMarkerColor", set = "SetMarkerColor", pick = "PickMarkerColor", custom = "GetMarkerCustom", rgb = "MarkerRGB",
-  })
-  -- Anchor: the nine spots, in reading order; its drawing is the grid of
-  -- them.
-  local anchorNames = {
-    TOPLEFT = L["OPT_MINIMAP_ANCHOR_TL"], TOP = L["OPT_MINIMAP_ANCHOR_T"], TOPRIGHT = L["OPT_MINIMAP_ANCHOR_TR"],
-    LEFT = L["OPT_MINIMAP_ANCHOR_L"], CENTER = L["OPT_MINIMAP_ANCHOR_C"], RIGHT = L["OPT_MINIMAP_ANCHOR_R"],
-    BOTTOMLEFT = L["OPT_MINIMAP_ANCHOR_BL"], BOTTOM = L["OPT_MINIMAP_ANCHOR_B"], BOTTOMRIGHT = L["OPT_MINIMAP_ANCHOR_BR"],
-  }
-  local cornerItems = {}
-  for _, id in ipairs((Icon and Icon.MARKER_CORNERS) or { "TOPRIGHT" }) do
-    cornerItems[#cornerItems + 1] = { id = id, name = anchorNames[id] }
-  end
-  rows.corner = Rows.Dropdown(block, {
-    title = L["OPT_MINIMAP_ANCHOR_TITLE"], text = L["OPT_MINIMAP_ANCHOR_DESC"], items = cornerItems,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerCorner() end,
-    set = function(id)
-      if ns.MinimapButton then ns.MinimapButton.SetMarkerCorner(id) end
-      Ctx.Repaint()
-    end,
-  })
-  -- Offset X and Offset Y: whole screen pixels from the anchor.
-  local lo = (Icon and Icon.MARKER_OFFSET_MIN) or -20
-  local hi = (Icon and Icon.MARKER_OFFSET_MAX) or 20
-  rows.offx = Rows.Slider(block, {
-    title = L["OPT_MINIMAP_OFFSETX_TITLE"], text = L["OPT_MINIMAP_OFFSETX_DESC"], min = lo, max = hi,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerX() end,
-    set = function(v) if ns.MinimapButton then ns.MinimapButton.SetMarkerX(v) end end,
-    after = Ctx.Repaint,
-  })
-  rows.offy = Rows.Slider(block, {
-    title = L["OPT_MINIMAP_OFFSETY_TITLE"], text = L["OPT_MINIMAP_OFFSETY_DESC"], min = lo, max = hi,
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerY() end,
-    set = function(v) if ns.MinimapButton then ns.MinimapButton.SetMarkerY(v) end end,
-    after = Ctx.Repaint,
-  })
-  rows.large = Rows.Check(block, {
-    title = L["OPT_MINIMAP_LARGE_TITLE"], text = L["OPT_MINIMAP_LARGE_DESC"],
-    get = function() return ns.MinimapButton and ns.MinimapButton.GetMarkerLarge() end,
-    set = function(on) if ns.MinimapButton then ns.MinimapButton.SetMarkerLarge(on) end end,
-    after = Ctx.Repaint,
-  })
-  Rows.Why(rows.large, "OPT_MINIMAP_WHY_ALONE")
-  modes[rows.marker.entry], modes[rows.color.entry] = "marker", "color"
-  modes[rows.corner.entry], modes[rows.large.entry] = "corner", "large"
-  for _, key in ipairs({ "marker", "color", "corner", "offx", "offy", "large" }) do
-    local cell = rows[key]
-    Rows.Why(cell, "OPT_MINIMAP_WHY_MARKER")
-    Rows.Why(cell, "OPT_MINIMAP_WHY_WARN")
-    Rows.Why(cell, "OPT_MINIMAP_WHY_MEMORY")
-    Rows.Why(cell, "OPT_MINIMAP_WHY_SWITCH")
-    cell.entry.stage = "alerts"
-  end
+  S.warnCells = { chat = chat }
   Rows.EndBlock(block)
 
   -- New mail: the sound when mail arrives while you are out in the world,
@@ -9677,9 +9689,9 @@ end
 -- still carries over when the new one is unset, the second a value that
 -- counts only beside another (a custom colour's hex beside its choice). A
 -- table's entries are judged one by one: the minimap icon's settings share
--- one table, and its alert sound, its flash, its marker's on/off (Minimap
--- marker) and the marker's look are Alerts' rows, the icon's own the
--- Minimap tab's.
+-- one table, and its alert sound and its flash are Alerts' rows, the
+-- icon's own, its marker's on/off (Minimap marker) and the marker's look
+-- the Minimap tab's.
 --
 -- A look's own values are named for it: pb (the Postbox style, and the
 -- creative styles drawn on it), eui (the EllesmereUI skin), modern (the
