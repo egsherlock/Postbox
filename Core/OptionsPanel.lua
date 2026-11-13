@@ -6259,11 +6259,13 @@ do
 
     -- The strip: what the table is, on a shade of its own over a hairline,
     -- across the list's side only: the tiles beside it are not what it
-    -- names.
+    -- names. From the card's edge to the hairline that splits the card,
+    -- meeting each as it meets the other (the lines under it keep their
+    -- own width and the slim bar's gutter).
     local head = Spot(card, "Frame", HEAD_H)
     head:SetFrameLevel(level + 2)
     head:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
-    head:SetWidth(ROW_W)
+    head:SetWidth(SPLIT_X - 1)
     local shade = head:CreateTexture(nil, "BACKGROUND", nil, -1)
     shade:SetAllPoints()
     T.FillChrome(shade, STRIP_A)
