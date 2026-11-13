@@ -6118,9 +6118,12 @@ do
   local TILES_X = SPLIT_X + 1 + math.floor((CARD_W - 1 - (SPLIT_X + 1) - CTX_W) / 2)
   local TILE_GAP = 6
   local TILES_TOP = 1 + math.floor((Dash.H - 2 - 3 * TILE_H - 2 * TILE_GAP) / 2)
-  -- What the slim bar takes from the lines while it shows: its 6 and 4
-  -- each side (Theme.SlimScrollBar).
-  local GUTTER = 14
+  -- The list's side, from the card's edge to the hairline that splits the
+  -- card: the strip, the headings, the lines and the foot strip all run
+  -- across it. While the list scrolls, its slim bar stands at the side's
+  -- right, and the headings, the lines and the foot's figures give way by
+  -- the strip it takes (S.dash.gutter, measured from the bar at Build).
+  local SIDE_W = SPLIT_X - 1
   -- The card's ground a step over the panel's; the strip and the foot strip
   -- a further step over that (8% in all: #18191c over Postbox Dark's
   -- #0b0b0d). Chrome, so neutral under every look and palette.
@@ -6343,12 +6346,12 @@ do
     -- The strip: what the table is, on a shade of its own over a hairline,
     -- across the list's side only: the tiles beside it are not what it
     -- names. From the card's edge to the hairline that splits the card,
-    -- meeting each as it meets the other (the lines under it keep their
-    -- own width and the slim bar's gutter).
+    -- meeting each as it meets the other, as everything on the list's side
+    -- does (SIDE_W).
     local head = Spot(card, "Frame", HEAD_H)
     head:SetFrameLevel(level + 2)
     head:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
-    head:SetWidth(SPLIT_X - 1)
+    head:SetWidth(SIDE_W)
     local shade = head:CreateTexture(nil, "BACKGROUND", nil, -1)
     shade:SetAllPoints()
     T.FillChrome(shade, STRIP_A)
@@ -6365,7 +6368,7 @@ do
     local cols = Spot(card, "Frame", COLS_H)
     cols:SetFrameLevel(level + 2)
     cols:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -(1 + HEAD_H))
-    cols:SetWidth(ROW_W)
+    cols:SetWidth(SIDE_W)
     cols.Name = Text(cols, "secondary")
     cols.Name:SetPoint("LEFT", cols, "LEFT", NAME_X, 0)
     cols.Name:SetText(L["OPT_DASH_COL_CHAR"])
@@ -6379,26 +6382,35 @@ do
 
     -- The lines: a scroll frame as tall as the lines shown, under the
     -- headings, in an area of its own that holds the slim bar too. The
-    -- lines run to the area's edge while nothing scrolls, and stop short of
-    -- the bar while it shows.
+    -- lines run to the area's edge, the split, while nothing scrolls, and
+    -- stop short of the bar while it shows.
     local area = CreateFrame("Frame", nil, card)
     area:SetFrameLevel(level + 2)
     area:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -(1 + HEAD_H + COLS_H))
-    area:SetSize(ROW_W, LINES * ROW_H)
+    area:SetSize(SIDE_W, LINES * ROW_H)
     local scroll = CreateFrame("ScrollFrame", nil, area, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", area, "TOPLEFT", 0, 0)
-    scroll:SetSize(ROW_W, LINES * ROW_H)
+    scroll:SetSize(SIDE_W, LINES * ROW_H)
     if scroll.SetClipsChildren then scroll:SetClipsChildren(true) end
     local child = CreateFrame("Frame", nil, scroll)
-    child:SetSize(ROW_W, LINES * ROW_H)
+    child:SetSize(SIDE_W, LINES * ROW_H)
     scroll:SetScrollChild(child)
     scroll.__pbGutter = function(scrolling)
-      local w = ROW_W - (scrolling and GUTTER or 0)
+      local d = S.dash
+      local w = SIDE_W - ((scrolling and d) and d.gutter or 0)
       scroll:SetWidth(w)
       child:SetWidth(w)
     end
     scroll.scrollBarHideable = 1
-    T.SlimScrollBar(scroll, area)
+    -- The strip the bar takes while it shows, measured from the bar: the
+    -- room it stands in from the area's edge, its own width, and that room
+    -- again before the lines (Theme.SlimScrollBar).
+    local bar = T.SlimScrollBar(scroll, area)
+    local gutter = 0
+    if bar then
+      local _, _, _, x = bar:GetPoint(1)
+      gutter = math.ceil((bar:GetWidth() or 0) + 2 * math.abs(tonumber(x) or 0))
+    end
     -- Before any mailbox has been seen: the table as it will be, its lines
     -- bare, and over them one muted line, centred, saying what will be
     -- listed and how (Fill).
@@ -6427,7 +6439,7 @@ do
     local total = Figures(Spot(card, "Frame", ROW_H))
     total:SetFrameLevel(level + 2)
     total:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 1, 1)
-    total:SetWidth(SPLIT_X - 1)
+    total:SetWidth(SIDE_W)
     T.SetColor(total.Name, "textPrimary")
     local foot = total:CreateTexture(nil, "BACKGROUND", nil, -1)
     foot:SetAllPoints()
@@ -6443,7 +6455,7 @@ do
     local msg = Spot(card, "Frame", ROW_H)
     msg:SetFrameLevel(level + 2)
     msg:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -(1 + HEAD_H))
-    msg:SetWidth(ROW_W)
+    msg:SetWidth(SIDE_W)
     msg.Text = ns.Theme.CreateText(msg, "bodySmall")
     msg.Text:SetPoint("TOPLEFT", msg, "TOPLEFT", NAME_X, -MSG_PAD)
     msg.Text:SetWidth(ROW_W - 2 * NAME_X)
@@ -6498,7 +6510,7 @@ do
 
     S.dash = { card = card, h = Dash.H, top = false, rows = {}, head = head, cols = cols, more = false,
       total = total, msg = msg, area = area, scroll = scroll, child = child, lines = 0, scrolling = false,
-      none = none, quiet = quiet }
+      none = none, quiet = quiet, gutter = gutter }
   end
 
   -- Mail Memory's tile: "Every character's box", or Off with its art faint
@@ -6642,7 +6654,7 @@ do
     -- The strip's name greys with Mail Memory, as its settings do, and has
     -- the strip to itself, in to where the columns' figures end.
     T.SetColor(head.Title, (data and data.enabled) and "accent" or "textDisabled")
-    T.FitText(head.Title, ROW_W - NAME_X - CONTROL_R - 2, L["OPT_DASH_TITLE"])
+    T.FitText(head.Title, SIDE_W - NAME_X - CONTROL_R - 2, L["OPT_DASH_TITLE"])
     local listed_ = not (words or quiet)
     cols:SetShown(listed_)
     d.area:SetShown(listed_)
@@ -6670,7 +6682,7 @@ do
     local content = listed + (folded > 0 and 1 or 0)
     local ruled = math.max(content, LINES)
     local scrolling = content > LINES
-    local gutter = scrolling and GUTTER or 0
+    local gutter = scrolling and d.gutter or 0
 
     for j = 1, #FIELDS do widths[j] = math.max(MIN_W[j], TextW(cols[FIELDS[j]])) end
     local CT = ns.CollectTab
@@ -6719,7 +6731,7 @@ do
       rights[j] = x
       x = x + widths[j] + GAP
     end
-    local nameRoom = ROW_W - gutter - NAME_X - x
+    local nameRoom = SIDE_W - gutter - NAME_X - x
     PlaceFigures(cols, gutter)
     for i = 1, listed do
       local line = d.rows[i]
@@ -6736,15 +6748,15 @@ do
         line.more = true
         line:EnableMouse(true)
         T.SetColor(line.Name, "textSecondary")
-        T.FitText(line.Name, ROW_W - gutter - 2 * NAME_X, L("OPT_DASH_MORE", folded), line)
+        T.FitText(line.Name, SIDE_W - gutter - 2 * NAME_X, L("OPT_DASH_MORE", folded), line)
         d.more = line
       end
       line:Show()
     end
     for i = ruled + 1, #d.rows do d.rows[i]:Hide() end
-    -- The foot strip runs past the lines to the split: its figures stand
-    -- that much further in, under their columns.
-    PlaceFigures(total, gutter + (SPLIT_X - 1 - ROW_W))
+    -- The foot strip runs to the split as the lines do: its figures under
+    -- their columns, in from the bar with them while it shows.
+    PlaceFigures(total, gutter)
     T.FitText(total.Name, nameRoom, unseen and "" or ns.Plural("OPT_DASH_ALL", n), total)
 
     -- The list's window on its lines, five tall (Build); the bar comes with
