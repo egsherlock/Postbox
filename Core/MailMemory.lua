@@ -2457,10 +2457,12 @@ end
 -- over a character's matches in a search of every box (MM.FillRow). The
 -- style is the player's choice (Options > Window, "Class icons";
 -- profile.classIcons, UI.GetClassIcons):
---   game      the game's class crest, as it always was (MM.ClassIcon)
+--   game      the game's ability-style class icons,
+--             Interface\Icons\ClassIcon_*, cropped as an item's icon is
+--             (the default; until 1.70 "Game: square", whose saved id
+--             "square" reads as game)
 --   round     the game's gold-ringed portraits, UI-Classes-Circles cut
 --             with CLASS_ICON_TCOORDS
---   square    the game's ability-style icons, Interface\Icons\ClassIcon_*
 --   painted, pixel, comic, glyphs
 --             Postbox's own sheets (Media/ClassIcons), 4 x 4 cells in
 --             SHEET_CELL's order; glyphs is white art worn in the class
@@ -2469,8 +2471,10 @@ end
 --             is loaded: the sheet path, the style list and each class's
 --             cell are asked of EllesmereUI itself (EUI below), so Postbox
 --             carries none of its art or data and follows its updates.
--- A style the client cannot draw for a character's class draws that one in
--- the game's crest; a saved style that is not offered now (EllesmereUI not
+-- A style the client cannot draw for a character's class (Game included,
+-- where the client has no ClassIcon_ file for it) draws that one in the
+-- game's class crest (MM.ClassIcon's atlas; on a cap cropped, MM.SetCrest);
+-- a saved style that is not offered now (EllesmereUI not
 -- loaded) is read as game and left as saved, so it returns with it. A
 -- character whose class is not known wears the generic figure in every
 -- style. Every answer is kept per class the first time it is worked out:
@@ -2504,16 +2508,16 @@ do
     WARLOCK = 8, MONK = 9, DRUID = 10, DEMONHUNTER = 11, EVOKER = 12,
   }
   -- The order the option lists them in; EllesmereUI's after these.
-  Icons.ORDER = { "game", "round", "square", "painted", "pixel", "comic", "glyphs" }
+  Icons.ORDER = { "game", "round", "painted", "pixel", "comic", "glyphs" }
   Icons.NAMES = {
-    game = "CLASS_ICONS_GAME", round = "CLASS_ICONS_ROUND", square = "CLASS_ICONS_SQUARE",
+    game = "CLASS_ICONS_GAME", round = "CLASS_ICONS_ROUND",
     painted = "CLASS_ICONS_PAINTED", pixel = "CLASS_ICONS_PIXEL", comic = "CLASS_ICONS_COMIC",
     glyphs = "CLASS_ICONS_GLYPHS",
   }
 
-  -- The game's art. The portraits' sheet and the square icons' folder; a
-  -- square icon is cropped as an item's icon is (MM.CREST_CROP), its own
-  -- frame cut away.
+  -- The game's art. The portraits' sheet and the class icons' folder (Game);
+  -- a class icon is cropped as an item's icon is (MM.CREST_CROP), its own
+  -- frame cut away, the same on a cap, a list's row and the option's items.
   local CIRCLES = "Interface\\TargetingFrame\\UI-Classes-Circles"
   local SQUARE_DIR = "Interface\\Icons\\ClassIcon_"
 
@@ -2527,7 +2531,7 @@ do
   end
 
   -- Per class, worked out once: the crest's atlas (false where none), the
-  -- square icon's path (false where the client has no such file).
+  -- class icon's path (false where the client has no such file).
   local crestOf, squareOf = {}, {}
   local fallback
   local function Crest(token)
@@ -2615,11 +2619,12 @@ do
   end
 
   -- The style saved, as it can be drawn now: the id, and for an
-  -- EllesmereUI one its style and sheet. A style not on offer reads as game.
+  -- EllesmereUI one its style and sheet. A style not on offer reads as game,
+  -- "square" (Game: square until 1.70, now Game's own art) among them.
   local function Current()
     local UI = ns.MailboxUI
     local id = UI and UI.GetClassIcons and UI.GetClassIcons() or "game"
-    if SHEETS[id] or id == "round" or id == "square" then return id end
+    if SHEETS[id] or id == "round" then return id end
     local style = EUI.StyleOf(id)
     if style then
       local _, kit = EUI.Get()
@@ -2633,7 +2638,8 @@ do
   -- style id, class file -> how that class is drawn in that style:
   --   "atlas", atlas
   --   "file", file, left, right, top, bottom, tinted
-  -- The game's crest where the style has nothing for the class.
+  -- The game's crest where the style has nothing for the class (Game too,
+  -- where the client has no ClassIcon_ file for it) or the class is unknown.
   local function Resolve(id, token, euiStyle, euiFile)
     if token then
       local sheet = SHEETS[id]
@@ -2647,7 +2653,7 @@ do
       elseif id == "round" then
         local c = Round(token)
         if c then return "file", CIRCLES, c[1], c[2], c[3], c[4], false end
-      elseif id == "square" then
+      elseif id == "game" then
         local path = Square(token)
         if path then
           local k = MM.CREST_CROP
@@ -2667,7 +2673,7 @@ do
   -- texture, class file [, size [, how]] -> the texture wears that class's
   -- icon in the chosen style: its file or atlas, its crop, its colour.
   -- `size`: the size it is drawn at (one sheet serves every size today).
-  -- `how`: nil, a list's icon (the game's crest whole, as it always was);
+  -- `how`: nil, a list's icon (the crest, where it is the fallback, whole);
   -- "cap", a plate's portrait cap (the crest cropped, MM.SetCrest; its
   -- colour is the cap's to paint, MM.PaintPickIcon, which multiplies in the
   -- tint kept here); "muted", a hidden character's row (a tinted style
@@ -2736,7 +2742,6 @@ do
       local id = Icons.ORDER[i]
       local ok = true
       if id == "round" then ok = token ~= nil and Round(token) ~= nil end
-      if id == "square" then ok = token ~= nil and Square(token) ~= nil end
       if ok then out[#out + 1] = id end
     end
     local coords, kit = EUI.Get()
