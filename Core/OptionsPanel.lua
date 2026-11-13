@@ -7773,6 +7773,7 @@ function Pages.historyDays(col)
   return keep
 end
 
+
 -- The Mail tab: how a row looks, what stands under the list, and how the
 -- tab collects.
 function Pages.mail(col)
@@ -8684,6 +8685,27 @@ function State.ClassIconsRow(col)
   })
 end
 
+-- Character order: the order the character list (the Inbox button's, on
+-- the Mail tab and in Mail Memory's window) offers the characters in; a
+-- pick reorders an open list at once (UI.SetCharacterOrder). Warnings
+-- first, the default, is the order it always had.
+function State.CharacterOrderRow(col)
+  local UI = ns.MailboxUI
+  if not (UI and UI.GetCharacterOrder) then return end
+  return Rows.Dropdown(col, {
+    title = L["OPT_CHARACTER_ORDER_TITLE"], text = L["OPT_CHARACTER_ORDER_DESC"],
+    items = {
+      { id = "warnings", name = L["OPT_CHARACTER_ORDER_WARNINGS"] },
+      { id = "expiring", name = L["OPT_CHARACTER_ORDER_EXPIRING"] },
+      { id = "mail", name = L["OPT_CHARACTER_ORDER_MAIL"] },
+      { id = "name", name = L["OPT_CHARACTER_ORDER_NAME"] },
+      { id = "played", name = L["OPT_CHARACTER_ORDER_PLAYED"] },
+    },
+    get = function() return UI.GetCharacterOrder() end,
+    set = function(id) UI.SetCharacterOrder(id) end,
+  })
+end
+
 -- Text weight, under Text style, in either Mode: Regular or Bold, applied
 -- as a font is (Skin.SetWeight: the copies re-dressed, live). Grey where
 -- the chosen font has no Bold for this client, saying why
@@ -9224,6 +9246,13 @@ function Pages.general(col)
   row:SetScript("OnEnter", HiddenEnter)
   row:SetScript("OnLeave", Rows.LeaveRow)
   S.hiddenRow = row
+
+  -- Character order: the order the character list offers the characters
+  -- in, the one being played always first (MM.CharactersInOrder). Grey
+  -- with the switch: without Mail Memory the Inbox button opens no list
+  -- (MM.HasOthers answers no) and Mail Memory's window does not open, so
+  -- there is nothing for it to order.
+  State.CharacterOrderRow(block)
   Rows.EndBlock(block)
 end
 

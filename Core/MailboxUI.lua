@@ -946,6 +946,27 @@ function UI.SetClassIcons(id)
   if memory and memory.Icons and memory.Icons.Changed then memory.Icons.Changed() end
 end
 
+-- The order the character list (the Inbox button's, on the Mail tab and in
+-- Mail Memory's window) offers the characters in, the one being played
+-- always first (Core/MailMemory.lua, MM.CharactersInOrder): "warnings"
+-- (the default, stored as nothing), "expiring", "mail", "name" or
+-- "played". Only that list follows it.
+do
+  local ORDERS = { warnings = true, expiring = true, mail = true, name = true, played = true }
+  function UI.GetCharacterOrder()
+    local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.characterOrder")
+    return (type(stored) == "string" and ORDERS[stored]) and stored or "warnings"
+  end
+  function UI.SetCharacterOrder(id)
+    if type(id) ~= "string" or not ORDERS[id] then return end
+    local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+    if profile then profile.characterOrder = (id ~= "warnings") and id or nil end
+    -- An open list takes the new order where it stands.
+    local memory = ns.MailMemory
+    if memory and type(memory.ReloadPicker) == "function" then memory.ReloadPicker() end
+  end
+end
+
 -- A column's choices -- which gold a row shows, when it shows the time
 -- left, how it writes the slots -- belong to the arrangement the row
 -- follows, as its columns do, so each list keeps its own:
@@ -1569,6 +1590,7 @@ function UI.SetHistoryDays(days)
   local send = ns.SendTab
   if send and type(send.SyncSentClock) == "function" then send.SyncSentClock() end
 end
+
 
 -- What the Send tab keeps once a mail has gone: "nothing" (the default: a
 -- cleared form, so a name left standing cannot send the next mail to the
@@ -5270,6 +5292,7 @@ function UI.DiagnoseOptions()
   Named("dividerShadow", UI.GetShadowColor(), "neutral")
   Named("tabIndicator", UI.GetTabIndicator(), "dot")
   Named("historyDays", UI.GetHistoryDays(), "7")
+  Named("characterOrder", UI.GetCharacterOrder(), "warnings")
   Named("afterSend", UI.GetAfterSendKeep(), "nothing")
   Named("keepFree", UI.GetKeepFreeSlots(), "0")
   -- Each arrangement's own choices: the one-line rows' under the names

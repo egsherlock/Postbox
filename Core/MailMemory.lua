@@ -745,6 +745,9 @@ end
 --              is waiting + pending and more (MM.CountText)
 --   soon       how many of them are short (three days, one for C.O.D.) and
 --              worth a warning (Counts), and `soonest`
+--   held       when the first of its waiting mail holding something
+--              (Counts) expires, short or not; nil where none does (the
+--              character list's Expiring soonest, MM.CharactersInOrder)
 --   unseenDays set when mail known to be on the way has gone unopened
 --              long enough to be a week from its earliest loss
 local function Status(realm, name, now)
@@ -753,7 +756,7 @@ local function Status(realm, name, now)
   -- the table is sized once rather than grown twice; the ones left nil are
   -- set below, or there, when they apply.
   local st = { realm = realm, name = name, waiting = 0, seenAt = snap and snap.seenAt or nil,
-    soon = nil, soonest = nil, pending = 0, uncounted = false, unseenDays = nil, warn = false,
+    soon = nil, soonest = nil, held = nil, pending = 0, uncounted = false, unseenDays = nil, warn = false,
     gone = nil, goneSoonest = nil, goneText = nil,
     me = nil, hidden = nil, label = nil, text = nil }
   local mails = snap and snap.mails or {}
@@ -770,7 +773,9 @@ local function Status(realm, name, now)
       local left = (tonumber(mail.expires) or 0) - now
       local cod = (tonumber(mail.cod) or 0) > 0
       local soon = shortDays and shortDays(cod) * DAY or (cod and DAY or SOON)
-      if left > 0 and left < soon and Counts(mail) then
+      local counts = Counts(mail)
+      if left > 0 and counts and (not st.held or mail.expires < st.held) then st.held = mail.expires end
+      if left > 0 and left < soon and counts then
         st.soon = (st.soon or 0) + 1
         if not st.soonest or mail.expires < st.soonest then st.soonest = mail.expires end
         -- Of those, the ones the server deletes rather than sends back,
@@ -3883,12 +3888,84 @@ end
 -- shared marker, told apart from a character by `foot`.
 local PICK_FOOT = { foot = true }
 
+-- The characters in the order the list offers them (Options > General >
+-- Characters: Character order, MailboxUI.GetCharacterOrder), the one being
+-- played always first. Warnings first is MM.Characters' own order, and is
+-- that list itself; the others are a copy of it, sorted once and kept
+-- until MM.Characters makes a new list (its own rule: a write, the minute
+-- turning) or the order changes. Every other reader of MM.Characters keeps
+-- its order. The comparators are made once, here.
+do
+  local memo = { list = {}, from = false, order = false }
+  -- Last played, for the build under way: each character's login time
+  -- (Recipients' altMeta, as Manage Recipients' Played column reads it),
+  -- false where none is recorded.
+  local played = {}
+
+  -- x, y: a key each, nil where the character has none (after the others);
+  -- `less`: whether x lists first. Ties by name, then realm (ByName).
+  local function By(a, b, x, y, less)
+    if x ~= y then
+      if not x then return false end
+      if not y then return true end
+      if less then return x < y end
+      return x > y
+    end
+    return ByName(a, b)
+  end
+
+  local ORDERS = {
+    expiring = function(a, b)
+      if a.me ~= b.me then return a.me end
+      return By(a, b, a.held, b.held, true)
+    end,
+    mail = function(a, b)
+      if a.me ~= b.me then return a.me end
+      return By(a, b, a.waiting + (a.pending or 0), b.waiting + (b.pending or 0), false)
+    end,
+    name = function(a, b)
+      if a.me ~= b.me then return a.me end
+      return ByName(a, b)
+    end,
+    played = function(a, b)
+      if a.me ~= b.me then return a.me end
+      return By(a, b, played[a] or nil, played[b] or nil, false)
+    end,
+  }
+
+  function MM.CharactersInOrder()
+    local all = MM.Characters()
+    local UI = ns.MailboxUI
+    local order = UI and type(UI.GetCharacterOrder) == "function" and UI.GetCharacterOrder() or "warnings"
+    local sortBy = ORDERS[order]
+    if not sortBy then return all end
+    local list = memo.list
+    if memo.from == all and memo.order == order then return list end
+    for i = #list, #all + 1, -1 do list[i] = nil end
+    for i = 1, #all do list[i] = all[i] end
+    if order == "played" then
+      for st in pairs(played) do played[st] = nil end
+      local R = ns.Recipients
+      local metaOf = type(R) == "table" and type(R.AltMeta) == "function" and R.AltMeta or nil
+      for i = 1, #all do
+        local st = all[i]
+        local key = metaOf and RecipientOf(st.realm, st.name)
+        local meta = key and metaOf(key)
+        played[st] = type(meta) == "table" and tonumber(meta.lastSeen) or false
+      end
+    end
+    table.sort(list, sortBy)
+    memo.from, memo.order = all, order
+    return list
+  end
+end
+
 -- The list's entries, read afresh -- a hide or a show moves a character
 -- from one half to the other: the characters it offers, then, while any are
 -- hidden, the foot that folds them away and, unfolded, the hidden ones under
 -- it by name. The offset stays inside what is left.
 local function LoadPicker(list)
-  local choices, hidden = SwitchChoices()
+  local choices, hidden = SwitchChoices(MM.CharactersInOrder())
   table.sort(hidden, ByName)
   list.choices, list.hidden = choices, hidden
   local entries = {}
@@ -4134,6 +4211,15 @@ local function PaintPicker(list)
 end
 -- An open list painted again where it stands (MM.Icons.Changed).
 MM.RepaintPicker = PaintPicker
+
+-- The open list, if any, read again and painted: its characters in the
+-- order just chosen (MailboxUI.SetCharacterOrder).
+function MM.ReloadPicker()
+  local list = MM._picker
+  if not (list and list:IsShown()) then return end
+  LoadPicker(list)
+  PaintPicker(list)
+end
 
 -- anchor -> the character list that hangs from `anchor`, made the first
 -- time it opens there. Each button the list opens from has its own, a child
