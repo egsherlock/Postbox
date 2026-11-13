@@ -4046,7 +4046,13 @@ local function CreateSuggestionPopup(panel)
     btn._panel = panel
 
     btn.label = Theme.CreateText(btn, "bodySmall")
-    btn.label:SetPoint("LEFT", btn, "LEFT", 0, 0)
+    -- The name stands in from the row's edge by the room the house's menus
+    -- keep before a caption for the chosen row's bar (Lib/UI/Dropdown.lua's
+    -- MARK_GUTTER, 8), so the Tab marker (PaintTabMarker, 2 wide at the
+    -- row's edge) has air before the first letter; with the rows SUGGEST_PAD
+    -- in from the card, that is the To box's own text inset (M.inset), and
+    -- the names start under what is typed.
+    btn.label:SetPoint("LEFT", btn, "LEFT", M.inset - SUGGEST_PAD, 0)
     -- Room for the star on the right, the same gap the picker's rows leave.
     btn.label:SetPoint("RIGHT", btn, "RIGHT", -16, 0)
     btn.label:SetJustifyH("LEFT")
