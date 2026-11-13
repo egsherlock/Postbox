@@ -1761,6 +1761,43 @@ do
     PruneHistory(list, entry.t)
     return entry
   end
+
+  -- When each recipient was last mailed, for Manage Recipients' Mailed
+  -- column: `into` emptied and filled with key -> the newest `t` any
+  -- character's record holds for that recipient, each `s` turned into a key
+  -- by `keyOf` (Recipients.Key) once and kept in `memo` (s -> key, or false),
+  -- so the window's next open turns none again. Read only: nothing is
+  -- pruned or written. -> into, or nil (into left empty) while History is
+  -- off, when what is recorded no longer says when anyone was last mailed.
+  function MM.LastMailedInto(into, keyOf, memo)
+    for k in pairs(into) do into[k] = nil end
+    if HistoryKeep() <= 0 then return nil end
+    local root = ns.Store and ns.Store.Get and ns.Store.Get("mailSent")
+    if type(root) ~= "table" then return into end
+    for _, byRealm in pairs(root) do
+      if type(byRealm) == "table" then
+        for _, list in pairs(byRealm) do
+          if type(list) == "table" then
+            for i = 1, #list do
+              local e = list[i]
+              local s = type(e) == "table" and e.s
+              local t = type(s) == "string" and tonumber(e.t)
+              if t then
+                local key = memo and memo[s]
+                if key == nil then
+                  key = keyOf(s)
+                  if type(key) ~= "string" or key == "" then key = false end
+                  if memo then memo[s] = key end
+                end
+                if key and (into[key] or 0) < t then into[key] = t end
+              end
+            end
+          end
+        end
+      end
+    end
+    return into
+  end
 end
 
 -- index -> what is known about the mail before anything is taken from it,

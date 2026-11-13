@@ -938,7 +938,11 @@ end
 -- nothing to delete and the manager should offer Hide instead of pretending
 -- otherwise. Curation state on its own (hidden/fav/note) is not an identity --
 -- removing it would un-hide the recipient rather than remove it.
-function R.CanDelete(key)
+--
+-- `unlisted`: the caller has seen every source answer and none offers this
+-- name any more. Then nothing will regenerate it, and the stored row (its
+-- hidden or favorite mark, its note) is all that is left of it: that can go.
+function R.CanDelete(key, unlisted)
   local k, short, realm = R.Key(key)
   if k == "" then return false, "RM_ERR_NAME_EMPTY" end
 
@@ -946,6 +950,7 @@ function R.CanDelete(key)
   if row and row.manual then return true end
   if HistoryHolds(k) then return true end
   if StoredAsAlt(short, realm) then return true end
+  if unlisted and row then return true end
   return false, "RM_ERR_LIVE_ONLY"
 end
 
