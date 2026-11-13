@@ -4723,18 +4723,19 @@ local function BuildSearchBox(panel)
 
   -- The character picker: the plate that names the box on screen -- Inbox,
   -- or the other box's name -- wears the crest of that box as its portrait
-  -- cap, and the picker lies over the whole plate, one button with it:
-  -- whose mail is on screen decides everything after it. It lists every
+  -- cap, always, and the picker lies over the whole plate, one button with
+  -- it: whose mail is on screen decides everything after it. It lists every
   -- character with mail to look at (MailMemory's NewPickCell, as Mail
-  -- Memory's window has it). Put onto its plate by AV.Paint (MailMemory.
-  -- HostPick), which the row's layout widens by the cap's room
-  -- (LayoutViewToggle).
+  -- Memory's window has it), while there is one (AV.Paint's `_picking`).
+  -- Put onto its plate by AV.Paint (MailMemory.HostPick), which the row's
+  -- layout widens by the cap's room (LayoutViewToggle).
   local picker = ns.MailMemory.NewPickCell(panel.ViewToggle, M.segmentHeight)
   -- One click, by the rule the History clock has: on the lit plate -- its
   -- list is the one on screen -- a click opens the character list; on an
   -- unlit one it is the plate's own click, back to that Inbox, and the next
-  -- opens the list. A right-click, while another character's box is on
-  -- screen, goes back to this character's own (AV.Back); on this
+  -- opens the list. With no list to open, every click is the plate's own,
+  -- as Inbox's is without a cap. A right-click, while another character's
+  -- box is on screen, goes back to this character's own (AV.Back); on this
   -- character's own it does nothing.
   picker:SetScript("OnClick", function(self, button)
     if button == "RightButton" then
@@ -4742,7 +4743,7 @@ local function BuildSearchBox(panel)
       return
     end
     local host = self.host
-    local own = host and not host.isSelected and host:GetScript("OnClick")
+    local own = host and (not host.isSelected or not panel._picking) and host:GetScript("OnClick")
     if own then
       own(host, "LeftButton")
       -- The tooltip under the pointer is said again for where it now is.
@@ -6397,8 +6398,7 @@ local function LayoutViewToggle(panel)
   local M = T.Metrics
   -- Whose: the other box's plate in the Inbox's place while one is on
   -- screen, and the picker in the left end of whichever names the box,
-  -- while there is another box to pick or a hidden one to show (AV.Paint,
-  -- MailMemory.HostPick).
+  -- always, outside the arrange mode (AV.Paint, MailMemory.HostPick).
   local picker = panel.Picker
   local alt = container.alt
   local named = alt and alt:IsShown() and alt.natW
@@ -6746,20 +6746,22 @@ function AV.Paint(panel)
   if Memory then others, hidden = Memory.HasOthers() end
   local who = panel._alt
 
-  -- The picker while there is another box to pick, one on screen, or a
-  -- character the list would offer but the player hid: its list then holds
+  -- The character list while there is another box to pick, one on screen,
+  -- or a character the list would offer but the player hid: it then holds
   -- this character and the Hidden foot, the one way back to them from here.
-  -- A character with no other box at all has no picker.
+  -- A character with no other box at all, or with Mail Memory off, has no
+  -- list, and the picker's clicks are the plate's own.
   local picking = (others and true or false) or who ~= nil or (tonumber(hidden) or 0) > 0
-  panel.Picker:SetShown(picking)
-  -- The picker in the plate that names the box, before that plate is
-  -- measured: its crest's room is part of the plate (MailMemory.HostPick).
+  panel._picking = picking
+  -- The cap always: the picker in the plate that names the box, before that
+  -- plate is measured, so the crest's room is part of the plate in every
+  -- state (MailMemory.HostPick), and that box's class icon on it.
+  panel.Picker:Show()
   local box = panel.ViewToggle
-  if box and Memory then
-    Memory.HostPick(panel.Picker, picking and (who and box.alt or box.buttons[1]) or nil)
-  end
-  if Memory and Memory.PaintCap then
-    Memory.PaintCap(panel.Picker, who and who.realm or ns.Helpers.PlayerRealm(),
+  local MM = ns.MailMemory
+  if box and MM then MM.HostPick(panel.Picker, who and box.alt or box.buttons[1]) end
+  if MM and MM.PaintCap then
+    MM.PaintCap(panel.Picker, who and who.realm or ns.Helpers.PlayerRealm(),
       who and who.name or ns.Helpers.PlayerName())
   end
 
@@ -6849,10 +6851,12 @@ end
 -- The tooltip of the plate the picker lies over: what it names -- Inbox,
 -- or the other character's whole name, realm and all, since the plate may
 -- show only its start -- then its clicks: the list, only while a click
--- opens it (the plate lit: on an unlit one the click is the plate's own,
--- back to that Inbox, and the plate's name says so), and the way back
--- only while there is one to take.
+-- opens it (the plate lit, and a list to open: on an unlit one the click is
+-- the plate's own, back to that Inbox, and the plate's name says so), and
+-- the way back only while there is one to take. With no list at all, none:
+-- Inbox without a cap has no tooltip either.
 function AV.PickerTip(picker, panel)
+  if not panel._picking then return end
   local T = Th()
   local host = picker.host
   local name = host and host == (panel.ViewToggle and panel.ViewToggle.alt) and host.fullName
@@ -6918,11 +6922,11 @@ function CT.OpenPicker(panel)
   -- on the first.
   local perf = ns.Perf
   local perfAt = perf and perf.visit and perf.Mark()
-  if not panel.Picker:IsShown() then AV.Paint(panel) end
-  if not panel.Picker:IsShown() then
+  if not panel._picking then AV.Paint(panel) end
+  if not panel._picking then
     -- No other character has a box to show: say so, not a dead click. A
-    -- hidden one the list would offer keeps the picker up (AV.Paint), its
-    -- list the way back, so this is said of none at all.
+    -- hidden one the list would offer keeps the list (AV.Paint), the way
+    -- back to them, so this is said of none at all.
     local _, hidden = Memory.HasOthers()
     ns.Print(L()[(tonumber(hidden) or 0) > 0 and "MEMORY_NO_OTHERS_HIDDEN" or "MEMORY_NO_OTHERS"])
     return
