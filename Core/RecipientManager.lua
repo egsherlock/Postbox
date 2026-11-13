@@ -96,12 +96,6 @@ local ROW = {
   -- place to click), wider as far as its longest note asks where the
   -- window has the room (RM.Layout).
   NOTE_MIN = 100,
-  -- The unlit star under the pointer: an outline in a light gold, the lit
-  -- star's family a step lighter, drawn as the game's own unlit star's shape
-  -- (its art masks a fill of this colour: the art itself is a dark grey no
-  -- tint can lift). Theme.InkFor makes it right for a light palette.
-  STAR_HOVER = { 1.00, 0.87, 0.45 },
-  STAR_OFF_ATLAS = "auctionhouse-icon-favorite-off",
 }
 ROW.NAME_X = ROW.STAR_LEFT + ROW.STAR_HIT + 4
 ROW.END_W = ROW.MARK_EDGE + 3 * ROW.MARK + 2 * ROW.MARK_GAP + ROW.MARK_AIR
@@ -1302,10 +1296,10 @@ local function PaintMarks(row)
 end
 
 -- The star: its state, or under the pointer on a name that is not a
--- favourite, the unlit star's outline in a light gold (ROW.STAR_HOVER) --
+-- favourite, the unlit star's outline in a light gold (Theme.STAR_HOVER) --
 -- what a click would make it. The outline is a fill masked by the unlit
--- star's own art (BuildRow), so it is that shape at full strength; where a
--- client has no such mask, the unlit art itself takes the gold.
+-- star's own art (Theme.StarOutline), so it is that shape at full strength;
+-- where a client has no such mask, the unlit art itself takes the gold.
 local function PaintStar(row)
   local entry = row._entry
   if not entry then return end
@@ -1314,18 +1308,11 @@ local function PaintStar(row)
   if row._star == state then return end
   row._star = state
   local fav, hover = row.Fav, row.Fav.Hover
-  SetStarArt(fav.Icon, entry.fav and true or false)
   if preview then
-    local tint = ROW.STAR_HOVER
-    local r, g, b = Theme.InkFor(tint[1], tint[2], tint[3])
-    if hover then
-      hover:SetColorTexture(r, g, b, 1)
-      hover:Show()
-      fav.Icon:Hide()
-      return
-    end
-    fav.Icon:SetVertexColor(r, g, b, 1)
+    Theme.PaintStarOutline(fav.Icon, hover, true)
+    return
   end
+  SetStarArt(fav.Icon, entry.fav and true or false)
   if hover then hover:Hide() end
   fav.Icon:Show()
 end
@@ -1627,20 +1614,8 @@ local function BuildRow(parent)
   SetStarArt(row.Fav.Icon, false)
   -- The hover's outline: a fill masked by the unlit star's art (PaintStar),
   -- where the client has the art and masks.
-  if type(row.Fav.CreateMaskTexture) == "function" and Theme.AtlasExists(ROW.STAR_OFF_ATLAS) then
-    local hover = row.Fav:CreateTexture(nil, "ARTWORK", nil, 1)
-    hover:SetSize(ROW.STAR_ICON, ROW.STAR_ICON)
-    hover:SetPoint("CENTER")
-    local mask = row.Fav:CreateMaskTexture()
-    if pcall(mask.SetAtlas, mask, ROW.STAR_OFF_ATLAS, false) then
-      mask:SetAllPoints(hover)
-      hover:AddMaskTexture(mask)
-      hover:Hide()
-      row.Fav.Hover = hover
-    else
-      hover:Hide()
-    end
-  end
+  row.Fav.Hover = Theme.StarOutline(row.Fav, ROW.STAR_ICON, "ARTWORK")
+  if row.Fav.Hover then row.Fav.Hover:SetPoint("CENTER") end
   row.Fav:SetScript("OnClick", ROWS.StarClick)
   row.Fav:SetScript("OnDoubleClick", ROWS.PartDoubleClick)
   row.Fav:SetScript("OnEnter", ROWS.StarEnter)

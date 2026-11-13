@@ -2558,21 +2558,26 @@ end
 ST.Curate = {}
 
 -- row -> its star drawn from its state: filled for a favorite; the hollow
--- outline while the pointer is on the row or the star (`_hot`, `_starHot`);
+-- outline while the pointer is on the row (`_hot`), in the unlit star's
+-- near-white, and in Manage Recipients' light gold while it is on the star
+-- itself (`_starHot`), each drawn solid in the art's shape so it reads on
+-- the row's hover and Tab washes (Theme.PaintStarOutline, row.StarOutline);
 -- nothing otherwise. The row's own fields, so the picker's rows and the
 -- type-ahead's share it.
 function ST.Curate.PaintStar(row)
   local star = row and row.Star
   if not star then return end
+  local outline = row.StarOutline
   if row._fav then
     ApplyFavoriteIcon(star, true)
     star:Show()
   elseif row._hot or row._starHot then
-    ApplyFavoriteIcon(star, false)
-    star:Show()
+    Theme.PaintStarOutline(star, outline, row._starHot)
+    return
   else
     star:Hide()
   end
+  if outline then outline:Hide() end
 end
 
 -- The star's tooltip, as Manage Recipients' star says it (its strings): what
@@ -2772,6 +2777,9 @@ local function AcquireRow(picker, index)
   row.Star:SetPoint("RIGHT", row, "RIGHT", -3, 0)
   ApplyFavoriteIcon(row.Star, true)
   row.Star:Hide()
+  -- The unlit star as the pointer finds it, over the art (14a, PaintStar).
+  row.StarOutline = Theme.StarOutline(row.StarButton, 11, "OVERLAY")
+  if row.StarOutline then row.StarOutline:SetPoint("CENTER", row.Star, "CENTER", 0, 0) end
 
   -- The Hidden foot's parts (14b): the hairline over the foot, between the
   -- names offered and the ones that are not, and "Show" at a hidden name's
@@ -4059,6 +4067,8 @@ local function CreateSuggestionPopup(panel)
     btn.Star:SetPoint("RIGHT", btn, "RIGHT", -3, 0)
     ApplyFavoriteIcon(btn.Star, true)
     btn.Star:Hide()
+    btn.StarOutline = Theme.StarOutline(btn.StarButton, 11, "OVERLAY")
+    if btn.StarOutline then btn.StarOutline:SetPoint("CENTER", btn.Star, "CENTER", 0, 0) end
 
     local highlight = btn:CreateTexture(nil, "HIGHLIGHT")
     highlight:SetAllPoints()

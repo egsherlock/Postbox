@@ -5893,6 +5893,51 @@ function Theme.SetStarArt(texture, filled)
   end
 end
 
+-- The unlit star shown as a control under the pointer, in every list that
+-- offers one (Manage Recipients, the Send tab's picker and type-ahead). The
+-- game's unlit star is a dark grey (80 of 255) that a vertex colour can only
+-- darken, so on a hovered row's lighter wash it all but vanished: drawn
+-- instead as a fill MASKED by that art, it is the art's shape in one solid
+-- colour at full strength. Two colours: the cool near-white the unlit star
+-- is meant to wear (STAR_EMPTY_TINT) while the pointer is on its row, and a
+-- light gold (#FFDE73, the lit star's family a step lighter) while it is on
+-- the star itself, what a click would make it. Theme.InkFor makes each
+-- right for a light palette.
+Theme.STAR_HOVER = { 1.00, 0.87, 0.45 }
+
+-- parent, size, layer -> the outline texture, made once with its row and
+-- hidden (the caller places it where the star's art stands), or nil where
+-- the client has no masks or no such art: Theme.PaintStarOutline then tints
+-- the art itself.
+function Theme.StarOutline(parent, size, layer)
+  if type(parent.CreateMaskTexture) ~= "function" or not Theme.AtlasExists(STAR_ATLAS.off) then return nil end
+  local outline = parent:CreateTexture(nil, layer or "ARTWORK", nil, 1)
+  outline:SetSize(size, size)
+  outline:Hide()
+  local mask = parent:CreateMaskTexture()
+  if not pcall(mask.SetAtlas, mask, STAR_ATLAS.off, false) then return nil end
+  mask:SetAllPoints(outline)
+  outline:AddMaskTexture(mask)
+  return outline
+end
+
+-- icon, outline (or nil), gold -> the unlit star shown: the outline in the
+-- near-white, or in the gold with `gold`, the art put away under it; without
+-- an outline the art itself takes the colour. Nothing is made.
+function Theme.PaintStarOutline(icon, outline, gold)
+  local tint = gold and Theme.STAR_HOVER or STAR_EMPTY_TINT
+  local r, g, b = Theme.InkFor(tint[1], tint[2], tint[3])
+  Theme.SetStarArt(icon, false)
+  if outline then
+    outline:SetColorTexture(r, g, b, 1)
+    outline:Show()
+    icon:Hide()
+  else
+    icon:SetVertexColor(r, g, b, 1)
+    icon:Show()
+  end
+end
+
 -------------------------------------------------------------
 -- Tile state
 --
