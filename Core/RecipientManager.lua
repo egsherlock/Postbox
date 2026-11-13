@@ -133,8 +133,10 @@ local FOOT_PAD    = 10
 -- right edge, clear of the resize grip in the corner.
 local GRIP_CLEAR  = 26
 
--- 640: what the content asks for, every column and a long name whole.
-local DEFAULT_W = 640
+-- The width a window nobody has resized opens at: what the content asks for,
+-- every column with a name of DEFAULT_NAME beside them, measured
+-- (DefaultWidth), and held between DEFAULT_W and DEFAULT_MAX_W.
+local DEFAULT_W, DEFAULT_MAX_W, DEFAULT_NAME = 640, 760, 186
 -- The bounds, of which only these are chosen; the section "Size bounds" below
 -- measures the rest. The narrowest width is the Postbox window's own, so the
 -- two windows stop at the same place, and it gives way only where this
@@ -2353,16 +2355,31 @@ local function ApplyBounds(frame)
   end
 end
 
+-- The default width: every column standing beside a name of DEFAULT_NAME,
+-- with the list's insets and the scroll bar's gutter, as measured now.
+local function DefaultWidth()
+  local row = ROW.NAME_X + DEFAULT_NAME + ROW.END_W
+  for c = 1, #COLS do row = row + (LAY.w[COLS[c].id] or 0) + ROW.GUTTER end
+  local width = math.ceil(row + 2 * PAD + LIST_INSET + M.scrollGutter)
+  return math.min(math.max(width, DEFAULT_W), DEFAULT_MAX_W)
+end
+RM.DefaultWidth = DefaultWidth
+
 -- The size a first open uses: the default, or the floor where that stands
--- higher, on loan like any other. The default height is whole rows.
+-- higher, on loan like any other. The default height is whole rows. Until
+-- the player takes the grip, the size is marked as the default's (`auto` in
+-- the stored size), and each open measures it again.
 local function SetDefaultSize(frame)
   local minW, minH
   if frame.GetResizeBounds then minW, minH = frame:GetResizeBounds() end
+  local defaultW = DefaultWidth()
   local defaultH = ChromeHeight(frame) + DEFAULT_ROWS * LAY.rowH
-  local width = math.max(DEFAULT_W, tonumber(minW) or 0)
+  local width = math.max(defaultW, tonumber(minW) or 0)
   local height = math.max(defaultH, tonumber(minH) or 0)
-  RM._loanW, RM._loanH = width - DEFAULT_W, height - defaultH
+  RM._loanW, RM._loanH = width - defaultW, height - defaultH
   frame:SetSize(width, height)
+  local store = ns.Store.EnsurePath("profile.rmWindow", {})
+  if type(store) == "table" then store.auto = true end
 end
 
 -------------------------------------------------------------
@@ -2739,20 +2756,26 @@ function BUILD.Grip(frame)
   local store = ns.Store.EnsurePath("profile.rmWindow", {})
   local helpers = ns.Core.UI.Helpers
 
-  local pressW, pressH, pressLoanW, pressLoanH
+  local pressW, pressH, pressLoanW, pressLoanH, pressAuto
 
   -- The grip takes hold: the size on screen becomes the player's own.
   local function OnGripStart(f)
     pressW, pressH = f:GetWidth(), f:GetHeight()
     pressLoanW, pressLoanH = RM._loanW, RM._loanH
     RM._loanW, RM._loanH = 0, 0
+    pressAuto = store.auto
+    store.auto = nil
   end
 
   -- Released. A press that left an axis where it was has not resized it.
   local function OnGripStop(f)
     if pressW then
-      if math.abs(f:GetWidth() - pressW) < 0.5 then RM._loanW = pressLoanW end
-      if math.abs(f:GetHeight() - pressH) < 0.5 then RM._loanH = pressLoanH end
+      local sameW = math.abs(f:GetWidth() - pressW) < 0.5
+      local sameH = math.abs(f:GetHeight() - pressH) < 0.5
+      if sameW then RM._loanW = pressLoanW end
+      if sameH then RM._loanH = pressLoanH end
+      -- A press that moved nothing leaves the default the default's.
+      if sameW and sameH then store.auto = pressAuto end
       pressW = nil
     end
     UpdateVisibleRows()
@@ -2883,8 +2906,12 @@ function RM.Show(anchor, from)
   -- measured as it will be seen.
   RM.Measure(frame)
   ApplyBounds(frame)
+  -- No size stored, or the one stored is the default's own (nobody has
+  -- taken the grip): the default, measured from what the list holds now.
   local saved = ns.Store.Get("profile.rmWindow")
-  if not (type(saved) == "table" and tonumber(saved.height)) then SetDefaultSize(frame) end
+  if not (type(saved) == "table" and tonumber(saved.height)) or (opening and saved.auto) then
+    SetDefaultSize(frame)
+  end
   Relayout(frame)
   if opening then
     local helpers = ns.Core.UI.Helpers
