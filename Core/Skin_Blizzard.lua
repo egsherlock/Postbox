@@ -2709,6 +2709,81 @@ do
     Wash(row, nil, row._hovered)
   end
 
+  -------------------------------------------------------------
+  -- The Send tab's Message box follows the rows
+  -------------------------------------------------------------
+
+  -- The Message box (the field many lines tall, Parts.Field) wears the
+  -- rows' ground inside its bevel: the letter paper with the typed words in
+  -- the dark ink, clean, and a selection a warm brown wash; the shaded paper
+  -- with the light words; on the dark list, the dark sunken box the lists
+  -- are. The client draws the cursor in the words' colour. Recipient,
+  -- Subject and the gold boxes keep their look. Laid when the box is
+  -- dressed and again when the setting changes; the box's own font set
+  -- again (the text size) takes the ink again.
+  local BEVEL = 3
+  local SELECT_LIGHT = { 0.45, 0.33, 0.12, 0.35 }
+  local grounds = setmetatable({}, { __mode = "k" })
+
+  local function Highlight(box, light)
+    if type(box.SetHighlightColor) ~= "function" then return end
+    if box.__pbHiR == nil and type(box.GetHighlightColor) == "function" then
+      local r, g, b, a = box:GetHighlightColor()
+      if type(r) == "number" then box.__pbHiR, box.__pbHiG, box.__pbHiB, box.__pbHiA = r, g, b, a or 1 end
+    end
+    if light then
+      box:SetHighlightColor(SELECT_LIGHT[1], SELECT_LIGHT[2], SELECT_LIGHT[3], SELECT_LIGHT[4])
+    elseif box.__pbHiR then
+      box:SetHighlightColor(box.__pbHiR, box.__pbHiG, box.__pbHiB, box.__pbHiA)
+    end
+  end
+
+  local function Words(box)
+    local T = ns.Theme
+    if not T then return end
+    T.SetColor(box, "textPrimary", "row")
+    Shadow(box, R.light)
+    Highlight(box, R.light)
+    local ph = box._placeholder
+    if ph then
+      T.SetColor(ph, "textPlaceholder", "row")
+      Shadow(ph, R.light)
+    end
+  end
+
+  function Parts.MessageGround(wrap)
+    grounds[wrap] = true
+    if not R.mode then R.Resolve() end
+    local mode = R.mode
+    local paper = wrap.__pbPaper
+    if mode ~= "none" and not paper then
+      -- Inside the bevel, over the dark ground, under the bevel's art.
+      paper = wrap:CreateTexture(nil, "BORDER", nil, -1)
+      paper:SetTexture(PAPER)
+      paper:SetTexCoord(PX0 / SIZE, PX1 / SIZE, PY0 / SIZE, PY1 / SIZE)
+      paper:SetPoint("TOPLEFT", wrap, "TOPLEFT", BEVEL, -BEVEL)
+      paper:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -BEVEL, BEVEL)
+      wrap.__pbPaper = paper
+    end
+    if paper then
+      local v = (mode == "dark") and DARK_V or 1
+      paper:SetVertexColor(v, v, v, 1)
+      paper:SetShown(mode ~= "none")
+    end
+    local scroll = wrap._scroll
+    local box = scroll and type(scroll.GetScrollChild) == "function" and scroll:GetScrollChild() or nil
+    if not box then return end
+    if not box.__pbGroundHooked and type(box.SetFontObject) == "function" then
+      box.__pbGroundHooked = true
+      hooksecurefunc(box, "SetFontObject", Words)
+    end
+    Words(box)
+  end
+
+  function Parts.MessageGrounds()
+    for wrap in pairs(grounds) do Parts.MessageGround(wrap) end
+  end
+
   -- The setting changed (Options > Window): the inks put in force and every
   -- mail list bound again, the message box laid on its new ground.
   function Skin.RowTextureChanged()
