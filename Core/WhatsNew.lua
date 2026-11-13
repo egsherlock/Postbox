@@ -60,8 +60,8 @@ local ONCE = {}
 -- load.
 --
 -- A release may also carry a placard, the words of a small plate beside its
--- title (section 2b), and a note, a line of its own under the title: 1.60's
--- say that Postbox now supports Forever, and ask for bug reports.
+-- title (section 2b; none carries one now), and a note, a line of its own
+-- under the title: 1.60's asks for bug reports.
 --
 -- A group about one game only names the game and its lines,
 -- `{ game = "forever" or "retail", lines = key }`: its heading is that
@@ -75,8 +75,8 @@ local KEEP = 3
 
 local function Releases()
   return {
-    -- No placard: 1.60's says Postbox now supports Forever, news once;
-    -- 1.70's Forever line is a group like the others.
+    -- No placard on any: each release's Forever news is a group like the
+    -- others (1.60's says Postbox runs there from that release on).
     { version = "1.70.0", groups = {
       { "WHATSNEW_170_NEW", "WHATSNEW_170_NEW_LINES" },
       { "WHATSNEW_170_LOOKS", "WHATSNEW_170_LOOKS_LINES" },
@@ -84,7 +84,7 @@ local function Releases()
       { "WHATSNEW_FIXED", "WHATSNEW_170_FIXED_LINES" },
       { game = "forever", lines = "WHATSNEW_170_FOREVER_LINES" },
     } },
-    { version = "1.60.0", placard = "WHATSNEW_160_PLACARD", note = "WHATSNEW_160_BUGS", groups = {
+    { version = "1.60.0", note = "WHATSNEW_160_BUGS", groups = {
       { "WHATSNEW_160_MAIL", "WHATSNEW_160_MAIL_LINES" },
       { "WHATSNEW_160_OPTIONS", "WHATSNEW_160_OPTIONS_LINES" },
       { game = "forever", lines = "WHATSNEW_160_FOREVER_LINES" },
