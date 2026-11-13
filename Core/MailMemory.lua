@@ -3463,11 +3463,17 @@ local function PickerTip(row)
 end
 
 -- The list is drawn as the house's menus are (Lib/UI/Dropdown.lua): its rows
--- PICK_PAD in from the card's edges, their contents PICK_GUTTER in from the
--- row's, the crest at the menus' art size, and the row under the pointer in
+-- PICK_PAD in from the card's edges, the count PICK_GUTTER in from the
+-- row's right edge, the crest at the menus' art size, and the row under the pointer in
 -- the menus' hover wash (MenuColors.hover, which the palette recolours in
 -- place), painted as it is entered so it follows the look.
 local PICK_PAD, PICK_GUTTER, PICK_CREST = 4, 8, 16
+-- The chosen row's marker, a bar PICK_BAR wide at the row's left edge, and
+-- the crest's place on every row, PICK_LEAD in: straight after the bar's
+-- place, a unit clear of it, as the Inbox plate's cap stands a unit in
+-- from the plate's edge (MM.NewPickCell). The foot's words start there too.
+MM.PICK_BAR = 2
+MM.PICK_LEAD = MM.PICK_BAR + 1
 
 local function PaintPickHover(texture)
   local shared = ns.Core and ns.Core.UI and ns.Core.UI.Theme
@@ -3505,7 +3511,7 @@ local function PaintPicker(list)
       row.Wash:SetTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
       row.Wash:Hide()
       row.Bar = row:CreateTexture(nil, "ARTWORK")
-      row.Bar:SetWidth(2)
+      row.Bar:SetWidth(MM.PICK_BAR)
       row.Bar:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
       row.Bar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
       row.Bar:SetTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
@@ -3519,7 +3525,7 @@ local function PaintPicker(list)
       row.Rule:Hide()
       row.Crest = row:CreateTexture(nil, "ARTWORK")
       row.Crest:SetSize(PICK_CREST, PICK_CREST)
-      row.Crest:SetPoint("LEFT", row, "LEFT", PICK_PAD + PICK_GUTTER, 0)
+      row.Crest:SetPoint("LEFT", row, "LEFT", MM.PICK_LEAD, 0)
       row.Name = T.CreateText(row, "value")
       row.Name:SetJustifyH("LEFT")
       row.Name:SetWordWrap(false)
@@ -3575,7 +3581,7 @@ local function PaintPicker(list)
       row.realm, row.charName, row.isMe, row.reason = nil, nil, false, nil
       row.Crest:Hide()
       row.Rule:Show()
-      row.Name:SetPoint("LEFT", row, "LEFT", PICK_PAD + PICK_GUTTER, 0)
+      row.Name:SetPoint("LEFT", row, "LEFT", MM.PICK_LEAD, 0)
       row.Name:SetText(string.format(L["PICKER_HIDDEN"], #(list.hidden or {})))
       -- Brighter while unfolded: its state rises in colour, not alpha alone.
       T.SetColor(row.Name, list.showHidden and "textPrimary" or "textSecondary")
@@ -3641,7 +3647,7 @@ local function PaintPicker(list)
 
   -- The row's width: its contents with the gutters; the card's, the rows
   -- and the padding either side, as a menu's.
-  local inner = PICK_PAD + PICK_GUTTER
+  local inner = MM.PICK_LEAD
   local width = inner + PICK_CREST + 6 + math.ceil(nameW) + 20 + math.ceil(countW) + PICK_GUTTER
   width = math.max(width, inner + math.ceil(footW) + PICK_GUTTER)
   for i = 1, shown do
