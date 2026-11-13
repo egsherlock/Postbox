@@ -1714,6 +1714,9 @@ do
       and T.NamedFont(toggle:GetHighlightFontObject()) or nil
     local name = lit and type(lit.GetName) == "function" and lit:GetName() or nil
     if name and name:find("^PostboxEvenFont") and type(toggle.SetNormalFontObject) == "function" then
+      -- The options' push buttons take their words' font from a select's
+      -- (OptionsPanel's CAPTION.Font): at rest they keep the gold one.
+      toggle.__pbCaptionFont = toggle:GetNormalFontObject()
       toggle:SetNormalFontObject(lit)
     end
     -- Its place: at the box's left (after a swatch where it has one),
@@ -2008,6 +2011,72 @@ do
     cb.__pbBlizzCheck = true
   end
 
+  -- The options' footer (Footer.Build: the band names its parts in
+  -- `__pbFooter`): Report a bug, What's new? and Reset to defaults wear
+  -- the game's gold at rest, words and marks, as the approved drawing has
+  -- them; pointed at (and Reset while its menu is open) the house's own
+  -- bright ink stands. Painted at rest after each leave and as Reset's menu
+  -- closes; nothing else.
+  local function Gold(...)
+    local r, g, b = Parts.FontRGB("GameFontNormal", 1, 0.82, 0)
+    for i = 1, select("#", ...) do
+      local region = select(i, ...)
+      if region then
+        if region.SetTextColor then region:SetTextColor(r, g, b) else region:SetVertexColor(r, g, b, 1) end
+      end
+    end
+  end
+
+  local function BugRest(band)
+    local f = band.__pbFooter
+    if f then Gold(f.bugText, f.bugGlyph) end
+  end
+
+  local function NewsRest(news)
+    local f = news.__pbFooterOf
+    if f then Gold(f.newsText) end
+  end
+
+  function Parts.ResetRest(reset)
+    local f = reset.__pbFooterOf
+    if not f then return end
+    local list = reset.__pbFooterMenu
+    if reset:IsMouseOver() or (list and list:IsShown()) then return end
+    Gold(f.resetText, f.resetArrow, f.resetCaret)
+  end
+
+  local function MenuClosed(list)
+    if list._toggle then Parts.ResetRest(list._toggle) end
+  end
+
+  function Parts.Footer(band)
+    if band.__pbBlizzFooter ~= nil then return end
+    band.__pbBlizzFooter = false
+    local f = band.__pbFooter
+    if type(f) ~= "table" then return end
+    band.__pbBlizzFooter = true
+    band:HookScript("OnLeave", BugRest)
+    BugRest(band)
+    if f.news then
+      f.news.__pbFooterOf = f
+      f.news:HookScript("OnLeave", NewsRest)
+      NewsRest(f.news)
+    end
+    if f.reset then
+      f.reset.__pbFooterOf = f
+      f.reset:HookScript("OnLeave", Parts.ResetRest)
+      Parts.ResetRest(f.reset)
+    end
+  end
+
+  -- Reset's menu, met by the walk when it is first built.
+  function Parts.FooterMenu(list)
+    local reset = list._toggle
+    if not (reset and reset.__pbFooterOf) or reset.__pbFooterMenu then return end
+    reset.__pbFooterMenu = list
+    list:HookScript("OnHide", MenuClosed)
+  end
+
   -- A group heading's rule (Rows.Group, tagged __pbGroupHead).
   function Parts.Heading(head)
     if head.__pbBlizzHeading ~= nil then return end
@@ -2056,14 +2125,21 @@ do
   -- put away), false to let the house draw it.
   function Skin.PaintLead(btn, label, mark, on)
     if not Parts.HoldButton(btn, on) then return false end
-    if not on then return false end
     local lit = btn.Lit
     if lit then
       lit:Hide()
       if lit.Lift then lit.Lift:Hide() end
     end
-    White(label)
-    White(mark, true)
+    if on then
+      White(label)
+      White(mark, true)
+    else
+      -- At rest, the red button's own words: the game's gold, the eye with
+      -- them (as the options' other push buttons' words).
+      local r, g, b = Parts.FontRGB("GameFontNormal", 1, 0.82, 0)
+      if label then label:SetTextColor(r, g, b) end
+      if mark then mark:SetVertexColor(r, g, b, 1) end
+    end
     return true
   end
 
@@ -2131,6 +2207,8 @@ function Parts.DressOne(c)
   if c.__postboxCheck and c.__pbBlizzCheck == nil and c:IsObjectType("CheckButton") then Parts.Check(c) end
   if c.__pbGroupHead and c.__pbBlizzHeading == nil then Parts.Heading(c) end
   if c.__pbFindBox and c.__pbBlizzFind == nil then Parts.Find(c) end
+  if c.__pbFooter and c.__pbBlizzFooter == nil then Parts.Footer(c) end
+  if c.__pbPopupAlways and c._toggle and c._toggle.__pbFooterOf then Parts.FooterMenu(c) end
   if c.__postboxSelect and c.__pbBlizzSelect == nil and c:IsObjectType("Button") then Parts.Select(c) end
   if c.__pbPopupAlways and c._toggle and c.__pbBlizzList == nil then Parts.List(c) end
   if c._selWash and c.__pbBlizzMark == nil then Parts.Row(c) end

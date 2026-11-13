@@ -4995,6 +4995,11 @@ do
       get = src.GetNormalFontObject
     end
     local object = get and named(get(src)) or nil
+    -- A skin that inks a select's value apart from the buttons' words (the
+    -- Blizzard style's white value) keeps the words' own font at rest.
+    if src.__pbCaptionFont and btn:IsEnabled() and not btn.__pbPointed then
+      object = named(src.__pbCaptionFont) or object
+    end
     if not object then object = named(src:GetNormalFontObject()) end
     return object or named((T.FontObject("segment")))
   end
@@ -10533,7 +10538,10 @@ function Footer.Build(frame, above)
   S.footer = {
     band = statusBand, bugText = statusText, bugMark = bug and 17 or 0, bugGap = bug and Footer.ICON_GAP or 0,
     news = news, newsText = newsText, version = versionText,
+    -- For a skin that inks the footer's words its own way.
+    bugGlyph = bug,
   }
+  statusBand.__pbFooter = S.footer
 
   -- Reset to defaults, at the band's left end across from What's new?: the
   -- one control here that undoes the player's own choices, so it is quiet
@@ -10660,6 +10668,7 @@ function Footer.Build(frame, above)
     resetText:SetWordWrap(false)
     resetText:SetText(L["OPT_RESET_DEFAULTS"])
     S.footer.reset, S.footer.resetText, S.footer.resetCaret = reset, resetText, caret
+    S.footer.resetArrow = arrow
     if arrow then arrow:SetPoint("CENTER", reset, "LEFT", 10, 0) end
     if caret then
       caret:SetPoint("CENTER", resetText, "RIGHT", 9, 0)
