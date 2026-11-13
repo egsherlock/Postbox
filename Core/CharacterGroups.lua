@@ -17,7 +17,8 @@ local _, ns = ...
 --                   goes through this file, but for Reset everything, which
 --                   empties the table and says so (CG.DataCleared).
 --   2. THE BUTTONS  CG.GridButtons(panel): the specs the Mail tab's category
---                   grid draws, one per group that has anyone in it. Nothing
+--                   grid draws, one per group that has anyone in it but
+--                   the character being played (who cannot mail itself). Nothing
 --                   here collects: a group's sweep is the category token
 --                   "group:<id>", which Core/MailService.lua's queue builders
 --                   resolve through CG.KeySet, and which Core/CollectTab.lua's
@@ -671,6 +672,38 @@ function CG.AltsTooltip(tooltip)
   ns.Theme.TipHint(L["GROUPS_TIP_ALTS"])
 end
 
+-- The character being played, as a member's key (KeyOf), or nil while its
+-- name cannot be read. Kept for the name it was made from once the player
+-- is in the world, where the realm a bare name stands on is known.
+local playing = { name = nil, key = nil }
+
+local function PlayingKey()
+  local H = Helpers()
+  local name = H and type(H.PlayerName) == "function" and H.PlayerName() or nil
+  if type(issecretvalue) == "function" and issecretvalue(name) then return nil end
+  if type(name) ~= "string" or name == "" then return nil end
+  if name == playing.name then return playing.key end
+  local key = KeyOf(name)
+  if type(IsLoggedIn) ~= "function" or IsLoggedIn() then playing.name, playing.key = name, key end
+  return key
+end
+
+-- Whether a group's button has anything it could ever collect here: someone
+-- in it other than the character being played, who cannot mail themselves.
+-- A group of that character alone has no button on that character, as an
+-- empty group has none anywhere; on every other character it has its own.
+-- Where a key cannot be read, the group's members decide, as before.
+local function HasOthers(group)
+  if #group.members == 0 then return false end
+  local me = PlayingKey()
+  local set = CG.KeySet(group.id)
+  if not me or next(set) == nil then return true end
+  for key in pairs(set) do
+    if key ~= me then return true end
+  end
+  return false
+end
+
 -- Specs are kept per group so the grid's closures are made once, not on
 -- every refresh; the label is re-read every time. The closures hold the id
 -- and nothing else: the panel is the one the grid passes on each call.
@@ -681,7 +714,7 @@ function CG.GridButtons()
   local list = CG.List()
   for i = 1, #list do
     local group = list[i]
-    if #group.members > 0 then
+    if HasOthers(group) then
       local id = group.id
       local spec = specs[id]
       if not spec then
