@@ -8265,7 +8265,9 @@ function Pages.mail(col)
       ["letter-open"] = L["OPT_BAR_ICON_LETTER"], tray = L["OPT_BAR_ICON_TRAY"],
     }
     for _, id in ipairs(UI.DIVIDER_ICONS or { "none" }) do
-      iconItems[#iconItems + 1] = { id = id, name = iconNames[id] or id, icon = (id ~= "none") and { glyph = id } or nil }
+      -- None keeps an empty art square, so its word starts where the others' do.
+      iconItems[#iconItems + 1] = { id = id, name = iconNames[id] or id,
+        icon = (id ~= "none") and { glyph = id } or { blank = true } }
     end
     local icon = Rows.Dropdown(col, {
       title = L["OPT_BAR_ICON_TITLE"], text = L["OPT_BAR_ICON_DESC"],

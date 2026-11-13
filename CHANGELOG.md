@@ -57,7 +57,7 @@
   choose the art for your characters on the Inbox button and in its
   character list: the game's own, Painted, Pixel, Comic, or Glyphs in class
   colors, or the game's round portraits (Game (round)). With EllesmereUI
-  installed, its sets are offered too.
+  installed, its sets are offered too, and None shows no icon at all.
 - **Character order** (Options > General > Characters): choose how the
   Inbox button's character list is ordered: Warnings first (as before),
   Expiring soonest, Most mail, Name or Last played. The character you are
@@ -83,7 +83,8 @@
   click a note, or its empty place, to write or change it.
 - **Send tab: pin a name in the Recipient box** and that character
   starts every mailbox with it, until you click the pin again. Your other
-  characters are left alone.
+  characters are left alone, and **Recipient pin** (Options > Send tab)
+  turns the pin off.
 - **Send tab: right-click hides a name** in the suggestions under To and
   in the contact list. The star at the end of a name favorites it. Hidden
   names wait under Hidden at the foot of the contact list, Favorites

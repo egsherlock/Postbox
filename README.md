@@ -252,7 +252,7 @@ Warnings first, Expiring soonest, Most mail, Name or Last played.
 - **Pin a name** with the small pin in the Recipient box and that
   character starts every mailbox with it: a miner that always mails your
   banker. Click the pin again to unpin; your other characters are left
-  alone.
+  alone. **Recipient pin** (Options > Send tab) turns the pin off.
 - **A guidance line** says whether the mail arrives instantly or in about an
   hour, and whether a cross-realm send can carry what's attached. It advises;
   it never blocks.
@@ -367,8 +367,8 @@ new?** in the footer shows the last three releases.
   packs restyle it).
 - **Class icons** (Options > General > Characters): how your characters'
   classes are drawn on the Inbox button and in its list: the game's own,
-  Game (round), Painted, Pixel, Comic or Glyphs, and EllesmereUI's sets
-  while it is loaded.
+  Game (round), Painted, Pixel, Comic or Glyphs, EllesmereUI's sets while
+  it is loaded, or None for no icon.
 - **Window scale** from 80% to 130% in every look.
 
 <p align="center">
