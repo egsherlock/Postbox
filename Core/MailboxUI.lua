@@ -936,7 +936,8 @@ end
 function UI.GetClassIcons()
   local store = ns.Store
   local stored = store and store.Get and store.Get("profile.classIcons")
-  if type(stored) == "string" and stored ~= "" then return stored end
+  -- "square" was a style of its own until Game took its art: it is Game.
+  if type(stored) == "string" and stored ~= "" and stored ~= "square" then return stored end
   return "game"
 end
 
