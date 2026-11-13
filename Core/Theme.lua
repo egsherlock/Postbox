@@ -5180,7 +5180,12 @@ Theme.AtlasSets = {
 --     12s simplified to 10 units tall (the busts 12 wide, so the two behind
 --     keep shoulders two units wide to the glyph's edges): the options'
 --     Character Groups and Manage Recipients buttons only, beside their
---     13-unit captions.
+--     13-unit captions. Their ink reaches the art's edges, so each is
+--     cropped with the clear unit the canvas has round it (14 by 12 and 12
+--     by 12, the ink 12 by 10 and 10 by 10 a unit in): a quad whose edges
+--     stand a fraction of a pixel off the grid (the quarter pixel PX.Put
+--     adds, a client that does not snap) then loses only clear texels at
+--     its edges, never the outer busts' or the spine's last column.
 --   search  a magnifier, 16 units: the options' search box.
 --   eye, eye-off  an almond with a ring round its pupil, 12 by 8, and the
 --     same eye with a one-unit slash from top left to bottom right and a
@@ -5274,8 +5279,8 @@ do
       large = { from = 21, file = MEDIA .. "glyph-groups-large.tga", w = 30, h = 30, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.96875, px = true } },
     recipients = { file = MEDIA .. "glyph-recipients-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true,
       large = { from = 21, file = MEDIA .. "glyph-recipients-large.tga", w = 30, h = 30, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.96875, px = true } },
-    ["groups-10"] = { file = MEDIA .. "glyph-groups-10.tga", w = 12, h = 10, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.6875, px = true },
-    ["recipients-10"] = { file = MEDIA .. "glyph-recipients-10.tga", w = 10, h = 10, l = 0.0625, r = 0.6875, t = 0.0625, b = 0.6875, px = true },
+    ["groups-10"] = { file = MEDIA .. "glyph-groups-10.tga", w = 14, h = 12, l = 0, r = 0.875, t = 0, b = 0.75, px = true },
+    ["recipients-10"] = { file = MEDIA .. "glyph-recipients-10.tga", w = 12, h = 12, l = 0, r = 0.75, t = 0, b = 0.75, px = true },
     search = { file = MEDIA .. "glyph-search-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["search-14"] = { file = MEDIA .. "glyph-search-14.tga", w = 14, h = 14, l = 0.0625, r = 0.9375, t = 0.0625, b = 0.9375, px = true },
     link = { file = MEDIA .. "glyph-link.tga", w = 15, h = 8, l = 0.03125, r = 0.5, t = 0.0625, b = 0.5625, px = true },
@@ -5367,6 +5372,13 @@ do
     if type(a) == "number" then a, b, c, d = nil, nil, a, b end
     tex.__pbAt, tex.__pbRel, tex.__pbRelAt, tex.__pbAx, tex.__pbAy = point, a, b, c, d
     PX.Put(tex)
+  end
+
+  -- How far down, in screen pixels, PX.Put sets `tex` from its anchor (0
+  -- for a glyph not of the small family): a caller that places a glyph's
+  -- top on a pixel it has worked out takes it back (Rows.IconTop).
+  function Theme.GlyphBias(tex)
+    return (tex and tex.__pbPixel) and PX.BIAS or 0
   end
 
   -- Sized for the scale it draws at; nothing when that has not moved.

@@ -4913,11 +4913,13 @@ do
   -- the one its neighbours were painted. A label of our own changes only
   -- its words (Rows.SetCaption).
   -- One icon box for every button row, ICON.BOX square, the caption
-  -- ICON.GAP after it; a glyph drawn smaller is centred in it, so the
+  -- ICON.GAP after it; a glyph drawn smaller is centred in it (a larger
+  -- one, its clear margin, overhangs it evenly), so the
   -- captions of three buttons stacked one over another start alike.
   -- Every glyph here is drawn from its own master at its own size, pixel
   -- for pixel: Arrange's layout mark at 12, the box; the openers' groups
-  -- (12 by 10) and recipients (10) from their -10 masters, the 12s
+  -- (12 by 10 of ink, on 14 by 12 with its clear unit round it) and
+  -- recipients (10 of ink, on 12) from their -10 masters, the 12s
   -- simplified, so they weigh no more than the 13-unit caption. Upright,
   -- each stands with its middle on the middle of the caption's capitals
   -- (Rows.IconTop), not of its line: the line's room for descenders set an
@@ -4931,12 +4933,23 @@ do
   -- in the font the label wears now (the Mail tab's bar rule, CollectTab's
   -- BarParts.FaceOf and LineAt, so it follows the Text size and the face),
   -- the capitals as many screen pixels tall as they cover at least half of
-  -- (RV.InkLift's count), and the icon's top on a whole screen pixel. Where
-  -- the two cannot share a middle (capitals 9 pixels tall beside an icon
-  -- of 10 or 12, Expressway at 13), the icon stands half a pixel high, its
-  -- foot on the baseline, never a pixel under it: rounding the half down
-  -- (floor(x + 0.5)) hung it under the words. Centred on the box where
-  -- those are not loaded. `label` must be anchored by its middle on `box`'s.
+  -- (RV.InkLift's count), and the icon's top a whole number of screen
+  -- pixels from the baseline. Where the two cannot share a middle
+  -- (capitals 9 pixels tall beside an icon of 10 or 12, Expressway at 13),
+  -- the icon stands half a pixel high, its foot on the baseline, never a
+  -- pixel under it: rounding the half down (floor(x + 0.5)) hung it under
+  -- the words. Centred on the box where those are not loaded. `label` must
+  -- be anchored by its middle on `box`'s.
+  -- Counted from the baseline where the client draws it, not from the
+  -- box's top: the box's top stands wherever its row and the window put it,
+  -- a fraction of a pixel off the grid as often as not, and the words'
+  -- baseline is the pixel nearest where their line puts it, so a count
+  -- from the box's top (as if it stood on a whole pixel) left the icon a
+  -- pixel high or low on some rows and not others. The offset is given
+  -- unrounded, the baseline's own fraction kept, so the icon's top and the
+  -- baseline round together wherever the box stands; and the quarter pixel
+  -- a pixel glyph is set down by (Theme.GlyphBias) is taken back, so the
+  -- icon lands on the pixel worked out, not the next.
   function Rows.IconTop(box, label, icon)
     local H = box:GetHeight() or BUTTON_H
     local ih = icon:GetHeight() or ICON.BOX
@@ -4944,20 +4957,23 @@ do
     local u = T and type(T.OnePixel) == "function" and T.OnePixel(box) or 1
     if type(u) ~= "number" or u <= 0 then u = 1 end
     local k = 1 / u
-    local mid = H / 2 * k
+    local bias = T and type(T.GlyphBias) == "function" and T.GlyphBias(icon) or 0
     local CT = ns.CollectTab
     local BP = CT and CT.BarParts
-    if BP and BP.FaceOf and BP.LineAt then
-      -- LineAt's rule in pixels: the font drawn k times its size on a box
-      -- k times as tall, its line's top and its baseline on whole pixels.
+    -- (A millionth off, so a whole number reached in floating point stays it.)
+    if BP and BP.FaceOf then
+      -- In pixels: the font drawn k times its size, its line centred on
+      -- the box's middle (the label's anchor), the baseline its ascent
+      -- under the line's top; the capitals `hi` rows over it, a face
+      -- without them its ink `lo` rows under it too.
       local face, size = BP.FaceOf(label)
-      local _, base = BP.LineAt(face, size * k, H * k, 0)
+      local asc, desc = face[1] * size * k, face[2] * size * k
+      local base = H * k / 2 - (asc + desc) / 2 + asc
       local hi = math.floor(face[3] * size * k + 0.5)
       local lo = math.floor(-(face[7] or 0) * size * k + 0.5)
-      mid = base + (lo - hi) / 2
+      return (base + math.ceil((lo - hi) / 2 - ih * k / 2 - 0.5 - 1e-6) - bias) * u
     end
-    -- (A millionth off, so a whole number reached in floating point stays it.)
-    return math.ceil(mid - ih * k / 2 - 0.5 - 1e-6) * u
+    return (math.ceil(H / 2 * k - ih * k / 2 - 0.5 - 1e-6) - bias) * u
   end
 
   function Rows.Button(col, spec)
