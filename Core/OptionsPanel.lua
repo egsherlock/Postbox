@@ -7747,7 +7747,9 @@ function Pages.historyDays(col)
       local asks = type(StaticPopupDialogs) == "table" and type(StaticPopup_Show) == "function"
       if id ~= 0 or not asks or (UI.GetHistoryDays and UI.GetHistoryDays() == 0) then
         UI.SetHistoryDays(id)
-        -- General's 7-day card greys or comes back with it (Dash.Week).
+        -- History holds greys or comes back with it, and General's 7-day
+        -- card (Dash.Week).
+        State.HistoryHolds()
         Ctx.Repaint()
         return
       end
@@ -7773,6 +7775,40 @@ function Pages.historyDays(col)
   return keep
 end
 
+-- History holds: how many mails History keeps for each character, Received
+-- and Sent each (UI.GetHistoryCap), under Keep History for. A lower choice
+-- never asks: it is trimmed to as a lower Keep History is. Grey while
+-- History is Never, saying so (State.HistoryHolds).
+function Pages.historyHolds(col)
+  local UI = ns.MailboxUI
+  if not (UI and UI.GetHistoryCap) then return end
+  -- Each count in the locale's own digits and plural: 1,000 mails.
+  local sep = L["OPT_HISTORY_HOLDS_SEP"]
+  local items = {}
+  for _, n in ipairs({ 1000, 2500, 5000 }) do
+    local digits = tostring(n)
+    local grouped = digits:sub(1, #digits - 3) .. sep .. digits:sub(-3)
+    local name = (ns.Plural("OPT_HISTORY_HOLDS_MAILS", n):gsub(digits, grouped, 1))
+    items[#items + 1] = { id = n, name = name }
+  end
+  local cell = Rows.Dropdown(col, {
+    title = L["OPT_HISTORY_HOLDS_TITLE"], text = L["OPT_HISTORY_HOLDS_DESC"], items = items,
+    get = function() return UI.GetHistoryCap() end,
+    set = function(id) UI.SetHistoryCap(id) end,
+  })
+  Rows.Why(cell, "OPT_HISTORY_HOLDS_WHY")
+  S.historyHoldsCell = cell
+  return cell
+end
+
+-- History holds is live while History keeps anything, grey under Never.
+-- On every open, after a reset and after Keep History for is picked.
+function State.HistoryHolds()
+  local cell = S.historyHoldsCell
+  local UI = ns.MailboxUI
+  if not (cell and UI and type(UI.GetHistoryDays) == "function") then return end
+  Rows.SetEnabled(cell, UI.GetHistoryDays() ~= 0, "OPT_HISTORY_HOLDS_WHY")
+end
 
 -- The Mail tab: how a row looks, what stands under the list, and how the
 -- tab collects.
@@ -9191,6 +9227,9 @@ function Pages.general(col)
   -- off; with the switch it shares the group's question, what Postbox
   -- keeps.
   Pages.historyDays(col)
+  -- History holds: how many mails it keeps, under it, grey while it is
+  -- Never (State.HistoryHolds).
+  Pages.historyHolds(col)
 
   -- Characters: how each one's class is drawn on the Inbox button and in
   -- the character list, and who is left out of Mail Memory's lists. Class
@@ -11590,6 +11629,7 @@ local function Build()
   S.refresh[#S.refresh + 1] = State.Inheritance
   S.refresh[#S.refresh + 1] = State.Minimap
   S.refresh[#S.refresh + 1] = State.Memory
+  S.refresh[#S.refresh + 1] = State.HistoryHolds
   S.refresh[#S.refresh + 1] = State.Tone
   S.refresh[#S.refresh + 1] = State.RowLayout
   S.refresh[#S.refresh + 1] = State.BarSays

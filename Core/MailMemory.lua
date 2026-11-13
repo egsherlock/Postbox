@@ -1453,7 +1453,8 @@ end
 -- 2c. What came out of the box
 --
 -- A short record of what Postbox collected on each character: as many days
--- of it as the player chose, at most HISTORY_CAP entries, one entry per mail
+-- of it as the player chose, at most as many entries as History holds
+-- (PruneHistory), one entry per mail
 -- however many takes that mail needed -- the caller holding one record per
 -- mail is what makes it one. Written by Core/MailService.lua as each take is
 -- CONFIRMED -- never when the command is sent, since the server may refuse
@@ -1461,12 +1462,19 @@ end
 -- it never holds more than the days it shows.
 -------------------------------------------------------------
 
--- Kept as long as the player chose (Options, Mail tab: 7 days by default, up
+-- Kept as long as the player chose (Options, General: 7 days by default, up
 -- to 30, or "Never", which records nothing and prunes everything away), and
--- never more than HISTORY_CAP entries however busy the box: the
+-- never much more than the entries History holds (Options, General: 1000 by
+-- default, 2500 or 5000; MailboxUI.GetHistoryCap) however busy the box: the
 -- record is saved per character, and a month of a busy auction goblin's mail
--- must not become megabytes of saved variables.
-local HISTORY_CAP = 1000
+-- must not become megabytes of saved variables. A record may run a twentieth
+-- over its cap and is then cut back to the cap in one pass,
+-- so a mail recorded at the cap moves no list; History's view lists at most
+-- the cap's newest (CollectTab, HV.BuildHistoryList).
+local function HistoryCap()
+  local UI = ns.MailboxUI
+  return tonumber(UI and type(UI.GetHistoryCap) == "function" and UI.GetHistoryCap()) or 1000
+end
 -- The longest letter text a History entry keeps, in BYTES. The game caps a
 -- mail's body at 500 characters, which is up to 1500 bytes of Chinese or
 -- 1000 of Cyrillic; this keeps all of any of them.
@@ -1524,19 +1532,27 @@ end
 -- when what it built from has changed.
 MM.recordWrites = 0
 
+-- What runs past the cap before it is cut back: a twentieth of it (50 at
+-- 1000, 250 at 5000), so the pass that moves the list comes once in that
+-- many mails and each mail's share of it stays the same at any cap.
+-- `list`, `now` -> the entries older than the days kept dropped and, once
+-- the record runs past cap + slack, its oldest down to the cap.
 local function PruneHistory(list, now)
   local keep = HistoryKeep()
   local cutoff = now - keep
+  local n = #list
   local drop = 0
   -- "Never": History is off, and nothing it held stays.
-  if keep <= 0 then drop = #list end
-  while list[drop + 1] and ((tonumber(list[drop + 1].t) or 0) < cutoff or #list - drop > HISTORY_CAP) do
+  if keep <= 0 then drop = n end
+  while list[drop + 1] and (tonumber(list[drop + 1].t) or 0) < cutoff do
     drop = drop + 1
   end
+  local cap = HistoryCap()
+  if n - drop > cap + math.floor(cap / 20) then drop = n - cap end
   if drop > 0 then
     MM.recordWrites = MM.recordWrites + 1
-    for i = 1, #list - drop do list[i] = list[i + drop] end
-    for i = #list, #list - drop + 1, -1 do list[i] = nil end
+    for i = 1, n - drop do list[i] = list[i + drop] end
+    for i = n, n - drop + 1, -1 do list[i] = nil end
   end
 end
 

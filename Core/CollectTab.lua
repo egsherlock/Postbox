@@ -9447,6 +9447,9 @@ function HV.BuildHistoryList(panel, query)
     for k = n, w + 1, -1 do out[k] = nil end
   else
     local c, records = 0, chars and #chars or 1
+    -- At most the newest History holds of each record: one runs a little
+    -- past it between trims (MailMemory's PruneHistory).
+    local held = HV.Holds()
     while c < records do
       c = c + 1
       if chars then
@@ -9454,8 +9457,8 @@ function HV.BuildHistoryList(panel, query)
         list = (sent and Memory.SentOf or Memory.HistoryOf)(head) or HV.NONE
       end
       headed = false
-      local first, last = 1, #list
-      if step < 0 then first, last = last, 1 end
+      local first, last = max(1, #list - held + 1), #list
+      if step < 0 then first, last = last, first end
       for i = first, last, step do
         local entry = list[i]
         local keep = not searching or Finds(entry, query, pat, cross, markOff)
@@ -9893,6 +9896,13 @@ function HV.SetSide(panel, side)
   if panel.Search then AV.PaintSearch(panel, panel._searchOthers) end
   PaintViewToggle(panel)
   CT.RefreshMailList(panel)
+end
+
+-- How many of each record's newest History lists: what it holds
+-- (Options > General: History holds, MailboxUI.GetHistoryCap).
+function HV.Holds()
+  local UI = ns.MailboxUI
+  return tonumber(UI and type(UI.GetHistoryCap) == "function" and UI.GetHistoryCap()) or 1000
 end
 
 -- The record History lists without a search of every character: the

@@ -458,7 +458,10 @@ local function ApplyResetLive(partial)
   local panel, collect = CollectPanel(), ns.CollectTab
   if panel and collect then
     -- Read mail back under its divider, unfolded, and History's days --
-    -- its view back in the row, if it was off.
+    -- its view back in the row, if it was off -- and what it holds: a
+    -- list built under another cap is built again, never narrowed.
+    local memory = ns.MailMemory
+    if memory and type(memory.recordWrites) == "number" then memory.recordWrites = memory.recordWrites + 1 end
     ResetStep(collect.RefreshReadMode, panel)
     ResetStep(collect.RefreshHistoryDays, panel)
   end
@@ -1591,6 +1594,31 @@ function UI.SetHistoryDays(days)
   if send and type(send.SyncSentClock) == "function" then send.SyncSentClock() end
 end
 
+-- How many mails History holds for each character, Received and Sent each:
+-- 1000 by default (stored as nothing), 2500 or 5000. History lists at most
+-- that many, the newest; a record holds a few more until its next trim
+-- (Core/MailMemory.lua, PruneHistory). A lower choice is trimmed to as a
+-- lower Keep History is: as each record is next read or written, and every
+-- character's at the next login.
+do
+  local CAPS = { [1000] = true, [2500] = true, [5000] = true }
+  function UI.GetHistoryCap()
+    local stored = tonumber(ns.Store and ns.Store.Get and ns.Store.Get("profile.historyCap"))
+    return (stored and CAPS[stored]) and stored or 1000
+  end
+  function UI.SetHistoryCap(cap)
+    cap = tonumber(cap)
+    if not (cap and CAPS[cap]) then return end
+    local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+    if profile then profile.historyCap = (cap ~= 1000) and cap or nil end
+    -- What History lists has changed: a list built from the records is
+    -- built again, never narrowed from what the last cap let through.
+    local memory = ns.MailMemory
+    if memory and type(memory.recordWrites) == "number" then memory.recordWrites = memory.recordWrites + 1 end
+    local panel, collect = CollectPanel(), ns.CollectTab
+    if panel and collect and collect.RefreshHistoryDays then collect.RefreshHistoryDays(panel) end
+  end
+end
 
 -- What the Send tab keeps once a mail has gone: "nothing" (the default: a
 -- cleared form, so a name left standing cannot send the next mail to the
@@ -5292,6 +5320,7 @@ function UI.DiagnoseOptions()
   Named("dividerShadow", UI.GetShadowColor(), "neutral")
   Named("tabIndicator", UI.GetTabIndicator(), "dot")
   Named("historyDays", UI.GetHistoryDays(), "7")
+  Named("historyCap", UI.GetHistoryCap(), "1000")
   Named("characterOrder", UI.GetCharacterOrder(), "warnings")
   Named("afterSend", UI.GetAfterSendKeep(), "nothing")
   Named("keepFree", UI.GetKeepFreeSlots(), "0")
