@@ -25,9 +25,9 @@
 - **The bar above the list is three controls:** one for whose mail and
   which list, the History clock with Received and Sent, and one box for
   search and sort. A second click on the clock returns to the Inbox.
-- **Mail tab: Inbox is one button that always wears your class icon at
-  its left end.** Click Inbox while it's on screen to open the character list (your own
-  character is always its first row, the way back to your inbox), and
+- **Inbox is one button that always wears your class icon at its left
+  end.** Click Inbox while it's on screen to open the character list (your
+  own character is always its first row, the way back to your inbox), and
   right-click while another character's mail is on screen to come back to
   your own. Mail Memory's window names its box the same way.
 - Inbox and Done keep their width while a collect run counts them down,
