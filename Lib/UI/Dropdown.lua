@@ -614,7 +614,21 @@ function Dropdown.Create(parent, opts)
         if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
         art:SetSize(g.w, g.h)
       elseif spec.atlas then
-        tex:SetAtlas(spec.atlas)
+        -- By its file and its own coordinates where the client says them,
+        -- not by SetAtlas over what the art wore before: after an item cut
+        -- from a sheet (`coords`), SetAtlas left that crop standing and the
+        -- atlas came out as a corner of itself (seen in game, 2026-11-13,
+        -- the options' Class icons going back to Game).
+        local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(spec.atlas)
+        local file = info and (info.file or info.filename)
+        if file and info.leftTexCoord and info.rightTexCoord and info.topTexCoord and info.bottomTexCoord
+            and not (info.tilesHorizontally or info.tilesVertically) then
+          tex:SetTexture(file)
+          tex:SetTexCoord(info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord)
+        else
+          tex:SetTexCoord(0, 1, 0, 1)
+          tex:SetAtlas(spec.atlas)
+        end
       else
         tex:SetTexture(spec.texture)
         tex:SetTexCoord(0, 1, 0, 1)

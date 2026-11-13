@@ -2462,15 +2462,18 @@ do
   local SHEET_DIR = "Interface\\AddOns\\Postbox\\Media\\ClassIcons\\"
   -- Postbox's own sheets. `cell`: the art's box inside a cell of the sheet,
   -- as a share of the cell: the art fills that box, the gutter round it
-  -- keeps the next cell's texels out of the small mips. painted, comic and
-  -- glyphs: 58 of 64 texels; pixel: 28 of 32, one texel an art pixel.
+  -- keeps the next cell's texels out of the small mips. comic and glyphs:
+  -- 58 of 64 texels; pixel: 28 of 32, one texel an art pixel; painted: 52
+  -- of 64, cut past the frame its pictures were painted with (three texels
+  -- of it inside the gutter), so the icon shows the picture, not a frame
+  -- inside whatever border the look gives it.
   -- Each is drawn from its box, so the art runs to the icon's edges as the
   -- game's crest does, and sampled with the client's own filtering and mip
   -- chain (no filter given): pixel's sheet is the art's own 32 x 32 grid per
   -- cell, so at 18 and 22 it is softened evenly rather than having single
   -- art pixels dropped or doubled, as NEAREST would.
   local SHEETS = {
-    painted = { file = SHEET_DIR .. "painted.tga", gutter = 3 / 64 },
+    painted = { file = SHEET_DIR .. "painted.tga", gutter = 6 / 64 },
     pixel   = { file = SHEET_DIR .. "pixel.tga",   gutter = 2 / 32 },
     comic   = { file = SHEET_DIR .. "comic.tga",   gutter = 3 / 64 },
     glyphs  = { file = SHEET_DIR .. "glyphs.tga",  gutter = 3 / 64, tint = true },
@@ -2660,7 +2663,7 @@ do
         if file then MM.SetCrest(tex, file) end
       else
         tex.__pbAtlas = nil
-        if file then tex:SetAtlas(file, false) else tex:SetTexture(nil) end
+        if file then MM.WearAtlas(tex, file, 0) else tex:SetTexture(nil) end
       end
     else
       -- SetCrest keeps the atlas it set; another file is not it.
@@ -2684,6 +2687,19 @@ do
       tex.__pbIconTinted = true
       tex:SetVertexColor(tr, tg, tb)
     elseif tex.__pbIconTinted then
+      tex.__pbIconTinted = nil
+      tex:SetVertexColor(1, 1, 1)
+    end
+  end
+
+  -- texture -> another painter is about to draw on it (a row that was a
+  -- character's heading and is now a mail, MM.FillRow): what Apply kept of
+  -- it no longer holds. Without this, the row's next turn as a heading in
+  -- the same sheet style would skip setting the sheet and cut its cell out
+  -- of the mail's icon, and a tinted style's colour would stay on the mail.
+  function Icons.Release(tex)
+    tex.__pbIconFile, tex.__pbAtlas = nil, nil
+    if tex.__pbIconTinted then
       tex.__pbIconTinted = nil
       tex:SetVertexColor(1, 1, 1)
     end
@@ -3491,6 +3507,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
 
   -- No icon of its own (a letter the snapshot kept none for): the column
   -- keeps its place, empty, so the names still start on one line.
+  MM.Icons.Release(row.Icon)
   row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
   row.Icon:SetTexture(MM.MailIcon(mail))
 
@@ -3928,6 +3945,8 @@ local PICK_PAD, PICK_GUTTER, PICK_CREST = 4, 8, 18
 -- from the plate's edge (MM.NewPickCell). The foot's words start there too.
 MM.PICK_BAR = 2
 MM.PICK_LEAD = MM.PICK_BAR + 1
+-- From a row's icon to its name: close, as a label stands by its icon.
+MM.PICK_GAP = 3
 
 local function PaintPickHover(texture)
   local shared = ns.Core and ns.Core.UI and ns.Core.UI.Theme
@@ -4049,7 +4068,7 @@ local function PaintPicker(list)
       row.Rule:Hide()
       MM.PaintClassIcon(row.Crest, st.realm, st.name, PICK_CREST, st.hidden and "muted" or nil)
       row.Crest:Show()
-      row.Name:SetPoint("LEFT", row.Crest, "RIGHT", 6, 0)
+      row.Name:SetPoint("LEFT", row.Crest, "RIGHT", MM.PICK_GAP, 0)
       if st.hidden then
         -- A step back: no class colour, the name in the disabled grey (at
         -- full strength: a text dimmed by its alpha reads on whatever it
@@ -4101,7 +4120,7 @@ local function PaintPicker(list)
   -- The row's width: its contents with the gutters; the card's, the rows
   -- and the padding either side, as a menu's.
   local inner = MM.PICK_LEAD
-  local width = inner + PICK_CREST + 6 + math.ceil(nameW) + 20 + math.ceil(countW) + PICK_GUTTER
+  local width = inner + PICK_CREST + MM.PICK_GAP + math.ceil(nameW) + 20 + math.ceil(countW) + PICK_GUTTER
   width = math.max(width, inner + math.ceil(footW) + PICK_GUTTER)
   for i = 1, shown do
     local row = list.rows[i]
@@ -4644,27 +4663,48 @@ function MM.PaintPickIcon(zone)
   icon:SetAlpha(1)
 end
 
+-- texture, atlas, crop -> the atlas on the texture, `crop` of its width
+-- and height cut from each edge (0: whole), set as its file and its own
+-- coordinates rather than by SetAtlas. Seen in game (2026-11-13): a list's
+-- icon that had worn a cell of a sheet (another class icon style) and was
+-- then given the crest by SetAtlas came out as a corner of the crest, the
+-- old crop still standing, while the cap, set this way, was whole. So no
+-- class icon relies on SetAtlas to clear a crop. Where the client cannot
+-- say an atlas's coordinates: SetAtlas, the old crop cleared first. Each
+-- atlas's place is asked once and kept (the classes' crests: a dozen
+-- entries), so a repaint builds nothing.
+MM.atlasPlace = {}
+function MM.WearAtlas(tex, atlas, crop)
+  local place = MM.atlasPlace[atlas]
+  if place == nil then
+    place = false
+    local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)
+    local file = info and (info.file or info.filename)
+    if file and info.leftTexCoord and info.rightTexCoord and info.topTexCoord and info.bottomTexCoord
+        and not (info.tilesHorizontally or info.tilesVertically) then
+      place = { file, info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord }
+    end
+    MM.atlasPlace[atlas] = place
+  end
+  if place then
+    local l, r, t, b = place[2], place[3], place[4], place[5]
+    local dx, dy = (r - l) * crop, (b - t) * crop
+    tex:SetTexture(place[1])
+    tex:SetTexCoord(l + dx, r - dx, t + dy, b - dy)
+  else
+    tex:SetTexCoord(0, 1, 0, 1)
+    tex:SetAtlas(atlas, false)
+  end
+end
+
 -- texture, atlas -> the crest as the cap wears it: square, its own frame's
 -- edge cropped away so the class's picture runs to the cap's edges, as an
--- item's icon is cropped on a row. A SetTexCoord after SetAtlas would show
--- the whole sheet the crest lives on, so the crop is taken from the atlas's
--- own coordinates; where the client cannot say them, the atlas whole. Only
--- on a change.
+-- item's icon is cropped on a row (MM.WearAtlas). Only on a change.
 MM.CREST_CROP = 0.08
 function MM.SetCrest(tex, atlas)
   if not (tex and atlas) or tex.__pbAtlas == atlas then return end
   tex.__pbAtlas = atlas
-  local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)
-  local file = info and (info.file or info.filename)
-  local l, r, t, b = info and info.leftTexCoord, info and info.rightTexCoord, info and info.topTexCoord,
-    info and info.bottomTexCoord
-  if file and l and r and t and b and not (info.tilesHorizontally or info.tilesVertically) then
-    local dx, dy = (r - l) * MM.CREST_CROP, (b - t) * MM.CREST_CROP
-    tex:SetTexture(file)
-    tex:SetTexCoord(l + dx, r - dx, t + dy, b - dy)
-  else
-    tex:SetAtlas(atlas, false)
-  end
+  MM.WearAtlas(tex, atlas, MM.CREST_CROP)
 end
 
 -- The pointer anywhere on the plate is on the button: the plate lit whole,
@@ -4685,6 +4725,7 @@ local function PickLeave(self) PickOver(self, false) end
 -- given (MM.HostPick), with no art of its own but the crest, the plate's
 -- portrait cap. Clicks and tooltip are the caller's (HookScript for the
 -- tooltip: the enter and leave here light the plate).
+MM.CAP_TUCK = 4
 function MM.NewPickCell(parent, height)
   local zone = CreateFrame("Button", nil, parent)
   zone:SetHeight(height)
@@ -4694,8 +4735,11 @@ function MM.NewPickCell(parent, height)
   zone.Icon = zone:CreateTexture(nil, "OVERLAY")
   zone.Icon:SetSize(cap, cap)
   if zone.Icon.SetSnapToPixelGrid then zone.Icon:SetSnapToPixelGrid(true) end
-  -- The room the cap takes in a plate's width.
+  -- The room the cap takes in a plate's width: the cap less CAP_TUCK, so
+  -- the caption stands that much nearer the cap than the plate's far edge
+  -- and the plate is that much narrower.
   zone.lead = cap
+  zone.room = cap - MM.CAP_TUCK
   zone:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   zone:SetScript("OnEnter", PickEnter)
   zone:SetScript("OnLeave", PickLeave)
@@ -4734,7 +4778,7 @@ function MM.HostPick(zone, plate)
     end
     zone.host = plate
     if plate then
-      plate.lead = zone.lead
+      plate.lead = zone.room or zone.lead
       PlaceCaption(plate)
       zone.Icon:ClearAllPoints()
       zone.Icon:SetPoint("TOPLEFT", plate, "TOPLEFT", 1, -1)
