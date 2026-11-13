@@ -8203,6 +8203,7 @@ function Pages.send(col)
     { id = "guild",   key = "offerGuild",   title = "OPT_OFFER_GUILD",   text = "OPT_OFFER_GUILD_DESC" },
     { id = "friends", key = "offerFriends", title = "OPT_OFFER_FRIENDS", text = "OPT_OFFER_FRIENDS_DESC" },
     { id = "recent",  key = "offerRecent",  title = "OPT_OFFER_RECENT",  text = "OPT_OFFER_RECENT_DESC" },
+    { id = "grouped", key = "offerGrouped", title = "OPT_OFFER_GROUPED", text = "OPT_OFFER_GROUPED_DESC" },
   }
   for i = 1, #sources do
     local src = sources[i]

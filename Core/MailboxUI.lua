@@ -206,7 +206,7 @@ local OPTION_DEFAULTS = {
   rememberSort    = true,
   -- Where the names the Send tab offers come from, one switch per source
   -- (the options' Send tab, Recipients): your alts, your guild, your friends,
-  -- and the people you have mailed (with those you recently grouped with).
+  -- the people you have mailed, and those you recently grouped with.
   -- On: every source is offered, as it always has been, so a profile from
   -- before them reads as all on. Off, that source is left out of the To:
   -- box's suggestions, the contact picker and Manage Recipients
@@ -216,6 +216,7 @@ local OPTION_DEFAULTS = {
   offerGuild      = true,
   offerFriends    = true,
   offerRecent     = true,
+  offerGrouped    = true,
 }
 -- What a mail row shows, and in what order, is no longer three switches here
 -- (rowGold, rowSlots, rowExpiry): it is the row's arrangement, UI.GetRowLayout
@@ -309,9 +310,13 @@ function UI.SetOption(key, value)
 end
 
 -- The Send tab's sources by the contact service's own names for them
--- (ContactService: "alts", "guild", "friends", "recent"), each the switch
--- above that offers it. A name not here has no switch and is always offered.
-local OFFER_KEYS = { alts = "offerAlts", guild = "offerGuild", friends = "offerFriends", recent = "offerRecent" }
+-- (ContactService: "alts", "guild", "friends", "recent", "grouped"), each the
+-- switch above that offers it. A name not here has no switch and is always
+-- offered.
+local OFFER_KEYS = {
+  alts = "offerAlts", guild = "offerGuild", friends = "offerFriends",
+  recent = "offerRecent", grouped = "offerGrouped",
+}
 
 -- bucket -> the switch's key, or nil where the source has none.
 function UI.OfferKey(bucket)

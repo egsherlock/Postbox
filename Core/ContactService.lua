@@ -1586,16 +1586,15 @@ end
 -- hand under Added by you once no source still offering it holds it, and no
 -- favorite, hidden mark or note is ever touched by a switch.
 --
--- People recently grouped with (`grouped`) have no switch of their own: they
--- are only ever suggested as you type, beside the people you have mailed,
--- so they follow "Offer recent recipients".
+-- People recently grouped with (`grouped`) have a switch of their own, though
+-- no tile: they are suggested as you type and listed in Manage Recipients
+-- under All, and "Offer recent recipients" means only the people you mailed.
 -------------------------------------------------------------
 
 -- bucket -> whether its names are offered. "alts", "guild", "friends",
--- "recent" by their switches; "grouped" with "recent"; anything else true.
+-- "recent", "grouped" by their switches; anything else true.
 -- Allocation-free: the switches are read through MailboxUI's memo.
 function CS.SourceOn(bucket)
-  if bucket == "grouped" then bucket = "recent" end
   local UI = ns.MailboxUI
   if type(UI) ~= "table" or type(UI.GetOfferSource) ~= "function" then return true end
   return UI.GetOfferSource(bucket) and true or false

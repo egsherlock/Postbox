@@ -509,7 +509,7 @@ local function Collect(countOnly)
 
   local off, suppressed = COLLECT.off, COLLECT.suppressed
   for i = 1, #SWITCHED do off[SWITCHED[i]] = not SourceOn(SWITCHED[i]) end
-  -- People recently grouped with have no switch: they follow Recent's.
+  -- People recently grouped with have a switch of their own but no tile.
   off.grouped = not SourceOn("grouped")
   for key in pairs(suppressed) do suppressed[key] = nil end
   -- "No list offers this name" can be said only where every list could be
