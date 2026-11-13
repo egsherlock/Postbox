@@ -1394,9 +1394,17 @@ end
 
 -- The star is the row's: its click is the row's, the right-click included.
 function ROWS.StarClick(self, button) ROWS.Click(self._row, button) end
+-- Its own tooltip, the Send tab's star's words (SendTab's Curate.StarTip):
+-- what a favorite is, then the click.
 function ROWS.StarEnter(self)
-  RowHover(self._row, true)
-  RM.RowTip(self._row, self)
+  local row = self._row
+  RowHover(row, true)
+  local fav = row._entry and row._entry.fav
+  Theme.TipBegin(self, "ANCHOR_RIGHT")
+  Theme.TipTitle(L["CONTACT_FAVORITES"])
+  Theme.TipLine(fav and L["RM_TIP_FAV_ON"] or L["RM_TIP_FAV_OFF"])
+  Theme.TipHint(fav and L["RM_HINT_FAV_ON"] or L["RM_HINT_FAV_OFF"])
+  GameTooltip:Show()
 end
 function ROWS.StarLeave(self)
   RowHover(self._row, false)
