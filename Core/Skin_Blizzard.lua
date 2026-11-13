@@ -34,8 +34,9 @@ local _, ns = ...
 -- something new was tagged since the last one.
 --
 -- Dressed so far: the window frame, the sunken panels, the main window's
--- Mail and Send tabs, and every push button. The options' tabs, other
--- plates, fields, bands, dropdowns, rows and the scroll bar draw as they did.
+-- Mail and Send tabs, every push button and the Mail tab's totals strip.
+-- The options' tabs, other plates, fields, other bands, dropdowns, rows
+-- and the scroll bar draw as they did.
 -- =====================================================================
 
 local Skin = {}
@@ -597,9 +598,109 @@ do
   end
 end
 
+-------------------------------------------------------------
+-- The Earned / Spent strip
+-------------------------------------------------------------
+
+-- The Mail tab's totals strip as the game's money strips are drawn (the
+-- Auction House's, Send Mail's): ThinGoldEdgeTemplate's art, the file
+-- Interface\Common\Moneyframe in its three pieces by the template's own
+-- texture coordinates, with the game's dark marble (InsetFrameTemplate's
+-- ground) inside the gold line on all four sides, and the words in the
+-- game's gold. The figures keep their own colors.
+--
+-- Laid by its rim (measured from the file): the gold line stands 2 of the
+-- art's 20 units in from its top and bottom edges and 1 in from each end,
+-- so the art is drawn that much past the strip's box and the line meets the
+-- box. The art's own middle is opaque black: the marble lies above it,
+-- inset past the line so it never covers it. Only the totals strip: the
+-- other bands keep their look.
+do
+  local EDGE = "Interface\\Common\\Moneyframe"
+  local MARBLE = "Interface\\FrameGeneral\\UI-Background-Marble"
+  -- ThinGoldEdgeTemplate's pieces: texture coordinates, and the end caps'
+  -- width.
+  local PIECES = {
+    { 0.953125, 0.9921875, 0, 0.296875 },
+    { 0, 0.9921875, 0.3125, 0.609375 },
+    { 0, 0.0546875, 0, 0.296875 },
+  }
+  local CAP = 7
+  -- The rim, in the art's units: 2 of 20 at the top and the foot, 1 at
+  -- each end. The marble stands 2 in from the strip's box, inside the line.
+  local RIM_Y, ART_H, RIM_X, MARBLE_IN = 2, 20, 1, 2
+
+  -- The strip the Mail tab's totals stand on (CollectTab: panel.Banner,
+  -- whose words are panel.BannerText).
+  function Parts.IsTotals(c)
+    if c.__postboxPanel ~= "band" then return false end
+    local p = c.GetParent and c:GetParent()
+    return (p and p.Banner == c and p.BannerText) and true or false
+  end
+
+  local function Ink(band)
+    local p = band:GetParent()
+    local text = p and p.BannerText
+    if text and type(text.SetTextColor) == "function" then
+      text:SetTextColor(Parts.FontRGB("GameFontNormal", 1, 0.82, 0))
+    end
+  end
+
+  function Parts.Totals(band)
+    if band.__pbBlizzBand ~= nil then return end
+    band.__pbBlizzBand = false
+    local h = band:GetHeight()
+    if type(h) ~= "number" or h <= 0 then h = 24 end
+    -- The art's height that puts its line on the strip's top and foot.
+    local face = ART_H - 2 * RIM_Y
+    local out = h * RIM_Y / face
+    local pieces = {}
+    for i = 1, 3 do
+      local t = band:CreateTexture(nil, "BACKGROUND", nil, 2)
+      t:SetTexture(EDGE)
+      local c = PIECES[i]
+      t:SetTexCoord(c[1], c[2], c[3], c[4])
+      pieces[i] = t
+    end
+    local L, M, R = pieces[1], pieces[2], pieces[3]
+    L:SetWidth(CAP)
+    L:SetPoint("TOPLEFT", band, "TOPLEFT", -RIM_X, out)
+    L:SetPoint("BOTTOMLEFT", band, "BOTTOMLEFT", -RIM_X, -out)
+    R:SetWidth(CAP)
+    R:SetPoint("TOPRIGHT", band, "TOPRIGHT", RIM_X, out)
+    R:SetPoint("BOTTOMRIGHT", band, "BOTTOMRIGHT", RIM_X, -out)
+    M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
+    M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
+    local marble = band:CreateTexture(nil, "BORDER", nil, -1)
+    marble:SetTexture(MARBLE, "REPEAT", "REPEAT")
+    marble:SetHorizTile(true)
+    marble:SetVertTile(true)
+    marble:SetPoint("TOPLEFT", band, "TOPLEFT", MARBLE_IN, -MARBLE_IN)
+    marble:SetPoint("BOTTOMRIGHT", band, "BOTTOMRIGHT", -MARBLE_IN, MARBLE_IN)
+    band.__pbBlizzBand = pieces
+    band.__pbBlizzMarble = marble
+    -- The strip's own fill and line, faded under the art (never recolored,
+    -- so a later repaint of the band cannot bring them back).
+    Fade(band.Center)
+    for i = 1, #BACKDROP_EDGES do Fade(band[BACKDROP_EDGES[i]]) end
+    Fade(band.pbSurfaceTexture)
+    Ink(band)
+  end
+
+  -- The totals' words, each time the strip writes them (CollectTab's
+  -- FitBanner asks the skin for its inks): the game's gold on the dressed
+  -- strip. The figures' inks are handed back as they came.
+  function Skin.BannerInk(text, up, down)
+    local band = text and text.GetParent and text:GetParent()
+    if band and band.__pbBlizzBand then Ink(band) end
+    return up, down
+  end
+end
+
 -- One tagged child: what this skin dresses on it, each once.
 function Parts.DressOne(c)
   if c.__postboxPanel and not c.__pbBlizzInset and Sinks(c) then SinkPanel(c) end
+  if c.__postboxPanel == "band" and c.__pbBlizzBand == nil and Parts.IsTotals(c) then Parts.Totals(c) end
   if c.__postboxButton and not c.__postboxSelect and c.__pbBlizzButton == nil and c:IsObjectType("Button") then
     Parts.Button(c)
   end
