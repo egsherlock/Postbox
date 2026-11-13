@@ -35,8 +35,9 @@ local _, ns = ...
 --
 -- Dressed so far: the window frame, the sunken panels, the main window's
 -- Mail and Send tabs, every push button, the Mail tab's totals strip and
--- every field and search box. The options' tabs, other plates, joined
--- cells, other bands, dropdowns, rows and the scroll bar draw as they did.
+-- every field and search box, and every list's scroll bar. The options'
+-- tabs, other plates, joined cells, other bands, dropdowns and rows draw
+-- as they did.
 -- =====================================================================
 
 local Skin = {}
@@ -822,8 +823,168 @@ do
   end
 end
 
+-------------------------------------------------------------
+-- The scroll bar
+-------------------------------------------------------------
+
+-- Every list's bar (Theme.SlimScrollBar: Postbox's own slider and step
+-- buttons, in the gutter it has) wears the game's minimal scroll bar
+-- (MinimalScrollBar, the bar every one of the game's own lists carries):
+-- its track, its small thumb and its two arrows, each with the game's hover
+-- and pressed art. The bar's own drawing is faded or hidden; the slider,
+-- its range, its steps and its clicks are untouched.
+--
+-- Laid by its rim (measured): the track's art is 8 wide with a clear unit
+-- at each side, so on the 6-unit bar it is drawn a unit past each side and
+-- its visible track is the bar; the thumb's art is 8 wide and solid, a unit
+-- past the bar each side, as the game's thumb stands past its track. The
+-- arrows keep the art's own proportions and are drawn no wider than the
+-- gutter allows, so they never pass the list's edge.
+do
+  local TRACK = { "minimal-scrollbar-track-top", "!minimal-scrollbar-track-middle", "minimal-scrollbar-track-bottom" }
+  local THUMB = {
+    up = { "minimal-scrollbar-small-thumb-top", "minimal-scrollbar-small-thumb-middle", "minimal-scrollbar-small-thumb-bottom" },
+    over = { "minimal-scrollbar-small-thumb-top-over", "minimal-scrollbar-small-thumb-middle-over", "minimal-scrollbar-small-thumb-bottom-over" },
+    down = { "minimal-scrollbar-small-thumb-top-down", "minimal-scrollbar-small-thumb-middle-down", "minimal-scrollbar-small-thumb-bottom-down" },
+  }
+  local ARROWS = {
+    top = { up = "minimal-scrollbar-arrow-top", over = "minimal-scrollbar-arrow-top-over", down = "minimal-scrollbar-arrow-top-down" },
+    bottom = { up = "minimal-scrollbar-arrow-bottom", over = "minimal-scrollbar-arrow-bottom-over", down = "minimal-scrollbar-arrow-bottom-down" },
+  }
+  -- The clear unit at each side of the arrows' art.
+  local ARROW_RIM = 1
+
+  local function HasAll(list)
+    for i = 1, #list do
+      if not HasAtlas(list[i]) then return false end
+    end
+    return true
+  end
+
+  local function HasArrows(set)
+    return HasAtlas(set.up) and HasAtlas(set.over) and HasAtlas(set.down)
+  end
+
+  -- Three pieces stacked down `host`'s height, `out` past each side: the
+  -- ends at the art's own height, the middle between.
+  local function Stack(owner, host, names, layer, out)
+    local pieces = {}
+    for i = 1, 3 do
+      local t = owner:CreateTexture(nil, layer)
+      Atlas(t, names[i], false)
+      pieces[i] = t
+    end
+    local T, M, B = pieces[1], pieces[2], pieces[3]
+    local _, th = Parts.Size(names[1])
+    local _, bh = Parts.Size(names[3])
+    T:SetHeight(th or 8)
+    T:SetPoint("TOPLEFT", host, "TOPLEFT", -out, 0)
+    T:SetPoint("TOPRIGHT", host, "TOPRIGHT", out, 0)
+    B:SetHeight(bh or 8)
+    B:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", -out, 0)
+    B:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", out, 0)
+    M:SetPoint("TOPLEFT", T, "BOTTOMLEFT", 0, 0)
+    M:SetPoint("BOTTOMRIGHT", B, "TOPRIGHT", 0, 0)
+    return pieces
+  end
+
+  -- The thumb's art for the bar's state: pressed, pointed at, at rest.
+  local function PaintThumb(bar)
+    local art = bar.__pbBlizzBar
+    if not art then return end
+    local state = (art.down and "down") or (art.over and "over") or "up"
+    if art.state == state then return end
+    art.state = state
+    local names = THUMB[state]
+    for i = 1, 3 do Atlas(art.thumb[i], names[i], false) end
+  end
+
+  local function BarEnter(bar) local a = bar.__pbBlizzBar if a then a.over = true PaintThumb(bar) end end
+  local function BarLeave(bar) local a = bar.__pbBlizzBar if a then a.over = false PaintThumb(bar) end end
+  local function BarDown(bar) local a = bar.__pbBlizzBar if a then a.down = true PaintThumb(bar) end end
+  local function BarUp(bar) local a = bar.__pbBlizzBar if a then a.down = false PaintThumb(bar) end end
+
+  local function PaintArrow(btn)
+    local art = btn.__pbBlizzArrow
+    if not art then return end
+    local state = (art.down and "down") or (art.over and "over") or "up"
+    if art.state == state then return end
+    art.state = state
+    Atlas(art.tex, art.names[state], false)
+  end
+
+  local function ArrowEnter(btn) local a = btn.__pbBlizzArrow if a then a.over = true PaintArrow(btn) end end
+  local function ArrowLeave(btn) local a = btn.__pbBlizzArrow if a then a.over, a.down = false, false PaintArrow(btn) end end
+  local function ArrowDown(btn) local a = btn.__pbBlizzArrow if a then a.down = true PaintArrow(btn) end end
+  local function ArrowUp(btn) local a = btn.__pbBlizzArrow if a then a.down = false PaintArrow(btn) end end
+
+  -- The step button's own chevron hidden, the game's arrow in its place.
+  local function Arrow(btn, names, maxW)
+    if not btn or btn.__pbBlizzArrow then return end
+    for i = 1, select("#", btn:GetRegions()) do
+      local r = select(i, btn:GetRegions())
+      if r and r.Hide then r:Hide() end
+    end
+    local tex = btn:CreateTexture(nil, "ARTWORK")
+    local w, h = Parts.Size(names.up)
+    w, h = w or 17, h or 11
+    if maxW and w > maxW then
+      h = h * maxW / w
+      w = maxW
+    end
+    tex:SetSize(w, h)
+    tex:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    btn.__pbBlizzArrow = { tex = tex, names = names }
+    PaintArrow(btn)
+    btn:HookScript("OnEnter", ArrowEnter)
+    btn:HookScript("OnLeave", ArrowLeave)
+    btn:HookScript("OnMouseDown", ArrowDown)
+    btn:HookScript("OnMouseUp", ArrowUp)
+  end
+
+  function Parts.ScrollBar(bar)
+    if bar.__pbBlizzBar ~= nil then return end
+    bar.__pbBlizzBar = false
+    if not (HasAll(TRACK) and HasAll(THUMB.up) and HasAll(THUMB.over) and HasAll(THUMB.down)) then return end
+    local thumb = bar.GetThumbTexture and bar:GetThumbTexture()
+    if not thumb then return end
+    local w = bar:GetWidth()
+    if type(w) ~= "number" or w <= 0 then w = 6 end
+    -- The track art, 8 wide with a clear unit each side, centred on the bar
+    -- so its visible track is the bar's width; the thumb's 8 solid units
+    -- centred on the bar's thumb.
+    local tw = Parts.Size(TRACK[1]) or 8
+    local trackOut = (tw - 2 - w) / 2
+    if trackOut < 0 then trackOut = 0 end
+    local hw = Parts.Size(THUMB.up[1]) or 8
+    local thumbOut = (hw - w) / 2
+    if thumbOut < 0 then thumbOut = 0 end
+    local art = { over = false, down = false }
+    art.track = Stack(bar, bar, TRACK, "BACKGROUND", trackOut + 1)
+    art.thumb = Stack(bar, thumb, THUMB.up, "OVERLAY", thumbOut)
+    art.state = "up"
+    bar.__pbBlizzBar = art
+    -- The bar's own track and thumb, faded (their paint, not their place:
+    -- the slider still sizes and moves the thumb the art stands on).
+    Fade(bar.Track)
+    thumb:SetAlpha(0)
+    bar:HookScript("OnEnter", BarEnter)
+    bar:HookScript("OnLeave", BarLeave)
+    bar:HookScript("OnMouseDown", BarDown)
+    bar:HookScript("OnMouseUp", BarUp)
+    -- The arrows, no wider than the gutter: twice the bar's middle's
+    -- distance from the list's edge, plus the art's clear rim.
+    local maxW
+    local _, _, _, x = bar:GetPoint(1)
+    if type(x) == "number" and x <= 0 then maxW = 2 * (-x + w / 2 + ARROW_RIM) end
+    if HasArrows(ARROWS.top) then Arrow(bar.Up, ARROWS.top, maxW) end
+    if HasArrows(ARROWS.bottom) then Arrow(bar.Down, ARROWS.bottom, maxW) end
+  end
+end
+
 -- One tagged child: what this skin dresses on it, each once.
 function Parts.DressOne(c)
+  if c.SlimBar and c.SlimBar.__pbBlizzBar == nil and c:IsObjectType("ScrollFrame") then Parts.ScrollBar(c.SlimBar) end
   if c.__postboxInputWrap and c.__pbBlizzField == nil then Parts.Field(c) end
   if c.__postboxPanel and not c.__pbBlizzInset and Sinks(c) then SinkPanel(c) end
   if c.__postboxPanel == "band" and c.__pbBlizzBand == nil and Parts.IsTotals(c) then Parts.Totals(c) end
