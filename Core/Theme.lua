@@ -5198,6 +5198,12 @@ Theme.AtlasSets = {
 --     large master from `large.from` units up, so ask for the small size
 --     or 30 to see each one pixel for pixel. Accent-tinted where
 --     Theme.TintAccentGlyph keeps one in the icon tone.
+--   pin  a push-pin, 14 units, an outline: the Send tab's pin inside the
+--     Recipient box (SendTab's ST.Pin), grey, and in the accent while the
+--     box holds this character's pinned name. Drawn after Phosphor's
+--     push-pin in its bold construction (round 23's drawing) and fitted by
+--     icons-r13's rules: the quarter-unit offset with the most ink in
+--     whole pixels.
 --   groups-10, recipients-10  the busts and the address book again, the
 --     12s simplified to 10 units tall (the busts 12 wide, so the two behind
 --     keep shoulders two units wide to the glyph's edges): the options'
@@ -5305,6 +5311,7 @@ do
       large = { from = 21, file = MEDIA .. "glyph-groups-large.tga", w = 30, h = 30, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.96875, px = true } },
     recipients = { file = MEDIA .. "glyph-recipients-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true,
       large = { from = 21, file = MEDIA .. "glyph-recipients-large.tga", w = 30, h = 30, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.96875, px = true } },
+    pin = { file = MEDIA .. "glyph-pin-14.tga", w = 14, h = 14, l = 0.0625, r = 0.9375, t = 0.0625, b = 0.9375, px = true },
     note = { file = MEDIA .. "glyph-note-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     x = { file = MEDIA .. "glyph-x-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["eye-16"] = { file = MEDIA .. "glyph-eye-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },

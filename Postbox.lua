@@ -127,6 +127,9 @@ local SCHEMA = {
                               -- of other characters (Core/MailMemory.lua, 2b);
                               -- "recipient" from an early 1.70 build, settled
                               -- to true once at load (section 4b)
+  "recipientPin",             -- realm -> name -> the name that character's
+                              -- Recipient box starts with (Core/SendTab.lua,
+                              -- ST.Pin); Reset everything clears it
 }
 
 local function EnsureDB()
