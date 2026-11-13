@@ -74,6 +74,9 @@ Core\WhatsNew.lua
 # Skin_EllesmereUI.lua). A file added or renamed here is found only after a
 # full client restart, not a /reload.
 Core\Skin_Postbox.lua
+# The Blizzard style: claims only when it is the choice, and dresses the
+# windows in the game's own art (Core\Skin_Blizzard.lua).
+Core\Skin_Blizzard.lua
 # The creative window styles are held back from 1.60.0 for a color and test
 # pass. Their code, art and strings stay in the repository, these seven lines
 # stay where they load, and .pkgmeta keeps them out of the zip; a profile that
