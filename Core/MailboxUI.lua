@@ -3384,16 +3384,18 @@ end
 -- width goes back to what it was before the first write -- unless something
 -- else has resized MailFrame since, whose width is then left alone. SetWidth
 -- is a protected call on a protected frame, so in combat nothing is written
--- either way: the width stays as it stands until the next layout out of
--- combat (an open, a resize's end, the docking switch), or, for a docked
--- mailbox still open, until combat ends: PLAYER_REGEN_ENABLED is listened
--- for then, on Postbox's own bus, and only until it comes (UI.SyncAfterCombat).
+-- either way: the width stays as it stands until combat ends. Whenever a
+-- write is skipped that would have changed something -- a docked window's
+-- width, or one Postbox set that is still to be given back (an undock, a
+-- drag off the slot or a close in combat) -- PLAYER_REGEN_ENABLED is
+-- listened for, on Postbox's own bus, and only until it comes
+-- (UI.SyncAfterCombat), which syncs the width once, either way.
 -- Writes only on a change of half a unit or more.
 local function SyncSlotWidth()
   local native = MailFrame
   if not (native and type(native.SetWidth) == "function" and type(native.GetWidth) == "function") then return end
   if type(InCombatLockdown) == "function" and InCombatLockdown() then
-    if ShouldDock() and not UI._state.regenSync then
+    if (ShouldDock() or UI._state.slotNativeW ~= nil) and not UI._state.regenSync then
       local bus = ns.Events
       if bus and bus.Register("PLAYER_REGEN_ENABLED", UI.SyncAfterCombat) then UI._state.regenSync = true end
     end
@@ -3433,13 +3435,14 @@ local function SyncSlotWidth()
 end
 
 -- Combat over, after a width skipped in it: the listener goes, and the
--- width is synced once if the mailbox is still open and docked. Nothing of
+-- width is synced once as things stand now -- Postbox's width while the
+-- mailbox is open and docked, else the width given back. Nothing of
 -- Blizzard's panel layout is called (COMBAT_TAINT.md section 4).
 function UI.SyncAfterCombat()
   UI._state.regenSync = nil
   local bus = ns.Events
   if bus then bus.Unregister("PLAYER_REGEN_ENABLED", UI.SyncAfterCombat) end
-  if ShouldDock() then SyncSlotWidth() end
+  SyncSlotWidth()
 end
 
 function UI.ApplyWindowLayout()
