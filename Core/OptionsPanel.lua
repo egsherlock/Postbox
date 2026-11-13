@@ -8993,6 +8993,34 @@ function Pages.window(col)
   -- too (TabReset.Units), as it does the looks' own values.
   S.styleCell.moreGets = { function() return ns.MailboxUI.GetOption("rowStripes") end }
 
+  -- The Blizzard style's own two rows, directly under the style: what the
+  -- mail rows stand on, and which buttons are red. Listed in every look,
+  -- grey with their reason where the window wears another (State.BlizzardRows);
+  -- live, without a reload, where the skin can repaint what it dressed.
+  local function BlizzRow(spec, setter, changed)
+    return Rows.Dropdown(col, {
+      title = L[spec.title], text = L[spec.text], items = spec.items,
+      get = function() return ns.MailboxUI[spec.get]() end,
+      set = function(id)
+        ns.MailboxUI[setter](id)
+        local skin = GetSkin()
+        if skin and skin.IsBlizzardStyle and type(skin[changed]) == "function" then skin[changed]() end
+      end,
+    })
+  end
+  S.blizzRows = {
+    BlizzRow({ title = "OPT_ROW_TEXTURE_TITLE", text = "OPT_ROW_TEXTURE_DESC", get = "GetRowTexture", items = {
+      { id = "light", name = L["OPT_ROW_TEXTURE_LIGHT"] }, { id = "dark", name = L["OPT_ROW_TEXTURE_DARK"] },
+      { id = "none", name = L["OPT_ROW_TEXTURE_NONE"] } } }, "SetRowTexture", "RowTextureChanged"),
+    BlizzRow({ title = "OPT_BUTTONS_TITLE", text = "OPT_BUTTONS_DESC", get = "GetButtonLook", items = {
+      { id = "red", name = L["OPT_BUTTONS_RED"] }, { id = "mailred", name = L["OPT_BUTTONS_MAILRED"] },
+      { id = "dark", name = L["OPT_BUTTONS_DARK"] } } }, "SetButtonLook", "ButtonLookChanged"),
+  }
+  for i = 1, #S.blizzRows do Rows.Why(S.blizzRows[i], "OPT_BLIZZARD_ONLY_WHY") end
+  S.blizzRows.on = nil
+  State.BlizzardRows()
+  S.refresh[#S.refresh + 1] = State.BlizzardRows
+
   -- The window scale, in every style: every Postbox window, live, each kept
   -- where it stands (MailboxUI.SetWindowScale).
   local scaleItems = {}
@@ -9125,6 +9153,19 @@ function Pages.window(col)
   }
   Rows.Why(S.borderSize.row, "OPT_BORDER_SIZE_WHY")
   S.refresh[#S.refresh + 1] = State.BorderSize
+end
+
+-- Row texture and Buttons live only while the window wears the Blizzard
+-- style (its skin, chosen or standing in for a host UI's), grey with their
+-- reason otherwise. Run on build and on every open.
+function State.BlizzardRows()
+  local rows = S.blizzRows
+  if not rows then return end
+  local skin = GetSkin()
+  local on = (skin and skin.IsBlizzardStyle) and true or false
+  if rows.on == on then return end
+  rows.on = on
+  for i = 1, #rows do Rows.SetEnabled(rows[i], on, "OPT_BLIZZARD_ONLY_WHY") end
 end
 
 -- Border size live only while the chosen border has a size (the skin's

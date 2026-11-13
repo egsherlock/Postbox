@@ -2966,6 +2966,20 @@ do
     local memory = ns.MailMemory
     if memory and type(memory.Refresh) == "function" then pcall(memory.Refresh) end
   end
+
+  -- A reset (MailboxUI's ApplyResetLive): Row texture and Buttons read
+  -- again, and whatever moved drawn as a change of the option draws it.
+  function Skin.ApplyLook()
+    local UI = ns.MailboxUI
+    if not UI then return end
+    if R.mode and type(UI.GetRowTexture) == "function" and UI.GetRowTexture() ~= R.mode then
+      Skin.RowTextureChanged()
+    end
+    if Parts.ButtonLook and type(UI.GetButtonLook) == "function" and UI.GetButtonLook() ~= Parts.ButtonLook
+       and Skin.ButtonLookChanged then
+      Skin.ButtonLookChanged()
+    end
+  end
 end
 
 -- One tagged child: what this skin dresses on it, each once.
