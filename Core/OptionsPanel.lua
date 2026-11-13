@@ -6014,6 +6014,10 @@ do
     end
     lit.on = on
     Rows.Pulse(btn)
+    -- A skin that draws the lit state on the button itself (the Blizzard
+    -- style: held down) takes it, and says so; no other look answers.
+    local skin = ns.Skin
+    if skin and type(skin.PaintLead) == "function" and skin.PaintLead(btn, label, mark, on) then return end
     if not on then
       lit:Hide()
       lit.Lift:Hide()

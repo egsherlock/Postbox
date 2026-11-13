@@ -543,7 +543,7 @@ do
         M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
       end
       M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
-      L:SetShown(not joined)
+      L:SetShown(not joined and not art.hidden)
       local glow = art.glow
       if glow then
         glow:ClearAllPoints()
@@ -558,7 +558,7 @@ do
     local art = button.__pbBlizzButton
     if not art then return end
     local state = "up"
-    if not button:IsEnabled() then state = "off" elseif art.down then state = "down" end
+    if not button:IsEnabled() then state = "off" elseif art.down or art.held then state = "down" end
     if art.state == state then return end
     art.state = state
     local set = art.names[state]
@@ -616,6 +616,43 @@ do
     button:HookScript("OnEnable", Paint)
     button:HookScript("OnDisable", Paint)
     button:HookScript("OnSizeChanged", Fit)
+  end
+
+  -- A switch that is a push button (the options' Test mail, Rows.Lead):
+  -- its art held down while it is on, let go when it is off. -> true where
+  -- the button wears this skin's art.
+  function Parts.HoldButton(button, held)
+    local art = button and button.__pbBlizzButton
+    if not art then return false end
+    held = held and true or false
+    if art.held ~= held then
+      art.held = held
+      Paint(button)
+    end
+    return true
+  end
+
+  -- A switch drawn as a plate of its own that is the red button held down
+  -- while it is on (Arrange's own Test mail): the art on `frame`, over its
+  -- plate (whose fill and edges the caller fades), shown or put away.
+  function Parts.HeldArt(frame, on)
+    local art = frame.__pbBlizzButton
+    if art == nil then
+      frame.__pbBlizzButton = false
+      if not Has(RED) then return false end
+      art = { names = RED, m = false, held = true, hidden = false }
+      for i = 1, 3 do art[i] = frame:CreateTexture(nil, "BORDER", nil, 7) end
+      frame.__pbBlizzButton = art
+      Paint(frame)
+      frame:HookScript("OnSizeChanged", Fit)
+    end
+    if not art then return false end
+    on = on and true or false
+    art.hidden = not on
+    art[1]:SetShown(on and not art.joined)
+    art[2]:SetShown(on)
+    art[3]:SetShown(on)
+    return true
   end
 
   ---------------------------------------------------------------
@@ -1984,6 +2021,93 @@ do
     line:SetPoint("TOPRIGHT", rule, "TOPRIGHT", 0, 0)
     Fade(rule)
     head.__pbBlizzHeading = line
+  end
+end
+
+-------------------------------------------------------------
+-- Lit states that were Postbox's own plates
+-------------------------------------------------------------
+
+-- Three switches drew their "on" as a Postbox plate in every look; under
+-- this skin each asks it here (a hook each, which no other look answers):
+--   * the options' Test mail (Rows.PaintLead) on is the red button held
+--     down, its pressed art, the eye and the word in the game's white;
+--   * Arrange's own Test mail (AR.Test.Paint) on is the same red button
+--     held down over its plate;
+--   * the Arrange key on the title bar, lit (Done), is the small dark
+--     button's selected art, its check and word white.
+-- Off, each is as before.
+do
+  local function White(region, isGlyph)
+    if not region then return end
+    local r, g, b = Parts.FontRGB("GameFontHighlight", 1, 1, 1)
+    if isGlyph then region:SetVertexColor(r, g, b, 1) else region:SetTextColor(r, g, b) end
+  end
+
+  -- -> true where this skin drew the state (the house's lit plate stays
+  -- put away), false to let the house draw it.
+  function Skin.PaintLead(btn, label, mark, on)
+    if not Parts.HoldButton(btn, on) then return false end
+    if not on then return false end
+    local lit = btn.Lit
+    if lit then
+      lit:Hide()
+      if lit.Lift then lit.Lift:Hide() end
+    end
+    White(label)
+    White(mark, true)
+    return true
+  end
+
+  local function Edges(list, a)
+    if type(list) ~= "table" then return end
+    for i = 1, #list do list[i]:SetAlpha(a) end
+  end
+
+  function Skin.PaintTestSwitch(b, on)
+    if not Parts.HeldArt(b, on) then return end
+    local a = on and 0 or 1
+    if b.Fill then b.Fill:SetAlpha(a) end
+    Edges(b.Ring, a)
+    Edges(b.Key, a)
+    if on then
+      White(b.Label)
+      White(b.Eye, true)
+    end
+  end
+
+  -- The key, lit: the selected art alone, laid by its rim on the key; the
+  -- house's lit plate (fill, wash, ring, keyline, edge, underline, lift)
+  -- put away. Unlit, the house shows what it shows and the art goes.
+  function Skin.PaintKey(button, lit)
+    local art = button.__pbBlizzKey
+    if not lit then
+      if art then
+        for i = 1, 3 do art[i]:Hide() end
+      end
+      return
+    end
+    if art == nil then
+      art = Parts.SmallArt(button) or false
+      button.__pbBlizzKey = art
+    end
+    if not art then return end
+    local h = button:GetHeight()
+    if type(h) ~= "number" or h <= 0 then return end
+    if art.h ~= h then
+      art.h = h
+      Parts.LaySmall(art, button, "lit", "alone", 0, h)
+    end
+    for i = 1, 3 do art[i]:Show() end
+    if button.Fill then button.Fill:Hide() end
+    if button.Wash then button.Wash:Hide() end
+    if button.Base then button.Base:Hide() end
+    if button.Bevel then button.Bevel:Hide() end
+    if button.Lift then button.Lift:Hide() end
+    if type(button.Ring) == "table" then for i = 1, #button.Ring do button.Ring[i]:Hide() end end
+    if type(button.Key) == "table" then for i = 1, #button.Key do button.Key[i]:Hide() end end
+    White(button.Label)
+    White(button.Check, true)
   end
 end
 

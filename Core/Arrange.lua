@@ -985,6 +985,9 @@ function AR.PaintToggle(button)
     T.SetColor(label, "accentBright", ground)
     label:Show()
     button:SetWidth(KEY_LEAD + KEY_CHECK + KEY_GAP + math.ceil(T.TextWidth(label)) + KEY_TAIL)
+    -- A skin that draws the lit key its own way (the Blizzard style) does
+    -- it last, lit and unlit; no other look answers.
+    if ns.Skin and type(ns.Skin.PaintKey) == "function" then ns.Skin.PaintKey(button, true) end
     return
   end
   button:SetWidth(AR.KEY_W)
@@ -1013,6 +1016,7 @@ function AR.PaintToggle(button)
     for i = 1, #button.grip.dots do T.SetColor(button.grip.dots[i], token) end
     button.grip:Show()
   end
+  if ns.Skin and type(ns.Skin.PaintKey) == "function" then ns.Skin.PaintKey(button, false) end
 end
 
 -- The mode's tooltips are the house's (Theme section 5b): the title white,
@@ -4963,6 +4967,9 @@ function AR.Test.Paint(b)
   end
   if b.Eye then b.Eye:SetShown(on and true or false) end
   if b.EyeOff then b.EyeOff:SetShown(not on) end
+  -- A skin that draws the switch on as its own button (the Blizzard style:
+  -- the red button held down) does it last; no other look answers.
+  if ns.Skin and type(ns.Skin.PaintTestSwitch) == "function" then ns.Skin.PaintTestSwitch(b, on and not locked) end
 end
 
 -- What it does, over the card as the cross's tooltip is: the sample mail
