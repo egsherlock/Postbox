@@ -6043,8 +6043,6 @@ do
   -- The strip, the columns' headings, the gap between two figures and the
   -- sentence's padding.
   local HEAD_H, COLS_H, GAP, MSG_PAD = GROUP_H, 18, 18, 8
-  -- The least room the strip's note is shown in.
-  local NOTE_MIN = 48
   -- The 7-day card under this one (Week.Build): its strip, its figures'
   -- band and the figures' padding from its top; the gap between the
   -- switch's two words and the underline under the chosen one.
@@ -6209,10 +6207,9 @@ do
     ground:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -1, 1)
     T.FillChrome(ground, LIFT_A)
 
-    -- The strip: what the table is on the left, how old it is on the right
-    -- over the Seen column it explains, on a shade of its own over a
-    -- hairline, across the list's side only: the tiles beside it are not
-    -- what it names.
+    -- The strip: what the table is, on a shade of its own over a hairline,
+    -- across the list's side only: the tiles beside it are not what it
+    -- names.
     local head = Spot(card, "Frame", HEAD_H)
     head:SetFrameLevel(level + 2)
     head:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
@@ -6228,14 +6225,6 @@ do
     head.Title = Text(head, "heading")
     head.Title:SetPoint("LEFT", head, "LEFT", NAME_X, 0)
     head.Title:SetText(L["OPT_DASH_TITLE"])
-    -- The note a step under the column headings: the game's smallest face
-    -- (the host's where it has one), as the footer's version is, muted.
-    head.Note = Text(head, "secondary", "RIGHT")
-    local tiny = _G.GameFontWhiteTiny
-    if tiny and T.HostFont then head.Note:SetFontObject(T.HostFont(tiny)) end
-    head.Note:SetPoint("RIGHT", head, "RIGHT", -(CONTROL_R + 2), 0)
-    head.Note:SetText(L["OPT_DASH_FOOT"])
-    T.SetColor(head.Note, "textSecondary")
 
     -- The columns' headings, quiet; they stay put while the list scrolls.
     local cols = Spot(card, "Frame", COLS_H)
@@ -6498,11 +6487,10 @@ do
       words = L["OPT_DASH_EMPTY"]
     end
     d.none:SetShown(unseen and true or false)
-    -- The strip's name greys with Mail Memory, as its settings do; its note
-    -- has the room the name leaves it.
+    -- The strip's name greys with Mail Memory, as its settings do, and has
+    -- the strip to itself, in to where the columns' figures end.
     T.SetColor(head.Title, (data and data.enabled) and "accent" or "textDisabled")
     T.FitText(head.Title, ROW_W - NAME_X - CONTROL_R - 2, L["OPT_DASH_TITLE"])
-    head.Note:SetShown(not words)
     cols:SetShown(not words)
     d.area:SetShown(not words)
     total:SetShown(not words)
@@ -6574,20 +6562,6 @@ do
     end
     local nameRoom = ROW_W - gutter - NAME_X - x
     PlaceFigures(cols, gutter)
-    -- The strip's note over the Seen column it explains, in with it while
-    -- the bar shows; cut where the title leaves it less than its room, and
-    -- left out where it leaves too little to read.
-    local noteR = CONTROL_R + 2 + gutter
-    head.Note:ClearAllPoints()
-    head.Note:SetPoint("RIGHT", head, "RIGHT", -noteR, 0)
-    local noteRoom = ROW_W - NAME_X - TextW(head.Title) - GAP - noteR
-    if noteRoom < NOTE_MIN then
-      head.Note:Hide()
-      head.__pbOverflowText = nil
-    else
-      head.Note:Show()
-      T.FitText(head.Note, noteRoom, L["OPT_DASH_FOOT"], head)
-    end
     for i = 1, listed do
       local line = d.rows[i]
       PlaceFigures(line, 0)
