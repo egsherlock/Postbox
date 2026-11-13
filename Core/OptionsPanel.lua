@@ -6340,11 +6340,11 @@ do
 
     -- Every character with mail, added up, on the foot strip: the strip's
     -- shade and a hairline over it across the list's side, at the card's
-    -- foot for good.
+    -- foot for good, to the split as the strip at the top runs.
     local total = Figures(Spot(card, "Frame", ROW_H))
     total:SetFrameLevel(level + 2)
     total:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 1, 1)
-    total:SetWidth(ROW_W)
+    total:SetWidth(SPLIT_X - 1)
     T.SetColor(total.Name, "textPrimary")
     local foot = total:CreateTexture(nil, "BACKGROUND", nil, -1)
     foot:SetAllPoints()
@@ -6635,7 +6635,9 @@ do
       line:Show()
     end
     for i = ruled + 1, #d.rows do d.rows[i]:Hide() end
-    PlaceFigures(total, gutter)
+    -- The foot strip runs past the lines to the split: its figures stand
+    -- that much further in, under their columns.
+    PlaceFigures(total, gutter + (SPLIT_X - 1 - ROW_W))
     T.FitText(total.Name, nameRoom, unseen and "" or ns.Plural("OPT_DASH_ALL", n), total)
 
     -- The list's window on its lines, five tall (Build); the bar comes with
