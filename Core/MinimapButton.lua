@@ -1954,7 +1954,7 @@ end
 
 -- A character's warning, in words, by Warn about's rule (MM.Warns, read
 -- once a showing into TIP.mode), as the marker and the login line have it:
--- nothing while it is Off; under Mail to be deleted, only mail that would
+-- nothing while it is Off; under Deleted, only mail that would
 -- be, in the login line's words for it (`goneText`); otherwise `text`.
 function TIP.WarningText(Memory, st)
   local warns = Memory and Memory.Warns

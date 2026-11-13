@@ -780,7 +780,7 @@ local function Status(realm, name, now)
         if not st.soonest or mail.expires < st.soonest then st.soonest = mail.expires end
         -- Of those, the ones the server deletes rather than sends back,
         -- still holding gold or items (the bin, the rows' expiry mark): what
-        -- Warn about's "Mail to be deleted" speaks of. A record that cannot
+        -- Warn about's "Deleted" speaks of. A record that cannot
         -- say (`back` nil: every one saved before 1.60 asked) counts too,
         -- since it already holds something (Counts): a warning that turns
         -- out needless beats a silent loss. Only the warning reads it so;

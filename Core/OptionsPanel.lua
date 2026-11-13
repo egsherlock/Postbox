@@ -9492,7 +9492,8 @@ function Pages.alerts(col)
   -- where it shows (its saved setting is the Minimap tab's old Show
   -- marker's). Both grey while Warn about is Off, and the marker while the
   -- minimap icon is off too (State.Warnings). Warn about's longest value
-  -- is cut short in its box, as any dropdown's is, and said whole on hover
+  -- fits its box in English, French, Spanish and Chinese; in German and
+  -- Russian it is cut short, as any dropdown's is, and said whole on hover
   -- (Rows.Fit).
   Rows.Group(block, L["OPT_MINIMAP_GROUP_EXPIRY"])
   local function Warned()
