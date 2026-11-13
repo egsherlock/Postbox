@@ -234,7 +234,7 @@ local function HostSkinName()
   local by = ns.SkinAppliedBy
   if by == "ellesmereui" then return "EllesmereUI" end
   if by == "elvui" then return "ElvUI" end
-  if by == "postbox" then return nil end
+  if by == "postbox" or by == "blizzard" then return nil end
 
   -- Nothing has been painted yet, so fall back to who holds the skin slot.
   --
@@ -249,7 +249,9 @@ local function HostSkinName()
     return nil
   end
 
-  if ns.Skin then
+  -- The Blizzard skin holds the slot for a host that stood down to it:
+  -- Postbox's own look, not the host's.
+  if ns.Skin and not ns.Skin.IsBlizzardStyle then
     if _G.EllesmereUI then return "EllesmereUI" end
     if _G.ElvUI then return "ElvUI" end
   end

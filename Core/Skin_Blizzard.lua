@@ -13,13 +13,15 @@ local _, ns = ...
 -- swaps an atlas to its bronze member by itself when the plain name is
 -- asked for, and its NineSlice layouts carry its own offsets.
 --
--- A SKIN, like Core/Skin_Postbox.lua: it claims ns.Skin at PLAYER_LOGIN,
--- only when the style choice is "blizzard", and rides the same contract
--- (Apply / ApplyWindow / Refresh / RefreshWindow over the tagged children).
--- Any other choice never claims it, so the Postbox style, EllesmereUI and
--- ElvUI run exactly the code they ran before this file existed. A host
--- skin standing down (EllesmereUI on its Blizzard or Classic look, an
--- opt-out) leaves ns.Skin unclaimed as before: that look is unchanged.
+-- A SKIN, like Core/Skin_Postbox.lua: it claims ns.Skin at PLAYER_LOGIN
+-- when the style choice is "blizzard" (the default where no host UI is
+-- installed), and rides the same contract (Apply / ApplyWindow / Refresh /
+-- RefreshWindow over the tagged children). It also takes the window when
+-- the EllesmereUI skin stands down to Postbox's own look (EllesmereUI on its
+-- Blizzard Style or Classic WoW UI look, or its skinning switched off for
+-- Postbox: Skin.HostStoodDown, at the end of this file). Otherwise it never
+-- claims, so the Postbox style, EllesmereUI and ElvUI run exactly the code
+-- they ran before this file existed.
 --
 -- It answers only what it dresses. Everything a skin may publish and this
 -- one does not (GetAccent, GetHostBaseline, GetFontFace, StyleTabPlate,
@@ -2614,3 +2616,33 @@ boot:SetScript("OnEvent", function(self)
   if ns.Skin then return end
   ns.Skin = Skin
 end)
+
+-------------------------------------------------------------
+-- Claim: when a host skin stands down to Postbox's own look
+-------------------------------------------------------------
+
+-- The style left on the host UI, and the host's skin standing down to
+-- Postbox's own look (Core/Skin_EllesmereUI.lua: EllesmereUI on its Blizzard
+-- Style or Classic WoW UI look, "stocklook", or its third-party skinning
+-- switched off for Postbox, "hostoptout"): the host skin calls this once, at
+-- the moment it decides, which is at login or when its handshake's
+-- watchdog gives up. This skin takes the window then, unless something
+-- already holds it, or the ElvUI skin is loaded: that one takes a window
+-- EllesmereUI stood down from by its own deferred claim, as it always has.
+-- A window built before the decision is dressed now, as its build would
+-- have dressed it (Apply is once per window).
+--
+-- Should the host's skin claim later in the session (EllesmereUI dispatches
+-- live when its skinning is switched back on), it stands down again once a
+-- window wears this skin (it reads ns.SkinAppliedBy), so this art is never
+-- left under another skin's; before any window is dressed, it takes the
+-- slot over and nothing of this skin was ever drawn.
+function Skin.HostStoodDown(reason)
+  if reason ~= "stocklook" and reason ~= "hostoptout" then return end
+  if ns.Skin or ns.ElvUISkin then return end
+  local UI = ns.MailboxUI
+  if UI and type(UI.HostSkinAllowed) == "function" and not UI.HostSkinAllowed() then return end
+  ns.Skin = Skin
+  local T = ns.Theme
+  if T and type(T.ForEachWindow) == "function" then T.ForEachWindow(Skin.ApplyWindow) end
+end

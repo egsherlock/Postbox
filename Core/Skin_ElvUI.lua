@@ -17,6 +17,10 @@ local S = E:GetModule("Skins", true)
 if not S then return end
 
 local Skin = {}
+-- For the Blizzard skin (Core/Skin_Blizzard.lua, HostStoodDown): where this
+-- skin is loaded, a window EllesmereUI's skin stands down from is this
+-- skin's to take (Claim, below), not the Blizzard skin's.
+ns.ElvUISkin = Skin
 
 -- Every Postbox window this skin has painted (weak): what an accent change
 -- sweeps for plates.

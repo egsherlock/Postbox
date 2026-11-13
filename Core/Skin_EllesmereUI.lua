@@ -1766,13 +1766,24 @@ end
 -- Reported by Diagnose -- i.e. /postbox skin, which is this addon's only debug
 -- channel. A chat line at login would be noise about a situation nobody can act
 -- on from the chat frame.
-local standDown          -- nil | "elvui" | "hostoptout" | "stocklook"
+local standDown          -- nil | "elvui" | "hostoptout" | "stocklook" | "blizzard"
 
 local STAND_DOWN_TEXT = {
   elvui      = "stood down (ElvUI painted first)",
   hostoptout = "stood down (EllesmereUI skinning is switched off for Postbox)",
   stocklook  = "stood down (EllesmereUI is on a stock look; Postbox's own Blizzard look matches it)",
+  blizzard   = "stood down (Postbox's own Blizzard look painted first)",
 }
+
+-- A stand-down that leaves the window to Postbox's own look hands it to
+-- the Blizzard skin (Core/Skin_Blizzard.lua), once, at the moment it is
+-- decided: that skin claims it unless the ElvUI skin is there to take it
+-- (its own deferred claim, as before), and dresses any window built
+-- before the decision.
+local function HandDown(reason)
+  local B = ns.BlizzardSkin
+  if B and type(B.HostStoodDown) == "function" then pcall(B.HostStoodDown, reason) end
+end
 
 -------------------------------------------------------------
 -- EllesmereUI's look (Global Settings > Style)
@@ -1994,19 +2005,29 @@ local function Activate()
   -- So: take over freely while nothing has been painted (swapping ns.Skin costs
   -- nothing), and refuse outright once it has. One skin owns the window either
   -- way, which is the only outcome worth having.
+  --
+  -- The same holds for Postbox's own Blizzard skin, which takes the window
+  -- when this skin stands down (HandDown): a late claim -- skinning switched
+  -- back on mid-session -- after it has dressed a window stands down too,
+  -- so its art is never left under this skin's. A stock look is still the
+  -- reason where it is one.
   if ns.SkinAppliedBy and ns.SkinAppliedBy ~= "ellesmereui" then
-    standDown = "elvui"
+    if ns.SkinAppliedBy == "blizzard" then
+      standDown = STOCK_LOOKS[HostLook()] and "stocklook" or "blizzard"
+    else
+      standDown = "elvui"
+    end
     return
   end
 
   -- EllesmereUI's whole UI on Blizzard Style or Classic WoW UI: Postbox wears
-  -- its own Blizzard look to match (see HostLook). Nothing is claimed, exactly
-  -- as for the opt-out, so the window builds in Postbox's own theme and the
-  -- options panel offers no EllesmereUI appearance rows. Only a player who left
-  -- the style on EllesmereUI gets here: an explicit Postbox style already
-  -- returned above.
+  -- its own Blizzard look to match (see HostLook): this skin claims nothing
+  -- and hands the window to the Blizzard skin, so the options panel offers no
+  -- EllesmereUI appearance rows. Only a player who left the style on
+  -- EllesmereUI gets here: an explicit Postbox style already returned above.
   if STOCK_LOOKS[HostLook()] then
     standDown = "stocklook"
+    HandDown(standDown)
     return
   end
   standDown = nil
@@ -2124,14 +2145,16 @@ local function OnSilence()
   if not HostSkinningAllowed() then
     silence, standDown = "optout", "hostoptout"
     BACKEND = nil
-    -- ns.Skin is deliberately left unclaimed, so Postbox's own theme renders
-    -- and the appearance controls this skin owns (border, background opacity)
-    -- stay out of the options panel, which reads ns.Skin to decide whether to
-    -- offer them. The one consequence worth knowing: with ElvUI ALSO loaded,
-    -- its skin re-checks ns.Skin a second after this and takes the window. That
-    -- is its documented recovery from "EllesmereUI never claimed", and it is
-    -- the right outcome -- the user opted out of EllesmereUI's skinning, not of
-    -- the ElvUI they are also running.
+    -- This skin claims nothing, so Postbox's own look renders (handed to the
+    -- Blizzard skin, HandDown) and the appearance controls this skin owns
+    -- (border, background opacity) stay out of the options panel, which reads
+    -- ns.Skin to decide whether to offer them. The one consequence worth
+    -- knowing: with ElvUI ALSO loaded, the Blizzard skin leaves the window
+    -- unclaimed and the ElvUI skin re-checks ns.Skin a second after this and
+    -- takes it. That is its documented recovery from "EllesmereUI never
+    -- claimed", and it is the right outcome -- the user opted out of
+    -- EllesmereUI's skinning, not of the ElvUI they are also running.
+    HandDown(standDown)
     return
   end
 
