@@ -917,12 +917,13 @@ do
     return pieces
   end
 
-  local function LaySearch(wrap, search)
+  -- The search border and its magnifier on `wrap` (h units tall), as the
+  -- template lays them, grown with the box: the three pieces, and the
+  -- magnifier as the fourth where the client has it. Art only.
+  function Parts.SearchArt(wrap, h)
     for i = 1, 3 do
       if not HasAtlas(SEARCH[i]) then return nil end
     end
-    local h = wrap:GetHeight()
-    if type(h) ~= "number" or h <= 0 then h = 24 end
     local pieces = {}
     for i = 1, 3 do
       local t = wrap:CreateTexture(nil, "BORDER", nil, 1)
@@ -940,8 +941,7 @@ do
     R:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", 0, 0)
     M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
     M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
-    -- The magnifier, and the words after it, as the template places them,
-    -- grown with the box.
+    -- The magnifier, as the template places it, grown with the box.
     local k = h / BOX_H
     if HasAtlas(GLASS) then
       local glass = wrap:CreateTexture(nil, "ARTWORK")
@@ -949,15 +949,42 @@ do
         glass:SetSize(GLASS_SIZE * k, GLASS_SIZE * k)
         glass:SetPoint("LEFT", wrap, "LEFT", GLASS_X * k, GLASS_Y * k)
         pieces[4] = glass
-        local lead = math.floor(TEXT_X * k + 0.5)
-        wrap.__pbTextLead = lead
-        if search.Box then search.Box:SetPoint("TOPLEFT", wrap, "TOPLEFT", lead, -2) end
-        if search.Placeholder then search.Placeholder:SetPoint("TOPLEFT", wrap, "TOPLEFT", lead, -2) end
-        -- The words' room, measured again with the new lead.
-        if type(search.Place) == "function" then search.Place(search.toggled) end
       end
     end
     return pieces
+  end
+
+  -- A search box: the art, and its words after the magnifier as the
+  -- template places them, grown with the box.
+  local function LaySearch(wrap, search)
+    local h = wrap:GetHeight()
+    if type(h) ~= "number" or h <= 0 then h = 24 end
+    local pieces = Parts.SearchArt(wrap, h)
+    if pieces and pieces[4] then
+      local lead = math.floor(TEXT_X * h / BOX_H + 0.5)
+      wrap.__pbTextLead = lead
+      if search.Box then search.Box:SetPoint("TOPLEFT", wrap, "TOPLEFT", lead, -2) end
+      if search.Placeholder then search.Placeholder:SetPoint("TOPLEFT", wrap, "TOPLEFT", lead, -2) end
+      -- The words' room, measured again with the new lead.
+      if type(search.Place) == "function" then search.Place(search.toggled) end
+    end
+    return pieces
+  end
+
+  -- The options' title-bar Find box (Core/OptionsPanel.lua, Find.Build:
+  -- tagged __pbFindBox): the same art in place of its hairline and its own
+  -- magnifier, which are faded; its words stay where they stand, already
+  -- clear of the magnifier.
+  function Parts.Find(wrap)
+    if wrap.__pbBlizzFind ~= nil then return end
+    wrap.__pbBlizzFind = false
+    local h = wrap:GetHeight()
+    if type(h) ~= "number" or h <= 0 then return end
+    local pieces = Parts.SearchArt(wrap, h)
+    if not pieces then return end
+    wrap.__pbBlizzFind = pieces
+    Fade(wrap.Line)
+    if pieces[4] then Fade(wrap.Glyph) end
   end
 
   function Parts.Field(wrap)
@@ -1767,6 +1794,199 @@ do
   end
 end
 
+-------------------------------------------------------------
+-- The options window's Settings parts
+-------------------------------------------------------------
+
+-- The options window wears the game's Settings panel parts:
+--   * its six tabs are the Settings tabs (MinimalTabTemplate's art,
+--     Options_Tab_* at 23 units, the open one Options_Tab_Active_* at 26,
+--     both on the plate's foot), on the game's Settings rule across the
+--     window under them; inside each a dark ground, the open one taller
+--     with a soft gold glow at its top (Postbox's own white tile, tinted in
+--     code, as the approved drawing has it). Captions in the game's gold,
+--     white when open or pointed at (the template's fonts); the Minimap
+--     tab's square stays. Through the skin's StyleTabPlate, which the
+--     options call for each tab as it is made; the preview's tabs (made
+--     without the pointer) are left as they are.
+--   * every checkbox in it (__postboxCheck) is the Settings checkbox, its
+--     box and tick (checkbox-minimal, checkmark-minimal) on the same button,
+--     at its size and place;
+--   * each group heading's rule is the game's Settings rule
+--     (Options_HorizontalDivider) where the rule stands, never under a
+--     screen pixel; the rule's own line is faded.
+-- The Find box is dressed with the search boxes (Parts.Find).
+do
+  local REST = { "Options_Tab_Left", "Options_Tab_Middle", "Options_Tab_Right" }
+  local OPEN = { "Options_Tab_Active_Left", "Options_Tab_Active_Middle", "Options_Tab_Active_Right" }
+  local DIVIDER, DIVIDER_RUN = "Options_HorizontalDivider", 8
+  -- The ground inside a tab: two units in from its sides and top edge; at
+  -- rest a near-black, open a warmer dark under the glow (its gold at a
+  -- quarter at the top, none at the foot).
+  local IN = 2
+  local GROUND_REST, GROUND_OPEN = { 0.04, 0.035, 0.03, 0.84 }, { 0.08, 0.063, 0.04, 0.92 }
+  local GLOW = { 1, 0.82, 0, 0.25 }
+
+  local function Has(set)
+    for i = 1, 3 do
+      if not HasAtlas(set[i]) then return false end
+    end
+    return true
+  end
+
+  -- Three pieces at the art's own height on the plate's foot.
+  local function Lay(plate, set)
+    local pieces = {}
+    for i = 1, 3 do
+      local t = plate:CreateTexture(nil, "BACKGROUND", nil, 2)
+      Atlas(t, set[i], false)
+      pieces[i] = t
+    end
+    local L, M, R = pieces[1], pieces[2], pieces[3]
+    local lw, lh = Parts.Size(set[1])
+    local rw = Parts.Size(set[3])
+    lh = lh or 23
+    L:SetSize(lw or 7, lh)
+    L:SetPoint("BOTTOMLEFT", plate, "BOTTOMLEFT", 0, 0)
+    R:SetSize(rw or 7, lh)
+    R:SetPoint("BOTTOMRIGHT", plate, "BOTTOMRIGHT", 0, 0)
+    M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
+    M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
+    pieces.h = lh
+    return pieces
+  end
+
+  local function Ground(plate, h, color)
+    local t = plate:CreateTexture(nil, "BACKGROUND", nil, 1)
+    t:SetColorTexture(color[1], color[2], color[3], color[4])
+    t:SetPoint("TOPLEFT", plate, "BOTTOMLEFT", IN, h - IN)
+    t:SetPoint("BOTTOMRIGHT", plate, "BOTTOMRIGHT", -IN, 0)
+    return t
+  end
+
+  local function ShowAll(list, on)
+    for i = 1, #list do list[i]:SetShown(on) end
+  end
+
+  local function PaintTab(plate)
+    local art = plate.__pbBlizzOptTab
+    if not art then return end
+    local open = plate.isSelected and true or false
+    ShowAll(art.open, open)
+    ShowAll(art.rest, not open)
+    art.restGround:SetShown(not open)
+    art.openGround:SetShown(open)
+    if art.glow then art.glow:SetShown(open) end
+    if plate.Text then
+      if open or plate.__pbHover then
+        plate.Text:SetTextColor(Parts.FontRGB("GameFontHighlight", 1, 1, 1))
+      else
+        plate.Text:SetTextColor(Parts.FontRGB("GameFontNormal", 1, 0.82, 0))
+      end
+    end
+  end
+
+  function Skin.StyleTabPlate(plate)
+    if not plate or plate.__pbBlizzOptTab ~= nil then return end
+    plate.__pbBlizzOptTab = false
+    -- The options preview's tabs (its window's `Tabs`, made without the
+    -- pointer) draw the window as the preview draws it.
+    local parent = plate:GetParent()
+    if (parent and type(parent.Tabs) == "table")
+       or (type(plate.IsMouseEnabled) == "function" and not plate:IsMouseEnabled()) then
+      return
+    end
+    if not (Has(REST) and Has(OPEN)) then return end
+    local rest, open = Lay(plate, REST), Lay(plate, OPEN)
+    local art = {
+      rest = rest, open = open,
+      restGround = Ground(plate, rest.h, GROUND_REST), openGround = Ground(plate, open.h, GROUND_OPEN),
+    }
+    -- The glow: gold at the top of the open tab's ground, fading down.
+    local glow = plate:CreateTexture(nil, "BACKGROUND", nil, 1)
+    glow:SetColorTexture(1, 1, 1, 1)
+    glow:SetPoint("TOPLEFT", art.openGround, "TOPLEFT", 0, 0)
+    glow:SetPoint("BOTTOMRIGHT", art.openGround, "BOTTOMRIGHT", 0, 0)
+    local mixin = _G.CreateColor
+    if type(mixin) == "function" and type(glow.SetGradient) == "function"
+       and pcall(glow.SetGradient, glow, "VERTICAL", mixin(GLOW[1], GLOW[2], GLOW[3], 0), mixin(GLOW[1], GLOW[2], GLOW[3], GLOW[4])) then
+      art.glow = glow
+    else
+      glow:Hide()
+    end
+    plate.__pbBlizzOptTab = art
+    plate.__setSelectedOverride = PaintTab
+    plate.__pbHoverOverride = PaintTab
+    local T = ns.Theme
+    if T and type(T.SetPlateSelected) == "function" then T.SetPlateSelected(plate, plate.isSelected) else PaintTab(plate) end
+    -- The rule under the tabs: from the first tab dressed to the last, the
+    -- run past each end; one per window.
+    local frame = plate:GetParent()
+    if not (frame and HasAtlas(DIVIDER)) then return end
+    local line = frame.__pbBlizzTabRule
+    if not line then
+      line = frame:CreateTexture(nil, "ARTWORK")
+      if not Atlas(line, DIVIDER, false) then
+        line:Hide()
+        return
+      end
+      local _, h = Parts.Size(DIVIDER)
+      h = h or 1
+      local px = T and type(T.OnePixel) == "function" and T.OnePixel(frame) or 1
+      if px > h then h = px end
+      line:SetHeight(h)
+      line:SetPoint("TOPLEFT", plate, "BOTTOMLEFT", -DIVIDER_RUN, 0)
+      frame.__pbBlizzTabRule = line
+    end
+    line:SetPoint("TOPRIGHT", plate, "BOTTOMRIGHT", DIVIDER_RUN, 0)
+  end
+
+  -- A checkbox in the options window: the Settings box and tick.
+  local CHECK = { box = "checkbox-minimal", tick = "checkmark-minimal", off = "checkmark-minimal-disabled" }
+  function Parts.Check(cb)
+    if cb.__pbBlizzCheck ~= nil then return end
+    cb.__pbBlizzCheck = false
+    local window = DressedWindowOf(cb)
+    if not (window and window == _G.PostboxOptionsFrame) then return end
+    if not (HasAtlas(CHECK.box) and HasAtlas(CHECK.tick)) then return end
+    local normal = cb.GetNormalTexture and cb:GetNormalTexture()
+    local checked = cb.GetCheckedTexture and cb:GetCheckedTexture()
+    if not (normal and checked) then return end
+    Atlas(normal, CHECK.box, false)
+    local pushed = cb.GetPushedTexture and cb:GetPushedTexture()
+    if pushed then Atlas(pushed, CHECK.box, false) end
+    local glow = cb.GetHighlightTexture and cb:GetHighlightTexture()
+    if glow and Atlas(glow, CHECK.box, false) then glow:SetBlendMode("ADD") end
+    Atlas(checked, CHECK.tick, false)
+    local off = cb.GetDisabledCheckedTexture and cb:GetDisabledCheckedTexture()
+    if off then Atlas(off, HasAtlas(CHECK.off) and CHECK.off or CHECK.tick, false) end
+    cb.__pbBlizzCheck = true
+  end
+
+  -- A group heading's rule (Rows.Group, tagged __pbGroupHead).
+  function Parts.Heading(head)
+    if head.__pbBlizzHeading ~= nil then return end
+    head.__pbBlizzHeading = false
+    local rule = head.Rule
+    if not (rule and HasAtlas(DIVIDER)) then return end
+    local line = head:CreateTexture(nil, "ARTWORK")
+    if not Atlas(line, DIVIDER, false) then
+      line:Hide()
+      return
+    end
+    local _, h = Parts.Size(DIVIDER)
+    h = h or 1
+    local T = ns.Theme
+    local px = T and type(T.OnePixel) == "function" and T.OnePixel(head) or 1
+    if px > h then h = px end
+    line:SetHeight(h)
+    line:SetPoint("TOPLEFT", rule, "TOPLEFT", 0, 0)
+    line:SetPoint("TOPRIGHT", rule, "TOPRIGHT", 0, 0)
+    Fade(rule)
+    head.__pbBlizzHeading = line
+  end
+end
+
 -- One tagged child: what this skin dresses on it, each once.
 function Parts.DressOne(c)
   if c.SlimBar and c.SlimBar.__pbBlizzBar == nil and c:IsObjectType("ScrollFrame") then Parts.ScrollBar(c.SlimBar) end
@@ -1776,6 +1996,9 @@ function Parts.DressOne(c)
   if c.__postboxButton and not c.__postboxSelect and c.__pbBlizzButton == nil and c:IsObjectType("Button") then
     Parts.Button(c)
   end
+  if c.__postboxCheck and c.__pbBlizzCheck == nil and c:IsObjectType("CheckButton") then Parts.Check(c) end
+  if c.__pbGroupHead and c.__pbBlizzHeading == nil then Parts.Heading(c) end
+  if c.__pbFindBox and c.__pbBlizzFind == nil then Parts.Find(c) end
   if c.__postboxSelect and c.__pbBlizzSelect == nil and c:IsObjectType("Button") then Parts.Select(c) end
   if c.__pbPopupAlways and c._toggle and c.__pbBlizzList == nil then Parts.List(c) end
   if c._selWash and c.__pbBlizzMark == nil then Parts.Row(c) end

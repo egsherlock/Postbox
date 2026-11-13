@@ -5763,7 +5763,8 @@ do
     rule:SetHeight(1)
     rule:SetPoint("LEFT", text, "RIGHT", NAME_GAP, -1)
     T.FillColor(rule, "accent")
-    head.Text, head.Rule = text, rule
+    -- Tagged for a skin's walk: a group's heading and its rule.
+    head.Text, head.Rule, head.__pbGroupHead = text, rule, true
     S.groups[#S.groups + 1] = head
     -- The rows under it are its, for Find a setting (Rows.Cell).
     S.groupNow = title
@@ -12010,8 +12011,9 @@ do
       local clear = T.AddClearButton(wrap, box)
       clear:SetPoint("RIGHT", wrap, "RIGHT", 0, 0)
     end
-    -- What the words take besides themselves, for Find.Fit's width.
-    wrap.__pbTextChrome = x + FIND.CLEAR_W + 2
+    -- What the words take besides themselves, for Find.Fit's width; and a
+    -- tag for a skin's walk.
+    wrap.__pbTextChrome, wrap.__pbFindBox = x + FIND.CLEAR_W + 2, true
     local watch = CreateFrame("Frame", nil, wrap)
     watch:SetScript("OnEvent", Press)
     S.findSearch = { Wrap = wrap, Box = box, Placeholder = placeholder }
