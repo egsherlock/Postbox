@@ -5246,6 +5246,10 @@ Theme.AtlasSets = {
 --     of the small family (`px`), its cut ends on whole units.
 --   The tiles' 30-unit art and its self-test:
 --     .dev/design/tile-icons/gen_tile_glyphs.py.
+--   `ink`, where given: the columns the art's ink covers, { first, past
+--     last } in units of `w` (read off the master's alpha), for a caller
+--     that places the ink itself rather than the box (the options' button
+--     icons, OptionsPanel's Rows.IconInk).
 --
 -- Sharpness. The art is 2 texels per UI unit. A texel snapping bias above 0
 -- "sharpens": the renderer picks a texel instead of blending texels (the API
@@ -5265,7 +5269,8 @@ do
 
   Theme.GLYPHS = {
     cog = { file = MEDIA .. "glyph-cog.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
-    layout = { file = MEDIA .. "glyph-layout.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
+    layout = { file = MEDIA .. "glyph-layout.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true,
+      ink = { 0, 11 } },
     check = { file = MEDIA .. "glyph-check.tga", w = 8, h = 8, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125 },
     eye = { file = MEDIA .. "glyph-eye.tga", w = 12, h = 8, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.5625, px = true },
     ["eye-off"] = { file = MEDIA .. "glyph-eye-off.tga", w = 12, h = 8, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.5625, px = true },
@@ -5314,8 +5319,10 @@ do
     x = { file = MEDIA .. "glyph-x-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["eye-16"] = { file = MEDIA .. "glyph-eye-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["eye-off-16"] = { file = MEDIA .. "glyph-eye-off-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
-    ["groups-10"] = { file = MEDIA .. "glyph-groups-10.tga", w = 14, h = 12, l = 0, r = 0.875, t = 0, b = 0.75, px = true },
-    ["recipients-10"] = { file = MEDIA .. "glyph-recipients-10.tga", w = 12, h = 12, l = 0, r = 0.75, t = 0, b = 0.75, px = true },
+    ["groups-10"] = { file = MEDIA .. "glyph-groups-10.tga", w = 14, h = 12, l = 0, r = 0.875, t = 0, b = 0.75, px = true,
+      ink = { 1, 13 } },
+    ["recipients-10"] = { file = MEDIA .. "glyph-recipients-10.tga", w = 12, h = 12, l = 0, r = 0.75, t = 0, b = 0.75, px = true,
+      ink = { 1, 11 } },
     ["search-14"] = { file = MEDIA .. "glyph-search-14.tga", w = 14, h = 14, l = 0.0625, r = 0.9375, t = 0.0625, b = 0.9375, px = true },
     link = { file = MEDIA .. "glyph-link.tga", w = 15, h = 8, l = 0.03125, r = 0.5, t = 0.0625, b = 0.5625, px = true },
     ["link-broken"] = { file = MEDIA .. "glyph-link-broken.tga", w = 15, h = 8, l = 0.03125, r = 0.5, t = 0.0625, b = 0.5625, px = true },

@@ -4716,6 +4716,16 @@ do
     dd:SetChangeCallback(spec.set)
     local toggle = dd._toggle
     Wire(toggle, row, true)
+    -- The first dropdown whose value wears no face of an item's (the Font
+    -- list's does): its state fonts are every dropdown value's, and the
+    -- button rows' captions wear them too (CAPTION.Font).
+    if not S.valueToggle then
+      local faced = false
+      for i = 1, #spec.items do
+        if spec.items[i].face then faced = true break end
+      end
+      if not faced then S.valueToggle = toggle end
+    end
     row.kind, row.control, row.dd, row.items = "dropdown", toggle, dd, spec.items
     row.get, row.controlW = spec.get, width
     Rows.PaintDropdown(row)
@@ -4876,19 +4886,26 @@ do
   }
 
   -- The state's font: a named one only (never a widget's own instance).
+  -- The state fonts of the options' dropdowns (S.valueToggle, one of them
+  -- with no face of its own per item), not the button's: these buttons
+  -- open a window as a dropdown opens its list, and their words read as
+  -- the dropdowns' values do, state for state, in whatever ink each look
+  -- gives those (the Postbox style's select value, a host's, the game's).
+  -- The button's own where no dropdown has been made.
   function CAPTION.Font(btn)
     local T = ns.Theme
     local named = T.NamedFont
+    local src = S.valueToggle or btn
     local get
     if not btn:IsEnabled() then
-      get = btn.GetDisabledFontObject
+      get = src.GetDisabledFontObject
     elseif btn.__pbPointed then
-      get = btn.GetHighlightFontObject
+      get = src.GetHighlightFontObject
     else
-      get = btn.GetNormalFontObject
+      get = src.GetNormalFontObject
     end
-    local object = get and named(get(btn)) or nil
-    if not object then object = named(btn:GetNormalFontObject()) end
+    local object = get and named(get(src)) or nil
+    if not object then object = named(src:GetNormalFontObject()) end
     return object or named((T.FontObject("segment")))
   end
 
@@ -4955,10 +4972,17 @@ do
   -- openers say, State.Lists) wore whatever that font's colour was, not
   -- the one its neighbours were painted. A label of our own changes only
   -- its words (Rows.SetCaption).
-  -- One icon box for every button row, ICON.BOX square, the caption
-  -- ICON.GAP after it; a glyph drawn smaller is centred in it (a larger
-  -- one, its clear margin, overhangs it evenly), so the
-  -- captions of three buttons stacked one over another start alike.
+  -- The icon placed by its ink, not its texture: the ink's width as it is
+  -- drawn now and ICON.GAP after its last column, the caption's box
+  -- (Rows.IconInk). A pixel glyph is drawn at a whole number of screen
+  -- pixels a unit (Theme.Glyph), so where a unit is not a whole number of
+  -- pixels it stands larger or smaller than its size in units; a box of a
+  -- fixed width with the glyph anchored at its left gave all that growth
+  -- to the gap, and the groups' figure ran up against its count. The three
+  -- buttons' gaps are one number, measured from the ink: 8 units, where
+  -- the boxes left Arrange 7 and the groups 6 at one pixel a unit (the
+  -- first letter's own side bearing comes on top: Friz Quadrata's A 0.1,
+  -- N 0.6, 1 2.0 at 13).
   -- Every glyph here is drawn from its own master at its own size, pixel
   -- for pixel: Arrange's layout mark at 12, the box; the openers' groups
   -- (12 by 10 of ink, on 14 by 12 with its clear unit round it) and
@@ -4967,7 +4991,21 @@ do
   -- each stands with its middle on the middle of the caption's capitals
   -- (Rows.IconTop), not of its line: the line's room for descenders set an
   -- icon centred on the button high against the words.
-  local ICON = { BOX = 12, GAP = 6 }
+  local ICON = { BOX = 12, GAP = 8 }
+
+  -- Where `icon`'s ink starts in it and how wide it is, in units, as the
+  -- icon is drawn now: the master's ink columns (Theme.GLYPHS `ink`)
+  -- scaled to the texture's width. The whole texture where none are given;
+  -- the grip's dots (Ctx.Mark's fallback) their own width.
+  function Rows.IconInk(icon)
+    local spec = icon.__pbSpec
+    if icon.dots or not (spec and spec.w) then return 0, icon.w or ICON.BOX end
+    local w = icon:GetWidth() or spec.w
+    local ink = spec.ink
+    if not ink then return 0, w end
+    local s = w / spec.w
+    return ink[1] * s, (ink[2] - ink[1]) * s
+  end
 
   -- How far under the top of `box` (a button, a line) the top of `icon`
   -- stands, in units, for its middle on the middle of the capitals of
@@ -5727,7 +5765,9 @@ do
     fit = fit or BUTTON_FIT
     local pad = fit.padding / 2
     local icon, chev = btn.Icon, btn.Chev
-    local lead = icon and (ICON.BOX + ICON.GAP) or 0
+    local inkL, inkW = 0, 0
+    if icon then inkL, inkW = Rows.IconInk(icon) end
+    local lead = icon and (inkW + ICON.GAP) or 0
     local tail = chev and (chev.w + CHEVRON_R + CHEVRON_GAP - pad) or 0
     if tail < 0 then tail = 0 end
     label:SetText(btn.captionText)
@@ -5745,7 +5785,9 @@ do
     label:SetPoint("LEFT", btn, "LEFT", x + lead, 0)
     if icon then
       icon:ClearAllPoints()
-      local ix = x + math.floor((ICON.BOX - icon.w) / 2)
+      -- The ink's first column on x: the texture's clear margin stands
+      -- before it, inside the button's padding.
+      local ix = x - inkL
       if icon.dots then
         icon:SetPoint("LEFT", btn, "LEFT", ix, 0)
       else
