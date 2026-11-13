@@ -1708,9 +1708,14 @@ do
     -- highlight font (the house's even copy, a named font: Theme's
     -- EvenButtonFonts), so it reads white at rest as under the pointer.
     local T = ns.Theme
+    -- Only the evened copy (the normal font in the highlight's colour, at
+    -- the normal font's size): a game font of its own could be larger.
     local lit = T and T.NamedFont and type(toggle.GetHighlightFontObject) == "function"
       and T.NamedFont(toggle:GetHighlightFontObject()) or nil
-    if lit and type(toggle.SetNormalFontObject) == "function" then toggle:SetNormalFontObject(lit) end
+    local name = lit and type(lit.GetName) == "function" and lit:GetName() or nil
+    if name and name:find("^PostboxEvenFont") and type(toggle.SetNormalFontObject) == "function" then
+      toggle:SetNormalFontObject(lit)
+    end
     -- Its place: at the box's left (after a swatch where it has one),
     -- clear of the arrow; a select whose items carry art keeps it centred.
     local inset = tonumber(toggle.__pbInset) or 12
