@@ -35,9 +35,12 @@ local _, ns = ...
 --
 -- Dressed so far: the window frame, the sunken panels, the main window's
 -- Mail and Send tabs, every push button, the Mail tab's totals strip and
--- every field and search box, and every list's scroll bar. The options'
--- tabs, other plates, joined cells, other bands, dropdowns and rows draw
--- as they did.
+-- every field and search box, every list's scroll bar, every segment and
+-- tile (one strip where they are joined), the Sent clock as a cell of Send
+-- mail, the dropdowns and their lists, the options' tabs, checkboxes,
+-- heading rules and Find box, and the lit Test mail switches and Arrange
+-- key. Cells joined to a field, other bands, the options preview and the
+-- mail rows draw as they did.
 -- =====================================================================
 
 local Skin = {}
