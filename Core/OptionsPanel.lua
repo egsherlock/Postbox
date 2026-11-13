@@ -1353,7 +1353,8 @@ do
 
   -- The pointer on a drawing: the inspector says what it is. Shared by
   -- every tile and badge, so a hover builds nothing. A tile's hover takes
-  -- its rest fill's place, so the two never stack.
+  -- its rest fill's place, so the two never stack, and stands its edge
+  -- (Ctx.Tile) at its left.
   local function SpotEnter(self)
     if Rows.Held(self, SpotEnter) then return end
     if self.Hover then
@@ -1361,6 +1362,7 @@ do
       if self.Rest then self.Rest:Hide() end
       TintChevron(self, true)
     end
+    if self.Edge then self.Edge:Show() end
     Rows.Hover(self)
   end
 
@@ -1370,8 +1372,21 @@ do
       if self.Rest then self.Rest:Show() end
       TintChevron(self, false)
     end
+    -- A tile held down keeps its edge until the press ends (TileUp).
+    local edge = self.Edge
+    if edge and self:GetButtonState() ~= "PUSHED" then edge:Hide() end
     if Rows.HeldLeave(self) then return end
     Rows.Unhover(self)
+  end
+
+  -- A tile pressed wears its edge for the press, the pointer on it or not;
+  -- let go where its hover is not showing, the edge goes with the press.
+  local function TileDown(self)
+    self.Edge:Show()
+  end
+
+  local function TileUp(self)
+    if not self.Hover:IsShown() then self.Edge:Hide() end
   end
 
   -- A tile's plate, lifted off whatever it stands on: a fill of its own, a
@@ -1389,7 +1404,7 @@ do
   -- Tagged as a card, so every skin paints it as it paints the house's
   -- other cards; what must survive that lives on a holder of its own
   -- (ArtHolder).
-  local TILE_GLYPH = 30
+  local TILE_GLYPH, TILE_EDGE = 30, 2
   function Ctx.Tile(parent, art, title, entry, onClick, glyph)
     local T = ns.Theme
     local tile = CreateFrame("Button", nil, parent, "BackdropTemplate")
@@ -1427,6 +1442,19 @@ do
     T.FillChrome(bottom, TILE_RING_A)
     T.FillChrome(left, TILE_RING_A)
     T.FillChrome(right, TILE_RING_A)
+    -- The edge: TILE_EDGE units of the accent down the plate's left side,
+    -- inside the ring, its whole height, shown while the pointer is on the
+    -- tile or it is pressed (SpotEnter, TileDown). Solid, as the accent's
+    -- marks are, so it reads at any window opacity; on the holder, over the
+    -- fills and over whatever backdrop a skin gives the tile. Its colour is
+    -- the glyph's (Ctx.TintTile).
+    local edge = holder:CreateTexture(nil, "BORDER", nil, 1)
+    edge:SetTexture(WHITE)
+    edge:SetPoint("TOPLEFT", tile, "TOPLEFT", 1, -1)
+    edge:SetPoint("BOTTOMLEFT", tile, "BOTTOMLEFT", 1, 1)
+    edge:SetWidth(TILE_EDGE)
+    edge:Hide()
+    tile.Edge = edge
 
     -- The glyph where this build has it, centred where the art stands.
     local mark = glyph and type(T.Glyph) == "function" and T.Glyph(holder, glyph, TILE_GLYPH, "ARTWORK") or nil
@@ -1468,6 +1496,8 @@ do
     TintChevron(tile, false)
     tile:SetScript("OnEnter", SpotEnter)
     tile:SetScript("OnLeave", SpotLeave)
+    tile:SetScript("OnMouseDown", TileDown)
+    tile:SetScript("OnMouseUp", TileUp)
     tile:SetScript("OnClick", onClick)
     return tile
   end
@@ -1478,6 +1508,20 @@ do
   -- off (`tile.off`); or its art's glow.
   function Ctx.TintTile(tile)
     local T = ns.Theme
+    -- The edge wears what the glyph wears: kept in the accent's icon tone
+    -- with it (repainted with the accent, the host's looks and the
+    -- palette), the disabled grey while the tile's list is off.
+    local edge = tile.Edge
+    if edge then
+      if tile.off then
+        if type(T.ReleaseAccentGlyph) == "function" then T.ReleaseAccentGlyph(edge) end
+        T.SetColor(edge, "textDisabled")
+      elseif type(T.TintAccentGlyph) == "function" then
+        T.TintAccentGlyph(edge)
+      else
+        T.SetColor(edge, "accent")
+      end
+    end
     if tile.glyph then
       if tile.off then
         -- Out of the accent's keeping first, so an accent change does not
