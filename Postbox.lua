@@ -123,7 +123,7 @@ local SCHEMA = {
                               -- auction's row shows its item (Core/MailMemory.lua, 2e)
   "auctionDeposits",          -- realm -> name -> hour, copper pairs: deposits
                               -- paid on posts, for the 7-day card (Core/MailMemory.lua, 2f)
-  "hiddenChars",              -- realm -> name -> true: hidden from the lists
+  "hiddenChars",              -- realm -> name -> true, or "recipient" where the hide also hid the recipient
                               -- of other characters (Core/MailMemory.lua, 2b)
 }
 
