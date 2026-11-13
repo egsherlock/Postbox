@@ -9428,6 +9428,9 @@ end
 -- MID_GAP; the band to the version, and the version to the panel's foot.
 Footer.BAND_W = PANEL_W - 2 * EDGE
 Footer.MID_GAP, Footer.VERSION_GAP, Footer.VERSION_FOOT = 16, 3, 7
+-- The room added between Reset's and Report a bug's marks and their words:
+-- the marks stay where they stood, the words (and Reset's caret) one on.
+Footer.ICON_GAP = 1
 
 -- One of the theme's glyphs, white like the band's text beside it, or nil
 -- where the theme has none: the band then reads as words alone.
@@ -9454,12 +9457,12 @@ function Footer.Build(frame, above)
   -- Says what the click does. The band has always opened the bug report;
   -- nothing on it ever said so.
   statusText:SetText(L["OPT_REPORT_BUG"])
-  -- Its mark before it, at 16, centred where the 12-unit mark was, so the
-  -- words keep their place (Footer.Fit's bugMark).
+  -- Its mark before it, at 16, centred where the 12-unit mark was, the
+  -- words Footer.ICON_GAP further on (Footer.Fit's bugMark and bugGap).
   local bugArt = ArtHolder(statusBand)
   local bug = Footer.Glyph(bugArt, "bug", 16)
   if bug then
-    bug:SetPoint("CENTER", statusText, "LEFT", -11, 0)
+    bug:SetPoint("CENTER", statusText, "LEFT", -11 - Footer.ICON_GAP, 0)
     T.SetColor(bug, "textSecondary")
   end
 
@@ -9499,7 +9502,7 @@ function Footer.Build(frame, above)
   if T.OnWindow then T.OnWindow(versionText, "solid") end
 
   S.footer = {
-    band = statusBand, bugText = statusText, bugMark = bug and 17 or 0,
+    band = statusBand, bugText = statusText, bugMark = bug and 17 or 0, bugGap = bug and Footer.ICON_GAP or 0,
     news = news, newsText = newsText, version = versionText,
   }
 
@@ -9623,7 +9626,8 @@ function Footer.Build(frame, above)
     local arrow = Footer.Glyph(reset, "reset-16", 16)
     local caret = Footer.Glyph(reset, "caret", 6)
     local resetText = ns.Theme.CreateText(reset, "bodySmall")
-    resetText:SetPoint("LEFT", reset, "LEFT", arrow and 21 or 4, 0)
+    local textX = arrow and 21 + Footer.ICON_GAP or 4
+    resetText:SetPoint("LEFT", reset, "LEFT", textX, 0)
     resetText:SetWordWrap(false)
     resetText:SetText(L["OPT_RESET_DEFAULTS"])
     S.footer.reset, S.footer.resetText, S.footer.resetCaret = reset, resetText, caret
@@ -9651,7 +9655,7 @@ function Footer.Build(frame, above)
     -- As wide as what it says, re-measured on every open (Footer.Fit): a
     -- host skin can re-font it after the panel is built.
     S.footer.FitReset = function()
-      local width = math.ceil(resetText:GetStringWidth() or 0) + (arrow and 21 or 4) + (caret and 18 or 4)
+      local width = math.ceil(resetText:GetStringWidth() or 0) + textX + (caret and 18 or 4)
       reset:SetWidth(width)
       return width
     end
@@ -9747,15 +9751,17 @@ function Footer.Fit()
   local newsW = math.max(1, math.ceil(TextW(f.newsText)))
   f.news:SetWidth(newsW)
   local newsL = Footer.BAND_W - 8 - newsW
-  local mark = f.bugMark
-  local unit = mark + math.ceil(TextW(f.bugText))
-  local x = (Footer.BAND_W - unit) / 2
+  -- Centred as the mark and words were before the gap after the mark, so
+  -- the mark keeps its place; the gap counts toward the room it needs.
+  local mark, gap = f.bugMark, f.bugGap or 0
+  local unit = mark + gap + math.ceil(TextW(f.bugText))
+  local x = (Footer.BAND_W - unit + gap) / 2
   if x < resetR + Footer.MID_GAP or x + unit > newsL - Footer.MID_GAP then
-    x = resetR + (newsL - resetR - unit) / 2
+    x = resetR + (newsL - resetR - unit + gap) / 2
   end
   x = math.floor(x + 0.5)
   f.bugText:ClearAllPoints()
-  f.bugText:SetPoint("LEFT", f.band, "LEFT", x + mark, 0)
+  f.bugText:SetPoint("LEFT", f.band, "LEFT", x + mark + gap, 0)
   S.footH = math.max(FOOT_BOTTOM,
     Footer.VERSION_GAP + math.ceil(f.version:GetStringHeight() or 0) + Footer.VERSION_FOOT)
 end
