@@ -132,9 +132,15 @@
   bought, All sold and All expired. Yours stay as they are.
 - Mail counts always show on Inbox, the collect buttons and each
   character's box; the setting for them is gone.
-- **Escape closes one Postbox window at a time:** an editor goes back to
-  the options, and the options close before the mailbox. In a search box
-  with words in it, the first press clears it and the second leaves it.
+- **Escape closes one thing at a time:** an open menu or list first (the
+  sort menu, the character list, the Send tab's contact list, any
+  dropdown), then an editor, then the options, then the mailbox. In a
+  search box with words in it, the first press clears it and the second
+  leaves it.
+- **Options: every row is always listed.** Text style and Border size are
+  grayed with the reason when they don't apply, where they used to be
+  hidden, and the options' search finds them. **Reset this tab** also
+  resets the minimap icon's size and place under EllesmereUI's minimap.
 - Mail Memory, Character Groups and Manage Recipients have new icons: on
   the options' General tab in your accent color, on the buttons that open
   them, and on their own windows' title bars.
@@ -202,6 +208,18 @@
   mailbox.
 - Changing between Received and Sent in History lets a filter go, so
   neither list hides entries behind a filter set on the other.
+- After a fight, a game window opened beside the mailbox sits where it
+  should, also when the Postbox window was moved or closed during combat.
+- Tooltips say what a click does right now: the options cog says **Click:
+  close** while the options are open, the minimap icon says **Click:
+  Characters** at a mailbox, and a favorite's row in Manage Recipients says
+  its click removes the star.
+- Send tab: the contact list closes when you click elsewhere, and queued
+  items can be linked (Shift-click) and tried on (Ctrl-click) like attached
+  ones.
+- The window's resize grip resets on a right-click's release, and only the
+  left button resizes.
+- Options: grayed rows on the Alerts tab name the right setting to turn on.
 
 ## 1.60.0
 

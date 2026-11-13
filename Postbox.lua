@@ -2515,7 +2515,9 @@ function Postbox_OnAddonCompartmentEnter(_, button)
   if not T then return end
   T.TipBegin(button, "ANCHOR_LEFT")
   T.TipTitle("Postbox")
-  T.TipHint(ns.L["COMPARTMENT_TIP"])
+  -- By the minimap icon's rules: what its click does here and now.
+  local MB = ns.MinimapButton
+  T.TipHint(MB and MB.CompartmentHint and MB.CompartmentHint() or ns.L["COMPARTMENT_TIP"])
   GameTooltip:Show()
 end
 

@@ -6322,7 +6322,7 @@ local function VisibleSegments(container, other)
   return shown
 end
 
--- History is offered unless the player chose "Never" (Options, Mail tab),
+-- History is offered unless the player chose "Never" (Options > General),
 -- which turns it off.
 function RV.HistoryOn()
   local UI = ns.MailboxUI
