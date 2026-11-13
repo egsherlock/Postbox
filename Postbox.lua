@@ -125,7 +125,8 @@ local SCHEMA = {
                               -- paid on posts, for the 7-day card (Core/MailMemory.lua, 2f)
   "hiddenChars",              -- realm -> name -> true: hidden from the lists
                               -- of other characters (Core/MailMemory.lua, 2b);
-                              -- "recipient" where that hide also hid the recipient
+                              -- "recipient" from an early 1.70 build, settled
+                              -- to true once at load (section 4b)
 }
 
 local function EnsureDB()
@@ -440,6 +441,28 @@ end
 -- mark at the root, kept through Reset everything (CENSUS_KEEP) as the
 -- grid's is; run after SettleGridDefault, which may have written the
 -- arrangement out first. `fresh`: no saved variables, so no groups.
+-- 1.70: hiding a character no longer hides it as a recipient
+-- (Core/MailMemory.lua, 2b). A 1.70 build from before that marked each
+-- character whose hide had hidden its recipient too ("recipient" in
+-- hiddenChars); every such recipient is offered again and its mark made
+-- plain, once (MM.SettleRecipientMarks). A recipient hidden by hand stays
+-- hidden. No release made those marks, so for a player coming from 1.60 or
+-- earlier there is nothing to do. Its own mark at the root, written after
+-- the work, and only once every mark was settled (a recipient that could
+-- not be named yet waits for the next load). `fresh`: no saved variables.
+local HIDDEN_SETTLED = "hiddenRecipients"
+
+local function SettleHiddenRecipients(fresh)
+  local db = PostboxDB
+  if type(db) ~= "table" or db[HIDDEN_SETTLED] ~= nil then return end
+  if not fresh then
+    local MM = ns.MailMemory
+    if not (MM and type(MM.SettleRecipientMarks) == "function") then return end
+    if not MM.SettleRecipientMarks() then return end
+  end
+  db[HIDDEN_SETTLED] = "1.70"
+end
+
 local GROUPS_SETTLED = "groupOrder"
 
 local function SettleGroupOrder(fresh)
@@ -2658,7 +2681,7 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   Upgrade(savedBy)
   -- Each settled once, as Upgrade runs its steps: one that fails is
   -- reported, and the rest of the setup below goes on.
-  for _, settle in ipairs({ SettleGridDefault, SettleGroupOrder, SettleGridShown }) do
+  for _, settle in ipairs({ SettleGridDefault, SettleGroupOrder, SettleGridShown, SettleHiddenRecipients }) do
     local ok, err = pcall(settle, ns.freshInstall, savedBy)
     if not ok and type(geterrorhandler) == "function" then
       local handler = geterrorhandler()
