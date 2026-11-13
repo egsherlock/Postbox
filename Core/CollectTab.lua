@@ -6840,15 +6840,20 @@ end
 
 -- The tooltip of the plate the picker lies over: what it names -- Inbox,
 -- or the other character's whole name, realm and all, since the plate may
--- show only its start -- then its clicks: the list, and the way back only
--- while there is one to take.
+-- show only its start -- then its clicks: the list, only while a click
+-- opens it (the plate lit: on an unlit one the click is the plate's own,
+-- back to that Inbox, and the plate's name says so), and the way back
+-- only while there is one to take.
 function AV.PickerTip(picker, panel)
   local T = Th()
   local host = picker.host
   local name = host and host == (panel.ViewToggle and panel.ViewToggle.alt) and host.fullName
   T.TipBegin(picker, "ANCHOR_TOPRIGHT")
   T.TipTitle(name or (host and host.baseLabel) or L()["VIEW_INBOX"])
-  T.TipHint(L()["PICKER_SWITCH_HINT"])
+  -- As the picker's click decides it.
+  if not (host and not host.isSelected and host:GetScript("OnClick")) then
+    T.TipHint(L()["PICKER_SWITCH_HINT"])
+  end
   if AV.Other(panel) then T.TipHint(L()["PICKER_BACK_HINT"]) end
   GameTooltip:Show()
 end
