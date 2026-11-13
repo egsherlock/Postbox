@@ -51,6 +51,28 @@
   stays with Done and leaves the Inbox's alone. Until you pick one, Done
   follows the Inbox.
 
+### Send tab and Manage Recipients
+
+- **Manage Recipients is a table:** one line per name, in columns
+  (Category, Class, Level, Played, Mailed), with a note, a hide and a
+  delete mark at the end of each row.
+- **Manage Recipients: click a name to favorite it, right-click to hide
+  it.** Shift-click and Ctrl-click select several names, and the buttons
+  at the bottom then favorite, hide or delete them together.
+- **Send tab: right-click hides a name** in the suggestions under To and
+  in the contact list. The star at the end of a name favorites it. Hidden
+  names wait under Hidden at the foot of the contact list, one click from
+  coming back.
+- **Choose where suggested names come from** (Options > Send tab): your
+  alts, your guild, your friends, recent recipients. Favorites stay
+  whatever you switch off.
+- **Manage Recipients shows when you last mailed each name,** and can
+  sort by it.
+- Manage Recipients can delete a saved name that no list offers any more,
+  and its Guild list fills in by itself once the roster arrives.
+- Hiding a character in the Inbox button's character list also stops the
+  Send tab suggesting it. Showing it brings it back.
+
 ### Options and Arrange
 
 - **Six tabs** in a new order (General, Window, Mail tab, Send tab, Alerts,
