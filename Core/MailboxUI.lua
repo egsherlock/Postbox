@@ -1566,11 +1566,14 @@ function UI.SetAttachHover(mode)
   if mode ~= "fan" and collect and collect.CloseFan then collect.CloseFan() end
 end
 
--- How many days History keeps: 7 by default, up to 30. 0 is "Never", which
--- turns History off: nothing is recorded, every character's record is
--- emptied the moment it is chosen, and its view leaves the Mail tab
--- (Core/MailMemory.lua 2c, CT.RefreshHistoryDays).
-local HISTORY_DAYS = { [0] = true, [7] = true, [14] = true, [21] = true, [30] = true }
+-- How many days History keeps: 7 by default, up to 365 (a year). However
+-- long, a record never holds much more than History holds
+-- (UI.GetHistoryCap), so a longer keep costs no more saved file than a busy
+-- month. 0 is "Never", which turns History off: nothing is recorded, every
+-- character's record is emptied the moment it is chosen, and its view
+-- leaves the Mail tab (Core/MailMemory.lua 2c, CT.RefreshHistoryDays).
+local HISTORY_DAYS = { [0] = true, [7] = true, [14] = true, [21] = true, [30] = true,
+  [60] = true, [90] = true, [180] = true, [365] = true }
 function UI.GetHistoryDays()
   local stored = tonumber(ns.Store and ns.Store.Get and ns.Store.Get("profile.historyDays"))
   return (stored and HISTORY_DAYS[stored]) and stored or 7

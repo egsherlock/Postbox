@@ -1449,7 +1449,7 @@ end
 -------------------------------------------------------------
 
 -- Kept as long as the player chose (Options, General: 7 days by default, up
--- to 30, or "Never", which records nothing and prunes everything away), and
+-- to a year, or "Never", which records nothing and prunes everything away), and
 -- never much more than the entries History holds (Options, General: 1000 by
 -- default, 2500 or 5000; MailboxUI.GetHistoryCap) however busy the box: the
 -- record is saved per character, and a month of a busy auction goblin's mail

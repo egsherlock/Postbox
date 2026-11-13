@@ -7829,11 +7829,12 @@ function Pages.historyDays(col)
   -- that clears what History kept on every character, so it is asked
   -- first, and until the answer the choice shows what it was. Cancel leaves
   -- it there. Where the client has no popup, it is set as it was before.
-  local dayItems = {}
-  for _, days in ipairs({ 7, 14, 21, 30 }) do
+  -- In order, the shortest first: Never, then the days, then a year.
+  local dayItems = { { id = 0, name = L["OPT_HISTORY_NEVER"] } }
+  for _, days in ipairs({ 7, 14, 21, 30, 60, 90, 180 }) do
     dayItems[#dayItems + 1] = { id = days, name = ns.Plural("OPT_HISTORY_DAYS", days) }
   end
-  dayItems[#dayItems + 1] = { id = 0, name = L["OPT_HISTORY_NEVER"] }
+  dayItems[#dayItems + 1] = { id = 365, name = L["OPT_HISTORY_YEAR"] }
   local POPUP_HISTORY_OFF = "POSTBOX_HISTORY_OFF"
   local keep
   keep = Rows.Dropdown(col, {
