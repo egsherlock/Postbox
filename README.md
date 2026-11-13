@@ -220,8 +220,8 @@ Warnings first, Expiring soonest, Most mail, Name or Last played.
   C.O.D.) under three days (one for C.O.D.) from expiring, or with mail
   known to be on its way and no mailbox visit in over three weeks, the
   character you're on included. One choice, **Warn about** (Options >
-  Alerts), sets what both warnings cover: **Mail to be
-  deleted**, **Mail to be deleted or sent back**, or **Off** (mail last seen
+  Alerts), sets what both warnings cover: **Deleted**,
+  **Deleted or sent back**, or **Off** (mail last seen
   before 1.60 counts as possibly deleted, to be safe). They come as a
   line in chat at login (**Chat line at login**) and as the minimap icon's
   marker (**Minimap marker**: with the icon, always, or off); the minimap

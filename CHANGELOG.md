@@ -151,6 +151,11 @@
   chosen. In Light the dropdown arrows and the icons on Arrange, Character
   Groups and Manage Recipients wear your accent. The Blizzard look keeps
   its gold names.
+- **Reset to defaults** (Options footer): Reset everything and Reset
+  settings ask in fewer words. One line says what happens, then what is
+  cleared and what is kept, recipient pins included.
+- **Warn about** (Options > Alerts > Expiring mail): the choices are now
+  Off, Deleted, and Deleted or sent back.
 - **Remember sort order** (Options > Mail tab): on, each list keeps the
   order you chose; off, every list is back to newest first at your next
   visit. Filters are always let go when the mailbox closes.
