@@ -925,6 +925,27 @@ function UI.GetRowOrder()
   return { ROW_ORDER_DEFAULT[1], ROW_ORDER_DEFAULT[2], ROW_ORDER_DEFAULT[3] }
 end
 
+-- How a character's class is drawn on the Inbox button and in the
+-- character list (Core/MailMemory.lua, MM.Icons): the style's id as saved,
+-- "game" where none is. Whether the client can draw it now is the icons'
+-- to say (a saved EllesmereUI set reads as game while EllesmereUI is not
+-- loaded, and stays saved). Game is stored as nothing.
+function UI.GetClassIcons()
+  local store = ns.Store
+  local stored = store and store.Get and store.Get("profile.classIcons")
+  if type(stored) == "string" and stored ~= "" then return stored end
+  return "game"
+end
+
+function UI.SetClassIcons(id)
+  local store = ns.Store
+  if not (store and store.EnsurePath) or type(id) ~= "string" then return end
+  local profile = store.EnsurePath("profile")
+  profile.classIcons = (id ~= "game") and id or nil
+  local memory = ns.MailMemory
+  if memory and memory.Icons and memory.Icons.Changed then memory.Icons.Changed() end
+end
+
 -- A column's choices -- which gold a row shows, when it shows the time
 -- left, how it writes the slots -- belong to the arrangement the row
 -- follows, as its columns do, so each list keeps its own:

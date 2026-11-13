@@ -365,6 +365,17 @@ local function TextWidth(label)
   return tonumber(w) or 0
 end
 
+-- An item's art cut from a sheet and worn in a colour, where it asks
+-- (opt-in; every other item is drawn as before): `coords` = { l, r, t, b },
+-- a cell of the texture (not after an atlas, which sets its own); `color` =
+-- { r, g, b }, white art tinted (the options' Class icons).
+local function ArtCrop(tex, spec)
+  local c = spec.coords
+  if type(c) == "table" and not spec.atlas then tex:SetTexCoord(c[1], c[2], c[3], c[4]) end
+  local col = spec.color
+  if type(col) == "table" then tex:SetVertexColor(col[1], col[2], col[3], 1) end
+end
+
 local function PaintSwatch(swatch, r, g, b)
   if not swatch then return end
   if type(r) ~= "number" then
@@ -611,6 +622,7 @@ function Dropdown.Create(parent, opts)
       if not g then
         tex:SetVertexColor(1, 1, 1, 1)
         art:SetSize(artSize, artSize * (spec.aspect or 1))
+        ArtCrop(tex, spec)
       end
     end
     -- A glyph is white art: it wears the value's own ink.
@@ -977,6 +989,9 @@ function Dropdown.Create(parent, opts)
             else
               art:SetTexture(item.icon.texture)
             end
+            -- Opt-in: a cell of a sheet (`coords`, { l, r, t, b }) and a
+            -- colour the art is worn in (`color`, { r, g, b }).
+            ArtCrop(art, item.icon)
           end
           textOffset = LIST_PADDING + MARK_GUTTER + size + 6
         elseif swatchFor then

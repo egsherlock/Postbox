@@ -8644,6 +8644,34 @@ do
   end
 end
 
+-- Class icons: how a character's class is drawn on the Inbox button and in
+-- the character list (Core/MailMemory.lua, MM.Icons). The styles the client
+-- can draw now for the class being played, each item showing that class's
+-- icon in its style, the toggle the chosen one's; a pick repaints every
+-- place that wears one at once (UI.SetClassIcons). A saved style not on
+-- offer now (EllesmereUI not loaded) shows as Game, and stays saved.
+function State.ClassIconsRow(col)
+  local Icons = ns.MailMemory and ns.MailMemory.Icons
+  local UI = ns.MailboxUI
+  if not (Icons and UI and UI.GetClassIcons) then return end
+  local _, token = UnitClass("player")
+  local items, offered = {}, {}
+  local styles = Icons.Styles()
+  for i = 1, #styles do
+    local id = styles[i]
+    items[#items + 1] = { id = id, name = Icons.Name(id), icon = Icons.Spec(id, token) }
+    offered[id] = true
+  end
+  return Rows.Dropdown(col, {
+    title = L["OPT_CLASS_ICONS_TITLE"], text = L["OPT_CLASS_ICONS_DESC"], items = items,
+    get = function()
+      local id = Icons.Current()
+      return offered[id] and id or "game"
+    end,
+    set = function(id) UI.SetClassIcons(id) end,
+  })
+end
+
 -- Text weight, under Text style, in either Mode: Regular or Bold, applied
 -- as a font is (Skin.SetWeight: the copies re-dressed, live). Grey where
 -- the chosen font has no Bold for this client, saying why
@@ -9104,12 +9132,18 @@ end
 
 -- General: the overview. Over it, on a card of its own across the panel,
 -- every character's mail as each box was last seen and the ways into Mail
--- Memory, Character Groups and Manage Recipients (Dash). Under it, what
--- Postbox remembers: Mail Memory, which the card and the warnings are made
+-- Memory, Character Groups and Manage Recipients (Dash). Under it, the
+-- characters' class icons, then what Postbox remembers: Mail Memory, which the card and the warnings are made
 -- from, the characters hidden from its lists, and how far back History
 -- goes.
 function Pages.general(col)
   local T = ns.Theme
+  -- Characters: how each one's class is drawn on the Inbox button and in
+  -- the character list. Not Mail Memory's: the button wears it with the
+  -- switch off, so the row is live either way. Its place is these two
+  -- lines; moved to another page, the group goes with them.
+  Rows.Group(col, L["OPT_GROUP_CHARACTERS"])
+  State.ClassIconsRow(col)
   Rows.Group(col, L["OPT_MEMORY_HISTORY_HEADING"])
   local memory = Rows.Check(col, {
     title = L["OPT_MEMORY_SWITCH"], entryTitle = L["OPT_MEMORY_TITLE"],

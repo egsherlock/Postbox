@@ -2427,6 +2427,350 @@ function MM.ClassIcon(realm, name)
   return T.FirstAtlas(CLASS_FALLBACK)
 end
 
+-------------------------------------------------------------
+-- 3c'. Class icons
+--
+-- One place decides how a character's class is drawn wherever the
+-- switcher shows one: the Inbox button's cap on the Mail tab, Mail Memory's
+-- own plate, each row of the character list both open, and the heading
+-- over a character's matches in a search of every box (MM.FillRow). The
+-- style is the player's choice (Options > Window, "Class icons";
+-- profile.classIcons, UI.GetClassIcons):
+--   game      the game's class crest, as it always was (MM.ClassIcon)
+--   round     the game's gold-ringed portraits, UI-Classes-Circles cut
+--             with CLASS_ICON_TCOORDS
+--   square    the game's ability-style icons, Interface\Icons\ClassIcon_*
+--   painted, pixel, comic, glyphs
+--             Postbox's own sheets (Media/ClassIcons), 4 x 4 cells in
+--             SHEET_CELL's order; glyphs is white art worn in the class
+--             colour the names in the list wear (ContactService)
+--   eui:<s>   one of EllesmereUI's class icon sets, only while EllesmereUI
+--             is loaded: the sheet path, the style list and each class's
+--             cell are asked of EllesmereUI itself (EUI below), so Postbox
+--             carries none of its art or data and follows its updates.
+-- A style the client cannot draw for a character's class draws that one in
+-- the game's crest; a saved style that is not offered now (EllesmereUI not
+-- loaded) is read as game and left as saved, so it returns with it. A
+-- character whose class is not known wears the generic figure in every
+-- style. Every answer is kept per class the first time it is worked out:
+-- a repaint makes no tables and no strings.
+-------------------------------------------------------------
+do
+  local Icons = {}
+  MM.Icons = Icons
+
+  local SHEET_DIR = "Interface\\AddOns\\Postbox\\Media\\ClassIcons\\"
+  -- Postbox's own sheets. `cell`: the art's box inside a cell of the sheet,
+  -- as a share of the cell: the art fills that box, the gutter round it
+  -- keeps the next cell's texels out of the small mips. painted, comic and
+  -- glyphs: 58 of 64 texels; pixel: 28 of 32, one texel an art pixel.
+  -- Each is drawn from its box, so the art runs to the icon's edges as the
+  -- game's crest does, and sampled with the client's own filtering and mip
+  -- chain (no filter given): pixel's sheet is the art's own 32 x 32 grid per
+  -- cell, so at 18 and 22 it is softened evenly rather than having single
+  -- art pixels dropped or doubled, as NEAREST would.
+  local SHEETS = {
+    painted = { file = SHEET_DIR .. "painted.tga", gutter = 3 / 64 },
+    pixel   = { file = SHEET_DIR .. "pixel.tga",   gutter = 2 / 32 },
+    comic   = { file = SHEET_DIR .. "comic.tga",   gutter = 3 / 64 },
+    glyphs  = { file = SHEET_DIR .. "glyphs.tga",  gutter = 3 / 64, tint = true },
+  }
+  local SHEET_CELL = {
+    WARRIOR = 0, PALADIN = 1, HUNTER = 2, ROGUE = 3, PRIEST = 4, DEATHKNIGHT = 5, SHAMAN = 6, MAGE = 7,
+    WARLOCK = 8, MONK = 9, DRUID = 10, DEMONHUNTER = 11, EVOKER = 12,
+  }
+  -- The order the option lists them in; EllesmereUI's after these.
+  Icons.ORDER = { "game", "round", "square", "painted", "pixel", "comic", "glyphs" }
+  Icons.NAMES = {
+    game = "CLASS_ICONS_GAME", round = "CLASS_ICONS_ROUND", square = "CLASS_ICONS_SQUARE",
+    painted = "CLASS_ICONS_PAINTED", pixel = "CLASS_ICONS_PIXEL", comic = "CLASS_ICONS_COMIC",
+    glyphs = "CLASS_ICONS_GLYPHS",
+  }
+
+  -- The game's art. The portraits' sheet and the square icons' folder; a
+  -- square icon is cropped as an item's icon is (MM.CREST_CROP), its own
+  -- frame cut away.
+  local CIRCLES = "Interface\\TargetingFrame\\UI-Classes-Circles"
+  local SQUARE_DIR = "Interface\\Icons\\ClassIcon_"
+
+  -- Whether the client holds a file: its file id, where the client can say
+  -- (the way Arrange's coin is looked up). Without the API, nothing is
+  -- claimed.
+  local function HasFile(path)
+    if type(GetFileIDFromPath) ~= "function" then return false end
+    local ok, id = pcall(GetFileIDFromPath, path)
+    return ok and type(id) == "number" and id > 0
+  end
+
+  -- Per class, worked out once: the crest's atlas (false where none), the
+  -- square icon's path (false where the client has no such file).
+  local crestOf, squareOf = {}, {}
+  local fallback
+  local function Crest(token)
+    if not token then
+      if fallback == nil then fallback = ns.Theme.FirstAtlas(CLASS_FALLBACK) or false end
+      return fallback or nil
+    end
+    local atlas = crestOf[token]
+    if atlas == nil then
+      local H = ns.Helpers
+      local lower = (H and H.Lower) and H.Lower(token) or token
+      atlas = ns.Theme.FirstAtlas({ "classicon-" .. lower, "groupfinder-icon-class-" .. lower }) or false
+      crestOf[token] = atlas
+    end
+    if atlas then return atlas end
+    return Crest(nil)
+  end
+  local function Square(token)
+    local path = squareOf[token]
+    if path == nil then
+      path = SQUARE_DIR .. token
+      if not HasFile(path) then path = false end
+      squareOf[token] = path
+    end
+    return path or nil
+  end
+  local circlesHeld
+  local function Round(token)
+    local all = CLASS_ICON_TCOORDS
+    local c = type(all) == "table" and all[token] or nil
+    if type(c) ~= "table" or type(c[4]) ~= "number" then return nil end
+    if circlesHeld == nil then circlesHeld = HasFile(CIRCLES) end
+    return circlesHeld and c or nil
+  end
+
+  -- EllesmereUI, asked at run time: its class -> cell table
+  -- (EllesmereUI.CLASS_ICON_SPRITE_COORDS, { left, right, top, bottom } per
+  -- class file, shared by every EllesmereUI module) and its Class Icon
+  -- Theme list and sheet paths (EllesmereUI.FriendsKit: ICON_STYLE_ORDER,
+  -- ICON_STYLE_VALUES, ClassIconSprite). nil while any of it is missing.
+  local EUI = {}
+  function EUI.Get()
+    local eui = _G.EllesmereUI
+    if type(eui) ~= "table" then return nil end
+    local coords, kit = eui.CLASS_ICON_SPRITE_COORDS, eui.FriendsKit
+    if type(coords) ~= "table" or type(kit) ~= "table" or type(kit.ClassIconSprite) ~= "function"
+        or type(kit.ICON_STYLE_ORDER) ~= "table" then
+      return nil
+    end
+    return coords, kit
+  end
+  -- An EllesmereUI style's sheet, as EllesmereUI names it, kept once: a
+  -- path into EllesmereUI's own folder, or false. "blizzard" is the game's
+  -- art, not a sheet of EllesmereUI's.
+  local euiPath = {}
+  function EUI.Path(style, kit)
+    local path = euiPath[style]
+    if path == nil then
+      path = false
+      if style ~= "blizzard" then
+        local ok, p = pcall(kit.ClassIconSprite, style)
+        if ok and type(p) == "string" and p:lower():find("^interface\\addons\\ellesmereui\\") then path = p end
+      end
+      euiPath[style] = path
+    end
+    return path or nil
+  end
+  -- "eui:<style>" -> <style>, once per id seen; false for any other id.
+  local euiStyleOf = {}
+  function EUI.StyleOf(id)
+    local s = euiStyleOf[id]
+    if s == nil then
+      s = (type(id) == "string" and id:sub(1, 4) == "eui:" and #id > 4) and id:sub(5) or false
+      euiStyleOf[id] = s
+    end
+    return s
+  end
+  -- Whether EllesmereUI lists `style` now.
+  function EUI.Lists(kit, style)
+    local order = kit.ICON_STYLE_ORDER
+    for i = 1, #order do
+      if order[i] == style then return true end
+    end
+    return false
+  end
+
+  -- The style saved, as it can be drawn now: the id, and for an
+  -- EllesmereUI one its style and sheet. A style not on offer reads as game.
+  local function Current()
+    local UI = ns.MailboxUI
+    local id = UI and UI.GetClassIcons and UI.GetClassIcons() or "game"
+    if SHEETS[id] or id == "round" or id == "square" then return id end
+    local style = EUI.StyleOf(id)
+    if style then
+      local _, kit = EUI.Get()
+      local path = kit and EUI.Lists(kit, style) and EUI.Path(style, kit)
+      if path then return id, style, path end
+    end
+    return "game"
+  end
+  Icons.Current = Current
+
+  -- style id, class file -> how that class is drawn in that style:
+  --   "atlas", atlas
+  --   "file", file, left, right, top, bottom, tinted
+  -- The game's crest where the style has nothing for the class.
+  local function Resolve(id, token, euiStyle, euiFile)
+    if token then
+      local sheet = SHEETS[id]
+      if sheet then
+        local cell = SHEET_CELL[token]
+        if cell then
+          local g = sheet.gutter / 4
+          local l, t = (cell % 4) / 4, math.floor(cell / 4) / 4
+          return "file", sheet.file, l + g, l + 0.25 - g, t + g, t + 0.25 - g, sheet.tint
+        end
+      elseif id == "round" then
+        local c = Round(token)
+        if c then return "file", CIRCLES, c[1], c[2], c[3], c[4], false end
+      elseif id == "square" then
+        local path = Square(token)
+        if path then
+          local k = MM.CREST_CROP
+          return "file", path, k, 1 - k, k, 1 - k, false
+        end
+      elseif euiFile then
+        local coords = EUI.Get()
+        local c = coords and coords[token]
+        if type(c) == "table" and type(c[4]) == "number" then
+          return "file", euiFile, c[1], c[2], c[3], c[4], false
+        end
+      end
+    end
+    return "atlas", Crest(token)
+  end
+
+  -- texture, class file [, size [, how]] -> the texture wears that class's
+  -- icon in the chosen style: its file or atlas, its crop, its colour.
+  -- `size`: the size it is drawn at (one sheet serves every size today).
+  -- `how`: nil, a list's icon (the game's crest whole, as it always was);
+  -- "cap", a plate's portrait cap (the crest cropped, MM.SetCrest; its
+  -- colour is the cap's to paint, MM.PaintPickIcon, which multiplies in the
+  -- tint kept here); "muted", a hidden character's row (a tinted style
+  -- white, so the row's grey reads as grey). Builds nothing.
+  function Icons.Apply(tex, token, size, how)
+    if not tex then return end
+    if token == "" then token = nil end
+    local id, euiStyle, euiFile = Current()
+    local kind, file, l, r, t, b, tinted = Resolve(id, token, euiStyle, euiFile)
+    local tr, tg, tb = 1, 1, 1
+    if kind == "atlas" then
+      tex.__pbIconFile = nil
+      if how == "cap" then
+        if file then MM.SetCrest(tex, file) end
+      else
+        tex.__pbAtlas = nil
+        if file then tex:SetAtlas(file, false) else tex:SetTexture(nil) end
+      end
+    else
+      -- SetCrest keeps the atlas it set; another file is not it.
+      tex.__pbAtlas = nil
+      if tex.__pbIconFile ~= file then
+        tex.__pbIconFile = file
+        tex:SetTexture(file)
+      end
+      tex:SetTexCoord(l, r, t, b)
+      if tinted and how ~= "muted" then
+        local CS = ns.ContactService
+        local cr, cg, cb
+        if CS and CS.ClassColour then cr, cg, cb = CS.ClassColour(token) end
+        if cr then tr, tg, tb = cr, cg, cb end
+      end
+    end
+    if how == "cap" then
+      -- The cap's painter multiplies these in (MM.PaintPickIcon).
+      tex.__pbTintR, tex.__pbTintG, tex.__pbTintB = tr, tg, tb
+    elseif tr ~= 1 or tg ~= 1 or tb ~= 1 then
+      tex.__pbIconTinted = true
+      tex:SetVertexColor(tr, tg, tb)
+    elseif tex.__pbIconTinted then
+      tex.__pbIconTinted = nil
+      tex:SetVertexColor(1, 1, 1)
+    end
+  end
+
+  -- The styles the client can draw now for the class of the character being
+  -- played, in the option's order: ids, EllesmereUI's as "eui:<style>".
+  -- For the options, when their page is built.
+  function Icons.Styles()
+    local out = {}
+    local _, token = UnitClass("player")
+    for i = 1, #Icons.ORDER do
+      local id = Icons.ORDER[i]
+      local ok = true
+      if id == "round" then ok = token ~= nil and Round(token) ~= nil end
+      if id == "square" then ok = token ~= nil and Square(token) ~= nil end
+      if ok then out[#out + 1] = id end
+    end
+    local coords, kit = EUI.Get()
+    if kit and token and type(coords[token]) == "table" then
+      local order = kit.ICON_STYLE_ORDER
+      for i = 1, #order do
+        local style = order[i]
+        if type(style) == "string" and EUI.Path(style, kit) then out[#out + 1] = "eui:" .. style end
+      end
+    end
+    return out
+  end
+
+  -- id -> the style's name in the option's list.
+  function Icons.Name(id)
+    local key = Icons.NAMES[id]
+    if key then return L[key] end
+    local style = EUI.StyleOf(id)
+    if style then
+      local _, kit = EUI.Get()
+      local names = kit and kit.ICON_STYLE_VALUES
+      local name = type(names) == "table" and names[style] or nil
+      return string.format(L["CLASS_ICONS_EUI"], type(name) == "string" and name or style)
+    end
+    return tostring(id)
+  end
+
+  -- id, class file -> the art a dropdown item shows for that style
+  -- (Lib/UI/Dropdown.lua: texture or atlas, coords, color).
+  function Icons.Spec(id, token)
+    local style = EUI.StyleOf(id)
+    local _, kit = EUI.Get()
+    local path = style and kit and EUI.Path(style, kit) or nil
+    local kind, file, l, r, t, b, tinted = Resolve(id, token, style, path)
+    if kind == "atlas" then return file and { atlas = file } or nil end
+    local spec = { texture = file, coords = { l, r, t, b } }
+    if tinted then
+      local CS = ns.ContactService
+      local cr, cg, cb
+      if CS and CS.ClassColour then cr, cg, cb = CS.ClassColour(token) end
+      if cr then spec.color = { cr, cg, cb } end
+    end
+    return spec
+  end
+
+  -- The choice changed: every place that wears a class icon, painted again
+  -- at once -- the open character list, Mail Memory's window, the Mail
+  -- tab's Inbox cap.
+  function Icons.Changed()
+    local list = MM._picker
+    if list and list:IsShown() and MM.RepaintPicker then MM.RepaintPicker(list) end
+    if MM.Refresh then MM.Refresh() end
+    local UI = ns.MailboxUI
+    if UI and type(UI.RefreshMemoryState) == "function" then UI.RefreshMemoryState() end
+  end
+end
+
+-- texture, realm, name [, size [, how]] -> that character's class icon on
+-- the texture, in the chosen style (MM.Icons.Apply).
+function MM.PaintClassIcon(tex, realm, name, size, how)
+  MM.Icons.Apply(tex, ClassOf(realm, name), size, how)
+end
+
+-- picker, realm, name -> the picker's cap wears that character's class icon
+-- (nil, nil: the generic figure), painted with the cap's own colour.
+function MM.PaintCap(zone, realm, name)
+  if not (zone and zone.Icon) then return end
+  MM.Icons.Apply(zone.Icon, realm and ClassOf(realm, name) or nil, zone.lead, "cap")
+  MM.PaintPickIcon(zone)
+end
+
 -- mail -> the icon its row shows: the first item's own, as the Mail tab's
 -- row has it. A record saved before the capture kept that icon (it has no
 -- `it`, its list of items) holds the header's package icon, which for a mail
@@ -3078,10 +3422,8 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
     row.expiryTip, row.stuck = nil, nil
     row.mail, row.itemList, row.iconItems, row.fanSource = nil, nil, 0, nil
     row.headerRealm, row.headerName = mail.realm, mail.name
-    -- SetAtlas sets the atlas's own coordinates; a SetTexCoord after it would
-    -- show the whole sheet the crest lives on.
-    local crest = MM.ClassIcon(mail.realm, mail.name)
-    if crest then row.Icon:SetAtlas(crest, false) else row.Icon:SetTexture(nil) end
+    -- The character's class icon, in the chosen style (MM.Icons).
+    MM.PaintClassIcon(row.Icon, mail.realm, mail.name, ROW_ICON)
     -- A heading, not a mail: a quiet band of its own and a hairline above it,
     -- neutral (the name's class colour is the only colour it needs).
     if not row.HeaderWash then
@@ -3577,8 +3919,9 @@ end
 -- PICK_PAD in from the card's edges, the count PICK_GUTTER in from the
 -- row's right edge, the crest at the menus' art size, and the row under the pointer in
 -- the menus' hover wash (MenuColors.hover, which the palette recolours in
--- place), painted as it is entered so it follows the look.
-local PICK_PAD, PICK_GUTTER, PICK_CREST = 4, 8, 16
+-- place), painted as it is entered so it follows the look. The crest is 18
+-- in the 20-unit row, a unit of air above and below it.
+local PICK_PAD, PICK_GUTTER, PICK_CREST = 4, 8, 18
 -- The chosen row's marker, a bar PICK_BAR wide at the row's left edge, and
 -- the crest's place on every row, PICK_LEAD in: straight after the bar's
 -- place, a unit clear of it, as the Inbox plate's cap stands a unit in
@@ -3704,8 +4047,7 @@ local function PaintPicker(list)
       row.realm, row.charName, row.isMe = st.realm, st.name, st.me
       row.reason = (not st.hidden) and st.text or nil
       row.Rule:Hide()
-      local crest = MM.ClassIcon(st.realm, st.name)
-      if crest then row.Crest:SetAtlas(crest, false) else row.Crest:SetTexture(nil) end
+      MM.PaintClassIcon(row.Crest, st.realm, st.name, PICK_CREST, st.hidden and "muted" or nil)
       row.Crest:Show()
       row.Name:SetPoint("LEFT", row.Crest, "RIGHT", 6, 0)
       if st.hidden then
@@ -3771,6 +4113,8 @@ local function PaintPicker(list)
   end
   list:SetSize(width + 2 * PICK_PAD, 2 * PICK_PAD + shown * PICK_ROW_H)
 end
+-- An open list painted again where it stands (MM.Icons.Changed).
+MM.RepaintPicker = PaintPicker
 
 -- anchor -> the character list that hangs from `anchor`, made the first
 -- time it opens there. Each button the list opens from has its own, a child
@@ -4284,16 +4628,19 @@ MM.PLATE_LETTERS = 3
 
 -- The crest's quiet cue that it opens something: a step dimmer at rest,
 -- whole under the pointer and while its list is open. Solid either way: a
--- cap that faded would let the window's ground through it.
+-- cap that faded would let the window's ground through it. A class icon
+-- worn in its class colour (MM.Icons.Apply, the cap's __pbTint*) keeps it,
+-- dimmed the same step.
 function MM.PaintPickIcon(zone)
   local icon = zone and zone.Icon
   if not icon then return end
   local list = zone.__pbPickList
   local lit = (zone.__pbOver or (list ~= nil and list:IsShown())) and true or false
-  if lit == zone.__pbLit then return end
-  zone.__pbLit = lit
+  local tr, tg, tb = icon.__pbTintR or 1, icon.__pbTintG or 1, icon.__pbTintB or 1
+  if lit == zone.__pbLit and tr == zone.__pbTR and tg == zone.__pbTG and tb == zone.__pbTB then return end
+  zone.__pbLit, zone.__pbTR, zone.__pbTG, zone.__pbTB = lit, tr, tg, tb
   local v = lit and 1 or 0.85
-  icon:SetVertexColor(v, v, v)
+  icon:SetVertexColor(v * tr, v * tg, v * tb)
   icon:SetAlpha(1)
 end
 
@@ -4879,8 +5226,7 @@ local function BuildHeader(frame)
   frame.WhoBar = bar
 
   local picker = MM.NewPickCell(bar, HEADER_H)
-  local atlas = ns.Theme.FirstAtlas(CLASS_FALLBACK)
-  if atlas then MM.SetCrest(picker.Icon, atlas) end
+  MM.PaintCap(picker, nil, nil)
   -- The plate here always names the box on screen, so a click on it opens
   -- the character list. A right-click, while another character's box is on
   -- screen, goes back to this character's own (Back); on this character's
@@ -5045,8 +5391,7 @@ function Refresh(frame)
   -- The top row: whose box, and its count, where the Mail tab has Inbox:
   -- the whole box, as Inbox counts its own (counts always show), on the
   -- plate after the picker's cell, as the Mail tab names another box.
-  local crest = MM.ClassIcon(info.realm, info.name)
-  if crest then MM.SetCrest(frame.Picker.Icon, crest) end
+  MM.PaintCap(frame.Picker, info.realm, info.name)
   -- The Mail tab's rule: a picker while there is another box with mail to
   -- show (the list it opens holds only those), or while one is on screen.
   local others = MM.HasOthers(characters) or v ~= nil

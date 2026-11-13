@@ -1,0 +1,21 @@
+glyphs.tga in this folder: class glyphs by Lorc and Delapouite, game-icons.net, CC BY 3.0, recolored.
+
+Drawn from these game-icons.net icons, recolored white and fitted to a common box
+(Postbox tints each with its class colour in game):
+
+  warrior       Crossed swords   Lorc        https://game-icons.net/1x1/lorc/crossed-swords.html
+  paladin       Winged shield    Lorc        https://game-icons.net/1x1/lorc/winged-shield.html
+  hunter        Pocket bow       Lorc        https://game-icons.net/1x1/lorc/pocket-bow.html
+  rogue         Plain dagger     Lorc        https://game-icons.net/1x1/lorc/plain-dagger.html
+  priest        Holy symbol      Lorc        https://game-icons.net/1x1/lorc/holy-symbol.html
+  death knight  Crowned skull    Lorc        https://game-icons.net/1x1/lorc/crowned-skull.html
+  shaman        Totem head       Lorc        https://game-icons.net/1x1/lorc/totem-head.html
+  mage          Wizard staff     Lorc        https://game-icons.net/1x1/lorc/wizard-staff.html
+  warlock       Pentagram rose   Lorc        https://game-icons.net/1x1/lorc/pentagram-rose.html
+  monk          Yin yang         Delapouite  https://game-icons.net/1x1/delapouite/yin-yang.html
+  druid         Paw              Lorc        https://game-icons.net/1x1/lorc/paw.html
+  demon hunter  Horned skull     Lorc        https://game-icons.net/1x1/lorc/horned-skull.html
+  evoker        Dragon head      Lorc        https://game-icons.net/1x1/lorc/dragon-head.html
+
+Licensed under the Creative Commons Attribution 3.0 Unported License:
+https://creativecommons.org/licenses/by/3.0/

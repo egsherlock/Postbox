@@ -6750,10 +6750,9 @@ function AV.Paint(panel)
   if box and Memory then
     Memory.HostPick(panel.Picker, picking and (who and box.alt or box.buttons[1]) or nil)
   end
-  if Memory then
-    local crest = Memory.ClassIcon(who and who.realm or ns.Helpers.PlayerRealm(),
+  if Memory and Memory.PaintCap then
+    Memory.PaintCap(panel.Picker, who and who.realm or ns.Helpers.PlayerRealm(),
       who and who.name or ns.Helpers.PlayerName())
-    if crest then Memory.SetCrest(panel.Picker.Icon, crest) end
   end
 
   -- The every-character toggle shows while there is another box to search,
