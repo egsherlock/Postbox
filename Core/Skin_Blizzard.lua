@@ -525,12 +525,31 @@ do
     L:SetSize(newL, artH)
     R:SetTexCoord(1 - newR / rightW, 1, 0, 1)
     R:SetSize(newR, artH)
-    if art.m ~= m then
-      art.m = m
+    -- A cell standing at the button's left end (the Send tab's Sent clock,
+    -- Parts.SentCell) while it is shown: the left end is the cell's, and
+    -- the middle runs from the button's own edge.
+    local joined = (art.cell ~= nil and art.cell:IsShown()) and true or false
+    if art.m ~= m or art.joined ~= joined then
+      art.m, art.joined = m, joined
       L:ClearAllPoints()
       L:SetPoint("TOPLEFT", button, "TOPLEFT", -m, m)
       R:ClearAllPoints()
       R:SetPoint("TOPRIGHT", button, "TOPRIGHT", m, m)
+      local M = art[2]
+      M:ClearAllPoints()
+      if joined then
+        M:SetPoint("TOPLEFT", button, "TOPLEFT", 0, m)
+      else
+        M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
+      end
+      M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
+      L:SetShown(not joined)
+      local glow = art.glow
+      if glow then
+        glow:ClearAllPoints()
+        glow:SetPoint("TOPLEFT", joined and M or L, "TOPLEFT", 0, 0)
+        glow:SetPoint("BOTTOMRIGHT", R, "BOTTOMRIGHT", 0, 0)
+      end
     end
   end
 
@@ -588,6 +607,7 @@ do
         glow:ClearAllPoints()
         glow:SetPoint("TOPLEFT", art[1], "TOPLEFT", 0, 0)
         glow:SetPoint("BOTTOMRIGHT", art[3], "BOTTOMRIGHT", 0, 0)
+        art.glow = glow
       end
     end
     button:HookScript("OnMouseDown", Down)
@@ -596,6 +616,139 @@ do
     button:HookScript("OnEnable", Paint)
     button:HookScript("OnDisable", Paint)
     button:HookScript("OnSizeChanged", Fit)
+  end
+
+  ---------------------------------------------------------------
+  -- The Sent key as a cell of Send mail
+  ---------------------------------------------------------------
+
+  -- The Send tab's Sent clock (ST.BuildSentClock: a square plate of its
+  -- own, left of the Send button, M.gap apart) drawn as a cell at the left
+  -- end of Send mail's own red button: the button's left end on the clock,
+  -- its middle on through the gap to the button, a dark line a unit wide
+  -- between the cell and the caption, the clock in the game's gold (white
+  -- under the pointer). Art only: the clock keeps its own frame, size,
+  -- click, tooltip and its hiding while History is off; hidden, Send mail
+  -- is whole again (Fit reads it). Pressed, the cell's part of the art is
+  -- the pressed art; the button's part follows the button.
+  local CELL_LINE = 2
+
+  local function PaintCell(clock)
+    local cell = clock.__pbBlizzCell
+    if not cell then return end
+    local state = cell.down and "down" or "up"
+    if cell.state ~= state then
+      cell.state = state
+      local set = cell.names[state]
+      Atlas(cell[1], set[1], false)
+      Atlas(cell[2], set[2], false)
+      cell[2]:SetHorizTile(true)
+      cell.fit = nil
+    end
+    if not cell.fit then
+      local h = clock:GetHeight()
+      local lw, lh = Parts.Size(cell.names.up[1])
+      if type(h) == "number" and h > 0 and lw and lh then
+        cell.fit = true
+        local artH = h / (1 - 2 * RIM)
+        local m = artH * RIM
+        local leftW = lw * artH / lh
+        -- The end no wider than the cell and its share of the gap.
+        local room = (clock:GetWidth() or h) + m
+        local newL = math.min(leftW, room)
+        cell[1]:SetTexCoord(0, newL / leftW, 0, 1)
+        cell[1]:SetSize(newL, artH)
+        cell[1]:ClearAllPoints()
+        cell[1]:SetPoint("TOPLEFT", clock, "TOPLEFT", -m, m)
+        cell[2]:ClearAllPoints()
+        cell[2]:SetPoint("TOPLEFT", cell[1], "TOPRIGHT", 0, 0)
+        cell[2]:SetPoint("BOTTOMRIGHT", cell.button, "BOTTOMLEFT", 0, -m)
+      end
+    end
+    local glyph = clock.__pbGlyph
+    local lit = cell.down or clock.__pbHover
+    local r, g, b
+    if lit then
+      r, g, b = Parts.FontRGB("GameFontHighlight", 1, 1, 1)
+    else
+      r, g, b = Parts.FontRGB("GameFontNormal", 1, 0.82, 0)
+    end
+    if glyph then
+      clock.__pbGlyphLit = true
+      glyph:SetVertexColor(r, g, b, 1)
+      glyph:SetAlpha(1)
+    end
+    if clock.Text then clock.Text:SetTextColor(r, g, b) end
+  end
+
+  local function CellDown(clock)
+    local cell = clock.__pbBlizzCell
+    if cell then
+      cell.down = true
+      PaintCell(clock)
+    end
+  end
+
+  local function CellUp(clock)
+    local cell = clock.__pbBlizzCell
+    if cell then
+      cell.down = false
+      PaintCell(clock)
+    end
+  end
+
+  -- The cell shown or hidden: Send mail laid again, whole without it.
+  local function CellMoved(clock)
+    local cell = clock.__pbBlizzCell
+    if not cell then return end
+    if clock:IsShown() then CellUp(clock) end
+    Fit(cell.button)
+  end
+
+  local function CellSized(clock)
+    local cell = clock.__pbBlizzCell
+    if cell then
+      cell.fit = nil
+      PaintCell(clock)
+    end
+  end
+
+  function Parts.SentCell(clock, button)
+    if clock.__pbBlizzCell ~= nil then return end
+    clock.__pbBlizzCell = false
+    if not (button and button:IsObjectType("Button")) then return end
+    if button.__pbBlizzButton == nil then Parts.Button(button) end
+    local art = button.__pbBlizzButton
+    if not art or art.names ~= RED then return end
+    local cell = { names = RED, button = button, down = false }
+    cell[1] = clock:CreateTexture(nil, "BACKGROUND", nil, 1)
+    cell[2] = clock:CreateTexture(nil, "BACKGROUND", nil, 1)
+    -- The dark line between the cell and the caption: Postbox's own white
+    -- tile, tinted in code, inside the button's face.
+    local line = clock:CreateTexture(nil, "BACKGROUND", nil, 2)
+    line:SetColorTexture(0, 0, 0, 0.6)
+    line:SetWidth(1)
+    line:SetPoint("TOPLEFT", clock, "TOPRIGHT", 0, -CELL_LINE)
+    line:SetPoint("BOTTOMLEFT", clock, "BOTTOMRIGHT", 0, CELL_LINE)
+    cell.line = line
+    clock.__pbBlizzCell = cell
+    art.cell = clock
+    clock.__setSelectedOverride = PaintCell
+    clock.__pbHoverOverride = PaintCell
+    clock:HookScript("OnMouseDown", CellDown)
+    clock:HookScript("OnMouseUp", CellUp)
+    clock:HookScript("OnShow", CellMoved)
+    clock:HookScript("OnHide", CellMoved)
+    clock:HookScript("OnSizeChanged", CellSized)
+    -- The plate's own art retired, the button laid again with its cell.
+    local T = ns.Theme
+    if T and type(T.SetPlateSelected) == "function" then
+      T.SetPlateSelected(clock, clock.isSelected)
+    else
+      PaintCell(clock)
+    end
+    art.m = false
+    Fit(button)
   end
 end
 
@@ -1357,6 +1510,10 @@ function Parts.DressOne(c)
     Parts.Button(c)
   end
   if c.__pbVariant and c.__pbBlizzSeg == nil and Parts.IsSeg(c) then Parts.Seg(c) end
+  if c.__pbVariant and c.__pbBlizzCell == nil then
+    local p = c:GetParent()
+    if p and p.SentClock == c and p.FillButton then Parts.SentCell(c, p.FillButton) end
+  end
 end
 
 -------------------------------------------------------------
