@@ -465,8 +465,85 @@ end
 --
 -- The dropdown boxes (also tagged as buttons) keep their look: a later step
 -- gives them the game's dropdown.
+--
+-- Options > Window > Buttons (MailboxUI.GetButtonLook) says which of them
+-- wear the red button: "red", all of them (as built); "mailred", the ones
+-- that collect or send mail -- All mail with its gold rim and the category
+-- buttons (the grid's, `gridId`), Send mail with its Sent cell, and the
+-- reading view's Take all and Return -- and every other push button the
+-- game's small dark button (the segments' art, laid by its rim, Parts.LaySmall:
+-- its hover, pressed, selected and disabled art, the words and marks in the
+-- game's gold); "dark", every push button the dark one, All mail without a
+-- rim (the game has no dark button with one). A switch held on (Test mail)
+-- is the dark button's selected art. The switches (segments, tiles, tabs,
+-- dropdowns) are the dark art in every choice. The choice is read when it
+-- changes (Skin.ButtonLookChanged), and each button keeps both arts once it
+-- has worn both.
 do
   local RIM = 10 / 128
+  -- Every button and footer frame wearing this art, for a change of the
+  -- choice; the Sent cells too.
+  local dressed = setmetatable({}, { __mode = "k" })
+  local cells = setmetatable({}, { __mode = "k" })
+  Parts.ButtonLook = false
+
+  -- A button that collects or sends mail (above).
+  local function IsMail(button)
+    if button.gridId ~= nil then return true end
+    local p = button:GetParent()
+    if p and p.FillButton == button then return true end
+    local d = p and p:GetParent()
+    if d and d.ActionRow == p and (d.Collect == button or d.Return == button) then return true end
+    return false
+  end
+
+  local function LookNow()
+    if not Parts.ButtonLook then
+      local UI = ns.MailboxUI
+      Parts.ButtonLook = UI and type(UI.GetButtonLook) == "function" and UI.GetButtonLook() or "red"
+    end
+    return Parts.ButtonLook
+  end
+
+  local function KindOf(art)
+    local look = LookNow()
+    if look == "red" or (look == "mailred" and art.mail) then return "red" end
+    return "dark"
+  end
+
+  -- The dark button's state: disabled, held on, pressed, pointed at, at rest.
+  local function DarkState(button, art)
+    if type(button.IsEnabled) == "function" and not button:IsEnabled() then return "off" end
+    if art.held then return "lit" end
+    if art.down then return "down" end
+    if art.over then return "over" end
+    return "up"
+  end
+
+  -- The dark button laid round its box for its state; a Send mail with its
+  -- cell shown has no left end (the cell's art runs into it).
+  local function PaintDark(button)
+    local art = button.__pbBlizzButton
+    local d = art.dark
+    if d == nil then
+      d = Parts.SmallArt and Parts.SmallArt(button) or false
+      art.dark = d
+    end
+    if not d then return end
+    local box = art.box or button
+    local h = box:GetHeight()
+    if type(h) ~= "number" or h <= 0 then return end
+    local state = DarkState(button, art)
+    local role = (art.cell ~= nil and art.cell:IsShown()) and "last" or "alone"
+    if d.state ~= state or d.h ~= h or d.role ~= role then
+      d.state, d.h, d.role = state, h, role
+      Parts.LaySmall(d, box, state, role, 0, h)
+    end
+    local show = not art.hidden
+    if role == "alone" then d[1]:SetShown(show) end
+    d[2]:SetShown(show)
+    d[3]:SetShown(show)
+  end
   -- ALL MAIL wears the gold-rimmed sister, to be judged in game: false here
   -- gives it the red one like the rest.
   local GOLD_ALL_MAIL = true
@@ -500,6 +577,7 @@ do
   local function Fit(button)
     local art = button.__pbBlizzButton
     if not art then return end
+    if art.kind == "dark" then return PaintDark(button) end
     -- The box the art is laid round: the button, or a box of its own (the
     -- options' footer, Parts.FooterButton).
     local box = art.box or button
@@ -567,6 +645,26 @@ do
   local function Paint(button)
     local art = button.__pbBlizzButton
     if not art then return end
+    local kind = KindOf(art)
+    if art.kind ~= kind then
+      art.kind, art.state, art.m = kind, nil, false
+      local red = kind == "red"
+      local d = art.dark
+      if d then
+        d.state = nil
+        for i = 1, 3 do d[i]:SetShown(not red and not art.hidden) end
+        d.line:Hide()
+      end
+      if red then
+        art[2]:SetShown(not art.hidden)
+        art[3]:SetShown(not art.hidden)
+      else
+        for i = 1, 3 do art[i]:Hide() end
+      end
+      -- The red button's glow is the red art's; the dark one lights by its art.
+      if art.glow then art.glow:SetAlpha(red and 1 or 0) end
+    end
+    if kind == "dark" then return PaintDark(button) end
     local state = "up"
     if not button:IsEnabled() then state = "off" elseif art.down or art.held then state = "down" end
     if art.state == state then return end
@@ -595,21 +693,37 @@ do
     end
   end
 
+  local function Over(button)
+    local art = button.__pbBlizzButton
+    if art then
+      art.over = true
+      if art.kind == "dark" then Paint(button) end
+    end
+  end
+
+  local function Out(button)
+    local art = button.__pbBlizzButton
+    if art then
+      art.over, art.down = false, false
+      if art.kind == "dark" then Paint(button) end
+    end
+  end
+
   function Parts.Button(button)
     if button.__pbBlizzButton ~= nil then return end
     button.__pbBlizzButton = false
     local names = (GOLD_ALL_MAIL and button.gridId == "all") and GOLD or RED
     if not Has(names) then return end
-    local art = { names = names, m = false }
+    local art = { names = names, m = false, mail = IsMail(button) }
     for i = 1, 3 do art[i] = button:CreateTexture(nil, "BACKGROUND", nil, 1) end
     art[2]:SetPoint("TOPLEFT", art[1], "TOPRIGHT", 0, 0)
     art[2]:SetPoint("BOTTOMRIGHT", art[3], "BOTTOMLEFT", 0, 0)
     button.__pbBlizzButton = art
+    dressed[button] = true
     -- The template's own three pieces, faded under the new art.
     Fade(button.Left)
     Fade(button.Middle)
     Fade(button.Right)
-    Paint(button)
     -- The game's glow over the whole art, as its template sets it.
     if pcall(button.SetHighlightAtlas, button, names.highlight) then
       local glow = button:GetHighlightTexture()
@@ -620,8 +734,11 @@ do
         art.glow = glow
       end
     end
+    Paint(button)
     button:HookScript("OnMouseDown", Down)
     button:HookScript("OnMouseUp", Up)
+    button:HookScript("OnEnter", Over)
+    button:HookScript("OnLeave", Out)
     button:HookScript("OnShow", Up)
     button:HookScript("OnEnable", Paint)
     button:HookScript("OnDisable", Paint)
@@ -653,15 +770,20 @@ do
       art = { names = RED, m = false, held = true, hidden = false }
       for i = 1, 3 do art[i] = frame:CreateTexture(nil, "BORDER", nil, 7) end
       frame.__pbBlizzButton = art
+      dressed[frame] = true
       Paint(frame)
       frame:HookScript("OnSizeChanged", Fit)
     end
     if not art then return false end
     on = on and true or false
     art.hidden = not on
-    art[1]:SetShown(on and not art.joined)
-    art[2]:SetShown(on)
-    art[3]:SetShown(on)
+    if art.dark then art.dark.state = nil end
+    Paint(frame)
+    if art.kind == "red" then
+      art[1]:SetShown(on and not art.joined)
+      art[2]:SetShown(on)
+      art[3]:SetShown(on)
+    end
     return true
   end
 
@@ -696,13 +818,13 @@ do
   -- The art on `owner`, round `box`. -> the art, or nil.
   local function BoxArt(owner, box)
     if owner.__pbBlizzButton ~= nil or not Has(RED) then return nil end
-    local art = { names = RED, m = false, box = box }
+    local art = { names = RED, m = false, box = box, mail = false }
     for i = 1, 3 do art[i] = owner:CreateTexture(nil, "BACKGROUND", nil, 1) end
     art[2]:SetPoint("TOPLEFT", art[1], "TOPRIGHT", 0, 0)
     art[2]:SetPoint("BOTTOMRIGHT", art[3], "BOTTOMLEFT", 0, 0)
     owner.__pbBlizzButton = art
+    dressed[owner] = true
     box.__pbOwner = owner
-    Paint(owner)
     if pcall(owner.SetHighlightAtlas, owner, RED.highlight) then
       local glow = owner:GetHighlightTexture()
       if glow then
@@ -712,8 +834,11 @@ do
         art.glow = glow
       end
     end
+    Paint(owner)
     owner:HookScript("OnMouseDown", Down)
     owner:HookScript("OnMouseUp", Up)
+    owner:HookScript("OnEnter", Over)
+    owner:HookScript("OnLeave", Out)
     owner:HookScript("OnShow", Up)
     box:SetScript("OnSizeChanged", BoxSized)
     return art
@@ -808,9 +933,45 @@ do
   -- the pressed art; the button's part follows the button.
   local CELL_LINE = 2
 
+  -- Under the dark Send mail, the cell is the dark art's first cell: its
+  -- left end on the clock, its middle on through the gap into the button's
+  -- art (PaintDark gives the button no left end while the cell shows).
+  local function DarkCell(clock, cell, dark)
+    local d = cell.dark
+    if dark and d == nil then
+      d = Parts.SmallArt and Parts.SmallArt(clock) or false
+      cell.dark = d
+    end
+    cell[1]:SetShown(not dark)
+    cell[2]:SetShown(not dark)
+    if not d then return false end
+    if not dark then
+      for i = 1, 3 do d[i]:Hide() end
+      d.line:Hide()
+      d.state = nil
+      return false
+    end
+    local h = clock:GetHeight()
+    if type(h) ~= "number" or h <= 0 then return true end
+    local state = cell.down and "down" or (clock.__pbHover and "over" or "up")
+    local l, r = cell.button:GetLeft(), clock:GetRight()
+    local gap = (type(l) == "number" and type(r) == "number") and (l - r) or 0
+    if d.state ~= state or d.h ~= h or d.gap ~= gap then
+      d.state, d.h, d.gap = state, h, gap
+      Parts.LaySmall(d, clock, state, "first", gap, h)
+    end
+    d[1]:Show()
+    d[2]:Show()
+    return true
+  end
+
   local function PaintCell(clock)
     local cell = clock.__pbBlizzCell
     if not cell then return end
+    local owner = cell.button.__pbBlizzButton
+    if DarkCell(clock, cell, owner and owner.kind == "dark") then
+      cell.state = nil
+    else
     local state = cell.down and "down" or "up"
     if cell.state ~= state then
       cell.state = state
@@ -839,6 +1000,7 @@ do
         cell[2]:SetPoint("TOPLEFT", cell[1], "TOPRIGHT", 0, 0)
         cell[2]:SetPoint("BOTTOMRIGHT", cell.button, "BOTTOMLEFT", 0, -m)
       end
+    end
     end
     local glyph = clock.__pbGlyph
     local lit = cell.down or clock.__pbHover
@@ -907,6 +1069,7 @@ do
     line:SetPoint("BOTTOMLEFT", clock, "BOTTOMRIGHT", 0, CELL_LINE)
     cell.line = line
     clock.__pbBlizzCell = cell
+    cells[clock] = true
     art.cell = clock
     clock.__setSelectedOverride = PaintCell
     clock.__pbHoverOverride = PaintCell
@@ -924,6 +1087,15 @@ do
     end
     art.m = false
     Fit(button)
+  end
+
+  -- Options > Window > Buttons changed: every button and cell dressed so
+  -- far wears the choice now.
+  function Skin.ButtonLookChanged()
+    Parts.ButtonLook = false
+    LookNow()
+    for button in pairs(dressed) do Paint(button) end
+    for clock in pairs(cells) do PaintCell(clock) end
   end
 end
 
