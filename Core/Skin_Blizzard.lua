@@ -750,8 +750,12 @@ do
     Fade(band.pbSurfaceTexture)
     -- Report a bug: on the band, round its mark and words.
     if f.bugText then
+      -- Both corners on the words (centred on the band), the mark's room
+      -- before them: the mark is centred 11 units plus the gap before the
+      -- words, 16 wide (Footer.Build).
+      local lead = f.bugGlyph and (f.bugMark or 0) + 2 + (f.bugGap or 0) or 0
       local box = CreateFrame("Frame", nil, band)
-      box:SetPoint("TOPLEFT", f.bugGlyph or f.bugText, "LEFT", -PAD, half)
+      box:SetPoint("TOPLEFT", f.bugText, "LEFT", -PAD - lead, half)
       box:SetPoint("BOTTOMRIGHT", f.bugText, "RIGHT", PAD, -half)
       if BoxArt(band, box) then
         f.bugText.__pbFooterOf = f
