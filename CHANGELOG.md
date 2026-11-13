@@ -47,6 +47,9 @@
   game's subject names one item and the mail holds another, the row and
   the opened mail show the item inside. Its tooltip still shows the
   game's own subject.
+- **History lists when each mail was collected at the row's far end** (Mail
+  tab > History), where the Inbox keeps its time left. A History layout
+  you arranged yourself stays as it is.
 - **Done keeps its own sort order** (Mail tab): an order you pick on Done
   stays with Done and leaves the Inbox's alone. Until you pick one, Done
   follows the Inbox.

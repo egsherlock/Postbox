@@ -1850,7 +1850,7 @@ end
 local HISTORY_COLUMNS = { "age", "icon", "sender", "subject", "money" }
 local HISTORY_COLUMN_KNOWN = {}
 for i = 1, #HISTORY_COLUMNS do HISTORY_COLUMN_KNOWN[HISTORY_COLUMNS[i]] = true end
-local HISTORY_LAYOUT_DEFAULT = "age,icon,sender,subject,money"
+local HISTORY_LAYOUT_DEFAULT = "icon,sender,subject,money,age"
 
 local function ParseHistoryLayout(text)
   return ParseLayout(text, HISTORY_COLUMN_KNOWN, #HISTORY_COLUMNS)
@@ -2052,17 +2052,16 @@ do
   end
 end
 
--- History's columns: the age it was collected, first by default, then the
--- mail rows' columns History has -- the icon, the sender, what came out
--- (the subject) and the money; no read mark, no time left, no slots. Its
--- own string, as the mail rows' is ("age,icon,sender,subject,money", a
--- leading "-" on a hidden column), arranged when the arrange mode is
--- opened over History.
+-- History's columns: the mail rows' columns History has -- the icon, the
+-- sender, what came out (the subject) and the money; no read mark, no time
+-- left, no slots -- and the age it was collected, last by default, at the
+-- row's far end where the Inbox keeps its time. Its own string, as the mail
+-- rows' is ("icon,sender,subject,money,age", a leading "-" on a hidden
+-- column), arranged when the arrange mode is opened over History.
 --
--- Nothing stored reads as what History showed before it had one: the age
--- first, then the mail rows' arrangement in its order and with its hidden
--- columns, less the ones History has not -- on a profile that never
--- arranged anything, the default. The first write to the mail rows'
+-- Nothing stored reads as the mail rows' arrangement in its order and with
+-- its hidden columns, less the ones History has not, then the age -- on a
+-- profile that never arranged anything, the default. The first write to the mail rows'
 -- arrangement stores it (UI.SetRowLayout), so from then on History keeps
 -- its own.
 --
@@ -2081,11 +2080,12 @@ local function ReadHistoryLayout()
   memo.a, memo.rows = a, rows
   local layout = ParseHistoryLayout(a)
   if not layout and rows then
-    local parts = { "age" }
+    local parts = {}
     for i = 1, #rows do
       local id = rows[i].id
       if HISTORY_COLUMN_KNOWN[id] then parts[#parts + 1] = (rows[i].shown and "" or "-") .. id end
     end
+    parts[#parts + 1] = "age"
     layout = ParseHistoryLayout(table.concat(parts, ","))
   end
   memo.layout = layout or ParseHistoryLayout(HISTORY_LAYOUT_DEFAULT)
