@@ -123,8 +123,9 @@ local SCHEMA = {
                               -- auction's row shows its item (Core/MailMemory.lua, 2e)
   "auctionDeposits",          -- realm -> name -> hour, copper pairs: deposits
                               -- paid on posts, for the 7-day card (Core/MailMemory.lua, 2f)
-  "hiddenChars",              -- realm -> name -> true, or "recipient" where the hide also hid the recipient
-                              -- of other characters (Core/MailMemory.lua, 2b)
+  "hiddenChars",              -- realm -> name -> true: hidden from the lists
+                              -- of other characters (Core/MailMemory.lua, 2b);
+                              -- "recipient" where that hide also hid the recipient
 }
 
 local function EnsureDB()
