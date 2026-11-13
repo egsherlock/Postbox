@@ -9610,7 +9610,14 @@ function Footer.Build(frame, above)
     resetText:SetText(L["OPT_RESET_DEFAULTS"])
     S.footer.reset, S.footer.resetText, S.footer.resetCaret = reset, resetText, caret
     if arrow then arrow:SetPoint("CENTER", reset, "LEFT", 10, 0) end
-    if caret then caret:SetPoint("CENTER", resetText, "RIGHT", 9, 0) end
+    if caret then
+      caret:SetPoint("CENTER", resetText, "RIGHT", 9, 0)
+      -- Pointing down, the way the menu opens, and still: the art drawn
+      -- the other way up (its crop's top and bottom swapped, the drawing a
+      -- turned caret lands on), so it is as sharp as drawn.
+      local g = caret.__pbSpec
+      if g then caret:SetTexCoord(g.l, g.r, g.b, g.t) end
+    end
     -- At rest the band's quiet text colour, as Report a bug and What's new?
     -- are, at full strength; the text colour when pointed at, and while its
     -- menu is open.
@@ -9658,18 +9665,15 @@ function Footer.Build(frame, above)
         local Drop = ns.Core.UI.Dropdown
         if not (Drop and type(Drop.Menu) == "function") then return end
         -- The menu opens under the button (over it only at the foot of
-        -- the screen), and the caret turns to point down while it is
-        -- open (Theme.TurnGlyph), back up however it closes.
+        -- the screen), the way the caret points; the button holds its lit
+        -- look while the menu is open (Quiet), and nothing turns.
         menu = Drop.Menu(self, RESETS, {
           onPick = Ask,
           onEnter = ResetTip,
           onLeave = ResetUntip,
-          onOpen = function() if caret then ns.Theme.TurnGlyph(caret, true) end end,
+          onOpen = function() Quiet(false) end,
           -- However it closed: quiet again unless the pointer is on it.
-          onClose = function()
-            Quiet(not reset:IsMouseOver())
-            if caret then ns.Theme.TurnGlyph(caret, false) end
-          end,
+          onClose = function() Quiet(not reset:IsMouseOver()) end,
           minWidth = math.max(120, self:GetWidth() or 0),
         })
       end
