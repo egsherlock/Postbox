@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <b>Runs on retail WoW (12.0.7–12.1.x) and, new in 1.60, fully supports World of Warcraft: Forever (1.60.1), from one download.</b><br />
+  <b>Runs on retail WoW (12.0.7–12.1.x) and, since 1.60, World of Warcraft: Forever (1.60.1), from one download.</b><br />
   On the Blizzard UI it wears its own Dark or Light style or the game's own look; under ElvUI or EllesmereUI it matches them.<br />
   No dependencies, no libraries &nbsp;·&nbsp;
   <a href="https://www.curseforge.com/wow/addons/postboxmail">CurseForge</a> &nbsp;·&nbsp;
@@ -20,13 +20,13 @@
 
 | | |
 |---|---|
-| **Mail tab** | One-click collection in the order your list shows, search and row selection, optional buttons by kind and for your own character groups, finished mail out of the way under one quiet bar, and a History of what you collected and sent. |
+| **Mail tab** | One-click collection in the order your list shows, search, sort and filter, row selection, buttons by kind (three on by default) and for your own character groups, finished mail under one quiet bar, and a History of what you collected and sent. |
 | **Arrange** | Drag, hide and set up every column and button right in the window; each list keeps its own layout. |
 | **Mail Memory** | Every character's last-seen mailbox, from anywhere, searchable across characters, with warnings before mail is lost. |
 | **Send tab** | Names complete as you type, a line says what a send will do, gold always asks first, and more than twelve items go out in one press. |
 | **Minimap icon** | Optional: two dozen hand-painted styles, a count of what's waiting, and a marker for mail about to expire. |
 | **Looks** | Follows EllesmereUI or ElvUI; on the game's own UI, wears the Postbox style (the default, in Dark or Light) or the Blizzard look. |
-| **Options** | Five tabs, General first with every character's mail at a glance, and a panel that explains and previews whatever you point at. |
+| **Options** | Six tabs, General first with every character's mail and your last 7 days at a glance, a search that finds any setting, and a panel that explains and previews whatever you point at. |
 | **WoW Forever** | The same download: full names, Forever's mail rules, slow sends waited for, and Blizzard's mailbox for controller players. |
 
 Found a bug, on retail or in WoW Forever? Please report it: open an
@@ -83,10 +83,12 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   command at a time, in the order the list shows. Under a search it collects
   what's shown; with rows selected (Shift-click a range, Ctrl-click one) it
   collects your picks. C.O.D. mail is never swept.
-- **Sort and filter:** the button beside Search orders the list by newest,
-  expiring, most gold or sender, remembered, and can show only unread mail,
-  mail with gold or mail with items until you close the mailbox. While a
-  filter is on, a line above the list says so, with **Clear** beside it. When your bags fill,
+- **Sort and filter:** the button at the end of the search box sorts by
+  date, time left, gold or sender (click again to reverse) and can show only
+  unread mail, mail with gold or mail with items, several at once. Each
+  filter shows as a chip under the button, with an x to let it go.
+  **Remember sort order** (Options > Mail tab) keeps your order between
+  visits; filters let go when the mailbox closes. When your bags fill,
   what's left is the bottom of the list.
 - **Time left** turns amber under three days (one for C.O.D.). On a mail that
   still holds something, a curved arrow in front says it goes back to its
@@ -109,14 +111,14 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   Cancel and it stays in the mail while the rest carries on.
 - **C.O.D. prices are red,** as spent gold is, so amber only ever means time
   running out; the totals under the list add the C.O.D. still to pay.
-- **Category buttons** (off by default; **Show category buttons**): All
+- **Category buttons** (on by default; **Show category buttons**): All
   bought, All sold and All expired, with All canceled, Other and From alts
   one right-click away in Arrange, and one for each **Character Group** you
   make: your bank alts, your crafters, a friend who sends you materials.
 - **Rows:** compact by default, or **Larger mail rows** on two lines. **Row
   layout** is Columns (every figure under its heading) or Packed (each mail's
-  figures together, the subject gets the rest). Columns: read mark, icon,
-  sender, subject, time left ("9h", "3d"), gold, slots.
+  figures together, the subject gets the rest). Columns: read mark, item
+  icon, sender, subject, time left ("9h", "3d"), gold, slots.
 - **Item icons** carry stack counts and crafting quality marks, as your bags
   do. Hover an icon for what the mail holds, or set **Attachments on hover**
   to **Fan out** and click one item to take it (C.O.D. still asks first).
@@ -153,12 +155,13 @@ first: when, from whom, what came out and what it was worth, with the
 letter's text kept after the mail is gone. **Received** and **Sent** switch
 between that and the mail you sent: who each went to, exactly as you
 addressed it, what it carried, its gold and any C.O.D. After a send, the line
-above Send says who it went to (click it, or the clock in the Recipient
-field, to open Sent). Pick another character to see their History and Sent.
+above Send says who it went to (click it, or the clock beside Send, to open
+Sent). Pick another character to see their History and Sent.
 **Keep History for** 7, 14, 21 or 30 days, or **Never** (asks, then clears
-every character's). At most 1,000 entries of each per character. History has
-its own layout, shows when you collected ("3d ago" or the date, either way
-round), and **Search every character** looks through all of them.
+every character's). **History holds** 1,000, 2,500 or 5,000 mails of each
+per character (Options > General > Memory and history). History has its own
+layout, shows when you collected ("3d ago" or the date, either way), and
+**Search every character** looks through all of them.
 
 Every search, here, on the Mail tab and in Mail Memory, finds a mail by its
 sender or recipient, its subject, or any item attached to it.
@@ -187,7 +190,7 @@ too):
 One-line rows (shared with Mail Memory), Larger mail rows and History each
 keep their own arrangement. **Test mail** fills the list with sample mail
 while you arrange, or on its own from the **Test mail** switch over the
-Preview in the options, which is lit while it is on. The samples show what your
+Preview in the options, which reads **Testing** while it is on. The samples show what your
 settings do: under **Delete when done** there is no read mail and no
 bar, and resting on an item icon lists its items or fans them out, as
 **Attachments on hover** is set, though nothing can be taken. **Arrange**
@@ -201,20 +204,23 @@ works away from a mailbox too, opening the window beside the options.
 
 A snapshot of each character's mailbox, taken at every visit (up to 100
 mails). Away from a mailbox it opens from the minimap icon, the addon
-compartment or `/postbox mail`; at a mailbox, click **Inbox** again (it
-wears your class icon) to show any character's box right in the Mail tab
-(right-click it to come back to your own). **Search every character** looks through all of them at once.
-Every box says how long ago it was seen; it never pretends to be live. Hover
-a mail to see what it holds. A character you no longer play can be hidden
-(Options, General, **Hidden characters**).
+compartment or `/postbox mail`; at a mailbox, click **Inbox** (it wears
+your class icon) to open the character list and show any character's box
+right in the Mail tab (right-click it to come back to your own). **Search
+every character** looks through all of them at once. Every box says how
+long ago it was seen; it never pretends to be live. Hover a mail to see
+what it holds. A character you no longer play can be hidden (Options >
+General > Characters > **Hidden characters**), and **Character order**
+beside it sets the list's order: Warnings first, Expiring soonest, Most
+mail, Name or Last played.
 
 - **Arrivals are detected, not guessed:** the game's new-mail signal, the
   unread flag, and the auction house's own sold / expired / bought notices.
 - **Warnings** name any character with mail holding gold or items (or a
   C.O.D.) under three days (one for C.O.D.) from expiring, or with mail
   known to be on its way and no mailbox visit in over three weeks, the
-  character you're on included. One choice, **Warn about** (Options,
-  General, Expiring mail), sets what both warnings cover: **Mail to be
+  character you're on included. One choice, **Warn about** (Options >
+  Alerts), sets what both warnings cover: **Mail to be
   deleted**, **Mail to be deleted or sent back**, or **Off** (mail last seen
   before 1.60 counts as possibly deleted, to be safe). They come as a
   line in chat at login (**Chat line at login**) and as the minimap icon's
@@ -228,16 +234,21 @@ a mail to see what it holds. A character you no longer play can be hidden
   played most recently. Past five lines the list scrolls inside the card;
   past twenty characters it ends in "+N more in Mail Memory". Click a
   character to open its box in Mail Memory. Beside the list, Mail Memory,
-  Character Groups and Manage Recipients are a click away.
+  Character Groups and Manage Recipients are a click away. Under it, **The
+  last 7 days**: gold earned and spent by mail, and mails collected and
+  sent, for all characters or this one. With nothing waiting anywhere, the
+  card says **Nothing waiting**.
 
 ## Sending
 
 <img src="docs/screenshots/send.png" width="420" align="right" alt="The Send tab: a name completing, more than twelve items queued" />
 
 - **Names complete in place** from your favorites, recent contacts, alts,
-  guild and friends (Battle.net included). Tab and Shift+Tab walk the
-  suggestions, Enter takes the whole name, and the realm is added only when
-  it's another realm.
+  guild, friends (Battle.net included) and players you grouped with
+  recently; **Options > Send tab** chooses which sources are offered. Tab
+  and Shift+Tab walk the suggestions, Enter takes the whole name, and the
+  realm is added only when it's another realm. Right-click a suggestion to
+  hide it; the star at its end favorites it.
 - **A guidance line** says whether the mail arrives instantly or in about an
   hour, and whether a cross-realm send can carry what's attached. It advises;
   it never blocks.
@@ -253,8 +264,10 @@ a mail to see what it holds. A character you no longer play can be hidden
 - Unmailable items in your bags are grayed with a padlock while you compose,
   in the default bags, Baganator and EllesmereUI bags.
 
-**Manage Recipients** (`/postbox rm`, works anywhere) searches, sorts,
-favorites, hides and annotates every name Postbox can suggest.
+**Manage Recipients** (`/postbox recipients`, works anywhere) is a table,
+one line per name (Category, Class, Level, Played, Mailed): click a name to
+favorite it, right-click to hide it, Shift- or Ctrl-click to select several,
+and favorite, hide or delete them together.
 
 <p align="center">
   <img src="docs/screenshots/recipients.png" width="560" alt="Manage Recipients: favorites, notes, hidden names and class colors" />
@@ -275,7 +288,8 @@ icon steps aside.
   gray until something arrives).
 - **Expiring mail:** a small marker, red unless you pick another color, when
   mail on any character is about to be deleted or sent back (switched on,
-  and told which, under General: **Minimap marker** and **Warn about**).
+  and told which, under **Options > Alerts**: **Minimap marker** and
+  **Warn about**).
   Choose its shape (dot, ring,
   square, bar, "!" or a triangle that fits its spot), put it on any corner,
   side or the center of the icon, and nudge it a pixel at a time with
@@ -284,10 +298,10 @@ icon steps aside.
   makes it bigger there.
 - **Count on icon** (this character or all), shadow, glow and pulse, with a
   **Glow color** of gold, your accent, your class color, white or any color
-  you pick. **Flash on new mail** (Options, General, New mail) swells a
+  you pick. **Flash on new mail** (Options > Alerts) swells a
   halo in that color when mail arrives.
-- **The Minimap tab** reads in five groups (When it shows, Icon, Glow,
-  Expiring mail, Place). Its preview draws the icon large beside a copy at
+- **The Minimap tab** reads in four groups (When it shows, Icon, Glow,
+  Place); the marker's look is set on Alerts. Its preview draws the icon large beside a copy at
   its real size, wearing every setting; settings with choices show them
   side by side, and a grayed-out setting says what turns it on. What needs
   Mail Memory (Mail on any character, Count on icon, the marker) is grayed
@@ -305,13 +319,16 @@ icon steps aside.
   <img src="docs/screenshots/options.png" width="520" alt="The options" />
 </p>
 
-Five tabs (General, Mail tab, Send tab, Window, Minimap), one column of
-settings, and a panel beside it that explains whatever you point at and shows
-it. **General** comes first: every character's mail at a glance on a card
-across the top, with **Mail Memory**, **Character Groups** and **Manage
-Recipients** beside it; under it Mail Memory's settings, **Expiring mail**
-(Warn about, Chat line at login, Minimap marker) and **New mail**: **Sound
-on new mail** (one of four soft sounds made for Postbox, the mail chime or
+Six tabs (General, Window, Mail tab, Send tab, Alerts, Minimap), one column
+of settings, a search in the title bar that finds any setting and takes you
+to it, and a panel beside it that explains whatever you point at and shows
+it. **General** comes first: every character's mail and your last 7 days on
+cards across the top, with **Mail Memory**, **Character Groups** and
+**Manage Recipients** beside them; under them **Memory and history**
+(Remember mailboxes, Keep History for, History holds) and **Characters**
+(Class icons, Hidden characters, Character order). **Alerts** holds
+**Expiring mail** (Warn about, Chat line at login, Minimap marker and its
+look) and **New mail**: **Sound on new mail** (one of four soft sounds made for Postbox, the mail chime or
 another quiet sound of the game's, or any sound your other addons share
 through LibSharedMedia, such as ElvUI's or WeakAuras', with a button to hear
 it first; it stays quiet for your own auction house purchases, which the
@@ -343,6 +360,10 @@ new?** in the footer shows the last three releases.
   marks; each mode keeps its own background.
 - **Blizzard**, to match the default UI with the game's own art (texture
   packs restyle it).
+- **Class icons** (Options > General > Characters): how your characters'
+  classes are drawn on the Inbox button and in its list: the game's own,
+  Game: round, Game: square, Painted, Pixel, Comic or Glyphs, and
+  EllesmereUI's sets while it is loaded.
 - **Window scale** from 80% to 130% in every look.
 
 <p align="center">
@@ -395,7 +416,7 @@ in WoW Forever is under [World of Warcraft: Forever](#world-of-warcraft-forever)
 | `/postbox` or `/pb` | The options |
 | `/postbox help` | The list of commands |
 | `/postbox mail` | Mail Memory: every character's mailbox |
-| `/postbox rm` | Manage Recipients |
+| `/postbox recipients` | Manage Recipients |
 | `/postbox minimap` | Turn the minimap icon on or off |
 | `/postbox whatsnew` | What's new in the last three releases |
 | `/postbox perf` | Performance recording: off, on or detailed |

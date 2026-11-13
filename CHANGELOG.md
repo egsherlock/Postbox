@@ -11,7 +11,7 @@
   C.O.D. On the Send tab, the clock beside Send opens it.
 - **Sort and filter:** on the Mail tab, the sort button in the search box
   orders your mail by date, time left, gold or sender (click a sort again
-  to turn it round; its arrow shows which way) and can show only unread
+  to reverse it; its arrow shows which way) and can show only unread
   mail, mail with gold or mail with items. History has it too, and Mail
   Memory and Manage Recipients have the same button to sort by.
 - **Search finds mail by its items:** on the Mail tab, in History and in
@@ -37,7 +37,7 @@
   as a small chip under the sort button, with an x to let it go. The
   collect buttons take only the mail you can see.
 - **Gold as coins:** mail rows can show gold as coin icons instead of
-  letters (Arrange, Gold column, Written as).
+  letters (Arrange > Gold column > Written as).
 - With **Attachments on hover** set to Fan out, a mail's items open from
   its own icon, as one piece.
 - **Easier to read rows:** item names, time left, gold, slots, the totals
@@ -50,10 +50,17 @@
 - **Done keeps its own sort order** (Mail tab): an order you pick on Done
   stays with Done and leaves the Inbox's alone. Until you pick one, Done
   follows the Inbox.
-- **Class icon styles** (Options > General > Class icons): choose the art
-  for your characters on the Inbox button and in its character list: the
-  game's own, Painted, Pixel, Comic, or Glyphs in class colors. With
-  EllesmereUI installed, its sets are offered too.
+- **Class icon styles** (Options > General > Characters > Class icons):
+  choose the art for your characters on the Inbox button and in its
+  character list: the game's own, Painted, Pixel, Comic, or Glyphs in class
+  colors. With EllesmereUI installed, its sets are offered too. Hidden
+  characters sits in the same new Characters group.
+- **Character order** (Options > General > Characters): choose how the
+  Inbox button's character list is ordered: Warnings first (as before),
+  Expiring soonest, Most mail, Name or Last played. The character you are
+  playing is always first.
+- The mail list opens at its top after a visit that ended in a search, a
+  filter or another character's mail.
 
 ### Send tab and Manage Recipients
 
@@ -86,13 +93,14 @@
   keeps it highlighted for a moment wherever your pointer goes. A setting
   on an Arrange card opens arranging on that card, highlighted the same
   way. Down and Up choose a result and Enter opens it.
-- **Text size** (Options, Window) works in every window style, and all of
+- **Text size** (Options > Window) works in every window style, and all of
   Postbox's text is a comfortable size on the default UI.
 - **Arrange:** each column's card holds its own settings (stack counts,
   quality marks, expiry marks), and the options step aside while you
   arrange.
-- **The last 7 days** on the options' General tab: gold earned and spent,
-  and mails collected and sent, for all your characters or this one. Point
+- **A weekly summary of gold earned and spent by mail** (Options >
+  General): The last 7 days shows gold earned and spent, and mails
+  collected and sent, for all your characters or this one. Point
   at Earned or Spent for its parts, each in coins: auction sales, the auction house's
   cut, deposits, auctions bought, C.O.D. and gold sent. Deposits and the
   cut are counted from this version on.
@@ -101,7 +109,20 @@
   seen, in place of an empty box.
 - **Mail Memory has a new icon,** an envelope with a clock, drawn in the
   same hand as Character Groups' and Manage Recipients'.
-- **Remember sort order** (Options, Mail tab): on, each list keeps the
+- **History holds** (Options > General > Memory and history): choose how
+  many mails History keeps for each character, 1,000 (as before), 2,500 or
+  5,000, Received and Sent each. A larger History makes Postbox's saved
+  file bigger, about 1.7 MB per character at 5,000.
+- **What's new says Postbox runs on the other game too:** a small plaque
+  at the left of its title bar, **Now on Forever** (in WoW Forever, **On
+  Retail too**). Its headings stand apart from the lines under them, with a
+  thin rule after each, and wear Postbox's gold when your accent is white
+  or gray. It opens by itself only after an update.
+- **Every tooltip names its gestures the same way,** one per action:
+  `Click: sort · Right-click: reset`.
+- **Reset has its own button** at the foot of the sort menus, lit only
+  when there is something to reset.
+- **Remember sort order** (Options > Mail tab): on, each list keeps the
   order you chose; off, every list is back to newest first at your next
   visit. Filters are always let go when the mailbox closes.
 - **Test mail** has its own switch over the options' Preview, and reads
@@ -135,23 +156,23 @@
   is a key like History and the sort button, in the window's neutral gray.
 - **A cog of Postbox's own on the title bar,** plain gray, taking your
   accent only while the options are open.
-- **Text outline** is now called **Text style** (Options, Window), and a
-  new **Text weight** beside it offers Bold for Barlow Semi Condensed and
+- **Text outline** is now called **Text style** (Options > Window), and a
+  new **Text weight** under it offers Bold for Barlow Semi Condensed and
   the five new fonts.
-- **Four new fonts** in the Postbox style's Font list (Options, Window):
+- **Four new fonts** in the Postbox style's Font list (Options > Window):
   Fira Sans Condensed, Noto Sans, Overpass and Roboto Condensed, each in
   Regular and Bold, with the letters of every language the game's Latin
   and Russian clients use, so Russian players can pick them too.
-- **Expressway** joins the Postbox style's Font list (Options, Window tab,
+- **Expressway** joins the Postbox style's Font list (Options > Window >
   Font), in Regular and Bold, shipped in Postbox for everyone with
   Typodermic's permission, on Latin and Russian clients alike.
-- **The Font list shows each font in itself** (Options, Window): every
+- **The Font list shows each font in itself** (Options > Window): every
   name is drawn in its own font, and so is your choice when the list is
   closed.
 
 ### WoW Forever
 
-- Mail rows can show senders by first name (Arrange, Sender column).
+- Mail rows can show senders by first name (Arrange > Sender column).
 
 ### Fixed
 
@@ -174,6 +195,13 @@
 - The hint lines at the foot of Postbox's tooltips sit safely beside
   addons that restyle the game's tooltips.
 - History opens and searches quickly however long it gets.
+- A character group made of only the character you are on no longer shows
+  an empty button on that character's Mail tab; it shows on your others.
+- An auction you posted counts as mail on its way once it has surely
+  ended, so that character says **new** rather than 0 until you open its
+  mailbox.
+- Changing between Received and Sent in History lets a filter go, so
+  neither list hides entries behind a filter set on the other.
 
 ## 1.60.0
 
