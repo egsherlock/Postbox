@@ -5171,10 +5171,10 @@ Theme.AtlasSets = {
 --     shorter is always the one beside the head. 16 units square.
 --   memory, groups, recipients  the three tools (Mail Memory, Character
 --     Groups, Manage Recipients): an envelope with a clock, three busts,
---     an address book. Memory is drawn twice by hand on whole pixels, 12
---     units square (its title bar) and 30 (`large`, the options tile);
---     groups and recipients are Phosphor's, 16 (the title bars, the
---     Recipient field) and 30 (the options tiles). Theme.Glyph takes the
+--     an address book. All three are Phosphor's, 16 (the title bars, the
+--     Recipient field) and 30 (the options tiles); memory is composed from
+--     its envelope-simple and clock, the clock a badge over the envelope's
+--     lower right corner with a moat cut round it. Theme.Glyph takes the
 --     large master from `large.from` units up, so ask for the small size
 --     or 30 to see each one pixel for pixel. Accent-tinted where
 --     Theme.TintAccentGlyph keeps one in the icon tone.
@@ -5276,8 +5276,8 @@ do
     cap = { file = MEDIA .. "glyph-cap.tga", w = 13, h = 13, l = 0.03125, r = 0.84375, t = 0.03125, b = 0.84375 },
     ["sort-list"] = { file = MEDIA .. "glyph-sort-list-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["sort-list-turned"] = { file = MEDIA .. "glyph-sort-list-turned-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
-    memory = { file = MEDIA .. "glyph-memory-12.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true,
-      large = { from = 21, file = MEDIA .. "glyph-memory-30.tga", w = 30, h = 30, l = 0.015625, r = 0.953125, t = 0.015625, b = 0.953125 } },
+    memory = { file = MEDIA .. "glyph-memory-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true,
+      large = { from = 21, file = MEDIA .. "glyph-memory-large.tga", w = 30, h = 30, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.96875, px = true } },
     groups = { file = MEDIA .. "glyph-groups-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true,
       large = { from = 21, file = MEDIA .. "glyph-groups-large.tga", w = 30, h = 30, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.96875, px = true } },
     recipients = { file = MEDIA .. "glyph-recipients-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true,
@@ -5552,8 +5552,8 @@ do
   -- must not be cut short; where it cannot, the glyph hides and the title
   -- stands alone where the look put it. Nothing is made after the first
   -- call, and nothing runs but on those changes.
-  -- The glyph at its own master's size (memory 12 units square, groups and
-  -- recipients 16) and 6 before the first letter. The title moves right by
+  -- The glyph at its own master's size (memory, groups and recipients all
+  -- 16 units square) and 6 before the first letter. The title moves right by
   -- half of a 12-unit glyph and its gap, 9 units, whichever glyph it wears,
   -- so the words stand where they always stood: the pair is centred for a
   -- 12, and a 16 reaches its 4 units further out, not into the gap.
