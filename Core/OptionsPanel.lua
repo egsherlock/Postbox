@@ -4727,6 +4727,10 @@ do
     dd:SetChangeCallback(spec.set)
     local toggle = dd._toggle
     Wire(toggle, row, true)
+    -- Its caret a mark where the look draws one: in Light, the accent's
+    -- mark tone while live, its words staying the ink (Skin_Postbox's
+    -- PaintCaret).
+    toggle.__pbCaretMark = true
     -- The first dropdown whose value wears no face of an item's (the Font
     -- list's does): its state fonts are every dropdown value's, and the
     -- button rows' captions wear them too (CAPTION.Font).
@@ -4950,6 +4954,13 @@ do
     if not icon then return end
     local r, g, b, a = object:GetTextColor()
     if type(r) ~= "number" then return end
+    -- On a light palette the words are the ink and the icon is a mark: the
+    -- accent's mark tone while the button is live, as the ticks and the
+    -- dropdowns' carets beside it are; the disabled ink while it is off.
+    if ns.Theme.IsLight() and btn:IsEnabled() then
+      r, g, b = ns.Theme.GetAccentTone("mark")
+      a = 1
+    end
     if icon.dots then
       Ctx.TintMark(icon, r, g, b, a or 1)
     else
@@ -5707,6 +5718,8 @@ do
       -- A caption of our own goes grey with its button (its OnDisable does
       -- it too; a button already off fires none).
       if control.Caption then Rows.PaintCaption(control) end
+      -- A select's caret, where the look draws one, follows it too.
+      if control.__pbCaret and ns.PostboxSkin then ns.PostboxSkin.PaintCaret(control) end
     end
     local more = cell.more
     if more and more.SetEnabled then more:SetEnabled(on) end

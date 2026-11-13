@@ -2054,6 +2054,28 @@ end
 local hovers = setmetatable({}, { __mode = "k" })
 local carets = setmetatable({}, { __mode = "k" })
 
+-- A select's caret: the palette's caret grey. On a light palette a select
+-- that asks for it (`__pbCaretMark`: the options' dropdowns) has its caret
+-- in the accent's mark tone while it is live, as the ticks beside it are,
+-- its words staying the ink; grey while off.
+local function PaintCaret(caret)
+  local button = caret:GetParent()
+  local T = ns.Theme
+  if button and button.__pbCaretMark and T and T.IsLight and T.IsLight() and button:IsEnabled() then
+    local r, g, b = AccentMark()
+    caret:SetVertexColor(r, g, b, 1)
+    return
+  end
+  local c = P.caret
+  caret:SetVertexColor(c[1], c[2], c[3], 1)
+end
+
+-- A select's caret painted again: its button was switched on or off.
+function Skin.PaintCaret(button)
+  local caret = button and button.__pbCaret
+  if caret then PaintCaret(caret) end
+end
+
 local function PaintHover(hover)
   local c = P.hover
   hover:SetVertexColor(c[1], c[2], c[3], 1)
@@ -2094,8 +2116,7 @@ local function FlatButton(button)
     local caret = T and T.Glyph and T.Glyph(button, "caret", 5, "OVERLAY")
     if caret then
       caret:SetPoint("CENTER", button, "RIGHT", -9, 0)
-      local c = P.caret
-      caret:SetVertexColor(c[1], c[2], c[3], 1)
+      PaintCaret(caret)
       button.__pbCaret = caret
       carets[caret] = true
     end
@@ -2341,11 +2362,14 @@ function Skin.RefreshWindow(frame)
   walkedAt[frame] = T and type(T.SkinGeneration) == "function" and T.SkinGeneration() or nil
 end
 
--- The accent moved: the ticks, the select values, the plates and the
--- accent-toned text and icons. `painted`: the accent-toned texts were just
--- painted with every tracked one (Theme.RepaintTracked), and are not again.
+-- The accent moved: the ticks, the carets (a mark in Light), the select
+-- values, the plates and the accent-toned text and icons. `painted`: the
+-- accent-toned texts were just painted with every tracked one
+-- (Theme.RepaintTracked), and are not again. Skin.ApplyLook ends here, so
+-- the carets take a new palette's grey here too.
 function Skin.RefreshAccents(painted)
   for cb in pairs(checks) do pcall(PaintTick, cb) end
+  for caret in pairs(carets) do pcall(PaintCaret, caret) end
   Skin._PaintFonts()
   local T = ns.Theme
   if T then
@@ -2394,8 +2418,7 @@ function Skin.ApplyLook(full)
     if frame and edge then pcall(Recolour, frame, fill, edge) end
   end
   for hover in pairs(hovers) do pcall(PaintHover, hover) end
-  local c = P.caret
-  for caret in pairs(carets) do caret:SetVertexColor(c[1], c[2], c[3], 1) end
+  -- The carets with the accents (Skin.RefreshAccents, below).
   for button in pairs(closes) do pcall(TintClose, button, nil) end
   for fs in pairs(titles) do pcall(DressTitle, fs) end
   Skin.RefreshAccents(painted)
